@@ -1,6 +1,8 @@
 # Phase 469 — give the message path the entry path's `pack.toml`
 
-**Status (2026-09-28). W1 LANDED; the later waves are still a record.** Opened from
+**Status (2026-09-28). W1 LANDED, and so have S2, S3 and W2 (the typing half of
+the entry-emitter item). The remaining entry-emitter work — making an emitter
+data-driven — is NOT this phase; RFC-0091 §6b names its blocker.** Opened from
 the 2026-09-27 codegen-path audit to carry its **S4** item, which is phase-sized
 and was deliberately left out of the two conflict-free fixes that landed with it
 (the one artifact-naming derivation, `generator::naming`, and three retracted doc
@@ -148,7 +150,163 @@ session on 2026-09-27**, which is why none of them landed with S1:
   (RFC-0091 §7 / issue 0083), so "a language adds no Rust" can never hold for
   entries; what is in scope is that each entry language's emitter be the ONLY
   Rust it needs, and that the ~139 language-naming sites route through `Language`
-  rather than through string literals.
+  rather than through string literals. **The typing half is W2, below. The
+  data-driven half is NOT this phase** — `emit_cpp.rs` is 2,631 lines of
+  projection and RFC-0091 §6b names the blocker (`LoweredEntry` must BE the
+  context, not the seed for a per-surface projection).
+
+## W2 — a language is a TYPE inside the CLI, not a string. **DONE (2026-09-28).**
+
+The typing half of the entry-emitter item above, plus the two sites S2 measured
+and left. **Typing, not templating**: nothing about which Rust an emitter needs
+changed, and every golden is byte-identical.
+
+### What the sites actually were
+
+`PlanNode.lang` was `Option<String>`, and FOUR consumers asked
+`lang.as_deref() == Some("c")` — `emit_c::is_c_node`, `emit_cpp::is_c_node`,
+`emit_cpp::is_rust_node`, `metadata::enrich_plan`. That is the same defect S2
+fixed one verb over (`is_cpp = lang != "c"`, PR #1363) still live in the FIELD
+those inputs flow into: a string comparison is invisible to the compiler, so a
+fourth language falls off it silently and lands in generated code.
+
+Typed, each with the reason it had been a string:
+
+| was | now | why it had been a string |
+| --- | --- | --- |
+| `PlanNode.lang: Option<String>` | `Option<Language>` | nothing; four `==` sites read it |
+| `ComponentMeta.lang` (serde) | `Option<Language>` | a wire format — but `Language`'s serde repr IS that format |
+| `ComponentFacts.lang` | `Option<Language>` | carried the serde field |
+| `RegisteredNode.language: String` | `Language` | its caller wrote `language.as_str().to_string()` off an already-parsed `Language`, so an alias could not reach a downstream compare |
+| `ProbeExport.language: String` | `Language` | the sidecar's rendered value; `as_str()` is now its one producer |
+| `CmakeEntry.lang: String` | `Language` | a rendered cmake property (`LANG {}`); `as_str()` at the emit site |
+| `ScaffoldConfig.lang`, `ComponentScaffoldConfig.lang`, `WorkspaceScaffold.lang` | `Language` | three `match … as_str()` dispatches, two with UNREACHABLE `bail!("Unknown language")` arms |
+
+Left a string on purpose: `CmakeProbeOptions.language`, because its only
+producer is `metadata_refresh`'s `_ => "cpp"` wildcard (**issue 1528**, a
+concurrent change). `metadata_probe_cmake` gains ONE `Language::parse` at its
+own edge instead; when 1528 lands, that parse becomes the field's type.
+
+### The second enum: KEPT, and given the derivation it lacked
+
+`sizing_descriptor::EntryLanguage { Rust, CFamily }` is a genuine NARROWING in
+RFC-0091 §1's sense — two values where the enumeration has three, because C and
+C++ give the SAME answer to "which registration path" and saying so is
+information. Collapsing it would make `registration_path`'s table spell
+`(Language::C, _)` and `(Language::Cpp, _)` as two arms that must agree, with
+nothing stating that they must.
+
+What it was missing is the DERIVATION `nros-lang`'s own docs ask for: it had no
+relationship to `Language` at all. `From<Language>` is that relationship, and it
+is what makes a fourth language a compile error there — whoever adds one must
+answer "registers like Rust, or like C?".
+
+### The second cmake parser: TAKEN, with the token sets UNCHANGED
+
+`orchestration::workspace::infer_cmake_language` read the cmake `LANGUAGE` token
+with its own `match`. The two token sets are genuinely different and both are
+user-facing: `Language::parse` serves a CLI flag and takes `c++`; the cmake
+keyword set is whatever `cmake/NanoRosNodeRegister.cmake`'s validator accepts,
+which is `C`/`CPP`/`CXX`/`RUST`/`RS` after an uppercase — `C++` is a
+`FATAL_ERROR` there. **Unifying them would change what a user may type in both
+directions** (`--lang rs` newly legal; `LANGUAGE C++` newly accepted by one
+reader while cmake still refuses it), and nothing asks for either.
+
+So the TABLE moved to `nros-lang` as `Language::parse_cmake_keyword`, beside the
+one it differs from, with tests pinning the difference both ways; the POLICY —
+what an absent or unrecognised keyword earns, and how loudly (issue 0641) —
+stayed in `workspace.rs`, because that is a statement about CMakeLists written
+before the keyword existed, not about the language table. **Nothing changes for
+a user.** The one visible move is the warning text, which now names `rs`, a
+spelling the old match already accepted and the old message already omitted.
+
+`nros new --lang` is the mirror case and resolves the other way: clap already
+restricts it with `value_parser = ["rust", "c", "cpp"]`, so the three copies
+behind that gate could never see anything else, and two of them carried
+refusals that could never fire. Parsing once there widens nothing.
+
+### Measured
+
+**Goldens byte-identical, `NROS_UPDATE_GOLDEN` never set.**
+`codegen::entry::golden` 3/3, `rosidl-codegen` `codegen_golden` 5/5 +
+`rust_surface_golden` 2/2, `nros-cli-core` lib 1446/1446, `nros-lang` 14/14,
+`cargo clippy --workspace --all-targets -D warnings` clean, and `git status`
+reports no change under any `goldens/` tree.
+
+**Compiler enforcement, by throwaway variant.** A fourth `Language` variant,
+`cargo check --workspace --all-targets --keep-going`, iterating until the
+workspace built (a failed crate hides its dependents, so one round is not the
+answer). Sites that became a compile error: **5 before, 9 after.**
+
+* before (5): `cmd/codegen.rs:451`, `cmd/codegen.rs:528`, `cmd/codegen.rs:639`,
+  `codegen/entry/pack.rs:141`, `orchestration/workspace.rs:1496`.
+* after (+4): the three scaffolder dispatches
+  (`cargo-nano-ros/src/scaffold.rs` ×2, `workspace_scaffold.rs`) and
+  `sizing_descriptor.rs`'s `From<Language>`. `cargo-nano-ros` went from 0
+  enforced sites to 3.
+
+**What did NOT appear, and why — because the honest answer is not "everything".**
+The typed `PlanNode.lang` comparisons (`is_c_node`, `is_rust_node`,
+`enrich_plan`'s `is_c`) are `==`, not matches, so a new variant does not break
+them. That is CORRECT: they are PREDICATES, and "is this C?" has a right answer
+for a new language (no). The DISPATCHES that must change are downstream —
+`typed_entry_emitter`, `entry-node`'s `is_cpp`, `pack::entry_pack_for` — and all
+three appear. Typing those fields buys a different thing: the comparison is
+type-checked (a typo'd spelling cannot compile) and the serde field REFUSES an
+unknown language at the file that names it rather than routing it to C++.
+
+**Site count — the "~139" becomes a number.** Reproducible:
+`git grep -hE '(lang|language|Lang)' <rev> -- 'packages/cli/*/src/*.rs' |
+grep -cE '"(c|cpp|c\+\+|cxx|rust|rs)"'` — a language literal on a line that
+names a language.
+
+* **124 → 88** over the whole CLI source.
+* Inside `nros-lang`, where the strings BELONG: 21 → 35 (the cmake keyword
+  table and its tests moved in).
+* **Outside `nros-lang`, i.e. the drift surface: 103 → 53**, a 49 % cut.
+* Bare literal count (`"c"`/`"cpp"`/`"c++"`/`"cxx"`/`"rust"`/`"rs"`, any
+  context): 246 → 186 over 44 → 40 files. Four files now carry none:
+  `builder/cmake_root.rs`, `cmd/build.rs`, `codegen/entry/emit_c.rs`,
+  `codegen/entry/registered_node.rs`.
+
+One count went UP by design: `metadata_probe_cmake.rs` 5 → 6, the single
+documented `Language::parse` standing in for issue 1528's field.
+
+### What remains — 53 lines outside `nros-lang`
+
+Enumerated so the next reader does not re-triage them:
+
+* **`orchestration/metadata_refresh.rs`** — issue 1528's `_ => "cpp"`, and the
+  `CmakeProbeOptions.language: String` it feeds. Owned by a concurrent change;
+  this wave deliberately did not touch the file.
+* **`codegen/entry/pack.rs`** (13) — pack DIRECTORY names, not languages. Its
+  first arm routes a `C` component on a board with no C `run_components` to the
+  `cpp` pack, so the table coincides with `as_str()` rather than being it.
+  Already enum-typed and already enforced.
+* **`orchestration/planner.rs`** (18), `cmd/setup*.rs` (12),
+  `leaf_entity_env.rs` (7) — mostly NOT languages: toolchain names, file
+  extensions, feature strings that the grep's `lang` context catches by
+  proximity. A real count here needs reading, not grepping.
+* **`cmd/codegen_system.rs`** — `ComponentLang { Rust, Other }` serialised as
+  `"rust"` / `"other"`. `"other"` is not a language and `Language` cannot
+  produce it; this is a binary predicate with a serde contract, correctly out
+  of scope.
+* **template bodies** — generated file comments (`// Generated by \`nros new
+  <n> --lang cpp\``), `language = "rust"` inside an emitted `nros.toml`. These
+  are OUTPUT text, and `as_str()` is the wrong producer for a literal inside a
+  template string.
+
+### Deferred, with the reason
+
+* **Making an entry emitter data-driven.** Out of scope by the doc's own
+  statement and RFC-0091 §6b's blocker; see the bullet above.
+* **Typing `CmakeProbeOptions.language`.** Blocked on issue 1528's owner.
+* **A GATE for this rule.** Considered and not written: the honest predicate is
+  "a language literal in a decision position", and the 53 remaining lines show
+  the grep cannot separate a decision from a toolchain name or a template body
+  — a gate over that would be an allowlist, which is what the 2026-09-11 audit
+  warned about. The compiler is the enforcement here, and the throwaway-variant
+  probe is how it gets measured.
 
 ## Deliberately NOT proposed: the filter set as data
 
@@ -162,7 +320,8 @@ keys the filter set by the pack that calls it, which is the shape that survived.
 
 ## Acceptance
 
-All four met by W1 (2026-09-28) — see *What landed* for the measurements.
+All four met by W1 (2026-09-28) — see *What landed* for the measurements. W2's
+own acceptance is in its *Measured* section above.
 
 * [x] `pack.toml` discovery replaces the authored `include_str!` list; a new pack
   directory is found without a `render.rs` edit.
