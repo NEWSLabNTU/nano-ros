@@ -139,7 +139,7 @@ def self_test():
         ("activate.sh only in a comment", "# unlike the rest, no activate.sh here\njust check fast\n", True),
         ("activate.sh only in an echo", "echo 'run source ./activate.sh'\njust check fast\n", True),
         ("sourced AFTER the invocation", "just check fast\nsource ./activate.sh\n", True),
-        ("ROS setup is not the repo env", "source /opt/ros/humble/setup.bash\njust check fast\n", True),
+        ("ROS setup is not the repo env", 'source "$ROS_PREFIX/setup.bash"\njust check fast\n', True),
         ("dot-sourced", ". ./activate.sh\njust check fast\n", False),
         ("sourced by absolute path", 'source "$GITHUB_WORKSPACE/activate.sh"\njust check fast\n', False),
         ("sourced in a chain", "cd x && source ../activate.sh && just check fast\n", False),
