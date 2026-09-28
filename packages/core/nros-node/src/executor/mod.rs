@@ -45,6 +45,11 @@ mod backing;
 // paired stubs rather than naming it directly.
 #[cfg(all(any(has_rmw, test), feature = "trace-callbacks"))]
 pub mod callback_trace;
+// phase-457 W5 (issue 1522) — the shape a DECLARED subscription lowers to.
+// UNGATED on purpose: the executor half needs an RMW seam, but the recorder
+// half runs in a probe that opens no executor, and both must read the same
+// enum.
+pub mod declared_shape;
 #[cfg(any(has_rmw, test))]
 pub(crate) mod dispatcher;
 #[cfg(any(has_rmw, test))]

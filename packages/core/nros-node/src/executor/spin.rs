@@ -5660,7 +5660,14 @@ impl<'s> Executor<'s> {
             // `Self::add_arena_subscription_callback`, whose subscriber the
             // caller supplies, and an in-place twin would have to serve both.
             // Left `false` and written down rather than left unasked.
-            in_place_capable: false,
+            //
+            // phase-457 W5 (issue 1522) — spelled as the SHAPE rather than as a
+            // literal, because the declarative registrar lowers here and the
+            // metadata probe must state the same bool without registering. One
+            // definition (`DeclaredSubscriptionShape::in_place_capable`), two
+            // readers; flipping issue 1340's candidate moves both together.
+            in_place_capable: super::declared_shape::DeclaredSubscriptionShape::BufferedRaw
+                .in_place_capable(),
         })?;
         self.emplace_raw_buffered_subscription(slot, handle, qos, slot_bytes, callback)?;
         // Phase 104.C.4 — apply Node's default SchedContext.
@@ -5862,7 +5869,12 @@ impl<'s> Executor<'s> {
                 // The sample is taken through `take_validated`, which computes the
                 // integrity status as it copies. `process_raw_in_place` has no
                 // validating form, so this shape cannot use it.
-                in_place_capable: false,
+                //
+                // phase-457 W5 (issue 1522) — as the SHAPE, for the reason its
+                // sibling in `register_subscription_buffered_raw_on` gives.
+                in_place_capable:
+                    super::declared_shape::DeclaredSubscriptionShape::BufferedRawSafety
+                        .in_place_capable(),
             })?;
 
         let offset = self.arena_alloc::<Entry<F, RX_BUF>>()?;

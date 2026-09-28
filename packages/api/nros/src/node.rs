@@ -389,7 +389,30 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         Ok(())
     }
 
-    fn create_entity(&mut self, metadata: EntityMetadata) -> NodeResult<()> {
+    fn create_entity(&mut self, mut metadata: EntityMetadata) -> NodeResult<()> {
+        // phase-457 W5 (issue 1522) — state this subscription's registration
+        // path, because on THIS road nothing will observe it.
+        //
+        // `Executor::open_subscription` reports `in_place_capable` to
+        // `registration_observer`, which is how the C/C++ probes get theirs.
+        // The Rust probe (`record_node_metadata::<C>`) runs `register()`
+        // against this recorder and opens no executor, so that seam never
+        // fires and every Rust endpoint's row refused — leaving every consumer
+        // on the receive-region budget for a fact the declaration determines.
+        //
+        // This is the ONE `NodeRuntime` seam a Rust declaration crosses; the
+        // C/C++ adapters reach the recorder through `push_entity` and are
+        // untouched, so their observed fact still wins its own way.
+        //
+        // Not a second opinion: `declared_subscription_shape` is the same call
+        // the declarative registrar branches on, and its
+        // `in_place_capable()` is the same expression the entry point writes
+        // into its `SubscriptionRequest`. Gated by
+        // `check-declared-subscription-shape`.
+        if metadata.kind == EntityKind::Subscription && metadata.in_place_capable.is_none() {
+            metadata.in_place_capable =
+                Some(metadata.declared_subscription_shape().in_place_capable());
+        }
         self.push_entity(metadata)?;
         Ok(())
     }
@@ -2882,6 +2905,59 @@ mod tests {
         // `.safety()` subscription on /b — flagged.
         assert_eq!(ents[1].source_name.as_str(), "/b");
         assert!(ents[1].safety, "safety sub must be flagged");
+    }
+
+    /// phase-457 W5 (issue 1522) — the Rust producer STATES a subscription's
+    /// registration path instead of refusing it.
+    ///
+    /// Nothing observes this road: `record_node_metadata` opens no executor,
+    /// so `Executor::open_subscription` never runs and
+    /// `registration_observer` never fires. Before this wave the row stayed
+    /// `None`, `registration_path` refused, and every consumer fell back to
+    /// budgeting the whole receive region.
+    ///
+    /// Asserted against the CLASSIFIER rather than a literal `false` on
+    /// purpose: the fact under test is that the recorder reports what the
+    /// registrar will do, not what it answers today. Issue 1340 flips the
+    /// `BufferedRaw` arm to `true`, and this test must follow it without an
+    /// edit — an assertion on `Some(false)` would have to be found and
+    /// changed, which is the drift the shared classifier exists to remove.
+    /// The literal is asserted once, in
+    /// `nros_node::executor::declared_shape`'s own tests, where flipping it
+    /// is the whole event.
+    #[test]
+    fn a_declared_subscription_states_the_path_its_registration_will_take() {
+        use nros_node::executor::declared_shape::DeclaredSubscriptionShape;
+
+        let mut recorder = MetadataRecorder::<2, 8, 4>::new();
+        record_node_metadata::<SafetyComponent>(&mut recorder).unwrap();
+        let ents = recorder.entities();
+
+        assert_eq!(
+            ents[0].in_place_capable,
+            Some(DeclaredSubscriptionShape::BufferedRaw.in_place_capable()),
+            "a plain declared subscription lowers to \
+             `register_subscription_buffered_raw_on`, so the probe states that \
+             entry point's own answer"
+        );
+        assert_eq!(
+            ents[1].in_place_capable,
+            Some(ents[1].declared_subscription_shape().in_place_capable()),
+            "a `.safety()` declaration must state whatever the shape it \
+             classifies to answers — which is the masked shape on a build \
+             without the capability"
+        );
+        // The row is the SUBSCRIPTION's. A kind that reaches no subscription
+        // entry point must keep refusing, because nothing decided anything
+        // for it (issue 1522's other three populations).
+        let mut publishers = MetadataRecorder::<2, 8, 4>::new();
+        record_node_metadata::<TalkerComponent>(&mut publishers).unwrap();
+        let pubs = publishers.entities();
+        assert_eq!(pubs[0].kind, EntityKind::Publisher);
+        assert_eq!(
+            pubs[0].in_place_capable, None,
+            "only a subscription has a registration path to state"
+        );
     }
 
     struct GroupedComponent;

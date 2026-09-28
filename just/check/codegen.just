@@ -208,6 +208,22 @@ schema-reader-provenance:
 derived-descriptor-fields:
     @python3 scripts/check-derived-descriptor-fields.py
 
+# phase-457 W5 (issue 1522) -- the declarative registrar and the metadata probe
+# read ONE classifier.
+#
+# phase-457 W3 made `registration_path`'s in-place row an OBSERVATION, because
+# the CLI's old inference from the entry's LANGUAGE was wrong for nine of the
+# executor's eleven registration entry points. The Rust probe observes nothing
+# (it runs `register()` against a recorder and opens no executor), so W5 has
+# its recorder state the row from `DeclaredSubscriptionShape` instead. That is
+# a classifier, and a classifier is a second opinion unless it is the thing the
+# registrar branches on -- this gate is that "unless". Everything it expects is
+# harvested from the enum's own variants and doc comments, never authored here.
+# Buildless, milliseconds, self-testing.
+[private]
+declared-subscription-shape:
+    @python3 scripts/check-declared-subscription-shape.py
+
 # A key the source-metadata emitter writes must be DECLARED by the reader.
 #
 # `SourceSubscriber` & co. are `deny_unknown_fields`, so an undeclared key is

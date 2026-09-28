@@ -1527,12 +1527,32 @@ impl NodeRuntime for ExecutorSink<'_> {
                     .ok_or(NodeDeclError::Runtime)?;
                 let cb_id_owned = id_str(cb_id.as_str())?;
                 let cell = self.cell.clone();
+                // phase-457 W5 (issue 1522) — THE branch, and it is on the
+                // CLASSIFIER, not on `metadata.safety`.
+                //
+                // The metadata recorder states this subscription's
+                // `in_place_capable` from the same call, because a Rust probe
+                // opens no executor and so observes no registration
+                // (`registration_observer` never fires on this road). Testing
+                // the flag here as well would make the probe's answer a second
+                // opinion about this site rather than a reading of it — which
+                // is exactly what W3 deleted from the CLI. Gated by
+                // `check-declared-subscription-shape`: every variant of
+                // `DeclaredSubscriptionShape` must be named in this arm, so a
+                // third lowering cannot fall through to the basic path while
+                // the probe keeps stating the basic path's answer.
+                let shape = metadata.declared_subscription_shape();
+                #[cfg(not(feature = "safety-e2e"))]
+                let _ = shape;
                 // Phase 250 (Wave 2b) — a `.safety()` subscription registers via
                 // the integrity-aware generic path so `CallbackCtx::integrity()`
                 // surfaces CRC + sequence gap/dup. Gated: when `safety-e2e` is off
-                // the flag is ignored and the basic path below runs.
+                // `declared_subscription_shape` masks the flag, never answers
+                // `BufferedRawSafety`, and the basic path below runs.
                 #[cfg(feature = "safety-e2e")]
-                if metadata.safety {
+                use nros_node::executor::declared_shape::DeclaredSubscriptionShape;
+                #[cfg(feature = "safety-e2e")]
+                if shape == DeclaredSubscriptionShape::BufferedRawSafety {
                     let cell_s = self.cell.clone();
                     let cb_s = cb_id_owned.clone();
                     self.executor
@@ -1553,6 +1573,9 @@ impl NodeRuntime for ExecutorSink<'_> {
                         .map_err(decl_err_from_node)?;
                     return Ok(());
                 }
+                // `DeclaredSubscriptionShape::BufferedRaw` — the only shape
+                // left, named so the gate can see that this arm handles it.
+                //
                 // Issue 0306 — same as the publisher branch: honour the
                 // node's declared profile instead of defaulting it.
                 self.executor
