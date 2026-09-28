@@ -41,6 +41,19 @@ not an upper bound like every size macro in that file, because the range
 belongs to the runtime and a fallback that widened it would accept a tree the
 runtime rejects.
 
+AND EACH IS DEFINED ONCE
+
+A header that defines a macro twice compiles against the LAST definition,
+while a scan that asks "what does this file define?" naturally stops at the
+FIRST. The NuttX fallback carried the pair twice — two same-day fixes for one
+break each added it, in different hunks, so both landed — and a bump that
+edited only the first copy passed this gate while every NuttX image compiled
+against the second. So a header or template producer that defines either
+macro more than once FAILS, and every literal definition, not just the first,
+is compared against the runtime. A `.rs` producer is exempt from the count and
+only that: `nros-build-helpers/src/cpp.rs` holds two inline emitters (the C++
+and the C header), one definition each, and both are format holes.
+
 Run:  python3 scripts/check-config-header-producers.py [--self-test]
 """
 
@@ -65,15 +78,56 @@ def runtime_range(text):
     return out
 
 
-def defined_macro(text, name):
-    """The token a `#define <name> <token>` gives, or None.
+def defined_macros(text, name):
+    """Every token a `#define <name> <token>` gives, in file order.
 
-    Returns the RAW token so a template placeholder (`@CODEGEN_VERSION@`) and a
+    Returns the RAW tokens so a template placeholder (`@CODEGEN_VERSION@`) and a
     Rust format hole (`{codegen_version}`) are both visible as "defined but not
     a literal" — those producers substitute from the SSoT and cannot drift.
+    ALL of them, not the first: the compiler keeps the last, so a scan that
+    stops at the first answers a question about a line nothing compiles.
     """
-    m = re.search(rf"^#define\s+{name}\s+(\S+)", text, re.M)
-    return m.group(1) if m else None
+    return re.findall(rf"^[ \t]*#[ \t]*define[ \t]+{name}[ \t]+(\S+)", text, re.M)
+
+
+def defined_macro(text, name):
+    """The first token, or None — kept for the self-test's single-define cases."""
+    toks = defined_macros(text, name)
+    return toks[0] if toks else None
+
+
+def file_problems(rel, text, rng):
+    """(problems, literal_count) for one producer. Pure, so the self-test drives it."""
+    problems = []
+    literal_checked = 0
+    for name in ("NROS_CODEGEN_VERSION", "NROS_CODEGEN_VERSION_MIN"):
+        toks = defined_macros(text, name)
+        if not toks:
+            problems.append(
+                f"  {rel}: defines {MARKER} but not {name}.\n"
+                f"      Every generated header `#include`s the config header and\n"
+                f"      `#error`s when this macro is absent (RFC-0090), so this\n"
+                f"      producer breaks the build of every message it reaches."
+            )
+            continue
+        if len(toks) > 1 and not rel.endswith(".rs"):
+            problems.append(
+                f"  {rel}: defines {name} {len(toks)} times ({', '.join(toks)}).\n"
+                f"      The compiler keeps the LAST definition; a reader, a reviewer\n"
+                f"      and a gate all find the FIRST. A bump that edits one copy\n"
+                f"      passes review and compiles against the other. Define it once."
+            )
+        for tok in toks:
+            if re.fullmatch(r"\d+", tok):
+                literal_checked += 1
+                if int(tok) != rng[name]:
+                    problems.append(
+                        f"  {rel}: {name} is {tok}, the runtime says {rng[name]}.\n"
+                        f"      EXACT, not an upper bound like the size macros: the range\n"
+                        f"      belongs to the runtime, and widening it here accepts a\n"
+                        f"      tree the runtime rejects."
+                    )
+    return problems, literal_checked
 
 
 def producers(root):
@@ -101,6 +155,19 @@ def self_test():
     r = runtime_range("pub const NROS_CODEGEN_VERSION: u32 = 7;\n"
                       "pub const NROS_CODEGEN_VERSION_MIN: u32 = 4;\n")
     assert r == {"NROS_CODEGEN_VERSION": 7, "NROS_CODEGEN_VERSION_MIN": 4}, r
+    # Duplicates: refused in a header even when the values agree, and a stale
+    # SECOND copy is caught as a value mismatch — the copy the compiler uses.
+    rng = {"NROS_CODEGEN_VERSION": 3, "NROS_CODEGEN_VERSION_MIN": 2}
+    assert file_problems("x.h", t, rng) == ([], 2)
+    dup_same = t + t
+    probs, _ = file_problems("x.h", dup_same, rng)
+    assert any("2 times" in p for p in probs), probs
+    half_bump = t.replace(" 3\n", " 4\n", 1) + t  # first copy bumped, last not
+    probs, _ = file_problems("x.h", half_bump, {**rng, "NROS_CODEGEN_VERSION": 4})
+    assert any("is 3, the runtime says 4" in p for p in probs), probs
+    # A `.rs` producer may hold one emitter per header; the count is not refused.
+    rs_two = "#define NROS_CODEGEN_VERSION {v}\n#define NROS_CODEGEN_VERSION_MIN {m}\n" * 2
+    assert file_problems("x.rs", rs_two, rng) == ([], 0)
     sys.stdout.write("check-config-header-producers self-test: OK\n")
 
 
@@ -138,25 +205,9 @@ def main():
                 text = fh.read()
         except OSError:
             continue
-        for name in ("NROS_CODEGEN_VERSION", "NROS_CODEGEN_VERSION_MIN"):
-            tok = defined_macro(text, name)
-            if tok is None:
-                problems.append(
-                    f"  {rel}: defines {MARKER} but not {name}.\n"
-                    f"      Every generated header `#include`s the config header and\n"
-                    f"      `#error`s when this macro is absent (RFC-0090), so this\n"
-                    f"      producer breaks the build of every message it reaches."
-                )
-                continue
-            if re.fullmatch(r"\d+", tok):
-                literal_checked += 1
-                if int(tok) != rng[name]:
-                    problems.append(
-                        f"  {rel}: {name} is {tok}, the runtime says {rng[name]}.\n"
-                        f"      EXACT, not an upper bound like the size macros: the range\n"
-                        f"      belongs to the runtime, and widening it here accepts a\n"
-                        f"      tree the runtime rejects."
-                    )
+        p, n = file_problems(rel, text, rng)
+        problems += p
+        literal_checked += n
 
     if problems:
         sys.stderr.write(
