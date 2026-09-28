@@ -997,9 +997,11 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   return goes through `nros_rmw::fallible::try_box` and returns `BAD_ALLOC` (issue 1551, which
   lists the sites still excluded); `CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL` halts on the rest.
 - **The SDK store ACCUMULATES, so a stale Corrosion can shadow the pin you just installed**
-  (issue 0500) — prefixes are enumerated newest-version-first (`COMPARE NATURAL ORDER
-  DESCENDING` / `sort -Vr`) precisely because `find_package` takes the FIRST that resolves,
-  and both provisioning paths print success either way. Corrosion `< 0.6.0` shares one
+  (issue 0500) — `find_package` takes the FIRST prefix that resolves, and both provisioning
+  paths print success either way. The fix is NOT newest-first: every store path is
+  CONSTRUCTED as `<store>/<tool>/<pin>` from `nros-sdk-index.toml`, never enumerated, since
+  the store is shared between checkouts and "newest" is then a sibling's pin (issue 1546;
+  `check-sdk-store-not-enumerated`). Corrosion `< 0.6.0` shares one
   `cargo/build` across workspace roots ⇒ duplicate `#[no_mangle]` ⇒ `mixed` cannot link.
   **Read the configure's `nano-ros: Corrosion <ver> via <origin>` line — never infer the
   version from having run the installer** — the ordering gate that used to back this

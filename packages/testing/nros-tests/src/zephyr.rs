@@ -665,20 +665,23 @@ impl Drop for ZephyrProcess {
 
 /// Resolve the Zephyr-SDK-bundled `qemu-system-xilinx-aarch64` (issue 0334).
 ///
-/// Nothing here is pinned: the SDK version and the host tuple are both GLOBBED,
-/// because both were previously hardcoded and both are owned elsewhere — the
-/// version by `scripts/zephyr/setup.sh`, the tuple by whatever host you are on.
+/// Nothing here is HARDCODED: the host tuple is GLOBBED (whatever host you are
+/// on owns it), and the SDK version comes from the `[tool.zephyr-sdk*]` pins in
+/// `nros-sdk-index.toml` for the store arm (issue 1546) — both were previously
+/// spelled in this file.
 ///
 /// Search order mirrors the other resolvers in this file, and gained its middle
 /// arm with issue 1254 / phase-449 W3 — the SDK is provisioned into the STORE
 /// now, and the in-checkout copy is the legacy arm a host provisioned earlier
 /// still resolves to:
 /// 1. `ZEPHYR_SDK_INSTALL_DIR` (the SDK's own variable, set by `west`/`setup.sh`)
-/// 2. `$NROS_STORE/sdk/<tool>/<version>/zephyr-sdk-*`
+/// 2. `$NROS_STORE/sdk/<tool>/<pinned version>/<subdir>` — constructed from the
+///    `[tool.zephyr-sdk*]` pins, never globbed (issue 1546)
 /// 3. `<project_root>/scripts/zephyr/sdk/zephyr-sdk-*`
 ///
-/// The store arm is GLOBBED at the same two levels the checkout arm is, for the
-/// same stated reason: neither the version nor the host tuple is owned here.
+/// The checkout arm is still globbed (a per-checkout directory, so the newest
+/// there is this checkout's own); the store arm is not, because the store is
+/// shared between checkouts and only the pin names this tree's SDK.
 ///
 /// Returns `None` when absent so the caller can report a diagnosable error
 /// rather than handing a nonexistent path to `Command`.
@@ -720,29 +723,23 @@ fn sdk_qemu_xilinx_aarch64() -> Option<String> {
         roots.iter().rev().find_map(|r| in_sdk_root(r))
     }
 
-    // issue 1254 — the STORE arm. `$NROS_STORE/sdk/<tool>/<version>/` holds the
-    // tarball's own `zephyr-sdk-<version>/`, so the SDK roots sit one level
-    // below the per-version directories; both levels are globbed rather than
-    // spelled, because the tool name and the version are owned by
-    // `scripts/zephyr/setup.sh` and `scripts/lib/zephyr-sdk.sh`, not here.
+    // issue 1254 — the STORE arm, CONSTRUCTED from the pins (issue 1546).
+    // `$NROS_STORE/sdk/<tool>/<version>/<subdir>` for each Zephyr SDK this tree
+    // pins — one per Zephyr line (`[tool.zephyr-sdk]`, `[tool.zephyr-sdk-1-0-1]`;
+    // the line→tool table lives in `scripts/lib/zephyr-sdk.sh`, so this tries
+    // both rather than restating it). It used to glob both levels and take the
+    // newest, but the store is shared between checkouts, so "newest" could be
+    // an SDK some other checkout pinned.
     let store = std::env::var("NROS_STORE")
         .or_else(|_| std::env::var("NROS_HOME"))
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".nros"))
         .join("sdk");
-    if let Ok(tools) = std::fs::read_dir(&store) {
-        let mut versions: Vec<PathBuf> = tools
-            .flatten()
-            .filter(|e| {
-                e.file_name()
-                    .to_str()
-                    .is_some_and(|n| n.starts_with("zephyr-sdk"))
-            })
-            .flat_map(|e| std::fs::read_dir(e.path()).into_iter().flatten().flatten())
-            .map(|e| e.path())
-            .collect();
-        versions.sort();
-        if let Some(found) = versions.iter().rev().find_map(|v| newest_sdk_root_under(v)) {
+    for tool in ["zephyr-sdk", "zephyr-sdk-1-0-1"] {
+        if let Some(found) = crate::sdk_pin(tool)
+            .map(|pin| pin.dir_under(&store, tool))
+            .and_then(|root| in_sdk_root(&root))
+        {
             return Some(found);
         }
     }

@@ -313,8 +313,8 @@ fi
 #
 #   -- nano-ros: arm-none-eabi-gcc 13.2.1 via SDK store - <path> (pin 13.2.rel1)
 #
-# Its order is: -D/env NROS_<PREFIX>_PREFIX  ->  SDK store (newest version
-# first)  ->  this PATH. Point it at a toolchain of your own with, e.g.,
+# Its order is: -D/env NROS_<PREFIX>_PREFIX  ->  SDK store (the PINNED
+# version only, issue 1546)  ->  this PATH. Point it at a toolchain of your own with, e.g.,
 # `NROS_ARM_NONE_EABI_PREFIX=/opt/gcc/bin/arm-none-eabi`; before issue 1117 the
 # only such knob was NROS_RISCV64_PREFIX, documented nowhere outside its own
 # file.
