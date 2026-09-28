@@ -52,12 +52,13 @@ struct ComponentMeta {
     /// vector collapses exactly those two.
     ///
     /// **NO PRODUCTION PRODUCER WRITES THIS KEY, and it is still not dead
-    /// code.** Measured 2026-09-29 (issue 1555): every built
-    /// `nros-metadata.json` in a fully-populated checkout -- 255 of them,
+    /// code.** Measured 2026-09-29 (issue 1555) over a fully-populated
+    /// checkout: 255 `nros-metadata.json` paths, of which 7 carry an
+    /// `entities` key and all 7 are agent-worktree copies of ONE committed
+    /// test fixture -- so **0 of the 248 real build artifacts** carry it,
     /// across `zephyr-workspace/build-*`, the example leaf build dirs and the
-    /// workspace configures -- carries NO `entities` key, so this field is
-    /// `None` and the declaration is [`Declaration::Absent`] on every real
-    /// road. `_nros_metadata_emit()` lost the splice point in phase-454 W9 and
+    /// workspace configures. This field is therefore `None` and the
+    /// declaration is [`Declaration::Absent`] on every real road. `_nros_metadata_emit()` lost the splice point in phase-454 W9 and
     /// `check-knob-single-reader.py` keeps it out; the Cargo-manifest spelling
     /// is refused by `orchestration::nros_config::refuse_retired_entities_key`;
     /// a standalone leaf states its entities in `system.toml` and reaches the

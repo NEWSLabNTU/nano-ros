@@ -41,13 +41,16 @@ $ for f in $(find . -name nros-metadata.json -not -path './packages/cli/nros-cli
 
 | | count |
 | --- | --- |
-| built `nros-metadata.json` files scanned | **255** |
-| of those carrying an `"entities"` key | **0** |
+| `nros-metadata.json` paths scanned | **255** |
+| carrying an `"entities"` key | 7 |
+| of those 7, agent-worktree copies of one committed TEST fixture | **7** |
+| **real build artifacts, and of those, hits** | **248 / 0** |
 
-(The only hits anywhere are seven copies of one committed TEST fixture,
-`tests/fixtures/refused_resolve/nros-metadata.json`, in agent worktrees. That
-fixture carries the key decoratively — `refused_resolve_leaves_no_model.rs`
-asserts nothing about entity counts.)
+All seven hits are `tests/fixtures/refused_resolve/nros-metadata.json` under
+`.claude/worktrees/*` — the same committed test document the top-level
+`-not -path` excluded, reached again through the worktrees. It carries the key
+decoratively: `refused_resolve_leaves_no_model.rs` asserts nothing about entity
+counts. So **0 of 248 build artifacts** carry it.
 
 So on every real road the field is `None`, the declaration is
 `Declaration::Absent`, and the metadata inventory contributes **no entities at
