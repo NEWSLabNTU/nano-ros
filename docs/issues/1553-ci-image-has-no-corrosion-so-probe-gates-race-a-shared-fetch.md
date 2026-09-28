@@ -62,12 +62,18 @@ that would clear on its own.
 
 On a host whose SDK store holds the pinned Corrosion, both gates pass from the
 same checkout as the failing run (`fe36c6593`), built with `just setup-cli`
-first:
+first — run as `just check <gate>`, one gate at a time:
 
-```
-just check probe-workspace-caps  ->  rc=0, [PASS] all 5 checks passed
-just check probe-shared-types    ->  rc=0, [PASS] all 17 checks passed
-```
+| gate | result |
+| --- | --- |
+| `probe-workspace-caps` | rc=0, `[PASS] all 5 checks passed` |
+| `probe-shared-types` | rc=0, `[PASS] all 17 checks passed` |
+
+(The first of those two recipes arrives with PR #1354 and is not on `main` yet,
+which is why this section names the gates rather than pasting the two command
+lines: `check-doc-recipe-refs` resolves a documented invocation against the
+CURRENT justfile, and it is right to refuse one a reader cannot run. It ejected
+this issue's own PR from the merge queue for exactly that.)
 
 So neither test is wrong about its subject, and nothing about the probe projects
 needs changing. The only difference between pass and fail is whether
