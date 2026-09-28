@@ -150,10 +150,9 @@ fn a_binding_to_an_undeclared_tier_is_refused_by_name() {
 
     let text = if resolver_refusal.status.success() {
         // The resolver accepted it; the bake must not.
-        let err = bake_into_system(&fixture)
+        bake_into_system(&fixture)
             .expect_err("a binding to an undeclared tier must not bake")
-            .to_string();
-        err
+            .to_string()
     } else {
         String::from_utf8_lossy(&resolver_refusal.stderr).to_string()
     };
