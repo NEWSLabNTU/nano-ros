@@ -224,6 +224,13 @@ _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_UDP_UNICAST)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_UDP_MULTICAST)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_SCOUTING)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_SERIAL)
+# The serial link's ISR -> read-task ring (zenoh-pico's own #ifndef default is
+# the Kconfig default, 1024). Only network.c reads it; no struct layout depends
+# on it, so it is not an issue-0135 ABI flag, but it is applied like one.
+if(CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES)
+    zephyr_compile_definitions(
+        _Z_ZEPHYR_SERIAL_RX_RING_BYTES=${CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES})
+endif()
 # RFC-0080 — CONFIG_NROS_ZENOH_LINK_CAN -> Z_FEATURE_LINK_CAN.
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_CAN)
 # RFC-0083 — CONFIG_NROS_ZENOH_LINK_ISOTP -> Z_FEATURE_LINK_ISOTP.
