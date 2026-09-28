@@ -666,11 +666,11 @@ fn run_entry_node(args: EntryNodeArgs) -> Result<()> {
         board: args.board,
         node_name: args.node_name,
         pkg_sym: args.pkg_sym,
-        // The CANONICAL spelling, from the parsed language — `--lang c++` and
-        // `--lang cxx` are aliases the parser accepts, and forwarding the raw
-        // argument would put one of them in the plan a downstream reader
-        // string-compares.
-        language: language.as_str().to_string(),
+        // phase-469 — the parsed language itself. The canonicalisation this
+        // line used to perform (`language.as_str().to_string()`, so an alias
+        // like `--lang c++` did not reach a downstream string comparison) is
+        // now structural: there is no string for an alias to survive in.
+        language,
         class: args.class,
         header: args.header,
         shape: args.shape,
