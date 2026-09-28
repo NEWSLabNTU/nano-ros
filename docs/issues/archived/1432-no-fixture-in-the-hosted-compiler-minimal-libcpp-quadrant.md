@@ -3,13 +3,58 @@ id: 1432
 title: "No C++ fixture sits in the (hosted compiler, minimal libcpp) quadrant,
   which is the only one where the `__STDC_HOSTED__` half of the both-probes
   rule can bite — so issue 1431 was found by an outside team, not by a lane"
-status: open
+status: resolved
+resolved: 2026-09-28
 type: tech-debt
 area: [testing, zephyr, api]
 severity: medium
 found: 2026-09-21
 related: [1431, 0112, 1240, 0332, 0196, 1016]
 ---
+
+## Resolution (2026-09-28)
+
+Direction (2) landed: `just check cpp-hosted-minimal-libcpp`
+(`scripts/check-cpp-hosted-minimal-libcpp.sh`), a fast-line gate. It compiles
+every public `packages/api/nros-cpp/include/nros/*.hpp` (59 today)
+`-fsyntax-only -std=c++14 -nostdinc++ -I zephyr/cxx-compat` with the host
+`c++`, so the invocation is hosted and the C++ library is Zephyr's minimal
+set. That is the empty bottom-right cell of the table below.
+
+**The config headers.** The per-build `nros_{cpp_,}config_generated.h` stubs
+`#error` without a build. The gate writes PROBE-ONLY forwarding headers into a
+temp dir that is first on ITS include path and nowhere else; each forwards to
+the COMMITTED NuttX snapshot (`nros_{cpp_,}config_generated_nuttx.h`), which
+`check-config-fallback-macros` already holds to carrying every macro the
+per-build header defines, at safe upper-bound values. So no number is invented
+for the probe. It forwards rather than passing `-DNROS_PLATFORM_NUTTX`, so the
+headers' other NuttX conditionals stay on their non-NuttX arms.
+
+**Self-checks.** The gate fails, not skips, if the compiler reports
+`__STDC_HOSTED__` != 1, if `<map>` still resolves under its flags (the include
+path would not be minimal), or if it finds no headers.
+
+**Measured.** Runtime is about 1.4 s wall. Positive control: the current tree
+passes, 59/59. Mutation: in `node.hpp`, `#if defined(NROS_CPP_STD)` above
+`#include <map>` changed back to
+`#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)` (the 1431 defect, one-line
+`git diff` confirmed the anchor matched) fails 16 of 59 headers, every one
+with `node.hpp:49:10: fatal error: map: No such file or directory`.
+
+The same negative control also runs INSIDE the gate on every invocation (its
+selftest): a temp header with 1431's exact guard must fail through the gate's
+own compile function with `map: No such file or directory`, and one with the
+both-probes spelling must pass.
+
+**Why the fast line.** `check cpp` is `build-serial`, which no merge-gating
+event runs (issue 1225's reason). This one builds nothing.
+
+**Still NOT established** (unchanged from below): it is a header syntax probe,
+not a fixture. It does not show that an image links or runs in this quadrant,
+it does not instantiate templates beyond what the headers do themselves, and it
+does not cover a header reached by a route other than the public
+`nros-cpp/include/nros/*.hpp` set. The `mps2_an385` `-ffreestanding` claim
+below is still inferred, not read from a build log.
 
 ## What this is
 

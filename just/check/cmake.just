@@ -175,6 +175,18 @@ cpp-fmt:
 cpp-freestanding-includes:
     @bash scripts/check-cpp-freestanding-includes.sh
 
+# Issue 1432 — the COMPILE twin of the text gate above, in the one quadrant no
+# C++ fixture occupies: a HOSTED compiler (`__STDC_HOSTED__` == 1) run
+# `-nostdinc++` against Zephyr's minimal libcpp (`zephyr/cxx-compat/`), which is
+# how a real Zephyr board builds and where issue 1431's `<map>` lived. Every
+# public nros-cpp header, `-fsyntax-only`, with probe-only forwarders to the
+# COMMITTED NuttX config snapshots standing in for the per-build headers.
+# Buildless, ~1.4 s, so the fast line — `check cpp` is `build-serial`, which no
+# merge-gating event runs (issue 1225's reason).
+[private]
+cpp-hosted-minimal-libcpp:
+    @bash scripts/check-cpp-hosted-minimal-libcpp.sh
+
 # A `cxx-compat/` shim IS the C++ library of the target it serves (ThreadX
 # RISC-V: every C++ TU, `-nostdinc++`), so a `std::` C-library name a served
 # source uses and the shim does not export compiles on the host and fails only
