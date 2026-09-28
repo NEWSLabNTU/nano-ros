@@ -640,6 +640,23 @@ config NROS_ZENOH_LINK_SERIAL
       Enable serial/UART transport link.
       Maps to Z_FEATURE_LINK_SERIAL.
 
+config NROS_ZENOH_SERIAL_RX_RING_BYTES
+    int "Serial link: receive ring between the UART ISR and the read task (bytes)"
+    depends on NROS_ZENOH_LINK_SERIAL && UART_INTERRUPT_DRIVEN
+    default 1024
+    range 64 16384
+    help
+      With interrupt-driven RX (issue 0852) the UART ISR drains the hardware
+      FIFO into this ring and zenoh-pico's read task decodes frames out of it.
+      The ring holds what arrives while the read task is not running: at
+      115200 baud 1024 bytes are 89 ms of line, at 921600 they are 11 ms.
+      A byte that does not fit is lost, the frame it belongs to fails its CRC
+      and is dropped whole, and zenoh-pico counts it in
+      `_z_zephyr_serial_stats.ring_overflows` (readable over a debugger, as is
+      `ring_high_water`). Raise it when that counter moves; the RAM is static.
+      Maps to _Z_ZEPHYR_SERIAL_RX_RING_BYTES (zenoh-pico
+      src/system/zephyr/network.c), whose default is the same 1024.
+
 config NROS_ZENOH_LINK_CAN
     bool "CAN / CAN FD link"
     default n
