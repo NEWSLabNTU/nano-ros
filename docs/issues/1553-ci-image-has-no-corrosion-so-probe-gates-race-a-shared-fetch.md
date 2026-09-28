@@ -1,0 +1,107 @@
+---
+id: 1553
+title: "The CI image provisions no Corrosion, so every probe gate git-clones it at configure time and two of them race one shared fetch cache"
+status: open
+type: bug
+area: [ci, build]
+severity: medium
+found: 2026-09-28
+related: [0500, 0726, 1457, 1482]
+---
+
+## What happens
+
+On the `check` job of `gate.yml`, a gate that configures a probe project
+reaches the repo root's `nros_resolve_corrosion` and finds nothing in the SDK
+store, so it falls through to a git `FetchContent` into one shared cache. With
+two such gates in the `-P4` parallel fast lane they clone into the same
+directory at the same time and one loses.
+
+PR #1354, run **36436355781** (2026-09-28T14:29:24Z), job **108975287240**,
+`1 of 366 gate(s) FAILED`:
+
+```
+===== FAIL (probe-workspace-caps, rc=1, 2937ms) =====
+[FAIL] [no caps] probe configure failed
+-- nano-ros: no Corrosion at the pinned prefix (/github/home/.nros/sdk/corrosion/0.6.1-nros1) — falling through to FetchContent
+-- nano-ros: Corrosion not provisioned — fetching v0.6.1 (1499b14e...) from git into the host fetch cache at /github/home/.nros/fetch
+[ 11%] Performing download step (git clone) for 'corrosion-populate'
+BUG: refs/files-backend.c:2992: initial ref transaction called with existing refs
+fatal: destination path 'corrosion-src' already exists and is not an empty directory.
+-- Had to git clone more than once:
+          3 times.
+CMake Error ... Failed to clone repository: 'https://github.com/corrosion-rs/corrosion.git'
+```
+
+`destination path 'corrosion-src' already exists and is not an empty directory`
+plus git's own `BUG: refs/files-backend.c:2992: initial ref transaction called
+with existing refs` is a concurrent clone into a populated directory. It is not
+a network failure — the clone reaches GitHub.
+
+## The same condition produced a DIFFERENT verdict the day before
+
+The previous run of the same PR, **36321234788**, job **108625376621**
+(2026-09-27), failed **both** probe gates, with the identical pair of
+`nano-ros:` lines and a different loser's symptom:
+
+```
+===== FAIL (probe-workspace-caps, rc=1, 2046ms) =====
+===== FAIL (probe-shared-types, rc=1, 2060ms) =====
+  Parse error.  Expected "(", got newline with text "
+  CMake step for corrosion failed: 1
+  /__w/nano-ros/nano-ros/cmake/NanoRosCorrosion.cmake:865 (FetchContent_MakeAvailable)
+```
+
+A `Parse error` on the fetched `CMakeLists.txt` is a half-written cache — the
+same race, read at a different moment. Two days, two symptoms, one condition:
+that is the "a lane red every cycle has no signal capacity" shape in miniature,
+and it is why the 2026-09-27 red was first attributed to a provisioning gap
+that would clear on its own.
+
+## The negative control: both gates pass where the store is provisioned
+
+On a host whose SDK store holds the pinned Corrosion, both gates pass from the
+same checkout as the failing run (`fe36c6593`), built with `just setup-cli`
+first:
+
+```
+just check probe-workspace-caps  ->  rc=0, [PASS] all 5 checks passed
+just check probe-shared-types    ->  rc=0, [PASS] all 17 checks passed
+```
+
+So neither test is wrong about its subject, and nothing about the probe projects
+needs changing. The only difference between pass and fail is whether
+`find_package` resolves Corrosion or the configure has to clone it.
+
+## What this is NOT
+
+**Not PR #1354's defect.** `probe-shared-types` is on `main` and renders the
+same probe shape — `find_package(nano_ros REQUIRED)` + `nros_workspace_interfaces()`
++ a package whose `CMakeLists.txt` calls `nros_components_register_node` — so
+it has the same Corrosion requirement. #1354 adds a SECOND gate of that shape,
+which is what turns a latent single-fetcher condition into a collision. The
+2026-09-27 run, where both failed, is the evidence that the requirement is not
+new.
+
+**Not issue 0500.** That one is a stale store prefix SHADOWING a newer pin; here
+the store is empty, and the configure says so in as many words.
+
+**Not issue 0726.** There the PATH fallback could not fire because `find_program`
+no-ops on an already-defined variable. Here the fallback fires correctly and
+lands in a git clone, because there is nothing to find.
+
+## What would close it
+
+`nros setup --tool corrosion` provisioned in the CI image, so `find_package`
+resolves at the pinned prefix and no gate reaches `FetchContent` at all.
+Acceptance: a `check fast` log on `gate.yml` containing no
+`falling through to FetchContent` line.
+
+Per issues 1457/1482 that is a change to the Dockerfile
+`scripts/ci/runner-container.sh` generates, not a host `apt install` — the
+running container is `--cap-drop ALL` non-root and provisions nothing itself.
+
+**Explicitly not the remedy:** serialising the two gates, or taking a lock
+around the fetch. Both leave every probe gate depending on a network clone at
+configure time — the condition the SDK store exists to remove (0500) — and they
+would hide an empty store rather than fill it.
