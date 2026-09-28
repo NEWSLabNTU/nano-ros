@@ -66,9 +66,11 @@ fn main() {
     let freertos_port =
         env::var("FREERTOS_PORT").unwrap_or_else(|_| "GCC/ARM_CRx_No_GIC".to_string());
     let lwip_dir = nros_build_paths::lwip_dir();
-    let freertos_config_dir = env::var("FREERTOS_CONFIG_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| config_dir.clone());
+    // issue 1527 — through `env_path`, like the two lines above it: a raw
+    // `env::var` skips issue 1280's three-valued rule, so a worktree build
+    // resolved the kernel HERE and the config dir in the OTHER checkout.
+    let freertos_config_dir =
+        nros_build_paths::env_path("FREERTOS_CONFIG_DIR").unwrap_or_else(|| config_dir.clone());
     let port_dir = freertos_dir.join("portable").join(&freertos_port);
 
     // --- Board C: startup + weak netif/tick hooks ---
