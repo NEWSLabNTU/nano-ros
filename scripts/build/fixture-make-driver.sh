@@ -268,7 +268,12 @@ if [ "$dry_run" = "1" ]; then
     exit 0
 fi
 
-env -u MAKEFLAGS -u CARGO_MAKEFLAGS \
+# issue 1403 — a jobserver make that sits idle with no child is killed by
+# the watchdog and reported as NO VERDICT (rc 75) with a diagnostic, instead of
+# hanging until a CI timeout. Knob: NROS_JOBSERVER_STALL_SECS (0 disables).
+python3 "$(dirname "${BASH_SOURCE[0]}")/make-stall-watchdog.py" \
+    --label "fixture-make-driver $scope" --diag-dir "$log_dir" -- \
+    env -u MAKEFLAGS -u CARGO_MAKEFLAGS \
     NROS_BUILD_LOG_DIR="$log_dir" \
     "$make_bin" "${make_args[@]}" -f "$makefile"
 

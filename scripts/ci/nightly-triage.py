@@ -114,12 +114,47 @@ def classify(job):
     return "verdict", step
 
 
-def summarise(jobs):
+# The one failure a step NAME cannot classify: a build step that never answered.
+# `scripts/build/make-stall-watchdog.py` prints this when a jobserver make sat
+# idle with no child (issue 1403), and exits 75 — the step is a "Build …" step,
+# so by name it is a verdict, and by fact nothing was built or refuted. Only the
+# log knows, so for a failed verdict job the log is read for exactly this line.
+NO_VERDICT_LOG_MARKERS = (
+    ("NO VERDICT: jobserver stall", "jobserver stall (issue 1403)"),
+)
+
+
+def reclassify_from_log(kind, why, log_text):
+    """Demote a name-classified verdict to no-verdict when its log says so."""
+    if kind != "verdict" or not log_text:
+        return kind, why
+    for marker, label in NO_VERDICT_LOG_MARKERS:
+        if marker in log_text:
+            return "no-verdict", f"{label} in: {why}"
+    return kind, why
+
+
+def failed_log(job):
+    """The failed-step log of one job, or '' (gh unavailable / no id)."""
+    jid = job.get("databaseId")
+    if not jid:
+        return ""
+    try:
+        out = subprocess.run(["gh", "run", "view", "--repo", REPO, "--job", str(jid),
+                              "--log-failed"], capture_output=True, text=True, timeout=180)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return out.stdout if out.returncode == 0 else ""
+
+
+def summarise(jobs, logs=None):
     """Counts + the no-verdict list, for one run."""
     kinds = collections.Counter()
     no_verdict = []
     for j in jobs:
         kind, why = classify(j)
+        if logs is not None and kind == "verdict":
+            kind, why = reclassify_from_log(kind, why, logs(j))
         kinds[kind] += 1
         if kind == "no-verdict":
             no_verdict.append((j.get("name", "?"), why))
@@ -166,7 +201,7 @@ def main():
         for j in jobs:
             per_job_history[j.get("name", "?")].append(classify(j)[0])
         if i == 0:
-            kinds, no_verdict = summarise(jobs)
+            kinds, no_verdict = summarise(jobs, logs=failed_log)
             print(f"== nightly {run['createdAt'][:16]} — {len(jobs)} job(s) ==\n")
             print(f"  passed        {kinds['pass']}")
             print(f"  VERDICT fail  {kinds['verdict']}     <- real failures; fix the code")
@@ -276,6 +311,20 @@ def selftest(verbose=False):
     ])
     chk("summarise counts both kinds separately",
         kinds["no-verdict"] == 2 and kinds["pass"] == 1 and len(nv) == 2)
+
+    # Issue 1403 — a watchdog-killed build step is a "Build" step by name.
+    stalled = job("failure", ("Build fixtures", "failure"))
+    chk("a jobserver-stall log demotes a Build verdict to NO VERDICT",
+        reclassify_from_log(*classify(stalled),
+                            "x\nNO VERDICT: jobserver stall — /b/l/d.txt\n")[0] == "no-verdict")
+    chk("a Build failure whose log lacks the marker stays a verdict",
+        reclassify_from_log(*classify(stalled), "error[E0308]: mismatched types")[0]
+        == "verdict")
+    chk("the log is never read to PROMOTE a no-verdict",
+        reclassify_from_log("no-verdict", "Set up", "NO VERDICT: jobserver stall")[0]
+        == "no-verdict")
+    kinds, _nv = summarise([stalled], logs=lambda j: "NO VERDICT: jobserver stall — p")
+    chk("summarise applies the log demotion", kinds["no-verdict"] == 1 and kinds["verdict"] == 0)
 
     if verbose:
         print(f"\n{ok} passed, {fail} failed")

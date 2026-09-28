@@ -97,6 +97,21 @@ the jobserver (`NROS_JOBSERVER=1`) recipes drop their explicit
 - Never re-introduce a hardcoded `parallel --jobs <n>` without threading
   `${NROS_BUILD_JOBS:-N}` through.
 
+**Stall watchdog (issue 1403).** Every fixture/jobserver `make` (the fixture
+make drivers, `fixtures-build.sh`, `workspace-fixtures-build.sh`, the
+`jobserver-pool`, `build-all-jobserver`) runs under
+`scripts/build/make-stall-watchdog.py`. If make sits with **no live child and
+no CPU** for `NROS_JOBSERVER_STALL_SECS` (default `600`; `0` disables; sampled
+every `NROS_JOBSERVER_STALL_POLL_SECS`, default `15`), the watchdog writes
+`jobserver-stall-<pid>-<time>.txt` into that build's log dir (make's
+wchan/syscall/status or stack, its fds, the jobserver FIFO and its FIONREAD
+token count, every other process holding a jobserver, a `gdb` backtrace when
+ptrace allows), kills make and its descendants — by pid, nothing else — and
+exits **75** with `NO VERDICT: jobserver stall — <file>`. That is a lane that
+never answered, not a build failure; `just nightly-triage` counts it as NO
+VERDICT. Attach the file to issue 1403. A normal build is untouched: same exit
+status, no output.
+
 See `docs/roadmap/archived/phase-176-unified-jobserver-build-orchestration.md`.
 
 ## Build & test tiers

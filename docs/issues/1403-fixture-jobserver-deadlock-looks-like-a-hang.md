@@ -65,3 +65,45 @@ makes for red-vs-never-ran.
 
 Observed and reported during issue 1390's work; the observer explicitly did not
 chase it. Recorded here rather than lost, with the caveats intact.
+
+## Evidence capture (landed)
+
+The cause is still unknown and this issue stays open. What changed is that a
+repeat can no longer pass as a hang or a timeout.
+
+Every fixture/jobserver `make` — `fixtures-build.sh`'s `run_with_make` (the
+make that stalled here: 14 `threadx-linux rust` rows), both fixture make
+drivers, `workspace-fixtures-build.sh`, `jobserver-pool.sh` and
+`build-all-jobserver.sh` — now runs under
+`scripts/build/make-stall-watchdog.py`. When make has had **no live child and
+burned no CPU** for `NROS_JOBSERVER_STALL_SECS` (default 600 s, sampled every
+`NROS_JOBSERVER_STALL_POLL_SECS` = 15 s; `0` disables), it:
+
+1. writes `jobserver-stall-<pid>-<time>.txt` into that build's log dir and to
+   stderr: `/proc/<pid>/stack` (root-only; the reason is recorded when it is
+   refused) plus `wchan`, `syscall` and the signal-mask lines of `status`;
+   make's fds; the jobserver it inherited (`MAKEFLAGS`/argv) and the FIFO/pipe
+   fds it holds with each one's FIONREAD byte count — for `-jN` an idle
+   top-level make should see `N-1` token bytes, so a shortfall says a token is
+   held or lost; every other process on the host with a jobserver in its argv
+   or environ or holding one of make's FIFO fds, marked in-tree or NOT, and how
+   many processes could not be read; and a `gdb` backtrace when
+   `kernel.yama.ptrace_scope` is 0 (otherwise the reason it was skipped — never
+   escalated);
+2. kills make and its descendants, found by walking parent pids down from the
+   one pid it started — never by name, and not by process group, because under
+   `subtree-guard.sh` make shares the outermost launcher's group;
+3. exits **75** with `NO VERDICT: jobserver stall — <file>`. `just
+   nightly-triage` reads that line from a failed job's log and counts the job
+   as NO VERDICT, not as a failure of the code.
+
+Guarded by `just check make-stall-watchdog` (fast line): the real watchdog
+against a fake make blocked reading an empty FIFO with an outside process also
+holding it (must fire, report both, kill only the fake), plus busy, failing,
+quick and disabled fakes that must pass through untouched.
+
+**If you get a dump:** attach the file here. The lines that discriminate
+between the hypotheses above are the FIONREAD count against `N-1`, whether any
+process NOT in make's tree holds make's FIFO (the concurrent-build suspect),
+whether zombie children are listed (make stopped reaping), and the SigBlk/SigIgn
+masks. Do not raise the threshold to make it go away; a dump is the point.

@@ -176,6 +176,15 @@ fixture-groups:
 fixture-id-guard:
     @bash scripts/check-fixture-id-guard.sh
 
+# Issue 1403 — every fixture/jobserver `make` runs under
+# `scripts/build/make-stall-watchdog.py`, which turns "make idle with no child"
+# into a diagnostic file plus a `NO VERDICT: jobserver stall` exit (rc 75)
+# instead of a hang. Runs the REAL watchdog against fake makes: a stalled one
+# must be caught (the negative control, every run) and a busy, failing, quick
+# or disabled one must pass through untouched. Buildless, ~10 s.
+make-stall-watchdog:
+    @python3 scripts/check-make-stall-watchdog.py
+
 # Issue 1264 — `nros_platform_rmws` (and the fixture-id-guard functions above,
 # which share its `nros_manifest_query` helper) must report a manifest parser
 # that failed to even START as a PARSER failure, never as "this platform/id

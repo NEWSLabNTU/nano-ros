@@ -783,6 +783,10 @@ echo "workspace-fixtures-build: ${#live_records[@]} row(s) in ${#group_dirs[@]} 
 # the guard it shares the outermost launcher's process group (passthrough), and
 # when invoked directly it becomes that group itself.
 source "$repo_root/scripts/build/subtree-guard.sh"
+# issue 1403 — the stall watchdog sits INSIDE the guard, so the guard's group
+# still reaches make and the watchdog kills only make's own descendants.
 nros_guard_exec workspace-fixtures \
+    python3 "$repo_root/scripts/build/make-stall-watchdog.py" \
+    --label "workspace-fixtures $platform" --diag-dir "$work_root" -- \
     env -u MAKEFLAGS -u CARGO_MAKEFLAGS "$pinned_make" -j"$pool_jobs" --jobserver-style=fifo -f "$makefile"
 rm -f "$makefile" "$work_root/ws-$platform-$stamp"-group-*.records

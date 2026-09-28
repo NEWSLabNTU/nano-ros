@@ -128,7 +128,10 @@ nros_pool_run() {
     # issue 0762 — one process group for the pool, so a killed launcher does not
     # leave the units running. Passthrough when already inside a guarded tree.
     source "$repo_root/scripts/build/subtree-guard.sh"
+    # issue 1403 — stall watchdog inside the guard (see make-stall-watchdog.py).
     nros_guard_exec "jobserver-pool" \
+        python3 "$repo_root/scripts/build/make-stall-watchdog.py" \
+        --label "jobserver-pool $label" --diag-dir "$work_root" -- \
         env -u MAKEFLAGS -u CARGO_MAKEFLAGS \
         "$(nros_pinned_make)" -j"$pool_jobs" --jobserver-style=fifo \
         -f "$makefile" || rc=$?
