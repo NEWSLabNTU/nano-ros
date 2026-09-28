@@ -1175,6 +1175,23 @@ cpp: cpp-fmt
             echo "check-cpp: could not extract the cyclone _nros_cpp_features line from zephyr/CMakeLists.txt" >&2
             exit 1
         fi
+        # issue 1547 — the module spells the edition as `${_nros_edition_feature}`,
+        # resolved by cmake from `cmake/NanoRosRosEdition.cmake`. This reads the
+        # TEXT, so expand it the way a default configure does: from that file's
+        # one default, not a literal here. Any other `${…}` left over is a
+        # string this extraction cannot evaluate, and cargo would reject it as
+        # an unknown feature — say so here instead.
+        _cyc_edition="$(sed -n 's/^set(NANO_ROS_DEFAULT_ROS_EDITION "\([a-z]*\)".*/\1/p' cmake/NanoRosRosEdition.cmake)"
+        if [ -z "$_cyc_edition" ]; then
+            echo "check-cpp: could not read NANO_ROS_DEFAULT_ROS_EDITION from cmake/NanoRosRosEdition.cmake" >&2
+            exit 1
+        fi
+        _cyc_features="${_cyc_features//'${_nros_edition_feature}'/ros-$_cyc_edition}"
+        case "$_cyc_features" in
+            *'${'*)
+                echo "check-cpp: unexpanded cmake variable in the extracted cyclone features: $_cyc_features" >&2
+                exit 1 ;;
+        esac
         echo "  - embedded cyclone coordinate (issue 0730): ${_cyc_features},panic-platform @ aarch64-unknown-none"
         # issue 1354 — its own dir, same reason as the zenoh clippy below: a
         # different feature set writes a different config header.
