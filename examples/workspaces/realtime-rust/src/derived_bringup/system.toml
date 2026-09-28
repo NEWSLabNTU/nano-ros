@@ -1,0 +1,57 @@
+[system]
+name = "derived"
+rmw = "zenoh"
+domain_id = 0
+
+# Issue 1537 — the DERIVED-tier sibling of demo_bringup, and the only Rust
+# Zephyr image in the tree whose tier table `nros::main!` derives rather than
+# reads.
+#
+# Same two node packages, same launch, and no schedule authored here: no
+# `[tiers.*]`, no priority. The rates are in launch/system.contract.yaml, and
+# the macro derives a rate-monotonic table from them (ctrl 100 Hz above telem
+# 10 Hz). Compare demo_bringup, the authored-tier neighbour, whose
+# `[tiers.*.zephyr]` pins cannot exercise the derivation at all.
+#
+# `group_tiers` is here only to NAME each node's callback group: the model's
+# group bindings are the one group input `nros::main!` reads, and a node with no
+# group gets no derived tier (it stays on the default executor, and nothing is
+# derived at all). The tier it binds, `derived`, is declared nowhere; the
+# derivation replaces it with one `derived-<node>` tier per node. (A C++ node
+# states its groups with `CALLBACK_GROUPS` instead — derived-tiers-cpp.)
+#
+# Why a second BRINGUP and not a second workspace (RFC-0066): what differs is
+# configuration — how the schedule is stated, and the image's Kconfig — not
+# the nodes. `realtime-c`'s `smp_bringup` is the precedent: same packages, a
+# second bringup for the configuration the shared one cannot carry.
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Control"
+name = "control_node"
+group_tiers = { ctrl = "derived" }
+
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
+group_tiers = { telem = "derived" }
+
+[image_defaults]
+rmw = "zenoh"
+
+# The one image, and the reason this bringup exists. `prj-lowered-band.conf`
+# moves the zenoh read task's band so the image's own priority plan DIFFERS
+# from the Kconfig defaults projection (read the fragment for the numbers). On
+# a default-band image the two agree and a regression back to the projection
+# would be invisible; here it is 5 / 6 inside the transport vs 10 / 11 below
+# it, and the Zephyr boot report is what tells them apart at runtime.
+# `sched_dims_applied_e2e` (`DerivedTierBelowTransport`) asserts it is silent.
+#
+# Its entry and west application are GENERATED (phase-470 W5, issue 1288), as
+# for demo_bringup's `[image.zephyr]`. The locator's port is
+# `port_of(ZephyrNativeSim, Rust, RealtimeTiers)` — the same router port the
+# realtime Zephyr Rust cells use, as the SMP row shares the C one's.
+[image.zephyr]
+board = "zephyr"
+conf = ["prj-zenoh.conf", "prj-lowered-band.conf"]
+locator = "tcp/127.0.0.1:7491"

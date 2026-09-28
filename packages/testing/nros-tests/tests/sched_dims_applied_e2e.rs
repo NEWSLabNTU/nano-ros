@@ -33,6 +33,17 @@
 //!   for the entire image, so the cell stayed green through issue 0579 while
 //!   the boot tier's declared priority was dropped. A per-tier dim needs a
 //!   per-tier assert.
+//! - **ReportSilent** (issue 1537) — the INVERSE shape: a line that must NOT
+//!   appear. The derived-tier cell boots the one Rust Zephyr image whose tiers
+//!   `nros::main!` derives, on a lowered transport band, and asserts the Zephyr
+//!   boot report stays silent. Absence is only evidence with positives beside
+//!   it, and the shape asserts them: the BUILT `.config` carries the lowered
+//!   band (else the image cannot tell the two allocations apart), the image
+//!   runs the MULTI-TIER entry with the expected tier count (a single-executor
+//!   image never calls the report — the first build of this fixture was one,
+//!   and a silence-only assert passed it), every node's tier dispatched, and
+//!   the report's "NOT checked" line is absent (so a band WAS recorded to judge
+//!   against).
 //!
 //! Run with: `cargo nextest run -p nros-tests --test sched_dims_applied_e2e`.
 
@@ -45,7 +56,9 @@ use nros_tests::{
         build_native_workspace_rust_realtime_entry, build_nuttx_workspace_cpp_realtime_entry,
         build_nuttx_workspace_rust_realtime_entry, build_threadx_workspace_rust_realtime_entry,
         build_zephyr_workspace_c_realtime_entry, build_zephyr_workspace_c_realtime_entry_smp,
-        build_zephyr_workspace_cpp_realtime_entry, build_zephyr_workspace_rust_realtime_entry,
+        build_zephyr_workspace_cpp_realtime_entry,
+        build_zephyr_workspace_rust_realtime_derived_entry,
+        build_zephyr_workspace_rust_realtime_entry,
     },
     matrix::{
         Lang as ML, PlatformId as MP, SchedCell, SchedDim as SD, Workload as MW,
@@ -60,9 +73,15 @@ use nros_tests::{
         THREADX_CORE_PIN_FALLBACK_MARKER, THREADX_CORE_PIN_MARKER, THREADX_PREEMPT_MARKER,
         THREADX_TIME_SLICE_MARKER, ZEPHYR_CORE_PIN_FALLBACK_MARKER, ZEPHYR_CORE_PIN_MARKER,
         ZEPHYR_CORE_PIN_OBSERVED_CPU1, ZEPHYR_EDF_DEADLINE_MARKER,
+        ZEPHYR_TIER_MEETS_TRANSPORT_MARKER, ZEPHYR_TIER_NOT_CHECKED_MARKER, tier_dispatch_marker,
+        zephyr_multi_tier_entry_up_line,
     },
 };
-use std::{path::PathBuf, process::Command, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+    time::{Duration, Instant},
+};
 
 type Resolver = fn() -> TestResult<PathBuf>;
 
@@ -152,6 +171,27 @@ enum Shape {
     EachTierOrFailNote {
         tiers: &'static [(&'static str, u32)],
         fail_marker: &'static str,
+    },
+    /// issue 1537 — `ex.accept` must be ABSENT, and three things must be true
+    /// for that absence to mean anything (see the module docs):
+    ///
+    /// * the built image's `.config` carries `dotconfig_line` verbatim — the
+    ///   Kconfig that makes this image's priority plan differ from the defaults
+    ///   projection. A fragment that stopped applying would leave a default
+    ///   band, where the two allocations agree and silence proves nothing;
+    /// * the image ran `ZephyrBoard::run_tiers` over `tiers` tiers
+    ///   ([`zephyr_multi_tier_entry_up_line`], printed AFTER the report) — a
+    ///   single-executor image never reaches the report, so without this its
+    ///   silence is indistinguishable from a pass;
+    /// * every node in `dispatching` printed its dispatch line
+    ///   ([`tier_dispatch_marker`]), so each node's tier ran;
+    /// * `not_checked` is absent, so the report had a transport band to judge
+    ///   against rather than skipping the judgement.
+    ReportSilent {
+        tiers: usize,
+        dispatching: &'static [&'static str],
+        dotconfig_line: &'static str,
+        not_checked: &'static str,
     },
 }
 
@@ -417,6 +457,40 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             shape: StrictCountOne,
             note: "tx_thread_time_slice_change applied for the one declaring tier",
         },
+        // issue 1537 — the derived-tier Rust image on a lowered transport band
+        // (`realtime-rust/src/derived_bringup`, `prj-lowered-band.conf`).
+        //
+        // WHAT THIS CATCHES, MEASURED: with `nros::main!` reverted to the
+        // Kconfig defaults projection, this image derives its tiers at 5 / 6 —
+        // inside the transport band [4, 9] — and the boot report fires. Allocated
+        // out of the image's own `.config` they land at 10 / 11 and the report
+        // is silent. A default-band image would pass either way, which is why
+        // the band is lowered.
+        (SD::DerivedTierBelowTransport, MP::ZephyrNativeSim, ML::Rust) => Exec {
+            resolver: build_zephyr_workspace_rust_realtime_derived_entry,
+            boot: Zephyr,
+            router: Router::Baked("127.0.0.1"),
+            timeout_secs: 30,
+            // The report's header: here the line whose ABSENCE is asserted.
+            stem: ZEPHYR_TIER_MEETS_TRANSPORT_MARKER,
+            accept: ZEPHYR_TIER_MEETS_TRANSPORT_MARKER,
+            fallback: None,
+            shape: ReportSilent {
+                // One derived tier per node: `derived-control_node` (100 Hz)
+                // and `derived-telem_node` (10 Hz).
+                tiers: 2,
+                // The node packages' OWN dispatch lines: ctrl_pkg names `high`
+                // and telem_pkg `low` in their log text. Those are literals in
+                // the node code, not the derived tier names — which is fine,
+                // because the claim is only that each node's tier RAN.
+                dispatching: &["high", "low"],
+                dotconfig_line: "CONFIG_NROS_ZENOH_READ_PRIORITY=100",
+                not_checked: ZEPHYR_TIER_NOT_CHECKED_MARKER,
+            },
+            note: "issue 1537 — a DERIVED tier on a lowered-band image must be allocated out \
+                   of the image's .config (10/11), not the Kconfig defaults projection (5/6, \
+                   inside the transport); a regression makes the boot report fire",
+        },
         (d, p, l) => panic!(
             "sched_dims_applied_e2e: no execution mapping for {d:?}/{p:?}/{l:?} — add an \
              `exec_for` arm (phase-329 W2)"
@@ -626,6 +700,18 @@ fn run_cell(cell: &SchedCell) {
                 ]
             })
             .collect(),
+        // issue 1537 — wait for the tiers to RUN, not for the report: the
+        // report is the line that must not appear, so waiting on it would
+        // always time out on a passing image.
+        Shape::ReportSilent {
+            tiers, dispatching, ..
+        } => std::iter::once(vec![zephyr_multi_tier_entry_up_line(tiers)])
+            .chain(
+                dispatching
+                    .iter()
+                    .map(|tier| vec![tier_dispatch_marker(tier)]),
+            )
+            .collect(),
         _ => vec![vec![ex.stem.to_string()]],
     };
 
@@ -640,7 +726,11 @@ fn run_cell(cell: &SchedCell) {
         Boot::Zephyr => {
             let mut z = ZephyrProcess::start(&entry, ZephyrPlatform::NativeSim)
                 .unwrap_or_else(|e| panic!("[{platform} {lang}] boot zephyr native_sim: {e}"));
-            let l = z.wait_for_pattern(ex.stem, timeout);
+            let l = if matches!(ex.shape, Shape::ReportSilent { .. }) {
+                zephyr_wait_each(&mut z, &wait_groups, timeout)
+            } else {
+                z.wait_for_pattern(ex.stem, timeout)
+            };
             z.kill();
             l
         }
@@ -808,5 +898,118 @@ fn run_cell(cell: &SchedCell) {
                 ),
             );
         }
+        Shape::ReportSilent {
+            tiers,
+            dispatching,
+            dotconfig_line,
+            not_checked,
+        } => {
+            // 1. The image is the one this cell claims. Read back from the
+            //    BUILT `.config`, beside the image, not from the fragment: a
+            //    fragment can be shadowed by a later one (Kconfig is last-wins,
+            //    issue 0876), and only the merged file says what applied.
+            let dotconfig = entry
+                .parent()
+                .map(|zephyr_dir| zephyr_dir.join(".config"))
+                .unwrap_or_else(|| panic!("[{platform} {lang}] image path has no parent"));
+            assert!(
+                dotconfig_has_line(&dotconfig, dotconfig_line),
+                "[{platform} {lang} {:?}] the built `{}` does not carry `{dotconfig_line}` — \
+                 the image's transport band is NOT lowered, so its priority plan equals the \
+                 Kconfig defaults projection and a silent report would prove nothing. Check \
+                 the build's `Merged configuration` lines for the fragment. {}",
+                cell.dim,
+                dotconfig.display(),
+                ex.note
+            );
+
+            // 2. The MULTI-TIER entry ran, so the report was called — it runs
+            //    in `run_tiers` after the session opens and before this line.
+            let up = zephyr_multi_tier_entry_up_line(tiers);
+            assert!(
+                log.contains(&up),
+                "{silence}[{platform} {lang} {:?}] no `{up}` line — the image did not run \
+                 `ZephyrBoard::run_tiers` over {tiers} DERIVED tiers, so the transport report \
+                 was never called and its silence proves nothing. Did `nros::main!` derive a \
+                 table (it needs the contract AND each node's callback group), and did \
+                 `nros build` enable nros-board-zephyr's `tiers` feature for it? {}\nlog:\n{log}",
+                cell.dim,
+                ex.note
+            );
+
+            // 3. Every node's tier dispatched.
+            let not_run: Vec<&str> = dispatching
+                .iter()
+                .copied()
+                .filter(|tier| !log.contains(&tier_dispatch_marker(tier)))
+                .collect();
+            assert!(
+                not_run.is_empty(),
+                "{silence}[{platform} {lang} {:?}] tier(s) {not_run:?} never dispatched \
+                 (no `{}` line) — the report is judged before any tier runs, so an image \
+                 that did not reach its tiers says nothing about it. {}\nlog:\n{log}",
+                cell.dim,
+                tier_dispatch_marker("<tier>"),
+                ex.note
+            );
+
+            // 4. The report had a band to judge against.
+            assert!(
+                !log.contains(not_checked),
+                "{silence}[{platform} {lang} {:?}] the boot report says it did NOT check the \
+                 tiers (`{not_checked}`): no transport task was recorded at an explicit \
+                 priority, so its silence below would be vacuous. {}\nlog:\n{log}",
+                cell.dim,
+                ex.note
+            );
+
+            // 5. THE assertion.
+            assert!(
+                !accepted,
+                "{silence}[{platform} {lang} {:?}] the Zephyr boot report FIRED \
+                 (`{}`): a derived tier ties or outranks this image's transport band. On \
+                 this lowered-band image that is exactly what `nros::main!` produces when it \
+                 allocates out of the Kconfig DEFAULTS projection instead of the image's own \
+                 `.config` — issue 1537 regressed (see `zephyr_image_plan_from_env` in \
+                 nros-macros). {}\nlog:\n{log}",
+                cell.dim, ex.accept, ex.note
+            );
+            report_arm(
+                platform,
+                lang,
+                cell.dim,
+                "SILENT (derived tiers below the transport)",
+            );
+        }
     }
+}
+
+/// issue 1537 — wait until every group has at least one of its patterns in the
+/// log, the image exits, or `timeout` passes; return the log either way.
+///
+/// `ZephyrProcess::wait_for_pattern` returns at ONE pattern, and a
+/// `ReportSilent` cell needs several (each tier's dispatch line) before its
+/// absence assertion is worth making.
+fn zephyr_wait_each(z: &mut ZephyrProcess, groups: &[Vec<String>], timeout: Duration) -> String {
+    let deadline = Instant::now() + timeout;
+    loop {
+        // A short poll: `wait_for_pattern` hands back the log so far and keeps
+        // the reader running, so the pattern named here is only what it polls
+        // for, not the condition.
+        let log = z.wait_for_pattern(&groups[0][0], Duration::from_millis(200));
+        let done = groups
+            .iter()
+            .all(|g| g.iter().any(|p| log.contains(p.as_str())));
+        if done || Instant::now() >= deadline || !z.is_running() {
+            return log;
+        }
+    }
+}
+
+/// Whether a Kconfig `.config` carries `line` as a whole line. A missing file is
+/// `false`, which the caller reports as the image not being the one it claims.
+fn dotconfig_has_line(dotconfig: &Path, line: &str) -> bool {
+    std::fs::read_to_string(dotconfig)
+        .map(|text| text.lines().any(|l| l.trim() == line))
+        .unwrap_or(false)
 }

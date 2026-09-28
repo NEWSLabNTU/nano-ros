@@ -896,6 +896,44 @@ pub const RULE_MAX_AGE_RUNTIME: &str = "max-age-runtime";
 /// (the no_std board crate cannot depend on this crate).
 pub const ZEPHYR_EDF_DEADLINE_MARKER: &str = "nros: EDF deadline set tier=";
 
+/// issue 1537 — the HEADER of the Zephyr boot report
+/// (`nros_zephyr_report_tier_vs_transport`, `zephyr/nros_platform_zephyr_shims.c`,
+/// called by BOTH tier arms after the session opens and before any tier runs):
+/// printed once, on the first tier whose RAW k_thread priority ties or outranks
+/// the least urgent transport task the kernel actually created. The Zephyr twin
+/// of FreeRTOS's `report_tiers_above_transport`. MIRRORS the `printk` literal
+/// there — keep in lockstep (the C shim cannot depend on this crate).
+///
+/// A test asserts its ABSENCE on an image whose tiers must sit below the
+/// transport: the derived-tier cell of `sched_dims_applied_e2e`, where a
+/// `nros::main!` that regressed to the Kconfig defaults projection puts both
+/// tiers inside the lowered band and this line is the runtime signal.
+pub const ZEPHYR_TIER_MEETS_TRANSPORT_MARKER: &str = "nros: tier priority meets the transport band";
+
+/// issue 1537 — the report's OTHER line: printed once when the image created no
+/// task at an explicit priority, so there is no transport band to judge a tier
+/// against. Its absence is what makes [`ZEPHYR_TIER_MEETS_TRANSPORT_MARKER`]'s
+/// absence mean "judged and below", rather than "never judged". MIRRORS the
+/// `printk` literal in the same function — keep in lockstep.
+pub const ZEPHYR_TIER_NOT_CHECKED_MARKER: &str =
+    "nros: tier priorities NOT checked against the transport";
+
+/// issue 1537 — printed by the Zephyr Rust tier arm (`ZephyrBoard::run_tiers`,
+/// `nros-board-zephyr/src/entry_tiers.rs`) once the boot tier is set up, AFTER
+/// the transport report ran. MIRRORS the `::log::info!` literal there — keep in
+/// lockstep. A single-executor image prints `zephyr workspace entry up` instead
+/// and never reaches the report at all, so this line is what makes a SILENT
+/// report mean "judged" rather than "never called" — measured: the first build of
+/// the derived-tier fixture derived no table, booted single-executor, and a
+/// silence-only assert passed it.
+pub const ZEPHYR_MULTI_TIER_ENTRY_UP_MARKER: &str = "nros: zephyr multi-tier entry up (";
+
+/// [`ZEPHYR_MULTI_TIER_ENTRY_UP_MARKER`] with the tier COUNT, so a cell can pin
+/// how many tiers the image runs rather than only that it runs some.
+pub fn zephyr_multi_tier_entry_up_line(tiers: usize) -> String {
+    format!("{ZEPHYR_MULTI_TIER_ENTRY_UP_MARKER}{tiers} tiers")
+}
+
 /// Emitted by the NuttX board seam (`nuttx_run_tiers.c`,
 /// `nros_nuttx_apply_current_sporadic` — shared by the C/C++ AND Rust tier
 /// arms) when the kernel actually accepted SCHED_SPORADIC for a tier

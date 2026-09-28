@@ -38,6 +38,9 @@ use std::{collections::BTreeMap, path::PathBuf};
 fn workspace_system_toml(lang: Lang, dim: SchedDim) -> PathBuf {
     let bringup = match dim {
         SchedDim::CorePinPlacement => "src/smp_bringup/system.toml",
+        // issue 1537 — the derived-tier image has its own bringup, because
+        // what it must NOT declare (tiers) is what `demo_bringup` does declare.
+        SchedDim::DerivedTierBelowTransport => "src/derived_bringup/system.toml",
         _ => "src/demo_bringup/system.toml",
     };
     let ws = match lang {
@@ -115,7 +118,89 @@ fn dim_keys(d: SchedDim) -> &'static [&'static [&'static str]] {
         SchedDim::TimeSlice => &[&["time_slice", "time_slice_us"]],
         SchedDim::SporadicBudget => &[&["budget", "budget_us"], &["period", "period_us"]],
         SchedDim::TierPriority => &[&["priority"]],
+        // issue 1537 — nothing is AUTHORED for this dim; that is the dim. What
+        // must hold of its bringup is checked by `derived_bringup_problems`.
+        SchedDim::DerivedTierBelowTransport => &[],
     }
+}
+
+/// issue 1537 — the inverse of a declared dim: the derived-tier cell's bringup
+/// must AUTHOR no tiers (else `nros::main!` reads them and never derives, and
+/// the cell's runtime assert passes over a code path it never exercised), must
+/// state the rates the derivation ranks by (the contract beside the launch
+/// file), and its image must name the lowered-band fragment, which must set the
+/// band. Each problem is a string naming what is wrong.
+fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) -> Vec<String> {
+    let bringup = system_toml.parent().expect("system.toml has a parent");
+    let mut out = Vec::new();
+    if doc.get("tiers").is_some() {
+        out.push(format!(
+            "{} declares a `[tiers]` table — the macro would READ it and never derive",
+            system_toml.display()
+        ));
+    }
+    // A node with no callback group gets no derived tier, and a table where
+    // every node is groupless derives NOTHING — the image boots
+    // single-executor and never calls the boot report. Measured: that is what
+    // this bringup's first version built.
+    let components = doc
+        .get("component")
+        .and_then(|c| c.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if components.is_empty() {
+        out.push(format!(
+            "{} declares no [[component]]",
+            system_toml.display()
+        ));
+    }
+    for c in &components {
+        let grouped = c
+            .get("group_tiers")
+            .and_then(|g| g.as_table())
+            .is_some_and(|g| !g.is_empty());
+        if !grouped {
+            out.push(format!(
+                "component {:?} names no callback group (`group_tiers`) — it would get no \
+                 derived tier",
+                c.get("name").and_then(|n| n.as_str()).unwrap_or("?")
+            ));
+        }
+    }
+    let contract = bringup.join("launch/system.contract.yaml");
+    if !contract.is_file() {
+        out.push(format!(
+            "{} is missing — with no rates there is nothing to derive from",
+            contract.display()
+        ));
+    }
+    let conf = doc
+        .get("image")
+        .and_then(|i| i.get("zephyr"))
+        .and_then(|z| z.get("conf"))
+        .and_then(|c| c.as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
+        .unwrap_or_default();
+    const FRAGMENT: &str = "prj-lowered-band.conf";
+    if conf.last() != Some(&FRAGMENT) {
+        out.push(format!(
+            "`[image.zephyr] conf` must name `{FRAGMENT}` LAST (Kconfig merges last-wins, issue 0876); it is {conf:?}"
+        ));
+    }
+    let fragment = bringup.join("boards/native_sim_native_64").join(FRAGMENT);
+    let sets_band = std::fs::read_to_string(&fragment)
+        .map(|t| {
+            t.lines()
+                .any(|l| l.trim() == "CONFIG_NROS_ZENOH_READ_PRIORITY=100")
+        })
+        .unwrap_or(false);
+    if !sets_band {
+        out.push(format!(
+            "{} does not set CONFIG_NROS_ZENOH_READ_PRIORITY=100 — on a default band the projection and the image's plan agree, and the cell cannot see a regression",
+            fragment.display()
+        ));
+    }
+    out
 }
 
 /// Is `key` declared for `rtos` anywhere in the parsed system.toml — either under
@@ -180,6 +265,14 @@ fn sched_dims_are_declared_in_authored_system_toml() {
             .or_insert_with(|| load(&path))
             .clone();
         let rtos = rtos_key(cell.platform);
+        if cell.dim == SchedDim::DerivedTierBelowTransport {
+            missing.extend(derived_bringup_problems(&path, &doc).into_iter().map(|p| {
+                format!(
+                    "  - {:?}/{:?}/{:?}: {p}",
+                    cell.dim, cell.platform, cell.lang
+                )
+            }));
+        }
         for aliases in dim_keys(cell.dim) {
             if !any_alias_declared(&doc, rtos, aliases) {
                 // Name every spelling that would have satisfied it, so a reader

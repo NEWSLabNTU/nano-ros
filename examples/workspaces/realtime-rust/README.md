@@ -10,6 +10,12 @@ src/telem_pkg/     — Node pkg, 100 ms telemetry,  callback group `telem` → t
 src/demo_bringup/  — Bringup: system.toml declares [tiers.high] / [tiers.low],
                      and boards/native_sim_native_64/ holds the Zephyr image's
                      Kconfig (RFC-0065 D4).
+src/derived_bringup/ — Bringup for the SAME two nodes with NO authored tiers:
+                     launch/system.contract.yaml states their rates and
+                     `nros::main!` derives the table. Its one Zephyr image
+                     lowers the transport band (prj-lowered-band.conf), so the
+                     derived priorities must come from the image's own .config
+                     to land below it (issue 1537; sched_dims_applied_e2e).
 ```
 
 **Every** image's entry is generated from its `[image.*]`, so `src/` holds no

@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!-- Issue 1537 fixture - the SAME two nodes as demo_bringup. The node `name`s
+     must match system.toml [[component]].name and the `nodes:` keys of
+     system.contract.yaml beside this file, which is where each node's rate is
+     stated. -->
+<launch>
+    <node pkg="ctrl_pkg" exec="control_node" name="control_node"/>
+    <node pkg="telem_pkg" exec="telem_node" name="telem_node"/>
+</launch>
