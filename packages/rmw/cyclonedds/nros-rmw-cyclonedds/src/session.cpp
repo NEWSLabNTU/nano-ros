@@ -61,6 +61,17 @@ struct SessionState {
     void (*wake_cb)(void *){nullptr};
     void *wake_ctx{nullptr};
     dds_listener_t *listener{nullptr};
+    /* phase-467 Row 8 — the graph-CHANGE edge. Same threading story as the
+     * wake pair above and delivered through the SAME listener: written on the
+     * runtime thread, read by `on_data_available` on a Cyclone worker thread.
+     *
+     * A SECOND pair rather than a reuse of the wake pair, because the two are
+     * different questions: the wake says "this session has work", which every
+     * reader answers, and this says "the ROS graph moved", which only the
+     * graph readers do. Collapsing them would wake a graph guard condition on
+     * every `/chatter` sample. */
+    rmw_event_callback_t graph_cb{nullptr};
+    const void *graph_user_data{nullptr};
 };
 
 inline SessionState* as_state(rmw_session_t* s) {
@@ -100,6 +111,12 @@ void free_session_state(SessionState* state) {
 
 namespace {
 
+/* Issue 1237 — a build that declines the wake slot reaches none of the three
+ * functions below, so they are compiled out rather than left as unused
+ * statics. `on_data_available` has been in that position since 1237 landed;
+ * phase-467 Row 8 would have added two more beside it. */
+#ifndef NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE
+
 /// Cyclone calls this from its own receive/delivery thread the moment a reader
 /// has data. Handing that to the executor is the WHOLE point: without it
 /// `spin_once` has no asynchronous wake and its wait degenerates to a blind
@@ -110,7 +127,7 @@ namespace {
 /// flag write plus a condvar signal and nothing else. That is what separates
 /// this from the STATUS-event listeners `subscriber.cpp` deliberately declines
 /// — those would need a buffer, a lock, and a safe context to deliver into.
-void on_data_available(dds_entity_t /*reader*/, void *arg) {
+void on_data_available(dds_entity_t reader, void *arg) {
     auto *state = static_cast<SessionState *>(arg);
     if (state == nullptr) {
         return;
@@ -122,7 +139,89 @@ void on_data_available(dds_entity_t /*reader*/, void *arg) {
     if (cb != nullptr) {
         cb(ctx);
     }
+
+    /* phase-467 Row 8 — the graph-CHANGE edge, which this handler has been
+     * RECEIVING since the listener went on the participant and discarding in
+     * its first parameter.
+     *
+     * The study that priced this row read `dds_create_reader(..., nullptr)` in
+     * `graph.cpp` and concluded Cyclone had no change signal at all, so the
+     * row should be split and Cyclone's half filed as a threading-model
+     * change. It is not: the listener is on the PARTICIPANT (see
+     * `session_set_wake_callback`), DDS propagates an unhandled event to the
+     * parent, and `reader` names the reader that actually has data. So the
+     * whole discriminator is the comparison below — no new thread, no new
+     * context, no waitset.
+     *
+     * `ros_discovery_info` is the ROS graph; the two DCPS builtin readers are
+     * the DDS endpoints the by-topic queries read. All three are lazily
+     * created, and an entity that does not exist compares equal to nothing
+     * because `graph_reader` and friends are 0 while `reader` is a live
+     * handle. */
+    rmw_event_callback_t gcb = state->graph_cb;
+    if (gcb != nullptr &&
+        (reader == state->graph.graph_reader || reader == state->graph.builtin_pub_reader ||
+         reader == state->graph.builtin_sub_reader)) {
+        gcb(state->graph_user_data, 1);
+    }
 }
+
+/* phase-467 Row 8 — the participant-level data_available listener, now that
+ * TWO consumers want it.
+ *
+ * On the PARTICIPANT, not per reader: DDS propagates an unhandled event up to
+ * the parent, so one listener covers every reader this session will ever
+ * create, including ones created later. Readers set no data_available handler
+ * of their own (`subscriber.cpp` polls), so nothing is being overridden.
+ *
+ * reset_on_invoke = false: this is a level signal, not a one-shot. The
+ * executor may still be draining an earlier batch when the next one lands,
+ * and it must be woken again.
+ *
+ * Extracted rather than copied. The wake path and the graph path need the
+ * SAME listener with the same `arg`, and a second `dds_set_listener` on one
+ * participant REPLACES the first — so two spellings here would not be a
+ * duplication smell, they would be the two consumers silently unhooking each
+ * other. */
+bool ensure_listener(SessionState *state) {
+    if (state->listener != nullptr) {
+        return true;
+    }
+    state->listener = dds_create_listener(state);
+    if (state->listener == nullptr) {
+        return false;
+    }
+    dds_lset_data_available_arg(state->listener, on_data_available, state, false);
+    if (dds_set_listener(state->participant, state->listener) < 0) {
+        dds_delete_listener(state->listener);
+        state->listener = nullptr;
+        return false;
+    }
+    return true;
+}
+
+/* Detach the listener once NOBODY wants it.
+ *
+ * The clear paths null their own pair first and then call this, which is a
+ * change from the pre-Row-8 order ("detach first, then drop the pair"): with
+ * a second consumer the detach may not happen at all, so the pair has to be
+ * gone before the decision is made. `on_data_available` reads each pair once
+ * and returns on a null callback — it has always had to, since it reads them
+ * without a lock — so a handler racing this observes "nothing installed",
+ * never a half-cleared pair. */
+void release_listener_if_idle(SessionState *state) {
+    if (state->listener == nullptr) {
+        return;
+    }
+    if (state->wake_cb != nullptr || state->graph_cb != nullptr) {
+        return;
+    }
+    (void)dds_set_listener(state->participant, nullptr);
+    dds_delete_listener(state->listener);
+    state->listener = nullptr;
+}
+
+#endif /* !NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE */
 
 } // namespace
 
@@ -163,16 +262,11 @@ rmw_ret_t session_set_wake_callback(rmw_session_t* session,
     auto* state = as_state(session);
 
     if (cb == nullptr) {
-        /* Detach FIRST, then drop the stored pair: after `dds_set_listener`
-         * returns with no data_available handler, Cyclone will not call us
-         * again, so nothing can observe the half-cleared state. */
-        if (state->listener != nullptr) {
-            (void)dds_set_listener(state->participant, nullptr);
-            dds_delete_listener(state->listener);
-            state->listener = nullptr;
-        }
+        /* Drop the pair, THEN detach if nobody else wants the listener. See
+         * `release_listener_if_idle` for why this order changed with Row 8. */
         state->wake_cb = nullptr;
         state->wake_ctx = nullptr;
+        release_listener_if_idle(state);
         return NROS_RMW_RET_OK;
     }
 
@@ -181,30 +275,86 @@ rmw_ret_t session_set_wake_callback(rmw_session_t* session,
     state->wake_ctx = ctx;
     state->wake_cb = cb;
 
-    if (state->listener == nullptr) {
-        state->listener = dds_create_listener(state);
-        if (state->listener == nullptr) {
-            state->wake_cb = nullptr;
-            state->wake_ctx = nullptr;
-            return NROS_RMW_RET_ERROR;
-        }
-        /* On the PARTICIPANT, not per reader: DDS propagates an unhandled
-         * event up to the parent, so one listener covers every reader this
-         * session will ever create, including ones created later. Readers set
-         * no data_available handler of their own (subscriber.cpp polls), so
-         * nothing is being overridden.
-         *
-         * reset_on_invoke = false: this is a level signal, not a one-shot. The
-         * executor may still be draining an earlier batch when the next one
-         * lands, and it must be woken again. */
-        dds_lset_data_available_arg(state->listener, on_data_available, state, false);
-        if (dds_set_listener(state->participant, state->listener) < 0) {
-            dds_delete_listener(state->listener);
-            state->listener = nullptr;
-            state->wake_cb = nullptr;
-            state->wake_ctx = nullptr;
-            return NROS_RMW_RET_ERROR;
-        }
+    if (!ensure_listener(state)) {
+        state->wake_cb = nullptr;
+        state->wake_ctx = nullptr;
+        return NROS_RMW_RET_ERROR;
+    }
+    return NROS_RMW_RET_OK;
+#endif
+}
+
+/* phase-467 Row 8 — `rmw_node_get_graph_guard_condition` under the
+ * `set_wake_callback` shape. Install (or clear, with a NULL callback) the
+ * edge fired when the ROS graph this session can see changes. */
+rmw_ret_t session_node_get_graph_guard_condition(rmw_session_t* session,
+                                                 rmw_event_callback_t callback,
+                                                 const void* user_data) {
+    if (session == nullptr || session->backend_data == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+#ifdef NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE
+    /* Issue 1237, exactly as for the wake slot above and for the same reason,
+     * not by analogy: the graph edge is delivered by the SAME
+     * `on_data_available`, on the SAME Cyclone receive thread, and the target
+     * is a guard condition whose `trigger()` ends in `nros_platform_wake_
+     * signal`. That is the call that asserts in `vPortYield` on a thread the
+     * FreeRTOS POSIX port never registered. Declining is the only correct
+     * answer, and the caller gets UNSUPPORTED rather than a guard nothing
+     * may safely fire. */
+    (void)callback;
+    (void)user_data;
+    return NROS_RMW_RET_UNSUPPORTED;
+#else
+    auto* state = as_state(session);
+
+    if (callback == nullptr) {
+        state->graph_cb = nullptr;
+        state->graph_user_data = nullptr;
+        release_listener_if_idle(state);
+        /* OK on a clear is the capability answer the runtime probes with:
+         * this backend HAS a graph. Whether the reader can be created is the
+         * install's question, below. */
+        return NROS_RMW_RET_OK;
+    }
+
+    /* The readers FIRST, all three of them. Every graph reader here is
+     * created lazily on the first QUERY that needs it, so a session that
+     * installs a change callback and never queries would have no reader for
+     * the listener to fire on — the edge would be armed and unreachable,
+     * which is worse than refusing it.
+     *
+     * ALL THREE, and that was MEASURED rather than reasoned. With only
+     * `ros_discovery_info` the edge fires on ARRIVALS and is silent on
+     * DEPARTURES: a peer that dies republishes nothing, so no sample reaches
+     * that reader ever again. The live cell showed exactly that — armed at 1
+     * (the talker's arrival had fired), then thirty seconds of nothing after
+     * the talker was killed. The departure arrives as a DISPOSE on the DDS
+     * builtin topics, which is data on `builtin_pub_reader` /
+     * `builtin_sub_reader` and is what `EndpointBatch::at` deliberately skips
+     * when ENUMERATING (an endpoint that has gone away must not be listed).
+     * Half a notification is worse than none, because it reads as a working
+     * one.
+     *
+     * The builtin readers are not fatal if Cyclone refuses them: the
+     * `ros_discovery_info` edge still covers arrivals, and refusing the whole
+     * slot over it would lose a capability that works. `graph_reader` IS
+     * fatal — without it there is no edge at all. */
+    if (!graph_ensure_reader(&state->graph)) {
+        return NROS_RMW_RET_UNSUPPORTED;
+    }
+    (void)graph_ensure_builtin_reader(&state->graph, state->participant, /*writers=*/true);
+    (void)graph_ensure_builtin_reader(&state->graph, state->participant, /*writers=*/false);
+
+    /* Publish the pair BEFORE the listener exists, so a first callback cannot
+     * see a null one. */
+    state->graph_user_data = user_data;
+    state->graph_cb = callback;
+
+    if (!ensure_listener(state)) {
+        state->graph_cb = nullptr;
+        state->graph_user_data = nullptr;
+        return NROS_RMW_RET_ERROR;
     }
     return NROS_RMW_RET_OK;
 #endif

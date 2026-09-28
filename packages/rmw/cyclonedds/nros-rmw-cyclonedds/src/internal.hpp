@@ -223,6 +223,19 @@ rmw_ret_t session_destroy(rmw_session_t *session);
  * of polling on a timer. `cb == nullptr` clears. */
 rmw_ret_t session_set_wake_callback(rmw_session_t *session, void (*cb)(void *),
                                     void *ctx);
+
+/* phase-467 Row 8 — `rmw_node_get_graph_guard_condition` under the
+ * `set_wake_callback` shape: install (or clear, with a NULL callback) the
+ * edge fired when the ROS graph this session can see CHANGES.
+ *
+ * Delivered through the SAME participant listener as the wake path — the
+ * signal was already arriving and `on_data_available` was discarding its
+ * first parameter, so `reader == graph.graph_reader` is the whole
+ * discriminator. Creates `graph_reader` if a query has not yet, because an
+ * edge with no reader is armed and unreachable. */
+rmw_ret_t session_node_get_graph_guard_condition(rmw_session_t *session,
+                                                 rmw_event_callback_t callback,
+                                                 const void *user_data);
 rmw_ret_t session_drive_io(rmw_session_t *session, int32_t timeout_ms);
 
 /* ---- publisher.cpp ---- */

@@ -91,10 +91,10 @@ rmw must provide" than any reading of the headers.
 | | vtable | global | executor | platform | build time | serdes | runtime | none | **total** |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | same | 12 | 1 |  |  |  |  |  |  | **13** |
-| re-shaped | 33 | 1 |  |  |  |  |  |  | **34** |
+| re-shaped | 34 | 1 |  |  |  |  |  |  | **35** |
 | re-mapped | 16 |  | 4 | 1 | 3 | 3 | 1 |  | **28** |
-| not supported — *by decision* |  |  |  |  |  |  |  | 13 | **13** |
-| **total** | **61** | **2** | **4** | **1** | **3** | **3** | **1** | **13** | **88** |
+| not supported — *by decision* |  |  |  |  |  |  |  | 12 | **12** |
+| **total** | **62** | **2** | **4** | **1** | **3** | **3** | **1** | **12** | **88** |
 
 Read a row for what we did, a column for where it lives. Only
 **not implemented** should shrink over time; **not supported** is the one
@@ -780,7 +780,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
 <td class=c><span class=nosig>—</span></td>
 <td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div>as above</td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>const rmw_guard_condition_t *</span>
 <span class='fn'>rmw_node_get_graph_guard_condition</span><span class=pu>(</span><span class='ty del'>const rmw_node_t * node</span><span class=pu>)</span></pre></td>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -789,7 +789,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty add'>rmw_event_callback_t callback</span><span class=pu>,</span>
   <span class='ty add'>const void *user_data</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div><b>inert</b> — declared and READ BY NOTHING, and filled by nothing.<br><br><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>

@@ -20,7 +20,25 @@
 //!                             absence of a peer a FAILURE rather than a quiet
 //!                             empty print — an empty graph is what this test is
 //!                             most likely to get wrong.
+//!   `GRAPH_PROBE_WATCH_CHANGE` phase-467 Row 8 — watch the CHANGE EDGE instead
+//!                             of sweeping the eleven read slots. Registers a
+//!                             graph-change guard condition, settles on the
+//!                             expected peer, latches the edge count, prints
+//!                             `GRAPH_PROBE_CHANGE_ARMED` and then waits for
+//!                             one more edge. The CALLER makes that edge
+//!                             happen (it kills the peer), so what this mode
+//!                             proves is not "we can read the graph" but "the
+//!                             backend TOLD us the graph moved" — the one
+//!                             claim eleven green enumeration slots are
+//!                             entirely compatible with being false.
+//!
+//! The markers below are spelled as literals here and as constants in
+//! `nros_tests::output`; this leaf has its own workspace and does not depend
+//! on `nros-tests`, which is why the rule about grepping for constants binds
+//! the TEST side rather than this one.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use nros::{Executor, ExecutorConfig};
@@ -64,6 +82,44 @@ fn main() {
     println!("GRAPH_PROBE_DOMAIN {domain_id}");
     let mut executor = Executor::open(&config).expect("open session");
     let _node = executor.create_node("graph_probe").expect("create node");
+
+    // phase-467 Row 8 — the graph-CHANGE guard condition, registered before
+    // any polling so the count it feeds covers the whole run.
+    //
+    // The callback only bumps a counter. A guard condition is a LEVEL, so
+    // several edges arriving before the next spin collapse into one dispatch:
+    // this counts DISPATCHES, not backend calls. That is the right thing to
+    // count for "did the runtime hear about it", and worth saying because a
+    // reader will otherwise expect one per discovery token.
+    let watch_change = std::env::var_os("GRAPH_PROBE_WATCH_CHANGE").is_some();
+    let edges = Arc::new(AtomicUsize::new(0));
+    // Bound once, never dropped by hand: the executor's own teardown retires
+    // the backend's pointer (`clear_graph_change_signal`), so a handle held
+    // to the end of `main` is the correct shape and an explicit `drop` on one
+    // of two exits would only be a second thing to get wrong.
+    let _change_guard = if watch_change {
+        let counter = Arc::clone(&edges);
+        match executor.register_graph_change_guard(move || {
+            counter.fetch_add(1, Ordering::Relaxed);
+        }) {
+            Ok((_id, guard)) => Some(guard),
+            Err(nros::NodeError::Transport(nros::TransportError::Unsupported)) => {
+                // Not a failure of this binary: a backend with no graph must
+                // say so, and saying so IS the contract. Which backends owe
+                // the edge is the cell's decision, not the probe's.
+                println!("GRAPH_PROBE_CHANGE_UNSUPPORTED");
+                let _ = executor.close();
+                std::process::exit(6);
+            }
+            Err(e) => {
+                eprintln!("GRAPH_PROBE_FAIL: register_graph_change_guard: {e:?}");
+                let _ = executor.close();
+                std::process::exit(6);
+            }
+        }
+    } else {
+        None
+    };
 
     println!("GRAPH_PROBE_READY locator={locator}");
 
@@ -124,6 +180,56 @@ fn main() {
         println!("GRAPH_NODE {n}");
     }
     println!("GRAPH_PROBE_NODE_COUNT {}", settled.len());
+
+    // phase-467 Row 8 — the CHANGE EDGE, and then nothing else.
+    //
+    // Deliberately before the eleven-slot sweep and deliberately exiting
+    // here: the sweep is the OTHER cell's subject and costs tens of seconds,
+    // during which the peer this mode is about is still alive. Running both
+    // would make a change-edge failure arrive after — and look like — a slot
+    // failure.
+    if watch_change {
+        // The peer expectation is checked HERE rather than at the end of
+        // main. Arming before the peer is visible would latch a count that
+        // the peer's OWN arrival then increments, and the test would pass
+        // with nothing having left the graph.
+        if let Some(ref want) = expect_node {
+            if !settled.iter().any(|n| n.contains(want)) {
+                eprintln!(
+                    "GRAPH_PROBE_FAIL: expected a node matching {want:?} before arming, saw {settled:?}"
+                );
+                let _ = executor.close();
+                std::process::exit(2);
+            }
+        }
+        let armed = edges.load(Ordering::Relaxed);
+        println!("GRAPH_PROBE_CHANGE_ARMED {armed}");
+        // Flushed, because the caller BLOCKS on this line before it causes
+        // the change. A buffered marker turns the coordination into a race
+        // and the test into a timeout nobody can explain.
+        use std::io::Write as _;
+        let _ = std::io::stdout().flush();
+
+        let change_deadline = Instant::now() + Duration::from_millis(budget_ms);
+        while Instant::now() < change_deadline {
+            // The guard's callback runs from `spin_once`, so the count only
+            // moves while we spin — which is the property under test: the
+            // edge reaches an APPLICATION callback, not merely the backend.
+            executor.spin_once(Duration::from_millis(100));
+            let now = edges.load(Ordering::Relaxed);
+            if now > armed {
+                println!("GRAPH_PROBE_CHANGE_FIRED {now}");
+                let _ = executor.close();
+                return;
+            }
+        }
+        // Accepted and never fired: the failure eleven green read slots
+        // cannot produce, and the one this mode exists to catch.
+        println!("GRAPH_PROBE_CHANGE_NONE");
+        eprintln!("GRAPH_PROBE_FAIL: no graph change within {budget_ms} ms of arming at {armed}");
+        let _ = executor.close();
+        std::process::exit(6);
+    }
 
     // Topics too — the second acceptance question, and it must be POLLED for
     // the same reason nodes are.

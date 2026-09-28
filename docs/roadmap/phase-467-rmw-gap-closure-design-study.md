@@ -23,19 +23,28 @@ is not what a study predicts well.
 | Row 5 `c:log_severity_t` | CLOSED as `divergence` — #1320, envelope permanent |
 | Row 6 `rust:Context::domain_id` | SHIPPED, row DELETED — #1317 |
 | Row 7 `cpp:Publisher::assert_liveliness` | SHIPPED — #1321 |
-| Row 8 `c:node_get_graph_guard_condition` | **STILL OPEN**, recommendation withdrawn — #1322 |
+| Row 8 `c:node_get_graph_guard_condition` | SHIPPED, both backends — see "Row 8 … LANDED" |
 | Row 9 `c:lifecycle_change_state` | **STILL OPEN** — unchanged, still the expensive one |
 | Row 10 `rust:Logger::set_default_level` | CLOSED as `divergence` — #1302 |
 | Row 11 `rust:init_with_args` | **STILL OPEN**, premise refuted — #1317 |
 | Row 12 `cpp:Node::create_subscription` | SHIPPED — #1321 |
 | Row 13 `cpp:Subscription::get_actual_qos` | SHIPPED, row DELETED — #1321 |
 
-**What remains after this phase is 5 rows, and this study no longer scopes
-them:** Rows 8, 9 and 11 above, `c:logging_rosout_enabled` (Q4's topic half),
-and `cpp:Client::wait_for_service`, which arrived after this was written and no
-section here examines. **Two of the five are blocked on the same thing** — a
-live graph cell, which phase-444 W2 still owes — so the hardware run gates more
-than its own counter.
+**What remains after this phase is 4 rows, and this study no longer scopes
+them:** Rows 9 and 11 above, `c:logging_rosout_enabled` (Q4's topic half), and
+`cpp:Client::wait_for_service`, which arrived after this was written and no
+section here examines.
+
+*This paragraph said 5 rows and claimed **two of the five are blocked on the
+same thing — a live graph cell, which phase-444 W2 still owes**. That was
+wrong in both halves and Row 8 is what measured it.* The live graph cells
+already exist and already run: `native-graph-rust-{zenoh,cyclone}-r2n` in
+`interop::CELLS`, backed by `graph_interop.rs`, each against a real ROS 2
+peer, each with a focused runner (`just native test-ros2-graph`). What
+phase-444 W2 owes is a PHYSICAL BOARD, for a different reason — issue 0902's
+completion-rate baseline was taken on hardware over a serial link — and that
+has nothing to do with whether a graph edge can be observed on a host. Row 8
+shipped on those existing cells, with two new cases added to them.
 
 *Original status, 2026-09-25:* STUDY ONLY, and deliberately so. Nothing here is
 implemented and no build was run — ten of the thirteen rows below carry a
@@ -202,7 +211,11 @@ doing `log_severity_t` alone leaves a default nothing can set.
    — one mechanism, two rows, both closed.
 6. **`cpp:Publisher::get_gid`** — cheap ONCE Q1 is answered; the accessor itself
    is a forwarder with an `UNSUPPORTED` arm.
-7. **`c:node_get_graph_guard_condition`, zenoh half only.** The signal is
+7. **`c:node_get_graph_guard_condition`** — LANDED 2026-09-28, and
+   NOT "zenoh half only": both backends ship the edge, because Cyclone
+   turned out to have one too. See "Row 8 … LANDED". The text below is
+   the estimate, kept for the record.
+   **zenoh half only.** The signal is
    already delivered to a C callback; forwarding it is small. Cyclone's half is
    a separate, larger item and should not hold the row.
 8. **`c:lifecycle_change_state`** — self-contained but genuinely expensive
@@ -877,6 +890,53 @@ that, so check no in-tree image treats a non-OK here as fatal before landing.
 **Needs a compile nobody ran:** yes, and a zenoh runtime cell.
 
 ## Row 8 — `c:node_get_graph_guard_condition` [gap, adopt]: is it even the right primitive?
+
+**LANDED 2026-09-28 — SHIPPED, both backends, one pull request. The
+row is `divergence` + `adopt-bounded`; `node.json` holds 0 `gap` rows.**
+
+The design question this section asks is answered exactly as the amendment
+below predicted — the primitive is right, the VERB is not — so
+`nros_node_get_graph_guard_condition(node, out, callback, context)` is
+upstream's NAME over `nros_node_create_guard_condition`'s SHAPE, stated on the
+row and in the header. What the section got wrong twice is recorded here
+rather than rewritten away.
+
+**Three things this section said that the work refuted.**
+
+1. *The cost is wildly asymmetric; split the row.* Withdrawn already by the
+   amendment below, and the work confirms it: each backend hook is one
+   discrimination the backend was already computing, and the shared plumbing
+   — a `Session` trait method, a `CffiSession` consumer, a `rust_adapter.rs`
+   row, an executor-owned install/clear pair — is the large half.
+2. *Neither half can be honestly accepted without a live graph cell, which
+   phase-444 W2 still owes.* False. Both cells exist and run;
+   `graph_interop.rs` gained
+   `a_peer_leaving_fires_the_graph_change_guard` and its Cyclone twin, mapped
+   to the two existing cells through `interop::CASE_CELLS`. No new cell: the
+   coordinate (platform, language, RMW, workload) did not move — the question
+   did.
+3. *Cyclone's hook is one line.* One line was enough to make the edge FIRE,
+   and not enough to make it correct. Measured on the new cell: Cyclone armed
+   at 1 — the talker's arrival HAD fired the edge — and then reported nothing
+   for thirty seconds after the talker was killed. A dead participant
+   republishes no `ros_discovery_info`, so that reader never sees another
+   sample; the departure arrives as a DISPOSE on the DDS builtin topics,
+   which the by-topic queries create LAZILY and this session had never
+   queried. The install now creates all three graph readers. **Arrivals yes,
+   departures never is worse than no edge at all, because it reads as a
+   working one** — and nothing static in this tree could have said so, which
+   is the entire argument for making the acceptance a live cell rather than a
+   `produced` classification.
+
+**Two pricing claims that held.** No `NROS_CODEGEN_VERSION` bump —
+`check-codegen-version-surface.py` reports the same 261 items and version 8
+across the change, so that was verified rather than assumed. And the header's
+NULL sentence landed in the same commit as the consumer, which is what
+`check-rmw-slot-producers.py` needs from a slot that becomes reachable;
+`INERT_FAMILIES["graph-guard"]` is deleted rather than reworded.
+
+*The amendment and the original section follow, as the reasoning that produced
+the decisions above.*
 
 **AMENDED 2026-09-28 (#1322) — STILL OPEN, and THIS SECTION'S HEADLINE
 MEASUREMENT WAS WRONG. Its recommendation to SPLIT the row is WITHDRAWN.**

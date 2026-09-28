@@ -2089,6 +2089,53 @@ pub trait Session {
         let _ = (publishers, topic_name, visit);
         Err(TransportError::Unsupported.into())
     }
+
+    /// phase-467 Row 8 — install (or clear, when `callback` is `None`) the
+    /// callback the backend fires when the ROS GRAPH changes.
+    ///
+    /// The Rust twin of `rmw_vtable_t::node_get_graph_guard_condition`, which
+    /// is upstream's `rmw_node_get_graph_guard_condition` under the
+    /// `set_wake_callback` shape: upstream RETURNS a guard condition the caller
+    /// adds to a wait set, we have no wait set, and a guard condition here is
+    /// an executor concept the backend never hands out. So the edge is PUSHED,
+    /// not polled — and the ABI slot has said so since phase-376 W4, while
+    /// this is the trait twin it never had.
+    ///
+    /// The callback is an EDGE and carries no payload. `count` is how many
+    /// changes the backend coalesced, never a description of WHAT changed:
+    /// delivering that would mean buffering the graph, which is the cache a
+    /// small target cannot afford.
+    ///
+    /// **A backend must not fire it for a no-op.** The contract is "the graph
+    /// this session can SEE differs from what it saw", which both real
+    /// backends already computed and threw away — zenoh in
+    /// `zpico_graph_set_apply`'s return value, Cyclone in
+    /// `on_data_available`'s first parameter.
+    ///
+    /// # Safety
+    ///
+    /// When `callback` is `Some`, `user_data` must remain valid until the
+    /// callback is cleared or the session is closed; the backend may invoke it
+    /// from a transport or worker thread. **The installer owes the clear** —
+    /// see `Executor::clear_graph_change_signal`, which is issue 1385's lesson
+    /// applied before the hazard rather than after it.
+    ///
+    /// Default body: `Err(Unsupported)` — a backend with no graph (XRCE, uORB)
+    /// says "cannot tell you" rather than accepting a callback it will never
+    /// fire. That answer is also the capability PROBE the runtime uses: a
+    /// `None` clear on a graphless backend returns `Unsupported`, so nothing
+    /// else has to be asked and no handle is consumed before the answer.
+    unsafe fn set_graph_change_callback(
+        &mut self,
+        callback: Option<unsafe extern "C" fn(user_data: *const core::ffi::c_void, count: usize)>,
+        user_data: *const core::ffi::c_void,
+    ) -> Result<(), Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        let _ = (callback, user_data);
+        Err(TransportError::Unsupported.into())
+    }
 }
 
 /// Which entity kind a `*_by_node` graph query keeps — phase-381 W3.

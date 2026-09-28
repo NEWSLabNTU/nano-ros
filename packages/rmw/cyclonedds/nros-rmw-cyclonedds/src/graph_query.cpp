@@ -86,15 +86,15 @@ class EndpointBatch {
         release();
         if (g == nullptr || participant <= 0) return false;
         dds_entity_t* slot = writers ? &g->builtin_pub_reader : &g->builtin_sub_reader;
-        if (*slot <= 0) {
-            // Created on FIRST USE, like the `ros_discovery_info` reader: an
-            // image that never asks pays no reader. The builtin subscriber
-            // supplies its own QoS; passing NULL takes it.
-            const dds_entity_t topic =
-                writers ? DDS_BUILTIN_TOPIC_DCPSPUBLICATION : DDS_BUILTIN_TOPIC_DCPSSUBSCRIPTION;
-            dds_entity_t r = dds_create_reader(participant, topic, nullptr, nullptr);
-            if (r < 0) return false;
-            *slot = r;
+        // Created on FIRST USE, like the `ros_discovery_info` reader: an image
+        // that never asks pays no reader. phase-467 Row 8 moved the creation
+        // into `graph_ensure_builtin_reader` because the graph-CHANGE edge
+        // needs these readers to EXIST as well — a second `dds_create_reader`
+        // for the same slot elsewhere would be the fix-the-site shape, and
+        // here it would also mean the edge and the query could disagree about
+        // which reader is which.
+        if (!graph_ensure_builtin_reader(g, participant, writers)) {
+            return false;
         }
         reader_ = *slot;
         raw_ = static_cast<void**>(ddsrt_malloc(sizeof(void*) * kScanMax));
@@ -493,6 +493,36 @@ rmw_ret_t endpoint_info_by_topic(const rmw_session_t* session, const char* topic
 }
 
 } // namespace
+
+/// phase-467 Row 8 — create one of the two DDS builtin-topic readers if it
+/// does not exist yet. THE creation site for both.
+///
+/// The builtin subscriber supplies its own QoS; passing NULL takes it.
+///
+/// Reached from two callers with different reasons: a by-topic QUERY needs
+/// the reader to read, and the graph-CHANGE edge needs it to EXIST, because
+/// an endpoint going away is delivered here and nowhere else. A dispose
+/// leaves an instance with `valid_data == false` — invisible to the query
+/// (`EndpointBatch::at` skips it, deliberately: an endpoint that has gone
+/// away must not be listed) and exactly the sample that makes a DEPARTURE a
+/// graph change.
+bool graph_ensure_builtin_reader(GraphState* g, dds_entity_t participant, bool writers) {
+    if (g == nullptr || participant <= 0) {
+        return false;
+    }
+    dds_entity_t* slot = writers ? &g->builtin_pub_reader : &g->builtin_sub_reader;
+    if (*slot > 0) {
+        return true;
+    }
+    const dds_entity_t topic =
+        writers ? DDS_BUILTIN_TOPIC_DCPSPUBLICATION : DDS_BUILTIN_TOPIC_DCPSSUBSCRIPTION;
+    dds_entity_t r = dds_create_reader(participant, topic, nullptr, nullptr);
+    if (r < 0) {
+        return false;
+    }
+    *slot = r;
+    return true;
+}
 
 /* ---- the slots ---------------------------------------------------------- */
 

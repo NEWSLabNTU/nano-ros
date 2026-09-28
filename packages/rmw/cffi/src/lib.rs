@@ -3166,6 +3166,41 @@ impl Session for CffiSession {
         self.vtable.set_wake_callback.is_some()
     }
 
+    /// phase-467 Row 8 — forward to the backend's graph-change slot; NULL
+    /// means UNSUPPORTED.
+    ///
+    /// **This is the CONSUMER the slot never had.** It was declared in
+    /// phase-376 W4 and read by nothing for five phases, so
+    /// `check-rmw-slot-producers` classified it `inert` and a family entry
+    /// carried the reason. Both real backends already received the graph-change
+    /// edge and discarded the discrimination — one line each — which is why the
+    /// expensive half of closing this was never the backends.
+    ///
+    /// NULL surfaces `Unsupported` rather than `Ok(())`, for the same reason
+    /// the eleven enumeration slots do: accepting a callback that will never
+    /// fire is the silent difference RFC-0089 Part I refuses, and it is what
+    /// "hand back a guard condition nothing triggers" would look like from the
+    /// caller's side.
+    unsafe fn set_graph_change_callback(
+        &mut self,
+        callback: Option<unsafe extern "C" fn(user_data: *const core::ffi::c_void, count: usize)>,
+        user_data: *const core::ffi::c_void,
+    ) -> Result<(), TransportError> {
+        let Some(f) = self.vtable.node_get_graph_guard_condition else {
+            return Err(TransportError::Unsupported);
+        };
+        let mut view = self.make_view();
+        // SAFETY: the slot takes a `rmw_session_t *`, and the view carries the
+        // backend data pointer the trampoline reads. The callback/user_data
+        // lifetime contract is the caller's (see the trait's `# Safety`).
+        let rc = unsafe { f(&mut view as *mut NrosRmwSession, callback, user_data) };
+        if rc == NROS_RMW_RET_OK {
+            Ok(())
+        } else {
+            Err(error_from_ret(rc))
+        }
+    }
+
     /// phase-381 W5/W6 — forward to the backend's slot; NULL means UNSUPPORTED.
     ///
     /// Without this the graph slots were unreachable for every C backend: the

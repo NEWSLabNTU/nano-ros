@@ -4,6 +4,8 @@ use nros_rmw::{
     QoSProfile, ServiceInfo, Session, SessionMode, TopicInfo, TransportConfig, TransportError,
 };
 
+use crate::zpico::ZPICO_MAX_SESSIONS;
+
 use super::{
     CONFIG_PROPERTY_SIZE, Context, EntityKind, LOCATOR_BUFFER_SIZE,
     LivelinessEntity as Ros2LivelinessEntity, LivelinessToken, MAX_SESSION_PROPERTIES,
@@ -220,6 +222,59 @@ pub struct ZenohSession {
     /// to answer four questions about the same graph.
     /// Whether the standing liveliness subscriber has been declared.
     graph_cache_started: bool,
+}
+
+// ============================================================================
+// phase-467 Row 8 — the graph-CHANGE edge
+// ============================================================================
+//
+// The C shim's `zpico_graph_change_fn` carries only the session's pool index,
+// the same shape `zpico_set_reply_waker` uses and for the same reason: an
+// embedded build has no heap to put a boxed context in, and a per-session
+// index is the one identifier both sides already agree on. So the
+// `(rmw_event_callback_t, user_data)` pair the runtime installs lives HERE,
+// in a table the trampoline indexes.
+//
+// Not a single process-global: `RUNTIME_WAKE_CB` gets away with that because
+// a wake is idempotent and any executor's wake serves any other, whereas a
+// graph-change edge belongs to ONE executor's guard condition and delivering
+// it to another session's would be a false positive nobody could attribute.
+
+/// The `rmw_event_callback_t` installed for session index `i`, or NULL.
+static GRAPH_CHANGE_CB: [portable_atomic::AtomicPtr<()>; ZPICO_MAX_SESSIONS] =
+    [const { portable_atomic::AtomicPtr::new(core::ptr::null_mut()) }; ZPICO_MAX_SESSIONS];
+/// Its `user_data` — the executor-owned `GuardCondition` box (issue 1385).
+static GRAPH_CHANGE_CTX: [portable_atomic::AtomicPtr<core::ffi::c_void>; ZPICO_MAX_SESSIONS] =
+    [const { portable_atomic::AtomicPtr::new(core::ptr::null_mut()) }; ZPICO_MAX_SESSIONS];
+
+/// Called from `graph_cache_sample_handler` (C) when the cached token set
+/// actually CHANGED — never for a duplicate PUT or an absent DELETE.
+///
+/// # Safety
+///
+/// Called from zenoh-pico's read task with a valid pool index. The pointer
+/// pair it loads was installed by `set_graph_change_callback` and is retired
+/// by the executor BEFORE the storage it names is freed.
+unsafe extern "C" fn graph_change_trampoline(session_index: i32) {
+    use portable_atomic::Ordering;
+    if session_index < 0 || (session_index as usize) >= ZPICO_MAX_SESSIONS {
+        return;
+    }
+    let i = session_index as usize;
+    let cb = GRAPH_CHANGE_CB[i].load(Ordering::Acquire);
+    if cb.is_null() {
+        return;
+    }
+    let ctx = GRAPH_CHANGE_CTX[i].load(Ordering::Acquire);
+    // SAFETY: `cb` was stored from an `rmw_event_callback_t`, and the CTX is
+    // published BEFORE the CB on install and cleared AFTER it on teardown, so
+    // a non-null `cb` read here is always paired with its own context.
+    let f: unsafe extern "C" fn(*const core::ffi::c_void, usize) =
+        unsafe { core::mem::transmute(cb) };
+    // One change, one edge. The runtime's target is a guard condition, which
+    // is a LEVEL — several edges before the next spin collapse to one
+    // dispatch — so the count is informational and always 1 here.
+    unsafe { f(ctx, 1) };
 }
 
 /// phase-428 W13 — walk the session's graph cache, parsed. THE one walk.
@@ -1347,6 +1402,59 @@ impl Session for ZenohSession {
         // arrival hook (`subscriber_notify_callback`) can fire the wake-cb on the
         // multi-threaded backend, where `drive_io`'s poll path never sees the work.
         super::set_runtime_wake_cb(cb, ctx);
+    }
+
+    /// phase-467 Row 8 — the graph-CHANGE edge.
+    ///
+    /// **The signal already arrived; only the discrimination was thrown
+    /// away.** `zpico_graph_cache_start` declares a standing
+    /// `z_liveliness_declare_subscriber` with `history = true`, so the initial
+    /// burst and every later token land in `graph_cache_sample_handler`, which
+    /// calls `zpico_graph_set_apply` — a function that has always returned
+    /// whether the token set CHANGED, and whose return the handler discarded
+    /// with a `(void)`. Installing this is what reads it.
+    ///
+    /// A duplicate PUT, a DELETE of an absent key and a PUT that did not fit
+    /// all return 0, so a no-op never becomes an edge. A DROPPED token
+    /// (cache full) is deliberately NOT an edge either: the cache did not
+    /// change, and firing there would say the graph moved when what moved is
+    /// our ability to see it — `graph_cache_for_each`'s `dropped` counter is
+    /// where that is reported, and it is a different question.
+    unsafe fn set_graph_change_callback(
+        &mut self,
+        callback: Option<unsafe extern "C" fn(user_data: *const core::ffi::c_void, count: usize)>,
+        user_data: *const core::ffi::c_void,
+    ) -> Result<(), TransportError> {
+        use portable_atomic::Ordering;
+        let handle = self.context.handle();
+        let idx = unsafe { zpico_sys::zpico_session_index(handle) };
+        if idx < 0 || (idx as usize) >= ZPICO_MAX_SESSIONS {
+            return Err(TransportError::Unsupported);
+        }
+        let i = idx as usize;
+        let Some(f) = callback else {
+            // Clear. The C side FIRST, so no sample can be in flight toward a
+            // table row this is about to null — the reverse order is the
+            // window a clear exists to close.
+            unsafe { zpico_sys::zpico_set_graph_change_cb(handle, None) };
+            GRAPH_CHANGE_CB[i].store(core::ptr::null_mut(), Ordering::Release);
+            GRAPH_CHANGE_CTX[i].store(core::ptr::null_mut(), Ordering::Release);
+            // `Ok` on a clear is the CAPABILITY answer the runtime probes
+            // with: this backend has a graph. Whether the subscriber can be
+            // declared on this build is the install's question, below.
+            return Ok(());
+        };
+        // No subscriber, no edge. `ensure_graph_cache` is idempotent and is
+        // what every graph query already calls, so installing a listener
+        // before the first query is legal and warms the cache exactly once.
+        self.ensure_graph_cache()?;
+        // CTX before CB: the trampoline reads CB first and returns on NULL, so
+        // publishing the context first means a fired callback never sees a
+        // stale one.
+        GRAPH_CHANGE_CTX[i].store(user_data as *mut core::ffi::c_void, Ordering::Release);
+        GRAPH_CHANGE_CB[i].store(f as *mut (), Ordering::Release);
+        unsafe { zpico_sys::zpico_set_graph_change_cb(handle, Some(graph_change_trampoline)) };
+        Ok(())
     }
 
     /// Phase 110.0 — bound the executor's `drive_io` wait against

@@ -710,6 +710,18 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     // (`require_ros2()` vs `require_ros2_cyclonedds()`), not only in the name.
     co("graph_interop", "nano_ros_enumerates_a_stock_ros2_node", "native-graph-rust-zenoh-r2n"),
     co("graph_interop", "cyclone_enumerates_a_stock_ros2_node",  "native-graph-rust-cyclone-r2n"),
+    // phase-467 Row 8 — the CHANGE EDGE, one case per RMW, against the SAME
+    // two cells. No new cell, and that is the honest reading of what a cell
+    // is: (platform, language, RMW, workload) did not move — the question
+    // did. A third row here whose six fields matched an existing one would be
+    // an intent list that says the same thing twice, which is what makes
+    // `CASE_CELLS` the right mechanism (issue 1191): the reading case and the
+    // change case are recorded separately, so a green on one is not
+    // counter-evidence or evidence for the other.
+    co("graph_interop", "a_peer_leaving_fires_the_graph_change_guard",
+       "native-graph-rust-zenoh-r2n"),
+    co("graph_interop", "cyclone_a_peer_leaving_fires_the_graph_change_guard",
+       "native-graph-rust-cyclone-r2n"),
 
     // ── rust_multi_node_per_node_graph — one image, one case per RMW ────
     // Issue 1269. Each case names its backend in the body (the fixture it

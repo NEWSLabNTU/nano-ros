@@ -911,6 +911,38 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     }
 }
 
+/// phase-467 Row 8 — the symbol a backend invokes when the ROS GRAPH changes.
+///
+/// `rmw_event_callback_t`'s shape, so it fits the ABI slot unchanged:
+/// `user_data` plus a coalesced count, and no payload. The count is IGNORED on
+/// purpose — a guard condition is a level, not a queue, so N changes observed
+/// before the executor spins are one dispatch. That is the same collapse
+/// `guard_try_process` already performs on a flag several `trigger()`s set.
+///
+/// RT-context contract: identical to [`nros_rmw_runtime_wake_cb`] and for the
+/// same reason — a relaxed-store-plus-wake, O(1), no allocation, no lock. Both
+/// are called from a transport or worker thread.
+///
+/// # Safety
+///
+/// `user_data` must be the pointer `Executor::install_graph_change_guard`
+/// passed: a `GuardCondition` in a box that executor owns. The obligation is
+/// discharged by `clear_graph_change_signal`, which retires the pointer from
+/// the backend BEFORE the box is freed, from `close()` and from `drop`. Issue
+/// 1385 is what the other ordering costs.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+pub(crate) unsafe extern "C" fn nros_rmw_runtime_graph_change_cb(
+    user_data: *const core::ffi::c_void,
+    _count: usize,
+) {
+    if user_data.is_null() {
+        return;
+    }
+    // SAFETY: see this function's `# Safety`.
+    let guard = unsafe { &*(user_data as *const GuardCondition) };
+    guard.trigger();
+}
+
 /// Phase 124.B.7.c — Linux signalfd worker.
 ///
 /// Owns a Linux `eventfd` plus a worker task that `read()`s the
@@ -1559,6 +1591,22 @@ pub struct Executor<'s> {
     /// never owned.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) wake_cb_installed: bool,
+    /// phase-467 Row 8 — the graph-change target the BACKEND holds a pointer
+    /// to, owned here.
+    ///
+    /// This box is the whole answer to issue 1385 on this path. The backend
+    /// fires the graph-change edge from a transport or worker thread, so
+    /// whatever it dereferences must outlive every such call — and the thing
+    /// the caller has in hand is a `nros_guard_condition_t` in ITS storage,
+    /// which the caller may free or reuse at any time. Handing that pointer
+    /// over would BE 1385. So the executor keeps its own handle to the same
+    /// arena flag, at a heap address that does not move when the executor
+    /// does, and [`clear_graph_change_signal`] retires the backend's pointer
+    /// BEFORE this box drops.
+    ///
+    /// [`clear_graph_change_signal`]: Self::clear_graph_change_signal
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) graph_change_target: Option<alloc::boxed::Box<GuardCondition>>,
     /// Phase 124.B.7.c — lazily-allocated Linux signalfd worker.
     /// Owned by the Executor; spawned on first `signal_fd()` call.
     /// Drop joins the worker thread and closes the fd.
@@ -1896,6 +1944,8 @@ impl<'s> Executor<'s> {
             wake_ctx: None,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             wake_cb_installed: false,
+            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+            graph_change_target: None,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             has_async_wake: false,
             // Phase 141.A.3 — alloc-mode wake state init. Constructed
@@ -3890,6 +3940,127 @@ impl<'s> Executor<'s> {
         self.has_async_wake = false;
     }
 
+    /// phase-467 Row 8 — hand the PRIMARY session a graph-change target it may
+    /// trigger from a worker thread, and take ownership of that target.
+    ///
+    /// The install half of the pair; [`clear_graph_change_signal`] is the
+    /// other and the executor owes it. `guard` is CLONED, so the caller keeps
+    /// its own handle to the same arena flag — that is the whole point: the
+    /// pointer the backend receives is the executor's box, never the caller's
+    /// storage. Issue 1385 is the same hazard on the wake slot, found after
+    /// the fact; this is the shape that cannot reach it.
+    ///
+    /// PRIMARY only, deliberately. A graph is a property of a session, and the
+    /// extra sessions of `node_builder.rmw(...)` each have their own — feeding
+    /// several into one guard would make "the graph changed" unattributable
+    /// while costing the caller the ability to ask which. A caller wanting a
+    /// second backend's graph asks that session for its own.
+    ///
+    /// Returns `Err(Unsupported)` from a backend with no graph. A previously
+    /// installed target is retired first, so an executor never has two.
+    ///
+    /// [`clear_graph_change_signal`]: Self::clear_graph_change_signal
+    ///
+    /// `pub(crate)`, not `pub`: the public verb is
+    /// [`register_graph_change_guard_on`], which does the probe, the
+    /// registration and this in the one order that cannot hand back a guard
+    /// nothing fires. Exposing the install alone would let a caller reach the
+    /// second step without the first.
+    ///
+    /// [`register_graph_change_guard_on`]: Self::register_graph_change_guard_on
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) fn install_graph_change_guard(
+        &mut self,
+        guard: &GuardCondition,
+    ) -> Result<(), NodeError> {
+        use nros_rmw::Session as _;
+        self.clear_graph_change_signal();
+        let boxed = alloc::boxed::Box::new(guard.clone());
+        let ptr = (&*boxed) as *const GuardCondition as *const core::ffi::c_void;
+        // SAFETY: `ptr` names heap storage this executor owns and which
+        // `clear_graph_change_signal` retires from the backend before it is
+        // freed. `GuardCondition` is `Send + Sync` and its `trigger()` is a
+        // relaxed store plus the runtime wake hook, which is what a foreign
+        // thread is allowed to do here.
+        let rc = unsafe {
+            self.session
+                .set_graph_change_callback(Some(nros_rmw_runtime_graph_change_cb), ptr)
+        };
+        match rc {
+            Ok(()) => {
+                self.graph_change_target = Some(boxed);
+                Ok(())
+            }
+            // `boxed` drops here, and nothing holds its pointer: the backend
+            // either refused or failed, so there is no installed callback to
+            // retire first.
+            Err(e) => Err(NodeError::Transport(e)),
+        }
+    }
+
+    /// phase-467 Row 8 — can the primary session deliver a graph-change edge?
+    ///
+    /// Asked by CLEARING, which is the one probe that costs nothing and cannot
+    /// lie: a backend with no graph answers `Unsupported` to a `None` install
+    /// just as it does to a real one, and an idempotent clear on a backend
+    /// that HAS a graph is a no-op. Nullity of the vtable slot cannot answer
+    /// it — `rust_adapter.rs` fills the slot for every Rust backend whether or
+    /// not that backend overrides the trait method, which
+    /// `check-rmw-slot-producers`'s own report says in as many words.
+    ///
+    /// The caller is `register_graph_change_guard_on`, which asks BEFORE it
+    /// consumes an executor handle slot, so an unsupported backend costs
+    /// nothing and the caller is never handed a guard nothing fires.
+    /// `pub(crate)` for the same reason the install is: asking costs a CLEAR,
+    /// so a caller that asks and then does nothing has silently retired a live
+    /// target. The public verb asks once, on the caller's behalf.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) fn supports_graph_change_callback(&mut self) -> bool {
+        use nros_rmw::Session as _;
+        // Retire whatever is installed first — the probe IS a clear, so doing
+        // it without this would silently drop a live target.
+        self.clear_graph_change_signal();
+        // SAFETY: a `None` install takes no context and installs nothing.
+        unsafe {
+            self.session
+                .set_graph_change_callback(None, core::ptr::null())
+                .is_ok()
+        }
+    }
+
+    /// phase-467 Row 8 — the teardown half of
+    /// [`install_graph_change_guard`](Self::install_graph_change_guard), and
+    /// the reason that install cannot recreate issue 1385.
+    ///
+    /// Order is the whole content: tell the backend to stop FIRST, then drop
+    /// the box it was pointing at. Reversed, the window between the free and
+    /// the clear is exactly 1385's dangling callback — and on the C path that
+    /// window is arbitrary, because the session outlives the executor.
+    ///
+    /// Latched on `graph_change_target.is_some()`, not on a separate flag: the
+    /// box IS the record of having installed, so `close()` followed by drop
+    /// clears once and an executor that never installed clears nothing. That
+    /// is the same predicate `clear_wake_signal` needs a bool for only because
+    /// its context is shared with `signal_fd()` and every guard condition.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) fn clear_graph_change_signal(&mut self) {
+        use nros_rmw::Session as _;
+        if self.graph_change_target.is_none() {
+            return;
+        }
+        // SAFETY: clearing takes no context, and the session is still live
+        // here — this runs BEFORE `Session::close` in `close()` and before the
+        // session field is dropped in `Drop`.
+        unsafe {
+            let _ = self
+                .session
+                .set_graph_change_callback(None, core::ptr::null());
+        }
+        // Only now. The backend has been told, so nothing can be holding this
+        // pointer when it is freed.
+        self.graph_change_target = None;
+    }
+
     /// Phase 124.B.2 — opaque context pointer the runtime wake
     /// callback receives. Encodes `(flag, mu, cv)` as a borrowed
     /// `&WakeCtx` reference; the callback decodes via
@@ -4300,6 +4471,10 @@ impl<'s> Executor<'s> {
         // the backend has already torn down.
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         self.clear_wake_signal();
+        // phase-467 Row 8 — the same obligation on the graph-change slot, and
+        // it has to be discharged in the same place for the same reason.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        self.clear_graph_change_signal();
         let result = self
             .session
             .close()
@@ -7449,6 +7624,103 @@ impl<'s> Executor<'s> {
 
             Ok((HandleId(slot), guard_handle))
         }
+    }
+
+    /// phase-467 Row 8 — a guard condition the BACKEND triggers when the ROS
+    /// graph changes. Upstream's `rcl_node_get_graph_guard_condition`, under
+    /// this project's guard-condition shape.
+    ///
+    /// **The verb is upstream's, the shape is ours, and the difference is
+    /// stated rather than silent.** `rcl_node_get_graph_guard_condition`
+    /// RETURNS a borrowed handle to a guard the node owns, which the caller
+    /// then adds to a wait set. RFC-0018/0019 forbids returning an owned
+    /// handle across the C seam, we decline wait sets (RFC-0002: one executor
+    /// per RTOS task), and a guard condition here is created into CALLER
+    /// storage with its callback bound at creation. So this CREATES one —
+    /// exactly as [`register_guard_condition_on`] does — and differs from it
+    /// only in who pulls the trigger.
+    ///
+    /// Order matters and is the reason this is one verb rather than two. The
+    /// backend is asked whether it HAS a graph before a handle slot is
+    /// consumed, so a caller on XRCE or uORB gets `Unsupported` and an
+    /// unchanged executor, never a guard condition nothing will ever fire.
+    ///
+    /// [`register_guard_condition_on`]: Self::register_guard_condition_on
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub fn register_graph_change_guard_on<F>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        callback: F,
+    ) -> Result<(HandleId, GuardCondition), NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        // The probe FIRST — see the doc comment. `supports_*` asks by
+        // clearing, which is idempotent and costs nothing.
+        if !self.supports_graph_change_callback() {
+            return Err(NodeError::Transport(TransportError::Unsupported));
+        }
+        let (handle_id, guard) = self.register_guard_condition_on(node_id, callback)?;
+        self.install_graph_change_guard(&guard)?;
+        Ok((handle_id, guard))
+    }
+
+    /// The nodeless form of
+    /// [`register_graph_change_guard_on`](Self::register_graph_change_guard_on),
+    /// for an image with a session and no node — the same pairing
+    /// [`register_guard_condition`](Self::register_guard_condition) has.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub fn register_graph_change_guard<F>(
+        &mut self,
+        callback: F,
+    ) -> Result<(HandleId, GuardCondition), NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        self.register_graph_change_guard_on(None, callback)
+    }
+
+    /// The same two verbs on a build with no `rmw-cffi` backend seam, or no
+    /// allocator — they REFUSE rather than disappear.
+    ///
+    /// The cfg'd-out spelling was the first shape and it was wrong in a way
+    /// `just check fast` cannot see: `nros_node_get_graph_guard_condition` is
+    /// a C ABI symbol and calls this unconditionally, so a feature
+    /// combination without the seam stopped `nros-c` from COMPILING
+    /// (`check-build`'s `workspace-features`, which is the lane that unifies
+    /// nothing and therefore sees each combination as a user would).
+    ///
+    /// Refusing is also the honest answer rather than a compile fix. The
+    /// graph-change edge is installed on a SESSION through the backend seam;
+    /// without that seam there is no backend to install it on, and the
+    /// executor-owned target needs an allocator for the box the backend holds
+    /// a pointer to. `Unsupported` is what a caller gets from a backend with
+    /// no graph too, so the C entry point answers `NROS_RET_UNSUPPORTED` in
+    /// both cases and a ported program sees one behaviour, not two.
+    #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+    pub fn register_graph_change_guard_on<F>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        callback: F,
+    ) -> Result<(HandleId, GuardCondition), NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        let _ = (node_id, callback);
+        Err(NodeError::Transport(TransportError::Unsupported))
+    }
+
+    /// The nodeless form on a build with no backend seam — see
+    /// [`register_graph_change_guard_on`](Self::register_graph_change_guard_on).
+    #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+    pub fn register_graph_change_guard<F>(
+        &mut self,
+        callback: F,
+    ) -> Result<(HandleId, GuardCondition), NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        self.register_graph_change_guard_on(None, callback)
     }
 
     // ========================================================================
@@ -11374,6 +11646,10 @@ impl<'s> Drop for Executor<'s> {
         // zero-fills the storage the callback pointed into.
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         self.clear_wake_signal();
+        // phase-467 Row 8 — and the graph-change target, before the box it
+        // names is freed with this executor.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        self.clear_graph_change_signal();
     }
 }
 

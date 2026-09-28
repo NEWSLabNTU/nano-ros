@@ -1151,6 +1151,46 @@ pub const QOS_EVENT_PROBE_READY: &str = "QOS_EVENT_PROBE_READY";
 pub const GRAPH_PROBE_ALL_SLOTS_OK: &str = "GRAPH_PROBE_ALL_SLOTS_OK";
 
 // ---------------------------------------------------------------------------
+// phase-467 Row 8 — the graph-CHANGE edge (`graph-probe`'s watch mode).
+//
+// Eleven graph slots answer "what is in the graph". This one answers "the
+// graph MOVED", which nothing in the tree could observe before: the vtable
+// slot existed from phase-376 W4 and no backend filled it, so the eleven
+// green slots above were compatible with a graph that never notified anyone.
+// ---------------------------------------------------------------------------
+
+/// The probe has a graph-change guard condition, has seen the peer, and has
+/// latched its edge count. Everything after this line is caused by a change
+/// that happened AFTER arming — which is what makes killing the peer a real
+/// subject rather than a re-reading of the startup burst.
+///
+/// A PREFIX: the latched count follows, so a reader can tell "armed at 0"
+/// from "armed at 40" when a failure has to be explained.
+pub const GRAPH_PROBE_CHANGE_ARMED: &str = "GRAPH_PROBE_CHANGE_ARMED";
+
+/// The backend fired the graph-change edge after arming, and the executor
+/// dispatched it as a guard-condition callback on the spin thread.
+///
+/// Distinct from [`GRAPH_PROBE_CHANGE_UNSUPPORTED`] on purpose, and for the
+/// reason [`QOS_EVENT_PROBE_NONE`] is distinct from
+/// [`QOS_EVENT_PROBE_UNSUPPORTED`]: "the backend declined" and "the backend
+/// accepted and never fired" are different defects, and the second is the one
+/// a `produced` classification cannot see. `check-rmw-slot-producers`'s own
+/// report says so — a Rust backend reads as filled whether or not it
+/// implements the trait method.
+pub const GRAPH_PROBE_CHANGE_FIRED: &str = "GRAPH_PROBE_CHANGE_FIRED";
+
+/// The backend has no graph-change edge, said so before anything was
+/// allocated, and the probe made no guard condition. The honest answer from
+/// XRCE or uORB.
+pub const GRAPH_PROBE_CHANGE_UNSUPPORTED: &str = "GRAPH_PROBE_CHANGE_UNSUPPORTED";
+
+/// The backend ACCEPTED the callback and never fired it within the budget.
+/// The failure mode the eleven enumeration slots cannot produce and this cell
+/// exists to catch.
+pub const GRAPH_PROBE_CHANGE_NONE: &str = "GRAPH_PROBE_CHANGE_NONE";
+
+// ---------------------------------------------------------------------------
 // phase-433 W6 — the ADVERTISED-STATE probe (`advertised-state-probe`).
 //
 // Four slot families that are `produced` and have never met a peer: matched

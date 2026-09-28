@@ -456,6 +456,21 @@ static volatile uint32_t g_diag_start_ctx_addr = 0;
 // (two sessions' pending-get slot N must not wake each other's future).
 typedef void (*zpico_waker_fn)(int32_t session_index, int32_t slot);
 
+// Graph-change callback — invoked from the liveliness subscriber's sample
+// handler when a token PUT or DELETE actually CHANGED the cached token set
+// (phase-467 Row 8). Per-session (stored in
+// `struct zpico_session.graph_change_cb`), set via
+// `zpico_set_graph_change_cb(s, fn)`. Carries the owning session's pool index
+// for the same reason `zpico_waker_fn` does: two sessions' graph views must
+// not wake each other's guard condition.
+//
+// An EDGE, with no payload. What changed is answered by re-reading the cache,
+// which every graph query already does; buffering a diff is the graph cache a
+// small target cannot afford. The callback fires OUTSIDE the cache mutex, so a
+// handler that reads the graph cannot deadlock against the sample that woke
+// it.
+typedef void (*zpico_graph_change_fn)(int32_t session_index);
+
 // ============================================================================
 // Session pool (issue 0348 / phase-328 — multi-session handle-passing)
 // ============================================================================
@@ -569,6 +584,11 @@ struct zpico_session {
 
     // Reply waker (async service client).
     zpico_waker_fn reply_waker;
+
+    // Graph-change edge (phase-467 Row 8). NULL = nobody is listening, which
+    // is the state every image is in until something installs a graph
+    // guard condition.
+    zpico_graph_change_fn graph_change_cb;
 
 #if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1 && ZPICO_TX_BATCH_THREAD == 0
     // phase-279 (#145) — rate-limited batch-flush cadence for platforms WITHOUT
@@ -3963,11 +3983,23 @@ static void graph_cache_sample_handler(z_loaned_sample_t* sample, void* arg) {
 #if Z_FEATURE_MULTI_THREAD == 1
     _z_mutex_lock(&c->mutex);
 #endif
-    (void)zpico_graph_set_apply(c->buf, sizeof(c->buf), &c->len, &c->entry_count, &c->dropped, key,
-                                klen, z_sample_kind(sample) == Z_SAMPLE_KIND_DELETE);
+    /* phase-467 Row 8 — the return value is the CHANGE EDGE, and it was
+     * discarded with a `(void)` for as long as this handler has existed.
+     * `zpico_graph_set_apply` returns 1 exactly when the token set is now
+     * different: a PUT that inserted, or a DELETE that removed. A duplicate
+     * PUT, a DELETE of something absent and a PUT that did not fit all return
+     * 0, so a no-op never reaches the guard condition. */
+    int32_t changed =
+        zpico_graph_set_apply(c->buf, sizeof(c->buf), &c->len, &c->entry_count, &c->dropped, key,
+                              klen, z_sample_kind(sample) == Z_SAMPLE_KIND_DELETE);
 #if Z_FEATURE_MULTI_THREAD == 1
     _z_mutex_unlock(&c->mutex);
 #endif
+    /* OUTSIDE the lock: the handler this wakes reads the graph, and reading
+     * the graph takes this same mutex. */
+    if (changed == 1 && s->graph_change_cb != NULL) {
+        s->graph_change_cb((int32_t)(s - g_sessions));
+    }
 }
 
 /* The PURE half of `graph_cache_sample_handler`: apply one liveliness sample
@@ -4322,6 +4354,19 @@ int32_t zpico_get_check(zpico_session_t* session, int32_t handle, uint8_t* reply
 void zpico_set_reply_waker(zpico_session_t* session, zpico_waker_fn fn) {
     struct zpico_session* s = (struct zpico_session*)session;
     s->reply_waker = fn;
+}
+
+/* phase-467 Row 8 — install (or clear, with NULL) the graph-change edge.
+ *
+ * Idempotent and last-writer-wins, like `zpico_set_reply_waker`. Clearing is
+ * the CAPABILITY PROBE the runtime makes before it consumes an executor handle
+ * slot, so it must be cheap and must not fail. */
+void zpico_set_graph_change_cb(zpico_session_t* session, zpico_graph_change_fn fn) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (s == NULL) {
+        return;
+    }
+    s->graph_change_cb = fn;
 }
 
 // ============================================================================

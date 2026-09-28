@@ -29,7 +29,8 @@ use nros_tests::fixtures::RequireFixture;
 use std::{process::Command, time::Duration};
 
 use nros_tests::{
-    fixtures, interop,
+    fixtures, interop, output,
+    process::ManagedProcess,
     ros2::{DEFAULT_ROS_DISTRO, Ros2DdsProcess, Ros2Process, require_ros2, ros2_node_list},
 };
 
@@ -223,5 +224,172 @@ fn cyclone_enumerates_a_stock_ros2_node() {
     assert!(
         output.contains(nros_tests::output::GRAPH_PROBE_SAW),
         "cyclone must ENUMERATE the stock talker; probe said:\n{output}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// phase-467 Row 8 — the CHANGE EDGE
+// ---------------------------------------------------------------------------
+//
+// The two cases above answer "can this node READ the graph". Neither can see
+// the defect Row 8 closed: `rmw_vtable_t::node_get_graph_guard_condition` has
+// existed since phase-376 W4, no backend filled it, and eleven green
+// enumeration slots are entirely compatible with a runtime that is never told
+// the graph moved. Reading is polling; this is the push.
+//
+// **The subject is a peer LEAVING, and that choice is the whole design.** An
+// arrival cannot distinguish the two backends' real behaviour from their
+// start-up burst: zenoh's liveliness subscriber is declared with
+// `history = true`, so the tokens that already exist are delivered the moment
+// it is declared and an "arm, then wait" test passes before any peer does
+// anything. A departure cannot be manufactured that way: the liveliness token
+// has to be undeclared (zenoh), or the DDS endpoints have to be DISPOSED
+// (Cyclone), after the probe has latched its count.
+//
+// The Cyclone half of that sentence is MEASURED, and the obvious reading is
+// wrong. A killed participant republishes no `ros_discovery_info`, so the
+// reader every Cyclone graph QUERY uses never sees another sample — the first
+// run of this test armed at 1 and then reported nothing for thirty seconds.
+// What carries the departure is the dispose on the DDS builtin topics, which
+// `EndpointBatch::at` deliberately SKIPS when enumerating. The backend now
+// creates those readers when the edge is installed.
+//
+// The coordination is a MARKER, not a sleep. The probe prints (and flushes)
+// `GRAPH_PROBE_CHANGE_ARMED` once it has seen the talker and latched the
+// count; only then does the test kill the talker. A timed guess would make
+// the pass depend on discovery being slower than the sleep, which is the
+// shape that reads as a flake for a year.
+
+/// The probe's budget. Generous because the failing direction is a TIMEOUT,
+/// and the two backends reach the edge over different machinery: zenoh's
+/// liveliness undeclare is prompt, Cyclone's travels as a builtin-topic
+/// dispose that follows the peer's SPDP departure.
+const CHANGE_BUDGET_MS: &str = "30000";
+/// How long the test waits for the probe to arm, then to finish. Larger than
+/// the probe's own budget so the probe's diagnostic — which names what it
+/// saw — is what a failure reports, rather than this wrapper's timeout.
+const CHANGE_WAIT: Duration = Duration::from_secs(45);
+
+/// zenoh: a peer LEAVING fires the graph-change guard condition.
+///
+/// Interop cell: `native-graph-rust-zenoh-r2n` (`interop::CELLS`) — the same
+/// coordinate as `nano_ros_enumerates_a_stock_ros2_node`, because a
+/// coordinate is (platform, language, RMW, workload) and none of the four
+/// moved. What moved is the QUESTION, which `interop::CASE_CELLS` is the
+/// mechanism for: it maps each case of a shared binary to the cell it is
+/// evidence for, so this case and the enumeration case are recorded
+/// separately against one cell rather than standing in for each other.
+#[test]
+fn a_peer_leaving_fires_the_graph_change_guard() {
+    interop::assert_test_bound("graph_interop", &GRAPH_COORDS);
+
+    if !require_ros2() {
+        nros_tests::skip!("ROS 2 + rmw_zenoh_cpp not available");
+    }
+    let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
+    let locator = router.locator();
+
+    let talker = Ros2Process::demo_nodes_cpp_talker(&locator, DEFAULT_ROS_DISTRO)
+        .expect("start the stock talker");
+
+    let probe = fixtures::build_graph_probe().require("prebuilt graph-probe");
+    let mut cmd = Command::new(probe);
+    cmd.env("NROS_LOCATOR", &locator)
+        .env("GRAPH_PROBE_EXPECT_NODE", "talker")
+        .env("GRAPH_PROBE_WATCH_CHANGE", "1")
+        .env("GRAPH_PROBE_TIMEOUT_MS", CHANGE_BUDGET_MS);
+    let mut probe = ManagedProcess::spawn_command(cmd, "graph-probe-change")
+        .expect("spawn the graph-change probe");
+
+    let armed = probe
+        .wait_for_output_pattern(output::GRAPH_PROBE_CHANGE_ARMED, CHANGE_WAIT)
+        .expect("the probe must arm: it needs the talker in its graph first");
+    assert!(
+        !armed.contains(output::GRAPH_PROBE_CHANGE_UNSUPPORTED),
+        "zenoh declined the graph-change slot; this cell says it owes one:\n{armed}"
+    );
+
+    // THE STIMULUS. Everything the probe reports from here is caused by this.
+    drop(talker);
+
+    let rest = probe
+        .wait_for_all_output(CHANGE_WAIT)
+        .expect("the probe must finish after the talker leaves");
+    let out = format!("{armed}{rest}");
+    assert!(
+        !out.contains(output::GRAPH_PROBE_CHANGE_NONE),
+        "zenoh ACCEPTED the graph-change callback and never fired it — the state eleven \
+         `produced` read slots cannot tell from working:\n{out}"
+    );
+    assert!(
+        out.contains(output::GRAPH_PROBE_CHANGE_FIRED),
+        "a peer leaving the graph must reach the guard condition:\n{out}"
+    );
+}
+
+/// Cyclone: the same edge, over an entirely different mechanism.
+///
+/// Worth its own case for the reason the enumeration pair is a pair: zenoh
+/// learns of the departure from an undeclared `@ros2_lv` liveliness token and
+/// Cyclone from a republished `ros_discovery_info` sample reaching a
+/// participant-level `on_data_available`. Nothing under test is shared, so a
+/// green on one says nothing about the other — and the phase-467 study
+/// asserted, wrongly, that Cyclone had no change signal at all. This is where
+/// that claim is settled by measurement rather than by reading.
+///
+/// Interop cell: `native-graph-rust-cyclone-r2n` (`interop::CELLS`).
+#[test]
+fn cyclone_a_peer_leaving_fires_the_graph_change_guard() {
+    interop::assert_test_bound("graph_interop", &GRAPH_COORDS);
+
+    if !nros_tests::ros2::require_ros2_cyclonedds() {
+        nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
+    }
+
+    // A domain of our own, for the reason the enumeration case documents:
+    // Cyclone discovers by multicast SPDP and a shared domain would let
+    // another test's participants decide when this graph changes.
+    let domain = nros_tests::unique_ros_domain_id();
+
+    let talker =
+        Ros2DdsProcess::demo_nodes_cpp_talker_cyclonedds_with_domain(DEFAULT_ROS_DISTRO, domain)
+            .expect("start the stock talker on cyclone");
+
+    let probe = fixtures::build_graph_probe_rmw(nros_tests::fixtures::Rmw::Cyclonedds)
+        .require("prebuilt cyclone graph-probe");
+    let mut cmd = Command::new(probe);
+    cmd.env("GRAPH_PROBE_EXPECT_NODE", "talker")
+        .env("GRAPH_PROBE_WATCH_CHANGE", "1")
+        .env("GRAPH_PROBE_TIMEOUT_MS", CHANGE_BUDGET_MS)
+        .env("ROS_DOMAIN_ID", domain.to_string())
+        .env("NROS_DOMAIN_ID", domain.to_string());
+    // Issue 1137 — the SAME bus as the talker. `ManagedProcess::spawn_command`
+    // deliberately does not pin (a `DockerRosEnv` peer could not read the
+    // profile), so our half is pinned here, at the spawn site whose peer is a
+    // host `ros2` process.
+    nros_tests::dds_isolation::apply_to_command(&mut cmd);
+    let mut probe = ManagedProcess::spawn_command(cmd, "graph-probe-change-cyclone")
+        .expect("spawn the cyclone graph-change probe");
+    let armed = probe
+        .wait_for_output_pattern(output::GRAPH_PROBE_CHANGE_ARMED, CHANGE_WAIT)
+        .expect("the probe must arm: it needs the talker in its graph first");
+    assert!(
+        !armed.contains(output::GRAPH_PROBE_CHANGE_UNSUPPORTED),
+        "cyclone declined the graph-change slot; this cell says it owes one:\n{armed}"
+    );
+
+    drop(talker);
+
+    let rest = probe
+        .wait_for_all_output(CHANGE_WAIT)
+        .expect("the probe must finish after the talker leaves");
+    let out = format!("{armed}{rest}");
+    assert!(
+        !out.contains(output::GRAPH_PROBE_CHANGE_NONE),
+        "cyclone ACCEPTED the graph-change callback and never fired it:\n{out}"
+    );
+    assert!(
+        out.contains(output::GRAPH_PROBE_CHANGE_FIRED),
+        "a peer leaving the graph must reach the guard condition:\n{out}"
     );
 }

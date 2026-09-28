@@ -544,6 +544,15 @@ unsafe extern "C" {
         func: Option<unsafe extern "C" fn(i32, i32)>,
     );
 
+    // phase-467 Row 8 — the graph-CHANGE edge, per-session. The callback
+    // receives the session's pool index, so the Rust target table is
+    // session-scoped exactly as the reply-waker table is (issue 0376). NULL
+    // clears, and a clear is also how the runtime probes for the capability.
+    pub fn zpico_set_graph_change_cb(
+        session: *mut zpico_session_t,
+        func: Option<unsafe extern "C" fn(i32)>,
+    );
+
     // Phase 127.D — get/get_check/reply-handler/dropper diagnostic counters
     // (process-global — see the zpico_session_t exception note above).
     // out fills with [get_start, get_check, get_check_returns_data,

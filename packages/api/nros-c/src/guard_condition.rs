@@ -236,6 +236,125 @@ pub unsafe extern "C" fn nros_node_create_guard_condition(
     }
 }
 
+/// Upstream `rcl_node_get_graph_guard_condition` — a guard condition the
+/// BACKEND triggers when the ROS graph changes (phase-467 Row 8).
+///
+/// **Upstream's NAME over [`nros_node_create_guard_condition`]'s SHAPE, and
+/// that envelope is stated rather than silent.** `rcl_node_get_graph_guard_
+/// condition(node)` RETURNS a borrowed pointer to a guard the node already
+/// owns, and the only documented thing to do with it is
+/// `rcl_wait_set_add_guard_condition`. Two constraints rule that out here:
+/// RFC-0018/0019 forbids returning an owned handle across this seam (every
+/// entity is created into caller storage, status in the return), and we
+/// decline wait sets entirely (RFC-0002 — one executor per RTOS task). So
+/// this CREATES a guard condition into `out` with `callback` bound at
+/// creation, exactly like its sibling, and differs from it only in who pulls
+/// the trigger: there the application, here the backend's discovery path. A
+/// ported file that tries to put the handle in a wait set fails at the wait
+/// set, not at this name.
+///
+/// The callback is an EDGE and carries nothing. "What changed" is answered by
+/// re-reading the graph (`nros_node_get_names`, `nros_count_publishers`, …);
+/// delivering a diff would mean buffering the graph, which is the cache a
+/// small target cannot afford, and the ABI slot has said so since phase-376
+/// W4.
+///
+/// # Ordering
+/// As [`nros_node_create_guard_condition`]: `node` must be bound to an
+/// executor through `nros_executor_node_init`.
+///
+/// # Returns
+/// * `NROS_RET_OK` — created, registered, and the backend will trigger it.
+/// * `NROS_RET_UNSUPPORTED` — this backend has no graph (XRCE, uORB), asked
+///   BEFORE anything is consumed, so `out` is untouched and no handle slot is
+///   spent. Never `OK` with a guard nothing fires: that silent difference is
+///   what RFC-0089 Part I refuses.
+/// * `NROS_RET_INVALID_ARGUMENT` — `node` or `out` is NULL.
+/// * `NROS_RET_NOT_INIT` — the node is uninitialised, is not bound to an
+///   executor, or that executor has been finalised.
+/// * `NROS_RET_BAD_SEQUENCE` — `out` is not zero-initialised.
+/// * `NROS_RET_FULL` — the executor's handle table is full.
+///
+/// # Safety
+/// * `node` must point to a valid, executor-bound `nros_node_t`.
+/// * `out` must point to writable storage that outlives the executor.
+///
+/// Note what `out` is NOT: the backend never receives a pointer to it. The
+/// executor keeps its own handle to the same arena flag and retires it from
+/// the backend before freeing it, so a caller that frees or reuses this
+/// struct cannot leave the backend calling into dead storage — issue 1385's
+/// hazard, designed out rather than fixed afterwards.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_node_get_graph_guard_condition(
+    node: *mut crate::node::nros_node_t,
+    out: *mut nros_guard_condition_t,
+    callback: nros_guard_condition_callback_t,
+    context: *mut c_void,
+) -> nros_ret_t {
+    validate_not_null!(node, out);
+
+    let node_ref = &*node;
+    validate_state!(
+        node_ref,
+        crate::node::nros_node_state_t::NROS_NODE_STATE_INITIALIZED
+    );
+
+    let guard = &mut *out;
+    validate_state!(
+        guard,
+        nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_UNINITIALIZED,
+        NROS_RET_BAD_SEQUENCE
+    );
+
+    if !node_ref.is_executor_bound() {
+        return NROS_RET_NOT_INIT;
+    }
+
+    let executor = &mut *(node_ref.executor as *mut crate::executor::nros_executor_t);
+    validate_state!(
+        executor,
+        crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    if executor.handle_count >= executor.max_handles {
+        return NROS_RET_FULL;
+    }
+
+    let node_id = nros_node::executor::NodeId::from_raw(node_ref.node_id);
+    let rust_exec = crate::executor::get_executor(&mut executor._opaque);
+
+    let wrapper = move || {
+        if let Some(cb) = callback {
+            // SAFETY: as the sibling — the C callback and its context remain
+            // valid for the lifetime of the executor; registration is one-way.
+            cb(context);
+        }
+    };
+
+    match rust_exec.register_graph_change_guard_on(Some(node_id), wrapper) {
+        Ok((handle_id, guard_handle)) => {
+            guard.callback = callback;
+            guard.context = context;
+            guard.triggered = false;
+            guard.set_handle_id(handle_id);
+            guard.set_guard_handle(guard_handle);
+            guard.state = nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
+            crate::executor::record_trigger_entity(
+                &mut executor._handle_entities,
+                handle_id,
+                out as *mut c_void,
+            );
+            executor.handle_count += 1;
+            NROS_RET_OK
+        }
+        // The probe runs BEFORE the registration, so this arm has consumed
+        // nothing — `out` is still zero and the handle table is unchanged.
+        Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
+            NROS_RET_UNSUPPORTED
+        }
+        Err(_) => NROS_RET_ERROR,
+    }
+}
+
 /// Trigger a guard condition — thread-safe and lock-free.
 ///
 /// Stores into the atomic flag the executor's arena holds for this guard and
