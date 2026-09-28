@@ -403,27 +403,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_qemu_riscv32_detection() {
-        let available = is_qemu_riscv32_available();
-        eprintln!("qemu-system-riscv32 available: {}", available);
-    }
-
-    #[test]
-    fn test_riscv32_target_detection() {
-        let available = is_riscv32_target_available();
-        eprintln!(
-            "riscv32imc-unknown-none-elf target available: {}",
-            available
-        );
-    }
-
-    #[test]
-    fn test_espflash_detection() {
-        let available = is_espflash_available();
-        eprintln!("espflash available: {}", available);
-    }
-
-    #[test]
     fn flasher_args_derives_qemu_machine() {
         // phase-295 W5.b — the QEMU machine model must come from the
         // framework's `flasher_args.json`, not a hardcoded string. Uses the

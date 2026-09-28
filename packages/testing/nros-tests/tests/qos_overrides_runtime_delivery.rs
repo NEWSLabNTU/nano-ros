@@ -36,7 +36,8 @@ use std::{process::Command, time::Duration};
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, ZenohRouter, build_qos_override_pubsub, require_zenohd, zenohd_unique,
+        ManagedProcess, RequireFixture, ZenohRouter, build_qos_override_pubsub, require_zenohd,
+        zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -71,10 +72,9 @@ fn qos_override_best_effort_honored_and_delivers(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
-    let bin = match build_qos_override_pubsub() {
-        Ok(p) => p.to_path_buf(),
-        Err(e) => panic!("qos-override-pubsub fixture not built: {e}"),
-    };
+    let bin = build_qos_override_pubsub()
+        .require("qos-override-pubsub")
+        .to_path_buf();
     let locator = zenohd_unique.locator();
 
     // Subscriber first so its declaration precedes the publisher's samples.
@@ -148,10 +148,9 @@ fn qos_default_without_override_is_reliable(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
-    let bin = match build_qos_override_pubsub() {
-        Ok(p) => p.to_path_buf(),
-        Err(e) => panic!("qos-override-pubsub fixture not built: {e}"),
-    };
+    let bin = build_qos_override_pubsub()
+        .require("qos-override-pubsub")
+        .to_path_buf();
     let locator = zenohd_unique.locator();
 
     let mut talker = ManagedProcess::spawn_command(

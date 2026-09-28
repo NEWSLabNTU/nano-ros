@@ -26,7 +26,7 @@
 
 use nros_tests::{
     fixtures::{
-        DEFAULT_ROS_DISTRO, ManagedProcess, ZenohRouter,
+        DEFAULT_ROS_DISTRO, ManagedProcess, RequireFixture, ZenohRouter,
         build_native_workspace_rust_cyclonedds_entry, build_native_workspace_rust_entry,
         is_rmw_zenoh_available, is_ros2_available, require_zenohd, ros2_node_list, zenohd_unique,
     },
@@ -108,12 +108,9 @@ fn rust_multi_node_entry_per_node_graph_nodes(
         nros_tests::skip!("rmw_zenoh_cpp not found");
     }
 
-    let entry = match build_native_workspace_rust_entry() {
-        Ok(p) => p.to_path_buf(),
-        Err(e) => {
-            panic!("workspace-rust-native native_entry fixture not built: {e}")
-        }
-    };
+    let entry = build_native_workspace_rust_entry()
+        .require("workspace-rust-native native_entry")
+        .to_path_buf();
 
     let locator = zenohd_unique.locator();
 
@@ -145,12 +142,9 @@ fn rust_multi_node_entry_per_node_graph_nodes_cyclonedds() -> nros_tests::TestRe
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
     }
 
-    let entry = match build_native_workspace_rust_cyclonedds_entry() {
-        Ok(p) => p.to_path_buf(),
-        Err(e) => nros_tests::skip!(
-            "workspace-rust-native-cyclonedds native_cyclonedds_entry fixture not built: {e}"
-        ),
-    };
+    let entry = build_native_workspace_rust_cyclonedds_entry()
+        .require("workspace-rust-native-cyclonedds native_cyclonedds_entry")
+        .to_path_buf();
 
     // A domain of our own: Cyclone discovers by SPDP, so a shared domain would
     // let another test's nodes into this listing and break the equality below.

@@ -86,10 +86,17 @@ def offenders_in(text):
 
 
 def sources():
+    """Every tracked `.rs` — by file KIND, not by directory (issue 1544).
+
+    This read `packages/testing` alone, while `ZenohRouter` is a dev-dependency
+    any crate can take: six `.expect()`s sat in `packages/rmw/zenoh`'s own tests
+    and the gate reported OK. A directory list is a claim about where the
+    subject lives, and the subject moved.
+    """
     listing = subprocess.run(
-        ["git", "-C", ROOT, "ls-files", "packages/testing"],
+        ["git", "-C", ROOT, "ls-files", "-z", "*.rs"],
         capture_output=True, text=True, check=False,
-    ).stdout.split()
+    ).stdout.split("\0")
     return [f for f in listing if f.endswith(".rs")]
 
 
@@ -110,11 +117,20 @@ def self_test():
     if offenders_in('let p = PathBuf::from("x").expect("y");'):
         bad.append("an unrelated .expect was flagged")
 
+    # The population must reach outside `packages/testing` (issue 1544) — a
+    # green over a scan that has narrowed back is indistinguishable from a
+    # real one without this floor.
+    srcs = sources()
+    if not any(f.startswith("packages/rmw/") for f in srcs):
+        bad.append("the scan no longer reaches packages/rmw/ — sources() has narrowed")
+    if not srcs:
+        bad.append("the scan found no .rs files at all")
+
     if bad:
         for b in bad:
             sys.stderr.write("check-zenohd-router-skips --self-test: " + b + "\n")
         return 2
-    print("check-zenohd-router-skips --self-test: OK (5 case(s))")
+    print("check-zenohd-router-skips --self-test: OK (7 case(s))")
     return 0
 
 
@@ -149,7 +165,7 @@ def main(argv):
         )
         return 1
 
-    print(f"check-zenohd-router-skips: OK ({len(sources())} test source(s), no bare unwraps)")
+    print(f"check-zenohd-router-skips: OK ({len(sources())} tracked .rs file(s), no bare unwraps)")
     return 0
 
 

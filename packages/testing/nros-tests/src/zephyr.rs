@@ -1467,20 +1467,4 @@ mod tests {
         );
         assert_eq!(ZephyrPlatform::QemuArm.board_spec(), "qemu_cortex_m3");
     }
-
-    #[test]
-    fn test_west_detection() {
-        let available = is_west_available();
-        eprintln!("west available: {}", available);
-    }
-
-    #[test]
-    fn test_workspace_detection() {
-        if let Some(path) = zephyr_workspace_path() {
-            eprintln!("Zephyr workspace: {}", path.display());
-            assert!(path.exists());
-        } else {
-            eprintln!("Zephyr workspace not found");
-        }
-    }
 }

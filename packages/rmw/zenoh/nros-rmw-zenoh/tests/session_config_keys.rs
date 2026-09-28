@@ -113,7 +113,7 @@ fn keys_the_hand_written_map_lacked_are_accepted() {
         // and `check-skip-budget`'s baseline is keyed on that text.
         nros_tests::skip!("{why}");
     }
-    let router = nros_tests::fixtures::ZenohRouter::start_unique().expect("start zenohd");
+    let router = nros_tests::fixtures::or_skip(nros_tests::fixtures::ZenohRouter::start_unique());
     let locator = router.locator();
     let cfg = client_config(
         &[

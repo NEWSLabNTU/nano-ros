@@ -1453,12 +1453,9 @@ fn test_zephyr_cpp_talker_to_native_listener() {
     let router = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
     let locator = router.locator();
     // Build native Rust listener
-    let native_listener = match build_native_listener() {
-        Ok(p) => p.to_path_buf(),
-        Err(e) => {
-            nros_tests::skip!("could not build native listener: {}", e);
-        }
-    };
+    let native_listener = build_native_listener()
+        .require("native listener")
+        .to_path_buf();
 
     // Build Zephyr C++ talker
     let talker_binary = resolve_example(Lang::Cpp, "talker", Rmw::Zenoh);
@@ -1533,12 +1530,7 @@ fn test_native_talker_to_zephyr_cpp_listener() {
     let router = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
     let locator = router.locator();
     // Build native Rust talker
-    let native_talker = match build_native_talker() {
-        Ok(p) => p.to_path_buf(),
-        Err(e) => {
-            nros_tests::skip!("could not build native talker: {}", e);
-        }
-    };
+    let native_talker = build_native_talker().require("native talker").to_path_buf();
 
     // Build Zephyr C++ listener
     let listener_binary = resolve_example(Lang::Cpp, "listener", Rmw::Zenoh);

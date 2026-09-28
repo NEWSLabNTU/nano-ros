@@ -2177,25 +2177,6 @@ mod tests {
         assert!(!setup.contains("ZENOH"));
     }
 
-    #[test]
-    fn test_ros2_detection() {
-        // Just verify detection works, don't require ROS 2
-        let available = is_ros2_available();
-        eprintln!("ROS 2 available: {}", available);
-    }
-
-    #[test]
-    fn test_rmw_zenoh_detection() {
-        let available = is_rmw_zenoh_available();
-        eprintln!("rmw_zenoh_cpp available: {}", available);
-    }
-
-    #[test]
-    fn test_rmw_fastrtps_detection() {
-        let available = is_rmw_fastrtps_available();
-        eprintln!("rmw_fastrtps_cpp available: {}", available);
-    }
-
     /// Issue 0690 — the report shape, taken verbatim from issue 0312's capture
     /// plus a second publisher, which is the situation the sweep produces.
     const TWO_PUBLISHERS: &str = "\

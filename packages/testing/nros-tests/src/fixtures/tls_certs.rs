@@ -87,17 +87,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_openssl_available() {
-        // Just check detection works
-        let available = is_openssl_available();
-        eprintln!("openssl available: {}", available);
-    }
-
-    #[test]
     fn test_generate_certs() {
         if !is_openssl_available() {
-            eprintln!("Skipping: openssl not available");
-            return;
+            crate::skip!("openssl not available");
         }
 
         let certs = TlsCerts::generate().expect("Failed to generate certs");
