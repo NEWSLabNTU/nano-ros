@@ -1,12 +1,49 @@
 # Phase 467 — the last thirteen `gap` rows: a design study, not an implementation
 
-**Status (2026-09-25). STUDY ONLY, and deliberately so. Nothing here is
+**Status (AMENDED 2026-09-28). THE STUDY WAS EXECUTED. Eight of the thirteen
+rows have SHIPPED and the ledger is at 5 repo-wide, down from 13 when this was
+written. The text below is kept as the reasoning that produced those decisions,
+not as a description of the tree — read a section's own `LANDED` / `AMENDED`
+block before acting on the prose above it.**
+
+**Three of the study's findings were REFUTED by the work, and each is corrected
+in place:** Q1's "one identifier, two widths" framing, Row 8's "Cyclone has no
+change signal at all" (its split recommendation is WITHDRAWN), and Q3's cost
+estimate. A fourth, Row 11's premise about where remaps come from, was false in
+five places in the TREE and is fixed there. Two of the eight rows were closed by
+DELETING the row rather than building anything, which was the right answer and
+is not what a study predicts well.
+
+| row | outcome |
+| --- | --- |
+| Q1 `cpp:Publisher::get_gid` | SHIPPED — #1321, after #1305 widened the gid to 24 |
+| Q2 `rust:Session::serialization_format` | SHIPPED — #1299 |
+| Q3 `rust:Time::to_ros_msg` | SHIPPED — #1318; see "Q3 … LANDED" |
+| Q4 the `/rosout` family | SETTLED — #1303; the TOPIC row stays open, correctly |
+| Row 5 `c:log_severity_t` | CLOSED as `divergence` — #1320, envelope permanent |
+| Row 6 `rust:Context::domain_id` | SHIPPED, row DELETED — #1317 |
+| Row 7 `cpp:Publisher::assert_liveliness` | SHIPPED — #1321 |
+| Row 8 `c:node_get_graph_guard_condition` | **STILL OPEN**, recommendation withdrawn — #1322 |
+| Row 9 `c:lifecycle_change_state` | **STILL OPEN** — unchanged, still the expensive one |
+| Row 10 `rust:Logger::set_default_level` | CLOSED as `divergence` — #1302 |
+| Row 11 `rust:init_with_args` | **STILL OPEN**, premise refuted — #1317 |
+| Row 12 `cpp:Node::create_subscription` | SHIPPED — #1321 |
+| Row 13 `cpp:Subscription::get_actual_qos` | SHIPPED, row DELETED — #1321 |
+
+**What remains after this phase is 5 rows, and this study no longer scopes
+them:** Rows 8, 9 and 11 above, `c:logging_rosout_enabled` (Q4's topic half),
+and `cpp:Client::wait_for_service`, which arrived after this was written and no
+section here examines. **Two of the five are blocked on the same thing** — a
+live graph cell, which phase-444 W2 still owes — so the hardware run gates more
+than its own counter.
+
+*Original status, 2026-09-25:* STUDY ONLY, and deliberately so. Nothing here is
 implemented and no build was run — ten of the thirteen rows below carry a
 "needs a compile nobody ran" line, which is a finding, not an apology. The
 deliverable is a decision per row: four of the thirteen are genuine design
 questions and are stated as questions with options and a recommendation; the
 other nine are sized. Read §"Sequencing" first — it is the only section that
-answers "what do I do Monday".**
+answers "what do I do Monday".
 
 Implements RFC-0089 (the compile-or-conform rule and the four dispositions) and
 RFC-0036 (a divergence must name a platform constraint, never a preference).
@@ -188,6 +225,29 @@ own item.
 
 ## Q1 — the publisher GID: what is the right reconciliation, and what does it cost?
 
+**LANDED 2026-09-28 (#1305 then #1321), and THIS SECTION'S FRAMING WAS WRONG.**
+The question above assumes one identifier at two widths. It is two identifiers:
+`rmw_gid_t::data` (24 B) is produced by **Cyclone only**, and
+`MessageInfo::publisher_gid` (16 B) by **zenoh only** — no backend produces
+both, so the silence this section calls a wrong answer was the ABSENCE of an
+answer. The recommendation (widen to 24, zero-padded, wire unchanged) was still
+the right move and shipped, with `nros_core::pad_publisher_gid<const N>` as the
+one spelling and an over-wide source a compile error. Cost measured:
+`MessageInfo` 48 → 56 B, ×64 in cffi's slot table = **+512 B static**.
+
+**A fourth step was owed that no document knew about.** The Rust-adapter vtable
+left `get_gid_for_publisher` NULL, so a Rust backend with a real publisher
+identity had no route to ANY language surface. #1321 added the trampoline and
+`ZenohPublisher::get_gid`; the attachment stays 16 on the wire.
+
+**And the correction that matters for anyone reading the row:** a pure C/C++
+backend writes NO `MessageInfo` at all, so Cyclone's `publisher_gid` is `None`
+— not zeros. "All-zero" is an unpopulated struct, never an answer. Making each
+backend produce both identities from one source is **issue 1495**, deliberately
+separate: it changes a value a stock ROS 2 peer reads and needs phase-444 W2's
+live-peer lane.
+
+
 ### What is actually true
 
 The row says the two gids "are the SAME identifier under upstream semantics"
@@ -286,6 +346,16 @@ interop wire value.
 recompiles most of the workspace.
 
 ## Q2 — `serialization_format`: what shape lets a backend say "I have not said"?
+
+**LANDED 2026-09-28 (#1299), as recommended: `Option<&'static str>`, default
+`Some(Self::SERIALIZATION_FORMAT)`, with the `unwrap_or` AND the doc comment
+that rationalised it deleted in the same commit.** Two measurements sharpen
+this section: the blast radius was ONE trait-method caller in the tree, and
+`nros-rmw` has **21** direct dependents, not the 18 counted here. The accessor
+is on `NodeHandle`, not `Node` — `Node::serialization_format` in the report is
+the C++ one. Negative control: restoring the `unwrap_or` fails the new
+silent-backend assertion with `left: Some("cdr")`, `right: None`.
+
 
 ### What is actually true
 
@@ -501,6 +571,23 @@ the trait adds two ours-only rows, `rust:SecNanosecMsg` and
 
 ## Q4 — settle the `/rosout` family one way
 
+**LANDED 2026-09-28 (#1303), but NOT as the blanket re-verdict recommended
+below.** This section proposes making the whole family `gap`. That is too
+coarse: the rows have two subjects. The TYPE `rclcpp::RosoutQoS` ships on our
+ported surface with its four policies transcribed, so `gap` would assert an
+absence that is not there. Only the TOPIC is missing.
+
+What shipped: `cpp:RosoutQoS` and `cpp:RosoutQoS::RosoutQoS` moved
+`declined`+`adopt` → **`divergence`+`adopt-bounded`**;
+`cpp:NodeOptions::rosout_qos` is UNCHANGED (its subject really is an undeclared
+member); and `c:logging_rosout_enabled` is UNCHANGED as `gap`+`absent` — it was
+the row the family should have agreed with, and it **remains open**, because
+the `/rosout` topic still needs a `RosoutSink`. The asymmetric-reversibility
+argument below is what decided it and it stands. Also fixed: `RosoutQoS`'s
+disposition read `adopt` while its own prose concluded ADOPT-BOUNDED — the
+field had drifted from its reason, and nothing pairs the two.
+
+
 ### What is actually true
 
 Three rows, two verdicts, one fact:
@@ -591,6 +678,19 @@ three rows lying to each other.
 # The other eight rows
 
 ## Row 5 — `c:log_severity_t` [gap, adopt-bounded]: is the envelope permanent?
+
+**CLOSED 2026-09-28 (#1320) — the envelope is PERMANENT, so the row is a
+`divergence`, not work.** The argument that carried it is structural, not "no
+consumer today": the dotted hierarchy has no producer (`get_child`/`create_child`
+are already `divergence` rows on the same constraint), and upstream's resolver
+reads a structure we do not have — rcutils keys levels by NAME in an
+allocator-backed map, so an ancestor carries a level without being a logger,
+while ours keys by OBJECT (an `AtomicU8` inside the `Logger`, one of 32 intern
+slots). The loop is not the expensive half; the name-keyed map is. Correction
+to this section's own earlier reasoning: "no logger name in the tree is dotted"
+is a fact about today's names — `get_logger("nav.costmap")` interns one
+whenever a user wants. What holds is that a dot here buys no PARENT.
+
 
 **Owed:** `UNSET` means INHERIT upstream; here it is the numeric floor and
 selects `TRACE`, the most verbose level. Our side: `to_facade`
@@ -689,6 +789,17 @@ is a cost with no consumer.
 
 ## Row 6 — `rust:Context::domain_id` [gap, absent]: the return type IS the question
 
+**SHIPPED 2026-09-28 (#1317), row DELETED — and this section was two-thirds
+right in a way that mattered.** It says `InitOptions::with_domain_id` /
+`set_domain_id` / `domain_id` "already take and return `usize`". Measured: the
+two setters do; **`InitOptions::domain_id()` returned `Option<u32>`**, the
+stored width. Shipping only `Context::domain_id() -> usize` would have
+DISPLACED the inconsistency onto `InitOptions` rather than removed it, so that
+getter moved to `Option<usize>` too — also rclrs 0.7.0's signature. The test
+pins the TYPE (`let d: usize = ctx.domain_id();`), since an unannotated literal
+would infer whatever the accessor returns and pass against `u32` as well.
+
+
 **Owed:** an accessor. `Context::domain_id` is a public `u32` field
 (`packages/api/nros/src/init.rs:183`, verified), rclrs's is
 `domain_id(&self) -> usize`, and `InitOptions::with_domain_id` /
@@ -713,6 +824,20 @@ is one line. Fix the disposition in the same edit.
 **Risk:** minimal. **Needs a compile nobody ran:** yes, trivially.
 
 ## Row 7 — `cpp:Publisher::assert_liveliness` [gap, adopt]: what would real assertion require?
+
+**SHIPPED 2026-09-28 (#1321), and the row's premise needed correcting: this is
+NOT uniformly a no-op — Cyclone implements it** (`dds_assert_liveliness`, issue
+1231). The finding is zenoh-specific, and even zenoh is not inert: its
+timestamp drives a LOCAL `LivelinessLost` event. Two things were implemented
+nowhere despite being specified: `rmw_vtable.h` has said since phase 108 that a
+NULL slot answers OK for AUTOMATIC/NONE and UNSUPPORTED for MANUAL_*, while the
+cffi arm answered `Unsupported` unconditionally — its own comment claiming the
+runtime caller gates by liveliness_kind, which `EmbeddedPublisher::assert_liveliness`
+does not do, it forwards. Both halves now key on one predicate,
+`QoSLivelinessPolicy::is_manual`. And `nros_cpp_publisher_assert_liveliness`
+flattened EVERY error to `NROS_CPP_RET_ERROR`, so no C++ caller could ever have
+observed `UNSUPPORTED`.
+
 
 **Owed:** the row's return-type half is closed in practice (`Result` is
 `[[nodiscard]]`-shaped and inverts loudly). What is open is behaviour, and it
@@ -752,6 +877,50 @@ that, so check no in-tree image treats a non-OK here as fatal before landing.
 **Needs a compile nobody ran:** yes, and a zenoh runtime cell.
 
 ## Row 8 — `c:node_get_graph_guard_condition` [gap, adopt]: is it even the right primitive?
+
+**AMENDED 2026-09-28 (#1322) — STILL OPEN, and THIS SECTION'S HEADLINE
+MEASUREMENT WAS WRONG. Its recommendation to SPLIT the row is WITHDRAWN.**
+
+This section said Cyclone "has no change signal at all" and that giving it one
+changes that backend's threading model, so the row should be split and Cyclone's
+half filed separately. Measured 2026-09-25: **the listener is installed on the
+PARTICIPANT, not per reader** — `dds_set_listener(state->participant, …)` in
+`src/session.cpp`, whose own comment says DDS propagates an unhandled event to
+the parent so one listener covers every reader the session will ever create.
+`graph_init` puts the graph topic on that same participant, so
+`on_data_available` ALREADY fires; it just drops its first parameter, and
+`reader == graph_reader` is the whole discriminator. zenoh is the same shape:
+`graph_cache_sample_handler` calls `zpico_graph_set_apply`, **which already
+returns whether the set changed**, and the caller `(void)`s it.
+
+Both backends receive the edge and discard the discrimination, one line each.
+**So there is nothing separable to file, and no Cyclone issue was filed** — the
+shared plumbing is the large half.
+
+**Why it was not built anyway, itemised:** a new `nros_rmw::Session` method (the
+ABI slot has never had a trait twin → workspace recompile); a `CffiSession`
+forward plus a `rust_adapter.rs` vtable row that produces the slot for EVERY
+Rust backend at once; the zpico C hook in five pieces plus the hand-written
+extern, the `ffi.rs` no-C fallback and a cbindgen regen of the committed
+`zpico.h`; an executor-owned install/clear pair, because handing the backend a
+pointer to the caller's `nros_guard_condition_t` recreates issue 1385's
+dangling-callback hazard; and deleting `check-rmw-slot-producers.py`'s
+`INERT_FAMILIES["graph-guard"]`. Neither half can be honestly accepted without
+a live graph cell, which **phase-444 W2** still owes.
+
+Two pricing corrections in the CHEAPER direction: **no `NROS_CODEGEN_VERSION`
+bump** (that surface is what codegen NAMES, and no pack names this symbol), and
+the header owes a NULL sentence that must land in the same commit as the
+consumer, because `check-rmw-slot-producers.py` fails a reachable slot with
+neither.
+
+**The design question this section asks is answered: the primitive is right,
+the VERB is not.** `rcl_node_get_graph_guard_condition` RETURNS a borrowed
+node-owned handle; RFC-0018/0019 forbids returning an owned handle and our
+guards are created into caller storage with the callback bound at creation. So
+the entry point is upstream's NAME over `nros_node_create_guard_condition`'s
+SHAPE — a stated envelope, which is why this was never "one forwarder".
+
 
 **Owed:** both halves — an accessor AND a backend that triggers it. Verified
 NULL in Cyclone (`vtable.cpp:456`) and uORB (`vtable.cpp:147`); zenoh does not
@@ -848,6 +1017,17 @@ counts.
 
 ## Row 10 — `rust:Logger::set_default_level` [gap, adopt]
 
+**CLOSED 2026-09-28 (#1302) as `divergence`+`adopt-bounded`, together with Row
+5 — they are one mechanism, exactly as §"The one real shared blocker" says.**
+One `AtomicU8` plus one sentinel closed both. Hot-path cost MEASURED rather
+than reasoned (`rustc -O`, instruction counts at an inlined call site, with a
+writer present so LLVM could not constant-fold the global): `thumbv7m-none-eabi`
+8 → **13, branch-free**; `x86_64` 4 → **10**. One compare against an immediate,
+plus a byte load a logger with its own level never performs. The sentinel is
+`u8::MAX`, above `Fatal`, so an unresolved sentinel can only ever suppress —
+never emit at the most verbose level.
+
+
 **Owed:** the capability, then the name — the row is right and the measurement
 confirms it. `Logger::new` hard-codes `Severity::Info`
 (`packages/core/nros-log/src/lib.rs:210-211`); `register_logger` (`:380`),
@@ -866,6 +1046,29 @@ that `UNSET` reads.
 **Risk:** low. **Needs a compile nobody ran:** yes, with row 5.
 
 ## Row 11 — `rust:init_with_args` [gap, adopt-bounded]
+
+**AMENDED 2026-09-28 (#1317) — STILL OPEN, and THIS SECTION'S QUESTION HAD A
+FALSE PREMISE.** It asks whether argv remaps should override launch-projected
+ones or be refused in their presence. Measured: **launch remaps and parameter
+overrides are never projected into the process environment at all.** They are
+projected into the GENERATED ENTRY at build time — `runtime.remaps` /
+`runtime.params` from `codegen/entry/emit_rust.rs`, and
+`nros_cpp_declare_remap` / `nros_cpp_declare_param` calls before the component
+configure from `emit_c.rs` / `emit_cpp.rs`. `read_env_context` resolves domain,
+locator, session mode and RMW hint; `Context` has five fields and none is a
+remap. `init_with_launch*` parse nothing.
+
+**That false sentence was live in five places in the tree, one of them
+`REFUSE_INIT_ARGS` itself** — i.e. the diagnostic that tells a porting user
+where remaps come from was wrong. Fixed as a class in #1317.
+
+So the decision is NOT "override or refuse". Upstream has one channel (launcher
+→ argv → node); here the rules resolve at codegen time, so argv would be a
+SECOND channel that can disagree inside any `nros sync`-generated image.
+**What is owed before a parser is small and named:** `RemapRule` records no
+provenance and `resolve_entity_name_for` takes the first match, so the
+mechanism is a provenance field plus an ordering guarantee at `declare_remap`.
+
 
 **Owed:** the `--ros-args` parse, and nothing else. Verified:
 `init_with_args` (`packages/api/nros/src/init.rs:657`) calls `refuse_ros_args`
@@ -898,6 +1101,14 @@ and the disposition change the 2026-09-23 pass made is correct.
 **Needs a compile nobody ran:** not applicable; nothing to build yet.
 
 ## Row 12 — `cpp:Node::create_subscription` [gap, adopt]: the argument order
+
+**SHIPPED 2026-09-28 (#1321), and the evidence was stronger than this section
+knew.** `log.hpp`'s runtime abort advisory already told users to write
+`node.create_subscription(sub, topic, qos, cb)` — the order that did not
+compile. The cost was also larger: this section enumerates `create_subscription`
+callers only, and **four** in-tree sites moved, including a real one in
+`examples/workspaces/safety`.
+
 
 **Owed:** the open half is the native callback overload's
 `(out, topic, callback, qos = default, options = {})`
@@ -957,6 +1168,17 @@ consumer pays. Worth a changelog fragment.
 **Needs a compile nobody ran:** yes — `just check cpp` plus the compile tests.
 
 ## Row 13 — `cpp:Subscription::get_actual_qos` [gap, adopt]: the row that arrived mid-study
+
+**SHIPPED 2026-09-28 (#1321), row DELETED, and taken HERE rather than deferred
+to phase-456 as this section suggests.** Option (a) is the pattern
+`rclcpp::Client` already uses — `{executor_, handle_id_}` into the same FFI —
+so it cost one `void*` on the dispatch subscription. This section's measurement
+that kills the resolve-by-handle-id option (a `handle_id` is executor-scoped,
+so it would need a global executor registry) stands and is why (a) is the
+shape. The row was DELETED rather than re-verdicted because the shape now
+corresponds exactly and matches the publisher twin `cpp:Publisher::get_actual_qos`,
+which has never carried a row.
+
 
 **This row did not exist when the other twelve were measured.** It was filed by
 phase-456 W2b and reached this branch's base in the 88 commits between the
