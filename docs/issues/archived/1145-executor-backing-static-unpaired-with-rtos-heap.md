@@ -3,11 +3,31 @@ id: 1145
 title: "The executor backing is a `.bss` static now, but on an RTOS the allocator
   arena it used to come out of was never lowered — so those images reserve the
   same bytes twice, and nobody has measured it"
-status: open
+status: resolved
+resolved: 2026-09-29
 type: tech-debt
 area: core
-related: [phase-392, RFC-0002, 0163, 0880, phase-448]
+related: [phase-392, RFC-0002, 0163, 0880, phase-448, 1557]
 ---
+
+## Resolution (2026-09-29)
+
+Closed as done for every platform it covered; the remainder — `threadx-riscv64`'s
+unstated backing size and the undeclared allocator bases — is
+[issue 1557](../1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md).
+
+- **Zephyr** — paired 2026-09-06: one leaf, then all twelve Rust confs with a
+  picolibc arena, via the stated `CONFIG_NROS_EXECUTOR_BACKING_U64S` (issue
+  1171). The six XRCE confs have no arena and correctly state nothing (issue 1189).
+- **NuttX** — nothing to pair, measured 2026-09-12: the heap is a boot-time
+  leftover after `.bss`, so the backing is paid once.
+- **FreeRTOS** — done 2026-09-12 (phase-448 W3/W4, issue 1197): the zenoh heap is
+  a derivation with no backing term, because `backing::take` latches the first
+  executor onto the static.
+- **ESP32** — paired 2026-09-10 by `ffc614252`, re-measured and re-run 2026-09-12.
+- **ThreadX (`threadx-linux`)** — paired 2026-09-12 through
+  `[board.knobs.executor] backing_u64s`; claim raised to 11,069 by issue 1388
+  (2026-09-20). `threadx-riscv64` is unstated (safe state) → issue 1557.
 
 ## Problem
 
@@ -378,7 +398,7 @@ pool" since phase 152. Nobody derived it. The pairing subtracts a measured
 number from an undeclared one, which is correct arithmetic on a base that is
 itself a guess — worth its own work item, alongside the FreeRTOS heap budget.
 
-## Still open
+## Status of each item at closing
 
 * ~~Every other Zephyr Rust leaf.~~ **DONE** — see the sweep above. Twelve confs
   paired; the six XRCE ones deliberately not, because their images have no
@@ -390,16 +410,18 @@ itself a guess — worth its own work item, alongside the FreeRTOS heap budget.
   `.bss` reservation and costs the heap nothing.
 * ~~**ESP32**~~ **DONE** — paired by `ffc614252` on 2026-09-10 and re-measured
   and re-run 2026-09-12. See above.
-* **ThreadX** — `threadx-linux` PAIRED 2026-09-12 (see below). Both variants now
-  RESOLVE THEIR DESCRIPTOR (2026-09-13): the regression below was that neither
-  name was listed in `nros-platform-threadx`'s `names`, so both fell through to
-  builtin knobs. `threadx-riscv64`'s own backing number is still unstated, and
-  unstated remains the safe state — what is missing is a measurement on that
-  board's images, not a mechanism.
-* **The byte pool's 4 MiB base, and FreeRTOS's 2 MiB, are undeclared numbers.**
-  Both pairings subtract a measured size from a base nobody derived.
+* ~~**ThreadX**~~ **DONE for `threadx-linux`** 2026-09-12 (see above; claim
+  now 11,069 per issue 1388). Both variants resolve their descriptor
+  (2026-09-13). `threadx-riscv64`'s own backing number is still unstated — the
+  safe state — and has MOVED to
+  [issue 1557](../1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md),
+  blocked on issue 1355.
+* ~~**The byte pool's 4 MiB base, and FreeRTOS's 2 MiB, are undeclared
+  numbers.**~~ MOVED to issue 1557. (FreeRTOS's 2 MiB literal is already gone for
+  the zenoh lane — issue 1197's derivation; what remains there is the
+  cyclone/XRCE lane's 3 MiB `FreeRTOSConfig.h` default.)
 * ~~**The subtrahend is a hand-copied literal.**~~ RESOLVED —
-  [issue 1171](archived/1171-arena-backing-pairing-is-hand-maintained.md).
+  [issue 1171](1171-arena-backing-pairing-is-hand-maintained.md).
 
 ## RESOLVED 2026-09-13 — the descriptor did not answer to the name
 
@@ -425,7 +447,7 @@ verified; the nightly is the thing that will confirm the symptom is gone.
 **It was never only threadx.** A gate written for this found five more names in
 the same state — `esp32`, `baremetal`, `nuttx-riscv`, `freertos-posix`,
 `zephyr-cortex-m` — each taking builtin knobs today. They are
-[issue 1362](archived/1362-platform-names-fall-through-to-builtin-knobs.md),
+[issue 1362](1362-platform-names-fall-through-to-builtin-knobs.md),
 baselined in `check-platform-name-answered` so a sixth could not appear
 unnoticed, and NOT fixed here: adding a name swaps builtin knobs for a
 descriptor's, and doing that to four platforms on an assumption is how one

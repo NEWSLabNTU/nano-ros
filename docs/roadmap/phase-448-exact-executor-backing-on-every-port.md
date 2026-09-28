@@ -121,7 +121,7 @@ done.
 ### W4 — FreeRTOS reserves the backing once
 
 [Issue 1197](../issues/archived/1197-freertos-heap-cannot-learn-the-backing-size.md), and
-the FreeRTOS half of [issue 1145](../issues/1145-executor-backing-static-unpaired-with-rtos-heap.md).
+the FreeRTOS half of [issue 1145](../issues/archived/1145-executor-backing-static-unpaired-with-rtos-heap.md).
 Measured: every FreeRTOS Rust image reserves its 20,608–32,512 B backing twice,
 because `configTOTAL_HEAP_SIZE` is still budgeted for an arena that moved to
 `.bss`. Neither Zephyr mechanism transfers. The 2026-09-07 attempt established
@@ -145,8 +145,11 @@ PRs is how it ends up wrong.
 
 ### W5 — NuttX, ThreadX, ESP32
 
-The rest of [issue 1145](../issues/1145-executor-backing-static-unpaired-with-rtos-heap.md).
-Untouched. **One platform per commit**, as the issue specifies: the failure mode
+The rest of [issue 1145](../issues/archived/1145-executor-backing-static-unpaired-with-rtos-heap.md),
+resolved 2026-09-29 for NuttX, ESP32 and `threadx-linux`; `threadx-riscv64`'s
+own statement and the undeclared allocator bases moved to
+[issue 1557](../issues/1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md).
+**One platform per commit**, as the issue specifies: the failure mode
 is a runtime allocation failure, and a three-platform diff makes it
 unattributable. The knob is Zephyr-only so far; on the other ports it is spelled
 through the `NROS_*` build environment.
