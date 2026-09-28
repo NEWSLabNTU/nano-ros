@@ -92,7 +92,57 @@ impl Language {
             }),
         }
     }
+
+    /// Read the `LANGUAGE` keyword of a cmake `nano_ros_node_register()` /
+    /// `nano_ros_add_node()` call.
+    ///
+    /// # Why this is not [`Language::parse`]
+    ///
+    /// Two user-facing contracts, two token sets, and they are NOT the same
+    /// set — which is the whole reason this is a second entry point rather
+    /// than a second parser. [`Language::parse`] serves a CLI flag
+    /// (`nros codegen entry-node --lang …`) and accepts `c++`; the cmake
+    /// keyword set is defined by `cmake/NanoRosNodeRegister.cmake`'s own
+    /// validator, which uppercases the argument and then accepts exactly
+    /// `C`, `CPP`, `CXX`, `RUST` and `RS` — `C++` is a FATAL_ERROR there,
+    /// because a bare `C++` does not survive cmake's own argument handling.
+    ///
+    /// Unifying the two would change what a user may type, in both
+    /// directions: `--lang rs` would start working and `LANGUAGE C++` would
+    /// stop being refused at configure. Neither is required by anything, so
+    /// the sets stay as they are — but the TABLE lives here, beside the one
+    /// it differs from, where a reader can see the difference and a new
+    /// [`Language`] variant is a compile error in both.
+    ///
+    /// `None` means "not one of the keywords", and the caller owns what it
+    /// does about that: `orchestration::workspace` prints the declaration back
+    /// and falls to its class-shape heuristic (issue 0641), which is a policy
+    /// about CMakeLists that were written before the keyword existed, not a
+    /// fact about the language table.
+    pub fn parse_cmake_keyword(s: &str) -> Option<Self> {
+        let mut lowered = String::new();
+        for ch in s.chars() {
+            for lc in ch.to_lowercase() {
+                lowered.push(lc);
+            }
+        }
+        CMAKE_KEYWORDS
+            .iter()
+            .find(|(kw, _)| *kw == lowered.as_str())
+            .map(|(_, lang)| *lang)
+    }
 }
+
+/// The `LANGUAGE` keyword spellings `cmake/NanoRosNodeRegister.cmake` accepts,
+/// lower-cased. Matched case-insensitively because the cmake side uppercases
+/// before comparing, so `Cpp` and `CPP` are one token there.
+const CMAKE_KEYWORDS: &[(&str, Language)] = &[
+    ("c", Language::C),
+    ("cpp", Language::Cpp),
+    ("cxx", Language::Cpp),
+    ("rust", Language::Rust),
+    ("rs", Language::Rust),
+];
 
 /// What one source file's SPELLING says about the language that compiles it.
 ///
@@ -368,6 +418,54 @@ mod tests {
         assert_eq!(Language::parse("cpp").unwrap(), Language::Cpp);
         assert_eq!(Language::parse("rust").unwrap(), Language::Rust);
         assert_eq!(Language::parse("c").unwrap(), Language::C);
+    }
+
+    /// The cmake `LANGUAGE` keyword set, pinned. It is NOT `parse`'s set, and
+    /// the difference is the point: `rs` is a keyword there and not a CLI
+    /// flag value, `c++` is a CLI flag value and a FATAL_ERROR there. Both
+    /// halves are checked, so unifying them by accident fails here rather
+    /// than changing what a user may type.
+    ///
+    /// The authority for this list is
+    /// `cmake/NanoRosNodeRegister.cmake`'s `LANGUAGE` validator.
+    #[test]
+    fn the_cmake_keyword_set_is_not_the_cli_flag_set() {
+        for (token, lang) in [
+            ("c", Language::C),
+            ("cpp", Language::Cpp),
+            ("cxx", Language::Cpp),
+            ("rust", Language::Rust),
+            ("rs", Language::Rust),
+        ] {
+            assert_eq!(Language::parse_cmake_keyword(token), Some(lang), "{token}");
+            // cmake uppercases before comparing, so the keyword is one token
+            // however the declaration spells it.
+            let upper: String = token.chars().flat_map(char::to_uppercase).collect();
+            assert_eq!(Language::parse_cmake_keyword(&upper), Some(lang), "{upper}");
+        }
+        // The two sets differ, in both directions.
+        assert_eq!(Language::parse_cmake_keyword("c++"), None);
+        assert_eq!(Language::parse("c++").unwrap(), Language::Cpp);
+        assert_eq!(Language::parse_cmake_keyword("rs"), Some(Language::Rust));
+        assert!(Language::parse("rs").is_err());
+        // And neither invents a language.
+        assert_eq!(Language::parse_cmake_keyword("python"), None);
+    }
+
+    /// Every cmake keyword names a language that is in `ALL`, so a variant
+    /// added without a keyword is visible rather than merely unreachable.
+    #[test]
+    fn every_cmake_keyword_lands_in_all() {
+        for (kw, lang) in CMAKE_KEYWORDS {
+            assert!(Language::ALL.contains(lang), "`{kw}` names {lang:?}");
+        }
+        for lang in Language::ALL {
+            assert!(
+                CMAKE_KEYWORDS.iter().any(|(_, l)| *l == lang),
+                "{lang:?} has no cmake LANGUAGE keyword — a component declared \
+                 in cmake could not state it"
+            );
+        }
     }
 
     /// The error names what was passed. A parse failure whose message does not

@@ -465,19 +465,29 @@ fn cargo_summary_to_component_config(summary: &CargoComponentSummary) -> Compone
 /// An unrecognised value now falls back LOUDLY rather than silently, because a
 /// silent fallback is exactly what hid this: the declaration said one thing,
 /// the inference did another, and nothing printed.
+///
+/// # What is inference and what is not (phase-469)
+///
+/// The TOKEN → language step is not inference at all — it is reading the
+/// keyword `cmake/NanoRosNodeRegister.cmake` validates, so it belongs to the
+/// one enumeration ([`nros_lang::Language::parse_cmake_keyword`]) rather than
+/// to a match here. What stays is the POLICY: which fallback an absent or
+/// unrecognised keyword earns, and how loudly. That is a statement about
+/// CMakeLists written before the keyword existed, not about the language
+/// table, so it is the half that is genuinely local.
 fn infer_cmake_language(language: Option<&str>, class: Option<&str>) -> ComponentLanguage {
-    match language.map(|s| s.to_ascii_lowercase()) {
-        Some(lang) if lang == "c" => ComponentLanguage::C,
-        Some(lang) if lang == "cpp" || lang == "cxx" => ComponentLanguage::Cpp,
-        Some(lang) if lang == "rust" || lang == "rs" => ComponentLanguage::Rust,
-        Some(lang) => {
-            eprintln!(
-                "nros: `LANGUAGE {lang}` is not one of c/cpp/cxx/rust — guessing from the \
-                 class shape instead. Fix the declaration; a wrong guess here routes the \
-                 component to the wrong metadata probe (issue 0641)."
-            );
-            infer_language_from_class(class).unwrap_or(ComponentLanguage::Cpp)
-        }
+    match language {
+        Some(lang) => match ComponentLanguage::parse_cmake_keyword(lang) {
+            Some(known) => known,
+            None => {
+                eprintln!(
+                    "nros: `LANGUAGE {lang}` is not one of c/cpp/cxx/rust/rs — guessing from \
+                     the class shape instead. Fix the declaration; a wrong guess here routes \
+                     the component to the wrong metadata probe (issue 0641)."
+                );
+                infer_language_from_class(class).unwrap_or(ComponentLanguage::Cpp)
+            }
+        },
         None => infer_language_from_class(class).unwrap_or(ComponentLanguage::Cpp),
     }
 }
