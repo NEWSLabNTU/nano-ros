@@ -274,9 +274,35 @@ fn cpp_probe_options(
         return Ok(None);
     }
 
+    // Issue 1528 — the C-vs-C++ decision, with NO wildcard.
+    //
+    // This read `C => "c", _ => "cpp"`. It was CORRECT, and only because of a
+    // predicate in another function: the one call site above is inside
+    // `if decl.config.language != ComponentLanguage::Rust`, so `Rust` never
+    // arrived (measured: 79 Rust declarations in the tree, 0 of them here).
+    // But the guard and this decision are one fact spelled in two places, and
+    // a wildcard is exactly the construct that keeps the compiler from
+    // relating them — a fourth `Language` variant passes the `!= Rust` guard
+    // and would have been called C++ here in silence. Issue 1062 is what that
+    // lands as: an undefined reference against the other ABI seam, two layers
+    // down in generated code, surfacing as one `no producer for <pkg>::<comp>`
+    // line. So `Rust` is REFUSED rather than absorbed; the caller records the
+    // reason in `RefreshReport::unsupported` and `nros sync` prints it, which
+    // is the "a probe outcome carries its cause" property issue 1469 landed.
+    //
+    // The two live arms yield `Language::as_str()` rather than re-spelling
+    // "c"/"cpp" — same strings, one producer (phase-469 S2's move in
+    // `workspace.rs`).
     let language = match decl.config.language {
-        ComponentLanguage::C => "c",
-        _ => "cpp",
+        ComponentLanguage::C | ComponentLanguage::Cpp => decl.config.language.as_str(),
+        ComponentLanguage::Rust => {
+            return Err(
+                "a Rust component is produced by the cargo metadata harness, not by the \
+                 cmake C/C++ probe — reaching the probe is a routing bug, since the \
+                 caller's `language != Rust` guard should have sent it to `build_metadata`"
+                    .to_string(),
+            );
+        }
     };
     Ok(Some(
         crate::orchestration::metadata_probe_cmake::CmakeProbeOptions {
@@ -611,6 +637,73 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("src")).unwrap();
         dir
+    }
+
+    /// A probe-ready declaration in `dir`, carrying `language`.
+    fn probeable_decl(dir: &Path, language: ComponentLanguage) -> ComponentDeclaration {
+        use crate::orchestration::config::{
+            ComponentConfig, ComponentLinkage, ComponentMetadataConfig, ComponentOverrides,
+        };
+        ComponentDeclaration {
+            package_root: dir.to_path_buf(),
+            manifest_path: dir.join("nros.toml"),
+            class: Some("demo_pkg::Talker".into()),
+            crate_name: None,
+            deploy_bound: false,
+            header: None,
+            shape: None,
+            library_target: Some("demo_pkg".into()),
+            config: ComponentConfig {
+                version: 1,
+                package: "demo_pkg".into(),
+                component: "demo_pkg::talker".into(),
+                class: Some("demo_pkg::Talker".into()),
+                language,
+                linkage: ComponentLinkage::default(),
+                metadata: ComponentMetadataConfig {
+                    source_metadata: "metadata/talker.json".into(),
+                    generated_by: None,
+                },
+                overrides: ComponentOverrides::default(),
+            },
+        }
+    }
+
+    /// Issue 1528 — the probe's language is decided by an exhaustive match,
+    /// and the two reachable answers are unchanged.
+    ///
+    /// The negative direction is the point: C still probes as `c` and C++ as
+    /// `cpp`. What the wildcard used to cover in addition was `Rust`, which
+    /// the caller's `language != Rust` guard has always excluded — so the
+    /// refusal changes nothing that runs, and makes a fourth `Language`
+    /// variant a compile error here instead of a silent C++ probe.
+    #[test]
+    fn the_probe_language_is_decided_with_no_wildcard() {
+        let dir = tmp("probe-lang");
+        let nano_ros = dir.join("nano-ros");
+        let probe_root = dir.join("probe");
+
+        for (language, expected) in [(ComponentLanguage::C, "c"), (ComponentLanguage::Cpp, "cpp")] {
+            let opts = cpp_probe_options(
+                &probeable_decl(&dir, language),
+                Some(&nano_ros),
+                &probe_root,
+            )
+            .unwrap_or_else(|why| panic!("{language:?} must be probeable: {why}"))
+            .unwrap_or_else(|| panic!("{language:?}: no sidecar exists, so a probe is needed"));
+            assert_eq!(opts.language, expected, "{language:?}");
+        }
+
+        let why = cpp_probe_options(
+            &probeable_decl(&dir, ComponentLanguage::Rust),
+            Some(&nano_ros),
+            &probe_root,
+        )
+        .expect_err("a Rust component has no cmake probe — it has the cargo harness");
+        assert!(
+            why.contains("cargo metadata harness"),
+            "the refusal must say where a Rust component is produced instead: {why}"
+        );
     }
 
     #[test]
