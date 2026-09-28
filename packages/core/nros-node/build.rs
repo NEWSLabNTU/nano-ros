@@ -1209,6 +1209,9 @@ fn main() {
         model_required = model_required.unwrap_or(0),
     );
 
+    // Issue 1549 -- the knobs the boot record carries WITH their rung.
+    let contents = contents + &boot_record_knobs();
+
     std::fs::write(Path::new(&out_dir).join("nros_node_config.rs"), contents).unwrap();
 
     emit_executor_backing(&out_dir);
@@ -1381,6 +1384,51 @@ fn env_opt_string(name: &str) -> Option<String> {
     let v = std::env::var(name).ok()?;
     let v = v.trim().to_string();
     (!v.is_empty()).then_some(v)
+}
+
+/// The boot record's `KnobSource` for one knob, from the rung
+/// `zephyr/cmake/nros_cargo_build.cmake` recorded as `NROS_KNOB_SOURCE_<knob>`.
+///
+/// The numbers are `boot_report::KnobSource`'s; a build script cannot name the
+/// crate it builds, so they are restated here and
+/// `the_knob_source_codes_match_the_record` in `boot_report.rs` holds the two
+/// together. An unknown spelling panics: it is a resolver that learned a new
+/// rung and a record that cannot say it, which must not decode as "default".
+fn knob_source_code(knob: &str) -> u32 {
+    match env_opt_string(&format!("NROS_KNOB_SOURCE_{knob}")).as_deref() {
+        None => 0,
+        Some("default") => 1,
+        Some("derived") => 2,
+        Some("kconfig") => 3,
+        Some("environment") => 4,
+        Some(other) => panic!(
+            "NROS_KNOB_SOURCE_{knob}={other}: not a rung the boot record knows \
+             (default, derived, kconfig, environment). Add it to \
+             `boot_report::KnobSource` and here together (issue 1549)."
+        ),
+    }
+}
+
+/// Issue 1549 -- the knob words of the boot record: value in bits 0..7, the
+/// `KnobSource` in bits 8..15. Only the cmake resolver road forwards a value
+/// and a rung; a lane that forwards neither records 0/`NotRecorded`, never a
+/// guess.
+fn boot_record_knobs() -> String {
+    let lq_value = match env_opt_string("NROS_RMW_LOCAL_QUERYABLE").as_deref() {
+        None => 0,
+        Some("0") => 0,
+        Some("1") => 1,
+        Some(other) => panic!(
+            "NROS_RMW_LOCAL_QUERYABLE={other}: a 0/1 feature flag \
+             (Z_FEATURE_LOCAL_QUERYABLE, issue 1549)"
+        ),
+    };
+    let lq = lq_value | (knob_source_code("NROS_RMW_LOCAL_QUERYABLE") << 8);
+    format!(
+        "\n/// Issue 1549 -- `Z_FEATURE_LOCAL_QUERYABLE` for the boot record: bits \
+         0..7 the value, bits 8..15 the `boot_report::KnobSource`.\n\
+         pub const BOOT_RMW_LOCAL_QUERYABLE: u32 = {lq};\n"
+    )
 }
 
 fn env_opt_usize(name: &str) -> Option<usize> {

@@ -591,6 +591,36 @@ config NROS_ZENOH_QUERYABLE
       and action servers.
       Maps to Z_FEATURE_QUERYABLE.
 
+config NROS_RMW_LOCAL_QUERYABLE
+    int "Same-session query delivery (-1 = derive, 0 = off, 1 = on)"
+    default -1
+    range -1 1
+    help
+      Maps to Z_FEATURE_LOCAL_QUERYABLE, zenoh-pico's same-session query
+      path. Every node of a Zephyr image shares ONE zenoh session, and
+      neither zenoh-pico nor the router sends a query back to the session
+      it came from. So a service client and a service server in the SAME
+      image never meet without this: the call goes out, no server answers,
+      and nothing reports it (issue 1549; measured on the Autoware Safety
+      Island, whose handler's `operate` request never reached its own
+      operator).
+
+      `-1` DERIVES it from the image's entity inventory: on when the image
+      declares at least one service client (an action client counts, it
+      opens three) AND at least one service server (an action server
+      counts, three queryables), off otherwise. An image with only one
+      side of a service pays nothing for a path it cannot use. The sibling
+      for topics, Z_FEATURE_LOCAL_SUBSCRIBER, is always on.
+
+      Stating 0 or 1 WINS over the derivation, as for every derivable
+      knob. Where the inventory cannot answer (a component that declares
+      nothing), the knob keeps zenoh-pico's own default, 0, and the
+      configure says so.
+
+      The name is the RMW's, not zenoh's, because the boot record in
+      nros-node carries the resolved value and its rung, and a core crate
+      names no backend (RFC-0071). Only the zenoh backend consumes it.
+
 config NROS_ZENOH_LINK_TCP
     bool "TCP link"
     depends on NET_SOCKETS

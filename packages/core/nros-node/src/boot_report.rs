@@ -58,14 +58,14 @@
 //! same rule issue 0900's arena knob and phase-403's `rx_buffer_from_type()`
 //! both keep.
 //!
-//! Enabled, it costs `BootReport::struct_size` bytes of `.bss` -- 92, the
+//! Enabled, it costs `BootReport::struct_size` bytes of `.bss` -- 96, the
 //! same on every target because every field is a `u32` -- and a handful of
 //! relaxed atomic stores on paths that run once per entity at registration.
 //!
-//! The 92 is not a detail: it is the LENGTH an operator types into `savemem`,
+//! The 96 is not a detail: it is the LENGTH an operator types into `savemem`,
 //! and this sentence said 60 for as long as the record had fifteen fields. A
-//! short dump decodes -- `read-boot-report.py` needs `23 * 4` bytes and an
-//! 88-byte one is refused, but a reader who trusts the prose over the tool
+//! short dump decodes -- `read-boot-report.py` needs `24 * 4` bytes and a
+//! 92-byte one is refused, but a reader who trusts the prose over the tool
 //! spends the refusal looking at the wrong thing. Ask the tool instead:
 //! `read-boot-report.py --addr-only <elf>` prints the address AND the length,
 //! from the ELF's own symbol size.
@@ -83,7 +83,7 @@
 //!    reading the new word as one it knows;
 //! 3. `FIELDS` in `scripts/read-boot-report.py`, same name, same position, and
 //!    `KNOWN_VERSION` to match;
-//! 4. the field count in `the_record_is_twenty_three_packed_u32s` below.
+//! 4. the field count in `the_record_is_twenty_four_packed_u32s` below.
 //!
 //! `check-boot-report-layout` fails on 1 without 3, and the Rust test fails if
 //! the compiler laid the record out with padding. Appending is what keeps a
@@ -100,8 +100,34 @@ pub const MAGIC: u32 = 0x4e52_5352;
 /// know rather than decoding a record it would misread.
 ///
 /// 4 since phase-460 W5 appended `heap_peak_bytes` and `heap_capacity_bytes`;
-/// 5 since phase-460 W7 appended `samples_dropped_too_small`.
-pub const VERSION: u32 = 5;
+/// 5 since phase-460 W7 appended `samples_dropped_too_small`;
+/// 6 since issue 1549 appended `rmw_local_queryable`.
+pub const VERSION: u32 = 6;
+
+/// Which rung of the knob ladder decided a knob the record carries.
+///
+/// Issue 1549. A knob's VALUE says what the image was built with; this says
+/// who decided it, which is the half a reader needs before changing it: a
+/// derived value is fixed by editing the declaration it came from, a stated
+/// one by editing the statement. Spelled once, here, and packed into the
+/// upper bits of each knob word that carries one (see the field docs).
+/// `zephyr/cmake/nros_cargo_build.cmake` records the rung as
+/// `NROS_KNOB_SOURCE_<knob>`; `build.rs` maps its spelling onto this.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u32)]
+pub enum KnobSource {
+    /// No resolver road reached this build (a cargo-only lane), so the record
+    /// cannot say. The value next to it is NOT evidence of anything.
+    NotRecorded = 0,
+    /// Nobody stated it and nothing derived it: the consumer's own default.
+    Default = 1,
+    /// Derived from the image's entity inventory.
+    Derived = 2,
+    /// Stated in Kconfig (a `.conf` fragment, a snippet, or its default).
+    Kconfig = 3,
+    /// Stated in the build's environment, which outranks everything.
+    Environment = 4,
+}
 
 /// How far boot got. Monotonic, and the single most useful field: an arena
 /// failure halts during entity creation, so the stage that was NOT reached
@@ -308,6 +334,18 @@ mod enabled {
         /// a diagnostic. Non-zero here means "read the log lines, or raise
         /// `NROS_SUBSCRIPTION_BUFFER_SIZE` and see whether it goes to zero".
         samples_dropped_too_small: AtomicU32,
+
+        /// `Z_FEATURE_LOCAL_QUERYABLE` as this image was compiled, and who
+        /// decided it: bits 0..7 the value (0 or 1), bits 8..15 the
+        /// [`super::KnobSource`]. Appended by issue 1549.
+        ///
+        /// A service client and a service server in one image meet only
+        /// through zenoh-pico's same-session query path, so this is the word
+        /// to read when a call to the image's OWN server never returns. A
+        /// zero with source `Derived` is a finding about the declaration (it
+        /// holds no client or no server); a zero with source `Default` means
+        /// the inventory could not answer.
+        rmw_local_queryable: AtomicU32,
     }
 
     impl BootReport {
@@ -336,6 +374,7 @@ mod enabled {
                 heap_peak_bytes: AtomicU32::new(0),
                 heap_capacity_bytes: AtomicU32::new(0),
                 samples_dropped_too_small: AtomicU32::new(0),
+                rmw_local_queryable: AtomicU32::new(0),
             }
         }
 
@@ -385,6 +424,7 @@ mod enabled {
         pub heap_peak_bytes: u32,
         pub heap_capacity_bytes: u32,
         pub samples_dropped_too_small: u32,
+        pub rmw_local_queryable: u32,
     }
 
     /// Read the record.
@@ -416,6 +456,7 @@ mod enabled {
             heap_peak_bytes: g(&r.heap_peak_bytes),
             heap_capacity_bytes: g(&r.heap_capacity_bytes),
             samples_dropped_too_small: g(&r.samples_dropped_too_small),
+            rmw_local_queryable: g(&r.rmw_local_queryable),
         }
     }
 
@@ -450,6 +491,8 @@ mod enabled {
             saturate(crate::config::DEFAULT_RX_BUF_SIZE),
             Ordering::Relaxed,
         );
+        r.rmw_local_queryable
+            .store(crate::config::BOOT_RMW_LOCAL_QUERYABLE, Ordering::Relaxed);
         r.magic.store(MAGIC, Ordering::Relaxed);
         checkpoint(Stage::ReportReady);
     }
@@ -761,21 +804,33 @@ mod disabled {
 mod tests {
     use super::*;
 
-    /// The reader decodes twenty-three u32s positionally, so the record must
+    /// The reader decodes twenty-four u32s positionally, so the record must
     /// be exactly that and nothing else -- no padding, no reordering.
     ///
     /// `size_of` on the TARGET, which is the half `check-boot-report-layout.py`
     /// cannot see: that gate compares two source files, and this compares the
     /// source against what the compiler actually laid out.
     #[test]
-    fn the_record_is_twenty_three_packed_u32s() {
-        assert_eq!(BootReport::struct_size(), 23 * 4);
+    fn the_record_is_twenty_four_packed_u32s() {
+        assert_eq!(BootReport::struct_size(), 24 * 4);
         assert_eq!(
             core::mem::size_of::<BootReport>(),
-            23 * core::mem::size_of::<u32>(),
+            24 * core::mem::size_of::<u32>(),
             "the record grew padding; the reader decodes positionally"
         );
         assert_eq!(core::mem::align_of::<BootReport>(), 4);
+    }
+
+    /// Issue 1549 -- `build.rs` restates these numbers (it cannot name the
+    /// crate it builds) and `read-boot-report.py` decodes them; this is the
+    /// statement both are held to.
+    #[test]
+    fn the_knob_source_codes_match_the_record() {
+        assert_eq!(KnobSource::NotRecorded as u32, 0);
+        assert_eq!(KnobSource::Default as u32, 1);
+        assert_eq!(KnobSource::Derived as u32, 2);
+        assert_eq!(KnobSource::Kconfig as u32, 3);
+        assert_eq!(KnobSource::Environment as u32, 4);
     }
 
     /// The magic is written LAST, so finding it means the rest is valid.
@@ -793,6 +848,10 @@ mod tests {
         assert_eq!(s.arena_size, crate::config::ARENA_SIZE as u32);
         assert_eq!(s.max_cbs, crate::config::MAX_CBS as u32);
         assert_eq!(s.max_nodes, crate::config::MAX_NODES as u32);
+        assert_eq!(
+            s.rmw_local_queryable,
+            crate::config::BOOT_RMW_LOCAL_QUERYABLE
+        );
         assert!(s.stage >= Stage::ReportReady as u32);
     }
 

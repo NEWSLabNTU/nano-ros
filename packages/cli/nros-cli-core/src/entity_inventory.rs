@@ -1008,6 +1008,36 @@ pub struct DerivedEntityKnobs {
     /// UNDER-counts only for a bridge (two runtime-named nodes and their
     /// entities, declared nowhere) -- the `max_nodes` exception, one pool over.
     pub max_liveliness: usize,
+    /// Issue 1549 -- the QUERIERS this image's one session opens for its
+    /// application: declared service clients, plus
+    /// [`ACTION_CLIENT_SERVICE_CLIENTS`] per action client. One side of
+    /// [`Self::local_queryable`].
+    pub local_query_clients: usize,
+    /// Issue 1549 -- the application QUERYABLES a same-image querier could
+    /// address: declared service servers, plus [`ACTION_SERVER_QUERYABLES`]
+    /// per action server. The runtime's parameter and lifecycle servers are
+    /// NOT here: nothing in an image calls its own parameter services, and
+    /// counting them would turn the path on for every `param_services` image
+    /// that merely has a client.
+    pub local_query_servers: usize,
+    /// `NROS_RMW_LOCAL_QUERYABLE` / `Z_FEATURE_LOCAL_QUERYABLE` (issue
+    /// 1549): TRUE when both sides above are non-zero.
+    ///
+    /// Every node of an image shares ONE zenoh session, and neither
+    /// zenoh-pico nor the router sends a query back to the session it came
+    /// from, so a service client and server in the same image never meet
+    /// unless zenoh-pico's same-session query path is compiled in. Measured on
+    /// the Autoware Safety Island: its handler's `operate` request never
+    /// reached its own operator, and the MRM was announced with no braking.
+    ///
+    /// A presence test, not a match on service names: the inventory counts
+    /// entities and does not pair a client with the server it calls. That
+    /// errs ON for an image whose client calls a remote server while an
+    /// unrelated local server exists, which costs flash and no correctness:
+    /// zenoh-pico's `_z_query` still sends the network query and delivers
+    /// locally IN ADDITION (`net/primitives.c`). Erring OFF would be the silent
+    /// failure this knob exists to remove.
+    pub local_queryable: bool,
     /// `NROS_RUNTIME_MAX_CELL_ENTITIES` (issue 1130) -- the per-KIND capacity of
     /// a component cell's registries when its class states no `ENTITY_BOUNDS`.
     ///
@@ -2681,6 +2711,15 @@ impl EntityInventory {
         let max_liveliness =
             node_tokens + max_publishers + max_subscribers + max_queryables + service_clients;
 
+        // Issue 1549 -- same-session queries. The queriers are exactly the
+        // clients the liveliness term above counts; the queryables are the
+        // application's (the table minus the runtime's own servers and the
+        // transient-local cache queryables, which no in-image client calls).
+        let local_query_clients = service_clients;
+        let local_query_servers = n(EntityKind::ServiceServer.tag())
+            + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_QUERYABLES;
+        let local_queryable = local_query_clients > 0 && local_query_servers > 0;
+
         Derivation::Derived(Box::new(DerivedEntityKnobs {
             max_cbs,
             heavy_slots,
@@ -2692,6 +2731,9 @@ impl EntityInventory {
             param_service_nodes,
             max_nodes,
             max_liveliness,
+            local_query_clients,
+            local_query_servers,
+            local_queryable,
             max_cell_entities,
             max_sc,
             max_monitors,
@@ -3905,6 +3947,21 @@ impl EntityInventory {
                 s.push_str(&format!(
                     "set(NROS_DERIVED_MAX_LIVELINESS {})\n",
                     k.max_liveliness
+                ));
+                // Issue 1549 -- same-session queries. A presence test over the
+                // two sides, with both counts on the line so the provenance of
+                // a 0 or a 1 is readable without re-deriving it.
+                s.push_str(&format!(
+                    "# Same-session queries (Z_FEATURE_LOCAL_QUERYABLE): ON when this image\n\
+                     # declares a service client AND a service server, because its one session\n\
+                     # never receives its own query back from the router. Here: {} client\n\
+                     # querier(s) (three per action client), {} application queryable(s)\n\
+                     # (three per action server; the parameter and lifecycle servers excluded).\n",
+                    k.local_query_clients, k.local_query_servers
+                ));
+                s.push_str(&format!(
+                    "set(NROS_DERIVED_RMW_LOCAL_QUERYABLE {})\n",
+                    u8::from(k.local_queryable)
                 ));
                 // Issue 1130 -- the knob-capped cell registries.
                 s.push_str(
@@ -5224,6 +5281,75 @@ mod tests {
             !clock.to_env().contains("LIVELINESS"),
             "the env carrier cannot say whether the model was seen, so it does \
              not carry the liveliness count"
+        );
+    }
+
+    /// Issue 1549 -- same-session queries are ON exactly when the image holds
+    /// both sides of a service, in one component or across two, and an action
+    /// counts as the three services it opens.
+    #[test]
+    fn local_queryable_follows_a_client_and_a_server_in_one_image() {
+        let derive = |rows: &[(&str, &[&str])]| {
+            let mut inv = EntityInventory::new("test");
+            for (comp, specs) in rows {
+                inv.insert(stated("p", comp, specs));
+            }
+            inv
+        };
+
+        // The Autoware Safety Island's shape: the caller and the callee are
+        // two components of one image.
+        let island = derive(&[
+            ("handler", &["service_client", "service_client", "sub"]),
+            ("operator", &["service_server", "publisher"]),
+        ]);
+        let k = island.derive().knobs().expect("derived").clone();
+        assert_eq!((k.local_query_clients, k.local_query_servers), (2, 1));
+        assert!(k.local_queryable);
+        let cmake = island.to_cmake();
+        assert!(cmake.contains("set(NROS_DERIVED_RMW_LOCAL_QUERYABLE 1)\n"));
+        assert!(
+            cmake.contains("Here: 2 client\n# querier(s)"),
+            "the provenance names the counts:\n{cmake}"
+        );
+
+        // One side only: a client of a remote server, or a server for remote
+        // clients. Neither can use the path, so neither pays for it.
+        for rows in [
+            &[("c", &["service_client"][..])][..],
+            &[("s", &["service_server"][..])][..],
+            &[("t", &["publisher", "sub", "timer"][..])][..],
+        ] {
+            let inv = derive(rows);
+            assert!(!inv.derive().knobs().unwrap().local_queryable);
+            assert!(
+                inv.to_cmake()
+                    .contains("set(NROS_DERIVED_RMW_LOCAL_QUERYABLE 0)\n")
+            );
+        }
+
+        // An action client and an action server are three clients and three
+        // queryables each, so an in-image action pair turns it on.
+        let action = derive(&[("a", &["action_client"]), ("b", &["action_server"])]);
+        let k = action.derive().knobs().unwrap().clone();
+        assert_eq!(
+            (k.local_query_clients, k.local_query_servers),
+            (ACTION_CLIENT_SERVICE_CLIENTS, ACTION_SERVER_QUERYABLES)
+        );
+        assert!(k.local_queryable);
+
+        // A refusal derives nothing: the knob keeps zenoh-pico's own default.
+        let mut refused = derive(&[("c", &["service_client"])]);
+        refused.insert(ComponentEntities {
+            pkg: "p".into(),
+            component: "undeclared".into(),
+            class: "p::Undeclared".into(),
+            declaration: Declaration::Absent,
+        });
+        assert!(
+            !refused
+                .to_cmake()
+                .contains("NROS_DERIVED_RMW_LOCAL_QUERYABLE")
         );
     }
 
