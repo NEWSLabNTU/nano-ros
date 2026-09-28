@@ -38,6 +38,10 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBootstrap.cmake")
 # runtime umbrella a target links, and whether the consumer wants one.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRuntimeUmbrella.cmake")
 
+# issue 1523 — `_nros_set_component_lang()`: the ONE place that writes
+# `NROS_COMPONENT_LANG`, and the one that refuses a non-canonical spelling.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosComponentLang.cmake")
+
 # ---------------------------------------------------------------------------
 # _nros_infer_lang(<out_var> <sources…>)                    (phase-469 S3)
 #   Which language these sources are, ASKED — `nros_language_of_sources()` in
@@ -373,7 +377,11 @@ function(nano_ros_auto_add_library name)
 
     add_library(${name} STATIC ${_srcs})
     string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
-    if(_lang STREQUAL "C")
+    # issue 1523 — lowercase `c`, the canonical `Language::as_str` spelling
+    # `_nros_infer_lang()` answers in. `STREQUAL` is case-sensitive and this read
+    # `"C"`, so the branch never fired and the comment above `_nros_infer_lang`
+    # claiming `c` "sets LINKER_LANGUAGE C" described nothing.
+    if(_lang STREQUAL "c")
         set_target_properties(${name} PROPERTIES LINKER_LANGUAGE C)
     endif()
     # Zephyr compile context (see the fused register path for rationale).
@@ -381,11 +389,17 @@ function(nano_ros_auto_add_library name)
         target_link_libraries(${name} PRIVATE zephyr_interface)
     endif()
     _nros_node_register_config_header_deps(${name})
-    # Runtime lib: C++ always links the umbrella; a C component's choice
-    # depends on TYPED (declarative C keeps NanoRos), which is a
-    # register-time fact — nros_components_register_node adds it.
+    # Runtime lib: a C++ component always links the umbrella here; a C
+    # component's is added by `nros_components_register_node`, which is where
+    # a C component's own facts are known. (That deferral was written when the
+    # C pick turned on TYPED-ness; issue 0425 made it unconditional and the
+    # deferral outlived its reason — it is now just where the C branch lives.)
     # issue 1467 — PUBLIC, so guarded on the consumer by the shared resolver.
-    if(NOT _lang STREQUAL "C")
+    # issue 1523 — lowercase `c`. This read `"C"` against a value that is never
+    # uppercase, so the branch was taken for EVERY component including the C
+    # ones, and the register-time branch it defers to was dead code. It read as
+    # correct because the umbrella it wrongly added is the one 0425 wants.
+    if(NOT _lang STREQUAL "c")
         nros_link_runtime_umbrella(${name} PUBLIC CANDIDATES NanoRos::NanoRosCpp)
     endif()
     target_include_directories(${name} PUBLIC
@@ -393,8 +407,11 @@ function(nano_ros_auto_add_library name)
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_compile_definitions(${name} PRIVATE NROS_PKG_NAME=${_pkg_sym})
     set_target_properties(${name} PROPERTIES
-        NROS_COMPONENT_PKG_SYM "${_pkg_sym}"
-        NROS_COMPONENT_LANG "${_lang}")
+        NROS_COMPONENT_PKG_SYM "${_pkg_sym}")
+    # issue 1523 — the ONE spelling of this write, which refuses a
+    # non-canonical value rather than accepting it and leaving three
+    # case-sensitive readers to disagree about it.
+    _nros_set_component_lang(${name} "${_lang}")
     # Generated interface libs (220.G.2 mechanics; per-package FFI crates
     # since phase-306, so any subset links cleanly; zephyr gets headers via
     # the app include mirror instead — non-target lib names there).
@@ -476,15 +493,35 @@ function(nros_components_register_node target)
     if(NOT _NCR_DEPLOY AND NROS_DEPLOY)
         set(_NCR_DEPLOY "${NROS_DEPLOY}")
     endif()
-    # A C component links its runtime by TYPED-ness (see auto_add_library).
+    # A C component's runtime umbrella is added HERE rather than in
+    # `nano_ros_auto_add_library` — the register is where a C component's own
+    # facts are known. (It no longer turns on TYPED-ness: issue 0425 made the
+    # pick unconditional. The line that said it did outlived the change.)
+    #
+    # issue 1523 — lowercase `c`: `NROS_COMPONENT_LANG` carries the canonical
+    # `Language::as_str` spelling from both its writers now, so this branch is
+    # LIVE for `nano_ros_auto_add_library` targets, which it had never been. A
+    # target created by plain `add_library()` carries no such property and still
+    # reads `<target>_NROS_COMPONENT_LANG-NOTFOUND`, i.e. false, as before.
     get_target_property(_ncr_lang ${target} NROS_COMPONENT_LANG)
-    if(_ncr_lang STREQUAL "C")
+    if(_ncr_lang STREQUAL "c")
         # issue 0425 — prefer the C++ umbrella whenever it exists, TYPED or not:
         # it BUNDLES nros-c, so a C component's `nros_*` calls resolve from it
         # and the binary links ONE Rust staticlib. Keeping `NanoRos` for a
         # non-typed C node is what made a MIXED workspace link both archives and
-        # die on ~96 duplicate C-ABI symbols. A pure-C workspace instantiates no
-        # `NanoRosCpp` target and is unaffected.
+        # die on ~96 duplicate C-ABI symbols.
+        #
+        # The default CANDIDATES ladder, deliberately: `NanoRos::NanoRosCpp`
+        # first and `NanoRos::NanoRos` as the rung beneath it. The branch this
+        # replaces (in `nano_ros_auto_add_library`) passed `CANDIDATES
+        # NanoRos::NanoRosCpp` alone, which for a configure carrying only the C
+        # umbrella resolves to NOTHING. Measured: every native workspace here
+        # HAS `NanoRos::NanoRosCpp`, a pure-C one included — each leaf
+        # `add_subdirectory()`s the nano-ros root, which is issue 1467's own
+        # observation — so the two ladders pick the same target and the link
+        # line is byte-identical. The comment that used to sit here said a
+        # pure-C workspace "instantiates no `NanoRosCpp` target"; that is not
+        # what `examples/workspaces/c` does.
         #
         # issue 1467 — PUBLIC, so guarded on the consumer by the shared resolver.
         nros_link_runtime_umbrella(${target} PUBLIC)

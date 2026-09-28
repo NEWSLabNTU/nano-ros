@@ -62,6 +62,12 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 # runtime umbrella a target links, and whether the consumer wants one.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRuntimeUmbrella.cmake")
 
+# issue 1523 — `_nros_set_component_lang()`: the ONE place that writes
+# `NROS_COMPONENT_LANG`, and the one that refuses a non-canonical spelling.
+# This file's internal language vocabulary is UPPERCASE, so it converts at that
+# boundary; the property is lowercase everywhere.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosComponentLang.cmake")
+
 # issue 0342-adjacent — the SPLIT spelling's other half.
 #
 # `nros_components_register_node` (below) attaches metadata to a library the
@@ -620,7 +626,12 @@ function(nano_ros_node_register)
             endif()
             get_target_property(_et_lang ${_NRC_EXISTING_TARGET} NROS_COMPONENT_LANG)
             if(_et_lang)
-                set_property(TARGET ${_lib} PROPERTY NROS_COMPONENT_LANG "${_et_lang}")
+                # issue 1523 — through the shared write even though the value is
+                # MIRRORED from a target that already passed it. That is the
+                # point: this wrapper is exactly where a value from a producer
+                # this file does not control lands, so it is where an off-vocabulary
+                # spelling would enter without anyone looking.
+                _nros_set_component_lang(${_lib} "${_et_lang}")
             endif()
             get_target_property(_et_incs ${_NRC_EXISTING_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
             if(_et_incs)
@@ -742,9 +753,24 @@ function(nano_ros_node_register)
             # for the ARM target separately, since the host-built `.a` is the wrong arch)
             # can recover it without re-deriving from the target name. SOURCES + SOURCE_DIR
             # are standard properties the consumer also reads.
+            #
+            # issue 1523 — `_nrc_lang_lc`, NOT `_nrc_lang`. This file's internal
+            # vocabulary is UPPERCASE (~30 comparisons); `NROS_COMPONENT_LANG` is
+            # a vocabulary this file SHARES, and its canonical spelling is the
+            # lowercase `Language::as_str` one — what `nros codegen
+            # source-language` answers, what `nano_ros_add_node` forwards as
+            # `LANGUAGE ${_lang}`, what `nano_ros_auto_add_library` writes, and
+            # what the `"lang"` field of the metadata row below already carries.
+            # Writing the uppercase form here put TWO spellings on one property
+            # against three case-sensitive `STREQUAL` readers, so every
+            # `nano_ros_auto_add_library` C component took the C++ branch at each
+            # of them. Normalised HERE, at the boundary where the value leaves
+            # the uppercase vocabulary — the mirror of the TOUPPER that admits
+            # the query's answer into it (phase-469 S3) — and not with a TOUPPER
+            # at each reader, which would leave two vocabularies in the tree.
             set_target_properties(${_lib} PROPERTIES
-                NROS_COMPONENT_PKG_SYM "${_pkg_sym}"
-                NROS_COMPONENT_LANG "${_nrc_lang}")
+                NROS_COMPONENT_PKG_SYM "${_pkg_sym}")
+            _nros_set_component_lang(${_lib} "${_nrc_lang_lc}")
         endif()
 
         # Phase 220.G.2 — auto-link every `<pkg>__nano_ros_{c,cpp}`
