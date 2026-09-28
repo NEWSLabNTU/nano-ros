@@ -1897,8 +1897,14 @@ cpp: cpp-fmt
         }
     done
     echo "  - phase-417: the refusals FAIL, each naming its own constraint"
+    # `unbounded_wait{,_dispatch,_handle}` are ONE concept at THREE sites since
+    # the 2026-09-28 phase-456 W9 gap closure put `wait_for_service` back on the
+    # dispatch client and its handle. Three TUs, not one, for the reason
+    # phase-417 stated when it split the service and action halves: an
+    # expected-failure compile proves only that a file does not build.
     for probe in node_options system_defaults_qos log_throttle service_callback \
-                 unbounded_spin unbounded_wait unbounded_action_wait; do \
+                 unbounded_spin unbounded_wait unbounded_wait_dispatch \
+                 unbounded_wait_handle unbounded_action_wait; do \
         f="packages/api/nros-cpp/tests/compile/ros2_refuse_${probe}_probe.cpp"; \
         test -f "$f" || { echo "ERROR: $f is MISSING -- this check passes on absence." >&2; exit 1; }; \
         if c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \

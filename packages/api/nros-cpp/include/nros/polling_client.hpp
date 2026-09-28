@@ -12,12 +12,17 @@
  *                          storage, drives `spin_once()` itself, and drains the
  *                          reply with a `Future` (`send_request`), a blocking
  *                          `call()`, or `call_polling()`. This is the type that
- *                          carries every verb that reads caller storage,
- *                          `wait_for_service` and `service_is_ready` included.
+ *                          carries every verb that reads caller storage — the
+ *                          `Future` pair, `call`, `call_polling` and their
+ *                          `_sized` forms.
  *   `rclcpp::Client<S>`  — the DISPATCH client (`nros/client.hpp`). A response
  *                          handler is registered into the executor arena, which
  *                          owns the client and runs the handler during spin. Its
- *                          one verb is `async_send_request`.
+ *                          send verb is `async_send_request`; since the
+ *                          2026-09-28 follow-up to W9 it also answers
+ *                          `wait_for_service` and `service_is_ready`, which are
+ *                          reads of DISCOVERY state and need no caller storage
+ *                          once their FFI can be handed an arena index.
  *
  * WHY THE DRAINING API LIVES HERE — phase-456 W9, following W2b and W5
  *
@@ -32,6 +37,16 @@
  * reachable the same way. The split is what makes those calls UNWRITABLE rather
  * than merely wrong, which is the same reason and the same remedy W2b applied to
  * `nros::PollSubscription<M>` and W5 to `nros::PollService<S>`.
+ *
+ * The 2026-09-28 follow-up then closed the gap the split RECORDED, and the
+ * distinction it draws is worth keeping: two of those verbs read nothing of the
+ * caller's. `wait_for_service` and `service_is_ready` ask the backend about
+ * DISCOVERY, so once their FFI takes `(executor, handle_id)` beside `storage` —
+ * the shape `nros_cpp_service_client_get_actual_qos` has had since issue 1437 —
+ * the dispatch half answers them on upstream's own spelling. The four that
+ * remain here (`send_request`, `call`, `call_polling`, the `_sized` forms) read
+ * an `RmwServiceClient` and a reply buffer the CALLER owns, and no arena index
+ * can stand in for those.
  *
  * It is also what unblocks the alias. `Node::create_client<S>(name, qos)` with
  * no handler returns and exists to be `->send_request()`'d, so while one class
@@ -260,14 +275,17 @@ template <typename S> class PollClient {
     /// but with a tri-state result instead of collapsing
     /// "don't know" and "no" into the same `false`.
     ///
-    /// phase-456 W9 — on THIS half only. `nros_cpp_service_client_server_available`
-    /// reads the `RmwServiceClient` in `storage_`, which a dispatch client does
-    /// not have; ledgered at `cpp:Client::service_is_ready`.
+    /// phase-456 W9 put this on THIS half only, because
+    /// `nros_cpp_service_client_server_available` read the `RmwServiceClient` in
+    /// `storage_` and a dispatch client has none. The 2026-09-28 follow-up gave
+    /// that entry point the `(executor, handle_id)` arm, so `rclcpp::Client<S>`
+    /// and `nros::ClientHandle<S>` answer it too; this half keeps passing its
+    /// own `storage_`, and the FFI takes exactly one of the two roads.
     ::nros::ResultOf<bool> service_is_ready() const {
         if (!initialized_) return ::nros::ResultOf<bool>::error(::nros::ErrorCode::NotInitialized);
         int out = -1;
-        nros_cpp_ret_t ret =
-            nros_cpp_service_client_server_available(const_cast<uint8_t*>(storage_), &out);
+        nros_cpp_ret_t ret = nros_cpp_service_client_server_available(
+            const_cast<uint8_t*>(storage_), nullptr, 0, &out);
         // A failed CALL and a backend that cannot ANSWER are different facts,
         // and the old `int` form reported both as `-1`. Keep them apart.
         if (ret != 0) return ::nros::ResultOf<bool>::error(static_cast<::nros::ErrorCode>(ret));
@@ -314,11 +332,13 @@ template <typename S> class PollClient {
     /// The no-argument form is now a compile error carrying
     /// `NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT`.
     ///
-    /// phase-456 W9 — on THIS half only, for the reason
-    /// @ref service_is_ready gives: the FFI takes caller storage and says so.
+    /// phase-456 W9 put this on THIS half only; the 2026-09-28 follow-up gave
+    /// the FFI the arena arm, so the dispatch half answers it too — see
+    /// @ref service_is_ready. This half passes its own `storage_` and a
+    /// `handle_id` the FFI ignores on that road.
     Result wait_for_service(uint32_t timeout_ms) {
         if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-        return Result(nros_cpp_service_client_wait_for_service(storage_, executor_, timeout_ms));
+        return Result(nros_cpp_service_client_wait_for_service(storage_, executor_, 0, timeout_ms));
     }
 
     /// **REFUSED** — `wait_for_service()` with no budget. phase-417 stage 3.

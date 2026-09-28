@@ -127,6 +127,18 @@ inline ::nros::Result instantiate() {
     ::nros::Client<AddTwoInts> cb_client;
     (void)node.create_client<AddTwoInts>(cb_client, "/add_cb", &on_response);
 
+    // 2026-09-28 (the phase-456 W9 gap closure) — the two DISCOVERY verbs on the
+    // DISPATCH road, instantiated in a freestanding TU because that is where the
+    // surface has to exist: both are template bodies, so the header sweep parses
+    // them and type-checks neither. `{executor_, handle_id_}` is the whole
+    // argument list, which is what makes them reachable here at all.
+    (void)cb_client.service_is_ready();
+    (void)cb_client.wait_for_service(1000);
+    // ...and on the HANDLE a porter actually holds (`Client<S>::SharedPtr`).
+    ::nros::ClientHandle<AddTwoInts> cli_handle = nullptr;
+    (void)cli_handle.service_is_ready();
+    (void)cli_handle.wait_for_service(1000);
+
     // The node is CONSTRUCTED by value above; a freestanding target has no
     // `std::make_shared` to reach for, and does not need one.
     return r;
