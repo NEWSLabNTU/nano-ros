@@ -760,6 +760,21 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   existence test asks `exists()`/`-e`, never `is_dir()`/`-d`: a submodule's is
   a file too. Gate: `check-git-dir-layout-assumptions`, whose self-test builds
   both checkout shapes rather than asserting the rule.
+- **A count is only as scoped as the tool that produced it** (issue 1565). Asking
+  "what does this tree contain" with `find` answers a DIFFERENT question, not
+  merely a slower one: it walks into `.claude/worktrees/*` — 19 of them here,
+  each holding another agent's build output — and straight through gitlinks into
+  the 20 submodules. Measured the same day in both directions: `find` reported 19
+  generated declared-QoS headers where `git ls-files` reports 1 (18 were other
+  agents'), and 44 `*.contract.yaml` against 17 tracked, the 27-file gap all
+  inside `play_launch`. Two people counted two repositories and each was
+  internally right. Use `git ls-files` / `git grep` for what the tree HOLDS;
+  scope a `find` for untracked artifacts to a BUILD dir, never to `.`,
+  `examples/` or `packages/`. `check-no-tracked-file-find.sh` already forbids
+  `find`ing a tracked file, but only for SPEED (570x, I/O-starved) — do not widen
+  its allowlist for this, because a `.contract.yaml` can legitimately be
+  untracked (`nros sync` synthesises one into a generated dir) and a gate that
+  demands an impossible fix gets disabled.
 - **A red CI lane answers one of two questions and they look identical** — the
   lane RAN and the code is broken (a verdict), or it never ran (no verdict). A
   uniformly-red lane has NO signal capacity: a regression landing in it looks
