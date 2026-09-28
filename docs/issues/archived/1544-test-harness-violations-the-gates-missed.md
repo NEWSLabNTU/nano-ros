@@ -1,12 +1,13 @@
 ---
 id: 1544
 title: "Test-harness violations present on `main` that their own gates cannot see"
-status: open
+status: resolved
 type: bug
 area: [testing]
 severity: medium
 found: 2026-09-28
-related: [phase-472, 0853, 0445]
+resolved: 2026-09-28
+related: [phase-472, 0853, 0445, 1552]
 ---
 
 Found by the phase-472 audit; each is a rule CLAUDE.md or an existing gate
@@ -45,3 +46,27 @@ does not model.
 ## Fix
 
 Each gate's population moves to phase-472 W5/W7; the sites above convert.
+
+## Resolution
+
+All four sites are converted and all four gates widened; every widening was
+mutation-tested against the origin/main gate (each restored hole: new gate rc 1,
+old gate rc 0; fixed tree: rc 0).
+
+- **Fixture resolvers.** `check-fixture-require` now counts a resolver that is
+  the direct scrutinee of a `match`, `if let`/`while let` or `let … else`. That
+  found exactly the 18 sites; all 18 now call `.require(…)`. Its self-test
+  drives the real `sites()` over temp files instead of a private copy.
+- **Print-only unit tests.** `check-no-vacuous-tests` reads every tracked `.rs`
+  (with a floor that fails if it stops reaching `src/`) and runs its self-test
+  on every invocation. The ten `*_detection` tests and zephyr's tautological
+  `test_workspace_detection` are deleted; `print_bake_table` now asserts the
+  table is non-empty. `test_generate_certs`'s `eprintln!`+`return` became
+  `skip!`.
+- **Zombie-blind scan.** `process.rs`'s group enumeration asks for `stat=` and
+  drops `Z`. `check-ps-zombie-blind.sh` also matches the argv spelling
+  (`"-eo"` + a column list naming `pgid` without `stat`, across up to three
+  lines), through one awk program shared by the self-test and the scan.
+- **Router `.expect()`s.** All six use `fixtures::or_skip`;
+  `check-zenohd-router-skips` reads every tracked `.rs`, with a floor that fails
+  if the scan stops reaching `packages/rmw/`.
