@@ -1755,6 +1755,60 @@ fn profile_dir_name() -> Option<String> {
     None
 }
 
+/// The cargo target dir an `OUT_DIR` lives in, or `None` if it has no
+/// `<profile>/build/` ancestor.
+///
+/// `OUT_DIR` is `<target-dir>/[<triple>/]<profile>/build/<pkg>-<hash>/out`, and
+/// the `<triple>` level is present only for a `--target` build. So the
+/// component above the profile dir is EITHER the target dir or a triple dir,
+/// and this has to tell which.
+///
+/// Issue 1383: it used to ask whether that component's name contained a `-`.
+/// A target dir is allowed a hyphen too, and `nros_scoped_target_dir <x>`
+/// (`scripts/build/cargo.sh`, issue 0400) ALWAYS produces one
+/// (`target-param-services`), so such a dir read as a triple and its PARENT
+/// came back — a header mirror landed in the repo root.
+///
+/// The decision is now by identity: cargo names the triple dir after the very
+/// value it hands the build script as `TARGET` (measured on cargo 1.98.1: a
+/// builtin triple gives `x86_64-unknown-linux-gnu/` with
+/// `TARGET=x86_64-unknown-linux-gnu`; a `--target ./my-custom.json` gives
+/// `my-custom/` with `TARGET=my-custom`). A host build without `--target`
+/// still has `TARGET` set to the host triple but no triple dir, and the
+/// component then is the target dir, whose name is not the triple.
+///
+/// NOT `CACHEDIR.TAG`, which the issue proposed: cargo 1.98.1 writes one at
+/// the target-dir root AND inside every `<triple>/` dir, so its presence
+/// answers nothing — and a target dir created by an older cargo (this repo's
+/// own `target/`) has none at its root at all.
+///
+/// `target = None` (not running under cargo) means no triple is recognised.
+fn target_dir_from_out_dir(out_dir: &Path, target: Option<&str>) -> Option<PathBuf> {
+    // A JSON spec path names its dir by file stem; tolerate either spelling.
+    let triple = target.map(|t| {
+        if t.ends_with(".json") {
+            Path::new(t)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(t)
+        } else {
+            t
+        }
+    });
+    let build = out_dir
+        .ancestors()
+        .find(|p| p.file_name().and_then(|s| s.to_str()) == Some("build"))?;
+    let profile_dir = build.parent()?;
+    let above = profile_dir.parent()?;
+    let is_triple_dir =
+        triple.is_some_and(|t| above.file_name().and_then(|s| s.to_str()) == Some(t));
+    if is_triple_dir {
+        above.parent().map(Path::to_path_buf)
+    } else {
+        Some(above.to_path_buf())
+    }
+}
+
 pub fn cargo_target_dir() -> Result<PathBuf, Error> {
     if let Ok(dir) = env::var("CARGO_TARGET_DIR")
         && !dir.is_empty()
@@ -1762,25 +1816,11 @@ pub fn cargo_target_dir() -> Result<PathBuf, Error> {
         return Ok(PathBuf::from(dir));
     }
 
-    if let Ok(out) = env::var("OUT_DIR") {
-        let out = PathBuf::from(out);
-        let mut p = out.as_path();
-        while let Some(parent) = p.parent() {
-            if parent.file_name().and_then(|s| s.to_str()) == Some("build")
-                && let Some(profile_dir) = parent.parent()
-                && let Some(triple_or_target) = profile_dir.parent()
-                && let Some(name) = triple_or_target.file_name().and_then(|s| s.to_str())
-            {
-                if name.contains('-') {
-                    if let Some(target) = triple_or_target.parent() {
-                        return Ok(target.to_path_buf());
-                    }
-                } else {
-                    return Ok(triple_or_target.to_path_buf());
-                }
-            }
-            p = parent;
-        }
+    if let Ok(out) = env::var("OUT_DIR")
+        && let Some(dir) =
+            target_dir_from_out_dir(Path::new(&out), env::var("TARGET").ok().as_deref())
+    {
+        return Ok(dir);
     }
 
     let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
@@ -2427,6 +2467,80 @@ mod tests {
         );
 
         restore_knob_env(prior);
+    }
+
+    /// Issue 1383 — the target dir is found by what the triple dir IS (named
+    /// `$TARGET`), never by whether a name contains a hyphen.
+    ///
+    /// Case (c) is the one that was broken: `nros_scoped_target_dir` always
+    /// yields a hyphenated dir, which the old heuristic read as a triple and
+    /// answered with its parent (the repo root).
+    #[test]
+    fn target_dir_is_found_by_triple_identity_not_by_hyphen() {
+        let host = "x86_64-unknown-linux-gnu";
+        let cross = "thumbv7m-none-eabi";
+        let cases: &[(&str, &str, &str)] = &[
+            // (a) plain host build.
+            // profile-literal-ok: dir vocabulary: test data for target_dir_from_out_dir()
+            ("/w/target/debug/build/x-0123/out", host, "/w/target"),
+            // (b) --target build into a plain target dir.
+            // profile-literal-ok: dir vocabulary: test data for target_dir_from_out_dir()
+            (
+                "/w/target/thumbv7m-none-eabi/debug/build/x-0123/out",
+                cross,
+                "/w/target",
+            ),
+            // (c) host build into a HYPHENATED target dir — issue 1383.
+            (
+                // profile-literal-ok: dir vocabulary: test data for target_dir_from_out_dir()
+                "/w/target-param-services/debug/build/x-0123/out",
+                host,
+                "/w/target-param-services",
+            ),
+            // (d) --target build into a hyphenated target dir.
+            (
+                // profile-literal-ok: dir vocabulary: test data for target_dir_from_out_dir()
+                "/w/target-param-services/thumbv7m-none-eabi/debug/build/x-0123/out",
+                cross,
+                "/w/target-param-services",
+            ),
+            // (e) --target naming the HOST triple still has a triple level.
+            (
+                "/w/target-x/x86_64-unknown-linux-gnu/nros-fast-release/build/x-0123/out",
+                host,
+                "/w/target-x",
+            ),
+            // (f) a custom JSON target: dir and TARGET are the file stem.
+            // profile-literal-ok: dir vocabulary: test data for target_dir_from_out_dir()
+            (
+                "/w/target-y/my-custom/debug/build/x-0123/out",
+                "my-custom",
+                "/w/target-y",
+            ),
+        ];
+        for (out, target, want) in cases {
+            assert_eq!(
+                target_dir_from_out_dir(Path::new(out), Some(target)).as_deref(),
+                Some(Path::new(want)),
+                "OUT_DIR={out} TARGET={target}"
+            );
+        }
+        // A JSON spec passed as a PATH names its dir by stem.
+        assert_eq!(
+            target_dir_from_out_dir(
+                // profile-literal-ok: dir vocabulary: test data for target_dir_from_out_dir()
+                Path::new("/w/t/my-custom/debug/build/x-0123/out"),
+                Some("/specs/my-custom.json"),
+            )
+            .as_deref(),
+            Some(Path::new("/w/t"))
+        );
+        // No `build` ancestor: no answer, so the caller falls through to
+        // `cargo metadata` rather than guessing.
+        assert_eq!(
+            target_dir_from_out_dir(Path::new("/nowhere/at/all"), Some(host)),
+            None
+        );
     }
 
     #[test]

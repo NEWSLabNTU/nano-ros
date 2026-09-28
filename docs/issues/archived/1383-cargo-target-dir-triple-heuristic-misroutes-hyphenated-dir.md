@@ -3,11 +3,13 @@ id: 1383
 title: "`cargo_target_dir()` calls any hyphenated target dir a target TRIPLE, so
   a build script mirrors its generated header into the dir's PARENT — and the
   sanctioned scoped-dir helper always produces a hyphenated name"
-status: open
+status: resolved
+resolved_in: fix/1401-1383-build-tooling — triple dir decided by `$TARGET`, not by a hyphen
 type: bug
 area: [build]
 severity: medium
 found: 2026-09-18
+resolved: 2026-09-28
 related: [issue-1382, issue-0400, issue-0616, issue-0111]
 ---
 
@@ -90,3 +92,56 @@ name starts with `target`, which is the shape the helper emits.
 Acceptance: a build script run under
 `--target-dir $(nros_scoped_target_dir <x>)` must mirror its header inside that
 dir, and `git status` must stay clean at the repo root.
+
+## Resolution (2026-09-28)
+
+The walk moved into `target_dir_from_out_dir(out_dir, target)`, which decides
+by IDENTITY: the component above the profile dir is a triple dir exactly when
+its name is `$TARGET` (the file stem, for a JSON spec path). Measured on cargo
+1.98.1: a builtin triple builds into `<dir>/x86_64-unknown-linux-gnu/` with
+`TARGET=x86_64-unknown-linux-gnu`; `--target ./my-custom.json` builds into
+`<dir>/my-custom/` with `TARGET=my-custom`. A host build without `--target`
+has `TARGET` set but no triple level, and the component is then the target
+dir, whose name is not the triple.
+
+### Why not `CACHEDIR.TAG` (the direction above)
+
+Measured, it does not distinguish the two: cargo 1.98.1 writes `CACHEDIR.TAG`
+at the target-dir root AND inside every `<triple>/` dir. And this repo's own
+`target/` has none at its root at all (created by an older cargo), while its
+`aarch64-unknown-none/` and `armv7a-nuttx-eabihf/` subdirs each do — so a
+probe for the tag would have answered backwards on the main checkout.
+`.rustc_info.json` is root-only but is an optional cache
+(`CARGO_CACHE_RUSTC_INFO=0` suppresses it). `$TARGET` is what cargo itself
+named the directory after, and every build script has it.
+
+### Evidence
+
+Unit test `target_dir_is_found_by_triple_identity_not_by_hyphen`: (a)
+`target/debug/…`, (b) `target/<triple>/debug/…`, (c)
+`target-param-services/debug/…`, (d) `target-param-services/<triple>/debug/…`,
+plus a `--target <host>` build, a custom JSON target by name and by path, and
+no-`build`-ancestor → `None`. Mutation (restoring the hyphen predicate) fails
+case (c):
+
+```text
+assertion `left == right` failed: OUT_DIR=/w/target-param-services/debug/build/x-0123/out
+  left: Some("/w")
+ right: Some("/w/target-param-services")
+```
+
+Behavioural, a real build script calling `cargo_target_dir()` with
+`--target-dir <scratch>/w1401/target-probe` and `CARGO_TARGET_DIR` unset:
+
+```text
+BEFORE  cargo_target_dir() = w1401                       <- the parent
+        [--target x86_64-unknown-linux-gnu] = w1401/target-probe
+AFTER   cargo_target_dir() = w1401/target-probe
+        [--target x86_64-unknown-linux-gnu] = w1401/target-probe
+```
+
+Sweep for siblings: `git grep -nE "contains\('-'\)"` over the Rust tree finds
+no other triple-vs-dir inference (the two other hits test a package name and an
+`<os>-<arch>` host key), and no other build script walks `OUT_DIR` up to a
+target dir; `nros-build-helpers`' two mirror writers reach this function and
+are fixed by it.
