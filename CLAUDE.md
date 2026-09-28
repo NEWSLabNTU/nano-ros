@@ -970,9 +970,15 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   shallow default checkout each make the pin read as unfetchable, which cost time three times.
 - **XRCE:** flush `uxr_buffer_request_data` immediately; reliable `STREAM_HISTORY ≥ 2`.
   → platform-implementation-notes.md.
-- **Zephyr Rust allocator is picolibc `malloc`** — size `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE`
-  (default 16 KB; executor backing alone needs ~75 KB), NOT `CONFIG_HEAP_MEM_POOL_SIZE`.
-  → issue 0163 (archived).
+- **The Zephyr heap that runs out is `CONFIG_NROS_ZEPHYR_HEAP_SIZE`, not the one a conf
+  usually sizes** (phase-391 W3; 0163 archived). Both zenoh-pico's `z_malloc` and Rust's
+  `__rust_alloc` go through `nros_platform_alloc`, an rlsf arena in `nros-platform`'s
+  `zephyr_heap.rs` (Kconfig default 65536) — so `CONFIG_HEAP_MEM_POOL_SIZE` and
+  `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE` size heaps those allocations never touch. The older
+  advice here, "the Rust allocator is picolibc `malloc`", predates phase-391 W3 and points at
+  the wrong knob. Exhaustion is SILENT on native_sim unless `CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL`
+  is on: an infallible Rust allocation reaches std's OOM handler, whose stderr write is issue
+  0589's `zvfs_write` recursion — a stack overflow with no message.
 - **The SDK store ACCUMULATES, so a stale Corrosion can shadow the pin you just installed**
   (issue 0500) — prefixes are enumerated newest-version-first (`COMPARE NATURAL ORDER
   DESCENDING` / `sort -Vr`) precisely because `find_package` takes the FIRST that resolves,
