@@ -134,6 +134,13 @@ session on 2026-09-27**, which is why none of them landed with S1:
   workspace.rs`'s `_ => "cpp"` does the same in a match arm. Reason: a third
   language is silently mis-rendered rather than refused, so the failure lands in
   generated code instead of at the decision. (Issue 1426 territory.)
+  **Landed 2026-09-28 (`85bb4d62c`) — and the audit had named two of THREE.**
+  `orchestration/metadata_refresh.rs`'s cmake metadata probe carried the same
+  `_ => "cpp"`; S2's sweep found it and left it, because deciding what a Rust
+  component sends a C/C++ probe looked like its own question. It was not:
+  measured, the sole call site is guarded by `language != Rust`, so `Rust` is
+  in the wildcard's type-level coverage and not in its reachable set. Closed
+  as **issue 1528** — exhaustive match, `Rust` refused with its cause.
 * **Language inferred from a file EXTENSION, in three cmake sites.** Reason: the
   extension answers a different question than the language does, and the
   inference has no single producer.

@@ -3,11 +3,12 @@ id: 1528
 title: "The cmake metadata probe picks its language with `_ => \"cpp\"`, so the
   only thing keeping a Rust component out of a C++ probe is a guard 170 lines
   away in another function"
-status: open
+status: resolved
 type: bug
 area: cli, codegen, metadata
 severity: low
 found: 2026-09-28
+resolved_in: "431d0f206 (phase-469 audit S2 follow-on)"
 related: [phase-469, issue-1469, issue-1470, issue-1062]
 ---
 
@@ -129,8 +130,52 @@ component in the tree; what it buys is that the caller's binary predicate and
 the callee's decision become one construct the compiler can check, so a fourth
 variant is a build error here instead of a `.cpp` probe nobody asked for.
 
-## Enforcement
+## Resolution — `431d0f206`
 
-The measurement, not the assertion: add a throwaway `Language` variant, run
-`cargo check --workspace --all-targets --keep-going` in `packages/cli`, and
-confirm this site appears among the errors afterwards and does not before.
+The match is exhaustive, with no wildcard:
+
+```rust
+let language = match decl.config.language {
+    ComponentLanguage::C | ComponentLanguage::Cpp => decl.config.language.as_str(),
+    ComponentLanguage::Rust => return Err("a Rust component is produced by the cargo \
+        metadata harness, not by the cmake C/C++ probe — reaching the probe is a routing \
+        bug, since the caller's `language != Rust` guard should have sent it to \
+        `build_metadata`".to_string()),
+};
+```
+
+Three choices worth their reasons:
+
+* **A refusal, not a skip and not a fallback.** `cpp_probe_options`'s `Err`
+  is already recorded as `pkg::comp (why)` in `RefreshReport::unsupported`
+  and printed by `nros sync`, so the refusal arrives with its cause — the
+  property issue 1469 landed one file over. A silent fallback was the one
+  answer not available; a bare skip would have been an outcome with no
+  reason attached, which is the shape 1469 and 1470 were both filed behind.
+* **The message says where a Rust component IS produced** (`build_metadata`)
+  and that arriving here is a routing bug, because `Rust` is unreachable by
+  construction — nobody reading this line has done anything wrong except
+  write a router.
+* **`C | Cpp` yield `Language::as_str()`** rather than re-spelling `"c"` and
+  `"cpp"`. Identical output, one producer — phase-469 S2's move in
+  `workspace.rs`.
+
+### Negative direction
+
+`the_probe_language_is_decided_with_no_wildcard` (unit, in this module):
+C still probes as `c`, C++ as `cpp`, and Rust refuses with a message naming
+the harness. Mutating the live arm to `"c"` fails the test, so it is not
+vacuous. `cargo test -p nros-cli-core --lib`: 1446 passed.
+
+### Enforcement, measured
+
+A throwaway `Language::Zig` — plus the `ALL`, `as_str` and `of_sources` arms
+`nros-lang` needs in order to compile at all — then
+`cargo check --workspace --all-targets --keep-going` in `packages/cli`:
+
+| | sites named |
+| --- | --- |
+| before | `cmd/codegen.rs` 451, 528, 639; `codegen/entry/pack.rs` 141; `orchestration/workspace.rs` 1496 |
+| after | the same five, **plus `orchestration/metadata_refresh.rs` 296** |
+
+The variant was reverted; `nros-lang` is untouched by the fix.
