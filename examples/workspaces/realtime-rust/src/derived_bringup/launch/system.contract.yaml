@@ -1,0 +1,42 @@
+# Node interface contract for system.launch.xml (issue 1537).
+#
+# The rates the tier derivation ranks by. Nothing else in this bringup states
+# a rate, a priority or a tier: `nros::main!` DERIVES the schedule from these
+# two rates (rate-monotonic, ctrl above telem) and allocates the priorities out
+# of the IMAGE's own plan. The numbers match the code's timers (ctrl_pkg 10 ms,
+# telem_pkg 100 ms).
+#
+# `trigger.timer.rate_hz` and `min_rate_hz` are equal on purpose, for the reason
+# derived-tiers-cpp's contract gives (issue 1372: the mapper rebuilds a node's
+# rate from its first output's `min_rate_hz`).
+
+version: 1
+
+nodes:
+  control_node:
+    paths:
+      on_ctrl:
+        trigger: { timer: { rate_hz: 100 } }
+        output: [ctrl]
+    pub:
+      ctrl: { min_rate_hz: 100 }
+
+  telem_node:
+    paths:
+      on_telem:
+        trigger: { timer: { rate_hz: 10 } }
+        output: [telem]
+    pub:
+      telem: { min_rate_hz: 10 }
+
+topics:
+  /ctrl:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [control_node/ctrl]
+    rate_hz: 100
+  /telem:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [telem_node/telem]
+    rate_hz: 10

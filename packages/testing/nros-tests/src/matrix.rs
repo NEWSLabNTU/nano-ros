@@ -1135,6 +1135,17 @@ pub enum SchedDim {
     /// nothing — cpu 0 is the only cpu the tier could be on — so the two dims
     /// assert genuinely different claims and both are worth keeping.
     CorePinPlacement,
+    /// issue 1537 — a DERIVED tier priority lands BELOW the image's own
+    /// transport band: the Zephyr boot report
+    /// (`nros_zephyr_report_tier_vs_transport`) stays silent on an image whose
+    /// band differs from the Kconfig defaults projection.
+    ///
+    /// Distinct from [`SchedDim::TierPriority`], which asserts an AUTHORED
+    /// priority is adopted. Here nothing is authored: `nros::main!` derives the
+    /// table, and the claim is about WHERE it allocated — out of the image's
+    /// `.config`, or out of the projection. Only a lowered-band image can tell
+    /// those apart; on a default-band image they are the same numbers.
+    DerivedTierBelowTransport,
 }
 
 /// One realtime-dim matrix cell: a `(dim × platform × lang)` coordinate. Like
@@ -1200,6 +1211,12 @@ pub const SCHED_CELLS: &[SchedCell] = {
         // languages, because one seam TU serves both entries.
         sched(TierPriority, FreertosMps2, Cpp, Runtime),
         sched(TierPriority, FreertosMps2, C, Runtime),
+        // issue 1537 — the ONLY Rust Zephyr image whose tiers `nros::main!`
+        // DERIVES (`realtime-rust/src/derived_bringup`), on an image with a
+        // lowered transport band. A macro that regressed to the Kconfig
+        // defaults projection puts both tiers inside that band and the boot
+        // report fires; measured, not reasoned.
+        sched(DerivedTierBelowTransport, ZephyrNativeSim, Rust, Runtime),
         // ThreadX preempt-threshold + time-slice.
         sched(PreemptThreshold, ThreadxLinux, Rust, Runtime),
         sched(TimeSlice, ThreadxLinux, Rust, Runtime),
@@ -1269,6 +1286,8 @@ mod tests {
             SchedDim::TimeSlice,
             SchedDim::SporadicBudget,
             SchedDim::TierPriority,
+            SchedDim::CorePinPlacement,
+            SchedDim::DerivedTierBelowTransport,
         ] {
             assert!(
                 sched_runtime_cells().any(|c| c.dim == dim),

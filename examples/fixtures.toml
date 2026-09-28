@@ -5036,6 +5036,40 @@ west_id = "zephyr/native_sim/native/64/workspace-realtime-entry"
 west_zenoh_locator = "tcp/127.0.0.1:7491"
 skip_probe = true
 
+# issue 1537 — the DERIVED-tier Rust Zephyr image: the only one in the tree
+# whose tier table `nros::main!` derives instead of reading authored
+# `[tiers.*]`. Same workspace and node packages as the row above; the axis is
+# the BRINGUP (`derived_bringup`: a contract, no tiers) and its image's Kconfig
+# (`prj-lowered-band.conf`: `CONFIG_NROS_ZENOH_READ_PRIORITY=100`, transport
+# band [4, 9], tier pool [10, 14]). The `workspace-zephyr-c-realtime-smp` row is
+# the precedent for a second bringup of one workspace carrying a second image.
+#
+# WHY THE LOWERED BAND IS THE POINT: issue 1537 made the macro allocate derived
+# priorities out of the IMAGE's `.config` instead of the Kconfig defaults
+# projection (pool [5, 14]). On a default-band image the two agree, so a
+# regression back to the projection would pass there. On this one the
+# projection puts the tiers at 5 / 6, inside the transport, and the Zephyr boot
+# report (`nros_zephyr_report_tier_vs_transport`) fires — measured, with the
+# macro reverted. Consumed by `sched_dims_applied_e2e`
+# (`SchedDim::DerivedTierBelowTransport`), which asserts the report is SILENT
+# and that the built `.config` really carries the lowered band.
+#
+# 7491 is `port_of(ZephyrNativeSim, Rust, RealtimeTiers)`, shared with the row
+# above for the reason the SMP row shares 7591 with the C one.
+[[workspace_fixture]]
+id = "workspace-zephyr-rs-realtime-derived"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/realtime-rust"
+bringup = "src/derived_bringup"
+image = "zephyr"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rs-realtime-derived-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-realtime-derived-entry"
+west_zenoh_locator = "tcp/127.0.0.1:7491"
+skip_probe = true
+
 # phase-281 W3b — the RT-TIERS C++ workspace Entry
 # (examples/workspaces/realtime-cpp/src/zephyr_entry): the FIRST full west
 # link + runtime proof of the W3a ZephyrBoard::run_tiers seam. The C++

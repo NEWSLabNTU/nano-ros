@@ -4828,6 +4828,26 @@ pub fn build_zephyr_workspace_rust_realtime_entry() -> TestResult<PathBuf> {
     )
 }
 
+/// issue 1537 — the Zephyr (native_sim) DERIVED-tier Rust workspace Entry
+/// (`realtime-rust`'s `derived_bringup`, `[image.zephyr]`): no authored
+/// `[tiers.*]`, a contract, and an image whose `prj-lowered-band.conf` moves the
+/// zenoh read task's band, so `nros::main!` must allocate the derived tiers out
+/// of THIS image's `.config` to land below its transport. Built by the west lane
+/// into `<zephyr-build-root>/build-ws-rs-realtime-derived-entry-zenoh/zephyr/zephyr.exe`;
+/// consumed by `tests/sched_dims_applied_e2e.rs` (`DerivedTierBelowTransport`),
+/// which also reads the `.config` beside the image.
+///
+/// The leaf source is the WORKSPACE for the reason the authored sibling above
+/// gives: the bringup's contract and Kconfig are build inputs.
+pub fn build_zephyr_workspace_rust_realtime_derived_entry() -> TestResult<PathBuf> {
+    let binary_path =
+        zephyr_build_root().join("build-ws-rs-realtime-derived-entry-zenoh/zephyr/zephyr.exe");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh("examples/workspaces/realtime-rust", "rust"),
+    )
+}
+
 /// phase-281 W3b — the Zephyr (native_sim) RT-TIERS C++ workspace Entry
 /// (`realtime-cpp/src/zephyr_entry`): the FIRST full west link + runtime proof of
 /// the W3a `ZephyrBoard::run_tiers` seam. `demo_bringup/system.toml` declares two

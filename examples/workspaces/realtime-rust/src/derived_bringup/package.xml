@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>derived_bringup</name>
+  <version>0.1.0</version>
+  <description>Derived-tier bringup: the demo_bringup nodes with a contract and no authored tiers, on a Zephyr image with a lowered transport band (issue 1537)</description>
+  <maintainer email="dev@example.com">dev</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>
