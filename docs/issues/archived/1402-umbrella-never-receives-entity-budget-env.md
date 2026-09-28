@@ -4,7 +4,8 @@ title: "The entity inventory compares two different populations — components
   from `nros-metadata.json` (every REGISTERED one) against declarations from the
   resolved model (only LAUNCHED ones) — so components an image never launches
   void its sizing"
-status: open
+status: resolved
+resolved: 2026-09-24
 type: bug
 area: [build, cmake, cli]
 severity: high
@@ -206,3 +207,68 @@ here on a measured one. Both wrong guesses came from reading an OUTPUT — the
 umbrella's environment, then the `absent` list — and inferring a cause without
 checking the INPUT that produced it. The candidate list in the previous revision
 is the only reason this converged rather than shipping twice.
+
+
+## RESOLVED 2026-09-24 — `Declaration::NotLaunched` (PR #1245)
+
+`Declaration` gained a fourth state. `Absent` had carried two meanings —
+"nobody declared this" and "this image's launch tree does not instantiate it" —
+and `derive()` refuses on `Absent`, so components an image never starts voided
+the sizing for every component it does.
+
+`NotLaunched` is produced at exactly ONE site: the no-model-row branch of
+`merged_per_kind_max`, and only from `Absent`. A `Stated` row is never
+reclassified — a component's statement about itself is a property of the
+component, not of the image. `derive()` now refuses on `Absent` alone.
+
+### Why the fourth state rather than filtering the population
+
+Both options were weighed (see the discussion recorded in PR #1245). Filtering
+non-launched components out of the refusal check is smaller, and it is WRONG:
+`merged_per_kind_max` runs only under `if let Some(model_inv)`, so an image with
+NO launch file never reaches it — and a filter applied there would instead have
+removed every component of a standalone image and derived a slot count of ZERO,
+which is the boot failure the refusal exists to prevent. The fourth state gets
+that for free: such an image keeps `Absent` and still refuses.
+`an_image_with_no_model_still_refuses_an_undeclared_component` pins it.
+
+### Named, not skipped
+
+The fragment publishes `NROS_ENTITY_INVENTORY_NOT_LAUNCHED` and the configure
+prints the names. "This image does not start it" is an INFERENCE from the launch
+tree, and a reader may know better than the model does; a count alone would hide
+that.
+
+### Measured end to end
+
+`examples/workspaces/cpp`, threadx-linux — the workspace this issue was filed
+from:
+
+```
+NROS_ENTITY_INVENTORY_STATUS          "derived"     (was "refused")
+NROS_ENTITY_INVENTORY_COMPONENT_COUNT 6
+NROS_ENTITY_INVENTORY_NOT_LAUNCHED    "fib_client;fib_server;add_client;add_server"
+NROS_DERIVED_EXECUTOR_MAX_CBS         2
+```
+
+`talker` and `listener` `stated`; the other four `not-launched`.
+
+### The assumption it rests on, restated
+
+A component absent from the model of an image that HAS a model is not started.
+`nros-node` and the C++ component header were searched for a manual start path
+and none was found; the refusal's own wording is "the launch file that runs it".
+If such a path exists, a running component's entities would go uncounted — which
+is why each one is NAMED, making the assumption checkable rather than silent.
+
+### What this issue does not close
+
+The two observations that outlived it:
+
+* **No in-tree image had produced a `derived` inventory** on this host before the
+  fix — all three fragments read `refused`. The delivering path now has a
+  positive control on the `cpp` workspace, but whether other images' launch
+  trees cover their registrations is unmeasured.
+* **`mixed` refused 7 of 7**, a different shape from `cpp`'s 4 of 6, and its
+  `[image.*]` blocks were never compared against its component list. It may or
+  may not be the same cause.
