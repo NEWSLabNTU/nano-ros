@@ -144,15 +144,16 @@ fn main() {
     }
     let config_dir = nros_build_paths::env_path("THREADX_CONFIG_DIR")
         .expect("nros-board-threadx: THREADX_CONFIG_DIR must be set when THREADX_DIR is");
-    let extra_kernel_includes: Vec<PathBuf> = env::var("THREADX_EXTRA_INCLUDES")
-        .ok()
-        .map(|v| {
-            v.split(':')
-                .filter(|s| !s.is_empty())
-                .map(|s| nros_build_paths::canonical(std::path::Path::new(s)))
-                .collect()
-        })
-        .unwrap_or_default();
+    // phase-471 W6 — a LIST is not exempt from issue 1280, and this file is
+    // where that showed: `THREADX_DIR` two screens up goes through `env_path`,
+    // while these elements were canonicalised and re-rooted nowhere. The
+    // producer is `cmake/board/nano-ros-board-rv-virt-threadx.cmake`, which
+    // writes `${THREADX_DIR}/ports/…/qemu_virt` from a bare `$ENV{THREADX_DIR}`
+    // — so in a linked worktree the kernel SOURCES came from here and
+    // `csr.h`/`plic.h`/`uart.h`/`hwtimer.h` came from the checkout the parent
+    // shell had activated. Two trees in one `cc::Build`.
+    let extra_kernel_includes: Vec<PathBuf> =
+        nros_build_paths::env_path_list("THREADX_EXTRA_INCLUDES");
 
     let threadx_port_dir = threadx_dir.join("ports").join(&port_subpath);
     assert!(
@@ -213,15 +214,8 @@ fn main() {
     // NetX-Duo per-port dir simply leave `NETX_EXTRA_INCLUDES` empty.
     let netx_dir = nros_build_paths::env_path("NETX_DIR")
         .expect("nros-board-threadx: NETX_DIR must be set (platform-threadx uses nx_bsd_*)");
-    let extra_netx_includes: Vec<PathBuf> = env::var("NETX_EXTRA_INCLUDES")
-        .ok()
-        .map(|v| {
-            v.split(':')
-                .filter(|s| !s.is_empty())
-                .map(|s| nros_build_paths::canonical(std::path::Path::new(s)))
-                .collect()
-        })
-        .unwrap_or_default();
+    // Same rule, same reason — see `THREADX_EXTRA_INCLUDES` above.
+    let extra_netx_includes: Vec<PathBuf> = nros_build_paths::env_path_list("NETX_EXTRA_INCLUDES");
 
     let mut platform = cc::Build::new();
     configure(&mut platform);

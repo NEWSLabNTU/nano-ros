@@ -1,6 +1,6 @@
 # Phase 471 — build-script classes
 
-**Status (2026-09-28). W0 and W1 LANDED; W2–W6 open.** A design study of the 66
+**Status (2026-09-29). W0, W1, W3 and W6 LANDED; W2, W4 and W5 open.** A design study of the 66
 cargo build scripts: what they are actually FOR, where they are genuinely
 fragmented, and where an "outlier" is a legitimately different job the old
 taxonomy was mis-describing. W0 replaced the census's capability letters with
@@ -258,6 +258,10 @@ which every one of these already did while carrying the whole recipe.
 **`check-build-script-path-resolution`**, on the fast line, reached by a
 merge-gating event. It reports 6 build scripts naming a path-valued SDK
 variable, all routed, over the 21 variables read from `just/sdk-env.just`.
+**W6 widened both of those subjects** — a second population (build-script
+LIBRARIES) and a second producer (board descriptors' `[env]`), each for a
+reason W6 records; read the number from `python3 scripts/nros-build-wiring.py
+--scripts`, not from this paragraph.
 
 **It ENFORCES the census's number rather than computing a rival one.** The gate
 imports `scripts/nros-build-wiring.py` and fails on its `unprotected` rows, so
@@ -404,17 +408,154 @@ not a `build.rs`; a descriptor token; two variables with no `sdk-env.just` row)
 → **issue 1560**, which includes the one live wrong answer: issue 1527's
 unconverted third `env_path_or`, one file from its converted twin.
 
-### W6 — the two sites issue 1527 deliberately left open
+### W6 — the two sites issue 1527 deliberately left open (LANDED)
 
-* `nros-board-threadx`'s `THREADX_EXTRA_INCLUDES` / `NETX_EXTRA_INCLUDES` are
-  colon-separated LISTS and `nros_build_paths` has no list form. Add
-  `env_path_list`, or say why a list is exempt.
-* `nros-board-common`'s three raw `NUTTX_DIR` reads
-  (`nuttx_ffi_build.rs:197,385`, `nuttx_image_link.rs:81`) carry a real
-  question: NuttX is built IN PLACE, so re-rooting into a worktree names an
-  UNBUILT kernel rather than a stale one. Both answers are defensible and the
-  choice must be made once, in the open, rather than by whichever site is edited
-  next.
+**Both RE-ROOT. Neither is exempt, and in both cases the measurement said so
+rather than the argument.** The brief allowed an exemption at either site, and
+phase-468's "exempt by shape, not by name" would have carried "built in place"
+if the shape had held up. It did not: in both files the variable's SIBLING
+already re-rooted, so the raw read was not preserving one answer — it was
+manufacturing two.
+
+#### Site 1 — colon-separated lists: `env_path_list`
+
+`nros_build_paths::env_path_list(name) -> Vec<PathBuf>`, and
+`nros-board-threadx` reads both `THREADX_EXTRA_INCLUDES` and
+`NETX_EXTRA_INCLUDES` through it.
+
+**A list is not exempt because an element is a path, and here every element is a
+path INSIDE a checkout.** The producer is
+`cmake/board/nano-ros-board-rv-virt-threadx.cmake`, which writes
+`set(ENV{THREADX_EXTRA_INCLUDES} "${THREADX_DIR}/ports/risc-v64/gnu/example_build/qemu_virt")`
+from a bare `$ENV{THREADX_DIR}` — cmake applies no re-root rule and has no
+equivalent of `checkout-paths.sh`. So in a linked worktree the kernel SOURCES
+came from here (`build.rs:43` has gone through `env_path` since issue 1527)
+while `csr.h`, `plic.h`, `uart.h` and `hwtimer.h` came from whichever checkout
+the parent shell had activated. Two trees in one `cc::Build`: the 0135/0460
+class, not a tidiness question.
+
+The three questions the brief asked, answered in the function's doc comment so
+the next caller does not have to re-derive them:
+
+* **An empty element is dropped**, and that is the one place a list differs
+  from `env_path` in kind. `FOO=""`, `"a:"` and `"a::b"` all have to mean "no
+  directory there"; `PathBuf::from("")` as a `-I` argument names the build
+  script's own CWD, which for a board crate is its manifest dir. That is why
+  the list form is a function rather than a `split` at each caller — one
+  spelling of the separator AND the filter (`split_list`).
+* **A relative element is kept, not re-rooted.** `checkout_root_of` answers
+  `None` for one BY DESIGN: it resolves against the caller's own cwd, so it
+  cannot have been inherited and there is no owner to re-root off. Still
+  canonicalised, which is exactly what the two sites already did.
+* **`:` is right on every host this builds for.** The three producers (`just`,
+  a cmake `set(ENV{…})`, a cargo `[env]` row) all write `:`, and
+  `nros-sdk-index.toml` has linux and macos host keys and no windows one —
+  where the separator would be `;` and a drive letter would make `:` ambiguous.
+  Stated rather than assumed, so a windows host reads as a thing to fix.
+
+#### Site 2 — NuttX: re-root, because "built in place" argues for ONE tree
+
+The phase feared re-rooting would name an UNBUILT kernel instead of a stale one.
+Measured in an agent worktree with the inherited
+`NUTTX_DIR=/home/aeon/repos/nano-ros/third-party/nuttx/nuttx`:
+
+| resolution | tree | `staging/libc.a` | `nros-nuttx-export-arm` |
+| --- | --- | --- | --- |
+| raw `env::var` (`nuttx_ffi_build.rs:197,385`, `nuttx_image_link.rs:81`) | the MAIN checkout | present | present |
+| `nros_build_paths::nuttx_dir()` (`nuttx_platform_build.rs:27,125`) | this worktree | absent | absent |
+
+Those two resolutions are reached **from one `build.rs` twenty lines apart** —
+`nros-board-nuttx-qemu/build.rs` calls `run_platform()` then
+`run_image_link()`. So the state the raw read preserved was never "the tree that
+is built": it was the platform C port compiled from one checkout and the kernel
+libs, linker script and headers taken from another. Issue 0511 already measured
+what that costs when the two configs differ (an ARM image linked with the RISC-V
+memory map, `CONFIG_FLASH_SIZE` 0, read as a 400–500 KB size regression).
+
+Three more measurements that decided it:
+
+* **All three sites were ALREADY guarded on existence** — `cxx.is_dir()`,
+  `staging.join("libc.a").exists()`, and an env-absent early return. So
+  re-rooting into an unprovisioned worktree cannot produce a wrong artifact; it
+  produces the same early return these functions already take on a host
+  `cargo check`, and the image link then fails LOUDLY. That is issue 1280's own
+  rule: a gate that RAN and measured the wrong tree is worse than one that
+  failed.
+* **Nothing needs a new provisioning step.** `just/sdk-env.just` re-roots
+  `NUTTX_DIR`, and `scripts/nuttx/build-nuttx.sh` derives its default from its
+  own location, so `just nuttx setup` + `just nuttx build` in a worktree already
+  build THAT worktree's tree. `just setup-worktree` deliberately does not — it
+  initialises the three submodules two fast gates need (issue 1373), not twenty
+  — and NuttX is no more special here than FreeRTOS or ThreadX, both of which
+  have re-rooted since 1527.
+* **The resolver is `env_path`, not `nuttx_dir()`.** Both sites' comments say
+  they are strictly env-gated so a host `cargo check` of a dependent Entry pkg
+  stays link-directive-free; `nuttx_dir()` would fall back to the in-repo
+  default and break that. `env_path` answers `None` when unset and re-roots when
+  set, which is the whole change.
+
+#### The gate's reach — extended, in two directions, both 0196's shape
+
+`check-build-script-path-resolution` (W3) passed over both sites, for two
+independent reasons. Both are now closed, and both by DERIVING a second subject
+rather than widening a declaration.
+
+* **The POPULATION was `build.rs`.** `nros-board-common` is a build-script
+  LIBRARY, so a raw read there reaches every board that calls it — strictly
+  worse than one in a single script. `build_script_libs()` walks
+  `[build-dependencies]` path deps out of the census's build scripts and then
+  transitively through those crates' own in-repo path deps (`[dependencies]`
+  count there, because the library is already running at build time;
+  `[dev-dependencies]` never do, and including them reached most of the tree).
+  The crate that DEFINES `pub fn reroot_foreign` is excluded — its own
+  `env_path` cannot be spelled `nros_build_paths::`, so it would report the rule
+  as a violation of itself — identified by what it defines, not by its name.
+  **W0's narrowing of `build_scripts()` is untouched**: this is a second
+  population answering a second question, not a widened first one.
+
+  It found **seven more live sites** in two crates nobody had looked at, all
+  fixed here: `nros-zpico-build/src/runner.rs` resolved
+  `FREERTOS_DIR`/`FREERTOS_CONFIG_DIR`/`LWIP_DIR`/`NUTTX_DIR`/`THREADX_DIR`/
+  `THREADX_CONFIG_DIR`/`NETX_DIR`/`NETX_CONFIG_DIR` raw to pick the headers its
+  **ABI probe** compiles against — a probe whose whole job is to measure a
+  struct layout the real build must agree with, measuring one checkout's headers
+  while the board crate compiled another's. And
+  `nros-platform-config/src/manifest.rs`'s `{nuttx_include}` token read
+  `NUTTX_DIR` raw before handing it to `nuttx_include_root`, i.e. the one
+  spelling issue 0551 created so an author could not get this wrong.
+
+* **The SUBJECT was `just/sdk-env.just` alone.** `THREADX_EXTRA_INCLUDES` is
+  exported by a board descriptor and a cmake board file and never by `just`, so
+  no amount of reading `sdk-env.just` would ever find it.
+  `board_env_path_vars()` derives it from the `cargo_config` `[env]` rows in
+  `nros-board.toml`, keyed on `${workspace}`-rooted values — precisely the class
+  1280 is about (a path INSIDE a checkout; one outside every checkout is KEPT by
+  the rule anyway, so not deriving those costs nothing). Kept as a SEPARATE
+  function: `sdk_path_vars()` stays paired with `check-inherited-checkout-paths`
+  off one line, and widening it would have broken that pairing rather than
+  extended it. 21 + 1 = 22.
+
+**And the widening produced a false report, which is worth recording because it
+is issue 1452's shape in miniature.** With libraries in the population, the
+private-helper rule flagged `nros-zpico-build`'s `declared_fact(name: &str) ->
+Option<String>` and `declared_floored(name: &str) -> Option<usize>` — env
+readers for RFC-0049 COUNT knobs, nothing to do with paths, in a file that after
+the fixes above has no defect. The remedy was NOT an exemption: the rule is
+about PATH resolution, so a helper qualifies only when its return type or body
+is path-typed. Both directions are self-test cases.
+
+**Negative controls, live on the real tree and reverted:** the ThreadX list site
+put back to its old `split(':')` → rc=1 naming `THREADX_EXTRA_INCLUDES`; the
+NuttX image-link site put back to `env::var` → rc=1 naming `NUTTX_DIR`; the same
+site with `// nros-build-paths-exempt: …` → OK with the reason printed. Census
+line: **0 resolving one WITHOUT it**, now over 6 build scripts and 5
+build-script library files.
+
+**What the gate still does not see, stated rather than left to be found:** a
+path variable produced by a cmake board file ALONE, with no descriptor row.
+Adding cmake would be a third derivation over a language whose variables are not
+distinguishable as paths by shape — and the place the rule is enforced for those
+is the READER, which is in one of the two populations either way.
 
 ---
 

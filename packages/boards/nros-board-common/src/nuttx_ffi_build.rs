@@ -194,8 +194,12 @@ pub fn run_nuttx() {
             // resolving; reaching the shared tree directly would silently
             // depend on it still being configured, which after any
             // `make olddefconfig` it is not.
-            if let Ok(nuttx_dir) = env::var("NUTTX_DIR") {
-                let cxx = crate::nuttx_export::include_root(&PathBuf::from(nuttx_dir)).join("cxx");
+            // phase-471 W6 — through `env_path`, like the sibling module's
+            // `nuttx_dir()`. `None` when unset keeps the "host cargo check"
+            // gate this read already had; what it adds is issue 1280's rule,
+            // so this include and the kernel libs below name ONE tree.
+            if let Some(nuttx_dir) = nros_build_paths::env_path("NUTTX_DIR") {
+                let cxx = crate::nuttx_export::include_root(&nuttx_dir).join("cxx");
                 if cxx.is_dir() {
                     build.include(&cxx);
                 }
@@ -382,9 +386,18 @@ pub fn run_nuttx() {
     // `--target-dir`. Not replaced by a content watch: NuttX is BUILT IN
     // PLACE, so watching its tree would leave this permanently dirty after
     // every kernel build. The specific inputs are declared per file.
-    let nuttx_dir = match env::var("NUTTX_DIR") {
-        Ok(dir) => PathBuf::from(dir),
-        Err(_) => return,
+    //
+    // phase-471 W6 — `env_path`, not a bare `env::var`. Still env-gated (it
+    // answers `None` when unset, so a host `cargo check` stays
+    // link-directive-free) and still no `rerun-if-env-changed`; what it adds is
+    // issue 1280's rule. The measured reason: `nuttx_platform_build` resolves
+    // the SAME variable through `nros_build_paths::nuttx_dir()`, so in a linked
+    // worktree the platform C port compiled against THIS checkout while the
+    // kernel libs and headers came from the one the parent shell had
+    // activated. "Built in place" is an argument for naming ONE tree, not for
+    // naming whichever tree happens to be built.
+    let Some(nuttx_dir) = nros_build_paths::env_path("NUTTX_DIR") else {
+        return;
     };
 
     // phase-339 W2 — link the per-arch export SNAPSHOT, not the shared live

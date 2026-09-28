@@ -269,6 +269,64 @@ pub fn env_path_watched(env_name: &str) -> Option<PathBuf> {
     Some(p)
 }
 
+/// A COLON-SEPARATED list of paths, every element resolved like [`env_path`].
+/// Empty (or unset) yields an empty vector; emits no directive.
+///
+/// phase-471 W6 — the two sites issue 1527 left open.
+/// `nros-board-threadx`'s `THREADX_EXTRA_INCLUDES` / `NETX_EXTRA_INCLUDES`
+/// canonicalised each element and re-rooted none, in a build script whose
+/// `THREADX_DIR` two screens up already went through [`env_path`]. A list is
+/// not exempt from issue 1280: an element is a path, and the producers of these
+/// two put a whole checkout's prefix in front of it —
+/// `cmake/board/nano-ros-board-rv-virt-threadx.cmake` writes
+/// `set(ENV{THREADX_EXTRA_INCLUDES} "${THREADX_DIR}/ports/…/qemu_virt")` from a
+/// bare `$ENV{THREADX_DIR}`, so in a linked worktree the kernel SOURCES came
+/// from here and `csr.h` / `plic.h` / `uart.h` / `hwtimer.h` came from the
+/// checkout the parent shell had activated. Two trees in one `cc::Build`, which
+/// is the 0135/0460 class rather than a tidiness question.
+///
+/// The three questions a list form has to answer, answered here rather than at
+/// whichever call site is edited next:
+///
+/// * **An empty element means nothing, and is dropped.** `FOO=""` (a board with
+///   no extra dir), `"a:"` and `"a::b"` all have to mean "no directory there".
+///   The alternative is `PathBuf::from("")`, which as a `-I` argument names the
+///   build script's own CWD — the board crate's manifest dir — and would put a
+///   whole crate on the include path for a stray colon. This is the one place
+///   where a list differs from [`env_path`] in kind, and it is why the list form
+///   is a function rather than a `split` at each caller.
+/// * **A relative element is KEPT, not re-rooted**, because
+///   [`checkout_root_of`] answers `None` for one BY DESIGN: it resolves against
+///   the caller's own cwd, so it cannot have been inherited from another
+///   checkout and there is no owner to re-root off. It is still
+///   [`canonical`]ised, which is exactly what these two sites did before.
+/// * **`:` is the separator on every host this builds for.** The producers are
+///   `just`, a cmake `set(ENV{…})` and a cargo `[env]` row, all of which write
+///   `:`, and `nros-sdk-index.toml` has linux and macos host keys and no
+///   windows one — where the separator would be `;` AND a drive letter would
+///   make `:` ambiguous. Stated rather than assumed, so that the day a windows
+///   host appears this reads as a thing to fix rather than a thing that works.
+///
+/// No `rerun-if-env-changed`, for [`canonical`]'s reason (issue 0491): the
+/// value is a path. A caller that wants the contents watched passes each
+/// element to [`watch_path`] — which `nros-board-threadx` already does.
+#[must_use]
+pub fn env_path_list(env_name: &str) -> Vec<PathBuf> {
+    let Ok(raw) = std::env::var(env_name) else {
+        return Vec::new();
+    };
+    split_list(&raw)
+        .map(|s| canonical(&reroot_env_value(env_name, PathBuf::from(s))))
+        .collect()
+}
+
+/// The separator and the empty-element rule, in ONE place — a caller that
+/// re-spells `split(':')` is free to forget the filter, which is the drift the
+/// list form exists to remove.
+fn split_list(raw: &str) -> impl Iterator<Item = &str> {
+    raw.split(':').filter(|s| !s.is_empty())
+}
+
 // Named resolvers for every var in `just/sdk-env.just`. Use these
 // instead of hand-rolling `env::var("NROS_PLATFORM_*")` in every
 // build script.
@@ -647,6 +705,52 @@ mod reroot_tests {
     #[test]
     fn a_relative_path_is_not_attributed_to_any_checkout() {
         assert_eq!(checkout_root_of(Path::new("third-party/nuttx")), None);
+    }
+
+    /// phase-471 W6 — the list form's own question: an empty element is not a
+    /// path. `PathBuf::from("")` as a `-I` argument names the build script's
+    /// CWD, so a trailing or doubled `:` would put the board crate's manifest
+    /// dir on the include path.
+    #[test]
+    fn an_empty_list_element_is_dropped_not_turned_into_the_cwd() {
+        assert_eq!(split_list("").collect::<Vec<_>>(), Vec::<&str>::new());
+        assert_eq!(split_list(":").collect::<Vec<_>>(), Vec::<&str>::new());
+        assert_eq!(split_list("a::b:").collect::<Vec<_>>(), vec!["a", "b"]);
+    }
+
+    /// Every element gets the rule, and gets it INDEPENDENTLY: one list can
+    /// legitimately mix a foreign-checkout element (re-rooted), a real
+    /// out-of-tree SDK dir (kept) and a relative one (kept, no owner to re-root
+    /// off). A list form that applied one verdict to the whole string would be
+    /// wrong for two of those three.
+    #[test]
+    fn each_list_element_gets_the_rule_on_its_own() {
+        let s = Scratch::new("list");
+        let main = s.checkout("main");
+        let worktree = s.checkout("worktree");
+        let vendor = s.0.join("opt/vendor/threadx");
+        std::fs::create_dir_all(&vendor).unwrap();
+
+        let raw = format!(
+            "{}:{}:{}",
+            main.join("third-party/threadx/kernel/ports/risc-v64/gnu/example_build/qemu_virt")
+                .display(),
+            vendor.display(),
+            "ports/linux/gnu/inc",
+        );
+        let got: Vec<PathBuf> = split_list(&raw)
+            .map(|e| reroot_foreign(Path::new(e), &worktree))
+            .collect();
+
+        assert_eq!(
+            got,
+            vec![
+                worktree
+                    .join("third-party/threadx/kernel/ports/risc-v64/gnu/example_build/qemu_virt"),
+                vendor,
+                PathBuf::from("ports/linux/gnu/inc"),
+            ]
+        );
     }
 
     /// The walk stops at the INNERMOST checkout. Agent worktrees live under

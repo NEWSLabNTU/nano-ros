@@ -77,10 +77,23 @@ pub fn run_image_link(builtins_stub: &Path) {
     // Strictly env-gated (NOT the nros-build-paths repo fallback): the image
     // link only makes sense inside a provisioned fixture/example build, which
     // always exports NUTTX_DIR. A host `cargo check` of a dependent Entry pkg
-    // must stay link-directive-free.
-    let nuttx_dir = match env::var("NUTTX_DIR") {
-        Ok(dir) => PathBuf::from(dir),
-        Err(_) => return,
+    // must stay link-directive-free — which is why this is `env_path` and not
+    // `nuttx_dir()`: `None` when unset, re-rooted when set.
+    //
+    // phase-471 W6 — the re-root is the change, and it is the same variable
+    // `nuttx_platform_build::run_platform()` resolves through
+    // `nros_build_paths::nuttx_dir()` twenty lines earlier in
+    // `nros-board-nuttx-qemu/build.rs`. Measured in an agent worktree: the raw
+    // read named the main checkout's tree (staging/libc.a present) while the
+    // re-rooted sibling named this one (absent), so one build script compiled
+    // one checkout's platform port and linked another's kernel. Re-rooting into
+    // an unprovisioned worktree costs nothing that was not already paid — the
+    // `staging/libc.a` guard below turns it into the same early return this
+    // function already takes on a host check, and the image link then fails
+    // LOUDLY instead of succeeding against a kernel configured by another
+    // tree's `.config` (issue 0511's memory-map class).
+    let Some(nuttx_dir) = nros_build_paths::env_path("NUTTX_DIR") else {
+        return;
     };
 
     let nuttx_cross = env::var("NUTTX_CROSS").unwrap_or_else(|_| "arm-none-eabi-gcc".to_string());
