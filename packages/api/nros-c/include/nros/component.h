@@ -305,8 +305,19 @@ int32_t nros_cpp_subscription_register_validated(const nros_cpp_node_t* node, co
 
 /* --- Publisher (raw) ---------------------------------------------------- */
 
+/* Issue 1566 — `nros_cpp_publisher_create` writes a `CppPublisher`, which is
+ * `NROS_PUBLISHER_SIZE + sizeof(void*)` bytes (its own const assertion), and it
+ * takes no size argument, so a short buffer is overrun silently. The literal
+ * 560 was one build's answer: on native_sim/zenoh NROS_PUBLISHER_SIZE is 632,
+ * the write is 640, and a component instance that the linker placed directly
+ * before the platform heap corrupted it (realtime-c SEGVed in its first
+ * declare). Take the per-build size whenever the generated header is here. */
 #ifndef NROS_C_PUBLISHER_STORAGE_SIZE
+#ifdef NROS_PUBLISHER_SIZE
+#define NROS_C_PUBLISHER_STORAGE_SIZE (NROS_PUBLISHER_SIZE + sizeof(void*))
+#else
 #define NROS_C_PUBLISHER_STORAGE_SIZE 560
+#endif
 #endif
 
 /** Create a publisher into the component-owned `storage`, then publish CDR bytes
