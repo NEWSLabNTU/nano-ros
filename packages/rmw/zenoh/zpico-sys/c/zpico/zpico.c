@@ -166,6 +166,29 @@ typedef struct {
     // `zpico_ring_desc_t` in the header. NULL = not in ring mode.
     bool ring_mode;
     zpico_ring_desc_t* ring;
+    /* Transient-local history window (`zpico_subscriber_history_query`).
+     *
+     * While a subscription's one history query is outstanding, the ring has two
+     * producers of the same stream: the publisher cache's REPLY and the live
+     * SAMPLE, in either order. A latched topic makes the order matter -- a cache
+     * reply that lands after a newer live sample would leave the ring's last
+     * entry stale until the next change, which for an on-change topic can be
+     * never. So each sample in the window is checked against the newest
+     * (publisher GID, sequence number) the window has already delivered, and a
+     * sample from the same publisher that is not newer is dropped.
+     *
+     * One pair, not a table: a latched topic has one writer in every case this
+     * serves, and a second writer's samples are delivered (different GID) --
+     * what is lost is only the cross-writer dedup, never a sample. The window
+     * closes when the query's dropper fires. `hist_active` is written by the
+     * caller's thread before the query is sent and by the dropper after; the
+     * rest only by the ring's producer (the read task), so they need no lock. */
+    volatile bool hist_active;
+    bool hist_have;
+    uint8_t hist_gid[16];
+    int64_t hist_seq;
+    uint32_t hist_replies;
+    uint32_t hist_dropped;
 #if defined(Z_FEATURE_UNSTABLE_API)
     bool zero_copy; // true = zero-copy mode (borrows from zenoh-pico buffer)
     ZpicoZeroCopyCallback zero_copy_cb;
@@ -1157,6 +1180,135 @@ static void query_handler(z_loaned_query_t* query, void* arg) {
     _zpico_notify_spin(s);
 }
 
+/* The PURE half of the history-window dedup (phase-473 W2): is the sample
+ * whose rmw attachment is `att[0..att_len)` newer than the newest one the window
+ * has delivered? The window state is three caller-owned fields, so a test can
+ * drive the real rule without a session -- the `zpico_graph_set_apply` shape.
+ *
+ * The attachment is the layout `RmwAttachment` writes: `int64 seq (LE) | int64
+ * timestamp | VLE len (16) | 16-byte GID`, 33 bytes (`safety-e2e` appends a
+ * CRC after them). One too short, or not carrying a 16-byte GID, takes no part
+ * in the dedup and is admitted: a sample is never dropped on a guess.
+ *
+ * Returns 1 to admit (and records it as the newest), 0 to drop (a sample from
+ * the same publisher at or below the recorded sequence number; `*dropped` is
+ * counted), `ZPICO_ERR_INVALID` for a NULL state pointer. */
+int32_t zpico_history_admit_apply(bool* have, uint8_t* gid, int64_t* seq, uint32_t* dropped,
+                                  const uint8_t* att, size_t att_len) {
+    if (have == NULL || gid == NULL || seq == NULL || dropped == NULL) {
+        return ZPICO_ERR_INVALID;
+    }
+    if (att == NULL || att_len < 33 || att[16] != 16) {
+        return 1;
+    }
+    uint64_t v = 0;
+    for (int i = 7; i >= 0; i--) {
+        v = (v << 8) | att[i];
+    }
+    int64_t s = (int64_t)v;
+    if (*have && memcmp(gid, att + 17, 16) == 0 && s <= *seq) {
+        (*dropped)++;
+        return 0;
+    }
+    *have = true;
+    memcpy(gid, att + 17, 16);
+    *seq = s;
+    return 1;
+}
+
+/* Whether a sample arriving in a subscription's history window is NEW.
+ * Outside a window every sample is. */
+static bool _zpico_history_admit(subscriber_entry_t* entry, const z_loaned_bytes_t* attachment) {
+    if (!entry->hist_active) {
+        return true;
+    }
+    uint8_t att[33];
+    size_t n = 0;
+    if (attachment != NULL && z_bytes_len(attachment) >= sizeof(att)) {
+        z_bytes_reader_t r = z_bytes_get_reader(attachment);
+        n = z_bytes_reader_read(&r, att, sizeof(att));
+    }
+    return zpico_history_admit_apply(&entry->hist_have, entry->hist_gid, &entry->hist_seq,
+                                     &entry->hist_dropped, att, n) != 0;
+}
+
+/* The SPSC ring producer: one sample (live, or a history reply) into the next
+ * free slot. Split out of `sample_handler` so the transient-local history reply
+ * lands in the SAME ring through the SAME code -- the consumer cannot tell the
+ * two apart, which is the point. Both callers run on the read task, so the
+ * single-producer rule holds. */
+static void _zpico_ring_push(struct zpico_session* s, subscriber_entry_t* entry,
+                             const z_loaned_bytes_t* payload, const z_loaned_bytes_t* attachment) {
+    size_t payload_len = z_bytes_len(payload);
+    // Phase 124.D.3.c — SPSC ring producer path. C is the sole
+    // writer of `tail`; Rust the sole writer of `head`.
+    if (entry->notify == NULL || entry->ring == NULL) {
+        return;
+    }
+    // Drop empty-payload samples — zenoh-pico delivers background
+    // probes / liveliness syncs through the regular subscription
+    // path with a zero-length payload. Buffering them would let
+    // the typed `take()` consume a slot whose CDR header check
+    // then fails. Mirrors the legacy single-slot behaviour.
+    if (payload_len == 0) {
+        return;
+    }
+    if (!_zpico_history_admit(entry, attachment)) {
+        return;
+    }
+    zpico_ring_desc_t* r = entry->ring;
+
+    // Acquire-load head (published by the Rust consumer) and a
+    // relaxed-load of our own tail. Ring full when the gap is
+    // slot_count — drop the newest message (matches DDS
+    // KEEP_LAST overwrite-from-the-front intent loosely; a
+    // dropped burst tail is reported via msg-lost accounting on
+    // the Rust side from the sequence gap).
+    uintptr_t head =
+        atomic_load_explicit((const _Atomic uintptr_t*)r->head, memory_order_acquire);
+    uintptr_t tail = atomic_load_explicit((_Atomic uintptr_t*)r->tail, memory_order_relaxed);
+    if (tail - head >= r->slot_count) {
+        // Ring full — drop. Still fire notify(len) so the Rust
+        // side can observe the arrival for waker / lost-count.
+        entry->notify(payload_len, NULL, 0, entry->ctx);
+        _zpico_notify_spin(s);
+        return;
+    }
+
+    uintptr_t slot = tail % r->slot_count;
+    uint8_t* pay_dst = r->payload_base + slot * r->payload_stride;
+    if (payload_len > r->payload_stride) {
+        // Slot too small — report overflow via notify, don't
+        // advance tail.
+        entry->notify(payload_len, NULL, 0, entry->ctx);
+        return;
+    }
+    z_bytes_reader_t reader = z_bytes_get_reader(payload);
+    z_bytes_reader_read(&reader, pay_dst, payload_len);
+    r->payload_len[slot] = payload_len;
+
+    // Attachment into the parallel per-slot array.
+    size_t att_written = 0;
+    if (attachment != NULL && r->att_stride > 0) {
+        size_t att_len = z_bytes_len(attachment);
+        if (att_len <= r->att_stride) {
+            z_bytes_reader_t att_reader = z_bytes_get_reader(attachment);
+            att_written =
+                z_bytes_reader_read(&att_reader, r->att_base + slot * r->att_stride, att_len);
+        }
+    }
+    r->att_len[slot] = att_written;
+
+    // Publish the slot: Release store advances tail so the Rust
+    // consumer sees the payload + len writes above.
+    atomic_store_explicit((_Atomic uintptr_t*)r->tail, tail + 1, memory_order_release);
+
+    // Fire notify for the async waker. Pass NULL attachment —
+    // the consumer reads the per-slot attachment array directly.
+    entry->notify(payload_len, NULL, 0, entry->ctx);
+    _zpico_notify_spin(s);
+}
+
 /**
  * Internal callback that receives zenoh samples and forwards to user callback.
  *
@@ -1213,71 +1365,7 @@ static void sample_handler(z_loaned_sample_t* sample, void* arg) {
 #endif
 
     if (entry->ring_mode) {
-        // Phase 124.D.3.c — SPSC ring producer path. C is the sole
-        // writer of `tail`; Rust the sole writer of `head`.
-        if (entry->notify == NULL || entry->ring == NULL) {
-            return;
-        }
-        // Drop empty-payload samples — zenoh-pico delivers background
-        // probes / liveliness syncs through the regular subscription
-        // path with a zero-length payload. Buffering them would let
-        // the typed `take()` consume a slot whose CDR header check
-        // then fails. Mirrors the legacy single-slot behaviour.
-        if (payload_len == 0) {
-            return;
-        }
-        zpico_ring_desc_t* r = entry->ring;
-
-        // Acquire-load head (published by the Rust consumer) and a
-        // relaxed-load of our own tail. Ring full when the gap is
-        // slot_count — drop the newest message (matches DDS
-        // KEEP_LAST overwrite-from-the-front intent loosely; a
-        // dropped burst tail is reported via msg-lost accounting on
-        // the Rust side from the sequence gap).
-        uintptr_t head =
-            atomic_load_explicit((const _Atomic uintptr_t*)r->head, memory_order_acquire);
-        uintptr_t tail = atomic_load_explicit((_Atomic uintptr_t*)r->tail, memory_order_relaxed);
-        if (tail - head >= r->slot_count) {
-            // Ring full — drop. Still fire notify(len) so the Rust
-            // side can observe the arrival for waker / lost-count.
-            entry->notify(payload_len, NULL, 0, entry->ctx);
-            _zpico_notify_spin(s);
-            return;
-        }
-
-        uintptr_t slot = tail % r->slot_count;
-        uint8_t* pay_dst = r->payload_base + slot * r->payload_stride;
-        if (payload_len > r->payload_stride) {
-            // Slot too small — report overflow via notify, don't
-            // advance tail.
-            entry->notify(payload_len, NULL, 0, entry->ctx);
-            return;
-        }
-        z_bytes_reader_t reader = z_bytes_get_reader(payload);
-        z_bytes_reader_read(&reader, pay_dst, payload_len);
-        r->payload_len[slot] = payload_len;
-
-        // Attachment into the parallel per-slot array.
-        size_t att_written = 0;
-        const z_loaned_bytes_t* attachment = z_sample_attachment(sample);
-        if (attachment != NULL && r->att_stride > 0) {
-            size_t att_len = z_bytes_len(attachment);
-            if (att_len <= r->att_stride) {
-                z_bytes_reader_t att_reader = z_bytes_get_reader(attachment);
-                att_written =
-                    z_bytes_reader_read(&att_reader, r->att_base + slot * r->att_stride, att_len);
-            }
-        }
-        r->att_len[slot] = att_written;
-
-        // Publish the slot: Release store advances tail so the Rust
-        // consumer sees the payload + len writes above.
-        atomic_store_explicit((_Atomic uintptr_t*)r->tail, tail + 1, memory_order_release);
-
-        // Fire notify for the async waker. Pass NULL attachment —
-        // the consumer reads the per-slot attachment array directly.
-        entry->notify(payload_len, NULL, 0, entry->ctx);
-        _zpico_notify_spin(s);
+        _zpico_ring_push(s, entry, payload, z_sample_attachment(sample));
         return;
     }
 
@@ -2598,6 +2686,10 @@ int32_t zpico_declare_subscriber_ring(zpico_session_t* session, const char* keye
     s->subscribers[idx].direct_write = false;
     s->subscribers[idx].ring_mode = true;
     s->subscribers[idx].ring = desc;
+    s->subscribers[idx].hist_active = false;
+    s->subscribers[idx].hist_have = false;
+    s->subscribers[idx].hist_replies = 0;
+    s->subscribers[idx].hist_dropped = 0;
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
@@ -2629,6 +2721,117 @@ int32_t zpico_declare_subscriber_ring(zpico_session_t* session, const char* keye
     s->subscribers[idx].active = true;
         zpico_last_sub_declare_exit = 6;
     return idx;
+}
+
+/* Reply handler of a transient-local history query: each cached sample goes
+ * into the subscription's ring exactly as a live one would, through the same
+ * producer and the same window dedup. An error reply (a peer's queryable
+ * refusing) carries no sample and is ignored. */
+static void history_reply_handler(z_loaned_reply_t* reply, void* arg) {
+    struct zpico_session* s = _zpico_unpack_session(arg);
+    int idx = _zpico_unpack_slot(arg);
+    if (idx < 0 || idx >= ZPICO_MAX_SUBSCRIBERS) {
+        return;
+    }
+    subscriber_entry_t* entry = &s->subscribers[idx];
+    if (!entry->active || !entry->ring_mode || !z_reply_is_ok(reply)) {
+        return;
+    }
+    const z_loaned_sample_t* sample = z_reply_ok(reply);
+    entry->hist_replies++;
+    _zpico_ring_push(s, entry, z_sample_payload(sample), z_sample_attachment(sample));
+}
+
+/* The query is complete (every queryable answered, or the timeout fired):
+ * close the window, so later samples skip the dedup. */
+static void history_reply_dropper(void* arg) {
+    struct zpico_session* s = _zpico_unpack_session(arg);
+    int idx = _zpico_unpack_slot(arg);
+    if (idx < 0 || idx >= ZPICO_MAX_SUBSCRIBERS) {
+        return;
+    }
+    s->subscribers[idx].hist_active = false;
+    _zpico_notify_spin(s);
+}
+
+/* The SUBSCRIBER half of transient-local durability: one history query, at
+ * creation, on `keyexpr` -- the caller passes `<subscription keyexpr>/@adv/**`,
+ * the global query `rmw_zenoh_cpp`'s advanced subscriber issues, which
+ * intersects every advanced publisher's cache queryable
+ * (`<topic keyexpr>/@adv/pub/<zid>/<eid>/_`, served by nano-ros's own TL
+ * publishers too). Replies land in the subscription's ring beside live
+ * samples; see `hist_active` for the ordering rule.
+ *
+ * Costs no slot of the pending-get table: the context is the subscriber's own
+ * index, and zenoh-pico holds the pending query until its dropper runs.
+ * Returns 0 once the query is sent, ZPICO_ERR_* otherwise. */
+int32_t zpico_subscriber_history_query(zpico_session_t* session, int32_t handle,
+                                       const char* keyexpr, uint32_t timeout_ms) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (s == NULL || keyexpr == NULL) {
+        return ZPICO_ERR_INVALID;
+    }
+    if (!s->session_open) {
+        return ZPICO_ERR_SESSION;
+    }
+    if (handle < 0 || handle >= ZPICO_MAX_SUBSCRIBERS || !s->subscribers[handle].active ||
+        !s->subscribers[handle].ring_mode) {
+        return ZPICO_ERR_INVALID;
+    }
+    subscriber_entry_t* entry = &s->subscribers[handle];
+    if (entry->hist_active) {
+        return 0; /* one window per subscription; the first query serves it */
+    }
+    z_view_keyexpr_t ke;
+    if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
+        return ZPICO_ERR_KEYEXPR;
+    }
+    z_get_options_t opts;
+    z_get_options_default(&opts);
+    opts.target = Z_QUERY_TARGET_ALL;
+    opts.timeout_ms = (uint64_t)timeout_ms;
+    /* Every cache's reply, as it arrives: consolidation would keep one reply
+     * per key, and all replies here carry the TOPIC key. */
+    opts.consolidation.mode = Z_CONSOLIDATION_MODE_NONE;
+    /* A cache replies on the TOPIC key, which does not intersect the query
+     * key `<topic>/@adv/**`; without `_anyke` the publisher's session refuses
+     * to send that reply and answers only the final one. Measured on the
+     * safety island against a stock rclpy latched publisher: the query was
+     * routed, the final reply came back 0.5 ms later, and no sample. This is
+     * what `rmw_zenoh_cpp`'s advanced subscriber sets too
+     * (`accept_replies(ReplyKeyExpr::Any)`). */
+    opts.accept_replies = Z_REPLY_KEYEXPR_ANY;
+    entry->hist_have = false;
+    entry->hist_replies = 0;
+    entry->hist_dropped = 0;
+    entry->hist_active = true;
+    z_owned_closure_reply_t callback;
+    z_closure(&callback, history_reply_handler, history_reply_dropper, _zpico_pack_ctx(s, handle));
+    if (z_get(z_session_loan(&s->session), z_view_keyexpr_loan(&ke), "", z_move(callback), &opts) <
+        0) {
+        entry->hist_active = false;
+        return ZPICO_ERR_GENERIC;
+    }
+    return 0;
+}
+
+/* What the history window did, for a test or a probe: `out_replies` cached
+ * samples arrived, `out_dropped` samples (either source) were older than one
+ * already delivered. Returns 1 while the window is open, 0 once closed. */
+int32_t zpico_subscriber_history_stats(zpico_session_t* session, int32_t handle,
+                                       uint32_t* out_replies, uint32_t* out_dropped) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (s == NULL || handle < 0 || handle >= ZPICO_MAX_SUBSCRIBERS) {
+        return ZPICO_ERR_INVALID;
+    }
+    subscriber_entry_t* entry = &s->subscribers[handle];
+    if (out_replies != NULL) {
+        *out_replies = entry->hist_replies;
+    }
+    if (out_dropped != NULL) {
+        *out_dropped = entry->hist_dropped;
+    }
+    return entry->hist_active ? 1 : 0;
 }
 
 #if defined(Z_FEATURE_UNSTABLE_API)

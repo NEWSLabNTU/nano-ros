@@ -465,6 +465,53 @@ mod cbindgen_stubs {
         0
     }
 
+    /// The SUBSCRIBER half of transient-local durability: one history query on
+    /// `keyexpr` (`<subscription keyexpr>/@adv/**`) whose replies land in the
+    /// ring subscription `handle` beside its live samples. Older-or-equal
+    /// samples from the same publisher are dropped while the query is open.
+    ///
+    /// # Returns
+    /// 0 once the query is sent, a negative error code otherwise.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_subscriber_history_query(
+        _session: *mut zpico_session_t,
+        _handle: i32,
+        _keyexpr: *const c_char,
+        _timeout_ms: u32,
+    ) -> i32 {
+        0
+    }
+
+    /// The pure dedup rule of a history window, over caller-owned state:
+    /// 1 admits the sample whose rmw attachment is `att` (and records it as
+    /// the newest), 0 drops it as not newer than one from the same publisher.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_history_admit_apply(
+        _have: *mut bool,
+        _gid: *mut u8,
+        _seq: *mut i64,
+        _dropped: *mut u32,
+        _att: *const u8,
+        _att_len: usize,
+    ) -> i32 {
+        1
+    }
+
+    /// What subscription `handle`'s history window did: cached samples that
+    /// arrived, and samples dropped as not newer than one already delivered.
+    ///
+    /// # Returns
+    /// 1 while the window is open, 0 once it closed, negative on a bad handle.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_subscriber_history_stats(
+        _session: *mut zpico_session_t,
+        _handle: i32,
+        _out_replies: *mut u32,
+        _out_dropped: *mut u32,
+    ) -> i32 {
+        0
+    }
+
     /// Declare a zero-copy subscriber for the given key expression.
     ///
     /// The callback receives a borrowed pointer directly into zenoh-pico's
