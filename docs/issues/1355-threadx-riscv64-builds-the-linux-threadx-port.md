@@ -8,7 +8,7 @@ type: bug
 area: ci, boards, threadx
 severity: medium
 found: 2026-09-12
-related: [1158, 1145, phase-448]
+related: [1158, 1145, 1557, phase-448]
 ---
 
 ## What happens
@@ -42,7 +42,10 @@ this coordinate would be indistinguishable from this.
 It also quietly weakens issue 1145's ThreadX entry, which records
 `threadx-riscv64` as "still unstated, and unstated is the safe state" and says
 the mechanism is in place awaiting a measurement on that board's own images.
-That measurement cannot be taken while the board crate will not build.
+That measurement cannot be taken while the board crate will not build. (1145 is
+resolved; that remainder is now
+[issue 1557](1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md),
+which this issue blocks.)
 
 ## What this is NOT
 

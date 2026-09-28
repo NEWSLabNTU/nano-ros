@@ -188,9 +188,18 @@ PORTS = {
         "chosen return-to-known-good value, not by the backing's size; "
         "`check-stack-floor` is what holds it (see the comment above)"
     )},
-    # W3/W4 of this phase. Issue 1197 has the measurement and the blocker.
-    "freertos": {"kind": "open", "why": "issue 1197 / phase-448 W4"},
-    "freertos-posix": {"kind": "open", "why": "issue 1197 / phase-448 W4"},
+    # W3/W4 of this phase, DONE (issue 1197). Nothing to pair by arithmetic: the
+    # zenoh heap is a derivation with no backing term. The cyclone/XRCE lanes'
+    # 3 MiB `FreeRTOSConfig.h` default is an undeclared BASE -- issue 1557.
+    "freertos": {"kind": "derived", "why": (
+        "the zenoh heap is `default_heap_bytes(app_stack_bytes)` with no "
+        "backing term, because `backing::take` latches the first executor onto "
+        "the .bss static (issue 1197); the cyclone/XRCE 3 MiB base is issue 1557"
+    )},
+    "freertos-posix": {"kind": "none", "why": (
+        "heap_3 wraps the host malloc, so configTOTAL_HEAP_SIZE is not a "
+        "budget this port enforces"
+    )},
     # NOT `none`: these boards DO have a fixed `FreeListHeap` static, and the
     # pairing question is open for them exactly as it is for esp32 — it is just
     # not W5's, which names NuttX, ThreadX and ESP32. Recorded rather than

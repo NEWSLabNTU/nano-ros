@@ -90,7 +90,7 @@ _Static_assert(sizeof(ULONG) == 4,
  * `nros_executor_t` objects are file-scope statics and were never drawn from
  * this pool, so there is nothing to give back.
  */
-/* The BASE is an undeclared number (issue 1145). The SUBTRAHEND below is
+/* The BASE is an undeclared number (issue 1557, split from 1145). The SUBTRAHEND below is
  * carefully derived — one rung, two readers, never written down twice — and the
  * 4 MiB it is subtracted FROM was chosen by nobody who wrote down why.
  *
