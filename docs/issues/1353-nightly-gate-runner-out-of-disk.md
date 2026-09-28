@@ -1239,3 +1239,65 @@ Acceptance is unchanged — a scheduled run reaching a VERDICT on `check build`
 and `check no-std`, three nights running — and the remedy list is unchanged,
 but it can now be priced: the tier needs ~24G and the reclaim currently hands it
 ~27.3G on a disk that arrives 86% full.
+
+## One night later the headroom is GONE, and the growth is all in one directory (2026-09-28)
+
+The 2026-09-27 section closed by pricing the remedy: "the tier needs ~24G and
+the reclaim currently hands it ~27.3G on a disk that arrives 86% full." The next
+scheduled `gate` — run **36368803015** (02:10 UTC), job **108760546805**,
+failing at step 26 `just check build` — measured all three of those numbers
+again, and every one moved the wrong way.
+
+| | 2026-09-27 (36287553068) | 2026-09-28 (36368803015) |
+| --- | --- | --- |
+| before the tier | 86% used, **21G** free | **94% used, 9.7G** free |
+| `packages/cli/target` | 30G | **41G** |
+| `examples` | 19G | 19G |
+| `build` | 3.5G | 3.5G |
+| reclaim frees | 6,703 MB | 6,704 MB |
+| post-reclaim headroom | **~27.3G** | **~16.2G** |
+| after the tier | 100% used, 272K free | 100% used, **264K** free |
+
+Two things this says that one measurement could not.
+
+**The growth is not spread across the checkout — it is `packages/cli/target`,
++11G in a day**, while `examples` (19G) and `build` (3.5G) are unchanged to the
+gigabyte. The 2026-09-27 section already corrected the earlier premise that
+`examples/workspaces` was the thing to prune; this narrows it further. Whatever
+prunes usefully here is the CLI's own target directory, and it is *growing*,
+which the 42G in the after-report confirms is not a one-off.
+
+**The tier now dies EARLIER, and the after-report proves it rather than
+suggesting it.** Yesterday `check build` got `target` to 15G and `build` to
+8.8G before the disk filled. Tonight, starting with 11G less, it reached
+`target` **5.7G** and `build` **7.2G**. Same step, same tier, less than half the
+`target` output — so the ~24G figure is the tier's *appetite*, not what it gets
+to spend, and the reclaim's fixed 6.7G no longer covers the gap it was sized
+against.
+
+### The tier-1 PUSH lane is the same failure, four runs running
+
+Not scheduled `gate` — `host-tests` on the **push** event, which emits the
+runner's disk warning but no transcript:
+
+| run | head | died at | warning |
+| --- | --- | --- | --- |
+| 36322794885 | `6e1a356e0` | 2h39m | `Free space left: 84 MB` |
+| 36331789788 | `4ac8244d4` | 2h32m | `Free space left: 76 MB` |
+| 36354992627 | `205cfc959` | 2h06m | `Free space left: 95 MB` |
+| 36359825546 | `1f8b1d442` | 2h16m | `Free space left: 2 MB` |
+
+All four end the same way: the warning, then a log **truncated mid-line**
+(`… /pkg_rust_publiserror: recipe 'build' failed on line 233`, two lines mashed
+together), then `error: recipe 'tier1' failed with exit code 1`. Each ran past
+the ~2h20m envelope issue 1492's resolution measured for a clean tier-1 finish,
+so these are 1353 on a second lane and **not** 1492 recurring — 1492's own
+acceptance was three clean 23-step finishes, which these are not.
+
+What is still missing is a `host-tests` disk transcript: that lane uploads none,
+so its four deaths have a warning and no figures behind them. Pairing them
+against `gate`'s numbers is inference, stated as such.
+
+Acceptance is unchanged. The remedy list is unchanged, and now has a direction:
+the arrival state is what moved, `packages/cli/target` is what moved it, and a
+fixed 6.7G reclaim against a disk arriving 94% full cannot hold.
