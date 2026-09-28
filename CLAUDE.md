@@ -991,9 +991,11 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `zephyr_heap.rs` (Kconfig default 65536) — so `CONFIG_HEAP_MEM_POOL_SIZE` and
   `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE` size heaps those allocations never touch. The older
   advice here, "the Rust allocator is picolibc `malloc`", predates phase-391 W3 and points at
-  the wrong knob. Exhaustion is SILENT on native_sim unless `CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL`
-  is on: an infallible Rust allocation reaches std's OOM handler, whose stderr write is issue
-  0589's `zvfs_write` recursion — a stack overflow with no message.
+  the wrong knob. An INFALLIBLE Rust allocation that fails reaches std's OOM handler, whose
+  stderr write is issue 0589's `zvfs_write` recursion — a stack overflow with no message, and
+  no stable toolchain lever re-routes that hook. So an entity-creation allocation with an error
+  return goes through `nros_rmw::fallible::try_box` and returns `BAD_ALLOC` (issue 1551, which
+  lists the sites still excluded); `CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL` halts on the rest.
 - **The SDK store ACCUMULATES, so a stale Corrosion can shadow the pin you just installed**
   (issue 0500) — prefixes are enumerated newest-version-first (`COMPARE NATURAL ORDER
   DESCENDING` / `sort -Vr`) precisely because `find_package` takes the FIRST that resolves,

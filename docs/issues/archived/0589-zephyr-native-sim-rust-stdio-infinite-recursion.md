@@ -186,3 +186,30 @@ resolves nano-ros's exposure, not Zephyr's bug.
 image was not rebuilt — the Zephyr `cpp_diag!` arm is verified to COMPILE
 (`cargo check -p nros-cpp --features std,platform-zephyr`) and the sink is
 verified by reading `platform.c`, not by watching a line appear on a console.
+
+## Amendment (2026-09-29, issue 1551): libstd itself is a producer
+
+The class is "any write to fd 1/2 through the POSIX fdtable on a
+`native_sim` image", and our own call sites are only part of it. Issue 1551
+measured a producer **inside libstd** that neither the fix above nor
+`check-no-std-stdio` can see: an infallible allocation (`Box::new`, `vec!`,
+`Arc::new`, `format!`, …) that fails calls `handle_alloc_error`, and in a
+`std` build libstd's `default_alloc_error_hook` writes
+`"memory allocation of N bytes failed"` to fd 2 — the same recursion, same
+`lock_count` signature (104,735), exit 139, and the message never appears.
+
+None of the three levers that would re-route that hook is available on the
+pinned stable toolchain (`std::alloc::set_alloc_error_hook`,
+`#[alloc_error_handler]`, `-Zoom=panic` are all nightly-only — measured on
+rustc 1.98.1), so the remedy is at the call site: an allocation on an
+entity-creation path with an error return goes through
+`nros_rmw::fallible::try_box` / `try_zeroed_bytes` and returns
+`BAD_ALLOC`. Reach, exclusions and the acceptance run are in issue 1551's
+Resolution. `stdinout_write_vmeth` is still Zephyr's bug.
+
+A correction to "The sink" above, measured by the same run: on the C/C++
+board roads no funnel installed a `nros_log` sink, so a Rust-side `nros_log`
+record was HELD (`nros_log::early`) until the image's own first C log call —
+safe, but on those roads not yet "prints instead of killing the image". The
+C/C++ session-init entry points now install the default sink first (issue
+1551).
