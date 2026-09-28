@@ -96,6 +96,24 @@ pub struct SourceSubscriber {
     pub callback: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub callback_slot: Option<u32>,
+    /// phase-457 W3 (schema v3) — the CALL SITE's half of this subscription's
+    /// `registration_path`, when something observed the registration.
+    ///
+    /// This reader does not USE it; `leaf_entity_env` is what carries it into
+    /// `EntityDecl::in_place_capable`. It is declared here because the struct
+    /// is `deny_unknown_fields`, which is the trap issue 0518 records for
+    /// `period_us` one field over: a key added to the emitter and to ONE
+    /// reader makes every source-metadata parse fail outright, four frames
+    /// from the writer.
+    ///
+    /// W3 added the emitter and `leaf_entity_env` and not this, and nothing
+    /// caught it, because no producer that reaches this reader emitted the
+    /// key — the Rust probe observes no registration at all, which is issue
+    /// 1522. Making the Rust road STATE the row is what first sent an
+    /// `in_place` through here, as `unknown field 'in_place'` on an ordinary
+    /// `nros build` of `examples/native/rust/listener`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_place: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
