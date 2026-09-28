@@ -271,6 +271,30 @@ entity-slot-costs:
 entry-rmw-vocabulary:
     @python3 scripts/check-entry-rmw-vocabulary.py
 
+# issue 1531 — a baked BOOT-CONFIG rung must reach EVERY language surface.
+#
+# `entry-rmw-vocabulary` above holds the two ends of the SELECTOR's name
+# together. This holds the two ends of the LADDER: `nano_ros_entry()` bakes
+# `NROS_ENTRY_*` onto the entry target whatever the entry's language, so a rung
+# is available to C and C++ alike — and consuming it is a separate act that, for
+# `NROS_ENTRY_RMW`, only C++ ever performed.
+#
+# The asymmetry was invisible for three weeks and was not harmless: issue 1050
+# added the rung and in the same commit made a selector-less open with more than
+# one registered backend a hard refusal, so C got the new failure mode and not
+# the new capability. Issue 1530 is the bill — every native C example failed
+# `nros_support_init` with `NROS_RET_INVALID_ARGUMENT` for eighteen days, behind
+# an absorbing stale verdict that reported a `.stamp` file instead.
+#
+# Scope is DERIVED on both sides (the cmake bakes, intersected with
+# `nros_node::BootConfig`'s fields), never authored: plain symmetry over every
+# `NROS_ENTRY_*` fires on `MAX_NODES`/`MAX_ENTITIES`, which are legitimately
+# C++-only, and an exemption list for those is the "only as complete as whoever
+# wrote it" problem this gate exists to answer. Buildless.
+[private]
+entry-rung-consumers:
+    @python3 scripts/check-entry-rung-consumers.py
+
 # Issue 0827 — the infrastructure-queryable counts have ONE definition each,
 # tied to the number of servers actually created. A service server IS a zenoh
 # queryable, so these are a term in every service-buffer pool the RMW sizes;

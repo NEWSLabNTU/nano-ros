@@ -71,6 +71,10 @@ c: c-fmt
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    # issue 0726 / 1077 — `nros_grep_q` for the assertions further down: a bare
+    # `grep -q` cannot tell a tool error from a non-match, and a pipeline into an
+    # early-exiting matcher can report a match as a miss under load.
+    source scripts/lib/grep-q.sh
     # issue 1354 — this lane's own Cargo target dir, so its generated config
     # header cannot be written by another lane's feature set.
     #
@@ -134,6 +138,72 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/cdr_borrow_le_slice
     ./tmp/cdr_borrow_le_slice
+    echo "  - issue 1531: the C surface forwards the BAKED RMW rung, and only when baked"
+    # Three properties, with a NEGATIVE CONTROL, because "it compiles" is what
+    # the pre-fix tree also did. `<nros/baked_rmw.h>` rewrites the two nameless
+    # `nros_support_init` spellings to `nros_support_init_rmw(... NROS_ENTRY_RMW)`
+    # when an entry baked one; the runtime half (does the selector reach the
+    # backend) is measured on a two-backend image and cannot be a compile check.
+    #
+    # `test -f` first: a missing TU must not read as a pass (issue 0196's class).
+    test -f packages/api/nros-c/tests/compile/baked_rmw_rung.c || { \
+        echo "ERROR: baked_rmw_rung.c is MISSING -- this check passes on absence." >&2; exit 1; }
+    for _bake in '-DNROS_ENTRY_RMW="cyclonedds"' ''; do \
+        cc -fsyntax-only -std=c11 -Wall -Wextra -Wmissing-prototypes $_bake \
+            -I"$gen/nros-c-generated" \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            packages/api/nros-c/tests/compile/baked_rmw_rung.c \
+        || { echo "ERROR: baked_rmw_rung.c must compile with the bake ($_bake) and without." >&2; \
+             exit 1; }; \
+    done
+    # The forward itself, read off the preprocessor rather than assumed. WITH a
+    # bake the three-argument call must become `nros_support_init_rmw`; WITHOUT
+    # one it must NOT, because an image with no bake resolves namelessly exactly
+    # as it always has and a macro that fired anyway would pass a nonexistent
+    # token.
+    _pp() { cc -E -std=c11 "$@" -I"$gen/nros-c-generated" \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            packages/api/nros-c/tests/compile/baked_rmw_rung.c; }
+    # Keyed on the STATEMENT the probe writes (`rc = nros_support_init(...)`),
+    # not on a whole-line match: the expansion spans several lines, so a
+    # single-line grep for the selector reports a failure that is about the grep.
+    #
+    # CAPTURED first, then matched with a here-string, and through `nros_grep_q`:
+    # `cmd | grep -q` under `set -o pipefail` can report a MATCH as a miss when
+    # the early-exiting matcher SIGPIPEs the writer (issue 1077), and bare
+    # `grep -q` cannot tell a tool error from a non-match (issue 0726). Both
+    # failures are load-only, which is the direction that teaches people to
+    # re-run a gate rather than believe it.
+    _pp_baked="$(_pp '-DNROS_ENTRY_RMW="cyclonedds"')"
+    _pp_bare="$(_pp)"
+    # Joined, so the `[^;]*` window can span the expansion's own line breaks
+    # while still being bounded to ONE statement — otherwise it would reach the
+    # explicit-selector probe below, which passes a literal "cyclonedds" of its own.
+    _pp_baked_joined="$(printf '%s' "$_pp_baked" | tr '\n' ' ')"
+    _rung_assert() { \
+        local _what="$1" _pat="$2" _txt="$3" _want="$4" _rc=0; \
+        nros_grep_q "$_pat" <<<"$_txt" || _rc=$?; \
+        case "$_rc" in \
+            0) [ "$_want" = match ] || { echo "ERROR: $_what" >&2; exit 1; } ;; \
+            1) [ "$_want" = miss ] || { echo "ERROR: $_what" >&2; exit 1; } ;; \
+            *) echo "ERROR: grep failed (rc=$_rc) matching $_pat -- a tool failure, not a finding." >&2; \
+               exit 1 ;; \
+        esac; \
+    }
+    _rung_assert \
+        "with NROS_ENTRY_RMW baked, nros_support_init must forward to nros_support_init_rmw -- the C surface is back to issue 1531." \
+        'rc = nros_support_init_rmw' "$_pp_baked" match
+    _rung_assert \
+        "the forward fired but did not carry NROS_ENTRY_RMW's value." \
+        'rc = nros_support_init_rmw[^;]*"cyclonedds"' "$_pp_baked_joined" match
+    # Negative control: with NO bake the nameless spelling must SURVIVE. An image
+    # with no bake resolves namelessly exactly as it always has, and a macro that
+    # fired anyway would pass a token that does not exist.
+    _rung_assert \
+        "with NO bake, nros_support_init must stay nameless (issue 1531)." \
+        'rc = nros_support_init(' "$_pp_bare" match
     echo "  - phase-430 W1: a C timer created on a ROS clock FOLLOWS that clock"
     # The second COMPILE+LINK+RUN TU, and for the same reason as the first: the
     # defect is a behaviour, not a signature. `nros_timer_init_on_clock` could

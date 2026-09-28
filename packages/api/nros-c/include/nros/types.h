@@ -26,5 +26,12 @@
    compile-time assertion generated message headers emit. Included here so a
    generated header reaches it through its single `<nros/types.h>` include. */
 #include "nros/serialization_format.h"
+/* issue 1531 — LAST, and deliberately so: this header defines function-like
+   macros named after entry points `nros_generated.h` DECLARES, so it has to come
+   after that declaration or it would eat it. It is here rather than in
+   `<nros/init.h>` because every consumer must get it — two TUs in one image
+   disagreeing about whether the baked RMW rung is passed is issue 1530's failure
+   with a narrower blast radius. */
+#include "nros/baked_rmw.h"
 
 #endif /* NROS_TYPES_H */
