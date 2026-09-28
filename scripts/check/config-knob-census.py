@@ -443,6 +443,11 @@ KNOB_CLASS = {
     # its sources entered the scan; it configures nothing about the image.
     "NROS_RMW_TRACE_OPEN": ("infra", "runtime trace toggle, not a size"),
     "NROS_RMW_SUBSCRIBER_SLOTS": ("derived", "phase-412 W1 — COUNT_SUBSCRIPTION"),
+    "NROS_RMW_LOCAL_QUERYABLE": (
+        "derived",
+        "issue 1549 — a 0/1, not a size: on when the entity inventory holds a "
+        "service client AND a service server; nros-node's build.rs reads it "
+        "only for the boot record"),
     "NROS_EXTRA_BOARD_PATH": ("infra", "extra board search roots"),
     "NROS_HOME": ("infra", "path"),
     # phase-440 W6 / RFC-0095 D2 — the store ROOT, of which `NROS_HOME` names
@@ -642,6 +647,11 @@ NON_READ_CALLEES = {
     # that an index entry declares the right override variable. It cannot be a
     # read: the environment is never consulted by wrapping a string literal.
     "Some",
+    # issue 1549. `nros-node/build.rs`'s `knob_source_code(knob)` reads
+    # `NROS_KNOB_SOURCE_<knob>` -- the RUNG the cmake resolver recorded for a
+    # knob, never the knob's value. The value's one read is the
+    # `env_opt_string(knob)` beside it, which this census already counts.
+    "knob_source_code",
 }
 
 _CALL_RE = r'([A-Za-z_][A-Za-z0-9_:]*)\s*\(\s*&?"({prefix}_[A-Z0-9_]+)"'

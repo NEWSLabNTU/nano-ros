@@ -149,9 +149,21 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosSharedCargoDir.cmake")
 
 # Resolve one knob. `kconfig_value` is the Kconfig-derived value, used only when
 # the environment does not already carry an explicit one.
+#
+# The optional third argument names where `kconfig_value` came from when it is
+# NOT Kconfig: `derived` (an inventory, rung 3) or `default` (nobody, rung 4, for
+# a knob whose consumer has no literal of its own). Issue 1549 -- the rung is
+# recorded beside the value as `NROS_KNOB_SOURCE_<knob>` and rides to cargo with
+# it, so an image can say in its boot record not only WHAT a knob was but WHO
+# decided it. The spelling is one of: environment, kconfig, derived, default.
 function(_nros_resolve_knob env_name kconfig_value)
+    set(_source kconfig)
+    if(ARGC GREATER 2)
+        set(_source "${ARGV2}")
+    endif()
     if(DEFINED ENV{${env_name}} AND NOT "$ENV{${env_name}}" STREQUAL "")
         set(_resolved "$ENV{${env_name}}")
+        set(_source environment)
         if(NOT "${_resolved}" STREQUAL "${kconfig_value}")
             message(STATUS
                 "nros: ${env_name}=${_resolved} from environment "
@@ -160,6 +172,8 @@ function(_nros_resolve_knob env_name kconfig_value)
     else()
         set(_resolved "${kconfig_value}")
     endif()
+    set(NROS_KNOB_SOURCE_${env_name} "${_source}" CACHE INTERNAL
+        "which rung of the knob ladder decided ${env_name} (issue 1549)")
 
     # CACHE INTERNAL, not PARENT_SCOPE: the readers are other functions in other
     # included files, and a normal var would not survive the frame pop
@@ -386,7 +400,7 @@ function(_nros_resolve_derivable_knob env_name kconfig_value derived_var)
         message(STATUS
             "nros: ${env_name}=${${derived_var}} DERIVED from this image's "
             "${_src} (nothing in Kconfig or the environment states one)")
-        _nros_resolve_knob(${env_name} "${${derived_var}}")
+        _nros_resolve_knob(${env_name} "${${derived_var}}" derived)
         return()
     endif()
     # Rung 4. Deliberately NOT resolved: an unforwarded knob leaves the reading
@@ -428,7 +442,11 @@ function(nros_resolve_knobs)
     # handoff ever types it INTERNAL.
     get_property(_nros_cache_vars GLOBAL PROPERTY CACHE_VARIABLES)
     foreach(_nros_cache_var IN LISTS _nros_cache_vars)
-        if(_nros_cache_var MATCHES "^NROS_RESOLVED_"
+        # Issue 1549 -- a knob's recorded SOURCE goes with its value: a knob
+        # that falls to rung 4 this configure must not keep last configure's
+        # "derived".
+        if((_nros_cache_var MATCHES "^NROS_RESOLVED_"
+            OR _nros_cache_var MATCHES "^NROS_KNOB_SOURCE_")
            AND NOT _nros_cache_var STREQUAL "NROS_RESOLVED_DIR")
             get_property(_nros_cache_type CACHE ${_nros_cache_var} PROPERTY TYPE)
             if(_nros_cache_type STREQUAL "INTERNAL")
@@ -869,6 +887,29 @@ function(nros_resolve_knobs)
         # No Kconfig row, so the sentinel literally, as for the type table.
         _nros_resolve_derivable_knob(ZPICO_TL_RETAIN_BYTES
             "${NROS_KNOB_DERIVE_SENTINEL}" NROS_DERIVED_TL_RETAIN_BYTES)
+
+        # Issue 1549 -- zenoh-pico's same-session query path
+        # (Z_FEATURE_LOCAL_QUERYABLE), derived from the entity inventory: on
+        # when the image declares a service client AND a service server, which
+        # otherwise never meet because the router does not return a query to
+        # the session it came from. `nros_rmw_zenoh.cmake` emits the define
+        # from this value, and it gates struct fields, so it may not be left
+        # unresolved the way a size knob is: rung 4 is zenoh-pico's own
+        # default, 0, stated here and recorded as `default`. The two arms are
+        # exclusive (check-knob-resolved-once): the first is exactly the case
+        # `_nros_resolve_derivable_knob` would leave unresolved.
+        if("${CONFIG_NROS_RMW_LOCAL_QUERYABLE}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}"
+           AND "$ENV{NROS_RMW_LOCAL_QUERYABLE}" STREQUAL ""
+           AND "${NROS_DERIVED_RMW_LOCAL_QUERYABLE}" STREQUAL "")
+            message(STATUS
+                "nros: NROS_RMW_LOCAL_QUERYABLE=0, zenoh-pico's default -- no "
+                "value stated and the entity inventory derived none")
+            _nros_resolve_knob(NROS_RMW_LOCAL_QUERYABLE 0 default)
+        else()
+            _nros_resolve_derivable_knob(NROS_RMW_LOCAL_QUERYABLE
+                "${CONFIG_NROS_RMW_LOCAL_QUERYABLE}" NROS_DERIVED_RMW_LOCAL_QUERYABLE
+                "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+        endif()
 
         # The payload-class trio. These size LARGE_PAYLOADS and SMALL_PAYLOADS
         # (subscriber.rs:199-200) and were reachable only from the environment
@@ -1842,6 +1883,12 @@ function(nros_cargo_build)
     set(_nros_knob_env "")
     foreach(_knob IN LISTS NROS_RESOLVED_KNOBS)
         list(APPEND _nros_knob_env "${_knob}=${NROS_RESOLVED_${_knob}}")
+        # Issue 1549 -- and which rung decided it, for the boot record
+        # (`nros-node/build.rs` reads the ones the record carries).
+        if(DEFINED NROS_KNOB_SOURCE_${_knob})
+            list(APPEND _nros_knob_env
+                "NROS_KNOB_SOURCE_${_knob}=${NROS_KNOB_SOURCE_${_knob}}")
+        endif()
     endforeach()
 
     # phase-412 -- the boot self-report. A BOOL, so it does not go through the

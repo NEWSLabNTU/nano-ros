@@ -193,6 +193,11 @@ _INBOX_NOT_DERIVABLE = "They ride the DECLARED road, the one"
 _INBOX_DESCRIPTOR_ANSWERS = "A LEAF ANSWERS THIS QUESTION FROM ITS SIZING DESCRIPTOR"
 _QUERYABLES_COMPLETED = "sizes the queryable table from"
 
+# issue 1549 -- the cargo roads' zenoh-pico has the same-session query path on
+# unconditionally; the decision and its reason are written where it is made.
+_ZPICO_BUILD = "packages/rmw/zenoh/nros-zpico-build/src/lib.rs"
+_LOCAL_LOOPBACK_ALWAYS = "Enabled on EVERY target, embedded included"
+
 FACT_DISPOSITION = {
     # ---- the entity inventory's counts -----------------------------------
     "NROS_DERIVED_EXECUTOR_MAX_CBS": {
@@ -433,6 +438,22 @@ FACT_DISPOSITION = {
         "declared": OpenGap(
             1498, "the CMake road composes no bound for the types an entry "
             "publishes transient-local; the slot keeps its builtin 1024 B"),
+    },
+    # issue 1549 -- zenoh-pico's same-session query path, a 0/1 derived from
+    # whether the image holds a service client AND a service server. Only the
+    # Zephyr resolver road builds zenoh-pico from cmake and needs the fact;
+    # both cargo roads build it through `nros-zpico-build`, which turns the
+    # flag on for every target, so there is nothing for them to carry.
+    "NROS_DERIVED_RMW_LOCAL_QUERYABLE": {
+        "resolver": ("NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE",),
+        "sidecar": NotCarried(
+            _ZPICO_BUILD, _LOCAL_LOOPBACK_ALWAYS,
+            "the cargo-built zenoh-pico compiles the same-session query path "
+            "in on every target, so a derived 0/1 has no consumer there"),
+        "declared": NotCarried(
+            _ZPICO_BUILD, _LOCAL_LOOPBACK_ALWAYS,
+            "same builder, same constant: the declared road's zenoh-pico "
+            "comes from `nros-zpico-build` too"),
     },
     # ---- provenance: published, carried by nothing, and that is correct ---
     "NROS_DERIVED_LARGEST_TYPE": {

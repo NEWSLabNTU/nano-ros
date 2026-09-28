@@ -45,7 +45,7 @@ SYMBOL = "NROS_BOOT_REPORT"
 # "NRSR". Must match boot_report.rs MAGIC.
 MAGIC = 0x4E525352
 # Layout this script knows how to decode. Must match boot_report.rs VERSION.
-KNOWN_VERSION = 5
+KNOWN_VERSION = 6
 
 # The headroom `CONFIG_NROS_ZEPHYR_HEAP_SIZE` must keep above the measured
 # peak, in bytes.
@@ -91,7 +91,26 @@ FIELDS = (
     # phase-460 W7, appended on the same rule. Issue 1425: a sample received,
     # ACKed and then discarded for being bigger than its subscription buffer.
     "samples_dropped_too_small",
+    # Issue 1549, appended on the same rule: Z_FEATURE_LOCAL_QUERYABLE and the
+    # rung of the knob ladder that decided it, packed (value | source << 8).
+    "rmw_local_queryable",
 )
+
+# `boot_report::KnobSource`. Append only; `the_knob_source_codes_match_the_record`
+# in boot_report.rs states the numbers this and `nros-node/build.rs` restate.
+KNOB_SOURCE = {
+    0: "not recorded (no resolver road reached this build)",
+    1: "default -- nobody stated it and nothing derived it",
+    2: "DERIVED from the image's entity inventory",
+    3: "stated in Kconfig (a .conf, a snippet, or its default)",
+    4: "stated in the build environment",
+}
+
+
+def knob_word(word: int) -> tuple[int, str]:
+    """(value, provenance) of a packed knob word: value | source << 8."""
+    src = (word >> 8) & 0xFF
+    return word & 0xFF, KNOB_SOURCE.get(src, f"unknown source {src}")
 
 STAGES = {
     0: "Untouched -- the image never entered nros_cpp_init",
@@ -362,6 +381,8 @@ def report(rec: dict[str, int]) -> int:
     print(f"  NROS_EXECUTOR_MAX_SC          {rec['max_sc']}")
     print(f"  NROS_EXECUTOR_MAX_NODES       {rec['max_nodes']}")
     print(f"  NROS_SUBSCRIPTION_BUFFER_SIZE {rec['default_rx_buf_size']}")
+    lq, lq_src = knob_word(rec["rmw_local_queryable"])
+    print(f"  Z_FEATURE_LOCAL_QUERYABLE     {lq}   ({lq_src})")
     print()
     print("measured on the board:")
     cap = rec["arena_capacity"]

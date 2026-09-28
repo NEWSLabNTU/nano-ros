@@ -461,6 +461,7 @@ function(nros_derive_entity_inventory_knobs)
                NROS_DERIVED_EXECUTOR_MAX_NODES NROS_DERIVED_EXECUTOR_MAX_SC
                NROS_DERIVED_EXECUTOR_MAX_MONITORS NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS
                NROS_DERIVED_MAX_LIVELINESS NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES
+               NROS_DERIVED_RMW_LOCAL_QUERYABLE
                NROS_ENTITY_APP_QUERYABLES NROS_DERIVED_TL_PUBLISHERS
                NROS_ENTITY_INVENTORY_ENTITY_TOTAL
                NROS_ENTITY_DECLARED_DEPTH_STATUS NROS_ENTITY_DECLARED_DEPTH_REASON
@@ -674,7 +675,10 @@ function(nros_derive_entity_inventory_knobs)
                   # phase-467 W1 -- the contract-monitor tables, present only
                   # when the fragment was composed with a model.
                   NROS_DERIVED_EXECUTOR_MAX_MONITORS NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS
-                  NROS_DERIVED_MAX_LIVELINESS NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES)
+                  NROS_DERIVED_MAX_LIVELINESS NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES
+                  # Issue 1549 -- same-session queries, a 0/1 over the same
+                  # declaration: on when a client and a server share the image.
+                  NROS_DERIVED_RMW_LOCAL_QUERYABLE)
         if(DEFINED ${_pool})
             _nros_entity_publish(${_pool} "${${_pool}}")
         endif()
@@ -860,6 +864,7 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         # publish comes to be missing without anyone noticing.
         NROS_DERIVED_MAX_LIVELINESS
         NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES
+        NROS_DERIVED_RMW_LOCAL_QUERYABLE
         NROS_ENTITY_APP_QUERYABLES
         NROS_DERIVED_TL_PUBLISHERS
         NROS_ENTITY_COUNT_PUBLISHER

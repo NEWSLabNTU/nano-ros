@@ -286,6 +286,9 @@ NOT_SIZING = {
         "parameter services (`PARAM_INBOX`), not a term of the arena sum -- the "
         "arena holds callback slots and RX buffers and no service inbox",
     "NROS_PARAM_SERVICE_INBOX_DEPTH": "the same ring's depth; see the pair above",
+    "NROS_RMW_LOCAL_QUERYABLE":
+        "issue 1549: a 0/1 feature flag the boot record reports; it compiles "
+        "zenoh-pico's same-session query path in or out and sizes nothing here",
 }
 # Not knobs, but inputs that move a knob's resolution in build.rs: the Kconfig
 # reader and the board/platform descriptor rung (`BuildRungs::from_build_env`).

@@ -53,6 +53,10 @@ C_DEFINE_KNOBS = {
     "ZPICO_MAX_SUBSCRIBERS": "ZPICO_MAX_SUBSCRIBERS",
     "ZPICO_MAX_QUERYABLES": "ZPICO_MAX_QUERYABLES",
     "ZPICO_MAX_LIVELINESS": "ZPICO_MAX_LIVELINESS",
+    # Issue 1549 -- not a size: a FEATURE flag that gates struct fields, so a
+    # second spelling of it in build.ninja is the issue-0135 ABI break, and
+    # "one knob, two values" below is exactly the check it needs.
+    "NROS_RMW_LOCAL_QUERYABLE": "Z_FEATURE_LOCAL_QUERYABLE",
 }
 
 # Knobs that are DERIVED and must not silently lose their derivation on the way
@@ -169,6 +173,11 @@ DERIVED_PAIRS = {
     # flat 1024 B.
     "NROS_DERIVED_TL_PUBLISHERS": ("NROS_RESOLVED_NROS_DECLARED_TL_PUBLISHERS",),
     "NROS_DERIVED_TL_RETAIN_BYTES": ("NROS_RESOLVED_ZPICO_TL_RETAIN_BYTES",),
+    # Issue 1549 -- zenoh-pico's same-session query path, a 0/1 derived from
+    # whether the image holds a service client AND a service server. Dropped,
+    # it falls to zenoh-pico's 0, and a client and a server in one image never
+    # meet: the call goes out and no reply ever comes, with nothing logged.
+    "NROS_DERIVED_RMW_LOCAL_QUERYABLE": ("NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE",),
 }
 
 # The `if(...)` conditions that make a resolver call BACKEND-CONDITIONAL. A knob
@@ -273,6 +282,19 @@ def read_cache(build_dir):
     return out
 
 
+def read_sources(build_dir):
+    """NROS_KNOB_SOURCE_<knob> from CMakeCache.txt: the rung that decided each
+    resolved knob (issue 1549), keyed by the knob name."""
+    out = {}
+    path = os.path.join(build_dir, "CMakeCache.txt")
+    with open(path, encoding="utf8", errors="ignore") as fh:
+        for line in fh:
+            m = re.match(r"^NROS_KNOB_SOURCE_([A-Z0-9_]+):[A-Z]+=(.*)$", line.strip())
+            if m:
+                out[m.group(1)] = m.group(2)
+    return out
+
+
 def read_fragment(build_dir):
     """NROS_DERIVED_* as the inventories state them.
 
@@ -316,6 +338,7 @@ def read_defines(build_dir):
 def check(build_dir, road=None):
     problems = []
     cache = read_cache(build_dir)
+    sources = read_sources(build_dir) if cache else {}
     frag = read_fragment(build_dir)
     defines = read_defines(build_dir)
     if road is None:
@@ -335,6 +358,14 @@ def check(build_dir, road=None):
         present = [k for k in resolved_knobs if k in cache]
         for resolved in resolved_knobs:
             if resolved in cache:
+                # Issue 1549 -- an ENVIRONMENT value outranks a derivation
+                # (rung 1 over rung 3): the triage lever working, not a value
+                # lost on the way. Only that rung is excused; "kconfig" is
+                # also what a plain resolve of a computed value records, so a
+                # Kconfig-sourced mismatch is still reported.
+                knob = resolved[len("NROS_RESOLVED_"):]
+                if cache[resolved] != want and sources.get(knob) == "environment":
+                    continue
                 if cache[resolved] != want:
                     problems.append(
                         "%s=%s but %s=%s -- the resolver did not carry the "
@@ -448,6 +479,36 @@ def self_test(quiet=False):
         # backend not being built, not a dropped value.
         ((CLEAN_CACHE, CLEAN_FRAG, CLEAN_NINJA), 0,
          "a backend-guarded knob absent from the cache is clean"),
+        # Issue 1549 -- a derived FEATURE flag that one TU sees as 1 and another
+        # as 0: the same-session query path compiled half in. The pairing is
+        # name-to-name like the pools', so the pool cases above already
+        # exercise it; this names the ABI shape explicitly.
+        ((CLEAN_CACHE + "NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE:INTERNAL=1\n",
+          CLEAN_FRAG + "set(NROS_DERIVED_RMW_LOCAL_QUERYABLE 1)\n",
+          CLEAN_NINJA + "cc -DZ_FEATURE_LOCAL_QUERYABLE=1 -c a.c\n"
+          "cc -DZ_FEATURE_LOCAL_QUERYABLE=0 -c b.c\n"), 1,
+         "a feature flag compiled at two values"),
+        ((CLEAN_CACHE + "NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE:INTERNAL=1\n",
+          CLEAN_FRAG + "set(NROS_DERIVED_RMW_LOCAL_QUERYABLE 1)\n",
+          CLEAN_NINJA + "cc -DZ_FEATURE_LOCAL_QUERYABLE=1 -c a.c\n"), 0,
+         "a derived feature flag delivered to the compile"),
+        # ...and overridden from the environment: rung 1 beats rung 3, the
+        # triage lever, not a dropped derivation.
+        (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=10\n"
+          "NROS_RESOLVED_ZPICO_MAX_SUBSCRIBERS:INTERNAL=10\n"
+          "NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE:INTERNAL=0\n"
+          "NROS_KNOB_SOURCE_NROS_RMW_LOCAL_QUERYABLE:INTERNAL=environment\n",
+          CLEAN_FRAG + "set(NROS_DERIVED_RMW_LOCAL_QUERYABLE 1)\n",
+          CLEAN_NINJA + "cc -DZ_FEATURE_LOCAL_QUERYABLE=0 -c a.c\n"), 0,
+         "an environment override of a derived knob is clean"),
+        # but the same mismatch recorded as `kconfig` is still a finding.
+        (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=10\n"
+          "NROS_RESOLVED_ZPICO_MAX_SUBSCRIBERS:INTERNAL=10\n"
+          "NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE:INTERNAL=0\n"
+          "NROS_KNOB_SOURCE_NROS_RMW_LOCAL_QUERYABLE:INTERNAL=kconfig\n",
+          CLEAN_FRAG + "set(NROS_DERIVED_RMW_LOCAL_QUERYABLE 1)\n",
+          CLEAN_NINJA + "cc -DZ_FEATURE_LOCAL_QUERYABLE=0 -c a.c\n"), 1,
+         "a kconfig-recorded mismatch is still reported"),
     ]
     failures = 0
     for (cache, frag, ninja), want, name in cases:

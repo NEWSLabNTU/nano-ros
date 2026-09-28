@@ -202,6 +202,23 @@ endif()
 # to matching subscribers on the local session in addition to the wire.
 zephyr_compile_definitions(Z_FEATURE_LOCAL_SUBSCRIBER=1)
 
+# Issue 1549 -- the same gap for SERVICES: a client's query never comes back to
+# the session it left, so a client and a server in one image never meet
+# without LOCAL_QUERYABLE. Unlike the topic path it is not always on: it is
+# DERIVED (`nros_resolve_knobs`, on when the entity inventory holds both a
+# client and a server), because an image with one side pays flash for a path it
+# cannot use. It gates struct fields (`api/types.h`), so it is ALWAYS emitted,
+# 0 or 1, to every TU -- the issue-0135 ABI rule -- and `check-knob-delivery`
+# holds this define to the resolved value.
+if(NOT DEFINED NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE
+   OR "${NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE}" STREQUAL "")
+    message(FATAL_ERROR
+        "nros: NROS_RMW_LOCAL_QUERYABLE reached nros_rmw_zenoh.cmake "
+        "unresolved; nros_resolve_knobs() must run first (issue 1549).")
+endif()
+zephyr_compile_definitions(
+    Z_FEATURE_LOCAL_QUERYABLE=${NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE})
+
 # Map NROS_ZENOH_* Kconfig options to Z_FEATURE_* compile definitions.
 # The function strips the CONFIG_NROS_ZENOH_ prefix and replaces it with
 # Z_FEATURE_, then sets =1 or =0 based on the Kconfig boolean value.
