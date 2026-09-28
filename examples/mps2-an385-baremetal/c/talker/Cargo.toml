@@ -52,6 +52,13 @@ cortex-m-rt = "0.7"
 # `thumbv7m-none-eabi`. `CC_thumbv7m_none_eabi` comes from the board's
 # `cargo_config` (written into `.cargo/config.toml` by `nros sync`).
 cc = "1"
+# The nano-ros cc policy every C compile in the tree takes (issue 1542): the
+# strict-declaration diagnostics as errors (issue 0383 — the pinned
+# arm-none-eabi-gcc 13.2 only WARNS on an implicit declaration) and the
+# gcc-safe frame pointer (issue 0478 — cc-rs hands gcc the clang-only
+# `-mno-omit-leaf-frame-pointer` on a debug build, which gcc rejects).
+# `check-cc-build-policy` holds every tracked `cc::Build` to it.
+nros-cc-flags = { version = "*" }
 
 # Phase 208.F1 — standalone workspace root, so cargo never adopts this leaf
 # into the outer nano-ros workspace or a copy-out user's one.

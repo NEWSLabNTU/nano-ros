@@ -117,6 +117,11 @@ fn main() {
         // board's platform crate enables by default.
         .flag("-ffreestanding")
         .file("src/talker.c");
+    // The nano-ros cc policy (issue 1542): strict declarations as errors, plus
+    // the gcc-safe frame pointer (issue 0478) — `strict_decls` applies both.
+    // Applied BEFORE the clone below, so the generated bindings take it too:
+    // `warnings(false)` only drops `-Wall -Wextra`, never these two `-Werror=`.
+    nros_cc_flags::strict_decls(&mut build);
     build.compile("baremetal_c_talker_app");
 
     let mut bindings = build.clone();
