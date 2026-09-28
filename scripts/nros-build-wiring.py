@@ -2,7 +2,7 @@
 """Print the build wiring inventory: roads, carriers, producers, readers.
 
 Why this is a SCRIPT and not a table in the reference doc: every count here
-moves. `docs/reference/canonical-build-path.md` explains the four roads and why
+moves. `docs/reference/canonical-build-path.md` explains the roads and why
 their carriers differ — prose that stays true — and defers every NUMBER to this
 command. A hand-authored census is the failure mode this repository has
 recorded more than any other (CLAUDE.md's "Gated" note on the package list, the
@@ -52,12 +52,6 @@ ROADS = {
         "carrier": "`$DOTCONFIG`, read by each build script through `nros_zephyr_build`",
         "emits_root": False,
         "hazard": "issue 0460 — zephyr-lang-rust builds its own cargo command and inherits no environment at all",
-    },
-    "IdfPy": {
-        "exec": "idf.py build",
-        "carrier": "(the ESP-IDF port was retired in phase-468 W2; the driver survives for a user-owned IDF project)",
-        "emits_root": False,
-        "hazard": "not exercised in-tree",
     },
 }
 
@@ -181,8 +175,8 @@ def main() -> int:
 
     if args.roads or want_all:
         print("BUILD ROADS — how a knob reaches the compiler on each")
-        print("  Four roads, four DIFFERENT carriers. That is the finding, not an")
-        print("  accident: each carrier has produced its own delivery defect.")
+        print(f"  {len(ROADS)} roads, {len(ROADS)} DIFFERENT carriers. That is the finding,")
+        print("  not an accident: each carrier has produced its own delivery defect.")
         for name, r in ROADS.items():
             print(f"\n  {name}  ({r['exec']})")
             print(f"    stage 4 emits a root: {'yes' if r['emits_root'] else 'no'}")

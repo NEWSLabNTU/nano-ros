@@ -222,7 +222,9 @@ If no `Publishing:` line:
 - Subscriber + service + action peer directories under the same
   `examples/esp32-c3-baremetal/rust/`.
 - C / C++ apps on an ESP32 have no in-tree path today — the ESP-IDF
-  component shell is [retired](./integration-esp-idf.md).
+  component shell is [retired](./integration-esp-idf.md), and so is the
+  `idf.py` build driver. `nros build` says so rather than failing later
+  (issue 1525).
 - ESP32-S3 (Xtensa) — not supported today. The Xtensa toolchain
   does not ship via `rustup` (it requires
   [`espup`](https://github.com/esp-rs/espup)), and there is no

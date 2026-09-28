@@ -1,6 +1,6 @@
 # The canonical build path
 
-**What this is.** A map of how a nano-ros image actually gets built: the four
+**What this is.** A map of how a nano-ros image actually gets built: the three
 roads, what carries a configuration knob to the compiler on each, and which RFC
 owns each decision. It exists because the decisions are all made and all
 scattered — six RFCs own a slice each, and nobody owned the picture.
@@ -38,17 +38,19 @@ tree somebody measured once.
 The road is chosen at stage 4/5 **by the board, never by the language mix**
 (RFC-0065 D3). A workspace that crosses languages goes to cmake, because cargo
 can be consumed as a cmake target through Corrosion and cmake cannot be
-consumed as a cargo target (RFC-0024 §6.3).
+consumed as a cargo target (RFC-0024 §6.3). Choosing can also **fail**: one
+combination — an esp32 board with a graph that crosses languages — has no road
+and says so, rather than naming a tool that cannot build it.
 
-## The four roads, and the thing that actually differs
+## The three roads, and the thing that actually differs
 
 The stages are shared. What is **not** shared is how a resolved knob reaches
 the compiler — and that is the whole of this document, because each road
 carries it differently and **each carrier has produced its own delivery
 defect**:
 
-The road names below are `Driver` variants (`Cargo`, `CMake`, `West`, `IdfPy`
-in `packages/cli/nros-cli-core/src/builder/plan.rs`); `check-build-wiring-roads`
+The road names below are `Driver` variants (`Cargo`, `CMake`, `West` in
+`packages/cli/nros-cli-core/src/builder/plan.rs`); `check-build-wiring-roads`
 holds this table and the enum to each other in both directions.
 
 | road | exec | emits a root | carries a knob by | the defect it produced |
@@ -56,13 +58,28 @@ holds this table and the enum to each other in both directions.
 | **cargo** | `cargo build` | yes | `[env]` rows in the generated `nros-cargo.toml`, read via `--config` | **0491** — a PATH-valued row has three spellings, so a `rerun-if-env-changed` on it rebuilds forever; watch the CONTENT |
 | **cmake** | `cmake --build` | yes | `corrosion_set_env_vars()` on the target's own cargo command | **0460** — `set(ENV{})` touches only the configure process and carries nothing to a cargo lane |
 | **west** | `west build -b <board>` | no | `$DOTCONFIG`, read per build script through `nros_zephyr_build` | **0460** — zephyr-lang-rust builds its own cargo command and inherits no environment at all |
-| **idf.py** (`Driver::IdfPy`) | `idf.py build` | no | — | the ESP-IDF port was retired in phase-468 W2; the driver survives for a user-owned IDF project |
 
-Two roads emit no root on purpose: a Zephyr app is already a complete cmake
+One road emits no root on purpose: a Zephyr app is already a complete cmake
 project and its Kconfig overlays are user intent, so *stage 4 emits a root only
 where a root would otherwise be hand-written* (RFC-0065 D3).
 
-There is a fifth carrier that is not a road. On **NuttX**,
+### The road that was deleted, and the test that finds the next one
+
+There was a fourth, `idf.py`, chosen for `platform = "esp32"` whenever the
+graph crossed languages. **Its carrier cell was empty** — and that is what
+ended it (RFC-0065 D3 amendment, 2026-09-28). Every other road's cell names a
+mechanism that has produced a measured defect; an empty one says the road
+delivers no resolved knob at all, which is issue 0460's class applied to a
+whole road rather than to one lane of one.
+
+So the question this table asks of a new road is not "does the tool work" but
+**what carries a knob on it, and how would I know if nothing did**. A road
+that cannot answer is not a capability with a missing test; it is a claim.
+`nros build` now REFUSES that combination, naming issue 1525, because
+answering `cmake` instead would be the same claim in a tool that also has no
+esp32 road.
+
+There is a fourth carrier that is not a road. On **NuttX**,
 `<nros/nros_config_generated.h>` is a **committed snapshot**, not the per-build
 header — the per-build file is on no NuttX include path, so a template edit
 that the generated artifacts consume is a two-file change (issue 1115). This is

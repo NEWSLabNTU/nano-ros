@@ -293,7 +293,7 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     println!("  cd {}", cfg.name);
     println!("  eval \"$(nros ws env)\"   # ROS + interface search path");
     println!("  nros sync          # codegen + write the [patch.crates-io] block (RFC-0040)");
-    println!("  cargo build           # or: cmake --build build / west build / idf.py build");
+    println!("  cargo build           # or: cmake --build build / west build");
 
     Ok(())
 }

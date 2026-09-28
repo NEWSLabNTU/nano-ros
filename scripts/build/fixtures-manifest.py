@@ -891,14 +891,18 @@ def _workspace_members(entry, path):
 def _workspace_excludes(entry, path):
     """`[workspace] exclude` — packages under the root that cargo must not own.
 
-    A Rust entry built by ANOTHER framework (west, idf.py) belongs here, not in
+    A Rust entry built by ANOTHER framework (west) belongs here, not in
     `members`: it is compiled for a different target by a different driver, and
     listing it would make `cargo build` at the root try to build it. The
     generated root says so in its own comment. Before phase-383 W9 the eight
     hand-written roots also excluded their west entries, so this has always been
     the shape — the validator simply never looked at the second list, and the
-    generated root is what made that visible (`workspace-rust-esp32` is a `lang
-    = "rust"` row whose entry is driven by idf.py).
+    generated root is what made that visible.
+
+    (`workspace-rust-esp32` used to be cited here as an idf.py-driven row. It is
+    not one and has not been since phase-445 W4/W5 made it a generated cargo
+    entry; `idf.py` stopped being a driver at all in RFC-0065 D3's 2026-09-28
+    amendment.)
     """
     workspace = _load_toml(entry, path).get("workspace") or {}
     return workspace.get("exclude") or []
@@ -1060,8 +1064,10 @@ def _validate_rust_workspace(entry, root, entry_dir):
         # from whatever happens to be on disk is worse than not asking.
         #
         # This row keeps the `entry` form because its entry is hand-written and
-        # driven by idf.py, not cargo; cargo membership is not what builds it.
-        # The entry package's own existence is still checked by the caller.
+        # driven by its own framework, not cargo; cargo membership is not what
+        # builds it. The entry package's own existence is still checked by the
+        # caller. (This said "driven by idf.py"; `idf.py` stopped being a driver
+        # in RFC-0065 D3's 2026-09-28 amendment.)
         return
     _require_file(entry, workspace_manifest, "workspace Cargo.toml")
 

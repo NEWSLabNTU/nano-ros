@@ -17,8 +17,22 @@
 //! "mixed" case needing its own driver: cargo can be consumed as a cmake target
 //! via Corrosion and cmake cannot be consumed as a cargo target, so when the
 //! graph crosses languages **cmake wins** (RFC-0024 §6.3). What actually
-//! decides is the board — a Zephyr board means `west`, an ESP32 board means
-//! `idf.py`, and neither needs a generated root at all.
+//! decides is the board — a Zephyr board means `west`, which needs no generated
+//! root at all because a Zephyr application already is a complete cmake project.
+//!
+//! ## There are THREE roads, and choosing one can FAIL
+//!
+//! There was a fourth, `idf.py`, deleted by the RFC-0065 D3 amendment of
+//! 2026-09-28. It was selected for `platform = "esp32"` with a graph that
+//! crosses languages, and it could not work: phase-468 W2 retired the ESP-IDF
+//! component, nothing emits an ESP-IDF project, no carrier reaches an `idf.py`
+//! build, and `nros setup` cannot provision ESP-IDF. That combination now
+//! REFUSES, naming issue 1525, rather than exec'ing a tool with no project to
+//! build or falling through to a cmake road that is equally absent.
+//!
+//! A refusal is a fourth OUTCOME beside the three drivers, on purpose.
+//! Returning `Driver::CMake` there would be the failure mode this repository
+//! keeps paying for: an answer that reads as support.
 
 use std::path::{Path, PathBuf};
 
@@ -36,15 +50,13 @@ pub enum Driver {
     /// `west build -b <board>`. Emits NO root: a Zephyr app is already a
     /// complete cmake project and its Kconfig overlays are user intent.
     West,
-    /// `idf.py build`. Emits no root, same reasoning.
-    IdfPy,
 }
 
 impl Driver {
     /// Whether stage 4 emits a root build file for this driver.
     ///
     /// The rule RFC-0065 D3 states: *stage 4 emits a root only where a root
-    /// would otherwise be hand-written.* west and ESP-IDF apps ship their own.
+    /// would otherwise be hand-written.* A west application ships its own.
     #[must_use]
     pub fn needs_generated_root(self) -> bool {
         matches!(self, Driver::Cargo | Driver::CMake)
@@ -57,7 +69,6 @@ impl Driver {
             Driver::Cargo => "cargo",
             Driver::CMake => "cmake",
             Driver::West => "west",
-            Driver::IdfPy => "idf.py",
         }
     }
 }
@@ -76,45 +87,80 @@ pub struct BuildPlan {
     pub driver: Driver,
 }
 
+/// The refusal `driver_for` returns when no road can build this image.
+///
+/// Carries the prose the user reads. It is a struct rather than a bare `String`
+/// so a call site that only wants "is this the cmake road?" reads as a question
+/// about the road and not as error handling.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoRoad(pub String);
+
+impl std::fmt::Display for NoRoad {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 /// Choose a driver from the board's platform and the workspace's languages.
 ///
 /// `platform` is the board descriptor's platform token (`zephyr`, `esp32`,
 /// `freertos`, `posix`, …); `has_non_rust` says whether any discovered package
 /// builds C or C++.
-#[must_use]
-pub fn driver_for(platform: &str, has_non_rust: bool) -> Driver {
+///
+/// `Err` is a fourth answer and not an accident — see the module doc. The one
+/// combination that produces it is an esp32 board with a graph that crosses
+/// languages, which had a road (`idf.py`) that could not work.
+pub fn driver_for(platform: &str, has_non_rust: bool) -> Result<Driver, NoRoad> {
     match platform {
-        "zephyr" => Driver::West,
-        "esp32" => Driver::IdfPy,
+        "zephyr" => Ok(Driver::West),
+        "esp32" if has_non_rust => Err(NoRoad(ESP32_CROSS_LANGUAGE.to_string())),
         // Not a "mixed" special case — cmake simply wins whenever the graph
         // crosses languages, because corrosion makes cargo consumable from
         // cmake and nothing makes cmake consumable from cargo.
-        _ if has_non_rust => Driver::CMake,
-        _ => Driver::Cargo,
+        _ if has_non_rust => Ok(Driver::CMake),
+        _ => Ok(Driver::Cargo),
     }
 }
 
+/// Why an esp32 image whose graph crosses languages has no road.
+///
+/// Written out rather than summarised because every one of the four clauses was
+/// measured, and a reader who only hears "unsupported" will reasonably assume a
+/// missing flag. The issue carries the evidence and the acceptance for undoing
+/// this.
+const ESP32_CROSS_LANGUAGE: &str = "\
+this image's board is an ESP32 board and its package graph crosses languages, \
+and nano-ros has no build road for that combination.\n\n\
+Until 2026-09-28 it chose `idf.py`, which could not have worked: the ESP-IDF \
+component was retired in phase-468 W2, so there is nothing for an ESP-IDF \
+project to register; nothing emits an ESP-IDF project; no carrier delivers a \
+resolved knob to an `idf.py` build; and `nros setup` cannot provision ESP-IDF. \
+Choosing cmake instead would be the same claim in a different tool.\n\n\
+What works today:\n\n  \
+* ESP32 in pure Rust — the esp-hal bare-metal road, `nros build` over the \
+cargo driver. `book/src/getting-started/esp32.md` is the walkthrough.\n  \
+* C or C++ on another target — every other platform token has a road.\n\n\
+Tracked as issue 1525, which states what re-adding an ESP-IDF road would need.";
+
 /// [`driver_for`], refined by the BOARD's entry shape.
 ///
-/// `esp32 → idf.py` is right for an ESP-IDF application and wrong for the
-/// board this tree actually ships: `nros-board-esp32-qemu` is esp-hal on bare
-/// metal, its entry is a Rust `board-run` binary (`#[esp_hal::main]`), and
-/// nothing about it involves ESP-IDF. Choosing idf.py for it made `nros build
-/// esp32` exec a tool that has no project to build (`could not exec idf.py`),
-/// which is why the fixture lane built that image by hand with `cargo build -p`
-/// and why it could not stop doing so while the platform alone decided.
+/// The esp32 board this tree ships is esp-hal on bare metal:
+/// `nros-board-esp32-qemu`'s entry is a Rust `board-run` binary
+/// (`#[esp_hal::main]`) and nothing about it involves ESP-IDF. That image is a
+/// CARGO image, decided here rather than by the platform token alone — deciding
+/// it by platform made `nros build esp32` exec a tool with no project to build
+/// (`could not exec idf.py`), which is why the fixture lane built that image by
+/// hand with `cargo build -p` and could not stop.
 ///
-/// So a Rust image on a `board-run` esp32 board is a cargo image. A graph that
-/// crosses languages there still goes to idf.py, as before.
-#[must_use]
+/// Every other esp32 shape reaches [`driver_for`]'s refusal.
 pub fn driver_for_board(
     platform: &str,
     entry_kind: crate::orchestration::board_descriptor::EntryKind,
     has_non_rust: bool,
-) -> Driver {
+) -> Result<Driver, NoRoad> {
     use crate::orchestration::board_descriptor::EntryKind;
     if platform == "esp32" && entry_kind == EntryKind::BoardRun && !has_non_rust {
-        return Driver::Cargo;
+        return Ok(Driver::Cargo);
     }
     driver_for(platform, has_non_rust)
 }
@@ -386,35 +432,65 @@ mod tests {
     }
 
     #[test]
-    fn zephyr_and_esp32_need_no_generated_root() {
-        assert_eq!(driver_for("zephyr", false), Driver::West);
-        assert_eq!(driver_for("esp32", false), Driver::IdfPy);
-        // The BOARD refines it: the in-tree esp32 board is esp-hal bare metal,
-        // whose Rust entry is a cargo bin, not an ESP-IDF app.
+    fn a_west_application_needs_no_generated_root() {
+        assert_eq!(driver_for("zephyr", false), Ok(Driver::West));
+        use crate::orchestration::board_descriptor::EntryKind;
+        assert_eq!(
+            driver_for_board("zephyr", EntryKind::ZephyrStaticlib, false),
+            Ok(Driver::West)
+        );
+        assert!(!driver_for("zephyr", false).unwrap().needs_generated_root());
+    }
+
+    #[test]
+    fn a_pure_rust_esp32_board_run_image_is_a_cargo_image() {
+        // The in-tree esp32 board is esp-hal bare metal, whose Rust entry is a
+        // cargo bin and not an ESP-IDF app. The BOARD decides this, not the
+        // platform token — deciding it by token exec'd `idf.py` on a project
+        // that did not exist (phase-445 W4 / PR #880).
         use crate::orchestration::board_descriptor::EntryKind;
         assert_eq!(
             driver_for_board("esp32", EntryKind::BoardRun, false),
-            Driver::Cargo
+            Ok(Driver::Cargo)
         );
+    }
+
+    #[test]
+    fn an_esp32_graph_that_crosses_languages_has_no_road() {
+        // RFC-0065 D3, amended 2026-09-28. This combination used to answer
+        // `idf.py`, a road with no ESP-IDF component to build, no carrier and
+        // no way to provision the tool. The refusal is the answer; falling
+        // through to cmake would be the same unsupported claim in another tool.
+        use crate::orchestration::board_descriptor::EntryKind;
+        for entry_kind in [
+            EntryKind::BoardRun,
+            EntryKind::HostedMain,
+            EntryKind::ZephyrStaticlib,
+        ] {
+            let e = driver_for_board("esp32", entry_kind, true)
+                .expect_err("an esp32 cross-language graph has no road");
+            assert!(e.0.contains("1525"), "the refusal names its issue: {e}");
+            assert!(
+                e.0.contains("esp-hal"),
+                "the refusal names the road that does work: {e}"
+            );
+        }
+        // The refusal is about the LANGUAGE MIX, not about the entry shape: a
+        // pure-Rust esp32 image is a cargo image whatever its board declares,
+        // because cargo is a road that exists for it.
         assert_eq!(
-            driver_for_board("esp32", EntryKind::BoardRun, true),
-            Driver::IdfPy
+            driver_for_board("esp32", EntryKind::HostedMain, false),
+            Ok(Driver::Cargo)
         );
-        assert_eq!(
-            driver_for_board("zephyr", EntryKind::ZephyrStaticlib, false),
-            Driver::West
-        );
-        assert!(!driver_for("zephyr", false).needs_generated_root());
-        assert!(!driver_for("esp32", true).needs_generated_root());
     }
 
     #[test]
     fn cmake_wins_whenever_the_graph_crosses_languages() {
         // RFC-0024 §6.3 — corrosion makes cargo consumable from cmake; nothing
         // makes cmake consumable from cargo. "Mixed" is not a fourth driver.
-        assert_eq!(driver_for("posix", true), Driver::CMake);
-        assert_eq!(driver_for("freertos", true), Driver::CMake);
-        assert_eq!(driver_for("posix", false), Driver::Cargo);
+        assert_eq!(driver_for("posix", true), Ok(Driver::CMake));
+        assert_eq!(driver_for("freertos", true), Ok(Driver::CMake));
+        assert_eq!(driver_for("posix", false), Ok(Driver::Cargo));
     }
 
     #[test]
