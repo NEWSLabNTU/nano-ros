@@ -120,7 +120,24 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_clear(storage: *mut c_void) ->
     NROS_CPP_RET_OK
 }
 
-/// Destroy a guard condition (drop in place, no free).
+/// ABANDON a guard condition's local storage — a no-op drop (issue 1496).
+///
+/// `nros_node::GuardCondition` is `{ &'static AtomicBool, Option<fn>, *mut
+/// c_void }` — no field has drop glue, so the `drop_in_place` below **runs no
+/// destructor**. The flag it points at lives in the executor arena and the
+/// registered wake closure is an arena ENTRY, and the arena is a bump allocator
+/// with no removal path: the entry keeps its slot and its callback for the
+/// executor's lifetime, so `spin_once` still polls this guard condition after
+/// the C++ object is gone. Creating and dropping guard conditions in a loop
+/// exhausts `NROS_EXECUTOR_MAX_CBS`.
+///
+/// Found by issue 1496's survey of the class rather than by a failure, and it is
+/// the MILDER shape of the two: unlike the action server, the arena entry here
+/// does not hold the destroyed object's address. `nros_cpp_guard_condition_create`
+/// captures the caller's own callback and context, so a post-destruction trigger
+/// calls user code the user still owns — there is nothing to detach. (The
+/// `closure_` block in the C++ `GuardCondition` WOULD be such an address; it is
+/// freed by that destructor and nothing in the tree attaches one yet.)
 ///
 /// # Safety
 /// `storage` must be a valid initialized guard condition storage, or NULL (no-op).

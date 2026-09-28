@@ -2018,7 +2018,24 @@ bool nros_cpp_guard_condition_is_triggered(const void *storage);
 nros_cpp_ret_t nros_cpp_guard_condition_clear(void *storage);
 
 /**
- * Destroy a guard condition (drop in place, no free).
+ * ABANDON a guard condition's local storage — a no-op drop (issue 1496).
+ *
+ * `nros_node::GuardCondition` is `{ &'static AtomicBool, Option<fn>, *mut
+ * c_void }` — no field has drop glue, so the `drop_in_place` below **runs no
+ * destructor**. The flag it points at lives in the executor arena and the
+ * registered wake closure is an arena ENTRY, and the arena is a bump allocator
+ * with no removal path: the entry keeps its slot and its callback for the
+ * executor's lifetime, so `spin_once` still polls this guard condition after
+ * the C++ object is gone. Creating and dropping guard conditions in a loop
+ * exhausts `NROS_EXECUTOR_MAX_CBS`.
+ *
+ * Found by issue 1496's survey of the class rather than by a failure, and it is
+ * the MILDER shape of the two: unlike the action server, the arena entry here
+ * does not hold the destroyed object's address. `nros_cpp_guard_condition_create`
+ * captures the caller's own callback and context, so a post-destruction trigger
+ * calls user code the user still owns — there is nothing to detach. (The
+ * `closure_` block in the C++ `GuardCondition` WOULD be such an address; it is
+ * freed by that destructor and nothing in the tree attaches one yet.)
  *
  * # Safety
  * `storage` must be a valid initialized guard condition storage, or NULL (no-op).
@@ -3022,7 +3039,60 @@ bool nros_cpp_action_server_goal_exists(const void *handle,
                                         const uint8_t (*goal_id)[16]);
 
 /**
- * Destroy an action server (drop in place, no free).
+ * Detach this storage from the arena entry that points at it — issue 1496.
+ *
+ * Call this BEFORE [`nros_cpp_action_server_destroy`], from the destructor or
+ * move-assignment of whatever owns `storage`. The two are separate calls for
+ * the reason issue 0796 gives one line up: `nros_cpp_action_server_destroy`
+ * takes one argument and is declared in three places, so growing it to take
+ * the executor would have broken every caller. `CppActionServer` does not keep
+ * an executor pointer of its own (the client does — see
+ * [`nros_cpp_action_client_destroy`]), and nothing in this crate can recover
+ * one from a bare storage pointer: `CppContext` lives in caller-provided
+ * storage and there is no registry of them.
+ *
+ * What it detaches and why: `nros_cpp_action_server_register` passes `storage`
+ * itself as the arena entry's callback `context`, and the goal / cancel /
+ * accepted trampolines all read `CppActionServer` back out of it. The arena is
+ * a bump allocator with no removal path, so the entry — and the three service
+ * servers and two publishers it owns — outlive the owner unconditionally; a
+ * `send_goal` arriving after destruction still reaches the entry. Detaching
+ * replaces the two callbacks with context-free stubs and nulls the context, so
+ * a late goal is REJECTED and a late cancel is ACCEPTED inside the core
+ * instead of dispatched through freed storage.
+ *
+ * Returns `NROS_CPP_RET_OK` also when there is nothing to detach (an
+ * unregistered server, or an executor handle that is not ours) — the caller is
+ * on a destruction path and has no way to act on a failure.
+ *
+ * # Safety
+ * `storage` must be a valid initialized action server storage, or NULL
+ * (no-op). `executor_handle` must be the executor this server was registered
+ * on, or NULL.
+ */
+nros_cpp_ret_t nros_cpp_action_server_detach(void *storage, void *executor_handle);
+
+/**
+ * ABANDON an action server's local storage — issue 1496.
+ *
+ * Named `destroy` and shaped like a release, but `CppActionServer` is a handle
+ * plus three callback pointers and a QoS block: every field is `Copy` or a raw
+ * pointer, `ActionServerRawHandle` is explicitly `Copy` with no `Drop`, and so
+ * the `drop_in_place` below **runs no destructor**. That is deliberate and it
+ * is not the whole story, which is why this comment says so: the five RMW
+ * entities (three service servers, the feedback and status publishers), the
+ * `active_goals` table, the retained results and the result slab all live in
+ * an `ActionServerRawArenaEntry` in the executor arena, and the arena is a
+ * BUMP ALLOCATOR with no removal path — nothing sets an entry back to `None`
+ * and `arena_used` only grows. So this call releases nothing, the action stays
+ * advertised for the executor's lifetime, and a program that creates and drops
+ * action servers in a loop exhausts `NROS_EXECUTOR_MAX_CBS` and then the
+ * arena. Giving the arena a free list is resolution 2 of issue 1496 and is not
+ * this.
+ *
+ * What a caller MUST do is call [`nros_cpp_action_server_detach`] first, so
+ * the entry stops pointing at storage that is about to die. `~Server()` in
+ * `action_server.hpp` does both, in that order.
  *
  * # Safety
  * `storage` must be a valid initialized action server storage, or NULL (no-op).
@@ -3231,7 +3301,27 @@ nros_cpp_ret_t nros_cpp_action_client_try_recv_result(void *handle,
                                                       size_t *out_len);
 
 /**
- * Destroy an action client (drop in place, no free).
+ * DETACH, then ABANDON an action client's local storage — issue 1496.
+ *
+ * The `drop_in_place` at the bottom runs no destructor: `CppActionClient` is
+ * three callback pointers, a context pointer, an `i32` index and an executor
+ * pointer — all `Copy`. And the state that matters is not here: the
+ * `ActionClientCore` with its three service clients and its feedback
+ * subscription lives in an `ActionClientRawArenaEntry` in the executor arena,
+ * which is a BUMP ALLOCATOR with no removal path, so those entities stay live
+ * for the executor's lifetime and the arena slot is never reclaimed. This call
+ * does NOT release them; a free list for the arena is resolution 2 of issue
+ * 1496 and is not this.
+ *
+ * What it does do — unlike the server half, and without a signature change,
+ * because `CppActionClient` keeps its own `executor_ptr` and
+ * `arena_entry_index` — is DETACH the arena entry before the storage dies.
+ * `nros_cpp_action_client_create` registers `storage` as the entry's callback
+ * `context` and the three trampolines read `CppActionClient` back out of it,
+ * so without this a goal reply, feedback sample or result arriving after
+ * destruction would read freed C++ storage. After the detach the entry's three
+ * callbacks are `None`, which `action_client_raw_try_process` already guards
+ * with `if let Some(cb)`, so a late reply is consumed and dropped.
  *
  * # Safety
  * `storage` must be a valid initialized action client storage, or NULL (no-op).

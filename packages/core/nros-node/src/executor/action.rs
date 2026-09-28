@@ -960,6 +960,177 @@ impl<'s> Executor<'s> {
 }
 
 // ============================================================================
+// Detaching a raw action entry from the storage that owns it — issue 1496
+// ============================================================================
+
+/// The `goal_callback` a DETACHED raw action server entry carries.
+///
+/// Issue 1496 — the arena is a bump allocator with no removal path, so an
+/// action server's five RMW entities stay advertised after the object that
+/// registered them is gone and a `send_goal` query still reaches its entry.
+/// What must not survive is the DISPATCH: the registered `context` is the
+/// address of the owner's storage (for the C++ tier, the `storage_` member of
+/// a destroyed `rclcpp_action::Server<A>`), so calling the real trampoline
+/// after destruction reads freed memory.
+///
+/// This stub ignores `context` entirely and rejects. A late goal therefore
+/// gets a well-formed REJECT reply instead of a dispatch into whatever now
+/// occupies the owner's storage.
+unsafe extern "C" fn detached_goal_callback(
+    _goal_id: *const nros_core::GoalId,
+    _goal_data: *const u8,
+    _goal_len: usize,
+    _context: *mut core::ffi::c_void,
+) -> nros_core::GoalResponse {
+    nros_core::GoalResponse::Reject
+}
+
+/// The `cancel_callback` a DETACHED raw action server entry carries.
+///
+/// ACCEPTS, where [`detached_goal_callback`] rejects, and the asymmetry is
+/// deliberate: accepting a cancel runs entirely inside the arena's own
+/// `ActionServerCore` (it moves the goal to `Canceled` and replies), touching
+/// no user state, so a client holding a goal accepted before the server was
+/// destroyed learns that the goal ended instead of waiting for a result nobody
+/// will ever complete. Rejecting would leave it hanging on a server that
+/// cannot answer. This is also what the C++ tier already does for a server
+/// with no cancel callback installed (`cancel_callback_trampoline`).
+unsafe extern "C" fn detached_cancel_callback(
+    _goal_id: *const nros_core::GoalId,
+    _status: nros_core::GoalStatus,
+    _context: *mut core::ffi::c_void,
+) -> nros_core::CancelResponse {
+    nros_core::CancelResponse::Accept
+}
+
+impl<'s> Executor<'s> {
+    /// Detach a raw action SERVER's arena entry from its owner's storage —
+    /// issue 1496.
+    ///
+    /// This is not a release and does not pretend to be one. The entry keeps
+    /// its slot, its arena bytes and its five RMW entities for the executor's
+    /// lifetime, because `arena_alloc` is a bump
+    /// allocator with no removal path (resolution 2 of issue 1496, which would
+    /// change the arena into something with a free list, is not this). What it
+    /// does is cut the one edge that outlives the owner: the registered
+    /// `context`, and the two callbacks that dereference it.
+    ///
+    /// After this call the entry answers a late `send_goal` with a REJECT and a
+    /// late `cancel_goal` with an ACCEPT ([`detached_goal_callback`] /
+    /// [`detached_cancel_callback`]), and the post-accept hook is cleared.
+    /// Nothing reads `context` again, so the owner's storage may die.
+    ///
+    /// Returns `false` when `entry_index` holds no live entry or the entry is
+    /// not an action server; the caller should treat that as "nothing to
+    /// detach", which is the normal state for a server that was created and
+    /// never registered.
+    ///
+    /// # Safety
+    /// `entry_index` must be the index of an entry registered by
+    /// [`register_action_server_raw_sized`](Executor::register_action_server_raw_sized)
+    /// with **these same const parameters**. The callbacks and the context sit
+    /// behind `ActionServerCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>`
+    /// in the entry, so their offsets are a function of those four numbers and
+    /// a mismatch writes into the core's buffers instead. The `EntryKind`
+    /// check below catches a wrong KIND, never wrong sizes — the same contract
+    /// [`action_client_core_mut`](Executor::action_client_core_mut) and
+    /// [`service_client_entry_mut`](Executor::service_client_entry_mut) carry.
+    pub unsafe fn detach_action_server_raw_sized<
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+        const MAX_GOALS: usize,
+    >(
+        &mut self,
+        entry_index: usize,
+    ) -> bool {
+        let Some(meta) = self.entries.get(entry_index).and_then(|e| e.as_ref()) else {
+            return false;
+        };
+        if !matches!(meta.kind, EntryKind::ActionServer) {
+            return false;
+        }
+        let offset = meta.offset;
+        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+        unsafe {
+            let entry = &mut *(arena_ptr.add(offset)
+                as *mut ActionServerRawArenaEntry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>);
+            entry.goal_callback = detached_goal_callback;
+            entry.cancel_callback = detached_cancel_callback;
+            entry.accepted_callback = None;
+            entry.context = core::ptr::null_mut();
+        }
+        true
+    }
+
+    /// [`detach_action_server_raw_sized`](Executor::detach_action_server_raw_sized)
+    /// for an entry registered through the default-sized
+    /// [`register_action_server_raw`](Executor::register_action_server_raw).
+    ///
+    /// Takes the handle rather than a bare index so the caller cannot name a
+    /// subscription slot by accident: an [`ActionServerRawHandle`] is only ever
+    /// produced by the raw registration path.
+    ///
+    /// # Safety
+    /// `handle` must have come from `register_action_server_raw` — the
+    /// DEFAULT-sized entry point. A handle from
+    /// `register_action_server_raw_sized::<…>` with other const parameters must
+    /// be detached through the sized call with the same ones.
+    pub unsafe fn detach_action_server_raw(&mut self, handle: &ActionServerRawHandle) -> bool {
+        unsafe {
+            self.detach_action_server_raw_sized::<
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                4,
+            >(handle.entry_index)
+        }
+    }
+
+    /// Detach a raw action CLIENT's arena entry from its owner's storage —
+    /// issue 1496, the client half.
+    ///
+    /// Same shape as
+    /// [`detach_action_server_raw`](Executor::detach_action_server_raw) and one
+    /// step simpler: the client entry's three callbacks are already
+    /// `Option`s that `action_client_raw_try_process` guards with
+    /// `if let Some(cb)`, so clearing them is enough to make a late reply,
+    /// feedback sample or result a no-op rather than a call through a dead
+    /// `context`.
+    ///
+    /// # Safety
+    /// `entry_index` must be the index of an entry registered by
+    /// [`register_action_client_raw`](Executor::register_action_client_raw) —
+    /// the DEFAULT-sized entry point, which is the only one the C and C++ tiers
+    /// use and the same assumption
+    /// [`action_client_core_mut`](Executor::action_client_core_mut) makes on
+    /// every poll.
+    pub unsafe fn detach_action_client_raw(&mut self, entry_index: usize) -> bool {
+        let Some(meta) = self.entries.get(entry_index).and_then(|e| e.as_ref()) else {
+            return false;
+        };
+        if !matches!(meta.kind, EntryKind::ActionClient) {
+            return false;
+        }
+        let offset = meta.offset;
+        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+        unsafe {
+            let entry = &mut *(arena_ptr.add(offset)
+                as *mut ActionClientRawArenaEntry<
+                    { crate::config::DEFAULT_RX_BUF_SIZE },
+                    { crate::config::DEFAULT_RX_BUF_SIZE },
+                    { crate::config::DEFAULT_RX_BUF_SIZE },
+                >);
+            entry.goal_response_callback = None;
+            entry.feedback_callback = None;
+            entry.result_callback = None;
+            entry.context = core::ptr::null_mut();
+        }
+        true
+    }
+}
+
+// ============================================================================
 // Raw action server handle
 // ============================================================================
 

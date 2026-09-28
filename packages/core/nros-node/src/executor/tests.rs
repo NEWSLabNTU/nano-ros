@@ -9925,6 +9925,212 @@ fn a_deferred_goal_reaches_the_accepted_callback_exactly_once() {
 }
 
 // ====================================================================
+// issue 1496 — detaching an arena action entry from its owner's storage
+// ====================================================================
+
+static LATE_GOAL_CALLS: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+static LAST_GOAL_CONTEXT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+
+/// Stands in for `goal_callback_trampoline` in the C++ tier: it READS the
+/// registered context, which after the owner is destroyed is freed storage.
+unsafe extern "C" fn accept_and_record_context(
+    _goal_id: *const nros_core::GoalId,
+    _data: *const u8,
+    _len: usize,
+    ctx: *mut core::ffi::c_void,
+) -> nros_core::GoalResponse {
+    use core::sync::atomic::Ordering::SeqCst;
+    LATE_GOAL_CALLS.fetch_add(1, SeqCst);
+    LAST_GOAL_CONTEXT.store(ctx as usize, SeqCst);
+    nros_core::GoalResponse::AcceptAndExecute
+}
+
+/// Issue 1496 — a `send_goal` arriving after the owner of an arena action
+/// server's storage is gone must be REJECTED, not dispatched through a context
+/// that names freed memory.
+///
+/// `nros_cpp_action_server_register` hands the arena `storage` itself as the
+/// callback context, and the arena is a bump allocator with no removal path, so
+/// the entry and its three service servers survive the owner unconditionally.
+/// `Executor::detach_action_server_raw` is the cut: the two callbacks become
+/// context-free stubs and the context goes null.
+///
+/// Measured here rather than reasoned about, on both sides of the detach: the
+/// same request frame is fed to the same entry twice, and the difference is
+/// whether the user callback runs at all and what the client is told.
+#[test]
+fn detaching_a_raw_action_server_rejects_a_late_goal_and_never_reads_its_context() {
+    use super::{
+        action::RawActionServerSpec,
+        arena::{ActionServerRawArenaEntry, action_server_raw_try_process},
+    };
+    use core::sync::atomic::Ordering::SeqCst;
+    use nros_core::GoalId;
+
+    const B: usize = crate::config::DEFAULT_RX_BUF_SIZE;
+    const MG: usize = 4;
+
+    LATE_GOAL_CALLS.store(0, SeqCst);
+    LAST_GOAL_CONTEXT.store(0, SeqCst);
+
+    // The stand-in for a C++ `Server<A>::storage_`: the address the arena entry
+    // is told to call back through.
+    let mut owner_storage = [0u8; 16];
+    let owner_ptr = owner_storage.as_mut_ptr() as *mut core::ffi::c_void;
+
+    let session = MockSession::new();
+    let mut executor = executor_with_clock(session);
+    let handle = executor
+        .register_action_server_raw(RawActionServerSpec {
+            node_id: None,
+            action_name: "/verb",
+            type_name: "test_msgs/action/Fibonacci",
+            type_hash: "RIHS01_0000",
+            qos: nros_rmw::QoSProfile::services_default(),
+            goal_callback: accept_and_record_context,
+            cancel_callback: refuse_every_cancel,
+            accepted_callback: None,
+            context: owner_ptr,
+        })
+        .expect("the mock session registers a raw action server");
+
+    // Reach the entry the way `spin_once` does, so the assertions below are
+    // about the arena's real bytes and not a copy.
+    let offset = executor.entries[handle.entry_index]
+        .as_ref()
+        .expect("the slot is live")
+        .offset;
+    let entry_ptr = unsafe { (executor.arena.as_mut_ptr() as *mut u8).add(offset) };
+    let entry = || unsafe { &mut *(entry_ptr as *mut ActionServerRawArenaEntry<B, B, B, MG>) };
+
+    // BEFORE: a goal is dispatched, through the owner's context.
+    let g = GoalId { uuid: [0x11u8; 16] };
+    let (req, len) = mk_send_goal_req(&g);
+    entry().core.send_goal_server.load(req, len);
+    let did_work =
+        unsafe { action_server_raw_try_process::<B, B, B, MG>(entry_ptr, 0, 0) }.unwrap();
+    assert!(did_work);
+    assert_eq!(LATE_GOAL_CALLS.load(SeqCst), 1, "the goal must dispatch");
+    assert_eq!(
+        LAST_GOAL_CONTEXT.load(SeqCst),
+        owner_ptr as usize,
+        "and it must dispatch through the owner's storage — that is the edge \
+         issue 1496 is about"
+    );
+    assert_eq!(entry().core.active_goals.len(), 1);
+    {
+        let sent = entry().core.send_goal_server.sent.borrow();
+        assert_eq!(sent.last().unwrap().1[4], 1, "reply says ACCEPTED");
+    }
+
+    // The owner goes away. This is what its destructor does first.
+    // SAFETY: registered through the default-sized `register_action_server_raw`.
+    assert!(
+        unsafe { executor.detach_action_server_raw(&handle) },
+        "the entry is live and is an action server, so the detach applies"
+    );
+    assert!(
+        entry().context.is_null(),
+        "the context must no longer name the owner's storage"
+    );
+    assert!(
+        entry().accepted_callback.is_none(),
+        "the post-accept hook read the same context"
+    );
+
+    // AFTER: the same frame, the same entry. The user callback must not run,
+    // and the client must get a well-formed rejection rather than silence.
+    let g2 = GoalId { uuid: [0x22u8; 16] };
+    let (req2, len2) = mk_send_goal_req(&g2);
+    entry().core.send_goal_server.load(req2, len2);
+    let did_work =
+        unsafe { action_server_raw_try_process::<B, B, B, MG>(entry_ptr, 0, 0) }.unwrap();
+    assert!(
+        did_work,
+        "the entry still answers — it is abandoned, not gone"
+    );
+    assert_eq!(
+        LATE_GOAL_CALLS.load(SeqCst),
+        1,
+        "the late goal must NOT reach the callback that reads the freed storage"
+    );
+    {
+        let sent = entry().core.send_goal_server.sent.borrow();
+        assert_eq!(sent.len(), 2, "the late goal is answered, not dropped");
+        assert_eq!(sent.last().unwrap().1[4], 0, "reply says REJECTED");
+    }
+    assert_eq!(
+        entry().core.active_goals.len(),
+        1,
+        "no new goal is accepted after the detach"
+    );
+
+    // `owner_storage` may now die; nothing names it.
+    let _ = owner_storage;
+}
+
+/// Issue 1496, the client half — `nros_cpp_action_client_destroy` detaches the
+/// arena entry before the `drop_in_place` that runs no destructor.
+///
+/// The client entry's three callbacks are `Option`s that
+/// `action_client_raw_try_process` guards with `if let Some(cb)`, so clearing
+/// them IS the rejection path: a reply, feedback sample or result arriving after
+/// destruction is consumed and dropped instead of dispatched through a context
+/// that names freed C++ storage.
+#[test]
+fn detaching_a_raw_action_client_clears_the_callbacks_that_read_its_context() {
+    use super::{action::RawActionClientSpec, arena::ActionClientRawArenaEntry};
+
+    const B: usize = crate::config::DEFAULT_RX_BUF_SIZE;
+
+    let mut owner_storage = [0u8; 16];
+    let owner_ptr = owner_storage.as_mut_ptr() as *mut core::ffi::c_void;
+
+    let session = MockSession::new();
+    let mut executor = executor_with_clock(session);
+    let handle = executor
+        .register_action_client_raw(RawActionClientSpec {
+            node_id: None,
+            action_name: "/verb",
+            type_name: "test_msgs/action/Fibonacci",
+            type_hash: "RIHS01_0000",
+            goal_response_callback: Some(no_op_goal_response),
+            feedback_callback: None,
+            result_callback: None,
+            context: owner_ptr,
+        })
+        .expect("the mock session registers a raw action client");
+
+    let index = handle.entry_index();
+    let offset = executor.entries[index]
+        .as_ref()
+        .expect("the slot is live")
+        .offset;
+    let entry_ptr = unsafe { (executor.arena.as_mut_ptr() as *mut u8).add(offset) };
+    let entry = || unsafe { &mut *(entry_ptr as *mut ActionClientRawArenaEntry<B, B, B>) };
+
+    assert!(entry().goal_response_callback.is_some());
+    assert_eq!(entry().context as usize, owner_ptr as usize);
+
+    // SAFETY: registered through the default-sized `register_action_client_raw`.
+    assert!(unsafe { executor.detach_action_client_raw(index) });
+
+    assert!(entry().goal_response_callback.is_none());
+    assert!(entry().feedback_callback.is_none());
+    assert!(entry().result_callback.is_none());
+    assert!(entry().context.is_null());
+
+    let _ = owner_storage;
+}
+
+unsafe extern "C" fn no_op_goal_response(
+    _goal_id: *const nros_core::GoalId,
+    _accepted: bool,
+    _ctx: *mut core::ffi::c_void,
+) {
+}
+
+// ====================================================================
 // Phase 403 step 3 -- the ARENA COST OF ONE ENTITY, MEASURED
 //
 // Step 3 derives the arena as a sum over what the entity inventory says

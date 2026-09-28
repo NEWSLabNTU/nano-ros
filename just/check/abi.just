@@ -60,6 +60,18 @@ cbindgen-headers:
 cbindgen-pin:
     @bash scripts/check-cbindgen-pin.sh
 
+# Issue 1496 — a `nros_cpp_*_destroy` whose `drop_in_place` runs NOTHING must say
+# so. Three of the nine are that shape (both arena action entities and the guard
+# condition), and the one this issue measured kept dispatching goals through the
+# destroyed object's storage. The classification is `needs_drop` asserts in
+# `packages/api/nros-cpp/src/destroy_shape.rs` — the compiler's answer, not a
+# grep's — and this gate holds the two sides together: every destroy FFI has a
+# row, every row names a real function and the type it really drops, and a NO_OP
+# is documented as one.
+[private]
+cpp-destroy-shape:
+    @python3 scripts/check-cpp-destroy-shape.py
+
 # Issue 0586 — the C++ FFI must not discard a backend error in favour of
 # `-100 TRANSPORT_ERROR`, the code its own source documents as the catch-all for
 # UNMAPPED variants. Also holds the two mappers exhaustive, so a NEW variant
