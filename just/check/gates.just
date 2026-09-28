@@ -265,3 +265,19 @@ tests-can-fail:
 # eighty-eighth cannot arrive silently.
 wait-evidence-discarded:
     @python3 scripts/check-wait-evidence-discarded.py
+
+# Issue 1523 — `NROS_COMPONENT_LANG` was written LOWERCASE by one verb and
+# UPPERCASE by another, against three case-sensitive `STREQUAL "C"` readers. So
+# for every `nano_ros_auto_add_library` component `LINKER_LANGUAGE C` was never
+# set, the C++ umbrella branch was always taken, and
+# `nros_components_register_node`'s reader was dead code for one of its two
+# producers — invisible, because the two wrong branches cancelled into the link
+# line issue 0425 wants. CLAUDE.md has carried "case-normalize enum-ish cmake
+# args" as a pitfall with no gate behind it since the ament verbs started
+# passing lowercase `cpp` into a `STREQUAL "CPP"`. This is that gate, narrowed
+# to what is checkable: the property has ONE writer (which refuses a
+# non-canonical value at configure time), and every reader of a
+# canonical-lowercase language variable compares a lowercase literal.
+[private]
+component-lang-vocabulary:
+    @python3 scripts/check-component-lang-vocabulary.py
