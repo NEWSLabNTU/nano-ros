@@ -39,15 +39,16 @@ it is stated beside the declaration that causes it and nowhere else.
 ```
 src/
   demo_bringup/                    one launch file per (role × language)
+    boards/native_sim_native_64/   the Zephyr image's Kconfig (RFC-0065 D4)
   {c,cpp,rust}_safety_talker_pkg/  the node packages
   {c,cpp,rust}_safety_listener_pkg/
-  zephyr_rust_safety_entry/        the one entry written by hand (west app)
 ```
 
 Languages sit side by side so the language seam is exercised inside one
-workspace rather than across three copies of it. The six native entries are not
-in `src/`: the bringup declares six `[image.native_*_safety_*]`, and each one's
-entry is generated (RFC-0098 D9).
+workspace rather than across three copies of it. **No entry is in `src/`** — the
+bringup declares seven `[image.*]` and every one of them, the six native ones
+and the Zephyr one, has its entry generated under `build/<coord>/` (RFC-0098 D9;
+the Zephyr west application around it since phase-470 W5.b2, issue 1288).
 
 ## Building
 

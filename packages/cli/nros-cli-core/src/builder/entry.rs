@@ -205,6 +205,112 @@ pub fn package_name(image_id: &str) -> String {
     nros_orchestration_ir::leaf_system::entry_package_name(image_id)
 }
 
+/// Board-crate cargo features DERIVED from the image's own resolved SCHEDULE
+/// (phase-470 W5.b2, issue 1288).
+///
+/// ## Why derived and not declared
+///
+/// Exactly one entry in the tree named board-crate features by hand —
+/// `examples/workspaces/realtime-rust/src/zephyr_entry`, as
+/// `nros-board-zephyr = { features = ["tiers", "zephyr-edf"] }`, now deleted —
+/// and a generated entry had no way to say it. The declarative answer would be a new
+/// `[image.<id>] board_features` key; it was REJECTED because both features are
+/// functions of a fact the bringup already states, and a second statement of one
+/// fact is this repository's named defect class.
+///
+/// They are derived from the SAME predicate their consumer keys on:
+///
+/// | feature | condition | the consumer's own test |
+/// | --- | --- | --- |
+/// | `tiers` | the resolved table is not the degenerate single `default` tier | `nros::main!`'s Zephyr arm: `let multi_tier = resolved_tiers.filter(\|t\| !t.is_single_tier())`, and `Some(_)` is the arm that emits `ZephyrBoard::run_tiers` — which is itself `#[cfg(feature = "tiers")]` |
+/// | `zephyr-edf` | some tier is `class = "real_time"` AND carries a `deadline` | `nros_board_zephyr::entry_tiers::apply_tier_deadline`'s body: `if tier.class == Some("real_time") { if let Some(us) = tier.deadline_us { … } }` |
+///
+/// The table this reads is the one `plan_from_model` + `resolve_plan_sched`
+/// produce, from `model.execution.tiers` lowered for the image's own RTOS key —
+/// the same `nros_orchestration_ir::resolve_tiers` over the same SystemModel the
+/// macro expands against. So this is not a heuristic that happens to agree: it
+/// is the same computation on the same input, which is the only standard under
+/// which a derivation beats a declaration.
+///
+/// ## The two ways it could be wrong, and what each costs
+///
+/// * **False negative** (the macro emits `run_tiers`, this says no feature) — a
+///   COMPILE error in the generated entry, naming the missing method. Loud.
+/// * **False positive** (feature on, macro takes the single-tier arm) — a wider
+///   dep graph (`tiers` pulls `nros-log` + `nros-platform-cffi`) and dead code
+///   the linker drops. `zephyr-edf` additionally cannot misbehave against the
+///   Kconfig: `nros_zephyr_set_current_deadline` is compiled to a no-op RETURNING
+///   0 without `CONFIG_SCHED_DEADLINE`, and the caller logs its marker only on a
+///   1 — so a derived `zephyr-edf` on an image whose kernel lacks EDF is an
+///   honest fall-through to the cooperative monitor, not a link error. (The
+///   feature's own doc-comment says it "must match the image's
+///   `CONFIG_SCHED_DEADLINE`"; the shim measured says otherwise, and the shim is
+///   the code.)
+///
+/// ## The totality check, over the whole tree rather than the two migrated rows
+///
+/// `git ls-files '*system.toml' | xargs grep -l '^\[tiers\.'` reports SEVEN
+/// bringups, not the five an earlier draft of this comment counted (it read
+/// `examples/workspaces/` only and missed
+/// `nros-tests/fixtures/orchestration_tiers_{native,freertos}`):
+/// `realtime-rust`, `realtime-c` x2 (`demo_bringup` + `smp_bringup`),
+/// `realtime-cpp`, `realtime-cpp-subnode-portable`, and those two fixtures.
+///
+/// * **No false negative is possible.** A table is multi-tier only when some
+///   callback group binds to a tier other than `default`, and `resolve_tiers`
+///   refuses a group naming a tier the system did not declare
+///   (`TierResolveError::UnknownTier`). So "wants `tiers`" implies "declares
+///   `[tiers.*]`", by construction rather than by survey. Of the seven, four
+///   have a Zephyr image — `realtime-rust` and `realtime-c` x2 and
+///   `realtime-cpp` — and `realtime-rust`'s is the only RUST one; the other
+///   three keep hand-written C/C++ applications, which `generate_entry`
+///   locates rather than generates, so this function never sees them. The two
+///   fixtures deploy to freertos and native.
+/// * **No false positive is possible either**, for the same reason in reverse:
+///   the predicate here is `resolved_tiers.filter(|t| !t.is_single_tier())`,
+///   character for character what `nros::main!`'s `multi_tier` binding is, over
+///   the same `resolve_tiers` output for the same board's RTOS key
+///   (`tier_rtos_key_for`, which both producers already share). The feature is
+///   named exactly when the code it gates is emitted.
+///
+/// The per-RTOS half matters and is easy to get wrong: `class` is stated on
+/// `[tiers.<name>]` but `deadline` on `[tiers.<name>.<rtos>]`, so `deadline_us`
+/// is only visible once the plan's schedule has been resolved for THIS image's
+/// RTOS key. `[board.zephyr]` and `[board."native_sim/native/64"]` are both
+/// `BoardFamily::Zephyr` in `nros_entry_lower::BOARD_KEYS`, so the two
+/// spellings of this board select the same `[tiers.*.zephyr]` sub-table — which
+/// is what makes `realtime-rust`'s authored `board = "zephyr"` safe here.
+///
+/// ## `declares` is not optional
+///
+/// Only a feature the board crate actually DECLARES is emitted, for the reason
+/// [`crate::orchestration::facade::crate_declares_feature`] gives: a missing
+/// feature is a build the user can fix, a bogus one fails cargo resolution
+/// outright. `tiers` and `zephyr-edf` exist on `nros-board-zephyr` alone today,
+/// so the guard is also what keeps this from naming them at a board that has
+/// never heard of them — this function needs no board branch of its own.
+#[must_use]
+pub fn schedule_board_features(
+    tiers: Option<&nros_orchestration_ir::ResolvedTierTable>,
+    declares: impl Fn(&str) -> bool,
+) -> Vec<String> {
+    let Some(table) = tiers.filter(|t| !t.is_single_tier()) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    if declares("tiers") {
+        out.push("tiers".to_string());
+    }
+    let wants_edf = table
+        .tiers
+        .iter()
+        .any(|t| t.class.as_deref() == Some("real_time") && t.deadline_us.is_some());
+    if wants_edf && declares("zephyr-edf") {
+        out.push("zephyr-edf".to_string());
+    }
+    out
+}
+
 /// Render `Cargo.toml`.
 pub fn render_manifest(
     spec: &EntrySpec,
@@ -519,6 +625,8 @@ fn write_if_changed(path: &Path, body: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
 
+    use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
+
     use super::*;
 
     #[test]
@@ -808,5 +916,140 @@ mod tests {
             "names the escape: {m}"
         );
         assert!(render_source(&spec(), &hosted()).contains("nros materialize native"));
+    }
+
+    // ---- phase-470 W5.b2: the derived board features (issue 1288) ----------
+
+    fn tier(name: &str, class: Option<&str>, deadline_us: Option<u64>) -> ResolvedTier {
+        ResolvedTier {
+            name: name.to_string(),
+            priority: 0,
+            stack_bytes: None,
+            spin_period_us: None,
+            preempt_threshold: None,
+            time_slice_us: None,
+            sched_class: None,
+            class: class.map(str::to_string),
+            period_us: None,
+            budget_us: None,
+            deadline_us,
+            deadline_policy: None,
+            core: None,
+            members: Vec::new(),
+        }
+    }
+
+    /// The board crate that actually has these two features.
+    fn zephyr_board(f: &str) -> bool {
+        matches!(f, "tiers" | "zephyr-edf")
+    }
+
+    #[test]
+    fn a_multi_tier_image_with_a_real_time_deadline_gets_both_features() {
+        // `realtime-rust`'s shape, and the one entry in the tree that names
+        // these by hand: `[tiers.high] class = "real_time"` +
+        // `[tiers.high.zephyr] deadline = "10000us"`, plus a plain `low`.
+        let table = ResolvedTierTable {
+            tiers: vec![
+                tier("high", Some("real_time"), Some(10_000)),
+                tier("low", None, None),
+            ],
+        };
+        assert_eq!(
+            schedule_board_features(Some(&table), zephyr_board),
+            vec!["tiers".to_string(), "zephyr-edf".to_string()]
+        );
+    }
+
+    #[test]
+    fn tiers_without_a_deadline_does_not_reach_for_edf() {
+        // `zephyr-edf` gates a call whose body is
+        // `if class == real_time { if let Some(us) = deadline_us }`. With no
+        // deadline that call can do nothing, so naming the feature would be a
+        // dep edge standing in for a fact nobody stated.
+        let table = ResolvedTierTable {
+            tiers: vec![
+                tier("high", Some("real_time"), None),
+                tier("low", None, None),
+            ],
+        };
+        assert_eq!(
+            schedule_board_features(Some(&table), zephyr_board),
+            vec!["tiers".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_deadline_on_a_non_real_time_tier_does_not_reach_for_edf() {
+        // Same reason, the other half of the consumer's own condition.
+        let table = ResolvedTierTable {
+            tiers: vec![
+                tier("high", Some("best_effort"), Some(10_000)),
+                tier("low", None, None),
+            ],
+        };
+        assert_eq!(
+            schedule_board_features(Some(&table), zephyr_board),
+            vec!["tiers".to_string()]
+        );
+    }
+
+    #[test]
+    fn the_degenerate_single_default_tier_is_not_a_tiered_image() {
+        // `resolve_tiers` synthesises exactly one `default` tier whenever a
+        // node declares callback groups without a `[tiers]` table. The macro's
+        // Zephyr arm filters that case out with `is_single_tier()` and takes
+        // the plain register+spin path, so the board needs no `tiers`. Six of
+        // the seven Rust Zephyr entries are this case and none names the
+        // feature.
+        let table = ResolvedTierTable {
+            tiers: vec![tier(nros_orchestration_ir::DEFAULT_TIER, None, None)],
+        };
+        assert!(schedule_board_features(Some(&table), zephyr_board).is_empty());
+        // And an image whose model resolved no table at all.
+        assert!(schedule_board_features(None, zephyr_board).is_empty());
+    }
+
+    #[test]
+    fn a_board_crate_that_declares_neither_feature_is_named_nothing() {
+        // The guard is what keeps this function free of a per-board branch:
+        // `tiers` / `zephyr-edf` live on `nros-board-zephyr` alone, and a
+        // feature a crate does not declare is a cargo RESOLUTION error, not a
+        // warning — so emitting one would break every non-Zephyr tiered image
+        // (freertos, nuttx, threadx all run tiers without these names).
+        let table = ResolvedTierTable {
+            tiers: vec![
+                tier("high", Some("real_time"), Some(10_000)),
+                tier("low", None, None),
+            ],
+        };
+        assert!(schedule_board_features(Some(&table), |_| false).is_empty());
+    }
+
+    /// The two feature NAMES are literals here, and `declares` makes a wrong
+    /// one silent rather than loud — which is the one way this derivation can
+    /// rot. The asymmetry the doc-comment describes does not cover a RENAME:
+    /// drop `tiers` and the macro's `run_tiers` call fails to compile (loud),
+    /// but drop `zephyr-edf` and the image simply stops asking the kernel for
+    /// EDF and falls through to the cooperative monitor, with no diagnostic
+    /// anywhere. So the names are asserted against the crate that owns them,
+    /// through the same reader the derivation uses.
+    #[test]
+    fn the_board_crate_still_declares_the_two_features_this_derives() {
+        let board = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../packages/boards/nros-board-zephyr");
+        assert!(
+            board.join("Cargo.toml").is_file(),
+            "nros-board-zephyr not at {}",
+            board.display()
+        );
+        for f in ["tiers", "zephyr-edf"] {
+            assert!(
+                crate::orchestration::facade::crate_declares_feature(&board, f),
+                "`nros-board-zephyr` no longer declares `{f}`; \
+                 `schedule_board_features` names it as a literal and `declares` \
+                 would now drop it silently"
+            );
+        }
     }
 }

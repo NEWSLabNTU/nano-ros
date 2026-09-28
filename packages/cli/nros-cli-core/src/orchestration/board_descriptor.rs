@@ -644,6 +644,14 @@ impl BoardDescriptor {
     ///   descriptor authors either, but `builder/entry.rs` reads both, so they
     ///   are an out-of-tree extension point with no in-tree user rather than
     ///   fields to delete.
+    ///
+    ///   And `board_features` is not the only source of them any more
+    ///   (phase-470 W5.b2): `cmd::build` adds whatever
+    ///   [`crate::builder::entry::schedule_board_features`] derives from the
+    ///   IMAGE's resolved schedule, on top of whatever the descriptor states.
+    ///   Those two could not be one field — `tiers` is true of an image whose
+    ///   bringup declares them and false of its sibling on the same board, and
+    ///   this struct is per-BOARD.
     fn apply_conventions(&mut self) {
         // Platform facts first: `local_aliases` below defaults to the feature,
         // so it has to be filled in before that reads it.

@@ -1049,11 +1049,19 @@ fn zephyr_leaf_buildrs_uses_shared_bake() {
     // is excluded from `test-unit` (`--exclude nros-tests`), so `just ci gate`
     // never asked. Both deletions are accounted for here.
     //
-    // 6 (examples/zephyr/rust) + 3 (zephyr_entry_robot1, realtime-rust's
-    // zephyr_entry, safety's zephyr_rust_safety_entry) = 9.
+    // 9 -> 7 (phase-470 W5.b2, issue 1288): the last TWO Rust Zephyr
+    // applications are generated — `realtime-rust`'s `zephyr_entry` and
+    // `safety`'s `zephyr_rust_safety_entry` — for the same reason and with the
+    // same consequence for this walk. What remains under `examples/` is the six
+    // standalone leaves plus `zephyr_entry_robot1`, which W5.b1 declined on
+    // purpose: it is the one in-tree image whose `[image.*] entry` key is
+    // load-bearing, so migrating it would retire the only evidence for a live
+    // branch of `cmd::build`'s discriminator.
+    //
+    // 6 (examples/zephyr/rust) + 1 (zephyr_entry_robot1) = 7.
     assert!(
-        zephyr_leaves >= 9,
-        "expected >=9 zephyr rust leaf build.rs, walked only {zephyr_leaves} — layout moved?"
+        zephyr_leaves >= 7,
+        "expected >=7 zephyr rust leaf build.rs, walked only {zephyr_leaves} — layout moved?"
     );
 }
 

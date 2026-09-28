@@ -4954,13 +4954,21 @@ west_id = "zephyr/native_sim/native/64/workspace-qos-entry"
 west_zenoh_locator = "tcp/127.0.0.1:7460"
 skip_probe = true
 
-# phase-276 W4 — the E2E-SAFETY (CRC) Rust workspace Entry
-# (examples/workspaces/safety/src/zephyr_rust_safety_entry): the
+# phase-276 W4 — the E2E-SAFETY (CRC) Rust workspace Entry: the
 # safety-on-embedded coverage cell. The system declares [system].features =
 # ["safety"] → the zenoh backend attaches the E2E CRC + sequence number on
 # publish and validates on receive; the in-image safe_listener republishes
 # its CRC-VALIDATED count on /safe_ok. Distinct zenohd port (7490). Consumed
 # by tests/entry_e2e.rs (zephyr_rust_safety cell).
+#
+# phase-470 W5.b2 (issue 1288) — MIGRATED. `entry = "zephyr_rust_safety_entry"`
+# became `image = "zephyr_rust_safety"`: the west application is GENERATED under
+# `build/<coord>/`, the hand-written package is deleted, and its Kconfig moved to
+# `src/demo_bringup/boards/native_sim_native_64/` (RFC-0065 D4). `conf_files` is
+# gone for the reason `workspace-rust-zephyr` above states — it suppresses
+# `APPLICATION_CONFIG_DIR` discovery and resolves its names against an
+# `APPLICATION_SOURCE_DIR` a generated application does not hold. The merged
+# `.config` is byte-identical to the hand-written application's, measured.
 [[workspace_fixture]]
 id = "workspace-zephyr-rs-safety"
 platform = "zephyr"
@@ -4968,9 +4976,8 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/safety"
 bringup = "src/demo_bringup"
-entry = "zephyr_rust_safety_entry"
+image = "zephyr_rust_safety"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
 west_build_name = "build-ws-rs-safety-entry-zenoh"
 west_id = "zephyr/native_sim/native/64/workspace-safety-entry"
 west_zenoh_locator = "tcp/127.0.0.1:7490"
@@ -5000,13 +5007,21 @@ west_id = "zephyr/native_sim/native/64/workspace-mh-robot1-entry"
 west_zenoh_locator = "tcp/127.0.0.1:7492"
 skip_probe = true
 
-# phase-276 W2 / issue #128 half 2 — the RT-TIERS Rust workspace Entry
-# (examples/workspaces/realtime-rust/src/zephyr_entry): the
+# phase-276 W2 / issue #128 half 2 — the RT-TIERS Rust workspace Entry: the
 # tiers-on-embedded coverage cell. system.toml declares two [tiers.*] with
 # [tiers.*.zephyr] priorities, so the macro emits ZephyrBoard::run_tiers —
 # one k_thread per tier over ONE shared session (RFC-0015 Model 1); ctrl (10
 # ms) + telem (100 ms) publish /ctrl + /telem. Distinct zenohd port (7491).
 # Consumed by tests/realtime_tiers_e2e.rs (zephyr_rust cell).
+#
+# phase-470 W5.b2 (issue 1288) — MIGRATED, and this is the row that needed the
+# board-crate features DERIVED: its hand-written entry was the tree's only one
+# naming `nros-board-zephyr = { features = ["tiers", "zephyr-edf"] }`, and both
+# are now read off the very `[tiers.*]` block above
+# (`builder::entry::schedule_board_features`). `conf_files` is gone for the
+# reason `workspace-rust-zephyr` states; the Kconfig lives in
+# `src/demo_bringup/boards/native_sim_native_64/` (RFC-0065 D4) and the merged
+# `.config` is byte-identical to the hand-written application's, measured.
 [[workspace_fixture]]
 id = "workspace-zephyr-rs-realtime"
 platform = "zephyr"
@@ -5014,9 +5029,8 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-rust"
 bringup = "src/demo_bringup"
-entry = "zephyr_entry"
+image = "zephyr"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
 west_build_name = "build-ws-rs-realtime-entry-zenoh"
 west_id = "zephyr/native_sim/native/64/workspace-realtime-entry"
 west_zenoh_locator = "tcp/127.0.0.1:7491"

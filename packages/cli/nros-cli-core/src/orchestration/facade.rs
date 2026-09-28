@@ -375,11 +375,6 @@ pub fn write_facade(
     }))
 }
 
-/// Does the crate at `dir` declare `feature` in its `[features]` table?
-///
-/// Read from the manifest rather than assumed from the crate's name: the board
-/// crates genuinely disagree about whether they own the RMW axis, and guessing
-/// from a naming convention is what produced the zephyr breakage.
 /// The crate's own `[features] default` list.
 ///
 /// Sibling of [`crate_declares_feature`], and read for the same reason: the
@@ -408,7 +403,21 @@ fn crate_default_features(dir: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn crate_declares_feature(dir: &Path, feature: &str) -> bool {
+/// Does the crate at `dir` declare `feature` in its `[features]` table?
+///
+/// Read from the manifest rather than assumed from the crate's name: the board
+/// crates genuinely disagree about whether they own the RMW axis, and guessing
+/// from a naming convention is what produced the zephyr breakage.
+///
+/// (This paragraph had drifted onto [`crate_default_features`] below, where it
+/// read as that function's first half; phase-470 W5.b2 put it back when it made
+/// this the one spelling for all three callers.)
+///
+/// THE one spelling: `builder::west_app` and `builder::entry`'s derived board
+/// features both ask through here. It was copied once already, byte for byte,
+/// and W5.b2 wanted a third — three copies of a four-line predicate is how a
+/// rule ends up true in two places and not the third.
+pub(crate) fn crate_declares_feature(dir: &Path, feature: &str) -> bool {
     let Ok(raw) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
         // Unreadable manifest: emit nothing rather than emit something cargo
         // will reject. A missing feature is a build the user can still fix; a

@@ -1766,7 +1766,7 @@ fn generate_entry(
         });
     }
 
-    let plan = match crate::codegen::entry::plan_from_model(&model_path, image.board.clone()) {
+    let mut plan = match crate::codegen::entry::plan_from_model(&model_path, image.board.clone()) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("nros build: warning: cannot plan `{image_id}`: {e}");
@@ -1776,6 +1776,22 @@ fn generate_entry(
             });
         }
     };
+    // phase-470 W5.b2 (issue 1288) — resolve the SCHEDULE, because the board
+    // crate's feature set depends on it (`builder::entry::schedule_board_features`,
+    // which owns the rationale). Same `resolve_tiers` over the same model the
+    // `nros::main!` expansion runs, so the feature and the code it gates cannot
+    // disagree.
+    //
+    // A refusal here is REPORTED and not fatal: the macro resolves the same
+    // table and will refuse with the same reason, at the point where the user
+    // can read it against their own tier table. Deriving no features from a
+    // table that did not resolve is then a compile error naming the missing
+    // `run_tiers`, which is the loud half of the asymmetry that function
+    // describes.
+    let plan_rtos = nros_entry_lower::tier_rtos_key_for(&plan.board);
+    if let Err(e) = crate::codegen::entry::resolve_plan_sched(&mut plan, plan_rtos) {
+        eprintln!("nros build: warning: cannot resolve tiers for `{image_id}`: {e}");
+    }
 
     // A launch file may name one package several times; cargo needs it once.
     let mut seen = std::collections::BTreeSet::new();
@@ -2038,7 +2054,29 @@ fn generate_entry(
             _ => None,
         },
     };
-    let facts = BoardFacts::from_descriptor_for(descriptor, &candidates);
+    let mut facts = BoardFacts::from_descriptor_for(descriptor, &candidates);
+    // phase-470 W5.b2 (issue 1288) — the board-crate features this IMAGE's
+    // schedule implies, on top of whatever its descriptor declares. The
+    // descriptor's `board_features` is a property of the BOARD and cannot say
+    // this: `tiers` is true of an image whose bringup declares them and false of
+    // its sibling on the same board. `builder::entry::schedule_board_features`
+    // owns the derivation and the case against declaring it instead.
+    if let Some(krate) = facts.board_crate.clone() {
+        let crate_dir = nros_root.join(
+            facts
+                .crate_path
+                .clone()
+                .unwrap_or_else(|| format!("packages/boards/{krate}")),
+        );
+        facts
+            .board_features
+            .extend(crate::builder::entry::schedule_board_features(
+                plan.resolved_tiers.as_ref(),
+                |f| crate::orchestration::facade::crate_declares_feature(&crate_dir, f),
+            ));
+        facts.board_features.sort();
+        facts.board_features.dedup();
+    }
     let parent = root.join("build").join(coordinate(platform, image));
     let dir = crate::builder::entry::write(&spec, &facts, &parent)
         .map_err(|e| eyre::eyre!("generating the entry for `{image_id}`: {e}"))?;

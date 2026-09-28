@@ -175,9 +175,23 @@ panic = "platform"
 [image.threadx]
 board = "threadx-linux"
 
-# Claims the hand-written west entry `zephyr_entry` by its `<id>_entry` name;
-# the locator was that entry's `[package.metadata.nros.deploy.zephyr]` table
-# (phase-445 W5).
+# phase-470 W5.b2 (issue 1288) — its entry and the west application around it
+# are GENERATED, under `build/<coord>/zephyr_entry/`. Deleting the hand-written
+# `src/zephyr_entry` IS the migration (RFC-0065 D13); `conf` below names
+# fragments in `boards/native_sim_native_64/`, which is `APPLICATION_CONFIG_DIR`
+# for this image (D4). The locator was the deleted package's
+# `[package.metadata.nros.deploy.zephyr]` table (phase-445 W5).
+#
+# This is the image whose BOARD CRATE FEATURES are derived rather than declared.
+# The deleted entry carried
+# `nros-board-zephyr = { features = ["tiers", "zephyr-edf"] }` by hand — the only
+# one in the tree that did — and both are now read off the `[tiers.*]` block
+# above: `tiers` because the resolved table is not the degenerate single
+# `default` tier (the same predicate `nros::main!` uses to emit
+# `ZephyrBoard::run_tiers`), `zephyr-edf` because `[tiers.high]` is
+# `class = "real_time"` and `[tiers.high.zephyr]` carries a `deadline`. There is
+# no `board_features` key to author, deliberately — see
+# `builder::entry::schedule_board_features`.
 [image.zephyr]
 board = "zephyr"
 conf = ["prj-zenoh.conf"]

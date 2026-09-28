@@ -4768,20 +4768,23 @@ pub fn build_zephyr_workspace_rust_qos_entry() -> TestResult<PathBuf> {
 }
 
 /// phase-276 W4 — the Zephyr (native_sim) E2E-SAFETY (CRC) Rust workspace Entry
-/// (`safety/src/zephyr_rust_safety_entry`): the system declares `features = ["safety"]`,
-/// so the zenoh backend attaches the E2E CRC + sequence number on publish and
-/// validates on receive; safe_listener republishes its CRC-VALIDATED count on
-/// `/safe_ok`. Built by the west lane into
+/// (`safety`'s `[image.zephyr_rust_safety]`): the system declares
+/// `features = ["safety"]`, so the zenoh backend attaches the E2E CRC + sequence
+/// number on publish and validates on receive; safe_listener republishes its
+/// CRC-VALIDATED count on `/safe_ok`. Built by the west lane into
 /// `<zephyr-build-root>/build-ws-rs-safety-entry-zenoh/zephyr/zephyr.exe`;
 /// consumed by `tests/entry_e2e.rs` (zephyr_rust_safety cell).
+///
+/// phase-470 W5.b2 (issue 1288) — the leaf source is the WORKSPACE, because the
+/// west application is GENERATED under `build/<coord>/` and
+/// `src/zephyr_rust_safety_entry` no longer exists. Same move W5.a made for
+/// `workspaces/rust`, and it never under-watches: the entry pulls in sibling node
+/// packages and the bringup's Kconfig from that same tree.
 pub fn build_zephyr_workspace_rust_safety_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-rs-safety-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(
         &binary_path,
-        ZephyrLeafSource::zenoh(
-            "examples/workspaces/safety/src/zephyr_rust_safety_entry",
-            "rust",
-        ),
+        ZephyrLeafSource::zenoh("examples/workspaces/safety", "rust"),
     )
 }
 
@@ -4803,19 +4806,25 @@ pub fn build_zephyr_workspace_rust_multihost_robot1_entry() -> TestResult<PathBu
 }
 
 /// phase-276 W2 / issue #128 half 2 — the Zephyr (native_sim) RT-TIERS Rust
-/// workspace Entry (`realtime-rust/src/zephyr_entry`): `system.toml`
+/// workspace Entry (`realtime-rust`'s `[image.zephyr]`): `system.toml`
 /// declares two `[tiers.*]` with `[tiers.*.zephyr]` priorities, so the macro
 /// emits `ZephyrBoard::run_tiers` — one k_thread per tier over ONE shared
 /// session; ctrl (10 ms, high) publishes `/ctrl`, telem (100 ms, low)
 /// publishes `/telem`. Built by the west lane into
 /// `<zephyr-build-root>/build-ws-rs-realtime-entry-zenoh/zephyr/zephyr.exe`;
 /// consumed by `tests/realtime_tiers_zephyr_entry_e2e.rs`.
+///
+/// phase-470 W5.b2 (issue 1288) — the leaf source is the WORKSPACE, for the
+/// reason the safety sibling above gives. This is also the image whose board
+/// features are DERIVED from the `[tiers.*]` block named here
+/// (`builder::entry::schedule_board_features`), so that block is a build input
+/// and watching the whole workspace is what keeps it one.
 pub fn build_zephyr_workspace_rust_realtime_entry() -> TestResult<PathBuf> {
     let binary_path =
         zephyr_build_root().join("build-ws-rs-realtime-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(
         &binary_path,
-        ZephyrLeafSource::zenoh("examples/workspaces/realtime-rust/src/zephyr_entry", "rust"),
+        ZephyrLeafSource::zenoh("examples/workspaces/realtime-rust", "rust"),
     )
 }
 
