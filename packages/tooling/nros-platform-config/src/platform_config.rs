@@ -369,6 +369,73 @@ fn unanswered_platform_message(
     )
 }
 
+/// The cargo directives [`BuildRungs::from_build_env`] emits UNCONDITIONALLY —
+/// whether or not a platform is named, and so whether or not a rung resolves.
+///
+/// Issue 1401. These were emitted only after the `NROS_PLATFORM_NAME` early
+/// return, so a build script that resolved no rung declared no dependency on
+/// any of the inputs that would have made it resolve one. It made a positive
+/// control vacuous: a board knob edited between runs recompiled nothing, and
+/// the control measured cargo's cache instead of the knob.
+///
+/// * `NROS_PLATFORM_NAME` and `NROS_BOARD` are NAMES, so their text is the
+///   fact and `rerun-if-env-changed` is right. Watching the platform name
+///   while it is UNSET is the edge that matters most: without it, exporting a
+///   platform later never re-ran a script that had built without one.
+/// * `NROS_BOARD_TOML` names a PATH, so it is watched by CONTENT, never by
+///   spelling (issue 0491: one directory has three spellings here and cargo
+///   compares env values as text). A path that does not exist is not declared
+///   — a trigger on a missing path is permanently dirty (issue 0490); the
+///   resolving arm then fails loudly when it tries to load it.
+///
+/// Watching a file this build may not read is cheap and fails safe; not
+/// watching one it might read is issue 0196's shape.
+///
+/// Split out, taking `NROS_BOARD_TOML`'s VALUE rather than reading it, so the
+/// rule is testable without mutating the process environment. (Nothing else
+/// varies: the two env watches are unconditional by construction.)
+fn build_env_watches(board_toml: Option<&str>) -> Vec<String> {
+    let mut out = vec![
+        "cargo:rerun-if-env-changed=NROS_PLATFORM_NAME".to_string(),
+        "cargo:rerun-if-env-changed=NROS_BOARD".to_string(),
+    ];
+    if let Some(raw) = board_toml.filter(|s| !s.is_empty())
+        && Path::new(raw).exists()
+    {
+        out.push(format!("cargo:rerun-if-changed={raw}"));
+    }
+    out
+}
+
+/// Every `<root>/<dir>/nros-platform.toml` on a search path, in search order —
+/// the files [`PlatformsTree::load_search_path`] reads. Missing roots are
+/// skipped, as the loader skips them.
+fn platform_descriptor_files(search: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for root in search {
+        let Ok(entries) = fs::read_dir(root) else {
+            continue;
+        };
+        let mut files: Vec<PathBuf> = entries
+            .filter_map(|e| e.ok().map(|e| e.path().join(PLATFORM_CONFIG_FILENAME)))
+            .filter(|f| f.is_file())
+            .collect();
+        files.sort();
+        out.extend(files);
+    }
+    out
+}
+
+/// The three variables [`BuildRungs::from_build_env`] reads, read once.
+struct BuildEnv {
+    /// `NROS_PLATFORM_NAME`.
+    platform: Option<String>,
+    /// `NROS_BOARD`.
+    board: Option<String>,
+    /// `NROS_BOARD_TOML` — a path.
+    board_toml: Option<String>,
+}
+
 pub struct BuildRungs {
     pub platform: String,
     pub tree: PlatformsTree,
@@ -390,32 +457,55 @@ impl BuildRungs {
     /// Resolve from the environment the lane exports, or `None` when no lane
     /// named a platform.
     pub fn from_build_env() -> Option<Self> {
-        let platform = std::env::var("NROS_PLATFORM_NAME")
-            .ok()
-            .filter(|s| !s.is_empty())?;
-        println!("cargo:rerun-if-env-changed=NROS_PLATFORM_NAME");
+        let env = BuildEnv {
+            platform: std::env::var("NROS_PLATFORM_NAME").ok(),
+            board: std::env::var("NROS_BOARD").ok(),
+            board_toml: std::env::var("NROS_BOARD_TOML").ok(),
+        };
+        Self::from_env_values(env, &mut |directive| println!("{directive}"))
+    }
+
+    /// [`Self::from_build_env`] over values already read, with the cargo
+    /// directives sent to `emit` instead of stdout, so a test can observe
+    /// WHICH directives a build that resolves no rung declares (issue 1401) —
+    /// the placement of the watches relative to the early return is the whole
+    /// bug, and only a caller that sees both the directives and the `None` can
+    /// pin it. (Values, not a lookup closure: this crate forbids the `unsafe`
+    /// that mutating the process env takes, and `config-knob-census.py` reads
+    /// an unknown callee over an `NROS_*` literal as an unclassified knob read.)
+    fn from_env_values(env: BuildEnv, emit: &mut dyn FnMut(String)) -> Option<Self> {
+        // issue 1401 — every watch is emitted BEFORE the early return below.
+        // They used to sit after it, so a unit compiled with no
+        // `NROS_PLATFORM_NAME` (11 of 18 `nros-node` compilations in one lane,
+        // issue 1390) had no cargo edge to the board descriptor, and none to
+        // the variable itself: exporting a platform name later did not re-run
+        // the script either. See [`build_env_watches`].
+        for directive in build_env_watches(env.board_toml.as_deref()) {
+            emit(directive);
+        }
+
+        let platform = env.platform.filter(|s| !s.is_empty())?;
 
         // phase-445 W2 — WHICH `[[board]]` in the file, for its `[board.knobs]`.
         // `nros ws board-facts` emits it beside `NROS_BOARD_TOML`; absent is
         // fine for a file declaring one board (or several that agree).
-        println!("cargo:rerun-if-env-changed=NROS_BOARD");
-        let board_name = std::env::var("NROS_BOARD").ok().filter(|s| !s.is_empty());
+        let board_name = env.board.filter(|s| !s.is_empty());
 
-        let board = std::env::var("NROS_BOARD_TOML")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .map(|raw| {
-                // issue 0491 — fingerprint the file's CONTENT. A
-                // `rerun-if-env-changed` on a variable naming a PATH compares
-                // the spelling, and one directory has three spellings here.
-                println!("cargo:rerun-if-changed={raw}");
-                BoardKnobsFile::load_for_board(Path::new(&raw), board_name.as_deref())
-                    .unwrap_or_else(|e| panic!("NROS_BOARD_TOML={raw}: {e}"))
-            });
+        let board = env.board_toml.filter(|s| !s.is_empty()).map(|raw| {
+            BoardKnobsFile::load_for_board(Path::new(&raw), board_name.as_deref())
+                .unwrap_or_else(|e| panic!("NROS_BOARD_TOML={raw}: {e}"))
+        });
 
         let search = build_search_path();
         let tree = PlatformsTree::load_search_path(&search)
             .unwrap_or_else(|e| panic!("platform search path {search:?}: {e}"));
+        // issue 1401 (the issue's second half) — the PLATFORM descriptors this
+        // rung was read from are build inputs too, and nothing watched them.
+        // By CONTENT, per file, never a directory: `packages/platform` holds
+        // whole crates, and cargo takes the newest mtime under a watched dir.
+        for file in platform_descriptor_files(&search) {
+            emit(format!("cargo:rerun-if-changed={}", file.display()));
+        }
         Some(Self {
             platform,
             tree,
@@ -3115,6 +3205,90 @@ mod board_capability_tests {
 
 #[cfg(test)]
 mod tests {
+    /// Issue 1401 — a build that resolves NO rung (no `NROS_PLATFORM_NAME`)
+    /// still declares its edges: to the board descriptor's CONTENT and to the
+    /// platform name. That is the case that was broken — the watches sat after
+    /// the early return, so this call used to emit nothing at all.
+    #[test]
+    fn a_build_that_resolves_no_rung_still_watches_its_inputs() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let board = dir.path().join("nros-board.toml");
+        std::fs::write(&board, "").unwrap();
+        let env = BuildEnv {
+            platform: None,
+            board: None,
+            board_toml: Some(board.display().to_string()),
+        };
+        let mut got = Vec::new();
+        let rungs = BuildRungs::from_env_values(env, &mut |d| got.push(d));
+        assert!(rungs.is_none(), "no platform named, yet a rung resolved");
+        let file_watch = format!("cargo:rerun-if-changed={}", board.display());
+        assert!(
+            got.contains(&file_watch),
+            "no content watch on the board descriptor when no rung resolves: {got:?}"
+        );
+        assert!(
+            got.iter()
+                .any(|d| d == "cargo:rerun-if-env-changed=NROS_PLATFORM_NAME"),
+            "exporting a platform later would not re-run this build script: {got:?}"
+        );
+    }
+
+    /// The rule itself: the board path is watched by CONTENT, never by its env
+    /// spelling (issue 0491), and a path that does not exist is not declared
+    /// (issue 0490: a trigger on a missing path is permanently dirty).
+    #[test]
+    fn build_env_watches_board_by_content_and_only_if_present() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let board = dir.path().join("nros-board.toml");
+        std::fs::write(&board, "").unwrap();
+        let board_s = board.display().to_string();
+        let got = build_env_watches(Some(&board_s));
+        assert!(
+            got.contains(&format!("cargo:rerun-if-changed={board_s}")),
+            "{got:?}"
+        );
+        assert!(
+            !got.iter()
+                .any(|d| d.contains("env-changed=NROS_BOARD_TOML")),
+            "NROS_BOARD_TOML watched by spelling: {got:?}"
+        );
+        let missing = dir.path().join("absent.toml").display().to_string();
+        let got = build_env_watches(Some(&missing));
+        assert!(
+            !got.iter().any(|d| d.starts_with("cargo:rerun-if-changed=")),
+            "a missing board path was declared: {got:?}"
+        );
+        // Nothing named: the two name watches still stand.
+        assert_eq!(build_env_watches(None).len(), 2);
+    }
+
+    /// Issue 1401's second half — the platform descriptors a rung is read from
+    /// are listed per FILE across every root, and a root that does not exist
+    /// is skipped the way the loader skips it.
+    #[test]
+    fn platform_descriptor_files_lists_every_root_per_file() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        for (root, name) in [(&a, "posix"), (&a, "no-descriptor"), (&b, "zephyr")] {
+            std::fs::create_dir_all(root.path().join(name)).unwrap();
+        }
+        std::fs::write(a.path().join("posix/nros-platform.toml"), "").unwrap();
+        std::fs::write(b.path().join("zephyr/nros-platform.toml"), "").unwrap();
+        let search = vec![
+            a.path().to_path_buf(),
+            a.path().join("not-there"),
+            b.path().to_path_buf(),
+        ];
+        assert_eq!(
+            platform_descriptor_files(&search),
+            vec![
+                a.path().join("posix/nros-platform.toml"),
+                b.path().join("zephyr/nros-platform.toml"),
+            ]
+        );
+    }
+
     /// The zenoh WIRE ladder: builtin < platform < board < env.
     ///
     /// The `nros-zpico-build` side of this tenant writes a C header from an
