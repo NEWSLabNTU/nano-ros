@@ -7,6 +7,8 @@
 //! both fields are accepted for forward-compat but only surfaced in the
 //! "Next steps" output.
 
+use nros_lang::Language;
+
 use crate::rmw_resolver;
 use eyre::{Result, bail};
 use std::{
@@ -163,7 +165,12 @@ fn platform_spec(platform: &str) -> Result<PlatformSpec> {
 #[derive(Debug, Clone)]
 pub struct ScaffoldConfig {
     pub name: String,
-    pub lang: String,
+    /// phase-469 — the enum, not the string. `nros new --lang` is already
+    /// restricted to `rust`/`c`/`cpp` by clap's `value_parser`, so the
+    /// `other => bail!("Unknown language")` arm this field used to require was
+    /// UNREACHABLE: a refusal that could never fire, standing exactly where
+    /// the compiler now stands.
+    pub lang: Language,
     pub platform: String,
     pub rmw: String,
     /// ROS edition (`humble`|`iron`|`jazzy`|`rolling`) → the `ros-<edition>`
@@ -212,7 +219,7 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     // and west/Kconfig (zephyr) shapes are a follow-up; bail before writing any
     // file rather than emit a project that cannot run. C/C++ are unaffected —
     // their platform delta rides `package.xml`, no per-platform cargo shape.
-    if cfg.lang == "rust"
+    if cfg.lang == Language::Rust
         && let PlatformKind::Deferred { reason } = spec.kind
     {
         bail!(
@@ -237,13 +244,13 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     // refused by both package.xml readers) and, for the Rust self-bringup, the
     // `[package.metadata.nros.{entry,node}]` tables: `find_package(nano_ros)`,
     // `nros::main!()`, `nros sync` and the colcon task all read this one file.
-    let is_cxx = matches!(cfg.lang.as_str(), "c" | "cpp");
+    let is_cxx = matches!(cfg.lang, Language::C | Language::Cpp);
     let build_type = if is_cxx { "nros_cmake" } else { "nros_cargo" };
 
     fs::create_dir_all(dir.join("src"))?;
     fs::write(
         dir.join("system.toml"),
-        scaffold_system_toml(&cfg.name, &cfg.lang, &cfg.platform, &spec, rmw.cmake_value),
+        scaffold_system_toml(&cfg.name, cfg.lang, &cfg.platform, &spec, rmw.cmake_value),
     )?;
 
     let package_xml = format!(
@@ -266,17 +273,19 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     );
     fs::write(dir.join("package.xml"), package_xml)?;
 
-    match cfg.lang.as_str() {
-        "rust" => scaffold_rust(
+    // phase-469 — exhaustive over the enumeration. A new `Language` variant is
+    // a compile error HERE, where somebody has to write its template, instead
+    // of an "Unknown language" at run time.
+    match cfg.lang {
+        Language::Rust => scaffold_rust(
             &cfg.name,
             &cfg.platform,
             rmw.cargo_feature,
             edition_feature,
             &dir,
         )?,
-        "c" => scaffold_c(&cfg.name, &cfg.platform, rmw.cmake_value, &dir)?,
-        "cpp" => scaffold_cpp(&cfg.name, &cfg.platform, rmw.cmake_value, &dir)?,
-        other => bail!("Unknown language: {other}. Use rust, c, or cpp."),
+        Language::C => scaffold_c(&cfg.name, &cfg.platform, rmw.cmake_value, &dir)?,
+        Language::Cpp => scaffold_cpp(&cfg.name, &cfg.platform, rmw.cmake_value, &dir)?,
     }
 
     println!("✓ Created nano-ros package '{}'", cfg.name);
@@ -311,12 +320,13 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
 /// are plain executables with their own `main`.
 fn scaffold_system_toml(
     name: &str,
-    lang: &str,
+    lang: Language,
     platform: &str,
     spec: &PlatformSpec,
     rmw_value: &str,
 ) -> String {
-    let self_bringup = lang == "rust" && matches!(spec.kind, PlatformKind::SelfBringup { .. });
+    let self_bringup =
+        lang == Language::Rust && matches!(spec.kind, PlatformKind::SelfBringup { .. });
     let board = if self_bringup {
         spec.deploy_token
     } else {
@@ -354,7 +364,9 @@ pub struct ComponentScaffoldConfig {
     /// ament spelling: `find_package(nano_ros REQUIRED)` +
     /// `nano_ros_add_node(...)` + a `configure(::rclcpp::Node&)` (C++) /
     /// `NROS_C_COMPONENT` (C) seam.
-    pub lang: String,
+    ///
+    /// phase-469 — the enum, for the same reason [`ScaffoldConfig::lang`] is.
+    pub lang: Language,
     pub force: bool,
 }
 
@@ -369,14 +381,10 @@ pub struct ComponentScaffoldConfig {
 /// executable ← component short name, `exported_symbol` ← `nros_component_<n>`,
 /// `crate_name` ← package) and `[overrides]` defaults to empty (Phase 172 W.3).
 pub fn scaffold_component(cfg: &ComponentScaffoldConfig) -> Result<()> {
-    match cfg.lang.as_str() {
-        "rust" => scaffold_component_rust(cfg),
-        "cpp" => scaffold_component_cpp(cfg),
-        "c" => scaffold_component_c(cfg),
-        other => bail!(
-            "`nros new --component --lang {other}` is not supported. Use \
-             `rust`, `c`, or `cpp`."
-        ),
+    match cfg.lang {
+        Language::Rust => scaffold_component_rust(cfg),
+        Language::Cpp => scaffold_component_cpp(cfg),
+        Language::C => scaffold_component_c(cfg),
     }
 }
 
@@ -1580,7 +1588,7 @@ mod tests {
         // created — the unique name keeps this safe without touching cwd.
         let cfg = ScaffoldConfig {
             name: "pkg_unknown_rmw_227_4_fixture".to_string(),
-            lang: "rust".to_string(),
+            lang: Language::Rust,
             platform: "native".to_string(),
             rmw: "dust-dds".to_string(),
             ros_edition: "humble".to_string(),
@@ -1604,7 +1612,7 @@ mod tests {
     fn scaffold_system_toml_names_board_rmw_and_node() {
         let bm = scaffold_system_toml(
             "my-app",
-            "rust",
+            Language::Rust,
             "baremetal",
             &platform_spec("baremetal").unwrap(),
             "zenoh",
@@ -1622,7 +1630,7 @@ mod tests {
 
         let cf = scaffold_system_toml(
             "c_app",
-            "c",
+            Language::C,
             "freertos",
             &platform_spec("freertos").unwrap(),
             "xrce",
@@ -1725,7 +1733,7 @@ mod tests {
         {
             let cfg = ScaffoldConfig {
                 name: format!("pkg_deferred_0333_fixture_{i}"),
-                lang: "rust".to_string(),
+                lang: Language::Rust,
                 platform: platform.to_string(),
                 rmw: "zenoh".to_string(),
                 ros_edition: "humble".to_string(),

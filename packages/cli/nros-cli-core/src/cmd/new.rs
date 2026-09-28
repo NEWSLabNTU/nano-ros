@@ -155,6 +155,27 @@ pub struct Args {
     pub force: bool,
 }
 
+/// `--lang`, parsed ONCE, with each mode's own default (phase-469).
+///
+/// The three scaffold modes had three copies of this — two
+/// `unwrap_or_else(|| "<default>".to_string())` and one that also re-validated
+/// the value against a `match` on three literals. All three then handed a
+/// String to a scaffolder that matched on it again and carried its own
+/// "Unknown language" refusal.
+///
+/// The accepted SET is unchanged, and this is why: clap already restricts
+/// `--lang` with `value_parser = ["rust", "c", "cpp"]`, so nothing outside that
+/// set ever reaches here — the parse cannot widen what a user may type, and the
+/// refusals it replaces were unreachable. [`nros_lang::Language::parse`] also
+/// takes `c++`/`cxx`, which clap rejects first; if the flag's own list ever
+/// grows to match, it grows THERE, in one place a reader can see.
+fn language_arg(flag: Option<&str>, default: nros_lang::Language) -> Result<nros_lang::Language> {
+    match flag {
+        Some(s) => nros_lang::Language::parse(s).map_err(|e| eyre::eyre!("nros new --lang: {e}")),
+        None => Ok(default),
+    }
+}
+
 pub fn run(args: Args) -> Result<()> {
     // phase-290 W4.b — package-scaffold modes: `nros new platform <name>` /
     // `nros new board <name> --for-platform <p>`.
@@ -456,7 +477,7 @@ pub fn run(args: Args) -> Result<()> {
 
     // phase-368 W8 — workspace mode: `nros new <name> --workspace`.
     if args.workspace {
-        let lang = args.lang.clone().unwrap_or_else(|| "cpp".to_string());
+        let lang = language_arg(args.lang.as_deref(), nros_lang::Language::Cpp)?;
         let rmw = args.rmw.clone().unwrap_or_else(|| "cyclonedds".to_string());
         if args.platform.as_deref().unwrap_or("native") != "native" {
             bail!(
@@ -480,14 +501,12 @@ pub fn run(args: Args) -> Result<()> {
     // Phase 223 adds the C Node pkg scaffold using the same declarative
     // §212.L.9 shape.
     if args.component {
-        let lang = args.lang.clone().unwrap_or_else(|| "rust".to_string());
-        match lang.as_str() {
-            "rust" | "cpp" | "c" => {}
-            other => bail!(
-                "`nros new --component --lang {other}` is not supported. Use \
-                 `rust`, `c`, or `cpp`."
-            ),
-        }
+        // phase-469 — the validation that stood here (`match lang.as_str() {
+        // "rust" | "cpp" | "c" => {} other => bail!(…) }`) was a third copy of
+        // "which languages exist", behind clap's own `value_parser`, in front
+        // of an identical refusal inside `scaffold_component`. Parsing once
+        // leaves one answer and no copies.
+        let lang = language_arg(args.lang.as_deref(), nros_lang::Language::Rust)?;
         return scaffold_component(&ComponentScaffoldConfig {
             name,
             use_case: args.use_case,
@@ -502,7 +521,7 @@ pub fn run(args: Args) -> Result<()> {
         .ok_or_else(|| eyre::eyre!("`nros new <name>` requires `--platform <p>`"))?;
     scaffold_package(&ScaffoldConfig {
         name,
-        lang: args.lang.unwrap_or_else(|| "rust".to_string()),
+        lang: language_arg(args.lang.as_deref(), nros_lang::Language::Rust)?,
         platform,
         rmw: args.rmw.unwrap_or_else(|| "zenoh".to_string()),
         ros_edition: args.ros_edition,
