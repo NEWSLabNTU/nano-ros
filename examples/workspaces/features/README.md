@@ -15,9 +15,18 @@ model.
 ```
 src/
   demo_bringup/          the bringup — one launch file per capability × language
+    boards/<board>/      the Zephyr images' Kconfig (RFC-0065 D4)
   <lang>_<feature>_pkg/  the node packages (49 of them)
-  zephyr_rust_*_entry/   per-capability Zephyr entries
 ```
+
+There are no entry packages here any more. phase-470 W5.b1 (issue 1288) deleted
+`src/zephyr_rust_{lifecycle,params,qos}_entry`: `nros build <image>` GENERATES
+the whole west application — `CMakeLists.txt`, `build.rs`, the staticlib
+manifest and `src/lib.rs` — under `build/<coord>/<image>_entry/`, so the three
+`[image.zephyr_rust_*]` rows in `demo_bringup/system.toml` are now the only
+place those images are described. Their Kconfig, which is not derivable, moved
+to the shared `demo_bringup/boards/native_sim_native_64/` — the three copies
+were byte-identical.
 
 Capabilities covered: QoS overrides, parameters, lifecycle (managed nodes),
 custom messages, topic remapping, and `reading_*` (a subscriber reading a
