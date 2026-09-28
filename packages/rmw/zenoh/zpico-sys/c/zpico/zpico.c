@@ -260,6 +260,25 @@ typedef struct {
  * exists to avoid. */
 #define ZPICO_GRAPH_CACHE_SIZE 65536
 #endif
+#ifndef ZPICO_GRAPH_DISCOVERY
+/* Whether this image keeps a graph cache at all (D9 of the safety-island demo;
+ * Kconfig NROS_ZENOH_GRAPH_DISCOVERY, env/cargo ZPICO_GRAPH_DISCOVERY).
+ *
+ * 1: `zpico_graph_cache_start` declares the standing liveliness SUBSCRIBER on
+ * `@ros2_lv/<domain>/**` and the router replays the WHOLE domain's tokens into
+ * `graph_cache_t.buf`, then pushes every later change.
+ *
+ * 0: no subscriber is declared and no cache exists -- the array, the mutex and
+ * the subscriber handle are compiled out. The session still DECLARES its own
+ * tokens (`zpico_declare_liveliness` is untouched), so a host's
+ * `ros2 node list` sees this image exactly as before; what goes is the reverse
+ * direction. On a serial or CAN link that direction is the problem: a host
+ * running Autoware carries ~136 nodes, and their history burst either stalls
+ * the link's read task or exhausts the heap (the safety island measured both,
+ * over UART and over TCP with a 1 MiB heap). The graph entry points answer
+ * `ZPICO_ERR_CONFIG`, which the Rust side reports as `Unsupported`. */
+#define ZPICO_GRAPH_DISCOVERY 1
+#endif
 
 #ifndef ZPICO_GET_REPLY_BUF_SIZE
 #define ZPICO_GET_REPLY_BUF_SIZE 4096
@@ -365,6 +384,7 @@ typedef struct {
  * cache, and it removes the whole class: one standing declaration, the current
  * tokens delivered once, every later change pushed. No sweeps, so nothing to
  * serialize, nothing to starve, and no per-sweep truncation. */
+#if ZPICO_GRAPH_DISCOVERY
 typedef struct {
     /* NUL-separated keyexprs, same layout `zpico_entry_at` already walks. */
     uint8_t buf[ZPICO_GRAPH_CACHE_SIZE];
@@ -378,6 +398,7 @@ typedef struct {
     _z_mutex_t mutex;
 #endif
 } graph_cache_t;
+#endif /* ZPICO_GRAPH_DISCOVERY */
 
 // Static slots for non-blocking z_get operations
 // ZPICO_MAX_PENDING_GETS is provided via -D compiler flag from build.rs,
@@ -410,6 +431,11 @@ typedef struct {
 #endif
 #if ZPICO_GRAPH_CACHE_SIZE < 1
 #error "ZPICO_GRAPH_CACHE_SIZE must be >= 1: it sizes a fixed C array (issue 1015)"
+#endif
+/* A bool, and the preprocessor reads anything else as a number: a stray `2`
+ * would compile the cache in while a reader of the define believed otherwise. */
+#if ZPICO_GRAPH_DISCOVERY != 0 && ZPICO_GRAPH_DISCOVERY != 1
+#error "ZPICO_GRAPH_DISCOVERY must be 0 or 1"
 #endif
 /* ZPICO_ZID_SIZE is NOT guarded, deliberately. `zpico.h:28` defines it
  * UNCONDITIONALLY -- no `#ifndef` -- so no build can set it to 0 and a
@@ -567,7 +593,9 @@ struct zpico_session {
     publisher_entry_t publishers[ZPICO_MAX_PUBLISHERS];
     subscriber_entry_t subscribers[ZPICO_MAX_SUBSCRIBERS];
     liveliness_entry_t liveliness[ZPICO_MAX_LIVELINESS];
+#if ZPICO_GRAPH_DISCOVERY
     graph_cache_t graph_cache;
+#endif
     queryable_entry_t queryables[ZPICO_MAX_QUERYABLES];
 
     // Phase 237 — per-queryable seq-keyed reply slots. Each slot holds one
@@ -4165,6 +4193,7 @@ int32_t zpico_liveliness_entry_count(zpico_session_t* session, int32_t handle) {
 int32_t zpico_graph_set_apply(uint8_t* buf, size_t cap, size_t* len, uint32_t* count,
                               uint32_t* dropped, const char* key, size_t klen, bool remove);
 
+#if ZPICO_GRAPH_DISCOVERY
 /* Sample handler for the liveliness subscriber.
  *
  * A liveliness sample carries its meaning in the KEYEXPR and its KIND: PUT is
@@ -4204,6 +4233,8 @@ static void graph_cache_sample_handler(z_loaned_sample_t* sample, void* arg) {
         s->graph_change_cb((int32_t)(s - g_sessions));
     }
 }
+
+#endif /* ZPICO_GRAPH_DISCOVERY */
 
 /* The PURE half of `graph_cache_sample_handler`: apply one liveliness sample
  * to a NUL-separated token SET held in a caller buffer (phase-428 W13).
@@ -4263,6 +4294,7 @@ int32_t zpico_graph_set_apply(uint8_t* buf, size_t cap, size_t* len, uint32_t* c
     return 1;
 }
 
+#if ZPICO_GRAPH_DISCOVERY
 /* Start the standing graph cache on `keyexpr`.
  *
  * `history = true` is the whole point: the subscriber is delivered the tokens
@@ -4337,9 +4369,29 @@ int32_t zpico_graph_cache_stop(zpico_session_t* session) {
     return 0;
 }
 
+#else /* !ZPICO_GRAPH_DISCOVERY */
+
+/* Graph discovery is compiled out: there is no cache to start, so say so with
+ * the one code that means "this image was configured without it" rather than
+ * `ZPICO_ERR_INVALID`, which a caller would read as its own mistake. The Rust
+ * side latches on it and stops asking. No subscriber is declared, so the
+ * router never replays the domain's liveliness history toward this session. */
+int32_t zpico_graph_cache_start(zpico_session_t* session, const char* keyexpr) {
+    (void)keyexpr;
+    return session == NULL ? ZPICO_ERR_INVALID : ZPICO_ERR_CONFIG;
+}
+
+/* Nothing was started, so there is nothing to stop. Idempotent, like the real
+ * one, so a teardown path need not know which build it is in. */
+int32_t zpico_graph_cache_stop(zpico_session_t* session) {
+    return session == NULL ? ZPICO_ERR_INVALID : 0;
+}
+#endif /* ZPICO_GRAPH_DISCOVERY */
+
 int32_t zpico_entry_at(const uint8_t* buf, size_t len, uint32_t count, uint32_t index, char* out,
                        size_t cap);
 
+#if ZPICO_GRAPH_DISCOVERY
 /* How many tokens the cache currently holds, and how many did not fit.
  *
  * `out_dropped` is reported beside the count rather than folded into it,
@@ -4391,6 +4443,26 @@ int32_t zpico_graph_entry_at(zpico_session_t* session, uint32_t index, char* out
 #endif
     return ret;
 }
+
+#else /* !ZPICO_GRAPH_DISCOVERY */
+
+/* No cache: "cannot say", never "empty". A zero count here would tell
+ * `service_is_ready` that no server exists, which is a wrong answer; an error
+ * makes it `Unsupported`, which every wait loop already reads as keep waiting. */
+int32_t zpico_graph_entry_count(zpico_session_t* session, uint32_t* out_dropped) {
+    if (out_dropped != NULL) {
+        *out_dropped = 0;
+    }
+    return session == NULL ? ZPICO_ERR_INVALID : ZPICO_ERR_CONFIG;
+}
+
+int32_t zpico_graph_entry_at(zpico_session_t* session, uint32_t index, char* out, size_t cap) {
+    (void)index;
+    (void)out;
+    (void)cap;
+    return session == NULL ? ZPICO_ERR_INVALID : ZPICO_ERR_CONFIG;
+}
+#endif /* ZPICO_GRAPH_DISCOVERY */
 
 int32_t zpico_entry_at(const uint8_t* buf, size_t len, uint32_t count, uint32_t index, char* out,
                        size_t cap) {

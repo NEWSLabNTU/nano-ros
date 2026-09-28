@@ -44,6 +44,16 @@ pub struct ShimConfig {
     /// it down; overflow is COUNTED rather than truncated, so a too-small cache
     /// degrades `service_is_ready` to "cannot say" instead of answering wrong.
     pub graph_cache_size: usize,
+    /// Whether the session keeps a graph cache at all (`ZPICO_GRAPH_DISCOVERY`,
+    /// Kconfig `NROS_ZENOH_GRAPH_DISCOVERY`). `false` compiles the cache, its
+    /// liveliness subscriber and [`ShimConfig::graph_cache_size`]'s array out
+    /// of `zpico.c`; the session still declares its own tokens.
+    ///
+    /// Resolved by [`graph_discovery_derived`] when nothing states it, which
+    /// is `false` exactly when every link this build compiles is serial or CAN:
+    /// the links where the domain's liveliness history is a burst the image
+    /// cannot take.
+    pub graph_discovery: bool,
     pub max_pending_gets: usize,
     /// phase-328 (issue 0348) — size of the C shim's session pool
     /// (`ZPICO_MAX_SESSIONS`, default 1). A single-session target keeps the
@@ -183,6 +193,13 @@ impl ShimConfig {
             ("ZPICO_MAX_QUERYABLES", self.max_queryables.to_string()),
             ("ZPICO_MAX_LIVELINESS", self.max_liveliness.to_string()),
             ("ZPICO_GRAPH_CACHE_SIZE", self.graph_cache_size.to_string()),
+            // Unconditional, like the priorities below: `zpico.c` `#define`s
+            // its own fallback of 1, so omitting the define on a `false` build
+            // would compile the cache back in without a word.
+            (
+                "ZPICO_GRAPH_DISCOVERY",
+                u8::from(self.graph_discovery).to_string(),
+            ),
             ("ZPICO_MAX_PENDING_GETS", self.max_pending_gets.to_string()),
             ("ZPICO_MAX_SESSIONS", self.max_sessions.to_string()),
             (
@@ -222,6 +239,33 @@ impl ShimConfig {
             build.define(name, value.as_str());
         }
     }
+}
+
+/// The DERIVED rung of `ZPICO_GRAPH_DISCOVERY`: off when every link this build
+/// compiles is serial or CAN, on otherwise.
+///
+/// Why the link decides (the safety-island demo's D9, measured there): the
+/// graph cache is a liveliness subscriber with history on `@ros2_lv/<d>/**`,
+/// so joining a host that runs Autoware replays ~136 nodes' tokens toward the
+/// image at once. Over a 921,600-baud UART that burst overran the receive ring
+/// and stopped the read task; over TCP it exhausted a 1 MiB heap in 2.3 s. An
+/// image on such a link makes no graph query of its own, and a service call is
+/// a `z_get` on the service key whatever the cache holds, so the cache buys it
+/// nothing and costs it the link.
+///
+/// "Every link": a build that ALSO compiles an IP link (or IVC, raw Ethernet, a
+/// custom transport) may reach its peer over that one, and there the cache is
+/// the old default. Stating the knob outranks this in both directions.
+pub fn graph_discovery_derived(link: &LinkFeatures) -> bool {
+    let constrained = link.serial || link.can || link.isotp;
+    let other = link.tcp
+        || link.udp_unicast
+        || link.udp_multicast
+        || link.raweth
+        || link.tls
+        || link.ivc
+        || link.custom;
+    !constrained || other
 }
 
 /// Buffer size configuration for zenoh-pico.
@@ -1144,6 +1188,7 @@ int32_t zpico_init(void);\n";
             queryable_table_declared: true,
             max_liveliness: 4,
             graph_cache_size: 4096,
+            graph_discovery: true,
             max_pending_gets: 5,
             max_sessions: 9,
             get_reply_buf_size: 6,
@@ -1162,6 +1207,62 @@ int32_t zpico_init(void);\n";
         // it has to arrive with the size it describes.
         assert!(body.contains("ZPICO_QUERYABLE_TABLE_DECLARED: bool = true;"));
         assert!(!body.contains("get_reply_buf_size"));
+    }
+
+    /// D9 -- the graph-discovery switch reaches the C shim in BOTH states, and
+    /// the derived rung is off only when every compiled link is serial or CAN.
+    #[test]
+    fn graph_discovery_reaches_the_shim_and_derives_from_the_links() {
+        let mut cfg = ShimConfig {
+            max_publishers: 1,
+            max_subscribers: 2,
+            max_queryables: 3,
+            queryable_table_declared: false,
+            max_liveliness: 4,
+            graph_cache_size: 4096,
+            graph_discovery: true,
+            max_pending_gets: 5,
+            max_sessions: 1,
+            get_reply_buf_size: 6,
+            get_poll_interval_ms: 7,
+            tx_batch: false,
+            tx_batch_flush_ms: 50,
+            read_task_priority: 11,
+            lease_task_priority: 12,
+        };
+        for (on, want) in [(true, "1"), (false, "0")] {
+            cfg.graph_discovery = on;
+            let got = cfg
+                .defines()
+                .into_iter()
+                .find(|(k, _)| *k == "ZPICO_GRAPH_DISCOVERY")
+                .map(|(_, v)| v);
+            assert_eq!(got.as_deref(), Some(want), "graph_discovery={on}");
+        }
+
+        // `LinkFeatures` derives nothing, so each case is built whole.
+        let links = |serial: bool, ip: bool, can: bool, isotp: bool| LinkFeatures {
+            tcp: ip,
+            udp_unicast: ip,
+            udp_multicast: ip,
+            serial,
+            raweth: false,
+            tls: false,
+            ivc: false,
+            custom: false,
+            can,
+            isotp,
+        };
+        let serial_only = links(true, false, false, false);
+        let can_only = links(false, false, true, false);
+        let isotp_only = links(false, false, false, true);
+        let serial_and_tcp = links(true, true, false, false);
+        let none = links(false, false, false, false);
+        assert!(!graph_discovery_derived(&serial_only));
+        assert!(!graph_discovery_derived(&can_only));
+        assert!(!graph_discovery_derived(&isotp_only));
+        assert!(graph_discovery_derived(&serial_and_tcp));
+        assert!(graph_discovery_derived(&none));
     }
 
     /// issue 0626 / 0460 — the transport-task priorities must reach the C shim
@@ -1183,6 +1284,7 @@ int32_t zpico_init(void);\n";
                 queryable_table_declared: false,
                 max_liveliness: 4,
                 graph_cache_size: 4096,
+                graph_discovery: true,
                 max_pending_gets: 5,
                 max_sessions: 1,
                 get_reply_buf_size: 6,

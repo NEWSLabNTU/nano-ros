@@ -129,6 +129,11 @@ pub const KCONFIG_PAIRS: &[(&str, &str)] = &[
     ("ZPICO_FRAG_MAX_SIZE", "CONFIG_NROS_FRAG_MAX_SIZE"),
     ("ZPICO_BATCH_UNICAST_SIZE", "CONFIG_NROS_BATCH_UNICAST_SIZE"),
     ("ZPICO_GRAPH_CACHE_SIZE", "CONFIG_NROS_GRAPH_CACHE_SIZE"),
+    // D9 (safety-island demo) -- the C shim's define against the Kconfig bool,
+    // which carries the `ZENOH_` segment like the tx trio below. cmake resolves
+    // it to "1"/"0" from the bool, so arm 2 of `check-kconfig-knob-forwarding`
+    // cannot harvest this row and it is authored.
+    ("ZPICO_GRAPH_DISCOVERY", "CONFIG_NROS_ZENOH_GRAPH_DISCOVERY"),
     (
         "ZPICO_SERVICE_BUFFER_SIZE",
         "CONFIG_NROS_SERVICE_BUFFER_SIZE",

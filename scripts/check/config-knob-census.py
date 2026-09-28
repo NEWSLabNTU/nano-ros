@@ -89,6 +89,14 @@ KNOB_CLASS = {
         "per-session graph cache bytes; sized by the PEER graph, so it is "
         "stated rather than derived",
     ),
+    # phase-473 W1 -- a 0/1, not a size: whether the graph cache exists at
+    # all. Its default is DERIVED from the image's links (off when every zenoh
+    # link is serial or CAN), and a statement outranks that in either direction.
+    "ZPICO_GRAPH_DISCOVERY": (
+        "derived",
+        "phase-473 W1 -- a 0/1, not a size: off when every compiled zenoh link "
+        "is serial or CAN (graph_discovery_derived)",
+    ),
     # phase-412 W3b — the arena's QoS-depth multiplier, and a SIZING knob rather
     # than a derived one. The per-endpoint answer IS derived (from
     # `<stem>.contract.yaml`'s `qos.depth`, when every endpoint states one) and

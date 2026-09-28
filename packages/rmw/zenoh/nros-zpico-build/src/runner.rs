@@ -1049,6 +1049,10 @@ fn shim_config_from_env() -> ShimConfig {
         // because a build that goes through cargo now states the number and one
         // that does not still falls through to the literal in `zpico.c`.
         graph_cache_size: resolve_graph_cache_size(),
+        // The BUILTIN; `resolve_graph_discovery` overwrites it once the link
+        // policy is applied (search `shim_config.graph_discovery =`), because
+        // the derived rung needs the FINAL link set, which is not known here.
+        graph_discovery: true,
         max_pending_gets: env_usize("ZPICO_MAX_PENDING_GETS", 4),
         max_sessions: env_usize("ZPICO_MAX_SESSIONS", 1),
         // phase-400 W6 — BUILTINS, like the tx pair below: these five are
@@ -1201,6 +1205,32 @@ fn resolve_graph_cache_size() -> usize {
     // number and one that does not falls through to the literal in `zpico.c`.
     // The two must agree or the same source compiles to two sizes.
     env_usize("ZPICO_GRAPH_CACHE_SIZE", from_entities.unwrap_or(65536))
+}
+
+/// D9 -- `ZPICO_GRAPH_DISCOVERY` over the ladder: the environment, then the
+/// `.config` (`CONFIG_NROS_ZENOH_GRAPH_DISCOVERY`, through the pairing table),
+/// then the value DERIVED from this build's links, then the builtin `1` the
+/// C shim also defaults to.
+///
+/// The derived rung is the only one that can turn the cache off without anyone
+/// asking, so it SAYS so, once per build script run: a graph query that answers
+/// `Unsupported` on a board is a surprise unless the build told someone why.
+fn resolve_graph_discovery(link: &LinkFeatures) -> bool {
+    let stated = nros_zephyr_build::knob("ZPICO_GRAPH_DISCOVERY").stated();
+    match stated {
+        Some(v) => v != 0,
+        None => {
+            let derived = crate::graph_discovery_derived(link);
+            if !derived {
+                println!(
+                    "cargo:warning=nros: ZPICO_GRAPH_DISCOVERY=0 DERIVED from this build's \
+                     links (serial/CAN only, no IP link): no liveliness subscriber and no \
+                     graph cache. Set ZPICO_GRAPH_DISCOVERY=1 to keep them."
+                );
+            }
+            derived
+        }
+    }
 }
 
 /// Read a usize knob: explicit env var, else Zephyr Kconfig, else `default`.
@@ -1809,6 +1839,7 @@ pub fn run() {
     };
     let link_policy = LinkPolicy::for_board(link_policy, &board_capabilities);
     let link_features = link_features.apply(&link_policy);
+    shim_config.graph_discovery = resolve_graph_discovery(&link_features);
     generate_config_header(
         &out_dir,
         &link_features,

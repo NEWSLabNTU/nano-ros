@@ -904,6 +904,44 @@ config NROS_GRAPH_CACHE_SIZE
       silently truncated, so a value that is too small shows up as a drop
       count rather than as a wrong answer.
 
+config NROS_ZENOH_GRAPH_DISCOVERY
+    bool "Keep a graph cache (liveliness subscriber on the whole domain)"
+    # DERIVED default: off when every zenoh link this image compiles is serial
+    # or CAN. Mirrors `graph_discovery_derived` (nros-zpico-build) and the
+    # `zenoh.graph_discovery` implication of `transport.kind=serial`
+    # (nros-platform-config); cmake re-derives it to print where the value
+    # came from.
+    default n if (NROS_ZENOH_LINK_SERIAL || NROS_ZENOH_LINK_CAN || NROS_ZENOH_LINK_ISOTP) && \
+                 !NROS_ZENOH_LINK_TCP && !NROS_ZENOH_LINK_UDP_UNICAST && \
+                 !NROS_ZENOH_LINK_UDP_MULTICAST && !NROS_ZENOH_LINK_WS && \
+                 !NROS_ZENOH_RAWETH_TRANSPORT
+    default y
+    help
+      Maps to ZPICO_GRAPH_DISCOVERY (env ZPICO_GRAPH_DISCOVERY=0/1 wins over
+      this for one build).
+
+      y: the session declares one liveliness SUBSCRIBER with history on
+      @ros2_lv/<domain>/** the first time a service client or a graph query
+      needs it, and keeps every token of every node on the domain in a
+      NROS_GRAPH_CACHE_SIZE-byte cache. `service_is_ready`, `count_publishers`,
+      `get_node_names` and the other rcl graph queries answer from it.
+
+      n: no subscriber, no cache (the array is compiled out). The image still
+      DECLARES its own node and entity tokens, so a host's `ros2 node list`
+      and `ros2 topic info` see it exactly as before; what goes is the reverse
+      direction. Graph queries answer Unsupported. A service call is a z_get
+      on the service key expression, matched by the router, so it works
+      unchanged -- only `service_is_ready` stops being able to say yes.
+
+      Why the default follows the link: a host running Autoware carries about
+      136 nodes, and joining it replays all of their tokens toward the image
+      at once. Measured on the safety island: over a 921,600-baud UART the
+      burst overran the receive ring and stopped the read task; over TCP
+      (QEMU, LAN9118) it exhausted a 1 MiB heap 2.3 s after joining. On a
+      serial or CAN link the cache costs the link and buys nothing an image
+      that makes no graph query of its own can use. An image that also
+      compiles an IP link keeps the old default.
+
 config NROS_GET_POLL_INTERVAL_MS
     int "Get poll interval (ms)"
     default 10

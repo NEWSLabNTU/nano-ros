@@ -1651,7 +1651,8 @@ impl ClientTrait for ZenohServiceClient {
     ///     type is in the set.
     ///   * `Ok(false)` — none is, and the set is complete.
     ///   * `Err(Unsupported)` — the cache is not running (the platform stubs
-    ///     the subscriber, or the session could not declare it), OR it has
+    ///     the subscriber, the session could not declare it, or the image was
+    ///     built with graph discovery OFF, `ZPICO_GRAPH_DISCOVERY=0`), OR it has
     ///     DROPPED tokens for lack of room, so an absence proves nothing.
     ///     Every caller reads this through `matches!(.., Ok(true))` (issue
     ///     1008) and keeps waiting.

@@ -857,6 +857,58 @@ function(nros_resolve_knobs)
                 "${CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS}")
         endif()
 
+        # D9 of the safety-island demo -- graph discovery, tri-state like the tx
+        # pair: always resolved to (0|1), because `zpico.c` defaults the define
+        # to 1 and an absent define would compile the cache back in silently.
+        #
+        # The ladder: the environment (`_nros_resolve_knob` prints the override),
+        # then CONFIG_NROS_ZENOH_GRAPH_DISCOVERY, whose Kconfig DEFAULT is the
+        # derived rung -- off when every zenoh link the image compiles is serial
+        # or CAN. A Kconfig bool cannot be "unset", so the rule is re-derived
+        # here from the same link symbols, and the line below says which of the
+        # two the value is: the derivation, or a statement that overrides it.
+        if(CONFIG_NROS_ZENOH_GRAPH_DISCOVERY)
+            set(_nros_gd_kconfig 1)
+        else()
+            set(_nros_gd_kconfig 0)
+        endif()
+        set(_nros_gd_links "")
+        foreach(_nros_gd_l SERIAL CAN ISOTP TCP UDP_UNICAST UDP_MULTICAST WS)
+            if(CONFIG_NROS_ZENOH_LINK_${_nros_gd_l})
+                string(TOLOWER "${_nros_gd_l}" _nros_gd_lc)
+                list(APPEND _nros_gd_links "${_nros_gd_lc}")
+            endif()
+        endforeach()
+        if(CONFIG_NROS_ZENOH_RAWETH_TRANSPORT)
+            list(APPEND _nros_gd_links "raweth")
+        endif()
+        string(REPLACE ";" "," _nros_gd_links_txt "${_nros_gd_links}")
+        if((CONFIG_NROS_ZENOH_LINK_SERIAL OR CONFIG_NROS_ZENOH_LINK_CAN OR
+            CONFIG_NROS_ZENOH_LINK_ISOTP) AND
+           NOT CONFIG_NROS_ZENOH_LINK_TCP AND NOT CONFIG_NROS_ZENOH_LINK_UDP_UNICAST AND
+           NOT CONFIG_NROS_ZENOH_LINK_UDP_MULTICAST AND NOT CONFIG_NROS_ZENOH_LINK_WS AND
+           NOT CONFIG_NROS_ZENOH_RAWETH_TRANSPORT)
+            set(_nros_gd_derived 0)
+        else()
+            set(_nros_gd_derived 1)
+        endif()
+        _nros_resolve_knob(ZPICO_GRAPH_DISCOVERY "${_nros_gd_kconfig}")
+        if(NOT (DEFINED ENV{ZPICO_GRAPH_DISCOVERY} AND
+                NOT "$ENV{ZPICO_GRAPH_DISCOVERY}" STREQUAL ""))
+            if(_nros_gd_kconfig EQUAL _nros_gd_derived)
+                message(STATUS
+                    "nros: ZPICO_GRAPH_DISCOVERY=${_nros_gd_kconfig} DERIVED from this "
+                    "image's zenoh links (${_nros_gd_links_txt}); nothing in Kconfig or "
+                    "the environment states otherwise")
+            else()
+                message(STATUS
+                    "nros: ZPICO_GRAPH_DISCOVERY=${_nros_gd_kconfig} from "
+                    "CONFIG_NROS_ZENOH_GRAPH_DISCOVERY, which OVERRIDES the value "
+                    "${_nros_gd_derived} derived from this image's zenoh links "
+                    "(${_nros_gd_links_txt})")
+            endif()
+        endif()
+
         # Buffer sizing (nros-rmw-zenoh build.rs)
         #
         # The small payload class is DERIVABLE (phase-403 W8): it is the largest
