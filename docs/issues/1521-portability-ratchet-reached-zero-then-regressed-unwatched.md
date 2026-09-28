@@ -136,6 +136,45 @@ is its own signal-loss problem and is not diagnosed here. Its failing job is
 `nros-tests integration (host)`; this issue does not establish that the
 portability test is why it fails, only that the lane cannot be trusted to say.
 
+## A second instance, one day later (2026-09-28)
+
+This issue argued the class from one example. A second arrived within a day of
+filing, which settles whether the class is worth a lane.
+
+`nros-tests::example_shape zephyr_leaf_buildrs_uses_shared_bake` is **red on
+`main`**:
+
+```
+thread 'zephyr_leaf_buildrs_uses_shared_bake' panicked at
+packages/testing/nros-tests/tests/example_shape.rs:1040:5:
+expected >=13 zephyr rust leaf build.rs, walked only 12 — layout moved?
+```
+
+Cause: phase-470 W5.a deleted one hand-written Zephyr entry package (the
+migration that item exists to do) and the test's floor stayed at 13. Nothing
+wrong with the test — a floor is exactly how this repo keeps a walk from going
+vacuous, and it did its job. What failed is that **nobody heard it**: it lives in
+`nros-tests`, `test-unit` passes `--exclude nros-tests`, so `just ci gate` was
+honestly green on the PR that broke it and stayed green on `main` afterwards.
+
+Two things this adds to the argument above:
+
+- **The interval is not the point.** The first instance took seven weeks to
+  notice; this one took a day, and only because the next agent in the same
+  campaign happened to run the excluded crate's tests by hand. Neither was
+  reported by a lane. A class that is invisible reports at the speed of whoever
+  stumbles over it, which is not a schedule.
+- **The two failures are opposite in kind, and that matters for the fix.** The
+  first is a source invariant drifting (11 divergences). This one is a
+  **deliberate, correct change** tripping a floor that had to move with it. A
+  lane that gates would have made this a one-line edit inside the PR that caused
+  it, instead of a red on `main` for a day. That is the ordinary case for these
+  tests, not the exceptional one.
+
+Fixed in phase-470 W5.b1 (floor lowered to 9, accounting for all four deletions,
+with the reason written in). The class is not fixed, which is what acceptance
+below is about.
+
 ## Acceptance
 
 - The test passes on `main`, with `KNOWN_DIVERGENCE` carrying only entries that
