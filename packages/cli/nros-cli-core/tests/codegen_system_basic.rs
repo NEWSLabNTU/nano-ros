@@ -163,6 +163,7 @@ fn args(ws: &Path, out: &Path) -> Args {
         file: None,
         exec: None,
         rmw: None,
+        dotconfig: None,
         model: None,
         for_entry: None,
         nano_ros_path: None,

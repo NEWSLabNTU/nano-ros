@@ -55,6 +55,34 @@ pub fn derive_tiers_from_contracts(
     target_rtos: &str,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
 ) -> DerivedSchedule {
+    derive_tiers_in_plan(
+        model,
+        target_rtos,
+        callback_groups,
+        &PriorityPlan::for_target(target_rtos),
+    )
+}
+
+/// [`derive_tiers_from_contracts`], allocating out of a plan the CALLER
+/// resolved rather than the one [`PriorityPlan::for_target`] projects from a
+/// tier key.
+///
+/// Issue 1508. For Zephyr, `for_target` is the Kconfig DEFAULTS projection
+/// (15 preemptive priorities, one transport task at band 200 -> pool
+/// `[5, 14]`), and an image is free to differ: measured, an image with
+/// `CONFIG_NUM_PREEMPT_PRIORITIES=32` reserves `[7, 7]` and owns `[8, 31]`,
+/// and one with `CONFIG_NROS_ZENOH_READ_PRIORITY=100` reserves `[4, 9]` and
+/// owns `[10, 14]`. Against either, the projection's rank 0 (5) is MORE urgent
+/// than the transport - issue 0623's inversion. A road that has the image's
+/// `.config` in hand (the C/C++ entry and the Zephyr module bake both run at
+/// cmake configure time, after Kconfig) resolves the image's own plan with
+/// [`PriorityPlan::from_zephyr_dotconfig`] and passes it here.
+pub fn derive_tiers_in_plan(
+    model: &SystemModel,
+    target_rtos: &str,
+    callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
+    priority_plan: &PriorityPlan,
+) -> DerivedSchedule {
     let input = mapper_input_from_model(model);
     let ranked = chain_aware_rank(&input);
     if ranked.items.is_empty() {
@@ -84,13 +112,10 @@ pub fn derive_tiers_from_contracts(
     // a knob that does nothing look supported.
     let caps = sched_caps_for(target_rtos);
     // phase-459 W4 (issue 1427) - the priority is ALLOCATED out of the board's
-    // address plan, not read off the rank. `for_target` answers from the tier
-    // key, which is all this function is given; an image that resolves its own
-    // plan from its `.config` (`PriorityPlan::from_zephyr_dotconfig`) gets the
-    // same arithmetic with its own four Kconfig values.
-    let priority_plan = PriorityPlan::for_target(target_rtos);
-
-    let plan = realize_rtos(&ranked, &input, &caps, &priority_plan);
+    // address plan, not read off the rank. Issue 1508 - the plan is the
+    // caller's: `derive_tiers_from_contracts` passes the tier key's projection,
+    // a road holding the image's `.config` passes the image's own.
+    let plan = realize_rtos(&ranked, &input, &caps, priority_plan);
     let mut out = DerivedSchedule {
         degradations: plan.degradations.clone(),
         ..Default::default()
@@ -363,6 +388,88 @@ mod tests {
         assert!(
             matches!(missing, crate::TierResolveError::MissingRtosSpec { .. }),
             "{missing:?}"
+        );
+    }
+
+    fn zephyr_priorities(d: &DerivedSchedule) -> BTreeMap<String, i64> {
+        d.tiers
+            .iter()
+            .map(|(n, t)| {
+                let p = t.zephyr.as_ref().map(|z| z.priority);
+                (
+                    n.clone(),
+                    p.expect("a derived zephyr tier carries a priority"),
+                )
+            })
+            .collect()
+    }
+
+    /// Issue 1508. The two image shapes the Kconfig DEFAULTS projection gets
+    /// wrong: against the projection, rank 0 is 5, which is ABOVE a transport
+    /// at k_thread 7 and INSIDE one at `[4, 9]`. Allocated out of the image's
+    /// own plan, every derived tier lands in that image's `pool.app`, strictly
+    /// below (numerically above) its transport.
+    #[test]
+    fn a_derived_table_is_allocated_out_of_the_images_own_plan() {
+        let model = contract_model();
+        let mut groups: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
+        groups.insert("control_node".into(), vec![cbg("ctrl", "high")]);
+        groups.insert("telem_node".into(), vec![cbg("telem", "low")]);
+
+        // The measured defect: the projection's numbers, whatever the image.
+        let projected = zephyr_priorities(&derive_tiers_from_contracts(&model, "zephyr", &groups));
+        assert_eq!(projected["derived-control_node"], 5, "{projected:?}");
+        assert_eq!(projected["derived-telem_node"], 6, "{projected:?}");
+
+        let gates = "CONFIG_NUM_COOP_PRIORITIES=16\nCONFIG_POSIX_PRIORITY_SCHEDULING=y\n\
+                     CONFIG_PREEMPT_ENABLED=y\n";
+        for (label, preempt, bands, want) in [
+            ("NUM_PREEMPT_PRIORITIES=32", 32, [200i64, 200], [8i64, 9]),
+            ("ZENOH_READ_PRIORITY=100", 15, [100, 200], [10, 11]),
+        ] {
+            let cfg = format!("CONFIG_NUM_PREEMPT_PRIORITIES={preempt}\n{gates}");
+            let plan = PriorityPlan::from_zephyr_dotconfig(&cfg, &bands).expect("resolves");
+            let transport = plan.reserved["transport"];
+            // The projection's 5 is as urgent as or more urgent than this
+            // image's least urgent transport thread: the inversion.
+            assert!(
+                projected["derived-control_node"] <= transport.hi,
+                "{label}: the shape no longer reproduces issue 1508"
+            );
+            let got = zephyr_priorities(&derive_tiers_in_plan(&model, "zephyr", &groups, &plan));
+            assert_eq!(
+                [got["derived-control_node"], got["derived-telem_node"]],
+                want,
+                "{label}: transport {transport:?} pool {:?}",
+                plan.app
+            );
+            for (n, p) in &got {
+                assert!(
+                    plan.app.contains(*p) && *p > transport.hi,
+                    "{label}: {n} at {p}"
+                );
+            }
+        }
+    }
+
+    /// Issue 1508, negative direction: on an image with Zephyr's default 15
+    /// preemptive priorities and the default transport band, the image's own
+    /// plan derives EXACTLY what the projection does (issue 1427's 5 / 6).
+    #[test]
+    fn the_default_image_derives_what_the_projection_does() {
+        let model = contract_model();
+        let mut groups: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
+        groups.insert("control_node".into(), vec![cbg("ctrl", "high")]);
+        groups.insert("telem_node".into(), vec![cbg("telem", "low")]);
+        let cfg = "CONFIG_NUM_PREEMPT_PRIORITIES=15\nCONFIG_NUM_COOP_PRIORITIES=16\n\
+                   CONFIG_POSIX_PRIORITY_SCHEDULING=y\nCONFIG_PREEMPT_ENABLED=y\n";
+        let plan = PriorityPlan::from_zephyr_dotconfig(cfg, &[200, 200]).expect("resolves");
+        let image = derive_tiers_in_plan(&model, "zephyr", &groups, &plan);
+        let projected = derive_tiers_from_contracts(&model, "zephyr", &groups);
+        assert_eq!(zephyr_priorities(&image), zephyr_priorities(&projected));
+        assert_eq!(
+            format!("{:?}", image.tiers),
+            format!("{:?}", projected.tiers)
         );
     }
 

@@ -286,6 +286,20 @@ pair, inside the pool the island's `.config` resolves and below the `[0, 4]` its
 transport threads occupy. Reverted to the pre-W4 whole-range plan, that same
 test measures 0 and 1, which is issue 1427's report reproduced end to end.
 
+**Amended 2026-09-28 (issue 1508) — WHICH plan: the image's, where it is
+known.** `PriorityPlan::for_target("zephyr")` is the Kconfig DEFAULTS
+projection, right only for images on Zephyr's defaults: an image with
+`CONFIG_NUM_PREEMPT_PRIORITIES=32` owns `[8, 31]` and one with
+`CONFIG_NROS_ZENOH_READ_PRIORITY=100` owns `[10, 14]`, and the projection's 5 is
+above or inside their transport. The C/C++ entry (`nros codegen entry`) and the
+module bake (`nros codegen-system`) run at cmake configure time AFTER Kconfig,
+so they take `--dotconfig ${DOTCONFIG}` and allocate from the image's own plan
+(`derive_tiers_in_plan`): 8 / 9 and 10 / 11 on those two images, measured on
+built native_sim images, and 5 / 6 unchanged on the default one. An image whose
+Kconfig applies no transport priority (rule 2 of §4.1) keeps the projection and
+is reported as not judged. The `nros::main!` road cannot yet read the transport
+bands and still uses the projection — issue 1537.
+
 ### 6. Crossing into a reserved band requires naming it
 
 The legitimate rare case — a hard safety loop that must preempt networking:

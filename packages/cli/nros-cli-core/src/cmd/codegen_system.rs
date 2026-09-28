@@ -145,6 +145,15 @@ pub struct Args {
     /// the `NROS_SYSTEM_RMW*` define for this bake regardless of `system.toml`.
     #[arg(long = "rmw")]
     pub rmw: Option<String>,
+
+    /// Issue 1508 - the image's Zephyr `.config`. A DERIVED tier table (no
+    /// authored `[tiers.*]`) is allocated out of the priority pool this image's
+    /// Kconfig resolves (RFC-0079 section 4.1) rather than the Kconfig-defaults
+    /// projection, so `nros-plan.json` records the numbers the image's entry
+    /// runs. The Zephyr module passes `${DOTCONFIG}`; refused for a non-Zephyr
+    /// target.
+    #[arg(long, value_name = "PATH")]
+    pub dotconfig: Option<PathBuf>,
 }
 
 /// `--for-entry`'s value → the entry's (directory, package name).
@@ -610,13 +619,18 @@ pub fn run(args: Args) -> Result<()> {
                      (re-run `nros sync` if the model predates the pinned resolver)"
                 );
             }
-            let (derived, warnings) =
-                crate::orchestration::model_ingest::derive_execution_from_contracts(
-                    &mut owned.system,
-                    &model,
-                    &target_rtos,
-                    &callback_groups,
-                )?;
+            let image_plan = crate::orchestration::image_priority_plan::plan_for_image(
+                &target_rtos,
+                args.dotconfig.as_deref(),
+                "codegen-system",
+            )?;
+            let (derived, warnings) = crate::orchestration::model_ingest::derive_execution_in_plan(
+                &mut owned.system,
+                &model,
+                &target_rtos,
+                &callback_groups,
+                image_plan.as_ref(),
+            )?;
             // Issue 0259 — the realizer's verdicts belong in the artifact, not
             // only in this bake's scrollback.
             sched_warnings = warnings;
@@ -1947,6 +1961,7 @@ execution:
             file: None,
             exec: None,
             rmw: None,
+            dotconfig: None,
             model: None,
             for_entry: None,
             nano_ros_path: None,
@@ -2086,6 +2101,7 @@ execution:
                 file: None,
                 exec: None,
                 rmw: Some("zenoh".into()),
+                dotconfig: None,
                 model: None,
             })
             .map(|()| fs::read_to_string(out.join("nros-system/nros-plan.json")).unwrap())
@@ -2270,6 +2286,7 @@ execution:
                 file: None,
                 exec: None,
                 rmw: Some("zenoh".into()),
+                dotconfig: None,
                 model: None,
             })
         };
@@ -2406,6 +2423,7 @@ contracts:
             file: None,
             exec: None,
             rmw: None,
+            dotconfig: None,
             model: None,
             for_entry: None,
             nano_ros_path: None,
@@ -2711,6 +2729,7 @@ structure:
             file: None,
             exec: None,
             rmw: None,
+            dotconfig: None,
             model: None,
             for_entry: None,
             nano_ros_path: None,
@@ -2774,6 +2793,7 @@ structure:
             file: None,
             exec: None,
             rmw: None,
+            dotconfig: None,
             model: None,
             for_entry: None,
             nano_ros_path: None,
@@ -2811,6 +2831,7 @@ structure:
             file: None,
             exec: None,
             rmw: None,
+            dotconfig: None,
             model: None,
             for_entry: None,
             nano_ros_path: None,
@@ -2853,6 +2874,7 @@ structure:
             file: None,
             exec: None,
             rmw: None,
+            dotconfig: None,
             model: None,
             for_entry: None,
             nano_ros_path: None,
@@ -2976,6 +2998,7 @@ locator = "tcp/127.0.0.1:7447"
             file: None,
             exec: None,
             rmw: None,
+            dotconfig: None,
             model: None,
             for_entry: None,
             nano_ros_path: None,
@@ -3058,6 +3081,7 @@ domain_id = 3
             file: None,
             exec: None,
             rmw: None,
+            dotconfig: None,
             model: None,
             for_entry: None,
             nano_ros_path: None,
@@ -3087,6 +3111,7 @@ domain_id = 3
             file: None,
             exec: None,
             rmw: None,
+            dotconfig: None,
             model: None,
             for_entry: None,
             nano_ros_path: None,
@@ -3182,6 +3207,7 @@ domain_id = 5
             file: None,
             exec: None,
             rmw: None,
+            dotconfig: None,
             model: None,
             for_entry: None,
             nano_ros_path: None,
@@ -3251,6 +3277,7 @@ domain_id = 11
             file: None,
             exec: None,
             rmw: None,
+            dotconfig: None,
             model: None,
             for_entry: None,
             nano_ros_path: None,
@@ -3284,6 +3311,7 @@ domain_id = 11
             file: None,
             exec: None,
             rmw: None,
+            dotconfig: None,
             model: None,
             for_entry: None,
             nano_ros_path: None,
