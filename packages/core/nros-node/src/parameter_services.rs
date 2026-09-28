@@ -1267,12 +1267,18 @@ pub(crate) struct ParamServiceBuffers {
 }
 
 impl ParamServiceBuffers {
-    /// A pair of `bytes` each.
-    pub(crate) fn with_capacity(bytes: usize) -> Self {
-        Self {
-            request: alloc::vec![0u8; bytes].into_boxed_slice(),
-            reply: alloc::vec![0u8; bytes].into_boxed_slice(),
-        }
+    /// A pair of `bytes` each, or `None` if the heap cannot hold them.
+    ///
+    /// Issue 1551 — fallible. This runs from `reconcile_parameter_services`,
+    /// which has an error return, and at 2 x 4,096 bytes it is the largest
+    /// Rust allocation on the entity-creation path; `vec![0; n]` would instead
+    /// abort through libstd's OOM hook (issue 0589's recursion on Zephyr
+    /// `native_sim`).
+    pub(crate) fn try_with_capacity(bytes: usize) -> Option<Self> {
+        Some(Self {
+            request: nros_rmw::fallible::try_zeroed_bytes(bytes)?,
+            reply: nros_rmw::fallible::try_zeroed_bytes(bytes)?,
+        })
     }
 }
 
@@ -1792,7 +1798,7 @@ mod tests {
         let mut set = one_set_of_six();
 
         // 64 bytes holds the request and cannot hold a 200-byte string value.
-        let mut small = ParamServiceBuffers::with_capacity(64);
+        let mut small = ParamServiceBuffers::try_with_capacity(64).expect("host heap");
         for _ in 0..2 {
             queue_get(&set, "label");
             assert_eq!(
@@ -1814,7 +1820,8 @@ mod tests {
              overflow (the kind whose log line names NROS_PARAM_SERVICE_BUFFER_SIZE)"
         );
 
-        let mut fits = ParamServiceBuffers::with_capacity(param_service_buffer_bytes());
+        let mut fits = ParamServiceBuffers::try_with_capacity(param_service_buffer_bytes())
+            .expect("host heap");
         queue_get(&set, "label");
         assert_eq!(set.process(&mut server, &mut fits), 1);
         assert_eq!(set.get_parameters.handle.sent.borrow().len(), 1);
@@ -1833,7 +1840,8 @@ mod tests {
         let mut b = one_set_of_six();
         b.node = second;
 
-        let mut shared = ParamServiceBuffers::with_capacity(param_service_buffer_bytes());
+        let mut shared = ParamServiceBuffers::try_with_capacity(param_service_buffer_bytes())
+            .expect("host heap");
         queue_get(&a, "speed");
         queue_get(&b, "speed");
         assert_eq!(a.process(&mut server, &mut shared), 1);

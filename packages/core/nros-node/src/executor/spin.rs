@@ -9572,10 +9572,13 @@ impl<'s> Executor<'s> {
         if let Some(params) = self.params.as_mut()
             && params.buffers.is_none()
         {
+            // Issue 1551 — an exhausted heap is an error this fn returns, not
+            // an abort through libstd's OOM hook.
             params.buffers = Some(
-                crate::parameter_services::ParamServiceBuffers::with_capacity(
+                crate::parameter_services::ParamServiceBuffers::try_with_capacity(
                     crate::parameter_services::param_service_buffer_bytes(),
-                ),
+                )
+                .ok_or(NodeError::Transport(TransportError::BadAlloc))?,
             );
         }
         for (index, name, namespace) in todo {
