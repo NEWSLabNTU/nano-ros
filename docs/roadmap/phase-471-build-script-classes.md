@@ -216,12 +216,15 @@ next reader does not "fix" it. The same reasoning does NOT protect the FreeRTOS
 overlays: those are in-repo board crates that already depend on
 `nros-board-common`.
 
-**"Where does a vendored tree come from" has three answers and no rule picking
-between them.** FreeRTOS/lwIP/ThreadX/NetX/NuttX/tband come from path-valued env
-variables; micro-XRCE-DDS-Client comes from a workspace-relative path through
-`xrce-sources.txt`; Cyclone comes from an env variable in one crate and a
-`links` hand-off in the next. Only the first is exposed to 1280, and nothing
-says which a new backend should use. → **W5**
+**"Where does a vendored tree come from" has three answers in this census and no
+rule picking between them.** FreeRTOS/lwIP/ThreadX/NetX/NuttX/tband come from
+path-valued env variables; micro-XRCE-DDS-Client comes from a workspace-relative
+path through `xrce-sources.txt`; Cyclone comes from an env variable in one crate
+and a `links` hand-off in the next. Only the first is exposed to 1280, and
+nothing says which a new backend should use. → **W5**, which found a FOURTH the
+census cannot see — nine SDK roots arrive as `{env:VAR}` tokens in three
+`nros-platform.toml` descriptors, from no `build.rs` at all — and wrote the rule
+down as [RFC-0101](../design/0101-vendored-source-resolution.md).
 
 ---
 
@@ -308,26 +311,98 @@ phase-468's, with a reason read by whoever changes the thing it excuses.
 
 ### W4 — one `linker-script` helper
 
-11 scripts, 6 bodies, one job. A `nros_board_common::link_script::emit(bytes,
-name)` (or a small `nros-build-paths` sibling — the crates involved include
-non-board ones like `nros-bench` and `stm32f4-porting`, so the home needs
-deciding first) reduces each to one line. Lowest priority: this family has
+**HOME DECIDED (phase-471 W5's PR); the migration is still open.**
+
+11 scripts, 6 bodies, one job. The phase doc's own condition was that **the home
+must be decided first**, and the home turned out to be the whole question. Three
+measurements, 2026-09-29:
+
+* **The 6 bodies are real**, confirmed by hashing each file with comments and
+  blank lines stripped: one body ×4 (`wake-latency-cortex-m3`,
+  `stm32f4-smoltcp-echo`, `cdr-roundtrip-qemu`, `lan9118-qemu`), two ×2
+  (`stm32f4-porting/{polling,rtic}`; `heap-free-poc-mps2` +
+  `logging-smoke-mps2-baremetal`), three singletons. 14–42 lines each.
+* **Only 2 of the 11 are board crates.** The split is 2 boards / 2
+  `packages/reference/stm32f4-porting` / 3 `nros-bench`+`nros-smoke` / 4
+  `nros-tests/bins`. So `nros-board-common` is the wrong home outright — a
+  testing bin depending on a board helper crate is backwards, and 9 of 11 are
+  testing or reference crates.
+* **None of the 11 has a `[build-dependencies]` section at all.** Centralising
+  gives all of them their first build-dependency, i.e. a new compile unit in
+  every one of those cross graphs.
+
+**The home is `nros-build-paths`** (`packages/tooling/`), and the precedent is
+recorded rather than invented: `nros-build-helpers/Cargo.toml` already says
+*"issue 0657 — the riscv64 toolchain resolver lives in the ZERO-DEP crate, not
+here: this one pulls cbindgen, and putting a directory lookup behind that
+dragged cbindgen into the `nros` CLI graph (118 lock lines)."* Same class, same
+answer: `nros-build-paths` has **zero dependencies**, is `host-only = true`, and
+is already the crate a build script may reach for build-time path work. A
+`link_script` module there costs each caller one edge to a dependency-free
+crate.
+
+**Two of the 11 are excluded, by the same rule that protects the Zephyr leaf
+shims.** `packages/reference/stm32f4-porting/{polling,rtic}` are, per their own
+README, *"templates for BSP developers creating new board support crates"* — a
+developer copies them out. Giving a copy-out template a dependency on a crate
+that exists only in this checkout is RFC-0026's hazard, and it is the reason the
+12 Zephyr shims are deliberately left alone. They keep their 20 lines.
+
+**Migration still open, and deliberately not landed here.** Acceptance is that
+each affected crate still LINKS, across thumbv7m / stm32f4 / riscv64 QEMU
+targets — a cross build this task could not afford (`/home` at 99 %,
+`just check build` needs ~8 GB and has exhausted it twice this week). Landing
+the edit without that acceptance would be claiming a build nobody ran, on the
+one item the study rates lowest priority precisely because *"this family has
 produced no defect and its blast radius is a link failure that is immediate and
-obvious.
+obvious."* The remaining work is 9 one-line call sites plus the module.
 
-### W5 — state where a vendored tree comes from
+### W5 — state where a vendored tree comes from (LANDED → RFC-0101)
 
-RFC-0064 and RFC-0071 say where a board and a backend declare themselves; no
-document says how either RESOLVES its vendored sources. Write the rule down,
-with the preference order the evidence supports:
+**Landed as [RFC-0101](../design/0101-vendored-source-resolution.md)**, a new
+RFC rather than an amendment. The rule:
 
-1. **`links` hand-off** when another crate already owns the tree
-   (`nros-rmw-cyclonedds-sys` — it also gets build ORDER, which an env variable
-   cannot give);
-2. **workspace-relative** when the tree is in-repo and not user-substitutable
-   (`nros-rmw-xrce-cffi`);
-3. **a path-valued variable through `nros_build_paths`** when the user must be
-   able to point at their own SDK — which is the case that pays for W3.
+> at most one crate per resolved dependency GRAPH resolves a given vendored
+> tree; every other crate in that graph reaches it through `links`; the one that
+> does resolve it resolves through `nros_build_paths`.
+
+Four things the work changed about the brief above.
+
+**The three mechanisms are not alternatives at one site.** `links` is how a
+SECOND crate reaches a tree a FIRST one already resolved — the owner still has
+to resolve it somehow. So the flat preference order became two questions:
+*who resolves it* (D1/D2) and *how the owner resolves it* (D3), and the
+"workspace-relative vs path variable" pair collapsed into one axis whose
+discriminator is a property of the TREE — *can this repository ship a copy?* —
+answered by `env_or_repo_path` and `env_path` respectively.
+
+**`links` does give build order, and it was measured rather than repeated.** A
+four-crate throwaway workspace, wall-clock stamps: a dependent's build script
+ran 5 ms after the `links` dependency finished and 7 991 ms before a plain
+dependency did. Two limits came with it, both new to the brief — the channel is
+exactly ONE HOP (a grandparent gets `Err(NotPresent)` and no ordering), and a
+second crate claiming the same `links` value is a **resolve-time error**. That
+last is the real argument for the preference: it is the only one of the
+mechanisms cargo itself enforces, against a repository whose recurring defect is
+two correct derivations of one fact that disagree (0500, 0616, 1025, 1068).
+
+**There is a FOURTH mechanism and the census cannot see it.** Nine SDK roots —
+FreeRTOS, lwIP, ThreadX, NetX, NuttX and their config dirs — reach the
+zenoh-pico compile as `{env:VAR}` tokens in three `nros-platform.toml`
+descriptors, interpolated by `nros-platform-config`, not from any `build.rs`.
+RFC-0101 D5 rules on it: the declarative form is right and stays (it is
+RFC-0049's platform rung and it can carry a capability gate), but its
+interpolator must adopt D3's resolver.
+
+**The tree does not fully conform, and the gaps are filed.** Seven sites derive
+the repo root by counting `.parent()` hops — a class already fixed three times
+by re-counting them (issues 0365, phase-321 W2.d, phase-400 W1), including one
+that *found a real directory that no longer held what it wanted* and reported
+nothing → **issue 1558**. Four path-valued inputs bypass `nros_build_paths`, no
+two of them outside W3's gate for the same reason (a shared build crate that is
+not a `build.rs`; a descriptor token; two variables with no `sdk-env.just` row)
+→ **issue 1560**, which includes the one live wrong answer: issue 1527's
+unconverted third `env_path_or`, one file from its converted twin.
 
 ### W6 — the two sites issue 1527 deliberately left open
 
