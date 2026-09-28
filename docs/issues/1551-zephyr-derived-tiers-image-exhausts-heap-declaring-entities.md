@@ -8,7 +8,7 @@ type: bug
 area: zephyr, memory
 severity: high
 found: 2026-09-28
-related: [issue-1508, issue-1537, issue-1426, issue-1425, issue-0589, phase-459]
+related: [issue-1508, issue-1537, issue-1426, issue-1425, issue-0589, issue-1566, phase-459]
 ---
 
 # The Zephyr derived-tiers-cpp image runs out of heap declaring entities, then SEGVs
@@ -338,6 +338,187 @@ but it would still be a crash on a path whose C caller expects a return code.
 - A failed allocation on an entity-creation path returns an error code to the
   C/C++ caller. Negative control: `CONFIG_NROS_ZEPHYR_HEAP_SIZE` too small gives
   a reported error, not SIGSEGV.
+
+## Resolution — defect 1 (sizing)
+
+**Status: defect 1 fixed. The issue stays OPEN.** Defect 2 (an allocation
+failure turns into a stack-overflow SEGV) was being fixed separately in
+`packages/rmw/**/rust_adapter.rs` when this was written; it has since landed —
+see "Resolution — defect 2 only" below, which also lists what remains open
+under it. This issue closes when everything both sections leave open is done.
+
+### Direction chosen: move tier storage into `.bss`, sized by the entry
+
+Four directions were weighed (the issue's three, plus the conf lines):
+
+- **Check the total at configure time.** This cannot be done honestly.
+  `NROS_CPP_EXECUTOR_STORAGE_SIZE` is produced by nros-cpp's `build.rs`, at
+  CARGO BUILD time, after configure has finished. A configure-time price would
+  need a second, guessed copy of that number, and that is the 0088/0245
+  sizes-header class.
+- **Derive `NROS_ZEPHYR_HEAP_SIZE` from the total.** This has the same
+  timing problem. It also keeps the largest term, `n_tiers × storage`, in a
+  pool that `mem-report` cannot see, and it can still fail at run time.
+- **Move the storage into static memory.** This is the chosen direction. The
+  generated entry is the one place that knows both the tier count and the
+  per-build storage size, so it emits the storage itself:
+  `static uint64_t __nros_tier_executor_storage[n_tiers][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7) / 8]`.
+  It passes that storage to `nros_board_zephyr_run_tiers_in(…, storage, stride)`.
+  The storage is then an object the linker places. On a RAM-bounded board, an
+  image that cannot hold its tiers fails at **link**. `mem-report` names it
+  too, e.g. `__nros_tier_executor_storage 181,056` on realtime-cpp. No
+  tier-multiplied demand is left on the heap, so there is nothing there to
+  mis-size silently.
+- **The two misdirected conf lines are fixed as well.** See below.
+
+This is a **move, not a saving**, per the CLAUDE.md executor-arena rule. The
+bytes the heap would have needed become `.bss`:
+
+- realtime-cpp: 2 × 90,528 = 181,056 bytes;
+- derived-tiers-cpp: 4 × 23,976 = 95,904 bytes.
+
+What the heap still holds is the session plus the per-entity cost, and that is
+measured below. The costs of the choice:
+
+- **RAM.** `.bss` is reserved whether or not a tier ever spawns. A heap block
+  was also taken for the image's whole lifetime, so the steady state is
+  unchanged.
+- **Linker visibility.** Gained.
+- **`mem-report` visibility.** Gained. The heap blocks had no symbol.
+
+Mechanics:
+
+- `CAbiRunners::run_tiers_takes_storage` sits beside the runner name in
+  `nros-entry-lower`. It is true for Zephyr only, and both entry packs read it.
+- The runner refuses a stride smaller than this build's executor size, and
+  refuses one that is not 8-byte aligned, instead of overrunning it.
+- `nros_board_zephyr_run_tiers_ns` stays for entries generated before this
+  change. It now takes all of the tiers' storage in ONE heap block up front and
+  prints the numbers, rather than failing part-way down the spawn chain.
+- FreeRTOS and NuttX `run_tiers` have the same per-tier heap shape against
+  their own heaps. They are **not** changed (`run_tiers_takes_storage: false`).
+
+### Reproduction on `main` before the change (native_sim/native/64, `rmw_zenohd`)
+
+Measured on `main` at 5519d5caf.
+
+**derived-tiers-cpp**, after `nros sync` of the workspace. This is the
+issue's failure: the image derives `__nros_tiers[4]` and has 23,976 B of
+storage per tier.
+
+```
+[nros] tier task entered
+nros: HEAP EXHAUSTED: request 66 bytes, arena 66048 bytes, caller 0x4276a6
+zpico: z_liveliness_declare_token failed: -78 for '@ros2_lv/0/…/0/0/NN/%/%/mrm_handler'
+nros: HEAP EXHAUSTED: request 24 bytes, arena 66048 bytes, caller 0x4344cb
+zpico: z_liveliness_declare_token failed: -78 for '@ros2_lv/0/…/0/5/MP/%/%/mrm_handler/%system%fail_safe%mrm_state/…'
+nros: HEAP EXHAUSTED: request 472 bytes, arena 66048 bytes, caller 0x4b2cd7   (alloc::boxed::box_new_uninit)
+timeout: the monitored command dumped core                                    (exit 139)
+```
+
+**Sync is load-bearing.** Without `nros sync`, the configure names a
+SystemModel that does not exist (`src/demo_bringup/config/system_model.yaml`).
+The derivation then silently returns nothing, and the image runs
+single-executor and boots. Its one executor's storage is already static
+(`rclcpp::Node::GlobalStorageHolder`), so that boot says nothing about this
+defect. A report of this image booting all four tiers on `main` at the 64 KiB
+default does not match this measurement. If you see one, check which module
+tree it was built against.
+
+**The two LANED tiered images** fail at their **first** allocation, with no
+sync involved:
+
+```
+realtime-cpp:  nros: HEAP EXHAUSTED: request 90528 bytes, arena 66048 bytes, caller 0x424f65
+               (addr2line: nros_board_zephyr_run_tiers_ns, zephyr_run_tiers.c:637)
+               … idles to --stop_at, exit 0
+realtime-c:    nros: HEAP EXHAUSTED: request 90528 bytes, arena 66048 bytes, caller 0x424de8
+```
+
+Neither of them ever runs a tier.
+
+### After
+
+| Image | Tiers | Result | Platform heap peak / capacity |
+| --- | --- | --- | --- |
+| realtime-cpp | 2 | both tiers tick (`[ctrl]`, `[telem]`), EDF deadline set | 18,896 / 66,048 |
+| realtime-c | 2 | both tiers tick, once issue 1566 was fixed (below) | 18,896 / 66,048 |
+| derived-tiers-cpp (after `nros sync`) | 4 derived | all 4 tiers up | 29,360 / 66,048 |
+
+For derived-tiers-cpp, the generated table is `__nros_tiers[4]` and the storage
+is `__nros_tier_executor_storage[4][…]` (0x176a0 = 95,904 B `.bss`). An 8 s run
+printed `[nros] tier task entered` ×3, and all four nodes ticked: the two 30 Hz
+nodes 239 and 240 times, the two 10 Hz nodes 79 times each. A graph query while
+it ran:
+
+```
+$ ros2 node list --no-daemon        $ ros2 topic list --no-daemon
+/mrm_comfortable_stop_operator      /system/emergency/control_cmd
+/mrm_emergency_stop_operator        /system/fail_safe/mrm_state
+/mrm_handler                        /system/mrm/comfortable_stop/status
+/stop_mode_operator                 /system/stop_mode/control
+```
+
+That is every tier's node and publisher declared. The issue predicted about
+26 KB of heap for this image once the storage was gone (122 KB − 95,712). The
+measured peak is 29,360.
+
+Two unrelated things this run exposed:
+
+- **realtime-c.** With the heap no longer empty, realtime-c got as far as
+  tier 1's first declare and then SEGVed. This was a separate latent overrun:
+  `NROS_C_PUBLISHER_STORAGE_SIZE` was a literal 560, but the create call writes
+  640 bytes, and the component instance sat directly before the heap. This is
+  issue **1566**, filed and fixed alongside.
+- **derived-tiers-cpp configure.** Without a prior `nros sync`, this image's
+  configure names `src/demo_bringup/config/system_model.yaml`, a file that
+  does not exist. The derivation then returns nothing, silently, and the image
+  runs single-executor. The fixture row needs to sync first; see below. This is
+  not filed separately here. It is the "no model ⇒ no derivation" edge, and it
+  should probably fail loud.
+
+### The two misdirected heaps (measured before editing)
+
+The lines were `CONFIG_HEAP_MEM_POOL_SIZE=262144` and
+`CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE=1048576`, in derived-tiers-cpp,
+realtime-cpp and realtime-c. They were measured with gdb breakpoints on
+`k_heap_aligned_alloc` and on Zephyr's common-libc `malloc`, over boot + 3 s
+under a router:
+
+- **Kernel heap: 232 B in two calls, both from Zephyr's own NSOS driver**
+  (`nsos_getaddrinfo` 144 B, `nsos_socket_create` 88 B). This is the CLAUDE.md
+  warning, confirmed: the kernel heap cannot be zero. It is now 64 KiB, the
+  value every sibling C/C++ workspace conf states.
+- **libc malloc: zero calls.** The 1 MiB line is removed, and the native_sim
+  Kconfig default (16 KiB) now applies.
+
+Together that is 1.28 MiB less static RAM in each image, and it is independent
+of the move. The Rust workspaces' native_sim confs carry the same 1 MiB line.
+Their allocation profile was not measured, so they are unchanged.
+
+### Not done / not verified
+
+- **Link-time failure on a RAM-bounded board: not demonstrated.** Every image
+  above is native_sim, which has no RAM bound. The claim that an image too
+  large for its board now fails at link rests on the storage being an ordinary
+  `.bss` object (nm and `mem-report` both list it); no mps2/an385 build was run
+  to show it.
+- **The rest of the heap is still unpriced.** The session plus per-entity cost
+  (18.9–29.4 KB here) is not checked at build time. An image with a
+  deliberately small `CONFIG_NROS_ZEPHYR_HEAP_SIZE` still fails at boot, and
+  whether that failure is reported cleanly is defect 2 and issue 1425.
+- **No lane boots the fixture yet.** A lane needs a `fixtures.toml` row and a
+  `matrix::CELLS` cell. Those files belong to a concurrent change, so they are
+  not edited here. The row needs:
+  - the west entry at `examples/workspaces/derived-tiers-cpp/src/zephyr_entry`;
+  - `board native_sim/native/64`, `lang cpp`, `rmw zenoh`;
+  - confs `prj.conf;prj-zenoh.conf` plus the NSOS fragment;
+  - an `nros sync` of the workspace BEFORE configure, or the tiers are never
+    derived.
+
+  The cell should assert that each of the four nodes ticks (or appears in
+  `ros2 node list`) under a router. `main`'s derivation already produces the
+  four tiers once the model exists; PR #1356 is not required for that.
 
 ## Resolution — defect 2 only (2026-09-29)
 
