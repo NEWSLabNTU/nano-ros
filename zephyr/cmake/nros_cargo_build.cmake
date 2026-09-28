@@ -39,6 +39,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosReconfigure.cmake")
 # backend: uORB's two C++ pools are floored by the same function, from a build
 # that cannot include a Zephyr module file. FILE scope, same reason as above.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosPoolFloor.cmake")
+# Issue 1550 -- which fragment decided CONFIG_NROS_DOMAIN_ID, for the boot
+# record. Functions only; included at file scope with its neighbours.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosDomainAgreement.cmake")
 
 # =============================================================================
 # nros_detect_rust_target()
@@ -1907,6 +1910,15 @@ function(nros_cargo_build)
     if(CONFIG_NROS_BOOT_REPORT)
         list(APPEND _nros_knob_env "NROS_BOOT_REPORT=1")
     endif()
+
+    # Issue 1550 -- the domain's rung, for the boot record. The VALUE reaches
+    # the image through `app_config.h` and is stamped at boot from what the
+    # resolver actually used; what only the configure knows is which fragment
+    # stated it (default / kconfig / snippet / command-line).
+    nros_domain_provenance(_nros_domain_src _nros_domain_label)
+    list(APPEND _nros_knob_env "NROS_KNOB_SOURCE_NROS_DOMAIN_ID=${_nros_domain_src}")
+    message(STATUS
+        "nros: CONFIG_NROS_DOMAIN_ID=${CONFIG_NROS_DOMAIN_ID} from ${_nros_domain_label}")
 
     # phase-351 W5 — the board FACTS + SITE config ride the same command, for
     # the same reason the knobs do: Zephyr's cargo is spawned by this custom

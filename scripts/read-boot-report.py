@@ -45,7 +45,7 @@ SYMBOL = "NROS_BOOT_REPORT"
 # "NRSR". Must match boot_report.rs MAGIC.
 MAGIC = 0x4E525352
 # Layout this script knows how to decode. Must match boot_report.rs VERSION.
-KNOWN_VERSION = 6
+KNOWN_VERSION = 7
 
 # The headroom `CONFIG_NROS_ZEPHYR_HEAP_SIZE` must keep above the measured
 # peak, in bytes.
@@ -94,6 +94,9 @@ FIELDS = (
     # Issue 1549, appended on the same rule: Z_FEATURE_LOCAL_QUERYABLE and the
     # rung of the knob ladder that decided it, packed (value | source << 8).
     "rmw_local_queryable",
+    # Issue 1550: the ROS domain the boot-config resolver settled on, and the
+    # rung that stated it (value | source << 8, like the word above).
+    "domain_id",
 )
 
 # `boot_report::KnobSource`. Append only; `the_knob_source_codes_match_the_record`
@@ -103,7 +106,9 @@ KNOB_SOURCE = {
     1: "default -- nobody stated it and nothing derived it",
     2: "DERIVED from the image's entity inventory",
     3: "stated in Kconfig (a .conf, a snippet, or its default)",
-    4: "stated in the build environment",
+    4: "stated in the environment",
+    5: "stated by a Zephyr snippet's Kconfig fragment",
+    6: "stated on the cmake/west command line",
 }
 
 
@@ -383,6 +388,10 @@ def report(rec: dict[str, int]) -> int:
     print(f"  NROS_SUBSCRIPTION_BUFFER_SIZE {rec['default_rx_buf_size']}")
     lq, lq_src = knob_word(rec["rmw_local_queryable"])
     print(f"  Z_FEATURE_LOCAL_QUERYABLE     {lq}   ({lq_src})")
+    print()
+    dom, dom_src = knob_word(rec["domain_id"])
+    print("resolved at boot:")
+    print(f"  ROS domain id                 {dom}   ({dom_src})")
     print()
     print("measured on the board:")
     cap = rec["arena_capacity"]

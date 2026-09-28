@@ -409,6 +409,25 @@ system-domain-agreement:
     fi
     ./tests/cmake-domain-agreement-tests.sh
 
+# issue 1550 -- the same agreement on the ENTRY road. `nano_ros_add_executable`
+# never reaches `nros_system_generate`, so its images were checked by nothing:
+# the leaf's system.toml domain was printed and compared with no one, and a
+# transport snippet that stated no domain left the image on Kconfig's 0.
+# `cmake/NanoRosDomainAgreement.cmake` compares Kconfig, the entry's
+# system.toml and every merged fragment that states the symbol; this gates the
+# refusal, its three-value message, the snippet/command-line provenance the
+# boot record carries, and the agreeing controls. cmake only.
+entry-domain-agreement:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip entry-domain-agreement "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/cmake-entry-domain-agreement-tests.sh
+
 # issue 1396 (class: issue 1312) — a build shim's `--target` must name an
 # `[image.<id>]` / `[deploy.<id>]` block some bringup declares.
 #

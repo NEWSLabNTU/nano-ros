@@ -67,6 +67,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSupportLibrary.cmake")
 # frame, which is how the node-register side reaches it.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntryLocator.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwUserConfig.cmake")  # phase-206 W2
+# Issue 1550 -- the domain agreement on this road (Kconfig vs the entry's
+# system.toml vs the snippet). Functions only, include_guard'd.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDomainAgreement.cmake")
 
 # --------------------------------------------------------------------------
 # Platform-link wrappers (phase-287 W6). Defined HERE (not NanoRosBootstrap):
@@ -588,6 +591,20 @@ function(nano_ros_entry)
                 "entry CMakeLists must call `find_package(Zephyr REQUIRED HINTS "
                 "$ENV{ZEPHYR_BASE})` BEFORE project() so the `app` target exists.")
         endif()
+        # Issue 1550 -- the ENTRY road's domain check. `nros_system_generate`
+        # has refused a Kconfig/system.toml disagreement since issue 1423, but
+        # an entry built with `nano_ros_add_executable` never reaches it: the
+        # leaf's system.toml was read (`nano_ros_read_leaf_system`, which
+        # prints its domain_id) and compared with nothing, and a transport
+        # snippet that stated no domain left the image on Kconfig's 0.
+        set(_nra_sys_file "")
+        if(NANO_ROS_LEAF_SYSTEM)
+            set(_nra_sys_file "${CMAKE_CURRENT_SOURCE_DIR}/system.toml")
+        endif()
+        nros_check_domain_agreement(
+            SYSTEM_DOMAIN "${NANO_ROS_LEAF_DOMAIN_ID}"
+            SYSTEM_FILE "${_nra_sys_file}"
+            CONTEXT "nano_ros_entry(${_NRA_NAME})")
         # The generated entry TU defines `int main(void)` (board_is_zephyr shape). It MUST
         # go directly into `app`: Zephyr links `libapp.a` whole-archive (so `main` is pulled
         # as a strong symbol, overriding Zephyr's weak default `main`), and the TU inherits

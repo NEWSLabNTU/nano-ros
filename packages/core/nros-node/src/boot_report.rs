@@ -58,14 +58,14 @@
 //! same rule issue 0900's arena knob and phase-403's `rx_buffer_from_type()`
 //! both keep.
 //!
-//! Enabled, it costs `BootReport::struct_size` bytes of `.bss` -- 96, the
+//! Enabled, it costs `BootReport::struct_size` bytes of `.bss` -- 100, the
 //! same on every target because every field is a `u32` -- and a handful of
 //! relaxed atomic stores on paths that run once per entity at registration.
 //!
-//! The 96 is not a detail: it is the LENGTH an operator types into `savemem`,
+//! The 100 is not a detail: it is the LENGTH an operator types into `savemem`,
 //! and this sentence said 60 for as long as the record had fifteen fields. A
-//! short dump decodes -- `read-boot-report.py` needs `24 * 4` bytes and a
-//! 92-byte one is refused, but a reader who trusts the prose over the tool
+//! short dump decodes -- `read-boot-report.py` needs `25 * 4` bytes and a
+//! 96-byte one is refused, but a reader who trusts the prose over the tool
 //! spends the refusal looking at the wrong thing. Ask the tool instead:
 //! `read-boot-report.py --addr-only <elf>` prints the address AND the length,
 //! from the ELF's own symbol size.
@@ -83,7 +83,7 @@
 //!    reading the new word as one it knows;
 //! 3. `FIELDS` in `scripts/read-boot-report.py`, same name, same position, and
 //!    `KNOWN_VERSION` to match;
-//! 4. the field count in `the_record_is_twenty_four_packed_u32s` below.
+//! 4. the field count in `the_record_is_twenty_five_packed_u32s` below.
 //!
 //! `check-boot-report-layout` fails on 1 without 3, and the Rust test fails if
 //! the compiler laid the record out with padding. Appending is what keeps a
@@ -101,8 +101,9 @@ pub const MAGIC: u32 = 0x4e52_5352;
 ///
 /// 4 since phase-460 W5 appended `heap_peak_bytes` and `heap_capacity_bytes`;
 /// 5 since phase-460 W7 appended `samples_dropped_too_small`;
-/// 6 since issue 1549 appended `rmw_local_queryable`.
-pub const VERSION: u32 = 6;
+/// 6 since issue 1549 appended `rmw_local_queryable`;
+/// 7 since issue 1550 appended `domain_id`.
+pub const VERSION: u32 = 7;
 
 /// Which rung of the knob ladder decided a knob the record carries.
 ///
@@ -125,8 +126,33 @@ pub enum KnobSource {
     Derived = 2,
     /// Stated in Kconfig (a `.conf` fragment, a snippet, or its default).
     Kconfig = 3,
-    /// Stated in the build's environment, which outranks everything.
+    /// Stated in the environment, which outranks everything: the build's for a
+    /// compile-time knob, `ROS_DOMAIN_ID` at run time for a hosted image's
+    /// domain.
     Environment = 4,
+    /// Stated by a Zephyr snippet's Kconfig fragment (`-S <snippet>`), issue
+    /// 1550: a transport snippet is where an image that varies its link tends
+    /// to state its domain, and where one that forgets to is invisible.
+    Snippet = 5,
+    /// Stated on the cmake / west command line (`-DCONFIG_<symbol>=<n>`).
+    CommandLine = 6,
+}
+
+impl KnobSource {
+    /// The variant `build.rs` encoded as `code`, or [`KnobSource::NotRecorded`]
+    /// for a number this crate does not know.
+    #[must_use]
+    pub const fn from_code(code: u32) -> Self {
+        match code {
+            1 => Self::Default,
+            2 => Self::Derived,
+            3 => Self::Kconfig,
+            4 => Self::Environment,
+            5 => Self::Snippet,
+            6 => Self::CommandLine,
+            _ => Self::NotRecorded,
+        }
+    }
 }
 
 /// How far boot got. Monotonic, and the single most useful field: an arena
@@ -346,6 +372,20 @@ mod enabled {
         /// holds no client or no server); a zero with source `Default` means
         /// the inventory could not answer.
         rmw_local_queryable: AtomicU32,
+
+        /// The ROS domain the session was opened on, and who stated it: bits
+        /// 0..7 the id (`DOMAIN_ID_MAX` is 232), bits 8..15 the
+        /// [`super::KnobSource`]. Appended by issue 1550.
+        ///
+        /// Stamped by the boot-config resolver from the value it RESOLVED, not
+        /// from the compiled constant, so a hosted image's `ROS_DOMAIN_ID`
+        /// shows here as `Environment`. The source of a baked domain is the
+        /// Kconfig fragment the configure found stating it: a board `.conf`,
+        /// a snippet, the command line, or none (the Kconfig default, 0). A
+        /// peer on another domain never sees this image and nothing at run
+        /// time says why, so this is the word to read first when the graph is
+        /// empty.
+        domain_id: AtomicU32,
     }
 
     impl BootReport {
@@ -375,6 +415,7 @@ mod enabled {
                 heap_capacity_bytes: AtomicU32::new(0),
                 samples_dropped_too_small: AtomicU32::new(0),
                 rmw_local_queryable: AtomicU32::new(0),
+                domain_id: AtomicU32::new(0),
             }
         }
 
@@ -425,6 +466,7 @@ mod enabled {
         pub heap_capacity_bytes: u32,
         pub samples_dropped_too_small: u32,
         pub rmw_local_queryable: u32,
+        pub domain_id: u32,
     }
 
     /// Read the record.
@@ -457,6 +499,7 @@ mod enabled {
             heap_capacity_bytes: g(&r.heap_capacity_bytes),
             samples_dropped_too_small: g(&r.samples_dropped_too_small),
             rmw_local_queryable: g(&r.rmw_local_queryable),
+            domain_id: g(&r.domain_id),
         }
     }
 
@@ -605,6 +648,18 @@ mod enabled {
     #[unsafe(no_mangle)]
     pub extern "C" fn nros_boot_report_note_heap_alloc_failed(size: usize) {
         note_heap_alloc_failed(size);
+    }
+
+    /// Record the domain the boot-config resolver settled on, and its rung.
+    ///
+    /// Issue 1550. LAST writer wins, like [`note_cpp_init_ret`]: an image may
+    /// resolve once per component or tier, and every resolution in one image
+    /// reads the same inputs.
+    pub fn note_domain(domain_id: u32, source: super::KnobSource) {
+        NROS_BOOT_REPORT.domain_id.store(
+            (domain_id & 0xFF) | ((source as u32) << 8),
+            Ordering::Relaxed,
+        );
     }
 
     /// Record `nros_cpp_init`'s return code.
@@ -767,6 +822,9 @@ mod disabled {
     pub fn note_cpp_init_ret(_ret: i32) {}
 
     #[inline(always)]
+    pub fn note_domain(_domain_id: u32, _source: super::KnobSource) {}
+
+    #[inline(always)]
     pub fn note_error(_class: u32, _transport: u32, _ptr: u32, _len: u32) {}
 
     #[inline(always)]
@@ -804,18 +862,18 @@ mod disabled {
 mod tests {
     use super::*;
 
-    /// The reader decodes twenty-four u32s positionally, so the record must
+    /// The reader decodes twenty-five u32s positionally, so the record must
     /// be exactly that and nothing else -- no padding, no reordering.
     ///
     /// `size_of` on the TARGET, which is the half `check-boot-report-layout.py`
     /// cannot see: that gate compares two source files, and this compares the
     /// source against what the compiler actually laid out.
     #[test]
-    fn the_record_is_twenty_four_packed_u32s() {
-        assert_eq!(BootReport::struct_size(), 24 * 4);
+    fn the_record_is_twenty_five_packed_u32s() {
+        assert_eq!(BootReport::struct_size(), 25 * 4);
         assert_eq!(
             core::mem::size_of::<BootReport>(),
-            24 * core::mem::size_of::<u32>(),
+            25 * core::mem::size_of::<u32>(),
             "the record grew padding; the reader decodes positionally"
         );
         assert_eq!(core::mem::align_of::<BootReport>(), 4);
@@ -831,6 +889,18 @@ mod tests {
         assert_eq!(KnobSource::Derived as u32, 2);
         assert_eq!(KnobSource::Kconfig as u32, 3);
         assert_eq!(KnobSource::Environment as u32, 4);
+        assert_eq!(KnobSource::Snippet as u32, 5);
+        assert_eq!(KnobSource::CommandLine as u32, 6);
+    }
+
+    /// Issue 1550 -- the domain word packs the id in the low byte and its
+    /// rung above it, the layout `read-boot-report.py`'s `knob_word` decodes.
+    /// (The resolver's stamp is not asserted here: every test that resolves a
+    /// boot config writes the same static, so a read-back would race them.)
+    #[test]
+    fn the_domain_word_packs_the_id_and_its_rung() {
+        note_domain(42, KnobSource::Snippet);
+        assert_eq!(snapshot().domain_id, 42 | (5 << 8));
     }
 
     /// The magic is written LAST, so finding it means the rest is valid.

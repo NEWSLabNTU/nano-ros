@@ -186,7 +186,7 @@ declared-qos-registration:
         cargo test -p nros-node --lib "$_filter" 2>&1)" || _dqr_rc=$?
     [ "$_dqr_rc" -eq 0 ] || _dqr_without="cargo exited $_dqr_rc"$'\n'"$_dqr_without"
     case "$_dqr_without" in \
-        *"0 passed"*) ;; \
+        *"test result: ok. 0 passed;"*) ;; \
         *) echo "ERROR: the declared-image tests ran WITHOUT a declared table." >&2; \
            echo "       Their cfg is then always on, the steps above prove nothing" >&2; \
            echo "       about delivery, and this lane is a gate that cannot fail." >&2; \

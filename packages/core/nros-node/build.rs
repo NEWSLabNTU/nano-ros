@@ -1401,9 +1401,14 @@ fn knob_source_code(knob: &str) -> u32 {
         Some("derived") => 2,
         Some("kconfig") => 3,
         Some("environment") => 4,
+        // Issue 1550 -- the two Kconfig rungs a domain can come from besides
+        // a plain `.conf`, which the configure tells apart by where the
+        // fragment lives (`cmake/NanoRosDomainAgreement.cmake`).
+        Some("snippet") => 5,
+        Some("command-line") => 6,
         Some(other) => panic!(
             "NROS_KNOB_SOURCE_{knob}={other}: not a rung the boot record knows \
-             (default, derived, kconfig, environment). Add it to \
+             (default, derived, kconfig, environment, snippet, command-line). Add it to \
              `boot_report::KnobSource` and here together (issue 1549)."
         ),
     }
@@ -1424,10 +1429,17 @@ fn boot_record_knobs() -> String {
         ),
     };
     let lq = lq_value | (knob_source_code("NROS_RMW_LOCAL_QUERYABLE") << 8);
+    // Issue 1550 -- the DOMAIN's value is stamped at boot from what the
+    // resolver used; only its rung is a build fact.
+    let domain_source = knob_source_code("NROS_DOMAIN_ID");
     format!(
         "\n/// Issue 1549 -- `Z_FEATURE_LOCAL_QUERYABLE` for the boot record: bits \
          0..7 the value, bits 8..15 the `boot_report::KnobSource`.\n\
-         pub const BOOT_RMW_LOCAL_QUERYABLE: u32 = {lq};\n"
+         pub const BOOT_RMW_LOCAL_QUERYABLE: u32 = {lq};\n\
+         \n/// Issue 1550 -- the `boot_report::KnobSource` of the baked domain \
+         (which Kconfig fragment stated `CONFIG_NROS_DOMAIN_ID`), 0 when no \
+         configure recorded one.\n\
+         pub const BOOT_DOMAIN_SOURCE: u32 = {domain_source};\n"
     )
 }
 
