@@ -176,7 +176,8 @@ descriptor.
 * **Every service / action endpoint** — this issue's second piece. Unchanged:
   `open_subscription` still has no service sibling, and nothing reads a
   service row's `registration_path` yet (phase-454 W6.b's pricing is what
-  would). Left as the issue asked.
+  would). Left as the issue asked. **Its framing is corrected below
+  (2026-09-29); read that before filing the successor.**
 
 ### What this work UNCOVERED
 
@@ -209,3 +210,46 @@ gets its provenance, `sidecar_is_fresh` is false for ever, and the symptom is a
 C/C++ probe project that reconfigures and rebuilds on EVERY `nros sync` with
 nothing said. A slow, invisible cost rather than an error, which is the kind
 nobody files.
+
+## Correction — piece 2 was filed as an observation gap and it is not one (2026-09-29)
+
+This issue grouped **service / action endpoints** with the three declarative
+populations as a fourth thing nothing OBSERVED, and told the successor to build
+what `open_subscription` has: *"a service server's request buffer is the same
+question and has no equivalent observation site."*
+
+That aims the next person at building an observation channel. Measured against
+the tree on 2026-09-29, it is the wrong job. The in-place capability has no
+service-side existence **at any layer**, so a service row's answer is not
+unobserved — it is determinate:
+
+| layer | subscription | service |
+| --- | --- | --- |
+| executor | `Executor::open_subscription` calls `handle.supports_process_in_place()` (`spin.rs:5569`) — `git grep 'supports_process_in_place()'` finds this as the ONLY call site in the tree | nothing: none of the eleven `register_service*` / `register_service_client*` entry points consults it |
+| request struct | `SubscriptionRequest::in_place_capable`, stated at each entry point | there is no `ServiceRequest` struct and no service-side field |
+| C ABI | `rmw_vtable.h` carries `process_raw_in_place` and the capability probe, documented as *"does this SUBSCRIPTION support process_raw_in_place()"*, consulted *"once at subscription registration"* | no service-side slot of either kind |
+
+There is exactly ONE shape a service request can take today — buffered — and it
+is a property of the ABI, readable from the source. It is not a property of
+eleven differing call sites that only a live registration can tell apart, which
+is the whole reason the subscription answer had to be observed.
+
+**So the successor's job is to STATE it, and to gate the PREMISE.** Let the
+composer answer a service row's `registration_path` from the fact that no
+service in-place path exists, rather than falling to `None` and refusing. What
+needs guarding is not the value but the claim underneath it: a gate asserting
+that `supports_process_in_place` still has exactly one call site and that the
+vtable still has no service-side in-place slot, so the statement fails loudly
+the day a service in-place path is added instead of becoming a quiet lie.
+
+**Both directions are free today, which is why this is a wording fix and not a
+reopening.** `registration_path` on a service row has no consumer at all:
+`nros-node`'s `build.rs` prices it through
+`row_slot_bytes(row: &SubEndpoint, ...)`, which is subscription-only. The
+refusal and a stated `buffered` move zero bytes, and phase-454 W6.b's pricing
+is still the first thing that would read either.
+
+Filed as a correction rather than as an edit to the analysis above, because the
+analysis is the record of what was believed when the work was done. What
+changes is the instruction: the successor states a determinate fact and gates
+its premise — it does not build a channel to observe a constant.
