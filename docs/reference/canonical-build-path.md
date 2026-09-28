@@ -14,6 +14,7 @@ Where it disagrees with an RFC, the RFC wins and this file is the bug.
 ```
 python3 scripts/nros-build-wiring.py          # roads, scripts, knob sources, readers
 python3 scripts/nros-build-wiring.py --roads  # just the road table
+python3 scripts/nros-build-wiring.py --scripts  # the build.rs census, by ROLE
 ```
 
 That is deliberate. A hand-authored census is the failure mode this repository
@@ -139,6 +140,34 @@ CONFIG_NROS_SUBSCRIBER_RING_DEPTH=7
 ```
 
 That is how issue 1490 was found and how its fix was accepted (`4` → `7`).
+
+## Who reads a carrier: the build scripts
+
+A carrier delivers to a **build script**, and there are 66 of them. What each is
+FOR is a ROLE, printed by `--scripts`; phase-471 replaced a set of capability
+LETTERS with those roles because a letter was a grep for a TOOL and a tool is
+not a role — `cc::Build` put three first-party test C files in the same class as
+the FreeRTOS kernel, and left `cyclonedds-sys` (≈200k lines of vendored C
+through `cmake::Config`) reading as "re-roots paths and nothing else".
+
+Two things in that output are load-bearing here and not obvious:
+
+* **`source_origin`** — where a C-compiling script's sources come from. Three
+  answers exist: a path-valued SDK variable, a workspace-relative path, and a
+  `links=` hand-off (`DEP_*`) from the crate that already resolved the tree.
+  **Only the first is exposed to issue 1280**, because only the first can be
+  inherited from another checkout. Prefer the `links` hand-off where one is
+  available: it also orders the two build scripts, which a shared environment
+  variable cannot do.
+* **the PATH RESOLUTION section** — issue 1280's BUILD-SCRIPT half, which no
+  gate covers (`check-inherited-checkout-paths` holds the shell half and names
+  no `build.rs`). It read 5 before issue 1527 and reads 0 now. A build script
+  that resolves one of these variables goes through `nros_build_paths`; a
+  private helper that takes the name as an argument is the shape that hid two
+  of the five, because no literal-matching probe can see inside it.
+
+The classes, the outlier verdicts and the migration order are
+[phase-471](../roadmap/phase-471-build-script-classes.md).
 
 ## Which RFC owns what
 
