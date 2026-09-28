@@ -292,9 +292,12 @@ include!(concat!(env!("OUT_DIR"), "/c_surface_anchor.rs"));
 include!(concat!(env!("OUT_DIR"), "/variant_symbol.rs"));
 
 pub use cdr::*;
+// issue 1551 — reached by nros-cpp's init entry points, which bundle this crate.
 pub use clock::*;
 pub use constants::*;
 pub use error::*;
+#[doc(hidden)]
+pub use log::ensure_default_sinks as __ensure_default_log_sinks;
 pub use parameter::*;
 pub use qos::*;
 pub use transport::*;

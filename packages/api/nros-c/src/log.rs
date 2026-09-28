@@ -225,7 +225,20 @@ unsafe fn borrowed_str<'a>(ptr: *const c_char) -> Option<&'a str> {
 use portable_atomic::{AtomicBool, Ordering};
 static DEFAULT_SINKS_INSTALLED: AtomicBool = AtomicBool::new(false);
 
-fn ensure_default_sinks() {
+/// Install the platform's default sink list once, unless something already did.
+///
+/// Called on the first C/C++ emit (below) AND, since issue 1551, from every
+/// C/C++ session-init entry point (`nros_support_init_rmw`, `nros_cpp_init_rmw`,
+/// `nros_cpp_init_multi`). Before that, a C or C++ image on an RTOS board had
+/// no sink until its OWN code logged something: every RUST-side record the
+/// runtime raised first — the RMW adapter's out-of-heap diagnostic, the
+/// subscription-pool exhaustion line, `ensure_node_liveliness`'s lost-token
+/// error — was HELD by `nros_log::early` and never printed. Measured on the
+/// Zephyr derived-tiers-cpp image: a publisher's create failed with
+/// `BAD_ALLOC` and its named error never reached the console, because no
+/// C/C++ board funnel installs a sink the way every Rust board funnel does
+/// (`nros_platform_cffi::log::init_default()`).
+pub fn ensure_default_sinks() {
     if DEFAULT_SINKS_INSTALLED
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .is_ok()

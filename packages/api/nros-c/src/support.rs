@@ -193,6 +193,9 @@ pub unsafe extern "C" fn nros_support_init_rmw(
     session_name: *const c_char,
     rmw: *const c_char,
 ) -> nros_ret_t {
+    // Issue 1551 — a sink before the first Rust-side record, not after the
+    // first C one (see `log::ensure_default_sinks`).
+    crate::log::ensure_default_sinks();
     if support.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
