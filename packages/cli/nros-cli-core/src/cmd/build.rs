@@ -779,7 +779,11 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                                 .collect(),
                             // The workspace's own language: the generated TU has
                             // to compile against what it links.
-                            lang: if has_cpp { "cpp" } else { "c" }.to_string(),
+                            lang: if has_cpp {
+                                nros_lang::Language::Cpp
+                            } else {
+                                nros_lang::Language::C
+                            },
                             // The SAME candidate search the Rust entry uses:
                             // DEPLOY is what the macro looks up, and an image is
                             // not always named after a board.

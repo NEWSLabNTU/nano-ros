@@ -46,6 +46,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use nros_lang::Language;
+
 use super::discover::Discovered;
 
 /// The `nano_ros_add_executable(...)` call a generated root emits (W4.b).
@@ -67,8 +69,10 @@ pub struct CmakeEntry {
     pub launch: String,
     /// `LAUNCH_ARGS k=v` — how an image selects a machine.
     pub args: Vec<(String, String)>,
-    /// `LANG` — `c` or `cpp`, from the workspace's own packages.
-    pub lang: String,
+    /// `LANG` — from the workspace's own packages. phase-469: the enum; the
+    /// cmake token is rendered by [`Language::as_str`] at the one emit site
+    /// below, so the property's spelling has a single producer.
+    pub lang: Language,
     /// `DEPLOY` — the board token the macro resolves against.
     pub deploy: String,
     /// `PANIC` — RFC-0077 policy, when the image declares one.
@@ -370,7 +374,7 @@ pub fn render(
         for (k, v) in &e.args {
             out.push_str(&format!("    LAUNCH_ARGS {k}={v}\n"));
         }
-        out.push_str(&format!("    LANG    {}\n", e.lang));
+        out.push_str(&format!("    LANG    {}\n", e.lang.as_str()));
         if let Some(p) = &e.panic {
             out.push_str(&format!("    PANIC   {p}\n"));
         }
@@ -601,7 +605,7 @@ mod tests {
             name: "native_robot1_entry".to_string(),
             launch: "multihost.launch.xml".to_string(),
             args: vec![("host".to_string(), "robot1".to_string())],
-            lang: "c".to_string(),
+            lang: Language::C,
             deploy: "native".to_string(),
             panic: None,
         }];
@@ -659,7 +663,7 @@ mod tests {
                 name: format!("native_{host}_entry"),
                 launch: "multihost.launch.xml".to_string(),
                 args: vec![("host".to_string(), (*host).to_string())],
-                lang: "c".to_string(),
+                lang: Language::C,
                 deploy: "native".to_string(),
                 panic: None,
             })
