@@ -550,7 +550,9 @@ function(nros_derive_entity_inventory_knobs)
         message(FATAL_ERROR
             "nros: the entity declaration in this image is not readable.\n"
             "  ${_err}\n"
-            "  Fix the `ENTITIES` argument of the named nano_ros_node_register().")
+            "  Fix the declaration the named component makes: a bringup states it in\n"
+            "  `<bringup>/launch/<stem>.contract.yaml`; a standalone leaf states it in\n"
+            "  its own `system.toml` `[[component]] entities` (RFC-0098 D8).")
     endif()
 
     if(NOT EXISTS "${_output}")
