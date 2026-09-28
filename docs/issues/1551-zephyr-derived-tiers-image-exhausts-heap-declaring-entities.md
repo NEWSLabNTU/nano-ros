@@ -338,3 +338,232 @@ but it would still be a crash on a path whose C caller expects a return code.
 - A failed allocation on an entity-creation path returns an error code to the
   C/C++ caller. Negative control: `CONFIG_NROS_ZEPHYR_HEAP_SIZE` too small gives
   a reported error, not SIGSEGV.
+
+## Resolution — defect 2 only (2026-09-29)
+
+**Defect 1 (sizing) is being fixed separately, so this issue stays `open`.**
+What follows closes defect 2. An allocation failure on an entity-creation
+path now returns `BAD_ALLOC` and prints a named log line. It no longer ends
+in a stack-overflow SIGSEGV.
+
+### The image changed after filing, so the reproduction forces the failure
+
+On `main` at 5519d5caf, the default `derived-tiers-cpp` image **boots all four
+tiers** at 64 KiB. Its measured heap peak is 28,352 bytes of 66,048, so the
+executor storage this issue priced no longer comes from this heap.
+
+The reproduction therefore shrinks the heap in a LOCAL fragment:
+`CONFIG_NROS_ZEPHYR_HEAP_SIZE=13312`, passed as `EXTRA_CONF_FILE` and never
+committed. The value comes from a gdb trace of every `nros_platform_alloc` on
+the default image:
+
+- The first `Box<ZenohPublisher>` (472 bytes) is allocation #120.
+- 13,664 bytes are in use just before it.
+- At 13,824 bytes of capacity, it is the first Rust allocation to fail.
+
+Setup: Zephyr 3.7, native_sim/64, `rmw_zenohd` on `tcp/127.0.0.1:7447`,
+`zephyr.exe --seed=1551 --stop_at=8`.
+
+**Before** (the adapter as it is on `main`), verbatim. Each `HEAP EXHAUSTED`
+line is followed by its `addr2line` hint, elided here:
+
+```
+*** Booting Zephyr OS build v3.7.0 ***
+nros: HEAP EXHAUSTED: request 320 bytes, arena 13824 bytes, caller 0x4264d5
+nros: HEAP EXHAUSTED: request 320 bytes, arena 13824 bytes, caller 0x4264d5
+nros: HEAP EXHAUSTED: request 320 bytes, arena 13824 bytes, caller 0x4264d5
+nros: HEAP EXHAUSTED: request 472 bytes, arena 13824 bytes, caller 0x4b1987
+timeout: the monitored command dumped core
+exit=139
+```
+
+Under gdb the stack is 104,775 frames deep. Read from the fault outwards:
+
+- `zvfs_write(fd=1, sz=21)`, repeated
+- `std::sys::stdio::unix::Stderr::write`
+- `std::alloc::default_alloc_error_hook` (`rt.rs:44`)
+- `handle_alloc_error`
+- `Box::<ZenohPublisher>::new`
+- `create_publisher_trampoline` (`rust_adapter.rs:838`)
+- `nros_cpp_publisher_create`
+- `MrmEmergencyStopOperator`
+- `__nros_entry_setup`
+
+This is the shape the issue recorded. The only difference is that it now
+happens on the boot thread instead of tier 1.
+
+**After**, with the same image and the same fragment:
+
+```
+*** Booting Zephyr OS build v3.7.0 ***
+nros: HEAP EXHAUSTED: request 320 bytes, arena 13824 bytes, caller 0x426655
+nros: HEAP EXHAUSTED: request 320 bytes, arena 13824 bytes, caller 0x426655
+nros: HEAP EXHAUSTED: request 320 bytes, arena 13824 bytes, caller 0x426655
+nros: HEAP EXHAUSTED: request 472 bytes, arena 13824 bytes, caller 0x44b720
+[00:00:00.050,001] <err> nros: nros: [    0.050001] heap exhausted: could not allocate 472 bytes for a publisher handle; the publisher is NOT created (NROS_RMW_RET_BAD_ALLOC). Raise the platform heap (Zephyr: CONFIG_NROS_ZEPHYR_HEAP_SIZE)
+
+Stopped at 8.001s
+exit=0
+```
+
+The sequence after the failure:
+
+1. The publisher create returns `BAD_ALLOC`, which maps to `NROS_CPP_RET_FULL`.
+2. The component reports not-ok, so `__nros_entry_setup` returns non-zero.
+3. `run_components` shuts the session down (gdb shows `nros_cpp_fini` called
+   from `nros::shutdown`).
+
+The image does not run, and it says why.
+
+**Negative direction.** The same build dir, reconfigured back to the default
+heap (65,536), boots all four tiers:
+
+- 632–638 tick lines over 8 simulated seconds: 237 each from the two 30 Hz
+  tiers and 79 each from the two 10 Hz tiers.
+- No `HEAP EXHAUSTED` line.
+- `Stopped at 8.000s` and exit 0 in 2 of 3 runs.
+
+The third run hit the harness's 60 s wall-clock timeout at tick 236 of about
+238, with host load around 35. It was slow, not a crash: no signal and no
+error line.
+
+One visible difference remains. Three `nros_log` lines that the pre-fix image
+never printed now reach the console: `arena over-provisioned …` and two
+`timer period 33000 us …` warnings. That is fix 4 below working, not a
+regression.
+
+### What was fixed
+
+1. **One way to spell a fallible allocation.**
+   `nros_rmw::fallible::{try_box, try_zeroed_bytes}` (`alloc` feature).
+   `try_box` is the stable form of the unstable `Box::try_new`. It allocates
+   `Layout::new::<T>()` through the global allocator and, on NULL, hands the
+   value BACK so the caller can dispose of it.
+2. **The five adapter sites.** Session, publisher, subscription, service and
+   client in `rust_adapter.rs` now go through one `box_handle`. It logs the
+   named error through `nros_log` and returns `NROS_RMW_RET_BAD_ALLOC`.
+   - The backend's handle is dropped, which undeclares the entity.
+   - A session that cannot be boxed is `close`d first, as
+     `destroy_session_trampoline` does.
+3. **The same class in `nros-node`.** These allocations now return
+   `TransportError::BadAlloc` from functions that already returned `Result`:
+   - the three event-closure boxes (`register_pub_event`,
+     `register_sub_event_count`, `register_sub_event_liveliness`);
+   - the 2 × 4 KiB parameter-service buffer pair
+     (`ParamServiceBuffers::try_with_capacity`), the largest Rust allocation
+     on the creation path.
+4. **The log line needed a sink.** The first fixed build returned `BAD_ALLOC`
+   and printed nothing.
+   - Every Rust board funnel installs a `nros_log` sink by calling
+     `nros_platform_cffi::log::init_default()`.
+   - No C or C++ board funnel does: not `zephyr_run_tiers.c`, not
+     `nros_rtos_run_components.c`, not `ZephyrBoard::run_components`.
+   - So `nros_log::early` held every Rust-side record forever, until the
+     image's own code made its first C log call.
+
+   This also answers the issue's open question about the missing
+   `ensure_node_liveliness` line. Deferred `CONFIG_LOG` was not the cause:
+   the record was never dispatched.
+
+   `nros_support_init_rmw`, `nros_cpp_init_rmw` and `nros_cpp_init_multi` now
+   call nros-c's existing idempotent `ensure_default_sinks()` first. The sink
+   is up before the runtime can raise anything.
+
+### Can the OOM handler itself be made safe? Not on this toolchain (measured)
+
+All three levers are nightly-only on the pinned stable rustc 1.98.1. Each is
+refused with E0658 or "the option `Z` is only accepted on the nightly
+compiler":
+
+- `std::alloc::set_alloc_error_hook` (feature `alloc_error_hook`);
+- `#[alloc_error_handler]` (feature `alloc_error_handler`);
+- `-Zoom=panic`, which would route OOM through the stable `panic::set_hook`.
+
+The global allocator cannot do it on the caller's behalf either.
+`GlobalAlloc::alloc` cannot tell `Box::new` from `try_reserve`, so halting on
+NULL there would turn every fallible allocation into a halt too. That is
+exactly what `CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL` already offers, as an
+image-wide policy (issue 1425).
+
+So the fix is at the call site. The handler stays unsafe for every allocation
+this sweep did not reach.
+
+**Read from source, not built.** `stdinout_write_vmeth` recurses only under
+`CONFIG_BOARD_NATIVE_POSIX`, which native_sim sets through
+`NATIVE_SIM_NATIVE_POSIX_COMPAT` (default `y`). With that option off, the
+picolibc arm returns `0`: a libstd stderr write becomes a silent no-op and the
+abort runs (SIGABRT, still no message).
+
+That would remove the stack overflow for the whole 0589 class, but it silences
+the message instead of printing it. Flipping a board-compat Kconfig for every
+native_sim image also deserves its own issue.
+
+### Reach of the sweep, and what was excluded
+
+The rule: **an allocation on an entity-creation path, whose enclosing function
+ALREADY has an error return,** is made fallible.
+
+Candidates came from
+`git grep -nE 'Box::new|Arc::new|vec!\[|Vec::with_capacity|format!|\.to_vec\(\)'`
+over `packages/rmw`, `packages/core/nros-node/src` and `packages/api/*/src`.
+The zenoh backend makes no Rust allocations of its own on this path: its
+handles are the adapter's boxes, and zenoh-pico's C allocations were already
+checked.
+
+Excluded, each deliberately:
+
+- **Executor assembly.** `spin.rs` `assemble` allocates the
+  `halt_flag`/`wake_flag` `Arc::new`s and `NodeWake::new`'s `vec!`: 240 bytes,
+  once per executor.
+  - `assemble` returns `Self`.
+  - `portable_atomic_util::Arc` has no fallible constructor: `Arc::try_new` is
+    unstable, and `Arc::from(Box)` re-allocates infallibly.
+  - Making it fallible is an executor-API change.
+- **`ensure_parameter_store` / `new_param_state` / `leak_parameter_storage`.**
+  Infallible signatures, for the same reason.
+- **The Rust `nros::main!` road.** `node_runtime.rs`'s
+  `Arc::new(ComponentCell)`, `from_executor`'s `vec!` and
+  `__private_node_state_into_raw`: each is either an `Arc` or has no error
+  return to pass a failure through.
+- **Service-callback-time allocations.** The
+  `Box::new(Response::default())` calls in `parameter_services.rs` and
+  `lifecycle_services.rs` are not on the creation path. A failure there needs a
+  policy for what to reply, which is a different contract.
+- **`lending` borrow boxes** (`subscription.rs` in nros-c and nros-cpp).
+  They are per-message, and no shipped build enables `lending` (issue 0814).
+- **Host-only paths** (`NativeTierCtx`, metadata-mode `format!`). These never
+  run on an embedded image.
+- **`nros-log`.** It needs no exclusion: it has no `Vec` or `String` growth,
+  because it formats into a fixed `FormatBuffer`. That is why reporting an
+  exhausted heap does not itself need the heap.
+
+### Gate: declined
+
+The question a gate would have to answer is "does a C caller with an error
+return reach this allocation?". That is call-graph reachability, which a text
+scan cannot see.
+
+`Box::new` is also only one of at least six spellings (`vec!`, `Vec::push`,
+`String` growth, `format!`, `Arc::new`, `collect`). A grep gate would have to
+allowlist the hundreds of legitimate infallible allocations in tests, host
+tools and std-only code: an allowlist in disguise.
+
+The regression guard for the fixed sites is behavioural instead:
+`packages/rmw/cffi/tests/adapter_oom.rs` installs a global allocator that
+refuses one request size. It asserts that every create trampoline returns
+`BAD_ALLOC` and drops the backend's handle. It is mutation-tested: against the
+pre-fix adapter, the test binary dies with
+`memory allocation of 4091 bytes failed` and SIGABRT.
+
+### Still open under defect 2
+
+- Every excluded site above still reaches libstd's OOM hook. On native_sim
+  that is still the 0589 recursion.
+- `nros::detail::report_component_failure` does nothing on a freestanding
+  Zephyr C++ image:
+  - `NROS_ERROR` falls to the `((void)…)` arm of `NROS_LOG_SINK`;
+  - the `fprintf` arm needs `__STDC_HOSTED__`.
+
+  So the component-level "FAILED at …" line that the generated entry tries to
+  print never appears, and the adapter's line above is the only diagnostic.
+  This is not fixed here.
