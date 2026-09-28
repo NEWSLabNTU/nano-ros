@@ -328,6 +328,33 @@ static_assert(!has_send_request<::nros::Client<StubService>>::value,
               "the client and this object has no storage to send from");
 static_assert(has_send_request<::nros::PollClient<StubService>>::value,
               "phase-456 W9: the poll client is where send_request() went");
+
+// ...and the line the 2026-09-28 gap closure moved, asserted in both directions
+// for the same reason: `wait_for_service` / `service_is_ready` are DISCOVERY
+// reads, so they belong wherever `{executor, handle_id}` is, while
+// `send_request` above stays on the half that owns caller storage. A silent loss
+// of either would leave every other assertion in this file green.
+template <typename T, typename = void> struct has_wait_for_service : std::false_type {};
+template <typename T>
+struct has_wait_for_service<T, decltype(void(std::declval<T&>().wait_for_service(
+                                   static_cast<uint32_t>(1000))))> : std::true_type {};
+template <typename T, typename = void> struct has_service_is_ready : std::false_type {};
+template <typename T>
+struct has_service_is_ready<T, decltype(void(std::declval<const T&>().service_is_ready()))>
+    : std::true_type {};
+static_assert(has_wait_for_service<::nros::Client<StubService>>::value,
+              "2026-09-28: the dispatch client answers a BUDGETED wait_for_service -- the FFI "
+              "takes (executor, handle_id) now, so the gap phase-456 W9 ledgered is closed");
+static_assert(has_wait_for_service<::nros::ClientHandle<StubService>>::value,
+              "2026-09-28: and so does the handle a ported Client<S>::SharedPtr member names, "
+              "which is the object that could not ask at all between the split and the closure");
+static_assert(has_service_is_ready<::nros::Client<StubService>>::value,
+              "2026-09-28: the non-blocking probe came back with it");
+static_assert(has_service_is_ready<::nros::ClientHandle<StubService>>::value,
+              "2026-09-28: on the handle too -- neither needed a new member, only the arena arm");
+static_assert(sizeof(::nros::Client<StubService>::SharedPtr) == 2 * sizeof(void*),
+              "2026-09-28: and the handle is STILL two words -- the verbs were affordable "
+              "precisely because an arena index is their whole argument list");
 static_assert(std::is_same<::nros::Timer::SharedPtr, std::shared_ptr<::nros::Timer>>::value,
               "Timer::SharedPtr must be std::shared_ptr<Timer>");
 static_assert(std::is_same<rclcpp::Timer::SharedPtr, std::shared_ptr<rclcpp::Timer>>::value,

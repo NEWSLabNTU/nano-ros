@@ -222,6 +222,15 @@ class PortedServiceNode : public rclcpp::Node {
         future_client_ = this->create_client<AddTwoInts>("add_two_ints");
         cb_client_ = this->create_client<AddTwoInts>("add_two_ints", &on_add_two_ints_response);
 
+        // 2026-09-28 (the phase-456 W9 gap closure) — the two verbs upstream's
+        // own service tutorial opens with, written on the DISPATCH handle a
+        // ported member declaration produces. They were unreachable here between
+        // the split and the closure: the FFI took caller storage and this handle
+        // is `{executor, handle_id}`. The budget is ours (phase-417 stage 3);
+        // the argument-free form is refused in its own TU.
+        (void)cb_client_.wait_for_service(1000);
+        (void)cb_client_.service_is_ready();
+
         // With an explicit QoS, including the corrected named profiles.
         auto with_qos = this->create_service<AddTwoInts>("add_qos", rclcpp::ServicesQoS());
         (void)with_qos;

@@ -23,6 +23,7 @@
 #include "nros/client_handle.hpp"    // phase-456 W9 — what `Client<S>::SharedPtr` IS
 #include "nros/config.hpp"
 #include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
+#include "nros/log.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
 #include "nros/result.hpp"
 #include "nros/size_bound.hpp" // nros::detail::buffer_bounds<M>::tx — the request scratch bound
 
@@ -84,7 +85,8 @@ namespace rclcpp {
 /// `TYPE_HASH`, `SERIALIZED_SIZE_MAX`, `ffi_serialize()`, and
 /// `ffi_deserialize()`.
 ///
-/// THIS OBJECT IS BOOKKEEPING PLUS ONE VERB — phase-456 W9. The client, the
+/// THIS OBJECT IS BOOKKEEPING PLUS ITS VERBS — phase-456 W9, amended
+/// 2026-09-28. The client, the
 /// reply buffer, the handler and its context are all the arena's; W3 made the
 /// arena's trampoline context the user's HANDLER rather than `&out`, so after
 /// registration nothing of the caller's is referenced and this object is freely
@@ -98,13 +100,23 @@ namespace rclcpp {
 /// async_send_request needs nothing more. `service_name_` is the phase-444
 /// C++-side copy, because the runtime takes the name at create and drops it.
 ///
+/// THE SAME PAIR IS NOW THE WHOLE VERB SET. 2026-09-28 added @ref
+/// service_is_ready and @ref wait_for_service, which W9 had to leave off — and
+/// it added no member to do it: both FFI entry points took caller storage and
+/// now take `(storage, executor, handle_id)` beside it, so `{executor_,
+/// handle_id_}` answers three verbs rather than one. The object is still
+/// bookkeeping over an arena entry; what changed is how much of the arena an
+/// index can be asked about.
+///
 /// Measured (phase-456 W3, re-measured W9), across `examples/`, `tests/`,
-/// `book/` and `packages/`: a dispatch client has exactly ONE verb invoked on
+/// `book/` and `packages/`: a dispatch client has exactly ONE verb INVOKED on
 /// it, `async_send_request`, at one example site plus the move probe W3 added.
-/// That is why `Client<S>::SharedPtr` is a two-word `nros::ClientHandle<S>`
-/// carrying that verb — not the empty keep-alive `ServiceHandle<S>` is, and not
-/// an `Owned<Client<S>>`, because the arena owns the entity and the caller does
-/// not.
+/// That is why `Client<S>::SharedPtr` is a two-word `nros::ClientHandle<S>` — a
+/// handle with verbs, not the empty keep-alive `ServiceHandle<S>` is, and not an
+/// `Owned<Client<S>>`, because the arena owns the entity and the caller does
+/// not. The census says what ported source REACHES FOR today; it is not the
+/// argument for which verbs a registration can answer, which is why the two
+/// discovery reads landed on the handle as well.
 ///
 /// Usage:
 /// ```cpp
@@ -215,24 +227,95 @@ template <typename S> class Client {
     /// and friends), never the request echoed back — see
     /// @ref Publisher::get_actual_qos.
     ///
-    /// phase-456 W9 — BOTH HALVES ANSWER, and the client comes out the way the
-    /// SERVICE did rather than the way the subscription did.
-    /// `PollSubscription::get_actual_qos` had to be left off the dispatch
-    /// `Subscription<M>`, because a dispatch subscription holds only
-    /// `sched_handle_id_` and reaching the arena would have meant inventing a
-    /// signature that takes an executor (ledgered at
-    /// `cpp:Subscription::get_actual_qos`). A dispatch client does NOT have that
-    /// problem: issue 1437 already gave it `executor_` beside `handle_id_`, and
-    /// `nros_cpp_service_client_get_actual_qos` serves both roads — `storage`
-    /// for the owner, `(executor, handle_id)` for the arena. So the upstream
-    /// no-argument spelling is reachable here with no weakening, and no ledger
-    /// row is owed.
+    /// phase-456 W9 — BOTH HALVES ANSWER, and this accessor is the WORKED
+    /// EXAMPLE the two later closures copied. Issue 1437 gave a dispatch client
+    /// `executor_` beside `handle_id_`, and
+    /// `nros_cpp_service_client_get_actual_qos` serves both roads by
+    /// construction — `storage` for the owner, `(executor, handle_id)` for the
+    /// arena — so the upstream no-argument spelling was reachable here with no
+    /// weakening and no ledger row was ever owed.
+    ///
+    /// W9 had to leave `get_actual_qos` off the dispatch `Subscription<M>` for
+    /// want of exactly that: the type held only `sched_handle_id_`. Both ends of
+    /// that gap are closed now, each by taking this shape rather than by
+    /// changing a signature — the subscription carries its executor since
+    /// phase-467 (2026-09-25, its ledger row deleted), and this class's own
+    /// @ref service_is_ready / @ref wait_for_service since 2026-09-28.
     ::nros::QoS get_request_publisher_actual_qos() const { return actual_qos_half(true); }
 
     /// The QoS the backend GRANTED this client's RESPONSE endpoint — the
     /// subscription that receives replies. Issue 1437; see
     /// @ref get_request_publisher_actual_qos.
     ::nros::QoS get_response_subscription_actual_qos() const { return actual_qos_half(false); }
+
+    /// Is a matching service server visible? — `rclcpp::ClientBase::
+    /// service_is_ready`, no arguments, as upstream's is.
+    ///
+    /// * `ok(true)`  — at least one matching server is currently visible.
+    /// * `ok(false)` — none discovered yet.
+    /// * `error(Unsupported)` — the backend cannot answer (XRCE has no
+    ///   participant enumeration); fall back to a timed @ref wait_for_service or
+    ///   assume reachability.
+    /// * `error(<code>)` — the probe itself failed.
+    ///
+    /// Never spins the executor, so it is safe inside a callback. The tri-state
+    /// is the divergence from upstream's bare `bool` and is ledgered at
+    /// `cpp:Client::service_is_ready`: RFC-0018 forbids exceptions, so a failed
+    /// probe and a successful "no" must be distinguishable by return value.
+    ///
+    /// **This is the gap phase-456 W9 RECORDED, closed 2026-09-28.** The split
+    /// left this verb on the future-style half alone, because
+    /// `nros_cpp_service_client_server_available` read the `RmwServiceClient` in
+    /// CALLER storage and a dispatch client has none — so a porter holding a
+    /// `Client<S>::SharedPtr` could not ask at all. The fix is the FFI's, not
+    /// the signature's: that entry point now takes `(storage, executor,
+    /// handle_id)`, the shape `nros_cpp_service_client_get_actual_qos` has had
+    /// since issue 1437, and this class already holds `{executor_, handle_id_}`.
+    /// Inventing an `Executor&` parameter here was refused — a method that
+    /// exists to adopt the upstream spelling cannot close a gap by leaving it.
+    ::nros::ResultOf<bool> service_is_ready() const {
+        if (!initialized_) return ::nros::ResultOf<bool>::error(::nros::ErrorCode::NotInitialized);
+        int out = -1;
+        nros_cpp_ret_t ret =
+            nros_cpp_service_client_server_available(nullptr, executor_, handle_id_, &out);
+        // A failed CALL and a backend that cannot ANSWER are different facts;
+        // the retired `int` form reported both as `-1`. Keep them apart.
+        if (ret != 0) return ::nros::ResultOf<bool>::error(static_cast<::nros::ErrorCode>(ret));
+        if (out < 0) return ::nros::ResultOf<bool>::error(::nros::ErrorCode::Unsupported);
+        return ::nros::ResultOf<bool>::ok(out != 0);
+    }
+
+    /// Block until a matching service server is discoverable —
+    /// `rclcpp::ClientBase::wait_for_service`.
+    ///
+    /// Spins the executor cooperatively while probing, so do NOT call it from
+    /// inside a callback; use @ref service_is_ready there. Returns ok when the
+    /// server is visible, `Timeout` when the budget elapses.
+    ///
+    /// **The budget is REQUIRED** — phase-417 stage 3, and the reason is
+    /// RFC-0021 rather than convenience: this call drives a single-threaded
+    /// executor, so a wait that never returns starves every other entity, and
+    /// `uint32_t` has no value to port upstream's `-1` to. The no-argument form
+    /// is a compile error carrying `NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT`, exactly
+    /// as it is on `nros::PollClient<S>` and `rclcpp_action::Client<A>` — one
+    /// concept, now three sites, each with its own expected-failure TU.
+    ///
+    /// Closed 2026-09-28 with @ref service_is_ready; that method's note carries
+    /// why the remedy was the FFI's argument list and not this one.
+    Result wait_for_service(uint32_t timeout_ms) {
+        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        return Result(
+            nros_cpp_service_client_wait_for_service(nullptr, executor_, handle_id_, timeout_ms));
+    }
+
+    /// **REFUSED** — `wait_for_service()` with no budget. phase-417 stage 3.
+    ///
+    /// A member template rather than `= delete` for the C++14 reason given on
+    /// `Executor::spin_once()`: a deleted function carries no message.
+    template <typename T = void> Result wait_for_service() {
+        static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT);
+        return Result(::nros::ErrorCode::Unsupported);
+    }
 
     /// Executor arena slot for the registration; `SIZE_MAX` until registered.
     size_t handle_id() const { return handle_id_; }

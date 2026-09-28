@@ -5,7 +5,8 @@
  * @file client_handle.hpp
  * @ingroup grp_service
  * @brief `nros::ClientHandle<S>` — what `Client<S>::SharedPtr` is: a handle
- *        with ONE verb.
+ *        over an arena entry, carrying the verbs `{executor, handle_id}`
+ *        answers.
  */
 
 #ifndef NROS_CPP_CLIENT_HANDLE_HPP
@@ -14,6 +15,7 @@
 #include <cstdint>
 #include <cstddef>
 
+#include "nros/log.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
 #include "nros/result.hpp"
 #include "nros/size_bound.hpp" // nros::detail::buffer_bounds<M>::tx — the request scratch bound
 
@@ -31,7 +33,8 @@ namespace nros {
 
 /// A registered dispatch service client — phase-456 W9.
 ///
-/// WHY THIS ONE IS NOT `ServiceHandle`'s TWIN, AND THE DIFFERENCE IS ONE VERB
+/// WHY THIS ONE IS NOT `ServiceHandle`'s TWIN, AND THE DIFFERENCE IS THAT IT
+/// HAS VERBS AT ALL
 ///
 /// `SubscriptionHandle<M>` and `ServiceHandle<S>` are two words with no method,
 /// because phase-456 W2 and W3 measured that the ported corpus invokes NOTHING
@@ -40,14 +43,21 @@ namespace nros {
 /// DIFFERENT answer — `async_send_request`, at one site, and nothing else. So a
 /// bare keep-alive would be too little here and `Owned<Client<S>>` too much (the
 /// arena owns the entity, not the caller). This is the two-word handle with that
-/// one verb on it.
+/// verb on it.
 ///
 /// Re-measured on this base (phase-456 W9, the same four trees: `examples/`,
-/// `tests/`, `book/`, `packages/`): still ONE verb, still one site —
+/// `tests/`, `book/`, `packages/`): still ONE verb INVOKED, still one site —
 /// `examples/native/cpp/service-client-callback/src/main.cpp:95`, plus
 /// `tests/compile/bind_service.cpp:139`, which W3 added to pin that a MOVED
 /// registered client can still send. Nothing else is invoked on a dispatch
 /// client anywhere.
+///
+/// 2026-09-28 added the two DISCOVERY reads — @ref service_is_ready and @ref
+/// wait_for_service — and nothing about that census changed: no in-tree site
+/// calls them on a handle yet. They are here because a ported node reaches for
+/// them (upstream's own service tutorial opens with `wait_for_service`), and
+/// because they now cost nothing to offer: both FFI entry points take
+/// `(executor, handle_id)`, so the handle stays TWO WORDS and gains no member.
 ///
 /// WHAT IT IS, AND WHY IT IS NOT A POINTER TO A `Client<S>`
 ///
@@ -72,11 +82,21 @@ namespace nros {
 /// type. Measured: no in-tree site writes `->` on a dispatch client handle, so
 /// nothing pays for this today.
 ///
-/// No `send_request` / `call` / `call_polling` / `wait_for_service` /
-/// `service_is_ready`. Those are the FUTURE-style client's, they read an
-/// `RmwServiceClient` in CALLER storage, and a dispatch client has none — that
-/// road is `nros::PollClient<S>` (`nros/polling_client.hpp`). Offering them here
-/// is the defect the W2b/W5 splits removed one entity at a time.
+/// No `send_request` / `call` / `call_polling`, nor their `_sized` forms. Those
+/// read an `RmwServiceClient` AND a reply buffer in CALLER storage, and a
+/// dispatch client has neither — that road is `nros::PollClient<S>`
+/// (`nros/polling_client.hpp`). Offering them here is the defect the W2b/W5
+/// splits removed one entity at a time.
+///
+/// `wait_for_service` and `service_is_ready` WERE on that list, and 2026-09-28
+/// took them off it — the line to draw is what a verb READS, not which half
+/// declared it. Both ask the backend about DISCOVERY and touch nothing of the
+/// caller's, so once their FFI entry points gained the `(executor, handle_id)`
+/// arm (the shape `nros_cpp_service_client_get_actual_qos` has had since issue
+/// 1437) they need exactly the two words this handle already carries. Until then
+/// a porter holding a `Client<S>::SharedPtr` could not wait for a server at all,
+/// which is the gap W9 ledgered at `cpp:Client::wait_for_service` rather than
+/// papering over with an invented `Executor&` parameter.
 ///
 /// No unregister, no `reset()`-that-unregisters. The executor arena has no
 /// removal path — the registration lives as long as the executor does.
@@ -102,7 +122,7 @@ template <typename S> class ClientHandle {
     /// from a successful `create_client` never is.
     explicit constexpr operator bool() const { return executor_ != nullptr; }
 
-    /// THE ONE VERB — send a request; the reply reaches the handler the
+    /// THE SEND VERB — send a request; the reply reaches the handler the
     /// registration carries, during `spin_once`.
     ///
     /// Same body as @ref rclcpp::Client::async_send_request, on the same two
@@ -121,6 +141,45 @@ template <typename S> class ClientHandle {
         }
         return Result(
             nros_cpp_service_client_send_on_handle(executor_, handle_id_, req_buf, req_len));
+    }
+
+    /// Is a matching service server visible? — `rclcpp::ClientBase::
+    /// service_is_ready`, no arguments, as upstream's is. Same body and same
+    /// tri-state as @ref rclcpp::Client::service_is_ready, on the same two
+    /// words; see that method for what the three answers mean and why the
+    /// result is not a bare `bool`.
+    ///
+    /// `NotInitialized` on an empty handle.
+    ::nros::ResultOf<bool> service_is_ready() const {
+        if (executor_ == nullptr) {
+            return ::nros::ResultOf<bool>::error(::nros::ErrorCode::NotInitialized);
+        }
+        int out = -1;
+        nros_cpp_ret_t ret =
+            nros_cpp_service_client_server_available(nullptr, executor_, handle_id_, &out);
+        if (ret != 0) return ::nros::ResultOf<bool>::error(static_cast<::nros::ErrorCode>(ret));
+        if (out < 0) return ::nros::ResultOf<bool>::error(::nros::ErrorCode::Unsupported);
+        return ::nros::ResultOf<bool>::ok(out != 0);
+    }
+
+    /// Block until a matching service server is discoverable —
+    /// `rclcpp::ClientBase::wait_for_service`. Spins the executor cooperatively,
+    /// so not from inside a callback; use @ref service_is_ready there.
+    ///
+    /// The budget is REQUIRED, and the no-argument form below says why.
+    Result wait_for_service(uint32_t timeout_ms) const {
+        if (executor_ == nullptr) return Result(::nros::ErrorCode::NotInitialized);
+        return Result(
+            nros_cpp_service_client_wait_for_service(nullptr, executor_, handle_id_, timeout_ms));
+    }
+
+    /// **REFUSED** — `wait_for_service()` with no budget. phase-417 stage 3,
+    /// reaching this type 2026-09-28 with the verb itself: the refusal is the
+    /// other half of adopting the name, since a ported argument-free call is
+    /// exactly what upstream's tutorials write.
+    template <typename T = void> Result wait_for_service() const {
+        static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT);
+        return Result(::nros::ErrorCode::Unsupported);
     }
 
     /// The executor arena slot this registration occupies. Present for

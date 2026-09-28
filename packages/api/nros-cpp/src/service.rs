@@ -749,6 +749,36 @@ pub unsafe extern "C" fn nros_cpp_service_client_take_response(
     }
 }
 
+/// Resolve a service client from EITHER road — phase-456 W9 follow-up
+/// (2026-09-28), the shape `nros_cpp_service_client_get_actual_qos` has had
+/// since issue 1437.
+///
+/// `storage` non-NULL is the future-style client that OWNS its
+/// `RmwServiceClient`; otherwise `(executor, handle_id)` names the arena entry
+/// a dispatch client registered. Returns `None` when neither road resolves,
+/// which every caller reports as `NROS_CPP_RET_INVALID_ARGUMENT`.
+///
+/// For the SINGLE-SHOT probe only. `nros_cpp_service_client_wait_for_service`
+/// asks the same question in a loop and spells the branch itself, because it
+/// already holds the `CppContext` mutably for `spin_once` and must re-resolve
+/// the arena reference after every spin rather than hold one across it.
+///
+/// # Safety
+/// `storage`, when non-NULL, must point at a live `RmwServiceClient`;
+/// `executor`, when read, must be a valid `CppContext`. The returned reference
+/// borrows the executor's arena and must not outlive a `spin_once` on it.
+unsafe fn client_either_road<'a>(
+    storage: *const c_void,
+    executor: *mut c_void,
+    handle_id: usize,
+) -> Option<&'a nros::internals::RmwServiceClient> {
+    if !storage.is_null() {
+        return Some(unsafe { &*(storage as *const nros::internals::RmwServiceClient) });
+    }
+    let ctx = unsafe { cpp_ctx_checked(executor) }?;
+    unsafe { ctx.executor.service_client_handle(handle_id) }
+}
+
 /// Phase 124.C.3 — graph-aware "is the matching server up?" probe.
 ///
 /// Writes `1` to `*out` if the backend has discovered ≥ 1 matching
@@ -756,20 +786,33 @@ pub unsafe extern "C" fn nros_cpp_service_client_take_response(
 /// (e.g. XRCE). Never spins the executor — callers that want a
 /// blocking wait should use the higher-level Promise / Future API.
 ///
+/// **Two roads, one entry point** — phase-456 W9 follow-up (2026-09-28).
+/// `storage` non-NULL is the future-style client that owns its
+/// `RmwServiceClient`; otherwise `(executor, handle_id)` names the arena entry,
+/// which is what a DISPATCH client holds and therefore what a ported `rclcpp`
+/// node asks on. Serving only the first left `rclcpp::Client<S>` and
+/// `Client<S>::SharedPtr` unable to answer at all.
+///
 /// # Safety
-/// `storage` must be a valid initialized service client. `out` must
-/// be a writable `i32` pointer.
+/// Exactly one of `storage` / `executor` identifies a live service client.
+/// `out` must be a writable `i32` pointer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_service_client_server_available(
     storage: *mut c_void,
+    executor: *mut c_void,
+    handle_id: usize,
     out: *mut i32,
 ) -> nros_cpp_ret_t {
     use nros_node::ClientTrait;
 
-    if storage.is_null() || out.is_null() {
+    if out.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let client = unsafe { &*(storage as *const nros::internals::RmwServiceClient) };
+    let Some(client) =
+        (unsafe { client_either_road(storage as *const c_void, executor, handle_id) })
+    else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     match client.service_is_ready() {
         Ok(true) => {
             unsafe { *out = 1 };
@@ -802,37 +845,56 @@ pub unsafe extern "C" fn nros_cpp_service_client_server_available(
 /// of the discovery state the backend maintains, nothing is latched, and a
 /// backend that cannot answer waits out the budget (phase-428 W13, issue 1087).
 ///
+/// **Two roads, one entry point** — phase-456 W9 follow-up (2026-09-28), the
+/// same split `nros_cpp_service_client_server_available` above takes. `storage`
+/// non-NULL is the future-style client that owns its `RmwServiceClient`;
+/// otherwise `(executor_handle, handle_id)` names the arena entry a dispatch
+/// client registered. `executor_handle` is required on BOTH roads — the wait
+/// drives the executor cooperatively, so it is not merely an identity here.
+///
+/// The arena reference is re-resolved every iteration rather than held across
+/// the spin: it borrows the executor's arena, and `spin_once` takes the
+/// executor mutably.
+///
 /// # Returns
 /// * `NROS_CPP_RET_OK` — server visible.
 /// * `NROS_CPP_RET_TIMEOUT` — budget elapsed without seeing a token.
-/// * `NROS_CPP_RET_INVALID_ARGUMENT` — null storage / executor.
+/// * `NROS_CPP_RET_INVALID_ARGUMENT` — null executor, or neither road resolves.
 /// * `NROS_CPP_RET_TRANSPORT_ERROR` — transport-level failure.
 ///
 /// # Safety
-/// `storage` must be a valid initialized future-style service client;
-/// `executor_handle` a valid `CppContext`.
+/// Exactly one of `storage` / `handle_id` identifies a live service client;
+/// `executor_handle` must be a valid `CppContext`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
     storage: *mut c_void,
     executor_handle: *mut c_void,
+    handle_id: usize,
     timeout_ms: u32,
 ) -> nros_cpp_ret_t {
     use nros_rmw::ClientTrait as _;
 
-    if storage.is_null() {
-        return NROS_CPP_RET_INVALID_ARGUMENT;
-    }
     let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let client = unsafe { &mut *(storage as *mut nros::internals::RmwServiceClient) };
 
     // phase-428 W13 — spin, then ask again. `Ok(true)` ONLY (issue 1008):
     // `Err` (the backend cannot answer) and `Ok(false)` both keep waiting.
     const SPIN_MS: u64 = 10;
     let deadline_ns = crate::nros_cpp_time_ns() + (timeout_ms as u64) * 1_000_000;
     loop {
-        if matches!(client.service_is_ready(), Ok(true)) {
+        let ready = {
+            let client = if !storage.is_null() {
+                unsafe { &*(storage as *const nros::internals::RmwServiceClient) }
+            } else {
+                match unsafe { ctx.executor.service_client_handle(handle_id) } {
+                    Some(handle) => handle,
+                    None => return NROS_CPP_RET_INVALID_ARGUMENT,
+                }
+            };
+            matches!(client.service_is_ready(), Ok(true))
+        };
+        if ready {
             return NROS_CPP_RET_OK;
         }
         if crate::nros_cpp_time_ns() >= deadline_ns {

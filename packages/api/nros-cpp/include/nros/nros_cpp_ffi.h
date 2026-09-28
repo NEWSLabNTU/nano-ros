@@ -2415,11 +2415,21 @@ nros_cpp_ret_t nros_cpp_service_client_take_response(void *storage,
  * (e.g. XRCE). Never spins the executor — callers that want a
  * blocking wait should use the higher-level Promise / Future API.
  *
+ * **Two roads, one entry point** — phase-456 W9 follow-up (2026-09-28).
+ * `storage` non-NULL is the future-style client that owns its
+ * `RmwServiceClient`; otherwise `(executor, handle_id)` names the arena entry,
+ * which is what a DISPATCH client holds and therefore what a ported `rclcpp`
+ * node asks on. Serving only the first left `rclcpp::Client<S>` and
+ * `Client<S>::SharedPtr` unable to answer at all.
+ *
  * # Safety
- * `storage` must be a valid initialized service client. `out` must
- * be a writable `i32` pointer.
+ * Exactly one of `storage` / `executor` identifies a live service client.
+ * `out` must be a writable `i32` pointer.
  */
-nros_cpp_ret_t nros_cpp_service_client_server_available(void *storage, int32_t *out);
+nros_cpp_ret_t nros_cpp_service_client_server_available(void *storage,
+                                                        void *executor,
+                                                        size_t handle_id,
+                                                        int32_t *out);
 
 /**
  * phase-338 W8 — block until a matching service server is discoverable.
@@ -2435,18 +2445,30 @@ nros_cpp_ret_t nros_cpp_service_client_server_available(void *storage, int32_t *
  * of the discovery state the backend maintains, nothing is latched, and a
  * backend that cannot answer waits out the budget (phase-428 W13, issue 1087).
  *
+ * **Two roads, one entry point** — phase-456 W9 follow-up (2026-09-28), the
+ * same split `nros_cpp_service_client_server_available` above takes. `storage`
+ * non-NULL is the future-style client that owns its `RmwServiceClient`;
+ * otherwise `(executor_handle, handle_id)` names the arena entry a dispatch
+ * client registered. `executor_handle` is required on BOTH roads — the wait
+ * drives the executor cooperatively, so it is not merely an identity here.
+ *
+ * The arena reference is re-resolved every iteration rather than held across
+ * the spin: it borrows the executor's arena, and `spin_once` takes the
+ * executor mutably.
+ *
  * # Returns
  * * `NROS_CPP_RET_OK` — server visible.
  * * `NROS_CPP_RET_TIMEOUT` — budget elapsed without seeing a token.
- * * `NROS_CPP_RET_INVALID_ARGUMENT` — null storage / executor.
+ * * `NROS_CPP_RET_INVALID_ARGUMENT` — null executor, or neither road resolves.
  * * `NROS_CPP_RET_TRANSPORT_ERROR` — transport-level failure.
  *
  * # Safety
- * `storage` must be a valid initialized future-style service client;
- * `executor_handle` a valid `CppContext`.
+ * Exactly one of `storage` / `handle_id` identifies a live service client;
+ * `executor_handle` must be a valid `CppContext`.
  */
 nros_cpp_ret_t nros_cpp_service_client_wait_for_service(void *storage,
                                                         void *executor_handle,
+                                                        size_t handle_id,
                                                         uint32_t timeout_ms);
 
 /**
