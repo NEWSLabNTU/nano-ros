@@ -87,7 +87,6 @@ scripts/check-tier-priority-plan.py
 scripts/check-version-lockstep.sh
 scripts/check-wait-evidence-discarded.py
 scripts/check-weak-symbols-image.sh
-scripts/check-weak-symbols.sh
 scripts/check-workspace-build-output.sh
 scripts/check-zenoh-archive-symbols.sh
 scripts/check-zenohd-flag-invocations.py
