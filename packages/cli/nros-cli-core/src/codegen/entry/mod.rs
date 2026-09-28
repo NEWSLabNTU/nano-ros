@@ -1249,16 +1249,32 @@ fn derive_entry_tiers(
     // The same input shape `codegen-system` hands the derivation: bare node
     // name -> its declared groups, each bound to DEFAULT_TIER, because the
     // keyword states WHICH groups the code has and never where they run.
+    //
+    // Issue 1537 follow-up - a RUST node states its groups through the
+    // bringup's `[[component]] group_tiers` (the model's `execution.bindings`),
+    // which is the ONLY group input `nros::main!` reads. Keying this on the
+    // cmake metadata alone made the two disagree on a Rust Zephyr image with a
+    // contract and no `[tiers.*]`: the macro derived a multi-tier table and
+    // emitted `ZephyrBoard::run_tiers`, while this derived nothing, so
+    // `schedule_board_features` withheld the `tiers` feature that gates it and
+    // the generated entry could not compile. Same fallback, and the same order,
+    // as `resolve_plan_sched_in`'s own group map below: cmake groups first,
+    // else the group ids `group_tiers` names.
     let mut callback_groups: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
     for n in &plan.nodes {
-        if n.callback_groups.is_empty() {
+        let groups: Vec<&String> = if !n.callback_groups.is_empty() {
+            n.callback_groups.iter().collect()
+        } else {
+            n.group_tiers.keys().collect()
+        };
+        if groups.is_empty() {
             continue;
         }
         let name = n.name.as_deref().unwrap_or(n.exec.as_str()).to_string();
         callback_groups.insert(
             name,
-            n.callback_groups
-                .iter()
+            groups
+                .into_iter()
                 .map(|g| CallbackGroupDecl {
                     id: g.clone(),
                     r#type: "MutuallyExclusive".to_string(),
