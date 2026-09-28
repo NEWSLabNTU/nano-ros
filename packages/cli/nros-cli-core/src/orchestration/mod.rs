@@ -24,6 +24,7 @@ pub use nros_launcher::dispatch;
 pub mod facade;
 /// phase-383 W1 — `[image.<id>]`, the buildable unit (RFC-0065 D6).
 pub mod image;
+pub mod image_priority_plan;
 pub mod launch_synth;
 pub mod manifest;
 // W5.13 follow-up — relocated to nros-orchestration-ir (shared with the macro);

@@ -252,16 +252,37 @@ pub fn derive_execution_from_contracts(
     target_rtos: &str,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
 ) -> Result<(usize, Vec<crate::orchestration::plan::PlanSchedWarning>)> {
+    derive_execution_in_plan(system, model, target_rtos, callback_groups, None)
+}
+
+/// [`derive_execution_from_contracts`], allocating out of the priority plan the
+/// caller resolved from the image's `.config` (issue 1508); `None` is the tier
+/// key's projection.
+pub fn derive_execution_in_plan(
+    system: &mut SystemToml,
+    model: &SystemModel,
+    target_rtos: &str,
+    callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
+    priority_plan: Option<&nros_orchestration_ir::priority_plan::PriorityPlan>,
+) -> Result<(usize, Vec<crate::orchestration::plan::PlanSchedWarning>)> {
     // The derive CORE lives in `nros-orchestration-ir` (shared with the
     // `nros::main!` proc-macro so pure-cargo Rust entries derive identically).
     // This wrapper surfaces the recorded degradations + groupless notes on
     // stderr and mutates the bringup `SystemToml` — behavior-identical to the
     // pre-relocation inline version.
-    let derived = nros_orchestration_ir::derive::derive_tiers_from_contracts(
-        model,
-        target_rtos,
-        callback_groups,
-    );
+    let derived = match priority_plan {
+        Some(pp) => nros_orchestration_ir::derive::derive_tiers_in_plan(
+            model,
+            target_rtos,
+            callback_groups,
+            pp,
+        ),
+        None => nros_orchestration_ir::derive::derive_tiers_from_contracts(
+            model,
+            target_rtos,
+            callback_groups,
+        ),
+    };
     // Issue 0259 — surface on stderr AND carry into the plan. stderr is for the
     // person watching this bake; the plan is for everyone who reads the system
     // afterwards, and a verdict that exists only in scrollback cannot be

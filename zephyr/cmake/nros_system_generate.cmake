@@ -299,6 +299,15 @@ function(nros_system_generate bringup_pkg)
         set(_entry_dir "${CMAKE_CURRENT_SOURCE_DIR}")
     endif()
 
+    # Issue 1508 - a derived tier table in `nros-plan.json` is allocated out of
+    # THIS image's priority pool, the same one `nros codegen entry` allocates
+    # the running table from (NanoRosEntry.cmake), so the record and the image
+    # agree. Kconfig has run by the time a module is configured.
+    set(_dotconfig_args)
+    if(DEFINED DOTCONFIG AND EXISTS "${DOTCONFIG}")
+        set(_dotconfig_args --dotconfig "${DOTCONFIG}")
+    endif()
+
     execute_process(
         COMMAND "${_nros_cli}" codegen-system
                 --workspace "${_workspace}"
@@ -307,6 +316,7 @@ function(nros_system_generate bringup_pkg)
                 --rmw       "${_rmw}"
                 --nano-ros-path "${_NROS_SYSTEM_GENERATE_REPO}"
                 --out       "${_out_parent}"
+                ${_dotconfig_args}
         WORKING_DIRECTORY "${_workspace}"
         RESULT_VARIABLE   _rc
         OUTPUT_VARIABLE   _stdout

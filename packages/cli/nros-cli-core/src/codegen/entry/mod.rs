@@ -1216,7 +1216,12 @@ pub fn board_to_rtos(board: &str) -> Result<&'static str, nros_entry_lower::Unkn
 /// the duplicate-reader failure W1 removed one layer down. The model is
 /// re-read from `plan.launch_file` here instead: one extra parse of a file
 /// this bake has already validated, against two readers of one fact.
-fn derive_entry_tiers(plan: &mut Plan, target_rtos: &str, has_groups: bool) -> Result<usize> {
+fn derive_entry_tiers(
+    plan: &mut Plan,
+    target_rtos: &str,
+    has_groups: bool,
+    priority_plan: Option<&nros_orchestration_ir::priority_plan::PriorityPlan>,
+) -> Result<usize> {
     if !plan.tiers.is_empty() || !plan.node_overrides.is_empty() || !has_groups {
         return Ok(0);
     }
@@ -1256,11 +1261,21 @@ fn derive_entry_tiers(plan: &mut Plan, target_rtos: &str, has_groups: bool) -> R
         );
     }
 
-    let derived = nros_orchestration_ir::derive::derive_tiers_from_contracts(
-        &model,
-        target_rtos,
-        &callback_groups,
-    );
+    // Issue 1508 - the image's own plan when the caller read its `.config`
+    // (`codegen entry --dotconfig`), the tier key's projection otherwise.
+    let derived = match priority_plan {
+        Some(pp) => nros_orchestration_ir::derive::derive_tiers_in_plan(
+            &model,
+            target_rtos,
+            &callback_groups,
+            pp,
+        ),
+        None => nros_orchestration_ir::derive::derive_tiers_from_contracts(
+            &model,
+            target_rtos,
+            &callback_groups,
+        ),
+    };
     if derived.tiers.is_empty() {
         return Ok(0);
     }
@@ -1303,6 +1318,17 @@ fn derive_entry_tiers(plan: &mut Plan, target_rtos: &str, has_groups: bool) -> R
 /// schedule ([`derive_entry_tiers`]), so a cmake image runs `run_tiers` over
 /// the derived table instead of `run_components`.
 pub fn resolve_plan_sched(plan: &mut Plan, target_rtos: &str) -> Result<()> {
+    resolve_plan_sched_in(plan, target_rtos, None)
+}
+
+/// [`resolve_plan_sched`], deriving (when it derives) out of the priority plan
+/// the caller resolved from the image - issue 1508. `None` is the tier key's
+/// projection, exactly [`resolve_plan_sched`].
+pub fn resolve_plan_sched_in(
+    plan: &mut Plan,
+    target_rtos: &str,
+    priority_plan: Option<&nros_orchestration_ir::priority_plan::PriorityPlan>,
+) -> Result<()> {
     let has_groups = plan
         .nodes
         .iter()
@@ -1310,7 +1336,7 @@ pub fn resolve_plan_sched(plan: &mut Plan, target_rtos: &str) -> Result<()> {
     if plan.tiers.is_empty() && plan.node_overrides.is_empty() && !has_groups {
         return Ok(());
     }
-    derive_entry_tiers(plan, target_rtos, has_groups)?;
+    derive_entry_tiers(plan, target_rtos, has_groups, priority_plan)?;
 
     // Component instance names from the launch (match [[node_overrides]].name).
     let component_names: BTreeSet<&str> = plan

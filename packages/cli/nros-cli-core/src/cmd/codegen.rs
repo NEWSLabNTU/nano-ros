@@ -259,6 +259,14 @@ pub struct EntryArgs {
     /// `.cmake` output.
     #[arg(long, value_name = "EXE_TARGET=PATH", value_parser = parse_link_libs)]
     pub emit_link_libs: Option<(String, PathBuf)>,
+
+    /// Issue 1508 - the image's Zephyr `.config`. A derived tier table is
+    /// allocated out of the priority pool THIS image's Kconfig resolves
+    /// (RFC-0079 section 4.1) instead of the Kconfig-defaults projection.
+    /// `nano_ros_add_executable` passes `${DOTCONFIG}` on a Zephyr build,
+    /// where Kconfig has already run. Refused for a non-Zephyr board.
+    #[arg(long, value_name = "PATH")]
+    pub dotconfig: Option<PathBuf>,
 }
 
 fn parse_link_libs(s: &str) -> std::result::Result<(String, PathBuf), String> {
@@ -409,7 +417,16 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         // runner, its boot shape, its tier sub-table), so an unknown key stops
         // here, naming the known ones, instead of reading as `posix`/`native`.
         let family = nros_entry_lower::board_family(&plan.board).map_err(|e| eyre!("{e}"))?;
-        entry_codegen::resolve_plan_sched(&mut plan, family.tier_rtos_key())?;
+        let image_plan = crate::orchestration::image_priority_plan::plan_for_image(
+            family.tier_rtos_key(),
+            args.dotconfig.as_deref(),
+            "codegen entry",
+        )?;
+        entry_codegen::resolve_plan_sched_in(
+            &mut plan,
+            family.tier_rtos_key(),
+            image_plan.as_ref(),
+        )?;
         match emitter {
             // The C emitter renders a pure-`.c` TU that calls the board family's
             // C-ABI runner (`BoardFamily::c_abi_runners`). phase-432 W3.1 gave

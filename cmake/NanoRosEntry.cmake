@@ -1177,6 +1177,16 @@ function(_nros_entry_invoke_codegen)
     if(_NRX_BOARD)
         list(APPEND _cli_args --board "${_NRX_BOARD}")
     endif()
+    # Issue 1508 - a DERIVED tier table is allocated out of the priority pool
+    # the IMAGE's Kconfig resolves (RFC-0079 section 4.1), not the Kconfig
+    # defaults. On a Zephyr build `find_package(Zephyr)` has already run
+    # Kconfig, so `DOTCONFIG` names this image's `.config`; nowhere else is it
+    # set, and without it the CLI keeps the defaults projection. A Kconfig
+    # fragment edit re-runs this configure (Zephyr lists its Kconfig inputs in
+    # CMAKE_CONFIGURE_DEPENDS; measured: 32 -> 20 moved the table 8/9 -> 6/7).
+    if(DEFINED DOTCONFIG AND EXISTS "${DOTCONFIG}")
+        list(APPEND _cli_args --dotconfig "${DOTCONFIG}")
+    endif()
     # Phase 240.2b — typed executor Entry: pass the cmake metadata so the
     # codegen can map each launch `(pkg, exec)` to its C++ class + header.
     if(_NRX_TYPED)
@@ -1203,6 +1213,14 @@ function(_nros_entry_invoke_codegen)
             "  CLI: ${_nros_bin} ${_cli_args}\n"
             "  stdout: ${_stdout}\n"
             "  stderr: ${_stderr}")
+    endif()
+    # Issue 1508 - on SUCCESS the CLI's stderr is what this build's operator is
+    # meant to read: the derived-schedule degradations and refusals (issue
+    # 1427's "fail-loud" record), and which priority plan the derived table was
+    # allocated from. Captured and dropped, none of it reached anyone.
+    string(STRIP "${_stderr}" _nrx_stderr)
+    if(NOT _nrx_stderr STREQUAL "")
+        message(STATUS "nano_ros_entry(${_NRX_NAME}): ${_nrx_stderr}")
     endif()
 
     # phase-403 W9 (issue 0965) — compose this image's ENTITY inventory.
