@@ -155,7 +155,7 @@ def compile_probe(cc, shim, extra_includes, workdir, source=None, name="shim_fac
     cmd += ["-I", os.path.join(ROOT, PLATFORM_API),
             "-I", os.path.join(ROOT, CPP_INCLUDE),
             "-I", os.path.join(ROOT, C_INCLUDE),
-            "-DNROS_PLATFORM_NUTTX", src]
+            "-DNROS_CONFIG_BUILDLESS", src]
     proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     return proc.returncode, proc.stdout + proc.stderr
 

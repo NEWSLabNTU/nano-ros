@@ -1,6 +1,29 @@
+/* Issue 1569 — BUILDLESS sizes header. NOT a platform's fallback any more.
+ *
+ * This file used to be what every NuttX C/C++ image was sized from
+ * (`nros_config_generated_nuttx.h`, dispatched under `NROS_PLATFORM_NUTTX`),
+ * because the per-build header was on no NuttX include path. It was a
+ * hand-kept UPPER BOUND, and it kept failing to be one: #167, #464, #954 and
+ * issue 1568 each found a value below the build, the last as a live 36-byte
+ * publisher overrun. It could not even be made right by hand — one file stood
+ * for two architectures that measure differently, and `nros_subscription_t`
+ * carries a field after its opaque array, so any value but the build's own
+ * moves that field in C relative to the Rust that writes it.
+ *
+ * NuttX now compiles against the per-build header like every other platform
+ * (the FFI build script takes it from the `nros-c` / `nros-cpp` `links`
+ * channels, ordered after both writers). The stub reaches this file ONLY under
+ * `NROS_CONFIG_BUILDLESS`, which the header-only checks that compile with no
+ * build at all define (API parity, capability layout, the minimal-libcpp and
+ * compat-shim probes). No build system may define it —
+ * `check-config-fallback-macros` refuses one that does — so no image can be
+ * sized from these numbers, and they need no relation to any build's: they
+ * must only be self-consistent (the asserts below) and define every macro
+ * generated code reads (the same gate). The values are the last snapshot's,
+ * kept as they were. */
 /* Phase 159 (Path C) — NuttX fallback. */
-#ifndef NROS_CONFIG_GENERATED_NUTTX_H
-#define NROS_CONFIG_GENERATED_NUTTX_H
+#ifndef NROS_CONFIG_GENERATED_BUILDLESS_H
+#define NROS_CONFIG_GENERATED_BUILDLESS_H
 #include <stdint.h>
 
 /* #167 — safe upper bound (was 79296, stale): current codegen needs ~80704 on
@@ -120,26 +143,25 @@
  *
  * C11 / C++11 for `_Static_assert`; older toolchains simply skip the check. */
 #if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L)
-#define NROS__NUTTX_FALLBACK_ASSERT(cond, msg) _Static_assert(cond, msg)
+#define NROS__BUILDLESS_ASSERT(cond, msg) _Static_assert(cond, msg)
 #elif defined(__cplusplus) && __cplusplus >= 201103L
-#define NROS__NUTTX_FALLBACK_ASSERT(cond, msg) static_assert(cond, msg)
+#define NROS__BUILDLESS_ASSERT(cond, msg) static_assert(cond, msg)
 #else
-#define NROS__NUTTX_FALLBACK_ASSERT(cond, msg)
+#define NROS__BUILDLESS_ASSERT(cond, msg)
 #endif
 
-NROS__NUTTX_FALLBACK_ASSERT(EXECUTOR_OPAQUE_U64S * 8 >= NROS_EXECUTOR_SIZE,
-                            "EXECUTOR_OPAQUE_U64S is smaller than NROS_EXECUTOR_SIZE");
-NROS__NUTTX_FALLBACK_ASSERT(EXECUTOR_OPAQUE_U64S * 8 >= NROS_EXECUTOR_STORAGE_SIZE,
-                            "EXECUTOR_OPAQUE_U64S is smaller than NROS_EXECUTOR_STORAGE_SIZE");
-NROS__NUTTX_FALLBACK_ASSERT(SESSION_OPAQUE_U64S * 8 >= NROS_SESSION_SIZE,
-                            "SESSION_OPAQUE_U64S is smaller than NROS_SESSION_SIZE");
-NROS__NUTTX_FALLBACK_ASSERT(PUBLISHER_OPAQUE_U64S * 8 >= NROS_PUBLISHER_SIZE,
-                            "PUBLISHER_OPAQUE_U64S is smaller than NROS_PUBLISHER_SIZE");
-NROS__NUTTX_FALLBACK_ASSERT(GUARD_HANDLE_OPAQUE_U64S * 8 >= NROS_GUARD_CONDITION_SIZE,
-                            "GUARD_HANDLE_OPAQUE_U64S is smaller than NROS_GUARD_CONDITION_SIZE");
-NROS__NUTTX_FALLBACK_ASSERT(
-    NROS_LIFECYCLE_CTX_OPAQUE_U64S * 8 >= NROS_LIFECYCLE_CTX_SIZE,
-    "NROS_LIFECYCLE_CTX_OPAQUE_U64S is smaller than NROS_LIFECYCLE_CTX_SIZE");
+NROS__BUILDLESS_ASSERT(EXECUTOR_OPAQUE_U64S * 8 >= NROS_EXECUTOR_SIZE,
+                       "EXECUTOR_OPAQUE_U64S is smaller than NROS_EXECUTOR_SIZE");
+NROS__BUILDLESS_ASSERT(EXECUTOR_OPAQUE_U64S * 8 >= NROS_EXECUTOR_STORAGE_SIZE,
+                       "EXECUTOR_OPAQUE_U64S is smaller than NROS_EXECUTOR_STORAGE_SIZE");
+NROS__BUILDLESS_ASSERT(SESSION_OPAQUE_U64S * 8 >= NROS_SESSION_SIZE,
+                       "SESSION_OPAQUE_U64S is smaller than NROS_SESSION_SIZE");
+NROS__BUILDLESS_ASSERT(PUBLISHER_OPAQUE_U64S * 8 >= NROS_PUBLISHER_SIZE,
+                       "PUBLISHER_OPAQUE_U64S is smaller than NROS_PUBLISHER_SIZE");
+NROS__BUILDLESS_ASSERT(GUARD_HANDLE_OPAQUE_U64S * 8 >= NROS_GUARD_CONDITION_SIZE,
+                       "GUARD_HANDLE_OPAQUE_U64S is smaller than NROS_GUARD_CONDITION_SIZE");
+NROS__BUILDLESS_ASSERT(NROS_LIFECYCLE_CTX_OPAQUE_U64S * 8 >= NROS_LIFECYCLE_CTX_SIZE,
+                       "NROS_LIFECYCLE_CTX_OPAQUE_U64S is smaller than NROS_LIFECYCLE_CTX_SIZE");
 
 #ifdef __cplusplus
 extern "C" {

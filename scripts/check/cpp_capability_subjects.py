@@ -37,10 +37,11 @@ GCC keeps going after `#error`. Numbers measured off a TU that does not compile
 are not measurements. Parsing through this script makes that impossible: no
 clean parse, no subject list, no gate run.
 
-WHY `-DNROS_PLATFORM_NUTTX` AND NOT A BUILD
--------------------------------------------
+WHY `-DNROS_CONFIG_BUILDLESS` AND NOT A BUILD
+---------------------------------------------
 `nros_cpp_config_generated.h` is emitted per-build, and the committed
-`_nuttx` variant is the one the stub selects under that define -- the same
+`_buildless` variant is the one the stub selects under that define (it was
+`-DNROS_PLATFORM_NUTTX` / `_nuttx` until issue 1569) -- the same
 choice `extract_cxx` already makes, for the same reason: a gate that needs a
 fixture to be fresh runs somewhere and rots everywhere else. The gate needs a
 sizes header that is CONSISTENT between its arms, not one that is host-shaped,

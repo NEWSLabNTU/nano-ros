@@ -1,3 +1,26 @@
+/* Issue 1569 — BUILDLESS sizes header. NOT a platform's fallback any more.
+ *
+ * This file used to be what every NuttX C/C++ image was sized from
+ * (`nros_config_generated_nuttx.h`, dispatched under `NROS_PLATFORM_NUTTX`),
+ * because the per-build header was on no NuttX include path. It was a
+ * hand-kept UPPER BOUND, and it kept failing to be one: #167, #464, #954 and
+ * issue 1568 each found a value below the build, the last as a live 36-byte
+ * publisher overrun. It could not even be made right by hand — one file stood
+ * for two architectures that measure differently, and `nros_subscription_t`
+ * carries a field after its opaque array, so any value but the build's own
+ * moves that field in C relative to the Rust that writes it.
+ *
+ * NuttX now compiles against the per-build header like every other platform
+ * (the FFI build script takes it from the `nros-c` / `nros-cpp` `links`
+ * channels, ordered after both writers). The stub reaches this file ONLY under
+ * `NROS_CONFIG_BUILDLESS`, which the header-only checks that compile with no
+ * build at all define (API parity, capability layout, the minimal-libcpp and
+ * compat-shim probes). No build system may define it —
+ * `check-config-fallback-macros` refuses one that does — so no image can be
+ * sized from these numbers, and they need no relation to any build's: they
+ * must only be self-consistent (the asserts below) and define every macro
+ * generated code reads (the same gate). The values are the last snapshot's,
+ * kept as they were. */
 /* Phase 159 (Path C) — NuttX fallback.
  *
  * #167 — this fallback is a snapshot and MUST be a safe UPPER BOUND: when the
@@ -9,8 +32,8 @@
  * return address (rv-virt boot panic EPC=0x4; arm's smaller overflow survived).
  * Keep this comfortably above the largest per-build value.
  */
-#ifndef NROS_CPP_CONFIG_GENERATED_NUTTX_H
-#define NROS_CPP_CONFIG_GENERATED_NUTTX_H
+#ifndef NROS_CPP_CONFIG_GENERATED_BUILDLESS_H
+#define NROS_CPP_CONFIG_GENERATED_BUILDLESS_H
 /* #464 postscript — this was 98304, i.e. `NROS_EXECUTOR_SIZE + 8`, which is the
  * PRE-issue-0436 overhead. The generator's invariant is
  *

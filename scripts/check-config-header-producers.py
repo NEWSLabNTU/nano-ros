@@ -12,8 +12,9 @@ macros stops the build. That is right, and it means every producer of that
 header has to define them or the guard fires on artifacts nobody changed.
 
 Phase-429 W1 taught THREE producers and missed a fourth. The one it missed is
-`packages/api/nros-c/include/nros/nros_config_generated_nuttx.h`, a
-hand-maintained twin reached only on NuttX (`nros_config_generated.h`'s single
+`packages/api/nros-c/include/nros/nros_config_generated_nuttx.h` (now
+`nros_config_generated_buildless.h`, reached only by buildless header checks —
+issue 1569), a hand-maintained twin reached then only on NuttX (`nros_config_generated.h`'s single
 non-`#error` arm), so the include RESOLVED, the macros were absent, and the
 guard fired on every generated message header. The nightly `nuttx` cell went
 red on 2026-09-05 and stayed red.

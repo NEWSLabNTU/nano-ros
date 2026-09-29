@@ -30,8 +30,14 @@
 #ifndef NROS_CONFIG_GENERATED_H
 #define NROS_CONFIG_GENERATED_H
 
-#if defined(NROS_PLATFORM_NUTTX)
-#include "nros/nros_config_generated_nuttx.h"
+/* Issue 1569 — the committed snapshot is for BUILDLESS header checks only
+ * (`NROS_CONFIG_BUILDLESS`, which no build system defines — gated). It used to
+ * be selected by `NROS_PLATFORM_NUTTX` and sized every NuttX image from a
+ * hand-kept number; NuttX now gets the per-build header like every platform,
+ * and a NuttX TU that reaches this stub is a build-system bug that must fail
+ * here, not compile against a guess. */
+#if defined(NROS_CONFIG_BUILDLESS)
+#include "nros/nros_config_generated_buildless.h"
 #else
 // clang-format off
 #error "nros_config_generated.h must be supplied per-build by the build system; see this stub for guidance."
