@@ -710,8 +710,14 @@ mod tests {
             .join("../../..")
             .canonicalize()
             .expect("repo root");
+        // Issue 1552 — the CLI is built and tested from a checkout; a `git
+        // ls-files` that answers nothing is a broken environment, and a `return`
+        // here PASSED having asserted nothing.
         let Some(listing) = git(&root, &["ls-files", "--", "packages/cli"]) else {
-            return; // not a git checkout (vendored source tree); nothing to assert
+            panic!(
+                "`git ls-files` failed under {} — this test reads the tracked tree",
+                root.display()
+            )
         };
         let mut seen = 0usize;
         for rel in listing.lines().filter(|l| l.ends_with("askama.toml")) {

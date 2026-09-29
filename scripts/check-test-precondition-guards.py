@@ -418,52 +418,12 @@ def else_arm_violations(path: str, src: str) -> list[str]:
     return out
 
 
-# Files that carry the arm-rule shape today and are NOT converted by the change
-# that introduced the rule, with how many sites each may hold. SHRINK ONLY: a
-# file over its count fails, and a file under it is reported so the number
-# comes down. Counts, not lines, so converting one site cannot turn it red.
-#
-# Every entry is in `packages/cli/`, a separate cargo workspace with no
-# `nros_tests` dependency and so no `skip!`. Its ROS-input parity tests return
-# on a host without ROS BY DESIGN (issue 0693: the `check-cli-tests` lane is
-# ROS-less and runs plain `cargo test`, where a skip-panic is a failure), and
-# the two `nros-cli-core` unit tests return on a non-git / packaged tree. Those
-# ARE passes over nothing; converting them needs a decision about how the CLI
-# workspace spells a skip, which is issue 1552, not a mechanical edit.
-ARM_RULE_BASELINE: dict[str, int] = {
-    "packages/cli/nros-cli-core/src/orchestration/metadata_refresh.rs": 1,
-    "packages/cli/nros-cli-core/src/source_stamp.rs": 1,
-    "packages/cli/rosidl-codegen/tests/comparison_test.rs": 3,
-    "packages/cli/rosidl-codegen/tests/parity_test.rs": 9,
-}
-
-
-def apply_arm_baseline(violations: list[str], root: Path) -> tuple[list[str], list[str]]:
-    """Split rule-2 violations into (failing, notes) against ARM_RULE_BASELINE."""
-    per_file: dict[str, list[str]] = {}
-    other: list[str] = []
-    for v in violations:
-        rel = v.split(":", 1)[0]
-        try:
-            rel = Path(rel).resolve().relative_to(root).as_posix()
-        except ValueError:
-            pass
-        if rel in ARM_RULE_BASELINE:
-            per_file.setdefault(rel, []).append(v)
-        else:
-            other.append(v)
-    notes: list[str] = []
-    for rel, allowed in sorted(ARM_RULE_BASELINE.items()):
-        got = per_file.get(rel, [])
-        if len(got) > allowed:
-            other.extend(got)
-            other.append(
-                f"{rel}: {len(got)} arm-rule site(s), baseline {allowed} — the baseline "
-                f"only shrinks"
-            )
-        elif len(got) < allowed:
-            notes.append(f"{rel}: {len(got)} site(s) < baseline {allowed} — shrink it")
-    return other, notes
+# The ARM_RULE_BASELINE that held fourteen `packages/cli` sites is GONE (issue
+# 1552, phase-472 F4): the rosidl-codegen parity tests are `#[ignore]`d and
+# PANIC on an absent input (`ros_input_absent`), `just check cli-tests` runs them
+# with `--ignored` where a ROS 2 install is found, and the two nros-cli-core
+# unit tests panic, because the checkout they read is always there. Every
+# rule-2 site now fails, with no per-file allowance.
 
 
 def tracked_rs_files() -> list[Path]:
@@ -738,7 +698,7 @@ def main() -> int:
         subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
                        text=True, check=True).stdout.strip()
     )
-    arm, notes = apply_arm_baseline(scan([], all_rs), root)
+    arm, notes = scan([], all_rs), []
     violations = assert_scope_is_the_whole_tree(files) + scan(files, []) + arm
     if violations:
         print("check-test-precondition-guards: FAIL\n")

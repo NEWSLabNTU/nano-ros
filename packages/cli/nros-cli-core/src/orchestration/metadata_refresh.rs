@@ -1051,11 +1051,15 @@ mod tests {
     fn the_recorder_schema_version_matches_the_recorder() {
         let recorder =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../../api/nros/src/node_metadata.rs");
-        let Ok(text) = std::fs::read_to_string(&recorder) else {
-            // A packaged crate has no sibling checkout; the pin is a
-            // developer-tree property and its absence is not a failure.
-            return;
-        };
+        // Issue 1552 — this crate is built from the checkout, never packaged, so
+        // the sibling is always there; its absence is a moved file, and a test
+        // that returned here PASSED having compared nothing.
+        let text = std::fs::read_to_string(&recorder).unwrap_or_else(|e| {
+            panic!(
+                "{}: {e} — the recorder moved; update this path",
+                recorder.display()
+            )
+        });
         let declared = text
             .lines()
             .find_map(|l| {

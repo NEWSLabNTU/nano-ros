@@ -810,11 +810,32 @@ cli-fresh:
 launch-resolve-fresh:
     @bash scripts/check-launch-resolve-fresh.sh
 
+# issue 1552 — the rosidl-codegen parity tests need a ROS 2 install. They used
+# to `return` (a PASS over nothing) on a host without one; they are `#[ignore]`d
+# now, so the plain run REPORTS them ignored, and this recipe runs them with
+# `--ignored` wherever a ROS 2 install is found — the same rule as
+# `parity_helpers::ros_share_root` ($ROS_DISTRO, else exactly one /opt/ros/<d>/share).
+# Where none is, the ledger says so (`nros_check_unverified`, phase-472 F2).
 [private]
 cli-tests:
     #!/usr/bin/env bash
     set -e
     cargo test --manifest-path packages/cli/Cargo.toml --workspace --quiet
+    ros_share=""
+    if [ -n "${ROS_DISTRO:-}" ] && [ -d "/opt/ros/$ROS_DISTRO/share" ]; then
+        ros_share="/opt/ros/$ROS_DISTRO/share"
+    elif [ -d /opt/ros ]; then
+        shares="$(find /opt/ros -mindepth 2 -maxdepth 2 -type d -name share 2>/dev/null)"
+        [ "$(printf '%s\n' "$shares" | grep -c .)" = 1 ] && ros_share="$shares"
+    fi
+    if [ -n "$ros_share" ]; then
+        echo "cli-tests: ROS 2 at $ros_share — running the ROS-dependent parity tests (--ignored)"
+        cargo test --manifest-path packages/cli/Cargo.toml -p rosidl-codegen \
+            --test parity_test --test comparison_test --quiet -- --ignored
+    else
+        source scripts/build/check-skip.sh
+        nros_check_unverified cli-tests "no ROS 2 install: the rosidl-codegen parity tests stayed IGNORED (issue 1552)" || exit 1
+    fi
     echo "CLI tests passed!"
 
 # A COMPILE SMOKE TEST for the pull-request gate — phase-395.

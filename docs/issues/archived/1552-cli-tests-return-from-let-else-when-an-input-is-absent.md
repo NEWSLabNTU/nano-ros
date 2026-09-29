@@ -1,7 +1,8 @@
 ---
 id: 1552
 title: "Fourteen `packages/cli` tests `return` from a `let … else` when an input is absent, so they PASS having run nothing"
-status: open
+status: resolved
+resolved: 2026-09-29
 type: bug
 area: [testing, cli]
 severity: medium
@@ -50,3 +51,40 @@ the lane question.
 
 Decide the CLI skip spelling, convert the fourteen, and delete
 `ARM_RULE_BASELINE` (it only exists for these).
+
+## Resolution (2026-09-29, phase-472 F4)
+
+The CLI workspace's skip is libtest's own IGNORED verdict, plus a lane that
+runs the ignored tests where their input exists:
+
+- The twelve rosidl-codegen parity/comparison tests are
+  `#[ignore = "needs a ROS 2 install; …"]`, and their `else` arm calls
+  `parity_helpers::ros_input_absent() -> !`, a PANIC. A ROS-less `cargo test`
+  therefore REPORTS them ignored (`N ignored` in the summary) instead of
+  passing them empty; run with `--ignored` on a host that cannot supply the
+  input, they FAIL, after the existing `[NO-ROS]`/`[NO-PKG]` line that says
+  which state the host is in.
+- `just check cli-tests` runs the workspace as before, then — when a ROS 2
+  install is found by the same rule as `parity_helpers::ros_share_root`
+  (`$ROS_DISTRO`, else exactly one `/opt/ros/<d>/share`) — runs
+  `-p rosidl-codegen --test parity_test --test comparison_test -- --ignored`.
+  Where none is found it records `NOT VERIFIED` in the `nros_check_skip`
+  ledger (`nros_check_unverified`, phase-472 F2), so the lane's closing line
+  names what did not run.
+- The two nros-cli-core unit tests PANIC: the crate is built and tested from a
+  checkout, so the sibling `node_metadata.rs` and `git ls-files` are always
+  there, and their absence is a moved file or a broken environment.
+
+`ARM_RULE_BASELINE` is deleted from `check-test-precondition-guards`: every
+rule-2 site fails with no per-file allowance. Proof: the new gate over the
+fourteen unconverted sites rc=1 (14 findings), the old gate rc=0.
+
+**Measured on this host** (ROS 2 Humble at `/opt/ros/humble`):
+`cargo test --manifest-path packages/cli/Cargo.toml --workspace` green, and
+the lane's `--ignored` pass ran all twelve: 3 + 9 passed. `cargo clippy -p
+rosidl-codegen -p nros-cli-core --all-targets -D warnings` clean.
+
+**Not verified:** a ROS-less host end to end (the `/opt/ros` fallback cannot
+be hidden without root); the CI `check` job, which has no ROS, will now print
+the ignored count and a ledger line instead of twelve empty passes.
+
