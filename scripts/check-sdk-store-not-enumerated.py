@@ -110,6 +110,17 @@ PICK = re.compile(
 )
 WINDOW = 8
 
+# Shape 3 (issue 1563) — a VERSION-LEVEL enumeration of the whole store: a glob
+# two levels under a store variable (`$_nros_sdk/*/*/bin`), or a store root
+# handed to a directory walker at version depth (`_nros_bin_dirs "$_nros_sdk" 3`).
+# Nothing is SORTED there, so shape 2 cannot see it — but a PATH is an ORDERED
+# list, so building one from that walk picks a version by readdir order.
+# `activate.sh` / `activate.fish` did exactly this: `13.2-nros4` beat the pin.
+VERSION_LEVEL = re.compile(
+    r"""(?:sdk|store)\w*\}?"?/\*/\*"""
+    r"""|(?:sdk|store)\w*\}?"?\s+[23]\s*;?\s*\)?\s*$"""
+)
+
 # Where consumers live. Rust sources are scanned too: two of the four sites
 # issue 1546 found were `read_dir` + `.sort(); .reverse()` in Rust resolvers.
 SCAN_PATHSPECS = (
@@ -123,6 +134,8 @@ SCAN_PATHSPECS = (
     "packages/**/*.rs",
     "packages/**/*.sh",
     "*.sh",
+    # issue 1563 — the fish activation builds a PATH from the store too.
+    "*.fish",
 )
 
 # The installers write the store; they are the producer, not a consumer.
@@ -176,6 +189,9 @@ def scan_text(path: str, text: str):
         if LITERAL.search(line):
             if not _exempt(path, lines, i):
                 hits.append((i + 1, line.strip(), "literal"))
+            continue
+        if VERSION_LEVEL.search(line):
+            hits.append((i + 1, line.strip(), "version-level walk"))
             continue
         if not ENUMERATE.search(line):
             continue
@@ -245,6 +261,19 @@ fn some_new_resolver() -> Option<PathBuf> {
     v.sort();
 """,
 }
+
+BAD.update({
+    # issue 1563 — activate.sh, as it was: every version's bin dir on PATH.
+    "activate.sh": """\
+    done <<EOF
+$(_nros_bin_dirs "$_nros_sdk" 3; _nros_bin_dirs "$_nros_sdk" 2)
+EOF
+""",
+    # ...and activate.fish.
+    "activate.fish": """\
+    for _nros_tcbin in $_nros_sdk/*/*/bin $_nros_sdk/*/bin
+""",
+})
 
 GOOD = {
     # The fix: constructed from the pin; an UNSORTED listing for a message.
