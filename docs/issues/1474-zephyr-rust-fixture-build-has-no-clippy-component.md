@@ -142,3 +142,40 @@ its cells. The sibling job in the same run, `rows whose board IS this runner`,
 failed on **issue 1353** (annotation `No space left on device : '…/_diag/
 Worker_20260928-041930-utc.log'`, log `BlobNotFound`) — two jobs, two causes, as
 this lane usually splits.
+
+## The inference, measured — and the fix (2026-09-29)
+
+The appendix above left one step open, honestly: "I have not instrumented
+rustup to prove that". It is now measured, against an isolated `RUSTUP_HOME`
+holding a real minimal `1.85.0` toolchain with clippy (so no runner's or
+developer's rustup was touched):
+
+| sequence | result |
+| --- | --- |
+| delete files → `add` (**the workflow step**) | `component clippy is up to date`, 0 binaries, and **CI's exact error**: `the 'cargo-clippy' binary … is not applicable` |
+| delete files → `remove` → `add` | **wedged**: `remove` fails (`directory does not exist: 'bin/clippy-driver'`) and rolls back; `add` still says `up to date` |
+| untracked orphan → `add` | `detected conflict: 'bin/cargo-clippy'` — the clippy-preview conflict the step was written to solve |
+| `remove` → `add` | works |
+| `remove` → clear orphans → `add` | **works, in both the clean and the orphan case** |
+
+So the inference was right, and the second row adds what it did not say:
+deleting first is not merely ineffective, it leaves rustup unable to recover
+by its own commands. rustup decides "installed" from its manifest, so the
+files have to be removed BY rustup while they still exist; only after that is
+a leftover file an orphan that is safe to delete. The step's author had the
+right diagnosis and the wrong order.
+
+**Fix:** `scripts/ci/rustup-restore-clippy.sh`, called by both steps (they were
+two hand copies — `live-peer.yml` said "Same fix as nightly's zephyr line").
+It runs `remove` → clear orphans → `add`, then **verifies** with `rustup run
+<tc> cargo clippy --version`, and exits nonzero if the toolchain this
+checkout's builds resolve (`rustup show active-toolchain`) is left without a
+working clippy. The old step could not fail; this one fails at provisioning,
+naming this issue, instead of thirty minutes later in ninja. Both paths were
+exercised against the isolated toolchain: the orphan state is repaired
+(`clippy 0.1.85`, rc 0), and the wedged state is refused (rc 1).
+
+Stays **open**: acceptance is `live-peer`'s off-runner job reaching its cells,
+which is tonight's run at the earliest. Remedy 2 (do not lint in a fixture
+build) is still available and still untried; this closes remedy 1 properly
+rather than choosing between them.

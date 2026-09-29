@@ -783,19 +783,12 @@ jobs:
           echo "after:";  df -h / | tail -1
 
       # The image bakes bin/cargo-clippy from a non-rustup-owner layer; `rustup
-      # target add` trips on the clippy-preview conflict. Delete the orphan files
-      # then re-install clippy on every toolchain.
+      # target add` trips on the clippy-preview conflict, and Zephyr's Rust build
+      # runs `cargo clippy` as a ninja step. One script for this line and
+      # live-peer; it used to be two hand copies of a sequence that deleted
+      # clippy and never reinstalled it (issue 1474 — the order is the fix).
       - name: Unblock rustup clippy-preview conflict
-        run: |
-          rustup_home="$(rustup show home 2>/dev/null || echo "$HOME/.rustup")"
-          find "$rustup_home/toolchains" -maxdepth 3 -type f \
-              \( -name cargo-clippy -o -name clippy-driver \) -delete 2>/dev/null || true
-          rustup toolchain list 2>/dev/null | awk '{print $1}' | while read -r tc; do
-              [ -z "$tc" ] && continue
-              echo "  installing clippy on $tc"
-              rustup component add clippy --toolchain "$tc" \
-                  || echo "  (clippy add failed for $tc — non-fatal)"
-          done
+        run: ./scripts/ci/rustup-restore-clippy.sh
 
       # The DISPATCHER spelling, not `just zephyr setup`. Only `just setup
       # <scope>` runs `_setup-common`, which provisions the host facts every
