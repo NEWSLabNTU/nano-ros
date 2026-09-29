@@ -421,18 +421,13 @@ jobs:
 
       # The image bakes bin/cargo-clippy from a non-rustup-owner layer, so
       # `rustup target add` (which `just setup` reaches) trips on the
-      # clippy-preview conflict. Same fix as nightly's zephyr line.
+      # clippy-preview conflict, and Zephyr's Rust build runs `cargo clippy` as
+      # a ninja step. One script for this lane and nightly's zephyr line; it
+      # used to be two hand copies of a sequence that deleted clippy and never
+      # reinstalled it (issue 1474 — the order is the fix, measured there).
       - name: Unblock the rustup clippy-preview conflict
         id: rustup
-        run: |
-          rustup_home="$(rustup show home 2>/dev/null || echo "$HOME/.rustup")"
-          find "$rustup_home/toolchains" -maxdepth 3 -type f \
-              \( -name cargo-clippy -o -name clippy-driver \) -delete 2>/dev/null || true
-          rustup toolchain list 2>/dev/null | awk '{print $1}' | while read -r tc; do
-              [ -z "$tc" ] && continue
-              rustup component add clippy --toolchain "$tc" \
-                  || echo "  (clippy add failed for $tc — non-fatal)"
-          done
+        run: ./scripts/ci/rustup-restore-clippy.sh
 
       # The PEER. Neither CI image bakes `ros-humble-rmw-zenoh-cpp`, and without
       # it every zenoh cell answers `require_ros2()` with a skip — which the
