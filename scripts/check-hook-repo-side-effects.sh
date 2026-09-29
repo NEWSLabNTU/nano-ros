@@ -262,6 +262,15 @@ build_victim() {
 # one gate whose whole job is to be believed. `status --porcelain` afterwards
 # settles the index's stat cache, so a later read-only `git` in the hook cannot
 # write it back and read as a side effect.
+#
+# `--no-renames` on that diff is load-bearing (issue 1584). With rename
+# detection on — the default — `--name-only` prints a rename's DESTINATION
+# only, so the loop below copies the new path in and never learns to delete the
+# old one. The clone then holds BOTH, and an uncommitted `git mv` of an issue
+# into `docs/issues/archived/` makes the hook's duplicate-id check fire on a
+# duplicate that exists nowhere but inside this probe — telling the developer
+# to renumber a perfectly good issue. `--no-renames` lists both paths, which is
+# what the `rm -f` arm was written for.
 build_checkout() {
     local d="$1" f
     (
@@ -276,7 +285,7 @@ build_checkout() {
         else
             rm -f "$d/$f"
         fi
-    done < <(git -C "$REPO" diff --name-only HEAD 2>/dev/null)
+    done < <(git -C "$REPO" diff --no-renames --name-only HEAD 2>/dev/null)
     git -C "$d" status --porcelain >/dev/null 2>&1
     return 0
 }

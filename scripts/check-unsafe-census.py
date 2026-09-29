@@ -217,7 +217,13 @@ def changed_crates(crates):
     if base.returncode != 0 or not base.stdout.strip():
         return None
     diff = subprocess.run(
-        ["git", "diff", "--name-only", base.stdout.strip(), "--"],
+        # `--no-renames` for the reason issue 1584 measured one gate over:
+        # with rename detection on, `--name-only` prints a rename's
+        # DESTINATION only, so a file moved out of crate A into crate B marks
+        # B touched and leaves A unenforced. Listing both paths widens the
+        # touched set, which is the fail-CLOSED direction this function's own
+        # docstring prefers.
+        ["git", "diff", "--no-renames", "--name-only", base.stdout.strip(), "--"],
         cwd=REPO, capture_output=True, text=True,
     )
     if diff.returncode != 0:
