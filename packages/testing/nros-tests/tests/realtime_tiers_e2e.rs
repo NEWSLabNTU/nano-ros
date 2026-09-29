@@ -58,8 +58,8 @@ use nros_tests::{
         build_nuttx_riscv_workspace_rust_realtime_entry, build_nuttx_workspace_c_realtime_entry,
         build_nuttx_workspace_cpp_realtime_entry, build_nuttx_workspace_rust_realtime_entry,
         build_threadx_workspace_rust_realtime_entry, build_zephyr_workspace_c_realtime_entry,
-        build_zephyr_workspace_cpp_realtime_entry, build_zephyr_workspace_rust_realtime_entry,
-        freertos, is_qemu_available, require_zenohd,
+        build_zephyr_workspace_cpp_derived_tiers_entry, build_zephyr_workspace_cpp_realtime_entry,
+        build_zephyr_workspace_rust_realtime_entry, freertos, is_qemu_available, require_zenohd,
     },
     matrix::{
         Cell as MCell, Lang as ML, PlatformId as MP, Tier as MT, W1Consumer, Workload as MW,
@@ -118,6 +118,13 @@ enum Proof {
     /// reused: those nodes deliberately print no per-tick line (issue 0572 —
     /// the 10 ms tier would swamp the console).
     SerialDispatch(&'static [&'static str]),
+    /// issue 1575 — native_sim CONSOLE proof for a DERIVED-tier image whose
+    /// nodes publish no `/ctrl`/`/telem` pair for observers to count: each
+    /// named node must print its `[<node>] tick=` marker at least twice
+    /// (`tick=1`), under a router, so every derived tier was spawned AND keeps
+    /// running. Order-independent — [`ZephyrProcess::wait_for_pattern`]
+    /// returns the whole accumulated console, so no marker can be consumed.
+    ConsoleTicks(&'static [&'static str]),
 }
 
 type Resolver = fn() -> TestResult<PathBuf>;
@@ -197,14 +204,30 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
             proof: Proof::CountStrict,
             note: "phase-276 W2 / #128 half 2: ZephyrBoard::run_tiers (RFC-0015 Model 1)",
         }],
-        (MP::ZephyrNativeSim, ML::Cpp) => vec![Exec {
-            label: "cpp",
-            resolver: build_zephyr_workspace_cpp_realtime_entry,
-            port,
-            boot: Boot::ZephyrNativeSim,
-            proof: Proof::CountStrict,
-            note: "phase-281 W3b: first full west link + runtime proof of the run_tiers seam",
-        }],
+        (MP::ZephyrNativeSim, ML::Cpp) => vec![
+            Exec {
+                label: "cpp",
+                resolver: build_zephyr_workspace_cpp_realtime_entry,
+                port,
+                boot: Boot::ZephyrNativeSim,
+                proof: Proof::CountStrict,
+                note: "phase-281 W3b: first full west link + runtime proof of the run_tiers seam",
+            },
+            Exec {
+                label: "cpp-derived",
+                resolver: build_zephyr_workspace_cpp_derived_tiers_entry,
+                port,
+                boot: Boot::ZephyrNativeSim,
+                proof: Proof::ConsoleTicks(&[
+                    "mrm_emergency_stop_operator",
+                    "mrm_comfortable_stop_operator",
+                    "stop_mode_operator",
+                    "mrm_handler",
+                ]),
+                note: "issue 1575: derived-tiers-cpp — four tiers DERIVED from the contract \
+                       (no authored [tiers.*]); the image issue 1551 ran the heap dry on",
+            },
+        ],
         (MP::ZephyrNativeSim, ML::C) => vec![Exec {
             label: "c",
             resolver: build_zephyr_workspace_c_realtime_entry,
@@ -722,6 +745,39 @@ fn run_one(pcell: &MCell, cell: &Exec) {
         return;
     }
 
+    if let Proof::ConsoleTicks(nodes) = cell.proof {
+        assert!(
+            matches!(cell.boot, Boot::ZephyrNativeSim),
+            "[{} {}] ConsoleTicks reads a native_sim console; boot {:?} has none",
+            platform,
+            lang,
+            cell.boot
+        );
+        let mut guest = ZephyrProcess::start(&entry, ZephyrPlatform::NativeSim)
+            .unwrap_or_else(|e| panic!("boot zephyr native_sim: {e}"));
+        // The first node carries the cold-boot budget (session open + zenoh
+        // handshake); the rest only need their own period.
+        let mut timeout = anchor_timeout(cell.boot);
+        for node in nodes {
+            let marker = format!("{}1", nros_tests::output::tier_tick_marker(node));
+            let console = guest.wait_for_pattern(&marker, timeout);
+            if !console.contains(&marker) {
+                guest.kill();
+                panic!(
+                    "[{} {}] node `{node}` never ticked twice (`{marker}` absent) — its \
+                     derived tier did not run ({})\n         guest console:\n           {}",
+                    platform,
+                    lang,
+                    cell.note,
+                    console_excerpt(&console)
+                );
+            }
+            timeout = Duration::from_secs(30);
+        }
+        guest.kill();
+        return;
+    }
+
     // Observer cells: subscriptions live BEFORE the guest publishes.
     let mut ctrl = nros_tests::fixtures::spawn_int32_sink(Some("/ctrl"), &observer_locator);
     let mut telem = nros_tests::fixtures::spawn_int32_sink(Some("/telem"), &observer_locator);
@@ -903,6 +959,8 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                 );
             }
         }
-        Proof::SerialTicks(_) | Proof::SerialDispatch(_) => unreachable!("handled above"),
+        Proof::SerialTicks(_) | Proof::SerialDispatch(_) | Proof::ConsoleTicks(_) => {
+            unreachable!("handled above")
+        }
     }
 }

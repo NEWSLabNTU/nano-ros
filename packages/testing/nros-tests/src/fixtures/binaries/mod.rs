@@ -4868,6 +4868,25 @@ pub fn build_zephyr_workspace_cpp_realtime_entry() -> TestResult<PathBuf> {
     )
 }
 
+/// issue 1575 — the Zephyr (native_sim) DERIVED-tier C++ workspace Entry
+/// (`derived-tiers-cpp/src/zephyr_entry`): four components with no authored
+/// `[tiers.*]`, so `codegen entry` derives one tier per node from the contract
+/// in the synced SystemModel. The image issue 1551 exhausted the platform heap
+/// on. Built by the west lane into
+/// `<zephyr-build-root>/build-ws-cpp-derived-tiers-entry-zenoh/zephyr/zephyr.exe`;
+/// consumed by `tests/realtime_tiers_e2e.rs` (`zephyr/cpp-derived`).
+pub fn build_zephyr_workspace_cpp_derived_tiers_entry() -> TestResult<PathBuf> {
+    let binary_path =
+        zephyr_build_root().join("build-ws-cpp-derived-tiers-entry-zenoh/zephyr/zephyr.exe");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        // The WORKSPACE, not `src/zephyr_entry`, for the reason the Rust
+        // derived sibling above gives: the tier table is derived from the
+        // bringup's contract, which lives outside the entry package.
+        ZephyrLeafSource::zenoh("examples/workspaces/derived-tiers-cpp", "cpp"),
+    )
+}
+
 /// phase-281 W3c — the Zephyr (native_sim) RT-TIERS C workspace Entry
 /// (`realtime-c/src/zephyr_entry`): the FIRST full west link + runtime proof of the
 /// W3a `ZephyrBoard::run_tiers` seam for a C node (closes the c×zephyr cell).

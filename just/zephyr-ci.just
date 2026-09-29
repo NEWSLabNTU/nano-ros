@@ -357,6 +357,14 @@ build-fixtures:
         ( cd examples/workspaces/realtime-rust
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
+    # issue 1575 — the derived-tier C++ workspace's Zephyr Entry. Its tier table
+    # is DERIVED from the SystemModel only `nros sync` writes; no native row
+    # syncs this workspace as a side effect, and an unsynced configure refuses.
+    if [ -d examples/workspaces/derived-tiers-cpp ]; then
+        echo "  → derived-tiers-cpp workspace-entry prep (nros sync)"
+        ( cd examples/workspaces/derived-tiers-cpp
+          NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
+    fi
 
     zephyr_leaf_args=(
         --zephyr-version "{{NROS_ZEPHYR_VERSION}}"

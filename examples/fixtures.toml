@@ -5113,6 +5113,37 @@ west_id = "zephyr/native_sim/native/64/workspace-realtime-entry-cpp"
 west_zenoh_locator = "tcp/127.0.0.1:7691"
 skip_probe = true
 
+# issue 1575 — the DERIVED-tier C++ Zephyr image
+# (examples/workspaces/derived-tiers-cpp/src/zephyr_entry): four components,
+# no authored `[tiers.*]`, a contract; `codegen entry` derives one tier per
+# node from it. It is the image issue 1551 ran the platform heap dry on, and
+# until this row no lane booted it, so that regression could come back unseen.
+# The C++ sibling of the Rust `workspace-zephyr-rs-realtime-derived` row.
+#
+# The model is a `nros sync` artifact: `just zephyr build-fixtures` syncs this
+# workspace in its workspace-entry prep, and an unsynced configure now REFUSES
+# (issue 1575) instead of deriving zero tiers and booting single-executor.
+# Consumed by `tests/realtime_tiers_e2e.rs` (zephyr/cpp-derived), which asserts
+# all four nodes tick on the console under a router.
+#
+# 7691 is `port_of(ZephyrNativeSim, Cpp, RealtimeTiers)`, shared with the
+# authored row above for the reason the SMP row shares 7591 with the C one:
+# one cell, two images, run one after the other.
+[[workspace_fixture]]
+id = "workspace-zephyr-cpp-derived-tiers"
+platform = "zephyr"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/derived-tiers-cpp"
+bringup = "src/demo_bringup"
+image = "zephyr"
+board = "native_sim/native/64"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+west_build_name = "build-ws-cpp-derived-tiers-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-derived-tiers-entry-cpp"
+west_zenoh_locator = "tcp/127.0.0.1:7691"
+skip_probe = true
+
 # phase-281 W3c — the RT-TIERS C workspace Entry
 # (examples/workspaces/realtime-c/src/zephyr_entry): the FIRST full west
 # link + runtime proof of the W3a ZephyrBoard::run_tiers seam for a C node
