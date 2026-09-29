@@ -52,6 +52,7 @@ Usage::
 
 import os
 import re
+import subprocess
 import sys
 
 try:
@@ -107,14 +108,24 @@ def image_locator(row, root):
 
 
 def crates_read_env(crates, root):
+    # `git ls-files` rather than a walk: every caller passes ROOT (see
+    # `verify_table`'s two call sites), so every path here is a tracked in-tree
+    # crate source. A walk would also read generated or stray `.rs` under
+    # `src/`, which is a different question from "what does this crate SAY",
+    # and `check-no-tracked-file-find` refuses it for that reason.
     for crate in crates:
-        src = os.path.join(root, crate, "src")
-        for dirpath, _, files in os.walk(src):
-            for name in files:
-                if name.endswith(".rs"):
-                    with open(os.path.join(dirpath, name), encoding="utf-8") as f:
-                        if ENV_READ.search(f.read()):
-                            return True
+        listed = subprocess.run(
+            ["git", "-C", root, "ls-files", "-z", "--", f"{crate}/src/*.rs"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        for rel in listed.split("\0"):
+            if not rel:
+                continue
+            with open(os.path.join(root, rel), encoding="utf-8") as f:
+                if ENV_READ.search(f.read()):
+                    return True
     return False
 
 
