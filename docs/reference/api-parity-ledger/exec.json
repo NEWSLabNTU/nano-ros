@@ -686,10 +686,6 @@
     "verdict": "extension",
     "why": "CORRECTED 2026-09-04 (phase-417 W-M2): this was verdicted `declined`, which means \"ROS 2 has it and we deliberately do not\". The row is OURS-ONLY -- rclrs has no counterpart at all -- so the verdict asserted the opposite of the bucket. `extension` is the verdict for a capability we add.\n\nnot an action item: `DeadlineAction` is RFC-0052's deadline-MISS reaction (ignore / warn / skip / fault) for a scheduling context, routed here because the taxonomy matches the word `Action`. rclrs has no counterpart because it has no deadline contract; the real row belongs to the exec or qos stage. Flagged for a `topics.py` fix; see this stage's report."
   },
-  "rust:EXECUTOR_BACKING_DEFAULT_U64S": {
-    "verdict": "divergence",
-    "why": "issue 1571 -- the words ONE default-sized executor carves (`ExecutorSizing::DEFAULT.u64_len()`), as the one spelling both the boot reservation and each `TierExecutorBackingSlot` are sized by, so a tier slot and the boot backing cannot disagree about 'one executor's worth'. Same no-allocator constraint as `rust:ExecutorSizing`."
-  },
   "rust:Executor::*age_table": {
     "verdict": "extension",
     "why": "the same for `now - header.stamp` age monitors (RFC-0052 W3b.2) -- 'this pose is stale' is a different question from 'this publisher missed its deadline'. See `rust:Executor::*monitor_table`.",
@@ -1290,10 +1286,6 @@
     "verdict": "divergence",
     "why": "the context a generated tick entry point drives callbacks through. Appears in 33 example trees because codegen emits it. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
   },
-  "rust:TierBackingShort": {
-    "verdict": "divergence",
-    "why": "issue 1571 -- the refusal value of `check_tier_executor_backing`: the tier backing a board was handed has fewer slots than it has spawned tiers. Carries both counts so the refusal names them. Exists only because the backing is caller-placed (no allocator); rclrs has nothing to refuse."
-  },
   "rust:TierExecutorBacking": {
     "verdict": "divergence",
     "why": "issue 1571 -- the SPAWNED tiers' executor backing, as ONE named `.bss` static the ENTRY owns: `nros::main!` emits a `TierExecutorBacking<N>` (N = tiers - 1; the boot tier takes the `EXECUTOR_BACKING` road) and hands `take()` to the board's `run_tiers`, which gives each spawned tier one `TierExecutorBackingSlot`. It exists because of the NO-ALLOCATOR constraint that makes `ExecutorSizing` a value: on an RTOS the allocator arena is itself a fixed static, so a per-tier `Box::leak` reserved the same bytes invisibly (no symbol, so `mem-report` could not price it and the link did not). The Rust twin of the C/C++ pack's `__nros_tier_executor_storage` (issue 1568). rclrs allocates its executors and has no tier model. Covers `TierExecutorBacking::new` and `TierExecutorBacking::take` (a once-only latch: the slots go out as `&'static mut`, so a second take is EMPTY and refused rather than aliased)."
@@ -1301,10 +1293,6 @@
   "rust:TierExecutorBacking::new": {
     "verdict": "divergence",
     "why": "See `rust:TierExecutorBacking`. `const` so it can initialise the entry's `static`; uninitialised, so the static is `.bss` and costs no flash."
-  },
-  "rust:TierExecutorBacking::take": {
-    "verdict": "divergence",
-    "why": "See `rust:TierExecutorBacking`. The once-only handout that makes the `&'static mut` sound; a second call returns an empty slice, which `check_tier_executor_backing` refuses by name."
   },
   "rust:TierExecutorBackingSlot": {
     "verdict": "divergence",
