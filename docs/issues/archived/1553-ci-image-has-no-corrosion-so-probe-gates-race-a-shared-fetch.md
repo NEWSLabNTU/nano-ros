@@ -187,7 +187,7 @@ check (fast + PR source gates; full compile tier on nightly/manual)  completed/s
 CI                                                                   completed/success
 ```
 
-The same PR's previous run on `fe36c6593` (job 109358679755) failed with
+The same PR's previous run, on its pre-rebase head (job 109358679755), failed with
 `1 of 366 gate(s) FAILED`, `===== FAIL (probe-workspace-caps, rc=1)` and the
 `destination path 'corrosion-src' already exists` collision, twice on the same
 head sha. Nothing about #1354 changed between them except the rebase onto the
@@ -215,3 +215,32 @@ Corrosion either way, because both probe tests only `tail` their configure log
 when the configure fails. What is observable is the provisioning step's own
 output, quoted above — it names the resolved prefix unconditionally, which is
 issue 0500's rule (read the line, never infer the install from having run it).
+
+## Follow-up — the gate side of the class (2026-09-29)
+
+The CI step fixes the one lane that provisions. It does not fix the CLASS: any
+other place `check-fast` runs with an empty store — a contributor's `pre-push`,
+a lane that never got the step — still had both probe gates clone Corrosion at
+configure time into the one shared fetch cache, and still raced.
+
+So a gate no longer reaches the network for Corrosion at all.
+`scripts/build/check-store-corrosion.sh`'s `nros_gate_require_store_corrosion`
+runs after each probe gate's CLI precondition (`just/check/cmake.just`) and asks
+the CLI — the one place that knows the pin and constructs its store prefix —
+`nros setup --check --tool corrosion`:
+
+- `[OK]` → the gate runs, and resolves Corrosion from the store;
+- `[MISSING]` → the gate SKIPS through the `nros_check_skip` ledger, naming
+  `just workspace install-corrosion` (the shape its `no in-tree CLI` sibling
+  precondition already has, so a pristine worktree stays green);
+- anything else → the gate FAILS with the CLI's output. Measured, not assumed:
+  a CLI left stale by a branch switch exits non-zero with `in-tree nros CLI is
+  STALE`, and the first draft of the helper read that as `[MISSING]` and
+  skipped both gates over a store that was full.
+
+Measured locally, both gates launched concurrently each run:
+
+| store | runs | result |
+| --- | --- | --- |
+| provisioned (`~/.nros/sdk/corrosion/0.6.1-nros1`) | 3 | both rc=0 every run: `[PASS] all 17 checks passed` / `[PASS] all 5 checks passed` |
+| empty (`NROS_HOME` → an empty dir) | 2 | both rc=0 and `[SKIPPED] … not in the SDK store`; the empty `NROS_HOME` held no `fetch/` afterwards — nothing was cloned |

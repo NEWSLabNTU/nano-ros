@@ -309,6 +309,10 @@ probe-shared-types:
         nros_check_skip probe-shared-types "no in-tree CLI -- run \`just setup-cli\`"
         exit 0
     fi
+    # issue 1553 -- a gate never clones Corrosion (see the helper's header).
+    # shellcheck source=scripts/build/check-store-corrosion.sh
+    source scripts/build/check-store-corrosion.sh
+    nros_gate_require_store_corrosion probe-shared-types packages/cli/target/release/nros || exit 0
     ./tests/cmake-probe-shared-types-tests.sh
 
 # issue 1470 -- the probe and the real build must agree about whether a type is
@@ -358,6 +362,10 @@ probe-workspace-caps:
         nros_check_skip probe-workspace-caps "no in-tree CLI -- run \`just setup-cli\`"
         exit 0
     fi
+    # issue 1553 -- a gate never clones Corrosion (see the helper's header).
+    # shellcheck source=scripts/build/check-store-corrosion.sh
+    source scripts/build/check-store-corrosion.sh
+    nros_gate_require_store_corrosion probe-workspace-caps packages/cli/target/release/nros || exit 0
     ./tests/cmake-probe-workspace-caps-tests.sh
 
 reconfigure-on-change:
