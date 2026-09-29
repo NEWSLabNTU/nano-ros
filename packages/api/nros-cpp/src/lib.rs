@@ -6082,7 +6082,7 @@ mod executor_storage_check_tests {
     fn a_misaligned_or_null_block_is_refused() {
         let b = backing();
         let need = nros_cpp_executor_storage_size();
-        let odd = unsafe { (b.as_ptr() as *const u8).add(4) };
+        let odd = (b.as_ptr() as *const u8).wrapping_add(4);
         assert_eq!(
             nros_cpp_executor_storage_check(odd.cast(), need),
             NROS_CPP_RET_INVALID_ARGUMENT
