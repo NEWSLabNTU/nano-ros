@@ -65,6 +65,9 @@ pub fn run_platform() {
     platform.flag("-std=c11");
     // issue 0383 — implicit-function-declaration / int-conversion as errors.
     nros_cc_flags::strict_decls(&mut platform);
+    // Issue 1570 — declare every header the port includes (the platform C ABI
+    // headers under `cffi_include`, the NuttX config), not just its sources.
+    nros_cc_flags::header_deps::track_header_deps(&mut platform);
     platform.define("__NuttX__", None);
     platform.include(&cffi_include);
     // Issue 0511 — arch-correct `nuttx/config.h`: these C sources are compiled
@@ -78,6 +81,9 @@ pub fn run_platform() {
     platform.file(platform_src.join("platform.c"));
     platform.file(platform_src.join("net.c"));
     platform.compile("nros_platform_nuttx");
+    nros_cc_flags::header_deps::emit_header_deps(std::path::Path::new(
+        &env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts"),
+    ));
 
     // `-bundle` keeps the port a standalone `lib*.a` (cc wrote it to OUT_DIR)
     // and emits a trailing `-l` at the FINAL binary link — AFTER every rlib,
@@ -155,6 +161,8 @@ pub fn compile_entry_seams(seam_srcs: &[&std::path::Path]) {
     seam.flag("-std=c11");
     // issue 0383 — implicit-function-declaration / int-conversion as errors.
     nros_cc_flags::strict_decls(&mut seam);
+    // Issue 1570 — same edge as `run_platform`.
+    nros_cc_flags::header_deps::track_header_deps(&mut seam);
     seam.define("__NuttX__", None);
     seam.include(crate::nuttx_export::include_root(&nuttx_dir));
     for inc in &arch_includes {
@@ -165,6 +173,9 @@ pub fn compile_entry_seams(seam_srcs: &[&std::path::Path]) {
         seam.file(src);
     }
     seam.compile("nros_nuttx_run_tiers");
+    nros_cc_flags::header_deps::emit_header_deps(std::path::Path::new(
+        &env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts"),
+    ));
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts");
     println!("cargo:rustc-link-search=native={out_dir}");
