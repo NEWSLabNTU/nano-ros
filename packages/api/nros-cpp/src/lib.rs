@@ -1486,7 +1486,7 @@ pub extern "C" fn nros_cpp_executor_storage_check(
     let need = nros_cpp_executor_storage_size();
     let misalign = (storage as usize) % core::mem::align_of::<u64>();
     let unit = core::mem::size_of::<u64>();
-    if storage.is_null() || misalign != 0 || bytes < need || bytes % unit != 0 {
+    if storage.is_null() || misalign != 0 || bytes < need || !bytes.is_multiple_of(unit) {
         cpp_diag!(
             "nros: executor storage refused: {} bytes at misalignment {} (null={}); this build's \
              executor needs {} bytes in 8-byte units, 8-byte aligned — the caller sized it from \
