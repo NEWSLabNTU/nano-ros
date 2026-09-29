@@ -85,9 +85,10 @@ Two routes, both larger than 1568's scope:
    the executor, but not for the component buffers).
 
 Route 1 is the one that makes NuttX exact; route 2 only keeps the bound safe.
-Either needs issue 1570 first: an incremental NuttX build does not recompile
-a component when a header it includes changes, so a corrected size never
-reaches an image that was already built.
+Either needed issue 1570 first: an incremental NuttX build did not recompile
+a component when a header it includes changed, so a corrected size never
+reached an image that was already built. 1570 is resolved (the NuttX image
+link now declares every header its TUs read), so that precondition is met.
 
 ## Acceptance
 
