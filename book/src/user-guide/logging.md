@@ -237,7 +237,67 @@ filter.
   legacy `NROS_INFO` / etc. file:line printf surface stays
   alongside the new `NROS_LOG_*` macros).
 
-`/rosout` publication is explicitly out of scope today; the
-dispatcher's `&'static [&dyn LogSink]` shape leaves room for an
-add-later `RosoutSink` that consumes records alongside
-`PlatformSink`.
+## `/rosout`
+
+**It exists now** (phase-467 Q4; this section read "explicitly out of scope
+today" until 2026-09-29). Records can be republished as
+`rcl_interfaces/msg/Log` on `/rosout`, so `ros2 topic echo /rosout`,
+`rqt_console` and launch-side log aggregators see a nano-ros node.
+
+Turn on the `rosout` feature and wire three lines:
+
+```rust
+use nros_rcl_interfaces::msg::Log;
+
+let rosout = executor
+    .create_node("my_node")?
+    .create_publisher_with_qos::<Log>(nros::rosout::TOPIC, nros::rosout::qos_bounded())?;
+nros::rosout::enable();                  // records start queueing
+loop {
+    executor.spin_once(budget);
+    let _ = nros::rosout::pump(&rosout); // and reach the wire here
+}
+```
+
+Four things to know before you rely on it.
+
+**It is not automatic.** Upstream republishes from every rcl node with no user
+action. Here you create the publisher yourself, because a publisher is an
+ENTITY: it reaches the derived pool counts, the zenoh session's tables and the
+sizing descriptor. An entity the runtime conjured below your declaration is how
+a queryable table fills up at boot with nothing in your launch file to explain
+it.
+
+**The default QoS is not upstream's.** `nros::rosout::qos()` IS
+`rcl_qos_profile_rosout_default` — KEEP_LAST(1000), RELIABLE, TRANSIENT_LOCAL,
+10 s lifespan — and on an embedded target it is expensive: a transient-local
+publisher takes a retention slot AND a cache queryable out of a
+`ZPICO_MAX_QUERYABLES` that defaults to 8 and already has eleven claimants if
+you run parameter and lifecycle services, and KEEP_LAST(1000) over a ~1 KB
+message is a megabyte of history. `qos_bounded()` is VOLATILE at the queue
+depth and costs neither. What you give up is that a subscriber which attaches
+LATE sees no boot story. A stock `ros2 topic echo` still matches — it requests
+VOLATILE and downgrades across a mixed publisher set.
+
+**The stamp is the platform monotonic clock**, not wall time, because an RTOS
+image has none to offer: `rqt_console` will display an uptime as a time of day.
+Without `nros-log/platform-clock` it is a constant zero.
+
+**It costs `.bss`.** 5 760 bytes on the defaults (16 queued records x 360 B),
+down to 1 856 B with `rosout-records-8` + `buffer-size-128` and up to 72 192 B
+with `rosout-records-64` + `buffer-size-1024`. An image that does not enable
+the feature pays nothing — the module is compiled out whole.
+
+### The sink does not publish, and that is the point
+
+`nros_log`'s `/rosout` sink copies each record into a bounded static ring and
+returns. It never enters the transport. A logging sink that publishes, on a
+path that can itself log, is unbounded recursion — and on Zephyr native_sim
+that shape kills the image by stack exhaustion with no message at all. The
+publish happens in `pump()`, on your spin thread, with a flag set that makes
+the queue refuse anything logged underneath it; those refusals are counted
+(`nros::rosout::suppressed()`) alongside the ones lost to a full ring
+(`nros::rosout::dropped()`), and `pump` reports both on `/rosout` itself so an
+operator learns about a gap on the channel the gap is in.
+
+C and C++ reach none of this yet — see issue 1589.

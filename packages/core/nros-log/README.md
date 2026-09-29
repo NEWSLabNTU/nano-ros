@@ -23,8 +23,15 @@ fn main() {
 
 `sinks::default()` returns a `&'static [&dyn LogSink]` containing one
 `PlatformSink` — that's the only sink that calls
-`nros_platform_log_write`. Boards / apps can add their own sinks
-(e.g. a future `RosoutSink`) by composing a `&'static` slice.
+`nros_platform_log_write`. Boards / apps can add their own sinks by
+composing a `&'static` slice, or append one at runtime with `add_sink`.
+
+The `/rosout` bridge is the worked example of the second, and it is no longer
+"a future `RosoutSink`" (this line said so until 2026-09-29): see
+[`rosout`](src/rosout.rs) here for the queue and `nros_node::rosout` for the
+publisher. Note what it is NOT — the sink does not publish. It copies into a
+bounded ring and returns, because a sink that enters the transport is
+re-entrant by construction.
 
 ## Macros
 
