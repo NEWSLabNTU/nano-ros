@@ -725,6 +725,23 @@ function(nros_generate_interfaces target)
           $<BUILD_INTERFACE:${_umbrella_dir}>
           $<INSTALL_INTERFACE:include/${target}>
       )
+      # Issue 1569 — the codegen on its own, the C twin of the C++ branch's
+      # `_gen`. A consumer that compiles these sources ITSELF (the NuttX image
+      # build, via `APP_INTERFACE_SOURCES`) needs them generated, not compiled
+      # here; ordering it on the library compiled them a second time.
+      add_custom_target(${_lib_target}_gen DEPENDS ${_generated_headers} ${_generated_sources})
+      add_dependencies(${_lib_target} ${_lib_target}_gen)
+      foreach(_dep ${_ARG_DEPENDENCIES})
+        if(TARGET ${_dep}__nano_ros_c_gen)
+          add_dependencies(${_lib_target}_gen ${_dep}__nano_ros_c_gen)
+        endif()
+      endforeach()
+      # And on NuttX this library is one of those compiled a second time: its
+      # objects are never linked (the image compiles the same sources in cargo).
+      # The one helper every such library registers with decides that.
+      if(COMMAND _nros_node_register_config_header_deps)
+        _nros_node_register_config_header_deps(${_lib_target})
+      endif()
       # Issue 0114 — the generated message `.c` TUs include <nros/nros_generated.h>
       # (→ the `*_OPAQUE_U64S` sizes), so on a parallel/fresh NATIVE build they can
       # compile BEFORE Corrosion's `nros_c_config_header` mirror custom command runs
