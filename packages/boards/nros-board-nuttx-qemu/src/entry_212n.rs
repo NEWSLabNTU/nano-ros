@@ -146,7 +146,7 @@ impl nros_platform::BoardEntry for NuttxQemu {
 
 /// phase-281 W3-nuttx (RFC-0015 Model 1) — the multi-tier inherent entry the
 /// `nros::main!` generic OwnedSpin arm targets. For a multi-tier plan the macro
-/// emits `<NuttxQemu>::run_tiers(&deploy, TIERS, closure)` (exactly as it does
+/// emits `<NuttxQemu>::run_tiers(&deploy, TIERS, TIER_BACKING, closure)` (exactly as it does
 /// `LinuxBoard::run_tiers` for native); this pushes the guest IP into `eth0`
 /// (issue #130 — same [`entry_net_init`] the single-tier `run{,_with_deploy}`
 /// paths use) and then delegates to the NuttX family driver's
@@ -162,6 +162,9 @@ impl NuttxQemu {
     pub fn run_tiers<F, E>(
         deploy: &nros_platform::DeployOverlay,
         tiers: &[nros_platform::TierSpec<'_>],
+        // issue 1571 — the spawned tiers' executor backing: the entry's
+        // `.bss` `TierExecutorBacking`, emitted by `nros::main!`.
+        tier_backing: &'static mut [nros_board_nuttx::TierExecutorBackingSlot],
         setup: F,
     ) -> Result<(), E>
     where
@@ -169,7 +172,7 @@ impl NuttxQemu {
         E: core::fmt::Debug,
     {
         entry_net_init(Some(deploy));
-        nros_board_nuttx::run_tiers::<Self, F, E>(deploy.boot_config, tiers, setup)
+        nros_board_nuttx::run_tiers::<Self, F, E>(deploy.boot_config, tiers, tier_backing, setup)
     }
 }
 

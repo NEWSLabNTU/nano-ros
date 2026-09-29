@@ -373,6 +373,9 @@ struct TiersContext<C, F> {
     config: C,
     boot_config: Option<&'static BakedBootConfig>,
     tiers: &'static [TierSpec<'static>],
+    /// issue 1571 — the spawned tiers' executor backing, the entry's `.bss`
+    /// `TierExecutorBacking`; moved down the spawn chain one slot per tier.
+    tier_backing: &'static mut [::nros::TierExecutorBackingSlot],
     setup: F,
 }
 
@@ -383,6 +386,11 @@ struct TierTaskCtx<F> {
     tier: TierSpec<'static>,
     /// Tiers still to spawn AFTER this one — the chained-spawn tail (#144).
     rest: &'static [TierSpec<'static>],
+    /// issue 1571 — this tier's executor backing: one slot of the entry's
+    /// `.bss` `TierExecutorBacking`, never the byte pool.
+    slot: &'static mut ::nros::TierExecutorBackingSlot,
+    /// The slots `rest` will take, one each, handed down the chain with it.
+    rest_backing: &'static mut [::nros::TierExecutorBackingSlot],
     setup: F,
 }
 
@@ -443,6 +451,7 @@ fn apply_tier_core_exclude<B: BoardPrint>(tier: &TierSpec<'static>) {
 fn spawn_next_tier<B, C, F, E>(
     session: ::nros::SessionHandle,
     remaining: &'static [TierSpec<'static>],
+    backing: &'static mut [::nros::TierExecutorBackingSlot],
     setup: F,
 ) -> core::result::Result<(), ()>
 where
@@ -453,6 +462,15 @@ where
 {
     let Some((tier, rest)) = remaining.split_first() else {
         return Ok(());
+    };
+    // issue 1571 — `run_tiers_entry` checked the block covers every spawned
+    // tier before the kernel started, so a missing slot is a broken chain.
+    let Some((slot, rest_backing)) = backing.split_first_mut() else {
+        B::println(format_args!(
+            "nros: no executor backing slot left for tier `{}` (issue 1571)",
+            tier.name
+        ));
+        return Err(());
     };
     let size = core::mem::size_of::<TierTaskCtx<F>>();
     let ptr = unsafe { nros_threadx_alloc(size as core::ffi::c_ulong) as *mut TierTaskCtx<F> };
@@ -467,6 +485,8 @@ where
                 session,
                 tier: *tier,
                 rest,
+                slot,
+                rest_backing,
                 setup,
             },
         );
@@ -537,24 +557,32 @@ where
     E: core::fmt::Debug,
 {
     let arg = input as *mut TierTaskCtx<F>;
-    let ctx = unsafe { core::ptr::read(arg) };
+    let TierTaskCtx {
+        session,
+        tier,
+        rest,
+        slot,
+        rest_backing,
+        setup,
+    } = unsafe { core::ptr::read(arg) };
     unsafe { nros_threadx_free(arg as *mut c_void) };
-    B::println(format_args!("nros: tier `{}` thread up", ctx.tier.name));
+    B::println(format_args!("nros: tier `{}` thread up", tier.name));
 
     // SAFETY: the boot thread owns the session for the firmware lifetime (its
-    // spin loop never returns), so the handle stays valid.
-    let executor = unsafe { ::nros::Executor::open_with_session_handle(ctx.session) };
+    // spin loop never returns), so the handle stays valid. issue 1571 — the
+    // backing is this tier's `.bss` slot, not a leaked `Box` on the byte pool.
+    let executor = unsafe { ::nros::Executor::open_with_session_handle_slot(session, slot) };
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
-    apply_tier(&mut crt, &ctx.tier);
-    apply_tier_core_exclude::<B>(&ctx.tier);
+    apply_tier(&mut crt, &tier);
+    apply_tier_core_exclude::<B>(&tier);
     {
         let mut runtime = RuntimeCtx::with_runtime(&mut crt);
-        if let Err(e) = (ctx.setup)(&mut runtime) {
+        if let Err(e) = (setup)(&mut runtime) {
             B::println(format_args!(
                 "nros: tier `{}` setup failed: {:?} — {} downstream tier(s) will NOT start",
-                ctx.tier.name,
+                tier.name,
                 e,
-                ctx.rest.len()
+                rest.len()
             ));
             B::exit_failure();
         }
@@ -564,29 +592,29 @@ where
     // consumed above). A DOWNSTREAM spawn failure must not stop this tier
     // spinning, so warn + continue.
     let next_session = crt.executor_mut().session_handle();
-    if spawn_next_tier::<B, C, F, E>(next_session, ctx.rest, ctx.setup).is_err() {
+    if spawn_next_tier::<B, C, F, E>(next_session, rest, rest_backing, setup).is_err() {
         B::println(format_args!(
             "nros: tier `{}` failed to spawn next tier; continuing",
-            ctx.tier.name
+            tier.name
         ));
     }
-    let period_ms = (ctx.tier.spin_period_us / 1000).max(1) as u32;
+    let period_ms = (tier.spin_period_us / 1000).max(1) as u32;
     B::println(format_args!(
         "nros: tier `{}` setup complete — spinning at {} ms",
-        ctx.tier.name, period_ms
+        tier.name, period_ms
     ));
     // issue 0636 option 3 — every iteration reaches a scheduling point. The
     // executor's own wait is SKIPPED whenever a wake already fired, so under
     // sustained traffic this loop would otherwise never block, and a thread
     // that never blocks never lets a lower-priority tier run. Costs nothing
     // while the spins do block.
-    let mut gap = ::nros_platform::TierSpinGap::new(ctx.tier.spin_period_us);
+    let mut gap = ::nros_platform::TierSpinGap::new(tier.spin_period_us);
     loop {
         let iter = gap.mark();
         if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, period_ms) {
             B::println(format_args!(
                 "nros: tier `{}` spin error: {:?}",
-                ctx.tier.name, err
+                tier.name, err
             ));
             B::exit_failure();
         }
@@ -608,10 +636,12 @@ where
     F: Fn(&mut RuntimeCtx<'_>) -> core::result::Result<(), E> + Copy,
     E: core::fmt::Debug,
 {
-    let ctx = unsafe { &*(arg as *const TiersContext<C, F>) };
+    let ctx = unsafe { &mut *(arg as *mut TiersContext<C, F>) };
     let config = unsafe { core::ptr::read(&ctx.config) };
     let boot_config = ctx.boot_config;
     let tiers = ctx.tiers;
+    // issue 1571 — MOVED out, so exactly one owner of the slots ever exists.
+    let tier_backing = core::mem::take(&mut ctx.tier_backing);
     let setup = ctx.setup;
 
     if tiers.is_empty() {
@@ -712,8 +742,13 @@ where
     }
 
     // Chain-spawn the remaining tiers off this executor's session.
-    if spawn_next_tier::<B, C, F, E>(crt.executor_mut().session_handle(), &tiers[1..], setup)
-        .is_err()
+    if spawn_next_tier::<B, C, F, E>(
+        crt.executor_mut().session_handle(),
+        &tiers[1..],
+        tier_backing,
+        setup,
+    )
+    .is_err()
     {
         B::exit_failure();
     }
@@ -739,7 +774,7 @@ where
 }
 
 /// Phase 297 W4 — multi-tier entry for the ThreadX family. The `nros::main!`
-/// macro emits `<Board>::run_tiers(&overlay, TIERS, setup)` whenever a system
+/// macro emits `<Board>::run_tiers(&overlay, TIERS, TIER_BACKING, setup)` whenever a system
 /// declares more than the synthesized single `default` tier; the per-board ZST
 /// routes here. Mirrors [`run_entry`] (build the boot context into
 /// `CTX_STORAGE`, push the network config + app callback through the C glue,
@@ -752,6 +787,7 @@ pub fn run_tiers_entry<B, C, F, E>(
     config: C,
     boot_config: Option<&'static BakedBootConfig>,
     tiers: &'static [TierSpec<'static>],
+    tier_backing: &'static mut [::nros::TierExecutorBackingSlot],
     setup: F,
 ) -> core::result::Result<(), E>
 where
@@ -780,6 +816,13 @@ where
     B::println(format_args!("========================================"));
     B::init_hardware();
 
+    // issue 1571 — the one refusal, before the kernel starts: every spawned
+    // tier needs a slot of the entry's `.bss` backing.
+    if let Err(short) = ::nros::check_tier_executor_backing(tiers.len(), tier_backing) {
+        B::println(format_args!("nros: {}", short));
+        B::exit_failure();
+    }
+
     // Boot context into the shared static storage (single-threaded here —
     // pre-kernel-enter). Reuses `CTX_STORAGE` (run_entry vs run_tiers are
     // mutually exclusive per image).
@@ -805,6 +848,7 @@ where
                 config,
                 boot_config,
                 tiers,
+                tier_backing,
                 setup,
             },
         );

@@ -557,6 +557,9 @@ struct AppContextTiers<F> {
     /// Issue #98 / RFC-0045 — baked `.nros_boot_config` for node-name resolution.
     boot_config: Option<&'static BakedBootConfig>,
     tiers: &'static [TierSpec<'static>],
+    /// issue 1571 — the spawned tiers' executor backing, the entry's `.bss`
+    /// `TierExecutorBacking`; moved down the spawn chain one slot per tier.
+    tier_backing: &'static mut [::nros::TierExecutorBackingSlot],
     setup: F,
 }
 
@@ -568,6 +571,11 @@ struct TierTaskCtx<F> {
     /// (issue #144). This tier spawns `rest[0]` (carrying `rest[1..]`) only
     /// after its own setup returns, so no two setups overlap.
     rest: &'static [TierSpec<'static>],
+    /// issue 1571 — this tier's executor backing: one slot of the entry's
+    /// `.bss` `TierExecutorBacking`, never the heap.
+    slot: &'static mut ::nros::TierExecutorBackingSlot,
+    /// The slots `rest` will take, one each, handed down the chain with it.
+    rest_backing: &'static mut [::nros::TierExecutorBackingSlot],
     /// Fallback stack (words) for a spawned tier whose `stack_bytes == 0`,
     /// threaded down the chain since the tier tasks no longer see `Config`.
     app_stack_default_words: u32,
@@ -589,6 +597,7 @@ struct TierTaskCtx<F> {
 fn spawn_next_tier<B, F, E>(
     session: ::nros::SessionHandle,
     remaining: &'static [TierSpec<'static>],
+    backing: &'static mut [::nros::TierExecutorBackingSlot],
     app_stack_default_words: u32,
     setup: F,
 ) -> core::result::Result<(), ()>
@@ -600,10 +609,21 @@ where
     let Some((tier, rest)) = remaining.split_first() else {
         return Ok(());
     };
+    // issue 1571 — `run_tiers_entry` checked the block covers every spawned
+    // tier before anything opened, so a missing slot is a broken chain.
+    let Some((slot, rest_backing)) = backing.split_first_mut() else {
+        B::println(format_args!(
+            "nros: no executor backing slot left for tier `{}` (issue 1571)",
+            tier.name
+        ));
+        return Err(());
+    };
     let tier_ctx = TierTaskCtx::<F> {
         session,
         tier: *tier,
         rest,
+        slot,
+        rest_backing,
         app_stack_default_words,
         setup,
     };
@@ -653,40 +673,49 @@ where
     F: Fn(&mut RuntimeCtx<'_>) -> core::result::Result<(), E> + Copy,
     E: core::fmt::Debug,
 {
-    let ctx = unsafe { core::ptr::read(arg as *mut TierTaskCtx<F>) };
+    let TierTaskCtx {
+        session,
+        tier,
+        rest,
+        slot,
+        rest_backing,
+        app_stack_default_words,
+        setup,
+    } = unsafe { core::ptr::read(arg as *mut TierTaskCtx<F>) };
     unsafe { nros_platform_dealloc(arg) };
 
     // SAFETY: the boot task owns the session for the firmware lifetime (its spin
-    // loop never returns), so the handle stays valid.
-    let executor = unsafe { ::nros::Executor::open_with_session_handle(ctx.session) };
+    // loop never returns), so the handle stays valid. issue 1571 — the backing
+    // is this tier's `.bss` slot, not a leaked `Box` on heap_4.
+    let executor = unsafe { ::nros::Executor::open_with_session_handle_slot(session, slot) };
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
     // issue 1172 — `Err` means the filter did not fit, and
     // `set_active_groups` has already cleared it and left filtering ON,
     // so this tier registers NOTHING rather than registering on a
     // quietly narrower set. Nothing here can return an error (the tier
     // runner is `-> ()`), so the fail-closed state IS the report.
-    let _ = crt.executor_mut().set_active_groups(ctx.tier.groups);
+    let _ = crt.executor_mut().set_active_groups(tier.groups);
     // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT).
     crt.apply_tier_sched_policy(
-        ctx.tier.class,
-        ctx.tier.period_us,
-        ctx.tier.budget_us,
-        ctx.tier.deadline_us,
-        ctx.tier.deadline_policy,
+        tier.class,
+        tier.period_us,
+        tier.budget_us,
+        tier.deadline_us,
+        tier.deadline_policy,
     );
     {
         let mut runtime = RuntimeCtx::with_runtime(&mut crt);
-        if let Err(e) = (ctx.setup)(&mut runtime) {
+        if let Err(e) = (setup)(&mut runtime) {
             // The chain is serialized (issue #144): this tier spawns the next
             // only after its own setup returns Ok, so a failure here HALTS the
-            // chain — the downstream tiers (`ctx.rest`) will not start. This
+            // chain — the downstream tiers (`rest`) will not start. This
             // path then aborts the firmware (pre-#144 `exit_failure` behavior),
             // so the halt is loud, not silent.
             B::println(format_args!(
                 "nros: tier `{}` setup failed: {:?} — {} downstream tier(s) will NOT start",
-                ctx.tier.name,
+                tier.name,
                 e,
-                ctx.rest.len()
+                rest.len()
             ));
             B::exit_failure();
         }
@@ -694,38 +723,39 @@ where
     // issue #144 — this tier's setup is done, so bringing up the next tier can
     // no longer race our declares: spawn `rest[0]` (carrying `rest[1..]`). Mint
     // a fresh handle off this tier's executor (same as the boot path —
-    // `ctx.session` was consumed opening the executor above). A failed
+    // `session` was consumed opening the executor above). A failed
     // DOWNSTREAM spawn must NOT stop this tier spinning its own work, so warn +
     // continue (do NOT exit_failure).
     report_stack_peak::<B>(
-        ctx.tier.name,
-        if ctx.tier.stack_bytes == 0 {
-            ctx.app_stack_default_words.saturating_mul(4)
+        tier.name,
+        if tier.stack_bytes == 0 {
+            app_stack_default_words.saturating_mul(4)
         } else {
-            ctx.tier.stack_bytes as u32
+            tier.stack_bytes as u32
         },
     );
     let next_session = crt.executor_mut().session_handle();
     if spawn_next_tier::<B, F, E>(
         next_session,
-        ctx.rest,
-        ctx.app_stack_default_words,
-        ctx.setup,
+        rest,
+        rest_backing,
+        app_stack_default_words,
+        setup,
     )
     .is_err()
     {
         B::println(format_args!(
             "nros: tier `{}` failed to spawn next tier; continuing",
-            ctx.tier.name
+            tier.name
         ));
     }
-    let period_ms = (ctx.tier.spin_period_us / 1000).max(1) as u32;
+    let period_ms = (tier.spin_period_us / 1000).max(1) as u32;
     // issue 0636 option 3 — every iteration reaches a scheduling point. The
     // executor's own wait is SKIPPED whenever a wake already fired, so under
     // sustained traffic this loop would otherwise never block, and a task that
     // never blocks never lets a lower-priority tier run. Costs nothing while
     // the spins do block.
-    let mut gap = ::nros_platform::TierSpinGap::new(ctx.tier.spin_period_us);
+    let mut gap = ::nros_platform::TierSpinGap::new(tier.spin_period_us);
     loop {
         let iter = gap.mark();
         if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, period_ms) {
@@ -734,7 +764,7 @@ where
             }
             B::println(format_args!(
                 "nros: tier `{}` spin error: {:?}",
-                ctx.tier.name, err
+                tier.name, err
             ));
             B::exit_failure();
         }
@@ -886,6 +916,7 @@ where
     if spawn_next_tier::<B, F, E>(
         crt.executor_mut().session_handle(),
         rest,
+        core::mem::take(&mut ctx.tier_backing),
         app_stack_default_words,
         ctx.setup,
     )
@@ -919,7 +950,7 @@ where
 }
 
 /// Phase 228.E.2 — per-tier FreeRTOS entry. The `nros::main!()` macro emits
-/// `<Board>::run_tiers(TIERS, run_plan)`; the board ZST routes here. Mirrors
+/// `<Board>::run_tiers(TIERS, TIER_BACKING, run_plan)`; the board ZST routes here. Mirrors
 /// [`run_entry`] but runs one FreeRTOS task per priority tier over one shared
 /// session, the non-boot tiers CHAIN-spawned so their setups serialize
 /// (issue #144; RFC-0032 §5; MT=1 is the default on FreeRTOS, §5.0). `tiers` are the
@@ -932,6 +963,7 @@ pub fn run_tiers_entry<B, F, E>(
     config: Config,
     boot_config: Option<&'static BakedBootConfig>,
     tiers: &'static [TierSpec<'static>],
+    tier_backing: &'static mut [::nros::TierExecutorBackingSlot],
     setup: F,
 ) -> core::result::Result<(), E>
 where
@@ -953,6 +985,13 @@ where
 
     report_tiers_above_transport::<B>(&config, tiers);
 
+    // issue 1571 — the one refusal, before the scheduler starts: every spawned
+    // tier needs a slot of the entry's `.bss` backing.
+    if let Err(short) = ::nros::check_tier_executor_backing(tiers.len(), tier_backing) {
+        B::println(format_args!("nros: {}", short));
+        B::exit_failure();
+    }
+
     let app_pri = config.app_priority as u32; // issue 0623 — already raw
     let app_stack_words = config.app_stack_bytes / 4;
 
@@ -966,6 +1005,7 @@ where
                 config,
                 boot_config,
                 tiers,
+                tier_backing,
                 setup,
             },
         );

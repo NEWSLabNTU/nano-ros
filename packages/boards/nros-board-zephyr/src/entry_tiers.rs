@@ -20,7 +20,7 @@
 //! bursts race the shared session's interest handshake.
 //!
 //! The `nros::main!` `Framework::Zephyr` arm emits
-//! `ZephyrBoard::run_tiers(&config, TIERS, closure)` for multi-tier systems
+//! `ZephyrBoard::run_tiers(&config, TIERS, TIER_BACKING, closure)` for multi-tier systems
 //! (single-tier keeps the plain register+spin scaffold).
 
 extern crate alloc;
@@ -188,6 +188,19 @@ struct TierTaskCtx<F> {
     /// (issue #144). This tier spawns `rest[0]` (carrying `rest[1..]`)
     /// only after its OWN setup returns, so no two setups overlap.
     rest: &'static [TierSpec<'static>],
+    /// issue 1571 — this tier's executor backing: one slot of the entry's
+    /// `.bss` `TierExecutorBacking`, never the heap.
+    slot: &'static mut ::nros::TierExecutorBackingSlot,
+    /// The slots `rest` will take, one each, handed down the chain with it.
+    rest_backing: &'static mut [::nros::TierExecutorBackingSlot],
+    setup: F,
+}
+
+/// The parts of a [`TierTaskCtx`] the tier body reads after the backing slots
+/// have been moved out of it (issue 1571).
+struct TierCtxView<F> {
+    tier: TierSpec<'static>,
+    rest: &'static [TierSpec<'static>],
     setup: F,
 }
 
@@ -202,6 +215,7 @@ struct TierTaskCtx<F> {
 fn spawn_next_tier<F>(
     session: ::nros::SessionHandle,
     remaining: &'static [TierSpec<'static>],
+    backing: &'static mut [::nros::TierExecutorBackingSlot],
     setup: F,
 ) -> Result<(), RuntimeError>
 where
@@ -210,10 +224,22 @@ where
     let Some((tier, rest)) = remaining.split_first() else {
         return Ok(());
     };
+    // issue 1571 — `run_tiers` checked the block covers every spawned tier
+    // before it opened anything, so a missing slot here is a broken chain, not
+    // a short entry.
+    let Some((slot, rest_backing)) = backing.split_first_mut() else {
+        ::log::error!(
+            "nros: no executor backing slot left for tier `{}` (issue 1571)",
+            tier.name
+        );
+        return Err(RuntimeError::Spin);
+    };
     let ctx = Box::new(TierTaskCtx::<F> {
         session,
         tier: *tier,
         rest,
+        slot,
+        rest_backing,
         setup,
     });
     let prio = tier.priority.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
@@ -290,10 +316,19 @@ unsafe extern "C" fn tier_task_entry<F>(arg: *mut c_void) -> *mut c_void
 where
     F: Fn(&mut RuntimeCtx<'_>) -> Result<(), RuntimeError> + Copy + 'static,
 {
-    let ctx = unsafe { Box::from_raw(arg as *mut TierTaskCtx<F>) };
+    let TierTaskCtx {
+        session,
+        tier,
+        rest,
+        slot,
+        rest_backing,
+        setup,
+    } = *unsafe { Box::from_raw(arg as *mut TierTaskCtx<F>) };
     // SAFETY: the boot thread owns the session for the firmware lifetime
-    // (its spin loop never returns), so the handle stays valid.
-    let executor = unsafe { ::nros::Executor::open_with_session_handle(ctx.session) };
+    // (its spin loop never returns), so the handle stays valid. issue 1571 —
+    // the backing is this tier's `.bss` slot, not a leaked `Box`.
+    let executor = unsafe { ::nros::Executor::open_with_session_handle_slot(session, slot) };
+    let ctx = TierCtxView { tier, rest, setup };
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
     // issue 1172 — `Err` means the filter did not fit, and
     // `set_active_groups` has already cleared it and left filtering ON,
@@ -365,7 +400,7 @@ where
     // opening the executor above). A failed DOWNSTREAM spawn must NOT stop this
     // tier spinning its own work, so log + continue.
     let next_session = crt.executor_mut().session_handle();
-    if let Err(e) = spawn_next_tier(next_session, ctx.rest, ctx.setup) {
+    if let Err(e) = spawn_next_tier(next_session, ctx.rest, rest_backing, ctx.setup) {
         ::log::error!(
             "nros: tier `{}` failed to spawn next tier: {:?}",
             ctx.tier.name,
@@ -403,6 +438,7 @@ impl ZephyrBoard {
     pub fn run_tiers<F>(
         config: &::nros::ExecutorConfig,
         tiers: &'static [TierSpec<'static>],
+        tier_backing: &'static mut [::nros::TierExecutorBackingSlot],
         setup: F,
     ) -> Result<(), RuntimeError>
     where
@@ -434,6 +470,12 @@ impl ZephyrBoard {
 
         if tiers.is_empty() {
             ::log::error!("nros: run_tiers called with no tiers");
+            return Err(RuntimeError::Spin);
+        }
+        // issue 1571 — the one refusal, before anything opens: every spawned
+        // tier needs a slot of the entry's `.bss` backing.
+        if let Err(short) = ::nros::check_tier_executor_backing(tiers.len(), tier_backing) {
+            ::log::error!("nros: {}", short);
             return Err(RuntimeError::Spin);
         }
 
@@ -486,7 +528,12 @@ impl ZephyrBoard {
         // Kick off the chain: spawn tiers[1] carrying tiers[2..] as its tail;
         // tiers[0] runs on this (boot) thread. A boot-side spawn failure is
         // fatal (takes the error/exit path) — unlike a downstream tier's.
-        spawn_next_tier(crt.executor_mut().session_handle(), &tiers[1..], setup)?;
+        spawn_next_tier(
+            crt.executor_mut().session_handle(),
+            &tiers[1..],
+            tier_backing,
+            setup,
+        )?;
 
         // The boot thread runs tiers[0] itself — adopt its declared raw
         // priority (the spawned tiers already got theirs at k_thread_create;
