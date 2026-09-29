@@ -108,7 +108,7 @@ pristine tree does not have. Its probe TU therefore had 149 errors -- and
 printed a `sizeof` anyway, because GCC keeps going past `#error`. It was
 measuring numbers off a TU that does not compile.
 
-`-DNROS_PLATFORM_NUTTX` selects the COMMITTED sizes header instead, the same
+`-DNROS_CONFIG_BUILDLESS` selects the COMMITTED sizes header instead, the same
 choice `scripts/api_parity/extract_cxx.py` makes for the same reason. The gate
 needs a sizes header CONSISTENT between its arms, not a host-shaped one, so a
 committed one is strictly better -- and the subject derivation refuses to run at

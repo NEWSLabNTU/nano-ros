@@ -419,9 +419,9 @@ NROS_PUBLIC int32_t nros_board_nuttx_run_tiers_ns(const char* locator, uint8_t d
  * so `_ns` took an 81,920-byte fallback per tier for an executor the same
  * build measured at 88,560. The size is now the linked library's.
  *
- * On NuttX the entry's static is sized from the COMMITTED snapshot
- * (`nros_cpp_config_generated_nuttx.h`, issue 1115), an upper bound, so it is
- * never refused but over-reserves — issue 1568 records the remaining scope. */
+ * On NuttX the entry's static is sized from the per-build header like every
+ * other board's (issue 1569 — it used to be a committed upper-bound snapshot
+ * that over-reserved), so it equals what the library checks. */
 NROS_PUBLIC int32_t nros_board_nuttx_run_tiers_in(const char* locator, uint8_t domain_id,
                                                   const char* session_name,
                                                   const char* node_namespace,

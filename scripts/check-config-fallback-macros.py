@@ -57,6 +57,22 @@ WHAT THIS GATE CHECKS
    not counted. The include guard's own `#ifndef` is not an arm. And the
    value check reads the LAST unconditional definition, the one that compiles.
 
+5. NO BUILD REACHES A FALLBACK (issue 1569). The premise above stopped being
+   true for NuttX: its FFI build now compiles against the per-build header from
+   the `nros-c`/`nros-cpp` `links` channels, and the committed snapshots were
+   renamed `*_buildless.h`. They sized every NuttX image from a hand-kept
+   number that fell below the build four times (#167, #464, #954, 1568); a
+   snapshot cannot even be made exact, since one file stood for two
+   architectures. So a stub may dispatch to a fallback ONLY under
+   `NROS_CONFIG_BUILDLESS` -- never under a platform macro -- and that define is
+   for the header-only checks under `scripts/` that compile with no build at
+   all. A non-comment line naming it anywhere else (a cmake file, a build
+   script, a Kconfig fragment, a codegen template) is refused: that would be a
+   build sizing an image from the snapshot again, the exact regression. Rules
+   1-3 still hold for the snapshots, because the buildless checks include
+   generated-code-shaped TUs and need every macro to exist; their VALUES bind
+   nothing that runs, so no bound over a build is asserted.
+
 4. NON-VACUITY. Zero fallbacks, zero packs, or zero required macros is a
    FAILURE, not an OK — a scan that found nothing prints the same word as a scan
    that found nothing wrong (`check-reconfigure-stale`'s lesson). A fallback is
@@ -80,6 +96,7 @@ STUB_GLOBS = (
     "packages/api/nros-c/include/nros/nros_config_generated.h",
     "packages/api/nros-cpp/include/nros/nros_cpp_config_generated.h",
 )
+STUB_NAMES = tuple(p.rsplit("/", 1)[-1] for p in STUB_GLOBS)
 FALLBACK_GLOB = "packages/api/nros-*/include/nros/*_config_generated_*.h"
 # The CRATE root, not `packs/`. A second template directory beside it — the
 # version-surface gate already scans `{packs,templates}`, and only the first
@@ -87,6 +104,13 @@ FALLBACK_GLOB = "packages/api/nros-*/include/nros/*_config_generated_*.h"
 # yielding the current macros, which is issue 0196's shape.
 PACKS_DIR = REPO / "packages/cli/rosidl-codegen"
 CODEGEN_VERSION_RS = REPO / "packages/core/nros-core/src/codegen_version.rs"
+
+# issue 1569 -- the ONE define that may select a committed fallback, and the
+# only places allowed to state it outside a comment: the buildless checks
+# (`scripts/`), the stubs that test it, the snapshots, and prose.
+BUILDLESS = "NROS_CONFIG_BUILDLESS"
+BUILDLESS_ALLOWED_PREFIXES = ("scripts/", "docs/", "book/")
+BUILDLESS_ALLOWED_SUFFIXES = (".md",)
 
 # The pair that must match EXACTLY rather than merely be present.
 EXACT = ("NROS_CODEGEN_VERSION", "NROS_CODEGEN_VERSION_MIN")
@@ -255,6 +279,69 @@ def analyse(
     return problems
 
 
+_FALLBACK_INCLUDE = re.compile(r'^[ \t]*#[ \t]*include[ \t]*[<"]([^>"]+)[>"]')
+# A comment line in any of the languages a build input is written in. A `#`
+# that starts a preprocessor DIRECTIVE is code, not a cmake/shell comment.
+_COMMENT_LEAD = re.compile(
+    r"^[ \t]*(#(?![ \t]*(define|undef|if|elif|ifdef|ifndef|include)\b)|//|/\*|\*|--|;)"
+)
+
+
+def stub_dispatch_problems(stubs: dict[str, str], fallback_names: set[str]) -> list[str]:
+    """issue 1569 -- each `#include` of a fallback must sit directly under an
+    `#if defined(NROS_CONFIG_BUILDLESS)`, and a stub must name no platform
+    macro in a conditional (a platform arm is how NuttX was sized from a
+    snapshot)."""
+    problems: list[str] = []
+    for path, text in sorted(stubs.items()):
+        last_cond = ""
+        for lineno, line in enumerate(text.split("\n"), 1):
+            m = _DIRECTIVE.match(line)
+            if m and m.group(1) in ("if", "ifdef", "ifndef", "elif"):
+                last_cond = m.group(2)
+                if re.search(r"\bNROS_PLATFORM_[A-Z0-9_]+", m.group(2)):
+                    problems.append(
+                        f"  {path}:{lineno} conditions on a platform macro "
+                        f"({m.group(2).strip()}).\n      A stub that picks a "
+                        f"committed header per PLATFORM sizes that platform's "
+                        f"images\n      from a hand-kept number -- issue 1569. "
+                        f"Supply the per-build header instead."
+                    )
+            inc = _FALLBACK_INCLUDE.match(line)
+            if inc and inc.group(1).rsplit("/", 1)[-1] in fallback_names:
+                if BUILDLESS not in last_cond:
+                    problems.append(
+                        f"  {path}:{lineno} includes the fallback "
+                        f"{inc.group(1)} under `{last_cond.strip() or '(no condition)'}`."
+                        f"\n      Only `defined({BUILDLESS})` may select it (issue 1569)."
+                    )
+    return problems
+
+
+def buildless_define_problems(texts: dict[str, str]) -> list[str]:
+    """issue 1569 -- `NROS_CONFIG_BUILDLESS` stated outside a comment in a file
+    that is not a buildless check, a stub, a snapshot or prose."""
+    problems: list[str] = []
+    for path, text in sorted(texts.items()):
+        if path.startswith(BUILDLESS_ALLOWED_PREFIXES) or path.endswith(
+            BUILDLESS_ALLOWED_SUFFIXES
+        ):
+            continue
+        name = path.rsplit("/", 1)[-1]
+        if name in STUB_NAMES or "_config_generated_" in name:
+            continue
+        for lineno, line in enumerate(text.split("\n"), 1):
+            if BUILDLESS in line and not _COMMENT_LEAD.match(line):
+                problems.append(
+                    f"  {path}:{lineno} states {BUILDLESS}:\n        "
+                    f"{line.strip()[:120]}\n      That define selects the "
+                    f"committed buildless snapshot; a BUILD that sets it sizes\n"
+                    f"      its image from a hand-kept number (issue 1569). "
+                    f"Only the header-only\n      checks under scripts/ may."
+                )
+    return problems
+
+
 def tracked(pattern: str) -> list[Path]:
     out = subprocess.run(
         ["git", "-C", str(REPO), "ls-files", "--", pattern],
@@ -326,6 +413,25 @@ def self_test() -> None:
     assert analyse(good, stubs, {}, rs), "no packs must FAIL, not pass vacuously"
     assert analyse({}, stubs, packs, rs), "no fallbacks must FAIL"
 
+    # issue 1569 -- the dispatch rule, both directions.
+    ok_stub = {
+        "s.h": '#if defined(NROS_CONFIG_BUILDLESS)\n#include "nros/cfg_x.h"\n'
+        "#else\n#error x\n#endif\n"
+    }
+    assert stub_dispatch_problems(ok_stub, {"cfg_x.h"}) == []
+    nuttx_stub = {"s.h": '#if defined(NROS_PLATFORM_NUTTX)\n#include "nros/cfg_x.h"\n#endif\n'}
+    out = "".join(stub_dispatch_problems(nuttx_stub, {"cfg_x.h"}))
+    assert "platform macro" in out and "Only" in out, out
+    # ... and the define rule: a comment is prose, a cmake or build.rs line is a build.
+    assert buildless_define_problems({"cmake/x.cmake": "# NROS_CONFIG_BUILDLESS: checks\n"}) == []
+    assert buildless_define_problems({"scripts/c.py": '"-DNROS_CONFIG_BUILDLESS",\n'}) == []
+    bad = buildless_define_problems(
+        {"cmake/x.cmake": "target_compile_definitions(t PRIVATE NROS_CONFIG_BUILDLESS)\n"}
+    )
+    assert bad and "cmake/x.cmake:1" in bad[0], bad
+    assert buildless_define_problems({"a/build.rs": '    b.define("NROS_CONFIG_BUILDLESS", None);\n'})
+    assert buildless_define_problems({"a/x.h": "#define NROS_CONFIG_BUILDLESS 1\n"})
+
 
 def main() -> int:
     self_test()
@@ -364,10 +470,29 @@ def main() -> int:
     )
 
     problems = analyse(fallbacks, stubs, pack_texts, codegen_rs)
+    problems += stub_dispatch_problems(stubs, {str(p).rsplit("/", 1)[-1] for p in fallbacks})
+    # issue 1569 -- every tracked text file that names the define. `grep -l`
+    # over the index is one process, not a walk.
+    named = subprocess.run(
+        ["git", "-C", str(REPO), "grep", "-l", "-I", "--", BUILDLESS],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.split()
+    if not any(n.startswith("scripts/") for n in named):
+        problems.append(
+            f"  no buildless check under scripts/ names {BUILDLESS}. Those checks "
+            f"must define it\n      to reach the snapshot; a scan that found none "
+            f"examined nothing."
+        )
+    problems += buildless_define_problems(
+        {rel: (REPO / rel).read_text(encoding="utf-8", errors="replace") for rel in named}
+    )
     if problems:
         print(
             "check-config-fallback-macros: a committed fallback config header "
-            "is not a\nsuperset of what generated code reads (issue 1115):\n",
+            "breaks its\ncontract -- a superset of what generated code reads (issue 1115), reachable\n"
+            "by no build (issue 1569):\n",
             file=sys.stderr,
         )
         print("\n".join(problems), file=sys.stderr)

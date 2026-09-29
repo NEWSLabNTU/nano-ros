@@ -14,10 +14,12 @@ Both sides parse with ZERO errors, which is a precondition rather than a nicety:
 a partial AST silently drops declarations, and a dropped declaration reads as a
 gap in our surface that is not really there.
 
-  ours   -- `-DNROS_PLATFORM_NUTTX` selects the COMMITTED size header
-            (`nros_cpp_config_generated_nuttx.h`), so the parse needs no build.
-            Every other platform's sizes come from `build.rs` and would make
-            this tool depend on a fixture being fresh.
+  ours   -- `-DNROS_CONFIG_BUILDLESS` selects the COMMITTED size header
+            (`nros_cpp_config_generated_buildless.h`), so the parse needs no
+            build. Every platform's sizes come from `build.rs` and would make
+            this tool depend on a fixture being fresh. (This was
+            `-DNROS_PLATFORM_NUTTX` until issue 1569 took NuttX off the
+            snapshot; the define now names the one legitimate reader.)
   theirs -- `/opt/ros/<distro>/include`, minus four directories that shadow libc
             headers (`idl/string.h` shadows `<string.h>`; `include/`, `dds/`,
             `ddsc/` likewise). Including all 202 package dirs produces 20 errors
@@ -59,7 +61,7 @@ def ros_include_args(prefix):
 
 def nros_cpp_include_args():
     return [
-        "-DNROS_PLATFORM_NUTTX",
+        "-DNROS_CONFIG_BUILDLESS",
         "-I" + os.path.join(ROOT, "packages/api/nros-cpp/include"),
         "-I" + os.path.join(ROOT, "packages/api/nros-c/include"),
     ]
@@ -67,7 +69,7 @@ def nros_cpp_include_args():
 
 def nros_c_include_args():
     return [
-        "-DNROS_PLATFORM_NUTTX",
+        "-DNROS_CONFIG_BUILDLESS",
         "-I" + os.path.join(ROOT, "packages/api/nros-c/include"),
     ]
 

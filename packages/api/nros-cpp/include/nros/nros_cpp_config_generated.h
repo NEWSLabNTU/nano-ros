@@ -28,8 +28,7 @@
  * docs/roadmap/phase-119-3-cmake-setup.md for the dispatch model.
  */
 
-#if defined(NROS_CPP_CONFIG_OPTIONAL) && !defined(NROS_PLATFORM_NUTTX) &&           \
-    !defined(__cplusplus)
+#if defined(NROS_CPP_CONFIG_OPTIONAL) && !defined(NROS_CONFIG_BUILDLESS) && !defined(__cplusplus)
 
 /* Issue 0282 — OPTIONAL probe (see nros-c/include/nros/component.h): the
  * includer only wants the generated `NROS_CPP_*_STORAGE_SIZE` values when
@@ -53,8 +52,12 @@
 #ifndef NROS_CPP_CONFIG_GENERATED_H
 #define NROS_CPP_CONFIG_GENERATED_H
 
-#if defined(NROS_PLATFORM_NUTTX)
-#include "nros/nros_cpp_config_generated_nuttx.h"
+/* Issue 1569 — BUILDLESS header checks only; see the C stub. No platform
+ * dispatches here any more: NuttX took the committed snapshot until its FFI
+ * build was given the per-build header, and a snapshot sized every NuttX image
+ * from a hand-kept number that fell below the build four times. */
+#if defined(NROS_CONFIG_BUILDLESS)
+#include "nros/nros_cpp_config_generated_buildless.h"
 #else
 #error "nros_cpp_config_generated.h must be supplied per-build by the build system; see the comment in this stub for guidance."
 #endif

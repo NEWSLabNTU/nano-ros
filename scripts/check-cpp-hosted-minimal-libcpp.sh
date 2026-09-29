@@ -22,12 +22,13 @@
 # `nros_config_generated.h`, whose source-tree files are stubs that `#error`
 # unless a build supplies the per-build header. This gate builds nothing, so it
 # writes PROBE-ONLY forwarding headers into a temp dir that sits FIRST on the
-# include path and nowhere else, each including the COMMITTED NuttX snapshot
-# (`nros_{cpp_,}config_generated_nuttx.h`). Those snapshots carry every macro
-# the per-build header defines — `check-config-fallback-macros` holds them to
-# that — with safe upper-bound values, so no size here is invented. Selecting
-# them by forwarder rather than by `-DNROS_PLATFORM_NUTTX` keeps every OTHER
-# NuttX-conditional in the headers on its non-NuttX arm.
+# include path and nowhere else, each including the COMMITTED buildless
+# snapshot (`nros_{cpp_,}config_generated_buildless.h`, issue 1569). Those
+# snapshots carry every macro the per-build header defines —
+# `check-config-fallback-macros` holds them to that — so no macro here is
+# invented. (Forwarders rather than `-DNROS_CONFIG_BUILDLESS` is history: the
+# define used to be `NROS_PLATFORM_NUTTX`, and the forwarder kept every OTHER
+# NuttX-conditional on its non-NuttX arm.)
 #
 # Buildless, ~seconds: one `-fsyntax-only` per header. Fast line.
 #
@@ -48,8 +49,8 @@ cpp_inc="packages/api/nros-cpp/include"
 
 command -v "$CXX" >/dev/null 2>&1 || { echo "$tag: FAIL — no C++ compiler ($CXX)" >&2; exit 1; }
 [ -d "$compat" ] || { echo "$tag: FAIL — $compat is MISSING; the probe would test nothing" >&2; exit 1; }
-for snap in "$cpp_inc/nros/nros_cpp_config_generated_nuttx.h" \
-            packages/api/nros-c/include/nros/nros_config_generated_nuttx.h; do
+for snap in "$cpp_inc/nros/nros_cpp_config_generated_buildless.h" \
+            packages/api/nros-c/include/nros/nros_config_generated_buildless.h; do
     [ -f "$snap" ] || { echo "$tag: FAIL — $snap is MISSING" >&2; exit 1; }
 done
 
@@ -58,11 +59,11 @@ trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/nros"
 printf '%s\n' \
     '/* PROBE-ONLY (scripts/check-cpp-hosted-minimal-libcpp.sh, issue 1432). */' \
-    '#include "nros/nros_cpp_config_generated_nuttx.h"' \
+    '#include "nros/nros_cpp_config_generated_buildless.h"' \
     > "$tmp/nros/nros_cpp_config_generated.h"
 printf '%s\n' \
     '/* PROBE-ONLY (scripts/check-cpp-hosted-minimal-libcpp.sh, issue 1432). */' \
-    '#include "nros/nros_config_generated_nuttx.h"' \
+    '#include "nros/nros_config_generated_buildless.h"' \
     > "$tmp/nros/nros_config_generated.h"
 
 flags=(-fsyntax-only -std=c++14 -nostdinc++ -fno-exceptions -fno-rtti

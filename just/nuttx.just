@@ -251,11 +251,11 @@ build-fixtures-arm:
     #   - root CMakeLists.txt's NanoRos INTERFACE branch (when
     #     nros_c-static is absent) exposes the public include dirs
     #     directly + sets `NROS_PLATFORM_NUTTX` compile-def.
-    #   - `nros-c/include/nros/nros_config_generated.h`'s
-    #     `#if defined(NROS_PLATFORM_NUTTX)` arm falls through to
-    #     the baked-once `nros_config_generated_nuttx.h` header
-    #     (Phase 159 Path C). Sizes are pre-probed for the canonical
-    #     NuttX armv7a-eabihf target.
+    #   - the per-build sizes headers (`nros_{,cpp_}config_generated.h`)
+    #     are written inside each image's own `nros-nuttx-ffi` cargo run
+    #     and read there from the `nros-c`/`nros-cpp` `links` channels
+    #     (issue 1569). The baked-once `_nuttx` snapshot the stub used to
+    #     select under `NROS_PLATFORM_NUTTX` sizes nothing any more.
     # Host nros-codegen is still required for `nros_generate_interfaces()`.
     echo "  → host nros-codegen (cargo)"
     nros_cargo_ensure_codegen_c
