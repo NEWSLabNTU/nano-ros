@@ -164,7 +164,7 @@ _FACTS = "cmake/NanoRosEntityFacts.cmake"
 
 # issue 1255 -- the per-type bound table is off both cargo roads for ONE stated
 # reason, written where the declared road's exclusions are documented.
-_ARENA_COUNTS_FIRST = "THE COUNTS COME FIRST on these roads"
+_ARENA_COUNTS_FIRST = "table delivered here would price nothing the rows do not"
 
 
 def _provenance(what):
@@ -338,51 +338,23 @@ FACT_DISPOSITION = {
     },
     # issue 1255 -- the PER-TYPE bound table, for the one consumer that
     # allocates per subscription rather than from a shared pool.
+    #
+    # (This entry was written out THREE times, identically -- a dict literal
+    # keeps the last duplicate key silently, so two were dead. Issue 1577
+    # collapsed them while rewording the reason.)
     "NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS": {
         "resolver": ("NROS_RESOLVED_NROS_SUBSCRIBED_TYPE_BOUNDS",),
         "sidecar": NotCarried(
             _FACTS, _ARENA_COUNTS_FIRST,
             "its only consumer is the executor arena's per-kind sum, which "
-            "runs only where NROS_ENTITY_COUNT_* arrive -- the Zephyr resolver "
-            "road alone. A leaf's model is 0, so a table delivered there would "
-            "price nothing"),
+            "on a descriptor road (issue 1577) prices each subscription from "
+            "the descriptor's own [[endpoint]] rows -- a table delivered here "
+            "would price nothing the rows do not"),
         "declared": NotCarried(
             _FACTS, _ARENA_COUNTS_FIRST,
-            "same reason, same road-order: the declared road carries no "
-            "NROS_ENTITY_COUNT_*, so the arena's per-kind sum is never reached "
-            "and there is nothing for a bound table to refine"),
-    },
-    # issue 1255 -- the PER-TYPE bound table, for the one consumer that
-    # allocates per subscription rather than from a shared pool.
-    "NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS": {
-        "resolver": ("NROS_RESOLVED_NROS_SUBSCRIBED_TYPE_BOUNDS",),
-        "sidecar": NotCarried(
-            _FACTS, _ARENA_COUNTS_FIRST,
-            "its only consumer is the executor arena's per-kind sum, which "
-            "runs only where NROS_ENTITY_COUNT_* arrive -- the Zephyr resolver "
-            "road alone. A leaf's model is 0, so a table delivered there would "
-            "price nothing"),
-        "declared": NotCarried(
-            _FACTS, _ARENA_COUNTS_FIRST,
-            "same reason, same road-order: the declared road carries no "
-            "NROS_ENTITY_COUNT_*, so the arena's per-kind sum is never reached "
-            "and there is nothing for a bound table to refine"),
-    },
-    # issue 1255 -- the PER-TYPE bound table, for the one consumer that
-    # allocates per subscription rather than from a shared pool.
-    "NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS": {
-        "resolver": ("NROS_RESOLVED_NROS_SUBSCRIBED_TYPE_BOUNDS",),
-        "sidecar": NotCarried(
-            _FACTS, _ARENA_COUNTS_FIRST,
-            "its only consumer is the executor arena's per-kind sum, which "
-            "runs only where NROS_ENTITY_COUNT_* arrive -- the Zephyr resolver "
-            "road alone. A leaf's model is 0, so a table delivered there would "
-            "price nothing"),
-        "declared": NotCarried(
-            _FACTS, _ARENA_COUNTS_FIRST,
-            "same reason, same road-order: the declared road carries no "
-            "NROS_ENTITY_COUNT_*, so the arena's per-kind sum is never reached "
-            "and there is nothing for a bound table to refine"),
+            "same reason: where the declared road names a descriptor, its "
+            "rows already price the receive region, and there is nothing for "
+            "a bound table to refine"),
     },
     # phase-461 W3 (issue 1352) -- the two service-inbox families' slot sizes,
     # joined in `NanoRosEntityInventory.cmake` from this image's declared

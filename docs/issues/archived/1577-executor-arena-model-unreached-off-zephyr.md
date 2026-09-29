@@ -1,7 +1,8 @@
 ---
 id: 1577
 title: "The executor arena's per-kind model runs only on the Zephyr resolver road — every cargo and plain-cmake image is sized by the `max_cbs` fallback, so a descriptor row it states prices nothing"
-status: open
+status: resolved
+resolved_in: 2026-09-29
 type: tech-debt
 area: [build, core]
 severity: medium
@@ -96,3 +97,81 @@ first on these roads.** Two shapes, and they differ on the carried-facts rule:
 Either way acceptance is a `mem-report --baseline` on a cargo image whose
 `required` clears `ARENA_FLOOR`, showing the model arm running (a non-zero
 `arena_model::REQUIRED`) and a descriptor row moving the arena.
+
+## Resolution (2026-09-29)
+
+Fix direction 2: **the counts live in the descriptor.** `[image]` gains five
+facts — `subscription_entities`, `timer_entities`, `service_server_entities`,
+`action_client_entities`, `action_server_entities` — stated from
+`EntityInventory::derive`'s `per_kind`, the same table the cmake road emits as
+`NROS_ENTITY_COUNT_*`, and refused (never zero) wherever that derivation is.
+`nros-node/build.rs` reads each descriptor-first and falls back to the env
+carrier; where both arrive and disagree it takes the larger and says so.
+
+Why these are `[image]` facts although the rows already carry four of the five
+kinds: a row is written only for an entity in a STATED component with a type
+and a topic, so counting rows under-counts exactly where a declaration is
+missing — and the arena is `BufferTooSmall` when short. A timer has no row at
+all. `subscription_entities` is not `subscriber_count`: the latter is session
+SLOTS and includes each action client's feedback subscription, which the arena
+prices inside the action-client entry.
+
+### The flaw the review found, and the guard for it
+
+Turning the model on made a latent under-size reachable. The producer states
+`registration_path = "in_place"` by the entry's `rmw` NAME, and one descriptor
+serves builds that link another backend: a single-package leaf's fixture rows
+switch backend by cargo FEATURE over one image (`native/rust/listener` has
+zenoh, xrce and cyclonedds rows over one `system.toml` that says zenoh). So the
+cyclonedds build read an `in_place` row and priced no receive region for a
+backend that buffers.
+
+The build now answers it, not the descriptor. Each backend crate enables one
+feature on `nros-rmw` — `in-place-dispatch` (nros-rmw-zenoh, nros-rmw-xrce-cffi)
+or `buffered-dispatch` (nros-rmw-cyclonedds, nros-rmw-metadata) — carried to
+`nros-node` as `links` metadata. An `in_place` row is honoured only when
+in-place is CLAIMED and buffered is not: buffered vetoes because features
+unify, and silence prices the full region because Cyclone and uORB under cmake
+reach cargo as a bare `rmw-cffi` with no crate to declare anything. Gate
+`check-backend-dispatch-declared` holds the classification (every
+`packages/rmw/` crate, both directions), the producer's `backend_dispatch()`
+table against it, and the carrier's three ends.
+
+### Measured
+
+`examples/native/rust/listener`, `nros sync` + `nros build`, nothing exported:
+
+| | `[image] subscription_entities` | `arena_model::REQUIRED` | `ARENA_SIZE` |
+| --- | --- | --- | --- |
+| before (this issue's table) | — | 0 (fallback) | 14,424 |
+| after, zenoh | 1 | 3,072 | 8,192 (floor) |
+| after, cyclonedds row, same descriptor | 1 | 6,144 + warning | 8,192 (floor) |
+
+Five subscriptions (an untracked copy of the listener, deleted after), where
+the difference clears the floor:
+
+| build | `REQUIRED` | `ARENA_SIZE` | runs |
+| --- | --- | --- | --- |
+| zenoh, rows `in_place` honoured | 7,168 | 8,192 | yes — all five register |
+| cyclonedds, guard ON (rows overridden, 5 warnings) | 22,528 | 22,528 | yes |
+| cyclonedds, guard OFF (temporary edit) | 7,168 | 8,192 | **no** — `arena exhausted at arena::SubBufferedRawEntry: 3688 B short, 7920/8192 used` → `NodeError::BufferTooSmall` |
+
+The last row is the guard earning its keep: without it the model ships an
+image that dies at registration.
+
+Stated-size images still build: `threadx-linux` action-server / action-client
+(`REQUIRED` 20,096 against `backing_u64s = 11069`) and service-server (5,120);
+esp32's stated 16,384 is above any esp32 leaf's model (one subscription or one
+timer). `examples/native/rust/action-server` registers every entity at 20,096.
+
+### Not in this change
+
+- The model's buffered subscription term is an OVER-size: five buffered
+  subscriptions are priced at 22,528, and the guard-off failure above shows the
+  real claim is at least 11,880 (7,920 used + 3,688 short, with the rest still
+  unregistered). Safe direction, pre-existing, and what the Zephyr lane has
+  always used.
+- `NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS` (issue 1255) still does not travel on
+  these roads. Where the descriptor states rows, their `claimed_slot_bytes`
+  already price the region, so the table is no longer the only way to reach
+  the model; its comment in `NanoRosEntityFacts.cmake` is updated.
