@@ -76,6 +76,15 @@ where = "ros2 distrobox, Humble"
 evidence = "4/4: matched counts on both edges, GID, actual QoS read back from the peer, serialization format. First run of this cell; a fixture SELECTOR bug had made every case resolve to a skip."
 
 [[verdict]]
+cell = "native-logging-rust-zenoh-n2r"
+date = "2026-09-29"
+verdict = "pass"
+tests = ["a_nano_ros_log_call_reaches_ros2_topic_echo_rosout"]
+run = "cargo nextest run -p nros-tests -E 'binary(=rosout_interop)'"
+where = "ros2 distrobox, Humble, tree with phase-467 Q4's /rosout bridge"
+evidence = "First run of this cell — it is the first time a nano-ros node published /rosout at all. A stock `ros2 topic echo /rosout rcl_interfaces/msg/Log` saw 44 of the probe's records (45 pumped, dropped=0, suppressed=0), with the logger name carried, both INFO (20) and WARN (30) on rcutils's number line, and non-zero stamps. Negative control measured the same day: stub out `rosout::pump` and the same peer sees 0 of 4."
+
+[[verdict]]
 cell = "native-graph-rust-cyclone-r2n"
 date = "2026-09-07"
 verdict = "pass"
