@@ -176,8 +176,10 @@ fn trace_register(_slot: usize, _kind: EntryKind, _name: TraceName<'_>) {}
 /// out of the allocator arena that used to pay for them.
 ///
 /// The heap arm is still reached, and both cases are legitimate rather than
-/// degraded: a SECOND executor (the tiered boot paths open one per tier) and an
-/// entry sized past the build-time default. Neither is an error, so neither
+/// degraded: a SECOND executor opened through an `alloc` convenience
+/// constructor, and an entry sized past the build-time default. A tiered boot's
+/// spawned tiers are NOT that second executor any more: they open over the
+/// entry's `TierExecutorBacking` slots (`open_with_session_slot`, issue 1571). Neither is an error, so neither
 /// warns — `report_arena_headroom` is where an over-provisioned executor gets
 /// told about itself, and a duplicate line here would just be noise.
 ///
@@ -2310,6 +2312,45 @@ impl<'s> Executor<'s> {
         sizing: super::storage::ExecutorSizing,
     ) -> Self {
         unsafe { Self::open_with_session_in(handle.0, backing, sizing) }
+    }
+
+    /// issue 1571 — a SPAWNED tier's executor over its slot of the entry's
+    /// [`TierExecutorBacking`](super::TierExecutorBacking) — the road every
+    /// board's `run_tiers` takes for each tier but the boot one.
+    ///
+    /// The slot's TYPE is the size: it is `ExecutorSizing::DEFAULT.u64_len()`
+    /// words and this opens with `ExecutorSizing::DEFAULT`, so the pairing is
+    /// exact by construction and lives here, once, rather than at five boards.
+    /// [`open_with_session`](Self::open_with_session) is the heap twin this
+    /// replaced on those roads.
+    ///
+    /// # Safety
+    /// `session` obligations as in [`open_with_session`](Self::open_with_session).
+    #[cfg(feature = "alloc")]
+    pub unsafe fn open_with_session_slot(
+        session: *mut session::ConcreteSession,
+        slot: &'s mut super::TierExecutorBackingSlot,
+    ) -> Self {
+        unsafe {
+            Self::open_with_session_in(
+                session,
+                &mut slot[..],
+                super::storage::ExecutorSizing::DEFAULT,
+            )
+        }
+    }
+
+    /// issue 1571 — [`open_with_session_slot`](Self::open_with_session_slot)
+    /// over a [`SessionHandle`], for the boards whose tier tasks carry one.
+    ///
+    /// # Safety
+    /// As [`open_with_session_handle`](Self::open_with_session_handle).
+    #[cfg(feature = "alloc")]
+    pub unsafe fn open_with_session_handle_slot(
+        handle: SessionHandle,
+        slot: &'s mut super::TierExecutorBackingSlot,
+    ) -> Self {
+        unsafe { Self::open_with_session_slot(handle.0, slot) }
     }
 
     /// Phase 228.C — set this tier executor's active callback-group filter. The

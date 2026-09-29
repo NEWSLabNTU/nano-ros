@@ -1306,6 +1306,18 @@ pub use nros_node::executor::port_park;
 #[cfg(feature = "rmw-cffi")]
 pub use nros_node::executor::{MAX_WAKE_SOURCES, NextDeadlineFn, WakeSourceId};
 
+/// issue 1571 — the spawned tiers' executor backing. `nros::main!` emits one
+/// `TierExecutorBacking` static per tiered entry and hands its slots to the
+/// board's `run_tiers`, which refuses a short block through
+/// `check_tier_executor_backing` and opens each spawned tier with
+/// `Executor::open_with_session_slot`. Gated like the module it names
+/// (`has_rmw` + `alloc` in nros-node).
+#[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
+pub use nros_node::executor::{
+    EXECUTOR_BACKING_DEFAULT_U64S, TierBackingShort, TierExecutorBacking, TierExecutorBackingSlot,
+    check_tier_executor_backing,
+};
+
 pub use nros_node::NodeError;
 pub use nros_rmw::TransportError;
 
