@@ -31,54 +31,39 @@ cd "$(dirname "$0")/.."
 # shellcheck source=scripts/lib/grep-q.sh
 source scripts/lib/grep-q.sh
 
-fail=0
-
-for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo.toml; do
-    [ -f "$manifest" ] || continue
-    dir="$(dirname "$manifest")"
-    [ -d "$dir/src" ] || continue
-
-    # phase-338 W2 — search the whole `src/` tree, not just `lib.rs`. The entry
-    # macro and its anchors now live in a dedicated glue module
-    # (`src/app_main.rs`) so the node logic in `lib.rs` stays byte-identical
-    # across platforms; a gate that only read `lib.rs` reported every migrated
-    # example as missing its anchor. Reading the crate rather than one file also
-    # makes the gate's coverage match the rule it enforces (issue-0196).
-    # `git ls-files`, not `find`: every source here is tracked, so this is an
-    # index lookup rather than a directory walk (check-no-tracked-file-find).
-    src_files=$(git ls-files -- "$dir/src/*.rs" | sort)
-    [ -n "$src_files" ] || continue
-    # Issue 0726 — capture what `cat` actually returned. Under a 32-way gate
-    # fan-out this gate intermittently reports a missing anchor for an example
-    # that plainly has one, and the read is the only step that can lose content
-    # while still leaving enough behind to pass the `zephyr_component_main!`
-    # scope test below. `cat` reports a per-file failure on stderr and CONTINUES
-    # with the rest, so a partial read is indistinguishable from a real absence
-    # by the time the anchor grep runs.
+# check_example <manifest> <src files…> — the rule for ONE example; returns 1 on
+# a finding (printed to stderr). Shared by the scan and the self-test below, so
+# the negative control drives the code the scan runs (phase-472 F1 / W9).
+check_example() {
+    local manifest="$1"; shift
+    local src_files="$*" src_text src_bytes cat_rc pair feature rest krate dep row f found=0
+    local src
+    src="$(dirname "$manifest")/src"
+    [ -n "$src_files" ] || return 0
+    # phase-338 W2 — the whole `src/` tree, not just `lib.rs`: the entry macro
+    # and its anchors live in a glue module (`src/app_main.rs`), and reading the
+    # crate rather than one file matches the rule's reach (issue-0196).
     #
-    # The capture is an `if`, not `cmd; rc=$?`: under this script's `set -e` a
-    # non-zero `cat` ends the shell at the assignment, so `cat_rc` could only
-    # ever hold 0 and the diagnostic that prints it could never say anything.
-    # Same shape as the anchor grep below, same fix.
+    # Issue 0726 — capture what the read actually returned. Under a 32-way gate
+    # fan-out this gate intermittently reported a missing anchor for an example
+    # that plainly has one; the read is the only step that can lose content
+    # while leaving enough behind to pass the scope test below. The capture is
+    # an `if`, not `cmd; rc=$?`: under `set -e` a non-zero read ends the shell
+    # at the assignment, so `cat_rc` could only ever hold 0.
     #
     # phase-472 W3: read as CODE. A `// nros::force_link_backend!(…)` anchors
-    # nothing, and a raw `cat` let it satisfy the anchor grep below. The shared
-    # stripper's CLI blanks comments (and fails loudly, like `cat` did).
+    # nothing, and a raw `cat` let it satisfy the anchor grep below.
     # shellcheck disable=SC2086
     if src_text=$(python3 scripts/lib/comments.py --lang rust $src_files); then cat_rc=0; else cat_rc=$?; fi
     src_bytes=${#src_text}
-    src="$dir/src"
-
     # Only examples that actually use the facade entry macro are in scope.
-    nros_grep_q 'zephyr_component_main!' <<<"$src_text" || continue
-
+    nros_grep_q 'zephyr_component_main!' <<<"$src_text" || return 0
     for pair in "rmw-zenoh:nros_rmw_zenoh:nros-rmw-zenoh" \
                 "rmw-xrce:nros_rmw_xrce_cffi:nros-rmw-xrce-cffi"; do
         feature="${pair%%:*}"
         rest="${pair#*:}"
         krate="${rest%%:*}"
         dep="${rest##*:}"
-
         # The feature row must exist AND forward to a real dependency. An inert
         # `rmw-zenoh = []` marker links nothing.
         row="$(grep -E "^${feature}[[:space:]]*=" "$manifest" || true)"
@@ -87,37 +72,22 @@ for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo
         *"dep:${dep}"*) ;;
         *) continue ;;
         esac
-
-        # Issue 0726 — `grep -q` exits 1 for "not found" and >=2 for an ERROR,
-        # and `if !` cannot tell them apart. Under a 32-way gate fan-out a
-        # forked grep can fail to start (EAGAIN) or be killed, and this gate
-        # then reported a missing anchor for an example that has one: a
-        # confident, specific, wrong finding, green->red under load and never
-        # the other way. `nros_grep_q` exits 2 on >=2 instead.
-        #
-        # It replaces a hand-rolled `grep -q …; rc=$?` that could not run: this
-        # script sets `-e`, so a `grep -q` returning 1 in STATEMENT position
-        # killed the shell before the next line, and the whole finding below —
-        # the diagnostics, the ERROR text, even "gate FAILED" — was unreachable.
-        # A genuinely missing anchor exited 1 in silence. Verified against this
-        # file at HEAD on a scratch tree with the anchor removed, and verified
-        # again after the change: the finding now prints. So the arms are a
-        # CONDITIONAL, which is also the only shape `set -e` leaves intact.
+        # Issue 0726 — `nros_grep_q`, not `grep -q`: a grep that failed to start
+        # under fan-out must exit 2, never read as a missing anchor. And it is a
+        # CONDITIONAL: a bare `grep -q` returning 1 in statement position under
+        # `set -e` killed the shell before the finding could print.
         if ! nros_grep_q "force_link_backend!(${krate})" <<<"$src_text"; then
-            # Issue 0726 — say what was READ, not just what was concluded. If
-            # the anchor is present on disk but absent from `src_text`, this is
-            # the fan-out flake and not a real finding; per-file greps below
-            # settle which, because they re-read from disk independently.
+            # Issue 0726 — say what was READ, not just what was concluded; the
+            # per-file re-read settles "read lost it" vs a real absence.
             {
                 echo "--- 0726 diagnostics ---"
                 echo "    cat rc=${cat_rc}, src_text bytes=${src_bytes}"
-                echo "    git ls-files returned:"
-                printf '%s\n' "$src_files" | sed 's/^/      /'
+                echo "    files read:"
+                printf '%s\n' $src_files | sed 's/^/      /'
                 echo "    per-file re-read for force_link_backend!(${krate}):"
-                # shellcheck disable=SC2086
                 for f in $src_files; do
                     if nros_grep_q "force_link_backend!(${krate})" "$f"; then
-                        echo "      PRESENT on disk: $f  <-- read lost it"
+                        echo "      PRESENT on disk: $f  <-- read lost it (or it is in a comment)"
                     else
                         echo "      absent: $f ($(wc -c <"$f" 2>/dev/null) bytes)"
                     fi
@@ -128,14 +98,54 @@ for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo
             echo "       Without the anchor rustc's staticlib DCE drops" >&2
             echo "       ${krate}_register and the image boots with NO backend" >&2
             echo "       registered — and it builds and links cleanly (0155/0163)." >&2
-            fail=1
+            found=1
         fi
     done
+    return "$found"
+}
+
+# Negative controls on the normal path (phase-472 F1 / W9): each drives
+# `check_example`, the function the scan runs.
+self_test() {
+    local t rc
+    t="$(mktemp -d)"
+    mkdir -p "$t/src"
+    printf '%s\n' '[features]' 'rmw-zenoh = ["dep:nros-rmw-zenoh"]' > "$t/Cargo.toml"
+    printf '%s\n' 'nros::zephyr_component_main!(x);' > "$t/src/app_main.rs"
+    rc=0; check_example "$t/Cargo.toml" "$t/src/app_main.rs" 2>/dev/null || rc=$?
+    [ "$rc" -eq 1 ] || { echo "check-rmw-force-link-anchor SELFTEST FAILED: a missing anchor passed" >&2; rm -rf "$t"; exit 1; }
+    printf '%s\n' '// nros::force_link_backend!(nros_rmw_zenoh);' >> "$t/src/app_main.rs"
+    rc=0; check_example "$t/Cargo.toml" "$t/src/app_main.rs" 2>/dev/null || rc=$?
+    [ "$rc" -eq 1 ] || { echo "check-rmw-force-link-anchor SELFTEST FAILED: an anchor in a COMMENT passed" >&2; rm -rf "$t"; exit 1; }
+    printf '%s\n' 'nros::force_link_backend!(nros_rmw_zenoh);' >> "$t/src/app_main.rs"
+    rc=0; check_example "$t/Cargo.toml" "$t/src/app_main.rs" 2>/dev/null || rc=$?
+    [ "$rc" -eq 0 ] || { echo "check-rmw-force-link-anchor SELFTEST FAILED: a real anchor failed" >&2; rm -rf "$t"; exit 1; }
+    printf '%s\n' '[features]' 'rmw-zenoh = []' > "$t/Cargo.toml"
+    printf '%s\n' 'nros::zephyr_component_main!(x);' > "$t/src/app_main.rs"
+    rc=0; check_example "$t/Cargo.toml" "$t/src/app_main.rs" 2>/dev/null || rc=$?
+    rm -rf "$t"
+    [ "$rc" -eq 0 ] || { echo "check-rmw-force-link-anchor SELFTEST FAILED: an inert marker row failed" >&2; exit 1; }
+}
+self_test
+
+fail=0
+n=0
+for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo.toml; do
+    [ -f "$manifest" ] || continue
+    dir="$(dirname "$manifest")"
+    [ -d "$dir/src" ] || continue
+    # `git ls-files`, not `find`: every source here is tracked, so this is an
+    # index lookup rather than a directory walk (check-no-tracked-file-find).
+    src_files=$(git ls-files -- "$dir/src/*.rs" | sort)
+    [ -n "$src_files" ] || continue
+    n=$((n + 1))
+    # shellcheck disable=SC2086
+    check_example "$manifest" $src_files || fail=1
 done
+[ "$n" -gt 0 ] || { echo "check-rmw-force-link-anchor: examined no Zephyr Rust example — refusing to pass" >&2; exit 1; }
 
 if [ "$fail" -ne 0 ]; then
     echo "RMW force-link anchor gate FAILED." >&2
     exit 1
 fi
-
-echo "RMW force-link anchors present in every Zephyr Rust example that needs one."
+echo "RMW force-link anchors present in every Zephyr Rust example that needs one ($n example(s) read)."

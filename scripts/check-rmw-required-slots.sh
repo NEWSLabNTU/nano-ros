@@ -25,8 +25,32 @@ SRC="packages/rmw/cffi/src/lib.rs"
 [ -f "$SRC" ] || { echo "ERROR: $SRC not found" >&2; exit 1; }
 
 # Slots dispatched via `.expect("rmw vtable: <slot>")`.
-expected="$(grep -oE 'expect\("rmw vtable: [a-z_]+"' "$SRC" \
-    | sed -E 's/.*: ([a-z_]+)"/\1/' | sort -u)"
+# phase-472 F1 — read the CODE, not the text (`scripts/lib/comments.py`, W3's
+# stripper): a commented-out `.expect("rmw vtable: x")` used to count as a
+# dispatch site, so deleting the real one left the required slot "expected".
+# Strings are kept — the slot name IS a string literal.
+code_of() { python3 scripts/lib/comments.py --lang rust "$1"; }
+expected_in() {
+    code_of "$1" | grep -oE 'expect\("rmw vtable: [a-z_]+"' \
+        | sed -E 's/.*: ([a-z_]+)"/\1/' | sort -u
+}
+
+# Negative control on the normal path (phase-472 F1 / W9): a slot named only in
+# a comment is not an expect site.
+self_test() {
+    local t got
+    t="$(mktemp)"
+    printf '%s\n' 'fn a() { v.x.expect("rmw vtable: real_slot"); }' \
+        '// v.y.expect("rmw vtable: comment_slot")' \
+        '/* v.z.expect("rmw vtable: block_slot") */' > "$t"
+    got="$(expected_in "$t" | tr '\n' ' ')"
+    rm -f "$t"
+    [ "$got" = "real_slot " ] || {
+        echo "check-rmw-required-slots SELFTEST FAILED: expect sites read as [$got]" >&2; exit 1; }
+}
+self_test
+
+expected="$(expected_in "$SRC")"
 
 # Slots listed in first_missing_vtable_slot's `require!(...)`.
 #
@@ -41,7 +65,7 @@ required="$(awk '
     infn && /require!\(/ { inlist = 1; next }
     inlist && /^[[:space:]]*\);/ { inlist = 0; infn = 0 }
     inlist { print }
-' "$SRC" | grep -oE '^[[:space:]]*[a-z_]+,' | tr -d ' ,' | sort -u)"
+' <(code_of "$SRC") | grep -oE '^[[:space:]]*[a-z_]+,' | tr -d ' ,' | sort -u)"
 
 if [ -z "$expected" ] || [ -z "$required" ]; then
     echo "ERROR: could not extract slot lists from $SRC — has the shape changed?" >&2

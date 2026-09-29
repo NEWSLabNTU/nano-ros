@@ -42,19 +42,34 @@ count_fields() {
     # field whose type is the file's generic server alias (`ParamServer<Svc>`,
     # `LcSrv<Svc>`). A field with a non-generic type is bookkeeping, not a
     # service — see the header note.
+    # phase-472 F1 — over the CODE (`scripts/lib/comments.py`): a field inside a
+    # `/* … */` block counted as a service, so wrapping a real one in a block
+    # comment left the count — and the constant — unchanged.
     awk -v pat="pub struct $1 [{]" '
         $0 ~ pat {inside=1; next}
-        inside && /^\}/ {exit}
+        inside && /^\}/ {inside=0}
         inside && /^[[:space:]]*[a-z_]+:[[:space:]]*[A-Za-z_][A-Za-z0-9_]*</ {n++}
         END {print n+0}
-    ' "$2"
+    ' <(python3 scripts/lib/comments.py --lang rust "$2")
 }
 
 const_of() {
-    grep -oE "pub const $1: usize = [0-9]+" \
+    python3 scripts/lib/comments.py --lang rust \
         packages/core/nros-orchestration-ir/src/executor_sizing.rs \
-        | grep -oE '[0-9]+$'
+        | grep -oE "pub const $1: usize = [0-9]+" | grep -oE '[0-9]+$' || true
 }
+
+# Negative control on the normal path (phase-472 F1 / W9): a field in a block
+# comment is not a server, and a commented constant is not the constant.
+self_test() {
+    local t got
+    t="$(mktemp)"
+    printf '%s\n' 'pub struct S {' '    a: Srv<A>,' '    /*' '    b: Srv<B>,' '    */' '    k: Key,' '}' > "$t"
+    got="$(count_fields S "$t")"
+    rm -f "$t"
+    [ "$got" = 1 ] || { echo "check-capability-slot-counts SELFTEST FAILED: counted $got server(s), want 1" >&2; exit 1; }
+}
+self_test
 
 check() {
     local struct="$1" file="$2" const_name="$3"
