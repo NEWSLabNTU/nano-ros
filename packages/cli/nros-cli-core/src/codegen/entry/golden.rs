@@ -362,6 +362,10 @@ fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     // issue 1551 — Zephyr's runner takes the tiers' executor storage, so this
     // is the row that pins the emitted `.bss` static and the `_in` call.
     out.push(("c_zephyr_tiers", c_tiered_plan("zephyr"), Emitter::C));
+    // issue 1568 — FreeRTOS joined it (and NuttX, pinned by `c_nuttx_tiers`);
+    // no C FreeRTOS tiered golden existed, so its `.bss` static and `_in`
+    // call had nothing pinning them.
+    out.push(("c_freertos_tiers", c_tiered_plan("freertos"), Emitter::C));
 
     // issue 1286 — ThreadX has a C `run_components` and NO `run_tiers`, so a
     // two-tier C plan takes the single-executor sched-context path: the three

@@ -64,8 +64,8 @@ extern void nros_zephyr_trace_marker(uint32_t marker_id, uint32_t arg);
 extern void nros_set_trace_sink(void (*sink)(uint32_t, uint32_t));
 
 extern int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t priority,
-                                        const char* name, size_t stack_bytes,
-                                        uint32_t core_plus1, int* pin_rc);
+                                        const char* name, size_t stack_bytes, uint32_t core_plus1,
+                                        int* pin_rc);
 extern void nros_zephyr_set_current_priority(int32_t priority);
 /* issue 1537 — judge one tier against the transport band the kernel actually
  * gave this image's explicitly-prioritised tasks; prints the boot report (see
@@ -178,9 +178,8 @@ extern size_t nros_zephyr_main_stack_size(void);
  * executor here is an opaque handle and the seam is unreachable from this
  * arm, which is the arm the Zephyr FVP lane takes. */
 extern void* nros_cpp_executor_wake_handle(void* executor);
-extern int nros_cpp_executor_set_park_primitive(void* executor,
-                                                int8_t (*park)(void*, uint64_t), void* ctx,
-                                                uint64_t granularity_us);
+extern int nros_cpp_executor_set_park_primitive(void* executor, int8_t (*park)(void*, uint64_t),
+                                                void* ctx, uint64_t granularity_us);
 extern int8_t nros_platform_wake_park_until_us(void* w, uint64_t deadline_us);
 extern uint64_t nros_platform_wake_park_granularity_us(void);
 
@@ -200,8 +199,8 @@ static void zephyr_install_park(void* executor, const char* tier_name) {
     if (wake == NULL) {
         return;
     }
-    int rc = nros_cpp_executor_set_park_primitive(executor, nros_platform_wake_park_until_us,
-                                                  wake, nros_platform_wake_park_granularity_us());
+    int rc = nros_cpp_executor_set_park_primitive(executor, nros_platform_wake_park_until_us, wake,
+                                                  nros_platform_wake_park_granularity_us());
     if (rc != 0) {
         printk("nros: park primitive NOT installed tier=`%s` rc=%d — falling back to the "
                "millisecond wake path\n",
@@ -223,7 +222,6 @@ extern uint64_t nros_tier_spin_gap_step(uint64_t state, uint64_t iter_start_ns, 
                                         uint32_t spin_period_us);
 extern uint64_t nros_platform_clock_ns(void);
 
-
 /* nros_board_network_wait: weak no-op in <nros/main.h> (phase-432 W3.1 moved
  * it there from the C++ sibling main.hpp so a pure C entry links); strong
  * override on boards that must block for DHCP / link-up. On the canonical
@@ -238,29 +236,18 @@ extern void nros_platform_dealloc(void* ptr);
 
 /* --- Executor storage sizing ---
  *
- * nros_cpp_init / nros_cpp_executor_open_over_session both need storage of
- * NROS_CPP_EXECUTOR_STORAGE_SIZE bytes (cmake-generated
- * nros_cpp_config_generated.h), 8-byte aligned. In the Zephyr module build
- * that header IS on the include path (nros-rust/nros-cpp-generated), so use
- * the REAL per-build value. issue #245: the old hardcoded "NuttX fallback
- * (79304) rounded up to 80 KiB" (81920) silently became 32 bytes SHORT when
- * the executor grew to 81952 — the tier executor's tail then overwrote the
- * next Zephyr sys_heap chunk header, corrupting the system heap the first
- * time subscriber-delivery state touched the tail (remote-subscriber-gated
- * crash in z_declare_publisher's free path). Never hardcode this again; the
- * fallback exists ONLY for builds where the generated header is absent, and
- * carries generous headroom.
- * nros_platform_alloc on the Zephyr heap returns 8-byte aligned memory. */
-#if defined(__has_include)
-#if __has_include(<nros/nros_cpp_config_generated.h>)
-#include <nros/nros_cpp_config_generated.h>
-#endif
-#endif
-#ifdef NROS_CPP_EXECUTOR_STORAGE_SIZE
-#define NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES ((NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) & ~7u)
-#else
-#define NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES 98304u /* 96 KiB fallback headroom */
-#endif
+ * nros_cpp_init / nros_cpp_executor_open_over_session build a `CppContext` in
+ * storage the caller supplies, with no size argument. Issue 1568 — the size
+ * comes from the LINKED library (`nros_cpp_executor_storage_size`), and the
+ * refusal for a caller's block is the library's too
+ * (`nros_cpp_executor_storage_check`). This used to be a `__has_include` of
+ * the per-build header with a 98,304-byte fallback: exact here, where the
+ * Zephyr module build puts the header on the path, but a guess on every lane
+ * that compiles a runner without it (issue #245 was that guess going 32 bytes
+ * short; NuttX's 81,920 was 6,640 short). One number, from the object that is
+ * built in the storage, is the only spelling that cannot drift. */
+extern size_t nros_cpp_executor_storage_size(void);
+extern int nros_cpp_executor_storage_check(const void* storage, size_t bytes);
 
 /* --- Local tier-spec type ---
  *
@@ -622,17 +609,17 @@ int32_t nros_board_zephyr_run_tiers_ns(const char* locator, uint8_t domain_id,
     if (tiers == NULL || n_tiers == 0) {
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
-    void* storage = nros_platform_alloc(n_tiers * NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES);
+    const size_t stride = nros_cpp_executor_storage_size();
+    void* storage = nros_platform_alloc(n_tiers * stride);
     if (storage == NULL) {
         printk("nros: zephyr run_tiers: %u tiers x %u bytes of executor storage do not fit "
                "the platform heap; regenerate the entry (nros_board_zephyr_run_tiers_in "
                "takes them as a static) or raise CONFIG_NROS_ZEPHYR_HEAP_SIZE\n",
-               (unsigned)n_tiers, (unsigned)NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES);
+               (unsigned)n_tiers, (unsigned)stride);
         return -1; /* NROS_CPP_RET_ERROR */
     }
-    int32_t rc =
-        nros_board_zephyr_run_tiers_in(locator, domain_id, session_name, node_namespace, tiers,
-                                       n_tiers, storage, NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES);
+    int32_t rc = nros_board_zephyr_run_tiers_in(locator, domain_id, session_name, node_namespace,
+                                                tiers, n_tiers, storage, stride);
     nros_platform_dealloc(storage);
     return rc;
 }
@@ -642,10 +629,11 @@ int32_t nros_board_zephyr_run_tiers_ns(const char* locator, uint8_t domain_id,
  *
  * `executor_storage` holds `n_tiers` blocks of `storage_stride` bytes; block
  * `i` is tier `i`'s executor and block 0 is the boot tier's. A generated entry
- * passes a file-scope static it sized from the same
- * `NROS_CPP_EXECUTOR_STORAGE_SIZE` this file reads, so the check below is a
- * backstop for a caller that did not (a hand-written entry, or a TU built
- * against a different per-build header), not a path a generated image takes.
+ * passes a file-scope static it sized from the per-build
+ * `NROS_CPP_EXECUTOR_STORAGE_SIZE`, and the check below asks the linked library
+ * (issue 1568) — a backstop for a caller that did not (a hand-written entry, or
+ * a TU built against a different per-build header), not a path a generated
+ * image takes.
  *
  * Ownership stays with the caller: nothing here frees the storage.
  */
@@ -656,13 +644,13 @@ int32_t nros_board_zephyr_run_tiers_in(const char* locator, uint8_t domain_id,
     if (tiers == NULL || n_tiers == 0 || executor_storage == NULL) {
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
-    if (storage_stride < NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES || (storage_stride % 8u) != 0u ||
-        ((uintptr_t)executor_storage % 8u) != 0u) {
-        printk("nros: zephyr run_tiers: executor storage stride %u (misalign %u) is not a "
-               "multiple of 8 of at least this build's %u bytes; the caller sized it from a "
-               "different NROS_CPP_EXECUTOR_STORAGE_SIZE\n",
-               (unsigned)storage_stride, (unsigned)((uintptr_t)executor_storage % 8u),
-               (unsigned)NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES);
+    /* Issue 1568 — the library's own refusal: a stride below THIS build's
+     * executor, not a multiple of 8, or a misaligned base is refused (the
+     * library logs both numbers) before a byte is written. */
+    if (nros_cpp_executor_storage_check(executor_storage, storage_stride) != 0) {
+        printk("nros: zephyr run_tiers: executor storage refused (stride %u, this build needs "
+               "%u)\n",
+               (unsigned)storage_stride, (unsigned)nros_cpp_executor_storage_size());
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
     unsigned char* storage = (unsigned char*)executor_storage;
@@ -746,8 +734,8 @@ int32_t nros_board_zephyr_run_tiers_in(const char* locator, uint8_t domain_id,
      * code ran — so the shim is asked instead. Excluding the boot tier
      * entirely would leave the rule off on every single-tier app, which is the
      * common shape and includes the Zephyr FVP lane. */
-    if (nros_cpp_executor_derive_min_stack_headroom(boot_storage,
-                                                    nros_zephyr_main_stack_size()) != 0) {
+    if (nros_cpp_executor_derive_min_stack_headroom(boot_storage, nros_zephyr_main_stack_size()) !=
+        0) {
         printk("nros: stack-headroom bound NOT set tier=`%s` (boot) — the rule stays off\n",
                (boot->name != NULL) ? boot->name : "?");
     }

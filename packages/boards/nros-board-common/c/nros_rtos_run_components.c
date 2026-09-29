@@ -105,26 +105,15 @@ extern void nros_platform_dealloc(void* ptr);
 
 /* ---- Executor storage sizing ----
  *
- * Same rule and the same hazard as `freertos_run_tiers.c`, deliberately spelled
- * the same way: prefer the REAL per-build size when the generated header is
- * visible to this compile, because the hardcoded fallback silently went 32
- * bytes short on Zephyr once and the symptom was heap corruption (issue
- * #245). */
-#if defined(__has_include)
-#if __has_include(<nros/nros_cpp_config_generated.h>)
-#include <nros/nros_cpp_config_generated.h>
-#endif
-#endif
-#ifdef NROS_CPP_EXECUTOR_STORAGE_SIZE
-#define NROS_RTOS_COMPONENT_STORAGE_BYTES ((NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) & ~7u)
-#elif defined(__ZEPHYR__)
-/* Zephyr's `run_tiers` sibling carries 96 KiB rather than 80 — kept, not
- * averaged: a fallback that is too small is issue #245's heap corruption, and
- * the extra 16 KiB is only reached when the generated header is invisible. */
-#define NROS_RTOS_COMPONENT_STORAGE_BYTES 98304u
-#else
-#define NROS_RTOS_COMPONENT_STORAGE_BYTES 81920u
-#endif
+ * Issue 1568 — the size comes from the LINKED library and so does the
+ * refusal, exactly as in every `run_tiers` runner. This file used to
+ * `__has_include` the per-build header and fall back to 98,304 (Zephyr) or
+ * 81,920 bytes (everything else), which is what shipped wherever the file is
+ * compiled without the header in reach: the NuttX seam archive always, and
+ * the FreeRTOS cargo-lane glue. On NuttX that was 6,640 bytes short of the
+ * 88,560-byte executor the same build measured. */
+extern size_t nros_cpp_executor_storage_size(void);
+extern int nros_cpp_executor_storage_check(const void* storage, size_t bytes);
 
 /* Mirrors `nros_c_entry_setup_fn` in <nros/main.h>. Declared locally for the
  * same reason the CFFI externs are. */
@@ -188,11 +177,14 @@ static void nros_rtos_entry_tick_yield(void) {
  * a warning-as-error — and the `_ns` twin is CALLED from the older spelling
  * below it, which in C also needs the declaration to come first. */
 int32_t nros_board_rtos_run_components(const char* locator, uint8_t domain_id,
-                                       const char* session_name,
-                                       nros_c_component_setup_fn setup);
+                                       const char* session_name, nros_c_component_setup_fn setup);
 int32_t nros_board_rtos_run_components_ns(const char* locator, uint8_t domain_id,
                                           const char* session_name, const char* node_namespace,
                                           nros_c_component_setup_fn setup);
+int32_t nros_board_rtos_run_components_in(const char* locator, uint8_t domain_id,
+                                          const char* session_name, const char* node_namespace,
+                                          nros_c_component_setup_fn setup, void* executor_storage,
+                                          size_t storage_bytes);
 
 /*
  * The C-ABI single-executor RTOS entry.
@@ -211,8 +203,7 @@ int32_t nros_board_rtos_run_components_ns(const char* locator, uint8_t domain_id
  * points read the same way at a call site.
  */
 int32_t nros_board_rtos_run_components(const char* locator, uint8_t domain_id,
-                                       const char* session_name,
-                                       nros_c_component_setup_fn setup) {
+                                       const char* session_name, nros_c_component_setup_fn setup) {
     /* Issue 1434 — delegates with a NULL namespace, which is "this image
      * declares none" and resolves to the root. Kept as its own symbol because
      * it is the one a pre-1434 generated entry TU calls, and an entry TU
@@ -237,6 +228,40 @@ int32_t nros_board_rtos_run_components(const char* locator, uint8_t domain_id,
 int32_t nros_board_rtos_run_components_ns(const char* locator, uint8_t domain_id,
                                           const char* session_name, const char* node_namespace,
                                           nros_c_component_setup_fn setup) {
+    /* Issue 1568 — kept for an entry TU generated before
+     * `nros_board_rtos_run_components_in` existed: one heap block at the
+     * library's own size, handed to the runner. It can no longer be short. */
+    if (setup == NULL) {
+        return NROS_RUN_COMPONENTS_RET_INVALID_ARGUMENT;
+    }
+    const size_t bytes = nros_cpp_executor_storage_size();
+    void* storage = nros_platform_alloc(bytes);
+    if (storage == NULL) {
+        return NROS_RUN_COMPONENTS_RET_ERROR;
+    }
+    int32_t out = nros_board_rtos_run_components_in(locator, domain_id, session_name,
+                                                    node_namespace, setup, storage, bytes);
+    nros_platform_dealloc(storage);
+    return out;
+}
+
+/*
+ * Issue 1568 — the runner over CALLER-SUPPLIED executor storage, and the one a
+ * generated C entry calls (`CAbiRunners::run_components_takes_storage`).
+ *
+ * The same method as every tiered runner (`nros_board_<rtos>_run_tiers_in`)
+ * with one block: the entry emits a file-scope `.bss` static sized from the
+ * per-build `NROS_CPP_EXECUTOR_STORAGE_SIZE`, so the linker places it and
+ * `mem-report` names it — the C twin of the C++ entry's
+ * `Node::GlobalStorageHolder<0>::storage`. The linked library refuses a block
+ * that is too small or misaligned before a byte is written.
+ *
+ * Ownership stays with the caller: nothing here frees the storage.
+ */
+int32_t nros_board_rtos_run_components_in(const char* locator, uint8_t domain_id,
+                                          const char* session_name, const char* node_namespace,
+                                          nros_c_component_setup_fn setup, void* executor_storage,
+                                          size_t storage_bytes) {
     /* A NULL setup registers nothing, so the image would boot into a spin loop
      * over an empty executor and look like a working node that publishes
      * nothing. The C++ sibling cannot express this — a callable is required by
@@ -245,21 +270,22 @@ int32_t nros_board_rtos_run_components_ns(const char* locator, uint8_t domain_id
     if (setup == NULL) {
         return NROS_RUN_COMPONENTS_RET_INVALID_ARGUMENT;
     }
+    /* Issue 1568 — the linked library's refusal (it logs both numbers), before
+     * the network wait, so a mis-sized entry fails at once. */
+    if (nros_cpp_executor_storage_check(executor_storage, storage_bytes) != 0) {
+        return NROS_RUN_COMPONENTS_RET_INVALID_ARGUMENT;
+    }
 
     nros_board_network_wait();
 
     const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";
     const char* ns = (node_namespace != NULL && node_namespace[0] != '\0') ? node_namespace : NULL;
 
-    void* storage = nros_platform_alloc(NROS_RTOS_COMPONENT_STORAGE_BYTES);
-    if (storage == NULL) {
-        return NROS_RUN_COMPONENTS_RET_ERROR;
-    }
-    memset(storage, 0, NROS_RTOS_COMPONENT_STORAGE_BYTES);
+    void* storage = executor_storage;
+    memset(storage, 0, storage_bytes);
 
     int rc = nros_cpp_init(locator, domain_id, sn, ns, storage);
     if (rc != 0) {
-        nros_platform_dealloc(storage);
         return (int32_t)rc;
     }
 
@@ -307,6 +333,5 @@ int32_t nros_board_rtos_run_components_ns(const char* locator, uint8_t domain_id
      * setup code, and a C entry that leaked the session instead would differ
      * exactly where an image is already in trouble. */
     nros_cpp_fini(storage);
-    nros_platform_dealloc(storage);
     return out;
 }

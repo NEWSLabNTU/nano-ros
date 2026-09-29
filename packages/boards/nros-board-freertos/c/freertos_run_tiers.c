@@ -68,27 +68,19 @@ extern void nros_platform_dealloc(void* ptr);
 
 /* --- Executor storage sizing ---
  *
- * nros_cpp_init / nros_cpp_executor_open_over_session both need storage of
- * CPP_EXECUTOR_OPAQUE_U64S * 8 bytes, 8-byte aligned. The cmake build generates
- * nros_cpp_config_generated.h with the exact value; since this file is compiled
- * by build.rs (before cmake runs), we use the NuttX/FreeRTOS ARM fallback from
- * nros_cpp_config_generated_nuttx.h (79304 bytes), rounded up to 80 KiB for
- * headroom. nros_platform_alloc on FreeRTOS heap_4 returns 8-byte aligned memory. */
-/* issue #245 — prefer the REAL per-build executor size when the generated
- * header is visible to this compile; the hardcoded fallback silently went
- * 32 bytes short on Zephyr when the executor grew (heap-corruption crash).
- * If this platform's executor outgrows the fallback, the same corruption
- * follows — keep the generated-header path working. */
-#if defined(__has_include)
-#if __has_include(<nros/nros_cpp_config_generated.h>)
-#include <nros/nros_cpp_config_generated.h>
-#endif
-#endif
-#ifdef NROS_CPP_EXECUTOR_STORAGE_SIZE
-#define NROS_FREERTOS_EXECUTOR_STORAGE_BYTES ((NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) & ~7u)
-#else
-#define NROS_FREERTOS_EXECUTOR_STORAGE_BYTES 81920u
-#endif
+ * nros_cpp_init / nros_cpp_executor_open_over_session build a `CppContext` in
+ * storage the caller supplies, with no size argument. Issue 1568 — the size
+ * comes from the LINKED library (`nros_cpp_executor_storage_size`), and the
+ * refusal for a caller's block is the library's too
+ * (`nros_cpp_executor_storage_check`), because this file is compiled where no
+ * nros header is in reach (the cargo lane's `build.rs` glue).
+ * It used to `__has_include` the per-build header and fall back to 81,920
+ * bytes — "80 KiB of headroom" over a 79,304-byte executor. The executor grew
+ * past it: the CMake lane saw the header and was exact (88,480 on mps2-an385), the cargo lane did
+ * not and would have been short. One number, from the object that is built in the storage, cannot
+ * drift. */
+extern size_t nros_cpp_executor_storage_size(void);
+extern int nros_cpp_executor_storage_check(const void* storage, size_t bytes);
 
 /* The board's console, used for the loud placement-dim note below. Declared
  * here (no shared header).
@@ -160,8 +152,10 @@ typedef struct {
 /* --- Per-tier task context ---
  *
  * Heap-allocated by the boot task before xTaskCreate; lives for the firmware
- * lifetime (the spawned task never returns). executor_storage is a separate
- * heap-allocated block passed to nros_cpp_executor_open_over_session. */
+ * lifetime (the spawned task never returns). executor_storage is this tier's
+ * block of the CALLER's storage (issue 1568 — a file-scope static in the
+ * generated entry, not a heap block), passed to
+ * nros_cpp_executor_open_over_session. */
 typedef struct {
     void* session_handle;
     uint32_t domain_id;
@@ -175,6 +169,11 @@ typedef struct {
      * setup returns, so no two setups overlap on the shared session. */
     const nros_tier_spec_t* rest;
     size_t n_rest;
+    /* issue 1568 — the storage for rest[0] (rest[k] is at k * storage_stride),
+     * carried down the chain beside the specs it belongs to (Zephyr's shape,
+     * issue 1551). */
+    unsigned char* rest_storage;
+    size_t storage_stride;
     /* issue 0636 — the tier's identity and declared priority, so the task can
      * ANNOUNCE what it got (#579). The task already holds the priority from
      * `xTaskCreate`; what was missing was any way to say so. */
@@ -311,7 +310,8 @@ static void freertos_announce_spawn_failure(const char* name, const char* why) {
 /* Forward decl — freertos_tier_task and freertos_spawn_next_tier are mutually
  * recursive (each tier's task spawns the next tier via this helper). */
 static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
-                                    const nros_tier_spec_t* remaining, size_t n_remaining);
+                                    const nros_tier_spec_t* remaining, size_t n_remaining,
+                                    unsigned char* storage, size_t storage_stride);
 
 /* Minimum spin delay: 1 ms (FreeRTOS tick resolution on MPS2-AN385). */
 #define SPIN_PERIOD_FLOOR_MS 1u
@@ -393,7 +393,7 @@ static void freertos_tier_task(void* arg) {
      * DOWNSTREAM spawn must NOT stop this tier spinning its own work, so ignore
      * the return (freertos_spawn_next_tier frees what it allocated on failure). */
     (void)freertos_spawn_next_tier(ctx->session_handle, (uint8_t)ctx->domain_id, ctx->rest,
-                                   ctx->n_rest);
+                                   ctx->n_rest, ctx->rest_storage, ctx->storage_stride);
 
     /* Spin loop. Pass the tier period as the spin_once timeout — a BLOCKING
      * read (issue #126 defect B): timeout 0 returns immediately and never drives
@@ -435,26 +435,24 @@ static void freertos_tier_task(void* arg) {
  * On any alloc/xTaskCreate failure, frees what IT allocated and returns -1. It
  * does NOT touch boot_storage — the caller (boot) owns that. */
 static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
-                                    const nros_tier_spec_t* remaining, size_t n_remaining) {
+                                    const nros_tier_spec_t* remaining, size_t n_remaining,
+                                    unsigned char* storage, size_t storage_stride) {
     if (n_remaining == 0u) {
         return 0;
     }
     const nros_tier_spec_t* t = &remaining[0];
 
-    /* Allocate executor storage for this tier. */
-    void* tier_exec = nros_platform_alloc(NROS_FREERTOS_EXECUTOR_STORAGE_BYTES);
-    if (tier_exec == NULL) {
-        freertos_announce_spawn_failure(t->name, "executor storage allocation failed");
-        return -1;
-    }
-    memset(tier_exec, 0, NROS_FREERTOS_EXECUTOR_STORAGE_BYTES);
+    /* Issue 1568 — this tier's executor is the caller's block, never a heap
+     * block: the storage is the generated entry's `.bss` static, sized by the
+     * build and placed by the linker. */
+    void* tier_exec = storage;
+    memset(tier_exec, 0, storage_stride);
 
     /* Allocate the tier task context (lives for firmware lifetime). */
     nros_freertos_tier_ctx_t* ctx =
         (nros_freertos_tier_ctx_t*)nros_platform_alloc(sizeof(nros_freertos_tier_ctx_t));
     if (ctx == NULL) {
         freertos_announce_spawn_failure(t->name, "tier context allocation failed");
-        nros_platform_dealloc(tier_exec);
         return -1;
     }
 
@@ -468,6 +466,8 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
     /* Chain tail: this task will spawn remaining[1] after its own setup. */
     ctx->rest = remaining + 1;
     ctx->n_rest = n_remaining - 1u;
+    ctx->rest_storage = storage + storage_stride;
+    ctx->storage_stride = storage_stride;
     ctx->name = t->name;
     ctx->priority = (uint32_t)((t->priority < 0) ? 0 : t->priority);
 
@@ -503,7 +503,6 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
     if (ret != pdPASS) {
         freertos_announce_spawn_failure(t->name, "xTaskCreate failed (FreeRTOS heap)");
         nros_platform_dealloc(ctx);
-        nros_platform_dealloc(tier_exec);
         return -1;
     }
     /* RFC-0052 W2/W5.11 — core pin (core_plus1: 0 = unpinned) is the placement
@@ -543,6 +542,10 @@ int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
 int32_t nros_board_freertos_run_tiers_ns(const char* locator, uint8_t domain_id,
                                          const char* session_name, const char* node_namespace,
                                          const nros_tier_spec_t* tiers, size_t n_tiers);
+int32_t nros_board_freertos_run_tiers_in(const char* locator, uint8_t domain_id,
+                                         const char* session_name, const char* node_namespace,
+                                         const nros_tier_spec_t* tiers, size_t n_tiers,
+                                         void* executor_storage, size_t storage_stride);
 
 int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
                                       const char* session_name, const nros_tier_spec_t* tiers,
@@ -580,6 +583,56 @@ int32_t nros_board_freertos_run_tiers_ns(const char* locator, uint8_t domain_id,
     if (tiers == NULL || n_tiers == 0) {
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
+    /* Issue 1568 — kept for an entry TU generated before
+     * `nros_board_freertos_run_tiers_in` existed. It takes every tier's storage
+     * in ONE heap block up front, at the library's own size, and hands it to
+     * the runner — so it fails before any session opens rather than part-way
+     * down the spawn chain (issue 1551's lesson), and it can no longer be
+     * short. */
+    const size_t stride = nros_cpp_executor_storage_size();
+    void* storage = nros_platform_alloc(n_tiers * stride);
+    if (storage == NULL) {
+        nros_board_freertos_console_write(
+            "nros: freertos run_tiers: the tiers' executor storage does not fit heap_4; "
+            "regenerate the entry (nros_board_freertos_run_tiers_in takes it as a static) "
+            "or raise NROS_FREERTOS_HEAP_KB\n");
+        return -1; /* NROS_CPP_RET_ERROR */
+    }
+    int32_t rc = nros_board_freertos_run_tiers_in(locator, domain_id, session_name, node_namespace,
+                                                  tiers, n_tiers, storage, stride);
+    nros_platform_dealloc(storage);
+    return rc;
+}
+
+/*
+ * Issue 1568 — the runner, over caller-supplied executor storage, and the one a
+ * generated tiered freertos entry calls (`CAbiRunners::run_tiers_takes_storage`).
+ * Zephyr's shape (issue 1551), so the three RTOS runners take storage one way.
+ *
+ * `executor_storage` holds `n_tiers` blocks of `storage_stride` bytes; block 0
+ * is the boot tier's executor and blocks 1.. are the spawned tiers', in chain
+ * order. The generated entry passes a file-scope static sized from the
+ * per-build `NROS_CPP_EXECUTOR_STORAGE_SIZE` and its own tier count, so the
+ * bytes are `.bss` the linker places and `mem-report` names instead of
+ * `n_tiers` heap blocks nothing priced. A block the linked library says is too
+ * small or misaligned is REFUSED before a byte is written.
+ *
+ * Ownership stays with the caller: nothing here frees the storage.
+ */
+int32_t nros_board_freertos_run_tiers_in(const char* locator, uint8_t domain_id,
+                                         const char* session_name, const char* node_namespace,
+                                         const nros_tier_spec_t* tiers, size_t n_tiers,
+                                         void* executor_storage, size_t storage_stride) {
+    if (tiers == NULL || n_tiers == 0 || executor_storage == NULL) {
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    if (nros_cpp_executor_storage_check(executor_storage, storage_stride) != 0) {
+        nros_board_freertos_console_write(
+            "nros: freertos run_tiers: executor storage refused — the caller sized it from a "
+            "different NROS_CPP_EXECUTOR_STORAGE_SIZE than the linked library\n");
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    unsigned char* storage = (unsigned char*)executor_storage;
 
     /* Belt-and-suspenders network wait (startup.c already brought the network
      * up; this calls the weak no-op on MPS2-AN385 or a board's strong override). */
@@ -592,16 +645,12 @@ int32_t nros_board_freertos_run_tiers_ns(const char* locator, uint8_t domain_id,
      * session name gets one line up. */
     const char* ns = (node_namespace != NULL && node_namespace[0] != '\0') ? node_namespace : NULL;
 
-    /* Allocate executor storage from the FreeRTOS heap (8-byte aligned on heap_4). */
-    void* boot_storage = nros_platform_alloc(NROS_FREERTOS_EXECUTOR_STORAGE_BYTES);
-    if (boot_storage == NULL) {
-        return -1; /* NROS_CPP_RET_ERROR */
-    }
-    memset(boot_storage, 0, NROS_FREERTOS_EXECUTOR_STORAGE_BYTES);
+    /* Block 0 of the caller's storage is the boot tier's executor. */
+    void* boot_storage = storage;
+    memset(boot_storage, 0, storage_stride);
 
     int rc = nros_cpp_init(locator, domain_id, sn, ns, boot_storage);
     if (rc != 0) {
-        nros_platform_dealloc(boot_storage);
         return (int32_t)rc;
     }
 
@@ -689,7 +738,6 @@ int32_t nros_board_freertos_run_tiers_ns(const char* locator, uint8_t domain_id,
         rc = boot->setup(boot_storage);
         if (rc != 0) {
             nros_cpp_fini(boot_storage);
-            nros_platform_dealloc(boot_storage);
             return (int32_t)rc;
         }
     }
@@ -719,10 +767,10 @@ int32_t nros_board_freertos_run_tiers_ns(const char* locator, uint8_t domain_id,
     /* A boot-side spawn failure is fatal: tear down boot_storage (which the
      * helper never touches) and return error. Downstream tier tasks handle
      * their own spawn failures by logging + continuing to spin. */
-    int src = freertos_spawn_next_tier(session_handle, domain_id, rest_first, n_rest);
+    int src = freertos_spawn_next_tier(session_handle, domain_id, rest_first, n_rest,
+                                       storage + storage_stride, storage_stride);
     if (src != 0) {
         nros_cpp_fini(boot_storage);
-        nros_platform_dealloc(boot_storage);
         return -1;
     }
 
@@ -754,6 +802,5 @@ int32_t nros_board_freertos_run_tiers_ns(const char* locator, uint8_t domain_id,
 
     /* Unreachable — satisfies the compiler. */
     nros_cpp_fini(boot_storage);
-    nros_platform_dealloc(boot_storage);
     return 0;
 }

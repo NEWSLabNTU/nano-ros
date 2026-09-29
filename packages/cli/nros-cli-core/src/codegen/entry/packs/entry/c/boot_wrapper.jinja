@@ -48,16 +48,33 @@
   (`boot.tier_storage`, i.e. `CAbiRunners::tiers_take_static_storage`), the
   wrapper emits it here as a file-scope static and passes it with its per-tier
   stride. The runner then allocates no executor from the platform heap.
+
+  Issue 1568 — every RTOS board's runners take storage this way now, the
+  single-executor `run_components` included (`boot.component_storage`, one
+  block). One method, one flag (`CAbiRunners::takes_executor_storage`), one
+  refusal (the linked library's `nros_cpp_executor_storage_check`).
 -#}
 {%- if boot.tier_storage -%}
-/* Issue 1551 — every tier's executor storage, one block per tier, as a
+/* Issues 1551 + 1568 — every tier's executor storage, one block per tier, as a
  * file-scope static the linker places and `mem-report` names. The runner used
- * to take each block out of the platform heap (CONFIG_NROS_ZEPHYR_HEAP_SIZE),
- * and nothing multiplied the storage by the tier count against it. The size is
- * this build's own NROS_CPP_EXECUTOR_STORAGE_SIZE, so the include is mandatory:
- * without the per-build header there is no honest size to write. */
+ * to take each block out of the platform heap, and nothing multiplied the
+ * storage by the tier count against it. The size is this build's own
+ * NROS_CPP_EXECUTOR_STORAGE_SIZE, so the include is mandatory: without it there
+ * is no honest size to write. The runner asks the linked library whether the
+ * block is big enough and refuses it if not. */
 #include <nros/nros_cpp_config_generated.h>
 static uint64_t __nros_tier_executor_storage[{{ boot.n_tiers }}][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
+
+{% elif boot.component_storage -%}
+/* Issue 1568 — the executor's storage, as a file-scope static the linker
+ * places and `mem-report` names: the C twin of the C++ entry's
+ * `Node::GlobalStorageHolder<0>::storage`. The runner used to take it out of
+ * the platform heap at a size compiled from a fallback wherever the per-build
+ * header was out of reach. The size is this build's own
+ * NROS_CPP_EXECUTOR_STORAGE_SIZE, so the include is mandatory; the runner asks
+ * the linked library whether it is big enough and refuses it if not. */
+#include <nros/nros_cpp_config_generated.h>
+static uint64_t __nros_executor_storage[(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
 
 {% endif -%}
 {%- set call -%}
@@ -70,7 +87,7 @@ static uint64_t __nros_tier_executor_storage[{{ boot.n_tiers }}][(NROS_CPP_EXECU
 {%- elif boot.shape == "host" -%}
 {{ boot.run_components_fn }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)
 {%- else -%}
-{{ boot.run_components_fn }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)
+{{ boot.run_components_fn }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup{% if boot.component_storage %}, __nros_executor_storage, sizeof(__nros_executor_storage){% endif %})
 {%- endif -%}
 {%- endset -%}
 {%- if boot.shape == "kernel" -%}
