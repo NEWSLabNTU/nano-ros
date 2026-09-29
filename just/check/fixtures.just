@@ -148,6 +148,17 @@ template-copy-out:
 fixture-artifact-dir-inputs:
     @python3 scripts/check-fixture-artifact-dir-inputs.py
 
+# Issue 1581 — every embedded cargo IMAGE row bakes a locator its board READS.
+# The bringup's `[image.<id>] locator` reaches every board; a row's
+# `NROS_LOCATOR` env reaches only boards that `option_env!` it. Four images lost
+# their locator when phase-383 deleted the entry packages that carried it, and
+# dialled the board default while the test's router listened elsewhere — one of
+# them beside a row env that looked like a bake and reached nothing. Buildless:
+# the manifest, the bringups, and a grep that VERIFIES the reads-env table.
+[private]
+image-locator-bake:
+    @python3 scripts/check-image-locator-bake.py
+
 # issue 0720 — a test asks a fixture resolver for an artifact BY NAME, and a
 # name no CMake target produces resolves to a missing path, which the test
 # reports as a `fixture missing` SKIP. So the failure mode is silence, not red.
