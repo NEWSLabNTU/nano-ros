@@ -4829,7 +4829,7 @@ pub fn build_zephyr_workspace_rust_realtime_entry() -> TestResult<PathBuf> {
 }
 
 /// issue 1537 — the Zephyr (native_sim) DERIVED-tier Rust workspace Entry
-/// (`realtime-rust`'s `derived_bringup`, `[image.zephyr]`): no authored
+/// (`realtime-rust`'s `derived_bringup`, `[image.zephyr_derived]`): no authored
 /// `[tiers.*]`, a contract, and an image whose `prj-lowered-band.conf` moves the
 /// zenoh read task's band, so `nros::main!` must allocate the derived tiers out
 /// of THIS image's `.config` to land below its transport. Built by the west lane

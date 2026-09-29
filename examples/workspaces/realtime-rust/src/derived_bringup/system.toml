@@ -51,7 +51,15 @@ rmw = "zenoh"
 # for demo_bringup's `[image.zephyr]`. The locator's port is
 # `port_of(ZephyrNativeSim, Rust, RealtimeTiers)` — the same router port the
 # realtime Zephyr Rust cells use, as the SMP row shares the C one's.
-[image.zephyr]
+#
+# `zephyr_derived`, NOT `zephyr` (issue 1582). A generated entry is keyed on the
+# image ID — `build/zephyr-zenoh/<id>_entry/`, which is also the west
+# application — so as `[image.zephyr]` this image and demo_bringup's generated
+# the SAME directory: both west leaves configured it as their
+# APPLICATION_SOURCE_DIR, and whichever `nros build` ran last decided what BOTH
+# images contained (the authored-tier image booted `derived-telem_node`).
+# `nros build` refuses two bringups generating one id now.
+[image.zephyr_derived]
 board = "zephyr"
 conf = ["prj-zenoh.conf", "prj-lowered-band.conf"]
 locator = "tcp/127.0.0.1:7491"
