@@ -269,6 +269,23 @@ cc-build-policy:
 cli-source-dirs:
     @python3 scripts/gen-cli-source-dirs.py --check
 
+# Issue 1578 — `packages/cli/probe-source-dirs.txt` must equal cargo's resolve of
+# what a metadata PROBE compiles.
+#
+# That file is the other half of every sidecar's freshness key: `nros sync`
+# hashes the component's sources AND the crates this names, because what a probe
+# reports is decided by both. It used to be the component alone, and a change to
+# `nros-node`'s `in_place` classifier was measured being reused as "already
+# current" -- `in_place: false` in the sidecar against `true` in the source.
+#
+# A stale list drifts in one of two directions and they cost differently: a
+# crate the probe compiles and the list omits is a stale sidecar (an under-size
+# when the flag moves the other way); one the list names and no probe compiles
+# is a spurious re-probe. The check names which.
+[group("ci")]
+probe-source-dirs:
+    @python3 scripts/gen-probe-source-dirs.py --check
+
 # Issue 1018 — every input the CLI source stamp folds must be one the stale-CLI
 # refusal can NAME.
 #
