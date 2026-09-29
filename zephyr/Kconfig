@@ -430,24 +430,33 @@ config NROS_ZEPHYR_TIER_STACK_SIZE
 
 config NROS_ZENOH_LEASE_MS
     int "zenoh-pico transport lease (ms)"
-    default 10000
+    default 60000
     help
-      Z_TRANSPORT_LEASE — the session lease zenoh-pico announces, and the
+      Z_TRANSPORT_LEASE -- the session lease zenoh-pico announces, and the
       value its lease task measures peer silence against. It is BOTH sides
       of one number: keepalives go out every lease/NROS_ZENOH_LEASE_FACTOR,
       and a peer is dropped after TWO lease periods with nothing received.
 
-      Raise this on a link whose peer does not send keepalives. Measured
-      against a stock rmw_zenohd over UART: the router completes the
-      handshake, answers the declares, then schedules nothing further on the
-      link — so a publisher, which has no return traffic to reset its lease,
-      closes with _Z_CLOSE_EXPIRED at exactly 2 x this value. At the 10000
-      default that is a 20 s session, which is long enough for discovery to
-      succeed sometimes and look like a flake. 60000 gives 120 s.
+      zenoh-pico takes min(the router's announced lease, this value) as the
+      window it measures router silence against. The router ROS ships,
+      rmw_zenohd (DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5), announces
+      `lease: 60000` with `keep_alive: 2`, so an idle router speaks every
+      30 s. Any value below 30000 therefore expires a session whose router
+      has nothing else to send it -- deterministically below 15000. The
+      default is 60000 for that reason, and it is the same number the cargo
+      lane compiles in (nros-zpico-build, issue 0906);
+      scripts/check-zenoh-lane-ownership.py holds the two together.
 
-      This is mitigation. The peer is what should be keepaliving; a longer
-      lease only delays the drop and slows genuine peer-loss detection by
-      the same factor.
+      Before this default moved (issue 1574) the Zephyr lane alone still
+      compiled zenoh-pico's upstream 10000: a TCP image against a stock
+      rmw_zenohd closed with Close(reason 5, EXPIRED) about 30 s after it
+      opened, measured under QEMU mps2/an385.
+
+      Lower it only against a router that keepalives faster than
+      lease/2 -- a serial gateway with `keep_alive: 6`, for instance. The
+      cost of 60000 is detection latency for a router that dies WITHOUT
+      closing the link: up to 2 x lease. A closed socket is still seen at
+      once.
 
 config NROS_ZENOH_LEASE_FACTOR
     int "zenoh-pico lease expire factor"
