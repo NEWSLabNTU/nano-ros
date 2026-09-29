@@ -228,3 +228,29 @@ The wider point is issue 1158's: a lane that has reported the same summary
 string for weeks has no signal capacity, and the only way to notice a cause
 changing underneath it is to re-read the error text every time. This one
 changed without the verdict moving a character.
+
+## Progress (2026-09-30, phase-472 F5) — the `app_config.h` fix verified on a real riscv64 build
+
+The 2026-09-29 nightly failure (`nros/app_config.h: No such file or directory`
+in `startup.c` and the generated `nros_app_config_def.c` of every rust leaf) was
+fixed on main by `9d0393bfd5` (the Rust runtime carrier keeps `nros_c-static`'s
+INTERFACE include dirs), whose commit says a real riscv64 build was NOT run.
+It is now: `rv-virt-threadx/rust/listener`, `-DNROS_RMW=zenoh`, cmake + ninja as
+`build_threadx_cmake_rmw` drives it (riscv-none-elf-gcc 14.2.0, ThreadX port
+`risc-v64/gnu`), builds and links, and both TUs receive the dirs in the exported
+order — platform-api, per-build mirror, then the nros-c source dir (issue 0434's
+order). The same failure had first been reproduced here pre-fix, verbatim.
+
+Still open, as before: this issue's acceptance is the `threadx_riscv64` nightly
+job reaching a verdict on its cells, and the cold-workspace port selection. Both
+are the nightly's to answer.
+
+Also observed, NOT fixed (it is a design question the harness already names as
+follow-up, issue #181): the rust image boots under QEMU to `c_app_main` (NetX up,
+`nros: byte pool peak 598952 of 4105752 bytes`) with the board's STATIC
+`192.0.3.10/24, gw 192.0.3.1` plan and two baked locators (`tcp/192.0.3.1:7447`,
+the entry's, and `tcp/10.0.2.2:7553`, the cosmetic app-config one). Under plain
+slirp (what `start_riscv64_virt` launches) and under
+`-netdev user,net=192.0.3.0/24,host=192.0.3.1` with a router on 7447, no zenoh
+session reached the router in 60 s. Whether the cells deliver is therefore not
+established here.
