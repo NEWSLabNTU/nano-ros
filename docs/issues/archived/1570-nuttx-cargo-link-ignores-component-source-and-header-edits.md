@@ -108,7 +108,7 @@ with cc-rs from an env `*SOURCES*` list must call both helpers, and neither
 helper may appear without the other; fails if it matches nothing, self-tests
 its classifier each run, and was mutation-checked against the real file.
 
-**Residual, not this issue.** The board crates' own cc-rs compiles (FreeRTOS
+**Residual, not this issue — filed as issue 1580.** The board crates' own cc-rs compiles (FreeRTOS
 kernel/lwIP/glue, ThreadX kernel/NetX/glue, threadx-linux, mps2 lan9118)
 compile IN-CRATE or vendored sources and watch them by hand — per file or by
 directory — with the same blindness to headers outside those paths. That is
