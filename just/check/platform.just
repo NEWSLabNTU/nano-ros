@@ -156,11 +156,6 @@ board-cargo-config-shape:
 board-build-target:
     @python3 scripts/check-board-build-target.py
 
-# built (the packages/cli phase215_f integration test still covers it).
-[private]
-board-manifest-drift:
-    @bash scripts/check-board-manifest-drift.sh
-
 [private]
 board-tiers:
     @python3 scripts/check-board-tiers.py
@@ -707,13 +702,6 @@ posix-platform-purity:
 [private]
 prelude-tiers:
     @python3 scripts/check-prelude-tiers.py
-
-# Phase 176.3 — verify the orchestration generator's PlatformProfile
-# board-crate references match the actual board crates (existence +
-# `run` entry). Skips when the colcon-nano-ros submodule is absent.
-[private]
-profile-board-mirror:
-    @bash scripts/check-profile-board-mirror.sh
 
 # A PX4 module compiles against a per-build generated header and links a
 # separately-built `libnros_cpp.a`. The two are independent files that each

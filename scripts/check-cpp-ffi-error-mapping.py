@@ -31,6 +31,7 @@ import sys as _sys
 from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
 from tracked import tracked  # issue 0721: index lookup, not a walk
+from population import require_population  # phase-472 W4
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 SRC = REPO / "packages" / "api" / "nros-cpp" / "src"
@@ -54,9 +55,9 @@ MAPPERS = ("node_error_to_cpp_ret", "transport_error_to_cpp_ret")
 
 
 def main() -> int:
-    if not SRC.is_dir():
-        print(f"check-cpp-ffi-error-mapping: NOT CHECKED — {SRC} is absent")
-        return 0
+    # phase-472 W4 — `SRC` is TRACKED; its absence is the population moving,
+    # not a tree with nothing to check. This used to print NOT CHECKED and
+    # exit 0. The file count below is required to be non-zero instead.
 
     failures: list[str] = []
     scanned = 0
@@ -116,6 +117,9 @@ def main() -> int:
                     f"       A `#[cfg(...)]`-gated `_` is allowed — see the note in this script."
                 )
 
+    if not require_population(scanned, f"tracked .rs file(s) under {SRC.relative_to(REPO)}",
+                              gate="check-cpp-ffi-error-mapping"):
+        return 1
     if failures:
         print("check-cpp-ffi-error-mapping: FAILED — a backend error is being discarded\n")
         print("\n".join(failures))

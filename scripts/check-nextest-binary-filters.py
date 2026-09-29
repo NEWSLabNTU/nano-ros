@@ -188,8 +188,13 @@ def main() -> int:
     root = repo_root()
     config = root / ".config/nextest.toml"
     if not config.exists():
-        print(f"check-nextest-binary-filters: no {config} — nothing to check")
-        return 0
+        # phase-472 W4 — the config is TRACKED; a missing one is not "nothing
+        # to check", it is every override (timeouts, retries, test groups)
+        # gone at once, which this used to report with exit 0.
+        print(f"check-nextest-binary-filters: FAILED — {config} is missing. It is a "
+              f"tracked file; restore it (git checkout -- .config/nextest.toml).",
+              file=sys.stderr)
+        return 1
 
     targets = known_targets(root)
     bad = scan(config, targets)

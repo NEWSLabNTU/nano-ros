@@ -21,18 +21,42 @@ Deliberately static: it reads the SCRIPT's declared lists, not the live ruleset.
 A gate that needs the network is one that gets skipped, and the script is where
 the decision is authored anyway.
 
+  3. That workflow's `pull_request` trigger carries NO `branches` /
+     `branches-ignore` / `paths` / `paths-ignore` filter. PR #71 deadlocked on
+     `branches: [main]` (a stacked PR's events were filtered out, and the
+     retarget emits `edited`, which dispatches nothing); a `paths` filter does
+     the same to any PR touching only other paths. The trigger NAME being
+     present is not the trigger FIRING. CLAUDE.md: "never path-filter a
+     required workflow".
+
+phase-472 W4 — this gate was OFF in two ways while printing ok: a missing
+PyYAML exited 0, and an empty `HOSTED_CHECKS=()` examined zero contexts. Both
+fail now; the count examined is printed (`scripts/lib/population.py`), and an
+unparseable workflow is an error rather than a file silently skipped (it may
+be the one producing the required context).
+
 Related: CLAUDE.md ("ONE required check, the aggregator CI — never add a job
 name to the required set"), issues 0883, 0975.
 """
+import io
 import re
 import sys
 import pathlib
 
+_ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_ROOT / "scripts" / "lib"))
+from population import require_population  # noqa: E402
+
 try:
     import yaml
 except ImportError:
-    print("check-required-contexts-reportable: PyYAML missing; run `just dev-tools --install`")
-    sys.exit(0)
+    print("check-required-contexts-reportable: FAILED — PyYAML is missing, so no\n"
+          "  workflow was read and nothing was verified. Install it:\n"
+          "  `just dev-tools --install`.", file=sys.stderr)
+    sys.exit(1)
+
+# A filter on `pull_request` that can make a PR's event dispatch nothing.
+PR_FILTERS = ("branches", "branches-ignore", "paths", "paths-ignore")
 
 SCRIPT = "scripts/ci/enable-merge-queue.sh"
 # Only arrays that actually feed the required set. SELF_HOSTED_CHECKS is
@@ -49,22 +73,27 @@ def parse_bash_array(text: str, name: str):
     return re.findall(r'"([^"]+)"', m.group(1))
 
 
-def workflow_jobs(root: pathlib.Path):
-    """name -> list of (workflow, triggers, if-condition) producing that context."""
+def workflow_jobs(root: pathlib.Path, unparseable=None):
+    """name -> list of (workflow, triggers, if-condition, pr-filters) producing
+    that context. `unparseable`, when a list, receives workflows YAML refused."""
     out = {}
     for path in sorted((root / ".github" / "workflows").glob("*.y*ml")):
         try:
             doc = yaml.safe_load(path.read_text()) or {}
         except yaml.YAMLError:
+            if unparseable is not None:
+                unparseable.append(path.name)
             continue
         # PyYAML turns a bare `on:` key into the boolean True (YAML 1.1).
         raw = doc.get(True, doc.get("on"))
         trig = set(raw) if isinstance(raw, (dict, list)) else ({str(raw)} if raw else set())
+        pr = raw.get("pull_request") if isinstance(raw, dict) else None
+        filters = sorted(k for k in (pr or {}) if k in PR_FILTERS) if isinstance(pr, dict) else []
         for jid, job in (doc.get("jobs") or {}).items():
             if not isinstance(job, dict):
                 continue
             out.setdefault(job.get("name", jid), []).append(
-                (path.name, trig, str(job.get("if", "")))
+                (path.name, trig, str(job.get("if", "")), filters)
             )
     return out
 
@@ -75,7 +104,12 @@ def check(root: pathlib.Path):
     if not script.exists():
         return [f"{SCRIPT} is missing — this gate cannot verify anything"], 0
     text = script.read_text()
-    jobs = workflow_jobs(root)
+    unparseable = []
+    jobs = workflow_jobs(root, unparseable)
+    for name in unparseable:
+        violations.append(
+            f"{name}: not valid YAML — it may be the workflow that produces a "
+            f"required context, so it cannot be skipped")
     checked = 0
 
     for arr in REQUIRING_ARRAYS:
@@ -91,14 +125,20 @@ def check(root: pathlib.Path):
                     f"required context {ctx!r} ({arr}) is produced by NO job — "
                     f"it can never report, so every PR blocks forever")
                 continue
-            if not any("pull_request" in t for _, t, _ in producers):
-                where = ", ".join(f"{w}({','.join(sorted(t))})" for w, t, _ in producers)
+            if not any("pull_request" in t for _, t, _, _ in producers):
+                where = ", ".join(f"{w}({','.join(sorted(t))})" for w, t, _, _ in producers)
                 violations.append(
                     f"required context {ctx!r} ({arr}) is produced only by: {where} — "
                     f"no `pull_request` trigger, so a PR can never satisfy it and "
                     f"can never enter the merge queue (issue 0975)")
                 continue
-            for wf, trig, cond in producers:
+            for wf, trig, cond, filters in producers:
+                if "pull_request" in trig and filters:
+                    violations.append(
+                        f"required context {ctx!r} in {wf}: its `pull_request` trigger "
+                        f"carries {', '.join(filters)} — a PR whose event the filter "
+                        f"drops gets no check suite, and a required check that never "
+                        f"reports blocks it forever (PR #71)")
                 if "pull_request" in trig and COND_VAR.search(cond):
                     violations.append(
                         f"required context {ctx!r} in {wf} has `if:` depending on "
@@ -143,14 +183,39 @@ def _selftest(verbose: bool = True) -> int:
     """)
     script = 'HOSTED_CHECKS=(\n    "CI"\n)\n'
 
+    branch_filtered_wf = textwrap.dedent("""
+        on:
+          push: {branches: [main]}
+          pull_request: {branches: [main]}
+        jobs:
+          ci-ok: {name: CI, runs-on: ubuntu-latest, steps: [{run: echo}]}
+    """)
+    path_filtered_wf = textwrap.dedent("""
+        on:
+          pull_request:
+            paths: ["packages/**"]
+        jobs:
+          ci-ok: {name: CI, runs-on: ubuntu-latest, steps: [{run: echo}]}
+    """)
     cases = [
         ("reportable on PR", script, good_wf, False),
+        ("pull_request with a branches filter (PR #71)", script, branch_filtered_wf, True),
+        ("pull_request with a paths filter", script, path_filtered_wf, True),
+        ("unparseable workflow", script, "on: [pull_request\njobs: {", True),
         ("merge_group-only (0975)", script, mg_only_wf, True),
         ("gated on a repo variable", script, var_gated_wf, True),
         ("context nothing produces", 'HOSTED_CHECKS=(\n    "Ghost"\n)\n', good_wf, True),
     ]
     ok = True
     with tempfile.TemporaryDirectory() as d:
+        # phase-472 W4 — an empty required array examines zero contexts.
+        _, n = check(build(d, "HOSTED_CHECKS=(\n)\n", good_wf))
+        silent = io.StringIO()
+        if require_population(n, "context(s)", gate="probe", out=silent, err=silent):
+            print("  selftest FAIL [empty required array]: zero contexts read as a pass")
+            ok = False
+        elif verbose:
+            print("  selftest ok [empty required array]")
         for label, body, wf, want in cases:
             v, _ = check(build(d, body, wf))
             if bool(v) != want:
@@ -170,8 +235,10 @@ def main() -> int:
         print("check-required-contexts-reportable: own selftest failed; "
               "the verdict below cannot be trusted")
         return 1
-    root = pathlib.Path(__file__).resolve().parent.parent
-    violations, checked = check(root)
+    violations, checked = check(_ROOT)
+    if not require_population(checked, "required context(s)",
+                              gate="check-required-contexts-reportable"):
+        return 1
     if violations:
         print("check-required-contexts-reportable: FAIL")
         for v in violations:

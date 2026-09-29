@@ -54,6 +54,35 @@ set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
+# shellcheck source=scripts/lib/population.sh
+. scripts/lib/population.sh
+
+# The ids of every `Recently resolved (DATE): **#NNN**` digest in a file, one
+# per line, zero-padded. Shared by the gate and its negative control so the
+# control exercises the matcher the gate runs.
+resolved_digest_ids() {
+    grep -oE 'Recently resolved \([^)]*\): \*\*#[0-9]+\*\*' "$1" \
+        | grep -oE '#[0-9]+' | tr -d '#' \
+        | awk '{printf "%04d\n", $1}'
+}
+dup_resolved_ids() {
+    resolved_digest_ids "$1" | sort | uniq -d
+}
+# Negative control, run on every invocation: a duplicated digest IS reported,
+# and a clean pair is not.
+dup_resolved_selftest() {
+    local t rc=0
+    t="$(mktemp)"
+    printf '%s\n' \
+        'Recently resolved (2026-01-01): **#0007** — a.' \
+        'Recently resolved (2026-01-02): **#7** — b, the same id unpadded.' \
+        'Recently resolved (2026-01-03): **#0008** — c.' > "$t"
+    [ "$(dup_resolved_ids "$t")" = "0007" ] || rc=1
+    printf '%s\n' 'Recently resolved (2026-01-01): **#0007** — a.' > "$t"
+    [ -z "$(dup_resolved_ids "$t")" ] || rc=1
+    rm -f "$t"
+    return "$rc"
+}
 
 # issue 0884 — the generated list moved OUT of README.md into `open.md`, so the
 # authored prose and the machine-written rows are separate files. `merge=union`
@@ -220,10 +249,24 @@ if [ -n "$resolved_in_open" ]; then
 fi
 
 # One `Recently resolved` row per id. See header note 2.
-dup_resolved="$(grep -oE 'Recently resolved \([^)]*\): \*\*#[0-9]+\*\*' "$readme" \
-                | grep -oE '#[0-9]+' | tr -d '#' \
-                | awk '{printf "%04d\n", $1}' \
-                | sort | uniq -d)"
+#
+# phase-472 W4 — this arm read "$readme", i.e. the GENERATED `open.md`, from the
+# day issue 0884 moved the open list out of README.md. `open.md` carries no
+# `Recently resolved` digests at all — they stayed in the AUTHORED README.md —
+# so the arm examined zero rows and could never fire (the 2026-09-28 audit
+# confirmed a duplicated digest passed). It reads the file the digests are in,
+# prints how many it examined, and fails on zero.
+digests="docs/issues/README.md"
+dup_resolved_selftest || {
+    echo "check-issue-index: the duplicate-digest arm's own negative control failed;" >&2
+    echo "  its verdict cannot be trusted." >&2
+    exit 1
+}
+nros_require_population_self_test || exit 1
+n_digests="$(resolved_digest_ids "$digests" | grep -c . || true)"
+nros_require_population "${n_digests:-0}" "'Recently resolved' digest row(s) in $digests" \
+    check-issue-index || exit 1
+dup_resolved="$(dup_resolved_ids "$digests")"
 if [ -n "$dup_resolved" ]; then
     status=1
     echo "check-issue-index: more than one 'Recently resolved' row for:" >&2

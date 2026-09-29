@@ -151,6 +151,41 @@ Members:
 empty population is declared and stated. `check-vendor-fetch-pinned`'s "NOTHING TO
 CHECK … not a pass" is the model; `nros_check_skip` is the ledger.
 
+**Status: DONE.** One helper per language: `require_population(n, what, *, gate,
+declared_empty=None)` in `scripts/lib/population.py`, and its shell spelling
+`nros_require_population` in `scripts/lib/population.sh` (plus
+`nros_require_population_self_test`). It prints the count; zero fails unless the
+call site passes a reason, which prints `NOTHING TO CHECK … not a pass`. A MISSING
+TOOL is not an empty population: those gates now fail (the siblings that parse
+workflows already did). Each member also had its zero's ROOT cause fixed, and
+gained a negative control on its normal path:
+
+| member | root cause fixed | mutation | before | after |
+| --- | --- | --- | ---: | ---: |
+| `cargo-custom-command-depfile` (P1) | program regex also matches cargo held in a variable (`${…cargo}`, or bound by `nros_rust_tool(<v> cargo)`); 3 commands examined | delete `DEPFILE` at all 3 sites | 0 | 1 |
+| `nested-workspace-excludes` | rewritten (`.py`): population = tracked packages under `examples/{workspaces,templates}`, cargo PREFIX semantics; 28 examined | delete root `"examples/workspaces"` exclude | 0 | 1 |
+| `issue-index` | duplicate-digest arm reads `docs/issues/README.md` (325 digests), not generated `open.md` | make two digests name one id | 0 | 1 |
+| `no-std-entry-emission` | each producer root must exist and hold files (4 + 11) | move both producer roots | 0 | 1 |
+| `host-triple-literals` | M3 checks the tier-1 host set + live host, so no `rustc` no longer disables it; M2 (4) and M3 (19) counted | host-triple `[build] target`, `rustc` off PATH | 0 | 1 |
+| `interop-verdicts` | a missing TRACKED ledger is an error (only a `--ledger` override may start empty); cells (28) and verdicts (25) counted | delete the ledger | 0 | 1 |
+| `workflow-runner-isolation` | PyYAML missing fails; 17 workflows / 46 jobs counted; `runs-on: ${{…}}` fails closed | no PyYAML | 0 | 1 |
+| `required-contexts-reportable` | PyYAML missing fails; empty `HOSTED_CHECKS` fails; unparseable workflow is an error; a `pull_request` `branches`/`paths` filter is refused (PR #71) | no PyYAML; empty array | 0 / 0 | 1 / 1 |
+| `board-manifest-drift` | RETIRED: `check-board-descriptor-single-source` forbids its input (and its `--check-drift` verb no longer exists) | tracked `board.cmake` added | — | 1 (single-source) |
+| `profile-board-mirror` | RETIRED: the generator's `PlatformProfile` table it mirrored is gone; the descriptor's `board_crate` is held to its own package by `check-derived-descriptor-fields` | `board_crate` renamed | 0 | 1 (derived-fields) |
+
+Found by the sweep beyond the list, same shape, fixed: `check-cpp-ffi-error-mapping`
+and `check-cpp-destroy-shape` (a missing tracked `nros-cpp/src` printed NOT CHECKED
+with exit 0), `check-nextest-binary-filters` (a missing tracked `.config/nextest.toml`
+was "nothing to check"). Each: 0 → 1 under the mutation.
+
+Found and NOT fixed (tool/artifact-missing skips that exit 0 without the
+`nros_check_skip` ledger, mostly build-tier): `check-archive-lang-items` (no `nm`),
+`check-cli-fresh`, `check-launch-resolve-fresh`, `check-px4-archive-header-pairing`
+(no cmake), `check-rust-targets-installed` (no rustup), `check-weak-symbols-image`
+(no nm / no images), `check-artifact-identity-budget` (no tree), and
+`check-dist-runtime-deps` (no store). Their fix is the ledger, not a population
+count.
+
 ### W5 — scan roots that stop short of the tree
 
 Gates rooted at `cmake/` or `packages/<some>/` that the rule's subject has since

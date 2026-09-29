@@ -40,8 +40,20 @@ reading a 700-line cmake module will not apply it per-command by eye.
 
 ## What is flagged
 
-An `add_custom_command(...)` block with a `COMMAND` argument list containing the
-bare token `cargo` (the program), and no `DEPFILE` keyword.
+An `add_custom_command(...)` block with a `COMMAND` argument list that runs the
+cargo PROGRAM, and no `DEPFILE` keyword. The program has two spellings:
+
+* the bare token `cargo`;
+* a VARIABLE holding it — `"${_ffi_cargo}"`, `${Rust_CARGO}`. Issue 1304 moved
+  every site to `nros_rust_tool(<var> cargo)`, and a gate that knew only the
+  bare token then examined ZERO commands and printed OK: deleting `DEPFILE` at
+  all three sites passed (phase-472 W4, the P1 of the 2026-09-28 audit). A
+  variable counts when its name ENDS in `cargo` (any case) or the same file
+  binds it with `nros_rust_tool(<var> cargo)`.
+
+The gate prints how many cargo commands it examined and FAILS on zero
+(`scripts/lib/population.py`): a respelling that hides the population again
+turns the gate red instead of off.
 
 Deliberately NOT flagged:
 
@@ -66,6 +78,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from population import require_population  # noqa: E402  phase-472 W4
 
 # Keywords that end a COMMAND argument list inside add_custom_command().
 _KEYWORDS = {
@@ -80,6 +94,13 @@ _KEYWORDS = {
 # (`${CMAKE_BINARY_DIR}/cargo`) or a variable tail; the lookahead rejects a
 # target name (`cargo-build_nros_c`, `cargo_target_dir`).
 _CARGO = re.compile(r"(?<![\w/.$-])cargo(?![\w.-])")
+
+# The cargo program held in a variable (issue 1304): `${_ffi_cargo}`,
+# `${Rust_CARGO}`. The name must END in cargo, so `${_NROS_SHARED_CARGO_CHECK_SH}`
+# (a script path) is not the program.
+_CARGO_VAR = re.compile(r"\$\{\w*(?i:cargo)\}")
+# `nros_rust_tool(<var> cargo)` binds <var> to the program whatever it is named.
+_RUST_TOOL_CARGO = re.compile(r"\bnros_rust_tool\s*\(\s*(\w+)\s+cargo\s*\)")
 
 _STRIP_COMMENTS = re.compile(r"(?m)#.*$")
 
@@ -122,17 +143,32 @@ def _parse(block: str) -> tuple[list[str], set[str]]:
     return sections, seen
 
 
-def scan(text: str) -> list[int]:
-    """Line numbers of add_custom_command blocks that run cargo without DEPFILE."""
+def _runs_cargo(command: str, bound: set[str]) -> bool:
+    """Does one COMMAND argument list invoke the cargo program?"""
+    if _CARGO.search(command) or _CARGO_VAR.search(command):
+        return True
+    return any(f"${{{v}}}" in command for v in bound)
+
+
+def scan_counted(text: str) -> tuple[list[int], int]:
+    """(lines of cargo commands with no DEPFILE, cargo commands examined)."""
+    bound = set(_RUST_TOOL_CARGO.findall(_STRIP_COMMENTS.sub("", text)))
     bad = []
+    examined = 0
     for line, block in _blocks(text):
         commands, keywords = _parse(block)
-        if not any(_CARGO.search(c) for c in commands):
+        if not any(_runs_cargo(c, bound) for c in commands):
             continue
+        examined += 1
         if "DEPFILE" in keywords:
             continue
         bad.append(line)
-    return bad
+    return bad, examined
+
+
+def scan(text: str) -> list[int]:
+    """Line numbers of add_custom_command blocks that run cargo without DEPFILE."""
+    return scan_counted(text)[0]
 
 
 def cmake_files() -> list[Path]:
@@ -167,6 +203,26 @@ SELF_TESTS: list[tuple[str, str, int]] = [
      'add_custom_command(OUTPUT "a" COMMAND bash s.sh COMMAND cargo build)\n', 1),
     ("nested parens do not end the block early",
      'add_custom_command(OUTPUT "a" COMMAND cargo build $<TARGET_FILE:t>)\n', 1),
+    # phase-472 W4 — the P1. Issue 1304's spelling, exactly as the tree writes it.
+    ("cargo held in a variable (issue 1304's spelling), no depfile",
+     'nros_rust_tool(_ffi_cargo cargo)\n'
+     'add_custom_command(OUTPUT "a"\n'
+     '  COMMAND ${_ffi_env} "${_ffi_cargo}" ${_ffi_cargo_prefix} ${_ffi_cargo_args})\n', 1),
+    ("cargo held in a variable, with depfile",
+     'add_custom_command(OUTPUT "a" COMMAND "${_ffi_cargo}" build DEPFILE "a.d")\n', 0),
+    ("cargo behind -E env, held in a variable (the NuttX lane), no depfile",
+     'add_custom_command(OUTPUT "a" COMMAND ${CMAKE_COMMAND} -E env X=1\n'
+     '  "${_nnbe_cargo}" build --profile p)\n', 1),
+    ("a variable nros_rust_tool binds to cargo counts whatever its name",
+     'nros_rust_tool(_tool cargo)\n'
+     'add_custom_command(OUTPUT "a" COMMAND "${_tool}" build)\n', 1),
+    ("a variable nros_rust_tool binds to RUSTC is not cargo",
+     'nros_rust_tool(_tool rustc)\n'
+     'add_custom_command(OUTPUT "a" COMMAND "${_tool}" -vV)\n', 0),
+    ("the upstream Corrosion spelling ${Rust_CARGO}, no depfile",
+     'add_custom_command(OUTPUT "a" COMMAND ${Rust_CARGO} build)\n', 1),
+    ("a variable whose name merely CONTAINS cargo is not the program",
+     'add_custom_command(OUTPUT "a" COMMAND bash "${_cargo_target_dir}/x.sh")\n', 0),
 ]
 
 
@@ -177,6 +233,21 @@ def self_test(quiet: bool = False) -> int:
         if got != want:
             print(f"  SELF-TEST FAIL: {name}: expected {want} hit(s), got {got}")
             bad += 1
+    # The population half (phase-472 W4): a scan that finds no cargo command
+    # must not be able to report OK. Two commands examined here; zero examined
+    # must make the gate fail, never pass.
+    _, n = scan_counted(
+        'add_custom_command(OUTPUT "a" COMMAND "${_x_cargo}" b DEPFILE "a.d")\n'
+        'add_custom_command(OUTPUT "b" COMMAND cargo b DEPFILE "b.d")\n'
+    )
+    if n != 2:
+        print(f"  SELF-TEST FAIL: examined-count: expected 2, got {n}")
+        bad += 1
+    import io
+    if require_population(0, "cargo custom command(s)", gate="probe",
+                          out=io.StringIO(), err=io.StringIO()):
+        print("  SELF-TEST FAIL: zero cargo commands examined read as a pass")
+        bad += 1
     if bad:
         print(f"check-cargo-custom-command-depfile: {bad} self-test(s) failed")
         return 1
@@ -194,13 +265,22 @@ def main() -> int:
         return 1
 
     findings = []
+    examined = 0
     for path in cmake_files():
         try:
             text = path.read_text(errors="replace")
         except OSError:
             continue
-        for line in scan(text):
+        lines, n = scan_counted(text)
+        examined += n
+        for line in lines:
             findings.append((path.relative_to(ROOT), line))
+
+    # phase-472 W4 — print the population, and refuse an empty one. This gate
+    # examined ZERO commands for as long as issue 1304's spelling stood.
+    if not require_population(examined, "cargo custom command(s)",
+                              gate="check-cargo-custom-command-depfile"):
+        return 1
 
     if findings:
         print("check-cargo-custom-command-depfile: cargo command(s) with no rebuild edge\n")
@@ -214,7 +294,7 @@ def main() -> int:
             print("      the OUTPUT so the two cannot drift.\n")
         return 1
 
-    print("check-cargo-custom-command-depfile OK — every cargo custom command has a DEPFILE.")
+    print(f"check-cargo-custom-command-depfile OK — all {examined} cargo custom command(s) have a DEPFILE.")
     return 0
 
 

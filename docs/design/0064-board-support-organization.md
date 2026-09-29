@@ -872,7 +872,9 @@ Cargo.toml (workspace members)           config/freertos-lwip/nros-platform.toml
 Nothing regenerates any of it, and `scripts/` carries three drift-checkers
 (`check-board-manifest-drift.sh`, `check-board-abi-mirror.sh`,
 `check-profile-board-mirror.sh`) whose only job is to notice when the copies
-diverge. Under the R2 model most of this simply should not exist: an ecosystem
+diverge. (phase-472 W4 retired the first and third: once the descriptor became
+the single source, each had no second copy left to compare and could only
+print OK.) Under the R2 model most of this simply should not exist: an ecosystem
 integrated by a shell adds **zero** per-board files.
 
 ### The arch trap — hard blocker for new silicon

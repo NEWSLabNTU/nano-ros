@@ -22,7 +22,6 @@ board-build-target
 board-cargo-config-shape
 board-descriptor-single-source
 board-facts-delivery
-board-manifest-drift
 board-name-reach
 board-tiers
 board-vocabulary
@@ -222,7 +221,6 @@ posix-platform-purity
 preconditions-provisioned
 prelude-tiers
 prereq-roles
-profile-board-mirror
 prose-issue-refs
 provider-announcements
 provider-index
