@@ -482,6 +482,16 @@ no-tracked-file-find:
 path-env-fingerprints:
     @python3 scripts/check-path-env-fingerprints.py
 
+# issue 1570 — the CONTENT side of the same question. A build script that
+# compiles sources handed to it in an env LIST (the NuttX image link) must
+# declare what the compiler READ — every source and header, via the depfiles
+# `nros_cc_flags::header_deps` replays — not the list: watching the list left
+# every component/header edit linked into a museum image. Self-testing, and
+# fails if it matches nothing.
+[private]
+cc-header-deps:
+    @python3 scripts/check/check-cc-header-deps.py
+
 # issue 1280 — the OTHER thing a path-valued variable does wrong. 0491 is about
 # how its SPELLING is fingerprinted; this is about the spelling being right at
 # all. Every such variable resolves ENV-FIRST, and a linked git worktree
