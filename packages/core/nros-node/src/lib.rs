@@ -206,6 +206,13 @@ pub use nros_params::{
 #[cfg(all(feature = "lifecycle-services", any(has_rmw, test)))]
 pub mod lifecycle_services;
 
+/// phase-467 Q4 / ledger row `c:logging_rosout_enabled` — the `/rosout`
+/// publisher half. `has_rmw` for the same reason `lifecycle_services` has it:
+/// the module names `EmbeddedPublisher`, which does not exist without a
+/// backend.
+#[cfg(all(feature = "rosout", any(has_rmw, test)))]
+pub mod rosout;
+
 // Export standalone node (without transport)
 pub use node::{Node as StandaloneNode, NodeConfig, NodeError as StandaloneNodeError};
 
