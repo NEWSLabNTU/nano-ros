@@ -692,8 +692,8 @@ function(nros_derive_entity_inventory_knobs)
     endif()
     # The transient-local retention pool, from the same rule that put one
     # cache queryable per such publisher into NROS_DERIVED_MAX_QUERYABLES.
-    # Absent when the rule refused (a publisher stated no durability): the
-    # fragment carries the reason as a comment, and the pool keeps its builtin.
+    # When the rule refused (a publisher stated no durability) this is the
+    # WORST CASE, with the reason as a comment beside it (issue 1572).
     if(DEFINED NROS_DERIVED_TL_PUBLISHERS)
         _nros_entity_publish(NROS_DERIVED_TL_PUBLISHERS "${NROS_DERIVED_TL_PUBLISHERS}")
     endif()

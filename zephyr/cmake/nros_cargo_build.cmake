@@ -635,9 +635,10 @@ function(nros_resolve_knobs)
     # serves both roads. On the derivable ladder with the sentinel passed
     # literally (there is no Kconfig row; a count of declared endpoints is not
     # a number a person states), so an environment value still wins and
-    # `check-knob-delivery` sees the call. Absent when the inventory refused
-    # to count (a publisher that states no durability): rung 4, and
-    # nros-rmw-zenoh keeps its builtin, which is today's number.
+    # `check-knob-delivery` sees the call. When the inventory could not COUNT
+    # (a publisher states no durability) it publishes the WORST CASE here,
+    # every such publisher counted as transient-local (issue 1572), so the
+    # pool cannot come up short of the table; the fragment says why.
     _nros_resolve_derivable_knob(NROS_DECLARED_TL_PUBLISHERS
         "${NROS_KNOB_DERIVE_SENTINEL}" NROS_DERIVED_TL_PUBLISHERS
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")

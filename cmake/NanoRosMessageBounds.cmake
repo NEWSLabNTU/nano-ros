@@ -764,9 +764,11 @@ endfunction()
 #
 # `<out_bytes>` is EMPTY, with `<out_why>` saying why, whenever the answer
 # would not be a bound, and the knob then keeps its builtin:
-#   * the entity inventory states no transient-local COUNT (the rule refused:
-#     a publisher states no durability), or states zero -- a pool of no slots
-#     has no slot size to derive;
+#   * the entity inventory states no transient-local COUNT, or states zero --
+#     a pool of no slots has no slot size to derive. When the rule refused (a
+#     publisher states no durability) the inventory states the WORST CASE
+#     instead (issue 1572), which the row count below then disagrees with, so
+#     the slot keeps its builtin and the STATUS line says why;
 #   * the image declares an ACTION SERVER, whose `/status` publisher is
 #     transient-local by protocol and appears in no durability table, so its
 #     type would be missing from the maximum;

@@ -275,10 +275,12 @@ fn resolve_queryable_default() -> QueryableSizing {
 /// `load_for_build_script`; there is deliberately no `rerun-if-env-changed` on
 /// the PATH variable (issue 0491).
 ///
-/// A REFUSED count contributes zero and says so. That is the same direction as
-/// every other refusal here — the builtin budget stands — and unlike the
-/// retention pool, under-counting this one is survivable on a hosted image,
-/// whose undeclared default is 32.
+/// A REFUSED count contributes its WORST CASE and says so (issue 1572,
+/// RFC-0100 D6). It used to contribute zero, which is the unsafe direction:
+/// the refusal is about a publisher whose durability nobody stated, and if
+/// that publisher is latched its cache queryable is exactly the slot the zero
+/// withheld -- `Full` at boot. The worst case counts every such publisher as
+/// transient-local, so the table cannot fall short of the image.
 ///
 /// # Issue 1378 — the descriptor is only ONE of the two roads here
 ///
@@ -302,22 +304,23 @@ fn resolve_queryable_default() -> QueryableSizing {
 /// present: it is derived from the richer input, and a road that has one has
 /// no need of the other.
 fn transient_local_publishers() -> usize {
-    match nros_sizing_descriptor::transient_local_publishers_from_build_env() {
-        Ok(nros_sizing_descriptor::Fact::Stated(n)) => n,
-        Ok(nros_sizing_descriptor::Fact::Absent) => declared_transient_local_publishers(),
-        Ok(nros_sizing_descriptor::Fact::Refused(reason)) => {
-            println!(
-                "cargo:warning=the zenoh queryable table is NOT budgeting for any \
-                 transient-local publisher: {reason}. A transient-local publisher \
-                 declares a cache queryable, so an image that has one may exhaust \
-                 ZPICO_MAX_QUERYABLES at boot (issue 1341)."
-            );
-            0
+    // A named descriptor that cannot be read is the producer's bug, and the
+    // zenoh crate one layer over panics on the same condition. Matching it
+    // here keeps one failure for one cause.
+    let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"));
+    let Some(desc) = desc else {
+        return declared_transient_local_publishers();
+    };
+    match nros_sizing_descriptor::transient_local_publishers(&desc) {
+        nros_sizing_descriptor::Fact::Stated(n) => n,
+        nros_sizing_descriptor::Fact::Absent => declared_transient_local_publishers(),
+        nros_sizing_descriptor::Fact::Refused(reason) => {
+            // Issue 1572 -- the worst case over the SAME rows, never zero.
+            let bound =
+                nros_sizing_descriptor::transient_local_publishers_bound(&desc).unwrap_or(0);
+            warn_worst_case(&reason, bound);
+            bound
         }
-        // A named descriptor that cannot be read is the producer's bug, and the
-        // zenoh crate one layer over panics on the same condition. Matching it
-        // here keeps one failure for one cause.
-        Err(e) => panic!("{e}"),
     }
 }
 
@@ -330,11 +333,12 @@ fn transient_local_publishers() -> usize {
 /// division of labour `NROS_DECLARED_NODES` keeps — the declarer states the
 /// fact, the consumer states what it costs.
 ///
-/// `refused` is a WORD and not a number on purpose: the composing side LOOKED
-/// and could not answer, and collapsing that into `0` here is the silent
-/// under-count this whole term exists to remove. Absent is the undeclared road
-/// and contributes nothing without comment, because there is nothing to
-/// comment on.
+/// A refusal is `refused:<worst case>`: the composing side LOOKED and could
+/// not count, so it sends the bound and the word together (issue 1572). The
+/// word keeps the warning; the number keeps the table from sizing zero, which
+/// is the under-count this whole term exists to remove. Absent is the
+/// undeclared road and contributes nothing without comment, because there is
+/// nothing to comment on.
 ///
 /// A malformed value PANICS rather than falling back, for the reason
 /// [`declared_nodes`] gives: a value that reads as applied and is not is worse
@@ -349,29 +353,34 @@ fn declared_transient_local_publishers() -> usize {
 
 fn declared_transient_local_publishers_from(v: Option<String>) -> usize {
     // Issue 1429 — `stated` first: unset and set-but-empty are ONE answer here,
-    // and only a value that says something reaches the three arms below.
-    match stated(v.as_deref()) {
-        None => 0,
-        Some(v) if v.trim() == "refused" => {
-            println!(
-                "cargo:warning=the zenoh queryable table is NOT budgeting for any \
-                 transient-local publisher: the entry declares endpoints whose \
-                 `durability` nothing states, so a count over the rows that answered \
-                 would not be a bound. A transient-local publisher declares a cache \
-                 queryable, so an image that has one may exhaust ZPICO_MAX_QUERYABLES \
-                 at boot (issues 1341/1378)."
+    // and only a value that says something reaches the parser.
+    let Some(v) = stated(v.as_deref()) else {
+        return 0;
+    };
+    // Issue 1572 -- the carrier's ONE parser, shared with `nros-rmw-zenoh`. A
+    // refusal arrives as `refused:<worst case>` and is sized for; the bare
+    // word (an older CLI, no number) and anything malformed fail the build.
+    match nros_sizing_descriptor::parse_declared_tl(v) {
+        Ok(nros_sizing_descriptor::DeclaredTl::Count(n)) => n,
+        Ok(nros_sizing_descriptor::DeclaredTl::WorstCase(n)) => {
+            warn_worst_case(
+                "the entry declares a publisher whose `durability` nothing states",
+                n,
             );
-            0
+            n
         }
-        Some(v) => match v.trim().parse::<usize>() {
-            Ok(n) => n,
-            Err(_) => panic!(
-                "NROS_DECLARED_TL_PUBLISHERS={v:?} is neither a count nor `refused`. \
-                 It is how many TRANSIENT_LOCAL publishers the entry declares, each of \
-                 which opens a cache queryable (issue 1378)."
-            ),
-        },
+        Err(e) => panic!("{e}"),
     }
+}
+
+/// RFC-0100 D6's LOUD half, for the one term here that can be a worst case.
+fn warn_worst_case(reason: &str, bound: usize) {
+    println!(
+        "cargo:warning=the zenoh queryable table budgets the WORST CASE of {bound} \
+         transient-local cache queryable(s): {reason}, so every such publisher is \
+         sized as transient-local (issue 1572). Stating each publisher's `durability` \
+         gives back the slots of the ones that are volatile."
+    );
 }
 
 /// What the queryable table was sized from, and what it may not go below.
@@ -716,13 +725,24 @@ mod queryable_default_tests {
         // Undeclared is the road that carries nothing, and it contributes
         // nothing WITHOUT comment: there is no event to report.
         assert_eq!(declared_transient_local_publishers_from(None), 0);
-        // A composer that LOOKED and could not answer contributes nothing and
-        // says so. The word survives the wire rather than collapsing into a
-        // zero indistinguishable from a measured one.
+        // Issue 1572 -- a composer that LOOKED and could not count sends its
+        // WORST CASE with the word, and the table is sized for it. It used to
+        // send the bare word and this read it as ZERO -- the unsafe
+        // direction: the latched publisher the refusal was about found the
+        // table full at boot.
         assert_eq!(
-            declared_transient_local_publishers_from(Some("refused".into())),
-            0
+            declared_transient_local_publishers_from(Some("refused:2".into())),
+            2
         );
+    }
+
+    /// Issue 1572 -- the bare word carries no worst case, so no table can be
+    /// sized from it safely. It FAILS the build naming the fix, rather than
+    /// sizing zero.
+    #[test]
+    #[should_panic(expected = "carries no worst case")]
+    fn a_bare_refusal_with_no_worst_case_is_a_build_failure() {
+        declared_transient_local_publishers_from(Some("refused".into()));
     }
 
     /// A value that reads as applied and is not is worse than no value —

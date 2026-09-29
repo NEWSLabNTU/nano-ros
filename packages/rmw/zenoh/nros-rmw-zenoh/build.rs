@@ -739,42 +739,48 @@ fn transient_local_publisher_demand(desc: Option<&SizingDescriptor>) -> Option<u
         Fact::Stated(n) => Some(n),
         Fact::Absent => None,
         Fact::Refused(reason) => {
-            warn(&format!(
-                "{reason}. The transient-local retention pool keeps \
-                 {TL_PUBLISHERS_DEFAULT} slot(s) (ZPICO_MAX_TL_PUBLISHERS)"
-            ));
-            None
+            // Issue 1572 -- the WORST CASE over the same rows, never the
+            // builtin: the builtin is 2 whatever the image declares, and the
+            // refusal is about a publisher that may be latched.
+            let bound = nros_sizing_descriptor::transient_local_publishers_bound(desc).unwrap_or(0);
+            warn_tl_worst_case(&reason, bound);
+            Some(bound)
         }
     }
 }
 
+/// RFC-0100 D6's LOUD half for the retention pool's worst case (issue 1572).
+fn warn_tl_worst_case(reason: &str, bound: usize) {
+    warn(&format!(
+        "{reason}. The transient-local retention pool (ZPICO_MAX_TL_PUBLISHERS) is \
+         sized for the WORST CASE of {bound} slot(s): every publisher that states no \
+         durability is counted as transient-local. Stating it gives the slots back"
+    ));
+}
+
 /// The DECLARED road's transient-local count, or `None` for "nobody said".
 ///
-/// The same three spellings `nros-zpico-build`'s reader of this carrier
-/// accepts: absent (or empty, issue 1429) is undeclared; the word `refused` is
-/// a composer that looked and could not answer, which keeps the builtin and
-/// says so; a count is the demand. A malformed value panics there and here,
-/// for the reason given there -- a value that reads as applied and is not is
-/// worse than no value.
+/// Read through `nros_sizing_descriptor::parse_declared_tl`, the ONE parser
+/// `nros-zpico-build`'s reader of this carrier uses too: absent (or empty,
+/// issue 1429) is undeclared; a count is the demand; `refused:<n>` is a
+/// composer that looked and could not count, and `n` is its WORST CASE, which
+/// the pool is sized for and says so (issue 1572 -- it used to keep the builtin
+/// of 2). The bare word `refused` carries no worst case and a malformed value
+/// is not a count; both panic, for the reason given there -- a value that
+/// reads as applied and is not is worse than no value.
 fn declared_transient_local_publishers(v: Option<String>) -> Option<usize> {
     let v = v?;
-    let v = v.trim();
-    if v == "refused" {
-        warn(&format!(
-            "NROS_DECLARED_TL_PUBLISHERS=refused: the entry declares a publisher whose \
-             `durability` nothing states, so no count of transient-local publishers is a \
-             bound. The transient-local retention pool keeps {TL_PUBLISHERS_DEFAULT} \
-             slot(s) (ZPICO_MAX_TL_PUBLISHERS)"
-        ));
-        return None;
-    }
-    match v.parse::<usize>() {
-        Ok(n) => Some(n),
-        Err(_) => panic!(
-            "NROS_DECLARED_TL_PUBLISHERS={v:?} is neither a count nor `refused`. It is how \
-             many TRANSIENT_LOCAL publishers the entry declares, which sizes the retention \
-             pool (ZPICO_MAX_TL_PUBLISHERS)."
-        ),
+    match nros_sizing_descriptor::parse_declared_tl(&v) {
+        Ok(nros_sizing_descriptor::DeclaredTl::Count(n)) => Some(n),
+        Ok(nros_sizing_descriptor::DeclaredTl::WorstCase(n)) => {
+            warn_tl_worst_case(
+                "NROS_DECLARED_TL_PUBLISHERS: the entry declares a publisher whose \
+                 `durability` nothing states",
+                n,
+            );
+            Some(n)
+        }
+        Err(e) => panic!("{e}"),
     }
 }
 

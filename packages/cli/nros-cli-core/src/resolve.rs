@@ -640,8 +640,10 @@ mod tests {
         assert!(toml.contains("max_cbs = 1"), "{toml}");
         assert!(toml.contains("entity_total = 2"), "{toml}");
         assert!(toml.contains("max_publishers = 1"), "{toml}");
-        // DEMAND, unfloored: this image declares no service server.
-        assert!(toml.contains("max_queryables = 0"), "{toml}");
+        // DEMAND, unfloored: this image declares no service server, and its
+        // publisher states no durability, so the table holds that
+        // publisher's cache queryable at the worst case (issue 1572).
+        assert!(toml.contains("max_queryables = 1"), "{toml}");
         assert!(toml.contains("[provenance]"), "{toml}");
         assert!(toml.contains("test://model"), "{toml}");
     }
