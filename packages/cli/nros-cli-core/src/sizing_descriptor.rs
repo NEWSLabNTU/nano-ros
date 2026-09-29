@@ -1220,19 +1220,66 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
         Some(Derivation::Derived(k)) => {
             img.set_node_count(Some(k.max_nodes))
                 .set_subscriber_count(Some(k.max_subscribers));
+            // Issue 1577 — the per-kind counts the executor arena's model sums,
+            // from the SAME `per_kind` the cmake road emits as
+            // `NROS_ENTITY_COUNT_*`. `derive` seeds every kind at zero, so a
+            // missing tag is a kind this derivation does not know — refused,
+            // never stated as a zero it did not count.
+            for (field, kind) in ENTITY_COUNT_FIELDS {
+                match k.per_kind.get(kind.tag()) {
+                    Some(&n) => set_entity_count(&mut img, field, n),
+                    None => {
+                        img.refuse(
+                            field,
+                            format!(
+                                "the entity inventory's per-kind table has no `{}` row",
+                                kind.tag()
+                            ),
+                        );
+                    }
+                }
+            }
         }
         Some(Derivation::Refused { reason }) => {
             img.refuse("node_count", reason.clone())
-                .refuse("subscriber_count", reason);
+                .refuse("subscriber_count", reason.clone());
+            for (field, _) in ENTITY_COUNT_FIELDS {
+                img.refuse(field, reason.clone());
+            }
         }
         None => {
             let why = "the entity inventory did not compose for this entry, so the image's \
-                       node and subscriber counts are not known -- absence is not zero";
+                       node, subscriber and entity counts are not known -- absence is not zero";
             img.refuse("node_count", why)
                 .refuse("subscriber_count", why);
+            for (field, _) in ENTITY_COUNT_FIELDS {
+                img.refuse(field, why);
+            }
         }
     }
     img
+}
+
+/// `[image] *_entities` ↔ the entity kind each counts — issue 1577. The five
+/// kinds `nros-node`'s arena model sums; the other kinds cost it nothing.
+const ENTITY_COUNT_FIELDS: [(&str, EntityKind); 5] = [
+    ("subscription_entities", EntityKind::Subscription),
+    ("timer_entities", EntityKind::Timer),
+    ("service_server_entities", EntityKind::ServiceServer),
+    ("action_client_entities", EntityKind::ActionClient),
+    ("action_server_entities", EntityKind::ActionServer),
+];
+
+fn set_entity_count(img: &mut nros_sizing_descriptor::Image, field: &str, n: usize) {
+    let v = Some(n);
+    match field {
+        "subscription_entities" => img.set_subscription_entities(v),
+        "timer_entities" => img.set_timer_entities(v),
+        "service_server_entities" => img.set_service_server_entities(v),
+        "action_client_entities" => img.set_action_client_entities(v),
+        "action_server_entities" => img.set_action_server_entities(v),
+        _ => unreachable!("not an entity-count field: {field}"),
+    };
 }
 
 /// `[params]` — the parameter store, from the contract (issue 1408, RFC-0100 D4).
@@ -2923,6 +2970,16 @@ mod tests {
         // two, in a build script no gate scans.
         assert_eq!(d.image.subscriber_count().stated(), Some(&2));
         assert_eq!(d.image.node_count().stated(), Some(&1));
+        // Issue 1577 — the ENTITY counts the executor arena sums are the other
+        // reading of the same image: one subscription, one action client, and
+        // the action client's feedback slot counted nowhere a second time.
+        // Reading `subscriber_count` as the subscription count would price that
+        // action client twice.
+        assert_eq!(d.image.subscription_entities().stated(), Some(&1));
+        assert_eq!(d.image.action_client_entities().stated(), Some(&1));
+        assert_eq!(d.image.timer_entities().stated(), Some(&0));
+        assert_eq!(d.image.service_server_entities().stated(), Some(&0));
+        assert_eq!(d.image.action_server_entities().stated(), Some(&0));
     }
 
     #[test]
@@ -2959,6 +3016,20 @@ mod tests {
                 .unwrap()
                 .contains("absence is not zero")
         );
+        // Issue 1577 — and the five entity counts, which the arena model reads
+        // as "declared nothing" only if they were STATED as zero.
+        for f in [
+            d.image.subscription_entities(),
+            d.image.timer_entities(),
+            d.image.service_server_entities(),
+            d.image.action_client_entities(),
+            d.image.action_server_entities(),
+        ] {
+            assert!(
+                f.refusal().unwrap().contains("absence is not zero"),
+                "{f:?}"
+            );
+        }
         // The backend half is independent of the inventory and survives.
         assert_eq!(d.image.backend_count().stated(), Some(&1));
     }
@@ -3324,6 +3395,23 @@ mod tests {
         assert_eq!(
             leaf.image.subscriber_count(),
             model.image.subscriber_count()
+        );
+        assert_eq!(
+            leaf.image.subscription_entities(),
+            model.image.subscription_entities()
+        );
+        assert_eq!(leaf.image.timer_entities(), model.image.timer_entities());
+        assert_eq!(
+            leaf.image.service_server_entities(),
+            model.image.service_server_entities()
+        );
+        assert_eq!(
+            leaf.image.action_client_entities(),
+            model.image.action_client_entities()
+        );
+        assert_eq!(
+            leaf.image.action_server_entities(),
+            model.image.action_server_entities()
         );
         assert_eq!(leaf.target.pointer_bytes(), model.target.pointer_bytes());
         assert_eq!(

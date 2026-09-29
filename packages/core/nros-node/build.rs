@@ -206,6 +206,59 @@ fn in_place_dispatch_trusted() -> bool {
     declared("DEP_NROS_RMW_IN_PLACE_DISPATCH") && !declared("DEP_NROS_RMW_BUFFERED_DISPATCH")
 }
 
+/// Issue 1577 — the five entity counts the arena's per-kind model needs, in
+/// the order subscriptions, timers, service servers, action clients, action
+/// servers.
+///
+/// Each is the descriptor's `[image] *_entities` fact where it is STATED, and
+/// the cmake road's `NROS_ENTITY_COUNT_*` carrier otherwise — one derivation
+/// (`EntityInventory::derive`'s `per_kind`) on two roads. Where both arrive
+/// they should agree; if they do not, the LARGER is used and the build says
+/// so, because the model sums these and a short count is `BufferTooSmall` at
+/// registration while a long one is headroom. A refused or absent fact is
+/// "not known", never zero, so it falls through to the carrier and, failing
+/// that, keeps the model off.
+fn declared_entity_counts(
+    desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
+) -> [Option<usize>; 5] {
+    use nros_sizing_descriptor::Image;
+    type CountFact = fn(&Image) -> nros_sizing_descriptor::Fact<usize>;
+    let rows: [(&str, CountFact); 5] = [
+        (
+            "NROS_ENTITY_COUNT_SUBSCRIPTION",
+            Image::subscription_entities,
+        ),
+        ("NROS_ENTITY_COUNT_TIMER", Image::timer_entities),
+        (
+            "NROS_ENTITY_COUNT_SERVICE_SERVER",
+            Image::service_server_entities,
+        ),
+        (
+            "NROS_ENTITY_COUNT_ACTION_CLIENT",
+            Image::action_client_entities,
+        ),
+        (
+            "NROS_ENTITY_COUNT_ACTION_SERVER",
+            Image::action_server_entities,
+        ),
+    ];
+    rows.map(|(env, field)| {
+        let from_desc = desc.and_then(|d| field(&d.image).stated().copied());
+        let from_env = env_opt_usize(env);
+        match (from_desc, from_env) {
+            (Some(d), Some(e)) if d != e => {
+                println!(
+                    "cargo::warning=nros-node: the sizing descriptor states {d} for what \
+                     `{env}` says is {e}; sizing the arena for {} (issue 1577)",
+                    d.max(e)
+                );
+                Some(d.max(e))
+            }
+            (d, e) => d.or(e),
+        }
+    })
+}
+
 /// The slot bytes one row is priced at, and the warning that owes the reader an
 /// explanation when it could not be derived.
 ///
@@ -997,11 +1050,17 @@ fn main() {
     const SERVICE_ENTRY_BUFS: usize = 2; // request + reply
     const SERVICE_ENTRY_STRUCT: usize = 1024; // handle + callback + ctx, as above
     let service_entry = SERVICE_ENTRY_BUFS * rx_buf_size + SERVICE_ENTRY_STRUCT;
-    let declared_subs = env_opt_usize("NROS_ENTITY_COUNT_SUBSCRIPTION");
-    let declared_timers = env_opt_usize("NROS_ENTITY_COUNT_TIMER");
-    let declared_services = env_opt_usize("NROS_ENTITY_COUNT_SERVICE_SERVER");
-    let declared_action_clients = env_opt_usize("NROS_ENTITY_COUNT_ACTION_CLIENT");
-    let declared_action_servers = env_opt_usize("NROS_ENTITY_COUNT_ACTION_SERVER");
+    // Issue 1577 — the descriptor first, the env carriers second. Only the
+    // Zephyr resolver lane delivers `NROS_ENTITY_COUNT_*`, so before the counts
+    // had a descriptor home every cargo and plain-cmake image reached the
+    // `max_cbs` fallback below, and no descriptor row priced anything.
+    let [
+        declared_subs,
+        declared_timers,
+        declared_services,
+        declared_action_clients,
+        declared_action_servers,
+    ] = declared_entity_counts(sizing.as_ref());
 
     // phase-412 #4 — the MODEL'S REQUIREMENT, kept apart from the arena it
     // derives. `None` when the image declared nothing (or only part of it): the
