@@ -6022,3 +6022,74 @@ mod jitter_readout_tests {
         assert_eq!(rc, NROS_CPP_RET_INVALID_ARGUMENT);
     }
 }
+
+/// Issue 1568 — THE refusal every executor-storage path takes. A block sized
+/// from a different build's header must be refused, never overrun: 1566's
+/// 560-vs-640 is what a short buffer costs.
+#[cfg(test)]
+mod executor_storage_check_tests {
+    use super::*;
+
+    /// A u64 buffer one executor-and-a-word long, so both a short and an
+    /// exact request fit inside the allocation the test owns.
+    fn backing() -> alloc::vec::Vec<u64> {
+        alloc::vec![0u64; nros_cpp_executor_storage_size() / 8 + 1]
+    }
+
+    #[test]
+    fn the_size_is_the_generated_opaque_units() {
+        assert_eq!(
+            nros_cpp_executor_storage_size(),
+            CPP_EXECUTOR_OPAQUE_U64S * 8
+        );
+    }
+
+    #[test]
+    fn exactly_the_build_size_is_accepted() {
+        let b = backing();
+        let need = nros_cpp_executor_storage_size();
+        assert_eq!(
+            nros_cpp_executor_storage_check(b.as_ptr().cast(), need),
+            NROS_CPP_RET_OK
+        );
+        assert_eq!(
+            nros_cpp_executor_storage_check(b.as_ptr().cast(), need + 8),
+            NROS_CPP_RET_OK
+        );
+    }
+
+    #[test]
+    fn one_word_short_is_refused() {
+        let b = backing();
+        let need = nros_cpp_executor_storage_size();
+        assert_eq!(
+            nros_cpp_executor_storage_check(b.as_ptr().cast(), need - 8),
+            NROS_CPP_RET_INVALID_ARGUMENT
+        );
+    }
+
+    #[test]
+    fn a_stride_that_is_not_whole_words_is_refused() {
+        let b = backing();
+        let need = nros_cpp_executor_storage_size();
+        assert_eq!(
+            nros_cpp_executor_storage_check(b.as_ptr().cast(), need + 4),
+            NROS_CPP_RET_INVALID_ARGUMENT
+        );
+    }
+
+    #[test]
+    fn a_misaligned_or_null_block_is_refused() {
+        let b = backing();
+        let need = nros_cpp_executor_storage_size();
+        let odd = unsafe { (b.as_ptr() as *const u8).add(4) };
+        assert_eq!(
+            nros_cpp_executor_storage_check(odd.cast(), need),
+            NROS_CPP_RET_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            nros_cpp_executor_storage_check(core::ptr::null(), need),
+            NROS_CPP_RET_INVALID_ARGUMENT
+        );
+    }
+}
