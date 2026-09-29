@@ -583,6 +583,18 @@ pub fn render_source(spec: &EntrySpec, board: &BoardFacts) -> String {
             .collect();
         out.push_str(&format!("    args = [{}],\n", pairs.join(", ")));
     }
+    // issue 1439 — a hosted image is a PROCESS a user runs, and the macro's
+    // hosted default without this is register-and-exit (`NROS_ENTRY_SPIN_MS`
+    // unset = spin 0 ms), so the book's first node opened its session and
+    // printed `application complete` without one timer tick. The hand-written
+    // `robot_entry` this file replaced (phase-445 W5, b24a33dc4) said
+    // `spin = "forever"`; the emitter dropped it. A positive
+    // `NROS_ENTRY_SPIN_MS` still bounds the run, so test fixtures keep their
+    // per-run control. Only `HostedMain`: a `board-run` / Zephyr entry's board
+    // owns the loop, and the macro emits no hosted spin there at all.
+    if matches!(board.entry_kind, EntryKind::HostedMain) {
+        out.push_str("    spin = \"forever\",\n");
+    }
     out.push_str(");\n");
     out
 }
@@ -714,10 +726,20 @@ mod tests {
     }
 
     #[test]
+    fn a_hosted_entry_keeps_spinning_after_registration() {
+        // issue 1439 — without this the macro's hosted default is
+        // register-and-exit, and the book's first node never ticked a timer.
+        let s = render_source(&spec(), &hosted());
+        assert!(s.contains("spin = \"forever\""), "{s}");
+    }
+
+    #[test]
     fn a_board_run_entry_is_no_std_no_main() {
         let s = render_source(&spec(), &freertos());
         assert!(s.contains("#![no_std]"), "{s}");
         assert!(s.contains("#![no_main]"), "{s}");
+        // The board owns the loop; the macro emits no hosted spin here.
+        assert!(!s.contains("spin ="), "{s}");
     }
 
     #[test]
