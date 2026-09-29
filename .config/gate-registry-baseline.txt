@@ -138,6 +138,7 @@ gate-selftests
 gate-visibility
 generated-cmake-keywords
 generated-leaf-regenerable
+generated-output-collisions
 generated-schema-coverage
 goal-cdr-stripped
 grep-q-error-conflation
