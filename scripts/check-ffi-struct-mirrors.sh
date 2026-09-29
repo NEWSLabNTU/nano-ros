@@ -57,7 +57,9 @@ def decls(body):
     """Split a C/C++ struct body into normalized field declarations."""
     out = []
     for decl in strip_comments(body).split(";"):
-        decl = " ".join(decl.split())
+        # `const char* x` and `const char *x` are one declaration: normalize the
+        # star's spacing, or a formatter's choice reads as ABI drift.
+        decl = re.sub(r"\s*\*\s*", " *", " ".join(decl.split()))
         if decl:
             out.append(decl)
     return out
@@ -71,10 +73,34 @@ MIRROR = "packages/api/nros-c/include/nros/component.h"
 CANONICAL = "packages/api/nros-cpp/include/nros/nros_cpp_ffi.h"
 
 # (struct tag, {mirror-prefix: canonical-prefix} applied to the mirror's text)
-CHECKS = [
-    ("nros_cpp_qos_t", {"nros_c_qos_": "nros_cpp_qos_"}),
-    ("nros_cpp_integrity_status_t", {}),
-]
+# phase-472 W7 — the mirrored structs are HARVESTED: every `typedef struct
+# nros_cpp_*` the mirror header defines is a mirror of the canonical one. The
+# authored list named two of three, and the unchecked one was
+# `nros_cpp_subscription_options_t` — the struct whose tail (`callback_group`)
+# is the field that drifted twice. What stays authored is the enum-prefix
+# NORMALIZATION a mirror needs, keyed per tag and stale-checked.
+PREFIX_MAPS = {
+    "nros_cpp_qos_t": {"nros_c_qos_": "nros_cpp_qos_"},
+}
+TAG_RE = re.compile(r"typedef struct (nros_cpp_[A-Za-z0-9_]+) \{")
+
+
+def harvested_checks(mirror_src, stale_check=True):
+    tags = sorted(set(TAG_RE.findall(strip_comments(mirror_src))))
+    for stale in sorted(set(PREFIX_MAPS) - set(tags)) if stale_check else ():
+        fail(f"check-ffi-struct-mirrors: STALE prefix map for {stale!r} — the mirror "
+             f"defines no such struct; delete it")
+    if not tags:
+        sys.exit(f"check-ffi-struct-mirrors: harvested NO mirrored struct from {MIRROR}")
+    return [(t, PREFIX_MAPS.get(t, {})) for t in tags]
+
+
+# The reach, as a negative control on the normal path: the harvest finds a
+# struct the old list did not name.
+assert "nros_cpp_subscription_options_t" in [t for t, _ in harvested_checks(
+    "typedef struct nros_cpp_subscription_options_t {\n  int a;\n} nros_cpp_subscription_options_t;\n",
+    stale_check=False)]
+CHECKS = harvested_checks(read(MIRROR))
 
 
 def struct_fields(path, tag, prefix_map):

@@ -73,20 +73,45 @@ STD_C_NAMES: dict[str, frozenset[str]] = {
 NAME_TO_HEADER = {n: h for h, names in STD_C_NAMES.items() for n in names}
 
 # shim dir -> the tracked source roots it serves. A root is a path prefix.
-SHIMS: dict[str, tuple[str, ...]] = {
-    "packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat": (
-        "packages/api/nros-cpp/include/",
-        "packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/",
-        "packages/rmw/cyclonedds/nros-rmw-cyclonedds/include/",
-        "examples/rv-virt-threadx/",
-    ),
-    "zephyr/cxx-compat": (
-        "packages/api/nros-cpp/include/",
-        "packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/",
-        "packages/rmw/cyclonedds/nros-rmw-cyclonedds/include/",
-        "examples/zephyr/",
-    ),
+#
+# phase-472 W7 — the APPLICATION roots are HARVESTED from `examples/fixtures.toml`:
+# every `[[fixture]]` / `[[workspace_fixture]]` row whose platform the shim
+# serves and whose language carries C++ (`cpp`, `mixed`). The authored roots
+# named `examples/zephyr/` and `examples/rv-virt-threadx/` and missed every
+# workspace built for those platforms (`examples/workspaces/{cpp,mixed,
+# realtime-cpp}` on Zephyr). What stays authored is the LIBRARY every C++ TU of
+# such a build includes, which no fixture row names.
+SHIM_PLATFORMS = {
+    "packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat": ("threadx-riscv64",),
+    "zephyr/cxx-compat": ("zephyr", "zephyr-cortex-m"),
 }
+LIBRARY_ROOTS = (
+    "packages/api/nros-cpp/include/",
+    "packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/",
+    "packages/rmw/cyclonedds/nros-rmw-cyclonedds/include/",
+)
+CXX_LANGS = ("cpp", "mixed")
+
+
+def harvested_shims(root: Path = REPO) -> dict[str, tuple[str, ...]]:
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # 3.10
+        import tomli as tomllib
+    rows = tomllib.loads((root / "examples" / "fixtures.toml").read_text())
+    out = {}
+    for shim, plats in SHIM_PLATFORMS.items():
+        apps = sorted({
+            r["dir"].rstrip("/") + "/"
+            for kind in ("fixture", "workspace_fixture")
+            for r in rows.get(kind, [])
+            if r.get("platform") in plats and r.get("lang") in CXX_LANGS and r.get("dir")
+        })
+        if not apps:
+            sys.exit(f"check-cxx-compat-shim-coverage: harvested no C++ leaf for {shim} "
+                     f"({plats}) from examples/fixtures.toml")
+        out[shim] = LIBRARY_ROOTS + tuple(apps)
+    return out
 SOURCE_SUFFIXES = (".cpp", ".cc", ".cxx", ".hpp", ".hh", ".h")
 
 USING_RE = re.compile(r"\busing\s+::\s*([A-Za-z_]\w*)\s*;")
@@ -182,6 +207,12 @@ def selftest() -> int:
             print("check-cxx-compat-shim-coverage --selftest: FAILED, a covered use was reported",
                   file=sys.stderr)
             return 1
+    # phase-472 W7 — the served roots reach the workspaces built for the platform.
+    zroots = harvested_shims()["zephyr/cxx-compat"]
+    if "examples/workspaces/cpp/" not in zroots:
+        print(f"check-cxx-compat-shim-coverage --selftest: FAILED, the Zephyr shim's served roots "
+              f"miss examples/workspaces/cpp/: {zroots}", file=sys.stderr)
+        return 1
     print("check-cxx-compat-shim-coverage --selftest: OK (missing export fails; comments/strings ignored)")
     return 0
 
@@ -192,7 +223,8 @@ def main(argv: list[str]) -> int:
     rc = selftest()
     if rc or "--selftest" in argv:
         return rc
-    problems = check(REPO, SHIMS)
+    shims = harvested_shims()
+    problems = check(REPO, shims)
     if problems:
         print(f"check-cxx-compat-shim-coverage: {len(problems)} std:: name(s) a shim does not export:",
               file=sys.stderr)
@@ -202,7 +234,8 @@ def main(argv: list[str]) -> int:
               "  whose shim is the whole C++ library. Export the name in the shim header.",
               file=sys.stderr)
         return 1
-    print(f"check-cxx-compat-shim-coverage: OK ({len(SHIMS)} shim(s); every std:: C-library "
+    print(f"check-cxx-compat-shim-coverage: OK ({len(shims)} shim(s), "
+          f"{sum(len(v) for v in shims.values())} served root(s); every std:: C-library "
           "name their served sources use is exported)")
     return 0
 

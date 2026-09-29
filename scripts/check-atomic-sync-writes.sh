@@ -54,56 +54,76 @@ CORE="packages/cli/nros-cli-core/src"
 # so the lower crate is the only place ONE spelling can serve both.
 LOW="packages/cli/cargo-nano-ros/src"
 
-# Function bodies that write a sync-owned, concurrently-read file. Grepping the
-# whole file would drag in its unit tests, which legitimately use `fs::write` to
-# set up scratch fixtures.
-#
-#   <file>:<fn name>
-GUARDED=(
-    "$CORE/orchestration/metadata_refresh.rs:stamp_provenance"
-    # issue 1469 renamed this: the marker now carries the failure REASON
-    # after its key line, so the writer takes the reason too. Still one
-    # writer, still atomic — `is_known_unprobeable` compares the marker's
-    # FIRST LINE, so a torn read is a false "not unprobeable" exactly as
-    # before.
-    "$CORE/orchestration/metadata_refresh.rs:mark_unprobeable_with_reason"
-    "$CORE/orchestration/metadata_build.rs:relativise_source_artifacts"
-    # issue 0562 — the probe directory IS a cmake project, so these writers
-    # restamping their output costs a probe reconfigure on every sync, not just
-    # a torn read.
-    "$CORE/orchestration/metadata_probe_cmake.rs:run_probes"
-    "$CORE/orchestration/metadata_probe_cmake.rs:write_capabilities"
-)
-
+# phase-472 W7 — the writers are HARVESTED, not listed. The authored list named
+# five functions, so a NEW writer in the same modules (or `provider_scan`'s,
+# the one `providers.json` writer the header names) was never asked. Now: every
+# `fs::write` in a SYNC-OWNED MODULE — the metadata sidecar family and the
+# provider index — outside `cfg(test)` (tests set up scratch fixtures) is a
+# finding, unless it is in EXEMPT below with its reason. `scripts/lib/harvest.py`
+# fails a stale or reason-less exemption.
 fail=0
+rc=0
+sites="$(python3 - <<'PY'
+import glob, os, re, sys
+sys.path.insert(0, os.path.join("scripts", "lib"))
+import comments, harvest, per_item
+harvest.self_test()
+per_item.self_test()
+CORE, LOW = "packages/cli/nros-cli-core/src", "packages/cli/cargo-nano-ros/src"
+MODULES = sorted(glob.glob(f"{CORE}/orchestration/metadata_*.rs")) + [f"{LOW}/provider_scan.rs"]
+EXEMPT = {
+    f"{CORE}/orchestration/metadata_build.rs:main":
+        "the GENERATED harness: emitted as source into a standalone crate that "
+        "cannot depend on the CLI; it writes a temp sibling and renames (checked below)",
+}
+FN = re.compile(r"\bfn\s+(\w+)")
 
-for entry in "${GUARDED[@]}"; do
-    file="${entry%%:*}"
-    fn="${entry##*:}"
-    [ -f "$file" ] || {
-        echo "check-atomic-sync-writes: $file missing — the guarded set is stale" >&2
-        exit 2
-    }
-    # The function body: from `fn <name>` to the next line that starts a
-    # top-level item (column 0 `fn`/`}`), whichever comes first.
-    body="$(awk -v fn="fn $fn(" '
-        index($0, fn) { inside = 1 }
-        inside { print }
-        inside && /^}/ { exit }
-    ' "$file")"
-    if [ -z "$body" ]; then
-        echo "check-atomic-sync-writes: $file has no fn $fn — the guarded set is stale" >&2
-        exit 2
-    fi
-    if nros_grep_q 'fs::write' <<<"$body"; then
-        echo "ERROR: $file: fn $fn writes a sync-owned file with fs::write" >&2
-        fail=1
-    fi
-done
 
-# The GENERATED metadata harness is a standalone crate that cannot depend on the
-# CLI, so it inlines the discipline instead of calling the helper. Assert the
-# emitted source renames rather than truncating.
+def sites(text):
+    """{fn: line} of every non-test `fs::write` in one Rust source."""
+    code = per_item.rust_cfg_test_blank(comments.strip_comments(text, "rust"))
+    fns = per_item.blocks(code, FN)
+    out = {}
+    for m in re.finditer(r"\bfs::write\s*\(", code):
+        inner = [x.group(1) for x, o, e in fns if o < m.start() < e]
+        out.setdefault(inner[-1] if inner else "?", per_item.line_of(code, m.start()))
+    return out
+
+
+# Negative controls on the normal path (phase-472 W7/W9): a NEW writer in a
+# sync-owned module is found; a test fixture's write and an atomic write are not.
+assert sites("fn new_writer(p: &Path) { std::fs::write(p, b\"x\").unwrap(); }\n"
+             "#[cfg(test)]\nmod t { fn f() { std::fs::write(p, b\"x\").unwrap(); } }\n"
+             "fn ok(p: &Path) { atomic_file::atomic_write(p, b\"x\")?; }\n") == {"new_writer": 1}
+
+found = {}
+for f in MODULES:
+    for fn, line in sites(open(f).read()).items():
+        found.setdefault(f"{f}:{fn}", line)
+if not MODULES or len(MODULES) < 4:
+    sys.exit(f"check-atomic-sync-writes: harvested only {len(MODULES)} sync-owned module(s)")
+_checked, problems = harvest.reconcile(list(found) or ["(none)"], EXEMPT, what="fs::write site")
+problems = [p for p in problems if "NO fs::write" not in p]
+for p in problems:
+    print(f"PROBLEM {p}")
+for key in sorted(found):
+    if key not in EXEMPT:
+        print(f"{key}:{found[key]}")
+PY
+)" || rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "check-atomic-sync-writes: the writer harvest did not run (rc=$rc)" >&2
+    exit 2
+fi
+while IFS= read -r site; do
+    [ -n "$site" ] || continue
+    case "$site" in
+        PROBLEM*) echo "ERROR: ${site#PROBLEM }" >&2 ;;
+        *) echo "ERROR: $site writes a sync-owned file with fs::write" >&2 ;;
+    esac
+    fail=1
+done <<<"$sites"
+
 harness="$CORE/orchestration/metadata_build.rs"
 if ! nros_grep_q 'std::fs::rename(&tmp, out)' "$harness"; then
     echo "ERROR: $harness: the generated metadata harness no longer renames its output" >&2
@@ -150,4 +170,4 @@ if [ "$fail" -ne 0 ]; then
     exit 1
 fi
 
-echo "atomic sync writes: OK (${#GUARDED[@]} guarded writer(s) + generated harness)"
+echo "atomic sync writes: OK (every writer in the sync-owned modules is atomic, + generated harness)"

@@ -29,12 +29,105 @@
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
+# shellcheck source=scripts/lib/git-hook-env.sh
+source scripts/lib/git-hook-env.sh
+nros_clear_inherited_git_env   # the self-test `git init`s (issues 0986/0988)
 
-MSG_CRATES='std_msgs|builtin_interfaces|example_interfaces|geometry_msgs|sensor_msgs|lifecycle_msgs|action_msgs|rosgraph_msgs|nav_msgs|diagnostic_msgs|trajectory_msgs|shape_msgs|stereo_msgs|visualization_msgs|unique_identifier_msgs|test_msgs'
+# phase-472 W7 — the message crates are HARVESTED, not listed. The list was 16
+# ROS standard names, so `px4_msgs` (three leaves, `version = "*"` plus a
+# `[patch.crates-io]` redirect — the exact shape RFC-0067 D1 retired) and
+# `custom_msgs` passed. A message crate is (a) any package whose `package.xml`
+# joins `rosidl_interface_packages`, or (b) any name some manifest declares as a
+# path dep INTO a `generated/` tree. `scripts/lib/harvest.py` refuses an empty
+# harvest. `--dotted` also reports the table spelling
+# `[dependencies.<crate>]` + `version = …`, which the line regex never saw.
+msg_py() {
+    python3 - "$@" <<'PY'
+import os, re, subprocess, sys
+sys.path.insert(0, os.path.join("scripts", "lib"))
+import harvest
+harvest.self_test()
+root = sys.argv[sys.argv.index("--root") + 1] if "--root" in sys.argv else "."
+ls = subprocess.run(["git", "-C", root, "ls-files", "-z", "*package.xml", "*Cargo.toml"],
+                    capture_output=True, text=True, check=True).stdout.split("\0")
+names = set()
+tomls = [f for f in ls if f.endswith("Cargo.toml")]
+for f in ls:
+    if not f:
+        continue
+    try:
+        text = open(os.path.join(root, f), encoding="utf-8", errors="replace").read()
+    except OSError:
+        continue
+    if f.endswith("package.xml") and "rosidl_interface_packages" in text:
+        m = re.search(r"<name>\s*([A-Za-z0-9_]+)\s*</name>", text)
+        if m:
+            names.add(m.group(1))
+    elif f.endswith("Cargo.toml") and "/generated/" not in f:
+        for m in re.finditer(r'^\s*([A-Za-z0-9_]+)\s*=\s*\{[^}\n]*path\s*=\s*"[^"]*\bgenerated/([A-Za-z0-9_]+)"',
+                             text, re.M):
+            if m.group(1) == m.group(2):
+                names.add(m.group(1))
+checked, problems = harvest.reconcile(names, {}, what="message crate")
+if problems:
+    sys.exit("check-msg-dep-is-path: " + "; ".join(problems))
+if "--dotted" not in sys.argv:
+    print("|".join(checked))
+    sys.exit(0)
+# `[dependencies.X]` / `[dev-dependencies.X]` / `[target.'…'.dependencies.X]` with a
+# `version` key in that table.
+head = re.compile(r"^\[(?:target\.[^\]]*\.)?(?:dev-|build-)?dependencies\.([A-Za-z0-9_]+)\]\s*$")
+for f in tomls:
+    if not f or "/generated/" in f:
+        continue
+    cur = None
+    for n, line in enumerate(open(os.path.join(root, f), encoding="utf-8", errors="replace"), 1):
+        if line.startswith("["):
+            m = head.match(line.strip())
+            cur = m.group(1) if m and m.group(1) in names else None
+            continue
+        if cur and re.match(r"\s*version\s*=", line):
+            print(f"{f}:{n}:{cur}")
+PY
+}
+
+rc=0; MSG_CRATES="$(msg_py)" || rc=$?
+if [ "$rc" -ne 0 ] || [ -z "$MSG_CRATES" ]; then
+    echo "check-msg-dep-is-path: could not harvest the message crates (rc=$rc)" >&2
+    exit 1
+fi
+
+# Negative controls on the normal path (phase-472 W7/W9): the harvest reaches
+# the two crates the list missed, and the dotted spelling is reported.
+self_test() {
+    case "|$MSG_CRATES|" in *"|px4_msgs|"*) ;; *)
+        echo "check-msg-dep-is-path SELFTEST FAILED: px4_msgs is not harvested" >&2; exit 1 ;; esac
+    case "|$MSG_CRATES|" in *"|custom_msgs|"*) ;; *)
+        echo "check-msg-dep-is-path SELFTEST FAILED: custom_msgs is not harvested" >&2; exit 1 ;; esac
+    local t out
+    t="$(mktemp -d)"
+    mkdir -p "$t/a/generated/foo_msgs" "$t/b"
+    printf '%s\n' '[package]' 'name = "a"' '[dependencies]' 'foo_msgs = { path = "generated/foo_msgs" }' > "$t/a/Cargo.toml"
+    printf '%s\n' '[package]' 'name = "b"' '[dependencies.foo_msgs]' 'version = "*"' > "$t/b/Cargo.toml"
+    git -C "$t" init -q && git -C "$t" add -A
+    out="$(msg_py --dotted --root "$t")"
+    rm -rf "$t"
+    case "$out" in *"b/Cargo.toml:4:foo_msgs"*) ;; *)
+        echo "check-msg-dep-is-path SELFTEST FAILED: the dotted spelling was not reported ($out)" >&2
+        exit 1 ;; esac
+}
+self_test
 
 status=0
 offenders=0
 checked=0
+
+# Manifests whose registry-named message deps are the POINT, each with its
+# reason (phase-472 W7: the harvest reached one). Stale-checked below.
+EXEMPT_MANIFEST="packages/cli/testing_workspaces/complex_workspace/src/robot_controller/Cargo.toml"
+EXEMPT_REASON="cargo-ros2's upstream ros2_rust integration workspace: registry names \
+resolved by colcon-generated patches IS the convention under test, not a nano-ros leaf"
+exempt_seen=0
 
 # A registry-style declaration is one carrying a `version` key (bare string or
 # table). `{ path = … }` is what we want; `{ version = …, path = … }` still
@@ -44,6 +137,7 @@ while IFS= read -r manifest; do
     hits="$(grep -nE "^[[:space:]]*($MSG_CRATES)[[:space:]]*=[[:space:]]*(\"|\{[^}]*version)" \
         "$manifest" 2>/dev/null || true)"
     [ -z "$hits" ] && continue
+    if [ "$manifest" = "$EXEMPT_MANIFEST" ]; then exempt_seen=1; continue; fi
     while IFS= read -r hit; do
         [ -z "$hit" ] && continue
         offenders=$((offenders + 1))
@@ -56,6 +150,20 @@ while IFS= read -r manifest; do
         status=1
     done <<<"$hits"
 done < <(git ls-files '*/Cargo.toml' 'Cargo.toml')
+
+if [ "$exempt_seen" -eq 0 ]; then
+    echo "FAIL: STALE exemption $EXEMPT_MANIFEST names no registry message dep any more" >&2
+    echo "      ($EXEMPT_REASON) — delete it." >&2
+    status=1
+fi
+
+# The table spelling of the same defect.
+while IFS=: read -r manifest line crate; do
+    [ -n "$manifest" ] || continue
+    offenders=$((offenders + 1))
+    echo "FAIL: $manifest:$line — \`[dependencies.$crate]\` carries a \`version\`: a registry dep." >&2
+    status=1
+done < <(msg_py --dotted)
 
 # A path dep can still point at the WRONG path, and the gate that only checks
 # "not a registry name" waves that through — which is how phase-333 W1 shipped 26

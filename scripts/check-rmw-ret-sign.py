@@ -44,30 +44,23 @@ import sys as _w3_sys  # noqa: E402
 from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
+import ratchet  # noqa: E402  phase-472 W9 — the headline verdict is a ratchet
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Slots whose return is PURELY a status today. A sign test on these is already
-# fragile and must be gone before the values flip.
-STATUS_ONLY = {
-    "create_session", "destroy_session", "drive_io", "create_publisher",
-    "publish_raw", "create_subscription", "create_service", "send_response",
-    "create_client", "send_request_raw", "register_subscription_event",
-    "register_publisher_event", "assert_publisher_liveliness",
-    "set_wake_callback", "pub_loan", "pub_commit", "publish_streamed",
-    "ping_session",
-    # Converted by W3.d step A — they are status-only now, so a sign test on
-    # any of them is in the "fix before the flip" class like the rest.
-    "take", "take_request", "take_response", "take_sequence",
-    "take_loaned_message", "has_data", "has_request",
-    "service_server_is_available", "subscription_supports_in_place",
-    "process_raw_in_place", "next_deadline_ms",
-    # phase-403 W1 — born with the answer in `size_t *out_bytes`, so it is
-    # status-only from the start. Listed rather than omitted: the set is what
-    # tells this gate which names to watch, and a slot that returns a SIZE is
-    # exactly the shape that tempts a `< 0` test.
-    "required_rx_bytes",
-}
+# Slots whose return is PURELY a status — HARVESTED (phase-472 W7) from the ABI
+# header: every vtable slot declared `rmw_ret_t (*name)(…)`, minus DUAL_RETURN.
+# The authored set this replaced watched 43 of the 66 such slots, and 7 of its
+# names (`publish_raw`, `pub_loan`, `send_request_raw`, …) no longer existed —
+# a watch list that went stale in the direction that watches less.
+VTABLE_H = "packages/core/nros-rmw-abi/include/nros/rmw_vtable.h"
+SLOT_RE = re.compile(r"\brmw_ret_t\s*\(\s*\*\s*([a-z_0-9]+)\s*\)\s*\(")
+
+
+def harvested_status_slots(path=None):
+    text = open(os.path.join(ROOT, path or VTABLE_H), encoding="utf-8").read()
+    return set(SLOT_RE.findall(comments.strip_comments(text, "c")))
+
 
 # Slots that multiplex count-or-flag with status. `< 0` is their CONTRACT today;
 # it becomes wrong when W3.d moves the count to an out-parameter.
@@ -75,6 +68,7 @@ STATUS_ONLY = {
 # self-test's `STATUS_ONLY & DUAL_RETURN` raise a TypeError. Caught immediately,
 # which is what a self-test that checks its own invariants is for.
 DUAL_RETURN: set[str] = set()
+STATUS_ONLY = harvested_status_slots() - DUAL_RETURN
 _DUAL_RETURN_NOTE = {
     # EMPTY as of phase 376 W3.d step A (2026-08-23): every one of the eleven
     # slots that multiplexed a count-or-flag with a status now reports through
@@ -184,6 +178,17 @@ def self_test():
     for text, should, label in cases:
         if bool(SIGN_TEST.search(text)) != should:
             bad.append(f"{label!r}: {text!r}")
+    # phase-472 W7 — the harvest reads slot names off the header, and the verdict
+    # has a failing path both ways.
+    if not {"create_session", "count_publishers", "destroy_node"} <= STATUS_ONLY:
+        bad.append(f"the vtable harvest missed known status slots ({len(STATUS_ONLY)} harvested)")
+    probe = [(r, 1, "s", "t") for r in BASELINE] + [("new/file.rs", 3, "take", "if rc < 0 {")]
+    if not ratchet_verdict(probe)[0]:
+        bad.append("a NEW sign-test site did not fail the ratchet")
+    if not ratchet_verdict([(r, 1, "s", "t") for r in list(BASELINE)[1:]])[0]:
+        bad.append("a CLEARED site did not demand the baseline edit")
+    if ratchet_verdict([(r, 1, "s", "t") for r in BASELINE])[0]:
+        bad.append("the recorded tree did not pass the ratchet")
     if STATUS_ONLY & DUAL_RETURN:
         bad.append(f"a slot cannot be both status-only and dual: {STATUS_ONLY & DUAL_RETURN}")
     if bad:
@@ -248,6 +253,44 @@ def scan_multiplexers(rel):
     return out
 
 
+# phase-472 W7 — the headline rule gains a FAILING PATH. It printed its list
+# and exited 0 whatever the list held. A 30-line window is a review heuristic,
+# not a proof, so the verdict is a RATCHET (`scripts/lib/ratchet.py`): the sites
+# found on 2026-09-29 over the harvested slots are recorded per file; a NEW one
+# fails, and a cleared one fails until its row is lowered. Each row is a site a
+# human must clear (most are DDS-handle or count comparisons the window
+# attributes to a nearby slot name) — the list shrinks, it never grows.
+BASELINE = {
+    "examples/mps2-an385-baremetal/rust/action-server-rtic/src/lib.rs": 1,
+    "examples/native/cpp/parameters/src/main.cpp": 1,
+    "examples/workspaces/rust/src/action_server_pkg/src/lib.rs": 1,
+    "examples/zephyr/rust/action-server/src/lib.rs": 1,
+    "packages/api/nros/src/node_runtime.rs": 1,
+    "packages/rmw/cffi/tests/request_sequence.rs": 1,
+    "packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/graph_node_set.cpp": 1,
+    "packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/service_request_slots_exhausted.cpp": 1,
+    "packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs": 1,
+    "packages/rmw/zenoh/nros-rmw-zenoh/src/zpico.rs": 1,
+    "packages/testing/nros-tests/tests/multi_node.rs": 1,
+    "packages/testing/nros-tests/tests/qos.rs": 1,
+}
+
+
+def ratchet_verdict(now_sites):
+    """(failed, lines) over `[(rel, line, slot, text)]` — `ratchet.judge`."""
+    from collections import Counter
+    rose, fell = ratchet.judge(Counter(r for r, *_ in now_sites), BASELINE)
+    lines = []
+    for m in rose:
+        lines.append(f"  NEW sign test on an RMW status: {m.key} ({m.was} -> {m.now})")
+    if fell:
+        lines += ratchet.fell_instructions(
+            fell, "BASELINE in scripts/check-rmw-ret-sign.py",
+            lambda f, n: None if n == 0 else f'"{f}": {n},',
+            "python3 scripts/check-rmw-ret-sign.py  (and copy the counts it prints)")
+    return bool(rose or fell), lines
+
+
 def main():
     self_test()
     files = tracked()
@@ -295,6 +338,15 @@ def main():
             print(f"  {rel}:{line_no}  [{slot}]  {text[:88]}")
         if len(later) > 40:
             print(f"  … and {len(later) - 40} more")
+    failed, lines = ratchet_verdict(now)
+    if failed:
+        sys.stderr.write("[FAIL] sign tests on STATUS-ONLY RMW results moved against the ratchet:\n")
+        sys.stderr.write("\n".join(lines) + "\n")
+        sys.stderr.write(
+            "\n       Test a status by NAME (`== NROS_RMW_RET_OK`, `!= 0`), never by sign:\n"
+            "       the values flipped positive in W3.d step B, so `< 0` no longer means\n"
+            "       failure. A false positive of the 30-line window goes in BASELINE.\n")
+        return 1
     return 0
 
 

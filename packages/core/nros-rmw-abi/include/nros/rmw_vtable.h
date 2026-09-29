@@ -402,7 +402,7 @@ typedef struct nros_rmw_vtable_t {
         void                  *user_context);
 
     /** Register a callback for a publisher-side event. Same NULL /
-     *  unsupported-kind conventions as `register_subscription_event`.
+     *  unsupported-kind conventions as `subscription_event_init`.
      *  `deadline_ms` is consulted for
      *  `NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED` only. */
     /* ---- Status events: how the three upstream parts map here ----

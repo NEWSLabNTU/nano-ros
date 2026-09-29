@@ -107,6 +107,7 @@ import sys as _w3_sys  # noqa: E402
 from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
+import harvest  # noqa: E402  phase-472 W7 — harvested populations, reasoned exemptions
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -137,7 +138,77 @@ VERSION_HELPER = "nros_codegen_version_stale"
 # was: `nano_ros_entry()` registered inline and three siblings inherited nothing.
 # A build dir that reaches no codegen emitter (a C++ leaf whose messages are
 # pre-generated) reaches this query, so it does not get to inherit.
-EMITTING_VERBS = ("codegen", "codegen-system", "rmw-dispatch")
+#
+# phase-472 W7 — the verb set is HARVESTED, and the authored list is now an
+# EXEMPTION list. Every `nros` verb a CMake file runs at configure time
+# (`execute_process(COMMAND <tool> <verb> …)`) OWES the registration unless it is
+# in NOT_EMITTING below with its reason. The authored `(codegen, codegen-system,
+# rmw-dispatch)` let `ws sizing-descriptor`'s registration be deleted with the
+# gate green, although that module's own header says it owes the edge (issue
+# 1018), and never asked `ws leaf-system`, whose answer (the leaf's board, RMW
+# and deployment identity) is baked into `build.ninja` exactly as rmw-dispatch's
+# is. Keyed on the verb as the CLI spells it (`ws sizing-descriptor`); matched
+# on its LAST word as a bare token, which is what `VERB_RE` reads.
+# (`codegen resolve-deps` is spelled through a variable, never an
+# execute_process `COMMAND`, and keeps its own rule: NON_EMITTING_ARG below.)
+NOT_EMITTING = {
+    "ws entity-inventory": "a fact verb, read back inside its own configure (module docstring)",
+    "ws entity-facts": "a fact verb, read back inside its own configure (module docstring)",
+    "image-facts": "a fact verb, read back inside its own configure (module docstring)",
+    "board cmake-vars": "a fact verb, read back inside its own configure (module docstring)",
+    "profile resolve": "names the active cargo PROFILE; its answer is the knob, not the tool's code",
+    "profile dir": "names the active cargo PROFILE's dir; its answer is the knob, not the tool's code",
+    "profile env": "names the active cargo PROFILE's env; its answer is the knob, not the tool's code",
+    "profile carve-out": "names a platform's profile carve-out; its answer is the knob, not the tool's code",
+    "config show": "prints the user's own config; its answer is that file, not the tool's code",
+    "sdk-root": "a STORE path query; the answer is the store's layout, not generated code",
+    "sdk-path corrosion": "a STORE path query; the answer is the store's layout, not generated code",
+    "sdk-path cyclonedds": "a STORE path query; the answer is the store's layout, not generated code",
+    "sdk-path riscv-none-elf-gcc": "a STORE path query; the answer is the store's layout, not generated code",
+    "model-path": "locates the SystemModel artifact path (`model_location`); no content",
+    "locate-project": "cargo's own verb (the tool is cargo there), not the `nros` CLI",
+    "ws order": "the workspace's package ORDER, read back to drive the same configure's loop",
+    "ws providers": "the provider index path, read back inside its own configure",
+    "plan": "a workspace metadata plan read back by the same configure",
+}
+_EP = re.compile(r"(?<![\w.-])execute_process\s*\(")
+_TOOL_VERB = re.compile(
+    r"COMMAND\s+(?:\"?\$\{[A-Za-z0-9_]+\}\"?|nros)\s+([a-z][a-z0-9-]*)(?:\s+([a-z][a-z0-9-]*))?")
+_TWO_WORD = ("ws", "codegen", "board", "profile", "config", "sdk-path")
+
+
+def configure_time_verbs(text):
+    """The `nros` verbs `execute_process()` runs in this CMake text, as spelled."""
+    out = set()
+    for m in _EP.finditer(text):
+        depth, i = 1, m.end()
+        while i < len(text) and depth:
+            depth += text[i] == "("
+            depth -= text[i] == ")"
+            i += 1
+        for c in _TOOL_VERB.finditer(text[m.end():i]):
+            verb = c.group(1)
+            if c.group(2) and verb in _TWO_WORD:
+                verb += " " + c.group(2)
+            out.add(verb)
+    return out
+
+
+def harvest_emitting_verbs(files, read):
+    """(emitting tokens for VERB_RE, problems) — harvested minus NOT_EMITTING."""
+    spelled = set()
+    for rel in files:
+        spelled |= configure_time_verbs(comments.strip_comments(read(rel), "cmake"))
+    # `codegen` (and `codegen-system`) are also spelled through a variable —
+    # `set(_cmd "${tool}" codegen …)` — which no execute_process shows; they
+    # stay in the population as the tree's first two emitters.
+    population = spelled | {"codegen", "codegen-system"}
+    emitting, problems = harvest.reconcile(population, NOT_EMITTING, what="configure-time verb")
+    tokens = sorted({v.split()[-1] for v in emitting} | {"codegen"})
+    return tokens, problems
+
+
+EMITTING_VERBS = ("codegen", "codegen-system", "rmw-dispatch")  # replaced by main()
 
 # `codegen` with this argument is the same-configure fragment writer, not an
 # emitter of anything a later build step compiles.
@@ -282,6 +353,18 @@ def main():
     files = tracked_cmake()
     read = lambda rel: (REPO / rel).read_text(errors="replace")  # noqa: E731
 
+    # phase-472 W7 — the emitting verbs are harvested from the tree.
+    global EMITTING_VERBS, VERB_RE
+    tokens, problems = harvest_emitting_verbs(files, read)
+    if problems:
+        for p_ in problems:
+            print(f"check-codegen-tool-reconfigure: {p_}", file=sys.stderr)
+        return 1
+    EMITTING_VERBS = tuple(tokens)
+    VERB_RE = re.compile(
+        r"(?<![\w./$-])(" + "|".join(sorted(EMITTING_VERBS, key=len, reverse=True)) + r")(?![\w./-])"
+    )
+
     # Rule 2 first: it is the one a reader of a red lane will not guess.
     stale_blind = version_offenders(files, read)
     if stale_blind:
@@ -424,6 +507,15 @@ def selftest(verbose=False):
     chk("a verb named inside a quoted message is prose, not an invocation",
         run(["prose.cmake"]) == [])
     chk("the whole tracked set is enumerable", len(tracked_cmake()) > 0)
+
+    # phase-472 W7 — the verbs are harvested; an unexempted one is an emitter.
+    fx = {"a.cmake": 'execute_process(COMMAND "${_nros}" ws sizing-descriptor --x y)\n',
+          "b.cmake": 'execute_process(COMMAND "${t}" sdk-root)\n'}
+    chk("a configure-time verb is harvested as the CLI spells it",
+        configure_time_verbs(fx["a.cmake"]) == {"ws sizing-descriptor"})
+    toks, probs = harvest_emitting_verbs(list(fx), lambda r: fx[r])
+    chk("an unexempted verb owes the registration; an exempted one does not",
+        "sizing-descriptor" in toks and "sdk-root" not in toks)
 
     # ---- Rule 2: the emitted-version edge (issue 1360) ----
     predict = (

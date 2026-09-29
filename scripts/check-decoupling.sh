@@ -6,7 +6,7 @@
 # `nros` (the umbrella) and `nros-node` (the runtime) must reach the platform
 # only through the generic ABI — `nros-platform-api` / `nros-platform-cffi` —
 # never through a Cargo dependency, a `dep:` directive or `?/` forwarding on a
-# concrete `nros-platform-{posix,freertos,nuttx,threadx,zephyr,posix-c}`.
+# concrete platform crate (harvested from `packages/platform/` below).
 # Choosing the platform is the outer build system's job (the board crate and the
 # generated selection facade); a concrete platform in these two graphs means a
 # consumer picking a board also picks these crates' idea of one.
@@ -35,11 +35,40 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-PLATFORMS='posix|freertos|nuttx|threadx|zephyr|posix-c'
+# phase-472 W7 — the concrete platform crates are HARVESTED: every Rust crate
+# under `packages/platform/` minus the generic ABI layer, which is an EXEMPTION
+# list with reasons (`scripts/lib/harvest.py` refuses a stale or reason-less
+# entry, and an empty harvest). The authored list named `posix|freertos|nuttx|
+# threadx|zephyr|posix-c` — five crates that became C-only and one that never
+# existed — and missed the four Rust platform crates that DO exist
+# (`nros-platform-{mps2-an385,stm32f4,esp32-qemu}`, `nros-baremetal-common`).
+PLATFORMS="$(python3 - <<'PY'
+import glob, os, re, sys
+sys.path.insert(0, os.path.join("scripts", "lib"))
+import harvest
+harvest.self_test()
+GENERIC = {
+    "nros-platform": "the trait surface every platform implements",
+    "nros-platform-api": "the generic ABI (RFC-0054) the umbrella must reach through",
+    "nros-platform-cffi": "the generic C-ABI bridge the umbrella must reach through",
+    "nros-platform-critical-section": "a platform-agnostic critical-section shim",
+}
+names = []
+for m in sorted(glob.glob("packages/platform/*/Cargo.toml")):
+    hit = re.search(r'^name\s*=\s*"([^"]+)"', open(m).read(), re.M)
+    if hit:
+        names.append(hit.group(1))
+concrete, problems = harvest.reconcile(names, GENERIC, what="platform crate")
+if problems or not concrete:
+    sys.exit("check-decoupling: " + "; ".join(problems or ["no concrete platform crate"]))
+print("|".join(re.escape(n) for n in concrete))
+PY
+)"
+[ -n "$PLATFORMS" ] || { echo "check-decoupling: platform harvest failed" >&2; exit 2; }
 # A dependency line, a `dep:` feature directive, or `?/` forwarding — any Cargo
 # knowledge of a concrete platform crate.
-DEP_LINE_RE="^nros-platform-($PLATFORMS)[[:space:]]*="
-FEATURE_RE="dep:nros-platform-($PLATFORMS)|nros-platform-($PLATFORMS)\?/"
+DEP_LINE_RE="^($PLATFORMS)[[:space:]]*="
+FEATURE_RE="dep:($PLATFORMS)|($PLATFORMS)\?/"
 
 # `$1` = manifest text on stdin's behalf. Echoes the offending lines; returns 1
 # when there are any. Split out from the file reader so the self-test can feed
@@ -72,9 +101,12 @@ rmw-zenoh = ["dep:nros-rmw-zenoh"]
     fi
     # Each of the three shapes must fire.
     local probe
-    for probe in 'nros-platform-posix = { path = "../p" }' \
-                 'platform-zephyr = ["dep:nros-platform-zephyr"]' \
-                 'std = ["nros-platform-freertos?/std"]'; do
+    # The harvested crates — including the four the authored list never named
+    # (phase-472 W7).
+    for probe in 'nros-platform-mps2-an385 = { path = "../p" }' \
+                 'platform-stm32f4 = ["dep:nros-platform-stm32f4"]' \
+                 'std = ["nros-baremetal-common?/std"]' \
+                 'nros-platform-esp32-qemu = { path = "../e" }'; do
         rc=0
         out=$(scan_text "$probe") || rc=$?
         if [[ $rc -eq 0 ]]; then

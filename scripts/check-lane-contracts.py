@@ -47,6 +47,7 @@ from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 from check_just_sources import just_modules  # noqa: E402  phase-472 W2 — the justfile graph
+import harvest  # noqa: E402  phase-472 W7 — harvested populations, reasoned exemptions
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JUSTFILE = os.path.join(ROOT, "justfile")
@@ -382,15 +383,44 @@ def _events_of(step_if, wf_events):
 
     return set(wf_events)
 
-RUNTIME_RESOLVERS = (
-    "require_entry_binary",
-    "require_cmake_fixture",
-    "require_idf_fixture",
-    "require_west_fixture",
-    "require_west_leaf_in_lane",
-)
 # Legitimate in a compile tier, when the gate produces them itself.
 COMPILE_RESOLVERS = ("require_compile_check", "require_compile_check_bin")
+
+# phase-472 W7 — the RUNTIME resolvers are HARVESTED: every `pub fn build_*` /
+# `require_*` the fixture resolver modules define, minus the compile-stage pair
+# and the NOT_A_RESOLVER exemptions below. The authored list named five
+# `require_*`; the ~300 `build_*` resolvers — which emit the very
+# `BuildFailed("Test fixture binary not prebuilt")` this gate exists to keep off
+# an affordability tier — were not counted, so a unit test calling one passed.
+RESOLVER_SOURCES = ("packages/testing/nros-tests/src/fixtures",)
+NOT_A_RESOLVER = {
+    "require_coord_in_lane": "asks whether a coordinate is IN the run's lane; resolves no artifact",
+}
+_RESOLVER_DEF = re.compile(r"\bpub fn ((?:build|require)_\w+)\s*[(<]")
+
+
+def harvest_runtime_resolvers(root=None):
+    import file_kinds
+
+    base = root or ROOT
+    names = set()
+    for rel in file_kinds.files_of_kind("rust", repo=base):
+        if not rel.startswith(tuple(d + "/" for d in RESOLVER_SOURCES)):
+            continue
+        with open(os.path.join(base, rel), encoding="utf8", errors="replace") as fh:
+            names |= set(_RESOLVER_DEF.findall(comments.strip_comments(fh.read(), "rust")))
+    names -= set(COMPILE_RESOLVERS)
+    runtime, problems = harvest.reconcile(sorted(names), NOT_A_RESOLVER, what="fixture resolver")
+    if problems:
+        raise SystemExit("check-lane-contracts: " + "; ".join(problems))
+    return tuple(runtime)
+
+
+RUNTIME_RESOLVERS = harvest_runtime_resolvers()
+_RESOLVER_CALL = re.compile(
+    r"\b(" + "|".join(sorted(RUNTIME_RESOLVERS + COMPILE_RESOLVERS, key=len, reverse=True))
+    + r")\s*\("
+)
 
 # Parameters may be UPPERCASE and their defaults quoted — `check JOBS="75%":`
 # is a real recipe header, and the old `[a-z_]+=\S*` matched neither the
@@ -730,7 +760,9 @@ def resolvers_used(test_name):
         return set(), False
     with open(path, encoding="utf8", errors="replace") as fh:
         text = _strip_rust_comments(fh.read())
-    return {r for r in RUNTIME_RESOLVERS + COMPILE_RESOLVERS if r in text}, True
+    # A CALL, word-bounded: with ~300 harvested names, a bare substring test would
+    # read `build_example_rmw` inside `build_example_rmw_at` and the like.
+    return set(_RESOLVER_CALL.findall(text)), True
 
 
 # ---- issue 1163 — a crate that SHIPS in a non-default shape must be compiled
@@ -1703,6 +1735,13 @@ def selftest(verbose=False):
         chk("a crate with NO default features is not a subject", "nodef" not in subs)
         chk("one consumer taking the defaults (even outside packages/) disqualifies",
             "lib2" not in subs)
+    # ---- phase-472 W7 — the runtime resolvers are harvested ----
+    chk("a `build_*` resolver the authored list never named is a RUNTIME resolver",
+        "build_native_c_example_rmw" in RUNTIME_RESOLVERS and len(RUNTIME_RESOLVERS) > 100)
+    chk("a word-bounded CALL is read, a longer name is not",
+        set(_RESOLVER_CALL.findall("build_native_c_example_rmw(a); require_entry_binary_x(b)"))
+        == {"build_native_c_example_rmw"})
+
     # ---- phase-472 W2 — modules keyed by `mod` NAME, imports merged ----
     with tempfile.TemporaryDirectory() as d:
         jf = os.path.join(d, "justfile")

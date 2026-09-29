@@ -313,6 +313,13 @@ function(nano_ros_read_leaf_system)
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc
         OUTPUT_STRIP_TRAILING_WHITESPACE)
+    # Issue 1018 — the answer (the leaf's board, RMW and deployment identity) is
+    # baked into build.ninja, so a rebuilt `nros` must re-run the configure that
+    # asked. Guarded: this module is read before NanoRosCodegenCore on a leaf
+    # with no system.toml, and that path returned above (phase-472 W7).
+    if(COMMAND nros_codegen_tool_reconfigure)
+        nros_codegen_tool_reconfigure("${_nros}")
+    endif()
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR "nano-ros: ${_NRL_DIR}/system.toml: ${_err}")
     endif()
