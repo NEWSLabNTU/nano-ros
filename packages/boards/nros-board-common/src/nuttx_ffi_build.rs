@@ -82,6 +82,8 @@ pub fn run_nuttx() {
     let is_cpp =
         main_src.ends_with(".cpp") || main_src.ends_with(".cxx") || main_src.ends_with(".cc");
 
+    let sizes_includes = per_build_sizes_includes();
+
     // Phase 238.C — mixed C/C++ app build. A NuttX C example registers a
     // declarative C node (`Talker.c`, C-linkage `__nros_component_<pkg>_register`)
     // but is driven by the header-only C++ `EntryNodeRuntime` (the generated
@@ -208,13 +210,12 @@ pub fn run_nuttx() {
                 }
             }
         }
-        // Generated per-build header dirs first (shadow the source-tree stubs).
-        if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
-            let td = PathBuf::from(target_dir);
-            build.include(td.join("nros-c-generated"));
-            if want_cpp {
-                build.include(td.join("nros-cpp-generated"));
-            }
+        // issue 1569 — the image's OWN per-build sizes headers first (they
+        // shadow the source-tree stubs), for C and C++ alike: a C component
+        // reads the C++ header too (`component.h` sizes its publisher buffers
+        // from `NROS_PUBLISHER_SIZE`).
+        for dir in &sizes_includes {
+            build.include(dir);
         }
         for dir in &file_regular {
             build.include(dir);
@@ -593,4 +594,54 @@ pub fn run_nuttx() {
     println!("cargo:rerun-if-env-changed=APP_EXTRA_SOURCES");
     println!("cargo:rerun-if-env-changed=APP_INTERFACE_SOURCES");
     println!("cargo:rerun-if-env-changed=APP_COMPILE_DEFS");
+}
+
+/// issue 1569 — the per-build sizes header directories of the `nros-c` and
+/// `nros-cpp` units linked into THIS image, from their `links` channels
+/// (`DEP_NROS_C_CONFIG_INCLUDE`, `DEP_NROS_CPP_CONFIG_INCLUDE`).
+///
+/// This used to add `$CARGO_TARGET_DIR/nros-{c,cpp}-generated`, the FLAT shared
+/// copies, which had no ordering edge: `nros-cpp` carried no `links` key, so
+/// cargo was free to run this script before `nros-cpp`'s had written its
+/// header, and every TU then fell through the include path to the dispatching
+/// stub — which on NuttX included a COMMITTED, hand-kept snapshot. Measured on
+/// realtime-c: the tier executor storage was 2 x 98,312 (the snapshot) against
+/// 2 x 89,072 (the build), and seven buffer sizes in the snapshot had fallen
+/// BELOW the build (issue 1568). Both keys carry `links` now, so cargo orders
+/// this script after both writers, and both paths are the writers' own OUT_DIR
+/// copies — never a sibling feature set's header on the shared path.
+///
+/// A missing header is a hard error that names it. There is no fallback to
+/// fall through to any more: the stubs no longer dispatch to a snapshot for a
+/// NuttX build, so compiling on regardless would only move this panic to a
+/// less legible `#error` inside a component.
+fn per_build_sizes_includes() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    for (key, header) in [
+        ("DEP_NROS_C_CONFIG_INCLUDE", "nros_config_generated.h"),
+        ("DEP_NROS_CPP_CONFIG_INCLUDE", "nros_cpp_config_generated.h"),
+    ] {
+        let dir = env::var(key).map(PathBuf::from).unwrap_or_else(|_| {
+            panic!(
+                "{key} is not set: this crate must depend DIRECTLY on the crate that \
+                 publishes it (`nros-c` / `nros-cpp`, whose `links` key carries it). \
+                 Without it there is no per-build sizes header to compile against \
+                 (issue 1569)."
+            )
+        });
+        let file = dir.join("nros").join(header);
+        if !file.is_file() {
+            panic!(
+                "the per-build sizes header {} does not exist. Its writer ran (cargo \
+                 orders this script after it) but wrote nothing — most likely its size \
+                 probe read 0, i.e. a `cargo check` or an RMW-less feature set. A NuttX \
+                 image cannot be sized without it; there is deliberately no committed \
+                 fallback (issue 1569).",
+                file.display()
+            );
+        }
+        println!("cargo:rerun-if-changed={}", file.display());
+        dirs.push(dir);
+    }
+    dirs
 }
