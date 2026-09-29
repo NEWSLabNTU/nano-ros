@@ -174,3 +174,57 @@ workspace: `nros_resolve_threadx_port` selected the bare-metal riscv port, no po
 skip was printed, and the kernel and NetX Duo targets generated cleanly. What is
 still unconfirmed is the same thing as before — the cold-workspace selection — and
 the lane actually reaching its cells, which only the nightly can answer.
+
+## The summary line is unchanged; the cause is not (2026-09-29)
+
+Nightly run **36535897637** (07:18), job **109300287961** (`threadx_riscv64`),
+step 12 `Build (threadx_riscv64)`. The job-level verdict reads exactly as it
+always has:
+
+```
+ThreadX-RV64 rust leaves: 0/12 ok, 12 failed
+```
+
+That line is what triage keys this issue on, and it no longer means what it
+meant. Counted in that job's log:
+
+| string | occurrences |
+| --- | ---: |
+| `semaphore.h` | **0** |
+| `nros/app_config.h` | **48** |
+
+The failure is now:
+
+```
+examples/rv-virt-threadx/rust/listener/build-cyclonedds/nano_ros/nros_app_config_def.c:13:10:
+  fatal error: nros/app_config.h: No such file or directory
+packages/boards/nros-board-threadx-qemu-riscv64/startup.c:13:10:
+  fatal error: nros/app_config.h: No such file or directory
+```
+
+on both RMW legs (`build-cyclonedds` and `build-zenoh`), in the generated
+`nros_app_config_def.c` and in the board's own `startup.c`.
+
+**This issue's documented cause does not appear.** `ports/linux/gnu` and
+`semaphore.h` — the whole finding above — are absent from the log.
+
+## What is NOT established
+
+Whether the linux/gnu port defect is FIXED. The build now dies earlier, at a
+missing generated header, so it may simply never reach the point where the
+port's `tx_port.h` is compiled. An absence in a log that stops sooner is not
+evidence of a repair, and this entry does not claim one.
+
+## What the current failure looks like
+
+A generated config header that the compile cannot find is the class archived
+issues **0365** (FreeRTOS: stale `nros-c` include path for `app_config.h`) and
+**0434** (the config-header ordering guard was Zephyr-only, so FreeRTOS hit the
+stub) each measured on another platform. Whoever picks this up should start
+there rather than from this issue's ThreadX-port analysis, which is about a
+different line of the same build.
+
+The wider point is issue 1158's: a lane that has reported the same summary
+string for weeks has no signal capacity, and the only way to notice a cause
+changing underneath it is to re-read the error text every time. This one
+changed without the verdict moving a character.
