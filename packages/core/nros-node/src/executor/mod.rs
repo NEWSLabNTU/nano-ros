@@ -38,6 +38,13 @@ pub mod arena_oracle;
 // the images this campaign is about.
 #[cfg(all(any(has_rmw, test), feature = "alloc"))]
 mod backing;
+// issue 1571 — the spawned tiers' half of the same machinery: the ENTRY owns
+// the static (it knows the tier count), boards hand each tier a slot.
+#[cfg(all(any(has_rmw, test), feature = "alloc"))]
+pub use backing::{
+    EXECUTOR_BACKING_DEFAULT_U64S, TierBackingShort, TierExecutorBacking, TierExecutorBackingSlot,
+    check_tier_executor_backing,
+};
 // Phase 8 (autoware-safety-island `docs/design/callback_tracing.rst`) —
 // callback-level dispatch tracing. Same gating shape as `wake_probe`, for the
 // same reason: hot-path hooks that must vanish in production. The module ALSO

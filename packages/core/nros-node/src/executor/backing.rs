@@ -114,9 +114,9 @@ use super::storage::ExecutorSizing;
 /// The reservation's size when nothing overrides it: one default-sized
 /// executor's worth.
 ///
-/// One executor, not a multiple, because an entry opens ONE: the tiered boot
-/// paths open a second per tier, and those correctly fall through to the heap
-/// (see [`take`]).
+/// One executor, not a multiple, because an entry opens ONE through this road:
+/// a tiered boot's SPAWNED tiers take their slots from the entry's own
+/// [`TierExecutorBacking`] instead (issue 1571), each slot this many words.
 ///
 /// Named by the GENERATED file when nothing overrides the size, so it is unused
 /// under `NROS_EXECUTOR_BACKING_U64S=0` (no static) and under an explicit
@@ -175,7 +175,9 @@ static TAKEN: AtomicBool = AtomicBool::new(false);
 /// degraded — it is the caller's behaviour from before this module existed:
 ///
 /// * the reservation is switched off (`NROS_EXECUTOR_BACKING_U64S=0`);
-/// * another executor already took it (a tiered boot opens one per tier);
+/// * another executor already took it (a second `Executor::open` in one
+///   process — a tiered boot's spawned tiers no longer come here, they take
+///   the entry's [`TierExecutorBacking`], issue 1571);
 /// * this executor is sized past the reservation (a fat entry).
 ///
 /// The `swap` is what makes the returned `&'static mut` sound: exactly one
@@ -215,6 +217,135 @@ pub(crate) fn take(_words: usize) -> Option<&'static mut [MaybeUninit<u64>]> {
 #[cfg(all(test, nros_executor_backing_static))]
 pub(crate) fn is_taken() -> bool {
     TAKEN.load(Ordering::Acquire)
+}
+
+// ============================================================================
+// issue 1571 — the SPAWNED tiers' executor backing, as the entry's own static
+// ============================================================================
+//
+// A tiered boot opens one executor per tier. The boot tier takes
+// `EXECUTOR_BACKING` through `Executor::open` like any single-executor entry;
+// every OTHER tier used to reach `default_backing` too, find the latch already
+// taken, and `Box::leak` a default-sized block — correctly sized, but invisible
+// to `mem-report` and drawn from the allocator arena, where issue 1568 had just
+// moved every C and C++ RTOS executor (tier and single) OUT of it.
+//
+// The fix is the C/C++ METHOD, not a second one: the tier count is known when
+// the entry is generated, so the entry (`nros::main!`) emits ONE named static of
+// `N - 1` slots — the C pack's `__nros_tier_executor_storage` — and the board's
+// `run_tiers` hands each spawned tier its slot. The slot is typed, so its size is
+// the executor's exact need by construction: the tier opens with
+// `ExecutorSizing::DEFAULT` (see `Executor::open_with_session_slot`) and the slot
+// is `ExecutorSizing::DEFAULT.u64_len()` words — the same const the boot
+// reservation above is judged against, so there is ONE spelling of "a default
+// executor's worth" for both.
+//
+// It is a MOVE, exactly like the boot reservation: on an RTOS the same bytes
+// leave the allocator arena (`CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE`,
+// `configTOTAL_HEAP_SIZE`, the NuttX kernel heap, the ThreadX byte pool) and
+// become linker-visible `.bss`.
+
+/// issue 1571 — one spawned tier executor's backing: exactly the words an
+/// executor opened with [`ExecutorSizing::DEFAULT`] carves.
+pub type TierExecutorBackingSlot = [MaybeUninit<u64>; EXECUTOR_BACKING_DEFAULT_U64S];
+
+/// issue 1571 — the spawned tiers' executor backing, `N` slots in ONE named
+/// static that the ENTRY owns.
+///
+/// `nros::main!` emits one per tiered entry, with `N` = the tier count minus the
+/// boot tier (which takes the `EXECUTOR_BACKING` road), and passes
+/// [`take`](Self::take) to the board's `run_tiers`. The board then refuses a
+/// short block with [`check_tier_executor_backing`] — the Rust twin of the C
+/// library's `nros_cpp_executor_storage_check`.
+///
+/// Placement is the caller's (RFC-0002 § 4.4b): the static lives in the entry's
+/// `.bss`, so `mem-report` prices it by name.
+pub struct TierExecutorBacking<const N: usize> {
+    /// The same once-only latch as the boot reservation's, per static: the
+    /// slots go out as `&'static mut`, so exactly one caller may observe them.
+    taken: portable_atomic::AtomicBool,
+    slots: core::cell::UnsafeCell<[TierExecutorBackingSlot; N]>,
+}
+
+// SAFETY: the slots are only reachable through `take`, whose latch hands them
+// out at most once, so no two threads can ever hold a reference to them.
+unsafe impl<const N: usize> Sync for TierExecutorBacking<N> {}
+
+impl<const N: usize> TierExecutorBacking<N> {
+    /// An untouched reservation. `const` so it can initialise a `static`, and
+    /// uninitialised (plus a `false` latch), so the static is all-zero `.bss`
+    /// and costs no flash.
+    ///
+    /// `large_stack_arrays` is allowed because this is only ever evaluated in
+    /// CONST context (a `static` initialiser): the array is built by the
+    /// compiler into `.bss`, never on a stack.
+    #[allow(clippy::new_without_default, clippy::large_stack_arrays)]
+    pub const fn new() -> Self {
+        Self {
+            taken: portable_atomic::AtomicBool::new(false),
+            slots: core::cell::UnsafeCell::new(
+                [[MaybeUninit::uninit(); EXECUTOR_BACKING_DEFAULT_U64S]; N],
+            ),
+        }
+    }
+
+    /// Hand out every slot, once. A second call returns an EMPTY slice, which
+    /// the board's [`check_tier_executor_backing`] then refuses by name rather
+    /// than aliasing a slot another executor is using.
+    ///
+    /// `mut_from_ref` is the point, not an accident: `&'static self` is how a
+    /// `static` is reached, and the latch is what makes the one `&mut` sound —
+    /// the same shape as the boot reservation's `take`.
+    #[allow(clippy::mut_from_ref)]
+    pub fn take(&'static self) -> &'static mut [TierExecutorBackingSlot] {
+        if self.taken.swap(true, portable_atomic::Ordering::AcqRel) {
+            return &mut [];
+        }
+        // SAFETY: the swap above succeeds exactly once per static, so this is
+        // the only reference ever created to `slots`; `'static` because `self`
+        // is.
+        unsafe { &mut *self.slots.get() }
+    }
+}
+
+/// issue 1571 — the tier backing a board was handed does not cover the tiers it
+/// must spawn. Carries both counts so the refusal names them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TierBackingShort {
+    /// Tiers the board spawns (every tier but the boot one).
+    pub spawned: usize,
+    /// Slots it was handed.
+    pub slots: usize,
+}
+
+impl core::fmt::Display for TierBackingShort {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "tier executor backing holds {} slot(s) but {} spawned tier(s) need one each \
+             — the entry's `TierExecutorBacking` was sized for a different tier table, \
+             or taken twice (issue 1571)",
+            self.slots, self.spawned
+        )
+    }
+}
+
+/// issue 1571 — the ONE refusal every board's `run_tiers` makes before it opens
+/// anything: `n_tiers` tiers run, one on the boot executor, so `n_tiers - 1`
+/// must each find a slot. Checked up front rather than at each spawn, so a
+/// short block never leaves a half-spawned tier chain.
+pub fn check_tier_executor_backing(
+    n_tiers: usize,
+    backing: &[TierExecutorBackingSlot],
+) -> Result<(), TierBackingShort> {
+    let spawned = n_tiers.saturating_sub(1);
+    if backing.len() < spawned {
+        return Err(TierBackingShort {
+            spawned,
+            slots: backing.len(),
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -281,6 +412,53 @@ mod tests {
         assert!(
             take(1).is_none(),
             "NROS_EXECUTOR_BACKING_U64S=0 must hand out nothing"
+        );
+    }
+
+    /// issue 1571 — the entry's tier backing goes out ONCE, whole, and each
+    /// slot is exactly one default executor's worth. Its own static, so unlike
+    /// the boot reservation's test it needs no virgin process.
+    #[test]
+    fn tier_backing_is_handed_out_once_and_each_slot_is_one_default_executor() {
+        static TIERS: TierExecutorBacking<3> = TierExecutorBacking::new();
+        let slots = TIERS.take();
+        assert_eq!(slots.len(), 3, "the first taker gets every slot");
+        assert_eq!(
+            core::mem::size_of::<TierExecutorBackingSlot>(),
+            8 * ExecutorSizing::DEFAULT.u64_len(),
+            "a slot is exactly what a DEFAULT-sized executor carves"
+        );
+        assert!(
+            TIERS.take().is_empty(),
+            "a second taker must get nothing — two `&'static mut` to one slot is UB"
+        );
+    }
+
+    /// issue 1571 — the one refusal: every tier but the boot one needs a slot.
+    #[test]
+    fn tier_backing_refuses_a_block_short_of_the_spawned_tiers() {
+        static TWO: TierExecutorBacking<2> = TierExecutorBacking::new();
+        let two = TWO.take();
+        assert_eq!(check_tier_executor_backing(3, two), Ok(()));
+        assert_eq!(
+            check_tier_executor_backing(1, &[]),
+            Ok(()),
+            "boot tier only"
+        );
+        assert_eq!(
+            check_tier_executor_backing(4, two),
+            Err(TierBackingShort {
+                spawned: 3,
+                slots: 2
+            })
+        );
+        assert_eq!(
+            check_tier_executor_backing(2, &[]),
+            Err(TierBackingShort {
+                spawned: 1,
+                slots: 0
+            }),
+            "a taken-twice (empty) block is refused, not aliased"
         );
     }
 }
