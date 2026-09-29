@@ -134,6 +134,8 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import check_skip  # noqa: E402  phase-472 F2 — the NOT VERIFIED ledger
 INDEX = os.path.join(ROOT, "nros-sdk-index.toml")
 DEFAULT_STORE = os.path.expanduser("~/.nros/sdk")
 
@@ -573,6 +575,7 @@ def _elf_probe_checks():
 
 
 def self_test():
+    check_skip.self_test()  # phase-472 F2 — the ledger helper's own controls
     """Prove the check can fail — a negative control nobody runs is a comment."""
     index = {
         "tool": {"t": {"system": ["libfoo"]}},
@@ -703,16 +706,14 @@ def main():
     argv = [a for a in argv if a != "--include-unreached"]
     if argv[:1] == ["--store"]:
         store = argv[1]
+    # phase-472 F2 — a missing precondition is NOT VERIFIED, RECORDED in the
+    # `nros_check_skip` ledger (FAIL under NROS_CHECK_SKIP_STRICT=1).
     if sys.platform != "linux":
-        print(f"check-dist-runtime-deps: SKIP — ldd is glibc's ({sys.platform}).")
-        return 0
+        return check_skip.unverified("dist-runtime-deps", f"ldd is glibc's ({sys.platform})")
     if not os.path.isdir(store):
-        print(
-            f"check-dist-runtime-deps: SKIP — no provisioned store at {store}.\n"
-            "  This gate re-measures real dists, so it needs one. Run\n"
-            "  `nros setup <board>` first, or pass --store."
-        )
-        return 0
+        print("  This gate re-measures real dists, so it needs one. Run\n"
+              "  `nros setup <board>` first, or pass --store.")
+        return check_skip.unverified("dist-runtime-deps", f"no provisioned store at {store}")
     index = load_index()
     problems, skipped, notes = audit(index, store, include_unreached)
     rc = 0
@@ -736,6 +737,10 @@ def main():
         n = sum(
             1 for t in index.get("tool", {}) if os.path.isdir(os.path.join(store, t))
         )
+        if n == 0:
+            # A store holding no indexed tool measured nothing: NOT VERIFIED,
+            # not "0 dist(s) OK" (phase-472 F2).
+            return check_skip.unverified("dist-runtime-deps", f"no provisioned dist in {store}")
         tail = (
             " (every ELF, --include-unreached)"
             if include_unreached

@@ -385,6 +385,24 @@ Found and NOT fixed (tool/artifact-missing skips that exit 0 without the
 `check-dist-runtime-deps` (no store). Their fix is the ledger, not a population
 count.
 
+Follow-up (F2), done: one spelling for issue 1043's NOT VERIFIED outcome,
+`nros_check_unverified <gate> <reason>` in `scripts/build/check-skip.sh` (Python:
+`scripts/lib/check_skip.py` `unverified()`, which calls the shell function so the
+ledger path has one derivation; the `NROS_CHECK_SKIP_LEDGER` variable two gates
+read is set by no lane, issue 1345). It RECORDS the skip in the `nros_check_skip`
+ledger and returns 0, or prints FAIL and returns 1 under
+`NROS_CHECK_SKIP_STRICT=1`, for a lane that provides every precondition. All
+eight gates route every missing-precondition exit through it — plus the
+no-image exits of `archive-lang-items` and `weak-symbols-image`, and
+`dist-runtime-deps` over a store holding no indexed dist (it printed "OK — 0
+provisioned dist(s)"). Proof, each with the precondition removed (a PATH without
+`nm`/`cmake`/`rustup`, `NM=` a missing tool, the CLI / resolver binary moved
+aside, an empty `--store`) under `NROS_CHECK_SKIP_STRICT=1`: before rc=0 with no
+ledger line, after rc=1; without strict, rc=0 and the ledger names the gate.
+The helper's self-test runs on `check-dist-runtime-deps`' normal path; the
+shell gates do not call it, so the meta-gate does not credit them with a
+self-test of their own rule.
+
 ### W5 — scan roots that stop short of the tree
 
 Gates rooted at `cmake/` or `packages/<some>/` that the rule's subject has since

@@ -22,8 +22,13 @@ BIN="packages/cli/target/release/nros"
 
 # No in-tree binary is a normal state before `just setup-cli`, not a failure —
 # gating on it would make `check-fast` unrunnable on a fresh clone.
+# phase-472 F2 — a missing precondition is NOT VERIFIED (issue 1043), recorded
+# in the `nros_check_skip` ledger, never a quiet rc=0; FAIL under
+# NROS_CHECK_SKIP_STRICT=1. One spelling: `nros_check_unverified`.
+# shellcheck source=scripts/build/check-skip.sh
+source "scripts/build/check-skip.sh"
 if [ ! -x "$BIN" ]; then
-    echo "cli-fresh: SKIP — no in-tree nros binary yet (run \`just setup-cli\`)."
+    nros_check_unverified cli-fresh "no in-tree nros binary yet (run \`just setup-cli\`)" || exit 1
     exit 0
 fi
 

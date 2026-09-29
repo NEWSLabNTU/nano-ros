@@ -39,8 +39,13 @@ BIN="${CARGO_TARGET_DIR:-$CRATE/target}/release/nros-launch-resolve"
 # `just setup-launch-resolve`, and any CI job that builds no resolver. Gating on
 # it would make the lane unrunnable on a fresh clone, which is the position
 # `cli-fresh` already takes for the same reason.
+# phase-472 F2 — a missing precondition is NOT VERIFIED (issue 1043), recorded
+# in the `nros_check_skip` ledger, never a quiet rc=0; FAIL under
+# NROS_CHECK_SKIP_STRICT=1. One spelling: `nros_check_unverified`.
+# shellcheck source=scripts/build/check-skip.sh
+source "scripts/build/check-skip.sh"
 if [ ! -x "$BIN" ]; then
-    echo "launch-resolve-fresh: SKIP — no resolver binary yet (run \`just setup-launch-resolve\`)."
+    nros_check_unverified launch-resolve-fresh "no resolver binary yet (run \`just setup-launch-resolve\`)" || exit 1
     exit 0
 fi
 
@@ -49,7 +54,7 @@ fi
 # `git submodule update --init` remedy, and the predicate cannot answer without
 # the tree.
 if [ ! -d "packages/cli/third-party/play_launch/src/ros-launch-resolve" ]; then
-    echo "launch-resolve-fresh: SKIP — play_launch submodule not initialised."
+    nros_check_unverified launch-resolve-fresh "play_launch submodule not initialised" || exit 1
     exit 0
 fi
 
