@@ -99,7 +99,9 @@ pub use vocabulary::{
 /// * [`Fact::Refused`] — some publisher row states no durability. A count over
 ///   the rows that DID answer is not a bound on the row that stayed silent, and
 ///   an under-sized pool here is `create_publisher` failing at boot. The prose
-///   names the row.
+///   names the row, and a consumer sizes from
+///   [`transient_local_publishers_bound_over`] instead -- the worst case,
+///   never zero (issue 1572).
 /// * [`Fact::Absent`] — the descriptor has no endpoint rows at all, so there is
 ///   no declaration to read. Consumers keep their builtin.
 ///
@@ -166,6 +168,150 @@ where
         return Fact::Absent;
     }
     Fact::Stated(count)
+}
+
+/// The TRANSIENT_LOCAL publishers a POOL must be sized for -- the count when
+/// [`transient_local_publishers_over`] states one, and its WORST CASE when it
+/// refuses.
+///
+/// Issue 1572. A refusal used to contribute ZERO to both pools this count
+/// sizes, which is the unsafe direction: the queryable table and the retention
+/// pool then held no slot for the latched publisher the refusal was about, and
+/// the first `create_publisher` for it failed with `Full` at boot (code -3 on
+/// the C++ ABI). Measured on the Autoware Safety Island before issue 1567
+/// removed the silent row that triggered it.
+///
+/// RFC-0100 D6 already says what a refusal falls back to: *"worst case when
+/// refused, always the safe direction and always loud"* (XRCE assumes reliable
+/// and pays both buffers). The worst case here is that every publisher whose
+/// durability nobody stated IS transient-local, so this counts
+///
+/// * a `publisher` row unless it states `volatile`, and
+/// * every `action_server` row, as the rule does.
+///
+/// That is a BOUND: the true count can only be lower, by exactly the silent
+/// rows that turn out volatile. A pool sized from it cannot fall short, and
+/// the cost of the over-count is one queryable-table entry and one retention
+/// slot per silent row -- which stating the row's durability gives back.
+///
+/// Why a bound and not a refused CONFIGURE: the bound breaks no image that
+/// boots today, and a refusal would fail the build of every image with a
+/// silent volatile publisher, which is most of them. The refusal prose is
+/// still carried, by [`transient_local_publishers_over`], so the consumer
+/// can say what declaring would save.
+///
+/// `None` iff the rule answers [`Fact::Absent`] (no rows: nobody described the
+/// image, and the consumer keeps its builtin).
+pub fn transient_local_publishers_bound_over<'a, I>(rows: I) -> Option<usize>
+where
+    I: IntoIterator<Item = TlRow<'a>>,
+{
+    let mut count = 0usize;
+    let mut any = false;
+    for e in rows {
+        any = true;
+        match e.kind {
+            EndpointKind::ActionServer => count += 1,
+            EndpointKind::Publisher => match e.durability {
+                Fact::Stated(Durability::Volatile) => {}
+                _ => count += 1,
+            },
+            _ => {}
+        }
+    }
+    any.then_some(count)
+}
+
+/// [`transient_local_publishers_bound_over`] over a descriptor's endpoint rows.
+pub fn transient_local_publishers_bound(desc: &SizingDescriptor) -> Option<usize> {
+    transient_local_publishers_bound_over(desc.endpoints.iter().map(|e| TlRow {
+        kind: e.kind,
+        durability: e.durability(),
+        topic: &e.topic,
+        type_name: &e.type_name,
+    }))
+}
+
+/// The prefix of the `NROS_DECLARED_TL_PUBLISHERS` value that carries a
+/// REFUSED count's worst case: `refused:<bound>`.
+///
+/// Issue 1572. The carrier used to say the bare word `refused`, which carried
+/// no number, so both readers (`nros-zpico-build`, `nros-rmw-zenoh`) sized
+/// zero for it. The bound travels WITH the word, so a reader sizes safely and
+/// can still say out loud that it is paying for a count nobody stated.
+pub const DECLARED_TL_REFUSED_PREFIX: &str = "refused:";
+
+/// One reading of the `NROS_DECLARED_TL_PUBLISHERS` carrier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeclaredTl {
+    /// The composer counted them exactly.
+    Count(usize),
+    /// The composer could not count them (a publisher states no durability)
+    /// and sends the worst case, [`transient_local_publishers_bound_over`].
+    WorstCase(usize),
+}
+
+impl DeclaredTl {
+    /// The number a pool sizes from, whichever arm this is.
+    pub fn slots(self) -> usize {
+        match self {
+            DeclaredTl::Count(n) | DeclaredTl::WorstCase(n) => n,
+        }
+    }
+}
+
+/// Parse one non-empty `NROS_DECLARED_TL_PUBLISHERS` value -- the ONE parser
+/// both of its readers use, so the spelling cannot mean two things.
+///
+/// `Err` carries prose for the reader's panic. The bare word `refused` is an
+/// error on purpose: it is what a composer older than issue 1572 sends, it
+/// carries no bound, and sizing zero for it is the boot failure this parser
+/// exists to end.
+pub fn parse_declared_tl(v: &str) -> Result<DeclaredTl, String> {
+    let v = v.trim();
+    if let Some(bound) = v.strip_prefix(DECLARED_TL_REFUSED_PREFIX) {
+        return bound
+            .trim()
+            .parse::<usize>()
+            .map(DeclaredTl::WorstCase)
+            .map_err(|_| {
+                format!(
+                    "NROS_DECLARED_TL_PUBLISHERS={v:?}: `{DECLARED_TL_REFUSED_PREFIX}` must be \
+                     followed by the worst-case count"
+                )
+            });
+    }
+    if v == "refused" {
+        return Err(
+            "NROS_DECLARED_TL_PUBLISHERS=refused carries no worst case, so no pool can be \
+             sized from it safely (issue 1572). The `nros` CLI that composed it predates \
+             `refused:<bound>`: rebuild it (`just setup-cli`, or `./scripts/bootstrap.sh`) \
+             and reconfigure."
+                .to_string(),
+        );
+    }
+    v.parse::<usize>().map(DeclaredTl::Count).map_err(|_| {
+        format!(
+            "NROS_DECLARED_TL_PUBLISHERS={v:?} is neither a count nor \
+             `{DECLARED_TL_REFUSED_PREFIX}<bound>`. It is how many TRANSIENT_LOCAL publishers \
+             the entry declares, each of which costs a cache queryable and a retention slot \
+             (issues 1378/1572)."
+        )
+    })
+}
+
+/// The carrier value for a rule answer and its bound -- the inverse of
+/// [`parse_declared_tl`]. `None` for [`Fact::Absent`]: the carrier is then
+/// not emitted at all, and its absence means "nobody said".
+pub fn declared_tl_token(fact: &Fact<usize>, bound: Option<usize>) -> Option<String> {
+    match fact {
+        Fact::Stated(n) => Some(n.to_string()),
+        Fact::Refused(_) => Some(format!(
+            "{DECLARED_TL_REFUSED_PREFIX}{}",
+            bound.expect("a refused count has rows, so it has a bound")
+        )),
+        Fact::Absent => None,
+    }
 }
 
 /// [`transient_local_publishers`] for a build script, straight off
@@ -445,6 +591,71 @@ mod tests {
             ),
             other => panic!("expected a refusal, got {other:?}"),
         }
+    }
+
+    /// Issue 1572 -- a refused count still sizes its pools, from the WORST
+    /// case: every publisher whose durability nobody stated counts as
+    /// transient-local. Before this, a refusal contributed zero, and the
+    /// latched publisher the refusal was about had no queryable slot at boot.
+    #[test]
+    fn a_refused_count_sizes_its_pools_from_the_worst_case() {
+        let mut d = island();
+        let mut tl = Endpoint::new(EndpointKind::Publisher, "std_msgs/msg/String", "/latched");
+        tl.set_durability(Some(Durability::TransientLocal));
+        d.endpoints.push(tl);
+        let mut vol = Endpoint::new(EndpointKind::Publisher, "std_msgs/msg/String", "/chatter");
+        vol.set_durability(Some(Durability::Volatile));
+        d.endpoints.push(vol);
+        // Stated: the bound IS the count.
+        assert_eq!(transient_local_publishers(&d), Fact::Stated(1));
+        assert_eq!(transient_local_publishers_bound(&d), Some(1));
+
+        d.endpoints.push(Endpoint::new(
+            EndpointKind::Publisher,
+            "std_msgs/msg/String",
+            "/unstated",
+        ));
+        d.endpoints.push(Endpoint::new(
+            EndpointKind::ActionServer,
+            "example_interfaces/action/Fibonacci",
+            "/fibonacci",
+        ));
+        assert!(matches!(transient_local_publishers(&d), Fact::Refused(_)));
+        assert_eq!(
+            transient_local_publishers_bound(&d),
+            Some(3),
+            "latched + the silent publisher + the action server's /status; \
+             the volatile row costs nothing"
+        );
+        assert_eq!(
+            transient_local_publishers_bound(&SizingDescriptor::new(
+                "bare",
+                Status::Derived,
+                Basis::Contract
+            )),
+            None,
+            "no rows is still Absent, not a bound of zero"
+        );
+    }
+
+    /// Issue 1572 -- the carrier round-trips, and the bound travels with the
+    /// word so no reader can size zero for a refusal.
+    #[test]
+    fn the_declared_carrier_carries_the_worst_case_with_the_refusal() {
+        let refused = Fact::Refused("publisher /x states no durability".into());
+        let token = declared_tl_token(&refused, Some(3)).expect("emitted");
+        assert_eq!(token, "refused:3");
+        assert_eq!(parse_declared_tl(&token), Ok(DeclaredTl::WorstCase(3)));
+        assert_eq!(parse_declared_tl(&token).unwrap().slots(), 3);
+
+        let stated = declared_tl_token(&Fact::Stated(2), Some(2)).expect("emitted");
+        assert_eq!(parse_declared_tl(&stated), Ok(DeclaredTl::Count(2)));
+        assert_eq!(declared_tl_token(&Fact::Absent, None), None);
+
+        let bare = parse_declared_tl("refused").expect_err("a bare refusal has no bound");
+        assert!(bare.contains("issue 1572"), "{bare}");
+        assert!(parse_declared_tl("refused:").is_err());
+        assert!(parse_declared_tl("three").is_err());
     }
 
     /// An EMPTY descriptor is `Absent`, never `Stated(0)`. A consumer must be

@@ -159,11 +159,23 @@ function(nros_fold_entity_facts _out)
             if(NOT _have OR CMAKE_MATCH_1 GREATER _have)
                 set_property(GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_MAX "${CMAKE_MATCH_1}")
             endif()
+        elseif(_line MATCHES "^NROS_DECLARED_TL_PUBLISHERS=refused:([0-9]+)$")
+            # Issue 1572 -- an entry that LOOKED and could not count sends its
+            # WORST CASE (every publisher that states no durability counted as
+            # transient-local). The pool is sized once for the shared
+            # staticlib, so the worst case joins the same MAX the exact counts
+            # do, and the configure's answer is marked as a worst case so the
+            # word travels on to the reader.
+            set_property(GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_WORST_CASE TRUE)
+            get_property(_have GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_MAX)
+            if(NOT _have OR CMAKE_MATCH_1 GREATER _have)
+                set_property(GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_MAX "${CMAKE_MATCH_1}")
+            endif()
         elseif(_line MATCHES "^NROS_DECLARED_TL_PUBLISHERS=refused$")
-            # An entry that LOOKED and could not answer makes the whole
-            # configure's count unknown, exactly as an abstaining server count
-            # does: the staticlib is shared, and "unknown" is not smaller than
-            # anything.
+            # A bare `refused` is an `nros` CLI older than issue 1572: no worst
+            # case came with it, so the whole configure's count is unknown and
+            # the word is forwarded as-is -- the readers fail the build on it
+            # and say to rebuild the CLI, rather than sizing zero.
             set_property(GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_UNKNOWN TRUE)
         endif()
     endforeach()
@@ -876,14 +888,18 @@ function(nros_entity_facts_env _target)
     # server from three service servers, and only the first owes a cache slot.
     #
     # `refused` travels as a WORD rather than being dropped, so the consumer can
-    # say out loud that it is not budgeting for a term it knows exists — the
-    # same three-valued answer `nros_sizing_descriptor::Fact` carries on the
-    # cargo-leaf road, which already counts this and is why a Rust leaf boots
-    # where a declared C/C++ one did not.
+    # say out loud that it is paying for a term nobody counted -- and since
+    # issue 1572 it travels WITH the worst case, `refused:<n>`, so the consumer
+    # sizes for it instead of for zero. (The bare word, from an older CLI,
+    # carries no number; the consumer refuses it.)
     _nros_entity_fact(_tl_unknown NROS_ENTITY_TL_PUBLISHERS_UNKNOWN)
+    _nros_entity_fact(_tl_worst NROS_ENTITY_TL_PUBLISHERS_WORST_CASE)
     _nros_entity_fact(_tl NROS_ENTITY_TL_PUBLISHERS_MAX)
     if(_tl_unknown)
         list(APPEND _env "NROS_DECLARED_TL_PUBLISHERS=refused")
+    elseif(_tl_worst AND NOT _tl STREQUAL "")
+        list(APPEND _env "NROS_DECLARED_TL_PUBLISHERS=refused:${_tl}")
+        string(APPEND _app ", up to ${_tl} transient-local publisher(s) (worst case: a publisher states no durability)")
     elseif(NOT _tl STREQUAL "")
         list(APPEND _env "NROS_DECLARED_TL_PUBLISHERS=${_tl}")
         string(APPEND _app ", ${_tl} transient-local publisher(s)")

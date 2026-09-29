@@ -1114,14 +1114,25 @@ pub struct DerivedEntityKnobs {
     /// count [`Self::max_queryables`] already adds one cache queryable per.
     ///
     /// The fact is `nros_sizing_descriptor::transient_local_publishers_over`'s
-    /// answer, kept whole: a `Refused` is published as a refusal, never as the
-    /// zero `max_queryables` counts it as. The table and the pool must size
+    /// answer, kept whole: a `Refused` keeps its prose, and the number both
+    /// pools size from is [`Self::tl_slots`] (issue 1572). The table and the pool must size
     /// from one answer (issue 1025), and before this the Zephyr resolver road
     /// carried only the table's half: a west entry names no sizing descriptor
     /// to cargo, so the pool fell to its builtin of 2 while the table derived
     /// 5 -- measured on the Autoware Safety Island, whose third latched
     /// publisher then failed `create_publisher` at boot on QEMU and on Renode.
     pub tl_publishers: nros_sizing_descriptor::Fact<usize>,
+    /// The transient-local publishers both pools SIZE for: the count when
+    /// [`Self::tl_publishers`] states one, its worst case when it refuses
+    /// (every publisher that states no durability counted as
+    /// transient-local), and 0 when nothing is declared.
+    ///
+    /// Issue 1572. A refusal used to contribute ZERO cache queryables to
+    /// [`Self::max_queryables`], which is the unsafe direction: the latched
+    /// publisher the refusal was about then found the table full and failed
+    /// `create_publisher` at boot (`Full`, code -3 on the C++ ABI). RFC-0100
+    /// D6 is the rule this follows -- worst case when refused.
+    pub tl_slots: usize,
     /// Per-kind counts across the image, in [`ALL_ENTITY_KINDS`] order.
     pub per_kind: BTreeMap<&'static str, usize>,
     /// Per-component `(pkg, component, entities, slots)`, so the output records
@@ -2715,15 +2726,16 @@ impl EntityInventory {
         // short on every declared action image (issue 1378, measured on
         // `examples/qemu-armv7a-nuttx/c/action-server`).
         //
-        // A REFUSAL contributes zero, the same direction every other refusal
-        // here takes: the number stays what it was and the reason is published
-        // beside it, rather than a build failing on a pool it cannot price.
+        // Issue 1572 -- a REFUSAL contributes the WORST CASE, never zero.
+        // Zero was the unsafe direction: the refusal is about a publisher whose
+        // durability nobody stated, and if it is latched it needs the slot the
+        // zero withheld -- `Full` at boot, code -3. RFC-0100 D6: worst case when
+        // refused, and the reason is still published beside the number.
         let tl_publishers =
             crate::sizing_descriptor::transient_local_publishers_from_decls(&tl_decls);
-        let tl_queryables = match &tl_publishers {
-            nros_sizing_descriptor::Fact::Stated(n) => *n,
-            nros_sizing_descriptor::Fact::Refused(_) | nros_sizing_descriptor::Fact::Absent => 0,
-        };
+        let tl_queryables =
+            crate::sizing_descriptor::transient_local_publishers_bound_from_decls(&tl_decls)
+                .unwrap_or(0);
         let max_queryables = n(EntityKind::ServiceServer.tag())
             + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_QUERYABLES
             + tl_queryables
@@ -2777,6 +2789,7 @@ impl EntityInventory {
             max_monitors,
             max_age_monitors,
             tl_publishers,
+            tl_slots: tl_queryables,
             per_kind,
             per_component,
         }))
@@ -3951,12 +3964,12 @@ impl EntityInventory {
                     "set(NROS_ENTITY_APP_QUERYABLES {})\n",
                     k.max_queryables - k.infra_queryables
                 ));
-                // The transient-local retention pool, from the SAME fact the
-                // table above counted one cache queryable per. Published only
-                // when the rule STATED it: a refusal is carried as prose, so
-                // `nros_cargo_build.cmake` forwards nothing and
-                // `nros-rmw-zenoh` keeps its builtin and says why, rather than
-                // reading the zero the table had to count it as.
+                // The transient-local retention pool, from the SAME number the
+                // table above counted one cache queryable per. Issue 1572: a
+                // REFUSED count publishes its WORST CASE, with the refusal
+                // beside it. It used to publish nothing, so the pool kept its
+                // builtin of 2 while the table counted zero -- both short of a
+                // latched publisher whose durability nobody stated.
                 match &k.tl_publishers {
                     nros_sizing_descriptor::Fact::Stated(n) => s.push_str(&format!(
                         "# Transient-local publishers: the retention pool, one slot each,\n\
@@ -3964,8 +3977,12 @@ impl EntityInventory {
                          set(NROS_DERIVED_TL_PUBLISHERS {n})\n"
                     )),
                     nros_sizing_descriptor::Fact::Refused(why) => s.push_str(&format!(
-                        "# NROS_DERIVED_TL_PUBLISHERS is not derived: {}\n",
-                        why.replace('\n', " ")
+                        "# NROS_DERIVED_TL_PUBLISHERS is the WORST CASE, not a count: {}.\n\
+                         # Every publisher that states no durability is sized as\n\
+                         # transient-local (issue 1572); stating it gives the slots back.\n\
+                         set(NROS_DERIVED_TL_PUBLISHERS {})\n",
+                        why.replace('\n', " "),
+                        k.tl_slots
                     )),
                     nros_sizing_descriptor::Fact::Absent => s.push_str(
                         "# NROS_DERIVED_TL_PUBLISHERS is not derived: no endpoint is declared.\n",
@@ -5291,18 +5308,28 @@ mod tests {
         let subscribers = 1 + ACTION_CLIENT_SUBSCRIPTIONS; // + feedback
         let servers = 1 + ACTION_SERVER_QUERYABLES;
         let clients = 1 + ACTION_CLIENT_SERVICE_CLIENTS;
+        // Issue 1572 -- the bare `publisher` states no durability, so the
+        // transient-local count refuses and the table holds the WORST CASE:
+        // that publisher and the action server's `/status`, one cache
+        // queryable each. They used to count zero here.
+        let tl_cache = 2;
+        assert_eq!(k.tl_slots, tl_cache);
         assert_eq!(
             k.max_liveliness,
-            session_node + node_names + publishers + subscribers + servers + clients,
+            session_node + node_names + publishers + subscribers + servers + tl_cache + clients,
             "a timer declares no token; everything else declares exactly one"
         );
-        assert_eq!(k.max_liveliness, 15, "the same sum, spelled as a number");
+        assert_eq!(k.max_liveliness, 17, "the same sum, spelled as a number");
 
         // Two components are two node names.
         let mut two = EntityInventory::new("test");
         two.insert(stated("a", "one", &["publisher"]));
         two.insert(stated("b", "two", &["sub"]));
-        assert_eq!(two.derive().knobs().unwrap().max_liveliness, 1 + 2 + 1 + 1);
+        // (+ 1: the silent publisher's worst-case cache queryable, issue 1572.)
+        assert_eq!(
+            two.derive().knobs().unwrap().max_liveliness,
+            1 + 2 + 1 + 1 + 1
+        );
 
         // Never below the session's own token plus the component's node, so a
         // C array fed this value is never zero-length -- the consumer floors
@@ -5821,18 +5848,22 @@ execution:
                 .clone()
         };
         let none = knobs("");
-        assert_eq!(none.max_queryables, 1, "the application's one server");
+        // Issue 1572 -- `/b/chatter` states no durability, so its cache
+        // queryable is in the table at the worst case: one slot.
+        assert_eq!(none.tl_slots, 1);
+        let tl = none.tl_slots;
+        assert_eq!(none.max_queryables, 1 + tl, "the application's one server");
         assert_eq!(none.infra_queryables, 0);
         assert_eq!(none.param_service_nodes, 0);
 
         let params = knobs("param_services");
         assert_eq!(params.param_service_nodes, 2, "one set of six per node");
-        assert_eq!(params.max_queryables, 1 + 2 * PARAM_SERVICE_QUERYABLES);
+        assert_eq!(params.max_queryables, 1 + tl + 2 * PARAM_SERVICE_QUERYABLES);
 
         let both = knobs("param_services, lifecycle");
         assert_eq!(
             both.max_queryables,
-            1 + 2 * PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+            1 + tl + 2 * PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
         );
         assert_eq!(
             both.max_cbs, none.max_cbs,
@@ -5840,7 +5871,7 @@ execution:
         );
 
         // `safety` is a real feature and not a queryable question.
-        assert_eq!(knobs("safety").max_queryables, 1);
+        assert_eq!(knobs("safety").max_queryables, 1 + tl);
     }
 
     /// Issue 1378 -- **an action server costs FOUR queryables, not three.**
@@ -5918,7 +5949,8 @@ execution:
         assert!(
             cmake.contains(&format!(
                 "set(NROS_DERIVED_MAX_QUERYABLES {})\n",
-                1 + 2 * PARAM_SERVICE_QUERYABLES
+                // + 1: `/b/chatter`'s worst-case cache queryable (issue 1572).
+                1 + 1 + 2 * PARAM_SERVICE_QUERYABLES
             )),
             "{cmake}"
         );
@@ -5928,9 +5960,10 @@ execution:
         );
         // Issue 1485 -- and the application's share is a NUMBER, the one the
         // zenoh shim subtracts to give the runtime its builtin inbox. The
-        // table minus the runtime's twelve: the model's one service server.
+        // table minus the runtime's twelve: the model's one service server,
+        // plus `/b/chatter`'s worst-case cache queryable (issue 1572).
         assert!(
-            cmake.contains("set(NROS_ENTITY_APP_QUERYABLES 1)\n"),
+            cmake.contains("set(NROS_ENTITY_APP_QUERYABLES 2)\n"),
             "the application's share is published: {cmake}"
         );
     }
@@ -6368,9 +6401,14 @@ structure:
         let k = d.knobs().expect("wiring yields knobs");
         assert_eq!(k.max_subscribers, 2, "two subscriptions across the image");
         assert_eq!(k.max_publishers, 1, "one publisher");
+        // Issue 1572 -- no service server, and ONE queryable anyway: the
+        // publisher states no durability, so its cache queryable is sized at
+        // the worst case rather than at zero.
+        assert_eq!(k.tl_slots, 1);
         assert_eq!(
-            k.max_queryables, 0,
-            "no service server is declared, so the DEMAND is zero"
+            k.max_queryables - k.tl_slots,
+            0,
+            "no service server is declared, so the SERVER demand is zero"
         );
     }
 
@@ -6401,7 +6439,12 @@ structure:
         let k = d.knobs().expect("a stated declaration derives");
         assert_eq!(k.max_publishers, 1);
         assert_eq!(k.max_subscribers, 0, "declares none, so demands none");
-        assert_eq!(k.max_queryables, 0, "declares none, so demands none");
+        // Issue 1572 -- no server, but a publisher that states no durability
+        // may be latched, so the worst case holds its cache queryable.
+        assert_eq!(
+            k.max_queryables, 1,
+            "no server; one worst-case cache queryable"
+        );
         // And the floor a C-array consumer applies to that demand.
         assert_eq!(c_array_pool_floor(k.max_subscribers), 1);
         assert_eq!(c_array_pool_floor(3), 3, "a real demand passes through");
@@ -6957,11 +7000,14 @@ contracts:
         )
     }
 
-    /// `/talker/quiet` states no durability, so no transient-local count is a
-    /// bound: the fragment carries the refusal and no number, and the pool
-    /// keeps its builtin rather than a zero.
+    /// `/talker/quiet` states no durability, so no transient-local count is
+    /// exact. Issue 1572: the pools are then sized for the WORST CASE -- the
+    /// silent publisher counted as transient-local -- with the refusal naming
+    /// the row beside the number. Before, the table counted ZERO cache
+    /// queryables for it and the fragment published no pool size at all, so
+    /// a latched `/quiet` failed `create_publisher` at boot.
     #[test]
-    fn a_silent_publisher_refuses_the_transient_local_count() {
+    fn a_silent_publisher_sizes_the_transient_local_pools_for_the_worst_case() {
         let inv = EntityInventory::from_model("model", &model_with_four_policies())
             .expect("model describes wiring");
         let k = inv.derive().knobs().expect("derived").clone();
@@ -6970,11 +7016,27 @@ contracts:
             "{:?}",
             k.tl_publishers
         );
-        let cmake = inv.to_cmake();
-        assert!(!cmake.contains("set(NROS_DERIVED_TL_PUBLISHERS"), "{cmake}");
+        // `/talker/chatter` is stated transient-local and `/talker/quiet` is
+        // silent: two, never one and never zero.
+        assert_eq!(k.tl_slots, 2, "the worst case counts the silent row");
         assert!(
-            cmake.contains("# NROS_DERIVED_TL_PUBLISHERS is not derived: publisher /quiet"),
-            "the refusal names the silent row: {cmake}"
+            k.max_queryables >= k.infra_queryables + k.tl_slots,
+            "the table holds a cache queryable for every publisher that might \
+             be latched: {} < {} + {}",
+            k.max_queryables,
+            k.infra_queryables,
+            k.tl_slots
+        );
+        let cmake = inv.to_cmake();
+        assert!(
+            cmake.contains("set(NROS_DERIVED_TL_PUBLISHERS 2)\n"),
+            "the retention pool gets the worst case too: {cmake}"
+        );
+        assert!(
+            cmake.contains(
+                "# NROS_DERIVED_TL_PUBLISHERS is the WORST CASE, not a count: publisher /quiet"
+            ),
+            "the refusal still names the silent row: {cmake}"
         );
     }
 

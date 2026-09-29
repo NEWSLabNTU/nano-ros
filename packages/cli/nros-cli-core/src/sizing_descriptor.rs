@@ -586,18 +586,7 @@ fn endpoint_kind(k: EntityKind) -> Option<EndpointKind> {
 pub fn transient_local_publishers_from_decls(
     decls: &[crate::entity_inventory::EntityDecl],
 ) -> nros_sizing_descriptor::Fact<usize> {
-    let answer =
-        nros_sizing_descriptor::transient_local_publishers_over(decls.iter().filter_map(|d| {
-            endpoint_kind(d.kind).map(|kind| nros_sizing_descriptor::TlRow {
-                kind,
-                durability: match d.durability.and_then(map_durability) {
-                    Some(v) => nros_sizing_descriptor::Fact::Stated(v),
-                    None => nros_sizing_descriptor::Fact::Absent,
-                },
-                topic: d.name.as_deref().unwrap_or("<unnamed>"),
-                type_name: d.type_name.as_deref().unwrap_or("<untyped>"),
-            })
-        }));
+    let answer = nros_sizing_descriptor::transient_local_publishers_over(tl_rows(decls));
     // WHETHER A DECLARATION EXISTS is this adapter's question; WHAT IT IMPLIES
     // is the rule's. They come apart for exactly one input: a component that
     // declares only timers and guard conditions. `endpoint_kind` drops those
@@ -612,6 +601,41 @@ pub fn transient_local_publishers_from_decls(
         }
         other => other,
     }
+}
+
+/// The declarations as the rule's rows -- ONE mapping, shared by the count and
+/// its bound, so the two cannot disagree about which row is a publisher.
+fn tl_rows(
+    decls: &[crate::entity_inventory::EntityDecl],
+) -> impl Iterator<Item = nros_sizing_descriptor::TlRow<'_>> {
+    decls.iter().filter_map(|d| {
+        endpoint_kind(d.kind).map(|kind| nros_sizing_descriptor::TlRow {
+            kind,
+            durability: match d.durability.and_then(map_durability) {
+                Some(v) => nros_sizing_descriptor::Fact::Stated(v),
+                None => nros_sizing_descriptor::Fact::Absent,
+            },
+            topic: d.name.as_deref().unwrap_or("<unnamed>"),
+            type_name: d.type_name.as_deref().unwrap_or("<untyped>"),
+        })
+    })
+}
+
+/// The slots a pool must hold for these declarations' transient-local
+/// publishers: the count when [`transient_local_publishers_from_decls`] states
+/// one, its WORST CASE when it refuses -- issue 1572, RFC-0100 D6. See
+/// [`nros_sizing_descriptor::transient_local_publishers_bound_over`].
+///
+/// `None` only for no declarations at all, where the count is `Absent` too.
+/// Declarations with no endpoint rows (timers only) bound at zero, for the
+/// reason the count's adapter gives.
+pub fn transient_local_publishers_bound_from_decls(
+    decls: &[crate::entity_inventory::EntityDecl],
+) -> Option<usize> {
+    if decls.is_empty() {
+        return None;
+    }
+    Some(nros_sizing_descriptor::transient_local_publishers_bound_over(tl_rows(decls)).unwrap_or(0))
 }
 
 fn endpoint_row(
@@ -2133,6 +2157,51 @@ mod tests {
 
         // Nothing declared at all is the one case that IS `Absent`.
         assert_eq!(transient_local_publishers_from_decls(&[]), Fact::Absent);
+    }
+
+    /// Issue 1572 -- the declared road's BOUND. A silent publisher counts as
+    /// transient-local; a stated volatile one costs nothing; a stated count is
+    /// its own bound.
+    #[test]
+    fn declared_entities_bound_a_refused_transient_local_count_from_above() {
+        let decl = |k: EntityKind, ty: &str, name: &str| {
+            EntityDecl::bare(k, Some(ty.into()), Some(name.into()))
+        };
+        let with = |name: &str, d: QoSDurabilityPolicy| {
+            let mut p = decl(EntityKind::Publisher, "std_msgs/msg/String", name);
+            p.durability = Some(d);
+            p
+        };
+        let silent = decl(EntityKind::Publisher, "std_msgs/msg/String", "/quiet");
+        let rows = [
+            with("/latched", QoSDurabilityPolicy::TransientLocal),
+            with("/chatter", QoSDurabilityPolicy::Volatile),
+            silent,
+            decl(
+                EntityKind::ServiceServer,
+                "example_interfaces/srv/AddTwoInts",
+                "/add",
+            ),
+        ];
+        assert!(matches!(
+            transient_local_publishers_from_decls(&rows),
+            nros_sizing_descriptor::Fact::Refused(_)
+        ));
+        assert_eq!(transient_local_publishers_bound_from_decls(&rows), Some(2));
+        assert_eq!(
+            transient_local_publishers_bound_from_decls(&rows[..2]),
+            Some(1),
+            "a stated count is its own bound"
+        );
+        assert_eq!(
+            transient_local_publishers_bound_from_decls(&[EntityDecl::bare(
+                EntityKind::Timer,
+                None,
+                None
+            )]),
+            Some(0)
+        );
+        assert_eq!(transient_local_publishers_bound_from_decls(&[]), None);
     }
 
     /// phase-461 W3 -- the join W6.a's own header records as refusing on every

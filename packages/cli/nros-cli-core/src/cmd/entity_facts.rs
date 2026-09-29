@@ -341,7 +341,10 @@ pub fn facts_from_leaf(dir: &std::path::Path) -> Result<Option<BTreeMap<String, 
     // three service servers, and only the first of those owes a cache slot.
     out.insert(
         TL_PUBLISHERS.to_string(),
-        tl_token(&crate::sizing_descriptor::transient_local_publishers_from_decls(&decls)),
+        tl_token(
+            &crate::sizing_descriptor::transient_local_publishers_from_decls(&decls),
+            crate::sizing_descriptor::transient_local_publishers_bound_from_decls(&decls),
+        ),
     );
     Ok(Some(out))
 }
@@ -358,20 +361,19 @@ pub const TL_PUBLISHERS: &str = "NROS_DECLARED_TL_PUBLISHERS";
 /// The value word for [`TL_PUBLISHERS`], preserving all three answers.
 ///
 /// A `Fact` has three arms and an env variable is a string, so the mapping has
-/// to be written down somewhere; writing it here keeps `refused` from
-/// collapsing into `0` on the way out. The consumer treats `refused` the way it
-/// already treats a refused DESCRIPTOR — contribute nothing and say so out loud
-/// — rather than as a number it can size from.
+/// to be written down somewhere. Issue 1572: a refusal travels as
+/// `refused:<worst case>`, the spelling `nros_sizing_descriptor` owns
+/// ([`nros_sizing_descriptor::declared_tl_token`] / `parse_declared_tl`). It
+/// used to be the bare word `refused`, which carried no number, so both readers
+/// sized ZERO for it -- the unsafe direction, and a boot failure for the
+/// latched publisher the refusal was about. The word still travels, so the
+/// reader can say out loud that it is paying for a count nobody stated.
 ///
-/// `Absent` emits nothing at all, so the variable's presence means "this road
-/// looked", which is the distinction issue 0973 is about.
-fn tl_token(f: &nros_sizing_descriptor::Fact<usize>) -> String {
-    match f {
-        nros_sizing_descriptor::Fact::Stated(n) => n.to_string(),
-        nros_sizing_descriptor::Fact::Refused(_) | nros_sizing_descriptor::Fact::Absent => {
-            "refused".to_string()
-        }
-    }
+/// This producer only ever reaches here with declarations in hand, so the
+/// answer is never `Absent`; if it were, the bare word would make the reader
+/// fail the build rather than size from nothing.
+fn tl_token(f: &nros_sizing_descriptor::Fact<usize>, bound: Option<usize>) -> String {
+    nros_sizing_descriptor::declared_tl_token(f, bound).unwrap_or_else(|| "refused".to_string())
 }
 
 pub fn run(args: EntityFactsArgs) -> Result<()> {
@@ -637,6 +639,27 @@ mod tests {
         // describes itself gets an exact pool, so every term must be stated.
         assert_eq!(f["NROS_DECLARED_TL_PUBLISHERS"], "0");
         assert_eq!(f.len(), 4, "the leaf road emits the model road's four");
+    }
+
+    /// Issue 1572 -- a publisher that states no durability REFUSES the
+    /// transient-local count, and the carrier then sends the WORST CASE with
+    /// the word: the silent publisher counted as transient-local, plus the
+    /// action server's `/status`. It used to send the bare word `refused`,
+    /// which both readers sized as ZERO cache queryables -- the unsafe
+    /// direction, and `Full` at boot for a latched publisher.
+    #[test]
+    fn a_silent_publisher_sends_the_worst_case_with_the_refusal() {
+        let td = leaf_dir(&format!(
+            "{LEAF_HEAD}\n[[component]]\npkg = \"p\"\nname = \"n\"\n\
+             entities = [\"action_server\", \"publisher\", \"service_server\"]\n{LEAF_IMAGE}"
+        ));
+        let f = facts_from_leaf(td.path()).unwrap().expect("declared");
+        assert_eq!(f["NROS_DECLARED_TL_PUBLISHERS"], "refused:2");
+        assert_eq!(
+            nros_sizing_descriptor::parse_declared_tl(&f["NROS_DECLARED_TL_PUBLISHERS"]),
+            Ok(nros_sizing_descriptor::DeclaredTl::WorstCase(2)),
+            "the carrier's one parser reads what this producer wrote"
+        );
     }
 
     /// The counting rule is the model road's: a service server is one
