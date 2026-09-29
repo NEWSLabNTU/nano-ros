@@ -1,11 +1,12 @@
 ---
 id: 1553
 title: "The CI image provisions no Corrosion, so every probe gate git-clones it at configure time and two of them race one shared fetch cache"
-status: open
+status: resolved
 type: bug
 area: [ci, build]
 severity: medium
 found: 2026-09-28
+resolved: 2026-09-29
 related: [0500, 0726, 1457, 1482]
 ---
 
@@ -169,3 +170,48 @@ passing in CI on PR #1354.** That PR's run 36556534101 (job 109358679755,
 the same `destination path 'corrosion-src' already exists` — so the collision
 is not a once-per-blue-moon race, it is what this lane now does every time two
 probe gates of that shape run in one `-P4` fast lane.
+
+## Resolved (2026-09-29) — the acceptance is met, as written
+
+The remedy landed as **#1454**: a `Provision Corrosion (pinned by
+[tool.corrosion])` step in `gate.yml`'s `check` job, beside the clang-format
+one, forwarding to `nros setup --tool corrosion`. Not the image layer this
+issue first proposed — see the section above for why an image cannot hold it.
+
+The acceptance was *`probe-workspace-caps` passing in CI on PR #1354*, the gate
+that was actually blocked. Measured on #1354 after a rebase onto the merged
+fix, head `96475195b`, check job **109405787841**:
+
+```
+check (fast + PR source gates; full compile tier on nightly/manual)  completed/success
+CI                                                                   completed/success
+```
+
+The same PR's previous run on `fe36c6593` (job 109358679755) failed with
+`1 of 366 gate(s) FAILED`, `===== FAIL (probe-workspace-caps, rc=1)` and the
+`destination path 'corrosion-src' already exists` collision, twice on the same
+head sha. Nothing about #1354 changed between them except the rebase onto the
+fix.
+
+**What the step cost, measured rather than estimated.** From the same log:
+
+```
+12:33:13  just workspace install-corrosion
+12:33:13  nros setup --tool corrosion: source build 0.6.1-nros1 (no prebuilt for linux-x86_64)
+          → /github/home/.nros/sdk/corrosion/0.6.1-nros1
+12:33:14  -- Installing: .../lib/cmake/Corrosion/CorrosionConfig.cmake
+```
+
+Under two seconds, which is what `[tool.corrosion]` being config-only at
+install time predicts, and the reason it was affordable on every event. It has
+since been confirmed on all three events that run `check fast` — the pull
+request above, merge-group run 36568957740 (check job 109407828058), and the
+push gates 36573018068 / 36575289434, whose only failures are the unrelated
+issue-1345 pair.
+
+One thing this does NOT establish: the log line that would say so directly.
+The section above already records that a green run prints nothing about
+Corrosion either way, because both probe tests only `tail` their configure log
+when the configure fails. What is observable is the provisioning step's own
+output, quoted above — it names the resolved prefix unconditionally, which is
+issue 0500's rule (read the line, never infer the install from having run it).
