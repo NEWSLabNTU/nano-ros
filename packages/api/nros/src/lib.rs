@@ -1035,6 +1035,18 @@ pub use nros_node::{TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, Time
 // layer cannot name is a type the metadata layer re-invents.
 pub use nros_node::timer::TimerClockSource;
 
+/// phase-467 Q4 / ledger row `c:logging_rosout_enabled` — the `/rosout` log
+/// bridge. A module re-export rather than a flat one: the names a caller
+/// needs (`enable`, `pump`, `qos`, `qos_bounded`, `TOPIC`) are generic words
+/// that only read correctly under the `rosout::` prefix.
+/// Gated like the module it comes from: `nros_node::rosout` is
+/// `#[cfg(all(feature = "rosout", any(has_rmw, test)))]` there, and `has_rmw`
+/// is `nros-node`'s own build-script cfg — this crate spells the same
+/// condition as `feature = "rmw-cffi"`, exactly as the `parameter_services`
+/// re-export below does.
+#[cfg(all(feature = "rosout", feature = "rmw-cffi"))]
+pub use nros_node::rosout;
+
 // Re-export transport types (middleware-agnostic)
 pub use nros_rmw::{
     ClientTrait, Publisher, QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy,

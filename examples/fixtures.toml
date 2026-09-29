@@ -1560,6 +1560,20 @@ dir = "packages/testing/nros-tests/bins/graph-probe"
 no_default_features = true
 features = ["rmw-cyclonedds"]
 
+# phase-467 Q4 — the `/rosout` bridge probe (ledger row
+# `c:logging_rosout_enabled`). Logs through `nros_log` and pumps
+# `nros_node::rosout` onto `/rosout`, so `rosout_interop.rs` can ask a STOCK
+# `ros2 topic echo /rosout` whether it sees a nano-ros node's logs. One RMW
+# row: the bridge is a publisher of one generated message type and nothing in
+# it is backend-specific, so a second row would buy a second build and no
+# second question.
+[[fixture]]
+id = "rosout-talker"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/rosout-talker"
+
 # phase-433 W6 — the advertised-state probe. Holds a Cyclone publisher and
 # subscription open and prints what the matched-count, GID, actual-QoS and
 # serialization-format slots say about them, so `advertised_state_interop.rs`

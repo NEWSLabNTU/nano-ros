@@ -935,6 +935,19 @@ test-ros2-lifecycle verbose="":
 test-ros2-graph verbose="":
     @just _test-focused 'binary(=graph_interop)' {{verbose}}
 
+# Does a nano-ros node's LOG reach a stock `ros2 topic echo /rosout`?
+# phase-467 Q4 / ledger row `c:logging_rosout_enabled`. The one cell whose
+# subject is the LOGGING path rather than an application message: it publishes
+# whatever the runtime raised, through a sink installed in `nros_log`'s
+# dispatch walk, and the QoS it publishes with is deliberately NOT upstream's
+# (VOLATILE, because a transient-local `/rosout` costs a zenoh queryable slot
+# against an embedded budget of 8 — issues 0460/1378). Whether a stock
+# subscriber still matches is a question about somebody else's defaults.
+# Runs `rosout_interop`; needs ROS 2 + `rmw_zenoh_cpp`.
+[group("debug")]
+test-rosout verbose="":
+    @just _test-focused 'binary(=rosout_interop)' {{verbose}}
+
 # The `ros2 action …` family against nano-ros action nodes — phase-433 W6 /
 # issue 1127. Two `interop::CELLS` cells (`native-action-rust-cyclone-*`), and
 # the n2r direction additionally needs

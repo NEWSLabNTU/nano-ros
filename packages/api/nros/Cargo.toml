@@ -199,6 +199,12 @@ param-services = ["nros-node/param-services"]
 # Lifecycle services for ROS 2 interop (ros2 lifecycle set|get|list|nodes — REP-2002).
 lifecycle-services = ["nros-node/lifecycle-services"]
 
+# phase-467 Q4 / ledger row `c:logging_rosout_enabled` — the `/rosout` log
+# bridge: `nros_log`'s queueing sink plus `nros_node::rosout`'s pump. A
+# forward, like every other capability on this line; the cost argument lives
+# on `nros-log/rosout`, which this reaches through `nros-node`.
+rosout = ["nros-node/rosout"]
+
 # phase-425 W3/W3b — the `/clock` time source: `use_sim_time` attaches it, and a
 # `TimerClockSource::Ros` timer then follows a simulator or a bag player.
 #

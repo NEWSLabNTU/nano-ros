@@ -1,0 +1,55 @@
+[workspace]
+
+[package]
+name = "rosout-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "phase-467 Q4 / ledger row `c:logging_rosout_enabled` — the `/rosout` bridge's live-peer fixture. Logs through `nros_log` and pumps `nros_node::rosout` onto `/rosout` as `rcl_interfaces/msg/Log`, so a stock `ros2 topic echo /rosout` can be asked whether it sees a nano-ros node's logs. Consumed by `tests/rosout_interop.rs`."
+
+[[bin]]
+name = "rosout-talker"
+path = "src/main.rs"
+
+[features]
+# Zenoh only, deliberately. The bridge is RMW-agnostic — it is a publisher of
+# one generated message type — so a second RMW row would buy a second build
+# and no second question. Add one the day the answer could differ.
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
+
+[dependencies]
+nros = { path = "../../../../api/nros", default-features = false, features = [
+    "std", "alloc", "env",
+    "rmw-cffi",
+    "ros-humble",
+    "rosout",
+] }
+nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", features = ["posix-c-port"] }
+nros-board-linux = { path = "../../../../boards/nros-board-linux", default-features = false }
+nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
+    "std",
+    "platform-posix",
+    "ros-humble",
+], optional = true }
+# The `/rosout` message. One of the CORE pre-generated interface packages
+# (CLAUDE.md's exception to "never commit a `generated/` tree"), so this
+# resolves from a bare clone and this leaf needs no `generated/` of its own
+# and no `package.xml`. NO version requirement — a generated crate's version
+# is the constant `0.0.0` and pinning either spelling broke root-workspace
+# resolution twice (#394).
+nros-rcl-interfaces = { path = "../../../../interfaces/generated/humble/nros-rcl-interfaces", default-features = false }
+# `platform-clock` because a `/rosout` stamp comes from the RECORD, and
+# without this feature `Record::timestamp_ns` is a constant 0 — measured:
+# `ros2 topic echo` printed `sec: 0 / nanosec: 0` for every record until this
+# was turned on. Deliberately NOT forwarded by `nros-node/rosout`: the feature
+# is a LINK-TIME requirement on `nros_platform_clock_ns`, and putting that on
+# every rosout image is issue 0710's mistake one crate over.
+nros-log = { path = "../../../../core/nros-log", features = ["platform-clock"] }
+log = "0.4"
+env_logger = "0.11"
+
+[patch.crates-io]
+nros-core = { path = "../../../../core/nros-core" }
+nros-serdes = { path = "../../../../core/nros-serdes" }
