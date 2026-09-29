@@ -426,8 +426,13 @@ the static is uninitialised) for parts with tightly-coupled memory;
 `NROS_EXECUTOR_BACKING_U64S` (Kconfig: `CONFIG_NROS_EXECUTOR_BACKING_U64S`,
 `-1` = derive) resizes it, or removes it entirely at `0`, because the RTOS half
 of the move — lowering the allocator arena by the same amount — is per-image
-(issue 1145). The heap arm remains for a second executor (tiered boot opens one
-per tier) and for an entry sized past the reservation.
+(issue 1145). The heap arm remains for a second executor opened through an
+`alloc` constructor and for an entry sized past the reservation. A tiered boot's
+SPAWNED tiers are not that second executor: the entry owns their backing too —
+`nros::main!` emits one `TierExecutorBacking<N>` static (N = tiers − 1, each slot
+exactly `ExecutorSizing::DEFAULT.u64_len()` words) and every board's `run_tiers`
+hands a spawned tier its slot (`Executor::open_with_session_slot`), the Rust twin
+of the C/C++ pack's `__nros_tier_executor_storage` (issues 1568, 1571).
 
 **An image that pays for the static out of the allocator arena STATES the size
 rather than measuring it** (issue 1171). The derived size is a function of the
