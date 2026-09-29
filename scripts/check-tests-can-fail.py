@@ -69,6 +69,10 @@ import os
 import re
 import subprocess
 import sys
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -102,39 +106,8 @@ def _strip_comments(src: str) -> str:
     a doc comment as code reports a call site that is prose. Blanking rather
     than deleting keeps every byte offset, so reported line numbers stay true.
     """
-    out = list(src)
-    i, n = 0, len(src)
-    while i < n:
-        c = src[i]
-        if c == "/" and i + 1 < n and src[i + 1] == "/":
-            j = src.find("\n", i)
-            j = n if j < 0 else j
-            for k in range(i, j):
-                out[k] = " "
-            i = j
-        elif c == "/" and i + 1 < n and src[i + 1] == "*":
-            j = src.find("*/", i + 2)
-            j = n if j < 0 else j + 2
-            for k in range(i, j):
-                if out[k] != "\n":
-                    out[k] = " "
-            i = j
-        elif c == '"':
-            j = i + 1
-            while j < n:
-                if src[j] == "\\":
-                    j += 2
-                    continue
-                if src[j] == '"':
-                    break
-                j += 1
-            for k in range(i, min(j + 1, n)):
-                if out[k] != "\n":
-                    out[k] = " "
-            i = j + 1
-        else:
-            i += 1
-    return "".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(src, "rust", strings=True)
 
 
 # The `require_*` shape the docstring promises to leave alone: the arm PRINTS a

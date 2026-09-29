@@ -35,6 +35,10 @@ Run: python3 scripts/check-cmake-image-policy.py
 import os
 import re
 import sys
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -66,7 +70,8 @@ EXEMPT = {
 
 def strip_comments(text):
     """cmake comments only. The whole point of the gate is not to read prose."""
-    return re.sub(r"(?m)#.*$", "", text)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "cmake")
 
 
 def cmake_files():

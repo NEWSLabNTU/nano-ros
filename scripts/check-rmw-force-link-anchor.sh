@@ -60,8 +60,12 @@ for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo
     # non-zero `cat` ends the shell at the assignment, so `cat_rc` could only
     # ever hold 0 and the diagnostic that prints it could never say anything.
     # Same shape as the anchor grep below, same fix.
+    #
+    # phase-472 W3: read as CODE. A `// nros::force_link_backend!(…)` anchors
+    # nothing, and a raw `cat` let it satisfy the anchor grep below. The shared
+    # stripper's CLI blanks comments (and fails loudly, like `cat` did).
     # shellcheck disable=SC2086
-    if src_text=$(cat $src_files); then cat_rc=0; else cat_rc=$?; fi
+    if src_text=$(python3 scripts/lib/comments.py --lang rust $src_files); then cat_rc=0; else cat_rc=$?; fi
     src_bytes=${#src_text}
     src="$dir/src"
 

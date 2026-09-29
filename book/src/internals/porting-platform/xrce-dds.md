@@ -18,9 +18,9 @@ directly.
 ## Platform crate structure
 
 The XRCE-DDS clock symbols are a subset of what the platform crate provides.
-Your `nros-platform-<name>` crate provides the canonical clock primitives
-(`nros_platform_time_now_ms`, `nros_platform_clock_us`) and the alias TU
-maps them to the `uxr_*` symbols XRCE-DDS expects.
+Your `nros-platform-<name>` crate provides the canonical monotonic clock,
+`nros_platform_clock_ns`, and the alias TU maps it to the `uxr_*` symbols
+XRCE-DDS expects.
 
 ```
 packages/platform/nros-platform-<name>/
@@ -126,10 +126,10 @@ the clock symbols.
 
 1. **Create the platform crate** — `nros-platform-<name>/` (see
    [Custom Platform](../../porting/custom-platform.md))
-2. **Implement the canonical clock primitives** —
-   `nros_platform_time_now_ms()` / `nros_platform_clock_us()`; the alias TU
-   (`nros-rmw-xrce/src/platform_aliases.c`) maps these to `uxr_millis()` /
-   `uxr_nanos()` for you
+2. **Implement the canonical clock primitive** —
+   `nros_platform_clock_ns()`; the alias TU
+   (`nros-rmw-xrce/src/platform_aliases.c`) derives `uxr_millis()` /
+   `uxr_nanos()` from it for you
 3. **Implement `smoltcp_clock_now_ms()`** if using smoltcp transport
 4. **Add a feature to `xrce-sys`** for the new platform if needed
 5. **Choose or implement a transport crate** — reuse `xrce-smoltcp` for
@@ -142,26 +142,24 @@ the clock symbols.
 ## Example: bare-metal MPS2-AN385
 
 The simplest reference is `nros-platform-mps2-an385`. It supplies the
-canonical `nros_platform_*` clock symbols; the XRCE alias TU
+canonical `nros_platform_clock_ns`; the XRCE alias TU
 (`nros-rmw-xrce/src/platform_aliases.c`) then derives `uxr_millis` /
-`uxr_nanos` from them — you never hand-write the `uxr_*` symbols:
+`uxr_nanos` from it — you never hand-write the `uxr_*` symbols:
 
 ```c
 /* nros-rmw-xrce/src/platform_aliases.c — provided for you, not the porter */
 int64_t uxr_millis(void) {
-    return (int64_t) nros_platform_time_now_ms();
+    return (int64_t) (nros_platform_clock_ns() / 1000000u);
 }
 int64_t uxr_nanos(void) {
-    return (int64_t) nros_platform_clock_us() * 1000;
+    return (int64_t) nros_platform_clock_ns();
 }
 ```
 
-So a porter only implements the canonical primitives in their platform crate
-(`nros_platform_time_now_ms`, `nros_platform_clock_us`), plus
-`smoltcp_clock_now_ms()` if using the smoltcp transport. The MPS2-AN385
-platform reads these from a hardware timer with wrap detection.
-
-Where `clock_ms()` reads from a hardware timer with wrap detection.
+So a porter only implements the canonical primitive in their platform crate
+(`nros_platform_clock_ns`), plus `smoltcp_clock_now_ms()` if using the
+smoltcp transport. The MPS2-AN385 platform reads it from a hardware timer
+with wrap detection.
 
 ## Common pitfalls
 

@@ -45,6 +45,11 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
+# phase-472 W3 — the guard is read as CODE: a comparison or `#error` that sits
+# in a comment guards nothing, and used to count.
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+import comments  # noqa: E402
+
 # Every producer of a header a caller compiles against. Two Rust emitters (the
 # C++ one inlines the text, the C one substitutes into the templates below) and
 # the two templates themselves.
@@ -70,6 +75,9 @@ class Failure(Exception):
 def check_text(name: str, text: str) -> list[str]:
     """Every producer must DEFINE the floor and GUARD on it."""
     problems = []
+    # A `.rs` producer emits the header from string literals (kept); a template
+    # is C. Either way its comments are prose.
+    text = comments.strip_comments(text, "rust" if name.endswith(".rs") else "c")
 
     # `[^\S\n]` not `\s`: the latter matches the NEWLINE, so a valueless
     # `#define NROS_EXECUTOR_MAIN_STACK_MIN` followed by the `#if` line would
@@ -121,7 +129,7 @@ def run() -> int:
     c = REPO / C_EMITTER
     if not c.is_file():
         raise Failure(f"{C_EMITTER}: missing.")
-    if C_SUBSTITUTION not in c.read_text():
+    if C_SUBSTITUTION not in comments.strip_comments(c.read_text(), "rust"):
         problems.append(
             f"{C_EMITTER}: does not substitute `{C_SUBSTITUTION}`.\n"
             f"    It reaches the header through the templates rather than inlining the\n"
@@ -170,6 +178,16 @@ def selftest() -> int:
 
     no_error = good.replace('#error "too small"\n', "")
     assert any("no `#error`" in p for p in check_text("t", no_error))
+
+    comments.self_test()
+    # phase-472 W3 — a guard in a COMMENT is no guard.
+    commented = good.replace(
+        f"#if CONFIG_MAIN_STACK_SIZE < {DEFINE}\n",
+        f"#if 0 /* CONFIG_MAIN_STACK_SIZE < {DEFINE} */\n",
+    )
+    assert any("does not COMPARE" in p for p in check_text("t", commented))
+    assert any("no `#error`" in p for p in check_text(
+        "t", good.replace('#error "too small"\n', '// #error "too small"\n')))
 
     no_optout = good.replace(f" && !defined({OPT_OUT})", "").replace(OPT_OUT, "")
     assert any("escape hatch" in p for p in check_text("t", no_optout))

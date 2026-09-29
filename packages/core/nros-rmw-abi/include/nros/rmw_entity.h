@@ -977,7 +977,7 @@ typedef struct rmw_session_t {
  *
  *  **Done, W5/B1 (2026-08-24).** `create_publisher` / `create_subscription` /
  *  `create_service` / `create_client` take `const rmw_node_t *` the way
- *  upstream does. That retired the `entity_view` fabrication — the shim now
+ *  upstream does. That retired the entity_view fabrication — the shim now
  *  owns a node table and calls `create_node` once per distinct
  *  `(name, namespace)`, which is only true because `Executor::create_node`
  *  deduplicates (W5/B1.a).
@@ -1025,7 +1025,7 @@ typedef struct rmw_node_t {
  *
  * `can_loan_messages` matches upstream `rmw_publisher_t`'s field of
  * the same name — `true` means the backend exposes the
- * `loan_publish` / `commit_publish` primitive (Phase 99).
+ * `borrow_loaned_message` / `publish_loaned_message` primitive.
  *
  * **The runtime DERIVES it; a backend does not write it** (issue 0814).
  * Its value is exactly `vtable->borrow_loaned_message != NULL`, because
@@ -1051,7 +1051,7 @@ typedef struct rmw_publisher_t {
     const char    *type_name;
     /** QoS subset honoured by this publisher. */
     rmw_qos_profile_t qos;
-    /** Backend exposes loan_publish / commit_publish (Phase 99).
+    /** Backend exposes `borrow_loaned_message` / `publish_loaned_message`.
      *  DERIVED by the runtime from `vtable->borrow_loaned_message`;
      *  a backend's write is overwritten (issue 0814). */
     bool           can_loan_messages;

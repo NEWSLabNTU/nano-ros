@@ -228,7 +228,7 @@ count at 1, matching the official ROS 2 demo talker. If no
    With the virtio-net + Slirp wiring above, `eth0` comes up at
    `10.0.2.30` (the board crate's default for the qemu-armv7a-nuttx examples).
 3. Confirm `zenohd` reachable; the image's `locator` (or the
-   `nros_init` arguments) must match the router's listen port.
+   `nros_support_init` arguments) must match the router's listen port.
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 ### Auto-configure glue (NSH built-in registration)

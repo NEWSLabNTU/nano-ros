@@ -49,6 +49,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# phase-472 W3 — ONE comment stripper. A doc comment in
+# `nros-rmw-xrce-cffi/src/lib.rs` ("Calls `nros_rmw_cffi_register_named("xrce",
+# …)` internally") counted as the xrce registration, so deleting BOTH real calls
+# in `vtable.c` passed this gate. Every read below is of CODE.
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import comments  # noqa: E402
+
 BACKEND_ROOT = ROOT / "packages" / "rmw"
 
 # The announcement each backend's `package.xml` carries. Same regex shape as
@@ -103,25 +110,22 @@ class UnresolvedName(Exception):
 
 # issue 1530 — the `.init_array` self-registration macro, at STATEMENT position.
 # A doc comment naming the macro is not an invocation (`section.rs` documents it
-# in a `///` block, and `nros-board-{nuttx,threadx}` discuss it in `//` prose), so
-# a line whose first non-space characters open a comment is not a site. Same
-# `strip`-before-match discipline as the other source-reading gates.
-SELF_REGISTER_RE = re.compile(r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*::)*nros_rmw_register_backend!")
+# in a `///` block, and `nros-board-{nuttx,threadx}` discuss it in `//` prose).
+# Comments are blanked by the shared stripper (phase-472 W3), which also sees a
+# `/* … */` spanning lines — the old per-line prefix test did not.
+SELF_REGISTER_RE = re.compile(
+    r"^[ \t]*(?:[A-Za-z_][A-Za-z0-9_]*::)*nros_rmw_register_backend!", re.M
+)
 
 
-def self_registers(text: str) -> bool:
+def self_registers(text: str, lang: str = "rust") -> bool:
     """Does this source file INVOKE the self-registration macro?"""
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        if stripped.startswith(("//", "/*", "*", "#")):
-            continue
-        if SELF_REGISTER_RE.match(line):
-            return True
-    return False
+    return SELF_REGISTER_RE.search(comments.strip_comments(text, lang)) is not None
 
 
-def names_in(text: str) -> set[str]:
-    """Every backend name registered by one source file."""
+def names_in(text: str, lang: str = "c") -> set[str]:
+    """Every backend name registered by one source file's CODE."""
+    text = comments.strip_comments(text, lang)
     consts = {m.group("name"): m.group("val") for m in CONST_RE.finditer(text)}
     found: set[str] = set()
     for m in CALL_RE.finditer(text):
@@ -186,7 +190,16 @@ def self_test() -> None:
     and the unreadable case), and the RULE (each direction of disagreement,
     plus the escape that silences it).
     """
+    comments.self_test()
     # -- the reader --
+    # phase-472 W3 — the LIVE mask: a doc comment naming the call is prose.
+    assert names_in(
+        '    /// Calls `nros_rmw_cffi_register_named("xrce", &kVtable)` internally.\n', "rust"
+    ) == set(), "a doc comment naming the call is not a registration"
+    assert names_in(
+        'nros_rmw_cffi_register_named("a", &V); // nros_rmw_cffi_register_named("b", &V)\n'
+        '/* nros_rmw_cffi_register_named("c",\n   &V); */\n'
+    ) == {"a"}, "trailing and block comments are not registrations"
     assert names_in('nros_rmw_cffi_register_named("uorb", &kVtable);') == {"uorb"}
     assert names_in('nros_rmw_cffi_register_named(c"zenoh".as_ptr(), &V)') == {"zenoh"}
     assert names_in(
@@ -229,6 +242,9 @@ def self_test() -> None:
         "// The unified-RMW `nros_rmw_register_backend!` macro is a no-op on NuttX"
     ), "prose about the macro is not an invocation"
     assert not self_registers("let _ = nros_rmw_metadata_register();")
+    assert not self_registers(
+        "/*\nnros_rmw_register_backend! { fn() {} }\n*/\n"
+    ), "a block comment spanning lines is not an invocation"
 
     # -- issue 1530: the rule --
     assert compare({"zenoh"}, {"zenoh": {"a.rs"}}, {"zenoh": {"a.rs"}}) == [], (
@@ -319,8 +335,9 @@ def registered_names() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
         # point of a stub, and none of them is a shipped vocabulary entry.
         if "/tests/" in rel:
             continue
+        lang = comments.lang_for(path)
         try:
-            names = names_in(path.read_text(errors="replace"))
+            names = names_in(path.read_text(errors="replace"), lang)
         except UnresolvedName as e:
             sys.exit(
                 f"{rel}: nros_rmw_cffi_register_named() is called with `{e}`, "
@@ -336,7 +353,7 @@ def registered_names() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
         # issue 1530 — a file that both registers a name and invokes the macro
         # self-registers that name. The two readers run over the same text so a
         # crate cannot hide one from the other.
-        if self_registers(text):
+        if self_registers(text, lang):
             for name in names:
                 self_reg.setdefault(name, set()).add(rel)
     return found, self_reg

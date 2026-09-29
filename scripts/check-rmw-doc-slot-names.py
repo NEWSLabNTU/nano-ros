@@ -86,9 +86,21 @@ UPSTREAM = (
 )
 BASELINE = os.path.join(ROOT, ".config", "rmw-doc-external-names.txt")
 
+# phase-472 W3 — ONE comment stripper. Source 2 used to be a bare `git grep -w`,
+# so a name that exists only in a COMMENT somewhere else in the tree resolved:
+# prose vouching for prose, one file over from the self-vouching SELF_EXCLUDE
+# already refuses. Fourteen cited names resolved that way when this landed.
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import comments  # noqa: E402
+
 TICK = re.compile(r"`([A-Za-z_][A-Za-z0-9_]*)`")
 IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-BLOCK = re.compile(r"/\*.*?\*/", re.S)
+
+
+def prose(text):
+    """The COMMENT text of a C header (`/* */` and `//`), code blanked."""
+    code = comments.strip_comments(text, "c")
+    return "".join(o if o != c else (" " if o != "\n" else o) for o, c in zip(text, code))
 
 
 def headers():
@@ -103,9 +115,8 @@ def cited(text_by_file):
     """`{name: {header, …}}` — every backticked identifier in header PROSE."""
     out = {}
     for f, t in text_by_file.items():
-        for m in BLOCK.finditer(t):
-            for tk in TICK.finditer(m.group(0)):
-                out.setdefault(tk.group(1), set()).add(f)
+        for tk in TICK.finditer(prose(t)):
+            out.setdefault(tk.group(1), set()).add(f)
     return out
 
 
@@ -113,7 +124,7 @@ def abi_code_identifiers(text_by_file):
     """Source 1 — identifiers in the headers' own code, comments stripped."""
     got = set()
     for t in text_by_file.values():
-        got |= set(IDENT.findall(BLOCK.sub(" ", t)))
+        got |= set(IDENT.findall(comments.strip_comments(t, "c")))
     return got
 
 
@@ -146,17 +157,68 @@ SELF_EXCLUDE = (
 )
 
 
+_CODE = {}  # path -> stripped text; one strip per file per run
+
+
+def names_in_code(path, text, name):
+    """Does `name` occur, word-bounded, in the CODE of this file?
+
+    Comments never count (phase-472 W3). String literals DO: a slot or type
+    name in a `dlsym`-style string or a cmake variable in quotes is still the
+    tree naming it. A file of no language `comments` knows does not vouch at
+    all — measured when this landed: no cited name resolved ONLY through one,
+    so failing closed there costs nothing and cannot be laundered through a
+    `.txt` note."""
+    lang = comments.lang_for(path)
+    if lang is None:
+        return False
+    code = _CODE.get(path)
+    if code is None:
+        code = _CODE[path] = comments.strip_comments(text, lang)
+    return re.search(r"(?<![A-Za-z0-9_])" + re.escape(name) + r"(?![A-Za-z0-9_])", code) is not None
+
+
+_GREP = {}  # name -> tracked files `git grep -w` finds it in
+
+
+def prefetch(names):
+    """ONE `git grep` for many names (255 separate ones cost ~9 s)."""
+    names = [n for n in dict.fromkeys(names) if n not in _GREP]
+    if not names:
+        return
+    args = ["git", "-C", ROOT, "grep", "-o", "-w", "-F"]
+    for n in names:
+        args += ["-e", n]
+    args += ["--", "packages", "examples", "cmake", "scripts", "zephyr", "third-party"]
+    r = subprocess.run(args, capture_output=True, text=True, check=False)
+    for n in names:
+        _GREP[n] = []
+    seen = set()
+    for line in r.stdout.splitlines():
+        path, _, word = line.rpartition(":")
+        if word in _GREP and (word, path) not in seen:
+            seen.add((word, path))
+            _GREP[word].append(path)
+
+
 def in_tree(name):
-    """Source 2 — tracked non-markdown sources naming this identifier."""
-    r = subprocess.run(
-        ["git", "-C", ROOT, "grep", "-l", "-w", "-F", name, "--",
-         "packages", "examples", "cmake", "scripts", "zephyr", "third-party"],
-        capture_output=True, text=True, check=False,
-    )
-    return [
-        h for h in r.stdout.split()
+    """Source 2 — tracked non-markdown sources naming this identifier in CODE."""
+    if name not in _GREP:
+        prefetch([name])
+    # Short files first, and stop at the first CODE hit: the caller asks
+    # "does anything vouch", and stripping every one of hundreds of hits for a
+    # common word is what made this gate take a minute.
+    hits = [
+        h for h in _GREP[name]
         if not h.endswith(".md") and not any(x in h for x in SELF_EXCLUDE)
+        and comments.lang_for(h) is not None
     ]
+    hits.sort(key=lambda h: os.path.getsize(os.path.join(ROOT, h)))
+    for h in hits:
+        with open(os.path.join(ROOT, h), encoding="utf-8", errors="replace") as fh:
+            if names_in_code(h, fh.read(), name):
+                return [h]
+    return []
 
 
 def read_baseline():
@@ -180,6 +242,7 @@ def unresolved(text_by_file=None):
     text_by_file = header_text() if text_by_file is None else text_by_file
     known = abi_code_identifiers(text_by_file) | upstream_identifiers()
     out = []
+    prefetch([n for n in cited(text_by_file) if n not in known])
     for name, where in sorted(cited(text_by_file).items()):
         if name in known:
             continue
@@ -197,6 +260,22 @@ def self_test():
     """
     bad = []
     real = header_text()
+    comments.self_test()
+
+    # phase-472 W3 — a name only a COMMENT elsewhere mentions does not resolve;
+    # the same name in code does. Both directions, on the predicate `in_tree`
+    # applies to every hit.
+    if names_in_code("probe1.rs", "// w3_probe_name is prose\nfn other() {}\n", "w3_probe_name"):
+        bad.append("a name only a // comment mentions was read as code")
+    if names_in_code("probe2.c", "/* w3_probe_name */ int other;\n", "w3_probe_name"):
+        bad.append("a name only a /* */ comment mentions was read as code")
+    if not names_in_code("probe3.c", "int w3_probe_name; // other\n", "w3_probe_name"):
+        bad.append("a declared name was not read as code")
+    if names_in_code("x.txt", "w3_probe_name\n", "w3_probe_name"):
+        bad.append("a file of no known language vouched for a name")
+    # ...and header prose in a `//` comment is prose too.
+    if set(cited({"p.h": "int x; // names `w3_line_prose`\n"})) != {"w3_line_prose"}:
+        bad.append("a backtick in a // comment was not read as a citation")
 
     # A cited name that IS declared in the headers resolves (source 1) — and
     # its declaration, not its prose, is what resolves it.
@@ -257,7 +336,7 @@ def self_test():
         return 2
     print(
         f"check-rmw-doc-slot-names --self-test: OK ({len(cites)} cited name(s), "
-        "10 case(s))"
+        "15 case(s))"
     )
     return 0
 

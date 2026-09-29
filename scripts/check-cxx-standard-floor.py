@@ -84,6 +84,10 @@ import re
 import sys
 import tempfile
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -160,18 +164,8 @@ def _skip(rel: Path) -> bool:
 # that raised it — which is how a gate teaches people to delete the
 # explanation instead of the defect.
 def strip_cmake_comments(text: str) -> str:
-    out = []
-    for line in text.split("\n"):
-        quoted = False
-        cut = len(line)
-        for i, ch in enumerate(line):
-            if ch == '"':
-                quoted = not quoted
-            elif ch == "#" and not quoted:
-                cut = i
-                break
-        out.append(line[:cut])
-    return "\n".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "cmake")
 
 
 def tracked(root: Path) -> set[str] | None:

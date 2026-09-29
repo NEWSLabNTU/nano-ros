@@ -64,6 +64,10 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent.parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -198,75 +202,8 @@ def code_mask(text: str) -> list[bool]:
     neighbours also absorbs their `--locked`, which is how a gate reports OK
     over a violation.
     """
-    mask = [True] * len(text)
-    i = 0
-    n = len(text)
-    while i < n:
-        ch = text[i]
-        two = text[i : i + 2]
-        if two == "//":
-            j = text.find("\n", i)
-            j = n if j < 0 else j
-            for k in range(i, j):
-                mask[k] = False
-            i = j
-        elif two == "/*":
-            depth = 1
-            j = i + 2
-            while j < n and depth:
-                if text[j : j + 2] == "/*":
-                    depth += 1
-                    j += 2
-                elif text[j : j + 2] == "*/":
-                    depth -= 1
-                    j += 2
-                else:
-                    j += 1
-            for k in range(i, min(j, n)):
-                mask[k] = False
-            i = j
-        elif ch == "r" and (raw := re.match(r'r(#*)"', text[i:])) is not None:
-            # A raw string, `r"…"` or `r#"…"#` with any number of hashes. The
-            # match is the branch CONDITION, so there is no `None` to unwrap:
-            # an `r` that begins an ordinary identifier (`rlib`, `rustc`,
-            # `return`) simply does not match, falls through to the `else`
-            # below, and advances one character. That is a skip and not a
-            # finding on purpose — a bare `r` in code is code, not a lexing
-            # failure, and a gate that crashed here would read as
-            # infrastructure noise rather than a verdict.
-            hashes = raw.group(1)
-            close = '"' + hashes
-            j = text.find(close, i + len(raw.group(0)))
-            j = n if j < 0 else j + len(close)
-            for k in range(i, min(j, n)):
-                mask[k] = False
-            i = j
-        elif ch == '"':
-            j = i + 1
-            while j < n:
-                if text[j] == "\\":
-                    j += 2
-                    continue
-                if text[j] == '"':
-                    j += 1
-                    break
-                j += 1
-            for k in range(i, min(j, n)):
-                mask[k] = False
-            i = j
-        elif ch == "'":
-            # A char literal (`'{'`) or a lifetime (`'a`). Only the literal can
-            # hide a brace, and it is at most four chars wide.
-            m = re.match(r"'(\\.|[^\\'])'", text[i:])
-            if m:
-                for k in range(i, i + m.end()):
-                    mask[k] = False
-                i += m.end()
-            else:
-                i += 1
-        else:
-            i += 1
-    return mask
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.code_mask(text, "rust")
 
 
 def functions(text: str) -> list[tuple[int, str, str]]:

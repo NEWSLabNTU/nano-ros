@@ -61,6 +61,10 @@ import os
 import re
 import subprocess
 import sys
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLCHAIN_DIR = "cmake/toolchain"
@@ -94,7 +98,8 @@ TOOL_SECTION = re.compile(r"^\[tool\.([^\]]+)\]", re.M)
 
 def strip_comments(text):
     """Drop `#` comments. Nothing in these files quotes a `#`."""
-    return "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "cmake")
 
 
 # The keyword names each helper takes. A KNOWN set, not "any all-caps token":

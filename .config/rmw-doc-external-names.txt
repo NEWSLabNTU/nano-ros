@@ -11,9 +11,14 @@
 #
 # Regenerate: scripts/check-rmw-doc-slot-names.py --write-baseline
 RMW_RET_INCORRECT_RMW_IMPLEMENTATION  upstream rmw — a CONSTANT, and the recorded snapshot carries symbols and types, not macro names
+RMW_ZENOH_DEFAULT_HISTORY_DEPTH  rmw_zenoh_cpp — its default history depth (42), cited to show the two reference RMWs disagree
+create_readwrite_qos  rmw_cyclonedds_cpp — the function that resolves the system-default sentinel to KEEP_LAST 1
+dds_log  Cyclone DDS — its logging entry; the cyclonedds submodule is not content `git grep` reads
 discovery_options  upstream rmw, IRON only — the recorded contract is Humble, which is the point the citation makes
 rcutils_uint8_array_t  rcutils — a type no contract symbol takes, so it is in no signature row
 rmw_localhost_only_t  upstream rmw (Humble) — an `rmw_init_options_t` field type; no contract symbol takes it
+rmw_uros_ping_agent  micro-ROS — cited as prior art for `ping_session`
 rmw_uros_set_continous_serialization_callbacks  micro-ROS — cited as prior art for the streamed-publish shape
+rosidl_runtime_c  ROS 2 — the package that owns `rosidl_message_type_support_t`
 whatami  zenoh — the session-role concept `create_session`'s `mode` is closest to
 z_session  zenoh-c — the session handle the zenoh backend holds

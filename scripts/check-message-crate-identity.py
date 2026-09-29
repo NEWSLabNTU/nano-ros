@@ -103,6 +103,10 @@ import os
 import re
 import subprocess
 import sys
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 try:
     import tomllib
@@ -151,89 +155,11 @@ def blank_comments(src: str):
     Brace counting must ignore braces inside string and char literals, hence the
     mask rather than a second pass.
     """
-    out = list(src)
-    in_string = [False] * len(src)
-    i, n = 0, len(src)
-    state = None  # None | "line" | "block" | "str" | "char" | "raw"
-    raw_hashes = 0
-    while i < n:
-        c = src[i]
-        nxt = src[i + 1] if i + 1 < n else ""
-        if state is None:
-            if c == "/" and nxt == "/":
-                state = "line"
-                out[i] = out[i + 1] = " "
-                i += 2
-                continue
-            if c == "/" and nxt == "*":
-                state = "block"
-                out[i] = out[i + 1] = " "
-                i += 2
-                continue
-            if c == "r" and nxt in ('"', "#"):
-                j = i + 1
-                h = 0
-                while j < n and src[j] == "#":
-                    h += 1
-                    j += 1
-                if j < n and src[j] == '"':
-                    state, raw_hashes = "raw", h
-                    in_string[i] = True
-                    i = j + 1
-                    continue
-            if c == '"':
-                state = "str"
-                in_string[i] = True
-                i += 1
-                continue
-            if c == "'":
-                # A lifetime (`&'static`) is not a char literal. Only treat it
-                # as one when it closes within a few chars.
-                m = re.match(r"'(\\.|[^'\\])'", src[i:])
-                if m:
-                    state = "char"
-                    in_string[i] = True
-                    i += 1
-                    continue
-            i += 1
-            continue
-        if state == "line":
-            if c == "\n":
-                state = None
-            else:
-                out[i] = " "
-            i += 1
-            continue
-        if state == "block":
-            out[i] = " " if c != "\n" else "\n"
-            if c == "*" and nxt == "/":
-                out[i + 1] = " "
-                state = None
-                i += 2
-                continue
-            i += 1
-            continue
-        if state == "raw":
-            in_string[i] = True
-            if c == '"' and src[i + 1 : i + 1 + raw_hashes] == "#" * raw_hashes:
-                for k in range(i, min(n, i + 1 + raw_hashes)):
-                    in_string[k] = True
-                i += 1 + raw_hashes
-                state = None
-                continue
-            i += 1
-            continue
-        # "str" / "char"
-        in_string[i] = True
-        if c == "\\":
-            if i + 1 < n:
-                in_string[i + 1] = True
-            i += 2
-            continue
-        if (state == "str" and c == '"') or (state == "char" and c == "'"):
-            state = None
-        i += 1
-    return "".join(out), in_string
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    code = comments.strip_comments(src, "rust")
+    comment_or_string = comments.code_mask(src, "rust")
+    comment_only = comments.code_mask(src, "rust", strings=False)
+    return code, [c and not s for c, s in zip(comment_only, comment_or_string)]
 
 
 def cfg_test_spans(code: str, in_string) -> list:

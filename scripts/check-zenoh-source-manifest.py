@@ -78,6 +78,10 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 REPO = Path(__file__).resolve().parent.parent
 ZENOH = REPO / "packages/rmw/zenoh"
@@ -318,14 +322,15 @@ def manifest_problems(groups, rows, where: str = str(MANIFEST)) -> list[str]:
     return bad
 
 
-def strip_comments(text: str, marker: str) -> str:
-    """Drop everything from `marker` to end-of-line, line by line.
+def strip_comments(text: str, marker: str, lang: str | None = None) -> str:
+    """Blank comments by the lane's language (shared stripper, phase-472 W3).
 
-    Crude on purpose. It can only ever hide a path that was ALREADY in a
+    It can only ever hide a path that was ALREADY in a
     comment, which is exactly what this gate does not care about; a path in
     compiled position always precedes the comment on its line.
     """
-    return "\n".join(line.split(marker, 1)[0] for line in text.splitlines())
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, lang or {"//": "rust", "#": "cmake"}[marker])
 
 
 def strip_test_modules(text: str) -> str:
@@ -383,7 +388,9 @@ def lane_paths(text: str, marker: str, roots: set[str], flavour: str, allow: set
     so the first two are found by regex and the third by looking at every string
     literal outside a test module.
     """
-    body = strip_comments(text, marker)
+    if flavour not in ("cmake", "sh", "rust"):
+        raise ManifestError(f"unknown lane flavour `{flavour}`")
+    body = strip_comments(text, marker, flavour)
     if flavour == "cmake":
         hits = set(_CMAKE_VENDOR_PATH.findall(body))
     elif flavour == "sh":
@@ -400,7 +407,7 @@ def lane_paths(text: str, marker: str, roots: set[str], flavour: str, allow: set
     return sorted(h for h in hits if h not in allow)
 
 
-def lane_tokens(text: str, pattern: re.Pattern, marker: str) -> set[str]:
+def lane_tokens(text: str, pattern: re.Pattern, marker: str, lang: str | None = None) -> set[str]:
     """Condition tokens a lane answers, read from its delimited block."""
     start = text.find(_BEGIN)
     end = text.find(_END)
@@ -409,7 +416,7 @@ def lane_tokens(text: str, pattern: re.Pattern, marker: str) -> set[str]:
             f"no {_BEGIN}…{_END} block — the parser and the lane have drifted; "
             "fix the parser rather than deleting the gate"
         )
-    return set(pattern.findall(strip_comments(text[start:end], marker)))
+    return set(pattern.findall(strip_comments(text[start:end], marker, lang)))
 
 
 def coverage_problems(root: Path, rows) -> tuple[list[str], list[str]]:
@@ -605,8 +612,8 @@ def self_test() -> None:
     # the shell lane answers by `case` arm, and its `*)` refusal is NOT an
     # answer — a lane that swallowed an unknown token would silently drop the
     # sources behind it.
-    assert lane_tokens(sh, _SH_TOKEN, "#") == {"always", "zephyr"}
-    assert lane_tokens(f"{_BEGIN}\n  always) return 0 ;;\n{_END}", _SH_TOKEN, "#") == {"always"}
+    assert lane_tokens(sh, _SH_TOKEN, "#", "sh") == {"always", "zephyr"}
+    assert lane_tokens(f"{_BEGIN}\n  always) return 0 ;;\n{_END}", _SH_TOKEN, "#", "sh") == {"always"}
     try:
         lane_tokens("no markers here", _RS_TOKEN, "//")
     except ManifestError:
@@ -683,11 +690,11 @@ def main() -> int:
     answered: list[tuple[str, set[str]]] = []
     try:
         for path in lanes:
-            marker, _flavour, pattern = LANE_SPECS[path]
+            marker, flavour, pattern = LANE_SPECS[path]
             if pattern is None:
                 continue
             answered.append(
-                (str(path.relative_to(REPO)), lane_tokens(texts[path], pattern, marker))
+                (str(path.relative_to(REPO)), lane_tokens(texts[path], pattern, marker, flavour))
             )
     except ManifestError as e:
         print(f"check-zenoh-source-manifest: {e}", file=sys.stderr)
@@ -710,7 +717,7 @@ def main() -> int:
         bad.append(f"{CMAKE.relative_to(REPO)} never names {MANIFEST.name} — it reads no manifest")
     if MANIFEST.name not in texts[RUST_LIB] + texts[RUST_RUNNER]:
         bad.append(f"the cargo lane never names {MANIFEST.name} — it reads no manifest")
-    if MANIFEST.name not in strip_comments(texts[QEMU_SH], "#"):
+    if MANIFEST.name not in strip_comments(texts[QEMU_SH], "#", "sh"):
         # Comments stripped, and that is the whole point here: this lane spent a
         # phase carrying "matches build.rs ..." comments beside its own copy of
         # everything they named (issue 1096). A mention of the manifest is not a

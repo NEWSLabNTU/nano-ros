@@ -61,6 +61,10 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -119,15 +123,11 @@ KINDS = (
 def strip_comments(src: str) -> str:
     """Blank out line comments so a commented-out `create_*` is not counted.
 
-    Line-wise and deliberately crude: a `//` inside a string literal would be
-    blanked too. That direction is safe here — it can only LOWER the counted
-    floor, never raise it above what the code creates.
+    The shared Rust stripper (phase-472 W3): `/* */` too, and a `//` inside a
+    string literal is left alone.
     """
-    out = []
-    for line in src.splitlines():
-        idx = line.find("//")
-        out.append(line if idx < 0 else line[:idx])
-    return "\n".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(src, "rust")
 
 
 def block_from(src: str, start: int) -> str:

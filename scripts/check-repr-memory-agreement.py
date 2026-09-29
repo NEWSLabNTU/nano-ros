@@ -95,6 +95,10 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 REPO = Path(__file__).resolve().parents[1]
 CORPUS = REPO / "packages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus"
@@ -182,39 +186,8 @@ def strip_c_comments(text: str) -> str:
     comment; generated C has none in a struct body today, and a stripper that
     is wrong about that would be a silent corruption rather than a loud one.
     """
-    out: list[str] = []
-    i, n = 0, len(text)
-    while i < n:
-        c = text[i]
-        if c == '"' or c == "'":
-            q = c
-            out.append(c)
-            i += 1
-            while i < n:
-                out.append(text[i])
-                if text[i] == "\\" and i + 1 < n:
-                    out.append(text[i + 1])
-                    i += 2
-                    continue
-                if text[i] == q:
-                    i += 1
-                    break
-                i += 1
-            continue
-        if c == "/" and i + 1 < n and text[i + 1] == "/":
-            while i < n and text[i] != "\n":
-                i += 1
-            continue
-        if c == "/" and i + 1 < n and text[i + 1] == "*":
-            j = text.find("*/", i + 2)
-            if j < 0:
-                raise SystemExit(f"{PROBE}: unterminated block comment")
-            out.append("\n" * text.count("\n", i, j))
-            i = j + 2
-            continue
-        out.append(c)
-        i += 1
-    return "".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "c")
 
 
 def extract_c_fnptr_typedefs(text: str) -> dict[str, str]:

@@ -64,6 +64,13 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# phase-472 W3 — ONE comment stripper. Rules 2-4 read what a recipe DOES, and
+# comments used to count: a full-line `#` was skipped by a private filter, but a
+# TRAILING `true # ; nros_lane_platform px4` still declared the lane, and rule 4
+# counted `NROS_LANE_INCLUDED` in the comments that explain it.
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import comments  # noqa: E402
 LANE_SKIP = os.path.join(ROOT, "scripts", "build", "lane-skip.sh")
 
 # The nine platform modules the fixture fan-out schedules, by the FILES that
@@ -163,12 +170,10 @@ def audit_file(rel, text):
     bad = []
     is_platform = os.path.basename(rel) in PLATFORM_MODULE_FILES
     for name, body in recipes(text):
-        code = "\n".join(
-            l for l in body.splitlines() if not l.lstrip().startswith("#")
-        )
+        code = comments.strip_comments(body, "just")
         if not CALLS_ANY.search(code):
             continue
-        if not any(SOURCES.match(l) for l in body.splitlines()):
+        if not any(SOURCES.match(l) for l in code.splitlines()):
             bad.append(
                 (
                     name,
@@ -191,6 +196,14 @@ def audit_file(rel, text):
             )
         )
     return bad
+
+
+def lane_included_sites(just_text):
+    """Rule 4's count: `NROS_LANE_INCLUDED=` ASSIGNMENTS in code.
+
+    Not the bare word, which the comments explaining the rule also contain —
+    they held rule 4 at two "sites" with every real one deleted."""
+    return len(re.findall(r"\bNROS_LANE_INCLUDED=", comments.strip_comments(just_text, "just")))
 
 
 # ---------------------------------------------------------------------------
@@ -360,6 +373,24 @@ def self_test():
     # 7. A non-platform file is out of scope for rule 3 but not for rule 2.
     if audit_file("check.just", must_flag[0]):
         bad.append("self-test: rule 3 must not apply outside the platform modules")
+    # 8. phase-472 W3 — a COMMENT declares nothing, sources nothing and sets
+    #    nothing, whether it is a whole line or trailing.
+    comments.self_test()
+    for body in (
+        "build-fixtures:\n"
+        "    source scripts/build/lane-skip.sh\n"
+        "    true # ; nros_lane_platform zephyr\n"
+        '    nros_lane_skip "no sdk"\n',
+        "build-fixtures:\n"
+        "    # source scripts/build/lane-skip.sh\n"
+        '    nros_lane_skip_note zephyr "no sdk"\n',
+    ):
+        if not audit_file("zephyr-ci.just", body):
+            bad.append(f"self-test: a comment satisfied a rule for:\n{body}")
+    if lane_included_sites("# NROS_LANE_INCLUDED=x is set below\nfoo:\n    true\n"):
+        bad.append("self-test: rule 4 counted NROS_LANE_INCLUDED in a comment")
+    if lane_included_sites('foo:\n    env "NROS_LANE_INCLUDED=$p" just x\n') != 1:
+        bad.append("self-test: rule 4 missed a real NROS_LANE_INCLUDED= assignment")
 
     if bad:
         for b in bad:
@@ -389,7 +420,7 @@ def main():
 
     # Rule 4 — both fan-out drivers hand their children the INCLUDED signal.
     root_just = open(os.path.join(ROOT, "justfile"), encoding="utf-8").read()
-    n_signals = root_just.count("NROS_LANE_INCLUDED")
+    n_signals = lane_included_sites(root_just)
     if n_signals < 2:
         failures.append(
             (

@@ -36,6 +36,10 @@ import sys as _sys
 from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
 from check_just_sources import check_just_sources
+# phase-472 W3 — ONE comment stripper. `--all-features` in a justfile COMMENT
+# used to make every feature reachable (`return {"*"}`), and a `--features x`
+# in prose enabled `x`. Every read below is of code.
+import comments  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -105,12 +109,17 @@ def declared_required_features() -> dict[str, list[str]]:
             text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        for line in text.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("#") or "required-features" not in stripped:
-                continue
-            for feat in re.findall(r'"([^"]+)"', stripped):
-                out.setdefault(feat, []).append(rel)
+        for feat in required_features_in(text):
+            out.setdefault(feat, []).append(rel)
+    return out
+
+
+def required_features_in(toml_text: str) -> list[str]:
+    """The `required-features` values one manifest declares, in CODE."""
+    out = []
+    for line in comments.strip_comments(toml_text, "toml").splitlines():
+        if "required-features" in line:
+            out += re.findall(r'"([^"]+)"', line)
     return out
 
 
@@ -138,11 +147,18 @@ def declared_file_cfg_features() -> dict[str, list[str]]:
             text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        # Only the crate-level attribute, which must precede any item.
-        head = text[:2000]
-        for m in FILE_CFG.finditer(head):
-            for feat in re.findall(r'feature\s*=\s*"([^"]+)"', m.group(1)):
-                out.setdefault(feat, []).append(rel)
+        for feat in file_cfg_features_in(text):
+            out.setdefault(feat, []).append(rel)
+    return out
+
+
+def file_cfg_features_in(rust_text: str) -> list[str]:
+    """Features a test file's crate-level `#![cfg(...)]` gates it on (CODE only)."""
+    # Only the crate-level attribute, which must precede any item.
+    head = comments.strip_comments(rust_text, "rust")[:2000]
+    out = []
+    for m in FILE_CFG.finditer(head):
+        out += re.findall(r'feature\s*=\s*"([^"]+)"', m.group(1))
     return out
 
 
@@ -162,18 +178,49 @@ def features_enabled_by_recipes() -> set[str]:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        if "--all-features" in text:
-            # Enables everything, including targets nobody named.
+        got = features_enabled_in(text)
+        if "*" in got:
             return {"*"}
-        for m in FEATURE_CONTEXT.finditer(text):
-            blob = m.group(1) or m.group(2) or ""
-            for feat in re.split(r"[,\s\"]+", blob):
-                if feat:
-                    enabled.add(feat)
+        enabled |= got
     return enabled
 
 
+def features_enabled_in(just_text: str) -> set[str]:
+    """Features one justfile's CODE enables; `{"*"}` for `--all-features`."""
+    code = comments.strip_comments(just_text, "just")
+    if "--all-features" in code:
+        # Enables everything, including targets nobody named.
+        return {"*"}
+    enabled: set[str] = set()
+    for m in FEATURE_CONTEXT.finditer(code):
+        blob = m.group(1) or m.group(2) or ""
+        for feat in re.split(r"[,\s\"]+", blob):
+            if feat:
+                enabled.add(feat)
+    return enabled
+
+
+def self_test() -> None:
+    """Negative controls on the NORMAL path (phase-472 W9): each reader must
+    tell code from a comment, in both directions."""
+    comments.self_test()
+    # phase-472 W3 — the recorded hole: `--all-features` in a COMMENT made
+    # every feature reachable.
+    assert features_enabled_in("# never pass --all-features here\n") == set()
+    assert features_enabled_in("t:\n    cargo test --all-features\n") == {"*"}
+    assert features_enabled_in(
+        "t:\n    cargo test --features a,b  # --features c\n"
+    ) == {"a", "b"}, "a feature named in a trailing comment is not enabled"
+    assert required_features_in(
+        'required-features = ["x"]\n# required-features = ["y"]\n'
+    ) == ["x"]
+    assert file_cfg_features_in(
+        '//! #![cfg(feature = "doc")]\n#![cfg(feature = "real")]\n'
+    ) == ["real"]
+
+
 def main() -> int:
+    self_test()
     declared = declared_required_features()
     if not declared:
         sys.stderr.write(

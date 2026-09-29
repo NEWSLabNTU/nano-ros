@@ -41,6 +41,10 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
@@ -74,16 +78,13 @@ TRIPLE = re.compile(
 FIND_PROGRAM = re.compile(r"find_program\s*\((.*?)\)", re.S | re.I)
 
 
-def strip_comments(text):
+def strip_comments(text, rel=None):
     """Drop `#` comments, keeping newlines so reported line numbers stay true.
 
     Comments explaining a triple are documentation, and a gate that flags its
     own prose gets bypassed (the lesson issue 0555's checker records)."""
-    out = []
-    for line in text.splitlines(True):
-        idx = line.find("#")
-        out.append(line if idx < 0 else line[:idx] + "\n")
-    return "".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, (comments.lang_for(rel) if rel else None) or "cmake")
 
 
 def tracked(*globs):
@@ -101,7 +102,7 @@ def m2_offenders(files, counted=None):
             raw = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        code = strip_comments(raw)
+        code = strip_comments(raw, rel)
         for m in FIND_PROGRAM.finditer(code):
             body = m.group(1)
             if "NO_DEFAULT_PATH" not in body.upper():
@@ -139,7 +140,7 @@ def m3_offenders(files, host, counted=None):
         except OSError:
             continue
         in_build = False
-        for n, line in enumerate(strip_comments(raw).splitlines(), 1):
+        for n, line in enumerate(strip_comments(raw, rel).splitlines(), 1):
             s = line.strip()
             if s.startswith("["):
                 in_build = s == "[build]"

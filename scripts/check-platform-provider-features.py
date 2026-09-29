@@ -50,6 +50,13 @@ import re
 import sys
 from pathlib import Path
 
+# phase-472 W3 — ONE comment stripper. This gate used to test `MALLOC in body`
+# over the raw row, comments included, so the issue-0617 row itself — whose
+# comment is the prose ABOUT the provider — could lose its `"global-allocator"`
+# element to a `# "global-allocator",` and still pass.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402
+
 MALLOC = "global-allocator"
 # phase-366 R1/R2 — the entry-selected provider. `panic-spin` is deleted.
 PANIC = ("panic-platform", "panic-halt")
@@ -57,26 +64,62 @@ PANIC = ("panic-platform", "panic-halt")
 STD_BACKED = {"platform-posix"}
 
 
-def features(manifest: Path) -> dict[str, str]:
-    """Map `platform-*` feature name -> its raw body.
+def selects(body: str, feature: str) -> bool:
+    """Does this feature-list BODY name `feature` as an element (own or `dep/`)?
 
-    Hand-parsed rather than via `tomllib` so the body keeps its comments: the
-    reason a row looks the way it does is in them, and a diagnostic that can
-    quote the row is worth more than one that reports a bare name.
+    A quoted element, not a substring: `"no-global-allocator"` is not it."""
+    return re.search(r'"(?:[A-Za-z0-9_-]+\??/)?' + re.escape(feature) + r'"', body) is not None
+
+
+def features(manifest, text: str | None = None) -> dict[str, str]:
+    """Map `platform-*` feature name -> its body, COMMENTS BLANKED.
+
+    Hand-parsed rather than via `tomllib` so a row's shape stays as written.
+    The body's comments are where the reasons live, and they are exactly what
+    must not count as a selection (phase-472 W3), so the rows are read from the
+    stripped text; the file itself still carries the prose for a reader.
     """
-    text = manifest.read_text()
+    text = manifest.read_text() if text is None else text
+    text = comments.strip_comments(text, "toml")
     out: dict[str, str] = {}
     for m in re.finditer(r"^(platform-[a-z0-9-]+) = \[", text, re.M):
         name = m.group(1)
-        # Scan to the matching close bracket at column 0 — a body contains `]`
-        # inside comments (`#[panic_handler]`), which is exactly what a lazy
-        # `\[(.*?)\]` gets wrong, and it got this author first.
+        # Scan to the matching close bracket at column 0. Comments are blanked
+        # now, but a body may still hold `]` inside a quoted element.
         end = text.index("\n]", m.end())
         out[name] = text[m.end() : end]
     return out
 
 
+def self_test() -> None:
+    """Negative controls on the NORMAL path (phase-472 W9)."""
+    comments.self_test()
+    rows = features(None, (
+        'platform-a = [\n    # "global-allocator",  commented out\n    "x/platform-a",\n]\n'
+        'platform-b = [\n    "global-allocator",  # the provider\n]\n'
+        'platform-c = [\n    "nros-c/platform-c",\n    # "panic-halt" is the image\'s call\n]\n'
+    ))
+    assert set(rows) == {"platform-a", "platform-b", "platform-c"}, rows
+    assert not selects(rows["platform-a"], MALLOC), "a commented-out provider is not selected"
+    assert selects(rows["platform-b"], MALLOC)
+    assert not any(selects(rows["platform-c"], p) for p in PANIC), "prose naming a panic provider"
+    assert '"nros-c/platform-c"' in rows["platform-c"]
+    assert not selects('"no-global-allocator"', MALLOC)
+    assert selects('"nros-platform?/global-allocator"', MALLOC)
+    assert cmake_feature_lists("# list(APPEND _feats platform-x panic-halt)\n") == []
+    assert cmake_feature_lists("list(APPEND _feats platform-x panic-halt)\n") == [
+        ["platform-x", "panic-halt"]
+    ]
+
+
+def cmake_feature_lists(text: str) -> list[list[str]]:
+    """Each `list(APPEND _feats …)` in CODE, as its word list."""
+    code = comments.strip_comments(text, "cmake")
+    return [m.group(1).split() for m in re.finditer(r"list\(APPEND _feats ([^)]*)\)", code)]
+
+
 def main() -> int:
+    self_test()
     core = Path("packages/api/nros-c/Cargo.toml")
     cpp = Path("packages/api/nros-cpp/Cargo.toml")
     if not core.is_file():
@@ -91,8 +134,8 @@ def main() -> int:
         return 2
 
     for name, body in sorted(rows.items()):
-        has_malloc = MALLOC in body
-        has_panic = any(p in body for p in PANIC)
+        has_malloc = selects(body, MALLOC)
+        has_panic = any(selects(body, p) for p in PANIC)
         # phase-366 — no platform row may choose the ending, std-backed or not.
         if has_panic:
             print(
@@ -129,8 +172,7 @@ def main() -> int:
     fs = Path("cmake/NanoRosFeatureSet.cmake")
     if fs.is_file():
         # Each arm appends a flat list: `list(APPEND _feats std platform-posix)`.
-        for m in re.finditer(r"list\(APPEND _feats ([^)]*)\)", fs.read_text()):
-            feats = m.group(1).split()
+        for feats in cmake_feature_lists(fs.read_text()):
             plat = next((f for f in feats if f.startswith("platform-")), None)
             if plat is None:
                 continue  # a partial append; the platform arrives in another

@@ -50,6 +50,10 @@ import os
 import re
 import subprocess
 import sys
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 try:
     import tomllib  # 3.11+
@@ -230,13 +234,18 @@ def check_descriptors(c_features, cpp_features):
     return fails
 
 
-def strip_full_line_comments(text):
+def strip_full_line_comments(text, rel=None):
     """Blank out full-line comments, keeping the LINE NUMBERING.
 
     Dropping them instead would report a line number that does not exist in the
     file the reader opens — measured at "line 138" for `zephyr/CMakeLists.txt`'s
     line 341, which is a report that costs more than it saves.
     """
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    lang = comments.lang_for(rel) if rel else None
+    if lang is not None:
+        return comments.strip_comments(text, lang)
+    # A suffix no stripper models: whole-line `#` comments only, as before.
     return "\n".join("" if line.lstrip().startswith("#") else line for line in text.splitlines())
 
 
@@ -279,7 +288,7 @@ def check_glue(c_features, cpp_features, files=None, read=None, reach_check=True
         if rel in SCAN_EXEMPT:
             continue
         try:
-            body = strip_full_line_comments(read(rel))
+            body = strip_full_line_comments(read(rel), rel)
         except (OSError, UnicodeDecodeError):
             continue
         for alias, live in aliases.items():

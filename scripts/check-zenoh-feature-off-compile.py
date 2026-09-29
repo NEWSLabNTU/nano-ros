@@ -61,6 +61,10 @@ import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = Path(__file__).resolve().parent.parent
 CMAKE = ROOT / "zephyr/cmake/nros_rmw_zenoh.cmake"
@@ -97,7 +101,8 @@ PROBE = INCLUDE / "zenoh-pico" / "config.h"
 
 
 def strip_cmake_comments(text: str) -> str:
-    return "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "cmake")
 
 
 def derive_configs(cmake_text: str) -> list[dict[str, str]]:

@@ -1,6 +1,6 @@
 # Phase 472 — gate reach sweep
 
-**Status (2026-09-28). AUDIT LANDED; W1–W9 open.** An audit of every tracked
+**Status (2026-09-28). AUDIT LANDED; W1–W9 open.** (W3, W4, W9 done — see each.) An audit of every tracked
 `scripts/check-*` gate against one question, the codebase-audit checklist's **I6
 second-order** rule: *a gate must be able to fail on the case it names.*
 
@@ -124,6 +124,91 @@ row), `check-book-identifiers` (P2 — "occurs" is not "defined"),
 
 **Fix:** one comment-stripper per language family in `scripts/lib`, applied before
 every match that stands for "the code does X".
+
+**Status: DONE.** `scripts/lib/comments.py` — `strip_comments(text, lang, *,
+strings=False)`, `code_mask(text, lang)`, `lang_for(path)`, and a CLI for shell
+gates (`python3 scripts/lib/comments.py [--strings] [--lang L] FILE…`). Two
+families: C (`c`, `cpp`, `rust` — `//`, `/* */` nested in Rust only, C line
+splices, string/char literals, Rust raw strings and lifetimes, C++ raw strings
+and digit separators) and `#` (`sh`, `just`, `python`, `toml`, `yaml`, `cmake` —
+per-language quoting, shell word-start `#` and heredocs, just's indented heredoc
+terminators, YAML block scalars, CMake bracket comments/arguments). Output keeps
+length and newlines, so offsets and line numbers still index the file; an
+unterminated block comment runs to EOF (less evidence, fails closed); an
+unknown language is an error, never a pass-through. Its own 63-assertion self-test
+(literals holding `//`/`#`, nested and unterminated blocks, raw strings, heredocs)
+runs on the normal path of every gate that imports it, and was mutation-checked
+(disarming nesting, heredoc termination, YAML quote-start, digit separators, the
+shell word-start rule or CMake bracket comments each fails it).
+
+"Defined" for `check-book-identifiers`: the identifier occurs, word-bounded, in
+the CODE of a tracked file in scope — comments AND string contents blanked, in a
+file whose language the stripper knows. Not "has a declaration" (a second parser
+per language); a `nano_ros_*()` call must still be a `function()`/`macro()`.
+
+| member | mutation (confirmed applied by `git diff`) | before | after |
+| --- | --- | ---: | ---: |
+| `entry-rmw-vocabulary` | delete both real xrce registrations in `vtable.c` (doc comment in `nros-rmw-xrce-cffi` kept) | 0 | 1 |
+| `cyclone-backend-sources` | comment out `"publisher.cpp"` in `build.rs` | 0 | 1 |
+| `rmw-doc-slot-names` | cite `` `w3_probe_comment_only` `` in `rmw_ret.h`, name it in a `//` comment in `cffi/src/lib.rs` | 0 | 1 |
+| `required-features-reachable` | an unreached `required-features` + `# never pass --all-features` in `justfile` | 0 | 1 |
+| `platform-provider-features` | `# "global-allocator",` in the issue-0617 NuttX row | 0 | 1 |
+| `book-identifiers` | quote `` `nros_board_init_clocks` `` (it "existed" in this gate's docstring) | 0 | 1 |
+| `named-lane-fails` (rule 3) | `true # ; nros_lane_platform px4` | 0 | 1 |
+| `named-lane-fails` (rule 4) | delete two of three `NROS_LANE_INCLUDED=` assignments (the comments kept the count at 3) | 0 | 1 |
+| `declared-fact-carriers` | `// println!("cargo:rerun-if-env-changed=…")` in `nros/build.rs` | 0 | 1 |
+| `workflow-repo-env` | `true # && source ./activate.sh` then `just setup tier2` (shared `command_lines`) | 0 | 1 |
+
+Each member gained negative-control rows on its normal path (three —
+`required-features-reachable`, `platform-provider-features`, `book-identifiers`
+— had no self-test at all and left the gate-selftests baseline, 93 → 90), and
+disarming its strip call fails each one. Positive control: all green on the tree.
+
+Live defects the fixed gates surfaced, fixed here: `rmw-doc-slot-names` — 14
+backticked names resolved only through comments elsewhere; 9 were ours and stale
+(`pub_discard`, `loan_publish`/`commit_publish`, `entity_view` retired, the
+event names abbreviated, and two ping primitives that exist in no library,
+`z_send_ping` and `uxr_ping_agent_session_until_timeout`), fixed in the headers
+(+ regenerated `generated.rs`) and `nros-rmw` `traits.rs`; 5 are other projects'
+and joined the external-names baseline. `book-identifiers` — 15 quotes of retired
+or never-existing names (`nros_platform_clock_ms`, `…_time_ns`,
+`…_time_now_ms`, `…_clock_us`, `nros_rmw_ret_t`, `nros_init`) that "existed" in
+comments and strings; the book pages are corrected, three deliberate citations of
+absent names are EXEMPT with reasons, and a span ending in `_` is a prefix.
+
+Private strippers retired (54 functions in 52 files, now thin wrappers keeping
+their names): every C-family and `#` stripper whose semantics matched, verified by
+running each owning gate before and after — identical output except
+`rmw-ret-sign`, whose old stripper DELETED block comments and so reported
+`service.rs:1115` for code on line 1133 (now correct). Two needed the new
+`code_mask` (`nested-cargo-lock-discipline`, `message-crate-identity`): "stripped
+== original" marks whitespace inside a string as code, which found a `fn` inside
+a raw string. Kept, different semantics: `gate-selftests`' `_sh_mask` (masks
+heredocs and multi-line strings for block extent while its guard test must see
+quoted `--self-test`), `rmw-agnostic`'s `strip_c` (classifies string literals as
+prose or value) and `strip_cfg_test`, `interop-cell-runners`' tokenizer-driven
+`_blank_comments`, `markdown-links`' `strip_code`, `codegen-tool-reconfigure`'s
+`blank_blocks`/`blank_strings`, `codegen-version-surface`'s attr/body strippers,
+and the QoS-mask readers (not comment strippers). `knob-ends` and
+`nros-c-feature-agreement` keep a whole-line-`#` fallback for Kconfig/`.conf`
+and other suffixes no stripper models. Per-LINE wrappers
+(`cpp-subscription-bound-supplied`, `no-std-entry-emission`,
+`test-precondition-guards`' signature reader) cannot see a `/*` opened on an
+earlier line, as before.
+
+Found by the sweep beyond the list, same shape, fixed (each 0 → 1 under its
+mutation): `check-dds-isolation-symmetry` (a commented-out `apply_to_command`
+was the pin), `check-executor-stack-floor` (`#if 0 /* CONFIG_MAIN_STACK_SIZE <
+… */` was the guard), `check-rmw-force-link-anchor.sh` (a commented-out
+`force_link_backend!` was the anchor; now reads through the CLI — it still owes
+a self-test). `check-std-census`' `guarded_features` counted a `compile_error!`
+in a comment; fixed, not mutation-proved.
+
+Suspected, NOT fixed (shell gates reading raw text): `check-rmw-required-slots.sh`
+(a commented-out `expect("rmw vtable: …")` is read), `check-capability-slot-counts.sh`
+(a commented-out `pub const X: usize = N` can be the first match). The migration
+path is the CLI above. The sweep candidates were triaged by grep, not audited one
+by one.
 
 ### W4 — an empty population reads as OK
 

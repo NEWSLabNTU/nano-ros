@@ -58,6 +58,10 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -130,55 +134,13 @@ def load_subjects() -> dict[str, str]:
 
 
 def strip_comments_and_strings(src: str) -> str:
-    """Rust source with comments removed and string literals emptied to `""`.
+    """Rust source with comments and string-literal CONTENTS blanked.
 
-    Newlines are kept so a diagnostic can still name a line. Good enough for
-    this file set: no raw strings with quotes inside, no `/*` nesting deeper
-    than one level in what it reads.
+    The shared stripper (phase-472 W3): same length, newlines kept so a
+    diagnostic can still name a line, and raw strings / nested `/*` handled.
     """
-    out: list[str] = []
-    i = 0
-    n = len(src)
-    while i < n:
-        c = src[i]
-        nxt = src[i + 1] if i + 1 < n else ""
-        if c == "/" and nxt == "/":
-            j = src.find("\n", i)
-            i = n if j < 0 else j
-            continue
-        if c == "/" and nxt == "*":
-            depth = 1
-            i += 2
-            while i < n and depth:
-                if src.startswith("/*", i):
-                    depth += 1
-                    i += 2
-                elif src.startswith("*/", i):
-                    depth -= 1
-                    i += 2
-                else:
-                    if src[i] == "\n":
-                        out.append("\n")
-                    i += 1
-            continue
-        if c == '"':
-            out.append('""')
-            i += 1
-            while i < n and src[i] != '"':
-                if src[i] == "\\":
-                    i += 1
-                if i < n and src[i] == "\n":
-                    out.append("\n")
-                i += 1
-            i += 1
-            continue
-        if c == "'" and i + 2 < n and src[i + 2] == "'" and src[i + 1] != "\\":
-            # A char literal like '"' or '{'; a lifetime has no closing quote.
-            i += 3
-            continue
-        out.append(c)
-        i += 1
-    return "".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(src, "rust", strings=True)
 
 
 def string_literals(src: str) -> list[str]:

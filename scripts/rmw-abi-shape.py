@@ -44,6 +44,10 @@ import os
 import re
 import sys
 from typing import NamedTuple
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
@@ -1088,8 +1092,8 @@ for _sym, (_bucket, _why) in _parity.MAP.items():
 
 def strip_comments(src):
     """C comments out, so a prose mention of `(*take)(` is not a declaration."""
-    body = re.sub(r"/\*.*?\*/", " ", src, flags=re.S)
-    return re.sub(r"(?m)//.*$", " ", body)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(src, "c")
 
 
 def vtable_slots(src=None):

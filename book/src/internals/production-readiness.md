@@ -44,8 +44,9 @@ may differ.
       discovery actually fires on your RTOS + driver. Untested on
       FreeRTOS + ThreadX as of writing.
 - [ ] **Clock wraparound + extension correctness** on long-running
-      deployments. The platform's `nros_platform_time_now_ms` must
-      handle u32 wrap (49.7 days) and u64 extend.
+      deployments. The platform's `nros_platform_clock_ns` must
+      extend a narrower hardware counter (a u32 millisecond count wraps
+      at 49.7 days) to a monotonic u64.
 - [ ] **Allocator behavior under memory pressure**. Boot-time alloc
       OK on most RTOSes; mid-run alloc only on `std` POSIX. Confirm
       your hot paths don't allocate.

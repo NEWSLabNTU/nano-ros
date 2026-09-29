@@ -51,6 +51,10 @@ import re
 import sys
 import sys as _sys
 from pathlib import Path as _Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 _sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
 from tracked import tracked  # issue 0721: index lookup, not a walk
 
@@ -109,7 +113,8 @@ def population(repo=ROOT):
 
 
 def strip_comments(src):
-    return "\n".join(l for l in src.splitlines() if not l.lstrip().startswith("#"))
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(src, "cmake")
 
 
 def classify(src):

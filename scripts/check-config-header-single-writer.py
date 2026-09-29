@@ -31,6 +31,10 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts" / "lib"))
@@ -44,16 +48,8 @@ _WRITE_CMD = re.compile(r"\b(configure_file|file)\s*\(", re.I)
 
 def strip_comments(text: str) -> str:
     """Blank out cmake `#` comments, preserving line numbering."""
-    out = []
-    for line in text.split("\n"):
-        i = line.find("#")
-        # A `#` inside a quoted string is not a comment; the only such cases in
-        # this tree are inside strings with no `config_generated`, so a simple
-        # rule is enough and errs toward keeping MORE text (never fewer hits).
-        if i >= 0 and line.count('"', 0, i) % 2 == 0:
-            line = line[:i]
-        out.append(line)
-    return "\n".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "cmake")
 
 
 # `foreach(V "a_config_generated.h" ...)` / `set(V "...config_generated.h")` —

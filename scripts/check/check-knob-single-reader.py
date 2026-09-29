@@ -53,6 +53,10 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent.parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -576,7 +580,8 @@ def retired_hits(entry: Retired, read):
 
 def strip_comments_hash(src: str) -> str:
     """`#` comments, for the CMake half. Same concession, other language."""
-    return re.sub(r"#[^\n]*", "", src)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(src, "cmake")
 
 
 def tracked(glob: str):
@@ -726,13 +731,11 @@ def strip_comments(src: str) -> str:
     The docstring promises a knob may be "mentioned freely in comments", and the
     gate has to actually honour that: prose explaining WHY a read was removed
     naturally quotes the idiom verbatim, and matching it would make writing the
-    explanation trip the check. Not a full Rust lexer — a `//` inside a string
-    literal over-strips — but this only ever causes a MISSED reader, never a
-    false one, and the failure mode of a config gate should be quiet rather than
-    crying wolf.
+    explanation trip the check. The shared Rust stripper (phase-472 W3), so a
+    `//` inside a string literal no longer over-strips.
     """
-    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
-    return re.sub(r"//[^\n]*", "", src)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(src, "rust")
 
 
 def readers_in(text: str, knob: str) -> bool:

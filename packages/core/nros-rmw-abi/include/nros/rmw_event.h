@@ -25,7 +25,7 @@
  * **Tier-2 / Tier-3 events skipped.** `MATCHED` (Tier-2) is deferred
  * until dynamic-discovery use cases appear — additive without ABI
  * break (the enum is integer-valued; unknown values pass through).
- * `QOS_INCOMPATIBLE` and `INCOMPATIBLE_TYPE` (Tier-3) are surfaced
+ * Upstream's QOS_INCOMPATIBLE and INCOMPATIBLE_TYPE (Tier-3) are surfaced
  * synchronously at create-time as `rmw_ret_t` codes
  * (`NROS_RMW_RET_INCOMPATIBLE_QOS`, `NROS_RMW_RET_TOPIC_NAME_INVALID`)
  * rather than as runtime events.
@@ -56,9 +56,10 @@ typedef struct rmw_liveliness_changed_status_t {
     int16_t  not_alive_count_change;
 } rmw_liveliness_changed_status_t;
 
-/** Count payload. Used for `MESSAGE_LOST`,
- *  `REQUESTED_DEADLINE_MISSED`, `LIVELINESS_LOST`,
- *  `OFFERED_DEADLINE_MISSED` — all share the same shape. */
+/** Count payload. Used for `NROS_RMW_EVENT_MESSAGE_LOST`,
+ *  `NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED`,
+ *  `NROS_RMW_EVENT_LIVELINESS_LOST`,
+ *  `NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED` — all share the same shape. */
 typedef struct rmw_count_status_t {
     uint32_t total_count;
     uint32_t total_count_change;

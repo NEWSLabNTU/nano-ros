@@ -72,6 +72,10 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts" / "lib"))
@@ -161,25 +165,11 @@ def _tracked_files(root: Path):
 def strip_line_comment(line):
     """The code part of a Rust/Jinja line.
 
-    Only `//`, and only when it is not inside a string literal — crude, but the
-    corpus is emitted code, where a `//` after an open quote is a URL or a path
-    and never introduces a `std::`.
+    The shared Rust stripper (phase-472 W3), one line at a time: a `//` inside
+    a string literal is kept, and a `/*` opened on an earlier line is not seen.
     """
-    in_str = False
-    esc = False
-    for i, ch in enumerate(line):
-        if esc:
-            esc = False
-            continue
-        if ch == "\\":
-            esc = True
-            continue
-        if ch == '"':
-            in_str = not in_str
-            continue
-        if not in_str and ch == "/" and line[i : i + 2] == "//":
-            return line[:i]
-    return line
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(line, "rust")
 
 
 def quote_spans(text):
