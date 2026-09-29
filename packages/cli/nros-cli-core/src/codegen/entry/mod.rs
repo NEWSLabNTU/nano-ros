@@ -1255,7 +1255,14 @@ fn derive_entry_tiers(
     // marks the bringup `system-model`; every other producer (the cmake
     // registered-node road, the hand-built test plans) has no contract layer
     // and nothing to derive from.
-    if plan.bringup != "system-model" || !plan.launch_file.is_file() {
+    //
+    // Issue 1575 -- this also returned `Ok(0)` when the model FILE was absent,
+    // and that is the one case where the plan HAD a model: `plan_from_model`
+    // loads through `load_model`, which resolves a missing path on the fly
+    // (`ensure_model`), so the nodes were baked from a model and the tiers
+    // then silently derived from none. The same `load_model` answers here, so
+    // the tiers come from the model the nodes came from, or the error is loud.
+    if plan.bringup != "system-model" {
         return Ok(0);
     }
     let model = crate::orchestration::model_ingest::load_model(&plan.launch_file)?;
