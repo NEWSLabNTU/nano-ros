@@ -512,7 +512,10 @@ env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "cor
 # over ONE shared zenoh session, stacks from the shared byte pool
 # (`nros_threadx_create_task`). Hosted simulation, host x86_64 + NSOS host
 # sockets — no QEMU, dials loopback directly (no slirp). Locator port 9091 =
-# `alloc::port_of(ThreadxLinux, Rust, RealtimeTiers)` (phase-295 W4 SSoT).
+# `alloc::port_of(ThreadxLinux, Rust, RealtimeTiers)` (phase-295 W4 SSoT),
+# stated as the bringup's `[image.threadx] locator` — the threadx-linux board
+# reads no `NROS_LOCATOR`, so the `env` here used to carry one that reached
+# nothing (issue 1581; `check-image-locator-bake`).
 # Built by the cargo lane (`workspace-fixtures-build.sh threadx-linux rust`;
 # needs THREADX_DIR from activate.sh). Consumed by
 # tests/realtime_tiers_e2e.rs (`threadx_linux_rust` case, CounterRatio3x).
@@ -526,7 +529,7 @@ bringup = "src/demo_bringup"
 image = "threadx"
 codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/threadx-linux"
-env = { NROS_LOCATOR = "tcp/127.0.0.1:9091", NROS_DOMAIN_ID = "0" }
+env = { NROS_DOMAIN_ID = "0" }
 
 [[workspace_fixture]]
 id = "workspace-c-native"
@@ -1004,7 +1007,8 @@ build_subdir = "build/posix-zenoh-native/cmake"
 # rows pass `CMAKE_BUILD_TYPE=Release` (#126): a -O0 zenoh-pico on the emulated
 # Cortex-M3 cannot finish the session handshake inside the e2e budget.
 #
-# The locator is the SLIRP GATEWAY 192.0.3.1 (the lane boots QEMU with
+# The locator — stated as the bringup's `[image.freertos_realtime] locator`,
+# the only carrier this board reads (issue 1581) — is the SLIRP GATEWAY 192.0.3.1 (the lane boots QEMU with
 # `net=192.0.3.0/24,host=192.0.3.1`), not the 10.0.2.2 the pubsub Rust FreeRTOS
 # entry uses — copying that one gives an address nothing answers on. Port 7891
 # is `port_of(FreertosMps2, Rust, RealtimeTiers)`, never hand-picked.
