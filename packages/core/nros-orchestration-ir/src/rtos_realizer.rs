@@ -258,7 +258,9 @@ struct NodeFacts {
 fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
     let mut out: BTreeMap<&str, NodeFacts> = BTreeMap::new();
     for node in &input.nodes {
-        let mut deadline_ms: Option<f64> = None;
+        // The node's OWN fold over its paths -- the FALLBACK below, never the
+        // first answer.
+        let mut path_deadline_ms: Option<f64> = None;
         let mut budget_ms: Option<f64> = None;
         let mut period_ms: Option<f64> = None;
         // Every declared WCET on this node, so the blocking term can name the
@@ -268,7 +270,7 @@ fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
         let mut execs: Vec<f64> = Vec::new();
         for p in &node.paths {
             if let Some(d) = p.max_latency_ms {
-                deadline_ms = Some(deadline_ms.map_or(d, |cur: f64| cur.min(d)));
+                path_deadline_ms = Some(path_deadline_ms.map_or(d, |cur: f64| cur.min(d)));
             }
             if let Some(b) = p.exec_ms {
                 budget_ms = Some(budget_ms.map_or(b, |cur: f64| cur.max(b)));
@@ -288,6 +290,31 @@ fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
         // block itself.
         execs.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
         let blocking_ms = execs.get(1).copied();
+
+        // phase-457 W4 -- the SHARED fold first. `MapperNode.deadline_us` is
+        // `ros-launch-manifest-derive`'s min over the node's paths'
+        // `max_latency_ms` AND its served `srv_endpoints.*.max_response_ms`
+        // ("a path's latency budget and a service's response bound are the same
+        // kind of claim, so they join one fold"). Re-deriving from the paths
+        // alone is what this used to do, and it dropped every service bound:
+        // phase-434 listed `max_response_ms` as "carried and read by nothing
+        // here". It is also the value play_launch ranks from, which is the
+        // point of phase-457 -- the tier Zephyr gives a node and the priority
+        // Linux gives it are computed from ONE answer.
+        //
+        // The path fold stays as the fallback because a `MapperInput` built by
+        // hand -- every older test in this module -- carries paths and leaves
+        // `deadline_us` unset. Through the real derivation the two agree
+        // whenever there is no service bound, so the fallback changes nothing
+        // for a model-built input; it keeps the hand-built ones meaning what
+        // they meant.
+        //
+        // `/ 1000.0` round-trips exactly: the consumer below converts back with
+        // `(d * 1000.0).round()`, so integer microseconds come back unchanged.
+        let deadline_ms = node
+            .deadline_us
+            .map(|us| us as f64 / 1000.0)
+            .or(path_deadline_ms);
 
         out.insert(
             node.name.as_str(),
@@ -1747,5 +1774,114 @@ mod tests {
             paths: vec![timer_path("p", rate_hz, None, Some(exec_ms))],
             ..Default::default()
         }
+    }
+
+    /// phase-457 W4 -- a service's response bound is a DEADLINE, and it reaches
+    /// the tier the Zephyr shim hands to `k_thread_deadline_set`.
+    ///
+    /// The shared derivation (`ros-launch-manifest-derive`) folds every served
+    /// `srv_endpoints.*.max_response_ms` into `MapperNode.deadline_us` beside
+    /// the paths' `max_latency_ms` -- "a path's latency budget and a service's
+    /// response bound are the same kind of claim, so they join one fold".
+    /// Until this wave `node_facts` re-derived the deadline from the paths
+    /// ALONE, so a node whose only timing claim was a service bound got none:
+    /// `fifo` and `NotRequested` on a board that has EDF. phase-434 listed
+    /// `max_response_ms` as "carried and read by nothing here"; this is the
+    /// reader.
+    ///
+    /// Driven from a real `SystemModel` through `mapper_input_from_model`, not
+    /// a hand-set `deadline_us`: the claim is about the CONTRACT field, and a
+    /// hand-set field would pin the plumbing rather than the fold.
+    #[test]
+    fn a_service_response_bound_reaches_the_tier_deadline() {
+        use ros_launch_manifest_model::{
+            Contracts, NodeInstance, PathContract, SrvContract, Structure, SystemModel,
+        };
+        use ros_launch_manifest_sched::EffectiveTrigger;
+        use std::collections::BTreeMap;
+
+        let mut nodes = indexmap::IndexMap::new();
+        nodes.insert(
+            "/server".to_string(),
+            NodeInstance {
+                scope: "bringup.launch.xml".to_string(),
+                criticality: Some("high".to_string()),
+                ..Default::default()
+            },
+        );
+        // A RANKED path -- a 50 Hz loop with a 10 ms budget -- AND a service
+        // with a TIGHTER 2.5 ms response bound. The node needs the path to be
+        // ranked at all: `chain_aware_rank` ranks paths, and a node whose only
+        // timing claim is a service bound produces no ranked item and so no
+        // tier (measured while writing this: `ranked = []`). That is the
+        // upstream ranker's reach, not `node_facts`', and it is recorded in the
+        // phase doc. What `node_facts` owns is the node that IS ranked, and for
+        // it the deadline is the min of the path budget and the service bound.
+        let mut node_paths = BTreeMap::new();
+        node_paths.insert(
+            "/server/loop".to_string(),
+            PathContract {
+                input: vec![],
+                output: vec!["/server/state".to_string()],
+                trigger: Some(EffectiveTrigger::Timer { rate_hz: 50.0 }),
+                max_latency_ms: Some(10.0),
+                ..Default::default()
+            },
+        );
+        let mut srv_endpoints = BTreeMap::new();
+        srv_endpoints.insert(
+            "/server/add".to_string(),
+            SrvContract {
+                max_response_ms: Some(2.5),
+            },
+        );
+        let model = SystemModel {
+            structure: Structure {
+                nodes,
+                ..Default::default()
+            },
+            contracts: Contracts {
+                node_paths,
+                srv_endpoints,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let input = crate::mapper_input::mapper_input_from_model(&model);
+        // Precondition: the SHARED fold carries the bound. If this fails the
+        // pinned derivation moved, which is not what this test is about -- so
+        // it fails here, by name, rather than as a missing deadline below.
+        let node = input
+            .nodes
+            .iter()
+            .find(|n| n.name == "/server")
+            .expect("the shared derivation dropped /server");
+        assert_eq!(
+            node.deadline_us,
+            Some(2_500),
+            "the shared fold is min(10 ms path budget, 2.5 ms service bound); if \
+             this is not 2500 the pinned derivation moved -- check the pin, not \
+             node_facts"
+        );
+
+        let edf = caps(true, false, false);
+        let ranked = chain_aware_rank(&input);
+        let plan = realize_rtos(&ranked, &input, &edf, &plan_for(&edf));
+        let tier = plan
+            .nodes
+            .iter()
+            .find(|n| n.name == "/server")
+            .expect("the realizer dropped /server");
+        assert_eq!(
+            tier.deadline_us,
+            Some(2_500),
+            "the tier's deadline must be the TIGHTER of the path budget (10 ms) \
+             and the service bound (2.5 ms) -- the value the Zephyr shim passes \
+             to k_thread_deadline_set. 10000 here means node_facts re-derived \
+             the deadline from the paths alone and dropped the service"
+        );
+        assert_eq!(tier.sched_class, "edf");
+        assert_eq!(tier.deadline_real, DimRealization::Native);
     }
 }
