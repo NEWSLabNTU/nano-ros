@@ -17,6 +17,8 @@ per record.
 Options:
   --dry-run, -n   generate and print the make command without executing it
   --keep          keep generated records and makefile after a successful run
+  --joblog PATH   write the per-leaf joblog (id, ok/fail) to PATH instead of
+                  a stamped file, so a caller can read it after a FAILED run
   -h, --help      show this help
 
 All other arguments are passed to scripts/build/zephyr-fixture-leaves.sh after
@@ -27,6 +29,7 @@ EOF
 
 dry_run=0
 keep=0
+joblog_arg=""
 leaf_args=()
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -35,6 +38,13 @@ while [ "$#" -gt 0 ]; do
             ;;
         --keep)
             keep=1
+            ;;
+        # issue 1583 — a FLAG, not an env var: every `NROS_*` in this process's
+        # environment reaches the leaves' sizes-probe key (see issue 0446 below),
+        # so an exported path would mint a new probe key per run.
+        --joblog)
+            shift
+            joblog_arg="${1:?--joblog needs a path}"
             ;;
         --help|-h)
             usage
@@ -88,10 +98,10 @@ record_dir="$work_root/records/$stamp"
 # bookkeeping for a variable with no consumer.
 log_dir="$work_root/logs/$stamp"
 status_dir="$work_root/status/$stamp"
-joblog="$work_root/joblog-$stamp.tsv"
+joblog="${joblog_arg:-$work_root/joblog-$stamp.tsv}"
 makefile="$work_root/zephyr-fixtures-$stamp.mk"
 records_file="$work_root/records-$stamp.tsv"
-mkdir -p "$record_dir" "$log_dir" "$status_dir"
+mkdir -p "$record_dir" "$log_dir" "$status_dir" "$(dirname "$joblog")"
 printf 'target\tid\tstatus\tstart_epoch\tend_epoch\tduration_s\tscheduler_log\tzephyr_log\trecord\n' >"$joblog"
 
 "$leaves_script" --emit records "${leaf_args[@]}" >"$records_file"

@@ -404,6 +404,14 @@ build-fixtures:
     fi
 
     failures=()
+    # issue 1583 — the driver's status is INSPECTED, not fatal here: the
+    # tier-priority gate at the end of this recipe must still report when a
+    # leaf fails, over the leaves that did build. Before, a red leaf ended the
+    # recipe first, so on the tier-2 nightly (red at an unrelated leaf every
+    # night of 2026-09-27/28) the gate was placed and never produced a verdict
+    # — the derived-tier red below sat behind it unseen.
+    driver_rc=0
+    leaf_joblog="$log_dir/tier-priority-joblog-$$.tsv"
     if [ "$normal_records" = "1" ]; then
         echo "  → Zephyr fixture make scheduler"
         NROS_ZEPHYR_WORKSPACE="$workspace" \
@@ -415,7 +423,8 @@ build-fixtures:
         NROS_ZEPHYR_SCCACHE_DISABLE="$sccache_disable" \
         NROS_ZEPHYR_CCACHE_DIR="$ccache_dir" \
         NROS_ZEPHYR_CCACHE_TEMPDIR="$ccache_tmpdir" \
-            scripts/build/zephyr-fixture-make-driver.sh "${zephyr_leaf_args[@]}"
+            scripts/build/zephyr-fixture-make-driver.sh --joblog "$leaf_joblog" \
+                "${zephyr_leaf_args[@]}" || driver_rc=$?
     fi
     # issue 0549 — the logging-smoke leaf used to be built HERE by a second
     # recipe, because "it lives under packages/testing/.../bins, not examples/,
@@ -431,19 +440,6 @@ build-fixtures:
         printf '  ✗ failed: %s\n' "${failures[@]}"
         exit 1
     fi
-    # zephyr west build-fixtures (issue 0041): build the west bringup fixtures the
-    # cli_bringup_zephyr / board_import tests consume, so they don't run west at
-    # test time. Self-gates on west/ZEPHYR_BASE; non-fatal (a failed build — e.g.
-    # board_import without the FVP SDK — leaves no stamp, and the test deselects/skips).
-    # Pass the recipe's resolved workspace through as ZEPHYR_BASE so the script
-    # uses the SAME tree these CI builds did (it also self-discovers, but this
-    # keeps them in lockstep when NROS_ZEPHYR_WORKSPACE picked a non-default tree).
-    # issue 0700 — NO `|| true`, same reasoning as `just/esp32.just`: the
-    # builder distinguishes "unprovisioned host, nothing to build" (exit 0) from
-    # "attempted and produced nothing" (non-zero), so discarding it here would
-    # re-hide exactly the failures that distinction exists to surface.
-    ZEPHYR_BASE="$workspace/zephyr" bash scripts/build/west-fixtures.sh
-    echo "Zephyr test fixtures built successfully."
     # RFC-0079 §4.1 / issue 0766 — now that `.config` files exist, finish the
     # check `check::tier-priority-plan` DEFERS. Zephyr's reserved transport band
     # is derived per image, so this is the only place it CAN be judged, and a
@@ -458,8 +454,58 @@ build-fixtures:
     # three runs red (two on 2026-09-08, one on -10) at a gate the build had
     # already passed. "A gate may only resolve artifacts the job itself builds."
     # (issue 1253)
+    #
+    # issue 1583 — and it runs RIGHT AFTER the leaves, whatever happens next.
+    # It reads only the leaves' `.config`s, yet sat at the END of the recipe,
+    # behind west-fixtures (issue 1536's `zephyr_self_pkg_sibling` is red there)
+    # and behind any failing leaf, so on the tier-2 nightly it was placed and
+    # never produced a verdict. When a leaf failed it judges the leaves that DID
+    # build (joblog status `ok`, joined to the records on the leaf id): only
+    # images built this run are listed, so `--images-from`'s strict rules still
+    # hold for every image it reads. Every status is collected and the recipe
+    # fails with the first non-zero one, so no red hides another.
     images_list="$log_dir/tier-priority-images-$$.txt"
-    awk -F '\t' 'NF >= 12 && $12 != "" { print $12 }' "$probe_records" >"$images_list"
-    rm -f "$probe_records"
-    python3 scripts/check-tier-priority-plan-image.py --images-from "$images_list"
-    rm -f "$images_list"
+    if [ "$driver_rc" -ne 0 ]; then
+        awk -F '\t' 'NR == FNR { if (FNR > 1 && $3 == "ok") ok[$2] = 1; next }
+                      NF >= 12 && $12 != "" && ($2 in ok) { print $12 }' \
+            "$leaf_joblog" "$probe_records" >"$images_list"
+        n_all="$(awk -F '\t' 'NF >= 12 && $12 != ""' "$probe_records" | wc -l)"
+        n_ok="$(wc -l <"$images_list")"
+        echo "  ✗ Zephyr fixture build FAILED (exit $driver_rc) — judging the tier-priority"
+        echo "    plan over the $n_ok of $n_all image(s) that DID build, so that gate still reports:"
+    else
+        awk -F '\t' 'NF >= 12 && $12 != "" { print $12 }' "$probe_records" >"$images_list"
+    fi
+    gate_rc=0
+    if [ -s "$images_list" ]; then
+        python3 scripts/check-tier-priority-plan-image.py --images-from "$images_list" \
+            || gate_rc=$?
+    else
+        echo "    (no leaf built — tier-priority-plan-image has no image to judge this run)"
+    fi
+    rm -f "$images_list" "$probe_records" "$leaf_joblog"
+    if [ "$driver_rc" -ne 0 ]; then
+        exit "$driver_rc"
+    fi
+    # zephyr west build-fixtures (issue 0041): build the west bringup fixtures the
+    # cli_bringup_zephyr / board_import tests consume, so they don't run west at
+    # test time. Self-gates on west/ZEPHYR_BASE; non-fatal (a failed build — e.g.
+    # board_import without the FVP SDK — leaves no stamp, and the test deselects/skips).
+    # Pass the recipe's resolved workspace through as ZEPHYR_BASE so the script
+    # uses the SAME tree these CI builds did (it also self-discovers, but this
+    # keeps them in lockstep when NROS_ZEPHYR_WORKSPACE picked a non-default tree).
+    # issue 0700 — NO `|| true`, same reasoning as `just/esp32.just`: the
+    # builder distinguishes "unprovisioned host, nothing to build" (exit 0) from
+    # "attempted and produced nothing" (non-zero), so discarding it here would
+    # re-hide exactly the failures that distinction exists to surface. Its
+    # status is collected, not discarded: it still fails the recipe below.
+    west_rc=0
+    ZEPHYR_BASE="$workspace/zephyr" bash scripts/build/west-fixtures.sh || west_rc=$?
+    if [ "$gate_rc" -ne 0 ]; then
+        echo "  ✗ tier-priority-plan-image FAILED (exit $gate_rc) — see its verdict above"
+        exit "$gate_rc"
+    fi
+    if [ "$west_rc" -ne 0 ]; then
+        exit "$west_rc"
+    fi
+    echo "Zephyr test fixtures built successfully."
