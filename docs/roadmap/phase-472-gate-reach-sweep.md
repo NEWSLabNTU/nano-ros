@@ -1,6 +1,6 @@
 # Phase 472 — gate reach sweep
 
-**Status (2026-09-29). AUDIT LANDED; W1, W5, W7, W8 open.** (W2, W3, W4, W6, W9 done — see each.) An audit of every tracked
+**Status (2026-09-29). AUDIT LANDED; W5, W7, W8 open.** (W1, W2, W3, W4, W6, W9 done — see each.) An audit of every tracked
 `scripts/check-*` gate against one question, the codebase-audit checklist's **I6
 second-order** rule: *a gate must be able to fail on the case it names.*
 
@@ -87,6 +87,56 @@ the model.
 
 **Fix:** make the shared loader `scripts/lib/workflow_commands.load_workflows`
 include composite actions, and move every member onto it.
+
+**Status: DONE.** `scripts/lib/workflow_commands.py` now holds the ONE CI-shell
+population: `ci_files(include_actions=True)` (every workflow and every
+`.github/actions/*/action.y*ml`, for text readers), `ci_pathspecs()` /
+`ACTION_PATHSPECS` (for `git ls-files` / `git grep` callers), and
+`load_workflows(include_actions=True)` (YAML readers; an action shaped as a
+one-job workflow) now built on `ci_files`. `ci_files_self_test()` is the reach
+control, run by the text-reading members. `workflow-repo-env` and
+`workflow-indexed-apt` were already on it (PR #1413): verified, a bare
+`just setup tier2` / an `apt-get install` step in `setup-nros-cli` fails both.
+
+Every mutation below appends one step to `.github/actions/setup-nros-cli/action.yml`
+(confirmed applied by `git diff`):
+
+| member | step appended | before | after |
+| --- | --- | ---: | ---: |
+| `ci-cli-from-source` | `gh release download v1 -p "nros-*"` | 0 | 1 |
+| `ci-no-fixture-tolerance` | `env: NROS_FIXTURES_OPTIONAL: "1"`; and inline `run: NROS_FIXTURES_OPTIONAL=1 just test-all` | 0 / 0 | 1 / 1 |
+| `ci-no-verb-fallback` | `just zephyr build-all \|\| just zephyr build-examples` | 0 | 1 |
+| `workflow-setup-spelling` | `just zephyr setup` | 0 | 1 |
+| `git-dir-layout-assumptions` | `cat .git/HEAD` | 0 | 1 |
+| `grep-q-error-conflation` | `if grep -q foo bar.txt; then …` | 0 | 1 |
+| `pipefail-sigpipe-assertions` | `if ! printf … \| grep -q …; then` (block `run:`) | 0 | 1 |
+| `just-recipe-refs` (sweep) | a call to an undefined root recipe | 0 | 1 |
+| `set-e-bare-assignment` (sweep) | `out="$(false)"` then `rc=$?` | 0 | 1 |
+
+Each member gained a normal-path reach control (the action is in its population,
+or a synthetic action is judged). Two needed more than the population: the
+inline `run: FLAG=1` form escaped `ci-no-fixture-tolerance`'s line-start regex;
+and `pipefail-sigpipe-assertions` skipped any file not containing the word
+`pipefail`, but a CI step with `shell: bash` runs `bash -eo pipefail` (a
+composite action must name its shell), so a CI file saying `shell: bash` is now
+in scope. `workflow-setup-spelling`'s workflow arm lacked the `(?![-\w])` its
+prose arm had, and read `just qemu setup-qemu` in `setup-qemu-patched` as the
+module spelling — fixed, with a row.
+
+Live defect fixed: `setup-qemu-patched` checked `-netdev dgram` with
+`if ! "$bin" … | grep -qw dgram` under the runner's pipefail — the issue-1077
+shape (a match can read as a miss when `grep -q` exits first and SIGPIPEs qemu).
+Both `grep-q-error-conflation` and `pipefail-sigpipe-assertions` fail on the
+unfixed action; it now captures, then `nros_grep_q`.
+
+Swept and NOT widened, because they read JOB structure (runners, required
+contexts, lane ownership, gate visibility) that an action does not have, or
+missing an action only makes them stricter: `workflow-runner-isolation`,
+`required-contexts-reportable`, `tier-has-ci-owner`, `lane-coverage-labels`,
+`gate-visibility`, `interlock-visibility`, `default-gates-run-somewhere`,
+`interop-cell-runners`, `lane-contracts`, `ci-image-*`, `release-manifest`,
+`version-lockstep`, `board-tiers`, `ci-doc-workflow-refs`. `ros-env-spelling`
+already reads every tracked `.yml`.
 
 ### W2 — just-file populations miss `just/check/` and the root `justfile`
 

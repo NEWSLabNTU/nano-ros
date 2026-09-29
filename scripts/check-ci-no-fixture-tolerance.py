@@ -25,11 +25,15 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WORKFLOWS = os.path.join(ROOT, ".github", "workflows")
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import workflow_commands  # noqa: E402  phase-472 W1 — workflows AND composite actions
 FLAG = "NROS_FIXTURES_OPTIONAL"
 # A line that merely EXPLAINS the ban (like the one this gate exists for) is
 # not a violation. A `#` comment is prose; an env assignment is policy.
-SETS = re.compile(rf"^\s*(?!#)\S*\b{FLAG}\s*[:=]")
+# Anywhere on a non-comment line — an `env:` key, `export FLAG=1`, or an inline
+# `run: FLAG=1 just …` (which the line-start form missed) — but never a READ
+# (`${FLAG:-}`).
+SETS = re.compile(rf"^(?!\s*#).*?(?<![{{$\w]){FLAG}\s*[:=]")
 
 
 def analyze(lines):
@@ -43,15 +47,21 @@ def selftest():
     assert not analyze([f'          # {FLAG} is GONE — see phase-411 W4\n']), \
         "a comment explaining the ban must not be a violation"
     assert not analyze(["          CARGO_BUILD_JOBS: \"2\"\n"]), "unrelated env is fine"
+    # phase-472 W1
+    assert analyze([f"      run: {FLAG}=1 just test-all\n"]), "an inline run: assignment"
+    assert not analyze([f'      run: echo "${{{FLAG}:-}}"\n']), "a READ is not a set"
+    workflow_commands.ci_files_self_test()
 
 
 def main():
     selftest()
     problems = []
-    for fn in sorted(os.listdir(WORKFLOWS)):
-        if not fn.endswith((".yml", ".yaml")):
-            continue
-        with open(os.path.join(WORKFLOWS, fn), encoding="utf-8") as fh:
+    # phase-472 W1 — workflows AND composite actions: an action's `run:` is a
+    # CI step, and this read `.github/workflows/` only.
+    files = workflow_commands.ci_files()
+    for path in files:
+        fn = os.path.relpath(path, ROOT)
+        with open(path, encoding="utf-8") as fh:
             for lineno, line in analyze(fh.readlines()):
                 problems.append(
                     f"{fn}:{lineno}: sets {FLAG} — CI names its scope, so a "
@@ -63,7 +73,7 @@ def main():
         for p in problems:
             sys.stderr.write(f"  {p}\n")
         return 1
-    print(f"ci fixture tolerance: OK (no workflow sets {FLAG})")
+    print(f"ci fixture tolerance: OK (no workflow or action sets {FLAG}; {len(files)} file(s))")
     return 0
 
 

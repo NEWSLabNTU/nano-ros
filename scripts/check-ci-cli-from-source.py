@@ -36,7 +36,8 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WORKFLOWS = os.path.join(ROOT, ".github", "workflows")
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import workflow_commands  # noqa: E402  phase-472 W1 — workflows AND composite actions
 
 # The from-source build, and the assertion that must accompany it.
 BUILD_RE = re.compile(r"cargo build\b.*--bin nros\b")
@@ -104,7 +105,7 @@ EXEMPT = {}
 # CLI from source and assert its source stamp, which matters most for the one
 # artifact nobody downstream can re-check.
 RELEASE_WORKFLOWS = {
-    "release-nros.yml": (
+    ".github/workflows/release-nros.yml": (
         "phase-431 W5 -- it BUILDS the release, and installs its own asset as "
         "a pre-publish check"
     ),
@@ -207,10 +208,15 @@ def release_sites(text):
     return out
 
 
-def workflow_files():
-    return sorted(
-        fn for fn in os.listdir(WORKFLOWS) if fn.endswith((".yml", ".yaml"))
-    )
+def workflow_files(root=None):
+    """Every workflow AND composite action, repo-relative (phase-472 W1).
+
+    Workflows only, before: `.github/actions/setup-nros-cli` is the SOLE CLI
+    acquisition path of `nightly.yml`'s jobs, and a release download placed in
+    it was never read.
+    """
+    base = root or ROOT
+    return [os.path.relpath(p, base) for p in workflow_commands.ci_files(repo=base)]
 
 
 def self_test():
@@ -320,6 +326,10 @@ def self_test():
     assert len(release_sites(prod)) == 1, release_sites(prod)
     assert build_sites(prod)[0][2] is False, build_sites(prod)
 
+    # phase-472 W1 — a composite action is in the population.
+    workflow_commands.ci_files_self_test()
+    assert ".github/actions/setup-nros-cli/action.yml" in workflow_files(), workflow_files()
+
     sys.stdout.write("check-ci-cli-from-source self-test: OK\n")
 
 
@@ -343,7 +353,7 @@ def main():
             )
 
     for fn in workflow_files():
-        with open(os.path.join(WORKFLOWS, fn), encoding="utf8") as fh:
+        with open(os.path.join(ROOT, fn), encoding="utf8") as fh:
             text = fh.read()
 
         for lineno, line, what in ([] if fn in RELEASE_WORKFLOWS else release_sites(text)):

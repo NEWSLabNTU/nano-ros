@@ -45,7 +45,8 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WORKFLOWS = os.path.join(ROOT, ".github", "workflows")
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import workflow_commands  # noqa: E402  phase-472 W1 — workflows AND composite actions
 
 # `just <scope> setup ...` occurrences that may stay, and why.
 #
@@ -134,11 +135,14 @@ def offenders(text, scopes):
         # in that position is ALWAYS the module form -- there is nothing to
         # resolve, and the spelling alone is the defect. Caught by mutation-
         # testing this gate against the pre-conversion nightly.yml.
-        m = re.search(r"just (\$\{\{[^}]*\}\}) setup\b(.*)$", line)
+        # `(?![-\w])`: `just qemu setup-qemu` is a different recipe. The workflow
+        # arm did not need it until it read composite actions (phase-472 W1),
+        # where `setup-qemu-patched` runs exactly that.
+        m = re.search(r"just (\$\{\{[^}]*\}\}) setup(?![-\w])(.*)$", line)
         if m:
             scope, rest = m.group(1), m.group(2).strip()
         else:
-            m = re.search(r"just ([a-z0-9_]+) setup\b(.*)$", line)
+            m = re.search(r"just ([a-z0-9_]+) setup(?![-\w])(.*)$", line)
             if not m:
                 continue
             scope, rest = m.group(1), m.group(2).strip()
@@ -150,7 +154,7 @@ def offenders(text, scopes):
 
 
 def _doc_pattern(scopes):
-    # `(?![-\w])` is load-bearing and the workflow arm above does not need it:
+    # `(?![-\w])` is load-bearing (the workflow arm above now carries it too):
     # prose is full of `just qemu setup-qemu` / `just qemu setup-network`, which
     # are DIFFERENT verbs (thin `nros setup --tool` callers) and must not be
     # flagged. A bare `\b` matches them, because `p` -> `-` is a word boundary.
@@ -216,6 +220,7 @@ def doc_paths():
 
 
 def self_test():
+    workflow_commands.ci_files_self_test()  # phase-472 W1 — an action is in the population
     scopes = {"zephyr", "freertos"}
     t = "\n".join(
         [
@@ -229,6 +234,7 @@ def self_test():
     )
     got = offenders(t, scopes)
     assert [g[0] for g in got] == [2, 4, 6], got
+    assert offenders("          just zephyr setup-network\n", scopes) == []
     assert got[0][2] == "just zephyr setup --skip-sdk", got[0]
     assert got[1][2] == "just freertos setup", got[1]
 
@@ -284,10 +290,9 @@ def main():
 
     problems = []
     seen_exempt = set()
-    for fn in sorted(os.listdir(WORKFLOWS)):
-        if not fn.endswith((".yml", ".yaml")):
-            continue
-        path = os.path.join(WORKFLOWS, fn)
+    # phase-472 W1 — workflows AND composite actions.
+    for path in workflow_commands.ci_files():
+        fn = os.path.relpath(path, ROOT)
         with open(path, encoding="utf8") as fh:
             text = fh.read()
         for lineno, line, call in offenders(text, scopes):

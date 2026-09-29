@@ -49,6 +49,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts" / "lib"))
 from tracked import tracked  # noqa: E402 — issue 0721: index lookup, not a walk
 from check_just_sources import just_modules, just_sources  # noqa: E402 — phase-472 W2
+import workflow_commands  # noqa: E402 — phase-472 W1
 
 # `just` at a command position: line start, after `&&`/`||`/`;`/`(`, or after a
 # leading `@`/`-` recipe prefix. Captures the first argument.
@@ -200,7 +201,9 @@ def just_files(repo=None):
     # top-level recipe is `zenohd locator="tcp/..."`, so `setup` was passed as a
     # LOCATOR and the step could never work. host-tests was red on it for days,
     # and nothing in the tree could see it.
-    yield from sorted((repo / ".github" / "workflows").glob("*.yml"))
+    # phase-472 W1 — and composite actions: `setup-nros-cli` runs
+    # `just setup-launch-resolve`, and a rename there was never read.
+    yield from workflow_commands.ci_files(repo=repo)
 
 
 def offenders(roots, mods, repo=None):
@@ -372,6 +375,8 @@ def selftest(verbose=False):
             "plat no-such-plat-recipe" in bad)
         chk("`just <mod> <real>` resolves (module keyed by NAME, imports merged)",
             "plat build" not in bad and "check gate-a" not in bad)
+        chk("a composite action is a caller too (phase-472 W1)",
+            any(".github/actions/" in str(p) for p in just_files()))
 
     if verbose:
         print(f"\n{ok} passed, {fail} failed")
