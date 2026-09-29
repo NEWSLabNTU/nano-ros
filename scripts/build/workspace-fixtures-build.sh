@@ -68,7 +68,7 @@ repo_root="$(cd "$script_dir/../.." && pwd)"
 source "$repo_root/scripts/build/build-root.sh"
 source "$repo_root/scripts/build/cargo.sh"
 
-# nros_warm_leaf_cache <workspace-dir>
+# nros_warm_leaf_cache <workspace-dir> [<image>]
 #
 # Populate the cargo registry cache for one workspace leaf, ONCE, before the
 # `--offline` build that follows. Issue 0967.
@@ -100,6 +100,7 @@ source "$repo_root/scripts/build/cargo.sh"
 # defect never showed up in a developer sweep — only `--offline` exposes it.
 _NROS_WARMED_LEAVES=""
 _NROS_WARMED_ROOT=""
+_NROS_WARMED_IMAGES=""
 nros_warm_leaf_cache() {
     local ws="${1:?nros_warm_leaf_cache: workspace dir}"
     case " $_NROS_WARMED_LEAVES " in *" $ws "*) return 0 ;; esac
@@ -126,10 +127,41 @@ nros_warm_leaf_cache() {
         fi
     fi
 
-    [ -f "$ws/Cargo.toml" ] || return 0
+    # The LEAF half warms the graph the build will actually resolve: the
+    # GENERATED cargo root `nros build` writes for this image. It used to test
+    # `$ws/Cargo.toml` and fetch there — but phase-445 W6 removed every
+    # workspace-root `Cargo.toml` under `examples/workspaces/`
+    # (`check-workspace-root-build-files`), so that test failed for all 16
+    # workspaces and this half returned early, silently, for every one of them.
+    # Only the repo-root fetch above still ran. Crates the root graph does not
+    # reach went unfetched, and the esp32 image — whose `esp-hal`,
+    # `esp-backtrace` and `allocator-api2` live only in its own generated
+    # graph — failed every nightly with `failed to download allocator-api2`
+    # "but --frozen was specified", the exact headline this function exists to
+    # prevent.
+    #
+    # `--dry-run --offline` runs stages 1-4 (which WRITE the generated root)
+    # and prints the stage-5 commands instead of exec'ing them; it touches no
+    # network. The fetch below is then the one sanctioned network step, against
+    # that root with its own `--config` (its `[patch.crates-io]` rows decide
+    # what resolves). A cmake/west-driven image prints no `cargo build` line and
+    # has no cargo root to warm, so it is skipped rather than guessed at.
+    local img="${2:-}"
+    [ -n "$img" ] || return 0
+    case " $_NROS_WARMED_IMAGES " in *" $ws|$img "*) return 0 ;; esac
+    _NROS_WARMED_IMAGES="$_NROS_WARMED_IMAGES $ws|$img"
 
-    if ( cd "$ws" && NROS_CARGO_FLAGS= cargo fetch >/dev/null 2>&1 ); then
-        return 0
+    local plan manifest cfg
+    if plan="$(cd "$ws" && "$nros_cli" build "$img" --workspace . --offline --dry-run 2>&1)"; then
+        manifest="$(printf '%s\n' "$plan" \
+            | sed -n 's/^cargo build .*--manifest-path \([^ ]*\).*/\1/p' | head -n 1)"
+        [ -n "$manifest" ] || return 0
+        cfg="$(printf '%s\n' "$plan" \
+            | sed -n 's/^cargo build .*--config \([^ ]*\).*/\1/p' | head -n 1)"
+        if ( cd "$ws" && NROS_CARGO_FLAGS= cargo fetch --manifest-path "$manifest" \
+                ${cfg:+--config "$cfg"} >/dev/null 2>&1 ); then
+            return 0
+        fi
     fi
     # Not fatal: an environment that is offline BY DESIGN with a warm cache is
     # legitimate, and failing here would break it. But say so, because the
@@ -413,7 +445,7 @@ build_workspace() {
                 # QUALIFIED — see the note in the cargo branch below: an image
                 # id can be declared by more than one bringup in a workspace.
                 local qual_image="$(basename "$bringup"):$image"
-                nros_warm_leaf_cache "$(pwd)"
+                nros_warm_leaf_cache "$(pwd)" "$qual_image"
                 local nros_args=(build "$qual_image" --workspace . --offline --)
                 nros_args+=("${profile_args[@]}")
                 if [ -n "$target_dir" ]; then
@@ -523,7 +555,7 @@ build_workspace() {
                 # already names its bringup, so qualifying costs nothing and is
                 # unambiguous everywhere, including single-bringup workspaces.
                 local qual_image="$(basename "$bringup"):$image"
-                nros_warm_leaf_cache "$(pwd)"
+                nros_warm_leaf_cache "$(pwd)" "$qual_image"
                 local nros_args=(build "$qual_image" --workspace . --offline)
                 if [ -n "$defs" ]; then
                     local def_args=()
