@@ -3175,11 +3175,21 @@ pub fn build_nuttx_riscv_workspace_rust_realtime_entry() -> TestResult<&'static 
                 "riscv32imac-unknown-nuttx-elf/{}/riscv_nuttx_entry",
                 nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE)
             ));
-            require_prebuilt_workspace_binary(
+            let binary = require_prebuilt_workspace_binary(
                 fixture_id,
                 &binary_path,
                 &target_dir.join(workspace_fixture_stamp_name(fixture_id)),
-            )
+            )?;
+            // issue 1581 — the image must dial the router this cell's test starts.
+            crate::fixtures::baked_locator::assert_row_dials_port(
+                fixture_id,
+                crate::alloc::port_of(
+                    crate::matrix::PlatformId::NuttxRiscv,
+                    crate::matrix::Lang::Rust,
+                    crate::matrix::Workload::RealtimeTiers,
+                ),
+            );
+            Ok(binary)
         })
         .map(|p| p.as_path())
 }
@@ -3209,11 +3219,21 @@ pub fn build_nuttx_workspace_rust_realtime_entry() -> TestResult<&'static Path> 
                 "armv7a-nuttx-eabihf/{}/nuttx_entry",
                 nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE)
             ));
-            require_prebuilt_workspace_binary(
+            let binary = require_prebuilt_workspace_binary(
                 fixture_id,
                 &binary_path,
                 &target_dir.join(workspace_fixture_stamp_name(fixture_id)),
-            )
+            )?;
+            // issue 1581 — the image must dial the router this cell's test starts.
+            crate::fixtures::baked_locator::assert_row_dials_port(
+                fixture_id,
+                crate::alloc::port_of(
+                    crate::matrix::PlatformId::NuttxArm,
+                    crate::matrix::Lang::Rust,
+                    crate::matrix::Workload::RealtimeTiers,
+                ),
+            );
+            Ok(binary)
         })
         .map(|p| p.as_path())
 }
@@ -3240,11 +3260,21 @@ pub fn build_threadx_workspace_rust_realtime_entry() -> TestResult<&'static Path
             let target_dir = crate::fixtures::groups::workspace_artifact_dir(fixture_id)?;
             let binary_path =
                 target_dir.join(format!("{}/threadx_entry", cargo_target_profile_dir()));
-            require_prebuilt_workspace_binary(
+            let binary = require_prebuilt_workspace_binary(
                 fixture_id,
                 &binary_path,
                 &target_dir.join(workspace_fixture_stamp_name(fixture_id)),
-            )
+            )?;
+            // issue 1581 — the image must dial the router this cell's test starts.
+            crate::fixtures::baked_locator::assert_row_dials_port(
+                fixture_id,
+                crate::alloc::port_of(
+                    crate::matrix::PlatformId::ThreadxLinux,
+                    crate::matrix::Lang::Rust,
+                    crate::matrix::Workload::RealtimeTiers,
+                ),
+            );
+            Ok(binary)
         })
         .map(|p| p.as_path())
 }
@@ -3303,11 +3333,21 @@ pub fn build_freertos_workspace_rust_realtime_entry() -> TestResult<&'static Pat
                 "thumbv7m-none-eabi/{}/freertos_realtime_entry",
                 cargo_target_profile_dir()
             ));
-            require_prebuilt_workspace_binary(
+            let binary = require_prebuilt_workspace_binary(
                 fixture_id,
                 &binary_path,
                 &target_dir.join(workspace_fixture_stamp_name(fixture_id)),
-            )
+            )?;
+            // issue 1581 — the image must dial the router this cell's test starts.
+            crate::fixtures::baked_locator::assert_row_dials_port(
+                fixture_id,
+                crate::alloc::port_of(
+                    crate::matrix::PlatformId::FreertosMps2,
+                    crate::matrix::Lang::Rust,
+                    crate::matrix::Workload::RealtimeTiers,
+                ),
+            );
+            Ok(binary)
         })
         .map(|p| p.as_path())
 }
