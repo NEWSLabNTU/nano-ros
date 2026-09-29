@@ -260,13 +260,16 @@ def strip_hash(t: str) -> str:
     return "\n".join(out)
 
 
-_CFG_TEST = re.compile(r"#\[cfg\((?:all\(|any\()?\s*test\b[^\]]*\]")
 
 
 def strip_cfg_test(code: str) -> str:
     """Blank every Rust item under `#[cfg(test)]`, keeping line numbers —
     `per_item.rust_cfg_test_blank` (phase-472 W6), with this gate's pattern."""
-    return per_item.rust_cfg_test_blank(code, _CFG_TEST)
+    # phase-472 W8 — `cfg(any(test, feature = …))` is NOT test-only: it ships
+    # whenever the feature is on, so its body is shipped code. The pattern this
+    # gate carried (`(?:all\(|any\()?test`) exempted it; the shared default
+    # takes `test` and `all(test, …)` only.
+    return per_item.rust_cfg_test_blank(code)
 
 
 def code_of(path: str, text: str) -> str | None:
@@ -355,6 +358,10 @@ def self_test(rx: re.Pattern) -> list[str]:
         ("packages/core/x/src/a.rs", 'panic!("only zenoh has this");\n', 0),
         ("packages/core/x/src/a.rs", "#[cfg(test)]\nmod t {\n    const A: &str = \"uorb\";\n}\n", 0),
         ("packages/core/x/src/a.rs", "#[cfg(test)]\nuse nros_rmw_zenoh as z;\nfn f() { nros_rmw_zenoh::register(); }\n", 1),
+        # phase-472 W8 — the cfg(test) exemption's neighbour: `any(test, feature)`
+        # ships whenever the feature is on, so its body is read.
+        ("packages/core/x/src/a.rs", "#[cfg(any(test, feature = \"x\"))]\nfn f() { let s = \"zenoh\"; }\n", 1),
+        ("packages/core/x/src/a.rs", "#[cfg(all(test, feature = \"x\"))]\nfn f() { let s = \"zenoh\"; }\n", 0),
         ("packages/core/x/src/a.rs", "fn px4_matches_uxrce_dds_client() {}\n", 0),
         ("packages/core/x/src/a.rs", "let c = '\"'; let s = \"cyclonedds\";\n", 1),
         ("packages/core/x/src/a.rs", 'let s = r#"zenoh"#;\n', 1),

@@ -72,13 +72,47 @@ RETIRED_SPELLINGS=(
     "\\bws sync\\b|nros sync (phase-265 renamed the verb; the \`nros ws sync\` alias is retired — issue 0367)"
 )
 
+# phase-472 W8 — the "passes THROUGH the live one" exemption is RETIRED. It
+# dropped every line containing `ros-launch-resolve/third-party`, which was the
+# nesting of the ros-launch-resolve REPO — itself retired by phase-332 W1 (the
+# live layer 2 is `play_launch/src/ros-launch-resolve`, with no third-party/
+# under it). So it matched no live path and excused exactly the retired one:
+# `packages/cli/third-party/ros-launch-resolve/third-party/…` passed.
+#
+# refs <pattern> [grep flags…] — the non-excluded references to a pattern.
+refs() {
+    local pat="$1"; shift
+    local rc=0 out
+    out="$(git -C "${REFS_REPO:-.}" grep -n "$@" -e "$pat" -- "${EXCLUDES[@]}" 2>/dev/null)" || rc=$?
+    case "$rc" in
+        0|1) printf '%s' "$out" ;;
+        *) echo "check-retired-submodule-refs: git grep failed (rc=$rc) for $pat" >&2; exit 2 ;;
+    esac
+}
+
+# Negative control on the normal path (phase-472 W8/W9): a reference THROUGH
+# the retired nesting is a reference to the retired path.
+self_test() {
+    local t hits
+    t="$(mktemp -d)"
+    git -C "$t" init -q
+    printf '%s\n' ': "packages/cli/third-party/ros-launch-resolve/third-party/ros-launch-manifest"' > "$t/a.sh"
+    printf '%s\n' ': "packages/cli/third-party/play_launch/src/ros-launch-resolve"' > "$t/b.sh"
+    git -C "$t" add a.sh b.sh
+    hits="$(REFS_REPO="$t" refs "packages/cli/third-party/ros-launch-resolve")"
+    rm -rf "$t"
+    case "$hits" in
+        a.sh:1:*) ;;
+        *) echo "check-retired-submodule-refs SELFTEST FAILED: got [$hits]" >&2; exit 1 ;;
+    esac
+}
+self_test
+
 fail=0
 for entry in "${RETIRED[@]}"; do
     path="${entry%%|*}"
     replacement="${entry#*|}"
-    # A reference is only a violation when it points AT the retired path, not
-    # when it passes THROUGH the live one (…/ros-launch-resolve/third-party/…).
-    if hits=$(git grep -n -- "$path" "${EXCLUDES[@]}" 2>/dev/null | grep -v "ros-launch-resolve/third-party" || true); [ -n "$hits" ]; then
+    if hits=$(refs "$path"); [ -n "$hits" ]; then
         echo "RETIRED PATH still referenced: $path"
         echo "  replaced by: $replacement"
         echo "$hits" | sed 's/^/    /'
@@ -90,7 +124,7 @@ done
 for entry in "${RETIRED_SPELLINGS[@]}"; do
     regex="${entry%%|*}"
     replacement="${entry#*|}"
-    if hits=$(git grep -nE -- "$regex" "${EXCLUDES[@]}" 2>/dev/null || true); [ -n "$hits" ]; then
+    if hits=$(refs "$regex" -E); [ -n "$hits" ]; then
         echo "RETIRED COMMAND SPELLING still used: $regex"
         echo "  use instead: $replacement"
         echo "$hits" | sed 's/^/    /'

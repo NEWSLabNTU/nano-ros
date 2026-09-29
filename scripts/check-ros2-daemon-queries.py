@@ -71,6 +71,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from exemptions import Exemptions  # noqa: E402  phase-472 W8
+
 ROOT = Path(__file__).resolve().parent.parent
 
 # Verbs that reach ros2cli's daemon (`NodeStrategy`). Ordered longest-first so
@@ -120,10 +123,12 @@ CONSEQUENCE = (
     "present) and the test blames the code under test"
 )
 
-# Sites that cannot comply, path-keyed, one reason each. Growing this is the
-# reviewable act the gate exists to force.
+# Sites that cannot comply, one reason each, keyed on (path, VERB) — phase-472
+# W8. It was keyed on the path alone, so the `action list` reason (a Humble CLI
+# that rejects the flag) also excused a `ros2 node list` without it in the same
+# file. `"*"` is for a file whose every match is a SPECIMEN, never a command.
 ALLOWLIST = {
-    "packages/testing/nros-tests/tests/ros2_action_e2e.rs":
+    ("packages/testing/nros-tests/tests/ros2_action_e2e.rs", "action list"):
         "`ros2 action list` REJECTS `--no-daemon` on Humble "
         "(`error: unrecognized arguments`), so this site cannot comply and is "
         "defended by `unique_ros_domain_id` refusing a domain whose daemon "
@@ -131,7 +136,7 @@ ALLOWLIST = {
         "a usage error that polls for 20 s and then reports a DISCOVERY "
         "timeout — which once cost a full box run reading as an actions defect",
 
-    "scripts/check-ros-env-spelling.py":
+    ("scripts/check-ros-env-spelling.py", "*"):
         "the sibling gate's self-test SPECIMENS: a fixture string that quotes "
         "a `ros2 topic list` command, not a command anything runs",
 
@@ -139,9 +144,19 @@ ALLOWLIST = {
     # a rule that cannot state what it rejects cannot be tested. Listed for the
     # reason the sibling gate records: `git ls-files` does not list an untracked
     # file, so a gate's first honest run is the one AFTER it is committed.
-    "scripts/check-ros2-daemon-queries.py":
+    ("scripts/check-ros2-daemon-queries.py", "*"):
         "this gate's own self-test specimens",
 }
+ALLOW = Exemptions(ALLOWLIST, what="--no-daemon")
+# The neighbours the table must NOT cover: another verb in the action test file.
+ALLOW_NEIGHBOURS = [
+    ("packages/testing/nros-tests/tests/ros2_action_e2e.rs", "node list"),
+    ("packages/testing/nros-tests/tests/ros2_action_e2e.rs", "*"),
+]
+
+
+def allowed(path, verb):
+    return ALLOW.covers((path, verb)) or ALLOW.covers((path, "*"))
 
 
 def tracked_files():
@@ -155,6 +170,15 @@ def scannable(path):
     if not path.endswith(SCANNED_SUFFIXES):
         return False
     return not any(part in path for part in EXCLUDED_PARTS)
+
+
+def verb_of(match_text):
+    """`ros2   node  list` -> `node list` (the DAEMON_VERBS spelling)."""
+    words = match_text.split()
+    for v in DAEMON_VERBS:
+        if " ".join(words[-len(v.split()):]) == v:
+            return v
+    return " ".join(words[-2:])
 
 
 def scan_text(text):
@@ -172,7 +196,7 @@ def scan_text(text):
         if not (any(t in before for t in SHELL_BEFORE)
                 or any(t in after for t in SHELL_AFTER)):
             continue
-        yield lineno, line
+        yield lineno, line, verb_of(m.group(0))
 
 
 def self_test(quiet=False):
@@ -227,9 +251,13 @@ def self_test(quiet=False):
 
     # (5) Every allowlist entry is real and reasoned — a stale exemption can
     #     only ever be reclaimed by accident.
-    for path, reason in ALLOWLIST.items():
+    for (path, _verb), reason in ALLOWLIST.items():
         assert reason and len(reason) > 20, f"{path}: allowlist entry needs a reason"
         assert (ROOT / path).exists(), f"{path}: allowlisted but no such file"
+    # (6) phase-472 W8 — keyed on the VERB: the action-list reason does not
+    #     excuse another verb in the same file.
+    assert ALLOW.check(ALLOW_NEIGHBOURS) == [], ALLOW.check(ALLOW_NEIGHBOURS)
+    assert [v for _l, _t, v in scan_text("x && ros2 action list 2>&1")] == ["action list"]
 
     if not quiet:
         print("check-ros2-daemon-queries self-test: OK")
@@ -244,7 +272,7 @@ def main():
     findings = []
     scanned = 0
     for path in tracked_files():
-        if not scannable(path) or path in ALLOWLIST:
+        if not scannable(path):
             continue
         full = ROOT / path
         if not full.is_file():
@@ -254,11 +282,14 @@ def main():
         except (OSError, UnicodeDecodeError):
             continue
         scanned += 1
-        for lineno, line in scan_text(text):
-            findings.append((path, lineno, line))
+        for lineno, line, verb in scan_text(text):
+            if not allowed(path, verb):
+                findings.append((path, lineno, line))
 
     print(f"ros2 daemon queries: {scanned} tracked source files scanned, "
-          f"{len(ALLOWLIST)} allowlisted")
+          f"{len(ALLOWLIST)} allowlisted (path, verb) pair(s)")
+    for key in ALLOW.stale():
+        findings.append((key[0], 0, f"STALE allowlist entry {key!r}: nothing it names is found"))
 
     if findings:
         print("\n[FAIL] graph-reading `ros2` command built without "

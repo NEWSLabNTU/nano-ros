@@ -23,7 +23,7 @@ WHAT IT CHECKS
 
 Linux-only constructs in `nros-platform-posix`'s C sources, unless the line is
 guarded. A guard is `#ifdef __linux__` / `#if defined(__linux__)` / `_GNU_SOURCE`
-within the enclosing few lines, or the symbol appearing only inside a comment.
+as the conditional the use sits in (phase-472 W8), or the symbol only in a comment.
 
 WHAT IT DOES NOT CHECK, AND WHY
 
@@ -81,7 +81,6 @@ FORBIDDEN = {
 }
 
 # A line is excused when a guard opens within this many lines above it.
-GUARD_WINDOW = 12
 GUARD = re.compile(r"__linux__|_GNU_SOURCE|__ANDROID__")
 
 
@@ -95,15 +94,51 @@ def strip_comments(text):
     return comments.strip_comments(text, "c").split("\n")
 
 
+_DIRECTIVE = re.compile(r"^\s*#\s*(ifdef|ifndef|if|elif|else|endif|define)\b\s*(.*)$")
+
+
 def offending(lines):
-    """[(lineno, symbol, why)] for unguarded uses."""
+    """[(lineno, symbol, why)] for unguarded uses.
+
+    phase-472 W8 — a GUARD is the conditional the use actually sits in, read
+    off a preprocessor stack: the TRUE arm of an `#if`/`#ifdef`/`#elif` naming
+    `__linux__`/`__ANDROID__`/`_GNU_SOURCE`, or the `#else` arm of an `#ifndef`
+    of one. It used to be "any of those tokens within 12 lines ABOVE", which an
+    `#ifdef __linux__ … #endif` CLOSED before the use still satisfied, as did
+    the `#else` arm of the very guard. A file-scope `#define _GNU_SOURCE` still
+    counts from its line on — that is the feature-test macro doing its job.
+    """
     hits = []
+    stack = []  # [(directive, cond, in_else)]
+    gnu_source = False
+
+    def guarded():
+        for d, cond, in_else in stack:
+            names_guard = bool(GUARD.search(cond))
+            if names_guard and ((d != "ifndef" and not in_else) or (d == "ifndef" and in_else)):
+                return True
+        return gnu_source
+
     for n, line in enumerate(lines, 1):
+        m = _DIRECTIVE.match(line)
+        if m:
+            d, cond = m.group(1), m.group(2)
+            if d in ("if", "ifdef", "ifndef"):
+                stack.append((d, cond, False))
+            elif d == "elif" and stack:
+                stack[-1] = ("if", cond, False)
+            elif d == "else" and stack:
+                d0, c0, _ = stack[-1]
+                stack[-1] = (d0, c0, True)
+            elif d == "endif" and stack:
+                stack.pop()
+            elif d == "define" and cond.split()[:1] == ["_GNU_SOURCE"]:
+                gnu_source = True
+            continue
         for sym, why in FORBIDDEN.items():
             if not re.search(rf"\b{re.escape(sym)}\b", line):
                 continue
-            window = lines[max(0, n - 1 - GUARD_WINDOW) : n]
-            if any(GUARD.search(w) for w in window):
+            if guarded():
                 continue
             hits.append((n, sym, why))
     return hits
@@ -140,6 +175,12 @@ def self_test():
         ("#include <sched.h>\nint f(void){return sched_yield();}", 0),
         # The affinity family, which belongs one layer up.
         ("void f(void){ cpu_set_t s; CPU_SET(0,&s); }", 2),
+        # phase-472 W8 — the guard's NEIGHBOURS: a guard CLOSED above the use,
+        # and the `#else` arm of the guard, do not guard it.
+        ("#ifdef __linux__\n#define X 1\n#endif\nint f(void){return eventfd(0,0);}", 1),
+        ("#ifdef __linux__\nint a;\n#else\nint f(void){return eventfd(0,0);}\n#endif", 1),
+        ("#ifndef __linux__\nint a;\n#else\nint f(void){return eventfd(0,0);}\n#endif", 0),
+        ("#if defined(__linux__) || defined(__ANDROID__)\nint f(void){return gettid();}\n#endif", 0),
     ]
     fails = []
     for i, (src, want) in enumerate(cases):

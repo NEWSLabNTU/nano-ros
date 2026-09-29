@@ -64,12 +64,55 @@ def platform_tokens():
     return {m for m in re.findall(r'"([a-z0-9_]+)"', body.group(1))}
 
 
-def main():
-    tokens = platform_tokens()
-    if not tokens:
-        sys.exit("check-lane-scope-consumers: no platform tokens parsed from matrix.rs")
+_PLATFORM_USE = re.compile(r"\.platform\b")
+_HOST_PRED = re.compile(
+    r"matches!\(\s*\w+\.platform\s*,\s*(?:[\w:]*::)?PlatformId::Linux\s*\)"
+    r"|\w+\.platform\s*==\s*(?:[\w:]*::)?PlatformId::Linux\b")
 
-    offenders, checked, exempt = [], 0, 0
+
+def host_only(src):
+    """Every `.platform` use is a predicate selecting `PlatformId::Linux`."""
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+    import comments
+
+    code = comments.strip_comments(src, "rust")
+    uses = len(_PLATFORM_USE.findall(code))
+    return uses > 0 and uses == len(_HOST_PRED.findall(code))
+
+
+def lane_excluded_tokens():
+    """The binary-name tokens `lane-filter.sh native` ACTUALLY excludes.
+
+    phase-472 W8 — rule (a) is "the lane filter excludes this binary by name",
+    so its exemption must be keyed on the filter's own output, not on
+    `just_module`'s tokens: those include `native`, which the host lane RUNS,
+    so every `native_*` consumer was exempt from narrowing its cells while being
+    exactly the binary the tier-1 lane executes.
+    """
+    import subprocess
+
+    out = subprocess.run(["bash", os.path.join(ROOT, "scripts/test/lane-filter.sh"), "native"],
+                         capture_output=True, text=True, check=True).stdout
+    return set(re.findall(r"not binary\(~([a-z0-9_]+)\)", out))
+
+
+def main():
+    tokens = lane_excluded_tokens()
+    if not tokens:
+        sys.exit("check-lane-scope-consumers: lane-filter.sh native excluded no binary token")
+    # Controls on the normal path (phase-472 W8): the host-only shape is exempt,
+    # its neighbours — another platform, or a mix — are not.
+    assert host_only("fn f(c: &Cell) -> bool { matches!(c.platform, PlatformId::Linux) }")
+    assert not host_only("fn f(c: &Cell) -> bool { matches!(c.platform, PlatformId::Linux) "
+                         "|| matches!(c.platform, PlatformId::Zephyr) }")
+    assert not host_only("fn f(c: &Cell) -> bool { c.platform == PlatformId::Nuttx }")
+    # The neighbour the name exemption must not cover: the host lane's own
+    # family is run, never excluded.
+    if "native" in tokens or "linux" in tokens:
+        sys.exit("check-lane-scope-consumers: the host family is in the exclusion set — "
+                 "rule (a) would exempt the binaries the host lane runs")
+
+    offenders, checked, exempt, host = [], 0, 0, 0
     for name in sorted(os.listdir(TESTS)):
         if not name.endswith(".rs") or name in DATA_ONLY:
             continue
@@ -82,7 +125,12 @@ def main():
         if "c.platform" not in src and ".platform" not in src:
             continue
         checked += 1
-
+        # A consumer whose EVERY platform predicate selects the host platform
+        # iterates no out-of-lane cell, so there is nothing to narrow — keyed on
+        # that exact shape (phase-472 W8), not on the file name.
+        if host_only(src):
+            host += 1
+            continue
         stem = name[:-3]
         if any(tok in stem for tok in tokens):
             exempt += 1  # (a) the lane filter excludes this binary by name
@@ -110,7 +158,8 @@ def main():
 
     print(
         f"lane-scope consumers: OK ({checked} platform-iterating consumer(s); "
-        f"{exempt} excluded by binary name, the rest narrow their own cells)"
+        f"{exempt} excluded by binary name, {host} select the host platform only, "
+        f"the rest narrow their own cells)"
     )
     return 0
 

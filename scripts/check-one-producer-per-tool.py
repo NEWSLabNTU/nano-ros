@@ -56,6 +56,7 @@ import sys as _w3_sys  # noqa: E402
 from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
+from exemptions import Exemptions  # noqa: E402  phase-472 W8 — keyed, with neighbours
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -82,8 +83,11 @@ PRODUCE = [
     (re.compile(r"\.installed-version\b"), "keeps its own install stamp"),
 ]
 
-# Handing the work to the one producer.
-FORWARDS = re.compile(r"nros\s+setup\b[^\n]*--tool")
+# Handing the work to the one producer — for the NAMED tool. phase-472 W8: this
+# was "the body forwards SOMETHING", so a body forwarding `corrosion` could
+# download `ninja` beside it and the forward excused both. A forward excuses
+# exactly the tool it names; `--tool "$var"` names none.
+FORWARDS = re.compile(r"nros\s+setup\b[^\n]*?--tool[= ]+([A-Za-z0-9._-]+)")
 
 # A line whose whole job is to say something.
 PRINTS = re.compile(r"^(echo|printf|>&2\s|nros_(check|lane)_skip|warn|die|fail)\b")
@@ -110,6 +114,16 @@ EXEMPT = {
         "there is an `nros` to compare against."
     ),
 }
+
+
+EXEMPT_T = Exemptions(EXEMPT, what="second-producer")
+# The neighbours the table must NOT cover (phase-472 W8): the same site
+# fetching a DIFFERENT tool, and the same tool from a different body.
+EXEMPT_NEIGHBOURS = [
+    ("scripts/install.sh", "<file>", "qemu"),
+    ("scripts/install.sh", "<file>", "corrosion"),
+    ("scripts/bootstrap.sh", "<file>", "nros"),
+]
 
 
 def indexed_tools(path):
@@ -199,7 +213,7 @@ def offenders(bodies, tools, origin):
     found = []
     for name, lineno, body in bodies:
         lines = body.split("\n")
-        forwards = FORWARDS.search(strip_comments(body))
+        forwards = set(FORWARDS.findall(strip_comments(body)))
         for offset, raw in enumerate(lines):
             line = raw.strip()
             if not line or line.startswith("#"):
@@ -224,7 +238,7 @@ def offenders(bodies, tools, origin):
                         r"(?<![A-Za-z0-9_-])%s(?![A-Za-z0-9_-])" % re.escape(tool), line
                     ):
                         continue
-                    if forwards:
+                    if tool in forwards:
                         continue
                     found.append((origin, name, lineno + offset, tool, what))
                 break
@@ -316,6 +330,17 @@ def self_test():
     named = [("x", 1, "    tar -xf qemu.tgz\n")]
     assert len(offenders(named, tools, "just")) == 1
 
+    # phase-472 W8 — a forward excuses exactly the tool it names.
+    mixed = [("setup-both", 1,
+              "    nros setup --tool corrosion\n"
+              "    curl -L https://example/qemu.tar.gz -o q.tgz\n")]
+    got = offenders(mixed, tools, "just")
+    assert [g[3] for g in got] == ["qemu"], got
+    varfwd = [("x", 1, "    nros setup --tool \"$t\"\n    tar -xf qemu.tgz\n")]
+    assert [g[3] for g in offenders(varfwd, tools, "just")] == ["qemu"]
+    probs = EXEMPT_T.check(EXEMPT_NEIGHBOURS)
+    assert probs == [], probs
+
     # --- body parsing ---
     j = "\n".join(
         [
@@ -366,7 +391,6 @@ def main():
         return 1
 
     problems = []
-    seen_exempt = set()
     scanned = 0
     for rel, kind in scan_paths():
         # `errors="replace"`: a `.sh` under `scripts/` may be a test FIXTURE
@@ -377,8 +401,7 @@ def main():
         scanned += 1
         bodies = just_bodies(text) if kind == "just" else shell_bodies(text)
         for _origin, name, lineno, tool, what in offenders(bodies, tools, rel):
-            if (rel, name, tool) in EXEMPT:
-                seen_exempt.add((rel, name, tool))
+            if EXEMPT_T.covers((rel, name, tool)):
                 continue
             problems.append(
                 "%s:%d  `%s` %s `%s`, which the index already declares.\n"
@@ -389,13 +412,12 @@ def main():
                 "        nros setup --tool %s" % (rel, lineno, name, what, tool, tool)
             )
 
-    for key in EXEMPT:
-        if key not in seen_exempt:
-            problems.append(
-                "STALE exemption %r matches nothing.\n"
-                "    Delete it — an allow-list checked one way stops covering\n"
-                "    what it claims to." % (key,)
-            )
+    for key in EXEMPT_T.stale():
+        problems.append(
+            "STALE exemption %r matches nothing.\n"
+            "    Delete it — an allow-list checked one way stops covering\n"
+            "    what it claims to." % (key,)
+        )
 
     if problems:
         sys.stderr.write("check-one-producer-per-tool: %d problem(s)\n\n" % len(problems))

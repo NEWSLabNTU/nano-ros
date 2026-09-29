@@ -47,6 +47,13 @@ OWNERLESS = {
     ),
 }
 
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from exemptions import Exemptions  # noqa: E402  phase-472 W8
+
+OWNERLESS_T = Exemptions(OWNERLESS, what="ownerless tier")
+# The tiers an "ownerless" entry must never cover (phase-472 W8).
+OWNERLESS_NEIGHBOURS = ["ci tier1", "ci matrix", "ci matrix-nightly"]
+
 RECIPE = re.compile(r'CiTier::\w+\s*=>\s*"([^"]+)"')
 
 
@@ -56,15 +63,45 @@ def declared_tiers(text):
     return RECIPE.findall(m.group(1)) if m else []
 
 
+# `just ci matrix <depth>`: `run` (the default) RUNS the tier; `build` builds and
+# links only (phase-395 W2). A build-only invocation owns the BUILD, not the tier.
+NON_RUNNING_DEPTHS = {"build": "builds + links only; runs no cell (phase-395 W2)"}
+
+
 def owners(workflow_texts, recipe):
-    """Workflows invoking `recipe`, in any spelling just accepts."""
+    """Workflow/action files whose `run:` COMMANDS invoke `recipe` at run depth.
+
+    phase-472 W8 — keyed on exactly what "owner" means: a command line in a
+    `run:` step. It matched any LINE, so a step's `name: just ci matrix build`
+    label counted, and so did `just ci matrix build`, which runs no cell.
+    `workflow_texts` maps a file to its list of command lines.
+    """
     flat = recipe.replace(" ", "-")          # `ci matrix` -> `ci-matrix`
-    pats = (re.compile(rf"just\s+{re.escape(recipe)}(\s|$)"),
-            re.compile(rf"just\s+{re.escape(flat)}(\s|$)"))
-    return sorted(fn for fn, t in workflow_texts.items()
-                  for line in t.split("\n")
-                  if not line.lstrip().startswith("#")
-                  and any(p.search(line) for p in pats))
+    pats = (re.compile(rf"\bjust\s+{re.escape(recipe)}(?:\s+(\S+)|\s*$)"),
+            re.compile(rf"\bjust\s+{re.escape(flat)}(?:\s+(\S+)|\s*$)"))
+    out = set()
+    for fn, cmds in workflow_texts.items():
+        for line in cmds:
+            for p in pats:
+                m = p.search(line)
+                if m and (m.group(1) or "").strip("\"'") not in NON_RUNNING_DEPTHS:
+                    out.add(fn)
+    return sorted(out)
+
+
+def workflow_commands_of(root=None):
+    """{file: [command lines]} over every workflow and composite action `run:`."""
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+    import workflow_commands as wc
+
+    out = {}
+    for path, doc in wc.load_workflows(include_actions=True):
+        cmds = []
+        for job in ((doc or {}).get("jobs") or {}).values():
+            for step in (job or {}).get("steps") or []:
+                cmds += wc.command_lines(step.get("run") or "")
+        out[str(path)] = cmds
+    return out
 
 
 def selftest():
@@ -76,14 +113,24 @@ def selftest():
            '        }\n    }\n')
     assert declared_tiers(src) == ["ci tier1", "ci full"], declared_tiers(src)
 
-    wf = {"a.yml": "      - run: just ci tier1\n"}
+    wf = {"a.yml": ["just ci tier1"]}
     assert owners(wf, "ci tier1") == ["a.yml"], "a direct invocation must count"
-    assert owners({"a.yml": "  - run: just ci-tier1\n"}, "ci tier1") == ["a.yml"], \
+    assert owners({"a.yml": ["just ci-tier1"]}, "ci tier1") == ["a.yml"], \
         "the flat forwarder spelling must count"
-    assert owners({"a.yml": "  # just ci tier1 is not run here\n"}, "ci tier1") == [], \
-        "a comment is prose, not an owner"
-    assert owners({"a.yml": "  - run: just ci tier1-extra\n"}, "ci tier1") == [], \
+    assert owners({"a.yml": ["just ci tier1-extra"]}, "ci tier1") == [], \
         "a longer recipe name must not count as this tier"
+    # phase-472 W8 — the owner's NEIGHBOURS: a build-only depth, and a step
+    # LABEL (never a command line), do not own the tier.
+    assert owners({"a.yml": ["just ci matrix build"]}, "ci matrix") == [], \
+        "a build-only invocation must not own the tier"
+    assert owners({"a.yml": ["just ci matrix run"]}, "ci matrix") == ["a.yml"]
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+    import workflow_commands as wc
+    doc = {"jobs": {"j": {"steps": [{"name": "just ci tier1", "run": "echo hi"}]}}}
+    cmds = [c for job in doc["jobs"].values() for st in job["steps"]
+            for c in wc.command_lines(st.get("run") or "")]
+    assert owners({"a.yml": cmds}, "ci tier1") == [], "a step NAME is not an owner"
+    assert OWNERLESS_T.check(OWNERLESS_NEIGHBOURS) == [], OWNERLESS_T.check(OWNERLESS_NEIGHBOURS)
 
 
 def main():
@@ -93,18 +140,14 @@ def main():
     if not tiers:
         sys.exit("check-tier-has-ci-owner: could not parse CiTier::just_recipe")
 
-    wfs = {}
-    for fn in sorted(os.listdir(WORKFLOWS)):
-        if fn.endswith((".yml", ".yaml")):
-            with open(os.path.join(WORKFLOWS, fn), encoding="utf-8") as fh:
-                wfs[fn] = fh.read()
+    wfs = workflow_commands_of()
 
     problems, lines = [], []
     for recipe in tiers:
         own = owners(wfs, recipe)
         if own:
             lines.append(f"  just {recipe:<20} <- {', '.join(own)}")
-        elif recipe in OWNERLESS:
+        elif OWNERLESS_T.covers(recipe):
             lines.append(f"  just {recipe:<20} <- (deliberately unowned)")
         else:
             problems.append(
