@@ -221,3 +221,55 @@ polling run status, rather than job status, sees "still running" for two hours
 over results it could already have.
 
 Nothing here changes what would close the issue; it widens the second clause.
+
+## Measured 2026-09-29: a third shape — idle with a waiter, and no merge traffic to blame
+
+The 2026-09-21 section above widened the second clause to cover
+*registered-and-contended*: the runner is fine, the tier-2 job starves behind
+the merge queue's L3 interlock. Today's measurement fits neither that nor the
+original outage.
+
+Nightly **36535897637** (schedule 07:18), job **109299745673**
+`tier 2 nightly (pairwise cover)`, `runs-on: [self-hosted, linux, nros-qemu,
+nros-sdk-zephyr, nros-big]`: **`queued` since 07:18:57Z, still queued at
+12:50Z — 5 h 31 m.**
+
+What makes it a third shape is what is NOT competing for the machine:
+
+* **The runner is not unregistered.** It ran a job today, for five hours —
+  run-matrix 36531385810, job 109285625689, which completed at **11:44:20Z**.
+* **There is no merge traffic on it.** Every `queue` workflow run on
+  `merge_group` today was cancelled by its successor *before job creation*, so
+  **zero `queue` jobs have run at all today**. The 2026-09-21 explanation —
+  "the runner is busy with higher-frequency work" — has nothing to point at.
+* **Nothing else self-hosted is running either.** The other consumers all
+  finished long before: the 05:13 nightly's own tier-2 job at 06:38, the
+  live-peer lane at about 05:40, and run-matrix at 11:44:20.
+
+So since **11:44:20Z** — **66 minutes** at the time of writing — no self-hosted
+job has started, while one has been waiting for five and a half hours.
+
+**What this is NOT.** It is not a claim that the runner is down. It is a claim
+that from outside the machine, nothing distinguishes "down", "wedged in
+post-job cleanup after a five-hour build" and "serving another repository in
+the org" — and that this issue's own complaint is exactly that the lane reports
+none of it. Worth noting which of those is plausible: the five-hour job that
+preceded the gap ran on the family of machines issue **1353** measures filling
+their disks, and a runner that fills its disk goes offline rather than failing
+a job.
+
+**And the observability gap is now exact.**
+`GET repos/NEWSLabNTU/nano-ros/actions/runners` returns `{"total_count":0}` —
+the runner is registered at the ORG level, not the repo — and
+`GET orgs/NEWSLabNTU/actions/runners` is `403: You must be an org admin or have
+the runners and runner groups fine-grained permission`. So the `status` /
+`busy` fields that would settle this in one call are unreadable with repository
+permissions, which is why every measurement in this issue has had to infer
+runner state from job state.
+
+**What would close this clause,** in addition to what the issue already asks:
+a report that names WHICH of the three it is, and it cannot come from job state
+alone. The cheapest source is the runner side — `scripts/ci/runner-doctor.sh`
+already runs there — or a workflow-level token with the runners permission, so
+that "queued and unclaimed" can be qualified with "and the runner is
+online/idle" rather than left as three indistinguishable stories.
