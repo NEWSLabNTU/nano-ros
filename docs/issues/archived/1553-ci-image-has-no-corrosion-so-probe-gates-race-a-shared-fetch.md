@@ -62,7 +62,7 @@ that would clear on its own.
 ## The negative control: both gates pass where the store is provisioned
 
 On a host whose SDK store holds the pinned Corrosion, both gates pass from the
-same checkout as the failing run (`fe36c6593`), built with `just setup-cli`
+same checkout as the failing run (a local branch carrying #1469's probe work, since rebased away -- so its hash is not cited), built with `just setup-cli`
 first — run as `just check <gate>`, one gate at a time:
 
 | gate | result |
