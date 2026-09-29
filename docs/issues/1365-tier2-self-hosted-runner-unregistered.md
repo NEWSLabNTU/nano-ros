@@ -273,3 +273,29 @@ alone. The cheapest source is the runner side — `scripts/ci/runner-doctor.sh`
 already runs there — or a workflow-level token with the runners permission, so
 that "queued and unclaimed" can be qualified with "and the runner is
 online/idle" rather than left as three indistinguishable stories.
+
+### It started — so the gap is latency, not an outage
+
+The job did run. `tier 2 nightly (pairwise cover)`, job 109299745673,
+`startedAt=2026-09-29T13:12:42Z`:
+
+| event | time | since |
+| --- | --- | ---: |
+| job queued | 07:18:57Z | — |
+| previous self-hosted job ends (run-matrix 109285625689) | 11:44:20Z | 4 h 25 m |
+| **this job starts** | **13:12:42Z** | **1 h 28 m after the runner freed** |
+| total wait | | **5 h 54 m** |
+
+That eliminates one of the three candidates above: the runner was not down.
+What is left is an **88-minute latency between one self-hosted job ending and
+the next starting**, with nothing else visibly competing — no `queue` job ran
+at all that day — and no way from repository credentials to say whether that
+window is post-job cleanup on the machine, org-level work for another
+repository, or scheduling lag.
+
+So the measurement stands and its conclusion narrows: this is not an outage
+and it is not the merge-traffic contention of 2026-09-21. It is a gap nobody
+can currently attribute, and 88 minutes is the number to explain. What would
+close this clause is unchanged — the report has to come from somewhere that
+can see the runner, because job state cannot distinguish the two survivors
+either.
