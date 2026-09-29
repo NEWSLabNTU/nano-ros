@@ -16,7 +16,7 @@
 //! A cargo/cmake image reports what stage 4 will do and stops, rather than
 //! silently building the wrong thing.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use eyre::{Result, WrapErr};
@@ -358,6 +358,29 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         known.iter().any(|n| ws_non_rust.contains(&n.as_str()))
     };
 
+    // issue 1582 — before ANY image is generated, and over EVERY image the
+    // workspace declares rather than the ones requested: building one image is
+    // enough to overwrite another's generated output, so the refusal cannot
+    // wait for the second to be asked for. An image whose board or road does
+    // not resolve claims nothing here; building it fails on its own terms.
+    let claims: Vec<(String, Vec<PathBuf>)> = plan::all_images(&bringups)
+        .into_iter()
+        .filter_map(|(b, bd, id, img)| {
+            let d = crate::orchestration::image::resolve_image_board(&catalog, &id, &img).ok()?;
+            let platform = d.platform.kebab().to_string();
+            let driver =
+                plan::driver_for_board(&platform, d.entry_kind, image_has_non_rust(&img, &bd))
+                    .ok()?;
+            Some((
+                plan::qualified(&b, &id),
+                generated_outputs(&root, &id, &img, &platform, driver),
+            ))
+        })
+        .collect();
+    if let Some(msg) = generated_output_collision_message(&generated_output_collisions(&claims)) {
+        eyre::bail!("{msg}");
+    }
+
     let mut out = Vec::new();
     for (bringup, bringup_dir, image_id, image) in resolved {
         let qual = plan::qualified(&bringup, &image_id);
@@ -486,10 +509,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // `src/<entry>` that suppressed generation (RFC-0065 D13). Each
                 // is its own root: there is no workspace to `-p` into
                 // (RFC-0098 D9), so the build names the MANIFEST.
-                let image_dir = root
-                    .join("build")
-                    .join(coordinate(&platform, &image))
-                    .join(&want_entry);
+                let image_dir = generated_entry_dir(&root, &platform, &image, &image_id);
                 let hand_written = root.join("src").join(&want_entry);
                 let lock_is_ours = generated.dir.is_some();
                 let manifest_dir = match &generated.dir {
@@ -1996,10 +2016,7 @@ fn generate_entry(
 
     // Where the entry will be written — needed to make its dependency paths
     // relative, and computed before the spec because the spec carries them.
-    let entry_dir_for_deps = root
-        .join("build")
-        .join(coordinate(platform, image))
-        .join(crate::builder::entry::package_name(image_id));
+    let entry_dir_for_deps = generated_entry_dir(root, platform, image, image_id);
 
     // Snapshotted before the spec takes `nodes`: the Zephyr arm below seeds its
     // `[patch]` walk from them (`registry_patches_from`).
@@ -2088,7 +2105,10 @@ fn generate_entry(
         facts.board_features.sort();
         facts.board_features.dedup();
     }
-    let parent = root.join("build").join(coordinate(platform, image));
+    let parent = entry_dir_for_deps
+        .parent()
+        .expect("generated_entry_dir always has a coordinate parent")
+        .to_path_buf();
     let dir = crate::builder::entry::write(&spec, &facts, &parent)
         .map_err(|e| eyre::eyre!("generating the entry for `{image_id}`: {e}"))?;
     // The shell around it. AFTER the entry, because `is_materialized` guards
@@ -2144,7 +2164,7 @@ fn generate_entry(
         // actually meet, and `resolve_rmw` refusing an unknown `rmw` is one of
         // the ways to get it. Naming sync when the real answer is a typo in
         // `[image.<id>] rmw` is the diagnostic this issue is about.
-        let facade_root = root.join("generated/nros-selection");
+        let facade_root = facade_root(root);
         let entry_name = crate::builder::entry::package_name(image_id);
         let healed = std::fs::read_to_string(bringup_dir.join("system.toml"))
             .map_err(|e| eyre::eyre!("reading {}: {e}", bringup_dir.join("system.toml").display()))
@@ -2884,6 +2904,124 @@ fn cmake_coordinate(platform: &str, image: &crate::orchestration::image::ImageBl
         Some(b) if b != platform => format!("{base}-{}", b.replace(['/', '.'], "-")),
         _ => base,
     }
+}
+
+/// Where `nros build` GENERATES an image's entry package:
+/// `build/<coordinate>/<image_id>_entry`.
+///
+/// ONE spelling (issue 1582). Three sites computed it inline — the cargo
+/// root's manifest dir, the dependency-path base and the write — and none of
+/// them carries the BRINGUP. That is deliberate and is not the defect: the
+/// path is user-facing (`build/posix-zenoh/native_entry/target/debug/…` is in
+/// the book) and an image id is what a user names. The defect was that
+/// nothing stopped two bringups from both generating `[image.zephyr]` into it:
+/// see [`generated_output_collisions`].
+fn generated_entry_dir(
+    root: &Path,
+    platform: &str,
+    image: &crate::orchestration::image::ImageBlock,
+    image_id: &str,
+) -> PathBuf {
+    root.join("build")
+        .join(coordinate(platform, image))
+        .join(crate::builder::entry::package_name(image_id))
+}
+
+/// The directory the build's missing-facade HEAL writes selection facades
+/// under — `generated/nros-selection/`, keyed by the ENTRY name alone.
+fn facade_root(root: &Path) -> PathBuf {
+    root.join("generated/nros-selection")
+}
+
+/// Every path an image's build GENERATES that is keyed on its image id,
+/// workspace-relative — or nothing, when a hand-written application suppresses
+/// generation.
+///
+/// Issue 1582. Each of these is keyed on the image ID and not on the bringup,
+/// so the id is a WORKSPACE-wide name for them even though RFC-0065 F7 lets
+/// several bringups declare it (`plan::pick_one` rightly refuses to CHOOSE
+/// between them). Two bringups generating the same one write one directory,
+/// last writer wins: `realtime-rust`'s `demo_bringup` and `derived_bringup`
+/// both declared `[image.zephyr]`, both west leaves configured
+/// `APPLICATION_SOURCE_DIR = …/build/zephyr-zenoh/zephyr_entry`, and the
+/// authored-tier image booted `derived-telem_node`.
+///
+/// The predicate is the build's own, per road:
+///
+/// * a hand-written `src/<id>_entry` (either build file) suppresses
+///   generation on every road (`generate_entry`, and the cmake root's
+///   "contributes nothing");
+/// * on the west road an `[image.<id>] entry` names the application, and
+///   `generate_entry` is never called;
+/// * cargo and west write the entry package and (on a heal) its facade;
+///   cmake emits a target of that name into the root at `build/<cmake-coord>/`.
+fn generated_outputs(
+    root: &Path,
+    image_id: &str,
+    image: &crate::orchestration::image::ImageBlock,
+    platform: &str,
+    driver: Driver,
+) -> Vec<PathBuf> {
+    let pkg = crate::builder::entry::package_name(image_id);
+    let hand_written = root.join("src").join(&pkg);
+    if hand_written.join("Cargo.toml").is_file() || hand_written.join("CMakeLists.txt").is_file() {
+        return Vec::new();
+    }
+    let rel = |p: PathBuf| p.strip_prefix(root).map(Path::to_path_buf).unwrap_or(p);
+    match driver {
+        Driver::West if image.entry.is_some() => Vec::new(),
+        Driver::Cargo | Driver::West => vec![
+            rel(generated_entry_dir(root, platform, image, image_id)),
+            rel(facade_root(root).join(&pkg)),
+        ],
+        Driver::CMake => vec![
+            PathBuf::from("build")
+                .join(cmake_coordinate(platform, image))
+                .join(format!("<target {pkg}>")),
+        ],
+    }
+}
+
+/// Group `(qualified image, its generated outputs)` by output, keeping only
+/// the outputs more than one image claims. Ordered, so the refusal is stable.
+fn generated_output_collisions(claims: &[(String, Vec<PathBuf>)]) -> Vec<(PathBuf, Vec<String>)> {
+    let mut by_path: std::collections::BTreeMap<PathBuf, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for (qual, outs) in claims {
+        for o in outs {
+            let v = by_path.entry(o.clone()).or_default();
+            if !v.contains(qual) {
+                v.push(qual.clone());
+            }
+        }
+    }
+    by_path
+        .into_iter()
+        .filter(|(_, q)| q.len() > 1)
+        .map(|(p, mut q)| {
+            q.sort();
+            (p, q)
+        })
+        .collect()
+}
+
+/// The refusal text for [`generated_output_collisions`], or `None`.
+fn generated_output_collision_message(collisions: &[(PathBuf, Vec<String>)]) -> Option<String> {
+    if collisions.is_empty() {
+        return None;
+    }
+    let lines: Vec<String> = collisions
+        .iter()
+        .map(|(p, q)| format!("  {}  <-  {}", p.display(), q.join(", ")))
+        .collect();
+    Some(format!(
+        "two images in this workspace would GENERATE the same output (issue 1582):\n\n{}\n\n  \
+         A generated entry, its selection facade and its cmake target are keyed on the \
+         image ID, not the bringup, so the second build overwrites the first and each \
+         image then carries whichever was written last. Give one of them a distinct id \
+         (`[image.<id>]` in its bringup's system.toml), or a hand-written application.",
+        lines.join("\n")
+    ))
 }
 
 /// The west APPLICATION for an image — the entry package, not the bringup.
@@ -4404,5 +4542,163 @@ mod single_package_tests {
             .expect_err("no model yet")
             .to_string();
         assert!(e.contains("nros sync"), "{e}");
+    }
+}
+
+#[cfg(test)]
+mod generated_output_collision_tests {
+    //! Issue 1582 — two images that GENERATE into one path.
+    use super::*;
+    use crate::orchestration::image::ImageBlock;
+
+    fn img(board: &str) -> ImageBlock {
+        ImageBlock {
+            board: Some(board.to_string()),
+            rmw: Some("zenoh".to_string()),
+            ..Default::default()
+        }
+    }
+
+    fn claim(
+        root: &Path,
+        qual: &str,
+        image: &ImageBlock,
+        platform: &str,
+        driver: Driver,
+    ) -> (String, Vec<PathBuf>) {
+        let id = qual.split_once(':').expect("qualified").1;
+        (
+            qual.to_string(),
+            generated_outputs(root, id, image, platform, driver),
+        )
+    }
+
+    /// The reported shape: `realtime-rust`'s `demo_bringup` and
+    /// `derived_bringup` both declared `[image.zephyr]` with no hand-written
+    /// application, so both west leaves were configured on ONE generated
+    /// directory, and the authored-tier image booted `derived-telem_node`.
+    #[test]
+    fn two_bringups_generating_one_id_collide_on_the_entry_and_the_facade() {
+        let t = tempfile::tempdir().unwrap();
+        let z = img("zephyr");
+        let claims = vec![
+            claim(t.path(), "demo_bringup:zephyr", &z, "zephyr", Driver::West),
+            claim(
+                t.path(),
+                "derived_bringup:zephyr",
+                &z,
+                "zephyr",
+                Driver::West,
+            ),
+        ];
+        let got = generated_output_collisions(&claims);
+        let paths: Vec<String> = got.iter().map(|(p, _)| p.display().to_string()).collect();
+        assert_eq!(
+            paths,
+            vec![
+                "build/zephyr-zenoh/zephyr_entry".to_string(),
+                "generated/nros-selection/zephyr_entry".to_string(),
+            ],
+            "{got:?}"
+        );
+        for (_, q) in &got {
+            assert_eq!(q, &["demo_bringup:zephyr", "derived_bringup:zephyr"]);
+        }
+        let msg = generated_output_collision_message(&got).expect("a refusal");
+        assert!(msg.contains("issue 1582"), "{msg}");
+        assert!(msg.contains("derived_bringup:zephyr"), "{msg}");
+    }
+
+    /// The fix: a distinct id is a distinct directory.
+    #[test]
+    fn distinct_ids_do_not_collide() {
+        let t = tempfile::tempdir().unwrap();
+        let z = img("zephyr");
+        let claims = vec![
+            claim(t.path(), "demo_bringup:zephyr", &z, "zephyr", Driver::West),
+            claim(
+                t.path(),
+                "derived_bringup:zephyr_derived",
+                &z,
+                "zephyr",
+                Driver::West,
+            ),
+        ];
+        assert!(generated_output_collisions(&claims).is_empty());
+    }
+
+    /// The claimed entry dir is the one the build WRITES, not a parallel
+    /// spelling of it: both come from `generated_entry_dir`.
+    #[test]
+    fn the_claimed_entry_dir_is_the_generated_one() {
+        let t = tempfile::tempdir().unwrap();
+        let z = img("zephyr");
+        let outs = generated_outputs(t.path(), "zephyr", &z, "zephyr", Driver::West);
+        assert_eq!(
+            t.path().join(&outs[0]),
+            generated_entry_dir(t.path(), "zephyr", &z, "zephyr")
+        );
+    }
+
+    /// `realtime-c`'s shape, which is legal: ONE hand-written application
+    /// serving two bringups. It generates nothing, so it claims nothing — each
+    /// leaf has its own west build dir and the app picks the bringup itself.
+    #[test]
+    fn a_hand_written_application_claims_nothing() {
+        let t = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(t.path().join("src/zephyr_entry")).unwrap();
+        std::fs::write(t.path().join("src/zephyr_entry/CMakeLists.txt"), "").unwrap();
+        let z = img("native_sim/native/64");
+        for d in [Driver::West, Driver::Cargo, Driver::CMake] {
+            assert!(
+                generated_outputs(t.path(), "zephyr", &z, "zephyr", d).is_empty(),
+                "{d:?}"
+            );
+        }
+    }
+
+    /// On the west road `[image.<id>] entry` names the application and
+    /// generation never runs; on the cargo road it is not consulted, so the
+    /// entry is still generated and still claimed.
+    #[test]
+    fn a_named_entry_suppresses_generation_on_the_west_road_only() {
+        let t = tempfile::tempdir().unwrap();
+        let mut z = img("zephyr");
+        z.entry = Some("app".to_string());
+        assert!(generated_outputs(t.path(), "zephyr", &z, "zephyr", Driver::West).is_empty());
+        assert!(!generated_outputs(t.path(), "zephyr", &z, "zephyr", Driver::Cargo).is_empty());
+    }
+
+    /// cmake: one id on one coordinate is one target in one root — the pair
+    /// `realtime-c`'s `smp_bringup` used to repeat — while the same id on two
+    /// DIFFERENT boards lands in two roots and is fine.
+    #[test]
+    fn a_cmake_id_collides_only_on_one_coordinate() {
+        let t = tempfile::tempdir().unwrap();
+        let native = img("native");
+        let same = vec![
+            claim(
+                t.path(),
+                "demo_bringup:native",
+                &native,
+                "posix",
+                Driver::CMake,
+            ),
+            claim(
+                t.path(),
+                "smp_bringup:native",
+                &native,
+                "posix",
+                Driver::CMake,
+            ),
+        ];
+        assert_eq!(generated_output_collisions(&same).len(), 1);
+
+        let other = img("mps2-an385-freertos");
+        let apart = vec![
+            claim(t.path(), "a:x", &native, "posix", Driver::CMake),
+            claim(t.path(), "b:x", &other, "freertos", Driver::CMake),
+        ];
+        assert!(generated_output_collisions(&apart).is_empty());
     }
 }
