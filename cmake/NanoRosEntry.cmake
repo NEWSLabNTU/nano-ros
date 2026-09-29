@@ -481,6 +481,36 @@ function(nano_ros_entry)
                     "nano_ros_entry: `nros model-path` failed for LAUNCH "
                     "'${_NRA_LAUNCH}' (bringup ${_NRA_BRINGUP}):\n${_nra_mp_err}")
             endif()
+            # Issue 1575 -- `nros model-path` NAMES where the model belongs; it
+            # does not say one is there. Before `nros sync` it answers with the
+            # source-tree rung (`<bringup>/config/system_model.yaml`), which no
+            # producer writes, and every consumer below then read "no model"
+            # as "nothing to do": the entity facts and the census returned
+            # early, and the codegen's own tier derivation found no file and
+            # derived ZERO tiers. The image booted single-executor, which
+            # proves nothing about tiers -- issue 1551's investigation was
+            # misled by exactly that boot. A missing model is a refusal here,
+            # not a fallback. The opt-out is explicit and names what it gives
+            # up; nothing in the tree sets it.
+            if(NOT EXISTS "${_NRA_MODEL}")
+                if(NROS_ALLOW_UNSYNCED_MODEL OR "$ENV{NROS_ALLOW_UNSYNCED_MODEL}")
+                    message(WARNING
+                        "nano_ros_entry(${_NRA_NAME}): no SystemModel at ${_NRA_MODEL} "
+                        "and NROS_ALLOW_UNSYNCED_MODEL is set -- the image gets no "
+                        "entity facts, no census check and no model-sized pools.")
+                else()
+                    message(FATAL_ERROR
+                        "nano_ros_entry(${_NRA_NAME}): the SystemModel for bringup "
+                        "${_NRA_BRINGUP} (launch '${_NRA_LAUNCH}') does not exist:\n"
+                        "  ${_NRA_MODEL}\n"
+                        "It is a BUILD ARTIFACT that only `nros sync` writes "
+                        "(phase-330 W4.a). Run it in the workspace, then re-configure:\n"
+                        "  nros sync\n"
+                        "Configuring without it used to derive no tiers and size no "
+                        "pools, silently (issue 1575). To configure anyway, knowing "
+                        "that, pass -DNROS_ALLOW_UNSYNCED_MODEL=ON.")
+                endif()
+            endif()
             # Re-resolve when the USER'S inputs change. DEDUPED: several
             # entries share one bringup (workspaces/c has 7), and a duplicate
             # CMAKE_CONFIGURE_DEPENDS entry becomes a duplicate OUTPUT on the
