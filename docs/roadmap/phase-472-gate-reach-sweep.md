@@ -1,6 +1,6 @@
 # Phase 472 — gate reach sweep
 
-**Status (2026-09-29). AUDIT LANDED; W8 open.** (W1–W7, W9 done — see each.) An audit of every tracked
+**Status (2026-09-29). AUDIT LANDED; W1–W9 DONE** (see each). Re-running the six-bucket audit over the same gates — the phase acceptance — remains for the coordinator. An audit of every tracked
 `scripts/check-*` gate against one question, the codebase-audit checklist's **I6
 second-order** rule: *a gate must be able to fail on the case it names.*
 
@@ -622,6 +622,36 @@ counts as an owner; `just ci matrix build` counts as owning tier 2),
 
 **Fix:** key each exemption on the exact thing its rationale names, and give every
 exemption a selftest row showing it does NOT cover the neighbouring case.
+
+**Status: DONE.** `scripts/lib/exemptions.py` — `Exemptions({key: reason})`:
+`covers(key)` matches EXACTLY (and records the key as seen), `stale()` lists
+entries the scan never used, and `check(neighbours)` refuses a reason-less entry,
+a table that covers any listed NEIGHBOUR, and a table shipped with no neighbour
+rows at all. Every member keys its exemption on the tuple its reason is about
+and runs `check()` (or an equivalent neighbour row) on its normal path.
+
+| member | exemption, re-keyed | mutation (confirmed applied by `git diff`) | before | after |
+| --- | --- | --- | ---: | ---: |
+| `one-producer-per-tool` | a forward excuses exactly the tool it names (`--tool <name>`; `--tool "$var"` names none) | a recipe forwarding `corrosion` that also downloads `ninja` | 0 | 1 |
+| `posix-platform-purity` | the guard is the conditional the use SITS IN (preprocessor stack: true arm, or `#ifndef … #else`) | `#ifdef __linux__ … #endif` CLOSED above an `eventfd()` call | 0 | 1 |
+| `lane-scope-consumers` | rule (a) keyed on what `lane-filter.sh native` actually excludes; a consumer whose every `.platform` predicate selects `PlatformId::Linux` is host-only by SHAPE | a `native_*` test iterating `matrix::CELLS` by platform | 0 | 1 |
+| `tier-has-ci-owner` | an owner is a `run:` COMMAND (W1's loader, actions included) at RUN depth | remove `run-matrix.yml`'s `just ci matrix` (only `just ci matrix build` and step labels left) | 0 | 1 |
+| `fixture-artifact-dir-inputs` | self-consistent = the SAME recipe (or a recipe it depends on) builds with the same platform and empties | a packer in a new recipe beside another recipe's flag | 0 | 1 |
+| `rmw-agnostic` | `cfg(test)` / `cfg(all(test, …))` only; `cfg(any(test, feature))` ships | a backend name in a `cfg(any(test, feature = "w8"))` fn in `nros-node` | 0 | 1 |
+| `ros2-daemon-queries` | `(path, verb)`: the Humble `action list` reason excuses `action list` only | `ros2 node list` without `--no-daemon` in `ros2_action_e2e.rs` | 0 | 1 |
+| `retired-submodule-refs` | the "passes THROUGH the live one" filter RETIRED (the nesting it named is itself retired) | `…/ros-launch-resolve/third-party/ros-launch-manifest` in `bootstrap.sh` | 0 | 1 |
+
+`test-precondition-guards` was fixed by #1412 (issue 1539), verified. Each member
+gained neighbour rows on its normal path; `retired-submodule-refs` had no
+self-test and left the baseline (83 → 82), and its `git grep` now separates the
+pattern (`-e`) from the exclusion pathspecs, which only resolved on a tree where
+every excluded path happened to exist.
+
+Found by the widened keys, and ruled rather than exempted: the three
+`native_example_*_e2e` consumers select `PlatformId::Linux` only, so they have
+no out-of-lane cell — they pass on that shape, not on their names; and
+`test-rtic-main-e2e`'s packer reads the dir its dependency
+`build-rtic-main-e2e` builds with the same `baremetal "" ""`.
 
 ### W9 — selftest discipline, including the meta-gate
 

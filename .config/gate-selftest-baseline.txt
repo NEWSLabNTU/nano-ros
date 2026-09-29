@@ -47,7 +47,6 @@ scripts/check-nuttx-libc-struct-sizes.py
 scripts/check-nuttx-links-snapshot.sh
 scripts/check-ps-zombie-blind.sh
 scripts/check-readiness-marker-literals.sh
-scripts/check-retired-submodule-refs.sh
 scripts/check-rmw-descriptors.py
 scripts/check-rmw-force-link-anchor.sh
 scripts/check-rmw-required-slots.sh

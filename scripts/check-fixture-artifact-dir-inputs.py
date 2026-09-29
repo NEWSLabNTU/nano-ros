@@ -54,12 +54,22 @@ def selftest() -> None:
            '"examples/esp32-c3-baremetal/rust/$ex" esp32 "" "")"\n')
     ok = ('  artifact_dir="$(nros_fixture_row_artifact_dir_by_id '
           '"esp32-c3-baremetal-$ex" esp32)"\n')
-    self_consistent = ('  flag="$(nros_fixture_target_dir_flag nuttx "" "")"\n'
-                       '  d="$(nros_fixture_row_artifact_dir "$L" nuttx "" "")"\n')
+    self_consistent_body = ('  flag="$(nros_fixture_target_dir_flag nuttx "" "")"\n'
+                            '  d="$(nros_fixture_row_artifact_dir "$L" nuttx "" "")"\n')
 
+    # phase-472 W8 — the exemption's NEIGHBOURS: the flag in ANOTHER recipe,
+    # and the flag for ANOTHER platform, do not make this packer self-consistent.
+    other_recipe = ('  flag="$(nros_fixture_target_dir_flag esp32 "" "")"\n'
+                    "other:\n" + bug)
+    other_plat = ('  flag="$(nros_fixture_target_dir_flag nuttx "" "")"\n' + bug)
+    dep_builder = ('  flag="$(nros_fixture_target_dir_flag esp32 "" "")"\n'
+                   "consumer: recipe\n" + bug)
     for name, body, want in (("the 1025 defect", bug, 1),
                              ("the by-id fix", ok, 0),
-                             ("a recipe that builds it itself", self_consistent, 0)):
+                             ("a recipe that builds it itself", self_consistent_body, 0),
+                             ("the flag in a neighbouring recipe", other_recipe, 1),
+                             ("the flag for another platform", other_plat, 1),
+                             ("the flag in the builder this recipe DEPENDS on", dep_builder, 0)):
         with tempfile.TemporaryDirectory() as td:
             # A packer behind `mod check` + `import` — the population is the
             # justfile GRAPH (phase-472 W2), so the fixture exercises the reach.
@@ -72,6 +82,47 @@ def selftest() -> None:
             if (got > 0) != (want > 0):
                 sys.exit(f"check-fixture-artifact-dir-inputs SELFTEST FAILED: "
                          f"{name} -> {got} finding(s), expected {'>=1' if want else '0'}")
+
+
+FLAG_CALL = re.compile(r"nros_fixture_target_dir_flag\s+([^)\n]*)")
+
+
+def recipe_body(lines, line):
+    """The text of the just recipe containing 1-based `line`: back to its
+    column-0 header, forward to the next column-0 line."""
+    start = line - 1
+    while start > 0 and (not lines[start] or lines[start][:1].isspace()):
+        start -= 1
+    end = line
+    while end < len(lines) and (not lines[end] or lines[end][:1].isspace()):
+        end += 1
+    return "\n".join(lines[start:end])
+
+
+def dep_bodies(lines, body):
+    """Bodies of the recipes this recipe's header DEPENDS on, in the same file —
+    `test-x: build-x` is the builder running first, so its flag is this
+    recipe's too. Parameters (`verbose=""`) and `_private` helpers alike."""
+    header = body.split("\n", 1)[0]
+    if ":" not in header:
+        return []
+    deps = [d for d in header.split(":", 1)[1].split() if "=" not in d and d]
+    out = []
+    for i, l in enumerate(lines):
+        name = re.match(r"^@?([A-Za-z0-9_-]+)\b[^:\n]*:(?!=)", l)
+        if name and name.group(1) in deps:
+            out.append(recipe_body(lines, i + 1))
+    return out
+
+
+def self_consistent(body, plat, call):
+    """Does `body` build this artifact with the same (platform, empties)?"""
+    want = len(re.findall(r'""(?=\s|$)', call))
+    for m in FLAG_CALL.finditer(body):
+        args = " ".join(m.group(1).split())
+        if plat in args.split() and len(re.findall(r'""(?=\s|$)', args)) == want:
+            return True
+    return False
 
 
 def _scan(repo: Path):
@@ -93,8 +144,14 @@ def _scan(repo: Path):
             if plat is None or not re.findall(r'""(?=\s|$)', call):
                 continue
             line = text[: m.start()].count("\n") + 1
-            window = "\n".join(lines[max(0, line - 25) : line + 5])
-            if "nros_fixture_target_dir_flag" in window:
+            # phase-472 W8 — the exemption is "this recipe BUILDS the artifact
+            # itself, with the same (platform, args, env)", so it is keyed on
+            # exactly that: a `nros_fixture_target_dir_flag` call in the SAME
+            # recipe body, for the SAME platform, with the SAME empties. It was
+            # "the flag name within 25 lines", which a neighbouring recipe's
+            # build — for any platform — satisfied.
+            body = recipe_body(lines, line)
+            if any(self_consistent(b, plat, call) for b in [body] + dep_bodies(lines, body)):
                 continue
             bad.append((path.relative_to(repo), line, plat,
                         len(re.findall(r'""(?=\s|$)', call)), call[:90]))
