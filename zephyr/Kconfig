@@ -687,6 +687,23 @@ config NROS_ZENOH_SERIAL_RX_RING_BYTES
       Maps to _Z_ZEPHYR_SERIAL_RX_RING_BYTES (zenoh-pico
       src/system/zephyr/network.c), whose default is the same 1024.
 
+config NROS_ZENOH_SERIAL_TX_RING_BYTES
+    int "Serial link: transmit ring between the sending thread and the UART ISR (bytes)"
+    depends on NROS_ZENOH_LINK_SERIAL && UART_INTERRUPT_DRIVEN
+    default 256
+    range 32 16384
+    help
+      With interrupt-driven TX (issue 1534) a send copies the COBS frame into
+      this ring and the UART's TX interrupt drains it into the hardware FIFO;
+      a sender that finds the ring full sleeps until the ISR makes room, so
+      transmitting no longer holds the CPU (it used to be a uart_poll_out
+      busy-wait in the sending thread, which on Zephyr runs above the read
+      task and starved it). The size only sets how often a long frame's
+      sender wakes: 256 bytes are 2.8 ms of line at 921600. zenoh-pico counts
+      the sleeps in `_z_zephyr_serial_tx_stats.waits` and the most the ring
+      held in `ring_high_water`. Maps to _Z_ZEPHYR_SERIAL_TX_RING_BYTES
+      (zenoh-pico src/system/zephyr/network.c), whose default is the same 256.
+
 config NROS_ZENOH_LINK_CAN
     bool "CAN / CAN FD link"
     default n
