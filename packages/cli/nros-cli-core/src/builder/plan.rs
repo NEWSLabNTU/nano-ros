@@ -270,7 +270,10 @@ fn pick_one(
         }
         _ => {
             // F7 — two bringups both declaring `native` is normal, and the
-            // builder must not pick one.
+            // builder must not pick one. (Normal to DECLARE; two of them cannot
+            // both be GENERATED, because a generated entry, facade and cmake
+            // target are keyed on the id — `cmd::build::generated_outputs`
+            // refuses that pair, issue 1582.)
             let mut which: Vec<String> = hits.iter().map(|(b, _, i, _)| qualified(b, i)).collect();
             which.sort();
             Err(format!(

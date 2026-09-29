@@ -1100,3 +1100,60 @@ fn an_incomplete_selection_is_refused_before_a_root_is_written() {
         "nothing may be generated for a selection that cannot build"
     );
 }
+
+/// Issue 1582 — a second bringup declaring the SAME generated image id.
+///
+/// `realtime-rust` had exactly this: `demo_bringup` and `derived_bringup` both
+/// declared `[image.zephyr]`, both generated `build/zephyr-zenoh/zephyr_entry/`
+/// — which on the west road IS the application — and whichever built last
+/// decided what both images contained. The refusal is workspace-wide: building
+/// the unrelated `native` image refuses too, because a build of either twin
+/// overwrites the other whether or not anyone asked for it.
+fn second_bringup(dir: &Path, image_id: &str) {
+    write(
+        &dir.join("src/derived_bringup/package.xml"),
+        &pkg_xml("derived_bringup"),
+    );
+    write(
+        &dir.join("src/derived_bringup/system.toml"),
+        &format!(
+            "[system]\nname = \"derived\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+             [image_defaults]\nrmw = \"zenoh\"\n\n\
+             [image.{image_id}]\nboard = \"native_sim/native/64\"\n"
+        ),
+    );
+}
+
+#[test]
+fn two_bringups_generating_one_image_id_are_refused_before_anything_is_written() {
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    second_bringup(tmp.path(), "zephyr");
+    for want in ["demo_bringup:zephyr", "derived_bringup:zephyr", "native"] {
+        let e = plan_builds(&args(tmp.path(), &[want])).expect_err("must refuse");
+        let msg = format!("{e:#}");
+        assert!(msg.contains("issue 1582"), "{want}: {msg}");
+        assert!(
+            msg.contains("build/zephyr-zenoh/zephyr_entry"),
+            "{want}: {msg}"
+        );
+        assert!(
+            msg.contains("demo_bringup:zephyr") && msg.contains("derived_bringup:zephyr"),
+            "{want}: names both claimants: {msg}"
+        );
+    }
+    assert!(
+        !tmp.path().join("build/zephyr-zenoh").exists(),
+        "refused BEFORE generation, so neither twin wrote anything"
+    );
+}
+
+#[test]
+fn a_distinct_image_id_in_the_second_bringup_builds() {
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    second_bringup(tmp.path(), "zephyr_derived");
+    let plans = plan_builds(&args(tmp.path(), &["zephyr_derived"])).expect("resolves");
+    assert_eq!(plans.len(), 1);
+    assert_eq!(plans[0].driver, Driver::West);
+}

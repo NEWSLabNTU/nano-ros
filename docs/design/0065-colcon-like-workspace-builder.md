@@ -1064,6 +1064,20 @@ cannot live in "the" `system.toml` — there may be several — and D6 needs a s
 for a variant config. This is the same shape as F3 one level up: **the image,
 not the bringup and not the board, is where a variant is named.**
 
+> **Amended 2026-09-29 (issue 1582).** Two bringups may DECLARE one image id —
+> `bringup:id` qualifies which to build — but they may not both GENERATE it.
+> The generated entry (`build/<platform>-<rmw>/<id>_entry/`, which on the west
+> road is the Zephyr application itself), its selection facade and its cmake
+> target are keyed on the id, not the bringup, so the second build overwrote
+> the first: `realtime-rust`'s authored-tier and derived-tier Zephyr images
+> both carried whichever `lib.rs` was written last. `nros build` refuses the
+> pair before generating anything (`cmd::build::generated_outputs`, per road;
+> a hand-written application claims nothing), and
+> `check-generated-output-collisions` holds the in-tree workspaces and the
+> west leaves to it. Keying the path on the bringup instead was rejected: it
+> moves every user-facing generated path (the book's
+> `build/posix-zenoh/native_entry/target/…`) for a case one distinct id solves.
+
 **F10 confirms D1's default.** `just build` in `nano-ros-rt-eval` is `cargo
 build -p native_entry -p peer_entry`, and its root manifest warns that a bare
 workspace-wide build "would try [the cross-target member] for the host and
