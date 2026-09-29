@@ -388,9 +388,9 @@ mod tests {
 /// still had it.
 ///
 /// Two constants rather than one, because a probe legitimately passes less than
-/// a compile does — and saying which is less is the whole point. [`MULTILIB`]
+/// a compile does — and saying which is less is the whole point. [`riscv64::MULTILIB`]
 /// is what SELECTS the library variant, so every `-print-*` probe passes
-/// exactly it; [`CODEGEN`] affects the objects we emit and tells a `-print-*`
+/// exactly it; [`riscv64::CODEGEN`] affects the objects we emit and tells a `-print-*`
 /// query nothing. A single list would make the probes pass flags they do not
 /// need; two hardcoded lists is what this issue is about. One list built from
 /// the other is neither.
