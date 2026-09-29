@@ -304,8 +304,9 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
 
 /// How long an entry gets to reach its own exit.
 ///
-/// A hosted entry from these rows registers its nodes and returns; it does not
-/// spin forever. Generous because a Cyclone entry does discovery first, and a
+/// A generated hosted entry spins forever by default (issue 1439), so
+/// [`run_entry`] hands it a 1 ms `NROS_ENTRY_SPIN_MS` budget: it registers its
+/// nodes, spins once, and returns. Generous because a Cyclone entry does discovery first, and a
 /// loaded CI box is slow — but bounded, because a HANG is a finding too and
 /// must not become a hung suite.
 const RUN_BUDGET: std::time::Duration = std::time::Duration::from_secs(45);
@@ -328,6 +329,9 @@ fn run_entry(bin: &Path) -> (Option<std::process::ExitStatus>, String) {
         "ROS_DOMAIN_ID",
         nros_tests::unique_ros_domain_id().to_string(),
     );
+    // Register, spin one bounded tick, exit — the question here is whether
+    // registration succeeds, not whether the node keeps running.
+    cmd.env("NROS_ENTRY_SPIN_MS", "1");
     nros_tests::process::set_new_process_group(&mut cmd);
 
     let Ok(mut child) = cmd.spawn() else {
