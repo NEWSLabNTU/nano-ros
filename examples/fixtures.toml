@@ -5063,7 +5063,9 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-rust"
 bringup = "src/derived_bringup"
-image = "zephyr"
+# issue 1582 — its OWN image id: `zephyr` is demo_bringup's, and a generated
+# entry is keyed on the id, so sharing it shared the west application dir.
+image = "zephyr_derived"
 board = "native_sim/native/64"
 west_build_name = "build-ws-rs-realtime-derived-entry-zenoh"
 west_id = "zephyr/native_sim/native/64/workspace-realtime-derived-entry"

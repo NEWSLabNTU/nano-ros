@@ -122,37 +122,16 @@ priority = 98
 [image_defaults]
 rmw = "zenoh"
 
-[image.freertos]
-board = "mps2-an385-freertos"
-
-[image.native]
-board = "native"
-
-[image.nuttx]
-board = "qemu-armv7a-nuttx"
-
-[image.riscv_nuttx]
-board = "rv-virt-nuttx"
-
+# Issue 1582 — ONE image, and only the one this bringup exists for. It used to
+# repeat `demo_bringup`'s `freertos`, `native`, `nuttx` and `riscv_nuttx`
+# verbatim, and those four have no hand-written application, so each GENERATES
+# a cmake target keyed on its image id into the same `build/<coord>/` root as
+# its `demo_bringup` twin: building `smp_bringup:native` would have replaced the
+# `native_entry` every realtime-c native cell runs with one generated from THIS
+# bringup's launch and tiers. `nros build` now refuses the pair outright. The Zephyr
+# image is legitimately shared: `src/zephyr_entry` is hand-written and picks
+# the bringup itself (`CONFIG_SMP`), and each fixture row gets its own west
+# build dir.
 [image.zephyr]
 board = "native_sim/native/64"
 conf = ["prj-zenoh.conf"]
-
-# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
-# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
-# name, because that is what the fact is about (issue 0951).
-[board_config."mps2-an385-freertos"]
-netstack = "lwip"
-sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
-
-# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
-# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
-# name, because that is what the fact is about (issue 0951).
-[board_config."qemu-armv7a-nuttx"]
-sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }
-
-# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
-# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
-# name, because that is what the fact is about (issue 0951).
-[board_config."rv-virt-nuttx"]
-sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }

@@ -176,15 +176,19 @@ fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) ->
     }
     let conf = doc
         .get("image")
-        .and_then(|i| i.get("zephyr"))
+        .and_then(|i| i.get(DERIVED_IMAGE))
         .and_then(|z| z.get("conf"))
         .and_then(|c| c.as_array())
         .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
         .unwrap_or_default();
     const FRAGMENT: &str = "prj-lowered-band.conf";
+    // issue 1582 — not `zephyr`: that id is `demo_bringup`'s, and a generated
+    // entry is keyed on the id, so two bringups sharing it share one west
+    // application directory.
+    const DERIVED_IMAGE: &str = "zephyr_derived";
     if conf.last() != Some(&FRAGMENT) {
         out.push(format!(
-            "`[image.zephyr] conf` must name `{FRAGMENT}` LAST (Kconfig merges last-wins, issue 0876); it is {conf:?}"
+            "`[image.{DERIVED_IMAGE}] conf` must name `{FRAGMENT}` LAST (Kconfig merges last-wins, issue 0876); it is {conf:?}"
         ));
     }
     let fragment = bringup.join("boards/native_sim_native_64").join(FRAGMENT);
