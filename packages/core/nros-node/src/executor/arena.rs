@@ -1897,6 +1897,71 @@ pub(crate) unsafe fn sub_inplace_raw_c_has_data(ptr: *const u8) -> bool {
     entry.handle.has_data()
 }
 
+/// In-place raw subscription entry for the Rust GENERIC path — issue 1340.
+///
+/// The Rust twin of [`SubInplaceRawCEntry`]: `F` is `FnMut(&[u8])`, a
+/// borrowed-bytes callback, which is exactly what `process_raw_in_place` hands
+/// over. So there is no receive region to reserve — the backend's own slot is
+/// the buffer, for the duration of the call.
+///
+/// `#[repr(C)]` with `handle` first, like every other subscription entry: the
+/// executor's tests reach the backend subscriber through the entry's offset,
+/// and that cast is sound only while the handle leads.
+///
+/// Carries no age monitor, and loses none: the buffered entry it replaces on an
+/// in-place backend ([`SubBufferedRawEntry`]) carries none either. The only
+/// thing that does not move over is the ring, which is the point.
+#[repr(C)]
+pub(crate) struct SubInplaceRawEntry<F> {
+    pub(crate) handle: session::RmwSubscriber,
+    pub(crate) callback: F,
+}
+
+/// Dispatch for in-place Rust raw subscriptions.
+///
+/// Drains every pending sample, invoking the callback directly on the
+/// backend's borrowed slot. Returns `Ok(true)` if any sample was dispatched.
+/// Same drain and the same trace pairing as [`sub_inplace_raw_c_try_process`],
+/// which it mirrors.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned [`SubInplaceRawEntry<F>`].
+pub(crate) unsafe fn sub_inplace_raw_try_process<F: FnMut(&[u8])>(
+    ptr: *mut u8,
+    _delta_us: u64,
+    desc_idx: u8,
+) -> Result<bool, TransportError> {
+    let entry = unsafe { &mut *(ptr as *mut SubInplaceRawEntry<F>) };
+    // Split-borrow the handle from the callback (disjoint fields).
+    let SubInplaceRawEntry { handle, callback } = entry;
+    let mut did_work = false;
+    loop {
+        // Hooked INSIDE the borrow closure, which the drain loop re-enters once
+        // per pending sample, so N samples produce N spans and the `?` below
+        // can never fire between a start and its end.
+        let processed = handle.process_raw_in_place(|raw| {
+            trace_cb_start(desc_idx);
+            callback(raw);
+            trace_cb_end(desc_idx);
+        })?;
+        if processed {
+            did_work = true;
+        } else {
+            break;
+        }
+    }
+    Ok(did_work)
+}
+
+/// Readiness check for in-place Rust raw subscriptions.
+///
+/// # Safety
+/// `ptr` must point to a valid [`SubInplaceRawEntry<F>`].
+pub(crate) unsafe fn sub_inplace_raw_has_data<F>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubInplaceRawEntry<F>) };
+    entry.handle.has_data()
+}
+
 /// Drain helper for C-style raw buffered entries.
 /// Issue 0737 — a transport ERROR is not "no data", and conflating them
 /// destroys the sample without a trace.

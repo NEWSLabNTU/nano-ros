@@ -38,10 +38,21 @@
 //! 2. **The entry point takes its value from here.** Each entry point's
 //!    `SubscriptionRequest::in_place_capable` is spelled
 //!    `DeclaredSubscriptionShape::<V>.in_place_capable()`, so there is exactly
-//!    one `bool` per shape in the tree. Issue 1340's first candidate — letting
-//!    the raw buffered path take the in-place row — is then a one-line change
-//!    here that moves the entry point and the probe together, which is the
-//!    property that makes this cheaper than teaching the probe to register.
+//!    one `bool` per shape in the tree, and the entry point and the probe move
+//!    together when it changes — which is what makes this cheaper than
+//!    teaching the probe to register.
+//!
+//!    **Moving together is necessary, not sufficient.** Issue 1340 flipped
+//!    `BufferedRaw` to `true`, and this doc used to call that "a one-line
+//!    change here". It was not, and the one-line version is UNSAFE: the probe
+//!    would state `in_place`, the build would price the row at no receive
+//!    region, and the executor — which then ignored `SubscriptionOpen::in_place`
+//!    on this path — would still build a buffered entry and claim the full
+//!    region. That is the under-size direction, `BufferTooSmall` at boot. The
+//!    flip is safe only because `register_subscription_buffered_raw_on` now
+//!    BRANCHES on the report; a `true` here is a promise that the entry point
+//!    acts on it. `a_generic_subscription_on_an_in_place_backend_claims_no_
+//!    receive_region` fails first on a flip without the branch.
 //!
 //! [open]: super::Executor
 //! [obs]: super::registration_observer
@@ -87,15 +98,24 @@ impl DeclaredSubscriptionShape {
     /// call into its `SubscriptionRequest`, so the answer a probe states and
     /// the answer the executor acts on are the same expression.
     ///
-    /// Both shapes answer `false` today, and that is worth a sentence rather
-    /// than a collapse into `false`: they are false for DIFFERENT reasons —
-    /// the raw path because its arena entry is shared with
-    /// `add_arena_subscription_callback`, the safety path because
-    /// `process_raw_in_place` has no validating form — and only the first is a
-    /// limit anyone plans to lift (issue 1340).
+    /// The two shapes differ, and the reason each has its answer is worth a
+    /// sentence:
+    ///
+    /// * **`BufferedRaw` — `true`** (issue 1340). Its callback is
+    ///   `FnMut(&[u8])`, borrowed bytes and nothing else, which is exactly what
+    ///   `process_raw_in_place` hands over. It was `false` while its arena entry
+    ///   was believed shared with `add_arena_subscription_callback`; that caller
+    ///   never reaches `open_subscription`, so the in-place arm could be local to
+    ///   the one entry point. A true here is a claim the build PRICES: the
+    ///   probe states `in_place` for every declared non-safety subscription, and
+    ///   on an in-place backend that endpoint reserves no receive region.
+    /// * **`BufferedRawSafety` — `false`.** `process_raw_in_place` has no
+    ///   validating form: an integrity-checked sample must be verified before
+    ///   the callback sees it, and the borrowed slot offers nowhere to put the
+    ///   verdict. Not a limit anyone plans to lift by flipping this.
     pub const fn in_place_capable(self) -> bool {
         match self {
-            Self::BufferedRaw => false,
+            Self::BufferedRaw => true,
             Self::BufferedRawSafety => false,
         }
     }
@@ -118,13 +138,17 @@ mod tests {
     }
 
     /// Not a restatement of `in_place_capable`'s body: this is the claim the
-    /// PROBE ships, and issue 1522's whole point is that closing it states
-    /// `unbounded` rather than unlocking a saving. When issue 1340 flips the
-    /// raw arm, this test is what says out loud that every Rust image's
-    /// declared subscriptions just changed price.
+    /// PROBE ships, so it is what every Rust image's declared subscriptions are
+    /// PRICED at.
+    ///
+    /// It was `neither_declarative_shape_dispatches_in_place_today` until issue
+    /// 1340 flipped the raw arm, and that rename is the point: this test is
+    /// where a change of price is said out loud. A declared non-safety
+    /// subscription now states `in_place`, so on zenoh and XRCE it claims no
+    /// receive region; a `.safety()` one still buffers.
     #[test]
-    fn neither_declarative_shape_dispatches_in_place_today() {
-        assert!(!DeclaredSubscriptionShape::BufferedRaw.in_place_capable());
+    fn only_the_non_safety_declarative_shape_dispatches_in_place() {
+        assert!(DeclaredSubscriptionShape::BufferedRaw.in_place_capable());
         assert!(!DeclaredSubscriptionShape::BufferedRawSafety.in_place_capable());
     }
 }

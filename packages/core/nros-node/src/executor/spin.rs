@@ -5819,8 +5819,8 @@ impl<'s> Executor<'s> {
             slot,
             handle,
             qos,
+            in_place,
             slot_bytes,
-            ..
         } = self.open_subscription(&SubscriptionRequest {
             node_id: Some(node_id),
             topic_name,
@@ -5829,22 +5829,54 @@ impl<'s> Executor<'s> {
             qos,
             backend_hint: None,
             slot_bytes: RX_BUF,
-            // `FnMut(&[u8])` IS a borrowed-bytes callback, so this shape could
-            // take the in-place row exactly as the C raw path now does. It does
-            // not yet: the entry type is shared with
-            // `Self::add_arena_subscription_callback`, whose subscriber the
-            // caller supplies, and an in-place twin would have to serve both.
-            // Left `false` and written down rather than left unasked.
+            // Issue 1340 — `FnMut(&[u8])` IS a borrowed-bytes callback, which is
+            // exactly what `process_raw_in_place` hands over, so this shape takes
+            // the in-place row the way the C raw path does.
+            //
+            // This used to be `false` because the buffered entry is shared with
+            // `Self::add_arena_subscription_callback` and "an in-place twin would
+            // have to serve both". It does not: that caller supplies its own
+            // subscriber and never reaches `open_subscription`, so no in-place
+            // report can arrive there. The branch below is local to this entry
+            // point, and the shared buffered emplace is untouched.
             //
             // phase-457 W5 (issue 1522) — spelled as the SHAPE rather than as a
             // literal, because the declarative registrar lowers here and the
             // metadata probe must state the same bool without registering. One
             // definition (`DeclaredSubscriptionShape::in_place_capable`), two
-            // readers; flipping issue 1340's candidate moves both together.
+            // readers, so the row the build prices and the claim made here
+            // moved together when it flipped.
             in_place_capable: super::declared_shape::DeclaredSubscriptionShape::BufferedRaw
                 .in_place_capable(),
         })?;
-        self.emplace_raw_buffered_subscription(slot, handle, qos, slot_bytes, callback)?;
+
+        if in_place {
+            // No receive region: the backend's slot is the buffer for the
+            // duration of the callback. This is the whole of issue 1340's saving
+            // on the generic path — `buffered_region_size(depth, RX_BUF)` is
+            // never reserved.
+            type Entry<F> = super::arena::SubInplaceRawEntry<F>;
+            let entry_offset = self.arena_alloc::<Entry<F>>()?;
+            unsafe {
+                let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+                let entry_ptr = arena_ptr.add(entry_offset) as *mut Entry<F>;
+                core::ptr::write(entry_ptr, Entry { handle, callback });
+            }
+            let meta = CallbackMeta {
+                offset: entry_offset,
+                kind: EntryKind::Subscription,
+                try_process: super::arena::sub_inplace_raw_try_process::<F>,
+                has_data: super::arena::sub_inplace_raw_has_data::<F>,
+                pre_sample: no_pre_sample,
+                invocation: InvocationMode::OnNewData,
+                drop_fn: drop_entry::<Entry<F>>,
+            };
+            // Same trace name as the buffered arm, so a trace reads the same
+            // whichever dispatch the backend chose.
+            self.emplace_entry(slot, meta, TraceName::Slot("sub", slot));
+        } else {
+            self.emplace_raw_buffered_subscription(slot, handle, qos, slot_bytes, callback)?;
+        }
         // Phase 104.C.4 — apply Node's default SchedContext.
         self.apply_node_default_sched(slot, Some(node_id), None);
         Ok(HandleId(slot))
