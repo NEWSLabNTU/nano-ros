@@ -2187,9 +2187,44 @@ impl EntityInventory {
                 .or_insert(rate);
         }
 
+        // Issue 1567 -- an endpoint a contract NAMES on the EXTERNAL side of a
+        // topic belongs to a node outside this image, and is not one of its
+        // entities.
+        //
+        // A contract may name who publishes an external topic, because a
+        // checker needs the publisher to price a hazard's detection (its
+        // period and path latency). The resolver keeps that ref in
+        // `structure.topics[*].publishers` beside the image's own, and marks
+        // the side in `contracts.externals`. Reading the wiring alone made the
+        // named node a COMPONENT of this image: measured on the Autoware
+        // Safety Island (Zephyr, west), `/availability_gate/availability` came
+        // in as a fifth component with one publisher. Its row states no
+        // durability -- nobody writes QoS for a node they do not build -- so
+        // the transient-local count was REFUSED, the queryable table derived
+        // to the two services alone, and the image's first latched publisher
+        // failed `create_publisher_in` at boot (`Full` -> code -3).
+        //
+        // BOTH conditions, deliberately: the side must be external AND the
+        // node must be absent from `structure.nodes`. The node map alone is
+        // not a safe test, because its key is not always the ROS name (a
+        // `<node>` with no `name=` is keyed by its executable, `-N`), so it
+        // could drop an in-image node's endpoint -- an UNDER-count. The
+        // external mark alone is not either: it names a side of a TOPIC, and
+        // an in-image node may still sit on that side.
+        let is_external = |topic: &str, ep: &str, role: ros_launch_manifest_model::ExternalSide| {
+            use ros_launch_manifest_model::ExternalSide as S;
+            let side_is_external = matches!(
+                (model.contracts.externals.get(topic), role),
+                (Some(S::Both), _) | (Some(S::Pub), S::Pub) | (Some(S::Sub), S::Sub)
+            );
+            side_is_external && !model.structure.nodes.contains_key(&node_of(ep))
+        };
         for (topic, wiring) in &model.structure.topics {
             let publish_rate = publish_rate_of(topic, wiring);
             for ep in &wiring.subscribers {
+                if is_external(topic, ep, ros_launch_manifest_model::ExternalSide::Sub) {
+                    continue;
+                }
                 let (reliability, durability, history) = policies(sub_qos(ep));
                 per_node.entry(node_of(ep)).or_default().push(EntityDecl {
                     depth: sub_depth_of(ep),
@@ -2217,6 +2252,9 @@ impl EntityInventory {
                 });
             }
             for ep in &wiring.publishers {
+                if is_external(topic, ep, ros_launch_manifest_model::ExternalSide::Pub) {
+                    continue;
+                }
                 let (reliability, durability, history) = policies(pub_qos(ep));
                 per_node.entry(node_of(ep)).or_default().push(EntityDecl {
                     depth: pub_depth_of(ep),
@@ -6938,6 +6976,114 @@ contracts:
             cmake.contains("# NROS_DERIVED_TL_PUBLISHERS is not derived: publisher /quiet"),
             "the refusal names the silent row: {cmake}"
         );
+    }
+
+    /// Issue 1567 -- the Autoware Safety Island's shape, reduced: a service
+    /// server, a latched publisher, and an EXTERNAL topic whose contract
+    /// names the publisher outside the image (`/gate/availability`) so a
+    /// hazard's detection can be priced. That named node is not a component,
+    /// so it neither adds a row nor refuses the transient-local count, and the
+    /// queryable table holds the server PLUS the latched publisher's cache
+    /// queryable. Before the fix: 3 components, the count refused naming
+    /// `/availability`, and `max_queryables == 1` -- the image's first latched
+    /// publisher then failed at boot with the pool `Full`.
+    #[test]
+    fn a_named_external_publisher_is_not_a_component_of_the_image() {
+        let model = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /operator:
+      { scope: s.launch.xml, pkg: operator_pkg, exec: operator, node_name: operator }
+    /handler:
+      { scope: s.launch.xml, pkg: handler_pkg, exec: handler, node_name: handler }
+  topics:
+    /limit:
+      type: std_msgs/msg/Int32
+      pub: [/operator/limit]
+    /availability:
+      type: std_msgs/msg/Int32
+      pub: [/gate/availability]
+      sub: [/handler/availability]
+  services:
+    /operate:
+      type: std_srvs/srv/Trigger
+      server: [/operator/operate]
+contracts:
+  pub_endpoints:
+    /operator/limit:
+      qos:
+        durability: transient_local
+        depth: 1
+  externals:
+    /availability: pub
+    /limit: sub
+"#,
+        );
+        let inv = EntityInventory::from_model("model", &model).expect("model describes wiring");
+        let mut pkgs: Vec<&str> = inv.components().iter().map(|c| c.pkg.as_str()).collect();
+        pkgs.sort_unstable();
+        assert_eq!(
+            pkgs,
+            ["/handler", "/operator"],
+            "the named external node is not a component"
+        );
+        let components = inv.components();
+        let handler = components
+            .iter()
+            .find(|c| c.pkg == "/handler")
+            .expect("handler");
+        assert!(
+            handler
+                .declaration
+                .entities()
+                .iter()
+                .any(|e| e.kind == EntityKind::Subscription
+                    && e.name.as_deref() == Some("/availability")),
+            "the image's own side of an external topic stays"
+        );
+        let k = inv.derive().knobs().expect("derived").clone();
+        assert_eq!(k.tl_publishers, nros_sizing_descriptor::Fact::Stated(1));
+        assert_eq!(k.max_publishers, 1);
+        assert_eq!(
+            k.max_queryables, 2,
+            "one service server + one cache queryable"
+        );
+    }
+
+    /// Issue 1567 -- the other half of the rule: an external mark does NOT
+    /// drop an endpoint whose node this image runs. Keyed on the node map, so
+    /// a topic marked `externals: pub` that an in-image node also publishes
+    /// still counts that publisher.
+    #[test]
+    fn an_external_mark_keeps_an_in_image_endpoint() {
+        let model = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /talker:
+      { scope: s.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter, /remote/chatter]
+contracts:
+  pub_endpoints:
+    /talker/chatter:
+      qos:
+        durability: volatile
+  externals:
+    /chatter: pub
+"#,
+        );
+        let inv = EntityInventory::from_model("model", &model).expect("model describes wiring");
+        let pkgs: Vec<&str> = inv.components().iter().map(|c| c.pkg.as_str()).collect();
+        assert_eq!(pkgs, ["/talker"]);
+        let k = inv.derive().knobs().expect("derived").clone();
+        assert_eq!(k.max_publishers, 1);
+        assert_eq!(k.tl_publishers, nros_sizing_descriptor::Fact::Stated(0));
     }
 
     /// One entity row as the acceptance below reads it: `(kind, topic, depth,
