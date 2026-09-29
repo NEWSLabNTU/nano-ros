@@ -1,6 +1,22 @@
 fn main() {
     nros_build_helpers::cpp::run();
     generate_cpp_surface_anchor();
+    emit_config_include();
+}
+
+/// Publish the per-build `nros_cpp_config_generated.h` directory on the
+/// `links = "nros_cpp"` channel as `DEP_NROS_CPP_CONFIG_INCLUDE` (issue 1569),
+/// the twin of `nros-c`'s `DEP_NROS_C_CONFIG_INCLUDE`.
+///
+/// The OUT_DIR copy, not the shared `$CARGO_TARGET_DIR/nros-cpp-generated/`
+/// one: this unit wrote it, so it is THIS feature set's header and cannot be a
+/// sibling build's that landed on the flat path first (issue 0360). Emitted
+/// even when `run()` declined to write the header (a probe that read nothing):
+/// the consumer checks the file exists and refuses by name, which is better
+/// than a path it has to guess.
+fn emit_config_include() {
+    let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
+    println!("cargo:config_include={out_dir}/nros-cpp-generated");
 }
 
 /// Phase 241 W11 (Option D) — emit a `#[used]` anchor that force-references every

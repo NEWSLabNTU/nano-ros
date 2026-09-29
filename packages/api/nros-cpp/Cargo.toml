@@ -12,6 +12,15 @@ authors.workspace = true
 homepage.workspace = true
 documentation.workspace = true
 readme = "README.md"
+# issue 1569 — the same channel `nros-c` carries (`links = "nros_c"`, issue
+# 1512), for this crate's per-build `nros_cpp_config_generated.h`: a build
+# script that compiles C/C++ against it reads `DEP_NROS_CPP_CONFIG_INCLUDE`
+# (this unit's OUT_DIR copy, so never another feature set's header) and — the
+# load-bearing half — cargo runs that script only AFTER this one has written the
+# header. Without the key there was no such edge: the NuttX FFI build script
+# raced this one, and the loser compiled against whatever the include path held
+# instead (on NuttX, a committed hand-kept snapshot).
+links = "nros_cpp"
 
 [lib]
 crate-type = ["staticlib", "lib"]
