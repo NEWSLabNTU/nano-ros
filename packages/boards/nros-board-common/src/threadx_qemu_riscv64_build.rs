@@ -399,8 +399,6 @@ fn configure_riscv64(build: &mut cc::Build) {
     crate::threadx_sources::apply_threadx_cflags(build);
 }
 
-/// Get the picolibc sysroot path for RISC-V (provides C standard library headers).
-
 /// Get the picolibc library directory for rv64gc/lp64d (libc.a).
 fn get_picolibc_lib_dir() -> Option<PathBuf> {
     // Try gcc -print-sysroot with picolibc specs
