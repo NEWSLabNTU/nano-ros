@@ -210,6 +210,15 @@ k_thread 14 instead - the least urgent preemptive priority - which makes
 `transport = [0, 14]` and leaves `pool.app` EMPTY; that is the stale-image
 state the checker reports rather than allocating into.
 
+A band is a property of ONE image and a pin of ONE bringup, so each image is
+judged against the pins of the bringup it was BUILT from — attributed through
+the `examples/fixtures.toml` row that names its build dir — never against every
+pin in the tree. Issue 1583: judged tree-wide, the derived-tier image
+(`READ_PRIORITY=100`, transport `[4, 9]`) failed three bringups'
+`tiers.high.zephyr = 9` it does not contain and whose own images put 9 in
+`pool.app [5, 14]`. A pin no image in the run was built from is reported NOT
+JUDGED.
+
 and it finds four real violations — `tiers.high.zephyr = 5` outranks the
 transport in every bringup that has it, undeclared, exactly as every other port
 did before its plan landed.
