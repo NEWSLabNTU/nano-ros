@@ -83,7 +83,7 @@ The Cyclone DDS backend uses [Eclipse Cyclone DDS](https://github.com/eclipse-cy
 - Discovery via SPDP multicast or unicast peer list (mirrors Cyclone's standard config knobs).
 - Heap required (Cyclone uses `malloc`); `BUILD_SHARED_LIBS=ON` produces `libddsc.so` for POSIX, static link for embedded.
 - **Services wired** (create/recv/reply — `service.cpp`); the availability probe (`service_server_available`) and actions are still unsupported.
-- **No status events yet** — `register_subscription_event` / `register_publisher_event` / `assert_publisher_liveliness` slots are not wired to Cyclone listeners yet.
+- **No status events yet** — `subscription_event_init` / `publisher_event_init` / `publisher_assert_liveliness` slots are not wired to Cyclone listeners yet.
 
 **Build:**
 

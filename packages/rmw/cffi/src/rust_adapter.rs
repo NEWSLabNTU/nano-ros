@@ -1442,8 +1442,8 @@ unsafe extern "C" fn take_response_trampoline<R: RustBackend>(
 // ============================================================================
 //
 // Events / liveliness / deadline are wired through the vtable (see the
-// `register_subscription_event` / `register_publisher_event` /
-// `assert_publisher_liveliness` / `next_deadline_ms` trampolines registered
+// `subscription_event_init` / `publisher_event_init` /
+// `publisher_assert_liveliness` / `next_deadline_ms` trampolines registered
 // above) — the stale "TODO: wire through" header was removed (Phase 192.9).
 //
 // `NrosRmwEventCallback` (cffi shape) and `nros_rmw::EventCallback`

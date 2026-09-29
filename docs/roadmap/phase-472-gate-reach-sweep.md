@@ -1,6 +1,6 @@
 # Phase 472 — gate reach sweep
 
-**Status (2026-09-29). AUDIT LANDED; W7, W8 open.** (W1–W6, W9 done — see each.) An audit of every tracked
+**Status (2026-09-29). AUDIT LANDED; W8 open.** (W1–W7, W9 done — see each.) An audit of every tracked
 `scripts/check-*` gate against one question, the codebase-audit checklist's **I6
 second-order** rule: *a gate must be able to fail on the case it names.*
 
@@ -558,6 +558,55 @@ path at all), `check-codegen-tool-reconfigure`, `check-cxx-compat-shim-coverage`
 
 **Fix:** harvest from the source of truth; turn the authored list into an
 EXEMPTION list whose entries carry reasons.
+
+**Status: DONE.** `scripts/lib/harvest.py` — `reconcile(population, exemptions,
+*, what)`: the population is harvested, the authored list is `{name: reason}`,
+and an EMPTY harvest, a reason-less entry or a STALE entry (naming nothing the
+harvest found) each fail. Its self-test runs on every member's normal path.
+
+| member | harvested from | mutation (confirmed applied by `git diff`) | before | after |
+| --- | --- | --- | ---: | ---: |
+| `msg-dep-is-path` | every `package.xml` in `rosidl_interface_packages` + every path dep into a `generated/` tree | LIVE (`px4_msgs` ×3, `custom_msgs` ×2, `local_msgs`/`extra_msgs`); and `[dependencies.geometry_msgs]` + `version` (the table spelling) | 0 / 0 | 1 / 1 |
+| `ffi-struct-mirrors` | every `typedef struct nros_cpp_*` the mirror header defines | a tail field on the canonical `nros_cpp_subscription_options_t` only | 0 | 1 |
+| `decoupling` | every Rust crate under `packages/platform/` minus the generic ABI (exemptions) | `nros-platform-mps2-an385` as an `nros-node` dep | 0 | 1 |
+| `atomic-sync-writes` | every non-test `fs::write` in the sync-owned modules (`metadata_*.rs`, `provider_scan.rs`) | a new `fs::write` writer in `metadata_refresh.rs`; `provider_scan`'s `atomic_write` → `fs::write` | 0 / 0 | 1 / 1 |
+| `rmw-ret-sign` | every `rmw_ret_t (*slot)(…)` in `rmw_vtable.h` (66; the list had 43, 7 of them gone) | `rc < 0` after an unwatched slot (`count_publishers`); after a watched one (`take`) | 0 / 0 | 1 / 1 |
+| `fixture-binary-names` | every `pub fn build_*(…, binary_name, …)` that forwards `format!` into a CMake locator (11 derived; 10 non-CMake exemptions) | `"c_talker"` → `"c_talkr"` at a `build_example_cmake_rmw` site | 0 | 1 |
+| `lane-contracts` | every `pub fn build_*` / `require_*` in `src/fixtures/` (326, was 5) | a `build_native_c_example_rmw` call in a `ci gate` unit test | 0 | 1 |
+| `codegen-tool-reconfigure` | every `nros` verb an `execute_process` runs (19 non-emitting exemptions with reasons) | delete `NanoRosSizingDescriptor.cmake`'s registration | 0 | 1 |
+| `cxx-compat-shim-coverage` | every `fixtures.toml` C++ row (`cpp`/`mixed`) on the shim's platform | an unexported `std::strxfrm` in `examples/workspaces/cpp` | 0 | 1 |
+
+`sdk-store-not-enumerated` was fixed by #1439 (verified in W9). Each member
+gained a normal-path control on its harvest (`msg-dep-is-path`,
+`atomic-sync-writes`, `fixture-binary-names` had no self-test and left the
+baseline, 86 → 83).
+
+Live defects the harvests surfaced, fixed here:
+- `msg-dep-is-path`: the three PX4 companion leaves declared `px4_msgs =
+  { version = "*" }` plus a hand-kept `[patch.crates-io]` redirect — RFC-0067
+  D1's retired shape; now a plain path dep, no patch block. `custom_msgs`,
+  `local_msgs`, `extra_msgs` carried `version = "0.0.0"` beside their `path`
+  (CLAUDE.md: path deps carry NO version, #394); dropped. The cargo-ros2
+  integration workspace (`packages/cli/testing_workspaces/complex_workspace`)
+  registry-names its messages ON PURPOSE (upstream ros2_rust convention under
+  test) and is exempted by manifest, stale-checked.
+- `codegen-tool-reconfigure`: `nano_rosConfig`'s `ws leaf-system` query — whose
+  answer (board, RMW, deployment identity) is baked into `build.ninja` — never
+  registered the tool; now it does (guarded `nros_codegen_tool_reconfigure`).
+- `rmw-ret-sign`: its headline rule had no failing path; it is a ratchet now
+  (`scripts/lib/ratchet.py`) over the 12 sites the 30-line window flags today,
+  each a site to clear by hand (most are DDS-handle or count comparisons).
+- `ffi-struct-mirrors` now normalizes `const char* x` / `const char *x`, the
+  one difference the third struct showed.
+- The hand list in `rmw-ret-sign` was also, silently, the ONLY code in the tree
+  naming `register_subscription_event` — a slot renamed to
+  `subscription_event_init` in phase-376 W3.c. Once the list was harvested,
+  `check-rmw-doc-slot-names` caught `rmw_vtable.h` still citing the old name.
+  Every stale citation (`register_{subscription,publisher}_event`,
+  `assert_publisher_liveliness`: the header, `nros-rmw-cffi`'s `lib.rs` and
+  `rust_adapter.rs`, `abi_layout_check.c`, the book's RMW backends page) now
+  names the current slot. Sweep:
+  `git grep -nwE 'register_(subscription|publisher)_event|assert_publisher_liveliness' -- packages book/src`.
 
 ### W8 — exemptions wider than their rationale
 

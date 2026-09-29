@@ -10,7 +10,6 @@
 scripts/check-activate-shells.sh
 scripts/check-archive-lang-items.sh
 scripts/check-artifact-identity-budget.sh
-scripts/check-atomic-sync-writes.sh
 scripts/check-book-links.py
 scripts/check-book-no-just.py
 scripts/check-capability-slot-counts.sh
@@ -28,7 +27,6 @@ scripts/check-example-matrix.sh
 scripts/check-eyre-context-alias.sh
 scripts/check-feature-contract.py
 scripts/check-ffi-struct-mirrors.sh
-scripts/check-fixture-binary-names.py
 scripts/check-fixture-groups.py
 scripts/check-fixture-id-guard.sh
 scripts/check-flavour-lanes.py
@@ -38,7 +36,6 @@ scripts/check-image-panic-policy.py
 scripts/check-interface-glob-configure-depends.py
 scripts/check-lane-scope-consumers.py
 scripts/check-manifests-parse.py
-scripts/check-msg-dep-is-path.sh
 scripts/check-no-absolute-model-paths.sh
 scripts/check-no-allow-multiple-def.sh
 scripts/check-no-board-init.sh

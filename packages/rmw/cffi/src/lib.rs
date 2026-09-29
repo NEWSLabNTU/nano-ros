@@ -1090,8 +1090,9 @@ pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) ->
 /// missing slot so registration can reject such a vtable loudly and early.
 ///
 /// Issue 0349 — the list is CORE TRANSPORT only. It originally also required
-/// `register_publisher_event`, `register_subscription_event` and
-/// `assert_publisher_liveliness`, which refused the **xrce backend outright**:
+/// `publisher_event_init`, `subscription_event_init` and
+/// `publisher_assert_liveliness` (then `register_*_event` / `assert_publisher_liveliness`),
+/// which refused the **xrce backend outright**:
 /// its vtable NULLs all three deliberately, alongside ~14 other optional
 /// capability slots this list correctly never required, so
 /// `nros_rmw_xrce_register()` returned INVALID_ARGUMENT and xrce could not

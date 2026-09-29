@@ -37,14 +37,11 @@ nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 #          have that feature   help: available features: default
 # The generated tree is gitignored, so a checkout that never regenerated kept
 # building against an OLDER crate that still had the feature. Issue 0716.
-px4_msgs = { version = "*", default-features = false }
+# A PATH dep (RFC-0067 D1): a registry name resolves against PUBLIC crates.io
+# whenever a redirect is not in the loaded config chain. `generated/px4_msgs` is
+# written by `nros generate-px4-msgs` (just px4 build-fixtures).
+px4_msgs = { path = "generated/px4_msgs", default-features = false }
 log = "0.4"
 env_logger = "0.11"
 
 [workspace]
-
-[patch.crates-io]
-# px4_msgs is generated from the PX4-Autopilot .msg tree by `nros
-# generate-px4-msgs` (just px4 build-fixtures) — this row is maintained by
-# hand, outside the nros-managed block (`nros sync` leaves it alone).
-px4_msgs = { path = "generated/px4_msgs" }
