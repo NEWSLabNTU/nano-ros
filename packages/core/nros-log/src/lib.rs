@@ -60,6 +60,8 @@ pub mod early;
 pub mod log_compat;
 pub mod macros;
 pub mod pool;
+#[cfg(feature = "rosout")]
+pub mod rosout;
 pub mod sinks;
 pub mod throttle;
 
@@ -111,6 +113,37 @@ impl Severity {
     #[must_use]
     pub const fn as_u8(self) -> u8 {
         self as u8
+    }
+
+    /// This severity on **rcutils's number line** — the one every ROS 2
+    /// artefact outside this crate uses.
+    ///
+    /// [`as_u8`](Self::as_u8) is this crate's own compact discriminant (`0..=5`,
+    /// chosen so a level comparison is an integer compare). It is NOT what a
+    /// `rcl_interfaces/msg/Log` carries, nor what `<nros/log.h>`'s
+    /// `nros_log_severity_t` crosses the FFI as, nor what
+    /// `rcutils_logging_set_logger_level` takes. Those are all rcutils's
+    /// `DEBUG=10 / INFO=20 / WARN=30 / ERROR=40 / FATAL=50`.
+    ///
+    /// THE ONE SPELLING of that mapping (issue 1025's class: one number, two
+    /// derivations, agreeing until the day they do not). `nros-c`'s
+    /// `nros_log_severity_t::from_facade` is built on this, and a test there
+    /// pins the result against the values `<nros/log.h>` declares — which is
+    /// the strongest join available, since this crate cannot see that header.
+    ///
+    /// `Trace` takes **5**, a value inside rcutils's own `UNSET`..`DEBUG` gap:
+    /// rcutils has no TRACE, and borrowing `DEBUG`'s number would make the two
+    /// levels indistinguishable on the wire.
+    #[must_use]
+    pub const fn rcutils_level(self) -> u8 {
+        match self {
+            Self::Trace => 5,
+            Self::Debug => 10,
+            Self::Info => 20,
+            Self::Warn => 30,
+            Self::Error => 40,
+            Self::Fatal => 50,
+        }
     }
 }
 

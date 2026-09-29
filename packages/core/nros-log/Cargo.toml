@@ -75,6 +75,21 @@ dynamic-loggers-0  = []
 dynamic-loggers-8  = []
 dynamic-loggers-32 = []
 
+# phase-467 Q4 / ledger row `c:logging_rosout_enabled` — the `/rosout` QUEUE.
+#
+# OFF by default: it is `rosout_depth() * size_of::<Slot>()` of `.bss` and a
+# `LogSink` in the dispatch walk, and an image with no ROS operator on the far
+# end pays neither. `nros-node/rosout` turns it on together with the publisher
+# half; nothing else should.
+rosout = []
+
+# How many records the `/rosout` queue holds between pumps. Same family shape
+# and same reason as `early-records-<N>`: static arenas, and a 64 KB MCU and a
+# Linux host do not want the same number. Else-branch default is 16.
+rosout-records-8  = []
+rosout-records-32 = []
+rosout-records-64 = []
+
 buffer-size-128  = []
 buffer-size-256  = []
 buffer-size-512  = []
