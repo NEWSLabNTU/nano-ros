@@ -63,6 +63,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+import per_item  # noqa: E402  phase-472 W6 — every definition, not the first
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 MARKER = "NROS_EXECUTOR_STORAGE_SIZE"
@@ -88,7 +91,7 @@ def defined_macros(text, name):
     ALL of them, not the first: the compiler keeps the last, so a scan that
     stops at the first answers a question about a line nothing compiles.
     """
-    return re.findall(rf"^[ \t]*#[ \t]*define[ \t]+{name}[ \t]+(\S+)", text, re.M)
+    return [d.value for d in per_item.c_defines(text) if d.name == name and d.value]
 
 
 def defined_macro(text, name):
@@ -142,6 +145,7 @@ def producers(root):
 
 
 def self_test():
+    per_item.self_test()  # the shared helper's own controls (phase-472 W6)
     t = "#define NROS_CODEGEN_VERSION 3\n#define NROS_CODEGEN_VERSION_MIN 2\n"
     assert defined_macro(t, "NROS_CODEGEN_VERSION") == "3"
     assert defined_macro(t, "NROS_CODEGEN_VERSION_MIN") == "2"

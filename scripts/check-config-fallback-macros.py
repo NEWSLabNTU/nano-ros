@@ -89,6 +89,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import per_item  # noqa: E402  phase-472 W6 — every definition, not the first
+
 REPO = Path(__file__).resolve().parent.parent
 
 # The dispatching stubs, and the include-dir roots their fallbacks live in.
@@ -148,34 +151,9 @@ _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*([a-z]+)\b[ \t]*(.*)$")
 
 def unconditional_defines(text: str) -> list[tuple[int, str, str | None]]:
     """(line, name, value-or-None) for every `#define` not inside a conditional
-    arm. The outermost `#ifndef` is the include guard and does not count as an
-    arm, so a guarded header's body is depth 0. Function-like macros report
-    value None — only object-like values are compared."""
-    out: list[tuple[int, str, str | None]] = []
-    depth = 0
-    guard_open = False
-    for lineno, line in enumerate(text.split("\n"), 1):
-        m = _DIRECTIVE.match(line)
-        if not m:
-            continue
-        kw, rest = m.group(1), m.group(2)
-        if kw in ("if", "ifdef", "ifndef"):
-            if depth == 0 and not guard_open and kw == "ifndef" and not out:
-                guard_open = True  # the include guard: its body is top level
-                continue
-            depth += 1
-        elif kw == "endif":
-            if depth > 0:
-                depth -= 1
-            else:
-                guard_open = False
-        elif kw == "define" and depth == 0:
-            dm = re.match(r"([A-Za-z_][A-Za-z0-9_]*)(\()?[ \t]*(\S*)", rest)
-            if dm:
-                name = dm.group(1)
-                value = None if dm.group(2) else (dm.group(3) or "")
-                out.append((lineno, name, value))
-    return out
+    arm — `per_item.c_defines` (phase-472 W6), which treats the outermost
+    `#ifndef` as the include guard. Function-like macros report value None."""
+    return [(d.line, d.name, d.value) for d in per_item.c_defines(text) if not d.conditional]
 
 
 def fallback_value(text: str, name: str) -> str | None:
@@ -241,12 +219,10 @@ def analyse(
 
     # --- (3) one definition per macro ----------------------------------------
     for path, text in sorted(reachable.items()):
-        seen: dict[str, list[tuple[int, str | None]]] = {}
-        for lineno, name, value in unconditional_defines(text):
-            seen.setdefault(name, []).append((lineno, value))
-        for name, defs in sorted(seen.items()):
+        dups = per_item.duplicate_defines(per_item.c_defines(text))
+        for name, defs in sorted(dups.items()):
             if len(defs) > 1:
-                where = ", ".join(f"line {ln} = {v}" for ln, v in defs)
+                where = ", ".join(f"line {d.line} = {d.value}" for d in defs)
                 problems.append(
                     f"  {path} defines {name} {len(defs)} times ({where}).\n"
                     f"      The compiler keeps the LAST; a reviewer and a gate find "
@@ -353,6 +329,7 @@ def tracked(pattern: str) -> list[Path]:
 
 
 def self_test() -> None:
+    per_item.self_test()  # the shared helper's own controls (phase-472 W6)
     """Both directions, on synthetic input — `check-gate-selftests` requires
     this on the NORMAL path, because a control nobody runs is a comment."""
     stubs = {"stub.h": '#if defined(NROS_PLATFORM_X)\n#include "cfg_x.h"\n#endif\n'}

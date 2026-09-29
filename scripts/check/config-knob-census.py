@@ -36,6 +36,10 @@ signal, not the env number falling to zero.
 import os
 import re
 import subprocess
+import sys as _pi_sys
+
+_pi_sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
+import per_item  # noqa: E402  phase-472 W6
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -536,9 +540,7 @@ def ladder_env_keys():
     laddered because a UNIT TEST mentioned it.
     """
     src = read(os.path.join(ROOT, "packages/tooling/nros-platform-config/src/platform_config.rs"))
-    cut = src.find("#[cfg(test)]")
-    if cut > 0:
-        src = src[:cut]
+    src = per_item.rust_cfg_test_blank(src)  # phase-472 W6: each item, not a cut
     src = re.sub(r"(?m)^\s*///.*$", "", src)
     out = set()
     for pat in (

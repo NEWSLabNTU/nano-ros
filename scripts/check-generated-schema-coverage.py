@@ -55,6 +55,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import comments  # noqa: E402  phase-472 W3
+import per_item  # noqa: E402  phase-472 W6 — one verdict per struct, per serializer
 
 # A file that declares a message struct. `mod.rs` / `lib.rs` are re-export
 # shims and declare none, so they are skipped by the struct test below rather
@@ -91,7 +94,53 @@ def generated_sources() -> list[Path]:
     return [ROOT / p for p in out]
 
 
+# A struct WITH fields (`pub struct X {`). A unit struct (`pub struct Srv;`) is a
+# service/action marker and carries no schema.
+FIELD_STRUCT_RE = re.compile(r"^pub struct (\w+)\s*(?=\{)", re.M)
+SERIALIZE_FN_RE = re.compile(r"\bfn serialize\s*\(")
+
+
+def audit_text(text):
+    """(structs, [struct without FIELDS], serializers, [line of one without a DHEADER]).
+
+    PER ITEM (phase-472 W6). This asked "does the FILE contain a `const FIELDS`
+    / a `begin_dheader`", so a service file whose Request carried FIELDS and
+    whose Response did not passed — and its "structs" count was files.
+    """
+    code = comments.strip_comments(text, "rust", strings=True)
+    structs = [m.group(1) for m in FIELD_STRUCT_RE.finditer(code)]
+    missing = []
+    for name in structs:
+        impls = per_item.blocks(code, rf"\bimpl\s+[\w:]*\bMessage\s+for\s+{name}\b")
+        if not any(FIELDS_RE.search(code[o:e]) for _m, o, e in impls):
+            missing.append(name)
+    sers = per_item.blocks(code, SERIALIZE_FN_RE)
+    no_dh = [per_item.line_of(code, m.start()) for m, o, e in sers
+             if not DHEADER_RE.search(code[o:e])]
+    return len(structs), missing, len(sers), no_dh
+
+
+def selftest():
+    """Negative controls on the normal path (phase-472 W6/W9)."""
+    per_item.self_test()
+    one = ("pub struct {n} {{ a: u8 }}\n"
+           "impl Serialize for {n} {{ fn serialize(&self, w: &mut W) -> R {{ "
+           "let __dh = w.begin_dheader()?; Ok(()) }} }}\n"
+           "impl ::nros_serdes::Message for {n} {{ const FIELDS: &'static [F] = &[]; }}\n")
+    good = one.format(n="Req") + one.format(n="Resp") + "pub struct Srv;\n"
+    assert audit_text(good) == (2, [], 2, []), audit_text(good)
+    no_fields = good.replace("const FIELDS", "const NOT_FIELDS", 2).replace(
+        "const NOT_FIELDS", "const FIELDS", 1)
+    assert audit_text(no_fields)[1] == ["Resp"], audit_text(no_fields)
+    no_dh = good[::-1].replace("begin_dheader"[::-1], "no_dheader"[::-1], 1)[::-1]
+    assert audit_text(no_dh)[3] == [5], audit_text(no_dh)  # the Response's, line 5
+    in_comment = good.replace("const FIELDS: &'static [F] = &[]; }\n",
+                              "/* const FIELDS */ }\n")
+    assert audit_text(in_comment)[1] == ["Req", "Resp"], audit_text(in_comment)
+
+
 def main() -> int:
+    selftest()
     files = generated_sources()
     # Precondition, not decoration: an empty list would make the loop below
     # vacuous and this gate would report success having checked nothing — the
@@ -109,15 +158,12 @@ def main() -> int:
     checked = 0
     checked_ser = 0
     for path in files:
-        text = path.read_text()
-        if STRUCT_RE.search(text):
-            checked += 1
-            if not FIELDS_RE.search(text):
-                missing.append(path.relative_to(ROOT))
-        if SERIALIZE_RE.search(text):
-            checked_ser += 1
-            if not DHEADER_RE.search(text):
-                no_dheader.append(path.relative_to(ROOT))
+        n_st, miss, n_ser, no_dh = audit_text(path.read_text())
+        rel = path.relative_to(ROOT)
+        checked += n_st
+        checked_ser += n_ser
+        missing += [f"{rel}: {name}" for name in miss]
+        no_dheader += [f"{rel}:{line}" for line in no_dh]
 
     if not missing and not no_dheader:
         print(

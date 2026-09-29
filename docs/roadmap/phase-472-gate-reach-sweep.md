@@ -1,6 +1,6 @@
 # Phase 472 — gate reach sweep
 
-**Status (2026-09-29). AUDIT LANDED; W1, W5–W8 open.** (W2, W3, W4, W9 done — see each.) An audit of every tracked
+**Status (2026-09-29). AUDIT LANDED; W1, W5, W7, W8 open.** (W2, W3, W4, W6, W9 done — see each.) An audit of every tracked
 `scripts/check-*` gate against one question, the codebase-audit checklist's **I6
 second-order** rule: *a gate must be able to fail on the case it names.*
 
@@ -372,6 +372,58 @@ Members:
 
 **Fix:** per-item matching, and refuse a duplicate definition outright where the
 language makes the last one win.
+
+**Status: DONE.** `scripts/lib/per_item.py` splits a text into its ITEMS, on
+text already blanked by `comments.strip_comments` (offsets and lines hold):
+`blocks(code, head)` (each head's brace-matched body; a `;` first means a
+declaration, not an item), `segments(text, start)` (each match to the next),
+`call_args`, `c_defines` (EVERY `#define`, with its conditional depth; the
+include guard is not an arm) + `duplicate_defines` (the last-one-wins case),
+and `rust_cfg_test_blank` (each `#[cfg(test)]` / `cfg(all(test, …))` ITEM
+blanked — never a cut at the first one). Its self-test runs on every member's
+normal path.
+
+| member | mutation (confirmed applied by `git diff`) | before | after |
+| --- | --- | ---: | ---: |
+| `literal-domain-id` | `.with_domain(0)` in shipped code after `executor/mod.rs`'s `mod tests;` | 0 | 1 |
+| `config-header-producers` / `config-fallback-macros` | second `#define NROS_CODEGEN_VERSION 9` in the NuttX snapshot | 1 / 1 | 1 / 1 |
+| `board-cargo-config-shape` | `runnner` in the SECOND (riscv) blob of `nros-board-nuttx-qemu` | 0 | 1 |
+| `executor-stack-floor` | the second `cpp.rs` emitter's `#if CONFIG_MAIN_STACK_SIZE < …` → `#if 0` | 0 | 1 |
+| `dds-isolation-symmetry` | delete the pin in `cyclone_a_peer_leaving_fires_the_graph_change_guard` (the file's other pin kept) | 0 | 1 |
+| `tier-spin-gap` | remove the gap step from BOTH Zephyr C tier loops (prototype kept) | 0 | 1 |
+| `generated-schema-coverage` | `set_parameters.rs`: Response's `const FIELDS` renamed; separately, its `begin_dheader` | 0 / 0 | 1 / 1 |
+| `tier-priority-plan` (sweep) | a second, smaller `#define configMAX_PRIORITIES` in `FreeRTOSConfig.h` | 0 | 1 |
+
+The two config gates were already fixed by issue 1540 (verified, rc=1 before);
+they now read through `c_defines` / `duplicate_defines` with identical output.
+The rules as judged per item: a blob per `[[board]]` (8 now, was 7); a guard per
+emitted `#define NROS_EXECUTOR_MAIN_STACK_MIN` (segment to the next define); a
+pin per FUNCTION that both starts a pinned peer and spawns a `Command` (in the
+function, or via a same-file function that pins — a function is the grain that
+needs no dataflow); the gap TAKEN in each loop body (`nros_tier_spin_gap_step(`
+or `.after_spin(`), not named in the file; FIELDS per struct with fields (unit
+markers exempt) and a DHEADER per `fn serialize` (75 of each; the count used to
+be files, 63). Each gained normal-path negative controls;
+`generated-schema-coverage` had no self-test and left the baseline (89 → 88).
+
+Per-loop judging surfaced three single-executor entry loops in files that also
+run tiers (`nros-board-freertos::app_task_entry_runtime`,
+`nros-board-nuttx::run_entry`, `nros-board-threadx::run_app_thread`); they are
+exempt under the gate's own single-tier rule, keyed on (file, FUNCTION) so the
+exemption cannot cover a tier loop added beside them.
+
+Ruled NOT a hole: `image-paths-apply-policy` "per file, not per target".
+`nros_apply_panic_policy` sets a GLOBAL property on the one nros-c/nros-cpp
+staticlib every image in a build links, so one call covers every target in the
+file; the mutation (a second raw `add_executable` linking the umbrella) is
+covered by construction. Its population (1 file) is W5's business.
+
+Sweep, moved onto `rust_cfg_test_blank` (output identical on the tree):
+`entry-session-name` and `config-knob-census` CUT the file at the first
+`#[cfg(test)]`; `zenoh-source-manifest`'s private stripper took the next `{`
+even across a `;`, so `#[cfg(test)] mod t;` blanked the following item;
+`rmw-agnostic`'s `strip_cfg_test` is now a wrapper. `qos-profile-ssot` reads
+first-match `#define`s from ROS's own `rmw/time.h`, upstream, left as is.
 
 ### W7 — authored lists where the population should be harvested
 

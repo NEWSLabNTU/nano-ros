@@ -59,6 +59,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import per_item  # noqa: E402  phase-472 W6
+
 ROOT = Path(__file__).resolve().parent.parent
 
 # The ONE producer of the emitted call (phase-432 W2.6). Named rather than
@@ -78,7 +81,7 @@ PRODUCERS: list[tuple[str, str, str]] = [
 
 
 def strip_tests(text: str) -> str:
-    """Cut a Rust file at `#[cfg(test)]`.
+    """Blank a Rust file's `#[cfg(test)]` items.
 
     A Rust emitter's tests assert on the emitted C++ — including
     `!src.contains("::run_components(")` — and a scanner cannot tell a test's
@@ -89,8 +92,10 @@ def strip_tests(text: str) -> str:
     The assumption is not silent: a producer file that yields NO call after this
     cut is a hard error below, so moving an emitter after the test module fails
     loudly rather than skipping it."""
-    idx = text.find("#[cfg(test)]")
-    return text if idx == -1 else text[:idx]
+    # phase-472 W6 — blank each cfg(test) ITEM (`per_item.rust_cfg_test_blank`)
+    # instead of cutting at the first one: a `#[cfg(test)] mod t;` declaration
+    # or a test helper ahead of an emitter hid every producer after it.
+    return per_item.rust_cfg_test_blank(text)
 
 
 def code_only(text: str) -> str:

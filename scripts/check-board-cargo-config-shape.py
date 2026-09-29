@@ -71,9 +71,13 @@ TARGET_KEYS = {"linker", "runner", "rustflags", "rustdocflags", "ar"}
 CARGO_CONFIG_RE = re.compile(r"cargo_config\s*=\s*'''(.*?)'''", re.S)
 
 
-def blob_of(text):
-    m = CARGO_CONFIG_RE.search(text)
-    return m.group(1) if m else None
+def blobs_of(text):
+    """EVERY `cargo_config` blob, in order — one per `[[board]]` entry.
+
+    This was `blob_of` (`.search()`, the FIRST): `nros-board-nuttx-qemu` carries
+    two `[[board]]` entries, and its riscv blob was never parsed (phase-472 W6).
+    """
+    return [m.group(1) for m in CARGO_CONFIG_RE.finditer(text)]
 
 
 def check_blob(rel, blob):
@@ -131,11 +135,11 @@ def scan(root):
                 continue
             seen.add(path)
             with open(path, encoding="utf-8") as fh:
-                blob = blob_of(fh.read())
-            if blob is None:
-                continue
-            checked += 1
-            problems.extend(check_blob(os.path.relpath(path, root), blob))
+                blobs = blobs_of(fh.read())
+            rel = os.path.relpath(path, root)
+            for k, blob in enumerate(blobs, 1):
+                checked += 1
+                problems.extend(check_blob(f"{rel} (blob {k})" if len(blobs) > 1 else rel, blob))
     return problems, checked
 
 
@@ -170,6 +174,13 @@ def self_test(quiet=False):
         write('[build]\ntarget = "thumbv7m-none-eabi"\n[target.armv8r-none-eabihf]\nrunner = "q"\n')
         problems, _ = scan(tmp)
         assert any("does not configure" in p for p in problems), problems
+        # phase-472 W6 — the SECOND `[[board]]` blob of one descriptor is read.
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("[[board]]\nnames = [\"x\"]\ncargo_config = '''\n[target.a]\nrunner = \"q\"\n'''\n"
+                     "[[board]]\nnames = [\"y\"]\ncargo_config = '''\n[target.b]\nrunnner = \"q\"\n'''\n")
+        problems, checked = scan(tmp)
+        assert checked == 2 and any("(blob 2)" in p and "not a key cargo" in p
+                                    for p in problems), (checked, problems)
 
     if not quiet:
         print("check-board-cargo-config-shape self-test: OK")
