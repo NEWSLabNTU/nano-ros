@@ -79,6 +79,25 @@ function(nros_declare_rust_runtime_carrier target)
             "nros_declare_rust_runtime_carrier(${target}): no such target.")
     endif()
     set_property(TARGET ${target} PROPERTY NROS_CARRIES_RUST_RUNTIME ON)
+
+    # The guard above refuses the umbrella's ARCHIVES. It must not also refuse
+    # its HEADERS, and until this line it did: an umbrella carries both, so the
+    # one decision dropped both. A carrier still compiles C — the board's
+    # startup TUs (`startup.c`, the generated `nros_app_config_def.c`) include
+    # `<nros/app_config.h>`, which lives only in nros-c's public include dir.
+    # Before issue 1467 that dir arrived as a side effect of the very umbrella
+    # 1467 correctly removed, so the fix for 228 duplicate symbols turned all
+    # twelve `threadx_riscv64` rust leaves into `nros/app_config.h: No such
+    # file or directory` — the second fault directly behind the first.
+    #
+    # Taken from `nros_c-static`'s own INTERFACE list, never spelled here:
+    # that list puts the per-build mirror dir AHEAD of the source include dir,
+    # and issue 0434 is what happens when the source dir comes first (it
+    # shadows the generated headers). Reading the property keeps that order
+    # without restating it. It is a compile requirement only — nothing is
+    # linked, which is the whole of what 1467 requires.
+    target_include_directories(${target} PRIVATE
+        "$<$<TARGET_EXISTS:nros_c-static>:$<TARGET_PROPERTY:nros_c-static,INTERFACE_INCLUDE_DIRECTORIES>>")
 endfunction()
 
 # ---------------------------------------------------------------------------
