@@ -177,7 +177,12 @@ when set, its own fold of the paths otherwise, and a test pins that a
 `max_response_ms` reaches `k_thread_deadline_set`. Closes the first bullet of
 phase-434's "still open".
 
-Claim: phase-457-W4. Depends on: phase-457-W2; phase-459-W4 for order on rtos_realizer.rs. Owns: node_facts in packages/core/nros-orchestration-ir/src/rtos_realizer.rs and one test in its #[cfg(test)] module. Gate: cargo test -p nros-orchestration-ir. Status: not started.
+Claim: phase-457-W4. Depends on: phase-457-W2; phase-459-W4 for order on rtos_realizer.rs. Owns: node_facts in packages/core/nros-orchestration-ir/src/rtos_realizer.rs and one test in its #[cfg(test)] module. Gate: cargo test -p nros-orchestration-ir. Status: landed 2026-09-29. Both dependencies verified before starting, not assumed: phase-459-W4 is in (`priority_plan.rs` exists), and the pinned `ros-launch-manifest-derive` (v0.1.40, `7737517`) does fold the bound -- `derive/src/lib.rs` chains `srv_max_response_ms` into the same min as the paths' `max_latency_ms`, and fills both `deadline_us` and `path_budget_ms` from it. `node_facts` now reads `MapperNode.deadline_us` first and keeps its own path fold only as the fallback for hand-built `MapperInput`s. Gate: `cargo test -p nros-orchestration-ir`, 178 passed.
+
+**Two things the wave measured that the spec did not say.**
+
+- **A node whose ONLY timing claim is a service bound still gets no tier.** The first draft of the test gave `/server` one event-driven path with no latency plus a service, and `realize_rtos` dropped the node outright: `chain_aware_rank` returned `ranked = []` for it, and the realizer iterates ranked nodes. The ranker ranks PATHS, and the node-level `deadline_us` does not enter its input. So this wave reaches a node that is ranked through some path and ALSO serves something tighter -- for that node the tier deadline becomes `min(path budget, service bound)`, which is the case the test pins (10 ms path, 2.5 ms service: 10000 before, 2500 after). The service-only node is out of `node_facts`' reach; the ranker is upstream, in `ros-launch-manifest-sched`.
+- **No shipping image changes.** `git grep max_response_ms -- '*.contract.yaml' 'examples/**'` is empty, so no tracked contract declares a service bound and every derived tier table is byte-identical. The reader exists and is tested against the real derivation; nothing exercises it yet.
 
 ## Gates
 
