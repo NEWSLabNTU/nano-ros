@@ -477,8 +477,8 @@ the direction the row sketches.
 trigger — "a trait signature generated code implements". That is a four-file
 change (`packages/core/nros-core/src/codegen_version.rs`,
 `.config/codegen-version-surface.txt`,
-`packages/api/nros-c/include/nros/nros_config_generated_nuttx.h` in two arms,
-`packages/api/nros-cpp/include/nros/nros_cpp_config_generated_nuttx.h`), plus
+`packages/api/nros-c/include/nros/nros_config_generated_buildless.h` in two arms,
+`packages/api/nros-cpp/include/nros/nros_cpp_config_generated_buildless.h`), plus
 re-blessing 26 golden fixtures under
 `packages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/`, plus a
 template edit in `packs/nros/message.rs.jinja`, plus every generated tree in
@@ -1327,9 +1327,9 @@ The four files, measured off the last five bump commits:
    paragraph justifying the `_MIN` floor)
 2. `.config/codegen-version-surface.txt`
    (`python3 scripts/check-codegen-version-surface.py --write-baseline`)
-3. `packages/api/nros-c/include/nros/nros_config_generated_nuttx.h` — **two
+3. `packages/api/nros-c/include/nros/nros_config_generated_buildless.h` — **two
    arms of the same file**
-4. `packages/api/nros-cpp/include/nros/nros_cpp_config_generated_nuttx.h`
+4. `packages/api/nros-cpp/include/nros/nros_cpp_config_generated_buildless.h`
 
 plus re-blessing the golden fixtures that carry `NROS_EMITTED_CODEGEN_VERSION`
 — 20 of the 44 files under

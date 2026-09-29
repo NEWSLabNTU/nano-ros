@@ -1,10 +1,11 @@
 ---
 id: 954
 title: "The committed NuttX fallback sizes header is a hand-maintained twin with no gate, and went stale again"
-status: open
+status: resolved
 type: bug
 area: api-c, boards
-related: [issue-0196, issue-0245, issue-0268, issue-0899, issue-0924]
+resolved: 2026-09-29
+related: [issue-0196, issue-0245, issue-0268, issue-0899, issue-0924, issue-1569]
 ---
 
 ## What went wrong this time
@@ -87,3 +88,22 @@ values.**
 * Growing a struct behind one of these macros fails a gate, naming the macro and
   both numbers, rather than being found by reading the header later.
 * The gate cannot pass by finding nothing to compare.
+
+## Resolution
+
+Resolved by [[issue-1569]], by removing the premise rather than gating it.
+The rule this issue wanted encoded — "this file is an upper bound over all
+per-build values" — only mattered because NuttX images were SIZED from the file.
+They are not any more: the NuttX FFI build compiles against the per-build
+headers (from the `nros-c`/`nros-cpp` `links` channels), the stubs no longer
+dispatch on `NROS_PLATFORM_NUTTX`, and the snapshot is now
+`nros_{,cpp_}config_generated_buildless.h`, reached only by header-only checks
+that compile with no build (`NROS_CONFIG_BUILDLESS`). A growing struct now
+changes the per-build header the image compiles against, so there is nothing to
+fall below.
+
+What a gate DOES enforce now is the replacement invariant:
+`check-config-fallback-macros` refuses a stub that selects the snapshot under
+anything but `NROS_CONFIG_BUILDLESS`, and refuses that define outside `scripts/`
+— so no build can be sized from the file again. A `>=` gate would protect
+nothing that runs and would still need a build to answer.

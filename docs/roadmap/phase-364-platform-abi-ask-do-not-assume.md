@@ -255,5 +255,5 @@ holds the evidence, the item is *close it*.
 | issue | why it belongs here |
 | --- | --- |
 | [#0758](../issues/0758-platform-sntp-epoch-source.md) | no platform wall-clock epoch source, so embedded consumers hand-roll one — the ABI does not state a fact it owns |
-| [#0954](../issues/0954-nuttx-fallback-sizes-header-has-no-gate.md) | the committed NuttX fallback sizes header is a hand-maintained twin with no gate, and went stale. A size the platform should state, restated by hand |
+| [#0954](../issues/archived/0954-nuttx-fallback-sizes-header-has-no-gate.md) | the committed NuttX fallback sizes header is a hand-maintained twin with no gate, and went stale. A size the platform should state, restated by hand |
 
