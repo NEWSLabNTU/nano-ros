@@ -157,6 +157,9 @@ pub fn run_nuttx() {
             .flag("-fdata-sections")
             .define("NROS_PLATFORM_NUTTX", None)
             .warnings(false);
+        // Issue 1570 — every TU compiled here writes a depfile; the files it
+        // names are declared to cargo after the last compile below.
+        nros_cc_flags::header_deps::track_header_deps(build);
         // issue 0383 — C only; a C++ TU rejects both constructs anyway and gcc
         // just warns that the option does not apply to the language.
         if !want_cpp {
@@ -377,6 +380,19 @@ pub fn run_nuttx() {
         }
     }
 
+    // Issue 1570 — the rebuild edge for everything compiled above. These TUs are
+    // the image's component sources, handed over as env LISTS, and the lists are
+    // all `rerun-if-env-changed` can watch: an edit to a component `.c`, to
+    // `component.h`, or to the committed NuttX config snapshot left cargo's
+    // fingerprint unchanged and the image a museum binary (measured: the ctrl
+    // instance at 0x2d8 in the object cmake rebuilt, 0x288 in the image).
+    // The compiler knows what each TU opened; declare exactly that. Cargo also
+    // copies these into the artifact's dep-info, which the cmake rule consumes
+    // as its DEPFILE, so the same list is the edge that re-runs cargo at all.
+    nros_cc_flags::header_deps::emit_header_deps(&PathBuf::from(
+        env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts"),
+    ));
+
     // ---- NuttX kernel link args ----
     // The binary IS the NuttX kernel. Link against all NuttX staging libraries,
     // linker script, and startup objects.
@@ -564,6 +580,11 @@ pub fn run_nuttx() {
                         });
                     println!("cargo:rustc-link-search=native={}", dir.display());
                     println!("cargo:rustc-link-lib=static={stem}");
+                    // Issue 1570 — the archive's CONTENT is a link input. Cargo
+                    // does not fingerprint a `rustc-link-lib`, so without this a
+                    // rebuilt archive left the image linked against the old one
+                    // (0475's class: a lib reached with no file-level edge).
+                    println!("cargo:rerun-if-changed={path}");
                 }
             }
             Err(e) => panic!("APP_FFI_LIBS_FILE={ffi_libs_file} not readable: {e}"),

@@ -63,6 +63,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod header_deps;
+
 /// Diagnostics that must be errors in every nano-ros C compile.
 pub const STRICT_DECL_FLAGS: &[&str] = &[
     "-Werror=implicit-function-declaration",
