@@ -30,6 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from tracked import tracked  # issue 0721: index lookup, not a walk
 from priority_plan import load_plans, scan_pins  # RFC-0079: ONE plan reader
+import per_item  # phase-472 W6 — every definition, not the first
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -78,13 +79,22 @@ def cross_reference(plans, errors):
                 "not describe what the port does")
 
     hdr = ROOT / "packages/boards/nros-board-freertos/config/FreeRTOSConfig.h"
-    m = re.search(r"define\s+configMAX_PRIORITIES\s+(\d+)", hdr.read_text(encoding="utf-8"))
-    if m and plan.get("range"):
-        top = int(m.group(1)) - 1
+    # phase-472 W6 — the definition the COMPILER keeps (the last unconditional
+    # one), and a duplicate is itself an error; a first-match read answered a
+    # question about a line nothing compiles. Absent is an error too, not a skip.
+    defs = [d for d in per_item.c_defines(hdr.read_text(encoding="utf-8"))
+            if d.name == "configMAX_PRIORITIES" and not d.conditional]
+    if len(defs) != 1 or not (defs[0].value or "").isdigit():
+        errors.append(
+            f"{hdr.relative_to(ROOT)}: expected exactly one unconditional numeric "
+            f"`#define configMAX_PRIORITIES`, found "
+            f"{[(d.line, d.value) for d in defs] or 'none'}")
+    elif plan.get("range"):
+        top = int(defs[0].value) - 1
         if plan["range"][1] > top:
             errors.append(
                 f"priority_plan range tops out at {plan['range'][1]} but "
-                f"configMAX_PRIORITIES = {m.group(1)} allows at most {top}")
+                f"configMAX_PRIORITIES = {defs[0].value} allows at most {top}")
 
 
 def main():

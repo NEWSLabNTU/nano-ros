@@ -71,6 +71,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # satisfy `applies_the_pin`; a `# nros_export_cyclone_config` likewise.
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 import comments  # noqa: E402
+import per_item  # noqa: E402  phase-472 W6 — per spawning function, not per file
 TESTS = "packages/testing/nros-tests/"
 
 # Helpers that start a host ROS 2 peer whose env is pinned by
@@ -194,6 +195,33 @@ def applies_the_pin(text):
     return any(token in text for token in APPLIES_PIN)
 
 
+FN_HEAD = re.compile(r"\bfn\s+(\w+)")
+
+
+def unpinned_functions(text):
+    """Names of functions that start a pinned peer AND spawn a `Command` of
+    their own, yet neither apply the pin nor call a same-file function that does.
+
+    phase-472 W6 — the rule is per PROCESS and this read it per FILE: one pinned
+    spawn anywhere satisfied every spawn beside it, so deleting the pin from
+    `cyclone_a_peer_leaving_fires_the_graph_change_guard` stayed green because
+    `cyclone_enumerates_a_stock_ros2_node` still had one. A function is the
+    granularity that can be read without dataflow: it names the peer and the
+    `Command` it pairs with.
+    """
+    fns = per_item.blocks(text, FN_HEAD)
+    pinning = {m.group(1) for m, o, e in fns if applies_the_pin(text[o:e])}
+    out = []
+    for m, o, e in fns:
+        body = text[o:e]
+        if "Command::new(" not in body or starts_a_pinned_peer(body) is None:
+            continue
+        if applies_the_pin(body) or any(re.search(rf"\b{p}\s*\(", body) for p in pinning):
+            continue
+        out.append(m.group(1))
+    return out
+
+
 def tracked_shell_cells():
     """Tracked `*.sh` living under a `tests/` directory."""
     out = subprocess.run(
@@ -227,6 +255,7 @@ def shell_pin_finding(text):
 
 def self_test(quiet=False):
     bad = []
+    per_item.self_test()  # the shared helper's own controls (phase-472 W6)
 
     # A host DDS peer with no pin on our side is the defect.
     defect = 'Ros2DdsProcess::topic_echo_cyclonedds_with_domain(...);\nCommand::new(bin)'
@@ -245,6 +274,18 @@ def self_test(quiet=False):
     if not applies_the_pin(fixed):
         bad.append("a fixed file is still reported")
 
+    # phase-472 W6 — per spawning function: a pin in ONE function does not
+    # cover a second one that starts a peer and spawns its own Command.
+    two = (
+        "fn a() { Ros2DdsProcess::x(); let mut c = Command::new(b);\n"
+        "  nros_tests::dds_isolation::apply_to_command(&mut c); }\n"
+        "fn b() { Ros2DdsProcess::x(); let mut c = Command::new(b); }\n"
+        "fn spawn_pinned() { let mut c = Command::new(b);\n"
+        "  nros_tests::dds_isolation::apply_to_command(&mut c); }\n"
+        "fn c() { Ros2DdsProcess::x(); let mut d = Command::new(b); spawn_pinned(); }\n"
+    )
+    if unpinned_functions(two) != ["b"]:
+        bad.append(f"per-function pinning misjudged: {unpinned_functions(two)}")
     # A DOCKER peer must NOT be treated as a pinned peer: those pairs are
     # symmetric-unpinned, and pinning our half would create the bug. This is the
     # case that makes the `HostRosEnv`/`Middleware` distinction load-bearing.
@@ -334,9 +375,13 @@ def main():
         if token is None:
             continue
         peers += 1
-        if path in ALLOWLIST or applies_the_pin(text):
+        if path in ALLOWLIST:
             continue
-        findings.append((path, token))
+        if not applies_the_pin(text):
+            findings.append((path, token))
+            continue
+        for fn in unpinned_functions(text):
+            findings.append((f"{path} (fn `{fn}`)", token))
 
     shell_findings = []
     shell_cells = 0

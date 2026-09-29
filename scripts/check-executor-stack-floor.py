@@ -49,6 +49,7 @@ REPO = Path(__file__).resolve().parent.parent
 # in a comment guards nothing, and used to count.
 sys.path.insert(0, str(REPO / "scripts" / "lib"))
 import comments  # noqa: E402
+import per_item  # noqa: E402  phase-472 W6 — one verdict per emitted header
 
 # Every producer of a header a caller compiles against. Two Rust emitters (the
 # C++ one inlines the text, the C one substitutes into the templates below) and
@@ -83,7 +84,8 @@ def check_text(name: str, text: str) -> list[str]:
     # `#define NROS_EXECUTOR_MAIN_STACK_MIN` followed by the `#if` line would
     # satisfy `\s+\S` and pass. The selftest below catches exactly that, and
     # did — the first version of this regex was wrong.
-    if not re.search(rf"#define[^\S\n]+{DEFINE}[^\S\n]+\S", text):
+    define_re = re.compile(rf"#define[^\S\n]+{DEFINE}[^\S\n]+\S")
+    if not define_re.search(text):
         problems.append(
             f"{name}: does not `#define {DEFINE}`.\n"
             f"    Without the define the `#if` below compares against an undefined\n"
@@ -91,23 +93,29 @@ def check_text(name: str, text: str) -> list[str]:
             f"    passes for every stack size and the check is silently gone."
         )
 
-    if f"CONFIG_MAIN_STACK_SIZE < {DEFINE}" not in text:
-        problems.append(
-            f"{name}: defines {DEFINE} but does not COMPARE against it\n"
-            f"    (`#if CONFIG_MAIN_STACK_SIZE < {DEFINE}`).\n"
-            f"    A number nobody checks is documentation. That is the state issue 0961\n"
-            f"    was filed about, and it cost four bring-up sessions."
-        )
-
-    if "#error" not in text:
-        problems.append(f"{name}: has the comparison but no `#error` — it cannot fail.")
-
-    if OPT_OUT not in text:
-        problems.append(
-            f"{name}: no `{OPT_OUT}` escape hatch.\n"
-            f"    An image that builds its executor off the main thread is measured\n"
-            f"    against a stack this header cannot see, and needs a way to say so."
-        )
+    # phase-472 W6 — PER EMITTED HEADER. `cpp.rs` holds two inline emitters,
+    # and a file-level search let the first one's guard stand for the second:
+    # disarming the second `#if` left this gate green. Each define is judged on
+    # the text from it to the next define.
+    segs = per_item.segments(text, define_re) or [(None, text)]
+    for k, (m, seg) in enumerate(segs, 1):
+        where = (f"{name} (emitter {k}, line {per_item.line_of(text, m.start())})"
+                 if m is not None and len(segs) > 1 else name)
+        if f"CONFIG_MAIN_STACK_SIZE < {DEFINE}" not in seg:
+            problems.append(
+                f"{where}: defines {DEFINE} but does not COMPARE against it\n"
+                f"    (`#if CONFIG_MAIN_STACK_SIZE < {DEFINE}`).\n"
+                f"    A number nobody checks is documentation. That is the state issue 0961\n"
+                f"    was filed about, and it cost four bring-up sessions."
+            )
+        if "#error" not in seg:
+            problems.append(f"{where}: has the comparison but no `#error` — it cannot fail.")
+        if OPT_OUT not in seg:
+            problems.append(
+                f"{where}: no `{OPT_OUT}` escape hatch.\n"
+                f"    An image that builds its executor off the main thread is measured\n"
+                f"    against a stack this header cannot see, and needs a way to say so."
+            )
 
     return problems
 
@@ -160,6 +168,7 @@ def run() -> int:
 
 
 def selftest() -> int:
+    per_item.self_test()  # the shared helper's own controls (phase-472 W6)
     good = (
         f"#define {DEFINE} 3104\n"
         f"#if defined(CONFIG_MAIN_STACK_SIZE) && !defined({OPT_OUT})\n"
@@ -192,6 +201,11 @@ def selftest() -> int:
     no_optout = good.replace(f" && !defined({OPT_OUT})", "").replace(OPT_OUT, "")
     assert any("escape hatch" in p for p in check_text("t", no_optout))
 
+    # phase-472 W6 — two emitters in one file: the second's guard is its own.
+    two = good + "\n" + good.replace(f"#if CONFIG_MAIN_STACK_SIZE < {DEFINE}\n", "#if 0\n")
+    assert any("emitter 2" in p and "does not COMPARE" in p for p in check_text("t", two)), \
+        check_text("t", two)
+    assert check_text("t", good + "\n" + good) == []
     # A define whose value is empty is not a define worth having.
     empty = good.replace(f"#define {DEFINE} 3104", f"#define {DEFINE}")
     assert any("does not `#define" in p for p in check_text("t", empty))

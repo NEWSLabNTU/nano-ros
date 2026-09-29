@@ -34,6 +34,7 @@ import sys as _w3_sys  # noqa: E402
 from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
+import per_item  # noqa: E402  phase-472 W6 — per-item matching
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -83,11 +84,12 @@ def offenders(files):
             raw = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        code = strip_comments(raw)
         # `#[cfg(test)]` code may pin a domain to assert the formatting; the
-        # defect is in what ships.
-        if "mod tests" in code:
-            code = code[: code.index("mod tests")]
+        # defect is in what ships. Each cfg(test) ITEM is blanked — this used to
+        # truncate the file at the first `mod tests` SUBSTRING, so a `mod tests;`
+        # DECLARATION (executor/mod.rs) hid every shipped line after it
+        # (phase-472 W6).
+        code = per_item.rust_cfg_test_blank(strip_comments(raw))
         for m in LITERAL_DOMAIN.finditer(code):
             line = code[: m.start()].count("\n") + 1
             hits.append((rel, line, m.group(1)))
@@ -96,6 +98,8 @@ def offenders(files):
 
 def self_test():
     import tempfile
+
+    per_item.self_test()  # the shared helper's own controls (phase-472 W6)
 
     tmp_root = ROOT / "tmp"
     tmp_root.mkdir(exist_ok=True)
@@ -116,6 +120,15 @@ def self_test():
         probe.write_text("// .with_domain(0) was the bug; see issue 0656.\nlet x = 1;\n")
         if offenders([rel]):
             sys.stderr.write("self-test: a COMMENT was reported\n")
+            sys.exit(2)
+
+        # phase-472 W6 — a `mod tests;` DECLARATION ends nothing: shipped code
+        # after it is still read, and a cfg(test) BODY is still exempt.
+        probe.write_text("#[cfg(test)]\nmod tests;\nfn ship(i: I) -> I { i.with_domain(0) }\n"
+                         "#[cfg(test)]\nmod t { fn f() { x.with_domain(7) } }\n")
+        got = offenders([rel])
+        if [(line, v) for _r, line, v in got] != [(3, "0")]:
+            sys.stderr.write(f"self-test: per-item cfg(test) blanking is wrong: {got}\n")
             sys.exit(2)
 
 

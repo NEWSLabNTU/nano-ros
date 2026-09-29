@@ -82,6 +82,7 @@ import sys as _w3_sys  # noqa: E402
 from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
+import per_item  # noqa: E402  phase-472 W6
 
 REPO = Path(__file__).resolve().parent.parent
 ZENOH = REPO / "packages/rmw/zenoh"
@@ -347,28 +348,10 @@ def strip_test_modules(text: str) -> str:
     trade `strip_comments` makes and for the same reason — the alternative is a
     Rust parser in a 40 ms gate.
     """
-    out = []
-    i = 0
-    while True:
-        j = text.find("#[cfg(test)]", i)
-        if j < 0:
-            out.append(text[i:])
-            return "".join(out)
-        out.append(text[i:j])
-        brace = text.find("{", j)
-        if brace < 0:
-            return "".join(out)
-        depth = 0
-        k = brace
-        while k < len(text):
-            if text[k] == "{":
-                depth += 1
-            elif text[k] == "}":
-                depth -= 1
-                if depth == 0:
-                    break
-            k += 1
-        i = k + 1
+    # phase-472 W6 — `per_item.rust_cfg_test_blank`. The private version took
+    # the next `{` after the attribute even across a `;`, so a
+    # `#[cfg(test)] mod t;` declaration blanked the NEXT item's body.
+    return per_item.rust_cfg_test_blank(text)
 
 
 def vendor_roots(rows) -> set[str]:

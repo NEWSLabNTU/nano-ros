@@ -56,6 +56,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 from issue_status import issue_status  # noqa: E402
+import per_item  # noqa: E402  phase-472 W6
 
 # RFC-0071 § Verification, bullet 1 (directories) and bullet 2 (the dispatch).
 SCOPE_DIRS = (
@@ -263,32 +264,9 @@ _CFG_TEST = re.compile(r"#\[cfg\((?:all\(|any\()?\s*test\b[^\]]*\]")
 
 
 def strip_cfg_test(code: str) -> str:
-    """Blank every Rust item under `#[cfg(test)]`, keeping line numbers."""
-    out = code
-    pos = 0
-    while True:
-        m = _CFG_TEST.search(out, pos)
-        if not m:
-            return out
-        i = m.end()
-        brace = out.find("{", i)
-        semi = out.find(";", i)
-        if brace < 0 or (0 <= semi < brace):
-            end = (semi + 1) if semi >= 0 else len(out)
-        else:
-            depth, j = 0, brace
-            while j < len(out):
-                if out[j] == "{":
-                    depth += 1
-                elif out[j] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        break
-                j += 1
-            end = j + 1
-        blank = "".join("\n" if ch == "\n" else " " for ch in out[m.start():end])
-        out = out[:m.start()] + blank + out[end:]
-        pos = m.start() + 1
+    """Blank every Rust item under `#[cfg(test)]`, keeping line numbers —
+    `per_item.rust_cfg_test_blank` (phase-472 W6), with this gate's pattern."""
+    return per_item.rust_cfg_test_blank(code, _CFG_TEST)
 
 
 def code_of(path: str, text: str) -> str | None:
