@@ -3,12 +3,12 @@ id: 1551
 title: "The Zephyr derived-tiers-cpp image runs out of its 64 KiB platform heap
   in tier 1 of 4, and the failed Rust Box::new then SEGVs through the 0589
   stdio recursion instead of reporting anything"
-status: open
+status: resolved
 type: bug
 area: zephyr, memory
 severity: high
 found: 2026-09-28
-related: [issue-1508, issue-1537, issue-1426, issue-1425, issue-0589, issue-1566, phase-459]
+related: [issue-1575, issue-1576, issue-1568, issue-1508, issue-1537, issue-1426, issue-1425, issue-0589, issue-1566, phase-459]
 ---
 
 # The Zephyr derived-tiers-cpp image runs out of heap declaring entities, then SEGVs
@@ -341,7 +341,7 @@ but it would still be a crash on a path whose C caller expects a return code.
 
 ## Resolution — defect 1 (sizing)
 
-**Status: defect 1 fixed. The issue stays OPEN.** Defect 2 (an allocation
+**Status: defect 1 fixed.** (See *Closed* below: both defects are now fixed.) Defect 2 (an allocation
 failure turns into a stack-overflow SEGV) was being fixed separately in
 `packages/rmw/**/rust_adapter.rs` when this was written; it has since landed —
 see "Resolution — defect 2 only" below, which also lists what remains open
@@ -526,7 +526,7 @@ Their allocation profile was not measured, so they are unchanged.
 
 ## Resolution — defect 2 only (2026-09-29)
 
-**Defect 1 (sizing) is being fixed separately, so this issue stays `open`.**
+**Defect 1 (sizing) was fixed separately (#1436).**
 What follows closes defect 2. An allocation failure on an entity-creation
 path now returns `BAD_ALLOC` and prints a named log line. It no longer ends
 in a stack-overflow SIGSEGV.
@@ -752,3 +752,30 @@ pre-fix adapter, the test binary dies with
   So the component-level "FAILED at …" line that the generated entry tries to
   print never appears, and the adapter's line above is the only diagnostic.
   This is not fixed here.
+
+## Closed (2026-09-29)
+
+Both defects are fixed on `main`:
+
+- **Defect 1 (sizing), #1436.** Zephyr tier storage moved to `.bss`, sized by
+  the generated entry. **#1446 (issue 1568)** then extended that method to
+  every RTOS runner, tier and single-executor, and replaced the fallback
+  sizes with one library refusal.
+- **Defect 2 (silent SEGV), #1432.** Allocations on the entity-creation path
+  return `BAD_ALLOC` with a named log line.
+
+What the two resolution sections left open now has an owner:
+
+- **No lane boots the derived-tiers-cpp image, and without `nros sync` the
+  configure silently derives no tiers.** This is 1551's first acceptance
+  item, and it was not met here. It moves to **issue 1575**.
+- **`report_component_failure` is silent on freestanding Zephyr C++.** Moved
+  to **issue 1576**.
+- **The allocation sites excluded from defect 2's sweep still reach libstd's
+  OOM hook**, which on native_sim is the archived 0589 recursion. The
+  exclusions and their reasons are recorded above. Making OOM itself safe
+  needs a nightly-only lever (measured above), and the image-wide halt policy
+  is issue 1425's `CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL`.
+- **Link-time failure on a RAM-bounded board** was demonstrated by #1446 on
+  FreeRTOS mps2-an385: `region 'RAM' overflowed by 65440 bytes`. It was not
+  shown on a Zephyr board.
