@@ -463,15 +463,23 @@ unsafe fn logger_ref(logger: *const c_void) -> Option<&'static nros_log::Logger>
 }
 
 impl nros_log_severity_t {
+    /// A facade severity on rcutils's number line.
+    ///
+    /// ONE DERIVATION (issue 1025's class). This used to be a six-arm match
+    /// re-stating the numbers a third time — after `<nros/log.h>`'s `enum` and
+    /// the constants above — and a third statement of a number is a third
+    /// thing to forget. `rcl_interfaces/msg/Log.level` needed the same mapping
+    /// for the `/rosout` bridge (phase-467 Q4), so the rule moved down to
+    /// `nros_log::Severity::rcutils_level`, where both callers can reach it and
+    /// neither has to know about the other.
+    ///
+    /// The header's constants stay where they are — this crate cannot see the
+    /// C header, and RFC-0054 makes that header the ABI SSoT — and
+    /// `the_constants_agree_with_the_facade_rule` below is the join. Where a
+    /// value comes from is one question; that the two agree is another, and it
+    /// is now asked by a test rather than by whoever edits next.
     fn from_facade(severity: nros_log::Severity) -> Self {
-        match severity {
-            nros_log::Severity::Trace => Self::NROS_LOG_SEVERITY_TRACE,
-            nros_log::Severity::Debug => Self::NROS_LOG_SEVERITY_DEBUG,
-            nros_log::Severity::Info => Self::NROS_LOG_SEVERITY_INFO,
-            nros_log::Severity::Warn => Self::NROS_LOG_SEVERITY_WARN,
-            nros_log::Severity::Error => Self::NROS_LOG_SEVERITY_ERROR,
-            nros_log::Severity::Fatal => Self::NROS_LOG_SEVERITY_FATAL,
-        }
+        Self(core::ffi::c_int::from(severity.rcutils_level()))
     }
 }
 
@@ -874,6 +882,38 @@ mod severity_tests {
         nros_log_set_default_level(Sev(31));
         assert_eq!(nros_log_get_default_level(), Sev::NROS_LOG_SEVERITY_WARN);
         nros_log_set_default_level(Sev::NROS_LOG_SEVERITY_INFO);
+    }
+
+    /// The join `from_facade` names: the header's constants and
+    /// `nros_log::Severity::rcutils_level` are two statements of one number
+    /// line, and this is what makes them one fact.
+    ///
+    /// It has to be a test. This crate cannot see `<nros/log.h>` (RFC-0054
+    /// makes the header the ABI SSoT and `nros-log` sits below it), so there
+    /// is no `const` assertion available — the constants above are the Rust
+    /// mirror, the header static_asserts itself, and this closes the triangle.
+    #[test]
+    fn the_constants_agree_with_the_facade_rule() {
+        use nros_log_severity_t as Sev;
+        for (severity, spelled) in [
+            (nros_log::Severity::Trace, Sev::NROS_LOG_SEVERITY_TRACE),
+            (nros_log::Severity::Debug, Sev::NROS_LOG_SEVERITY_DEBUG),
+            (nros_log::Severity::Info, Sev::NROS_LOG_SEVERITY_INFO),
+            (nros_log::Severity::Warn, Sev::NROS_LOG_SEVERITY_WARN),
+            (nros_log::Severity::Error, Sev::NROS_LOG_SEVERITY_ERROR),
+            (nros_log::Severity::Fatal, Sev::NROS_LOG_SEVERITY_FATAL),
+        ] {
+            assert_eq!(
+                Sev::from_facade(severity),
+                spelled,
+                "{severity:?}: `nros_log::Severity::rcutils_level` and this \
+                 crate's mirror of <nros/log.h> disagree"
+            );
+            assert_eq!(
+                i64::from(spelled.value()),
+                i64::from(severity.rcutils_level())
+            );
+        }
     }
 
     /// Every facade severity has a C spelling, and it maps back unchanged —

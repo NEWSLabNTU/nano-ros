@@ -56,8 +56,7 @@
 //!    queued, forever. It is counted
 //!    ([`nros_log::rosout::suppressed`]) rather than hidden.
 
-use nros_log::Severity;
-use nros_log::rosout as queue;
+use nros_log::{Severity, rosout as queue};
 use nros_rcl_interfaces::msg::Log;
 use nros_rmw::{QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy};
 
@@ -299,7 +298,8 @@ mod tests {
 
         let mut big = [0u8; TX_BUF];
         let mut w = crate::tx_writer(&mut big).expect("writer");
-        msg.serialize(&mut w).expect("a maximal Log must fit TX_BUF");
+        msg.serialize(&mut w)
+            .expect("a maximal Log must fit TX_BUF");
         let encoded = w.position();
 
         assert!(
