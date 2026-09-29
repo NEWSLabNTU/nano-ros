@@ -203,6 +203,12 @@ BAD = {
         file(GLOB _vers RELATIVE "${_store}" "${_store}/*")
         list(SORT _vers COMPARE NATURAL ORDER DESCENDING)
 """,
+    # Shape 1 ALONE — a store glob with no enumerate+pick in reach, so ONLY
+    # `LITERAL` can see it. Without this case every BAD case was also caught
+    # by shape 2, and blanking `LITERAL` left the self-test green (phase-472 W9).
+    "scripts/build/lit.sh": """\
+    cp "$NROS_HOME"/sdk/zenohd/*/bin/zenohd "$out"
+""",
     # issue 1546 — the riscv64 shell helper, as it was.
     "scripts/build/x.sh": """\
     local store="${NROS_SDK_STORE:-$HOME/.nros/sdk}/riscv-none-elf-gcc"

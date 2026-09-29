@@ -33,6 +33,8 @@ Usage:
     python3 scripts/gen-rmw-slot-table.py --self-test
 """
 
+import contextlib
+import io
 import argparse
 import re
 import subprocess
@@ -186,6 +188,13 @@ def main():
 
     if args.self_test:
         return self_test()
+    # Always, not only behind the flag (phase-472 W9): a negative control
+    # nobody runs decays into a comment. Quiet on success.
+    with contextlib.redirect_stdout(io.StringIO()) as _selftest_out:
+        _selftest_rc = self_test()
+    if _selftest_rc:
+        sys.stdout.write(_selftest_out.getvalue())
+        return _selftest_rc
 
     slots = parse_slots(HEADER.read_text())
     required = parse_required(CFFI.read_text())

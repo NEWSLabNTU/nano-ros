@@ -54,6 +54,8 @@ Usage::
 
 from __future__ import annotations
 
+import contextlib
+import io
 import argparse
 import re
 import subprocess
@@ -319,6 +321,13 @@ def main() -> int:
     args = ap.parse_args()
     if args.selftest:
         return _selftest()
+    # Always, not only behind the flag (phase-472 W9): a negative control
+    # nobody runs decays into a comment. Quiet on success.
+    with contextlib.redirect_stdout(io.StringIO()) as _selftest_out:
+        _selftest_rc = _selftest()
+    if _selftest_rc:
+        sys.stdout.write(_selftest_out.getvalue())
+        return _selftest_rc
 
     aliases = alias_build_names(ZEPHYR_RS.read_text(encoding="utf-8"))
     if len(aliases) < _MIN_ARMS:

@@ -123,6 +123,8 @@ of our C++ API, so both vocabularies are rooted as OURS — `OUR_CPP_ROOTS` — 
 nothing is marked `ported` today. See CPP_TRANSLATION_UNITS and `run_lang`.
 """
 
+import contextlib
+import io
 import argparse
 import json
 import os
@@ -2359,6 +2361,13 @@ def main():
 
     if args.self_test:
         return self_test()
+    # Always, not only behind the flag (phase-472 W9): a negative control
+    # nobody runs decays into a comment. Quiet on success.
+    with contextlib.redirect_stdout(io.StringIO()) as _selftest_out:
+        _selftest_rc = self_test()
+    if _selftest_rc:
+        sys.stdout.write(_selftest_out.getvalue())
+        return _selftest_rc
 
     langs = args.lang or list(LANGS)
     if args.refresh:

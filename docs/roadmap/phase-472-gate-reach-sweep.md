@@ -282,6 +282,33 @@ exemption a selftest row showing it does NOT cover the neighbouring case.
 above gains the negative control that would have caught it; a ratchet fails when
 a count rises above ANY recorded value, not only above its own row.
 
+**Results (W9 landed).**
+- `check-gate-selftests` now asks REACHABILITY, not line shape: Python on the AST
+  (module statements + every module function they call), shell by block extent
+  (function bodies, flag-guarded `if`/`case` arms; comments, heredocs and
+  multi-line strings masked; `python3 - <<'PY'` bodies classified as Python). A
+  guard is any condition that NAMES the flag (`--self-test`, `args.self_test`,
+  `$X_SELFTEST`), never one that calls the routine; a default-True recursion
+  stopper and `[ -z "$X_SELFTEST" ]` are the normal path. 34 always-run rows
+  cover every guard spelling both ways. It reclassified exactly the audit's 17
+  flag-only gates; all 17 now run their selftest on the normal path (quiet on
+  success), and 9 recipe lines that invoked `--self-test` a second time are
+  gone. `check-image-paths-apply-policy` and `check-wait-evidence-discarded`
+  converted too and left the baseline (95 -> 93).
+- `scripts/lib/ratchet.py` (`judge` + `fell_instructions`): a count above its row
+  fails, and a count BELOW its row fails too, naming the exact baseline edit.
+  Members: `check-wait-evidence-discarded` (LIVE: 77 sites vs 87 recorded — ten
+  sites of regrowth room; baseline lowered here), `check-unsafe-census`,
+  `check-kconfig-overridden-values` (stale entries), and by the class sweep
+  `check-grep-q-error-conflation` and `check-fixture-require`, which printed the
+  same "shrink it" note. Each selftest drives its gate's own `verdict()`.
+- Copy selftests: `check-self-pkg-package-xml` now drives `is_violation`, the
+  predicate its scan runs. `check-fixture-require` was already fixed by issue
+  1544 (verified: blanking the syntactic-bypass scan fails its selftest).
+- `check-sdk-store-not-enumerated` (PR #1439) verified: its selftest runs on the
+  normal path and fails when the shape-2 scan is blanked; it gained a shape-1-only
+  BAD case, because blanking `LITERAL` alone left it green.
+
 ---
 
 ## Live defects filed separately

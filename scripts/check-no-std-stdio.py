@@ -55,6 +55,8 @@ std arm, whose `cfg` already excludes `platform-zephyr` and which exists so the
 other arms can route Zephyr through `nros_log`.
 """
 
+import contextlib
+import io
 import argparse
 import re
 import subprocess
@@ -412,6 +414,13 @@ def main():
 
     if args.self_test:
         return self_test()
+    # Always, not only behind the flag (phase-472 W9): a negative control
+    # nobody runs decays into a comment. Quiet on success.
+    with contextlib.redirect_stdout(io.StringIO()) as _selftest_out:
+        _selftest_rc = self_test()
+    if _selftest_rc:
+        sys.stdout.write(_selftest_out.getvalue())
+        return _selftest_rc
 
     repo = Path(__file__).resolve().parent.parent
     roots = args.roots or [str(repo / "packages"), str(repo / "examples")]

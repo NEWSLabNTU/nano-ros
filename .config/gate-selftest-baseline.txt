@@ -39,7 +39,6 @@ scripts/check-generated-leaf-regenerable.sh
 scripts/check-generated-schema-coverage.py
 scripts/check-goal-cdr-stripped.py
 scripts/check-image-panic-policy.py
-scripts/check-image-paths-apply-policy.sh
 scripts/check-interface-glob-configure-depends.py
 scripts/check-lane-scope-consumers.py
 scripts/check-manifests-parse.py
@@ -78,7 +77,6 @@ scripts/check-test-domain-assignment.sh
 scripts/check-tier-preconditions.sh
 scripts/check-tier-priority-plan.py
 scripts/check-version-lockstep.sh
-scripts/check-wait-evidence-discarded.py
 scripts/check-weak-symbols-image.sh
 scripts/check-workspace-build-output.sh
 scripts/check-zenoh-archive-symbols.sh

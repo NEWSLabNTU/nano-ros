@@ -46,6 +46,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / "packages" / "testing" / "nros-tests"
 BASELINE = ROOT / ".config" / "fixture-require-baseline.txt"
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from ratchet import fell_instructions, judge  # noqa: E402  phase-472 W9
 
 # A resolver is `pub fn build_*(..) -> TestResult`. Harvested, never listed, so
 # a new resolver is covered the day it is written.
@@ -203,6 +205,21 @@ def read_baseline():
     return out
 
 
+def verdict(per_file, base):
+    """(rose moves, fall lines) — the per-file ratchet, both directions.
+
+    A file whose count FELL must be recorded in the same change (phase-472 W9):
+    before, this printed "(shrink it)" and passed, so the file could regrow to
+    its recorded count unobserved.
+    """
+    rose, fell = judge(per_file, base)
+    lines = fell_instructions(
+        fell, str(BASELINE.relative_to(ROOT)),
+        lambda f, n: f"{n} {f}" if n else None,
+        "python3 scripts/check-fixture-require.py --write-baseline") if fell else []
+    return rose, lines
+
+
 def self_test():
     """Negative controls: the matcher must answer BOTH ways.
 
@@ -236,6 +253,17 @@ def self_test():
             if got != want:
                 print(f"  self-test FAIL: {text!r} -> {got}, want {want}")
                 bad += 1
+    # The ratchet, through `verdict` — the function `main` runs.
+    for desc, cur, base, want_rose, want_fell in (
+        ("at its count", {"a": 2}, {"a": 2}, False, False),
+        ("a rise", {"a": 3}, {"a": 2}, True, False),
+        ("an unrecorded fall", {"a": 1}, {"a": 2}, False, True),
+        ("a converted file still listed", {}, {"a": 2}, False, True),
+    ):
+        rose, fell_lines = verdict(cur, base)
+        if bool(rose) != want_rose or bool(fell_lines) != want_fell:
+            print(f"  self-test FAIL: ratchet: {desc}")
+            bad += 1
     print(f"check-fixture-require self-test: {'OK' if not bad else 'FAILED'} "
           f"({len(cases)} cases)")
     return bad
@@ -270,12 +298,8 @@ def main():
         return 0
 
     base = read_baseline()
-    grew = []
-    for f, n in sorted(per_file.items()):
-        allowed = base.get(f, 0)
-        if n > allowed:
-            grew.append((f, n, allowed))
-
+    rose, fell_lines = verdict(per_file, base)
+    grew = [(m.key, m.now, m.was) for m in rose]
     if grew:
         print("check-fixture-require: FAIL — "
               f"{len(grew)} file(s) decide a fixture-resolver `Err` themselves "
@@ -290,10 +314,14 @@ def main():
         print("  which is the rule 260 sites used to each restate in prose.")
         return 1
 
-    total_base = sum(base.values())
+    if fell_lines:
+        print("check-fixture-require: FAIL — the baseline records more unconverted "
+              "sites than the tree has:")
+        print("\n".join(fell_lines))
+        return 1
+
     print(f"check-fixture-require: OK — {len(names)} resolver(s), "
-          f"{len(current)} unconverted site(s), baseline {total_base}"
-          + (" (shrink it)" if len(current) < total_base else ""))
+          f"{len(current)} unconverted site(s), every file at its recorded count")
     return 0
 
 

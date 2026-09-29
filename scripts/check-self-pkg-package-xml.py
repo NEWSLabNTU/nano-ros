@@ -58,13 +58,24 @@ def declares_components(path):
     Textual, deliberately: this gate runs on the BUILDLESS fast lane, which has
     no cargo and no CLI. `[[component]]` at column 0 is the only spelling TOML
     has for an array-of-tables header, so a parser would answer the same
-    question at the cost of the lane's premise.
+    question at the cost of the lane's premise. `path` is absolute.
     """
     try:
-        with open(os.path.join(ROOT, path), encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             return any(line.strip() == "[[component]]" for line in fh)
     except OSError:
         return False
+
+
+def is_violation(abs_dir):
+    """The rule, for ONE directory holding a `system.toml`. Both the scan and
+    the selftest call this — a selftest over a re-typed copy of the predicate
+    proves nothing about the gate (phase-472 W9: this one did exactly that)."""
+    if not declares_components(os.path.join(abs_dir, "system.toml")):
+        return False
+    if not any(os.path.exists(os.path.join(abs_dir, m)) for m in PKG_MARKERS):
+        return False
+    return not os.path.exists(os.path.join(abs_dir, "package.xml"))
 
 
 def violations():
@@ -72,17 +83,8 @@ def violations():
         ["git", "ls-files", "*system.toml"],
         cwd=ROOT, capture_output=True, text=True, check=True,
     ).stdout.split()
-    bad = []
-    for rel in listed:
-        d = os.path.dirname(rel)
-        if not declares_components(rel):
-            continue
-        abs_d = os.path.join(ROOT, d)
-        if not any(os.path.exists(os.path.join(abs_d, m)) for m in PKG_MARKERS):
-            continue
-        if not os.path.exists(os.path.join(abs_d, "package.xml")):
-            bad.append(d)
-    return bad
+    return [os.path.dirname(rel) for rel in listed
+            if is_violation(os.path.join(ROOT, os.path.dirname(rel)))]
 
 
 def self_test():
@@ -90,30 +92,26 @@ def self_test():
 
     Asserted against a synthetic tree rather than the repo, so the control does
     not depend on the repo being clean — and both directions, because a
-    predicate that answers "bad" for everything is also not a gate.
+    predicate that answers "bad" for everything is also not a gate. It drives
+    `is_violation`, the function `violations()` runs.
     """
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmp:
         good = os.path.join(tmp, "good")
         bad = os.path.join(tmp, "bad")
-        for d in (good, bad):
+        plain = os.path.join(tmp, "plain")
+        for d in (good, bad, plain):
             os.makedirs(d)
             with open(os.path.join(d, "system.toml"), "w", encoding="utf-8") as fh:
                 fh.write("[system]\nname = \"x\"\n\n[[component]]\npkg = \"x\"\n")
+        for d in (good, bad):
             open(os.path.join(d, "Cargo.toml"), "w").close()
         open(os.path.join(good, "package.xml"), "w").close()
 
-        def judge(d):
-            has_comp = any(
-                line.strip() == "[[component]]"
-                for line in open(os.path.join(d, "system.toml"), encoding="utf-8")
-            )
-            is_pkg = any(os.path.exists(os.path.join(d, m)) for m in PKG_MARKERS)
-            return has_comp and is_pkg and not os.path.exists(os.path.join(d, "package.xml"))
-
-        assert judge(bad), "self-test: a component-declaring package dir with no package.xml must FAIL"
-        assert not judge(good), "self-test: the same dir WITH a package.xml must PASS"
+        assert is_violation(bad), "self-test: a component-declaring package dir with no package.xml must FAIL"
+        assert not is_violation(good), "self-test: the same dir WITH a package.xml must PASS"
+        assert not is_violation(plain), "self-test: a dir that is not a package is not judged"
     print("check-self-pkg-package-xml: self-test OK (both directions).")
 
 

@@ -27,6 +27,8 @@ Usage:
     python3 scripts/gen-api-comparison.py --self-test
 """
 
+import contextlib
+import io
 import argparse
 import collections
 import datetime
@@ -582,6 +584,13 @@ def main():
 
     if args.self_test:
         return self_test()
+    # Always, not only behind the flag (phase-472 W9): a negative control
+    # nobody runs decays into a comment. Quiet on success.
+    with contextlib.redirect_stdout(io.StringIO()) as _selftest_out:
+        _selftest_rc = self_test()
+    if _selftest_rc:
+        sys.stdout.write(_selftest_out.getvalue())
+        return _selftest_rc
 
     urls = json.load(open(args.urls)) if args.urls else {}
     stamp = os.environ.get("NROS_DOC_DATE") or datetime.date.today().isoformat()

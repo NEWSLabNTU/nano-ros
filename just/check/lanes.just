@@ -2329,7 +2329,6 @@ launch-resolve-builds:
 # in four TUs), so it waits on a fix or an `--allow` carrying a tracked issue id.
 [private]
 no-alloc-image:
-    @python3 scripts/check-no-alloc-image.py --selftest
     @python3 scripts/check-no-alloc-image.py --claims
 
 # no_std core-crate compile check across the embedded targets `gate.yml` runs on

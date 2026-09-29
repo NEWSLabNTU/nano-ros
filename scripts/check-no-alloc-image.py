@@ -816,7 +816,7 @@ def selftest():
     def quiet(argv):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-            return main(argv)
+            return main(argv, _run_selftest=False)
 
     assert quiet([empty]) == 2, "unreadable image must exit 2, not 0"
     assert quiet(["--objects", os.path.join(ROOT, "nope"), "--tier", "unified"]) == 2
@@ -831,7 +831,7 @@ def selftest():
     return 0
 
 
-def main(argv=None):
+def main(argv=None, _run_selftest=True):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("elf", nargs="*", help="built image(s) to check")
     ap.add_argument(
@@ -863,6 +863,15 @@ def main(argv=None):
 
     if args.selftest:
         return selftest()
+    # Always, not only behind the flag (phase-472 W9): a negative control
+    # nobody runs decays into a comment. Quiet on success.
+    # `_run_selftest=False` only from inside `selftest`, which drives `main`.
+    if _run_selftest:
+        with contextlib.redirect_stdout(io.StringIO()) as _selftest_out:
+            _selftest_rc = selftest()
+        if _selftest_rc:
+            sys.stdout.write(_selftest_out.getvalue())
+            return _selftest_rc
     if args.claims:
         print(report_claims())
         return 0

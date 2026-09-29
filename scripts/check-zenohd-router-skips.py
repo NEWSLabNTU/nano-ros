@@ -26,6 +26,8 @@ Usage:
     scripts/check-zenohd-router-skips.py --self-test
 """
 
+import contextlib
+import io
 import argparse
 import os
 import re
@@ -141,6 +143,13 @@ def main(argv):
 
     if args.self_test:
         return self_test()
+    # Always, not only behind the flag (phase-472 W9): a negative control
+    # nobody runs decays into a comment. Quiet on success.
+    with contextlib.redirect_stdout(io.StringIO()) as _selftest_out:
+        _selftest_rc = self_test()
+    if _selftest_rc:
+        sys.stdout.write(_selftest_out.getvalue())
+        return _selftest_rc
 
     hits = []
     for rel in sources():

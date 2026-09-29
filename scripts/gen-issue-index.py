@@ -36,6 +36,8 @@ Usage
     scripts/gen-issue-index.py --check   # fail if it would change
 """
 
+import contextlib
+import io
 import argparse
 import os
 import re
@@ -229,6 +231,13 @@ def main():
 
     if args.self_test:
         return self_test()
+    # Always, not only behind the flag (phase-472 W9): a negative control
+    # nobody runs decays into a comment. Quiet on success.
+    with contextlib.redirect_stdout(io.StringIO()) as _selftest_out:
+        _selftest_rc = self_test()
+    if _selftest_rc:
+        sys.stdout.write(_selftest_out.getvalue())
+        return _selftest_rc
 
     rows = open_issues()
     block = render(rows)

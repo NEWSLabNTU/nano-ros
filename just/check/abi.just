@@ -125,7 +125,6 @@ ret-code-citations:
 # (`docs/reference/rmw-implementation-{contract,signatures}.txt`), so neither
 # needs a ROS install and both run on the fast line.
 rmw-abi-shape:
-    @python3 scripts/rmw-abi-shape.py --self-test
     @python3 scripts/rmw-abi-shape.py --check
 
 # phase-428 W12 — a doc naming a slot that does not exist is checkable.
@@ -139,7 +138,6 @@ rmw-abi-shape:
 # to that, resolving against the headers' own code, tracked non-markdown
 # sources, and the recorded upstream snapshot. Source-only, offline, fast line.
 rmw-doc-slot-names:
-    @python3 scripts/check-rmw-doc-slot-names.py --self-test
     @python3 scripts/check-rmw-doc-slot-names.py --check
 
 # `book/src/reference/rmw-api-comparison.md` is GENERATED from the ROS 2
@@ -157,7 +155,6 @@ rmw-api-comparison:
 # distrobox when the distro moves.
 [group("check")]
 rmw-api-parity:
-    @python3 scripts/rmw-api-parity.py --self-test
     @python3 scripts/rmw-api-parity.py --check
 
 # phase-340 W2 — the preconditions for putting a platform's rows in a SHARED
@@ -211,7 +208,6 @@ rmw-ret-sign:
 # first — but it must be a DECISION, so it belongs to a declared family. Source
 # -only, no ROS install, fast line.
 rmw-slot-producers:
-    @python3 scripts/check-rmw-slot-producers.py --self-test
     @python3 scripts/check-rmw-slot-producers.py --check
 
 # phase-320 W2 — board support tiers must match the evidence, and every board
@@ -226,7 +222,6 @@ rmw-slot-producers:
 # 61 slots unmentioned. Buildless.
 [private]
 rmw-slot-table:
-    @python3 scripts/gen-rmw-slot-table.py --self-test
     @python3 scripts/gen-rmw-slot-table.py --check
 
 # Issue 0780 — a POSITIONAL vtable initialiser must agree with the header.

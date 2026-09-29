@@ -47,6 +47,23 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASELINE = os.path.join(ROOT, "scripts", "grep-q-baseline.json")
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from ratchet import fell_instructions, judge  # noqa: E402  phase-472 W9
+
+
+def verdict(current, base):
+    """(rose, fall lines) — both directions of the per-file ratchet.
+
+    A file that improved must be recorded in the same change: before
+    phase-472 W9 an improvement printed "rerun --write-baseline" and passed,
+    so the file could regrow to its old count unobserved.
+    """
+    rose, fell = judge(current, base)
+    lines = fell_instructions(
+        fell, os.path.relpath(BASELINE, ROOT),
+        lambda f, n: f'"{f}": {n}' if n else None,
+        "python3 scripts/check-grep-q-error-conflation.py --write-baseline") if fell else []
+    return rose, lines
 
 # A `grep -q` whose STATUS drives control flow. A bare `grep -q` on its own line
 # (status discarded, or captured into a variable the caller then inspects) is
@@ -275,6 +292,17 @@ def self_test():
     for s in bad:
         if not COND.search(s):
             fails.append(f"MISSED: {s}")
+    # The ratchet, through `verdict` — the function `main` runs.
+    for desc, cur, base, want_rose, want_fell in (
+        ("at its count", {"a": 2}, {"a": 2}, False, False),
+        ("a rise", {"a": 3}, {"a": 2}, True, False),
+        ("a new file", {"b": 1}, {"a": 2}, True, True),
+        ("an unrecorded fall", {"a": 1}, {"a": 2}, False, True),
+        ("a converted file still listed", {}, {"a": 2}, False, True),
+    ):
+        rose, fell_lines = verdict(cur, base)
+        if bool(rose) != want_rose or bool(fell_lines) != want_fell:
+            fails.append(f"ratchet: {desc}: rose={bool(rose)} fell={bool(fell_lines)}")
     helper_fails = helper_self_test()
     fails += helper_fails
     if fails:
@@ -312,11 +340,8 @@ def main():
               f"regenerate with --write-baseline", file=sys.stderr)
         return 1
 
-    grew = []
-    for f, n in sorted(current.items()):
-        was = base.get(f, 0)
-        if n > was:
-            grew.append((f, was, n))
+    rose, fell_lines = verdict(current, base)
+    grew = [(m.key, m.was, m.now) for m in rose]
     if grew:
         print("FAIL: new `grep -q` conditional(s) that cannot distinguish a")
         print("      tool ERROR (exit >=2) from a NON-MATCH (exit 1):")
@@ -332,16 +357,15 @@ def main():
         print("  specific claim, and only ever under load.")
         return 1
 
-    total = sum(current.values())
-    shrank = sum(1 for f, n in current.items() if n < base.get(f, 0))
-    gone = sum(1 for f in base if f not in current)
-    msg = (f"check-grep-q-error-conflation: OK ({total} baselined site(s), "
-           f"no file grew one)")
-    if shrank or gone:
-        msg += f" — {shrank + gone} file(s) improved; rerun --write-baseline"
-    print(msg)
-    return 0
+    if fell_lines:
+        print("FAIL: the baseline records more `grep -q` sites than the tree has:")
+        print("\n".join(fell_lines))
+        return 1
 
+    total = sum(current.values())
+    print(f"check-grep-q-error-conflation: OK ({total} baselined site(s), "
+          f"every file at its recorded count)")
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())
