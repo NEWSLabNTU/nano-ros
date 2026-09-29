@@ -15,7 +15,7 @@
 //! [`BaseConfig`] and a [`FreertosScheduling`] and writes the same TU from
 //! them.
 //!
-//! phase-471 W2 — [`run_overlay`] is the RUNNER the helpers above never added
+//! phase-471 W2 — [`run_overlay`](crate::freertos_build::run_overlay) is the RUNNER the helpers above never added
 //! up to. The study that opened phase-471 measured what "helpers only" cost:
 //! `nros-board-mps3-an536-freertos/build.rs` and
 //! `nros-board-s32z270-freertos/build.rs`, past their doc comments, were **131
