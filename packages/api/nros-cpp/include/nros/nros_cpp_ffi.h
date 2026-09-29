@@ -1055,6 +1055,40 @@ nros_cpp_ret_t nros_cpp_init_multi(const struct NrosCppSessionSpec *specs,
 bool nros_cpp_context_is_live(const void *storage);
 
 /**
+ * Issue 1568 — the bytes one executor's storage occupies in THIS build:
+ * `NROS_CPP_EXECUTOR_STORAGE_SIZE` from the per-build header, rounded up to
+ * the 8-byte unit the storage is declared in.
+ *
+ * It is the linked library answering, not a header: the board runners that
+ * allocate or check executor storage are compiled where no nros header is in
+ * reach (the NuttX seam by `build.rs` with NuttX include roots only, the
+ * FreeRTOS cargo glue likewise), so a compile-time `__has_include` there fell
+ * back to a literal — 81,920 on NuttX, against an 88,560-byte executor. This
+ * function is the one number every runner reads instead, and it cannot
+ * disagree with the object `nros_cpp_init` builds, because the same crate
+ * computes both.
+ */
+size_t nros_cpp_executor_storage_size(void);
+
+/**
+ * Issue 1568 — THE refusal for caller-supplied executor storage: `bytes`
+ * must be at least [`nros_cpp_executor_storage_size`] and a multiple of 8
+ * (it is also the STRIDE between tier blocks, so every block after the first
+ * must stay aligned), and `storage` 8-byte aligned and non-null.
+ *
+ * Every board runner that takes executor storage from its caller (the
+ * generated entry's `.bss` static) calls this before the first byte is
+ * written, so a block sized from a different build's header — a stale NuttX
+ * snapshot, a hand-written entry, a variant mismatch — is REFUSED with the
+ * two numbers named, rather than overrun. One implementation, so the four
+ * runners cannot disagree about what "big enough" means.
+ *
+ * Returns `NROS_CPP_RET_OK`, or `NROS_CPP_RET_INVALID_ARGUMENT` after
+ * logging which condition failed.
+ */
+nros_cpp_ret_t nros_cpp_executor_storage_check(const void *storage, size_t bytes);
+
+/**
  * Shut down an nros executor session.
  *
  * Drops the executor in-place within the caller's storage, and UNSTAMPS the

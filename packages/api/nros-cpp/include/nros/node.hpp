@@ -2687,6 +2687,18 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
     if (node_namespace != nullptr && node_namespace[0] == '\0') {
         node_namespace = nullptr;
     }
+    // Issue 1568 — the one refusal every executor-storage path takes: the
+    // linked library says whether this TU's `NROS_CPP_EXECUTOR_STORAGE_SIZE`
+    // (the header it was compiled against — on NuttX the committed snapshot)
+    // is enough for the executor it builds. Refused rather than overrun.
+    {
+        nros_cpp_ret_t chk =
+            nros_cpp_executor_storage_check(::rclcpp::Node::global_storage(),
+                                            sizeof(::rclcpp::Node::GlobalStorageHolder<>::storage));
+        if (chk != 0) {
+            return Result(chk);
+        }
+    }
     nros_cpp_ret_t ret = nros_cpp_init_rmw(rmw, locator, domain_id, session_name, node_namespace,
                                            ::rclcpp::Node::global_storage());
     // No flag to set: `nros_cpp_init_rmw` stamps the context tag, and
@@ -2714,6 +2726,18 @@ inline Result init_with_rmw(const char* rmw, const char* locator, uint8_t domain
     // No `NROS_ENTRY_RMW` fallback here: an explicit argument that resolves to
     // nullptr is the caller saying "no selector", and quietly substituting the
     // bake would make this overload unable to express that.
+    // Issue 1568 — the one refusal every executor-storage path takes: the
+    // linked library says whether this TU's `NROS_CPP_EXECUTOR_STORAGE_SIZE`
+    // (the header it was compiled against — on NuttX the committed snapshot)
+    // is enough for the executor it builds. Refused rather than overrun.
+    {
+        nros_cpp_ret_t chk =
+            nros_cpp_executor_storage_check(::rclcpp::Node::global_storage(),
+                                            sizeof(::rclcpp::Node::GlobalStorageHolder<>::storage));
+        if (chk != 0) {
+            return Result(chk);
+        }
+    }
     nros_cpp_ret_t ret = nros_cpp_init_rmw(rmw, locator, domain_id, session_name, nullptr,
                                            ::rclcpp::Node::global_storage());
     // No flag to set: `nros_cpp_init_rmw` stamps the context tag, and

@@ -73,7 +73,6 @@ extern uint64_t nros_tier_spin_gap_step(uint64_t state, uint64_t iter_start_ns, 
                                         uint32_t spin_period_us);
 extern uint64_t nros_platform_clock_ns(void);
 
-
 /* nros_board_network_wait: weak no-op in <nros/main.h> (phase-432 W3.1 moved
  * it there from the C++ sibling main.hpp so a pure C entry links); strong
  * override on boards that must block for link-up. On the canonical NuttX path
@@ -88,33 +87,25 @@ extern void nros_platform_dealloc(void* ptr);
 
 /* --- Executor storage sizing ---
  *
- * nros_cpp_init / nros_cpp_executor_open_over_session both need storage of
- * CPP_EXECUTOR_OPAQUE_U64S * 8 bytes, 8-byte aligned. The exact per-build value
- * is in the cmake-generated nros_cpp_config_generated.h; to keep this seam
- * standalone-compilable (mirroring freertos_run_tiers.c / zephyr_run_tiers.c,
- * which cannot include the generated header) we use the NuttX/embedded ARM
- * fallback (79304 bytes, nros_cpp_config_generated_nuttx.h) rounded up to 80 KiB
- * for headroom. nros_platform_alloc on the NuttX heap returns aligned memory. */
-/* issue #245 — prefer the REAL per-build executor size when the generated
- * header is visible to this compile; the hardcoded fallback silently went
- * 32 bytes short on Zephyr when the executor grew (heap-corruption crash).
- * If this platform's executor outgrows the fallback, the same corruption
- * follows — keep the generated-header path working. */
-#if defined(__has_include)
-#if __has_include(<nros/nros_cpp_config_generated.h>)
-#include <nros/nros_cpp_config_generated.h>
-#endif
-#endif
-#ifdef NROS_CPP_EXECUTOR_STORAGE_SIZE
-#define NROS_NUTTX_EXECUTOR_STORAGE_BYTES ((NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) & ~7u)
-#else
-#define NROS_NUTTX_EXECUTOR_STORAGE_BYTES 81920u
-#endif
+ * nros_cpp_init / nros_cpp_executor_open_over_session build a `CppContext` in
+ * storage the caller supplies, with no size argument. Issue 1568 — the size
+ * comes from the LINKED library (`nros_cpp_executor_storage_size`), and the
+ * refusal for a caller's block is the library's too
+ * (`nros_cpp_executor_storage_check`), because this file is compiled where no
+ * nros header is in reach (the NuttX seam archive, by `build.rs` with NuttX include roots only).
+ * It used to `__has_include` the per-build header and fall back to 81,920
+ * bytes — "80 KiB of headroom" over a 79,304-byte executor. The executor grew
+ * past it: on NuttX the fallback was ALWAYS what shipped, and it was 6,640 bytes short of the
+ * 88,560 the same build measured (issue #245's shape, on a 126 MiB heap that hid it). One number,
+ * from the object that is built in the storage, cannot drift. */
+extern size_t nros_cpp_executor_storage_size(void);
+extern int nros_cpp_executor_storage_check(const void* storage, size_t bytes);
 
 /* --- Per-tier pthread stack ---
  *
- * The borrowed executor's working set (the 80 KiB above + zenoh-pico buffers)
- * lives on the heap via nros_platform_alloc, so a tier pthread's stack only
+ * The borrowed executor's working set (the executor block above, which is the
+ * caller's storage — issue 1568 — plus zenoh-pico's heap buffers) lives off
+ * the stack, so a tier pthread's stack only
  * carries call frames — 16 KiB is a sane default. `[tiers.*.nuttx].stack_bytes`
  * overrides it when set. NOTE (mirrors the freertos seam's stack note): this
  * default is untuned for the full run_tiers path under QEMU; runtime-proving
@@ -158,8 +149,10 @@ typedef struct {
 /* --- Per-tier thread context ---
  *
  * Heap-allocated by the spawning thread before pthread_create; lives for the
- * firmware lifetime (the spawned thread never returns). executor_storage is a
- * separate heap block passed to nros_cpp_executor_open_over_session. */
+ * firmware lifetime (the spawned thread never returns). executor_storage is
+ * this tier's block of the CALLER's storage (issue 1568 — a file-scope static
+ * in the generated entry, not a heap block), passed to
+ * nros_cpp_executor_open_over_session. */
 typedef struct {
     void* session_handle;
     uint32_t domain_id;
@@ -173,6 +166,11 @@ typedef struct {
      * setup returns, so no two setups overlap on the shared session. */
     const nros_tier_spec_t* rest;
     size_t n_rest;
+    /* issue 1568 — the storage for rest[0] (rest[k] is at k * storage_stride),
+     * carried down the chain beside the specs it belongs to (Zephyr's shape,
+     * issue 1551). */
+    unsigned char* rest_storage;
+    size_t storage_stride;
     /* phase-296 W5.9 — tier identity + sporadic policy, carried so the tier
      * thread can self-apply SCHED_SPORADIC (mirrors the zephyr ctx append). */
     const char* name;
@@ -188,7 +186,8 @@ typedef struct {
 /* Forward decl — nuttx_tier_thread and nuttx_spawn_next_tier are mutually
  * recursive (each tier's thread spawns the next tier via this helper). */
 static int nuttx_spawn_next_tier(void* session_handle, uint8_t domain_id,
-                                 const nros_tier_spec_t* remaining, size_t n_remaining);
+                                 const nros_tier_spec_t* remaining, size_t n_remaining,
+                                 unsigned char* storage, size_t storage_stride);
 
 /* Minimum spin delay: 1 ms. */
 #define SPIN_PERIOD_FLOOR_MS 1u
@@ -526,7 +525,7 @@ static void* nuttx_tier_thread(void* arg) {
      * DOWNSTREAM spawn must NOT stop this tier spinning its own work, so ignore
      * the return (nuttx_spawn_next_tier frees what it allocated on failure). */
     (void)nuttx_spawn_next_tier(ctx->session_handle, (uint8_t)ctx->domain_id, ctx->rest,
-                                ctx->n_rest);
+                                ctx->n_rest, ctx->rest_storage, ctx->storage_stride);
 
     /* Spin loop. Pass the tier period as the spin_once timeout — a BLOCKING
      * read drives the shared session's TX/handshake from the spin path and
@@ -570,24 +569,23 @@ static void* nuttx_tier_thread(void* arg) {
  * On any alloc/create failure, frees what IT allocated and returns -1. It does
  * NOT touch the caller's storage. */
 static int nuttx_spawn_next_tier(void* session_handle, uint8_t domain_id,
-                                 const nros_tier_spec_t* remaining, size_t n_remaining) {
+                                 const nros_tier_spec_t* remaining, size_t n_remaining,
+                                 unsigned char* storage, size_t storage_stride) {
     if (n_remaining == 0u) {
         return 0;
     }
     const nros_tier_spec_t* t = &remaining[0];
 
-    /* Allocate executor storage for this tier. */
-    void* tier_exec = nros_platform_alloc(NROS_NUTTX_EXECUTOR_STORAGE_BYTES);
-    if (tier_exec == NULL) {
-        return -1;
-    }
-    memset(tier_exec, 0, NROS_NUTTX_EXECUTOR_STORAGE_BYTES);
+    /* Issue 1568 — this tier's executor is the caller's block, never a heap
+     * block: the storage is the generated entry's `.bss` static, sized by the
+     * build and placed by the linker. */
+    void* tier_exec = storage;
+    memset(tier_exec, 0, storage_stride);
 
     /* Allocate the tier thread context (lives for firmware lifetime). */
     nros_nuttx_tier_ctx_t* ctx =
         (nros_nuttx_tier_ctx_t*)nros_platform_alloc(sizeof(nros_nuttx_tier_ctx_t));
     if (ctx == NULL) {
-        nros_platform_dealloc(tier_exec);
         return -1;
     }
 
@@ -601,6 +599,8 @@ static int nuttx_spawn_next_tier(void* session_handle, uint8_t domain_id,
     /* Chain tail: this thread will spawn remaining[1] after its own setup. */
     ctx->rest = remaining + 1;
     ctx->n_rest = n_remaining - 1u;
+    ctx->rest_storage = storage + storage_stride;
+    ctx->storage_stride = storage_stride;
     ctx->name = t->name;
     ctx->tier_class = t->tier_class;
     ctx->budget_us = t->budget_us;
@@ -617,7 +617,6 @@ static int nuttx_spawn_next_tier(void* session_handle, uint8_t domain_id,
     int arc = pthread_attr_init(&attr);
     if (arc != 0) {
         nros_platform_dealloc(ctx);
-        nros_platform_dealloc(tier_exec);
         return -1;
     }
     (void)pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
@@ -637,7 +636,6 @@ static int nuttx_spawn_next_tier(void* session_handle, uint8_t domain_id,
     (void)pthread_attr_destroy(&attr);
     if (ret != 0) {
         nros_platform_dealloc(ctx);
-        nros_platform_dealloc(tier_exec);
         return -1;
     }
     return 0;
@@ -666,6 +664,10 @@ int32_t nros_board_nuttx_run_tiers(const char* locator, uint8_t domain_id, const
 int32_t nros_board_nuttx_run_tiers_ns(const char* locator, uint8_t domain_id,
                                       const char* session_name, const char* node_namespace,
                                       const nros_tier_spec_t* tiers, size_t n_tiers);
+int32_t nros_board_nuttx_run_tiers_in(const char* locator, uint8_t domain_id,
+                                      const char* session_name, const char* node_namespace,
+                                      const nros_tier_spec_t* tiers, size_t n_tiers,
+                                      void* executor_storage, size_t storage_stride);
 
 int32_t nros_board_nuttx_run_tiers(const char* locator, uint8_t domain_id, const char* session_name,
                                    const nros_tier_spec_t* tiers, size_t n_tiers) {
@@ -702,6 +704,56 @@ int32_t nros_board_nuttx_run_tiers_ns(const char* locator, uint8_t domain_id,
     if (tiers == NULL || n_tiers == 0) {
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
+    /* Issue 1568 — kept for an entry TU generated before
+     * `nros_board_nuttx_run_tiers_in` existed. It takes every tier's storage
+     * in ONE heap block up front, at the library's own size, and hands it to
+     * the runner — so it fails before any session opens rather than part-way
+     * down the spawn chain (issue 1551's lesson), and it can no longer be
+     * short. */
+    const size_t stride = nros_cpp_executor_storage_size();
+    void* storage = nros_platform_alloc(n_tiers * stride);
+    if (storage == NULL) {
+        printf("nros: nuttx run_tiers: %u tiers x %u bytes of executor storage do not fit "
+               "the heap; regenerate the entry (nros_board_nuttx_run_tiers_in takes them as "
+               "a static)\n",
+               (unsigned)n_tiers, (unsigned)stride);
+        return -1; /* NROS_CPP_RET_ERROR */
+    }
+    int32_t rc = nros_board_nuttx_run_tiers_in(locator, domain_id, session_name, node_namespace,
+                                               tiers, n_tiers, storage, stride);
+    nros_platform_dealloc(storage);
+    return rc;
+}
+
+/*
+ * Issue 1568 — the runner, over caller-supplied executor storage, and the one a
+ * generated tiered nuttx entry calls (`CAbiRunners::run_tiers_takes_storage`).
+ * Zephyr's shape (issue 1551), so the three RTOS runners take storage one way.
+ *
+ * `executor_storage` holds `n_tiers` blocks of `storage_stride` bytes; block 0
+ * is the boot tier's executor and blocks 1.. are the spawned tiers', in chain
+ * order. The generated entry passes a file-scope static sized from the
+ * per-build `NROS_CPP_EXECUTOR_STORAGE_SIZE` and its own tier count, so the
+ * bytes are `.bss` the linker places and `mem-report` names instead of
+ * `n_tiers` heap blocks nothing priced. A block the linked library says is too
+ * small or misaligned is REFUSED before a byte is written.
+ *
+ * Ownership stays with the caller: nothing here frees the storage.
+ */
+int32_t nros_board_nuttx_run_tiers_in(const char* locator, uint8_t domain_id,
+                                      const char* session_name, const char* node_namespace,
+                                      const nros_tier_spec_t* tiers, size_t n_tiers,
+                                      void* executor_storage, size_t storage_stride) {
+    if (tiers == NULL || n_tiers == 0 || executor_storage == NULL) {
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    if (nros_cpp_executor_storage_check(executor_storage, storage_stride) != 0) {
+        printf("nros: nuttx run_tiers: executor storage refused (stride %u, this build needs "
+               "%u)\n",
+               (unsigned)storage_stride, (unsigned)nros_cpp_executor_storage_size());
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    unsigned char* storage = (unsigned char*)executor_storage;
 
     /* Weak network-readiness gate (no-op on the canonical NuttX path — eth0 is
      * already up from the board FFI main; a board/app may provide a strong
@@ -715,16 +767,12 @@ int32_t nros_board_nuttx_run_tiers_ns(const char* locator, uint8_t domain_id,
      * session name gets one line up. */
     const char* ns = (node_namespace != NULL && node_namespace[0] != '\0') ? node_namespace : NULL;
 
-    /* Allocate executor storage from the NuttX heap (aligned). */
-    void* boot_storage = nros_platform_alloc(NROS_NUTTX_EXECUTOR_STORAGE_BYTES);
-    if (boot_storage == NULL) {
-        return -1; /* NROS_CPP_RET_ERROR */
-    }
-    memset(boot_storage, 0, NROS_NUTTX_EXECUTOR_STORAGE_BYTES);
+    /* Block 0 of the caller's storage is the boot tier's executor. */
+    void* boot_storage = storage;
+    memset(boot_storage, 0, storage_stride);
 
     int rc = nros_cpp_init(locator, domain_id, sn, ns, boot_storage);
     if (rc != 0) {
-        nros_platform_dealloc(boot_storage);
         return (int32_t)rc;
     }
 
@@ -789,7 +837,6 @@ int32_t nros_board_nuttx_run_tiers_ns(const char* locator, uint8_t domain_id,
         rc = boot->setup(boot_storage);
         if (rc != 0) {
             nros_cpp_fini(boot_storage);
-            nros_platform_dealloc(boot_storage);
             return (int32_t)rc;
         }
     }
@@ -844,13 +891,12 @@ int32_t nros_board_nuttx_run_tiers_ns(const char* locator, uint8_t domain_id,
     /* A boot-side spawn failure is fatal: tear down boot_storage (which the
      * helper never touches) and return error. Downstream tier threads handle
      * their own spawn failures by parking + continuing to spin. */
-    int src = nuttx_spawn_next_tier(session_handle, domain_id, rest_first, n_rest);
+    int src = nuttx_spawn_next_tier(session_handle, domain_id, rest_first, n_rest,
+                                    storage + storage_stride, storage_stride);
     if (src != 0) {
         nros_cpp_fini(boot_storage);
-        nros_platform_dealloc(boot_storage);
         return -1;
     }
-
 
     /* Boot tier spin loop — runs forever. Blocking-read spin_once (period as
      * timeout) so the boot session's zenoh handshake is driven from the spin
@@ -875,6 +921,5 @@ int32_t nros_board_nuttx_run_tiers_ns(const char* locator, uint8_t domain_id,
 
     /* Unreachable — satisfies the compiler. */
     nros_cpp_fini(boot_storage);
-    nros_platform_dealloc(boot_storage);
     return 0;
 }

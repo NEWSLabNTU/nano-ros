@@ -258,6 +258,25 @@ NROS_PUBLIC int32_t nros_board_freertos_run_tiers_ns(const char* locator, uint8_
                                                      const nros_native_tier_spec_t* tiers,
                                                      size_t n_tiers);
 
+/* Issue 1568 — the same runner over CALLER-SUPPLIED executor storage, and the
+ * one a generated tiered FreeRTOS entry calls. Zephyr's
+ * `nros_board_zephyr_run_tiers_in` below is the model, and the contract is
+ * the same: `executor_storage` is `n_tiers` blocks of `storage_stride` bytes,
+ * 8-byte aligned, block 0 the boot tier's; the entry passes a `.bss` static
+ * sized from `NROS_CPP_EXECUTOR_STORAGE_SIZE`; the linked library
+ * (`nros_cpp_executor_storage_check`) refuses a block smaller than this
+ * build's executor or misaligned. The executor blocks leave heap_4 — each
+ * tier's TASK STACK still comes from it (`xTaskCreate`).
+ *
+ * `_ns` above stays for an entry TU generated before this existed; it takes
+ * the same storage in one heap block at the library's own size. */
+NROS_PUBLIC int32_t nros_board_freertos_run_tiers_in(const char* locator, uint8_t domain_id,
+                                                     const char* session_name,
+                                                     const char* node_namespace,
+                                                     const nros_native_tier_spec_t* tiers,
+                                                     size_t n_tiers, void* executor_storage,
+                                                     size_t storage_stride);
+
 /* phase-432 W3.1 — run a SINGLE-executor embedded C entry on ANY RTOS board:
  * the C-ABI twin of `nros::board::<Rtos>Board::run_components`, so a C-only
  * consumer (certified C compiler, MISRA-style, no C++ runtime) can boot an
@@ -306,6 +325,20 @@ NROS_PUBLIC int32_t nros_board_rtos_run_components_ns(const char* locator, uint8
                                                       const char* session_name,
                                                       const char* node_namespace,
                                                       nros_c_entry_setup_fn setup);
+
+/* Issue 1568 — the same runner over CALLER-SUPPLIED executor storage, and the
+ * one a generated C entry calls: the tiered runners' method with one block.
+ * `executor_storage` is `storage_bytes` bytes, 8-byte aligned; the entry
+ * passes a `.bss` static sized from `NROS_CPP_EXECUTOR_STORAGE_SIZE` — the C
+ * twin of the C++ entry's `Node::GlobalStorageHolder<0>::storage` — and the
+ * linked library refuses a block smaller than this build's executor. `_ns`
+ * above stays for an older entry TU and takes one heap block at the library's
+ * own size. */
+NROS_PUBLIC int32_t nros_board_rtos_run_components_in(const char* locator, uint8_t domain_id,
+                                                      const char* session_name,
+                                                      const char* node_namespace,
+                                                      nros_c_entry_setup_fn setup,
+                                                      void* executor_storage, size_t storage_bytes);
 
 /* phase-281 W3a (RFC-0015 Model 1) — run a multi-tier embedded C/C++ entry on
  * Zephyr: open ONE RMW session on the caller's thread (the Zephyr `main()`
@@ -378,6 +411,23 @@ NROS_PUBLIC int32_t nros_board_nuttx_run_tiers_ns(const char* locator, uint8_t d
                                                   const char* node_namespace,
                                                   const nros_native_tier_spec_t* tiers,
                                                   size_t n_tiers);
+
+/* Issue 1568 — the same runner over CALLER-SUPPLIED executor storage, and the
+ * one a generated tiered NuttX entry calls; the contract is
+ * `nros_board_freertos_run_tiers_in`'s. This is also what retires a real
+ * shortfall: the seam is compiled by `build.rs` with no nros header in reach,
+ * so `_ns` took an 81,920-byte fallback per tier for an executor the same
+ * build measured at 88,560. The size is now the linked library's.
+ *
+ * On NuttX the entry's static is sized from the COMMITTED snapshot
+ * (`nros_cpp_config_generated_nuttx.h`, issue 1115), an upper bound, so it is
+ * never refused but over-reserves — issue 1568 records the remaining scope. */
+NROS_PUBLIC int32_t nros_board_nuttx_run_tiers_in(const char* locator, uint8_t domain_id,
+                                                  const char* session_name,
+                                                  const char* node_namespace,
+                                                  const nros_native_tier_spec_t* tiers,
+                                                  size_t n_tiers, void* executor_storage,
+                                                  size_t storage_stride);
 
 #ifdef __cplusplus
 } /* extern "C" */

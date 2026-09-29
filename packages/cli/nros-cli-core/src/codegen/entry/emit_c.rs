@@ -91,6 +91,10 @@ struct CBootView {
     /// (`CAbiRunners::tiers_take_static_storage`). Only ever true with
     /// `tiers`.
     tier_storage: bool,
+    /// Issue 1568 — the same for the single-executor runner
+    /// (`CAbiRunners::components_take_static_storage`): one block,
+    /// `__nros_executor_storage`. Only ever true WITHOUT `tiers`.
+    component_storage: bool,
     n_tiers: usize,
 }
 
@@ -323,6 +327,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
                 run_tiers_fn: runners.run_tiers,
                 tiers: tiers_view.is_some(),
                 tier_storage: tiers_view.is_some() && runners.tiers_take_static_storage(),
+                component_storage: tiers_view.is_none() && runners.components_take_static_storage(),
                 n_tiers: tiers_view.as_ref().map(|t| t.n).unwrap_or(0),
             }
         },

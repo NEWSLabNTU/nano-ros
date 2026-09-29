@@ -130,18 +130,18 @@ impl BoardFamily {
     ///   `nros_board_native_run_tiers_ns`, both `extern "C"` in Rust
     ///   (`packages/api/nros-cpp/src/lib.rs`).
     /// - `Freertos`, `Zephyr`, `Nuttx` — ONE `run_components`,
-    ///   `nros_board_rtos_run_components_ns`
+    ///   `nros_board_rtos_run_components_in`
     ///   (`packages/boards/nros-board-common/c/nros_rtos_run_components.c`),
     ///   because the single-executor path differs only in a per-tick yield.
     ///   `run_tiers` is per-board: a FreeRTOS task, a Zephyr `k_thread` and a
     ///   NuttX pthread are three different things. The three are
-    ///   `nros_board_{freertos,nuttx}_run_tiers_ns` and
-    ///   `nros_board_zephyr_run_tiers_in`, in each board crate's
-    ///   `c/<rtos>_run_tiers.c`. Zephyr's is the `_in` twin (issue 1551): it
-    ///   takes the tiers' executor storage from the entry rather than the
-    ///   heap — see [`CAbiRunners::run_tiers_takes_storage`]. Its `_ns`
-    ///   spelling stays defined for a TU generated before that.
-    /// - `Threadx` — the same shared `nros_board_rtos_run_components_ns`, and NO
+    ///   `nros_board_{freertos,zephyr,nuttx}_run_tiers_in`, in each board
+    ///   crate's `c/<rtos>_run_tiers.c`. Every RTOS runner is the `_in` twin
+    ///   (Zephyr's tiers in issue 1551, the rest in issue 1568): it takes the
+    ///   executor storage from the entry rather than the heap — see
+    ///   [`CAbiRunners::takes_executor_storage`]. The `_ns` spellings stay
+    ///   defined for a TU generated before that.
+    /// - `Threadx` — the same shared `nros_board_rtos_run_components_in`, and NO
     ///   `run_tiers` (issue 1286). ThreadX's C++ `run_components` is the
     ///   FreeRTOS one line for line, and the shared runner already has no
     ///   per-tick yield off Zephyr, so there was nothing ThreadX-specific to
@@ -164,29 +164,30 @@ impl BoardFamily {
             BoardFamily::Native => Some(CAbiRunners {
                 run_components: Some("nros_board_native_run_components_named_ns"),
                 run_tiers: Some("nros_board_native_run_tiers_ns"),
-                run_tiers_takes_storage: false,
+                // Both runners are Rust (`nros-cpp`): the boot context is a
+                // typed `MaybeUninit<CppContext>` on the caller's stack, so
+                // the size is `size_of` and there is nothing to hand over.
+                takes_executor_storage: false,
             }),
             BoardFamily::Freertos => Some(CAbiRunners {
-                run_components: Some("nros_board_rtos_run_components_ns"),
-                run_tiers: Some("nros_board_freertos_run_tiers_ns"),
-                run_tiers_takes_storage: false,
+                run_components: Some("nros_board_rtos_run_components_in"),
+                run_tiers: Some("nros_board_freertos_run_tiers_in"),
+                takes_executor_storage: true,
             }),
             BoardFamily::Zephyr => Some(CAbiRunners {
-                run_components: Some("nros_board_rtos_run_components_ns"),
-                // Issue 1551 — the `_in` twin: the entry hands it the tiers'
-                // executor storage as a file-scope static.
+                run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: Some("nros_board_zephyr_run_tiers_in"),
-                run_tiers_takes_storage: true,
+                takes_executor_storage: true,
             }),
             BoardFamily::Nuttx => Some(CAbiRunners {
-                run_components: Some("nros_board_rtos_run_components_ns"),
-                run_tiers: Some("nros_board_nuttx_run_tiers_ns"),
-                run_tiers_takes_storage: false,
+                run_components: Some("nros_board_rtos_run_components_in"),
+                run_tiers: Some("nros_board_nuttx_run_tiers_in"),
+                takes_executor_storage: true,
             }),
             BoardFamily::Threadx => Some(CAbiRunners {
-                run_components: Some("nros_board_rtos_run_components_ns"),
+                run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: None,
-                run_tiers_takes_storage: false,
+                takes_executor_storage: true,
             }),
         }
     }
@@ -259,30 +260,46 @@ impl BoardFamily {
 /// without `run_tiers`: ThreadX does (issue 1286).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CAbiRunners {
-    /// The single-executor runner: `(…, setup) -> int32_t`.
+    /// The single-executor runner: `(…, setup) -> int32_t`, or
+    /// `(…, setup, storage, bytes) -> int32_t` when
+    /// [`takes_executor_storage`](Self::takes_executor_storage).
     pub run_components: Option<&'static str>,
     /// The one-task-per-tier runner: `(…, tiers, n_tiers) -> int32_t`, or
     /// `(…, tiers, n_tiers, storage, stride) -> int32_t` when
-    /// [`run_tiers_takes_storage`](Self::run_tiers_takes_storage).
+    /// [`takes_executor_storage`](Self::takes_executor_storage).
     pub run_tiers: Option<&'static str>,
-    /// Issue 1551 — the `run_tiers` runner takes every tier's executor
-    /// storage from the CALLER, and the entry emits it as a file-scope static
-    /// (`n_tiers` blocks of `NROS_CPP_EXECUTOR_STORAGE_SIZE`, rounded to 8).
+    /// Issues 1551 + 1568 — this family's runners take the executor storage
+    /// from the CALLER, and the entry emits it as ONE file-scope static: `n`
+    /// blocks of `NROS_CPP_EXECUTOR_STORAGE_SIZE` rounded to 8, one per tier
+    /// (`__nros_tier_executor_storage`) or one for the single executor
+    /// (`__nros_executor_storage`). The runner asks the linked library whether
+    /// the block is big enough (`nros_cpp_executor_storage_check`) and refuses
+    /// one that is not.
     ///
-    /// The runners that do not still take one executor's storage out of the
-    /// platform heap PER TIER. On Zephyr that heap is the 64 KiB
-    /// `CONFIG_NROS_ZEPHYR_HEAP_SIZE` arena, which four tiers of storage alone
-    /// overran while nothing at build time multiplied the two; as `.bss` the
-    /// same bytes are placed by the linker and named by `mem-report`.
-    pub run_tiers_takes_storage: bool,
+    /// ONE flag for both runners, because it is one method: the runners that
+    /// did not take storage took it out of the platform heap, per tier, at a
+    /// size compiled from a `__has_include` fallback wherever the per-build
+    /// header was out of reach — 81,920 bytes on NuttX against an 88,560-byte
+    /// executor. As `.bss` the same bytes are sized by the build, placed by
+    /// the linker and named by `mem-report`. Only `native` is `false`, and its
+    /// runners are Rust, sized by `size_of`.
+    pub takes_executor_storage: bool,
 }
 
 impl CAbiRunners {
     /// Whether a tiered entry must emit the tiers' executor storage for its
-    /// runner — `run_tiers` exists and takes it. The one reading of the pair
-    /// both entry packs use.
+    /// runner — `run_tiers` exists and takes it. The one reading both entry
+    /// packs use.
     pub fn tiers_take_static_storage(&self) -> bool {
-        self.run_tiers.is_some() && self.run_tiers_takes_storage
+        self.run_tiers.is_some() && self.takes_executor_storage
+    }
+
+    /// Whether a single-executor C entry must emit its executor's storage for
+    /// `run_components` — the runner exists and takes it. The C++ pack does
+    /// not ask: its `Board::run_components` reaches the same `.bss` shape
+    /// through `Node::GlobalStorageHolder<0>::storage`.
+    pub fn components_take_static_storage(&self) -> bool {
+        self.run_components.is_some() && self.takes_executor_storage
     }
 }
 
@@ -530,12 +547,33 @@ mod tests {
         assert_eq!(
             BoardFamily::Threadx.c_abi_runners(),
             Some(CAbiRunners {
-                run_components: Some("nros_board_rtos_run_components_ns"),
+                run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: None,
-                run_tiers_takes_storage: false,
+                takes_executor_storage: true,
             })
         );
         assert!(BoardFamily::Threadx.has_c_run_components());
+    }
+
+    /// Issue 1568 — ONE way: every RTOS family's runners take the executor
+    /// storage from the entry (a `.bss` static at the build's own size), and
+    /// every one of them is an `_in` symbol. Only the host, whose runners are
+    /// Rust and sized by `size_of`, does not. A family added with a heap
+    /// runner fails here and must say why.
+    #[test]
+    fn every_rtos_runner_takes_its_executor_storage_from_the_entry() {
+        for f in BoardFamily::ALL {
+            let r = f.c_abi_runners().expect("every family has runners");
+            if f == BoardFamily::Native {
+                assert!(!r.takes_executor_storage, "native runners are Rust");
+                continue;
+            }
+            assert!(r.takes_executor_storage, "{}", f.as_str());
+            assert!(r.components_take_static_storage(), "{}", f.as_str());
+            for name in [r.run_components, r.run_tiers].into_iter().flatten() {
+                assert!(name.ends_with("_in"), "{}: {name}", f.as_str());
+            }
+        }
     }
 
     /// Every family now has a C-ABI `run_components` (issue 1286 closed the

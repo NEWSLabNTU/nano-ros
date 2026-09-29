@@ -604,6 +604,25 @@ class NuttxBoard {
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers);
     }
+
+    /// Issue 1568 — [`run_tiers`] over CALLER-SUPPLIED executor storage, the
+    /// method `ZephyrBoard::run_tiers` took first (issue 1551).
+    ///
+    /// `executor_storage` is `n_tiers` blocks of `storage_stride` bytes,
+    /// 8-byte aligned; block 0 is the boot tier's executor. The generated entry
+    /// passes a file-scope static sized from `NROS_CPP_EXECUTOR_STORAGE_SIZE`
+    /// and its own tier count, so the storage is linker-placed `.bss` rather
+    /// than `n_tiers` blocks out of the NuttX heap. The linked library refuses a block
+    /// smaller than this build's executor. See
+    /// `nros_board_nuttx_run_tiers_in` in `<nros/main.h>`.
+    static int32_t run_tiers(const char* session_name, const char* node_namespace,
+                             const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
+                             size_t storage_stride) {
+        return ::nros_board_nuttx_run_tiers_in(
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers,
+            executor_storage, storage_stride);
+    }
 };
 
 /// Phase 246 — Azure RTOS ThreadX board adapter (C/C++ declarative components
@@ -800,6 +819,25 @@ class FreertosBoard {
         return ::nros_board_freertos_run_tiers_ns(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers);
+    }
+
+    /// Issue 1568 — [`run_tiers`] over CALLER-SUPPLIED executor storage, the
+    /// method `ZephyrBoard::run_tiers` took first (issue 1551).
+    ///
+    /// `executor_storage` is `n_tiers` blocks of `storage_stride` bytes,
+    /// 8-byte aligned; block 0 is the boot tier's executor. The generated entry
+    /// passes a file-scope static sized from `NROS_CPP_EXECUTOR_STORAGE_SIZE`
+    /// and its own tier count, so the storage is linker-placed `.bss` rather
+    /// than `n_tiers` blocks out of heap_4. The linked library refuses a block
+    /// smaller than this build's executor. See
+    /// `nros_board_freertos_run_tiers_in` in `<nros/main.h>`.
+    static int32_t run_tiers(const char* session_name, const char* node_namespace,
+                             const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
+                             size_t storage_stride) {
+        return ::nros_board_freertos_run_tiers_in(
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers,
+            executor_storage, storage_stride);
     }
 };
 
