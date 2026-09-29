@@ -97,6 +97,19 @@ pub struct SizingDescriptorArgs {
     #[arg(long, value_name = "PATH")]
     pub metadata: Option<PathBuf>,
 
+    /// phase-457-payload W2 — a bound table this image's interface closure
+    /// REGISTERED: the `nros_message_bounds.json` codegen emitted beside a
+    /// `nros_message_bounds.cmake` fragment. Repeat once per table.
+    ///
+    /// `--from-model` / `--from-leaf` only. Read through the same reader the
+    /// cargo leaf road uses over its `generated/` tree, so a cmake image and a
+    /// cargo leaf with one contract price one type one way. None given keeps
+    /// the refusal naming issue 1393; a table named here and not on disk yet is
+    /// a per-field refusal naming its package, never an error — on the
+    /// non-Zephyr cmake lane that is the ordinary first-configure state.
+    #[arg(long = "bound-inventory", value_name = "PATH")]
+    pub bound_inventory: Vec<PathBuf>,
+
     /// `--from-model`: the backend this image links, when it names one.
     #[arg(long, value_name = "NAME")]
     pub rmw: Option<String>,
@@ -271,6 +284,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
             host_build: args.host_build,
             heap_budget_bytes: args.heap_budget_bytes,
             rmw: args.rmw.clone(),
+            bound_inventories: &args.bound_inventory,
             horizon: crate::sizing_descriptor::ModelHorizon::new(
                 args.road.as_deref().unwrap_or(DEFAULT_MODEL_ROAD),
             ),
@@ -408,6 +422,7 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
             // The leaf states its own backend; `--rmw` still wins, for a caller
             // that resolved it more specifically (a cmake `-D`).
             rmw: args.rmw.clone().or_else(|| system.rmw.clone()),
+            bound_inventories: &args.bound_inventory,
             horizon: crate::sizing_descriptor::ModelHorizon::for_leaf_declaration(
                 args.road.as_deref().unwrap_or(DEFAULT_LEAF_ROAD),
             ),
@@ -582,6 +597,8 @@ mod tests {
             // the cmake callers rely on rather than overriding it.
             road: None,
             from_leaf: None,
+            // phase-457-payload W2 -- no tables: the refusal naming 1393.
+            bound_inventory: Vec::new(),
         }
     }
 

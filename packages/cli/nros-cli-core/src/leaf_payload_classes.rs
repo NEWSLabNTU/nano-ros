@@ -50,7 +50,7 @@
 //! the defaults are LARGE. A pool short of what the image receives is not a
 //! smaller pool — it is a `SubscriberCreationFailed` at registration.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rosidl_codegen::bounds::{BoundState, DEFAULT_SMALL_CLASS_CEILING, bounds_from_json};
 
@@ -123,30 +123,126 @@ pub fn leaf_bound_inventory(leaf: &Path) -> Result<Vec<(String, BoundState)>, St
 /// read lives here once and [`leaf_bound_inventory`] projects, rather than the
 /// other way round.
 pub fn leaf_bound_rows(leaf: &Path) -> Result<Vec<rosidl_codegen::bounds::TypeBoundEntry>, String> {
-    let dir = leaf.join(GENERATED_DIR);
-    let Ok(rd) = std::fs::read_dir(&dir) else {
-        // No generated tree at all. Not an error here: a leaf with no message
-        // dependency has none, and it also has no typed subscription to price.
-        // The caller refuses on the LOOKUP MISS instead, which names the type.
-        return Ok(Vec::new());
+    bound_rows_from_tables(&generated_bound_tables(leaf))
+}
+
+/// phase-457-payload W2 — the bound tables a `<root>/generated/` tree holds.
+///
+/// The DISCOVERY half of the cargo roads: a single-package leaf and a cargo
+/// workspace both keep one directory per ament package under `generated/`,
+/// with codegen's table at its root, so one walk serves both. What is READ
+/// is [`bound_rows_from_tables`], which the cmake roads share too.
+///
+/// A package directory with no table is skipped rather than refused: it is not
+/// part of what this tree prices. No `generated/` at all is an empty list, not
+/// an error — a leaf with no message dependency has none, and also has no
+/// typed subscription to price; the caller refuses on the LOOKUP MISS instead,
+/// which names the type.
+///
+/// A workspace's tree may hold packages a given image does not link. That is
+/// safe: every consumer looks a type up by NAME for the endpoints the image
+/// declares, so an extra table is a row nothing reads — `[types]`'s counts are
+/// keyed on the image's endpoints, not on the tables handed in.
+pub fn generated_bound_tables(root: &Path) -> Vec<PathBuf> {
+    let Ok(rd) = std::fs::read_dir(root.join(GENERATED_DIR)) else {
+        return Vec::new();
     };
     let mut entries: Vec<_> = rd.filter_map(|e| e.ok()).map(|e| e.path()).collect();
     entries.sort();
+    entries
+        .into_iter()
+        .map(|pkg| pkg.join(rosidl_codegen::INVENTORY_JSON_NAME))
+        .filter(|path| path.is_file())
+        .collect()
+}
+
+/// phase-457-payload W2 — read explicit bound tables. THE reader both roads use.
+///
+/// The leaf road finds its tables under `generated/`; the model road is handed
+/// the tables its interface closure REGISTERED (`NROS_MESSAGE_BOUNDS_FRAGMENTS`,
+/// each fragment's JSON sibling). Two discoveries, one read, so the two roads
+/// cannot come to describe the same table differently — which is what
+/// re-deriving a bound on the model road would have risked, and why the phase
+/// exported the closure instead.
+///
+/// **Every table must be on disk, or none is read.** A table the caller named
+/// and this process cannot find is a package in the closure whose bound is not
+/// known yet, and a partial table turns a priced type into an unpriced one. The
+/// `Err` names every missing path, so the refusal it becomes says WHICH
+/// package's build has not run. This is also the aggregator's rule for the same
+/// list (`NanoRosMessageBounds.cmake`: an absent fragment is "a promise rather
+/// than a fact"), so the two consumers of one list agree about what is pending.
+///
+/// A table that IS present and malformed, or of another schema, refuses the
+/// whole set for the same reason.
+pub fn bound_rows_from_tables(
+    tables: &[PathBuf],
+) -> Result<Vec<rosidl_codegen::bounds::TypeBoundEntry>, String> {
+    let missing: Vec<String> = tables
+        .iter()
+        .filter(|t| !t.is_file())
+        .map(|t| table_label(t))
+        .collect();
+    if !missing.is_empty() {
+        return Err(format!(
+            "{} registered bound table(s) not on disk yet, so the closure's bounds are \
+             incomplete and none are read: {}. On the non-Zephyr cmake lane the table is a \
+             BUILD-time output -- it appears after the first build and is read from the next \
+             configure on",
+            missing.len(),
+            missing.join(", ")
+        ));
+    }
     let mut out = Vec::new();
-    for pkg in entries {
-        let path = pkg.join(rosidl_codegen::INVENTORY_JSON_NAME);
-        if !path.is_file() {
-            continue;
-        }
-        let text = std::fs::read_to_string(&path)
-            .map_err(|e| format!("reading {}: {e}", path.display()))?;
-        // A malformed or wrong-schema artifact REFUSES the whole leaf rather
+    for path in tables {
+        let text = std::fs::read_to_string(path)
+            .map_err(|e| format!("reading {}: {e}", table_label(path)))?;
+        // A malformed or wrong-schema artifact REFUSES the whole set rather
         // than contributing a subset: a partial table turns a priced type into
         // an unpriced one, and the two refusals say different things.
-        let rows = bounds_from_json(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+        let rows = bounds_from_json(&text).map_err(|e| format!("{}: {e}", table_label(path)))?;
         out.extend(rows);
     }
     Ok(out)
+}
+
+/// How a bound table is NAMED in a refusal: `<package dir>/<file>`.
+///
+/// Never the absolute path. A refusal reason is written into the sizing
+/// descriptor, and the descriptor must be byte-identical across two checkouts
+/// of one tree at different paths (issue 0320) — `write_for_model` refuses to
+/// write one that names the checkout, which is how this was found. The
+/// table's parent directory is its package's generated output, so its name is
+/// exactly what a reader needs: WHICH package's build has not run.
+fn table_label(path: &Path) -> String {
+    let file = path
+        .file_name()
+        .map(|f| f.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    match path.parent().and_then(|d| d.file_name()) {
+        Some(pkg) => format!("{}/{file}", pkg.to_string_lossy()),
+        None => file,
+    }
+}
+
+/// ONE projection of a read into the two tables a descriptor carries.
+///
+/// The bound and the schema shape come from the same rows, and both roads
+/// split them here -- so neither can come to price a type with one table and
+/// describe its shape with another.
+#[allow(clippy::type_complexity)]
+pub fn project_bound_rows(
+    rows: Vec<rosidl_codegen::bounds::TypeBoundEntry>,
+) -> (
+    Vec<(String, BoundState)>,
+    Vec<(String, Option<rosidl_codegen::schema_value::SchemaShape>)>,
+) {
+    let bounds = rows
+        .iter()
+        .map(|r| (r.type_name.clone(), r.bound.clone()))
+        .collect();
+    let shapes = rows.into_iter().map(|r| (r.type_name, r.shape)).collect();
+    (bounds, shapes)
 }
 
 /// The join: this leaf's subscribed types, classified against the split.
@@ -382,5 +478,99 @@ mod tests {
         let inv = inv_of(&["sub:pkg/msg/A:/t"]);
         let got = join(&inv, 2048, || Err("schema_version 99".into()));
         assert!(matches!(got, PayloadClasses::Refused { .. }), "{got:?}");
+    }
+
+    /// A scratch dir under the checkout's `tmp/` (gitignored for new files),
+    /// per CLAUDE.md -- never `/tmp`. Removed at the end of each test by the
+    /// caller; unique per process and per call so parallel tests never share.
+    fn scratch(name: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+            "../../../tmp/leaf-payload-{name}-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::SeqCst)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// The committed `nros-std-msgs` bound inventory -- a REAL codegen output,
+    /// so the parity below is about the table the tree ships, not one written
+    /// for the test.
+    fn std_msgs_table() -> PathBuf {
+        let p = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../interfaces/generated/humble/nros-std-msgs")
+            .join(rosidl_codegen::INVENTORY_JSON_NAME);
+        assert!(p.is_file(), "precondition: {} is missing", p.display());
+        p
+    }
+
+    /// phase-457-payload W2 -- THE PARITY. The leaf road DISCOVERS its tables
+    /// under `generated/`; the model road is HANDED the ones its closure
+    /// registered. Over the same table they must yield the same rows, or the
+    /// two roads price one type two ways -- the second opinion the phase chose
+    /// to export rather than re-derive in order to avoid.
+    ///
+    /// Row equality, not "both non-empty": a reader that dropped the schema
+    /// shape on one road would pass a count and fail this.
+    #[test]
+    fn both_roads_read_one_table_into_the_same_rows() {
+        let table = std_msgs_table();
+        let leaf = scratch("parity");
+        let pkg = leaf.join(GENERATED_DIR).join("nros-std-msgs");
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::copy(&table, pkg.join(rosidl_codegen::INVENTORY_JSON_NAME)).unwrap();
+
+        let via_leaf = leaf_bound_rows(&leaf).expect("the leaf road reads the table");
+        let via_model =
+            bound_rows_from_tables(&[table]).expect("the model road reads the same table");
+        let _ = std::fs::remove_dir_all(&leaf);
+
+        assert!(
+            via_leaf.iter().any(|r| r.type_name == "std_msgs/msg/Int32"),
+            "precondition: the table prices the fixture's type"
+        );
+        assert_eq!(
+            via_leaf, via_model,
+            "the leaf and model roads must read one table into identical rows"
+        );
+    }
+
+    /// A reader message is written into a sizing descriptor, and a descriptor
+    /// must be byte-identical across checkouts at different paths (issue 0320).
+    /// Asserted on every message this reader can produce, not only the new one:
+    /// the malformed arm used `path.display()` too, and the reader is shared now.
+    #[test]
+    fn no_reader_message_names_the_checkout_path() {
+        let dir = scratch("labels");
+        let root = dir.display().to_string();
+
+        let pending = dir.join("pkg_a").join(rosidl_codegen::INVENTORY_JSON_NAME);
+        let err = bound_rows_from_tables(&[pending]).expect_err("a missing table refuses");
+        assert!(
+            err.contains("pkg_a/"),
+            "the refusal names the package: {err}"
+        );
+        assert!(
+            !err.contains(&root),
+            "a pending refusal leaked the path: {err}"
+        );
+
+        let bad = dir.join("pkg_b").join(rosidl_codegen::INVENTORY_JSON_NAME);
+        std::fs::create_dir_all(bad.parent().unwrap()).unwrap();
+        std::fs::write(&bad, "{ not json").unwrap();
+        let err = bound_rows_from_tables(&[bad]).expect_err("a malformed table refuses");
+        assert!(
+            err.contains("pkg_b/"),
+            "the refusal names the package: {err}"
+        );
+        assert!(
+            !err.contains(&root),
+            "a malformed refusal leaked the path: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

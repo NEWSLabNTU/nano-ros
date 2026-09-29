@@ -1585,13 +1585,10 @@ pub fn write_for_leaf(
     // twice is how the bound and the shape come to describe different trees.
     let (bounds, schema_shapes, bounds_error) =
         match crate::leaf_payload_classes::leaf_bound_rows(leaf) {
-            Ok(rows) => (
-                rows.iter()
-                    .map(|r| (r.type_name.clone(), r.bound.clone()))
-                    .collect(),
-                rows.into_iter().map(|r| (r.type_name, r.shape)).collect(),
-                None,
-            ),
+            Ok(rows) => {
+                let (bounds, shapes) = crate::leaf_payload_classes::project_bound_rows(rows);
+                (bounds, shapes, None)
+            }
             Err(e) => (Vec::new(), Vec::new(), Some(e)),
         };
 
@@ -1668,6 +1665,21 @@ pub struct ModelImage<'a> {
     pub heap_budget_bytes: Option<usize>,
     /// The backend this image links, when the image names one.
     pub rmw: Option<String>,
+    /// phase-457-payload W2 — the per-package BOUND tables this image's
+    /// interface closure links: the `nros_message_bounds.json` codegen emitted
+    /// beside each registered `nros_message_bounds.cmake` fragment.
+    ///
+    /// Read through [`crate::leaf_payload_classes::bound_rows_from_tables`] —
+    /// the SAME reader the leaf road uses over its `generated/` tree — so the
+    /// two roads cannot come to describe one table differently. Exporting the
+    /// closure codegen already walked, rather than re-deriving a bound here, is
+    /// the decision the phase recorded: a second derivation is a second opinion
+    /// about a bound (issue 0196's class).
+    ///
+    /// EMPTY means "this road was handed no tables", and keeps the refusal that
+    /// names issue 1393 exactly as before. It is not a claim that the closure
+    /// has no types.
+    pub bound_inventories: &'a [std::path::PathBuf],
     /// This producer's HORIZON — which input it read, and the road, in prose,
     /// for every refusal it writes.
     ///
@@ -1694,17 +1706,33 @@ pub struct ModelImage<'a> {
 /// and identical bytes must keep their mtime.
 pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<WrittenDescriptor> {
     let horizon = img.horizon.clone();
+    // phase-457-payload W2 — the closure's bound tables, when the caller has
+    // them, through the SAME reader and projection the leaf road uses. None
+    // handed over is today's refusal, naming issue 1393, unchanged; a pending
+    // or malformed table is a refusal naming THAT table (see
+    // `bound_rows_from_tables`), never an error, because a table not built yet
+    // is the ordinary first-configure state of the non-Zephyr cmake lane.
+    let (bounds, schema_shapes, bounds_error) = if img.bound_inventories.is_empty() {
+        (Vec::new(), Vec::new(), Some(horizon.bound_inventory()))
+    } else {
+        match crate::leaf_payload_classes::bound_rows_from_tables(img.bound_inventories) {
+            Ok(rows) => {
+                let (bounds, shapes) = crate::leaf_payload_classes::project_bound_rows(rows);
+                (bounds, shapes, None)
+            }
+            Err(e) => (Vec::new(), Vec::new(), Some(e)),
+        }
+    };
     let inputs = DescriptorInputs {
         entry: img.entry.to_string(),
         inventory: Some(img.inventory),
-        // EMPTY, with the reason beside it. `bounds_error` is not an error
-        // channel here -- it is the one place the existing composer already
-        // asks "why is there no bound table", and answering it is what carries
-        // the tracked issue into `wire_bound_bytes` and `[types]`'s three
-        // maxima without a second refusal path for either.
-        bounds: Vec::new(),
-        schema_shapes: Vec::new(),
-        bounds_error: Some(horizon.bound_inventory()),
+        // `bounds_error` is not an error channel -- it is the one place the
+        // existing composer already asks "why is there no bound table", and
+        // answering it is what carries the reason into `wire_bound_bytes` and
+        // `[types]`'s three maxima without a second refusal path for either.
+        bounds,
+        schema_shapes,
+        bounds_error,
         target_triple: img.target_triple.clone(),
         host_build: img.host_build,
         heap_budget_bytes: img.heap_budget_bytes,

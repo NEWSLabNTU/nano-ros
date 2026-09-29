@@ -342,7 +342,68 @@ interfaces, because the registered-type COUNT has its own producer
 here is what the single-writer rule beside `cyclonedds_env` refuses. The
 divergence inside one section is recorded in a comment at `type_facts`.
 
-### W2 — a per-image bound inventory and schema shape off the leaf road
+### W2 — a per-image bound inventory and schema shape off the leaf road — LANDED 2026-09-29
+
+**As built.** The decision recorded above (EXPORT, not re-derive) held, and its
+first step was the seam it named: `--from-model` / `--from-leaf` take
+`--bound-inventory <table>` (repeatable), and one cmake helper,
+`_nros_sizing_bound_args`, passes every table the configure REGISTERED — the
+JSON sibling of each `NROS_MESSAGE_BOUNDS_FRAGMENTS` entry, named by
+`nros_message_bounds_files()`, the one function that owns both file names. Both
+cmake producers call it; neither spells the loop.
+
+ONE reader across all three model-road producers:
+`leaf_payload_classes::bound_rows_from_tables` (read + parse, refuse the whole
+set on a missing or malformed table) and `project_bound_rows` (the split into
+bounds and schema shapes). The leaf road now calls the same two, through a
+DISCOVERY split out as `generated_bound_tables(root)` — which the cargo
+WORKSPACE road (`cmd/build.rs`) also uses, since a workspace keeps the same
+`generated/<pkg>/` layout. So a type is priced by one reader on every road, and
+the acceptance's parity is structural rather than a comparison two producers
+happen to agree on.
+
+**Measured on a real cmake image** — `examples/workspaces/cpp` `native`, via
+`nros build`, `native_action_client_entry.toml`:
+
+| field | before | after the second configure |
+| --- | --- | --- |
+| `wire_bound_bytes` (`/fibonacci`) | refused, 1393 | 44 |
+| `[types] max_fields` | refused, 1393 | 4 |
+| `[types] max_kinds` | refused, 1393 | 11 |
+| `[types] max_nested_depth` | refused, 1393 | 6 |
+| `registration_path` | refused | refused — needs an observed registration, not a table |
+
+The lifecycle it was designed for, observed rather than assumed: the first
+configure registered 5 tables and found 0 on disk (they are BUILD-time outputs
+on this lane) and said so — `bounds REFUSED -- 0 of 5 registered bound table(s)
+exist` — the first build produced all 5, and the next configure read them —
+`bounds from 5 registered table(s)`. A registered table not yet on disk is a
+per-field refusal NAMING its package, never an error, which is the aggregator's
+own rule for the same list.
+
+**Two things the work found.**
+
+- **A refusal reason must not carry a path.** The first version named the
+  missing table by absolute path and `write_for_model` refused to write the
+  descriptor — issue 0320's rule that a descriptor be byte-identical across
+  checkouts. The reader now names a table `<package>/<file>`, and so does its
+  malformed arm, which had the same `path.display()`; asserted by
+  `no_reader_message_names_the_checkout_path`.
+- **The cargo-workspace wiring has no in-tree image to prove it on.** No cargo
+  workspace image carries a contract: `realtime-rust`'s contract is in
+  `derived_bringup`, whose only image is Zephyr, and `demo_bringup` has none —
+  so the workspace road writes no descriptor for any shipping image ("no
+  contract, no file"). The code it runs is the code the cmake image proves;
+  the road itself is unexercised.
+
+**Not run:** the Zephyr lane. Its codegen runs at CONFIGURE time, so its tables
+should be read on the first configure; not measured here.
+
+Tests: `bound_tables_turn_the_model_roads_payload_refusals_into_facts` (the real
+committed `nros-std-msgs` table),
+`a_registered_bound_table_not_yet_built_refuses_by_name`,
+`both_roads_read_one_table_into_the_same_rows` (row equality, not counts),
+`no_reader_message_names_the_checkout_path`; `nros-cli-core` 1640 passed.
 
 The cmake entry knows its interface closure at configure time
 (`nros_generate_interfaces`), which is the information codegen walks.
