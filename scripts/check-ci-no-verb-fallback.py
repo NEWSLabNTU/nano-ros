@@ -49,7 +49,8 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-WORKFLOWS = REPO / ".github" / "workflows"
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+import workflow_commands  # noqa: E402  phase-472 W1 — workflows AND composite actions
 
 # `just …` on the left of `||`, with another `just` as the right operand.
 # `[^|]*` keeps the match inside one command rather than spanning a pipeline.
@@ -89,12 +90,9 @@ def offenders(docs):
 
 
 def load():
-    import yaml
-
-    return [
-        (p.relative_to(REPO), yaml.safe_load(p.read_text()))
-        for p in sorted(WORKFLOWS.glob("*.yml"))
-    ]
+    """Workflows AND composite actions (phase-472 W1), an action shaped as a
+    one-job workflow — a fallback inside `setup-nros-cli` was never read."""
+    return workflow_commands.load_workflows(include_actions=True)
 
 
 def self_test() -> int:
@@ -123,6 +121,16 @@ def self_test() -> int:
         failures += 1
     if command_lines("cat <<EOF\njust a || just b\nEOF\njust c\n") != ["cat <<EOF", "just c"]:
         print("  self-test FAIL: heredoc body was read as commands")
+        failures += 1
+
+    # phase-472 W1 — an action's `run:` step is read through the same walk.
+    action = [("a/action.yml", {"jobs": {workflow_commands.COMPOSITE_JOB: {"steps": [
+        {"run": "just a build-all || just a build-examples"}]}}})]
+    if not offenders(action):
+        print("  self-test FAIL: a composite action's fallback was not read")
+        failures += 1
+    if not any(str(p).startswith(".github/actions/") for p, _d in load()):
+        print("  self-test FAIL: load() does not reach .github/actions/")
         failures += 1
 
     if failures:
@@ -156,7 +164,7 @@ def main() -> int:
 
     steps = sum(len(j.get("steps", []) or []) for _, d in docs for j in (d.get("jobs") or {}).values())
     print(
-        f"check-ci-no-verb-fallback: OK — {len(docs)} workflow(s), {steps} step(s); "
+        f"check-ci-no-verb-fallback: OK — {len(docs)} workflow(s)/action(s), {steps} step(s); "
         "no `just` verb falls back to another."
     )
     return 0

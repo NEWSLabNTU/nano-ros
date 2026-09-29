@@ -55,6 +55,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from git_hook_env import nros_clear_inherited_git_env  # noqa: E402
+import workflow_commands  # noqa: E402  phase-472 W1 — the CI shell population
 
 # A gate that builds a repository must not be steerable by an inherited
 # `GIT_DIR` & co. — they override both a path argument and `git -C`.
@@ -71,7 +72,9 @@ ROOT = Path(
 # `check-no-tracked-file-find.sh`), tracked sources only.
 PATHSPECS = [
     "*.rs", "*.py", "*.sh", "*.just", "*.cmake",
-    "justfile", "CMakeLists.txt", ".github/workflows/*.yml", ".githooks/*",
+    "justfile", "CMakeLists.txt", ".githooks/*",
+    # phase-472 W1 — workflows AND composite actions, from the one definition.
+    *workflow_commands.ci_pathspecs(),
 ]
 SKIP_PREFIXES = ("third-party/", "docs/", "book/")
 
@@ -292,6 +295,10 @@ def measure_both_checkout_shapes() -> list[str]:
 
 def self_test() -> int:
     """Negative control on BOTH halves, on the normal path (phase-395)."""
+    # phase-472 W1 — the reach: a composite action is a pathspec this reads.
+    if not any(p.startswith(".github/actions/") for p in PATHSPECS):
+        print("check-git-dir-layout-assumptions self-test: composite actions are unread")
+        return 1
     bad = []
     must_flag = [
         ("packages/x/build.rs", 'let index = root.join(".git/index");', "R1"),

@@ -183,7 +183,12 @@ runs:
         fi
         # `-netdev help` must list dgram (the multi-instance backend
         # required by NuttX / ThreadX DDS tests). Older qemus omit it.
-        if ! "$bin" -M virt -netdev help 2>&1 | grep -qw dgram; then
+        # Captured first, then matched with `nros_grep_q` (issue 1077 / phase-472
+        # W1): under the runner's `-o pipefail`, `… | grep -q` can exit before
+        # qemu finishes writing, SIGPIPE the writer, and report a MATCH as a miss.
+        source scripts/lib/grep-q.sh
+        netdevs="$("$bin" -M virt -netdev help 2>&1)" || true
+        if ! nros_grep_q -w dgram <<<"$netdevs"; then
           echo "::error::patched qemu at $bin does not advertise -netdev dgram"
           exit 1
         fi

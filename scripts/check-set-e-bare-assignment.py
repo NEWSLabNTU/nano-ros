@@ -331,7 +331,9 @@ def scan_text(rel: str, text: str) -> list[tuple[int, str, str, str]]:
     # A workflow `run:` block is `bash -e {0}` by GitHub's own default, so
     # errexit is on for every line of every run block whether or not anyone
     # wrote `set -e`. Nothing else in the file is shell.
-    is_workflow = rel.startswith(".github/workflows/")
+    # A composite action's `shell: bash` step runs `bash -eo pipefail {0}` too
+    # (phase-472 W1: actions were not read at all).
+    is_workflow = rel.startswith((".github/workflows/", ".github/actions/"))
     is_just = rel.endswith(".just") or Path(rel).name == "justfile"
 
     findings: list[tuple[int, str, str, str]] = []
@@ -666,11 +668,13 @@ def tracked_shell() -> list[str]:
     # a clean sweep over a file set this gate never read.
     sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
     from git_hook_env import nros_clear_inherited_git_env  # noqa: PLC0415
+    import workflow_commands  # noqa: PLC0415  phase-472 W1 — composite actions too
 
     nros_clear_inherited_git_env()
     out = subprocess.run(
         ["git", "-C", str(Path(__file__).resolve().parent.parent),
-         "ls-files", "*.sh", "*.just", "justfile", ".githooks/*", ".github/workflows/*"],
+         "ls-files", "*.sh", "*.just", "justfile", ".githooks/*", ".github/workflows/*",
+         *workflow_commands.ACTION_PATHSPECS],
         capture_output=True, text=True, check=True,
     ).stdout.split()
     return sorted(

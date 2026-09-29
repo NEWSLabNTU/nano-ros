@@ -49,6 +49,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASELINE = os.path.join(ROOT, "scripts", "grep-q-baseline.json")
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 from ratchet import fell_instructions, judge  # noqa: E402  phase-472 W9
+import workflow_commands  # noqa: E402  phase-472 W1 — the CI shell population
 
 
 def verdict(current, base):
@@ -118,7 +119,13 @@ def tracked():
         ["git", "-C", ROOT, "ls-files", "--", *SEARCH_ROOTS],
         capture_output=True, text=True, check=True,
     ).stdout.split()
-    return [
+    # phase-472 W1 — CI shell too: every workflow and composite action `run:`
+    # is bash on a runner, and `.github/` was in no root at all.
+    ci = subprocess.run(
+        ["git", "-C", ROOT, "ls-files", "--", *workflow_commands.ci_pathspecs()],
+        capture_output=True, text=True, check=True,
+    ).stdout.split()
+    return ci + [
         f for f in out
         # `packages/` and `tools/` carry vendored and generated shell too; only
         # the trees this repo authors as checks/build glue are in scope.
@@ -273,6 +280,10 @@ def helper_self_test():
 
 def self_test():
     """Both directions — a checker that stopped checking passes silently."""
+    # phase-472 W1 — the reach: CI shell (workflows AND composite actions).
+    if not any(f.startswith(".github/actions/") for f in tracked()):
+        print("check-grep-q-error-conflation self-test: composite actions are unread")
+        raise SystemExit(1)
     good = [
         "grep -q foo bar.txt; rc=$?",
         "nros_grep_q \"$pat\" \"$f\"",

@@ -64,6 +64,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import workflow_commands  # noqa: E402  phase-472 W1 — the CI shell population
+
 # Sites that predate this gate. Same shape, different lane. Delete a line once
 # the site stops piping into its matcher.
 #
@@ -273,6 +276,8 @@ SELF_TEST = (
 
 def self_test() -> list[str]:
     problems: list[str] = []
+    if not any(f.startswith(".github/actions/") for f in tracked_shell()):
+        problems.append("the population does not reach .github/actions/ (phase-472 W1)")
     for line, expected, why in SELF_TEST:
         if flags(line) != expected:
             problems.append(
@@ -284,8 +289,11 @@ def self_test() -> list[str]:
 def tracked_shell() -> list[str]:
     """Tracked shell we author: `*.sh`, plus the `just` recipe bodies, which
     are bash too and run in the same fan-out."""
+    # phase-472 W1 — CI shell too: a workflow or composite action `run:` is
+    # bash under `-o pipefail` on the runner, the exact setting issue 1077 is
+    # about, and `.github/` was never read.
     out = subprocess.run(
-        ["git", "ls-files", "*.sh", "*.just", "justfile"],
+        ["git", "ls-files", "*.sh", "*.just", "justfile", *workflow_commands.ci_pathspecs()],
         capture_output=True, text=True, check=True,
     ).stdout.split()
     return sorted(
@@ -310,7 +318,14 @@ def scan(root: Path) -> tuple[list[str], list[str]]:
         # Only a file that turns on pipefail can suffer this: without it the
         # pipeline reports the matcher's status alone, which is the right
         # answer whatever the writer did.
-        if "pipefail" not in text:
+        #
+        # A CI step with an explicit `shell: bash` runs `bash -eo pipefail {0}`
+        # (GitHub's own expansion), and a composite action MUST name its shell,
+        # so a CI file that says `shell: bash` has pipefail on without the word
+        # appearing (phase-472 W1).
+        if "pipefail" not in text and not (
+            rel.startswith(".github/") and re.search(r"^\s*(?:-\s*)?shell:\s*bash\s*$", text, re.M)
+        ):
             continue
         allowed = ALLOWLIST.get(rel, ())
         for lineno, line in enumerate(text.splitlines(), 1):

@@ -79,6 +79,49 @@ def command_lines(run: str):
 
 ACTIONS = REPO / ".github" / "actions"
 
+# phase-472 W1 — the CI SHELL population, for every gate that reads it: the
+# workflows AND the local actions. A composite action's `run:` steps are CI
+# steps (`nightly.yml` calls `setup-nros-cli` its SOLE CLI acquisition path),
+# and nine gates read `.github/workflows/` only, so a rule broken inside an
+# action was never asked. One definition, so the next gate cannot pick a
+# smaller one. Pathspecs for `git ls-files` / `git grep` callers (git's `*`
+# crosses `/`, so `.github/actions/*/action.yml` is spelled exactly).
+WORKFLOW_PATHSPECS = (".github/workflows/*.yml", ".github/workflows/*.yaml")
+ACTION_PATHSPECS = (".github/actions/*/action.yml", ".github/actions/*/action.yaml")
+
+
+def ci_pathspecs(include_actions=True):
+    return WORKFLOW_PATHSPECS + (ACTION_PATHSPECS if include_actions else ())
+
+
+def ci_files(include_actions=True, repo=None):
+    """Every workflow and (by default) every local action file, sorted, as Paths.
+
+    For TEXT readers. A YAML reader that walks `jobs.*.steps` wants
+    `load_workflows(include_actions=True)`, which shapes an action like a job.
+    """
+    repo = Path(repo) if repo else REPO
+    wf, ac = repo / ".github" / "workflows", repo / ".github" / "actions"
+    out = list(wf.glob("*.yml")) + list(wf.glob("*.yaml"))
+    if include_actions:
+        out += list(ac.glob("*/action.yml")) + list(ac.glob("*/action.yaml"))
+    return sorted(out)
+
+
+def ci_files_self_test():
+    """The reach, as a negative control: an action file IS in the population."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        (t / ".github" / "workflows").mkdir(parents=True)
+        (t / ".github" / "actions" / "x").mkdir(parents=True)
+        (t / ".github" / "workflows" / "a.yml").write_text("on: push\n")
+        (t / ".github" / "actions" / "x" / "action.yml").write_text("runs: {}\n")
+        got = [str(p.relative_to(t)) for p in ci_files(repo=t)]
+        assert got == [".github/actions/x/action.yml", ".github/workflows/a.yml"], got
+        assert [str(p.relative_to(t)) for p in ci_files(False, repo=t)] == [".github/workflows/a.yml"]
+
 # The pseudo-job a composite action's steps are filed under, so a gate that
 # walks `doc["jobs"][*]["steps"]` reads an action with no second code path.
 COMPOSITE_JOB = "(composite action)"
@@ -99,7 +142,7 @@ def load_composite_actions():
     import yaml
 
     docs = []
-    for p in sorted(list(ACTIONS.glob("*/action.yml")) + list(ACTIONS.glob("*/action.yaml"))):
+    for p in (f for f in ci_files() if ACTIONS in f.parents):
         doc = yaml.safe_load(p.read_text()) or {}
         runs = doc.get("runs") or {}
         if runs.get("using") != "composite":
@@ -120,7 +163,7 @@ def load_workflows(include_actions=False):
     import yaml
 
     docs = []
-    for p in sorted(WORKFLOWS.glob("*.yml")):
+    for p in ci_files(include_actions=False):
         docs.append((p.relative_to(REPO), yaml.safe_load(p.read_text())))
     if include_actions:
         docs.extend(load_composite_actions())
