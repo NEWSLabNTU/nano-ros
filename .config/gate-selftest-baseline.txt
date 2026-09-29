@@ -12,7 +12,6 @@ scripts/check-archive-lang-items.sh
 scripts/check-artifact-identity-budget.sh
 scripts/check-book-links.py
 scripts/check-book-no-just.py
-scripts/check-capability-slot-counts.sh
 scripts/check-cargo-config-tracked.sh
 scripts/check-cargo-locked.sh
 scripts/check-cargo-profile-mirror.sh
@@ -48,8 +47,6 @@ scripts/check-nuttx-links-snapshot.sh
 scripts/check-ps-zombie-blind.sh
 scripts/check-readiness-marker-literals.sh
 scripts/check-rmw-descriptors.py
-scripts/check-rmw-force-link-anchor.sh
-scripts/check-rmw-required-slots.sh
 scripts/check-roadmap-status.sh
 scripts/check-rust-stdio-on-zephyr.py
 scripts/check-rust-targets-covered.py

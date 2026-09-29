@@ -312,11 +312,17 @@ was the pin), `check-executor-stack-floor` (`#if 0 /* CONFIG_MAIN_STACK_SIZE <
 a self-test). `check-std-census`' `guarded_features` counted a `compile_error!`
 in a comment; fixed, not mutation-proved.
 
-Suspected, NOT fixed (shell gates reading raw text): `check-rmw-required-slots.sh`
-(a commented-out `expect("rmw vtable: …")` is read), `check-capability-slot-counts.sh`
-(a commented-out `pub const X: usize = N` can be the first match). The migration
-path is the CLI above. The sweep candidates were triaged by grep, not audited one
-by one.
+Follow-up (F1), confirmed by mutation and fixed through the CLI above, each with
+a normal-path self-test (both left the gate-selftests baseline):
+`check-rmw-required-slots.sh` — the real `.expect("rmw vtable: create_client")`
+wrapped in a block comment still counted as a dispatch site (0 → 1);
+`check-capability-slot-counts.sh` — a server field wrapped in a multi-line
+`/* … */` still counted as a service (0 → 1; the suspected commented-constant
+form was not a hole: every match is printed, so two values already failed). Its
+awk also stopped exiting early, which SIGPIPEd the stripper. `check-rmw-force-link-anchor.sh`
+gained its self-test (the rule is now one function, `check_example`, driven by
+four controls: missing anchor, anchor in a comment, real anchor, inert row;
+disarming it fails the self-test) and left the baseline too.
 
 ### W4 — an empty population reads as OK
 
