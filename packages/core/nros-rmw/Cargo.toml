@@ -12,6 +12,11 @@ documentation.workspace = true
 readme = "README.md"
 keywords = ["ros2", "rmw", "middleware", "embedded", "no-std"]
 categories = ["embedded", "no-std", "network-programming"]
+# Issue 1577 — carries the linked backends' dispatch declaration to direct
+# dependents (`nros-node` reads `DEP_NROS_RMW_{IN_PLACE,BUFFERED}_DISPATCH`);
+# see `in-place-dispatch` / `buffered-dispatch` below.
+links = "nros_rmw"
+build = "build.rs"
 
 [features]
 # Default: no-std. Depending crates that want `std` must opt in
@@ -44,6 +49,31 @@ safety-e2e = []
 # native lend and the arena fallback at compile time via this flag.
 # Phase 95.
 lending = []
+
+# Issue 1577 — how the LINKED backends deliver a subscription sample, declared
+# by each BACKEND CRATE on this crate (never by a router or an umbrella: every
+# image reaches its backend through `nros-rmw-cffi`, which knows nothing).
+#
+# * `in-place-dispatch` — the backend hands the sample to the callback out of its
+#   own receive slot (`nros-rmw-zenoh`, `nros-rmw-xrce-cffi`), so an in-place
+#   registration claims no receive region in the executor arena.
+# * `buffered-dispatch` — it cannot (`nros-rmw-cyclonedds`, `nros-rmw-metadata`),
+#   so every subscription claims one.
+#
+# `nros-node/build.rs` honours a sizing descriptor's `registration_path =
+# "in_place"` row only when in-place is declared AND buffered is not. Both halves
+# are load-bearing, because Cargo features UNIFY by union:
+#
+# * buffered must VETO — a bridge image links zenoh and cyclone, and zenoh's
+#   declaration would otherwise apply to cyclone's subscriptions;
+# * in-place must be CLAIMED rather than assumed — a backend with no Rust crate
+#   (Cyclone and uORB under cmake reach cargo as a bare `rmw-cffi`) declares
+#   nothing, and silence has to price the full region.
+#
+# Every crate that depends on this one under `packages/rmw/` is classified in
+# `check-backend-dispatch-declared`.
+in-place-dispatch = []
+buffered-dispatch = []
 
 [dependencies]
 nros-core = { workspace = true, default-features = false }

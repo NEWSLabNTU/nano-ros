@@ -147,19 +147,63 @@ fn descriptor_subscriptions(
     if desc.meta.undeclared_endpoints().get() != Some(0) {
         return None;
     }
-    Some(
-        desc.endpoints
-            .iter()
-            .filter(|ep| ep.kind == EndpointKind::Subscription)
-            .map(|ep| SubEndpoint {
+    let in_place_trusted = in_place_dispatch_trusted();
+    let rows: Vec<SubEndpoint> = desc
+        .endpoints
+        .iter()
+        .filter(|ep| ep.kind == EndpointKind::Subscription)
+        .map(|ep| {
+            // Issue 1577 — `in_place` is a fact about the backend the descriptor
+            // was PRICED for, and one descriptor can serve builds that link
+            // another: a single-package leaf's fixture rows switch backend by
+            // cargo feature over one image, so its cyclonedds row reads the
+            // descriptor its `system.toml` (zenoh) wrote. Cyclone buffers, so
+            // honouring the row would price a subscription at no receive region
+            // the executor then claims — `BufferTooSmall` at registration.
+            let overridden = !in_place_trusted && ep.claims_no_receive_region();
+            if overridden {
+                println!(
+                    "cargo::warning=nros-node: subscription `{}`: the sizing descriptor says \
+                     `registration_path = \"in_place\"`, but this build's backends do not \
+                     claim in-place dispatch (`nros-rmw/in-place-dispatch` must be on and \
+                     `nros-rmw/buffered-dispatch` off), so it is priced at a full receive \
+                     region (issue 1577)",
+                    ep.topic
+                );
+            }
+            SubEndpoint {
                 topic: ep.topic.clone(),
                 depth: ep.depth().get(),
                 slot: ep.claimed_slot_bytes(rx_buf_size, rx_recv_size),
                 may_claim_closure: ep.may_claim_closure_buffer(),
-                claims_no_region: ep.claims_no_receive_region(),
-            })
-            .collect(),
-    )
+                claims_no_region: ep.claims_no_receive_region() && in_place_trusted,
+            }
+        })
+        .collect();
+    Some(rows)
+}
+
+/// Issue 1577 — may a descriptor's `in_place` row be priced at no receive
+/// region in THIS build?
+///
+/// Read from `nros-rmw`'s `links` metadata, which the BACKEND crates set: an
+/// in-place backend enables `nros-rmw/in-place-dispatch` (zenoh, XRCE), a
+/// buffering one `nros-rmw/buffered-dispatch` (Cyclone, the metadata recorder).
+/// A crate sees only its own features in its build script, and the backends
+/// depend on `nros-rmw`, not on this crate — `links` metadata is how Cargo hands
+/// a fact to a direct dependent.
+///
+/// `true` only when in-place is CLAIMED and buffered is not. Features unify, so
+/// a buffering backend anywhere in the graph vetoes; and a backend with no Rust
+/// crate declares nothing, so silence (or a missing variable) answers `false`.
+/// Being wrong in that direction costs a receive region the executor does not
+/// use; the other direction costs the registration.
+fn in_place_dispatch_trusted() -> bool {
+    let declared = |key: &str| {
+        println!("cargo:rerun-if-env-changed={key}");
+        matches!(env::var(key).as_deref(), Ok("1"))
+    };
+    declared("DEP_NROS_RMW_IN_PLACE_DISPATCH") && !declared("DEP_NROS_RMW_BUFFERED_DISPATCH")
 }
 
 /// The slot bytes one row is priced at, and the warning that owes the reader an

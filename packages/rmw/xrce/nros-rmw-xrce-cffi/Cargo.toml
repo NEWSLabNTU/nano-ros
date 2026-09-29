@@ -55,6 +55,12 @@ host-only-reason = "XRCE C FFI surface, built per-platform by cmake"
 
 [dependencies]
 nros-rmw-cffi = { version = "0.5.0", path = "../../cffi", default-features = false }
+# Issue 1577 — not used from Rust; depended on only to DECLARE this backend's
+# dispatch to the build. The C vtable's `subscription_supports_in_place` writes
+# `true` and `process_raw_in_place` is non-NULL (`src/vtable.c`), so an
+# `in_place` descriptor row is priced at no receive region (see `nros-rmw`'s
+# `in-place-dispatch`).
+nros-rmw = { version = "0.5.0", path = "../../../core/nros-rmw", default-features = false, features = ["in-place-dispatch"] }
 
 [build-dependencies]
 # phase-400 W6 — the ladder rungs, from the LEAF crate.

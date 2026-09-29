@@ -22,7 +22,10 @@ host-only-reason = "host-only recording backend for the source-metadata probe (p
 # The ONE recorder + schema emitter (phase-308's layer constraint). This crate
 # is an adapter; it must never serialize anything itself.
 nros = { path = "../../api/nros", default-features = false, features = ["metadata-mode", "std"] }
-nros-rmw = { path = "../../core/nros-rmw", default-features = false, features = ["std"] }
+# Issue 1577 — the recording backend takes the trait default
+# `supports_process_in_place() == false`, i.e. it BUFFERS. Declared, so a probe
+# build is sized conservatively rather than from an in-place row.
+nros-rmw = { path = "../../core/nros-rmw", default-features = false, features = ["std", "buffered-dispatch"] }
 nros-rmw-cffi = { path = "../cffi", default-features = false, features = ["std", "alloc"] }
 
 [lints]

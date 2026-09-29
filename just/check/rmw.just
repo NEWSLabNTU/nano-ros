@@ -34,6 +34,21 @@ capability-slot-counts:
 cyclone-backend-sources:
     @python3 scripts/check-cyclone-backend-sources.py
 
+# Issue 1577 — every RMW backend crate DECLARES how it delivers a subscription
+# (`nros-rmw/in-place-dispatch` or `nros-rmw/buffered-dispatch`), and
+# `nros-node/build.rs` honours a sizing descriptor's `in_place` row only when the
+# linked backends claim in-place and none buffers. One descriptor serves builds
+# that link different backends by cargo feature, so the descriptor alone cannot
+# answer it.
+#
+# Holds: every `packages/rmw/` crate classified (both directions); each backend
+# enables exactly its feature on a non-optional dep; nothing else enables one;
+# the CLI producer's `backend_dispatch()` table agrees; the `links` carrier's
+# three ends exist. Buildless, self-test on the normal path.
+[private]
+backend-dispatch-declared:
+    @python3 scripts/check/check-backend-dispatch-declared.py
+
 # issue 0974 — `CONFIG_NROS_CYCLONE_DOMAIN_ID` defaults to `NROS_DOMAIN_ID` so
 # the two knobs cannot split; pinning a literal breaks that link silently, which
 # is phase-180's split-brain (issue 0161). Both `nros new`'s template and the
