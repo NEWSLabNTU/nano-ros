@@ -3,11 +3,13 @@ id: 1439
 title: "The scaffolded Rust entry now opens its session and reports `application
   complete` without ever publishing — issue 1295's `PublisherCreationFailed` is gone
   and a quieter failure is behind it, which the probe's own comment still misnames"
-status: open
+status: resolved
 type: bug
 area: tooling, examples, ci
 severity: high
 found: 2026-09-21
+resolved: 2026-09-29
+resolved_in: "branch fix-1439-scaffold-entry-exits-early — the generated hosted entry says `spin = \"forever\"`"
 related: [1295, 1357, 0204, 1310]
 ---
 
@@ -155,3 +157,73 @@ tracks are not failing together.
 Acceptance is unchanged, with one addition: **both** probe jobs reaching
 `PROBE OK` for the Rust arm — the `nightly` `bootstrap-probe` and `probe.yml`'s
 `book probe — checkout track`.
+
+## 2026-09-29 — cause, fix, and what was measured
+
+**Cause: the generated entry never asked to keep running.** `nros build`
+writes the workspace entry from `[image.native]` via
+`builder::entry::render_source`, and what it wrote was
+
+```rust
+nros::main!(
+    launch = "demo_bringup",
+);
+```
+
+With no `spin` argument the macro's hosted arm calls
+`__nros_hosted_spin_if_requested`, whose default is **register-and-exit**:
+`NROS_ENTRY_SPIN_MS` unset means spin 0 ms, so `setup` returns straight after
+the talker registers, and `nros-board-linux` prints `nros: application
+complete`. That is the whole symptom — session open, registration fine, no
+timer tick.
+
+**Introduced by `b24a33dc4`** (phase-445 W5, 2026-09-11), which deleted the
+hand-written `src/robot_entry/src/main.rs` —
+`nros::main!(launch = "demo_bringup", spin = "forever")` — in favour of the
+generated entry. The emitter did not carry the `spin` argument across. The book
+was right the whole time: `anatomy.md` and `workspace-languages.md` both show
+the generated entry as `nros::main!(launch = "demo_bringup", spin = "forever")`.
+Issue 1357 stood in front of it until 2026-09-21, which is why it was first seen
+ten days after it landed.
+
+None of the three candidates listed above was it: the timer WAS armed and the
+executor had work; the spin never started.
+
+**Fix, two commits:**
+
+1. `nros-macros` — `spin = "forever"` becomes the hosted DEFAULT rather than a
+   lock: a positive `NROS_ENTRY_SPIN_MS` still bounds it. That is the ladder
+   the C and C++ funnels already read (`component_spin_loop`,
+   `nros_rtos_run_components.c`: unset / 0 = run until signalled, N =
+   bounded). Needed because ~10 runtime tests (`workspace_metadata`,
+   `rust_multi_node_per_node_graph`, `deployed_native_system_e2e`,
+   `multihost_e2e`, …) drive generated entries with a bounded budget. Census
+   mode (`NROS_CENSUS_OUT`) skips the spin, so the board's Rust-census refusal
+   stays reachable.
+2. `builder::entry::render_source` emits `spin = "forever"` for every
+   `HostedMain` board (native, threadx-linux). `board-run` and Zephyr entries
+   get nothing — their board owns the loop and the macro emits no hosted spin.
+   `rmw_coordinate_truth::run_entry`, the one consumer that ran generated
+   entries with NO budget and waited for exit, now passes
+   `NROS_ENTRY_SPIN_MS=1`.
+
+**Measured.** Reproduced outside the container with the in-tree CLI:
+`nros new probe_quickstart_rs --workspace --lang rust`, `nros sync`,
+`nros build`, run — byte-identical to the CI lines. After the fix,
+`scripts/probe/verify-first-node.sh` run as-is prints both
+`PROBE PASS: scaffolded C++ workspace …` and `PROBE PASS: scaffolded Rust
+workspace published on a pristine host, no router running`, with the entry
+logging `Publishing: 0`, `I heard: 0`, `Publishing: 1`, … Negative control (a
+temporary commit dropping only the emitter line, CLI rebuilt): the new unit test
+`a_hosted_entry_keeps_spinning_after_registration` fails, and the same probe
+script prints `PROBE FAIL: rust entry exited before publishing` /
+`[INFO] nros: session open` / `nros: application complete`.
+
+**Why no merge-gating lane caught it.** The book flow runs only in `probe.yml`
+and the nightly `bootstrap-probe`, both schedule-only, and the runtime tests
+that drive generated entries all pass a bounded `NROS_ENTRY_SPIN_MS`, so they
+could not see that the UNSET default exits. The new unit test sits in
+`check-cli-tests`, which is in the pull-request `CI` context, and pins the
+emitted argument. A PR-lane runtime check ("the scaffolded entry publishes
+once") would need scaffold + sync + a cargo build including
+`nros-rmw-cyclonedds-sys` — 17–30 s warm, minutes cold — so it was not added.

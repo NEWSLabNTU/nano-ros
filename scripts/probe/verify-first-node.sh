@@ -74,12 +74,13 @@ rm -rf "$ws_rs"
 cd "$ws_rs"
 NROS_REPO_DIR="$repo_root" nros sync
 NROS_REPO_DIR="$repo_root" nros build
-# Expected RED until issue 1439: the entry opens its session and reports
-# `nros: application complete` without ever publishing. Issue 1295's
-# `PublisherCreationFailed` is RESOLVED and its signature is gone from this
-# log — a quieter failure is behind it, measured 2026-09-21. The assertion
-# stays — a probe that is green over a real bug is the thing issue 0204
-# exists to prevent.
+# Issue 1439 (resolved): the generated entry must say `spin = "forever"`.
+# Without it the macro's hosted default is register-and-exit, and this
+# section failed as `nros: application complete` + "exited before
+# publishing" from 2026-09-21 to 2026-09-29. If it reads that way again, look
+# at the entry `nros build` wrote under build/<coord>/native_entry/src/ first.
+# The assertion stays — a probe that is green over a real bug is the thing
+# issue 0204 exists to prevent.
 timeout 60 ./build/posix-cyclonedds/native_entry/target/debug/native_entry >/tmp/quickstart_rs.log 2>&1 &
 rs_pid=$!
 deadline=$((SECONDS + 45))
