@@ -710,6 +710,7 @@ mod ros_args_refusal_tests {
 
     #[test]
     fn predicate_matches_the_flag_exactly() {
+        let _env = crate::env::test_env_lock();
         assert!(args_have_ros_args(["node", "--ros-args", "-p", "x:=1"]));
         assert!(args_have_ros_args(["--ros-args"]));
         // A prefix match would refuse an argument nano-ros never drops.
@@ -722,17 +723,20 @@ mod ros_args_refusal_tests {
     #[test]
     #[should_panic(expected = "--ros-args")]
     fn ros_args_are_refused_loudly() {
+        let _env = crate::env::test_env_lock();
         let _ = init_with_args(["--ros-args"]);
     }
 
     #[test]
     #[should_panic(expected = "--ros-args")]
     fn ros_args_are_refused_loudly_anywhere_in_argv() {
+        let _env = crate::env::test_env_lock();
         let _ = init_with_args(["/usr/bin/talker", "--ros-args", "-r", "chatter:=/other"]);
     }
 
     #[test]
     fn plain_args_pass_through_to_init() {
+        let _env = crate::env::test_env_lock();
         // Same answer as `init()` — the arguments are not consulted, and no
         // refusal fires. Both read the same environment, so compare the
         // resolved knobs rather than asserting a particular value.
@@ -761,6 +765,7 @@ mod ros_args_refusal_tests {
 
     #[test]
     fn default_from_env_is_init() {
+        let _env = crate::env::test_env_lock();
         match (Context::default_from_env(), init()) {
             (Ok(a), Ok(b)) => {
                 same_identity(&a, &b);
@@ -773,6 +778,7 @@ mod ros_args_refusal_tests {
 
     #[test]
     fn from_env_honours_the_domain_override() {
+        let _env = crate::env::test_env_lock();
         let env = match init() {
             Ok(c) => c,
             Err(e) => panic!("init() failed on the test host: {e:?}"),
@@ -791,6 +797,7 @@ mod ros_args_refusal_tests {
 
     #[test]
     fn from_env_with_no_override_keeps_the_env_value() {
+        let _env = crate::env::test_env_lock();
         match (
             Context::from_env(InitOptions::new().with_domain_id(None)),
             init(),
@@ -803,6 +810,7 @@ mod ros_args_refusal_tests {
 
     #[test]
     fn from_env_rejects_an_out_of_range_override() {
+        let _env = crate::env::test_env_lock();
         if init().is_err() {
             // The environment itself is invalid; the override is never reached.
             return;
@@ -824,6 +832,7 @@ mod ros_args_refusal_tests {
     #[test]
     #[should_panic(expected = "--ros-args")]
     fn context_new_refuses_ros_args() {
+        let _env = crate::env::test_env_lock();
         let _ = Context::new(
             ["/usr/bin/talker", "--ros-args", "-r", "chatter:=/other"],
             InitOptions::new(),
@@ -832,6 +841,7 @@ mod ros_args_refusal_tests {
 
     #[test]
     fn context_new_passes_plain_args_through() {
+        let _env = crate::env::test_env_lock();
         let opts = InitOptions::new().with_domain_id(Some(3));
         match (
             Context::new(["/usr/bin/talker", "--verbose", "positional"], opts),
@@ -848,6 +858,7 @@ mod ros_args_refusal_tests {
 
     #[test]
     fn context_new_accepts_rclrs_argv_shape() {
+        let _env = crate::env::test_env_lock();
         // `impl IntoIterator<Item = String>` is what rclrs takes; ours must
         // accept the same call unchanged.
         let args: alloc::vec::Vec<alloc::string::String> =

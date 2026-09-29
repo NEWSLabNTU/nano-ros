@@ -300,29 +300,40 @@ impl ExecutorConfigEnvExt for ExecutorConfig<'static> {
     }
 }
 
+/// Process-wide mutex that serialises every test that touches the process
+/// environment — the ones that MUTATE it (`EnvGuard` below) and the ones that
+/// only READ it through `init()` / `Context::from_env()` (`init.rs`).
+///
+/// `cargo test` runs `#[test]`s in parallel within a single binary by default,
+/// and under test the env cache is rebuilt from the live environment on every
+/// call (see [`env_cache`]). So a reader that does not hold this lock can
+/// observe a sibling's `ROS_DOMAIN_ID=abc` halfway through: `init.rs`'s
+/// `plain_args_pass_through_to_init` compared two reads and got `Ok(..)` vs
+/// `Err(EnvParseFailed)` under `just ci gate`. It lived in `env.rs`'s private
+/// test module, so the readers in `init.rs` could not take it. (`cargo
+/// nextest` runs each test in its own process, so the lock is uncontended
+/// there, but taking it is still correct.)
+///
+/// Poison-TOLERANT, deliberately: three tests assert that a bad
+/// `$ROS_DOMAIN_ID` panics, and a panic while this guard is alive poisons the
+/// mutex — which would then fail every LATER test for a reason that has
+/// nothing to do with what it asserts (measured: 3 intended failures became
+/// 8). The data behind the lock is `()`; there is no invariant a panic could
+/// have broken.
+#[cfg(test)]
+pub(crate) fn test_env_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
 
-    /// Process-wide mutex that serialises all env-touching tests.
-    ///
-    /// `cargo test` runs `#[test]`s in parallel within a single binary by
-    /// default. Tests that mutate `NROS_LOCATOR` / `ROS_DOMAIN_ID` must hold
-    /// this lock for the duration to avoid races with each other. (`cargo
-    /// nextest` runs each test in its own process so the lock is always
-    /// uncontended, but taking it is still correct.)
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        // Poison-TOLERANT, deliberately: three tests here assert that a bad
-        // `$ROS_DOMAIN_ID` panics, and a panic while this guard is alive
-        // poisons the mutex — which would then fail every LATER test in the
-        // module for a reason that has nothing to do with what it asserts
-        // (measured: 3 intended failures became 8). The data behind the lock is
-        // `()`; there is no invariant a panic could have broken.
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+        super::test_env_lock()
     }
 
     /// RAII guard that saves and restores a single env var.
