@@ -62,13 +62,39 @@ export NROS_REPO_DIR="$_nros_root"
 # is `source`d — so a bare `for d in "$store"/*/bin` (or `ls "$d"/*-gcc`) does
 # not "skip harmlessly", it kills activation mid-file and silently drops every
 # export below it. `find` reports nothing instead of failing, in every shell.
-# Both lookups below go through these two helpers; add a third caller here
-# rather than reintroducing a glob at the call site.
+# The lookups below go through these helpers; add a caller here rather than
+# reintroducing a glob at the call site.
 
-# List `bin` directories exactly $2 levels below root $1 (nothing if absent).
-_nros_bin_dirs() {
-    [ -d "$1" ] || return 0
-    find "$1" -mindepth "$2" -maxdepth "$2" -type d -name bin 2>/dev/null
+# issue 1563 — the SDK store is CONSTRUCTED from the pin, never enumerated by
+# version (phase-365 W4; `check-sdk-store-not-enumerated`). The store is shared
+# by every checkout and ACCUMULATES versions, so a PATH built from a `find` over
+# `<tool>/<version>/bin` put every provisioned version on it and let readdir
+# order choose: measured, `13.2-nros4` beat the pinned `13.2-nros5`.
+# shellcheck source=scripts/lib/sdk-pin.sh
+. "$_nros_root/scripts/lib/sdk-pin.sh"
+_nros_sdk_store() { printf '%s' "${NROS_SDK_STORE:-${NROS_HOME:-$HOME/.nros}/sdk}"; }
+
+# _nros_store_tool_bin <tool> <out-var> — the pinned bin dir of <tool> in the
+# store (`nros_sdk_pinned_version`, scripts/lib/sdk-pin.sh — the one shell pin
+# reader), else the legacy unversioned `<tool>/bin`, else empty. A pin that is
+# NOT in the store is recorded in `_nros_store_stranded` for one notice below,
+# and nothing is picked in its place.
+_nros_store_tool_bin() {
+    _nros_stb_dir="$(_nros_sdk_store)/$1"
+    _nros_stb_out=""
+    if _nros_stb_pin="$(nros_sdk_pinned_version "$1" "$_nros_root/nros-sdk-index.toml")"; then
+        if [ -d "$_nros_stb_dir/$_nros_stb_pin/bin" ]; then
+            _nros_stb_out="$_nros_stb_dir/$_nros_stb_pin/bin"
+        elif [ -d "$_nros_stb_dir" ] && [ -n "$(find "$_nros_stb_dir" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' 2>/dev/null)" ]; then
+            _nros_store_stranded="${_nros_store_stranded:-}  $1: pin $_nros_stb_pin absent (present: $(find "$_nros_stb_dir" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -exec basename {} \; 2>/dev/null | tr '\n' ' '))
+"
+        fi
+    fi
+    if [ -z "$_nros_stb_out" ] && [ -d "$_nros_stb_dir/bin" ]; then
+        _nros_stb_out="$_nros_stb_dir/bin"
+    fi
+    eval "$2=\$_nros_stb_out"
+    unset _nros_stb_dir _nros_stb_out _nros_stb_pin
 }
 
 # True when directory $1 holds at least one `*-gcc` (cross-toolchain probe).
@@ -280,16 +306,12 @@ else
     # phase-327 W3 — `nros setup --tool play_launch_parser` (the prebuilt
     # remedy the doctor names) installs to the VERSIONED store layout
     # (sdk/<tool>/<version>/bin), which the unversioned path above misses.
-    # Wire whichever version is present so both install paths work.
-    while IFS= read -r _plp_bin; do
-        [ -n "$_plp_bin" ] || continue
-        if [ -x "$_plp_bin/play_launch_parser" ]; then
-            export PATH="$_plp_bin:$PATH"
-            break
-        fi
-    done <<EOF
-$(_nros_bin_dirs "${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser" 2)
-EOF
+    # Issue 1563: that version is the PIN, constructed — never "whichever
+    # version is present", which readdir order decided.
+    _nros_store_tool_bin play_launch_parser _plp_bin
+    if [ -n "$_plp_bin" ] && [ -x "$_plp_bin/play_launch_parser" ]; then
+        export PATH="$_plp_bin:$PATH"
+    fi
     unset _plp_bin
 fi
 
@@ -327,30 +349,24 @@ fi
 #
 # The router is resolved, never found on PATH: `nros_zenohd_bin` reads
 # NROS_RMW_ZENOHD, then AMENT_PREFIX_PATH, then $ROS_DISTRO under /opt/ros.
-_nros_sdk="${NROS_HOME:-$HOME/.nros}/sdk"
+_nros_sdk="$(_nros_sdk_store)"
 if [ -d "$_nros_sdk" ]; then
-    # Depth 3 is the versioned layout `nros setup` writes
-    # (sdk/<tool>/<version>/bin); depth 2 is the older unversioned
-    # sdk/<tool>/bin. Enumerated via the helper, NOT a glob: the store almost
-    # never holds both layouts at once, and one empty pattern used to abort the
-    # whole file under zsh (issue 0372).
-    while IFS= read -r _nros_tcbin; do
+    # One candidate per TOOL: its pinned `<tool>/<pin>/bin`, or the older
+    # unversioned `<tool>/bin` (issue 1563). Enumerating the TOOLS is fine —
+    # what a tool is called is not a version choice; which version is.
+    while IFS= read -r _nros_tooldir; do
+        [ -n "$_nros_tooldir" ] || continue
+        _nros_store_tool_bin "${_nros_tooldir##*/}" _nros_tcbin
         [ -n "$_nros_tcbin" ] || continue
-        [ -d "$_nros_tcbin" ] || continue
         # Cross-gcc toolchains, plus build host tools the RTOS `make` invokes by
         # bare name (genromfs — the NuttX rv-virt etc/ ROMFS bake, Phase 194.3c),
         # and sccache (issue #74) — the justfile's `RUSTC_WRAPPER` + the zephyr
         # fixture CMake launcher auto-use it once it's on PATH.
         # espflash joined for issue 0486: `just esp32 build-qemu` packs its
         # flash image by invoking `espflash` by BARE NAME, so provisioning it
-        # into the store is not enough — `nros setup --tool espflash` succeeded
-        # and the pack step still skipped, because nothing put the store bin
-        # dir on PATH. Same reason genromfs is here (an RTOS `make` calls it by
-        # bare name).
+        # into the store is not enough.
         # issue 0663 — the list is DATA, in scripts/sdk-path-tools.txt, read by
-        # this file and by activate.fish. It was a hand-written chain in both
-        # and had already drifted (espflash in one, not the other), so the same
-        # host behaved differently depending on the shell.
+        # this file and by activate.fish.
         _nros_want=0
         if _nros_dir_has_gcc "$_nros_tcbin"; then
             _nros_want=1
@@ -367,11 +383,21 @@ if [ -d "$_nros_sdk" ]; then
             export PATH="$_nros_tcbin:$PATH"
         fi
     done <<EOF
-$(_nros_bin_dirs "$_nros_sdk" 3; _nros_bin_dirs "$_nros_sdk" 2)
+$(find "$_nros_sdk" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
 EOF
-    unset _nros_tcbin
+    unset _nros_tooldir _nros_tcbin _nros_want _nros_tool
 fi
 unset _nros_sdk
+# The one notice: a pinned tool whose pin is not provisioned, NAMED with what
+# is there instead — never picked from (the NanoRosCrossToolchain.cmake shape).
+if [ -n "${_nros_store_stranded:-}" ] && [ -z "${NROS_QUIET_ACTIVATE:-}" ]; then
+    {
+        echo "nano-ros: pinned SDK tool(s) not in the store — NOT put on PATH (issue 1563):"
+        printf '%s' "$_nros_store_stranded"
+        echo "  provision the pin: nros setup --tool <tool>   (set NROS_QUIET_ACTIVATE=1 to silence)"
+    } >&2
+fi
+unset _nros_store_stranded
 
 # Pinned make (>=4.4, fifo jobserver server) and ninja (>=1.13, its client) —
 # Phase 176. NO block here any more: both are ordinary SDK-store tools now
@@ -410,4 +436,4 @@ fi
 . "$_nros_root/scripts/sdk-env.sh"
 
 unset _nros_root
-unset -f _nros_bin_dirs _nros_dir_has_gcc 2>/dev/null || true
+unset -f _nros_dir_has_gcc _nros_store_tool_bin _nros_sdk_store 2>/dev/null || true

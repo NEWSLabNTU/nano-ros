@@ -170,12 +170,24 @@ versioned_store="$tmp/versioned"
 # is off `scripts/sdk-path-tools.txt` (issue 0653), so a fixture built on it
 # would assert that a name nothing wires any more reaches PATH — a gate proving
 # the opposite of the rule. The tool here must be one the list still carries.
-mkdir -p "$versioned_store/sdk/espflash/4.5.0-nros1/bin"
-: >"$versioned_store/sdk/espflash/4.5.0-nros1/bin/espflash"
-chmod +x "$versioned_store/sdk/espflash/4.5.0-nros1/bin/espflash"
-mkdir -p "$versioned_store/sdk/play_launch_parser/0.5.0/bin"
-: >"$versioned_store/sdk/play_launch_parser/0.5.0/bin/play_launch_parser"
-chmod +x "$versioned_store/sdk/play_launch_parser/0.5.0/bin/play_launch_parser"
+# issue 1563 — the versions are the PINS (`nros_sdk_pinned_version`), because
+# activation now CONSTRUCTS `<tool>/<pin>/bin` instead of walking every version;
+# a fixture at an unpinned version would test the defect back in.
+# shellcheck source=scripts/lib/sdk-pin.sh
+source "$REPO_ROOT/scripts/lib/sdk-pin.sh"
+espflash_pin="$(nros_sdk_pinned_version espflash "$REPO_ROOT/nros-sdk-index.toml")"
+plp_pin="$(nros_sdk_pinned_version play_launch_parser "$REPO_ROOT/nros-sdk-index.toml")"
+mkdir -p "$versioned_store/sdk/espflash/$espflash_pin/bin"
+: >"$versioned_store/sdk/espflash/$espflash_pin/bin/espflash"
+chmod +x "$versioned_store/sdk/espflash/$espflash_pin/bin/espflash"
+mkdir -p "$versioned_store/sdk/play_launch_parser/$plp_pin/bin"
+: >"$versioned_store/sdk/play_launch_parser/$plp_pin/bin/play_launch_parser"
+chmod +x "$versioned_store/sdk/play_launch_parser/$plp_pin/bin/play_launch_parser"
+# ...and a STALE version beside the pin, which must NOT reach PATH (issue 1563:
+# readdir order put `13.2-nros4` ahead of the pinned `13.2-nros5`).
+mkdir -p "$versioned_store/sdk/espflash/0.0.1-stale/bin"
+: >"$versioned_store/sdk/espflash/0.0.1-stale/bin/espflash"
+chmod +x "$versioned_store/sdk/espflash/0.0.1-stale/bin/espflash"
 
 for sh in bash zsh fish; do
     run_case "$sh" "$empty_store" "empty-store"
@@ -192,6 +204,35 @@ for tool in espflash play_launch_parser; do
         fail "activate.sh: versioned $tool bin dir never reached PATH"
     fi
 done
+if nros_grep_q "^$versioned_store/sdk/espflash/0.0.1-stale/" <<<"${path_out//:/$'\n'}"; then
+    fail "activate.sh: an UNPINNED store version reached PATH (issue 1563)"
+fi
+path_fish="$(NROS_HOME="$versioned_store" NROS_QUIET_ACTIVATE=1 fish -c \
+    "source '$REPO_ROOT/activate.fish'; string join : \$PATH" 2>/dev/null)" || true
+if [ -n "$path_fish" ] && nros_grep_q "^$versioned_store/sdk/espflash/0.0.1-stale/" <<<"${path_fish//:/$'\n'}"; then
+    fail "activate.fish: an UNPINNED store version reached PATH (issue 1563)"
+fi
+
+# A pin ABSENT from the store (only a stale version there) takes the
+# stranded-notice path. It must reach the end of the file in every shell, and
+# in bash under `set -u` too, as a CI script sources it: the first cut appended
+# to an accumulator nothing had set, and `set -u` aborted activation there.
+stranded_store="$tmp/stranded"
+mkdir -p "$stranded_store/sdk/espflash/0.0.1-stale/bin"
+for sh in bash zsh fish; do
+    run_case "$sh" "$stranded_store" "stranded-pin"
+done
+rc=0
+out="$(env -i HOME="$HOME" PATH="$PATH" NROS_HOME="$stranded_store" \
+    bash -uc ". '$REPO_ROOT/activate.sh'; echo ACTIVATION-REACHED-END" 2>&1)" || rc=$?
+case "$out" in
+    *ACTIVATION-REACHED-END*) ;;
+    *) fail "activate.sh under set -u: a stranded pin aborted activation (rc=$rc): $out" ;;
+esac
+case "$out" in
+    *"espflash: pin "*" absent"*) ;;
+    *) fail "activate.sh: a stranded espflash pin was not NAMED in the notice: $out" ;;
+esac
 
 # phase-431 W3 — and a STORE-INSTALLED `nros` must NOT reach PATH.
 #

@@ -59,6 +59,37 @@ else if not set -q NROS_QUIET_ACTIVATE; and not command -v nros >/dev/null 2>&1
     echo "  (set NROS_QUIET_ACTIVATE=1 to suppress this hint.)" >&2
 end
 
+# issue 1563 — the SDK store is CONSTRUCTED from the pin, never enumerated by
+# version (mirror of activate.sh; the pin reader is the one shell spelling,
+# scripts/lib/sdk-pin.sh, called through bash).
+function _nros_sdk_store
+    if set -q NROS_SDK_STORE
+        echo $NROS_SDK_STORE
+    else if set -q NROS_HOME
+        echo $NROS_HOME/sdk
+    else
+        echo $HOME/.nros/sdk
+    end
+end
+set -g _nros_store_stranded
+function _nros_store_tool_bin -a root tool
+    set -l dir (_nros_sdk_store)/$tool
+    set -l pin (bash -c '. "$0"; nros_sdk_pinned_version "$1" "$2"' $root/scripts/lib/sdk-pin.sh $tool $root/nros-sdk-index.toml 2>/dev/null)
+    if test -n "$pin"
+        if test -d $dir/$pin/bin
+            echo $dir/$pin/bin
+            return
+        end
+        set -l present (find $dir -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -exec basename {} \; 2>/dev/null)
+        if test -n "$present"
+            set -g _nros_store_stranded $_nros_store_stranded "  $tool: pin $pin absent (present: $present)"
+        end
+    end
+    if test -d $dir/bin
+        echo $dir/bin
+    end
+end
+
 # play_launch_parser
 set -l _nros_play_root (set -q NROS_HOME; and echo $NROS_HOME/sdk/play_launch_parser; or echo $HOME/.nros/sdk/play_launch_parser)
 if test -x $_nros_play_root/bin/play_launch_parser
@@ -66,15 +97,12 @@ if test -x $_nros_play_root/bin/play_launch_parser
 else
     # phase-327 W3 — `nros setup --tool play_launch_parser` installs to the
     # VERSIONED store layout (sdk/<tool>/<version>/bin), which the unversioned
-    # path above misses. This fallback existed only in activate.sh until issue
-    # 0372; the two files are hand-mirrored, so it has to be kept in step here.
-    for _plp_bin in (find $_nros_play_root -mindepth 2 -maxdepth 2 -type d -name bin 2>/dev/null)
-        if test -x $_plp_bin/play_launch_parser
-            set -gx PATH $_plp_bin $PATH
-            break
-        end
+    # path above misses. Issue 1563: the PINNED version, constructed — never
+    # whichever version `find` returned first.
+    set -l _plp_bin (_nros_store_tool_bin $_nros_root play_launch_parser)
+    if test -n "$_plp_bin"; and test -x $_plp_bin/play_launch_parser
+        set -gx PATH $_plp_bin $PATH
     end
-    set -e _plp_bin
 end
 
 # Cross-compiler toolchains installed by `nros setup` (SDK store
@@ -83,9 +111,14 @@ end
 # 194.3c). Scoped to a store-bin whitelist so qemu stays off
 # PATH (resolved via build/<tool>); zenohd is whitelisted for the book's
 # first-node flow (issue #204). Mirror of the activate.sh block.
-set -l _nros_sdk (set -q NROS_HOME; and echo $NROS_HOME/sdk; or echo $HOME/.nros/sdk)
+set -l _nros_sdk (_nros_sdk_store)
 if test -d $_nros_sdk
-    for _nros_tcbin in $_nros_sdk/*/*/bin $_nros_sdk/*/bin
+    # issue 1563 — one candidate per TOOL, constructed from its pin (or the
+    # older unversioned `<tool>/bin`); never `$_nros_sdk/*/*/bin`, which put
+    # every provisioned version on PATH in glob order.
+    for _nros_tooldir in (find $_nros_sdk -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
+        set -l _nros_tcbin (_nros_store_tool_bin $_nros_root (basename $_nros_tooldir))
+        test -n "$_nros_tcbin"; or continue
         # issue 0663 — the tool list is DATA, in scripts/sdk-path-tools.txt,
         # shared with activate.sh. This copy was a hand-written chain and had
         # already drifted from the bash one (it lacked `espflash`), so the same
@@ -109,6 +142,15 @@ if test -d $_nros_sdk
         end
     end
 end
+# The one notice: a pinned tool whose pin is not provisioned, NAMED with what
+# is there — never picked from (mirror of activate.sh).
+if test (count $_nros_store_stranded) -gt 0; and not set -q NROS_QUIET_ACTIVATE
+    echo "nano-ros: pinned SDK tool(s) not in the store — NOT put on PATH (issue 1563):" >&2
+    printf '%s\n' $_nros_store_stranded >&2
+    echo "  provision the pin: nros setup --tool <tool>   (set NROS_QUIET_ACTIVATE=1 to silence)" >&2
+end
+set -e _nros_store_stranded
+functions -e _nros_store_tool_bin _nros_sdk_store
 
 # Pinned ninja + make (Phase 176 jobserver tooling) — no block here any more:
 # both are ordinary SDK-store tools, so the generic store loop above puts them
