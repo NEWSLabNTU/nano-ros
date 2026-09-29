@@ -120,6 +120,18 @@ set_property(GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED_HOW
 a custom cargo target rather than Corrosion. This lane can only offer PANIC \
 platform; change the manifest to offer another.")
 
+# Issue 1569 — where this lane's per-build sizes headers come from, for the
+# cmake-side consumers that would otherwise compile against no header at all.
+#
+# `nros_{,cpp_}config_generated.h` are written by `nros-c` / `nros-cpp`'s build
+# scripts INSIDE `nros_nuttx_build_example`'s cargo run, and read there by the
+# FFI build script (from the crates' `links` channels, ordered after both
+# writers). That run compiles every C/C++ TU the image links. So a cmake-built
+# library whose sources read the sizes (a component lib, a C message lib) has
+# no header to compile against and nothing to be linked into — see
+# `_nros_node_register_apply_config_header_deps_to`, which reads this.
+set_property(GLOBAL PROPERTY NROS_SIZES_HEADERS_FROM_IMAGE_CARGO TRUE)
+
 function(nros_nuttx_validate)
     cmake_parse_arguments(_NNV "" "" "REQUIRE" ${ARGN})
     nros_validate_vars(NUTTX_DIR ${_NNV_REQUIRE})
@@ -520,8 +532,23 @@ function(nros_nuttx_build_example)
     # transitive `_gen` codegen targets, so a single add_dependencies
     # on each leaf interface lib chains the whole codegen DAG before
     # cargo runs.
+    #
+    # Issue 1569 — except where the interface lib is COMPILED (the C lane's
+    # `<pkg>__nano_ros_c` STATIC lib). What this build needs from it is its
+    # generated sources, which cargo compiles itself (`APP_INTERFACE_SOURCES`);
+    # depending on the LIBRARY made cmake compile those same sources a second
+    # time, before cargo had written the sizes header they include. Depend on
+    # its codegen target instead, which `nros_generate_interfaces` provides for
+    # exactly this.
     foreach(_lib ${_NNBE_LINK_INTERFACES})
-        add_dependencies(${_NNBE_NAME}_build ${_lib})
+        set(_nnbe_order_on "${_lib}")
+        if(TARGET ${_lib})
+            get_target_property(_nnbe_lib_type ${_lib} TYPE)
+            if(_nnbe_lib_type STREQUAL "STATIC_LIBRARY" AND TARGET ${_lib}_gen)
+                set(_nnbe_order_on "${_lib}_gen")
+            endif()
+        endif()
+        add_dependencies(${_NNBE_NAME}_build ${_nnbe_order_on})
     endforeach()
 
     # Phase 156 (F3) — depend on corrosion's cross-built nros-c /

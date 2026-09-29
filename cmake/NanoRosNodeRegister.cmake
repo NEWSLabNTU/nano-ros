@@ -241,6 +241,22 @@ function(_nros_node_register_apply_config_header_deps_to _tgt)
             add_dependencies(${_tgt} ${_dep})
         endif()
     endforeach()
+    # Issue 1569 — the third flavour has NO cmake-side header at all: on NuttX
+    # the per-build sizes headers are written inside the image's own
+    # `nros-nuttx-ffi` cargo build, and every C/C++ TU the image links is
+    # compiled THERE (cc-rs, `nros_board_link_app` hands it this target's
+    # SOURCES). This target's cmake compile of the same sources was never
+    # linked into anything; it existed only to compile, and it compiled against
+    # the committed snapshot the stub used to dispatch to under
+    # `NROS_PLATFORM_NUTTX` — a second compile of the image's code against a
+    # different set of sizes. With that dispatch gone it has no header to
+    # compile against, so it is not built by default. Building it explicitly
+    # stops at the stub's `#error`, which is the truth: there is no size for it
+    # outside an image.
+    get_property(_cargo_lane GLOBAL PROPERTY NROS_SIZES_HEADERS_FROM_IMAGE_CARGO)
+    if(_cargo_lane)
+        set_target_properties(${_tgt} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    endif()
 endfunction()
 
 function(_nros_node_register_config_header_deps _tgt)
