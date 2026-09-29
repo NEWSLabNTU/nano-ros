@@ -498,6 +498,39 @@ jobs:
           source ./activate.sh
           just setup-clang-format
 
+      # Corrosion — issue 1553. `check-fast` runs `probe-workspace-caps` and
+      # `probe-shared-types`, each of which CONFIGURES a probe project, and a
+      # probe configure reaches `nros_resolve_corrosion`. With nothing at the
+      # pinned prefix that resolver does the correct second thing — it clones
+      # Corrosion from git into the shared host fetch cache — and the two gates
+      # run in the same `-P4` parallel lane, so they clone into one directory at
+      # once and one loses:
+      #
+      #   fatal: destination path 'corrosion-src' already exists and is not an
+      #   empty directory
+      #   BUG: refs/files-backend.c:2992: initial ref transaction called with
+      #   existing refs
+      #
+      # A run-time step and not an image layer, which is what issue 1553
+      # originally proposed: `$HOME` in a container job is `/github/home`, a
+      # BIND MOUNT the runner lays over the image, so an `~/.nros` baked into
+      # `ci/docker/ci-base` is masked before the first step runs. The store root
+      # the cmake resolver reads is `$NROS_HOME/sdk` or `$HOME/.nros/sdk`
+      # (`_nros_corrosion_store`) and nothing else — the CLI's own `NROS_STORE`
+      # knob does not reach it — so the only prefix an image could fill is one
+      # that moves every lane's workspaces and fetch cache with it.
+      #
+      # Cheap enough to sit beside clang-format on every event: `[tool.corrosion]`
+      # is config-only at install time (a small CMake superproject staged into
+      # the store), which is why the index files it under the `default` tier.
+      # It is also what the SDK store is FOR — issue 0500's whole point is that
+      # a configure should resolve the pinned tool rather than reach the network,
+      # so this makes the supported path the one CI takes.
+      - name: Provision Corrosion (pinned by [tool.corrosion])
+        run: |
+          source ./activate.sh
+          just workspace install-corrosion
+
       # ----- `-sys` sources: build tier (non-push) only -----
       # check-fast is SOURCE-FREE (no cargo build/clippy/test, no `cargo tree`/
       # metadata), so the push lane needs no provisioned source: ~1 min, which

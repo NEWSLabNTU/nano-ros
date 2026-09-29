@@ -129,3 +129,43 @@ running container is `--cap-drop ALL` non-root and provisions nothing itself.
 around the fetch. Both leave every probe gate depending on a network clone at
 configure time — the condition the SDK store exists to remove (0500) — and they
 would hide an empty store rather than fill it.
+
+## The remedy could not be applied as written (2026-09-29)
+
+The "What would close it" section above says *provisioned in the CI image*.
+Measured: an image layer cannot hold it. `$HOME` in a `container:` job is
+`/github/home`, which the Actions runner BIND-MOUNTS over the image from
+`_temp/_github_home` before the first step runs, so anything baked at
+`~/.nros` in `ci/docker/ci-base` is masked and the store is empty exactly as
+observed.
+
+The store root the resolver reads is `$NROS_HOME/sdk`, falling back to
+`$HOME/.nros/sdk` (`_nros_corrosion_store` in `cmake/NanoRosCorrosion.cmake`),
+and nothing else — the CLI's own `NROS_STORE` knob does not reach that
+function. So the only prefix an image layer could fill is one reached by
+setting `NROS_HOME`, which moves every lane's workspaces, fetch cache and
+`bin/` off the mounted volume with it. That is a larger change than the defect,
+on the same lanes issue 1353 is already measuring for disk.
+
+**Fixed as a run-time step instead**, beside the clang-format one that exists
+for the same reason (the image ships no clang-format either, and the resolver
+errors rather than degrading):
+
+```yaml
+- name: Provision Corrosion (pinned by [tool.corrosion])
+  run: |
+    source ./activate.sh
+    just workspace install-corrosion
+```
+
+Affordable on every event: `[tool.corrosion]` is config-only at install time —
+a small CMake superproject staged into the store, which is why the index files
+it under the `default` tier — and the recipe is a forwarder to
+`nros setup --tool corrosion`, idempotent on the pinned prefix.
+
+The acceptance is unchanged and still the right one: **`probe-workspace-caps`
+passing in CI on PR #1354.** That PR's run 36556534101 (job 109358679755,
+2026-09-29) failed it again on the second attempt of the same head sha, with
+the same `destination path 'corrosion-src' already exists` — so the collision
+is not a once-per-blue-moon race, it is what this lane now does every time two
+probe gates of that shape run in one `-P4` fast lane.
