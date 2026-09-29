@@ -206,6 +206,15 @@ param-services = ["dep:nros-rcl-interfaces"]
 # Lifecycle services (ros2 lifecycle CLI support — REP-2002).
 lifecycle-services = ["dep:nros-lifecycle-msgs"]
 
+# phase-467 Q4 / ledger row `c:logging_rosout_enabled` — the `/rosout`
+# publisher half. Pulls in the QUEUE (`nros-log/rosout`) together with the
+# message crate, because neither half is any use alone: a queue nothing drains
+# holds records until it is full, and a publisher with no queue has nothing to
+# send. OFF by default for the reason `nros-log/rosout` is — it is a
+# `LogSink` in the dispatch walk plus a ring in `.bss`, and an image with no
+# ROS operator on the far end should pay neither.
+rosout = ["dep:nros-rcl-interfaces", "nros-log/rosout"]
+
 [dependencies]
 nros-executor-layout = { path = "../nros-executor-layout" }
 nros-core = { workspace = true, default-features = false }
