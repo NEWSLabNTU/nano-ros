@@ -208,3 +208,41 @@ function(nros_board_facts_env _target)
     nros_corrosion_env_target("${_target}" _target)
     corrosion_set_env_vars(${_target} ${NROS_BOARD_FACTS_ENV})
 endfunction()
+
+# nros_board_facts_env_deferred(<target>)
+#
+# issue 1541 — `nros_board_facts_env`, scheduled for the END of the top-level
+# scope, once per target. For a Corrosion import that runs BEFORE the configure
+# knows its deploy: nros-c's and nros-cpp's `CMakeLists.txt` are added by the
+# root project during `nano_ros_workspace()`, while `NROS_DEPLOY` (which
+# `nros_resolve_board_facts` forwards, issue 0755) is parsed later, by the
+# entry's `find_package(nano_ros)`. Resolving inline would ask the question
+# with half its inputs and memoise the answer.
+#
+# Same shape as `nros_entity_facts_env_deferred` (NanoRosEntityFacts.cmake),
+# and for the same two measured reasons: DEFER to `CMAKE_SOURCE_DIR`, not the
+# current directory, and carry the targets in a GLOBAL property because a
+# deferred CALL argument arrives empty.
+function(nros_board_facts_env_deferred _target)
+    get_property(_queued GLOBAL PROPERTY NROS_BOARD_FACTS_TARGETS)
+    if("${_target}" IN_LIST _queued)
+        return()
+    endif()
+    set_property(GLOBAL APPEND PROPERTY NROS_BOARD_FACTS_TARGETS "${_target}")
+    get_property(_scheduled GLOBAL PROPERTY NROS_BOARD_FACTS_FLUSH_SCHEDULED)
+    if(_scheduled)
+        return()
+    endif()
+    set_property(GLOBAL PROPERTY NROS_BOARD_FACTS_FLUSH_SCHEDULED TRUE)
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+        CALL _nros_board_facts_flush)
+endfunction()
+
+function(_nros_board_facts_flush)
+    get_property(_targets GLOBAL PROPERTY NROS_BOARD_FACTS_TARGETS)
+    foreach(_t IN LISTS _targets)
+        if(TARGET "${_t}")
+            nros_board_facts_env("${_t}")
+        endif()
+    endforeach()
+endfunction()

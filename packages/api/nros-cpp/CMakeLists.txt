@@ -89,6 +89,14 @@ nros_armv8r_cflags_env(nros_cpp-static)
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosEntityFacts.cmake")
 nros_entity_facts_env_deferred(nros_cpp-static)
 
+# issue 1541 — the BOARD facts (`nros ws board-facts`: NROS_PLATFORM_NAME,
+# NROS_BOARD_TOML, site config), which `nros-node` / `nros-params` resolve the
+# RFC-0049 platform and board knob rungs from. Without them this crate's build
+# scripts saw no platform and took every knob's builtin. DEFERRED for the same
+# reason as the entity facts above: the deploy is parsed after this file runs.
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosBoardFacts.cmake")
+nros_board_facts_env_deferred(nros_cpp-static)
+
 
 # ---- Header-only C++ interface library ----
 add_library(nros-cpp-headers INTERFACE)

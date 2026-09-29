@@ -743,9 +743,9 @@ endfunction()
 # status lines below are the same ones, deliberately, because two compositions
 # is how two lanes come to size one image two ways.
 #
-# (The wording avoids spelling that lane's command literally:
-# `check-board-facts-delivery` detects such a lane by SOURCE TEXT, comments
-# included, so naming the shape here would make this file read as one.)
+# (`check-board-facts-delivery` detects such a lane by SOURCE TEXT; since
+# issue 1541 it strips full-line comments first, so prose here that names the
+# lane's command no longer makes this file read as one.)
 function(nros_entity_facts_env _target)
     cmake_parse_arguments(_NEF "" "ENV_OUT" "" ${ARGN})
     if(_NEF_ENV_OUT)
