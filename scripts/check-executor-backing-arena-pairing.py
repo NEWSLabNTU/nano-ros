@@ -242,6 +242,9 @@ BOARD_TOML_GLOB = "packages/boards/*/nros-board.toml"
 # here is REFUSED, not assumed.
 BOARD_TOML_TARGETS = {
     "packages/boards/nros-board-threadx-linux/nros-board.toml": (64, None),
+    # issue 1557 — riscv64gc-unknown-none-elf, 64-bit; its 11,069 was measured
+    # with `nm -S` on the board's own zenoh listener image.
+    "packages/boards/nros-board-threadx-qemu-riscv64/nros-board.toml": (64, "riscv64gc-unknown-none-elf"),
 }
 
 THREADX_POOL_C = "packages/boards/nros-board-common/c/threadx_hooks.c"

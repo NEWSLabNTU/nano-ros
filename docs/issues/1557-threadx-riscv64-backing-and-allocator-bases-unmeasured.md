@@ -104,3 +104,33 @@ heap_3 wraps the host `malloc`, so it is not a budget the port enforces — its 
    peak` for FreeRTOS — or, where a derivation is not worth it, DOCUMENT the base
    beside its definition with the measured peak and the margin it carries. Either
    way the number stops being one "nobody wrote down why".
+
+## Progress (2026-09-30, phase-472 F5) — item 1 stated and measured; boot reached, delivery not; item 2 open
+
+With issue 1355's current blocker (a missing `nros/app_config.h` in the rust
+leaves) fixed on main by `9d0393bfd5`, the board's own image could be measured:
+
+- `riscv-none-elf-nm -S` on `rv-virt-threadx/rust/listener` (zenoh, cmake leaf):
+  `nros_node::executor::backing::EXECUTOR_BACKING` = `0x159e8` = **88,552 B =
+  11,069 words** — the unnarrowed 64-bit default, the same number threadx-linux
+  states (issue 1388's rule: cover the largest default any unit compiles).
+- Stated: `[board.knobs.executor] backing_u64s = 11069` in
+  `nros-board-threadx-qemu-riscv64/nros-board.toml`, and the pairing gate's
+  `BOARD_TOML_TARGETS` knows the board (64-bit, `riscv64gc-unknown-none-elf`).
+- Rebuilt and re-measured: `byte_pool_storage` = `0x3ea618` = 4,105,752 B, and
+  **4,105,752 + 88,552 = 4,194,304 = `BYTE_POOL_BASE_SIZE`** — the backing is now
+  reserved once. `just mem-report` on the image: 4,630,144 B RAM, of which the
+  pool is 88.7 % and the backing 1.9 %.
+- `check-executor-backing-arena-pairing` (incl. `--claims`, which now emits the
+  rv64 claim) and `just check node-std-tests` (the claim compared against the
+  measured default, cross-checked for the target) pass.
+- **Boot:** under QEMU the image reaches `c_app_main` and prints
+  `nros: byte pool peak 598952 of 4105752 bytes (3506800 free)`.
+  **Deliver: NOT verified** — no zenoh session reached a host router in 60 s
+  under either slirp plan (see issue 1355's 2026-09-30 progress entry: the
+  board's static `192.0.3.10` plan versus the launcher's).
+
+Item 2 (the bases) is NOT closed: the one rv64 byte-pool peak above was taken
+from an image that did not get its session up, so it is not the loaded peak
+this item asks for, and the FreeRTOS cyclone/XRCE 3 MiB base was not measured.
+

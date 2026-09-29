@@ -49,6 +49,23 @@ heap = true
 atomics = true
 threads = true
 
+# issue 1557 — the executor-backing rung, STATED (it was the one ThreadX board
+# left at the `#ifndef … 0` default, so its image reserved the backing twice:
+# once as `.bss` `EXECUTOR_BACKING`, once inside the 4 MiB byte pool).
+#
+# MEASURED on this board, 2026-09-29: `riscv-none-elf-nm -S` on the zenoh
+# `rv-virt-threadx/rust/listener` image (cmake leaf, riscv64gc-unknown-none-elf)
+# reads `nros_node::executor::backing::EXECUTOR_BACKING` = 0x159e8 = 88,552 B =
+# 11,069 words — the unnarrowed `ExecutorSizing::DEFAULT` on a 64-bit target,
+# exactly the number threadx-linux states (issue 1388's rule: the statement must
+# cover the LARGEST default any unit on the board compiles, and the synthesised
+# umbrella takes the unnarrowed one). Same pointer width, same defaults, same
+# words. With it stated, `byte_pool_storage` = 4 MiB - 88,552 and
+# `EXECUTOR_BACKING + byte_pool_storage == BYTE_POOL_BASE_SIZE` (checked with
+# `nm -S` on the rebuilt image).
+[board.knobs.executor]
+backing_u64s = 11069
+
 # RFC-0048 §6 / phase-287 W5 — CMake toolchain file for `nros setup`'s preset.
 [board.cmake]
 toolchain_file = "cmake/toolchain/riscv64-threadx.cmake"
