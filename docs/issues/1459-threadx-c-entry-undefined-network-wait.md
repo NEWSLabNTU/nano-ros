@@ -82,3 +82,49 @@ Acceptance is the `threadx_linux` nightly job building `c_service_server`
 again, and a C-only fixture in a lane that would have caught it: the C++ path
 has always worked, so any check that compiles only the C++ entry proves nothing
 about this.
+
+## Cause measured, and fixed (2026-09-29)
+
+**The failing images have no entry at all.** `examples/threadx-linux/c/talker`
+is `nano_ros_add_executable(c_talker src/main.c)` — a hand-written `main.c`
+that neither includes `<nros/main.h>` nor calls the shared runner. The runner
+is in the image only because issue 1286 (2026-09-11) added
+`nros_rtos_run_components.c` to `THREADX_STARTUP_SOURCE` for BOTH ThreadX
+boards, which compiles it into every ThreadX image unconditionally. The four
+reported targets (`c_talker`, `c_listener`, `c_service_client`,
+`c_service_server`) are all of that shape.
+
+That makes **option 2 above insufficient**: making the generated C entry
+include `<nros/main.h>` would not have reached these images, because they
+contain no generated entry. The premise that failed is the one the rv-virt
+board file states in so many words — "nros_board_link_app links every app with
+--gc-sections, and an unreferenced section's undefined references are not
+reported". True of `rv-virt-threadx`; `threadx-linux`'s `nros_board_link_app`
+is empty. So the runner's unreferenced function survived the link, and its
+undefined reference was reported.
+
+Dated by the job history: `threadx_linux` was green on 2026-09-09 and
+2026-09-10 and red from 2026-09-11 — the day 1286 landed.
+
+**Fix** (neither of options 1–3): the runner declares the hook as a **weak
+reference** and calls it only when something defines it. That resolves to the
+header's weak default or a board's strong override whenever either is linked —
+every image that actually calls the runner, since its entry includes
+`<nros/main.h>` — and when neither is, the default would have been a no-op, so
+skipping is the same behaviour. It is a reference, not a definition, so
+option 3's objection (a second spelling of one symbol) does not apply, and
+unlike option 1 it pulls the entry header into nothing. Adding `--gc-sections`
+to `threadx-linux` was also rejected: it changes every ThreadX Linux image's
+link to rescue one TU, and leaves the runner correct only on boards that
+remember the flag.
+
+Verified locally, since `threadx-linux` is a host build: `examples/threadx-linux/
+c/talker` reproduced the exact link error before the fix and links after. The
+weak reference was exercised in all three states (no definition → skipped;
+the `main.h` weak default → called; a strong override → the override runs),
+and the TU compiles clean under gcc and clang with `-Wall -Wextra
+-Wmissing-prototypes -Waddress -Werror`.
+
+Stays **open**: acceptance above is the nightly `threadx_linux` job building
+`c_service_server` again, plus a C-only fixture in a lane that would catch a
+recurrence — and the second half is not done.

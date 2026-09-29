@@ -117,3 +117,30 @@ none.
   two fixture builds spend.
 * **1158** / **1040** — the standing rule this is an instance of: a lane that
   produces no verdict is not a slow lane, it is a lane with no signal capacity.
+
+## 2026-09-29 — the job now fills a 146 GB disk, because it gets further
+
+`host-tests` run **36516625906** failed in `just ci tier1` at
+`check-template-copy-out`'s `multi-package-workspace` copy, with a build log
+cut off mid-word (`…NEWSLerror: recipe`). The cause is not in that log; it is in
+the disk report the job prints after the step:
+
+```
+/dev/root  146G  146G  280K 100% /__w
+42G  examples            (37G examples/workspaces, 5.3G examples/templates)
+19G  build
+16G  target              (13G target/debug)
+15G  packages            (15G packages/cli/target)
+```
+
+This is progress, not a regression. Until issue 1468's fix, this job died
+before building any fixtures, so it never produced this much output; it is
+the next fault behind that one. The space is the lane's OWN build output, so
+`scripts/ci/reclaim-disk.sh` — which frees what nothing downstream reads —
+cannot recover it, and should not be made to.
+
+Not fixed here, deliberately: which output this lane may discard, and when,
+is a capacity decision rather than a bug. The largest single term is
+`examples/workspaces` at 37 GB of fixture builds, and `target/debug` at 13 GB
+is where a debuginfo setting would move the most. Both want a measurement of
+which lane stages still read them before anything is deleted.
