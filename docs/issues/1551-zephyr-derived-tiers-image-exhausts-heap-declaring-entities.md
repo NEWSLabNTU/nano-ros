@@ -397,6 +397,10 @@ Mechanics:
   prints the numbers, rather than failing part-way down the spawn chain.
 - FreeRTOS and NuttX `run_tiers` have the same per-tier heap shape against
   their own heaps. They are **not** changed (`run_tiers_takes_storage: false`).
+  Issue 1568 later moved them (and the C single-executor runner) to the same
+  shape, renamed the flag `CAbiRunners::takes_executor_storage`, and moved the
+  size and the refusal into the linked library
+  (`nros_cpp_executor_storage_size` / `_check`).
 
 ### Reproduction on `main` before the change (native_sim/native/64, `rmw_zenohd`)
 
