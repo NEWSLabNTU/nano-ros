@@ -75,7 +75,8 @@ struct MainArgs {
     args: Vec<(String, String)>,
     /// issue 0274 — `spin = "forever"`: hosted deploys spin unbounded
     /// instead of the `NROS_ENTRY_SPIN_MS`-gated bounded spin (whose
-    /// unset default is register-and-exit, a production-entry trap).
+    /// unset default is register-and-exit, a production-entry trap). A
+    /// positive `NROS_ENTRY_SPIN_MS` still bounds it (issue 1439).
     spin_forever: bool,
     /// Phase 216.B.4 — `custom_tasks = [adc_sample, ui_redraw]`. Each
     /// ident becomes an extra `#[task]` trampoline inside the
@@ -1365,9 +1366,14 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let hosted_spin_call: proc_macro2::TokenStream = if !entry_links_std {
         quote! {}
     } else if args.spin_forever {
+        // issue 1439 — `forever` is the DEFAULT, not a lock: a positive
+        // `NROS_ENTRY_SPIN_MS` still bounds it, which is what the C and C++
+        // funnels already do (`component_spin_loop`). Generated workspace
+        // entries now say `spin = "forever"`, and ~10 runtime tests drive
+        // those same binaries with a bounded budget.
         quote! {
             #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
-            __nros_hosted_spin_forever(runtime)?;
+            __nros_hosted_spin_default_forever(runtime)?;
         }
     } else {
         quote! {
@@ -3835,6 +3841,34 @@ fn hosted_std_scaffold_ts(links_std: bool) -> proc_macro2::TokenStream {
                     .spin_once(10)
                     .map_err(|_| ::nros::__macro_support::nros_platform::RuntimeError::Spin)?;
             }
+        }
+
+        // issue 1439 — the `spin = "forever"` arm. Unbounded unless the
+        // environment names a POSITIVE budget, the same ladder the C and C++
+        // funnels read: unset / `0` = run until signalled, `N` = bounded
+        // external-observer run. Before this, `forever` ignored the variable,
+        // so an entry could be either a production node or a test fixture but
+        // never both — and the generated workspace entry is both.
+        //
+        // Census mode REPLACES the spin (the C++ funnel dumps and exits before
+        // spinning): the board answers `NROS_CENSUS_OUT` where `setup`
+        // returns, so an unbounded spin here would turn its refusal into a
+        // census timeout.
+        #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
+        #[allow(dead_code)]
+        fn __nros_hosted_spin_default_forever(
+            runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>,
+        ) -> ::core::result::Result<
+            (),
+            ::nros::__macro_support::nros_platform::RuntimeError,
+        > {
+            if ::std::env::var_os("NROS_CENSUS_OUT").is_some_and(|v| !v.is_empty()) {
+                return ::core::result::Result::Ok(());
+            }
+            if __nros_env_usize("NROS_ENTRY_SPIN_MS", 0) > 0 {
+                return __nros_hosted_spin_if_requested(runtime);
+            }
+            __nros_hosted_spin_forever(runtime)
         }
 
         #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
