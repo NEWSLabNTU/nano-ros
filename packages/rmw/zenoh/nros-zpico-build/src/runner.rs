@@ -1404,7 +1404,15 @@ pub fn run() {
     //
     // `NROS_PLATFORMS_DIR` keeps working as an explicit single-root override by
     // being placed FIRST in the path; it is no longer the only way in.
-    let repo_root = manifest_dir.join("../../../..");
+    // issue 1558 — `manifest_dir` here is the CALLER's (this is a library run
+    // from a consumer's build script), so `../../../..` was right only while
+    // every consumer sat exactly four levels deep. The comment above says a
+    // future consumer inherits this declaration; with a hop count it would
+    // inherit a wrong root, and phase-400 W1 measured what that costs — a walk
+    // that still resolves, to a directory that no longer holds the
+    // descriptors, and every platform falls back to builtins with no
+    // diagnostic.
+    let repo_root = nros_build_paths::repo_root();
     let platform_search_path = platform_config::PlatformsTree::default_search_path(
         &repo_root,
         env::var("NROS_PLATFORMS_DIR").ok().as_deref(),
@@ -2632,17 +2640,28 @@ fn generate_header(manifest_dir: &Path, include_dir: &Path) {
 ///   $ZENOH_PICO_DIR/lib/libzenohpico.a
 ///   $ZENOH_PICO_DIR/include/zenoh-pico.h
 fn use_system_zenoh_pico() -> PathBuf {
-    let zenoh_pico_dir = env::var("ZENOH_PICO_DIR").unwrap_or_else(|_| {
+    // issue 1560 site 3 — through `env_path`, which is the ONE implementation
+    // of issue 1280's three-valued rule. In practice this names a user's own
+    // install prefix, i.e. the "outside any checkout" arm that `reroot_foreign`
+    // deliberately leaves alone — so this changes no answer anyone has today.
+    // It is written anyway because RFC-0101 D3 is a rule about the CALL, not
+    // about which value happens to arrive: a rule with a "when it would not
+    // have mattered anyway" arm cannot be checked.
+    //
+    // `ZENOH_PICO_DIR` has no `just/sdk-env.just` row — there is no in-repo
+    // default to export — which is exactly why phase-471 W3's gate could not
+    // see this site.
+    //
+    // `ZENOH_PICO_DIR` is a PATH, so its SPELLING is not fingerprinted
+    // (issue 0491); the two files the prefix is actually consumed as are
+    // watched instead.
+    let dir = nros_build_paths::env_path("ZENOH_PICO_DIR").unwrap_or_else(|| {
         panic!(
             "ZENOH_PICO_DIR environment variable is required when system-zenohpico feature is enabled.\n\
              Set it to the CMake install prefix of your zenoh-pico build, e.g.:\n\
              ZENOH_PICO_DIR=/path/to/zenoh-pico-install cargo build --features system-zenohpico"
         );
     });
-    // `ZENOH_PICO_DIR` is a PATH, so its SPELLING is not fingerprinted
-    // (issue 0491); the two files the prefix is actually consumed as are
-    // watched instead.
-    let dir = PathBuf::from(&zenoh_pico_dir);
     let lib_path = dir.join("lib").join("libzenohpico.a");
     let header_path = dir.join("include").join("zenoh-pico.h");
     println!("cargo:rerun-if-changed={}", lib_path.display());
@@ -2651,7 +2670,7 @@ fn use_system_zenoh_pico() -> PathBuf {
         panic!(
             "ZENOH_PICO_DIR={}: expected static library at {}\n\
              Build zenoh-pico with: cmake --build <build> && cmake --install <build>",
-            zenoh_pico_dir,
+            dir.display(),
             lib_path.display()
         );
     }
@@ -2659,7 +2678,7 @@ fn use_system_zenoh_pico() -> PathBuf {
         panic!(
             "ZENOH_PICO_DIR={}: expected version header at {}\n\
              Build zenoh-pico with: cmake --build <build> && cmake --install <build>",
-            zenoh_pico_dir,
+            dir.display(),
             header_path.display()
         );
     }
@@ -2678,7 +2697,7 @@ fn use_system_zenoh_pico() -> PathBuf {
         "cargo:warning=Using system zenoh-pico from {}. \
          Ensure it was built with compatible Z_FEATURE_* flags \
          (Z_FEATURE_INTEREST=1, Z_FEATURE_MATCHING=1).",
-        zenoh_pico_dir
+        dir.display()
     );
     dir.join("include")
 }

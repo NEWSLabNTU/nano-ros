@@ -63,6 +63,9 @@ nros-rmw-cffi = { version = "0.5.0", path = "../../cffi", default-features = fal
 nros-rmw = { version = "0.5.0", path = "../../../core/nros-rmw", default-features = false, features = ["in-place-dispatch"] }
 
 [build-dependencies]
+# issue 1558 — the repo-root marker walk, in place of a `.parent()` hop count.
+# Zero-dependency and host-only.
+nros-build-paths = { path = "../../../tooling/nros-build-paths" }
 # phase-400 W6 — the ladder rungs, from the LEAF crate.
 nros-platform-config = { path = "../../../tooling/nros-platform-config" }
 cc = "1"

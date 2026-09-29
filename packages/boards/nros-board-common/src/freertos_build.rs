@@ -511,10 +511,13 @@ fn resolve_overlay_env(default_port: &str) -> OverlayEnv {
     let config_dir = manifest_dir.join("config");
     // phase-337 W5.a/W5.e — the shared config headers + section layout live in
     // the family crate; the board keeps only the numbers.
-    let shared_config_dir = manifest_dir
-        .parent()
-        .expect("workspace layout")
-        .join("nros-board-freertos/config");
+    //
+    // issue 1558 — one hop is still a hop: it is right only while the CALLER
+    // sits beside `nros-board-freertos`, and this function runs from four
+    // different board crates. Naming the family crate from the repo root is
+    // the same fact with nothing about the caller in it.
+    let shared_config_dir =
+        nros_build_paths::repo_root().join("packages/boards/nros-board-freertos/config");
 
     let freertos_dir = nros_build_paths::freertos_dir();
     let freertos_port = env::var("FREERTOS_PORT").unwrap_or_else(|_| default_port.to_string());
@@ -530,11 +533,13 @@ fn resolve_overlay_env(default_port: &str) -> OverlayEnv {
     // this join was left at the old `core/nros-c`, so the emitted TU could not
     // find `<nros/app_config.h>`. Assert existence so a future move fails loud
     // here rather than deep inside `cc`.
-    let nros_c_include = manifest_dir
-        .parent() // packages/boards/
-        .and_then(|p| p.parent()) // packages/
-        .expect("workspace layout")
-        .join("api/nros-c/include");
+    //
+    // issue 1558 — the hop count is gone; only nros-c's own location is
+    // encoded now, and the `assert!` below is what catches THAT moving. The
+    // remedy 0365 left was a per-site tripwire, not a fix for the class: a
+    // counted walk breaks when THIS crate moves, which is a second way to be
+    // wrong that no assert here could see.
+    let nros_c_include = nros_build_paths::repo_root().join("packages/api/nros-c/include");
     assert!(
         nros_c_include.join("nros/app_config.h").exists(),
         "nros-c header not at {} — did nros-c move again? (issue 0365)",

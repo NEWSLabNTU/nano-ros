@@ -607,7 +607,40 @@ pub fn interpolate(input: &str, ctx: &InterpContext<'_>) -> Result<String, Inter
             nros_build_paths::nuttx_include_root(&dir)
                 .display()
                 .to_string()
+        } else if let Some(var) = token.strip_prefix("envpath:") {
+            // issue 1560 site 2 — a PATH-valued variable, resolved through the
+            // one implementation of issue 1280's three-valued rule. This
+            // changes nothing for a `just`-driven build, where `sdk-env.just`
+            // has already re-rooted the value; it changes the answer for a
+            // bare `cargo` in a worktree, which is the 1280 scenario.
+            //
+            // A separate token rather than routing `{env:…}` through the
+            // resolver, because **not every `{env:…}` names a path** and the
+            // interpolator cannot tell which does. `{env:FREERTOS_PORT}` is
+            // `GCC/ARM_CRx_No_GIC` — a fragment joined onto another path.
+            //
+            // Measured, because the obvious argument is wrong: `canonical()`
+            // KEEPS the spelling of a path that does not exist, so routing that
+            // fragment through the resolver is a no-op today and breaks nothing
+            // now. The hazard is that it is a no-op only while no directory of
+            // that name sits beside the build script — the day one does, the
+            // fragment silently becomes an absolute path and the join that
+            // consumes it produces a directory nobody named. A latent,
+            // environment-dependent wrong answer is worse than a loud one, and
+            // issue 1452's rule covers it: a resolver applied wider than its
+            // subject is a defect in the same family as one applied narrower.
+            //
+            // The descriptor AUTHOR says which kind it is, because that is the
+            // one place the answer is actually known. An authored list of
+            // path-valued NAMES here would be the thing issue 1452 warns
+            // against — only as complete as whoever wrote it.
+            nros_build_paths::env_path(var)
+                .ok_or_else(|| InterpError::MissingEnv(var.to_string()))?
+                .display()
+                .to_string()
         } else if let Some(var) = token.strip_prefix("env:") {
+            // A plain value: no resolution, no canonicalisation. See
+            // `{envpath:…}` above for why the two are separate tokens.
             std::env::var(var).map_err(|_| InterpError::MissingEnv(var.to_string()))?
         } else {
             return Err(InterpError::UnknownToken(token.to_string()));
@@ -899,5 +932,81 @@ mod capability_matcher_tests {
             .map(|d| d.name.as_str())
             .collect();
         assert_eq!(names, vec!["A", "B"]);
+    }
+}
+
+/// issue 1560 site 2 — the two env tokens answer different questions, and
+/// conflating them is a defect in both directions.
+///
+/// No `set_var` anywhere: this crate is `forbid(unsafe_code)` and env is a
+/// process-global the harness shares across parallel test threads. Cargo
+/// already hands the test process one name of each kind — `CARGO_MANIFEST_DIR`
+/// is a path, `CARGO_PKG_NAME` is not — so the distinction can be measured on
+/// values nobody has to mutate.
+#[cfg(test)]
+mod env_token_tests {
+    use super::*;
+    use std::path::Path;
+
+    fn ctx_for(here: &Path) -> InterpContext<'_> {
+        InterpContext {
+            nros: here,
+            out: here,
+            src: here,
+        }
+    }
+
+    /// A PLAIN value survives verbatim. This is the case that breaks if
+    /// `{env:…}` is ever routed through the path resolver: `FREERTOS_PORT` is
+    /// `GCC/ARM_CRx_No_GIC`, a fragment joined onto another path, and
+    /// canonicalising it would resolve it against the process CWD and yield a
+    /// directory nobody named.
+    #[test]
+    fn a_plain_token_is_passed_through_unresolved() {
+        let here = Path::new(".");
+        assert_eq!(
+            interpolate("{env:CARGO_PKG_NAME}", &ctx_for(here)).expect("plain token"),
+            env!("CARGO_PKG_NAME"),
+        );
+    }
+
+    /// …and the PATH token goes through the resolver.
+    ///
+    /// Asserted as "it is what `env_path` returns" rather than "it differs
+    /// from the raw value", because for an already-canonical path the two
+    /// COINCIDE — a test written the other way would pass without the
+    /// dispatch being right.
+    #[test]
+    fn a_path_token_goes_through_the_resolver() {
+        let here = Path::new(".");
+        let resolved =
+            interpolate("{envpath:CARGO_MANIFEST_DIR}", &ctx_for(here)).expect("path token");
+        assert_eq!(
+            resolved,
+            nros_build_paths::env_path("CARGO_MANIFEST_DIR")
+                .expect("CARGO_MANIFEST_DIR is set for a test process")
+                .display()
+                .to_string(),
+        );
+        assert!(Path::new(&resolved).is_absolute());
+    }
+
+    /// An unset name is `MissingEnv` on BOTH, so a descriptor author gets the
+    /// same diagnosis whichever token they chose.
+    #[test]
+    fn an_unset_name_reports_missing_env_on_either_token() {
+        let here = Path::new(".");
+        for tok in [
+            "{env:NROS_TEST_DEFINITELY_UNSET_NAME}",
+            "{envpath:NROS_TEST_DEFINITELY_UNSET_NAME}",
+        ] {
+            assert!(
+                matches!(
+                    interpolate(tok, &ctx_for(here)),
+                    Err(InterpError::MissingEnv(_))
+                ),
+                "{tok} should report MissingEnv"
+            );
+        }
     }
 }

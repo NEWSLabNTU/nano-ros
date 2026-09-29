@@ -23,19 +23,16 @@
 // its surface, and an unused-function warning here would be noise, not signal.
 #![allow(dead_code)]
 
-use std::path::PathBuf;
-
 include!("src/source_stamp.rs");
 include!("../build-support/submodule_watch.rs");
 
 fn main() {
-    // <root>/packages/cli/nros-cli-core -> <root>
-    let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let root = manifest
-        .parent()
-        .and_then(|p| p.parent())
-        .and_then(|p| p.parent())
-        .map(PathBuf::from);
+    // issue 1558 — the marker walk, not a hop count (RFC-0101 D3).
+    // `try_repo_root` and not `repo_root`: this build script must keep working
+    // for an out-of-tree consumer with no nano-ros checkout to find, and the
+    // `else` arm below is that contract — it stamps `unknown`, which makes the
+    // CLI read as stale rather than as fresh over a closure it never measured.
+    let root = nros_build_paths::try_repo_root();
 
     let Some(root) = root else {
         println!("cargo:rustc-env=NROS_CLI_SOURCE_STAMP=unknown");

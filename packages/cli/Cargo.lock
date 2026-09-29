@@ -809,6 +809,7 @@ dependencies = [
  "libc",
  "minijinja",
  "nros-board-common",
+ "nros-build-paths",
  "nros-cargo-profile",
  "nros-entry-lower",
  "nros-lang",

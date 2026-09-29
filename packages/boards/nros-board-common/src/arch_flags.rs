@@ -56,34 +56,27 @@ pub fn arch_matches(arch: &ArchEntry, target: &str) -> bool {
 /// why the fix is to take the loader's path rather than to add the one root the
 /// symptom named.
 pub fn platform_search_path() -> Option<Vec<PathBuf>> {
-    let start = std::env::var("CARGO_MANIFEST_DIR").ok()?;
-    let mut dir = PathBuf::from(start);
-    loop {
-        if dir.join("nros-sdk-index.toml").is_file() {
-            // phase-400 W1 — descriptors live beside their crates now, with
-            // `config/` kept for the platforms that have no package. Both are
-            // roots; a root that holds no descriptor is dropped rather than
-            // returned, because `load_search_path` treats an all-missing path
-            // as an error and a present-but-empty one as a valid empty tree
-            // (issue 0979).
-            let roots: Vec<PathBuf> = ["packages/platform", "config"]
-                .iter()
-                .map(|r| dir.join(r))
-                .filter(|cand| {
-                    cand.is_dir()
-                        && std::fs::read_dir(cand).is_ok_and(|mut e| {
-                            e.any(|x| {
-                                x.is_ok_and(|x| x.path().join("nros-platform.toml").is_file())
-                            })
-                        })
+    // issue 1558 — `try_repo_root()` rather than a second copy of the marker
+    // walk. This one was CORRECT, which is the point: a right answer written
+    // twice is still two places to change, and the hop-counted spellings this
+    // issue retired were correct on the day they were written too.
+    let dir = nros_build_paths::try_repo_root()?;
+    // phase-400 W1 — descriptors live beside their crates now, with `config/`
+    // kept for the platforms that have no package. Both are roots; a root that
+    // holds no descriptor is dropped rather than returned, because
+    // `load_search_path` treats an all-missing path as an error and a
+    // present-but-empty one as a valid empty tree (issue 0979).
+    let roots: Vec<PathBuf> = ["packages/platform", "config"]
+        .iter()
+        .map(|r| dir.join(r))
+        .filter(|cand| {
+            cand.is_dir()
+                && std::fs::read_dir(cand).is_ok_and(|mut e| {
+                    e.any(|x| x.is_ok_and(|x| x.path().join("nros-platform.toml").is_file()))
                 })
-                .collect();
-            return (!roots.is_empty()).then_some(roots);
-        }
-        if !dir.pop() {
-            return None;
-        }
-    }
+        })
+        .collect();
+    (!roots.is_empty()).then_some(roots)
 }
 
 /// The `cflags` of the first `[arch.*]` profile of `platform` that admits
@@ -373,5 +366,119 @@ mod tests {
             !arch_matches(&m3, "thumbv7em-none-eabihf"),
             "cortex-m3 must not claim the M4F/M7 triple — that is the wrong-FPU-ABI bug"
         );
+    }
+}
+
+/// issue 1562 — the ThreadX RISC-V64 ISA/ABI answer, in one place.
+///
+/// `-march=rv64gc -mabi=lp64d -mcmodel=medany -fno-builtin` and the
+/// `--specs=picolibc.specs -print-sysroot` probe beside it were written out
+/// twice: in `threadx_qemu_riscv64_build` (the family builder) and in
+/// `nros-board-threadx/build.rs`. That is the shape phase-471 W2 removed from
+/// the FreeRTOS family, where three board scripts each carried a private
+/// `gcc_print_file` with its own hardcoded `-mcpu` list.
+///
+/// **The two copies had already drifted, and the drift was the defect issue
+/// 0678 fixed in only one of them.** `nros-board-threadx`'s probe fell back to
+/// a hardcoded `/usr/lib/picolibc/riscv64-unknown-elf` whenever the specs probe
+/// returned nothing — which is what paired the provisioned xPack compiler
+/// (emulated TLS) with Debian's picolibc (native TLS), whose `libc.a` cannot
+/// then define the `__emutls_v.errno` that compiler emits. So consolidating
+/// here is not only deduplication: it retires that fallback from the copy that
+/// still had it.
+///
+/// Two constants rather than one, because a probe legitimately passes less than
+/// a compile does — and saying which is less is the whole point. [`MULTILIB`]
+/// is what SELECTS the library variant, so every `-print-*` probe passes
+/// exactly it; [`CODEGEN`] affects the objects we emit and tells a `-print-*`
+/// query nothing. A single list would make the probes pass flags they do not
+/// need; two hardcoded lists is what this issue is about. One list built from
+/// the other is neither.
+///
+/// The ThreadX family has no `[arch.*]` profile the way FreeRTOS does (its
+/// boards are not described by a platform descriptor), so these stay Rust
+/// constants. What changes is that there is one of them.
+pub mod riscv64 {
+    use std::{path::PathBuf, process::Command};
+
+    /// The flags that select the multilib variant. Every `-print-sysroot` /
+    /// `-print-file-name` / `-print-libgcc-file-name` probe passes these and
+    /// nothing else: they are what makes gcc answer about `rv64gc/lp64d`
+    /// rather than about its default.
+    pub const MULTILIB: &[&str] = &["-march=rv64gc", "-mabi=lp64d"];
+
+    /// Code-generation flags that apply to the objects WE compile. A `-print-*`
+    /// query is unaffected by them, which is why they are not in [`MULTILIB`].
+    pub const CODEGEN: &[&str] = &["-mcmodel=medany", "-fno-builtin"];
+
+    /// Set the cross compiler, the archiver, and the ISA/ABI flags — the part
+    /// every RISC-V64 ThreadX `cc::Build` needs and no caller should spell.
+    ///
+    /// Callers add their own layers on top (optimisation, section splitting,
+    /// `TX_*`/`NX_*` defines, `THREADX_CFLAGS`); this is only the arch answer.
+    pub fn configure(build: &mut cc::Build) -> &mut cc::Build {
+        build
+            .compiler(nros_build_paths::riscv64::tool_or_legacy("gcc"))
+            .archiver(nros_build_paths::riscv64::tool_or_legacy("ar"));
+        for flag in MULTILIB.iter().chain(CODEGEN) {
+            build.flag(flag);
+        }
+        build
+    }
+
+    /// Run the cross gcc with [`MULTILIB`] plus `extra`, and return its trimmed
+    /// stdout when it exits successfully.
+    ///
+    /// Every probe below goes through here so that "which multilib am I asking
+    /// about" has one answer. A non-zero exit yields `None` rather than an
+    /// empty string: issue 0678's rule is that a FAILED probe means "this is
+    /// not a picolibc toolchain", never "picolibc is somewhere else".
+    fn gcc_print(extra: &[&str]) -> Option<String> {
+        let mut cmd = Command::new(nros_build_paths::riscv64::tool_or_legacy("gcc"));
+        cmd.args(MULTILIB).args(extra);
+        let out = cmd.output().ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if s.is_empty() { None } else { Some(s) }
+    }
+
+    /// The picolibc sysroot for `rv64gc/lp64d`, or `None`.
+    ///
+    /// issue 0678 — there is NO hardcoded distro fallback, in either caller.
+    /// Returning `None` leaves the compiler to use its own headers and its own
+    /// `libc.a`, which is the only arrangement where the TLS model is one
+    /// decision rather than two.
+    pub fn picolibc_sysroot() -> Option<PathBuf> {
+        let path = PathBuf::from(gcc_print(&["--specs=picolibc.specs", "-print-sysroot"])?);
+        path.join("include").exists().then_some(path)
+    }
+
+    /// Add the picolibc include dir to `build`, if this toolchain has one.
+    pub fn add_picolibc_include(build: &mut cc::Build) {
+        if let Some(sysroot) = picolibc_sysroot() {
+            build.include(sysroot.join("include"));
+        }
+    }
+
+    /// The directory holding `<name>` for this multilib — `libc.a`, `libm.a`.
+    ///
+    /// gcc echoes the bare name back when it cannot find the file, so an
+    /// answer that is not an existing absolute path is no answer.
+    pub fn library_dir(name: &str) -> Option<PathBuf> {
+        let path = PathBuf::from(gcc_print(&[&format!("-print-file-name={name}")])?);
+        if path.is_absolute() && path.exists() {
+            path.parent().map(PathBuf::from)
+        } else {
+            None
+        }
+    }
+
+    /// The directory holding `libgcc.a` for this multilib.
+    pub fn libgcc_dir() -> Option<PathBuf> {
+        PathBuf::from(gcc_print(&["-print-libgcc-file-name"])?)
+            .parent()
+            .map(PathBuf::from)
     }
 }

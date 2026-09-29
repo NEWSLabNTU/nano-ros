@@ -2130,6 +2130,7 @@ name = "nros-rmw-xrce-cffi"
 version = "0.5.0"
 dependencies = [
  "cc",
+ "nros-build-paths",
  "nros-cc-flags",
  "nros-platform-config",
  "nros-rmw",
@@ -2318,6 +2319,9 @@ dependencies = [
 [[package]]
 name = "nvidia-ivc"
 version = "0.5.0"
+dependencies = [
+ "nros-build-paths",
+]
 
 [[package]]
 name = "object"
