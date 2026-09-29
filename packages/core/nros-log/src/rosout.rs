@@ -31,8 +31,8 @@
 //! module refuses the SECOND shape as well, which that guard cannot see: the
 //! pump runs OUTSIDE dispatch, so a record raised by the publish path would be
 //! enqueued normally, published on the next pump, log again, and amplify
-//! forever at steady state without ever recursing. [`PUMPING`] is set for the
-//! whole drain and [`enqueue`] refuses while it is set, counting the refusals
+//! forever at steady state without ever recursing. `PUMPING` (a module-private flag) is set for the
+//! whole drain and the enqueue path refuses while it is set, counting the refusals
 //! separately ([`suppressed`]) from the ring-full ones ([`dropped`]) because
 //! the two mean different things: ring-full is a sizing answer, suppressed is
 //! this design working.
@@ -332,9 +332,10 @@ fn clip(s: &str, cap: usize) -> &str {
 /// SINGLE CONSUMER. Two concurrent drains would both read the slot at `TAIL`;
 /// the guard below makes the second one answer `0` rather than duplicate.
 ///
-/// `deliver` runs with [`PUMPING`] set, so anything it logs — including
-/// anything the RMW stack logs underneath it — is refused by [`enqueue`] and
-/// counted in [`suppressed`] instead of joining the ring it is draining.
+/// `deliver` runs with the module-private `PUMPING` flag set, so anything it
+/// logs — including anything the RMW stack logs underneath it — is refused on
+/// the enqueue path and counted in [`suppressed`] instead of joining the ring
+/// it is draining.
 pub fn drain(deliver: &mut dyn FnMut(&Record<'_>)) -> usize {
     if PUMPING
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire)
