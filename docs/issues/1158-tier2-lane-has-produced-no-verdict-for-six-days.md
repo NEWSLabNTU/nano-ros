@@ -359,3 +359,69 @@ unnecessary.
 **Item 1 (a verdict, once)** — open, and now known to have been open since the
 lane's first run. **Item 2 (contention)** — untouched, for the reason already
 given. No `runs-on`, required-check set or path filter was changed here.
+
+## Item 2 has no ceiling, and issue 1492 already named the rule (2026-09-29)
+
+Contention was written above as a scheduling question: which lane gets the
+runner. It has a second half nobody had measured here — **how long one holder
+may keep it** — and that half is not an open question, because issue **1492**
+answered it for the other shared lane and its remedy was never swept to this
+one.
+
+1492's own words, in the comment it left on `host-tests.yml`: *"Without this
+the next one has GitHub's six-hour default to run to, and the group is held for
+all of it."* It set `timeout-minutes: 150` on the tier-1 integration job, with
+the number derived from that job's measured durations. Neither self-hosted job
+got one:
+
+| workflow | job | `runs-on` | `timeout-minutes` |
+| --- | --- | --- | --- |
+| `host-tests.yml` | `nros-tests integration (host)` | `ubuntu-22.04` | **150** (issue 1492) |
+| `run-matrix.yml` | `tier 2 (1-wise matrix)` | `[self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]` | **none → 360** |
+| `nightly.yml` | `matrix-nightly` (`tier 2 nightly`) | the same four labels | **none → 360** |
+
+That is the 0196 shape: the rule is *a job that holds a shared group needs a
+ceiling this repository owns*, and the fix landed only where the symptom had
+been seen. Today the unswept half is being exercised.
+
+## What today measured
+
+Run **36531385810** (schedule, 06:30), job **109285625689**, step 6
+`just build tier2`: started 06:45:34Z, still `in_progress` at 11:22Z — **4 h
+37 m in one step**, against every prior scheduled run of this workflow
+finishing, end to end, in 25–80 minutes:
+
+| run | outcome | duration |
+| --- | --- | --- |
+| 09-29 06:30 | in_progress | **4 h 52 m and counting** |
+| 09-28 06:40 | failure (`just build tier2`) | 1 h 19 m |
+| 09-27 06:27 | failure (`just build tier2`) | 1 h 09 m |
+| 09-26 06:26 | failure | 46 m |
+| 09-25 06:29 | failure | 48 m |
+| 09-24 06:29 | failure | 45 m |
+| 09-23 06:29 | failure | 32 m |
+| 09-22 06:28 | failure | 24 m |
+
+Downstream, exactly as item 2 predicts: nightly **36535897637** (07:18) has its
+`tier 2 nightly (pairwise cover)` job `queued` since 07:18 — over four hours —
+because it wants the same four labels. Its `bootstrap-probe` sibling completed
+(and failed, issue 1439); only the self-hosted job is waiting. The 05:13
+nightly's own tier-2 job held the runner from 05:35 to 06:38, so the sequence
+is one holder after another with nothing between them.
+
+**What is NOT claimed.** Whether this run is hung or merely slow is not
+determinable from outside: per-job logs return nothing while the parent run is
+in progress, and the runner is not on the host this triage runs from. It may
+yet reach the cells, which would be item 1 finally satisfied. Both readings
+lead to the same gap — a lane with no bound can hold the only self-hosted
+runner for six hours, and until those six hours are up nothing distinguishes
+that from progress.
+
+**What would close this half.** A `timeout-minutes` on both self-hosted jobs.
+Choosing the number is still the maintainer's call for the reason item 2 gives,
+and 1492's correction is the warning: it priced the two terminal modes and not
+the HEALTHY duration, *"the one a timeout can destroy"*, and had to be raised
+to 150 for exactly that. The 25–80 m table above is a distribution of runs that
+mostly died early, so it is a floor on the answer and not the answer — the same
+position 1492 was in before its lane answered. Unlike tier 1, this lane also
+has no green run to measure a complete one against, which is item 1.
