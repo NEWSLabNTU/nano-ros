@@ -55,8 +55,9 @@
 /* phase-263 A4 — the C component storage buffers below MUST be at least as large
  * as the REAL per-build runtime structs. Those exact sizes live in the generated
  * `nros_cpp_config_generated.h` the build mirrors onto the include path (a hard
- * dep of every typed C component, which links nros-cpp). The static fallbacks
- * below are nuttx-era and have already drifted (native's action-server struct is
+ * dep of every typed C component, which links nros-cpp). Issue 1568 — there are
+ * no static fallbacks any more; the ones that were here were nuttx-era and had
+ * already drifted (native's action-server struct is
  * 128 bytes since issue 0796 added the accepted-goal callback slot, against a
  * nuttx snapshot of 88) — an under-sized buffer lets `nros_cpp_action_server_register`
  * overrun it and clobber the adjacent struct field (e.g. a stashed executor
@@ -66,7 +67,8 @@
 #if defined(__has_include)
 #if __has_include(<nros/nros_cpp_config_generated.h>)
 /* Issue 0282 — this probe is OPTIONAL: when the real per-build header is
- * absent we fall back to the static sizes below. But `__has_include` also
+ * absent the storage macros below expand to a refusal (issue 1568; they were
+ * static literals), which only bites a component that USES one. But `__has_include` also
  * matches the in-tree `#error` STUB (always on the include path), so the
  * probe used to detonate on any build that never produces the real header
  * — e.g. the Zephyr C + XRCE lane, which never builds nros-cpp at all
@@ -305,18 +307,32 @@ int32_t nros_cpp_subscription_register_validated(const nros_cpp_node_t* node, co
 
 /* --- Publisher (raw) ---------------------------------------------------- */
 
+/* Issue 1568 — what a storage macro expands to when the per-build header is
+ * NOT in this compile. It is an undeclared identifier on purpose: a component
+ * that declares a buffer with it fails to compile, naming the cause, instead
+ * of getting a literal. Issue 1566 is what a literal costs — 560 bytes where
+ * the build wrote 640, and the overrun corrupted the platform heap. The only
+ * compile that reaches this without the header is one that never links
+ * nros-cpp (the Zephyr C + XRCE lane, issue 0282), and such a compile cannot
+ * call the `nros_cpp_*_create` functions these buffers are for, so nothing
+ * that could run is refused. */
+#define NROS_C_STORAGE_SIZE_REFUSED_NO_PER_BUILD_nros_cpp_config_generated_h                       \
+    nros_c_storage_size_unavailable__the_per_build_nros_cpp_config_generated_h_is_not_on_this_include_path
+
 /* Issue 1566 — `nros_cpp_publisher_create` writes a `CppPublisher`, which is
  * `NROS_PUBLISHER_SIZE + sizeof(void*)` bytes (its own const assertion), and it
  * takes no size argument, so a short buffer is overrun silently. The literal
  * 560 was one build's answer: on native_sim/zenoh NROS_PUBLISHER_SIZE is 632,
  * the write is 640, and a component instance that the linker placed directly
  * before the platform heap corrupted it (realtime-c SEGVed in its first
- * declare). Take the per-build size whenever the generated header is here. */
+ * declare). Issue 1568 removed the literal fallback that 1566 left behind:
+ * the per-build size, or a refusal. */
 #ifndef NROS_C_PUBLISHER_STORAGE_SIZE
 #ifdef NROS_PUBLISHER_SIZE
 #define NROS_C_PUBLISHER_STORAGE_SIZE (NROS_PUBLISHER_SIZE + sizeof(void*))
 #else
-#define NROS_C_PUBLISHER_STORAGE_SIZE 560
+#define NROS_C_PUBLISHER_STORAGE_SIZE                                                              \
+    NROS_C_STORAGE_SIZE_REFUSED_NO_PER_BUILD_nros_cpp_config_generated_h
 #endif
 #endif
 
@@ -346,18 +362,30 @@ int32_t nros_cpp_service_server_register(const nros_cpp_node_t* node, const char
 
 /* --- Action server (executor-scoped; needs the `executor` configure arg) -- */
 
-/** Storage sizes mirror the C++ `NROS_CPP_*` config values (nuttx defaults).
- *  The build may `-D` override; a C component declares an 8-aligned buffer of
- *  the right size for the transport it binds. */
+/** Storage sizes are the per-build sizes of what each `nros_cpp_*_create`
+ *  writes — the same macros the C++ classes size their own buffers from
+ *  (`component.hpp`, `action_server.hpp`, `polling_client.hpp`) — or a
+ *  refusal. Issue 1568: these were literals (128, 4632) standing in for the
+ *  build's number; the service client had no per-build arm at all and was
+ *  nine times the 520 bytes a 32-bit build writes, with nothing to say so if
+ *  the object ever outgrew it. The build may still `-D` override. */
 #ifndef NROS_C_ACTION_SERVER_STORAGE_SIZE
 #ifdef NROS_CPP_ACTION_SERVER_STORAGE_SIZE
 #define NROS_C_ACTION_SERVER_STORAGE_SIZE NROS_CPP_ACTION_SERVER_STORAGE_SIZE
 #else
-#define NROS_C_ACTION_SERVER_STORAGE_SIZE 128
+#define NROS_C_ACTION_SERVER_STORAGE_SIZE                                                          \
+    NROS_C_STORAGE_SIZE_REFUSED_NO_PER_BUILD_nros_cpp_config_generated_h
 #endif
 #endif
+/* `nros_cpp_service_client_create` writes an `RmwServiceClient`, which is
+ * `NROS_SERVICE_CLIENT_SIZE` (the C++ `PollingServiceClient` buffer's size). */
 #ifndef NROS_C_SERVICE_CLIENT_STORAGE_SIZE
-#define NROS_C_SERVICE_CLIENT_STORAGE_SIZE 4632
+#ifdef NROS_SERVICE_CLIENT_SIZE
+#define NROS_C_SERVICE_CLIENT_STORAGE_SIZE NROS_SERVICE_CLIENT_SIZE
+#else
+#define NROS_C_SERVICE_CLIENT_STORAGE_SIZE                                                         \
+    NROS_C_STORAGE_SIZE_REFUSED_NO_PER_BUILD_nros_cpp_config_generated_h
+#endif
 #endif
 
 /** GoalResponse discriminant returned from the goal callback. */
@@ -435,7 +463,8 @@ int32_t nros_cpp_service_client_take_response(void* storage, uint8_t* resp_data,
 #ifdef NROS_CPP_ACTION_CLIENT_STORAGE_SIZE
 #define NROS_C_ACTION_CLIENT_STORAGE_SIZE NROS_CPP_ACTION_CLIENT_STORAGE_SIZE
 #else
-#define NROS_C_ACTION_CLIENT_STORAGE_SIZE 64
+#define NROS_C_ACTION_CLIENT_STORAGE_SIZE                                                          \
+    NROS_C_STORAGE_SIZE_REFUSED_NO_PER_BUILD_nros_cpp_config_generated_h
 #endif
 #endif
 
