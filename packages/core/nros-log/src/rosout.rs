@@ -42,11 +42,25 @@
 //!
 //! ## Cost
 //!
-//! `rosout_depth() * size_of::<Slot>()` of `.bss`, and nothing at all in an
-//! image that does not enable the `rosout` feature — the module is `cfg`'d out
-//! whole. Depth comes from the `rosout-records-<N>` family, the same shape and
-//! for the same reason as `early-records-<N>`: a 64 KB MCU and a Linux host do
-//! not want the same number.
+//! [`ring_bytes`] of `.bss` plus 26 bytes of counters, and **nothing at all**
+//! in an image that does not enable the `rosout` feature — the module is
+//! `cfg`'d out whole. The cost moves with TWO feature families, so here it is
+//! MEASURED rather than described (`cargo test -p nros-log --features rosout
+//! --lib ring_bytes_probe -- --nocapture`, once per combination):
+//!
+//! | `rosout-records-` | `buffer-size-` | per slot | ring |
+//! | --- | --- | --- | --- |
+//! | 8 | 128 | 232 B | 1 856 B |
+//! | 8 | 256 | 360 B | 2 880 B |
+//! | **16 (default)** | **256 (default)** | **360 B** | **5 760 B** |
+//! | 64 | 256 | 360 B | 23 040 B |
+//! | 64 | 1024 | 1 128 B | 72 192 B |
+//!
+//! Depth comes from the `rosout-records-<N>` family, the same shape and for
+//! the same reason as `early-records-<N>`: a 64 KB MCU and a Linux host do not
+//! want the same number. Note the right-hand column against a Zephyr image's
+//! 16 KB picolibc arena — the default is a third of it, and
+//! `rosout-records-8` + `buffer-size-128` is the build that fits.
 
 use core::cell::UnsafeCell;
 
@@ -208,6 +222,22 @@ pub fn suppressed() -> usize {
     SUPPRESSED.load(Ordering::Relaxed)
 }
 
+/// The `.bss` this module costs, in bytes: the ring, and nothing else that
+/// scales.
+///
+/// Derived rather than documented, because it moves with TWO feature families
+/// — `rosout-records-<N>` picks the depth and `buffer-size-<N>` the per-record
+/// message capacity — so any figure written in prose is right for one build.
+/// Measured on the shipped defaults (depth 16, `buffer-size-256`): **5 760
+/// bytes** (360 B per slot), plus 26 bytes of counters and flags.
+///
+/// An image that does not enable the `rosout` feature pays ZERO: this module
+/// is `cfg`'d out whole, statics included.
+#[must_use]
+pub const fn ring_bytes() -> usize {
+    DEPTH * core::mem::size_of::<Slot>()
+}
+
 /// How many records are queued right now.
 #[must_use]
 pub fn len() -> usize {
@@ -355,6 +385,9 @@ pub fn reset_for_test() {
 }
 
 #[cfg(test)]
+extern crate std;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -464,6 +497,37 @@ mod tests {
         }
         assert_eq!(take_losses(), (3, 0));
         assert_eq!(take_losses(), (0, 0));
+    }
+
+    /// The `.bss` figure this module'"'"'s doc and the ledger row quote, MEASURED
+    /// rather than asserted -- it moves with two feature families, so a test
+    /// that only checked a bound would let the quoted number rot.
+    #[test]
+    fn the_ring_costs_what_the_docs_say() {
+        // Prints under `--nocapture`; the assertion is what keeps the prose
+        // honest for the DEFAULT build, which is the one the docs quote.
+        let per_slot = core::mem::size_of::<Slot>();
+        assert_eq!(ring_bytes(), DEPTH * per_slot);
+        if DEPTH == 16 && MSG_CAP == 256 {
+            assert_eq!(
+                ring_bytes(),
+                5760,
+                "the default ring is what nros-log/src/rosout.rs and ledger row \
+                 `c:logging_rosout_enabled` quote; {per_slot} B/slot x {DEPTH}"
+            );
+        }
+    }
+
+    /// Not an assertion — a REPORT. The ring's cost moves with two feature
+    /// families, and the only honest way to put a table of it in a doc is to
+    /// run this under each combination rather than compute one in prose.
+    #[test]
+    fn ring_bytes_probe() {
+        std::println!(
+            "RINGBYTES depth={DEPTH} msg_cap={MSG_CAP} per_slot={} total={}",
+            core::mem::size_of::<Slot>(),
+            ring_bytes()
+        );
     }
 
     /// A long name and a long body are clipped on a character boundary, never
