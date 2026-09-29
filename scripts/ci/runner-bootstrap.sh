@@ -92,6 +92,18 @@ else
 fi
 cd "$SRC"
 
+# Submodules follow the superproject to the pins it records (issue 1585). The
+# fetch branch above moves the superproject and nothing else, so a submodule an
+# earlier bootstrap initialised stays at its OLD commit, and every just setup
+# step then refuses: play_launch is at <old>, not the pin this tree records.
+# Provisioning died on exactly that the first time a store checkout was more
+# than a few days old. Every initialised submodule moves to its pin, and
+# play_launch is initialised because provisioning needs it -- NON-recursively,
+# since its own runtime submodules are never built here (CLAUDE.md).
+git submodule sync -q
+git submodule update -q --depth 1
+git submodule update -q --init --depth 1 packages/cli/third-party/play_launch
+
 # `runner-provision.sh` is a thin caller over `just` recipes and says so when
 # `just` is absent — it points at scripts/bootstrap.sh, which is the front door
 # that needs no just. A fresh image has neither, so run it here rather than
@@ -168,7 +180,7 @@ fi
 
 if [ "$CHECK" -eq 1 ]; then
     say "would ensure stores, then run in $IMAGE:"
-    echo "    clone-or-fetch $REMOTE@$REF -> /home/runner/src"
+    echo "    clone-or-fetch $REMOTE@$REF -> /home/runner/src, submodules to their pins"
     echo "    runner-provision.sh $LABELS"
     echo "    runner-doctor.sh $LABELS   (labels TRUE, or non-zero)"
     exit 0
