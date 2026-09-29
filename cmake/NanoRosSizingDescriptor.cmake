@@ -103,6 +103,65 @@ function(_nros_sizing_target_args _out_var)
     set(${_out_var} "${_args}" PARENT_SCOPE)
 endfunction()
 
+# _nros_sizing_bound_args(<out_var>) — phase-457-payload W2
+#
+# The `--bound-inventory` arguments for a `ws sizing-descriptor` invocation: one
+# per bound table this configure's interface closure REGISTERED.
+#
+# EXPORTED, not re-derived. Codegen already walked every type and wrote
+# `nros_message_bounds.json` beside each `nros_message_bounds.cmake` fragment,
+# and `nros_message_bounds_register_fragment` already collects those fragments
+# image-wide for the message-bound aggregator. This reads that SAME list, so the
+# descriptor and the aggregator cannot disagree about which packages are in the
+# closure. The JSON sibling is named by `nros_message_bounds_files()`, the one
+# function that owns both file names, never spelled here.
+#
+# ONE SPELLING, called by both producers, for the reason
+# `_nros_sizing_target_args` gives above.
+#
+# EVERY registered table is passed, present or not. On the non-Zephyr cmake lane
+# a table is a BUILD-time output, so on a clean tree it is absent at the first
+# configure; the CLI then REFUSES the bound fields naming that table's package,
+# which is the aggregator's rule for the same list ("a promise rather than a
+# fact"). Only a table that EXISTS is added to `CMAKE_CONFIGURE_DEPENDS`: a ninja
+# input with no rule to make it is a hard `missing and no known rule` at LOAD.
+function(_nros_sizing_bound_args _out_var)
+    set(_args "")
+    set(_registered 0)
+    set(_present 0)
+    if(COMMAND nros_message_bounds_fragments AND COMMAND nros_message_bounds_files)
+        nros_message_bounds_fragments(_nsba_frags)
+        foreach(_nsba_frag IN LISTS _nsba_frags)
+            get_filename_component(_nsba_dir "${_nsba_frag}" DIRECTORY)
+            nros_message_bounds_files("${_nsba_dir}" _nsba_json _nsba_unused)
+            list(APPEND _args --bound-inventory "${_nsba_json}")
+            math(EXPR _registered "${_registered} + 1")
+            if(EXISTS "${_nsba_json}")
+                math(EXPR _present "${_present} + 1")
+                set_property(DIRECTORY APPEND PROPERTY
+                    CMAKE_CONFIGURE_DEPENDS "${_nsba_json}")
+            endif()
+        endforeach()
+    endif()
+    # SAY which branch was taken -- the same reason as `[target]` above. A
+    # configure that registered no table and one whose tables were all read
+    # otherwise look identical, and only one of them states a bound.
+    if(_registered EQUAL 0)
+        message(STATUS
+            "nano-ros: sizing descriptor bounds REFUSED -- this configure registered "
+            "no message-bound table, so `wire_bound_bytes` and `[types]` are not stated")
+    elseif(_present LESS _registered)
+        message(STATUS
+            "nano-ros: sizing descriptor bounds REFUSED -- ${_present} of ${_registered} "
+            "registered bound table(s) exist; the rest are built by the first build and "
+            "read from the next configure")
+    else()
+        message(STATUS
+            "nano-ros: sizing descriptor bounds from ${_registered} registered table(s)")
+    endif()
+    set(${_out_var} "${_args}" PARENT_SCOPE)
+endfunction()
+
 # nros_sizing_descriptor_from_model(<out_var>) — phase-454 W14
 #
 # WRITE a descriptor for this entry from its resolved SystemModel, and remember
@@ -192,13 +251,15 @@ function(nros_sizing_descriptor_from_model _out_var)
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_meta}")
     endif()
 
+    _nros_sizing_bound_args(_bound_args)
+
     execute_process(
         COMMAND "${_nsw_CLI}" ws sizing-descriptor
                 --from-model "${_nsw_MODEL}"
                 --build-dir "${_build_dir}"
                 --entry "${_nsw_ENTRY}"
                 --road "a cmake entry"
-                ${_host_arg} ${_rmw_arg} ${_meta_arg}
+                ${_host_arg} ${_rmw_arg} ${_meta_arg} ${_bound_args}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc
@@ -269,6 +330,7 @@ function(nros_sizing_descriptor_from_leaf _out_var)
         CMAKE_CONFIGURE_DEPENDS "${_nsl_LEAF}/system.toml")
 
     _nros_sizing_target_args(_host_arg)
+    _nros_sizing_bound_args(_bound_args)
 
     execute_process(
         COMMAND "${_nsl_CLI}" ws sizing-descriptor
@@ -276,7 +338,7 @@ function(nros_sizing_descriptor_from_leaf _out_var)
                 --build-dir "${_build_dir}"
                 --entry "${_nsl_ENTRY}"
                 --road "a standalone cmake leaf"
-                ${_host_arg}
+                ${_host_arg} ${_bound_args}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc

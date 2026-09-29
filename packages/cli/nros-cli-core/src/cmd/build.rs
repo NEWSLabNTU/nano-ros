@@ -546,6 +546,12 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 let mut path_env: std::collections::BTreeMap<String, PathBuf> =
                     std::collections::BTreeMap::new();
                 if let Some(inv) = resolved.as_ref().and_then(|r| r.inventory.as_ref()) {
+                    // phase-457-payload W2 — the workspace's own `generated/`
+                    // tables, found by the discovery a single-package leaf uses
+                    // and read by the reader every road shares. This is the
+                    // third model-road producer; the two cmake ones take the
+                    // tables their configure registered instead.
+                    let bound_tables = crate::leaf_payload_classes::generated_bound_tables(&root);
                     match crate::sizing_descriptor::write_for_model(
                         &crate::sizing_descriptor::ModelImage {
                             build_dir: &image_dir,
@@ -558,6 +564,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                             host_build: descriptor.target.is_none(),
                             heap_budget_bytes: board_heap_budget(descriptor, &board),
                             rmw: image.rmw.clone(),
+                            bound_inventories: &bound_tables,
                             horizon: crate::sizing_descriptor::ModelHorizon::new(
                                 "a workspace cargo image",
                             ),

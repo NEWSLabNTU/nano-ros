@@ -43,6 +43,8 @@ fn args() -> SizingDescriptorArgs {
         output_cmake: None,
         from_model: None,
         from_leaf: None,
+        // phase-457-payload W2 -- no tables: the refusal naming 1393.
+        bound_inventory: Vec::new(),
         build_dir: None,
         entry: None,
         metadata: None,
