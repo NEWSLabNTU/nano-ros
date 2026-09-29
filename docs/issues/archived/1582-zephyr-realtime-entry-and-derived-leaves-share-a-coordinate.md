@@ -59,7 +59,18 @@ What they shared was the west APPLICATION SOURCE:
   covers all three roads, not only west.
 
 **Sweep.** I ran `nros build --all --dry-run` through the new refusal on every
-tracked workspace that has a bringup (31). It collided in two:
+tracked workspace that has a bringup (31). Re-run it with:
+
+```sh
+git ls-files '*/src/*/system.toml' | sed 's|/src/.*||' | sort -u |
+  while read ws; do nros build --all --workspace "$ws" --dry-run; done
+```
+
+It collided in two before the fix, and in none after (re-run after rebasing
+onto `main`: 22 plan cleanly, 8 test-fixture workspaces then stop at
+`missing prerequisites … nros sync` — which `plan_builds` reaches only AFTER
+the collision refusal, so they were swept too — and `refused_resolve`
+declares no `[image.*]`). Before:
 
 - `realtime-rust`: the reported pair.
 - `realtime-c`: `smp_bringup` repeated `demo_bringup`'s `freertos`, `native`,
@@ -103,7 +114,10 @@ Mutation-tested on the real tree:
 For the CLI: removing the `bail!` fails the pipeline test, and changing
 `> 1` to `> 2` fails two unit tests.
 
-**Acceptance, measured.**
+**Acceptance, measured** (on the branch before its rebase onto `main`; the
+Zephyr images were not rebuilt after the rebase — the distinct application
+dirs are what the fix changes; the rebase touched neither bringup, and its
+CLI changes are in sizing/metadata refresh, not the entry-dir path):
 
 - Both leaves were built in one run into a private build root
   (`build/zephyr-1582`), at 21:55, after the last code commit (21:40).
