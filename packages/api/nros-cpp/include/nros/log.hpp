@@ -11,12 +11,18 @@
  * Routes through a single configurable sink. By default, on hosted
  * builds (`__STDC_HOSTED__` or `NROS_CPP_STD` defined) the sink
  * writes to `stderr` with a `[level] file:line — fmt…` prefix.
- * Embedded builds without stdio fall through to a no-op so the
- * macros compile away.
+ * Freestanding builds route through `nros_log`'s C ABI
+ * (`nros_log_emit_fmt_at` on the default logger), which reaches
+ * `LOG_ERR`/`printk` on Zephyr and the per-platform sink on every other
+ * `no_std` target (issue 1576). They used to compile to a no-op, so a
+ * freestanding image's `report_component_failure` line — the only thing
+ * naming the node and call that failed — never appeared.
  *
  * Override the sink with `#define NROS_LOG_SINK(level, file, line, fmt, ...)`
  * before including this header (or via `-DNROS_LOG_SINK=…`) to
- * route through `defmt`, semihosting, Zephyr's `LOG_INF`, etc.
+ * route through `defmt`, semihosting, Zephyr's `LOG_INF`, etc. A TU that
+ * links no nros library at all (so `nros_log_*` would not resolve) defines
+ * `NROS_LOG_SINK_DISCARD` to get the old compile-away no-op.
  *
  * The macros take a `printf`-style format string + variadic
  * arguments. They evaluate `fmt` and the variadics exactly once.
@@ -34,8 +40,29 @@
         ::std::fprintf(stderr, __VA_ARGS__);                                                       \
         ::std::fputc('\n', stderr);                                                                \
     } while (0)
-#else
+#elif defined(NROS_LOG_SINK_DISCARD)
 #define NROS_LOG_SINK(level, file, line, ...) ((void)(level), (void)(file), (void)(line))
+#else
+// Freestanding default: the `nros_log` C ABI, which every nros-cpp image
+// links (the staticlib bundles nros-c) and which `ensure_default_sinks()`
+// wires to the platform console since #1432. `level` is the literal the
+// family passes ("ERROR", …); `sink_severity` maps it without string
+// compares beyond the first byte.
+#include <nros/log.h>
+namespace nros {
+namespace detail {
+constexpr nros_log_severity_t sink_severity(const char* level) {
+    return level[0] == 'E'   ? NROS_LOG_SEVERITY_ERROR
+           : level[0] == 'W' ? NROS_LOG_SEVERITY_WARN
+           : level[0] == 'I' ? NROS_LOG_SEVERITY_INFO
+           : level[0] == 'D' ? NROS_LOG_SEVERITY_DEBUG
+                             : NROS_LOG_SEVERITY_ERROR;
+}
+} // namespace detail
+} // namespace nros
+#define NROS_LOG_SINK(level, file, line, ...)                                                      \
+    ::nros_log_emit_fmt_at(::nros_log_default_logger(), ::nros::detail::sink_severity(level),      \
+                           (file), static_cast<uint32_t>(line), __VA_ARGS__)
 #endif
 #endif
 
@@ -560,10 +587,11 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
 // exactly the targets where the legacy sink is a no-op, honours the per-logger
 // threshold, and has a distinct `NROS_LOG_SEVERITY_FATAL`.
 //
-// `NROS_INFO` and friends are UNCHANGED and still the right thing for a board's
-// own console print: the hosted/freestanding split is a feature there. What was
-// wrong was routing `RCLCPP_*` through it — a ported node calling `RCLCPP_INFO`
-// is asking for the ROS logger, not for a board console.
+// `NROS_INFO` and friends stay the unkeyed, file:line family. (Since issue
+// 1576 their FREESTANDING default is no longer a no-op either — it emits on
+// `nros_log`'s default logger — but it still carries no per-logger routing.)
+// What was wrong was routing `RCLCPP_*` through it — a ported node calling
+// `RCLCPP_INFO` is asking for the ROS logger, not for an unkeyed console line.
 //
 // One consequence worth naming: `RCLCPP_DEBUG` no longer compiles out under
 // `NDEBUG`. It is runtime-filtered by the logger's threshold now, which is what

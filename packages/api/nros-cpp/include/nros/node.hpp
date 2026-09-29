@@ -319,8 +319,8 @@ namespace detail {
 /// records the `ok()` latch and the generated entry / single-node carrier checks
 /// it post-construct, then halts boot **naming the failing node** via this
 /// helper. Hosted builds also print to `stderr`; freestanding builds get the
-/// overridable sink and nothing else. NOT `[[noreturn]]` — the caller decides
-/// how to halt.
+/// overridable sink, whose default is `nros_log` (issue 1576). NOT `[[noreturn]]` — the caller
+/// decides how to halt.
 inline void report_component_failure(const char* node_name, const char* what, int32_t code) {
     // Route through the OVERRIDABLE sink first, so a freestanding image can
     // see this at all. Issue 1015's bisect ran aground here: on Zephyr both
