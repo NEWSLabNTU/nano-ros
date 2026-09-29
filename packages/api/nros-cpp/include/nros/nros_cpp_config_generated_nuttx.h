@@ -32,12 +32,21 @@
 #define NROS_CPP_ACTION_CLIENT_STORAGE_SIZE 48
 #define NROS_EXECUTOR_SIZE 98296
 #define NROS_GUARD_CONDITION_SIZE 24
-#define NROS_PUBLISHER_SIZE 560
-#define NROS_SUBSCRIBER_SIZE 560
+/* Issue 1568 — MEASURED BELOW THE BUILD and raised: the realtime-c
+ * qemu-armv7a-nuttx fixture built at this commit wrote a per-build header with
+ * NROS_PUBLISHER_SIZE 596, NROS_SUBSCRIBER_SIZE 620, NROS_SERVICE_SERVER_SIZE
+ * 568, raw subscription / service-server 209 / 199 u64s and PUBLISHER_OPAQUE_U64S
+ * 75 — every one ABOVE this file's value, so each buffer sized from here was
+ * short (the ctrl component's publisher buffer was 564 bytes for a 600-byte
+ * write, overrunning into the telem instance the linker placed after it). The
+ * values below are that measurement rounded up with margin, still hand-kept:
+ * issue 1569 is the exact fix (the per-build header on the NuttX path). */
+#define NROS_PUBLISHER_SIZE 640
+#define NROS_SUBSCRIBER_SIZE 672
 #define NROS_SERVICE_CLIENT_SIZE 4632
-#define NROS_SERVICE_SERVER_SIZE 528
-#define NROS_CPP_RAW_SUBSCRIPTION_OPAQUE_U64S 205
-#define NROS_CPP_RAW_SERVICE_SERVER_OPAQUE_U64S 194
+#define NROS_SERVICE_SERVER_SIZE 608
+#define NROS_CPP_RAW_SUBSCRIPTION_OPAQUE_U64S 224
+#define NROS_CPP_RAW_SERVICE_SERVER_OPAQUE_U64S 216
 #define NROS_CPP_RAW_SERVICE_CLIENT_OPAQUE_U64S 707
 /* #464 postscript — was 786, which is BELOW a real per-build value: a host
  * probe of the same type measures 799. This file's contract is "MUST be a safe
@@ -49,7 +58,7 @@
  * true size is probably smaller than the host's. It is raised because the
  * contract is an upper bound over ALL per-build values and 786 demonstrably
  * failed that for one of them. */
-#define NROS_CPP_RAW_ACTION_SERVER_OPAQUE_U64S 816
+#define NROS_CPP_RAW_ACTION_SERVER_OPAQUE_U64S 832
 #define NROS_CPP_RAW_ACTION_CLIENT_OPAQUE_U64S 2193
 
 /* RFC-0090 / issue 1115 — the codegen-version anchors, mirroring the per-build

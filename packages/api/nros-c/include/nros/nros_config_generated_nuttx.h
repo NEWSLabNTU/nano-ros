@@ -9,10 +9,19 @@
 #define NROS_EXECUTOR_STORAGE_SIZE 98304
 #define NROS_EXECUTOR_SIZE 98296
 #define NROS_GUARD_CONDITION_SIZE 24
-#define NROS_PUBLISHER_SIZE 560
-#define NROS_SUBSCRIBER_SIZE 560
+/* Issue 1568 — MEASURED BELOW THE BUILD and raised: the realtime-c
+ * qemu-armv7a-nuttx fixture built at this commit wrote a per-build header with
+ * NROS_PUBLISHER_SIZE 596, NROS_SUBSCRIBER_SIZE 620, NROS_SERVICE_SERVER_SIZE
+ * 568, raw subscription / service-server 209 / 199 u64s and PUBLISHER_OPAQUE_U64S
+ * 75 — every one ABOVE this file's value, so each buffer sized from here was
+ * short (the ctrl component's publisher buffer was 564 bytes for a 600-byte
+ * write, overrunning into the telem instance the linker placed after it). The
+ * values below are that measurement rounded up with margin, still hand-kept:
+ * issue 1569 is the exact fix (the per-build header on the NuttX path). */
+#define NROS_PUBLISHER_SIZE 640
+#define NROS_SUBSCRIBER_SIZE 672
 #define NROS_SERVICE_CLIENT_SIZE 4632
-#define NROS_SERVICE_SERVER_SIZE 528
+#define NROS_SERVICE_SERVER_SIZE 608
 /* issue 0954 — was 528 / 66 u64s. `_z_session_t` grew 8 bytes when it gained
  * `_mutex_transport` + `_reconnecting` (issues 0899 / 0924), and this file must
  * be an UPPER BOUND over every per-build value: freshly built headers now read
@@ -23,7 +32,7 @@
 #define NROS_LIFECYCLE_CTX_SIZE 64
 #define NROS_ACTION_SERVER_INTERNAL_SIZE 96
 #define SESSION_OPAQUE_U64S 67 /* 67 * 8 = 536, issue 0954 */
-#define PUBLISHER_OPAQUE_U64S 70
+#define PUBLISHER_OPAQUE_U64S 80
 /* #464 — was 9912, i.e. 79296 bytes: the value #167 REPLACED in the two macros
  * above and missed here, even though this is the one that sizes the array
  * (`uint64_t _opaque[EXECUTOR_OPAQUE_U64S]` in nros_generated.h). The comment
@@ -48,9 +57,9 @@
  * cannot be. */
 #define NROS_EXECUTOR_MAX_HANDLES 64
 #undef SUBSCRIPTION_OPAQUE_U64S
-#define SUBSCRIPTION_OPAQUE_U64S 205
+#define SUBSCRIPTION_OPAQUE_U64S 224
 #undef SERVICE_SERVER_OPAQUE_U64S
-#define SERVICE_SERVER_OPAQUE_U64S 194
+#define SERVICE_SERVER_OPAQUE_U64S 216
 #undef SERVICE_CLIENT_OPAQUE_U64S
 #define SERVICE_CLIENT_OPAQUE_U64S 707
 #undef ACTION_SERVER_OPAQUE_U64S
@@ -60,7 +69,7 @@
  * 32-bit NuttX build, where the true size is likely smaller — raised because
  * 786 demonstrably failed the contract for one configuration, not because 816
  * was measured anywhere. */
-#define ACTION_SERVER_OPAQUE_U64S 816
+#define ACTION_SERVER_OPAQUE_U64S 832
 #undef ACTION_CLIENT_OPAQUE_U64S
 #define ACTION_CLIENT_OPAQUE_U64S 2193
 
