@@ -67,12 +67,15 @@ mechanism working rather than a gate that never had anything to say.
 """
 
 import argparse
+import io
 import re
 import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+from population import require_population  # noqa: E402  phase-472 W4
 
 # Any `std` path: `std::x`, `::std::x`. NOT `nros_std::`, `my_std::` — the
 # lookbehind refuses an identifier character before the token, and `::std` is
@@ -305,13 +308,20 @@ def scan_template(path):
     return hits
 
 
-def check(repo=REPO, roots=None):
-    """(findings, known_open_hit, stale_known_open, files_scanned)."""
+def check(repo=REPO, roots=None, per_root=None):
+    """(findings, known_open_hit, stale_known_open, files_scanned).
+
+    `per_root`, when given, is filled with {root: files scanned under it} —
+    a MISSING root scans 0 and stays in the dict, so the caller can refuse it
+    (phase-472 W4: both roots moving once read as "OK (0 producer file(s))").
+    """
     findings = []
     known_hit = {}
     scanned = 0
     for rel, kind in roots or PRODUCER_ROOTS:
         root = repo / rel
+        if per_root is not None:
+            per_root.setdefault(rel, 0)
         if not root.exists():
             continue
         for path in _tracked_files(root):
@@ -320,6 +330,8 @@ def check(repo=REPO, roots=None):
             if kind == "template" and path.suffix not in (".jinja", ".j2"):
                 continue
             scanned += 1
+            if per_root is not None:
+                per_root[rel] += 1
             hits = scan_rust_producer(path) if kind == "quote" else scan_template(path)
             if not hits:
                 continue
@@ -554,6 +566,18 @@ def self_test():
                     print(f"          {f[0]}:{f[1]}: {f[2]}")
             else:
                 print(f"  ok    {name}")
+    # phase-472 W4 — the population half. A producer root that moved scans
+    # zero files; that must FAIL, not read as a clean tree.
+    with tempfile.TemporaryDirectory() as td:
+        per_root = {}
+        check(repo=Path(td), per_root=per_root)
+        silent = io.StringIO()
+        if any(require_population(n, "file(s)", gate="probe", out=silent, err=silent)
+               for n in per_root.values()) or len(per_root) != len(PRODUCER_ROOTS):
+            failures += 1
+            print("  FAIL  a producer root that does not exist read as examined")
+        else:
+            print("  ok    a producer root that does not exist is refused")
     if failures:
         print(f"\ncheck-no-std-entry-emission --self-test: {failures} case(s) FAILED")
         return 1
@@ -568,8 +592,30 @@ def main():
 
     if args.self_test:
         return self_test()
+    # Always, not only behind the flag (phase-472 W4 / W9): a negative control
+    # nobody runs decays into a comment.
+    quiet = io.StringIO()
+    import contextlib
+    with contextlib.redirect_stdout(quiet):
+        st = self_test()
+    if st:
+        print(quiet.getvalue())
+        print("check-no-std-entry-emission: own self-test failed; verdict untrusted",
+              file=sys.stderr)
+        return 1
 
-    findings, known_hit, stale, scanned = check()
+    per_root = {}
+    findings, known_hit, stale, scanned = check(per_root=per_root)
+    # Every producer root must exist and hold files: each is a population in
+    # its own right, so one root moving must not hide behind the other's count.
+    empty = [
+        rel for rel, n in per_root.items()
+        if not require_population(
+            n, f"producer file(s) under {rel}", gate="check-no-std-entry-emission"
+        )
+    ]
+    if empty:
+        return 1
 
     if stale:
         print(

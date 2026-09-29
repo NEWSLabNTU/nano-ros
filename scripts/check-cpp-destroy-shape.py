@@ -41,6 +41,8 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+from population import require_population  # noqa: E402  phase-472 W4
 SRC = REPO / "packages" / "api" / "nros-cpp" / "src"
 TABLE = SRC / "destroy_shape.rs"
 
@@ -273,9 +275,9 @@ def tracked_rust_sources() -> list[Path]:
 def main() -> int:
     self_test()
 
-    if not SRC.is_dir():
-        print(f"{GATE}: NOT CHECKED — {SRC} is absent")
-        return 0
+    # phase-472 W4 — `SRC` is tracked; its absence was reported as NOT CHECKED
+    # with exit 0. It is the population moving, and the subject count below
+    # must be non-zero instead.
     if not TABLE.is_file():
         print(
             f"{GATE}: FAIL — {TABLE.relative_to(REPO)} is missing.\n"
@@ -288,6 +290,8 @@ def main() -> int:
         for p in tracked_rust_sources()
         if p.name != TABLE.name
     }
+    if not require_population(len(subjects(sources)), "destroy FFI(s)", gate=GATE):
+        return 1
     found = problems(sources, TABLE.read_text(encoding="utf-8"))
     if found:
         print(f"{GATE}: FAIL")

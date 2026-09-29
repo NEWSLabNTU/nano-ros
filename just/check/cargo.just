@@ -443,7 +443,7 @@ manifests-parse:
 # cargo invocation. Buildless.
 [private]
 nested-workspace-excludes:
-    @bash scripts/check-nested-workspace-excludes.sh
+    @python3 scripts/check-nested-workspace-excludes.py
 
 # issue 1217 / phase-451 W3 — the sibling question to the gate above: not "is
 # every nested workspace excluded" but "does every exclusion still mean

@@ -25,14 +25,41 @@ fourth site, not the first three, and it fails loudly the moment one appears.
 
 `--self-test` checks both directions, because a checker that stopped checking
 passes silently — the failure shape this whole issue is about.
+
+phase-472 W4 — M3 used to compare against `rustc -vV`'s host ONLY, and with
+no `rustc` on PATH it compared against nothing and printed OK: a host-triple
+pin passed. It was also the x86-only asymmetry this docstring warns about, one
+level up — an `aarch64-unknown-linux-gnu` pin passed on every x86 host. M3 now
+compares against the Rust tier-1 HOST triples (every host anyone builds this
+repo on) plus the live host when `rustc` is there to name it, so the verdict
+does not depend on which machine ran the gate. Both rules print the population
+they examined and fail on zero (`scripts/lib/population.py`).
 """
 
+import io
 import re
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from population import require_population  # noqa: E402  phase-472 W4
+
+# Rust's tier-1 HOST triples — https://doc.rust-lang.org/rustc/platform-support.html.
+# A tracked `[build] target` naming one of these is a host pin on SOME machine
+# a contributor builds on, whichever machine runs this gate. The live host is
+# added when `rustc` is available; its absence no longer disables M3.
+TIER1_HOSTS = frozenset({
+    "aarch64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "i686-pc-windows-msvc",
+    "i686-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-gnu",
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+})
 
 # A rust target triple as a literal. Deliberately anchored on the ARCH so a
 # path fragment like `lib/cmake` cannot match, and deliberately NOT limited to
@@ -65,7 +92,9 @@ def tracked(*globs):
     return subprocess.run(args, capture_output=True, text=True, check=True).stdout.split()
 
 
-def m2_offenders(files):
+def m2_offenders(files, counted=None):
+    """`counted`, when a list, receives one entry per `find_program(...
+    NO_DEFAULT_PATH)` examined — the population."""
     hits = []
     for rel in files:
         try:
@@ -77,6 +106,8 @@ def m2_offenders(files):
             body = m.group(1)
             if "NO_DEFAULT_PATH" not in body.upper():
                 continue
+            if counted is not None:
+                counted.append(rel)
             found = TRIPLE.search(body)
             if found:
                 line = code[: m.start()].count("\n") + 1
@@ -95,9 +126,12 @@ def host_triple():
     return None
 
 
-def m3_offenders(files, host):
+def m3_offenders(files, host, counted=None):
+    """`host` is one triple or a set of them. `counted`, when a list, receives
+    one entry per `[build] target` examined — the population."""
     if not host:
         return []
+    hosts = {host} if isinstance(host, str) else set(host)
     hits = []
     for rel in files:
         try:
@@ -110,8 +144,12 @@ def m3_offenders(files, host):
             if s.startswith("["):
                 in_build = s == "[build]"
                 continue
-            if in_build and s.startswith("target") and host in s:
-                hits.append((rel, n, host))
+            if in_build and re.match(r"target\s*=", s):
+                if counted is not None:
+                    counted.append(rel)
+                pinned = next((h for h in sorted(hosts) if f'"{h}"' in s), None)
+                if pinned:
+                    hits.append((rel, n, pinned))
     return hits
 
 
@@ -172,6 +210,37 @@ def self_test():
             sys.stderr.write("self-test: a CROSS [build] target was reported\n")
             sys.exit(2)
 
+        # 6 — phase-472 W4: M3 without a live host still checks. The P2 was
+        #     "rustc absent -> M3 silently skipped as OK"; the fallback set is
+        #     what the gate uses when `rustc -vV` answers nothing.
+        cfg.write_text('[build]\ntarget = "aarch64-unknown-linux-gnu"\n')
+        if not m3_offenders([crel], hosts_to_check(None)):
+            sys.stderr.write("self-test: with no rustc, a host-triple pin was NOT reported\n")
+            sys.exit(2)
+        # ...and a tier-1 host that is not THIS host is still a pin.
+        if not m3_offenders([crel], hosts_to_check("x86_64-unknown-linux-gnu")):
+            sys.stderr.write("self-test: a pin to ANOTHER tier-1 host was NOT reported\n")
+            sys.exit(2)
+        # ...and a lookalike whose prefix is a host triple is not one.
+        cfg.write_text('[build]\ntarget = "x86_64-unknown-linux-gnux32"\n')
+        if m3_offenders([crel], hosts_to_check(None)):
+            sys.stderr.write("self-test: a non-host triple sharing a host PREFIX was reported\n")
+            sys.exit(2)
+
+        # 7 — the population half: a scan that examined nothing must fail.
+        counted = []
+        m3_offenders([], hosts_to_check(None), counted)
+        m2_offenders([], counted)
+        if require_population(counted, "item(s)", gate="probe",
+                              out=io.StringIO(), err=io.StringIO()):
+            sys.stderr.write("self-test: zero examined read as a pass\n")
+            sys.exit(2)
+
+
+def hosts_to_check(live):
+    """The tier-1 host set, plus the live host when rustc named one."""
+    return TIER1_HOSTS | ({live} if live else set())
+
 
 def main():
     self_test()
@@ -188,7 +257,8 @@ def main():
     host = host_triple()
     rc = 0
 
-    m2 = m2_offenders(cmake_files)
+    m2_seen, m3_seen = [], []
+    m2 = m2_offenders(cmake_files, m2_seen)
     if m2:
         sys.stderr.write("[FAIL] literal target triple under NO_DEFAULT_PATH (issue 0582):\n")
         for rel, line, tri in m2:
@@ -201,7 +271,14 @@ def main():
         )
         rc = 1
 
-    m3 = m3_offenders(configs, host)
+    m3 = m3_offenders(configs, hosts_to_check(host), m3_seen)
+    # phase-472 W4 — print both populations and refuse an empty one.
+    if not require_population(m2_seen, "find_program(... NO_DEFAULT_PATH) call(s) [M2]",
+                              gate="host-triple literals"):
+        rc = 1
+    if not require_population(m3_seen, "tracked `[build] target` key(s) [M3]",
+                              gate="host-triple literals"):
+        rc = 1
     if m3:
         sys.stderr.write("[FAIL] tracked `[build] target` pinned to the host triple (issue 0582):\n")
         for rel, line, tri in m3:
@@ -215,7 +292,8 @@ def main():
     if rc == 0:
         print(
             f"host-triple literals: OK ({len(cmake_files)} cmake file(s), "
-            f"{len(configs)} cargo config(s), host {host or 'unknown'})"
+            f"{len(configs)} cargo config(s); M3 against {len(hosts_to_check(host))} "
+            f"host triple(s), live host {host or 'unknown — rustc absent, tier-1 set only'})"
         )
     return rc
 

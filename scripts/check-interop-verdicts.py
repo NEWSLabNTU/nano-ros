@@ -102,6 +102,8 @@ except ModuleNotFoundError:  # python < 3.11
     import tomli as tomllib  # type: ignore
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from population import require_population  # noqa: E402  phase-472 W4
 LEDGER = ROOT / ".config" / "interop-verdicts.toml"
 TESTS_DIR = ROOT / "packages" / "testing" / "nros-tests" / "tests"
 DEFAULT_JUNIT = ROOT / "target" / "nextest" / "default" / "junit.xml"
@@ -128,6 +130,28 @@ ATTR_RE = re.compile(r"^\s*#!?\[[^\]]*\]", re.M)
 
 class LedgerError(Exception):
     pass
+
+
+def read_ledger(path: Path, *, required: bool) -> str:
+    """The ledger's text. A MISSING tracked ledger is an error, never "".
+
+    phase-472 W4: this read `LEDGER.read_text() if LEDGER.exists() else ""`,
+    so deleting (or failing to check out) `.config/interop-verdicts.toml` read
+    as an EMPTY ledger — 25 recorded verdicts erased, `live-peer.yml`'s
+    membership gone, and the gate printing "OK — 0/28 … have ever produced a
+    verdict". An empty ledger is a legitimate state only for a `--ledger`
+    override (a self-test or demo creating one), which passes required=False.
+    """
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    if required:
+        raise LedgerError(
+            f"{_rel(path)} is MISSING. It is a tracked file, and a missing ledger\n"
+            f"  is not an empty one: reading it as empty erases every recorded\n"
+            f"  verdict and empties the live-peer lane that derives from it.\n"
+            f"  Restore it:  git checkout -- {_rel(path)}"
+        )
+    return ""
 
 
 def _rel(p: Path) -> str:
@@ -1367,6 +1391,22 @@ def self_test(verbose: bool = False, tmp: Path | None = None) -> None:
 
     _self_test_case_map(cells, owners, src)
 
+    # phase-472 W4 — a missing TRACKED ledger is an error, not an empty one;
+    # only an override may start empty.
+    with tempfile.TemporaryDirectory() as td:
+        gone = Path(td) / "interop-verdicts.toml"
+        try:
+            read_ledger(gone, required=True)
+        except LedgerError:
+            pass
+        else:
+            raise AssertionError("selftest: a missing tracked ledger read as empty")
+        assert read_ledger(gone, required=False) == "", "selftest: an override must start empty"
+        silent = io.StringIO()
+        assert not require_population(len(load_ledger("")), "verdict(s)", gate="probe",
+                                      out=silent, err=silent), \
+            "selftest: a ledger with no verdicts read as a pass"
+
     problems, stats = evaluate(cells, _OK_LEDGER, src, look, today, owners)
     assert problems == [], f"selftest: rejected a well-formed ledger: {problems}"
     assert stats == {"runtime": 4, "verified": 1, "passed": 1, "failed": 0,
@@ -1854,7 +1894,11 @@ def main(argv: list[str]) -> int:
         print(f"check-interop-verdicts: {e}", file=sys.stderr)
         return 1
     sources = test_sources(cells)
-    text = LEDGER.read_text(encoding="utf-8") if LEDGER.exists() else ""
+    try:
+        text = read_ledger(LEDGER, required=args.ledger is None)
+    except LedgerError as e:
+        print(f"check-interop-verdicts: {e}", file=sys.stderr)
+        return 1
     today = datetime.date.today()
 
     if args.record:
@@ -1981,6 +2025,16 @@ def main(argv: list[str]) -> int:
         )
     except LedgerError as e:
         print(f"check-interop-verdicts: {e}", file=sys.stderr)
+        return 1
+    # phase-472 W4 — print both populations; an empty one is not a pass. A
+    # ledger with no entries is the missing-ledger hole in a different shape
+    # (the lane that derives from it has no membership), so it must be
+    # declared rather than read as OK.
+    ok = require_population(stats["runtime"], "Runtime interop cell(s)",
+                            gate="check-interop-verdicts")
+    ok = require_population(len(load_ledger(text)), f"recorded verdict(s) in {_rel(LEDGER)}",
+                            gate="check-interop-verdicts") and ok
+    if not ok:
         return 1
     if problems:
         print("check-interop-verdicts: the live-peer verdict ledger is wrong\n")
