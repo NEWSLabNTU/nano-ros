@@ -1494,3 +1494,65 @@ narrower fact: the reclaim is a constant ~33.3 G, so the headroom the tier gets
 is set by the arrival state, and `examples` now arrives at 42 G.
 
 Acceptance unchanged.
+
+## FIRST GREEN: the scheduled `gate` reached a verdict, and the reason is the arrival state (2026-09-29)
+
+Run **36511105083** (scheduled `gate`, 02:07:19Z) is **`success`** — 6 jobs green,
+1 skipped. Every step this issue has been waiting on produced a verdict:
+
+| step | |
+| --- | --- |
+| `just check build` (nightly / manual only) | success |
+| `just check no-std` (nightly / manual only) | success |
+| `just test-unit` (completes L1) | success |
+| `just check workspace-all` (host + embedded clippy) | success |
+
+That is this issue's acceptance for the `gate` arm — *"a scheduled run reaching a
+VERDICT on `check build` and `check no-std`"* — met for the first time since the
+issue was filed. Acceptance asks for **three nights running**, so this is night
+one of three, not closure.
+
+### Why it fit, measured rather than inferred
+
+```
+before: 75% used, 38G free — 19G examples; 14G packages/cli/target; 3.5G build
+reclaim: freed 6711 MB; 46077760 KB free          (~43.9 G)
+after:  89% used, 17G free — 19G examples; 16G target; 15G packages/cli/target
+```
+
+The tier spent ~27 G (43.9 → 17) and **finished with 17 G to spare**. Against the
+two nights this issue measured before:
+
+| | 2026-09-27 | 2026-09-28 | **2026-09-29** |
+| --- | --- | --- | --- |
+| before the tier | 86% used, 21G free | 94% used, 9.7G free | **75% used, 38G free** |
+| `packages/cli/target` | 30G | 41G | **14G** |
+| reclaim frees | 6,703 MB | 6,704 MB | **6,711 MB** |
+| post-reclaim headroom | ~27.3G | ~16.2G | **~43.9G** |
+| after the tier | 100%, 272K free | 100%, 264K free | **89%, 17G free** |
+
+**The reclaim did not change** — 6,711 MB, within 8 MB of both earlier nights. What
+changed is the **arrival state**, and within it one directory:
+`packages/cli/target` **41 G → 14 G**, which is what took the starting point from
+94 % to 75 % and the headroom from 16.2 G to 43.9 G.
+
+That is the direction the 2026-09-28 section derived from two points — *"the
+growth is not spread across the checkout, it is `packages/cli/target`, +11 G in a
+day"*, and *"the headroom the tier gets is decided entirely by the arrival
+state"*. This night is the first datum where the arrival state moved the other
+way, and the tier fit. So the remedy this issue has been waiting for is not a
+bigger reclaim: it is whatever keeps that directory from growing, and the
+evidence now runs in both directions.
+
+### What this does NOT say
+
+- Nothing about `host-tests`. Its own acceptance (a push run reaching a tier-1
+  verdict below 100 %) is untouched, and the five deaths recorded above stand —
+  the fifth, run 36496442918, was `check-template-copy-out` and belongs to issue
+  1453, not here.
+- Nothing about `live-peer`, whose arm still waits on a run whose fixture-build
+  step reaches a conclusion.
+- Why `packages/cli/target` shrank is NOT established here. A runner with a
+  different cache state, a cache eviction, and a deliberate change would all look
+  like this from one transcript. Two more green nights would distinguish a fix
+  from a lucky arrival; one would not.
