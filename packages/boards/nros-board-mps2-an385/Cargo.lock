@@ -551,6 +551,7 @@ dependencies = [
  "cc",
  "nros-cc-flags",
  "nros-platform-config",
+ "nros-rmw",
  "nros-rmw-cffi",
  "nros-sizing-descriptor",
  "nros-zephyr-build",

@@ -135,7 +135,11 @@ ros-jazzy = []
 # real image: `nros-node` deps `nros-log` non-optionally, so anything that links
 # an RMW backend already has it.
 nros-log = { workspace = true }
-nros-rmw = { version = "0.5.0", path = "../../../core/nros-rmw", default-features = false }
+# Issue 1577 — `Subscription::supports_process_in_place` is unconditionally
+# `true` here, and this is where that is DECLARED to the build: `nros-node`
+# prices an `in_place` descriptor row at no receive region only when a backend
+# claims it (see `nros-rmw`'s `in-place-dispatch`).
+nros-rmw = { version = "0.5.0", path = "../../../core/nros-rmw", default-features = false, features = ["in-place-dispatch"] }
 # Phase 115.M.3 — vtable register entry (previously shipped from
 # the retired `nros-rmw-zenoh-cffi` shim) now lives in this crate.
 # `RustBackendAdapter` requires `nros-rmw-cffi`'s `alloc` feature
