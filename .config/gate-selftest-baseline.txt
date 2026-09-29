@@ -13,7 +13,6 @@ scripts/check-artifact-identity-budget.sh
 scripts/check-atomic-sync-writes.sh
 scripts/check-book-links.py
 scripts/check-book-no-just.py
-scripts/check-build-profile-literals.sh
 scripts/check-capability-slot-counts.sh
 scripts/check-cargo-config-tracked.sh
 scripts/check-cargo-locked.sh
@@ -24,7 +23,6 @@ scripts/check-cmake-find-program-shadowed.py
 scripts/check-cpp-ffi-error-mapping.py
 scripts/check-deploy-board-resolves.py
 scripts/check-doc-refs.sh
-scripts/check-emitter-just-spelling.sh
 scripts/check-example-leaf-build-dirs.py
 scripts/check-example-matrix.sh
 scripts/check-eyre-context-alias.sh

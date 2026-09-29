@@ -34,11 +34,14 @@
 #ifndef NROS_LOG_SINK
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdio>
+// <stdio.h> + unqualified `::fprintf` (issue 0942 / phase-472 W5): `<cstdio>` need not put
+// the C names in `std` on a freestanding libstdc++, and `std::fprintf` then fails.
+#include <stdio.h>
 #define NROS_LOG_SINK(level, file, line, ...)                                                      \
     do {                                                                                           \
-        ::std::fprintf(stderr, "[" level "] %s:%d ", (file), (line));                              \
-        ::std::fprintf(stderr, __VA_ARGS__);                                                       \
-        ::std::fputc('\n', stderr);                                                                \
+        ::fprintf(stderr, "[" level "] %s:%d ", (file), (line));                                   \
+        ::fprintf(stderr, __VA_ARGS__);                                                            \
+        ::fputc('\n', stderr);                                                                     \
     } while (0)
 #elif defined(NROS_LOG_SINK_DISCARD)
 #define NROS_LOG_SINK(level, file, line, ...) ((void)(level), (void)(file), (void)(line))

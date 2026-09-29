@@ -38,11 +38,15 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import file_kinds  # noqa: E402  phase-472 W5 — populations by kind
 
 # Rust: `nuttx_dir.join("include")` / `nuttx.join("include")` and friends.
 RUST_PAT = re.compile(r'\b\w*(?:nuttx\w*|NUTTX\w*)\s*\.join\(\s*"include"')
 # Shell / CMake / just: `$NUTTX_DIR/include`, `${NUTTX_DIR}/include`.
-SHELL_PAT = re.compile(r'\$\{?NUTTX_DIR\}?/include')
+# phase-472 W5 — and make's `$(NUTTX_DIR)/include` (`integrations/nuttx/Makefile`
+# is a NuttX build input and speaks make, not shell).
+SHELL_PAT = re.compile(r'\$(?:\{NUTTX_DIR\}|\(NUTTX_DIR\)|NUTTX_DIR)/include')
 
 # Issue 0551 — RUST_PAT keys on the receiver's NAME, and the rule is about its
 # VALUE. `nros-zpico-build` wrote
@@ -122,19 +126,13 @@ SUFFIXES = (".rs", ".sh", ".py", ".cmake", ".just", ".txt", ".toml")
 
 
 def tracked_files():
-    out = subprocess.run(
-        # Issue 0551 — `config/` and the repo-root `CMakeLists.txt` joined this
-        # list because the two sites that took the NuttX lane down were in
-        # trees the gate never opened: a `config/nuttx/nros-platform.toml` row
-        # and root `CMakeLists.txt`'s `${NUTTX_DIR}/include`. The SHELL_PAT
-        # would have matched the latter on sight; it was never handed the file.
-        # A gate's SCOPE is part of the rule it enforces.
-        ["git", "-C", ROOT, "ls-files", "--",
-         "packages", "scripts", "cmake", "just", "justfile", "config",
-         "CMakeLists.txt"],
-        capture_output=True, text=True, check=True,
-    ).stdout.split()
-    return [f for f in out if f.endswith(SUFFIXES) or f == "justfile"]
+    # phase-472 W5 — every build-input file by KIND (`file_kinds`), not a
+    # directory list: `examples/` and `integrations/` are NuttX build inputs
+    # too, and the list (`packages scripts cmake just config …`) never opened
+    # them. Issue 0551 had already found two sites "in trees the gate never
+    # opened"; a directory list re-creates that the next time one moves.
+    return file_kinds.files_of_kind(
+        "rust", "shell", "python", "cmake", "just", "toml", "make", repo=ROOT)
 
 
 def offenders(files):
@@ -183,6 +181,16 @@ def offenders(files):
 def self_test():
     """Both directions. A checker that stopped checking passes silently, which
     is the failure shape this gate exists for."""
+    # phase-472 W5 — the population reaches examples/ and the make integration,
+    # and make's `$(NUTTX_DIR)` spelling is the same read.
+    files = set(tracked_files())
+    if "integrations/nuttx/Makefile" not in files or not any(
+            f.startswith("examples/") for f in files):
+        sys.stderr.write("self-test: the population does not reach examples/ / integrations/\n")
+        sys.exit(2)
+    if not SHELL_PAT.search("CFLAGS += -isystem $(NUTTX_DIR)/include"):
+        sys.stderr.write("self-test: make's $(NUTTX_DIR)/include was not matched\n")
+        sys.exit(2)
     tmp_root = os.path.join(ROOT, "tmp")
     os.makedirs(tmp_root, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=tmp_root) as d:

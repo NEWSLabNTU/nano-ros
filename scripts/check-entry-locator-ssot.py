@@ -44,6 +44,8 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import file_kinds  # noqa: E402  phase-472 W5 — populations by kind
 
 # THE SSoT. The only file permitted to spell an entry-locator literal.
 SSOT = "cmake/NanoRosEntryLocator.cmake"
@@ -85,6 +87,21 @@ SYNC_NOTE = re.compile(r"keep\s+(?:it\s+|them\s+)?in\s+sync", re.IGNORECASE)
 ALLOWED_LITERALS = {
     "cmake/board/nano-ros-board-threadx-linux.cmake",
     "cmake/board/nano-ros-board-rv-virt-threadx.cmake",
+}
+
+
+# (file, RHS variable) -> why that write is an INPUT, not a second producer.
+# Keyed on the exact variable, so any other write in the file is still judged.
+#
+# Found when phase-472 W5 widened the population from `cmake/**` to every CMake
+# file: `nano_rosConfig.cmake` writes the locator a standalone leaf's
+# `system.toml` DECLARES (RFC-0098 D5), guarded `NOT DEFINED
+# NROS_ENTRY_LOCATOR` — the same standing as an explicit `-D`, which wins over
+# the resolver's per-platform defaults. It carries no literal and invents no
+# default; it is the user's value arriving by another door.
+INPUT_WRITES = {
+    ("nano_rosConfig.cmake", "NANO_ROS_LEAF_LOCATOR"):
+        "the leaf's system.toml declares it (RFC-0098 D5); an input like -D, not a default",
 }
 
 
@@ -136,7 +153,7 @@ def analyze(files):
                         )
                     continue
                 rhs = m.group(1)
-                if rhs not in out_vars:
+                if rhs not in out_vars and (path, rhs) not in INPUT_WRITES:
                     problems.append(
                         f"{path}:{n}: NROS_ENTRY_LOCATOR is written from "
                         f"${{{rhs}}}, which no {RESOLVER}() call in this file "
@@ -184,6 +201,22 @@ def selftest():
                 file=sys.stderr,
             )
             sys.exit(1)
+
+    # phase-472 W5 — the population is every CMake file, and the one input
+    # exemption covers exactly its variable.
+    names = set(cmake_files())
+    if not {"nano_rosConfig.cmake", "zephyr/CMakeLists.txt"} <= names:
+        print("FAIL: check-entry-locator-ssot selftest: the CMake population does not reach "
+              "nano_rosConfig.cmake / zephyr/", file=sys.stderr)
+        sys.exit(1)
+    expect("the leaf's declared locator is an input",
+           {"nano_rosConfig.cmake": 'set(NROS_ENTRY_LOCATOR "${NANO_ROS_LEAF_LOCATOR}")\n'}, False)
+    expect("another variable in the same file is still a second producer",
+           {"nano_rosConfig.cmake": 'set(NROS_ENTRY_LOCATOR "${MY_DEFAULT}")\n'}, True,
+           "second producer")
+    expect("a literal in zephyr/ is a second producer",
+           {"zephyr/CMakeLists.txt": 'set(NROS_ENTRY_LOCATOR "tcp/10.0.2.2:7447")\n'}, True,
+           "locator literal")
 
     clean = (
         '    _nros_resolve_entry_locator(entry\n'
@@ -242,15 +275,17 @@ def selftest():
 
 
 def cmake_files():
-    # `--others --exclude-standard` alongside `--cached`: a second producer
-    # added but not yet committed must red NOW, while the author is looking at
-    # it, not on someone else's push. Ignored paths stay out, so build trees
-    # under cmake/ (there are none today) could never leak in.
-    out = subprocess.run(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard",
-         "cmake/*.cmake", "cmake/**/*.cmake"],
+    # phase-472 W5 — every CMake file by KIND (`file_kinds`), not `cmake/**`:
+    # the locator is written wherever CMake runs — `nano_rosConfig.cmake`,
+    # `zephyr/`, `packages/**/cmake` — and a second producer there was unread.
+    # Untracked-but-not-ignored CMake files join: a second producer added and
+    # not yet committed must red NOW, while the author is looking at it.
+    out = file_kinds.files_of_kind("cmake", repo=ROOT)
+    others = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
         cwd=ROOT, capture_output=True, text=True, check=True,
     ).stdout.split()
+    out += [p for p in others if "cmake" in file_kinds.kind_of(p)]
     files = {}
     for rel in sorted(set(out)):
         p = os.path.join(ROOT, rel)

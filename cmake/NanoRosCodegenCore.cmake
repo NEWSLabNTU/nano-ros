@@ -895,6 +895,7 @@ function(_nros_ffi_cargo_args _out)
     if(_A_PROFILE STREQUAL "dev")
         # cargo's default profile — no flag
     elseif(_A_PROFILE STREQUAL "release")
+        # profile-literal-ok: flag mapping — the dev/release/custom translation of the RESOLVED profile
         list(APPEND _args --release)
     elseif(_A_PROFILE)
         list(APPEND _args --profile ${_A_PROFILE})

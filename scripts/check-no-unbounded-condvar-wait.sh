@@ -21,26 +21,86 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-ALLOWED='packages/rmw/zenoh/zpico-sys/c/zpico/platform_aliases.c'
+# phase-472 W5 — the population is every tracked Rust and C/C++ file, by KIND
+# (`scripts/lib/file_kinds.py`), not `packages/{core,rmw,api}`: "the next
+# backend or port" is this gate's stated risk, and ports live in
+# `packages/platform/` and `packages/boards/`, which it never read. Reading
+# them means telling a CALL from the DEFINITIONS every port carries, so the
+# classification moved into Python below; exemptions stay keyed on the path.
+exec python3 - "$@" <<'PY'
+import os, re, sys
+sys.path.insert(0, os.path.join("scripts", "lib"))
+import file_kinds, comments
 
-# Match the call, never the bounded `_until` sibling and never a declaration.
-# `git grep` — an index lookup, not a filesystem walk (check-no-tracked-file-find).
-hits="$(git grep -n -e 'nros_platform_condvar_wait[^_a-zA-Z]' -- \
-    'packages/core/**/*.rs' 'packages/core/**/*.c' 'packages/core/**/*.cpp' \
-    'packages/core/**/*.h' 'packages/core/**/*.hpp' \
-    'packages/rmw/**/*.rs' 'packages/rmw/**/*.c' 'packages/rmw/**/*.cpp' \
-    'packages/rmw/**/*.h' 'packages/rmw/**/*.hpp' \
-    'packages/api/**/*.rs' 'packages/api/**/*.c' 'packages/api/**/*.cpp' \
-    'packages/api/**/*.h' 'packages/api/**/*.hpp' 2>/dev/null \
-    | grep -v "^${ALLOWED}:" || true)"
+NAME = "nros_platform_condvar_wait"
+# path -> why a CALL there is correct.
+ALLOWED = {
+    "packages/rmw/zenoh/zpico-sys/c/zpico/platform_aliases.c":
+        "implements zenoh-pico's `_z_condvar_wait`, whose CONTRACT is unbounded",
+    "packages/platform/nros-platform-cffi/src/lib.rs":
+        "the Rust face of the primitive itself: `condvar_wait` forwards to the C symbol",
+}
+USE = re.compile(rf"\b{NAME}\s*\(")
+# A definition or declaration: a type (or `fn`) directly before the name.
+DEF_PREFIX = re.compile(r"(?:\bfn\s+|^\s*(?:(?:static|inline|extern|const|unsigned|signed)\s+)*"
+                        r"[A-Za-z_][\w:]*[\s*]+)$")
 
-if [ -n "$hits" ]; then
-    echo "check-no-unbounded-condvar-wait: the UNBOUNDED condvar wait is called outside the zenoh-pico alias shim:" >&2
-    printf '%s\n' "$hits" | sed 's/^/  /' >&2
-    echo >&2
-    echo '  nros_platform_condvar_wait has no deadline. Use' >&2
-    echo '  nros_platform_condvar_wait_until (absolute ms deadline), or the' >&2
-    echo "  executor's nros_platform_wake_wait_ms. See issue 1196, phase-436 W5." >&2
-    exit 1
-fi
-echo "check-no-unbounded-condvar-wait OK (confined to the zenoh-pico alias shim)."
+
+def calls(text, lang):
+    code = comments.strip_comments(text, lang, strings=True)
+    out = []
+    for m in USE.finditer(code):
+        bol = code.rfind("\n", 0, m.start()) + 1
+        prefix = code[bol:m.start()]
+        if DEF_PREFIX.search(prefix) and prefix.strip() not in ("return", "else"):
+            continue
+        out.append((code.count("\n", 0, m.start()) + 1, text.splitlines()[code.count("\n", 0, m.start())].strip()))
+    return out
+
+
+def self_test():
+    c = ("int8_t nros_platform_condvar_wait(void *cv, void *m);\n"
+         "int8_t nros_platform_condvar_wait(void *cv, void *m) { return 0; }\n"
+         "static int f(void *c, void *m) { return nros_platform_condvar_wait(c, m); }\n"
+         "  rc = nros_platform_condvar_wait(c, m);\n"
+         "  /* nros_platform_condvar_wait(c, m); */\n")
+    got = [l for l, _t in calls(c, "c")]
+    assert got == [3, 4], got
+    rs = ("pub extern \"C\" fn nros_platform_condvar_wait(cv: *mut c_void) -> i8 { 0 }\n"
+          "unsafe { nros_platform_condvar_wait(cv, m) }\n")
+    assert [l for l, _t in calls(rs, "rust")] == [2], calls(rs, "rust")
+    file_kinds.self_test()
+
+
+self_test()
+files = file_kinds.files_of_kind("rust", "c-family")
+print(f"check-no-unbounded-condvar-wait: examined {len(files)} Rust/C/C++ file(s)")
+if not files:
+    sys.exit("check-no-unbounded-condvar-wait: empty population")
+hits, seen = [], set()
+for rel in files:
+    try:
+        text = open(rel, encoding="utf-8", errors="replace").read()
+    except OSError:
+        continue
+    if NAME not in text:
+        continue
+    lang = "rust" if rel.endswith(".rs") else "c"
+    for line, src in calls(text, lang):
+        if rel in ALLOWED:
+            seen.add(rel)
+            continue
+        hits.append(f"  {rel}:{line}: {src}")
+stale = sorted(set(ALLOWED) - seen)
+if hits or stale:
+    if hits:
+        print("check-no-unbounded-condvar-wait: the UNBOUNDED condvar wait is called outside its sanctioned bridges:", file=sys.stderr)
+        print("\n".join(hits), file=sys.stderr)
+        print("\n  nros_platform_condvar_wait has no deadline. Use\n"
+              "  nros_platform_condvar_wait_until (absolute ms deadline), or the\n"
+              "  executor's nros_platform_wake_wait_ms. See issue 1196, phase-436 W5.", file=sys.stderr)
+    for s_ in stale:
+        print(f"check-no-unbounded-condvar-wait: STALE exemption {s_} — it calls nothing; delete it.", file=sys.stderr)
+    sys.exit(1)
+print("check-no-unbounded-condvar-wait OK (confined to its sanctioned bridges).")
+PY

@@ -50,7 +50,8 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BOARDS = os.path.join(ROOT, "packages", "boards")
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import file_kinds  # noqa: E402  phase-472 W5 — populations by kind
 
 NAMES_RE = re.compile(r"^\s*names\s*=\s*\[(.*?)\]", re.M | re.S)
 
@@ -81,14 +82,22 @@ def offending(names):
     return sorted(w for w in WIDE if w in names)
 
 
+def descriptors():
+    return file_kinds.files_of_kind(
+        "board-descriptor", repo=ROOT,
+        exclude_parts=file_kinds.DEFAULT_EXCLUDE_PARTS + ("tests",))
+
+
 def check():
     problems = []
-    if not os.path.isdir(BOARDS):
-        raise SystemExit(f"check-host-platform-vocabulary: no {BOARDS}")
-    for entry in sorted(os.listdir(BOARDS)):
-        path = os.path.join(BOARDS, entry, "nros-board.toml")
-        if not os.path.isfile(path):
-            continue
+    # phase-472 W5 — every board descriptor by KIND, not `packages/boards/*/`
+    # at depth 1: `nros-board-zephyr/boards/fvp-aemv8r-smp/` is a board too.
+    # CLI test fixtures (a `tests/` dir) are synthetic and excluded.
+    files = descriptors()
+    if not files:
+        raise SystemExit("check-host-platform-vocabulary: no board descriptors found")
+    for rel in files:
+        path = os.path.join(ROOT, rel)
         with open(path, encoding="utf8") as fh:
             text = fh.read()
         # Comments legitimately quote the old list to explain it; strip them.
@@ -113,6 +122,8 @@ def self_test():
         (["threadx", "threadx-linux"], []),  # compound id, not the bare word
     ]
     fails = []
+    if "packages/boards/nros-board-zephyr/boards/fvp-aemv8r-smp/nros-board.toml" not in descriptors():
+        fails.append("the nested FVP board descriptor is not in the population")
     for names, want in cases:
         got = offending(names)
         if got != want:

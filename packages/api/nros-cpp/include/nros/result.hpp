@@ -17,6 +17,9 @@
 #include "nros/traits.hpp"
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdio>
+// <stdio.h> + unqualified `::fprintf` (issue 0942 / phase-472 W5): `<cstdio>` need not put
+// the C names in `std` on a freestanding libstdc++, and `std::fprintf` then fails.
+#include <stdio.h>
 #endif
 
 /// `NROS_NODISCARD` — `[[nodiscard]]` where the compiler has it, and nothing
@@ -275,7 +278,7 @@ using Result = ResultOf<void>;
 #ifndef NROS_TRY_LOG
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #define NROS_TRY_LOG(file, line, expr, ret)                                                        \
-    ::std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+    ::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 #else
 #define NROS_TRY_LOG(file, line, expr, ret) ((void)(file), (void)(line), (void)(expr), (void)(ret))
 #endif

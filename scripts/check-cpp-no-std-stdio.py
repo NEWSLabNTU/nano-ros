@@ -47,19 +47,18 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+import file_kinds  # noqa: E402  phase-472 W5 — populations by kind
 
-# Library trees compiled for freestanding targets. Globs are matched against the
-# repo-relative path of every TRACKED C/C++ source.
-LIBRARY_GLOBS = (
-    "packages/rmw/*/*/src/**",
-    "packages/api/*/src/**",
-    "packages/core/*/src/**",
-    "packages/boards/*/c/**",
-    "packages/boards/*/cpp/**",
-    "packages/drivers/*/*/src/**",
-)
+# The population, by FILE KIND (phase-472 W5): every tracked C/C++ file under
+# `packages/` — library code, headers included. The directory globs this
+# replaced (`packages/*/*/src/**`, `boards/*/c/**`, …) read 73 of 285 files and
+# none of the 62 public `nros-cpp` headers, which carried eight `::std::fprintf`
+# calls. Stated narrowing, each host-only: `tests/`/`test/` dirs, the test
+# harness (`packages/testing/`), and the host CLI (`packages/cli/`).
+HOST_ONLY_PARTS = ("tests", "test")
+HOST_ONLY_PREFIXES = ("packages/testing/", "packages/cli/")
 
-SUFFIXES = {".c", ".cc", ".cpp", ".h", ".hpp"}
 
 # `<cstdio>` names that a freestanding libstdc++ is not obliged to put in `std`.
 STDIO = (
@@ -72,21 +71,18 @@ EXEMPT = "nros-allow-std-stdio"
 
 
 def tracked_sources():
-    out = subprocess.run(
-        ["git", "ls-files", "-z", *[g.replace("/**", "/*") for g in ()]],
-        cwd=REPO, capture_output=True, text=True, check=True,
-    ).stdout
-    for name in out.split("\0"):
-        if name and Path(name).suffix in SUFFIXES:
-            yield name
+    return file_kinds.files_of_kind(
+        "c-family", repo=REPO,
+        exclude_parts=file_kinds.DEFAULT_EXCLUDE_PARTS + HOST_ONLY_PARTS,
+        exclude_prefixes=HOST_ONLY_PREFIXES,
+    )
 
 
 def in_library_tree(rel: str) -> bool:
-    p = Path(rel)
-    if "/tests/" in f"/{rel}" or "/test/" in f"/{rel}":
-        return False
-    return any(p.match(g) or p.match(g.replace("/**", "/*/*")) or p.match(g.replace("/**", "/*"))
-               for g in LIBRARY_GLOBS)
+    parts = rel.split("/")[:-1]
+    return (rel.startswith("packages/")
+            and not set(HOST_ONLY_PARTS).intersection(parts)
+            and not rel.startswith(HOST_ONLY_PREFIXES))
 
 
 def violations_in(text: str):
@@ -104,9 +100,11 @@ def violations_in(text: str):
 
 def check() -> int:
     bad = []
-    for rel in tracked_sources():
-        if not in_library_tree(rel):
-            continue
+    files = [r for r in tracked_sources() if in_library_tree(r)]
+    if not files:
+        print("check-cpp-no-std-stdio: examined 0 library C/C++ files — refusing to pass")
+        return 1
+    for rel in files:
         try:
             text = (REPO / rel).read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -115,8 +113,8 @@ def check() -> int:
             bad.append((rel, lineno, line))
 
     if not bad:
-        print("check-cpp-no-std-stdio: OK (no `std::`-qualified stdio in a "
-              "cross-compiled library TU)")
+        print(f"check-cpp-no-std-stdio: OK ({len(files)} library C/C++ file(s), no "
+              "`std::`-qualified stdio)")
         return 0
 
     print("check-cpp-no-std-stdio: FAIL\n")
@@ -156,6 +154,12 @@ def self_test(quiet: bool = False) -> int:
            in_library_tree("packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/x.cpp"), False)
     expect("examples excluded",
            in_library_tree("examples/native/cpp/parameters/src/main.cpp"), False)
+    # phase-472 W5 — a PUBLIC header is library code, and the population has it.
+    expect("public header matches",
+           in_library_tree("packages/api/nros-cpp/include/nros/log.hpp"), True)
+    expect("public header is in the population",
+           "packages/api/nros-cpp/include/nros/log.hpp" in tracked_sources(), True)
+    expect("the test harness is not", in_library_tree("packages/testing/x/src/a.cpp"), False)
 
     if not quiet or not ok:
         print("check-cpp-no-std-stdio --self-test: OK" if ok

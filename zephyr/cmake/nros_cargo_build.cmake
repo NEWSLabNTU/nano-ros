@@ -1825,6 +1825,7 @@ function(nros_cargo_build)
     )
     if(_nros_cargo_profile STREQUAL "dev")
     elseif(_nros_cargo_profile STREQUAL "release")
+        # profile-literal-ok: flag mapping — the dev/release/custom translation of the RESOLVED profile
         list(APPEND CARGO_ARGS --release)
     else()
         list(APPEND CARGO_ARGS --profile ${_nros_cargo_profile})

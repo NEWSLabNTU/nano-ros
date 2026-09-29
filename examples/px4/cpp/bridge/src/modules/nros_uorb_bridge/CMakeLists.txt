@@ -41,6 +41,7 @@ if(DEFINED NROS_PX4_BRIDGE_FFI_ARCHIVE AND NOT "${NROS_PX4_BRIDGE_FFI_ARCHIVE}" 
 elseif(NOT "$ENV{NROS_PX4_BRIDGE_FFI_ARCHIVE}" STREQUAL "")
     set(_ffi_a "$ENV{NROS_PX4_BRIDGE_FFI_ARCHIVE}")
 else()
+    # profile-literal-ok: prebuilt archive — PX4 links it; the default path names the release one
     set(_ffi_a "${CMAKE_CURRENT_LIST_DIR}/../../../ffi/target-bridge-ffi/release/libnros_px4_bridge_ffi.a")
 endif()
 
@@ -49,6 +50,7 @@ if(NOT EXISTS "${_ffi_a}")
         "nros_uorb_bridge: the generated-message FFI archive is missing:\n"
         "    ${_ffi_a}\n"
         "Build it (its build.rs reads NROS_PX4_BRIDGE_GEN):\n"
+        # profile-literal-ok: prebuilt archive — the instruction that builds it
         "    NROS_PX4_BRIDGE_GEN=${_gen} cargo build --release \\\n"
         "        --manifest-path examples/px4/cpp/bridge/ffi/Cargo.toml\n"
         "or just run:  just px4 build-bridge-example")
