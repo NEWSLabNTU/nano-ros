@@ -56,6 +56,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import file_kinds  # noqa: E402  phase-472 W5 — populations by kind
 LIST = ROOT / "config" / "rust-targets.txt"
 INDEX = ROOT / "nros-sdk-index.toml"
 
@@ -71,10 +73,19 @@ def declared_rows():
         ).stdout
         return [p for p in out.split("\0") if p]
 
-    for rel in tracked("packages/boards/*/nros-board.toml"):
+    # phase-472 W5 — every board descriptor by KIND (nested boards included;
+    # CLI test fixtures excluded), and BOTH declaring forms: a `[target.X]`
+    # table and a `rust_targets = [...]` list. The list form (the FVP board's
+    # `aarch64-unknown-none`) was never read, so a triple added there had no
+    # row to want.
+    for rel in file_kinds.files_of_kind(
+            "board-descriptor", repo=ROOT,
+            exclude_parts=file_kinds.DEFAULT_EXCLUDE_PARTS + ("tests",)):
         text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
         for m in re.finditer(r"^\[target\.([^\]]+)\]", text, re.M):
             rows.append((m.group(1), rel))
+        for m in re.finditer(r"^\s*rust_targets\s*=\s*\[([^\]]*)\]", text, re.M):
+            rows += [(t, rel) for t in re.findall(r'"([^"]+)"', m.group(1))]
 
     for rel in tracked("cmake/toolchain/*.cmake"):
         text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
@@ -294,6 +305,11 @@ def self_test():
     time, so the other two would ship unproven. Issue 0942's lesson: a gate that
     has never been shown to fail is not known to work."""
     ok = True
+    # phase-472 W5 — the nested FVP board's `rust_targets` list is a declaration.
+    fvp = "packages/boards/nros-board-zephyr/boards/fvp-aemv8r-smp/nros-board.toml"
+    if not any(src == fvp for _t, src in declared_rows()):
+        print(f"  self-test FAIL: {fvp}'s rust_targets are not read")
+        ok = False
 
     def case(name, have, known, want_rc):
         nonlocal ok

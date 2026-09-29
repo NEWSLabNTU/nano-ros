@@ -17,6 +17,9 @@
 #include <cstdlib> // getenv — Phase 123.B.3 env-aware init
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdio> // fopen — Phase 212.L.5 init_with_launch path-exists check
+// <stdio.h> + unqualified `::fprintf` (issue 0942 / phase-472 W5): `<cstdio>` need not put
+// the C names in `std` on a freestanding libstdc++, and `std::fprintf` then fails.
+#include <stdio.h>
 #endif
 #endif
 
@@ -332,9 +335,9 @@ inline void report_component_failure(const char* node_name, const char* what, in
     NROS_ERROR("node \"%s\": FAILED at %s (code=%d)", (node_name != nullptr) ? node_name : "?",
                (what != nullptr) ? what : "?", static_cast<int>(code));
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
-    ::std::fprintf(stderr, "[nros] FATAL: node \"%s\" failed to construct at %s (code=%d)\n",
-                   (node_name != nullptr) ? node_name : "?", (what != nullptr) ? what : "?",
-                   static_cast<int>(code));
+    ::fprintf(stderr, "[nros] FATAL: node \"%s\" failed to construct at %s (code=%d)\n",
+              (node_name != nullptr) ? node_name : "?", (what != nullptr) ? what : "?",
+              static_cast<int>(code));
 #endif
 }
 
@@ -357,14 +360,14 @@ inline void report_declared_depth_mismatch(const char* node_name, const char* to
                (node_name != nullptr) ? node_name : "?", (topic != nullptr) ? topic : "?", declared,
                passed);
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
-    ::std::fprintf(stderr,
-                   "[nros] FATAL: node \"%s\": topic \"%s\" was DECLARED depth %d in "
-                   "the contract sidecar (<stem>.contract.yaml) but the QoS passed to "
-                   "create_subscription_in states depth %d. Depth multiplies the executor "
-                   "arena (cost is (depth+1)*bound per subscription), so the two must agree. "
-                   "Fix the contract row or the call site.\n",
-                   (node_name != nullptr) ? node_name : "?", (topic != nullptr) ? topic : "?",
-                   declared, passed);
+    ::fprintf(stderr,
+              "[nros] FATAL: node \"%s\": topic \"%s\" was DECLARED depth %d in "
+              "the contract sidecar (<stem>.contract.yaml) but the QoS passed to "
+              "create_subscription_in states depth %d. Depth multiplies the executor "
+              "arena (cost is (depth+1)*bound per subscription), so the two must agree. "
+              "Fix the contract row or the call site.\n",
+              (node_name != nullptr) ? node_name : "?", (topic != nullptr) ? topic : "?", declared,
+              passed);
 #else
     (void)node_name;
     (void)topic;
@@ -396,19 +399,19 @@ inline void report_declared_param_mismatch(const char* fqn, const char* param, c
     }
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
     if (declared == ::nros::DECLARED_PARAM_UNDECLARED) {
-        ::std::fprintf(stderr,
-                       "[nros] FATAL: node \"%s\": parameter \"%s\" is not declared in its "
-                       "contract (%s, `params:`). The parameter store is sized from that "
-                       "declaration, so a parameter it does not name has no slot. Declare it "
-                       "there with its type, or stop declaring it in the code.\n",
-                       f, p, c);
+        ::fprintf(stderr,
+                  "[nros] FATAL: node \"%s\": parameter \"%s\" is not declared in its "
+                  "contract (%s, `params:`). The parameter store is sized from that "
+                  "declaration, so a parameter it does not name has no slot. Declare it "
+                  "there with its type, or stop declaring it in the code.\n",
+                  f, p, c);
     } else {
-        ::std::fprintf(stderr,
-                       "[nros] FATAL: node \"%s\": parameter \"%s\" is declared `%s` in its "
-                       "contract (%s) but the code declares it as `%s`. Fix the contract or "
-                       "the code so they state one type.\n",
-                       f, p, ::nros::declared_param_type_name(declared), c,
-                       ::nros::declared_param_type_name(passed));
+        ::fprintf(stderr,
+                  "[nros] FATAL: node \"%s\": parameter \"%s\" is declared `%s` in its "
+                  "contract (%s) but the code declares it as `%s`. Fix the contract or "
+                  "the code so they state one type.\n",
+                  f, p, ::nros::declared_param_type_name(declared), c,
+                  ::nros::declared_param_type_name(passed));
     }
 #endif
 }
@@ -2785,8 +2788,8 @@ inline Result init_with_launch(const char* path, int argc, char** argv, const ch
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
     // Verify the file exists so misspelled paths fail fast at init time
     // instead of surfacing as a silently-empty overlay later.
-    if (FILE* f = std::fopen(path, "rb")) {
-        std::fclose(f);
+    if (FILE* f = ::fopen(path, "rb")) {
+        ::fclose(f);
     } else {
         return Result(ErrorCode::NotInitialized);
     }

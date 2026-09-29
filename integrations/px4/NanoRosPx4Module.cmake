@@ -83,12 +83,14 @@ function(_nros_px4_resolve_archive OUT_VAR CACHE_VAR ENV_VAR DEFAULT_PATH BUILD_
 endfunction()
 
 _nros_px4_resolve_archive(_NROS_PX4_CPP_A NROS_CPP_ARCHIVE NROS_CPP_ARCHIVE
+    # profile-literal-ok: prebuilt archive — PX4 links it; the default path names the release one
     "${NANO_ROS_ROOT}/target/release/libnros_cpp.a"
     # Issue 0436 — a MULTI-RMW module (a uORB->RMW bridge) additionally needs the
     # `bridge` feature, which is what puts `nros_init_multi` / `nros_pubsub_bridge_*`
     # (the ABI `<nros/bridge.hpp>`'s MultiExecutor calls) into this archive:
     #   cargo build -p nros-cpp --no-default-features \
     #       --features std,rmw-zenoh-cffi,bridge --release
+    # profile-literal-ok: prebuilt archive — the instruction that builds it
     "cargo build -p nros-cpp --no-default-features --features std,rmw-cffi --release")
 
 _nros_px4_resolve_archive(_NROS_PX4_PLATFORM_A NROS_PLATFORM_ARCHIVE NROS_PLATFORM_ARCHIVE
@@ -197,6 +199,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/NanoRosArchivePairing.cmake)
 # file scope BACKENDS is not yet known, so the hint says both rather than
 # guessing one.
 set(_NROS_PX4_REBUILD_HINT
+    # profile-literal-ok: prebuilt archive — the instruction that builds it
     "cargo build -p nros-cpp --no-default-features --features std,rmw-cffi,platform-posix --release\n"
     "    (a uORB->RMW BRIDGE module instead wants: --features std,rmw-<zenoh|xrce|cyclonedds>-cffi,bridge,platform-posix)\n"
     "    Whichever you run, it rewrites the header and the archive together -- that is the point.")
@@ -477,6 +480,7 @@ function(nros_px4_add_module)
                     "does not define nros_rmw_${_nb}_register. Rebuild it "
                     "with that backend:\n"
                     "    cargo build -p nros-cpp --no-default-features "
+                    # profile-literal-ok: prebuilt archive — the instruction that builds it
                     "--features std,rmw-${_nb}-cffi --release")
             endif()
         endforeach()
@@ -504,6 +508,7 @@ function(nros_px4_add_module)
                     "1050).\n"
                     "Rebuild the archive for THIS module:\n"
                     "    cargo build -p nros-cpp --no-default-features "
+                    # profile-literal-ok: prebuilt archive — the instruction that builds it
                     "--features std,rmw-cffi,platform-posix --release\n"
                     "or, from the repo root, just:\n"
                     "    just px4 build-sitl-example\n"

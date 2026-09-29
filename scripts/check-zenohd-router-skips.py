@@ -35,6 +35,8 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import file_kinds  # noqa: E402  phase-472 W5
 
 CALL = re.compile(r"(?:[A-Za-z_][A-Za-z0-9_]*::)*ZenohRouter::start[a-z_]*")
 # What must not follow the call. `unwrap_or_else(|e| skip!(...))` is NOT here on
@@ -95,11 +97,8 @@ def sources():
     and the gate reported OK. A directory list is a claim about where the
     subject lives, and the subject moved.
     """
-    listing = subprocess.run(
-        ["git", "-C", ROOT, "ls-files", "-z", "*.rs"],
-        capture_output=True, text=True, check=False,
-    ).stdout.split("\0")
-    return [f for f in listing if f.endswith(".rs")]
+    # phase-472 W5 — the shared by-kind population (vendored and generated out).
+    return file_kinds.files_of_kind("rust", repo=ROOT)
 
 
 def self_test():

@@ -1,6 +1,6 @@
 # Phase 472 — gate reach sweep
 
-**Status (2026-09-29). AUDIT LANDED; W5, W7, W8 open.** (W1, W2, W3, W4, W6, W9 done — see each.) An audit of every tracked
+**Status (2026-09-29). AUDIT LANDED; W7, W8 open.** (W1–W6, W9 done — see each.) An audit of every tracked
 `scripts/check-*` gate against one question, the codebase-audit checklist's **I6
 second-order** rule: *a gate must be able to fail on the case it names.*
 
@@ -401,6 +401,73 @@ including the 62 public nros-cpp headers), `check-zenohd-router-skips` (P2,
 
 **Fix:** derive populations from `git ls-files` by FILE KIND, never from a
 directory list. A gate that legitimately scopes narrower states the scope and why.
+
+**Status: DONE.** `scripts/lib/file_kinds.py` — `files_of_kind(*kinds,
+exclude_parts=, exclude_prefixes=, include_generated=False)` over one cached
+`git ls-files` (run with a cleaned git env), kinds `c`, `cpp`, `c-family`,
+`cmake`, `rust`, `shell`, `python`, `make`, `toml`, `markdown`, `yaml`,
+`board-descriptor`, and the graph kinds `just` (W2's justfile graph) and `ci`
+(W1's workflows + actions). Vendored `third-party/` and `generated/` are out by
+default; an unknown kind raises; the CLI (`-z`, `--exclude-part`,
+`--exclude-prefix`) serves shell gates and fails on an empty result. Its
+self-test builds a temp repo and runs on every use.
+
+| member | mutation (confirmed applied by `git diff`) | before | after |
+| --- | --- | ---: | ---: |
+| `emitter-just-spelling` | a bare `just setup-cli` message in `zephyr/CMakeLists.txt`; in a `packages/drivers` Rust string | 0 / 0 | 1 / 1 |
+| `cpp-no-std-stdio` | none needed — LIVE: 8 `::std::fprintf`/`fputc` in 3 public `nros-cpp` headers | 0 | 1 |
+| `no-unbounded-condvar-wait` | a `nros_platform_condvar_wait(` call in the FreeRTOS port | 0 | 1 |
+| `entry-locator-ssot` | `set(NROS_ENTRY_LOCATOR "tcp/10.0.2.2:7447")` in `zephyr/CMakeLists.txt` | 0 | 1 |
+| `third-party-is-submodules` | `${NANO_ROS_ROOT}/third-party/ninja` in `zephyr/`; `third-party/make/make` in `activate.sh`; `"third-party/zenoh/zenoh"` in a `build.rs` | 0 / 0 / 0 | 1 / 1 / 1 |
+| `nuttx-shared-tree-headers` | `$(NUTTX_DIR)/include` in `integrations/nuttx/Makefile`; `${NUTTX_DIR}/include` in an `examples/` CMakeLists | 0 / 0 | 1 / 1 |
+| `host-platform-vocabulary` | `names = ["linux", "posix", …]` in the nested FVP board | 0 | 1 |
+| `rust-targets-covered` | an unlisted triple in the FVP board's `rust_targets = [...]` | 0 | 1 |
+| `build-profile-literals` | `cargo build --release` in `zephyr/CMakeLists.txt`; a `…/release/` path in `integrations/px4` | 0 / 0 | 1 / 1 |
+
+Verified already fixed by earlier PRs (the same kind of mutation fails them
+today): `zenohd-router-skips` (issue 1544; moved onto `files_of_kind("rust")`
+anyway), `doc-recipe-refs` (issue 1545, every tracked `.md`), `markdown-links`
+(#1402), `no-vacuous-tests` (#1412), `feature-set-ssot` (#1413), `cc-build-policy`
+(#1433, its own reach row), and by reading, `board-facts-delivery` (#1441) and
+`weak-symbols` (#1403), which walk the whole index.
+
+Each member gained a normal-path reach control (the file the old list missed is
+in the population, or a synthetic one is judged); `emitter-just-spelling` and
+`build-profile-literals` had no self-test and left the baseline (88 → 86).
+
+Live defects the widened gates surfaced, fixed here:
+- `emitter-just-spelling`: three user-facing messages named a bare recipe —
+  two of them naming recipes that do not exist (`setup-freertos` and
+  `setup-threadx`, in `packages/drivers/net/{lan9118-lwip,virtio-net-netx}`)
+  and `zephyr/cmake/nros_system_generate.cmake`'s `just setup-cli`. Each now
+  names `./scripts/bootstrap.sh` with the contributor spelling beside it.
+- `cpp-no-std-stdio`: `log.hpp`, `result.hpp`, `node.hpp` called
+  `::std::fprintf` / `::std::fputc` (and `std::fopen`/`fclose`) in their hosted
+  arms — issue 0942's shape in the public API. Now `<stdio.h>` + `::fprintf`;
+  checked with `g++ -fsyntax-only` hosted and `-ffreestanding`.
+- `build-profile-literals`: nine CMake sites, each outside the propagation
+  graph by design, now carry a stated marker; the vocabulary gained
+  `flag mapping` (cmake's dev/release translation of the RESOLVED profile) and
+  `prebuilt archive` (PX4 links an archive it did not build).
+- `entry-locator-ssot`: `nano_rosConfig.cmake` writes the locator a leaf's
+  `system.toml` declares (RFC-0098 D5). Ruled an INPUT, not a second producer,
+  and exempted keyed on (file, RHS variable), with a row showing any other
+  variable in that file still fails.
+- `third-party-is-submodules`: its lookbehind excluded every ROOTED spelling
+  (`${ROOT}/third-party/…`); a Rust test fixture that builds a scratch vendored
+  copy is `cfg(test)`-blanked (`per_item`), not exempted.
+- `no-unbounded-condvar-wait`: reading ports means telling calls from the
+  definitions every port carries; the Rust `nros-platform-cffi` forwarding is
+  the primitive's own face and is exempted by path.
+
+Stated narrowings that remain: `build-profile-literals` keeps its directory
+scope for shell/Rust/Python (widened, it meets host-tool `--release` builds by
+the dozen — a different rule); `cpp-no-std-stdio` exempts host-only
+`tests/`, `packages/testing/`, `packages/cli/`. Not audited: ~20 gates whose
+pathspecs name `cmake/` among other roots (`board-alias-unique`,
+`board-vocabulary`, `knob-delivery`, `declared-fact-carriers`,
+`runtime-umbrella-link-sites`, `board-name-reach`, `config-header-single-writer`,
+`single-rust-staticlib`, …) — triaged by grep only, no hole demonstrated.
 
 ### W6 — first match, or any match, where the rule is per item
 

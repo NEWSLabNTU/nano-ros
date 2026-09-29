@@ -56,7 +56,12 @@ RETIRED="make ninja ros zenoh"
 # zero-width, ugrep rejects it outright, and behind a `2>/dev/null` that is a
 # scan reporting "no references" over a tree full of them — measured while this
 # rule was being written.
-RETIRED_PAT="(^|[^/A-Za-z0-9_.-])third-party/($(tr ' ' '|' <<< "$RETIRED"))([^A-Za-z0-9_.-]|\$)"
+#
+# ...but a ROOTED spelling is the root: `${NANO_ROS_ROOT}/third-party/ninja`,
+# `$repo/third-party/make`, `$(git rev-parse --show-toplevel)/third-party/ros`.
+# The `[^/…]` lookbehind excluded every one of them (phase-472 W5), so a `/`
+# directly after a variable expansion or a `)`/`}` counts as the repo root.
+RETIRED_PAT="(^|[^/A-Za-z0-9_.-]|[})]/|[$][A-Za-z_][A-Za-z0-9_]*/)third-party/($(tr ' ' '|' <<< "$RETIRED"))([^A-Za-z0-9_.-]|\$)"
 
 # Files allowed to READ a retired root, each with its reason. May only SHRINK,
 # and a listed file that no longer reads one is a STALE entry and fails.
@@ -118,6 +123,9 @@ selftest() {
     _st "packages/cli/$tp is not repo-root"     1 "$(is_retired_ref "git -C packages/cli/$tp/make x"; echo $?)"
     _st "a longer name is not the root"         1 "$(is_retired_ref "see $tp/ros-launch-manifest"; echo $?)"
     _st "a submodule parent is not retired"     1 "$(is_retired_ref "cd $tp/dds/cyclonedds"; echo $?)"
+    _st "a \${ROOT}-rooted read is a read"      0 "$(is_retired_ref "if(EXISTS \"\${NANO_ROS_ROOT}/$tp/ninja/ninja\")"; echo $?)"
+    _st "a \$repo-rooted read is a read"         0 "$(is_retired_ref "[ -x \"\$repo/$tp/make/make\" ]"; echo $?)"
+    _st "a \$(…)-rooted read is a read"          0 "$(is_retired_ref "d=\"\$(git rev-parse --show-toplevel)/$tp/ros\""; echo $?)"
     _st "a listed file is a ref exception"      0 "$(is_ref_exception a/b.py "a/b.py c.sh"; echo $?)"
     _st "a PREFIX of a listed file is not"      1 "$(is_ref_exception a/b "a/b.py c.sh"; echo $?)"
     return "$fail"
@@ -156,13 +164,43 @@ done
 # REFERENCE scan: one `git grep` over what RUNS — recipes, scripts, cmake,
 # workflows. Its status is branched on like `nros_grep_q`'s: 1 is "none", and
 # past 1 is a scan that did not run, which must never read as a clean tree.
+#
+# phase-472 W5 — the population is every file that RUNS, by KIND
+# (`scripts/lib/file_kinds.py`): shell, the justfile graph, Python, CMake, make,
+# Rust (build scripts read these roots), CI; plus the activate scripts. The
+# directory list this replaced (`scripts/`, `cmake/`, `.github/`, `just/*.just`)
+# missed `activate.sh`, `zephyr/` and every `build.rs`.
 rc=0
-refs="$(git grep -nE "$RETIRED_PAT" -- justfile 'just/*.just' 'scripts/**' \
-    'cmake/**' '.github/**')" || rc=$?
+refs="$(RETIRED_PAT="$RETIRED_PAT" python3 - <<'PY'
+import os, re, sys
+sys.path.insert(0, os.path.join("scripts", "lib"))
+import file_kinds, per_item, comments
+pat = re.compile(os.environ["RETIRED_PAT"])
+files = file_kinds.files_of_kind("shell", "just", "python", "cmake", "make", "rust", "ci")
+files += [f for f in ("activate.sh", "activate.fish", ".envrc") if os.path.isfile(f)]
+if not files:
+    sys.exit("empty population")
+for rel in files:
+    try:
+        text = open(rel, encoding="utf-8", errors="replace").read()
+    except OSError:
+        continue
+    lines = text.splitlines()
+    if rel.endswith(".rs"):
+        # A test's scratch-dir fixture names the old path ON PURPOSE (the setup
+        # tests build a vendored copy to prove the remedy works); what ships is
+        # the question. Each cfg(test) item is blanked, lines kept.
+        code = per_item.rust_cfg_test_blank(comments.strip_comments(text, "rust")).splitlines()
+        lines = [l if code[i].strip() else "" for i, l in enumerate(lines)] if len(code) == len(lines) else lines
+    for n, line in enumerate(lines, 1):
+        if pat.search(line):
+            print(f"{rel}:{n}:{line}")
+PY
+)" || rc=$?
 case "$rc" in
-    0|1) : ;;
+    0) : ;;
     *)  echo "check-third-party-is-submodules: the reference scan did not run" >&2
-        echo "    (git grep exit $rc) — refusing to call the tree clean without it." >&2
+        echo "    (exit $rc) — refusing to call the tree clean without it." >&2
         exit 2 ;;
 esac
 refs_seen=" "

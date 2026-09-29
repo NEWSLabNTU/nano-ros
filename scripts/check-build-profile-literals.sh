@@ -38,6 +38,10 @@
 #   symbol fixture  a path two tests assert on; optimization is irrelevant
 #   unprofiled      built with a plain `cargo build`, so `debug/` IS derived
 #   dir vocabulary  a manifest field naming target DIRECTORIES, not profiles
+#   flag mapping    the dev/release/custom -> cargo-flag translation of the
+#                   RESOLVED profile (cmake's twin of `nros-cargo-profile`)
+#   prebuilt archive  an external build (PX4) links an archive it did not
+#                   build; its default path / build instruction names one profile
 #
 # A platform that cannot use the ambient profile is NOT an opt-out: it gets a
 # carve-out in `nros-cargo-profile` (nuttx-rust, freertos-qemu) so the builder
@@ -89,6 +93,38 @@ scan() {
     done
 }
 
+# phase-472 W5 — CMake by KIND (`scripts/lib/file_kinds.py`): every CMakeLists
+# and `.cmake` file, wherever it lives. The flag scan read NO cmake at all and the
+# path scan only `cmake/**` + `zephyr/cmake/**`, while cmake builds cargo in
+# `integrations/`, `packages/**/cmake` and `examples/`. The other kinds keep the
+# directory scope stated below: widened to every shell/Rust/Python file, the
+# scan meets host-tool builds (`cargo build --release` of a CLI) by the dozen,
+# which is a different rule.
+mapfile -t CMAKE_FILES < <(python3 scripts/lib/file_kinds.py cmake)
+[ "${#CMAKE_FILES[@]}" -gt 0 ] || { echo "[FAIL] no CMake files found — refusing an empty scan" >&2; exit 1; }
+
+# Negative controls on the normal path (phase-472 W5/W9): the population reaches
+# the CMake the old lists missed, a hit fails, and a marked hit does not.
+self_test() {
+    local have=" ${CMAKE_FILES[*]} " f probe
+    for f in zephyr/CMakeLists.txt integrations/px4/NanoRosPx4Module.cmake; do
+        case "$have" in *" $f "*) ;; *)
+            echo "check-build-profile-literals SELFTEST FAILED: $f is not in the CMake population" >&2
+            exit 1 ;;
+        esac
+    done
+    probe="$(mktemp)"
+    printf '%s\n' 'x' '# profile-literal-ok: host tool' 'cargo build --release' > "$probe"
+    fail=0
+    scan t <<<"$probe:1:cargo build --release" 2>/dev/null
+    [ "$fail" -eq 1 ] || { echo "check-build-profile-literals SELFTEST FAILED: an unmarked hit passed" >&2; rm -f "$probe"; exit 1; }
+    fail=0
+    scan t <<<"$probe:3:cargo build --release" 2>/dev/null
+    rm -f "$probe"
+    [ "$fail" -eq 0 ] || { echo "check-build-profile-literals SELFTEST FAILED: a marked hit failed" >&2; exit 1; }
+}
+self_test
+
 # 1. Cargo profile flags. `rustup --profile minimal` is a different tool's flag,
 #    and a line that already asks the table is the fix, not the problem.
 # Rust build scripts are in scope too: `nros-sizes-build` spawned a nested
@@ -98,7 +134,7 @@ scan() {
 scan "hardcoded cargo profile flag" < <(
     git grep -nE -- '(--release|--profile[= ]+[a-z][a-z0-9-]*)' \
         -- justfile 'just/*.just' 'scripts/build/*.sh' 'scripts/bootstrap.sh' \
-           'packages/tooling/*/src/**' 'packages/testing/nros-tests/src/**' \
+           'packages/tooling/*/src/**' 'packages/testing/nros-tests/src/**' "${CMAKE_FILES[@]}" \
     | grep -v 'rustup' \
     | grep -vE 'nros_cargo_profile|nros profile|profile_arg|profile_args|PROFILE_FLAGS|_profile"' \
     | grep -v '^packages/tooling/nros-cargo-profile/' \
@@ -108,7 +144,7 @@ scan "hardcoded cargo profile flag" < <(
 scan "hardcoded profile directory" < <(
     git grep -nE 'target[^ "]*/(release|debug)/' \
         -- justfile 'just/*.just' 'scripts/build/*.sh' 'scripts/test/*.sh' \
-           'cmake/**' 'zephyr/cmake/**' 'packages/testing/nros-tests/src/**' \
+           "${CMAKE_FILES[@]}" 'packages/testing/nros-tests/src/**' \
            'packages/tooling/*/src/**' \
     | grep -vE 'packages/cli/target/release/nros|nros-launch-resolve/target/release' \
     | grep -v '^packages/tooling/nros-cargo-profile/' \
@@ -128,7 +164,8 @@ A build site names a cargo profile instead of asking for the active one.
 If the site is genuinely outside the propagation graph, mark it:
 
   # profile-literal-ok: <one of host tool | vendored | benchmark |
-  #                      symbol fixture | unprofiled | dir vocabulary>
+  #                      symbol fixture | unprofiled | dir vocabulary |
+  #                      flag mapping | prebuilt archive>
 EOF
     exit 1
 fi

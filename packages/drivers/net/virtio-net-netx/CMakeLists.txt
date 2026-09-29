@@ -8,7 +8,7 @@ if(NOT DEFINED NETX_DIR)
     else()
         message(FATAL_ERROR
             "NETX_DIR not set. Point it at the NetX Duo source directory.\n"
-            "Run `just setup-threadx` to download, then:\n"
+            "Run `./scripts/bootstrap.sh` (contributors: `just setup threadx_riscv64`) to download, then:\n"
             "  cmake -DNETX_DIR=<repo>/third-party/threadx/netxduo ..")
     endif()
 endif()
