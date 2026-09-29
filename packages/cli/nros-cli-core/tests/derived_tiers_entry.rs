@@ -31,7 +31,7 @@
 
 mod common;
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fs};
 
 use common::derived_tiers::{FAST, Fixture, SLOW, resolve_model_path};
 use nros_cli_core::codegen::entry::{
@@ -289,7 +289,7 @@ fn a_group_tiers_only_image_derives_like_the_macro_does() {
     }
     fs::write(&system, raw).expect("bind each component's group");
 
-    let model = resolve_model_with(&bringup, true);
+    let model = resolve_model_path(&bringup, true);
     let mut plan = plan_from_model(&model, Some(BOARD.to_string())).expect("plan from the model");
     assert!(
         plan.tiers.is_empty(),

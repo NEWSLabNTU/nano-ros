@@ -288,7 +288,17 @@ application pool. Running it:
 * `derive_entry_tiers` built its OWN callback-group map, ignoring `group_tiers`,
   while `resolve_plan_sched` built one that honoured it — so a
   `group_tiers`-bound group read as unbound to the derivation and as bound to
-  the resolver. It now receives the resolver's map.
+  the resolver. It now receives the resolver's map. (Rebase note: while this
+  was open, issue 1537's follow-up gave the private map a `group_tiers`
+  fallback that bound every such group to `DEFAULT_TIER`, and issue 1508 gave
+  the derivation the image's own priority plan. Both survive on the shared map:
+  its fallback order is the same — cmake groups first, else the ids
+  `group_tiers` names — a group bound to a tier the model does not declare
+  still reaches the derivation as rule 4, and the image plan is threaded
+  through `resolve_plan_sched_in`. `derived_tiers_entry::
+  a_group_tiers_only_image_derives_like_the_macro_does` holds on it. The
+  macro likewise re-allocates out of the image's `.config` plan whenever it
+  allocated anything — a `derived-<node>` tier OR a rule-2 placement.)
 * the `derived-tiers-cpp` fixture harness moved to
   `tests/common/derived_tiers.rs` (two copies; this issue's gate would have
   been the third).
