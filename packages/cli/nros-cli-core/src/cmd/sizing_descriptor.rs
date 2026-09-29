@@ -473,6 +473,25 @@ fn summary(desc: &nros_sizing_descriptor::SizingDescriptor) -> String {
     let _ = writeln!(s, "    node_count        {}", desc.image.node_count());
     let _ = writeln!(s, "    backend_count     {}", desc.image.backend_count());
     let _ = writeln!(s, "    subscriber_count  {}", desc.image.subscriber_count());
+    // Issue 1577 — what the executor arena's per-kind model sums.
+    for (name, f) in [
+        ("subscription_entities", desc.image.subscription_entities()),
+        ("timer_entities", desc.image.timer_entities()),
+        (
+            "service_server_entities",
+            desc.image.service_server_entities(),
+        ),
+        (
+            "action_client_entities",
+            desc.image.action_client_entities(),
+        ),
+        (
+            "action_server_entities",
+            desc.image.action_server_entities(),
+        ),
+    ] {
+        let _ = writeln!(s, "    {name:<23} {f}");
+    }
     let _ = writeln!(s, "  types:");
     let _ = writeln!(s, "    distinct_count    {}", desc.types.distinct_count());
     let _ = writeln!(s, "    max_fields        {}", desc.types.max_fields());

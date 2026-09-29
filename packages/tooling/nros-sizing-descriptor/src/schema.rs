@@ -560,19 +560,42 @@ impl Endpoint {
 /// a consumer can count itself belongs here; the rows are the surface, and a
 /// second spelling of a count the rows already carry is how two green tools come
 /// to disagree.
+///
+/// The five `*_entities` counts (issue 1577) are the other exception, and for a
+/// reason of the same kind: **the rows cannot carry them.** A timer has no row
+/// at all (no type, no topic), and the other four are rows only where a row
+/// could be written — a component whose declarations are not stated contributes
+/// none, nor does an entity missing its type or topic. A consumer counting rows
+/// would UNDER-count exactly there, and the executor arena these size is a
+/// registration failure when short. The derivation that states them is the one
+/// the cmake road already carries as `NROS_ENTITY_COUNT_*`, so this is that
+/// fact's descriptor home, not a new number.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Image {
     node_count: Option<usize>,
     backend_count: Option<usize>,
     subscriber_count: Option<usize>,
+    subscription_entities: Option<usize>,
+    timer_entities: Option<usize>,
+    service_server_entities: Option<usize>,
+    action_client_entities: Option<usize>,
+    action_server_entities: Option<usize>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
 }
 
 impl Image {
-    pub(crate) const FIELDS: &'static [&'static str] =
-        &["node_count", "backend_count", "subscriber_count"];
+    pub(crate) const FIELDS: &'static [&'static str] = &[
+        "node_count",
+        "backend_count",
+        "subscriber_count",
+        "subscription_entities",
+        "timer_entities",
+        "service_server_entities",
+        "action_client_entities",
+        "action_server_entities",
+    ];
 
     /// Distinct `(name, namespace)` nodes the image registers — one per declared
     /// component.
@@ -609,6 +632,54 @@ impl Image {
         fact(&self.subscriber_count, "subscriber_count", &self.refused)
     }
 
+    /// Declared subscriptions — ENTITIES, not session slots.
+    ///
+    /// Not [`Self::subscriber_count`], which adds each action client's feedback
+    /// subscription because that is what a SESSION opens. The executor arena
+    /// prices an action client's entry separately, so it wants the declared
+    /// subscriptions alone; reading the slot count there would price every
+    /// action client twice. Issue 1577.
+    pub fn subscription_entities(&self) -> Fact<usize> {
+        fact(
+            &self.subscription_entities,
+            "subscription_entities",
+            &self.refused,
+        )
+    }
+
+    /// Declared timers. The one entity kind with no `[[endpoint]]` row.
+    pub fn timer_entities(&self) -> Fact<usize> {
+        fact(&self.timer_entities, "timer_entities", &self.refused)
+    }
+
+    /// Declared service servers, as the entity inventory counts them — the
+    /// same number the cmake road carries as `NROS_ENTITY_COUNT_SERVICE_SERVER`.
+    pub fn service_server_entities(&self) -> Fact<usize> {
+        fact(
+            &self.service_server_entities,
+            "service_server_entities",
+            &self.refused,
+        )
+    }
+
+    /// Declared action clients.
+    pub fn action_client_entities(&self) -> Fact<usize> {
+        fact(
+            &self.action_client_entities,
+            "action_client_entities",
+            &self.refused,
+        )
+    }
+
+    /// Declared action servers.
+    pub fn action_server_entities(&self) -> Fact<usize> {
+        fact(
+            &self.action_server_entities,
+            "action_server_entities",
+            &self.refused,
+        )
+    }
+
     pub fn new(
         node_count: Option<usize>,
         backend_count: Option<usize>,
@@ -618,7 +689,7 @@ impl Image {
             node_count,
             backend_count,
             subscriber_count,
-            refused: BTreeMap::new(),
+            ..Self::default()
         }
     }
 
@@ -636,6 +707,26 @@ impl Image {
     }
     pub fn set_subscriber_count(&mut self, v: Option<usize>) -> &mut Self {
         self.subscriber_count = v;
+        self
+    }
+    pub fn set_subscription_entities(&mut self, v: Option<usize>) -> &mut Self {
+        self.subscription_entities = v;
+        self
+    }
+    pub fn set_timer_entities(&mut self, v: Option<usize>) -> &mut Self {
+        self.timer_entities = v;
+        self
+    }
+    pub fn set_service_server_entities(&mut self, v: Option<usize>) -> &mut Self {
+        self.service_server_entities = v;
+        self
+    }
+    pub fn set_action_client_entities(&mut self, v: Option<usize>) -> &mut Self {
+        self.action_client_entities = v;
+        self
+    }
+    pub fn set_action_server_entities(&mut self, v: Option<usize>) -> &mut Self {
+        self.action_server_entities = v;
         self
     }
 
@@ -657,6 +748,11 @@ impl Image {
             "node_count" => self.node_count?.to_string(),
             "backend_count" => self.backend_count?.to_string(),
             "subscriber_count" => self.subscriber_count?.to_string(),
+            "subscription_entities" => self.subscription_entities?.to_string(),
+            "timer_entities" => self.timer_entities?.to_string(),
+            "service_server_entities" => self.service_server_entities?.to_string(),
+            "action_client_entities" => self.action_client_entities?.to_string(),
+            "action_server_entities" => self.action_server_entities?.to_string(),
             _ => return None,
         })
     }
@@ -670,6 +766,23 @@ impl Image {
                 ("node_count", self.node_count.is_some()),
                 ("backend_count", self.backend_count.is_some()),
                 ("subscriber_count", self.subscriber_count.is_some()),
+                (
+                    "subscription_entities",
+                    self.subscription_entities.is_some(),
+                ),
+                ("timer_entities", self.timer_entities.is_some()),
+                (
+                    "service_server_entities",
+                    self.service_server_entities.is_some(),
+                ),
+                (
+                    "action_client_entities",
+                    self.action_client_entities.is_some(),
+                ),
+                (
+                    "action_server_entities",
+                    self.action_server_entities.is_some(),
+                ),
             ],
         )
     }
