@@ -1,18 +1,9 @@
-use std::{env, fs::File, io::Write, path::PathBuf};
+//! Emit `memory.x` into OUT_DIR so `cortex-m-rt`'s `link.x` finds it without
+//! depending on the board crate's build script (phase 88.15.a).
+//!
+//! phase-471 W4 — one helper, eleven scripts; see
+//! `nros_build_paths::link_script`.
 
 fn main() {
-    let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
-
-    // Copy memory.x to the output directory
-    File::create(out.join("memory.x"))
-        .unwrap()
-        .write_all(include_bytes!("memory.x"))
-        .unwrap();
-
-    // Tell the linker where to find memory.x
-    println!("cargo:rustc-link-search={}", out.display());
-
-    // Rebuild if memory.x changes
-    println!("cargo:rerun-if-changed=memory.x");
-    println!("cargo:rerun-if-changed=build.rs");
+    nros_build_paths::link_script!("memory.x");
 }

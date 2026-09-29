@@ -278,6 +278,7 @@ version = "0.4.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
+ "nros-build-paths",
 ]
 
 [[package]]
@@ -346,6 +347,7 @@ dependencies = [
  "mps2-an385-pac",
  "nros",
  "nros-board-common",
+ "nros-build-paths",
  "nros-log",
  "nros-platform",
  "nros-platform-api",

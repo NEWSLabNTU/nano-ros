@@ -882,3 +882,166 @@ mod reroot_tests {
         );
     }
 }
+
+/// phase-471 W4 — the one job eleven build scripts were each doing by hand:
+/// put a linker script where the linker will look for it.
+///
+/// `cortex-m-rt`'s `link.x` does `INCLUDE memory.x`, and a `svd2rust` PAC's
+/// `device.x` is included the same way. Neither is found unless the file sits
+/// in a directory on the link search path, so every image crate for a
+/// bare-metal board grew the same fourteen lines: read `OUT_DIR`, write the
+/// bytes there, print `rustc-link-search`, print two `rerun-if-changed`.
+///
+/// The census found **11 scripts carrying 6 distinct bodies** — the largest
+/// duplication in the tree that no gate had an opinion about. It had produced
+/// no defect, which is why phase-471 rates it lowest priority and why the
+/// consolidation is a plain deduplication rather than a fix.
+///
+/// **Two of the eleven are deliberately left alone.**
+/// `packages/reference/stm32f4-porting/{polling,rtic}` are copy-out templates
+/// for BSP developers, per their own README. Giving a template a dependency on
+/// a crate that exists only in this checkout is RFC-0026's hazard, and it is
+/// the same reason the twelve Zephyr leaf shims keep their own copies. They
+/// keep their twenty lines.
+///
+/// **Why this crate and not `nros-board-common`.** Only 2 of the 11 are board
+/// crates; the other 9 are testing and reference crates, and a testing binary
+/// depending on a board helper crate is backwards. The precedent is recorded
+/// rather than invented — `nros-build-helpers/Cargo.toml` says of issue 0657
+/// that "the riscv64 toolchain resolver lives in the ZERO-DEP crate, not here:
+/// this one pulls cbindgen, and putting a directory lookup behind that dragged
+/// cbindgen into the `nros` CLI graph (118 lock lines)." Same class, same
+/// answer: this crate has no dependencies at all, so each caller pays one edge
+/// and no new compile unit beyond it.
+pub mod link_script {
+    use std::path::PathBuf;
+
+    /// Write `bytes` into `OUT_DIR` as `dest` and put `OUT_DIR` on the link
+    /// search path, watching `source` for changes.
+    ///
+    /// **Prefer the [`link_script!`](macro@crate::link_script) macro.** Calling this
+    /// directly lets `source` name one file while `bytes` come from another,
+    /// which is the whole hazard of a two-part statement: the watch would be on
+    /// a file the image does not contain, so editing the real script would
+    /// change nothing and cargo would report everything fresh. The macro takes
+    /// ONE literal and derives both uses from it, so the two cannot disagree.
+    ///
+    /// `dest` is a file NAME. A separator in it would place the file outside
+    /// `OUT_DIR`, where the `rustc-link-search` printed here does not point —
+    /// so it is refused rather than silently emitted somewhere the linker will
+    /// not look.
+    pub fn emit(source: &str, dest: &str, bytes: &[u8]) {
+        let out = PathBuf::from(std::env::var_os("OUT_DIR").expect(
+            "nros-build-paths: OUT_DIR not set (link_script::emit must be called from a build script)",
+        ));
+        write_into(&out, dest, bytes);
+
+        println!("cargo:rustc-link-search={}", out.display());
+        println!("cargo:rerun-if-changed={source}");
+        // The caller's own `build.rs`, relative to its CARGO_MANIFEST_DIR.
+        // Every one of the nine scripts this replaced printed it, so it is
+        // kept rather than reasoned away: a build script that emits any
+        // `rerun-if-changed` gets ONLY the watches it names, and whether
+        // recompiling the script binary is enough on its own is a property of
+        // cargo nobody here has measured.
+        println!("cargo:rerun-if-changed=build.rs");
+    }
+
+    /// The part of [`emit`] that touches the filesystem, split out so it can be
+    /// tested without setting `OUT_DIR` — a process-global the test harness
+    /// shares with every other test in this crate.
+    fn write_into(out: &std::path::Path, dest: &str, bytes: &[u8]) {
+        assert!(
+            !dest.is_empty()
+                && !dest.contains('/')
+                && !dest.contains('\\')
+                && dest != "."
+                && dest != "..",
+            "nros-build-paths: link-script destination {dest:?} must be a bare file name — \
+             the link search path printed here is OUT_DIR itself, so a file written outside \
+             it would never be found"
+        );
+
+        let path = out.join(dest);
+        std::fs::write(&path, bytes).unwrap_or_else(|e| {
+            panic!(
+                "nros-build-paths: could not write linker script to {}: {e}",
+                path.display()
+            )
+        });
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::write_into;
+
+        fn scratch(tag: &str) -> std::path::PathBuf {
+            let dir = std::env::temp_dir().join(format!(
+                "nros-link-script-{tag}-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            dir
+        }
+
+        /// The bytes reach `OUT_DIR` under the name the LINKER wants, which is
+        /// not always the name the file has in the tree: `nros-board-mps2-an385`
+        /// ships `mps2-an385.x` and `cortex-m-rt`'s `link.x` says
+        /// `INCLUDE memory.x`.
+        #[test]
+        fn the_destination_name_is_the_one_the_linker_looks_for() {
+            let out = scratch("rename");
+            write_into(&out, "memory.x", b"MEMORY { /* an385 */ }\n");
+
+            assert!(!out.join("mps2-an385.x").exists());
+            assert_eq!(
+                std::fs::read(out.join("memory.x")).unwrap(),
+                b"MEMORY { /* an385 */ }\n"
+            );
+        }
+
+        /// A destination carrying a separator would land outside `OUT_DIR`,
+        /// which is the one directory [`super::emit`] puts on the link search
+        /// path — so the file would exist and the linker would still not find
+        /// it. Refused rather than written somewhere useless.
+        #[test]
+        fn a_destination_that_escapes_out_dir_is_refused() {
+            let out = scratch("escape");
+            for bad in ["../memory.x", "sub/memory.x", "", "..", "."] {
+                let r = std::panic::catch_unwind(|| write_into(&out, bad, b"x"));
+                assert!(r.is_err(), "destination {bad:?} should have been refused");
+            }
+            // …and nothing was written on the way to refusing.
+            assert_eq!(std::fs::read_dir(&out).unwrap().count(), 0);
+        }
+    }
+}
+
+/// Emit a linker script from the calling build script's own directory.
+///
+/// ```ignore
+/// // memory.x, beside build.rs, is what the linker must find:
+/// nros_build_paths::link_script!("memory.x");
+///
+/// // …or when the file in the tree and the name the linker wants differ:
+/// nros_build_paths::link_script!("mps2-an385.x" => "memory.x");
+/// ```
+///
+/// The literal is resolved relative to the file that INVOKES the macro, not to
+/// this one: `include_bytes!` keys on the span of its string argument, and the
+/// argument here comes from the caller. That is what lets one macro in one
+/// crate embed nine different files.
+///
+/// See [`crate::link_script::emit`] for why the one-literal form is the sanctioned
+/// way in.
+#[macro_export]
+macro_rules! link_script {
+    ($file:literal) => {
+        $crate::link_script::emit($file, $file, include_bytes!($file))
+    };
+    ($source:literal => $dest:literal) => {
+        $crate::link_script::emit($source, $dest, include_bytes!($source))
+    };
+}

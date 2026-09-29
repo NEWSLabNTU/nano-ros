@@ -62,3 +62,8 @@ codegen-units = 1
 debug = 2
 incremental = false
 opt-level = 1
+
+[build-dependencies]
+# phase-471 W4 — the linker-script emit, shared. Zero-dependency and
+# host-only, so this edge adds one compile unit and nothing behind it.
+nros-build-paths = { path = "../../../tooling/nros-build-paths" }

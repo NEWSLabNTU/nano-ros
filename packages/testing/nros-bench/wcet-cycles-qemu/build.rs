@@ -1,20 +1,13 @@
-use std::{env, fs::File, io::Write, path::PathBuf};
+//! Emit `memory.x` into OUT_DIR so `cortex-m-rt`'s `link.x` finds it, and bake
+//! the provenance a cycle count means nothing without.
+//!
+//! phase-471 W4 — one helper, eleven scripts; see
+//! `nros_build_paths::link_script`.
+
+use std::env;
 
 fn main() {
-    let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
-
-    // Copy memory.x to the output directory
-    File::create(out.join("memory.x"))
-        .unwrap()
-        .write_all(include_bytes!("memory.x"))
-        .unwrap();
-
-    // Tell the linker where to find memory.x
-    println!("cargo:rustc-link-search={}", out.display());
-
-    // Rebuild if memory.x changes
-    println!("cargo:rerun-if-changed=memory.x");
-    println!("cargo:rerun-if-changed=build.rs");
+    nros_build_paths::link_script!("memory.x");
 
     // Issue 0403 item 3 — the conditions a cycle count means nothing without.
     //

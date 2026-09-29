@@ -359,6 +359,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
+name = "nros-build-paths"
+version = "0.5.0"
+
+[[package]]
 name = "num-conv"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -564,6 +568,7 @@ dependencies = [
  "defmt 0.3.100",
  "defmt-rtt",
  "heapless",
+ "nros-build-paths",
  "panic-probe",
  "rtic",
  "rtic-monotonics",
