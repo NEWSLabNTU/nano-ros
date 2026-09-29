@@ -90,3 +90,48 @@ and XRCE, which is the direction that ships `NodeError::BufferTooSmall`.
 The first is the smaller change and removes the reason for the second. Either
 way acceptance is a measured `mem-report --baseline` on an image with a GENERIC
 subscription, not only on a typed one.
+
+## Progress, 2026-09-29 — the runtime half landed; acceptance is NOT met
+
+**Landed (`c6a8b7f7bb`): the first option above.** The generic registration now
+takes the in-place path when the backend offers it. The worry that kept it
+`false` — the buffered entry is shared with `add_arena_subscription_callback`
+— did not hold: that caller supplies its own subscriber and never reaches
+`open_subscription`, so the branch is local to one entry point.
+`DeclaredSubscriptionShape::BufferedRaw.in_place_capable()` flipped in the
+same commit, so the probe's row and the executor's claim move together.
+
+Two corrections to this issue's text, from reading the tree as it is now:
+
+- "`supports_process_in_place` has exactly one call site in `nros-node`, in
+  `register_subscription_buffered_on`" — phase-456 W8 moved it into
+  `open_subscription`. The asymmetry this issue describes survived the move
+  because the generic path read the answer and discarded it.
+- The second option ("distinguish a typed endpoint from a generic one") was
+  already done by phase-457 W3/W5 before this landed: `registration_path` is
+  per endpoint and observed at the call site. That is what made the first
+  option safe to take — the descriptor states `in_place` only for a shape the
+  executor actually dispatches in place.
+
+**Why acceptance is not met.** The acceptance is a `mem-report --baseline` on an
+image with a generic subscription, and on the image measured it does not move:
+
+| `examples/native/rust/listener` | descriptor row | `ARENA_SIZE` | RAM in symbols |
+| --- | --- | --- | --- |
+| before (`BufferedRaw` → `false`) | `unbounded` | 14,424 | 157,642 |
+| after | `in_place` | 14,424 | 157,642 |
+
+The runtime claim did change — the unit test measures it — but the ARENA is
+sized by `nros-node/build.rs`'s `max_cbs` fallback on every road except
+Zephyr's resolver, because the per-kind model runs only when five
+`NROS_ENTITY_COUNT_*` carriers arrive. So the freed bytes become headroom.
+That is **issue 1577**, and it blocks this one on cargo and plain-cmake images.
+
+Also found while measuring: the metadata probe's freshness digest omits the
+nano-ros crates that decide what it reports, so a change to this very
+classifier is not picked up by `nros sync` — **issue 1578**. The stale
+direction observed was safe; the reverse flip would under-size.
+
+**What closes this issue:** #1577, then the measurement above on an image whose
+`required` clears `ARENA_FLOOR` (8,192 — a one-subscription image clamps to it
+either way).
