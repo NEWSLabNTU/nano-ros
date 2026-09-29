@@ -335,7 +335,6 @@ no-silent-sample-drop:
 # allocation with no declared reason, so a new one is argued for rather than
 # merged. Source-only, no ROS install, fast line.
 rmw-alloc-sites:
-    @python3 scripts/rmw-alloc-sites.py --self-test
     @python3 scripts/rmw-alloc-sites.py --check
 
 # Issue 0330 (class of 0155/0163) — a Zephyr Rust example whose `rmw-*` feature
@@ -445,7 +444,6 @@ zenohd-resolution-parity:
 # 31 sites went around it, which is why tier 2 reported 7 real failures on a
 # host whose ROS lives in a distrobox. Source-only, fast line.
 zenohd-router-skips:
-    @python3 scripts/check-zenohd-router-skips.py --self-test
     @python3 scripts/check-zenohd-router-skips.py
 
 # Issue 0573 — ZenohRouter must stay the only zenohd spawner.

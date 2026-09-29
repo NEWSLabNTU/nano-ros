@@ -23,6 +23,36 @@ cd "$(dirname "$0")/.."
 # shellcheck source=lib/grep-q.sh
 source "$(dirname "$0")/lib/grep-q.sh"
 
+# Self-test — runs on the normal path, BEFORE the scan (check-gate-selftests;
+# phase-472 W9: these controls used to run inline after the scan, where the
+# meta-gate could not see them and a scan-side `exit` would skip them).
+self_test() {
+    # Self-test: the comment-stripping is the whole reason this gate is not the
+    # broken grep that preceded it, so prove it still strips.
+    local probe
+    probe="$(mktemp)"; trap 'rm -f "$probe"; trap - RETURN' RETURN
+    printf '# nano_ros_entry() named only in a comment\nadd_executable(x)\ntarget_link_libraries(x NanoRos::NanoRos)\n' > "$probe"
+    if nros_grep_q 'nano_ros_entry(' <<<"$(grep -vE '^[[:space:]]*#' "$probe")"; then
+        echo "check-image-paths-apply-policy: SELF-TEST FAILED — comment stripping is broken," >&2
+        echo "  so this gate would pass files it never examined. Fix before trusting it." >&2
+        exit 1
+    fi
+
+    # Second half of the same rule, and the half that was missing: a file whose
+    # ONLY mention of the umbrella is a comment must not be a subject at all. The
+    # first probe proves a commented CALL is not counted; this proves a commented
+    # LINK does not summon the file. Without it, prose could fail a gate.
+    printf '# links no NanoRos::NanoRosCpp, deliberately\nadd_executable(x)\n' > "$probe"
+    if nros_grep_q 'NanoRos::NanoRos' <<<"$(grep -vE '^[[:space:]]*#' "$probe")"; then
+        echo "check-image-paths-apply-policy: SELF-TEST FAILED — a file naming the umbrella" >&2
+        echo "  only in a comment is still being selected, so a comment can fail this gate." >&2
+        exit 1
+    fi
+    return 0
+}
+self_test || exit 1
+
+
 # A file "builds an image" if it creates an executable or registers an IDF
 # component AND links the nano-ros umbrella.
 mapfile -t candidates < <(
@@ -57,27 +87,6 @@ for f in "${candidates[@]}"; do
     echo "      builds an image and links NanoRos::, but calls neither"
     echo "      nano_ros_entry()/nano_ros_add_executable() nor nros_apply_panic_policy()."
 done
-
-# Self-test: the comment-stripping is the whole reason this gate is not the
-# broken grep that preceded it, so prove it still strips.
-probe="$(mktemp)"; trap 'rm -f "$probe"' EXIT
-printf '# nano_ros_entry() named only in a comment\nadd_executable(x)\ntarget_link_libraries(x NanoRos::NanoRos)\n' > "$probe"
-if nros_grep_q 'nano_ros_entry(' <<<"$(grep -vE '^[[:space:]]*#' "$probe")"; then
-    echo "check-image-paths-apply-policy: SELF-TEST FAILED — comment stripping is broken," >&2
-    echo "  so this gate would pass files it never examined. Fix before trusting it." >&2
-    exit 1
-fi
-
-# Second half of the same rule, and the half that was missing: a file whose
-# ONLY mention of the umbrella is a comment must not be a subject at all. The
-# first probe proves a commented CALL is not counted; this proves a commented
-# LINK does not summon the file. Without it, prose could fail a gate.
-printf '# links no NanoRos::NanoRosCpp, deliberately\nadd_executable(x)\n' > "$probe"
-if nros_grep_q 'NanoRos::NanoRos' <<<"$(grep -vE '^[[:space:]]*#' "$probe")"; then
-    echo "check-image-paths-apply-policy: SELF-TEST FAILED — a file naming the umbrella" >&2
-    echo "  only in a comment is still being selected, so a comment can fail this gate." >&2
-    exit 1
-fi
 
 if [ "$fail" -ne 0 ]; then
     echo

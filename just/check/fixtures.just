@@ -313,7 +313,6 @@ interop-verdict-ledger:
 # names that appear nowhere in the sources (see the script's header).
 [group("ci")]
 nextest-binary-filters:
-    @python3 scripts/check-nextest-binary-filters.py --self-test
     @python3 scripts/check-nextest-binary-filters.py
 
 # phase-373 W1 — every `test()`/`binary()` predicate in .config/nextest.toml must

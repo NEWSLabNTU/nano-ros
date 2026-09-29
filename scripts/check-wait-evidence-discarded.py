@@ -42,6 +42,11 @@ Note the population GREW when the class was fixed at source: before
 with nothing to discard. Now every one of these errors carries output, so every
 `.unwrap_or_default()` on one is throwing real evidence away.
 
+A count that FALLS must be recorded in the same change (phase-472 W9,
+`scripts/lib/ratchet.py`): a row above the tree's count is slack a file can
+regrow into. Measured when this landed: 77 sites against a budget of 87 — ten
+sites of regrowth nobody would have been told about.
+
 Run: python3 scripts/check-wait-evidence-discarded.py [--self-test]
 """
 
@@ -51,6 +56,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from ratchet import fell_instructions, judge  # noqa: E402  phase-472 W9
 SCAN_DIRS = ["packages/testing/nros-tests/tests", "packages/testing/nros-tests/src"]
 
 # A `wait_for_*output*(...)` call whose result is `.unwrap_or_default()`ed.
@@ -64,11 +71,10 @@ DISCARD = re.compile(
     re.S,
 )
 
-# feature-baseline: file -> count of sites present when this gate landed.
-# Remove an entry when a file is converted; lowering a count is progress, and
-# the gate will tell you when a number is stale.
+# feature-baseline: file -> count of sites. Lowering a count is progress, and
+# it must be RECORDED here in the change that makes it — the gate fails until
+# it is, naming the exact line (`scripts/lib/ratchet.py`).
 BASELINE = {
-    "packages/testing/nros-tests/src/ros2.rs": 1,
     "packages/testing/nros-tests/tests/bridge_mixed_rmw.rs": 1,
     "packages/testing/nros-tests/tests/bridge_zenoh_to_cyclonedds.rs": 3,
     "packages/testing/nros-tests/tests/cli_bringup_zephyr.rs": 1,
@@ -79,17 +85,14 @@ BASELINE = {
     "packages/testing/nros-tests/tests/entry_e2e.rs": 3,
     "packages/testing/nros-tests/tests/error_handling.rs": 9,
     "packages/testing/nros-tests/tests/executor.rs": 1,
-    "packages/testing/nros-tests/tests/interop_e2e.rs": 7,
+    "packages/testing/nros-tests/tests/interop_e2e.rs": 5,
     "packages/testing/nros-tests/tests/multi_node.rs": 2,
-    "packages/testing/nros-tests/tests/native_api.rs": 2,
-    "packages/testing/nros-tests/tests/native_async_roundtrip_e2e.rs": 2,
+    "packages/testing/nros-tests/tests/native_api.rs": 1,
     "packages/testing/nros-tests/tests/native_example_reqresp_e2e.rs": 1,
-    "packages/testing/nros-tests/tests/nuttx_qemu.rs": 1,
     "packages/testing/nros-tests/tests/params.rs": 3,
     "packages/testing/nros-tests/tests/qos.rs": 1,
     "packages/testing/nros-tests/tests/realtime_tiers_e2e.rs": 5,
     "packages/testing/nros-tests/tests/ros_editions_bridge.rs": 1,
-    "packages/testing/nros-tests/tests/ros_editions_e2e.rs": 3,
     "packages/testing/nros-tests/tests/ros_editions_nano_interop.rs": 1,
     "packages/testing/nros-tests/tests/rtos_e2e.rs": 2,
     "packages/testing/nros-tests/tests/services.rs": 1,
@@ -134,8 +137,45 @@ SELF_TESTS = [
 ]
 
 
+def verdict(found, baseline):
+    """[failure lines] for {file: [lines]} measured against `baseline`."""
+    rose, fell = judge({f: len(v) for f, v in found.items()}, baseline)
+    out = []
+    for m in rose:
+        if m.was == 0:
+            out.append(f"check-wait-evidence-discarded: NEW file discarding wait evidence: {m.key}")
+            out.extend(f"  {m.key}:{ln}" for ln in found.get(m.key, []))
+        else:
+            out.append(f"check-wait-evidence-discarded: {m.key} grew {m.was} -> {m.now}")
+    if fell:
+        out.extend(fell_instructions(
+            fell, "BASELINE in scripts/check-wait-evidence-discarded.py",
+            lambda f, n: None if n == 0 else f'"{f}": {n},',
+            "python3 scripts/check-wait-evidence-discarded.py --baseline"))
+    return rose, out
+
+
+# (description, found, baseline, expect_failure) — both directions of the
+# ratchet, through `verdict`, the function `main` runs.
+RATCHET_CASES = [
+    ("at its recorded count passes", {"a.rs": [1, 2]}, {"a.rs": 2}, False),
+    ("a rise fails", {"a.rs": [1, 2, 3]}, {"a.rs": 2}, True),
+    ("a new file fails", {"b.rs": [7]}, {"a.rs": 2}, True),
+    # The W9 hole: a fall left unrecorded is slack the file can regrow into.
+    ("a fall the baseline does not record fails", {"a.rs": [1]}, {"a.rs": 2}, True),
+    ("a file fully converted but still listed fails", {}, {"a.rs": 2}, True),
+]
+
+
 def self_test():
     bad = 0
+    for desc, found, base, want in RATCHET_CASES:
+        got = bool(verdict(found, base)[1])
+        if got != want:
+            bad += 1
+            print(f"  FAIL  ratchet: {desc}: failed={got}, expected={want}")
+        else:
+            print(f"  ok    ratchet: {desc}")
     for src, should_flag in SELF_TESTS:
         got = bool(DISCARD.search(src))
         if got != should_flag:
@@ -146,13 +186,23 @@ def self_test():
     if bad:
         print(f"\ncheck-wait-evidence-discarded --self-test: {bad} case(s) FAILED")
         return 1
-    print(f"\ncheck-wait-evidence-discarded --self-test: {len(SELF_TESTS)} case(s) OK")
+    print(f"\ncheck-wait-evidence-discarded --self-test: "
+          f"{len(SELF_TESTS) + len(RATCHET_CASES)} case(s) OK")
     return 0
 
 
 def main():
     if "--self-test" in sys.argv:
         return self_test()
+    # Always, not only behind the flag (phase-472 W9): a negative control
+    # nobody runs decays into a comment. Quiet on success.
+    import contextlib
+    import io
+    with contextlib.redirect_stdout(io.StringIO()) as buf:
+        rc = self_test()
+    if rc:
+        sys.stdout.write(buf.getvalue())
+        return rc
     if "--baseline" in sys.argv:
         # Regenerate the literal above after a deliberate conversion.
         for f, lines in sorted(offenders().items()):
@@ -166,50 +216,33 @@ def main():
             "`--baseline`, or the gate has nothing to compare against"
         )
 
-    new, grown = [], []
-    for f, lines in sorted(found.items()):
-        allowed = BASELINE.get(f, 0)
-        if allowed == 0:
-            new.append((f, lines))
-        elif len(lines) > allowed:
-            grown.append((f, len(lines), allowed))
-
-    if not new and not grown:
+    rose, problems = verdict(found, BASELINE)
+    if not problems:
         total = sum(len(v) for v in found.values())
-        remaining = sum(BASELINE.values())
         print(
             f"check-wait-evidence-discarded: OK ({total} baselined site(s) in "
-            f"{len(found)} file(s); backlog budget {remaining})"
+            f"{len(found)} file(s); every row at its recorded count)"
         )
-        if total < remaining:
-            print(
-                f"  {remaining - total} site(s) have been converted since the baseline "
-                f"was taken — shrink it with `--baseline` to lock the progress in."
-            )
         return 0
 
-    for f, lines in new:
-        print(f"check-wait-evidence-discarded: NEW file discarding wait evidence: {f}",
-              file=sys.stderr)
-        for ln in lines:
-            print(f"  {f}:{ln}", file=sys.stderr)
-    for f, n, allowed in grown:
-        print(f"check-wait-evidence-discarded: {f} grew {allowed} -> {n}", file=sys.stderr)
-    print(
-        "\n"
-        "  A `wait_for_output*` error carries what the process PRINTED;\n"
-        "  `.unwrap_or_default()` replaces it with \"\", so the assertion reports\n"
-        "  `got:` with nothing after it (issue 0670).\n"
-        "\n"
-        "  Do NOT fix it with `.unwrap_or_else(|e| e.to_string())` — that text\n"
-        "  names the pattern it waited for, so `seen.contains(<pattern>)` matches\n"
-        "  the complaint about the missing pattern and the test passes exactly\n"
-        "  when it should fail.\n"
-        "\n"
-        "  Use `collect_until_count` (output and diagnostic on separate channels)\n"
-        "  or `collect_until`, and put the diagnostic in the panic MESSAGE.\n",
-        file=sys.stderr,
-    )
+    for line in problems:
+        print(line, file=sys.stderr)
+    if rose:
+        print(
+            "\n"
+            "  A `wait_for_output*` error carries what the process PRINTED;\n"
+            "  `.unwrap_or_default()` replaces it with \"\", so the assertion reports\n"
+            "  `got:` with nothing after it (issue 0670).\n"
+            "\n"
+            "  Do NOT fix it with `.unwrap_or_else(|e| e.to_string())` — that text\n"
+            "  names the pattern it waited for, so `seen.contains(<pattern>)` matches\n"
+            "  the complaint about the missing pattern and the test passes exactly\n"
+            "  when it should fail.\n"
+            "\n"
+            "  Use `collect_until_count` (output and diagnostic on separate channels)\n"
+            "  or `collect_until`, and put the diagnostic in the panic MESSAGE.\n",
+            file=sys.stderr,
+        )
     return 1
 
 

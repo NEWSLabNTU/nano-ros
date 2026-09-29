@@ -215,7 +215,6 @@ issue-ids:
 # OPEN spelling, so the index advertised an open issue whose file was gone.
 [private]
 issue-index:
-    @python3 scripts/gen-issue-index.py --self-test
     # `docs/issues/open.md` is a gitignored ARTIFACT since 2026-09-03, so there
     # is no committed copy to compare against and `--check` has nothing to be
     # stale against. REGENERATE, then verify — which is the stronger order

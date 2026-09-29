@@ -22,8 +22,11 @@ one changing the value it discards. Both mean somebody edited a line whose
 effect is not what the file suggests.
 
 The baseline records (symbol, loser file, winner file, loser value, winner
-value). A new tuple fails; an unchanged one passes. Refresh deliberately with
-`--update`, and say in the commit why the override is correct.
+value). A new tuple fails; an unchanged one passes; a recorded tuple the tree no
+longer has ALSO fails until its entry is deleted (phase-472 W9,
+`scripts/lib/ratchet.py`) — a stale entry is an override the tree could
+re-acquire silently, which is the same line going dead twice. Refresh
+deliberately with `--update`, and say in the commit why the override is correct.
 
 It would not have BLOCKED W3 — that pair already existed, and only the discarded
 value changed, which the baseline does record. What it buys is that anyone
@@ -43,6 +46,8 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from ratchet import fell_instructions, judge  # noqa: E402  phase-472 W9
 BASELINE = os.path.join(ROOT, ".config", "kconfig-overrides.json")
 LEAVES = os.path.join(ROOT, "scripts", "build", "zephyr-fixture-leaves.sh")
 
@@ -138,6 +143,28 @@ def key(d):
     return (d["symbol"], d["dead_in"], d["beaten_by"], d["dead_value"], d["live_value"])
 
 
+def _spell(k):
+    return (f"{{symbol: {k[0]}, dead_in: {k[1]}, beaten_by: {k[2]}, "
+            f"dead_value: {k[3]}, live_value: {k[4]}}}")
+
+
+def verdict(current, base):
+    """(new overrides, failure lines for entries the tree no longer has).
+
+    One comparison on the shared ratchet: the baseline is a SET, so each key
+    counts 1 — a new override is a rise, a vanished one a fall, and a fall must
+    be recorded in the change that made it, like any other ratchet's.
+    """
+    have, want = {key(d): d for d in current}, {key(d): d for d in base}
+    rose, fell = judge({k: 1 for k in have}, {k: 1 for k in want})
+    new = [have[m.key] for m in rose]
+    stale = fell_instructions(
+        fell, rel(BASELINE, ROOT),
+        lambda k, n: _spell(k) if n else None,
+        "python3 scripts/check-kconfig-overridden-values.py --update") if fell else []
+    return new, stale
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--update", action="store_true",
@@ -174,9 +201,7 @@ def main():
               f"{rel(BASELINE, ROOT)} — create it with --update.", file=sys.stderr)
         return 1
 
-    have, want = {key(d): d for d in current}, {key(d): d for d in base}
-    new = [have[k] for k in have.keys() - want.keys()]
-    gone = [want[k] for k in want.keys() - have.keys()]
+    new, stale = verdict(current, base)
 
     if new:
         print("check-kconfig-overridden-values: a Kconfig line has become DEAD, "
@@ -200,11 +225,15 @@ def main():
         )
         return 1
 
-    msg = f"check-kconfig-overridden-values OK — {len(current)} known override(s)"
-    if gone:
-        msg += (f"; {len(gone)} baseline entr(y/ies) no longer present "
-                f"(fine — refresh with --update when convenient)")
-    print(msg + ".")
+    if stale:
+        print("check-kconfig-overridden-values: the baseline records override(s) "
+              "the tree no longer has:\n", file=sys.stderr)
+        for line in stale:
+            print(line, file=sys.stderr)
+        return 1
+
+    print(f"check-kconfig-overridden-values OK — {len(current)} known override(s), "
+          f"every one still present.")
     return 0
 
 
@@ -252,6 +281,15 @@ def selftest(verbose=False):
     chk("two rows hitting the same override collapse to one entry, both listed",
         len(overrides(rows2, read=read, root="/p")) == 1
         and overrides(rows2, read=read, root="/p")[0]["rows"] == ["cell", "cell2"])
+
+    # The ratchet, through `verdict` — the function `main` runs. The stale
+    # case is the phase-472 W9 hole: a vanished override used to print OK and
+    # leave its entry, so the same line could go dead again unreported.
+    one = overrides(row("/p/leaf.conf", "/p/board.conf"), read=read, root="/p")
+    chk("an unchanged set passes", verdict(one, one) == ([], []))
+    chk("a new override fails", verdict(one, [])[0] == one)
+    chk("a baseline entry the tree no longer has fails, naming the entry",
+        verdict([], one)[1] != [] and any("CONFIG_A" in ln for ln in verdict([], one)[1]))
 
     if verbose:
         print(f"\n{ok} passed, {fail} failed")

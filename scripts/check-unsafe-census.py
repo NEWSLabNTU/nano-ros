@@ -41,8 +41,10 @@ failure this gate would otherwise reproduce.
 ## The ratchet
 
 `.config/unsafe-census-baseline.txt`, one row per crate per kind, and it may
-only SHRINK. An increase in any kind for any crate fails; a decrease is a
-finding to record (rerun with `--write-baseline`). A crate absent from the
+only SHRINK. An increase in any kind for any crate fails; so does a decrease
+the baseline does not yet record — it must be recorded in the change that made
+it (rerun with `--write-baseline`), or the slack lets the crate regrow to its
+old count unobserved (phase-472 W9, `scripts/lib/ratchet.py`). A crate absent from the
 baseline may not carry unsafe at all — that is what makes a NEW crate's unsafe
 visible rather than grandfathered.
 
@@ -56,6 +58,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 BASELINE = REPO / ".config" / "unsafe-census-baseline.txt"
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+from ratchet import Move, fell_instructions, judge  # noqa: E402  phase-472 W9
 
 KINDS = ("block", "fn", "impl", "extern", "trait")
 
@@ -298,6 +302,47 @@ def write_baseline(now):
     BASELINE.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _row_text(name, row):
+    return name + "  " + "  ".join(str(row.get(k, 0)) for k in KINDS)
+
+
+def verdict(now, base, mine):
+    """(failure lines, inherited-note lines) for a census against its baseline.
+
+    `mine` is the set of crates this branch touched (None: unknowable, so every
+    crate is judged — failing CLOSED). BOTH directions are judged on the shared
+    ratchet (`scripts/lib/ratchet.py`): a count that grew fails, and so does one
+    that FELL while the baseline still records the old value — otherwise a crate
+    at 3 against a row of 5 can regrow two sites with no gate objecting
+    (phase-472 W9). A fall is judged in the same scope as a rise: a crate this
+    branch never touched cannot have moved because of it.
+    """
+    flat = lambda d: {(c, k): v[k] for c, v in d.items() for k in KINDS}  # noqa: E731
+    rose, fell = judge(flat(now), flat(base))
+    blamed = (lambda c: True) if mine is None else (lambda c: c in mine)
+    fails, inherited = [], []
+    for m in rose:
+        crate, kind = m.key
+        if m.was == 0 and crate not in base:
+            line = f"  {crate}: NEW crate carrying unsafe ({kind}={m.now})"
+        else:
+            line = f"  {crate}: unsafe {kind} {m.was} -> {m.now}"
+        (fails if blamed(crate) else inherited).append(line)
+    fell_mine = [m for m in fell if blamed(m.key[0])]
+    if fell_mine:
+        # One edit per CRATE ROW, which is the unit the baseline file holds.
+        crates = sorted({m.key[0] for m in fell_mine})
+        # `spell(crate, 1)` is the recorded row, `spell(crate, 0)` the row as
+        # it must become (None: the crate carries no unsafe now — delete it).
+        rows = [Move(c, 1, 0) for c in crates]
+        spell = lambda c, n: (_row_text(c, base[c]) if n else  # noqa: E731
+                              (_row_text(c, now[c]) if c in now else None))
+        fails.extend(fell_instructions(
+            rows, str(BASELINE.relative_to(REPO)), spell,
+            "python3 scripts/check-unsafe-census.py --write-baseline"))
+    return fails, inherited
+
+
 def self_test():
     """A planted `unsafe` the census does not report is what makes this decoration."""
     failures = 0
@@ -324,6 +369,31 @@ def self_test():
         if got != want:
             print(f"  self-test FAIL: {src!r} -> {got}, want {want}", file=sys.stderr)
             failures += 1
+    # The ratchet, both directions, through `verdict` — the function `main`
+    # runs. The fall cases are the phase-472 W9 hole: before, a crate at 3
+    # against a row of 5 printed OK and could regrow to 5.
+    z = {k: 0 for k in KINDS}
+    row = lambda **kw: dict(z, **kw)  # noqa: E731
+    ratchet = [
+        ("unchanged passes", {"a": row(block=5)}, {"a": row(block=5)}, {"a"}, False),
+        ("growth in a touched crate fails", {"a": row(block=6)}, {"a": row(block=5)}, {"a"}, True),
+        ("a new crate carrying unsafe fails", {"b": row(fn=1)}, {}, {"b"}, True),
+        ("an unrecorded FALL in a touched crate fails",
+         {"a": row(block=3)}, {"a": row(block=5)}, {"a"}, True),
+        ("a crate that lost ALL its unsafe but keeps a row fails",
+         {}, {"a": row(block=5)}, {"a"}, True),
+        ("with no merge base every crate is judged",
+         {"a": row(block=3)}, {"a": row(block=5)}, None, True),
+        ("an untouched crate's move is inherited, not blamed",
+         {"a": row(block=6)}, {"a": row(block=5)}, set(), False),
+    ]
+    for desc, now_, base_, mine_, want in ratchet:
+        got = bool(verdict(now_, base_, mine_)[0])
+        if got != want:
+            print(f"  self-test FAIL: ratchet: {desc}: failed={got}, want {want}",
+                  file=sys.stderr)
+            failures += 1
+    cases = cases + ratchet
     if failures:
         print(f"check-unsafe-census self-test: {failures} case(s) FAILED", file=sys.stderr)
         return 1
@@ -360,70 +430,42 @@ def main():
         for name in sorted(now):
             print(f"  {name:44} " + "  ".join(f"{k}={now[name][k]}" for k in KINDS))
 
-    grew, appeared, shrank = [], [], []
-    for name in sorted(set(now) | set(base)):
-        b = base.get(name)
-        n = now.get(name, {k: 0 for k in KINDS})
-        if b is None:
-            appeared.append((name, n))
-            continue
-        for k in KINDS:
-            if n[k] > b[k]:
-                grew.append((name, k, b[k], n[k]))
-            elif n[k] < b[k]:
-                shrank.append((name, k, b[k], n[k]))
+    mine = changed_crates(workspace_crates() or [])
+    scope = ("every crate (no merge base with origin/main — failing closed)"
+             if mine is None else f"{len(mine)} crate(s) this branch touched")
+    fails, inherited = verdict(now, base, mine)
 
     # Growth in a crate this branch never touched is INHERITED — see
     # `changed_crates`. It is still recorded, and the baseline still has to move,
     # but it is not this branch's decision and must not fail it.
-    mine = changed_crates(workspace_crates() or [])
-    if mine is None:
-        inherited_grew, inherited_new = [], []
-        scope = "every crate (no merge base with origin/main — failing closed)"
-    else:
-        inherited_grew = [g for g in grew if g[0] not in mine]
-        inherited_new = [a for a in appeared if a[0] not in mine]
-        grew = [g for g in grew if g[0] in mine]
-        appeared = [a for a in appeared if a[0] in mine]
-        scope = f"{len(mine)} crate(s) this branch touched"
-
-    if inherited_grew or inherited_new:
+    if inherited:
         print(
-            f"check-unsafe-census: {len(inherited_grew) + len(inherited_new)} row(s) grew in "
+            f"check-unsafe-census: {len(inherited)} row(s) moved in "
             "crates this branch did not touch — inherited from `main`, not blamed here:"
         )
-        for name, k, was, is_ in inherited_grew:
-            print(f"    {name}: unsafe {k} {was} -> {is_}")
-        for name, n in inherited_new:
-            kinds = ", ".join(f"{k}={n[k]}" for k in KINDS if n[k])
-            print(f"    {name}: NEW crate carrying unsafe ({kinds})")
+        for line in inherited:
+            print("  " + line)
         print("  Record them with --write-baseline; the decision was made in the "
               "commit that made it.")
 
-    if grew or appeared:
+    if fails:
         print("check-unsafe-census: FAIL\n", file=sys.stderr)
-        for name, k, was, is_ in grew:
-            print(f"  {name}: unsafe {k} {was} -> {is_}", file=sys.stderr)
-        for name, n in appeared:
-            kinds = ", ".join(f"{k}={n[k]}" for k in KINDS if n[k])
-            print(f"  {name}: NEW crate carrying unsafe ({kinds})", file=sys.stderr)
+        for line in fails:
+            print(line, file=sys.stderr)
         print(
-            "\n  The baseline may only SHRINK. This is not 'reduce the count' — the\n"
+            "\n  The baseline records DIRECTION. This is not 'reduce the count' — the\n"
             "  counts are legitimate (issue 1221). It is that a NEW unsafe site\n"
-            "  should be a decision someone made, not a diff nobody objected to.\n"
-            "  If the growth is intended, say so in the commit and re-run with\n"
+            "  should be a decision someone made, not a diff nobody objected to,\n"
+            "  and that a REMOVED one is locked in by the change that removed it.\n"
+            "  If a growth is intended, say so in the commit and re-run with\n"
             "      python3 scripts/check-unsafe-census.py --write-baseline",
             file=sys.stderr,
         )
         return 1
 
     total = sum(sum(r.values()) for r in now.values())
-    note = ""
-    if shrank:
-        note = (f"  {len(shrank)} row(s) SHRANK — re-run with --write-baseline to record it.")
-        print(note)
     print(f"check-unsafe-census: OK — {len(now)} crate(s), {total} unsafe site(s), "
-          f"none grew in {scope}.")
+          f"every row at its recorded count in {scope}.")
     return 0
 
 
