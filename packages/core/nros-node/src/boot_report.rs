@@ -58,14 +58,14 @@
 //! same rule issue 0900's arena knob and phase-403's `rx_buffer_from_type()`
 //! both keep.
 //!
-//! Enabled, it costs `BootReport::struct_size` bytes of `.bss` -- 100, the
+//! Enabled, it costs `BootReport::struct_size` bytes of `.bss` -- 104, the
 //! same on every target because every field is a `u32` -- and a handful of
 //! relaxed atomic stores on paths that run once per entity at registration.
 //!
-//! The 100 is not a detail: it is the LENGTH an operator types into `savemem`,
+//! The 104 is not a detail: it is the LENGTH an operator types into `savemem`,
 //! and this sentence said 60 for as long as the record had fifteen fields. A
-//! short dump decodes -- `read-boot-report.py` needs `25 * 4` bytes and a
-//! 96-byte one is refused, but a reader who trusts the prose over the tool
+//! short dump decodes -- `read-boot-report.py` needs `26 * 4` bytes and a
+//! 100-byte one is refused, but a reader who trusts the prose over the tool
 //! spends the refusal looking at the wrong thing. Ask the tool instead:
 //! `read-boot-report.py --addr-only <elf>` prints the address AND the length,
 //! from the ELF's own symbol size.
@@ -83,7 +83,7 @@
 //!    reading the new word as one it knows;
 //! 3. `FIELDS` in `scripts/read-boot-report.py`, same name, same position, and
 //!    `KNOWN_VERSION` to match;
-//! 4. the field count in `the_record_is_twenty_five_packed_u32s` below.
+//! 4. the field count in `the_record_is_twenty_six_packed_u32s` below.
 //!
 //! `check-boot-report-layout` fails on 1 without 3, and the Rust test fails if
 //! the compiler laid the record out with padding. Appending is what keeps a
@@ -102,8 +102,36 @@ pub const MAGIC: u32 = 0x4e52_5352;
 /// 4 since phase-460 W5 appended `heap_peak_bytes` and `heap_capacity_bytes`;
 /// 5 since phase-460 W7 appended `samples_dropped_too_small`;
 /// 6 since issue 1549 appended `rmw_local_queryable`;
-/// 7 since issue 1550 appended `domain_id`.
-pub const VERSION: u32 = 7;
+/// 7 since issue 1550 appended `domain_id`;
+/// 8 since issue 1573 appended `failed_alloc_arena`.
+pub const VERSION: u32 = 8;
+
+/// Which allocator refused the allocation `BootReport::failed_alloc_size`
+/// names.
+///
+/// Issue 1573. The executor ARENA and the PLATFORM HEAP share the one
+/// `failed_alloc_size` / `failed_alloc_shortfall` pair -- first writer wins,
+/// and the first failure stops the boot -- but the two are sized by different
+/// knobs, and a pair that cannot say which arena it describes names the wrong
+/// one. Measured on the Autoware Safety Island under QEMU: zenoh-pico's
+/// `_z_slist_new` asked the platform heap for 236 bytes, the console printed
+/// `HEAP EXHAUSTED`, and the decoded record told the reader to raise
+/// `NROS_EXECUTOR_ARENA_SIZE` for an arena that was 28% used.
+///
+/// Append only; `the_alloc_arena_codes_match_the_record` states the numbers
+/// `read-boot-report.py`'s `ALLOC_ARENA` restates.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u32)]
+pub enum AllocArena {
+    /// No allocation has failed, or the image predates the field.
+    None = 0,
+    /// The executor arena (`NROS_EXECUTOR_ARENA_SIZE`), claimed by entity
+    /// registration.
+    ExecutorArena = 1,
+    /// The platform heap `nros_platform_alloc` hands out of
+    /// (`CONFIG_NROS_ZEPHYR_HEAP_SIZE` on Zephyr).
+    PlatformHeap = 2,
+}
 
 /// Which rung of the knob ladder decided a knob the record carries.
 ///
@@ -237,7 +265,7 @@ pub use enabled::*;
 
 #[cfg(nros_boot_report)]
 mod enabled {
-    use super::{MAGIC, Stage, VERSION};
+    use super::{AllocArena, MAGIC, Stage, VERSION};
     use portable_atomic::{AtomicU32, Ordering};
 
     /// The record. One per image, in `.bss`.
@@ -280,6 +308,10 @@ mod enabled {
         /// Bytes by which that allocation overran the arena. This is the
         /// number to add to `NROS_EXECUTOR_ARENA_SIZE`, which is why it is
         /// stored rather than left to be recomputed from the two above.
+        ///
+        /// For a PLATFORM HEAP failure it is the request itself (see
+        /// [`note_heap_alloc_failed`]), and [`Self::failed_alloc_arena`] is
+        /// what says which of the two this pair describes.
         failed_alloc_shortfall: AtomicU32,
         /// `nros_cpp_init`'s return code, as the two's-complement bits of an
         /// `i32`, or 0 (`NROS_CPP_RET_OK`) if it has not returned yet.
@@ -386,10 +418,17 @@ mod enabled {
         /// time says why, so this is the word to read first when the graph is
         /// empty.
         domain_id: AtomicU32,
+
+        /// Which allocator refused [`Self::failed_alloc_size`], as an
+        /// [`AllocArena`] code, or 0 if none has. Appended by issue 1573.
+        ///
+        /// Written in the same first-writer branch as the pair it qualifies,
+        /// so the three words always describe ONE failure.
+        failed_alloc_arena: AtomicU32,
     }
 
     impl BootReport {
-        const fn new() -> Self {
+        pub(crate) const fn new() -> Self {
             Self {
                 magic: AtomicU32::new(0),
                 version: AtomicU32::new(0),
@@ -416,6 +455,7 @@ mod enabled {
                 samples_dropped_too_small: AtomicU32::new(0),
                 rmw_local_queryable: AtomicU32::new(0),
                 domain_id: AtomicU32::new(0),
+                failed_alloc_arena: AtomicU32::new(0),
             }
         }
 
@@ -467,12 +507,19 @@ mod enabled {
         pub samples_dropped_too_small: u32,
         pub rmw_local_queryable: u32,
         pub domain_id: u32,
+        pub failed_alloc_arena: u32,
     }
 
     /// Read the record.
     #[must_use]
     pub fn snapshot() -> Snapshot {
-        let r = &NROS_BOOT_REPORT;
+        snapshot_of(&NROS_BOOT_REPORT)
+    }
+
+    /// [`snapshot`] of any record -- the image's, or a test's own, so a test
+    /// of a first-writer-wins field does not race every other test that
+    /// writes the one static.
+    pub(crate) fn snapshot_of(r: &BootReport) -> Snapshot {
         let g = |f: &AtomicU32| f.load(Ordering::Relaxed);
         Snapshot {
             magic: g(&r.magic),
@@ -500,6 +547,7 @@ mod enabled {
             samples_dropped_too_small: g(&r.samples_dropped_too_small),
             rmw_local_queryable: g(&r.rmw_local_queryable),
             domain_id: g(&r.domain_id),
+            failed_alloc_arena: g(&r.failed_alloc_arena),
         }
     }
 
@@ -596,14 +644,33 @@ mod enabled {
     /// depended on winning a race would be exactly the sort of number this
     /// record must never print.
     pub fn note_alloc_failed(size: usize, shortfall: usize) {
-        let r = &NROS_BOOT_REPORT;
         checkpoint(Stage::RegisteringEntities);
+        record_alloc_failure(
+            &NROS_BOOT_REPORT,
+            size,
+            shortfall,
+            AllocArena::ExecutorArena,
+        );
+    }
+
+    /// The first-writer-wins write both failure paths share, on any record.
+    ///
+    /// ONE function so the arena code cannot be written by one path and
+    /// forgotten by the other (issue 1573 was the heap path writing the pair
+    /// the arena path writes, with nothing saying whose it was).
+    pub(crate) fn record_alloc_failure(
+        r: &BootReport,
+        size: usize,
+        shortfall: usize,
+        arena: AllocArena,
+    ) {
         if r.failed_alloc_size
             .compare_exchange(0, saturate(size), Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
         {
             r.failed_alloc_shortfall
                 .store(saturate(shortfall), Ordering::Relaxed);
+            r.failed_alloc_arena.store(arena as u32, Ordering::Relaxed);
         }
     }
 
@@ -629,19 +696,12 @@ mod enabled {
     /// an unfalsifiable claim: the stage would read 4 and nothing later could
     /// correct it.
     pub fn note_heap_alloc_failed(size: usize) {
-        let r = &NROS_BOOT_REPORT;
-        if r.failed_alloc_size
-            .compare_exchange(0, saturate(size), Ordering::Relaxed, Ordering::Relaxed)
-            .is_ok()
-        {
-            // The shortfall is the REQUEST, not `size - free`: the heap is
-            // fragmented by the time it refuses, so the bytes that would have
-            // made this request fit are not the deficit against the largest
-            // free block. A number that looks like a precise deficit and is not
-            // would be sized from.
-            r.failed_alloc_shortfall
-                .store(saturate(size), Ordering::Relaxed);
-        }
+        // The shortfall is the REQUEST, not `size - free`: the heap is
+        // fragmented by the time it refuses, so the bytes that would have made
+        // this request fit are not the deficit against the largest free block.
+        // A number that looks like a precise deficit and is not would be sized
+        // from.
+        record_alloc_failure(&NROS_BOOT_REPORT, size, size, AllocArena::PlatformHeap);
     }
 
     /// [`note_heap_alloc_failed`] across the C ABI, for a platform in C.
@@ -862,18 +922,18 @@ mod disabled {
 mod tests {
     use super::*;
 
-    /// The reader decodes twenty-five u32s positionally, so the record must
+    /// The reader decodes twenty-six u32s positionally, so the record must
     /// be exactly that and nothing else -- no padding, no reordering.
     ///
     /// `size_of` on the TARGET, which is the half `check-boot-report-layout.py`
     /// cannot see: that gate compares two source files, and this compares the
     /// source against what the compiler actually laid out.
     #[test]
-    fn the_record_is_twenty_five_packed_u32s() {
-        assert_eq!(BootReport::struct_size(), 25 * 4);
+    fn the_record_is_twenty_six_packed_u32s() {
+        assert_eq!(BootReport::struct_size(), 26 * 4);
         assert_eq!(
             core::mem::size_of::<BootReport>(),
-            25 * core::mem::size_of::<u32>(),
+            26 * core::mem::size_of::<u32>(),
             "the record grew padding; the reader decodes positionally"
         );
         assert_eq!(core::mem::align_of::<BootReport>(), 4);
@@ -891,6 +951,43 @@ mod tests {
         assert_eq!(KnobSource::Environment as u32, 4);
         assert_eq!(KnobSource::Snippet as u32, 5);
         assert_eq!(KnobSource::CommandLine as u32, 6);
+    }
+
+    /// Issue 1573 -- `read-boot-report.py`'s `ALLOC_ARENA` restates these.
+    #[test]
+    fn the_alloc_arena_codes_match_the_record() {
+        assert_eq!(AllocArena::None as u32, 0);
+        assert_eq!(AllocArena::ExecutorArena as u32, 1);
+        assert_eq!(AllocArena::PlatformHeap as u32, 2);
+    }
+
+    /// Issue 1573 -- a PLATFORM HEAP failure is recorded as one, so the decoder
+    /// can name `CONFIG_NROS_ZEPHYR_HEAP_SIZE` rather than the executor arena.
+    ///
+    /// On a record of its own: the image's static is first-writer-wins and
+    /// [`the_first_alloc_failure_wins`] writes it, so a read-back there would
+    /// depend on which test ran first.
+    #[test]
+    fn a_heap_failure_is_recorded_as_the_heap_and_an_arena_one_as_the_arena() {
+        let heap = BootReport::new();
+        record_alloc_failure(&heap, 236, 236, AllocArena::PlatformHeap);
+        record_alloc_failure(&heap, 999, 512, AllocArena::ExecutorArena);
+        let s = snapshot_of(&heap);
+        assert_eq!(s.failed_alloc_size, 236);
+        assert_eq!(s.failed_alloc_shortfall, 236);
+        assert_eq!(
+            s.failed_alloc_arena,
+            AllocArena::PlatformHeap as u32,
+            "a later arena failure relabelled the first, heap, failure"
+        );
+
+        let arena = BootReport::new();
+        record_alloc_failure(&arena, 100, 8, AllocArena::ExecutorArena);
+        assert_eq!(
+            snapshot_of(&arena).failed_alloc_arena,
+            AllocArena::ExecutorArena as u32
+        );
+        assert_eq!(snapshot_of(&BootReport::new()).failed_alloc_arena, 0);
     }
 
     /// Issue 1550 -- the domain word packs the id in the low byte and its
@@ -951,6 +1048,7 @@ mod tests {
         let s = snapshot();
         assert_eq!(s.failed_alloc_size, 100);
         assert_eq!(s.failed_alloc_shortfall, 8);
+        assert_eq!(s.failed_alloc_arena, AllocArena::ExecutorArena as u32);
     }
 
     /// A value too large for the field must read as enormous, not as its low
