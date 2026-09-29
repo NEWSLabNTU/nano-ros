@@ -33,8 +33,13 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
 cd "$repo_root"
 
+# phase-472 F2 — a missing precondition is NOT VERIFIED (issue 1043), recorded
+# in the `nros_check_skip` ledger, never a quiet rc=0; FAIL under
+# NROS_CHECK_SKIP_STRICT=1. One spelling: `nros_check_unverified`.
+# shellcheck source=scripts/build/check-skip.sh
+source "scripts/build/check-skip.sh"
 if ! command -v "$NM" >/dev/null 2>&1; then
-    echo "weak-image: \`$NM\` not found — set NM=<nm>. Skipping." >&2
+    nros_check_unverified weak-symbols-image "\`$NM\` not found — set NM=<nm>" || exit 1
     exit 0
 fi
 
@@ -226,7 +231,8 @@ if [ "$ssot_fail" -gt 0 ]; then
     exit 1
 fi
 if [ "$any_artifact" = 0 ]; then
-    echo "weak-image: SSoT check passed; no covered prebuilt images found — run the fixture build first (image checks skipped)."
+    echo "weak-image: SSoT check passed; no covered prebuilt images found — run the fixture build first."
+    nros_check_unverified weak-symbols-image "no covered prebuilt image found (the image half ran nothing)" || exit 1
     exit 0
 fi
 echo "weak-image: checked=$checked fail=$fails warn=$warns"

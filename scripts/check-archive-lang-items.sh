@@ -72,8 +72,13 @@ if [ ${#roots[@]} -eq 0 ]; then
     roots=(examples packages build)
 fi
 
+# phase-472 F2 — a missing precondition is NOT VERIFIED (issue 1043), recorded
+# in the `nros_check_skip` ledger, never a quiet rc=0; FAIL under
+# NROS_CHECK_SKIP_STRICT=1. One spelling: `nros_check_unverified`.
+# shellcheck source=scripts/build/check-skip.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/build/check-skip.sh"
 command -v nm >/dev/null 2>&1 || {
-    echo "check-archive-lang-items: SKIP — no \`nm\` on this host" >&2
+    nros_check_unverified archive-lang-items "no \`nm\` on this host" || exit 1
     exit 0
 }
 
@@ -227,6 +232,7 @@ if [ "$links" -eq 0 ]; then
     echo "  prune list in this script has grown too broad. Re-derive the exclusions:" >&2
     echo "    comm -23 <(find examples packages build -name link.txt -path '*CMakeFiles*' | sort) \\" >&2
     echo "             <(bash scripts/check-archive-lang-items.sh --list | sort)" >&2
+    nros_check_unverified archive-lang-items "no CMake image link line built here" || exit 1
     exit 0
 fi
 

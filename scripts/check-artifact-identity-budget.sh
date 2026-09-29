@@ -319,6 +319,10 @@ if [ ! -d "$TREE" ]; then
     echo "[SKIP] artifact-identity budget: no build tree at $TREE"
     echo "       This gate reads an existing tree; it never builds one. To give"
     echo "       it something to read:  $BUILD_HINT"
+    # phase-472 F2 — RECORDED, not a quiet rc=0.
+    # shellcheck source=scripts/build/check-skip.sh
+    source scripts/build/check-skip.sh
+    nros_check_unverified artifact-identity-budget "no build tree at $TREE" || exit 1
     exit 0
 fi
 

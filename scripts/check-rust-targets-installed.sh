@@ -23,10 +23,16 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+# phase-472 F2 — a missing precondition is NOT VERIFIED (issue 1043), recorded
+# in the `nros_check_skip` ledger, never a quiet rc=0; FAIL under
+# NROS_CHECK_SKIP_STRICT=1. One spelling: `nros_check_unverified`.
+# shellcheck source=scripts/build/check-skip.sh
+source "scripts/build/check-skip.sh"
 command -v rustup >/dev/null 2>&1 || {
     # Fail OPEN, matching `builder/preflight.rs`: a host managing Rust without
     # rustup cannot be probed this way, and guessing would block a working setup.
-    echo "check-rust-targets-installed: SKIP (no rustup on PATH)"
+    # Open, but RECORDED (phase-472 F2).
+    nros_check_unverified rust-targets-installed "no rustup on PATH" || exit 1
     exit 0
 }
 

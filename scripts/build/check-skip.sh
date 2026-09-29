@@ -83,3 +83,47 @@ nros_check_skip_report() {
     done < "$f"
     echo "  Install what they need, or accept that this green is narrower than it looks."
 }
+
+# nros_check_unverified <name> <reason…>
+#
+# phase-472 F2 — the ONE spelling for "this gate's precondition is absent here"
+# (a tool, a build output, a provisioned store). Issue 1043's three outcomes are
+# FAIL, NOT VERIFIED and OK; this is the middle one, and it is never a quiet
+# rc=0: it RECORDS the skip in the ledger above (so the lane's closing line
+# names it) and returns 0. Under `NROS_CHECK_SKIP_STRICT=1` — a lane that
+# provides every precondition, where a missing one is itself the defect — it
+# prints FAIL and returns 1 instead. Callers:
+#
+#     nros_check_unverified my-gate "no \`nm\` on PATH" || exit 1
+#     exit 0
+#
+# The Python spelling is `scripts/lib/check_skip.py` (`unverified()`), which
+# calls this function, so the ledger path has one derivation.
+nros_check_unverified() {
+    local name="${1:?nros_check_unverified: name}"
+    shift
+    local reason="$*"
+    if [ "${NROS_CHECK_SKIP_STRICT:-}" = 1 ]; then
+        echo "[FAIL] ${name}: NOT VERIFIED — ${reason} (NROS_CHECK_SKIP_STRICT=1: a missing precondition is a failure here)" >&2
+        return 1
+    fi
+    nros_check_skip "$name" "NOT VERIFIED — ${reason}"
+    return 0
+}
+
+# The helper's own negative control. Gates that call it run it on their normal
+# path; it writes to a scratch ledger, never the lane's.
+nros_check_unverified_self_test() (
+    local scratch
+    scratch="$(mktemp -d)"
+    _nros_check_skip_file() { printf '%s/checks.skipped' "$scratch"; }
+    NROS_CHECK_SKIP_STRICT= nros_check_unverified selftest-gate "probe" >/dev/null || { rm -rf "$scratch"; echo "nros_check_unverified SELFTEST FAILED: non-strict returned non-zero" >&2; exit 1; }
+    case "$(cat "$scratch/checks.skipped" 2>/dev/null)" in
+        "selftest-gate"$'\t'"NOT VERIFIED — probe") ;;
+        *) rm -rf "$scratch"; echo "nros_check_unverified SELFTEST FAILED: the skip was not RECORDED" >&2; exit 1 ;;
+    esac
+    if NROS_CHECK_SKIP_STRICT=1 nros_check_unverified selftest-gate "probe" 2>/dev/null; then
+        rm -rf "$scratch"; echo "nros_check_unverified SELFTEST FAILED: strict mode passed a missing precondition" >&2; exit 1
+    fi
+    rm -rf "$scratch"
+)

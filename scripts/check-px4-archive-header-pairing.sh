@@ -372,7 +372,15 @@ EOF
     return $rc
 }
 
-command -v cmake >/dev/null 2>&1 || { echo "SKIP: cmake not on PATH" >&2; exit 0; }
+# phase-472 F2 — a missing precondition is NOT VERIFIED (issue 1043), recorded
+# in the `nros_check_skip` ledger, never a quiet rc=0; FAIL under
+# NROS_CHECK_SKIP_STRICT=1. One spelling: `nros_check_unverified`.
+# shellcheck source=scripts/build/check-skip.sh
+source "$(cd "$(dirname "$0")/.." && pwd)/scripts/build/check-skip.sh"
+command -v cmake >/dev/null 2>&1 || {
+    nros_check_unverified px4-archive-header-pairing "cmake not on PATH" || exit 1
+    exit 0
+}
 
 echo "check-px4-archive-header-pairing: the predicate must fire (issues 1046/1050)"
 self_test || fail=1
