@@ -141,7 +141,9 @@ fn main() {
     //      in `nros_board_common::freertos_config::default_heap_bytes`. The
     //      FreeRTOS task stacks are allocated *from* this heap (heap_4), so the
     //      budget is a SUM of the things in it — app-sized task stacks (one per
-    //      TIER), the executors a tiered boot opens past the first, and the
+    //      TIER), a spare-executor term (a tiered boot's executors past the
+    //      first USED to land here; since issues 1568/1571 both tier roads
+    //      take `.bss` from the entry, see `DEFAULT_HEAP_SPARE_EXECUTOR_BYTES`), and the
     //      lwIP + zenoh-pico working set — and each of those terms is measured
     //      on running images and documented where it is defined.
     //

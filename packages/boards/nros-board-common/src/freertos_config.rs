@@ -210,8 +210,14 @@ pub const DEFAULT_HEAP_APP_TASK_SLOTS: usize = 3;
 /// image opens costs the heap NOTHING and this budget has no term for it. That
 /// is what makes the default independent of a size the board cannot see (issue
 /// 1197's whole subject). A TIERED boot opens one executor per tier, and
-/// `backing::take` is a latch — the second and later ones fall through to
-/// `Box::leak` out of this heap, which is correct and deliberate.
+/// `backing::take` is a latch — the second and later ones fell through to
+/// `Box::leak` out of this heap. **Neither in-tree tier road does any more**:
+/// the C/C++ runners take the entry's `__nros_tier_executor_storage` (issue
+/// 1568) and the Rust `run_tiers` the entry's `TierExecutorBacking` (issue
+/// 1571), both `.bss`. What still reaches this term is an older C/C++ entry
+/// TU calling the `_ns` runner, an ad-hoc second `Executor::open`, and an
+/// entry sized past the reservation — so the term is kept, and the MEASUREMENT
+/// below predates both moves (re-measure before lowering it).
 ///
 /// MEASURED: `examples/workspaces/realtime-rust` (2 tiers) peaks at **389,064**
 /// bytes of heap against **176,920** for the worst single-executor image

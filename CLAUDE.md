@@ -904,8 +904,10 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `Node::GlobalStorageHolder<0>::storage`, and every RUST board reached an `alloc`
   convenience constructor that `Box::leak`ed it — **invisible to `mem-report`, which
   reads symbols**. The Rust arm is a named `.bss` static now
-  (`nros_node::executor::backing::EXECUTOR_BACKING`, RFC-0002 § 4.4b); the heap arm
-  survives for a SECOND executor (tiered boot) and for an entry sized past the default.
+  (`nros_node::executor::backing::EXECUTOR_BACKING`, RFC-0002 § 4.4b); a tiered boot's
+  SPAWNED tiers take slots of the entry's `.bss` `TierExecutorBacking` (issue 1571), so
+  the heap arm survives only for an ad-hoc second `Executor::open` and an entry sized
+  past the default.
   It is a MOVE, not a saving — the same bytes leave the allocator arena
   (`CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE` / heap_4) and become linker-visible, so never
   report the `.bss` growth without subtracting the heap requirement it replaces.
