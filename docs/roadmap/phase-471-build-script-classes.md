@@ -1,6 +1,6 @@
 # Phase 471 — build-script classes
 
-**Status (2026-09-29). W0, W1, W3 and W6 LANDED; W2, W4 and W5 open.** A design study of the 66
+**Status (2026-09-29). ALL WORK ITEMS LANDED — W0, W1, W2, W3, W4, W5, W6.** A design study of the 66
 cargo build scripts: what they are actually FOR, where they are genuinely
 fragmented, and where an "outlier" is a legitimately different job the old
 taxonomy was mis-describing. W0 replaced the census's capability letters with
@@ -454,9 +454,9 @@ phase-468's, with a reason read by whoever changes the thing it excuses.
 
 </details>
 
-### W4 — one `linker-script` helper
+### W4 — one `linker-script` helper (LANDED)
 
-**HOME DECIDED (phase-471 W5's PR); the migration is still open.**
+**Home decided in phase-471 W5's PR; the migration landed 2026-09-29.**
 
 11 scripts, 6 bodies, one job. The phase doc's own condition was that **the home
 must be decided first**, and the home turned out to be the whole question. Three
@@ -493,14 +493,67 @@ developer copies them out. Giving a copy-out template a dependency on a crate
 that exists only in this checkout is RFC-0026's hazard, and it is the reason the
 12 Zephyr shims are deliberately left alone. They keep their 20 lines.
 
-**Migration still open, and deliberately not landed here.** Acceptance is that
-each affected crate still LINKS, across thumbv7m / stm32f4 / riscv64 QEMU
-targets — a cross build this task could not afford (`/home` at 99 %,
-`just check build` needs ~8 GB and has exhausted it twice this week). Landing
-the edit without that acceptance would be claiming a build nobody ran, on the
-one item the study rates lowest priority precisely because *"this family has
-produced no defect and its blast radius is a link failure that is immediate and
-obvious."* The remaining work is 9 one-line call sites plus the module.
+#### The shape — one literal, because two can disagree
+
+`include_bytes!` is a macro, so a helper in another crate cannot read the
+caller's file: the bytes have to be handed to it. A plain
+`emit(source, dest, bytes)` therefore lets a caller name one file in the
+`rerun-if-changed` watch and embed another — the watch would sit on a file the
+image does not contain, so editing the real linker script would change nothing
+and cargo would report the tree fresh. That is this campaign's recurring failure
+(a value delivered to some readers and not others) reintroduced by the very
+consolidation meant to end it.
+
+The entry point is a macro taking ONE literal, from which both uses are derived:
+
+```rust
+nros_build_paths::link_script!("memory.x");                    // 8 of the 9
+nros_build_paths::link_script!("mps2-an385.x" => "memory.x");  // the 9th
+```
+
+The literal resolves relative to the file that INVOKES the macro, not to the
+crate defining it — `include_bytes!` keys on the span of its string argument,
+and the argument comes from the caller. Measured before it was relied on, with a
+throwaway two-crate workspace, rather than assumed from how it reads.
+
+`emit` stays public for the rename form's sake and says in its own docs why the
+macro is the way in. `write_into` splits the filesystem half off so it is
+testable without `OUT_DIR`, a process-global this crate's test harness shares.
+
+#### Acceptance — what was BUILT
+
+All 9 migrated crates compile and LINK, and each emitted script was compared
+BYTE FOR BYTE against its source, including the rename:
+
+| crate | target | emitted |
+| --- | --- | --- |
+| `mps2-an385-pac` | host lib + linked into the thumbv7m images below | `device.x` |
+| `nros-board-mps2-an385` | `thumbv7m-none-eabi` | `memory.x` ← `mps2-an385.x` |
+| `wake-latency-cortex-m3` | `thumbv7m-none-eabi` (2 bins) | `memory.x` |
+| `qemu-rs-wcet-bench` | `thumbv7m-none-eabi` | `memory.x` |
+| `stm32f4-rs-smoltcp` | `thumbv7em-none-eabihf` | `memory.x` |
+| `qemu-rs-test` | `thumbv7m-none-eabi` | `memory.x` |
+| `heap-free-poc-mps2` | `thumbv7m-none-eabi` | `memory.x` |
+| `qemu-rs-lan9118` | `thumbv7m-none-eabi` | `memory.x` |
+| `logging-smoke-mps2-baremetal` | `thumbv7m-none-eabi` | `memory.x` |
+
+The emitted `cargo:` directives were diffed against what the hand-written
+scripts produced and are identical — same `rustc-link-search`, same two
+`rerun-if-changed` lines, the watch still naming the SOURCE file rather than the
+destination. No riscv64 crate is in this family; the phase's original acceptance
+named one before the population was counted.
+
+`cargo:rerun-if-changed=build.rs` is emitted by the helper rather than reasoned
+away. All 9 scripts printed it, and whether recompiling the build-script binary
+is enough on its own is a property of cargo nobody here has measured — so it is
+kept, and the comment says that is why.
+
+**What did NOT change.** The W3 gate's census is untouched (9 files naming a
+path-valued SDK variable, before and after): `OUT_DIR` is cargo's own, not an
+inherited SDK path, so none of these 9 was ever a subject of issue 1280. The
+count this moves is `nros_build_paths` reachers, 22 → 32 (the 9 call sites
+plus `nros-build-paths`'s own now-self-referencing doc text in the census's
+file scan).
 
 ### W5 — state where a vendored tree comes from (LANDED → RFC-0101)
 

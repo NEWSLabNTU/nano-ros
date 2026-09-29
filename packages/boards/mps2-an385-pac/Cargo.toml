@@ -11,3 +11,8 @@ name = "mps2_an385_pac"
 [dependencies]
 cortex-m = "0.7"
 cortex-m-rt = { version = "0.7", features = ["device"] }
+
+[build-dependencies]
+# phase-471 W4 — the linker-script emit, shared. Zero-dependency and
+# host-only, so this edge adds one compile unit and nothing behind it.
+nros-build-paths = { path = "../../tooling/nros-build-paths" }

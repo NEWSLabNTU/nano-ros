@@ -22,3 +22,8 @@ cortex-m-rt = "0.7"
 cortex-m-semihosting = "0.5"
 panic-semihosting = { version = "0.6", features = ["exit"] }
 heapless = "0.8"
+
+[build-dependencies]
+# phase-471 W4 — the linker-script emit, shared. Zero-dependency and
+# host-only, so this edge adds one compile unit and nothing behind it.
+nros-build-paths = { path = "../../../tooling/nros-build-paths" }

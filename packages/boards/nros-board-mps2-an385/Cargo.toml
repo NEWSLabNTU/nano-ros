@@ -160,3 +160,8 @@ link-tls = ["nros-platform-mps2-an385/link-tls"]
 # Phase 97.3.mps2-an385 — DDS / DDS heap budget (2 MB). Off by
 # default; DDS example crates pull in via `features = ["dds-heap"]`.
 dds-heap = ["nros-platform-mps2-an385/dds-heap"]
+
+[build-dependencies]
+# phase-471 W4 — the linker-script emit, shared. Zero-dependency and
+# host-only, so this edge adds one compile unit and nothing behind it.
+nros-build-paths = { path = "../../tooling/nros-build-paths" }

@@ -1,14 +1,8 @@
-use std::{env, fs::File, io::Write, path::PathBuf};
+//! Put the PAC's `device.x` where `cortex-m-rt`'s `link.x` will find it.
+//!
+//! phase-471 W4 — one helper, eleven scripts; see
+//! `nros_build_paths::link_script`.
 
 fn main() {
-    let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
-
-    File::create(out.join("device.x"))
-        .unwrap()
-        .write_all(include_bytes!("device.x"))
-        .unwrap();
-
-    println!("cargo:rustc-link-search={}", out.display());
-    println!("cargo:rerun-if-changed=device.x");
-    println!("cargo:rerun-if-changed=build.rs");
+    nros_build_paths::link_script!("device.x");
 }
