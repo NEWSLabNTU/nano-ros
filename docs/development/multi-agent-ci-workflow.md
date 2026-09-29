@@ -205,6 +205,21 @@ persists in the named volumes — rustup, the cargo tools, the SDK store
 is **who can install it**, not preference: root-only things are baked,
 user-writable things are provisioned by the same verbs a contributor runs.
 
+**Where the volumes live is one variable, and every runner verb must see it.**
+`runner-store.sh` roots the eight bind-backed stores at
+`NROS_RUNNER_STORE_ROOT` (default `$HOME/nros-runner`), and `runner-container.sh
+--run` and `runner-bootstrap.sh` both call its `--ensure`. So run
+`runner-loop-container`, `runner-bootstrap` and `runner-store` with the SAME
+value — a verb started without it looks under `$HOME`, creates or ACLs empty
+directories there, and reports the wrong root (it only warns, and does not
+re-point, a volume that already exists). Put the store on a fast local disk,
+not a contended one: the lab host's runner moved off a spinning `/home` onto an
+SSD for exactly that. To move a store, copy it **as the container's UID** (a
+one-off container of the runner image with only the two store paths mounted),
+never with a host `rsync`/`cp`, which cannot keep the file owners and leaves a
+checkout git refuses (`detected dubious ownership`) and caches the runner cannot
+write.
+
 The worked example is the `[python.*]` layer (issues 1457, 1482). Tier-2 nightly
 died on `ModuleNotFoundError: No module named 'catkin_pkg'` eleven minutes into
 a Zephyr build, and the first three readings of it were "the runner needs three
