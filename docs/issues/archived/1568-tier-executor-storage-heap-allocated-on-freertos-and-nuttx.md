@@ -1,12 +1,13 @@
 ---
 id: 1568
 title: "Executor and component storage is allocated three ways and sized by guesses — the NuttX tier and C single-executor runners take 81,920 bytes for an executor that is 88,560, and FreeRTOS/NuttX tier storage is heap nothing prices"
-status: open
+status: resolved
 type: tech-debt
 area: boards, memory
 severity: high
 found: 2026-09-29
-related: [issue-1551, issue-1566, issue-1115, issue-0667, issue-0245]
+resolved: 2026-09-29
+related: [issue-1551, issue-1566, issue-1115, issue-0667, issue-0245, issue-1569, issue-1570, issue-1571]
 ---
 
 # Executor storage is allocated three ways and sized by guesses
@@ -102,4 +103,77 @@ Mirror #1436, do not invent a second mechanism:
    for entries generated before this, now sized exactly.
 3. **Exact literals.** `component.h` takes the per-build size or refuses to
    compile, never a guess.
-4. **NuttX snapshot.** Scope below.
+4. **NuttX snapshot.** Measured, raised where it had fallen below the build, and the exact fix scoped as issue 1569.
+
+## Resolution
+
+### One way
+
+| Path | After |
+| --- | --- |
+| Zephyr / FreeRTOS / NuttX C and C++ tiers | entry `.bss` `__nros_tier_executor_storage[n][…]` → `nros_board_<rtos>_run_tiers_in(…, storage, stride)` |
+| C single executor, every RTOS (ThreadX included) | entry `.bss` `__nros_executor_storage[…]` → `nros_board_rtos_run_components_in(…, setup, storage, bytes)` |
+| C++ single executor | unchanged — already `.bss` (`GlobalStorageHolder<0>`); `nros::init` now takes the same refusal |
+| Rust single executor | unchanged — `.bss` `EXECUTOR_BACKING` since phase-392 W6 |
+| Rust tiers (non-boot) | **not unified** — `open_with_session_handle` falls through to `Box::leak` on the heap at `ExecutorSizing::DEFAULT` (exact by type, invisible to `mem-report`): issue 1571 |
+| Native / Linux | unchanged — Rust runners, `MaybeUninit<CppContext>` on the stack; host process |
+
+- ONE flag: `CAbiRunners::takes_executor_storage` (was Zephyr-only
+  `run_tiers_takes_storage`), true for every RTOS family, read by both packs;
+  `nros-entry-lower` test `every_rtos_runner_takes_its_executor_storage_from_the_entry`
+  refuses a family added with a heap runner.
+- ONE size and ONE refusal, from the linked library:
+  `nros_cpp_executor_storage_size()` / `nros_cpp_executor_storage_check()`.
+  Every runner fallback (81,920 / 98,304) is deleted; the runner TUs no longer
+  probe for a header at all. The `_ns` spellings stay for older entry TUs and
+  take one heap block at the library's size.
+
+### Exact sizes
+
+- `component.h`: publisher / action server / action client / service client
+  take the per-build macro each `nros_cpp_*_create` writes; without the
+  header they expand to an undeclared identifier naming the missing header
+  (a refusal at the use site, never a guess). No consumer needed a fallback:
+  the only header-less compile is one that never links nros-cpp.
+- NuttX snapshot: **did not match** — at this commit the arm build measures
+  seven sizes ABOVE it (publisher 596 vs 560, subscriber 620, service server
+  568, …), a live 36-byte publisher overrun on realtime-c. Raised; exact
+  sizing on NuttX is issue 1569, and the rebuild edge that hid a header change
+  from the NuttX image is issue 1570.
+
+### Measured (acceptance)
+
+FreeRTOS mps2-an385, realtime-c (2 tiers), same build dir, the "before" being
+the `_ns` heap path an older entry takes:
+
+| | before (`_ns`, heap) | after (`_in`, `.bss`) |
+| --- | ---: | ---: |
+| `mem-report` `__nros_tier_executor_storage` | absent | 178,144 (2 × 89,072) |
+| RAM `.bss + .data` | 3,538,968 | 3,717,112 (+178,144) |
+| boot `heap peak` (heap_4) | 544,176 | 365,968 (−178,208) |
+
+A MOVE, not a saving: the bytes left heap_4 and became a linker-visible
+symbol. The same image with the static widened to 8 tiers FAILS AT LINK
+(`region 'RAM' overflowed by 65440 bytes`); the same image passing a stride
+8 bytes short boots to `nros: freertos run_tiers: executor storage refused …`
+and opens no session. Five unit tests pin the refusal (short, non-multiple of
+8, misaligned, null, exact).
+
+NuttX qemu-armv7a, realtime-c: `__nros_tier_executor_storage` 196,624 (2 ×
+98,312 — the snapshot's number; exact would be 178,144, issue 1569), component
+instance 0x238 → 0x288 after the snapshot raise. `realtime_tiers` e2e:
+`freertos/c` and `nuttx-arm/c` ran and passed (tiers dispatch; NuttX tiers
+deliver to host sinks).
+
+### Not done
+
+- FreeRTOS tier TASK STACKS still come from heap_4 (`xTaskCreate`, 256 KiB
+  default per tier). Moving them needs `configSUPPORT_STATIC_ALLOCATION 1`
+  (mps2-an385 has 0), the idle/timer `vApplicationGet*TaskMemory` hooks, and
+  the entry emitting `StackType_t[n][words]` + `StaticTask_t[n]` beside the
+  executor static — the stack size is a per-tier spec value the emitter
+  already has, but the 256 KiB default lives in the runner and would move to
+  the emitter. Not changed here.
+- riscv32 NuttX, C++ and Zephyr tiered images were not rebuilt on this branch.
+- The Rust tier road (issue 1571), NuttX exactness (issue 1569) and the NuttX
+  rebuild edge (issue 1570) are filed separately.
