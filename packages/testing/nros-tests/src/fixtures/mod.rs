@@ -6,6 +6,7 @@
 //!
 //! Also re-exports utilities from sibling modules for convenience.
 
+pub mod baked_locator;
 mod binaries;
 pub mod cache_key;
 pub mod groups;
