@@ -144,3 +144,55 @@ is a capacity decision rather than a bug. The largest single term is
 `examples/workspaces` at 37 GB of fixture builds, and `target/debug` at 13 GB
 is where a debuginfo setting would move the most. Both want a measurement of
 which lane stages still read them before anything is deleted.
+
+## The 150-minute ceiling fired for the first time (2026-09-29)
+
+Issue **1492** set `timeout-minutes: 150` on this job and closed with the
+ceiling listed as untested: *"`timeout-minutes: 150` has never fired — 4, 30
+and 10 minutes of slack"*. It has now fired.
+
+Run **36604239335**, job **109529052988**:
+
+| | |
+| --- | --- |
+| job started | 17:21:42Z |
+| `just ci tier1` (step 15) | 18:46:48Z → **19:51:41Z**, `failure` |
+| post-steps 16–20 (disk report, transcript, junit, tier logs) | 19:51:41Z → 19:52:04Z, all `success` |
+| job completed | **19:52:13Z**, conclusion **`cancelled`** |
+
+2 h 30 m 31 s against a 2 h 30 m ceiling. Note also that the job waited 34
+minutes for its concurrency group before starting — this issue's own subject —
+so the run row spans 17:20 to 19:52 while the job itself is the 150 minutes.
+
+## What it did and did not cost
+
+**The verdict survived.** The tier failed on its own a minute before the
+ceiling, with the usual shape:
+
+```
+Free space left: 35 MB
+===== FAIL (workspace-features, rc=101, 400510ms) =====
+```
+
+which is issue **1353**, not a timeout. Every artifact step ran: the disk
+report, the transcript, the nextest JUnit and the fixture/tier logs all
+completed by 19:52:04. Nothing was truncated.
+
+**What it cost is the LABEL.** Because the ceiling fired during the final
+cleanup, the job's conclusion is `cancelled` and so is the run's — for a run
+that actually failed, at a named gate, with the evidence uploaded. Anyone
+reading run- or job-level status sees a cancellation and would reasonably skip
+it as superseded; only the step list says `just ci tier1 => failure`. That is
+the same class of loss this issue and 1492 are about, one level up: a real red
+that does not read as one.
+
+## What this changes
+
+Not the remedy, and not a reopening of 1492 — its fix worked as designed and
+the number it chose was defensible from what it could measure. What changed is
+that the lane's duration has grown into its budget: 1492 priced 150 minutes
+against runs that ended 4 to 30 minutes early, and this one needed every
+second of it and then some. Any future move of that number should start from
+this run rather than from the three in 1492, and should note that a ceiling
+which fires *after* the verdict mislabels the outcome rather than protecting
+anything.
