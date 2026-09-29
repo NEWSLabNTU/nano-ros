@@ -248,6 +248,11 @@ if(CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES)
     zephyr_compile_definitions(
         _Z_ZEPHYR_SERIAL_RX_RING_BYTES=${CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES})
 endif()
+# ... and the sender -> ISR ring of interrupt-driven TX (issue 1534), same terms.
+if(CONFIG_NROS_ZENOH_SERIAL_TX_RING_BYTES)
+    zephyr_compile_definitions(
+        _Z_ZEPHYR_SERIAL_TX_RING_BYTES=${CONFIG_NROS_ZENOH_SERIAL_TX_RING_BYTES})
+endif()
 # RFC-0080 — CONFIG_NROS_ZENOH_LINK_CAN -> Z_FEATURE_LINK_CAN.
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_CAN)
 # RFC-0083 — CONFIG_NROS_ZENOH_LINK_ISOTP -> Z_FEATURE_LINK_ISOTP.

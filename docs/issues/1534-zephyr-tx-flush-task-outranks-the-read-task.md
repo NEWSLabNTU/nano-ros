@@ -75,3 +75,56 @@ smaller window.
 
 Either alone removes the starvation; (2) also removes the 28-38 ms tick the
 island's handler spends transmitting one service request at 115200.
+
+(Measured since, below: (2) alone does NOT remove it, and (1) is only half.)
+
+## Measured 2026-09-29 (safety island phase8-W10)
+
+S32K344 at 921,600 baud, island gateway router, every contracted input at its
+contract rate flowing for 20 s BEFORE the board is reset (a late join), then a
+second and third reset with the gateway still holding the old session (a
+mid-run reset). Board counters over SWD (`_z_zephyr_serial_stats`,
+`_z_rx_rejections`); an overflow instrument in the RX ISR recorded the running
+thread and the read task's state at each ring overflow.
+
+| image | joins | outputs at the host | RX ring at the join |
+| --- | --- | --- | --- |
+| this pin (1533 fix in, polled TX) | 3 of 3 fail | `mrm_state` and three more publishers 0/s for the whole run; `emergency/control_cmd` 18.4/s | 602 overflows by 180 ms after boot; 2-5 bad frames |
+| + interrupt-driven TX only | 3 of 3 fail | the same four publishers silent | 1115 overflows by 152 ms |
+| + main registering at k_thread 5 (below read), polled TX | 3 of 3 pass | all five at rate | 0 overflows, high water 45-824 of 1024 |
+
+The instrument, interrupt-driven TX, main at k_thread 0:
+
+    139 ms running=main                   reader=zpico_read state=0x80 held=1024
+    159 ms running=main                   reader=zpico_read state=0x80 held=1024
+    188 ms running=<zephyr_thread_wrapper> reader=zpico_read state=0x80 held=1024
+    270 ms running=zpico_read             reader=zpico_read state=0x80 held=1024
+
+The read task is READY (0x80) and not running while main registers the
+image's entities at Zephyr's default `CONFIG_MAIN_THREAD_PRIORITY` 0, and
+while the tx-flush thread runs; the flush thread has no stated priority and
+inherits its creator's, main's 0. The busy-wait was never the only way to
+hold the CPU: registration is CPU work too. With 1533 fixed the read task no
+longer dies on the frames that do arrive, but the lost frames carry the
+router's answers to the publishers' write-filter interests, and a
+multi-threaded zenoh-pico write filter starts ACTIVE (drop) and opens only on
+such an answer (`src/net/filtering.c`), so those publishers never send.
+
+What this issue now carries:
+
+1. The flush task defaults to the READ band on Zephyr (`zpico_open`, when no
+   board called `zpico_set_flush_task_config`): equal to the read task, never
+   above it.
+2. Interrupt-driven TX (zenoh-pico `e28ff603`), with
+   `CONFIG_NROS_ZENOH_SERIAL_TX_RING_BYTES` (default 256), and UART framing /
+   noise / parity counters beside the overrun count.
+
+Still open: nano-ros does not state the priority the MAIN thread registers
+at. On Zephyr it is `CONFIG_MAIN_THREAD_PRIORITY`, default 0, above every
+transport band; an image whose peer is already sending must set it below the
+read band (the safety island sets 5 against the read task's 4). A derived
+default or a priority-plan check that refuses main above the read band would
+close this. The RX ring default (1 KiB, 11 ms of line) was also measured at
+its edge at a join under load (high water 815-1024, one join in five
+overflowed); the island raises `CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES` to
+2048.

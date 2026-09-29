@@ -2065,6 +2065,21 @@ int32_t zpico_open(zpico_session_t* session) {
     if (!g_default_read_task_configured) {
         zpico_set_task_config(ZPICO_READ_TASK_PRIORITY, 0u, ZPICO_LEASE_TASK_PRIORITY, 0u);
     }
+#if defined(ZENOH_ZEPHYR) && ZPICO_TX_BATCH_THREAD == 1
+    /* Issue 1534 -- the tx-flush task is the third transport task and had no
+     * default at all: spawned with a NULL attr, it landed at the platform
+     * default, k_thread 0, ABOVE the read task. On a serial link it then
+     * preempted the RX drain for as long as it had work, and the ISR's ring
+     * overflowed (measured on an S32K344 at 921,600 baud: the read task READY,
+     * state 0x80, while the flush thread ran and the ring sat at 1024/1024).
+     * The flush task has no business outranking the task that receives, so it
+     * takes the READ band: equal priority, no preemption either way, and each
+     * yields when it blocks. A board that calls zpico_set_flush_task_config
+     * first still wins. */
+    if (!g_default_flush_task_configured) {
+        zpico_set_flush_task_config(ZPICO_READ_TASK_PRIORITY, 0u);
+    }
+#endif
 #endif
     s->read_task_configured = g_default_read_task_configured;
     s->lease_task_configured = g_default_lease_task_configured;
