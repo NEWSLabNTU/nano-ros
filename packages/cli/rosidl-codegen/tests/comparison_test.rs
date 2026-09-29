@@ -4,7 +4,7 @@ use rosidl_parser::parse_message;
 use std::{collections::HashSet, fs, path::PathBuf};
 
 mod parity_helpers;
-use parity_helpers::{normalize_code, print_diff, ros_input};
+use parity_helpers::{normalize_code, print_diff, ros_input, ros_input_absent};
 
 /// Helper to load reference output from fixtures
 fn load_reference_output(package: &str, message: &str, layer: &str) -> Result<String, String> {
@@ -61,10 +61,11 @@ fn read_and_parse_ros_message(
 }
 
 #[test]
+#[ignore = "needs a ROS 2 install; `just check cli-tests` runs it with --ignored where one is found (issue 1552)"]
 fn test_compare_std_msgs_bool() -> Result<(), GeneratorError> {
     // Parse the ROS message
     let Some(msg) = read_and_parse_ros_message("comparison_test", "std_msgs", "Bool") else {
-        return Ok(());
+        ros_input_absent()
     };
 
     // Generate with our codegen
@@ -114,10 +115,11 @@ fn test_compare_std_msgs_bool() -> Result<(), GeneratorError> {
 }
 
 #[test]
+#[ignore = "needs a ROS 2 install; `just check cli-tests` runs it with --ignored where one is found (issue 1552)"]
 fn test_compare_std_msgs_string() -> Result<(), GeneratorError> {
     // Parse the ROS message
     let Some(msg) = read_and_parse_ros_message("comparison_test", "std_msgs", "String") else {
-        return Ok(());
+        ros_input_absent()
     };
 
     // Generate with our codegen
@@ -162,10 +164,11 @@ fn test_compare_std_msgs_string() -> Result<(), GeneratorError> {
 }
 
 #[test]
+#[ignore = "needs a ROS 2 install; `just check cli-tests` runs it with --ignored where one is found (issue 1552)"]
 fn test_compare_geometry_msgs_point() -> Result<(), GeneratorError> {
     // Parse the ROS message
     let Some(msg) = read_and_parse_ros_message("comparison_test", "geometry_msgs", "Point") else {
-        return Ok(());
+        ros_input_absent()
     };
 
     // Generate with our codegen

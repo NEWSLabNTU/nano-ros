@@ -456,3 +456,20 @@ mod ros_discovery_tests {
         );
     }
 }
+
+/// Issue 1552 — the FAILURE arm of every ROS-dependent parity test.
+///
+/// Those tests are `#[ignore]`d: a host with no ROS 2 install reports them as
+/// IGNORED — a verdict libtest prints — never as a PASS that ran nothing, which
+/// is what the `let … else { return }` this replaces answered. `just check
+/// cli-tests` runs them with `--ignored` wherever a ROS 2 install is found, and
+/// there an absent input is a FAILURE: the `[NO-ROS]` / `[NO-PKG]` line above it
+/// (from [`ros_input`] / [`ros_input_dir`]) names which state this host is in.
+pub fn ros_input_absent() -> ! {
+    panic!(
+        "a ROS-dependent parity test was RUN (`--ignored`) on a host that cannot \
+         supply its input — see the [NO-ROS]/[NO-PKG] line above. Run it only where \
+         ROS 2 and the package are installed; `just check cli-tests` does that by \
+         detection (issue 1552)."
+    )
+}

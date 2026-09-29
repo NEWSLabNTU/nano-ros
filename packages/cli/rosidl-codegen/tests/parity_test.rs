@@ -6,7 +6,7 @@ use rosidl_parser::{parse_action, parse_message, parse_service};
 use std::{collections::HashSet, fs, path::Path};
 
 mod parity_helpers;
-use parity_helpers::{ros_input, ros_input_dir};
+use parity_helpers::{ros_input, ros_input_absent, ros_input_dir};
 
 mod parity_ledger;
 use parity_ledger::assert_message_dir_parity;
@@ -56,10 +56,11 @@ fn read_and_parse_action(path: &Path) -> Result<rosidl_parser::Action, String> {
 }
 
 #[test]
+#[ignore = "needs a ROS 2 install; `just check cli-tests` runs it with --ignored where one is found (issue 1552)"]
 fn test_std_msgs_primitives() -> Result<(), GeneratorError> {
     // Test basic std_msgs types
     let Some(ros_share) = ros_input_dir("parity_test", "std_msgs", "msg") else {
-        return Ok(());
+        ros_input_absent()
     };
 
     let test_messages = vec!["Bool.msg", "Int32.msg", "Float64.msg", "String.msg"];
@@ -83,9 +84,10 @@ fn test_std_msgs_primitives() -> Result<(), GeneratorError> {
 }
 
 #[test]
+#[ignore = "needs a ROS 2 install; `just check cli-tests` runs it with --ignored where one is found (issue 1552)"]
 fn test_std_msgs_header() -> Result<(), GeneratorError> {
     let Some(header_path) = ros_input("parity_test", "std_msgs", "msg", "Header.msg") else {
-        return Ok(());
+        ros_input_absent()
     };
 
     let msg = read_and_parse_message(&header_path).map_err(GeneratorError::InvalidMessage)?;
@@ -100,9 +102,10 @@ fn test_std_msgs_header() -> Result<(), GeneratorError> {
 }
 
 #[test]
+#[ignore = "needs a ROS 2 install; `just check cli-tests` runs it with --ignored where one is found (issue 1552)"]
 fn test_geometry_msgs_point() -> Result<(), GeneratorError> {
     let Some(point_path) = ros_input("parity_test", "geometry_msgs", "msg", "Point.msg") else {
-        return Ok(());
+        ros_input_absent()
     };
 
     let msg = read_and_parse_message(&point_path).map_err(GeneratorError::InvalidMessage)?;
@@ -119,9 +122,10 @@ fn test_geometry_msgs_point() -> Result<(), GeneratorError> {
 }
 
 #[test]
+#[ignore = "needs a ROS 2 install; `just check cli-tests` runs it with --ignored where one is found (issue 1552)"]
 fn test_geometry_msgs_pose() -> Result<(), GeneratorError> {
     let Some(pose_path) = ros_input("parity_test", "geometry_msgs", "msg", "Pose.msg") else {
-        return Ok(());
+        ros_input_absent()
     };
 
     let msg = read_and_parse_message(&pose_path).map_err(GeneratorError::InvalidMessage)?;
@@ -139,10 +143,11 @@ fn test_geometry_msgs_pose() -> Result<(), GeneratorError> {
 }
 
 #[test]
+#[ignore = "needs a ROS 2 install; `just check cli-tests` runs it with --ignored where one is found (issue 1552)"]
 fn test_example_interfaces_service() -> Result<(), GeneratorError> {
     let Some(srv_path) = ros_input("parity_test", "example_interfaces", "srv", "AddTwoInts.srv")
     else {
-        return Ok(());
+        ros_input_absent()
     };
 
     let srv = read_and_parse_service(&srv_path).map_err(GeneratorError::InvalidMessage)?;
@@ -159,6 +164,7 @@ fn test_example_interfaces_service() -> Result<(), GeneratorError> {
 }
 
 #[test]
+#[ignore = "needs a ROS 2 install; `just check cli-tests` runs it with --ignored where one is found (issue 1552)"]
 fn test_example_interfaces_action() -> Result<(), GeneratorError> {
     let Some(action_path) = ros_input(
         "parity_test",
@@ -166,7 +172,7 @@ fn test_example_interfaces_action() -> Result<(), GeneratorError> {
         "action",
         "Fibonacci.action",
     ) else {
-        return Ok(());
+        ros_input_absent()
     };
 
     let action = read_and_parse_action(&action_path).map_err(GeneratorError::InvalidMessage)?;
@@ -194,25 +200,28 @@ fn test_example_interfaces_action() -> Result<(), GeneratorError> {
 // cannot grow or rot without a diff someone reviews.
 
 #[test]
+#[ignore = "needs a ROS 2 install; `just check cli-tests` runs it with --ignored where one is found (issue 1552)"]
 fn test_parse_all_std_msgs() {
     let Some(ros_share) = ros_input_dir("parity_test", "std_msgs", "msg") else {
-        return;
+        ros_input_absent()
     };
     assert_message_dir_parity("std_msgs", &ros_share, "test_parse_all_std_msgs");
 }
 
 #[test]
+#[ignore = "needs a ROS 2 install; `just check cli-tests` runs it with --ignored where one is found (issue 1552)"]
 fn test_parse_all_geometry_msgs() {
     let Some(ros_share) = ros_input_dir("parity_test", "geometry_msgs", "msg") else {
-        return;
+        ros_input_absent()
     };
     assert_message_dir_parity("geometry_msgs", &ros_share, "test_parse_all_geometry_msgs");
 }
 
 #[test]
+#[ignore = "needs a ROS 2 install; `just check cli-tests` runs it with --ignored where one is found (issue 1552)"]
 fn test_parse_all_sensor_msgs() {
     let Some(ros_share) = ros_input_dir("parity_test", "sensor_msgs", "msg") else {
-        return;
+        ros_input_absent()
     };
     assert_message_dir_parity("sensor_msgs", &ros_share, "test_parse_all_sensor_msgs");
 }
