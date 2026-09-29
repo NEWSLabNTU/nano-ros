@@ -27,7 +27,15 @@
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
 
-#[cfg(feature = "alloc")]
+// The `#[cfg(test)]` arm: `executor_storage_check_tests::backing` allocates a
+// u64 buffer sized from `nros_cpp_executor_storage_size()`, which is not known
+// at compile time. `test-unit` runs `cargo nextest run --workspace` with NO
+// features activated, so without `test` here that module compiles against an
+// `alloc` that was configured out — rustc says so in as many words ("found an
+// item that was configured out"). Gating the test module on the feature
+// instead would hide it in the lane that runs it, which is the vacuous-coverage
+// shape CLAUDE.md names.
+#[cfg(any(feature = "alloc", test))]
 extern crate alloc;
 
 #[cfg(feature = "std")]
