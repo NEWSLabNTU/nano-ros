@@ -45,8 +45,7 @@
 //! [`ring_bytes`] of `.bss` plus 26 bytes of counters, and **nothing at all**
 //! in an image that does not enable the `rosout` feature — the module is
 //! `cfg`'d out whole. The cost moves with TWO feature families, so here it is
-//! MEASURED rather than described (`cargo test -p nros-log --features rosout
-//! --lib ring_bytes_probe -- --nocapture`, once per combination):
+//! MEASURED rather than described — one build per row, 2026-09-29:
 //!
 //! | `rosout-records-` | `buffer-size-` | per slot | ring |
 //! | --- | --- | --- | --- |
@@ -55,6 +54,11 @@
 //! | **16 (default)** | **256 (default)** | **360 B** | **5 760 B** |
 //! | 64 | 256 | 360 B | 23 040 B |
 //! | 64 | 1024 | 1 128 B | 72 192 B |
+//!
+//! Every row follows `8 + align8(MSG_CAP + NAME_CAP + 45)` per slot, and
+//! `the_ring_costs_what_the_docs_say` asserts BOTH that rule (in whatever
+//! build runs it) and the bold row's figure — so a reader can re-derive any
+//! row without running five builds, and the table cannot rot silently.
 //!
 //! Depth comes from the `rosout-records-<N>` family, the same shape and for
 //! the same reason as `early-records-<N>`: a 64 KB MCU and a Linux host do not
