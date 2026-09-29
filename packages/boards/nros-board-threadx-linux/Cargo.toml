@@ -32,6 +32,9 @@ nros-board-common = { path = "../nros-board-common", default-features = false, f
 nros-board-threadx = { path = "../nros-board-threadx", default-features = false }
 
 [build-dependencies]
+# issue 1558 — the repo-root marker walk, in place of a `.parent()` hop count.
+# Zero-dependency and host-only.
+nros-build-paths = { path = "../../tooling/nros-build-paths" }
 cc = "1"
 # issue 0383 — strict C diagnostics (implicit-function-declaration,
 # int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.

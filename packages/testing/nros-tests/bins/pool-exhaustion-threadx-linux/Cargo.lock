@@ -237,6 +237,7 @@ dependencies = [
  "cc",
  "nros-board-common",
  "nros-board-threadx",
+ "nros-build-paths",
  "nros-cc-flags",
  "nros-platform",
  "nros-platform-cffi",

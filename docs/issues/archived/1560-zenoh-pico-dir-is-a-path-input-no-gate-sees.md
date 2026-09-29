@@ -2,12 +2,13 @@
 id: 1560
 title: "Four path-valued build inputs resolve without the re-root rule, each
   outside a different edge of the gate's subject"
-status: open
+status: resolved
 type: bug
 area: build
 severity: medium
 found: 2026-09-29
-related: [0196, 0491, 1280, 1336, 1527, 1558, phase-471, RFC-0101]
+related: [0196, 0491, 1280, 1336, 1452, 1527, 1558, 1588, phase-471, RFC-0101]
+resolved: 2026-09-29
 ---
 
 ## What this is
@@ -106,3 +107,77 @@ compiles this checkout's kernel. Before the fix it compiles the other one.
 * Issue 1558 — the other half of D3 (a repo root counted by `.parent()` hops).
 * Issue 1527 — the sweep this is the residue of; phase-471 W6 holds the two
   NuttX sites it deliberately left open, which are not this issue.
+
+## Resolution (2026-09-29)
+
+All four sites route through `nros_build_paths::env_path`. The gate question
+(remedy 4) is **decided and recorded**, and filed as issue 1588 rather than
+written blind.
+
+### Site 1 — measured, not claimed
+
+`threadx_qemu_riscv64_build::env_path_or` now delegates, exactly as its
+threadx-linux twin does. The acceptance this issue asked for, run both ways
+against a decoy checkout (a directory carrying the checkout marker
+`packages/core/nros-core/Cargo.toml` and an EMPTY `third-party/threadx/kernel`),
+with `THREADX_DIR` pointing into it:
+
+| | result |
+| --- | --- |
+| before the fix | **exit 101** — `ThreadX RISC-V 64-bit port not found at <decoy>/third-party/threadx/kernel/ports/risc-v64/gnu`. It reached into the other checkout. |
+| after the fix | **exit 0** — `$THREADX_DIR named another nano-ros checkout (<decoy>); building this one instead (<this worktree>)`. |
+
+Pointing `THREADX_DIR` at a REAL second checkout shows the same thing from the
+other side, and shows how narrow the old blast radius looked: before the fix
+exactly one crate re-rooted (`nros-board-threadx`, converted by issue 1527) and
+its sibling `nros-board-threadx-qemu-riscv64` did not — one build, two
+checkouts, no diagnostic.
+
+### Site 2 — the remedy as written would have introduced a defect
+
+This issue's remedy said to route `manifest.rs`'s `env:` arm through
+`env_path`. **That is wrong, and measuring the population is what showed it.**
+Not every `{env:…}` names a path: `{env:FREERTOS_PORT}` is
+`GCC/ARM_CRx_No_GIC`, a fragment interpolated mid-string into
+`"{env:FREERTOS_DIR}/portable/{env:FREERTOS_PORT}"`. Applying a path resolver to
+it is issue 1452's shape — a reach wider than the rule.
+
+So the fix is a SECOND token, `{envpath:VAR}`, and the seven path-valued names
+in the three descriptors moved to it. `{env:}` keeps its passthrough meaning and
+now has exactly one live use, the port fragment. The descriptor AUTHOR says
+which kind a name is, because that is the one place the answer is known; an
+authored list of path-valued NAMES inside the interpolator would be the thing
+issue 1452 warns against.
+
+One more thing measured rather than argued: `canonical()` KEEPS the spelling of
+a path that does not exist, so routing that fragment through the resolver would
+have been a no-op **today** and broken nothing now. It becomes wrong the day a
+directory of that name sits beside a build script, at which point the fragment
+silently turns absolute. A latent, environment-dependent wrong answer is the
+worse kind, and it is the reason the split is worth having rather than a
+close call. Regression test: `manifest::env_token_tests`, three cases, no
+`set_var` anywhere (this crate is `forbid(unsafe_code)` and env is a
+process-global the harness shares).
+
+### Sites 3 and 4 — written, and still narrow
+
+`ZENOH_PICO_DIR` and `NV_SPE_FSP_DIR` go through `env_path`, keeping each panic
+message. Both name a tree outside every nano-ros checkout in practice, which is
+the arm `reroot_foreign` leaves alone, so no answer changes today — which is
+what this issue already said and is restated here rather than quietly inflated.
+
+### Remedy 4 — the decision
+
+**Direction chosen: widen the gate's SUBJECT from "a variable with a row" to "a
+name whose value is used as a path."** Rejected: requiring an `sdk-env.just` row
+for every path-valued input, because it has no answer for `NV_SPE_FSP_DIR` and
+roots the gate harder in a hand-authored field.
+
+Not written yet, and issue 1588 says what must be measured first — chiefly the
+false-positive rate of a variable-scope type-flow test, in a gate that already
+carries a scar from exactly that (`declared_fact` / `declared_floored`, RFC-0049
+COUNT knobs, reported in a file with no defect).
+
+## Acceptance — met
+
+`just check fast` green, and site 1 measured rather than claimed, above.

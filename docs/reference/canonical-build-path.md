@@ -189,7 +189,7 @@ Two things in that output are load-bearing here and not obvious:
   of the five, because no literal-matching probe can see inside it.
 
 The classes, the outlier verdicts and the migration order are
-[phase-471](../roadmap/phase-471-build-script-classes.md).
+[phase-471](../roadmap/archived/phase-471-build-script-classes.md).
 
 ## Which RFC owns what
 

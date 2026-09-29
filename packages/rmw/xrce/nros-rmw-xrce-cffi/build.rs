@@ -77,20 +77,14 @@ fn main() {
     // literal still builds, boots and passes every knob gate.
     xrce_demand_selftest();
 
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    // phase-321 W2.d — FOUR parents, not three. The crate sits at
-    // packages/rmw/xrce/nros-rmw-xrce-cffi/, one level deeper than the old
-    // packages/xrce/nros-rmw-xrce-cffi/. With three the walk stopped at
-    // `packages/` and every vendored path came out doubled
-    // (`<repo>/packages/packages/rmw/xrce/...`). A `.parent()` chain is a
-    // relative path that no grep for "../" can find — only a build does.
-    let workspace = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .and_then(|p| p.parent())
-        .and_then(|p| p.parent())
-        .expect("workspace root")
-        .to_path_buf();
+    // issue 1558 — this counted FOUR parents because phase-321 W2.d moved the
+    // crate one level deeper (`packages/xrce/` -> `packages/rmw/xrce/`), and
+    // with the old three every vendored path came out doubled
+    // (`<repo>/packages/packages/rmw/xrce/...`). The comment left at the time
+    // states the reason for a rule better than a count can: *a `.parent()`
+    // chain is a relative path that no grep for "../" can find — only a build
+    // does*. The marker walk has no count to get wrong.
+    let workspace = nros_build_paths::repo_root();
     let xrce_sys = workspace.join("packages/rmw/xrce/xrce-sys");
     let xrce_c = workspace.join("packages/rmw/xrce/nros-rmw-xrce");
     let microcdr = xrce_sys.join("micro-cdr");

@@ -23,13 +23,21 @@ fn main() {
         return;
     }
 
-    let dir = std::env::var("NV_SPE_FSP_DIR").unwrap_or_else(|_| {
+    // issue 1560 site 4 — through `env_path`, the ONE implementation of issue
+    // 1280's three-valued rule. The FSP ships under an SDK-Manager EULA and can
+    // never be vendored, so this always names a tree outside every nano-ros
+    // checkout — the arm `reroot_foreign` deliberately leaves alone, and the
+    // reason there is no `just/sdk-env.just` row for it (which is in turn why
+    // phase-471 W3's gate cannot see this site). Written anyway because
+    // RFC-0101 D3 is a rule about the CALL, not about which value arrives.
+    let dir = nros_build_paths::env_path("NV_SPE_FSP_DIR").unwrap_or_else(|| {
         panic!(
             "nvidia-ivc: feature `fsp` requires NV_SPE_FSP_DIR to point at \
              an installed NVIDIA Orin SPE FSP tree (the directory containing \
              `lib/libtegra_aon_fsp.a`)"
         )
     });
+    let dir = dir.display();
 
     let lib = format!("{dir}/lib/libtegra_aon_fsp.a");
     if std::path::Path::new(&lib).exists() {

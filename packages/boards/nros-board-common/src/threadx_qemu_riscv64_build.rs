@@ -4,7 +4,6 @@ use std::{
     env,
     io::Write,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 /// `port_dir` is the layer-2 arch-port override
@@ -48,12 +47,13 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let config_dir = manifest_dir.join("config");
 
-    // Resolve workspace root (three levels up from packages/boards/nros-board-threadx-qemu-riscv64/)
-    let workspace_root = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .and_then(|p| p.parent())
-        .expect("Could not resolve workspace root");
+    // issue 1558 — the marker walk, not a hop count. Three `.parent()` calls
+    // encode this crate's CURRENT depth into a path read only at build time;
+    // the class has been fixed three times by re-counting them, and the worst
+    // of those (phase-400 W1) did not break at all — the walk landed somewhere
+    // real that no longer held what was wanted, and every platform silently
+    // fell back to builtins.
+    let workspace_root = nros_build_paths::repo_root();
 
     let threadx_dir = env_path_or(
         "THREADX_DIR",
@@ -275,7 +275,7 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     // (zenoh locator, domain_id) — the C startup reads the network
     // stack bring-up values directly from `NROS_APP_CONFIG` and
     // happens before Rust user code runs.
-    emit_nros_app_config(&out_dir, workspace_root);
+    emit_nros_app_config(&out_dir, &workspace_root);
 
     // ---- Link order (reverse dependency) ----
     // `libnros_platform_threadx.a` + `libthreadx_kernel.a` come
@@ -336,23 +336,33 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
 
 /// A path variable with an in-repo default, canonicalised so every consumer
 /// spells it the same way (issue 0491). Never fingerprinted as a string.
+///
+/// issue 1560 site 1 — this is the copy issue 1527's sweep did not reach, one
+/// file away from the twin it DID convert
+/// (`nros-board-threadx-linux/build.rs`). It is invisible for two reasons at
+/// once: this is a shared build-script LIBRARY, not a `build.rs`, so neither
+/// the census nor phase-471 W3's gate reads it; and it takes the variable name
+/// as an ARGUMENT, which is 1527's own hiding mechanism — no literal-matching
+/// probe can tell which variables a helper like this resolves.
+///
+/// `canonical(env::var(..))` canonicalises and does NOT apply issue 1280's
+/// three-valued rule, so an inherited `THREADX_DIR` / `NETX_DIR` naming another
+/// checkout outranked this one: a RISC-V ThreadX build in an agent worktree
+/// compiled the OTHER checkout's kernel. `nros_build_paths::env_path`
+/// canonicalises too, so nothing 0491 wanted is traded away — it only adds the
+/// rule this was missing.
 fn env_path_or(name: &str, default: PathBuf) -> PathBuf {
-    let raw = env::var(name).map(PathBuf::from).unwrap_or(default);
-    nros_build_paths::canonical(&raw)
+    nros_build_paths::env_path(name).unwrap_or_else(|| nros_build_paths::canonical(&default))
 }
 
 fn configure_riscv64(build: &mut cc::Build) {
-    // Use the RISC-V GCC cross-compiler
-    build
-        .compiler(nros_build_paths::riscv64::tool_or_legacy("gcc"))
-        .archiver(nros_build_paths::riscv64::tool_or_legacy("ar"))
+    // issue 1562 — the compiler, the archiver and the four ISA/ABI flags come
+    // from `arch_flags::riscv64`, which `nros-board-threadx/build.rs` also
+    // calls. Everything below is this builder's own layer on top.
+    crate::arch_flags::riscv64::configure(build)
         .opt_level(2)
-        .flag("-march=rv64gc")
-        .flag("-mabi=lp64d")
-        .flag("-mcmodel=medany")
         .flag("-ffunction-sections")
         .flag("-fdata-sections")
-        .flag("-fno-builtin")
         .flag("-Wno-unused-parameter")
         .flag("-Wno-sign-compare")
         .define("TX_INCLUDE_USER_DEFINE_FILE", None)
@@ -380,9 +390,7 @@ fn configure_riscv64(build: &mut cc::Build) {
     // picolibc's <machine/endian.h> defines htonl as __bswap32 on LE, which is
     // compatible with our nx_port.h's #ifndef-guarded __builtin_bswap32 definitions.
     // Do NOT use --specs=picolibc.specs (it enables TLS errno which crashes on bare-metal)
-    if let Some(sysroot) = get_picolibc_sysroot() {
-        build.include(sysroot.join("include"));
-    }
+    crate::arch_flags::riscv64::add_picolibc_include(build);
 
     // Phase 152.2.B.2 — `THREADX_CFLAGS` extension point. RISC-V
     // overlay's `.cargo/config.toml` may set additional flags
@@ -392,51 +400,11 @@ fn configure_riscv64(build: &mut cc::Build) {
 }
 
 /// Get the picolibc sysroot path for RISC-V (provides C standard library headers).
-fn get_picolibc_sysroot() -> Option<PathBuf> {
-    if let Ok(output) = Command::new(nros_build_paths::riscv64::tool_or_legacy("gcc"))
-        .args([
-            "-march=rv64gc",
-            "-mabi=lp64d",
-            "--specs=picolibc.specs",
-            "-print-sysroot",
-        ])
-        .output()
-        && output.status.success()
-    {
-        let sysroot = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !sysroot.is_empty() {
-            let path = PathBuf::from(&sysroot);
-            if path.join("include").exists() {
-                return Some(path);
-            }
-        }
-    }
-    // issue 0678 — NO hardcoded fallback.
-    //
-    // This used to fall through to `/usr/lib/picolibc/riscv64-unknown-elf`
-    // whenever that directory existed, INCLUDING when the specs probe above had
-    // just failed. A failed probe is not "picolibc is somewhere else", it is
-    // "this compiler is not a picolibc toolchain" — and taking the fallback
-    // anyway is what paired the provisioned xPack compiler (emulated TLS) with
-    // Debian's picolibc (native TLS), whose `libc.a` therefore cannot define the
-    // `__emutls_v.errno` that compiler emits.
-    //
-    // `066441663` fixed exactly this on the cmake side by keying on the probe's
-    // EXIT CODE. It did not reach here, so the board linked newlib through cmake
-    // and picolibc through cargo — the same two-libc split, decided by which
-    // language a leaf happens to be written in.
-    //
-    // Returning `None` leaves the compiler to use its own headers and its own
-    // `libc.a`, which is Zephyr's stated rule for picolibc ("toolchain-bundled
-    // … guaranteed to be in sync") and the only arrangement where the TLS model
-    // is one decision rather than two.
-    None
-}
 
 /// Get the picolibc library directory for rv64gc/lp64d (libc.a).
 fn get_picolibc_lib_dir() -> Option<PathBuf> {
     // Try gcc -print-sysroot with picolibc specs
-    if let Some(sysroot) = get_picolibc_sysroot() {
+    if let Some(sysroot) = crate::arch_flags::riscv64::picolibc_sysroot() {
         // Multilib: sysroot/lib/rv64imafdc/lp64d/ (rv64gc = rv64imafdc)
         let multilib = sysroot.join("lib/rv64imafdc/lp64d");
         if multilib.join("libc.a").exists() {
@@ -454,34 +422,12 @@ fn get_picolibc_lib_dir() -> Option<PathBuf> {
     // provisions (newlib bundled, no `picolibc.specs`) it found nothing, no
     // `-lc` reached the link, and the image failed on `strcmp`, `snprintf`,
     // `memchr` … — a libc that was sitting in the toolchain all along.
-    if let Ok(output) = Command::new(nros_build_paths::riscv64::tool_or_legacy("gcc"))
-        .args(["-march=rv64gc", "-mabi=lp64d", "-print-file-name=libc.a"])
-        .output()
-        && output.status.success()
-    {
-        let path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim().to_string());
-        // gcc echoes the bare name back when it cannot find the file.
-        if path.is_absolute()
-            && path.exists()
-            && let Some(dir) = path.parent()
-        {
-            return Some(dir.to_path_buf());
-        }
-    }
-    None
+    crate::arch_flags::riscv64::library_dir("libc.a")
 }
 
 /// Get the libgcc directory for rv64gc/lp64d.
 fn get_libgcc_dir() -> Option<PathBuf> {
-    if let Ok(output) = Command::new(nros_build_paths::riscv64::tool_or_legacy("gcc"))
-        .args(["-march=rv64gc", "-mabi=lp64d", "-print-libgcc-file-name"])
-        .output()
-        && output.status.success()
-    {
-        let path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim().to_string());
-        return path.parent().map(|p| p.to_path_buf());
-    }
-    None
+    crate::arch_flags::riscv64::libgcc_dir()
 }
 
 /// The `.S` files the arch-port unit ships, i.e. the upstream port sources it

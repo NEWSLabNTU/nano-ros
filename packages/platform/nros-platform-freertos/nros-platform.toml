@@ -121,9 +121,9 @@ required_env = [
 ]
 include_paths = [
   "{nros}/c/include",
-  "{env:FREERTOS_DIR}/include",
-  "{env:FREERTOS_DIR}/portable/{env:FREERTOS_PORT}",
-  "{env:FREERTOS_CONFIG_DIR}",
+  "{envpath:FREERTOS_DIR}/include",
+  "{envpath:FREERTOS_DIR}/portable/{env:FREERTOS_PORT}",
+  "{envpath:FREERTOS_CONFIG_DIR}",
   # Phase 154 — `nros-platform-api/include` carries
   # `<nros/platform_net.h>` (the canonical `nros_platform_*` ABI).
   # `zpico.c` includes it unconditionally.
@@ -133,8 +133,8 @@ include_paths = [
 # has no `LWIP_DIR` to point at, and an unconditional entry here would make one
 # a hard requirement of every FreeRTOS zenoh build.
 include_paths_conditional = [
-  { path = "{env:LWIP_DIR}/src/include", when = { capability = { ip_stack = true } } },
-  { path = "{env:LWIP_DIR}/contrib/ports/freertos/include", when = { capability = { ip_stack = true } } },
+  { path = "{envpath:LWIP_DIR}/src/include", when = { capability = { ip_stack = true } } },
+  { path = "{envpath:LWIP_DIR}/contrib/ports/freertos/include", when = { capability = { ip_stack = true } } },
 ]
 # issue 0491 — VALUE knobs only. `FREERTOS_PORT` is a port NAME and stays; the
 # three PATH variables were dropped, because cargo compares an env value as

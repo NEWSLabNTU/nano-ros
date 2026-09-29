@@ -327,53 +327,16 @@ fn configure(build: &mut cc::Build) {
         .map(|t| t.starts_with("riscv64"))
         .unwrap_or(false)
     {
-        // nros-board-arch-flags-exempt: issue 1562 — these four flags and the
-        // `get_picolibc_sysroot` probe below are a byte-identical copy of
-        // `nros_board_common::threadx_qemu_riscv64_build`'s, which is the
-        // phase-471 W2 class one family over. Acceptance for moving them is a
-        // RISC-V64 ThreadX BUILD, not a gate, so it is filed rather than done
-        // in the commit that landed the rule.
-        build
-            .compiler(nros_build_paths::riscv64::tool_or_legacy("gcc"))
-            .archiver(nros_build_paths::riscv64::tool_or_legacy("ar"))
-            .flag("-march=rv64gc")
-            .flag("-mabi=lp64d")
-            .flag("-mcmodel=medany")
-            .flag("-fno-builtin");
-        if let Some(sysroot) = get_picolibc_sysroot() {
-            build.include(sysroot.join("include"));
-        }
+        // issue 1562 (RESOLVED) — the compiler, archiver, ISA/ABI flags and the
+        // picolibc probe all come from `nros_board_common::arch_flags::riscv64`
+        // now. The exemption marker that sat here named this issue; the copy it
+        // exempted had already drifted from the original, and in the direction
+        // issue 0678 fixed — this one fell back to a hardcoded
+        // `/usr/lib/picolibc/riscv64-unknown-elf`, which is what paired the
+        // xPack compiler with Debian's picolibc.
+        nros_board_common::arch_flags::riscv64::configure(build);
+        nros_board_common::arch_flags::riscv64::add_picolibc_include(build);
     }
     // THREADX_CFLAGS hook for further per-overlay extension.
     nros_board_common::threadx_sources::apply_threadx_cflags(build);
-}
-
-/// Probe `riscv64-unknown-elf-gcc -print-sysroot` (under
-/// picolibc.specs) for the picolibc sysroot. Returns `None` if
-/// gcc isn't installed; caller proceeds without picolibc and
-/// the kernel compile will fail with a clearer "string.h not
-/// found" error.
-fn get_picolibc_sysroot() -> Option<PathBuf> {
-    use std::process::Command;
-    let output = Command::new(nros_build_paths::riscv64::tool_or_legacy("gcc"))
-        .args([
-            "-march=rv64gc",
-            "-mabi=lp64d",
-            "--specs=picolibc.specs",
-            "-print-sysroot",
-        ])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let s = String::from_utf8(output.stdout).ok()?;
-    let trimmed = s.trim();
-    if trimmed.is_empty() {
-        // Fallback: hard-coded distro path (matches RISC-V overlay's helper).
-        let p = PathBuf::from("/usr/lib/picolibc/riscv64-unknown-elf");
-        if p.exists() { Some(p) } else { None }
-    } else {
-        Some(PathBuf::from(trimmed))
-    }
 }

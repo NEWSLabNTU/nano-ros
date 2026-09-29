@@ -130,3 +130,10 @@ libc = "0.2"
 # workspaces; tempfile is workspace-pinned already through
 # nros-build's dev-deps.
 tempfile = "3.10"
+
+[build-dependencies]
+# issue 1558 — the repo-root marker walk this crate's build script uses for the
+# source-stamp closure, in place of a three-hop `.parent()` chain. Zero
+# dependencies and host-only, so the edge adds one compile unit and nothing
+# behind it.
+nros-build-paths = { path = "../../tooling/nros-build-paths" }

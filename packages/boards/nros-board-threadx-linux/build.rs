@@ -42,11 +42,8 @@ fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let config_dir = manifest_dir.join("config");
 
-    let workspace_root = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .and_then(|p| p.parent())
-        .expect("Could not resolve workspace root");
+    // issue 1558 — the marker walk, not a hop count (RFC-0101 D3).
+    let workspace_root = nros_build_paths::repo_root();
 
     // Phase 212.M-F.10.3 — emit `const nros_app_config_t NROS_APP_CONFIG`
     // into a board-side TU. Must happen before the `glue` cc::Build below

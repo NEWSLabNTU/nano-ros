@@ -17,7 +17,7 @@ same duplication class one family over.
 **Prior:** phase-468 W3 (`check-board-build-wiring`, the shared build crate as a
 rule), issue 1280 (an inherited path outranks the checkout being built), issue
 0491 (watch the CONTENT, never the spelling), RFC-0049 (the knob ladder),
-RFC-0064 (board organization), [docs/reference/canonical-build-path.md](../reference/canonical-build-path.md).
+RFC-0064 (board organization), [docs/reference/canonical-build-path.md](../../reference/canonical-build-path.md).
 
 **Source:** a census of every tracked `build.rs`, run on `main` at `e3de8bda1`
 on 2026-09-28. Every number below is reproducible with
@@ -99,7 +99,7 @@ beside the role instead of folded into it:
 
 The PATH RESOLUTION line read **5** when it was first written and reads **0**
 now. Detail, measurement and the two sites deliberately left open are in
-[issue 1527](../issues/archived/1527-build-script-path-resolution-skips-the-reroot-rule.md).
+[issue 1527](../../issues/archived/1527-build-script-path-resolution-skips-the-reroot-rule.md).
 The short version: three board scripts read `FREERTOS_CONFIG_DIR` with a raw
 `env::var` two lines under siblings that used the shared resolver, and two more
 hid the same drift behind a **private helper named like the shared one**, taking
@@ -229,7 +229,7 @@ and a `links` hand-off in the next. Only the first is exposed to 1280, and
 nothing says which a new backend should use. → **W5**, which found a FOURTH the
 census cannot see — nine SDK roots arrive as `{env:VAR}` tokens in three
 `nros-platform.toml` descriptors, from no `build.rs` at all — and wrote the rule
-down as [RFC-0101](../design/0101-vendored-source-resolution.md).
+down as [RFC-0101](../../design/0101-vendored-source-resolution.md).
 
 ---
 
@@ -557,7 +557,7 @@ file scan).
 
 ### W5 — state where a vendored tree comes from (LANDED → RFC-0101)
 
-**Landed as [RFC-0101](../design/0101-vendored-source-resolution.md)**, a new
+**Landed as [RFC-0101](../../design/0101-vendored-source-resolution.md)**, a new
 RFC rather than an amendment. The rule:
 
 > at most one crate per resolved dependency GRAPH resolves a given vendored

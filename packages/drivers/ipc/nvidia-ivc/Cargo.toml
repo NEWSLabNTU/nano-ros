@@ -24,3 +24,8 @@ std = []
 [dependencies]
 
 [dev-dependencies]
+
+[build-dependencies]
+# issue 1560 — the one path-input resolver (RFC-0101 D3). Zero-dependency and
+# host-only.
+nros-build-paths = { path = "../../../tooling/nros-build-paths" }
