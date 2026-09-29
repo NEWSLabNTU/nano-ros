@@ -269,3 +269,62 @@ is now the LAST thing between the tier-2 lane and its first runtime verdict
 since 2026-09-01 (issue 1158 item 1): the 06:30 run got through every other
 fixture family before reaching it, so nothing else in that build is known to
 be broken behind it.
+
+## The same sha produced a DIFFERENT first failure seven hours later (2026-09-29)
+
+Both of the day's nightlies built **the identical commit**, and their `tier 2
+nightly (pairwise cover)` jobs failed in the **same module** on the **same
+self-hosted runner** — with different messages and at different depths.
+
+| run | job | head sha | `== zephyr ==` | failed | in | message |
+| --- | --- | --- | --- | --- | ---: | --- |
+| 36525143251 (05:13) | 109266425718 | `da272e419` | 06:01:17Z | 06:38:58Z | 37 m 41 s | `rosidl_adapter is not importable by this build's interpreter.` |
+| 36535897637 (07:18) | 109299745673 | `da272e419` | 13:31:37Z | 13:43:59Z | 12 m 22 s | `Error: 2 <depend> name(s) resolve to nothing: rosidl_default_generators, rosidl_default_runtime` |
+
+Counted in the two logs, so this is not a matter of one message hiding behind
+the other: the 07:18 job contains **zero** occurrences of `not importable` and
+**two** of `resolve to nothing`; the 05:13 job contains **zero** of
+`resolve to nothing`.
+
+The second one names its subject exactly:
+
+```
+zephyr-fixture-run-one: failed: zephyr/native_sim/native/64/workspace-params-entry
+Error: 2 <depend> name(s) resolve to nothing:
+  rosidl_default_generators — declared by examples/workspaces/features/src/custom_msgs/package.xml
+  rosidl_default_runtime    — declared by examples/workspaces/features/src/custom_msgs/package.xml
+Location: nros-cli-core/src/cmd/build.rs:3433:5
+```
+
+## What this rules out
+
+* **Not a code change.** The head shas are byte-identical, and `git log` on
+  `main` between the two runs contains nothing touching rosidl resolution.
+* **Not a different lane or module.** Same workflow, same job name, same
+  `== zephyr ==` module, same runner labels.
+* **Not one failure hiding behind the other** — see the counts above.
+
+What sat between them is the 06:30 `run-matrix` run (36531385810), which held
+that runner from 06:45 to 11:44.
+
+## What it means for this issue
+
+**`rosidl_adapter is not importable` is not a stable property of the tree.**
+An issue whose evidence is a message that the same commit does not reproduce
+seven hours later is describing a state, not a defect in the code — and the
+lane has no signal capacity for telling the difference, which is issue 1158's
+complaint from the other end.
+
+A reading worth stating but NOT proven here: both messages are the same
+absence read at two depths. `rosidl_adapter is not importable` is the build
+step failing to import the ROS python package; `rosidl_default_generators`
+resolving to nothing is the dependency resolver failing to find the ROS
+package that provides it. Whether ROS is visible to that step — an
+`AMENT_PREFIX_PATH` a `setup.bash` sets, or does not — would explain both, and
+nothing measured here establishes it.
+
+**What would close this ambiguity:** capture the environment at the point of
+failure, not only the error. The zephyr module's own log is already uploaded
+as an artifact (1158 item 3's fix); what neither log answers is whether ROS was
+sourced for that step. Until it does, a rerun of this lane can "fix" or
+"break" the issue without any code moving.
