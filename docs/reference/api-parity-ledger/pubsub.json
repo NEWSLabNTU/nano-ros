@@ -1964,5 +1964,9 @@
   "rust:Publisher::get_gid": {
     "verdict": "extension",
     "why": "The `nros_rmw::Publisher` TRAIT's `get_gid` — upstream `rmw_get_gid_for_publisher`, added by the phase-467 RMW gap-closure design study's Q1, step 1.\n\nOurs-only because rclrs has no backend trait at all: this is the RMW seam, one layer below the client library this lane compares against, and it is the same reason `rust:Publisher::assert_liveliness` is filed here as an extension. The user-reachable Rust accessors are `EmbeddedPublisher::get_gid` / `EmbeddedRawPublisher::get_gid`, which the report files as `divergence` beside their `assert_liveliness` twins.\n\nThe default body is `Err(TransportError::Unsupported)`, never a fabricated or all-zero id, so every existing impl rides the default honestly — an all-zero gid is what an unwritten buffer holds, and a caller cannot tell it from an identity. The one in-tree override that produces a real value is zenoh's, which zero-extends its 16-byte attachment gid through `nros_core::pad_publisher_gid`; `CffiPublisher` forwards to the `get_gid_for_publisher` vtable slot and answers `Unsupported` where it is NULL. See `cpp:Publisher::get_gid` for the three bounds on what the bytes mean."
+  },
+  "rust:TierExecutorBacking::take": {
+    "verdict": "divergence",
+    "why": "See `rust:TierExecutorBacking`. The once-only handout that makes the `&'static mut` sound; a second call returns an empty slice, which `check_tier_executor_backing` refuses by name."
   }
 }

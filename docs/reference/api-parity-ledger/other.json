@@ -1484,5 +1484,13 @@
   "rust:zephyr_component_main": {
     "verdict": "extension",
     "why": "emits Zephyr's `rust_main` for a self-bringup Rust component package: open a Zephyr executor, register the component, spin forever. A framework ENTRY macro, the same category as `nros::main!`, needed because a Zephyr `rust_cargo_application()` image has no `fn main` of its own and there are no POSIX-style constructor sections to register from (see the CLAUDE.md pitfall). Gated on `rmw-cffi` rather than on a platform feature, because it is codegen and its `::zephyr::*` paths resolve only in a zephyr build."
+  },
+  "rust:EXECUTOR_BACKING_DEFAULT_U64S": {
+    "verdict": "divergence",
+    "why": "issue 1571 -- the words ONE default-sized executor carves (`ExecutorSizing::DEFAULT.u64_len()`), as the one spelling both the boot reservation and each `TierExecutorBackingSlot` are sized by, so a tier slot and the boot backing cannot disagree about 'one executor's worth'. Same no-allocator constraint as `rust:ExecutorSizing`."
+  },
+  "rust:TierBackingShort": {
+    "verdict": "divergence",
+    "why": "issue 1571 -- the refusal value of `check_tier_executor_backing`: the tier backing a board was handed has fewer slots than it has spawned tiers. Carries both counts so the refusal names them. Exists only because the backing is caller-placed (no allocator); rclrs has nothing to refuse."
   }
 }
