@@ -71,6 +71,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # counted `NROS_LANE_INCLUDED` in the comments that explain it.
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 import comments  # noqa: E402
+from check_just_sources import just_sources  # noqa: E402 — phase-472 W2
 LANE_SKIP = os.path.join(ROOT, "scripts", "build", "lane-skip.sh")
 
 # The nine platform modules the fixture fan-out schedules, by the FILES that
@@ -132,8 +133,21 @@ RECIPE_HEADER = re.compile(r"^([@a-zA-Z_][a-zA-Z0-9_-]*)[^:=\n]*:(?!=)")
 # `\bnros_lane_skip\b`: that also matches the function name quoted inside an
 # `echo`, and a recipe explaining the protocol in prose is not using it.
 _CMD = r"(?:^|[;&|(!]|\bthen\b|\belse\b|\bdo\b)[ \t]*"
+# Every public function lane-skip.sh DEFINES, harvested — not enumerated. The
+# enumerated list this replaced had drifted: it named `scope`/`scope_note`,
+# which no longer exist, and missed `platform` and `out_of_scope_note`
+# (phase-472 audit), so a recipe calling only those two was never asked.
+# Not `nros_lane_[a-z_]+`: `nros_lane_coords_file` lives in another script.
+def _lane_skip_functions(path=LANE_SKIP):
+    with open(path, encoding="utf-8") as fh:
+        names = re.findall(r"^(nros_lane_[a-z_]+)\(\)", fh.read(), re.M)
+    if not names:
+        sys.exit(f"check-named-lane-fails: harvested no functions from {path}")
+    return names
+
+
 CALLS_ANY = re.compile(
-    _CMD + r"nros_lane_(?:skip|skip_note|skip_reset|skip_flush|scope|scope_note|named)\b",
+    _CMD + r"(?:" + "|".join(sorted(_lane_skip_functions(), key=len, reverse=True)) + r")\b",
     re.M,
 )
 # The whole-recipe form: `nros_lane_skip` NOT followed by `_`.
@@ -392,6 +406,24 @@ def self_test():
     if lane_included_sites('foo:\n    env "NROS_LANE_INCLUDED=$p" just x\n') != 1:
         bad.append("self-test: rule 4 missed a real NROS_LANE_INCLUDED= assignment")
 
+    # phase-472 W2 — the population is the justfile GRAPH: a recipe in a file
+    # behind `mod check` + `import` is audited, and `nros_lane_platform` alone
+    # (a function the old enumerated CALLS_ANY did not name) needs the source.
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        os.makedirs(os.path.join(tmp, "just", "check"))
+        for rel, text in (
+            ("justfile", "mod check 'just/check.just'\n"),
+            (os.path.join("just", "check.just"), "import 'check/a.just'\n"),
+            (os.path.join("just", "check", "a.just"),
+             "gate-a:\n    #!/usr/bin/env bash\n    nros_lane_platform zephyr\n"),
+        ):
+            with open(os.path.join(tmp, rel), "w", encoding="utf-8") as fh:
+                fh.write(text)
+        got = audit_tree(tmp)
+        if not any(rel.endswith(os.path.join("check", "a.just")) for rel, _n, _w in got):
+            bad.append(f"self-test: a `just/check/*.just` recipe was not audited: {got}")
+
     if bad:
         for b in bad:
             sys.stderr.write(b + "\n")
@@ -403,20 +435,30 @@ def self_test():
         sys.exit(2)
 
 
-def main():
-    self_test()
+def population(root):
+    """[(rel, path)] — every justfile `just` loads (phase-472 W2).
 
-    files = [("justfile", os.path.join(ROOT, "justfile"))]
-    just_dir = os.path.join(ROOT, "just")
-    for f in sorted(os.listdir(just_dir)):
-        if f.endswith(".just"):
-            files.append((os.path.join("just", f), os.path.join(just_dir, f)))
+    The graph, not `justfile` + `just/*.just`: the flat listing never read the
+    13 files of `mod check` (`just/check/*.just`), so a gate recipe calling
+    `nros_lane_skip` without sourcing lane-skip.sh read as clean.
+    """
+    return [(os.path.relpath(p, root), p) for p in just_sources(root)]
 
+
+def audit_tree(root):
     failures = []
-    for rel, path in files:
+    for rel, path in population(root):
         text = open(path, encoding="utf-8").read()
         for name, why in audit_file(rel, text):
             failures.append((rel, name, why))
+    return failures
+
+
+def main():
+    self_test()
+
+    files = population(ROOT)
+    failures = audit_tree(ROOT)
 
     # Rule 4 — both fan-out drivers hand their children the INCLUDED signal.
     root_just = open(os.path.join(ROOT, "justfile"), encoding="utf-8").read()

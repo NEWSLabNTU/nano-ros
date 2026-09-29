@@ -76,6 +76,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from check_just_sources import just_sources  # noqa: E402 — phase-472 W2
+
 REPO = Path(__file__).resolve().parent.parent
 
 # A recipe DEFINITION at column 0: name, optional parameters/dependencies, `:`.
@@ -120,10 +123,13 @@ DYNAMIC = ("{{", "$", "*", "?", "`")
 
 
 def just_files(repo):
-    """The justfile corpus: the root file plus every module/import under just/."""
-    if (repo / "justfile").is_file():
-        yield repo / "justfile"
-    yield from sorted((repo / "just").glob("*.just"))
+    """The justfile corpus: the root file plus every module/import, recursively.
+
+    phase-472 W2 — the justfile GRAPH (`check_just_sources.just_sources`), not
+    `just/*.just`: the flat glob never read `just/check/*.just`, so a gate
+    recipe naming a deleted script read as clean.
+    """
+    yield from (Path(p) for p in just_sources(str(repo)))
 
 
 def submodule_prefixes(repo):
@@ -539,6 +545,18 @@ def selftest(verbose=False):
         # values keeps the shape valid, so only a case per direction catches it.
         chk("the manifest map has a distinct answer per tool",
             TOOL_MANIFEST["cargo"] != TOOL_MANIFEST["cmake"])
+
+    # phase-472 W2 — a gate file behind `mod check` + `import` is corpus too.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "just" / "check").mkdir(parents=True)
+        (root / "scripts").mkdir()
+        (root / "justfile").write_text("mod check 'just/check.just'\n")
+        (root / "just" / "check.just").write_text("import 'check/a.just'\n")
+        (root / "just" / "check" / "a.just").write_text(
+            "gate-a:\n    bash scripts/no-such-w2.sh\n")
+        chk("a dangling path in `just/check/*.just` is read",
+            any("no-such-w2.sh" in line for _p, _l, _k, _d, line in scan(root)))
 
     if verbose:
         print(f"\n{ok} passed, {fail} failed")

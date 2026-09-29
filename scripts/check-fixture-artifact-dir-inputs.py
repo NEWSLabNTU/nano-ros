@@ -26,6 +26,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from check_just_sources import just_sources  # noqa: E402 — phase-472 W2
 CALL = re.compile(r'nros_fixture_row_artifact_dir\s+(.+?)\)"', re.S)
 
 
@@ -59,20 +61,29 @@ def selftest() -> None:
                              ("the by-id fix", ok, 0),
                              ("a recipe that builds it itself", self_consistent, 0)):
         with tempfile.TemporaryDirectory() as td:
-            d = Path(td) / "just"
-            d.mkdir()
-            (d / "probe.just").write_text("recipe:\n" + body)
-            got = len(_scan(d))
+            # A packer behind `mod check` + `import` — the population is the
+            # justfile GRAPH (phase-472 W2), so the fixture exercises the reach.
+            repo = Path(td)
+            (repo / "just" / "check").mkdir(parents=True)
+            (repo / "justfile").write_text("mod check 'just/check.just'\n")
+            (repo / "just" / "check.just").write_text("import 'check/probe.just'\n")
+            (repo / "just" / "check" / "probe.just").write_text("recipe:\n" + body)
+            got = len(_scan(repo))
             if (got > 0) != (want > 0):
                 sys.exit(f"check-fixture-artifact-dir-inputs SELFTEST FAILED: "
                          f"{name} -> {got} finding(s), expected {'>=1' if want else '0'}")
 
 
-def _scan(just_dir: Path):
-    """The finder, over an arbitrary directory — shared by main and the selftest."""
+def _scan(repo: Path):
+    """The finder, over a repo's justfile graph — shared by main and the selftest.
+
+    phase-472 W2: the graph (`check_just_sources.just_sources`), not
+    `just/*.just` — the flat glob read neither the root `justfile` nor the 13
+    files of `mod check`, so a packer there inventing a row's variant passed.
+    """
     shared = shared_platforms()
     bad = []
-    for path in sorted(just_dir.glob("*.just")):
+    for path in (Path(p) for p in just_sources(str(repo))):
         text = path.read_text()
         lines = text.splitlines()
         for m in CALL.finditer(text):
@@ -85,7 +96,7 @@ def _scan(just_dir: Path):
             window = "\n".join(lines[max(0, line - 25) : line + 5])
             if "nros_fixture_target_dir_flag" in window:
                 continue
-            bad.append((path.name, line, plat,
+            bad.append((path.relative_to(repo), line, plat,
                         len(re.findall(r'""(?=\s|$)', call)), call[:90]))
     return bad
 
@@ -93,8 +104,7 @@ def _scan(just_dir: Path):
 def main() -> int:
     selftest()
     shared = shared_platforms()
-    bad = [(ROOT.joinpath("just", n).relative_to(ROOT), l, p_, e, c)
-           for n, l, p_, e, c in _scan(ROOT / "just")]
+    bad = _scan(ROOT)
 
     if not bad:
         print(f"check-fixture-artifact-dir-inputs: OK "

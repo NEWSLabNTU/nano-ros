@@ -48,6 +48,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts" / "lib"))
 from tracked import tracked  # noqa: E402 — issue 0721: index lookup, not a walk
+from check_just_sources import just_modules, just_sources  # noqa: E402 — phase-472 W2
 
 # `just` at a command position: line start, after `&&`/`||`/`;`/`(`, or after a
 # leading `@`/`-` recipe prefix. Captures the first argument.
@@ -71,7 +72,6 @@ COMMENT = re.compile(r"^\s*#")
 # defect in the other direction.
 RECIPE_DEF = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)(?:\s+[^:\n]*)?:(?!=)", re.M)
 ALIAS_DEF = re.compile(r"^alias\s+([A-Za-z0-9_-]+)\s*:=", re.M)
-MOD_DEF = re.compile(r"^mod\s+([A-Za-z0-9_-]+)\s+'([^']+)'", re.M)
 # `import "just/x.just"` merges that file's recipes into the ROOT namespace —
 # unlike `mod`, which namespaces them. This gate followed `mod` and not
 # `import`, so every imported recipe read as UNDEFINED.
@@ -84,49 +84,49 @@ MOD_DEF = re.compile(r"^mod\s+([A-Za-z0-9_-]+)\s+'([^']+)'", re.M)
 IMPORT_DEF = re.compile(r'^import\s+[\'"]([^\'"]+)[\'"]', re.M)
 
 
-def names_in(path, _seen=None):
+def names_in_files(paths):
+    """Recipe + alias names defined across `paths` (one namespace's files)."""
+    names = set()
+    for path in paths:
+        body = Path(path).read_text()
+        names |= set(RECIPE_DEF.findall(body)) | set(ALIAS_DEF.findall(body))
+    return names
+
+
+def names_in(path):
     """Recipe + alias names defined by one justfile, following its `import`s.
 
     A module file may `import` siblings — `just/zephyr.just` pulls in
     `zephyr-setup`, `zephyr-ci` and `zephyr-dev` — and `import` is a namespace
     MERGE, so those names belong to the importing file. Reading only the named
     file returned `{default}` for the zephyr module, which is 1 of its ~40
-    recipes.
-
-    Import paths are relative to the importing FILE, not the repo root.
+    recipes. Import paths are relative to the importing FILE.
     """
+    path = Path(path)
     if not path.is_file():
         return set()
-    _seen = _seen if _seen is not None else set()
-    resolved = path.resolve()
-    if resolved in _seen:
-        return set()
-    _seen.add(resolved)
-    body = path.read_text()
-    names = set(RECIPE_DEF.findall(body)) | set(ALIAS_DEF.findall(body))
-    for rel in IMPORT_DEF.findall(body):
-        names |= names_in(path.parent / rel, _seen)
-    return names
+    files, queue, seen = [], [path], set()
+    while queue:
+        cur = queue.pop(0)
+        if cur.resolve() in seen or not cur.is_file():
+            continue
+        seen.add(cur.resolve())
+        files.append(cur)
+        queue += [cur.parent / rel for rel in IMPORT_DEF.findall(cur.read_text())]
+    return names_in_files(files)
 
 
-def recipe_namespace():
+def recipe_namespace(repo=None):
     """(root recipe names, {module: {recipe names}}).
 
     Parsed from the files rather than from `just --summary`, so private recipes
     are included — a recipe body resolves against everything `just` knows, not
-    everything it advertises.
+    everything it advertises. The graph (which file is which namespace) is
+    `check_just_sources.just_modules` — phase-472 W2's one population.
     """
-    root_file = REPO / "justfile"
-    text = root_file.read_text()
-    roots = names_in(root_file)
-    # `import` is a MERGE, so its names belong to the root namespace.
-    for rel in IMPORT_DEF.findall(text):
-        f = REPO / rel
-        if f.exists():
-            roots |= names_in(f)
-    mods = {}
-    for name, rel in MOD_DEF.findall(text):
-        mods[name] = names_in(REPO / rel)
+    mods = {name: names_in_files(files)
+            for name, files in just_modules(str(repo or REPO)).items()}
+    roots = mods.pop("", set())
     return roots, mods
 
 
@@ -184,9 +184,12 @@ def missing_test_targets(pkgs):
     return bad
 
 
-def just_files():
-    yield REPO / "justfile"
-    yield from sorted((REPO / "just").glob("*.just"))
+def just_files(repo=None):
+    # phase-472 W2 — the justfile GRAPH, not `just/*.just`: the flat glob never
+    # read `just/check/*.just`, so a dangling `just <recipe>` in any of the 13
+    # gate files read as clean.
+    repo = repo or REPO
+    yield from (Path(p) for p in just_sources(str(repo)))
     # Workflows are `just <recipe>` callers by convention
     # (docs/development/ci-workflow-reorg.md), so a recipe deleted here breaks
     # CI silently — this gate read only `just/` and never `.github/`.
@@ -197,12 +200,12 @@ def just_files():
     # top-level recipe is `zenohd locator="tcp/..."`, so `setup` was passed as a
     # LOCATOR and the step could never work. host-tests was red on it for days,
     # and nothing in the tree could see it.
-    yield from sorted((REPO / ".github" / "workflows").glob("*.yml"))
+    yield from sorted((repo / ".github" / "workflows").glob("*.yml"))
 
 
-def offenders(roots, mods):
+def offenders(roots, mods, repo=None):
     bad = []
-    for path in just_files():
+    for path in just_files(repo):
         if not path.is_file():
             continue
         for lineno, line in enumerate(path.read_text().splitlines(), 1):
@@ -214,10 +217,14 @@ def offenders(roots, mods):
                     continue
                 if first in roots:
                     continue
-                if first in mods and (second is None or second in mods[first]):
-                    continue
-                # A module named without a recipe is `just <mod>` listing it.
                 if first in mods:
+                    # `just <mod>` alone runs/lists the module. `just <mod> <x>`
+                    # must name a recipe OF that module: this arm used to
+                    # `continue` for any module, so `just native <bogus>` passed
+                    # (phase-472 W2).
+                    if second is None or second in mods[first] or f"{first}::{second}" in mods:
+                        continue
+                    bad.append((path, lineno, f"{first} {second}", line.strip()))
                     continue
                 bad.append((path, lineno, first, line.strip()))
     return bad
@@ -345,6 +352,26 @@ def selftest(verbose=False):
         got = names_in(f)
         chk("names_in reads recipes and aliases from an imported file",
             {"foo-bar", "fb"} <= got)
+
+    # phase-472 W2 — the two holes, as negative controls on the normal path.
+    with tempfile.TemporaryDirectory() as d:
+        repo = Path(d)
+        (repo / "just" / "check").mkdir(parents=True)
+        (repo / "justfile").write_text(
+            "mod check 'just/check.just'\nmod plat 'just/plat.just'\nroot-r:\n    @true\n")
+        (repo / "just" / "check.just").write_text("import 'check/a.just'\n")
+        (repo / "just" / "check" / "a.just").write_text(
+            "gate-a:\n    just no-such-root-recipe\n")
+        (repo / "just" / "plat.just").write_text(
+            "build:\n    just plat no-such-plat-recipe\n    just plat build\n    just check gate-a\n")
+        roots, mods = recipe_namespace(repo)
+        bad = {name for _p, _l, name, _t in offenders(roots, mods, repo)}
+        chk("a dangling call inside `just/check/*.just` (an IMPORT of a mod) is read",
+            "no-such-root-recipe" in bad)
+        chk("`just <mod> <bogus>` is a finding, not a pass",
+            "plat no-such-plat-recipe" in bad)
+        chk("`just <mod> <real>` resolves (module keyed by NAME, imports merged)",
+            "plat build" not in bad and "check gate-a" not in bad)
 
     if verbose:
         print(f"\n{ok} passed, {fail} failed")

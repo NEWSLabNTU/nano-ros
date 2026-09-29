@@ -71,7 +71,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 JUSTFILE = ROOT / "justfile"
-JUST_DIR = ROOT / "just"
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from check_just_sources import just_sources  # noqa: E402 — phase-472 W2
 GUARD_SCRIPT = "scripts/check-zephyr-workspace-checkout.sh"
 SHARED_RECIPE = "_require-owned-provisioned-roots"
 
@@ -227,9 +228,13 @@ def recipes_from_text(text: str) -> "dict[str, tuple[str, str]]":
 
 
 def load_tree() -> "tuple[str, dict[str, str], str]":
+    # Every justfile but the root, from the GRAPH (phase-472 W2): the flat
+    # `just/*.just` glob never read the 13 files of `mod check`, so a gate
+    # recipe invoking the guard script directly was a second spelling unseen.
     modules = {
-        f"just/{p.name}": p.read_text()
-        for p in sorted(JUST_DIR.glob("*.just"))
+        str(Path(p).relative_to(ROOT)): Path(p).read_text()
+        for p in just_sources(str(ROOT))
+        if Path(p) != JUSTFILE
     }
     return JUSTFILE.read_text(), modules, (ROOT / GUARD_SCRIPT).read_text()
 
@@ -272,6 +277,17 @@ def selftest(quiet: bool = False) -> int:
             "R1/R4",
         ),
         (
+            "a direct call from a file behind `mod check` + `import`",
+            jf,
+            {
+                **mods,
+                "just/check/platform.just": mods["just/check/platform.just"]
+                + f"\n_planted-gate:\n    @bash {GUARD_SCRIPT}\n",
+            },
+            script,
+            "R1/R4",
+        ),
+        (
             "the guard grows a root this gate does not classify",
             jf,
             mods,
@@ -283,6 +299,11 @@ def selftest(quiet: bool = False) -> int:
         ),
     ]
     ok = True
+    # The reach itself: a population without `just/check/*.just` is the flat
+    # glob this replaced, and the planted case above would then be a KeyError.
+    if "just/check/platform.just" not in mods:
+        print("  selftest FAIL: the justfile graph does not reach just/check/", file=sys.stderr)
+        return 1
     for label, a, b, c, expect in cases:
         got = check(a, b, c)
         hit = [f for f in got if f.startswith(expect)]

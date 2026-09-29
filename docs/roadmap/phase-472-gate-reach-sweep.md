@@ -1,6 +1,6 @@
 # Phase 472 — gate reach sweep
 
-**Status (2026-09-28). AUDIT LANDED; W1–W9 open.** (W3, W4, W9 done — see each.) An audit of every tracked
+**Status (2026-09-29). AUDIT LANDED; W1, W5–W8 open.** (W2, W3, W4, W9 done — see each.) An audit of every tracked
 `scripts/check-*` gate against one question, the codebase-audit checklist's **I6
 second-order** rule: *a gate must be able to fail on the case it names.*
 
@@ -106,6 +106,64 @@ module flag), `check-sysdep-remedies`, `check-sdk-guard-can-fire`,
 
 **Fix:** one population function — `scripts/lib` already has `check_just_sources()`
 — and every member uses it.
+
+**Status: DONE.** `scripts/lib/check_just_sources.py` now walks the justfile
+GRAPH: `just_sources(root)` (every file `just` loads — root `justfile`, each
+`mod`, each `import`, recursively, each once) and `just_modules(root)` (`{mod
+name: [files]}`, keyed by the `mod` NAME, imports merged into their importer);
+`check_just_sources()` is the `check` entry of it. A non-optional `mod`/`import`
+whose file is missing raises — a broken graph is never a smaller population. A
+CLI (`--list [--root DIR]`) serves shell gates. Its self-test runs on every use.
+36 files today (the flat glob saw 23 or 24).
+
+| member | mutation (confirmed applied by `git diff`) | before | after |
+| --- | --- | ---: | ---: |
+| `just-recipe-refs` (population) | a body calling an undefined root recipe, in `just/check/docs.just` | 0 | 1 |
+| `just-recipe-refs` (module) | a body calling an undefined recipe of the `native` module, in `just/native.just` | 0 | 1 |
+| `just-recipe-paths` | `bash scripts/no-such.sh` in `just/check/docs.just` | 0 | 1 |
+| `named-lane-fails` | unsourced `nros_lane_skip` in `just/check/docs.just` | 0 | 1 |
+| `skippable-tests-tolerant` | bare `cargo nextest … --test fvp_runtime_ws` in `just/check/lanes.just` (and the LIVE site) | 0 | 1 |
+| `nros-c-feature-agreement` | `--features cffi-zenoh-cffi` in the root `justfile` | 0 | 1 |
+| `zephyr-module-binding` | bare `west build -b native_sim <app>` in the root `justfile` (and the LIVE colcon site) | 0 | 1 |
+| `sysdep-remedies` | `sudo apt install` in `just/check/tools.just` | 0 | 1 |
+| `sdk-guard-can-fire` | `-z "${NUTTX_DIR:-}"` in `just/check/platform.just`; in the root `justfile`; unbraced `-z "$NUTTX_DIR"` in `just/nuttx.just` | 0/0/0 | 1/1/1 |
+| `lane-skip-protocol` | `echo "skip: …"; exit 0` in `just/check/lanes.just` | 0 | 1 |
+| `fixture-artifact-dir-inputs` | a `"" ""` packer in the root `justfile`; in `just/check/fixtures.just` | 0/0 | 1/1 |
+| `provisioned-root-guard-reach` (sweep) | direct `check-zephyr-workspace-checkout.sh` call in `just/check/platform.just` | 0 | 1 |
+| `lane-contracts` (sweep) | modules keyed by FILENAME (`threadx-linux::`, `qemu-baremetal::`, `zephyr-ci::`): the new selftest rows fail against the old keying | — | 1 |
+
+Each member gained a normal-path negative control that builds a temp tree with a
+`mod check` + `import` (or a `mod` file, or the root `justfile`) and asserts the
+planted defect is read; `sysdep-remedies` had no self-test and left the
+gate-selftests baseline (90 → 89). Positive control: every member green on the
+tree. `lane-contracts` now resolves 24 CI lane invocations, not 21.
+
+Already covered, verified by the same mutation (old gate rc=1):
+`prose-issue-refs` (fixed by issue 1545), `build-profile-literals` (git pathspec
+`just/*.just` matches `just/check/…`), `example-leaf-target-dirs` (index-based,
+recursive). The sweep also found `preconditions-provisioned` listing `just/*.just`
+into an unused argument (now the graph), and these already read the tree through
+the git index recursively: `no-allow-multiple-def`, `ps-zombie-blind`,
+`third-party-is-submodules`, `workflow-indexed-apt`, `lane-skip-interpreters`,
+`xrce-one-vendored-compile`, `one-producer-per-tool`, `grep-q-error-conflation`,
+`interop-cell-runners`.
+
+Beyond population, fixed where the widened read made it cheap: `just-recipe-refs`
+let a module followed by ANY second word pass; `named-lane-fails`' enumerated
+`nros_lane_*` list had drifted (now harvested from `lane-skip.sh`);
+`lane-skip-protocol` missed `|| { echo "…skip…"; exit 0; }`; `sdk-guard-can-fire`
+read the braced spelling only; `skippable-tests-tolerant` printed the LAST file's
+`--test` count ("0 scanned"). `zephyr-module-binding` now reads the root
+`justfile`, `.github/**` and tracked Python (an argv list is judged over its
+enclosing function).
+
+Live defects fixed: `just/zephyr-setup.just` `verify-fvp-runtime` ran `fvp_runtime_ws`
+(5 `skip!`) through a bare `cargo nextest` — now `_nextest-tolerant`;
+`colcon_nano_ros/task/nros/build.py` configured `west build` with no module
+flag — it now passes `-DZEPHYR_EXTRA_MODULES=$NROS_REPO_DIR` when an activated
+shell names the checkout (a pip-installed plugin with no checkout keeps the
+workspace manifest's module). Not in W2's reach: `fixture-artifact-dir-inputs`'
+25-line cross-recipe exemption window (W8's shape).
 
 ### W3 — comments counted as evidence
 

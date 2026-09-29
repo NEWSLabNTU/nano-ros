@@ -49,12 +49,11 @@ from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
 # The gates live across `just/check/*.just` now; the index alone is a
 # SMALLER closure than `just` sees, and this gate fails quietly on it.
-from check_just_sources import check_just_text
+from check_just_sources import check_just_text, just_sources
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PRECONDITIONS = os.path.join(ROOT, "scripts", "check-tier-preconditions.sh")
 JUSTFILE = os.path.join(ROOT, "justfile")
-JUST_DIR = os.path.join(ROOT, "just")
 
 # Keyed by a stable substring of the probe LABEL. Value: (class, reason).
 #
@@ -293,10 +292,9 @@ def main():
         )
         return 1
 
-    just_files = [
-        os.path.join(JUST_DIR, f) for f in sorted(os.listdir(JUST_DIR)) if f.endswith(".just")
-    ]
-    closure = setup_closure(read(JUSTFILE), just_files)
+    # The graph, never a directory listing (phase-472 W2). `setup_closure`
+    # reads `_setup-common` alone, by design — see its docstring.
+    closure = setup_closure(read(JUSTFILE), just_sources(ROOT))
 
     errors = []
     matched_keys = set()

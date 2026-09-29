@@ -54,6 +54,7 @@ import sys as _w3_sys  # noqa: E402
 from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
+from check_just_sources import just_sources  # noqa: E402  phase-472 W2
 
 try:
     import tomllib  # 3.11+
@@ -103,6 +104,7 @@ GLUE_SUFFIXES = (
 # from the scanned set makes this gate quieter without making it look wrong, so
 # it is a failure rather than a smaller report.
 REACH_MUST_HOLD = [
+    "justfile",  # phase-472 W2 — the root justfile has no suffix and no root dir
     "zephyr/CMakeLists.txt",
     "integrations/nuttx/Makefile",
     "cmake/NanoRosFeatureSet.cmake",
@@ -249,6 +251,15 @@ def strip_full_line_comments(text, rel=None):
     return "\n".join("" if line.lstrip().startswith("#") else line for line in text.splitlines())
 
 
+def just_glue_files(root):
+    """The justfile graph, repo-relative — phase-472 W2's one population.
+
+    `GLUE_ROOTS` reached `just/` but not the extensionless root `justfile`, so
+    `--features cffi-zenoh-cffi` in a root recipe read as clean.
+    """
+    return [os.path.relpath(p, root) for p in just_sources(root)]
+
+
 def tracked_glue_files():
     try:
         listed = subprocess.run(
@@ -259,7 +270,8 @@ def tracked_glue_files():
         ).stdout
     except (OSError, subprocess.CalledProcessError):
         return None
-    return [p for p in listed.split("\0") if p and p.endswith(GLUE_SUFFIXES)]
+    glue = [p for p in listed.split("\0") if p and p.endswith(GLUE_SUFFIXES)]
+    return sorted(set(glue) | set(just_glue_files(ROOT)))
 
 
 def check_glue(c_features, cpp_features, files=None, read=None, reach_check=True):
@@ -367,6 +379,23 @@ def self_test():
         ok("an empty file set and an empty alias set both REFUSE")
     else:
         bad("emptiness refusal", "reported OK over nothing")
+
+    # phase-472 W2 — the root `justfile` (no suffix) and a `mod` file are glue.
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        os.makedirs(os.path.join(tmp, "just"))
+        with open(os.path.join(tmp, "justfile"), "w") as fh:
+            fh.write("mod plat 'just/plat.just'\nr:\n    cargo build --features cffi-zenoh-cffi\n")
+        with open(os.path.join(tmp, "just", "plat.just"), "w") as fh:
+            fh.write("b:\n    @true\n")
+        got = just_glue_files(tmp)
+        found = check_glue(c, cpp, files=got, reach_check=False,
+                           read=lambda p: open(os.path.join(tmp, p)).read())
+        if got == ["justfile", os.path.join("just", "plat.just")] and len(found) == 1 \
+                and found[0].startswith("justfile"):
+            ok("the root justfile and its modules are scanned, and an alias there is caught")
+        else:
+            bad("justfile reach", (got, found))
 
     if fails:
         return 1
