@@ -71,6 +71,10 @@ import re
 import subprocess
 import sys
 import tempfile
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -141,50 +145,10 @@ def strip_doc_attrs(text):
     return DOC_ATTR.sub(lambda m: "\n" * m.group(0).count("\n"), text)
 
 
-def strip_comments(text):
+def strip_comments(text, rel="x.c"):
     """Remove /* */ and // comments, preserving string literals and line count."""
-    out = []
-    i, n = 0, len(text)
-    while i < n:
-        c = text[i]
-        # A Rust lifetime (`'static`, `'a`) is not a char literal, and treating it
-        # as one makes the scanner run to the NEXT quote, swallowing whatever code
-        # lies between — a stripper that silently eats its input is worse than no
-        # stripper. So `'` opens a literal only when it actually closes like one.
-        # The rule holds for C too, where every char literal has the same shape.
-        if c == "'" and not CHAR_LIT.match(text, i):
-            out.append(c)
-            i += 1
-            continue
-        if c == '"' or c == "'":
-            quote = c
-            out.append(c)
-            i += 1
-            while i < n:
-                if text[i] == "\\" and i + 1 < n:
-                    out.append(text[i:i + 2])
-                    i += 2
-                    continue
-                out.append(text[i])
-                if text[i] == quote:
-                    i += 1
-                    break
-                i += 1
-            continue
-        if text.startswith("/*", i):
-            j = text.find("*/", i + 2)
-            j = n if j == -1 else j + 2
-            # keep newlines so reported line numbers stay true
-            out.append("".join(ch for ch in text[i:j] if ch == "\n"))
-            i = j
-            continue
-        if text.startswith("//", i):
-            j = text.find("\n", i)
-            i = n if j == -1 else j
-            continue
-        out.append(c)
-        i += 1
-    return "".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, comments.lang_for(rel) or "c")
 
 
 def tracked_files():
@@ -205,7 +169,7 @@ def offenders(files):
                 raw = fh.read()
         except OSError:
             continue
-        code = strip_comments(raw)
+        code = strip_comments(raw, rel)
         if rel.endswith(".rs"):
             code = strip_doc_attrs(code)
         # keep the match, not just the name: the first offset is reported below,
@@ -352,7 +316,7 @@ def extra_definers(files):
     for rel in files:
         try:
             with open(os.path.join(ROOT, rel), encoding="utf-8", errors="replace") as fh:
-                code = strip_comments(fh.read())
+                code = strip_comments(fh.read(), rel)
             if rel.endswith(".rs"):
                 code = strip_doc_attrs(code)
         except OSError:

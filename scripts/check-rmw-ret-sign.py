@@ -40,6 +40,10 @@ import os
 import re
 import subprocess
 import sys
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -104,8 +108,8 @@ def tracked():
 
 
 def strip_comments(text, rust):
-    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
-    text = re.sub(r"(?m)//.*$", " ", text)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    text = comments.strip_comments(text, "rust" if rust else "c")
     if rust:
         # bindgen carries the C doc block into a `#[doc = "…"]` STRING, which is
         # not a comment and so survives the pass above — the doc for
@@ -113,7 +117,6 @@ def strip_comments(text, rust):
         # put two entries in the first run of this audit that are prose about
         # the contract, not code that tests it.
         text = re.sub(r"(?m)^\s*#\[doc\s*=.*$", " ", text)
-        text = re.sub(r"(?m)^\s*///.*$", " ", text)
     return text
 
 

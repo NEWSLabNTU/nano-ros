@@ -1925,8 +1925,9 @@ pub trait Session {
     /// Lesson from micro-ROS's `rmw_uros_ping_agent`.
     ///
     /// Default body: `Err(Unsupported)`. Backends with a native
-    /// ping API (zenoh: `z_send_ping`; XRCE:
-    /// `uxr_ping_agent_session_until_timeout`) opt in by overriding.
+    /// ping API (XRCE: `uxr_ping_agent_session`; zenoh, which has no
+    /// round-trip ping, sends one `zpico_send_keep_alive` frame) opt in by
+    /// overriding.
     fn ping_session(&mut self, timeout_ms: i32) -> Result<(), Self::Error>
     where
         Self::Error: From<TransportError>,

@@ -86,6 +86,10 @@ import importlib.util
 import re
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = Path(__file__).resolve().parent.parent
 CENSUS = ROOT / "scripts/nros-build-wiring.py"
@@ -118,7 +122,8 @@ def load_census():
 
 
 def strip_comments(text: str) -> str:
-    return re.sub(r"^\s*//.*$", "", text, flags=re.M)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "rust")
 
 
 def body_resolving_helpers(code: str) -> list[str]:

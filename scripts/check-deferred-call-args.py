@@ -44,6 +44,10 @@ Run: python3 scripts/check-deferred-call-args.py [--self-test]
 import subprocess
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -57,35 +61,8 @@ def strip_comments(text):
     the COMMENT that describes the bug as an instance of the bug. A scanner
     that cannot tell code from prose about code will keep finding itself.
     """
-    out = list(text)
-    i = 0
-    n = len(text)
-    while i < n:
-        c = text[i]
-        if c == '"':
-            j = i + 1
-            while j < n:
-                if text[j] == "\\":
-                    j += 2
-                    continue
-                if text[j] == '"':
-                    break
-                j += 1
-            i = j + 1
-            continue
-        if text.startswith("[[", i):
-            j = text.find("]]", i + 2)
-            i = n if j == -1 else j + 2
-            continue
-        if c == "#":
-            j = text.find("\n", i)
-            end = n if j == -1 else j
-            for k in range(i, end):
-                out[k] = " "
-            i = end
-            continue
-        i += 1
-    return "".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "cmake")
 
 
 def tokenize(text, start):

@@ -25,6 +25,10 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent.parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 SEP = "\x1f"
 
@@ -1103,23 +1107,12 @@ def _validate_rust_workspace(entry, root, entry_dir):
 def _strip_cmake_comments(text):
     """Drop `#` comments so a gate matches CODE, not prose — phase-350 W1.
 
-    CMake has no block comment worth modelling here, and `#` inside a quoted
-    string is rare enough in these files that the simple rule is the honest one:
-    everything from an unquoted `#` to end of line goes. Lines are kept (as
-    blanks) so any future line-numbered error stays accurate.
+    The shared cmake stripper (phase-472 W3): quoted `#` stays, `#[[ … ]]`
+    bracket comments go, and offsets are kept so a line-numbered error stays
+    accurate.
     """
-    out = []
-    for line in text.split("\n"):
-        in_str = False
-        cut = len(line)
-        for i, ch in enumerate(line):
-            if ch == '"' and (i == 0 or line[i - 1] != "\\"):
-                in_str = not in_str
-            elif ch == "#" and not in_str:
-                cut = i
-                break
-        out.append(line[:cut])
-    return "\n".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "cmake")
 
 
 def zephyr_application_is_generated(entry):

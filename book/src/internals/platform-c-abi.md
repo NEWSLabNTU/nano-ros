@@ -141,13 +141,13 @@ match. Adding a capability means adding a row to **every** column.
 
 | Capability | Rust trait | C section | Symbols |
 |---|---|---|---|
-| Clock | `PlatformClock` | `clock_ms` | `nros_platform_clock_ms` |
+| Clock | `PlatformClock` | `clock_ns` | `nros_platform_clock_ns` |
 | Sleep | `PlatformSleep` | `sleep_ms` | `nros_platform_sleep_ms` |
 | Alloc | `PlatformAlloc` | `malloc/realloc/free` | `nros_platform_alloc{,_realloc,_free}` |
 | Threading | `PlatformThreading` | mutex/condvar/task | `nros_platform_{mutex,condvar,task}_*` |
 | Critical section | `PlatformCriticalSection` | per-CPU interrupt mask | `nros_platform_critical_section_{acquire,release}` |
 | Scheduler | `PlatformScheduler` | task hints | `nros_platform_scheduler_*` |
-| Time | `PlatformTime` | wall-clock | `nros_platform_time_ns` |
+| Time | `PlatformTime` | wall-clock | `nros_platform_time_now_ns` |
 | Yield | `PlatformYield` | cooperative yield | `nros_platform_yield_now` |
 | Random | `PlatformRandom` | best-effort RNG | `nros_platform_random_*` |
 | Wake | `PlatformThreading` (wake methods) | opaque binary-semaphore | `nros_platform_wake_{init,drop,wait_ms,signal,signal_from_isr,storage_size,storage_align}` |

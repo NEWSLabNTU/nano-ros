@@ -27,6 +27,10 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 # Issue 0986 — this file builds a throwaway repository with `git init`, and an
 # inherited `GIT_DIR` makes that rewrite the CALLER's repository instead. Every
@@ -61,27 +65,11 @@ def tracked_files(root: Path) -> list[Path]:
     return keep
 
 
-def strip_comment(line: str) -> str:
+def strip_comments(text, rel):
     """Drop a trailing `#` comment. A `#` inside quotes is not one; be conservative
     and only strip when the hash is preceded by whitespace or starts the line."""
-    out = []
-    quote = None
-    i = 0
-    while i < len(line):
-        ch = line[i]
-        if quote:
-            if ch == quote:
-                quote = None
-            out.append(ch)
-        elif ch in "'\"":
-            quote = ch
-            out.append(ch)
-        elif ch == "#" and (i == 0 or line[i - 1].isspace()):
-            break
-        else:
-            out.append(ch)
-        i += 1
-    return "".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, comments.lang_for(rel) or "sh")
 
 
 def call_sites(root: Path) -> list[tuple[str, int, str]]:
@@ -93,8 +81,7 @@ def call_sites(root: Path) -> list[tuple[str, int, str]]:
             continue
         if "nros_scoped_target_dir" not in text:
             continue
-        for n, line in enumerate(text.splitlines(), 1):
-            code = strip_comment(line)
+        for n, code in enumerate(strip_comments(text, rel).split("\n"), 1):
             for m in CALL.finditer(code):
                 found.append((str(rel), n, m.group(1)))
     return found

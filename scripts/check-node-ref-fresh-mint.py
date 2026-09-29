@@ -41,6 +41,10 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -79,15 +83,11 @@ def strip_comments(text):
     A comment is where the retired shape SHOULD still appear: the four fixed
     sites each carry a note saying what stood there and why it was constant
     true, and a gate that forbids describing its own subject makes the record
-    unwritable. (Crude by design — `//` inside a string literal would also be
-    stripped, which cannot matter here: these two identifiers appear in no
-    string in the tree, and the gate only ever reads for this one pattern.)
+    unwritable. The shared Rust stripper (phase-472 W3) — `/* */` too, and a
+    `//` inside a string literal is left alone.
     """
-    out = []
-    for line in text.split("\n"):
-        idx = line.find("//")
-        out.append(line if idx < 0 else line[:idx])
-    return "\n".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "rust")
 
 
 def hits_in(text):

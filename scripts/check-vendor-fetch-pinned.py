@@ -121,6 +121,10 @@ import os
 import re
 import subprocess
 import sys
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -225,32 +229,8 @@ def _strip_cmake_comments(text):
     comment that shifted them would misreport every finding after it. Quoted
     `#` is left alone — a URL fragment is not a comment.
     """
-    out, i, n, in_string = [], 0, len(text), False
-    while i < n:
-        c = text[i]
-        if in_string:
-            out.append(c)
-            if c == "\\" and i + 1 < n:
-                out.append(text[i + 1])
-                i += 2
-                continue
-            if c == '"':
-                in_string = False
-            i += 1
-            continue
-        if c == '"':
-            in_string = True
-            out.append(c)
-            i += 1
-            continue
-        if c == "#":
-            while i < n and text[i] != "\n":
-                out.append(" ")
-                i += 1
-            continue
-        out.append(c)
-        i += 1
-    return "".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "cmake")
 
 
 def fetch_blocks(text):

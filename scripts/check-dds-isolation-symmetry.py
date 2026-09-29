@@ -65,6 +65,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# phase-472 W3 — both halves are read as CODE. A commented-out
+# `// dds_isolation::apply_to_command(&mut cmd);` applied no pin and used to
+# satisfy `applies_the_pin`; a `# nros_export_cyclone_config` likewise.
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import comments  # noqa: E402
 TESTS = "packages/testing/nros-tests/"
 
 # Helpers that start a host ROS 2 peer whose env is pinned by
@@ -227,6 +233,13 @@ def self_test(quiet=False):
     if starts_a_pinned_peer(defect) is None or applies_the_pin(defect):
         bad.append("the 1137 shape is not detected")
 
+    # phase-472 W3 — the pin in a COMMENT is no pin (the reader strips first).
+    comments.self_test()
+    commented = comments.strip_comments(
+        defect + "\n// nros_tests::dds_isolation::apply_to_command(&mut cmd);", "rust")
+    if applies_the_pin(commented):
+        bad.append("a commented-out apply_to_command was read as the pin")
+
     # The same file, fixed.
     fixed = defect + "\nnros_tests::dds_isolation::apply_to_command(&mut cmd);"
     if not applies_the_pin(fixed):
@@ -314,7 +327,7 @@ def main():
         if not full.is_file():
             continue
         try:
-            text = full.read_text(encoding="utf-8")
+            text = comments.strip_comments(full.read_text(encoding="utf-8"), "rust")
         except (OSError, UnicodeDecodeError):
             continue
         token = starts_a_pinned_peer(text)
@@ -334,7 +347,7 @@ def main():
         if not full.is_file():
             continue
         try:
-            text = full.read_text(encoding="utf-8")
+            text = comments.strip_comments(full.read_text(encoding="utf-8"), "sh")
         except (OSError, UnicodeDecodeError):
             continue
         if shell_starts_a_dds_peer(text) is None:

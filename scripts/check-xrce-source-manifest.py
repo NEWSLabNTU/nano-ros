@@ -47,6 +47,10 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 REPO = Path(__file__).resolve().parent.parent
 XRCE = REPO / "packages/rmw/xrce"
@@ -167,14 +171,15 @@ def manifest_problems(groups, rows, where: str = str(MANIFEST)) -> list[str]:
     return bad
 
 
-def strip_comments(text: str, marker: str) -> str:
-    """Drop everything from `marker` to end-of-line, line by line.
+def strip_comments(text: str, marker: str, lang: str | None = None) -> str:
+    """Blank comments by the lane's language (shared stripper, phase-472 W3).
 
-    Crude on purpose. It can only ever hide a `.c` that was ALREADY in a
+    It can only ever hide a `.c` that was ALREADY in a
     comment, which is exactly what this gate does not care about; a path in
     compiled position always precedes the comment on its line.
     """
-    return "\n".join(line.split(marker, 1)[0] for line in text.splitlines())
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, lang or {"//": "rust", "#": "cmake"}[marker])
 
 
 def lane_sources(text: str, marker: str, allow: set[str]) -> list[str]:

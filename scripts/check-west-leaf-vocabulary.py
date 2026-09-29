@@ -61,6 +61,10 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = Path(__file__).resolve().parent.parent
 ZEPHYR_RS = ROOT / "packages/testing/nros-tests/src/zephyr.rs"
@@ -99,9 +103,8 @@ _MIN_PATHS = 10
 
 def strip_doc_comments(text: str) -> str:
     """Drop `///` and `//!` lines. Prose is not a resolver."""
-    return "\n".join(
-        line for line in text.split("\n") if not line.lstrip().startswith(("///", "//!"))
-    )
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "rust")
 
 
 def _slice_decode_alias(text: str) -> str:

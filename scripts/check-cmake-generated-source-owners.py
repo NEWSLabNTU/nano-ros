@@ -63,6 +63,10 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -90,30 +94,8 @@ IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 def strip_comments(text: str) -> str:
     """Drop `#` comments. Quotes are respected; bracket comments are not used here."""
-    out = []
-    in_str = False
-    i = 0
-    while i < len(text):
-        c = text[i]
-        if in_str:
-            out.append(c)
-            if c == "\\" and i + 1 < len(text):
-                out.append(text[i + 1])
-                i += 2
-                continue
-            if c == '"':
-                in_str = False
-        elif c == '"':
-            in_str = True
-            out.append(c)
-        elif c == "#":
-            while i < len(text) and text[i] != "\n":
-                i += 1
-            continue
-        else:
-            out.append(c)
-        i += 1
-    return "".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "cmake")
 
 
 def iter_calls(text: str):

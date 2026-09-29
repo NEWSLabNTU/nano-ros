@@ -84,7 +84,7 @@ buys is a backend boundary that is not Rust-only.
 | Language | C API (`rmw/rmw.h`) | Rust traits |
 | Dispatch | Runtime plugin loading (shared library via `rmw_implementation`) | Link-time selection; calls cross a C ABI vtable registered at startup (RFC-0054) |
 | `no_std` | No (requires libc, heap, POSIX) | Yes — but "no heap" is a property of the BACKEND, not of the abstraction (see below) |
-| Error model | `rmw_ret_t` integer codes | `nros_rmw_ret_t` at the ABI, using upstream rmw's VALUES (phase-376 W3.d); `TransportError` on the Rust side |
+| Error model | `rmw_ret_t` integer codes | `rmw_ret_t` at the ABI, using upstream rmw's VALUES (phase-376 W3.d); `TransportError` on the Rust side |
 
 ROS 2 selects the RMW backend at runtime by loading a shared library (e.g.,
 `rmw_fastrtps_cpp.so`). This enables switching backends without recompilation

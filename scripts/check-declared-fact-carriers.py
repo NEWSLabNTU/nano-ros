@@ -56,6 +56,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# phase-472 W3 — ONE comment stripper. A commented-out
+# `// println!("cargo:rerun-if-env-changed=…")` used to count as the watch, and a
+# cmake COMMENT naming a fact as its production. Producers, consumers and rule 4
+# read CODE. (The `NotCarried` disposition deliberately reads a COMMENT — it
+# quotes the prose where a decision was taken — so it keeps the raw text.)
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import comments  # noqa: E402
+
 
 def _sibling(name):
     """Import a dash-named sibling gate.
@@ -610,7 +618,7 @@ def produced():
     """Names appearing in a `corrosion_set_env_vars` payload under cmake/."""
     names = set()
     for f in tracked("cmake/*.cmake", "cmake/**/*.cmake"):
-        text = f.read_text(errors="replace")
+        text = comments.strip_comments(f.read_text(errors="replace"), "cmake")
         # The payload is built up in a list variable and passed through, so the
         # honest test is "this file both names the fact and calls the setter" —
         # matching the call's arguments would miss every accumulating site,
@@ -632,11 +640,16 @@ def consumed():
         text = f.read_text(errors="replace")
         if "NROS_DECLARED_" not in text:
             continue
-        reads = set(READ_RE.findall(text))
-        watches = set(WATCH_RE.findall(text))
+        reads, watches = reads_and_watches(text)
         for n in reads | watches:
             seen.setdefault(n, []).append((f, n in reads, n in watches))
     return seen
+
+
+def reads_and_watches(rust_text):
+    """(names read, names watched) by one build-side Rust file's CODE."""
+    code = comments.strip_comments(rust_text, "rust")
+    return set(READ_RE.findall(code)), set(WATCH_RE.findall(code))
 
 
 # Rule 4's two halves (issue 1429).
@@ -672,6 +685,8 @@ def valueless_carrier_guards(sources=None):
         ]
     findings = []
     for label, text in sources:
+        # Blanked, not deleted: line numbers in the finding stay exact.
+        text = comments.strip_comments(text, "cmake")
         owner = {}
         for lineno, line in enumerate(text.splitlines(), start=1):
             m = _GET_PROPERTY_RE.match(line)
@@ -942,6 +957,19 @@ def self_test():
             print("       %s" % "\n       ".join(got))
         print("  %-46s %s" % (label, "ok" if ok else "FAILED"))
 
+    # phase-472 W3 — the READER must not take a comment for a read or a watch.
+    comments.self_test()
+    live = 'let v = env("NROS_DECLARED_X");\nprintln!("cargo:rerun-if-env-changed=NROS_DECLARED_X");\n'
+    dead = ('let v = env("NROS_DECLARED_X");\n'
+            '// println!("cargo:rerun-if-env-changed=NROS_DECLARED_X");\n')
+    for label, text, want in (
+        ("reader: a live watch is a watch", live, ({"NROS_DECLARED_X"}, {"NROS_DECLARED_X"})),
+        ("reader: a commented-out watch is NOT", dead, ({"NROS_DECLARED_X"}, set())),
+    ):
+        ok = reads_and_watches(text) == want
+        failures += 0 if ok else 1
+        print("  %-46s %s" % (label, "ok" if ok else "FAILED"))
+
     f = ROOT / "x.rs"
     case("produced, consumed and watched -> clean",
          {"NROS_DECLARED_X"}, {"NROS_DECLARED_X": [(f, True, True)]}, False)
@@ -1020,6 +1048,8 @@ def self_test():
     # A variable `set()` locally is always DEFINED, so the bare form is correct
     # there and must not be reported -- the rule is about the READER, and a gate
     # that fires on every emptiness test in the tree gets switched off.
+    gcase("a COMMENTED-OUT bare test -> clean",
+          'get_property(_v GLOBAL PROPERTY P)\n# if(NOT _v STREQUAL "")\n', False)
     gcase("a `set()` variable tested bare -> clean",
           'set(_v "x")\nif(NOT _v STREQUAL "")\n', False)
 

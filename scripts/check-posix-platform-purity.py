@@ -46,6 +46,10 @@ Usage:  check-posix-platform-purity.py
 import os
 import re
 import sys
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CRATE = os.path.join(ROOT, "packages", "platform", "nros-platform-posix", "src")
@@ -87,32 +91,8 @@ def strip_comments(text):
     Line structure matters: the report names line numbers, and a naive strip
     would shift every one of them.
     """
-    out = []
-    in_block = False
-    for line in text.split("\n"):
-        res, i = [], 0
-        while i < len(line):
-            if in_block:
-                end = line.find("*/", i)
-                if end == -1:
-                    i = len(line)
-                else:
-                    in_block = False
-                    i = end + 2
-            else:
-                start = line.find("/*", i)
-                slash = line.find("//", i)
-                if slash != -1 and (start == -1 or slash < start):
-                    res.append(line[i:slash])
-                    break
-                if start == -1:
-                    res.append(line[i:])
-                    break
-                res.append(line[i:start])
-                in_block = True
-                i = start + 2
-        out.append("".join(res))
-    return out
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "c").split("\n")
 
 
 def offending(lines):

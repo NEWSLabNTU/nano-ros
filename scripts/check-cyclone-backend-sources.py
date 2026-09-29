@@ -33,6 +33,12 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+
+# phase-472 W3 — both lists are read as CODE. A commented-out
+# `// "nros_sertype.cpp",` in build.rs is issue 0984 exactly (the TU is not
+# compiled), and it used to count as listed.
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+import comments  # noqa: E402
 CMAKE = REPO / "packages/rmw/cyclonedds/nros-rmw-cyclonedds/CMakeLists.txt"
 BUILD_RS = REPO / "packages/rmw/cyclonedds/nros-rmw-cyclonedds-sys/build.rs"
 
@@ -44,11 +50,11 @@ _RS_NAME = re.compile(r'"([A-Za-z0-9_]+\.cpp)"')
 
 
 def cmake_sources(text: str) -> set[str]:
-    return set(_CMAKE_SRC.findall(text))
+    return set(_CMAKE_SRC.findall(comments.strip_comments(text, "cmake")))
 
 
 def build_rs_sources(text: str) -> set[str]:
-    block = _RS_BLOCK.search(text)
+    block = _RS_BLOCK.search(comments.strip_comments(text, "rust"))
     if block is None:
         raise SystemExit(
             "check-cyclone-backend-sources: no `let cpp_files = [...]` in "
@@ -61,10 +67,19 @@ def build_rs_sources(text: str) -> set[str]:
 def self_test() -> None:
     """Runs on the NORMAL path (`check-gate-selftests`): a negative control
     nobody runs decays into a comment."""
+    comments.self_test()
     cm = cmake_sources("target_sources(x PRIVATE\n    src/a.cpp\n    src/b.cpp\n)\n")
     assert cm == {"a.cpp", "b.cpp"}, cm
     rs = build_rs_sources('let cpp_files = [\n "a.cpp",\n // c.cpp\n "b.cpp",\n];\n')
-    assert rs == {"a.cpp", "b.cpp", "c.cpp"} or rs == {"a.cpp", "b.cpp"}, rs
+    assert rs == {"a.cpp", "b.cpp"}, rs
+    # phase-472 W3 — a COMMENTED-OUT entry is not compiled, so it is not listed
+    # (issue 0984's shape). Both sides, both comment forms.
+    rs = build_rs_sources(
+        'let cpp_files = [\n "a.cpp",\n // "gone.cpp",\n /* "also.cpp", */\n];\n'
+    )
+    assert rs == {"a.cpp"}, rs
+    cm = cmake_sources("    src/a.cpp\n#[[\n    src/gone.cpp\n]]\n")
+    assert cm == {"a.cpp"}, cm
     # The regression: cmake gains a file, build.rs does not.
     cm2 = cmake_sources("    src/a.cpp\n    src/new.cpp\n")
     rs2 = build_rs_sources('let cpp_files = [\n "a.cpp",\n];\n')

@@ -42,6 +42,10 @@ import os
 import re
 import subprocess
 import sys
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JUSTFILE = os.path.join(ROOT, "justfile")
@@ -734,80 +738,8 @@ def _strip_rust_comments(text):
     Still not a full Rust lexer; it is a lexer for the three token kinds that
     can hold prose.
     """
-    out = []
-    i, n = 0, len(text)
-
-    def blank(s):
-        """Same length, same line structure, no content."""
-        return "".join(c if c == "\n" else " " for c in s)
-
-    while i < n:
-        two = text[i:i + 2]
-        if two == "//":
-            j = text.find("\n", i)
-            j = n if j == -1 else j
-            out.append(" " * (j - i))
-            i = j
-            continue
-        if two == "/*":
-            j = text.find("*/", i + 2)
-            j = n if j == -1 else j + 2
-            out.append(blank(text[i:j]))
-            i = j
-            continue
-        # A raw / byte-string prefix: r, b, br, followed by `"` or `#`+`"`.
-        # Only when it STARTS a token — otherwise the trailing `r` of an
-        # identifier before a string would be swallowed with it.
-        prev_is_ident = i > 0 and (text[i - 1].isalnum() or text[i - 1] == "_")
-        m = None if prev_is_ident else re.match(r'(?:br|b|r)(#*)"', text[i:])
-        if m:
-            hashes = m.group(1) or ""
-            body = i + m.end()
-            close = f'"{hashes}'
-            if hashes:
-                # Raw: no escapes at all, ends at the first `"` + same hashes.
-                j = text.find(close, body)
-                j = n if j == -1 else j + len(close)
-                out.append(blank(text[i:j]))
-                i = j
-                continue
-            # No hashes: `r"…"`/`br"…"` are escape-free, `b"…"` is escaped.
-            raw = "r" in text[i:body - 1]
-            j = body
-            while j < n:
-                if not raw and text[j] == "\\":
-                    j += 2
-                    continue
-                if text[j] == '"':
-                    j += 1
-                    break
-                j += 1
-            out.append(blank(text[i:j]))
-            i = j
-            continue
-        if text[i] == '"':
-            j = i + 1
-            while j < n:
-                if text[j] == "\\":
-                    j += 2
-                    continue
-                if text[j] == '"':
-                    j += 1
-                    break
-                j += 1
-            out.append(blank(text[i:j]))
-            i = j
-            continue
-        if text[i] == "'":
-            # Only an unambiguous one-char literal; a lifetime falls through.
-            m = re.match(r"'(?:\\.|[^\\'])'", text[i:])
-            if m:
-                out.append(blank(m.group(0)))
-                i += m.end()
-                continue
-        out.append(text[i])
-        i += 1
-    return "".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "rust", strings=True)
 
 
 def resolvers_used(test_name):

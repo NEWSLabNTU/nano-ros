@@ -65,6 +65,10 @@ from __future__ import annotations
 import os
 import re
 import sys
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HEADER_DIR = os.path.join("packages", "api", "nros-cpp", "include", "nros")
@@ -92,12 +96,13 @@ TEMPLATE_M = re.compile(r"\btemplate\s*<[^>]*\b(?:typename|class)\s+M\b")
 
 
 def strip_comment(line):
-    """`//` comments only. A block comment cannot introduce a call, and the one
-    thing this must not do is mistake a doc line naming a function for a call to
-    it — `#include "nros/subscription.hpp" // nros_cpp_subscription_register`
-    reported as an unbounded registration on the gate's first run."""
-    i = line.find("//")
-    return line if i < 0 else line[:i]
+    """One line with its comments blanked (shared stripper, phase-472 W3). The
+    one thing this must not do is mistake a doc line naming a function for a
+    call to it — `#include "nros/subscription.hpp" // nros_cpp_subscription_register`
+    reported as an unbounded registration on the gate's first run. Per LINE, so
+    a `/*` opened on an earlier line is not seen."""
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(line, "cpp")
 
 
 def header_files():

@@ -89,6 +89,10 @@ import sys
 from pathlib import Path
 import sys as _sys
 from pathlib import Path as _Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 _sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
 from tracked import tracked  # issue 0721: index lookup, not a walk
 from core_crates import host_crate_names  # issue 1212: ONE definition of "core"
@@ -528,14 +532,10 @@ def test_gated_module_files(src):
     return gated
 
 
-def strip_comments(line: str) -> str:
+def strip_comments(text: str) -> str:
     """Drop comment text so a doc comment naming `std::` is not a std USE."""
-    s = line.strip()
-    if s.startswith("//") or s.startswith("/*") or s.startswith("*"):
-        return ""
-    # Trailing `// …` on a code line. Naive on `"http://"`-style literals, which
-    # do not occur in these crates; revisit if that changes.
-    return line.split("//", 1)[0]
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "rust")
 
 
 def census():
@@ -567,11 +567,11 @@ def census():
                 test_depth = None
                 depth = 0
                 pending_test = False
-                for line in rs.read_text(errors="replace").splitlines():
+                raw = rs.read_text(errors="replace")
+                for line, code in zip(raw.split("\n"), strip_comments(raw).split("\n")):
                     stripped = line.strip()
                     if test_depth is None and is_test_gate(stripped):
                         pending_test = True
-                    code = strip_comments(line)
                     opens = code.count("{")
                     closes = code.count("}")
                     if pending_test and opens:
@@ -729,7 +729,9 @@ def guarded_features(src: Path) -> set:
     """Features named by a `compile_error!` guard anywhere in the crate."""
     out = set()
     for rs in tracked(src, suffix=".rs"):
-        text = rs.read_text(errors="replace")
+        # Comments blanked (offsets kept): a `compile_error!` named in prose
+        # guards nothing (phase-472 W3).
+        text = strip_comments(rs.read_text(errors="replace"))
         for m in re.finditer(r"compile_error!", text):
             # The guard's own `#[cfg(all(feature = "F", not(feature = "std")))]`
             # sits directly above it; 400 chars covers the wrapped spellings in
@@ -743,7 +745,9 @@ def guarded_features(src: Path) -> set:
 
 def site_features(rs: Path, file_cfgs: set):
     """Yield `(line_no, required_features)` for each `std::` site in `rs`."""
-    lines = rs.read_text(errors="replace").splitlines()
+    raw = rs.read_text(errors="replace")
+    lines = raw.split("\n")
+    codes = strip_comments(raw).split("\n")
     stack = []  # (depth_at_open, features)
     pending = set()
     pending_live = False
@@ -758,7 +762,7 @@ def site_features(rs: Path, file_cfgs: set):
                 pending |= required_features(m.group(1))
                 pending_live = True
             continue
-        code = strip_comments(line)
+        code = codes[n - 1]
         opens = code.count("{")
         closes = code.count("}")
         if code and PATH_RE.search(code):

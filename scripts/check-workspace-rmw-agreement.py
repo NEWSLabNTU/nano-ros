@@ -67,6 +67,10 @@ import re
 import sys
 import tempfile
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from tracked import tracked  # issue 0721: index lookup, not a walk
@@ -119,32 +123,8 @@ def mask(text, strings=True):
     the caller can slice the ORIGINAL text for the argument list, where quoting
     still matters.
     """
-    out, in_str, i, n = [], False, 0, len(text)
-    while i < n:
-        c = text[i]
-        if in_str:
-            if c == "\\" and i + 1 < n:
-                out.append("  " if strings else text[i:i + 2])
-                i += 2
-                continue
-            if strings:
-                out.append('"' if c == '"' else (c if c == "\n" else " "))
-            else:
-                out.append(c)
-            if c == '"':
-                in_str = False
-        elif c == '"':
-            in_str = True
-            out.append(c)
-        elif c == "#":
-            while i < n and text[i] != "\n":
-                out.append(" ")
-                i += 1
-            continue
-        else:
-            out.append(c)
-        i += 1
-    return "".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, "cmake", strings=strings)
 
 
 def find_calls(text):

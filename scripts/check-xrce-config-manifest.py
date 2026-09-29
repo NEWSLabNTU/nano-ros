@@ -52,6 +52,10 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 REPO = Path(__file__).resolve().parent.parent
 XRCE = REPO / "packages/rmw/xrce"
@@ -251,9 +255,10 @@ def template_problems(template: str, text: str, values, knobs, flags) -> list[st
     return bad
 
 
-def strip_comments(text: str, marker: str) -> str:
+def strip_comments(text: str, marker: str, lang: str | None = None) -> str:
     """Drop everything from `marker` to end-of-line, line by line."""
-    return "\n".join(line.split(marker, 1)[0] for line in text.splitlines())
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(text, lang or {"//": "rust", "#": "cmake"}[marker])
 
 
 def lane_values(text: str, marker: str, allow: set[str]) -> list[str]:

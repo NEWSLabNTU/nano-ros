@@ -137,6 +137,10 @@ def self_test():
         ("invocation after heredoc", "cat <<EOF\njust ci l1\nEOF\njust check fast\n", True),
         # Issue 1548 — the exemption must be a COMMAND, not a word.
         ("activate.sh only in a comment", "# unlike the rest, no activate.sh here\njust check fast\n", True),
+        # phase-472 W3 — a TRAILING comment is prose too. The line-start test
+        # read this as an activation, exempting the `just` below it.
+        ("activate.sh in a trailing comment", "true # && source ./activate.sh\njust check fast\n", True),
+        ("invocation only in a trailing comment", "cargo build # then just check fast\n", False),
         ("activate.sh only in an echo", "echo 'run source ./activate.sh'\njust check fast\n", True),
         ("sourced AFTER the invocation", "just check fast\nsource ./activate.sh\n", True),
         ("ROS setup is not the repo env", 'source "$ROS_PREFIX/setup.bash"\njust check fast\n', True),
@@ -145,6 +149,9 @@ def self_test():
         ("sourced in a chain", "cd x && source ../activate.sh && just check fast\n", False),
         ("strict-mode prologue", "set -euo pipefail\nsource ./activate.sh\njust qemu setup-qemu\n", False),
     ]
+    import comments  # noqa: E402  (on sys.path via workflow_commands)
+
+    comments.self_test()
     failures = 0
     for name, run, expect in cases:
         doc = {"jobs": {"j": {"steps": [{"name": name, "run": run}]}}}

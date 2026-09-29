@@ -403,7 +403,8 @@ typedef struct nros_rmw_vtable_t {
 
     /** Register a callback for a publisher-side event. Same NULL /
      *  unsupported-kind conventions as `register_subscription_event`.
-     *  `deadline_ms` is consulted for `OFFERED_DEADLINE_MISSED` only. */
+     *  `deadline_ms` is consulted for
+     *  `NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED` only. */
     /* ---- Status events: how the three upstream parts map here ----
      *
      * Upstream's model is three-part: `*_event_init` fills an `rmw_event_t`
@@ -544,7 +545,8 @@ typedef struct nros_rmw_vtable_t {
      *    * `NROS_RMW_RET_INVALID_ARGUMENT` on bad pointers / size.
      *
      *  `*out_cap` may exceed `requested_len`. The slot's bytes are
-     *  valid until the matching `pub_commit` or `pub_discard` runs.
+     *  valid until the matching `publish_loaned_message` or
+     *  `return_loaned_message_from_publisher` runs.
      *  `*out_token` is an opaque per-loan handle the backend uses to
      *  match commit / discard back to the right slot.
      *
@@ -793,8 +795,10 @@ typedef struct nros_rmw_vtable_t {
      *      error positive.)
      *
      *  Implementation notes per backend:
-     *  - **Zenoh**: `z_send_ping` (or session keep-alive piggyback).
-     *  - **XRCE**: `uxr_ping_agent_session_until_timeout`.
+     *  - **Zenoh**: one keep-alive frame (`zpico_send_keep_alive`);
+     *    zenoh-pico has no round-trip ping, so OK means only that the
+     *    local link accepted the frame.
+     *  - **XRCE**: `uxr_ping_agent_session`.
      *  - **DDS**: built-in participant ping if available, else
      *    `NROS_RMW_RET_UNSUPPORTED`.
      *

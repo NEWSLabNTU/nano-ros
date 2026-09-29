@@ -106,6 +106,10 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+import sys as _w3_sys  # noqa: E402
+from pathlib import Path as _W3Path  # noqa: E402
+_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 # A helper whose NAME announces it is a precondition gate.
 GUARD_NAME_RE = re.compile(r"^(require|ensure|need|maybe)_\w+$")
@@ -121,8 +125,8 @@ VERDICT_RET_RE = re.compile(r"->\s*(bool|Option\s*<\s*\(\s*\)\s*>)\s*\{?\s*$")
 def strip_line_comments(line: str) -> str:
     """Drop a trailing `//` comment. Crude but sufficient: no `//` appears
     inside a string literal in any signature this gate reads."""
-    i = line.find("//")
-    return line if i < 0 else line[:i]
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(line, "rust")
 
 
 def guard_violations(path: str, src: str) -> list[str]:
@@ -213,59 +217,8 @@ def mask_rust(src: str) -> str:
     format strings here hold them constantly. Newlines survive so line numbers
     stay exact.
     """
-    out = list(src)
-    n = len(src)
-    i = 0
-
-    def blank(a: int, b: int) -> None:
-        for k in range(a, min(b, n)):
-            if out[k] != "\n":
-                out[k] = " "
-
-    while i < n:
-        c = src[i]
-        if src.startswith("//", i):
-            j = src.find("\n", i)
-            j = n if j < 0 else j
-            blank(i, j)
-            i = j
-        elif src.startswith("/*", i):
-            depth, j = 1, i + 2
-            while j < n and depth:
-                if src.startswith("/*", j):
-                    depth, j = depth + 1, j + 2
-                elif src.startswith("*/", j):
-                    depth, j = depth - 1, j + 2
-                else:
-                    j += 1
-            blank(i, j)
-            i = j
-        elif c == "r" and re.match(r'r#*"', src[i:i + 8]) and (
-            i == 0 or not (src[i - 1].isalnum() or src[i - 1] == "_")
-        ):
-            hashes = len(re.match(r"r(#*)\"", src[i:]).group(1))
-            close = '"' + "#" * hashes
-            j = src.find(close, i + 2 + hashes)
-            j = n if j < 0 else j + len(close)
-            blank(i + 1, j)
-            i = j
-        elif c == '"':
-            j = i + 1
-            while j < n and src[j] != '"':
-                j += 2 if src[j] == "\\" else 1
-            blank(i + 1, j)
-            i = j + 1
-        elif c == "'":
-            # A char literal ('x', '\n', '\u{..}', '{') vs a lifetime ('a).
-            m = re.match(r"'(?:\\u\{[0-9a-fA-F]+\}|\\.|[^\\'])'", src[i:i + 12])
-            if m:
-                blank(i + 1, i + m.end() - 1)
-                i += m.end()
-            else:
-                i += 1
-        else:
-            i += 1
-    return "".join(out)
+    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
+    return comments.strip_comments(src, "rust", strings=True)
 
 
 def match_brace(text: str, open_idx: int) -> int:

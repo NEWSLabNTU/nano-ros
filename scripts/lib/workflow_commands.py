@@ -23,7 +23,11 @@ A line counts when the tool stands in command position: at the start, after
 """
 
 import re
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import comments  # noqa: E402  phase-472 W3 — the one shell comment stripper
 
 REPO = Path(__file__).resolve().parent.parent.parent
 WORKFLOWS = REPO / ".github" / "workflows"
@@ -52,17 +56,19 @@ INVOKE = invoke_re()
 def command_lines(run: str):
     """The lines of a `run:` body that are actually commands.
 
-    Skips comments and heredoc bodies.
+    Skips comments and heredoc bodies. Comments go through the shared shell
+    stripper (phase-472 W3): the old test skipped only a line STARTING with `#`,
+    so `true # && source ./activate.sh` read as an activation.
     """
     out = []
     terminator = None
-    for line in (run or "").split("\n"):
+    for line in comments.strip_comments(run or "", "sh").split("\n"):
         if terminator is not None:
             if line.strip() == terminator:
                 terminator = None
             continue
         stripped = line.strip()
-        if stripped.startswith("#"):
+        if not stripped:
             continue
         out.append(line)
         m = HEREDOC.search(line)
