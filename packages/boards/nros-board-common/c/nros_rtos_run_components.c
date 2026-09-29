@@ -97,6 +97,9 @@ extern _Bool nros_cpp_context_is_live(const void* storage);
 
 /* Weak no-op in <nros/main.h>; a board with a slower link overrides it. */
 extern void nros_board_network_wait(void);
+#ifdef __ZEPHYR__
+extern void nros_zephyr_epoch_acquire_configured(void);
+#endif
 
 /* RFC-0034 — the sole sanctioned allocation seam (wraps the FreeRTOS heap).
  * Direct pvPortMalloc/vPortFree are forbidden (check-no-direct-kernel-alloc). */
@@ -277,6 +280,13 @@ int32_t nros_board_rtos_run_components_in(const char* locator, uint8_t domain_id
     }
 
     nros_board_network_wait();
+#ifdef __ZEPHYR__
+    /* issue 0758 -- the epoch, in the window the tiered entries use: network
+     * up, no component constructed. The C++ `ZephyrBoard::run_components`
+     * makes the same call; neither made it before, so an image entering here
+     * with CONFIG_NROS_SNTP_EPOCH stamped boot-relative time. */
+    nros_zephyr_epoch_acquire_configured();
+#endif
 
     const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";
     const char* ns = (node_namespace != NULL && node_namespace[0] != '\0') ? node_namespace : NULL;
