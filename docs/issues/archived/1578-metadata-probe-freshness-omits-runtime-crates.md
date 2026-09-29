@@ -1,7 +1,9 @@
 ---
 id: 1578
 title: "`nros sync` judges a metadata sidecar current from the COMPONENT's sources alone, so a nano-ros change to what the probe reports is invisible — a stale `in_place` is reused"
-status: open
+status: resolved
+resolved: 2026-09-29
+resolved_in: "one freshness key, `probe_inputs_key`, at all four sites -- the component, the CLI, and the nano-ros crates a probe compiles (generated `probe-source-dirs.txt`, gated)"
 type: bug
 area: [tooling, build]
 severity: medium
@@ -85,3 +87,61 @@ candidates, both precedented here:
   first option exists to remove.
 
 Acceptance: step 3 above re-probes without deleting the sidecar.
+
+## Resolution (2026-09-29)
+
+**One key at every freshness site.** `probe_inputs_key(package_root, nano_ros)`
+mixes three things, which are what a probe's report actually depends on:
+
+1. the component's own sources (`source_digest`, the old key alone);
+2. the CLI that wrote the harness (`NROS_CLI_SOURCE_STAMP`, baked by
+   `build.rs` from the CLI's own sources — `CARGO_PKG_VERSION`, the only CLI
+   input the old digest mixed, is constant across development builds);
+3. the nano-ros crates the probe COMPILES, hashed from
+   `packages/cli/probe-source-dirs.txt`.
+
+It replaces THREE spellings: the plain digest (the Rust positive AND negative
+caches), and `unprobeable_key` (digest + CLI stamp, the C/C++ negative cache
+only). All four sites now read one function. `None` — no nano-ros path, or a
+missing or empty list — is never fresh, which is `cli-source-dirs.txt`'s rule
+for the CLI stamp: never a key over a smaller closure.
+
+**The closure is generated, not hand-written.** `scripts/gen-probe-source-dirs.py`
+records `cargo tree -p <pkg> -F <features> -e normal,build` for the roots the
+two probe builders actually use (`nros` with `std,metadata-mode`,
+`nros-platform-cffi` with `posix-c-port`, `nros-cpp` with `metadata-mode`,
+`nros-c`). `cargo tree -p` and not `cargo metadata`: the latter unifies features
+across the workspace and would have pulled every RMW backend in. 28 crates,
+including `packages/rmw/metadata` — the recording backend that produces the
+rows, which a hand-written list would most likely have missed.
+`check-probe-source-dirs` (fast line) fails on drift and names the direction;
+it runs its own negative controls on every invocation, and a mutation of either
+the third-party filter or the drift direction was confirmed to fail them.
+
+**Acceptance, re-run on the reproduction above** (`examples/native/rust/listener`,
+toggling `DeclaredSubscriptionShape::BufferedRaw.in_place_capable()`):
+
+| step | source | `nros sync` | sidecar `in_place` |
+| --- | --- | --- | --- |
+| 0 establish | `true` | 1 rebuilt | `true` |
+| 1 flip | `false` | 1 rebuilt | `false` |
+| 2 flip back | `true` | **1 rebuilt** (was `0 rebuilt`) | **`true`** (was stale `false`) |
+| 3 no change | `true` | **0 rebuilt, 1 already current** | `true` |
+
+Step 3 is the control that matters as much as step 2: a key that went stale on
+EVERY sync would pass 0–2 too. The cache still hits when nothing changed.
+
+**A correction to issue 0641's premise.** Its comment on `unprobeable_key`
+called a stale POSITIVE sidecar "fine — a stale sidecar is caught by the coverage
+gate". This issue was a stale positive sidecar that nothing caught, and whose
+reverse direction under-sizes. The positive cache is held to the same standard
+now; the comment that made the claim is gone with the function.
+
+**Still unexplained:** step 2 of the ORIGINAL reproduction re-probed when, by
+the old code, it should not have. The old key is gone, so this no longer
+matters for correctness, and it is recorded rather than guessed at.
+
+**Scope held:** `recompute_digest` (the phase-463 entity census) also calls
+`source_digest`, and was deliberately left alone — it answers what the source
+CREATES, which is a question about the component's own files.
+

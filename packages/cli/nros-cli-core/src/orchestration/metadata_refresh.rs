@@ -119,7 +119,7 @@ pub fn refresh_stale_sidecars(
                 // configure: 17 components, 1.2 s of cmake per sync, no
                 // possible progress. `nros sync` is run 22 times by
                 // `regenerate-bindings.sh` at the head of every fixture build.
-                Ok(Some(opts)) if is_known_unprobeable_now(&opts.output_path, decl) => {
+                Ok(Some(opts)) if is_known_unprobeable_now(&opts.output_path, decl, nano_ros) => {
                     // issue 1469 — carry the RECORDED CAUSE up, not just the
                     // fact of the skip. "probe failed at this source last sync;
                     // unchanged" named the node and nothing else, and because
@@ -155,8 +155,15 @@ pub fn refresh_stale_sidecars(
             continue;
         }
         let sidecar = decl.source_metadata_path();
-        let digest = source_digest(&decl.package_root)?;
-        if sidecar_is_fresh(&sidecar, &digest) {
+        // Issue 1578 — ONE key for every freshness decision below: the
+        // component's sources, the CLI, and the nano-ros crates the probe
+        // compiles. `None` (no nano-ros path, or no closure list) is never
+        // fresh, so the probe re-runs rather than trusting a smaller key.
+        let key = probe_inputs_key(&decl.package_root, nano_ros);
+        if key
+            .as_deref()
+            .is_some_and(|k| sidecar_is_fresh(&sidecar, k))
+        {
             clear_unprobeable(&sidecar);
             report.fresh.push(sidecar);
             continue;
@@ -164,7 +171,11 @@ pub fn refresh_stale_sidecars(
         // #0288 negative cache — a deploy-bound example whose probe failed at
         // THIS source last sync is not re-attempted (a full failing build) until
         // its sources change and the digest differs.
-        if decl.deploy_bound && is_known_unprobeable(&sidecar, &digest) {
+        if decl.deploy_bound
+            && key
+                .as_deref()
+                .is_some_and(|k| is_known_unprobeable(&sidecar, k))
+        {
             // issue 1469, same class as the C/C++ branch above: the skip is
             // absorbing, so the marker's recorded cause is the only place the
             // reason survives.
@@ -205,7 +216,7 @@ pub fn refresh_stale_sidecars(
         match build_metadata(&build_options(decl, nano_ros, &probe_root)) {
             Ok(()) => {
                 clear_unprobeable(&sidecar);
-                stamp_provenance(&sidecar, &digest)?;
+                stamp_provenance(&sidecar, key.as_deref().unwrap_or(UNKEYED))?;
                 report.rebuilt.push(sidecar);
             }
             // #0288 — a deploy-bound standalone example degrades best-effort:
@@ -214,7 +225,9 @@ pub fn refresh_stale_sidecars(
             // the whole sync. A REGULAR workspace package that fails to probe is
             // a real bug and still hard-fails.
             Err(why) if decl.deploy_bound => {
-                mark_unprobeable_with_reason(&sidecar, &digest, Some(&format!("{why:#}")));
+                if let Some(k) = key.as_deref() {
+                    mark_unprobeable_with_reason(&sidecar, k, Some(&format!("{why:#}")));
+                }
                 report.unsupported.push(format!(
                     "{}::{} (deploy-bound probe failed: {why:#})",
                     decl.config.package, decl.config.component
@@ -245,14 +258,22 @@ pub fn refresh_stale_sidecars(
                         Ok(()) => {
                             // Stamp only on success; a failed probe leaves the
                             // previous sidecar (or none) untouched.
-                            if let Ok(digest) = source_digest(&opts.package_dir) {
-                                let _ = stamp_provenance(&opts.output_path, &digest);
-                            }
+                            let key =
+                                probe_inputs_key(&opts.package_dir, Some(&opts.nano_ros_workspace));
+                            let _ = stamp_provenance(
+                                &opts.output_path,
+                                key.as_deref().unwrap_or(UNKEYED),
+                            );
                             report.rebuilt.push(opts.output_path.clone());
                         }
                         Err(why) => {
                             let text = format!("{why:#}");
-                            mark_unprobeable_now(&opts.output_path, &opts.package_dir, &text);
+                            mark_unprobeable_now(
+                                &opts.output_path,
+                                &opts.package_dir,
+                                nano_ros,
+                                &text,
+                            );
                             report
                                 .unsupported
                                 .push(format!("{}::{} ({text})", o.package, o.component));
@@ -268,7 +289,7 @@ pub fn refresh_stale_sidecars(
                     // failed to configure, so every one of them is unprobeable
                     // until something changes — mark each, or the next sync
                     // rebuilds the same broken project.
-                    mark_unprobeable_now(&opts.output_path, &opts.package_dir, &text);
+                    mark_unprobeable_now(&opts.output_path, &opts.package_dir, nano_ros, &text);
                     report
                         .unsupported
                         .push(format!("{}::{} ({text})", opts.package, opts.component));
@@ -304,8 +325,12 @@ fn cpp_probe_options(
     };
 
     let sidecar = decl.source_metadata_path();
-    let digest = source_digest(&decl.package_root).map_err(|e| e.to_string())?;
-    if sidecar_is_fresh(&sidecar, &digest) {
+    // Issue 1578 — the same key as the Rust branch; `nano_ros` is already known
+    // present here (the `let Some` above), so a `None` means only that the
+    // closure list is missing, which is never fresh.
+    if probe_inputs_key(&decl.package_root, Some(nano_ros))
+        .is_some_and(|k| sidecar_is_fresh(&sidecar, &k))
+    {
         return Ok(None);
     }
 
@@ -435,37 +460,38 @@ fn unprobeable_marker(sidecar: &Path) -> PathBuf {
     PathBuf::from(format!("{}.unprobeable", sidecar.display()))
 }
 
-/// True iff a prior sync recorded THIS package unprobeable at THIS digest.
-/// The key a C/C++ negative marker is stored under: the package's own sources
-/// AND the CLI that probed them.
+/// Has this component's probe already failed, at this exact key?
 ///
-/// `source_digest` mixes only `CARGO_PKG_VERSION`, which moves on a release
-/// bump and not on a fix. That is fine for a POSITIVE cache — a stale sidecar
-/// is caught by the coverage gate — and wrong for a negative one, where a
-/// stale marker would hide a probe someone had just repaired. `NROS_CLI_SOURCE_STAMP`
-/// is baked by `build.rs` from the CLI's own sources, so it changes exactly
-/// when the thing that might fix the probe changes, and costs nothing at run
-/// time (issue 0641).
-fn unprobeable_key(package_dir: &Path) -> Option<String> {
-    let digest = source_digest(package_dir).ok()?;
-    Some(format!("{digest}:{}", env!("NROS_CLI_SOURCE_STAMP")))
+/// Issue 1578 retired `unprobeable_key` (the package digest plus the CLI stamp,
+/// C/C++ only) into [`probe_inputs_key`], which every freshness decision now
+/// shares. Its reason survives inside that function: a NEGATIVE marker keyed
+/// on less than what could fix the probe hides a repair. What changed is that
+/// the POSITIVE cache is held to the same standard — issue 0641 called a stale
+/// positive sidecar "fine — caught by the coverage gate", and #1578 was one
+/// that nothing caught.
+fn is_known_unprobeable_now(
+    sidecar: &Path,
+    decl: &ComponentDeclaration,
+    nano_ros: Option<&Path>,
+) -> bool {
+    probe_inputs_key(&decl.package_root, nano_ros)
+        .is_some_and(|k| is_known_unprobeable(sidecar, &k))
 }
 
-/// Has this component's probe already failed, at these sources and this CLI?
-fn is_known_unprobeable_now(sidecar: &Path, decl: &ComponentDeclaration) -> bool {
-    unprobeable_key(&decl.package_root).is_some_and(|key| is_known_unprobeable(sidecar, &key))
-}
-
-/// Record a C/C++ probe failure against [`unprobeable_key`], WITH its reason.
-fn mark_unprobeable_now(sidecar: &Path, package_dir: &Path, why: &str) {
-    if let Some(key) = unprobeable_key(package_dir) {
+/// Record a C/C++ probe failure against [`probe_inputs_key`], WITH its reason
+/// (issue 1469 — the cause survives the cache that suppresses it).
+fn mark_unprobeable_now(sidecar: &Path, package_dir: &Path, nano_ros: Option<&Path>, why: &str) {
+    if let Some(key) = probe_inputs_key(package_dir, nano_ros) {
         mark_unprobeable_with_reason(sidecar, &key, Some(why));
     }
 }
 
-/// The marker's FIRST LINE is the key; anything after it is the recorded reason
-/// (issue 1469). An older single-line marker therefore still matches, and a
-/// marker carrying a reason answers this question exactly as before.
+/// What a sidecar is stamped with when no key could be formed. It never equals
+/// a key [`probe_inputs_key`] returns (those are `fnv1a64:...` triples), so a
+/// sidecar stamped with it is re-probed on the next sync — the "never fresh"
+/// half of `None`.
+const UNKEYED: &str = "unkeyed";
+
 fn is_known_unprobeable(sidecar: &Path, digest: &str) -> bool {
     std::fs::read_to_string(unprobeable_marker(sidecar))
         .map(|m| marker_key(&m) == digest)
@@ -555,6 +581,91 @@ fn clear_unprobeable(sidecar: &Path) {
 /// hash crate is pulled in for this: the digest guards a rebuild decision, not
 /// a security boundary, and a collision costs one stale sidecar that the W5
 /// coverage gate would catch.
+/// Issue 1578 — THE freshness key for a metadata probe's sidecar: positive and
+/// negative, Rust and C/C++.
+///
+/// What a probe REPORTS is decided by three things, and this is all three:
+///
+/// 1. the component's own sources — [`source_digest`], what the key used to be
+///    alone;
+/// 2. the CLI that wrote the harness — `NROS_CLI_SOURCE_STAMP`, baked from the
+///    CLI's own sources by `build.rs`, because `CARGO_PKG_VERSION` (the only
+///    CLI input `source_digest` mixes) moves on a release and not on a fix;
+/// 3. the nano-ros crates the probe COMPILES — [`probe_closure_digest`] over
+///    `packages/cli/probe-source-dirs.txt`. This is the half #1578 was about:
+///    the `in_place` flag a sidecar carries comes from `nros-node`, and a change
+///    there left the sidecar "already current". Measured, it reused
+///    `in_place: false` against a source saying `true`.
+///
+/// Before this there were THREE spellings of "the probe's inputs": the plain
+/// digest (Rust, positive and negative), and digest + CLI stamp (C/C++,
+/// negative only — issue 0641, whose comment called a stale POSITIVE sidecar
+/// "fine — caught by the coverage gate"; #1578 is the counterexample, a stale
+/// sidecar nothing caught).
+///
+/// `None` when there is no nano-ros path or no closure list, and `None` is
+/// NEVER fresh: the sidecar is re-probed rather than trusted over a smaller key.
+/// That is `cli-source-dirs.txt`'s rule for the CLI's own stamp (issue 0627).
+pub fn probe_inputs_key(package_root: &Path, nano_ros: Option<&Path>) -> Option<String> {
+    let pkg = source_digest(package_root).ok()?;
+    let closure = probe_closure_digest(nano_ros?)?;
+    Some(format!("{pkg}:{}:{closure}", env!("NROS_CLI_SOURCE_STAMP")))
+}
+
+/// The generated list of crates a probe compiles, relative to a nano-ros root.
+/// Written by `scripts/gen-probe-source-dirs.py`, gated by
+/// `check-probe-source-dirs`.
+pub const PROBE_SOURCE_DIRS: &str = "packages/cli/probe-source-dirs.txt";
+
+/// FNV-1a over every source file under each directory the probe compiles, in
+/// the checkout the probe compiles AGAINST (`nano_ros`, the same root the
+/// harness is pointed at) — never this process's own tree.
+///
+/// Uncached on purpose: one call per component per sync, and a process-wide
+/// cache would hand a caller that edits a file mid-process (a test, or a
+/// long-running driver) the key of a tree that no longer exists — the very
+/// failure this function closes.
+///
+/// `None` for a missing or empty list. An empty closure is a broken list, not
+/// "nothing to watch": `nros` is always in its own closure.
+pub fn probe_closure_digest(nano_ros: &Path) -> Option<String> {
+    let list = std::fs::read_to_string(nano_ros.join(PROBE_SOURCE_DIRS)).ok()?;
+    let dirs: Vec<&str> = list
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect();
+    if dirs.is_empty() {
+        return None;
+    }
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mix = |bytes: &[u8], hash: &mut u64| {
+        for b in bytes {
+            *hash ^= u64::from(*b);
+            *hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    };
+    for d in dirs {
+        let root = nano_ros.join(d);
+        let mut files = Vec::new();
+        collect_sources(&root, &root, &mut files).ok()?;
+        files.sort();
+        // The DIR name is mixed too, so a crate that moves is a different key
+        // even if its bytes are identical.
+        mix(d.as_bytes(), &mut hash);
+        for rel in &files {
+            mix(rel.to_string_lossy().as_bytes(), &mut hash);
+            // Same tolerance as `source_digest`: a file that vanishes between
+            // the walk and the read is build output a concurrent cargo removed.
+            let Ok(bytes) = std::fs::read(root.join(rel)) else {
+                continue;
+            };
+            mix(&bytes, &mut hash);
+        }
+    }
+    Some(format!("fnv1a64:{hash:016x}"))
+}
+
 pub fn source_digest(package_root: &Path) -> Result<String> {
     let mut files = Vec::new();
     collect_sources(package_root, package_root, &mut files)?;
@@ -961,6 +1072,93 @@ mod tests {
             "the recorder moved to schema {declared}; every census written under \
              {RECORDER_SCHEMA_VERSION} is stale by definition and this constant has to say so"
         );
+    }
+
+    /// A fake nano-ros root: a closure list naming `packages/core/probed`, and
+    /// that crate plus one the list does NOT name.
+    fn fake_nano_ros(name: &str) -> PathBuf {
+        let root = tmp(name);
+        let list = root.join(PROBE_SOURCE_DIRS);
+        std::fs::create_dir_all(list.parent().unwrap()).unwrap();
+        std::fs::write(&list, "# generated\npackages/core/probed\n").unwrap();
+        for krate in ["probed", "unprobed"] {
+            let src = root.join("packages/core").join(krate).join("src");
+            std::fs::create_dir_all(&src).unwrap();
+            std::fs::write(src.join("lib.rs"), "pub const IN_PLACE: bool = false;\n").unwrap();
+        }
+        root
+    }
+
+    /// Issue 1578 — THE reproduction, at the level the key decides it. A change
+    /// to a crate the probe COMPILES must change the key while the component's
+    /// own sources stay byte-identical. Before this, the key was the component's
+    /// digest alone, so the sidecar read "already current" and a stale
+    /// `in_place` was reused.
+    #[test]
+    fn a_change_to_a_crate_the_probe_compiles_changes_the_key() {
+        let root = fake_nano_ros("probe-key-root");
+        let pkg = tmp("probe-key-pkg");
+        std::fs::write(pkg.join("src/lib.rs"), "// the component\n").unwrap();
+
+        let before = probe_inputs_key(&pkg, Some(&root)).expect("keyed");
+        // The component is UNTOUCHED; only the probed crate moves.
+        std::fs::write(
+            root.join("packages/core/probed/src/lib.rs"),
+            "pub const IN_PLACE: bool = true;\n",
+        )
+        .unwrap();
+        let after = probe_inputs_key(&pkg, Some(&root)).expect("keyed");
+        assert_ne!(
+            before, after,
+            "a change to a crate the probe compiles must re-probe -- this is the \
+             `in_place` flip #1578 measured being reused"
+        );
+    }
+
+    /// The other direction: a crate the probe does NOT compile must not re-probe
+    /// every component. Over-watch is the safe side, but an unlisted crate is
+    /// not over-watch, it is noise -- and the list is what makes the difference
+    /// measurable.
+    #[test]
+    fn a_change_to_a_crate_the_probe_does_not_compile_keeps_the_key() {
+        let root = fake_nano_ros("probe-key-unlisted");
+        let pkg = tmp("probe-key-unlisted-pkg");
+        std::fs::write(pkg.join("src/lib.rs"), "// the component\n").unwrap();
+
+        let before = probe_inputs_key(&pkg, Some(&root)).expect("keyed");
+        std::fs::write(
+            root.join("packages/core/unprobed/src/lib.rs"),
+            "pub const IN_PLACE: bool = true;\n",
+        )
+        .unwrap();
+        assert_eq!(before, probe_inputs_key(&pkg, Some(&root)).expect("keyed"));
+
+        // ...and the component's own change still moves it, as it always did.
+        std::fs::write(pkg.join("src/lib.rs"), "// the component, edited\n").unwrap();
+        assert_ne!(before, probe_inputs_key(&pkg, Some(&root)).expect("keyed"));
+    }
+
+    /// No list, or no nano-ros path, is NEVER fresh -- never a key over a
+    /// smaller closure. `cli-source-dirs.txt`'s rule for the CLI stamp.
+    #[test]
+    fn a_missing_closure_list_is_never_fresh() {
+        let pkg = tmp("probe-key-nolist-pkg");
+        std::fs::write(pkg.join("src/lib.rs"), "// c\n").unwrap();
+        let bare = tmp("probe-key-nolist-root");
+        assert_eq!(probe_inputs_key(&pkg, Some(&bare)), None, "no list");
+        assert_eq!(probe_inputs_key(&pkg, None), None, "no nano-ros path");
+
+        // An EMPTY list is a broken list, not "nothing to watch".
+        let list = bare.join(PROBE_SOURCE_DIRS);
+        std::fs::create_dir_all(list.parent().unwrap()).unwrap();
+        std::fs::write(&list, "# only a header\n").unwrap();
+        assert_eq!(probe_inputs_key(&pkg, Some(&bare)), None, "empty list");
+
+        // And the sentinel a keyless sidecar is stamped with can never read as
+        // fresh against any key this function returns.
+        let root = fake_nano_ros("probe-key-sentinel");
+        let key = probe_inputs_key(&pkg, Some(&root)).expect("keyed");
+        assert_ne!(key, UNKEYED);
     }
 
     /// phase-463 W4 -- the four answers `recompute_digest` can give, and the
