@@ -103,6 +103,13 @@ locator = "tcp/10.0.2.2:9830"
 [image.freertos]
 board = "mps2-an385-freertos"
 panic = "own"
+# issue 1581 — a Rust image on this board bakes its locator ONLY from here (the
+# board reads no `NROS_LOCATOR`), so an image that states none dials the board
+# default `tcp/192.0.3.1:7447`. Lost when phase-383 W9 deleted `freertos_entry`
+# and its `[package.metadata.nros.deploy.freertos]` table. Port 7830 =
+# `port_of(FreertosMps2, Rust, EntryPubsub)`; host 192.0.3.1 is the board's own
+# gateway, as on the C/C++ siblings' rows. Gate: `check-image-locator-bake`.
+locator = "tcp/192.0.3.1:7830"
 
 [image.native]
 board = "native"
@@ -163,6 +170,11 @@ panic = "platform"
 
 [image.threadx]
 board = "threadx-linux"
+# issue 1581 — the threadx-linux board reads no `NROS_LOCATOR`, so this is the
+# only carrier; without it the image dials the board default
+# `tcp/192.0.3.1:7447`. Lost with phase-383 W9's `threadx_entry`. Port 9030 =
+# `port_of(ThreadxLinux, Rust, EntryPubsub)` (host sim, loopback).
+locator = "tcp/127.0.0.1:9030"
 
 # phase-470 W5.a (issue 1288) — MIGRATED. `src/zephyr_entry` is gone; `nros
 # build zephyr` generates the whole west application (`CMakeLists.txt`,

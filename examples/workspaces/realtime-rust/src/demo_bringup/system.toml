@@ -163,6 +163,13 @@ rmw = "zenoh"
 [image.freertos_realtime]
 board = "freertos"
 panic = "own"
+# issue 1581 — the ONLY carrier of this image's locator: the FreeRTOS board reads
+# no `NROS_LOCATOR`, so an image that states none dials the board default
+# `tcp/192.0.3.1:7447` and every tier cell fails `Executor::open` before a tier
+# runs. Lost when phase-383 W10.a deleted `freertos_realtime_entry`. Port 7891 =
+# `port_of(FreertosMps2, Rust, RealtimeTiers)`, which the test's router binds and
+# the resolver asserts against this line. Gate: `check-image-locator-bake`.
+locator = "tcp/192.0.3.1:7891"
 
 [image.native]
 board = "native"
@@ -177,6 +184,9 @@ panic = "platform"
 
 [image.threadx]
 board = "threadx-linux"
+# issue 1581 — as `freertos_realtime` above: the only carrier on this board.
+# Port 9091 = `port_of(ThreadxLinux, Rust, RealtimeTiers)`; host sim, loopback.
+locator = "tcp/127.0.0.1:9091"
 
 # phase-470 W5.b2 (issue 1288) — its entry and the west application around it
 # are GENERATED, under `build/<coord>/zephyr_entry/`. Deleting the hand-written
