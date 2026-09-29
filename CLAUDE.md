@@ -1196,17 +1196,13 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `--self-test` negative control on the normal path); a symbol absent from `generated.rs` needs
   an `out_of_surface` entry WITH a reason. Do NOT consolidate the 94 into one crate —
   `nros-core` sits below `nros-platform-cffi` and cannot depend on it.
-- **On NuttX `<nros/nros_config_generated.h>` is a COMMITTED SNAPSHOT, not the per-build
-  header** (issue 1115) — the stub dispatches to `nros_config_generated_nuttx.h` (and the
-  `_cpp_` twin) under `NROS_PLATFORM_NUTTX`, and the per-build file is on NO NuttX include
-  path (`nros-c-generated` appears zero times in a NuttX leaf's `build.ninja`), because the
-  0088/0114 ordering is guarded on `nros_c_config_header`/`cargo-build_nros_c` targets a
-  NuttX build does not have. So a template edit that the generated artifacts consume is a
-  TWO-FILE change, and phase-429 W1's codegen-version pair made only one of them: every
-  NuttX C and C++ image failed to compile from a CLEAN CLONE for two days, invisible because
-  no merge-gating lane builds NuttX. Gate: `check-config-fallback-macros`. The stale
-  per-build headers in `build-*/cargo-target/` are real and are NOT this — a `rm -rf` here
-  rebuilds the same failure while destroying the reproduction.
+- **NuttX compiles against the PER-BUILD sizes headers now; the committed snapshot is for
+  BUILDLESS checks only** (issues 1115 → 1569). The FFI build reads them from the
+  `nros-c`/`nros-cpp` `links` channels (`DEP_NROS_{C,CPP}_CONFIG_INCLUDE`, which also ORDER it
+  after both writers), and the snapshot (`nros_{,cpp_}config_generated_buildless.h`) is reached
+  only under `NROS_CONFIG_BUILDLESS`, which no build may define — gate
+  `check-config-fallback-macros`. A NuttX TU that hits the stub's `#error` is a missing
+  include path or edge, never a reason to bring the snapshot back.
 - **zpico shim + zenoh-pico library MUST share the generated zenoh config** — flag-gated struct
   fields (`Z_FEATURE_LOCAL_QUERYABLE`…) make mismatched TUs a silent ABI break (queries went
   session-local-only). `build_c_shim` injects `ZENOH_GENERIC` + the OUT_DIR config. → issue 0135

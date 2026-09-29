@@ -108,8 +108,9 @@ macro-expanded visibility attributes (`RCLCPP_PUBLIC`) all defeat it.
 
 Three things about that table are decisions rather than mechanics:
 
-**Our side parses with no build.** `-DNROS_PLATFORM_NUTTX` selects the
-COMMITTED size header (`nros_cpp_config_generated_nuttx.h`); every other
+**Our side parses with no build.** `-DNROS_CONFIG_BUILDLESS` selects the
+COMMITTED size header (`nros_cpp_config_generated_buildless.h`; it was
+`-DNROS_PLATFORM_NUTTX` / `_nuttx.h` until issue 1569); every
 platform's sizes come from `build.rs`, which would make this tool depend on a
 fixture being fresh. Both our surfaces parse with zero clang errors, and that is
 enforced rather than tolerated — a partial AST silently drops declarations, and

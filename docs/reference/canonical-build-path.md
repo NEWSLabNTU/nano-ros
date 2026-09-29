@@ -80,12 +80,17 @@ that cannot answer is not a capability with a missing test; it is a claim.
 answering `cmake` instead would be the same claim in a tool that also has no
 esp32 road.
 
-There is a fourth carrier that is not a road. On **NuttX**,
-`<nros/nros_config_generated.h>` is a **committed snapshot**, not the per-build
-header — the per-build file is on no NuttX include path, so a template edit
-that the generated artifacts consume is a two-file change (issue 1115). This is
-the one place the map is not "road → carrier", and forgetting it broke every
-NuttX C and C++ image from a clean clone for two days.
+There WAS a fourth carrier that is not a road. On **NuttX**,
+`<nros/nros_config_generated.h>` resolved to a **committed snapshot**, not the
+per-build header, so a template edit that the generated artifacts consume was
+a two-file change (issue 1115) — forgetting it broke every NuttX C and C++ image
+from a clean clone for two days — and the snapshot's sizes fell below the build
+four times (issue 1568 measured a live overrun). Issue 1569 retired it: the
+NuttX FFI build reads the per-build headers from the `nros-c`/`nros-cpp`
+`links` channels (`DEP_NROS_{C,CPP}_CONFIG_INCLUDE`), which also order it after
+both writers. The snapshot survives as `*_buildless.h` for header-only checks
+that compile with no build, behind `NROS_CONFIG_BUILDLESS`, which
+`check-config-fallback-macros` forbids any build to define.
 
 ## The ladder: what may state a value
 
