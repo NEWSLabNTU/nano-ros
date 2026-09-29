@@ -385,9 +385,6 @@ pub fn reset_for_test() {
 }
 
 #[cfg(test)]
-extern crate std;
-
-#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -504,30 +501,27 @@ mod tests {
     /// that only checked a bound would let the quoted number rot.
     #[test]
     fn the_ring_costs_what_the_docs_say() {
-        // Prints under `--nocapture`; the assertion is what keeps the prose
-        // honest for the DEFAULT build, which is the one the docs quote.
         let per_slot = core::mem::size_of::<Slot>();
         assert_eq!(ring_bytes(), DEPTH * per_slot);
+        // The module doc quotes a five-row table over two feature families;
+        // one build can only check its own row, so this checks the ROW IT IS
+        // and the RULE the whole table follows. A bare `assert_eq!(5760)`
+        // would pass vacuously in every non-default build, which is the
+        // shape a cost figure rots in.
+        assert_eq!(
+            per_slot,
+            8 + (MSG_CAP + NAME_CAP + 45).next_multiple_of(8),
+            "the per-slot rule the module doc's table is computed from moved"
+        );
         if DEPTH == 16 && MSG_CAP == 256 {
             assert_eq!(
                 ring_bytes(),
                 5760,
-                "the default ring is what nros-log/src/rosout.rs and ledger row \
-                 `c:logging_rosout_enabled` quote; {per_slot} B/slot x {DEPTH}"
+                "the DEFAULT ring is the figure nros-log/src/rosout.rs and \
+                 ledger row `c:logging_rosout_enabled` quote; {per_slot} B/slot \
+                 x {DEPTH}"
             );
         }
-    }
-
-    /// Not an assertion — a REPORT. The ring's cost moves with two feature
-    /// families, and the only honest way to put a table of it in a doc is to
-    /// run this under each combination rather than compute one in prose.
-    #[test]
-    fn ring_bytes_probe() {
-        std::println!(
-            "RINGBYTES depth={DEPTH} msg_cap={MSG_CAP} per_slot={} total={}",
-            core::mem::size_of::<Slot>(),
-            ring_bytes()
-        );
     }
 
     /// A long name and a long body are clipped on a character boundary, never
