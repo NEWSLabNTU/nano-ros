@@ -771,6 +771,16 @@ tier-priority-plan:
 tier-priority-plan-image config="":
     @python3 scripts/check-tier-priority-plan-image.py {{config}}
 
+# Issue 1583 — the image gate's buildless half, on the FAST line. The gate above
+# runs only where Zephyr images are built (the tier-2 nightly and the platform
+# sweep), so its rules had no per-push verdict. This one needs no image: the
+# band arithmetic against the real zephyr/Kconfig, and the ATTRIBUTION — every
+# bringup that authors a `[tiers.*.zephyr]` pin is built by a Zephyr row in
+# examples/fixtures.toml, so no pin can drift into "judged against nothing".
+[private]
+tier-priority-plan-image-selftest:
+    @python3 scripts/check-tier-priority-plan-image.py --selftest
+
 # Issue 0636 option 3 — every tier spin loop reaches a scheduling point.
 [group("check")]
 tier-spin-gap:

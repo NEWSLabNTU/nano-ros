@@ -21,6 +21,16 @@ Two things it must not do, both of which would defeat the point:
     In `--images-from` mode the caller BUILT it, so a stale one FAILS. The
     rule and its measurements live beside `stale_band_reasons` in
     `scripts/lib/priority_plan.py`.
+  * Judge a pin against an image that does not carry it. A band is a property
+    of ONE image and a pin is a property of ONE bringup, so a pin is judged
+    against exactly the images built from its bringup — attributed through the
+    fixture manifest row that built the image (`image_bringups`). Issue 1583:
+    this judged every pin in the tree against every image, so the derived-tier
+    image (`derived_bringup`, `CONFIG_NROS_ZENOH_READ_PRIORITY=100`, transport
+    [4, 9]) failed `realtime-{c,cpp,rust}`'s `tiers.high.zephyr = 9` — pins that
+    image does not contain, and that sit in `pool.app` [5, 14] of the images
+    that do. A pin whose bringup no current image was built from is listed as
+    NOT JUDGED rather than borrowed by an unrelated image.
 
 Usage:
     python3 scripts/check-tier-priority-plan-image.py <path/to/zephyr/.config> [tier_key]
@@ -29,6 +39,7 @@ Usage:
     python3 scripts/check-tier-priority-plan-image.py --selftest
 """
 
+import importlib.util
 import os
 import re
 import sys
@@ -40,6 +51,55 @@ from priority_plan import (BAND_DEFAULTED, kconfig_default, load_plans,
                            resolve_zephyr_plan, scan_pins, stale_band_reasons)
 
 RESOLVERS = {"zephyr": resolve_zephyr_plan}
+
+MANIFEST = ROOT / "examples" / "fixtures.toml"
+UNATTRIBUTED = object()
+
+
+def _manifest_module():
+    """`scripts/build/fixtures-manifest.py` — hyphenated, so importlib."""
+    path = ROOT / "scripts" / "build" / "fixtures-manifest.py"
+    spec = importlib.util.spec_from_file_location("_fixtures_manifest", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def image_bringups(manifest=MANIFEST):
+    """West build-dir NAME -> the repo-relative `system.toml` of the bringup
+    that image is built from, or None for a row that builds no bringup.
+
+    Issue 1583. The fixture manifest is what BUILT every image a lane lists
+    (`zephyr-fixture-leaves.sh` emits one record per row and names the dir
+    `west_build_name`), so it is the attribution, read through the manifest's
+    own `west_build_name` rather than a second spelling of the naming rule.
+
+    Not the image's own `nros-image-facts.cmake`: that is resolved from the
+    ENTRY package, and two bringups of one workspace share one entry — on the
+    derived-tier image it reads `demo_bringup:zephyr`, the wrong bringup
+    (issue 1582's collision, measured 2026-09-29).
+    """
+    fm = _manifest_module()
+    out = {}
+    for e in fm.load(manifest):
+        if e.get("builder") == "west":
+            out[fm.west_build_name(e)] = None
+    for e in fm.load_workspace_fixtures(manifest):
+        if e.get("platform") not in ("zephyr", "zephyr-cortex-m"):
+            continue
+        bringup = e.get("bringup")
+        out[fm.west_build_name(e)] = (
+            Path(e["dir"].rstrip("/")) / bringup / "system.toml" if bringup else None)
+    return out
+
+
+def pins_for(bringup, tier_key, pins=None):
+    """The `tier_key` pins authored in ONE bringup's `system.toml`."""
+    if bringup is None:
+        return []
+    if pins is None:
+        pins = scan_pins()
+    return [p for p in pins if p[0] == bringup and p[2] == tier_key]
 
 
 def discover():
@@ -64,8 +124,14 @@ def discover():
     return found
 
 
-def check_one(dotconfig, tier_key, plans):
+def check_one(dotconfig, tier_key, plans, bringups):
     plan = plans.get(tier_key)
+    name = dotconfig.parent.parent.name
+    bringup = bringups.get(name, UNATTRIBUTED)
+    if bringup is UNATTRIBUTED:
+        print(f"  [NO ROW]  {name}: no examples/fixtures.toml row builds this dir, so "
+              f"no bringup's pins can be attributed to it")
+        return 0, 0, "unattributed"
     reasons = stale_band_reasons(dotconfig)
     if reasons:
         print(f"  [STALE]   {dotconfig.parent.parent.name}: not evidence about this tree")
@@ -85,9 +151,7 @@ def check_one(dotconfig, tier_key, plans):
     lo, hi = resolved["reserved"]["transport"]
     plo, phi = resolved["pool"]["app"]
     errs, ok = [], 0
-    for rel, tier, plat, prio, above in scan_pins():
-        if plat != tier_key:
-            continue
+    for rel, tier, plat, prio, above in pins_for(bringup, tier_key):
         where = f"{rel}: tiers.{tier}.{plat} = {prio}"
         if lo <= prio <= hi:
             errs.append(f"{where} lands ON the reserved transport band [{lo}, {hi}]")
@@ -98,13 +162,14 @@ def check_one(dotconfig, tier_key, plans):
                 f'the choice with `above = "transport"` on [tiers.{tier}].')
         else:
             ok += 1
-    name = dotconfig.parent.parent.name
+    src = f" from {bringup}" if bringup else " (builds no bringup)"
     if errs:
-        print(f"  [FAIL] {name}: transport [{lo}, {hi}], pool [{plo}, {phi}]")
+        print(f"  [FAIL] {name}: transport [{lo}, {hi}], pool [{plo}, {phi}]{src}")
         for e in errs:
             print(f"        {e}")
         return 1, ok, "judged"
-    print(f"  [ok]   {name}: transport [{lo}, {hi}], pool [{plo}, {phi}] — {ok} pin(s)")
+    print(f"  [ok]   {name}: transport [{lo}, {hi}], pool [{plo}, {phi}] — "
+          f"{ok} pin(s){src}")
     return 0, ok, "judged"
 
 
@@ -149,12 +214,19 @@ def check_many(configs, tier_key, plans, origin, listed):
         return 2
     if not selftest():
         return 1
+    bringups = image_bringups()
     rc, total, failed = 0, 0, []
-    states = {"judged": 0, "stale": 0, "noband": 0, "error": 0}
+    states = {"judged": 0, "stale": 0, "noband": 0, "error": 0, "unattributed": 0}
+    judged_bringups = set()
     print(f"check-tier-priority-plan-image: {len(configs)} image(s) ({origin})")
     for c in configs:
-        r, n, state = check_one(c, tier_key, plans)
-        if state == "stale" and listed:
+        r, n, state = check_one(c, tier_key, plans, bringups)
+        if state == "judged":
+            judged_bringups.add(bringups[c.parent.parent.name])
+        if state in ("stale", "unattributed") and listed:
+            # Listed means BUILT by this run from a manifest record, so a dir
+            # the manifest does not name is the list and the manifest
+            # disagreeing — checking fewer images than were built.
             r = 1
         if r:
             failed.append(c.parent.parent.name)
@@ -176,10 +248,21 @@ def check_many(configs, tier_key, plans, origin, listed):
               f"Rebuild the stale ones (`just zephyr build-fixtures`), or "
               f"`cmake <build-dir>` to re-run configure in place.")
         rc = max(rc, 1)
+    unjudged = sorted({str(p[0]) for p in scan_pins()
+                       if p[2] == tier_key and p[0] not in judged_bringups})
+    if unjudged:
+        # Reported, not failed: a filtered lane legitimately builds a subset.
+        # What it must not do is read as checked — before issue 1583 these
+        # pins were "checked" against whatever unrelated image was present.
+        print(f"\n  NOT JUDGED — no current image here was built from these "
+              f"bringup(s), so their {tier_key} pins were checked against nothing:")
+        for u in unjudged:
+            print(f"    {u}")
     verdict = "FAILED" if rc else "OK"
     print(f"\ntier-priority-plan-image: {verdict} "
           f"({total} pin-check(s) over {states['judged']} current image(s); "
-          f"{states['stale']} STALE, {states['noband']} NO BAND)")
+          f"{states['stale']} STALE, {states['noband']} NO BAND, "
+          f"{states['unattributed']} NO ROW)")
     if failed:
         # Named in the LAST lines on purpose: a failing lane prints the tail of
         # this output, and the per-image [FAIL] blocks are above it. The tier-2
@@ -236,6 +319,14 @@ def main(argv):
         print(f"{tier_key!r} has no DERIVED plan — use check-tier-priority-plan")
         return 2
 
+    bringup = image_bringups().get(dotconfig.parent.parent.name, UNATTRIBUTED)
+    if bringup is UNATTRIBUTED:
+        print(f"tier-priority-plan-image ({tier_key}): {dotconfig.parent.parent.name} "
+              f"is built by no examples/fixtures.toml row, so no bringup's pins can "
+              f"be attributed to it (issue 1583: a pin is judged only against the "
+              f"images built from its own bringup)")
+        return 2
+
     reasons = stale_band_reasons(dotconfig)
     if reasons:
         print(f"tier-priority-plan-image ({tier_key}): STALE image — cannot judge "
@@ -264,11 +355,10 @@ def main(argv):
     plo, phi = resolved["pool"]["app"]
     print(f"  reserved.transport = [{lo}, {hi}]   pool.app = [{plo}, {phi}]   "
           f"range = {resolved['range']}")
+    print(f"  bringup: {bringup if bringup else '(none - this row builds no bringup)'}")
 
     errors, ok = [], 0
-    for rel, tier, plat, prio, above in scan_pins():
-        if plat != tier_key:
-            continue
+    for rel, tier, plat, prio, above in pins_for(bringup, tier_key):
         where = f"{rel}: tiers.{tier}.{plat} = {prio}"
         if lo <= prio <= hi:
             errors.append(f"{where} lands ON the reserved transport band "
@@ -425,13 +515,50 @@ def selftest():
             want = kconfig_default(key)
             expect(f"the core's default band against {key}", rust_default, want)
 
+    # Issue 1583 — the ATTRIBUTION, against the real manifest and the real
+    # pins. It fails silent in two directions if it breaks: a pin attributed
+    # to no row is never judged anywhere (a "NOT JUDGED" line nobody reads on
+    # a green lane), and a row attributed to the wrong bringup judges the
+    # wrong pins. So every bringup that authors a zephyr pin must be built by
+    # at least one Zephyr row, every attributed system.toml must exist, and the
+    # measured case must come out the way it was measured: the derived-tier
+    # image carries no authored pin, its demo sibling carries the two.
+    try:
+        bringups = image_bringups()
+    except Exception as e:  # noqa: BLE001 — any failure here IS the finding
+        fails.append(f"examples/fixtures.toml: attribution unreadable ({e})")
+        bringups = {}
+    attributed = {b for b in bringups.values() if b is not None}
+    for b in sorted(attributed):
+        if not (ROOT / b).is_file():
+            fails.append(f"a Zephyr row names bringup {b}, which does not exist")
+    pinned = sorted({p[0] for p in scan_pins() if p[2] == "zephyr"})
+    for b in pinned:
+        if b not in attributed:
+            fails.append(f"{b} authors [tiers.*.zephyr] pins but no Zephyr row in "
+                         f"examples/fixtures.toml builds that bringup — they can "
+                         f"never be judged against an image")
+    derived = bringups.get("build-ws-rs-realtime-derived-entry-zenoh", UNATTRIBUTED)
+    expect("the derived-tier image's bringup", str(derived),
+           "examples/workspaces/realtime-rust/src/derived_bringup/system.toml")
+    if derived not in (None, UNATTRIBUTED):
+        expect("the derived-tier image carries no authored zephyr pin",
+               pins_for(derived, "zephyr"), [])
+    demo = bringups.get("build-ws-rs-realtime-entry-zenoh", UNATTRIBUTED)
+    if demo not in (None, UNATTRIBUTED):
+        expect("its demo sibling carries the two authored pins",
+               len(pins_for(demo, "zephyr")), 2)
+    else:
+        fails.append("build-ws-rs-realtime-entry-zenoh: no bringup attributed")
+
     if fails:
         print("check-tier-priority-plan-image --selftest: FAILED")
         for f in fails:
             print(f"  {f}")
         return False
     print("check-tier-priority-plan-image --selftest: OK "
-          "(real zephyr/Kconfig parses; 14 synthetic cases, the\n  RFC-0079 section 4.1 band the Rust realizer allocates from, and that\n  realizer's own default band against this Kconfig)")
+          "(real zephyr/Kconfig parses; 14 synthetic cases, the\n  RFC-0079 section 4.1 band the Rust realizer allocates from, and that\n  realizer's own default band against this Kconfig; every zephyr pin's\n"
+          "  bringup is built by a manifest row, the derived-tier image by its own)")
     return True
 
 
