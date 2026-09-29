@@ -41,8 +41,11 @@ priority = 80
 # RFC-0079 §4.1 — allocated from the DERIVED pool.app, strictly less urgent
 # than the transport band. Zephyr's band is not a literal: the zenoh read/lease
 # tasks are pthreads whose Kconfig band maps through Zephyr's POSIX layer to a
-# k_thread priority that depends on the IMAGE (7, with pool [8, 14], for the
-# realtime entries' .config). 5 outranked it, undeclared. Resolve for any image:
+# k_thread priority that depends on the IMAGE: 4, pool [5, 14], on the default
+# band this bringup's images run (measured, issue 1583). 9 is a pool priority
+# of THIS bringup's images and is judged only against them; a lowered-band
+# image such as derived_bringup's (transport [4, 9]) is a different image.
+# 5 outranked the transport, undeclared. Resolve for any image:
 #   python3 scripts/check-tier-priority-plan-image.py <build>/zephyr/.config
 priority = 9
 # ZEPHYR-SCOPED: kernel EDF here (k_thread_deadline_set); lowers to None (Fifo)
