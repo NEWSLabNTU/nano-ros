@@ -210,3 +210,44 @@ Consequences for this design:
 Full investigation record (probe method, per-sample numbers, the two halves of
 the chain) lives in the ASI consumer's phase-4 doc, section "MRM divergence —
 investigated and root-caused".
+
+## The epoch never reached the wall clock on Zephyr (2026-09-29)
+
+W2/W4 installed the epoch behind `nros_platform_epoch_us`, but every reader of
+the WALL clock asks a different symbol, `nros_platform_time_now_ns`:
+`nros_clock_get_now_ns(NROS_CLOCK_SYSTEM_TIME)` (nros-c `get_system_time_ns`),
+`rclcpp::Clock().now()` in nros-cpp, `nros_core::Clock::system()` and the
+executor's `default_epoch_us`. The Zephyr port hard-coded that one to `return 0`,
+so an image with `CONFIG_NROS_SNTP_EPOCH` and an acquired epoch still had no
+wall clock anywhere a node could reach it; the only live consumer of
+`epoch_us` was a test bin.
+
+Found by the ASI consumer (phase8-W18): its island stamps
+`/system/emergency/hazard_lights_cmd` from the monotonic clock, and Autoware's
+`vehicle_cmd_gate::getContinuousTopic` keeps its previous hazard, turn and gear
+command whenever the new one is stamped EARLIER. A boot-relative stamp is
+always earlier than the host-stamped command it replaces, so the gate held
+DISABLE for the whole MRM, logging "The operation mode is changed, but the
+HazardLightsCommand is not received yet". Moving the island to
+`rclcpp::Clock(NROS_CLOCK_SYSTEM_TIME)` needed the platform to answer.
+
+A second gap sat in front of the first: W4 wired the acquisition into the
+TIERED entries only. The generated C++ single-executor entry
+(`ZephyrBoard::run_components`, which ASI's island uses) and the C one
+(`nros_board_rtos_run_components`) went straight from `nros_board_network_wait()`
+to `nros::init`, so `nros_zephyr_epoch_acquire_configured` was not even linked
+into such an image (measured: absent from `nm zephyr.exe` with
+CONFIG_NROS_SNTP_EPOCH=y, and no "epoch acquired" line at boot).
+
+Fix, both halves:
+* both single-executor entries call `nros_zephyr_epoch_acquire_configured()`
+  (under `__ZEPHYR__`) right after `nros_board_network_wait()`, the window the
+  tiered entries use;
+* the Zephyr port's `nros_platform_time_now_ns` returns
+  `nros_platform_epoch_us() * 1000` -- 0 until an epoch is installed, exactly
+  the sentinel it returned before.
+
+FreeRTOS and ThreadX still answer 0 from both symbols, so they stay consistent
+without a change. Re-acquisition (the section above) is still open. Measured
+on ASI's native_sim island after the fix: "nros: wall-clock epoch acquired from
+127.0.0.1:12323" at boot, and its hazard/MRM stamps compare with host time.

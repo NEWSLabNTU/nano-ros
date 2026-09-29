@@ -548,10 +548,25 @@ void nros_platform_random_fill(void *buf, size_t len) {
 #endif
 }
 
-/* ---- Wall clock — unsupported without CONFIG_RTC ---- */
+/* ---- Wall clock ---- */
 
-/* No real-time clock on this port: 0 means "no wall clock", per the ABI. */
-uint64_t nros_platform_time_now_ns(void)              { return 0; }
+/* The wall clock IS the SNTP epoch above (issue 0758), in the unit this
+ * symbol speaks. It used to be a hard `return 0`, which left the epoch
+ * reachable only through `nros_platform_epoch_us`: every reader of the wall
+ * clock -- `nros_clock_get_now_ns(SYSTEM_TIME)`, `rclcpp::Clock().now()`,
+ * `nros_core::Clock::system()`, the executor's `default_epoch_us` -- reads
+ * THIS symbol, so an image that had acquired its epoch still read 0 (and fell
+ * back to boot-relative time) everywhere a caller asked for the wall. The
+ * consumer case: autoware-safety-island's Zephyr island stamped its
+ * `/system/emergency/hazard_lights_cmd` boot-relative, and Autoware's
+ * vehicle_cmd_gate kept its previous, later-stamped command, so the hazard
+ * lights never came on during an MRM.
+ *
+ * Without an epoch (CONFIG_SNTP off, or the server did not answer) this is
+ * still 0, which the ABI defines as "no wall clock here". */
+uint64_t nros_platform_time_now_ns(void) {
+    return nros_platform_epoch_us() * 1000ULL;
+}
 
 /* ---- Tasks ---- */
 

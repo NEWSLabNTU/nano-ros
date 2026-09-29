@@ -327,6 +327,15 @@ class LinuxBoard {
 // per-test locator on native_sim (from `-testargs --nros-locator`), else NULL.
 extern "C" const char* nros_runtime_locator_override(void);
 
+#ifdef __ZEPHYR__
+// issue 0758 -- acquire the wall-clock epoch (CONFIG_NROS_SNTP_EPOCH) between
+// network-up and the first component. Defined in the Zephyr module's
+// `nros_platform_zephyr_shims.c`, which decides whether the image asked for
+// one; unconditional here for the reason it is unconditional in the tiered
+// entries (`zephyr_run_tiers.c`, `entry_tiers.rs`).
+extern "C" void nros_zephyr_epoch_acquire_configured(void);
+#endif
+
 class ZephyrBoard {
   public:
     /// Compile-time domain id (CLAUDE.md embedded rule — NOT a runtime env).
@@ -354,6 +363,14 @@ class ZephyrBoard {
     static int32_t run_components(const char* locator, const char* session_name,
                                   const char* node_namespace, Setup&& setup) {
         nros_board_network_wait();
+#ifdef __ZEPHYR__
+        // issue 0758 -- the single-executor entry never made this call, so an
+        // image built with CONFIG_NROS_SNTP_EPOCH through the generated C++
+        // `run_components` entry booted with no epoch and stamped boot-relative
+        // time: only the TIERED entries acquired one. Same window as there:
+        // network up, no component constructed, nothing stamped yet.
+        nros_zephyr_epoch_acquire_configured();
+#endif
         const char* sn =
             (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
         // #166 / phase-286 W1 — native_sim test parallelism: a per-test
