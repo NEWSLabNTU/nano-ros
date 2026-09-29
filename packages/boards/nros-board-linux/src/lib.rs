@@ -499,6 +499,9 @@ impl LinuxBoard {
     pub fn run_tiers<F, E>(
         deploy: &nros_platform::DeployOverlay,
         tiers: &[TierSpec<'_>],
+        // issue 1571 — the spawned tiers' executor backing: the entry's `.bss`
+        // `TierExecutorBacking`, emitted by `nros::main!`.
+        tier_backing: &'static mut [::nros::TierExecutorBackingSlot],
         setup: F,
     ) -> Result<(), E>
     where
@@ -526,6 +529,15 @@ impl LinuxBoard {
             <Self as BoardPrint>::println(format_args!(
                 "nros: run_tiers called with no tiers — nothing to run"
             ));
+            <Self as BoardExit>::exit_failure();
+        }
+        // issue 1571 — the one refusal, before the session opens: every spawned
+        // tier needs a slot of the entry's `.bss` backing. Hosted, so the heap
+        // has no fixed reservation and this moves nothing a budget pays for —
+        // but it is the same METHOD every board uses, so one entry expansion
+        // serves them all.
+        if let Err(short) = ::nros::check_tier_executor_backing(tiers.len(), tier_backing) {
+            <Self as BoardPrint>::println(format_args!("nros: {short}"));
             <Self as BoardExit>::exit_failure();
         }
 
@@ -685,6 +697,8 @@ impl LinuxBoard {
             tiers,
             ::nros_platform::PriorityDirection::BiggerIsMoreUrgent,
         );
+        // issue 1571 — one `.bss` slot per spawned tier, in spawn order.
+        let mut slots = tier_backing.iter_mut();
         std::thread::scope(|scope| {
             // Spawn every tier except the one the boot task runs; each borrows
             // the shared session pointer and `&setup` from the enclosing scope.
@@ -692,6 +706,13 @@ impl LinuxBoard {
                 if spawn_index == boot_index {
                     continue;
                 }
+                let Some(slot) = slots.next() else {
+                    <Self as BoardPrint>::println(format_args!(
+                        "nros: no executor backing slot left for tier `{}` (issue 1571)",
+                        tier.name
+                    ));
+                    continue;
+                };
                 let mut builder =
                     std::thread::Builder::new().name(format!("nros-tier-{}", tier.name));
                 // phase-302 W2 (issue 0262) — honor a declared per-tier stack
@@ -706,7 +727,8 @@ impl LinuxBoard {
                     let shared = shared;
                     // SAFETY: `shared.0` aliases the boot executor's
                     // session, kept alive for this scope by `thread::scope`.
-                    let exec = unsafe { ::nros::Executor::open_with_session(shared.0) };
+                    // issue 1571 — over this tier's `.bss` slot, not a leaked `Box`.
+                    let exec = unsafe { ::nros::Executor::open_with_session_slot(shared.0, slot) };
                     run_one_tier::<Self, F, E>(exec, tier, setup, setup_lock);
                 });
                 if let Err(e) = spawn {

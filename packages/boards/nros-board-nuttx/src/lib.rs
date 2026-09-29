@@ -86,6 +86,13 @@
 
 extern crate alloc;
 
+/// issue 1571 — the type of one spawned tier's executor backing slot, so a
+/// board crate that wraps this one's `run_tiers` can name its parameter without
+/// depending on `nros` itself. Gated like the `nros` dependency it names
+/// (`cfg(not(target_os = "none"))` in this crate's manifest).
+#[cfg(not(target_os = "none"))]
+pub use ::nros::TierExecutorBackingSlot;
+
 /// phase-359 W7 — the NuttX system facilities this board used to reach through
 /// `std`.
 ///
@@ -842,6 +849,7 @@ fn apply_tier_affinity(tier: &nros_platform::TierSpec<'_>) {
 pub fn run_tiers<B, F, E>(
     boot_config: Option<&'static nros_platform::BakedBootConfig>,
     tiers: &[nros_platform::TierSpec<'_>],
+    tier_backing: &'static mut [::nros::TierExecutorBackingSlot],
     setup: F,
 ) -> Result<(), E>
 where
@@ -871,6 +879,12 @@ where
 
     if tiers.is_empty() {
         println!("nros: run_tiers called with no tiers — nothing to run");
+        sys::exit_process(1);
+    }
+    // issue 1571 — the one refusal, before the session opens: every spawned
+    // tier needs a slot of the entry's `.bss` backing.
+    if let Err(short) = ::nros::check_tier_executor_backing(tiers.len(), tier_backing) {
+        println!("nros: {}", short);
         sys::exit_process(1);
     }
 
@@ -1020,6 +1034,9 @@ where
 
     let shared = NuttxSharedSession(boot_crt.executor_mut().session_ptr());
     let setup = &setup;
+    // issue 1571 — one `.bss` slot per spawned tier, in spawn order; checked
+    // above to cover every tier but the boot one.
+    let mut slots = tier_backing.iter_mut();
     {
         // Spawn every non-boot tier; each borrows the shared session pointer +
         // `&setup`. The boot declares are already done, so these only overlap the
@@ -1038,6 +1055,13 @@ where
             if spawn_index == boot_index {
                 continue; // this one runs on the boot task
             }
+            let Some(slot) = slots.next() else {
+                println!(
+                    "nros: no executor backing slot left for tier `{}` (issue 1571)",
+                    tier.name
+                );
+                continue;
+            };
             // issue 0572 — the spawned tiers' identity + groups, same reason.
             println!(
                 "nros: spawning tier `{}` — groups {:?}, class {:?}, spin {} us",
@@ -1078,6 +1102,7 @@ where
             // no point at which freeing it would be correct.
             let ctx = alloc::boxed::Box::new(TierCtx::<F, E> {
                 session: shared.0,
+                slot: slot as *mut ::nros::TierExecutorBackingSlot,
                 tier: tier as *const nros_platform::TierSpec<'_>
                     as *const nros_platform::TierSpec<'static>,
                 setup: setup as *const F,
@@ -1209,6 +1234,10 @@ struct TierCtx<F, E> {
     /// The boot executor's session, shared by every tier (see
     /// [`NuttxSharedSession`] for why sharing it is sound).
     session: *mut ::nros::internals::RmwSession,
+    /// issue 1571 — this tier's executor backing: one slot of the entry's
+    /// `.bss` `TierExecutorBacking`, never the kernel heap. Unique to this
+    /// task (the spawn loop hands each slot out once).
+    slot: *mut ::nros::TierExecutorBackingSlot,
     /// The tier's spec. Stored as `'static` because a raw pointer cannot carry
     /// the real lifetime; the invariant above is what makes reading it back
     /// sound.
@@ -1235,7 +1264,8 @@ where
     let ctx = unsafe { &*(arg as *const TierCtx<F, E>) };
     // SAFETY: aliasing the boot executor's session is the per-tier model; the
     // backend serializes concurrent access internally (`Z_FEATURE_MULTI_THREAD`).
-    let exec = unsafe { ::nros::Executor::open_with_session(ctx.session) };
+    // issue 1571 — over this tier's `.bss` slot, not a leaked `Box`.
+    let exec = unsafe { ::nros::Executor::open_with_session_slot(ctx.session, &mut *ctx.slot) };
     // SAFETY: both pointers came from live borrows at the spawn site.
     let (tier, setup) = unsafe { (&*ctx.tier, &*ctx.setup) };
     nuttx_run_one_tier::<F, E>(exec, tier, setup);

@@ -1405,7 +1405,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
     // Phase 228.G (RFC-0032 §5) — the OwnedSpin entry call. Multi-tier
     // (`[tiers.*]` present, more than the synthesized `default` tier) emits
-    // `<Board>::run_tiers(TIERS, register-only-closure)`; the board owns the
+    // `<Board>::run_tiers(TIERS, TIER_BACKING, register-only-closure)`; the board owns the
     // per-tier spin. Single-tier / no tiers keeps the unchanged
     // `BoardEntry::run` path (`setup` owns the bounded hosted spin) — so the
     // emitted TU is byte-identical to pre-228 for every current example.
@@ -1625,6 +1625,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let entry_call: proc_macro2::TokenStream = match multi_tier {
         Some(table) => {
             let tiers_ts = tier_specs_tokens(table, &node_namespaces);
+            let tier_backing_ts = tier_executor_backing_tokens(table);
             quote! {
                 <#board_path>::run_tiers(
                     // Issue #48 cause 1 — thread the deploy overlay into the
@@ -1632,6 +1633,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     // `Config`; hosted boards ignore it).
                     &#deploy_overlay_ts,
                     #tiers_ts,
+                    // issue 1571 — the spawned tiers' executor backing, `.bss`.
+                    #tier_backing_ts,
                     |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
                         -> ::core::result::Result<
                             (),
@@ -1810,10 +1813,13 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let zephyr_body_tail: proc_macro2::TokenStream = match multi_tier {
         Some(table) => {
             let tiers_ts = tier_specs_tokens(table, &node_namespaces);
+            let tier_backing_ts = tier_executor_backing_tokens(table);
             quote! {
                 return ::nros_board_zephyr::ZephyrBoard::run_tiers(
                     &config,
                     #tiers_ts,
+                    // issue 1571 — the spawned tiers' executor backing, `.bss`.
+                    #tier_backing_ts,
                     |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
                         -> ::core::result::Result<
                             (),
@@ -3627,6 +3633,29 @@ mod target_rtos_tests {
     #[test]
     fn an_explicit_board_keeps_the_documented_host_default() {
         assert_eq!(derive_target_rtos(None), "posix");
+    }
+}
+
+/// issue 1571 — the spawned tiers' executor backing, as ONE named static the
+/// ENTRY owns: `tiers - 1` slots (the boot tier takes the `EXECUTOR_BACKING`
+/// road through `Executor::open`), each exactly one default executor's worth.
+///
+/// The C/C++ method (issue 1568's `__nros_tier_executor_storage`), not a second
+/// one: the tier count is known HERE, at expansion time, so the reservation is
+/// sized and placed by the entry and the board only hands out slots. Before
+/// this every spawned Rust tier `Box::leak`ed its backing — the right size, but
+/// on the heap, where `mem-report` cannot see it and the link does not price it.
+///
+/// Emitted as a block EXPRESSION so both multi-tier arms (OwnedSpin and Zephyr)
+/// splice it straight into their `run_tiers(…)` argument list.
+fn tier_executor_backing_tokens(table: &ResolvedTierTable) -> proc_macro2::TokenStream {
+    let spawned = table.tiers.len().saturating_sub(1);
+    quote! {
+        {
+            static __NROS_TIER_EXECUTOR_BACKING: ::nros::TierExecutorBacking<#spawned> =
+                ::nros::TierExecutorBacking::new();
+            __NROS_TIER_EXECUTOR_BACKING.take()
+        }
     }
 }
 

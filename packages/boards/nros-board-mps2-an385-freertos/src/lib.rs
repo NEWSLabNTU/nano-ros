@@ -268,7 +268,7 @@ impl Mps2An385 {
 
     /// Phase 228.E.2 — per-tier multi-task entry; delegates to
     /// [`nros_board_freertos::run_tiers_entry`]. The `nros::main!()` macro emits
-    /// `<Mps2An385>::run_tiers(&DEPLOY, TIERS, run_plan)` for multi-tier systems
+    /// `<Mps2An385>::run_tiers(&DEPLOY, TIERS, TIER_BACKING, run_plan)` for multi-tier systems
     /// (single-tier keeps the `BoardEntry::run_with_deploy` path).
     ///
     /// Issue #48 cause 1 — `deploy` overlays the `[deploy.<board>]` block onto
@@ -277,6 +277,9 @@ impl Mps2An385 {
     pub fn run_tiers<F, E>(
         deploy: &nros_platform::DeployOverlay,
         tiers: &'static [nros_platform::TierSpec<'static>],
+        // issue 1571 — the spawned tiers' executor backing: the entry's
+        // `.bss` `TierExecutorBacking`, emitted by `nros::main!`.
+        tier_backing: &'static mut [nros_board_freertos::TierExecutorBackingSlot],
         setup: F,
     ) -> Result<(), E>
     where
@@ -288,6 +291,7 @@ impl Mps2An385 {
             config_with_overlay(deploy),
             deploy.boot_config,
             tiers,
+            tier_backing,
             setup,
         )
     }

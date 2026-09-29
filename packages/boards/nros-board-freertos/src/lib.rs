@@ -75,6 +75,11 @@ pub use config::Config;
 pub use entry::{run_bare, run_entry, run_tiers_entry};
 pub use nros_board_common::BaseConfig;
 
+/// issue 1571 — the type of one spawned tier's executor backing slot, so a
+/// board crate that wraps this one's `run_tiers` can name its parameter without
+/// depending on `nros` itself.
+pub use ::nros::TierExecutorBackingSlot;
+
 /// Internal re-export of the `Error` + `Result` types used by
 /// per-board `node.rs` files during the 152.1.B.5 → final-lift
 /// transition. Overlays import via `nros_board_freertos::__internal::*`.

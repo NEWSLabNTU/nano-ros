@@ -107,6 +107,11 @@ mod entry;
 pub use entry::{run_app_thread, run_bare, run_entry, run_tiers_entry};
 pub use nros_board_common::ThreadxConfig;
 
+/// issue 1571 — the type of one spawned tier's executor backing slot, so a
+/// board crate that wraps this one's `run_tiers` can name its parameter without
+/// depending on `nros` itself.
+pub use ::nros::TierExecutorBackingSlot;
+
 // Legacy 152.2.A façade — keep the per-board `Config` +
 // `init_hardware` + `run` re-export accessible behind the
 // reference-* features so existing downstream that picked the

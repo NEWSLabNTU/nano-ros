@@ -221,13 +221,16 @@ impl ThreadxQemuRiscv64 {
     }
 
     /// Phase 297 W4 (RFC-0053) — multi-tier entry. The `nros::main!()` macro
-    /// emits `<ThreadxQemuRiscv64>::run_tiers(&overlay, TIERS, setup)` for a
+    /// emits `<ThreadxQemuRiscv64>::run_tiers(&overlay, TIERS, TIER_BACKING, setup)` for a
     /// system with more than the synthesized single `default` tier; routes to
     /// [`nros_board_threadx::run_tiers_entry`] (one `Executor` per tier over one
     /// shared session). Mirrors `ThreadxLinux::run_tiers`.
     pub fn run_tiers<F, E>(
         deploy: &nros_platform::DeployOverlay,
         tiers: &'static [nros_platform::TierSpec<'static>],
+        // issue 1571 — the spawned tiers' executor backing: the entry's
+        // `.bss` `TierExecutorBacking`, emitted by `nros::main!`.
+        tier_backing: &'static mut [nros_board_threadx::TierExecutorBackingSlot],
         setup: F,
     ) -> Result<(), E>
     where
@@ -238,6 +241,7 @@ impl ThreadxQemuRiscv64 {
             config_with_overlay(deploy),
             deploy.boot_config,
             tiers,
+            tier_backing,
             setup,
         )
     }

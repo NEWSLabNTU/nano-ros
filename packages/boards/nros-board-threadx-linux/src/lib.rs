@@ -189,7 +189,7 @@ impl ThreadxLinux {
     }
 
     /// Phase 297 W4 (RFC-0053) — multi-tier entry. The `nros::main!()` macro
-    /// emits `<ThreadxLinux>::run_tiers(&overlay, TIERS, setup)` whenever a
+    /// emits `<ThreadxLinux>::run_tiers(&overlay, TIERS, TIER_BACKING, setup)` whenever a
     /// system declares more than the synthesized single `default` tier; this
     /// routes to [`nros_board_threadx::run_tiers_entry`], which runs one
     /// `Executor` per tier over one shared session. Mirrors
@@ -197,6 +197,9 @@ impl ThreadxLinux {
     pub fn run_tiers<F, E>(
         deploy: &nros_platform::DeployOverlay,
         tiers: &'static [nros_platform::TierSpec<'static>],
+        // issue 1571 — the spawned tiers' executor backing: the entry's
+        // `.bss` `TierExecutorBacking`, emitted by `nros::main!`.
+        tier_backing: &'static mut [nros_board_threadx::TierExecutorBackingSlot],
         setup: F,
     ) -> Result<(), E>
     where
@@ -209,6 +212,7 @@ impl ThreadxLinux {
             config_with_overlay(deploy),
             deploy.boot_config,
             tiers,
+            tier_backing,
             setup,
         )
     }
