@@ -1229,6 +1229,40 @@ pub const GRAPH_PROBE_CHANGE_UNSUPPORTED: &str = "GRAPH_PROBE_CHANGE_UNSUPPORTED
 pub const GRAPH_PROBE_CHANGE_NONE: &str = "GRAPH_PROBE_CHANGE_NONE";
 
 // ---------------------------------------------------------------------------
+// phase-467 Q4 — the `/rosout` bridge (`rosout-talker`), ledger row
+// `c:logging_rosout_enabled`.
+//
+// The subject is not delivery of a message the app built; it is whether a LOG
+// CALL reaches an operator's `ros2 topic echo /rosout`. Those are different
+// questions: every other pubsub cell publishes a struct the test author wrote,
+// and this one publishes whatever the runtime happened to log, through a sink
+// installed in `nros_log`'s dispatch walk.
+// ---------------------------------------------------------------------------
+
+/// The `/rosout` publisher exists and `nros_log::rosout`'s sink is installed.
+/// Records raised after this line have somewhere to go.
+pub const ROSOUT_PROBE_READY: &str = "ROSOUT_PROBE_READY";
+
+/// A PREFIX: the running total of records handed to `publish` follows. A
+/// prefix rather than a whole line because the number is the point — a probe
+/// that printed a bare marker would pass having pumped zero.
+pub const ROSOUT_PROBE_PUMPED: &str = "ROSOUT_PROBE_PUMPED";
+
+/// The run's accounting: `pumped=`, `dropped=`, `suppressed=`. Printed at the
+/// end so a short echo can be told apart from a full queue.
+pub const ROSOUT_PROBE_DONE: &str = "ROSOUT_PROBE_DONE";
+
+/// `nros_log`'s appendable sink list was already full (`MAX_ADDED_SINKS`), so
+/// the bridge is NOT installed. Its own marker because "no records arrived"
+/// otherwise reads identically to a transport failure.
+pub const ROSOUT_PROBE_SINK_FULL: &str = "ROSOUT_PROBE_SINK_FULL";
+
+/// The transport refused a `/rosout` publish. Distinct from
+/// [`ROSOUT_PROBE_SINK_FULL`] for the reason [`QOS_EVENT_PROBE_NONE`] is
+/// distinct from [`QOS_EVENT_PROBE_UNSUPPORTED`].
+pub const ROSOUT_PROBE_PUBLISH_ERR: &str = "ROSOUT_PROBE_PUBLISH_ERR";
+
+// ---------------------------------------------------------------------------
 // phase-433 W6 — the ADVERTISED-STATE probe (`advertised-state-probe`).
 //
 // Four slot families that are `produced` and have never met a peer: matched

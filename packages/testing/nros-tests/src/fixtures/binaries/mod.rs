@@ -64,6 +64,8 @@ static NATIVE_DECLARATIVE_SAFETY_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::
 /// Phase 211 acceptance — cached path to the `ros2-string-interop` fixture
 /// (`packages/testing/nros-tests/bins/ros2-string-interop`).
 static NATIVE_ROS2_STRING_INTEROP_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// phase-467 Q4 — the `/rosout` bridge probe.
+static NATIVE_ROSOUT_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the native-rs-lifecycle-node binary
 static NATIVE_LIFECYCLE_NODE_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -5097,6 +5099,25 @@ pub fn build_native_declarative_safety_listener() -> TestResult<&'static Path> {
             )?;
             let profile = cargo_target_profile_dir();
             let rel = PathBuf::from(format!("{profile}/declarative-safety-listener"));
+            require_prebuilt_row_binary_fresh(row, &rel)
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-467 Q4 — resolve the prebuilt `rosout-talker` fixture binary
+/// (`packages/testing/nros-tests/bins/rosout-talker`), ledger row
+/// `c:logging_rosout_enabled`. Logs through `nros_log` and pumps
+/// `nros_node::rosout` onto `/rosout`; paired with a stock
+/// `ros2 topic echo /rosout` in `tests/rosout_interop.rs`. Own Cargo
+/// workspace; the test skips cleanly when the binary is missing.
+pub fn build_rosout_talker() -> TestResult<&'static Path> {
+    NATIVE_ROSOUT_TALKER_BINARY
+        .get_or_try_init(|| {
+            let row = crate::fixtures::groups::select_sole_row(
+                "packages/testing/nros-tests/bins/rosout-talker",
+            )?;
+            let profile = cargo_target_profile_dir();
+            let rel = PathBuf::from(format!("{profile}/rosout-talker"));
             require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())

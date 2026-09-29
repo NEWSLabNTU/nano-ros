@@ -288,6 +288,26 @@ pub const CELLS: &[InteropCell] = &[
        c(Linux, Rust, Cyclonedds, Graph, Interop, Runtime),
        NativeFixtures, RosEdition(Cyclonedds), RosToNano, "graph_interop"),
 
+    // ── phase-467 Q4 — the `/rosout` bridge's live peer ──────────────────
+    // tests/rosout_interop.rs, ledger row `c:logging_rosout_enabled`.
+    //
+    // `Workload::Logging` already exists in `matrix::CELLS` at this very
+    // coordinate, as a WORKSPACE cell: four images that log and are checked
+    // for what reached the CONSOLE. That is a different subject. This asks
+    // whether a log call reaches an OPERATOR — the `/rosout` topic, which is
+    // how `ros2 topic echo`, `rqt_console` and every launch-side aggregator
+    // read a running robot, and on which a nano-ros node was silent.
+    //
+    // It cannot be a case of `native-pubsub-rust-zenoh-n2r`: that cell
+    // publishes a struct the fixture author wrote, and the delivery it proves
+    // says nothing about a sink installed in `nros_log`'s dispatch walk
+    // publishing records the RUNTIME raised. One RMW, because nothing in the
+    // bridge is backend-specific — it is one generated message type on one
+    // publisher.
+    ic("native-logging-rust-zenoh-n2r",
+       c(Linux, Rust, Zenoh, Logging, Interop, Runtime),
+       NativeFixtures, RosEdition(Zenoh), NanoToRos, "rosout_interop"),
+
     // ── phase-433 W6 — the ACTIONS family's live peer ────────────────────
     // tests/ros2_action_e2e.rs. Until this row the family had NO interop cell
     // at all: every action row in `matrix::CELLS` is nano-to-nano, and both
