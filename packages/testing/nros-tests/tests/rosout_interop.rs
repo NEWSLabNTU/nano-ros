@@ -24,13 +24,12 @@
 //! defaults, and reading rmw's tables is exactly the kind of reasoning this
 //! campaign has been wrong about before.
 
-use std::path::Path;
-use std::process::Command;
-use std::time::Duration;
+use std::{path::Path, process::Command, time::Duration};
 
-use nros_tests::fixtures::RequireFixture;
 use nros_tests::{
-    fixtures, interop, output,
+    fixtures,
+    fixtures::RequireFixture,
+    interop, output,
     process::ManagedProcess,
     ros2::{DEFAULT_ROS_DISTRO, Ros2Process, require_ros2},
     skip,
@@ -117,13 +116,13 @@ fn a_nano_ros_log_call_reaches_ros2_topic_echo_rosout() {
     // rather than on a bare `msg:` matters: `ros2 topic echo`'s own node also
     // publishes to `/rosout`, so `msg:` would count the peer talking to
     // itself and pass with nothing of ours on the wire.
-    let (out, why) = match echo.wait_for_output_count("nros rosout probe record", WANT_RECORDS, ECHO_WAIT)
-    {
-        Ok(o) => (o, String::new()),
-        // Diagnostic on a DIFFERENT channel from the asserted text (issue
-        // 0670) — folding it in would make the counter match the complaint.
-        Err(e) => (String::new(), format!("\n[wait] {e}")),
-    };
+    let (out, why) =
+        match echo.wait_for_output_count("nros rosout probe record", WANT_RECORDS, ECHO_WAIT) {
+            Ok(o) => (o, String::new()),
+            // Diagnostic on a DIFFERENT channel from the asserted text (issue
+            // 0670) — folding it in would make the counter match the complaint.
+            Err(e) => (String::new(), format!("\n[wait] {e}")),
+        };
     // Drain the probe's own transcript before asserting: its accounting line
     // is what tells a reader whether a short echo was a delivery failure or a
     // full queue. `wait_for_all_output` kills the process at the deadline.

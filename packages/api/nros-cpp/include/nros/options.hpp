@@ -174,8 +174,11 @@ struct ClientOptions {
 // instrument cannot see the defect it is measuring.
 //
 // It is not fixable by implementing them, either: nano-ros has no runtime
-// ComponentManager, no intra-process transport, no topic-statistics collector
-// and no `/rosout` topic, and its parameters and remaps are resolved from the
+// ComponentManager, no intra-process transport and no topic-statistics
+// collector; `/rosout` now EXISTS but is not reachable from C++ (phase-467 Q4
+// landed `nros::rosout` on the Rust side only — issue 1589), and it is not
+// automatic even there, so `enable_rosout(true)` still has nothing to switch.
+// Their parameters and remaps are resolved from the
 // LAUNCH FILE at BUILD time — `nros sync` projects them into the generated
 // entry as `nros_cpp_declare_remap` / `nros_cpp_declare_param` calls, not into
 // the process environment (RFC-0046, RFC-0060). There is nothing behind these

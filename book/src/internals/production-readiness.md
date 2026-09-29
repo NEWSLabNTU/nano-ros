@@ -135,7 +135,9 @@ may differ.
       your project plan.
 - [ ] **Log / diagnostics exfiltration.** `nros-log` provides the
       logging surface; pick a sink (UART, RTT, semihosting, or
-      ROS 2 `/rosout` over the wire).
+      ROS 2 `/rosout` over the wire — the last is real since
+      phase-467 Q4, Rust-only, and costs `.bss`: see
+      [Logging](../user-guide/logging.md#rosout)).
 - [ ] **Time synchronization** (NTP, PTP, RTC). nano-ros doesn't
       ship a time-sync layer; your fleet design must.
 - [ ] **Watchdog coverage**: the executor's `spin_period` reports
