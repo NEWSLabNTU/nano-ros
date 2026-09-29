@@ -245,3 +245,27 @@ the case that the remedy belongs where the interpreter's packages are chosen.
 It also does not re-open the question of WHICH package is missing: this run's
 message names importability, not a package, so the catkin_pkg/yaml analysis
 above is neither confirmed nor refuted by it.
+
+## It is also what the tier-2 lane spends five hours reaching (2026-09-29)
+
+Two tier-2 attempts died of this on one day, and the second shows what it
+costs. Run **36531385810** (schedule 06:30), job **109285625689**, step 6
+`just build tier2`, 06:45:34 → 11:44:20 — **4 h 58 m 46 s**, of which the log
+shows real per-family progress throughout (zephyr 55 min, threadx_riscv64
+44 min). It ended at 11:38 on the native cyclone leg:
+
+```
+FAILED: [code=1] cyclonedds-ts/_idlroot/builtin_interfaces/msg/Duration.idl
+error: rosidl_adapter is not importable by this build's interpreter.
+make[1]: *** [.../fixture-make-driver/...mk:11: fixture-linux-c-cyclonedds] Error 1
+```
+
+The earlier one is the 05:13 nightly, run **36525143251**, job
+**109266425718**, which hit the same message in `build-fixtures` after
+63 minutes.
+
+The point is not a third sighting of a known message. It is that this defect
+is now the LAST thing between the tier-2 lane and its first runtime verdict
+since 2026-09-01 (issue 1158 item 1): the 06:30 run got through every other
+fixture family before reaching it, so nothing else in that build is known to
+be broken behind it.

@@ -425,3 +425,55 @@ to 150 for exactly that. The 25–80 m table above is a distribution of runs tha
 mostly died early, so it is a floor on the answer and not the answer — the same
 position 1492 was in before its lane answered. Unlike tier 1, this lane also
 has no green run to measure a complete one against, which is item 1.
+
+## That run finished: five hours of real work, still no verdict (2026-09-29, later)
+
+Run **36531385810** completed at 11:44:32Z — `failure`, **5 h 14 m** end to
+end, with job 109285625689 spending **4 h 58 m 46 s** inside step 6
+`just build tier2` (06:45:34 → 11:44:20). The `coverage` job named it
+correctly: *tier 2 — NO VERDICT: stopped in the build.*
+
+**It was not wedged.** The section above declined to say whether the run was
+hung or merely slow, because nothing observable from outside could tell them
+apart. Now it can: the step's log advances throughout, and the longest silences
+are per-family builds, not a stall.
+
+| longest gaps in step 6 | after |
+| --- | --- |
+| 55 min | `== zephyr ==` |
+| 44 min | `== threadx_riscv64 ==` |
+| 17 min | the first `build-fixture-extras` failure |
+| 12 min | an `nros sync` |
+
+So the answer is *slow, and progressing further than any previous day* — prior
+runs died in the same step at 24–80 minutes. What ended it, at 11:38, was the
+last fixture leg:
+
+```
+FAILED: [code=1] cyclonedds-ts/_idlroot/builtin_interfaces/msg/Duration.idl
+error: rosidl_adapter is not importable by this build's interpreter.
+make[1]: *** [.../fixture-make-driver/...mk:11: fixture-linux-c-cyclonedds] Error 1
+error: recipe `build-fixture-extras` failed with exit code 2
+```
+
+That is issue **1457** — the same cause that ended the 05:13 nightly's tier-2
+leg six hours earlier. Both of today's tier-2 attempts died of one defect, one
+after 63 minutes and one after nearly five hours.
+
+### What this buys item 2
+
+A floor for the ceiling. The whole reason 1492's `timeout-minutes` had to be
+raised to 150 was that its first number was priced from the failures rather
+than from a healthy run, and this lane had no healthy run to price from. It
+still has none — but it now has a run that reached the LAST fixture family
+before failing, so **the build step alone costs at least 4 h 53 m** when it
+gets that far. Any ceiling under about five hours would cut a run that was
+still making progress, which is the mistake 1492 already made once. The
+six-hour default this run consumed 87 % of is not that ceiling either; it is
+just the absence of one.
+
+### What this buys item 1
+
+Nothing yet. Zero cells, again. What it does establish is that the remaining
+distance to a verdict is one issue and not a mystery: fix 1457 and this lane
+reaches `just ci matrix` for the first time since 2026-09-01.
