@@ -11,19 +11,23 @@
 //! allocation, no RMW. This module is the far half: drain that ring and put
 //! each record on the wire.
 //!
+//! The shape below is the one `packages/testing/nros-tests/bins/rosout-talker`
+//! runs, so it is known to work rather than merely to read well:
+//!
 //! ```ignore
+//! use nros_rcl_interfaces::msg::Log;
+//!
 //! let mut executor = Executor::open(&cfg)?;
-//! let nid = executor.node_builder("talker").build()?;
 //! let rosout = executor
-//!     .node_mut(nid)
-//!     .publisher(nros_node::rosout::TOPIC)
-//!     .typed::<Log>()
-//!     .qos(nros_node::rosout::qos())
-//!     .build()?;
-//! nros_node::rosout::enable();          // records start queueing
+//!     .create_node("talker")?
+//!     .create_publisher_with_qos::<Log>(rosout::TOPIC, rosout::qos_bounded())?;
+//!
+//! // AFTER the publisher: `enable` starts the queue filling, and a queue with
+//! // nowhere to drain to just reaches its depth and starts counting drops.
+//! rosout::enable();
 //! loop {
-//!     executor.spin_once(..)?;
-//!     nros_node::rosout::pump(&rosout); // and reach the wire here
+//!     executor.spin_once(budget);
+//!     let _ = rosout::pump(&rosout);
 //! }
 //! ```
 //!
