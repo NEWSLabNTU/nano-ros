@@ -276,13 +276,14 @@ endfunction()
 #
 # WHAT IS DELIBERATELY NOT HERE, issue 1255's per-type table
 # (`NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS`). Its only consumer is the executor
-# ARENA, and the arena's per-kind sum runs only where `NROS_ENTITY_COUNT_*`
-# arrive -- which is the Zephyr resolver road alone
-# (`zephyr/cmake/nros_cargo_build.cmake`). On this road and on the cargo-leaf
-# sidecar the model is 0 and the sum is never reached, so a bound table
-# delivered here would price nothing. THE COUNTS COME FIRST on these roads; the
-# bounds follow them, in the same change, or they are a wire to a consumer that
-# is not listening. Same shape as issue 1122, one fact over.
+# ARENA, and the arena's per-kind sum runs only where the entity counts
+# arrive. Since issue 1577 that is every road with a sizing descriptor
+# (`[image] *_entities`) as well as the Zephyr resolver road's
+# `NROS_ENTITY_COUNT_*`; and where the descriptor states `[[endpoint]]` rows,
+# their `claimed_slot_bytes` already price each receive region, so a bound
+# table delivered here would price nothing the rows do not. It stays off this
+# road until a consumer is found that the rows cannot answer -- a wire to a
+# consumer that is not listening is issue 1122's shape, one fact over.
 function(_nros_payload_facts_env _out_var)
     set(${_out_var} "" PARENT_SCOPE)
     if(NOT COMMAND nros_message_bounds_knobs_file)

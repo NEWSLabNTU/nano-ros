@@ -135,3 +135,13 @@ direction observed was safe; the reverse flip would under-size.
 **What closes this issue:** #1577, then the measurement above on an image whose
 `required` clears `ARENA_FLOOR` (8,192 — a one-subscription image clamps to it
 either way).
+
+**Update 2026-09-29 — #1577 landed; the arena moves now.** A five-subscription
+copy of the listener (untracked, deleted after), `nros sync` + `nros build`:
+the zenoh build's model prices the five `in_place` rows at `REQUIRED` 7,168
+(`ARENA_SIZE` 8,192, the floor) and all five register; the same image with
+those rows priced as buffered is 22,528. That is this issue's saving, reaching
+the arena on a cargo leaf for the first time — 14,336 bytes on five
+subscriptions. What is still missing for closure is the acceptance as written:
+a `just mem-report --baseline` on a TRACKED image with enough subscriptions to
+clear the floor. No in-tree single-package leaf has more than one.
