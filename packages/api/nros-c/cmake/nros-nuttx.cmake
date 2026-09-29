@@ -83,6 +83,17 @@ if(NOT COMMAND nros_resolve_carve_out_profile)
     endif()
 endif()
 
+# issue 1541 — `nros_resolve_board_facts`, the ONE resolver every other lane
+# delivers board facts through (`nros ws board-facts`). File scope for the same
+# reason as above; include_guard(GLOBAL) makes it a no-op when already loaded.
+if(NOT COMMAND nros_resolve_board_facts)
+    get_filename_component(_nros_c_repo_cmake
+        "${CMAKE_CURRENT_LIST_DIR}/../../../../cmake" ABSOLUTE)
+    if(EXISTS "${_nros_c_repo_cmake}/NanoRosBoardFacts.cmake")
+        include("${_nros_c_repo_cmake}/NanoRosBoardFacts.cmake")
+    endif()
+endif()
+
 # ----------------------------------------------------------------------
 # nros_nuttx_validate
 # ----------------------------------------------------------------------
@@ -439,6 +450,22 @@ function(nros_nuttx_build_example)
         nros_entity_facts_env("" ENV_OUT _nnbe_entity_env)
     endif()
 
+    # Issue 1541 — the BOARD facts, on the same carrier and for the same reason:
+    # this lane is not Corrosion, so `nros_board_facts_env(<target>)` has
+    # nothing to attach to, and without these `nros-node` / `nros-params` saw
+    # no `NROS_PLATFORM_NAME` and no `NROS_BOARD_TOML` — the RFC-0049 platform
+    # and board rungs were unreachable and every knob took its builtin. The
+    # resolver is the shared one (`nros ws board-facts`), soft on every absence
+    # exactly as on the other lanes.
+    set(NROS_BOARD_FACTS_ENV "")
+    if(COMMAND nros_resolve_board_facts)
+        nros_resolve_board_facts()
+    else()
+        message(STATUS
+            "nano-ros: board facts NOT delivered to ${_NNBE_NAME} — "
+            "NanoRosBoardFacts.cmake is not beside this module (issue 1541)")
+    endif()
+
     # Issue 1304 — see NanoRosRustTool.cmake (arrives via nros-rtos-helpers).
     nros_rust_tool(_nnbe_cargo cargo)
     add_custom_command(
@@ -446,6 +473,7 @@ function(nros_nuttx_build_example)
         ${_provision_cmd}
         COMMAND ${CMAKE_COMMAND} -E env
             ${_nnbe_entity_env}
+            ${NROS_BOARD_FACTS_ENV}
             "APP_MAIN_CPP=${_NNBE_MAIN_SOURCE}"
             "APP_INCLUDE_DIRS_FILE=${_includes_file}"
             "APP_FFI_LIBS_FILE=${_ffi_libs_file}"

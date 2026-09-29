@@ -66,6 +66,11 @@ nros_cargo_profile_env(nros_rmw_zenoh_staticlib-static)
 # issue 0657 — the riscv64 float ABI, per target (see the helper's comment).
 nros_riscv64_rustflags_env(nros_rmw_zenoh_staticlib-static)
 
+# issue 1541 — the BOARD facts, which `nros-rmw-zenoh`'s build script resolves
+# the RFC-0049 platform and board rungs from; see nros-c's CMakeLists.txt.
+include("${CMAKE_CURRENT_LIST_DIR}/../../../../cmake/NanoRosBoardFacts.cmake")
+nros_board_facts_env_deferred(nros_rmw_zenoh_staticlib-static)
+
 # _lib_name retained above for reference only — the in-tree consumer
 # links the Corrosion staticlib target directly under the
 # `nros_rmw_zenoh_staticlib-static` name (no rename needed).
