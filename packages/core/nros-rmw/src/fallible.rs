@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     fn boxes_a_sized_value() {
-        let b = try_box([7u64; 4]).ok().expect("host heap is not exhausted");
+        let b = try_box([7u64; 4]).expect("host heap is not exhausted");
         assert_eq!(*b, [7u64; 4]);
     }
 
