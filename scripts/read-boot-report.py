@@ -45,7 +45,7 @@ SYMBOL = "NROS_BOOT_REPORT"
 # "NRSR". Must match boot_report.rs MAGIC.
 MAGIC = 0x4E525352
 # Layout this script knows how to decode. Must match boot_report.rs VERSION.
-KNOWN_VERSION = 7
+KNOWN_VERSION = 8
 
 # The headroom `CONFIG_NROS_ZEPHYR_HEAP_SIZE` must keep above the measured
 # peak, in bytes.
@@ -97,7 +97,23 @@ FIELDS = (
     # Issue 1550: the ROS domain the boot-config resolver settled on, and the
     # rung that stated it (value | source << 8, like the word above).
     "domain_id",
+    # Issue 1573, appended on the same rule: which allocator refused the
+    # allocation `failed_alloc_size` names (`ALLOC_ARENA` below).
+    "failed_alloc_arena",
 )
+
+# `boot_report::AllocArena`. Append only; `the_alloc_arena_codes_match_the_record`
+# in boot_report.rs states the numbers this restates.
+#
+# Issue 1573: the executor arena and the platform heap write ONE
+# `failed_alloc_size` / `failed_alloc_shortfall` pair, and before this word the
+# decoder read every failure as the arena's. The island's QEMU boot printed
+# `nros: HEAP EXHAUSTED: request 236 bytes, arena 94720 bytes` (zenoh-pico's
+# `_z_slist_new`) and the decode said ARENA EXHAUSTED, raise
+# NROS_EXECUTOR_ARENA_SIZE -- for an executor arena that was 28% used.
+ALLOC_ARENA_NONE = 0
+ALLOC_ARENA_EXECUTOR = 1
+ALLOC_ARENA_PLATFORM_HEAP = 2
 
 # `boot_report::KnobSource`. Append only; `the_knob_source_codes_match_the_record`
 # in boot_report.rs states the numbers this and `nros-node/build.rs` restate.
@@ -433,6 +449,44 @@ def report(rec: dict[str, int]) -> int:
             "  caller's choice (issue 0900) -- but size against the one in use."
         )
 
+    failed_in = rec["failed_alloc_arena"]
+    if rec["failed_alloc_size"] and failed_in == ALLOC_ARENA_PLATFORM_HEAP:
+        print()
+        heap_at = f"{hcap} bytes" if hcap else "not sampled in this record"
+        floor = f" >= {hcap + rec['failed_alloc_size']}" if hcap else ""
+        print(
+            f"HEAP EXHAUSTED: the PLATFORM HEAP refused an allocation of "
+            f"{rec['failed_alloc_size']} bytes.\n"
+            "\n"
+            "  This is NOT the executor arena above, and raising\n"
+            "  NROS_EXECUTOR_ARENA_SIZE will not fix it. The platform heap is the\n"
+            "  one `nros_platform_alloc` hands out of -- the RMW session, zenoh-pico's\n"
+            "  lists and buffers, reply slots -- and its capacity here is\n"
+            f"  {heap_at}.\n"
+            "\n"
+            f"  raise CONFIG_NROS_ZEPHYR_HEAP_SIZE{floor}\n"
+            "  (NROS_ZEPHYR_HEAP_SIZE; the heap is fragmented by the time it\n"
+            "  refuses, so the request is a floor on the increase, not its size).\n"
+            "  Then size it from the measured peak: `--heap-headroom` on a dump\n"
+            "  of a boot that got through.\n"
+            "  The console line (`nros: HEAP EXHAUSTED: request N bytes, ...\n"
+            "  caller 0x...`) names the call site; resolve the caller with\n"
+            "  addr2line against the ELF.\n"
+            "\n"
+            "That is the FIRST failure, which is the one that explains the boot;\n"
+            "later allocations may also have failed as a consequence."
+        )
+        return 1
+
+    if rec["failed_alloc_size"] and failed_in != ALLOC_ARENA_EXECUTOR:
+        print()
+        print(
+            f"ALLOCATION FAILED: {rec['failed_alloc_size']} bytes, in an allocator "
+            f"this script does not know (failed_alloc_arena = {failed_in}).\n"
+            "Refusing to name a knob for it -- update this script."
+        )
+        return 1
+
     if rec["failed_alloc_size"]:
         print()
         print(
@@ -743,6 +797,82 @@ def check_heap_headroom(dump: Path, quiet: bool = False) -> int:
     return 0 if ok else 1
 
 
+def verdict_of(**fields: int) -> tuple[int, str]:
+    """`report()` on a synthetic record: (exit code, what it printed)."""
+    import contextlib
+    import io
+
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        rc = report(decode(make_dump(**fields)))
+    return rc, out.getvalue()
+
+
+def self_test_alloc_verdicts() -> bool:
+    """Issue 1573 -- a failed allocation is named by the allocator that refused it.
+
+    The heap case is the island's QEMU record in shape: 236 bytes refused by a
+    94,720-byte platform heap while the executor arena was barely a quarter
+    used. The decoder must say HEAP and name CONFIG_NROS_ZEPHYR_HEAP_SIZE, and
+    must NOT tell the reader to grow the arena.
+    """
+    ok = True
+    common = {
+        "stage": 6,
+        "arena_size": 16384,
+        "arena_capacity": 16384,
+        "arena_used": 4588,
+        "alloc_count": 9,
+        "heap_peak_bytes": 94720,
+        "heap_capacity_bytes": 94720,
+    }
+    cases = [
+        # (name, fields, must contain, must not contain)
+        (
+            "platform heap failure",
+            {
+                **common,
+                "failed_alloc_size": 236,
+                "failed_alloc_shortfall": 236,
+                "failed_alloc_arena": ALLOC_ARENA_PLATFORM_HEAP,
+            },
+            ("HEAP EXHAUSTED", "CONFIG_NROS_ZEPHYR_HEAP_SIZE >= 94956"),
+            ("ARENA EXHAUSTED", "set NROS_EXECUTOR_ARENA_SIZE"),
+        ),
+        (
+            "executor arena failure",
+            {
+                **common,
+                "stage": 4,
+                "arena_used": 16300,
+                "failed_alloc_size": 236,
+                "failed_alloc_shortfall": 152,
+                "failed_alloc_arena": ALLOC_ARENA_EXECUTOR,
+            },
+            ("ARENA EXHAUSTED", "set NROS_EXECUTOR_ARENA_SIZE >= 16536"),
+            ("HEAP EXHAUSTED", "raise CONFIG_NROS_ZEPHYR_HEAP_SIZE"),
+        ),
+        (
+            "unknown allocator",
+            {**common, "failed_alloc_size": 236, "failed_alloc_arena": 9},
+            ("ALLOCATION FAILED",),
+            ("ARENA EXHAUSTED", "HEAP EXHAUSTED"),
+        ),
+    ]
+    for name, fields, want, refuse in cases:
+        rc, text = verdict_of(**fields)
+        missing = [w for w in want if w not in text]
+        present = [r for r in refuse if r in text]
+        if rc != 1 or missing or present:
+            ok = False
+            print(
+                f"  self-test FAIL {name}: exit {rc} (want 1), missing {missing}, "
+                f"wrongly present {present}",
+                file=sys.stderr,
+            )
+    return ok
+
+
 def self_test() -> int:
     """The three cases from phase-460 W5's gate, on fixtures built here.
 
@@ -797,6 +927,7 @@ def self_test() -> int:
         if check_heap_headroom(junk, quiet=True) != 2:
             ok = False
             print("  self-test FAIL junk: a record-less dump did not refuse", file=sys.stderr)
+    ok = self_test_alloc_verdicts() and ok
     print(
         "read-boot-report --self-test: " + ("OK" if ok else "FAILED"),
         file=sys.stderr,
