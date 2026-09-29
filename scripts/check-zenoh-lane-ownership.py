@@ -140,6 +140,16 @@ What it checks
     `ZPICO_LEASE_TASK_PRIORITY` were missing; their values happen to equal
     today's C fallbacks, so adding them changed no preprocessing — what changed
     is that a moved default is now a red gate instead of a silent divergence).
+13. **The west lane's Kconfig DEFAULTS agree with the generator's lease.**
+    (11) holds the readiness lane to `config_header()`; the west lane gets its
+    lease from `zephyr/Kconfig` (`NROS_ZENOH_LEASE_MS`, `NROS_ZENOH_LEASE_FACTOR`
+    -> `Z_TRANSPORT_LEASE`, `Z_TRANSPORT_LEASE_EXPIRE_FACTOR` in
+    `zephyr/cmake/nros_rmw_zenoh.cmake`), and nothing compared the two. Issue
+    0906 moved the generator to 60000 because rmw_zenohd keepalives every
+    30 s; the Kconfig default stayed at zenoh-pico's upstream 10000, so every
+    Zephyr TCP image against a stock rmw_zenohd closed with EXPIRED ~30 s
+    after it opened (issue 1574, measured under QEMU mps2/an385). A board may
+    still STATE another value in its conf; this compares defaults only.
 
 Run: python3 scripts/check-zenoh-lane-ownership.py
 """
@@ -157,6 +167,13 @@ MANIFEST = ZENOH / "zpico-sys/zenoh-sources.txt"
 CMAKE = REPO / "zephyr/cmake/nros_rmw_zenoh.cmake"
 RUST_LIB = ZENOH / "nros-zpico-build/src/lib.rs"
 RUST_RUNNER = ZENOH / "nros-zpico-build/src/runner.rs"
+# The west lane's lease knobs (13): Kconfig symbol -> the macro the cmake lane
+# turns it into (`zephyr/cmake/nros_rmw_zenoh.cmake`).
+KCONFIG = REPO / "zephyr/Kconfig"
+KCONFIG_LEASE_KNOBS = {
+    "NROS_ZENOH_LEASE_MS": "Z_TRANSPORT_LEASE",
+    "NROS_ZENOH_LEASE_FACTOR": "Z_TRANSPORT_LEASE_EXPIRE_FACTOR",
+}
 # The bare-metal QEMU readiness lane (issue 1096). Declared in the sibling
 # gate's LANE_SPECS; named here because checks (10) and (11) are about this
 # file specifically.
@@ -1152,6 +1169,44 @@ def config_header_mirror_problems(
     return bad, notes
 
 
+def kconfig_default(text: str, symbol: str) -> str | None:
+    """The literal `default` of `config <symbol>` in a Kconfig file, or None."""
+    m = re.search(
+        rf"^config {re.escape(symbol)}\s*\n((?:[ \t]+.*\n|\s*\n)*?)[ \t]+default\s+(\S+)",
+        text,
+        re.M,
+    )
+    return m.group(2) if m else None
+
+
+def kconfig_lease_problems(rust_text: str, kconfig_text: str) -> list[str]:
+    """(13): the west lane's Kconfig lease defaults equal the generator's values."""
+    rust, _conditional = rust_config_macros(rust_text)
+    bad: list[str] = []
+    for symbol, macro in KCONFIG_LEASE_KNOBS.items():
+        want = rust.get(macro)
+        got = kconfig_default(kconfig_text, symbol)
+        if want is None:
+            bad.append(
+                f"`config_header()` no longer emits a literal `{macro}`, so the Kconfig "
+                f"default of `{symbol}` has nothing to be compared against. Update "
+                "KCONFIG_LEASE_KNOBS with the rule, never drop the row to go green."
+            )
+        elif got is None:
+            bad.append(
+                f"{KCONFIG.relative_to(REPO)} has no literal `default` for `{symbol}` "
+                f"(the west lane's `{macro}`)."
+            )
+        elif got != want:
+            bad.append(
+                f"`{macro}` is `{want}` in `config_header()` (the cargo lane) and "
+                f"`{symbol}` defaults to `{got}` in {KCONFIG.relative_to(REPO)} (the west "
+                "lane): a Zephyr image and every other image disagree on how long a silent "
+                "router is tolerated. rmw_zenohd keepalives every 30 s (issues 0906, 1574)."
+            )
+    return bad
+
+
 # `-DZPICO_MAX_PUBLISHERS=8` in the readiness lane's compiler flags.
 _SH_DEFINE_FLAG = re.compile(r"-D(ZPICO_[A-Z_0-9]+)=([^\s\"]+)")
 # `("ZPICO_MAX_PUBLISHERS", self.max_publishers.to_string()),` in `defines()`,
@@ -1765,6 +1820,35 @@ def self_test() -> None:
     else:  # pragma: no cover
         raise AssertionError("unbalanced fn body accepted")
 
+    # --- (13) the west lane's Kconfig lease defaults -----------------------
+    fake_rs13 = (
+        "pub fn config_header(x) -> String {\n"
+        "    const LEASE_MS: u32 = 60_000;\n"
+        '    writeln!(header, "#define Z_TRANSPORT_LEASE {}", LEASE_MS).unwrap();\n'
+        '    writeln!(header, "#define Z_TRANSPORT_LEASE_EXPIRE_FACTOR 3").unwrap();\n'
+        "}\n"
+    )
+    good_kc = (
+        "config NROS_ZENOH_LEASE_MS\n"
+        '    int "lease"\n'
+        "    default 60000\n"
+        "    help\n"
+        "      text\n"
+        "\n"
+        "config NROS_ZENOH_LEASE_FACTOR\n"
+        '    int "factor"\n'
+        "    default 3\n"
+    )
+    assert kconfig_default(good_kc, "NROS_ZENOH_LEASE_MS") == "60000"
+    assert kconfig_default(good_kc, "NROS_ZENOH_LEASE_FACTOR") == "3"
+    assert kconfig_lease_problems(fake_rs13, good_kc) == [], kconfig_lease_problems(fake_rs13, good_kc)
+    # THE DRIFT issue 1574 is: the generator moved, the Kconfig default did not.
+    msgs = kconfig_lease_problems(fake_rs13, good_kc.replace("default 60000", "default 10000"))
+    assert len(msgs) == 1 and "defaults to `10000`" in msgs[0], msgs
+    # a default that vanished is loud, not an empty comparison.
+    msgs = kconfig_lease_problems(fake_rs13, good_kc.replace("    default 3\n", ""))
+    assert any("no literal `default` for `NROS_ZENOH_LEASE_FACTOR`" in m for m in msgs), msgs
+
     # --- (12) the shim slot defines ----------------------------------------
     fake_defines = (
         "    pub fn defines(&self) -> Vec<(&'static str, String)> {\n"
@@ -1893,6 +1977,11 @@ def main() -> int:
     )
     mirror_bad, notes = config_header_mirror_problems(texts[RUST_LIB], texts[QEMU_SH])
     bad += mirror_bad
+    try:
+        bad += kconfig_lease_problems(texts[RUST_LIB], KCONFIG.read_text(encoding="utf-8"))
+    except OSError as e:
+        print(f"check-zenoh-lane-ownership: {e}", file=sys.stderr)
+        return 1
     slot_bad, slot_notes = shim_slot_problems(
         texts[RUST_LIB], texts[RUST_RUNNER], texts[QEMU_SH]
     )
