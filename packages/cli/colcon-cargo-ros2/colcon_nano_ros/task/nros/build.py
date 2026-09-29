@@ -336,6 +336,15 @@ class NrosBuildTask(TaskExtensionPoint):
         # from the single source (NANO_ROS_RMW env).
         west_defs.append(f"-DCONF_FILE=prj.conf;prj-{resolve_rmw()}.conf")
 
+        # Name THIS checkout's `nros` Zephyr module (issue 1379). A west
+        # workspace can be shared by every checkout on the host, so without the
+        # flag the image takes whichever checkout that workspace was bound to.
+        # `activate.sh` exports the checkout as NROS_REPO_DIR; a plugin run from
+        # an un-activated shell has no checkout and keeps the manifest's module.
+        nros_repo = os.environ.get("NROS_REPO_DIR")
+        if nros_repo:
+            west_defs.append(f"-DZEPHYR_EXTRA_MODULES={Path(nros_repo).resolve()}")
+
         cmd.extend(["--", *west_defs])
 
         rc = await run(self.context, cmd)

@@ -398,7 +398,9 @@ verify-fvp-runtime:
     elif [ "$rc" -ne 0 ]; then
         exit "$rc"
     fi
-    cargo nextest run -p nros-tests --test fvp_runtime_ws --no-capture
+    # Through the tolerant runner: `fvp_runtime_ws` has five `skip!` calls, and
+    # a bare `cargo nextest` counts each as a FAILURE (phase-472 W2).
+    just _nextest-tolerant -p nros-tests --test fvp_runtime_ws --no-capture
 
 # Phase 215.G.1 — build the minimal ASI-shaped board-import fixture
 # (`packages/testing/nros-tests/fixtures/board_import_fvp`) for the FVP

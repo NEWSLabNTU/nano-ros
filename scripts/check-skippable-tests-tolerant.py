@@ -46,19 +46,19 @@ BARE = re.compile(r"^\s*(?!#)(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*cargo\s+(?:test|n
 TEST_ARG = re.compile(r"--test\s+([A-Za-z0-9_]+)")
 
 
-IMPORT_DEF = re.compile(r'^import\s+[\'"]([^\'"]+)[\'"]', re.M)
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from check_just_sources import just_sources  # noqa: E402 — phase-472 W2
 
 
-def _justfile_sources():
-    """The root justfile plus every file it `import`s (not `mod`s)."""
-    with open(JUSTFILE, encoding="utf8") as fh:
-        text = fh.read()
-    files = [JUSTFILE]
-    for rel in IMPORT_DEF.findall(text):
-        f = os.path.join(ROOT, rel)
-        if os.path.exists(f):
-            files.append(f)
-    return files
+def _justfile_sources(root=ROOT):
+    """Every justfile `just` loads — the root, its `import`s AND its `mod`s.
+
+    phase-472 W2: this read the root plus its `import`s and no `mod`, so every
+    module file was unread — `just/zephyr-setup.just` ran a bare `cargo nextest`
+    over `fvp_runtime_ws` (5 `skip!` calls) while the gate printed OK over
+    "0 `--test` reference(s)".
+    """
+    return just_sources(root)
 
 
 def skippable(name):
@@ -89,6 +89,18 @@ def scan(justfile_text):
     return out
 
 
+def scan_tree(root):
+    """(problems, `--test` references seen, files read) over the justfile graph."""
+    problems, total, paths = [], 0, _justfile_sources(root)
+    for path in paths:
+        with open(path, encoding="utf8") as fh:
+            text = fh.read()
+        rel = os.path.relpath(path, root)
+        problems += [(rel, *p) for p in scan(text)]
+        total += len(re.findall(r"--test\s+[A-Za-z0-9_]+", text))
+    return problems, total, len(paths)
+
+
 def main():
     if "--selftest" in sys.argv:
         return selftest(verbose=True)
@@ -101,12 +113,7 @@ def main():
     # Scanning only `justfile` would make this gate's coverage narrower than its
     # rule the moment a recipe moves — which phase-399 did to 200 of them
     # (issue 0196's class: a gate that still passes while it stopped looking).
-    problems = []
-    for path in _justfile_sources():
-        with open(path, encoding="utf8") as fh:
-            text = fh.read()
-        rel = os.path.relpath(path, ROOT)
-        problems += [(rel, *p) for p in scan(text)]
+    problems, total, files = scan_tree(ROOT)
 
     if problems:
         print("check-skippable-tests-tolerant: a skip-capable test is run BARE:\n",
@@ -130,9 +137,10 @@ def main():
         )
         return 1
 
-    total = len(re.findall(r"--test\s+[A-Za-z0-9_]+", text))
+    # The count over EVERY file — it used to be the LAST file's `text`, which
+    # is how "0 `--test` reference(s) scanned" read as a result.
     print(f"check-skippable-tests-tolerant OK — no skip-capable target is run bare "
-          f"({total} `--test` reference(s) scanned).")
+          f"({total} `--test` reference(s) scanned in {files} justfile(s)).")
     return 0
 
 
@@ -178,6 +186,18 @@ def selftest(verbose=False):
             bool(scan("recipe:\n    FOO=1 cargo test -p nros-tests --test skippy\n")))
         chk("a commented-out recipe line is not a finding",
             not scan("recipe:\n    # cargo test -p nros-tests --test skippy\n"))
+
+        # phase-472 W2 — a bare run in a `mod` file (not only an `import`) is read.
+        with tempfile.TemporaryDirectory() as repo:
+            os.makedirs(os.path.join(repo, "just"))
+            with open(os.path.join(repo, "justfile"), "w", encoding="utf8") as fh:
+                fh.write("mod plat 'just/plat.just'\n")
+            with open(os.path.join(repo, "just", "plat.just"), "w", encoding="utf8") as fh:
+                fh.write("t:\n    cargo nextest run -p nros-tests --test skippy\n")
+            probs, total, files = scan_tree(repo)
+            chk("a bare run inside a `mod` file is caught",
+                bool(probs) and probs[0][0] == os.path.join("just", "plat.just"))
+            chk("the `--test` count spans every file", total == 1 and files == 2)
 
     globals()["TESTS_DIR"] = real
     if verbose:

@@ -46,6 +46,7 @@ import sys as _w3_sys  # noqa: E402
 from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
+from check_just_sources import just_modules  # noqa: E402  phase-472 W2 — the justfile graph
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JUSTFILE = os.path.join(ROOT, "justfile")
@@ -432,9 +433,6 @@ def parse_justfile():
     return recipes
 
 
-IMPORT = re.compile(r"^import\??\s+['\"]([^'\"]+)['\"]", re.M)
-
-
 def _just_sources():
     """[(module or None, path)]: the root justfile, every `just/*.just` module,
     and every file any of them `import`s — keyed to the IMPORTING module.
@@ -454,34 +452,18 @@ def _just_sources():
     the real repo's modules while claiming to test a synthetic justfile. Same
     answer in production (the root justfile IS in ROOT), honest under test.
     """
-    mod_dir = os.path.join(os.path.dirname(os.path.abspath(JUSTFILE)), "just")
-    roots = [(None, os.path.abspath(JUSTFILE))]
-    if os.path.isdir(mod_dir):
-        roots += [
-            (fn[:-5], os.path.join(mod_dir, fn))
-            for fn in sorted(os.listdir(mod_dir)) if fn.endswith(".just")
-        ]
-    out, seen = [], set()
-    for mod, path in roots:
-        # Depth-first from each root so a file the ROOT justfile imports
-        # (`just/sdk-env.just`) is keyed bare, as `just` keys it — not as the
-        # module the directory listing would otherwise make of it.
-        stack = [path]
-        while stack:
-            cur = stack.pop()
-            if cur in seen:
-                continue
-            seen.add(cur)
-            out.append((mod, cur))
-            try:
-                with open(cur, encoding="utf8", errors="replace") as fh:
-                    text = fh.read()
-            except OSError:
-                continue
-            for m in IMPORT.finditer(text):
-                stack.append(os.path.normpath(
-                    os.path.join(os.path.dirname(cur), m.group(1))))
-    return out
+    # phase-472 W2 — the GRAPH (`check_just_sources.just_modules`), keyed by
+    # the `mod` NAME. This used to list `just/*.just` and key each by FILENAME,
+    # so `threadx-linux.just` was `threadx-linux::` where `just` says
+    # `threadx_linux::`, `qemu-baremetal::` was not `qemu::`, and the three
+    # files `zephyr.just` IMPORTS were modules of their own — every lane edge
+    # into them resolved to no recipe, and the closure walk stopped there.
+    root = os.path.dirname(os.path.abspath(JUSTFILE))
+    return [
+        (mod or None, os.path.abspath(path))
+        for mod, paths in just_modules(root).items()
+        for path in paths
+    ]
 
 
 VARIABLE = re.compile(r'^([A-Za-z_][A-Za-z0-9_-]*)\s*:=\s*"([^"]*)"\s*$', re.M)
@@ -1721,6 +1703,24 @@ def selftest(verbose=False):
         chk("a crate with NO default features is not a subject", "nodef" not in subs)
         chk("one consumer taking the defaults (even outside packages/) disqualifies",
             "lib2" not in subs)
+    # ---- phase-472 W2 — modules keyed by `mod` NAME, imports merged ----
+    with tempfile.TemporaryDirectory() as d:
+        jf = os.path.join(d, "justfile")
+        os.makedirs(os.path.join(d, "just"))
+        globals()["JUSTFILE"] = jf
+        for rel, text in (
+            ("justfile", "mod plat_x 'just/plat-x.just'\n"),
+            ("just/plat-x.just", "import 'plat-x-ci.just'\nbuild:\n    @true\n"),
+            ("just/plat-x-ci.just", "fixtures: build\n    @true\n"),
+        ):
+            with open(os.path.join(d, rel), "w", encoding="utf8") as fh:
+                fh.write(text)
+        got = parse_justfile()
+        chk("a `mod` is keyed by its NAME, not its filename (`plat_x::`, not `plat-x::`)",
+            "plat_x::build" in got and not any(k.startswith("plat-x") for k in got))
+        chk("a file the module IMPORTS joins that module",
+            got.get("plat_x::fixtures", {}).get("deps") == ["plat_x::build"])
+
     globals()["JUSTFILE"], globals()["WORKFLOW_DIR"] = real[0], real_wf
 
     if verbose:

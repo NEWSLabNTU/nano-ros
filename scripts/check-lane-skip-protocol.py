@@ -41,13 +41,16 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-SCAN = [os.path.join(ROOT, "justfile")]
-SCAN_DIR = os.path.join(ROOT, "just")
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from check_just_sources import just_sources  # noqa: E402 — phase-472 W2
 
 # A line that ANNOUNCES a skip. `echo`/`printf` only: a comment mentioning the
 # word is prose, and `nros_lane_skip*` is the protocol itself.
-ANNOUNCES = re.compile(r"^\s*(echo|printf)\b[^\n]*\bskip", re.IGNORECASE)
-SAME_LINE_EXIT = re.compile(r";\s*exit\s+0\s*$")
+# At line start, or at command position after `{`/`;`/`&&`/`||` (the group form).
+ANNOUNCES = re.compile(r"(?:^\s*|[{;&|]\s*)(echo|printf)\b[^\n]*\bskip", re.IGNORECASE)
+# `…; exit 0` and the group form `|| { echo "…skip…"; exit 0; }` — the second
+# was missed (phase-472 audit), and it is the idiom a one-line guard reaches for.
+SAME_LINE_EXIT = re.compile(r";\s*exit\s+0\s*(?:;\s*\}\s*)?$")
 BARE_EXIT_0 = re.compile(r"^\s*exit\s+0\s*$")
 PROTOCOL = re.compile(
     r"\bnros_(lane|check)_(skip(_note|_flush|_reset|_report)?|scope|scope_note)\b"
@@ -97,12 +100,32 @@ def offenders(text):
     return out
 
 
+def population(root):
+    """Every justfile `just` loads — the graph, not `justfile` + `just/*.just`,
+    which never read the 13 files of `mod check` (phase-472 W2)."""
+    return just_sources(root)
+
+
+def scan_files(files, root):
+    failures = []
+    for path in files:
+        try:
+            text = open(path, encoding="utf-8").read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        rel = os.path.relpath(path, root)
+        for lineno, line, why in offenders(text):
+            failures.append((rel, lineno, line, why))
+    return failures
+
+
 def self_test():
     """Both directions: a classifier that stopped classifying looks like a pass."""
     bad = []
     must_flag = [
         ('    echo "FreeRTOS skip: arm-none-eabi-gcc not found"; exit 0', "same line"),
         ('    echo "Zephyr skip: toolchain missing"\n    exit 0', "next line"),
+        ('    command -v gcc || { echo "skip: no gcc"; exit 0; }', "group form"),
     ]
     must_pass = [
         ('    nros_lane_skip "arm-none-eabi-gcc not found"', "whole-recipe protocol"),
@@ -118,6 +141,21 @@ def self_test():
         got = offenders(body)
         if got:
             bad.append(f"self-test: unexpected violation for {label!r}: {got}")
+    # phase-472 W2 — a skip in a file behind `mod check` + `import` is read.
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        os.makedirs(os.path.join(tmp, "just", "check"))
+        for rel, text in (
+            ("justfile", "mod check 'just/check.just'\n"),
+            (os.path.join("just", "check.just"), "import 'check/a.just'\n"),
+            (os.path.join("just", "check", "a.just"),
+             'g:\n    echo "skip: no toolchain"; exit 0\n'),
+        ):
+            with open(os.path.join(tmp, rel), "w", encoding="utf-8") as fh:
+                fh.write(text)
+        got = scan_files(population(tmp), tmp)
+        if [r for r, *_ in got] != [os.path.join("just", "check", "a.just")]:
+            bad.append(f"self-test: a skip in just/check/*.just was not read: {got}")
     if bad:
         for b in bad:
             sys.stderr.write(b + "\n")
@@ -126,23 +164,8 @@ def self_test():
 
 def main():
     self_test()
-    files = list(SCAN)
-    if os.path.isdir(SCAN_DIR):
-        files += [
-            os.path.join(SCAN_DIR, f)
-            for f in sorted(os.listdir(SCAN_DIR))
-            if f.endswith(".just")
-        ]
-
-    failures = []
-    for path in files:
-        try:
-            text = open(path, encoding="utf-8").read()
-        except (OSError, UnicodeDecodeError):
-            continue
-        rel = os.path.relpath(path, ROOT)
-        for lineno, line, why in offenders(text):
-            failures.append((rel, lineno, line, why))
+    files = population(ROOT)
+    failures = scan_files(files, ROOT)
 
     if failures:
         sys.stderr.write("check-lane-skip-protocol: FAILED — skip(s) that exit 0:\n\n")

@@ -73,6 +73,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
 from tracked import tracked  # noqa: E402  (after the sys.path insert, by design)
+from check_just_sources import just_sources  # noqa: E402  phase-472 W2
+import comments  # noqa: E402  phase-472 W3
 
 HELPER = os.path.join("scripts", "lib", "zephyr-module.sh")
 
@@ -81,6 +83,14 @@ HELPER = os.path.join("scripts", "lib", "zephyr-module.sh")
 # style checker for English.
 SEARCH_DIRS = ("just", "scripts", "tests", "ci")
 SEARCH_SUFFIXES = (".just", ".sh", ".bash")
+# phase-472 W2 — reach beyond the four dirs. The justfile GRAPH
+# (`check_just_sources.just_sources`) brings the extensionless root `justfile`;
+# CI steps (`.github/**/*.yml`, composite actions included) run west too; and
+# a Python driver spells the call as an argv LIST, which the shell regexes
+# below cannot see — `colcon_nano_ros/task/nros/build.py` ran a configuring
+# `west build` for as long as this gate existed.
+EXTRA_DIRS = (".github", "packages")
+EXTRA_SUFFIXES = (".yml", ".yaml", ".py")
 
 # The west invocation, in every spelling this tree uses: `west build`,
 # `"${west_cmd[@]}" build`, `… -m west build`.
@@ -123,7 +133,7 @@ WEST_INVOCATION = re.compile(
 # as well as on `WEST_ARGV` — two independent reasons the busiest west builder
 # in the tree was invisible, either of which alone kept it so.
 COMMAND_POSITION = re.compile(
-    r"(?:^\s*|[;&|(){}]\s*|\b(?:then|do|else|if|elif|while|until|time)\s+|"
+    r"(?:^\s*|[;&|(){}]\s*|\brun:\s*|\b(?:then|do|else|if|elif|while|until|time)\s+|"
     r"\$\(\s*|!\s*|-m\s+|\benv\s+(?:\S+\s+)*)$"
 )
 # `echo`/`printf`/`log_*` before the match means the invocation is TEXT being
@@ -194,9 +204,32 @@ def iter_files(root: str):
     `scripts/` and `tests/` both hold build output on a provisioned host, and a
     walk pays for descending it before the filter that discards it ever runs.
     """
+    seen = set()
     for path in tracked(*SEARCH_DIRS, repo=root):
-        if path.name.endswith(SEARCH_SUFFIXES):
-            yield os.path.relpath(path, root)
+        if path.name.endswith(SEARCH_SUFFIXES + (".py",)):
+            seen.add(os.path.relpath(path, root))
+    for path in tracked(*EXTRA_DIRS, repo=root):
+        if path.name.endswith(EXTRA_SUFFIXES):
+            seen.add(os.path.relpath(path, root))
+    seen.update(os.path.relpath(p, root) for p in just_sources(root))
+    yield from sorted(seen)
+
+
+# A Python argv list: `["west", "build", …]`, over as many lines as it takes.
+PY_WEST_BUILD = re.compile(r"""(['"])west\1\s*,\s*(['"])build\2""")
+
+
+def python_commands(text: str):
+    """Yield (line_number, command_text) for every `["west", "build", …]` argv.
+
+    The command is the list literal PLUS the rest of its enclosing function:
+    a Python driver assembles flags on later lines (`west_defs.append(…)`,
+    `cmd.extend(["--", *west_defs])`), so the argv is not one line's text.
+    """
+    for m in PY_WEST_BUILD.finditer(text):
+        nxt = re.search(r"^\s*(?:async\s+)?def\s", text[m.end():], re.M)
+        end = m.end() + nxt.start() if nxt else len(text)
+        yield text[: m.start()].count("\n") + 1, text[m.start(): end]
 
 
 def logical_commands(text: str):
@@ -237,7 +270,16 @@ def offenders(root: str):
             text = open(full, encoding="utf-8").read()
         except (OSError, UnicodeDecodeError):
             continue
-        for lineno, cmd in logical_commands(text):
+        if path.endswith(".py"):
+            if os.path.abspath(full) == os.path.abspath(__file__):
+                continue  # its own selftest fixtures and prose
+            # Comments blanked (length kept, so line numbers hold); strings stay,
+            # because in Python the command IS strings.
+            text = comments.strip_comments(text, "python")
+            cmds = python_commands(text)
+        else:
+            cmds = logical_commands(text)
+        for lineno, cmd in cmds:
             harvested.append((path, lineno, cmd))
             if not is_offence(cmd, path, text):
                 continue
@@ -293,6 +335,11 @@ def argv_array_carries_module(array: str, file_text: str) -> bool:
 
 
 def is_offence(cmd: str, path: str, file_text: str) -> bool:
+    if path.endswith(".py"):
+        # No shell helper to call from Python: the evidence is the flag NAME in
+        # the argv the function assembles (phase-472 W2).
+        exempt = EXEMPT.get(path)
+        return FLAG_NAME not in cmd and not (exempt and exempt[0] in cmd)
     if TARGET_RUN.search(cmd):
         return False
     if any(token in cmd for token in SANCTIONED):
@@ -484,6 +531,50 @@ def selftest(root: str, quiet: bool = False) -> int:
         "scripts/x.sh",
         False,
     )
+
+    # phase-472 W2 — the reach: a Python argv list and a workflow `run:` step
+    # are invocations, and the root `justfile` is in the population.
+    def expect_py(name, text, path, should_fail):
+        nonlocal fails
+        got = any(is_offence(cmd, path, text) for _l, cmd in python_commands(text))
+        if got != should_fail:
+            print(f"  SELFTEST FAIL: {name}", file=sys.stderr)
+            fails += 1
+        elif not quiet:
+            print(f"  ok: {name}")
+
+    expect_py(
+        "a Python argv `west build` without the module is an offence",
+        'cmd = [\n    "west",\n    "build",\n    "-b",\n    board,\n    str(app),\n]\n',
+        "scripts/x.py",
+        True,
+    )
+    expect_py(
+        "a Python argv that extends in the module flag is not",
+        'def f():\n    cmd = [\n    "west", "build", str(app),\n]\n'
+        '    defs = [f"-DZEPHYR_EXTRA_MODULES={root}"]\n    cmd.extend(["--", *defs])\n'
+        'def g():\n    pass\n',
+        "scripts/x.py",
+        False,
+    )
+    expect_py(
+        "the flag in the NEXT function does not cover this one",
+        'def f():\n    cmd = ["west", "build", str(app)]\n'
+        'def g():\n    x = "-DZEPHYR_EXTRA_MODULES=y"\n',
+        "scripts/x.py",
+        True,
+    )
+    expect(
+        "a workflow `run: west build <app>` is command position",
+        "      - run: west build -b native_sim examples/zephyr/c/talker\n",
+        ".github/workflows/x.yml",
+        True,
+    )
+    if "justfile" not in list(iter_files(root)):
+        print("  SELFTEST FAIL: the root justfile is not in the population", file=sys.stderr)
+        fails += 1
+    elif not quiet:
+        print("  ok: the root justfile is in the population")
 
     if not os.path.isfile(os.path.join(root, HELPER)):
         print(f"  SELFTEST FAIL: {HELPER} is missing", file=sys.stderr)

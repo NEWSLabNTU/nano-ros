@@ -32,9 +32,15 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SDK_ENV = os.path.join(ROOT, "just", "sdk-env.just")
-JUST_DIR = os.path.join(ROOT, "just")
 
 EXPORT = re.compile(r"^export\s+([A-Z0-9_]+)\s*:=", re.M)
+# `-z` on the variable, in every spelling: `"${V:-}"`, `"${V-}"`, `"${V}"`,
+# `"$V"`, and unquoted. Braced-only was the first version, so `[ -z "$NUTTX_DIR" ]`
+# — the same dead guard — read as clean (phase-472 W2).
+GUARD = re.compile(r'-z\s+"?\$(?:\{([A-Z0-9_]+)(?::?-)?\}|([A-Z0-9_]+)\b)"?')
+
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from check_just_sources import just_sources  # noqa: E402 — phase-472 W2
 
 
 def exported_vars(text):
@@ -48,7 +54,7 @@ def dead_guards(text, exported):
     for i, line in enumerate(text.split("\n"), 1):
         if line.lstrip().startswith("#"):
             continue
-        for var in re.findall(r'-z\s+"\$\{([A-Z0-9_]+)(?::?-)?\}"', line):
+        for var in (a or b for a, b in GUARD.findall(line)):
             if var in exported:
                 out.append((i, var, line.strip()))
     return out
@@ -74,6 +80,40 @@ def selftest():
     # A comment describing the defect is prose, not policy.
     assert not dead_guards('    # was: [ -z "${NUTTX_DIR:-}" ]', exported)
 
+    # phase-472 W2 — the unbraced spelling is the same dead guard.
+    assert dead_guards('if [ -z "$NUTTX_DIR" ]; then', exported)
+    assert dead_guards('if [ -z $THREADX_DIR ]; then', exported)
+    assert not dead_guards('if [ -z "$NUTTX_DIRS" ]; then', exported)
+
+    # phase-472 W2 — the population is the justfile GRAPH: the root `justfile`
+    # and a file behind `mod check` + `import` are both read.
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        os.makedirs(os.path.join(tmp, "just", "check"))
+        for rel, text in (
+            ("justfile", "mod check 'just/check.just'\nr:\n    [ -z \"$NUTTX_DIR\" ]\n"),
+            (os.path.join("just", "check.just"), "import 'check/a.just'\n"),
+            (os.path.join("just", "check", "a.just"), "g:\n    [ -z \"${NUTTX_DIR:-}\" ]\n"),
+        ):
+            with open(os.path.join(tmp, rel), "w", encoding="utf-8") as fh:
+                fh.write(text)
+        found = {rel for rel, *_ in scan(tmp, exported)}
+        assert found == {"justfile", os.path.join("just", "check", "a.just")}, found
+
+
+def scan(root, exported):
+    """[(rel, lineno, var, line)] over every justfile `just` loads (phase-472 W2).
+
+    The graph, not `just/*.just`: that listing read neither the root `justfile`
+    nor the 13 files of `mod check` under `just/check/`.
+    """
+    out = []
+    for path in just_sources(root):
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        out += [(os.path.relpath(path, root), *d) for d in dead_guards(text, exported)]
+    return out
+
 
 def main():
     selftest()
@@ -82,18 +122,13 @@ def main():
     if not exported:
         sys.exit("check-sdk-guard-can-fire: no exports found in just/sdk-env.just")
 
-    problems = []
-    for fn in sorted(os.listdir(JUST_DIR)):
-        if not fn.endswith(".just"):
-            continue
-        path = os.path.join(JUST_DIR, fn)
-        with open(path, encoding="utf-8") as fh:
-            for lineno, var, line in dead_guards(fh.read(), exported):
-                problems.append(
-                    f"just/{fn}:{lineno}: tests `-z` on ${var}, which "
-                    f"sdk-env.just always exports — this guard can never fire.\n"
-                    f"      {line}\n"
-                    f"      Use: nros_sdk_missing {var} <marker-subdir>")
+    problems = [
+        f"{rel}:{lineno}: tests `-z` on ${var}, which "
+        f"sdk-env.just always exports — this guard can never fire.\n"
+        f"      {line}\n"
+        f"      Use: nros_sdk_missing {var} <marker-subdir>"
+        for rel, lineno, var, line in scan(ROOT, exported)
+    ]
     if problems:
         sys.stderr.write("check-sdk-guard-can-fire: FAILED\n")
         for p in problems:

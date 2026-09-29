@@ -69,7 +69,6 @@ scripts/check-staleness-probe-exemptions.sh
 scripts/check-std-census.py
 scripts/check-submodule-drift.sh
 scripts/check-submodule-pinned-locks.py
-scripts/check-sysdep-remedies.sh
 scripts/check-test-domain-assignment.sh
 scripts/check-tier-preconditions.sh
 scripts/check-tier-priority-plan.py
