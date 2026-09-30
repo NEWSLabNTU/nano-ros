@@ -523,3 +523,30 @@ start.
 
 **Not** 1457 or the `<depend>` failure either — both messages are absent from
 this job's log, which is the same counting check the 09-29 entry used.
+
+## A fourth distinct stop (2026-09-30) — and the tier-2 nightly's is now the emitted west app
+
+Nightly run **36672407797** (05:13), job **109750040694**, step 5
+`just build tier2-nightly`. The lane reaches its fixture build and the zephyr
+module fails on:
+
+```
+CMake Error: The source directory
+".../examples/workspaces/rust/build/zephyr-zenoh/zephyr_entry" does not exist.
+ninja: error: rebuilding 'build.ninja': subcommand failed
+```
+
+That directory is issue **1288**'s generated west application, which W5.b moved
+out of the tracked tree and into `build/`. The evidence and the analysis are
+filed there; recorded here because this lane is what triage reads, and because
+it is the fourth different reason the build stage has stopped in four nights —
+after `rosidl_adapter is not importable` (1457), the `zephyr_self_pkg`
+SystemModel (1497/1501) and the run this issue's previous entry describes.
+
+Also in the same log, and NOT a failure: `error: recipe provision-zenohd failed
+with exit code 78`, which the caller immediately annotates as the lane-skip
+protocol naming issue 1477. A grep for `error:` finds it first, above the real
+stop — worth knowing for anyone triaging this lane by pattern.
+
+The point this issue keeps making holds: four nights, one summary string, four
+causes. Nothing here can be attributed without re-reading the error text.

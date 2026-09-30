@@ -605,3 +605,68 @@ worktree, which is the documented way around issue 1253 (never a symlinked
    the class. A `[system] ros_edition` change would therefore leave a generated
    entry's facade stale until it is deleted, for `native_entry` exactly as for
    `zephyr_entry`. Worth fixing once, for all roads, not inside 1288.
+
+## 2026-09-30 — W5.b's emitted application is inside `build/`, and that is now a build failure
+
+Nightly run **36672407797** (schedule, 05:13), job **109750040694**
+(`tier 2 nightly (pairwise cover)`), step 5 `just build tier2-nightly`, on the
+self-hosted `nano-ros-runner`. The zephyr fixture module fails, four times with
+the same pair of lines:
+
+```
+== zephyr == FAILED (rc=2)
+  CMake Error: The source directory
+  "/home/runner/_work/nano-ros/nano-ros/examples/workspaces/rust/build/zephyr-zenoh/zephyr_entry"
+  does not exist.
+  ninja: error: rebuilding 'build.ninja': subcommand failed
+```
+
+That path is this issue's own W5.b output. `50f50be33` deleted the tracked
+`examples/workspaces/rust/src/zephyr_entry/` and made `nros build` emit the west
+application into `build/zephyr-zenoh/zephyr_entry/` instead; the workspace's
+README and its `demo_bringup/system.toml` both name that directory. The run's
+head `965504e38` has `50f50be33` as an ancestor and no `src/zephyr_entry`, so
+this is the post-migration layout and not a stale checkout. (The commit dates
+mislead here — the queue rebase-merges, so `50f50be33` carries an author date
+later than the merge it precedes. `git merge-base --is-ancestor` is the only
+thing that answers it.)
+
+## What the failure actually says
+
+`ninja: error: rebuilding 'build.ninja'` is a RE-CONFIGURE of a build directory
+that was configured successfully at least once: cmake cached
+`CMAKE_HOME_DIRECTORY` pointing at the emitted application, and by the time
+ninja re-ran cmake the directory was gone. So the emitter did run — this is not
+"the generator never fired".
+
+The shape is the one the new layout creates: **the emitted application is both a
+build OUTPUT and a cmake SOURCE directory, and it lives under the same `build/`
+tree that build tooling creates, reuses and clears.** Anything that removes or
+partially recreates `<ws>/build/` destroys the source tree of a build dir
+configured against it, and the symptom surfaces one layer down as a cmake error
+about a missing source directory rather than as a missing generated artifact.
+A persistent workspace makes it reachable: the self-hosted runner keeps
+`_work/` across runs, so a configured build dir from one run can meet a cleared
+`build/` in the next.
+
+## What this is NOT
+
+- Not issue **1497** (the `zephyr_self_pkg` fixture leaves and their
+  SystemModel). Different leaves, different path, and system generation is not
+  where this one stops.
+- Not issue **1366**. That is a gitignored `<ws>/Cargo.toml` naming a deleted
+  cargo member, failing at manifest parse. This is a cmake source directory and
+  a west build.
+- Not `provision-zenohd` exiting 78, which appears above it in the same log and
+  is the lane-skip protocol saying so in its own words (issue 1477).
+
+## What would close this part
+
+Either the emitted application moves out of `build/` to somewhere no build step
+clears (a generated directory the tooling owns but does not treat as scratch),
+or the west build dir is made to depend on the emitter such that a missing
+emitted source re-emits instead of failing the reconfigure. The first is the
+structural answer; the second leaves a source tree living inside a scratch
+directory, which is the thing that failed.
+
+Cross-referenced from issue 1158, which is what triage keys the tier-2 lane on.

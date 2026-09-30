@@ -1556,3 +1556,36 @@ evidence now runs in both directions.
   different cache state, a cache eviction, and a deliberate change would all look
   like this from one transcript. Two more green nights would distinguish a fix
   from a lucky arrival; one would not.
+
+## 2026-09-30 — three more, and one of them is the runner's OWN log file
+
+Four failing jobs on main that night, three of them this:
+
+| run | job | evidence |
+| --- | --- | --- |
+| 36679366972 `host-tests` (push 06:39) | 109771243653 | `Free space left: 0 MB`, one second before the gate's verdict; the failing gate's captured output ends mid-build with no compiler diagnostic |
+| 36672424283 `host-tests` (push 05:13) | 109750091198 | `Free space left: 33 MB`; a DIFFERENT first failure (`workspace-features`, not `template-copy-out`) |
+| 36668247728 `live-peer regression` (04:18) | 109737476632 | no failing step at all; the job has five steps with a `null` conclusion and an annotation only |
+
+The third is the sharpest instance this issue has. The annotation is:
+
+```
+System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_...-utc.log'
+  at GitHub.Runner.Worker.Worker.RunAsync(String pipeIn, String pipeOut)
+Unhandled exception. System.IO.IOException: No space left on device
+  … at GitHub.Runner.Common.HostContext.Dispose()
+```
+
+The runner process died writing its own diagnostic log, and then died again in
+the handler that was reporting the first death. There is no step log to read —
+`.../actions/jobs/<id>/logs` is the two-line `BlobNotFound`, because nothing was
+ever uploaded. A job that ends this way reports `failure` with no failing step,
+which reads exactly like a cancelled job and nothing like a full disk.
+
+The wider cost is the one this issue exists for, and it is visible in the table:
+the two `host-tests` reds have different first failures, so on a disk-starved
+runner the lane names whichever gate happened to be running when the space ran
+out. Neither red is evidence about the gate it names (see the 2026-09-30 entry
+on issue **1453** for that argument in full). A lane in this state has no signal
+capacity regardless of what it prints.
