@@ -79,13 +79,34 @@ _nros_sdk_store() { printf '%s' "${NROS_SDK_STORE:-${NROS_HOME:-$HOME/.nros}/sdk
 # reader), else the legacy unversioned `<tool>/bin`, else empty. A pin that is
 # NOT in the store is recorded in `_nros_store_stranded` for one notice below,
 # and nothing is picked in its place.
+#
+# "Not in the store" is a statement about the PIN DIRECTORY, never about its
+# `bin/`. Those are different questions, and conflating them made the notice
+# contradict itself: the guard used to be `<pin>/bin` is not a directory, so a
+# tool that ships no `bin/` at all was reported as
+#
+#   corrosion: pin 0.6.1-nros1 absent (present: 0.6.1-nros1 )
+#
+# naming the pin in both halves of one line. Two of the five rows printed on a
+# fully provisioned host were this shape — `corrosion`, whose store prefix holds
+# `lib/` and `share/` because it is a CMake package, and `zephyr-sdk`, whose
+# binaries sit one level down in `<pin>/zephyr-sdk-<pin>/`. Neither belongs on
+# PATH and neither is missing, so the right answer for both is to add nothing
+# and say nothing; the notice exists for the other three rows, where the pinned
+# version really is not there.
+#
+# This is a diagnostic-only fix: what lands on PATH is unchanged, because a
+# prefix with no `bin/` was never picked from either. It matters because the
+# false rows name issue 1563 in a line printed by every CI job, and a reader who
+# believes them concludes that a provisioned Corrosion is unprovisioned — which
+# is the confusion issue 1553 already paid for once.
 _nros_store_tool_bin() {
     _nros_stb_dir="$(_nros_sdk_store)/$1"
     _nros_stb_out=""
     if _nros_stb_pin="$(nros_sdk_pinned_version "$1" "$_nros_root/nros-sdk-index.toml")"; then
         if [ -d "$_nros_stb_dir/$_nros_stb_pin/bin" ]; then
             _nros_stb_out="$_nros_stb_dir/$_nros_stb_pin/bin"
-        elif [ -d "$_nros_stb_dir" ] && [ -n "$(find "$_nros_stb_dir" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' 2>/dev/null)" ]; then
+        elif [ ! -d "$_nros_stb_dir/$_nros_stb_pin" ] && [ -d "$_nros_stb_dir" ] && [ -n "$(find "$_nros_stb_dir" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' 2>/dev/null)" ]; then
             _nros_store_stranded="${_nros_store_stranded:-}  $1: pin $_nros_stb_pin absent (present: $(find "$_nros_stb_dir" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -exec basename {} \; 2>/dev/null | tr '\n' ' '))
 "
         fi
