@@ -279,3 +279,40 @@ the resolver would be the thorough half and is not in this commit.
 **What this is NOT**: not issue 1353. Both runs also end with the disk at 100 %,
 and that is what misled the first reading (retracted in 1353's own text): tier 1
 builds the world, so 100 % is what the run DOES, not what failed.
+
+## 2026-09-30 — seen on `host-tests`, and NOT separable from the disk exhaustion beside it
+
+`host-tests` run **36679366972** (push, 06:39), job **109771243653**, step 15
+`just ci tier1`:
+
+```
+===== FAIL (template-copy-out, rc=1, 846088ms) =====
+  local-msg-package: FAIL — the copy does not build
+```
+
+The gate ran for 14 minutes and then failed on this template. What it does not
+give is a compiler error: the captured output ends
+
+```
+cargo:rerun-if-env-changed=ARFLAGSerror: recipe `build` failed on line 233 with exit code 1
+```
+
+— a build-script line and the recipe's own failure concatenated with no
+diagnostic between them, which is the truncation shape of issue **1353**. One
+line earlier in the same job:
+
+```
+##[warning]You are running out of disk space. … Free space left: 0 MB
+```
+
+timestamped within a second of the gate's verdict.
+
+So this instance is **not** evidence that the copy-out template is broken. It is
+consistent with that, and equally consistent with a build that was killed by a
+full disk, and the log cannot distinguish them. Recorded so nobody reads it as a
+reproduction. The sibling `host-tests` red the same night (run **36672424283**,
+job **109750091198**, `Free space left: 33 MB`) failed on a different gate
+entirely, `workspace-features` — two different first failures under the same
+disk pressure, which is what 1353 does to a lane.
+
+A clean measurement of this issue needs a run with disk headroom.

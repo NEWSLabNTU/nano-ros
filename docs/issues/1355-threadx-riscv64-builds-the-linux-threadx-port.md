@@ -254,3 +254,36 @@ slirp (what `start_riscv64_virt` launches) and under
 `-netdev user,net=192.0.3.0/24,host=192.0.3.1` with a router on 7447, no zenoh
 session reached the router in 60 s. Whether the cells deliver is therefore not
 established here.
+
+## 2026-09-30, the same night — the tally MOVED: 6/12, and the surviving half is one symbol
+
+Nightly run **36682994178** (schedule, 07:19), job **109783090600**, step 12
+`Build (threadx_riscv64)`:
+
+```
+  ThreadX-RV64 rust leaves: 6/12 ok, 6 failed
+```
+
+This is the first time this line has read anything but `0/12 ok, 12 failed`, and
+the split is clean: all six `-DNROS_RMW=zenoh` leaves link, all six
+`-DNROS_RMW=cyclonedds` leaves fail. So the `app_config.h` fix recorded in the
+phase-472 F5 entry above holds on the lane as well as on the hand build —
+`app_config.h` does not appear among this run's failures.
+
+The remaining six fail at link on one symbol, six occurrences of
+`undefined symbol:` in a 42,255-line log and no other:
+
+```
+rust-lld: error: undefined symbol: nros_rmw_cyclonedds_register_descriptor
+```
+
+referenced from the generated `String_register_0.c` constructor inside
+`libstd_msgs__cyclonedds_ts.a`, while no `libnros_rmw_cyclonedds*` archive
+appears anywhere on that link command. Filed separately as **issue 1590**,
+because it is a link-line defect in the Cyclone backend's delivery and not
+about this board's ThreadX port — the same reason issue 1467 was spun out of
+here.
+
+This issue's acceptance is unchanged and still unmet: the lane reaching a
+verdict on its cells. It is now blocked on 1590 for half the coordinate rather
+than on all of it.
