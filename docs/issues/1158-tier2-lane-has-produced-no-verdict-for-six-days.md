@@ -477,3 +477,49 @@ just the absence of one.
 Nothing yet. Zero cells, again. What it does establish is that the remaining
 distance to a verdict is one issue and not a mystery: fix 1457 and this lane
 reaches `just ci matrix` for the first time since 2026-09-01.
+
+## A third distinct stop in three nights (2026-09-30)
+
+Nightly **36672407797** (schedule 05:13), job **109750040694**
+(`tier 2 nightly (pairwise cover)`), step `just build tier2-nightly`. The
+`== zephyr ==` module failed again, and again with a message the previous two
+nights did not produce:
+
+```
+first error line(s) in tmp/build-test-fixtures-20260930-052445-451987/zephyr.log:
+  126:  5:CMake Error: The source directory
+        ".../examples/workspaces/rust/build/zephyr-zenoh/zephyr_entry" does not exist.
+  127:  9:ninja: error: rebuilding 'build.ninja': subcommand failed
+```
+
+Four occurrences, all the same path. The lane's three consecutive stops, same
+module, same job name:
+
+| night | message |
+| --- | --- |
+| 09-29 05:13 | `rosidl_adapter is not importable by this build's interpreter` |
+| 09-29 13:12 (same sha) | `2 <depend> name(s) resolve to nothing: rosidl_default_generators, rosidl_default_runtime` |
+| 09-30 05:13 | `The source directory .../build/zephyr-zenoh/zephyr_entry does not exist` |
+
+That is the point this issue keeps making, now with a third instance: the lane
+reports `failure` every night and the word carries no information about what
+failed.
+
+## What the third one is, and is not
+
+The path is under **`build/`**, not `src/` — `examples/workspaces/rust/src/zephyr_entry`
+is the hand-written west application issue **1288** is about, and it exists. What
+does not exist is the staged copy the build dir's `build.ninja` names, and ninja's
+own line says it was **re-running cmake on an existing manifest**
+(`rebuilding 'build.ninja'`). That is the shape `scripts/lib/ninja_stale_refs.py`
+and `just reconfigure-stale` exist for (issue **1406**: a manifest that LOADS and
+names a missing input), reached here on a runner whose workspace outlives the
+checkout that configured it (the mechanism issue **1360** measured).
+
+**Not** claimed: that 1406's scan would have caught this one, or that the
+remedy is a reconfigure. Neither was tested here, and the uploaded
+`zephyr.log` (1158 item 3's artifact) is where someone reproducing it should
+start.
+
+**Not** 1457 or the `<depend>` failure either — both messages are absent from
+this job's log, which is the same counting check the 09-29 entry used.

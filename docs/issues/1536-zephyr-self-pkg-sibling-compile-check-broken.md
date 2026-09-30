@@ -96,3 +96,43 @@ and stays invisible afterwards.
 - The lane is green, or this issue is closed with the measurement that shows the
   failure is gone.
 - One compile-check fixture can be built by id, and the command is recorded here.
+
+## Reproduced, on the live-peer lane (2026-09-30)
+
+This issue records the failure as *"reported but NOT reproduced in a main
+checkout"*. It reproduces.
+
+Live-peer regression **36668247728** (schedule 04:18), job **109737902225**
+(`rows whose board is NOT this runner`), step `just build`, at main
+`965504e38`:
+
+```
+CMake Error at .../zephyr/3.7/zephyr/cmake/modules/extensions.cmake:428 (add_library):
+  No SOURCES given to target: app
+Call Stack (most recent call first):
+  .../cmake/modules/kernel.cmake:216 (zephyr_library_named)
+  ...
+  CMakeLists.txt:2 (find_package)
+
+FATAL ERROR: command exited with status 1: /usr/bin/cmake
+  -B .../build/west-fixtures/zephyr_self_pkg_sibling -GNinja
+  -DBOARD=native_sim/native/64 -DCONF_FILE=prj.conf
+  -DZEPHYR_EXTRA_MODULES=/__w/nano-ros/nano-ros
+  -S .../packages/testing/nros-tests/fixtures/zephyr_self_pkg/sibling/caller
+```
+
+`west-fixtures: 1 of 5 fixture(s) FAILED to build`, and that one is this
+fixture — so the whole lane's `build-fixtures` recipe exits 1 on it.
+
+## One thing worth noting about the sibling fixture's twin
+
+The same `No SOURCES given to target: app` error appears earlier in the same log
+for **`zephyr_self_pkg_rust`** (`-S .../zephyr_self_pkg/self/alpha_pkg`), and
+that one is NOT counted as a failure: the line after it reads
+`ok .../build/west-fixtures/zephyr_self_pkg_rust (nros-system/system_config.h)`.
+So a configure-only check whose byproduct exists passes despite the same CMake
+error, and only the sibling — whose product is missing — fails.
+
+Whether that asymmetry is correct is not decided here. It does mean the error
+message alone does not distinguish the two, which is worth knowing before
+treating the sibling's failure as unique to it.
