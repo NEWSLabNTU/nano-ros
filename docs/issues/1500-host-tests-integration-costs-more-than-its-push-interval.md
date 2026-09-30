@@ -196,3 +196,56 @@ second of it and then some. Any future move of that number should start from
 this run rather than from the three in 1492, and should note that a ceiling
 which fires *after* the verdict mislabels the outcome rather than protecting
 anything.
+
+## It fired again, and this time it cost the verdict (2026-09-30)
+
+The section above measured the ceiling's first firing and concluded that what it
+cost was the LABEL — the tier had already failed on its own a minute earlier,
+every artifact step ran, and only the job's `conclusion` was wrong. The second
+firing is not that.
+
+Run **36663968607** (`host-tests`, **schedule**, 03:20), job **109724560522**:
+
+| | |
+| --- | --- |
+| job started | 03:20:46Z |
+| job completed | 05:51:41Z |
+| duration | **2 h 30 m 55 s** against a 2 h 30 m ceiling |
+| step 15 `just ci tier1` | **`cancelled`** |
+| job conclusion | `cancelled` |
+
+The difference from 09-29 is the step's conclusion. There it was `failure` —
+the tier reached a verdict (`workspace-features`, `Free space left: 35 MB`) and
+the ceiling merely arrived during cleanup. Here step 15 is **`cancelled`**: the
+ceiling killed the tier mid-run. There is no `===== FAIL` line, no gate named,
+and the post-steps that upload the disk transcript, the nextest JUnit and the
+tier logs never ran, so nothing about what the tier was doing survives.
+
+## What that means for this issue
+
+Two firings, two outcomes, and the second is the one that matters:
+
+| firing | step 15 | verdict | artifacts |
+| --- | --- | --- | --- |
+| 09-29 17:21 (push) | `failure` | 1353, named | all uploaded |
+| **09-30 03:20 (schedule)** | **`cancelled`** | **none** | **none** |
+
+So the lane can now consume its entire budget without producing anything —
+which is a stronger statement than this issue's original one. The original
+complaint was that the job costs more than the interval between the pushes that
+trigger it, so about half its runs are cancelled before starting. This run was
+not cancelled before starting: it ran for two and a half hours and was killed
+before it could say anything.
+
+**Not a reopening of 1492, and not an argument for a bigger number by itself.**
+1492's own correction is the relevant caution: a ceiling priced from the
+failures rather than from a healthy run destroys the verdict it was meant to
+bound, and that is precisely what happened here. What this adds is that the
+distribution has moved far enough that 150 minutes is now inside it, not above
+it — the 09-29 run needed 2 h 30 m 31 s and this one wanted more than
+2 h 30 m 55 s. Any move of that number should start from these two runs.
+
+**Also worth separating from 1353.** Nothing here says the disk was the
+problem. The tier was killed before it could report, so its cause is unknown,
+and reading this as another 1353 instance would be assuming exactly what the
+missing artifacts would have told us.
