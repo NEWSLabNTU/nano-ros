@@ -299,3 +299,51 @@ can currently attribute, and 88 minutes is the number to explain. What would
 close this clause is unchanged — the report has to come from somewhere that
 can see the runner, because job state cannot distinguish the two survivors
 either.
+
+## The third shape again, longer, with four waiters and an empty merge queue (2026-09-30)
+
+Yesterday's entry measured 66 minutes of an idle-looking runner with one job
+waiting, and ruled out merge contention because **no `queue` job had run at
+all** that day. Today the same shape recurs with the opposite control: `queue`
+jobs DID run — four of them, successfully — and then everything stopped anyway.
+
+Measured at 08:20Z:
+
+| event | time | since |
+| --- | --- | ---: |
+| last self-hosted job completes (`queue` 36675568033, `L3 (cross build + link)`) | **06:03:22Z** | — |
+| `queue` 36676015921 created, job `L3` **queued** | 06:00:04Z | **140 min waiting** |
+| `run-matrix` 36678567181 created, `tier 2 (1-wise matrix)` **queued** | 06:30:22Z | **109 min** |
+| `queue` 36680611368 created, still `pending` (no jobs) | 06:53:12Z | 87 min |
+| `nightly` 36682994178 created, 5 jobs not completed | 07:19:00Z | 61 min |
+
+So **~2 h 17 m with nothing started** on a runner that ran four `L3` jobs
+earlier the same morning (01:42, 03:06, 04:31, 05:54, all `success`).
+
+## Why merge traffic cannot be the explanation this time
+
+The 2026-09-21 reading — *"the runner is busy with higher-frequency work"* —
+needs merge traffic to point at. There is none: **the merge queue is empty**
+(zero entries), and the only two `queue` runs outstanding are themselves
+waiting, one of them with its `L3` job queued for 140 minutes. The interlock
+that was the explanation last time is now a victim.
+
+## What this does and does not establish
+
+It does **not** establish that the runner is down — the same limit as yesterday:
+`GET repos/.../actions/runners` is empty because the runner is org-registered,
+and the org endpoint is 403 without the runners permission, so `status`/`busy`
+cannot be read with repository credentials.
+
+What it does establish is that the third shape is **not a one-off**. Two
+instances now, a day apart, with complementary controls (zero queue jobs then,
+four successful queue jobs and an empty queue now), and the second is twice as
+long and starves four waiters including the merge-queue interlock. An
+explanation that covers only one of them is not the explanation.
+
+The remedy this issue already asks for is unchanged and is now the only way
+forward: a report from somewhere that can see the runner —
+`scripts/ci/runner-doctor.sh` on the machine, or a token with the runners
+permission — because two instances of job state agreeing on "waiting" still
+cannot say whether the runner is offline, wedged after a job, or serving
+another repository.
