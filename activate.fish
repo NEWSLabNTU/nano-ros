@@ -80,8 +80,10 @@ function _nros_store_tool_bin -a root tool
             echo $dir/$pin/bin
             return
         end
+        # Absent means the PIN DIRECTORY is not there — not that it holds no
+        # `bin/`. See the long note on `_nros_store_tool_bin` in activate.sh.
         set -l present (find $dir -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -exec basename {} \; 2>/dev/null)
-        if test -n "$present"
+        if test -n "$present"; and not test -d $dir/$pin
             set -g _nros_store_stranded $_nros_store_stranded "  $tool: pin $pin absent (present: $present)"
         end
     end
