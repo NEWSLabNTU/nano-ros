@@ -103,3 +103,31 @@ pub extern "C" fn nros_zephyr_heap_used() -> usize {
 pub extern "C" fn nros_zephyr_heap_peak() -> usize {
     HEAP.peak()
 }
+
+/// Issue 1370 — the SHAPE of the free memory, for the exhaustion report:
+/// writes the largest contiguous free block and the total free payload of the
+/// main arena, both by walking rlsf's block list, and returns 1 when a refused
+/// request of `size` bytes is EXTERNAL FRAGMENTATION (the bytes are free, no
+/// single hole holds them) and 0 when the arena is simply too small.
+///
+/// O(blocks), so it is called on the failure path only, under the funnel's
+/// spinlock like every other export here.
+///
+/// # Safety
+/// `largest` and `total` must be valid for one `usize` write each.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_zephyr_heap_free_shape(
+    size: usize,
+    largest: *mut usize,
+    total: *mut usize,
+) -> i32 {
+    let shape = HEAP.free_shape();
+    unsafe {
+        *largest = shape.largest_free;
+        *total = shape.free_total;
+    }
+    match zpico_alloc::Exhaustion::classify(size, shape) {
+        zpico_alloc::Exhaustion::Fragmented => 1,
+        zpico_alloc::Exhaustion::TooSmall => 0,
+    }
+}

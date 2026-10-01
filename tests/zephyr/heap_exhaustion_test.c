@@ -161,6 +161,22 @@ size_t nros_zephyr_heap_peak(void) {
     return heap_peak_bytes;
 }
 
+/* issue 1370 -- the walk of the free blocks. The SHAPE is a fixture a case
+ * sets, and the classification rule is restated here exactly as zpico-alloc's
+ * `Exhaustion::classify` states it, because the Rust half is not linked; the
+ * rule itself is unit-tested there. What this file tests is that platform.c
+ * ASKS for the shape and PRINTS the verdict. */
+static size_t shape_largest_free = 32;
+static size_t shape_free_total = 48;
+static int shape_calls;
+
+int nros_zephyr_heap_free_shape(size_t size, size_t* largest, size_t* total) {
+    shape_calls++;
+    *largest = shape_largest_free;
+    *total = shape_free_total;
+    return (shape_free_total >= size && shape_largest_free < size) ? 1 : 0;
+}
+
 /* ---- entropy ------------------------------------------------------------
  *
  * `platform.c` exports six random entry points that call these, and a host
@@ -215,6 +231,9 @@ static void reset(void) {
     recorded_failed_size = 0;
     recorded_heap_peak = 0;
     recorded_heap_capacity = 0;
+    shape_largest_free = 32;
+    shape_free_total = 48;
+    shape_calls = 0;
 }
 
 /* The request that cannot fit. 427968 is not a round number: it is the size
@@ -245,6 +264,31 @@ static void case_fatal(void) {
     check(strstr(log_buf, "boot report") != NULL,
           "the panic line points at the boot report, which is the only channel "
           "a console-less board has");
+    check(shape_calls == 1 && strstr(log_buf, "HEAP EXHAUSTED (TOO SMALL)") != NULL,
+          "a request bigger than everything free is reported as TOO SMALL "
+          "(issue 1370)");
+    check(strstr(log_buf, "largest free block 32 bytes") != NULL,
+          "and the line carries the largest free block, the number an external "
+          "fragmentation statement is made against");
+}
+
+/* issue 1370 -- the case the line could not name before: the free bytes
+ * would hold the request and no hole does. */
+static void case_fragmented(void) {
+    reset();
+    shape_largest_free = 4096;
+    shape_free_total = TOO_BIG + 8192;
+    void* p = (void*) 1;
+    if (setjmp(panic_landing) == 0) {
+        p = nros_platform_alloc(TOO_BIG);
+    }
+    (void) p;
+    check(shape_calls == 1, "the free shape was walked once, on the failure path");
+    check(strstr(log_buf, "HEAP EXHAUSTED (FRAGMENTED)") != NULL,
+          "free bytes >= request with no hole that large is reported as FRAGMENTED");
+    check(strstr(log_buf, "only postpones") != NULL,
+          "and the line says a larger heap is not the remedy");
+    check(strstr(log_buf, "(TOO SMALL)") == NULL, "and does not ALSO say TOO SMALL");
 }
 
 static void case_not_fatal(void) {
@@ -274,7 +318,7 @@ static void case_ok(void) {
 
 int main(int argc, char** argv) {
     if (argc != 2) {
-        fprintf(stderr, "usage: %s <fatal|not-fatal|ok>\n", argv[0]);
+        fprintf(stderr, "usage: %s <fatal|not-fatal|ok|fragmented>\n", argv[0]);
         return 2;
     }
     printf("case %s\n", argv[1]);
@@ -284,6 +328,8 @@ int main(int argc, char** argv) {
         case_not_fatal();
     } else if (strcmp(argv[1], "ok") == 0) {
         case_ok();
+    } else if (strcmp(argv[1], "fragmented") == 0) {
+        case_fragmented();
     } else {
         fprintf(stderr, "unknown case: %s\n", argv[1]);
         return 2;
