@@ -34,9 +34,24 @@ LIFECYCLE = "packages/core/nros-node/src/lifecycle_services.rs"
 ACTION = "packages/core/nros-node/src/executor/action.rs"
 
 # (label, creation fn, constant, file that must define it)
+#
+# Issue 1587 — the third row is a PUBLISHER, not a service server, and it is
+# here for the reason the first two are: the REP-2002 family claims a
+# `~/transition_event` publisher as well as its five queryables, the count is
+# mirrored into the entity inventory, and a count nothing holds to its creation
+# sites drifts. The gate's name is about the family of infrastructure entities
+# the runtime creates on an image's behalf, not about queryables alone; the
+# publisher is VOLATILE and so costs no queryable at all, which is exactly the
+# fact a reader needs stated where the numbers live.
 GROUPS = [
     ("ROS parameter services", "create_param_srv", "PARAM_SERVICE_QUERYABLES", PARAMS),
     ("REP-2002 lifecycle services", "create_lc_srv", "LIFECYCLE_SERVICE_QUERYABLES", LIFECYCLE),
+    (
+        "REP-2002 lifecycle publishers",
+        "create_lc_pub",
+        "LIFECYCLE_SERVICE_PUBLISHERS",
+        LIFECYCLE,
+    ),
 ]
 
 # An RMW backend must NOT restate these: it does not depend on `nros-node` and
@@ -47,7 +62,16 @@ RESTATE = re.compile(r"(param|parameter).{0,40}services\s+(use|consume)?\s*\(?\d
 
 
 def sites(text, creator):
-    return len(re.findall(rf"^\s+let [a-z0-9_]+ = {creator}::<", text, re.M))
+    """Creation sites for `creator`, generic or not.
+
+    `create_param_srv` / `create_lc_srv` are turbofished on the service type;
+    `create_lc_pub` is turbofished on the message type (issue 1587). The
+    turbofish is therefore optional in the pattern but the `(` or `::<` is
+    not — a bare name match would also count the `fn` definition and every
+    doc-comment mention, which is a gate that agrees with its constant for
+    the wrong reason.
+    """
+    return len(re.findall(rf"^\s+let [a-z0-9_]+ = {creator}(?:::<|\()", text, re.M))
 
 
 def action_channels(text):
@@ -103,7 +127,7 @@ def read(root, rel):
 
 MIRROR = re.compile(
     r"^const (PARAM_SERVICE_QUERYABLES|LIFECYCLE_SERVICE_QUERYABLES|ACTION_SERVER_QUERYABLES"
-    r"|ACTION_CLIENT_SERVICE_CLIENTS)"
+    r"|ACTION_CLIENT_SERVICE_CLIENTS|LIFECYCLE_SERVICE_PUBLISHERS)"
     r": usize = (\d+);",
     re.M,
 )
@@ -302,16 +326,26 @@ def check(root, rmw_dir="packages/rmw"):
 
 
 def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
-           c_cli_action=3, c_inv_param=6, cli_chans=3, c_inv_cli=3):
+           c_cli_action=3, c_inv_param=6, cli_chans=3, c_inv_cli=3,
+           n_lc_pub=1, c_lc_pub=1, c_inv_lc_pub=1):
     for rel in (SPIN, PARAMS, LIFECYCLE, ACTION, "packages/rmw/zenoh/x/src/service.rs"):
         os.makedirs(os.path.join(root, os.path.dirname(rel)), exist_ok=True)
     body = "".join(f"        let h{i} = create_param_srv::<T>(\n" for i in range(n_param))
     body += "".join(f"        let l{i} = create_lc_srv::<T>(\n" for i in range(n_lc))
+    # Issue 1587 -- the publisher creator takes its turbofish on the MESSAGE
+    # type, and `create_lc_pub` is also the name of the `fn` that defines it.
+    # Both shapes go in the fixture so `sites()` is probed against the file
+    # the real tree has, not against a simplified one.
+    body += "        fn create_lc_pub<Msg: RosMessage>(\n"
+    body += "".join(
+        f"        let p{i} = create_lc_pub::<TransitionEvent>(\n" for i in range(n_lc_pub)
+    )
     open(os.path.join(root, SPIN), "w").write(body)
     open(os.path.join(root, PARAMS), "w").write(
         f"pub const PARAM_SERVICE_QUERYABLES: usize = {c_param};\n")
     open(os.path.join(root, LIFECYCLE), "w").write(
-        f"pub const LIFECYCLE_SERVICE_QUERYABLES: usize = {c_lc};\n")
+        f"pub const LIFECYCLE_SERVICE_QUERYABLES: usize = {c_lc};\n"
+        f"pub const LIFECYCLE_SERVICE_PUBLISHERS: usize = {c_lc_pub};\n")
     # Written TWICE, as the real file does (typed + raw arms), so the probe
     # for "distinct channels, not call sites" is a real one.
     act = f"pub const ACTION_SERVER_QUERYABLES: usize = {c_action};\n"
@@ -343,6 +377,7 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
         "const ACTION_SERVER_QUERYABLES: usize = 3;\n"
         f"const PARAM_SERVICE_QUERYABLES: usize = {c_inv_param};\n"
         "const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;\n"
+        f"const LIFECYCLE_SERVICE_PUBLISHERS: usize = {c_inv_lc_pub};\n"
         f"const ACTION_CLIENT_SERVICE_CLIENTS: usize = {c_inv_cli};\n")
 
 
@@ -371,6 +406,17 @@ def self_test():
          "a fourth action-client service channel was added (phase-412 liveliness)"),
         ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 2), 1,
          "the entity inventory's action-client mirror drifted"),
+        # Issue 1587 — the lifecycle PUBLISHER row. Three probes, matching the
+        # three the queryable rows have: a second publisher appears, the
+        # constant drifts off the sites, and the creation pattern goes blind.
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 2), 1,
+         "a second lifecycle publisher was created and the constant stayed 1"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 2), 1,
+         "LIFECYCLE_SERVICE_PUBLISHERS drifted to 2 with one creation site"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 0), 1,
+         "the lifecycle publisher's creation pattern stopped matching"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 2), 1,
+         "the entity inventory's lifecycle-publisher mirror drifted"),
     ]
     failures = 0
     tmp = tempfile.mkdtemp()
