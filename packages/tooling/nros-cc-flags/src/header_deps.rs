@@ -56,8 +56,32 @@ use std::{
 };
 
 /// Make every compile of `build` write a Makefile depfile beside its object.
+///
+/// Call it AFTER anything that changes which compiler `build` resolves to
+/// (`.cpp(true)`, `.compiler(..)`): it pins the compiler that is current now.
+///
+/// # Why it pins the compiler (issue 1580)
+///
+/// cc-rs silently prefixes `RUSTC_WRAPPER` to the C compiler when it names a
+/// build accelerator (`sccache`, `cachepot`, `buildcache`), and `justfile`
+/// exports `RUSTC_WRAPPER=sccache` whenever sccache is installed. sccache
+/// caches a `-MMD` compile, but on a cache HIT it restores the object and NOT
+/// the implicitly-named `<obj>.d` (measured, sccache 0.15.0: a miss writes
+/// `t.o` + `t.d`, the identical command in a fresh dir writes `t.o` alone; it
+/// restores a depfile only when `-MF <path>` names it, which a `cc::Build`
+/// cannot do per object). So the second build of any tracked compile — a
+/// fresh target dir, a CI runner with a warm cache — found no depfile and
+/// [`emit_header_deps`] panicked; with the panic removed it would have
+/// declared NOTHING, which is the defect this module exists to close.
+///
+/// Naming the compiler explicitly is cc-rs's documented way to bypass that
+/// fallback (`get_base_compiler` returns the bare tool when one is set). The
+/// cost is that these compiles are no longer cached by sccache; the board and
+/// NuttX archives this helper serves are seconds of C, and an object that
+/// is fresh but whose edges are unknown is the museum binary 1570 measured.
 pub fn track_header_deps(build: &mut cc::Build) -> &mut cc::Build {
-    build.flag("-MMD")
+    let compiler = build.get_compiler().path().to_path_buf();
+    build.compiler(compiler).flag("-MMD")
 }
 
 /// Every `<x>.d` under `dir` that sits beside a `<x>.o` — i.e. a compiler
