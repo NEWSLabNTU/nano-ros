@@ -1645,9 +1645,7 @@ mod tests {
         /// Decode what the mock publisher was last handed back into the
         /// GENERATED type, so these assertions are about the bytes a
         /// subscriber receives and not about our own writer's intent.
-        fn last_event(
-            executor: &Executor,
-        ) -> Option<nros_lifecycle_msgs::msg::TransitionEvent> {
+        fn last_event(executor: &Executor) -> Option<nros_lifecycle_msgs::msg::TransitionEvent> {
             use nros_core::Deserialize;
             let pubr = executor.lifecycle_transition_event_publisher()?;
             let (bytes, len) = pubr.last_published()?;
@@ -1724,7 +1722,8 @@ mod tests {
             let sm = executor.lifecycle_state_machine_mut().unwrap();
             // SAFETY: no callbacks registered.
             unsafe {
-                sm.trigger_transition(InternalTransition::Configure).unwrap();
+                sm.trigger_transition(InternalTransition::Configure)
+                    .unwrap();
                 sm.trigger_transition(InternalTransition::Activate).unwrap();
             }
             executor.spin_once(Duration::from_millis(0));
