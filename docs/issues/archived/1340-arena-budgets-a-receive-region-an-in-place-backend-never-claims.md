@@ -1,12 +1,13 @@
 ---
 id: 1340
 title: "The arena budgets a full receive region for every subscription, and a backend that dispatches IN PLACE claims none — 9,768 bytes per subscription on zenoh and XRCE"
-status: open
+status: resolved
+resolved_in: 2026-10-01
 type: tech-debt
 area: executor, build
 severity: medium
 found: 2026-09-12
-related: [issue-1319, issue-1255, issue-1190, phase-454, rfc-0100]
+related: [issue-1319, issue-1255, issue-1190, issue-1577, issue-1522, phase-454, phase-457, rfc-0100]
 ---
 
 ## What the model says and what the runtime does
@@ -93,7 +94,7 @@ subscription, not only on a typed one.
 
 ## Progress, 2026-09-29 — the runtime half landed; acceptance is NOT met
 
-**Landed (`c6a8b7f7bb`): the first option above.** The generic registration now
+**Landed (PR #1451): the first option above.** The generic registration now
 takes the in-place path when the backend offers it. The worry that kept it
 `false` — the buffered entry is shared with `add_arena_subscription_callback`
 — did not hold: that caller supplies its own subscriber and never reaches
@@ -145,3 +146,122 @@ the arena on a cargo leaf for the first time — 14,336 bytes on five
 subscriptions. What is still missing for closure is the acceptance as written:
 a `just mem-report --baseline` on a TRACKED image with enough subscriptions to
 clear the floor. No in-tree single-package leaf has more than one.
+
+## Resolution (2026-10-01)
+
+**Resolved, with the acceptance AMENDED: the `mem-report --baseline` is on an
+untracked image, and an automated check stands in for "tracked".** Both halves
+of the reasoning are below, because the amendment is the part a reader should
+be able to argue with.
+
+### Measured — `just mem-report --baseline`, before and after
+
+The five-subscription copy of `examples/native/rust/listener` again (untracked,
+deleted after): the tracked leaf's `Cargo.toml`, `system.toml` and `main.rs`;
+`lib.rs` registering `create_subscription_for_callback_name::<String>` on
+`/chatter` … `/chatter5`; a `system.contract.yaml` stating all five
+`KEEP_LAST(1)`, as the tracked one states its one. `nros sync` wrote five
+`registration_path = "in_place"` rows and `subscription_entities = 5`;
+`nros build native` (zenoh) built it.
+
+- **after** — the tree as it is: `arena_model::REQUIRED` 7,168,
+  `ARENA_SIZE` 8,192 (the floor).
+- **before** — the SAME image, the in-place rows priced as buffered: a
+  temporary local edit making `in_place_dispatch_trusted()` return `false`
+  (reverted, and the rebuilt "after" ELF is byte-identical to the first one).
+  That is the arena this image had before this issue's saving, and what the
+  issue-1577 guard gives a Cyclone build of it: `REQUIRED` = `ARENA_SIZE` =
+  22,528, with the guard's warning once per row.
+
+```
+$ just mem-report --baseline before.json after.elf
+RAM (.bss + .data), by section:  182,586 bytes  (-14,336)
+RAM attributed to symbols:       157,602 bytes  (-14,336)
+        18,064    9.9%  nros_node::executor::backing::EXECUTOR_BACKING (.llvm.4814622804028721805)  (-14,336)
+        18,071    9.9%  nros_node  (-14,336)
+```
+
+**14,336 bytes of `.bss`, all of it `EXECUTOR_BACKING`** (32,400 → 18,064),
+i.e. exactly 22,528 − 8,192. Nothing else in RAM moved: `.bss` is the only
+RAM section that changed, `nros_node` the only crate, and the other symbol
+differences are anonymous constants of equal size renamed by their
+`.llvm.<hash>`. Per row that is
+3 × 1,024 (a `KEEP_LAST(1)` triple buffer at the default `RX_BUF`); the floor
+takes back the last 1,024 — the model's in-place `REQUIRED` is 7,168, not
+8,192 — so the saving a sixth subscription adds is the whole 3,072.
+
+**It runs on the smaller arena.** `rmw_zenohd` on `tcp/127.0.0.1:17947`, the
+"after" binary with `NROS_LOCATOR` pointed at it: five `Subscriber created`
+lines, no `BufferTooSmall`, and `ros2 topic pub -t 3` (humble,
+`rmw_zenoh_cpp`) on each of the five topics delivered **15 of 15** samples,
+three per topic.
+
+**The tool could not show it at first.** The first `--baseline` run printed
+no delta for `EXECUTOR_BACKING` at all: `nm -C` prints LLVM's per-build
+`(.llvm.<hash>)` suffix as part of the name, the baseline joined on the raw
+name, and the hash differs between two builds — so the one symbol a rebuild
+measurement is about is the one it could never match. That is issue 1180, and
+its fix landed on `main` while this PR was in review (the join strips the
+per-build decorations and reports per-owner deltas); this PR's own patch to
+`nros-mem-report.py` was dropped on rebase in favour of it.
+
+### Why not a tracked image
+
+Searched with `git grep` over `examples/` and `packages/testing/`: no tracked
+image has two or more subscriptions that are in-place-capable AND a
+`system.contract.yaml` — and without a contract there is no descriptor, so no
+row prices anything (CLAUDE.md, "no contract ⇒ no file"). The four tracked
+contracts: `examples/native/rust/listener` (one subscription — clamps to the
+floor either way, 3,072 vs 6,144 against 8,192), the `cpp` and
+`derived-tiers-cpp` workspaces (C++), and `realtime-rust/derived_bringup` (no
+subscription). The multi-subscription images that exist have no contract
+(`nros-bench/executor-fairness`, `wake-latency-cortex-m3`, test bins) or take a
+path that cannot dispatch in place (`workspaces/safety`'s `_with_safety`
+listener).
+
+Making one would mean a new image whose only purpose is to host this number —
+a themed example dir RFC-0066 rules out (a feature is a node package, a
+configuration a fixture axis, and neither changes how many subscriptions an
+image has), or giving the ROS-demo `listener` four subscriptions it does not
+have. Neither is worth the maintenance for a number that is now recorded and
+reproducible from the recipe above.
+
+### What guards it instead
+
+`packages/core/nros-node/tests/arena_model_in_place.rs`, on the `test-unit`
+lane. The descriptor pricing — `SubEndpoint`, `descriptor_subscriptions`,
+`row_slot_bytes`, `subs_arena_from_descriptor`, `buffered_region` — moved from
+`build.rs` into `build/sub_arena.rs`, which `build.rs` and the test both
+include by `#[path]`: one copy of the arithmetic, not a mirror. The one
+build-environment input, whether the backends claim in-place dispatch, became
+a parameter. The test parses a descriptor in the shape `nros sync` wrote for
+the measured image and asserts, with the sizes this build of `nros-node`
+emitted:
+
+1. five stated `in_place` rows on a trusting build price at exactly five entry
+   structs (5,120 — the measured `REQUIRED` 7,168 less `BASE_OVERHEAD`);
+2. the same rows on a non-trusting build (the issue-1577 guard) price higher
+   by exactly the five receive regions (20,480 — the measured 22,528 less
+   `BASE_OVERHEAD`);
+3. a row whose path nobody observed (issue 1522) keeps its region beside
+   in-place rows that lose theirs;
+4. an in-place row with no depth refuses the whole sum.
+
+Mutation-checked: pricing an in-place row as buffered turns three of the four
+red.
+
+What it does NOT cover, stated rather than implied: the composition outside
+these functions — the probe stating `in_place` (phase-457 W3), the counts
+reaching the model (issue 1577), `ARENA_FLOOR` — is still evidenced only by the
+build measured above. The runtime half stays
+`executor::tests::a_generic_subscription_on_an_in_place_backend_claims_no_receive_region`.
+
+### Landed in
+
+- PR #1451 — a generic subscription on an in-place backend claims no receive
+  region (the runtime half).
+- PR #1474 — issue 1577: the arena's per-kind model runs off Zephyr, with
+  backends declaring their dispatch.
+- The PR that archives this issue — the descriptor pricing moved to
+  `build/sub_arena.rs` with its test.
+- Issue 1180 (archived) — `mem-report --baseline` joining symbols across builds.

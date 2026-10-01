@@ -241,7 +241,7 @@ answer an unconditional `true`, and the registration returns through
 * `RegistrationPath::RustTypedInPlace` is a fifth row, and the producer needs a
   second backend fact (`BackendDispatch`) to pick it;
 * its PRICE is deliberately left where it was. Lowering it is worth ~9.7 KiB a
-  subscription and is [issue 1340](../issues/1340-arena-budgets-a-receive-region-an-in-place-backend-never-claims.md),
+  subscription and is [issue 1340](../issues/archived/1340-arena-budgets-a-receive-region-an-in-place-backend-never-claims.md),
   because the Rust GENERIC registration on the same backend does not reach the
   capability test and an endpoint row cannot say which spelling an image writes.
 
