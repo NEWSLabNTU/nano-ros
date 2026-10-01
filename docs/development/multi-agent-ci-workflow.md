@@ -529,6 +529,25 @@ is missing is a registry and the does-not-block half.
    leaves an hour of phantom occupancy.
 
 2. **Isolate**: one git worktree per agent, always.
+
+   **A worktree that must BUILD ZEPHYR has to copy the SDK as well as the
+   workspace.** `zephyr-workspace/` is gitignored, so it exists only in the
+   checkout that provisioned it. Do not symlink it: Zephyr resolves the west
+   topdir from `ZEPHYR_BASE`'s REAL path, so a symlinked topdir silently builds
+   against the other workspace's manifest. `cp -al` gives real directories at no
+   disk cost (git never writes in place) — but copying the workspace **alone is
+   not enough**: `zephyr-workspace/env.sh` hardcodes the provisioning checkout's
+   `scripts/zephyr/sdk/...`, so every `CMakeCache.txt` the copy produces names a
+   foreign tree and `check-zephyr-workspace-foreign-checkout` goes red. Measured:
+   35 cached values across 7 of 7 build dirs. `cp -al` the SDK too, re-point
+   `env.sh`, then `--retire-foreign-build-dirs` and rebuild. The SDK path is not
+   a Kconfig input, so a build's `.config` is unaffected either way — which is
+   exactly why this is easy to get wrong and hard to notice.
+
+   Do **not** reach for `NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS=1` instead. That
+   silences the gate without making the build measure this tree, which is the
+   failure mode issue 1280 is about: the gates RAN and reported on the wrong
+   checkout.
 3. **Verify locally: T0 + T1 only.** No agent runs `just ci`.
 4. **Push a branch, open a PR, enqueue.** Never push to `main`.
 5. The queue owns L3; `main` owns L4.
