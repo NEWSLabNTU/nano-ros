@@ -233,6 +233,31 @@ jobs:
     defaults:
       run:
         shell: bash
+    # Issue 1500 — the dev/test profile keeps LINE TABLES, not full debuginfo.
+    #
+    # With the fixtures finally building (issue 1468), this job fills its 146 G
+    # disk inside `just ci tier1`: 130 G used before the tier, ~33 G handed back
+    # by the reclaim, and the tier still ran out. The tier's two biggest terms
+    # are DEV-PROFILE builds carrying cargo's default `debug = true` — the root
+    # `target/debug` (12 G) and the CLI's test build in `packages/cli/target`
+    # (15 G). Measured on that CLI test graph (`cargo test --workspace
+    # --no-run`): 13 G with full debuginfo, 4.8 G with `line-tables-only` — 63 %
+    # less, nearly all of it in `debug/deps`. Projected across both dirs, ~17 G
+    # off the tier.
+    #
+    # `line-tables-only`, not `0`: a failing test's backtrace keeps file:line.
+    # No step here reads DWARF (searched: the two in-tree mentions are a prose
+    # citation and an `addr2line` hint for humans), and the output DIRECTORY is
+    # still `debug/`, so every `target/debug/…` path in the lane is unchanged.
+    #
+    # JOB level, never per step — the rule the two `RUSTFLAGS: "-C debuginfo=0"`
+    # removals below were written for. A profile setting is a fingerprint input,
+    # so setting it on one step and not the next would make the later step
+    # rebuild what the earlier one built. Here every step sees one value. It
+    # reaches the dev and test profiles only; the fixture steps build
+    # `nros-relwithdebinfo`, which keeps its own `debug = 1`.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
       - name: Checkout nano-ros
         uses: actions/checkout@v4

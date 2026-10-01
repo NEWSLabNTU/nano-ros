@@ -298,3 +298,45 @@ is already not being delivered for 63 % of commits and has delivered a green
 verdict for none in at least 200 runs. And **option 1 (make the job cheaper) is
 now the only one that also moves the ceiling problem**, since a job that no
 longer takes 2 h 30 m cannot be killed by a 150-minute ceiling mid-tier.
+
+## 2026-10-01 — the disk half fixed; the cadence half is a decision
+
+**Disk.** Run **36810256910** (2026-10-01) shows the job 90 % full BEFORE the
+tier — 130 G of 146 G — of which the checkout is ~58 G (`examples` 43 G,
+`build` 14 G); the reclaim then returns ~33 G (`/__t` 5.2 G, android 11 G,
+dotnet 5.8 G, ghcup 3.7 G, swift 3.5 G, powershell 1.4 G, metadata-probe
+2.2 G), and the tier still ran out. Its two largest terms are dev-profile
+builds with cargo's default full debuginfo: root `target/debug` (12 G) and
+the CLI's test build in `packages/cli/target` (15 G).
+
+Measured on the CLI test graph (`cargo test --workspace --no-run`, two
+scratch target dirs, nothing else changed): **13 G with full debuginfo,
+4.8 G with `CARGO_PROFILE_DEV_DEBUG=line-tables-only` — 63 % less**, nearly
+all of it `debug/deps`. `cargo test` inherited the dev setting, so one
+variable covers both profiles. Projected across both dirs, ~17 G off the
+tier. Set at JOB level on `integration` — never per step, which is the rule
+the two removed `RUSTFLAGS: "-C debuginfo=0"` comments state, since a profile
+setting is a fingerprint input. The fixture steps build `nros-relwithdebinfo`
+and are untouched. `line-tables-only` rather than `0` keeps file:line in a
+failing test's backtrace; nothing in the lane reads DWARF.
+
+**One lever ruled out by measurement.** The 60-minute workspace build takes
+no lane argument, and `workspace-fixtures-build.sh` honours
+`NROS_FIXTURE_COORDS` — so narrowing it looked like the "make it cheaper"
+shape this issue lists first. It is not: `lane-coords tier1` is all twelve
+Linux language×RMW coordinates, and **all 73 Linux workspace rows fall inside
+it**. The build is genuinely tier 1's. (`fixture-lane.sh`'s header still says
+tier 1 maps to the broad `native` build; its own `nros_lane_build_lane` maps
+`tier1` to itself, as CLAUDE.md records.)
+
+**What remains is the cadence half, and it is a policy choice**, which is why
+this issue declined to pick one. Read it with the two ceiling sections above:
+the job is no longer ~2 h but **at its 150-minute ceiling** — 2 h 30 m 31 s on
+09-29, and on 09-30 the ceiling killed the tier with nothing uploaded. So two
+separate things now cost this lane its verdicts: runs superseded before they
+get a runner (the original subject), and runs that do get one and spend all
+of it. This change addresses neither directly. It may help the second as a
+side effect — less debuginfo is less to write and link — but that was not
+measured, and the disk margin it buys is the only claim made here. A trigger
+change or a cheaper job is still what moves the cadence, and the cheaper job
+is now known not to be a lane-narrowing.
