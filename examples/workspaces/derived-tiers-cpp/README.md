@@ -33,8 +33,10 @@ placement, which is the island's case and the one W6 keeps legal.
   The keyword reaches `build/<coord>/cmake/nros-metadata.json` as
   `"callback_groups": ["main"]` (verified on the native configure).
 * `src/demo_bringup/launch/system.contract.yaml` - each node's
-  `paths.on_timer.trigger.timer.rate_hz` and its `pub.*.min_rate_hz`. The two
-  numbers are equal on purpose; see the comment there (issue 1372 / W7).
+  `paths.on_timer.trigger.timer.rate_hz` (what the schedule ranks by) and its
+  `pub.*.min_rate_hz` (a publication floor, never a schedule input). The two
+  numbers differ on purpose, so that ranking by the floor would invert the
+  schedule; see the comment there (issue 1372 / phase-459 W7).
 * `src/demo_bringup/system.toml` - the four `[[component]]` rows and the
   images. No tiers, no bindings.
 

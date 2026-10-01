@@ -6,9 +6,10 @@
 # of the IMAGE's own plan. The numbers match the code's timers (ctrl_pkg 10 ms,
 # telem_pkg 100 ms).
 #
-# `trigger.timer.rate_hz` and `min_rate_hz` are equal on purpose, for the reason
-# derived-tiers-cpp's contract gives (issue 1372: the mapper rebuilds a node's
-# rate from its first output's `min_rate_hz`).
+# The derivation ranks by `trigger.timer.rate_hz` alone. `min_rate_hz` is a
+# publication floor for the runtime monitor, never a schedule input (issue
+# 1372); here it happens to equal the timer. derived-tiers-cpp's contract makes
+# the two differ, and its bake test is what proves the trigger is the one read.
 
 version: 1
 
