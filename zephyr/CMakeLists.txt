@@ -90,6 +90,24 @@ set(NROS_REPO_DIR ${CMAKE_CURRENT_LIST_DIR}/.. CACHE PATH
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_checkout_guard.cmake)
 nros_assert_single_checkout("${NROS_REPO_DIR}" "${APPLICATION_SOURCE_DIR}")
 
+# issue 1324 — ONE heap. `nros-platform[platform-zephyr]` installs the image's
+# `#[global_allocator]` over `nros_platform_alloc` (the rlsf arena sized by
+# CONFIG_NROS_ZEPHYR_HEAP_SIZE), which is the heap the boot record measures and
+# the native_sim heap gate scores. zephyr-lang-rust's CONFIG_RUST_ALLOC installs a
+# second one over libc `malloc` -- picolibc's arena, or the HOST heap on an
+# EXTERNAL_LIBC (XRCE) native_sim image -- and two `#[global_allocator]`s do not
+# link. Refused here, at configure, rather than as a duplicate-lang-item error
+# from rustc with no Kconfig name in it.
+if(CONFIG_RUST_ALLOC)
+    message(FATAL_ERROR
+        "nros: CONFIG_RUST_ALLOC=y installs zephyr-lang-rust's libc-malloc allocator, "
+        "a second heap beside nano-ros's.\n"
+        "A Zephyr image's Rust `alloc` already goes through nros_platform_alloc, sized by "
+        "CONFIG_NROS_ZEPHYR_HEAP_SIZE (issue 1324). Remove CONFIG_RUST_ALLOC=y from the "
+        "application's .conf; the `log` facade is bridged by the nros entry macros, so "
+        "nothing else needs it.")
+endif()
+
 # `zephyr_library()` would create a default library named after this
 # directory's path (e.g. `..__..__nano-ros__zephyr`). All sources below
 # are added via `zephyr_library_sources(...)` which targets the most

@@ -2002,10 +2002,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // they are logged and the `Result` is dropped here.
             #[unsafe(no_mangle)]
             pub extern "C" fn rust_main() {
-                // SAFETY: `set_logger` is callable once post-kernel-init.
-                unsafe { let _ = ::zephyr::set_logger(); }
                 // issue 1123 — publish an `nros_log` sink list, the sibling of
-                // the `set_logger` above. That one serves the `log` FACADE (what
+                // the `log` bridge below. That one serves the `log` FACADE (what
                 // an example body and the `::log::error!`s below write); this one
                 // serves `nros_log` (what the FRAMEWORK writes — nros-node's
                 // executor, nros-rmw-zenoh's session/pool diagnostics,
@@ -2028,6 +2026,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 // unconditionally, so there is no `None`-writer window like the
                 // one issue 1048 found on esp32.
                 ::nros_platform::log::init_default();
+                // issue 1324 — the `log` facade into the same sinks. This was
+                // `::zephyr::set_logger()`, whose full-`CONFIG_LOG` arm exists
+                // only under `CONFIG_RUST_ALLOC` — the second heap this image
+                // no longer links.
+                ::nros_platform::log::install_log_crate_bridge();
                 // issue 0460 — this was `let _ = __nros_zephyr_entry_run();`,
                 // which is the silent early-return this project bans at
                 // runtime. The comment above already SAID errors are "logged
