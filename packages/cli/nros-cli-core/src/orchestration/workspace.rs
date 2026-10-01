@@ -947,17 +947,30 @@ fn parse_add_node_call(
 ///
 /// Returning `None` hands the decision back to the caller, which has the class
 /// shape to fall back on and can say out loud that it is guessing.
-fn language_from_sources(sources: &[String]) -> Option<ComponentLanguage> {
-    let mut saw_c = false;
-    for s in sources {
-        if s.ends_with(".cpp") || s.ends_with(".cxx") || s.ends_with(".cc") || s.ends_with(".C") {
-            return Some(ComponentLanguage::Cpp);
-        }
-        if s.ends_with(".c") {
-            saw_c = true;
-        }
-    }
-    saw_c.then_some(ComponentLanguage::C)
+///
+/// # One extension table, not a second one (phase-469)
+///
+/// This carried its own `ends_with(".cpp") || …` table — the fourth and last
+/// copy of extension→language after S3 collapsed the three cmake ones into
+/// [`nros_lang::Language::of_sources`]. S3 measured those copies DISAGREEING,
+/// and this one disagreed too: it ignored `.c++` (a C++ TU to the table cmake
+/// asks) and `.rs`, so a scanner and the configure that follows it could name
+/// one source list two languages — issue 1062's shape. It now asks the same
+/// producer cmake asks.
+///
+/// What stays local is one filter: a token the table cannot READ is dropped
+/// rather than refused, because this scanner reads `CMakeLists.txt` as TEXT and
+/// `${_controller_sources}` is a legitimate token cmake expands at configure
+/// time. The authoritative refusal of a real unknown spelling is cmake's own
+/// `nros codegen source-language` call, at configure, over EXPANDED paths.
+fn language_from_sources(
+    sources: &[String],
+) -> Result<Option<ComponentLanguage>, nros_lang::SourceLanguageError> {
+    let readable = sources
+        .iter()
+        .map(String::as_str)
+        .filter(|s| ComponentLanguage::of_source(s).is_ok());
+    ComponentLanguage::of_sources(readable)
 }
 
 /// Source extensions decide; when they cannot, the class shape decides and says
@@ -973,9 +986,14 @@ fn language_from_sources_or_class(
     class: Option<&str>,
     decl: &str,
 ) -> ComponentLanguage {
-    if let Some(lang) = language_from_sources(sources) {
-        return lang;
-    }
+    let unreadable = match language_from_sources(sources) {
+        Ok(Some(lang)) => return lang,
+        Ok(None) => None,
+        // Rust beside C-family sources: cmake refuses the list at configure,
+        // so the scanner guesses as it would for an unreadable one — and says
+        // the real reason rather than "no C/C++ extension".
+        Err(e) => Some(e),
+    };
     // ONE derivation of the guess, named once and both RETURNED and REPORTED.
     // The message used to re-derive it through a match ending `_ => "cpp"`,
     // which the 2026-09-27 codegen audit measured as a fail-open (its S2 item):
@@ -986,7 +1004,13 @@ fn language_from_sources_or_class(
     let guess = infer_language_from_class(class).unwrap_or(ComponentLanguage::Cpp);
     // No sources at all is not a mystery to report — there is nothing the
     // author could have written differently. An unreadable list is.
-    if !sources.is_empty() {
+    if let Some(why) = unreadable {
+        eprintln!(
+            "nros: {decl}: {why}. Guessing `{}` from the class shape; pass \
+             `LANGUAGE C` or `LANGUAGE CPP` to state it (issue 1062).",
+            guess.as_str(),
+        );
+    } else if !sources.is_empty() {
         eprintln!(
             "nros: {decl}: no source in `{}` carries a C/C++ extension — a cmake \
              variable or generator expression expands at configure time but not \
@@ -1430,8 +1454,8 @@ struct CargoBinEnvelope {
 /// * `package` / `component` / `executable` — `(package, executable)`
 ///   match + `package::component` dedup id.
 /// * `language` — every Cargo-resident component is Rust today; the
-///   field is required so `schema_components` doesn't fall through to
-///   the `"rust"` literal default.
+///   field is required — `schema_components` refuses an artifact that
+///   omits it (phase-469; it used to default to Rust in silence).
 /// * `synthetic` / `synthetic_source` — provenance markers; downstream
 ///   `nros check` lints distinguish synthesised entries from
 ///   authoritative metadata.
@@ -1441,7 +1465,7 @@ fn summary_to_synthetic_json(summary: &CargoComponentSummary) -> JsonValue {
         "package": summary.package,
         "component": summary.component,
         "executable": summary.executable,
-        "language": "rust",
+        "language": ComponentLanguage::Rust,
         "synthetic": true,
         "synthetic_source": "cargo_metadata",
     });
@@ -2484,6 +2508,33 @@ type = "std_msgs/msg/Int32"
         let body = "talker CLASS c_talker_pkg::Talker TYPED SOURCES src/Talker.c src/util.c";
         let s = parse_add_node_call(body, "c_talker_pkg", Path::new("CMakeLists.txt")).unwrap();
         assert_eq!(s.language, ComponentLanguage::C);
+    }
+
+    /// phase-469 — the scanner asks the SAME extension table cmake's
+    /// `source-language` query asks. Its own copy omitted `.c++`, so a C++
+    /// component spelled that way read as the class-shape guess here while
+    /// cmake configured it as C++ — two readers, two answers.
+    #[test]
+    fn add_node_sources_are_read_by_the_one_extension_table() {
+        let body = "shim CLASS shim SOURCES src/shim.c++ ${extra_sources}";
+        let s = parse_add_node_call(body, "shim_pkg", Path::new("CMakeLists.txt")).unwrap();
+        assert_eq!(
+            s.language,
+            ComponentLanguage::Cpp,
+            "`.c++` decides C++ (and the unexpandable `${{…}}` token is skipped, not refused)"
+        );
+        assert_eq!(
+            language_from_sources(&["src/a.c".into(), "src/b.cc".into()]),
+            Ok(Some(ComponentLanguage::Cpp)),
+            "C++ wins over C, by the linker's rule"
+        );
+        assert!(
+            matches!(
+                language_from_sources(&["src/a.rs".into(), "src/b.c".into()]),
+                Err(nros_lang::SourceLanguageError::Mixed(_))
+            ),
+            "Rust beside C is two link roots — the table refuses it, and so does the scanner"
+        );
     }
 
     #[test]

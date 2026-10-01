@@ -616,7 +616,12 @@ fn fix_rust_idents_recursive(
         let path = entry.path();
         if path.is_dir() {
             fix_rust_idents_recursive(&path, ident_renames)?;
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+        } else if matches!(
+            // "Is this a Rust source?" is `of_source`'s question — the one
+            // extension table (phase-469), not a local `== Some("rs")`.
+            nros_lang::Language::of_source(&path.to_string_lossy()),
+            Ok(nros_lang::SourceVerdict::Decides(nros_lang::Language::Rust))
+        ) {
             let mut content = fs::read_to_string(&path)?;
             let mut changed = false;
 

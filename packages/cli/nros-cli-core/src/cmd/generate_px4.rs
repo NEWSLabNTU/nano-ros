@@ -68,8 +68,15 @@ pub fn run(args: Args) -> Result<()> {
         None => CapacityResolver::empty(),
     };
 
-    match args.lang.as_str() {
-        "rust" => {
+    // phase-469 — parse at the edge, then an EXHAUSTIVE match over the one
+    // enumeration. This was `match args.lang.as_str()` ending in `other =>`,
+    // so the dispatch was invisible to the compiler; now a fourth language is
+    // a compile error here. C is refused by name: PX4's in-firmware surface is
+    // a C++ module, and the XRCE companion is a Rust crate.
+    let lang = nros_lang::Language::parse(&args.lang)
+        .map_err(|e| eyre!("generate-px4-msgs --lang: {e} (rust | cpp)"))?;
+    match lang {
+        nros_lang::Language::Rust => {
             if !args.topics.is_empty() {
                 eyre::bail!(
                     "--topics is only supported with --lang cpp (the Rust crate is emitted whole)"
@@ -88,7 +95,7 @@ pub fn run(args: Args) -> Result<()> {
                 args.output.join("px4_msgs").display()
             );
         }
-        "cpp" => {
+        nros_lang::Language::Cpp => {
             // Issue 0362 — the RIHS01 hash is load-bearing on the wire, and Humble
             // has no type hash at all. Warn rather than silently emit a placeholder
             // an rmw_zenoh peer will never match.
@@ -114,7 +121,10 @@ pub fn run(args: Args) -> Result<()> {
                 generated.output_dir.display()
             );
         }
-        other => eyre::bail!("unknown --lang '{other}' (rust | cpp)"),
+        nros_lang::Language::C => eyre::bail!(
+            "generate-px4-msgs: --lang c has no PX4 surface — the in-firmware module is \
+             C++ (`--lang cpp`) and the XRCE companion is a Rust crate (`--lang rust`)"
+        ),
     }
     Ok(())
 }

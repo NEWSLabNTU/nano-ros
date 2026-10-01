@@ -179,7 +179,7 @@ pub struct PlanComponent {
     pub id: String,
     pub package: String,
     pub component: String,
-    pub language: String,
+    pub language: nros_lang::Language,
     pub source_metadata: String,
     pub component_config: Option<String>,
 }

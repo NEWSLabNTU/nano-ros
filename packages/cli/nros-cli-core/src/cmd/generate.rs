@@ -149,19 +149,40 @@ pub fn run(args: Args) -> Result<()> {
     };
     abi_guard::check_workspace(&args.manifest, verb)?;
 
-    match args.lang {
-        Lang::Rust => generate_rust(&args),
-        Lang::C => generate_c(&args),
-        Lang::Cpp => Err(eyre!(
-            "`nros generate cpp` standalone mode is not yet wired up. \
-             Use the CMake `nano_ros_generate_interfaces(... LANGUAGE CPP)` \
-             integration for C++ codegen."
-        )),
-        Lang::All => {
-            generate_rust(&args)?;
-            generate_c(&args)?;
-            // C++ standalone path missing — see comment above.
-            Ok(())
+    // phase-469 / RFC-0091 §3 — the per-language work is a match over the ONE
+    // enumeration, reached through `Lang::languages`. It was a match over this
+    // CLI enum, which RE-SPELLS `Rust`/`C`/`Cpp`, so a fourth `Language` was
+    // invisible here: `all` would have skipped it in silence. Now it is a
+    // compile error until someone says what `nros generate` does with it.
+    for &language in args.lang.languages() {
+        match language {
+            nros_lang::Language::Rust => generate_rust(&args)?,
+            nros_lang::Language::C => generate_c(&args)?,
+            // C++ standalone path missing: an explicit `cpp` is refused, and
+            // `all` skips it (what it has always done).
+            nros_lang::Language::Cpp if matches!(args.lang, Lang::All) => {}
+            nros_lang::Language::Cpp => {
+                return Err(eyre!(
+                    "`nros generate cpp` standalone mode is not yet wired up. \
+                     Use the CMake `nano_ros_generate_interfaces(... LANGUAGE CPP)` \
+                     integration for C++ codegen."
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+impl Lang {
+    /// The languages this CLI value selects. `All` is an affordance OVER the
+    /// enumeration (RFC-0091 §3), not a language, so it is `Language::ALL` —
+    /// derived, never a hand list that a new variant could miss.
+    fn languages(self) -> &'static [nros_lang::Language] {
+        match self {
+            Lang::Rust => &[nros_lang::Language::Rust],
+            Lang::C => &[nros_lang::Language::C],
+            Lang::Cpp => &[nros_lang::Language::Cpp],
+            Lang::All => &nros_lang::Language::ALL,
         }
     }
 }
