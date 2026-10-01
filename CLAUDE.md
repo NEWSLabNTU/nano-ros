@@ -774,7 +774,10 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `find`ing a tracked file, but only for SPEED (570x, I/O-starved) — do not widen
   its allowlist for this, because a `.contract.yaml` can legitimately be
   untracked (`nros sync` synthesises one into a generated dir) and a gate that
-  demands an impossible fix gets disabled.
+  demands an impossible fix gets disabled. For untracked artifacts, ad hoc:
+  `python3 scripts/lib/repo_walk.py PATTERN…` (stops at every nested repo —
+  worktree or submodule). Gate: `check-repo-root-walk-scope` (a committed walk
+  FROM the checkout root names `.claude` or goes through that helper).
 - **A red CI lane answers one of two questions and they look identical** — the
   lane RAN and the code is broken (a verdict), or it never ran (no verdict). A
   uniformly-red lane has NO signal capacity: a regression landing in it looks
