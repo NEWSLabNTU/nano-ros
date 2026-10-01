@@ -53,8 +53,10 @@ pub struct CmakeProbeOptions {
     pub class: String,
     /// Header to `#include`, e.g. `talker_pkg/Talker.hpp`.
     pub header: String,
-    /// `"c"` or `"cpp"`.
-    pub language: String,
+    /// The component's language. Only C and C++ are probed here — a Rust
+    /// component has the cargo harness — and [`probe_language`] is the one
+    /// statement of that, asked by the producer and again by the emitter.
+    pub language: nros_lang::Language,
     /// `"configure"` or `"rclcpp"`.
     pub shape: String,
     /// The CMake library target the component builds into. The probe LINKS it —
@@ -221,21 +223,33 @@ impl CmakeProbeOptions {
     }
 }
 
+/// Which languages this probe can serve — the ONE statement of it.
+///
+/// An exhaustive match, deliberately: the probe is a CMake project linking the
+/// C/C++ runtime, so C and C++ are served and Rust is REFUSED with where a Rust
+/// component is produced instead (the cargo harness, `metadata_build`). A
+/// fourth `Language` variant is a compile error here rather than a silent C++
+/// probe — the `_ => "cpp"` wildcard issue 1528 removed from
+/// `metadata_refresh`. Both the producer of [`CmakeProbeOptions`] and
+/// [`render_probe_main`] ask this, so the refusal has one spelling.
+pub fn probe_language(language: nros_lang::Language) -> Result<nros_lang::Language, String> {
+    match language {
+        nros_lang::Language::C | nros_lang::Language::Cpp => Ok(language),
+        nros_lang::Language::Rust => Err(
+            "a Rust component is produced by the cargo metadata harness, not by the \
+             cmake C/C++ probe"
+                .to_string(),
+        ),
+    }
+}
+
 /// The probe TU, from the SAME emitter that produces real entries.
 pub fn render_probe_main(o: &CmakeProbeOptions) -> Result<String> {
-    // phase-469 — ONE parse, at the edge of this module, feeding both the plan
-    // and the sidecar export. The emitter and the plan are both enum-typed
-    // now; [`CmakeProbeOptions::language`] is still a string because its only
-    // producer is `metadata_refresh`, whose own `_ => "cpp"` wildcard is issue
-    // 1528 and is being fixed by a separate change. When that lands, this
-    // parse becomes the field's type and disappears.
-    let language = nros_lang::Language::parse(&o.language).map_err(|e| {
-        eyre::eyre!(
-            "metadata probe for `{}`: component language `{}` is not a language ({e})",
-            o.package,
-            o.language
-        )
-    })?;
+    // phase-469 — the field is typed now that issue 1528 closed the producer's
+    // wildcard; what is left at this edge is the serve-or-refuse question,
+    // asked through the same function the producer asks.
+    let language = probe_language(o.language)
+        .map_err(|why| eyre::eyre!("metadata probe for `{}`: {why}", o.package))?;
     let plan = probe_plan(o, language);
     let export = ProbeExport {
         package: o.package.clone(),
@@ -651,7 +665,7 @@ mod w4_configure_attribution_tests {
             executable: "e".into(),
             class: "k".into(),
             header: "h".into(),
-            language: "cpp".into(),
+            language: nros_lang::Language::Cpp,
             shape: "configure".into(),
             library_target: "t".into(),
             package_dir: PathBuf::from(dir),
@@ -696,7 +710,7 @@ mod tests {
             executable: "talker".into(),
             class: "talker_pkg::Talker".into(),
             header: "talker_pkg/Talker.hpp".into(),
-            language: "cpp".into(),
+            language: nros_lang::Language::Cpp,
             shape: "configure".into(),
             library_target: "talker_lib".into(),
             package_dir: PathBuf::from("/ws/src/talker_pkg"),
@@ -787,7 +801,7 @@ mod tests {
     #[test]
     fn c_components_route_through_the_c_abi_seam() {
         let mut o = opts();
-        o.language = "c".into();
+        o.language = nros_lang::Language::C;
         o.package = "c_talker_pkg".into();
         o.class = "c_talker_pkg::Talker".into();
         let src = render_probe_main(&o).expect("emit");
@@ -795,6 +809,20 @@ mod tests {
             src.contains("__nros_c_component_c_talker_pkg_configure"),
             "{src}"
         );
+    }
+
+    /// phase-469 — the typed field still reaches the emitter only through the
+    /// serve-or-refuse question: a Rust component is REFUSED with where it is
+    /// produced instead, never rendered as a C++ probe.
+    #[test]
+    fn a_rust_component_is_refused_rather_than_probed_as_cpp() {
+        let mut o = opts();
+        o.language = nros_lang::Language::Rust;
+        let err = render_probe_main(&o)
+            .expect_err("the cmake probe cannot serve a Rust component")
+            .to_string();
+        assert!(err.contains("cargo metadata harness"), "{err}");
+        assert!(err.contains("talker_pkg"), "names the package: {err}");
     }
 
     /// phase-313 — ONE project for the workspace. Per-component dirs are what

@@ -350,20 +350,16 @@ fn cpp_probe_options(
     // reason in `RefreshReport::unsupported` and `nros sync` prints it, which
     // is the "a probe outcome carries its cause" property issue 1469 landed.
     //
-    // The two live arms yield `Language::as_str()` rather than re-spelling
-    // "c"/"cpp" — same strings, one producer (phase-469 S2's move in
-    // `workspace.rs`).
-    let language = match decl.config.language {
-        ComponentLanguage::C | ComponentLanguage::Cpp => decl.config.language.as_str(),
-        ComponentLanguage::Rust => {
-            return Err(
-                "a Rust component is produced by the cargo metadata harness, not by the \
-                 cmake C/C++ probe — reaching the probe is a routing bug, since the \
-                 caller's `language != Rust` guard should have sent it to `build_metadata`"
-                    .to_string(),
-            );
-        }
-    };
+    // The match itself lives in `metadata_probe_cmake::probe_language`, the
+    // module that knows what the probe can serve; the emitter asks the same
+    // function, so the refusal has one spelling (phase-469).
+    let language = crate::orchestration::metadata_probe_cmake::probe_language(decl.config.language)
+        .map_err(|why| {
+            format!(
+                "{why} — reaching the probe is a routing bug, since the caller's \
+                     `language != Rust` guard should have sent it to `build_metadata`"
+            )
+        })?;
     Ok(Some(
         crate::orchestration::metadata_probe_cmake::CmakeProbeOptions {
             package: decl.config.package.clone(),
@@ -374,7 +370,7 @@ fn cpp_probe_options(
                 .resolved_executable(&decl.config.component),
             class,
             header,
-            language: language.to_string(),
+            language,
             shape: decl.probe_shape().to_string(),
             library_target,
             package_dir: decl.package_root.clone(),
@@ -891,7 +887,7 @@ mod tests {
         let nano_ros = dir.join("nano-ros");
         let probe_root = dir.join("probe");
 
-        for (language, expected) in [(ComponentLanguage::C, "c"), (ComponentLanguage::Cpp, "cpp")] {
+        for language in [ComponentLanguage::C, ComponentLanguage::Cpp] {
             let opts = cpp_probe_options(
                 &probeable_decl(&dir, language),
                 Some(&nano_ros),
@@ -899,7 +895,7 @@ mod tests {
             )
             .unwrap_or_else(|why| panic!("{language:?} must be probeable: {why}"))
             .unwrap_or_else(|| panic!("{language:?}: no sidecar exists, so a probe is needed"));
-            assert_eq!(opts.language, expected, "{language:?}");
+            assert_eq!(opts.language, language, "{language:?}");
         }
 
         let why = cpp_probe_options(
