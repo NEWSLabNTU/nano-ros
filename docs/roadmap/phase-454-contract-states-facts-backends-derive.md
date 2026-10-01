@@ -52,7 +52,7 @@ question this phase exists to settle:
 
 The answer is RFC-0100 D3: the contract file, always.
 
-Closes [issue 1256](../issues/1256-contract-qos-carries-depth-only.md) and issue
+Closes [issue 1256](../issues/archived/1256-contract-qos-carries-depth-only.md) and issue
 1319 (not linked: its file is on PR #951, so a link would dangle until that
 merges — see the `.config/prose-issue-ref-baseline.txt` row).
 

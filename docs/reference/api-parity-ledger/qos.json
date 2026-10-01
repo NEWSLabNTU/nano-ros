@@ -43,6 +43,14 @@
     "verdict": "divergence",
     "why": "the counted-event payload. rmw declares one status struct per event (`rmw_requested_deadline_missed_status_t`, `rmw_offered_deadline_missed_status_t`, `rmw_message_lost_status_t`) that are field-identical, and rclcpp typedefs each one to its own `QOS*Info` name. Ours is a single `nros_count_status_t` (`total_count`, `total_count_change`) shared by all three, plus `nros_liveliness_changed_status_t` for the one that differs. The widths are fixed (`uint32_t`, and `uint16_t`/`int16_t` for the liveliness counters) rather than `size_t`/`int32_t`: the payload crosses the C ABI BY VALUE into a callback, so it must have one layout on a 64-bit host and a 32-bit target -- the same hand-mirrored-FFI-struct hazard issue 0160 gated. These print as ours-only because the ROS 2 originals live in `rmw`, which is outside the rclc+rcl surface this report compares."
   },
+  "c:declared_durability": {
+    "verdict": "extension",
+    "why": "issue 1256 -- the declared DURABILITY for `(type, topic)`, the sibling of `c:declared_reliability` and `c:declared_depth` and ours-only for the same reason: a contract sidecar states what each subscription is, and the build holds the code to it. `NROS_DECLARED_DURABILITY(type, topic)` is the integer-constant-expression form (an `nros_qos_durability_t` value) behind `NROS_ASSERT_DECLARED_DURABILITY`; `nros_declared_durability(type, topic)` is the `static inline` for a topic that is not a constant expression. Absence is `NROS_DECLARED_POLICY_UNDECLARED` (-1). rcl has no counterpart: it has no contract to disagree with."
+  },
+  "c:declared_reliability": {
+    "verdict": "extension",
+    "why": "issue 1256 -- the declared RELIABILITY for `(type, topic)`, as an `nros_qos_reliability_t` value, or `NROS_DECLARED_POLICY_UNDECLARED` (-1). Two evaluation times under two names, as `c:declared_depth`: `NROS_DECLARED_RELIABILITY` folds to an integer constant expression for `NROS_ASSERT_DECLARED_RELIABILITY`'s `_Static_assert`, `nros_declared_reliability` answers at run time. Unlike the depth this is not a sizing fact but an INTEROP one -- a RELIABLE subscription never matches a BEST_EFFORT publisher -- so a call site contradicting its contract is a link that silently carries nothing, and the build is the cheapest place to say so. rcl has no counterpart because it has no contract sidecar."
+  },
   "c:event_callback_t": {
     "verdict": "divergence",
     "why": "an alias for `rmw_event_callback_t`, the untyped notify-with-a-count listener; see `c:event_set_callback`."
@@ -182,6 +190,10 @@
       "nros::QoS::keep_last"
     ],
     "why": "a tag type whose only job is to feed rclcpp's `QoS(const QoSInitialization &, ...)` constructor with a history kind and depth. Ours sets the same two values with `QoS(int depth)` and the chainable `keep_last(n)` / `keep_all()` that rclcpp also has -- both already reconcile (`QoS::keep_last` is systematic, `QoS::keep_all` matches). So the values are reachable and only the construction SPELLING is gone: `rclcpp::QoS(rclcpp::KeepLast(10))` has to be ported to `nros::QoS(10)` or `nros::QoS().keep_last(10)`. Declined rather than added because a tag type per history kind exists to make an overload set resolve, and one constructor plus two setters resolves it with no types at all."
+  },
+  "cpp:Node::check_declared_qos": {
+    "verdict": "extension",
+    "why": "issue 1256 -- the BOOT-TIME check of every column a subscription's contract can declare: the depth (it calls `check_declared_depth`), then the RELIABILITY and the DURABILITY. No upstream counterpart, for the reason `check_declared_depth` has none: upstream has no contract sidecar to disagree with. The two policies are not a sizing fact but an INTEROP one -- an incompatible-QoS match never delivers -- and until this they were declared, delivered to the build and never compared with the code. `create_subscription_in` and `create_subscription_in_group` call it; a disagreement prints the node, the topic and both values, goes through `set_error` (`DECLARED_QOS_MISMATCH`, -403) so the entry halts boot, and the subscription is NOT created. An undeclared column checks nothing."
   },
   "cpp:Node::set_qos_overrides": {
     "verdict": "divergence",
@@ -477,6 +489,14 @@
   "cpp:UnsupportedEventTypeException::UnsupportedEventTypeException": {
     "verdict": "divergence",
     "why": "see `cpp:UnsupportedEventTypeException`."
+  },
+  "cpp:declared_durability": {
+    "verdict": "extension",
+    "why": "issue 1256 -- the declared DURABILITY for `(type, topic)` as a `nros::DurabilityPolicy` ordinal, or `DECLARED_POLICY_UNDECLARED` (-1). `constexpr`, the sibling of `cpp:declared_reliability` and `cpp:declared_depth`: `NROS_ASSERT_DECLARED_DURABILITY` (and `NROS_ASSERT_DECLARED_QOS`, which `NROS_SUBSCRIBE`'s four-argument form asserts) uses it at compile time, `Node::check_declared_qos` at boot. rclcpp has no counterpart: a `transient_local` it is handed is simply obeyed, and there is no contract to cross-check."
+  },
+  "cpp:declared_reliability": {
+    "verdict": "extension",
+    "why": "issue 1256 -- the declared RELIABILITY for `(type, topic)` as a `nros::ReliabilityPolicy` ordinal, or `DECLARED_POLICY_UNDECLARED` (-1). `constexpr`, on `cpp:declared_depth`'s terms -- one lookup, two evaluation times: `NROS_ASSERT_DECLARED_RELIABILITY` fails the build on a disagreement (both values reach the diagnostic through `detail::declared_reliability_agrees<declared, passed>`), and `Node::check_declared_qos` refuses it at boot for a topic that is not a constant expression. The disagreement is an interop failure rather than a sizing one -- an incompatible-QoS match never delivers. rclcpp has no counterpart because nothing it builds is sized or checked against a declaration ahead of time."
   },
   "cpp:qos_check_compatible": {
     "verdict": "declined",
