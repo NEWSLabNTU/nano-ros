@@ -719,3 +719,30 @@ than starting from the checkout hypothesis as though it were settled.
 
 None of this changes what would close the issue: the emitted application should
 not live in a directory that build tooling and CI treat as scratch.
+
+### A third run, 50 minutes later: nothing re-emits it
+
+The section above brackets the disappearance between 08:57 and 09:12. The 07:19
+nightly's own tier-2 job ran after both — job **110263209636**, 09:54:17Z →
+10:03:30Z, same runner — and failed on the same four lines naming the same path.
+
+| job | ran | zephyr |
+| --- | --- | --- |
+| 110249254587 `tier 2 (1-wise)` | 08:23:14Z → 08:57:30Z | OK |
+| 110229382587 `tier 2 nightly` | 09:12:39Z → 09:24:21Z | FAILED |
+| 110263209636 `tier 2 nightly` | 09:54:17Z → 10:03:30Z | **FAILED** |
+
+So the emitted application was removed once and **stayed** removed across a
+subsequent run that does its own `nros build` on the same workspace. That is not
+an extra instance of the same fact; it is a second fact. This issue's "what would
+close this part" offers two routes, and the second — *"the west build dir is made
+to depend on the emitter such that a missing emitted source re-emits instead of
+failing the reconfigure"* — is now known to be **absent**, not merely
+unimplemented-by-preference: a later build had every opportunity to re-emit and
+did not.
+
+It also narrows what the next person needs to reproduce. The deletion is a
+one-time event in a 15-minute window; the failure after it is permanent until
+something rebuilds the source tree, which no lane does. A fix that only stops the
+deletion would leave every workspace that has already lost its app broken until
+someone clears the build dir by hand.
