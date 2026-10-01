@@ -207,6 +207,7 @@ KNOB_CLASS = {
     # hatch, not a build input: it configures nothing about an image, and the
     # goldens it rewrites are compared byte-for-byte on every other run.
     "NROS_UPDATE_GOLDEN": ("infra", "test-only golden regeneration"),
+    "NROS_RECORD_TOY_PACK_GOLDEN": ("infra", "test-only: records the phase-474 toy entry pack's goldens, scoped apart from NROS_UPDATE_GOLDEN"),
     "NROS_CARGO_FLAGS": ("infra", "the --locked shim"),
     # issue 1512 — the first BUILD SCRIPT to read it. `nros_cli_bin()` in
     # `scripts/build/cargo.sh` has documented it as rung 1 of "which nros binary"
