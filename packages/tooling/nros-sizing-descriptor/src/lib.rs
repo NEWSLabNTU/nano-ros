@@ -508,8 +508,30 @@ fn load_for_build_script_emitting(
 /// a build nobody has run `nros sync` for, and the one where a consumer keeps
 /// its own defaults. Every other outcome is an error the caller must surface.
 pub fn from_build_env() -> Result<Option<SizingDescriptor>, DescriptorError> {
-    match std::env::var(DESCRIPTOR_ENV) {
-        Ok(v) if !v.trim().is_empty() => load_for_build_script(Path::new(v.trim())).map(Some),
+    // Issue 1623 — the VARIABLE is an input too, not only the file it names.
+    // Without this edge a build script that first ran with the variable UNSET
+    // (a sizes probe or metadata pass sharing the target dir) is never re-run
+    // when a later build sets it: cargo re-runs on exactly the inputs a script
+    // declares, and `rerun-if-changed` on the path is only emitted when there
+    // IS a path. Every consumer then kept its undeclared defaults while the
+    // descriptor sat beside the build stating every count.
+    from_env_value_emitting(std::env::var(DESCRIPTOR_ENV).ok(), &mut |line| {
+        println!("{line}")
+    })
+}
+
+/// [`from_build_env`] over a given variable value, with the cargo directives
+/// handed to `emit` — split out so a test can assert the VARIABLE is watched
+/// on every road, unset included (issue 1623).
+fn from_env_value_emitting(
+    value: Option<String>,
+    emit: &mut dyn FnMut(&str),
+) -> Result<Option<SizingDescriptor>, DescriptorError> {
+    emit(&format!("cargo::rerun-if-env-changed={DESCRIPTOR_ENV}"));
+    match value {
+        Some(v) if !v.trim().is_empty() => {
+            load_for_build_script_emitting(Path::new(v.trim()), emit).map(Some)
+        }
         _ => Ok(None),
     }
 }
@@ -1107,6 +1129,43 @@ basis = \"contract\"
     /// re-run this unit. Measured on cargo 1.98.1: with the watch emitted only
     /// for a file that already existed, neither the creation nor a later edit
     /// re-ran the script — see `load_for_build_script`'s table.
+    /// Issue 1623 — the VARIABLE is watched whether or not it is set. A build
+    /// script that first ran with it unset and declared no edge on it was never
+    /// re-run when a later build set it, so every consumer of the descriptor
+    /// kept its undeclared defaults (measured: a declared C++ talker built at
+    /// the 74,240-byte worst-case arena while its descriptor stated one timer).
+    #[test]
+    fn the_descriptor_variable_is_watched_even_when_unset() {
+        for value in [None, Some(String::new())] {
+            let mut lines: Vec<String> = Vec::new();
+            let got =
+                from_env_value_emitting(value.clone(), &mut |l| lines.push(l.to_string())).unwrap();
+            assert!(got.is_none());
+            assert_eq!(
+                lines,
+                [format!("cargo::rerun-if-env-changed={DESCRIPTOR_ENV}")],
+                "{value:?}"
+            );
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let p = descriptor_path(&dir.path().join("build"), "talker");
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, render(&island())).unwrap();
+        let mut lines: Vec<String> = Vec::new();
+        let got = from_env_value_emitting(Some(p.display().to_string()), &mut |l| {
+            lines.push(l.to_string())
+        })
+        .unwrap();
+        assert!(got.is_some());
+        assert_eq!(
+            lines,
+            [
+                format!("cargo::rerun-if-env-changed={DESCRIPTOR_ENV}"),
+                format!("cargo::rerun-if-changed={}", p.display()),
+            ]
+        );
+    }
+
     #[test]
     fn a_descriptor_that_does_not_exist_yet_is_watched_anyway() {
         let dir = tempfile::tempdir().unwrap();

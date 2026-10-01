@@ -15,6 +15,14 @@ domain_id = 0
 pkg = "cpp_talker"
 class = "cpp_talker::Talker"
 name = "talker"
+# What this component creates (RFC-0098 D8) — read from src/main.cpp. The
+# executor arena is sized from it (issue 0810): one timer entry, and a
+# publisher, which claims no arena. Without it the image budgets the
+# undeclared worst case (4 slots at 18,048 B).
+entities = [
+    "publisher:std_msgs/msg/String:/chatter",
+    "timer",
+]
 
 # Host build. The locator and domain stay runtime env on native
 # (`NROS_LOCATOR` / `ROS_DOMAIN_ID`); the board applies only the node name.
