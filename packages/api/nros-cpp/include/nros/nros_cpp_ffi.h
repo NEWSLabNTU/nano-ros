@@ -905,7 +905,8 @@ typedef uint32_t nros_cpp_shutdown_callback_handle_t;
 
 /**
  * phase-454 W10 — a subscription's QoS depth disagrees with the depth its
- * system's contract DECLARES for that topic.
+ * system's contract DECLARES for that topic. issue 1256 — and the same code
+ * when its RELIABILITY or DURABILITY does; the log line names which.
  *
  * The same number `nros::detail::DECLARED_DEPTH_MISMATCH` carries in
  * `nros/node.hpp`, which is the C++ BOOT-time half of the same check, and for

@@ -760,6 +760,22 @@ Related and in scope: the declared-QoS check is C++-only
 equivalent of `NROS_ASSERT_DECLARED_DEPTH`). The descriptor is language-neutral,
 so this is where that closes.
 
+**Closed in three steps.** phase-454 W10/W13 gave C a compile-time check and
+Rust a registration one, for the DEPTH. Issue 1256 widened all three languages
+to the two POLICIES a contract can state for a subscription: the generated
+table carries `reliability` and `durability` columns (as tokens, because C and
+C++ number those enums differently), `NROS_ASSERT_DECLARED_QOS` /
+`NROS_ASSERT_DECLARED_{RELIABILITY,DURABILITY}` fail the build on a
+disagreement, `Node::check_declared_qos` refuses it at boot, and
+`nros_node::declared_qos::{check,honour}` at registration — `honour` TAKING a
+weaker declared value and REFUSING a stronger one, the depth's rule with the
+order of the two values standing in for "deeper". The policies reach Rust on the
+sizing descriptor only; no env knob carries them. Issue 1564 then removed the
+reason nothing could adopt it: a configure with several entries used to ABSTAIN
+from rendering the table, and it now renders the union of every model's table
+per component, refusing (loudly) only where two models state different values
+for one endpoint.
+
 ## D11 — Cyclone gets a heap budget and asserts it at boot
 
 **Landed, phase-454 W6.c.**

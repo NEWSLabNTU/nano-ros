@@ -132,7 +132,10 @@ declared-qos-header:
 #      TAKE (an unstated Rust call site's `QoSProfile::default()` coming back
 #      at the declared 1).
 #   2. WITH the cargo LEAF road's carrier instead — a sizing descriptor and NO
-#      variable — the same two tests must pass over the same table. phase-454 W13:
+#      variable — the same two tests must pass over the same table, PLUS a third
+#      (issue 1256): the descriptor is the only carrier of a declared reliability
+#      or durability, and the policy test is compiled only where one arrived, so
+#      exactly 3 here and exactly 2 on the depth-only variable. phase-454 W13:
 #      `NROS_ENTITY_DECLARED_DEPTHS` is written by the cmake entity inventory
 #      and by nothing on the leaf road, so for two waves `DECLARED_QOS_ROWS`
 #      was `None` on exactly the road W12 taught to read a contract, and the
@@ -171,7 +174,7 @@ declared-qos-registration:
         cargo test -p nros-node --lib "$_filter" 2>&1)" || _dqr_rc=$?
     [ "$_dqr_rc" -eq 0 ] || _dqr_with="cargo exited $_dqr_rc"$'\n'"$_dqr_with"
     case "$_dqr_with" in \
-        *"2 passed"*) ;; \
+        *"test result: ok. 2 passed;"*) ;; \
         *) echo "ERROR: the declared-image tests did not both run and pass." >&2; \
            echo "       Either NROS_ENTITY_DECLARED_DEPTHS is not reaching" >&2; \
            echo "       nros-node/build.rs, or the rows were dropped by the parse --" >&2; \
@@ -186,13 +189,16 @@ declared-qos-registration:
         cargo test -p nros-node --lib "$_filter" 2>&1)" || _dqr_rc=$?
     [ "$_dqr_rc" -eq 0 ] || _dqr_desc_out="cargo exited $_dqr_rc"$'\n'"$_dqr_desc_out"
     case "$_dqr_desc_out" in \
-        *"2 passed"*) ;; \
+        *"test result: ok. 3 passed;"*) ;; \
         *) echo "ERROR: a sizing descriptor's declared endpoints did not reach" >&2; \
            echo "       DECLARED_QOS_ROWS. That is the ONLY carrier the" >&2; \
            echo "       single-package cargo leaf road has -- nothing there sets" >&2; \
            echo "       NROS_ENTITY_DECLARED_DEPTHS -- so a Rust image built from" >&2; \
            echo "       a contract would register a depth its build never" >&2; \
-           echo "       reserved for, silently (phase-454 W13)." >&2; \
+           echo "       reserved for, silently (phase-454 W13). It is also the ONLY" >&2; \
+           echo "       carrier of a declared reliability/durability on ANY road" >&2; \
+           echo "       (issue 1256): THREE tests must pass here, the third being the" >&2; \
+           echo "       policy one, which exists only when a policy row arrived." >&2; \
            echo "--- cargo said ---" >&2; echo "$_dqr_desc_out" >&2; exit 1 ;; \
     esac
     echo "  - WITHOUT either: those tests do not exist, so the cfg is load-bearing"

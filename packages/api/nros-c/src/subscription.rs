@@ -576,7 +576,7 @@ pub unsafe extern "C" fn nros_subscription_init_polling_with_qos(
         // `NROS_ASSERT_DECLARED_DEPTH` catches a C call site whose depth is a
         // constant expression at COMPILE time; a `nros_qos_t` built at run time
         // has no constant to assert on, and this is where it lands instead.
-        if nros_node::declared_qos::check(topic_info.type_name, topic_info.name, qos_settings.depth)
+        if nros_node::declared_qos::check(topic_info.type_name, topic_info.name, &qos_settings)
             .is_err()
         {
             return NROS_RET_ERROR;

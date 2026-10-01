@@ -376,6 +376,53 @@ inline void report_declared_depth_mismatch(const char* node_name, const char* to
 #endif
 }
 
+/// issue 1256 -- the code `set_error` records when a subscription's QoS
+/// RELIABILITY or DURABILITY disagrees with what its contract declared. The
+/// same number as @ref DECLARED_DEPTH_MISMATCH: both are the image contradicting
+/// its own contract, and the FFI seam reports either as `-403`. The diagnostic
+/// printed beside it names which policy.
+constexpr int32_t DECLARED_QOS_MISMATCH = DECLARED_DEPTH_MISMATCH;
+
+/// The boot-time diagnostic for a POLICY disagreement. `policy` is
+/// `"reliability"` or `"durability"`; `declared` and `passed` are the contract's
+/// own spellings (`"best_effort"`, `"transient_local"`, ...).
+inline void report_declared_policy_mismatch(const char* node_name, const char* topic,
+                                            const char* policy, const char* declared,
+                                            const char* passed) {
+    NROS_ERROR("node \"%s\": topic \"%s\" DECLARED %s %s but the QoS passed states %s. An "
+               "incompatible-QoS match never delivers, so they must agree.",
+               (node_name != nullptr) ? node_name : "?", (topic != nullptr) ? topic : "?", policy,
+               declared, passed);
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+    ::fprintf(stderr,
+              "[nros] FATAL: node \"%s\": topic \"%s\" was DECLARED %s %s in the contract "
+              "sidecar (<stem>.contract.yaml) but the QoS passed to create_subscription_in "
+              "states %s. Fix the contract row or the call site.\n",
+              (node_name != nullptr) ? node_name : "?", (topic != nullptr) ? topic : "?", policy,
+              declared, passed);
+#else
+    (void)node_name;
+    (void)topic;
+    (void)policy;
+    (void)declared;
+    (void)passed;
+#endif
+}
+
+/// The contract spelling of a reliability ordinal, for the report above.
+inline const char* declared_reliability_spelling(int ordinal) {
+    return ordinal == static_cast<int>(::nros::Reliable)     ? "reliable"
+           : ordinal == static_cast<int>(::nros::BestEffort) ? "best_effort"
+                                                             : "system_default";
+}
+
+/// The contract spelling of a durability ordinal, for the report above.
+inline const char* declared_durability_spelling(int ordinal) {
+    return ordinal == static_cast<int>(::nros::Volatile)         ? "volatile"
+           : ordinal == static_cast<int>(::nros::TransientLocal) ? "transient_local"
+                                                                 : "system_default";
+}
+
 /// phase-446 W6 -- the code `set_error` records when a node declares a
 /// parameter its contract does not declare, or with another type.
 constexpr int32_t DECLARED_PARAM_MISMATCH = -446;
@@ -2142,6 +2189,48 @@ class Node {
             "declaration and the code must state one number, not two.",
             ::nros::detail::DECLARED_DEPTH_MISMATCH);
         return false;
+    }
+
+    /// issue 1256 -- the BOOT-TIME check of EVERY declared column: the depth
+    /// (`check_declared_depth`), then the reliability and the durability.
+    ///
+    /// What `create_subscription_in` and `create_subscription_in_group` call. A
+    /// reliability or durability disagreement is not a sizing fault, it is an
+    /// INTEROP one -- an incompatible-QoS match never delivers -- and before
+    /// this it was not checked at all. Same refusal shape as the depth: the
+    /// node, the topic and both values are printed, `set_error` halts boot, and
+    /// the subscription is NOT created. An undeclared column checks nothing.
+    ///
+    /// Returns true when the subscription may be created.
+    bool check_declared_qos(const char* type_name, const char* topic, const ::nros::QoS& qos) {
+        if (!this->check_declared_depth(type_name, topic, qos)) {
+            return false;
+        }
+        const int rel = ::nros::declared_reliability(type_name, topic);
+        if (rel != ::nros::DECLARED_POLICY_UNDECLARED &&
+            rel != static_cast<int>(qos.reliability())) {
+            ::nros::detail::report_declared_policy_mismatch(
+                this->get_name(), topic, "reliability",
+                ::nros::detail::declared_reliability_spelling(rel),
+                ::nros::detail::declared_reliability_spelling(static_cast<int>(qos.reliability())));
+            this->set_error("create_subscription_in: ::nros::QoS reliability disagrees with the "
+                            "reliability declared for this topic in the contract sidecar.",
+                            ::nros::detail::DECLARED_QOS_MISMATCH);
+            return false;
+        }
+        const int dur = ::nros::declared_durability(type_name, topic);
+        if (dur != ::nros::DECLARED_POLICY_UNDECLARED &&
+            dur != static_cast<int>(qos.durability())) {
+            ::nros::detail::report_declared_policy_mismatch(
+                this->get_name(), topic, "durability",
+                ::nros::detail::declared_durability_spelling(dur),
+                ::nros::detail::declared_durability_spelling(static_cast<int>(qos.durability())));
+            this->set_error("create_subscription_in: ::nros::QoS durability disagrees with the "
+                            "durability declared for this topic in the contract sidecar.",
+                            ::nros::detail::DECLARED_QOS_MISMATCH);
+            return false;
+        }
+        return true;
     }
 
     /// phase-446 W6 -- the boot-time check that this node declares a parameter

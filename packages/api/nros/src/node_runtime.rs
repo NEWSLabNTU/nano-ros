@@ -2756,6 +2756,14 @@ fn capability_reason(e: &nros_node::NodeError) -> &'static str {
              topic and both numbers; depth multiplies the executor arena, so the two must \
              state one number)"
         }
+        // issue 1256. Same shape: the policy, the topic and both values are on
+        // the log line above.
+        NodeError::DeclaredQosMismatch => {
+            "DeclaredQosMismatch (this subscription's QoS reliability or durability \
+             disagrees with what the contract sidecar declares for that topic — the log \
+             line above names the policy, the topic and both values; an incompatible-QoS \
+             match never delivers)"
+        }
     }
 }
 

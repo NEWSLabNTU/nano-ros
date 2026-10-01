@@ -29,6 +29,23 @@
  * a comparison of a number with itself. */
 #include "nros/declared_qos.h"
 
+#ifndef __cplusplus
+/* issue 1256 -- `nros/declared_qos.h` is freestanding, so the policy values its
+ * table answers in are literals there. This is the first header that sees both
+ * them and the enums they stand for, so the two are held equal HERE: a drift
+ * fails every C build that includes the subscribe surface, rather than checking
+ * every call site against the wrong enumerator. */
+_Static_assert(_NROS_DQ_C_NROS_DQ_RELIABLE == NROS_QOS_RELIABILITY_RELIABLE,
+               "declared_qos.h's reliable value drifted from NROS_QOS_RELIABILITY_RELIABLE");
+_Static_assert(_NROS_DQ_C_NROS_DQ_BEST_EFFORT == NROS_QOS_RELIABILITY_BEST_EFFORT,
+               "declared_qos.h's best_effort value drifted from NROS_QOS_RELIABILITY_BEST_EFFORT");
+_Static_assert(_NROS_DQ_C_NROS_DQ_VOLATILE == NROS_QOS_DURABILITY_VOLATILE,
+               "declared_qos.h's volatile value drifted from NROS_QOS_DURABILITY_VOLATILE");
+_Static_assert(_NROS_DQ_C_NROS_DQ_TRANSIENT_LOCAL == NROS_QOS_DURABILITY_TRANSIENT_LOCAL,
+               "declared_qos.h's transient_local value drifted from "
+               "NROS_QOS_DURABILITY_TRANSIENT_LOCAL");
+#endif
+
 /**
  * @brief rclc's best-effort preset constructor for a subscription.
  *

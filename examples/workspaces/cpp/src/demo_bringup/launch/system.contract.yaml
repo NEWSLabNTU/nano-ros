@@ -24,7 +24,14 @@ nodes:
 
   listener:
     sub:
-      chatter: {}
+      # issue 1564 -- the QoS `Listener::configure` subscribes with, stated
+      # here as well. The two are held to ONE statement at compile time:
+      # `listener_pkg/src/Listener.cpp` asserts its own `nros::QoS` against the
+      # table this row renders (`NROS_ASSERT_DECLARED_QOS`), so editing either
+      # side alone fails the build naming the topic and both values. The depth
+      # is also what the build sizes this subscription's receive storage from.
+      # The talker ticks at 1 Hz, so a one-sample queue loses nothing.
+      chatter: { qos: { depth: 1 } }
 
 topics:
   /chatter:

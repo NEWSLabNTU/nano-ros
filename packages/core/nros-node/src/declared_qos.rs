@@ -64,14 +64,43 @@
 //! the sidecar removed, `.bss + .data` and every attributed symbol are
 //! identical to `origin/main`'s, and the image carries no `declared_qos` symbol
 //! at all.
+//!
+//! # issue 1256 -- RELIABILITY and DURABILITY too
+//!
+//! A contract can state three things about a subscription and this module now
+//! reads all three. The two policies are not a sizing fact the way depth is;
+//! they are an INTEROP one -- an incompatible-QoS match never delivers -- and
+//! until this they were declared, delivered to the build and never compared
+//! with the code. They arrive on the sizing DESCRIPTOR only (no env knob is
+//! added for them: re-carrying a fact the descriptor already states is the
+//! 0460/0491 shape), and [`check`] / [`honour`] treat them by the same rules as
+//! the depth, with the order of the two values standing in for "deeper".
 
 use crate::executor::NodeError;
-use nros_rmw::QoSProfile;
+use nros_rmw::{QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy};
 
-/// Every declared endpoint this image's contract states a depth for, or `None`
-/// when it declares none. `(type name, topic, depth)`; both the ROS and the
-/// DDS-mangled spelling of a type appear, because which one a generated message
-/// class carries is a property of the codegen that produced it.
+/// One subscription this image's contract declares something about.
+///
+/// Each column is `None` where nobody stated it -- a row exists when ANY of the
+/// three is stated, so any one of them may be silent. `type_name` appears once
+/// in the ROS spelling and once DDS-mangled, as two rows, because which one a
+/// generated message class carries is a property of the codegen that produced
+/// it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeclaredEndpoint {
+    pub type_name: &'static str,
+    pub topic: &'static str,
+    /// The declared KEEP_LAST depth.
+    pub depth: Option<u32>,
+    /// `Reliable` / `BestEffort` -- never `SystemDefault`, which says "the
+    /// middleware chooses" and so cannot be disagreed with.
+    pub reliability: Option<QoSReliabilityPolicy>,
+    /// `Volatile` / `TransientLocal`, on the same rule.
+    pub durability: Option<QoSDurabilityPolicy>,
+}
+
+/// Every subscription this image's contract declares something about, or
+/// `None` when it declares nothing.
 pub use crate::config::DECLARED_QOS_ROWS;
 
 /// Do two topic spellings name the same endpoint?
@@ -87,20 +116,28 @@ fn topic_eq(a: &str, b: &str) -> bool {
     a == b
 }
 
-/// The declared depth for `(type_name, topic)` in `rows`, or `None`.
+/// The declared row for `(type_name, topic)` in `rows`, or `None`.
 ///
-/// Split out from [`declared_depth`] so the lookup is testable against a table
-/// this build did not generate: in-tree, `DECLARED_QOS_ROWS` is `None` (no
-/// contract reaches a unit-test build), so a test that could only call the
-/// public form would assert nothing while passing.
-fn depth_in(rows: &[(&str, &str, u32)], type_name: &str, topic: &str) -> Option<u32> {
+/// Split out so the lookup is testable against a table this build did not
+/// generate: in-tree, `DECLARED_QOS_ROWS` is `None` (no contract reaches a
+/// unit-test build), so a test that could only call the public form would
+/// assert nothing while passing.
+fn row_in<'r>(
+    rows: &'r [DeclaredEndpoint],
+    type_name: &str,
+    topic: &str,
+) -> Option<&'r DeclaredEndpoint> {
     rows.iter()
-        .find(|(t, tp, _)| *t == type_name && topic_eq(tp, topic))
-        .map(|(_, _, d)| *d)
+        .find(|r| r.type_name == type_name && topic_eq(r.topic, topic))
+}
+
+/// The declared depth for `(type_name, topic)` in `rows`, or `None`.
+fn depth_in(rows: &[DeclaredEndpoint], type_name: &str, topic: &str) -> Option<u32> {
+    row_in(rows, type_name, topic).and_then(|r| r.depth)
 }
 
 /// The declared depth for `(type_name, topic)`, or `None` when nobody declared
-/// that endpoint.
+/// that endpoint's depth.
 ///
 /// Linear over a handful of rows, on a path that runs once per subscription at
 /// registration. `None` when this image declares nothing at all.
@@ -108,17 +145,69 @@ pub fn declared_depth(type_name: &str, topic: &str) -> Option<u32> {
     depth_in(DECLARED_QOS_ROWS?, type_name, topic)
 }
 
-/// Refuse a subscription whose QoS depth disagrees with what the contract
-/// declared for its topic.
+/// issue 1256 -- the declared reliability for `(type_name, topic)`, or `None`.
+pub fn declared_reliability(type_name: &str, topic: &str) -> Option<QoSReliabilityPolicy> {
+    row_in(DECLARED_QOS_ROWS?, type_name, topic).and_then(|r| r.reliability)
+}
+
+/// issue 1256 -- the declared durability for `(type_name, topic)`, or `None`.
+pub fn declared_durability(type_name: &str, topic: &str) -> Option<QoSDurabilityPolicy> {
+    row_in(DECLARED_QOS_ROWS?, type_name, topic).and_then(|r| r.durability)
+}
+
+/// The contract's own spelling of a reliability, for a log line.
+fn reliability_spelling(r: QoSReliabilityPolicy) -> &'static str {
+    match r {
+        QoSReliabilityPolicy::Reliable => "reliable",
+        QoSReliabilityPolicy::BestEffort => "best_effort",
+        QoSReliabilityPolicy::SystemDefault => "system_default",
+        QoSReliabilityPolicy::Unknown => "unknown",
+    }
+}
+
+/// The contract's own spelling of a durability, for a log line.
+fn durability_spelling(d: QoSDurabilityPolicy) -> &'static str {
+    match d {
+        QoSDurabilityPolicy::Volatile => "volatile",
+        QoSDurabilityPolicy::TransientLocal => "transient_local",
+        QoSDurabilityPolicy::SystemDefault => "system_default",
+        QoSDurabilityPolicy::Unknown => "unknown",
+    }
+}
+
+/// How much a reliability ASKS FOR: the order [`honour`] reads "stronger" in.
+/// `None` is "states no opinion" -- `SystemDefault` hands the choice to the
+/// middleware and `Unknown` is a read-back sentinel nobody requests.
+fn reliability_rank(r: QoSReliabilityPolicy) -> Option<u8> {
+    match r {
+        QoSReliabilityPolicy::BestEffort => Some(0),
+        QoSReliabilityPolicy::Reliable => Some(1),
+        QoSReliabilityPolicy::SystemDefault | QoSReliabilityPolicy::Unknown => None,
+    }
+}
+
+/// How much a durability ASKS FOR. See [`reliability_rank`].
+fn durability_rank(d: QoSDurabilityPolicy) -> Option<u8> {
+    match d {
+        QoSDurabilityPolicy::Volatile => Some(0),
+        QoSDurabilityPolicy::TransientLocal => Some(1),
+        QoSDurabilityPolicy::SystemDefault | QoSDurabilityPolicy::Unknown => None,
+    }
+}
+
+/// Refuse a subscription whose QoS disagrees with what the contract declared
+/// for its topic -- its depth, and (issue 1256) its reliability and durability.
 ///
-/// `Ok(())` when they agree AND when nothing was declared — an image that has
-/// not opted in is not an image in error. On a disagreement the TOPIC and BOTH
-/// numbers go to the log first (a `NodeError` is a unit variant and can carry
-/// none of the three), then the registration is refused.
+/// `Ok(())` when every declared column agrees AND when nothing was declared --
+/// an image that has not opted in is not an image in error. On a disagreement
+/// the TOPIC and BOTH values go to the log first (a `NodeError` is a unit
+/// variant and can carry none of the three), then the registration is
+/// refused: [`NodeError::DeclaredDepthMismatch`] for the depth,
+/// [`NodeError::DeclaredQosMismatch`] for a policy.
 ///
 /// Reached from the **C and C++ FFI registration seams**, which have already
-/// taken the declared depth at their own call site (`NROS_SUBSCRIBE`'s
-/// three-argument form → `qos_from_declared_depth`; C's `_Static_assert`), so a
+/// taken the declared QoS at their own call site (`NROS_SUBSCRIBE`'s
+/// three-argument form → `qos_from_declared`; C's `_Static_assert`), so a
 /// disagreement arriving here is a real one. The Rust seams call [`honour`]
 /// instead — see its doc comment for why the two surfaces differ.
 ///
@@ -130,92 +219,142 @@ pub fn declared_depth(type_name: &str, topic: &str) -> Option<u32> {
 /// was the half that got cut, and the diagnostic ended mid-sentence. The
 /// numbers and the topic come first for the same reason: a long type name may
 /// still push the tail off, and the tail is the least load-bearing part.
-pub fn check(type_name: &str, topic: &str, depth: u32) -> Result<(), NodeError> {
-    match declared_depth(type_name, topic) {
-        Some(declared) if declared != depth => {
-            nros_log::log_error!(
-                nros_log::get_logger("nros_node"),
-                "declared depth: `{}` registers KEEP_LAST({}) but this image's contract \
-                 declares {}, and the arena was sized from {}. Fix the contract row or the \
-                 QoS at the call site (type `{}`).",
-                topic,
-                depth,
-                declared,
-                declared,
-                type_name
-            );
-            Err(NodeError::DeclaredDepthMismatch)
-        }
-        _ => Ok(()),
+pub fn check(type_name: &str, topic: &str, qos: &QoSProfile) -> Result<(), NodeError> {
+    match DECLARED_QOS_ROWS {
+        Some(rows) => check_in(rows, type_name, topic, qos),
+        None => Ok(()),
     }
 }
 
+/// [`check`] against a table this build did not generate. See [`row_in`].
+fn check_in(
+    rows: &[DeclaredEndpoint],
+    type_name: &str,
+    topic: &str,
+    qos: &QoSProfile,
+) -> Result<(), NodeError> {
+    let Some(row) = row_in(rows, type_name, topic) else {
+        return Ok(());
+    };
+    if let Some(declared) = row.depth
+        && declared != qos.depth
+    {
+        nros_log::log_error!(
+            nros_log::get_logger("nros_node"),
+            "declared depth: `{}` registers KEEP_LAST({}) but this image's contract \
+             declares {}, and the arena was sized from {}. Fix the contract row or the \
+             QoS at the call site (type `{}`).",
+            topic,
+            qos.depth,
+            declared,
+            declared,
+            type_name
+        );
+        return Err(NodeError::DeclaredDepthMismatch);
+    }
+    if let Some(declared) = row.reliability
+        && declared != qos.reliability
+    {
+        nros_log::log_error!(
+            nros_log::get_logger("nros_node"),
+            "declared QoS: `{}` registers {} but this image's contract declares reliability \
+             {}; an incompatible match never delivers. Fix the contract row or the call site.",
+            topic,
+            reliability_spelling(qos.reliability),
+            reliability_spelling(declared)
+        );
+        return Err(NodeError::DeclaredQosMismatch);
+    }
+    if let Some(declared) = row.durability
+        && declared != qos.durability
+    {
+        nros_log::log_error!(
+            nros_log::get_logger("nros_node"),
+            "declared QoS: `{}` registers {} but this image's contract declares durability \
+             {}; an incompatible match never delivers. Fix the contract row or the call site.",
+            topic,
+            durability_spelling(qos.durability),
+            durability_spelling(declared)
+        );
+        return Err(NodeError::DeclaredQosMismatch);
+    }
+    Ok(())
+}
+
 /// The QoS a Rust subscription actually registers with, once the contract has
-/// had its say — phase-454 W13, the Rust half of W10.
+/// had its say — phase-454 W13, the Rust half of W10, widened to the two
+/// policies by issue 1256.
 ///
-/// # Why Rust TAKES the declared depth where C and C++ ASSERT it
+/// # Why Rust TAKES the declared value where C and C++ ASSERT it
 ///
 /// C++ settles this at the call site, by arity: `NROS_SUBSCRIBE(Msg, m, topic)`
-/// states no QoS, so `qos_from_declared_depth` BUILDS one from the declaration
-/// ("nothing to assert — there is only ever one number"), and the four-argument
-/// form, where the call site did state one, `static_assert`s that the two agree.
-/// C does the same with `NROS_ASSERT_DECLARED_DEPTH`.
+/// states no QoS, so `qos_from_declared` BUILDS one from the declaration
+/// ("nothing to assert — there is only ever one statement"), and the
+/// four-argument form, where the call site did state one, `static_assert`s that
+/// the two agree. C does the same with `NROS_ASSERT_DECLARED_*`.
 ///
 /// Rust has neither half of that seam: there is no `nros::subscribe!`, and the
 /// topic is a runtime `&str`, so nothing at the call site can be told apart
 /// from anything else at compile time — and by the time a QoS reaches a
 /// registration, "the caller wrote this" and "a constructor defaulted it" are
 /// the same `QoSProfile`. `Node::create_subscription` hands
-/// `QoSProfile::default()` — `rmw_qos_profile_default`, KEEP_LAST(10) — to the
-/// same `_with_qos` entry point a caller with an opinion reaches, and the
-/// declarative road folds both into one `EntityMetadata::qos` field long before
-/// this point.
+/// `QoSProfile::default()` — `rmw_qos_profile_default`, KEEP_LAST(10),
+/// RELIABLE, VOLATILE — to the same `_with_qos` entry point a caller with an
+/// opinion reaches, and the declarative road folds both into one
+/// `EntityMetadata::qos` field long before this point.
 ///
 /// So the distinction C++ makes is not available here, and the two candidate
 /// rules that remain each fail on their own:
 ///
 /// * **Check only.** Every `QoSProfile::default()` call site in the tree would
-///   be refused the moment its endpoint is declared at anything but 10 — which
-///   is the entire point of declaring one. A declaration would become a way to
-///   stop an image booting.
+///   be refused the moment its endpoint is declared at anything but the
+///   default — which is the entire point of declaring one. A declaration would
+///   become a way to stop an image booting.
 /// * **Take, always.** A caller who narrowed a queue on purpose
-///   (`create_subscription_viewable` requires KEEP_LAST(1); a control loop that
-///   wants the newest sample and no backlog) would be silently widened by a
-///   contract that over-declared.
+///   (`create_subscription_viewable` requires KEEP_LAST(1)) or chose
+///   `best_effort` for a sensor would be silently widened by a contract that
+///   over-declared.
 ///
 /// # The rule, and why the asymmetry is real
 ///
-/// **The contract states what the BUILD RESERVED.** W12 made that literal: the
-/// executor arena, the zenoh receive ring and both payload pools on a declared
-/// image are all sized from the declared depth, so the declaration is not a
-/// preference — it is the size of the storage that exists.
+/// **The contract states what the BUILD RESERVED.** W12 made that literal for
+/// the depth: the executor arena, the zenoh receive ring and both payload pools
+/// on a declared image are all sized from the declared depth. The policies are
+/// the same kind of statement: XRCE drops both reliable stream buffers to the
+/// protocol floor when every endpoint declares `best_effort` (RFC-0100 D3), and
+/// a `transient_local` endpoint is what the build counts a late-joiner slot
+/// for. So for each column, ordered by how much it ASKS FOR (deeper; reliable
+/// over best_effort; transient_local over volatile):
 ///
-/// * `asked > declared` — the registration wants more slots than were bought.
-///   It cannot have them, and nothing is gained by refusing: this is every
-///   unstated call site in the tree (`QoSProfile::default()` asks 10; every
-///   in-tree contract declares less). **TAKEN**, and reported.
-/// * `asked < declared` — the registration fits, so nothing is at risk of
-///   overrunning; but the image paid for a queue deeper than anything wants,
-///   and taking would WIDEN a depth somebody narrowed. Two statements about one
-///   fact disagreeing, with no default that explains either (RFC-0100 D8).
+/// * `asked > declared` — the registration wants more than was bought, and
+///   asking for it would ride storage the build did not reserve. **TAKEN**, and
+///   reported. For the two policies it is also the direction RxO tolerates: a
+///   `best_effort` or `volatile` reader still matches a `reliable` or
+///   `transient_local` writer.
+/// * `asked < declared` — taking would WIDEN what the code narrowed, and the
+///   image paid for something nothing wants. Two statements about one fact
+///   disagreeing, with no default that explains either (RFC-0100 D8).
 ///   **REFUSED**, naming both.
 /// * equal, or nothing declared — returned unchanged. An image with no contract
 ///   is byte-identical to every build before this wave.
+/// * a policy asked as `SystemDefault` — the code stated no opinion, so the
+///   declaration is TAKEN, silently: there is nothing to report a divergence
+///   from.
 ///
 /// # And it says so
 ///
 /// A take is REPORTED, once per endpoint that diverges — the C++ surface's
-/// number is visible in the source at the call site and Rust's is not, so a
+/// value is visible in the source at the call site and Rust's is not, so a
 /// registration that quietly stopped being what `lib.rs` reads would be the lie
-/// this whole model exists to remove. The severity is the DIRECTION, the same
-/// rule `nros-rmw-zenoh`'s `shim/qos.rs` states for its own grants: taking a
-/// SHALLOWER depth can drop a sample under a burst, so it is `WARN`; a deeper
-/// one costs a peer nothing and is `INFO`.
+/// this whole model exists to remove. Every take here narrows what the code
+/// asked for (a shallower queue, no retransmission, no late-joiner history),
+/// any of which can drop a sample, so each is `WARN`.
 ///
 /// Called instead of [`check`] at every Rust subscription registration. The C
-/// and C++ FFI seams keep [`check`] — they have already taken the declared
-/// depth at their own call site, so a disagreement reaching THEM is a real
-/// refusal and not a default nobody wrote.
+/// and C++ FFI seams keep [`check`] — they have already taken the declared QoS
+/// at their own call site, so a disagreement reaching THEM is a real refusal
+/// and not a default nobody wrote.
+///
 /// # `#[inline]` is load-bearing, and it was MEASURED
 ///
 /// An image with no contract must be byte-identical to every build before this
@@ -239,47 +378,112 @@ pub fn honour(type_name: &str, topic: &str, qos: QoSProfile) -> Result<QoSProfil
 
 /// [`honour`] against a table this build did not generate.
 ///
-/// Split out for the reason [`depth_in`] is: in-tree `DECLARED_QOS_ROWS` is
+/// Split out for the reason [`row_in`] is: in-tree `DECLARED_QOS_ROWS` is
 /// `None`, so a test that could only call the public form would exercise the
 /// "nothing declared" arm and assert nothing about the take or the refusal
 /// while reading as coverage of both.
 fn honour_in(
-    rows: &[(&str, &str, u32)],
+    rows: &[DeclaredEndpoint],
     type_name: &str,
     topic: &str,
     qos: QoSProfile,
 ) -> Result<QoSProfile, NodeError> {
-    let Some(declared) = depth_in(rows, type_name, topic) else {
+    let Some(row) = row_in(rows, type_name, topic) else {
         return Ok(qos);
     };
-    if declared == qos.depth {
-        return Ok(qos);
-    }
-    if declared > qos.depth {
-        nros_log::log_error!(
+    let mut granted = qos;
+    if let Some(declared) = row.depth
+        && declared != qos.depth
+    {
+        if declared > qos.depth {
+            nros_log::log_error!(
+                nros_log::get_logger("nros_node"),
+                "declared depth: `{}` registers KEEP_LAST({}) and the contract declares {} -- \
+                 DEEPER. Taking it would widen a queue the code narrowed; fix the contract row \
+                 or the call site (type `{}`).",
+                topic,
+                qos.depth,
+                declared,
+                type_name
+            );
+            return Err(NodeError::DeclaredDepthMismatch);
+        }
+        granted.depth = declared;
+        nros_log::log_warn!(
             nros_log::get_logger("nros_node"),
-            "declared depth: `{}` registers KEEP_LAST({}) and the contract declares {} -- \
-             DEEPER. Taking it would widen a queue the code narrowed; fix the contract row \
-             or the call site (type `{}`).",
+            "declared depth: taking KEEP_LAST({}) on `{}`; the call site asked {} and the build \
+             reserved {}. Raise the contract row to keep more (type `{}`).",
+            declared,
             topic,
             qos.depth,
             declared,
             type_name
         );
-        return Err(NodeError::DeclaredDepthMismatch);
     }
-    let mut granted = qos;
-    granted.depth = declared;
-    nros_log::log_warn!(
-        nros_log::get_logger("nros_node"),
-        "declared depth: taking KEEP_LAST({}) on `{}`; the call site asked {} and the build \
-         reserved {}. Raise the contract row to keep more (type `{}`).",
-        declared,
-        topic,
-        qos.depth,
-        declared,
-        type_name
-    );
+    if let Some(declared) = row.reliability
+        && declared != qos.reliability
+    {
+        match reliability_rank(qos.reliability) {
+            Some(asked) if asked < reliability_rank(declared).unwrap_or(asked) => {
+                nros_log::log_error!(
+                    nros_log::get_logger("nros_node"),
+                    "declared QoS: `{}` registers {} and the contract declares reliability {} \
+                     -- STRONGER. Taking it would widen what the code narrowed; fix the \
+                     contract row or the call site.",
+                    topic,
+                    reliability_spelling(qos.reliability),
+                    reliability_spelling(declared)
+                );
+                return Err(NodeError::DeclaredQosMismatch);
+            }
+            Some(_) => {
+                nros_log::log_warn!(
+                    nros_log::get_logger("nros_node"),
+                    "declared QoS: taking reliability {} on `{}`; the call site asked {} and the \
+                     contract declares {}. Raise the contract row to keep it.",
+                    reliability_spelling(declared),
+                    topic,
+                    reliability_spelling(qos.reliability),
+                    reliability_spelling(declared)
+                );
+            }
+            // The call site stated no opinion: nothing diverged, so nothing is
+            // reported.
+            None => {}
+        }
+        granted.reliability = declared;
+    }
+    if let Some(declared) = row.durability
+        && declared != qos.durability
+    {
+        match durability_rank(qos.durability) {
+            Some(asked) if asked < durability_rank(declared).unwrap_or(asked) => {
+                nros_log::log_error!(
+                    nros_log::get_logger("nros_node"),
+                    "declared QoS: `{}` registers {} and the contract declares durability {} \
+                     -- STRONGER. Taking it would widen what the code narrowed; fix the \
+                     contract row or the call site.",
+                    topic,
+                    durability_spelling(qos.durability),
+                    durability_spelling(declared)
+                );
+                return Err(NodeError::DeclaredQosMismatch);
+            }
+            Some(_) => {
+                nros_log::log_warn!(
+                    nros_log::get_logger("nros_node"),
+                    "declared QoS: taking durability {} on `{}`; the call site asked {} and the \
+                     contract declares {}. Raise the contract row to keep it.",
+                    durability_spelling(declared),
+                    topic,
+                    durability_spelling(qos.durability),
+                    durability_spelling(declared)
+                );
+            }
+            None => {}
+        }
+        granted.durability = declared;
+    }
     Ok(granted)
 }
 
@@ -287,12 +491,43 @@ fn honour_in(
 mod tests {
     use super::*;
 
+    /// A row with only a depth stated -- the shape every road has carried
+    /// since phase-454 W10.
+    const fn depth_row(type_name: &'static str, topic: &'static str, d: u32) -> DeclaredEndpoint {
+        DeclaredEndpoint {
+            type_name,
+            topic,
+            depth: Some(d),
+            reliability: None,
+            durability: None,
+        }
+    }
+
     /// The shape `build.rs` writes: the ROS spelling and the DDS-mangled one,
     /// for each declared endpoint.
-    const ROWS: &[(&str, &str, u32)] = &[
-        ("std_msgs/msg/Int32", "/chatter", 1),
-        ("std_msgs::msg::dds_::Int32_", "/chatter", 1),
+    const ROWS: &[DeclaredEndpoint] = &[
+        depth_row("std_msgs/msg/Int32", "/chatter", 1),
+        depth_row("std_msgs::msg::dds_::Int32_", "/chatter", 1),
     ];
+
+    /// issue 1256 -- a subscription that declares BOTH policies and no depth,
+    /// which is a row the depth-only table could not carry at all.
+    const POLICY_ROWS: &[DeclaredEndpoint] = &[DeclaredEndpoint {
+        type_name: "std_msgs/msg/Int32",
+        topic: "/sensor",
+        depth: None,
+        reliability: Some(QoSReliabilityPolicy::BestEffort),
+        durability: Some(QoSDurabilityPolicy::Volatile),
+    }];
+
+    /// ...and one that declares the STRONG value of each.
+    const STRONG_ROWS: &[DeclaredEndpoint] = &[DeclaredEndpoint {
+        type_name: "std_msgs/msg/Int32",
+        topic: "/latched",
+        depth: None,
+        reliability: Some(QoSReliabilityPolicy::Reliable),
+        durability: Some(QoSDurabilityPolicy::TransientLocal),
+    }];
 
     #[test]
     fn either_type_spelling_finds_the_row() {
@@ -324,6 +559,11 @@ mod tests {
              or one declaration would size every type carried on that topic"
         );
         assert_eq!(depth_in(&[], "std_msgs/msg/Int32", "/chatter"), None);
+        assert_eq!(
+            depth_in(POLICY_ROWS, "std_msgs/msg/Int32", "/sensor"),
+            None,
+            "a row that declares only policies has declared no depth"
+        );
     }
 
     #[test]
@@ -389,7 +629,7 @@ mod tests {
     /// either: RFC-0100 D8.
     #[test]
     fn a_declaration_deeper_than_the_registration_is_refused_not_taken() {
-        const DEEP: &[(&str, &str, u32)] = &[("std_msgs/msg/Int32", "/chatter", 20)];
+        const DEEP: &[DeclaredEndpoint] = &[depth_row("std_msgs/msg/Int32", "/chatter", 20)];
         let mut asked = QoSProfile::QOS_PROFILE_DEFAULT;
         asked.depth = 10;
         assert_eq!(
@@ -425,6 +665,103 @@ mod tests {
         );
     }
 
+    /// issue 1256 — the policy TAKE. The default profile asks RELIABLE and
+    /// VOLATILE; a contract declaring `best_effort` is what the build reserved
+    /// (no reliable stream history on XRCE), so an unstated call site comes back
+    /// best-effort. Durability agrees, so it is untouched, and so is the depth
+    /// the row does not state.
+    #[test]
+    fn a_declared_best_effort_is_taken_by_a_call_site_that_asked_reliable() {
+        let asked = QoSProfile::QOS_PROFILE_DEFAULT;
+        assert_eq!(asked.reliability, QoSReliabilityPolicy::Reliable);
+        let granted = honour_in(POLICY_ROWS, "std_msgs/msg/Int32", "/sensor", asked)
+            .expect("a weaker declared reliability is taken, not refused");
+        assert_eq!(granted.reliability, QoSReliabilityPolicy::BestEffort);
+        assert_eq!(granted.durability, QoSDurabilityPolicy::Volatile);
+        assert_eq!(
+            granted.depth, asked.depth,
+            "the row states no depth, so the depth the call site asked stands"
+        );
+    }
+
+    /// issue 1256 — the policy REFUSAL, the control for the take above. A call
+    /// site that asked `best_effort` against a contract that declares
+    /// `reliable` narrowed on purpose; taking would widen it.
+    #[test]
+    fn a_declared_reliable_is_refused_to_a_call_site_that_asked_best_effort() {
+        let mut asked = QoSProfile::QOS_PROFILE_DEFAULT;
+        asked.reliability = QoSReliabilityPolicy::BestEffort;
+        assert_eq!(
+            honour_in(STRONG_ROWS, "std_msgs/msg/Int32", "/latched", asked),
+            Err(NodeError::DeclaredQosMismatch),
+            "declared reliable, asked best_effort. If this returns Ok the policy rule has \
+             collapsed into an unconditional take."
+        );
+        // And durability on its own: reliability agrees, durability is weaker.
+        let mut asked = QoSProfile::QOS_PROFILE_DEFAULT;
+        asked.durability = QoSDurabilityPolicy::Volatile;
+        assert_eq!(
+            honour_in(STRONG_ROWS, "std_msgs/msg/Int32", "/latched", asked),
+            Err(NodeError::DeclaredQosMismatch),
+            "declared transient_local, asked volatile"
+        );
+    }
+
+    /// issue 1256 — a call site that stated NO opinion takes the declaration.
+    #[test]
+    fn a_system_default_policy_takes_the_declaration() {
+        let mut asked = QoSProfile::QOS_PROFILE_DEFAULT;
+        asked.reliability = QoSReliabilityPolicy::SystemDefault;
+        asked.durability = QoSDurabilityPolicy::SystemDefault;
+        let granted = honour_in(STRONG_ROWS, "std_msgs/msg/Int32", "/latched", asked)
+            .expect("no opinion is not a disagreement");
+        assert_eq!(granted.reliability, QoSReliabilityPolicy::Reliable);
+        assert_eq!(granted.durability, QoSDurabilityPolicy::TransientLocal);
+    }
+
+    /// issue 1256 — the FFI seams' strict check covers the policies too. C and
+    /// C++ already took the declaration at their call site, so ANY disagreement
+    /// reaching here is real, in either direction.
+    #[test]
+    fn the_strict_check_refuses_a_policy_disagreement_in_either_direction() {
+        let agrees = {
+            let mut q = QoSProfile::QOS_PROFILE_DEFAULT;
+            q.reliability = QoSReliabilityPolicy::BestEffort;
+            q
+        };
+        assert_eq!(
+            check_in(POLICY_ROWS, "std_msgs/msg/Int32", "/sensor", &agrees),
+            Ok(())
+        );
+        assert_eq!(
+            check_in(
+                POLICY_ROWS,
+                "std_msgs/msg/Int32",
+                "/sensor",
+                &QoSProfile::QOS_PROFILE_DEFAULT
+            ),
+            Err(NodeError::DeclaredQosMismatch),
+            "declared best_effort, registered reliable"
+        );
+        let mut tl = agrees;
+        tl.durability = QoSDurabilityPolicy::TransientLocal;
+        assert_eq!(
+            check_in(POLICY_ROWS, "std_msgs/msg/Int32", "/sensor", &tl),
+            Err(NodeError::DeclaredQosMismatch),
+            "declared volatile, registered transient_local"
+        );
+        assert_eq!(
+            check_in(
+                ROWS,
+                "std_msgs/msg/Int32",
+                "/chatter",
+                &QoSProfile::QOS_PROFILE_DEFAULT
+            ),
+            Err(NodeError::DeclaredDepthMismatch),
+            "and the depth is still refused as a DEPTH"
+        );
+    }
+
     /// The public entry point over THIS build's table. In-tree that table is
     /// `None` (no contract reaches a unit-test build), so this asserts the
     /// no-declaration behaviour rather than a lookup -- and says so, because a
@@ -439,7 +776,14 @@ mod tests {
              being skipped on a build that HAS a table."
         );
         assert_eq!(declared_depth("std_msgs/msg/Int32", "/chatter"), None);
-        assert_eq!(check("std_msgs/msg/Int32", "/chatter", 10), Ok(()));
+        assert_eq!(
+            check(
+                "std_msgs/msg/Int32",
+                "/chatter",
+                &QoSProfile::QOS_PROFILE_DEFAULT
+            ),
+            Ok(())
+        );
         // phase-454 W13 — and the take is inert too, which is acceptance 4: an
         // image with no contract registers exactly the profile it built.
         let asked = QoSProfile::QOS_PROFILE_DEFAULT;
@@ -486,15 +830,25 @@ mod tests {
                  Rust message class reports as TYPE_NAME, and the only spelling a typed call \
                  site ever hands `check`"
             );
-            assert_eq!(check("std_msgs/msg/Int32", "/chatter", 1), Ok(()));
+            let mut one = QoSProfile::QOS_PROFILE_DEFAULT;
+            one.depth = 1;
+            assert_eq!(check("std_msgs/msg/Int32", "/chatter", &one), Ok(()));
             assert_eq!(
-                check("std_msgs::msg::dds_::Int32_", "/chatter", 10),
+                check(
+                    "std_msgs::msg::dds_::Int32_",
+                    "/chatter",
+                    &QoSProfile::QOS_PROFILE_DEFAULT
+                ),
                 Err(NodeError::DeclaredDepthMismatch),
                 "THE control: declared 1, registered 10. If this passes, the registration \
                  check does nothing on a real image and every lane above it stays green."
             );
             assert_eq!(
-                check("std_msgs/msg/Int32", "/undeclared", 10),
+                check(
+                    "std_msgs/msg/Int32",
+                    "/undeclared",
+                    &QoSProfile::QOS_PROFILE_DEFAULT
+                ),
                 Ok(()),
                 "and an endpoint nobody declared is still not an error"
             );
@@ -530,6 +884,48 @@ mod tests {
                 "this build's table declares KEEP_LAST(1) for `/chatter`; if this is 10 the \
                  registration ignored the declaration and the image runs a depth the build did \
                  not reserve for"
+            );
+        }
+
+        /// issue 1256 — the two POLICIES, over the build's own table.
+        ///
+        /// Compiled only where the build's table states a policy, which is the
+        /// DESCRIPTOR carrier (`tests/fixtures/declared-qos-descriptor.toml`
+        /// declares `/status` best-effort and volatile): the env carrier
+        /// `NROS_ENTITY_DECLARED_DEPTHS` is depth-only by design, and no knob is
+        /// added for the policies. `just check declared-qos-registration`
+        /// therefore expects THREE tests on the descriptor step and two on the
+        /// env step -- so a descriptor whose policies stopped reaching the table
+        /// fails that lane instead of passing two of three.
+        #[cfg(nros_declared_qos_policy_table)]
+        #[test]
+        fn a_declared_policy_reaches_the_registration_from_the_descriptor() {
+            assert_eq!(
+                declared_reliability("std_msgs::msg::dds_::Int32_", "/status"),
+                Some(QoSReliabilityPolicy::BestEffort),
+                "the descriptor states `reliability = \"best_effort\"` for `/status`; if this \
+                 is None the policies are not reaching DECLARED_QOS_ROWS and no Rust image \
+                 compares them with its code"
+            );
+            assert_eq!(
+                declared_durability("std_msgs/msg/Int32", "/status"),
+                Some(QoSDurabilityPolicy::Volatile)
+            );
+            let granted = honour(
+                "std_msgs::msg::dds_::Int32_",
+                "/status",
+                QoSProfile::QOS_PROFILE_DEFAULT,
+            )
+            .expect("a declared best_effort is TAKEN by a call site that asked reliable");
+            assert_eq!(granted.reliability, QoSReliabilityPolicy::BestEffort);
+            assert_eq!(
+                check(
+                    "std_msgs/msg/Int32",
+                    "/status",
+                    &QoSProfile::QOS_PROFILE_DEFAULT
+                ),
+                Err(NodeError::DeclaredQosMismatch),
+                "and the FFI seams' strict check refuses the same disagreement"
             );
         }
     }

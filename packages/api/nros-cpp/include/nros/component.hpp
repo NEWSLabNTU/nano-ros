@@ -413,7 +413,7 @@ inline Result bind_action_client(::rclcpp::Node& node, ActionClientStorage& stor
 namespace rclcpp {
 template <typename M, class C, void (C::*Method)(const M& msg)>
 inline void Node::create_subscription_in(const char* topic, const ::nros::QoS& qos) {
-    if (!this->check_declared_depth(M::TYPE_NAME, topic, qos)) {
+    if (!this->check_declared_qos(M::TYPE_NAME, topic, qos)) {
         return;
     }
     Result r = ::nros::bind_subscription<M, C, Method>(*this, topic, static_cast<C*>(this), qos);
@@ -433,7 +433,7 @@ inline void Node::create_subscription_in_group(const ::nros::CallbackGroup& grou
     // grouped subscription costs the arena exactly what an ungrouped one does,
     // so leaving this path out would make the declared depth enforceable
     // everywhere except in the images that use callback groups.
-    if (!this->check_declared_depth(M::TYPE_NAME, topic, qos)) {
+    if (!this->check_declared_qos(M::TYPE_NAME, topic, qos)) {
         return;
     }
     const nros_cpp_node_t* h = this->ffi_handle();
@@ -494,6 +494,45 @@ template <class T> struct strip_ref<T&> {
 constexpr ::nros::QoS qos_from_declared_depth(int declared) {
     return (declared == ::nros::DECLARED_DEPTH_UNDECLARED) ? ::nros::QoS::default_profile()
                                                            : ::nros::QoS(declared);
+}
+
+// issue 1256 -- `nros/declared_qos.hpp` cannot include this header's QoS (it
+// must stay freestanding), so it carries the policy ordinals as literals. This
+// is the one place both are visible, so this is where they are held equal: a
+// drift fails every C++ image's build here rather than checking every call site
+// against the wrong enumerator.
+static_assert(_NROS_DQ_CPP_NROS_DQ_RELIABLE == static_cast<int>(::nros::Reliable),
+              "declared_qos.hpp's reliable ordinal drifted from nros::Reliable");
+static_assert(_NROS_DQ_CPP_NROS_DQ_BEST_EFFORT == static_cast<int>(::nros::BestEffort),
+              "declared_qos.hpp's best_effort ordinal drifted from nros::BestEffort");
+static_assert(_NROS_DQ_CPP_NROS_DQ_VOLATILE == static_cast<int>(::nros::Volatile),
+              "declared_qos.hpp's volatile ordinal drifted from nros::Volatile");
+static_assert(_NROS_DQ_CPP_NROS_DQ_TRANSIENT_LOCAL == static_cast<int>(::nros::TransientLocal),
+              "declared_qos.hpp's transient_local ordinal drifted from nros::TransientLocal");
+
+/// `qos` with a declared reliability applied, or unchanged when none was.
+constexpr ::nros::QoS with_declared_reliability(::nros::QoS qos, int declared) {
+    return (declared == static_cast<int>(::nros::BestEffort))
+               ? qos.best_effort()
+               : ((declared == static_cast<int>(::nros::Reliable)) ? qos.reliable() : qos);
+}
+
+/// `qos` with a declared durability applied, or unchanged when none was.
+constexpr ::nros::QoS with_declared_durability(::nros::QoS qos, int declared) {
+    return (declared == static_cast<int>(::nros::TransientLocal))
+               ? qos.transient_local()
+               : ((declared == static_cast<int>(::nros::Volatile)) ? qos.durability_volatile()
+                                                                   : qos);
+}
+
+/// issue 1256 -- the QoS a `NROS_SUBSCRIBE` with no QoS argument gets: the
+/// default profile with every DECLARED column filled in -- depth, reliability
+/// and durability -- and every undeclared one left at the default. With nothing
+/// declared it is `QoS::default_profile()` exactly, from a branch the optimiser
+/// folds away.
+constexpr ::nros::QoS qos_from_declared(int depth, int reliability, int durability) {
+    return with_declared_durability(
+        with_declared_reliability(qos_from_declared_depth(depth), reliability), durability);
 }
 
 } // namespace detail
@@ -575,21 +614,24 @@ constexpr ::nros::QoS qos_from_declared_depth(int declared) {
     _NROS_SUB_PICK(__VA_ARGS__, _NROS_SUB_4, _NROS_SUB_3, _NROS_SUB_TOO_FEW, _NROS_SUB_TOO_FEW)    \
     (__VA_ARGS__)
 
-/// The 3-argument form: no QoS at the call site, so the DECLARED depth supplies
-/// one. Nothing to assert — there is only ever one number.
+/// The 3-argument form: no QoS at the call site, so the DECLARED QoS (depth,
+/// reliability, durability -- issue 1256) supplies one. Nothing to assert --
+/// there is only ever one statement of it.
 #define _NROS_SUB_3(Msg, method, topic)                                                            \
     this->template create_subscription_in<                                                         \
         Msg, ::nros::detail::strip_ref<decltype(*this)>::type,                                     \
         &::nros::detail::strip_ref<decltype(*this)>::type::method>(                                \
         (topic),                                                                                   \
-        ::nros::detail::qos_from_declared_depth(::nros::declared_depth(Msg::TYPE_NAME, (topic))))
+        ::nros::detail::qos_from_declared(::nros::declared_depth(Msg::TYPE_NAME, (topic)),         \
+                                          ::nros::declared_reliability(Msg::TYPE_NAME, (topic)),   \
+                                          ::nros::declared_durability(Msg::TYPE_NAME, (topic))))
 
-/// The 4-argument form: the call site states a QoS, so the two numbers must
-/// agree and the BUILD is where that is settled. `#topic` is the topic as the
-/// call site wrote it — the only way a string can reach a `static_assert`
-/// message in C++17.
+/// The 4-argument form: the call site states a QoS, so it must agree with every
+/// declared column -- depth, reliability and durability (issue 1256) -- and the
+/// BUILD is where that is settled. `#topic` is the topic as the call site wrote
+/// it — the only way a string can reach a `static_assert` message in C++17.
 #define _NROS_SUB_4(Msg, method, topic, qos)                                                       \
-    NROS_ASSERT_DECLARED_DEPTH(Msg::TYPE_NAME, (topic), (qos), #topic);                            \
+    NROS_ASSERT_DECLARED_QOS(Msg::TYPE_NAME, (topic), (qos), #topic);                              \
     this->template create_subscription_in<                                                         \
         Msg, ::nros::detail::strip_ref<decltype(*this)>::type,                                     \
         &::nros::detail::strip_ref<decltype(*this)>::type::method>((topic), (qos))
@@ -606,7 +648,7 @@ constexpr ::nros::QoS qos_from_declared_depth(int declared) {
 /// The compile-time check needs the topic as a constant expression to key the
 /// table with; a topic built at runtime or forwarded through a variable has
 /// none, so a call site like that names itself here and takes the BOOT-TIME
-/// check in `Node::check_declared_depth` instead. That check is the same
+/// check in `Node::check_declared_qos` instead. That check is the same
 /// comparison against the same table, and it halts boot naming the topic and
 /// both depths.
 ///

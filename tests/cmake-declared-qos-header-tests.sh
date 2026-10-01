@@ -45,6 +45,17 @@
 #      the call from `nano_ros_node_register()` would leave them green and every
 #      real component unchecked. That is issue 1084 exactly, and it is the one
 #      thing this gate exists to make impossible twice.
+#   F3/F4. issue 1256 -- the same negative control for the two POLICIES a
+#      contract can state, RELIABILITY and DURABILITY, in C++ and in C, against
+#      a table this configure rendered from a contract that states them. A
+#      code/contract disagreement there is an interop failure (an incompatible
+#      match never delivers), and until 1256 it was not compared at all;
+#   H. issue 1564 -- SEVERAL models. A configure with several entries compiles
+#      each component once for all of them, and used to ABSTAIN -- on the native
+#      road that is every workspace, so no C++ image could adopt the check. It
+#      now renders the UNION (a model that says nothing cannot contradict one
+#      that declares) and refuses, loudly, where two models state different
+#      values for one endpoint.
 #
 # Needs cmake, a C and a C++ compiler, and a built `nros` (`just setup-cli`).
 # The `just` recipe records a SKIP when any is missing -- which is a different
@@ -179,10 +190,15 @@ structure:
     /undeclared:
       type: std_msgs/msg/Bool
       sub: [/listener/undeclared]
+    /sensor:
+      type: std_msgs/msg/Float32
+      sub: [/listener/sensor]
 contracts:
   sub_endpoints:
     /listener/chatter:
       qos: { depth: 1 }
+    /listener/sensor:
+      qos: { reliability: best_effort, durability: transient_local }
   node_params:
     /listener:
       rate: { type: integer }
@@ -210,11 +226,11 @@ at all, silently. Configure said: $OUT"
 fi
 if [ -f "$HDR" ]; then
     check
-    if ! nros_grep_q 'NROS_DECLARED_QOS_ROW("std_msgs::msg::dds_::Int32_", "/chatter", 1)' "$HDR"; then
+    if ! nros_grep_q 'NROS_DECLARED_QOS_ROW("std_msgs::msg::dds_::Int32_", "/chatter", 1, NROS_DQ_UNDECLARED, NROS_DQ_UNDECLARED)' "$HDR"; then
         fail "A: the header carries no row for the declared endpoint -- $(cat "$HDR")"
     fi
     check
-    if ! nros_grep_q 'NROS_DECLARED_QOS_ROW("std_msgs/msg/Int32", "/chatter", 1)' "$HDR"; then
+    if ! nros_grep_q 'NROS_DECLARED_QOS_ROW("std_msgs/msg/Int32", "/chatter", 1, NROS_DQ_UNDECLARED, NROS_DQ_UNDECLARED)' "$HDR"; then
         fail "A: the ROS spelling of the type is missing, so a message class carrying
 it would look undeclared -- $(cat "$HDR")"
     fi
@@ -231,6 +247,13 @@ code subscribes to. Every assertion built on it is then vacuous -- $(cat "$HDR")
     # at some default would be the whole defect this step exists to prevent.
     if nros_grep_q '"/undeclared"' "$HDR"; then
         fail "A: an endpoint that declared no depth got a row -- absence became a number"
+    fi
+    check
+    # issue 1256 -- an endpoint that states the two POLICIES and no depth gets a
+    # row, with the depth column UNDECLARED (-1) rather than any number.
+    if ! nros_grep_q 'NROS_DECLARED_QOS_ROW("std_msgs::msg::dds_::Float32_", "/sensor", -1, NROS_DQ_BEST_EFFORT, NROS_DQ_TRANSIENT_LOCAL)' "$HDR"; then
+        fail "A: the contract's reliability/durability for /sensor did not reach the table --
+a code/contract disagreement on either is then unchecked -- $(cat "$HDR")"
     fi
 fi
 check
@@ -441,6 +464,179 @@ subscription is wrong or which of the two numbers to fix -- $C_DISAGREE_OUT" ;;
             esac
         done
     fi
+fi
+
+# ---------------------------------------------------------------------------
+# F3. issue 1256 -- the two POLICIES, in C++.
+#
+# Same shape as case F, against the same rendered header: the contract states
+# `best_effort` + `transient_local` for /sensor. An agreeing call site first
+# (so a table matching nothing fails HERE), then one that passes RELIABLE and
+# one that passes VOLATILE, each of which must be OUR rejection naming the
+# topic and both values. `Q` carries the two accessors as ints in
+# `nros::ReliabilityPolicy` / `nros::DurabilityPolicy` order (reliable 0,
+# best_effort 1; volatile 0, transient_local 1).
+# ---------------------------------------------------------------------------
+log_info "F3. a call site whose reliability or durability DISAGREES fails to compile"
+policy_probe_src() {
+    cat <<EOF
+#include <nros/declared_qos.hpp>
+namespace {
+struct Q {
+    int r;
+    int u;
+    constexpr Q(int rel, int dur) : r(rel), u(dur) {}
+    constexpr int depth() const { return 5; }
+    constexpr int reliability() const { return r; }
+    constexpr int durability() const { return u; }
+};
+struct Float32 {
+    static constexpr const char* TYPE_NAME = "std_msgs::msg::dds_::Float32_";
+};
+} // namespace
+void nros_dq_case_f3() {
+    NROS_ASSERT_DECLARED_QOS(Float32::TYPE_NAME, "/sensor", Q($1, $2), "\"/sensor\"");
+}
+EOF
+}
+policy_probe_src 1 1 > "$TEST_TMPDIR/policy_agree.cpp"
+policy_probe_src 0 1 > "$TEST_TMPDIR/policy_rel.cpp"
+policy_probe_src 1 0 > "$TEST_TMPDIR/policy_dur.cpp"
+check
+if ! P_AGREE_OUT="$(probe_compile "$TEST_TMPDIR/policy_agree.cpp")"; then
+    fail "F3: the AGREEING policy call site failed to compile, so the expected failures
+below would pass for the wrong reason -- $P_AGREE_OUT"
+else
+    for _case in "policy_rel.cpp|declared_reliability_agrees<1, 0>|reliability" \
+                 "policy_dur.cpp|declared_durability_agrees<1, 0>|durability"; do
+        IFS='|' read -r _src _want _what <<<"$_case"
+        check
+        if P_OUT="$(probe_compile "$TEST_TMPDIR/$_src")"; then
+            fail "F3: a call site whose $_what DISAGREES with the contract COMPILED. The
+declared $_what is not reaching the C++ check, and a link that can never match
+builds clean."
+        else
+            for _w in '"/sensor"' "$_want"; do
+                check
+                case "$P_OUT" in
+                    *"$_w"*) ;;
+                    *) fail "F3: the $_what diagnostic does not contain: $_w -- $P_OUT" ;;
+                esac
+            done
+        fi
+    done
+fi
+
+# ---------------------------------------------------------------------------
+# F4. issue 1256 -- the two POLICIES, in C.
+#
+# C's own enumerator values (`nros_qos_reliability_t`: best_effort 0, reliable 1;
+# `nros_qos_durability_t`: volatile 0, transient_local 1), read through the
+# query list `NROS_DECLARED_QOS_ROWS_Q`. The values reach the diagnostic as the
+# sizes of a conflicting `extern char` pair, offset by one: `char[1]` is 0 and
+# `char[2]` is 1.
+# ---------------------------------------------------------------------------
+log_info "F4. the same policy disagreement fails to compile in C"
+c_policy_probe_src() {
+    cat <<EOF
+#include <nros/declared_qos.h>
+void nros_dq_case_f4(void) {
+    NROS_ASSERT_DECLARED_RELIABILITY("std_msgs::msg::dds_::Float32_", "/sensor", $1, "\"/sensor\"");
+    NROS_ASSERT_DECLARED_DURABILITY("std_msgs::msg::dds_::Float32_", "/sensor", $2, "\"/sensor\"");
+}
+EOF
+}
+c_policy_probe_src 0 1 > "$TEST_TMPDIR/c_policy_agree.c"
+c_policy_probe_src 1 1 > "$TEST_TMPDIR/c_policy_rel.c"
+c_policy_probe_src 0 0 > "$TEST_TMPDIR/c_policy_dur.c"
+check
+if ! C_P_AGREE_OUT="$(c_probe_compile "$TEST_TMPDIR/c_policy_agree.c")"; then
+    fail "F4: the AGREEING C policy call site failed to compile -- $C_P_AGREE_OUT"
+else
+    for _case in "c_policy_rel.c|nros_declared_reliability_vs_passed|reliability" \
+                 "c_policy_dur.c|nros_declared_durability_vs_passed|durability"; do
+        IFS='|' read -r _src _want _what <<<"$_case"
+        check
+        if C_P_OUT="$(c_probe_compile "$TEST_TMPDIR/$_src")"; then
+            fail "F4: a C call site whose $_what DISAGREES with the contract COMPILED --
+NROS_DECLARED_QOS_ROWS_Q's policy column is not reaching the C check."
+        else
+            for _w in '"/sensor"' "$_want" 'char[1]' 'char[2]'; do
+                check
+                case "$C_P_OUT" in
+                    *"$_w"*) ;;
+                    *) fail "F4: the C $_what diagnostic does not contain: $_w -- $C_P_OUT" ;;
+                esac
+            done
+        fi
+    done
+fi
+
+# ---------------------------------------------------------------------------
+# H. issue 1564 -- a configure with SEVERAL models renders their union.
+#
+# Three images' worth of models, as a multi-entry workspace has: the declaring
+# one from case A, one that describes wiring and declares nothing for this
+# component, and one with no contract at all. The component is compiled once
+# for all three, so its table is the union -- and a model that declares nothing
+# contradicts nothing. Then the conflict: a fourth model stating a DIFFERENT
+# depth for /chatter must refuse the table and say so on the configure output,
+# because no one table is true of both images.
+# ---------------------------------------------------------------------------
+log_info "H. several models: their union is rendered, and a conflict refuses loudly"
+SILENT_MODEL="$TEST_TMPDIR/silent_model.yaml"
+cat > "$SILENT_MODEL" <<'EOF'
+meta: { version: 1 }
+structure:
+  nodes:
+    /listener:
+      { scope: s.launch.xml, pkg: demo, exec: listener, node_name: listener }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      sub: [/listener/chatter]
+EOF
+BARE_MODEL="$TEST_TMPDIR/bare_model.yaml"
+cat > "$BARE_MODEL" <<'EOF'
+meta: { version: 1 }
+structure:
+  nodes:
+    /listener:
+      { scope: s.launch.xml, pkg: demo, exec: listener, node_name: listener }
+EOF
+CONFLICT_MODEL="$TEST_TMPDIR/conflict_model.yaml"
+sed 's/qos: { depth: 1 }/qos: { depth: 2 }/' "$DECLARED_MODEL" > "$CONFLICT_MODEL"
+OUT="$(configure union "$DECLARED_MODEL" "_nros_declared_qos_record_model(\"$SILENT_MODEL\")
+_nros_declared_qos_record_model(\"$BARE_MODEL\")")"
+UHDR="$TEST_TMPDIR/union/build/nros-declared-qos/listener/nros/nros_declared_qos_generated.h"
+check
+if nros_grep_q "not rendering the declared QoS" <<<"$OUT"; then
+    fail "H: a configure with several models still ABSTAINS -- every component of every
+multi-entry configure then compiles with its declared-QoS checks off (issue 1564) -- $OUT"
+fi
+check
+if [ ! -f "$UHDR" ] || ! nros_grep_q 'NROS_DECLARED_QOS_ROW("std_msgs::msg::dds_::Int32_", "/chatter", 1, NROS_DQ_UNDECLARED, NROS_DQ_UNDECLARED)' "$UHDR"; then
+    fail "H: the union of three models did not carry the one declaration among them --
+$( [ -f "$UHDR" ] && cat "$UHDR" ) -- configure said: $OUT"
+fi
+OUT="$(configure conflict "$DECLARED_MODEL" "_nros_declared_qos_record_model(\"$CONFLICT_MODEL\")" | tr '\n' ' ' | tr -s ' ')"
+CHDR="$TEST_TMPDIR/conflict/build/nros-declared-qos/listener/nros/nros_declared_qos_generated.h"
+check
+if [ ! -f "$CHDR" ] || ! nros_grep_q 'NROS_DECLARED_QOS_STATUS "refused"' "$CHDR" || \
+   nros_grep_q "#define NROS_DECLARED_QOS_ROWS" "$CHDR"; then
+    fail "H: two models declaring DIFFERENT depths for /chatter did not refuse the table. A
+table picked from one of them asserts against call sites the other one sizes --
+$( [ -f "$CHDR" ] && cat "$CHDR" )"
+fi
+check
+if ! nros_grep_q "nros: declared QoS: no table for demo::listener" <<<"$OUT"; then
+    fail "H: the conflict refused SILENTLY. It turns this component's checks off, so the
+configure must say so, as the abstention it replaces did -- $OUT"
+fi
+check
+if nros_grep_q "CMake Error" <<<"$OUT"; then
+    fail "H: a conflict between two models broke the configure. Each contract is fine on its
+own, so it refuses the table, not the build -- $OUT"
 fi
 
 # ---------------------------------------------------------------------------

@@ -36,3 +36,15 @@ type = "std_msgs/msg/Int32"
 topic = "/chatter"
 history = "keep_last"
 depth = 1
+
+# issue 1256 -- a subscription that states the two POLICIES and no depth. The
+# descriptor is the ONLY carrier of a declared reliability or durability (no env
+# knob is added for them), so this row is what proves they reach
+# `DECLARED_QOS_ROWS`: the lane expects a THIRD declared-image test on this
+# carrier's step and only two on the env step, whose variable is depth-only.
+[[endpoint]]
+kind = "subscription"
+type = "std_msgs/msg/Int32"
+topic = "/status"
+reliability = "best_effort"
+durability = "volatile"

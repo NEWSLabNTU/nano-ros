@@ -754,6 +754,16 @@ fn main() {
     if declared_qos_rows != "None" {
         println!("cargo:rustc-cfg=nros_declared_qos_table");
     }
+    // issue 1256 -- and "...including a declared reliability or durability",
+    // for the one declared-image test that needs a POLICY row. Only the
+    // descriptor carries those, so this is what lets the registration lane tell
+    // "the descriptor's policies arrived" from "only its depths did".
+    println!("cargo:rustc-check-cfg=cfg(nros_declared_qos_policy_table)");
+    if declared_qos_rows.contains("reliability: Some(")
+        || declared_qos_rows.contains("durability: Some(")
+    {
+        println!("cargo:rustc-cfg=nros_declared_qos_policy_table");
+    }
     // Phase 104.C.2 — multi-Node-per-Executor (rclcpp `add_node`
     // pattern). Most apps run a single Node per Executor; bridge
     // nodes typically need 2 (ingress + egress). Default 4 leaves
@@ -1203,10 +1213,11 @@ fn main() {
          path's depth and this family used to pay it.\n\
          pub const PARAM_SERVICE_INBOX_DEPTH: usize = {param_inbox_depth};\n\
          \n\
-         /// phase-454 W10 -- the QoS history DEPTH this image's system \
-         DECLARED, per endpoint: `(type name, topic, depth)`. Read by \
-         `declared_qos::check` at every subscription registration \
-         (NROS_ENTITY_DECLARED_DEPTHS).\n\
+         /// phase-454 W10 -- the QoS this image's system DECLARED, per \
+         subscription: its history DEPTH and (issue 1256) its RELIABILITY and \
+         DURABILITY, each `None` where nobody stated it. Read by \
+         `declared_qos::check` / `declared_qos::honour` at every subscription \
+         registration (NROS_ENTITY_DECLARED_DEPTHS + the sizing descriptor).\n\
          ///\n\
          /// Both TYPE spellings appear per declared endpoint -- the ROS \
          `pkg/msg/Name` and the DDS-mangled `pkg::msg::dds_::Name_` -- because \
@@ -1216,7 +1227,8 @@ fn main() {
          /// `None` is \"nobody declared\", never \"declared zero\": an image \
          with no contract sidecar checks nothing and behaves exactly as it did \
          before.\n\
-         pub const DECLARED_QOS_ROWS: Option<&[(&str, &str, u32)]> = {declared_qos_rows};\n\
+         pub const DECLARED_QOS_ROWS: Option<&[crate::declared_qos::DeclaredEndpoint]> = \
+         {declared_qos_rows};\n\
          \n\
          /// Maximum number of Nodes attached to a single Executor \
          (set via NROS_EXECUTOR_MAX_NODES, default 4). Phase 104.C.2.\n\
@@ -1803,10 +1815,12 @@ fn declared_qos_rows(desc: Option<&nros_sizing_descriptor::SizingDescriptor>) ->
     // `env::var("<forwarded knob>")` is issue 0460's shape.
     println!("cargo:rerun-if-env-changed=NROS_ENTITY_DECLARED_DEPTHS");
     let raw = declared_fact("NROS_ENTITY_DECLARED_DEPTHS").unwrap_or_default();
-    // `(type, topic, depth)`, in the ROS type spelling. The DDS-mangled twin is
-    // added at RENDER time, once, so a row arriving from either carrier gets
-    // both and neither carrier has to know about the mangling.
-    let mut declared: Vec<(String, String, u32)> = Vec::new();
+    // One row per `(type, topic)`, in the ROS type spelling, with the three
+    // columns a contract can state for a subscription -- issue 1256 added the
+    // two policies. The DDS-mangled twin is added at RENDER time, once, so a
+    // row arriving from either carrier gets both and neither carrier has to
+    // know about the mangling.
+    let mut declared: Vec<DeclaredRow> = Vec::new();
     // cmake hands a list over as `;`-separated; be liberal about `,` too --
     // the Zephyr lane converts one to the other on its way through
     // `nros_cargo_build.cmake`.
@@ -1842,58 +1856,122 @@ fn declared_qos_rows(desc: Option<&nros_sizing_descriptor::SizingDescriptor>) ->
         if type_name.is_empty() || topic.is_empty() {
             malformed()
         }
-        declared.push((type_name.to_string(), topic.to_string(), depth));
+        declared.push(DeclaredRow {
+            type_name: type_name.to_string(),
+            topic: topic.to_string(),
+            depth: Some(depth),
+            reliability: None,
+            durability: None,
+        });
     }
-    // The leaf road's carrier. Subscriptions only, because that is what
+    // The descriptor's rows. Subscriptions only, because that is what
     // `declared_qos::check` is asked about and what `NROS_ENTITY_DECLARED_DEPTHS`
     // itself carries (a publisher's declared depth rides its own variable and
     // sizes a different thing).
+    //
+    // issue 1256 -- the descriptor is also the ONLY carrier of the two
+    // policies, on every road that names one (the cargo leaf road, and a
+    // single-entry cmake configure since phase-454 W14). No env knob carries
+    // them and none is added: a second carrier for a fact the descriptor
+    // already states is the 0460/0491 shape this model exists to remove. A
+    // multi-entry configure names no descriptor to cargo (phase-457 W0.c), so
+    // there the Rust registration checks the depth and not the policies -- the
+    // C/C++ compile-time table, which IS rendered per component, still checks
+    // both.
     if let Some(desc) = desc {
         for ep in desc
             .endpoints
             .iter()
             .filter(|ep| ep.kind == nros_sizing_descriptor::EndpointKind::Subscription)
         {
-            // A refused or absent depth contributes NO row. The endpoint exists
-            // and nobody stated what it keeps, which is exactly the case
+            // A refused or absent column contributes nothing. The endpoint
+            // exists and nobody stated that policy, which is exactly the case
             // "absence is not zero" is about -- a default taken here would be
             // checked against as if a human had written it.
-            let Some(depth) = ep.depth().get() else {
+            let depth = ep.depth().get();
+            let reliability = ep.reliability().stated().map(|r| match r {
+                nros_sizing_descriptor::Reliability::Reliable => "Reliable",
+                nros_sizing_descriptor::Reliability::BestEffort => "BestEffort",
+            });
+            let durability = ep.durability().stated().map(|d| match d {
+                nros_sizing_descriptor::Durability::Volatile => "Volatile",
+                nros_sizing_descriptor::Durability::TransientLocal => "TransientLocal",
+            });
+            if depth.is_none() && reliability.is_none() && durability.is_none() {
+                continue;
+            }
+            let Some(row) = declared
+                .iter_mut()
+                .find(|r| r.type_name == ep.type_name && r.topic == ep.topic)
+            else {
+                declared.push(DeclaredRow {
+                    type_name: ep.type_name.clone(),
+                    topic: ep.topic.clone(),
+                    depth,
+                    reliability,
+                    durability,
+                });
                 continue;
             };
-            if let Some((ty, topic, other)) = declared
-                .iter()
-                .find(|(ty, topic, d)| ty == &ep.type_name && topic == &ep.topic && *d != depth)
+            if let (Some(other), Some(depth)) = (row.depth, depth)
+                && other != depth
             {
                 panic!(
-                    "\n\nnros-node: two carriers state a declared QoS depth for `{ty}` on \
-                     `{topic}` and they disagree: NROS_ENTITY_DECLARED_DEPTHS says {other}, this \
+                    "\n\nnros-node: two carriers state a declared QoS depth for `{}` on \
+                     `{}` and they disagree: NROS_ENTITY_DECLARED_DEPTHS says {other}, this \
                      image's sizing descriptor says {depth}. They are two statements about one \
                      fact (RFC-0100 D8), so the build stops rather than picking one -- the \
                      registration check would otherwise hold every subscription to a number \
-                     nobody on this road wrote.\n"
+                     nobody on this road wrote.\n",
+                    row.type_name, row.topic
                 );
             }
-            if !declared
-                .iter()
-                .any(|(ty, topic, _)| ty == &ep.type_name && topic == &ep.topic)
-            {
-                declared.push((ep.type_name.clone(), ep.topic.clone(), depth));
-            }
+            row.depth = row.depth.or(depth);
+            row.reliability = reliability;
+            row.durability = durability;
         }
     }
     let mut rows: Vec<String> = Vec::new();
-    for (type_name, topic, depth) in &declared {
-        rows.push(format!("({type_name:?}, {topic:?}, {depth})"));
-        let dds = dds_type_name(type_name);
-        if &dds != type_name {
-            rows.push(format!("({dds:?}, {topic:?}, {depth})"));
+    for r in &declared {
+        let opt_u32 = |v: Option<u32>| match v {
+            Some(d) => format!("Some({d})"),
+            None => "None".into(),
+        };
+        let opt_policy = |enum_name: &str, v: Option<&str>| match v {
+            Some(variant) => format!("Some(::nros_rmw::{enum_name}::{variant})"),
+            None => "None".into(),
+        };
+        let mut spellings = vec![r.type_name.clone()];
+        let dds = dds_type_name(&r.type_name);
+        if dds != r.type_name {
+            spellings.push(dds);
+        }
+        for ty in spellings {
+            rows.push(format!(
+                "crate::declared_qos::DeclaredEndpoint {{ type_name: {ty:?}, topic: {:?}, \
+                 depth: {}, reliability: {}, durability: {} }}",
+                r.topic,
+                opt_u32(r.depth),
+                opt_policy("QoSReliabilityPolicy", r.reliability),
+                opt_policy("QoSDurabilityPolicy", r.durability),
+            ));
         }
     }
     if rows.is_empty() {
         return "None".into();
     }
     format!("Some(&[{}])", rows.join(", "))
+}
+
+/// One declared subscription as [`declared_qos_rows`] assembles it from the two
+/// carriers, before it is rendered as a `declared_qos::DeclaredEndpoint`.
+/// The policies are carried as the `nros_rmw` VARIANT NAME they render to.
+struct DeclaredRow {
+    type_name: String,
+    topic: String,
+    depth: Option<u32>,
+    reliability: Option<&'static str>,
+    durability: Option<&'static str>,
 }
 
 /// `pkg/msg/Name` -> `pkg::msg::dds_::Name_`, the spelling a generated message
