@@ -34,7 +34,7 @@ use serde::Deserialize;
 
 use crate::entity_inventory::{
     ComponentEntities, Declaration, DeclaredQosHeaderTable, ENTITY_INVENTORY_CMAKE_NAME,
-    ENTITY_INVENTORY_JSON_NAME, EntityDecl, EntityInventory,
+    ENTITY_INVENTORY_JSON_NAME, EntityInventory,
 };
 
 /// The `components[]` fields this verb needs. Every other field the typed entry
