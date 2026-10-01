@@ -356,9 +356,20 @@ fn main() {
     // The boot self-report (`src/boot_report.rs`) is OPT-IN, so an image that
     // does not ask for it is byte-identical to one built before it existed.
     // Set NROS_BOOT_REPORT=1 (Zephyr: CONFIG_NROS_BOOT_REPORT=y) to enable.
+    //
+    // Read through the knob ladder (env, then `$DOTCONFIG`), never `env::var`
+    // alone (issue 0460's class). The C lane gets `NROS_BOOT_REPORT=1` baked
+    // into its cargo command by `nros_cargo_build.cmake`; zephyr-lang-rust's
+    // `rust_cargo_application` builds the RUST lane's command itself and passes
+    // none of those variables, only `DOTCONFIG`. So on a pure-Rust Zephyr image
+    // `CONFIG_NROS_BOOT_REPORT=y` compiled the C half's writes against the
+    // empty Rust bodies below: the record never existed, and the symbol a
+    // debugger (or `nros_tests::zephyr`'s heap gate) reads was absent.
     println!("cargo:rustc-check-cfg=cfg(nros_boot_report)");
-    println!("cargo:rerun-if-env-changed=NROS_BOOT_REPORT");
-    if env::var("NROS_BOOT_REPORT").is_ok_and(|v| !v.is_empty() && v != "0" && v != "n") {
+    if nros_zephyr_build::knob("NROS_BOOT_REPORT")
+        .stated()
+        .is_some_and(|v| v != 0)
+    {
         println!("cargo:rustc-cfg=nros_boot_report");
     }
 

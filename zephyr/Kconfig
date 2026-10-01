@@ -1532,6 +1532,7 @@ config NROS_SUBSCRIPTION_BUFFER_SIZE
 
 config NROS_BOOT_REPORT
     bool "Write a boot self-report into RAM"
+    default y if ARCH_POSIX
     default n
     help
       The image keeps one fixed-size record in RAM describing itself: the
@@ -1552,8 +1553,18 @@ config NROS_BOOT_REPORT
       never prints; the record's last stage and failed allocation are still
       there to be read.
 
-      OFF by default: an image that does not enable it is byte-identical to one
-      built before the feature existed.
+      OFF by default on a real board: an image that does not enable it is
+      byte-identical to one built before the feature existed.
+
+      ON by default on native_sim (ARCH_POSIX), where it is the TEST
+      instrument (issue 1424): a native_sim image is a host process, so
+      nros_tests reads this record out of the live process (/proc/<pid>/mem at
+      the ELF's symbol) after a cell has delivered, and refuses the cell when
+      CONFIG_NROS_ZEPHYR_HEAP_SIZE keeps less headroom over the measured heap
+      peak than `read-boot-report.py --heap-headroom` allows. That is the one
+      place the heap knob is compared to a measurement on every run rather than
+      once by hand. It also turns NROS_HEAP_EXHAUSTION_IS_FATAL on there, so an
+      exhausted heap stops the cell loudly instead of degrading it.
 
       The record's LENGTH is not stated here on purpose. It has been 60, 88 and
       92 bytes as fields were appended, and this text said 60 through two of
