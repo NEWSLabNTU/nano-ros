@@ -98,22 +98,26 @@ pub fn sole_bringup(src_dir: &Path) -> Result<PathBuf> {
     }
     found.sort();
     match found.len() {
-        0 => bail!(
-            "no bringup package under {} (a directory carrying `system.toml`).\n  \
+        0 => {
+            bail!(
+                "no bringup package under {} (a directory carrying `system.toml`).\n  \
              Create one first: nros new system <name>_bringup --components <pkgs>",
-            src_dir.display()
-        ),
+                src_dir.display()
+            );
+        }
         1 => Ok(found.remove(0)),
-        _ => bail!(
-            "{} bringup packages here, so the entry's system cannot be derived:\n{}\n  \
+        _ => {
+            bail!(
+                "{} bringup packages here, so the entry's system cannot be derived:\n{}\n  \
              Name it: --bringup <dir>",
-            found.len(),
-            found
-                .iter()
-                .map(|p| format!("  {}", p.display()))
-                .collect::<Vec<_>>()
-                .join("\n")
-        ),
+                found.len(),
+                found
+                    .iter()
+                    .map(|p| format!("  {}", p.display()))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+        }
     }
 }
 

@@ -423,7 +423,7 @@ pub fn run(args: Args) -> Result<()> {
     // rather than a rename that would quietly write the wrong one.
     let scaffold = match (&args.image, &args.host, &args.deploy) {
         (Some(_), Some(_), _) | (Some(_), _, Some(_)) | (_, Some(_), Some(_)) => {
-            eyre::bail!("--image, --host and --deploy are alternatives; pass one")
+            eyre::bail!("--image, --host and --deploy are alternatives; pass one");
         }
         (Some(name), None, None) => Some((name.clone(), ScaffoldTable::Image)),
         (None, Some(name), None) => Some((name.clone(), ScaffoldTable::Host)),
@@ -502,7 +502,7 @@ pub fn run(args: Args) -> Result<()> {
     // §212.L.9 shape.
     if args.component {
         // phase-469 — the validation that stood here (`match lang.as_str() {
-        // "rust" | "cpp" | "c" => {} other => bail!(…) }`) was a third copy of
+        // "rust" | "cpp" | "c" => {} other => { bail!(…); } }`) was a third copy of
         // "which languages exist", behind clap's own `value_parser`, in front
         // of an identical refusal inside `scaffold_component`. Parsing once
         // leaves one answer and no copies.

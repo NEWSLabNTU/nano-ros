@@ -234,10 +234,12 @@ pub struct WorkspaceScaffold {
 fn rewrite_once(file: &str, text: String, needle: &str, to: &str) -> Result<String> {
     match text.match_indices(needle).count() {
         1 => Ok(text.replacen(needle, to, 1)),
-        n => bail!(
-            "workspace template anchor `{needle}` found {n}x in `{file}` (expected exactly 1) — \
+        n => {
+            bail!(
+                "workspace template anchor `{needle}` found {n}x in `{file}` (expected exactly 1) — \
              the embedded template drifted; fix the anchor in workspace_scaffold.rs"
-        ),
+            );
+        }
     }
 }
 
@@ -265,15 +267,19 @@ pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
     let files: &[(&str, &str)] = match cfg.lang {
         Language::Cpp => CPP_FILES,
         Language::Rust => RUST_FILES,
-        Language::C => bail!(
-            "`nros new <name> --workspace --lang c` is not supported yet — \
+        Language::C => {
+            bail!(
+                "`nros new <name> --workspace --lang c` is not supported yet — \
              use `cpp` (the default) or `rust`. C node pkgs join an existing \
              workspace via `nros new --component --lang c`."
-        ),
+            );
+        }
     };
     match cfg.rmw.as_str() {
         "cyclonedds" | "zenoh" | "xrce" => {}
-        other => bail!("unknown --rmw `{other}` (cyclonedds | zenoh | xrce)"),
+        other => {
+            bail!("unknown --rmw `{other}` (cyclonedds | zenoh | xrce)");
+        }
     }
     if cfg.dir.exists() && !cfg.force {
         bail!(

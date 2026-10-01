@@ -413,7 +413,7 @@ pub fn run(args: EntityFactsArgs) -> Result<()> {
             nros_orchestration_ir::model_location::resolve_model_path(&bringup, &rel)
         }
         (None, None) => {
-            bail!("entity-facts needs --model <path>, --bringup-dir <dir> or --leaf <dir>")
+            bail!("entity-facts needs --model <path>, --bringup-dir <dir> or --leaf <dir>");
         }
     };
 

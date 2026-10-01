@@ -114,7 +114,9 @@ pub fn run(args: Args) -> Result<()> {
                 generated.output_dir.display()
             );
         }
-        other => eyre::bail!("unknown --lang '{other}' (rust | cpp)"),
+        other => {
+            eyre::bail!("unknown --lang '{other}' (rust | cpp)");
+        }
     }
     Ok(())
 }

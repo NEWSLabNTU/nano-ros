@@ -800,12 +800,16 @@ pub fn parse_duration(s: &str) -> Result<Duration> {
         "h" => 60 * 60,
         "d" => 24 * 60 * 60,
         "w" => 7 * 24 * 60 * 60,
-        "" => bail!(
-            "`{s}` has no unit. Say which — `{s}d` (days), `{s}h`, `{s}m` \
+        "" => {
+            bail!(
+                "`{s}` has no unit. Say which — `{s}d` (days), `{s}h`, `{s}m` \
              (minutes), `{s}w`, `{s}s`. A bare number is refused because \
              reading it as seconds would delete far more than the writer meant."
-        ),
-        other => bail!("`{s}`: unknown unit `{other}` — use s, m, h, d or w"),
+            );
+        }
+        other => {
+            bail!("`{s}`: unknown unit `{other}` — use s, m, h, d or w");
+        }
     };
     Ok(Duration::from_secs(n * unit))
 }

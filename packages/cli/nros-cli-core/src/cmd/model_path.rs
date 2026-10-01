@@ -69,7 +69,9 @@ pub fn run(args: Args) -> Result<()> {
         Ok(None) => {
             nros_orchestration_ir::model_location::resolve_model_path(&bringup_dir, &model_rel)
         }
-        Err(refusal) => bail!("model-path: {refusal}"),
+        Err(refusal) => {
+            bail!("model-path: {refusal}");
+        }
     };
     println!("{}", path.display());
     Ok(())

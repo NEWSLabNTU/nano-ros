@@ -1,12 +1,12 @@
 //! Phase 212.M.5.a.2 — Executor-backed `NodeRuntime` /
 //! `DeclaredNodeRuntime` for nano-ros.
 //!
-//! [`MetadataRecorder`](crate::node_metadata::MetadataRecorder)
+//! [`MetadataRecorder`]
 //! (the planner sink) binds the
-//! [`Node`](crate::node::Node) /
-//! [`ExecutableNode`](crate::node::ExecutableNode)
+//! [`Node`] /
+//! [`ExecutableNode`]
 //! traits to a pure metadata target. This module is the missing twin:
-//! it binds the same traits to a live [`Executor`](crate::Executor) so
+//! it binds the same traits to a live [`Executor`] so
 //! a Node pkg can actually run — nodes, publishers,
 //! subscriptions, timers materialise as real executor handles, and
 //! every fired callback dispatches into

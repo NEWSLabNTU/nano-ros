@@ -862,10 +862,10 @@ fn execute_install(
             bail!(
                 "{tool} {version}: {reason}\n  Nothing was downloaded, and the index has no \
                  source recipe for {tool} to fall back to."
-            )
+            );
         }
         InstallAction::Unavailable => {
-            bail!("{tool} {version}: no prebuilt for this host and no source recipe in the index")
+            bail!("{tool} {version}: no prebuilt for this host and no source recipe in the index");
         }
     }
 }

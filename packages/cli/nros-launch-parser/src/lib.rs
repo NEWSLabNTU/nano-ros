@@ -373,10 +373,12 @@ fn handle_start(
             if let Some(from) = attrs.get("from").cloned() {
                 match stack.last_mut() {
                     Some(Frame::Node(n)) => n.param_files.push(from),
-                    _ => bail!(
-                        "<param from=…> must be a child of <node> in `{}`",
-                        here.display()
-                    ),
+                    _ => {
+                        bail!(
+                            "<param from=…> must be a child of <node> in `{}`",
+                            here.display()
+                        );
+                    }
                 }
             } else {
                 let name = attrs.get("name").cloned().ok_or_else(|| {
@@ -391,7 +393,9 @@ fn handle_start(
                     .ok_or_else(|| eyre!("<param> missing `value=` in `{}`", here.display()))?;
                 match stack.last_mut() {
                     Some(Frame::Node(n)) => n.params.push(ParamSpec { name, value }),
-                    _ => bail!("<param> must be a child of <node> in `{}`", here.display()),
+                    _ => {
+                        bail!("<param> must be a child of <node> in `{}`", here.display());
+                    }
                 }
             }
         }
@@ -407,10 +411,12 @@ fn handle_start(
             match stack.last_mut() {
                 Some(Frame::Node(n)) => n.remaps.push(RemapSpec { from, to }),
                 Some(Frame::Group(g)) => g.remaps.push(RemapSpec { from, to }),
-                _ => bail!(
-                    "<remap> must be a child of <node> or <group> in `{}`",
-                    here.display()
-                ),
+                _ => {
+                    bail!(
+                        "<remap> must be a child of <node> or <group> in `{}`",
+                        here.display()
+                    );
+                }
             }
         }
         "group" => {
@@ -453,7 +459,7 @@ fn handle_start(
             bail!(
                 "<{other}> is not in the Phase 212.N.11 v1 launch tag set (file: `{}`)",
                 here.display()
-            )
+            );
         }
     }
     Ok(())
@@ -490,10 +496,12 @@ fn handle_end(
             attach_include(i, stack, desc);
             Ok(())
         }
-        (other, _) => bail!(
-            "</{other}> closed an unexpected frame in `{}`",
-            here.display()
-        ),
+        (other, _) => {
+            bail!(
+                "</{other}> closed an unexpected frame in `{}`",
+                here.display()
+            );
+        }
     }
 }
 
@@ -677,10 +685,12 @@ fn resolve_substitution(
                 )
             })
         }
-        other => bail!(
-            "unknown substitution verb `{other}` in `{}` (supported: find, var, env)",
-            here.display()
-        ),
+        other => {
+            bail!(
+                "unknown substitution verb `{other}` in `{}` (supported: find, var, env)",
+                here.display()
+            );
+        }
     }
 }
 

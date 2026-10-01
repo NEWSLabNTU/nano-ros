@@ -327,7 +327,7 @@ pub fn run(args: Args) -> Result<()> {
                     .map_err(|e| eyre!("{e:#}"))
                 }
                 other => {
-                    bail!("nros codegen: unsupported language '{other}' (expected 'c' or 'cpp')")
+                    bail!("nros codegen: unsupported language '{other}' (expected 'c' or 'cpp')");
                 }
             }
         }
@@ -487,22 +487,26 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             // The RENDERER stays: `emit_rust` is the second rendering the
             // parity corpus compares the proc-macro against, which is the diff
             // this file's sibling promised for two years and never had.
-            entry_codegen::Lang::Rust => bail!(
-                "--lang rust entry is retired (phase-432 W2.4): a Rust entry is \
+            entry_codegen::Lang::Rust => {
+                bail!(
+                    "--lang rust entry is retired (phase-432 W2.4): a Rust entry is \
                  emitted by the `nros::main!()` proc-macro at compile time. \
                  Scaffold one with `nros new`, or let `nano_ros_entry` drive \
                  `rust_cargo_application()`; this verb rendered the register \
                  path only and silently dropped tiers, lifecycle and param \
                  services."
-            ),
+                );
+            }
             // Phase 257 (Stage-3) — the non-typed C/C++ entry (the synthesizing
             // `EntryNodeRuntime` interpreter) is retired; every C/C++ entry is now
             // typed (`--typed`, real executor).
-            entry_codegen::Lang::Cpp | entry_codegen::Lang::C => bail!(
-                "non-typed --lang {} entry is retired (phase-257): pass `TYPED` to \
+            entry_codegen::Lang::Cpp | entry_codegen::Lang::C => {
+                bail!(
+                    "non-typed --lang {} entry is retired (phase-257): pass `TYPED` to \
                  nano_ros_entry (→ `--typed`) for the real-executor entry",
-                args.lang
-            ),
+                    args.lang
+                );
+            }
         }
     };
 
@@ -547,11 +551,13 @@ fn typed_entry_emitter(lang: entry_codegen::Lang) -> Result<TypedEntryEmitter> {
         entry_codegen::Lang::Cpp => Ok(TypedEntryEmitter::Cpp),
         // The prefix is the message this verb has always printed. The rest
         // says why: a Rust entry has a producer, and it is not this verb.
-        entry_codegen::Lang::Rust => bail!(
-            "--typed supports --lang cpp or c (got --lang {lang}): language `{lang}` \
+        entry_codegen::Lang::Rust => {
+            bail!(
+                "--typed supports --lang cpp or c (got --lang {lang}): language `{lang}` \
              has no typed entry emitter in `nros codegen entry` — a Rust entry is \
              emitted by the `nros::main!()` proc-macro"
-        ),
+            );
+        }
     }
 }
 
@@ -656,12 +662,14 @@ fn run_entry_node(args: EntryNodeArgs) -> Result<()> {
     let is_cpp = match language {
         entry_codegen::Lang::Cpp => true,
         entry_codegen::Lang::C => false,
-        entry_codegen::Lang::Rust => bail!(
-            "codegen entry-node: --lang rust is not this verb's shape — a Rust \
+        entry_codegen::Lang::Rust => {
+            bail!(
+                "codegen entry-node: --lang rust is not this verb's shape — a Rust \
              component registers through `nano_ros_node_register(LANGUAGE RUST)` \
              against its Cargo.toml and boots via `nros::main!`, which is the \
              in-process emitter"
-        ),
+            );
+        }
     };
 
     if is_cpp && (args.class.is_none() || args.header.is_none()) {

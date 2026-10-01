@@ -1817,14 +1817,18 @@ impl SdkIndex {
             // which tool.
             if let Some(src) = &tool.source {
                 match (&src.git, &src.url) {
-                    (Some(_), Some(_)) => bail!(
-                        "[tool.{name}.source] sets both `git` and `url` — a \
+                    (Some(_), Some(_)) => {
+                        bail!(
+                            "[tool.{name}.source] sets both `git` and `url` — a \
                          recipe fetches from exactly one place"
-                    ),
-                    (None, None) => bail!(
-                        "[tool.{name}.source] sets neither `git` nor `url` — \
+                        );
+                    }
+                    (None, None) => {
+                        bail!(
+                            "[tool.{name}.source] sets neither `git` nor `url` — \
                          nothing to fetch"
-                    ),
+                        );
+                    }
                     _ => {}
                 }
                 if src.git.is_some() && src.git_ref.is_none() {
@@ -1924,16 +1928,20 @@ impl SdkIndex {
                 }
             }
             match (py.apt.is_empty(), py.apt_refused.as_deref()) {
-                (true, None) => bail!(
-                    "[python.{alias}] states no apt position — set `apt = [\"python3-...\"]` \
+                (true, None) => {
+                    bail!(
+                        "[python.{alias}] states no apt position — set `apt = [\"python3-...\"]` \
                      if apt packages it (the remedy then prefers apt, which is what keeps a \
                      `pip3 install --user` copy from shadowing the build ROS was compiled \
                      against), or `apt_refused = \"<why>\"` if it does not"
-                ),
-                (false, Some(reason)) => bail!(
-                    "[python.{alias}] declares BOTH `apt` and `apt_refused = \"{reason}\"` — \
+                    );
+                }
+                (false, Some(reason)) => {
+                    bail!(
+                        "[python.{alias}] declares BOTH `apt` and `apt_refused = \"{reason}\"` — \
                      a refusal beside a declaration says nothing true; keep one"
-                ),
+                    );
+                }
                 _ => {}
             }
         }
@@ -1953,14 +1961,18 @@ impl SdkIndex {
                     // spelling of a location the store already knows. Both
                     // directions are refused so the two cannot disagree.
                     match src.location {
-                        SourceLocation::Workspace if src.dest.is_none() => bail!(
-                            "source '{name}' has `git` but no `dest` (where to provision it). \
+                        SourceLocation::Workspace if src.dest.is_none() => {
+                            bail!(
+                                "source '{name}' has `git` but no `dest` (where to provision it). \
                              A store source needs no `dest` — set location = \"store\"."
-                        ),
-                        SourceLocation::Store if src.dest.is_some() => bail!(
-                            "source '{name}' has location = \"store\" AND a `dest`. The store \
+                            );
+                        }
+                        SourceLocation::Store if src.dest.is_some() => {
+                            bail!(
+                                "source '{name}' has location = \"store\" AND a `dest`. The store \
                              path is DERIVED from name + version; drop the `dest`."
-                        ),
+                            );
+                        }
                         _ => {}
                     }
                 }

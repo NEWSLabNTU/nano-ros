@@ -1634,7 +1634,7 @@ fn verify_params_projected(model_path: &Path, system_toml: &Path) -> Result<()> 
          `meta.diagnostics` and this check accepts it — an empty diagnostics list next to a\n\
          declaring component is the signal that nothing looked at the declaration.",
         dropped.join("\n")
-    )
+    );
 }
 
 fn system_toml_model_decls(system_toml: &Path) -> Vec<ModelDecl> {
@@ -1833,7 +1833,9 @@ fn carry_leaf_contract(leaf: &Path, dir: &Path) -> Result<()> {
             }
             return Ok(());
         }
-        Err(e) => bail!("sync: read {}: {e}", authored.display()),
+        Err(e) => {
+            bail!("sync: read {}: {e}", authored.display());
+        }
     };
     if std::fs::read_to_string(&carried).ok().as_deref() != Some(body.as_str()) {
         std::fs::create_dir_all(dir).wrap_err_with(|| format!("sync: create {}", dir.display()))?;
@@ -2474,7 +2476,7 @@ fn verify_resolver_pin(resolver: &std::path::Path) -> Result<()> {
         resolver.display(),
         &theirs[..theirs.len().min(12)],
         &OURS[..OURS.len().min(12)],
-    )
+    );
 }
 
 /// The helper is its OWN cargo workspace, so its binary is under

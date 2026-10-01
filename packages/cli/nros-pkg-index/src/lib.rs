@@ -95,11 +95,11 @@ impl PkgIndex {
             None => {
                 let mut known: Vec<&str> = self.pkgs.keys().map(String::as_str).collect();
                 known.sort_unstable();
-                bail!(
+                Err(eyre!(
                     "pkg `{name}` not found in workspace `{}`. Known pkgs: [{}]",
                     self.workspace_root.display(),
                     known.join(", "),
-                )
+                ))
             }
         }
     }
@@ -120,7 +120,7 @@ impl PkgIndex {
         let after_find = match after_find {
             Some(s) => s,
             // Empty `$(find)` w/o a space between `find` and `<pkg>`.
-            None => bail!("missing pkg name after `$(find`: {expr:?}"),
+            None => return Err(eyre!("missing pkg name after `$(find`: {expr:?}")),
         };
         let close = after_find
             .find(')')
@@ -345,11 +345,11 @@ pub fn detect_workspace_root(start: &Path) -> Result<PathBuf> {
     if let Some(root) = walk_ancestors(&start, |dir| dir.join(".git").exists()) {
         return Ok(root);
     }
-    bail!(
+    Err(eyre!(
         "no workspace root found above `{}` (looked for $NROS_WORKSPACE_ROOT, \
          {COLCON_WORKSPACE_MARKER}, Cargo.toml [workspace], .git)",
         start.display()
-    )
+    ))
 }
 
 fn walk_ancestors(start: &Path, mut pred: impl FnMut(&Path) -> bool) -> Option<PathBuf> {

@@ -171,12 +171,14 @@ fn locate_bringup_system_toml(s: &DeployScaffold) -> Result<PathBuf> {
     }
 
     match candidates.len() {
-        0 => bail!(
-            "no bringup package with a system.toml under {} — create one first \
+        0 => {
+            bail!(
+                "no bringup package with a system.toml under {} — create one first \
              (`nros new system <name>_bringup --components <...>`); \
              `nros new --deploy` only adds a [deploy.<name>] to an existing system.toml",
-            s.workspace_root.display()
-        ),
+                s.workspace_root.display()
+            );
+        }
         1 => Ok(candidates.into_iter().next().unwrap().1),
         _ => {
             let names: Vec<&str> = candidates.iter().map(|(n, _)| n.as_str()).collect();
@@ -185,7 +187,7 @@ fn locate_bringup_system_toml(s: &DeployScaffold) -> Result<PathBuf> {
                  pass --bringup <pkg> to pick one",
                 s.workspace_root.display(),
                 names.join(", ")
-            )
+            );
         }
     }
 }

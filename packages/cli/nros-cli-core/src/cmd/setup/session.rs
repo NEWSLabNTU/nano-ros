@@ -845,12 +845,18 @@ impl SessionReport {
         let broken = self.smoke.broken();
         match (self.errors.len(), broken) {
             (0, 0) => Ok(()),
-            (0, b) => bail!("{b} newly installed package(s) failed their smoke check"),
-            (e, 0) => bail!("{e} package(s) failed to install (see [FAILED] above)"),
-            (e, b) => bail!(
-                "{e} package(s) failed to install (see [FAILED] above); {b} newly installed \
+            (0, b) => {
+                bail!("{b} newly installed package(s) failed their smoke check");
+            }
+            (e, 0) => {
+                bail!("{e} package(s) failed to install (see [FAILED] above)");
+            }
+            (e, b) => {
+                bail!(
+                    "{e} package(s) failed to install (see [FAILED] above); {b} newly installed \
                  package(s) failed their smoke check"
-            ),
+                );
+            }
         }
     }
 }
@@ -892,7 +898,9 @@ impl Jobs {
         if let Some(raw) = env.map(str::trim).filter(|v| !v.is_empty()) {
             return match raw.parse::<usize>() {
                 Ok(n) if n > 0 => Ok(Self { n, from: JOBS_ENV }),
-                _ => bail!("nros setup: {JOBS_ENV}={raw:?} is not a positive integer"),
+                _ => {
+                    bail!("nros setup: {JOBS_ENV}={raw:?} is not a positive integer");
+                }
             };
         }
         Ok(match host {

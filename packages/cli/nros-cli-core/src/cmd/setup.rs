@@ -368,7 +368,7 @@ pub fn run(args: Args) -> Result<()> {
     let board = match args.board.as_deref() {
         Some(b) => b,
         None => {
-            bail!("nros setup: give a <board>, `--tool <name>`, `--list`, or `--licenses`")
+            bail!("nros setup: give a <board>, `--tool <name>`, `--list`, or `--licenses`");
         }
     };
 
@@ -1344,7 +1344,7 @@ pub(crate) fn index_from_store(
          unset NROS_OFFLINE                allow the default fetch ({url})",
         cache.display(),
         why,
-    )
+    );
 }
 
 /// Download `url` into the store's cache, atomically, and only if this binary
@@ -1778,7 +1778,7 @@ pub fn resolve_packages<'i>(index: &'i SdkIndex, board: &str) -> Result<Vec<&'i 
                 } else {
                     known.join(", ")
                 }
-            )
+            );
         }
     }
 }
@@ -2965,7 +2965,7 @@ fn run_check_tool(index: &SdkIndex, name: &str) -> Result<()> {
              \x20           stale prefix can shadow the pin (issue 0500)."
         );
     }
-    bail!("nros setup --tool {name} --check: not at the pinned version")
+    bail!("nros setup --tool {name} --check: not at the pinned version");
 }
 
 /// phase-327 W3 — the generic walker: probe every declared class and print a

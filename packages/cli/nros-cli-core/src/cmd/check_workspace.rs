@@ -533,13 +533,15 @@ fn read_node_dispatch_strategy(node_cargo_toml: &Path) -> Result<Option<Dispatch
         // Accept both kebab + snake for the ISR variant; mirror the
         // platform enum's Rust name (`FromIsr`).
         "from_isr" | "from-isr" => Ok(Some(DispatchStrategy::FromIsr)),
-        other => bail!(
-            "{}: {key} = \"{}\" — unknown \
+        other => {
+            bail!(
+                "{}: {key} = \"{}\" — unknown \
              dispatch strategy (expected one of: \"inline\", \"deferred\", \
              \"from_isr\")",
-            origin.display(),
-            other
-        ),
+                origin.display(),
+                other
+            );
+        }
     }
 }
 

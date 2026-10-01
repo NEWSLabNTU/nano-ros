@@ -154,10 +154,12 @@ fn platform_spec(platform: &str) -> Result<PlatformSpec> {
                          cargo binary; see examples/zephyr/rust/ (issue 0333 follow-up)",
             },
         },
-        other => bail!(
-            "nros new: unsupported --platform '{other}'. Supported: \
+        other => {
+            bail!(
+                "nros new: unsupported --platform '{other}'. Supported: \
              native, posix, freertos, baremetal, nuttx, threadx, zephyr, esp32."
-        ),
+            );
+        }
     };
     Ok(spec)
 }

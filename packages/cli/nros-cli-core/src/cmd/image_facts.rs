@@ -175,16 +175,20 @@ pub fn run(args: Args) -> Result<()> {
             return Ok(());
         }
         match &args.for_entry {
-            Some(pkg) => bail!(
-                "no image in {} has entry `{pkg}`.\n  Images: {}",
-                root.display(),
-                plans
-                    .iter()
-                    .map(|p| p.qualified.clone())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
-            None => bail!("no image resolved in {}", root.display()),
+            Some(pkg) => {
+                bail!(
+                    "no image in {} has entry `{pkg}`.\n  Images: {}",
+                    root.display(),
+                    plans
+                        .iter()
+                        .map(|p| p.qualified.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+            None => {
+                bail!("no image resolved in {}", root.display());
+            }
         }
     };
 

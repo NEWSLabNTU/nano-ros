@@ -492,15 +492,19 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
             .as_ref()
             .and_then(|idx| missing_source_remedy(&stderr, idx))
         {
-            Some(remedy) => bail!(
-                "metadata-mode harness failed (exit {code}) for component '{}'\n  \
+            Some(remedy) => {
+                bail!(
+                    "metadata-mode harness failed (exit {code}) for component '{}'\n  \
                  → a vendored source it resolves is not provisioned — {remedy}",
-                o.component_id
-            ),
-            None => bail!(
-                "metadata-mode harness failed (exit {code}) for component '{}': {excerpt}",
-                o.component_id
-            ),
+                    o.component_id
+                );
+            }
+            None => {
+                bail!(
+                    "metadata-mode harness failed (exit {code}) for component '{}': {excerpt}",
+                    o.component_id
+                );
+            }
         }
     }
     if !o.output_path.is_file() {

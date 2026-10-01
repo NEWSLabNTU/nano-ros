@@ -211,12 +211,14 @@ pub fn accepted_range_in_tree(root: &Path) -> Result<Option<AcceptedRange>> {
     let min = const_u32_in(&body, "NROS_CODEGEN_VERSION_MIN");
     match (min, max) {
         (Some(min), Some(max)) => Ok(Some(AcceptedRange { min, max })),
-        _ => bail!(
-            "{} exists but does not declare both `NROS_CODEGEN_VERSION_MIN` and \
+        _ => {
+            bail!(
+                "{} exists but does not declare both `NROS_CODEGEN_VERSION_MIN` and \
              `NROS_CODEGEN_VERSION` as `pub const … : u32 = <n>;` — the guard \
              cannot read the runtime's accepted range",
-            src.display()
-        ),
+                src.display()
+            );
+        }
     }
 }
 

@@ -295,7 +295,9 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
             crate::orchestration::board_descriptor::BoardCatalog::load_with_packages(r, &pkg_dirs)
                 .map_err(|e| eyre::eyre!("loading board descriptors from {}: {e}", r.display()))?
         }
-        None => eyre::bail!("{}", crate::orchestration::nano_ros_root::not_found_help()),
+        None => {
+            eyre::bail!("{}", crate::orchestration::nano_ros_root::not_found_help());
+        }
     };
 
     // Does the package graph cross languages? A CMakeLists is the signal — but
@@ -524,12 +526,14 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     // cannot be resolved on this host, so it names the path the
                     // entry WILL be generated at.
                     None if args.dry_run => image_dir.clone(),
-                    None => eyre::bail!(
-                        "`{qual}` has no entry package: the generated one could not be \
+                    None => {
+                        eyre::bail!(
+                            "`{qual}` has no entry package: the generated one could not be \
                          written (see the warning above) and there is no hand-written \
                          `src/{want_entry}`. With no workspace root (RFC-0098 D9) there is \
                          nothing else for cargo to build."
-                    ),
+                        );
+                    }
                 };
 
                 // ---- the one settings file (RFC-0098 D1/D7) --------------
@@ -1400,7 +1404,7 @@ fn perform(hand: &Handoff, mode: Handover) -> Result<()> {
         // Never returns on success: this process BECOMES the build.
         Handover::Exec => {
             let err = crate::builder::handoff::exec(hand).unwrap_err();
-            eyre::bail!("{err}")
+            eyre::bail!("{err}");
         }
     }
 }
@@ -2234,7 +2238,9 @@ fn generate_entry(
         let healed = match healed {
             Ok(Some(f)) => Some(f),
             Ok(None) => None,
-            Err(e) => eyre::bail!("{msg}\n\nWriting it here failed too: {e}"),
+            Err(e) => {
+                eyre::bail!("{msg}\n\nWriting it here failed too: {e}");
+            }
         };
         let Some(_) = healed else {
             eyre::bail!("{msg}");
@@ -3566,7 +3572,7 @@ fn check_declared_depends(
         if std::env::var_os("NROS_ALLOW_INFRA_DEPS").is_some() {
             eprintln!("nros build: WARNING (NROS_ALLOW_INFRA_DEPS=1): {m}");
         } else {
-            eyre::bail!("{m}")
+            eyre::bail!("{m}");
         }
     }
 
@@ -3624,7 +3630,7 @@ fn check_declared_depends(
         eprintln!("nros build: WARNING (NROS_ALLOW_UNRESOLVED_DEPS=1): {msg}");
         return Ok(());
     }
-    eyre::bail!("{msg}")
+    eyre::bail!("{msg}");
 }
 
 /// [`collect_images`], with the deprecation warnings RETURNED rather than
@@ -4368,7 +4374,7 @@ mod multi_image_drive_tests {
         let mut seen = 0usize;
         let e = drive(&plans, false, &mut |_, _| {
             seen += 1;
-            eyre::bail!("boom")
+            eyre::bail!("boom");
         })
         .expect_err("the first handover failed");
         assert_eq!(seen, 1, "nothing after the failure is attempted");

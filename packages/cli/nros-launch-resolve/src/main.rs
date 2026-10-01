@@ -129,7 +129,7 @@ fn main() -> Result<()> {
         eyre::bail!(
             "--python-parser is not wired through the library entry point yet; \
              use the `ros-launch-resolve` binary from the submodule for now"
-        )
+        );
     } else {
         // The binding must reach the PARSE, not only the model metadata:
         // `<arg>` defaults and `if=`/`unless=` conditions evaluate here, so

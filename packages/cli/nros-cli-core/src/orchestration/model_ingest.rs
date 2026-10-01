@@ -1986,10 +1986,12 @@ pub fn plan_transports(
             "wifi" => TransportKind::Wifi,
             "serial" => TransportKind::Serial,
             "can" => TransportKind::Can,
-            other => bail!(
-                "SystemModel transport kind '{other}' is not supported \
+            other => {
+                bail!(
+                    "SystemModel transport kind '{other}' is not supported \
                  (ethernet | wifi | serial | can)"
-            ),
+                );
+            }
         };
         // phase-206 W5 — `TransportBlock.interfaces` lives in the UPSTREAM
         // `ros-launch-manifest` schema, which we do not own, so the key can

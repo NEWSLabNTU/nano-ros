@@ -653,7 +653,9 @@ fn run_in_census_mode(binary: &Path, out: &Path, timeout: Duration) -> Result<()
                 }
                 std::thread::sleep(Duration::from_millis(20));
             }
-            Err(e) => bail!("waiting for `{}`: {e}", binary.display()),
+            Err(e) => {
+                bail!("waiting for `{}`: {e}", binary.display());
+            }
         }
     }
 }
@@ -684,7 +686,7 @@ fn locate_entry_binary(build: &Path, entry: &str) -> Result<PathBuf> {
             .map(|c| format!("  {}", c.display()))
             .collect::<Vec<_>>()
             .join("\n")
-    )
+    );
 }
 
 fn file_digest(path: &Path) -> Result<String> {

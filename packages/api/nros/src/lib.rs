@@ -163,7 +163,7 @@ pub mod node_metadata;
 ///
 /// Binds [`Node`] / [`ExecutableNode`] to a live
 /// [`Executor`] so a Node pkg can actually run (versus
-/// [`MetadataRecorder`](node_metadata::MetadataRecorder) which
+/// [`MetadataRecorder`] which
 /// is the planner-side metadata sink).
 ///
 /// Gated on `rmw-cffi`; the underlying [`Executor`] is only present

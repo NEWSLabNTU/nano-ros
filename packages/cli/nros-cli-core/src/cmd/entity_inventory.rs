@@ -586,16 +586,18 @@ fn narrow_to_component(inv: &EntityInventory, want: &str) -> Result<EntityInvent
             narrowed.insert(hits[0].clone());
             Ok(narrowed)
         }
-        0 => bail!(
-            "no component named `{want}` in this metadata. It holds: {}",
-            inv.components()
-                .iter()
-                .map(|c| format!("{}::{}", c.pkg, c.component))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
+        0 => {
+            bail!(
+                "no component named `{want}` in this metadata. It holds: {}",
+                inv.components()
+                    .iter()
+                    .map(|c| format!("{}::{}", c.pkg, c.component))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
         n => {
-            bail!("`{want}` names {n} components in this metadata; qualify it as `<pkg>::{want}`.")
+            bail!("`{want}` names {n} components in this metadata; qualify it as `<pkg>::{want}`.");
         }
     }
 }

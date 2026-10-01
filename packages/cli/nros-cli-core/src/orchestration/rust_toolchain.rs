@@ -220,7 +220,9 @@ pub fn ensure(index: &SdkIndex, host: &str, dry_run: bool) -> Result<Outcome> {
             line: format!("already present ({what})"),
             changed: false,
         }),
-        RustPlan::Unavailable(why) => bail!("{why}"),
+        RustPlan::Unavailable(why) => {
+            bail!("{why}");
+        }
         RustPlan::SetDefault { rustup, channel } => {
             if dry_run {
                 return Ok(Outcome {
@@ -311,10 +313,12 @@ pub fn ensure(index: &SdkIndex, host: &str, dry_run: bool) -> Result<Outcome> {
                     ),
                     changed: true,
                 }),
-                other => bail!(
-                    "rustup-init {version} finished, but no rustup with a default toolchain \
+                other => {
+                    bail!(
+                        "rustup-init {version} finished, but no rustup with a default toolchain \
                      is where Corrosion looks (PATH, $CARGO_HOME/bin, ~/.cargo/bin): {other:?}"
-                ),
+                    );
+                }
             }
         }
     }
