@@ -489,6 +489,17 @@ no-allow-multiple-def:
 no-tracked-file-find:
     @./scripts/check-no-tracked-file-find.sh
 
+# issue 1565 — the CORRECTNESS half of the rule above. A walk from the checkout
+# root also counts every agent worktree under `.claude/worktrees/` and every
+# submodule's tree: measured, 19 copies of a generated header where this tree
+# held 1, and 44 contract sidecars against 17 tracked. A committed walk rooted
+# there must name `.claude` or go through `scripts/lib/repo_walk.py`, which
+# stops at every nested repository. The root is DERIVED per file (show-toplevel,
+# `__file__` depth, `justfile_directory()`), never a list of variable names.
+[group("check")]
+repo-root-walk-scope:
+    @python3 scripts/check-repo-root-walk-scope.py
+
 # issue 0491 — the sibling rule to the gate above: a `cargo:rerun-if-env-changed`
 # on a PATH-valued variable fingerprints the SPELLING of a directory, and one
 # directory has a different spelling per example leaf (`relative = true`), from

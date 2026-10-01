@@ -1,11 +1,12 @@
 ---
 id: 1565
 title: "A count is only as scoped as the tool that produced it — `find .` walks into `.claude/worktrees/*` and through gitlinks, so it answers a different question than `git ls-files`"
-status: open
+status: resolved
 type: tech-debt
 area: [tooling, testing]
 severity: medium
 found: 2026-09-29
+resolved_in: 2026-10-01
 related: [1465, 1336, 1555, 1564, 0196, 1452]
 ---
 
@@ -115,3 +116,67 @@ Undecided by design — the documentation half lands with this filing. If the
 narrow gate above is pursued, its acceptance is that a committed script rooted at
 the repo root and not excluding `.claude/worktrees` fails, with its negative
 control being a script that scopes to a build directory.
+
+## Resolution
+
+The narrow gate was pursued, together with a helper that gives the
+exclusion a single spelling. The CLAUDE.md documentation half had landed
+with the filing; its pitfall line now also names both of these.
+
+- **`scripts/lib/repo_walk.py`** is the scoped walk. `walk(root)` /
+  `prune(dirpath, dirnames, root)` stop at every NESTED REPOSITORY: a
+  directory holding a `.git` entry, which is a file for a linked worktree
+  and for a submodule, and a directory for a nested clone. They also stop at
+  the top-level `.claude/`. So one structural rule covers both halves of
+  this issue (worktrees and gitlinks), with no name list.
+  `python3 scripts/lib/repo_walk.py PATTERN…` is the same walk as a
+  command, for ad-hoc analysis, which is where both miscounts here were
+  made. It has a self-test that builds a worktree-file, a submodule-file, a
+  nested clone and a non-top `.claude/`.
+- **`check-repo-root-walk-scope`** runs on the fast line. It makes a
+  committed walk ROOTED AT THE CHECKOUT ROOT name `.claude` in the same
+  command, or go through `repo_walk`. The walks it reads are `find`, and in
+  Python `os.walk`, `rglob`, a `**` glob and `glob(recursive=True)`, across
+  every tracked `*.py`, `*.sh`, `*.just` and `justfile` outside
+  `third-party/`.
+  - **"The root" is derived per file, never listed by name.** A shell
+    variable counts if it is assigned from `git rev-parse --show-toplevel`,
+    or from `cd "$(dirname "$0")/<..×k>"` where k reaches the root from that
+    script's own depth. A Python name counts if it is assigned from
+    `__file__` with exactly as many `parents`/`.parent`/`dirname` steps as
+    the file is deep. `{{justfile_directory()}}` counts, and so does `.` in a
+    just recipe.
+  - **Self-test (16 cases, normal path), failing as wanted:**
+    - a recipe `find .`;
+    - `find "{{justfile_directory()}}"`;
+    - a show-toplevel variable across a line continuation;
+    - a `dirname/..` root at the right depth;
+    - `REPO.rglob` at `parents[depth-1]`;
+    - `os.walk` over a dirname-chain root;
+    - a cwd-relative recursive `glob`.
+  - **Self-test, passing as wanted:**
+    - the same walks pruning `.claude` or using `repo_walk`;
+    - one `..` too few to reach the root;
+    - an unbound `$root`;
+    - a walk quoted in a docstring;
+    - the negative controls the acceptance names: walks scoped to a build
+      directory in just, sh and Python.
+  - **Measured on the tree, 2026-10-01:** 369 files bind a checkout-root
+    name, and none of them walks from it. The shell side was already clean
+    (every repo-root `find` in `scripts/`/`just/` walks a temp tree, a build
+    root or a subtree). Each Python recursive walk is either an index lookup
+    or a `walk-ok` fallback over a synthetic tree. So the gate lands green,
+    and it holds the line rather than fixing a live site.
+
+**What stays out of reach, stated rather than guessed at:**
+
+- a root passed in as a function parameter (`def f(root): os.walk(root)`);
+- `.` in a `.sh` file, whose meaning depends on an earlier `cd`;
+- ad-hoc analysis, which no gate reads.
+
+For the last, the remedy is `git ls-files` for tracked content and
+`repo_walk.py` for the rest, both named in CLAUDE.md.
+
+**Re-measured with the helper.** In this worktree, `repo_walk.py
+'*.contract.yaml'` and `git ls-files '*.contract.yaml'` both give 18. The
+two now agree by construction, not by luck.
