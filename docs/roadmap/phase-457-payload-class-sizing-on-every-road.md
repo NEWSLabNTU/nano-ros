@@ -4,7 +4,7 @@
 [phase-454](phase-454-contract-states-facts-backends-derive.md), which
 implemented [RFC-0100](../design/0100-rmw-agnostic-sizing-model.md) and named its
 own ceiling. Closes [issue 1393](../issues/archived/1393-cmake-road-has-no-bound-inventory.md)
-and [issue 1340](../issues/1340-arena-budgets-a-receive-region-an-in-place-backend-never-claims.md),
+and [issue 1340](../issues/archived/1340-arena-budgets-a-receive-region-an-in-place-backend-never-claims.md),
 and issue 1407 (not linked — its file is on PR #1123 until that merges).
 
 **Do not start before phase-454 W9 lands** — W9 retires the

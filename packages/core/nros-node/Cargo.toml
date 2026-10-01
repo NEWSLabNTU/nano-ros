@@ -333,6 +333,10 @@ nros-ghost-types = { version = "0.5.0", path = "../../verification/nros-ghost-ty
 # `nros-tests`, where a registered backend and a router fixture exist, so this
 # entry is here for the unit tests alone.
 nros-platform-cffi = { path = "../../platform/nros-platform-cffi", features = ["posix-c-port"] }
+# Issue 1340 — `tests/arena_model_in_place.rs` drives the build script's
+# descriptor pricing (`build/sub_arena.rs`) over a parsed descriptor. Already a
+# build-dependency, so the lock gains nothing.
+nros-sizing-descriptor = { path = "../../tooling/nros-sizing-descriptor" }
 # Phase 248 (C2) — the `nros-rmw-cyclonedds[bridge-stub]` dev-dep was
 # removed along with the cyclone smoke test. That test moved into the
 # Cyclone crate itself (`nros-rmw-cyclonedds::seam_tests`), which
