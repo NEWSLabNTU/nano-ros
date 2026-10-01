@@ -9109,7 +9109,7 @@ impl<'s> Executor<'s> {
                     // Measured only when a consumer wants it, matching the
                     // no_std arm this replaces — the std arm used to measure
                     // unconditionally.
-                    let start_us = measure_us.then(&read_us);
+                    let start_us = measure_us.then(read_us);
                     dispatch_one(meta, i, arena_ptr, delta_us, &mut result);
                     let elapsed_us: Option<u32> = start_us
                         .map(|t0| read_us().saturating_sub(t0))
@@ -9150,7 +9150,7 @@ impl<'s> Executor<'s> {
                     // Measured only when a consumer wants it, matching the
                     // no_std arm this replaces — the std arm used to measure
                     // unconditionally.
-                    let start_us = measure_us.then(&read_us);
+                    let start_us = measure_us.then(read_us);
                     dispatch_one(meta, i, arena_ptr, delta_us, &mut result);
                     let elapsed_us: Option<u32> = start_us
                         .map(|t0| read_us().saturating_sub(t0))
