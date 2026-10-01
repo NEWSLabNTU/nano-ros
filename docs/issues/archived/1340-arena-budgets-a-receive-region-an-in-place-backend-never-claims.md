@@ -265,3 +265,21 @@ build measured above. The runtime half stays
 - The PR that archives this issue — the descriptor pricing moved to
   `build/sub_arena.rs` with its test.
 - Issue 1180 (archived) — `mem-report --baseline` joining symbols across builds.
+
+## Record — the objection this resolution amends (written 2026-10-01, before it landed)
+
+Kept as a record, not as a live claim: the Resolution above answers it by
+AMENDING the acceptance, which is exactly the step this note said was missing.
+It is retained for the one fact the Resolution does not carry — that issue 1623
+was found on the way, and would have hidden this saving on an incremental build.
+
+Checked on branch `fix/executor-arena-exact-0810-1340-1370-1036-1496`: the
+runtime half and the model half are both in (`claims_no_region` rows price the
+entry struct only), so nothing in sizing is left here. What is not done is this
+issue's acceptance as written — a `mem-report --baseline` on a TRACKED image
+with enough in-place subscriptions to clear the 8,192-byte floor. None of the
+images measured for issue 0810 qualifies: the three native realtime workspaces
+have no contract and so no descriptor (fallback), and the declared talker has
+no subscription. Found on the way, and fixed there: issue 1623 (the descriptor
+variable was never watched), which would have hidden this saving on an
+incremental build exactly as it hid 0810's.

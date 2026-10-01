@@ -257,7 +257,7 @@ anyone re-testing this should not treat that build as evidence of health.
 
 Related: the depth comes largely from `Executor::assemble` building the whole
 `Executor` by value on the caller's stack (`spin.rs:1396`), which is
-[issue 0810](../0810-executor-arena-sized-by-worst-case-shape.md)'s neighbourhood.
+[issue 0810](0810-executor-arena-sized-by-worst-case-shape.md)'s neighbourhood.
 Fixing that would buy the headroom back.
 
 ## Blocked measurement (historical — now unblocked)

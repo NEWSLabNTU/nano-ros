@@ -160,7 +160,7 @@ save 49 KiB and saves none of it.
 
 ### 3. Executor arena — a 4.9x hand-tuned guess
 
-[Issue 0810](../issues/0810-executor-arena-sized-by-worst-case-shape.md): the
+[Issue 0810](../issues/archived/0810-executor-arena-sized-by-worst-case-shape.md): the
 derivation budgets every slot at `sizeof(ActionClient)`, giving 254,720 B for a
 board that registers no action clients; the image ships a hand-picked 52,224 B.
 Unchecked in both directions, and undersizing fails at runtime.
@@ -1813,7 +1813,7 @@ holds the evidence, the item is *close it*.
 | [#0852](../issues/0852-zephyr-serial-rx-is-polled-and-overruns.md) | the zenoh read task inherits the executor's priority on Zephyr |
 | [#0880](../issues/0880-tcm-unused-while-sram-exhausted.md) | 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted |
 | [#0969](../issues/archived/0969-cyclone-take-cdr-round-trip.md) | the Cyclone RMW deserializes every received sample and re-serializes it, so `try_recv_raw` costs a full round trip. **Round trip removed; cost measured** — ~46 ns/message floor (176 ns at 16 KB). The allocation saving this row assumed did NOT appear: count unchanged, bytes a crossover at ~6 KB. Remaining: the third site, per 0976 |
-| [#0810](../issues/0810-executor-arena-sized-by-worst-case-shape.md) | the executor arena was sized at `MAX_CBS x sizeof(ActionClient)` whatever the entity mix. Lever 3 cites it. It predates phase-412 W3, which now derives the arena per KIND — so re-measure against that before working it; what is left may be only the worst-case SHAPE, or nothing |
+| [#0810](../issues/archived/0810-executor-arena-sized-by-worst-case-shape.md) | the executor arena was sized at `MAX_CBS x sizeof(ActionClient)` whatever the entity mix. Lever 3 cites it. It predates phase-412 W3, which now derives the arena per KIND — so re-measure against that before working it; what is left may be only the worst-case SHAPE, or nothing — **resolved 2026-10-02** (each declared kind priced at what its entry holds) |
 | [#0815](../issues/archived/0815-pool-inventory-prices-3-of-46-knobs.md) | the inventory prices 3 of 46 sizing knobs. The W1 amendment answered the ANNOTATION half (measure, do not declare); pricing the remaining knobs is the work — **resolved 2026-10-01** |
 | [#1147](../issues/archived/1147-mem-report-cannot-attribute-cpp-executor-storage.md) | `mem-report` counts the C and C++ executor storage but files it under the wrong crate — the third of W6's hand-offs, and the only one without another home — **resolved 2026-10-01** |
 | [#1179](../issues/1179-derived-rx-default-unreachable-without-schema.md) | W3c's residue: on zenoh and XRCE the derived RX default is unreachable, because a type-erased registration site sees only `MessageForRmw`. The issue records two designs — the bound carried on `RosMessage`, or a split typed entry point — and asks for a deliberate choice between them |
