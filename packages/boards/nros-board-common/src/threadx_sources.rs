@@ -202,17 +202,15 @@ pub fn add_nros_platform_threadx_build(build: &mut cc::Build) {
 
     build.include(&cffi_include);
     for f in ["platform.c", "net.c", "timer.c"] {
-        let path = src_dir.join(f);
-        build.file(&path);
-        // Per-FILE rerun trigger: a directory-level `rerun-if-changed`
-        // only fires when entries are added/removed (the dir mtime), not
-        // when a watched file's *contents* change, so editing platform.c
-        // would otherwise reuse a stale object.
-        println!("cargo:rerun-if-changed={}", path.display());
+        build.file(src_dir.join(f));
     }
-
-    println!("cargo:rerun-if-changed={}", src_dir.display());
-    println!("cargo:rerun-if-changed={}", cffi_include.display());
+    // issue 1580 — no `rerun-if-changed` here any more. These three sources
+    // and every header they open are declared by the compiler's own depfiles:
+    // the caller applies `nros_cc_flags::header_deps::track_header_deps` to
+    // `build` and calls `emit_header_deps` after compiling it. The per-file
+    // and per-directory lines this used to print named the sources and the
+    // cffi include dir, and nothing the port includes from anywhere else.
+    nros_cc_flags::header_deps::track_header_deps(build);
 }
 
 fn add_c_files_in(build: &mut cc::Build, dir: &Path) -> usize {

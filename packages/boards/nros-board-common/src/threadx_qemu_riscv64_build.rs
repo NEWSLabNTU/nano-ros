@@ -178,6 +178,7 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     }
     port_asm.file(manifest_dir.join("c").join("tx_initialize_low_level.S"));
 
+    nros_cc_flags::header_deps::track_header_deps(&mut port_asm);
     port_asm.compile("threadx_port_asm");
 
     // ---- Build NetX Duo ----
@@ -204,6 +205,7 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     // BSD socket addon
     netxduo.file(netx_dir.join("addons/BSD/nxd_bsd.c"));
 
+    nros_cc_flags::header_deps::track_header_deps(&mut netxduo);
     netxduo.compile("netxduo");
 
     // ---- Build virtio-net NetX Duo driver ----
@@ -227,6 +229,7 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     virtio.file(virtio_driver_dir.join("src/virtqueue.c"));
     virtio.file(virtio_driver_dir.join("src/virtio_net_nx.c"));
 
+    nros_cc_flags::header_deps::track_header_deps(&mut virtio);
     virtio.compile("virtio_net_netx");
 
     // ---- Build C glue ----
@@ -257,6 +260,7 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     glue.file(manifest_dir.join("c/syscalls.c"));
     glue.file(manifest_dir.join("c/hwtimer.c"));
 
+    nros_cc_flags::header_deps::track_header_deps(&mut glue);
     glue.compile("glue");
 
     // ---- Phase 212.M-F.10.3 — NROS_APP_CONFIG source-side emission ----
@@ -276,6 +280,15 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     // stack bring-up values directly from `NROS_APP_CONFIG` and
     // happens before Rust user code runs.
     emit_nros_app_config(&out_dir, &workspace_root);
+
+    // issue 1580 — the rebuild edge for all five archives above, after the
+    // LAST compile: every file the compiler opened. The hand list it replaces
+    // named four board C files and three config headers, and missed
+    // `c/hwtimer.c`, `c/tx_initialize_low_level.S`, every virtio-net driver
+    // source and header, all of NetX Duo, and every header reached from
+    // `packages/api/nros-c/include`. The two TUs this script WRITES into
+    // OUT_DIR are outputs, not inputs, and are not declared.
+    nros_cc_flags::header_deps::emit_header_deps(&out_dir);
 
     // ---- Link order (reverse dependency) ----
     // `libnros_platform_threadx.a` + `libthreadx_kernel.a` come
@@ -310,28 +323,26 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     }
 
     // ---- Rerun triggers ----
+    // What the depfiles above CANNOT name. A lowercase `.s` is handed straight
+    // to the assembler with no preprocessing pass, so `-MMD` writes nothing
+    // for it: `c/entry.s` keeps its hand-written line. (Every `.c` and `.S`
+    // compiled here — the board C files, the config headers — is declared by
+    // `emit_header_deps`.)
     println!("cargo:rerun-if-changed=c/entry.s");
-    println!("cargo:rerun-if-changed=c/trap.c");
-    println!("cargo:rerun-if-changed=c/board_threadx_qemu_riscv64.c");
-    println!("cargo:rerun-if-changed=c/syscalls.c");
     // phase-337 W4.a — `tx_port.h` and the five `.S` overrides moved to the
     // arch-port unit; their triggers are emitted by that crate's
     // `emit_rerun_directives()`, called from the board's `build.rs` OUTSIDE
     // the riscv64 guard above. They cannot be listed here as bare relative
     // paths: `cargo:rerun-if-changed` resolves those against the BOARD's
     // manifest dir, so they would silently watch nothing.
-    println!("cargo:rerun-if-changed=config/tx_user.h");
-    println!("cargo:rerun-if-changed=config/nx_port.h");
-    println!("cargo:rerun-if-changed=config/nx_user.h");
+    // The linker script is not compiled; it is read into the build script.
     println!("cargo:rerun-if-changed=config/link.lds");
     println!("cargo:rerun-if-changed=build.rs");
     // issue 0491 — `THREADX_DIR` / `NETX_DIR` name DIRECTORIES, and cargo
     // compares an env value as TEXT. Fingerprinting the spelling made the
     // ThreadX rows sharing one `--target-dir` invalidate each other forever
     // (one spelling per leaf from `relative = true`, another from `just`).
-    // The overlay's own config files are watched above; the two vendored
-    // kernels are read-only sources whose compiled files `threadx_sources`
-    // declares.
+    // Their CONTENT is what the depfiles above declare.
 }
 
 /// A path variable with an in-repo default, canonicalised so every consumer
@@ -544,5 +555,6 @@ const nros_app_config_t NROS_APP_CONFIG = {
     // Reach `<nros/app_config.h>` (the universal extern declaration).
     build.include(&nros_c_include);
     build.file(&src_path);
+    nros_cc_flags::header_deps::track_header_deps(&mut build);
     build.compile("nros_app_config_def");
 }

@@ -102,9 +102,8 @@ fn main() {
     // before those references were seen. One `.c` file, so nothing to save by
     // being clever about it.
     nsos.link_lib_modifier("+whole-archive");
+    nros_cc_flags::header_deps::track_header_deps(&mut nsos);
     nsos.compile("nsos_netx");
-
-    println!("cargo:rerun-if-changed={}", nsos_src.display());
 
     // ---- Build C glue (board-specific weak-hook impls + shared threadx_hooks) ----
     let mut glue = cc::Build::new();
@@ -134,7 +133,20 @@ fn main() {
     // the link line is what happened to resolve it. Deleting the duplicate
     // without adding the modifier reintroduced the defect (issue 0582).
     glue.link_lib_modifier("+whole-archive");
+    nros_cc_flags::header_deps::track_header_deps(&mut glue);
     glue.compile("glue");
+
+    // issue 1580 — the rebuild edge for both archives: every file the
+    // compiler opened (nsos_netx.c + its headers, board_threadx_linux.c,
+    // config/tx_user.h, the ThreadX + nros-c headers). It replaces per-file
+    // lines for the two sources and tx_user.h plus a directory watch on the
+    // nsos-netx tree, which together saw nothing the glue includes from
+    // `packages/api/nros-c/include`. The two TUs this script WRITES into
+    // OUT_DIR (the hooks copy, the app-config definition) are outputs and are
+    // not declared — see `emit_header_deps`.
+    nros_cc_flags::header_deps::emit_header_deps(&PathBuf::from(
+        env::var("OUT_DIR").expect("OUT_DIR"),
+    ));
 
     // ---- Link order (reverse dependency) ----
     // `libnros_platform_threadx.a` + `libthreadx_kernel.a` come from the
@@ -149,15 +161,11 @@ fn main() {
     println!("cargo:rustc-link-lib=pthread");
 
     // ---- Rerun triggers ----
-    println!("cargo:rerun-if-changed=c/board_threadx_linux.c");
-    println!("cargo:rerun-if-changed=config/tx_user.h");
     println!("cargo:rerun-if-changed=build.rs");
     // issue 0491 — `THREADX_DIR` / `NETX_DIR` / `NSOS_NETX_DIR` are PATHS and
     // are not fingerprinted as strings (cargo compares an env value textually,
-    // and one directory has one spelling per leaf / per `just` / unset). The
-    // first-party shim is watched by content; the two vendored kernels are
-    // read-only sources whose compiled files are declared above.
-    nros_build_paths::watch_path(&nsos_netx_dir);
+    // and one directory has one spelling per leaf / per `just` / unset). Their
+    // CONTENT is what the depfiles above declare.
 }
 
 /// A path variable with an in-repo default, canonicalised so every consumer
