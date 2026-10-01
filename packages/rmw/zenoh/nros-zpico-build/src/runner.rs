@@ -284,11 +284,14 @@ fn resolve_queryable_default() -> QueryableSizing {
 ///
 /// # Issue 1378 — the descriptor is only ONE of the two roads here
 ///
-/// `NROS_SIZING_DESCRIPTOR` is written by `nros sync` for a single-package
-/// CARGO leaf and by nothing else: a cmake / Zephyr west / NuttX entry has no
-/// descriptor at all, and issue 1393 is the standing record of why. So this
-/// term was live on the Rust road and dead on the C/C++ one — which is the
-/// whole of the asymmetry issue 1378 opens with. Measured 2026-09-20:
+/// When issue 1378 was filed, `NROS_SIZING_DESCRIPTOR` was written for a
+/// single-package CARGO leaf and nothing else. phase-454 W14 and phase-457
+/// W0.b gave a cmake entry and a standalone cmake leaf producers too, but a
+/// Zephyr west entry and a multi-entry cmake configure still name NO descriptor
+/// to cargo (issue 1407), so the declared road below is still the only one
+/// there. Before either, this term was live on the Rust road and dead on the
+/// C/C++ one — which is the whole of the asymmetry issue 1378 opens with.
+/// Measured 2026-09-20:
 /// `examples/qemu-armv7a-nuttx/{c,cpp}/action-server` are the only two leaves
 /// in the tree that DECLARE their entities, `nros ws entity-facts --leaf`
 /// answered `SERVICE_SERVERS=3 / INFRA=none` for both, the table was sized to
@@ -707,10 +710,10 @@ mod queryable_default_tests {
     }
 
     /// Issue 1378 — **the SECOND road to that term.** The rule above was right
-    /// and only one kind of image could reach it: a descriptor is written for a
-    /// single-package cargo leaf and for nothing else (issue 1393), so every
-    /// cmake / Zephyr / NuttX entry supplied `0` here however many action
-    /// servers it declared.
+    /// and only one kind of image could reach it: a descriptor was written for a
+    /// single-package cargo leaf and for nothing else, so every cmake / Zephyr /
+    /// NuttX entry supplied `0` here however many action servers it declared.
+    /// (A Zephyr west entry still names no descriptor to cargo — issue 1407.)
     #[test]
     fn the_declared_road_supplies_the_same_term_when_there_is_no_descriptor() {
         assert_eq!(

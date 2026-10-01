@@ -720,8 +720,9 @@ fn declared_ring_depth(desc: Option<&SizingDescriptor>) -> Option<usize> {
 /// consumer needs — a demand to floor, or nothing — and prints the refusal,
 /// because a refusal that reaches no log is a default nobody chose (D6).
 ///
-/// **No descriptor: the DECLARED carrier.** A cmake / Zephyr west / NuttX entry
-/// names no descriptor to cargo (issue 1393), and before this the pool then
+/// **No descriptor: the DECLARED carrier.** A Zephyr west entry, and a
+/// multi-entry cmake configure, name no descriptor to cargo (issue 1407 — the
+/// coverage gap; issue 1393's field gap is closed), and before this the pool then
 /// kept its builtin of [`TL_PUBLISHERS_DEFAULT`] while the queryable table --
 /// sized from the same rule on the same road -- counted every transient-local
 /// publisher. Measured on the Autoware Safety Island (Zephyr, west): table 31,

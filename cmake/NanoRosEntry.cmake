@@ -1338,9 +1338,9 @@ function(_nros_entry_invoke_codegen)
     # The same model, a third time, for the artifact the other two carriers are
     # being retired in favour of. W11 measured that a cmake entry writes no
     # descriptor at all, so every D5 derivation was inert here; the producer
-    # states what the model knows — the counts and all four QoS policies — and
-    # REFUSES every field that needs a leaf's inventories, naming issue 1393 in
-    # each reason.
+    # states what its inputs support and refuses per field on a missing input
+    # (issue 1393 closed the road-wide refusals W14 began with — see
+    # `nros_sizing_descriptor_from_model`).
     #
     # HERE and not in `nano_ros_node_register`, for the same reason the entity
     # inventory composes here: an entry is declared LAST in a configure by

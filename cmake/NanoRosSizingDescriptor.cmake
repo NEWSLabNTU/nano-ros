@@ -176,12 +176,17 @@ endfunction()
 # road wrote no descriptor at all and every RFC-0100 D5 derivation was inert on
 # it, which is exactly what W11 measured.
 #
-# What the model-only producer may CLAIM is settled by RFC-0100 D6: the counts
-# and all four QoS policies are STATED, and every field that needs a leaf —
-# `wire_bound_bytes`, `storage_bytes`, `[types]`'s three maxima and
-# `registration_path` — is REFUSED, each refusal naming the issue that tracks
-# closing the gap. `Fact::stated()` is the only accessor that yields a value, so
-# a consumer cannot read one of those refusals as a default.
+# What the model-only producer may CLAIM is settled by RFC-0100 D6: STATE what
+# the inputs support, REFUSE per field on an input that is missing.
+# phase-454 W14 refused `wire_bound_bytes`, `storage_bytes`, `[types]`'s three
+# maxima and `registration_path` outright on this road (issue 1393). That issue
+# is CLOSED: phase-457-payload W2 hands this producer the bound tables the
+# closure registered (`_nros_sizing_bound_args`), phase-457 W4 the triple
+# (`_nros_sizing_target_args`), and the producer composes each field with the
+# leaf road's own code. What still refuses is per input: a table not built yet
+# (named), and an in-place backend's subscription path, which no observation
+# reaches this road for (issue 1594). `Fact::stated()` is the only accessor
+# that yields a value, so a consumer cannot read a refusal as a default.
 #
 # ## Three things this function does NOT do
 #
@@ -193,11 +198,10 @@ endfunction()
 #   build exactly where it was, for the reason `resolve_image` states one
 #   artifact over: making a descriptor a new way for a build to stop would be a
 #   regression paid by every image for the benefit of the few that derive.
-# * It does not pass a target triple. A cross cmake entry therefore gets a
-#   REFUSED `[target]`, naming the board rule (RFC-0100 D1) — the board
-#   descriptor is not resolved in this scope. `--host-build` is passed when this
-#   configure is not cross-compiling, which is the one case a host answer IS the
-#   target's answer.
+# * It does not GUESS a target. `_nros_sizing_target_args` passes
+#   `--host-build` for a native configure and the resolved rustc triple for a
+#   cross one (phase-457 W4); a cross configure with no resolvable triple gets a
+#   REFUSED `[target]`, naming the board rule (RFC-0100 D1), and says so.
 function(nros_sizing_descriptor_from_model _out_var)
     cmake_parse_arguments(_nsw "" "CLI;MODEL;ENTRY;BUILD_DIR;RMW;METADATA" "" ${ARGN})
     set(${_out_var} "" PARENT_SCOPE)

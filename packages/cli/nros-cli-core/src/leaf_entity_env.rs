@@ -420,9 +420,10 @@ fn leaf_name(leaf: &Path) -> String {
 /// that HAS a descriptor (phase-455 W5). Carrying the same number a second way
 /// here would give one image two derivations of one fact, which is issue 1025.
 ///
-/// The declared road is different and does carry them: a cmake / Zephyr west
-/// entry has no descriptor at all (issue 1393, and phase-454 W11 measured it),
-/// which is exactly the gap `NROS_DECLARED_*_INBOX_BYTES` fills.
+/// The declared road is different and does carry them: a Zephyr west entry
+/// writes a descriptor and names none to cargo (issue 1407; phase-454 W11
+/// measured the wider original gap, which W14 narrowed to that road), which is
+/// exactly the gap `NROS_DECLARED_*_INBOX_BYTES` fills.
 pub const DERIVED_ENV_KEYS: &[&str] = &[
     "NROS_EXECUTOR_ACTION_CLIENTS",
     "NROS_EXECUTOR_MAX_CBS",

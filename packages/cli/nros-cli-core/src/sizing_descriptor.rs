@@ -74,18 +74,23 @@
 //! the only accessor that yields a value, so a consumer cannot read a refusal as
 //! a default.
 //!
-//! The five fields it refuses, and why each is leaf-side:
+//! W14 refused five fields there, every reason naming issue 1393. **Issue 1393
+//! is closed, and none of the five is refused for the ROAD any more** — each is
+//! composed from inputs the model roads now carry, by the same code the leaf
+//! road runs, and refuses only on the input that is actually missing:
 //!
-//! | field | needs |
+//! | field | input, and who supplies it on a model road |
 //! | --- | --- |
-//! | `wire_bound_bytes` | the bound inventory, which codegen writes beside a LEAF |
-//! | `storage_bytes` | that bound, plus the board descriptor resolved for this image |
-//! | `[types] max_fields` / `max_kinds` / `max_nested_depth` | codegen's own per-type schema walk |
-//! | `registration_path` | which subscribe spelling the image writes |
+//! | `wire_bound_bytes` | the bound tables the image's closure REGISTERED (phase-457-payload W2) |
+//! | `[types] max_fields` / `max_kinds` / `max_nested_depth` | the schema shapes in those same tables (W2) |
+//! | `storage_bytes` | that bound, the board's pointer width (W4's triple) and the declared depth — [`set_storage_bytes`], the leaf road's own chain |
+//! | `registration_path` | the backend (from `rmw`) and, for a backend that dispatches in place, an OBSERVATION of the endpoint's registration (phase-457 W3) |
 //!
-//! Every one of those reasons names [`MODEL_ONLY_ISSUE`], so the artifact itself
-//! says what is missing and why — and so the day that issue closes, the
-//! refusals in a written descriptor are the checklist.
+//! What stays refused is narrower than a road and is said in the reason: a road
+//! handed no bound table at all ([`ModelHorizon::bound_inventory`]), and an
+//! in-place-dispatching backend whose rows no probe observed
+//! ([`ModelHorizon::registration_path`] — on the model road that is every row,
+//! because the composed inventory carries no observation; issue 1594).
 
 use nros_sizing_descriptor::{
     Basis, CapacityNeed, Durability, Endpoint, EndpointKind, History, Params, RegistrationPath,
@@ -179,20 +184,27 @@ pub enum BackendDispatch {
     Buffered,
 }
 
-/// The follow-up every model-only refusal names (phase-454 W14).
+/// The follow-up a model-road `registration_path` refusal names.
 ///
-/// ONE spelling, so the day it closes the refusals in a written descriptor are
-/// the checklist and a grep over this constant is the work list. Written into
-/// the artifact rather than only into a build log, because a log nobody kept is
-/// exactly the place RFC-0100 D6 says a refusal must not go.
-pub const MODEL_ONLY_ISSUE: &str = "issue 1393";
+/// issue 1393 closed the FIELD axis: every field a model road used to refuse
+/// for being a model road is now composed from an input that road carries. The
+/// one per-row refusal left that is about the ROAD is an unobserved
+/// registration on a backend that dispatches in place — the model road's
+/// composed inventory (the SystemModel plus `nros-metadata.json`) carries no
+/// per-endpoint observation, although the probe sidecars a workspace's
+/// `nros sync` writes do. That is issue 1594, and ONE spelling of it keeps the
+/// refusals in a written descriptor greppable for the day it closes.
+pub const UNOBSERVED_ON_MODEL_ROAD_ISSUE: &str = "issue 1594";
 
-/// What a producer that has ONLY the resolved SystemModel cannot source.
+/// What a producer that has no LEAF inventories reads, and what that costs.
 ///
-/// [`write_for_leaf`] has three inventories; [`write_for_model`] has one. The
-/// difference is not a degree of completeness, it is a set of named inputs that
-/// live beside a LEAF — codegen's bound table, codegen's per-type schema walk,
-/// and the call sites that decide a subscription's registration spelling.
+/// [`write_for_leaf`] reads a probed leaf; [`write_for_model`] reads a resolved
+/// SystemModel (composed with `nros-metadata.json`) or a leaf's `system.toml`
+/// declaration. Since issue 1393 closed, both roads receive the bound tables
+/// their interface closure registered and the board's triple, so the FIELDS
+/// they can state are the leaf road's. What a horizon still changes is PROSE:
+/// which input a refusal was written from, and — for the one input the model
+/// road genuinely lacks, an observation of each registration — why.
 ///
 /// Carrying it as a value rather than a `bool` is what lets a refusal say WHICH
 /// road it was written on: "a workspace cargo image" and "a cmake entry" want
@@ -202,7 +214,7 @@ pub const MODEL_ONLY_ISSUE: &str = "issue 1393";
 pub struct ModelHorizon {
     road: String,
     from: &'static str,
-    reg_unknown: &'static str,
+    unobserved: &'static str,
 }
 
 /// What a model-only producer reads, in the words its refusals use.
@@ -210,27 +222,31 @@ pub struct ModelHorizon {
 /// phase-457 W0.b — the horizon gained a SECOND source, and the prose is not
 /// interchangeable. A standalone leaf has no resolved SystemModel at all; a
 /// refusal telling its author that "the resolved SystemModel carries no
-/// message-bound inventory" aims them at an artifact that does not exist on
-/// their road, which is the diagnostic failure issue 1033 records one layer
-/// down ("a diagnostic that survives the mechanism it describes aims the next
-/// reader at a wall").
-const FROM_MODEL: &str = "the resolved SystemModel alone";
+/// observation" aims them at an artifact that does not exist on their road,
+/// which is the diagnostic failure issue 1033 records one layer down ("a
+/// diagnostic that survives the mechanism it describes aims the next reader at
+/// a wall").
+const FROM_MODEL: &str = "the resolved SystemModel and `nros-metadata.json`";
 const FROM_LEAF_DECLARATION: &str =
     "the leaf's own `system.toml` `[[component]] entities` declaration alone";
 
-/// Why `registration_path` is unanswerable, per SOURCE.
+/// Why an endpoint's registration is UNOBSERVED, per SOURCE.
 ///
-/// The two roads refuse the same field for genuinely different reasons, and
-/// saying either one on the other road aims the reader at a fact that is not
-/// missing. A model image is several packages, so "the entry's language" has no
-/// single answer; a standalone LEAF is one package whose language is perfectly
-/// well known — what it does not state is which SUBSCRIBE SPELLING the code
-/// writes, which is a property of the call site and of nothing a declaration can
-/// carry.
-const MODEL_HAS_NO_ONE_LANGUAGE: &str =
-    "and such an image is several packages, so there is no one entry language to read it off";
-const A_DECLARATION_IS_NOT_A_CALL_SITE: &str = "and a declaration names the entity, never the CALL SITE that registers it -- whether a \
-     given subscription passes a typed size hint is visible only in the source";
+/// The two sources lack the observation for different reasons, and the
+/// remedies differ. The model road's rows describe endpoints whose code a
+/// workspace probe DID run — the sidecars carry `in_place` — but the inventory
+/// this producer composes reads neither sidecar, so the fact exists and is not
+/// joined (issue 1594). A leaf DECLARATION names an entity and no call site at
+/// all; issue 1522 ruled that population a refusal by design, because there is
+/// no registrar for a classifier to be consistent with.
+const MODEL_ROWS_ARE_NOT_JOINED_TO_THE_PROBE: &str = "the inventory composed here carries no \
+     per-endpoint observation: the SystemModel names endpoints from the launch tree and the \
+     contract, and `nros-metadata.json` names components, while the observation lives in the \
+     probe's per-component sidecars, which this producer does not read";
+const A_DECLARATION_IS_NOT_A_CALL_SITE: &str = "a declaration names the entity, never the CALL \
+     SITE that registers it, and nine of the executor's eleven subscription entry points cannot \
+     dispatch in place -- which one a site calls is visible only in the source (issue 1522 rules \
+     this population a refusal by design)";
 
 impl ModelHorizon {
     /// `road` names the producer in prose — "a workspace cargo image",
@@ -239,7 +255,7 @@ impl ModelHorizon {
         Self {
             road: road.into(),
             from: FROM_MODEL,
-            reg_unknown: MODEL_HAS_NO_ONE_LANGUAGE,
+            unobserved: MODEL_ROWS_ARE_NOT_JOINED_TO_THE_PROBE,
         }
     }
 
@@ -247,70 +263,61 @@ impl ModelHorizon {
     ///
     /// Same horizon, different input: a copy-out cmake project has no bringup
     /// and no SystemModel, so `EntityDecl::parse` over its `system.toml` is the
-    /// whole of what it declares. The fields refused are identical — a C or C++
-    /// leaf has no `generated/` bound table either — so only the first clause
-    /// of each reason moves.
+    /// whole of what it declares. Only the first clause of each reason, and the
+    /// account of why a registration is unobserved, move.
     pub fn for_leaf_declaration(road: impl Into<String>) -> Self {
         Self {
             road: road.into(),
             from: FROM_LEAF_DECLARATION,
-            reg_unknown: A_DECLARATION_IS_NOT_A_CALL_SITE,
+            unobserved: A_DECLARATION_IS_NOT_A_CALL_SITE,
         }
     }
 
-    /// The `bounds_error` a model-only producer supplies.
+    /// The `bounds_error` a producer supplies when its caller handed it NO
+    /// bound table.
     ///
-    /// It reaches TWO families through the code that already exists:
-    /// `wire_bound_bytes` on every row, and `[types]`'s three maxima. Neither
-    /// needs a special case here, because "there is no bound inventory" is
-    /// exactly what both of those refusals are already written to say — the
-    /// only thing this adds is WHY there is none, and what tracks fixing it.
+    /// Since phase-457-payload W2 both model roads pass every table their
+    /// closure registered (`--bound-inventory`, from
+    /// `NROS_MESSAGE_BOUNDS_FRAGMENTS` on cmake and `generated_bound_tables` on
+    /// a cargo workspace), so reaching this means the closure registered none —
+    /// a narrower and actionable statement than "this road has no bound
+    /// inventory", which stopped being true when W2 landed. It reaches TWO
+    /// families through the code that already exists: `wire_bound_bytes` on
+    /// every row and `[types]`'s three maxima.
     pub fn bound_inventory(&self) -> String {
         format!(
-            "this descriptor was written from {from} ({road}), which \
-             carries no message-bound inventory -- codegen writes one beside a LEAF, and the \
-             per-type schema walk that prices it with it. Tracked by {MODEL_ONLY_ISSUE}",
+            "this descriptor was written from {from} ({road}), and that road handed it no \
+             message-bound table: no `nros_message_bounds.json` is registered for this image's \
+             interface closure. Codegen writes one beside every interface package it generates \
+             (`nros sync`, or the build that runs codegen), so a type nothing generated is a type \
+             nothing priced",
             from = self.from,
             road = self.road
         )
     }
 
-    /// `registration_path`'s refusal.
+    /// `registration_path`'s refusal for an endpoint whose registration nothing
+    /// OBSERVED, on a backend that dispatches in place.
     ///
-    /// Not composed from [`registration_path_refusal`]'s missing halves,
-    /// because on this road the halves are not what is missing: an image
-    /// resolved from a model is a set of nodes from several packages, so "the
-    /// entry's language" has no single answer even where the backend does.
-    /// Saying "the language is unknown" would aim the reader at a fact nobody
-    /// can supply.
+    /// The one per-row refusal that is still about the road. On such a backend
+    /// the row's answer turns on which entry point the endpoint's code calls —
+    /// in place, or one of the buffered rows — and crediting it with in-place
+    /// dispatch prices it at NO receive region (issue 1340), so it is refused
+    /// and keeps its region: the over-statement, never the under-size.
     pub fn registration_path(&self) -> String {
         format!(
-            "this descriptor was written from {from} ({road}), which \
-             does not say which subscribe spelling each node writes -- {why}. A Rust typed \
-             registration on a schemaless backend claims the closure buffer rather than the \
-             type's bound (issue 1319), so the path is refused rather than assumed. Tracked by \
-             {MODEL_ONLY_ISSUE}",
+            "this descriptor was written from {from} ({road}), which does not say how each \
+             endpoint REGISTERS -- {why}. The backend dispatches in place, so the row turns on the \
+             entry point, and crediting an unobserved endpoint with in-place dispatch would price \
+             it at no receive region; refused, so it keeps its region. {tracked}",
             from = self.from,
-            why = self.reg_unknown,
-            road = self.road
-        )
-    }
-
-    /// `storage_bytes`'s refusal.
-    ///
-    /// Refused DIRECTLY rather than through [`set_storage_bytes`]'s chain,
-    /// because on this road the chain's first test is the wrong diagnosis: a
-    /// `[target]` this producer CAN state would leave the reader with
-    /// "the type's wire bound is not available" and no road back to why. The
-    /// region needs both halves and this producer has neither.
-    pub fn storage_bytes(&self) -> String {
-        format!(
-            "this descriptor was written from {from} ({road}), so a \
-             receive region has neither of its two sizes: the type's wire bound (no message-bound \
-             inventory) nor the board descriptor resolved for THIS image, whose pointer width \
-             sizes the per-slot length word. Tracked by {MODEL_ONLY_ISSUE}",
-            from = self.from,
-            road = self.road
+            road = self.road,
+            why = self.unobserved,
+            tracked = if self.unobserved == MODEL_ROWS_ARE_NOT_JOINED_TO_THE_PROBE {
+                format!("Tracked by {UNOBSERVED_ON_MODEL_ROAD_ISSUE}")
+            } else {
+                "Refused by design on this road".to_string()
+            },
         )
     }
 }
@@ -380,11 +387,11 @@ pub struct DescriptorInputs<'a> {
     /// phase-454 W14 — this producer's HORIZON, when it is narrower than the
     /// leaf road's. `None` on the leaf road, which has every input.
     ///
-    /// `Some` switches two fields from "composed from what I was given" to
-    /// "refused, and here is the road and the tracked follow-up". It does NOT
-    /// switch off anything the SystemModel does answer: the counts and all four
-    /// QoS policies are stated exactly as they are on the leaf road, because
-    /// they come from the same [`EntityInventory`].
+    /// `Some` changes PROSE, never which fields are composed (issue 1393): the
+    /// `registration_path` refusal for an unobserved row on an in-place backend
+    /// says why this road has no observation, and the `bounds_error` a caller
+    /// supplies says which road handed over no table. Every field is composed
+    /// by the same code on every road, from whatever inputs it was given.
     pub horizon: Option<ModelHorizon>,
 }
 
@@ -727,13 +734,15 @@ fn endpoint_row(
     // refused it, there is simply no such region. A publisher serializes into a
     // per-call stack array, which is a transmit buffer and a different question.
     if kind.receives_topic_sample() {
-        if let Some(h) = &inputs.horizon {
-            // phase-454 W14 — same shape as the path above, and the same
-            // reason: the chain in `set_storage_bytes` would report whichever
-            // of its three inputs it tested first, which on this road is not
-            // the diagnosis a reader needs.
-            ep.refuse("storage_bytes", h.storage_bytes());
-        } else if unattributed.is_some() {
+        // issue 1393 — ONE chain on every road. phase-454 W14 refused this
+        // field outright under a horizon, with a reason saying the region had
+        // "neither of its two sizes"; once phase-457-payload W2 handed the model
+        // roads their bound tables and W4 their triple, that reason was FALSE on
+        // a row stating both `wire_bound_bytes` and `[target] pointer_bytes`
+        // beside it (measured: `examples/workspaces/cpp`'s `native_entry`). The
+        // chain refuses on whichever input is actually missing and names the
+        // refusal it inherits, so the diagnosis is the row's own.
+        if unattributed.is_some() {
             ep.refuse(
                 "storage_bytes",
                 "`depth` is refused (this endpoint was not attributed to a contract \
@@ -845,10 +854,21 @@ fn set_storage_bytes(ep: &mut Endpoint, bound: Option<usize>, target: &Target, k
         return;
     };
     let Some(bound) = bound else {
+        // issue 1393 — carry the bound's OWN refusal, so a reader holding the
+        // row is not sent looking for why: on a model road with no registered
+        // table that reason names the road, and on any road a type codegen
+        // could not price names the type.
+        let why = ep
+            .wire_bound_bytes()
+            .refusal()
+            .unwrap_or("nothing stated it")
+            .to_string();
         ep.refuse(
             "storage_bytes",
-            "the type's wire bound is not available, and a receive region is sized from it"
-                .to_string(),
+            format!(
+                "the type's wire bound is not available ({why}), and a receive region is sized \
+                 from it"
+            ),
         );
         return;
     };
@@ -1100,14 +1120,23 @@ fn registration_path(
     let Some(schema) = inputs.backend_schema else {
         return Err(registration_path_refusal(inputs));
     };
+    // issue 1393 — a descriptor-carrying backend answers WITHOUT the language.
+    // Both language arms of the table below give `TypedBound` there (a C/C++
+    // site supplies `rx_size_bound<M>`; a Rust one reaches the bound through
+    // `MessageForRmw`'s descriptor), so asking for the language first refused a
+    // fact every possible answer agreed on. That was the model road's whole
+    // refusal for a Cyclone image: several packages, no ONE entry language, and
+    // no language needed.
+    if schema == BackendSchema::Descriptors {
+        return Ok(RegistrationPath::TypedBound);
+    }
     let Some(language) = inputs.language else {
-        // The model road: several packages, no one entry language. Its own
-        // reason, because "the language is unknown" aims the reader at a fact
-        // nobody can supply on that road.
-        return Err(match &inputs.horizon {
-            Some(h) => h.registration_path(),
-            None => registration_path_refusal(inputs),
-        });
+        // A schemaless backend, and the language decides the row: a Rust
+        // registration takes `RX_BUF`, a C/C++ one its typed hint. On the model
+        // road that is unreachable today -- every row there is UNOBSERVED, so it
+        // refused above -- and when issue 1594 joins the probe's observation in,
+        // it is the probe that knows the component's language, not this road.
+        return Err(registration_path_refusal(inputs));
     };
     Ok(match (language, schema) {
         // A C/C++ entry that registers typed supplies `rx_size_bound<M>`, so it
@@ -1723,9 +1752,9 @@ pub struct ModelImage<'a> {
     /// the decision the phase recorded: a second derivation is a second opinion
     /// about a bound (issue 0196's class).
     ///
-    /// EMPTY means "this road was handed no tables", and keeps the refusal that
-    /// names issue 1393 exactly as before. It is not a claim that the closure
-    /// has no types.
+    /// EMPTY means "this road was handed no tables", and refuses the payload
+    /// class with [`ModelHorizon::bound_inventory`]'s reason — the closure
+    /// registered none. It is not a claim that the closure has no types.
     pub bound_inventories: &'a [std::path::PathBuf],
     /// This producer's HORIZON — which input it read, and the road, in prose,
     /// for every refusal it writes.
@@ -1755,7 +1784,7 @@ pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<WrittenDescriptor> 
     let horizon = img.horizon.clone();
     // phase-457-payload W2 — the closure's bound tables, when the caller has
     // them, through the SAME reader and projection the leaf road uses. None
-    // handed over is today's refusal, naming issue 1393, unchanged; a pending
+    // handed over refuses with the horizon's reason (nothing registered); a pending
     // or malformed table is a refusal naming THAT table (see
     // `bound_rows_from_tables`), never an error, because a table not built yet
     // is the ordinary first-configure state of the non-Zephyr cmake lane.
@@ -1791,10 +1820,11 @@ pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<WrittenDescriptor> 
         // (`resolve_image` / `write_from_model` both attach it) — see
         // `DescriptorInputs::params` for why the leaf road cannot do that.
         params: Some(img.inventory.param_declarations()),
-        // The LANGUAGE is refused through the horizon, not named as a missing
-        // half. See `ModelHorizon::registration_path`: this road is several
-        // packages, so there is no one entry language, and saying "unknown"
-        // would aim the reader at a fact nobody can supply.
+        // No ONE entry language: this road is several packages. Since issue
+        // 1393 that costs nothing a backend can answer without it — on a
+        // descriptor-carrying backend every language gives `typed_bound`, and
+        // on an in-place one the row turns on the OBSERVATION first (which
+        // this road does not have yet: issue 1594).
         language: None,
         // phase-457 W3 — the BACKEND halves are supplied, and they always could
         // have been: they are a function of `rmw` alone, which this road has.
@@ -1802,8 +1832,7 @@ pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<WrittenDescriptor> 
         // in-place row was inferred from the language; now that the row is
         // OBSERVED per endpoint, the backend plus the observation is the whole
         // answer, so a model image states `in_place` for exactly the endpoints
-        // its probe saw registering — and still refuses the two buffered rows,
-        // which do need the language.
+        // an observation reaches it for.
         backend_schema: backend_schema(img.rmw.as_deref().unwrap_or_default()),
         backend_dispatch: backend_dispatch(img.rmw.as_deref().unwrap_or_default()),
         rmw: img.rmw.clone(),
@@ -2472,6 +2501,19 @@ mod tests {
             // LANGUAGE and the leaf's three inventories, and nothing else.
             horizon: Some(horizon),
             ..base(inv)
+        }
+    }
+
+    /// The model road as it runs since phase-457-payload W2: handed the bound
+    /// tables its closure registered. Differs from [`base`] by the language and
+    /// the horizon ONLY, which is what issue 1393's closure claims.
+    fn model_with_tables<'a>(inv: &'a EntityInventory) -> DescriptorInputs<'a> {
+        let b = base(inv);
+        DescriptorInputs {
+            bounds: b.bounds,
+            schema_shapes: b.schema_shapes,
+            bounds_error: None,
+            ..model_only(inv)
         }
     }
 
@@ -3266,33 +3308,118 @@ mod tests {
             "the observation plus the backend is the whole of the in-place row, \
              and this road has both"
         );
-        // The other row needs the LANGUAGE, which this road does not have, so it
-        // refuses -- with the horizon's reason, naming the road and issue 1393.
+        // The other row is a BUFFERED row on a schemaless backend, where the
+        // language decides it (Rust `unbounded`, C/C++ `typed_bound`) and this
+        // road has none -- so it refuses, naming the missing half. No road-wide
+        // reason: issue 1393 closed that.
         let path = by_topic("/generic").registration_path();
         let why = path
             .refusal()
-            .expect("a buffered row still needs the entry language on this road");
-        assert!(why.contains(MODEL_ONLY_ISSUE), "{why}");
+            .expect("a schemaless buffered row still needs the entry language");
+        assert!(why.contains("the entry's language"), "{why}");
+        assert!(!why.contains("issue 1393"), "{why}");
+    }
+
+    /// issue 1393 — a descriptor-carrying backend answers `registration_path`
+    /// WITHOUT the language, on every road, and the two roads AGREE.
+    ///
+    /// Both language arms give `typed_bound` on Cyclone, so the model road's
+    /// refusal there ("several packages, no one entry language") refused a fact
+    /// every possible answer agreed on. Asserted against the leaf road for BOTH
+    /// languages and every observation, so the shortcut cannot drift from the
+    /// table it short-circuits.
+    #[test]
+    fn a_descriptor_backend_states_the_path_without_a_language_and_both_roads_agree() {
+        for observed in [Some(true), Some(false), None] {
+            let inv = inventory(vec![sub_observed(
+                "std_msgs/msg/String",
+                "/chatter",
+                Some(2),
+                observed,
+            )]);
+            let cyclone = |mut i: DescriptorInputs<'_>| {
+                i.backend_schema = Some(BackendSchema::Descriptors);
+                i.backend_dispatch = Some(BackendDispatch::Buffered);
+                i.rmw = Some("cyclonedds".into());
+                build(&i).endpoints[0].registration_path()
+            };
+            let model = cyclone(model_only(&inv));
+            assert_eq!(
+                model.stated(),
+                Some(&RegistrationPath::TypedBound),
+                "{observed:?}: {:?}",
+                model.refusal()
+            );
+            for language in [EntryLanguage::Rust, EntryLanguage::CFamily] {
+                let mut leaf = base(&inv);
+                leaf.language = Some(language);
+                assert_eq!(cyclone(leaf), model, "{language:?} / {observed:?}");
+            }
+        }
+    }
+
+    /// issue 1393 — `storage_bytes` is composed by ONE chain on every road, so a
+    /// model road handed the bound tables and the triple states exactly the
+    /// region the leaf road states.
+    ///
+    /// The reproduction, watched failing first: phase-454 W14's horizon refused
+    /// this field outright, with a reason claiming the region had "neither of its
+    /// two sizes", on a row that stated `wire_bound_bytes` and whose descriptor
+    /// stated `[target] pointer_bytes` — `examples/workspaces/cpp`'s
+    /// `native_entry.toml` carried exactly that pair.
+    #[test]
+    fn handed_the_tables_the_model_road_states_the_region_the_leaf_road_states() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);
+        let leaf = build(&base(&inv));
+        let model = build(&model_with_tables(&inv));
+        let (l, m) = (&leaf.endpoints[0], &model.endpoints[0]);
+        assert_eq!(m.storage_bytes().stated(), Some(&(11 * 1170 + 11 * 4)));
+        assert_eq!(l.storage_bytes(), m.storage_bytes());
+        assert_eq!(l.wire_bound_bytes(), m.wire_bound_bytes());
+        assert_eq!(leaf.types.max_fields(), model.types.max_fields());
+        assert_eq!(leaf.types.max_kinds(), model.types.max_kinds());
+        assert_eq!(
+            leaf.types.max_nested_depth(),
+            model.types.max_nested_depth()
+        );
+    }
+
+    /// With NO table, the region's refusal carries the bound's own reason, so a
+    /// reader holding the row is told which input is missing and where it comes
+    /// from rather than "not available".
+    #[test]
+    fn a_region_refused_for_its_bound_names_why_the_bound_is_missing() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);
+        let d = build(&model_only(&inv));
+        let ep = &d.endpoints[0];
+        let storage = ep.storage_bytes();
+        let why = storage.refusal().expect("no table, no bound, no region");
+        assert!(why.contains("wire bound is not available"), "{why}");
+        assert!(why.contains("no message-bound table"), "{why}");
         assert!(why.contains("a workspace cargo image"), "{why}");
     }
 
     // --- phase-454 W14: the model-only producer -----------------------------
 
-    /// THE RULING, as one assertion: emit what the SystemModel knows, refuse
-    /// every field that needs a leaf, and NAME the follow-up in each reason.
+    /// THE RULING, as one assertion: emit what the inputs support, refuse every
+    /// field whose input is missing, and NAME that input in each reason.
     ///
-    /// The five refused fields are enumerated rather than counted. A count
-    /// would pass if a refusal moved from one field to another, which is the
-    /// shape of every silent mis-description this model exists to remove.
+    /// The refused fields are enumerated rather than counted. A count would pass
+    /// if a refusal moved from one field to another, which is the shape of every
+    /// silent mis-description this model exists to remove.
+    ///
+    /// issue 1393 -- this caller hands over NO bound table, so the payload class
+    /// refuses naming that; `handed_the_tables_the_model_road_states_the_region_the_leaf_road_states`
+    /// is the same image with the tables, stating all of it.
     ///
     /// phase-457 W3 -- the row is deliberately UNOBSERVED (`None`), which is what
-    /// a row composed from the MODEL side of `merged_per_kind_max` carries: a
-    /// launch declaration says an endpoint exists and nothing about which of the
-    /// executor's eleven registration entry points its code calls. A row from the
-    /// METADATA side does carry the observation, and
-    /// `an_observed_row_lets_the_model_road_state_the_in_place_path` is that case.
+    /// every model-road row carries today: a launch declaration says an endpoint
+    /// exists and nothing about which of the executor's eleven registration entry
+    /// points its code calls, and the probe's observation is not joined in (issue
+    /// 1594). `an_observed_row_lets_the_model_road_state_the_in_place_path` is the
+    /// case once it is.
     #[test]
-    fn a_model_only_descriptor_states_the_declaration_and_refuses_the_five_leaf_facts() {
+    fn a_model_only_descriptor_with_no_table_refuses_each_field_on_its_missing_input() {
         let inv = inventory(vec![sub_observed(
             "std_msgs/msg/String",
             "/chatter",
@@ -3314,25 +3441,48 @@ mod tests {
         assert_eq!(d.meta.undeclared_endpoints().stated(), Some(&0));
         assert_eq!(d.meta.basis, Basis::Contract);
 
-        // REFUSED — and every reason names the tracked follow-up, so the
-        // artifact is the checklist the day it closes.
-        for (what, reason) in [
-            ("wire_bound_bytes", ep.wire_bound_bytes().refusal()),
-            ("storage_bytes", ep.storage_bytes().refusal()),
-            ("registration_path", ep.registration_path().refusal()),
-            ("types.max_fields", d.types.max_fields().refusal()),
-            ("types.max_kinds", d.types.max_kinds().refusal()),
+        // REFUSED — this caller handed over no bound table and observed no
+        // registration, and each refusal names THAT input. issue 1393 closed
+        // the road-wide refusal, so none of them names it.
+        for (what, reason, input) in [
+            (
+                "wire_bound_bytes",
+                ep.wire_bound_bytes().refusal(),
+                "no message-bound table",
+            ),
+            (
+                "storage_bytes",
+                ep.storage_bytes().refusal(),
+                "no message-bound table",
+            ),
+            (
+                "registration_path",
+                ep.registration_path().refusal(),
+                UNOBSERVED_ON_MODEL_ROAD_ISSUE,
+            ),
+            (
+                "types.max_fields",
+                d.types.max_fields().refusal(),
+                "no message-bound table",
+            ),
+            (
+                "types.max_kinds",
+                d.types.max_kinds().refusal(),
+                "no message-bound table",
+            ),
             (
                 "types.max_nested_depth",
                 d.types.max_nested_depth().refusal(),
+                "no message-bound table",
             ),
         ] {
             let reason =
                 reason.unwrap_or_else(|| panic!("`{what}` must be REFUSED, not stated or absent"));
             assert!(
-                reason.contains(MODEL_ONLY_ISSUE),
-                "`{what}`'s refusal must name {MODEL_ONLY_ISSUE}: {reason}"
+                reason.contains(input),
+                "`{what}`'s refusal must name its missing input ({input}): {reason}"
             );
+            assert!(!reason.contains("issue 1393"), "`{what}`: {reason}");
         }
         // A partial descriptor says so in `[meta]`, so a reader who only
         // glances is not told "derived".
@@ -3370,8 +3520,8 @@ mod tests {
         }
     }
 
-    /// The horizon refuses exactly THREE per-row fields and degrades nothing
-    /// else — RFC-0100 D6's "a refusal never degrades another consumer's
+    /// A road with no table refuses exactly THREE per-row fields and degrades
+    /// nothing else — RFC-0100 D6's "a refusal never degrades another consumer's
     /// facts", asserted against the leaf road's own answer for the same image.
     ///
     /// The negative control for the whole wave: if the horizon ever started
@@ -3492,6 +3642,42 @@ mod tests {
             desc: build(&base(&inv)),
         };
         assert_eq!(leaf.cyclonedds_env().len(), 4);
+    }
+
+    /// issue 1393 — every row `cyclonedds_env` WRITES has a reader.
+    ///
+    /// `NROS_CYCLONEDDS_HEAP_BUDGET_BYTES` was written as a cargo `[env]` row
+    /// from phase-454 W6.c on and read by nothing: the C++ half takes these
+    /// numbers only through `nros-rmw-cyclonedds-sys`'s `KNOBS` forward list,
+    /// which did not name it, so RFC-0100 D11's boot assertion was inert on the
+    /// cargo road. Asserted against that list's SOURCE, over the rows a fully
+    /// stated descriptor emits, so a fifth row added here without a reader reds
+    /// the same way.
+    #[test]
+    fn every_cyclonedds_env_row_is_forwarded_by_the_sys_build_script() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(3))]);
+        let written = WrittenDescriptor {
+            path: std::path::PathBuf::from("<test>"),
+            desc: build(&base(&inv)),
+        };
+        let rows = written.cyclonedds_env();
+        assert_eq!(rows.len(), 4, "precondition: every row is stated: {rows:?}");
+        let src = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../rmw/cyclonedds/nros-rmw-cyclonedds-sys/build.rs"),
+        )
+        .expect("read nros-rmw-cyclonedds-sys/build.rs");
+        let start = src
+            .find("const KNOBS: &[&str] = &[")
+            .expect("the KNOBS list");
+        let list = &src[start..start + src[start..].find("];").expect("its end")];
+        for key in rows.keys() {
+            assert!(
+                list.contains(&format!("\"{key}\"")),
+                "`{key}` is written as a cargo [env] row and `KNOBS` does not forward it -- \
+                 a fact with no reader"
+            );
+        }
     }
 
     /// A model-only descriptor round-trips through the shared reader.

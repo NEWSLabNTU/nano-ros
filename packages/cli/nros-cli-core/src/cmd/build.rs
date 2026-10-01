@@ -551,10 +551,11 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // phase-454 W14 (RFC-0100 D4) — the SECOND descriptor producer.
                 //
                 // A workspace image has no leaf inventories: its entity facts
-                // come from the resolved SystemModel and its bound inventory
-                // does not exist at all. So it writes what the model KNOWS —
-                // the counts and all four QoS policies — and REFUSES every
-                // field that needs a leaf, each refusal naming issue 1393. D6
+                // come from the resolved SystemModel, and since
+                // phase-457-payload W2 its bound tables from the workspace's
+                // own `generated/` trees below. Each field is composed by the
+                // leaf road's code from whatever of those it got, and refuses
+                // only on an input that is missing (issue 1393, closed). D6
                 // is what makes that safe to publish: `Fact::stated()` is the
                 // only accessor that yields a value, so no consumer can read a
                 // refusal as a default.
