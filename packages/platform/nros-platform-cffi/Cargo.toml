@@ -29,6 +29,10 @@ c-stub-test = ["dep:cc", "dep:nros-cc-flags"]
 # Mutually exclusive with `c-stub-test` (both would supply
 # definitions for the same symbols).
 posix-c-port = ["dep:cc", "dep:nros-cc-flags"]
+# issue 1324 — the `log` facade's route into the platform sink, for a port whose
+# images have no other `log::Log` (Zephyr, once its Rust leaves stopped linking
+# zephyr-lang-rust's allocator and with it `zephyr::set_logger`'s full-LOG arm).
+log-compat = ["nros-log/log-compat"]
 
 [dependencies]
 # issue 0710 follow-up — `posix-c-port` compiles the POSIX C port, which DEFINES

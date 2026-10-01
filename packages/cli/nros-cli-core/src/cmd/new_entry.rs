@@ -565,12 +565,9 @@ CONFIG_NROS=y
 
 # Rust application support (zephyr-lang-rust).
 CONFIG_RUST=y
-CONFIG_RUST_ALLOC=y
-
-# The Rust allocator on Zephyr is picolibc malloc, sized by this — NOT
-# CONFIG_HEAP_MEM_POOL_SIZE. The executor's backing alone needs ~75 KB, and the
-# 16 KB default fails at runtime rather than at link (issue 0163).
-CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE=131072
+# No CONFIG_RUST_ALLOC: Rust `alloc` goes through nros_platform_alloc, the same
+# heap zenoh-pico uses, sized by CONFIG_NROS_ZEPHYR_HEAP_SIZE (issue 1324). The
+# nros module refuses CONFIG_RUST_ALLOC=y, which would add a second heap.
 
 CONFIG_MAIN_STACK_SIZE=16384
 CONFIG_LOG=y

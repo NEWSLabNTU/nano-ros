@@ -106,3 +106,18 @@ pub fn default_sinks() -> &'static [&'static dyn LogSink] {
 pub fn init_default() {
     nros_log::init(default_sinks());
 }
+
+/// Route the `log` FACADE (`log::info!` in an application body) into the same
+/// sink list [`init_default`] installs, so one funnel carries both.
+///
+/// Issue 1324. A Zephyr Rust image used `zephyr::set_logger()` for this, and
+/// with `CONFIG_LOG` in full mode that logger exists only under
+/// `CONFIG_RUST_ALLOC` — the zephyr-lang-rust allocator that put a SECOND,
+/// unpriced heap under every Zephyr Rust image (host glibc on an XRCE
+/// native_sim image). That allocator is now refused; this is what replaces the
+/// logger it carried. Idempotent; a second `log::Log` already installed is left
+/// in place, which is the `log` crate's own rule.
+#[cfg(feature = "log-compat")]
+pub fn install_log_crate_bridge() {
+    let _ = nros_log::log_compat::install_log_crate_bridge();
+}

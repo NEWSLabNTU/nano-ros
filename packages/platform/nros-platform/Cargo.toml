@@ -110,7 +110,23 @@ platform-threadx = ["dep:nros-platform-cffi"]
 # cargo invocations, and the one that links the arena was not among them.
 # That is the delivery-failure class this phase exists to remove, so the
 # counters are simply always on for this port. Two atomics per alloc.
-platform-zephyr = ["dep:nros-platform-cffi", "dep:zpico-alloc", "zpico-alloc/stats"]
+#
+# issue 1324 — and `global-allocator`: a Zephyr image's Rust `alloc` goes through
+# `nros_platform_alloc`, the same rlsf arena (`NROS_ZEPHYR_HEAP_SIZE`) zenoh-pico
+# uses. Pure-Rust leaves used to take zephyr-lang-rust's `CONFIG_RUST_ALLOC`
+# allocator instead, which is libc `malloc`: picolibc's arena on a zenoh image,
+# the HOST glibc heap on an XRCE native_sim image — a second heap either way,
+# invisible to the boot record and to `mem-report`. Measured on the native_sim
+# rust/talker XRCE image: 27,118 B live (peak 28,391) through that allocator,
+# bounded by nothing. `zephyr/CMakeLists.txt` refuses `CONFIG_RUST_ALLOC=y`,
+# because the two `#[global_allocator]`s cannot coexist.
+platform-zephyr = [
+    "dep:nros-platform-cffi",
+    "dep:zpico-alloc",
+    "zpico-alloc/stats",
+    "global-allocator",
+    "nros-platform-cffi/log-compat",
+]
 # phase-337 W7.b — `platform-orin-spe` (a back-compat alias for
 # `platform-freertos` since 121.10) and `platform-esp32s3` are gone with their
 # boards. A Cortex-R5F FreeRTOS-FSP consumer selects `platform-freertos`

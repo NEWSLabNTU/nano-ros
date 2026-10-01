@@ -884,12 +884,10 @@ macro_rules! zephyr_component_main {
     ($node:ty) => {
         #[unsafe(no_mangle)]
         pub extern "C" fn rust_main() {
-            unsafe {
-                zephyr::set_logger().ok();
-            }
-            // issue 1123 — publish an `nros_log` sink list. `zephyr::set_logger`
-            // above serves the `log` FACADE, which is what an example body
-            // writes; it does nothing for `nros_log`, which is what the
+            // issue 1123 — publish an `nros_log` sink list. The `log` FACADE
+            // (what an example body writes) is bridged into it just below
+            // (issue 1324 retired `zephyr::set_logger`); the sink list is what
+            // `nros_log` needs, which is what the
             // FRAMEWORK writes (nros-node's executor, nros-rmw-zenoh's session
             // and pool diagnostics, nros-rmw-cffi). With no sink list
             // `nros_log::dispatch_to_sinks` holds each record in the bounded
@@ -910,6 +908,10 @@ macro_rules! zephyr_component_main {
             // Zephyr writer is `nros_platform_log_write`, defined
             // unconditionally by the C port, so there is no such window here.
             ::nros_platform::log::init_default();
+            // issue 1324 — the `log` facade into the same sinks. This was
+            // `zephyr::set_logger()`, whose full-`CONFIG_LOG` arm exists only
+            // under `CONFIG_RUST_ALLOC`, the allocator this image no longer links.
+            ::nros_platform::log::install_log_crate_bridge();
             // Phase 248 C7 step 1 — relocated helper (was `$crate::platform::zephyr`).
             let _ = ::nros_platform::zephyr::wait_network(2000);
             // Phase 249 P1 — RMW register is board/platform-owned (Phase 248 C5a);

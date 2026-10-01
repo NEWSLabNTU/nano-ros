@@ -1738,8 +1738,19 @@ config NROS_EXECUTOR_ACTION_CLIENTS
 
 config NROS_ZEPHYR_HEAP_SIZE
     int "Application heap arena size (bytes)"
+    default 131072 if RUST
     default 65536
     help
+      A RUST application gets twice the default (issue 1324): its Rust
+      `alloc` goes through this arena too -- it used to land in a second,
+      unpriced heap (zephyr-lang-rust's CONFIG_RUST_ALLOC over libc malloc).
+      MEASURED one-heap peaks on native_sim/native/64 (boot record, 10 s
+      against a live peer): rust/talker xrce 46,256; rust/listener zenoh
+      42,304; rust/action-server zenoh 58,288 -- which leaves 7,760 bytes of
+      a 64 KiB arena and is refused by `read-boot-report.py --heap-headroom`.
+      128 KiB keeps the 24,576-byte floor over the worst of them. A C image
+      measured 15,152 (c/talker zenoh), so its default is unchanged.
+
       Size of the rlsf arena in nros-platform's zephyr_heap, which backs
       BOTH z_malloc and __rust_alloc since the allocation funnel moved off
       Zephyr's kernel heap.
