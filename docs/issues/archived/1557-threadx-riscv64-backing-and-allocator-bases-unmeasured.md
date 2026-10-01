@@ -189,3 +189,57 @@ Item 2 (the bases) is NOT closed: the one rv64 byte-pool peak above was taken
 from an image that did not get its session up, so it is not the loaded peak
 this item asks for, and the FreeRTOS cyclone/XRCE 3 MiB base was not measured.
 
+
+## Resolution (2026-10-01)
+
+**Item 1 — closed.** The rv64 statement (`backing_u64s = 11069`) landed with
+the progress entry above; re-measured here on a fresh build of all six Rust
+roles: every image carries `EXECUTOR_BACKING` = `0x159e8` = 88,552 B and
+`byte_pool_storage` = `0x3ea618` = 4,105,752 B, which sum to
+`BYTE_POOL_BASE_SIZE` exactly — the backing is reserved once.
+`check-executor-backing-arena-pairing` (incl. `--claims`, which emits
+`packages/boards/nros-board-threadx-qemu-riscv64/nros-board.toml 11069 threadx
+64 riscv64gc-unknown-none-elf`) covers the board. The missing half was
+"boot AND DELIVER": the images now deliver under QEMU — talker→listener 52 and
+49 samples, `add_two_ints` = 5, Fibonacci order 10 result `[0, 1, …, 55]` —
+but only with the zenoh locator changed in a measurement-only build (not
+committed). Why the shipped image cannot reach a router is a separate defect,
+filed as [issue 1619](../1619-threadx-rv64-rust-cmake-path-dials-board-default-locator.md)
+(NetX on `10.0.2.40` from `NROS_APP_CONFIG`, zenoh dialling `192.0.3.1:7447`
+from `Config::default()`, captured with a QEMU `filter-dump`). It is what issue
+1355 recorded as "no session in 60 s".
+
+**Item 2, ThreadX — closed by DOCUMENTING the base** (the issue's second
+allowed outcome). Measured `nros: byte pool peak` on QEMU riscv64, pool
+4,105,752 B:
+
+| role | peak (B) |
+| --- | --- |
+| boot, no session | 598,952 |
+| talker (session, publishing) | 705,792 / 706,136 |
+| listener (49 samples received) | 705,384 |
+| service server / client (one exchange) | 706,576 / 708,216 |
+| action server / client (goal + feedback + result) | 725,656 / 720,904 |
+
+Worst: 725,656 B = 17.7 % of the pool; ~5.6x margin. Written beside
+`BYTE_POOL_BASE_SIZE` in `packages/boards/nros-board-common/c/threadx_hooks.c`.
+The base was NOT lowered: Cyclone does not link on this board yet (issue 1590),
+and a DDS participant is what the old number was sized for — lowering it is a
+policy change this measurement enables, not one it makes.
+
+**Item 2, FreeRTOS — split to [issue 1624](../1624-freertos-cyclone-heap-base-unmeasurable-in-qemu.md).**
+The 3 MiB non-zenoh default reaches exactly one in-tree image,
+`workspace-cpp-s32z270-freertos`, on hardware with no QEMU model (mps2-an385
+has no xrce/cyclone board feature and no such fixture row; mps3-an536 states
+its own 32 MiB). Documented beside the `#define`; the pairing gate's note now
+points at 1624.
+
+NOT measured: the cyclonedds rv64 roles (they do not link, issue 1590); C and
+C++ rv64 images (their executors are file-scope statics and never drew on the
+pool); peaks under sustained high-rate traffic (each run was the example's own
+cadence for ~40-90 s).
+
+Measurement commands: `riscv-none-elf-nm -S -C <elf> | grep -E
+'EXECUTOR_BACKING|byte_pool_storage'`; QEMU `-netdev user` with
+`rmw_zenohd` on host `127.0.0.1:7553`, reading each image's `nros: byte pool
+peak` line.

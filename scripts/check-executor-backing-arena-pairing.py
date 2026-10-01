@@ -199,11 +199,12 @@ PORTS = {
     )},
     # W3/W4 of this phase, DONE (issue 1197). Nothing to pair by arithmetic: the
     # zenoh heap is a derivation with no backing term. The cyclone/XRCE lanes'
-    # 3 MiB `FreeRTOSConfig.h` default is an undeclared BASE -- issue 1557.
+    # 3 MiB `FreeRTOSConfig.h` default reaches only the s32z270 hardware image,
+    # so it cannot be measured here -- issue 1624 (split from 1557).
     "freertos": {"kind": "derived", "why": (
         "the zenoh heap is `default_heap_bytes(app_stack_bytes)` with no "
         "backing term, because `backing::take` latches the first executor onto "
-        "the .bss static (issue 1197); the cyclone/XRCE 3 MiB base is issue 1557"
+        "the .bss static (issue 1197); the non-zenoh 3 MiB base is issue 1624"
     )},
     "freertos-posix": {"kind": "none", "why": (
         "heap_3 wraps the host malloc, so configTOTAL_HEAP_SIZE is not a "
