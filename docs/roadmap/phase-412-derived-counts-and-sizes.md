@@ -605,7 +605,7 @@ evidence, the item is *close it*.
 | --- | --- |
 | [#1120](../issues/1120-entity-inventory-refusal-names-retired-entities.md) | the entity inventory's refusal tells the user to add `ENTITIES`, which this phase retired. The two halves of the retirement disagree, and the CLI half is this phase's own tail |
 | [#1140](../issues/1140-describes-wiring-misses-timer-only-contract.md) | two predicates ask whether a contract was authored and disagree on a timer-only contract. This phase owns the inventory and its authoring test, so it owns the disagreement |
-| [#1256](../issues/1256-contract-qos-carries-depth-only.md) | contract QoS reaches the build as DEPTH only — reliability, history and durability are dropped. `entity_inventory`'s declaration grammar left the room; this phase owns that grammar |
+| [#1256](../issues/archived/1256-contract-qos-carries-depth-only.md) | contract QoS reaches the build as DEPTH only — reliability, history and durability are dropped. `entity_inventory`'s declaration grammar left the room; this phase owns that grammar |
 
 ## CHECKPOINT 2026-09-09 — what is done, what is in the queue, what is left
 
