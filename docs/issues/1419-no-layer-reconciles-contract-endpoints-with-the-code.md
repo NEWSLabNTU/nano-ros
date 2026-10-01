@@ -8,7 +8,7 @@ type: bug
 area: [build, cmake, testing]
 severity: high
 found: 2026-09-21
-related: [0257, 0965, 1084, 0641, 0304, phase-308, phase-313, phase-403, phase-446, phase-463, rfc-0100]
+related: [0257, 0965, 1084, 0641, 0304, phase-308, phase-313, phase-403, phase-446, phase-463, rfc-0100, 1600]
 ---
 
 ## Problem
@@ -74,6 +74,91 @@ Open. The island's native `just build` exports `NROS_EXECUTOR_MAX_CBS=32`,
 so its native image is hand over-provisioned and would not have shown the
 omission even at boot; the Zephyr image (derived 19) would have, on silicon
 with no console.
+
+### 2026-10-01 -- the census reaches a real cross configure
+
+phase-463 W1-W4 landed (the recorder, the native entry as producer, the
+verdict check, the configure-time `--require-fresh` call -- the last as PR
+#1233), each gated on a FIXTURE. Run end to end on an in-tree workspace for
+the first time, the road had three defects, each of which on its own meant no
+cross configure ever compared anything:
+
+1. **The C++ entry the workspaces generate produced no census.** The typed
+   single-executor C++ native entry calls the header-only
+   `nros::board::LinuxBoard::run_components`, which never reached the Rust
+   funnel W2 put the `$NROS_CENSUS_OUT` switch in. Measured on
+   `examples/workspaces/cpp` `native_entry`: the run ignored the variable,
+   dialled zenoh and exited 156 on `ConnectionFailed`, writing nothing.
+2. **The producer and the consumer named different files.** Both sides keyed
+   the census by `<their own build dir>/nros/census/<their own entry>.json`,
+   so the native run wrote `.../native_entry.json` and the threadx configure
+   looked for `build/threadx-linux-zenoh/cmake/nros/census/threadx_entry.json`
+   -- and its remedy said `nros ws entity-census run --entry threadx_entry`,
+   an entry with no host binary. Every cross configure read "census missing",
+   which the landing `[census] on_missing = "warn"` lets build.
+3. **`run` could not find a binary `nros build` had built**
+   (`build/<image-root>/cmake/<entry>`), so the documented remedy refused.
+
+Fixed in the PR that carries this section (*the census reaches a real cross
+configure*): `LinuxBoard::run_components` calls `nros_cpp_census_begin` /
+`nros_cpp_census_finish` (the funnel's own three functions, no second census
+path); the census of a MODEL lives beside it
+(`<model-dir>/<stem>.census.json`, `census_path_for_model`), which is the one
+document both images of one launch file share, and cmake ASKS for that path
+(`nros ws entity-census path --model`) instead of spelling one; `run` searches
+`nros build`'s image roots and refuses an ambiguity by name.
+
+Measured on `examples/workspaces/cpp` (native image + `threadx-linux` cross
+configure, census taken by `native_entry` against the pristine contract):
+
+| edit to `system.contract.yaml` | threadx configure, before | after |
+| --- | --- | --- |
+| none | `census missing (WARNING)`, builds | `3 confirmed, 0 error(s)`, builds |
+| E3a: drop `listener.sub.chatter` + its wiring | `census missing (WARNING)`, builds | REFUSED: `error missing-in-contract listener sub /chatter`, not waivable, remedy names the two lines |
+| E3b: declare + wire `listener.sub.phantom` | `census missing (WARNING)`, builds | REFUSED: `error phantom listener sub /phantom`, waiver key printed |
+| E3c: declare `listener.sub.phantom`, no `topics:` row | `census missing (WARNING)`, builds | REFUSED: `error unwired listener sub phantom` |
+
+**The census producer is sized by the contract it checks.** That is the
+fourth defect, and it is the one that makes E3a reach the census run itself
+when the native image is REBUILT from the edited contract: the native image's
+callback table derives one short and the census run stops at `ExecutorFull`
+(measured: exit 250, `2 node(s), 0 sub / 1 pub / ... / 1 timer`). Before, it
+discarded what it had and the configure read "census missing" (warn). Now the
+run writes what the recorder saw, marked `incomplete`, exits non-zero, and
+every check against it refuses (`census INCOMPLETE`); `nros sync` reports it
+as "current but INCOMPLETE". Measured: the threadx configure REFUSES. It does
+not name the omitted row -- the executor refuses a registration
+(`next_entry_slot`, 14 sites in `nros-node`) before the recorder sees it.
+
+Gates: `check-entity-census` now never names the census path on either side,
+takes it with one entry name and checks it with another (the real road), and
+gains move 4b (an incomplete census is written and refused);
+`workspace_metadata::cmake_cpp_workspace_entry_writes_a_census_without_a_router`
+runs the PREBUILT C++ workspace fixture in census mode (negative control
+measured: with the header change reverted it fails, exit 156, no file).
+
+### What is left (why this stays open)
+
+* **`on_missing` / `on_stale` still land as `warn`.** A workspace that never
+  takes a census still builds its RTOS image unchecked; the original failure
+  (`ExecutorFull` on the board) is reachable by not running the producer.
+  phase-463 W6 (the island flip, then the default) is not started.
+* **E3a after a native rebuild refuses as INCOMPLETE, not as one named
+  `missing-in-contract` row.** Either the recorder records a REFUSED
+  registration (the 14 `next_entry_slot` sites), or the census-capable native
+  image is sized independently of the contract it checks. Neither is done.
+* **Rust and C entries have no census.** `boot_hosted` refuses
+  `$NROS_CENSUS_OUT` for a Rust entry; a C entry's entities reach the
+  recorder with no node attribution (phase-463 Limits). The class is checked
+  for C++ entries only.
+* **phase-463 W5** (the RTOS-image-unaffected invariants as gates) is not
+  started; the new FFI pair is `#[cfg(feature = "env")]`, which no RTOS
+  umbrella has, but nothing gates it.
+* **Issue 1600** (found here): a multi-entry configure sizes its one runtime
+  from the LAST entry's model, so `examples/workspaces/cpp`'s `native_entry`
+  dies at boot with `ExecutorFull` on the pristine contract -- and so does its
+  census run. The measurements above used `NROS_EXECUTOR_MAX_CBS=8` stated for
+  the native build to step around it.
 
 ## Fix / direction
 
