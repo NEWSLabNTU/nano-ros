@@ -9,7 +9,7 @@ below for the per-fact table.
 **The last sentence of the old header was wrong, and W9 measured it.** It read
 *"The carriers that deliver only COUNTS and QoS are a different matter, and W9
 can take them first"*, on the reasoning that
-[1393](../issues/1393-cmake-road-has-no-bound-inventory.md)'s refusals are
+[1393](../issues/archived/1393-cmake-road-has-no-bound-inventory.md)'s refusals are
 per-FIELD and the counts are not among them. The field is not the question.
 **Which inventory the descriptor's producer read, and whether it ran at all,
 is** — `nros ws sizing-descriptor --from-model` builds
@@ -18,7 +18,7 @@ is** — `nros ws sizing-descriptor --from-model` builds
 declared nothing. That, plus a standalone leaf having no model at all, is
 [issue 1407](../issues/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md);
 the parameter family's separate blocker is
-[issue 1408](../issues/1408-sizing-descriptor-has-no-parameter-store-section.md).
+[issue 1408](../issues/archived/1408-sizing-descriptor-has-no-parameter-store-section.md).
 
 The header's earlier history, kept because the defect recurs: the 2026-09-11
 line said "Opened" and outlived that by a week, so the phase read as unstarted
@@ -628,10 +628,10 @@ fails.
 
 | class | n | blocker | why |
 | --- | --- | --- | --- |
-| payload | 4 | [1393](../issues/1393-cmake-road-has-no-bound-inventory.md) | the model-only producer REFUSES `wire_bound_bytes` / `storage_bytes`, so on 2 roads of 3 this carrier is the only thing stating a size |
+| payload | 4 | [1393](../issues/archived/1393-cmake-road-has-no-bound-inventory.md) | the model-only producer REFUSES `wire_bound_bytes` / `storage_bytes`, so on 2 roads of 3 this carrier is the only thing stating a size |
 | entity counts | 9 | [1407](../issues/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md) | the descriptor's producer reads a POORER inventory than the carrier's |
 | queryable raw inputs | 4 | [1407](../issues/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md) | their live road is the STANDALONE LEAF, which has no model and so can never have a model-written descriptor |
-| parameter store | 9 | [1408](../issues/1408-sizing-descriptor-has-no-parameter-store-section.md) | the D4 schema has no parameter section at all, on ANY road — not a refusal, an absent vocabulary |
+| parameter store | 9 | [1408](../issues/archived/1408-sizing-descriptor-has-no-parameter-store-section.md) | the D4 schema has no parameter section at all, on ANY road — not a refusal, an absent vocabulary |
 
 **The count class is the one the plan misjudged, and the reason is not 1393.**
 Issue 1407 records three independent mechanisms. The sharpest: `nros ws
@@ -1181,7 +1181,7 @@ against a mapping its own comment already said was mirrored by
 is how two wirings come to disagree about which backend an image is.
 
 **What it does NOT close**, stated rather than implied: the five refused fields,
-which are [issue 1393](../issues/1393-cmake-road-has-no-bound-inventory.md), and
+which are [issue 1393](../issues/archived/1393-cmake-road-has-no-bound-inventory.md), and
 the retirement of the `NROS_DECLARED_*` carriers. W9 then measured that
 retirement per fact and retired NONE of them — and found the block is NOT only
 the refusals. It is also the producer, still: `--from-model` reads a poorer

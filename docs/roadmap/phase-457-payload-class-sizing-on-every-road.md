@@ -3,7 +3,7 @@
 **Status (2026-09-21). Queued, not started.** Successor to
 [phase-454](phase-454-contract-states-facts-backends-derive.md), which
 implemented [RFC-0100](../design/0100-rmw-agnostic-sizing-model.md) and named its
-own ceiling. Closes [issue 1393](../issues/1393-cmake-road-has-no-bound-inventory.md)
+own ceiling. Closes [issue 1393](../issues/archived/1393-cmake-road-has-no-bound-inventory.md)
 and [issue 1340](../issues/1340-arena-budgets-a-receive-region-an-in-place-backend-never-claims.md),
 and issue 1407 (not linked — its file is on PR #1123 until that merges).
 
@@ -639,6 +639,14 @@ resolution on that road and NOT issue 1393. Leave `storage_bytes` refused, with 
 reason naming W2's bound. The phase's "zero refusals naming 1393" criterion is
 then met for `[target]` by making the two surviving refusals name something
 truer — which is what that criterion asks for.
+
+**Superseded 2026-10-01 (issue 1393's closure).** With W2's tables and this
+wave's triple both landed, `storage_bytes` no longer needs a road-specific
+refusal at all: the horizon's short-circuit is deleted and the leaf road's own
+chain runs on every road, refusing on whichever input is actually missing. The
+model road states the region wherever a depth is declared and is asserted to
+equal the leaf road's (`bound_tables_turn_the_model_roads_payload_refusals_into_facts`).
+Zero refusals name 1393.
 
 **Do NOT** read the width in the CLI as a fallback for a cross entry. A build
 script's `size_of` answers for the HOST (phase-118-E), and `target_facts` already
