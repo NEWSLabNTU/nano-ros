@@ -311,9 +311,13 @@ pub fn holds_cpp_source(dir: &Path) -> bool {
         d.read_dir()
             .map(|rd| {
                 rd.flatten().any(|e| {
-                    let n = e.file_name();
-                    let n = n.to_string_lossy();
-                    n.ends_with(".cpp") || n.ends_with(".cc") || n.ends_with(".cxx")
+                    // The ONE extension table (phase-469 S3), not a local copy:
+                    // a hand list here omitted `.C` and `.c++`, which cmake's
+                    // own `source-language` query calls C++.
+                    matches!(
+                        nros_lang::Language::of_source(&e.file_name().to_string_lossy()),
+                        Ok(nros_lang::SourceVerdict::Decides(nros_lang::Language::Cpp))
+                    )
                 })
             })
             .unwrap_or(false)

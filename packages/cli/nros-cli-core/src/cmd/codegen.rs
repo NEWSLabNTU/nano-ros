@@ -313,22 +313,34 @@ pub fn run(args: Args) -> Result<()> {
             // consumer's CMake build dir; walking up finds the workspace
             // Cargo.lock.
             abi_guard::check_workspace(&args_file, Verb::Codegen)?;
-            match args.language.as_str() {
-                "c" => cargo_nano_ros::generate_c_from_args_file(cargo_nano_ros::GenerateCConfig {
-                    args_file,
-                    verbose: args.verbose,
-                })
-                .map_err(|e| eyre!("{e:#}")),
-                "cpp" => {
+            // phase-469 — parse at the edge, then an EXHAUSTIVE match: this was
+            // `match args.language.as_str()` with an `other =>` arm, so a fourth
+            // language reached the refusal only if its spelling happened not
+            // to be one of the two literals, and the compiler could not see
+            // the dispatch at all. Rust is refused by name: a Rust message
+            // crate comes from `nros generate-rust`, not from this verb.
+            let language = nros_lang::Language::parse(&args.language)
+                .map_err(|e| eyre!("nros codegen --language: {e}"))?;
+            match language {
+                nros_lang::Language::C => {
+                    cargo_nano_ros::generate_c_from_args_file(cargo_nano_ros::GenerateCConfig {
+                        args_file,
+                        verbose: args.verbose,
+                    })
+                    .map_err(|e| eyre!("{e:#}"))
+                }
+                nros_lang::Language::Cpp => {
                     cargo_nano_ros::generate_cpp_from_args_file(cargo_nano_ros::GenerateCppConfig {
                         args_file,
                         verbose: args.verbose,
                     })
                     .map_err(|e| eyre!("{e:#}"))
                 }
-                other => {
-                    bail!("nros codegen: unsupported language '{other}' (expected 'c' or 'cpp')")
-                }
+                nros_lang::Language::Rust => bail!(
+                    "nros codegen: `--language rust` is not served by the args-file verb \
+                     (it renders C and C++ message packages for CMake); Rust message \
+                     crates come from `nros generate-rust`"
+                ),
             }
         }
     }

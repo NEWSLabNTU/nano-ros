@@ -228,7 +228,7 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
         system_toml_path.as_deref(),
         build_json,
         declared_concurrency.as_ref(),
-    );
+    )?;
 
     let plan_path = options.out_root.join("nros-plan.json");
     fs::write(&plan_path, serde_json::to_string_pretty(&plan)?)?;
@@ -658,8 +658,8 @@ fn schema_plan_json(
     system_toml: Option<&Path>,
     build: Value,
     declared_concurrency: Option<&BTreeMap<String, Vec<Vec<String>>>>,
-) -> Value {
-    let components = schema_components(metadata);
+) -> Result<Value> {
+    let components = schema_components(metadata)?;
     // Phase 256 W4.2 — the planner emits no scheduling tiers: tiers resolve in the
     // codegen tools (`generate`/`bake`) from `system.toml` + node `callback_groups`,
     // which the language-agnostic planner can't see. The plan carries exactly the
@@ -763,7 +763,7 @@ fn schema_plan_json(
         );
     }
     obj.insert("build".to_string(), build);
-    plan
+    Ok(plan)
 }
 
 /// Phase 173.5 — assemble the plan `build` block from the nros.toml
@@ -1167,7 +1167,7 @@ fn merge_declared_endpoints_into_winners(metadata: &mut [JsonArtifact]) {
     }
 }
 
-fn schema_components(metadata: &[JsonArtifact]) -> Vec<Value> {
+fn schema_components(metadata: &[JsonArtifact]) -> Result<Vec<Value>> {
     // Phase 172.U — dedup by component id: the same component's source metadata
     // can reach the planner from more than one place (e.g. a collected copy in
     // the build metadata dir + the in-package `metadata/` file a
@@ -1185,14 +1185,37 @@ fn schema_components(metadata: &[JsonArtifact]) -> Vec<Value> {
             if !seen.insert(id.clone()) {
                 return None;
             }
-            let language = string_field(&artifact.value, &["language"]).unwrap_or("rust");
-            Some(json!({
-                "id": id,
-                "package": package,
-                "component": component,
-                "language": language,
-                "source_metadata": artifact.path.display().to_string(),
-                "component_config": null,
+            // phase-469 — the component's language is READ, never supplied.
+            // This was `.unwrap_or("rust")` over a raw string: a sidecar with
+            // no `language` became Rust, and one with an unrecognised spelling
+            // was copied into the plan verbatim for a later reader to trip
+            // over. Every producer states it (`SourceMetadata.language` is a
+            // required field; the cargo synthesis writes `Language::Rust`), so
+            // a missing or unknown value is a malformed artifact and is
+            // REFUSED here, naming the file — the same refusal
+            // `SourceMetadata`'s own serde makes.
+            let language = match artifact.value.get("language") {
+                Some(v) => serde_json::from_value::<nros_lang::Language>(v.clone()).map_err(|e| {
+                    eyre!(
+                        "{}: component `{id}` has `language` {v}, which is not a language ({e})",
+                        artifact.path.display()
+                    )
+                }),
+                None => Err(eyre!(
+                    "{}: component `{id}` states no `language` — every metadata producer \
+                     writes one, so this artifact is malformed",
+                    artifact.path.display()
+                )),
+            };
+            Some(language.map(|language| {
+                json!({
+                    "id": id,
+                    "package": package,
+                    "component": component,
+                    "language": language,
+                    "source_metadata": artifact.path.display().to_string(),
+                    "component_config": null,
+                })
             }))
         })
         .collect()
@@ -3825,6 +3848,37 @@ mod tests {
         assert_eq!(bridges[0].connect[1].domain, 5);
         assert_eq!(bridges[0].connect[1].locator, None);
         assert_eq!(bridges[0].topics, vec!["/chatter".to_string()]);
+    }
+
+    /// phase-469 — a component's language is READ from its artifact, never
+    /// supplied. It used to be `.unwrap_or("rust")` over a raw string, so a
+    /// missing field became Rust in silence and an unknown spelling was copied
+    /// into the plan verbatim. Both now refuse, naming the file.
+    #[test]
+    fn a_component_language_is_read_and_never_defaulted() {
+        let artifact = |language: Option<Value>| {
+            let mut value = json!({"package": "p", "component": "c"});
+            if let Some(l) = language {
+                value["language"] = l;
+            }
+            JsonArtifact {
+                path: PathBuf::from("metadata/c.json"),
+                value,
+            }
+        };
+
+        let ok = schema_components(&[artifact(Some(json!("cpp")))]).expect("cpp is a language");
+        assert_eq!(ok[0]["language"], "cpp", "the canonical spelling is kept");
+
+        for (case, lang) in [("absent", None), ("unknown", Some(json!("zig")))] {
+            let err = schema_components(&[artifact(lang)])
+                .expect_err(case)
+                .to_string();
+            assert!(
+                err.contains("metadata/c.json") && err.contains("p::c"),
+                "{case}: names the file and the component: {err}"
+            );
+        }
     }
 
     /// issue 0408 — a declaration-only publish (a
