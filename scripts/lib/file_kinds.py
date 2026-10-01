@@ -56,6 +56,11 @@ KINDS = {
     "toml": ((".toml",), ()),
     "markdown": ((".md",), ()),
     "yaml": ((".yml", ".yaml"), ()),
+    # A codegen template. Its text ships into USER sources (`entry.c.jinja`
+    # becomes a C TU, the `boot_wrapper` packs a header), so a rule about what
+    # those sources may say is a rule about these too (2026-10-01 re-run:
+    # `check-ret-code-citations` read no template).
+    "jinja": ((".jinja", ".j2"), ()),
     # A board descriptor, wherever the board lives — `packages/boards/*/` and
     # the nested `nros-board-zephyr/boards/<b>/` alike.
     "board-descriptor": ((), ("nros-board.toml",)),
@@ -124,7 +129,7 @@ def self_test() -> None:
         for rel in ("cmake/a.cmake", "zephyr/CMakeLists.txt", "packages/x/cmake/b.cmake",
                     "packages/x/src/lib.rs", "third-party/v/CMakeLists.txt",
                     "packages/i/generated/g.rs", "packages/api/nros-cpp/include/nros/x.hpp",
-                    "justfile", "just/m.just"):
+                    "justfile", "just/m.just", "packages/cli/p/t.c.jinja"):
             w(rel)
         w("justfile", "mod m 'just/m.just'\n")
         # A git hook can reach this (via a gate); never let an inherited GIT_DIR
@@ -141,6 +146,7 @@ def self_test() -> None:
         assert files_of_kind("rust", repo=tmp) == ["packages/x/src/lib.rs"]
         assert "packages/i/generated/g.rs" in files_of_kind("rust", repo=tmp, include_generated=True)
         assert files_of_kind("cpp", repo=tmp) == ["packages/api/nros-cpp/include/nros/x.hpp"]
+        assert files_of_kind("jinja", repo=tmp) == ["packages/cli/p/t.c.jinja"]
         assert files_of_kind("just", repo=tmp) == ["just/m.just", "justfile"]
         assert files_of_kind("cmake", repo=tmp, exclude_prefixes=("zephyr/",)) == [
             "cmake/a.cmake", "packages/x/cmake/b.cmake"]

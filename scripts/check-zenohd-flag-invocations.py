@@ -38,7 +38,25 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # `zenohd --flag` / `zenohd -l …`. Not a bare `zenohd` mention: prose legitimately
 # names the router, and issue 0653 (a ROS-less host has none) is a separate axis.
-PAT = re.compile(r"\bzenohd\s+(?:--|-l\s)")
+# The REAL router is `rmw_zenohd`, and `\bzenohd` never matched it — `_` is a
+# word character, so there is no boundary before the `z` (the 2026-10-01 re-run:
+# `rmw_zenohd --listen tcp/…` in the book passed). Both names, and a flag is a
+# LOWERCASE option word: `rmw_zenohd --ISO-TP over CAN-->` is a data-path
+# diagram, not an invocation.
+PAT = re.compile(r"(?<![\w-])(?:rmw_)?zenohd\s+(?:--[a-z]|-l\s)")
+
+
+def self_test() -> None:
+    """Negative controls on the normal path (phase-472 W9)."""
+    for hit in ("zenohd --listen tcp/127.0.0.1:7447",
+                "rmw_zenohd --listen tcp/127.0.0.1:7447",
+                "  $(nros_zenohd_bin) && zenohd -l tcp/0.0.0.0:7447"):
+        assert PAT.search(hit), f"self-test: missed {hit!r}"
+    for miss in ("ros2 run rmw_zenoh_cpp rmw_zenohd",
+                 "ros2 param ... --tcp--> rmw_zenohd --ISO-TP over CAN--> node",
+                 "my_zenohd --listen x"):
+        assert not PAT.search(miss), f"self-test: flagged {miss!r}"
+
 
 # issue 0654 (second half) — the HARDCODED router path.
 #
@@ -104,6 +122,7 @@ def is_path_exempt(path: str) -> bool:
 
 
 def main() -> int:
+    self_test()
     listing = subprocess.run(
         ["git", "-C", str(ROOT), "ls-files"],
         capture_output=True, text=True, check=True,

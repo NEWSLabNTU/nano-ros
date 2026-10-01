@@ -64,7 +64,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-from tracked import tracked  # issue 0721: index lookup, not a walk  # noqa: E402
+import file_kinds  # noqa: E402  phase-472 W5 — populations by kind
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -72,7 +72,6 @@ USER_ABI_CONSTS = ROOT / "packages" / "api" / "nros-c" / "src" / "error.rs"
 RMW_ABI_HEADER = ROOT / "packages" / "core" / "nros-rmw-abi" / "include" / "nros" / "rmw_ret.h"
 
 SCAN_ROOTS = ("packages", "book/src", "docs", "examples")
-SUFFIXES = (".rs", ".h", ".hpp", ".c", ".cpp", ".md")
 SKIP_PARTS = ("third-party", "archived", "generated")
 
 TOKEN = re.compile(r"\bNROS_(?:RMW_)?RET_[A-Z0-9_]+")
@@ -126,23 +125,21 @@ def citations(text, defined):
 
 
 def files():
-    for root in SCAN_ROOTS:
-        for p in tracked(ROOT / root):
-            if p.suffix not in SUFFIXES:
-                continue
-            # RELATIVE to the repo. Tested against the ABSOLUTE path, this
-            # skipped every file whenever the checkout itself lived under a
-            # directory named `third-party` -- which is how the safety island
-            # vendors this repo (`<super>/third-party/nano-ros`). The gate then
-            # scanned 0 files.
-            #
-            # It refuses to pass on an empty scan, so it went RED rather than
-            # silently green, which is the only reason this was noticed at all.
-            # `check-doc-recipe-refs` had the identical bug and no such floor,
-            # so it read as passing while examining nothing.
-            if any(part in SKIP_PARTS for part in p.relative_to(ROOT).parts):
-                continue
-            yield p
+    """Every tracked source a ret code can be NAMED in, by KIND (phase-472 W5).
+
+    Under SCAN_ROOTS, as before; the kinds now include codegen templates —
+    `.jinja` text ships into user C/C++ (the 2026-10-01 re-run planted an
+    undefined code in `entry.c.jinja` and this gate passed).
+    """
+    for rel in file_kinds.files_of_kind("rust", "c-family", "markdown", "jinja"):
+        if not rel.startswith(tuple(r + "/" for r in SCAN_ROOTS)):
+            continue
+        # RELATIVE to the repo (see the history above `SKIP_PARTS`): tested
+        # against the ABSOLUTE path this once skipped every file whenever the
+        # checkout itself lived under a directory named `third-party`.
+        if any(part in SKIP_PARTS for part in Path(rel).parts):
+            continue
+        yield ROOT / rel
 
 
 def self_test():
@@ -185,7 +182,13 @@ def main(argv):
 
     scanned = 0
     bad = []
-    for path in files():
+    population = list(files())
+    # Reach control on the normal path: the templates are IN the population.
+    if not any(p.suffix == ".jinja" for p in population):
+        print("check-ret-code-citations: the population reached no `.jinja` template — "
+              "the kind list narrowed again", file=sys.stderr)
+        return 1
+    for path in population:
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
