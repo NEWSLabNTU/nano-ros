@@ -1832,12 +1832,18 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         Some(table) => {
             let tiers_ts = tier_specs_tokens(table, &node_namespaces);
             let tier_backing_ts = tier_executor_backing_tokens(table);
+            // issue 1232 — a declared tier stack reaches its k_thread: the
+            // entry owns the stack, sized from `stack_bytes`. The Zephyr arm is
+            // Zephyr whatever the deploy key spells, so the family is fixed.
+            let task_memory_ts =
+                tier_task_memory_tokens(table, Some("zephyr")).unwrap_or_else(|| quote! { &[] });
             quote! {
-                return ::nros_board_zephyr::ZephyrBoard::run_tiers(
+                return ::nros_board_zephyr::ZephyrBoard::run_tiers_with_task_memory(
                     &config,
                     #tiers_ts,
                     // issue 1571 — the spawned tiers' executor backing, `.bss`.
                     #tier_backing_ts,
+                    #task_memory_ts,
                     |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
                         -> ::core::result::Result<
                             (),
@@ -3692,27 +3698,47 @@ fn tier_task_memory_tokens(
     table: &ResolvedTierTable,
     deploy: Option<&str>,
 ) -> Option<proc_macro2::TokenStream> {
+    use nros_entry_lower::BoardFamily;
     let family = nros_entry_lower::board_family(deploy?).ok()?;
-    if family != nros_entry_lower::BoardFamily::Freertos {
-        return None;
-    }
+    // The control block: FreeRTOS takes it from the entry (`StaticTask_t`, the
+    // stated bound); Zephyr keeps `struct k_thread` in its pool (issue 1232 —
+    // a Rust entry cannot size it), so its region is empty.
+    let tcb_u64s = match family {
+        BoardFamily::Freertos => quote! { ::nros::TIER_TASK_TCB_U64S },
+        BoardFamily::Zephyr => quote! { 0 },
+        _ => return None,
+    };
     let mem = family.c_abi_runners()?.tier_task_memory?;
     let declared: Vec<Option<u64>> = table
         .tiers
         .iter()
         .map(|t| t.stack_bytes.map(|b| b as u64))
         .collect();
+    // Spawn order: every tier but the boot one. A 0-byte row is "the port's
+    // default" (Zephyr's pool slot, sized by a Kconfig knob the cargo lane
+    // cannot read — issue 0460), so it gets NO static and a NONE row.
     let stacks: Vec<u64> = mem.stacks(&declared).into_iter().flatten().collect();
     let n = stacks.len();
-    let idents: Vec<syn::Ident> = (0..n)
-        .map(|i| quote::format_ident!("__NROS_TIER_TASK_MEMORY_{}", i))
-        .collect();
-    let words: Vec<usize> = stacks.iter().map(|b| (*b as usize).div_ceil(8)).collect();
+    let mut statics = Vec::new();
+    let mut rows = Vec::new();
+    for (i, bytes) in stacks.iter().enumerate() {
+        if *bytes == 0 {
+            rows.push(quote! { ::nros::TierTaskMemoryRaw::NONE });
+            continue;
+        }
+        let ident = quote::format_ident!("__NROS_TIER_TASK_MEMORY_{}", i);
+        let words = (*bytes as usize).div_ceil(8);
+        statics.push(quote! {
+            static #ident: ::nros::TierTaskMemory<#words, { #tcb_u64s }> =
+                ::nros::TierTaskMemory::new();
+        });
+        rows.push(quote! { #ident.raw() });
+    }
     Some(quote! {
         {
-            #( static #idents: ::nros::TierTaskMemory<#words> = ::nros::TierTaskMemory::new(); )*
+            #( #statics )*
             static __NROS_TIER_TASK_MEMORY: ::nros::TierTaskMemorySet<#n> =
-                ::nros::TierTaskMemorySet::new([ #( #idents.raw() ),* ]);
+                ::nros::TierTaskMemorySet::new([ #( #rows ),* ]);
             __NROS_TIER_TASK_MEMORY.take()
         }
     })

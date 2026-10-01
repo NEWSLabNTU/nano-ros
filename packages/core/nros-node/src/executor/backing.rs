@@ -380,33 +380,51 @@ pub struct TierTaskMemoryRaw {
     pub tcb_bytes: usize,
 }
 
+impl TierTaskMemoryRaw {
+    /// "This tier has no task memory from the entry": the port keeps its own
+    /// default (Zephyr's pool slot for a tier that declared no `stack_bytes`).
+    pub const NONE: Self = Self {
+        stack: core::ptr::null_mut(),
+        stack_bytes: 0,
+        tcb: core::ptr::null_mut(),
+        tcb_bytes: 0,
+    };
+}
+
 // SAFETY: the pointers name `'static` storage handed out once (see the set's
 // latch), so moving the row to the task that uses it is the whole point.
 unsafe impl Send for TierTaskMemoryRaw {}
 unsafe impl Sync for TierTaskMemoryRaw {}
 
 /// issue 1598 — one spawned tier's stack and control block, as ONE named static
-/// the entry owns. `STACK_U64S` is the tier's stack in 8-byte words.
+/// the entry owns. `STACK_U64S` is the tier's stack in 8-byte words;
+/// `TCB_U64S` the control-block region, [`TIER_TASK_TCB_U64S`] by default and
+/// `0` for a kernel whose control block the port keeps itself (Zephyr's
+/// `struct k_thread`, issue 1232 — a Rust entry cannot size it).
 ///
-/// The control block comes first and both are 64-byte aligned, so the stack
-/// starts on a boundary every in-tree kernel accepts for a thread stack.
+/// The control block comes first and the struct is 64-byte aligned, so the
+/// stack starts on a boundary every in-tree kernel accepts for a thread stack
+/// (the TCB region is a whole number of 64-byte lines).
 #[repr(C, align(64))]
-pub struct TierTaskMemory<const STACK_U64S: usize> {
-    tcb: core::cell::UnsafeCell<[MaybeUninit<u64>; TIER_TASK_TCB_U64S]>,
+pub struct TierTaskMemory<const STACK_U64S: usize, const TCB_U64S: usize = TIER_TASK_TCB_U64S> {
+    tcb: core::cell::UnsafeCell<[MaybeUninit<u64>; TCB_U64S]>,
     stack: core::cell::UnsafeCell<[MaybeUninit<u64>; STACK_U64S]>,
 }
 
 // SAFETY: the bytes are reached only through `raw`, collected into a
 // `TierTaskMemorySet` whose latch hands them out at most once.
-unsafe impl<const STACK_U64S: usize> Sync for TierTaskMemory<STACK_U64S> {}
+unsafe impl<const STACK_U64S: usize, const TCB_U64S: usize> Sync
+    for TierTaskMemory<STACK_U64S, TCB_U64S>
+{
+}
 
-impl<const STACK_U64S: usize> TierTaskMemory<STACK_U64S> {
+impl<const STACK_U64S: usize, const TCB_U64S: usize> TierTaskMemory<STACK_U64S, TCB_U64S> {
     /// An untouched reservation, `const` so it initialises a `static`
     /// (all-zero `.bss`, no flash).
     #[allow(clippy::new_without_default, clippy::large_stack_arrays)]
     pub const fn new() -> Self {
         Self {
-            tcb: core::cell::UnsafeCell::new([MaybeUninit::uninit(); TIER_TASK_TCB_U64S]),
+            tcb: core::cell::UnsafeCell::new([MaybeUninit::uninit(); TCB_U64S]),
             stack: core::cell::UnsafeCell::new([MaybeUninit::uninit(); STACK_U64S]),
         }
     }
@@ -418,7 +436,7 @@ impl<const STACK_U64S: usize> TierTaskMemory<STACK_U64S> {
             stack: self.stack.get() as *mut u8,
             stack_bytes: STACK_U64S * core::mem::size_of::<u64>(),
             tcb: self.tcb.get() as *mut u8,
-            tcb_bytes: TIER_TASK_TCB_U64S * core::mem::size_of::<u64>(),
+            tcb_bytes: TCB_U64S * core::mem::size_of::<u64>(),
         }
     }
 }

@@ -897,6 +897,38 @@ int nros_zephyr_tier_task_create_static(void* (*entry)(void*), void* arg, int32_
                                          pin_rc);
 }
 
+/**
+ * Issue 1232 — the Rust `nros::main!` road's spawn: the STACK is the entry's
+ * (a 64-byte-aligned `TierTaskMemory` static sized from the tier's declared
+ * `stack_bytes`), the thread object comes from the pool (a Rust entry cannot
+ * size `struct k_thread`). `stack_bytes` is the raw buffer; the kernel's
+ * reserved area is taken out of it here, where K_THREAD_STACK_RESERVED is
+ * known. Refused (-1) when the buffer is misaligned for a thread stack or too
+ * small to hold the reserved area, or when the image enforces stack objects
+ * (userspace / MPU guard), where only K_THREAD_STACK_DEFINE storage is valid.
+ */
+int nros_zephyr_tier_task_create_stack(void* (*entry)(void*), void* arg, int32_t priority,
+                                       const char* name, void* stack, size_t stack_bytes,
+                                       uint32_t core_plus1, int* pin_rc) {
+#if defined(CONFIG_USERSPACE) || defined(CONFIG_MPU_STACK_GUARD) || defined(CONFIG_HW_STACK_PROTECTION)
+    printk("nros: tier `%s` — this image enforces kernel stack objects; a Rust-entry stack "
+           "cannot be used, refused (issue 1232)\n",
+           (name != NULL) ? name : "?");
+    return -1;
+#else
+    if (entry == NULL || stack == NULL || nros_tier_index >= NROS_ZEPHYR_MAX_TIERS ||
+        ((uintptr_t)stack % ARCH_STACK_PTR_ALIGN) != 0u ||
+        stack_bytes <= (size_t)K_THREAD_STACK_RESERVED) {
+        return -1;
+    }
+    size_t usable = (stack_bytes - (size_t)K_THREAD_STACK_RESERVED) &
+                    ~((size_t)ARCH_STACK_PTR_ALIGN - 1u);
+    int idx = nros_tier_index++;
+    return nros_zephyr_tier_thread_start(&nros_tier_threads[idx], (k_thread_stack_t*)stack,
+                                         usable, entry, arg, priority, name, core_plus1, pin_rc);
+#endif
+}
+
 /* The one place a tier thread is created, for both stack sources above. */
 static int nros_zephyr_tier_thread_start(struct k_thread* thread, k_thread_stack_t* stack,
                                          size_t stack_size, void* (*entry)(void*), void* arg,

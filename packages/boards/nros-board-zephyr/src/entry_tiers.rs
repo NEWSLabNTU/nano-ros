@@ -50,6 +50,22 @@ unsafe extern "C" {
         core_plus1: u32,
         pin_rc: *mut i32,
     ) -> i32;
+    /// issue 1232 — the same spawn over the ENTRY's stack (a `TierTaskMemory`
+    /// static sized from the tier's declared `stack_bytes`); the thread object
+    /// still comes from the pool. -1 when refused (see the shim).
+    fn nros_zephyr_tier_task_create_stack(
+        entry: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
+        arg: *mut c_void,
+        priority: i32,
+        name: *const core::ffi::c_char,
+        stack: *mut u8,
+        stack_bytes: usize,
+        core_plus1: u32,
+        pin_rc: *mut i32,
+    ) -> i32;
+    /// issue 1232 — the CALLING thread's stack as the kernel recorded it, or 0
+    /// when the image keeps no stack info.
+    fn nros_zephyr_current_stack_size() -> usize;
     /// Adopt a raw Zephyr priority on the CALLING thread — the boot thread
     /// runs `tiers[0]` itself, so it must take that tier's declared priority
     /// (`k_thread_priority_set(k_current_get(), …)`).
@@ -193,6 +209,9 @@ struct TierTaskCtx<F> {
     slot: &'static mut ::nros::TierExecutorBackingSlot,
     /// The slots `rest` will take, one each, handed down the chain with it.
     rest_backing: &'static mut [::nros::TierExecutorBackingSlot],
+    /// issue 1232 — the task memory `rest` will take, one row each (empty =
+    /// every remaining tier on the pool slot).
+    rest_task_memory: &'static [::nros::TierTaskMemoryRaw],
     setup: F,
 }
 
@@ -216,6 +235,7 @@ fn spawn_next_tier<F>(
     session: ::nros::SessionHandle,
     remaining: &'static [TierSpec<'static>],
     backing: &'static mut [::nros::TierExecutorBackingSlot],
+    task_memory: &'static [::nros::TierTaskMemoryRaw],
     setup: F,
 ) -> Result<(), RuntimeError>
 where
@@ -234,12 +254,19 @@ where
         );
         return Err(RuntimeError::Spin);
     };
+    // issue 1232 — this tier's stack from the entry, when the entry declared
+    // one (a NONE row, or no rows at all, keeps the pool slot).
+    let (memory, rest_task_memory) = match task_memory.split_first() {
+        Some((m, rest_m)) => ((!m.stack.is_null()).then_some(*m), rest_m),
+        None => (None, task_memory),
+    };
     let ctx = Box::new(TierTaskCtx::<F> {
         session,
         tier: *tier,
         rest,
         slot,
         rest_backing,
+        rest_task_memory,
         setup,
     });
     let prio = tier.priority.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
@@ -253,18 +280,33 @@ where
     // return code so the marker below can tell accept from fallback.
     let core_plus1 = tier.core.map(|c| c.saturating_add(1)).unwrap_or(0);
     let mut pin_rc: i32 = 0;
-    let rc = unsafe {
-        nros_zephyr_tier_task_create(
-            tier_task_entry::<F>,
-            raw as *mut c_void,
-            prio,
-            c"nros_tier".as_ptr(),
-            // phase-302 W2 (issue 0262) — the declared stack rides to the
-            // shim, which prints LOUD when it exceeds the fixed pool slot.
-            tier.stack_bytes,
-            core_plus1,
-            &mut pin_rc,
-        )
+    let rc = match memory {
+        // issue 1232 — the declared size is the stack the thread gets.
+        Some(m) => unsafe {
+            nros_zephyr_tier_task_create_stack(
+                tier_task_entry::<F>,
+                raw as *mut c_void,
+                prio,
+                c"nros_tier".as_ptr(),
+                m.stack,
+                m.stack_bytes,
+                core_plus1,
+                &mut pin_rc,
+            )
+        },
+        None => unsafe {
+            nros_zephyr_tier_task_create(
+                tier_task_entry::<F>,
+                raw as *mut c_void,
+                prio,
+                c"nros_tier".as_ptr(),
+                // phase-302 W2 (issue 0262) — the declared stack rides to the
+                // shim, which prints LOUD when it exceeds the fixed pool slot.
+                tier.stack_bytes,
+                core_plus1,
+                &mut pin_rc,
+            )
+        },
     };
     if rc != 0 {
         // SAFETY: the create failed, so ownership of `raw` was not transferred
@@ -322,8 +364,17 @@ where
         rest,
         slot,
         rest_backing,
+        rest_task_memory,
         setup,
     } = *unsafe { Box::from_raw(arg as *mut TierTaskCtx<F>) };
+    // issue 1232 — what this thread really got, from the kernel's own record;
+    // the C arm prints the same line.
+    ::log::info!(
+        "nros: tier stack tier=`{}` declared={} kernel={}",
+        tier.name,
+        tier.stack_bytes,
+        unsafe { nros_zephyr_current_stack_size() }
+    );
     // SAFETY: the boot thread owns the session for the firmware lifetime
     // (its spin loop never returns), so the handle stays valid. issue 1571 —
     // the backing is this tier's `.bss` slot, not a leaked `Box`.
@@ -400,7 +451,13 @@ where
     // opening the executor above). A failed DOWNSTREAM spawn must NOT stop this
     // tier spinning its own work, so log + continue.
     let next_session = crt.executor_mut().session_handle();
-    if let Err(e) = spawn_next_tier(next_session, ctx.rest, rest_backing, ctx.setup) {
+    if let Err(e) = spawn_next_tier(
+        next_session,
+        ctx.rest,
+        rest_backing,
+        rest_task_memory,
+        ctx.setup,
+    ) {
         ::log::error!(
             "nros: tier `{}` failed to spawn next tier: {:?}",
             ctx.tier.name,
@@ -444,6 +501,37 @@ impl ZephyrBoard {
     where
         F: Fn(&mut RuntimeCtx<'_>) -> Result<(), RuntimeError> + Copy + 'static,
     {
+        // No task memory: every spawned tier on the pool slot, the shape an
+        // entry generated before issue 1232 has.
+        Self::run_tiers_with_task_memory(config, tiers, tier_backing, &[], setup)
+    }
+
+    /// issue 1232 — [`run_tiers`](Self::run_tiers) plus each spawned tier's
+    /// STACK from the entry: `task_memory[k]` is `tiers[k + 1]`'s (the boot
+    /// tier, `tiers[0]`, runs on this thread), a `TierTaskMemory` static sized
+    /// from that tier's declared `stack_bytes`, or `TierTaskMemoryRaw::NONE`
+    /// for a tier that declared none (it keeps the pool slot,
+    /// CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE). Refused unless empty or exactly one
+    /// row per spawned tier.
+    pub fn run_tiers_with_task_memory<F>(
+        config: &::nros::ExecutorConfig,
+        tiers: &'static [TierSpec<'static>],
+        tier_backing: &'static mut [::nros::TierExecutorBackingSlot],
+        task_memory: &'static [::nros::TierTaskMemoryRaw],
+        setup: F,
+    ) -> Result<(), RuntimeError>
+    where
+        F: Fn(&mut RuntimeCtx<'_>) -> Result<(), RuntimeError> + Copy + 'static,
+    {
+        if !task_memory.is_empty() && task_memory.len() != tiers.len().saturating_sub(1) {
+            ::log::error!(
+                "nros: tier task memory holds {} row(s) but {} tier(s) are spawned — the \
+                 entry was generated for a different tier table (issue 1232)",
+                task_memory.len(),
+                tiers.len().saturating_sub(1)
+            );
+            return Err(RuntimeError::Spin);
+        }
         // Wire the default nros_log sink (platform console) at the boot
         // funnel, as nros-board-linux does in its `run`/`run_tiers` —
         // idempotent, and without it Node-pkg `log_info!` output is
@@ -532,6 +620,7 @@ impl ZephyrBoard {
             crt.executor_mut().session_handle(),
             &tiers[1..],
             tier_backing,
+            task_memory,
             setup,
         )?;
 
