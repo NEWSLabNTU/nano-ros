@@ -1754,3 +1754,53 @@ Run **36814478655** (04:18): `rows whose board IS this runner` (job
 `No SOURCES given to target: app` / `west fixtures: 4/5 ok`, which is issue 1536
 and not this one. The `live-peer` arm's acceptance (a run whose fixture-build
 step reaches a conclusion) is unmet for a second night.
+
+## Tier 1, fourth point — and a correction to the third (2026-10-01, later)
+
+Run **36920672143** (push `host-tests`, 20:19:01Z, head `d986c270a`), job
+**110565630403**, step 15 `just ci tier1`. It ran **2 h 1 m** before finishing,
+which is why the 2026-10-01 entry above could not include it.
+
+```
+before: 91% used, 14G free — 43G examples; 14G build; 553M packages/cli/target
+reclaim: freed 33353 MB; 48745388 KB free          (~46.5 G)
+after:  100% used, 272K free — 43G examples; 20G build; 15G packages/cli/target
+```
+
+`workspace unit tests` passed; the integration job died on
+`===== FAIL (workspace-features, rc=101, 342582ms)` with `Free space left: 28 MB`
+one line earlier, and the captured `ci-logs` carry **no compiler diagnostic** —
+only `error: recipe tier1 failed with exit code 1`. Same truncation signature,
+same tipping gate as the third point.
+
+| | 09-27 | 09-28 | 10-01 (3rd) | **10-01 (4th)** |
+| --- | --- | --- | --- | --- |
+| before the tier | 89%, 18G | 84%, 25G | 90%, 16G | **91%, 14G** |
+| reclaim frees | 33,286 MB | 33,286 MB | 33,336 MB | **33,353 MB** |
+| post-reclaim headroom | ~49.6G | ~56.6G | ~47.9G | **~46.5G** |
+| after the tier | 100%, 264K | 100%, 260K | 100%, 276K | **100%, 272K** |
+
+The reclaim is a constant across **four** runs now (33,286–33,353 MB, a 67 MB
+spread), and the post-reclaim headroom is the lowest of the four — the
+degradation the "arrival state is degrading" section named, with a fourth point.
+
+### Correction to the third point
+
+That entry says **"`packages/cli/target` stays negligible — 635 M against the
+`gate` arm's 33 G"**. The word *stays* is wrong: 635 M was the **arrival** value,
+and this run shows the same directory at **553 M before and 15 G after**. So it
+does not stay small on this arm; it starts small and grows ~14 G **during** the
+tier. (The third point's own after-summary reads `15G target`, which this run
+disambiguates as `15G packages/cli/target` — the two arms were not as cleanly
+separated as that entry claimed.)
+
+What survives of the inverse-consumer finding is narrower and still useful: on
+the `gate` arm the directory is **already** 30–41 G on arrival and the reclaim
+cannot touch it, whereas here it arrives negligible. The growth during the tier
+is common to both. A prune aimed at the arrival state therefore helps the `gate`
+arm and does nothing for this one.
+
+### What this does not change
+
+Acceptance for this arm is unchanged and still unmet: a `host-tests` run reaching
+a tier-1 verdict with the after-report below 100%. Four runs, four times 100%.
