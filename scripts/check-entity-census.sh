@@ -102,6 +102,9 @@ resolve_nros() {
         # A CLI that predates this wave has no such subcommand and exits
         # non-zero; that is a candidate rejected, not a tool failure.
         help="$("$c" ws entity-census check --help 2>&1)" || continue
+        # Issue 1419 -- and the `path` verb, which is how both sides of the
+        # census name one file; a CLI without it keys the census by entry.
+        "$c" ws entity-census path --help >/dev/null 2>&1 || continue
         if nros_grep_q -- '--require-fresh' <<<"$help"; then
             nros="$c"
             return 0
@@ -267,10 +270,27 @@ cat > "$NROS_CENSUS_OUT" <<JSON
   "parameters": []
 }
 JSON
+# Issue 1419 -- a setup that failed AFTER the recorder wrote: what a native
+# image sized from a contract one entity short does (`ExecutorFull`, exit 250).
+if [ -n "${FIXTURE_SETUP_FAILS:-}" ]; then
+    exit 250
+fi
 SH
 chmod +x "$ws/fixture_entry"
 
-census="$ws/build/nros/census/fixture_entry.json"
+# Issue 1419 -- the census of a MODEL, wherever the CLI says that is. Neither
+# side below names it: `run --model` writes there and `check --model` reads
+# there, and the two are DIFFERENT entries (`fixture_entry` takes the census,
+# `rtos_entry` asks for it), which is the real road -- a native entry produces,
+# a cross configure consumes. phase-463 W4 keyed both by entry and build dir,
+# and this gate named the path on both sides itself, so it could not see that
+# the two never met on a real workspace.
+census="$("$nros" ws entity-census path --model "$model")" ||
+    fail "\`nros ws entity-census path --model\` failed"
+case "$census" in
+    "$bringup/config/system_model.census.json") ;;
+    *) fail "the census of \`$model\` is not beside it: \`$census\`" ;;
+esac
 stamp_model
 
 take_census() {
@@ -283,11 +303,10 @@ take_census() {
 
 check() {
     ( cd "$ws" && "$nros" ws entity-census check \
-        --census "$census" \
         --model "$model" \
         --system-toml "$bringup/system.toml" \
         --workspace "$ws" \
-        --entry fixture_entry \
+        --entry rtos_entry \
         --strict \
         "$@" ) > "$ws/check.log" 2>&1
 }
@@ -322,7 +341,7 @@ if check --require-fresh; then
     fail "move 0: a configure with NO census and on_missing=refuse must refuse"
 fi
 want "census missing" "move 0"
-want "entity-census run --entry fixture_entry" "move 0 names the remedy"
+want "entity-census run --model $model" "move 0 names the remedy"
 echo "check-entity-census: move 0 ok -- no census refuses, and names the producer"
 
 # ---------------------------------------------------------------------------
@@ -419,6 +438,36 @@ want "2 confirmed, 0 error" "move 4"
 echo "check-entity-census: move 4 ok -- a touch leaves the census fresh"
 
 # ---------------------------------------------------------------------------
+# Move 4b -- the census RUN stops early (issue 1419). The native image is sized
+# from the contract this census checks, so a contract one entity short stops
+# setup at `ExecutorFull` on the host. Every row the run DID record agrees with
+# the contract, and the check must still refuse: nothing after the failure was
+# observed. Before 1419 the run discarded its census, the configure read
+# "census missing", and the landing `warn` let the image build.
+# ---------------------------------------------------------------------------
+if FIXTURE_SETUP_FAILS=1 take_census; then
+    fail "move 4b: a census run whose setup failed must not report success:
+$(cat "$ws/run.log")"
+fi
+nros_grep_q -- "INCOMPLETE" "$ws/run.log"
+case $? in
+    0) ;;
+    *) fail "move 4b: the run must say its census is incomplete:
+$(cat "$ws/run.log")" ;;
+esac
+[ -f "$census" ] || fail "move 4b: an incomplete census must still be WRITTEN"
+if check --require-fresh; then
+    fail "move 4b: a check against an incomplete census must refuse"
+fi
+want "2 confirmed, 0 error" "move 4b: the rows it recorded still compare"
+want "census INCOMPLETE" "move 4b"
+take_census || fail "move 4b: the census re-run failed:
+$(cat "$ws/run.log")"
+check --require-fresh || fail "move 4b: a complete census configures again:
+$(cat "$ws/check.log")"
+echo "check-entity-census: move 4b ok -- an incomplete census is written and refused"
+
+# ---------------------------------------------------------------------------
 # Move 5 -- the OTHER policy arm. `warn` says the same thing and continues.
 # ---------------------------------------------------------------------------
 # Both arms matter: `warn` is what this phase LANDS with, so a `warn` that went
@@ -492,4 +541,4 @@ $(cat "$ws/run.log")"
 
 self_test
 
-echo "check-entity-census: PASS -- 6 moves (missing, fresh, stale, re-run, add-row, touch-only) + self-test"
+echo "check-entity-census: PASS -- 7 moves (missing, fresh, stale, re-run, add-row, touch-only, incomplete) + self-test, producer and consumer naming the census only by its model"

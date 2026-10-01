@@ -214,11 +214,30 @@ class LinuxBoard {
                                   Setup&& setup) {
         const char* sn =
             (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
+        // Issue 1419 — the census switch (`$NROS_CENSUS_OUT`, phase-463 W2).
+        // Asked BEFORE init because it decides which backend init opens: the
+        // recorder's, so a census run needs no router. This runner is the one
+        // every typed single-executor C++ native entry calls, and it used to
+        // skip the switch entirely — a census run booted normally instead.
+        const bool census = ::nros_cpp_census_begin() != 0;
         // Phase 266: env overlay (NROS_LOCATOR / ROS_DOMAIN_ID) applies via
         // init — null locator and 0 domain_id both trigger the env fallback.
         nros::Result r = nros::init(nullptr, 0, sn, node_namespace);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
+        // "Write what the recorder saw and exit" exactly where the spin is:
+        // every component has been constructed and configured by now. Written
+        // EVEN WHEN setup failed, and the failure is still the exit code: a
+        // native image is sized from the contract this census checks, so a
+        // contract one entity short stops setup at `ExecutorFull`. Discarding
+        // the file there left the cross configure reading "census missing"
+        // (a warning); kept, the CLI marks it incomplete and every check
+        // against it refuses.
+        if (census) {
+            int32_t cr = ::nros_cpp_census_finish(sn);
+            (void)nros::shutdown();
+            return rc != 0 ? rc : cr;
+        }
         if (rc != 0) {
             (void)nros::shutdown();
             return rc;

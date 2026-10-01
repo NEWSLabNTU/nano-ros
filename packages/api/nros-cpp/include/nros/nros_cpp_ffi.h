@@ -1142,6 +1142,43 @@ int32_t nros_board_native_run_components_named(const char *session_name,
                                                int32_t (*setup)(void *executor));
 
 /**
+ * Issue 1419 -- the census switch, for the HOSTED runner that is not this
+ * file's: `nros::board::LinuxBoard::run_components` in `<nros/main.hpp>`.
+ *
+ * That runner is header-only C++ (`nros::init` into the C++ global context,
+ * `setup()`, `component_spin_loop()`), and it is what every generated typed
+ * SINGLE-executor C++ native entry calls. It never reached
+ * [`nros_board_native_run_components_named_ns`], so `$NROS_CENSUS_OUT` was
+ * read by no code on that road: a census run of the in-tree C++ workspace's
+ * `native_entry` booted normally, dialled zenoh, and exited 156 on
+ * `ConnectionFailed` -- the producer phase-463 W2 named did not exist for the
+ * entry shape the C++ workspaces generate. These two calls are that runner's
+ * half of the switch, and they reuse the funnel's own three functions rather
+ * than spell a second census path.
+ *
+ * Call BEFORE `nros::init`: a non-zero return means a census was asked for,
+ * and the recording backend has already been selected by name (the session
+ * the init then opens is the recorder's, so no router is needed). Zero means
+ * a normal boot, and nothing was changed.
+ */
+int32_t nros_cpp_census_begin(void);
+
+/**
+ * Issue 1419 -- write the census where `$NROS_CENSUS_OUT` names, after
+ * `setup()` and INSTEAD of the spin. The second half of
+ * [`nros_cpp_census_begin`]; the caller then shuts down and exits with the
+ * returned code (0 when the census was written).
+ *
+ * `session_name` is the name the runner passed to `nros::init` (NULL or empty
+ * is the unified default `"node"`), the same identity
+ * [`nros_board_native_run_components_named_ns`] stamps its census with.
+ *
+ * # Safety
+ * `session_name` must be NULL or a valid null-terminated string.
+ */
+int32_t nros_cpp_census_finish(const char *session_name);
+
+/**
  * Issue 1434 — [`nros_board_native_run_components_named`] with the primary
  * session's NAMESPACE.
  *

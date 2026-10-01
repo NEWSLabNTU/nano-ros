@@ -185,6 +185,100 @@ fn cmake_cpp_workspace_entry_starts_prebuilt_runtime() {
     proc.kill();
 }
 
+/// Issue 1419 -- the typed single-executor C++ native entry IS a census
+/// producer: `$NROS_CENSUS_OUT` makes it write what the recorder saw and exit,
+/// with no router and no spin.
+///
+/// The generated C++ entry calls the header-only
+/// `nros::board::LinuxBoard::run_components`, which never reached the Rust
+/// funnel phase-463 W2 put the census switch in. Before 1419 this binary
+/// ignored the variable, dialled zenoh and exited 156 on `ConnectionFailed`
+/// with no file written -- so no in-tree C++ workspace could produce the
+/// census a cross configure checks. This is that road, on the prebuilt
+/// fixture.
+///
+/// The EXIT CODE is asserted only in one direction. Issue 1600 sizes this
+/// configure's shared runtime from the LAST entry's model (`max_cbs` 1 where
+/// `native_entry` needs 2), so the listener's subscription currently stops
+/// setup at `ExecutorFull` and the run exits non-zero AFTER writing what it
+/// recorded -- an incomplete census, which is the documented shape. What must
+/// hold either way: the file exists, the talker's publisher and timer are in
+/// it, and a run that exits 0 recorded the listener's subscription too.
+#[test]
+fn cmake_cpp_workspace_entry_writes_a_census_without_a_router() {
+    let entry = nros_tests::fixtures::build_native_workspace_cpp_entry()
+        .require("native C++ workspace Entry");
+    let dir = tempfile::tempdir().expect("tempdir");
+    let out = dir.path().join("census.json");
+
+    let mut child = Command::new(entry)
+        .env("NROS_CENSUS_OUT", &out)
+        .env_remove("NROS_ENTRY_SPIN_MS")
+        .spawn()
+        .expect("spawn C++ workspace Entry fixture");
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait on the entry") {
+            break status;
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            panic!(
+                "census run of {} did not exit within 20 s -- it booted normally instead of \
+                 writing a census (the header runner ignored $NROS_CENSUS_OUT)",
+                entry.display()
+            );
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+
+    let raw = fs::read_to_string(&out).unwrap_or_else(|e| {
+        panic!(
+            "census run exited {status} and wrote no census at {}: {e}",
+            out.display()
+        )
+    });
+    let census: serde_json::Value = serde_json::from_str(&raw).expect("census is JSON");
+    let nodes = census["nodes"].as_array().expect("census has nodes");
+    let node = |name: &str| {
+        nodes
+            .iter()
+            .find(|n| n["id"].as_str() == Some(name))
+            .unwrap_or_else(|| panic!("census has no node `{name}`: {raw}"))
+    };
+    let topics = |n: &serde_json::Value, field: &str| -> Vec<String> {
+        n[field]
+            .as_array()
+            .map(|rows| {
+                rows.iter()
+                    .filter_map(|r| r["unresolved_topic"]["value"].as_str())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let talker = node("talker");
+    assert!(
+        topics(talker, "publishers")
+            .iter()
+            .any(|t| t.ends_with("chatter")),
+        "the talker's publisher was not recorded: {raw}"
+    );
+    assert_eq!(
+        talker["timers"].as_array().map(Vec::len),
+        Some(1),
+        "the talker's one timer was not recorded: {raw}"
+    );
+    if status.success() {
+        assert!(
+            topics(node("listener"), "subscribers")
+                .iter()
+                .any(|t| t.ends_with("chatter")),
+            "a census run that exited 0 must have recorded the listener's subscription: {raw}"
+        );
+    }
+}
+
 fn parse_counter(output: &str, key: &str) -> Option<usize> {
     let start = output.rfind(key)? + key.len();
     let value = output[start..]

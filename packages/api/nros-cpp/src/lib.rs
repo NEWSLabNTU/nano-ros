@@ -1748,6 +1748,65 @@ fn census_write(_session: &core::ffi::CStr, out_path: &str) -> i32 {
     NROS_CPP_RET_UNSUPPORTED
 }
 
+/// Issue 1419 -- the census switch, for the HOSTED runner that is not this
+/// file's: `nros::board::LinuxBoard::run_components` in `<nros/main.hpp>`.
+///
+/// That runner is header-only C++ (`nros::init` into the C++ global context,
+/// `setup()`, `component_spin_loop()`), and it is what every generated typed
+/// SINGLE-executor C++ native entry calls. It never reached
+/// [`nros_board_native_run_components_named_ns`], so `$NROS_CENSUS_OUT` was
+/// read by no code on that road: a census run of the in-tree C++ workspace's
+/// `native_entry` booted normally, dialled zenoh, and exited 156 on
+/// `ConnectionFailed` -- the producer phase-463 W2 named did not exist for the
+/// entry shape the C++ workspaces generate. These two calls are that runner's
+/// half of the switch, and they reuse the funnel's own three functions rather
+/// than spell a second census path.
+///
+/// Call BEFORE `nros::init`: a non-zero return means a census was asked for,
+/// and the recording backend has already been selected by name (the session
+/// the init then opens is the recorder's, so no router is needed). Zero means
+/// a normal boot, and nothing was changed.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_census_begin() -> i32 {
+    if census_out_path().is_none() {
+        return 0;
+    }
+    census_select_backend();
+    1
+}
+
+/// Issue 1419 -- write the census where `$NROS_CENSUS_OUT` names, after
+/// `setup()` and INSTEAD of the spin. The second half of
+/// [`nros_cpp_census_begin`]; the caller then shuts down and exits with the
+/// returned code (0 when the census was written).
+///
+/// `session_name` is the name the runner passed to `nros::init` (NULL or empty
+/// is the unified default `"node"`), the same identity
+/// [`nros_board_native_run_components_named_ns`] stamps its census with.
+///
+/// # Safety
+/// `session_name` must be NULL or a valid null-terminated string.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_census_finish(session_name: *const c_char) -> i32 {
+    let Some(path) = census_out_path() else {
+        // `begin` said no census, or the environment changed between the two
+        // calls. Either way there is nothing to write, and a SUCCESS here would
+        // let a runner that skipped `begin`'s answer exit 0 with no file.
+        cpp_diag!("nros census: finish called with no $NROS_CENSUS_OUT set");
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let name: &core::ffi::CStr = if session_name.is_null() {
+        c"node"
+    } else {
+        // SAFETY: caller contract -- a valid NUL-terminated string.
+        let s = unsafe { core::ffi::CStr::from_ptr(session_name) };
+        if s.is_empty() { c"node" } else { s }
+    };
+    census_write(name, &path)
+}
+
 /// Issue 1434 — [`nros_board_native_run_components_named`] with the primary
 /// session's NAMESPACE.
 ///
@@ -1824,18 +1883,26 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_ns(
     }
 
     let setup_rc = unsafe { setup(sptr) };
-    if setup_rc != 0 {
-        unsafe { nros_cpp_fini(sptr) };
-        return setup_rc;
-    }
 
     // phase-463 W2 -- "dump and exit 0" exactly where "spin" is. Everything a
     // census counts has been declared by now: setup constructed and configured
     // every component in launch order, on the parameters this entry seeded.
+    //
+    // Issue 1419 -- written EVEN WHEN setup failed, with the failure still the
+    // exit code. The native image is sized from the contract this census
+    // checks, so a contract one entity short stops setup at `ExecutorFull`.
+    // Discarding the file there left the cross configure reading "census
+    // missing" (a warning); kept, the CLI marks it incomplete and every check
+    // against it refuses.
     if let Some(path) = census {
         let rc = census_write(name_resolved, &path);
         unsafe { nros_cpp_fini(sptr) };
-        return rc;
+        return if setup_rc != 0 { setup_rc } else { rc };
+    }
+
+    if setup_rc != 0 {
+        unsafe { nros_cpp_fini(sptr) };
+        return setup_rc;
     }
 
     // Issue 0329 — the bounded (`NROS_ENTRY_SPIN_MS`) external-observer path is
@@ -5048,17 +5115,19 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_ns(
     // filter is deliberately not applied, because it selects what DISPATCHES
     // and a census counts what was CREATED.
     if let Some(path) = census {
+        // Issue 1419 -- a failing tier still gets its census written, with the
+        // failure as the exit code; see the single-executor runner above.
+        let mut setup_rc = 0;
         for tier in tier_slice {
             let Some(setup_fn) = tier.setup else { continue };
-            let setup_rc = unsafe { setup_fn(sptr) };
+            setup_rc = unsafe { setup_fn(sptr) };
             if setup_rc != 0 {
-                unsafe { nros_cpp_fini(sptr) };
-                return setup_rc;
+                break;
             }
         }
         let rc = census_write(name_resolved, &path);
         unsafe { nros_cpp_fini(sptr) };
-        return rc;
+        return if setup_rc != 0 { setup_rc } else { rc };
     }
 
     // Boot tier — apply active_groups + run setup on the owning executor.

@@ -44,10 +44,40 @@ use clap::{Args as ClapArgs, Subcommand};
 use eyre::{Result, WrapErr, bail};
 use sha2::{Digest, Sha256};
 
-/// Where a census lands, under the build directory. One file per ENTRY: two
-/// entries sharing a component see it twice, which is correct -- they may
-/// launch it with different parameters.
+/// Where a census taken against NO model lands, under the build directory.
+///
+/// A census taken against a model goes beside the model instead -- see
+/// [`census_path_for_model`] -- and that is the only place a cross configure
+/// looks, so a census here is for a person reading it, not for a gate.
 pub(crate) const CENSUS_DIR: &str = "nros/census";
+
+/// Issue 1419 -- THE place a census of a model lives:
+/// `<model-dir>/<model-stem>.census.json`, beside the model it was taken
+/// against.
+///
+/// Keyed by the MODEL, never by the entry or the build directory, because the
+/// two documents that have to meet here are written by two different builds:
+/// the census by the NATIVE entry (`native_entry`, in the native image's build
+/// directory), and the check by a CROSS configure (`threadx_entry`, in a
+/// different build directory). phase-463 W4 keyed both sides on
+/// `<their own build dir>/nros/census/<their own entry>.json`, so on the real
+/// `nros build` layout they never named the same file: measured on
+/// `examples/workspaces/cpp`, the threadx configure looked for
+/// `build/threadx-linux-zenoh/cmake/nros/census/threadx_entry.json` and its
+/// remedy said `nros ws entity-census run --entry threadx_entry` -- an entry
+/// with no native binary. The one thing both builds DO share is the resolved
+/// model (`build/nros/models/<bringup>/<stem>.yaml`, measured identical for
+/// both), and a census is a statement about what that model's launch creates.
+///
+/// One spelling: `run` writes here, `check` reads here, and cmake asks this
+/// function through `nros ws entity-census path` rather than re-deriving it.
+pub(crate) fn census_path_for_model(model: &Path) -> PathBuf {
+    let stem = model
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "model".to_string());
+    model.with_file_name(format!("{stem}.census.json"))
+}
 
 /// This wrapper's own schema. The recorder's version travels beside it under
 /// `census.version`, unchanged; they move independently and a reader that
@@ -81,6 +111,17 @@ pub enum Sub {
     Run(RunArgs),
     /// Compare a census with the contract that declared it (phase-463 W3).
     Check(CheckArgs),
+    /// Print where the census of a model lives (issue 1419). The ONE spelling
+    /// of that path, for a caller -- a cmake configure -- that has to register
+    /// the file before the check reads it.
+    Path(PathArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct PathArgs {
+    /// The resolved SystemModel the census is of.
+    #[arg(long, value_name = "PATH")]
+    pub model: PathBuf,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -109,7 +150,11 @@ pub struct RunArgs {
     #[arg(long, value_name = "PATH")]
     pub model: Option<PathBuf>,
 
-    /// Write the census here instead of under the build directory.
+    /// Write the census here. Defaults to beside `--model`
+    /// (`<model-dir>/<stem>.census.json`), which is where a cross configure of
+    /// any entry generated from the same model looks (issue 1419); with no
+    /// `--model`, to `<build-dir>/nros/census/<entry>.json`, which nothing
+    /// reads but a person.
     #[arg(long, value_name = "PATH")]
     pub out: Option<PathBuf>,
 
@@ -132,9 +177,11 @@ pub struct RunArgs {
 #[derive(Debug, ClapArgs)]
 pub struct CheckArgs {
     /// The census a `run` wrote. Both the wrapped form and the recorder's own
-    /// document are accepted.
+    /// document are accepted. Defaults to the census of `--model`
+    /// (`<model-dir>/<stem>.census.json`, issue 1419), which is where `run
+    /// --model` writes it -- naming it here is for a census kept elsewhere.
     #[arg(long, value_name = "PATH")]
-    pub census: PathBuf,
+    pub census: Option<PathBuf>,
 
     /// The authored contract, `<bringup>/launch/<stem>.contract.yaml`.
     ///
@@ -200,6 +247,10 @@ pub fn run(args: EntityCensusArgs) -> Result<()> {
     match args.command {
         Sub::Run(a) => run_census(a),
         Sub::Check(a) => check_census(a),
+        Sub::Path(a) => {
+            println!("{}", census_path_for_model(&a.model).display());
+            Ok(())
+        }
     }
 }
 
@@ -222,6 +273,17 @@ fn check_census(args: CheckArgs) -> Result<()> {
         .and_then(|s| s.census.clone())
         .unwrap_or_default();
 
+    // Issue 1419 -- the census of THIS model, unless one is named.
+    let census_path = match (&args.census, &args.model) {
+        (Some(path), _) => path.clone(),
+        (None, Some(model)) => census_path_for_model(model),
+        (None, None) => bail!(
+            "no --census and no --model. A census is of a model: pass `--model` and the census \
+             `nros ws entity-census run --model` wrote beside it is read, or name one with \
+             `--census`."
+        ),
+    };
+
     // phase-463 W4 -- the freshness question, BEFORE the comparison. A check
     // that compares against a museum census and then passes has said
     // something true about two documents and nothing at all about the code.
@@ -230,7 +292,7 @@ fn check_census(args: CheckArgs) -> Result<()> {
             Some(w) => w,
             None => std::env::current_dir().wrap_err("no current directory")?,
         };
-        match census_freshness(&args.census, &ws) {
+        match census_freshness(&census_path, &ws) {
             Freshness::Fresh => {}
             Freshness::Missing(why) => {
                 return freshness_verdict(
@@ -238,18 +300,25 @@ fn check_census(args: CheckArgs) -> Result<()> {
                     "missing",
                     &why,
                     args.entry.as_deref(),
+                    args.model.as_deref(),
                 );
             }
             Freshness::Stale(why) => {
-                return freshness_verdict(policy.on_stale, "stale", &why, args.entry.as_deref());
+                return freshness_verdict(
+                    policy.on_stale,
+                    "stale",
+                    &why,
+                    args.entry.as_deref(),
+                    args.model.as_deref(),
+                );
             }
         }
     }
 
-    let census_raw = std::fs::read_to_string(&args.census)
-        .wrap_err_with(|| format!("cannot read census `{}`", args.census.display()))?;
+    let census_raw = std::fs::read_to_string(&census_path)
+        .wrap_err_with(|| format!("cannot read census `{}`", census_path.display()))?;
     let census: serde_json::Value = serde_json::from_str(&census_raw)
-        .wrap_err_with(|| format!("`{}` is not JSON", args.census.display()))?;
+        .wrap_err_with(|| format!("`{}` is not JSON", census_path.display()))?;
 
     let contract_path = match args.contract.clone() {
         Some(p) => p,
@@ -288,6 +357,20 @@ fn check_census(args: CheckArgs) -> Result<()> {
         strict: args.strict,
     });
     print!("{}", report.render());
+
+    // Issue 1419 -- a census whose run stopped early refuses WHATEVER its rows
+    // say: the rows above are what was compared, and nothing after the failure
+    // was observed at all. Printed after the rows, so a `missing-in-contract`
+    // the partial run did record is read first.
+    if let Some(why) = incomplete_reason(&census) {
+        bail!(
+            "census INCOMPLETE: {why}.\nThe {} row(s) above are everything the run created \
+             before it stopped, and nothing after the failure was observed. Declare what the \
+             code creates (or fix the image's sizing, if the contract is complete), rebuild \
+             the native image, and take the census again.",
+            report.rows.len()
+        );
+    }
 
     if report.refuses() {
         bail!(
@@ -331,6 +414,15 @@ fn read_system_toml(
     let system =
         toml::from_str(&raw).wrap_err_with(|| format!("cannot parse `{}`", path.display()))?;
     Ok(Some(system))
+}
+
+/// Issue 1419 -- the reason a census is incomplete, when it is. Only the
+/// WRAPPED form can say so; a bare recorder document carries no run status.
+pub(crate) fn incomplete_reason(census: &serde_json::Value) -> Option<String> {
+    census
+        .get(INCOMPLETE_KEY)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
 }
 
 /// Is the census at `path` still a statement about the code in `ws`?
@@ -462,12 +554,24 @@ fn freshness_verdict(
     what: &str,
     why: &str,
     entry: Option<&str>,
+    model: Option<&Path>,
 ) -> Result<()> {
+    // Issue 1419 -- the remedy names the MODEL, because that is what the census
+    // is of, and it does NOT name `entry` as the thing to run: the entry asking
+    // is usually a CROSS image (`threadx_entry`), which has no host binary. The
+    // census is taken by the NATIVE entry generated from the same launch file,
+    // and it lands beside the model, where this check reads it.
+    let model_arg = model
+        .map(|m| m.display().to_string())
+        .unwrap_or_else(|| "<model>".to_string());
+    let asking = entry
+        .map(|e| format!(" (`{e}` is the image asking; it need not be one a host can run)"))
+        .unwrap_or_default();
     let remedy = format!(
-        "Take a census of the code as it is now:\n    nros ws entity-census run --entry {}\n\
-         This configure does not run it for you: building the native image from inside a cross \
-         configure is the cross-cutting compile issue 0641 refuses.",
-        entry.unwrap_or("<entry>")
+        "Take a census of the code as it is now, with the NATIVE entry generated from the same \
+         launch file{asking}:\n    nros ws entity-census run --model {model_arg} --entry \
+         <native entry>\nThis configure does not run it for you: building the native image from \
+         inside a cross configure is the cross-cutting compile issue 0641 refuses."
     );
     if policy.refuses() {
         bail!("census {what}: {why}\n{remedy}");
@@ -533,8 +637,32 @@ struct Census {
     schema: &'static str,
     entry: String,
     provenance: Provenance,
+    /// Issue 1419 -- present when the census run EXITED NON-ZERO after the
+    /// recorder wrote what it had: the entities below are what was created
+    /// before setup stopped, not the whole entry. Every check refuses such a
+    /// census (see [`INCOMPLETE_KEY`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    incomplete: Option<String>,
     census: serde_json::Value,
 }
+
+/// Issue 1419 -- the key that marks a census whose run stopped early.
+///
+/// Why a census like that is WRITTEN rather than discarded: the native image
+/// is sized from the contract this census checks, so a contract one entity
+/// short makes the census run itself stop at `ExecutorFull`. Discarding the
+/// document there left nothing for the cross configure to compare -- it read
+/// "census missing", which `[census] on_missing` lands as a warning -- so the
+/// one edit phase-463 exists to catch (the island's E3a) produced a warning
+/// on the host and `ExecutorFull` on the board. Kept, it is a refusal on the
+/// host. It does NOT name the omitted entity: the executor refuses a
+/// registration (`next_entry_slot`) before the recorder sees it, so the rows
+/// are only what fit (measured on `examples/workspaces/cpp`, issue 1419).
+///
+/// Why every check REFUSES it, whatever its rows say: a partial observation
+/// cannot confirm that the contract is complete, and the failure that cut it
+/// short is the UNDER direction this check exists to refuse.
+pub(crate) const INCOMPLETE_KEY: &str = "incomplete";
 
 fn run_census(args: RunArgs) -> Result<()> {
     let ws = match args.workspace {
@@ -557,9 +685,13 @@ fn run_census(args: RunArgs) -> Result<()> {
         None => locate_entry_binary(&build, &args.entry)?,
     };
 
-    let out = args
-        .out
-        .unwrap_or_else(|| build.join(CENSUS_DIR).join(format!("{}.json", args.entry)));
+    // Issue 1419 -- beside the MODEL when there is one, which is where every
+    // configure generated from that model looks.
+    let out = match (args.out.clone(), args.model.as_deref()) {
+        (Some(out), _) => out,
+        (None, Some(model)) => census_path_for_model(model),
+        (None, None) => build.join(CENSUS_DIR).join(format!("{}.json", args.entry)),
+    };
     if let Some(dir) = out.parent() {
         std::fs::create_dir_all(dir)
             .wrap_err_with(|| format!("cannot create `{}`", dir.display()))?;
@@ -572,18 +704,41 @@ fn run_census(args: RunArgs) -> Result<()> {
     let _ = std::fs::remove_file(&raw);
 
     let started = Instant::now();
-    run_in_census_mode(&binary, &raw, Duration::from_secs(args.timeout_secs))?;
+    let status = run_in_census_mode(&binary, &raw, Duration::from_secs(args.timeout_secs))?;
     let elapsed = started.elapsed();
 
-    let recorded = std::fs::read_to_string(&raw).wrap_err_with(|| {
-        format!(
+    if !raw.is_file() {
+        if !status.success() {
+            bail!(
+                "census run of `{}` exited {} and wrote nothing -- the funnel prints the reason",
+                binary.display(),
+                status
+            );
+        }
+        bail!(
             "`{}` exited 0 in census mode but wrote no census at `{}` -- the image is built \
              without `metadata-mode`, or it is not a C++ entry (a Rust entry's funnel says so \
              and exits non-zero)",
             binary.display(),
             raw.display()
+        );
+    }
+    let recorded = std::fs::read_to_string(&raw)
+        .wrap_err_with(|| format!("cannot read `{}`", raw.display()))?;
+    // Issue 1419 -- a run that wrote its census and THEN failed is recorded as
+    // incomplete rather than thrown away. See `INCOMPLETE_KEY`.
+    let incomplete = (!status.success()).then(|| {
+        format!(
+            "the census run of `{}` exited {status}: setup stopped before every component \
+             was constructed (the funnel printed the reason -- `ExecutorFull` names a callback \
+             table one short). A native image is sized from the contract, so a contract that \
+             declares fewer entities than the code creates stops HERE, on the host. The entity \
+             that did not fit is NOT among the recorded rows -- the executor refuses a \
+             registration before the recorder sees it -- and a node with fewer rows than its \
+             code creates is where to look",
+            binary.display()
         )
-    })?;
+    });
     let recorded: serde_json::Value = serde_json::from_str(&recorded)
         .wrap_err_with(|| format!("`{}` is not JSON", raw.display()))?;
 
@@ -594,6 +749,7 @@ fn run_census(args: RunArgs) -> Result<()> {
             tool: format!("nros-cli {}", env!("CARGO_PKG_VERSION")),
             inputs: collect_inputs(&ws, &binary, args.model.as_deref())?,
         },
+        incomplete,
         census: recorded,
     };
     let json = serde_json::to_string_pretty(&census).wrap_err("serialize census")?;
@@ -601,6 +757,15 @@ fn run_census(args: RunArgs) -> Result<()> {
         .wrap_err_with(|| format!("cannot write `{}`", out.display()))?;
 
     let counts = summarise(&census.census);
+    if let Some(why) = &census.incomplete {
+        bail!(
+            "entity-census {}: INCOMPLETE ({counts}) -> {}\n{why}.\nThe census is written and \
+             marked incomplete; `nros ws entity-census check` against it refuses and names the \
+             rows it could compare.",
+            args.entry,
+            out.display()
+        );
+    }
     println!(
         "entity-census {}: {} in {} ms -> {}",
         args.entry,
@@ -619,7 +784,11 @@ fn run_census(args: RunArgs) -> Result<()> {
 /// differ by one variable rather than by two that have to agree.
 /// `NROS_ENTRY_SPIN_MS` is cleared because an inherited one would be read by
 /// the spin this mode replaces.
-fn run_in_census_mode(binary: &Path, out: &Path, timeout: Duration) -> Result<()> {
+fn run_in_census_mode(
+    binary: &Path,
+    out: &Path,
+    timeout: Duration,
+) -> Result<std::process::ExitStatus> {
     let mut child = Command::new(binary)
         .env(CENSUS_OUT_ENV, out)
         .env_remove(ENTRY_SPIN_ENV)
@@ -629,16 +798,10 @@ fn run_in_census_mode(binary: &Path, out: &Path, timeout: Duration) -> Result<()
     let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {
-            Ok(Some(status)) => {
-                if !status.success() {
-                    bail!(
-                        "census run of `{}` exited {} -- the funnel prints the reason",
-                        binary.display(),
-                        status
-                    );
-                }
-                return Ok(());
-            }
+            // The STATUS goes back to the caller, which decides: a non-zero
+            // exit that still wrote a census is an incomplete census (issue
+            // 1419), and one that wrote nothing is a failed run.
+            Ok(Some(status)) => return Ok(status),
             Ok(None) => {
                 if Instant::now() >= deadline {
                     let _ = child.kill();
@@ -665,7 +828,7 @@ fn run_in_census_mode(binary: &Path, out: &Path, timeout: Duration) -> Result<()
 /// "no such binary" with no list is the diagnostic that sends a person reading
 /// cmake.
 fn locate_entry_binary(build: &Path, entry: &str) -> Result<PathBuf> {
-    let candidates = [
+    let mut candidates = vec![
         build.join("src").join(entry).join(entry),
         build.join(entry).join(entry),
         build.join(entry),
@@ -674,6 +837,39 @@ fn locate_entry_binary(build: &Path, entry: &str) -> Result<PathBuf> {
         if c.is_file() {
             return Ok(c.clone());
         }
+    }
+    // Issue 1419 -- the layout `nros build` writes: one generated root per
+    // image, `<build>/<root>/cmake/<entry>` (`build/posix-zenoh-native/cmake/
+    // native_entry`). The three spellings above are a hand-configured
+    // workspace's; with only those, `run --entry native_entry` refused on every
+    // workspace `nros build` had built. A SEARCH over the roots that exist, and
+    // an ambiguity is a refusal naming each match rather than a pick.
+    let mut roots: Vec<PathBuf> = std::fs::read_dir(build)
+        .map(|rd| {
+            rd.filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| p.is_dir())
+                .collect()
+        })
+        .unwrap_or_default();
+    roots.sort();
+    let found: Vec<PathBuf> = roots
+        .iter()
+        .map(|r| r.join("cmake").join(entry))
+        .filter(|c| c.is_file())
+        .collect();
+    match found.as_slice() {
+        [one] => return Ok(one.clone()),
+        [] => candidates.push(build.join("<image-root>").join("cmake").join(entry)),
+        many => bail!(
+            "entry `{entry}` names a binary in {} image roots, so which one to census cannot \
+             be decided here:\n{}\nName it with `--binary` or `--build-dir`.",
+            many.len(),
+            many.iter()
+                .map(|c| format!("  {}", c.display()))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ),
     }
     bail!(
         "no native binary for entry `{entry}`. Tried:\n{}\n\
@@ -837,6 +1033,139 @@ mod tests {
             .to_string();
         assert!(err.contains("src/island_entry/island_entry"), "{err}");
         assert!(err.contains("--binary"), "{err}");
+    }
+
+    /// Issue 1419 -- the census of a model is keyed by the MODEL, so the
+    /// native entry that writes it and the cross configure that reads it name
+    /// one file although they are different entries in different build dirs.
+    #[test]
+    fn the_census_of_a_model_lives_beside_the_model_whoever_asks() {
+        let model = Path::new("/ws/build/nros/models/demo_bringup/system_model.yaml");
+        assert_eq!(
+            census_path_for_model(model),
+            Path::new("/ws/build/nros/models/demo_bringup/system_model.census.json")
+        );
+        // Two launch files of one bringup are two models and two censuses.
+        let other = Path::new("/ws/build/nros/models/demo_bringup/service_server_model.yaml");
+        assert_ne!(census_path_for_model(model), census_path_for_model(other));
+    }
+
+    /// Issue 1419 -- `nros build`'s layout, `<build>/<root>/cmake/<entry>`,
+    /// is found; two roots holding one entry name is refused, not picked.
+    #[test]
+    fn an_nros_build_image_root_is_searched_and_an_ambiguity_refuses() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let native = dir.path().join("posix-zenoh-native").join("cmake");
+        std::fs::create_dir_all(&native).unwrap();
+        std::fs::write(native.join("native_entry"), b"").unwrap();
+        std::fs::create_dir_all(dir.path().join("threadx-linux-zenoh").join("cmake")).unwrap();
+        assert_eq!(
+            locate_entry_binary(dir.path(), "native_entry").expect("found"),
+            native.join("native_entry")
+        );
+
+        let second = dir.path().join("posix-cyclonedds-native").join("cmake");
+        std::fs::create_dir_all(&second).unwrap();
+        std::fs::write(second.join("native_entry"), b"").unwrap();
+        let err = locate_entry_binary(dir.path(), "native_entry")
+            .expect_err("two roots, one name")
+            .to_string();
+        assert!(err.contains("2 image roots"), "{err}");
+        assert!(err.contains("posix-zenoh-native"), "{err}");
+        assert!(err.contains("posix-cyclonedds-native"), "{err}");
+    }
+
+    /// A contract and a census that agree: one talker, one publisher on
+    /// `/chatter`, no timer. Written into `dir`; returns (contract, census).
+    fn agreeing_pair(dir: &Path, incomplete: Option<&str>) -> (PathBuf, PathBuf) {
+        let contract = dir.join("system.contract.yaml");
+        std::fs::write(
+            &contract,
+            "version: 1\nnodes:\n  talker:\n    pub:\n      chatter: {}\ntopics:\n  /chatter:\n    \
+             type: std_msgs/msg/Int32\n    pub: [talker/chatter]\n",
+        )
+        .unwrap();
+        let mut census = serde_json::json!({
+            "schema": CENSUS_SCHEMA,
+            "entry": "native_entry",
+            "provenance": { "tool": "test", "inputs": [] },
+            "census": {
+                "version": 3,
+                "nodes": [{
+                    "id": "talker",
+                    "unresolved_name": { "value": "talker", "kind": "relative" },
+                    "namespace": null,
+                    "publishers": [{
+                        "id": "/chatter",
+                        "unresolved_topic": { "value": "/chatter", "kind": "absolute" },
+                        "interface": { "package": "std_msgs", "name": "msg/Int32", "kind": "message" },
+                    }],
+                    "subscribers": [], "services": [], "service_clients": [],
+                    "actions": [], "action_clients": [], "timers": [],
+                }],
+                "parameters": [],
+            },
+        });
+        if let Some(why) = incomplete {
+            census[INCOMPLETE_KEY] = serde_json::Value::String(why.to_string());
+        }
+        let path = dir.join("system_model.census.json");
+        std::fs::write(&path, census.to_string()).unwrap();
+        (contract, path)
+    }
+
+    fn check_args(contract: &Path, census: &Path) -> CheckArgs {
+        CheckArgs {
+            census: Some(census.to_path_buf()),
+            contract: Some(contract.to_path_buf()),
+            inventory: None,
+            system_toml: None,
+            model: None,
+            strict: true,
+            require_fresh: false,
+            workspace: None,
+            entry: None,
+        }
+    }
+
+    /// Issue 1419 -- the negative control for the test below: the same pair,
+    /// complete, passes.
+    #[test]
+    fn a_complete_census_that_agrees_with_its_contract_passes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (contract, census) = agreeing_pair(dir.path(), None);
+        check_census(check_args(&contract, &census)).expect("contract states the code");
+    }
+
+    /// Issue 1419 -- a census whose run stopped early refuses even when every
+    /// row it holds is confirmed: nothing after the failure was observed, and
+    /// the failure is the island's E3a showing up one step early (a native
+    /// image sized from a contract one entity short).
+    #[test]
+    fn an_incomplete_census_refuses_whatever_its_rows_say() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (contract, census) =
+            agreeing_pair(dir.path(), Some("the census run exited exit status: 250"));
+        let err = check_census(check_args(&contract, &census))
+            .expect_err("an incomplete census confirms nothing")
+            .to_string();
+        assert!(err.contains("census INCOMPLETE"), "{err}");
+        assert!(err.contains("exit status: 250"), "{err}");
+    }
+
+    /// Issue 1419 -- with no `--census`, the check reads the census of
+    /// `--model`, which is where `run --model` writes it; with neither, it
+    /// refuses rather than guess a path.
+    #[test]
+    fn with_no_census_named_the_check_needs_a_model_to_find_one() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (contract, _) = agreeing_pair(dir.path(), None);
+        let mut args = check_args(&contract, Path::new("unused"));
+        args.census = None;
+        let err = check_census(args)
+            .expect_err("nothing names a census")
+            .to_string();
+        assert!(err.contains("no --census and no --model"), "{err}");
     }
 
     #[test]
