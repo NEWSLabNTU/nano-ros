@@ -94,7 +94,31 @@ KNOB_PATTERNS = [
     # build.rs:25" -- a line number in a generated table, churning on every
     # edit, in place of the default it exists to publish.
     re.compile(r'\bknob\(\s*"([A-Z0-9_]+)"\s*,\s*[A-Za-z0-9_.]+\s*,\s*([0-9_]+)' + _C),
+    # `env_usize_rung("NAME", <declared rung>, 16384)` — the DECLARED road
+    # (issues 1122/1199): a `NROS_DECLARED_*` fact cmake derived, then the
+    # builtin LAST. Fifth wrapper in this list, and it did exactly what the
+    # four before it did (issue 0815): `ZPICO_MAX_LARGE_SUBSCRIBERS`,
+    # `ZPICO_SUBSCRIBER_LARGE_SIZE`, `NROS_SERVICE_INBOX_BYTES` and
+    # `NROS_ACTION_INBOX_BYTES` left this table, and `LARGE_PAYLOADS` — the
+    # 131,072-byte pool issue 0271 was filed about — went from a figure to
+    # "unknown knob". The rung is an arbitrary expression (it may itself call
+    # a reader with a string literal), so it is skipped up to the `;` that
+    # ends the statement and the figure is the LAST integer argument.
+    re.compile(r'\benv_usize_rung\(\s*"([A-Z0-9_]+)"\s*,[^;]{0,400}?,\s*([0-9_]+)' + _C),
+    # `env_usize("NAME", rungs.max_components, 4)` — `nros`'s own three-argument
+    # reader (phase-400 W6 rung, builtin LAST). Same shape, same loss: the four
+    # `NROS_RUNTIME_*` knobs rendered as "computed" with a line number while
+    # their builtin sat in the call. The rung may not contain a string literal,
+    # so this can never reach into the NEXT call's arguments.
+    re.compile(r'\benv_usize\(\s*"([A-Z0-9_]+)"\s*,[^;"]{0,200}?,\s*([0-9_]+)' + _C),
 ]
+
+# A knob whose builtin a BUILD may replace with a figure it DERIVED from the
+# image's declarations (the `NROS_DECLARED_*` road, issues 1122/1199/1130) — so
+# the builtin is what an image that declares nothing pays, and an image that
+# declares its entities legitimately pays something else. The statement that
+# reads such a knob names the declared road, which is what this keys on.
+DERIVED_MARK = re.compile(r"declared", re.I)
 
 # `// nros-pool: NAME = KNOB * KNOB * 4` — products of knobs and integers only.
 POOL_ANNOT = re.compile(
@@ -124,7 +148,7 @@ def crate_of(rel):
 # the ones issue-0271's failure mode hides (executor arena, zpico batch/frag
 # buffers: the LARGEST consumers). They must appear in the table, not be
 # silently dropped by a literal-only regex.
-KNOB_ANY = re.compile(r'\b(?:env_usize(?:_compat|_min)?|knob)\(\s*"([A-Z0-9_]+)"')
+KNOB_ANY = re.compile(r'\b(?:env_usize(?:_compat|_min|_rung)?|knob)\(\s*"([A-Z0-9_]+)"')
 
 # `const SUBSCRIBER_RING_DEPTH_DEFAULT: usize = 4;` — a file-local builtin that
 # a knob read reaches through `.unwrap_or(NAME)`.
@@ -383,6 +407,29 @@ def scan(files=None, xrce=True):
     return knobs, pools
 
 
+def scan_derived(files=None):
+    """Knob names whose literal default a build may replace with a DERIVED one.
+
+    Keyed on the READ statement naming the declared road (`DERIVED_MARK`): its
+    builtin is what an image that declares nothing pays. A pool priced through
+    such a knob is still priced at the builtin on the page — that is the figure
+    for the image nobody described — but `mem-report --check` may not call a
+    different measured figure DRIFT, because the build was entitled to it.
+    """
+    derived = set()
+    for rel in files if files is not None else tracked_rust():
+        try:
+            with open(os.path.join(ROOT, rel), encoding="utf8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        for pat in KNOB_PATTERNS + [KNOB_UNWRAP_OR_CONST]:
+            for m in pat.finditer(text):
+                if DERIVED_MARK.search(m.group(0)):
+                    derived.add(m.group(1))
+    return derived
+
+
 def pool_bytes(expr, knobs):
     """Evaluate a knob product at defaults. Returns (bytes, None) or (None, why)."""
     terms = [t.strip() for t in expr.split("*") if t.strip()]
@@ -401,7 +448,167 @@ def pool_bytes(expr, knobs):
     return total, None
 
 
-def render(knobs, pools):
+# ---------------------------------------------------------------------------
+# The WHY for every knob a formula cannot price — issue 0815.
+#
+# The scan finds every knob and a `// nros-pool:` formula prices a byte product,
+# and that is all that is mechanical. The rest of the knobs move RAM a formula
+# cannot state exactly — a struct element, a heap, the executor's storage — and
+# the page rendered them with no cost at all, which reads as "free". The table
+# is AUTHORED, so `cost_problems` binds it both ways (no knob unclassified, no
+# row stale, no named symbol undefined) and `main` fails on any of them.
+KNOB_COSTS = "scripts/pool-inventory-knobs.txt"
+COST_KINDS = {
+    "pool": "sizes these statics — exact per image: `just mem-report`",
+    "executor": "sizes the executor's storage — `[executor storage]` in `just mem-report`",
+    "component": "sizes the per-component storage — `[component storage]` in `just mem-report`",
+    "heap": "heap bytes",
+    "stack": "stack bytes",
+    "element": "sizes an element; paid wherever that type is stored",
+    "input": "an input to another knob's derivation",
+    "not-a-size": "no bytes",
+    "test-only": "a test binary's knob",
+}
+# Kinds whose row must name the static(s) it sizes, because "measured per
+# image" is only a promise if the image has a symbol to measure.
+COST_KINDS_NEED_SYMBOLS = {"pool"}
+
+
+def parse_knob_costs(text, where=KNOB_COSTS):
+    """{knob: (kind, [symbols], reason, line)} and a list of format problems."""
+    costs, problems = {}, []
+    for n, raw in enumerate(text.splitlines(), 1):
+        body = raw.strip()
+        if not body or body.startswith("#"):
+            continue
+        cols = [c.strip() for c in body.split("|")]
+        if len(cols) != 4:
+            problems.append(f"{where}:{n}: expected `KNOB | kind | symbols | reason`")
+            continue
+        knob, kind, syms, reason = cols
+        symbols = [s.strip() for s in syms.split(",") if s.strip()]
+        if kind not in COST_KINDS:
+            problems.append(f"{where}:{n}: `{knob}` has unknown kind `{kind}`")
+        if kind in COST_KINDS_NEED_SYMBOLS and not symbols:
+            problems.append(f"{where}:{n}: `{knob}` is a `{kind}` row naming no symbol")
+        if not reason:
+            problems.append(f"{where}:{n}: `{knob}` gives no reason")
+        if knob in costs:
+            problems.append(f"{where}:{n}: `{knob}` is classified twice")
+        costs[knob] = (kind, symbols, reason, n)
+    return costs, problems
+
+
+def load_knob_costs():
+    with open(os.path.join(ROOT, KNOB_COSTS), encoding="utf8") as fh:
+        return parse_knob_costs(fh.read())
+
+
+def formula_knobs(pools):
+    """{knob: [pool names whose `nros-pool:` formula multiplies it]}."""
+    out = {}
+    for name, expr, _rel, _line in pools:
+        for t in expr.split("*"):
+            t = t.strip()
+            if t and not t.isdigit():
+                out.setdefault(t, []).append(name)
+    return out
+
+
+_CRATE_DIRS = {}
+
+
+def crate_dir_named(ident):
+    """The tracked crate directory whose package name is `ident` (`-` == `_`)."""
+    if not _CRATE_DIRS:
+        out = subprocess.run(
+            ["git", "ls-files", "*Cargo.toml"], cwd=ROOT, capture_output=True, text=True
+        ).stdout.split()
+        for rel in out:
+            if "/third-party/" in rel:
+                continue
+            try:
+                with open(os.path.join(ROOT, rel), encoding="utf8") as fh:
+                    m = re.search(r'^\s*name\s*=\s*"([^"]+)"', fh.read(), re.M)
+            except OSError:
+                continue
+            if m:
+                _CRATE_DIRS.setdefault(m.group(1).replace("-", "_"), os.path.dirname(rel))
+    return _CRATE_DIRS.get(ident)
+
+
+def symbol_defined(sym):
+    """Does a tracked source still DEFINE (Rust) or name (C) this symbol?
+
+    A Rust path `crate::…::LEAF` must have a `static LEAF` in that crate — a
+    pool renamed or moved fails the table. A C symbol has no crate to scope by,
+    and some live in vendored kernels outside this repository's index
+    (`ucHeap`), so for those any tracked mention is accepted: the check is a
+    rename tripwire, and a rename leaves no mention behind.
+    """
+    if "::" in sym:
+        crate, leaf = sym.split("::", 1)[0], sym.rsplit("::", 1)[-1]
+        d = crate_dir_named(crate)
+        if d is None:
+            return False
+        pat = rf"static\s+(mut\s+)?{re.escape(leaf)}\b"
+        where = d
+    else:
+        pat = rf"\b{re.escape(sym)}\b"
+        where = "."
+    r = subprocess.run(
+        ["git", "grep", "-q", "-E", pat, "--", where], cwd=ROOT, capture_output=True
+    )
+    return r.returncode == 0
+
+
+def cost_problems(knobs, pools, costs, defined=symbol_defined):
+    """Everything that makes the cost column a lie, as operator-facing lines."""
+    problems = []
+    priced_by = formula_knobs(pools)
+    for name in sorted(knobs):
+        if name not in costs and name not in priced_by:
+            problems.append(
+                f"UNCLASSIFIED `{name}` ({knobs[name][1]}:{knobs[name][2]}): no "
+                f"`nros-pool:` formula prices it and {KNOB_COSTS} has no row for it"
+            )
+    for name, (_kind, symbols, _reason, line) in sorted(costs.items()):
+        if name not in knobs:
+            problems.append(
+                f"STALE {KNOB_COSTS}:{line}: `{name}` is no longer read by any scanned "
+                "source — delete the row (or the scan lost a reader spelling)"
+            )
+        for sym in symbols:
+            if not defined(sym):
+                problems.append(
+                    f"UNDEFINED {KNOB_COSTS}:{line}: `{name}` names `{sym}`, which no "
+                    "tracked source defines any more"
+                )
+    return problems
+
+
+def knob_cost_cell(name, knobs, pools, costs, derived):
+    """The page's `cost` column for one knob — never empty."""
+    parts = []
+    for pool in sorted(formula_knobs(pools).get(name, [])):
+        expr = next(e for p, e, _r, _l in pools if p == pool)
+        b, err = pool_bytes(expr, knobs)
+        if b is not None:
+            parts.append(f"prices `{pool}` ({b:,} B at defaults)")
+        else:
+            parts.append(f"sizes `{pool}` — not priceable at defaults ({err})")
+    if name in costs:
+        kind, symbols, reason, _line = costs[name]
+        syms = ", ".join(f"`{s}`" for s in symbols)
+        head = f"**{kind}**" + (f" {syms}" if syms else "")
+        parts.append(f"{head}: {reason}")
+    if name in derived:
+        parts.append("default DERIVED per image when it declares its entities")
+    return "; ".join(parts) if parts else "**UNCLASSIFIED**"
+
+
+def render(knobs, pools, costs=None, derived=frozenset()):
+    costs = costs or {}
     by_pool = {}
     for name, expr, rel, line in pools:
         b, err = pool_bytes(expr, knobs)
@@ -436,26 +643,57 @@ def render(knobs, pools):
     if by_pool:
         for name in sorted(by_pool):
             expr, b, err, rel, line = by_pool[name]
-            shown = f"{b:,}" if b is not None else f"— ({err})"
+            if b is None:
+                shown = f"— ({err})"
+            elif any(t.strip() in derived for t in expr.split("*")):
+                shown = f"{b:,} (builtin — an image that declares its entities derives its own)"
+            else:
+                shown = f"{b:,}"
             lines.append(f"| `{name}` | {shown} | `{expr}` | `{rel}:{line}` |")
     else:
         lines.append("| _(none annotated yet)_ | | | |")
+
+    # The statics a knob sizes whose element only the compiler can size. No
+    # figure here is a claim of zero: `just mem-report <image>` measures each.
+    measured = {}
+    for knob, (kind, symbols, _reason, _line) in costs.items():
+        if kind in ("pool", "heap"):
+            for sym in symbols:
+                measured.setdefault(sym, (kind, []))[1].append(knob)
+    lines += [
+        "",
+        "## Pools sized by a knob, measured per image",
+        "",
+        "These statics move with the knobs beside them, but their element is a",
+        "struct (or the region is a heap), so no formula over defaults can state",
+        "their size exactly — and a guessed multiplier is the defect this page",
+        "exists to avoid. `just mem-report <image>` reports each one's exact bytes",
+        "in the image you built, beside the knobs listed here.",
+        "",
+        "| symbol | kind | sized by |",
+        "| --- | --- | --- |",
+    ]
+    for sym in sorted(measured):
+        kind, ks = measured[sym]
+        lines.append(f"| `{sym}` | {kind} | {', '.join(f'`{k}`' for k in sorted(ks))} |")
 
     lines += [
         "",
         "## Every sizing knob",
         "",
-        "A knob with no pool row above is still tunable; it simply has not declared",
-        "its byte cost yet. Absence of a figure is not a claim that it is free.",
+        "Every knob says what it costs: a byte figure where a formula prices it,",
+        "otherwise WHERE its bytes go and why no static figure exists. Nothing in",
+        "this column is blank, and nothing here is free unless it says so.",
         "",
-        "| knob | default | read by |",
-        "| --- | ---: | --- |",
+        "| knob | default | read by | cost |",
+        "| --- | ---: | --- | --- |",
     ]
     for name in sorted(knobs):
         default, rel, line, conflict = knobs[name]
         note = " **(conflicting defaults — see below)**" if conflict else ""
         shown = default if default is not None else f"computed — see `{rel}:{line}`"
-        lines.append(f"| `{name}` | {shown} | `{crate_of(rel)}`{note} |")
+        cost = knob_cost_cell(name, knobs, pools, costs, derived).replace("|", "\\|")
+        lines.append(f"| `{name}` | {shown} | `{crate_of(rel)}`{note} | {cost} |")
 
     conflicts = [n for n, v in knobs.items() if v[3]]
     if conflicts:
@@ -497,6 +735,17 @@ def self_test():
         'let r = env_usize_min("NROS_PROBE_RING",\n'
         '    rungs.ring.or(declared(d)).unwrap_or(PROBE_RING_DEFAULT), 1);\n'
         '// nros-pool: R = NROS_PROBE_RING * NROS_PROBE_SLOTS\n'
+        # issue 0815 — the DECLARED-road reader, rustfmt-wrapped exactly as
+        # nros-rmw-zenoh's are: the rung is an expression holding a string
+        # literal, the builtin is the LAST argument.
+        'let l = env_usize_rung(\n'
+        '    "NROS_PROBE_LARGE",\n'
+        '    declared_usize("NROS_DECLARED_PROBE_LARGE"),\n'
+        '    16384,\n'
+        ');\n'
+        # …and `nros`'s three-argument `env_usize(name, rung, builtin)`.
+        'let c = env_usize("NROS_PROBE_COMPONENTS", rungs.max_components, 4);\n'
+        '// nros-pool: L = NROS_PROBE_LARGE * NROS_PROBE_COMPONENTS\n'
         # The RFC-0049 ladder's front-end match, verbatim in shape — the ONLY
         # place `NROS_XRCE_STREAM_HISTORY` is named in Rust, and it can state
         # no figure. It is here to pin the PRECEDENCE below.
@@ -510,6 +759,7 @@ def self_test():
     with open(p, "w") as fh:
         fh.write(probe)
     k, pl = scan([os.path.relpath(p, ROOT)], xrce=False)
+    derived_probe = scan_derived([os.path.relpath(p, ROOT)])
     # The same probe WITH the XRCE manifest seeded — the integration, over the
     # real `xrce-config.txt` and `internal.h`, because a scanner that parses
     # perfectly and is never called publishes exactly the table issue 1078
@@ -586,6 +836,48 @@ def self_test():
     assert pool_bytes(by_name["R"], k)[0] == 60, (
         "a pool sized by such a knob must resolve to bytes, not to `computed default`"
     )
+    assert k.get("NROS_PROBE_LARGE", (None,))[0] == 16384, (
+        "issue 0815: an `env_usize_rung(name, <declared rung>, builtin)` knob must "
+        "publish its builtin — this spelling is how `LARGE_PAYLOADS`, the 131,072-byte "
+        "pool issue 0271 was filed about, became `unknown knob`"
+    )
+    assert k.get("NROS_PROBE_COMPONENTS", (None,))[0] == 4, (
+        "issue 0815: `env_usize(name, rung, builtin)` must publish its builtin"
+    )
+    assert pool_bytes(by_name["L"], k)[0] == 16384 * 4, "rung-read knobs must price a pool"
+    assert derived_probe == {"NROS_PROBE_LARGE", "NROS_PROBE_RING"}, (
+        "only a knob whose read names the DECLARED road is derived; got "
+        f"{sorted(derived_probe)} (NROS_PROBE_RING's chain calls `declared(d)`)"
+    )
+
+    # --- issue 0815: the cost table cannot be silently incomplete -----------
+    costs, fmt_problems = parse_knob_costs(
+        "# c\n"
+        "A | pool | x::y::P | sizes P\n"
+        "B | not-a-size | | ms\n"
+        "C | pool | | no symbol\n"
+        "D | sideways | | bad kind\n"
+        "GONE | heap | | read by nobody now\n"
+        "B | stack | | twice\n",
+        "T",
+    )
+    assert any("`C` is a `pool` row naming no symbol" in p for p in fmt_problems), fmt_problems
+    assert any("unknown kind `sideways`" in p for p in fmt_problems), fmt_problems
+    assert any("`B` is classified twice" in p for p in fmt_problems), fmt_problems
+    probe_knobs = {n: (1, "f.rs", 1, False) for n in ("A", "B", "C", "D", "E", "F")}
+    probe_pools = [("Q", "F * 8", "f.rs", 2)]
+    got = cost_problems(probe_knobs, probe_pools, costs, defined=lambda s: s != "x::y::P")
+    assert any(p.startswith("UNCLASSIFIED `E`") for p in got), (
+        "a knob with no formula and no row must FAIL the page — a blank cost "
+        "column reads as free (issue 0815)"
+    )
+    assert not any("`F`" in p for p in got), "a formula-priced knob needs no row"
+    assert any(p.startswith("STALE") and "`GONE`" in p for p in got), "a stale row must fail"
+    assert any(p.startswith("UNDEFINED") and "x::y::P" in p for p in got), (
+        "a row naming a symbol no source defines must fail — the join to the image "
+        "would silently find nothing"
+    )
+    assert knob_cost_cell("E", probe_knobs, probe_pools, costs, set()) == "**UNCLASSIFIED**"
 
     # --- issue 1078: the XRCE knobs, which have no Rust declaration site -----
     #
@@ -678,7 +970,22 @@ def main():
         return
     self_test()
     knobs, pools = scan()
-    text = render(knobs, pools)
+    costs, problems = load_knob_costs()
+    problems += cost_problems(knobs, pools, costs)
+    if problems:
+        sys.stderr.write(
+            "error: the pool inventory cannot say what every knob costs (issue 0815):\n\n"
+        )
+        for p in problems:
+            sys.stderr.write(f"  {p}\n")
+        sys.stderr.write(
+            f"\nClassify a new knob in {KNOB_COSTS} (its header lists the kinds),\n"
+            "or give its pool a `// nros-pool:` formula if it is a plain byte\n"
+            "product. A knob with no cost column reads as free, and issue 0271\n"
+            "measured ~145 KB of exactly that.\n"
+        )
+        sys.exit(1)
+    text = render(knobs, pools, costs, scan_derived())
     if "--check" in sys.argv:
         try:
             with open(OUT, encoding="utf8") as fh:

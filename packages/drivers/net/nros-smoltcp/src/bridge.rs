@@ -254,6 +254,11 @@ impl Default for SocketEntry {
 static mut SOCKET_TABLE: [SocketEntry; MAX_SOCKETS] = [SocketEntry::INIT; MAX_SOCKETS];
 
 /// Socket RX/TX staging buffers
+// issue 0815 — plain byte arrays, so the arithmetic is exact and the inventory
+// can price it (the two knobs' defaults are per-platform, so the page names the
+// pool and `mem-report` measures it).
+// nros-pool: SOCKET_RX_BUFFERS = NROS_SMOLTCP_MAX_SOCKETS * NROS_SMOLTCP_BUFFER_SIZE
+// nros-pool: SOCKET_TX_BUFFERS = NROS_SMOLTCP_MAX_SOCKETS * NROS_SMOLTCP_BUFFER_SIZE
 static mut SOCKET_RX_BUFFERS: [[u8; SOCKET_BUFFER_SIZE]; MAX_SOCKETS] =
     [[0u8; SOCKET_BUFFER_SIZE]; MAX_SOCKETS];
 static mut SOCKET_TX_BUFFERS: [[u8; SOCKET_BUFFER_SIZE]; MAX_SOCKETS] =
@@ -309,6 +314,8 @@ static mut UDP_SOCKET_TABLE: [UdpSocketEntry; MAX_UDP_SOCKETS] =
     [UdpSocketEntry::INIT; MAX_UDP_SOCKETS];
 
 /// UDP socket RX/TX staging buffers
+// nros-pool: UDP_SOCKET_RX_BUFFERS = NROS_SMOLTCP_MAX_UDP_SOCKETS * NROS_SMOLTCP_BUFFER_SIZE
+// nros-pool: UDP_SOCKET_TX_BUFFERS = NROS_SMOLTCP_MAX_UDP_SOCKETS * NROS_SMOLTCP_BUFFER_SIZE
 static mut UDP_SOCKET_RX_BUFFERS: [[u8; SOCKET_BUFFER_SIZE]; MAX_UDP_SOCKETS] =
     [[0u8; SOCKET_BUFFER_SIZE]; MAX_UDP_SOCKETS];
 static mut UDP_SOCKET_TX_BUFFERS: [[u8; SOCKET_BUFFER_SIZE]; MAX_UDP_SOCKETS] =
