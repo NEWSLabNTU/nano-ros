@@ -17,6 +17,13 @@
 //! marker proves the code path executed to the open call rather than being
 //! optimized away. The install + spin arm stays linked because the open's
 //! outcome is opaque to LLVM (it reads the cffi backend registry).
+//!
+//! Issue 0816 — it also declares, reads and sets a parameter through the core
+//! `ParameterServer` over caller-owned `ParameterStorage`, because the book
+//! (`concepts/no-std.md`) says that API "works without alloc" and this image is
+//! the only thing that can make that a checked property rather than a claim.
+//! The value read back is printed, so the parameter path cannot be optimised
+//! out of the image the gate reads.
 
 #![no_std]
 #![no_main]
@@ -26,7 +33,8 @@ use core::mem::MaybeUninit;
 use cortex_m_rt::entry;
 use cortex_m_semihosting::{debug, hprintln};
 use nros::{
-    BootConfig, ComponentSlotStorage, EntityBounds, ExecutorConfig, ExecutorSizing,
+    BootConfig, ComponentSlotStorage, EntityBounds, ExecutorConfig, ExecutorSizing, NodeKey,
+    ParameterServer, ParameterStorage, ParameterValue,
     node::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeResult, TickCtx},
 };
 use panic_semihosting as _;
@@ -73,9 +81,33 @@ static POC_STORE: ComponentSlotStorage<PocNode> = ComponentSlotStorage::new();
 static mut BACKING: [MaybeUninit<u64>; ExecutorSizing::DEFAULT.u64_len()] =
     [MaybeUninit::uninit(); ExecutorSizing::DEFAULT.u64_len()];
 
+/// Caller-owned parameter slots (issue 0816). Four is plenty: the point is
+/// the code path, not the capacity, and the default 32 slots are ~285 KiB.
+static mut PARAMS: ParameterStorage<4> = ParameterStorage::new();
+
+/// Declare, set and read back one parameter through the core API. Returns the
+/// value read back, which `main` prints so none of this is dead code.
+fn exercise_parameters() -> i64 {
+    // SAFETY: the only reference ever taken to `PARAMS` (single-threaded
+    // `#[entry]`, called once before anything else runs).
+    let storage: &'static mut ParameterStorage<4> = unsafe { &mut *(&raw mut PARAMS) };
+    let mut server = ParameterServer::new_in(storage.as_table());
+    let node = NodeKey::PRIMARY;
+    let seed = core::hint::black_box(7);
+    let _ = server.declare(node, "rate_hz", ParameterValue::Integer(seed));
+    let _ = server.set(node, "rate_hz", ParameterValue::Integer(seed * 6));
+    server
+        .get(node, "rate_hz")
+        .and_then(|v| v.as_integer())
+        .unwrap_or(-1)
+}
+
 #[entry]
 fn main() -> ! {
     nros_platform_cffi::log::init_default();
+
+    let rate = exercise_parameters();
+    hprintln!("HEAP-FREE-POC: parameter rate_hz = {}", rate);
 
     let config = ExecutorConfig::resolve(BootConfig {
         node_name: Some("heap_free_poc"),
