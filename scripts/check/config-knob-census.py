@@ -256,7 +256,7 @@ KNOB_CLASS = {
     # has one for a `/status` topic nothing declares, so an action server costs
     # four slots and not three. A COUNT the declaration passes down — the
     # DESCRIPTOR answers this on the cargo-leaf road (phase-455 W5) and this
-    # carries it on the roads that have none (issue 1393) — never something a
+    # carries it on the roads that name none to cargo (issue 1407) — never something a
     # user tunes. `ZPICO_MAX_QUERYABLES` / `CONFIG_NROS_MAX_QUERYABLES` is the
     # knob and still outranks it, bounded from below by this term.
     "NROS_DECLARED_TL_PUBLISHERS": ("infra", "a COUNT the resolver passes down, not a knob"),

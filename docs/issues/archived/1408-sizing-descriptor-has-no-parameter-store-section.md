@@ -3,11 +3,13 @@ id: 1408
 title: "The sizing descriptor's schema has no parameter-store section, so the
   nine parameter-shape facts have no descriptor spelling on ANY road — they are
   out of RFC-0100 D4's vocabulary, not refused by a producer"
-status: open
+status: resolved
 type: tech-debt
 area: [build, core]
-related: [1393, 1407]
+related: [1393, 1407, 1436]
 found: 2026-09-21
+resolved: 2026-10-01
+resolved_in: "phase-454's `[params]` vertical slice (schema section, composer, `nros-params`/`nros-node` readers) and issue 1436 (parameter-only contracts); closed, and its ledger rows re-pointed, by the PR 'descriptor producers: close the model road's field gap (1393) and the schema gap (1408)'"
 ---
 
 ## What is open
@@ -35,7 +37,7 @@ nine `NROS_DECLARED_*` carriers:
 ## Why this is a different shape from 1393
 
 [Issue 1393](1393-cmake-road-has-no-bound-inventory.md) and
-[issue 1407](1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md)
+[issue 1407](../1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md)
 are both about a PRODUCER that cannot source a field the schema HAS. This is the
 opposite: the producer has the fact — `ParamDeclarations` is composed on the
 leaf road and the model road alike — and there is nowhere in the file to put it.
@@ -166,3 +168,41 @@ and the road nests the `ParamDeclarations` attach inside that `Some` arm — so 
 contract that declares only parameters loses every parameter fact. Nothing in
 this slice depends on it: every road that already writes a descriptor now carries
 `[params]`, and that one adds a road that did not.
+
+## Resolution (2026-10-01)
+
+**What this issue is about is done.** Its title is the schema gap — "no
+parameter-store section, so the nine facts have no descriptor spelling on ANY
+road" — and every part of that has landed and been measured:
+
+* `[params]` is in the RFC-0100 D4 schema; the four design questions are
+  answered above;
+* the ONE composer fills it on every producer road (leaf, model, and since
+  phase-457 W0.b the standalone cmake leaf — whose `[params]` is empty because a
+  `system.toml` declaration carries no parameters);
+* `nros-params` and `nros-node` read it at the rung the carrier occupied,
+  measured byte-identical to the carrier road (the four-build table above);
+* the one adjacent gap this slice named — a PARAMETER-ONLY contract reaching no
+  descriptor on the cargo road — was issue 1436, archived.
+
+**What was still listed as open, the RETIREMENT, is not this issue's gap**, and
+keeping a schema issue open as a ledger anchor is the false claim the series
+exists to avoid. The per-fact test was re-run on closing it (the ledger's own
+rule), and every one of the nine has an accurate home now:
+
+| carriers | blocker | where it is tracked |
+| --- | --- | --- |
+| `MAX_PARAMETERS`, `MAX_PARAM_NAME_LEN` | a multi-entry cmake configure names no descriptor to cargo; on a Zephyr west entry these travel as the KNOB itself, not this carrier | issue 1407 |
+| the three `PARAM_NEEDS_*`, `PARAM_SERVICE_SHAPE` | a Zephyr west entry FORWARDS these by name (`nros_cargo_build.cmake`) and names no descriptor to cargo; plus a multi-entry configure | issue 1407 |
+| `MAX_STRING_VALUE_LEN`, `MAX_ARRAY_LEN`, `MAX_BYTE_ARRAY_LEN` | BOARD capacities (RFC-0100 D1 target facts) — never in the descriptor, by decision | `ByDesign(RFC-0100 D1)` in the ledger |
+
+Two corrections to the "What is STILL open" list above, both measured against
+the tree on 2026-10-01:
+
+* "a STANDALONE cargo leaf with no resolved model" is not a road the carriers
+  reach either — with no model there is no `ParamDeclarations` — so it was never
+  a reason to keep them;
+* the three board capacities were KEPT against THIS issue, which would have made
+  their reason decay the moment it closed. `check-knob-single-reader` gained a
+  `ByDesign` row kind for a carrier anchored to a DECISION (an RFC + decision
+  label, both checked to exist, with a selftest), so they now cite RFC-0100 D1.

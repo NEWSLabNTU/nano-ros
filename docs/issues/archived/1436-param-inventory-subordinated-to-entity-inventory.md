@@ -124,7 +124,7 @@ cannot quietly stop covering this when the fixture grows wiring.
 
 ## What this does not close
 
-[Issue 1408](../1408-sizing-descriptor-has-no-parameter-store-section.md) stays
+[Issue 1408](1408-sizing-descriptor-has-no-parameter-store-section.md) stays
 open. The sizing descriptor still has no `[params]` section, so the nine
 `NROS_DECLARED_*` parameter carriers are still the only transport for these
 facts. This issue is why 1408's question 3 — *"does a parameter-only descriptor

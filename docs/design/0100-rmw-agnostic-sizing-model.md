@@ -435,7 +435,7 @@ leaf has three: the resolved SystemModel. So the decision W11 left open —
 | `[types]` `max_fields` / `max_kinds` / `max_nested_depth` | **Refused** | needs codegen's own per-type schema walk |
 | `registration_path` | **Per row** (phase-457 W3) | the `in_place` row needs only the BACKEND (a function of `rmw`, which this road has) and the endpoint's OWN observed answer, so a row the probe saw registering is STATED here. The two buffered rows still need the entry's language, which a model image of SEVERAL PACKAGES has no one answer for, and are refused. A row nothing observed is refused naming [issue 1522](../issues/archived/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md) — the closure buffer is 1,848 bytes per subscription over the type's bound (issue 1319) and the in-place row claims NO region at all (issue 1340), so a guess is a failure in both directions |
 
-Every refusal names [issue 1393](../issues/1393-cmake-road-has-no-bound-inventory.md)
+Every refusal names [issue 1393](../issues/archived/1393-cmake-road-has-no-bound-inventory.md)
 — except `registration_path`'s, which names
 [issue 1522](../issues/archived/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md)
 because the input it lacks is a different KIND of thing: 1393's remedy is an
@@ -443,6 +443,21 @@ artifact some road can produce, while a registration spelling can only be
 reported by a probe that actually registers. So the artifact itself says what is
 missing and why, and the day either closes, the refusals in a written descriptor
 are the checklist.
+
+**Amended 2026-10-01 — issue 1393 is closed, and the table above is history.**
+The model roads now receive the inputs the "Refused" rows named:
+phase-457-payload W2 hands every producer the bound tables its closure
+REGISTERED (so `wire_bound_bytes` and `[types]` are stated), phase-457 W4 the
+board's triple, and `storage_bytes` runs the leaf road's own chain on every road.
+A descriptor-carrying backend states `registration_path = "typed_bound"` without
+the language, because every language arm gave it. So the rule is now one
+sentence for all three producers — **compose with the same code, refuse per field
+on the input that is actually missing, and name THAT input** — and a model road
+and a leaf road handed the same inputs are asserted to AGREE field by field. What
+still refuses on a model road is narrower than the road: a closure that
+registered no table (said so), and an unobserved subscription on an in-place
+backend, because the model road's inventory joins no probe sidecar
+([issue 1594](../issues/1594-model-road-subscription-rows-carry-no-registration-observation.md)).
 
 **This is D6 doing the work it exists for.** A partial descriptor is safe to
 publish precisely because `Fact::stated()` is the only accessor that yields a

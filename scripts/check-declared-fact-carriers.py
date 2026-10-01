@@ -533,9 +533,10 @@ ROAD_UNPAIRED = {
         "NROS_DERIVED_TL_PUBLISHERS for the Zephyr resolver road only (issue "
         "1498), and the cargo-leaf road answers this "
         "question from its SIZING DESCRIPTOR instead (phase-455 W5). This "
-        "carrier exists for the roads that have no descriptor at all, which is "
-        "every cmake / Zephyr west / NuttX entry (issue 1393) -- and that gap "
-        "is exactly what 1378 measured.",
+        "carrier exists for the roads that name no descriptor to cargo -- "
+        "every cmake / Zephyr west / NuttX entry when 1378 measured the gap, "
+        "and since phase-454 W14 / phase-457 W0.b a Zephyr west entry and a "
+        "multi-entry cmake configure (issue 1407).",
     "NROS_DECLARED_MAX_QOS_DEPTH":
         "the largest DECLARED QoS depth (phase-412 W3), reduced at the "
         "producer from the inventory's `type|topic=depth` triples and only "

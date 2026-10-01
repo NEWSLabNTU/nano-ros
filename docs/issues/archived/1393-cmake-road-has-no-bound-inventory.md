@@ -4,12 +4,14 @@ title: "The model-only sizing descriptor refuses five fields because a workspace
   image and a cmake entry reach no bound inventory, no per-type schema walk and
   no per-call-site registration spelling — the counts and the QoS travel, the
   payload sizes do not"
-status: open
+status: resolved
 type: tech-debt
 area: [build, core]
 severity: medium
 found: 2026-09-20
-related: [1199, 1319, 0460, 1115]
+resolved: 2026-10-01
+resolved_in: "the PR 'descriptor producers: close the model road's field gap (1393) and the schema gap (1408)' — with phase-457-payload W2 (bound tables) and phase-457 W4 (triple) before it"
+related: [1199, 1319, 0460, 1115, 1407, 1408, 1594, 1595]
 ---
 
 ## What is open
@@ -131,7 +133,7 @@ inventory) **— and that the other 22 are blocked by something else.** Closing
 this issue therefore does NOT unblock the retirement:
 
 * the entity counts and the queryable raw inputs are
-  [issue 1407](1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md)
+  [issue 1407](../1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md)
   — the model-only producer reads a POORER inventory than the carriers' verb
   does, and a standalone leaf has no model to read at all. Neither mechanism is
   touched by filling in a bound;
@@ -144,3 +146,78 @@ The full per-fact ledger is the `KEPT` registry in
 `scripts/check/check-knob-single-reader.py`, and it is enforced: a carrier with
 no row fails, and a row whose blocking issue is no longer `status: open` fails,
 so closing this one re-opens the retirement question for exactly its four.
+
+## Resolution (2026-10-01)
+
+**No field is refused for being on a model road any more.** Each of the five is
+composed by the leaf road's own code from inputs the model roads now carry, and
+refuses only on the input that is actually missing, naming it.
+
+| field | how it is stated on a model road | landed in |
+| --- | --- | --- |
+| `wire_bound_bytes` | the bound tables the closure REGISTERED, through the leaf road's reader | phase-457-payload W2 |
+| `[types]` three maxima | the schema shapes in those same tables | phase-457-payload W2 |
+| `storage_bytes` | ONE chain (`set_storage_bytes`) on every road: bound + the board's pointer width + depth | this PR (needs W4's triple) |
+| `registration_path`, descriptor backend | `typed_bound` without a language — both language arms gave it | this PR |
+| `registration_path`, in-place backend | the backend + an OBSERVED registration (phase-457 W3); unobserved rows refuse, naming **issue 1594** | phase-457 W3; reason narrowed here |
+
+### What this PR changed
+
+* **`storage_bytes`** — the horizon's short-circuit is gone. Its reason said a
+  region had "neither of its two sizes" and was FALSE once W2/W4 landed:
+  `examples/workspaces/cpp`'s `native_entry.toml` carried `wire_bound_bytes = 12`
+  and `[target] pointer_bytes = 8` beside that refusal. The chain now runs on
+  every road, and a region refused for its bound carries the bound's own reason.
+* **`registration_path`** — a descriptor-carrying backend (Cyclone) answers
+  `typed_bound` before the language is asked: the table's two language arms
+  both gave it, so the model road was refusing a fact every possible answer
+  agreed on.
+* **The refusal prose** — `MODEL_ONLY_ISSUE` ("issue 1393") is deleted. A road
+  handed no bound table says exactly that; an unobserved in-place row names
+  issue 1594 (model road) or issue 1522's by-design ruling (a leaf
+  declaration).
+* **`NROS_CYCLONEDDS_HEAP_BUDGET_BYTES`**, the second of the two smaller things
+  above, is now in `nros-rmw-cyclonedds-sys`'s `KNOBS` forward list, so D11's
+  boot assertion can fire on the cargo road; held by
+  `every_cyclonedds_env_row_is_forwarded_by_the_sys_build_script`. No board in
+  the tree states `[board.knobs.memory] heap_bytes`, so no image changes. NOT
+  built here: the worktree had no provisioned Cyclone source.
+* The first smaller thing (`NROS_ENTITY_COUNT_*` on the cargo road) was closed
+  by issue 1577: the counts live in `[image]` now.
+
+### Measured
+
+`examples/workspaces/cpp` `native_entry` (zenoh), descriptor written from that
+build's own model, metadata and its five registered bound tables, by the CLI
+before and after (same inputs, `--host-build`):
+
+| `/chatter` subscription | before | after |
+| --- | --- | --- |
+| `storage_bytes` | refused: "neither of its two sizes … Tracked by issue 1393" | refused: "no `depth` was declared for this endpoint" — true; the contract states none |
+| `registration_path` (zenoh) | refused, issue 1393 | refused, issue 1594 (no observation reaches this road) |
+| `registration_path` (same image, `--rmw cyclonedds`) | refused, issue 1393 (publisher too) | `typed_bound` on both rows |
+
+Where a depth IS declared, the model road states the region and AGREES with
+the leaf road: `bound_tables_turn_the_model_roads_payload_refusals_into_facts`
+(the resolved `policies` fixture + the committed `nros-std-msgs` table) compares
+the written descriptor field by field against the leaf composer over the same
+inputs — `wire_bound_bytes`, `storage_bytes`, `depth`, `[types]`, `[target]`.
+Mutation-tested: restoring the horizon short-circuit reds it and
+`handed_the_tables_the_model_road_states_the_region_the_leaf_road_states`.
+
+**No image's knobs change from `storage_bytes`**: no consumer reads it today (it
+reaches the cmake projection only). The `typed_bound` path on Cyclone does reach
+`nros-node`'s per-endpoint arena on the cmake road — the leaf road's own answer
+for the same backend — and was not measured on a built Cyclone image.
+
+### The ledger, re-run per fact
+
+Closing this re-opened the retirement question for the six carriers KEPT
+against it, as the ledger is built to do. None retires:
+
+* the four payload carriers have **no descriptor reader** — zenoh's subscriber
+  classes and `nros-node`'s `RX_BUF` read only the carrier (and the cargo leaf
+  delivers them as plain knob rows), and `SUBSCRIPTION_BUFFER_SIZE` is a
+  CLOSURE-basis fact no endpoint table spans → **issue 1595**;
+* the two inbox carriers ARE read descriptor-first; what keeps them is that a
+  Zephyr west entry names no descriptor to cargo → **issue 1407**.

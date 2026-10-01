@@ -306,10 +306,79 @@ class Kept:
         self.why = why
 
 
-# Issue 1393 -- the payload class. `wire_bound_bytes` / `storage_bytes` are
-# REFUSED by the model-only producer, so on two roads of three the descriptor
-# states no size at all and this carrier is the only one that does.
-_PAYLOAD = "the descriptor REFUSES the bound this sizes from on 2 roads of 3"
+class ByDesign:
+    """A carrier that will NEVER retire into the descriptor, by a DECISION.
+
+    `Kept` points at an open issue because its gap is meant to close. Some
+    carriers are not a gap: an RFC decided the fact belongs to a different
+    owner, so no issue can honestly track "closing" it, and pointing such a row
+    at an issue that happens to be open is a reason that silently decays the day
+    that issue closes for its own reasons -- which is exactly what happened to
+    the three board capacities when issue 1408 (the schema section) closed.
+
+    So a design row cites the DECISION: an RFC number plus the decision label,
+    and both are checked to exist in `docs/design/`. A row here is re-examined
+    when that RFC is amended, which is the only event that can change it.
+    """
+
+    def __init__(self, rfc, decision, why):
+        self.rfc = rfc
+        self.decision = decision
+        self.why = why
+
+
+def by_design_failure(knob, entry, rfc_text_for):
+    """`None` when `entry`'s decision exists; a failure line otherwise.
+
+    `rfc_text_for(number)` returns the RFC's text or `None`, injected so the
+    selftest can drive this on synthetic input.
+    """
+    text = rfc_text_for(entry.rfc)
+    if text is None:
+        return (
+            f"  {knob} is KEPT BY DESIGN against RFC-{entry.rfc:04d}, and no such\n"
+            "      RFC exists in docs/design/. A design reason must cite a decision\n"
+            "      someone can read and amend."
+        )
+    if entry.decision not in text:
+        return (
+            f"  {knob} is KEPT BY DESIGN against RFC-{entry.rfc:04d} {entry.decision},\n"
+            "      and that RFC does not contain the decision label. Either the\n"
+            "      decision was renumbered or it was removed -- if removed, this\n"
+            "      carrier's retirement question is open again."
+        )
+    return None
+
+
+def rfc_text(number):
+    hits = list((REPO / "docs" / "design").glob(f"{number:04d}-*.md"))
+    return hits[0].read_text(encoding="utf-8", errors="ignore") if hits else None
+
+
+# The payload class. Issue 1393 (closed) was the FIELD gap: the model-only
+# producer refused `wire_bound_bytes` / `storage_bytes` on two roads of three.
+# phase-457-payload W2 + issue 1393's closure fill both on every producer road,
+# so the per-fact test was re-run for these four, and the answer is still no,
+# for a reason that is not about the descriptor's fields at all:
+#
+#   * NO CONSUMER READS THEM OFF THE DESCRIPTOR. `nros-rmw-zenoh` sizes its
+#     small/large subscriber classes from `NROS_DECLARED_*` alone and
+#     `nros-node` its `RX_BUF` from `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE`
+#     alone; the cargo-leaf road delivers the same facts as plain knob rows
+#     (`DERIVED_PAYLOAD_ENV_KEYS` / `DERIVED_CLOSURE_ENV_KEYS`), not through the
+#     descriptor either. The descriptor STATING the bound buys nothing until a
+#     consumer ranks it first -- `NROS_DECLARED_SERVICE_SERVERS`'s shape.
+#   * a Zephyr west entry and a multi-entry configure name no descriptor to
+#     cargo at all (issue 1407).
+#
+# Issue 1595 tracks the first, which is the one that has to move before the
+# second matters.
+_PAYLOAD = (
+    "no consumer reads the subscriber payload classes off the descriptor -- "
+    "the descriptor states each subscription's `wire_bound_bytes` on every "
+    "producer road since phase-457-payload W2, and zenoh's classes are still "
+    "sized from this carrier alone"
+)
 
 # Issue 1407 -- the count class. Three independent mechanisms, none of which
 # 1393's remedy touches.
@@ -345,59 +414,82 @@ _COUNTS = "the descriptor's producer does not run on every road this carrier rea
 #     whole per-endpoint table and has no MAX; the entity facts do have one and
 #     still travel). So this is not a gap waiting on a wave -- it is a road where
 #     the carrier is structurally the only answer.
-#   * a STANDALONE ZEPHYR leaf reaches neither producer: `nano_rosConfig.cmake`'s
-#     Zephyr arm returns before `nros_record_leaf_entity_facts` by design, because
-#     that road has the Kconfig derive sentinel as its own front-end (RFC-0049).
+#   * a ZEPHYR WEST entry writes a descriptor and names NONE to cargo:
+#     `zephyr/cmake/nros_cargo_build.cmake` forwards the transient-local count
+#     (`_nros_resolve_derivable_knob(NROS_DECLARED_TL_PUBLISHERS ...)`) and has no
+#     `NROS_SIZING_DESCRIPTOR` row at all.
+#
+# CORRECTED 2026-10-01: this said "a standalone ZEPHYR leaf reaches neither
+# producer". True, and not a reason to keep anything -- `nano_rosConfig.cmake`'s
+# Zephyr arm returns before `nros_record_leaf_entity_facts`, so such a leaf gets
+# no CARRIER either, and the retirement test asks only about roads a carrier
+# reaches. The Zephyr road that does matter is the west ENTRY above.
 #
 # Retiring on "the descriptor states the fact" would re-open 1378 on exactly the
 # images that describe themselves, which is phase-454 W9's lesson.
 _LEAF_ROAD = (
     "the standalone-leaf road has a descriptor since phase-457 W0.b; a "
-    "multi-entry configure and a standalone Zephyr leaf still reach neither "
-    "producer"
+    "multi-entry configure names no descriptor to cargo, and a Zephyr west "
+    "entry names none while forwarding the carriers it reads"
 )
 
-# Issue 1408 -- the parameter store. The gap that KEPT these has CLOSED at both
-# ends: `[params]` exists in the D4 schema and the shared composer fills it on
-# BOTH producer roads, and `nros-params`/`nros-node` read it at the rung the
-# carrier occupies. What is left is the RETIREMENT, which is deliberately its
-# own wave (W9's lesson, and this whole ledger's reason for existing): a carrier
-# comes out only once both roads are MEASURED delivering on every road that
-# carries it, and three do not have a descriptor at all today --
+# The parameter store. Issue 1408 (closed) was the SCHEMA gap: `[params]` is in
+# the D4 schema, the shared composer fills it on every producer road, and
+# `nros-params`/`nros-node` read it at the rung the carrier occupies -- measured
+# identical on the road that has both (`nros_params_config.rs` byte-for-byte,
+# and `DECLARED_PARAM_SERVICE_SHAPES` byte-for-byte). Its last open piece, a
+# PARAMETER-ONLY contract reaching no descriptor on the cargo road, was issue
+# 1436 (archived).
 #
-#   * a STANDALONE cargo leaf with no resolved model (the 1407 `_LEAF_ROAD`
-#     shape one section up: no model, so no `write_for_model`, and a leaf with
-#     no `system.contract.yaml` has no `ParamDeclarations` either);
-#   * a MULTI-ENTRY cmake configure, which names no descriptor to cargo while
-#     the facts still travel;
-#   * the Zephyr west lane, which has no `--config` seam of its own (1288).
+# What is left is the RETIREMENT, and the per-fact test was re-run when 1408
+# closed. It is a COVERAGE answer now, so these rows moved to issue 1407:
 #
-# So both roads run, ranked with the descriptor first -- measured identical on
-# the road that has both (`nros_params_config.rs` byte-for-byte, and
-# `DECLARED_PARAM_SERVICE_SHAPES` byte-for-byte).
-_BOTH_ROADS = (
-    "the descriptor now states it and is read FIRST; the carrier is the only "
-    "road for a standalone leaf, a multi-entry cmake configure and the Zephyr "
-    "west lane, so retirement is its own wave"
+#   * a MULTI-ENTRY cmake configure names no descriptor to cargo while the
+#     facts still travel (a MAX across the models) -- every row below;
+#   * a ZEPHYR WEST entry forwards the three NEEDS and the service shape under
+#     these very names (`nros_cargo_build.cmake`) and names no descriptor --
+#     the `_PARAM_ZEPHYR` rows only. The two counts travel there as the knob
+#     itself (`_nros_resolve_derivable_knob(NROS_MAX_PARAMETERS ...)`), not as
+#     this carrier.
+#
+# CORRECTED 2026-10-01: this listed "a STANDALONE cargo leaf with no resolved
+# model" as a third road. It is not one: with no model there is no
+# `ParamDeclarations`, so the carrier delivers nothing there either.
+_PARAM_MULTI_ENTRY = (
+    "the descriptor states it and is read FIRST; the one road where only this "
+    "carrier delivers is a multi-entry cmake configure, which names no "
+    "descriptor to cargo"
+)
+_PARAM_ZEPHYR = (
+    "the descriptor states it and is read FIRST; a Zephyr west entry forwards "
+    "this carrier and names no descriptor to cargo, and neither does a "
+    "multi-entry cmake configure"
 )
 
-# The three BOARD capacities. These are not waiting on a wave at all: they are
-# RFC-0100 D1 *target* facts owned by `[board.knobs.params]`, so they have no
-# descriptor spelling BY DESIGN and never will -- an MCU and a PC want different
-# string lengths for the same node, so a contract cannot name the number. What
-# the descriptor carries is the NEED (`needs_max_*`), which is the half the
-# contract owns; these carry the RESOLVED number for the cmake road.
+# The three BOARD capacities. Not waiting on any issue: they are RFC-0100 D1
+# *target* facts owned by `[board.knobs.params]`, so they have no descriptor
+# spelling BY DESIGN and never will -- an MCU and a PC want different string
+# lengths for the same node, so a contract cannot name the number. What the
+# descriptor carries is the NEED (`needs_max_*`), which is the half the contract
+# owns; these carry the RESOLVED number for the cmake road. They pointed at
+# issue 1408 while it was open, which was a reason that would have decayed the
+# day it closed -- hence `ByDesign`.
 _BOARD_CAPACITY = (
     "a BOARD capacity (RFC-0100 D1 target fact), deliberately absent from the "
     "descriptor -- the contract states the NEED, never the size"
 )
 
 KEPT = {
-    # ---- payload class (issue 1393) -------------------------------------
-    "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": Kept(1393, _PAYLOAD),
-    "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": Kept(1393, _PAYLOAD),
-    "NROS_DECLARED_LARGE_SUBSCRIBERS": Kept(1393, _PAYLOAD),
-    "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": Kept(1393, _PAYLOAD),
+    # ---- payload class (issue 1595; was 1393, closed) -------------------
+    "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": Kept(1595, _PAYLOAD),
+    "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": Kept(
+        1595,
+        _PAYLOAD + "; and its basis is the CLOSURE -- every type the image could "
+        "receive OR publish, because `DEFAULT_TX_BUF` aliases `RX_BUF` -- which "
+        "no set of `[[endpoint]]` rows spans, so it also needs a field",
+    ),
+    "NROS_DECLARED_LARGE_SUBSCRIBERS": Kept(1595, _PAYLOAD),
+    "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": Kept(1595, _PAYLOAD),
     # ---- the entity counts (issue 1407) ---------------------------------
     # Three of these the schema could not state even with 1407 closed, and
     # each is a DIFFERENT structural reason -- worth keeping distinct, because
@@ -466,34 +558,37 @@ KEPT = {
         _LEAF_ROAD + "; and it is a FEATURE token from `execution.features`, "
         "not a count -- the schema has no field of that kind",
     ),
-    # ---- the parameter store (issue 1408) -------------------------------
-    "NROS_DECLARED_MAX_PARAMETERS": Kept(1408, _BOTH_ROADS),
-    "NROS_DECLARED_MAX_PARAM_NAME_LEN": Kept(1408, _BOTH_ROADS),
-    "NROS_DECLARED_MAX_STRING_VALUE_LEN": Kept(1408, _BOARD_CAPACITY),
-    "NROS_DECLARED_MAX_ARRAY_LEN": Kept(1408, _BOARD_CAPACITY),
-    "NROS_DECLARED_MAX_BYTE_ARRAY_LEN": Kept(1408, _BOARD_CAPACITY),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN": Kept(1408, _BOTH_ROADS),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": Kept(1408, _BOTH_ROADS),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": Kept(1408, _BOTH_ROADS),
-    "NROS_DECLARED_PARAM_SERVICE_SHAPE": Kept(1408, _BOTH_ROADS),
+    # ---- the parameter store (issue 1407; was 1408, closed) -------------
+    "NROS_DECLARED_MAX_PARAMETERS": Kept(1407, _PARAM_MULTI_ENTRY),
+    "NROS_DECLARED_MAX_PARAM_NAME_LEN": Kept(1407, _PARAM_MULTI_ENTRY),
+    "NROS_DECLARED_MAX_STRING_VALUE_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
+    "NROS_DECLARED_MAX_ARRAY_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
+    "NROS_DECLARED_MAX_BYTE_ARRAY_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN": Kept(1407, _PARAM_ZEPHYR),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": Kept(1407, _PARAM_ZEPHYR),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": Kept(1407, _PARAM_ZEPHYR),
+    "NROS_DECLARED_PARAM_SERVICE_SHAPE": Kept(1407, _PARAM_ZEPHYR),
     # ---- the two inbox families (issue 1352, phase-461 W3) --------------
     # These are the newest carriers and the retirement question has a clear
     # answer for them: the descriptor DOES state the fact -- W3 makes
     # `[[endpoint]] wire_bound_bytes` resolve for a service and an action row
     # by joining on the REQUEST type, and `declared_service_request_bytes`
     # reads exactly that, ranked FIRST in `nros-rmw-zenoh/build.rs`. What keeps
-    # the carrier is the road: phase-454 W11 measured that no cmake / Zephyr
-    # west entry produces a descriptor at all, and that is the road the safety
-    # island (the image this phase exists for) is on. Retire it with the other
-    # 1393 carriers, when the descriptor reaches that road.
+    # the carrier is the road. phase-454 W11 measured that no cmake / Zephyr
+    # west entry produced a descriptor at all; W14 gave both a producer, and
+    # the plain cmake road names it to cargo beside this carrier -- but the
+    # Zephyr WEST entry, the safety island's road (the image this phase exists
+    # for), still names NO descriptor to cargo while `nros_cargo_build.cmake`
+    # forwards this carrier. Re-run per fact when 1393 closed: blocked on the
+    # coverage axis, so the rows moved from 1393 to issue 1407.
     "NROS_DECLARED_SERVICE_INBOX_BYTES": Kept(
-        1393,
+        1407,
         "the descriptor states this fact and is read FIRST; the carrier is the "
-        "only road for a cmake / Zephyr west entry, which produces no "
-        "descriptor (phase-454 W11) and is the safety island's road",
+        "only road for a Zephyr west entry, which writes a descriptor and names "
+        "none to cargo, and is the safety island's road",
     ),
     "NROS_DECLARED_ACTION_INBOX_BYTES": Kept(
-        1393,
+        1407,
         "the action half of the row above, same descriptor field and same "
         "road gap; priced apart because the two families have separate rings "
         "and separate depths since phase-461 W1",
@@ -657,6 +752,11 @@ def check_ledger() -> list[str]:
         )
 
     for knob, kept in sorted(KEPT.items()):
+        if isinstance(kept, ByDesign):
+            why = by_design_failure(knob, kept, rfc_text)
+            if why:
+                failures.append(why)
+            continue
         issues = list((REPO / "docs" / "issues").glob(f"{kept.blocked_by}-*.md"))
         if not issues:
             failures.append(
@@ -707,6 +807,20 @@ def ledger_self_test() -> None:
     # form: `rust_block` returning None means the struct was renamed, which
     # the tree-level run reports through the carrier completeness check.
     assert rust_block("struct Q {}", "pub struct Held {") is None
+
+    # A BY-DESIGN row is held to its decision existing: a missing RFC and a
+    # missing decision label each fail, and a present one passes -- three
+    # cases, so the control cannot pass by the predicate being constant.
+    design = ByDesign(100, "D1", "w")
+    assert by_design_failure("K", design, lambda _n: None), (
+        "ledger selftest: a by-design row citing no RFC passed"
+    )
+    assert by_design_failure("K", design, lambda _n: "## D2 only"), (
+        "ledger selftest: a by-design row whose decision label is gone passed"
+    )
+    assert by_design_failure("K", design, lambda _n: "### D1 — target facts") is None, (
+        "ledger selftest: a by-design row citing a real decision failed"
+    )
 
 
 # The resolver itself names every knob in its front-end table; that is the map,
@@ -888,14 +1002,20 @@ def main() -> int:
         print(f"  - {name} ({entry.wave}) -- {entry.what}")
         print(f"      now: {entry.resolves_now}")
     by_issue: dict[int, list[str]] = {}
+    by_design: dict[str, list[str]] = {}
     for knob, kept in KEPT.items():
-        by_issue.setdefault(kept.blocked_by, []).append(knob)
+        if isinstance(kept, ByDesign):
+            by_design.setdefault(f"RFC-{kept.rfc:04d} {kept.decision}", []).append(knob)
+        else:
+            by_issue.setdefault(kept.blocked_by, []).append(knob)
     print(
         f"check-knob-single-reader: {len(KEPT)} carrier(s) KEPT -- the retirement\n"
         "  question was asked and the answer was no, per issue:"
     )
     for issue in sorted(by_issue):
         print(f"  - issue {issue}: {len(by_issue[issue])} carrier(s)")
+    for decision in sorted(by_design):
+        print(f"  - by design, {decision}: {len(by_design[decision])} carrier(s)")
     return 0
 
 
