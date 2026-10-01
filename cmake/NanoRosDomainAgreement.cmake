@@ -140,6 +140,22 @@ function(nros_check_domain_agreement)
     if(NOT "${_D_SYSTEM_DOMAIN}" STREQUAL "" AND NOT _D_SYSTEM_DOMAIN EQUAL _k)
         set(_agree FALSE)
     endif()
+    # Cyclone reads its OWN knob, `CONFIG_NROS_CYCLONE_DOMAIN_ID`, which defaults
+    # to `CONFIG_NROS_DOMAIN_ID` -- and a literal pinned in a conf is the
+    # phase-180 split-brain that ran every Cyclone image on domain 0. Until this
+    # moved here only `nros_system_generate` compared it, so the ENTRY road
+    # (NanoRosEntry.cmake) checked the zenoh domain and let Cyclone's disagree
+    # unseen: one comparison, delivered to one of the two roads that need it
+    # (issue 1610).
+    set(_cyc "unset")
+    if(DEFINED CONFIG_NROS_CYCLONE_DOMAIN_ID)
+        set(_cyc "${CONFIG_NROS_CYCLONE_DOMAIN_ID}")
+        if(NOT _cyc EQUAL _k)
+            set(_agree FALSE)
+        endif()
+    endif()
+    set(_cyclone_line
+        "\n  CONFIG_NROS_CYCLONE_DOMAIN_ID = ${_cyc}  (Cyclone's own knob; defaults to CONFIG_NROS_DOMAIN_ID)")
 
     set(_snippet_lines "")
     set(_other_lines "")
@@ -175,6 +191,11 @@ function(nros_check_domain_agreement)
             "\n  system.toml domain_id = ${_D_SYSTEM_DOMAIN}  (${_D_SYSTEM_FILE})")
     endif()
 
+    if("${_D_SYSTEM_DOMAIN}" STREQUAL "")
+        set(_remedy_n "<n>")
+    else()
+        set(_remedy_n "${_D_SYSTEM_DOMAIN}")
+    endif()
     if(NOT _agree)
         # ONE string with no blank lines: cmake indents every line of a
         # FATAL_ERROR, so an empty one renders as stray whitespace.
@@ -182,10 +203,10 @@ function(nros_check_domain_agreement)
             "${_D_CONTEXT}: this image's ROS domain is stated more than once and "
             "the statements disagree:"
             "\n  CONFIG_NROS_DOMAIN_ID = ${_k}  (what the image bakes; from ${_src_label})"
-            "${_sys_line}${_snippet_lines}${_other_lines}"
+            "${_sys_line}${_cyclone_line}${_snippet_lines}${_other_lines}"
             "\nThe image runs on ${_k}; a peer on any other domain never sees it, "
             "and nothing at run time says why. Kconfig is what the image bakes "
-            "(RFC-0049): state `CONFIG_NROS_DOMAIN_ID=<n>` once, in the fragment "
+            "(RFC-0049): state `CONFIG_NROS_DOMAIN_ID=${_remedy_n}` once, in the fragment "
             "every transport of this image merges (the board `.conf`, or each "
             "transport snippet), and make system.toml's `domain_id` say the same "
             "(issue 1550).")
@@ -197,5 +218,5 @@ function(nros_check_domain_agreement)
     endif()
     message(STATUS
         "${_D_CONTEXT}: domain ${_k} agrees -- CONFIG_NROS_DOMAIN_ID from "
-        "${_src_label}; ${_sys_word}")
+        "${_src_label}; ${_sys_word} (CONFIG_NROS_CYCLONE_DOMAIN_ID=${_cyc})")
 endfunction()

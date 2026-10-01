@@ -190,7 +190,9 @@ if ! nros_grep_q -i "CMake Error" <<<"$OUT"; then
     fail "A: the disagreement did not raise a FATAL_ERROR -- $OUT"
 fi
 check
-if ! nros_grep_q "NROS_SYSTEM_DOMAIN_ID = 10" <<<"$OUT"; then
+# Issue 1610 -- the refusal is the shared helper's now, which labels the baked
+# value by where it came from rather than by the define's name.
+if ! nros_grep_q "system.toml domain_id = 10" <<<"$OUT"; then
     fail "A: the refusal does not name the baked value -- $OUT"
 fi
 check

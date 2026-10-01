@@ -1225,7 +1225,8 @@ jobs:
       #
       # Admissible here under the `check-lane-contracts` rule, and that is a
       # property of these targets rather than a hope: they resolve no fixture
-      # stamp and build no fixture. Keep it that way — a target added to
+      # stamp and build no fixture. (`loc_budgets` joined on that rule in issue
+      # 1610 — it was red on `main` for three days because no lane ran it.) Keep it that way — a target added to
       # `test-lane-contracts` that needs a staged artifact breaks this step and
       # the tier's promise with it.
       #
