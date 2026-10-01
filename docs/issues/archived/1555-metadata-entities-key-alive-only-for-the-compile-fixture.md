@@ -2,7 +2,8 @@
 id: 1555
 title: "The `nros-metadata.json` `entities` key has no production producer — the
   reader survives only to build the declared-QoS compile fixture"
-status: open
+status: resolved
+resolved_in: 2026-10-01
 type: tech-debt
 area: [tooling, build]
 related: [1265, 1556, 1142, 1407, phase-403, phase-412, phase-454, rfc-0098]
@@ -203,3 +204,67 @@ whose rule is the same and whose stated rationale is performance. Nothing here
 asks for that gate's allowlist to be widened: a `.contract.yaml` can legitimately
 be untracked build output, since `nros sync` synthesises one into a generated
 dir.)
+
+## Resolution (2026-10-01)
+
+**The reader is retired, and the fixture moved to the road a real image takes.**
+Fix direction 1 -- "render the header from `--model`" -- without the build-step
+fixture the issue assumed it needed, because the premise behind that assumption
+was wrong: a model CAN be committed as a test input. `check-no-tracked-models`
+refuses `*_model.yaml` / `*/system_model.yaml`, and the tree already held a
+precedent beside this very fixture: `declared-params-fixture/declared_params.yaml`
+(phase-446 W6) is a SystemModel, named so the gate does not mistake a test input
+for a build artifact. The declared-QoS fixture now has the same shape.
+
+What changed:
+
+* **`packages/api/nros-cpp/tests/compile/declared-qos-fixture/declared_qos.yaml`**
+  (new) -- the model. It states the same three cases the metadata document did:
+  `/chatter` at `qos: { depth: 1 }`, `/undeclared` with no depth, and a timer
+  path (`contracts.node_paths./listener/on_tick`). The issue's corollary said "the
+  contract has no timer entity"; it does -- a `node_paths` row with no `input` is
+  one, and `EntityInventory::from_model` already counted it.
+* **`entities.json` -> `nros-metadata.json`**, with the `"entities"` key removed:
+  it now says what a configure's metadata says -- which components are
+  registered -- and nothing about what they create.
+* **The header** was regenerated through the CLI verb a configure runs
+  (`nros ws entity-inventory --metadata ... --model ... --component demo::listener
+  --output-header ...`). Only its `Source:` comment line changed: the X-macro rows,
+  `NROS_DECLARED_QOS_STATUS` and `NROS_DECLARED_QOS_UNDECLARED_COUNT 1` are
+  byte-identical, so `just check c` / `just check cpp` compile the same table and
+  the probe TUs fail for the same reason. `MAX_CBS` from the verb is 3 on both
+  inputs (two subscriptions and the timer).
+* **`ComponentMeta::entities`** is now `Option<serde::de::IgnoredAny>` and a
+  document carrying the key is REFUSED, naming this issue and `--model`. Not
+  dropped from the struct: serde ignores an unknown key, so a document still
+  carrying one would have had its declaration discarded in silence.
+* **`fold_model`** -- the model fold `run` performs, lifted out so
+  `the_committed_compile_fixture_is_what_this_emitter_renders` holds the header to
+  THAT function (plus the three refusals `run` applies at the same door) rather
+  than to a restatement of it.
+* **`check-knob-single-reader.py`** gained a `Retired` row scoped to
+  `struct ComponentMeta`, forbidding an `entities` field that could hold the
+  strings. Negative control run: changing the field back to
+  `Option<Vec<String>>` fails the gate naming this row; restoring it passes.
+* The reader's own tests went with it (`entities_travel_...`,
+  `an_empty_entities_list_...`, `none_beside_entities_...`,
+  `a_bad_spelling_...` -- the grammar they exercised is `EntityDecl::parse`,
+  still tested where `system.toml` reads it). Replaced by
+  `a_metadata_row_alone_is_absent_never_zero`,
+  `the_retired_entities_key_is_refused_not_ignored` and
+  `the_model_states_what_the_registered_components_create`; the narrowing and
+  ambiguity tests now compose a model instead of declaring in metadata.
+* `tests/fixtures/refused_resolve/nros-metadata.json` carried the key
+  decoratively (the issue noted its test asserts nothing about entity counts);
+  removed, since the verb now refuses a document that carries it.
+
+Acceptance, checked: the probe TUs still fail (the header's rows are unchanged
+byte for byte), `ComponentMeta::entities` no longer reads anything, and the gate
+refuses its reintroduction on the Rust side as it already did on the cmake side.
+
+**What this does NOT change**, and is not claimed: the "EXPIRY" section above
+still holds. The lanes now compile against a header rendered from the live
+input adapter, but no C++ image in the tree declares a depth in its contract, so
+`check c` / `check cpp` still demonstrate that the machinery works rather than
+that a shipping image uses it. That is the documented opt-in policy, not a
+defect, and it lifts on the condition stated there.

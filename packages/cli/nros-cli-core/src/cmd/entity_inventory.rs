@@ -34,7 +34,7 @@ use serde::Deserialize;
 
 use crate::entity_inventory::{
     ComponentEntities, Declaration, ENTITY_INVENTORY_CMAKE_NAME, ENTITY_INVENTORY_JSON_NAME,
-    EntityDecl, EntityInventory,
+    EntityInventory,
 };
 
 /// The `components[]` fields this verb needs. Every other field the typed entry
@@ -45,50 +45,27 @@ struct ComponentMeta {
     #[serde(default)]
     pkg: Option<String>,
     class: String,
-    /// phase-403 W9 -- `nano_ros_node_register(ENTITIES ...)`.
+    /// RETIRED (issue 1555) -- a metadata row says WHICH components an image
+    /// registers, never WHAT they create.
     ///
-    /// `Option<Vec<_>>` and not `#[serde(default)]`: the whole design turns on
-    /// telling "declared nothing" from "did not declare", and a defaulted empty
-    /// vector collapses exactly those two.
+    /// This used to be read. `nano_ros_node_register(ENTITIES ...)` wrote it
+    /// until phase-412 retired the keyword, and phase-454 W9 removed the splice
+    /// point from `_nros_metadata_emit()`. From then on the key had NO
+    /// production producer -- measured 2026-09-29 over 248 real
+    /// `nros-metadata.json` build artifacts, 0 carried it -- and the reader
+    /// survived only because the declared-QoS compile fixture was a metadata
+    /// document with the key in it. That fixture now states its depths the way
+    /// a real image does, in a contract resolved into a model on `--model`
+    /// (`packages/api/nros-cpp/tests/compile/declared-qos-fixture/declared_qos.yaml`),
+    /// so the reader went.
     ///
-    /// **NO PRODUCTION PRODUCER WRITES THIS KEY, and it is still not dead
-    /// code.** Measured 2026-09-29 (issue 1555) over a fully-populated
-    /// checkout: 255 `nros-metadata.json` paths, of which 7 carry an
-    /// `entities` key and all 7 are agent-worktree copies of ONE committed
-    /// test fixture -- so **0 of the 248 real build artifacts** carry it,
-    /// across `zephyr-workspace/build-*`, the example leaf build dirs and the
-    /// workspace configures. This field is therefore `None` and the
-    /// declaration is [`Declaration::Absent`] on every real road. `_nros_metadata_emit()` lost the splice point in phase-454 W9 and
-    /// `check-knob-single-reader.py` keeps it out; the Cargo-manifest spelling
-    /// is refused by `orchestration::nros_config::refuse_retired_entities_key`;
-    /// a standalone leaf states its entities in `system.toml` and reaches the
-    /// pools through [`crate::cmd::entity_facts`], never through this file.
-    ///
-    /// What keeps the field alive is ONE consumer, and it is a test input:
-    /// `packages/api/nros-cpp/tests/compile/declared-qos-fixture/entities.json`
-    /// is the committed metadata document that
-    /// [`EntityInventory::to_declared_qos_header`] renders the compile
-    /// fixture's `nros_declared_qos_generated.h` from, which `just check c` and
-    /// `just check cpp` compile their declared-depth `_Static_assert` TUs
-    /// against (4 call sites in `just/check/lanes.just`), held to the emitter
-    /// by `the_committed_compile_fixture_is_what_this_emitter_renders` below.
-    ///
-    /// Deleting the field therefore needs the fixture to state its depths the
-    /// way a real image does -- through a contract sidecar and a resolved
-    /// SystemModel on `--model`. That model CANNOT simply be committed beside
-    /// the fixture: `check-no-tracked-models` bans a tracked
-    /// `*/system_model.yaml` outright (phase-330 W7.e), so the conversion is a
-    /// build-step fixture, not an edit. Issue 1555 carries it.
-    ///
-    /// Corollary worth knowing before trusting a comment near here: because
-    /// this is always `None` in production, the "metadata contributes the
-    /// timers the contract cannot express" half of
-    /// [`EntityInventory::merged_per_kind_max`] contributes NOTHING today. The
-    /// merge is still load-bearing -- `self.components` is the REGISTERED
-    /// component population that issue 1407 needs for the node table -- but the
-    /// entity terms come from the model alone.
+    /// Deserialized as `IgnoredAny` and REFUSED rather than dropped from the
+    /// struct: serde ignores an unknown key, so a document still carrying one
+    /// would otherwise have its declaration discarded in silence -- a
+    /// declaration its author believes they made. `check-knob-single-reader.py`
+    /// keeps a reader from coming back.
     #[serde(default)]
-    entities: Option<Vec<String>>,
+    entities: Option<serde::de::IgnoredAny>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -195,45 +172,21 @@ fn inventory_from_metadata(source: &str, doc: &MetadataDoc) -> Result<EntityInve
             .clone()
             .or_else(|| c.class.split("::").next().map(str::to_string))
             .unwrap_or_default();
-        let declaration = match &c.entities {
-            None => Declaration::Absent,
-            Some(specs) => {
-                let mut decls = Vec::new();
-                let mut said_none = false;
-                for spec in specs {
-                    let spec = spec.trim();
-                    if spec.is_empty() {
-                        continue;
-                    }
-                    if spec.eq_ignore_ascii_case("none") {
-                        said_none = true;
-                        continue;
-                    }
-                    decls.extend(EntityDecl::parse(spec).map_err(|e| {
-                        eyre::eyre!("component `{}::{}` declares `{spec}`: {e}", pkg, c.name)
-                    })?);
-                }
-                if !decls.is_empty() && said_none {
-                    bail!(
-                        "component `{}::{}` declares both NONE and {} entities. \
-                         NONE is an assertion that it creates none; the two cannot both hold.",
-                        pkg,
-                        c.name,
-                        decls.len()
-                    );
-                }
-                if decls.is_empty() && !said_none {
-                    // An `ENTITIES` list that is present and empty says nothing,
-                    // and "says nothing" must read as ABSENT so the refusal
-                    // fires. It must NOT read as zero.
-                    Declaration::Absent
-                } else if said_none {
-                    Declaration::None
-                } else {
-                    Declaration::Stated(decls)
-                }
-            }
-        };
+        if c.entities.is_some() {
+            bail!(
+                "component `{pkg}::{}` in `{source}` carries an `entities` key. That key \
+                 is RETIRED (issue 1555): no build writes it, and what a component creates \
+                 is stated in the contract sidecar beside the launch file, which reaches \
+                 this verb through `--model`. A standalone leaf states it in its \
+                 `system.toml` `[[component]]` row instead.",
+                c.name
+            );
+        }
+        // The metadata names the REGISTERED population and nothing else, so
+        // every row starts ABSENT: "did not declare" is the one true answer a
+        // registration can give about what the component creates. `--model`
+        // is what turns a row into a statement (`merged_per_kind_max`).
+        let declaration = Declaration::Absent;
         inv.insert(ComponentEntities {
             pkg,
             component: c.name.clone(),
@@ -269,9 +222,13 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
 
     // phase-412 -- fold in the model's wiring when a contract authored it.
     //
-    // Deliberately a COMBINE and not a replace: the contract has no timer
-    // entity, so a model-only inventory under-sizes MAX_CBS by one per timer
-    // in the image. See `EntityInventory::merged_per_kind_max`.
+    // Deliberately a COMBINE and not a replace, though no longer for the
+    // reason this comment used to give ("the contract has no timer entity" --
+    // a timer path in `contracts.node_paths` is one, and the metadata's entity
+    // terms are always ABSENT since issue 1555 retired that reader). What the
+    // metadata still contributes is the REGISTERED component population, which
+    // the node table needs and the contract names only for the nodes somebody
+    // wrote one for (issue 1407). See `EntityInventory::merged_per_kind_max`.
     // phase-446 W6 -- rendered from the same model, when there is one.
     let mut params_header: Option<String> = None;
     if let Some(model_path) = &args.model {
@@ -302,21 +259,7 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
                 &model_path.display().to_string(),
             ));
         }
-        // `from_model` returning None means NO WIRING DESCRIBED. Not an error
-        // and not a zero: nobody authored a contract for this image, so the
-        // declaration is the only source there is and it stands alone.
-        if let Some(model_inv) =
-            EntityInventory::from_model(model_path.display().to_string(), &model)
-        {
-            inv = inv.merged_per_kind_max(&model_inv);
-        }
-        // phase-446 W4 -- the contract's `params:` size the parameter store.
-        // Attached whether or not the model describes wiring: the two answers
-        // are independent, and a model with no topics can still declare
-        // parameters.
-        inv.set_param_declarations(crate::entity_inventory::ParamDeclarations::from_model(
-            &model,
-        ));
+        inv = fold_model(inv, &model_path.display().to_string(), &model);
     }
 
     if let Some(want) = &args.component {
@@ -401,6 +344,35 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
     Ok(())
 }
 
+/// Fold a resolved model into the metadata's inventory -- the whole
+/// composition [`run`] performs once the model has passed its refusals.
+///
+/// Lifted out of `run` so the committed declared-QoS compile fixture is held to
+/// THIS function rather than to a restatement of it
+/// (`the_committed_compile_fixture_is_what_this_emitter_renders`): a fixture
+/// rendered by a second spelling of the composition is how a gate comes to
+/// assert something no configure produces.
+fn fold_model(
+    inv: EntityInventory,
+    model_source: &str,
+    model: &ros_launch_manifest_model::SystemModel,
+) -> EntityInventory {
+    // `from_model` returning None means NO WIRING DESCRIBED. Not an error and
+    // not a zero: nobody authored a contract for this image, so the metadata's
+    // registered population stands alone and every row stays ABSENT.
+    let mut inv = match EntityInventory::from_model(model_source, model) {
+        Some(model_inv) => inv.merged_per_kind_max(&model_inv),
+        None => inv,
+    };
+    // phase-446 W4 -- the contract's `params:` size the parameter store.
+    // Attached whether or not the model describes wiring: the two answers are
+    // independent, and a model with no topics can still declare parameters.
+    inv.set_param_declarations(crate::entity_inventory::ParamDeclarations::from_model(
+        model,
+    ));
+    inv
+}
+
 /// A contract may not state `depth: 0` (issue 1084).
 ///
 /// The `ENTITIES` grammar refused `@depth=0` outright -- `KEEP_LAST(0)` holds
@@ -408,7 +380,7 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
 /// license opposite actions: a stated depth SIZES the arena and asserts at
 /// every call site, an absent one makes a size consumer REFUSE. When the
 /// contract replaced `ENTITIES` as the producer that rule did not travel with
-/// it: `qos: { depth: 0 }` parsed, reached [`EntityDecl::depth`] as `Some(0)`
+/// it: `qos: { depth: 0 }` parsed, reached [`crate::entity_inventory::EntityDecl::depth`] as `Some(0)`
 /// and would have rendered a table row that fails the build at every
 /// `NROS_SUBSCRIBE` on that topic, naming a number no author meant.
 ///
@@ -625,96 +597,80 @@ mod tests {
         inventory_from_metadata("test", &doc).expect("inventory builds")
     }
 
-    /// The channel end to end: a register call's `ENTITIES` reaches the derived
-    /// knob through `nros-metadata.json` and nothing else.
-    #[test]
-    fn entities_travel_from_the_metadata_row_to_the_knob() {
-        let inv = parse(
-            r#"{"components": [
-                 {"name": "talker", "pkg": "demo", "class": "demo::Talker",
-                  "entities": ["pub:std_msgs/msg/Int32:/chatter", "timer"]},
-                 {"name": "listener", "pkg": "demo", "class": "demo::Listener",
-                  "entities": ["sub:std_msgs/msg/Int32:/chatter"]}
-               ]}"#,
-        );
-        let k = inv.derive().knobs().expect("derived").clone();
-        assert_eq!(k.entity_total, 3);
-        assert_eq!(k.max_cbs, 2, "the publisher claims no slot");
-        // Issue 0900 — `NROS_EXECUTOR_ACTION_CLIENTS` rides the same carrier,
-        // clamped by build.rs to the MAX_CBS emitted beside it.
-        assert_eq!(
-            inv.to_env(),
-            "NROS_EXECUTOR_MAX_CBS=2\nNROS_EXECUTOR_ACTION_CLIENTS=0\n\
-             NROS_RUNTIME_MAX_CELL_ENTITIES=1\n"
-        );
+    /// The metadata half composed with a model, through the same fold `run`
+    /// performs.
+    fn compose(meta: &str, model_yaml: &str) -> EntityInventory {
+        let model: ros_launch_manifest_model::SystemModel =
+            serde_yaml_ng::from_str(model_yaml).expect("model fixture parses");
+        fold_model(parse(meta), "model", &model)
     }
 
-    /// A row with no `entities` KEY is the pre-W9 shape every existing
-    /// component still has, and it must refuse rather than count as zero.
+    /// Issue 1555 -- the metadata says WHICH components an image registers and
+    /// never WHAT they create, so with no model every row is ABSENT and the
+    /// derivation REFUSES rather than reading the image as empty.
     #[test]
-    fn a_row_with_no_entities_key_is_absent_not_zero() {
+    fn a_metadata_row_alone_is_absent_never_zero() {
         let inv = parse(
-            r#"{"components": [
-                 {"name": "talker", "pkg": "demo", "class": "demo::Talker",
-                  "entities": ["timer"]},
-                 {"name": "legacy", "pkg": "demo", "class": "demo::Legacy"}
-               ]}"#,
+            r#"{"components": [{"name": "talker", "pkg": "demo", "class": "demo::Talker"}]}"#,
         );
         match inv.derive() {
             crate::entity_inventory::Derivation::Refused { reason } => {
-                assert!(reason.contains("demo::legacy"), "{reason}");
+                assert!(reason.contains("demo::talker"), "{reason}");
             }
             other => panic!("expected a refusal, got {other:?}"),
         }
     }
 
-    /// An `ENTITIES` list that is present and EMPTY says nothing. It reads as
-    /// absent, not as an assertion of zero -- `NONE` is that assertion.
+    /// Issue 1555 -- the retired `entities` key is REFUSED, never ignored. serde
+    /// drops an unknown key in silence, so a document that still carried one
+    /// would lose its declaration without a word; the refusal names the issue
+    /// and where the statement lives now.
     #[test]
-    fn an_empty_entities_list_is_absent_and_none_is_an_answer() {
-        let empty = parse(
-            r#"{"components": [{"name": "n", "pkg": "p", "class": "p::N", "entities": []}]}"#,
-        );
-        assert!(matches!(
-            empty.derive(),
-            crate::entity_inventory::Derivation::Refused { .. }
-        ));
-        let none = parse(
-            r#"{"components": [{"name": "n", "pkg": "p", "class": "p::N", "entities": ["none"]}]}"#,
-        );
-        assert_eq!(none.derive().knobs().expect("derived").max_cbs, 0);
-    }
-
-    /// NONE beside real entities is a contradiction, and it is an ERROR rather
-    /// than a resolution in either direction. Picking one would make the other
-    /// spelling silently wrong.
-    #[test]
-    fn none_beside_entities_is_rejected() {
+    fn the_retired_entities_key_is_refused_not_ignored() {
         let doc: MetadataDoc = serde_json::from_str(
             r#"{"components": [
-                 {"name": "n", "pkg": "p", "class": "p::N", "entities": ["none", "timer"]}]}"#,
+                 {"name": "n", "pkg": "p", "class": "p::N", "entities": ["timer"]}]}"#,
         )
         .unwrap();
         let err = inventory_from_metadata("test", &doc)
             .unwrap_err()
             .to_string();
-        assert!(err.contains("both NONE"), "{err}");
+        assert!(err.contains("p::n"), "names the component: {err}");
+        assert!(err.contains("1555"), "names the issue: {err}");
+        assert!(err.contains("--model"), "names where it lives now: {err}");
     }
 
-    /// A bad spelling names the component, not just the token: metadata is
-    /// machine-written and the user has to find the register call.
+    /// The channel end to end on the road a real image takes: the metadata's
+    /// registered rows, the contract's wiring through the model, one knob.
     #[test]
-    fn a_bad_spelling_names_the_component() {
-        let doc: MetadataDoc = serde_json::from_str(
+    fn the_model_states_what_the_registered_components_create() {
+        let inv = compose(
             r#"{"components": [
-                 {"name": "n", "pkg": "p", "class": "p::N", "entities": ["publsher"]}]}"#,
-        )
-        .unwrap();
-        let err = inventory_from_metadata("test", &doc)
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("p::n"), "{err}");
-        assert!(err.contains("publsher"), "{err}");
+                 {"name": "talker", "pkg": "demo", "class": "demo::Talker"},
+                 {"name": "listener", "pkg": "demo", "class": "demo::Listener"}
+               ]}"#,
+            r#"
+meta: { version: 1 }
+structure:
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+      sub: [/listener/chatter]
+contracts:
+  node_paths:
+    /talker/on_tick:
+      output: [/talker/chatter]
+"#,
+        );
+        let k = inv.derive().knobs().expect("derived").clone();
+        assert_eq!(k.entity_total, 3);
+        assert_eq!(k.max_cbs, 2, "the publisher claims no slot");
+        assert_eq!(
+            inv.to_env(),
+            "NROS_EXECUTOR_MAX_CBS=2\nNROS_EXECUTOR_ACTION_CLIENTS=0\n\
+             NROS_RUNTIME_MAX_CELL_ENTITIES=1\n"
+        );
     }
 
     /// Pre-RFC-0057 metadata has no `pkg`; the fallback keeps such a row
@@ -736,13 +692,27 @@ mod tests {
     /// be a function of the configure ORDER rather than of the declaration.
     #[test]
     fn narrowing_to_a_component_keeps_only_that_row() {
-        let inv = parse(
+        let inv = compose(
             r#"{"components": [
-                 {"name": "talker", "pkg": "demo", "class": "demo::Talker",
-                  "entities": ["pub:std_msgs/msg/Int32:/chatter@depth=1"]},
-                 {"name": "listener", "pkg": "demo", "class": "demo::Listener",
-                  "entities": ["sub:std_msgs/msg/Int32:/chatter@depth=7"]}
+                 {"name": "talker", "pkg": "demo", "class": "demo::Talker"},
+                 {"name": "listener", "pkg": "demo", "class": "demo::Listener"}
                ]}"#,
+            r#"
+meta: { version: 1 }
+structure:
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+      sub: [/listener/chatter]
+contracts:
+  pub_endpoints:
+    /talker/chatter:
+      qos: { depth: 1 }
+  sub_endpoints:
+    /listener/chatter:
+      qos: { depth: 7 }
+"#,
         );
         let one = narrow_to_component(&inv, "demo::listener").expect("narrows");
         assert_eq!(one.len(), 1);
@@ -765,8 +735,8 @@ mod tests {
     fn an_ambiguous_bare_component_name_is_rejected() {
         let inv = parse(
             r#"{"components": [
-                 {"name": "talker", "pkg": "a", "class": "a::T", "entities": ["timer"]},
-                 {"name": "talker", "pkg": "b", "class": "b::T", "entities": ["timer"]}
+                 {"name": "talker", "pkg": "a", "class": "a::T"},
+                 {"name": "talker", "pkg": "b", "class": "b::T"}
                ]}"#,
         );
         let err = narrow_to_component(&inv, "talker").unwrap_err().to_string();
@@ -964,8 +934,7 @@ contracts:
         std::fs::write(
             &metadata,
             r#"{"components": [
-                 {"name": "listener", "pkg": "demo", "class": "demo::Listener",
-                  "entities": ["sub:std_msgs/msg/Int32:/chatter"]}
+                 {"name": "listener", "pkg": "demo", "class": "demo::Listener"}
                ]}"#,
         )
         .expect("write metadata");
@@ -1069,16 +1038,25 @@ contracts:
     /// The committed C++ compile fixture is exactly what this emitter renders.
     ///
     /// `packages/api/nros-cpp/tests/compile/declared-qos-fixture/` holds a
-    /// generated header that `just check cpp` compiles against -- the table the
-    /// positive TU asserts on and the negative TU is rejected by. A checked-in
-    /// artifact with no gate is a copy that drifts, and this one drifts
-    /// SILENTLY in the worst direction: a table whose keys stop matching leaves
-    /// every `static_assert` in that gate vacuously true, and the gate green.
+    /// generated header that `just check c` and `just check cpp` compile
+    /// against -- the table the positive TU asserts on and the negative TU is
+    /// rejected by. A checked-in artifact with no gate is a copy that drifts,
+    /// and this one drifts SILENTLY in the worst direction: a table whose keys
+    /// stop matching leaves every `static_assert` in that gate vacuously true,
+    /// and the gate green.
+    ///
+    /// Issue 1555 -- its INPUT is the one a real image's header comes from: the
+    /// `nros-metadata.json` a configure writes (which components are
+    /// registered) folded with a resolved model whose contract states the
+    /// depths, through [`fold_model`] -- the function `run` calls. It used to be
+    /// a metadata document carrying an `"entities"` key, which nothing in a
+    /// production build writes.
     ///
     /// Fix a failure by regenerating, never by hand-editing the header:
     ///
     ///   nros ws entity-inventory \
-    ///     --metadata packages/api/nros-cpp/tests/compile/declared-qos-fixture/entities.json \
+    ///     --metadata packages/api/nros-cpp/tests/compile/declared-qos-fixture/nros-metadata.json \
+    ///     --model packages/api/nros-cpp/tests/compile/declared-qos-fixture/declared_qos.yaml \
     ///     --component demo::listener \
     ///     --output-header packages/api/nros-cpp/tests/compile/declared-qos-fixture/nros/nros_declared_qos_generated.h
     #[test]
@@ -1089,14 +1067,24 @@ contracts:
             .canonicalize()
             .expect("repo root");
         let dir = root.join(REL);
-        let input = std::fs::read_to_string(dir.join("entities.json"))
-            .unwrap_or_else(|e| panic!("read {}/entities.json: {e}", dir.display()));
-        let doc: MetadataDoc = serde_json::from_str(&input).expect("fixture metadata parses");
+        let meta_raw = std::fs::read_to_string(dir.join("nros-metadata.json"))
+            .unwrap_or_else(|e| panic!("read {}/nros-metadata.json: {e}", dir.display()));
+        let doc: MetadataDoc = serde_json::from_str(&meta_raw).expect("fixture metadata parses");
+        let model_raw = std::fs::read_to_string(dir.join("declared_qos.yaml"))
+            .unwrap_or_else(|e| panic!("read {}/declared_qos.yaml: {e}", dir.display()));
+        let model: ros_launch_manifest_model::SystemModel =
+            serde_yaml_ng::from_str(&model_raw).expect("fixture model parses");
+        // The refusals `run` applies at the same door, so a fixture that a
+        // configure would reject cannot be rendered here either.
+        reject_zero_depths(&model).expect("fixture states no zero depth");
+        reject_unknown_qos_values(&model).expect("fixture states only modelled QoS");
+        reject_qos_override_divergence(&model).expect("fixture has no divergent override");
         // The SOURCE line is part of the rendered file, and the CLI puts the
-        // `--metadata` argument there verbatim -- so the fixture is generated
-        // from the repo-relative path and regenerated the same way.
-        let inv = inventory_from_metadata(&format!("{REL}/entities.json"), &doc)
+        // `--metadata` / `--model` arguments there verbatim -- so the fixture is
+        // generated from the repo-relative paths and regenerated the same way.
+        let inv = inventory_from_metadata(&format!("{REL}/nros-metadata.json"), &doc)
             .expect("fixture inventory builds");
+        let inv = fold_model(inv, &format!("{REL}/declared_qos.yaml"), &model);
         let narrowed = narrow_to_component(&inv, "demo::listener").expect("narrows");
         let want = std::fs::read_to_string(dir.join("nros/nros_declared_qos_generated.h"))
             .expect("the committed fixture header exists");

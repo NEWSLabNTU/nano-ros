@@ -8,8 +8,7 @@
       "sources": ["src/Talker.cpp"],
       "deploy": ["native"],
       "pkg_dir": "/ws/src/talker_pkg",
-      "lang": "cpp",
-      "entities": ["pub", "timer"]
+      "lang": "cpp"
     },
     {
       "name": "listener",
@@ -19,8 +18,7 @@
       "sources": ["src/Listener.cpp"],
       "deploy": ["native"],
       "pkg_dir": "/ws/src/listener_pkg",
-      "lang": "cpp",
-      "entities": ["sub"]
+      "lang": "cpp"
     }
   ],
   "applications": [],
