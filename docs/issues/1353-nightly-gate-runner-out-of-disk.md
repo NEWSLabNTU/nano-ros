@@ -1669,3 +1669,88 @@ never counted.
   parsimonious reading is one cause; that reading is not a measurement, and only
   a run with headroom can separate them.
 - Nothing about `host-tests` or `live-peer`, whose arms are unchanged.
+
+## Tier 1, third measured point: the headroom is the lowest yet and the tipping step MOVED (2026-10-01)
+
+Run **36810256910** (scheduled `host-tests`, 03:23:07Z, head `e61d7dfd2`), job
+**110203524815**, step 15 `just ci tier1`, 2 h 21 m. `workspace unit tests`
+passed; the integration job died.
+
+```
+before: 90% used, 16G free — 43G examples; 14G build; 635M packages/cli/target
+reclaim: freed 33336 MB; 50203112 KB free          (~47.9 G)
+after:  100% used, 276K free — 43G examples; 20G build; 15G target
+```
+
+Against the two points in the 2026-09-28 correction above:
+
+| | 36359825546 (09-27) | 36419496642 (09-28) | **36810256910 (10-01)** |
+| --- | --- | --- | --- |
+| before the tier | 89%, 18G free | 84%, 25G free | **90%, 16G free** |
+| `examples` | 42G | 35G | **43G** |
+| `examples/workspaces` | — | 30G → 36G | **38G, unchanged by the run** |
+| `packages/cli/target` | 447M | 447M | **635M** |
+| reclaim frees | 33,286 MB | 33,286 MB | **33,336 MB** |
+| post-reclaim headroom | ~49.6G | ~56.6G | **~47.9G** |
+| after the tier | 100%, 264K | 100%, 260K | **100%, 276K** |
+
+Three things this point adds.
+
+**The reclaim is maxed out on this arm, and the headroom is still falling.**
+33,336 MB is within 50 MB of both earlier runs, and it is already deleting every
+host-tooling directory there is — `/__host-reclaim/android` (11G), `dotnet`
+(5.8G), `ghcup` (3.7G), `swift` (3.5G), `powershell` (1.4G), plus `/__t` (5.2G)
+and `build/metadata-probe` (2.2G). So unlike the `gate` arm, where the fixed
+6.7 G leaves obvious room, **there is nothing left to add to this reclaim**; the
+only movable quantity on this lane is what the checkout brings. And that is
+moving the wrong way: 47.9 G is the lowest post-reclaim headroom of the three,
+below the 09-28 point's 56.6 G, which is the degradation this issue's "the
+arrival state is degrading" section named — now with a third point behind it.
+
+**The tipping step is NOT `rust-rtos-link-check` any more.** The 2026-09-28
+correction identified it as "where a tier-1 prune should be priced first", from a
+run that reached it. In this run the string `rust-rtos-link-check` occurs **zero
+times**: the tier died ~6 minutes in, at
+
+```
+===== FAIL (workspace-features, rc=101, 361740ms) =====
+```
+
+So the lane now runs out before it gets to the step the prune was being priced
+against. That does not retract the 09-28 finding — `target-link-check/` really
+did grow 7 G in that run — but it does mean the first thing to exhaust the volume
+is no longer that step, and a prune aimed only there would not have saved this
+run.
+
+**It is this issue and not a clippy defect, by the truncation signature.** The
+`workspace-features` gate exits 101 with no diagnostic; its last output line is a
+command echo cut off mid-string:
+
+```
+cargo clippy --quiet -p nros --no-default-features --features "rmw-cferror: recipe `build` failed on line 233 with exit code 1
+```
+
+`--features "rmw-cf` and then the recipe's own failure, spliced together. The job
+log contains **zero** occurrences of `error[E`, `could not compile` or
+`No space left on device`, and one `Free space left: 82 MB` immediately before,
+with the after-report at 276 K. Truncated mid-write with no diagnostic is this
+issue's signature, not a lint.
+
+**`packages/cli/target` stays negligible** — 635 M against the `gate` arm's 33 G
+the same morning — so the inverse-consumer finding holds: the two arms are
+limited by different directories, and `examples/workspaces` at 38 G is this one's.
+
+Acceptance for this arm is unchanged and still unmet: a `host-tests` run reaching
+a tier-1 verdict with the after-report below 100%.
+
+### The same morning's `live-peer`, for completeness
+
+Run **36814478655** (04:18): `rows whose board IS this runner` (job
+**110216447223**) died with **no failing step**, annotation only —
+`Unhandled exception. System.IO.IOException: No space left on device :
+'/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20261001-041819-utc.log'`
+— the second consecutive night of the runner-process death recorded in the
+2026-09-30 section. Its sibling `rows whose board is NOT this runner` failed on
+`No SOURCES given to target: app` / `west fixtures: 4/5 ok`, which is issue 1536
+and not this one. The `live-peer` arm's acceptance (a run whose fixture-build
+step reaches a conclusion) is unmet for a second night.
