@@ -93,9 +93,22 @@ feature.
 So the answer to "is this unacceptable for embedded, and does it need a
 Kconfig opt-out?" is **no, and it does not**. One publisher slot is inside the
 budget the derivation already computes, it is derived rather than conjured
-(the bringup states the `lifecycle` feature), and an image that declares its
-entities gets the slot automatically on both roads because both read
-`DerivedEntityKnobs::max_publishers`.
+(the bringup states the `lifecycle` feature, in either of the two spellings
+`capability_enabled` ORs), and an image that declares its entities gets the
+slot automatically on both roads because both read
+`DerivedEntityKnobs::max_publishers` — `leaf_entity_env` emits
+`ZPICO_MAX_PUBLISHERS` from it on the cargo road and
+`NanoRosEntityFacts.cmake` emits `NROS_DECLARED_MAX_PUBLISHERS` from it on the
+cmake one.
+
+Checked the one place an image could be stranded: `zephyr/Kconfig`'s
+`CONFIG_NROS_MAX_PUBLISHERS` defaults to **-1, "derive"**, not to a literal, so
+a Zephyr lifecycle image follows the inventory rather than a number someone
+typed before this term existed. (`CONFIG_NROS_MAX_QUERYABLES` is the one that
+defaults to a literal 8, and it is the pool this change does not touch.) No
+lifecycle image is embedded in this tree today anyway — the capability demos
+are native-only, for the alloc reason stated at the top of
+`examples/workspaces/features/src/demo_bringup/system.toml`.
 
 ## Resolution
 
