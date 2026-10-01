@@ -487,6 +487,17 @@ entry-session-name:
 entry-pack-conformance:
     @python3 scripts/check-entry-pack-conformance.py
 
+# phase-469 — a language is a TYPE inside the CLI. A string compared against a
+# language spelling (`"c" =>`, `lang != "c"`, `== Some("rs")`,
+# `.unwrap_or("rust")`, `ends_with(".cpp")`) is a decision the compiler cannot
+# see, so a fourth language falls off it silently. POSITIONAL, not a grep for
+# the word `lang` — that predicate matched 53 lines it could not classify and
+# was declined as an allowlist. This one flags zero lines with no exemption
+# list, and run over the pre-S2 tree it finds the ~25 sites S2/S3/W2/W3 typed.
+# Spellings are harvested from `nros-lang`, never authored here.
+cli-language-literals:
+    @python3 scripts/check-cli-language-literals.py
+
 # A leaf that consumes its own `generated/` must be visible to
 # `scripts/regenerate-bindings.sh` (which globs tracked package.xml), or its
 # bindings freeze silently — eight test bins had frozen several phases back.
