@@ -1015,15 +1015,15 @@
   },
   "rust:Executor::detach_action_client_raw": {
     "verdict": "extension",
-    "why": "issue 1496 -- there is no ROS 2 counterpart because in ROS 2 the DESTRUCTOR is the counterpart: `~rclcpp_action::Server<A>()` frees the entity. Ours cannot. An action server's five RMW entities, its goal table and its result slab live in an entry in the executor's arena, which with no allocator is a BUMP allocator over a compile-time-sized array -- `arena_used` only grows and nothing sets an entry back to `None`, so there is no release to call. What the destructor CAN do is stop the entry pointing at the storage it was registered with (the arena callback `context` is the C++ object's own `storage_`), and that is this call: the goal/cancel callbacks become context-free stubs, the post-accept hook is cleared and the context goes null, so a goal arriving after destruction is rejected instead of dispatched into freed storage. Named `detach` and not `destroy` because it releases nothing; giving the arena a free list is issue 1496's resolution 2 and would retire these."
+    "why": "issue 1496 resolution 1 -- cuts a raw action entry's edge to the storage that registered it (context-free goal/cancel stubs, post-accept hook cleared, context null) WITHOUT ending the entry. rclcpp has no counterpart: its destructor frees the entity. Since resolution 2 the C++ destructors call `release_action_*_raw` instead, which ends the entry outright; this stays for a caller that must keep the entry advertised but can no longer service it."
   },
   "rust:Executor::detach_action_server_raw": {
     "verdict": "extension",
-    "why": "issue 1496 -- there is no ROS 2 counterpart because in ROS 2 the DESTRUCTOR is the counterpart: `~rclcpp_action::Server<A>()` frees the entity. Ours cannot. An action server's five RMW entities, its goal table and its result slab live in an entry in the executor's arena, which with no allocator is a BUMP allocator over a compile-time-sized array -- `arena_used` only grows and nothing sets an entry back to `None`, so there is no release to call. What the destructor CAN do is stop the entry pointing at the storage it was registered with (the arena callback `context` is the C++ object's own `storage_`), and that is this call: the goal/cancel callbacks become context-free stubs, the post-accept hook is cleared and the context goes null, so a goal arriving after destruction is rejected instead of dispatched into freed storage. Named `detach` and not `destroy` because it releases nothing; giving the arena a free list is issue 1496's resolution 2 and would retire these."
+    "why": "issue 1496 resolution 1 -- cuts a raw action entry's edge to the storage that registered it (context-free goal/cancel stubs, post-accept hook cleared, context null) WITHOUT ending the entry. rclcpp has no counterpart: its destructor frees the entity. Since resolution 2 the C++ destructors call `release_action_*_raw` instead, which ends the entry outright; this stays for a caller that must keep the entry advertised but can no longer service it."
   },
   "rust:Executor::detach_action_server_raw_sized": {
     "verdict": "extension",
-    "why": "issue 1496 -- there is no ROS 2 counterpart because in ROS 2 the DESTRUCTOR is the counterpart: `~rclcpp_action::Server<A>()` frees the entity. Ours cannot. An action server's five RMW entities, its goal table and its result slab live in an entry in the executor's arena, which with no allocator is a BUMP allocator over a compile-time-sized array -- `arena_used` only grows and nothing sets an entry back to `None`, so there is no release to call. What the destructor CAN do is stop the entry pointing at the storage it was registered with (the arena callback `context` is the C++ object's own `storage_`), and that is this call: the goal/cancel callbacks become context-free stubs, the post-accept hook is cleared and the context goes null, so a goal arriving after destruction is rejected instead of dispatched into freed storage. Named `detach` and not `destroy` because it releases nothing; giving the arena a free list is issue 1496's resolution 2 and would retire these."
+    "why": "issue 1496 resolution 1 -- cuts a raw action entry's edge to the storage that registered it (context-free goal/cancel stubs, post-accept hook cleared, context null) WITHOUT ending the entry. rclcpp has no counterpart: its destructor frees the entity. Since resolution 2 the C++ destructors call `release_action_*_raw` instead, which ends the entry outright; this stays for a caller that must keep the entry advertised but can no longer service it."
   },
   "rust:Executor::register_action_client_core": {
     "verdict": "divergence",
@@ -1510,5 +1510,30 @@
   "cpp:Server::is_valid": {
     "verdict": "extension",
     "why": "whether this server was successfully created -- the same predicate every entity on this surface carries, and the reason a failed create is not a crash: `Node::create_action_server` reports through a `Result` and leaves the object valid-but-uninitialised rather than throwing (RFC-0018). rclcpp_action has no counterpart because `create_server` either returns a live `SharedPtr` or throws. See the pubsub stage's `cpp:Publisher::is_valid`.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own."
+  },
+  "rust:Executor::release_action_server_raw": {
+    "verdict": "extension",
+    "why": "issue 1496 resolution 2 -- in ROS 2 the DESTRUCTOR is the counterpart: `~rclcpp_action::Server<A>()` / `~Client<A>()` free the entity. Ours registers the action's RMW entities, goal table and result slab as an entry in the executor's statically sized arena, so freeing them is an executor call: the entry is dropped in place (its RMW handles' Drops destroy the backend entities, so the action leaves the graph), its callback slot is freed and its bytes go on the executor's released-region list for the next registration that fits. The C++ destructors call it; the `_sized` variant takes the const generics the registration used, and the `_raw` spelling is the CDR-bytes entry the C and C++ shims register through.",
+    "bucket": "ours-only"
+  },
+  "rust:Executor::release_action_server_raw_sized": {
+    "verdict": "extension",
+    "why": "issue 1496 resolution 2 -- in ROS 2 the DESTRUCTOR is the counterpart: `~rclcpp_action::Server<A>()` / `~Client<A>()` free the entity. Ours registers the action's RMW entities, goal table and result slab as an entry in the executor's statically sized arena, so freeing them is an executor call: the entry is dropped in place (its RMW handles' Drops destroy the backend entities, so the action leaves the graph), its callback slot is freed and its bytes go on the executor's released-region list for the next registration that fits. The C++ destructors call it; the `_sized` variant takes the const generics the registration used, and the `_raw` spelling is the CDR-bytes entry the C and C++ shims register through.",
+    "bucket": "ours-only"
+  },
+  "rust:Executor::release_action_client_raw": {
+    "verdict": "extension",
+    "why": "issue 1496 resolution 2 -- in ROS 2 the DESTRUCTOR is the counterpart: `~rclcpp_action::Server<A>()` / `~Client<A>()` free the entity. Ours registers the action's RMW entities, goal table and result slab as an entry in the executor's statically sized arena, so freeing them is an executor call: the entry is dropped in place (its RMW handles' Drops destroy the backend entities, so the action leaves the graph), its callback slot is freed and its bytes go on the executor's released-region list for the next registration that fits. The C++ destructors call it; the `_sized` variant takes the const generics the registration used, and the `_raw` spelling is the CDR-bytes entry the C and C++ shims register through.",
+    "bucket": "ours-only"
+  },
+  "rust:Executor::release_action_client_raw_sized": {
+    "verdict": "extension",
+    "why": "issue 1496 resolution 2 -- in ROS 2 the DESTRUCTOR is the counterpart: `~rclcpp_action::Server<A>()` / `~Client<A>()` free the entity. Ours registers the action's RMW entities, goal table and result slab as an entry in the executor's statically sized arena, so freeing them is an executor call: the entry is dropped in place (its RMW handles' Drops destroy the backend entities, so the action leaves the graph), its callback slot is freed and its bytes go on the executor's released-region list for the next registration that fits. The C++ destructors call it; the `_sized` variant takes the const generics the registration used, and the `_raw` spelling is the CDR-bytes entry the C and C++ shims register through.",
+    "bucket": "ours-only"
+  },
+  "rust:Executor::retarget_action_client_raw": {
+    "verdict": "extension",
+    "why": "issue 1496 -- re-points a raw action client entry's callback `context` after the C++ client that registered it was MOVED. rclcpp has no counterpart because its entities are heap objects that never move under the executor; ours registers the C++ object's own storage address with the arena entry, so a move has to tell the entry where the storage went or a moved-from temporary leaves it naming dead bytes. Called by `nros_cpp_action_client_relocate`.",
+    "bucket": "ours-only"
   }
 }
