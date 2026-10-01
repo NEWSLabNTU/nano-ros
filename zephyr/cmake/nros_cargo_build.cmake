@@ -787,13 +787,25 @@ function(nros_resolve_knobs)
         #   * mutexes: at 64 the 30th queryable failed with 11 subscribers and
         #     29 queryables declared and the pool full, so 24 are the rest of
         #     zenoh-pico's (session, liveliness, channels, scheduler).
+        #
+        # RE-MEASURED on a second line (issue 1498's "fixed overheads are one
+        # image"), Zephyr 3.7 native_sim/native/64, gdb counting every
+        # `pthread_{mutex,cond}_init` to `--stop_at=6` against a live router:
+        #   c/talker         (0 sub, 0 qry): 11 mutex, 4 cond
+        #   c/listener       (1 sub, 0 qry): 11 mutex, 5 cond
+        #   c/service-server (0 sub, 1 qry): 11 mutex, 5 cond
+        # The per-entity cond is confirmed; the FIXED cond count is 4 there, not
+        # the island's 2, so the cond overhead is the larger of the two
+        # measurements. (The mutex count did not move with a sync group on this
+        # line, so the island's 24 stays the binding figure; inits are an UPPER
+        # bound on live slots, which is the safe direction for a floor.)
         # Same +4 headroom as the floor above. Only on a DERIVED table: an
         # undeclared image's table is a default, not a demand, and the floor
         # above keeps answering for it.
         if(DEFINED NROS_DERIVED_MAX_QUERYABLES AND
            NOT "${NROS_DERIVED_MAX_QUERYABLES}" STREQUAL "" AND
            "${_nros_zpico_qrys}" STREQUAL "${NROS_DERIVED_MAX_QUERYABLES}")
-            set(_nros_zpico_cond_overhead 2)
+            set(_nros_zpico_cond_overhead 4)   # max(island 2, native_sim 4)
             set(_nros_zpico_mutex_overhead_q 24)
             math(EXPR _nros_cond_floor
                  "${_nros_zpico_subs} + ${_nros_zpico_qrys} + ${_nros_zpico_cond_overhead} + 4")
