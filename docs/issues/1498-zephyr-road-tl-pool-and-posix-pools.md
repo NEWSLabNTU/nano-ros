@@ -91,3 +91,39 @@ pools held 45 conds and 66 mutexes against floors of 48 and 70.
   DERIVED but NROS_RESOLVED_NROS_SUBSCRIBED_TYPE_BOUNDS never reached the
   resolver"). Not changed here: delivering it re-prices the executor arena of
   every Zephyr image that subscribes.
+
+# Progress, 2026-10-01 (branch `fix/zephyr-heap-1424-1425-1498-1324`)
+
+**"The fixed overheads are measured on one image" -- re-measured on a second
+line, and one was wrong.** Zephyr 3.7 `native_sim/native/64`, gdb counting every
+`pthread_mutex_init` / `pthread_cond_init` to `--stop_at=6` against a live
+router (an init count is an UPPER bound on live slots, the safe direction):
+
+| image | subs | qrys | mutex inits | cond inits |
+| --- | --- | --- | --- | --- |
+| c/talker | 0 | 0 | 11 | 4 |
+| c/listener | 1 | 0 | 11 | 5 |
+| c/service-server | 0 | 1 | 11 | 5 |
+
+One cond per subscriber and per queryable is confirmed. The FIXED cond count is
+**4** here against the island's 2, so the derived-table cond floor was spending
+two of its four headroom slots on fixed demand it did not count.
+`_nros_zpico_cond_overhead` is now 4 (the larger measurement). The mutex count
+did not move with a sync group on this line (11 throughout), so the island's 24
+stays the binding fixed term.
+
+Still open, unchanged by this pass:
+
+- The leaf (sidecar) and CMake (declared) roads still carry no retain-bytes
+  derivation (`check-declared-fact-carriers` reports both OPEN under this issue).
+- `_nros_load_derived_message_bounds` still does not re-export
+  `NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS`. The reason given above for not
+  delivering it ("re-prices the executor arena of every Zephyr image that
+  subscribes") is weaker now that executor storage is `.bss` (issues
+  1551/1568/1571), but it is still a size change across every subscribing Zephyr
+  image and wants its own measured pass.
+- Not measured: an mps2-an385 image's pool counts (only native_sim was run),
+  and whether any in-tree DERIVED-table image now crosses the raised cond floor
+  at its `CONFIG_MAX_PTHREAD_COND_COUNT=16` (subs + qrys must stay <= 8; the
+  in-tree derived tables read 0-4 queryables, and a crossing is a configure
+  FATAL_ERROR naming the knob, not a silent failure).
