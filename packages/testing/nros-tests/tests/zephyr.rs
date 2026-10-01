@@ -296,6 +296,39 @@ fn start_image(bin: &Path, locator: &Option<String>, what: &str) -> ZephyrProces
     .unwrap_or_else(|e| panic!("Failed to start {what}: {e:?}"))
 }
 
+/// Issue 1424 — read each image's heap verdict while it is still ALIVE.
+///
+/// Read before the kill (a killed process has no memory to read) and SCORED
+/// after the workload's own assertion (`assert_heap_verdicts`), so a cell that
+/// failed to deliver keeps that as its headline rather than reporting a heap
+/// number for a run that never did its work.
+fn heap_verdicts(procs: [(&str, &mut ZephyrProcess); 2]) -> Vec<(String, Result<String, String>)> {
+    procs
+        .into_iter()
+        .map(|(role, p)| (role.to_string(), p.heap_headroom()))
+        .collect()
+}
+
+/// Every image in the cell kept the headroom `read-boot-report.py
+/// --heap-headroom` requires over its MEASURED platform-heap peak, or the cell
+/// fails naming `CONFIG_NROS_ZEPHYR_HEAP_SIZE` and the value to raise it to.
+fn assert_heap_verdicts(cell: &Cell, verdicts: Vec<(String, Result<String, String>)>) {
+    let mut refused = Vec::new();
+    for (role, v) in verdicts {
+        match v {
+            Ok(line) => eprintln!("[{}] {role}: {line}", cell.id()),
+            Err(why) => refused.push(format!("{role}: {why}")),
+        }
+    }
+    assert!(
+        refused.is_empty(),
+        "[{}] the platform heap gate refused — {}:\n{}",
+        cell.id(),
+        cell.note,
+        refused.join("\n")
+    );
+}
+
 // =============================================================================
 // The parametrized matrix consumer — 27 (rmw × lang × workload) cells
 // =============================================================================
@@ -602,6 +635,7 @@ fn example_e2e(#[case] cell: Cell) {
     match cell.workload {
         Workload::Pubsub => {
             let listener_out = wait_for_received_count(&first, cell.min_received, window);
+            let heap = heap_verdicts([(first_role, &mut first), (second_role, &mut second)]);
             second.kill();
             first.kill();
             eprintln!("[{}] listener output:\n{listener_out}", cell.id());
@@ -614,10 +648,12 @@ fn example_e2e(#[case] cell: Cell) {
                 cell.note,
                 listener_out
             );
+            assert_heap_verdicts(&cell, heap);
         }
         Workload::Service => {
             let client_out =
                 second.wait_for_pattern(nros_tests::output::SERVICE_RESULT_PREFIX, window);
+            let heap = heap_verdicts([(first_role, &mut first), (second_role, &mut second)]);
             let server_out = first
                 .wait_for_output(Duration::from_secs(3))
                 .unwrap_or_default();
@@ -633,10 +669,12 @@ fn example_e2e(#[case] cell: Cell) {
                 client_out,
                 server_out
             );
+            assert_heap_verdicts(&cell, heap);
         }
         Workload::Action => {
             let client_out =
                 second.wait_for_pattern(nros_tests::output::ACTION_RESULT_PREFIX, window);
+            let heap = heap_verdicts([(first_role, &mut first), (second_role, &mut second)]);
             let server_out = first
                 .wait_for_output(Duration::from_secs(5))
                 .unwrap_or_default();
@@ -686,6 +724,7 @@ fn example_e2e(#[case] cell: Cell) {
                 }
                 None => {}
             }
+            assert_heap_verdicts(&cell, heap);
         }
         other => unreachable!("no zephyr example cell for {other:?}"),
     }

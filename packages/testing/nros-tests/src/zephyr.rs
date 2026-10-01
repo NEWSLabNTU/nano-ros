@@ -174,6 +174,24 @@ pub struct ZephyrProcess {
     // threads outlive any `wait_for_pattern` / `wait_for_output` call.
     #[allow(dead_code)]
     reader_threads: Vec<std::thread::JoinHandle<()>>,
+    // issue 1424 — the image this process runs, so the heap gate can resolve
+    // the boot record's address from the SAME file the process was exec'd
+    // from (a relinked image read at a stale address decodes as garbage).
+    image: PathBuf,
+}
+
+/// The file a native_sim image is exec'd from: the board's `runners.yaml`
+/// `exe_file` under a confirmed `native` runner, else the passed binary (which
+/// already points at `<build_dir>/zephyr/zephyr.exe`). ONE derivation, shared by
+/// the launch and by the heap gate that resolves symbols out of the same file.
+fn native_sim_launch_bin(binary: &Path) -> PathBuf {
+    binary
+        .parent()
+        .and_then(RunnersYaml::from_zephyr_dir)
+        .filter(|r| r.flash_runner.as_deref() == Some("native"))
+        .and_then(|r| r.exe_path())
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| binary.to_path_buf())
 }
 
 /// Atomic counter to ensure each Zephyr process gets a unique seed
@@ -290,13 +308,7 @@ impl ZephyrProcess {
                 // non-native runner we fall back to the passed binary so the
                 // lane still runs (identical effect — `binary` already points
                 // at `<build_dir>/zephyr/zephyr.exe`).
-                let launch_bin = binary
-                    .parent()
-                    .and_then(RunnersYaml::from_zephyr_dir)
-                    .filter(|r| r.flash_runner.as_deref() == Some("native"))
-                    .and_then(|r| r.exe_path())
-                    .filter(|p| p.exists())
-                    .unwrap_or_else(|| binary.to_path_buf());
+                let launch_bin = native_sim_launch_bin(binary);
 
                 // Each process needs a unique --seed to prevent ephemeral port conflicts
                 // (the test entropy source produces identical random numbers without different seeds).
@@ -429,12 +441,17 @@ impl ZephyrProcess {
         let reader_threads =
             spawn_output_readers(&mut handle, output.clone(), reader_done.clone())?;
 
+        let image = match platform {
+            ZephyrPlatform::NativeSim => native_sim_launch_bin(binary),
+            _ => binary.to_path_buf(),
+        };
         Ok(Self {
             handle,
             platform,
             output,
             reader_done,
             reader_threads,
+            image,
         })
     }
 
@@ -528,6 +545,7 @@ impl ZephyrProcess {
             output,
             reader_done,
             reader_threads,
+            image: binary.to_path_buf(),
         })
     }
 
@@ -639,6 +657,93 @@ impl ZephyrProcess {
         }
     }
 
+    /// Issue 1424 — score `CONFIG_NROS_ZEPHYR_HEAP_SIZE` against the heap peak
+    /// this LIVE image has measured, through the same gate a board dump goes
+    /// through (`read-boot-report.py --heap-headroom`).
+    ///
+    /// The platform heap's high-water mark is written into the boot record
+    /// (`NROS_BOOT_REPORT`, `nros-node/src/boot_report.rs`) on every
+    /// `nros_platform_alloc`. A native_sim image is a host process, so the
+    /// record is read straight out of `/proc/<pid>/mem` at the address the
+    /// image's own symbol table gives — no console line, no debugger, and no
+    /// second spelling of the headroom rule: the decoder owns the floor, and
+    /// this hands it a dump exactly as a `savemem` off a board would.
+    ///
+    /// Call it AFTER the cell has done its work (delivery confirmed, a reply
+    /// received) and BEFORE the image is killed: the peak is a high-water mark,
+    /// so the later the read, the more of the run it covers, and a killed
+    /// process has no memory to read.
+    ///
+    /// `Ok` carries the decoder's verdict line; `Err` carries why the gate
+    /// refused, or why it could not be asked (not native_sim, the image has
+    /// exited, the record is absent). The caller decides what is fatal.
+    pub fn heap_headroom(&mut self) -> Result<String, String> {
+        if self.platform != ZephyrPlatform::NativeSim {
+            return Err(format!(
+                "heap gate: {:?} is an emulator; the boot record lives in the \
+                 guest's RAM, not this process's",
+                self.platform
+            ));
+        }
+        if !self.is_running() {
+            return Err("heap gate: the image exited before its heap could be read".into());
+        }
+        let decoder = project_root().join("scripts/read-boot-report.py");
+        let addr = Command::new("python3")
+            .arg(&decoder)
+            .arg("--addr-only")
+            .arg(&self.image)
+            .output()
+            .map_err(|e| format!("heap gate: could not run {}: {e}", decoder.display()))?;
+        if !addr.status.success() {
+            return Err(format!(
+                "heap gate: no boot record in {} (CONFIG_NROS_BOOT_REPORT is on \
+                 by default on native_sim -- a missing record means the image \
+                 predates that, or its Rust half was built without it, issue \
+                 0460's class):\n{}",
+                self.image.display(),
+                String::from_utf8_lossy(&addr.stderr)
+            ));
+        }
+        let line = String::from_utf8_lossy(&addr.stdout).trim().to_string();
+        let (at, len) = line
+            .split_once(' ')
+            .and_then(|(a, l)| {
+                let a = u64::from_str_radix(a.trim_start_matches("0x"), 16).ok()?;
+                Some((a, l.parse::<usize>().ok()?))
+            })
+            .ok_or_else(|| format!("heap gate: unreadable --addr-only line `{line}`"))?;
+        let blob = read_process_memory(self.handle.id(), at, len)?;
+        let dump =
+            tempfile::NamedTempFile::new().map_err(|e| format!("heap gate: no temp file: {e}"))?;
+        std::fs::write(dump.path(), &blob).map_err(|e| format!("heap gate: write dump: {e}"))?;
+        let verdict = Command::new("python3")
+            .arg(&decoder)
+            .arg("--heap-headroom")
+            .arg(dump.path())
+            .output()
+            .map_err(|e| format!("heap gate: could not run {}: {e}", decoder.display()))?;
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&verdict.stdout),
+            String::from_utf8_lossy(&verdict.stderr)
+        );
+        if verdict.status.success() {
+            Ok(text.trim().to_string())
+        } else {
+            Err(text)
+        }
+    }
+
+    /// [`Self::heap_headroom`], fatal: panics with the decoder's verdict, which
+    /// names `CONFIG_NROS_ZEPHYR_HEAP_SIZE` and the value it should be raised to.
+    pub fn assert_heap_headroom(&mut self, what: &str) {
+        match self.heap_headroom() {
+            Ok(v) => eprintln!("[{what}] {v}"),
+            Err(why) => panic!("[{what}] {why}"),
+        }
+    }
+
     /// Kill the Zephyr process
     pub fn kill(&mut self) {
         kill_process_group(&mut self.handle);
@@ -648,6 +753,25 @@ impl ZephyrProcess {
     pub fn is_running(&mut self) -> bool {
         matches!(self.handle.try_wait(), Ok(None))
     }
+}
+
+/// Read `len` bytes at `addr` out of a LIVE child process.
+///
+/// `/proc/<pid>/mem` needs ptrace-read access, which Yama's default
+/// `ptrace_scope=1` grants to an ANCESTOR — and the test spawned this image, so
+/// it is one. native_sim/native/64 links a non-PIE executable, so the ELF's
+/// symbol address IS the runtime address; a PIE image would read the wrong
+/// bytes, which the decoder's MAGIC check refuses rather than misreads.
+fn read_process_memory(pid: u32, addr: u64, len: usize) -> Result<Vec<u8>, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let path = format!("/proc/{pid}/mem");
+    let mut f = std::fs::File::open(&path).map_err(|e| format!("heap gate: open {path}: {e}"))?;
+    f.seek(SeekFrom::Start(addr))
+        .map_err(|e| format!("heap gate: seek {path} to 0x{addr:x}: {e}"))?;
+    let mut buf = vec![0u8; len];
+    f.read_exact(&mut buf)
+        .map_err(|e| format!("heap gate: read {len} bytes at 0x{addr:x} of {path}: {e}"))?;
+    Ok(buf)
 }
 
 impl Drop for ZephyrProcess {
