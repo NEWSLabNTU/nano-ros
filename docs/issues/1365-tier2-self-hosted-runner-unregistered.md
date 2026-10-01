@@ -403,3 +403,51 @@ way forward and the cost has gone from "a lane is late" to "three lanes lost
 their verdict and a fourth is queued behind the same wall":
 `scripts/ci/runner-doctor.sh` on the machine, or a token with the runners
 permission.
+
+## It ended by itself, at 26 h 20 m, with no operator action (2026-10-01)
+
+The section above was written at 07:00Z and said "it is still running" and "this
+now needs a human". It cleared an hour and a half later, unaided:
+
+```
+job 110249254587  tier 2 (1-wise matrix)   run-matrix 36825211926
+  created  2026-10-01T06:31:17Z
+  started  2026-10-01T08:23:14Z   runner_name = nano-ros-runner
+```
+
+So the runner claimed work again after **26 h 20 m** of claiming nothing (last
+previous completion 2026-09-30T06:03:22Z), and that job waited **1 h 52 m** of
+its own. It is now progressing normally — step 6 of 11, `just build tier2` — on
+the same machine, under the same labels, with nothing changed from this side.
+The `probe` lane on the new head is `success` as well.
+
+### What the self-clearing tells us, and what it does not
+
+It **argues against** the readings that need a permanent condition: the runner is
+not deregistered, not decommissioned, and not missing a label — it was the same
+runner, same name, and it resumed without intervention.
+
+It **argues for** the two readings that survive a recovery: the runner was
+**wedged after a job** and something eventually released it, or it was **serving
+another repository** and became free. Those remain indistinguishable from here,
+for the reason this issue has recorded three times: repository credentials cannot
+read a runner's `status`/`busy`, because it is org-registered and the org endpoint
+is 403 without the runners permission.
+
+### What this does NOT retract
+
+The costs in the preceding section are unchanged and already paid. Three jobs
+were cancelled at the 24-hour expiry — `L3` exactly to the second — and three
+lanes lost their verdict: the merge queue's interlock, a tier-2 night and the
+tier-2 nightly. A window that closes on its own is still a window in which
+nothing could be merged through the queue's own lane and no tier-2 evidence
+exists for that day. Two tier-2-nightly jobs (110229382587 from 05:13, 110263209636
+from 07:19) are **still queued** behind the job now running, since the runner
+serves one at a time, and each carries its own 24-hour clock.
+
+So the urgency changes and the ask does not: this is intermittent rather than
+down, which makes it harder to catch, not less worth instrumenting.
+`scripts/ci/runner-doctor.sh` on the machine — or a token with the runners
+permission — is still the only thing that would say which of the two surviving
+readings is true, and an intermittent fault is exactly the case where a
+once-a-day reading beats waiting for someone to be watching.
