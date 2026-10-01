@@ -17,12 +17,17 @@ language = "c"
 extension = "c"
 c_family = true
 
-# The template that renders the whole TU, and the partials it includes. Keys,
-# not paths: the registry owns paths (see `render.rs`).
+# The template that renders the whole TU — a key from `templates` below.
 entry_template = "entry_c.c"
-partials = [
-    "service_trailer_c.jinja",
-    "boot_config.jinja",
-    "declare_calls.jinja",
-    "boot_wrapper_c.jinja",
+
+# The templates this pack contributes, DISCOVERED at build time (phase-474
+# W1): `key` is the stable registry name a `render` call or an `{% include %}`
+# uses, `file` the template beside this manifest. An OUTPUT key is
+# `<artifact>_<surface>.<ext>`, a partial keeps its `.jinja` suffix.
+# `entry_template` names the output among them. The shared partials this pack
+# also includes belong to `../shared/pack.toml`.
+templates = [
+    { key = "entry_c.c", file = "entry.c.jinja" },
+    { key = "boot_wrapper_c.jinja", file = "boot_wrapper.jinja" },
+    { key = "service_trailer_c.jinja", file = "service_trailer.jinja" },
 ]

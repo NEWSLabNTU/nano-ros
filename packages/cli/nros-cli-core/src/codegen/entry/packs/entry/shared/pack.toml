@@ -9,4 +9,9 @@ shared = true
 # No `language`, `extension`, `c_family` or `entry_template`: this pack renders
 # no TU of its own. The conformance check requires those fields of a LANGUAGE
 # pack and forbids them here, so the two kinds cannot be confused.
-partials = ["boot_config.jinja", "declare_calls.jinja"]
+
+# See `../c/pack.toml` for what `templates` declares.
+templates = [
+    { key = "boot_config.jinja", file = "boot_config.jinja" },
+    { key = "declare_calls.jinja", file = "declare_calls.jinja" },
+]

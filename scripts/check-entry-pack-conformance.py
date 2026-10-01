@@ -26,17 +26,13 @@ is the "one fact, two authored spellings" defect phase-469 exists to remove, one
 level up, and a gate whose reach is narrower than its rule is the 0196 shape the
 tree has paid for repeatedly.
 
-The two roots differ in WHAT a manifest holds, and the difference is not
-cosmetic, so `PackRoot` carries it per root:
-
-  * an entry manifest names REGISTRY KEYS (`entry_template`, `partials`), and
-    the key→path map lives in `render.rs`'s `include_str!`s. Checking a named
-    template exists here would mean re-spelling that map, so it is left to the
-    Rust test `manifests_and_the_registry_describe_the_same_templates`;
-  * a message manifest names FILES (`templates = [{ key, file }]`) beside
-    itself, so file existence and the reverse direction — a `.jinja` no
-    manifest claims — are READ from the manifest rather than re-spelled, and
-    are checked here.
+Both roots' manifests now name FILES (`templates = [{ key, file }]`) beside
+themselves — the entry packs since phase-474 W1, when their registry stopped
+being an authored `include_str!` list in `render.rs` and became generated from
+these rows, as the message packs' had in phase-469 W1. So file existence and
+the reverse direction — a `.jinja` no manifest claims — are READ from the
+manifest rather than re-spelled, and are checked here for both. What still
+differs per root is carried by `PackRoot`.
 
 THE NAME
 --------
@@ -124,8 +120,8 @@ def parse_manifest(text: str) -> dict:
     This host's Python is 3.10, which has no `tomllib`, and the repo's rule is
     that a gate brings no dependencies (see `check-provider-announcements.py`).
     A pack manifest is deliberately flat — bare `key = value` plus one array,
-    whose items are strings (entry `partials`) or inline tables (message
-    `templates`), no nesting — so the subset needed is small.
+    whose items are strings (an entry `filters` list) or inline tables (the
+    `templates` rows), no nesting — so the subset needed is small.
 
     It REFUSES anything outside that subset rather than skipping the line. A
     parser that silently ignores what it does not understand is how a gate ends
@@ -198,6 +194,8 @@ ENTRY = PackRoot(
     dir=ROOT / "packages/cli/nros-cli-core/src/codegen/entry/packs/entry",
     language_fields=("language", "extension", "c_family", "entry_template"),
     goldens=ROOT / "packages/cli/nros-cli-core/testdata/entry",
+    templates_name_files=True,
+    claimed_suffixes=(".jinja",),
 )
 
 MESSAGE = PackRoot(
@@ -314,7 +312,7 @@ def check_root(root: PackRoot) -> tuple[list[str], dict[str, dict]]:
                     "a shared pack renders no artifact of its own, so declaring a "
                     "language pack's fields makes the two kinds confusable."
                 )
-            if not m.get("partials") and not m.get("templates"):
+            if not m.get("templates"):
                 problems.append(f"{rel}: shared pack declares no templates, so it is nothing.")
         else:
             missing = [f for f in root.language_fields if f not in m]
