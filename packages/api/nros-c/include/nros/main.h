@@ -92,6 +92,20 @@ NROS_PUBLIC int32_t nros_board_native_run_components_named_ns(const char* sessio
                                                               const char* node_namespace,
                                                               nros_c_entry_setup_fn setup);
 
+/* Issue 1597 — the same runner over CALLER-SUPPLIED executor storage: the host
+ * twin of `nros_board_rtos_run_components_in` below (issue 1568), and the one a
+ * generated native C entry calls. `executor_storage` is `storage_bytes` bytes,
+ * 8-byte aligned — the entry's `__nros_executor_storage` static, sized from the
+ * per-build NROS_CPP_EXECUTOR_STORAGE_SIZE. A block the linked library says is
+ * too small is refused (`nros_cpp_executor_storage_check`). The `_ns` spelling
+ * above stays for an older entry TU and takes one heap block at the library's
+ * own size. Defined in nros-cpp. */
+NROS_PUBLIC int32_t nros_board_native_run_components_named_in(const char* session_name,
+                                                              const char* node_namespace,
+                                                              nros_c_entry_setup_fn setup,
+                                                              void* executor_storage,
+                                                              size_t storage_bytes);
+
 /* Phase 274.W2 (RFC-0015 Model 1) — per-tier spec for
  * `nros_board_native_run_tiers`.
  *
@@ -191,6 +205,21 @@ NROS_PUBLIC int32_t nros_board_native_run_tiers_ns(const char* session_name,
                                                    const char* node_namespace,
                                                    const nros_native_tier_spec_t* tiers,
                                                    size_t n_tiers);
+
+/* Issue 1597 — the same runner over CALLER-SUPPLIED executor storage, the RTOS
+ * runners' shape (`nros_board_zephyr_run_tiers_in` below is the model).
+ * `executor_storage` is `n_tiers` blocks of `storage_stride` bytes; block `i`
+ * is tier `i`'s executor. The generated entry passes a file-scope static sized
+ * from the per-build NROS_CPP_EXECUTOR_STORAGE_SIZE and its own tier count, so
+ * every tier's executor is `.bss` the linker places and `mem-report` names. A
+ * stride below this build's executor size is refused before any session opens.
+ * The `_ns` spelling above stays for an older entry TU and takes one heap block
+ * at the library's own size. Defined in nros-cpp. */
+NROS_PUBLIC int32_t nros_board_native_run_tiers_in(const char* session_name,
+                                                   const char* node_namespace,
+                                                   const nros_native_tier_spec_t* tiers,
+                                                   size_t n_tiers, void* executor_storage,
+                                                   size_t storage_stride);
 
 /* Phase 235.B — weak network-readiness hook for embedded board runners.
  *

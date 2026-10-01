@@ -7,6 +7,7 @@ const c = @cImport({
     @cInclude("nros/boot_config.h");
     @cInclude("nros/main.h");
     @cInclude("nros/nros_cpp_ffi.h");
+    @cInclude("nros/nros_cpp_config_generated.h");
 });
 
 /// A fixed `char[N]` from a literal, as the boot blob's fields are.
@@ -57,8 +58,10 @@ export const NROS_BOOT_CONFIG: c.struct_nros_baked_boot_config linksection(".nro
     .rmw = fixed(32, ""),
 };
 
+var __nros_executor_storage: [(c.NROS_CPP_EXECUTOR_STORAGE_SIZE + 7) / 8]u64 = undefined;
+
 fn run() i32 {
-    return c.nros_board_native_run_components_named_ns(c.nros_boot_config_node_name(&NROS_BOOT_CONFIG), c.nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup);
+    return c.nros_board_native_run_components_named_in(c.nros_boot_config_node_name(&NROS_BOOT_CONFIG), c.nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup, &__nros_executor_storage, @sizeOf(@TypeOf(__nros_executor_storage)));
 }
 
 export fn main() c_int {

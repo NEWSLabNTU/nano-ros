@@ -304,6 +304,23 @@ class LinuxBoard {
             session_name, node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers),
             n_tiers);
     }
+
+    /// Issue 1597 — [`run_tiers`] over CALLER-SUPPLIED executor storage, the
+    /// method every RTOS board's `run_tiers` takes (issues 1551 + 1568).
+    ///
+    /// `executor_storage` is `n_tiers` blocks of `storage_stride` bytes; the
+    /// generated entry passes a file-scope static sized from the per-build
+    /// `NROS_CPP_EXECUTOR_STORAGE_SIZE` and its own tier count, so every
+    /// tier's executor is linker-placed `.bss` rather than a stack object. A
+    /// short stride is refused. See `nros_board_native_run_tiers_in` in
+    /// `<nros/main.h>`.
+    static int32_t run_tiers(const char* session_name, const char* node_namespace,
+                             const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
+                             size_t storage_stride) {
+        return ::nros_board_native_run_tiers_in(
+            session_name, node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers),
+            n_tiers, executor_storage, storage_stride);
+    }
 };
 
 /// Phase 235.B — embedded (Zephyr) board adapter, the `Board::run()`

@@ -82,6 +82,8 @@ exclude = [
     "NativeTierSpecC",
     "nros_board_native_run_tiers",
     "nros_board_native_run_tiers_ns",
+    # Issue 1597 — the storage-taking twin, for the same reason.
+    "nros_board_native_run_tiers_in",
 ]
 
 [fn]

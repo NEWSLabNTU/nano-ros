@@ -1203,6 +1203,30 @@ int32_t nros_board_native_run_components_named_ns(const char *session_name,
                                                   int32_t (*setup)(void *executor));
 
 /**
+ * Issue 1597 — [`nros_board_native_run_components_named_ns`] over
+ * CALLER-SUPPLIED executor storage: the host twin of
+ * `nros_board_rtos_run_components_in` (issue 1568), and the runner a
+ * generated native single-executor C entry calls.
+ *
+ * `executor_storage` is `storage_bytes` bytes, 8-byte aligned — the entry's
+ * file-scope `__nros_executor_storage`, sized from the per-build
+ * `NROS_CPP_EXECUTOR_STORAGE_SIZE` (the C twin of the C++ entry's
+ * `Node::GlobalStorageHolder<0>::storage`). The linked library refuses a
+ * short, misaligned or null block before a byte is written. Before this the
+ * `CppContext` was a `MaybeUninit` on the caller's stack.
+ *
+ * # Safety
+ * As [`nros_board_native_run_components_named_ns`], plus: `executor_storage`
+ * must be valid for writes of `storage_bytes` bytes for the duration of the
+ * call and used by nothing else meanwhile.
+ */
+int32_t nros_board_native_run_components_named_in(const char *session_name,
+                                                  const char *node_namespace,
+                                                  int32_t (*setup)(void *executor),
+                                                  void *executor_storage,
+                                                  size_t storage_bytes);
+
+/**
  * Phase 257 (W0-A, RFC-0043) — typed C Entry lifecycle (unnamed variant).
  *
  * Delegates to [`nros_board_native_run_components_named`] with a NULL session
