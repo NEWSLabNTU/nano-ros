@@ -83,3 +83,68 @@ agree:
 Acceptance is `just probe bootstrap` green on a container with no ROS, reached
 through the book's own blocks, with no `NROS_ALLOW_UNRESOLVED_DEPS` anywhere in
 the path.
+
+## The acceptance as written is now MET, by work that never named this issue (2026-10-01)
+
+This issue's acceptance is *"`just probe bootstrap` green on a container with no
+ROS, reached through the book's own blocks, with no `NROS_ALLOW_UNRESOLVED_DEPS`
+anywhere in the path."* Measured on nightly run **36829686786** (schedule, 07:19,
+head `c7db50ad6`), both front doors:
+
+| job | id | conclusion | `NROS_ALLOW_UNRESOLVED_DEPS` in the log |
+| --- | --- | --- | ---: |
+| `bootstrap-probe` (checkout track) | 110263209711 | **success** | **0 occurrences** |
+| `installed-probe` (no checkout) | 110263209769 | **success** | **0 occurrences** |
+
+Both green on the previous night too (run **36682994178**), and the probe was
+`failure` on run **36535897637** two nights before that, so the transition is
+dated rather than assumed.
+
+### How `std_msgs` resolves now, which is the actual finding
+
+On the **installed** track — the harder door, the one a book reader with no
+checkout uses — the probe scaffolds and then resolves the dependency this issue
+was opened about:
+
+```
+nros new --workspace: scaffolded my_robot (17 files, lang=cpp, rmw=cyclonedds)
+```
+
+`std_msgs` appears 367 times in that job, resolving through `interfaces/std_msgs`
+with an IDL root at `/cyclonedds-ts/_idlroot/std_msgs/msg/*.idl` and a vendored
+`rosidl/humble-5621b26`. So the release asset carries the message package and the
+rosidl toolchain; nothing is reaching for an installed ROS, and nothing is
+suppressing the resolution check.
+
+That is effectively **option 1** of this issue's "what would close it" — the
+quickstart does not need ROS — arrived at by bundling the interfaces rather than
+by scaffolding against a workspace-local `.msg`.
+
+### Nobody did this for this issue
+
+`git log --grep=1357` on main returns exactly **one** commit, the one that FILED
+this issue (`6f40985a5`). No fix commit names it. The commits that plausibly did
+it belong to issue **1304** — `feat(#1304): an installed nros provisions and
+builds with no checkout`, `fix(#1304): the installed probe lost its build step`,
+`fix(#1304): the build coordinate carries the RMW it resolves` — and to the 1439
+repair, neither of which claimed this one. So this is an open issue whose
+acceptance was satisfied as a side effect, and it would have stayed open
+indefinitely on the strength of a probe nobody re-read.
+
+### What is NOT established
+
+- **Not that the design question was decided.** This issue asks to "decide which
+  of these the quickstart is, and make the scaffolder and the book agree". The
+  probe passing shows the scaffolder's dep now resolves; it does not show that
+  anyone chose a route or that the book says what it needs. A reader of
+  `book/src/getting-started/first-project.md` should confirm it matches what the
+  probe exercises before this is closed.
+- **Not that the scaffold stopped declaring `std_msgs`.** It still does; what
+  changed is that something now provides it. Option 1 as written ("scaffold
+  against a message type that resolves with no ROS") was not taken.
+- **Not two nights into three.** This issue states no multi-night requirement,
+  unlike issue 1353's arms, so the bar is lower — but one more green night would
+  rule out a lucky container state, which is cheap to wait for.
+
+Recommended: close on the next green nightly, with a line saying which route the
+book now teaches.
