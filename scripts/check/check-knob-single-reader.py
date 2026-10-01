@@ -290,6 +290,28 @@ RETIRED = {
         # the removal is a `#` comment that `strip_comments_hash` drops.
         # Verified by running the gate with the exemption removed.
     ),
+    # Issue 1555 -- the READER of that key, which outlived its producer by two
+    # waves. Measured over 248 real `nros-metadata.json` build artifacts: 0
+    # carried the key. What kept it alive was the declared-QoS compile fixture,
+    # a metadata document with the key in it; that fixture now renders from a
+    # contract resolved into a model, which is the road a real image takes.
+    # The field SURVIVES as `Option<IgnoredAny>` so a document still carrying
+    # the key is refused instead of silently dropped -- so the rule forbids a
+    # field that could hold the strings, not the name.
+    "the `nros-metadata.json` `entities` reader": Retired(
+        what="the Rust reader of a component's declared entities in nros-metadata.json",
+        resolves_now=(
+            "the contract sidecar the bringup resolves, folded in on `--model` "
+            "through `EntityInventory::from_model`; a standalone leaf's "
+            "`system.toml` `[[component]] entities`"
+        ),
+        wave="issue 1555",
+        block=(
+            "packages/cli/nros-cli-core/src/cmd/entity_inventory.rs",
+            "struct ComponentMeta {",
+        ),
+        forbid=[(None, r"^\s*(pub\s+)?entities\s*:\s*(Option<\s*)?Vec\s*<")],
+    ),
 }
 
 

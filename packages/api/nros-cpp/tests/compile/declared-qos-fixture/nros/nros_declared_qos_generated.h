@@ -12,7 +12,7 @@
  * An ABSENT row is not depth 0 and not depth 10: it is "nobody declared
  * this endpoint", and nothing asserts against it.
  *
- * Source: packages/api/nros-cpp/tests/compile/declared-qos-fixture/entities.json [demo::listener]
+ * Source: packages/api/nros-cpp/tests/compile/declared-qos-fixture/nros-metadata.json + packages/api/nros-cpp/tests/compile/declared-qos-fixture/declared_qos.yaml [demo::listener]
  */
 #ifndef NROS_DECLARED_QOS_GENERATED_H
 #define NROS_DECLARED_QOS_GENERATED_H

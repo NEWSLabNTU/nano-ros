@@ -1,7 +1,7 @@
 // phase-403 step 2 -- the NEGATIVE half: this TU MUST NOT COMPILE.
 //
-// The declaration in `declared-qos-fixture/entities.json` says
-// `sub:std_msgs/msg/Int32:/chatter@depth=1`. The call site below passes
+// The contract in `declared-qos-fixture/declared_qos.yaml` says `/chatter` is
+// subscribed at `qos: { depth: 1 }`. The call site below passes
 // `nros::QoS(10)`. One subscription, two different depths, and depth is a
 // multiplier on the executor arena -- so the build has to stop.
 //

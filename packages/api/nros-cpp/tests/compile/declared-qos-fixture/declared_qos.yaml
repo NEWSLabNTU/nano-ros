@@ -1,0 +1,54 @@
+# Issue 1555 -- the SystemModel the declared-QoS compile fixture is rendered
+# from, which is the input a real image's header comes from: a resolved model
+# whose contract wiring states the depths, beside the `nros-metadata.json` that
+# `nano_ros_node_register()` writes. (Named so, and not `*_model.yaml` /
+# `system_model.yaml`, because a TRACKED model is banned by
+# check-no-tracked-models; this is a test input, not a build artifact. Same
+# precedent as `../declared-params-fixture/declared_params.yaml`.)
+#
+# It used to be a metadata document carrying an `"entities"` key, the one
+# input the retired `nros-metadata.json` entity reader still had. Nothing in a
+# production build writes that key, so the fixture moved to the road that does.
+#
+# Three cases the C/C++ check has to tell apart, on ONE node:
+#
+#   /chatter     declared depth 1  -- a row exists; a QoS(1) agrees and a
+#                                     QoS(10) must fail the BUILD
+#   /undeclared  no depth at all   -- NO row; nothing asserts, and the
+#                                     3-argument NROS_SUBSCRIBE keeps its
+#                                     historical default profile
+#   on_tick      a timer path      -- no QoS at all, so it is not in the depth
+#                                     population and does not count as an
+#                                     undeclared endpoint
+#
+# `nros/nros_declared_qos_generated.h` beside this file is what
+#   nros ws entity-inventory \
+#     --metadata packages/api/nros-cpp/tests/compile/declared-qos-fixture/nros-metadata.json \
+#     --model packages/api/nros-cpp/tests/compile/declared-qos-fixture/declared_qos.yaml \
+#     --component demo::listener \
+#     --output-header packages/api/nros-cpp/tests/compile/declared-qos-fixture/nros/nros_declared_qos_generated.h
+# renders, and `the_committed_compile_fixture_is_what_this_emitter_renders`
+# (nros-cli-core, cmd/entity_inventory.rs) holds the two together. Regenerate;
+# never hand-edit.
+meta: { version: 1 }
+structure:
+  scopes:
+    demo_bringup/demo.launch.xml:
+      file: demo.launch.xml
+  nodes:
+    /listener:
+      { scope: demo_bringup/demo.launch.xml, pkg: demo, exec: listener, node_name: listener }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      sub: [/listener/chatter]
+    /undeclared:
+      type: std_msgs/msg/Bool
+      sub: [/listener/undeclared]
+contracts:
+  sub_endpoints:
+    /listener/chatter:
+      qos: { depth: 1 }
+  node_paths:
+    /listener/on_tick:
+      output: []

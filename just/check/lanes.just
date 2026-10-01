@@ -545,7 +545,7 @@ c: c-fmt
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/declared_qos_depth_probe.c 2>&1)" && { \
         echo "ERROR: declared_qos_depth_probe.c COMPILED. The fixture declares" >&2; \
-        echo "       sub:std_msgs/msg/Int32:/chatter@depth=1 and the call site passes 10;" >&2; \
+        echo "       /chatter at depth 1 (declared_qos.yaml) and the call site passes 10;" >&2; \
         echo "       NROS_ASSERT_DECLARED_DEPTH's _Static_assert did not fire, so the" >&2; \
         echo "       declared depth is not reaching the C compiler and nothing is checked." >&2; \
         exit 1; \
@@ -2070,7 +2070,7 @@ cpp: cpp-fmt
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/declared_qos_depth_probe.cpp 2>&1)" && { \
         echo "ERROR: declared_qos_depth_probe.cpp COMPILED. The fixture declares" >&2; \
-        echo "       sub:std_msgs/msg/Int32:/chatter@depth=1 and the call site passes" >&2; \
+        echo "       /chatter at depth 1 (declared_qos.yaml) and the call site passes" >&2; \
         echo "       nros::QoS(10); NROS_SUBSCRIBE's static_assert did not fire, so the" >&2; \
         echo "       declared depth is not reaching the compiler and nothing is checked." >&2; \
         exit 1; \

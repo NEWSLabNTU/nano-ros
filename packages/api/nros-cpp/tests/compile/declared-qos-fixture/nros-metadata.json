@@ -1,0 +1,19 @@
+{
+  "_comment": [
+    "The `nros-metadata.json` half of the declared-QoS compile fixture: one",
+    "component row, shaped exactly as `nano_ros_node_register()` writes one.",
+    "",
+    "It states WHICH components the image registers, and nothing about what",
+    "they create -- that is the contract's job, and it is stated in",
+    "`declared_qos.yaml` beside this file, which is the model the header is",
+    "rendered from. This file used to carry an `\"entities\"` key; no production",
+    "build writes one, and the reader now refuses it (issue 1555)."
+  ],
+  "components": [
+    {
+      "name": "listener",
+      "pkg": "demo",
+      "class": "demo::Listener"
+    }
+  ]
+}
