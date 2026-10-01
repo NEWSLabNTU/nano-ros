@@ -1187,6 +1187,45 @@ and the disposition change the 2026-09-23 pass made is correct.
 **Risk:** the risk is in building it early, not in leaving it.
 **Needs a compile nobody ran:** not applicable; nothing to build yet.
 
+**EXECUTED 2026-09-29 — the mechanism landed, the parse did not, and THIS
+SECTION'S PRESCRIPTION NAMED THE WRONG ROAD.**
+
+1. **"a provenance field on `RemapRule` plus an ordering guarantee at
+   `declare_remap`" covers one of TWO stores, and not this row's.** `RemapRule`
+   / `declare_remap` / `resolve_entity_name_for` is the C and C++ store. The
+   Rust road never calls `declare_remap`: `emit_rust.rs` writes
+   `runtime.remaps = &[..]`, `nros_platform::RuntimeCtx::remaps` carries it as a
+   bare `&[(&str, &str)]`, and `ExecutorSink::create_entity` resolves with it. A
+   field on the struct would have left the Rust road with no provenance at all.
+2. **So the tier went where both roads meet.**
+   `nros_node::names::resolve_name_layered(source, node, ns, authoritative,
+   fallback)` consults every authoritative rule before any fallback rule,
+   whatever order either was declared in; `resolve_name` is that call with an
+   empty fallback, unchanged in signature and behaviour. Both producers now name
+   their tier. Nothing observable changed — the fallback tier has no producer —
+   which is the deliverable: a second channel is added by choosing a parameter,
+   not by appending to a flat list.
+
+**The precedence rule this section asked for, written:** LAUNCH IS
+AUTHORITATIVE; an argv rule may only apply to a name the launch projected no
+rule for (RFC-0046's identity ruling, applied to the remap half). Pinned by
+three tests in `packages/core/nros-node/src/names.rs`.
+
+**The recommendation above ("leave it") stands for the PARSE**, for three
+reasons the study did not have: `init_with_args` returns a `Context`, which
+writes neither store, so a parse needs new state in three ledger shards; no
+`nros sync` image reaches `init_with_args` at all, so the parse would serve a
+fourth road; and RFC-0015 §9 already designs a per-platform runtime-arg channel
+(`nros_runtime_args_get` / `BoardArgsSource`) whose §9.6 is still open —
+measured 2026-09-29, neither symbol exists under `packages/`.
+
+**And the false-premise class was wider than the sweep that closed it** (0196's
+shape): PR #1317 grepped five ENV-flavoured phrasings. The same claim written
+as a CLI channel — `RuntimeCtx`'s module and `params` docs ("or `--ros-args -p
+k:=v`"), `BoardEntry::run` ("the launch file / CLI args"), `nros-board-nuttx`
+("launch overlay + `--ros-args` CLI parsing") and the book's `board-trait.md` —
+was invisible to it. Five more sites, corrected with this pass.
+
 ## Row 12 — `cpp:Node::create_subscription` [gap, adopt]: the argument order
 
 **SHIPPED 2026-09-28 (#1321), and the evidence was stronger than this section

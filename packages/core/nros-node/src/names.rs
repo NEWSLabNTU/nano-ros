@@ -8,6 +8,18 @@
 //! Scope: **basic name remapping only** — a rule matches when its expanded
 //! `from` equals the expanded source name (exact FQN comparison, no
 //! wildcards, no node-name prefixes). First matching rule wins.
+//!
+//! ## Two stores, one seam
+//!
+//! The rules themselves are held in two different places, and this module is
+//! the only thing both reach: the C and C++ roads store
+//! `executor::spin::RemapRule` in the executor's fixed table (filled by
+//! `Executor::declare_remap`, which the generated entry calls before the
+//! component configure), while the Rust road stores a bare
+//! `&[(&str, &str)]` on `nros_platform::RuntimeCtx` that `nros::main!` bakes
+//! per component and `ExecutorSink` threads to `create_entity`. Neither road
+//! reads the other's store. So anything about PRECEDENCE has to live here to
+//! be true of both — see [`resolve_name_layered`].
 
 /// Maximum bytes in a fully-qualified resolved entity name. Matches
 /// `nros::node_metadata::METADATA_STRING_CAPACITY` (the source-name bound
@@ -101,11 +113,40 @@ fn push_namespace(out: &mut ResolvedName, namespace: &str) -> Result<(), ()> {
     out.push_str(ns)
 }
 
+/// The first rule in `rules` whose expanded `from` equals `expanded`, as its
+/// expanded `to`. A rule whose `from`/`to` fails to expand is skipped (never
+/// masks the name expansion itself).
+fn first_substitution<'a, I>(
+    expanded: &ResolvedName,
+    node_name: &str,
+    namespace: &str,
+    rules: I,
+) -> Option<ResolvedName>
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+{
+    for (from, to) in rules {
+        if let Ok(from_fq) = expand_name(from, node_name, namespace)
+            && &from_fq == expanded
+            && let Ok(to_fq) = expand_name(to, node_name, namespace)
+        {
+            return Some(to_fq);
+        }
+    }
+    None
+}
+
 /// Resolve a source-level entity name through launch remap rules: expand the
 /// source name AND each rule's `from` to fully-qualified form, compare exact,
 /// substitute the (also expanded) `to` of the first matching rule; no match →
 /// the expanded source name. A rule whose `from`/`to` fails to expand is
 /// skipped (never masks the name expansion itself).
+///
+/// This is the single-tier spelling: **everything passed here is
+/// AUTHORITATIVE**, and precedence among the rules is iterator order. When a
+/// caller has rules from more than one channel, it must say which channel
+/// outranks which — [`resolve_name_layered`] is that call, and it is the only
+/// place a precedence between channels may be expressed.
 #[allow(clippy::result_unit_err)]
 pub fn resolve_name<'a, I>(
     source: &str,
@@ -116,14 +157,59 @@ pub fn resolve_name<'a, I>(
 where
     I: IntoIterator<Item = (&'a str, &'a str)>,
 {
+    resolve_name_layered(
+        source,
+        node_name,
+        namespace,
+        remaps,
+        core::iter::empty::<(&str, &str)>(),
+    )
+}
+
+/// [`resolve_name`] with the rules split into two PROVENANCE TIERS: every
+/// `authoritative` rule is consulted before any `fallback` rule, whatever
+/// order either was declared in.
+///
+/// # Why a tier and not a field on the rule
+///
+/// A remap's provenance only ever decides one thing — which rule wins when two
+/// channels name the same entity — and the tree has no single rule TYPE to hang
+/// it on: the C and C++ roads store `executor::spin::RemapRule`, the Rust road
+/// stores a bare `&[(&str, &str)]` on `RuntimeCtx`. The one thing both roads
+/// share is this function, so the tier is an ARGUMENT here rather than a field
+/// there. That also makes the guarantee structural instead of documentary: a
+/// caller cannot promote a fallback rule by declaring it first, because the two
+/// tiers are different parameters and the loop below can never interleave them.
+///
+/// # The rule this encodes
+///
+/// **Launch is authoritative; anything else is a fallback for a name the launch
+/// projected no rule for.** That is RFC-0046's precedence for node identity
+/// (launch overrides the code-provided default) applied to the remap half of
+/// the same question. Today `authoritative` is the only tier with a producer —
+/// both roads pass their codegen-projected launch rules there and an empty
+/// fallback. The tier exists so that when a second channel arrives (the
+/// `--ros-args` parse `nros::init_with_args` refuses, `init.json`'s
+/// `rust:init_with_args`), adding it is choosing a parameter rather than
+/// appending to a flat list whose order nobody guaranteed.
+#[allow(clippy::result_unit_err)]
+pub fn resolve_name_layered<'a, 'b, A, F>(
+    source: &str,
+    node_name: &str,
+    namespace: &str,
+    authoritative: A,
+    fallback: F,
+) -> Result<ResolvedName, ()>
+where
+    A: IntoIterator<Item = (&'a str, &'a str)>,
+    F: IntoIterator<Item = (&'b str, &'b str)>,
+{
     let expanded = expand_name(source, node_name, namespace)?;
-    for (from, to) in remaps {
-        if let Ok(from_fq) = expand_name(from, node_name, namespace)
-            && from_fq == expanded
-            && let Ok(to_fq) = expand_name(to, node_name, namespace)
-        {
-            return Ok(to_fq);
-        }
+    if let Some(hit) = first_substitution(&expanded, node_name, namespace, authoritative) {
+        return Ok(hit);
+    }
+    if let Some(hit) = first_substitution(&expanded, node_name, namespace, fallback) {
+        return Ok(hit);
     }
     Ok(expanded)
 }
@@ -210,6 +296,61 @@ mod tests {
         assert_eq!(
             resolve_name("/a", "n", "/", remaps).unwrap().as_str(),
             "/first"
+        );
+    }
+
+    // ---------------------------------------------------------------------
+    // The precedence between remap CHANNELS (`resolve_name_layered`).
+    //
+    // `first_matching_rule_wins` above is precedence WITHIN one channel, and
+    // it is iterator order. These three pin the other axis: a fallback rule
+    // can never outrank an authoritative one, and declaration order cannot
+    // change that.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn authoritative_rule_wins_over_a_fallback_for_the_same_name() {
+        // The mutation this refuses: concatenating the two channels into one
+        // flat iterator. Written that way the fallback rule is FIRST, so
+        // `first_matching_rule_wins` would hand it the name.
+        let launch = [("/a", "/from_launch")];
+        let argv = [("/a", "/from_argv")];
+        assert_eq!(
+            resolve_name_layered("/a", "n", "/", launch, argv)
+                .unwrap()
+                .as_str(),
+            "/from_launch"
+        );
+        // Same assertion with the flat concatenation spelled out, so the test
+        // says what it is protecting against rather than only what it wants.
+        assert_eq!(
+            resolve_name("/a", "n", "/", argv.into_iter().chain(launch))
+                .unwrap()
+                .as_str(),
+            "/from_argv"
+        );
+    }
+
+    #[test]
+    fn fallback_applies_where_the_authoritative_tier_has_no_rule() {
+        let launch = [("/b", "/from_launch")];
+        let argv = [("/a", "/from_argv")];
+        assert_eq!(
+            resolve_name_layered("/a", "n", "/", launch, argv)
+                .unwrap()
+                .as_str(),
+            "/from_argv"
+        );
+    }
+
+    #[test]
+    fn resolve_name_is_the_all_authoritative_case() {
+        let remaps = [("/a", "/one")];
+        assert_eq!(
+            resolve_name("/a", "n", "/", remaps).unwrap().as_str(),
+            resolve_name_layered("/a", "n", "/", remaps, core::iter::empty::<(&str, &str)>())
+                .unwrap()
+                .as_str(),
         );
     }
 

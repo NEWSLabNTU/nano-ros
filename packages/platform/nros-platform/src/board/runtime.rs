@@ -5,8 +5,12 @@
 //! `run_plan(runtime)` body reads:
 //!
 //! - **params** — `(key, value)` pairs from launch XML
-//!   `<param name="…" value="…"/>` or `--ros-args -p k:=v`.
-//! - **remaps** — `(from, to)` topic/service renames.
+//!   `<param name="…" value="…"/>`, projected here by `nros sync` at BUILD
+//!   time. NOT from `--ros-args -p k:=v`: nothing in this process parses
+//!   argv, and `nros::init_with_args` refuses `--ros-args` rather than
+//!   pretending to honour it.
+//! - **remaps** — `(from, to)` topic/service renames, from launch
+//!   `<remap from= to=/>` by the same build-time projection.
 //! - **env** — environment-style key/value pairs (POSIX `getenv`
 //!   shape) accessible from no_std boards via this struct rather
 //!   than a `libc::getenv` call.
@@ -222,8 +226,13 @@ impl NodeDispatchRuntime for NullNodeRuntime {
 /// typically populates `params` + `remaps`; `env` is rarely set on
 /// embedded.
 pub struct RuntimeCtx<'a> {
-    /// `<param name=… value=…/>` from launch XML, or
-    /// `-p name:=value` CLI overrides.
+    /// `<param name=… value=…/>` from launch XML, baked here by
+    /// `nros::main!` from the resolved model at BUILD time.
+    ///
+    /// NOT `-p name:=value` CLI overrides: no argv parser exists on any road
+    /// (`nros::init_with_args` refuses `--ros-args` loudly instead), so launch
+    /// is the only producer. See `nros_node::names::resolve_name_layered` for
+    /// the precedence a second channel would have to be given.
     pub params: &'a [(&'a str, &'a str)],
 
     /// Topic / service / action remaps: `(from, to)`, set per component by
@@ -232,6 +241,11 @@ pub struct RuntimeCtx<'a> {
     /// `install_node_typed_with_launch`, where entity creation expands
     /// `~`/relative names and substitutes matching rules (exact-FQN match,
     /// first rule wins).
+    ///
+    /// These are AUTHORITATIVE rules: `ExecutorSink::create_entity` passes
+    /// them as `nros_node::names::resolve_name_layered`'s authoritative tier,
+    /// so a rule from any future second channel can only apply to a name the
+    /// launch projected no rule for.
     pub remaps: &'a [(&'a str, &'a str)],
 
     /// Environment-style key/value pairs (mostly POSIX). Empty on

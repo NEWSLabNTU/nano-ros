@@ -1258,6 +1258,13 @@ pub const MAX_REMAPS: usize = 16;
 /// lookup in [`Executor::resolve_entity_name_for`] expands both sides against
 /// the owning node's identity via `crate::names` (exact-FQN match, no
 /// wildcards).
+///
+/// There is no provenance field, deliberately: every rule that reaches this
+/// table came from the launch file, and the precedence a provenance field
+/// would decide is expressed one level up, as
+/// [`crate::names::resolve_name_layered`]'s two tiers. A field here would also
+/// only ever cover the C and C++ roads — the Rust road's remaps are a bare
+/// `&[(&str, &str)]` on `RuntimeCtx` and never enter this struct.
 pub(crate) struct RemapRule {
     pub(crate) node_name: heapless::String<64>,
     pub(crate) namespace: heapless::String<64>,
@@ -2474,6 +2481,13 @@ impl<'s> Executor<'s> {
     /// wins) by [`Self::resolve_entity_name_for`]. Errors when a string
     /// overflows its slot or the table is at `MAX_REMAPS` — callers surface
     /// this rather than silently dropping a routing rule.
+    ///
+    /// **This declares an AUTHORITATIVE rule.** Declaration order settles
+    /// which of two launch rules for one name wins; it is not how a rule from
+    /// some OTHER channel would be ranked against a launch rule. That
+    /// precedence lives in [`crate::names::resolve_name_layered`], which the
+    /// resolution reads through, so a second channel cannot acquire authority
+    /// by calling this earlier.
     #[allow(clippy::result_unit_err)]
     pub fn declare_remap(
         &mut self,
@@ -2506,6 +2520,16 @@ impl<'s> Executor<'s> {
     /// plus this node's declared remap rules (exact-FQN match, first rule
     /// wins). Nodes with no rules still get expansion. Errors on an
     /// unexpandable name (see `crate::names::expand_name`).
+    ///
+    /// Every rule in this table is AUTHORITATIVE: it was projected from the
+    /// launch file by `nros sync` into the generated entry, which declares it
+    /// before the component configure. It goes to
+    /// [`crate::names::resolve_name_layered`]'s authoritative tier, and the
+    /// fallback tier is empty because no second remap channel has a producer
+    /// yet — that is where the `--ros-args` parse would arrive
+    /// (`init.json`'s `rust:init_with_args`). See that function for the
+    /// precedence rule and for why the tier is an argument there rather than a
+    /// field on [`RemapRule`].
     #[allow(clippy::result_unit_err)]
     pub fn resolve_entity_name_for(
         &self,
@@ -2514,12 +2538,18 @@ impl<'s> Executor<'s> {
         source: &str,
     ) -> Result<crate::names::ResolvedName, ()> {
         let ns = if namespace.is_empty() { "/" } else { namespace };
-        let rules = self.remap_table[..self.remap_len]
+        let launch_rules = self.remap_table[..self.remap_len]
             .iter()
             .flatten()
             .filter(|r| r.node_name.as_str() == node_name && r.namespace.as_str() == ns)
             .map(|r| (r.from.as_str(), r.to.as_str()));
-        crate::names::resolve_name(source, node_name, ns, rules)
+        crate::names::resolve_name_layered(
+            source,
+            node_name,
+            ns,
+            launch_rules,
+            core::iter::empty::<(&str, &str)>(),
+        )
     }
 
     /// [`Self::resolve_entity_name_for`] against the executor's CURRENT node
