@@ -1,0 +1,112 @@
+# What every sizing knob COSTS, when a `// nros-pool:` formula cannot say — issue 0815.
+#
+# `scripts/gen-pool-inventory.py` finds every knob mechanically, and prices a pool
+# only where the pool declares its arithmetic as a product of knobs. Most of the
+# RAM those knobs move is not such a product — its element is a struct whose size
+# only the compiler knows, or it lands on a heap, or inside the executor's
+# storage — and the page used to render those knobs with NO cost column at all,
+# which a reader takes as "free". This file is the WHY for each of them.
+#
+# It is an AUTHORED table, so it is bound in both directions by the generator,
+# which FAILS (it is the `pool-inventory` gate) when:
+#   * a scanned knob has neither a pricing formula nor a row here (UNCLASSIFIED);
+#   * a row names a knob the scan no longer finds (stale);
+#   * a `pool`/`heap` row names a symbol no tracked source defines any more.
+# A row may also annotate a knob a formula already prices, to name the OTHER
+# pools it sizes.
+#
+# Format:  KNOB | kind | symbols (comma-separated, may be empty) | reason
+#
+# kinds
+#   pool        sizes the named static(s); priced EXACTLY per image by
+#               `just mem-report`, which measures the symbol and lists the knobs
+#   executor    sizes the executor's storage — `mem-report`'s
+#               `[executor storage]` owner
+#   component   sizes the per-component storage — `[component storage]`
+#   heap        sizes a heap region or what is allocated from one; a named
+#               symbol is the region itself, measured by `mem-report`
+#   stack       sizes a stack — a task's, or one call's frame
+#   element     sizes a field or element; the bytes land in whatever pool, arena
+#               or handle holds that type
+#   input       an input to ANOTHER knob's derivation, never storage itself
+#   not-a-size  a time, priority, threshold or switch — costs no bytes
+#   test-only   read only by a test binary
+
+NROS_ACTION_INBOX_BYTES | pool | nros_rmw_zenoh::shim::service::ACTION_INBOX | slot bytes of each action-family inbox ring; the element is an `InboxStorage` struct (ring header + slots), so only the compiler knows the product
+NROS_ACTION_INBOX_DEPTH | pool | nros_rmw_zenoh::shim::service::ACTION_INBOX | ring depth of each action-family inbox; same `InboxStorage` element
+NROS_SERVICE_INBOX_BYTES | pool | nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX | slot bytes of each user-service inbox ring (`InboxStorage` element); its default is DERIVED from the declared request types, so no static figure exists either
+NROS_SERVICE_INBOX_DEPTH | pool | nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX | ring depth of each user-service inbox (`InboxStorage` element)
+ZPICO_SERVICE_BUFFER_SIZE | pool | nros_rmw_zenoh::shim::service::SERVICE_BUFFERS | payload bytes inside each `ServiceBuffer` struct; also the default for the two inbox slot sizes above
+NROS_PARAM_SERVICE_INBOX_BYTES | pool | nros_node::parameter_services::PARAM_INBOX | slot bytes of the parameter-service inbox ring (`CallerInboxStorage` element)
+NROS_PARAM_SERVICE_INBOX_DEPTH | pool | nros_node::parameter_services::PARAM_INBOX | ring depth of the parameter-service inbox (`CallerInboxStorage` element)
+NROS_RMW_MAX_BACKENDS | pool | nros_rmw_cffi::REGISTRY | backend slots in the RMW registry; the element is a `BackendSlot` struct
+NROS_RMW_MAX_NODES | pool | nros_rmw_cffi::NODE_TABLE | node slots in the RMW node table; the element is a `NodeSlot` struct
+NROS_RMW_MESSAGE_INFO_SLOTS | pool | nros_rmw_cffi::MESSAGE_INFO_TABLE | message-info slots; the `MessageInfoSlot` element gains fields under `alloc` + `safety-e2e`, so a constant would be right for one build (issue 0739)
+ZPICO_MAX_SESSIONS | pool | g_sessions,nros_rmw_zenoh::shim::service::SERVICE_BUFFERS,nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX | session count: the outer dimension of the zpico session table and of every per-session shim pool; the session element is the `struct zpico_session` C struct
+ZPICO_MAX_PUBLISHERS | pool | g_sessions | publisher entries inside each `struct zpico_session`; default derived per image from the entity inventory
+ZPICO_MAX_SUBSCRIBERS | pool | g_sessions,nros_rmw_zenoh::shim::subscriber::SUBSCRIBER_BUFFERS | subscriber entries inside each `struct zpico_session` and the shim's `SubscriberBuffer` table (also priced through `SMALL_PAYLOADS`); default derived per image
+ZPICO_MAX_QUERYABLES | pool | g_sessions,nros_rmw_zenoh::shim::service::SERVICE_BUFFERS,nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX | queryable entries inside each `struct zpico_session` and the per-queryable shim pools; default derived per image (a service server, a TRANSIENT_LOCAL publisher and the builtin param/lifecycle services each take one)
+ZPICO_MAX_LIVELINESS | pool | g_sessions | liveliness-token entries inside each `struct zpico_session`
+ZPICO_MAX_PENDING_GETS | pool | g_sessions | pending-get slots inside each `struct zpico_session`
+ZPICO_GRAPH_CACHE_SIZE | pool | g_sessions | the graph cache's byte buffer, embedded in each `struct zpico_session` beside its mutex and subscriber handle
+ZPICO_MAX_TL_PUBLISHERS | pool | nros_rmw_zenoh::shim::publisher::transient_local::TL_SLOTS | retention slots for TRANSIENT_LOCAL publishers; the element is a `RetainSlot` struct and the count is derived per image
+ZPICO_TL_RETAIN_BYTES | pool | nros_rmw_zenoh::shim::publisher::transient_local::TL_SLOTS | bytes retained inside each `RetainSlot`
+NROS_SMOLTCP_MAX_SOCKETS | pool | nros_smoltcp::bridge::SOCKET_RX_BUFFERS,nros_smoltcp::bridge::SOCKET_TX_BUFFERS,nros_smoltcp::bridge::SOCKET_TABLE | TCP socket count; the byte buffers carry `nros-pool:` formulas, the socket table's element is a struct
+NROS_SMOLTCP_MAX_UDP_SOCKETS | pool | nros_smoltcp::bridge::UDP_SOCKET_RX_BUFFERS,nros_smoltcp::bridge::UDP_SOCKET_TX_BUFFERS,nros_smoltcp::bridge::UDP_SOCKET_TABLE | UDP socket count; byte buffers formula-priced, the table's element is a struct
+NROS_SMOLTCP_BUFFER_SIZE | pool | nros_smoltcp::bridge::SOCKET_RX_BUFFERS,nros_smoltcp::bridge::SOCKET_TX_BUFFERS,nros_smoltcp::bridge::UDP_SOCKET_RX_BUFFERS,nros_smoltcp::bridge::UDP_SOCKET_TX_BUFFERS | per-socket buffer bytes; formula-priced, but the default is computed per platform
+NROS_ZEPHYR_HEAP_SIZE | heap | nros_platform::zephyr_heap::HEAP | the rlsf arena both zenoh-pico's `z_malloc` and Rust's allocator draw from on Zephyr; the symbol IS the region, measured per image
+NROS_FREERTOS_HEAP_KB | heap | ucHeap | FreeRTOS heap_4's `ucHeap[configTOTAL_HEAP_SIZE]`; the symbol IS the region, measured per image
+NROS_FREERTOS_APP_STACK_KB | stack | | the application task's stack, which FreeRTOS allocates out of `ucHeap` — it is inside that heap's figure, never a symbol of its own
+ZPICO_BATCH_UNICAST_SIZE | heap | | zenoh-pico allocates its unicast TX/RX batch buffers (`_z_wbuf_make`/`_z_zbuf_make`) when a session opens — heap bytes, no symbol
+ZPICO_BATCH_MULTICAST_SIZE | heap | | the multicast twin of the unicast batch buffers — heap at session open, no symbol
+ZPICO_FRAG_MAX_SIZE | heap | | zenoh-pico's defragmentation buffer, `_z_wbuf_make(Z_FRAG_MAX_SIZE)` on first fragment — heap, no symbol
+ZPICO_GET_REPLY_BUF_SIZE | stack | | the blocking `z_get` reply context is stack-allocated per call (`zpico.c`), so it costs stack in the caller, never static RAM
+NROS_MAX_PARAMETERS | heap | | slots of `ParameterStorage`, which `ensure_parameter_store` boxes on the heap once per executor (issue 0756) — no static symbol, so `mem-report` cannot see it
+NROS_MAX_PARAM_NAME_LEN | element | | bounds a parameter NAME inside every `ParameterStorage` slot (heap, see `NROS_MAX_PARAMETERS`)
+NROS_MAX_PARAM_DESCRIPTION_LEN | element | | bounds a parameter descriptor's description inside every `ParameterStorage` slot
+NROS_MAX_PARAM_CONSTRAINTS_LEN | element | | bounds a parameter descriptor's constraints text inside every `ParameterStorage` slot
+NROS_MAX_STRING_VALUE_LEN | element | | bounds a string parameter VALUE — `ParameterValue` is sized by its largest variant, so this is paid by every slot
+NROS_MAX_ARRAY_LEN | element | | bounds an array parameter value; paid by every `ParameterValue`, i.e. every slot
+NROS_MAX_BYTE_ARRAY_LEN | element | | bounds a byte-array parameter value; paid by every `ParameterValue`, i.e. every slot
+NROS_EXECUTOR_ARENA_SIZE | executor | | the executor arena itself; the backing is `EXECUTOR_BACKING` (Rust) or the entry's `__nros_executor_storage` / tier table (C/C++)
+NROS_EXECUTOR_BACKING_U64S | executor | | STATES the boot executor's backing size in words; `EXECUTOR_BACKING` is exactly 8x this
+NROS_EXECUTOR_MAX_CBS | executor | | callback slots inside the executor
+NROS_EXECUTOR_MAX_SC | executor | | sched-context slots inside the executor
+NROS_EXECUTOR_ACTION_CLIENTS | executor | | action-client entries the executor arena is sized for
+NROS_EXECUTOR_MAX_NODES | executor | | node slots inside the executor; the zenoh backend also sizes its per-node liveliness cap from it
+NROS_EXECUTOR_MAX_SHUTDOWN_CBS | executor | | shutdown-callback slots inside the executor
+NROS_PUBSUB_QOS_DEPTH | executor | | the per-subscription receive queue depth the arena budgets for; derived from the declared QoS where an image states one
+NROS_SUBSCRIPTION_BUFFER_SIZE | executor | | each subscription's receive buffer inside the executor arena (`DEFAULT_RX_BUF_SIZE`)
+NROS_SUBSCRIBER_BUFFER_SIZE | pool | nros_rmw_zenoh::shim::subscriber::SMALL_PAYLOADS | the small payload class (formula-priced); read by two crates with two defaults — the page flags that
+NROS_PARAM_SERVICE_BUFFER_SIZE | executor | | request/reply buffers of the builtin parameter and lifecycle services, held in the executor's value
+NROS_RUNTIME_MAX_COMPONENTS | component | | component slots of the runtime's type-erased pool
+NROS_RUNTIME_COMPONENT_SLOT_BYTES | component | | byte budget of each component slot (`TypedSlot<C>`)
+NROS_RUNTIME_MAX_CLASS_INSTANCES | component | | instances one component class's macro-emitted store (`__NROS_COMPONENT_<pkg>_SLOT_STORE`) holds
+NROS_RUNTIME_MAX_CELL_ENTITIES | component | | entity-registry slots per component cell
+NROS_KEYEXPR_STRING_SIZE | element | | the key-expression buffer inside each subscriber/service shim entry; lands in `SUBSCRIBER_BUFFERS`/`SERVICE_BUFFERS`
+NROS_LET_BUFFER_SIZE | element | | the per-handle LET buffer inside each C/C++ API handle, which lives in the CALLER's storage
+ZPICO_PUBLISHER_TX_BUFFER_SIZE | element | | each publisher's zero-copy lend arena (`ZENOH_TX_BUF`), inside the publisher entry wherever that is stored
+NROS_GRAPH_MAX_ENTITIES | input | | the entity count `ZPICO_GRAPH_CACHE_SIZE` is derived from; storage is that knob's
+NROS_XRCE_MAX_SUBSCRIBERS | heap | | subscriber slots inside `xrce_session_state_t`, which the XRCE backend allocates from the platform heap (`nros_xrce_calloc`) when a session opens — no named static, so `mem-report` cannot see it
+NROS_XRCE_MAX_SERVICE_SERVERS | heap | | service-server slots inside `xrce_session_state_t`
+NROS_XRCE_MAX_SERVICE_CLIENTS | heap | | service-client slots inside `xrce_session_state_t`
+NROS_XRCE_SUBSCRIBER_RING_DEPTH | heap | | ring depth of each XRCE subscriber slot inside `xrce_session_state_t`
+NROS_XRCE_SUBSCRIBER_BUFFER_SIZE | heap | | bytes per XRCE subscriber ring entry inside `xrce_session_state_t`
+NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE | heap | | per-server request buffer inside `xrce_session_state_t`
+NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE | heap | | per-client reply buffer inside `xrce_session_state_t`
+NROS_XRCE_BUFFER_SIZE | heap | | the default the three XRCE buffer sizes above alias to
+NROS_XRCE_TRANSPORT_MTU | heap | | Micro-XRCE-DDS-Client transport MTU (UDP/TCP): sizes the transport's buffer inside its transport struct
+NROS_XRCE_CUSTOM_TRANSPORT_MTU | heap | | the custom-transport twin of `NROS_XRCE_TRANSPORT_MTU`
+NROS_XRCE_STREAM_HISTORY | heap | | reliable-stream history depth; multiplies the stream buffers inside the session state
+ZPICO_SUBSCRIBER_SIZE_THRESHOLD | not-a-size | | the hint above which a subscription routes to the LARGE payload class — a routing threshold, not storage
+ZPICO_GRAPH_DISCOVERY | not-a-size | | switches the graph cache on; its bytes are `ZPICO_GRAPH_CACHE_SIZE`
+NROS_SERVICE_TIMEOUT_MS | not-a-size | | milliseconds
+NROS_SMOLTCP_CONNECT_TIMEOUT_MS | not-a-size | | milliseconds
+NROS_SMOLTCP_SOCKET_TIMEOUT_MS | not-a-size | | milliseconds
+ZPICO_GET_POLL_INTERVAL_MS | not-a-size | | milliseconds
+ZPICO_LEASE_TASK_PRIORITY | not-a-size | | a task priority
+ZPICO_READ_TASK_PRIORITY | not-a-size | | a task priority
+NROS_MULTIGOAL_GOALS | test-only | | `action-client-multigoal` test binary
+NROS_MULTIGOAL_SOAK_MS | test-only | | `action-client-multigoal` test binary
+ROSOUT_PROBE_PERIOD_MS | test-only | | `rosout-talker` test binary
+ROSOUT_PROBE_RECORDS | test-only | | `rosout-talker` test binary
