@@ -9,6 +9,13 @@ that needs the built-in service surface to become a declared one"), and is the
 board blocker for the Autoware Safety Island on MR-CANHUBK344: the image is
 over RAM by 53,912 B and the zenoh service inbox table is 115,128 B of it.
 
+> **phase-474 (2026-10-01):** `codegen/entry/emit_cpp.rs` and `emit_c.rs` are
+> DELETED — every C-family pack renders `nros_entry_lower::LoweredEntry`
+> through one renderer. Where a wave below names a region or a line in
+> `emit_cpp.rs`, read: the fact as a field built in `codegen/entry/lower.rs`,
+> and its spelling as a block in `packs/entry/cpp/` (and `packs/entry/c/`,
+> which now gets the same field for free).
+
 ## Parallel plan
 
 Six waves, one claim id each (`just claim phase-461-Wk`; advisory, TTL in

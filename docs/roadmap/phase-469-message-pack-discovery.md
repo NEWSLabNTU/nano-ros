@@ -299,7 +299,10 @@ Enumerated so the next reader does not re-triage them:
 ### Deferred, with the reason
 
 * **Making an entry emitter data-driven.** Out of scope by the doc's own
-  statement and RFC-0091 §6b's blocker; see the bullet above.
+  statement and RFC-0091 §6b's blocker; see the bullet above. **Done by
+  phase-474 (2026-10-01):** `LoweredEntry` is the template context, `emit_c.rs`
+  and `emit_cpp.rs` are deleted, and an entry language is a `pack.toml`, its
+  templates and — only for a new spelling — a filter (RFC-0091 Amendment 1).
 * **Typing `CmakeProbeOptions.language`.** Blocked on issue 1528's owner.
 * **A GATE for this rule.** Considered and not written: the honest predicate is
   "a language literal in a decision position", and the 53 remaining lines show

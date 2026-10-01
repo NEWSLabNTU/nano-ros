@@ -114,31 +114,37 @@ seam, and nothing else.
 
 ### Step 2 — the entry pack, if the language writes entries
 
-1. `packs/entry/<surface>/entry.<ext>.jinja` over the entry view. Board paths,
-   boot shape, tier rows, QoS codes and escaped literals all arrive already
-   computed — a template decides where a value goes, never how to quote one;
+An entry pack is DATA. Since phase-474 there is no per-language entry emitter:
+one renderer (`codegen/entry/emit/mod.rs`) lowers the plan once into
+`nros_entry_lower::LoweredEntry` and hands THAT to the pack's template.
+
+1. `packs/entry/<surface>/entry.<ext>.jinja` over `LoweredEntry`. Nodes (with
+   their component kind, resolved name and namespace, params, remaps, QoS),
+   board family and boot shape, the C-ABI runner names, the executor layout
+   (one executor, sched contexts, or per-tier setups), tier rows, the boot
+   blob and the monitor tables all arrive computed and RAW — a template decides
+   where a value goes and spells it, never how to quote it;
 2. `packs/entry/<surface>/pack.toml` — the extension, whether the TU is
-   C-family, the entry template and its partials. CMake reads this through
-   `nros codegen entry-pack` rather than deriving it, so this file is what
-   makes the build know how to name and compile the output;
-3. one row in the template registry (`render.rs`), keyed
-   `<artifact>_<surface>.<ext>` for an output and `*.jinja` for a partial;
-4. one variant on `Language` in `nros-lang`. Every consumer sees it — one
+   C-family, the entry template, its `templates = [{ key, file }]` rows, and
+   what the renderer must know: `context = "lowered-entry"`, the `filters` its
+   templates call, the component kinds it constructs (`components`), and
+   whether it calls the board's C-ABI runners (`c_abi_runners`). CMake reads
+   it through `nros codegen entry-pack`. The build discovers the directory —
+   there is no registry row to add;
+3. one variant on `Language` in `nros-lang`. Every consumer sees it — one
    enumeration;
-5. **an emitter in Rust**, `codegen/entry/emit_<lang>.rs`, that builds the
-   pack's view of the plan (a `serde` struct the template reads) and renders
-   it. This is not a thin file: `emit_c.rs` and `emit_cpp.rs` are the models;
-6. **its dispatch arms** — `typed_entry_emitter` in `cmd/codegen.rs` and the
-   emit `match` below it, `entry_pack_for` in `pack.rs`, and `run_entry_node`
-   in the same file if the language's components register through
-   `nano_ros_add_node` (that path renders C++ for every component today).
-   Every one is an exhaustive `match`, so the compiler lists the arms your new
-   variant still needs.
+4. **only if** the language needs a spelling no existing filter provides (the
+   set is `c_str`, `pkg_ident`, `cpp_board_class`): one function and one row in
+   `codegen/entry/filters.rs`. A spelling is a correctness property, so it is
+   Rust; everything else about the pack is not.
+
+`testdata/entry-packs/zig/` is a whole entry pack written this way — a manifest
+and one template — and a unit test renders every golden C plan through it.
 
 ### Step 3 — the goldens
 
-Add the coordinate to the entry golden harness (`codegen/entry/golden.rs` has
-its own harness `Lang` and one emit arm per language), run
+Add the coordinate to the entry golden harness (`codegen/entry/golden.rs`; its
+`Emitter` enum names the entry point a row renders through), run
 `NROS_UPDATE_GOLDEN=1 cargo test -p nros-cli-core --lib codegen::entry::golden`,
 and **read the diff**. The generated source is a file, not a claim.
 
@@ -147,8 +153,9 @@ entry and message; the name is historical (see the recipe comment). A directory
 with no manifest, a language pack missing the fields its consumer needs, a
 registry key or `registry_order` claimed twice, a template file that does not
 exist, a `.jinja` no manifest claims, a `Language` variant nothing renders, or a
-language whose bytes are recorded in no golden. Run it before you believe the pack
-works.
+language whose bytes are recorded in no golden — and, since phase-474, a new
+`codegen/entry/emit_<x>.rs`, because an entry language is a pack. Run it before
+you believe the pack works.
 
 ### What this does NOT make cheap
 
@@ -160,6 +167,6 @@ No per-language TYPE SPELLING lives in the message builders — the packs and
 their filters own it, and since phase-469 W1 so do the artifact-naming suffixes
 (file and guard names). The builders still hold the per-language Rust that is a
 RULE rather than a parameter — which generator builds which context, and the ROS
-kind word, which is identical on every surface — and an entry language brings its
-own emitter. Implemented by phase-335 (RFC-0068), phase-432 (RFC-0091) and
-phase-469.
+kind word, which is identical on every surface. An entry language brings no
+emitter (phase-474): its pack and, at most, a spelling filter. Implemented by
+phase-335 (RFC-0068), phase-432 (RFC-0091), phase-469 and phase-474.
