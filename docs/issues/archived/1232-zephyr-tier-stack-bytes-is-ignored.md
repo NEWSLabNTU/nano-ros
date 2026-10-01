@@ -1,7 +1,8 @@
 ---
 id: 1232
 title: "A tier's declared `stack_bytes` does nothing on Zephyr — every tier thread gets the fixed pool slot"
-status: open
+status: resolved
+resolved: 2026-10-02
 type: bug
 area: zephyr
 related: [phase-436]
@@ -89,3 +90,59 @@ Three options, roughly increasing cost:
 
 (2) is the minimum that stops the field misleading. (3) is what the field
 already promises.
+
+## Resolution
+
+Option 3 — **honoured**, by the "entry declares, runner uses" method of issues
+1551/1568/1598, not a bigger pool. Branch
+`fix/1597-1598-1232-tier-storage-and-stacks`, commits `c4ca24088` (C/C++),
+`2fdf1f616` (Rust), `6a7233b6b` (pool no longer linked).
+
+- C/C++ entry: includes `<nros/tier_task_memory_zephyr.h>` and declares each
+  spawned tier's `static K_THREAD_STACK_DEFINE(__nros_tier_stack_<i>, bytes)` +
+  `struct k_thread __nros_tier_thread_<i>`; `bytes` is the tier's declared
+  `stack_bytes`, or CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE when it declares none
+  (so that knob keeps its meaning). The row carries `K_THREAD_STACK_SIZEOF`.
+- `nros_board_zephyr_run_tiers_tasks_in` spawns through the new
+  `nros_zephyr_tier_task_create_static` (entry's thread + stack); the pool and
+  it share ONE create/pin/start helper in the shim. Boot tier (`tiers[0]`)
+  must have no memory, every spawned tier must — refused before the session
+  opens. `_in` keeps the pool for an older entry, and is now the ONLY referrer
+  of it, so a generated tiered image drops the pool at link.
+- The stack-headroom derive uses the stack the thread was CREATED with (the
+  1232 workaround asked for the slot), and every spawned tier prints
+  `nros: tier stack tier=… bytes=… kernel=…` (kernel = `stack_info.size`).
+- Rust `nros::main!` Zephyr arm: `run_tiers_with_task_memory` with a
+  `TierTaskMemory<words, 0>` static per tier that DECLARES `stack_bytes`
+  (spawned through `nros_zephyr_tier_task_create_stack`: entry stack, pool
+  thread object — Rust cannot size `struct k_thread`); an undeclared tier keeps
+  the pool slot, whose size is a Kconfig knob the cargo lane cannot read (issue
+  0460). The shim refuses an entry-stack spawn where the image enforces kernel
+  stack objects (userspace / MPU guard / HW stack protection).
+- The `NROS_ZEPHYR_MAX_TIERS >= 1` guard (issue 1131) is untouched: the pool
+  still exists for the `_in`/`_ns` road and the Rust road's undeclared tiers.
+
+### Measured — native_sim/native/64, realtime-c `demo_bringup:zephyr`
+
+With `[tiers.high.zephyr] stack_bytes = 24576` declared (temporarily, for the
+measurement; the committed bringup is unchanged) and
+`CONFIG_THREAD_STACK_INFO=y`:
+
+| | before | after |
+| --- | ---: | ---: |
+| spawned tier `high`'s stack | 16,384 (pool slot, declared size ignored) | `nros: tier stack tier=\`high\` bytes=24576 kernel=24576` |
+| `nm`: `__nros_tier_stack_1` / `__nros_tier_thread_1` | absent | 0x6000 / 0xb8 |
+| `nm`: `nros_tier_stacks` / `nros_tier_threads` | 0x10000 / 0x2e0 | **absent** (gc'd) |
+
+Both tiers ran against `rmw_zenohd` (2,179 `[ctrl]`, 218 `[telem]` lines in
+25 s). The headroom bound now derives from 24,576 (`a 3072 B minimum is set`).
+
+### Not measured
+
+- `realtime_tiers_e2e` zephyr cells and the derived-tier lane were not run
+  through the harness (fixture stamps not built here; issue 1597's note). The
+  image above is the `demo_bringup:zephyr` row built with `nros build` into a
+  private build dir and run by hand.
+- The Rust Zephyr road (`nros_zephyr_tier_task_create_stack`) was compiled
+  (macro + board crate) but no Rust Zephyr image was built or booted.
+- C++ Zephyr and the SMP (`qemu_cortex_a53`) row were not built.
