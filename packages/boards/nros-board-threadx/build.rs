@@ -217,6 +217,7 @@ fn main() {
     if port_subpath.starts_with("linux") {
         kernel.link_lib_modifier("+whole-archive");
     }
+    nros_cc_flags::header_deps::track_header_deps(&mut kernel);
     kernel.compile("threadx_kernel");
 
     // ---- Build nros-platform-threadx C port ----
@@ -270,7 +271,19 @@ fn main() {
     // with different modifiers is a hard rustc error ("overriding linking
     // modifiers from command line is not supported").
     platform.link_lib_modifier("+whole-archive");
+    nros_cc_flags::header_deps::track_header_deps(&mut platform);
     platform.compile("nros_platform_threadx");
+
+    // issue 1580 — the rebuild edge for BOTH archives: every file the compiler
+    // opened (the kernel + port sources, tx_user.h / nx_user.h from the config
+    // dir, the port-override tx_port.h, the NetX + platform-cffi headers, the
+    // platform port's own sources). Before this the KERNEL had no source edge
+    // at all — only `config_dir` and the extra include dirs were watched — so
+    // an edit under `third-party/threadx/kernel` reused the old objects. One
+    // call after the LAST compile: both builds share this OUT_DIR.
+    nros_cc_flags::header_deps::emit_header_deps(&PathBuf::from(
+        env::var("OUT_DIR").expect("OUT_DIR"),
+    ));
 
     // Link order (reverse dependency): platform → kernel. BOTH halves are
     // emitted by their own `compile()` above, carrying whatever link modifier
@@ -289,17 +302,11 @@ fn main() {
     // leaf's `.cargo/config.toml`, resolved against THAT leaf), another from
     // `just`, and none at all from a bare build. Cargo compares the value as
     // text, so fingerprinting it made the six ThreadX rows sharing one
-    // `--target-dir` invalidate each other forever. The overlay `config/` dirs
-    // (`tx_user.h`, `nx_user.h`) are watched by CONTENT instead; the two
-    // vendored kernels are read-only sources whose compiled files are declared
-    // by `threadx_sources`.
-    nros_build_paths::watch_path(&config_dir);
-    for p in extra_kernel_includes
-        .iter()
-        .chain(extra_netx_includes.iter())
-    {
-        nros_build_paths::watch_path(p);
-    }
+    // `--target-dir` invalidate each other forever. Their CONTENT — the
+    // overlay `config/` headers (`tx_user.h`, `nx_user.h`), the extra include
+    // dirs, both vendored kernels — is declared by the depfiles above, which
+    // name exactly the files the compiler opened (issue 1580; this used to
+    // be a `watch_path` per directory, blind to everything outside them).
 }
 
 /// phase-337 W4.a — the in-tree arch-port override for a `THREADX_PORT`
@@ -314,7 +321,7 @@ fn port_override_inc_dir(port_subpath: &str) -> Option<PathBuf> {
         // `linux/gnu` and every other upstream port is used as shipped.
         _ => return None,
     };
-    println!("cargo:rerun-if-changed={}", dir.join("tx_port.h").display());
+    // Its `tx_port.h` is an included header, so the depfiles declare it.
     Some(dir)
 }
 

@@ -156,10 +156,32 @@ pub fn emit_header_deps(out_dir: &Path) -> usize {
          `track_header_deps` applied to this cc::Build?",
         out_dir.display()
     );
-    for p in &deps {
+    let declared = declarable(deps, out_dir);
+    for p in &declared {
         println!("cargo:rerun-if-changed={p}");
     }
-    deps.len()
+    declared.len()
+}
+
+/// Drop every dependency that lives under `out_dir` (issue 1580).
+///
+/// A board build script compiles TUs it GENERATED a moment earlier — the
+/// `NROS_APP_CONFIG` definition, an `app_config_def.c` — and writes them on
+/// every run. Cargo stamps a build script's output with the time the run
+/// STARTED, so a file the run itself wrote is newer than that stamp, and
+/// declaring it would leave the unit permanently dirty: the no-op rebuild
+/// would never be a no-op. Such a file is an OUTPUT of this script, not an
+/// input; what it depends on is the script and its declared inputs, which
+/// are watched already. A header it includes from OUTSIDE `out_dir` is still
+/// declared, because that is a separate entry in the same depfile.
+fn declarable(deps: BTreeSet<String>, out_dir: &Path) -> BTreeSet<String> {
+    let canonical = out_dir.canonicalize().ok();
+    deps.into_iter()
+        .filter(|d| {
+            let p = Path::new(d);
+            !(p.starts_with(out_dir) || canonical.as_deref().is_some_and(|c| p.starts_with(c)))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -209,5 +231,23 @@ mod tests {
         // A second take (the next compile in the same OUT_DIR) sees nothing old.
         assert!(take_header_deps(&dir).is_empty());
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn files_the_script_wrote_into_out_dir_are_not_declared() {
+        let out = Path::new("/build/pkg/out");
+        let deps: BTreeSet<String> = [
+            "/build/pkg/out/nros_app_config_def.c",
+            "/build/pkg/out/sub/gen.h",
+            "/src/board.c",
+            "/build/pkg/output_neighbour.h",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        assert_eq!(
+            declarable(deps, out).into_iter().collect::<Vec<_>>(),
+            vec!["/build/pkg/output_neighbour.h", "/src/board.c"]
+        );
     }
 }

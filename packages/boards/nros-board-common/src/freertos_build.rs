@@ -465,7 +465,15 @@ pub fn run_overlay(overlay: &Overlay<'_>) {
     // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
     // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS.
     nros_cc_flags::gcc_safe_frame_pointer(&mut glue);
+    nros_cc_flags::header_deps::track_header_deps(&mut glue);
     glue.compile("startup");
+    // issue 1580 — every file the board-glue compile OPENED becomes an edge:
+    // the board C files, the board + family FreeRTOSConfig.h / lwipopts.h /
+    // arch/cc.h (the board copies `#include` the family ones by relative path,
+    // which the old hand list never named), and every kernel / lwIP / nros-c
+    // header. An overlay's `extra_archives` compile into this same OUT_DIR and
+    // declare their own (the helper consumes each depfile it reads).
+    nros_cc_flags::header_deps::emit_header_deps(&env.out_dir);
 
     println!("cargo:rustc-link-lib=static=startup");
     for lib in overlay.extra_link_libs {
@@ -487,22 +495,18 @@ pub fn run_overlay(overlay: &Overlay<'_>) {
     println!("cargo:rustc-link-lib=static=gcc");
 
     // --- Rerun triggers ---
-    println!("cargo:rerun-if-changed=config/FreeRTOSConfig.h");
-    println!("cargo:rerun-if-changed=config/lwipopts.h");
-    println!("cargo:rerun-if-changed=config/arch/cc.h");
-    for rel in overlay.board_c_files {
-        println!("cargo:rerun-if-changed={rel}");
-    }
+    // The compiled inputs (board C files, config headers) are declared by
+    // `emit_header_deps` above (issue 1580). What stays is what no compiler
+    // reads: the two linker scripts (declared where they are copied), this
+    // script, and the env VALUES below.
     println!("cargo:rerun-if-changed=build.rs");
     // issue 0491 — the PATH variables resolved above (`FREERTOS_DIR`,
     // `LWIP_DIR`, `FREERTOS_CONFIG_DIR`, and whatever an overlay's extras
     // read) are NOT fingerprinted as strings: cargo compares an env value as
     // TEXT and one directory has a different spelling per leaf, per `just`,
-    // and unset. The first-party trees are watched by CONTENT; the vendored
-    // SDK roots are read-only source whose per-file inputs are declared above.
+    // and unset. Their CONTENT is what the depfiles above declare.
     println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
     println!("cargo:rerun-if-env-changed=FREERTOS_CFLAGS");
-    nros_build_paths::watch_path(&env.freertos_config_dir);
 }
 
 fn resolve_overlay_env(default_port: &str) -> OverlayEnv {

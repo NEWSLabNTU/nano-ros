@@ -56,10 +56,8 @@ fn main() {
             // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
             // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS.
             nros_cc_flags::gcc_safe_frame_pointer(&mut lan9118);
+            nros_cc_flags::header_deps::track_header_deps(&mut lan9118);
             lan9118.compile("lan9118_lwip");
-            // issue 0491 — the driver tree is first-party, so it is watched by
-            // CONTENT rather than fingerprinted as an env string.
-            nros_build_paths::watch_path(&lan9118_dir);
 
             // --- Tonbandgeraet trace library (opt-in via NROS_TRACE=1) ---
             if trace_enabled() {
@@ -79,10 +77,18 @@ fn main() {
                 tband.file(tband_dir.join("src/tband_freertos.c"));
                 tband.file(tband_dir.join("src/tband_backend.c"));
                 nros_cc_flags::gcc_safe_frame_pointer(&mut tband);
+                nros_cc_flags::header_deps::track_header_deps(&mut tband);
                 tband.compile("tband");
                 println!("cargo:rustc-link-lib=static=tband");
                 println!("cargo:rustc-cfg=nros_trace");
             }
+
+            // issue 1580 — what the LAN9118 (and tband) compiles OPENED, from
+            // the compiler's depfiles: the driver source + its header, and the
+            // FreeRTOS / lwIP / config headers it reaches. This replaces a
+            // directory watch on the driver tree (issue 0491's content watch),
+            // which saw none of the headers it includes from elsewhere.
+            nros_cc_flags::header_deps::emit_header_deps(&env.out_dir);
         }),
         // The board glue reaches the netif header for its strong overrides, and
         // `trace/trace_dump.c` compiles either way — stubs when tband is off.

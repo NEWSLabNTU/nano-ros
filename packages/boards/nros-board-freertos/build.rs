@@ -239,6 +239,7 @@ fn main() {
     // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
     // through neither shared helper, so the policy has to be named here.
     nros_cc_flags::gcc_safe_frame_pointer(&mut freertos);
+    nros_cc_flags::header_deps::track_header_deps(&mut freertos);
     freertos.compile("freertos");
 
     // --- Build lwIP ---
@@ -293,6 +294,7 @@ fn main() {
     // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
     // through neither shared helper, so the policy has to be named here.
     nros_cc_flags::gcc_safe_frame_pointer(&mut lwip);
+    nros_cc_flags::header_deps::track_header_deps(&mut lwip);
     lwip.compile("lwip");
 
     // --- Build nros-platform-freertos C port ---
@@ -324,12 +326,8 @@ fn main() {
     // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
     // through neither shared helper, so the policy has to be named here.
     nros_cc_flags::gcc_safe_frame_pointer(&mut platform);
+    nros_cc_flags::header_deps::track_header_deps(&mut platform);
     platform.compile("nros_platform_freertos");
-    // issue 0491 — the CONTENT of the two first-party trees is what this build
-    // depends on, and `watch_path` states it with the canonical spelling, so
-    // every leaf that reaches this script agrees on the trigger.
-    nros_build_paths::watch_path(&nros_platform_freertos_dir);
-    nros_build_paths::watch_path(&nros_platform_cffi_include);
 
     // --- Generic glue (freertos_hooks + network_glue + freertos_run_tiers) ---
     // `c/freertos_hooks.c` provides the FreeRTOS task hooks +
@@ -360,7 +358,21 @@ fn main() {
     // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
     // through neither shared helper, so the policy has to be named here.
     nros_cc_flags::gcc_safe_frame_pointer(&mut glue);
+    nros_cc_flags::header_deps::track_header_deps(&mut glue);
     glue.compile("freertos_glue");
+
+    // issue 1580 — the rebuild edge for all four archives above: every file
+    // the compiler OPENED (sources, FreeRTOSConfig.h / lwipopts.h /
+    // arch/cc.h, the kernel + lwIP + platform-cffi headers), replayed from its
+    // `-MMD` depfiles. This replaces a hand list — four glue sources, three
+    // config headers and directory watches on the kernel, lwIP, the platform
+    // port and the cffi include dir — which was blind to any header outside
+    // those paths and scanned two whole vendored trees on every build. One
+    // call after the LAST compile: the four builds share this OUT_DIR and the
+    // helper consumes every depfile it reads.
+    nros_cc_flags::header_deps::emit_header_deps(&PathBuf::from(
+        env::var("OUT_DIR").expect("OUT_DIR"),
+    ));
 
     // --- Link order (link-lib propagates transitively to overlays + final binary) ---
     println!("cargo:rustc-link-lib=static=nros_platform_freertos");
@@ -369,32 +381,18 @@ fn main() {
     println!("cargo:rustc-link-lib=static=freertos");
 
     // --- Rerun triggers ---
-    println!("cargo:rerun-if-changed=c/freertos_hooks.c");
-    println!("cargo:rerun-if-changed=../nros-board-common/c/nros_rtos_run_components.c");
-    println!("cargo:rerun-if-changed=c/network_glue.c");
-    println!("cargo:rerun-if-changed=c/freertos_run_tiers.c");
+    // Compiled inputs are declared by `emit_header_deps` above (issue 1580);
+    // what is left here is what no compiler reads: this script, and the env
+    // VALUES below.
     println!("cargo:rerun-if-changed=build.rs");
-    println!(
-        "cargo:rerun-if-changed={}",
-        freertos_config_dir.join("FreeRTOSConfig.h").display()
-    );
-    println!(
-        "cargo:rerun-if-changed={}",
-        freertos_config_dir.join("lwipopts.h").display()
-    );
-    println!(
-        "cargo:rerun-if-changed={}",
-        freertos_config_dir.join("arch/cc.h").display()
-    );
-    println!("cargo:rerun-if-changed={}", freertos_dir.display());
-    println!("cargo:rerun-if-changed={}", lwip_dir.display());
     // issue 0491 — `FREERTOS_DIR` / `LWIP_DIR` / `FREERTOS_CONFIG_DIR` /
     // `NROS_PLATFORM_*` are PATHS and are deliberately NOT fingerprinted as
     // strings: cargo compares an env value textually, and one directory has a
     // different spelling per example leaf (`relative = true`), from `just`
-    // (absolute) and from a bare build (unset). Their CONTENT is watched above
-    // instead. `FREERTOS_PORT` (a port NAME) and `FREERTOS_CFLAGS` (a value)
-    // stay — a change in either really is a different compile.
+    // (absolute) and from a bare build (unset). Their CONTENT is watched
+    // instead, through the depfiles above. `FREERTOS_PORT` (a port NAME) and
+    // `FREERTOS_CFLAGS` (a value) stay — a change in either really is a
+    // different compile.
     println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
     println!("cargo:rerun-if-env-changed=FREERTOS_CFLAGS");
 }
