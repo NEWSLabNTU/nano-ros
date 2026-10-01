@@ -107,6 +107,7 @@ fn vendored_build() {
     // `__attribute__((constructor))` register TU isn't dropped.
     // Disable the default emit, compile manually, then emit our own.
     cc_c.cargo_metadata(false);
+    nros_cc_flags::header_deps::track_header_deps(&mut cc_c);
     cc_c.compile("nros_rmw_cyclonedds_descriptors");
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     println!("cargo:rustc-link-lib=static:+whole-archive,-bundle=nros_rmw_cyclonedds_descriptors");
@@ -169,7 +170,13 @@ fn vendored_build() {
         cc_cpp.file(bridge_src.join(f));
     }
     cc_cpp.cargo_metadata(false);
+    nros_cc_flags::header_deps::track_header_deps(&mut cc_cpp);
     cc_cpp.compile("nros_rmw_cyclonedds");
+    // issue 1580 — declare every file the two compiles OPENED (the `-MMD`
+    // depfiles): the backend's own headers, the RMW cffi headers and the
+    // installed Cyclone headers, none of which the per-source lines name.
+    // The idlc output in OUT_DIR is this script's own product and is skipped.
+    nros_cc_flags::header_deps::emit_header_deps(&out_dir);
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     // Force whole-archive on the C++ backend — `vtable.cpp`'s
     // `nros_rmw_cyclonedds_register` is the constructor-side entry

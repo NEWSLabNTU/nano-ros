@@ -604,5 +604,10 @@ fn emit_variant_symbol(out_dir: &str, suffix: Option<&str>) {
         format!("nros_config_variant_{suffix}").as_str(),
     );
     crate::shared::apply_baremetal_libc(&mut build);
+    nros_cc_flags::header_deps::track_header_deps(&mut build);
     build.compile("nros_variant_symbol");
+    // issue 1580 — the rebuild edge for what that compile opened.
+    nros_cc_flags::header_deps::emit_header_deps(&std::path::PathBuf::from(
+        std::env::var("OUT_DIR").expect("OUT_DIR"),
+    ));
 }

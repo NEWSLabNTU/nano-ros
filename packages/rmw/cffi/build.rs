@@ -373,12 +373,14 @@ fn maybe_build_c_stub() {
     }
 
     // issue 0383 — implicit-function-declaration / int-conversion as errors.
-    nros_cc_flags::strict_decls(&mut cc::Build::new())
-        .file("tests/c_stubs/c_stub_transport.c")
-        .include("tests/c_stubs")
-        .warnings(true)
-        .extra_warnings(true)
-        .compile("nros_c_stub_transport");
+    nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(
+        &mut cc::Build::new(),
+    ))
+    .file("tests/c_stubs/c_stub_transport.c")
+    .include("tests/c_stubs")
+    .warnings(true)
+    .extra_warnings(true)
+    .compile("nros_c_stub_transport");
 
     // ABI-layout single-source-of-truth (issue #238 / #239): a header
     // TU of `_Static_assert`s that pin the C-side widths of the RMW
@@ -396,10 +398,18 @@ fn maybe_build_c_stub() {
     // `CARGO_FEATURE_C_STUB_TEST`, which no recipe enabled — so the layout guard
     // this file exists to run had not compiled since phase-321 W2.e moved the
     // crate. A guard that cannot build is not a guard.
-    nros_cc_flags::strict_decls(&mut cc::Build::new())
-        .file("tests/c_stubs/abi_layout_check.c")
-        .include("../../core/nros-rmw-abi/include")
-        .warnings(true)
-        .extra_warnings(true)
-        .compile("nros_abi_layout_check");
+    nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(
+        &mut cc::Build::new(),
+    ))
+    .file("tests/c_stubs/abi_layout_check.c")
+    .include("../../core/nros-rmw-abi/include")
+    .warnings(true)
+    .extra_warnings(true)
+    .compile("nros_abi_layout_check");
+    // issue 1580 — declare every file the two compiles above OPENED (the
+    // `-MMD` depfiles): the stub and layout TUs plus every `<nros/rmw_*.h>`
+    // they reach, which the per-file lines above cannot enumerate.
+    nros_cc_flags::header_deps::emit_header_deps(std::path::Path::new(
+        &std::env::var("OUT_DIR").expect("OUT_DIR"),
+    ));
 }

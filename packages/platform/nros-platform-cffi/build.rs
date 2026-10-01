@@ -41,37 +41,52 @@ fn main() {
 
     #[cfg(feature = "c-stub-test")]
     // issue 0383 — implicit-function-declaration / int-conversion as errors.
-    nros_cc_flags::strict_decls(&mut cc::Build::new())
-        .file("tests/c_stubs/platform_stubs.c")
-        .include("tests/c_stubs")
-        // The stub's own header says it "defines every `nros_platform_*` symbol
-        // declared in `<nros/platform.h>`" — but that header was never on the
-        // include path, so the TU hand-declared each signature instead. Any type
-        // added upstream was then simply unknown to it: phase-359 W10's
-        // `nros_platform_task_attr_t` broke `c-stub-test` outright, and nothing
-        // noticed because no default build enables the feature. Compiling
-        // against the real declarations makes a signature change a compile
-        // error here instead of a silent mirror drift.
-        .include("../nros-platform-api/include")
-        .warnings(true)
-        .extra_warnings(true)
-        .compile("nros_platform_stubs");
+    nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(
+        &mut cc::Build::new(),
+    ))
+    .file("tests/c_stubs/platform_stubs.c")
+    .include("tests/c_stubs")
+    // The stub's own header says it "defines every `nros_platform_*` symbol
+    // declared in `<nros/platform.h>`" — but that header was never on the
+    // include path, so the TU hand-declared each signature instead. Any type
+    // added upstream was then simply unknown to it: phase-359 W10's
+    // `nros_platform_task_attr_t` broke `c-stub-test` outright, and nothing
+    // noticed because no default build enables the feature. Compiling
+    // against the real declarations makes a signature change a compile
+    // error here instead of a silent mirror drift.
+    .include("../nros-platform-api/include")
+    .warnings(true)
+    .extra_warnings(true)
+    .compile("nros_platform_stubs");
+    #[cfg(feature = "c-stub-test")]
+    // issue 1580 — declare every file the compiler OPENED (the `-MMD`
+    // depfiles), not only the files this script can name by hand.
+    nros_cc_flags::header_deps::emit_header_deps(std::path::Path::new(
+        &std::env::var("OUT_DIR").expect("OUT_DIR"),
+    ));
 
     #[cfg(feature = "posix-c-port")]
     {
         // issue 0383 — implicit-function-declaration / int-conversion as errors.
-        nros_cc_flags::strict_decls(&mut cc::Build::new())
-            .file("../nros-platform-posix/src/platform.c")
-            .file("../nros-platform-posix/src/net.c")
-            .file("../nros-platform-posix/src/timer.c")
-            // phase-241 B.2 — the canonical `<nros/platform.h>` moved to
-            // nros-platform-api; this crate's own include/ is now empty.
-            .include("../nros-platform-api/include")
-            .warnings(true)
-            .extra_warnings(true)
-            .flag_if_supported("-Wpedantic")
-            .define("_POSIX_C_SOURCE", "200809L")
-            .compile("nros_platform_posix");
+        nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(
+            &mut cc::Build::new(),
+        ))
+        .file("../nros-platform-posix/src/platform.c")
+        .file("../nros-platform-posix/src/net.c")
+        .file("../nros-platform-posix/src/timer.c")
+        // phase-241 B.2 — the canonical `<nros/platform.h>` moved to
+        // nros-platform-api; this crate's own include/ is now empty.
+        .include("../nros-platform-api/include")
+        .warnings(true)
+        .extra_warnings(true)
+        .flag_if_supported("-Wpedantic")
+        .define("_POSIX_C_SOURCE", "200809L")
+        .compile("nros_platform_posix");
+        // issue 1580 — declare every file the compiler OPENED (the `-MMD`
+        // depfiles), not only the files this script can name by hand.
+        nros_cc_flags::header_deps::emit_header_deps(std::path::Path::new(
+            &std::env::var("OUT_DIR").expect("OUT_DIR"),
+        ));
         // pthread + librt for downstream test binaries (rt supplies timer_*).
         println!("cargo:rustc-link-lib=pthread");
         println!("cargo:rustc-link-lib=rt");
