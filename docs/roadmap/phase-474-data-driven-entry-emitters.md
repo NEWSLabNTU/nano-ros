@@ -245,6 +245,9 @@ goldens were recorded.
 * [x] The per-language Rust is filter rows only; measured line counts above.
 * [x] A toy pack renders from data alone, golden-locked; the conformance gate
   covers it and refuses a new `emit_<x>.rs` (W5).
-* [x] `codegen_fingerprint` unchanged (it hashes the MESSAGE packs only) —
-  measured, see the report on the branch.
+* [x] `codegen_fingerprint` unchanged: it hashes `rosidl-codegen`'s emit corpus
+  and bundled MESSAGE packs, and its whole crate closure (`rosidl-*`,
+  `nros-lang`, `nros-core`, `nros-serdes`, from `cargo tree`) has no diff
+  against `origin/main`. Argued from the closure, not from comparing two
+  digests built side by side.
 * [x] RFC-0091 Amendment 1; phase-469's deferred item points here.
