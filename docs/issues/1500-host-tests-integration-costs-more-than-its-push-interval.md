@@ -249,3 +249,52 @@ it — the 09-29 run needed 2 h 30 m 31 s and this one wanted more than
 problem. The tier was killed before it could report, so its cause is unknown,
 and reading this as another 1353 instance would be assuming exactly what the
 missing artifacts would have told us.
+
+## Re-measured 2026-10-01 — the rate got WORSE while the interval nearly doubled
+
+Asked of this issue: does the `target-check-cpp-*` residue still appear, and
+does this lane's arithmetic still hold? The second half, measured over the 30
+most recent runs (**2026-09-29T08:50 → 2026-10-01T03:23**, 1 d 18 h 33 m):
+
+| | 2026-09-25 (as filed) | 2026-10-01 |
+| --- | --- | --- |
+| push interval | one run per **47 min** | one run per **88 min** |
+| integration job: zero-step cancellations | 14 of 30 — **47 %** | **19 of 30 — 63 %** |
+| integration job: actually ran steps | 16 | 11 |
+| green runs | none since 2026-06-17 | **0 in the last 200 runs** (oldest 2026-09-21) |
+
+**The interval nearly doubled and the loss got worse, which the original model
+alone does not predict.** It is not a refutation of the arithmetic: the job grew
+at about the same rate the interval did. This issue's own later sections measure
+it reaching **2 h 30 m** and hitting the 150-minute ceiling twice, against the
+~82 minutes priced on 2026-09-25. The RATIO is roughly unchanged (82/47 ≈ 1.7;
+150/88 ≈ 1.7), so the lane is losing the same fraction for a different reason
+than it was — the denominator improved and the numerator ate it.
+
+Two cautions on reading the table:
+
+* **"cancelled" at RUN level is not this metric.** 21 of the 30 runs conclude
+  `cancelled`, but two of those are the 150-minute ceiling firing on a job that
+  ran its full 23 steps — this issue documents both firings. The 63 % counts
+  only integration jobs with **one or zero recorded steps**, i.e. the ones that
+  never had a runner, which is what this issue is about.
+* **The pushes are bursty, not evenly spaced.** The 09-29 cluster runs 10:35,
+  11:27, 11:43, 11:51, 12:02, 12:28, 12:38, 12:46 — eight in two hours against
+  an 88-minute mean. An average interval flatters a group that only ever holds
+  one pending run.
+
+## Still not picking a remedy, and why
+
+The three shapes priced above are unchanged and the choice between them is a
+**capacity decision**, not a defect to fix: making the job cheaper means
+deciding which fixture coverage to drop, triggering it less often means trading
+"bound a regression to one commit" for "answer about `main` once a day", and
+splitting it means an artifact boundary. Each is somebody's call about what this
+lane is for.
+
+What the re-measurement adds to that choice: **option 2 (trigger less often) is
+now weaker than it looked**, because the thing it buys — per-commit attribution —
+is already not being delivered for 63 % of commits and has delivered a green
+verdict for none in at least 200 runs. And **option 1 (make the job cheaper) is
+now the only one that also moves the ceiling problem**, since a job that no
+longer takes 2 h 30 m cannot be killed by a 150-minute ceiling mid-tier.

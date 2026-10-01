@@ -957,12 +957,23 @@ cpp: cpp-fmt
     # the measurement; this is the lane the race was found on, failing with
     #   undefined reference to `nros_cpp_config_variant_alloc_default_env_...'
     # while `just check cpp` alone exited 0 immediately before and after.
-    # The lane's own base, captured BEFORE `CARGO_TARGET_DIR` is exported:
-    # `nros_scoped_target_dir` roots at `$CARGO_TARGET_DIR` when it is set, so a
-    # second call made after the export compounds the prefix and yields
-    # `target-check-cpp-check-cpp-clippy-zenoh`. The two steps below that need
-    # their own dir derive it from this, not from a nested call.
-    gen_base="${CARGO_TARGET_DIR:-$PWD/target}"
+    # Captured BEFORE `CARGO_TARGET_DIR` is exported: `nros_scoped_target_dir`
+    # roots at `$CARGO_TARGET_DIR` when it is set, so a second call made AFTER
+    # the export compounds the prefix and yields
+    # `target-check-cpp-check-cpp-clippy-zenoh` (issue 1354, fixed; issue 1503
+    # measured the two directories it left at the repo root).
+    #
+    # issue 1503 — through `nros_scoped_target_dir`, not string concatenation on
+    # a captured base. The first fix derived these two from `$gen_base` by hand,
+    # which produced the right NAMES and made them invisible to
+    # `check-scoped-target-dirs-ignored`: that gate harvests
+    # `nros_scoped_target_dir <suffix>` CALLS, so the two `.gitignore` rows these
+    # dirs need were correct and unguarded, and a rename of either suffix would
+    # have left a new untracked directory at the repo root with the gate green.
+    # Calling the one spelling before the export gives the same name AND puts
+    # both suffixes back in the gate's harvest.
+    gen_cyclone_embedded="$(nros_scoped_target_dir check-cpp-cyclone-embedded)"
+    gen_clippy_zenoh="$(nros_scoped_target_dir check-cpp-clippy-zenoh)"
     gen="$(nros_scoped_target_dir check-cpp)"
     export CARGO_TARGET_DIR="$gen"
     echo "Checking C++ headers (build + syntax + clippy)..."
@@ -1216,7 +1227,7 @@ cpp: cpp-fmt
         echo "  - embedded cyclone coordinate (issue 0730): ${_cyc_features},panic-platform @ aarch64-unknown-none"
         # issue 1354 — its own dir, same reason as the zenoh clippy below: a
         # different feature set writes a different config header.
-        CARGO_TARGET_DIR="$gen_base-check-cpp-cyclone-embedded" \
+        CARGO_TARGET_DIR="$gen_cyclone_embedded" \
             cargo check -p nros-cpp --no-default-features \
             --features "${_cyc_features},panic-platform" \
             --target aarch64-unknown-none --quiet
@@ -2231,7 +2242,7 @@ cpp: cpp-fmt
     #   archive nros_cpp_config_variant_…_rmw_cffi_ros_humble_std
     # Green on a fresh dir, red on the second run — which is why it read as a
     # race rather than as a lane that overwrites its own input.
-    CARGO_TARGET_DIR="$gen_base-check-cpp-clippy-zenoh" \
+    CARGO_TARGET_DIR="$gen_clippy_zenoh" \
         cargo clippy --quiet -p nros-cpp --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-humble"
     echo "All C++ checks passed!"
 

@@ -1,12 +1,13 @@
 ---
 id: 1503
 title: "`nros_scoped_target_dir` COMPOSES onto an already-scoped base, so two `check-cpp` scratch dirs land at the repo root under names `.gitignore` does not carry — and the gate for exactly this cannot see them"
-status: open
+status: resolved
 type: bug
 area: build, ci
 severity: low
-related: [0400, 0196, 1071]
+related: [0400, 0196, 1071, 1354]
 found: 2026-09-25
+resolved: 2026-10-01
 ---
 
 # A gate that checks `target-<suffix>` cannot see `target-<base>-<suffix>`
@@ -96,3 +97,67 @@ settle.
 Found incidentally while running `just ci gate` for phase work on the tier-2
 lane (issue 1158); not investigated further than the two directories above, so
 whether other lanes compose the same way is unmeasured.
+
+## Re-measured 2026-10-01 — the composition is GONE, and was fixed the same day
+
+`just check cpp` in a clean worktree, from no `target-*` dirs:
+
+```
+target-check-cpp
+target-check-cpp-clippy-zenoh
+target-check-cpp-cyclone-embedded
+```
+
+and `git status --porcelain` prints **nothing** untracked at the repo root. The
+composed names this issue measured (`target-check-cpp-check-cpp-clippy-zenoh`
+and its sibling) do not appear, and `.gitignore`'s three existing entries match
+the three directories exactly.
+
+**It was fixed by `94124a0d6` on 2026-09-25** — the same day this was filed,
+under issue **1354**, which hit the same composition from the build side (*"a
+nested scoped-dir call compounds its own prefix"*). Nobody closed this one. The
+fix captured the lane's base before the export and derived the two names from
+it, which is the shape this issue asked for.
+
+## The residual it left, and what closes it
+
+`94124a0d6` replaced the two `nros_scoped_target_dir` CALLS with string
+concatenation on the captured base:
+
+```sh
+CARGO_TARGET_DIR="$gen_base-check-cpp-clippy-zenoh"
+```
+
+Correct names, and **invisible to `check-scoped-target-dirs-ignored`**, which
+harvests `nros_scoped_target_dir <suffix>` call sites. So from 2026-09-25 the
+two `.gitignore` rows these directories need were right and *unguarded*: the
+gate reported 8 call sites over 8 suffixes, and a rename of either suffix in
+those two string literals would have left a new untracked directory at the repo
+root with the gate still green. That is this issue's own class — a gate whose
+reach is narrower than the rule — one step over from where it found it.
+
+Closed by calling the one spelling BEFORE the export, which yields the identical
+name and puts both suffixes back in the harvest:
+
+```sh
+gen_cyclone_embedded="$(nros_scoped_target_dir check-cpp-cyclone-embedded)"
+gen_clippy_zenoh="$(nros_scoped_target_dir check-cpp-clippy-zenoh)"
+gen="$(nros_scoped_target_dir check-cpp)"
+export CARGO_TARGET_DIR="$gen"
+```
+
+`check-scoped-target-dirs-ignored` now reports **10 call sites over 10
+suffixes**, and `just check cpp` re-run afterwards produces the same three
+directory names with nothing untracked.
+
+## What this issue got right and wrong
+
+Right: *"not add the two names to `.gitignore`"* — the fix is in the derivation,
+not the ignore file, and `.gitignore` needed no change in either pass.
+
+Wrong, or at least unlucky: it proposed teaching the GATE to track a recipe
+body's `CARGO_TARGET_DIR` export and compose onto it. That is not needed. The
+design question it left open — *is a second call inside a re-based body
+arguably a mistake?* — is answered by the fix: yes, and the answer is to make
+the call before the body re-bases, not to teach a Python gate to simulate shell
+scoping.

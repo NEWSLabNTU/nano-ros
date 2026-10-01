@@ -42,7 +42,7 @@ Universal rule: **Vendor own build + link. nano-ros own (a) per-vendor adapter s
 | ADAPTER LAYER (per-vendor shim, <=200 LoC)                   |
 |   zephyr/        — Zephyr module (module.yml + CMake glue)   |
 |   integrations/nuttx/    — apps/external/ Make.defs+Kconfig  |
-|   integrations/nano-ros/ — ESP-IDF component                 |
+|   (ESP-IDF: RETIRED, phase-468 W2 — see below)                |
 |   integrations/px4/      — px4_add_module template           |
 |   cmake/platform/nano-ros-threadx.cmake — direct add_subdir  |
 |   (FreeRTOS: no shim - cargo+cc board crate is the adapter)  |
@@ -51,7 +51,7 @@ Universal rule: **Vendor own build + link. nano-ros own (a) per-vendor adapter s
                           v
 +--------------------------------------------------------------+
 | VENDOR SDK LAYER (untouched, native build tool)              |
-|   west build  |  make+Kconfig  |  cmake  |  idf.py  |  pio   |
+|   west build  |  make+Kconfig  |  cmake  |  pio             |
 +--------------------------------------------------------------+
                           |  ELF + flash
                           v
@@ -70,7 +70,7 @@ Arrows: user → 212 (host inputs); 212 → adapter (baked sources + Cargo stub)
 | NuttX | `make` + Kconfig | `integrations/nuttx/` symlinked into `apps/external/<name>/` | host-side | `Makefile`'s `context::` rule calls `NROS_CARGO_BUILD`; Kconfig choices map to Cargo features; baked header emitted into staticlib |
 | FreeRTOS | `cargo` (Rust path) / cmake+Corrosion (Cyclone path) | per-board crate `build.rs` (`cc::Build`) compiles kernel + lwIP + glue | host-side | `build.rs` emits `nros_config_generated.h` from `system.toml` + Cargo features; staticlib is the firmware |
 | ThreadX | `cmake` | `cmake/platform/nano-ros-threadx.cmake` + board overlay `cmake/board/nano-ros-board-<b>.cmake` (no `integrations/threadx/`) | host-side | cmake configure runs `nros codegen`; Corrosion imports component crates as staticlibs; `app_define.c` spawns one tx thread per component |
-| ESP-IDF | `idf.py` | `integrations/nano-ros/` ESP-IDF component (`idf_component_register` + `Kconfig.projbuild`) | host-side | configure-time `add_subdirectory(<repo-root>)` runs `nros codegen`; `CONFIG_NROS_*` → cmake cache vars → baked header |
+| ESP-IDF | — | **RETIRED (phase-468 W2, `083d2c10d`)** — `integrations/nano-ros/`, `packages/platform/nros-platform-esp-idf/`, `cmake/platform/nano-ros-esp_idf.cmake` and the `esp_idf` platform alternative are deleted; RFC-0065 D3 deleted `Driver::IdfPy` with them. ESP32 is reached bare-metal (esp-hal) instead. The design below is kept as what was tried, not as what ships — issues 1525/1526 | — | — |
 | PlatformIO | `pio run` | repo-root `library.json` (no `integrations/platformio/`); pre-build extra_script | host-side, **codegen runs ahead** | extra_script invokes `nros codegen` before pio's library resolver; vendor sees post-codegen tree |
 | Orin SPE | `cmake` (JetPack BSP) | proposed `cmake/platform/nano-ros-orin-spe.cmake` (does not exist; blocked on `NV_SPE_FSP_DIR` license) | host-side | same cmake-configure path as ThreadX; FSP via `-D` cache var |
 | PX4 | `cmake`+`make` hybrid (`px4_add_module`) | `integrations/px4/module-template/` copy-out | host-side, **codegen runs ahead** | each component = one PX4 module dir emitted by codegen; uORB↔DDS bridge at runtime; C++-only |
@@ -109,9 +109,10 @@ ThreadX   1) nros codegen system --out build/<b>/nros-system
           2) cmake -B build/<b> -DNANO_ROS_PLATFORM=threadx -DNANO_ROS_BOARD=<b> -DNROS_RMW=<rmw> && cmake --build build/<b>
           3) build/<b>/firmware   (threadx-linux: just run it; rv64-qemu: qemu-system-riscv64 ...)
 
-ESP-IDF   1) nros codegen system --out build/<b>/nros-system  (or run from cmake configure)
-          2) idf.py -B build/<b> -DIDF_TARGET=esp32c3 build
-          3) idf.py -B build/<b> flash monitor
+ESP-IDF   RETIRED (phase-468 W2). This workflow described the deleted
+          `integrations/nano-ros/` component; no road reaches `idf.py` now,
+          and asking for one REFUSES naming issue 1525 rather than falling
+          back to cmake, a road equally absent. ESP32 is bare-metal esp-hal.
 
 PlatformIO 1) nros codegen system --out .pio/<env>/nros-system   (pre-build extra_script)
            2) pio run -e <env>
@@ -130,7 +131,7 @@ Embedded iteration loop:
 2. (Optional) `cargo check -p <component>` — fast feedback, no vendor tool
 3. `nros plan` — emit baked configs + Cargo workspace stub under `build/<board>/`
 4. native vendor tool builds the baked tree → ELF, flashes (no `nros deploy` — §4)
-5. Monitor: `west monitor` / `idf.py monitor` / `probe-rs attach` / `pio device monitor` / vendor-specific
+5. Monitor: `west monitor` / `probe-rs attach` / `pio device monitor` / vendor-specific
 
 **Differ from desktop multi-node.** Desktop deploy spawns N processes (one per `[[components]]`), each its own ROS node, comms via DDS/zenoh on loopback. Embedded deploy produces **one ELF** containing all N components linked together — single-binary-multi-thread, one DDS/zenoh participant per component but sharing the address space. The bringup pkg surface is identical; the codegen lowers to wildly different targets. Domain ID + locator are **runtime env** on native (`unique_ros_domain_id()` from `NEXTEST_TEST_GLOBAL_SLOT`), **compile-time baked** on MCU (CLAUDE.md exception). Phase 212's job: hide that split behind one `system.toml`.
 
@@ -142,7 +143,7 @@ Embedded iteration loop:
 | NuttX | ~30 per crate skeleton + existing `integrations/nuttx/` (~300 LoC total today) | strains, kind of | per-crate is tiny; integration root already exceeds 200 because of templates + extra_libs.mk plumbing. Honest: budget should be "per-crate adapter ≤200", not "whole shell ≤200" |
 | FreeRTOS | 0 new shell; board crate `build.rs` ~50 LoC | trivial fit | no shell needed; `cc::Build` IS the adapter |
 | ThreadX | 0 new shell; `cmake/platform/nano-ros-threadx.cmake` ~306 LoC exists | over budget if counted | platform module is shared across all boards, not a per-RTOS shim; ThreadX has NO integrations/ dir — comfortable in spirit |
-| ESP-IDF | ~150 (CMakeLists.txt + Kconfig.projbuild + idf_component.yml) | comfortable | already shipped |
+| ESP-IDF | ~150 (CMakeLists.txt + Kconfig.projbuild + idf_component.yml) | — | **was** shipped; DELETED phase-468 W2. The number is kept because the budget question it answers is still live for the next hook-capable vendor; the verdict "already shipped" was the worst line in this document — a reader costing out an ESP-IDF integration read a solved problem |
 | PlatformIO | 0 today; ~100 estimated (library.json + extra_script.py) | comfortable | hookless vendor; codegen runs pre-build |
 | Orin SPE | 0 today; ~150 estimated (single cmake platform file) | comfortable | blocked on NV_SPE_FSP_DIR license, not LoC |
 | PX4 | template-only ~80 LoC, blank PX4 module skeleton | comfortable per-module; orchestration extra | per-module is fine; codegen emits N modules → cumulative grow with N |
@@ -154,9 +155,10 @@ Fallback when exceeded: **split shell into shared core + per-board overlays** (T
 - **RESOLVED (2026-06):** Codegen timing — **ahead-of-vendor is the contract.**
   `nros codegen system` runs **before the native build tool**, producing the baked
   tree the vendor tool then consumes (there is no `nros deploy` orchestrator — §4
-  deploy model). For hook-capable vendors (Zephyr/ESP-IDF/ThreadX/NuttX/FreeRTOS)
+  deploy model). For hook-capable vendors (Zephyr/ThreadX/NuttX/FreeRTOS — ESP-IDF
+  was one until phase-468 W2 deleted it)
   the configure-time hook is kept as an **idempotent convenience** so a raw
-  `west build` / `idf.py build` still works in dev — it runs the *same* codegen and
+  `west build` still works in dev — it runs the *same* codegen and
   yields the *same* tree. One contract (ahead-of-vendor), optional second trigger
   (configure-time), not two divergent codepaths.
 - **OPEN:** Multi-component on FreeRTOS — one DDS/zenoh participant per component or one shared per ELF? Memory budget on Cortex-M3 likely forces shared; breaks domain-isolation semantics.
@@ -171,7 +173,7 @@ Fallback when exceeded: **split shell into shared core + per-board overlays** (T
 
 2. **`zephyr/cmake/nros_system_generate.cmake` + `nros_component_link.cmake`** — scope: ~150 LoC inside existing Zephyr module wrapping `nros codegen system` + multi-component `rust_cargo_application()` shape (§5 of Zephyr investigation). Justification: Zephyr is the highest-volume embedded target; the single-node path already works, multi-node is the new surface.
 
-3. **Per-RTOS `[deploy.<board>]` schema in `nros-sdk-index.toml`** — scope: add `kind` (zephyr/nuttx/freertos/threadx/esp-idf/pio), `board`, `target` (Rust triple), `rmw`, optional `flash_cmd` + `monitor_cmd`. Justification: the native deploy step (codegen + vendor build/flash) needs one place to read the vendor-tool invocation pattern; today this is scattered across 8 `just/*.just` recipes.
+3. **Per-RTOS `[deploy.<board>]` schema in `nros-sdk-index.toml`** — scope: add `kind` (zephyr/nuttx/freertos/threadx/pio — `esp-idf` was in this list until phase-468 W2 deleted the port), `board`, `target` (Rust triple), `rmw`, optional `flash_cmd` + `monitor_cmd`. Justification: the native deploy step (codegen + vendor build/flash) needs one place to read the vendor-tool invocation pattern; today this is scattered across 8 `just/*.just` recipes.
 
 4. **NuttX adapter split** — scope: refactor `integrations/nuttx/` into `core/` (shared templates) + per-bringup-pkg overlays, document `≤200 LoC per crate` budget explicitly. Justification: §6 shows the budget definition is ambiguous; codifying per-crate vs per-shell prevents future drift.
 

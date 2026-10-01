@@ -941,3 +941,12 @@ build-wiring-roads:
 # that reach gap is how issue 1527's five sites drifted with every gate green.
 build-script-path-resolution:
     @python3 scripts/check-build-script-path-resolution.py
+
+# issue 1588 — the THIRD subject of RFC-0101 D3. `build-script-path-resolution`
+# keys on a variable having a ROW (`sdk-env.just` or a board descriptor), so a
+# path-valued input with no row — and two can have none — is outside its subject
+# by construction. This asks the decidable question instead: a FOREIGN name (no
+# row, not cargo's own, nothing here sets it) is CLASSIFIED, because what the
+# value is, is known at the call site and by no probe. A ratchet; it falls only.
+foreign-env-path-inputs:
+    @python3 scripts/check-foreign-env-path-inputs.py

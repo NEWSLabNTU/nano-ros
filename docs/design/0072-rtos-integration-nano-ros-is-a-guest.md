@@ -31,7 +31,7 @@ build.** This is already how three of five platforms work:
 | --- | --- | --- |
 | Zephyr | `zephyr/` | `module.yml` + `Kconfig` + `CMakeLists.txt` — a west module |
 | NuttX | `integrations/nuttx/` | `Make.defs` + `Kconfig` + `Makefile` — an `apps/external/` app; the staticlib lands on `EXTRA_LIBS` |
-| ESP-IDF | `integrations/nano-ros/` | `CMakeLists.txt` + `idf_component.yml` + `Kconfig.projbuild` — an IDF component |
+| ESP-IDF | — | **RETIRED phase-468 W2** — the component is deleted; issues 1525/1526 |
 
 One shape in three languages: **build glue + Kconfig + the host's package
 manifest.** In each case the RTOS kernel, its config header, its network stack
@@ -85,7 +85,7 @@ RFC-0003 also supplies a taxonomy this RFC must respect:
 
 | | vendors | codegen runs |
 | --- | --- | --- |
-| **hook-capable** | Zephyr, ESP-IDF, ThreadX, NuttX, FreeRTOS | at the vendor's configure phase |
+| **hook-capable** | Zephyr, ThreadX, NuttX, FreeRTOS (ESP-IDF was, until phase-468 W2) | at the vendor's configure phase |
 | **hookless** | PlatformIO, **PX4** | *ahead* of the vendor tool, emitting a vendor-native tree |
 
 A design that assumes a configure-time hook silently excludes PX4 and PIO.
@@ -343,7 +343,7 @@ them.
 | profile | what they write | what they never touch |
 | --- | --- | --- |
 | our fixtures | nothing | — |
-| Zephyr / NuttX / ESP-IDF | one manifest line (unchanged) | board packages |
+| Zephyr / NuttX | one manifest line (unchanged) | board packages |
 | vendored FreeRTOS or ThreadX, CMake host | one board package + one `[image.*]` block | nano-ros itself |
 | IDE host (CubeIDE, IAR, MTB) | the same, plus `nros emit` | — |
 | PX4 | `EXTERNAL_MODULES_LOCATION` | everything else — and they get no per-board opt-in (§2c) |
@@ -566,26 +566,37 @@ config_files = { tx_user = "boards/rv64/tx_user.h", nx_user = "boards/rv64/nx_us
 `config_files` is a **named map** because of this row: ThreadX needs
 `TX_USER_FILE` *and* `NX_USER_FILE`, and one `config_dir` cannot express it.
 
-### 6.8 ESP32 — IDF component
+### 6.8 ESP32 — RETIRED as an IDF component (phase-468 W2)
+
+**This section described a road that no longer exists.** phase-468 W2
+(`083d2c10d`) deleted `integrations/nano-ros/`,
+`packages/platform/nros-platform-esp-idf/`, `cmake/platform/nano-ros-esp_idf.cmake`
+and the `esp_idf` platform alternative; RFC-0065 D3 then deleted `Driver::IdfPy`,
+so the combination REFUSES, naming issue 1525, rather than answering with cmake —
+a road equally absent.
+
+It is kept rather than deleted because the board row it showed is still the live
+one, and §4's board table already records it: `esp32-qemu │ esp32 │ none │
+board-run`. The two halves of this document disagreed until now.
 
 ```toml
-[[board]]                                                  # (A)
+[[board]]                                                  # still true
 names = ["esp32-qemu", "esp32", "esp32c3"]
 platform = "esp32"
 target = "riscv32imc-unknown-none-elf"
 entry_kind = "board-run"
-net_stack = "rtos-owned"          # esp_netif over IDF's lwIP fork
-```
-```toml
-[image.esp32]
-board = "esp32-qemu"
-
-[board_config."esp32-qemu"]                       # (B)
-idf.dir = "{env:IDF_PATH}"
 ```
 
-No `config_files`: IDF **generates** `FreeRTOSConfig.h` and `lwipopts.h` from
-`sdkconfig`, so the site block must not pretend to own them.
+What went with the port: `net_stack = "rtos-owned"` (there is no `esp_netif` in
+the picture now) and the `[board_config."esp32-qemu"] idf.dir = "{env:IDF_PATH}"`
+block. ESP32 is reached **bare-metal, via esp-hal**; the C/C++ half of that has
+no road at all, which is issue 1525.
+
+The observation this section was written for survives the retirement and is the
+reason to keep it: **IDF generates `FreeRTOSConfig.h` and `lwipopts.h` from
+`sdkconfig`**, so a site block must not pretend to own them. That is a fact
+about a vendor, not a claim about us — see §"a vendor build's own config may be
+a knob source" below, which cites the same prior art and is untouched.
 
 ## 7. Build process
 
@@ -932,7 +943,7 @@ break.
 | --- | --- |
 | Zephyr | add the project to `west.yml`, `CONFIG_NROS=y` |
 | NuttX | symlink `apps/external/nano-ros`, `make menuconfig` |
-| ESP-IDF | `idf.py add-dependency nano-ros` |
+| ESP-IDF | — (RETIRED phase-468 W2; there is no component to depend on) |
 | upstream FreeRTOS sources | board package with `link_targets = ["freertos_kernel"]` |
 | Pico SDK | same, naming the SDK's targets |
 
@@ -960,7 +971,7 @@ merely search root 0 in phase-348. Nothing in the product depends on it.
 
 | profile | what they write |
 | --- | --- |
-| Zephyr / NuttX / ESP-IDF | one manifest line — unchanged from today |
+| Zephyr / NuttX | one manifest line — unchanged from today |
 | upstream FreeRTOS sources | board package naming `freertos_kernel` |
 | vendored FreeRTOS, CMake host | board package with include dirs — one file |
 | vendored FreeRTOS, IDE host | same file + `nros emit`, then three IDE steps |
