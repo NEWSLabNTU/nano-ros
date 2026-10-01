@@ -54,7 +54,13 @@ use std::collections::BTreeMap;
 use nros_lang::Language;
 
 /// One pack's manifest, as declared in `packs/entry/<surface>/pack.toml`.
+///
+/// `deny_unknown_fields` (phase-474): a pack is now DATA the renderer acts on,
+/// so a misspelt key — `c_abi_runner` for `c_abi_runners` — must fail the
+/// parse rather than silently take the default and render a pack that does
+/// not do what its author wrote.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PackManifest {
     /// Absent for the shared partial pack, which renders no TU of its own.
     #[serde(default)]
@@ -76,10 +82,57 @@ pub struct PackManifest {
     /// generates the registry from these rows, so they cannot disagree with it.
     #[serde(default)]
     pub templates: Vec<TemplateRow>,
+
+    // ---- phase-474 W2 — what the generic renderer needs to know. ----
+    /// What the entry template renders FROM. Required of a language pack.
+    #[serde(default)]
+    pub context: Option<PackContext>,
+    /// The spelling filters this pack's templates call, by registry name
+    /// (`filters.rs`). Declared rather than assumed, so a pack that needs a
+    /// spelling no Rust provides fails a test rather than a user's build.
+    #[serde(default)]
+    pub filters: Vec<String>,
+    /// The component kinds this pack's templates know how to construct. A
+    /// plan with a node of any other kind is refused before lowering, naming
+    /// the node — the C pack's "not `c`" refusal, generated from data.
+    #[serde(default)]
+    pub components: Vec<nros_entry_lower::ComponentKind>,
+    /// The pack calls the board's C-ABI runners
+    /// (`BoardFamily::c_abi_runners`), so it can render only for a family that
+    /// exports them — and a language whose pack says so is ROUTED to the C++
+    /// pack on a family that does not (`entry_pack_for`).
+    #[serde(default)]
+    pub c_abi_runners: bool,
+    /// The pack renders the phase-308 metadata-probe tail.
+    #[serde(default)]
+    pub metadata_probe: bool,
+    /// A pack that exists only as a test FIXTURE, outside the bundle
+    /// (`testdata/entry-packs/`), proving a pack can be added as data alone
+    /// (phase-474 W5). It declares no `language`, because naming one would be
+    /// a `Language` variant — the one piece of Rust a real language still
+    /// adds (RFC-0091 §8 step 3).
+    #[serde(default)]
+    pub fixture: bool,
+}
+
+/// What a pack's entry template renders from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PackContext {
+    /// `nros_entry_lower::LoweredEntry` itself, through the generic renderer
+    /// (`emit.rs`). A pack with this context needs no Rust of its own beyond
+    /// the filters it declares.
+    LoweredEntry,
+    /// The Rust parity renderer's own view (`emit_rust.rs`). RFC-0091 §7 keeps
+    /// it, by decision: it is the second rendering the parity corpus compares
+    /// the `nros::main!` proc-macro against, and the shipping Rust entry is
+    /// that proc-macro (issue 0083).
+    RustParity,
 }
 
 /// One `templates = [{ key, file }]` row.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct TemplateRow {
     /// The stable registry name a `render` call or an `{% include %}` uses.
     pub key: String,
@@ -146,16 +199,20 @@ pub fn entry_pack_for(language: Language, board: &str) -> Result<EntryPackInfo, 
     let has_c_runner = nros_entry_lower::board_family(board)
         .map_err(|e| e.to_string())?
         .has_c_run_components();
-    let pack = match language {
-        Language::C if !has_c_runner => "cpp",
-        Language::C => "c",
-        Language::Cpp => "cpp",
-        Language::Rust => "rust",
-    };
     let all = manifests()?;
-    let m = all
-        .get(pack)
-        .ok_or_else(|| format!("no pack manifest for surface `{pack}`"))?;
+    // phase-474 W2 — a language's pack is the manifest that DECLARES it, not
+    // a `match` arm here: a new language is found by its directory. The one
+    // routing rule stays Rust, and reads the pack's own declaration: a pack
+    // that calls the C-ABI runners cannot render where the family has none,
+    // and the C++ pack, which drives the C++ board runner and reaches a C node
+    // through its `extern "C"` seam, renders it instead.
+    let own = pack_for_language(&all, language)?;
+    let pack = if all[own].c_abi_runners && !has_c_runner {
+        pack_for_language(&all, Language::Cpp)?
+    } else {
+        own
+    };
+    let m = &all[pack];
     let extension = m
         .extension
         .clone()
@@ -169,6 +226,31 @@ pub fn entry_pack_for(language: Language, board: &str) -> Result<EntryPackInfo, 
         c_family,
         routed: m.language != Some(language),
     })
+}
+
+/// The pack whose manifest declares `language` — exactly one, or an error.
+///
+/// Two packs claiming one language would make the answer depend on directory
+/// order; none means the enumeration names a language nothing renders. Both
+/// are a manifest mistake, and `check-entry-pack-conformance` reports them on
+/// the fast line before this runs.
+pub(crate) fn pack_for_language(
+    all: &BTreeMap<&'static str, PackManifest>,
+    language: Language,
+) -> Result<&'static str, String> {
+    let mut found = all
+        .iter()
+        .filter(|(_, m)| m.language == Some(language))
+        .map(|(k, _)| *k);
+    let first = found
+        .next()
+        .ok_or_else(|| format!("no entry pack declares language `{language}`"))?;
+    if let Some(second) = found.next() {
+        return Err(format!(
+            "entry packs `{first}` and `{second}` both declare language `{language}`"
+        ));
+    }
+    Ok(first)
 }
 
 #[cfg(test)]
@@ -202,11 +284,25 @@ mod tests {
                     m.language.is_some()
                         && m.extension.is_some()
                         && m.c_family.is_some()
-                        && m.entry_template.is_some(),
+                        && m.entry_template.is_some()
+                        && m.context.is_some(),
                     "language pack `{surface}` is missing a required field — CMake \
-                     cannot name its output or pick its compiler"
+                     cannot name its output or pick its compiler, or the renderer \
+                     cannot tell what its template reads"
                 );
+                // A pack the generic renderer drives must say what it can
+                // construct; one that constructs nothing renders nothing.
+                if m.context == Some(PackContext::LoweredEntry) {
+                    assert!(
+                        !m.components.is_empty(),
+                        "pack `{surface}` renders a LoweredEntry and accepts no component kind"
+                    );
+                }
             }
+        }
+        // Every language has exactly one pack.
+        for language in Language::ALL {
+            pack_for_language(&all, language).unwrap_or_else(|e| panic!("{e}"));
         }
     }
 

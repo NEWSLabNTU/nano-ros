@@ -18,7 +18,7 @@
 //! This exercises the pipeline `nros codegen entry --lang cpp --typed
 //! --board zephyr --metadata <nros-metadata.json>` runs, in process:
 //! `plan_from_model` -> `enrich_plan` -> `resolve_plan_sched` ->
-//! `emit_cpp::emit_typed`, which is `cmd::codegen::run_entry`'s own sequence.
+//! `emit::emit_typed(Lang::Cpp, …)`, which is `cmd::codegen::run_entry`'s own sequence.
 //!
 //! # What is asserted
 //!
@@ -35,7 +35,7 @@ use std::{collections::BTreeMap, fs};
 
 use common::derived_tiers::{FAST, Fixture, SLOW, resolve_model_path};
 use nros_cli_core::codegen::entry::{
-    Plan, emit_cpp, metadata, plan_from_model, resolve_plan_sched,
+    Lang, Plan, emit, metadata, plan_from_model, resolve_plan_sched,
 };
 
 /// The board key the entry bakes for. The fixture's `[image.zephyr]` names
@@ -108,7 +108,7 @@ fn the_entry_derives_its_tiers_and_emits_run_tiers() {
         );
     }
 
-    let src = emit_cpp::emit_typed(&plan).expect("the typed C++ entry emits");
+    let src = emit::emit_typed(Lang::Cpp, &plan).expect("the typed C++ entry emits");
     assert!(
         src.contains("::nros::board::ZephyrBoard::run_tiers("),
         "the entry must end in ZephyrBoard::run_tiers, not run_components; src:\n{src}"
@@ -168,7 +168,7 @@ fn without_the_keyword_the_entry_derives_nothing_and_keeps_run_components() {
         plan.resolved_tiers
     );
 
-    let src = emit_cpp::emit_typed(&plan).expect("the typed C++ entry emits");
+    let src = emit::emit_typed(Lang::Cpp, &plan).expect("the typed C++ entry emits");
     assert!(
         !src.contains("run_tiers"),
         "without a declared group there is no tier to run; src:\n{src}"

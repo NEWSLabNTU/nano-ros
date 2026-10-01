@@ -2,8 +2,12 @@
   The per-node remap and parameter declarations.
 
   ONE partial, included by both entry packs, because the statements are
-  byte-identical C in both — only the executor expression differs, and that
-  rides in as `exec`. A C++ entry compiles these exact lines. Two copies would
+  byte-identical C in both — only the executor expression differs, and the
+  caller passes it in as `dexec` (phase-474: it is template text, so the
+  template that writes it chooses it; it used to ride on a Rust view).
+
+  What the caller puts in scope: `n`, the `LoweredNode`; `dexec`, its
+  executor expression; `at`, the node's index on that executor. A C++ entry compiles these exact lines. Two copies would
   be two authored spellings of one call sequence, which is the defect
   phase-432 exists to remove; before this they were `emit_declare_remaps` and
   `emit_declare_params`, `pub(super)` string writers in `emit_c.rs` that
@@ -17,7 +21,7 @@
   emission sat inside the `param_services` gate and AFTER construction, so a
   plan without param services silently dropped every launch param.
 
-  issue 1272 -- a parameter seed NAMES ITS NODE. `decls.node` is the index
+  issue 1272 -- a parameter seed NAMES ITS NODE. `at` is the index
   the executor's `node_builder` will hand this node: its position among the
   nodes this setup function builds on this executor. Both packs therefore
   emit these calls BEFORE the node is created, so the seed always names the
@@ -29,15 +33,15 @@
   It is written here rather than passed in: a caller that needed a different
   depth would be emitting these somewhere they do not belong.
 -#}
-{%- for r in decls.remaps %}
+{%- for r in n.remaps %}
         {
-            nros_cpp_ret_t rrc = nros_cpp_declare_remap({{ decls.exec }}, "{{ decls.name | c_str }}", "/", "{{ r.from | c_str }}", "{{ r.to | c_str }}");
+            nros_cpp_ret_t rrc = nros_cpp_declare_remap({{ dexec }}, "{{ n.name | c_str }}", "/", "{{ r[0] | c_str }}", "{{ r[1] | c_str }}");
             if (rrc != NROS_CPP_RET_OK) return (int32_t)rrc;
         }
 {%- endfor %}
-{%- for p in decls.params %}
+{%- for p in n.params %}
         {
-            nros_cpp_ret_t prc = nros_cpp_declare_param({{ decls.exec }}, {{ decls.node }}, "{{ p.key | c_str }}", "{{ p.value | c_str }}");
+            nros_cpp_ret_t prc = nros_cpp_declare_param({{ dexec }}, {{ at }}, "{{ p[0] | c_str }}", "{{ p[1] | c_str }}");
             if (prc != NROS_CPP_RET_OK) return (int32_t)prc;
         }
 {%- endfor -%}

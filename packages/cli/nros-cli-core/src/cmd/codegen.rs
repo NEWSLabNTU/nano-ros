@@ -405,7 +405,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         // Refused HERE, before the metadata is read — the same point the old
         // `lang != Cpp && lang != C` test refused it, so the error order a
         // user sees is unchanged.
-        let emitter = typed_entry_emitter(lang)?;
+        typed_entry_pack(lang)?;
         let Some(meta_path) = args.metadata.as_ref() else {
             bail!("--typed requires --metadata <nros-metadata.json>");
         };
@@ -427,43 +427,34 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             family.tier_rtos_key(),
             image_plan.as_ref(),
         )?;
-        match emitter {
-            // The C emitter renders a pure-`.c` TU that calls the board family's
-            // C-ABI runner (`BoardFamily::c_abi_runners`). phase-432 W3.1 gave
-            // FreeRTOS, Zephyr and NuttX one (`nros_board_rtos_run_components`)
-            // and issue 1286 gave it to ThreadX, so every family takes this arm
-            // today. The one CMake asks (`nros codegen entry-pack`) and this one
-            // read the same predicate, so the TU's extension and its contents
-            // agree.
-            TypedEntryEmitter::C if family.has_c_run_components() => {
-                entry_codegen::emit_c::emit_typed(&plan).map_err(|e| eyre!("{e}"))?
-            }
-            // phase-432 W3.1 — SAY that the routing fired.
-            //
-            // No family in `BOARD_KEYS` reaches this arm since issue 1286 gave
-            // ThreadX a C runner. It stays for a future family that ships none:
-            // the routing WORKS there (the C++ board runner drives the entry
-            // and reaches each C node through its `extern "C"` seam), so it is
-            // a line on stderr, not a refusal. The author of a `--lang c` entry
-            // learns their TU is C++ and why, and nothing that worked stops
-            // working.
-            TypedEntryEmitter::C => {
-                eprintln!(
-                    "nros codegen entry: board `{}` has no C-ABI `run_components` \
-                     (`BoardFamily::c_abi_runners`), so this `--lang c` entry is \
-                     rendered by the C++ pack (a `.cpp` TU that drives the C++ board \
-                     runner and calls each C node through its `extern \"C\"` seam). \
-                     `nros codegen entry-pack --lang c --board {}` reports the routing.",
-                    plan.board, plan.board,
-                );
-                entry_codegen::emit_cpp::emit_typed_monitored(&plan, &monitor_rows, &age_rows)
-                    .map_err(|e| eyre!("{e}"))?
-            }
-            TypedEntryEmitter::Cpp => {
-                entry_codegen::emit_cpp::emit_typed_monitored(&plan, &monitor_rows, &age_rows)
-                    .map_err(|e| eyre!("{e}"))?
-            }
+        // phase-474 — ONE renderer, whatever the language: the pack that
+        // renders `lang` on this board is found by its manifest
+        // (`pack::entry_pack_for`), and everything a language contributes is
+        // that pack's data. There was a `match` here over two emitters.
+        //
+        // The routing rule is the pack's own declaration: a pack that calls
+        // the board's C-ABI runners (`c_abi_runners = true`) is replaced by
+        // the C++ pack on a family that exports none. No family in
+        // `BOARD_KEYS` reaches it since issue 1286 gave ThreadX a C runner; it
+        // stays for a future family. The routing WORKS (the C++ board runner
+        // drives the entry and reaches each C node through its `extern "C"`
+        // seam), so it is a line on stderr, not a refusal.
+        let info = entry_codegen::pack::entry_pack_for(lang, &plan.board)
+            .map_err(|e| eyre!("codegen entry: {e}"))?;
+        if info.routed {
+            eprintln!(
+                "nros codegen entry: board `{}` has no C-ABI `run_components` \
+                 (`BoardFamily::c_abi_runners`), so this `--lang {lang}` entry is \
+                 rendered by the `{}` pack (a `.{}` TU). \
+                 `nros codegen entry-pack --lang {lang} --board {}` reports the routing.",
+                plan.board, info.pack, info.extension, plan.board,
+            );
         }
+        // phase-462 W1 — the contract monitor rows go to every pack; a pack
+        // that renders no install block (the C pack today, issue 1604)
+        // ignores them.
+        entry_codegen::emit::emit_typed_monitored(lang, &plan, &monitor_rows, &age_rows)
+            .map_err(|e| eyre!("{e}"))?
     } else {
         match lang {
             // phase-432 W2.4 (RFC-0091 §7) — the Rust entry VERB is retired.
@@ -519,39 +510,40 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     Ok(())
 }
 
-/// The Rust emitter that builds a typed entry's view for one language.
+/// Refuse a language whose entry pack the generic renderer cannot drive —
+/// BEFORE the metadata is read, the point this verb has always refused it.
 ///
-/// An entry pack is NOT the whole of an entry language. Each language also
-/// has a Rust `emit_<lang>.rs` that builds that language's view of the plan
-/// and renders its pack, and this is where a language is mapped to one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TypedEntryEmitter {
-    /// `emit_c` — or `emit_cpp` when the board family has no C-ABI runner
-    /// (the routing arm in [`run_entry`]).
-    C,
-    /// `emit_cpp`.
-    Cpp,
-}
-
-/// Map `lang` to its typed entry emitter, or refuse it by name.
-///
-/// This match has NO wildcard, and must never get one. It used to be the
-/// `_ =>` arm of the emit dispatch, which sent every language that was not C
-/// to `emit_cpp` — so a language added by following the book's pack steps
-/// got a C++ entry TU with no word said. Without a wildcard, a new `Language`
-/// variant does not compile until someone writes its arm here, and the arm is
-/// either an emitter or a refusal.
-fn typed_entry_emitter(lang: entry_codegen::Lang) -> Result<TypedEntryEmitter> {
-    match lang {
-        entry_codegen::Lang::C => Ok(TypedEntryEmitter::C),
-        entry_codegen::Lang::Cpp => Ok(TypedEntryEmitter::Cpp),
-        // The prefix is the message this verb has always printed. The rest
-        // says why: a Rust entry has a producer, and it is not this verb.
-        entry_codegen::Lang::Rust => bail!(
-            "--typed supports --lang cpp or c (got --lang {lang}): language `{lang}` \
-             has no typed entry emitter in `nros codegen entry` — a Rust entry is \
-             emitted by the `nros::main!()` proc-macro"
+/// phase-474 — this was `typed_entry_emitter`, an exhaustive `match` from a
+/// language to one of two Rust emitters. There are no emitters now: a language
+/// is typed-renderable exactly when the pack that declares it renders a
+/// `LoweredEntry` (`context = "lowered-entry"`), so the answer is READ from the
+/// manifest. A new `Language` variant still cannot slip through silently: with
+/// no pack declaring it this is an error naming the language, and
+/// `check-entry-pack-conformance` reds the fast line before that.
+fn typed_entry_pack(lang: entry_codegen::Lang) -> Result<()> {
+    use entry_codegen::pack::{PackContext, manifests, pack_for_language};
+    let all = manifests().map_err(|e| eyre!("{e}"))?;
+    let typed: Vec<String> = all
+        .values()
+        .filter(|m| m.context == Some(PackContext::LoweredEntry))
+        .filter_map(|m| m.language.map(|l| l.as_str().to_string()))
+        .collect();
+    let prefix = format!(
+        "--typed supports --lang {} (got --lang {lang})",
+        typed.join(" or ")
+    );
+    let pack = pack_for_language(&all, lang)
+        .map_err(|e| eyre!("{prefix}: language `{lang}` has no typed entry pack ({e})"))?;
+    match all[pack].context {
+        Some(PackContext::LoweredEntry) => Ok(()),
+        // The prefix is the message this verb printed before the refusal
+        // became a function; the rest says why, from the pack's own context.
+        Some(PackContext::RustParity) => bail!(
+            "{prefix}: language `{lang}` has no typed entry emitter in `nros codegen \
+             entry` — its pack renders the parity view, and a Rust entry is emitted \
+             by the `nros::main!()` proc-macro"
         ),
+        None => bail!("{prefix}: entry pack `{pack}` declares no `context`"),
     }
 }
 
@@ -740,39 +732,36 @@ fn write_link_libs_sidecar(
 mod tests {
     use super::*;
 
-    /// A language with no typed entry emitter is REFUSED by name, not sent to
-    /// the C++ emitter.
+    /// A language with no typed entry pack is REFUSED by name, not sent to
+    /// the C++ pack.
     ///
     /// Rust is the one language like that today, so it is the test of the
-    /// refusal path. A new `Language` variant cannot reach this test without
-    /// an arm: `typed_entry_emitter` has no wildcard, so it does not compile.
+    /// refusal path.
     #[test]
     fn a_language_with_no_typed_entry_emitter_is_refused_by_name() {
-        let err = typed_entry_emitter(entry_codegen::Lang::Rust)
-            .expect_err("rust has no typed entry emitter")
+        let err = typed_entry_pack(entry_codegen::Lang::Rust)
+            .expect_err("rust has no typed entry pack")
             .to_string();
         assert!(
             err.contains("language `rust` has no typed entry emitter"),
             "refusal must name the language and say it has no emitter: {err}"
         );
-        // The prefix is the message this verb printed before the refusal
-        // became a function; anyone matching on it keeps matching.
+        // The prefix lists the typed languages, read from the manifests.
         assert!(
-            err.starts_with("--typed supports --lang cpp or c (got --lang rust)"),
+            err.starts_with("--typed supports --lang c or cpp (got --lang rust)"),
             "{err}"
         );
     }
 
-    /// Every language either has an emitter or is refused — none falls
+    /// Every language either has a typed pack or is refused — none falls
     /// through to a default. Iterates `Language::ALL` so a new variant is
     /// covered without editing this test.
     #[test]
     fn every_language_maps_to_an_emitter_or_a_refusal() {
         for lang in entry_codegen::Lang::ALL {
-            match (lang, typed_entry_emitter(lang)) {
-                (entry_codegen::Lang::C, Ok(e)) => assert_eq!(e, TypedEntryEmitter::C),
-                (entry_codegen::Lang::Cpp, Ok(e)) => assert_eq!(e, TypedEntryEmitter::Cpp),
-                (_, Ok(e)) => panic!("{lang} maps to {e:?}; add it to this test"),
+            match (lang, typed_entry_pack(lang)) {
+                (entry_codegen::Lang::C | entry_codegen::Lang::Cpp, Ok(())) => {}
+                (_, Ok(())) => panic!("{lang} has a typed pack; add it to this test"),
                 (_, Err(err)) => assert!(
                     err.to_string().contains(&format!("language `{lang}`")),
                     "a refusal must name `{lang}`: {err}"

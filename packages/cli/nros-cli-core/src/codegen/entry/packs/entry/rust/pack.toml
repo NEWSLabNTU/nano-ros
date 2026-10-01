@@ -16,6 +16,12 @@ c_family = false
 
 entry_template = "entry_rust.rs"
 
+# phase-474 W2 — this template does NOT render a `LoweredEntry`: it renders
+# `emit_rust.rs`'s own view, the parity rendering RFC-0091 §7 keeps by decision.
+# So the generic renderer refuses it, and `nros codegen entry --typed --lang
+# rust` names the proc-macro instead.
+context = "rust-parity"
+
 # See `../c/pack.toml` for what `templates` declares.
 templates = [
     { key = "entry_rust.rs", file = "entry.rs.jinja" },

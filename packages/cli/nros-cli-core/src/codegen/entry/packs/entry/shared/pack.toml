@@ -10,6 +10,9 @@ shared = true
 # no TU of its own. The conformance check requires those fields of a LANGUAGE
 # pack and forbids them here, so the two kinds cannot be confused.
 
+# The partials call `c_str`; a pack declares the filters its own templates call.
+filters = ["c_str"]
+
 # See `../c/pack.toml` for what `templates` declares.
 templates = [
     { key = "boot_config.jinja", file = "boot_config.jinja" },

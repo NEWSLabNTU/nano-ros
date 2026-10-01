@@ -29,11 +29,11 @@
     * ENCODINGS, decided in Rust — `core_plus1` is core-plus-one and `-1` is an
       unset preempt threshold. Those are C-ABI facts, and a pack must not have
       to know them.
-    * Still PRE-RENDERED, and deliberately: `decls`, `trailer`, `boot_config`.
-      Their producers are shared with the unconverted `emit_cpp`, so
-      structuring them here alone would give it a second producer of the same
-      text — the duplication this design exists to remove. They convert when it
-      does (issue 1102).
+    * phase-474 — the CONTEXT is `nros_entry_lower::LoweredEntry` itself, not
+      a view a Rust emitter built: there is no `emit_c.rs`. Node bodies index
+      `nodes` (a tier setup lists `(node, on_executor)` pairs); package
+      identifiers are spelled with the `pkg_ident` filter; what this pack
+      needs of Rust is the filters `pack.toml` names, and nothing else.
 
   A quoting bug cannot originate in this file: the filter is Rust.
 
@@ -59,13 +59,13 @@
 *
 * DO NOT EDIT — regenerated at configure time. Routes each launch node
 * to the real executor via its `NROS_C_COMPONENT` factory/configure seam
-* (no synthesizing interpreter); `{{ boot.run_tiers_fn if boot.tiers else boot.run_components_fn }}`
+* (no synthesizing interpreter); `{{ boot.runners.run_tiers if boot.tiers else boot.runners.run_components }}`
 * owns init/spin/shutdown.
 */
 
 #include <nros/boot_config.h>  /* nros_baked_boot_config + the nros_boot_config_* readers */
 #include <nros/main.h>         /* the board's C-ABI run_components / run_tiers */
-{%- if app_main_include %}
+{%- if boot_shape == "app" %}
 #include <nros/app_main.h>    /* NROS_APP_MAIN_REGISTER_VOID (app boot shape) */
 {%- endif %}
 #include <nros/nros_cpp_ffi.h> /* nros_cpp_node_t + nros_cpp_node_create + ret codes */
@@ -73,40 +73,25 @@
 /* C component factory + configure seam (NROS_C_COMPONENT). The node's
  * `nros_cpp_node_t*` + executor handle are handed to `configure`, which
  * registers the component's real callbacks on the executor. */
-{% for pkg in externs -%}
-extern void* __nros_c_component_{{ pkg }}_create(void);
-extern int32_t __nros_c_component_{{ pkg }}_configure(const nros_cpp_node_t* node, void* executor, void* self);
+{% for c in components if c.kind == "c" -%}
+extern void* __nros_c_component_{{ c.pkg | pkg_ident }}_create(void);
+extern int32_t __nros_c_component_{{ c.pkg | pkg_ident }}_configure(const nros_cpp_node_t* node, void* executor, void* self);
 {% endfor %}
 /* Static per-node storage (outlives the spin loop; no heap). */
-{% for i in node_indices -%}
-static nros_cpp_node_t __nros_node_{{ i }};
+{% for n in nodes -%}
+static nros_cpp_node_t __nros_node_{{ loop.index0 }};
 {% endfor %}
 {% if tiers -%}
 /* Phase 274.W2 — per-tier setup functions (one per tier). */
 {% for t in tiers.setups -%}
 static int32_t __nros_entry_setup_tier_{{ t.index }}(void* executor) {
     if (executor == NULL) return (int32_t)NROS_CPP_RET_NOT_INIT;
-{%- for n in t.nodes %}
+{%- for s in t.nodes %}{% set n = nodes[s.node] %}
     {
-{%- with decls = n.decls %}
+{%- with dexec = "executor", at = s.on_executor, idx = s.node %}
 {%- include "declare_calls.jinja" %}
+{%- include "node_body_c.jinja" %}
 {%- endwith %}
-        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "{{ n.name|c_str }}", "{{ n.namespace|c_str }}", &__nros_node_{{ n.index }});
-        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
-{%- if n.qos %}
-        static const nros_cpp_qos_override_t __nros_qos_{{ n.index }}[] = {
-{%- for q in n.qos %}
-            { "{{ q.topic | c_str }}", {{ q.role }}, {{ q.policy }}, {{ q.value }} },
-{%- endfor %}
-        };
-        {
-            nros_cpp_ret_t qrc = nros_cpp_node_set_qos_overrides(&__nros_node_{{ n.index }}, __nros_qos_{{ n.index }}, {{ n.qos | length }});
-            if (qrc != NROS_CPP_RET_OK) return (int32_t)qrc;
-        }
-{%- endif %}
-        void* self = __nros_c_component_{{ n.pkg }}_create();
-        int32_t crc = __nros_c_component_{{ n.pkg }}_configure(&__nros_node_{{ n.index }}, executor, self);
-        if (crc != 0) return crc;
     }
 {%- endfor %}
 {%- if t.emits_services %}
@@ -123,13 +108,13 @@ static int32_t __nros_entry_setup_tier_{{ t.index }}(void* executor) {
  * match on the group id alone, so two nodes' `ctrl` were one key and a tier
  * naming one of them admitted both. An EMPTY array is the WILDCARD, so a tier
  * that names groups must never render an empty one. */
-{%- for t in tiers.tiers %}
+{%- for t in tiers.rows %}
 {%- if t.groups %}
 static const char* __nros_tier_{{ t.index }}_groups[] = {{ '{' }}{% for g in t.groups %}"{{ g[0]|c_str }}", "{{ g[1]|c_str }}", "{{ g[2]|c_str }}", {% endfor %}};
 {%- endif %}
 {%- endfor %}
 static const nros_native_tier_spec_t __nros_tiers[{{ tiers.n }}] = {
-{%- for t in tiers.tiers %}
+{%- for t in tiers.rows %}
     {
         .name = "{{ t.name|c_str }}",
         .groups = {% if t.groups %}__nros_tier_{{ t.index }}_groups{% else %}NULL{% endif %},
@@ -188,27 +173,12 @@ static int32_t __nros_entry_setup(void* executor) {
     }
 {%- endfor %}
 {%- endif %}
-{%- for n in setup_nodes %}
+{%- for n in nodes %}
     {
-{%- with decls = n.decls %}
+{%- with dexec = "executor", at = loop.index0, idx = loop.index0 %}
 {%- include "declare_calls.jinja" %}
+{%- include "node_body_c.jinja" %}
 {%- endwith %}
-        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "{{ n.name|c_str }}", "{{ n.namespace|c_str }}", &__nros_node_{{ n.index }});
-        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
-{%- if n.qos %}
-        static const nros_cpp_qos_override_t __nros_qos_{{ n.index }}[] = {
-{%- for q in n.qos %}
-            { "{{ q.topic | c_str }}", {{ q.role }}, {{ q.policy }}, {{ q.value }} },
-{%- endfor %}
-        };
-        {
-            nros_cpp_ret_t qrc = nros_cpp_node_set_qos_overrides(&__nros_node_{{ n.index }}, __nros_qos_{{ n.index }}, {{ n.qos | length }});
-            if (qrc != NROS_CPP_RET_OK) return (int32_t)qrc;
-        }
-{%- endif %}
-        void* self = __nros_c_component_{{ n.pkg }}_create();
-        int32_t crc = __nros_c_component_{{ n.pkg }}_configure(&__nros_node_{{ n.index }}, executor, self);
-        if (crc != 0) return crc;
     }
 {%- endfor %}
 {%- include "service_trailer_c.jinja" %}

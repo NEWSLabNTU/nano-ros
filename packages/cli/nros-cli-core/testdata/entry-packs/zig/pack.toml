@@ -1,0 +1,41 @@
+# A TOY entry pack: Zig, the language RFC-0091 §8b walked through the design
+# as its probe. phase-474 W5's acceptance test for "a new entry language needs
+# no Rust emitter".
+#
+# Everything this pack is lives in this directory: this manifest and one
+# template. There is no `emit_zig.rs`, no view struct and no dispatch arm. The
+# test that renders it (`emit::tests_data_pack`) loads it from disk through
+# the SAME `PackManifest`, admission, lowering and renderer the bundled packs
+# use, with exactly the filters declared below and nothing else.
+#
+# What it is NOT, said plainly:
+#  * not shipped — it is outside `packs/entry/`, so it is not bundled, and no
+#    CMake or CLI verb reaches it;
+#  * not compiled — there is no Zig toolchain on the host that wrote it, so the
+#    goldens record what it renders, not that a Zig compiler accepts it;
+#  * not a `Language` — it declares none, because a real one is a variant on
+#    `nros_lang::Language` (RFC-0091 §8 step 3, the one piece of Rust a real
+#    language still adds) and a test fixture must not add one.
+fixture = true
+
+extension = "zig"
+# Not compiled by a C-family toolchain.
+c_family = false
+
+entry_template = "entry_zig.zig"
+
+# What the generic renderer needs, all of it data:
+#  * the template reads `LoweredEntry` itself;
+#  * it quotes with `c_str` — Zig's escapes for `\` and `"` are C's, and those
+#    are the two `c_str` writes — and spells identifiers with `pkg_ident`;
+#  * it constructs C components (through their `NROS_C_COMPONENT` seam, which
+#    Zig reaches as plain `extern fn`s) and calls the board's C-ABI runners,
+#    which a Zig program reaches through `@cImport`.
+context = "lowered-entry"
+filters = ["c_str", "pkg_ident"]
+components = ["c"]
+c_abi_runners = true
+
+templates = [
+    { key = "entry_zig.zig", file = "entry.zig.jinja" },
+]

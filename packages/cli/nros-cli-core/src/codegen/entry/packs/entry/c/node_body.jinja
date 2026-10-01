@@ -1,0 +1,34 @@
+{#-
+  One C node's construction, inside the `{ }` its caller opened, AFTER the
+  shared `declare_calls.jinja` has seeded its remaps and params.
+
+  phase-474 W3 — a partial rather than two copies: the tiered setup functions
+  and the single setup function differ only in WHICH node index they pass,
+  and the caller puts it in scope as `idx` (the node's position in `nodes`,
+  which names its static storage). `n` is the `LoweredNode`.
+
+  Issue 1443 — the node is created at `n.namespace`, the ONE derivation
+  (`lower::node_namespace`), never the literal `"/"`; it is never empty.
+
+  Whitespace: this comment closes WITHOUT the dash, so the line break after it
+  is the one between the caller's last statement and this block's first, and
+  the closing comment below strips this file's final newline, so the caller's
+  `}` line follows `return crc;` directly.
+#}
+        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "{{ n.name|c_str }}", "{{ n.namespace|c_str }}", &__nros_node_{{ idx }});
+        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
+{%- if n.qos_overrides %}
+        static const nros_cpp_qos_override_t __nros_qos_{{ idx }}[] = {
+{%- for q in n.qos_overrides %}
+            { "{{ q.topic | c_str }}", {{ q.role }}, {{ q.policy }}, {{ q.value }} },
+{%- endfor %}
+        };
+        {
+            nros_cpp_ret_t qrc = nros_cpp_node_set_qos_overrides(&__nros_node_{{ idx }}, __nros_qos_{{ idx }}, {{ n.qos_overrides | length }});
+            if (qrc != NROS_CPP_RET_OK) return (int32_t)qrc;
+        }
+{%- endif %}
+        void* self = __nros_c_component_{{ n.pkg | pkg_ident }}_create();
+        int32_t crc = __nros_c_component_{{ n.pkg | pkg_ident }}_configure(&__nros_node_{{ idx }}, executor, self);
+        if (crc != 0) return crc;
+{#- end of node body -#}

@@ -3,9 +3,9 @@
 //! Lifts the pkg-index walk + launch.xml parse + register-call
 //! resolution out of the Rust `nros::main!()` proc-macro (which lives
 //! in `packages/core/nros-macros/src/main_macro.rs`) into one place
-//! every front-end can call. The three emitters
-//! ([`emit_rust`], [`emit_cpp`], [`emit_c`]) consume a single in-memory
-//! [`Plan`] IR so the per-language differences stay surface-level.
+//! every front-end can call. Every pack renders from one lowering of a single
+//! in-memory [`Plan`] IR ([`lower`]), so the per-language differences are
+//! templates and spelling filters, never Rust emitters.
 //!
 //! Surface (per phase doc §3.2):
 //!
@@ -18,11 +18,9 @@
 //!     board: Some("native".into()),
 //!     arg_overrides: vec![],
 //! })?;
-//! let src = match lang {
-//!     Lang::Rust => emit_rust::emit(&plan),               // register-based
-//!     Lang::Cpp  => emit_cpp::emit_typed(&plan)?,         // typed (RFC-0043)
-//!     Lang::C    => emit_c::emit_typed(&plan)?,           // typed (phase-257)
-//! };
+//! // phase-474 — one renderer for every C-ABI pack; the language picks the
+//! // pack (`pack::entry_pack_for`), and the pack is data.
+//! let src = emit::emit_typed(lang, &plan)?;
 //! ```
 //!
 //! Errors carry enough context that the CLI verb's `eyre::Result`
@@ -40,11 +38,16 @@ use nros_orchestration_ir::{
 
 use crate::orchestration::cargo_metadata_schema::{NodeOverride, TierDef};
 
-pub mod emit_c;
-pub mod emit_cpp;
+/// phase-474 — the ONE renderer for every `LoweredEntry` pack. `emit_c.rs`
+/// and `emit_cpp.rs` were the two per-language emitters it replaced.
+pub mod emit;
 pub mod emit_rust;
+/// phase-474 — the packs' spelling filters, the only per-language Rust left.
+mod filters;
 #[cfg(test)]
 mod golden;
+/// phase-474 — `Plan` → `LoweredEntry`, once, for every pack.
+pub mod lower;
 pub mod metadata;
 /// phase-432 W2.4 — the shared Rust-entry parity corpus, this side.
 #[cfg(test)]
@@ -139,7 +142,7 @@ pub struct PlanNode {
     pub namespace: Option<String>,
     /// Phase 240.2 (RFC-0043) — fully-qualified C++ component class
     /// (`"talker_pkg::Talker"`), from `nano_ros_node_register(CLASS …)` via the
-    /// cmake metadata. Required by the **typed** entry emitter (`emit_cpp_typed`)
+    /// cmake metadata. Required by the **typed** C++ entry pack
     /// which constructs the class; `None` for the legacy register-symbol path.
     pub class_name: Option<String>,
     /// Phase 240.2 — the component class header to `#include`
@@ -246,7 +249,7 @@ impl Plan {
     /// consume it; none re-derives it (issue 1283).
     ///
     /// A metadata probe is the one caller-side refinement, and it is C++-only:
-    /// a probe never takes `run_tiers` (see `emit_cpp`), so it maps
+    /// a probe never takes `run_tiers` (see `lower::lower_image`), so it maps
     /// [`ExecutorShape::Tiers`] to [`ExecutorShape::SchedContexts`].
     pub fn executor_shape(&self) -> ExecutorShape {
         let Some(tiers) = self
@@ -283,388 +286,12 @@ fn board_has_run_tiers(board: &str) -> bool {
         .is_some_and(|r| r.run_tiers.is_some())
 }
 
-/// The param-services and lifecycle registrations that close a setup function.
-///
-/// phase-432 W2.3 — this was a `String` in both views, rendered by Rust from a
-/// template and spliced in. It is two facts now, and the pack's own partial is
-/// INCLUDED where it belongs rather than interpolated: the last rendered text
-/// the entry views carried.
-///
-/// Both are PROCESS facts, not per-tier ones, which is why the tiered path
-/// emits them in tier 0 alone.
-#[derive(serde::Serialize)]
-pub(crate) struct ServicesView {
-    pub param_services: bool,
-    /// `None` when the plan declares no lifecycle; otherwise the autostart
-    /// code the C ABI takes. "none" | "configure" | anything else (= active).
-    pub lifecycle_code: Option<u8>,
-}
-
-pub(crate) fn services_view(plan: &Plan) -> ServicesView {
-    ServicesView {
-        param_services: plan.param_services,
-        lifecycle_code: plan.lifecycle.as_deref().map(|a| match a {
-            "none" => 0u8,
-            "configure" => 1,
-            _ => 2,
-        }),
-    }
-}
-
-/// The per-node declarations a pack renders before construction, and the QoS
-/// overrides it renders after `create_node`.
-///
-/// phase-432 W2.3 — these were `emit_declare_remaps` / `emit_declare_params` /
-/// `emit_qos_overrides`, string writers shared between the two emitters and
-/// carried as pre-rendered `String` fields in both views. They are values now.
-/// `exec` is the pack's own executor EXPRESSION, which is a spelling and so
-/// belongs to the emitter, not to the lowering.
-#[derive(serde::Serialize)]
-pub(crate) struct DeclsView {
-    /// RAW node name — the pack quotes it.
-    pub name: String,
-    pub exec: &'static str,
-    /// issue 1272 -- the index this node gets on the executor that builds it,
-    /// i.e. its position among the nodes ONE setup function creates on ONE
-    /// executor (a tier's own, or the process-global one). Its parameter seeds
-    /// are declared on this key before the node exists, so it has to be the
-    /// index `node_builder` hands out next, not the plan-wide node index.
-    pub node: usize,
-    pub remaps: Vec<RemapView>,
-    pub params: Vec<ParamView>,
-}
-
-#[derive(serde::Serialize)]
-pub(crate) struct RemapView {
-    pub from: String,
-    pub to: String,
-}
-
-#[derive(serde::Serialize)]
-pub(crate) struct ParamView {
-    pub key: String,
-    pub value: String,
-}
-
-/// One QoS override, in codes.
-///
-/// Issue 0303 — the plan already carries CODES: the lowering (and its
-/// rejection of anything unusable) happened in
-/// `nros_orchestration_ir::qos_override`, so there is nothing to decode or
-/// silently skip at render time.
-///
-/// Unlike `DeclsView` this gets no shared partial, and the difference is real
-/// rather than an omission: C calls a free function on the node's ADDRESS
-/// (`nros_cpp_node_set_qos_overrides(&__nros_node_0, …)`) while C++ calls a
-/// method on the node, and the element type is spelled `nros_cpp_qos_override_t`
-/// in one and `::nros_cpp_qos_override_t` in the other. Same data, two
-/// language surfaces — which is exactly what a per-pack template is for.
-#[derive(serde::Serialize)]
-pub(crate) struct QosRowView {
-    pub topic: String,
-    pub role: u8,
-    pub policy: u8,
-    pub value: u32,
-}
-
-/// The namespace a plan node's entities register under — the ONE derivation.
-///
-/// Issue 1443 — this had three authored copies (`tier_group_keys`'s `ns_of`,
-/// `sched_view`'s `node_ns`, and `node_binds` inline) and a FOURTH answer
-/// spelled as the literal `"/"` in both entry packs' `node_create` call. So a
-/// launch node under `/island` was BOUND to its scheduling context by
-/// `(name, "/island")` and CREATED at `(name, "/")` three lines away — which
-/// meant the bind matched nothing and, on the wire, the node appeared at
-/// `/talker` in a C or C++ image and `/island/talker` in the Rust image built
-/// from the same launch file.
-///
-/// `None` and `Some("")` are the SAME answer here: "the model gives this node
-/// no namespace", which is the ROOT and never `""`. That is RFC-0045's "unset"
-/// versus "configured to nothing", a distinction a `const char*` edge cannot
-/// carry, so it is normalised at this end — the same choice
-/// `nros_board_native_run_components_named_ns` makes for the session rung and
-/// `emit_cpp::plan_node_fqn` already made for the contract-row key.
-pub(crate) fn node_namespace(n: &PlanNode) -> &str {
-    match n.namespace.as_deref() {
-        None | Some("") => "/",
-        Some(ns) => ns,
-    }
-}
-
-/// The declarations for one node, with the pack's executor expression and the
-/// node's index on that executor (see [`DeclsView::node`]).
-pub(crate) fn decls_view(n: &PlanNode, exec: &'static str, node: usize) -> DeclsView {
-    DeclsView {
-        name: n.name.as_deref().unwrap_or(&n.exec).to_string(),
-        exec,
-        node,
-        remaps: n
-            .remaps
-            .iter()
-            .map(|(from, to)| RemapView {
-                from: from.clone(),
-                to: to.clone(),
-            })
-            .collect(),
-        params: n
-            .params
-            .iter()
-            .map(|(key, value)| ParamView {
-                key: key.clone(),
-                value: value.clone(),
-            })
-            .collect(),
-    }
-}
-
-pub(crate) fn qos_views(n: &PlanNode) -> Vec<QosRowView> {
-    n.qos_overrides
-        .iter()
-        .map(|o| QosRowView {
-            topic: o.topic.clone(),
-            role: o.role,
-            policy: o.policy,
-            value: o.value,
-        })
-        .collect()
-}
-
-/// One tier, in neutral terms — the row BOTH entry packs render.
-///
-/// Every field is a VALUE, and the strings are RAW: the pack quotes them
-/// through its own escaping filter, and decides for itself that an empty
-/// `groups` means `NULL` (C) or `nullptr` (C++) rather than an array symbol.
-/// Shared rather than declared twice because a tier spelled two ways is the
-/// defect this phase exists to remove — the same reason W1.2's gate compares
-/// the two message packs one layer down.
-///
-/// The ENCODINGS here are ABI facts, not spellings: `core_plus1` is the core
-/// index plus one with 0 meaning unpinned, and `preempt_threshold` is -1 when
-/// unset. Those belong to the lowering; how they are laid out belongs to the
-/// pack.
-#[derive(serde::Serialize)]
-pub(crate) struct TierView {
-    pub index: usize,
-    pub name: String,
-    /// `(node name, node namespace, group)` per admitted group, FLATTENED to
-    /// 3N strings by the pack — `nros_native_tier_spec_t.n_groups` counts
-    /// TRIPLES and the array holds three entries each.
-    ///
-    /// issue 1172 — this was the group id alone, and the two packs derived it
-    /// DIFFERENTLY: `emit_c` deduped ACROSS tiers (so a group named by two
-    /// tiers emptied the second tier's array, and an empty array is the
-    /// WILDCARD — that tier then ran every callback in the image), `emit_cpp`
-    /// deduped within each tier. Neither was right, because the filter could
-    /// not express the node; with the node in the key there is nothing to
-    /// dedup across tiers and the two rules collapse into one.
-    pub groups: Vec<(String, String, String)>,
-    pub priority: i64,
-    pub stack_bytes: u64,
-    pub spin_period_us: u64,
-    /// 0 = unpinned; otherwise the core index PLUS ONE.
-    pub core_plus1: u32,
-    /// -1 = unset.
-    pub preempt_threshold: i64,
-    /// `None` = unset; the pack decides what that is spelled.
-    pub class: Option<String>,
-    pub period_us: u64,
-    pub budget_us: u64,
-    pub deadline_us: u64,
-    pub deadline_policy: Option<String>,
-}
-
-/// The `(node name, namespace, group)` key for every group admitted on each
-/// tier — ONE derivation, shared by both entry packs.
-///
-/// issue 1172 — this used to be written twice and differently. `emit_c` deduped
-/// ACROSS tiers, so a group named by two tiers left the SECOND tier's array
-/// empty; an empty array is the WILDCARD (`main.h`: "NULL / 0 means wildcard"),
-/// so that tier stopped filtering and ran every callback in the image at its
-/// own priority. `emit_cpp` deduped WITHIN each tier and kept empty ids. The
-/// C comment claimed "a group named by two tiers belongs to the first", which
-/// is not what its code did — it disabled the second tier's filter.
-///
-/// Neither rule was recoverable, because the filter could not express the
-/// node. With the node in the key there is nothing to dedup across tiers: two
-/// nodes' `ctrl` are two different keys, so the question the old rules
-/// disagreed about does not arise.
-///
-/// The namespace comes from the plan's node, and MUST be the one the entry
-/// creates the node with — a filter naming a namespace the node does not have
-/// matches nothing, and the tier would register nothing.
-pub(crate) fn tier_group_keys(
-    tiers: &nros_orchestration_ir::ResolvedTierTable,
-    plan: &Plan,
-) -> Vec<Vec<(String, String, String)>> {
-    let ns_of = |node_name: &str| -> String {
-        plan.nodes
-            .iter()
-            .find(|n| n.name.as_deref().unwrap_or(&n.exec) == node_name)
-            .map(node_namespace)
-            .unwrap_or("/")
-            .to_string()
-    };
-    tiers
-        .tiers
-        .iter()
-        .map(|tier| {
-            let mut keys: Vec<(String, String, String)> = tier
-                .members
-                .iter()
-                // An empty group id names no group and never did; it is not a
-                // key, and emitting it would make the tier match an entity
-                // whose group is the empty string.
-                .filter(|(_, group)| !group.is_empty())
-                .map(|(node, group)| (node.clone(), ns_of(node), group.clone()))
-                .collect();
-            // Only an exact repeat of the same triple is a duplicate.
-            keys.sort();
-            keys.dedup();
-            keys
-        })
-        .collect()
-}
-
-/// Build the shared tier rows.
-///
-/// `groups_per_tier` stays a PARAMETER, but there is now exactly one thing to
-/// pass: [`tier_group_keys`]. It was two authored derivations — issue 1172 —
-/// and sharing the ROW first is what made the divergence visible at all.
-pub(crate) fn tier_views(
-    tiers: &nros_orchestration_ir::ResolvedTierTable,
-    groups_per_tier: Vec<Vec<(String, String, String)>>,
-) -> Vec<TierView> {
-    tiers
-        .tiers
-        .iter()
-        .enumerate()
-        .map(|(ti, tier)| TierView {
-            index: ti,
-            name: tier.name.clone(),
-            groups: groups_per_tier[ti].clone(),
-            priority: tier.priority,
-            stack_bytes: tier.stack_bytes.unwrap_or(0) as u64,
-            spin_period_us: tier.spin_period_us.unwrap_or(0),
-            core_plus1: tier.core.map(|c| c + 1).unwrap_or(0),
-            preempt_threshold: tier.preempt_threshold.unwrap_or(-1),
-            class: tier.class.clone(),
-            period_us: tier.period_us.unwrap_or(0),
-            budget_us: tier.budget_us.unwrap_or(0),
-            deadline_us: tier.deadline_us.unwrap_or(0),
-            deadline_policy: tier.deadline_policy.clone(),
-        })
-        .collect()
-}
-
-/// The sched-context wiring for [`ExecutorShape::SchedContexts`] — ONE
-/// derivation, rendered by both entry packs (issue 1283; the
-/// [`tier_group_keys`] pattern from issue 1172). It used to live in `emit_cpp`
-/// alone, so the C pack had nothing to render and emitted nothing.
-///
-/// Every field is a VALUE; strings are RAW and the pack quotes them. `None`
-/// means unset, spelled `NULL` in C and `nullptr` in C++.
-#[derive(serde::Serialize)]
-pub(crate) struct SchedView {
-    pub n: usize,
-    pub contexts: Vec<SchedContextView>,
-    pub node_binds: Vec<NodeBindView>,
-    pub group_binds: Vec<GroupBindView>,
-}
-
-/// One tier's RTOS-agnostic policy, as `nros_cpp_create_sched_context_from_policy`
-/// takes it. RAW tier fields only: the call lowers them through
-/// `SchedContext::from_tier_policy`, the SAME lowering the Rust runtime's
-/// `apply_tier_sched_policy` uses (RFC-0052), so the mapping cannot drift
-/// between languages.
-#[derive(serde::Serialize)]
-pub(crate) struct SchedContextView {
-    pub index: usize,
-    pub class: Option<String>,
-    pub period_us: u64,
-    pub budget_us: u64,
-    pub deadline_us: u64,
-    pub deadline_policy: Option<String>,
-    pub os_pri: u8,
-}
-
-#[derive(serde::Serialize)]
-pub(crate) struct NodeBindView {
-    pub name: String,
-    pub namespace: String,
-    pub sched_context: u8,
-}
-
-#[derive(serde::Serialize)]
-pub(crate) struct GroupBindView {
-    pub name: String,
-    pub namespace: String,
-    pub group: String,
-    pub tier_index: usize,
-}
-
-/// Build the sched-context wiring for a plan whose [`Plan::executor_shape`]
-/// is [`ExecutorShape::SchedContexts`].
-pub(crate) fn sched_view(tiers: &ResolvedTierTable, plan: &Plan) -> SchedView {
-    let contexts = tiers
-        .tiers
-        .iter()
-        .enumerate()
-        .map(|(ti, tier)| SchedContextView {
-            index: ti,
-            class: tier.class.clone(),
-            period_us: tier.period_us.unwrap_or(0),
-            budget_us: tier.budget_us.unwrap_or(0),
-            deadline_us: tier.deadline_us.unwrap_or(0),
-            deadline_policy: tier.deadline_policy.clone(),
-            os_pri: tier.priority.clamp(0, 255) as u8,
-        })
-        .collect();
-
-    let node_ns = |name: &str| -> String {
-        plan.nodes
-            .iter()
-            .find(|n| n.name.as_deref().unwrap_or(&n.exec) == name)
-            .map(node_namespace)
-            .unwrap_or("/")
-            .to_string()
-    };
-
-    let node_binds = plan
-        .nodes
-        .iter()
-        .filter_map(|n| {
-            n.sched_context.map(|sc| NodeBindView {
-                name: n.name.as_deref().unwrap_or(&n.exec).to_string(),
-                namespace: node_namespace(n).to_string(),
-                sched_context: sc,
-            })
-        })
-        .collect();
-
-    let group_binds = tiers
-        .tiers
-        .iter()
-        .enumerate()
-        .flat_map(|(ti, tier)| {
-            tier.members
-                .iter()
-                .map(move |(node_name, group)| (ti, node_name.clone(), group.clone()))
-        })
-        .map(|(ti, node_name, group)| GroupBindView {
-            namespace: node_ns(&node_name),
-            name: node_name,
-            group,
-            tier_index: ti,
-        })
-        .collect();
-
-    SchedView {
-        n: tiers.tiers.len(),
-        contexts,
-        node_binds,
-        group_binds,
-    }
-}
+// phase-474 W2 — the view structs that lived here (`ServicesView`,
+// `DeclsView`, `QosRowView`, `TierView`, `SchedView`, `BootConfigView`) and
+// their builders are `nros_entry_lower`'s `LoweredEntry` image types now, built
+// by `lower.rs`. They were the shared half of a projection each emitter also
+// made privately; the projection is one function, and the packs render its
+// output directly.
 
 /// Issue 0794 — the image-level half of the RFC-0045 baked rung: the SESSION
 /// facts the `.nros_boot_config` blob carries beside the node's identity.
@@ -758,109 +385,6 @@ fn baked_session(per_node: &[(Option<u8>, Option<String>, Option<String>)]) -> B
         rmw,
         conflicts,
     }
-}
-
-/// Phase 266 (W5b/W6) — the `NROS_BOOT_CONFIG` blob, as its template sees it.
-///
-/// phase-432 W2.3 — this used to be `emit_boot_config_static`, a string writer
-/// both entry emitters called and both carried as a pre-rendered `String` in
-/// their view. It is now a fact set rendered by ONE shared partial
-/// (`boot_config.jinja`), which is what "the IR carries no rendered text"
-/// means for this field.
-///
-/// The five facts split into two kinds, and the kind decides what a multi-node
-/// image gets:
-///
-/// * **Identity** — `node_name`, `namespace`. Per NODE, so a multi-node plan
-///   (or a single node with no resolvable name) leaves both `None`: the flags
-///   come out clear, `nros_boot_config_node_name` returns NULL, and the runner
-///   falls back to the unified `"node"` default. There is no such thing as
-///   "the" name of an image that runs three nodes.
-/// * **Session** — `domain`, `locator`, `rmw`. Per IMAGE, so they survive a
-///   multi-node plan whenever every deployed node agrees on them
-///   ([`BakedSession`]). This is the "emit what is COMMON" half: a two-node
-///   image whose nodes both deploy to domain 7 bakes domain 7; one whose nodes
-///   disagree bakes neither and says so.
-///
-/// issue 0794 — the producer used to set `NROS_BOOT_SET_NODE_NAME` and nothing
-/// else, while the blob defines five fields and the reader
-/// (`nros-node/src/executor/types.rs`) branches on all five. The namespace half
-/// was fixed 2026-08-25; the session half is this. Measured before the fix, on
-/// a bringup declaring all three: `.set_flags = NROS_BOOT_SET_NODE_NAME |
-/// NROS_BOOT_SET_NAMESPACE`, `.domain_id = 0`, `.locator = ""`, `.rmw = ""`.
-#[derive(serde::Serialize)]
-pub(crate) struct BootConfigView {
-    /// RAW. The pack quotes it.
-    pub node_name: Option<String>,
-    pub namespace: Option<String>,
-    /// RAW `uint32_t` — the blob's field is `uint32_t`, the model's is `u8`.
-    pub domain: Option<u32>,
-    /// RAW. The pack quotes it.
-    pub locator: Option<String>,
-    /// RAW. The pack quotes it.
-    pub rmw: Option<String>,
-    /// [`BakedSession::conflicts`], rendered as a comment above the blob.
-    pub conflicts: Vec<String>,
-}
-
-/// Resolve the blob's five facts, refusing a value the C field cannot hold.
-///
-/// # Errors
-///
-/// Returns `Err` when a resolved string exceeds its fixed C buffer minus the
-/// NUL: `node_name` and `namespace_` are `char [64]` (63 bytes), `locator` is
-/// `char [96]` (95) and `rmw` is `char [32]` (31). The caller gets a clear
-/// diagnostic instead of a confusing C-compiler array-initialiser error. This
-/// is a correctness check, so it stays in compiled Rust rather than moving into
-/// the template with the layout.
-///
-/// The domain is NOT range-checked here. `DOMAIN_ID_MAX` lives in `nros-node`,
-/// which this crate does not depend on, and mirroring the constant would be a
-/// second authored copy of a cap the resolver already enforces at boot
-/// (`BootConfigError::DomainIdRange`). A too-large baked domain fails loud
-/// there rather than silently becoming domain 0.
-pub(crate) fn boot_config_view(plan: &Plan) -> Result<BootConfigView, String> {
-    fn fits(what: &str, raw: &str, field: &str, cap: usize) -> Result<(), String> {
-        if raw.len() > cap {
-            return Err(format!(
-                "node {what} '{raw}' is {} bytes; the .nros_boot_config {field} field \
-                 holds at most {cap} bytes + NUL",
-                raw.len(),
-            ));
-        }
-        Ok(())
-    }
-
-    // Session facts are image-level: they are resolved the same way whether the
-    // plan holds one node or ten. Identity is resolved below, and only for one.
-    let s = &plan.session;
-    if let Some(loc) = s.locator.as_deref() {
-        fits("locator", loc, "locator", 95)?;
-    }
-    if let Some(rmw) = s.rmw.as_deref() {
-        fits("rmw", rmw, "rmw", 31)?;
-    }
-    let mut view = BootConfigView {
-        node_name: None,
-        namespace: None,
-        domain: s.domain.map(u32::from),
-        locator: s.locator.clone(),
-        rmw: s.rmw.clone(),
-        conflicts: s.conflicts.clone(),
-    };
-
-    if plan.nodes.len() != 1 {
-        return Ok(view);
-    }
-    let n = &plan.nodes[0];
-    let raw = n.name.as_deref().unwrap_or(&n.exec);
-    fits("name", raw, "node_name", 63)?;
-    if let Some(ns) = n.namespace.as_deref() {
-        fits("namespace", ns, "namespace_", 63)?;
-        view.namespace = Some(ns.to_string());
-    }
-    view.node_name = Some(raw.to_string());
-    Ok(view)
 }
 
 /// Sanitise a pkg name into a valid identifier (`-` → `_`).
@@ -1736,12 +1260,12 @@ contracts: {}
     fn boot_config_text(plan: &Plan) -> Result<String, String> {
         #[derive(serde::Serialize)]
         struct Ctx {
-            boot_config: BootConfigView,
+            boot_config: nros_entry_lower::LoweredBootConfig,
         }
         super::render::render(
             "boot_config.jinja",
             &Ctx {
-                boot_config: boot_config_view(plan)?,
+                boot_config: super::lower::boot_config(plan)?,
             },
         )
     }
@@ -2430,7 +1954,7 @@ contracts: {}
         let table = plan.resolved_tiers.clone().expect("resolved_tiers");
         assert_eq!(table.tiers.len(), 2, "two tiers");
 
-        let keys = tier_group_keys(&table, &plan);
+        let keys = super::lower::tier_group_keys(&table, &plan);
         for (ti, tier_keys) in keys.iter().enumerate() {
             assert!(
                 !tier_keys.is_empty(),

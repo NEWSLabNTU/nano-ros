@@ -38,11 +38,11 @@
 //! All six retired templates emitted C++, including the C ones: the entry drives
 //! `Board::run_components` and holds the `nros::Node`, while the C component is
 //! reached through its `NROS_C_COMPONENT` factory/configure seam. The C emitter
-//! ([`super::emit_c`]) would emit a `.c` TU calling `nros_board_native_*`, which
+//! (the C pack) would emit a `.c` TU calling `nros_board_native_*`, which
 //! is both a different boot seam and — for every board but native — the WRONG
 //! one (it hardcodes the native runner whatever the board; see the phase-432
 //! doc's blocking-site list). Routing unconditionally through
-//! [`super::emit_cpp`] preserves the `main.cpp` filename the RTOS link pass
+//! the C++ pack preserves the `main.cpp` filename the RTOS link pass
 //! matches on (`nros_board_link_app`'s `/main\.cpp$` MAIN_SOURCE rule) and the
 //! board-correct runner.
 
@@ -147,7 +147,7 @@ impl RegisteredNode {
     /// Always the C++ emitter — see the module docs for why a C component still
     /// gets a C++ TU.
     pub fn emit(&self) -> Result<String, String> {
-        super::emit_cpp::emit_typed(&self.plan())
+        super::emit::emit_typed(super::Lang::Cpp, &self.plan())
     }
 }
 

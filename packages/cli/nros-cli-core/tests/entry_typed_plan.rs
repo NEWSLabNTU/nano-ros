@@ -1,6 +1,6 @@
 //! Phase 240.2b (RFC-0043) — typed Entry plan seam, end-to-end in Rust.
 //!
-//! Drives `plan_from_model` → `metadata::enrich_plan` → `emit_cpp::emit_typed`
+//! Drives `plan_from_model` → `metadata::enrich_plan` → `emit::emit_typed(Lang::Cpp, …)`
 //! against the `multi-node-workspace-cpp` template's committed SystemModel + a
 //! synthetic `nros-metadata.json` (the cmake-emitted shape). Proves the codegen
 //! reads the model topology, stamps each node's C++ class + header from the
@@ -114,7 +114,7 @@ fn typed_plan_from_template_emits_constructed_components() {
         Some("listener_pkg::Listener")
     );
 
-    let src = entry::emit_cpp::emit_typed(&plan).expect("emit typed");
+    let src = entry::emit::emit_typed(nros_lang::Language::Cpp, &plan).expect("emit typed");
     // Headers + construct + configure + real-executor entry, in plan order.
     assert!(src.contains("#include \"talker_pkg/Talker.hpp\""));
     assert!(src.contains("#include \"listener_pkg/Listener.hpp\""));

@@ -35,10 +35,10 @@ use super::{Lang, Plan, PlanNode};
 /// [`Lang`] now a real type in scope the old name read as one, which is the
 /// confusion this wave exists to remove.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Emitter {
+pub(super) enum Emitter {
     Cpp,
     /// `emit_typed_probe` — the same TU with the recording tail. Its own
-    /// variant because the probe is a SECOND entry point into `emit_cpp`
+    /// variant because the probe is a SECOND entry point into the C++ pack
     /// whose tail nothing else reaches: it returns before the boot config and
     /// the board wrapper, so a corpus without it leaves the early-return
     /// unguarded.
@@ -98,7 +98,7 @@ fn plan(board: &str, nodes: Vec<PlanNode>) -> Plan {
     }
 }
 
-/// A C component: `emit_c` refuses any node whose `lang` is not `c`, so the
+/// A C component: the C pack refuses any node whose `lang` is not `c`, so the
 /// C rows must say so or their goldens record only that refusal.
 fn c_node(pkg: &str, exec: &str) -> PlanNode {
     let mut n = node(pkg, exec, None);
@@ -114,7 +114,7 @@ fn typed_node(pkg: &str, exec: &str) -> PlanNode {
 
 /// A two-tier C plan — the `run_tiers` path, which no other row reaches.
 ///
-/// A tier's members are `(node_name, callback_group)`, and `emit_c` filters
+/// A tier's members are `(node_name, callback_group)`, and the lowering filters
 /// nodes into tiers BY NODE NAME, so the names here must match the execs.
 fn c_tiered_plan(board: &str) -> Plan {
     use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
@@ -190,10 +190,10 @@ fn c_default_tier_plan(board: &str) -> Plan {
 
 /// A `lang == "c"` node inside a C++ entry.
 ///
-/// `emit_cpp` validates `class_name` for EVERY node, C ones included, before
-/// it looks at `lang` — so a C node in a C++ plan still carries one even
-/// though nothing emits it. Recording that is the point: the requirement is
-/// load-bearing and reads like an oversight.
+/// It still carries a class name and header from `typed_node`, which a C
+/// component does not have; the lowering ignores both for a C kind
+/// (phase-432 W2.6 dropped the requirement, phase-474 drops the field), so
+/// the row also pins that nothing renders them.
 fn cpp_c_node(pkg: &str, exec: &str) -> PlanNode {
     let mut n = typed_node(pkg, exec);
     n.lang = Some(Lang::C);
@@ -268,7 +268,7 @@ fn tier_spec(
 
 /// The matrix. One row per (board family x entry shape) that reaches a
 /// compiler, because the emitter is what every C/C++ image boots through.
-fn cases() -> Vec<(&'static str, Plan, Emitter)> {
+pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     let boards = ["native", "zephyr", "nuttx", "freertos", "threadx"];
     let mut out: Vec<(&'static str, Plan, Emitter)> = Vec::new();
 
@@ -566,7 +566,7 @@ fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     //
     // The plan comes from `RegisteredNode::plan()` — the same synthesis the
     // `entry-node` verb runs — and renders through `Emitter::Cpp` because
-    // `RegisteredNode::emit()` IS `emit_cpp::emit_typed`. That routing is
+    // `RegisteredNode::emit()` IS the C++ pack. That routing is
     // asserted in `registered_node`'s own tests rather than here, so a change
     // to it fails there loudly instead of silently re-recording bytes.
     //
@@ -624,13 +624,13 @@ fn cases() -> Vec<(&'static str, Plan, Emitter)> {
 
 fn render(p: &Plan, emitter: Emitter) -> Result<String, String> {
     match emitter {
-        Emitter::Cpp => super::emit_cpp::emit_typed(p),
+        Emitter::Cpp => super::emit::emit_typed(Lang::Cpp, p),
         // A fixed, absolute-looking `out_path`: the probe bakes it into the TU
         // as a literal, so a real temp path would make the golden depend on
         // the machine that ran the test.
-        Emitter::CppProbe => super::emit_cpp::emit_typed_probe(
+        Emitter::CppProbe => super::emit::emit_typed_probe(
             p,
-            &super::emit_cpp::ProbeExport {
+            &super::emit::ProbeExport {
                 package: "demo_bringup".into(),
                 component: "talker".into(),
                 executable: "talker".into(),
@@ -638,7 +638,7 @@ fn render(p: &Plan, emitter: Emitter) -> Result<String, String> {
                 out_path: "/build/nros/metadata/talker.json".into(),
             },
         ),
-        Emitter::C => super::emit_c::emit_typed(p),
+        Emitter::C => super::emit::emit_typed(Lang::C, p),
         Emitter::Rust => super::emit_rust::emit(p),
     }
 }
@@ -826,9 +826,9 @@ fn both_entry_packs_take_the_plans_executor_branch() {
                 want,
                 "{board} / {what}: the plan's own predicate"
             );
-            let c = super::emit_c::emit_typed(&p)
+            let c = super::emit::emit_typed(Lang::C, &p)
                 .unwrap_or_else(|e| panic!("{board} / {what}: C pack refused: {e}"));
-            let cpp = super::emit_cpp::emit_typed(&p)
+            let cpp = super::emit::emit_typed(Lang::Cpp, &p)
                 .unwrap_or_else(|e| panic!("{board} / {what}: C++ pack refused: {e}"));
             assert_eq!(branch_of(&c), want, "{board} / {what}: C pack branch");
             assert_eq!(branch_of(&cpp), want, "{board} / {what}: C++ pack branch");
@@ -913,8 +913,8 @@ fn both_entry_packs_check_every_sched_binding() {
                 "{board} / {what}: precondition — the sched-context branch"
             );
             for (pack, src) in [
-                ("C", super::emit_c::emit_typed(&p)),
-                ("C++", super::emit_cpp::emit_typed(&p)),
+                ("C", super::emit::emit_typed(Lang::C, &p)),
+                ("C++", super::emit::emit_typed(Lang::Cpp, &p)),
             ] {
                 let src =
                     src.unwrap_or_else(|e| panic!("{board} / {what}: {pack} pack refused: {e}"));
