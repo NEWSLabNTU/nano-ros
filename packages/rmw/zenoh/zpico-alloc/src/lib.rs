@@ -538,7 +538,7 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
     /// Issue 1370 — the shape of the main arena's free memory, by WALKING
     /// rlsf's block list, not by subtraction.
     ///
-    /// [`free_bytes`](Self::free_bytes) answers "how many bytes are free" and
+    /// `free_bytes` (with the `stats` feature) answers "how many bytes are free" and
     /// cannot answer "does a request of N bytes fit", because an arena can hold
     /// the bytes in holes none of which is large enough. The quantity an
     /// external-fragmentation statement is made against is the LARGEST

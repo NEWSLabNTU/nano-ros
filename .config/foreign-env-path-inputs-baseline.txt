@@ -31,6 +31,7 @@ APP_INCLUDE_DIRS_FILE  path, unrouted — a file listing include dirs, one per l
 APP_INTERFACE_SOURCES  path, unrouted — `;`-separated generated interface sources
 APP_MAIN_CPP  path, unrouted — the C/C++ source file to compile
 FREERTOS_CFLAGS  not a path — extra compiler flags (RFC-0049 extension point)
+NROS_ARENA_EXHAUSTION_IS_FATAL  not a path — a boolean flag
 NROS_BOOT_REPORT  not a path — a boolean flag
 NROS_DECLARED_MAX_QOS_DEPTH  not a path — a count
 NROS_EXECUTOR_BACKING_SECTION  not a path — a linker section NAME (RFC-0002 4.4b)
