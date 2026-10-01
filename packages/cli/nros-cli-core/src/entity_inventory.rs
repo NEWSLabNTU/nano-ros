@@ -1666,9 +1666,11 @@ impl DeclaredQosHeaderTable {
     /// skips it, because it declares nothing rather than refusing anything.
     pub fn union(tables: &[(String, DeclaredQosHeaderTable)]) -> DeclaredQosHeaderTable {
         use std::collections::BTreeMap;
-        // `(type, topic)` -> (row, the source that stated each column).
-        let mut merged: BTreeMap<(String, String), (DeclaredQosHeaderRow, [Option<String>; 3])> =
-            BTreeMap::new();
+        /// A merged row and, per column (depth, reliability, durability), the
+        /// source that stated it -- what a conflict message names.
+        type Merged = (DeclaredQosHeaderRow, [Option<String>; 3]);
+        // `(type, topic)` -> the merged row.
+        let mut merged: BTreeMap<(String, String), Merged> = BTreeMap::new();
         let mut undeclared = 0usize;
         let mut depth_refused: Option<String> = None;
         let mut conflicts: Vec<String> = Vec::new();
