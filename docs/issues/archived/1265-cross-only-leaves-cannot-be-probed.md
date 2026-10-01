@@ -2,7 +2,7 @@
 id: 1265
 title: "The metadata probe cannot run for a cross-only leaf, so esp32 and mps2 examples must DECLARE their entities by hand"
 status: resolved
-resolved_in: 2026-10-01
+resolved_in: "PR #1527 (2026-10-01)"
 type: tech-debt
 area: [tooling, build]
 related: [1061, 1142, 1555, 1556, 1601, 1602, 1603, 0827, 0939, rfc-0098, phase-445]

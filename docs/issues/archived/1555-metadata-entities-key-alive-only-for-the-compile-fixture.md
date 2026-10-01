@@ -3,7 +3,7 @@ id: 1555
 title: "The `nros-metadata.json` `entities` key has no production producer — the
   reader survives only to build the declared-QoS compile fixture"
 status: resolved
-resolved_in: 2026-10-01
+resolved_in: "PR #1527 (2026-10-01)"
 type: tech-debt
 area: [tooling, build]
 related: [1265, 1556, 1142, 1407, phase-403, phase-412, phase-454, rfc-0098]
