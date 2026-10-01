@@ -489,6 +489,14 @@ fn summary(desc: &nros_sizing_descriptor::SizingDescriptor) -> String {
             "action_server_entities",
             desc.image.action_server_entities(),
         ),
+        (
+            "service_client_entities",
+            desc.image.service_client_entities(),
+        ),
+        (
+            "guard_condition_entities",
+            desc.image.guard_condition_entities(),
+        ),
     ] {
         let _ = writeln!(s, "    {name:<23} {f}");
     }

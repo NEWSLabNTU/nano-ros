@@ -581,6 +581,8 @@ pub struct Image {
     service_server_entities: Option<usize>,
     action_client_entities: Option<usize>,
     action_server_entities: Option<usize>,
+    service_client_entities: Option<usize>,
+    guard_condition_entities: Option<usize>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
 }
@@ -595,6 +597,8 @@ impl Image {
         "service_server_entities",
         "action_client_entities",
         "action_server_entities",
+        "service_client_entities",
+        "guard_condition_entities",
     ];
 
     /// Distinct `(name, namespace)` nodes the image registers — one per declared
@@ -680,6 +684,27 @@ impl Image {
         )
     }
 
+    /// Declared service clients. Issue 0810 — the arena prices one entry per
+    /// service client (a reply buffer and an RMW handle), so a model that
+    /// summed five kinds and called the other three free was SHORT by every
+    /// service client an image declared.
+    pub fn service_client_entities(&self) -> Fact<usize> {
+        fact(
+            &self.service_client_entities,
+            "service_client_entities",
+            &self.refused,
+        )
+    }
+
+    /// Declared guard conditions. Issue 0810 — one small arena entry each.
+    pub fn guard_condition_entities(&self) -> Fact<usize> {
+        fact(
+            &self.guard_condition_entities,
+            "guard_condition_entities",
+            &self.refused,
+        )
+    }
+
     pub fn new(
         node_count: Option<usize>,
         backend_count: Option<usize>,
@@ -729,6 +754,14 @@ impl Image {
         self.action_server_entities = v;
         self
     }
+    pub fn set_service_client_entities(&mut self, v: Option<usize>) -> &mut Self {
+        self.service_client_entities = v;
+        self
+    }
+    pub fn set_guard_condition_entities(&mut self, v: Option<usize>) -> &mut Self {
+        self.guard_condition_entities = v;
+        self
+    }
 
     pub fn refuse(&mut self, field: &str, reason: impl Into<String>) -> &mut Self {
         debug_assert!(
@@ -753,6 +786,8 @@ impl Image {
             "service_server_entities" => self.service_server_entities?.to_string(),
             "action_client_entities" => self.action_client_entities?.to_string(),
             "action_server_entities" => self.action_server_entities?.to_string(),
+            "service_client_entities" => self.service_client_entities?.to_string(),
+            "guard_condition_entities" => self.guard_condition_entities?.to_string(),
             _ => return None,
         })
     }
@@ -782,6 +817,14 @@ impl Image {
                 (
                     "action_server_entities",
                     self.action_server_entities.is_some(),
+                ),
+                (
+                    "service_client_entities",
+                    self.service_client_entities.is_some(),
+                ),
+                (
+                    "guard_condition_entities",
+                    self.guard_condition_entities.is_some(),
                 ),
             ],
         )

@@ -283,6 +283,8 @@ SIZING_KNOBS = {
     "NROS_ENTITY_COUNT_SERVICE_SERVER": "the per-kind arena sum",
     "NROS_ENTITY_COUNT_ACTION_CLIENT": "the per-kind arena sum",
     "NROS_ENTITY_COUNT_ACTION_SERVER": "the per-kind arena sum",
+    "NROS_ENTITY_COUNT_SERVICE_CLIENT": "the per-kind arena sum (issue 0810)",
+    "NROS_ENTITY_COUNT_GUARD_CONDITION": "the per-kind arena sum (issue 0810)",
     "NROS_ENTITY_DECLARED_DEPTHS": "the per-kind subscription region sum",
     "NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION": "the same sum's guard",
     "NROS_SUBSCRIBED_TYPE_BOUNDS": "each subscription's own region (issue 1255)",

@@ -1289,14 +1289,19 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
     img
 }
 
-/// `[image] *_entities` ↔ the entity kind each counts — issue 1577. The five
-/// kinds `nros-node`'s arena model sums; the other kinds cost it nothing.
-const ENTITY_COUNT_FIELDS: [(&str, EntityKind); 5] = [
+/// `[image] *_entities` ↔ the entity kind each counts — issue 1577. The seven
+/// kinds `nros-node`'s arena model sums (issue 0810 added service clients and
+/// guard conditions, which do claim arena); a publisher costs it nothing.
+const ENTITY_COUNT_FIELDS: [(&str, EntityKind); 7] = [
     ("subscription_entities", EntityKind::Subscription),
     ("timer_entities", EntityKind::Timer),
     ("service_server_entities", EntityKind::ServiceServer),
     ("action_client_entities", EntityKind::ActionClient),
     ("action_server_entities", EntityKind::ActionServer),
+    // Issue 0810 — both claim an arena entry; the model that summed five kinds
+    // priced these two at zero.
+    ("service_client_entities", EntityKind::ServiceClient),
+    ("guard_condition_entities", EntityKind::GuardCondition),
 ];
 
 fn set_entity_count(img: &mut nros_sizing_descriptor::Image, field: &str, n: usize) {
@@ -1307,6 +1312,8 @@ fn set_entity_count(img: &mut nros_sizing_descriptor::Image, field: &str, n: usi
         "service_server_entities" => img.set_service_server_entities(v),
         "action_client_entities" => img.set_action_client_entities(v),
         "action_server_entities" => img.set_action_server_entities(v),
+        "service_client_entities" => img.set_service_client_entities(v),
+        "guard_condition_entities" => img.set_guard_condition_entities(v),
         _ => unreachable!("not an entity-count field: {field}"),
     };
 }
@@ -3022,6 +3029,10 @@ mod tests {
         assert_eq!(d.image.timer_entities().stated(), Some(&0));
         assert_eq!(d.image.service_server_entities().stated(), Some(&0));
         assert_eq!(d.image.action_server_entities().stated(), Some(&0));
+        // Issue 0810 — the two kinds the five-kind model priced at zero are
+        // STATED too, so a consumer can tell "none" from "not counted".
+        assert_eq!(d.image.service_client_entities().stated(), Some(&0));
+        assert_eq!(d.image.guard_condition_entities().stated(), Some(&0));
     }
 
     #[test]
@@ -3066,6 +3077,8 @@ mod tests {
             d.image.service_server_entities(),
             d.image.action_client_entities(),
             d.image.action_server_entities(),
+            d.image.service_client_entities(),
+            d.image.guard_condition_entities(),
         ] {
             assert!(
                 f.refusal().unwrap().contains("absence is not zero"),
@@ -3562,6 +3575,14 @@ mod tests {
         assert_eq!(
             leaf.image.action_server_entities(),
             model.image.action_server_entities()
+        );
+        assert_eq!(
+            leaf.image.service_client_entities(),
+            model.image.service_client_entities()
+        );
+        assert_eq!(
+            leaf.image.guard_condition_entities(),
+            model.image.guard_condition_entities()
         );
         assert_eq!(leaf.target.pointer_bytes(), model.target.pointer_bytes());
         assert_eq!(

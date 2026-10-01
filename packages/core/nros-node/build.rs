@@ -109,9 +109,9 @@ fn in_place_dispatch_trusted() -> bool {
     declared("DEP_NROS_RMW_IN_PLACE_DISPATCH") && !declared("DEP_NROS_RMW_BUFFERED_DISPATCH")
 }
 
-/// Issue 1577 — the five entity counts the arena's per-kind model needs, in
-/// the order subscriptions, timers, service servers, action clients, action
-/// servers.
+/// Issue 1577 — the entity counts the arena's per-kind model needs, in the
+/// order subscriptions, timers, service servers, action clients, action
+/// servers, service clients, guard conditions (the last two since issue 0810).
 ///
 /// Each is the descriptor's `[image] *_entities` fact where it is STATED, and
 /// the cmake road's `NROS_ENTITY_COUNT_*` carrier otherwise — one derivation
@@ -123,10 +123,10 @@ fn in_place_dispatch_trusted() -> bool {
 /// that, keeps the model off.
 fn declared_entity_counts(
     desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
-) -> [Option<usize>; 5] {
+) -> [Option<usize>; 7] {
     use nros_sizing_descriptor::Image;
     type CountFact = fn(&Image) -> nros_sizing_descriptor::Fact<usize>;
-    let rows: [(&str, CountFact); 5] = [
+    let rows: [(&str, CountFact); 7] = [
         (
             "NROS_ENTITY_COUNT_SUBSCRIPTION",
             Image::subscription_entities,
@@ -143,6 +143,16 @@ fn declared_entity_counts(
         (
             "NROS_ENTITY_COUNT_ACTION_SERVER",
             Image::action_server_entities,
+        ),
+        // Issue 0810 — both claim an arena entry; the five-kind model priced
+        // them at zero, i.e. it was SHORT by every one an image declared.
+        (
+            "NROS_ENTITY_COUNT_SERVICE_CLIENT",
+            Image::service_client_entities,
+        ),
+        (
+            "NROS_ENTITY_COUNT_GUARD_CONDITION",
+            Image::guard_condition_entities,
         ),
     ];
     rows.map(|(env, field)| {
@@ -685,7 +695,15 @@ fn main() {
     // covers every one of those; the const assertions in `arena.rs` hold it to
     // that per backend, since only the crate can see a handle's size.
     const PUBSUB_ENTRY_STRUCT: usize = 1024;
-    let action_client_entry = ACTION_CLIENT_SERVICES * ACTION_CLIENT_PER_SERVICE
+    // Issue 0810 — this is now ONLY the fallback's per-slot BUDGET, the price of
+    // a slot whose kind nobody declared. It is kept byte-identical (it is what
+    // 74,240 is made of, and every undeclared image is built against it) and it
+    // is no longer what a DECLARED action client or server is priced at: those
+    // have their own terms below, derived from what the entries hold and
+    // asserted against `size_of` with the linked backend (`executor::arena`).
+    // A test holds this above every per-kind term, which is what makes it a
+    // worst case rather than a fourth guess.
+    let worst_slot_entry = ACTION_CLIENT_SERVICES * ACTION_CLIENT_PER_SERVICE
         + ACTION_CLIENT_FEEDBACK_SUBS * rx_buf_size
         + ACTION_CLIENT_SUB_OVERHEAD;
     // phase-403 step 3 -- a SUBSCRIPTION's arena buffer is sized by what it
@@ -828,6 +846,61 @@ fn main() {
     const SERVICE_ENTRY_BUFS: usize = 2; // request + reply
     const SERVICE_ENTRY_STRUCT: usize = 1024; // handle + callback + ctx, as above
     let service_entry = SERVICE_ENTRY_BUFS * rx_buf_size + SERVICE_ENTRY_STRUCT;
+
+    // --- Issue 0810: what each DECLARED kind's entry holds -------------------
+    //
+    // The five-kind model priced an action server at the action-CLIENT size
+    // (18,048 at the defaults) and service clients / guard conditions at zero.
+    // Measured on x86_64 against the cffi backend (`size_of`, the type the raw
+    // C/C++ registration allocates): action server 6,712, action client 5,528
+    // (+ a 9,288-byte feedback region on the Rust callback path), service
+    // client 1,624, guard condition 16. So declared action servers were priced
+    // 2.7x over and every declared service client was priced at nothing.
+    //
+    // Each term below is BUFFERS + RMW HANDLES + a stated allowance, and
+    // `executor::arena` asserts at compile time, with the backend this image
+    // links, that every handle fits `RMW_HANDLE_BOUND` and every raw entry fits
+    // its term. A typed Rust registration stores a user closure (and, for an
+    // action server, MAX_GOALS typed goals and results) whose size a build
+    // script cannot know; `CALLBACK_ALLOWANCE` / `ACTION_TYPED_ALLOWANCE` budget
+    // it, and a registration that outgrows the arena still refuses by name
+    // (`report_arena_exhausted`), never silently.
+    //
+    // The largest cffi handle is a subscription at 680 bytes on x86_64 (two
+    // 256-byte name buffers plus the QoS blocks); 32-bit targets are smaller.
+    const RMW_HANDLE_BOUND: usize = 768;
+    const CALLBACK_ALLOWANCE: usize = 128;
+    // `ActionServerCore::cancel_buffer` (a fixed `[u8; 256]`).
+    const ACTION_CANCEL_BUF: usize = 256;
+    // The server's goal / result / pending tables at MAX_CONCURRENT_GOALS (4)
+    // plus its counters: 392 bytes measured.
+    const ACTION_SERVER_TABLES: usize = 512;
+    // A typed `ActionServer<A>` keeps MAX_GOALS typed goals and results beside
+    // the raw tables.
+    const ACTION_TYPED_ALLOWANCE: usize = 1024;
+    // The client core's counters and in-flight flags, the buffer strategy and
+    // the raw path's four callback words.
+    const ACTION_CLIENT_FIXED: usize = 256;
+    const SERVICE_CLIENT_FIXED: usize = 64;
+    const GUARD_CONDITION_FIXED: usize = 32;
+    let action_server_entry = 3 * rx_buf_size
+        + ACTION_CANCEL_BUF
+        + 5 * RMW_HANDLE_BOUND
+        + ACTION_SERVER_TABLES
+        + ACTION_TYPED_ALLOWANCE
+        + 2 * CALLBACK_ALLOWANCE;
+    // Three service clients and the feedback subscription, three payload
+    // buffers, and the feedback stream's buffered region — which only the Rust
+    // callback registration claims, and which the term carries because a build
+    // script cannot tell which registration an image's code makes.
+    let action_client_entry = 3 * rx_buf_size
+        + 4 * RMW_HANDLE_BOUND
+        + ACTION_CLIENT_FIXED
+        + buffered_region(ACTION_FEEDBACK_DEPTH as usize, rx_buf_size, ring_len_bytes)
+        + 3 * CALLBACK_ALLOWANCE;
+    let service_client_entry =
+        rx_buf_size + RMW_HANDLE_BOUND + SERVICE_CLIENT_FIXED + CALLBACK_ALLOWANCE;
+    let guard_condition_entry = GUARD_CONDITION_FIXED + CALLBACK_ALLOWANCE;
     // Issue 1577 — the descriptor first, the env carriers second. Only the
     // Zephyr resolver lane delivers `NROS_ENTITY_COUNT_*`, so before the counts
     // had a descriptor home every cargo and plain-cmake image reached the
@@ -838,6 +911,8 @@ fn main() {
         declared_services,
         declared_action_clients,
         declared_action_servers,
+        declared_service_clients,
+        declared_guard_conditions,
     ] = declared_entity_counts(sizing.as_ref());
 
     // phase-412 #4 — the MODEL'S REQUIREMENT, kept apart from the arena it
@@ -859,43 +934,50 @@ fn main() {
         declared_services,
         declared_action_clients,
         declared_action_servers,
+        declared_service_clients,
+        declared_guard_conditions,
     ) {
-        (Some(subs), Some(timers), Some(services), Some(acl), Some(asv)) => Some(
-            // phase-454 W5 -- the descriptor first, the env carriers second.
-            // ONE road wherever the file can answer (issue 1199); the second
-            // is what W9 retires, and what an image with no `nros sync` keeps.
-            sub_rows
-                .as_deref()
-                .and_then(|rows| {
-                    subs_arena_from_descriptor(
-                        rows,
-                        subs,
-                        PUBSUB_ENTRY_STRUCT,
-                        ring_len_bytes,
-                        rx_buf_size,
-                    )
-                })
-                .unwrap_or_else(|| {
-                    subs_arena(
-                        subs,
-                        pubsub_entry,
-                        rx_recv_size,
-                        PUBSUB_ENTRY_STRUCT,
-                        ring_len_bytes,
-                    )
-                })
-                + timers * TIMER_ENTRY
-                + services * service_entry
-                + (acl + asv) * action_client_entry
-                + ARENA_BASE_OVERHEAD,
-        ),
+        (Some(subs), Some(timers), Some(services), Some(acl), Some(asv), Some(scl), Some(gcs)) => {
+            Some(
+                // phase-454 W5 -- the descriptor first, the env carriers second.
+                // ONE road wherever the file can answer (issue 1199); the second
+                // is what W9 retires, and what an image with no `nros sync` keeps.
+                sub_rows
+                    .as_deref()
+                    .and_then(|rows| {
+                        subs_arena_from_descriptor(
+                            rows,
+                            subs,
+                            PUBSUB_ENTRY_STRUCT,
+                            ring_len_bytes,
+                            rx_buf_size,
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        subs_arena(
+                            subs,
+                            pubsub_entry,
+                            rx_recv_size,
+                            PUBSUB_ENTRY_STRUCT,
+                            ring_len_bytes,
+                        )
+                    })
+                    + timers * TIMER_ENTRY
+                    + services * service_entry
+                    + acl * action_client_entry
+                    + asv * action_server_entry
+                    + scl * service_client_entry
+                    + gcs * guard_condition_entry
+                    + ARENA_BASE_OVERHEAD,
+            )
+        }
         _ => None,
     };
     let derived_arena = match model_required {
         Some(required) => required.max(ARENA_FLOOR),
         // Nobody declared, or declared only partly: keep the pre-step-3
         // arithmetic byte for byte, so no existing image moves.
-        None => (action_clients * action_client_entry
+        None => (action_clients * worst_slot_entry
             + max_cbs.saturating_sub(action_clients) * pubsub_entry
             + ARENA_BASE_OVERHEAD)
             .max(ARENA_FLOOR),
@@ -1050,9 +1132,23 @@ fn main() {
              pub const SERVICE_ENTRY: usize = {service_entry};\n    \
              /// Whole modelled cost of one timer slot.\n    \
              pub const TIMER_ENTRY: usize = {timer_entry};\n    \
-             /// Whole modelled cost of one action-client / action-server \
-             slot.\n    \
+             /// Issue 0810 -- the per-slot BUDGET of an UNDECLARED image \
+             (`NROS_EXECUTOR_ACTION_CLIENTS` slots are priced at it). Held \
+             above every per-kind term by a test.\n    \
+             pub const WORST_SLOT_ENTRY: usize = {worst_slot_entry};\n    \
+             /// Whole modelled cost of one DECLARED action client (issue 0810: \
+             its own term, no longer the worst case).\n    \
              pub const ACTION_CLIENT_ENTRY: usize = {action_client_entry};\n    \
+             /// Whole modelled cost of one declared action server.\n    \
+             pub const ACTION_SERVER_ENTRY: usize = {action_server_entry};\n    \
+             /// Whole modelled cost of one declared service client.\n    \
+             pub const SERVICE_CLIENT_ENTRY: usize = {service_client_entry};\n    \
+             /// Whole modelled cost of one declared guard condition.\n    \
+             pub const GUARD_CONDITION_ENTRY: usize = {guard_condition_entry};\n    \
+             /// Bound every RMW handle the linked backend defines must fit.\n    \
+             pub const RMW_HANDLE_BOUND: usize = {rmw_handle_bound};\n    \
+             /// Allowance for one user callback closure in a typed entry.\n    \
+             pub const CALLBACK_ALLOWANCE: usize = {callback_allowance};\n    \
              /// QoS depth an action client's feedback stream registers with.\n    \
              pub const ACTION_FEEDBACK_DEPTH: u16 = \
              {action_feedback_depth};\n    \
@@ -1089,6 +1185,8 @@ fn main() {
         arena_base_overhead = ARENA_BASE_OVERHEAD,
         arena_floor = ARENA_FLOOR,
         timer_entry = TIMER_ENTRY,
+        rmw_handle_bound = RMW_HANDLE_BOUND,
+        callback_allowance = CALLBACK_ALLOWANCE,
         model_required = model_required.unwrap_or(0),
     );
 

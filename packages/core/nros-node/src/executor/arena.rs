@@ -984,6 +984,115 @@ mod arena_model_tests {
     }
 }
 
+/// Issue 0810 — every per-kind term the DECLARED model sums is held to the type
+/// the raw C/C++ registration actually allocates, at compile time, with the
+/// backend this image LINKS. A build script cannot see `size_of` of a backend
+/// handle; this compilation can, so a backend whose handle grows past
+/// `RMW_HANDLE_BOUND` — or an entry that outgrows its term — is a build error
+/// naming the term rather than a `BufferTooSmall` at the first registration.
+///
+/// `rmw-cffi` is the only real `ConcreteSession`; the unit-test mock's handles
+/// carry `Vec`s and `RefCell`s and say nothing about a target. `+ 8` is the
+/// worst alignment pad a bump allocation pays in front of an entry.
+#[cfg(feature = "rmw-cffi")]
+const _: () = {
+    use crate::config::{DEFAULT_RX_BUF_SIZE as B, arena_model as m};
+    use core::mem::size_of;
+    const G: usize = crate::limits::MAX_CONCURRENT_GOALS;
+    const fn fits(actual: usize, term: usize) -> bool {
+        actual + 8 <= term
+    }
+    assert!(
+        size_of::<session::RmwPublisher>() <= m::RMW_HANDLE_BOUND
+            && size_of::<session::RmwSubscriber>() <= m::RMW_HANDLE_BOUND
+            && size_of::<session::RmwServiceServer>() <= m::RMW_HANDLE_BOUND
+            && size_of::<session::RmwServiceClient>() <= m::RMW_HANDLE_BOUND,
+        "issue 0810: an RMW handle of the linked backend exceeds RMW_HANDLE_BOUND in \
+         nros-node/build.rs, so every declared action / service term under-prices it"
+    );
+    assert!(
+        fits(
+            size_of::<ActionServerRawArenaEntry<B, B, B, G>>(),
+            m::ACTION_SERVER_ENTRY
+        ),
+        "issue 0810: ActionServerRawArenaEntry outgrew ACTION_SERVER_ENTRY (nros-node/build.rs)"
+    );
+    assert!(
+        fits(
+            size_of::<ActionClientRawArenaEntry<B, B, B>>(),
+            m::ACTION_CLIENT_ENTRY
+        ),
+        "issue 0810: ActionClientRawArenaEntry outgrew ACTION_CLIENT_ENTRY (nros-node/build.rs)"
+    );
+    assert!(
+        fits(size_of::<SrvRawEntry<B, B>>(), m::SERVICE_ENTRY),
+        "issue 0810: SrvRawEntry outgrew SERVICE_ENTRY (nros-node/build.rs)"
+    );
+    assert!(
+        fits(
+            size_of::<ServiceClientRawArenaEntry<B>>(),
+            m::SERVICE_CLIENT_ENTRY
+        ),
+        "issue 0810: ServiceClientRawArenaEntry outgrew SERVICE_CLIENT_ENTRY (nros-node/build.rs)"
+    );
+    assert!(
+        fits(
+            size_of::<GuardConditionEntry<(unsafe extern "C" fn(*mut core::ffi::c_void), usize)>>(),
+            m::GUARD_CONDITION_ENTRY
+        ),
+        "issue 0810: GuardConditionEntry outgrew GUARD_CONDITION_ENTRY (nros-node/build.rs)"
+    );
+    assert!(
+        fits(size_of::<SubBufferedRawCEntry>(), m::PUBSUB_STRUCT)
+            && fits(size_of::<SubBufferedTypedCEntry>(), m::PUBSUB_STRUCT),
+        "issue 0810: a C subscription entry outgrew PUBSUB_STRUCT (nros-node/build.rs)"
+    );
+};
+
+#[cfg(test)]
+mod per_kind_term_tests {
+    use crate::config::arena_model as model;
+
+    fn opaque(v: usize) -> usize {
+        core::hint::black_box(v)
+    }
+
+    /// Issue 0810 — the fallback budgets an undeclared slot at
+    /// `WORST_SLOT_ENTRY`, which is a worst case only while it covers every
+    /// kind a slot could turn out to be.
+    #[test]
+    fn the_undeclared_slot_budget_covers_every_declared_kind() {
+        for (kind, term) in [
+            ("subscription", model::PUBSUB_ENTRY),
+            ("service server", model::SERVICE_ENTRY),
+            ("service client", model::SERVICE_CLIENT_ENTRY),
+            ("timer", model::TIMER_ENTRY),
+            ("guard condition", model::GUARD_CONDITION_ENTRY),
+            ("action client", model::ACTION_CLIENT_ENTRY),
+            ("action server", model::ACTION_SERVER_ENTRY),
+        ] {
+            assert!(
+                opaque(model::WORST_SLOT_ENTRY) >= opaque(term),
+                "WORST_SLOT_ENTRY {} is below the {kind} term {term}: an undeclared \
+                 image's per-slot budget no longer bounds what a slot can hold",
+                model::WORST_SLOT_ENTRY
+            );
+        }
+    }
+
+    /// Issue 0810 — the measured shape the issue was filed on, held as a
+    /// direction rather than a literal: a declared action server costs LESS
+    /// than the undeclared worst case (it was billed exactly that), and a
+    /// declared service client costs something (it was billed nothing).
+    #[test]
+    fn declared_actions_and_service_clients_are_priced_on_their_own_terms() {
+        assert!(opaque(model::ACTION_SERVER_ENTRY) < opaque(model::WORST_SLOT_ENTRY));
+        assert!(opaque(model::ACTION_CLIENT_ENTRY) < opaque(model::WORST_SLOT_ENTRY));
+        assert!(opaque(model::SERVICE_CLIENT_ENTRY) > opaque(crate::config::DEFAULT_RX_BUF_SIZE));
+        assert!(opaque(model::GUARD_CONDITION_ENTRY) > 0);
+    }
+}
+
 #[cfg(test)]
 mod arena_headroom_tests {
     use super::arena_is_over_provisioned;
@@ -1013,7 +1122,9 @@ mod arena_headroom_tests {
         // second copy of the model that agrees with the first until one of them
         // moves. They come from `config::arena_model` now, which is what
         // `build.rs` actually summed.
-        let want = (MAX_CBS * model::ACTION_CLIENT_ENTRY + model::BASE_OVERHEAD).max(model::FLOOR);
+        // Issue 0810 — the fallback's per-slot budget is `WORST_SLOT_ENTRY`
+        // now; `ACTION_CLIENT_ENTRY` prices a DECLARED action client.
+        let want = (MAX_CBS * model::WORST_SLOT_ENTRY + model::BASE_OVERHEAD).max(model::FLOOR);
         assert_eq!(
             ARENA_SIZE, want,
             "the per-kind derivation moved the default arena; every image's \
