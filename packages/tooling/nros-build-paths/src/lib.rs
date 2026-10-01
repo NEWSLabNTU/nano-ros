@@ -245,6 +245,37 @@ pub fn watch_path(path: &std::path::Path) -> PathBuf {
     canonical
 }
 
+/// Declare the input whose ABSENCE made a build script skip its compile
+/// (issue 1586). Returns whether an edge could be declared.
+///
+/// A script that probes for an SDK, finds it missing and `return`s before any
+/// `cargo:rerun-if-changed` leaves cargo with no input to watch but the
+/// package's own files. Initialising the submodule its warning names then
+/// changes nothing cargo looks at: the script stays `Fresh`, cargo replays the
+/// CACHED "sources are absent" warning, and the link fails on symbols the skip
+/// never compiled. Measured on `nros-board-freertos` — the only cure was a
+/// `touch` of `build.rs`, the missing-edge shape.
+///
+/// Pass the SDK ROOT the probe looked under, not the probed file: an
+/// uninitialised submodule is an EMPTY DIRECTORY (git creates it), and
+/// populating it moves that directory's mtime, which cargo reads because it
+/// scans a watched directory recursively. Watching the absent file itself
+/// would be issue 0490's permanently-dirty unit. When the root does not exist
+/// at all nothing is declared — watching an ancestor could mean scanning a
+/// whole filesystem — and the caller's warning is the only signal.
+///
+/// The caller must still declare `rerun-if-changed=build.rs`: once a script
+/// emits ANY rerun line, cargo stops watching the package by default.
+pub fn watch_skip_cause(sdk_root: &std::path::Path) -> bool {
+    let canonical = canonical(sdk_root);
+    if canonical.is_dir() {
+        println!("cargo:rerun-if-changed={}", canonical.display());
+        true
+    } else {
+        false
+    }
+}
+
 /// An env var that names a path, [`canonical`]ised — for the vars with no
 /// in-repo default (`THREADX_DIR`, a board's `*_CONFIG_DIR`, …). Emits no
 /// directive; `None` when unset or empty, so the caller keeps its own
