@@ -152,7 +152,8 @@ takes the session struct from ~390 KB to ~10-20 KB.
 
 `CONFIG_NROS_XRCE_MAX_SUBSCRIBERS` and `CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS`
 default to `-1`, which means *take the number from the entities this image
-declares* (`nano_ros_node_register(... ENTITIES ...)`). A listener that declares
+declares* (the contract sidecar beside the bringup's launch file, or a standalone
+leaf's `system.toml` `[[component]] entities` rows). A listener that declares
 one subscription and no service is built with one subscriber slot and zero
 service-server slots, which is what took the session struct from 427,968 bytes
 to 59,088 on the zephyr cpp listener ([issue
