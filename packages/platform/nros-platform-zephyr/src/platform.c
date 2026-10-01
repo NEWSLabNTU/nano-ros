@@ -314,13 +314,29 @@ void *nros_platform_alloc(size_t size) {
          * much is necessary, and possibly not sufficient. */
         nros_boot_report_note_heap_alloc_failed(size);
 #endif
-        printk("nros: HEAP EXHAUSTED: request %zu bytes, arena %zu bytes, "
-               "caller %p\n"
-               "      (addr2line -f -e zephyr.elf %p to name it; raise "
-               "CONFIG_NROS_ZEPHYR_HEAP_SIZE / NROS_ZEPHYR_HEAP_SIZE only once "
-               "you know what asked)\n",
-               size, capacity,
-               __builtin_return_address(0), __builtin_return_address(0));
+        /* issue 1370 -- WHICH exhaustion this is. The line used to print the
+         * request and the capacity, which cannot tell "the arena is too
+         * small" from "the arena has the bytes in the wrong shape", and the
+         * remedies differ: raising the heap fixes the first and only
+         * postpones the second. The walk is O(free blocks), which is why it
+         * runs here and nowhere else, and it is under the funnel's lock like
+         * every other call into the arena. */
+        extern int nros_zephyr_heap_free_shape(size_t size, size_t *largest, size_t *total);
+        size_t largest_free = 0;
+        size_t free_total = 0;
+        k_spinlock_key_t shape_key = k_spin_lock(&nros_heap_lock);
+        const int fragmented = nros_zephyr_heap_free_shape(size, &largest_free, &free_total);
+        k_spin_unlock(&nros_heap_lock, shape_key);
+        printk("nros: HEAP EXHAUSTED (%s): request %zu bytes, arena %zu bytes, "
+               "free %zu bytes, largest free block %zu bytes, caller %p\n"
+               "      (addr2line -f -e zephyr.elf %p to name it; %s)\n",
+               fragmented ? "FRAGMENTED" : "TOO SMALL", size, capacity, free_total,
+               largest_free, __builtin_return_address(0), __builtin_return_address(0),
+               fragmented ? "the bytes are free and no single hole holds the request -- "
+                            "a larger CONFIG_NROS_ZEPHYR_HEAP_SIZE only postpones this "
+                            "(issue 1370)"
+                          : "raise CONFIG_NROS_ZEPHYR_HEAP_SIZE / NROS_ZEPHYR_HEAP_SIZE "
+                            "only once you know what asked");
         nros_zephyr_heap_exhaustion_is_fatal(size, capacity);
     }
     return out;

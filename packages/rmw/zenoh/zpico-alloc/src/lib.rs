@@ -122,6 +122,10 @@ pub struct FreeListHeap<const N: usize, const FLLEN: usize = 18> {
     /// address-ordered first-fit free list, whose walk had no worst-case bound.
     tlsf: UnsafeCell<Tlsf<'static, FlBitmap, u16, FLLEN, SLLEN>>,
     initialized: AtomicBool,
+    /// Issue 1370 — the pool length rlsf ACCEPTED at init (the return of
+    /// `insert_free_block_ptr`), which is what `iter_blocks` must be handed:
+    /// walking `N` instead reads past the pool's sentinel into garbage.
+    pool_len: AtomicUsize,
     /// Slab region: 8 slots × 64 bytes, separate from the main heap.
     slab: UnsafeCell<Aligned<SLAB_REGION_SIZE>>,
     /// Bitmap of USED slab slots (bit set = occupied). Starts 0 (all free).
@@ -139,6 +143,15 @@ pub struct FreeListHeap<const N: usize, const FLLEN: usize = 18> {
     used_bytes: AtomicUsize,
     #[cfg(feature = "stats")]
     peak_bytes: AtomicUsize,
+    /// Issue 1370 — smallest / largest request the TLSF path served
+    /// ([`FreeListHeap::request_spread`]). The minimum is stored INVERTED
+    /// (`!min`, maximised): its natural "nothing yet" value is `usize::MAX`,
+    /// and one nonzero initialiser would move the whole static — arena
+    /// included — from `.bss` to `.data` (see `slab_used_bitmap`).
+    #[cfg(feature = "stats")]
+    min_request: AtomicUsize,
+    #[cfg(feature = "stats")]
+    max_request: AtomicUsize,
 }
 
 // Safety: bare-metal single-threaded. The AtomicUsize/AtomicBool provide
@@ -174,6 +187,7 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
             heap: UnsafeCell::new(Aligned([0u8; N])),
             tlsf: UnsafeCell::new(Tlsf::new()),
             initialized: AtomicBool::new(false),
+            pool_len: AtomicUsize::new(0),
             slab: UnsafeCell::new(Aligned([0u8; SLAB_REGION_SIZE])),
             slab_used_bitmap: AtomicU8::new(0), // all 8 slots free (set = used)
             foreign_frees: AtomicUsize::new(0),
@@ -181,6 +195,10 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
             used_bytes: AtomicUsize::new(0),
             #[cfg(feature = "stats")]
             peak_bytes: AtomicUsize::new(0),
+            #[cfg(feature = "stats")]
+            min_request: AtomicUsize::new(0),
+            #[cfg(feature = "stats")]
+            max_request: AtomicUsize::new(0),
         }
     }
 
@@ -202,7 +220,10 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
             let region = ptr::slice_from_raw_parts_mut(base, N);
             unsafe {
                 let tlsf = &mut *self.tlsf.get();
-                tlsf.insert_free_block_ptr(NonNull::new_unchecked(region));
+                let accepted = tlsf
+                    .insert_free_block_ptr(NonNull::new_unchecked(region))
+                    .map_or(0, |n| n.get());
+                self.pool_len.store(accepted, Ordering::Relaxed);
             }
             self.initialized.store(true, Ordering::Relaxed);
         }
@@ -333,6 +354,11 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
                             Tlsf::<'static, FlBitmap, u16, FLLEN, SLLEN>::allocation_usable_size(p);
                         let used = self.used_bytes.fetch_add(charged, Ordering::Relaxed) + charged;
                         let _ = self.peak_bytes.fetch_max(used, Ordering::Relaxed);
+                        // Issue 1370 — `!size` so the max of the inverted
+                        // value is the min of the real one, and zero (the
+                        // `.bss` initial state) means "nothing yet".
+                        let _ = self.min_request.fetch_max(!size, Ordering::Relaxed);
+                        let _ = self.max_request.fetch_max(size, Ordering::Relaxed);
                     }
                     p.as_ptr() as *mut core::ffi::c_void
                 }
@@ -501,10 +527,123 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
 
     /// Free bytes remaining (approximate — does not account for fragmentation).
     ///
-    /// Only available with the `stats` feature.
+    /// Only available with the `stats` feature. For the SHAPE of the free
+    /// memory — which is what decides whether a request fits — use
+    /// [`free_shape`](Self::free_shape).
     #[cfg(feature = "stats")]
     pub fn free_bytes(&self) -> usize {
         (N + SLAB_REGION_SIZE).saturating_sub(self.used_bytes.load(Ordering::Relaxed))
+    }
+
+    /// Issue 1370 — the shape of the main arena's free memory, by WALKING
+    /// rlsf's block list, not by subtraction.
+    ///
+    /// [`free_bytes`](Self::free_bytes) answers "how many bytes are free" and
+    /// cannot answer "does a request of N bytes fit", because an arena can hold
+    /// the bytes in holes none of which is large enough. The quantity an
+    /// external-fragmentation statement is made against is the LARGEST
+    /// CONTIGUOUS free block, and this is the one place that can read it.
+    ///
+    /// O(blocks) — a DIAGNOSTIC path (the exhaustion report, a sizing probe),
+    /// never the allocation path, which stays O(1). The slab is excluded: its
+    /// slots are fixed 64-byte cells that serve only requests of at most that
+    /// size, so they can neither cause nor relieve a large request's failure.
+    ///
+    /// Callers hold whatever lock serialises the allocator (the Zephyr funnel's
+    /// spinlock); like every other method here it is single-threaded by
+    /// contract.
+    pub fn free_shape(&self) -> FreeShape {
+        let mut shape = FreeShape::default();
+        unsafe {
+            self.ensure_init();
+            let tlsf = &*self.tlsf.get();
+            let base = self.heap.get() as *mut u8;
+            let len = self.pool_len.load(Ordering::Relaxed);
+            if len == 0 {
+                return shape;
+            }
+            let pool = NonNull::new_unchecked(ptr::slice_from_raw_parts_mut(base, len));
+            for block in tlsf.iter_blocks(pool) {
+                if block.is_occupied() {
+                    continue;
+                }
+                let payload = block.max_payload_size();
+                shape.free_total += payload;
+                shape.free_blocks += 1;
+                if payload > shape.largest_free {
+                    shape.largest_free = payload;
+                }
+            }
+        }
+        shape
+    }
+
+    /// Issue 1370 — WHICH exhaustion a refused request of `size` bytes is.
+    ///
+    /// The `HEAP EXHAUSTED` line used to print the request and the capacity,
+    /// which cannot tell "the arena is too small" from "the arena has the bytes
+    /// in the wrong shape" — and the remedy differs: the first wants a bigger
+    /// `NROS_ZEPHYR_HEAP_SIZE`, the second wants an allocation pattern (or a
+    /// pool) that does not fragment, and a bigger arena only postpones it.
+    pub fn classify_refusal(&self, size: usize) -> Exhaustion {
+        Exhaustion::classify(size, self.free_shape())
+    }
+
+    /// Issue 1370 — the smallest and largest request the general (TLSF) path
+    /// has SERVED since boot, `(0, 0)` before the first one.
+    ///
+    /// The ratio of the two is the input Robson's bound takes; it is what turns
+    /// phase-391's "narrow spread" from an adjective into a number. Slab-served
+    /// requests (≤ 64 B) are not counted here — they never reach the TLSF pools
+    /// whose fragmentation is the question.
+    #[cfg(feature = "stats")]
+    pub fn request_spread(&self) -> (usize, usize) {
+        let min = !self.min_request.load(Ordering::Relaxed);
+        let max = self.max_request.load(Ordering::Relaxed);
+        if max == 0 { (0, 0) } else { (min, max) }
+    }
+}
+
+/// Issue 1370 — the shape of an arena's free memory. See
+/// [`FreeListHeap::free_shape`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FreeShape {
+    /// The largest single request the arena could serve right now.
+    pub largest_free: usize,
+    /// Sum of every free block's payload.
+    pub free_total: usize,
+    /// How many free blocks that sum is split across.
+    pub free_blocks: usize,
+}
+
+/// Issue 1370 — the two exhaustions a refused allocation can be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Exhaustion {
+    /// The free bytes, all together, are fewer than the request: the arena is
+    /// too small for what is live, and raising it is the remedy.
+    TooSmall,
+    /// The free bytes would hold the request but no single hole does: the
+    /// failure is EXTERNAL FRAGMENTATION, and raising the arena only postpones
+    /// it.
+    Fragmented,
+}
+
+impl Exhaustion {
+    /// The rule, separated from the walk so it is testable on any shape.
+    pub const fn classify(size: usize, shape: FreeShape) -> Self {
+        if shape.free_total >= size && shape.largest_free < size {
+            Exhaustion::Fragmented
+        } else {
+            Exhaustion::TooSmall
+        }
+    }
+
+    /// The word the exhaustion report prints.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Exhaustion::TooSmall => "TOO SMALL",
+            Exhaustion::Fragmented => "FRAGMENTED",
+        }
     }
 }
 
@@ -709,6 +848,87 @@ mod tests {
         let big = heap.alloc(384);
         assert!(!big.is_null());
         heap.free(big);
+    }
+
+    /// Issue 1370 — a fresh arena is one hole, and the walk says so.
+    #[test]
+    fn a_fresh_arena_is_one_free_block() {
+        let heap: FreeListHeap<4096> = FreeListHeap::new();
+        let s = heap.free_shape();
+        assert_eq!(s.free_blocks, 1, "{s:?}");
+        assert_eq!(s.largest_free, s.free_total, "{s:?}");
+        assert!(s.free_total > 4096 - 128, "{s:?}");
+        assert_eq!(heap.classify_refusal(8192), Exhaustion::TooSmall);
+    }
+
+    /// Issue 1370 — the case the old `HEAP EXHAUSTED` line could not name: the
+    /// arena HOLDS the bytes and no hole is big enough. Checkerboard the arena
+    /// with 256-byte blocks and free every other one; a 1 KiB request then
+    /// fails with more than 1 KiB free.
+    #[test]
+    fn a_checkerboarded_arena_is_classified_as_fragmented() {
+        let heap: FreeListHeap<8192> = FreeListHeap::new();
+        let mut held = [ptr::null_mut(); 64];
+        let mut n = 0;
+        while n < held.len() {
+            let p = heap.alloc(256);
+            if p.is_null() {
+                break;
+            }
+            held[n] = p;
+            n += 1;
+        }
+        assert!(n >= 16, "precondition: the arena filled with {n} blocks");
+        for p in held[..n].iter().step_by(2) {
+            heap.free(*p);
+        }
+        let s = heap.free_shape();
+        assert!(s.free_total >= 1024, "half the arena is free: {s:?}");
+        assert!(s.largest_free < 1024, "and no hole holds 1 KiB: {s:?}");
+        assert!(heap.alloc(1024).is_null(), "so the request really is refused");
+        assert_eq!(heap.classify_refusal(1024), Exhaustion::Fragmented);
+        // The same arena refusing a request bigger than everything free is the
+        // OTHER exhaustion, and must say so.
+        assert_eq!(heap.classify_refusal(s.free_total + 1), Exhaustion::TooSmall);
+        // And coalescing really does undo it: free the rest, one hole again.
+        for p in held[..n].iter().skip(1).step_by(2) {
+            heap.free(*p);
+        }
+        let s = heap.free_shape();
+        assert_eq!(s.free_blocks, 1, "every block freed coalesces: {s:?}");
+        assert!(!heap.alloc(1024).is_null());
+    }
+
+    #[test]
+    fn the_classification_rule_is_exactly_bytes_versus_holes() {
+        let shape = |largest_free, free_total| FreeShape {
+            largest_free,
+            free_total,
+            free_blocks: 2,
+        };
+        assert_eq!(Exhaustion::classify(100, shape(50, 99)), Exhaustion::TooSmall);
+        assert_eq!(Exhaustion::classify(100, shape(50, 100)), Exhaustion::Fragmented);
+        // A hole that fits is not an exhaustion at all; classify says TooSmall
+        // (not Fragmented) because fragmentation did not refuse it.
+        assert_eq!(Exhaustion::classify(100, shape(100, 200)), Exhaustion::TooSmall);
+    }
+
+    /// Issue 1370 — the spread Robson's bound takes, recorded from the TLSF
+    /// path only.
+    #[cfg(feature = "stats")]
+    #[test]
+    fn the_request_spread_records_the_tlsf_extremes() {
+        let heap: FreeListHeap<8192> = FreeListHeap::new();
+        assert_eq!(heap.request_spread(), (0, 0), "nothing served yet");
+        let small = heap.alloc(16); // slab: not counted
+        let a = heap.alloc(100);
+        let b = heap.alloc(1500);
+        let c = heap.alloc(300);
+        assert_eq!(heap.request_spread(), (100, 1500));
+        for p in [small, a, b, c] {
+            heap.free(p);
+        }
+        assert_eq!(heap.request_spread(), (100, 1500), "sticky across frees");
     }
 
     #[test]

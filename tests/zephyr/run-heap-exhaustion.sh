@@ -130,6 +130,7 @@ run_case() {
 run_case "knob on: exhaustion reaches the hook" "$fatal_bin" fatal
 run_case "knob on: a request that fits is untouched" "$fatal_bin" ok
 run_case "knob off: NULL-and-log, record still written" "$plain_bin" not-fatal
+run_case "knob off: a fragmented refusal is named FRAGMENTED (issue 1370)" "$plain_bin" fragmented
 
 # The mutant: the gate's own assertions against the build where the behaviour
 # was compiled out. It must FAIL.
