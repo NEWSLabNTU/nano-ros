@@ -137,3 +137,7 @@ tempfile = "3.10"
 # dependencies and host-only, so the edge adds one compile unit and nothing
 # behind it.
 nros-build-paths = { path = "../../tooling/nros-build-paths" }
+# phase-474 W1 — the build script reads every entry `pack.toml` and generates
+# the template registry from it. `toml` is already a normal dependency, so
+# `Cargo.lock` does not move: a lock entry is the UNION of dependency kinds.
+toml = { workspace = true }

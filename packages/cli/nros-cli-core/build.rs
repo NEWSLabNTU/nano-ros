@@ -25,8 +25,13 @@
 
 include!("src/source_stamp.rs");
 include!("../build-support/submodule_watch.rs");
+include!("build_entry_packs.rs");
 
 fn main() {
+    // phase-474 W1 — FIRST, before the out-of-tree early return below: an
+    // out-of-tree build still renders entries, so it still needs its packs.
+    generate_entry_packs();
+
     // issue 1558 — the marker walk, not a hop count (RFC-0101 D3).
     // `try_repo_root` and not `repo_root`: this build script must keep working
     // for an out-of-tree consumer with no nano-ros checkout to find, and the

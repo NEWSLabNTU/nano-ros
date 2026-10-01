@@ -13,11 +13,12 @@ extension = "cpp"
 c_family = true
 
 entry_template = "entry_cpp.cpp"
-partials = [
-    "node_body_cpp.jinja",
-    "monitor_install_cpp.jinja",
-    "boot_wrapper_cpp.jinja",
-    "service_trailer_cpp.jinja",
-    "boot_config.jinja",
-    "declare_calls.jinja",
+
+# See `../c/pack.toml` for what `templates` declares.
+templates = [
+    { key = "entry_cpp.cpp", file = "entry.cpp.jinja" },
+    { key = "node_body_cpp.jinja", file = "node_body.jinja" },
+    { key = "monitor_install_cpp.jinja", file = "monitor_install.jinja" },
+    { key = "boot_wrapper_cpp.jinja", file = "boot_wrapper.jinja" },
+    { key = "service_trailer_cpp.jinja", file = "service_trailer.jinja" },
 ]

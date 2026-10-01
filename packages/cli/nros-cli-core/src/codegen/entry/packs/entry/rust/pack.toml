@@ -15,4 +15,8 @@ extension = "rs"
 c_family = false
 
 entry_template = "entry_rust.rs"
-partials = []
+
+# See `../c/pack.toml` for what `templates` declares.
+templates = [
+    { key = "entry_rust.rs", file = "entry.rs.jinja" },
+]
