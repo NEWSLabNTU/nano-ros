@@ -157,6 +157,43 @@ void freertos_assert_failed(const char *file, int line) {
     for (;;) {}
 }
 
+/* ---- Static allocation (issue 1598) ----
+ *
+ * `configSUPPORT_STATIC_ALLOCATION 1` is on so a tier task's stack and TCB can
+ * be statics the generated entry owns (`xTaskCreateStatic`) instead of heap_4
+ * blocks nothing priced at link. With it on, the kernel asks the APPLICATION
+ * for its own two tasks' memory too, and both hooks are mandatory — omitting
+ * either is a link error naming a symbol nobody wrote. Same shape as the POSIX
+ * simulator board's `freertos_posix_hooks.c`, which has had them since
+ * phase-370. As a side effect the idle and timer stacks leave heap_4 for
+ * `.bss` as well (configMINIMAL_STACK_SIZE + configTIMER_TASK_STACK_DEPTH
+ * words): a move, not a saving. */
+#if (configSUPPORT_STATIC_ALLOCATION == 1)
+static StaticTask_t nros_idle_task_tcb;
+static StackType_t nros_idle_task_stack[configMINIMAL_STACK_SIZE];
+
+void vApplicationGetIdleTaskMemory(StaticTask_t** ppxIdleTaskTCBBuffer,
+                                   StackType_t** ppxIdleTaskStackBuffer,
+                                   configSTACK_DEPTH_TYPE* pulIdleTaskStackSize) {
+    *ppxIdleTaskTCBBuffer = &nros_idle_task_tcb;
+    *ppxIdleTaskStackBuffer = nros_idle_task_stack;
+    *pulIdleTaskStackSize = configMINIMAL_STACK_SIZE;
+}
+
+#if (configUSE_TIMERS == 1)
+static StaticTask_t nros_timer_task_tcb;
+static StackType_t nros_timer_task_stack[configTIMER_TASK_STACK_DEPTH];
+
+void vApplicationGetTimerTaskMemory(StaticTask_t** ppxTimerTaskTCBBuffer,
+                                    StackType_t** ppxTimerTaskStackBuffer,
+                                    configSTACK_DEPTH_TYPE* pulTimerTaskStackSize) {
+    *ppxTimerTaskTCBBuffer = &nros_timer_task_tcb;
+    *ppxTimerTaskStackBuffer = nros_timer_task_stack;
+    *pulTimerTaskStackSize = configTIMER_TASK_STACK_DEPTH;
+}
+#endif /* configUSE_TIMERS */
+#endif /* configSUPPORT_STATIC_ALLOCATION */
+
 /* ---- FreeRTOS malloc failed hook ---- */
 void vApplicationMallocFailedHook(void) {
     semihost_write0("*** MALLOC FAILED ***\n");

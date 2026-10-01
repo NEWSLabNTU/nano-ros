@@ -383,6 +383,39 @@ for path, anchor in TIER_INITIALISERS:
         report_names(f"template ({path})", got, tier_canonical_names)
         print(TIER_ADVICE, file=sys.stderr)
 
+# ---------------------------------------------------------------------------
+# Family 3 — nros_tier_task_memory_t (issues 1598 + 1232): the entry's per-tier
+# stack + TCB row, mirrored by every RTOS runner that takes it (they are
+# compiled where no nros header is in reach). Full declaration compare.
+# ---------------------------------------------------------------------------
+
+TASK_MEM_C_MIRRORS = [
+    "packages/boards/nros-board-freertos/c/freertos_run_tiers.c",
+]
+
+def last_typedef_body(path, tag):
+    """The body of the `typedef struct { … } <tag>;` NEAREST the tag.
+
+    `anon_typedef_body` matches from the FIRST `typedef struct` in the file,
+    which is right only when the tag's struct is the first one — a second
+    anonymous struct after it would be read as one span covering both."""
+    src = read(path)
+    m = re.search(r"\n\}\s*%s;" % re.escape(tag), src)
+    if not m:
+        sys.exit(f"check-ffi-struct-mirrors: '{tag}' not found in {path}")
+    start = src.rfind("typedef struct", 0, m.start())
+    body = src[start:m.start()]
+    return body[body.index("{") + 1:]
+
+
+task_mem_canonical = decls(last_typedef_body(TIER_CANONICAL, "nros_tier_task_memory_t"))
+for path in TASK_MEM_C_MIRRORS:
+    got = decls(last_typedef_body(path, "nros_tier_task_memory_t"))
+    if got != task_mem_canonical:
+        fail(f"tier task-memory mirror DRIFTED: {path}")
+        print(f"  canonical ({TIER_CANONICAL}): {task_mem_canonical}", file=sys.stderr)
+        print(f"  mirror ({path}): {got}", file=sys.stderr)
+
 sys.exit(1 if failed else 0)
 PY
 

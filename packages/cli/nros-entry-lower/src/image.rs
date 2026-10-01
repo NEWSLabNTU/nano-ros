@@ -135,6 +135,55 @@ pub struct LoweredBoot {
     pub component_storage: bool,
     /// The tier count, when `tiers`; 0 otherwise.
     pub n_tiers: usize,
+    /// Issues 1598 + 1232 — each spawned tier's TASK memory (stack + control
+    /// block), declared by the entry for a family whose tier runner takes it
+    /// ([`crate::CAbiRunners::tier_task_memory`]). `None` without `tiers` or
+    /// for a family whose kernel allocates the stack itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_memory: Option<LoweredTaskMemory>,
+}
+
+/// The tier tasks' memory an entry declares (issues 1598 + 1232). One row per
+/// tier, by tier index.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LoweredTaskMemory {
+    /// The header that spells the per-RTOS declaration macros
+    /// (`NROS_TIER_TASK_MEMORY_DEFINE` / `_MEMORY` / `_MEMORY_NONE`).
+    pub header: String,
+    pub rows: Vec<TaskStackRow>,
+}
+
+/// One tier's row of [`LoweredTaskMemory`].
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TaskStackRow {
+    pub index: usize,
+    /// `false` for the boot tier, which runs on the caller and has no memory.
+    pub spawned: bool,
+    /// The declared size, or the family's stated default; `0` lets the
+    /// family header pick its board knob.
+    pub bytes: u64,
+}
+
+impl LoweredTaskMemory {
+    /// The rows for a tier table, from the family's lowering
+    /// ([`crate::TierTaskMemory::stacks`]). `stack_bytes` 0 is "undeclared".
+    pub fn for_tiers(mem: &crate::TierTaskMemory, stack_bytes: &[u64]) -> Self {
+        let declared: alloc::vec::Vec<Option<u64>> =
+            stack_bytes.iter().map(|b| (*b > 0).then_some(*b)).collect();
+        LoweredTaskMemory {
+            header: mem.header.into(),
+            rows: mem
+                .stacks(&declared)
+                .into_iter()
+                .enumerate()
+                .map(|(index, bytes)| TaskStackRow {
+                    index,
+                    spawned: bytes.is_some(),
+                    bytes: bytes.unwrap_or(0),
+                })
+                .collect(),
+        }
+    }
 }
 
 /// The `run_tiers` executor layout: one setup per tier, and the rows of the
