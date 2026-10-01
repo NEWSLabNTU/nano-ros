@@ -550,3 +550,45 @@ stop — worth knowing for anyone triaging this lane by pattern.
 
 The point this issue keeps making holds: four nights, one summary string, four
 causes. Nothing here can be attributed without re-reading the error text.
+
+## The lane RAN — and the build stopped on THREE causes, two of them new (2026-10-01)
+
+Run **36825211926** (schedule, 06:31:16Z), job **110249254587**. After waiting 1 h
+52 m the self-hosted runner claimed it at 08:23:14Z (issue 1365's window closing),
+and for the first time in this episode the lane executed. It still produced no cell
+verdict — its companion job is named `tier 2 — NO VERDICT: stopped in the build` —
+but the stop is now legible, and it is not one stop:
+
+| module | first error |
+| --- | --- |
+| `native` (rc=2) | `Error: 2 <depend> name(s) resolve to nothing: rosidl_default_generators, rosidl_default_runtime — declared by examples/workspaces/features/src/custom_msgs/package.xml` → **issue 1592** |
+| `esp32` (rc=1) | `check-stack-floor: no RISC-V `nm` found … Refusing to report a verdict without one — a missing tool is not a pass` → **issue 1591** |
+| `threadx_riscv64` (rc=1) | six × `rust-lld: error: undefined symbol: nros_rmw_cyclonedds_register_descriptor`, `6/12 ok` → **issue 1590** |
+
+**Two of the three were not in the triage table this lane is read with**, and
+neither is a cause this issue has recorded before. The `zephyr` module, which was
+the stop on 2026-09-30 (the emitted west application, issue 1288), **did not fail
+this time**.
+
+### Two things about the evidence, for whoever reads this lane next
+
+**The job log does not contain the decisive lines.** For `native` and `esp32` the
+job log carries only `error: recipe … failed` plus a 120-line tail, and both tails
+end before the error — `native`'s stops at `Locking 0 packages to latest Rust
+1.98.1 compatible versions`. The real text is in the per-module logs
+(`tmp/build-test-fixtures-<stamp>/{native,esp32}.log`), which the lane uploads as
+the **`post-submit-junit`** artifact. A triage that reads only the job log will
+conclude these modules failed without a reason.
+
+**`error: recipe provision-zenohd failed with exit code 78` appears above all of
+it and is NOT a failure** — it is the lane-skip protocol, which the caller
+annotates in its own words naming issue 1477. A grep for `error:` finds it first,
+as the 2026-09-30 entry also warned.
+
+### What this does to this issue
+
+Five distinct build-stage stops are now on record (1457, 1497/1501, 1288, and
+today's 1591 + 1592), on a lane whose summary string has not changed. The claim
+this issue keeps making is unaltered and this run is its strongest instance: the
+lane finally ran, and what it found was three independent reasons, two previously
+unknown. Fixing any one of them does not give this lane a verdict.
