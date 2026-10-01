@@ -610,6 +610,13 @@ function(nros_resolve_knobs)
             "${NROS_ENTITY_COUNT_ACTION_CLIENT}")
         _nros_resolve_knob(NROS_ENTITY_COUNT_ACTION_SERVER
             "${NROS_ENTITY_COUNT_ACTION_SERVER}")
+        # Issue 0810 -- both claim an arena entry, and the model that summed
+        # only the five above priced every service client and guard
+        # condition at zero.
+        _nros_resolve_knob(NROS_ENTITY_COUNT_SERVICE_CLIENT
+            "${NROS_ENTITY_COUNT_SERVICE_CLIENT}")
+        _nros_resolve_knob(NROS_ENTITY_COUNT_GUARD_CONDITION
+            "${NROS_ENTITY_COUNT_GUARD_CONDITION}")
     endif()
     # Issue 1485 -- the APPLICATION's share of the queryable table this
     # function resolves from NROS_DERIVED_MAX_QUERYABLES above. nros-rmw-zenoh

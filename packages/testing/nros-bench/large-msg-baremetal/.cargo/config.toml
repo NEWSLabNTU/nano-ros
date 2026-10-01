@@ -26,6 +26,10 @@ NROS_ENTITY_COUNT_TIMER = "0"
 NROS_ENTITY_COUNT_SERVICE_SERVER = "0"
 NROS_ENTITY_COUNT_ACTION_CLIENT = "0"
 NROS_ENTITY_COUNT_ACTION_SERVER = "0"
+# Issue 0810 -- these two claim arena too, and the model now refuses to run
+# (falling back to the worst case) unless every kind it sums is stated.
+NROS_ENTITY_COUNT_SERVICE_CLIENT = "0"
+NROS_ENTITY_COUNT_GUARD_CONDITION = "0"
 
 [target.thumbv7m-none-eabi]
 runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"

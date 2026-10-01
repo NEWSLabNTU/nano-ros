@@ -403,6 +403,8 @@ KNOB_CLASS = {
     "NROS_ENTITY_COUNT_SERVICE_SERVER": ("infra", "declared entity count"),
     "NROS_ENTITY_COUNT_ACTION_CLIENT": ("infra", "declared entity count"),
     "NROS_ENTITY_COUNT_ACTION_SERVER": ("infra", "declared entity count"),
+    "NROS_ENTITY_COUNT_SERVICE_CLIENT": ("infra", "declared entity count"),
+    "NROS_ENTITY_COUNT_GUARD_CONDITION": ("infra", "declared entity count"),
     # issue 1485 -- the application's share of the declared queryable table,
     # which the zenoh shim subtracts to size the builtin (parameter/lifecycle)
     # inbox partition on the Zephyr resolver road.

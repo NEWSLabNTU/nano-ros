@@ -2675,7 +2675,8 @@ node-std-tests:
     # never restated here (a second copy of the model is the drift this is for).
     oracle_env=(NROS_ENTITY_COUNT_SUBSCRIPTION=11 NROS_ENTITY_COUNT_TIMER=4
         NROS_ENTITY_COUNT_SERVICE_SERVER=2 NROS_ENTITY_COUNT_ACTION_CLIENT=0
-        NROS_ENTITY_COUNT_ACTION_SERVER=0)
+        NROS_ENTITY_COUNT_ACTION_SERVER=0 NROS_ENTITY_COUNT_SERVICE_CLIENT=0
+        NROS_ENTITY_COUNT_GUARD_CONDITION=0)
     rc=0
     out="$(env "${oracle_env[@]}" NROS_EXECUTOR_ARENA_SIZE=8192 \
         cargo check -p nros-node --quiet 2>&1)" || rc=$?
