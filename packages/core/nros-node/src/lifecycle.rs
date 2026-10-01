@@ -226,6 +226,11 @@ pub type LifecycleCallbackFnCtx = unsafe extern "C" fn(ctx: *mut c_void) -> u8;
 /// One transition this state machine has performed and not yet ANNOUNCED on
 /// `~/transition_event` (REP-2002's communication interface).
 ///
+/// Crate-visible: this is the MECHANISM between the state machine and the
+/// executor that owns the publisher, not a surface a user drives. A node that
+/// wants to know the state asks [`LifecyclePollingNodeCtx::state`]; a node
+/// that wants to watch another node's transitions subscribes to the topic.
+///
 /// Recorded by [`LifecyclePollingNodeCtx::trigger_transition`] and drained by
 /// the executor, which owns the publisher. Recording where the transition
 /// HAPPENS rather than at each caller is the whole point: `ros2 lifecycle
@@ -234,7 +239,7 @@ pub type LifecycleCallbackFnCtx = unsafe extern "C" fn(ctx: *mut c_void) -> u8;
 /// safe `LifecycleCallbacks` road all funnel through that one function, so a
 /// new caller is announced without being told to announce.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TransitionAnnouncement {
+pub(crate) struct TransitionAnnouncement {
     /// Steady-clock nanoseconds at the moment the transition completed.
     ///
     /// rcl stamps `TransitionEvent.timestamp` from `rcutils_steady_time_now`
@@ -261,7 +266,7 @@ pub struct TransitionAnnouncement {
 /// ([`LifecyclePollingNodeCtx::take_dropped_announcements`]) — the posture the
 /// zpico session's `reply_slot_refusals` already takes for the other bounded
 /// table in this stack.
-pub const TRANSITION_ANNOUNCEMENT_QUEUE: usize = 4;
+pub(crate) const TRANSITION_ANNOUNCEMENT_QUEUE: usize = 4;
 
 /// Lifecycle state machine with `unsafe fn(*mut c_void) -> TransitionResult` callbacks.
 ///
@@ -316,7 +321,7 @@ impl LifecyclePollingNodeCtx {
     /// The executor calls this until it returns `None` and publishes each one
     /// on `~/transition_event`. A state machine nobody drains fills its queue
     /// and counts the overflow; it never blocks a transition.
-    pub fn take_announcement(&mut self) -> Option<TransitionAnnouncement> {
+    pub(crate) fn take_announcement(&mut self) -> Option<TransitionAnnouncement> {
         self.announcements.pop_front()
     }
 
@@ -325,7 +330,7 @@ impl LifecyclePollingNodeCtx {
     ///
     /// Read-and-clear rather than read, so a drainer reports a burst once
     /// instead of once per spin for the rest of the image's life.
-    pub fn take_dropped_announcements(&mut self) -> u32 {
+    pub(crate) fn take_dropped_announcements(&mut self) -> u32 {
         core::mem::replace(&mut self.announcements_dropped, 0)
     }
 
