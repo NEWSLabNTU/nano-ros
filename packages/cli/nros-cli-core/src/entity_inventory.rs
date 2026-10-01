@@ -1551,6 +1551,249 @@ impl DeclaredQos {
     }
 }
 
+/// One SUBSCRIPTION's row in the compile-time declared-QoS table -- the
+/// `nros_declared_qos_generated.h` C and C++ check their call sites against
+/// (issue 1256).
+///
+/// The JOIN of the two declared views for one `(type, topic)`: the STATED depth
+/// from [`EntityInventory::declared_depths`] and the reliability and durability
+/// from [`EntityInventory::declared_qos`]. Each column is `None` when nobody
+/// stated it, and a row exists when ANY column is stated -- the populations of
+/// the two views differ (an endpoint can say `reliability: best_effort` and no
+/// depth), and a row keyed on one view would silently drop the other's.
+///
+/// History is NOT a column. KEEP_ALL is refused at build time (RFC-0100 D6), so
+/// every declared endpoint that survives is KEEP_LAST and a call site cannot
+/// disagree with it in a way the table could catch that the depth column does
+/// not already.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeclaredQosHeaderRow {
+    /// The ROS spelling (`pkg/msg/Name`); the DDS-mangled twin is added at
+    /// render time, as it always was.
+    pub type_name: String,
+    pub topic: String,
+    /// STATED depths only (phase-454 W8): a derived default sizes the arena and
+    /// must never become an assertion.
+    pub depth: Option<u32>,
+    /// `reliable` / `best_effort`. `system_default` is not a value a call site
+    /// can disagree with -- it says "the middleware chooses" -- so it is `None`.
+    pub reliability: Option<QoSReliabilityPolicy>,
+    /// `volatile` / `transient_local`, on the same rule.
+    pub durability: Option<QoSDurabilityPolicy>,
+}
+
+impl DeclaredQosHeaderRow {
+    /// The preprocessor token a row carries for its reliability column. Bare
+    /// TOKENS, not numbers, because C and C++ number the enum differently
+    /// (`NROS_QOS_RELIABILITY_RELIABLE` is 1 in `nros_generated.h`,
+    /// `nros::Reliable` is 0 in `qos.hpp`): each consumer pastes the token onto
+    /// a prefix of its own and so reads its OWN language's enumerator, and no
+    /// number in this file can be right for one and wrong for the other.
+    fn reliability_token(&self) -> &'static str {
+        match self.reliability {
+            Some(QoSReliabilityPolicy::Reliable) => "NROS_DQ_RELIABLE",
+            Some(QoSReliabilityPolicy::BestEffort) => "NROS_DQ_BEST_EFFORT",
+            _ => "NROS_DQ_UNDECLARED",
+        }
+    }
+
+    fn durability_token(&self) -> &'static str {
+        match self.durability {
+            Some(QoSDurabilityPolicy::Volatile) => "NROS_DQ_VOLATILE",
+            Some(QoSDurabilityPolicy::TransientLocal) => "NROS_DQ_TRANSIENT_LOCAL",
+            _ => "NROS_DQ_UNDECLARED",
+        }
+    }
+
+    /// The depth column as C writes it: `-1` is "nobody declared", the value
+    /// both `DECLARED_DEPTH_UNDECLARED` spellings carry.
+    fn depth_literal(&self) -> String {
+        self.depth
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "-1".into())
+    }
+}
+
+/// The compile-time declared-QoS table for one component, before rendering.
+///
+/// Split out of [`EntityInventory::to_declared_qos_header`] so a configure that
+/// resolved SEVERAL SystemModels can build one per model and
+/// [`DeclaredQosHeaderTable::union`] them (issue 1564): until then that
+/// configure ABSTAINED for every component, which on the native road is every
+/// image -- `examples/workspaces/cpp` resolves seven models, and all six of its
+/// components compiled with every declared-QoS check off.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeclaredQosHeaderTable {
+    /// No table. The rows would be missing whole components, or two models
+    /// state different values for one endpoint of this component.
+    Refused { reason: String },
+    Resolved {
+        /// Sorted by `(type_name, topic)`, so the artifact is byte-stable.
+        rows: Vec<DeclaredQosHeaderRow>,
+        /// Depth-carrying endpoints that stated no depth -- informational in
+        /// the header (`NROS_DECLARED_QOS_UNDECLARED_COUNT`).
+        undeclared: usize,
+        /// `Some(reason)` when the DEPTH column is refused and the policy
+        /// columns are not: a `history: keep_all` endpoint makes the depth
+        /// arithmetic answerless (RFC-0100 D6) while every stated reliability
+        /// and durability stays a perfectly good declaration to check against.
+        /// A per-FACT refusal, so it never takes the policy rows with it.
+        depth_refused: Option<String>,
+    },
+}
+
+impl DeclaredQosHeaderTable {
+    /// The table a configure with several SystemModels compiles into ONE
+    /// component library -- issue 1564.
+    ///
+    /// The component is compiled once per configure and linked into every
+    /// image that launches it, so its table must be true of all of them. The
+    /// rule is a UNION per `(type, topic)` and per COLUMN:
+    ///
+    /// * a column one model states and another leaves silent takes the stated
+    ///   value. Silence is not a declaration of anything (absence is not zero),
+    ///   so it cannot contradict one; and the only thing the table does with a
+    ///   value is hold the component's own CODE to it, which is the same code in
+    ///   every image.
+    /// * a column two models state DIFFERENTLY refuses the whole table, naming
+    ///   both models and both values. No single table is true of both images,
+    ///   and a table picked from one of them would assert against call sites
+    ///   the other one sizes -- the reason the old rule abstained at all.
+    /// * a refused input refuses the union. Its rows are not known, and a
+    ///   missing row reads as "nobody declared".
+    ///
+    /// A model that describes no wiring at all never reaches here: the caller
+    /// skips it, because it declares nothing rather than refusing anything.
+    pub fn union(tables: &[(String, DeclaredQosHeaderTable)]) -> DeclaredQosHeaderTable {
+        use std::collections::BTreeMap;
+        // `(type, topic)` -> (row, the source that stated each column).
+        let mut merged: BTreeMap<(String, String), (DeclaredQosHeaderRow, [Option<String>; 3])> =
+            BTreeMap::new();
+        let mut undeclared = 0usize;
+        let mut depth_refused: Option<String> = None;
+        let mut conflicts: Vec<String> = Vec::new();
+
+        fn take<T: PartialEq + Copy + core::fmt::Debug>(
+            column: &str,
+            key: &(String, String),
+            have: &mut Option<T>,
+            have_src: &mut Option<String>,
+            new: Option<T>,
+            src: &str,
+            conflicts: &mut Vec<String>,
+        ) {
+            let Some(v) = new else { return };
+            match have {
+                None => {
+                    *have = Some(v);
+                    *have_src = Some(src.to_string());
+                }
+                Some(old) if *old == v => {}
+                Some(old) => conflicts.push(format!(
+                    "    `{}` on `{}`: {column} {:?} in {} but {:?} in {src}",
+                    key.0,
+                    key.1,
+                    old,
+                    have_src.as_deref().unwrap_or("?"),
+                    v
+                )),
+            }
+        }
+
+        for (src, t) in tables {
+            match t {
+                DeclaredQosHeaderTable::Refused { reason } => {
+                    return DeclaredQosHeaderTable::Refused {
+                        reason: format!("{src}: {reason}"),
+                    };
+                }
+                DeclaredQosHeaderTable::Resolved {
+                    rows,
+                    undeclared: u,
+                    depth_refused: d,
+                } => {
+                    // Informational only; the max is the one reduction that
+                    // never reads as "more of this image declared" than did.
+                    undeclared = undeclared.max(*u);
+                    if depth_refused.is_none() {
+                        depth_refused = d.as_ref().map(|r| format!("{src}: {r}"));
+                    }
+                    for r in rows {
+                        let key = (r.type_name.clone(), r.topic.clone());
+                        let entry = merged.entry(key.clone()).or_insert_with(|| {
+                            (
+                                DeclaredQosHeaderRow {
+                                    type_name: r.type_name.clone(),
+                                    topic: r.topic.clone(),
+                                    depth: None,
+                                    reliability: None,
+                                    durability: None,
+                                },
+                                [None, None, None],
+                            )
+                        });
+                        let (row, srcs) = entry;
+                        let [d_src, r_src, u_src] = srcs;
+                        take(
+                            "depth",
+                            &key,
+                            &mut row.depth,
+                            d_src,
+                            r.depth,
+                            src,
+                            &mut conflicts,
+                        );
+                        take(
+                            "reliability",
+                            &key,
+                            &mut row.reliability,
+                            r_src,
+                            r.reliability,
+                            src,
+                            &mut conflicts,
+                        );
+                        take(
+                            "durability",
+                            &key,
+                            &mut row.durability,
+                            u_src,
+                            r.durability,
+                            src,
+                            &mut conflicts,
+                        );
+                    }
+                }
+            }
+        }
+        if !conflicts.is_empty() {
+            return DeclaredQosHeaderTable::Refused {
+                reason: format!(
+                    "the SystemModels this configure resolved state DIFFERENT QoS for one \
+                     endpoint of this component, and the component is compiled once for every \
+                     image that launches it -- no single table is true of all of them:\n{}\n\
+                     Make the contracts agree, or build the images in separate configures.",
+                    conflicts.join("\n")
+                ),
+            };
+        }
+        let mut rows: Vec<DeclaredQosHeaderRow> = merged.into_values().map(|(r, _)| r).collect();
+        // A depth column refused in ANY input is refused in the union: that
+        // input's depths are unknown, so a depth another model states may be
+        // the one it disagrees with.
+        if depth_refused.is_some() {
+            for r in &mut rows {
+                r.depth = None;
+            }
+            rows.retain(|r| r.reliability.is_some() || r.durability.is_some());
+        }
+        DeclaredQosHeaderTable::Resolved {
+            rows,
+            undeclared,
+            depth_refused,
+        }
+    }
+}
+
 /// phase-446 W4 -- the parameter every node carries without declaring it.
 ///
 /// `Executor::seed_use_sim_time_default` declares `use_sim_time` on EVERY node
@@ -3361,165 +3604,102 @@ impl EntityInventory {
     /// compile-time linear scan, so a second row costs nothing at runtime, and
     /// which spelling a message class carries is a property of the CODEGEN that
     /// produced it, not something this file should have to predict.
+    ///
+    /// # Three columns since issue 1256
+    ///
+    /// Each row carries the declared DEPTH, RELIABILITY and DURABILITY, so a call
+    /// site that states `best_effort` against a contract that says `reliable`
+    /// fails the build the way a depth mismatch always did. That disagreement is
+    /// an INTEROP failure rather than a sizing one -- an incompatible-QoS match
+    /// never delivers -- and before this it was not checked at all. A column
+    /// nobody stated is "undeclared" (`-1` / `NROS_DQ_UNDECLARED`) and asserts
+    /// nothing.
     pub fn to_declared_qos_header(&self) -> String {
-        let mut s = String::new();
-        // Written line by line, NOT as one `\`-continued literal: Rust strips
-        // the leading whitespace after a line continuation, which silently ate
-        // the ` ` before every `*` and produced a comment block no C formatter
-        // would accept.
-        for line in [
-            "/* GENERATED by `nros ws entity-inventory` (phase-403 step 2). Do not edit.",
-            " *",
-            " * The QoS history DEPTH each subscription was DECLARED with, in the",
-            " * contract sidecar beside the launch file that runs it",
-            " * (`sub: { <topic>: { qos: { depth: N } } }`), or in an `EntityDecl`",
-            " * declaration's `@depth=N` attribute.",
-            " * `nros/declared_qos.hpp` expands this into a `constexpr` table and",
-            " * `NROS_SUBSCRIBE` static_asserts the QoS it is handed against it, so a",
-            " * declaration and an implementation that disagree fail the BUILD naming",
-            " * the topic and both numbers.",
-            " *",
-            " * An ABSENT row is not depth 0 and not depth 10: it is \"nobody declared",
-            " * this endpoint\", and nothing asserts against it.",
-            " *",
-        ] {
-            s.push_str(line);
-            s.push('\n');
-        }
-        s.push_str(&format!(
-            " * Source: {}\n */\n",
-            self.source.replace("*/", "*_/")
-        ));
-        s.push_str("#ifndef NROS_DECLARED_QOS_GENERATED_H\n");
-        s.push_str("#define NROS_DECLARED_QOS_GENERATED_H\n\n");
+        render_declared_qos_header(&self.source, &self.declared_qos_header_table())
+    }
 
-        let depths = self.declared_depths();
-        match &depths {
-            DeclaredDepths::Refused { reason } => {
-                // A refusal emits NO rows and says so in the file, on the rule
-                // the rest of this module holds: a consumer reads a table this
-                // module built or reads nothing. `NROS_DECLARED_QOS_ROWS` stays
-                // undefined, so `declared_qos.hpp` compiles an empty table and
-                // every call site keeps working unchecked.
-                s.push_str("/* NO TABLE. The entity inventory refused to compose:\n *   ");
-                s.push_str(&reason.replace('\n', "\n *   ").replace("*/", "*_/"));
-                s.push_str("\n */\n");
-                s.push_str("#define NROS_DECLARED_QOS_STATUS \"refused\"\n");
+    /// The rows [`Self::to_declared_qos_header`] renders, before rendering --
+    /// so a configure with several models can union one per model (issue 1564).
+    pub fn declared_qos_header_table(&self) -> DeclaredQosHeaderTable {
+        // The policy view refuses on exactly one condition: the inventory did
+        // not compose. The depth view refuses on that one AND on `keep_all`,
+        // which is a refusal of the DEPTH fact alone (RFC-0100 D6) -- so the
+        // policy view decides whether there is a table at all, and the depth
+        // view decides only whether the depth column has values.
+        let policies = match self.declared_qos() {
+            DeclaredQos::Refused { reason } => {
+                return DeclaredQosHeaderTable::Refused { reason };
             }
+            DeclaredQos::Resolved { rows, .. } => rows,
+        };
+        let (depth_rows, undeclared, depth_refused) = match self.declared_depths() {
+            DeclaredDepths::Refused { reason } => (Vec::new(), 0, Some(reason)),
             DeclaredDepths::Resolved {
                 rows, undeclared, ..
-            } => {
-                // phase-454 W8 -- STATED rows only. A derived default sizes the
-                // arena and must never become a `static_assert`: an image that
-                // declared no depth would then have to spell this CLI's
-                // arithmetic at every `NROS_SUBSCRIBE` or fail to compile, and
-                // moving the margin by one slot would break every such image.
-                // See [`DepthSource`], which exists for exactly this split.
-                let subs: Vec<&DeclaredDepth> = rows
-                    .iter()
-                    .filter(|r| r.kind == EntityKind::Subscription)
-                    .filter(|r| r.source == DepthSource::Stated)
-                    .collect();
-                s.push_str("#define NROS_DECLARED_QOS_STATUS \"resolved\"\n");
-                s.push_str(&format!(
-                    "/* {} of this image's depth-carrying endpoints declared no depth. */\n",
-                    undeclared
-                ));
-                s.push_str(&format!(
-                    "#define NROS_DECLARED_QOS_UNDECLARED_COUNT {undeclared}\n\n"
-                ));
-                if subs.is_empty() {
-                    s.push_str(
-                        "/* No subscription in this image declared a depth, so there is no\n \
-                         * table to assert against. NROS_DECLARED_QOS_ROWS stays undefined\n \
-                         * -- an empty list and \"nobody said\" must not look alike. */\n",
-                    );
-                } else {
-                    s.push_str(
-                        "/* X-macro. `nros/declared_qos.hpp` defines NROS_DECLARED_QOS_ROW\n \
-                         * and expands this; nothing else may. */\n",
-                    );
-                    s.push_str("#define NROS_DECLARED_QOS_ROWS \\\n");
-                    for r in &subs {
-                        let dds = dds_type_name(&r.type_name);
-                        s.push_str(&format!(
-                            "    NROS_DECLARED_QOS_ROW(\"{}\", \"{}\", {}) \\\n",
-                            c_escape(&dds),
-                            c_escape(&r.topic),
-                            r.depth
-                        ));
-                        if dds != r.type_name {
-                            s.push_str(&format!(
-                                "    NROS_DECLARED_QOS_ROW(\"{}\", \"{}\", {}) \\\n",
-                                c_escape(&r.type_name),
-                                c_escape(&r.topic),
-                                r.depth
-                            ));
-                        }
-                    }
-                    s.push_str("    /* end */\n");
-                    // phase-454 W10 -- the SAME rows, in the shape a C lookup
-                    // can consume. Not a second table: one loop below writes
-                    // both, from `subs`, so they cannot say different things.
-                    //
-                    // Why a second SPELLING is unavoidable. C++ reads the form
-                    // above by defining `NROS_DECLARED_QOS_ROW` and evaluating
-                    // a `constexpr` search over the array it builds. C has no
-                    // `constexpr`, so a C lookup has to be built by the
-                    // PREPROCESSOR -- and a macro parameter of the caller is
-                    // not substituted inside a separately-defined row macro:
-                    // `#define ROW(t, tp, d) ... q_type ...` sees `q_type` as
-                    // an ordinary identifier, never as `LOOKUP`'s argument.
-                    // Measured on gcc 15 and clang 20: `use of undeclared
-                    // identifier 'q_type'`. The query therefore has to travel
-                    // THROUGH the list, which means the list takes it.
-                    s.push_str(
-                        "\n/* X-macro, QUERY form (phase-454 W10) -- the same rows, with the\n \
-                         * row macro AND the queried (type, topic) passed in, so\n \
-                         * `nros/declared_qos.h` can expand the table into ONE constant\n \
-                         * expression a C11 `_Static_assert` accepts. C++ reads the form\n \
-                         * above; C reads this one. */\n",
-                    );
-                    s.push_str(
-                        "#define NROS_DECLARED_QOS_ROWS_Q(NROS_DECLARED_QOS_ROW_Q, \\\n        \
-                         nros_q_type, nros_q_topic) \\\n",
-                    );
-                    for r in &subs {
-                        let dds = dds_type_name(&r.type_name);
-                        s.push_str(&format!(
-                            "    NROS_DECLARED_QOS_ROW_Q(\"{}\", \"{}\", {}, nros_q_type, \
-                             nros_q_topic) \\\n",
-                            c_escape(&dds),
-                            c_escape(&r.topic),
-                            r.depth
-                        ));
-                        if dds != r.type_name {
-                            s.push_str(&format!(
-                                "    NROS_DECLARED_QOS_ROW_Q(\"{}\", \"{}\", {}, nros_q_type, \
-                                 nros_q_topic) \\\n",
-                                c_escape(&r.type_name),
-                                c_escape(&r.topic),
-                                r.depth
-                            ));
-                        }
-                    }
-                    s.push_str("    /* end */\n");
-                    let n_rows: usize = subs
-                        .iter()
-                        .map(|r| {
-                            if dds_type_name(&r.type_name) == r.type_name {
-                                1
-                            } else {
-                                2
-                            }
-                        })
-                        .sum();
-                    s.push_str(&format!("#define NROS_DECLARED_QOS_ROW_COUNT {n_rows}\n"));
-                }
-            }
+            } => (rows, undeclared, None),
+        };
+
+        use std::collections::BTreeMap;
+        let mut merged: BTreeMap<(String, String), DeclaredQosHeaderRow> = BTreeMap::new();
+        let blank = |t: &str, tp: &str| DeclaredQosHeaderRow {
+            type_name: t.to_string(),
+            topic: tp.to_string(),
+            depth: None,
+            reliability: None,
+            durability: None,
+        };
+        // phase-454 W8 -- STATED depths only. A derived default sizes the arena
+        // and must never become a `static_assert`: an image that declared no
+        // depth would then have to spell this CLI's arithmetic at every
+        // `NROS_SUBSCRIBE` or fail to compile, and moving the margin by one slot
+        // would break every such image. See [`DepthSource`].
+        //
+        // SUBSCRIPTIONS only, and that is the scope of the consumer rather than
+        // a shortcut: the table is keyed `(type, topic)`, so a publisher and a
+        // subscription on one pair would be two rows with one key. When the
+        // publish side grows a check the row gains a kind column.
+        for r in depth_rows
+            .iter()
+            .filter(|r| r.kind == EntityKind::Subscription)
+            .filter(|r| r.source == DepthSource::Stated)
+        {
+            merged
+                .entry((r.type_name.clone(), r.topic.clone()))
+                .or_insert_with(|| blank(&r.type_name, &r.topic))
+                .depth = Some(r.depth);
         }
-        s.push_str("\n#endif /* NROS_DECLARED_QOS_GENERATED_H */\n");
-        s
+        for p in policies
+            .iter()
+            .filter(|p| p.kind == EntityKind::Subscription)
+        {
+            // `system_default` says "the middleware chooses", which no call
+            // site can disagree with -- it is not a column value.
+            let reliability = p.reliability.filter(|r| {
+                matches!(
+                    r,
+                    QoSReliabilityPolicy::Reliable | QoSReliabilityPolicy::BestEffort
+                )
+            });
+            let durability = p.durability.filter(|d| {
+                matches!(
+                    d,
+                    QoSDurabilityPolicy::Volatile | QoSDurabilityPolicy::TransientLocal
+                )
+            });
+            if reliability.is_none() && durability.is_none() {
+                continue;
+            }
+            let row = merged
+                .entry((p.type_name.clone(), p.topic.clone()))
+                .or_insert_with(|| blank(&p.type_name, &p.topic));
+            row.reliability = reliability;
+            row.durability = durability;
+        }
+        DeclaredQosHeaderTable::Resolved {
+            rows: merged.into_values().collect(),
+            undeclared,
+            depth_refused,
+        }
     }
 
     /// The canonical artifact.
@@ -4598,6 +4778,170 @@ fn c_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+/// Render one component's declared-QoS table as `nros_declared_qos_generated.h`.
+///
+/// A free function over a [`DeclaredQosHeaderTable`] rather than a method on the
+/// inventory, because a configure with several SystemModels renders the UNION
+/// of one table per model (issue 1564), which no single inventory holds.
+pub fn render_declared_qos_header(source: &str, table: &DeclaredQosHeaderTable) -> String {
+    let mut s = String::new();
+    // Written line by line, NOT as one `\`-continued literal: Rust strips the
+    // leading whitespace after a line continuation, which silently ate the ` `
+    // before every `*` and produced a comment block no C formatter would accept.
+    for line in [
+        "/* GENERATED by `nros ws entity-inventory` (phase-403 step 2). Do not edit.",
+        " *",
+        " * The QoS each subscription was DECLARED with, in the contract sidecar",
+        " * beside the launch file that runs it (`sub: { <topic>: { qos: { ... } } }`),",
+        " * or in an `EntityDecl` declaration's `@depth=N` attribute: its history",
+        " * DEPTH, and (issue 1256) its RELIABILITY and DURABILITY.",
+        " * `nros/declared_qos.hpp` expands this into a `constexpr` table and",
+        " * `NROS_SUBSCRIBE` static_asserts the QoS it is handed against it, so a",
+        " * declaration and an implementation that disagree fail the BUILD naming",
+        " * the topic and both values. `nros/declared_qos.h` does the same for C.",
+        " *",
+        " * An ABSENT row is not depth 0 and not depth 10: it is \"nobody declared",
+        " * this endpoint\", and nothing asserts against it. An undeclared COLUMN",
+        " * (`-1`, `NROS_DQ_UNDECLARED`) is the same statement about one policy.",
+        " *",
+    ] {
+        s.push_str(line);
+        s.push('\n');
+    }
+    s.push_str(&format!(
+        " * Source: {}\n */\n",
+        source.replace("*/", "*_/")
+    ));
+    s.push_str("#ifndef NROS_DECLARED_QOS_GENERATED_H\n");
+    s.push_str("#define NROS_DECLARED_QOS_GENERATED_H\n\n");
+
+    match table {
+        DeclaredQosHeaderTable::Refused { reason } => {
+            // A refusal emits NO rows and says so in the file, on the rule the
+            // rest of this module holds: a consumer reads a table this module
+            // built or reads nothing. `NROS_DECLARED_QOS_ROWS` stays undefined,
+            // so `declared_qos.hpp` compiles an empty table and every call site
+            // keeps working unchecked.
+            s.push_str("/* NO TABLE. The entity inventory refused to compose:\n *   ");
+            s.push_str(&reason.replace('\n', "\n *   ").replace("*/", "*_/"));
+            s.push_str("\n */\n");
+            s.push_str("#define NROS_DECLARED_QOS_STATUS \"refused\"\n");
+        }
+        DeclaredQosHeaderTable::Resolved {
+            rows,
+            undeclared,
+            depth_refused,
+        } => {
+            s.push_str("#define NROS_DECLARED_QOS_STATUS \"resolved\"\n");
+            s.push_str(&format!(
+                "/* {} of this image's depth-carrying endpoints declared no depth. */\n",
+                undeclared
+            ));
+            s.push_str(&format!(
+                "#define NROS_DECLARED_QOS_UNDECLARED_COUNT {undeclared}\n\n"
+            ));
+            if let Some(reason) = depth_refused {
+                // RFC-0100 D6 -- a per-FACT refusal. The depth column is empty
+                // because its arithmetic has no answer; the reliability and
+                // durability columns below are still declarations, and still
+                // checked.
+                s.push_str("/* The DEPTH column is refused, and only it:\n *   ");
+                s.push_str(&reason.replace('\n', "\n *   ").replace("*/", "*_/"));
+                s.push_str("\n */\n");
+                s.push_str("#define NROS_DECLARED_QOS_DEPTH_STATUS \"refused\"\n\n");
+            }
+            if rows.is_empty() {
+                s.push_str(
+                    "/* No subscription in this image declared a QoS, so there is no\n \
+                     * table to assert against. NROS_DECLARED_QOS_ROWS stays undefined\n \
+                     * -- an empty list and \"nobody said\" must not look alike. */\n",
+                );
+            } else {
+                s.push_str(
+                    "/* X-macro. `nros/declared_qos.hpp` defines NROS_DECLARED_QOS_ROW\n \
+                     * and expands this; nothing else may. Columns: type, topic, depth\n \
+                     * (-1 = undeclared), reliability, durability. The two policy\n \
+                     * columns are bare TOKENS each consumer pastes onto a prefix of\n \
+                     * its own, because C and C++ number those enums differently. */\n",
+                );
+                s.push_str("#define NROS_DECLARED_QOS_ROWS \\\n");
+                for r in rows {
+                    for ty in row_type_spellings(&r.type_name) {
+                        s.push_str(&format!(
+                            "    NROS_DECLARED_QOS_ROW(\"{}\", \"{}\", {}, {}, {}) \\\n",
+                            c_escape(&ty),
+                            c_escape(&r.topic),
+                            r.depth_literal(),
+                            r.reliability_token(),
+                            r.durability_token()
+                        ));
+                    }
+                }
+                s.push_str("    /* end */\n");
+                // phase-454 W10 -- the SAME rows, in the shape a C lookup can
+                // consume. Not a second table: one loop below writes both, from
+                // `rows`, so they cannot say different things.
+                //
+                // Why a second SPELLING is unavoidable. C++ reads the form above
+                // by defining `NROS_DECLARED_QOS_ROW` and evaluating a
+                // `constexpr` search over the array it builds. C has no
+                // `constexpr`, so a C lookup has to be built by the
+                // PREPROCESSOR -- and a macro parameter of the caller is not
+                // substituted inside a separately-defined row macro: `#define
+                // ROW(t, tp, d) ... q_type ...` sees `q_type` as an ordinary
+                // identifier, never as `LOOKUP`'s argument. Measured on gcc 15
+                // and clang 20: `use of undeclared identifier 'q_type'`. The
+                // query therefore has to travel THROUGH the list, which means
+                // the list takes it.
+                s.push_str(
+                    "\n/* X-macro, QUERY form (phase-454 W10) -- the same rows, with the\n \
+                     * row macro AND the queried (type, topic) passed in, so\n \
+                     * `nros/declared_qos.h` can expand the table into ONE constant\n \
+                     * expression a C11 `_Static_assert` accepts. C++ reads the form\n \
+                     * above; C reads this one. */\n",
+                );
+                s.push_str(
+                    "#define NROS_DECLARED_QOS_ROWS_Q(NROS_DECLARED_QOS_ROW_Q, \\\n        \
+                     nros_q_type, nros_q_topic) \\\n",
+                );
+                let mut n_rows = 0usize;
+                for r in rows {
+                    for ty in row_type_spellings(&r.type_name) {
+                        n_rows += 1;
+                        s.push_str(&format!(
+                            "    NROS_DECLARED_QOS_ROW_Q(\"{}\", \"{}\", {}, {}, {}, nros_q_type, \
+                             nros_q_topic) \\\n",
+                            c_escape(&ty),
+                            c_escape(&r.topic),
+                            r.depth_literal(),
+                            r.reliability_token(),
+                            r.durability_token()
+                        ));
+                    }
+                }
+                s.push_str("    /* end */\n");
+                s.push_str(&format!("#define NROS_DECLARED_QOS_ROW_COUNT {n_rows}\n"));
+            }
+        }
+    }
+    s.push_str("\n#endif /* NROS_DECLARED_QOS_GENERATED_H */\n");
+    s
+}
+
+/// Both spellings of a row's type -- the DDS-mangled `pkg::msg::dds_::Name_` a
+/// generated message class carries as `TYPE_NAME`, then the ROS `pkg/msg/Name`
+/// the declaration used -- or the one, when they coincide. The lookup is a
+/// compile-time linear scan, so the second row costs nothing at runtime, and
+/// which spelling a class carries is a property of the CODEGEN that produced it.
+fn row_type_spellings(ros: &str) -> Vec<String> {
+    let dds = dds_type_name(ros);
+    if dds == ros {
+        vec![dds]
+    } else {
+        vec![dds, ros.to_string()]
+    }
+}
+
 /// CMake `set(... "...")` is quote- and backslash-sensitive, and a refusal
 /// reason is multi-line prose.
 fn cmake_escape(s: &str) -> String {
@@ -5134,10 +5478,14 @@ mod tests {
             ],
         ));
         let h = inv.to_declared_qos_header();
-        assert!(
-            h.contains("NROS_DECLARED_QOS_ROW(\"std_msgs::msg::dds_::Int32_\", \"/chatter\", 1)")
-        );
-        assert!(h.contains("NROS_DECLARED_QOS_ROW(\"std_msgs/msg/Int32\", \"/chatter\", 1)"));
+        assert!(h.contains(
+            "NROS_DECLARED_QOS_ROW(\"std_msgs::msg::dds_::Int32_\", \"/chatter\", 1, \
+             NROS_DQ_UNDECLARED, NROS_DQ_UNDECLARED)"
+        ));
+        assert!(h.contains(
+            "NROS_DECLARED_QOS_ROW(\"std_msgs/msg/Int32\", \"/chatter\", 1, NROS_DQ_UNDECLARED, \
+             NROS_DQ_UNDECLARED)"
+        ));
         assert!(
             h.contains("#define NROS_DECLARED_QOS_ROW_COUNT 2"),
             "one subscription, two spellings, and the publisher contributes none: {h}"
@@ -5195,14 +5543,15 @@ mod tests {
         ] {
             assert!(
                 h.contains(&format!(
-                    "NROS_DECLARED_QOS_ROW(\"{ty}\", \"{topic}\", {depth})"
+                    "NROS_DECLARED_QOS_ROW(\"{ty}\", \"{topic}\", {depth}, NROS_DQ_UNDECLARED, \
+                     NROS_DQ_UNDECLARED)"
                 )),
                 "the C++ list is missing ({ty}, {topic}, {depth}): {h}"
             );
             assert!(
                 h.contains(&format!(
-                    "NROS_DECLARED_QOS_ROW_Q(\"{ty}\", \"{topic}\", {depth}, nros_q_type, \
-                     nros_q_topic)"
+                    "NROS_DECLARED_QOS_ROW_Q(\"{ty}\", \"{topic}\", {depth}, NROS_DQ_UNDECLARED, \
+                     NROS_DQ_UNDECLARED, nros_q_type, nros_q_topic)"
                 )),
                 "the C list is missing ({ty}, {topic}, {depth}): {h}"
             );
@@ -7861,7 +8210,8 @@ contracts:
         assert!(
             h.contains(
                 "NROS_DECLARED_QOS_ROW(\"tier4_system_msgs::msg::dds_::MrmBehaviorStatus_\", \
-                 \"/system/mrm/emergency_stop/status\", 1)"
+                 \"/system/mrm/emergency_stop/status\", 1, NROS_DQ_UNDECLARED, \
+                 NROS_DQ_UNDECLARED)"
             ),
             "the table must be keyed on the topic the code subscribes to: {h}"
         );
@@ -7869,6 +8219,154 @@ contracts:
             !h.contains("/mrm_handler/emergency_stop_status"),
             "the endpoint ref is how the contract ADDRESSES the endpoint; a row \
              keyed on it matches no call site: {h}"
+        );
+    }
+
+    /// A one-subscription model whose contract states `qos` for it.
+    fn one_sub_model(qos: &str) -> SystemModel {
+        model_from_yaml(&format!(
+            r#"
+meta: {{ version: 1 }}
+structure:
+  nodes:
+    /listener: {{ scope: s.launch.xml, pkg: demo, exec: listener, node_name: listener }}
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      sub: [/listener/chatter]
+contracts:
+  sub_endpoints:
+    /listener/chatter:
+      qos: {qos}
+"#
+        ))
+    }
+
+    fn header_table(qos: &str) -> DeclaredQosHeaderTable {
+        EntityInventory::from_model("m", &one_sub_model(qos))
+            .expect("model describes wiring")
+            .declared_qos_header_table()
+    }
+
+    /// issue 1256 -- the two POLICIES reach the compile-time table, as tokens,
+    /// on a row that states no depth (whose depth column is `-1`, never a
+    /// number).
+    #[test]
+    fn a_declared_reliability_and_durability_reach_the_header() {
+        let inv = EntityInventory::from_model(
+            "m",
+            &one_sub_model("{ reliability: best_effort, durability: transient_local }"),
+        )
+        .expect("model describes wiring");
+        let h = inv.to_declared_qos_header();
+        assert!(
+            h.contains(
+                "NROS_DECLARED_QOS_ROW(\"std_msgs::msg::dds_::Int32_\", \"/chatter\", -1, \
+                 NROS_DQ_BEST_EFFORT, NROS_DQ_TRANSIENT_LOCAL)"
+            ),
+            "{h}"
+        );
+        assert!(
+            h.contains(
+                "NROS_DECLARED_QOS_ROW_Q(\"std_msgs/msg/Int32\", \"/chatter\", -1, \
+                 NROS_DQ_BEST_EFFORT, NROS_DQ_TRANSIENT_LOCAL, nros_q_type, nros_q_topic)"
+            ),
+            "the C list carries the same columns: {h}"
+        );
+        // `system_default` says "the middleware chooses": not a column value,
+        // and a row with nothing else stated is no row at all.
+        let h = EntityInventory::from_model("m", &one_sub_model("{ reliability: system_default }"))
+            .expect("wired")
+            .to_declared_qos_header();
+        assert!(!h.contains("#define NROS_DECLARED_QOS_ROWS"), "{h}");
+    }
+
+    /// issue 1256 -- `keep_all` refuses the DEPTH column and nothing else
+    /// (RFC-0100 D6, per fact). Before this the whole table went with it, so a
+    /// KEEP_ALL endpoint switched off every policy check in its component.
+    #[test]
+    fn keep_all_refuses_the_depth_column_and_keeps_the_policies() {
+        let t = header_table("{ history: keep_all, reliability: best_effort }");
+        let DeclaredQosHeaderTable::Resolved {
+            rows,
+            depth_refused,
+            ..
+        } = &t
+        else {
+            panic!("the policy table must still resolve: {t:?}");
+        };
+        assert!(depth_refused.is_some(), "{t:?}");
+        assert_eq!(rows.len(), 1, "{t:?}");
+        assert_eq!(rows[0].depth, None);
+        assert_eq!(rows[0].reliability, Some(QoSReliabilityPolicy::BestEffort));
+        let h = render_declared_qos_header("m", &t);
+        assert!(
+            h.contains("#define NROS_DECLARED_QOS_DEPTH_STATUS \"refused\""),
+            "{h}"
+        );
+        assert!(h.contains("NROS_DECLARED_QOS_STATUS \"resolved\""), "{h}");
+    }
+
+    /// issue 1564 -- the union of several models' tables, per column: silence
+    /// takes the other model's declaration, an equal statement is no conflict,
+    /// and a DIFFERENT one refuses the whole table naming both models.
+    #[test]
+    fn the_union_of_several_models_takes_declarations_and_refuses_conflicts() {
+        let declared = header_table("{ depth: 1, reliability: best_effort }");
+        let silent = header_table("{ durability: volatile }");
+        let u = DeclaredQosHeaderTable::union(&[
+            ("a.yaml".into(), declared.clone()),
+            ("b.yaml".into(), silent.clone()),
+        ]);
+        let DeclaredQosHeaderTable::Resolved { rows, .. } = &u else {
+            panic!("{u:?}");
+        };
+        assert_eq!(rows.len(), 1, "{u:?}");
+        assert_eq!(
+            rows[0].depth,
+            Some(1),
+            "silence in b.yaml takes a.yaml's depth"
+        );
+        assert_eq!(rows[0].reliability, Some(QoSReliabilityPolicy::BestEffort));
+        assert_eq!(
+            rows[0].durability,
+            Some(QoSDurabilityPolicy::Volatile),
+            "and a.yaml's silence takes b.yaml's durability"
+        );
+        assert_eq!(
+            DeclaredQosHeaderTable::union(&[
+                ("a.yaml".into(), declared.clone()),
+                ("c.yaml".into(), declared.clone()),
+            ]),
+            DeclaredQosHeaderTable::union(&[("a.yaml".into(), declared.clone())]),
+            "two models stating the SAME value are not a conflict"
+        );
+
+        let deeper = header_table("{ depth: 2 }");
+        let c = DeclaredQosHeaderTable::union(&[
+            ("a.yaml".into(), declared.clone()),
+            ("d.yaml".into(), deeper),
+        ]);
+        let DeclaredQosHeaderTable::Refused { reason } = &c else {
+            panic!("THE control: depth 1 in one model and 2 in another must refuse: {c:?}");
+        };
+        assert!(
+            reason.contains("a.yaml") && reason.contains("d.yaml"),
+            "the refusal names both models: {reason}"
+        );
+
+        let refused = DeclaredQosHeaderTable::Refused {
+            reason: "inventory did not compose".into(),
+        };
+        assert!(
+            matches!(
+                DeclaredQosHeaderTable::union(&[
+                    ("a.yaml".into(), declared),
+                    ("e.yaml".into(), refused),
+                ]),
+                DeclaredQosHeaderTable::Refused { .. }
+            ),
+            "a refused input's rows are unknown, and a missing row reads as \"nobody declared\""
         );
     }
 
@@ -8380,7 +8878,10 @@ structure:
         let h = queue_image(Some(BufferDiscipline::Queue), Some(6), None, None)
             .to_declared_qos_header();
         assert!(h.contains("#define NROS_DECLARED_QOS_ROWS"), "{h}");
-        assert!(h.contains(", 6)"), "{h}");
+        assert!(
+            h.contains(", 6, NROS_DQ_UNDECLARED, NROS_DQ_UNDECLARED)"),
+            "{h}"
+        );
     }
 
     /// All THREE facts reach the endpoint row from the model -- issue 1339.

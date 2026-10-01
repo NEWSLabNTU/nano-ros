@@ -33,8 +33,8 @@ use eyre::{Result, WrapErr, bail};
 use serde::Deserialize;
 
 use crate::entity_inventory::{
-    ComponentEntities, Declaration, ENTITY_INVENTORY_CMAKE_NAME, ENTITY_INVENTORY_JSON_NAME,
-    EntityInventory,
+    ComponentEntities, Declaration, DeclaredQosHeaderTable, ENTITY_INVENTORY_CMAKE_NAME,
+    ENTITY_INVENTORY_JSON_NAME, EntityDecl, EntityInventory,
 };
 
 /// The `components[]` fields this verb needs. Every other field the typed entry
@@ -95,8 +95,18 @@ pub struct EntityInventoryArgs {
     /// Absent, or present but describing no wiring, the metadata declaration
     /// stands alone -- which is every image in this tree that has not authored
     /// a contract.
+    ///
+    /// REPEATABLE, for the per-component compile-time tables only (issue
+    /// 1564). A configure that declares several entries resolves several
+    /// models and compiles each component ONCE for every image that launches
+    /// it, so `--output-header` / `--output-params-header` then render the
+    /// UNION of one table per model -- refusing, naming both models, where two
+    /// of them state different values for one endpoint. Every IMAGE-wide
+    /// output (`--output-json`, `--output-cmake`, `--output-dir`, the env on
+    /// stdout) describes ONE image, so with more than one model those are
+    /// refused rather than computed from a merge nobody defined.
     #[arg(long, value_name = "PATH")]
-    pub model: Option<PathBuf>,
+    pub model: Vec<PathBuf>,
 
     /// Write the canonical JSON artifact here.
     #[arg(long = "output-json", value_name = "PATH")]
@@ -213,12 +223,166 @@ pub fn inventory_from_metadata_file(path: &std::path::Path) -> Result<EntityInve
     inventory_from_metadata(&path.display().to_string(), &doc)
 }
 
+/// One `--model`, verified, parsed and checked at the door -- the three
+/// refusals every model meets before it may say anything.
+fn load_model(model_path: &std::path::Path) -> Result<ros_launch_manifest_model::SystemModel> {
+    // phase-460 W1 (issue 1420) -- verify at this door. cmake hands over a
+    // path `model-path` already verified; a hand run meets the same gate.
+    // The bringup is recovered from where `nros sync` put the model.
+    crate::model_gate::verify(model_path, None)
+        .map_err(|e| eyre::eyre!("entity-inventory: {e}"))?;
+    let raw = std::fs::read_to_string(model_path)
+        .wrap_err_with(|| format!("read model `{}`", model_path.display()))?;
+    let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)
+        .wrap_err_with(|| format!("parse model `{}`", model_path.display()))?;
+    reject_zero_depths(&model).wrap_err_with(|| format!("model `{}`", model_path.display()))?;
+    // phase-454 W3 -- and a QoS VALUE this build does not model. Same place
+    // and same reason as the zero depth above: this is the one point a model
+    // enters the verb and the only one with an error channel.
+    reject_unknown_qos_values(&model)
+        .wrap_err_with(|| format!("model `{}`", model_path.display()))?;
+    // phase-454 W7 (RFC-0100 D8) -- and a `qos_overrides.*` parameter that
+    // states a capacity policy the contract does not. Third refusal at the
+    // same seam, for the same reason: this is the one point a model enters
+    // the verb and the only one with an error channel.
+    reject_qos_override_divergence(&model)
+        .wrap_err_with(|| format!("model `{}`", model_path.display()))?;
+    Ok(model)
+}
+
+/// The metadata inventory with one model's wiring folded in, plus whether the
+/// model described any wiring at all.
+///
+/// Deliberately a COMBINE and not a replace: the contract has no timer entity,
+/// so a model-only inventory under-sizes MAX_CBS by one per timer in the
+/// image. See `EntityInventory::merged_per_kind_max`.
+fn with_model(
+    metadata_inv: &EntityInventory,
+    model_source: &str,
+    model: &ros_launch_manifest_model::SystemModel,
+) -> (EntityInventory, bool) {
+    let mut inv = metadata_inv.clone();
+    // `from_model` returning None means NO WIRING DESCRIBED. Not an error and
+    // not a zero: nobody authored a contract for this image, so the
+    // declaration is the only source there is and it stands alone.
+    let wired = match EntityInventory::from_model(model_source, model) {
+        Some(model_inv) => {
+            inv = inv.merged_per_kind_max(&model_inv);
+            true
+        }
+        None => false,
+    };
+    // phase-446 W4 -- the contract's `params:` size the parameter store.
+    // Attached whether or not the model describes wiring: the two answers are
+    // independent, and a model with no topics can still declare parameters.
+    inv.set_param_declarations(crate::entity_inventory::ParamDeclarations::from_model(
+        model,
+    ));
+    (inv, wired)
+}
+
+/// `--model` given more than once -- issue 1564.
+///
+/// A configure that declares several entries resolves several SystemModels and
+/// compiles each COMPONENT once for all of them. Until this existed the
+/// per-component render ABSTAINED in that case, and that is not a corner: the
+/// native road builds every entry of a workspace in one configure, so
+/// `examples/workspaces/cpp` (seven models) compiled all six of its components
+/// with every declared-QoS and declared-parameter check off -- which is why no
+/// C++ image in the tree could adopt the check at all.
+///
+/// Only the two per-component outputs are defined here. They are a UNION: see
+/// [`DeclaredQosHeaderTable::union`] and `declared_params_header::render_union`
+/// for the rule and why a conflict refuses. Everything else this verb writes
+/// describes ONE image, and a "merge" of several images' entity counts is a
+/// number nobody defined -- so those are refused, never computed.
+fn run_several_models(args: &EntityInventoryArgs, metadata_inv: &EntityInventory) -> Result<()> {
+    if args.output_json.is_some() || args.output_cmake.is_some() || args.output_dir.is_some() {
+        eyre::bail!(
+            "entity-inventory: --model was given {} times. Only the per-component tables \
+             (--output-header, --output-params-header) are defined over several models; the \
+             JSON and CMake projections describe ONE image and must be rendered per model.",
+            args.model.len()
+        );
+    }
+    if args.component.is_none() {
+        eyre::bail!(
+            "entity-inventory: --model was given {} times without --component. The union of \
+             several models' tables is defined per COMPONENT -- the unit compiled once for all \
+             of them.",
+            args.model.len()
+        );
+    }
+    let mut models: Vec<(String, ros_launch_manifest_model::SystemModel)> = Vec::new();
+    for p in &args.model {
+        models.push((p.display().to_string(), load_model(p)?));
+    }
+
+    if let Some(out) = &args.output_header {
+        let mut tables: Vec<(String, DeclaredQosHeaderTable)> = Vec::new();
+        let mut first_unwired: Option<(String, DeclaredQosHeaderTable)> = None;
+        for (src, model) in &models {
+            let (inv, wired) = with_model(metadata_inv, src, model);
+            let inv = narrow_to_component(&inv, args.component.as_deref().expect("checked above"))?;
+            let table = inv.declared_qos_header_table();
+            if wired {
+                tables.push((src.clone(), table));
+            } else if first_unwired.is_none() {
+                // A model that describes no wiring declares NOTHING -- it has
+                // no contract. That is not a refusal to merge, it is silence,
+                // and silence cannot contradict another model's declaration.
+                first_unwired = Some((src.clone(), table));
+            }
+        }
+        let (source, table) = match tables.len() {
+            // No model describes wiring: render exactly what a lone such model
+            // renders, so "nobody declared" reads the same with one entry or
+            // with seven.
+            0 => first_unwired.expect("at least two models were loaded"),
+            _ => {
+                let source = tables
+                    .iter()
+                    .map(|(s, _)| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" + ");
+                (source, DeclaredQosHeaderTable::union(&tables))
+            }
+        };
+        if let DeclaredQosHeaderTable::Refused { reason } = &table {
+            if tables.len() > 1 {
+                // Loud, because the old abstention was loud, and because a
+                // conflict between two contracts is something the author can
+                // fix. The header says the same thing in a comment.
+                eprintln!(
+                    "nros: declared QoS: no table for {} -- {}",
+                    args.component.as_deref().unwrap_or("?"),
+                    reason.lines().next().unwrap_or("")
+                );
+            }
+        }
+        write_if_changed(
+            out,
+            &crate::entity_inventory::render_declared_qos_header(&source, &table),
+        )?;
+    }
+    if let Some(out) = &args.output_params_header {
+        let refs: Vec<(String, &ros_launch_manifest_model::SystemModel)> =
+            models.iter().map(|(s, m)| (s.clone(), m)).collect();
+        write_if_changed(out, &crate::declared_params_header::render_union(&refs))?;
+    }
+    Ok(())
+}
+
 pub fn run(args: EntityInventoryArgs) -> Result<()> {
     let metadata = args
         .metadata
         .clone()
         .unwrap_or_else(|| PathBuf::from("nros-metadata.json"));
-    let mut inv = inventory_from_metadata_file(&metadata)?;
+    let metadata_inv = inventory_from_metadata_file(&metadata)?;
+
+    if args.model.len() > 1 {
+        return run_several_models(&args, &metadata_inv);
+    }
 
     // phase-412 -- fold in the model's wiring when a contract authored it.
     //
@@ -230,29 +394,10 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
     // the node table needs and the contract names only for the nodes somebody
     // wrote one for (issue 1407). See `EntityInventory::merged_per_kind_max`.
     // phase-446 W6 -- rendered from the same model, when there is one.
+    let mut inv = metadata_inv;
     let mut params_header: Option<String> = None;
-    if let Some(model_path) = &args.model {
-        // phase-460 W1 (issue 1420) -- verify at this door. cmake hands over a
-        // path `model-path` already verified; a hand run meets the same gate.
-        // The bringup is recovered from where `nros sync` put the model.
-        crate::model_gate::verify(model_path, None)
-            .map_err(|e| eyre::eyre!("entity-inventory: {e}"))?;
-        let raw = std::fs::read_to_string(model_path)
-            .wrap_err_with(|| format!("read model `{}`", model_path.display()))?;
-        let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)
-            .wrap_err_with(|| format!("parse model `{}`", model_path.display()))?;
-        reject_zero_depths(&model).wrap_err_with(|| format!("model `{}`", model_path.display()))?;
-        // phase-454 W3 -- and a QoS VALUE this build does not model. Same place
-        // and same reason as the zero depth above: this is the one point a model
-        // enters the verb and the only one with an error channel.
-        reject_unknown_qos_values(&model)
-            .wrap_err_with(|| format!("model `{}`", model_path.display()))?;
-        // phase-454 W7 (RFC-0100 D8) -- and a `qos_overrides.*` parameter that
-        // states a capacity policy the contract does not. Third refusal at the
-        // same seam, for the same reason: this is the one point a model enters
-        // the verb and the only one with an error channel.
-        reject_qos_override_divergence(&model)
-            .wrap_err_with(|| format!("model `{}`", model_path.display()))?;
+    if let Some(model_path) = args.model.first() {
+        let model = load_model(model_path)?;
         if args.output_params_header.is_some() {
             params_header = Some(crate::declared_params_header::render(
                 Some(&model),
@@ -357,20 +502,10 @@ fn fold_model(
     model_source: &str,
     model: &ros_launch_manifest_model::SystemModel,
 ) -> EntityInventory {
-    // `from_model` returning None means NO WIRING DESCRIBED. Not an error and
-    // not a zero: nobody authored a contract for this image, so the metadata's
-    // registered population stands alone and every row stays ABSENT.
-    let mut inv = match EntityInventory::from_model(model_source, model) {
-        Some(model_inv) => inv.merged_per_kind_max(&model_inv),
-        None => inv,
-    };
-    // phase-446 W4 -- the contract's `params:` size the parameter store.
-    // Attached whether or not the model describes wiring: the two answers are
-    // independent, and a model with no topics can still declare parameters.
-    inv.set_param_declarations(crate::entity_inventory::ParamDeclarations::from_model(
-        model,
-    ));
-    inv
+    // One fold, two callers: the single-model `run` and the fixture test want
+    // only the inventory; the multi-model union also needs to know whether the
+    // model described any wiring, which is `with_model`'s second value.
+    with_model(&inv, model_source, model).0
 }
 
 /// A contract may not state `depth: 0` (issue 1084).
@@ -958,7 +1093,7 @@ contracts:
 
         let args = |model: Option<&std::path::Path>| EntityInventoryArgs {
             metadata: Some(metadata.clone()),
-            model: model.map(|p| p.to_path_buf()),
+            model: model.map(|p| p.to_path_buf()).into_iter().collect(),
             output_json: None,
             output_cmake: None,
             output_dir: None,

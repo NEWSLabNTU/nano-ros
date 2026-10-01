@@ -818,6 +818,16 @@ pub enum NodeError {
     /// exists. The two numbers and the topic are logged by
     /// [`crate::declared_qos::check`]; this variant is the refusal.
     DeclaredDepthMismatch,
+    /// issue 1256 — this subscription's QoS RELIABILITY or DURABILITY
+    /// disagrees with what the system DECLARED for that topic in the contract
+    /// sidecar.
+    ///
+    /// Not a sizing fault like [`NodeError::DeclaredDepthMismatch`], an INTEROP
+    /// one: an incompatible-QoS match never delivers, so a registration that
+    /// contradicts its contract is a link that would silently carry nothing.
+    /// Which policy and both values are logged by
+    /// [`crate::declared_qos::check`] / [`crate::declared_qos::honour`].
+    DeclaredQosMismatch,
 }
 
 // phase-427 W10 — `Display` + `core::error::Error`, so a ported rclrs `main`
@@ -869,6 +879,10 @@ impl core::fmt::Display for NodeError {
             NodeError::DeclaredDepthMismatch => f.write_str(
                 "this subscription's QoS depth disagrees with the depth its system DECLARED \
                  for that topic in the contract sidecar",
+            ),
+            NodeError::DeclaredQosMismatch => f.write_str(
+                "this subscription's QoS reliability or durability disagrees with what its \
+                 system DECLARED for that topic in the contract sidecar",
             ),
         }
     }

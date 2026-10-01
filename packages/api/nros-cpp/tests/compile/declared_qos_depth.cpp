@@ -88,6 +88,45 @@ static_assert(::nros::detail::qos_from_declared_depth(::nros::declared_depth(Boo
               "and an undeclared endpoint keeps the historical default profile, so every call "
               "site that predates this step compiles and behaves unchanged");
 
+// -- issue 1256: the two POLICY columns -------------------------------------
+//
+// The fixture states a depth for /chatter and no policy, so both policy columns
+// must read UNDECLARED -- a row exists, but a row is not a declaration of every
+// column. The NEGATIVE control (a contract that states `best_effort` and a call
+// site that passes `reliable`) is case F3 of `just check declared-qos-header`,
+// which renders that contract through the real CLI rather than a fixture.
+
+static_assert(::nros::declared_reliability(Int32::TYPE_NAME, "/chatter") ==
+                  ::nros::DECLARED_POLICY_UNDECLARED,
+              "a row with a declared DEPTH has not declared a reliability; reading the row's "
+              "existence as a declaration would make every QoS the code passes a mismatch");
+static_assert(::nros::declared_durability(Int32::TYPE_NAME, "/chatter") ==
+                  ::nros::DECLARED_POLICY_UNDECLARED,
+              "and not a durability either");
+static_assert(::nros::declared_reliability(Bool::TYPE_NAME, "/undeclared") ==
+                  ::nros::DECLARED_POLICY_UNDECLARED,
+              "no row at all is undeclared too");
+
+// The 3-argument form's QoS fills EVERY declared column in, and nothing else.
+static_assert(::nros::detail::qos_from_declared(2, static_cast<int>(::nros::BestEffort),
+                                                static_cast<int>(::nros::TransientLocal))
+                      .reliability() == ::nros::BestEffort,
+              "a declared best_effort reaches the QoS NROS_SUBSCRIBE(M, m, topic) registers");
+static_assert(::nros::detail::qos_from_declared(2, static_cast<int>(::nros::BestEffort),
+                                                static_cast<int>(::nros::TransientLocal))
+                      .durability() == ::nros::TransientLocal,
+              "and so does a declared transient_local");
+static_assert(::nros::detail::qos_from_declared(2, static_cast<int>(::nros::BestEffort),
+                                                static_cast<int>(::nros::TransientLocal))
+                      .depth() == 2,
+              "and the depth beside them");
+static_assert(::nros::detail::qos_from_declared(::nros::DECLARED_DEPTH_UNDECLARED,
+                                                ::nros::DECLARED_POLICY_UNDECLARED,
+                                                ::nros::DECLARED_POLICY_UNDECLARED) ==
+                  ::nros::QoS::default_profile(),
+              "with nothing declared the 3-argument form is the historical default profile, "
+              "field for field");
+
 // -- The macro, in the shape a component ctor actually writes ---------------
 
 class Listener : public ::rclcpp::Node {

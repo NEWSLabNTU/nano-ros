@@ -258,7 +258,8 @@ pub const NROS_CPP_RET_UNSUPPORTED: nros_cpp_ret_t = -16;
 /// Transport / connection error (C++-space extension; nros_ret_t stops at -16).
 pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
 /// phase-454 W10 — a subscription's QoS depth disagrees with the depth its
-/// system's contract DECLARES for that topic.
+/// system's contract DECLARES for that topic. issue 1256 — and the same code
+/// when its RELIABILITY or DURABILITY does; the log line names which.
 ///
 /// The same number `nros::detail::DECLARED_DEPTH_MISMATCH` carries in
 /// `nros/node.hpp`, which is the C++ BOOT-time half of the same check, and for
@@ -1141,6 +1142,8 @@ fn node_error_class(err: &nros_node::NodeError) -> u32 {
         // decoded against an older table still names the right error for
         // everything below this line.
         E::DeclaredDepthMismatch => 18,
+        // issue 1256. APPENDED.
+        E::DeclaredQosMismatch => 19,
     }
 }
 
@@ -1272,7 +1275,10 @@ pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t
         // backend failure, it is the image contradicting its own manifest, and
         // a code that also means "the RMW said no" would send the reader to the
         // wrong half of the tree. Same number both C++ halves already use.
-        E::DeclaredDepthMismatch => NROS_CPP_RET_DECLARED_DEPTH_MISMATCH,
+        // issue 1256 — the same code for a RELIABILITY or DURABILITY
+        // disagreement, for the same reason: the image contradicting its own
+        // contract. The log line printed before it names which policy.
+        E::DeclaredDepthMismatch | E::DeclaredQosMismatch => NROS_CPP_RET_DECLARED_DEPTH_MISMATCH,
         // NO wildcard. Every `NodeError` variant is named above, and rustc
         // rejects a `_` arm here as unreachable — which is the property worth
         // keeping: adding a variant to `NodeError` now fails to compile until

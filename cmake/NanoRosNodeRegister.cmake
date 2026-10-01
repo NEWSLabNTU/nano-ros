@@ -1564,9 +1564,10 @@ endfunction()
 # entry that does runs later; this is the one wire between them.
 #
 # A LIST rather than a single value, because a configure may hold several
-# entries. Which one describes a given component is not decidable here, so more
-# than one DISTINCT model makes the renderer abstain rather than pick -- see
-# `_nros_emit_declared_qos_header`.
+# entries. Which one describes a given component is not decidable here, and it
+# does not need to be: the component is compiled once for all of them, so the
+# renderer hands EVERY distinct model to the CLI, which renders their union and
+# refuses on a conflict (issue 1564) -- see `_nros_emit_declared_qos_header`.
 function(_nros_declared_qos_record_model _model)
     if(NOT _model OR NOT EXISTS "${_model}")
         return()
@@ -1598,19 +1599,18 @@ function(_nros_emit_declared_qos_header _pkg _component _dir)
         # that has not opted in is not an image in error.
         return()
     endif()
-    if(_nrq_model_count GREATER 1)
-        # Several entries, several models, and no rule here for which one
-        # describes this component. ABSTAIN and say so: a table picked from one
-        # of two candidate systems would assert against call sites the other one
-        # sizes, and a wrong table is worse than none.
-        message(STATUS
-            "nros: not rendering the declared QoS depths of ${_pkg}::${_component} -- "
-            "this configure resolved ${_nrq_model_count} SystemModels and nothing "
-            "says which one describes this component. Every declared-depth check "
-            "in it is OFF.")
-        return()
-    endif()
-    list(GET _nrq_models 0 _nrq_model)
+    # Several entries resolve several models, and the component is compiled ONCE
+    # for every image that launches it -- so every model goes to the CLI, which
+    # renders the UNION and refuses (naming both) where two of them state
+    # different values for one endpoint (issue 1564). This used to ABSTAIN for
+    # any count above one, and on the native road that is every workspace
+    # configure: `examples/workspaces/cpp` resolves seven models, so all six of
+    # its components compiled with every declared-QoS check OFF and no C++
+    # image in the tree could adopt the check at all.
+    set(_nrq_model_args "")
+    foreach(_nrq_model IN LISTS _nrq_models)
+        list(APPEND _nrq_model_args --model "${_nrq_model}")
+    endforeach()
 
     nros_resolve_cli(_nrq_cli OPTIONAL CONTEXT "declared QoS depths (issue 1084)")
     if(NOT _nrq_cli OR NOT EXISTS "${_nrq_cli}")
@@ -1630,7 +1630,7 @@ function(_nros_emit_declared_qos_header _pkg _component _dir)
     execute_process(
         COMMAND "${_nrq_cli}" ws entity-inventory
                 --metadata "${_nrq_metadata}"
-                --model "${_nrq_model}"
+                ${_nrq_model_args}
                 --component "${_pkg}::${_component}"
                 --output-header "${_nrq_hdr}"
                 # phase-446 W6 -- each node's DECLARED parameters, from the
@@ -1655,6 +1655,15 @@ function(_nros_emit_declared_qos_header _pkg _component _dir)
             "  FATAL and not skipped on purpose: a component whose table is missing "
             "compiles with every declared-depth check disabled, which looks exactly "
             "like a component whose depths all agree.")
+    endif()
+    # A conflict between two models is NOT fatal -- each contract is fine on
+    # its own, and the image that is never built together with the other would
+    # not be in error -- but it turns this component's checks off, so it is said
+    # out loud, exactly as the abstention it replaces was. The CLI prints one
+    # `nros: declared QoS:` line for it; the header carries the full reason.
+    if(_nrq_err MATCHES "nros: declared QoS:")
+        string(STRIP "${_nrq_err}" _nrq_err)
+        message(STATUS "${_nrq_err}")
     endif()
 endfunction()
 

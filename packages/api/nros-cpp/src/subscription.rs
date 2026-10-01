@@ -187,8 +187,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
     // component, whose configure function calls this symbol directly with a
     // `nros_cpp_qos_t` it built at run time, and a C++ call site that names
     // this FFI rather than the node's own verb.
-    if nros_node::declared_qos::check(topic_info.type_name, topic_info.name, qos_settings.depth)
-        .is_err()
+    if nros_node::declared_qos::check(topic_info.type_name, topic_info.name, &qos_settings).is_err()
     {
         return crate::NROS_CPP_RET_DECLARED_DEPTH_MISMATCH;
     }
