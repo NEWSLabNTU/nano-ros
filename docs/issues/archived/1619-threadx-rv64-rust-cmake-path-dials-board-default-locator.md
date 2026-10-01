@@ -4,7 +4,7 @@ title: "threadx-riscv64 Rust images dial the board's DEFAULT locator
   (`tcp/192.0.3.1:7447`) from a NIC configured by `NROS_APP_CONFIG`
   (`10.0.2.40`/gw `10.0.2.2`) — two identities in one image, so no session ever
   forms under the slirp the test launcher uses"
-status: open
+status: resolved
 type: bug
 area: boards, threadx
 severity: medium
@@ -63,3 +63,26 @@ must agree, and the router port the e2e harness starts
 Also seen, not investigated: a single `[TX] TIMEOUT: no completion` from
 `virtio_net_nx.c` early in every run (the busy-wait is a fixed 100,000 spins);
 delivery proceeds regardless.
+
+## Resolution (2026-10-02)
+
+Fixed on `main` by a concurrent session, in commit `4e9d15c47` ("fix(#1557): the
+rv64 rust image dials its own locator"). That commit was written while this issue
+was being filed, and it closes the same defect. It follows the board's slirp
+convention:
+
+- `startup.c` exposes `nros_rv64_image_identity()` with the `NROS_APP_CONFIG`
+  network bytes and a per-image locator define;
+- `nros_threadx_rv64_rust_app` resolves the locator (`-DNROS_ENTRY_LOCATOR`, then
+  the leaf's `system.toml` `[image.*] locator`) and bakes it into `startup.c`, not
+  into cargo env, because of issue 0805's shared Corrosion dir;
+- `Config::default()` and the C `cfg_*` defaults move to `10.0.2.0/24`.
+
+**Measured there:** talker/listener on `:9400` delivered 39 samples in 40 s, and
+the action server/client pair on `:9420` completed a goal.
+
+**Not re-measured here:** this issue's 52-sample run used a measurement-only
+locator patch and predates `4e9d15c47`.
+
+**Not addressed by either change:** `check-image-locator-bake` (issue 1581)
+covers fixture rows, not this cmake-built leaf path.
