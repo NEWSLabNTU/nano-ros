@@ -61,7 +61,7 @@ Owns these issues, one per wave:
 [1422](../issues/archived/1422-plain-blit-eligibility-is-computed-and-read-by-nothing.md),
 [1423](../issues/archived/1423-system-toml-domain-id-and-kconfig-domain-id-are-never-compared.md),
 [1424](../issues/1424-zephyr-heap-size-is-a-guess-with-a-peak-reporter-nothing-reads.md),
-[1425](../issues/1425-heap-exhaustion-and-buffer-too-small-reach-no-fault-hook-on-a-consoleless-board.md).
+[1425](../issues/archived/1425-heap-exhaustion-and-buffer-too-small-reach-no-fault-hook-on-a-consoleless-board.md).
 Takes [issue 1368](../issues/1368-frag-max-size-not-checked-against-derived-bound.md)
 as W3's first half. Cites [issue 1036](../issues/1036-arena-exhaustion-is-half-silent-and-wholly-unreachable.md)
 (the sink problem) and [issue 1121](../issues/1121-contract-sidecar-has-no-model-freshness-edge.md)
