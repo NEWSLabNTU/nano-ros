@@ -819,6 +819,19 @@ size_t nros_zephyr_tier_stack_size(void) {
 size_t nros_zephyr_main_stack_size(void) {
     return (size_t)CONFIG_MAIN_STACK_SIZE;
 }
+
+/* Issue 1232 — the stack the CALLING thread was created with, as the KERNEL
+ * records it (`stack_info.size`), or 0 when this image keeps no stack info
+ * (CONFIG_THREAD_STACK_INFO off). Asked by a tier thread to say what it really
+ * got, so "the declared size reached the thread" is a printed fact rather than
+ * an inference from the code that created it. */
+size_t nros_zephyr_current_stack_size(void) {
+#ifdef CONFIG_THREAD_STACK_INFO
+    return (size_t)k_current_get()->stack_info.size;
+#else
+    return 0u;
+#endif
+}
 static struct k_thread nros_tier_threads[NROS_ZEPHYR_MAX_TIERS];
 static int nros_tier_index;
 
@@ -842,6 +855,11 @@ static void nros_zephyr_tier_trampoline(void* entry, void* arg, void* unused) {
  * Returns 0 on success, -1 when the pool is exhausted (more than
  * CONFIG_NROS_ZEPHYR_MAX_TIERS spawns).
  */
+static int nros_zephyr_tier_thread_start(struct k_thread* thread, k_thread_stack_t* stack,
+                                         size_t stack_size, void* (*entry)(void*), void* arg,
+                                         int32_t priority, const char* name, uint32_t core_plus1,
+                                         int* pin_rc);
+
 int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t priority,
                                  const char* name, size_t stack_bytes, uint32_t core_plus1,
                                  int* pin_rc) {
@@ -855,6 +873,35 @@ int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t prior
                (name != NULL) ? name : "?");
     }
     int idx = nros_tier_index++;
+    return nros_zephyr_tier_thread_start(&nros_tier_threads[idx], nros_tier_stacks[idx],
+                                         NROS_ZEPHYR_TIER_STACK_SIZE, entry, arg, priority, name,
+                                         core_plus1, pin_rc);
+}
+
+/**
+ * Issue 1232 — spawn one tier task over the CALLER's thread object and stack:
+ * the generated entry's `K_THREAD_STACK_DEFINE` sized from the tier's declared
+ * `stack_bytes` (`<nros/tier_task_memory_zephyr.h>`), so the declared size is
+ * the size the thread GETS, rather than the fixed pool slot above whatever the
+ * tier declared. `stack_size` is the usable size (`K_THREAD_STACK_SIZEOF`).
+ * Same priority / name / pin behaviour as the pool path.
+ */
+int nros_zephyr_tier_task_create_static(void* (*entry)(void*), void* arg, int32_t priority,
+                                        const char* name, void* stack, size_t stack_size,
+                                        void* thread, uint32_t core_plus1, int* pin_rc) {
+    if (entry == NULL || stack == NULL || thread == NULL || stack_size == 0u) {
+        return -1;
+    }
+    return nros_zephyr_tier_thread_start((struct k_thread*)thread, (k_thread_stack_t*)stack,
+                                         stack_size, entry, arg, priority, name, core_plus1,
+                                         pin_rc);
+}
+
+/* The one place a tier thread is created, for both stack sources above. */
+static int nros_zephyr_tier_thread_start(struct k_thread* thread, k_thread_stack_t* stack,
+                                         size_t stack_size, void* (*entry)(void*), void* arg,
+                                         int32_t priority, const char* name, uint32_t core_plus1,
+                                         int* pin_rc) {
 
     /* issue 0655 — a tier that declares a `core` is created SUSPENDED
      * (`K_FOREVER`), pinned, then started.
@@ -871,8 +918,7 @@ int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t prior
      * An undeclared core keeps K_NO_WAIT, so the common path is unchanged and
      * no tier pays a start-up round trip for a knob it does not use. */
     k_timeout_t start_delay = (core_plus1 != 0u) ? K_FOREVER : K_NO_WAIT;
-    k_tid_t tid = k_thread_create(&nros_tier_threads[idx], nros_tier_stacks[idx],
-                                  NROS_ZEPHYR_TIER_STACK_SIZE, nros_zephyr_tier_trampoline,
+    k_tid_t tid = k_thread_create(thread, stack, stack_size, nros_zephyr_tier_trampoline,
                                   (void*)entry, arg, NULL, (int)priority, 0, start_delay);
     if (tid == NULL) {
         return -1;

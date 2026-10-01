@@ -66,6 +66,15 @@ extern void nros_set_trace_sink(void (*sink)(uint32_t, uint32_t));
 extern int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t priority,
                                         const char* name, size_t stack_bytes, uint32_t core_plus1,
                                         int* pin_rc);
+/* Issue 1232 — the same spawn over the ENTRY's thread object and stack
+ * (`<nros/tier_task_memory_zephyr.h>`), so a tier's declared `stack_bytes` is
+ * the stack its thread gets. */
+extern int nros_zephyr_tier_task_create_static(void* (*entry)(void*), void* arg, int32_t priority,
+                                               const char* name, void* stack, size_t stack_size,
+                                               void* thread, uint32_t core_plus1, int* pin_rc);
+/* Issue 1232 — what the kernel recorded for the CALLING thread's stack (0 when
+ * the image keeps no stack info). */
+extern size_t nros_zephyr_current_stack_size(void);
 extern void nros_zephyr_set_current_priority(int32_t priority);
 /* issue 1537 — judge one tier against the transport band the kernel actually
  * gave this image's explicitly-prioritised tasks; prints the boot report (see
@@ -167,8 +176,9 @@ extern int nros_cpp_executor_open_over_session(void* session_handle, const char*
 
 extern int nros_cpp_executor_set_active_groups(void* executor, const char* const* groups, size_t n);
 extern int nros_cpp_executor_derive_min_stack_headroom(void* executor, size_t stack_bytes);
-/* The stack a spawned tier thread actually gets (the fixed pool slot). The
- * shim ignores the tier's declared `stack_bytes` — see its definition. */
+/* The stack a POOL-spawned tier thread gets (the fixed slot) — the `_in` /
+ * `_ns` road only. A tier whose entry supplies its memory (issue 1232) gets
+ * its declared size instead. */
 extern size_t nros_zephyr_tier_stack_size(void);
 /* The stack the boot tier runs on (the `main()` thread's
  * CONFIG_MAIN_STACK_SIZE) — its spec's `stack_bytes` describes no real
@@ -283,6 +293,18 @@ typedef struct {
     const char* deadline_policy;
 } nros_tier_spec_t;
 
+/* Issue 1232 — one tier task's memory, owned by the generated entry. Mirror of
+ * `nros_tier_task_memory_t` in <nros/main.h> (gated by check-ffi-struct-mirrors,
+ * family 3). On Zephyr: `stack` is the entry's `K_THREAD_STACK_DEFINE`,
+ * `stack_bytes` its `K_THREAD_STACK_SIZEOF`, `tcb` its `struct k_thread`. */
+typedef struct {
+    void* stack;
+    size_t stack_bytes;
+    void* tcb;
+} nros_tier_task_memory_t;
+_Static_assert(sizeof(nros_tier_task_memory_t) == 3u * sizeof(void*),
+               "nros_tier_task_memory_t mirrors <nros/main.h>: three pointer-sized fields");
+
 /* --- Per-tier task context ---
  *
  * Heap-allocated by the spawning thread before nros_zephyr_tier_task_create;
@@ -307,6 +329,11 @@ typedef struct {
      * carried down the chain beside the specs it belongs to. */
     unsigned char* rest_storage;
     size_t storage_stride;
+    /* issue 1232 — the task memory for rest[0] (rest[k] at rest_task_memory[k]),
+     * NULL when the caller supplied none (an `_in` / `_ns` entry: the shim's
+     * fixed pool then), and the stack THIS tier's thread was created with. */
+    const nros_tier_task_memory_t* rest_task_memory;
+    size_t stack_bytes;
     /* phase-296 W5.5/W5.7 — tier name + declared CPU pin (+1; 0 = unpinned)
      * + generic real-time policy, carried so the tier task can self-apply
      * its kernel placement/deadline. */
@@ -320,7 +347,8 @@ typedef struct {
  * recursive (each tier's task spawns the next tier via this helper). */
 static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
                                   const nros_tier_spec_t* remaining, size_t n_remaining,
-                                  unsigned char* storage, size_t storage_stride);
+                                  unsigned char* storage, size_t storage_stride,
+                                  const nros_tier_task_memory_t* task_memory);
 
 /* Minimum spin delay: 1 ms. */
 #define SPIN_PERIOD_FLOOR_MS 1u
@@ -391,14 +419,14 @@ static void* zephyr_tier_task(void* arg) {
      * `nros_cpp_executor_set_min_stack_headroom` inside the tier's setup then
      * overwrites this, so declared beats derived by ordering alone.
      *
-     * The SLOT size, not `ctx->stack_bytes`: the shim creates every tier
-     * thread with the fixed pool slot and only warns when a declared size
-     * exceeds it, so the declared number describes no real stack here.
-     * That is issue 1232 — this asks for the truth rather than fixing the
-     * contract, and should follow the field once 1232 makes it mean
-     * something. */
-    if (nros_cpp_executor_derive_min_stack_headroom(ctx->executor_storage,
-                                                    nros_zephyr_tier_stack_size()) != 0) {
+     * `ctx->stack_bytes` is the stack this thread was CREATED with: the
+     * entry's declared size when the entry supplied the memory (issue 1232),
+     * the fixed pool slot otherwise. Before 1232 it was always the slot, and
+     * the declared number described no real stack. The kernel's own record is
+     * printed beside it, so the claim is checkable on a running image. */
+    printk("nros: tier stack tier=`%s` bytes=%u kernel=%u\n", (ctx->name != NULL) ? ctx->name : "?",
+           (unsigned)ctx->stack_bytes, (unsigned)nros_zephyr_current_stack_size());
+    if (nros_cpp_executor_derive_min_stack_headroom(ctx->executor_storage, ctx->stack_bytes) != 0) {
         /* Fail LOUD. A bound that was never set leaves `stack-headroom-runtime`
          * off, and a monitor that silently fails to arm reads exactly like a
          * system with nothing to report. */
@@ -425,7 +453,8 @@ static void* zephyr_tier_task(void* arg) {
      * DOWNSTREAM spawn must NOT stop this tier spinning its own work, so ignore
      * the return (zephyr_spawn_next_tier frees what it allocated on failure). */
     (void)zephyr_spawn_next_tier(ctx->session_handle, (uint8_t)ctx->domain_id, ctx->rest,
-                                 ctx->n_rest, ctx->rest_storage, ctx->storage_stride);
+                                 ctx->n_rest, ctx->rest_storage, ctx->storage_stride,
+                                 ctx->rest_task_memory);
 
     /* Spin loop. Pass the tier period as the spin_once timeout — a BLOCKING
      * read drives the shared session's TX/handshake from the spin path and
@@ -470,7 +499,8 @@ static void* zephyr_tier_task(void* arg) {
  * NOT touch the caller's storage. */
 static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
                                   const nros_tier_spec_t* remaining, size_t n_remaining,
-                                  unsigned char* storage, size_t storage_stride) {
+                                  unsigned char* storage, size_t storage_stride,
+                                  const nros_tier_task_memory_t* task_memory) {
     if (n_remaining == 0u) {
         return 0;
     }
@@ -499,6 +529,9 @@ static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
     ctx->n_rest = n_remaining - 1u;
     ctx->rest_storage = storage + storage_stride;
     ctx->storage_stride = storage_stride;
+    ctx->rest_task_memory = (task_memory != NULL) ? task_memory + 1 : NULL;
+    ctx->stack_bytes =
+        (task_memory != NULL) ? task_memory->stack_bytes : nros_zephyr_tier_stack_size();
     ctx->name = t->name;
     ctx->core_plus1 = t->core_plus1;
     ctx->tier_class = t->tier_class;
@@ -521,9 +554,15 @@ static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
      * k_thread_start. An unpinned tier passes core_plus1 = 0 and keeps the old
      * K_NO_WAIT path verbatim. */
     int pin_rc = 0;
-    int rc = nros_zephyr_tier_task_create(zephyr_tier_task, ctx, (int32_t)p,
-                                          (t->name != NULL) ? t->name : "nros_tier",
-                                          (size_t)t->stack_bytes, t->core_plus1, &pin_rc);
+    const char* tname = (t->name != NULL) ? t->name : "nros_tier";
+    /* Issue 1232 — the entry's memory when it supplied some: the declared
+     * size is the size the thread gets. Otherwise the shim's fixed pool. */
+    int rc = (task_memory != NULL)
+                 ? nros_zephyr_tier_task_create_static(zephyr_tier_task, ctx, (int32_t)p, tname,
+                                                       task_memory->stack, task_memory->stack_bytes,
+                                                       task_memory->tcb, t->core_plus1, &pin_rc)
+                 : nros_zephyr_tier_task_create(zephyr_tier_task, ctx, (int32_t)p, tname,
+                                                (size_t)t->stack_bytes, t->core_plus1, &pin_rc);
     if (rc != 0) {
         nros_platform_dealloc(ctx);
         return -1;
@@ -564,6 +603,11 @@ int32_t nros_board_zephyr_run_tiers_in(const char* locator, uint8_t domain_id,
                                        const char* session_name, const char* node_namespace,
                                        const nros_tier_spec_t* tiers, size_t n_tiers,
                                        void* executor_storage, size_t storage_stride);
+int32_t nros_board_zephyr_run_tiers_tasks_in(const char* locator, uint8_t domain_id,
+                                             const char* session_name, const char* node_namespace,
+                                             const nros_tier_spec_t* tiers, size_t n_tiers,
+                                             void* executor_storage, size_t storage_stride,
+                                             const nros_tier_task_memory_t* task_memory);
 
 int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
                                     const char* session_name, const nros_tier_spec_t* tiers,
@@ -641,8 +685,56 @@ int32_t nros_board_zephyr_run_tiers_in(const char* locator, uint8_t domain_id,
                                        const char* session_name, const char* node_namespace,
                                        const nros_tier_spec_t* tiers, size_t n_tiers,
                                        void* executor_storage, size_t storage_stride) {
+    /* Issue 1232 — kept for an entry TU generated before
+     * `nros_board_zephyr_run_tiers_tasks_in` existed: no task memory, so its
+     * tiers run on the shim's fixed pool slots as before. */
+    return nros_board_zephyr_run_tiers_tasks_in(locator, domain_id, session_name, node_namespace,
+                                                tiers, n_tiers, executor_storage, storage_stride,
+                                                NULL);
+}
+
+/*
+ * Issue 1232 — the runner, over caller-supplied executor storage AND
+ * caller-supplied task memory, and the one a generated tiered Zephyr entry
+ * calls (`CAbiRunners::tier_task_memory`).
+ *
+ * `task_memory[i]` is `tiers[i]`'s thread object and stack, which the entry
+ * declared with `K_THREAD_STACK_DEFINE` at the tier's own `stack_bytes` — so a
+ * tier's declared stack is the stack its thread GETS, instead of the fixed
+ * NROS_ZEPHYR_TIER_STACK_SIZE slot whatever it declared. The boot tier
+ * (`tiers[0]`, run on the `main()` thread) must have none; every spawned tier
+ * must have one. A disagreement is refused before the session opens. NULL is
+ * the `_in` behaviour (the pool).
+ */
+int32_t nros_board_zephyr_run_tiers_tasks_in(const char* locator, uint8_t domain_id,
+                                             const char* session_name, const char* node_namespace,
+                                             const nros_tier_spec_t* tiers, size_t n_tiers,
+                                             void* executor_storage, size_t storage_stride,
+                                             const nros_tier_task_memory_t* task_memory) {
     if (tiers == NULL || n_tiers == 0 || executor_storage == NULL) {
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    if (task_memory != NULL) {
+        for (size_t i = 0u; i < n_tiers; ++i) {
+            const nros_tier_task_memory_t* m = &task_memory[i];
+            const char* tn = (tiers[i].name != NULL) ? tiers[i].name : "?";
+            if (i == 0u) {
+                if (m->stack != NULL || m->tcb != NULL) {
+                    printk("nros: zephyr run_tiers: the entry gave the BOOT tier `%s` a thread "
+                           "stack (it runs on main()) — the entry and this runner disagree "
+                           "about which tier boots; refused\n",
+                           tn);
+                    return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+                }
+                continue;
+            }
+            if (m->stack == NULL || m->tcb == NULL || m->stack_bytes == 0u) {
+                printk("nros: zephyr run_tiers: spawned tier `%s` has no task memory from the "
+                       "entry; refused before the session opens\n",
+                       tn);
+                return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+            }
+        }
     }
     /* Issue 1568 — the library's own refusal: a stride below THIS build's
      * executor, not a multiple of 8, or a misaligned base is refused (the
@@ -755,7 +847,8 @@ int32_t nros_board_zephyr_run_tiers_in(const char* locator, uint8_t domain_id,
      * helper never touches) and return error. Downstream tier tasks handle
      * their own spawn failures by parking + continuing to spin. */
     int src = zephyr_spawn_next_tier(session_handle, domain_id, &tiers[1], n_tiers - 1u,
-                                     storage + storage_stride, storage_stride);
+                                     storage + storage_stride, storage_stride,
+                                     (task_memory != NULL) ? &task_memory[1] : NULL);
     if (src != 0) {
         nros_cpp_fini(boot_storage);
         return -1;

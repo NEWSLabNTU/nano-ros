@@ -451,6 +451,19 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_tiers_in(const char* locator, uint8_t 
                                                    size_t n_tiers, void* executor_storage,
                                                    size_t storage_stride);
 
+/* Issue 1232 — the same runner, plus each tier task's memory from the entry,
+ * and the one a generated tiered Zephyr entry calls. `task_memory[i]` is
+ * `tiers[i]`'s thread object + `K_THREAD_STACK_DEFINE` stack, sized from the
+ * tier's declared `stack_bytes` (`<nros/tier_task_memory_zephyr.h>`), so the
+ * declared size is the size the thread gets — the shim's fixed pool slot
+ * ignored it. The boot tier (`tiers[0]`, on `main()`) must have none and every
+ * spawned tier must have one, else refused before the session opens. NULL is
+ * the `_in` behaviour (the pool), which `_in` above now delegates to. */
+NROS_PUBLIC int32_t nros_board_zephyr_run_tiers_tasks_in(
+    const char* locator, uint8_t domain_id, const char* session_name, const char* node_namespace,
+    const nros_native_tier_spec_t* tiers, size_t n_tiers, void* executor_storage,
+    size_t storage_stride, const nros_tier_task_memory_t* task_memory);
+
 /* phase-281 W3 (nuttx) (RFC-0015 Model 1) — run a multi-tier embedded C/C++
  * entry on NuttX: open ONE RMW session on the caller's thread (the NuttX
  * `app_main` thread), spawn one `pthread` per non-boot tier (NuttX is POSIX —

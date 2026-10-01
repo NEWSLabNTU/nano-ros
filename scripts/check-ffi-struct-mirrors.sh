@@ -391,6 +391,7 @@ for path, anchor in TIER_INITIALISERS:
 
 TASK_MEM_C_MIRRORS = [
     "packages/boards/nros-board-freertos/c/freertos_run_tiers.c",
+    "packages/boards/nros-board-zephyr/c/zephyr_run_tiers.c",
 ]
 
 def last_typedef_body(path, tag):
