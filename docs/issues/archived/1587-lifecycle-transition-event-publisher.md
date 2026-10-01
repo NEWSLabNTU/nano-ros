@@ -29,7 +29,7 @@ inactive" from "went inactive and came back" between two polls.
 
 This was the last `gap` row in `docs/reference/api-parity-ledger/lifecycle.json`
 (`c:lifecycle_change_state`) and the thirteenth row of
-[phase-467](../roadmap/phase-467-rmw-gap-closure-design-study.md)'s study.
+[phase-467](../../roadmap/phase-467-rmw-gap-closure-design-study.md)'s study.
 
 ## The pricing, which is the part this file exists for
 
