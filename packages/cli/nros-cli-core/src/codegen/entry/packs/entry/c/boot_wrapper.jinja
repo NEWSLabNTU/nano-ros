@@ -52,7 +52,8 @@
   Issue 1568 — every RTOS board's runners take storage this way now, the
   single-executor `run_components` included (`boot.component_storage`, one
   block). One method, one flag (`CAbiRunners::takes_executor_storage`), one
-  refusal (the linked library's `nros_cpp_executor_storage_check`).
+  refusal (the linked library's `nros_cpp_executor_storage_check`). Issue 1597
+  — and the host board too, so both host calls pass it as well.
 -#}
 {%- if boot.tier_storage -%}
 /* Issues 1551 + 1568 — every tier's executor storage, one block per tier, as a
@@ -80,12 +81,12 @@ static uint64_t __nros_executor_storage[(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 
 {%- set call -%}
 {%- if boot.tiers -%}
 {%- if boot_shape == "host" -%}
-{{ boot.runners.run_tiers }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u)
+{{ boot.runners.run_tiers }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u{% if boot.tier_storage %}, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]){% endif %})
 {%- else -%}
 {{ boot.runners.run_tiers }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u{% if boot.tier_storage %}, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]){% endif %})
 {%- endif -%}
 {%- elif boot_shape == "host" -%}
-{{ boot.runners.run_components }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)
+{{ boot.runners.run_components }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup{% if boot.component_storage %}, __nros_executor_storage, sizeof(__nros_executor_storage){% endif %})
 {%- else -%}
 {{ boot.runners.run_components }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup{% if boot.component_storage %}, __nros_executor_storage, sizeof(__nros_executor_storage){% endif %})
 {%- endif -%}

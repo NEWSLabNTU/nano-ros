@@ -1838,10 +1838,57 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_ns(
     node_namespace: *const c_char,
     setup: Option<unsafe extern "C" fn(executor: *mut c_void) -> i32>,
 ) -> i32 {
+    // Issue 1597 — kept for an entry TU generated before
+    // `nros_board_native_run_components_named_in` existed (issue 1050's rule),
+    // as `nros_board_rtos_run_components_ns` is kept (issue 1568): one block
+    // at the linked library's own size, handed to the runner.
+    let stride = nros_cpp_executor_storage_size();
+    let mut storage: alloc::vec::Vec<u64> = alloc::vec![0u64; stride / core::mem::size_of::<u64>()];
+    unsafe {
+        nros_board_native_run_components_named_in(
+            session_name,
+            node_namespace,
+            setup,
+            storage.as_mut_ptr().cast(),
+            stride,
+        )
+    }
+}
+
+/// Issue 1597 — [`nros_board_native_run_components_named_ns`] over
+/// CALLER-SUPPLIED executor storage: the host twin of
+/// `nros_board_rtos_run_components_in` (issue 1568), and the runner a
+/// generated native single-executor C entry calls.
+///
+/// `executor_storage` is `storage_bytes` bytes, 8-byte aligned — the entry's
+/// file-scope `__nros_executor_storage`, sized from the per-build
+/// `NROS_CPP_EXECUTOR_STORAGE_SIZE` (the C twin of the C++ entry's
+/// `Node::GlobalStorageHolder<0>::storage`). The linked library refuses a
+/// short, misaligned or null block before a byte is written. Before this the
+/// `CppContext` was a `MaybeUninit` on the caller's stack.
+///
+/// # Safety
+/// As [`nros_board_native_run_components_named_ns`], plus: `executor_storage`
+/// must be valid for writes of `storage_bytes` bytes for the duration of the
+/// call and used by nothing else meanwhile.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_board_native_run_components_named_in(
+    session_name: *const c_char,
+    node_namespace: *const c_char,
+    setup: Option<unsafe extern "C" fn(executor: *mut c_void) -> i32>,
+    executor_storage: *mut c_void,
+    storage_bytes: usize,
+) -> i32 {
     let setup = match setup {
         Some(f) => f,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
+    // The one refusal every runner shares (issue 1568).
+    let chk = nros_cpp_executor_storage_check(executor_storage, storage_bytes);
+    if chk != NROS_CPP_RET_OK {
+        return chk;
+    }
 
     // Resolve session name: null / empty → "node" (unified default, phase 266).
     let name_resolved: &core::ffi::CStr = if session_name.is_null() {
@@ -1873,8 +1920,7 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_ns(
         census_select_backend();
     }
 
-    let mut storage = core::mem::MaybeUninit::<CppContext>::uninit();
-    let sptr = storage.as_mut_ptr() as *mut c_void;
+    let sptr = executor_storage;
     let rc = unsafe {
         nros_cpp_init(
             core::ptr::null(),
@@ -5043,6 +5089,65 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_ns(
     tiers: *const NativeTierSpecC,
     n_tiers: usize,
 ) -> i32 {
+    // Issue 1597 — kept for an entry TU generated before
+    // `nros_board_native_run_tiers_in` existed (issue 1050's rule), exactly as
+    // every RTOS `_ns` runner is kept (issue 1568): it takes every tier's
+    // storage in ONE block, at the linked library's own size, and hands it to
+    // the runner, so the two spellings run the same code over the same layout.
+    // The block outlives every tier: `_in` joins its tier tasks before it
+    // returns.
+    if tiers.is_null() || n_tiers == 0 {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let stride = nros_cpp_executor_storage_size();
+    let mut storage: alloc::vec::Vec<u64> =
+        alloc::vec![0u64; n_tiers * (stride / core::mem::size_of::<u64>())];
+    unsafe {
+        nros_board_native_run_tiers_in(
+            session_name,
+            node_namespace,
+            tiers,
+            n_tiers,
+            storage.as_mut_ptr().cast(),
+            stride,
+        )
+    }
+}
+
+/// Issue 1597 — [`nros_board_native_run_tiers_ns`] over CALLER-SUPPLIED
+/// executor storage, and the runner a generated native tiered entry calls
+/// (`CAbiRunners::takes_executor_storage`).
+///
+/// The RTOS shape (issues 1551 + 1568), so every executor in the tree is
+/// allocated one way. `executor_storage` holds `n_tiers` blocks of
+/// `storage_stride` bytes; block `i` is tier `i`'s executor (block 0 the boot
+/// tier's, on the calling thread). The generated entry passes a file-scope
+/// static sized from the per-build `NROS_CPP_EXECUTOR_STORAGE_SIZE` and its
+/// own tier count, so the bytes are `.bss` the linker places and `mem-report`
+/// names. Before this the boot tier's `CppContext` lived on the caller's stack
+/// and each spawned tier's on its own task stack — `size_of`-exact, but in a
+/// place nothing priced, and the one family whose storage took a different
+/// road from the shared one.
+///
+/// A block the linked library calls too small, misaligned or null is REFUSED
+/// (`nros_cpp_executor_storage_check`) before any session opens. Ownership
+/// stays with the caller: the tier tasks are joined before this returns, so
+/// the storage need only outlive the call.
+///
+/// # Safety
+/// As [`nros_board_native_run_tiers_ns`], plus: `executor_storage` must be
+/// valid for writes of `n_tiers * storage_stride` bytes for the duration of
+/// the call and used by nothing else meanwhile.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_board_native_run_tiers_in(
+    session_name: *const c_char,
+    node_namespace: *const c_char,
+    tiers: *const NativeTierSpecC,
+    n_tiers: usize,
+    executor_storage: *mut c_void,
+    storage_stride: usize,
+) -> i32 {
     // phase-359 W10 — `alloc`/`core`, not `std`: every one of these has a home
     // outside the standard library, and naming them through `std` made this
     // function look like it needed the flavour when what it needs is the
@@ -5053,6 +5158,13 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_ns(
     if tiers.is_null() || n_tiers == 0 {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
+    // The one refusal every runner shares (issue 1568), before a byte is
+    // written: a block sized from another build's header is named, not overrun.
+    let chk = nros_cpp_executor_storage_check(executor_storage, storage_stride);
+    if chk != NROS_CPP_RET_OK {
+        return chk;
+    }
+    let storage = executor_storage as *mut u8;
 
     let tier_slice = unsafe { core::slice::from_raw_parts(tiers, n_tiers) };
 
@@ -5087,8 +5199,8 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_ns(
         census_select_backend();
     }
 
-    let mut boot_storage = core::mem::MaybeUninit::<CppContext>::uninit();
-    let sptr = boot_storage.as_mut_ptr() as *mut c_void;
+    // Block 0 of the caller's storage is the boot tier's executor.
+    let sptr = storage as *mut c_void;
     let rc = unsafe {
         nros_cpp_init(
             core::ptr::null(),
@@ -5174,7 +5286,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_ns(
     // `CAP_SYS_NICE` — as success, so an unprivileged run behaves exactly as
     // it did before.
     let mut tier_tasks: Vec<nros_platform::task::PlatformTask> = Vec::with_capacity(n_tiers - 1);
-    for tier in &tier_slice[1..] {
+    for (i, tier) in tier_slice.iter().enumerate().skip(1) {
         let tier_name = if tier.name.is_null() {
             String::new()
         } else {
@@ -5188,6 +5300,8 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_ns(
             n_groups: tier.n_groups,
             groups: tier.groups as usize,
             session: session_handle,
+            // Block `i` of the caller's storage (issue 1597).
+            storage: storage.wrapping_add(i * storage_stride) as usize,
             setup: tier.setup,
             domain_id,
             name: tier_name.clone(),
@@ -5265,6 +5379,8 @@ struct NativeTierCtx {
     n_groups: usize,
     groups: usize,
     session: usize,
+    /// Issue 1597 — this tier's block of the entry's executor storage.
+    storage: usize,
     setup: Option<unsafe extern "C" fn(*mut c_void) -> i32>,
     domain_id: u32,
     name: alloc::string::String,
@@ -5290,8 +5406,8 @@ unsafe extern "C" fn native_tier_trampoline(arg: *mut c_void) -> *mut c_void {
     let sh = ctx.session as *mut c_void;
     let groups_ptr = ctx.groups as *const *const c_char;
 
-    let mut tier_storage = core::mem::MaybeUninit::<CppContext>::uninit();
-    let tptr = tier_storage.as_mut_ptr() as *mut c_void;
+    // Issue 1597 — the caller's block, never this task's stack.
+    let tptr = ctx.storage as *mut c_void;
     let rc =
         unsafe { nros_cpp_executor_open_over_session(sh, core::ptr::null(), ctx.domain_id, tptr) };
     if rc != NROS_CPP_RET_OK {
@@ -6174,5 +6290,94 @@ mod executor_storage_check_tests {
             nros_cpp_executor_storage_check(core::ptr::null(), need),
             NROS_CPP_RET_INVALID_ARGUMENT
         );
+    }
+
+    /// Issue 1597 — the host runners take the same refusal as the RTOS ones,
+    /// BEFORE any session opens: a stride one word short of this build's
+    /// executor returns `INVALID_ARGUMENT` and no tier's `setup` ever runs.
+    #[cfg(all(feature = "rmw-cffi", feature = "env"))]
+    mod native_runners {
+        use super::*;
+        use core::sync::atomic::{AtomicBool, Ordering};
+
+        static SETUP_RAN: AtomicBool = AtomicBool::new(false);
+
+        /// The app-level registration hook `nros_cpp_init*` names. These tests
+        /// reach the runners, which reach `nros_cpp_init`, so the test binary
+        /// must define it; it is never CALLED — the refusal returns first,
+        /// which is what the tests assert. `metadata_hooks`' census tests
+        /// supply a real one when their features are on.
+        /// cbindgen:ignore
+        // cbindgen reads every `#[no_mangle] extern "C"` in the crate, `cfg(test)`
+        // or not, and would write a test-only symbol into `nros_cpp_ffi.h`.
+        #[cfg(not(all(feature = "metadata-mode", feature = "param-services")))]
+        #[unsafe(no_mangle)]
+        extern "C" fn nros_app_register_backends() {}
+
+        unsafe extern "C" fn mark_setup(_executor: *mut c_void) -> i32 {
+            SETUP_RAN.store(true, Ordering::SeqCst);
+            0
+        }
+
+        fn spec() -> NativeTierSpecC {
+            NativeTierSpecC {
+                name: c"t".as_ptr(),
+                groups: core::ptr::null(),
+                n_groups: 0,
+                priority: 0,
+                stack_bytes: 0,
+                spin_period_us: 0,
+                setup: Some(mark_setup),
+                core_plus1: 0,
+                preempt_threshold: -1,
+                tier_class: core::ptr::null(),
+                period_us: 0,
+                budget_us: 0,
+                deadline_us: 0,
+                deadline_policy: core::ptr::null(),
+            }
+        }
+
+        #[test]
+        fn a_short_tier_stride_is_refused_before_anything_opens() {
+            let need = nros_cpp_executor_storage_size();
+            let tiers = [spec(), spec()];
+            let mut b = alloc::vec![0u64; 2 * (need / 8)];
+            let rc = unsafe {
+                nros_board_native_run_tiers_in(
+                    core::ptr::null(),
+                    core::ptr::null(),
+                    tiers.as_ptr(),
+                    tiers.len(),
+                    b.as_mut_ptr().cast(),
+                    need - 8,
+                )
+            };
+            assert_eq!(rc, NROS_CPP_RET_INVALID_ARGUMENT);
+            assert!(
+                !SETUP_RAN.load(Ordering::SeqCst),
+                "a refused runner ran setup"
+            );
+        }
+
+        #[test]
+        fn a_short_component_block_is_refused_before_anything_opens() {
+            let need = nros_cpp_executor_storage_size();
+            let mut b = alloc::vec![0u64; need / 8];
+            let rc = unsafe {
+                nros_board_native_run_components_named_in(
+                    core::ptr::null(),
+                    core::ptr::null(),
+                    Some(mark_setup),
+                    b.as_mut_ptr().cast(),
+                    need - 8,
+                )
+            };
+            assert_eq!(rc, NROS_CPP_RET_INVALID_ARGUMENT);
+            assert!(
+                !SETUP_RAN.load(Ordering::SeqCst),
+                "a refused runner ran setup"
+            );
+        }
     }
 }

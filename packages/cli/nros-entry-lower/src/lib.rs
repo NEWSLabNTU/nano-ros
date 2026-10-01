@@ -132,9 +132,11 @@ impl BoardFamily {
     /// TU generated before either change still calls the older spelling and
     /// those are what it must keep resolving to. Where each is DEFINED:
     ///
-    /// - `Native` — `nros_board_native_run_components_named_ns` and
-    ///   `nros_board_native_run_tiers_ns`, both `extern "C"` in Rust
-    ///   (`packages/api/nros-cpp/src/lib.rs`).
+    /// - `Native` — `nros_board_native_run_components_named_in` and
+    ///   `nros_board_native_run_tiers_in`, both `extern "C"` in Rust
+    ///   (`packages/api/nros-cpp/src/lib.rs`). They took the executor storage
+    ///   from the entry last (issue 1597); the `_ns` spellings stay defined for
+    ///   a TU generated before that.
     /// - `Freertos`, `Zephyr`, `Nuttx` — ONE `run_components`,
     ///   `nros_board_rtos_run_components_in`
     ///   (`packages/boards/nros-board-common/c/nros_rtos_run_components.c`),
@@ -168,12 +170,13 @@ impl BoardFamily {
     pub fn c_abi_runners(self) -> Option<CAbiRunners> {
         match self {
             BoardFamily::Native => Some(CAbiRunners {
-                run_components: Some("nros_board_native_run_components_named_ns"),
-                run_tiers: Some("nros_board_native_run_tiers_ns"),
-                // Both runners are Rust (`nros-cpp`): the boot context is a
-                // typed `MaybeUninit<CppContext>` on the caller's stack, so
-                // the size is `size_of` and there is nothing to hand over.
-                takes_executor_storage: false,
+                run_components: Some("nros_board_native_run_components_named_in"),
+                run_tiers: Some("nros_board_native_run_tiers_in"),
+                // Issue 1597 — the host too. Its runners are Rust and used to
+                // build each `CppContext` on a stack (`size_of`-exact, but
+                // priced by nothing and a second road beside the shared one);
+                // now they take the entry's `.bss` like every RTOS runner.
+                takes_executor_storage: true,
             }),
             BoardFamily::Freertos => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
@@ -287,8 +290,9 @@ pub struct CAbiRunners {
     /// size compiled from a `__has_include` fallback wherever the per-build
     /// header was out of reach — 81,920 bytes on NuttX against an 88,560-byte
     /// executor. As `.bss` the same bytes are sized by the build, placed by
-    /// the linker and named by `mem-report`. Only `native` is `false`, and its
-    /// runners are Rust, sized by `size_of`.
+    /// the linker and named by `mem-report`. Every family is `true`: `native`
+    /// was the last exception (its Rust runners built the context on a stack)
+    /// and took the same method in issue 1597.
     pub takes_executor_storage: bool,
 }
 
@@ -561,19 +565,14 @@ mod tests {
         assert!(BoardFamily::Threadx.has_c_run_components());
     }
 
-    /// Issue 1568 — ONE way: every RTOS family's runners take the executor
+    /// Issues 1568 + 1597 — ONE way: every family's runners take the executor
     /// storage from the entry (a `.bss` static at the build's own size), and
-    /// every one of them is an `_in` symbol. Only the host, whose runners are
-    /// Rust and sized by `size_of`, does not. A family added with a heap
-    /// runner fails here and must say why.
+    /// every one of them is an `_in` symbol. No exemptions — the host was the
+    /// last (issue 1597). A family added with a heap or stack runner fails here.
     #[test]
-    fn every_rtos_runner_takes_its_executor_storage_from_the_entry() {
+    fn every_runner_takes_its_executor_storage_from_the_entry() {
         for f in BoardFamily::ALL {
             let r = f.c_abi_runners().expect("every family has runners");
-            if f == BoardFamily::Native {
-                assert!(!r.takes_executor_storage, "native runners are Rust");
-                continue;
-            }
             assert!(r.takes_executor_storage, "{}", f.as_str());
             assert!(r.components_take_static_storage(), "{}", f.as_str());
             for name in [r.run_components, r.run_tiers].into_iter().flatten() {

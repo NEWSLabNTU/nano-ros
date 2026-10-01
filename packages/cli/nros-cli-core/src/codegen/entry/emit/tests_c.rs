@@ -142,7 +142,9 @@ fn typed_emit_creates_node_and_configures_component() {
         src.contains("__nros_c_component_talker_pkg_configure(&__nros_node_0, executor, self)")
     );
     // main drives the real-executor lifecycle via the named runner.
-    assert!(src.contains("nros_board_native_run_components_named_ns(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"));
+    // Issue 1597 — over the entry's own `.bss` executor storage.
+    assert!(src.contains("nros_board_native_run_components_named_in(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup, __nros_executor_storage, sizeof(__nros_executor_storage))"));
+    assert!(src.contains("static uint64_t __nros_executor_storage[(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];"));
     // single-node: boot config has the node name baked in.
     assert!(src.contains("NROS_BOOT_SET_NODE_NAME"));
     assert!(src.contains(".node_name  = \"talker\""));
@@ -571,9 +573,17 @@ fn typed_emit_tiers_uses_run_tiers_path() {
     assert!(src.contains("80LL"), "high priority 80LL; src:\n{src}");
     assert!(src.contains("10LL"), "low priority 10LL; src:\n{src}");
     // main calls run_tiers, not run_components.
+    // Issue 1597 — over the entry's own per-tier `.bss` executor storage.
     assert!(
-        src.contains("nros_board_native_run_tiers_ns("),
-        "main must call nros_board_native_run_tiers_ns; src:\n{src}"
+        src.contains("nros_board_native_run_tiers_in(")
+            && src.contains(
+                "__nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]))"
+            ),
+        "main must call nros_board_native_run_tiers_in over the entry's storage; src:\n{src}"
+    );
+    assert!(
+        src.contains("static uint64_t __nros_tier_executor_storage[2]["),
+        "native tiered entry must own its tiers' executor storage; src:\n{src}"
     );
     assert!(
         !src.contains("return nros_board_native_run_components"),
