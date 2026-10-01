@@ -168,8 +168,12 @@ the closure environment must either:
   closure type to `Box<dyn FnMut(...)>` (alloc-dependent) or to
   `extern "C" fn` (no captures at all).
 
-Both options conflict with the no-alloc + framework-task-routed
-contract. So Phase 216.A.4 introduces **tags**:
+Both options conflict with keeping dispatch heap-free and
+framework-task-routed. (Heap-free here is a checked property of the
+executor path, not of an image with a transport: `heap-free-poc-mps2`
+links the executor, component install and spin path with no allocation
+symbol, and `just ci l3` fails if that changes. Every shipped RMW backend
+allocates in C.) So Phase 216.A.4 introduces **tags**:
 
 ```rust
 // File: packages/api/nros/src/dispatch_tag.rs

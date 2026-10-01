@@ -85,11 +85,19 @@ the banner above.
 A natural-feeling Embassy API would make `ExecutableNode::on_callback`
 an `async fn`. We don't — for two reasons:
 
-1. **The no-alloc contract.** Async fns desugar to anonymous future
-   types; storing them generically in the runtime requires either
-   boxing (`Box<dyn Future>` → `alloc` dependency) or const-generic
-   GAT plumbing through every trait. Both add cost without buying
-   anything `Spawner::spawn` doesn't already give us.
+1. **Keeping the dispatch path heap-free.** Async fns desugar to
+   anonymous future types; storing them generically in the runtime
+   requires either boxing (`Box<dyn Future>` → `alloc` dependency) or
+   const-generic GAT plumbing through every trait. Both add cost without
+   buying anything `Spawner::spawn` doesn't already give us.
+   What is CHECKED, and what is not: `heap-free-poc-mps2` — a bare-metal Cortex-M3 image built with
+   `nros` minus its `alloc` feature, which opens an executor over static
+   backing, installs a component, spins, and uses the `ParameterServer` —
+   links with no allocation symbol at all, and `just ci l3` fails if it
+   ever does (`scripts/check-no-alloc-image.py --tier heap-free`).
+   No Embassy image is built, and every shipped RMW backend allocates in
+   C, so this is a property of the executor and dispatch path — not of an
+   Embassy image with a transport linked in.
 2. **Framework-task routing.** The runtime already dispatches
    callbacks from a framework-owned task (`__nros_dispatch_task` on
    Embassy, `__nros_dispatch` on RTIC). The Node author can spawn
@@ -333,8 +341,9 @@ spawn-from-sync is consistently painful.** If your application is
 hitting that case, file an issue with the call pattern that's
 prompting it.
 
-Until then: spawn from sync. It's two lines per callback and stays
-fully no-alloc.
+Until then: spawn from sync. It's two lines per callback and
+stays heap-free on the dispatch path (the spawned task comes from the
+framework's static task pool).
 
 ## See also
 

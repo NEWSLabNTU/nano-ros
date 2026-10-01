@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Link-time allocation gate for a built nano-ros image — issue 0816.
 
-The book promises heap-free operation in four places (`--claims` prints them
-with their line numbers). Nothing checked any of them: no lane `nm`s an image
-and asserts the allocator is absent. Cargo feature gates are what the tree has
-instead, and they are necessary without being sufficient —
+The book promises heap-free operation, and until this tool nothing checked it:
+no lane `nm`ed an image and asserted the allocator was absent. Now `just ci l3`
+runs `--tier heap-free` on `heap-free-poc-mps2`, and `--claims` (a fast-line
+gate) holds every no-alloc sentence in `book/src` to that image — backed by
+it, or classified as not a promise about an image. Cargo feature gates are
+what the tree had instead, and they are necessary without being sufficient —
 
   * a vendored C dependency reaches the allocator with no Cargo feature
     involved at all (zenoh-pico calls `z_malloc` from 42 sites; cyclonedds and
@@ -269,44 +271,259 @@ PLATFORM_OBJECT_ALLOWLIST = (
 )
 
 # ---------------------------------------------------------------------------
-# The book's promises. Kept here rather than in a report so the answer to
-# "which claim is backed by a check?" ages with the tool instead of with a
-# markdown file. `backed_by` is the image a `heap-free` run would have to pass
-# for the claim to stop being a claim; None means no such image is built in any
-# lane today.
+# The book's promises (issue 0816). Kept here rather than in a report so the
+# answer to "which claim is backed by a check?" ages with the tool instead of
+# with a markdown file — and `--claims` is a GATE over it, not a listing:
+#
+#   * every line of `book/src/**/*.md` matching CLAIM_PHRASE must be rostered
+#     here (an unrostered promise is the thing this issue was filed about);
+#   * every roster row must still match a book line (a stale row is a claim
+#     that moved and is no longer known to be checked);
+#   * a row of kind `image` must name, in `backed_by`, an image that the L3
+#     lane (`just/ci.just`) actually runs through `--tier heap-free` — read
+#     from the recipe, so it cannot go stale toward OK;
+#   * every other kind says why the sentence is not a promise about a linked
+#     image (a type's storage, a design rationale, the disclaimer itself).
+#
+# There is deliberately no `unbacked` kind. A sentence promising a heap-free
+# image that no lane checks is fixed by scoping the SENTENCE, not by a row.
+#
+# `text` is a substring of the matching line, never a line number: the old
+# roster carried numbers and two of its four had drifted by the time it was
+# next read.
 # ---------------------------------------------------------------------------
+CLAIM_PHRASE = re.compile(
+    r"no-alloc|without alloc\b|heap-free|\bno heap\b|"
+    r"fully static (?:memory )?allocation|allocation-free|zero allocations",
+    re.IGNORECASE,
+)
+
+# What `heap-free-poc-mps2` links, and therefore all an `image` row may claim
+# it covers: `Executor::open_in` over caller-owned backing,
+# `install_node_typed_in`, `spin_once` / `spin_some` / `spin_forever`, and the
+# core `ParameterServer` (`new_in` / `declare` / `set` / `get`) over
+# caller-owned `ParameterStorage`. NO RMW backend: every shipped transport
+# allocates in C, so a transport image is `unified` tier at best.
+HEAP_FREE_POC = "packages/testing/nros-tests/bins/heap-free-poc-mps2"
+
 BOOK_CLAIMS = (
     {
-        "where": "book/src/user-guide/embassy-integration.md:81",
-        "text": "The no-alloc contract.",
-        "backed_by": None,
-        "why_not": "no Embassy example exists in examples/ and no fixtures.toml "
-        "row builds one, so there is no image to point the gate at",
+        "file": "book/src/concepts/no-std.md",
+        "text": "The core `ParameterServer` API works without alloc",
+        "kind": "image",
+        "backed_by": HEAP_FREE_POC,
+        "covers": "ParameterServer::new_in/declare/set/get over ParameterStorage<4>",
     },
     {
-        "where": "book/src/user-guide/embassy-integration.md:336",
-        "text": "stays fully no-alloc",
-        "backed_by": None,
-        "why_not": "same — the Embassy path is documented but unbuilt",
+        "file": "book/src/design/client-library.md",
+        "text": "reach a `no_std` no-alloc target",
+        "kind": "image",
+        "backed_by": HEAP_FREE_POC,
+        "covers": "Executor::spin_once, spin_some and spin_forever are all linked",
     },
     {
-        "where": "book/src/internals/dispatch-strategy.md:171",
-        "text": "the no-alloc + framework-task-routed contract",
-        "backed_by": None,
-        "why_not": "the RTIC entries that would carry it "
-        "(examples/mps2-an385-baremetal/rust/*-rtic) all enable "
-        '`nros` feature "alloc" in their Cargo.toml, so they are '
-        "`unified`-tier images, not `heap-free` ones",
+        "file": "book/src/internals/dispatch-strategy.md",
+        "text": "keeping dispatch heap-free",
+        "kind": "image",
+        "backed_by": HEAP_FREE_POC,
+        "covers": "the executor open + component install + spin path",
     },
     {
-        "where": "book/src/concepts/no-std.md:146",
-        "text": "The core ParameterServer API works without alloc",
-        "backed_by": None,
-        "why_not": "an API-shape claim; backing it needs an image that uses "
-        "ParameterServer and links no allocator, and no example is "
-        "configured that way",
+        "file": "book/src/user-guide/embassy-integration.md",
+        "text": "Keeping the dispatch path heap-free",
+        "kind": "image",
+        "backed_by": HEAP_FREE_POC,
+        "covers": "the executor open + component install + spin path "
+        "(no Embassy image is built; the paragraph says so)",
+    },
+    {
+        "file": "book/src/user-guide/embassy-integration.md",
+        "text": "stays heap-free on the dispatch path",
+        "kind": "image",
+        "backed_by": HEAP_FREE_POC,
+        "covers": "the same executor path; spawning is the framework's static task pool",
+    },
+    {
+        "file": "book/src/internals/dispatch-strategy.md",
+        "text": "(Heap-free here is a checked property of the",
+        "kind": "image",
+        "backed_by": HEAP_FREE_POC,
+        "covers": "the scoping sentence itself: executor path yes, transport no",
+    },
+    {
+        "file": "book/src/internals/dispatch-strategy.md",
+        "text": "`heap-free-poc-mps2`",
+        "kind": "image",
+        "backed_by": HEAP_FREE_POC,
+        "covers": "names the checked image",
+    },
+    {
+        "file": "book/src/user-guide/embassy-integration.md",
+        "text": "`heap-free-poc-mps2`",
+        "kind": "image",
+        "backed_by": HEAP_FREE_POC,
+        "covers": "names the checked image and, next lines, what it does not cover",
+    },
+    {
+        "file": "book/src/user-guide/embassy-integration.md",
+        "text": "check-no-alloc-image.py --tier heap-free",
+        "kind": "tool",
+        "why": "this tool's own invocation",
+    },
+    {
+        "file": "book/src/user-guide/rmw-choosing.md",
+        "text": "not heap-free: each allocation goes through",
+        "kind": "disclaimer",
+        "why": "says XRCE is NOT heap-free (it replaced 'no heap required', "
+        "which was false: every XRCE entity is a nros_xrce_calloc)",
+    },
+    {
+        "file": "book/src/concepts/no-std.md",
+        "text": "heap-free and not *proof* of it",
+        "kind": "disclaimer",
+        "why": "the sentence that says a feature list is not proof — the "
+        "warning this gate exists to act on",
+    },
+    {
+        "file": "book/src/concepts/no-std.md",
+        "text": "check-no-alloc-image.py",
+        "kind": "tool",
+        "why": "this tool's own name",
+    },
+    {
+        "file": "book/src/concepts/no-std.md",
+        "text": "allocation-free promise, borrows client's reply slot",
+        "kind": "type-level",
+        "why": "where one type keeps its state (a borrowed slot), true of the "
+        "type whatever the image links",
+    },
+    {
+        "file": "book/src/concepts/ros2-comparison.md",
+        "text": "an array parameter, with no heap",
+        "kind": "type-level",
+        "why": "`Seq<T, N>` is inline storage; a property of the value type",
+    },
+    {
+        "file": "book/src/getting-started/workspace-cpp.md",
+        "text": "no-alloc trampoline",
+        "kind": "type-level",
+        "why": "a C++ template trampoline with `this` as ctx — no storage is "
+        "created, by construction of the call",
+    },
+    {
+        "file": "book/src/internals/dispatch-strategy.md",
+        "text": "task's stack frame, no heap, no boxing",
+        "kind": "type-level",
+        "why": "where an inline closure's captures live (the spin task's "
+        "stack frame), not a statement about the linked image",
+    },
+    {
+        "file": "book/src/user-guide/rtic-integration.md",
+        "text": "a no-alloc framework",
+        "kind": "rationale",
+        "why": "explains why the tag API exists (an unknown closure type has "
+        "nowhere to live without a heap); promises nothing about an image",
+    },
+    {
+        "file": "book/src/internals/realtime-analysis.md",
+        "text": "No heap in RT code",
+        "kind": "rationale",
+        "why": "a clippy disallowed-methods entry a user writes",
+    },
+    {
+        "file": "book/src/design/rmw.md",
+        "text": '"no heap" is a property of the BACKEND',
+        "kind": "disclaimer",
+        "why": "issue 0777's correction of the old flat 'no heap' claim",
+    },
+    {
+        "file": "book/src/design/rmw.md",
+        "text": 'overstated it for years ("no heap", flatly)',
+        "kind": "disclaimer",
+        "why": "quotes the retired claim in order to retract it",
     },
 )
+
+
+def heap_free_images_in_lane(ci_text):
+    """The image dirs the L3 recipe runs through `--tier heap-free`.
+
+    Read from `just/ci.just` itself, so a row cannot claim a check the lane
+    stopped running. Returns the dir prefix (everything before `/target`) of
+    each quoted path argument of a heap-free invocation.
+    """
+    out = set()
+    pat = re.compile(
+        r"check-no-alloc-image\.py\s+--tier\s+heap-free\s*\\?\s*\"([^\"]+)\"",
+        re.DOTALL,
+    )
+    for m in pat.finditer(ci_text):
+        path = re.split(r"/target[^/]*/", m.group(1), maxsplit=1)[0]
+        out.add(path.rstrip("/"))
+    return out
+
+
+def harvest_book(book_files):
+    """[(file, lineno, line)] for every line matching CLAIM_PHRASE."""
+    hits = []
+    for rel, text in sorted(book_files.items()):
+        for n, line in enumerate(text.splitlines(), 1):
+            if CLAIM_PHRASE.search(line):
+                hits.append((rel, n, line))
+    return hits
+
+
+def check_claims(book_files, ci_text, roster=BOOK_CLAIMS):
+    """(problems, {row index: [line numbers]}) for the book against the lane."""
+    problems = []
+    lane = heap_free_images_in_lane(ci_text)
+    if not lane:
+        problems.append(
+            "just/ci.just runs no `check-no-alloc-image.py --tier heap-free` "
+            "on any image, so no `image` row can be backed"
+        )
+    seen = {}
+    for rel, n, line in harvest_book(book_files):
+        rows = [
+            i for i, c in enumerate(roster) if c["file"] == rel and c["text"] in line
+        ]
+        if not rows:
+            problems.append(
+                f"{rel}:{n}: UNROSTERED no-alloc wording: {line.strip()!r} — "
+                "scope the sentence to what is checked, or add a BOOK_CLAIMS "
+                "row saying why it is not a promise about an image"
+            )
+        for i in rows:
+            seen.setdefault(i, []).append(n)
+    for i, c in enumerate(roster):
+        if i not in seen:
+            problems.append(
+                f"{c['file']}: STALE roster row — no matching line contains {c['text']!r}"
+            )
+        if c["kind"] == "image":
+            if c.get("backed_by") not in lane:
+                problems.append(
+                    f"{c['file']}: {c['text']!r} claims {c.get('backed_by')!r}, "
+                    "which the L3 lane does not run through --tier heap-free "
+                    f"(it runs: {sorted(lane) or 'nothing'})"
+                )
+        elif not c.get("why"):
+            problems.append(
+                f"{c['file']}: {c['text']!r} is kind {c['kind']!r} with no written reason"
+            )
+    return problems, seen
+
+
+def load_book():
+    book = {}
+    base = os.path.join(ROOT, "book", "src")
+    for dirpath, _dirs, files in os.walk(base):
+        for f in files:
+            if f.endswith(".md"):
+                full = os.path.join(dirpath, f)
+                with open(full, encoding="utf-8") as fh:
+                    book[os.path.relpath(full, ROOT)] = fh.read()
+    return book
 
 
 NM_LINE = re.compile(r"^(?:([0-9a-fA-F]+))?\s*([A-Za-z?])\s+(.*)$")
@@ -678,24 +895,39 @@ def report_objects(res):
 
 
 def report_claims():
-    lines = ["# book claims this gate exists to back", ""]
-    for c in BOOK_CLAIMS:
-        state = c["backed_by"] or "UNBACKED"
-        lines.append(f"  {c['where']}")
-        lines.append(f'    "{c["text"]}"')
-        lines.append(f"    {state}")
-        if not c["backed_by"]:
-            lines.append(f"    reason: {c['why_not']}")
-        lines.append("")
-    backed = sum(1 for c in BOOK_CLAIMS if c["backed_by"])
-    lines.append(f"{backed} of {len(BOOK_CLAIMS)} backed by a built image.")
-    lines.append("")
-    lines.append(
-        "This is a LISTING, not a check — it always exits 0. Wiring it as a "
-        "gate would red-line every lane until a no-alloc fixture row exists, "
-        "which is issue 0816's remaining half, not this tool's."
+    """Print the roster; exit 0 only if every promise is backed or classified."""
+    with open(os.path.join(ROOT, "just", "ci.just"), encoding="utf-8") as fh:
+        ci_text = fh.read()
+    book = load_book()
+    if not book:
+        print("check-no-alloc-image --claims: CANNOT CHECK — no book/src/**/*.md")
+        return 2
+    problems, seen = check_claims(book, ci_text)
+    lane = heap_free_images_in_lane(ci_text)
+    print("# book no-alloc wording, and what backs each line")
+    print("")
+    print(f"heap-free images the L3 lane checks: {sorted(lane) or 'NONE'}")
+    print("")
+    for i, c in enumerate(BOOK_CLAIMS):
+        lines = ",".join(str(n) for n in seen.get(i, [])) or "?"
+        print(f"  {c['file']}:{lines}  [{c['kind']}]")
+        print(f'    "{c["text"]}"')
+        if c["kind"] == "image":
+            print(f"    backed by {c['backed_by']} — {c['covers']}")
+        else:
+            print(f"    not an image promise: {c['why']}")
+    print("")
+    if problems:
+        print(f"{len(problems)} problem(s):")
+        for p in problems:
+            print(f"  FAIL {p}")
+        return 1
+    backed = sum(1 for c in BOOK_CLAIMS if c["kind"] == "image")
+    print(
+        f"OK — {backed} image promise(s), each backed by an image the L3 lane "
+        f"links and checks; {len(BOOK_CLAIMS) - backed} other line(s) classified."
     )
-    return "\n".join(lines)
+    return 0
 
 
 def selftest():
@@ -824,6 +1056,34 @@ def selftest():
         "tier unified on an ELF must refuse, not green"
     )
 
+    # The claims gate (issue 0816) must fail in each of its directions.
+    ci_ok = (
+        "python3 scripts/check-no-alloc-image.py --tier heap-free \\\n"
+        '    "pkg/img/target/thumbv7m-none-eabi/$(dir)/img"\n'
+    )
+    assert heap_free_images_in_lane(ci_ok) == {"pkg/img"}, heap_free_images_in_lane(
+        ci_ok
+    )
+    row = {
+        "file": "b.md",
+        "text": "is heap-free",
+        "kind": "image",
+        "backed_by": "pkg/img",
+        "covers": "x",
+    }
+    book = {"b.md": "The thing is heap-free.\n"}
+    assert check_claims(book, ci_ok, (row,))[0] == [], "a backed row must pass"
+    assert check_claims(book, "", (row,))[0], "a lane that checks nothing must fail"
+    assert check_claims(book, ci_ok, ({**row, "backed_by": "pkg/other"},))[0], (
+        "an image the lane does not run must fail"
+    )
+    unrostered = check_claims({"b.md": "It is fully no-alloc.\n"}, ci_ok, (row,))[0]
+    assert any("UNROSTERED" in p for p in unrostered), "unrostered wording must fail"
+    assert any("STALE" in p for p in unrostered), "a row matching nothing must fail"
+    assert check_claims(book, ci_ok, ({**row, "kind": "rationale"},))[0], (
+        "a non-image row with no reason must fail"
+    )
+
     print(
         "selftest: ok — clean images pass, all four families fail, "
         "near-miss symbols do not fire, and every vacuous shape exits 2"
@@ -856,7 +1116,9 @@ def main(argv=None, _run_selftest=True):
     )
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument(
-        "--claims", action="store_true", help="print the book claims this gate backs"
+        "--claims",
+        action="store_true",
+        help="gate the book's no-alloc wording against the images L3 checks",
     )
     ap.add_argument("--selftest", action="store_true", help="prove the check can fail")
     args = ap.parse_args(argv)
@@ -873,8 +1135,7 @@ def main(argv=None, _run_selftest=True):
             sys.stdout.write(_selftest_out.getvalue())
             return _selftest_rc
     if args.claims:
-        print(report_claims())
-        return 0
+        return report_claims()
 
     allows = set()
     for spec in args.allow:

@@ -259,7 +259,6 @@ build-serial: \
     excluded-crate-tests \
     launch-resolve-builds \
     mem-report \
-    no-alloc-image \
     node-std-tests \
     nros-log-riscv32 \
     required-features-tests \

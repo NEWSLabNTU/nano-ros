@@ -199,7 +199,11 @@ l3:
     fi
     # phase-391 W1/W4 (issues 0816/0843) — the heap-free tier, on a REAL image.
     # `heap-free-poc-mps2` calls `Executor::open_in` + `install_node_typed_in`
-    # over per-class static storage and links with NO allocation symbol at all
+    # over per-class static storage, links spin_once/spin_some/spin_forever and
+    # the core ParameterServer over caller-owned ParameterStorage (issue 0816:
+    # the book's no-alloc sentences are held to THIS image by
+    # `check-no-alloc-image.py --claims`, which reads the path below from this
+    # recipe — move it and the claims gate fails), and links with NO allocation symbol at all
     # (no `#[global_allocator]`, no `malloc`, no `nros_platform_alloc`). Three
     # earlier probes passed this gate vacuously at `symbols read: 1`; this one
     # reads the full symbol table of a linked image (~460). The build doubles

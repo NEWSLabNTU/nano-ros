@@ -54,8 +54,10 @@ for the full three-terminal walkthrough.
 
 Choose the **XRCE-DDS** backend when:
 
-- RAM is the constraint: ~3 KB of client RAM, fully static allocation,
-  no heap required on the MCU.
+- RAM is the constraint: ~3 KB of client RAM, and the backend allocates
+  only when a session or entity is created — never per message. (It is
+  not heap-free: each allocation goes through `nros_platform_alloc`, and
+  their number follows the entities you declare.)
 - You need a **serial (UART)** transport — the only backend that works
   on an MCU with no networking hardware. See
   [Serial Transport](./serial-transport.md).

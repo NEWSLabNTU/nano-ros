@@ -65,7 +65,7 @@ let publisher = {
 - The caller has its own scheduling primitive (RTIC dispatcher, embassy task, FreeRTOS task per entity).
 - The flow is fundamentally request-response — service-client `Promise<Reply>` and action-client `send_goal` → `get_result` work this way.
 - The receive logic isn't simple enough to express as a one-shot closure — e.g. a Fibonacci server that publishes feedback in a loop after accepting a goal.
-- You want zero allocations and no executor arena overhead (the L2 path stores the closure + its captures inline in the arena; the arena byte budget is per-build-tunable but non-zero).
+- You want no executor arena overhead (the L2 path stores the closure + its captures inline in the arena; the arena byte budget is per-build-tunable but non-zero).
 
 **Use L2 (`Executor::register_*`) when:**
 - The flow is event-driven with a simple handler — log every received message, reply to a service synchronously, fire a 1 Hz publish.

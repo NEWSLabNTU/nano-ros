@@ -51,7 +51,10 @@ The XRCE-DDS backend uses [Micro-XRCE-DDS-Client](https://github.com/eProsima/Mi
 **Key characteristics:**
 - Agent is **mandatory** -- the MCU cannot participate in the network without it
 - If the Agent crashes, the MCU loses all connectivity
-- Fully static memory allocation on the MCU (no heap required)
+- Small, bounded heap use on the MCU: the backend allocates when a session
+  or entity is created, never per message (each is a `nros_xrce_calloc`
+  in an open/create path, through `nros_platform_alloc`;
+  each `XRCE_MAX_SUBSCRIBERS` slot is heap, so size it to what you declare)
 - Client-side discovery is not supported; the Agent handles it
 - Transport options: UDP, serial (HDLC framing)
 
