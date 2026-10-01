@@ -238,6 +238,7 @@ pub type LifecycleCallbackFnCtx = unsafe extern "C" fn(ctx: *mut c_void) -> u8;
 /// `nros_cpp_lifecycle_change_state`, `nros_cpp_lifecycle_autostart` and the
 /// safe `LifecycleCallbacks` road all funnel through that one function, so a
 /// new caller is announced without being told to announce.
+#[cfg(feature = "lifecycle-services")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TransitionAnnouncement {
     /// Steady-clock nanoseconds at the moment the transition completed.
@@ -266,6 +267,7 @@ pub(crate) struct TransitionAnnouncement {
 /// ([`LifecyclePollingNodeCtx::take_dropped_announcements`]) — the posture the
 /// zpico session's `reply_slot_refusals` already takes for the other bounded
 /// table in this stack.
+#[cfg(feature = "lifecycle-services")]
 pub(crate) const TRANSITION_ANNOUNCEMENT_QUEUE: usize = 4;
 
 /// Lifecycle state machine with `unsafe fn(*mut c_void) -> TransitionResult` callbacks.
@@ -285,9 +287,17 @@ pub struct LifecyclePollingNodeCtx {
     on_error: Option<LifecycleCallbackFnCtx>,
     context: *mut c_void,
     /// Transitions performed and not yet announced on `~/transition_event`.
+    ///
+    /// Behind `lifecycle-services` with everything else in this mechanism: the
+    /// drain is the executor's publisher, so an image that registers no
+    /// lifecycle services has nowhere to announce TO, and recording into a
+    /// queue nobody reads is bytes and a clock read per transition bought for
+    /// nothing.
+    #[cfg(feature = "lifecycle-services")]
     announcements: heapless::Deque<TransitionAnnouncement, TRANSITION_ANNOUNCEMENT_QUEUE>,
     /// How many announcements the queue above had to drop. Saturating: the
     /// number is a signal, and a wrap would turn it into a lie.
+    #[cfg(feature = "lifecycle-services")]
     announcements_dropped: u32,
 }
 
@@ -306,7 +316,9 @@ impl LifecyclePollingNodeCtx {
             on_shutdown: None,
             on_error: None,
             context: core::ptr::null_mut(),
+            #[cfg(feature = "lifecycle-services")]
             announcements: heapless::Deque::new(),
+            #[cfg(feature = "lifecycle-services")]
             announcements_dropped: 0,
         }
     }
@@ -321,6 +333,7 @@ impl LifecyclePollingNodeCtx {
     /// The executor calls this until it returns `None` and publishes each one
     /// on `~/transition_event`. A state machine nobody drains fills its queue
     /// and counts the overflow; it never blocks a transition.
+    #[cfg(feature = "lifecycle-services")]
     pub(crate) fn take_announcement(&mut self) -> Option<TransitionAnnouncement> {
         self.announcements.pop_front()
     }
@@ -330,11 +343,13 @@ impl LifecyclePollingNodeCtx {
     ///
     /// Read-and-clear rather than read, so a drainer reports a burst once
     /// instead of once per spin for the rest of the image's life.
+    #[cfg(feature = "lifecycle-services")]
     pub(crate) fn take_dropped_announcements(&mut self) -> u32 {
         core::mem::replace(&mut self.announcements_dropped, 0)
     }
 
     /// Record a completed transition for the executor to announce.
+    #[cfg(feature = "lifecycle-services")]
     fn record_announcement(
         &mut self,
         transition: LifecycleTransition,
@@ -441,7 +456,12 @@ impl LifecyclePollingNodeCtx {
         // `Configure` that landed in `ErrorProcessing` rather than `Inactive`.
         // A REJECTED transition publishes nothing, because none ran — the two
         // early returns above are before this point, as they are in rcl.
+        #[cfg(feature = "lifecycle-services")]
         self.record_announcement(transition, start_state, self.state);
+        // No lifecycle services in this build means no publisher to announce
+        // on, so there is nothing to record and nothing to read `start_state`.
+        #[cfg(not(feature = "lifecycle-services"))]
+        let _ = start_state;
 
         if result == TransitionResult::Success {
             Ok(self.state)
@@ -575,6 +595,7 @@ mod tests {
     // Transition announcements (issue 1587)
     // ═══════════════════════════════════════════════════════════════════════
 
+    #[cfg(feature = "lifecycle-services")]
     #[test]
     fn every_executed_transition_is_recorded_once() {
         let mut sm = LifecyclePollingNodeCtx::new();
@@ -592,6 +613,7 @@ mod tests {
         assert_eq!(sm.take_dropped_announcements(), 0);
     }
 
+    #[cfg(feature = "lifecycle-services")]
     #[test]
     fn a_rejected_transition_records_nothing() {
         let mut sm = LifecyclePollingNodeCtx::new();
@@ -603,6 +625,7 @@ mod tests {
         assert_eq!(sm.take_dropped_announcements(), 0);
     }
 
+    #[cfg(feature = "lifecycle-services")]
     #[test]
     fn an_undrained_queue_counts_its_losses_instead_of_hiding_them() {
         let mut sm = LifecyclePollingNodeCtx::new();
