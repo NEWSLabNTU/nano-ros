@@ -14,7 +14,7 @@ related: [phase-392, RFC-0002, 0163, 0880, phase-448, 1557]
 
 Closed as done for every platform it covered; the remainder — `threadx-riscv64`'s
 unstated backing size and the undeclared allocator bases — is
-[issue 1557](../1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md).
+[issue 1557](1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md).
 
 - **Zephyr** — paired 2026-09-06: one leaf, then all twelve Rust confs with a
   picolibc arena, via the stated `CONFIG_NROS_EXECUTOR_BACKING_U64S` (issue
@@ -414,7 +414,7 @@ itself a guess — worth its own work item, alongside the FreeRTOS heap budget.
   now 11,069 per issue 1388). Both variants resolve their descriptor
   (2026-09-13). `threadx-riscv64`'s own backing number is still unstated — the
   safe state — and has MOVED to
-  [issue 1557](../1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md),
+  [issue 1557](1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md),
   blocked on issue 1355.
 * ~~**The byte pool's 4 MiB base, and FreeRTOS's 2 MiB, are undeclared
   numbers.**~~ MOVED to issue 1557. (FreeRTOS's 2 MiB literal is already gone for

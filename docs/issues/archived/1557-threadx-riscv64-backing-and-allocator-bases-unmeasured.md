@@ -4,17 +4,72 @@ title: "What issue 1145 left behind: `threadx-riscv64` states no executor-backin
   size, so its image still reserves the backing twice — and the allocator BASES
   the pairings subtract from (ThreadX's 4 MiB byte pool, FreeRTOS's 3 MiB
   cyclone/XRCE heap) were never derived"
-status: open
+status: resolved
+resolved: 2026-10-01
+resolved_in: fix/1557-rv64-delivery
 type: tech-debt
 area: boards, threadx, freertos
 severity: low
 found: 2026-09-29
-related: [1145, phase-392, phase-448, 1171, 1355, 1197, 1388]
+related: [1145, phase-392, phase-448, 1171, 1355, 1197, 1388, 1590]
 ---
+
+## Resolution (2026-10-01)
+
+**Item 1 closed: the rv64 backing is stated (phase-472 F5, below) and the images
+now DELIVER.** Why they did not: the six rust leaves build through
+`nros_threadx_rv64_rust_app` (since phase-369 W2, for zenoh too), whose app
+thread ran on the board crate's `Config::default()` — static `192.0.3.10` and a
+router at `tcp/192.0.3.1:7447`, the old threadx-linux TAP-bridge plan. Every
+other part of this board already used QEMU slirp's DEFAULT plan: the harness
+launcher (`start_riscv64_virt`, plain `-netdev user`), both `NROS_APP_CONFIG`
+emitters that NetX is brought up from (`10.0.2.40/.41`, gw `10.0.2.2`), every
+C/C++ fixture row (`NROS_ENTRY_LOCATOR = tcp/10.0.2.2:95xx/96xx`), the rust
+leaves' own `system.toml` (`tcp/10.0.2.2:94x0`), and the entry lane's default
+(`NANO_ROS_LOCATOR_ENTRY_DEFAULT`). Slirp-default is also what the majority of
+QEMU boards with this harness use (NuttX arm/riscv, mps2-an385 bare-metal, the
+FreeRTOS Rust entries); the `192.0.3.0/24` + `host=192.0.3.1` plan is the
+FreeRTOS C/C++ and ESP32 minority. So the rust app thread was the one outlier,
+and it now follows the board's convention:
+
+- `startup.c` exports `nros_rv64_image_identity()`: the `NROS_APP_CONFIG`
+  network bytes NetX was configured from, plus a per-image locator define.
+- `nros_threadx_rv64_rust_app` resolves that locator — `-DNROS_ENTRY_LOCATOR`,
+  else the leaf's `system.toml` `[image.*] locator` (through
+  `nano_ros_read_leaf_system`), else `_nros_resolve_entry_locator` — and bakes it
+  into `startup.c`, NOT into cargo env (the Corrosion cargo dir is shared across
+  leaves, issue 0805, so a per-port env would race on one board rlib).
+- `run_app_thread` reads it (`image_config()`); `Config::default()` / the C
+  `cfg_*` defaults move to the slirp plan too.
+
+Delivery, hand run with `start_riscv64_virt`'s exact QEMU arguments against the
+paired `rmw_zenohd` (`nros_router_exec`):
+
+- talker + listener on `tcp/10.0.2.2:9400`: listener banner
+  `IP 10.0.2.41`, `nros entry ready`, **39 `I heard: [Hello World: N]`** in 40 s;
+- action server + client on `:9420`: `Goal accepted`, 10 feedbacks,
+  `Result received: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]`.
+
+**Item 2 closed: both bases are documented beside their definitions.**
+
+- **ThreadX `BYTE_POOL_BASE_SIZE` (4 MiB)** — loaded peaks (session up, traffic
+  flowing), rv-virt-threadx zenoh: action-server 725,088 B, action-client
+  721,128, talker 706,136, listener 705,384, of a 4,105,752 B pool: 5.7x margin.
+  KEPT, not derived down: every row is zenoh, the Cyclone rust images do not
+  link (issue 1590) and the C/C++ images do not run the reporter, so a cut would
+  be a guess about Cyclone in the unsafe direction. The table and that reason
+  are in `threadx_hooks.c`. threadx-linux's 181,144 B (1145) is cited, not
+  re-measured.
+- **FreeRTOS `NROS_FREERTOS_HEAP_KB 3072`** — NOT measured, and the define now
+  says why: only a build of `nros-board-freertos` without `rmw-zenoh` reaches it,
+  and the one in-tree instance is the S32Z270 Cyclone C++ workspace entry, a
+  link-only witness (no emulator). The mps2-an385 Rust Cyclone fixture is retired
+  (`#[ignore]`) and no FreeRTOS XRCE image exists. The comment names the
+  `nros: heap peak` line to record when one boots.
 
 ## Background
 
-[Issue 1145](archived/1145-executor-backing-static-unpaired-with-rtos-heap.md)
+[Issue 1145](1145-executor-backing-static-unpaired-with-rtos-heap.md)
 asked every RTOS port to stop reserving the executor backing twice after
 phase-392 W6 moved it into the `.bss` static
 `nros_node::executor::backing::EXECUTOR_BACKING`. Every port it covered is
@@ -51,7 +106,7 @@ Where it stands at 2026-09-29:
   wired and gated, only the statement is missing.
 
 **Cost:** one double reservation of the backing (tens of KiB) on a QEMU-only
-board. **Blocker:** [issue 1355](1355-threadx-riscv64-builds-the-linux-threadx-port.md)
+board. **Blocker:** [issue 1355](../1355-threadx-riscv64-builds-the-linux-threadx-port.md)
 — the `threadx_riscv64` lane builds ThreadX's linux/gnu port and its board crate
 does not compile, so there is no image to measure yet.
 

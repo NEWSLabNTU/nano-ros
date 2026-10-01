@@ -552,6 +552,43 @@ function(nros_board_link_app target)
 endfunction()
 
 # ---------------------------------------------------------------------------
+# Issue 1557 — the locator a RUST image of this board dials.
+#
+# A C/C++ image gets `NROS_ENTRY_LOCATOR` from `nano_ros_entry()`. The rust
+# leaves go through `nros_threadx_rv64_rust_app` below, which reaches no entry
+# lane, so until 1557 their app thread fell back to the board crate's
+# `Config::default()` — `tcp/192.0.3.1:7447`, a network no launcher of this
+# board provides — and no session ever reached a router. Precedence, from the
+# same sources the other lanes use:
+#   1. `-DNROS_ENTRY_LOCATOR` (what every C/C++ fixture row of this board passes);
+#   2. the leaf's own `system.toml` `[image.*] locator` (what `nros::main!` read
+#      on the retired cargo path, and where the six rust leaves state their
+#      ports), read through the ONE reader, `nano_ros_read_leaf_system`;
+#   3. the entry lane's default for this board (`_nros_resolve_entry_locator`).
+# A FUNCTION, so the reader's NANO_ROS_EXPORT_* outputs do not leak into the
+# leaf's scope.
+# ---------------------------------------------------------------------------
+include("${_NROS_BOARD_ROOT}/cmake/NanoRosEntryLocator.cmake")
+function(_nros_rv64_image_locator out_var)
+    if(NOT DEFINED NROS_ENTRY_LOCATOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/system.toml")
+        if(NOT COMMAND nano_ros_read_leaf_system)
+            message(FATAL_ERROR
+                "nros_threadx_rv64_rust_app: ${CMAKE_CURRENT_SOURCE_DIR}/system.toml "
+                "exists but `nano_ros_read_leaf_system` is not loaded, so its "
+                "`[image.*] locator` cannot be read (issue 1557). Call this after "
+                "`nros_generate_interfaces()`, which loads it.")
+        endif()
+        nano_ros_read_leaf_system(DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+        if(NOT "${NANO_ROS_LEAF_LOCATOR}" STREQUAL "")
+            set(${out_var} "${NANO_ROS_LEAF_LOCATOR}" PARENT_SCOPE)
+            return()
+        endif()
+    endif()
+    _nros_resolve_entry_locator(entry "${NANO_ROS_PLATFORM}" "${NANO_ROS_BOARD}" _loc)
+    set(${out_var} "${_loc}" PARENT_SCOPE)
+endfunction()
+
+# ---------------------------------------------------------------------------
 # Issue #205 step 3 — one-call CMake seam for the Rust app shape.
 #
 # phase-369 W1 — RMW-neutral: the same seam builds the zenoh and cyclonedds
@@ -706,4 +743,13 @@ nros_riscv64_rustflags_env(${_crate_target}-static)
         ${_A_LINK})
     nros_platform_link_app(${target})
     nano_ros_link_rmw(${target} RMW ${NROS_RMW})
+    # issue 1557 — bake THIS image's locator into its `startup.c`
+    # (`nros_rv64_image_identity`), a per-image TU. Not a cargo env var: the
+    # crate builds in a Corrosion directory SHARED by every leaf with the same
+    # feature inputs (issue 0805), and two leaves with different ports would
+    # rebuild — or race on — the one board rlib.
+    _nros_rv64_image_locator(_rv64_locator)
+    message(STATUS "nros_threadx_rv64_rust_app(${target}): locator ${_rv64_locator}")
+    target_compile_definitions(${target} PRIVATE
+        "NROS_RV64_IMAGE_LOCATOR=\"${_rv64_locator}\"")
 endfunction()

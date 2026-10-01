@@ -255,21 +255,67 @@ impl ThreadxQemuRiscv64 {
 /// running when `app_main` is reached. `app_main` must NOT call
 /// [`nros_platform::BoardEntry::run`] (that re-enters the kernel); it calls this,
 /// which runs the post-kernel body (open executor + `setup` + spin) on
-/// `Config::default()`. The cargo/zenoh path uses `nros::main!()` /
-/// `BoardEntry::run` instead and never reaches here.
+/// [`image_config`] — the identity the image's C `startup.c` brought NetX up
+/// from, plus the locator `nros_threadx_rv64_rust_app` baked for THIS image.
+/// Since phase-369 W2 this is the only path the six rust leaves take, for zenoh
+/// as well as Cyclone.
 ///
-/// CycloneDDS-path note: no `nros::main!()` macro emits a baked boot config for
-/// this path, so `boot_config = None` (keeps the `"nros_app"` default).
+/// No `nros::main!()` macro emits a baked boot config for this path, so
+/// `boot_config = None` (keeps the `"nros_app"` default).
 pub fn run_app_thread<F, E>(setup: F) -> !
 where
     F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
     E: core::fmt::Debug,
 {
     nros_board_threadx::run_app_thread::<ThreadxQemuRiscv64, Config, F, E>(
-        Config::default(),
+        image_config(),
         None,
         setup,
     )
+}
+
+/// Issue 1557 — the CMake image's identity, read from the image rather than
+/// from this crate's defaults.
+///
+/// `startup.c` configures NetX from `NROS_APP_CONFIG` before the kernel starts;
+/// `nros_rv64_image_identity` (same TU) hands those bytes back, and the locator
+/// the image's cmake helper baked. This used to be `Config::default()`, which
+/// named a different network from the one NetX was on, so the image dialled a
+/// router no launcher of this board provides and never got a session.
+///
+/// A NULL locator means the image baked none; [`Config::default`]'s then
+/// stands. The domain is not in the C struct's contract here and keeps the
+/// `NROS_DOMAIN_ID` bake `Config::default` reads.
+fn image_config() -> Config {
+    unsafe extern "C" {
+        fn nros_rv64_image_identity(
+            ip: *mut u8,
+            netmask: *mut u8,
+            gateway: *mut u8,
+            mac: *mut u8,
+        ) -> *const core::ffi::c_char;
+    }
+    let mut config = Config::default();
+    let base = &mut config.base;
+    // SAFETY: each pointer addresses an array of exactly the length the C
+    // prototype names (4, 4, 4, 6); the function only writes through them.
+    let locator = unsafe {
+        nros_rv64_image_identity(
+            base.ip.as_mut_ptr(),
+            base.netmask.as_mut_ptr(),
+            base.gateway.as_mut_ptr(),
+            base.mac.as_mut_ptr(),
+        )
+    };
+    if !locator.is_null() {
+        // SAFETY: a non-NULL return is a C string LITERAL (a `-D` define on
+        // `startup.c`), so it is NUL-terminated and lives for the image.
+        let locator: &'static core::ffi::CStr = unsafe { core::ffi::CStr::from_ptr(locator) };
+        if let Ok(s) = locator.to_str() {
+            base.zenoh_locator = s;
+        }
+    }
+    config
 }
 
 /// Issue #205 step 2 — emit the C-ABI `app_main` entry for the CMake firmware

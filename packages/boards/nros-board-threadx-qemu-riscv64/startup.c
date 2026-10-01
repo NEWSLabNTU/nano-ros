@@ -134,6 +134,42 @@ extern void nros_threadx_set_config(
  * constructor or by being linked before tx_kernel_enter.
  */
 
+/*
+ * Issue 1557 — the identity a RUST image's app thread runs with.
+ *
+ * NetX is brought up from `NROS_APP_CONFIG.network` in `main()` below, before
+ * the kernel. The Rust app thread (`run_app_thread`, reached through the board
+ * crate's `app_main!`) used to run on the board's `Config::default()` instead,
+ * which named a DIFFERENT network — static `192.0.3.10` and a router at
+ * `tcp/192.0.3.1:7447` — while NetX sat on QEMU slirp's `10.0.2.0/24`. The
+ * image booted and dialled an address no launcher of this board provides
+ * (`start_riscv64_virt` is plain `-netdev user`), so no session came up.
+ *
+ * Reading the identity HERE makes the two agree by construction: the Rust side
+ * reports and uses the bytes NetX was configured from. The locator is baked per
+ * IMAGE by `nros_threadx_rv64_rust_app` (`-DNROS_ENTRY_LOCATOR`, else the
+ * leaf's `system.toml` `[image.*] locator`, else the entry-lane default), as a
+ * define on this TU — never into the shared Corrosion cargo directory, which
+ * two leaves with different ports would race on. NULL means "not baked": the
+ * caller keeps its own default. C/C++ images never reference it, so
+ * `--gc-sections` drops it there.
+ */
+#ifndef NROS_RV64_IMAGE_LOCATOR
+#define NROS_RV64_IMAGE_LOCATOR ((const char *)0)
+#endif
+const char *nros_rv64_image_identity(uint8_t ip[4], uint8_t netmask[4], uint8_t gateway[4],
+                                     uint8_t mac[6]) {
+    for (int i = 0; i < 4; i++) {
+        ip[i] = NROS_APP_CONFIG.network.ip[i];
+        netmask[i] = NROS_APP_CONFIG.network.netmask[i];
+        gateway[i] = NROS_APP_CONFIG.network.gateway[i];
+    }
+    for (int i = 0; i < 6; i++) {
+        mac[i] = NROS_APP_CONFIG.network.mac[i];
+    }
+    return NROS_RV64_IMAGE_LOCATOR;
+}
+
 /* UART init — must be called before any printf */
 extern int uart_init(void);
 
