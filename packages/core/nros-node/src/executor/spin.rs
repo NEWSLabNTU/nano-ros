@@ -2529,7 +2529,7 @@ impl<'s> Executor<'s> {
     /// yet — that is where the `--ros-args` parse would arrive
     /// (`init.json`'s `rust:init_with_args`). See that function for the
     /// precedence rule and for why the tier is an argument there rather than a
-    /// field on [`RemapRule`].
+    /// field on `RemapRule`.
     #[allow(clippy::result_unit_err)]
     pub fn resolve_entity_name_for(
         &self,
