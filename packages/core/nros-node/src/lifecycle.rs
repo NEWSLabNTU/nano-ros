@@ -223,6 +223,46 @@ impl Default for LifecyclePollingNode {
 /// [`LifecyclePollingNodeCtx::trigger_transition`].
 pub type LifecycleCallbackFnCtx = unsafe extern "C" fn(ctx: *mut c_void) -> u8;
 
+/// One transition this state machine has performed and not yet ANNOUNCED on
+/// `~/transition_event` (REP-2002's communication interface).
+///
+/// Recorded by [`LifecyclePollingNodeCtx::trigger_transition`] and drained by
+/// the executor, which owns the publisher. Recording where the transition
+/// HAPPENS rather than at each caller is the whole point: `ros2 lifecycle
+/// set`, `nros_executor_lifecycle_change_state`,
+/// `nros_cpp_lifecycle_change_state`, `nros_cpp_lifecycle_autostart` and the
+/// safe `LifecycleCallbacks` road all funnel through that one function, so a
+/// new caller is announced without being told to announce.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransitionAnnouncement {
+    /// Steady-clock nanoseconds at the moment the transition completed.
+    ///
+    /// rcl stamps `TransitionEvent.timestamp` from `rcutils_steady_time_now`
+    /// in `rcl_lifecycle`'s `com_interface.c`, not from the wall clock, so
+    /// this reads [`nros_core::clock::Clock::steady`].
+    pub timestamp_ns: u64,
+    /// The transition that ran.
+    pub transition: LifecycleTransition,
+    /// The state the machine was in before it ran.
+    pub start_state: LifecycleState,
+    /// The state the machine reached, whether the callback succeeded or not.
+    pub goal_state: LifecycleState,
+}
+
+/// How many [`TransitionAnnouncement`]s a state machine holds between drains.
+///
+/// The drain is the executor's lifecycle step, so the bound is "the longest
+/// burst a transition source can produce before the executor next spins".
+/// Measured against the sources in this tree the longest is TWO —
+/// `nros_cpp_lifecycle_autostart(exec, 2)` runs `configure` then `activate`
+/// from `__nros_entry_setup`, before the spin loop starts. Four is that with
+/// headroom for a caller driving its own sequence; beyond it a record is
+/// dropped and COUNTED, never silently lost
+/// ([`LifecyclePollingNodeCtx::take_dropped_announcements`]) — the posture the
+/// zpico session's `reply_slot_refusals` already takes for the other bounded
+/// table in this stack.
+pub const TRANSITION_ANNOUNCEMENT_QUEUE: usize = 4;
+
 /// Lifecycle state machine with `unsafe fn(*mut c_void) -> TransitionResult` callbacks.
 ///
 /// Thin counterpart to [`LifecyclePollingNode`] for bridging the C FFI: each
@@ -239,6 +279,11 @@ pub struct LifecyclePollingNodeCtx {
     on_shutdown: Option<LifecycleCallbackFnCtx>,
     on_error: Option<LifecycleCallbackFnCtx>,
     context: *mut c_void,
+    /// Transitions performed and not yet announced on `~/transition_event`.
+    announcements: heapless::Deque<TransitionAnnouncement, TRANSITION_ANNOUNCEMENT_QUEUE>,
+    /// How many announcements the queue above had to drop. Saturating: the
+    /// number is a signal, and a wrap would turn it into a lie.
+    announcements_dropped: u32,
 }
 
 // `*mut c_void` is `!Sync` + `!Send`; that's the correct posture for a
@@ -256,12 +301,50 @@ impl LifecyclePollingNodeCtx {
             on_shutdown: None,
             on_error: None,
             context: core::ptr::null_mut(),
+            announcements: heapless::Deque::new(),
+            announcements_dropped: 0,
         }
     }
 
     /// Get the current lifecycle state.
     pub const fn state(&self) -> LifecycleState {
         self.state
+    }
+
+    /// Take the oldest unannounced transition, if any.
+    ///
+    /// The executor calls this until it returns `None` and publishes each one
+    /// on `~/transition_event`. A state machine nobody drains fills its queue
+    /// and counts the overflow; it never blocks a transition.
+    pub fn take_announcement(&mut self) -> Option<TransitionAnnouncement> {
+        self.announcements.pop_front()
+    }
+
+    /// How many announcements have been dropped since this was last called —
+    /// and reset the counter.
+    ///
+    /// Read-and-clear rather than read, so a drainer reports a burst once
+    /// instead of once per spin for the rest of the image's life.
+    pub fn take_dropped_announcements(&mut self) -> u32 {
+        core::mem::replace(&mut self.announcements_dropped, 0)
+    }
+
+    /// Record a completed transition for the executor to announce.
+    fn record_announcement(
+        &mut self,
+        transition: LifecycleTransition,
+        start_state: LifecycleState,
+        goal_state: LifecycleState,
+    ) {
+        let record = TransitionAnnouncement {
+            timestamp_ns: nros_core::clock::Clock::steady().now().to_nanos().max(0) as u64,
+            transition,
+            start_state,
+            goal_state,
+        };
+        if self.announcements.push_back(record).is_err() {
+            self.announcements_dropped = self.announcements_dropped.saturating_add(1);
+        }
     }
 
     /// Set the user context pointer passed to every callback.
@@ -342,7 +425,18 @@ impl LifecyclePollingNodeCtx {
             None => TransitionResult::Success,
         };
 
+        let start_state = self.state;
         self.state = apply_transition(self.state, transition, result);
+
+        // REP-2002's communication interface is the five services PLUS a
+        // `~/transition_event` publisher, and this is the ONE place a
+        // transition happens (issue 1587). Recorded on the FAILURE path too:
+        // rcl publishes the failure transition as well, and a supervisor
+        // watching passively is exactly the reader who needs to see a
+        // `Configure` that landed in `ErrorProcessing` rather than `Inactive`.
+        // A REJECTED transition publishes nothing, because none ran — the two
+        // early returns above are before this point, as they are in rcl.
+        self.record_announcement(transition, start_state, self.state);
 
         if result == TransitionResult::Success {
             Ok(self.state)
