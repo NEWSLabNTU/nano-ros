@@ -128,3 +128,26 @@ and the TU compiles clean under gcc and clang with `-Wall -Wextra
 Stays **open**: acceptance above is the nightly `threadx_linux` job building
 `c_service_server` again, plus a C-only fixture in a lane that would catch a
 recurrence — and the second half is not done.
+
+## The first half of the acceptance is confirmed on the lane, twice (2026-10-01)
+
+The 2026-09-29 entry's fix was verified locally and this issue was kept open
+because acceptance is *"the nightly `threadx_linux` job building
+`c_service_server` again, plus a C-only fixture in a lane that would catch a
+recurrence"*. The nightly has now answered the first half:
+
+| 07:19 nightly run | `threadx_linux` |
+| --- | --- |
+| 36535897637 (2026-09-29) | failure |
+| 36682994178 (2026-09-30) | **success** |
+| 36829686786 (2026-10-01) | **success** |
+
+Two consecutive greens, bracketed by the red the fix was measured against, on the
+same lane and the same job name — so the weak-reference fix holds in CI and not
+only in the local `threadx-linux` host build.
+
+Still open, and the reason is unchanged: **the second half is not done.** There
+is no C-only fixture in a lane that would catch a recurrence, so a future
+regression of this symbol would be caught by the nightly or by nothing. Until
+that exists, these two greens are evidence the fix works, not a guard that it
+keeps working.
