@@ -1,3 +1,4 @@
+{%- set tag %}{% if m.tier is not none %}_t{{ m.tier }}{% endif %}{% endset %}
 {#-
   phase-462 W1 (RFC-0052) -- install one contract monitor table on one
   executor, inside the setup function that is about to create that executor's
@@ -12,20 +13,20 @@
   own leading whitespace). The trailing newline of this file is dropped by
   the renderer, so the caller's next line follows the closing brace directly.
 #}
-    /* phase-462 W1 -- contract monitor table{{ m.where_ }}: installed BEFORE any node
+    /* phase-462 W1 -- contract monitor table{% if m.tier is not none %} (tier[{{ m.tier }}] {{ m.tier_name }}){% endif %}: installed BEFORE any node
      * exists, because a publisher attaches its counter cell at create time. */
     {
         void* __mexec = {{ mexec }};
         if (__mexec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
         ::nros_cpp_monitor_tables_t __mtables = {
-            .rows = {% if m.rows %}__nros_mon_rows{{ m.tag }}{% else %}nullptr{% endif %},
+            .rows = {% if m.rows %}__nros_mon_rows{{ tag }}{% else %}nullptr{% endif %},
             .n_rows = {{ m.rows | length }}u,
-            .row_storage = {% if m.rows %}__nros_mon_storage{{ m.tag }}{% else %}nullptr{% endif %},
-            .row_storage_len = {% if m.rows %}sizeof(__nros_mon_storage{{ m.tag }}){% else %}0u{% endif %},
-            .ages = {% if m.ages %}__nros_age_rows{{ m.tag }}{% else %}nullptr{% endif %},
+            .row_storage = {% if m.rows %}__nros_mon_storage{{ tag }}{% else %}nullptr{% endif %},
+            .row_storage_len = {% if m.rows %}sizeof(__nros_mon_storage{{ tag }}){% else %}0u{% endif %},
+            .ages = {% if m.ages %}__nros_age_rows{{ tag }}{% else %}nullptr{% endif %},
             .n_ages = {{ m.ages | length }}u,
-            .age_storage = {% if m.ages %}__nros_age_storage{{ m.tag }}{% else %}nullptr{% endif %},
-            .age_storage_len = {% if m.ages %}sizeof(__nros_age_storage{{ m.tag }}){% else %}0u{% endif %},
+            .age_storage = {% if m.ages %}__nros_age_storage{{ tag }}{% else %}nullptr{% endif %},
+            .age_storage_len = {% if m.ages %}sizeof(__nros_age_storage{{ tag }}){% else %}0u{% endif %},
         };
         nros_cpp_ret_t __mret = nros_cpp_install_monitors(__mexec, &__mtables);
         if (__mret != NROS_CPP_RET_OK) return static_cast<int32_t>(__mret);

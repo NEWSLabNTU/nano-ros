@@ -966,6 +966,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 remaps,
                 qos_overrides,
                 identity: Some(NodeIdentity::new(&bare, &namespace)),
+                // phase-474 W2 — the rest is the C-ABI packs' image half of
+                // the node, which a Rust entry does not render.
+                ..Default::default()
             });
 
             // Callback groups → tier, straight from the model's resolved

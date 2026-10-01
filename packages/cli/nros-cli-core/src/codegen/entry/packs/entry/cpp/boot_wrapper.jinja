@@ -2,12 +2,14 @@
   The entry point, in the board's boot shape.
 
   Three shapes, one derivation: `nros_entry_lower::BoardFamily::boot_shape`
-  (phase-432 W2.2) answers which, and this template spells each in C++.
+  (phase-432 W2.2) answers which, and this template spells each in C++. The
+  board CLASS is C++'s spelling of the family, through the `cpp_board_class`
+  filter (phase-474 — it was `emit_cpp::board_cpp_path`).
   `static_cast<int>` belongs to the Zephyr/kernel shape alone — the other two
   return the board's `int32_t` directly.
 
   The board CALL is assembled here rather than handed over pre-rendered: it is
-  three already-correct values (the board path, whether the plan runs tiers,
+  three already-correct values (the board family, whether the plan runs tiers,
   how many) laid out, which is the line `render.rs` draws. Only the HOST board
   resolves its locator at run time, so it is the one `run_components` that
   takes no locator argument.
@@ -43,18 +45,18 @@ static uint64_t __nros_tier_executor_storage[{{ boot.n_tiers }}][(NROS_CPP_EXECU
 {% endif -%}
 {%- set call -%}
 {%- if boot.tiers -%}
-{{ boot.board_path }}::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u{% if boot.tier_storage %}, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]){% endif %})
-{%- elif boot.shape == "host" -%}
-{{ boot.board_path }}::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)
+{{ family | cpp_board_class }}::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u{% if boot.tier_storage %}, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]){% endif %})
+{%- elif boot_shape == "host" -%}
+{{ family | cpp_board_class }}::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)
 {%- else -%}
-{{ boot.board_path }}::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)
+{{ family | cpp_board_class }}::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)
 {%- endif -%}
 {%- endset -%}
-{%- if boot.shape == "kernel" -%}
+{%- if boot_shape == "kernel" -%}
 int main(void) {
     return static_cast<int>({{ call }});
 }
-{% elif boot.shape == "app" -%}
+{% elif boot_shape == "app" -%}
 extern "C" int nros_app_main(int /*argc*/, char** /*argv*/) {
     return {{ call }};
 }

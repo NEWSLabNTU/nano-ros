@@ -20,6 +20,17 @@ c_family = true
 # The template that renders the whole TU — a key from `templates` below.
 entry_template = "entry_c.c"
 
+# phase-474 W2 — what the generic renderer needs to know, and the whole of
+# what this pack asks of Rust. There is no `emit_c.rs`: the template renders
+# `nros_entry_lower::LoweredEntry` itself (`context`), spells what it reads
+# through the filters it names (`filters.rs` registers them), constructs the
+# component kinds it lists, and calls the board's C-ABI runners — which is why
+# a C entry is ROUTED to the C++ pack on a family that exports none.
+context = "lowered-entry"
+filters = ["c_str", "pkg_ident"]
+components = ["c"]
+c_abi_runners = true
+
 # The templates this pack contributes, DISCOVERED at build time (phase-474
 # W1): `key` is the stable registry name a `render` call or an `{% include %}`
 # uses, `file` the template beside this manifest. An OUTPUT key is
@@ -28,6 +39,7 @@ entry_template = "entry_c.c"
 # also includes belong to `../shared/pack.toml`.
 templates = [
     { key = "entry_c.c", file = "entry.c.jinja" },
+    { key = "node_body_c.jinja", file = "node_body.jinja" },
     { key = "boot_wrapper_c.jinja", file = "boot_wrapper.jinja" },
     { key = "service_trailer_c.jinja", file = "service_trailer.jinja" },
 ]

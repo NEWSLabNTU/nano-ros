@@ -8,7 +8,7 @@
 //! subdirectory, links it into a one-node probe executable, and runs it.
 //!
 //! The probe TU itself is NOT written here — it comes from
-//! `codegen::entry::emit_cpp::emit_typed_probe`, the same emitter that
+//! `codegen::entry::emit::emit_typed_probe`, the same emitter that
 //! produces real entries. This module owns only the project scaffolding and
 //! the configure/build/run invocation.
 //!
@@ -37,7 +37,7 @@ use eyre::{Result, WrapErr, bail};
 
 use crate::codegen::entry::{
     Plan, PlanNode,
-    emit_cpp::{ProbeExport, emit_typed_probe},
+    emit::{ProbeExport, emit_typed_probe},
 };
 
 /// Everything the driver needs to probe one C/C++ component.

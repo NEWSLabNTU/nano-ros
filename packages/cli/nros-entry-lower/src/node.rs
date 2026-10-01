@@ -93,14 +93,47 @@ pub struct LoweredNode {
     /// `None` = the node keeps its own name (the self-bringup arm).
     #[serde(default)]
     pub identity: Option<NodeIdentity>,
+
+    // ---- phase-474 W2 — what a C-ABI entry pack reads of a node. ----
+    //
+    // `#[serde(default)]` throughout: the Rust parity corpus states none of
+    // these, and the two Rust producers do not read them.
+    /// The name the node is CREATED with: the launch `name`, or the
+    /// executable when the launch file gave none.
+    #[serde(default)]
+    pub name: String,
+    /// The namespace the node is created at — `"/"` when the model names none
+    /// (issue 1443's one derivation; never empty, because a `const char*` edge
+    /// cannot carry "unset" apart from "configured to nothing").
+    #[serde(default)]
+    pub namespace: String,
+    /// Issue 1456 — what the LAUNCH FILE declared, `None` when it declared
+    /// nothing (or declared `""`). NOT `name` / `namespace` above: an
+    /// `rclcpp`-shape component's own literal is the answer when the launch
+    /// file says nothing, and a resolved value would silently outrank it.
+    #[serde(default)]
+    pub launch_name: Option<String>,
+    #[serde(default)]
+    pub launch_namespace: Option<String>,
+    /// How the component is constructed. `None` only where nothing asked
+    /// (the Rust parity corpus).
+    #[serde(default)]
+    pub kind: Option<crate::ComponentKind>,
+    /// The C++ class a `configure` / `rclcpp` component is, fully qualified
+    /// (`talker_pkg::Talker`). `None` for every other kind.
+    #[serde(default)]
+    pub class: Option<String>,
 }
 
-/// The facts a language pack renders an entry from.
+/// The facts a language pack renders an entry from — and, since phase-474 W2,
+/// the template CONTEXT itself (RFC-0091 §6b).
 ///
-/// Deliberately small: this is the subset BOTH Rust producers cover, and
-/// growing it means teaching both. `board` is the KEY the user wrote —
-/// resolving it to a type path is the pack's job, through
-/// `nros_orchestration_ir::board_path_for` (Rust) or a board call (C).
+/// Two halves. The first five fields are the subset BOTH Rust producers cover
+/// (the proc-macro and the parity renderer), and growing them means teaching
+/// both. The rest is the IMAGE a C-ABI entry pack renders; the CLI builds it
+/// from its `Plan`, and the Rust producers never read it. `board` is the KEY
+/// the user wrote — resolving it to a type path is the pack's job, through
+/// `nros_orchestration_ir::board_path_for` (Rust) or a filter (C++).
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LoweredEntry {
     /// The bringup package name — a provenance comment in every producer.
@@ -118,6 +151,53 @@ pub struct LoweredEntry {
     /// and the two packs quote it differently (raw string vs `LitStr`).
     #[serde(default)]
     pub depfiles: Vec<String>,
+
+    // ---- phase-474 W2 — the IMAGE (see `crate::image`). ----
+    //
+    // RFC-0091 §6b: "`LoweredEntry` must be the context, not the seed for a
+    // per-surface projection". Every field below is what the C and C++
+    // emitters each used to project from the plan for themselves. A C-ABI
+    // entry pack renders from them directly; the Rust producers read none of
+    // them, and the parity corpus states none (hence `serde(default)`).
+    /// The board's family, when the key names one (a Rust-only board key —
+    /// `esp32-qemu`, `rtic-mps2-an385` — has none, and only the Rust pack
+    /// renders for it).
+    #[serde(default)]
+    pub family: Option<crate::BoardFamily>,
+    /// The family's boot wrapper (phase-432 W2.2).
+    #[serde(default)]
+    pub boot_shape: Option<crate::BootShape>,
+    /// Every component seam the entry declares, deduped (see
+    /// [`crate::ComponentSeam`]).
+    #[serde(default)]
+    pub components: Vec<crate::ComponentSeam>,
+    /// The unique C++ component headers, first-seen order.
+    #[serde(default)]
+    pub headers: Vec<String>,
+    /// `Some` when the plan runs one executor per tier.
+    #[serde(default)]
+    pub tiers: Option<crate::LoweredTiers>,
+    /// `Some` when one executor carries a sched context per tier.
+    #[serde(default)]
+    pub sched: Option<crate::LoweredSched>,
+    #[serde(default)]
+    pub services: crate::LoweredServices,
+    /// The single executor's contract monitor table (none on the tiered
+    /// layout — each tier setup carries its own).
+    #[serde(default)]
+    pub monitors: Option<crate::MonitorTable>,
+    /// Every non-empty monitor table, for the file-scope statics.
+    #[serde(default)]
+    pub monitor_tables: Vec<crate::MonitorTable>,
+    /// `None` on a metadata probe, which returns before the blob.
+    #[serde(default)]
+    pub boot_config: Option<crate::LoweredBootConfig>,
+    /// `None` on a metadata probe, which returns before the board wrapper.
+    #[serde(default)]
+    pub boot: Option<crate::LoweredBoot>,
+    /// `Some` for a metadata probe (phase-308).
+    #[serde(default)]
+    pub probe: Option<crate::LoweredProbe>,
 }
 
 impl LoweredEntry {

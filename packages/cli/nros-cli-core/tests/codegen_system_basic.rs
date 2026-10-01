@@ -701,7 +701,7 @@ execution:
 /// whole road: model → plan → emitted blob.
 #[test]
 fn a_launch_declared_session_reaches_the_plan_and_the_blob() {
-    use nros_cli_core::codegen::entry::{Lang, emit_c, plan_from_model};
+    use nros_cli_core::codegen::entry::{Lang, emit, plan_from_model};
     let tmp = temp_root("model-plan-session");
     let model_path = tmp.join("system_model.yaml");
     fs::write(
@@ -738,7 +738,7 @@ execution:
     // The component's LANGUAGE comes from the cmake metadata seam, not the
     // model, so the emitter gets it here the way `--metadata` would.
     plan.nodes[0].lang = Some(Lang::C);
-    let src = emit_c::emit_typed(&plan).expect("typed C emit ok");
+    let src = emit::emit_typed(Lang::C, &plan).expect("typed C emit ok");
     for expect in [
         "NROS_BOOT_SET_DOMAIN",
         "NROS_BOOT_SET_LOCATOR",

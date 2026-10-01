@@ -29,7 +29,7 @@ use std::collections::BTreeMap;
 
 use common::derived_tiers::{FAST, Fixture, SLOW, resolve_model, resolve_model_path};
 use nros_cli_core::{
-    codegen::entry::{Plan, emit_cpp, metadata, plan_from_model, resolve_plan_sched},
+    codegen::entry::{Lang, Plan, emit, metadata, plan_from_model, resolve_plan_sched},
     orchestration::{
         cargo_metadata_schema::SystemToml, model_ingest, nros_config::NrosConfig,
         tier_resolver::collect_callback_groups,
@@ -319,7 +319,7 @@ fn the_entry_runs_an_allocated_authored_tier() {
         );
     }
 
-    let src = emit_cpp::emit_typed(&plan).expect("the typed C++ entry emits");
+    let src = emit::emit_typed(Lang::Cpp, &plan).expect("the typed C++ entry emits");
     assert!(
         src.contains("::nros::board::ZephyrBoard::run_tiers("),
         "an allocated tier must reach the IMAGE, not just the plan; src:\n{src}"

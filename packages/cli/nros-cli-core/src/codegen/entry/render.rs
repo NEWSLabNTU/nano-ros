@@ -67,22 +67,13 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     // difference as exactly one byte (1492 -> 1491), which is the whole reason
     // that harness landed before this change.
     env.set_keep_trailing_newline(true);
-    // Issue 1102 / RFC-0091 §8b — escaping is a per-LANGUAGE filter, not an IR
-    // field.
-    //
-    // An earlier shape pre-escaped every literal in the lowering stage, on the
-    // reasoning that quoting is a correctness property and belongs in compiled
-    // Rust. The first half holds; the second does not follow. C, Rust and Zig
-    // string literals escape differently, so there is no neutral "already
-    // escaped" value — baking one into the IR spells a language into the stage
-    // that is supposed to have none.
-    //
-    // A filter keeps the safety and drops the false neutrality: this is Rust,
-    // compiled and reviewed, and a template can only ASK for it. Same mechanism
-    // `rosidl-codegen` uses for `snake_case` and `c_type`.
-    env.add_filter("c_str", |s: &str| {
-        s.replace('\\', "\\\\").replace('"', "\\\"")
-    });
+    // Issue 1102 / RFC-0091 §8b — escaping (and every other spelling) is a
+    // per-pack FILTER, not an IR field: C, Rust and Zig string literals escape
+    // differently, so there is no neutral "already escaped" value. The filters
+    // are Rust, compiled and reviewed, and a template can only ASK for one —
+    // phase-474 moved them to `filters.rs`, where each pack's manifest names
+    // the ones it calls.
+    super::filters::register_all(&mut env);
     for (_pack, name, src) in ENTRY_TEMPLATES {
         env.add_template(name, src)
             .expect("bundled entry template must parse");

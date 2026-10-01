@@ -28,9 +28,15 @@
 
 extern crate alloc;
 
+pub mod image;
 mod node;
 pub mod zephyr_image;
 
+pub use image::{
+    AgeRow, ComponentKind, ComponentSeam, GroupBind, LoweredBoot, LoweredBootConfig, LoweredProbe,
+    LoweredRunners, LoweredSched, LoweredServices, LoweredTiers, MonitorRow, MonitorTable,
+    NodeBind, SchedContext, SetupNode, TierRow, TierSetup, family_from_str,
+};
 pub use node::{LoweredEntry, LoweredNode, NodeIdentity, QosOverride, sanitize_pkg};
 
 /// The board families the entry pipeline distinguishes.

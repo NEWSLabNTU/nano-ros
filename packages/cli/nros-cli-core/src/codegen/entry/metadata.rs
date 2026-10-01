@@ -5,7 +5,7 @@
 //! CLASS [HEADER] …)` records those into `${CMAKE_BINARY_DIR}/nros-metadata.json`
 //! (`components[]`). This module reads that file, keys each component by
 //! `(pkg, exec)`, and stamps `class_name` / `class_header` onto the matching
-//! [`PlanNode`]s so [`super::emit_cpp::emit_typed`] can construct the components.
+//! [`PlanNode`]s so the typed C++ entry pack ([`super::emit::emit_typed`]) can construct the components.
 //!
 //! Key derivation: RFC-0057 metadata carries an explicit `pkg`
 //! (`${PROJECT_NAME}` at the register site) and `exec = name` — that

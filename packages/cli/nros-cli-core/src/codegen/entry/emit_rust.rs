@@ -101,23 +101,12 @@ pub fn emit(plan: &Plan) -> Result<String, String> {
 /// §4 — `Plan` is the CLI's own projection of its input, and lives across
 /// `cmd/`, `builder/` and `codegen/`). What IS shared is the OUTPUT type, so
 /// the two converge here rather than at the renderer.
+///
+/// phase-474 W2 — DELEGATES to [`super::lower::lower_entry`], the one lowering
+/// every pack renders from. It used to be this function's own body, and the
+/// C and C++ emitters each projected the same plan a second and third way.
 pub fn lower(plan: &Plan) -> LoweredEntry {
-    LoweredEntry {
-        bringup: plan.bringup.clone(),
-        launch: plan.launch_file.display().to_string(),
-        board: plan.board.clone(),
-        // include_bytes! tracking — same rebuild-correctness workaround the
-        // proc-macro uses. A path that does not exist is skipped, exactly as
-        // the proc-macro does: `include_bytes!` on a missing path is a hard
-        // compile error, and the pkg-index walk can name a synthesised dir.
-        depfiles: plan
-            .depfile_paths
-            .iter()
-            .filter(|d| d.exists())
-            .map(|d| d.display().to_string())
-            .collect(),
-        nodes: plan.nodes.iter().map(lower_node).collect(),
-    }
+    super::lower::lower_entry(plan)
 }
 
 /// Stage 3 — render the lowered entry as Rust.
@@ -166,41 +155,6 @@ pub fn emit_lowered(entry: &LoweredEntry) -> Result<String, String> {
         crate::codegen::entry::render::render("entry_rust.rs", &view)
             .expect("bundled rust entry template must render"),
     )
-}
-
-/// A plan node's per-node runtime bake, as neutral facts (issue 0302).
-///
-/// Four features arrived over four phases — params (264 W4a), identity
-/// (268 W1), remaps (305 W3 / issue 0255), QoS overrides (issue #52) — and
-/// each wired the proc-macro while leaving this emitter behind, so a CLI-baked
-/// entry ran every node with default parameters, no remaps, its own hardcoded
-/// name and no QoS overrides. From the same plan. That is the drift the shared
-/// [`LoweredNode`] and the parity corpus exist to make impossible: a fifth
-/// feature now cannot reach one producer without the other going red.
-fn lower_node(n: &super::PlanNode) -> LoweredNode {
-    LoweredNode {
-        pkg: n.pkg.clone(),
-        params: n.params.clone(),
-        remaps: n.remaps.clone(),
-        // The plan carries LOWERED codes: `nros_orchestration_ir::qos_override`
-        // already rejected anything unusable (issue 0303), so nothing is
-        // decoded or silently dropped here.
-        qos_overrides: n
-            .qos_overrides
-            .iter()
-            .map(|o| nros_entry_lower::QosOverride {
-                topic: o.topic.clone(),
-                role: o.role,
-                policy: o.policy,
-                value: o.value,
-            })
-            .collect(),
-        // A namespace without a name is not an identity: the proc-macro keys
-        // the override on the name, so `None` here means "keep the node's own".
-        identity: n.name.as_ref().map(|name| {
-            nros_entry_lower::NodeIdentity::new(name, n.namespace.as_deref().unwrap_or(""))
-        }),
-    }
 }
 
 /// Spell one lowered node as Rust.
