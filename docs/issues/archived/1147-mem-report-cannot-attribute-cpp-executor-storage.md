@@ -3,7 +3,8 @@ id: 1147
 title: "`mem-report` counts the C++ executor storage but files it under the `nros`
   RUST crate, so the C/C++ half of every embedded image's largest pool is
   attributed to the wrong owner and can never join a declared pool"
-status: open
+status: resolved
+resolved: 2026-10-01
 type: tech-debt
 area: tooling
 related: [phase-392, 0815]
@@ -75,3 +76,58 @@ with `just mem-report`.
 
 - phase-392 W1 (issue 0815) — the instrument this is about.
 - phase-392 W6 — fixed the Rust arm and measured it; this is the arm it left.
+
+## Resolution
+
+Neither shape exactly; the report learned two things, each bound to the tree.
+
+**The language comes from the MANGLING** (`lang_of`), read before anything is
+demangled: `_R…` and `_ZN…17h<hash>E` are Rust, any other `_Z…` is C++,
+the rest C. The crate rule runs on Rust symbols only, so a C++ name — even one
+spelled `nros::…`, the exact collision reported here — is filed under
+`C++ <namespace>`, never under the Rust crate `nros`. That is the "tiebreak"
+option 2 lacked, and it needs no per-symbol mapping.
+
+**Storage has an owner of its own** (`STORAGE_ROLES`): `[executor storage]`
+for `__nros_executor_storage`, `__nros_tier_executor_storage`,
+`Node::GlobalStorageHolder<N>::storage` (any namespace), the Rust
+`EXECUTOR_BACKING` and `__NROS_TIER_EXECUTOR_BACKING`; `[component storage]`
+for `__nros_comp_buf_N` and `__NROS_COMPONENT_<pkg>_SLOT_STORE`. This is an
+authored table, so the always-on selftest binds it both ways
+(`check_storage_roles`): every row's defining literal must still be in the file
+it cites, every tracked line that DEFINES such storage must be in a cited file,
+and every cited file must still contain a definition — each direction mutation
+-tested by dropping each row in turn (all seven fail).
+
+**The C/C++ storage is PRICED, not just named**: the report reads the build's
+own sizes header (nearest build tree only — one level further up is a west
+workspace's sibling builds, which the first draft wrongly read and refused on
+"headers disagree") and prints `N x NROS_CPP_EXECUTOR_STORAGE_SIZE`, refusing
+with the reason when the header is newer than the image or two disagree, and
+printing MISMATCH when the measured size is not a whole number of executors.
+
+Option 1 (an unmangled Rust-defined symbol) was not needed for attribution and
+was not done; its other benefits (dropping the size mirror, the NuttX
+`__cxa_guard` dodge) stand on their own.
+
+### Measured — three tiered images built from this branch
+
+| image | executor storage | priced | component storage |
+| --- | --- | --- | --- |
+| FreeRTOS mps2-an385 C (`workspace-c-freertos-realtime`) | `__nros_tier_executor_storage` 178,144 | `2 x 89,072` | — |
+| Zephyr native_sim C++ (`workspace-zephyr-cpp-derived-tiers`) | `__nros_tier_executor_storage` 95,904 | `4 x 23,976` | `__nros_comp_buf_0..3` 4 x 1,176 |
+| native Rust (`workspace-rust-native-realtime`) | `EXECUTOR_BACKING` 88,552 + `__NROS_TIER_EXECUTOR_BACKING` 88,560 | measured (no header states the Rust slot) | `*_SLOT_STORE` 2 x 4,032 |
+
+Before, on the earlier build of the same Zephyr row (another checkout, 2026-09-30): `__nros_tier_executor_storage` and the four
+component buffers sat in `(C / asm / no path)` (513,326 B, 144.3 % of a section
+total that was itself wrong — issue 1606); after, `[executor storage]` 95,904
+and `[component storage]` 4,704 are their own owners. On the Rust image the
+tier backing had been attributed to the user's ENTRY crate (`native_entry`) and
+the boot backing to `nros_node`; both are `[executor storage]` now (177,112 B).
+
+### Not measured
+
+No image here contains `Node::GlobalStorageHolder<0>::storage` — every C++
+image built from this branch takes the entry's tier/executor table, so that
+row is covered by the selftest (`rclcpp::…` and `nros::…` spellings) and the
+source binding, not by an image.

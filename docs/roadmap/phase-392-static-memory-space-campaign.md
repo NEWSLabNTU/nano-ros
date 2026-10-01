@@ -508,7 +508,7 @@ What the spare flash IS good for, in order of value to this campaign:
 ## Waves
 
 **W1 — pool inventory to full coverage.**
-[Issue 0815](../issues/0815-pool-inventory-prices-3-of-46-knobs.md): 46 knobs
+[Issue 0815](../issues/archived/0815-pool-inventory-prices-3-of-46-knobs.md): 46 knobs
 found, 3 priced, **66,304 bytes of unpriced pools** — more than the 57,344 that
 is priced. Annotate the rest; add a gate rejecting new unannotated pools.
 `__nros_comp_buf_N` cannot carry a static annotation (it is generated from
@@ -829,7 +829,7 @@ Cyclone alone, verified across all four `nros-rmw.toml`), because
 tighten it. The same constraint makes W3a inert on zenoh, which is worth
 knowing before quoting W3a's "a Rust subscription to a 4 KiB type now routes
 large" — true on Cyclone, false on the backend that has the size classes.
-[issue 1180](../issues/1180-mem-report-baseline-cannot-match-llvm-suffixed-symbols.md)
+[issue 1180](../issues/archived/1180-mem-report-baseline-cannot-match-llvm-suffixed-symbols.md)
 — `mem-report --baseline` matches symbols by name including the per-build
 `.llvm.<hash>` suffix, so it silently prints "no delta" for `EXECUTOR_BACKING`
 whatever happened to it. That one nearly turned this wave's measurement into a
@@ -1814,10 +1814,10 @@ holds the evidence, the item is *close it*.
 | [#0880](../issues/0880-tcm-unused-while-sram-exhausted.md) | 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted |
 | [#0969](../issues/archived/0969-cyclone-take-cdr-round-trip.md) | the Cyclone RMW deserializes every received sample and re-serializes it, so `try_recv_raw` costs a full round trip. **Round trip removed; cost measured** — ~46 ns/message floor (176 ns at 16 KB). The allocation saving this row assumed did NOT appear: count unchanged, bytes a crossover at ~6 KB. Remaining: the third site, per 0976 |
 | [#0810](../issues/0810-executor-arena-sized-by-worst-case-shape.md) | the executor arena was sized at `MAX_CBS x sizeof(ActionClient)` whatever the entity mix. Lever 3 cites it. It predates phase-412 W3, which now derives the arena per KIND — so re-measure against that before working it; what is left may be only the worst-case SHAPE, or nothing |
-| [#0815](../issues/0815-pool-inventory-prices-3-of-46-knobs.md) | the inventory prices 3 of 46 sizing knobs. The W1 amendment answered the ANNOTATION half (measure, do not declare); pricing the remaining knobs is the work |
-| [#1147](../issues/1147-mem-report-cannot-attribute-cpp-executor-storage.md) | `mem-report` counts the C and C++ executor storage but files it under the wrong crate — the third of W6's hand-offs, and the only one without another home |
+| [#0815](../issues/archived/0815-pool-inventory-prices-3-of-46-knobs.md) | the inventory prices 3 of 46 sizing knobs. The W1 amendment answered the ANNOTATION half (measure, do not declare); pricing the remaining knobs is the work — **resolved 2026-10-01** |
+| [#1147](../issues/archived/1147-mem-report-cannot-attribute-cpp-executor-storage.md) | `mem-report` counts the C and C++ executor storage but files it under the wrong crate — the third of W6's hand-offs, and the only one without another home — **resolved 2026-10-01** |
 | [#1179](../issues/1179-derived-rx-default-unreachable-without-schema.md) | W3c's residue: on zenoh and XRCE the derived RX default is unreachable, because a type-erased registration site sees only `MessageForRmw`. The issue records two designs — the bound carried on `RosMessage`, or a split typed entry point — and asks for a deliberate choice between them |
-| [#1180](../issues/1180-mem-report-baseline-cannot-match-llvm-suffixed-symbols.md) | `mem-report --baseline` reports no delta for LLVM-internalised symbols, so a real saving can read as zero — the instrument this phase measures everything with |
+| [#1180](../issues/archived/1180-mem-report-baseline-cannot-match-llvm-suffixed-symbols.md) | `mem-report --baseline` reports no delta for LLVM-internalised symbols, so a real saving can read as zero — the instrument this phase measures everything with — **resolved 2026-10-01** |
 
 
 ## Adopted issue (2026-09-04)
