@@ -3319,9 +3319,17 @@ test-lane-contracts:
     # resolvers; a redundant step propped up by a wrong diagnosis is how a lane
     # accretes cost nobody can later justify removing.
     cargo_nextest_args=($(nros_cargo_nextest_args))
+    # issue 1610 — `loc_budgets` is admitted on the SAME rule as the three
+    # above: it reads source files through the `tokei` library and resolves no
+    # fixture stamp. It sat in no merge-gating lane (this crate is excluded from
+    # `test-unit` by CRATE), so when `zephyr/cmake/nros_system_generate.cmake`
+    # crossed its 200-LoC budget on 2026-09-28 nothing between that commit and
+    # its merge asked, and it stayed red. The recipe's NAME is narrower than its
+    # rule — the rule is "an nros-tests target that builds no fixture", which is
+    # what `check-lane-contracts` actually enforces here.
     cargo nextest run "${cargo_nextest_args[@]}" -p nros-tests \
         --test lane_run_narrowing --test matrix_fixture_coverage \
-        --test lane_build_covers_run
+        --test lane_build_covers_run --test loc_budgets
 
 [group("ci")]
 ci-l1:

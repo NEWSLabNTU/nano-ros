@@ -70,6 +70,9 @@ cmake_minimum_required(VERSION 3.20)
 project(nros_entry_domain_agreement_test NONE)
 include("$ENV{NROS_TEST_MODULE}")
 set(CONFIG_NROS_DOMAIN_ID "$ENV{NROS_TEST_KCONFIG}")
+if(DEFINED ENV{NROS_TEST_CYCLONE})
+    set(CONFIG_NROS_CYCLONE_DOMAIN_ID "$ENV{NROS_TEST_CYCLONE}")
+endif()
 set(SNIPPET "nros-zenoh;island-ethernet")
 string(REPLACE ":" ";" merge_config_files "$ENV{NROS_TEST_FRAGMENTS}")
 nros_domain_provenance(_src _label)
@@ -167,6 +170,40 @@ check
 check
 nros_grep_q "domain 0 agrees -- CONFIG_NROS_DOMAIN_ID from the Kconfig default" <<<"$OUT" \
     || fail "E: the agreement line does not say the value is the default -- $OUT"
+
+# ---------------------------------------------------------------------------
+# Issue 1610 -- Cyclone's own knob. Until this, only `nros_system_generate`
+# compared `CONFIG_NROS_CYCLONE_DOMAIN_ID`; the entry road reached the shared
+# helper, which had no such line, so a Cyclone image whose DDS domain was
+# pinned apart from everything else configured CLEAN on this road. F is that
+# case and fails against the pre-1610 helper -- it is the regression test, not
+# a description of one.
+# The Cyclone symbol, spelled once -- the sibling test's idiom, and the reason
+# `check-cyclone-domain-not-pinned` does not read an ASSERTION as a pin.
+CYC=CONFIG_NROS_CYCLONE_DOMAIN_ID
+log_info "F. Cyclone pinned to 2, everything else on 10, refuses on the ENTRY road"
+printf 'CONFIG_NET_L2_ETHERNET=y\nCONFIG_NROS_DOMAIN_ID=10\n' > "$SNIP/ethernet.conf"
+OUT="$(NROS_TEST_CYCLONE=2 run 10 10 "$SNIP/ethernet.conf")"
+RC=$?
+check
+[ "$RC" -ne 0 ] || fail "F: a Cyclone image on DDS domain 2 configured against 10 -- \
+the entry road did not compare Cyclone's knob (issue 1610) -- $OUT"
+check
+nros_grep_q "${CYC} = 2" <<<"$OUT" \
+    || fail "F: the refusal does not name the Cyclone value -- $OUT"
+check
+nros_grep_q "CONFIG_NROS_DOMAIN_ID=10" <<<"$OUT" \
+    || fail "F: the remedy does not name the concrete value to write -- $OUT"
+
+log_info "G. Cyclone on 10 with everything else agrees, and the line says so"
+OUT="$(NROS_TEST_CYCLONE=10 run 10 10 "$SNIP/ethernet.conf")"
+RC=$?
+check
+[ "$RC" -eq 0 ] || fail "G: four agreeing statements refused -- $OUT"
+check
+nros_grep_q "${CYC}=10)" <<<"$OUT" \
+    || fail "G: the agreement line does not show the Cyclone value it compared \
+-- a pass that never looked at Cyclone would read the same -- $OUT"
 
 # ---------------------------------------------------------------------------
 if [ "$FAILURES" -eq 0 ]; then
