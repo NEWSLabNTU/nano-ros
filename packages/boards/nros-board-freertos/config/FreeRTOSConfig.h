@@ -73,6 +73,7 @@
  * term of it measured and documented beside it. The first image that boots on this default prints
  * `nros: heap peak <used> of <total>` (`xPortGetMinimumEverFreeHeapSize()`);
  * record it here with its image and date, and derive this number from it.
+ * Tracked as issue 1624.
  *
  * Override per image with the build env `NROS_FREERTOS_HEAP_KB` (the board
  * build.rs forwards it as `-DNROS_FREERTOS_HEAP_KB`). */
