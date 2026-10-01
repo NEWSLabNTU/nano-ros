@@ -670,3 +670,52 @@ structural answer; the second leaves a source tree living inside a scratch
 directory, which is the thing that failed.
 
 Cross-referenced from issue 1158, which is what triage keys the tier-2 lane on.
+
+## Reproduced with BOTH sides measured, 15 minutes apart on one workspace (2026-10-01)
+
+The 2026-09-30 entry inferred the mechanism from a single failing run. Today both
+tier-2 lanes ran on the **same self-hosted runner**, on the **same head**
+(`bc615cb84`), within one hour — and one built the zephyr module while the other
+could not find its source:
+
+| job | ran | zephyr module |
+| --- | --- | --- |
+| 110249254587 `tier 2 (1-wise matrix)` (run-matrix 36825211926) | 08:23:14Z → 08:57:30Z | **`== zephyr == OK`** |
+| 110229382587 `tier 2 nightly (pairwise cover)` (nightly 36818708335) | 09:12:39Z → 09:24:21Z | **FAILED (rc=2)** |
+
+The second one's first error is this issue's, verbatim and four times over:
+
+```
+CMake Error: The source directory
+".../examples/workspaces/rust/build/zephyr-zenoh/zephyr_entry" does not exist.
+ninja: error: rebuilding 'build.ninja': subcommand failed
+```
+
+So the emitted west application **existed at 08:57 and was gone by 09:12**, on one
+persistent workspace, with no nano-ros change in between. That is the mechanism
+this issue described — a cmake SOURCE directory living inside the `build/` tree —
+observed from both sides rather than reconstructed from one.
+
+### What is ruled out
+
+**The first lane's own cleanup did not do it.** Its `Sweep orphans and disk` step
+reports `no orphaned process groups` and `cargo-targets: 2.8 GiB in host target
+dir(s), NOT pruned`. It removed nothing.
+
+### What is NOT established — including a dead end worth not repeating
+
+The producer of the deletion. The obvious candidate is the second job's
+`actions/checkout@v4`: neither `run-matrix.yml` nor `nightly.yml` sets `clean:`,
+so the default `clean: true` applies and runs `git clean -ffdx`, which removes
+ignored files — and `examples/workspaces/rust/build/` is ignored.
+
+**But that explanation does not close**, and the reason is worth writing down: the
+west BUILD directories are also inside the repo (`build/west-fixtures/<id>/`), so a
+`-ffdx` clean should have taken the cached `build.ninja` with the source tree, and
+then there would be nothing left to reconfigure and no such error. Either the
+build dir that reconfigured lives somewhere the clean does not reach, or the clean
+is narrower than assumed. Whoever picks this up should establish which, rather
+than starting from the checkout hypothesis as though it were settled.
+
+None of this changes what would close the issue: the emitted application should
+not live in a directory that build tooling and CI treat as scratch.
