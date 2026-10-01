@@ -137,9 +137,11 @@ pub fn facts_from_model(model: &SystemModel) -> BTreeMap<String, String> {
     // So this number is exact for every image whose transient-local publishers
     // are action servers — which is every one in the tree today — and a lower
     // bound for a model that also declares a hand-written TRANSIENT_LOCAL
-    // topic publisher. Closing that needs the model-only descriptor producer of
-    // issue 1393; until it exists, stating the half that IS provable is what
-    // the failing images need, and stating nothing is what they had.
+    // topic publisher. The model-road descriptor (phase-454 W14) counts every
+    // transient-local row and consumers rank it FIRST wherever it reaches
+    // cargo; where it does not (a Zephyr west entry, a multi-entry configure —
+    // issue 1407), stating the half that IS provable is what the failing
+    // images need, and stating nothing is what they had.
     if let Some(n) = declared_action_servers(model) {
         out.insert(TL_PUBLISHERS.to_string(), n.to_string());
     }

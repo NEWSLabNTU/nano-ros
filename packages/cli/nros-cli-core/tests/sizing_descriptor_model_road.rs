@@ -25,7 +25,10 @@ use std::{
 
 use nros_cli_core::{
     entity_inventory::EntityInventory,
-    sizing_descriptor::{MODEL_ONLY_ISSUE, ModelHorizon, ModelImage, write_for_model},
+    sizing_descriptor::{
+        DescriptorInputs, EntryLanguage, ModelHorizon, ModelImage, UNOBSERVED_ON_MODEL_ROAD_ISSUE,
+        build, write_for_model,
+    },
 };
 use nros_sizing_descriptor::{Basis, EndpointKind, History, Reliability, Status};
 use ros_launch_manifest_model::SystemModel;
@@ -78,8 +81,15 @@ fn a_contract_reaches_the_model_road_and_the_leaf_facts_refuse_by_name() {
     // thumbv7em triple above, where a host build script would have said 8.
     assert_eq!(desc.target.pointer_bytes().stated(), Some(&4));
 
-    // REFUSED — the five fields that need a leaf's inventories, each naming
-    // the issue that tracks closing the gap.
+    // REFUSED — but only on the input that is MISSING, never for the road.
+    //
+    // issue 1393 closed the road-wide refusal: every one of these is composed
+    // by the leaf road's own code from inputs the model road now carries (the
+    // registered bound tables, the board's triple). THIS call hands over no
+    // table, so the payload class refuses naming exactly that, and the
+    // subscription's registration refuses because nothing observed it (issue
+    // 1594) — two different reasons, each the row's own.
+    //
     // Each `Fact` bound to a name first: the accessors return owned values, so
     // a `.refusal()` in an array literal borrows a temporary that dies at the
     // semicolon.
@@ -93,19 +103,22 @@ fn a_contract_reaches_the_model_road_and_the_leaf_facts_refuse_by_name() {
         desc.types.max_kinds(),
         desc.types.max_nested_depth(),
     );
-    let refusals = [
+    let payload = [
         ("wire_bound_bytes", bound.refusal()),
         ("storage_bytes", storage.refusal()),
-        ("registration_path", path.refusal()),
         ("types.max_fields", fields.refusal()),
         ("types.max_kinds", kinds.refusal()),
         ("types.max_nested_depth", nested.refusal()),
     ];
-    for (what, reason) in refusals {
-        let reason = reason.unwrap_or_else(|| panic!("`{what}` must be REFUSED on the model road"));
+    for (what, reason) in payload {
+        let reason = reason.unwrap_or_else(|| panic!("`{what}` must be REFUSED with no table"));
         assert!(
-            reason.contains(MODEL_ONLY_ISSUE),
-            "`{what}`'s refusal must name {MODEL_ONLY_ISSUE}: {reason}"
+            reason.contains("no message-bound table"),
+            "`{what}`'s refusal must name the table nobody handed over: {reason}"
+        );
+        assert!(
+            !reason.contains("issue 1393"),
+            "`{what}` is not refused for the ROAD any more: {reason}"
         );
         // phase-457 W0.b — and it must name THIS road's input. The horizon gained
         // a second source (a standalone leaf's own declaration), and a refusal
@@ -117,37 +130,27 @@ fn a_contract_reaches_the_model_road_and_the_leaf_facts_refuse_by_name() {
             "`{what}`'s refusal on the MODEL road must name the model: {reason}"
         );
     }
-    // The clause that is this road's alone: an image resolved from a model is
-    // several packages, so there is no single entry language to read the
-    // registration spelling off. A LEAF is one package and refuses for a
-    // different reason, so the two must not share prose.
-    assert!(
-        path.refusal()
-            .is_some_and(|r| r.contains("several packages")),
-        "{:?}",
-        path.refusal()
-    );
+    let reg = path
+        .refusal()
+        .expect("an unobserved subscription on an in-place backend refuses its path");
+    assert!(reg.contains(UNOBSERVED_ON_MODEL_ROAD_ISSUE), "{reg}");
+    assert!(reg.contains("resolved SystemModel"), "{reg}");
 
     // And the file says all of it: the refusals travel to the consumer, not to
     // a build log nobody kept (RFC-0100 D6).
     let body = fs::read_to_string(&written.path).expect("read the descriptor");
     assert_eq!(
-        body.matches(MODEL_ONLY_ISSUE).count(),
-        // Per row: `wire_bound_bytes` on all four, `registration_path` on the
-        // two SUBSCRIPTIONS, `storage_bytes` on the same two; plus the three
-        // `[types]`.
-        //
-        // phase-457 W3 — 13 -> 11, and the two that left are the two PUBLISHERS'
-        // `registration_path`. That field is no longer refused wholesale on this
-        // road: its in-place row needs the BACKEND plus the endpoint's own
-        // observed capability, and a publisher has no receive slot of any shape
-        // to get wrong (`claimed_slot_bytes` is `Absent` for it), so the composed
-        // answer stands. The subscriptions still refuse — nothing observed their
-        // registrations, because a model row is a launch declaration — and their
-        // reason still names this road. The fixture's endpoints are 2 publishers
-        // and 2 subscriptions, so the arithmetic is `4 + 2 + 2 + 3`.
-        4 + 2 + 2 + 3,
-        "every refusal this road writes names the follow-up:\n{body}"
+        body.matches("issue 1393").count(),
+        0,
+        "no refusal on this road is about the road any more:\n{body}"
+    );
+    assert_eq!(
+        body.matches(UNOBSERVED_ON_MODEL_ROAD_ISSUE).count(),
+        // The two SUBSCRIPTIONS' `registration_path`, and nothing else: a
+        // publisher has no receive slot to get wrong, so its composed answer
+        // stands (phase-457 W3), and no other field is about the observation.
+        2,
+        "only an unobserved subscription's path names the observation gap:\n{body}"
     );
     let _ = fs::remove_dir_all(&dir);
 }
@@ -219,7 +222,7 @@ fn keep_all_still_refuses_its_depth_on_the_model_road() {
     let why = depth.refusal().expect("keep_all refuses depth");
     assert!(why.contains("KEEP_ALL"), "{why}");
     assert!(
-        !why.contains(MODEL_ONLY_ISSUE),
+        !why.contains(UNOBSERVED_ON_MODEL_ROAD_ISSUE) && !why.contains("no message-bound table"),
         "a declaration's own refusal must not be attributed to the road: {why}"
     );
     let _ = fs::remove_dir_all(&dir);
@@ -282,16 +285,69 @@ fn bound_tables_turn_the_model_roads_payload_refusals_into_facts() {
         );
     }
 
-    // UNCHANGED -- the bound table answers neither of these, so they keep
-    // their own reasons. A table that silently stated them would be claiming
-    // facts it does not hold.
+    // issue 1393 — `storage_bytes` is STATED too: it is the bound (above), the
+    // board's pointer width (the triple) and the declared depth, all three of
+    // which this road now has. phase-454 W14 refused it outright under the
+    // horizon with a reason ("neither of its two sizes") that this very row
+    // contradicted.
     assert!(
-        sub.storage_bytes().refusal().is_some(),
-        "`storage_bytes` needs the BOARD per image, not a bound table"
+        sub.storage_bytes().is_stated(),
+        "bound + triple + depth are all here, so the region must be STATED; got {:?}",
+        sub.storage_bytes().refusal()
     );
+    // UNCHANGED -- the bound table does not answer this one: an in-place
+    // backend's row turns on an OBSERVED registration, which a model row does
+    // not carry (issue 1594). A table that silently stated it would be claiming
+    // a fact it does not hold.
     assert!(
         sub.registration_path().refusal().is_some(),
         "`registration_path` needs an observed registration, not a bound table"
+    );
+
+    // THE PARITY: where both roads answer, they answer ALIKE. The leaf road's
+    // composer, handed the same inventory, the same table through the same
+    // reader and the same board — what `write_for_leaf` builds, minus the
+    // horizon and plus the one input only a leaf has (its language) — must state
+    // every payload-class field the model road states, byte for byte. Field by
+    // field rather than "the descriptors are equal", because the two DO differ
+    // in exactly one place on purpose (the unobserved path's prose) and an
+    // equality that excused it would excuse anything.
+    let rows = nros_cli_core::leaf_payload_classes::bound_rows_from_tables(&tables)
+        .expect("the committed table reads");
+    let (bounds, schema_shapes) = nros_cli_core::leaf_payload_classes::project_bound_rows(rows);
+    let leaf = build(&DescriptorInputs {
+        entry: "policies".into(),
+        inventory: Some(&inv),
+        bounds,
+        schema_shapes,
+        bounds_error: None,
+        target_triple: Some("thumbv7em-none-eabihf".into()),
+        host_build: false,
+        heap_budget_bytes: Some(65_536),
+        params: Some(inv.param_declarations()),
+        language: Some(EntryLanguage::CFamily),
+        backend_schema: None,
+        backend_dispatch: None,
+        rmw: Some("zenoh".into()),
+        horizon: None,
+    });
+    assert_eq!(leaf.endpoints.len(), desc.endpoints.len());
+    for (l, m) in leaf.endpoints.iter().zip(&desc.endpoints) {
+        assert_eq!((l.kind, &l.topic), (m.kind, &m.topic));
+        assert_eq!(l.wire_bound_bytes(), m.wire_bound_bytes(), "{}", m.topic);
+        assert_eq!(l.storage_bytes(), m.storage_bytes(), "{}", m.topic);
+        assert_eq!(l.depth(), m.depth(), "{}", m.topic);
+    }
+    assert_eq!(leaf.types.max_fields(), desc.types.max_fields());
+    assert_eq!(leaf.types.max_kinds(), desc.types.max_kinds());
+    assert_eq!(leaf.types.max_nested_depth(), desc.types.max_nested_depth());
+    assert_eq!(leaf.target.pointer_bytes(), desc.target.pointer_bytes());
+    // And it is not vacuous: the subscription's region is a real number on
+    // both sides, so the loop above compared two statements, not two refusals.
+    assert!(
+        leaf.endpoints
+            .iter()
+            .any(|e| e.kind == EndpointKind::Subscription && e.storage_bytes().is_stated())
     );
 }
 

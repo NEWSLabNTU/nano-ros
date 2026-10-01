@@ -103,8 +103,8 @@ pub struct SizingDescriptorArgs {
     ///
     /// `--from-model` / `--from-leaf` only. Read through the same reader the
     /// cargo leaf road uses over its `generated/` tree, so a cmake image and a
-    /// cargo leaf with one contract price one type one way. None given keeps
-    /// the refusal naming issue 1393; a table named here and not on disk yet is
+    /// cargo leaf with one contract price one type one way. None given refuses
+    /// the payload class, naming the missing registration; a table named here and not on disk yet is
     /// a per-field refusal naming its package, never an error — on the
     /// non-Zephyr cmake lane that is the ordinary first-configure state.
     #[arg(long = "bound-inventory", value_name = "PATH")]
@@ -616,7 +616,8 @@ mod tests {
             // the cmake callers rely on rather than overriding it.
             road: None,
             from_leaf: None,
-            // phase-457-payload W2 -- no tables: the refusal naming 1393.
+            // phase-457-payload W2 -- no tables: the payload class refuses,
+            // naming the missing registration (issue 1393 closed the road).
             bound_inventory: Vec::new(),
         }
     }
@@ -969,12 +970,11 @@ board = "qemu-armv7a-nuttx"
             !why.contains("resolved SystemModel"),
             "this road has no model, so its refusal must not name one: {why}"
         );
-        // Still tracked, and by the same issue: the missing input is the bound
-        // inventory either way.
-        assert!(
-            why.contains(crate::sizing_descriptor::MODEL_ONLY_ISSUE),
-            "{why}"
-        );
+        // issue 1393 — the reason names the input that is MISSING (no table was
+        // handed over), not a road-wide incapacity this road no longer has:
+        // `--bound-inventory` reaches it too.
+        assert!(why.contains("no message-bound table"), "{why}");
+        assert!(!why.contains("issue 1393"), "{why}");
 
         // `registration_path` is refused on BOTH roads and for DIFFERENT reasons,
         // so the prose must not be shared. A model image has no one entry
@@ -989,8 +989,9 @@ board = "qemu-armv7a-nuttx"
             .to_string();
         assert!(reg.contains("CALL SITE"), "{reg}");
         assert!(
-            !reg.contains("several packages"),
-            "a standalone leaf is ONE package; that clause belongs to the model road: {reg}"
+            !reg.contains("sidecars") && !reg.contains("issue 1594"),
+            "a standalone leaf has no probe sidecar to join; that clause belongs to the \
+             model road: {reg}"
         );
 
         // And `--road`'s DEFAULT is this mode's, not the model mode's. Passing no

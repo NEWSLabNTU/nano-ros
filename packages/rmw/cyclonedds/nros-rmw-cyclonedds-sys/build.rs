@@ -217,11 +217,20 @@ fn forward_derived_knobs(cc: &mut cc::Build) {
     // as `publisher_create` returning UNSUPPORTED. The other three size the
     // descriptor builder's stack arrays; they are Rust-side today, forwarded here
     // so a C++ consumer of the same numbers reads the same table.
+    //
+    // `HEAP_BUDGET_BYTES` (issue 1393) is the board's `[board.knobs.memory]
+    // heap_bytes`, which `WrittenDescriptor::cyclonedds_env` has written as a
+    // cargo `[env]` row since phase-454 W6.c — and which nothing here read, so
+    // `heap_budget.hpp`'s `kHeapBudgetStated` was false on every cargo build and
+    // RFC-0100 D11's boot assertion in `session.cpp` was inert on that road. It
+    // is a FLOOR check and silent when unstated, so forwarding it can only make
+    // an image that states a budget below its own certain need say so at boot.
     const KNOBS: &[&str] = &[
         "NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES",
         "NROS_CYCLONEDDS_MAX_FIELDS",
         "NROS_CYCLONEDDS_MAX_KINDS",
         "NROS_CYCLONEDDS_MAX_NESTED_DEPTH",
+        "NROS_CYCLONEDDS_HEAP_BUDGET_BYTES",
     ];
     for knob in KNOBS {
         println!("cargo:rerun-if-env-changed={knob}");

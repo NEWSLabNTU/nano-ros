@@ -119,8 +119,9 @@ pub fn transient_local_publishers(desc: &SizingDescriptor) -> Fact<usize> {
 /// One row of the [`transient_local_publishers`] rule.
 ///
 /// Issue 1378 — the rule needed a SECOND caller, and the descriptor is not it.
-/// A cmake / Zephyr / NuttX entry has no sizing descriptor at all (issue 1393),
-/// so the only rows it can offer are its DECLARED ENTITIES. Without a row shape
+/// A cmake / Zephyr / NuttX entry had no sizing descriptor at all when 1378 was
+/// filed, and a Zephyr west entry still names none to cargo (issue 1407), so
+/// the only rows such a road can offer are its DECLARED ENTITIES. Without a row shape
 /// to offer them as, such a caller's only alternative is to re-implement "an
 /// action server has a transient-local `/status` publisher" somewhere else,
 /// which is issue 1025's defect exactly: one number, two derivations, agreeing
