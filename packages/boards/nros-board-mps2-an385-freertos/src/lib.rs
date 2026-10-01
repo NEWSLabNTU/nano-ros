@@ -292,6 +292,37 @@ impl Mps2An385 {
             deploy.boot_config,
             tiers,
             tier_backing,
+            // No task memory: every spawned tier is `xTaskCreate`d from heap_4,
+            // the shape an entry generated before issue 1598 has.
+            &[],
+            setup,
+        )
+    }
+
+    /// Issue 1598 — [`run_tiers`](Self::run_tiers) plus each spawned tier's
+    /// TASK memory: the entry's `.bss` `TierTaskMemory` statics (stack + TCB,
+    /// sized from each tier's `stack_bytes`), in spawn order. Every spawned
+    /// tier is `xTaskCreateStatic`d over its row, so no tier stack comes out
+    /// of heap_4 and stacks that do not fit RAM fail at link. `nros::main!`
+    /// emits this call for a FreeRTOS deploy.
+    pub fn run_tiers_with_task_memory<F, E>(
+        deploy: &nros_platform::DeployOverlay,
+        tiers: &'static [nros_platform::TierSpec<'static>],
+        tier_backing: &'static mut [nros_board_freertos::TierExecutorBackingSlot],
+        task_memory: &'static [nros_board_freertos::TierTaskMemoryRaw],
+        setup: F,
+    ) -> Result<(), E>
+    where
+        F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E> + Copy,
+        E: core::fmt::Debug,
+    {
+        register_log_writer();
+        nros_board_freertos::run_tiers_entry::<Mps2An385, F, E>(
+            config_with_overlay(deploy),
+            deploy.boot_config,
+            tiers,
+            tier_backing,
+            task_memory,
             setup,
         )
     }

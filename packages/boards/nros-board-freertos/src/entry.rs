@@ -78,6 +78,21 @@ unsafe extern "C" {
 
     fn nros_freertos_get_netif_state() -> i32;
 
+    /// issue 1598 — `xTaskCreateStatic` over caller-owned stack + control
+    /// block (the entry's `TierTaskMemory`); refuses a control-block region
+    /// smaller than `StaticTask_t`. `freertos_task_glue.c`.
+    #[allow(clippy::too_many_arguments)]
+    fn nros_freertos_create_task_static(
+        entry: unsafe extern "C" fn(*mut c_void),
+        name: *const u8,
+        stack: *mut u8,
+        stack_bytes: u32,
+        arg: *mut c_void,
+        priority: u32,
+        tcb: *mut u8,
+        tcb_bytes: u32,
+    ) -> i32;
+
     /// Smallest number of bytes ever left unused on the CALLING task's stack
     /// (`uxTaskGetStackHighWaterMark(NULL)`, scaled to bytes), or `0` when the
     /// port does not instrument stacks. Declared here rather than reached
@@ -560,6 +575,9 @@ struct AppContextTiers<F> {
     /// issue 1571 — the spawned tiers' executor backing, the entry's `.bss`
     /// `TierExecutorBacking`; moved down the spawn chain one slot per tier.
     tier_backing: &'static mut [::nros::TierExecutorBackingSlot],
+    /// issue 1598 — the spawned tiers' task memory (stack + TCB), the entry's
+    /// `.bss` `TierTaskMemory` statics in spawn order; empty = `xTaskCreate`.
+    task_memory: &'static [::nros::TierTaskMemoryRaw],
     setup: F,
 }
 
@@ -576,6 +594,11 @@ struct TierTaskCtx<F> {
     slot: &'static mut ::nros::TierExecutorBackingSlot,
     /// The slots `rest` will take, one each, handed down the chain with it.
     rest_backing: &'static mut [::nros::TierExecutorBackingSlot],
+    /// issue 1598 — the task memory `rest` will take, one row each.
+    rest_task_memory: &'static [::nros::TierTaskMemoryRaw],
+    /// The stack THIS task was created with, in bytes (what the peak report
+    /// is judged against).
+    stack_bytes: u32,
     /// Fallback stack (words) for a spawned tier whose `stack_bytes == 0`,
     /// threaded down the chain since the tier tasks no longer see `Config`.
     app_stack_default_words: u32,
@@ -598,6 +621,7 @@ fn spawn_next_tier<B, F, E>(
     session: ::nros::SessionHandle,
     remaining: &'static [TierSpec<'static>],
     backing: &'static mut [::nros::TierExecutorBackingSlot],
+    task_memory: &'static [::nros::TierTaskMemoryRaw],
     app_stack_default_words: u32,
     setup: F,
 ) -> core::result::Result<(), ()>
@@ -618,12 +642,24 @@ where
         ));
         return Err(());
     };
+    // issue 1598 — this tier's task memory, when the entry supplied it.
+    let (memory, rest_task_memory) = match task_memory.split_first() {
+        Some((m, rest_m)) => (Some(*m), rest_m),
+        None => (None, task_memory),
+    };
+    let stack_words = match memory {
+        Some(m) => (m.stack_bytes / 4) as u32,
+        None if tier.stack_bytes == 0 => app_stack_default_words,
+        None => (tier.stack_bytes / 4) as u32,
+    };
     let tier_ctx = TierTaskCtx::<F> {
         session,
         tier: *tier,
         rest,
         slot,
         rest_backing,
+        rest_task_memory,
+        stack_bytes: stack_words.saturating_mul(4),
         app_stack_default_words,
         setup,
     };
@@ -636,19 +672,30 @@ where
     unsafe { core::ptr::write(ptr, tier_ctx) };
     // Raw per-RTOS priority (the author wrote the FreeRTOS value directly).
     let prio = tier.priority.clamp(0, u32::MAX as i64) as u32;
-    let stack_words = if tier.stack_bytes == 0 {
-        app_stack_default_words
-    } else {
-        (tier.stack_bytes / 4) as u32
-    };
-    let ret = unsafe {
-        nros_freertos_create_task(
-            tier_task_entry::<B, F, E>,
-            c"nros_tier".as_ptr().cast::<u8>(),
-            stack_words,
-            ptr as *mut c_void,
-            prio,
-        )
+    let ret = match memory {
+        // issue 1598 — over the entry's `.bss` stack + TCB: no heap_4 block,
+        // and stacks that do not fit RAM fail at LINK.
+        Some(m) => unsafe {
+            nros_freertos_create_task_static(
+                tier_task_entry::<B, F, E>,
+                c"nros_tier".as_ptr().cast::<u8>(),
+                m.stack,
+                m.stack_bytes as u32,
+                ptr as *mut c_void,
+                prio,
+                m.tcb,
+                m.tcb_bytes as u32,
+            )
+        },
+        None => unsafe {
+            nros_freertos_create_task(
+                tier_task_entry::<B, F, E>,
+                c"nros_tier".as_ptr().cast::<u8>(),
+                stack_words,
+                ptr as *mut c_void,
+                prio,
+            )
+        },
     };
     if ret != 0 {
         B::println(format_args!("nros: failed to spawn tier `{}`", tier.name));
@@ -679,6 +726,8 @@ where
         rest,
         slot,
         rest_backing,
+        rest_task_memory,
+        stack_bytes,
         app_stack_default_words,
         setup,
     } = unsafe { core::ptr::read(arg as *mut TierTaskCtx<F>) };
@@ -726,19 +775,15 @@ where
     // `session` was consumed opening the executor above). A failed
     // DOWNSTREAM spawn must NOT stop this tier spinning its own work, so warn +
     // continue (do NOT exit_failure).
-    report_stack_peak::<B>(
-        tier.name,
-        if tier.stack_bytes == 0 {
-            app_stack_default_words.saturating_mul(4)
-        } else {
-            tier.stack_bytes as u32
-        },
-    );
+    // The stack this task was CREATED with (issue 1598: the entry's declared
+    // size when it supplied the memory).
+    report_stack_peak::<B>(tier.name, stack_bytes);
     let next_session = crt.executor_mut().session_handle();
     if spawn_next_tier::<B, F, E>(
         next_session,
         rest,
         rest_backing,
+        rest_task_memory,
         app_stack_default_words,
         setup,
     )
@@ -913,10 +958,22 @@ where
         &ctx.tiers[..ctx.tiers.len() - 1]
     };
     let app_stack_default_words = ctx.config.app_stack_bytes / 4;
+    // issue 1598 — the entry's task memory is in spawn order for a boot tier
+    // that is the LAST of the table (`TierTaskMemory::stacks`, BootTier::Last);
+    // the unsorted fallback above boots index 0 instead, which would hand each
+    // tier its neighbour's stack, so that case is refused rather than run.
+    if !ctx.task_memory.is_empty() && boot_index != ctx.tiers.len() - 1 {
+        B::println(format_args!(
+            "nros: the entry's tier task memory assumes the LAST tier boots, but this \
+             table boots index 0 — refused (issue 1598)"
+        ));
+        B::exit_failure();
+    }
     if spawn_next_tier::<B, F, E>(
         crt.executor_mut().session_handle(),
         rest,
         core::mem::take(&mut ctx.tier_backing),
+        ctx.task_memory,
         app_stack_default_words,
         ctx.setup,
     )
@@ -964,6 +1021,7 @@ pub fn run_tiers_entry<B, F, E>(
     boot_config: Option<&'static BakedBootConfig>,
     tiers: &'static [TierSpec<'static>],
     tier_backing: &'static mut [::nros::TierExecutorBackingSlot],
+    task_memory: &'static [::nros::TierTaskMemoryRaw],
     setup: F,
 ) -> core::result::Result<(), E>
 where
@@ -991,6 +1049,17 @@ where
         B::println(format_args!("nros: {}", short));
         B::exit_failure();
     }
+    // issue 1598 — the same refusal for the task memory: none (every tier is
+    // `xTaskCreate`d, the pre-1598 shape) or exactly one row per spawned tier.
+    if !task_memory.is_empty() && task_memory.len() != tiers.len().saturating_sub(1) {
+        B::println(format_args!(
+            "nros: tier task memory holds {} row(s) but {} tier(s) are spawned — the entry \
+             was generated for a different tier table (issue 1598)",
+            task_memory.len(),
+            tiers.len().saturating_sub(1)
+        ));
+        B::exit_failure();
+    }
 
     let app_pri = config.app_priority as u32; // issue 0623 — already raw
     let app_stack_words = config.app_stack_bytes / 4;
@@ -1006,6 +1075,7 @@ where
                 boot_config,
                 tiers,
                 tier_backing,
+                task_memory,
                 setup,
             },
         );

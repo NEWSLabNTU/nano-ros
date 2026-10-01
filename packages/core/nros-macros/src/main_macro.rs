@@ -1635,8 +1635,16 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         Some(table) => {
             let tiers_ts = tier_specs_tokens(table, &node_namespaces);
             let tier_backing_ts = tier_executor_backing_tokens(table);
+            // issue 1598 — a board whose tier runner takes each spawned tier's
+            // task memory (FreeRTOS) gets it as `.bss` statics too, through the
+            // `_with_task_memory` twin; every other board keeps `run_tiers`.
+            let (run_tiers_fn, task_memory_ts) =
+                match tier_task_memory_tokens(table, deploy_for_framework.as_deref()) {
+                    Some(ts) => (quote! { run_tiers_with_task_memory }, quote! { #ts, }),
+                    None => (quote! { run_tiers }, quote! {}),
+                };
             quote! {
-                <#board_path>::run_tiers(
+                <#board_path>::#run_tiers_fn(
                     // Issue #48 cause 1 — thread the deploy overlay into the
                     // multi-tier path too (firmware boards apply it to their boot
                     // `Config`; hosted boards ignore it).
@@ -1644,6 +1652,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     #tiers_ts,
                     // issue 1571 — the spawned tiers' executor backing, `.bss`.
                     #tier_backing_ts,
+                    #task_memory_ts
                     |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
                         -> ::core::result::Result<
                             (),
@@ -3666,6 +3675,47 @@ fn tier_executor_backing_tokens(table: &ResolvedTierTable) -> proc_macro2::Token
             __NROS_TIER_EXECUTOR_BACKING.take()
         }
     }
+}
+
+/// issue 1598 — each spawned tier's TASK memory (stack + control block) as
+/// statics the ENTRY owns, for a board family whose tier runner takes it
+/// (`nros_entry_lower::CAbiRunners::tier_task_memory`) and has a Rust twin
+/// (`run_tiers_with_task_memory`) — FreeRTOS. `None` for every other board,
+/// and for an explicit `board = X` (no deploy key, so no family to ask).
+///
+/// The sizes come from the SAME lowering the C/C++ packs read
+/// (`TierTaskMemory::stacks`): a tier's declared `stack_bytes`, or the
+/// family's stated default, with the boot tier — which runs on the boot task —
+/// left out. The rows are in spawn order, which for a last-boots family is
+/// tier order minus the last; the board refuses a table that boots elsewhere.
+fn tier_task_memory_tokens(
+    table: &ResolvedTierTable,
+    deploy: Option<&str>,
+) -> Option<proc_macro2::TokenStream> {
+    let family = nros_entry_lower::board_family(deploy?).ok()?;
+    if family != nros_entry_lower::BoardFamily::Freertos {
+        return None;
+    }
+    let mem = family.c_abi_runners()?.tier_task_memory?;
+    let declared: Vec<Option<u64>> = table
+        .tiers
+        .iter()
+        .map(|t| t.stack_bytes.map(|b| b as u64))
+        .collect();
+    let stacks: Vec<u64> = mem.stacks(&declared).into_iter().flatten().collect();
+    let n = stacks.len();
+    let idents: Vec<syn::Ident> = (0..n)
+        .map(|i| quote::format_ident!("__NROS_TIER_TASK_MEMORY_{}", i))
+        .collect();
+    let words: Vec<usize> = stacks.iter().map(|b| (*b as usize).div_ceil(8)).collect();
+    Some(quote! {
+        {
+            #( static #idents: ::nros::TierTaskMemory<#words> = ::nros::TierTaskMemory::new(); )*
+            static __NROS_TIER_TASK_MEMORY: ::nros::TierTaskMemorySet<#n> =
+                ::nros::TierTaskMemorySet::new([ #( #idents.raw() ),* ]);
+            __NROS_TIER_TASK_MEMORY.take()
+        }
+    })
 }
 
 /// Emit a `&[TierSpec]` literal from the resolved tier table (Phase 228.G,
