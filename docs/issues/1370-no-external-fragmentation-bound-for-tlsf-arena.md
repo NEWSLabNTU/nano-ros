@@ -150,3 +150,45 @@ Two further facts make the qualitative argument weaker than it reads:
 
 Step 1 is the small one and is worth doing regardless: it is the difference
 between an exhaustion report that is a lead and one that is a number.
+
+## Progress, 2026-10-01 — step 1 landed: the shape is exposed and the report names it
+
+Branch `fix/executor-arena-exact-0810-1340-1370-1036-1496`.
+
+* `zpico_alloc::FreeListHeap::free_shape()` walks rlsf's block list
+  (`Tlsf::iter_blocks`, already reachable through the `unstable` feature this
+  crate enables) and returns the LARGEST CONTIGUOUS free block, the total free
+  payload and the number of holes it is split across. O(blocks), called on the
+  failure path only. The walk needs the pool length rlsf ACCEPTED at insert,
+  not `N` — walking `N` reads past the pool's sentinel (found by the first test
+  run: an `attempt to subtract with overflow` inside rlsf), so the heap now
+  keeps that length.
+* `Exhaustion::classify(size, shape)` is the rule: free total >= request while
+  no hole is that large is `FRAGMENTED`; anything else is `TOO SMALL`.
+* Under `stats`, `request_spread()` records the smallest and largest request the
+  TLSF path has served since boot — the ratio Robson's bound takes.
+* Zephyr: `nros_zephyr_heap_free_shape` exports it, and the line is now
+
+  ```
+  nros: HEAP EXHAUSTED (FRAGMENTED): request N bytes, arena N bytes,
+        free N bytes, largest free block N bytes, caller 0x..
+  ```
+
+  with the FRAGMENTED arm saying a larger `CONFIG_NROS_ZEPHYR_HEAP_SIZE` only
+  postpones it. The walk takes the funnel's spinlock like every other call into
+  the arena.
+
+Tests: `zpico-alloc` — a checkerboarded 8 KiB arena (256-byte blocks, every
+other one freed) refuses 1 KiB with more than 1 KiB free and classifies it
+FRAGMENTED; coalescing back to one hole is observed; the rule and the spread
+each have a case. `tests/zephyr/run-heap-exhaustion.sh` gains a `fragmented`
+case and asserts `TOO SMALL` on the existing exhaustion.
+
+### Still open — steps 2 and 3
+
+No number has been measured on a SHIPPED image: the spread `request_spread()`
+now records has not been read off a real Zephyr image's bringup and steady
+state, so Robson's bound still cannot be evaluated and phase-391:110-118 still
+states no inequality. What changed is that the next occurrence of an exhaustion
+says which of the two it is, and the measurement is one read of two counters on
+an image built with `stats` (every Zephyr image is).

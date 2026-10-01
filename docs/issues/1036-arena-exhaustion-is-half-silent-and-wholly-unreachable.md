@@ -256,3 +256,38 @@ one command against an image, and the expected output is written above.
 
 **The sibling sweep, unchanged.** Nothing has yet enumerated which other
 `nros_log` call sites are reachable only on a target that cannot carry a sink.
+
+## 2026-10-01 — every path is reported, and the reported path reaches the fatal hook
+
+Branch `fix/executor-arena-exact-0810-1340-1370-1036-1496`.
+
+* **One exhaustion path.** `arena_alloc`, `arena_alloc_bytes` and
+  `arena_alloc_with_trailing` each carried their own copy of
+  log-then-record-then-return; they now share `Executor::arena_exhausted`, so a
+  fourth allocator cannot be added that reports less than the other three.
+* **The fatal hook, for the arena** — the vocabulary issue 1425 gave the
+  platform heap (`CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL`). New knob
+  `NROS_ARENA_EXHAUSTION_IS_FATAL` / `CONFIG_NROS_ARENA_EXHAUSTION_IS_FATAL`,
+  default ON exactly when the boot report is (the build script's default, and
+  the Zephyr resolver states it both ways so the default never decides there).
+  On: after the record is written, `nros_platform_panic` — so on the island,
+  where the log line reaches no console, the board halts with the record
+  intact instead of running on with an entity missing. Off: today's
+  `BufferTooSmall`-and-log.
+* **A shape verdict.** Since issue 1496 the arena has released regions, so it
+  can now be out of room with the bytes free in holes; the report adds an
+  `arena FRAGMENTED: N B released, no hole holds M B` line in exactly that case
+  (issue 1370's question, asked of this arena).
+
+Test: `executor::tests::arena_exhaustion_reaches_the_fatal_hook` (compiled when
+the cfg is on; run with `NROS_BOOT_REPORT=1 cargo test -p nros-node --lib
+--features std`) exhausts the arena and asserts the hook was reached; in a
+test build the hook is a latch rather than a call into a platform the test does
+not link.
+
+### Still open
+
+The on-silicon run this issue has carried since 2026-09-05 — an image with
+`CONFIG_NROS_BOOT_REPORT=y` exhausted on purpose, halted, dumped — is still not
+done: no board or hardware lane here. The sibling sweep of `nros_log` sites
+that assume a sink is also unchanged.

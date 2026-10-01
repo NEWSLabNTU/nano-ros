@@ -4,7 +4,7 @@ title: "Destroying a C++ action server or client is a no-op over its arena entry
   — the five RMW entities and the goal table live for the executor's lifetime,
   and the destructor that looks like it releases them drops a struct of `Copy`
   fields"
-status: open
+status: resolved
 type: bug
 area: [api, core]
 severity: medium
@@ -226,3 +226,59 @@ cargo test -p nros-node --lib --features alloc detaching
 # the class: nine destroy FFIs, three no-ops, all classified
 python3 scripts/check-cpp-destroy-shape.py
 ```
+
+## Resolution 2 TAKEN, 2026-10-01 — the arena gives an entry back
+
+Branch `fix/executor-arena-exact-0810-1340-1370-1036-1496`.
+
+* **A removal path.** The executor keeps a table of RELEASED arena regions
+  (`Executor::arena_freed`, 8 entries, adjacent holes coalesce, first-fit with
+  the tail split off). `arena_alloc`, `arena_alloc_bytes` and
+  `arena_alloc_with_trailing` try it before moving the bump pointer, so the
+  arena is still a bump allocator for everything that is never released.
+* **`Executor::release_action_server_raw{,_sized}` /
+  `release_action_client_raw{,_sized}`** drop the entry in place — the RMW
+  handles' `Drop`s destroy the three service servers and two publishers (or the
+  three service clients and the feedback subscription), so the action LEAVES
+  THE GRAPH — free the callback slot (`entries[i] = None`, binding reset) and
+  hand the entry's bytes to the free list. Wrong kind or an empty slot refuses
+  and touches nothing.
+* **C++.** `nros_cpp_action_server_detach` (symbol kept: cbindgen output, called
+  from `~Server()` and the move-assignment) and `nros_cpp_action_client_destroy`
+  now RELEASE rather than detach. Both destructor comments say so.
+* **The move arm this file recorded as UNFIXED** —
+  `nros_cpp_action_client_relocate` now re-points the entry's `context` at the
+  new storage (`Executor::retarget_action_client_raw`), so a moved-from
+  temporary no longer leaves the entry naming dead bytes.
+
+### Measured
+
+`cargo test -p nros-node --lib --features std`, on a mock session with the
+shipped defaults (`MAX_CBS = 4`, `ARENA_SIZE = 74,240`):
+
+* `an_action_server_created_and_released_in_a_loop_never_exhausts` — 200
+  register/release cycles of a raw action server; `arena_used()` equals the
+  first registration's high-water mark on every one of them;
+* `an_action_client_created_and_released_in_a_loop_never_exhausts` — the same
+  for a raw client;
+* `without_the_release_the_same_loop_exhausts` — the negative control: the loop
+  without the release fails at registration 4;
+* `released_regions_split_and_coalesce`,
+  `a_release_of_the_wrong_kind_or_an_empty_slot_is_refused`,
+  `retargeting_a_raw_action_client_moves_its_context`.
+
+Mutation: replacing the free-list lookup in `arena_alloc` with `None` fails both
+loop tests at iteration 0 ("the arena grew; the released region was not
+reused").
+
+### Not covered
+
+* **The C API** has the same shape and no executor-remove call to fix it with —
+  filed as issue 1609.
+* Typed Rust action handles and every other entity kind have no release call;
+  the free list serves whatever is released, and only the two raw action kinds
+  release today.
+* Not run on a target: the release is host-measured on the mock session. The
+  C++ destructor path compiles (`cargo check -p nros-cpp`, the regenerated
+  `nros_cpp_ffi.h`) and is covered by `check-cpp-destroy-shape`; no C++ image
+  exercising a create/destroy loop was run.
