@@ -100,3 +100,68 @@ If the channel must float, the alternative is to make a clippy lane
 merge-gating so a new lint cannot reach `main` — but that is issue 1445's
 decision, not this one's, and the two should not be conflated: 1445 is about
 which lanes gate, this is about a toolchain that changes with no diff.
+
+## 2026-10-01 — it happened, and `main` went red for everyone
+
+Rust **1.99.0** released, CI picked it up, and `main` failed on lints nobody
+introduced. PRs **#1480** and **#1481** had merged green days earlier; **#1516**
+was the first run on 1.99 and failed, then **#1523** failed the same way —
+two unrelated branches, two authors, one wall. Every failing site was already
+on `origin/main`, so no diff and no blame pointed at it. This is the sequence
+this issue described, with the one detail it could not supply: there was no
+commit anywhere in it.
+
+Failing gates: `rustdoc-links`, `rustdoc-workspace`, `test-targets`,
+`workspace-embedded`, `workspace-all`.
+
+### The A/B this issue could not produce on 2026-09-21
+
+One checkout, one tree, the only variable the toolchain:
+
+```
+RUSTUP_TOOLCHAIN=1.98.1 just check cli-clippy   -> "CLI clippy passed!"
+RUSTUP_TOOLCHAIN=1.99.0 just check cli-clippy   -> 4 errors
+```
+
+The earlier unexplained transition is still unexplained and is NOT claimed to
+be this. What is now measured is the mechanism in isolation, which is what the
+September observation lacked.
+
+### The sweep question, partially answered
+
+Nine sites, three crates, **three different lints** — and only one of them is
+clippy, which is the part this issue got too narrow:
+
+| lint | tool | sites |
+| --- | --- | --- |
+| `clippy::needless_borrows_for_generic_args` | clippy | 2 — `nros-node` `executor/spin.rs:9112,9153` |
+| `rustdoc::redundant_explicit_links` | **rustdoc** | 5 of 7 occurrences — `nros` `lib.rs:166`, `node_runtime.rs:4,6,7,9` |
+| `semicolon_in_expressions_from_non_local_macros` | **rustc** | 4 — `cargo-nano-ros` `scaffold.rs:157`, `workspace_scaffold.rs:237,268,276` (+3 more in `nros-pkg-index`, capped to warnings there) |
+
+So the framing "clippy's lint SET grows every release" undersells it: **three
+tools move with `channel = "stable"`** — clippy, rustdoc, and rustc's own
+future-incompat set, which `-D warnings` turns into a hard error the day the
+compiler starts emitting it. A pin covers all three; a merge-gating clippy lane
+(issue 1445) covers one.
+
+The last row is also the one a lane could never have caught in advance, and
+not for a lane reason: the defect is in **eyre 0.6.12's `bail!`**, which expands
+to `return Err(..);` — a trailing semicolon in expression position. Our source
+is unremarkable; upstream fixed the macro in **0.6.14**. A dependency we had
+already resolved became non-compiling because the compiler's opinion of it
+changed.
+
+What remains unmeasured is unchanged: the crates no lane lints at all
+(issue 1380's `platform-bare-metal` combination, and whatever else), which this
+sweep could not reach because a green lane is the only instrument we have.
+
+### Fixed in
+
+`#1447`'s two commits on the `work/1447-rust-199-lints` branch. Verified under
+`RUSTUP_TOOLCHAIN=1.99.0`: `rustdoc-links`, `rustdoc-workspace`, `test-targets`
+(incl. `cli-clippy`), `workspace-embedded`, `workspace-all` and
+`workspace-features` all green.
+
+**The pin itself is deliberately NOT part of that change** — the fix shape above
+is a decision for the maintainer, and clearing a red is not the moment to take
+it silently.
