@@ -31,7 +31,7 @@ nros-board-nuttx                    18   0     1      10      0
 nros-board-nuttx-qemu                7   0     0       4      0
 nros-board-threadx                  35   0     0      11      0
 nros-board-threadx-linux             9   1     0       5      0
-nros-board-threadx-qemu-riscv64     11   1     0       3      0
+nros-board-threadx-qemu-riscv64     13   1     0       4      0
 nros-board-zephyr                   19   0     0       8      0
 nros-bridge                         34   1     0       8      0
 nros-build                           1   0     0       0      0
@@ -39,10 +39,10 @@ nros-build-helpers                   2   0     0       2      0
 nros-c                             385  68     5     427      0
 nros-cli-core                       22   0     0       0      0
 nros-core                            2   0     2       2      0
-nros-cpp                           728  20     0     315      0
+nros-cpp                           728  20     0     316      0
 nros-log                            19   0     6       1      0
 nros-macros                         12   0     1       2      0
-nros-node                          421  146    25      87      0
+nros-node                          429  147    25      88      0
 nros-nuttx-ffi                       1   0     0       1      0
 nros-nuttx-riscv-ffi                 1   0     0       1      0
 nros-orchestration-ir                4   0     0       0      0
