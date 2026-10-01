@@ -89,7 +89,7 @@ Not every trait is required. The set depends on which RMW backend the applicatio
 | `PlatformUdpMulticast` | Desktop platforms only | Not needed |
 | `PlatformLibc` | Bare-metal only | Not needed |
 
-XRCE-DDS is significantly simpler to port: it is single-threaded, heap-free, and uses user-provided transport callbacks rather than a full socket API. A minimal XRCE-DDS port requires only `PlatformClock` and four C function pointers (open, close, read, write).
+XRCE-DDS is significantly simpler to port: it is single-threaded, allocates only when a session or entity is created (nothing per message), and uses user-provided transport callbacks rather than a full socket API. A minimal XRCE-DDS port requires only `PlatformClock` and four C function pointers (open, close, read, write).
 
 zenoh-pico requires a complete platform implementation but provides richer functionality (peer-to-peer, scouting, zero-copy receive, actions).
 

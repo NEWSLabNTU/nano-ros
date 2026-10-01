@@ -137,6 +137,15 @@ fn main() -> ! {
             };
             hprintln!("HEAP-FREE-POC: unexpected open success, install rc={}", rc);
             let _ = executor.spin_once(core::time::Duration::from_millis(10));
+            // Issue 0816 — the book (`design/client-library.md`) says
+            // `spin_once`, `spin_some` and `spin_forever` all reach a no-alloc
+            // target; linking all three here is what lets the gate say so.
+            // `spin_forever` never returns, so it sits behind a condition LLVM
+            // cannot fold rather than in front of the failure exit.
+            let _ = executor.spin_some(core::time::Duration::from_millis(10));
+            if core::hint::black_box(rc) == i32::MIN {
+                executor.spin_forever(nros::SpinOptions::default());
+            }
             debug::exit(debug::EXIT_FAILURE);
         }
         Err(_) => {

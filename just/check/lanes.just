@@ -2350,15 +2350,22 @@ launch-resolve-builds:
 # Issue 0816 — the book promises no-alloc integrations and nothing verified the
 # LINKED image; a Cargo feature gate is necessary and not sufficient, because a
 # vendored C dependency or a weak-symbol fallback pulls an allocator in without
-# any feature moving. Selftest + claims roster only: BUILDLESS, so it sits on
-# the fast line beside the other self-testing generators.
+# any feature moving.
 #
-# The image-level tiers are deliberately NOT wired into `ci` yet. `--claims`
-# reports 0 of 4 book claims backed, because no example is BUILT no-alloc (all
-# 13 bare-metal Rust leaves enable `alloc`) — the missing thing is a fixture,
-# not a gate, and that is 0816's remaining half. The `--tier unified` object
-# check is green on the zenoh funnel and red on a cyclone leaf (`operator new`
-# in four TUs), so it waits on a fix or an `--allow` carrying a tracked issue id.
+# Two halves, two lanes. The IMAGE half is `just ci l3`: it builds
+# `heap-free-poc-mps2` (nros without `alloc`; executor open/install/spin plus
+# the core ParameterServer) and runs `--tier heap-free` on the linked ELF. THIS
+# recipe is the BOOK half and is buildless: `--claims` harvests every line of
+# `book/src/**/*.md` with no-alloc wording and fails unless each is rostered —
+# an `image` row must name an image the L3 recipe really checks (read from
+# `just/ci.just`, so it cannot go stale toward OK), and every other row says
+# why the sentence is not a promise about an image. It was in `build-serial`
+# (schedule-only) while this comment said "fast line"; it is on the fast line
+# now, because a book edit is exactly what a PR changes.
+#
+# The `--tier unified` object check is green on the zenoh funnel and red on a
+# cyclone leaf (`operator new` in four TUs), so it waits on a fix or an
+# `--allow` carrying a tracked issue id.
 [private]
 no-alloc-image:
     @python3 scripts/check-no-alloc-image.py --claims
