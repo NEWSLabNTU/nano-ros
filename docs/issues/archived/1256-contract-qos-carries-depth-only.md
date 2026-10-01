@@ -2,7 +2,8 @@
 id: 1256
 title: "Contract QoS reaches the build as DEPTH only -- reliability, history
   and durability are declared, delivered, and dropped"
-status: open
+status: resolved
+resolved_in: 2026-10-01
 type: enhancement
 area: orchestration, build
 severity: low
@@ -86,8 +87,8 @@ config source first, rather than adding three more literals.
   beside it, because a `depth:` written next to KEEP_ALL is not a cap on the
   queue (RFC-0100 D6). The refusal is per fact — the depth-derived numbers go,
   the entity counts, the type sets and the policy table itself stay.
-- **OPEN** — the declared-QoS header and boot check cover reliability and
-  durability. This one is NOT W3's. `NROS_ASSERT_DECLARED_DEPTH` compares a
+- **DONE** (2026-10-01, see Resolution) — the declared-QoS header and boot check
+  cover reliability and durability. This one is NOT W3's. `NROS_ASSERT_DECLARED_DEPTH` compares a
   call site's QoS against a generated `(type, topic) -> depth` table, and
   widening that table is the same edit as widening it to the languages it does
   not reach today (`_nros_declared_qos_arm` returns early for Rust and INTERFACE
@@ -96,3 +97,80 @@ config source first, rather than adding three more literals.
   code/contract disagreement on reliability or durability is an INTEROP failure
   (an incompatible-QoS match never delivers), not a sizing one, so it does not
   hold up any of the derivations above.
+
+## Resolution (2026-10-01)
+
+The last bullet closed, in all three languages, for SUBSCRIPTIONS -- the scope
+the header and the boot check have always had.
+
+**The table.** `nros_declared_qos_generated.h`'s rows gained two columns,
+`reliability` and `durability`, beside the depth
+(`EntityInventory::declared_qos_header_table`, which joins the depth view with
+the policy view per `(type, topic)`). A row exists when ANY column is stated,
+so a subscription that declares `reliability: best_effort` and no depth gets
+one, with the depth column `-1`. The policy columns are bare TOKENS
+(`NROS_DQ_RELIABLE`, `NROS_DQ_BEST_EFFORT`, `NROS_DQ_VOLATILE`,
+`NROS_DQ_TRANSIENT_LOCAL`, `NROS_DQ_UNDECLARED`) because C and C++ number those
+enums differently (`NROS_QOS_RELIABILITY_RELIABLE` is 1, `nros::Reliable` is
+0): each header pastes the token onto a prefix of its own, and
+`nros/component.hpp` / `nros/subscription.h` `static_assert` the literals equal
+to the enumerators, so a drift is a compile error rather than a check against
+the wrong value. `system_default` is not a column value -- it says "the
+middleware chooses", which no call site can disagree with. `keep_all` now
+refuses the DEPTH column only (RFC-0100 D6, per fact): before, it took the
+whole table with it.
+
+**C++.** `NROS_ASSERT_DECLARED_RELIABILITY` / `_DURABILITY` beside the depth
+macro, and `NROS_ASSERT_DECLARED_QOS` for all three -- what `NROS_SUBSCRIBE`'s
+four-argument form now asserts. The three-argument form fills every declared
+column in (`detail::qos_from_declared`). The boot-time half is
+`Node::check_declared_qos` (ledger row added), which `create_subscription_in`
+and `_in_group` now call; a policy disagreement goes through `set_error` as
+`DECLARED_QOS_MISMATCH` (-403, the depth's code).
+
+**C.** `NROS_DECLARED_RELIABILITY` / `NROS_DECLARED_DURABILITY` and the two
+`NROS_ASSERT_DECLARED_*` macros, in `nros_qos_t` values, with the values in the
+diagnostic as the sizes of a conflicting `extern char` pair (offset by one, so
+0 is legal; the identifier spells the legend). A C COMPONENT's `nros_cpp_qos_t`
+numbers reliability the C++ way, so it is held at registration instead.
+
+**Rust / every FFI seam.** `DECLARED_QOS_ROWS` is now a table of
+`declared_qos::DeclaredEndpoint { depth, reliability, durability }`, each
+optional. The policies arrive on the SIZING DESCRIPTOR only -- no env knob was
+added; the descriptor already states them (0460/0491). `check` (the C/C++ FFI
+seams, which took the declaration at their call site) refuses any disagreement,
+with `NodeError::DeclaredQosMismatch` for a policy. `honour` (every Rust
+registration) applies the depth's rule to the policies, ordered by how much
+each ASKS FOR: a weaker declared value (best_effort, volatile) is TAKEN and
+reported, a stronger one REFUSED, and a call site that asked `SystemDefault`
+takes the declaration silently.
+
+**Gates, each with its negative control measured red.**
+`just check declared-qos-header` grew cases F3 (C++) and F4 (C): a contract
+stating `best_effort` + `transient_local`, an agreeing call site, and one
+disagreeing call site per policy, each of which must be OUR rejection naming
+the topic and both values (49 assertions in all). Planted mutations -- the
+C++ reliability lookup always answering UNDECLARED, the C one likewise -- each
+turned exactly that case red. `just check declared-qos-registration` now
+requires exactly THREE declared-image tests on the descriptor carrier (the
+third reads `/status`'s declared `best_effort` + `volatile` from
+`tests/fixtures/declared-qos-descriptor.toml`) and two on the depth-only env
+carrier; with `build.rs` dropping the descriptor's policy columns the
+descriptor step went red at `2 passed`.
+
+**Measured on a real image** (issue 1564 is the adopter): with
+`examples/workspaces/cpp`'s contract changed to `{ depth: 1, reliability:
+best_effort }` against `Listener.cpp`'s `nros::QoS(1)`, the native workspace
+build fails in `Listener.cpp` with `declared_reliability_agrees<1, 0>` and the
+topic `"/chatter"`.
+
+**What it does not cover, stated rather than implied.**
+
+* PUBLISHERS. The table, the boot check and the registration check are
+  subscription-only, for depth as well as policies; a publisher needs a kind
+  column and a C++ macro seam that does not exist. Filed as issue 1608.
+* The Rust half on a MULTI-ENTRY cmake configure. Such a configure names no
+  sizing descriptor to cargo (phase-457 W0.c, permanent), and the descriptor is
+  the policies' only carrier, so there the Rust registration checks the depth
+  and not the policies. The C/C++ compile-time table is per component and does
+  check them there (issue 1564).
