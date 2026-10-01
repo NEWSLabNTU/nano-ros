@@ -324,13 +324,18 @@ function(nano_ros_entry)
     # `<node machine=>` (ROS 1 syntax). HOST stays PARSED so an old caller
     # fails here with guidance instead of the keyword silently joining
     # SOURCES via UNPARSED_ARGUMENTS.
+    #
+    # The guidance used to say "point MODEL at the per-host SystemModel" —
+    # and phase-330 W4.a / phase-405 W4 took MODEL out of this grammar, so the
+    # remedy sent the reader to a keyword nothing parses (issue 1554, which
+    # gated it). Same answer as the sibling in `nano_ros_add_executable`.
     if(_NRA_HOST)
         message(FATAL_ERROR
             "nano_ros_entry(${_NRA_NAME}): HOST was removed (phase-326 / "
-            "issue 0364) — multi-host partitions at RESOLVE time now. Point "
-            "MODEL at the per-host SystemModel instead (resolved with "
-            "`host:=${_NRA_HOST}`, e.g. "
-            "MODEL config/multihost_${_NRA_HOST}_model.yaml).")
+            "issue 0364) — multi-host partitions at RESOLVE time now. Name the "
+            "INPUT and the binding instead: `BRINGUP <dir> LAUNCH "
+            "<multihost.launch.xml> LAUNCH_ARGS host=${_NRA_HOST}`, with a "
+            "matching `[[model]]` declaration in the bringup's system.toml.")
     endif()
     foreach(_req NAME DEPLOY)
         if(NOT _NRA_${_req})

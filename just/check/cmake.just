@@ -87,7 +87,12 @@ cmake-find-program-shadowed:
 # reporting to nobody; this is the reader.
 #
 # The retired set is DISCOVERED from the cmake sources, so the next retirement
-# arms this gate by itself and a moved wording makes it BLIND, not permissive.
+# arms this gate by itself — and a retirement whose wording it cannot attribute
+# is now a FAILURE (issue 1554: moving the ENTITIES refusal to `${_call}: …`
+# silently dropped that keyword while HOST/MODEL kept the gate green).
+# Issue 1554 also moved the exemption from `cmake/` WHOLESALE to the tombstone
+# FUNCTION: three message() remedies in cmake/ told readers to write ENTITIES
+# for 24 days, and a tombstone's remedy may name only keywords its verb accepts.
 retired-cmake-keywords:
     @python3 scripts/check-retired-cmake-keywords.py
 
