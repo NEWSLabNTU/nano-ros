@@ -1,11 +1,12 @@
 ---
 id: 1559
 title: "`env_lock()` is private to `env.rs`'s test module, so it serialises WRITERS against writers and not against the READERS one module over — `check::build` fails nondeterministically"
-status: open
+status: resolved
 type: bug
 area: [core, testing]
 severity: medium
 found: 2026-09-29
+resolved_in: 2026-10-01
 related: [0607, 1313, 1394, 0196, 0952]
 ---
 
@@ -99,3 +100,37 @@ is the smaller change; only one of them removes the shape.
 `cargo test -p nros --lib --features env,std` passes under sustained parallel
 load (the condition that produced the red — `check-build` at `-P32`), and no
 test in that binary reads process env without holding the shared lock.
+
+## Resolution
+
+Fixed by PR #1444 ("init.rs env-reading tests raced env.rs's mutating ones"),
+which took the fix direction's smaller option: the lock was hoisted to
+`crate::env::test_env_lock()` (`pub(crate)`, `#[cfg(test)]`, the same
+poison-tolerant mutex with its doc moved alongside), `env.rs`'s private
+`env_lock()` now delegates to it, and every test in `init.rs`'s
+`ros_args_refusal_tests` takes it first. That PR measured the class at
+11/300 failing runs before (one of them a SIBLING of the reported test) and
+0/300 after.
+
+Re-verified on 2026-10-01 against `origin/main`, because the issue was left
+`open` after the fix landed:
+
+- **Population, enumerated rather than guessed.** Every path in the `nros`
+  crate that reads process env (`std::env::var*`) is reached through
+  `env_cache()` / `env_rung()` / `rmw_selector()` (env.rs) or
+  `read_env_context()` (init.rs). Every test that calls an entry point into
+  those — `resolve_hosted`, `try_resolve_hosted`, `ExecutorConfig::from_env`,
+  `rmw_selector`, `init`, `init_with_args`, `Context::{default_from_env,
+  from_env, new}` — lives in `env.rs`'s `mod tests` (13 tests, 13 lock
+  sites) or `init.rs`'s `ros_args_refusal_tests` (11 tests, 11 lock sites).
+  `init.rs`'s `freestanding_default_from_env_is_the_bake` is compiled only
+  without the `env` feature and reads the bake, not the environment. No
+  other module of the lib binary reads the environment.
+- **Acceptance, under load.** The lib test binary built with
+  `--features env,std`, run with `--test-threads 32`: the two modules
+  alone 200/200 green, the whole binary (89 tests) 100/100 green.
+
+The other option the fix direction named — readers that take an explicit
+environment map, so there is nothing to serialise — was not taken. The lock
+closes this binary; a new reader that forgets to take it would reopen the
+class, and nothing mechanical stops that yet.
