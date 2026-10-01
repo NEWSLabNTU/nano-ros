@@ -348,6 +348,107 @@ pub fn check_tier_executor_backing(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// issue 1598 — each spawned tier's TASK memory (stack + control block), the
+// same "entry declares, board uses" method one step further: the executor
+// backing above is in `.bss`, and so now is the task that runs it.
+// ---------------------------------------------------------------------------
+
+/// issue 1598 — the control-block region every [`TierTaskMemory`] carries,
+/// in 8-byte words. An UPPER BOUND over the kernels that take it (a FreeRTOS
+/// `StaticTask_t` on Cortex-M is about a hundred bytes); the port REFUSES a
+/// region smaller than its own control block at spawn, by name, so a kernel
+/// whose block outgrows this fails loudly rather than overrunning the stack
+/// that follows. Rust cannot name a C type's size at macro time, which is why
+/// this one number is a bound and the stack beside it is exact.
+pub const TIER_TASK_TCB_U64S: usize = 64;
+
+/// issue 1598 — one spawned tier's task memory as a board receives it: raw,
+/// `Copy`, no lifetime. The ENTRY owns the bytes ([`TierTaskMemory`]); the
+/// handout is once-only ([`TierTaskMemorySet::take`]), which is what makes the
+/// raw pointers exclusive.
+#[derive(Clone, Copy, Debug)]
+pub struct TierTaskMemoryRaw {
+    /// The stack: `stack_bytes` bytes, 64-byte aligned.
+    pub stack: *mut u8,
+    /// The stack's size in bytes — the tier's declared `stack_bytes` (or the
+    /// family default), rounded up to whole words.
+    pub stack_bytes: usize,
+    /// The control-block region: `tcb_bytes` bytes, 64-byte aligned.
+    pub tcb: *mut u8,
+    /// [`TIER_TASK_TCB_U64S`] words.
+    pub tcb_bytes: usize,
+}
+
+// SAFETY: the pointers name `'static` storage handed out once (see the set's
+// latch), so moving the row to the task that uses it is the whole point.
+unsafe impl Send for TierTaskMemoryRaw {}
+unsafe impl Sync for TierTaskMemoryRaw {}
+
+/// issue 1598 — one spawned tier's stack and control block, as ONE named static
+/// the entry owns. `STACK_U64S` is the tier's stack in 8-byte words.
+///
+/// The control block comes first and both are 64-byte aligned, so the stack
+/// starts on a boundary every in-tree kernel accepts for a thread stack.
+#[repr(C, align(64))]
+pub struct TierTaskMemory<const STACK_U64S: usize> {
+    tcb: core::cell::UnsafeCell<[MaybeUninit<u64>; TIER_TASK_TCB_U64S]>,
+    stack: core::cell::UnsafeCell<[MaybeUninit<u64>; STACK_U64S]>,
+}
+
+// SAFETY: the bytes are reached only through `raw`, collected into a
+// `TierTaskMemorySet` whose latch hands them out at most once.
+unsafe impl<const STACK_U64S: usize> Sync for TierTaskMemory<STACK_U64S> {}
+
+impl<const STACK_U64S: usize> TierTaskMemory<STACK_U64S> {
+    /// An untouched reservation, `const` so it initialises a `static`
+    /// (all-zero `.bss`, no flash).
+    #[allow(clippy::new_without_default, clippy::large_stack_arrays)]
+    pub const fn new() -> Self {
+        Self {
+            tcb: core::cell::UnsafeCell::new([MaybeUninit::uninit(); TIER_TASK_TCB_U64S]),
+            stack: core::cell::UnsafeCell::new([MaybeUninit::uninit(); STACK_U64S]),
+        }
+    }
+
+    /// The raw row for this static — `const`, so the entry builds its
+    /// [`TierTaskMemorySet`] in a `static` initialiser.
+    pub const fn raw(&'static self) -> TierTaskMemoryRaw {
+        TierTaskMemoryRaw {
+            stack: self.stack.get() as *mut u8,
+            stack_bytes: STACK_U64S * core::mem::size_of::<u64>(),
+            tcb: self.tcb.get() as *mut u8,
+            tcb_bytes: TIER_TASK_TCB_U64S * core::mem::size_of::<u64>(),
+        }
+    }
+}
+
+/// issue 1598 — the spawned tiers' task memory, `N` rows in spawn (chain)
+/// order, behind a once-only latch.
+pub struct TierTaskMemorySet<const N: usize> {
+    taken: portable_atomic::AtomicBool,
+    rows: [TierTaskMemoryRaw; N],
+}
+
+impl<const N: usize> TierTaskMemorySet<N> {
+    /// `const`, for a `static` initialiser over the per-tier statics.
+    pub const fn new(rows: [TierTaskMemoryRaw; N]) -> Self {
+        Self {
+            taken: portable_atomic::AtomicBool::new(false),
+            rows,
+        }
+    }
+
+    /// Hand out every row, once. A second call returns an EMPTY slice, which a
+    /// board refuses by count rather than giving two tasks one stack.
+    pub fn take(&'static self) -> &'static [TierTaskMemoryRaw] {
+        if self.taken.swap(true, portable_atomic::Ordering::AcqRel) {
+            return &[];
+        }
+        &self.rows
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -431,6 +532,32 @@ mod tests {
         assert!(
             TIERS.take().is_empty(),
             "a second taker must get nothing — two `&'static mut` to one slot is UB"
+        );
+    }
+
+    /// issue 1598 — a tier's task memory is exactly the declared stack plus the
+    /// stated control-block bound, aligned for a thread stack, and handed out
+    /// ONCE: a second take is empty, never a second task on the same stack.
+    #[test]
+    fn tier_task_memory_is_the_declared_size_and_handed_out_once() {
+        static A: TierTaskMemory<128> = TierTaskMemory::new();
+        static B: TierTaskMemory<32> = TierTaskMemory::new();
+        static SET: TierTaskMemorySet<2> = TierTaskMemorySet::new([A.raw(), B.raw()]);
+        let rows = SET.take();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].stack_bytes, 128 * 8);
+        assert_eq!(rows[1].stack_bytes, 32 * 8);
+        assert_eq!(rows[0].tcb_bytes, TIER_TASK_TCB_U64S * 8);
+        assert_eq!(rows[0].stack as usize % 64, 0, "stack is 64-byte aligned");
+        assert_ne!(rows[0].stack, rows[1].stack);
+        assert_eq!(
+            core::mem::size_of::<TierTaskMemory<128>>(),
+            (TIER_TASK_TCB_U64S + 128) * 8,
+            "nothing but the TCB bound and the stack"
+        );
+        assert!(
+            SET.take().is_empty(),
+            "a second take must not alias the rows"
         );
     }
 

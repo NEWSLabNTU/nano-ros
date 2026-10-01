@@ -50,6 +50,42 @@ int nros_freertos_create_task(
 }
 
 /*
+ * Issue 1598 — create a FreeRTOS task over CALLER-OWNED memory: the Rust
+ * `nros::main!` entry's `TierTaskMemory` static (stack + control-block region),
+ * so a tier's stack is `.bss` the linker prices instead of a heap_4 block.
+ *
+ * `tcb_bytes` is the region the entry reserved for the control block, an upper
+ * bound stated in Rust (`TIER_TASK_TCB_U64S`) because Rust cannot name a C
+ * type's size. It is CHECKED here, where `sizeof(StaticTask_t)` is known: a
+ * kernel whose control block outgrew the bound is refused by name rather than
+ * overrunning. Returns 0 on success, -1 on refusal or failure.
+ */
+int nros_freertos_create_task_static(void (*entry)(void*), const char* name, void* stack,
+                                     uint32_t stack_bytes, void* arg, uint32_t priority, void* tcb,
+                                     uint32_t tcb_bytes) {
+#if (configSUPPORT_STATIC_ALLOCATION == 1)
+    if (stack == NULL || tcb == NULL || tcb_bytes < (uint32_t)sizeof(StaticTask_t) ||
+        stack_bytes < (uint32_t)(configMINIMAL_STACK_SIZE * sizeof(StackType_t))) {
+        return -1;
+    }
+    TaskHandle_t h = xTaskCreateStatic(entry, name, stack_bytes / (uint32_t)sizeof(StackType_t),
+                                       arg, (UBaseType_t)priority, (StackType_t*)stack,
+                                       (StaticTask_t*)tcb);
+    return (h != NULL) ? 0 : -1;
+#else
+    (void)entry;
+    (void)name;
+    (void)stack;
+    (void)stack_bytes;
+    (void)arg;
+    (void)priority;
+    (void)tcb;
+    (void)tcb_bytes;
+    return -1;
+#endif
+}
+
+/*
  * Set the CALLING task's priority (raw FreeRTOS units), clamped to
  * configMAX_PRIORITIES - 1 (the shared FreeRTOSConfig.h defines a live
  * configASSERT, so an out-of-range value must not reach

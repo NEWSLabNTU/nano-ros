@@ -80,6 +80,10 @@ pub use nros_board_common::BaseConfig;
 /// depending on `nros` itself.
 pub use ::nros::TierExecutorBackingSlot;
 
+/// issue 1598 — one spawned tier's task memory row (stack + TCB), for the same
+/// reason: a wrapping board crate names it without depending on `nros`.
+pub use ::nros::TierTaskMemoryRaw;
+
 /// Internal re-export of the `Error` + `Result` types used by
 /// per-board `node.rs` files during the 152.1.B.5 → final-lift
 /// transition. Overlays import via `nros_board_freertos::__internal::*`.
