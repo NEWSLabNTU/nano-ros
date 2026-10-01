@@ -76,7 +76,7 @@ both resolved and archived.
 Closes the reachability half of
 [issue 1371](../issues/1371-tier-derivation-silent-on-empty-callback-groups.md)
 (the silence half stays 1371's) and takes item 2 of
-[issue 1372](../issues/1372-contract-trigger-rate-is-dead-data.md) as a
+[issue 1372](../issues/archived/1372-contract-trigger-rate-is-dead-data.md) as a
 dependency, not as its own work. Builds on RFC-0047 (groups in code, bindings in
 `system.toml`), RFC-0052 (the realizer), RFC-0079 (priority is allocated, not
 authored) and RFC-0032 section 5.1 (the degenerate gate).
@@ -331,7 +331,7 @@ This phase depends on it and does not implement it; until it lands the W0
 fixture keeps the two numbers equal, as the island does, and a comment in the
 fixture's contract says why.
 
-Claim: phase-459-W7. Depends on: phase-457-W2. Owns: the contract under examples/workspaces/derived-tiers-cpp/; one case in packages/cli/nros-cli-core/tests/derived_tiers_bake.rs. Gate: cargo test -p nros-cli-core --test derived_tiers_bake. Status: not started.
+Claim: phase-459-W7. Depends on: phase-457-W2. Owns: the contract under examples/workspaces/derived-tiers-cpp/; one case in packages/cli/nros-cli-core/tests/derived_tiers_bake.rs. Gate: cargo test -p nros-cli-core --test derived_tiers_bake. Status: landed with issue 1372's resolution ("the schedule follows the timer trigger"). The fixture's 30 Hz pair promises a 5 Hz floor and its 10 Hz pair 8 Hz, so a promise-reading derivation would invert the order; derived periods are 33 333 / 100 000 us and the 30 Hz pair ranks first, and raising the slow pair's trigger to 60 Hz with no promise touched moves it to 16 667 us and to the top. Two corrections: the topics' `rate_hz` lines had to go too (a declared 30 above a 5 Hz floor is the resolver's `rate-hierarchy` ERROR), and `example_metadata_coverage` asserted `min_rate_hz == rate` on this fixture, so it now asserts the path's `trigger` instead. derived_tiers_bake 6, derived_tiers_entry 4, derived_tiers_precedence 7, example_metadata_coverage 3 passed.
 
 ### What the island then writes
 

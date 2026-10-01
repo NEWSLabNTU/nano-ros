@@ -3,13 +3,84 @@ id: 1372
 title: "A path's `trigger.timer.rate_hz` never reaches the realizer: the period
   it derives comes from the first output endpoint's `pub.min_rate_hz` instead,
   and nothing reports the two disagreeing"
-status: open
+status: resolved
 type: bug
 area: [cli, launch, contract, orchestration]
 severity: medium
 found: 2026-09-18
-related: [issue-1339, issue-1256, issue-0760, rfc-0052, rfc-0078, phase-454]
+resolved: 2026-10-01
+resolved_in: "phase-457 W1/W2 (PRs #1198, #1218) carried and read the trigger; phase-459 W7 (\"the schedule follows the timer trigger\") measured it, made the realizer read the shared rate, and surfaced the resolver's divergence warning"
+related: [issue-1339, issue-1256, issue-0760, rfc-0052, rfc-0078, phase-454, phase-457, phase-459]
 ---
+
+## Resolution (2026-10-01)
+
+All three items hold on `main`, two of them because other work already did them
+and nobody measured it (issue 1339's closing note said exactly that), and the
+third because it was half done: the resolver computed the warning and wrote it
+into a file no consumer read.
+
+**Item 2 - the trigger is carried and read.** phase-457 W1 (PR #1198) pinned
+rlm v0.1.37, whose `PathContract` carries `trigger` (the model now writes
+`trigger: {kind: timer, value: {rate_hz: ..}}` under every timer path). phase-457
+W2 (PR #1218) replaced `mapper_input.rs` with one call into
+`ros-launch-manifest-derive`, which takes a node's rate from its paths' `Timer`
+triggers "and nothing else: authored `topics.<t>.rate_hz` and
+`pub.<ep>.min_rate_hz` are runtime promises no mapper reads"
+(`derive/src/lib.rs`). `pub_rate_hz` and the `find_map` over outputs are gone;
+`git grep min_rate_hz packages/core/nros-orchestration-ir` finds only the new
+test that asserts it is NOT read.
+
+What this resolution adds on the consumer side: `rtos_realizer::node_facts`
+still re-folded the period from the paths itself. It now reads the shared
+`MapperNode.rate_hz` first, as phase-457 W4 made it read `deadline_us`, so the
+Zephyr period and play_launch's rate-monotonic rank are one answer and the path
+fold is only the fallback for a hand-built `MapperInput`.
+
+**Item 1 - the divergence is reported, and now SEEN.** The pinned resolver
+already checks the two numbers where both exist: `[min-rate-mismatch]`
+(warning) when a publisher promises more than the timers that drive it derive,
+and `[derivable-min-rate]` (info) when the promise equals it. A promise BELOW
+the timer is a true, loose floor and is rightly silent. Measured on
+`derived-tiers-cpp` with one promise raised to `min_rate_hz: 30` over a 10 Hz
+timer: the model's `meta.diagnostics` held
+
+```
+[min-rate-mismatch] warning: publisher '/mrm_comfortable_stop_operator/status' promises
+min_rate_hz 30 on '/system/mrm/comfortable_stop/status', but the timers that drive it derive
+only 10.0000 Hz. The endpoint guarantees more than its own triggers can produce
+```
+
+and `nros-launch-resolve` printed nothing (the resolver logs warnings at
+`debug!`, and its thin main installs no logger), and nothing in `nros sync`
+read `meta.diagnostics` except the params-projection check. So the finding
+existed only inside a build artifact. `nros sync` now prints every
+warning-severity entry of a freshly resolved model to stderr
+(`cmd::ws::resolver_warnings`), which reaches every resolver warning, not just
+this one (`rate-mismatch`, `derived-rate-hierarchy`, `queue-drain-rate`).
+Infos stay in the file. One limit is the resolver's own: the endpoint check
+attributes per topic and skips a topic with more than one publisher.
+
+**Item 3 - the misleading comment** went with the code it described.
+
+**Proof on a real contract.** phase-459 W7: the `derived-tiers-cpp` fixture's
+two numbers now DIFFER, chosen so that ranking by the promise inverts the
+schedule (30 Hz timers promise a 5 Hz floor, 10 Hz timers an 8 Hz floor; the
+topics' `rate_hz` lines are removed because the resolver derives them, and a
+declared 30 above a 5 Hz floor is a `rate-hierarchy` error).
+`derived_tiers_bake::the_schedule_follows_the_timer_trigger_not_the_publication_promise`
+resolves it through the pinned resolver and asserts derived periods of
+33 333 us and 100 000 us (the promises would give 200 000 and 125 000) and the
+30 Hz pair above the 10 Hz pair; then it runs this issue's own experiment in
+reverse - raise the slow pair's TRIGGER to 60 Hz, touch no promise - and asserts
+the slow pair moves to 16 667 us and to the top. Before phase-457 W2 that edit
+changed nothing. `a_promise_above_the_timer_rate_is_a_resolver_warning`
+asserts the shipped fixture resolves warning-free and the raised promise yields
+the warning above. Unit level:
+`rtos_realizer::the_timer_trigger_rate_is_the_tier_period_whatever_the_outputs_promise`
+(25 Hz trigger, outputs promising 10 and 40, period 40 000 us either way) and
+`the_period_reads_the_shared_rate_before_re_folding_the_paths`, which fails
+with the shared read disabled (mutation run: 34 passed, 1 failed).
 
 ## Two fields that look like the same fact
 
