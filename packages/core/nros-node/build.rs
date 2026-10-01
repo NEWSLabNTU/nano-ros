@@ -383,6 +383,24 @@ fn main() {
         println!("cargo:rustc-cfg=nros_boot_report");
     }
 
+    // Issue 1036 — arena exhaustion reaches the platform's FATAL HOOK where the
+    // image asked for it: the arena's twin of
+    // `CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL` (issue 1425), with the same
+    // default — ON exactly when the boot report is, because an image that asked
+    // for the record expects to be read after it stops, and one that did not is
+    // a development image where `BufferTooSmall`-and-log is what it has always
+    // had. `NROS_ARENA_EXHAUSTION_IS_FATAL=0` turns it off explicitly.
+    println!("cargo:rustc-check-cfg=cfg(nros_arena_exhaustion_fatal)");
+    println!("cargo:rerun-if-env-changed=NROS_ARENA_EXHAUSTION_IS_FATAL");
+    let truthy = |v: &str| !v.is_empty() && v != "0" && v != "n";
+    let arena_fatal = match env::var("NROS_ARENA_EXHAUSTION_IS_FATAL") {
+        Ok(v) => truthy(&v),
+        Err(_) => env::var("NROS_BOOT_REPORT").is_ok_and(|v| truthy(&v)),
+    };
+    if arena_fatal {
+        println!("cargo:rustc-cfg=nros_arena_exhaustion_fatal");
+    }
+
     // Emit `has_rmw` when an RMW seam is compiled in.
     //
     // phase-347 W1 — this used to test four features:

@@ -1598,6 +1598,22 @@ config NROS_HEAP_EXHAUSTION_IS_FATAL
       off explicitly on an image that genuinely recovers from a failed
       allocation -- and then make sure something checks the return.
 
+config NROS_ARENA_EXHAUSTION_IS_FATAL
+    bool "Halt through the fatal hook when the executor arena is exhausted"
+    default y if NROS_BOOT_REPORT
+    default n
+    help
+      Issue 1036 -- the executor ARENA's twin of NROS_HEAP_EXHAUSTION_IS_FATAL.
+      When a registration cannot fit in the executor arena, nros-node logs
+      the knob to raise, writes the failure into the boot report and then
+      calls nros_platform_panic, so the board stops with the record intact.
+
+      Without it the registration returns BufferTooSmall and the log line is
+      the only report -- which, on a board whose console UART is not wired,
+      reaches nobody, and the image runs on with an entity missing.
+
+      Default y only with NROS_BOOT_REPORT, for the reason the heap knob gives.
+
 config NROS_EXECUTOR_MAX_SC
     int "Maximum scheduling-context slots per executor (-1 = derive)"
     default -1
