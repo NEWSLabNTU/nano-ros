@@ -1838,6 +1838,10 @@
     "verdict": "extension",
     "why": "names a declared subscription so a component's single `on_callback` can tell which one fired (RFC-0043). rclrs has one closure per subscription and never needs the tag."
   },
+  "rust:TierTaskMemorySet::take": {
+    "verdict": "divergence",
+    "why": "See `rust:TierTaskMemorySet`."
+  },
   "rust:Worker::create_subscription": {
     "verdict": "declined",
     "disposition": "absent",
