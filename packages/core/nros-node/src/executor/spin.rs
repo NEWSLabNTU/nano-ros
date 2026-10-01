@@ -8591,14 +8591,15 @@ impl<'s> Executor<'s> {
 
             // Same treatment for lifecycle services — `ros2 lifecycle get`
             // must succeed even when no callbacks fired this tick.
+            //
+            // Issue 1587 — `process` also drains the state machine's
+            // announcement queue onto `~/transition_event`, so a transition
+            // triggered from application code between two spins (autostart is
+            // the common one) reaches a watching supervisor here.
             // SAFETY: see the matching invariant on the later call site.
             #[cfg(feature = "lifecycle-services")]
             if let Some(lc) = &mut self.lifecycle {
-                let crate::lifecycle_services::LifecycleRuntimeState {
-                    state_machine,
-                    services,
-                } = &mut **lc;
-                let _ = unsafe { services.process_services(state_machine) };
+                let _ = unsafe { lc.process() };
             }
 
             return SpinOnceResult::new();
@@ -9236,11 +9237,7 @@ impl<'s> Executor<'s> {
         // stays live for as long as the executor (see that method's docs).
         #[cfg(feature = "lifecycle-services")]
         if let Some(lc) = &mut self.lifecycle {
-            let crate::lifecycle_services::LifecycleRuntimeState {
-                state_machine,
-                services,
-            } = &mut **lc;
-            if let Ok(n) = unsafe { services.process_services(state_machine) } {
+            if let Ok(n) = unsafe { lc.process() } {
                 result.services_handled += n;
             }
         }
@@ -10005,6 +10002,37 @@ impl<'s> Executor<'s> {
                 .map_err(NodeError::Transport)
         }
 
+        /// Issue 1587 — the ONE publisher the REP-2002 family claims,
+        /// `~/transition_event`. Shaped like `create_lc_srv` beside it both
+        /// because the naming rule is the same (node FQN + suffix) and
+        /// because `check-infra-queryable-counts` counts the creation sites
+        /// to hold `LIFECYCLE_SERVICE_PUBLISHERS` to them, exactly as it
+        /// already holds `LIFECYCLE_SERVICE_QUERYABLES` to the five above.
+        fn create_lc_pub<Msg: nros_core::RosMessage>(
+            session: &mut session::ConcreteSession,
+            domain_id: u32,
+            node_fqn: &str,
+            namespace: &str,
+            node_name: &str,
+            suffix: &str,
+            qos: QoSProfile,
+        ) -> Result<session::RmwPublisher, NodeError> {
+            let mut name = heapless::String::<256>::new();
+            name.push_str(node_fqn)
+                .map_err(|_| NodeError::NameTooLong)?;
+            name.push_str("/").map_err(|_| NodeError::NameTooLong)?;
+            name.push_str(suffix).map_err(|_| NodeError::NameTooLong)?;
+            let mut info = TopicInfo::new(&name, Msg::TYPE_NAME, Msg::TYPE_HASH)
+                .with_domain(domain_id)
+                .with_namespace(namespace);
+            if !node_name.is_empty() {
+                info = info.with_node_name(node_name);
+            }
+            session
+                .create_publisher(&info, qos)
+                .map_err(NodeError::Transport)
+        }
+
         let cs_handle = create_lc_srv::<ChangeState>(
             &mut self.session,
             self.domain_id,
@@ -10046,6 +10074,20 @@ impl<'s> Executor<'s> {
             "get_transition_graph",
         )?;
 
+        // Issue 1587 — REP-2002's communication interface is the five
+        // services PLUS this. VOLATILE, so it costs a publisher slot and a
+        // liveliness token and NO queryable; see
+        // `LIFECYCLE_SERVICE_PUBLISHERS` for the measurement that settled it.
+        let te_handle = create_lc_pub::<nros_lifecycle_msgs::msg::TransitionEvent>(
+            &mut self.session,
+            self.domain_id,
+            &node_fqn,
+            ns,
+            nn,
+            crate::lifecycle_services::TRANSITION_EVENT_SUFFIX,
+            crate::lifecycle_services::transition_event_qos(),
+        )?;
+
         let servers = LifecycleServiceServers::new(
             LcSrv::<ChangeState> {
                 handle: cs_handle,
@@ -10082,9 +10124,18 @@ impl<'s> Executor<'s> {
         self.lifecycle = Some(alloc::boxed::Box::new(LifecycleRuntimeState {
             state_machine: LifecyclePollingNodeCtx::new(),
             services: alloc::boxed::Box::new(servers),
+            transition_event: te_handle,
         }));
 
         Ok(())
+    }
+
+    /// The `~/transition_event` publisher, for the tests that assert what
+    /// reached the wire. Not a public capability: the executor announces, and
+    /// a second publisher on the same topic would be a second source of truth.
+    #[cfg(test)]
+    pub(crate) fn lifecycle_transition_event_publisher(&self) -> Option<&session::RmwPublisher> {
+        self.lifecycle.as_ref().map(|lc| &lc.transition_event)
     }
 
     /// Mutable access to the lifecycle state machine, if registered.

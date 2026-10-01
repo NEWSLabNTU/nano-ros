@@ -309,6 +309,45 @@ fn write_transition_desc(w: &mut CdrWriter<'_>, t: InternalTransition) -> Result
     write_state(w, transition_goal_state(t))
 }
 
+/// Stream a `lifecycle_msgs/TransitionEvent` — timestamp, transition, start
+/// state, goal state, matching the generated impl's field order.
+///
+/// Issue 1587. The by-value type is three `heapless::String<256>` (one label
+/// per nested `State`/`Transition`) plus a `u64`, i.e. ~800 bytes that would
+/// land on the calling task's stack once per transition. Every other wire
+/// writer in this module exists for that reason, and this one reuses two of
+/// them unchanged.
+fn write_transition_event(
+    w: &mut CdrWriter<'_>,
+    timestamp_ns: u64,
+    transition: InternalTransition,
+    start_state: InternalState,
+    goal_state: InternalState,
+) -> Result<(), SerError> {
+    w.write_u64(timestamp_ns)?;
+    write_transition(w, transition)?;
+    write_state(w, start_state)?;
+    write_state(w, goal_state)
+}
+
+/// The publish buffer one `TransitionEvent` needs in the worst case.
+///
+/// Derived from the message rather than inherited from
+/// `DEFAULT_RX_BUF_SIZE`, for the reason [`crate::rosout::TX_BUF`] gives: that
+/// default is whatever the IMAGE declared through
+/// `NROS_SUBSCRIPTION_BUFFER_SIZE`, a bound over the types that image's own
+/// endpoints carry, and `~/transition_event` is not one of them.
+///
+/// The three nested labels are `&'static str`s out of [`state_wire`] and
+/// [`transition_wire`], so the true worst case is bounded by the longest of
+/// those; `a_maximal_transition_event_fits_the_derived_buffer` measures it
+/// against this number rather than taking the arithmetic on trust.
+const TRANSITION_EVENT_TX_BUF: usize = 4   // CDR encapsulation header
+    + 4                                    // XCDR2 DHEADER
+    + 8                                    // uint64 timestamp
+    + 3 * (4 + 4 + 4 + 32 + 4)             // Transition + 2x State: DHEADER, id+pad, len, label, pad
+    + 4; // DHEADER close
+
 /// Is `t` reachable from `current`? Used twice per
 /// `get_available_transitions` call — once to establish the sequence length,
 /// once to emit the elements — because CDR puts the length first.
@@ -556,6 +595,66 @@ pub use crate::config::PARAM_SERVICE_BUFFER_SIZE as LIFECYCLE_SERVICE_BUFFER_SIZ
 /// for why the count lives here rather than in the RMW.
 pub const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
 
+/// The topic suffix REP-2002 names for the transition announcement.
+///
+/// Appended to the node's FQN exactly as the five service suffixes are, so
+/// `~/transition_event` on a node `/lc_talker` is `/lc_talker/transition_event`
+/// — which is the name `ros2 topic info` reports for an upstream lifecycle
+/// node.
+pub const TRANSITION_EVENT_SUFFIX: &str = "transition_event";
+
+/// How many PUBLISHERS the REP-2002 lifecycle family claims on an executor.
+///
+/// Issue 1587 — ONE, the `~/transition_event` publisher. REP-2002's
+/// communication interface is the five services PLUS this topic; shipping the
+/// services alone meant a supervising node could not watch a managed node's
+/// transitions and had to poll `~/get_state`.
+///
+/// # What it costs, and the expensive answer that MEASUREMENT refused
+///
+/// A transient-local publisher is also a zenoh QUERYABLE — it retains its last
+/// sample and declares a cache queryable so a late joiner's history query can
+/// reach it (issue 1378). `ZPICO_MAX_QUERYABLES` defaults to 8 on an embedded
+/// build while `[param_services]` (6) and `[lifecycle]` (5) already claim
+/// eleven between them (issue 0460), so a sixth lifecycle slot would be the
+/// difference between an image that boots and one that dies in
+/// `ServiceServerCreationFailed`. phase-467's study priced this row as the most
+/// expensive of its thirteen on exactly that assumption, and told whoever took
+/// it to decide the QoS first.
+///
+/// **It is not transient-local.** MEASURED on 2026-09-29 and again on
+/// 2026-10-01 against a live `ros2 run lifecycle lifecycle_talker` on humble:
+///
+/// ```text
+/// $ ros2 topic info -v /lc_talker/transition_event
+///   Reliability: RELIABLE
+///   Durability: VOLATILE
+///   Lifespan: Infinite
+/// ```
+///
+/// That is `rmw_qos_profile_default`, which `rcl_lifecycle`'s
+/// `com_interface.c` takes from `rcl_publisher_get_default_options()` and
+/// never overrides — i.e. [`QoSProfile::QOS_PROFILE_DEFAULT`], KEEP_LAST(10) /
+/// RELIABLE / VOLATILE, byte for byte what this tree already has. So the term
+/// this row adds is **one publisher slot and one liveliness token per
+/// lifecycle-enabled image, and ZERO queryables** — nothing reaches
+/// `ZPICO_MAX_QUERYABLES`, `MAX_TL_PUBLISHERS` or
+/// `nros_sizing_descriptor::transient_local_publishers_over`. A test holds
+/// that: `the_transition_event_publisher_is_volatile`.
+///
+/// [`QoSProfile::QOS_PROFILE_DEFAULT`]: nros_rmw::QoSProfile::QOS_PROFILE_DEFAULT
+pub const LIFECYCLE_SERVICE_PUBLISHERS: usize = 1;
+
+/// The QoS `~/transition_event` is published with: upstream's, unchanged.
+///
+/// Stated as a function rather than taken inline at the creation site so the
+/// test above has something to assert on, the way `crate::rosout::qos` /
+/// `qos_bounded` do. See [`LIFECYCLE_SERVICE_PUBLISHERS`] for the measurement.
+#[must_use]
+pub fn transition_event_qos() -> nros_rmw::QoSProfile {
+    nros_rmw::QoSProfile::QOS_PROFILE_DEFAULT
+}
+
 // phase-461 W2 / issue 1352 -- the lifecycle family is the parameter family's
 // traffic class: one request, one reply, from a client that waits, five
 // queryables per node. So it brings its own inbox on the same terms and at the
@@ -723,12 +822,82 @@ impl LifecycleServiceProcessor for LifecycleServiceServers {
     }
 }
 
-/// Pairs the state machine with its registered service servers. Stored on
-/// the executor (outside the callback arena) when lifecycle services are
-/// registered — analogous to `ParamState`.
+/// Pairs the state machine with its registered service servers and its
+/// `~/transition_event` publisher. Stored on the executor (outside the
+/// callback arena) when lifecycle services are registered — analogous to
+/// `ParamState`.
 pub(crate) struct LifecycleRuntimeState {
     pub(crate) state_machine: LifecyclePollingNodeCtx,
     pub(crate) services: Box<dyn LifecycleServiceProcessor>,
+    /// Issue 1587 — REP-2002's announcement channel. Not an `Option`: an
+    /// image that registered the lifecycle family has the slot budgeted for it
+    /// (`InfraServices::publishers` in the entity inventory), so a publisher
+    /// that could not be created is a sizing failure to report at
+    /// registration, not a capability to silently drop.
+    pub(crate) transition_event: crate::session::RmwPublisher,
+}
+
+impl LifecycleRuntimeState {
+    /// Pump the five services, then announce whatever transitions ran.
+    ///
+    /// ONE method rather than two calls at each of `spin_once`'s two lifecycle
+    /// sites: the announcement is not optional work a caller may skip, and the
+    /// two sites were already a duplication that a third would have widened.
+    ///
+    /// # Safety
+    /// Same contract as [`LifecycleServiceServers::process`] — `change_state`
+    /// dispatches a user-supplied C callback through a raw function pointer.
+    pub(crate) unsafe fn process(&mut self) -> Result<usize, NodeError> {
+        // SAFETY: forwarded via this function's own unsafe contract.
+        let handled = unsafe { self.services.process_services(&mut self.state_machine) };
+        self.announce_transitions();
+        handled
+    }
+
+    /// Drain the state machine's announcement queue onto `~/transition_event`.
+    ///
+    /// A transport error drops the record rather than failing the spin: the
+    /// node's STATE is already what the services report, and refusing to spin
+    /// because an announcement did not reach the wire would turn a missed
+    /// notification into a stopped node.
+    fn announce_transitions(&mut self) {
+        use nros_rmw::Publisher as _;
+
+        while let Some(ev) = self.state_machine.take_announcement() {
+            let mut buf = [0u8; TRANSITION_EVENT_TX_BUF];
+            let Ok(mut w) = crate::tx_writer(&mut buf) else {
+                continue;
+            };
+            if write_transition_event(
+                &mut w,
+                ev.timestamp_ns,
+                ev.transition,
+                ev.start_state,
+                ev.goal_state,
+            )
+            .is_err()
+            {
+                continue;
+            }
+            let len = w.position();
+            let _ = self.transition_event.publish_raw(&buf[..len]);
+        }
+
+        // A bounded queue that discards without counting is the defect
+        // `zpico_session::reply_slot_refusals` exists to answer. Reported on
+        // the logger rather than on the topic, because the topic is exactly
+        // what the reader did not get.
+        let dropped = self.state_machine.take_dropped_announcements();
+        if dropped > 0 {
+            nros_log::log_warn!(
+                nros_log::get_logger("nros_lifecycle"),
+                "dropped {} lifecycle transition announcement(s): more transitions ran \
+                 between two executor spins than TRANSITION_ANNOUNCEMENT_QUEUE holds. \
+                 `~/transition_event` has a gap; `~/get_state` is still correct.",
+                dropped
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1192,6 +1361,87 @@ mod tests {
         }
     }
 
+    /// Issue 1587 — the hand-written `TransitionEvent` writer, over every
+    /// (transition, start, goal) triple the state machine can actually
+    /// produce, against the generated `Serialize`.
+    #[test]
+    fn transition_event_writer_matches_generated_serialize() {
+        use nros_lifecycle_msgs::msg::TransitionEvent;
+
+        for t in ALL_TRANSITIONS {
+            for start in ALL_STATES {
+                for goal in ALL_STATES {
+                    let value = TransitionEvent {
+                        timestamp: 0x0123_4567_89ab_cdef,
+                        transition: to_msg_transition(t),
+                        start_state: to_msg_state(start),
+                        goal_state: to_msg_state(goal),
+                    };
+                    assert_hand_written_matches_generated(&value, |w| {
+                        write_transition_event(w, value.timestamp, t, start, goal)
+                    });
+                }
+            }
+        }
+    }
+
+    /// The buffer is DERIVED arithmetic, so measure the widest thing that can
+    /// go in it rather than trusting the sum.
+    #[test]
+    fn a_maximal_transition_event_fits_the_derived_buffer() {
+        let mut worst = 0usize;
+        for t in ALL_TRANSITIONS {
+            for start in ALL_STATES {
+                for goal in ALL_STATES {
+                    let mut buf = [0u8; WIRE_BUF];
+                    let mut w = crate::tx_writer(&mut buf).expect("writer");
+                    write_transition_event(&mut w, u64::MAX, t, start, goal).expect("encode");
+                    worst = worst.max(w.position());
+                }
+            }
+        }
+        assert!(
+            worst <= TRANSITION_EVENT_TX_BUF,
+            "a maximal TransitionEvent encodes to {worst} bytes, over the derived \
+             TRANSITION_EVENT_TX_BUF of {TRANSITION_EVENT_TX_BUF}"
+        );
+    }
+
+    /// Issue 1587 — the measurement the whole price of this row turned on.
+    ///
+    /// phase-467's study assumed `~/transition_event` was TRANSIENT_LOCAL and
+    /// priced it as the most expensive of its thirteen rows on that basis: a
+    /// transient-local publisher also declares a zenoh cache queryable (issue
+    /// 1378), and `ZPICO_MAX_QUERYABLES` defaults to 8 embedded against the
+    /// eleven `[param_services]` + `[lifecycle]` already claim (issue 0460).
+    ///
+    /// MEASURED instead, twice, against a live
+    /// `ros2 run lifecycle lifecycle_talker` on humble:
+    /// `ros2 topic info -v /lc_talker/transition_event` reports RELIABLE /
+    /// VOLATILE / Infinite lifespan. That is `rmw_qos_profile_default`, which
+    /// `rcl_lifecycle`'s `com_interface.c` takes from
+    /// `rcl_publisher_get_default_options()` and never overrides. So this
+    /// publisher costs ZERO queryables, and the expensive half of the row
+    /// does not exist.
+    ///
+    /// A guard, not a restatement: a future "let's make it transient-local so
+    /// a late supervisor sees the last transition" would move the queryable
+    /// floor of every lifecycle image, and would fail here first.
+    #[test]
+    fn the_transition_event_publisher_is_volatile() {
+        use nros_rmw::{QoSDurabilityPolicy, QoSHistoryPolicy, QoSReliabilityPolicy};
+        let qos = transition_event_qos();
+        assert_eq!(
+            qos.durability,
+            QoSDurabilityPolicy::Volatile,
+            "upstream's ~/transition_event is VOLATILE; transient-local would cost \
+             every lifecycle image a zenoh cache queryable (issues 1378 / 0460)"
+        );
+        assert_eq!(qos.reliability, QoSReliabilityPolicy::Reliable);
+        assert_eq!(qos.history, QoSHistoryPolicy::KeepLast);
+        assert_eq!(qos.depth, 10, "rmw_qos_profile_default's depth");
+    }
+
     #[test]
     fn empty_label_encodes_like_the_generated_string_writer() {
         // No lifecycle state or transition carries an empty label today, but
@@ -1386,6 +1636,165 @@ mod tests {
             let session = MockSession::new();
             let executor: Executor = Executor::from_session(session);
             assert!(executor.lifecycle_state_machine().is_none());
+        }
+
+        // ───────────────────────────────────────────────────────────────
+        // Issue 1587 — the `~/transition_event` publisher
+        // ───────────────────────────────────────────────────────────────
+
+        /// Decode what the mock publisher was last handed back into the
+        /// GENERATED type, so these assertions are about the bytes a
+        /// subscriber receives and not about our own writer's intent.
+        fn last_event(
+            executor: &Executor,
+        ) -> Option<nros_lifecycle_msgs::msg::TransitionEvent> {
+            use nros_core::Deserialize;
+            let pubr = executor.lifecycle_transition_event_publisher()?;
+            let (bytes, len) = pubr.last_published()?;
+            // Skip the 4-byte CDR encapsulation header the writer prepends.
+            let mut reader = CdrReader::new(&bytes[4..len]);
+            Some(
+                nros_lifecycle_msgs::msg::TransitionEvent::deserialize(&mut reader)
+                    .expect("the published bytes decode as a TransitionEvent"),
+            )
+        }
+
+        #[test]
+        fn the_transition_event_publisher_uses_the_rep_2002_topic_name() {
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            executor.register_lifecycle_services().unwrap();
+            let topic = executor
+                .lifecycle_transition_event_publisher()
+                .expect("registration creates the publisher")
+                .topic_name();
+            assert!(
+                topic.ends_with("/transition_event"),
+                "`~/transition_event` resolves to <node fqn>/transition_event; got {topic:?}"
+            );
+        }
+
+        #[test]
+        fn a_transition_is_announced_on_transition_event() {
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            executor.register_lifecycle_services().unwrap();
+
+            // Nothing has transitioned, so nothing has been announced.
+            executor.spin_once(Duration::from_millis(0));
+            assert_eq!(
+                executor
+                    .lifecycle_transition_event_publisher()
+                    .unwrap()
+                    .publish_count(),
+                0,
+                "a spin with no transition announces nothing"
+            );
+
+            // SAFETY: no callback is registered, so no FFI pointer is called.
+            let sm = executor.lifecycle_state_machine_mut().unwrap();
+            unsafe { sm.trigger_transition(InternalTransition::Configure) }.expect("configure");
+            executor.spin_once(Duration::from_millis(0));
+
+            assert_eq!(
+                executor
+                    .lifecycle_transition_event_publisher()
+                    .unwrap()
+                    .publish_count(),
+                1,
+                "one transition, one announcement"
+            );
+            let ev = last_event(&executor).expect("an event reached the wire");
+            assert_eq!(ev.transition.id, transition_id::CONFIGURE);
+            assert_eq!(ev.transition.label.as_str(), "configure");
+            assert_eq!(ev.start_state.id, state_id::PRIMARY_STATE_UNCONFIGURED);
+            assert_eq!(ev.goal_state.id, state_id::PRIMARY_STATE_INACTIVE);
+        }
+
+        #[test]
+        fn a_burst_before_the_first_spin_is_announced_in_order() {
+            // `nros_cpp_lifecycle_autostart(exec, 2)` runs configure then
+            // activate from `__nros_entry_setup`, before the spin loop
+            // exists. Both must reach the wire, in order, at the first spin —
+            // that is what TRANSITION_ANNOUNCEMENT_QUEUE is sized for.
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            executor.register_lifecycle_services().unwrap();
+
+            let sm = executor.lifecycle_state_machine_mut().unwrap();
+            // SAFETY: no callbacks registered.
+            unsafe {
+                sm.trigger_transition(InternalTransition::Configure).unwrap();
+                sm.trigger_transition(InternalTransition::Activate).unwrap();
+            }
+            executor.spin_once(Duration::from_millis(0));
+
+            assert_eq!(
+                executor
+                    .lifecycle_transition_event_publisher()
+                    .unwrap()
+                    .publish_count(),
+                2,
+                "both autostart transitions are announced"
+            );
+            let ev = last_event(&executor).expect("an event reached the wire");
+            assert_eq!(
+                ev.transition.id,
+                transition_id::ACTIVATE,
+                "the LAST announcement is the LAST transition, so the order is FIFO"
+            );
+            assert_eq!(ev.goal_state.id, state_id::PRIMARY_STATE_ACTIVE);
+        }
+
+        #[test]
+        fn a_failed_transition_is_announced_too() {
+            // rcl publishes the failure transition as well, and a supervisor
+            // watching passively is exactly the reader who needs to see a
+            // `Configure` that landed somewhere other than `Inactive`.
+            unsafe extern "C" fn fail(_ctx: *mut c_void) -> u8 {
+                TransitionResult::Failure as u8
+            }
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            executor.register_lifecycle_services().unwrap();
+            let sm = executor.lifecycle_state_machine_mut().unwrap();
+            sm.register(
+                crate::lifecycle::LifecycleCallbackSlot::Configure,
+                Some(fail),
+            );
+            // SAFETY: `fail` touches neither the context pointer nor anything
+            // outside this frame.
+            let _ = unsafe { sm.trigger_transition(InternalTransition::Configure) };
+            executor.spin_once(Duration::from_millis(0));
+
+            let ev = last_event(&executor).expect("a failed transition still announces");
+            assert_eq!(ev.transition.id, transition_id::CONFIGURE);
+            assert_ne!(
+                ev.goal_state.id,
+                state_id::PRIMARY_STATE_INACTIVE,
+                "the announcement carries where the machine ACTUALLY landed"
+            );
+        }
+
+        #[test]
+        fn a_rejected_transition_announces_nothing() {
+            // `Activate` from `Unconfigured` never runs, so there is nothing
+            // to announce — the two early returns in `trigger_transition` sit
+            // before the record, as they do in rcl.
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            executor.register_lifecycle_services().unwrap();
+            let sm = executor.lifecycle_state_machine_mut().unwrap();
+            // SAFETY: no callbacks registered.
+            assert!(unsafe { sm.trigger_transition(InternalTransition::Activate) }.is_err());
+            executor.spin_once(Duration::from_millis(0));
+            assert_eq!(
+                executor
+                    .lifecycle_transition_event_publisher()
+                    .unwrap()
+                    .publish_count(),
+                0
+            );
         }
 
         #[test]

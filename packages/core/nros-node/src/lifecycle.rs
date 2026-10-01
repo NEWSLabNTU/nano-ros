@@ -567,6 +567,72 @@ mod tests {
     use super::*;
 
     // ═══════════════════════════════════════════════════════════════════════
+    // Transition announcements (issue 1587)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn every_executed_transition_is_recorded_once() {
+        let mut sm = LifecyclePollingNodeCtx::new();
+        // SAFETY: no callbacks registered, so no FFI pointer is invoked.
+        unsafe { sm.trigger_transition(LifecycleTransition::Configure) }.expect("configure");
+
+        let ev = sm.take_announcement().expect("configure was recorded");
+        assert_eq!(ev.transition, LifecycleTransition::Configure);
+        assert_eq!(ev.start_state, LifecycleState::Unconfigured);
+        assert_eq!(ev.goal_state, LifecycleState::Inactive);
+        assert!(
+            sm.take_announcement().is_none(),
+            "one transition, one record"
+        );
+        assert_eq!(sm.take_dropped_announcements(), 0);
+    }
+
+    #[test]
+    fn a_rejected_transition_records_nothing() {
+        let mut sm = LifecyclePollingNodeCtx::new();
+        // Activate is illegal from Unconfigured: no callback runs and no
+        // state changes, so there is nothing to announce.
+        // SAFETY: no callbacks registered.
+        assert!(unsafe { sm.trigger_transition(LifecycleTransition::Activate) }.is_err());
+        assert!(sm.take_announcement().is_none());
+        assert_eq!(sm.take_dropped_announcements(), 0);
+    }
+
+    #[test]
+    fn an_undrained_queue_counts_its_losses_instead_of_hiding_them() {
+        let mut sm = LifecyclePollingNodeCtx::new();
+        // Configure/Cleanup cycles indefinitely between Unconfigured and
+        // Inactive, so this drives more transitions than the queue holds
+        // without ever draining it.
+        let runs = TRANSITION_ANNOUNCEMENT_QUEUE + 3;
+        for i in 0..runs {
+            let t = if i % 2 == 0 {
+                LifecycleTransition::Configure
+            } else {
+                LifecycleTransition::Cleanup
+            };
+            // SAFETY: no callbacks registered.
+            unsafe { sm.trigger_transition(t) }.expect("legal transition");
+        }
+        let mut drained = 0;
+        while sm.take_announcement().is_some() {
+            drained += 1;
+        }
+        assert_eq!(drained, TRANSITION_ANNOUNCEMENT_QUEUE);
+        assert_eq!(
+            sm.take_dropped_announcements() as usize,
+            runs - TRANSITION_ANNOUNCEMENT_QUEUE,
+            "the overflow is COUNTED — a bounded table that discards silently is \
+             the defect the zpico reply slots already answered"
+        );
+        assert_eq!(
+            sm.take_dropped_announcements(),
+            0,
+            "read-and-clear: a burst is reported once, not every spin thereafter"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
     // Safe LifecycleCallbacks trait (issue 0335 / phase-317)
     // ═══════════════════════════════════════════════════════════════════════
 
