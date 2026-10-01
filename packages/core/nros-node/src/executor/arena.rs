@@ -68,7 +68,7 @@ fn trace_cb_end(desc_idx: u8) {
 fn trace_cb_end(_desc_idx: u8) {}
 
 /// Kind of registered callback entry.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EntryKind {
     Subscription,
     Service,
@@ -666,6 +666,8 @@ pub(crate) fn report_arena_exhausted(
     want: usize,
     used: usize,
     capacity: usize,
+    released: usize,
+    request: usize,
 ) {
     if ARENA_EXHAUSTED_REPORTED.swap(true, portable_atomic::Ordering::Relaxed) {
         return;
@@ -679,7 +681,61 @@ pub(crate) fn report_arena_exhausted(
          else NROS_EXECUTOR_ARENA_SIZE or NROS_EXECUTOR_ACTION_CLIENTS \
          (Zephyr: CONFIG_*)."
     );
+    // Issue 1496 / 1370's question asked of THIS arena: since entries can be
+    // released, the bytes may be there in holes none of which fits. A second
+    // line, only then, so the common case keeps its one line and its budget.
+    if arena_refusal_is_fragmented(request, released) {
+        nros_log::log_error!(
+            nros_log::get_logger("nros"),
+            "arena FRAGMENTED: {released} B released, no hole holds {request} B \
+             (issue 1496)"
+        );
+    }
 }
+
+/// Issue 1496 — the arena's own exhaustion classification, the same rule
+/// `zpico_alloc::Exhaustion::classify` states for the platform heap (issue
+/// 1370): the released bytes would hold the request, so it was the SHAPE that
+/// refused it, not the size. (Released regions are reused first-fit before the
+/// bump pointer moves, so reaching exhaustion with enough released bytes means
+/// no single region fitted.)
+pub(crate) const fn arena_refusal_is_fragmented(request: usize, released: usize) -> bool {
+    released >= request && request > 0
+}
+
+/// Issue 1036 — arena exhaustion reaches the platform's FATAL HOOK where the
+/// image asked for it (`NROS_ARENA_EXHAUSTION_IS_FATAL`, Zephyr
+/// `CONFIG_NROS_ARENA_EXHAUSTION_IS_FATAL`, default ON with the boot report),
+/// the arena's twin of `CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL` (issue 1425).
+///
+/// The log line goes nowhere on a board with no console, and a returned
+/// `BufferTooSmall` is handled only by code written to handle it — so without
+/// this, the observable outcome of an exhausted arena on the island is an image
+/// that keeps running with an entity missing. The record is written BEFORE
+/// this (`arena_exhausted`), so it survives the halt.
+///
+/// In a unit-test build the hook is a latch the test reads instead of a call
+/// into a platform the test does not link.
+#[cold]
+pub(crate) fn arena_exhaustion_is_fatal() {
+    #[cfg(all(nros_arena_exhaustion_fatal, not(test)))]
+    {
+        unsafe extern "C" {
+            fn nros_platform_panic(msg: *const u8, len: usize) -> !;
+        }
+        const MSG: &[u8] = b"executor arena exhausted (see the boot report's failed_alloc_size)";
+        // SAFETY: a static byte string and its length; the platform contract
+        // takes any bytes and never returns.
+        unsafe { nros_platform_panic(MSG.as_ptr(), MSG.len()) }
+    }
+    #[cfg(all(nros_arena_exhaustion_fatal, test))]
+    ARENA_FATAL_HOOK_REACHED.store(true, portable_atomic::Ordering::Relaxed);
+}
+
+/// Test-build stand-in for the fatal hook — see [`arena_exhaustion_is_fatal`].
+#[cfg(all(nros_arena_exhaustion_fatal, test))]
+pub(crate) static ARENA_FATAL_HOOK_REACHED: portable_atomic::AtomicBool =
+    portable_atomic::AtomicBool::new(false);
 
 /// The registering entity, short enough for the log budget.
 ///

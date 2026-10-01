@@ -11271,3 +11271,225 @@ fn an_unnamed_namespace_inherits_the_executors_and_an_explicit_root_does_not() {
          `nros_node::names`' job and treating it as UNSET is the FFI edge's"
     );
 }
+
+// ====================================================================
+// Issue 1496 — RELEASING an arena entry, measured
+// ====================================================================
+
+fn register_raw_server(
+    executor: &mut Executor<'_>,
+) -> Result<super::action::ActionServerRawHandle, NodeError> {
+    executor.register_action_server_raw(super::action::RawActionServerSpec {
+        node_id: None,
+        action_name: "/verb",
+        type_name: "test_msgs/action/Fibonacci",
+        type_hash: "RIHS01_0000",
+        qos: nros_rmw::QoSProfile::services_default(),
+        goal_callback: accept_and_record_context,
+        cancel_callback: refuse_every_cancel,
+        accepted_callback: None,
+        context: core::ptr::null_mut(),
+    })
+}
+
+fn register_raw_client(executor: &mut Executor<'_>) -> Result<usize, NodeError> {
+    executor
+        .register_action_client_raw(super::action::RawActionClientSpec {
+            node_id: None,
+            action_name: "/verb",
+            type_name: "test_msgs/action/Fibonacci",
+            type_hash: "RIHS01_0000",
+            goal_response_callback: Some(no_op_goal_response),
+            feedback_callback: None,
+            result_callback: None,
+            context: core::ptr::null_mut(),
+        })
+        .map(|h| h.entry_index())
+}
+
+/// The acceptance the issue names: create and destroy an action SERVER many
+/// more times than the executor has slots or arena for, and never run out.
+/// The arena's high-water mark is set by the FIRST registration and does not
+/// move again, which is the measurement that the bytes are reused rather than
+/// merely not yet exhausted.
+#[test]
+fn an_action_server_created_and_released_in_a_loop_never_exhausts() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let first = register_raw_server(&mut executor).expect("first registration");
+    let high_water = executor.arena_used();
+    assert!(high_water > 0);
+    assert!(unsafe { executor.release_action_server_raw(&first) });
+    assert!(
+        executor.entries[first.entry_index].is_none(),
+        "the slot is free"
+    );
+    assert!(
+        executor.arena_released() > 0,
+        "and its bytes are on the free list"
+    );
+
+    const N: usize = 200;
+    for i in 0..N {
+        let h = register_raw_server(&mut executor)
+            .unwrap_or_else(|e| panic!("iteration {i}: registration failed with {e:?}"));
+        assert_eq!(
+            executor.arena_used(),
+            high_water,
+            "iteration {i}: the arena grew; the released region was not reused"
+        );
+        assert!(unsafe { executor.release_action_server_raw(&h) });
+    }
+    assert!(
+        N > crate::config::MAX_CBS && N * high_water > crate::config::ARENA_SIZE,
+        "precondition: the loop out-runs both the slot table and the arena"
+    );
+}
+
+/// The negative control: WITHOUT the release the same loop fails, inside the
+/// slot table. Otherwise the test above could pass on an executor that never
+/// ran out in the first place.
+#[test]
+fn without_the_release_the_same_loop_exhausts() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let mut failed = None;
+    for i in 0..64 {
+        if let Err(e) = register_raw_server(&mut executor) {
+            failed = Some((i, e));
+            break;
+        }
+    }
+    let (i, e) = failed.expect("an executor that never runs out proves nothing");
+    assert!(
+        matches!(e, NodeError::ExecutorFull | NodeError::BufferTooSmall),
+        "iteration {i}: {e:?}"
+    );
+}
+
+#[test]
+fn an_action_client_created_and_released_in_a_loop_never_exhausts() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let first = register_raw_client(&mut executor).expect("first registration");
+    let high_water = executor.arena_used();
+    assert!(unsafe { executor.release_action_client_raw(first) });
+    for i in 0..200 {
+        let idx =
+            register_raw_client(&mut executor).unwrap_or_else(|e| panic!("iteration {i}: {e:?}"));
+        assert_eq!(executor.arena_used(), high_water, "iteration {i}");
+        assert!(unsafe { executor.release_action_client_raw(idx) });
+    }
+}
+
+/// A release names its kind: an action-server release of a CLIENT slot (or of
+/// an empty one) refuses and touches nothing.
+#[test]
+fn a_release_of_the_wrong_kind_or_an_empty_slot_is_refused() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let idx = register_raw_client(&mut executor).expect("client");
+    let used = executor.arena_used();
+    assert!(!unsafe {
+        executor.release_action_server_raw_sized::<
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            4,
+        >(idx)
+    });
+    assert!(executor.entries[idx].is_some());
+    assert_eq!(executor.arena_released(), 0);
+    assert!(unsafe { executor.release_action_client_raw(idx) });
+    assert!(
+        !unsafe { executor.release_action_client_raw(idx) },
+        "twice is refused"
+    );
+    assert_eq!(executor.arena_used(), used);
+}
+
+/// A released hole is reused by a SMALLER entry too, and two adjacent
+/// releases coalesce into one hole the larger entry fits again.
+#[test]
+fn released_regions_split_and_coalesce() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let a = register_raw_client(&mut executor).expect("a");
+    let b = register_raw_client(&mut executor).expect("b");
+    let high_water = executor.arena_used();
+    assert!(unsafe { executor.release_action_client_raw(a) });
+    assert!(unsafe { executor.release_action_client_raw(b) });
+    assert_eq!(
+        executor.arena_freed.len(),
+        1,
+        "adjacent holes coalesce: {:?}",
+        executor.arena_freed
+    );
+    // A timer is far smaller than a client; it takes the front of the hole.
+    executor
+        .register_timer(TimerDuration::from_millis(1000), || {})
+        .expect("timer");
+    assert_eq!(
+        executor.arena_used(),
+        high_water,
+        "the timer came from the hole"
+    );
+    // And a client still fits in what is left.
+    register_raw_client(&mut executor).expect("client after split");
+    assert_eq!(executor.arena_used(), high_water);
+}
+
+/// Issue 1036 — with the fatal knob on, arena exhaustion reaches the fatal
+/// hook (a latch in a test build), after the record is written.
+#[cfg(nros_arena_exhaustion_fatal)]
+#[test]
+fn arena_exhaustion_reaches_the_fatal_hook() {
+    let _ = super::arena::ARENA_FATAL_HOOK_REACHED.swap(false, portable_atomic::Ordering::Relaxed);
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let mut hit = false;
+    for _ in 0..64 {
+        match register_raw_server(&mut executor) {
+            Err(NodeError::BufferTooSmall) => {
+                hit = true;
+                break;
+            }
+            Err(NodeError::ExecutorFull) => break,
+            _ => {}
+        }
+    }
+    if !hit {
+        // The slot table filled first; free slots and keep allocating until
+        // the ARENA refuses, which is what this test is about.
+        panic!("precondition: the arena must run out before the slot table");
+    }
+    assert!(
+        super::arena::ARENA_FATAL_HOOK_REACHED.load(portable_atomic::Ordering::Relaxed),
+        "arena exhaustion must reach the fatal hook when the image asked for it"
+    );
+}
+
+#[test]
+fn the_arena_refusal_rule_is_released_bytes_versus_the_request() {
+    use super::arena::arena_refusal_is_fragmented as frag;
+    assert!(frag(100, 100));
+    assert!(!frag(100, 99));
+    assert!(!frag(0, 0));
+}
+
+/// Issue 1496 — a moved C++ client re-points its arena entry's context.
+#[test]
+fn retargeting_a_raw_action_client_moves_its_context() {
+    use super::arena::ActionClientRawArenaEntry;
+    const B: usize = crate::config::DEFAULT_RX_BUF_SIZE;
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let idx = register_raw_client(&mut executor).expect("client");
+    let mut new_home = [0u8; 16];
+    let new_ptr = new_home.as_mut_ptr() as *mut core::ffi::c_void;
+    assert!(unsafe { executor.retarget_action_client_raw(idx, new_ptr) });
+    let offset = executor.entries[idx].as_ref().unwrap().offset;
+    let entry = unsafe {
+        &*((executor.arena.as_mut_ptr() as *mut u8).add(offset)
+            as *const ActionClientRawArenaEntry<B, B, B>)
+    };
+    assert_eq!(entry.context as usize, new_ptr as usize);
+    assert!(
+        !unsafe { executor.retarget_action_client_raw(idx + 1, new_ptr) },
+        "an empty slot refuses"
+    );
+    let _ = new_home;
+}

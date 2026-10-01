@@ -1128,6 +1128,140 @@ impl<'s> Executor<'s> {
         }
         true
     }
+
+    /// RE-POINT a raw action client entry's callback `context` — issue 1496.
+    ///
+    /// The C++ client registers its own storage address as the entry's
+    /// context; a move relocates that storage, so the entry must follow it or a
+    /// moved-from temporary leaves it naming dead bytes. `false`, touching
+    /// nothing, when `entry_index` is not a live action client.
+    ///
+    /// # Safety
+    /// The entry must have been registered through the default-sized
+    /// [`register_action_client_raw`](Executor::register_action_client_raw),
+    /// and `context` must be valid for as long as the entry may dispatch.
+    pub unsafe fn retarget_action_client_raw(
+        &mut self,
+        entry_index: usize,
+        context: *mut core::ffi::c_void,
+    ) -> bool {
+        let Some(meta) = self.entries.get(entry_index).and_then(|e| e.as_ref()) else {
+            return false;
+        };
+        if !matches!(meta.kind, EntryKind::ActionClient) {
+            return false;
+        }
+        let offset = meta.offset;
+        unsafe {
+            let entry = &mut *((self.arena.as_mut_ptr() as *mut u8).add(offset)
+                as *mut ActionClientRawArenaEntry<
+                    { crate::config::DEFAULT_RX_BUF_SIZE },
+                    { crate::config::DEFAULT_RX_BUF_SIZE },
+                    { crate::config::DEFAULT_RX_BUF_SIZE },
+                >);
+            entry.context = context;
+        }
+        true
+    }
+
+    /// RELEASE a raw action server — issue 1496's resolution 2.
+    ///
+    /// Where [`detach_action_server_raw_sized`](Self::detach_action_server_raw_sized)
+    /// only cut the entry's edge to its owner, this ends the entry: it is
+    /// dropped in place, so its three service servers and two publishers are
+    /// destroyed and the action leaves the graph; its callback slot is freed
+    /// (`NROS_EXECUTOR_MAX_CBS`), and its arena bytes go back to the
+    /// executor's free list, where the next registration that fits reuses
+    /// them. A program that creates and destroys action servers in a loop
+    /// therefore runs forever instead of exhausting the slot table and then
+    /// the arena.
+    ///
+    /// `false`, touching nothing, when `entry_index` is not a live action
+    /// server.
+    ///
+    /// # Safety
+    /// The entry must have been registered by
+    /// `register_action_server_raw_sized` with the SAME const parameters, and
+    /// no [`ActionServerRawHandle`] naming it may be used afterwards — the slot
+    /// is handed to the next registration.
+    pub unsafe fn release_action_server_raw_sized<
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+        const MAX_GOALS: usize,
+    >(
+        &mut self,
+        entry_index: usize,
+    ) -> bool {
+        unsafe {
+            self.release_entry(
+                entry_index,
+                EntryKind::ActionServer,
+                core::mem::size_of::<
+                    ActionServerRawArenaEntry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
+                >(),
+            )
+        }
+    }
+
+    /// [`release_action_server_raw_sized`](Self::release_action_server_raw_sized)
+    /// for an entry registered through the default-sized
+    /// [`register_action_server_raw`](Executor::register_action_server_raw).
+    ///
+    /// # Safety
+    /// As the sized form; `handle` must not be used afterwards.
+    pub unsafe fn release_action_server_raw(&mut self, handle: &ActionServerRawHandle) -> bool {
+        unsafe {
+            self.release_action_server_raw_sized::<
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                4,
+            >(handle.entry_index)
+        }
+    }
+
+    /// RELEASE a raw action client registered through the default-sized
+    /// [`register_action_client_raw`](Executor::register_action_client_raw) —
+    /// issue 1496. Drops the entry (its three service clients and feedback
+    /// subscription are destroyed), frees its callback slot and returns its
+    /// arena bytes for reuse.
+    ///
+    /// # Safety
+    /// As [`release_action_server_raw_sized`](Self::release_action_server_raw_sized),
+    /// for the default-sized client entry.
+    pub unsafe fn release_action_client_raw(&mut self, entry_index: usize) -> bool {
+        unsafe {
+            self.release_action_client_raw_sized::<
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+            >(entry_index)
+        }
+    }
+
+    /// The sized form of [`release_action_client_raw`](Self::release_action_client_raw).
+    ///
+    /// # Safety
+    /// The entry must have been registered by
+    /// `register_action_client_raw_sized` with the SAME const parameters.
+    pub unsafe fn release_action_client_raw_sized<
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+    >(
+        &mut self,
+        entry_index: usize,
+    ) -> bool {
+        unsafe {
+            self.release_entry(
+                entry_index,
+                EntryKind::ActionClient,
+                core::mem::size_of::<ActionClientRawArenaEntry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>>(
+                ),
+            )
+        }
+    }
 }
 
 // ============================================================================

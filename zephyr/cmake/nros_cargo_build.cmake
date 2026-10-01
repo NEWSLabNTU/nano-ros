@@ -1983,6 +1983,13 @@ function(nros_cargo_build)
     if(CONFIG_NROS_BOOT_REPORT)
         list(APPEND _nros_knob_env "NROS_BOOT_REPORT=1")
     endif()
+    # Issue 1036 -- stated BOTH ways, so the build script's own default (on
+    # exactly when the boot report is) never decides for a Zephyr image.
+    if(CONFIG_NROS_ARENA_EXHAUSTION_IS_FATAL)
+        list(APPEND _nros_knob_env "NROS_ARENA_EXHAUSTION_IS_FATAL=1")
+    else()
+        list(APPEND _nros_knob_env "NROS_ARENA_EXHAUSTION_IS_FATAL=0")
+    endif()
 
     # Issue 1550 -- the domain's rung, for the boot record. The VALUE reaches
     # the image through `app_config.h` and is stamped at boot from what the

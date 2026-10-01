@@ -1248,6 +1248,19 @@ unsafe impl Sync for ComponentSlot {}
 /// correctly. `EdfReadySet`'s presence bitmap independently asserts `N <= 64`.
 pub(crate) const MAX_CALLBACK_SLOTS: usize = 64;
 
+/// Issue 1496 — how many released arena regions the executor remembers. A
+/// release beyond this many outstanding holes is still a correct release (the
+/// RMW entities are destroyed and the callback slot freed); only its bytes are
+/// not reusable until a held hole is consumed.
+pub(crate) const ARENA_FREED_REGIONS: usize = 8;
+
+/// Issue 1496 — one released arena region.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FreedRegion {
+    pub(crate) offset: usize,
+    pub(crate) len: usize,
+}
+
 /// Phase 305 W3 (issue 0255) — upper bound on launch remap rules held by one
 /// executor (across all its nodes). Launch files carry a handful per node;
 /// raise here if a plan legitimately outgrows it.
@@ -1307,6 +1320,11 @@ pub struct Executor<'s> {
     /// (lifetime only) so the C/C++ FFI keeps wrapping one concrete type.
     pub(crate) arena: &'s mut [MaybeUninit<u8>],
     pub(crate) arena_used: usize,
+    /// Issue 1496 — arena regions given back by a RELEASED entry, reused
+    /// first-fit by the next allocation that fits. The arena is still a bump
+    /// allocator for everything else; this is what lets a create/destroy loop
+    /// of the same entity run forever instead of exhausting the arena.
+    pub(crate) arena_freed: heapless::Vec<FreedRegion, ARENA_FREED_REGIONS>,
     pub(crate) entries: &'s mut [Option<CallbackMeta>],
     /// Phase 110.B — registered scheduling contexts. Slot 0 is
     /// auto-populated with a `Fifo` SC at construction; every entry
@@ -1901,6 +1919,7 @@ impl<'s> Executor<'s> {
             session,
             arena,
             arena_used: 0,
+            arena_freed: heapless::Vec::new(),
             entries,
             sched_contexts,
             sched_context_bindings,
@@ -5381,20 +5400,21 @@ impl<'s> Executor<'s> {
     pub(crate) fn arena_alloc<T>(&mut self) -> Result<usize, NodeError> {
         let align = core::mem::align_of::<T>();
         let size = core::mem::size_of::<T>();
+        if let Some(offset) = self.arena_take_freed(size, align) {
+            crate::boot_report::note_alloc(size, self.arena_used);
+            return Ok(offset);
+        }
         let aligned_offset = (self.arena_used + align - 1) & !(align - 1);
         let new_used = aligned_offset + size;
         if new_used > self.arena.len() {
             // issue 0900 — `BufferTooSmall` is returned by a dozen other paths,
             // so on a target where a return code is all you get, arena
             // exhaustion is indistinguishable from a message that did not fit.
-            super::arena::report_arena_exhausted(
+            return Err(self.arena_exhausted(
                 core::any::type_name::<T>(),
+                size,
                 new_used - self.arena.len(),
-                self.arena_used,
-                self.arena.len(),
-            );
-            crate::boot_report::note_alloc_failed(size, new_used - self.arena.len());
-            return Err(NodeError::BufferTooSmall);
+            ));
         }
         self.arena_used = new_used;
         crate::boot_report::note_alloc(size, new_used);
@@ -5417,17 +5437,18 @@ impl<'s> Executor<'s> {
             align.is_power_of_two(),
             "arena alignment must be a power of two"
         );
+        if let Some(offset) = self.arena_take_freed(size, align) {
+            crate::boot_report::note_alloc(size, self.arena_used);
+            return Ok(offset);
+        }
         let aligned_offset = self.arena_used.next_multiple_of(align);
         let new_used = aligned_offset + size;
         if new_used > self.arena.len() {
-            super::arena::report_arena_exhausted(
+            return Err(self.arena_exhausted(
                 "callback capture",
+                size,
                 new_used - self.arena.len(),
-                self.arena_used,
-                self.arena.len(),
-            );
-            crate::boot_report::note_alloc_failed(size, new_used - self.arena.len());
-            return Err(NodeError::BufferTooSmall);
+            ));
         }
         self.arena_used = new_used;
         crate::boot_report::note_alloc(size, new_used);
@@ -5498,6 +5519,16 @@ impl<'s> Executor<'s> {
     ) -> Result<(usize, usize), NodeError> {
         let align = core::mem::align_of::<T>();
         let entry_size = core::mem::size_of::<T>();
+        // Issue 1496 — a released region that holds the entry AND its trailing
+        // region is reused whole. The trailing region keeps its rule: it starts
+        // on a `u64` boundary after the entry, so the request is sized by that.
+        let u64_align = core::mem::align_of::<u64>();
+        let whole = entry_size.next_multiple_of(u64_align) + trailing_bytes;
+        if let Some(entry_offset) = self.arena_take_freed(whole, align.max(u64_align)) {
+            let trailing_offset = (entry_offset + entry_size).next_multiple_of(u64_align);
+            crate::boot_report::note_alloc(whole, self.arena_used);
+            return Ok((entry_offset, trailing_offset));
+        }
         let entry_offset = self.arena_used.next_multiple_of(align);
         // Trailing region starts on an 8-byte (u64) boundary after the entry.
         let trailing_offset =
@@ -5509,21 +5540,140 @@ impl<'s> Executor<'s> {
             // 0900. Half of arena exhaustion was therefore silent -- and it is
             // the half carrying buffered subscriptions and action entries,
             // which is what an island image actually allocates.
-            super::arena::report_arena_exhausted(
+            return Err(self.arena_exhausted(
                 core::any::type_name::<T>(),
-                new_used - self.arena.len(),
-                self.arena_used,
-                self.arena.len(),
-            );
-            crate::boot_report::note_alloc_failed(
                 new_used - entry_offset,
                 new_used - self.arena.len(),
-            );
-            return Err(NodeError::BufferTooSmall);
+            ));
         }
         self.arena_used = new_used;
         crate::boot_report::note_alloc(new_used - entry_offset, new_used);
         Ok((entry_offset, trailing_offset))
+    }
+
+    /// The ONE exhaustion path every arena allocator goes through — issues
+    /// 0900, 1036, 1496.
+    ///
+    /// It names the knob (`report_arena_exhausted`), writes the first failure
+    /// and its shortfall to the boot record (the only channel a console-less
+    /// board has), says whether the failure is a SHAPE problem rather than a
+    /// size one (released regions that together hold the request, none of
+    /// which alone does), and — where the image asked for it — halts through
+    /// the platform's fatal hook, so the record survives instead of the board
+    /// running on with an entity missing. Three spellings of this existed, and
+    /// the `_with_trailing` one reported nothing until phase-412.
+    fn arena_exhausted(&self, entity: &'static str, request: usize, shortfall: usize) -> NodeError {
+        super::arena::report_arena_exhausted(
+            entity,
+            shortfall,
+            self.arena_used,
+            self.arena.len(),
+            self.arena_released(),
+            request,
+        );
+        crate::boot_report::note_alloc_failed(request, shortfall);
+        super::arena::arena_exhaustion_is_fatal();
+        NodeError::BufferTooSmall
+    }
+
+    /// Issue 1496 — first-fit over the released regions. A region larger than
+    /// the request is split and its tail kept, if the tail is worth keeping.
+    fn arena_take_freed(&mut self, size: usize, align: usize) -> Option<usize> {
+        let i = self.arena_freed.iter().position(|r| {
+            let start = r.offset.next_multiple_of(align);
+            start + size <= r.offset + r.len
+        })?;
+        let r = self.arena_freed.swap_remove(i);
+        let start = r.offset.next_multiple_of(align);
+        let end = start + size;
+        let tail = r.offset + r.len - end;
+        // A tail smaller than the smallest entry anything registers is not
+        // worth a slot in the table; it is reclaimed when its neighbour is.
+        if tail >= 64 {
+            let _ = self.arena_freed.push(FreedRegion {
+                offset: end,
+                len: tail,
+            });
+        }
+        Some(start)
+    }
+
+    /// Issue 1496 — give a region back. Adjacent holes coalesce, so a loop
+    /// that frees what it allocated returns the arena to the shape it had.
+    pub(crate) fn arena_release(&mut self, offset: usize, len: usize) {
+        let mut r = FreedRegion { offset, len };
+        while let Some(i) = self
+            .arena_freed
+            .iter()
+            .position(|h| h.offset + h.len == r.offset || r.offset + r.len == h.offset)
+        {
+            let h = self.arena_freed.swap_remove(i);
+            r = FreedRegion {
+                offset: h.offset.min(r.offset),
+                len: h.len + r.len,
+            };
+        }
+        if self.arena_freed.push(r).is_err() {
+            // Full: keep the LARGER holes, which serve more requests.
+            let smallest = self
+                .arena_freed
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, h)| h.len)
+                .map(|(i, h)| (i, h.len));
+            if let Some((i, len)) = smallest
+                && len < r.len
+            {
+                self.arena_freed[i] = r;
+            }
+        }
+    }
+
+    /// Issue 1496 — bytes released back to the arena and not yet reused.
+    pub fn arena_released(&self) -> usize {
+        self.arena_freed.iter().map(|r| r.len).sum()
+    }
+
+    /// Issue 1496 — RELEASE one callback entry: drop the entry in place (its
+    /// RMW handles' `Drop`s destroy the backend entities, so nothing stays
+    /// advertised), free its callback slot, and give its `size` arena bytes
+    /// back for reuse. `false`, touching nothing, when `index` is not a live
+    /// entry of `kind`.
+    ///
+    /// # Safety
+    /// `size` must be the size the entry at `index` was allocated with (the
+    /// `size_of` of the concrete entry type its registration wrote, with no
+    /// trailing region), and no handle naming `index` may be used afterwards:
+    /// the slot and its bytes go to the next registration.
+    pub(crate) unsafe fn release_entry(
+        &mut self,
+        index: usize,
+        kind: EntryKind,
+        size: usize,
+    ) -> bool {
+        let live = self
+            .entries
+            .get(index)
+            .and_then(|e| e.as_ref())
+            .is_some_and(|m| m.kind == kind);
+        if !live {
+            return false;
+        }
+        let Some(meta) = self.entries[index].take() else {
+            return false;
+        };
+        // SAFETY: the entry was written by its registration and not yet
+        // dropped; `drop_fn` matches its concrete type.
+        unsafe {
+            let data_ptr = (self.arena.as_mut_ptr() as *mut u8).add(meta.offset);
+            (meta.drop_fn)(data_ptr);
+        }
+        self.sched_context_bindings[index] = super::sched_context::SchedContextId(0);
+        if let Some(st) = self.sporadic_states.get_mut(index) {
+            *st = None;
+        }
+        self.arena_release(meta.offset, size);
+        true
     }
 
     /// Find the next free entry slot index.
