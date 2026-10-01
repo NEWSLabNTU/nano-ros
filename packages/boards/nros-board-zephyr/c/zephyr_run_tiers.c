@@ -350,6 +350,17 @@ static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
                                   unsigned char* storage, size_t storage_stride,
                                   const nros_tier_task_memory_t* task_memory);
 
+/* Issue 1232 — the POOL spawn, reached only through `_in`/`_ns` (an entry with
+ * no task memory). Held in a pointer `_in` sets, so a generated entry — which
+ * calls `_tasks_in` and never `_in` — references no pool function and
+ * --gc-sections drops `nros_tier_stacks` (NROS_ZEPHYR_MAX_TIERS x
+ * NROS_ZEPHYR_TIER_STACK_SIZE) from the image: the pool is not a second
+ * allocation of the same stacks. */
+typedef int (*zephyr_pool_create_fn)(void* (*entry)(void*), void* arg, int32_t priority,
+                                     const char* name, size_t stack_bytes, uint32_t core_plus1,
+                                     int* pin_rc);
+static zephyr_pool_create_fn zephyr_pool_create;
+
 /* Minimum spin delay: 1 ms. */
 #define SPIN_PERIOD_FLOOR_MS 1u
 
@@ -561,8 +572,10 @@ static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
                  ? nros_zephyr_tier_task_create_static(zephyr_tier_task, ctx, (int32_t)p, tname,
                                                        task_memory->stack, task_memory->stack_bytes,
                                                        task_memory->tcb, t->core_plus1, &pin_rc)
-                 : nros_zephyr_tier_task_create(zephyr_tier_task, ctx, (int32_t)p, tname,
-                                                (size_t)t->stack_bytes, t->core_plus1, &pin_rc);
+             : (zephyr_pool_create == NULL)
+                 ? -1
+                 : zephyr_pool_create(zephyr_tier_task, ctx, (int32_t)p, tname,
+                                      (size_t)t->stack_bytes, t->core_plus1, &pin_rc);
     if (rc != 0) {
         nros_platform_dealloc(ctx);
         return -1;
@@ -688,6 +701,7 @@ int32_t nros_board_zephyr_run_tiers_in(const char* locator, uint8_t domain_id,
     /* Issue 1232 — kept for an entry TU generated before
      * `nros_board_zephyr_run_tiers_tasks_in` existed: no task memory, so its
      * tiers run on the shim's fixed pool slots as before. */
+    zephyr_pool_create = nros_zephyr_tier_task_create;
     return nros_board_zephyr_run_tiers_tasks_in(locator, domain_id, session_name, node_namespace,
                                                 tiers, n_tiers, executor_storage, storage_stride,
                                                 NULL);
@@ -712,6 +726,11 @@ int32_t nros_board_zephyr_run_tiers_tasks_in(const char* locator, uint8_t domain
                                              void* executor_storage, size_t storage_stride,
                                              const nros_tier_task_memory_t* task_memory) {
     if (tiers == NULL || n_tiers == 0 || executor_storage == NULL) {
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    if (task_memory == NULL && n_tiers > 1u && zephyr_pool_create == NULL) {
+        printk("nros: zephyr run_tiers: no task memory for the spawned tiers — pass the entry's "
+               "(`_tasks_in`) or call `_in` for the pool; refused\n");
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
     if (task_memory != NULL) {
