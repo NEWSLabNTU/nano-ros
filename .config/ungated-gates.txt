@@ -84,4 +84,3 @@ rmw-xrce
 
 # --- need a linked image to measure ---
 mem-report
-no-alloc-image

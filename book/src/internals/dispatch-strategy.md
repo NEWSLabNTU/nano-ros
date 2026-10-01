@@ -172,7 +172,7 @@ Both options conflict with keeping dispatch heap-free and
 framework-task-routed. (Heap-free here is a checked property of the
 executor path, not of an image with a transport: `heap-free-poc-mps2`
 links the executor, component install and spin path with no allocation
-symbol, and `just ci l3` fails if that changes. Every shipped RMW backend
+symbol, and the L3 CI lane fails if that changes. Every shipped RMW backend
 allocates in C.) So Phase 216.A.4 introduces **tags**:
 
 ```rust
