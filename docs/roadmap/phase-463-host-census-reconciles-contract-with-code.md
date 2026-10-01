@@ -377,7 +377,7 @@ configure refuses with "census stale: autoware_mrm_handler changed since
 the contract row and it configures. Touch a file without changing it and
 nothing is stale.
 
-Claim: phase-463-W4. Depends on: phase-463-W3, phase-460-W1. Owns: the entity-census recipe in just/check/codegen.just (new), packages/cli/nros-cli-core/src/cmd/ws.rs (the sync: source metadata block), packages/cli/nros-cli-core/src/orchestration/metadata_refresh.rs, cmake/NanoRosEntry.cmake (the --require-fresh call), the [census] policy keys in cargo_metadata_schema.rs. Gate: just check entity-census (new). Status: not started.
+Claim: phase-463-W4. Depends on: phase-463-W3, phase-460-W1. Owns: the entity-census recipe in just/check/codegen.just (new), packages/cli/nros-cli-core/src/cmd/ws.rs (the sync: source metadata block), packages/cli/nros-cli-core/src/orchestration/metadata_refresh.rs, cmake/NanoRosEntry.cmake (the --require-fresh call), the [census] policy keys in cargo_metadata_schema.rs. Gate: just check entity-census (new). Status: landed in PR #1233. Run end to end on `examples/workspaces/cpp` (issue 1419, 2026-10-01) the road had three defects the fixture gate could not see -- the typed C++ native entry never reached the census switch, producer and consumer keyed the census by their own entry and build dir so they never named one file, and `run` could not find an `nros build` binary -- fixed by keying the census by the MODEL (`<model-dir>/<stem>.census.json`, asked of `nros ws entity-census path`), and the threadx configure now refuses E3a/E3b/E3c with one named row each.
 
 ### W5 - the compatibility invariants, as gates
 
