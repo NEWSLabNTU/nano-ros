@@ -207,9 +207,29 @@ function(_nros_entry_require_fresh_census)
     endif()
     get_filename_component(_rfc_ws "${_rfc_parent}" DIRECTORY)
 
-    set(_rfc_census "${CMAKE_BINARY_DIR}/nros/census/${_RFC_NAME}.json")
+    # Issue 1419 -- WHERE the census is, asked of the CLI rather than spelled
+    # here. It is keyed by the MODEL (beside it), because the census is written
+    # by the NATIVE entry of this launch file, in another build directory and
+    # under another entry name. This used to be
+    # `${CMAKE_BINARY_DIR}/nros/census/${_RFC_NAME}.json` -- this cross build's
+    # own dir and this cross entry's own name -- which no census run writes, so
+    # every cross configure of a real workspace read "census missing" whatever
+    # had been taken. Asked, not re-derived: the path is needed here only to
+    # register it below, and a second spelling is how the two would drift.
+    execute_process(
+        COMMAND "${_rfc_cli}" ws entity-census path --model "${_RFC_MODEL}"
+        RESULT_VARIABLE _rfc_path_rc
+        OUTPUT_VARIABLE _rfc_census
+        ERROR_VARIABLE  _rfc_path_err
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _rfc_path_rc EQUAL 0 OR _rfc_census STREQUAL "")
+        # A CLI that predates the verb. Not silent: the check below still runs
+        # and names the path it read.
+        message(STATUS "nano-ros: `nros ws entity-census path` unavailable "
+            "(${_rfc_path_err}); the census check reads its own default")
+        set(_rfc_census "")
+    endif()
     set(_rfc_args ws entity-census check --require-fresh
-        --census    "${_rfc_census}"
         --model     "${_RFC_MODEL}"
         --workspace "${_rfc_ws}"
         --entry     "${_RFC_NAME}")
@@ -234,7 +254,7 @@ function(_nros_entry_require_fresh_census)
     # no file exists yet, so taking a census re-configures rather than leaving
     # the previous verdict standing.
     get_property(_rfc_deps DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS)
-    if(NOT "${_rfc_census}" IN_LIST _rfc_deps)
+    if(NOT _rfc_census STREQUAL "" AND NOT "${_rfc_census}" IN_LIST _rfc_deps)
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_rfc_census}")
     endif()
 

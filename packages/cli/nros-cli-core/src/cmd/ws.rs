@@ -3297,15 +3297,29 @@ fn refresh_source_metadata(
 /// noise. Never silent when there IS one: that is the state where a person
 /// has a census and may believe it.
 fn report_census_freshness(ws_root: &Path) {
-    let dir = ws_root
-        .join("build")
-        .join(crate::cmd::entity_census::CENSUS_DIR);
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return;
-    };
-    let mut rows: Vec<(String, String)> = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
+    // Issue 1419 -- a census of a MODEL lives beside it
+    // (`build/nros/models/<bringup>/<stem>.census.json`, the one place a cross
+    // configure reads); the build-dir location is where a census taken against
+    // no model goes. Both are reported, because both are documents a person
+    // may believe.
+    let build = ws_root.join("build");
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(build.join(crate::cmd::entity_census::CENSUS_DIR)) {
+        candidates.extend(entries.flatten().map(|e| e.path()));
+    }
+    if let Ok(bringups) = std::fs::read_dir(build.join("nros").join("models")) {
+        for bringup in bringups.flatten() {
+            if let Ok(files) = std::fs::read_dir(bringup.path()) {
+                candidates.extend(files.flatten().map(|e| e.path()).filter(|p| {
+                    p.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.ends_with(".census.json"))
+                }));
+            }
+        }
+    }
+    let mut rows: Vec<(String, String, String)> = Vec::new();
+    for path in candidates {
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
@@ -3317,22 +3331,47 @@ fn report_census_freshness(ws_root: &Path) {
         if name.ends_with(".recorded") {
             continue;
         }
+        // Issue 1419 -- a census whose run stopped early is current AND not
+        // to be believed; every check against it refuses, and sync says so.
+        let incomplete = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+            .and_then(|v| crate::cmd::entity_census::incomplete_reason(&v))
+            .is_some();
         let verdict = match crate::cmd::entity_census::census_freshness(&path, ws_root) {
+            crate::cmd::entity_census::Freshness::Fresh if incomplete => {
+                "current but INCOMPLETE -- its run stopped before setup finished, so every \
+                 check against it refuses"
+                    .to_string()
+            }
             crate::cmd::entity_census::Freshness::Fresh => "current".to_string(),
             crate::cmd::entity_census::Freshness::Missing(why)
             | crate::cmd::entity_census::Freshness::Stale(why) => {
                 format!("STALE -- {}", why.replace('\n', "; "))
             }
         };
-        rows.push((name.to_string(), verdict));
+        // A model's census is named by the model it is of; a build-dir one by
+        // the entry that took it.
+        let (label, how) = match name.strip_suffix(".census") {
+            Some(stem) => {
+                let model = path.with_file_name(format!("{stem}.yaml"));
+                let shown = model.strip_prefix(ws_root).unwrap_or(&model).display();
+                (
+                    format!("model {shown}"),
+                    format!("--model {shown} --entry <native entry>"),
+                )
+            }
+            None => (format!("entry {name}"), format!("--entry {name}")),
+        };
+        rows.push((label, verdict, how));
     }
     rows.sort();
-    for (name, verdict) in rows {
-        println!("sync: source metadata -- entity census for `{name}` is {verdict}");
+    for (label, verdict, how) in rows {
+        println!("sync: source metadata -- entity census for {label} is {verdict}");
         if verdict.starts_with("STALE") {
             println!(
-                "sync: source metadata -- take a new one with `nros ws entity-census run \
-                 --entry {name}`; sync does not build the native image it needs (issue 0641)"
+                "sync: source metadata -- take a new one with `nros ws entity-census run {how}`; \
+                 sync does not build the native image it needs (issue 0641)"
             );
         }
     }
