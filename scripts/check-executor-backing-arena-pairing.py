@@ -300,6 +300,7 @@ NOT_SIZING = {
     "NROS_EXECUTOR_BACKING_U64S": "the claim itself",
     "NROS_EXECUTOR_BACKING_SECTION": "placement only, not size",
     "NROS_BOOT_REPORT": "a cfg, no size",
+    "NROS_ARENA_EXHAUSTION_IS_FATAL": "a cfg, no size (issue 1036)",
     "NROS_PARAM_SERVICE_BUFFER_SIZE": "emitted as a const, not in the arena sum",
     "NROS_DECLARED_PARAM_SERVICE_SHAPE":
         "the declared rung of that same buffer (phase-446 F3): it sizes a "

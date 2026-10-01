@@ -190,6 +190,7 @@ KNOB_CLASS = {
     # judgements, and a user silencing one would silence the other.
     "NROS_ALLOW_INFRA_DEPS": ("infra", "policy flag"),
     "NROS_BOOT_REPORT": ("infra", "diagnostic toggle; a bool, so it has no rung"),
+    "NROS_ARENA_EXHAUSTION_IS_FATAL": ("infra", "fault-hook toggle (issue 1036); a bool, so it has no rung"),
     "NROS_BUILD_ROOT": ("infra", "path"),
     # phase-440 W7 — `orchestration::dispatch` SETS this on the installer it
     # execs to fetch a pinned toolchain (RFC-0095 D8 job 2). Infra, and the

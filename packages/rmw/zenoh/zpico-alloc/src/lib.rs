@@ -885,11 +885,17 @@ mod tests {
         let s = heap.free_shape();
         assert!(s.free_total >= 1024, "half the arena is free: {s:?}");
         assert!(s.largest_free < 1024, "and no hole holds 1 KiB: {s:?}");
-        assert!(heap.alloc(1024).is_null(), "so the request really is refused");
+        assert!(
+            heap.alloc(1024).is_null(),
+            "so the request really is refused"
+        );
         assert_eq!(heap.classify_refusal(1024), Exhaustion::Fragmented);
         // The same arena refusing a request bigger than everything free is the
         // OTHER exhaustion, and must say so.
-        assert_eq!(heap.classify_refusal(s.free_total + 1), Exhaustion::TooSmall);
+        assert_eq!(
+            heap.classify_refusal(s.free_total + 1),
+            Exhaustion::TooSmall
+        );
         // And coalescing really does undo it: free the rest, one hole again.
         for p in held[..n].iter().skip(1).step_by(2) {
             heap.free(*p);
@@ -906,11 +912,20 @@ mod tests {
             free_total,
             free_blocks: 2,
         };
-        assert_eq!(Exhaustion::classify(100, shape(50, 99)), Exhaustion::TooSmall);
-        assert_eq!(Exhaustion::classify(100, shape(50, 100)), Exhaustion::Fragmented);
+        assert_eq!(
+            Exhaustion::classify(100, shape(50, 99)),
+            Exhaustion::TooSmall
+        );
+        assert_eq!(
+            Exhaustion::classify(100, shape(50, 100)),
+            Exhaustion::Fragmented
+        );
         // A hole that fits is not an exhaustion at all; classify says TooSmall
         // (not Fragmented) because fragmentation did not refuse it.
-        assert_eq!(Exhaustion::classify(100, shape(100, 200)), Exhaustion::TooSmall);
+        assert_eq!(
+            Exhaustion::classify(100, shape(100, 200)),
+            Exhaustion::TooSmall
+        );
     }
 
     /// Issue 1370 — the spread Robson's bound takes, recorded from the TLSF
