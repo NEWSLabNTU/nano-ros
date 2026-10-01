@@ -28,6 +28,9 @@ pub fn run_platform() {
     // Match the legacy guard: skip when the NuttX tree isn't populated yet
     // (a clean checkout before `make export`).
     if !nuttx_dir.join("include").exists() {
+        // issue 1586 — the absence is an INPUT: an uninitialised NuttX
+        // submodule is an empty dir, and populating it must rerun this.
+        nros_build_paths::watch_skip_cause(&nuttx_dir);
         return;
     }
 
@@ -130,6 +133,9 @@ pub fn run_platform() {
 pub fn compile_entry_seams(seam_srcs: &[&std::path::Path]) {
     let nuttx_dir = nros_build_paths::nuttx_dir();
     if !nuttx_dir.join("include").exists() {
+        // issue 1586 — the absence is an INPUT: an uninitialised NuttX
+        // submodule is an empty dir, and populating it must rerun this.
+        nros_build_paths::watch_skip_cause(&nuttx_dir);
         return;
     }
 

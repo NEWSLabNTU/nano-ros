@@ -113,6 +113,14 @@ fn main() {
              of this board will fail until you do.",
             freertos_probe.display()
         );
+        // issue 1586 — the absence is an INPUT. Returning with no rerun line
+        // left cargo watching only this package, so the `submodule update`
+        // the warning asks for changed nothing cargo saw: the script stayed
+        // Fresh, the cached warning replayed, and the link failed until a
+        // `touch build.rs`. Watch the kernel root (an uninitialised submodule
+        // is an empty dir; populating it moves its mtime) and this script.
+        nros_build_paths::watch_skip_cause(&env_path("FREERTOS_DIR"));
+        println!("cargo:rerun-if-changed=build.rs");
         return;
     }
 

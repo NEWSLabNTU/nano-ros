@@ -111,6 +111,10 @@ fn main() {
                  compiles as a Rust shell so host tooling can build packages that dep it \
                  (issue 0288)."
             );
+            // issue 1586 — the port NAME decided this skip, so it is an input
+            // here too (TARGET is a different unit by construction).
+            println!("cargo:rerun-if-env-changed=THREADX_PORT");
+            println!("cargo:rerun-if-changed=build.rs");
             return;
         }
 
@@ -139,6 +143,13 @@ fn main() {
                  third-party/threadx/kernel`. A link of this board will fail until you do.",
                 port_inc.display()
             );
+            // issue 1586 — the absence is an INPUT: without an edge, the
+            // submodule init this warning asks for leaves the script Fresh and
+            // replays the cached warning. Watch the kernel root (an empty dir
+            // while uninitialised) and this script.
+            nros_build_paths::watch_skip_cause(&threadx_dir);
+            println!("cargo:rerun-if-env-changed=THREADX_PORT");
+            println!("cargo:rerun-if-changed=build.rs");
             return;
         }
     }
