@@ -24,7 +24,7 @@ is not what a study predicts well.
 | Row 6 `rust:Context::domain_id` | SHIPPED, row DELETED — #1317 |
 | Row 7 `cpp:Publisher::assert_liveliness` | SHIPPED — #1321 |
 | Row 8 `c:node_get_graph_guard_condition` | SHIPPED, both backends — see "Row 8 … LANDED" |
-| Row 9 `c:lifecycle_change_state` | **STILL OPEN** — unchanged, still the expensive one |
+| Row 9 `c:lifecycle_change_state` | SHIPPED — #1587; the "expensive" price was measured against the wrong QoS, see "Row 9 … LANDED" |
 | Row 10 `rust:Logger::set_default_level` | CLOSED as `divergence` — #1302 |
 | Row 11 `rust:init_with_args` | **STILL OPEN**, premise refuted — #1317 |
 | Row 12 `cpp:Node::create_subscription` | SHIPPED — #1321 |
@@ -1030,6 +1030,33 @@ so no ABI header change and no `gen-abi-bindings.sh` run.
 
 ## Row 9 — `c:lifecycle_change_state` [gap, adopt]: the expensive one, priced again
 
+**LANDED 2026-10-01 (issue 1587) — AND THIS SECTION'S PRICE WAS WRONG IN THE
+ONE PLACE IT TOLD THE NEXT PERSON TO LOOK FIRST.** Point 5 below says to decide
+the QoS before sizing anything, because a TRANSIENT_LOCAL publisher is also a
+zenoh cache queryable (issue 1378) against a `ZPICO_MAX_QUERYABLES` that
+defaults to 8 while the two service families already claim eleven (issue 0460).
+That instruction was right and its premise was false. Measured twice against a
+live `ros2 run lifecycle lifecycle_talker` on humble, `ros2 topic info -v
+/lc_talker/transition_event` reports **RELIABLE / VOLATILE / infinite
+lifespan** — `rmw_qos_profile_default`, which `rcl_lifecycle`'s
+`com_interface.c` takes from `rcl_publisher_get_default_options()` and never
+overrides, and which `QoSProfile::QOS_PROFILE_DEFAULT` already is byte for
+byte. **So the row costs one publisher slot and one liveliness token per
+lifecycle-enabled image and ZERO queryables**, and the "most expensive of the
+thirteen" ranking was an artefact of the assumption, not of the work. Points 1
+to 4 and 6 were accurate.
+
+Two more corrections the work made to the text below. The line cite has moved
+again (`:901` in the ledger, `:947` here, `:946` on the branch this landed
+from) — a line number in a living file is a fact with a half-life, and the
+symbol name is the durable half. And point 2's shape was not the one that
+survived contact: a trigger hook on "the transition path" is five call sites,
+so the record is taken inside
+`LifecyclePollingNodeCtx::trigger_transition` — the ONE function all five
+funnel through — and the executor drains it. The remaining `publish_update`
+arity is settled on the row as part of `c:lifecycle_node_t`'s divergence rather
+than owed: our handle owns no publisher, so the argument has no referent.
+
 **Owed:** the `~/transition_event` publisher and the `bool publish_update`
 argument that follows it. Re-confirmed: `TransitionEvent` appears only in the
 `round_trip_transition_event` unit test
@@ -1352,7 +1379,10 @@ does not disturb.
 **One gate gap worth filing separately:** `check-infra-queryable-counts` cannot
 see a lifecycle PUBLISHER (Row 9, point 4). That is true today, before anyone
 writes the publisher, and it is a gate whose reach is narrower than the rule it
-enforces.
+enforces. *(CLOSED 2026-10-01 with Row 9 itself, issue 1587 — not filed
+separately, because CLAUDE.md's issue-0196 rule is that the gate widens in the
+same commit as the new site. A third group holds
+`LIFECYCLE_SERVICE_PUBLISHERS` to the `create_lc_pub` sites in `spin.rs`.)*
 
 # Corrections owed to other documents
 
