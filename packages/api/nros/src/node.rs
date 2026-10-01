@@ -976,7 +976,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// [`create_subscription_for_callback_name`](Self::create_subscription_for_callback_name)
     /// but flags the entity so the runtime registers it via
     /// `create_generic_subscription_with_integrity`; the callback then reads
-    /// [`CallbackCtx::integrity`](CallbackCtx::integrity) alongside the message.
+    /// [`CallbackCtx::integrity`] alongside the message.
     /// The config-driven `[safety]` axis (Wave 4 codegen) emits this call; it is
     /// also usable by hand. Ungated — when `safety-e2e` is off the flag is simply
     /// ignored and the subscription registers as a basic one.
@@ -1184,7 +1184,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     }
 
     /// Declare a timer on a chosen CLOCK — phase-430 W4, the declarative
-    /// spelling of [`Executor::register_timer_on_clock`](crate::Executor::register_timer_on_clock)
+    /// spelling of [`Executor::register_timer_on_clock`]
     /// and the counterpart of C++'s `create_timer(clock, period, cb)`.
     ///
     /// [`create_timer`](Self::create_timer) is this with
