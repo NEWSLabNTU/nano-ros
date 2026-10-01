@@ -347,3 +347,59 @@ forward: a report from somewhere that can see the runner —
 permission — because two instances of job state agreeing on "waiting" still
 cannot say whether the runner is offline, wedged after a job, or serving
 another repository.
+
+## The third shape ran its full course: 24 h, zero claims, three cancellations (2026-10-01)
+
+The 2026-09-30 entry above stopped at **2 h 17 m** with four waiters and an empty
+merge queue, and said an explanation covering only one instance is not the
+explanation. This is what that instance became.
+
+**Nothing was claimed for the whole 24 hours.** The last self-hosted completion
+remains `queue` 36675568033's `L3`, at **2026-09-30T06:03:22Z**. Scanning every
+self-hosted-eligible run since — today's `run-matrix`, both `nightly`s,
+`live-peer`, the scheduled `gate` — returns **zero jobs** with
+`runner_name == "nano-ros-runner"`.
+
+**The 24-hour expiry fired, and on the `L3` job it is exact to the second:**
+
+| job | created | completed | elapsed | conclusion |
+| --- | --- | --- | ---: | --- |
+| 109761961677 `L3 (cross build + link)` (`queue` 36676015921) | 2026-09-30T06:03:37Z | **2026-10-01T06:03:37Z** | **24:00:00** | **cancelled** |
+| 109768816320 `tier 2 (1-wise matrix)` (`run-matrix` 36678567181) | 2026-09-30T06:30:23Z | `null` | — | run **cancelled** at 06:48:37Z |
+| 109782399910 `tier 2 nightly (pairwise cover)` (`nightly` 36682994178) | 2026-09-30T07:19:01Z | `null` | — | still `queued`, expiry due 07:19:01Z |
+
+That confirms this issue's own "Measured a day later: the job is cancelled at
+24h" section with a to-the-second measurement rather than an approximate one.
+
+**What it cost, which is more than the earlier episodes.** Three lanes lost a
+verdict to this single idle window: the merge queue's `L3` interlock, a whole
+tier-2 night, and the tier-2 nightly. Issue 1158's complaint — tier 2 producing
+no verdict — is satisfied here by a cause that is not in the build at all.
+
+**And it is still running.** A fresh `run-matrix` started this morning, run
+**36825211926** (06:31:16Z), job **110249254587**, `queued`, unclaimed, into the
+same empty state — so the window is now >24 h, not 24 h, and the next expiry is
+already scheduled.
+
+### A triage trap worth writing down
+
+`run-matrix` 36678567181 reads `conclusion: cancelled` at the RUN level while its
+job 109768816320 still reads `status: queued` with `completed_at: null`. So a
+job row can say "queued" about a run that is already finished, and a sweep that
+keys on job status alone will carry an expired waiter forward indefinitely —
+which is how the 09-29 and 09-30 entries' waiter tables should be read. Check the
+run's conclusion as well as the job's status.
+
+### What this still does not establish
+
+The same limit as both earlier entries, unchanged: `GET
+repos/.../actions/runners` is empty because the runner is org-registered, and the
+org endpoint is 403 without the runners permission. Twenty-four hours of job
+state agreeing on "waiting" still cannot distinguish a runner that is offline,
+wedged after a job, or serving another repository.
+
+**This now needs a human.** The remedy this issue has asked for twice is the only
+way forward and the cost has gone from "a lane is late" to "three lanes lost
+their verdict and a fourth is queued behind the same wall":
+`scripts/ci/runner-doctor.sh` on the machine, or a token with the runners
+permission.
