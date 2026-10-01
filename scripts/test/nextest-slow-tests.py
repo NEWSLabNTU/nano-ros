@@ -9,6 +9,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
+import skip_marker  # one spelling for the marker (issue 0658)
+
 
 @dataclass(frozen=True)
 class TestCase:
@@ -25,7 +27,10 @@ def testcase_status(case: ET.Element) -> str:
     if failure is not None:
         message = failure.get("message") or ""
         text = "".join(failure.itertext())
-        if "[SKIPPED]" in message or "[SKIPPED]" in text:
+        # issue 0658 — the shared classifier; a `[SKIPPED:<class>]` marker does
+        # not contain the bare `[SKIPPED]` this used to test for.
+        streams = skip_marker.testcase_streams(case)
+        if skip_marker.skip_class_in((message, text), streams) is not None:
             return "env-skip"
         return "fail"
     if error is not None:

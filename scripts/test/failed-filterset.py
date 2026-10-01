@@ -15,6 +15,8 @@ The nextest binary id equals the JUnit `classname`, so each failure maps to
 import sys
 import xml.etree.ElementTree as ET
 
+import skip_marker  # one spelling for the marker (issue 0658)
+
 DEFAULT_JUNIT = "target/nextest/default/junit.xml"
 
 
@@ -29,8 +31,15 @@ def real_failures(junit_path):
         fails = tc.findall("failure")
         if not fails:
             continue
-        blob = " ".join((f.get("message") or "") + " " + (f.text or "") for f in fails)
-        if "[SKIPPED]" in blob:
+        # The shared classifier, not a substring: `[SKIPPED:<class>]` does not
+        # contain `[SKIPPED]`, so the literal filed every CLASSED skip as a real
+        # failure and re-ran it (issue 0658; found by the 2026-10-01 gate
+        # re-run once `check-skip-marker-matching` read Python).
+        streams = skip_marker.testcase_streams(tc)
+        if any(
+            skip_marker.skip_class_in((f.get("message"), f.text), streams) is not None
+            for f in fails
+        ):
             continue
         name = tc.get("name")
         cls = tc.get("classname")

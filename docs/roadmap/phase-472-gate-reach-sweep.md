@@ -1,6 +1,6 @@
 # Phase 472 — gate reach sweep
 
-**Status (2026-09-29). AUDIT LANDED; W1–W9 DONE** (see each). Re-running the six-bucket audit over the same gates — the phase acceptance — remains for the coordinator. An audit of every tracked
+**Status (2026-10-01). W1–W9 DONE; ACCEPTANCE RE-RUN — NOT MET.** The re-run ([audit-findings-2026-10-01-rerun](../development/audit-findings-2026-10-01-rerun.md)) found 75 holes still standing: 70 of the 156 recorded findings, plus 5 in new audits and spot-checks. They are filed by class as issues 1614–1617, with live defect 1618. See "Acceptance" below. An audit of every tracked
 `scripts/check-*` gate against one question, the codebase-audit checklist's **I6
 second-order** rule: *a gate must be able to fail on the case it names.*
 
@@ -756,3 +756,31 @@ confirmed hole in any class W1–W9. The audit is repeatable by design — six
 buckets, one question, mutation-confirmed — and should be re-run whenever a class
 fix lands, because a class fix that reached only its reported members is how this
 phase came to be necessary.
+
+### Acceptance re-run (2026-10-01): NOT MET
+
+[audit-findings-2026-10-01-rerun](../development/audit-findings-2026-10-01-rerun.md)
+re-applied every recorded mutation against `origin/main`. Each was confirmed
+applied by `git status`, and the tree was restored and verified clean before
+the next. Every surviving hole also has a positive control that fails.
+
+- **78 of 156** recorded holes now FAIL. **70 still PASS.** 5 are N/A: 3 gates
+  deleted, 2 need artifacts this host lacks.
+- The class fixes reached their named members: 76 of the 109 findings whose
+  gate this doc names now fail. The misses are concentrated in the 47 it never
+  named, of which 43 still held.
+- New audits of the W5 "triaged, not audited" `cmake/` gates: 13 of 17 are
+  clean, 2 have holes (`no-allow-multiple-def`, `zenoh-feature-off-compile`)
+  and 2 are N/A. Spot-checks of 15 gates recorded clean: 3 have holes
+  (`workflow-doctor-after-setup`, `core-crates-are-no-std`,
+  `rust-stdio-on-zephyr`).
+- Fixed in the re-run's PR and proved by their mutations:
+  `skip-marker-matching` (which surfaced two live Python sites that filed
+  classed skips as failures, both fixed), `ret-code-citations` (on a new
+  `file_kinds` `jinja` kind) and `zenohd-flag-invocations`.
+- Filed: **1614** (W5, 18 gates), **1615** (W6, 34), **1616** (W7, 13),
+  **1617** (W1/W3/W4/W8, 10), and the live defect **1618**: three
+  `--allow-multiple-definition` uses outside the gate that says there are none.
+
+The phase stays open until 1614–1617 are closed and this audit, re-run again,
+finds no confirmed hole.
