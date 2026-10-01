@@ -70,3 +70,28 @@ entry's resolution.
 3. Acceptance is the `esp32` nightly job reaching a verdict on its cells on
    three consecutive nights, and the mechanism — not just these two crates —
    being what changed.
+
+## Night two of three, and the mechanism is still not established (2026-10-01)
+
+Acceptance here is *"the `esp32` nightly job reaching a verdict on its cells on
+three consecutive nights, and the mechanism — not just these two crates — being
+what changed."* The streak so far:
+
+| 07:19 nightly run | `esp32` |
+| --- | --- |
+| 36535897637 (2026-09-29) | failure |
+| 36682994178 (2026-09-30) | **success** |
+| 36829686786 (2026-10-01) | **success** |
+
+So **two of the three nights**, which is progress and not closure.
+
+**The mechanism is the half that is missing, and nothing here establishes it.**
+Acceptance asks for what changed, and this entry cannot say: a warmed cache, a
+different runner image, a crates.io mirror behaving differently and a deliberate
+ordering fix would all look identical from the job's conclusion alone. The same
+caution applies as in issue 1353's 2026-09-29 entry, where a single favourable
+night read as a fix and the next datum showed it was an arrival state.
+
+What would settle it is the first item of this issue's own list — establish what
+warms the cargo cache for this job and why the generated esp32 entry's graph was
+outside it — which a green conclusion does not answer in either direction.
