@@ -73,7 +73,7 @@
 //! until this they were declared, delivered to the build and never compared
 //! with the code. They arrive on the sizing DESCRIPTOR only (no env knob is
 //! added for them: re-carrying a fact the descriptor already states is the
-//! 0460/0491 shape), and [`check`] / [`honour`] treat them by the same rules as
+//! 0460/0491 shape), and [`check`](crate::declared_qos::check) / [`honour`](crate::declared_qos::honour) treat them by the same rules as
 //! the depth, with the order of the two values standing in for "deeper".
 
 use crate::executor::NodeError;
