@@ -146,7 +146,6 @@ domain_id = 0
 pkg = "esp32_qemu_talker"
 class = "esp32_qemu_talker::Talker"
 name = "talker"
-entities = ["publisher:std_msgs/msg/String:/chatter", "timer"]
 
 [image.esp32-c3-baremetal]
 board   = "esp32-c3-baremetal"
@@ -155,12 +154,14 @@ gateway = "10.0.2.2"
 locator = "tcp/10.0.2.2:9800"
 ```
 
-The `entities` row is stated rather than probed, and this board is why: the
-entity probe compiles a component for the **host**, and this leaf builds for a
-foreign target with `build-std` against a board crate that has no host build
-(RFC-0098 D8; retiring the workaround is issue 1265). It uses the same grammar
-as `nano_ros_node_register(... ENTITIES ...)`, and `nros sync` cross-checks it
-against the probe on any leaf where the probe does run.
+There is no `entities` row: `nros sync` PROBES what the component creates by
+compiling its node lib for the **host**. That works on a board crate with no
+host build because the example's `Cargo.toml` puts everything only the image
+needs -- the board crate, `esp-hal`, `esp-backtrace` -- under
+`[target.'cfg(target_os = "none")'.dependencies]`, so `lib.rs` builds anywhere
+and only `main.rs` (never built for the host) reaches them (issue 1265). Keep
+that split in your own project: a target-only crate in plain `[dependencies]`
+makes the probe fail, and the pools fall back to the crate defaults.
 
 Everything that choice implies lives in the board descriptor,
 [`packages/boards/nros-board-esp32-qemu/nros-board.toml`](../../packages/boards/nros-board-esp32-qemu/nros-board.toml),

@@ -28,8 +28,8 @@ impl Node for Listener {
         let mut node = ctx.create_node(NodeOptions::new("listener"))?;
         let _sub =
             node.create_subscription_for_callback_name::<StringMsg>("on_chatter", "/chatter")?;
-        nros_board_esp32_qemu::nros_log::log_info!(
-            nros_board_esp32_qemu::nros_log::get_logger("listener"),
+        nros::log_info!(
+            nros::get_logger("listener"),
             "Subscriber created for topic: /chatter"
         );
         Ok(())
@@ -51,11 +51,7 @@ impl ExecutableNode for Listener {
             *state = state.wrapping_add(1);
             // Observable per-receive line (routed to the console by the
             // board's log writer) — the e2e harness asserts on `I heard:`.
-            nros_board_esp32_qemu::nros_log::log_info!(
-                nros_board_esp32_qemu::nros_log::get_logger("listener"),
-                "I heard: [{}]",
-                msg.data
-            );
+            nros::log_info!(nros::get_logger("listener"), "I heard: [{}]", msg.data);
         }
     }
 }

@@ -22,13 +22,6 @@ crate-type = ["rlib"]
 
 [dependencies]
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
-# Phase 244.D1 enabler — `board-entry` pulls the `nros_platform::BoardEntry`
-# impl so `nros::main!(deploy = "qemu-mps2-an385")` can drive this board. Keeps
-# its existing ethernet + rmw-zenoh defaults.
-nros-board-mps2-an385 = { version = "*", features = ["board-entry"] }
-# Linked RMW backend (force-linked; self-registers via the macro's
-# `__register_linked_rmw()` on `target_os = "none"`).
-nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
 # User diagnostics route through `nros-log`; the dispatcher is installed by the
 # board BoardEntry boot scaffold — this crate only registers its Logger handle.
 # phase-338 W7 — the node body logs through the `log` facade like every
@@ -36,6 +29,21 @@ nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble
 log = { version = "0.4", default-features = false }
 # Generated message types (from package.xml via `nros generate-rust`).
 std_msgs = { path = "generated/std_msgs", default-features = false }
+
+# Everything only the IMAGE needs is TARGET-scoped, so the node in `lib.rs`
+# builds for the host as well (issue 1265). That is what lets `nros sync`
+# PROBE what the node creates instead of this leaf declaring it by hand: the
+# probe compiles the lib for the host, and these crates do not build there.
+# `main.rs` (the Entry) is never built for the host, so it keeps reaching all
+# of them.
+[target.'cfg(target_os = "none")'.dependencies]
+# Phase 244.D1 enabler — `board-entry` pulls the `nros_platform::BoardEntry`
+# impl so `nros::main!(deploy = "qemu-mps2-an385")` can drive this board. Keeps
+# its existing ethernet + rmw-zenoh defaults.
+nros-board-mps2-an385 = { version = "*", features = ["board-entry"] }
+# Linked RMW backend (force-linked; self-registers via the macro's
+# `__register_linked_rmw()` on `target_os = "none"`).
+nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
 
 # Bare-metal Cortex-M entry: `nros::main!()` emits `#[cortex_m_rt::entry]` for
 # the `qemu-mps2-an385` deploy; the reset trampoline halts via `cortex_m::asm`.

@@ -1465,8 +1465,10 @@ pub struct SystemComponentEntry {
     /// RFC-0098 D8 (phase-445 W3) — the entities this component creates, in
     /// `EntityDecl::parse` grammar (`"publisher:std_msgs/msg/String:/chatter"`,
     /// `"timer"`, `"sub*2"`), for a board whose component cannot be host-probed
-    /// (esp32-c3, mps2 bare-metal — issue 1265). Cross-checked against the probe
-    /// wherever the probe runs (`leaf_entity_env::reconcile`).
+    /// (issue 1265 retired the esp32-c3 / mps2 cases by making their node libs
+    /// host-buildable; what still declares is listed in issues 1556 and 1603).
+    /// Cross-checked against the probe wherever the probe runs
+    /// (`leaf_entity_env::reconcile`).
     ///
     /// `None` = not declared (the probe is the source); `Some([])` = declared to
     /// create nothing. It REPLACED `[package.metadata.nros.component] entities`,

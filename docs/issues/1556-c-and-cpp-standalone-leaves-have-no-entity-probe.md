@@ -115,3 +115,38 @@ A NuttX C or C++ standalone leaf with NO `entities` in its `system.toml` gets
 the same `SERVICE_BUFFERS` and `.bss` as today's declaring leaf (4,448 B /
 467,248 B on `cpp/action-client`, not the 35,584 B fallback), and adding a
 service client to its `src/` changes them without touching a declaration.
+
+## Status after issues 1555 and 1265 (2026-10-01) -- still OPEN
+
+Nothing in this issue's own fix direction landed. What moved is around it:
+
+* **Population 2 is gone** (issue 1555, resolved): the `nros-metadata.json`
+  `entities` reader is retired and refuses the key. So `system.toml`
+  `[[component]] entities` is now the ONLY surface that states what a component
+  creates by hand, and nothing about these twelve leaves changed with it.
+* **The two esp32-c3 leaves no longer declare** (issue 1265): their node libs
+  now build for the host and the Rust probe answers for them, with pool knobs
+  byte-identical to what the declaration produced. **The declaring set is now
+  exactly these twelve NuttX C/C++ leaves** (`git ls-files '*system.toml' |
+  xargs grep -lE '^\s*entities\s*='` -> 12, all under
+  `examples/qemu-armv7a-nuttx/{c,cpp}/`).
+
+Why 1265's fix does not carry over, re-checked against the code rather than the
+earlier survey: the twelve are `nros_app_main` applications (`NROS_APP_MAIN_REGISTER()`,
+the rclc-style C API), not `nano_ros_node_register` components with a class and a
+header, so the C/C++ probe's synthesised one-node TU
+(`codegen::entry::emit_cpp::emit_typed_probe`) has nothing to instantiate even if
+enumeration reached them. The only observer that runs an APPLICATION is the
+phase-463 census (`NROS_CENSUS_OUT`), and that switch exists only in the hosted
+`nros-cpp` boot funnel of a NATIVE entry (`cmake/NanoRosFeatureSet.cmake` gates
+`metadata-mode` on `cpp` + `posix` + not cross) -- a C application and a NuttX
+image reach neither. So the remaining work is two pieces, both still open:
+
+1. a census switch in the `nros-c` hosted boot funnel (the C half of
+   `NROS_CENSUS_OUT`), so a C application's own `main` can be run as the
+   observer;
+2. a host configure of a standalone NuttX leaf -- the same `src/` against the
+   native board -- that runs it with the switch set, plus the enumeration that
+   reaches a non-cargo standalone leaf.
+
+Acceptance is unchanged.

@@ -71,9 +71,25 @@ fn resolve_board_crate(manifest_dir: &Path) -> Option<(String, PathBuf)> {
         .and_then(|v| v.as_str())
         .map(str::to_string);
 
-    let deps = manifest.get("dependencies")?.as_table()?;
-    let (name, spec) = deps
-        .iter()
+    // `[dependencies]` first, then every `[target.<cfg>.dependencies]` table:
+    // a cross-only Entry package scopes its board to the target so that its
+    // node lib still builds for the host, where the metadata probe compiles it
+    // (issue 1265). The board is still a DIRECT dependency there.
+    let mut tables: Vec<&toml::Table> = manifest
+        .get("dependencies")
+        .and_then(|d| d.as_table())
+        .into_iter()
+        .collect();
+    if let Some(targets) = manifest.get("target").and_then(|t| t.as_table()) {
+        tables.extend(
+            targets
+                .values()
+                .filter_map(|t| t.get("dependencies").and_then(|d| d.as_table())),
+        );
+    }
+    let (name, spec) = tables
+        .into_iter()
+        .flat_map(|deps| deps.iter())
         .find(|(name, _)| match &declared {
             Some(d) => *name == d,
             None => name.starts_with("nros-board-"),
@@ -193,6 +209,31 @@ mod tests {
         assert_eq!(
             read_board_framework(&dir.join("Cargo.toml")).as_deref(),
             Some("rtic")
+        );
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// Issue 1265 -- a TARGET-scoped board is still a direct dependency. A
+    /// cross-only Entry keeps its board under `[target.<cfg>.dependencies]` so
+    /// its node lib host-builds for the metadata probe.
+    #[test]
+    fn resolves_a_target_scoped_board() {
+        let tmp = std::env::temp_dir().join("nros_bf_target");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let entry = tmp.join("entry");
+        write(
+            &entry.join("Cargo.toml"),
+            "[package]\nname = \"e\"\nversion = \"0.1.0\"\n\n[dependencies]\n\
+             nros = { path = \"../nros\" }\n\n\
+             [target.'cfg(target_os = \"none\")'.dependencies]\n\
+             nros-board-x = { path = \"../board\" }\n",
+        );
+        board(&tmp.join("board"), Some("embassy"));
+        let (name, dir) = resolve_board_crate(&entry).expect("board resolves");
+        assert_eq!(name, "nros-board-x");
+        assert_eq!(
+            read_board_framework(&dir.join("Cargo.toml")).as_deref(),
+            Some("embassy")
         );
         std::fs::remove_dir_all(&tmp).ok();
     }

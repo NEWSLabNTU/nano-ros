@@ -185,6 +185,13 @@ host build). The declaration moves from `[package.metadata.nros.component]` to
 `system.toml`'s `[[component]]`, same grammar (`EntityDecl::parse`), and stays
 cross-checked against the probe wherever the probe runs. Retiring the
 workaround — probing the cross-built artifact itself — is issue 1265.
+**Amended 2026-10-01 (issue 1265, resolved):** the esp32-c3 and mps2 leaves were
+unprobeable because their PACKAGE named image-only crates (board, HAL, panic
+handler) that the host probe compiled for the node lib too; target-scoping
+those crates (`[target.'cfg(target_os = "none")'.dependencies]`) makes the node
+lib host-buildable, so those leaves now PROBE and no longer declare. D8 stands
+for leaves no probe reaches — the twelve standalone NuttX C/C++ applications
+(issue 1556) and the cross-only Rust leaves listed in issue 1603.
 
 **D9 — a workspace has no root build file.** No `<ws>/Cargo.toml`, no
 `<ws>/CMakeLists.txt`: a workspace is a directory of packages, like a colcon

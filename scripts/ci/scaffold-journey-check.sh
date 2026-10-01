@@ -66,6 +66,19 @@ echo "::group::nros sync (NROS_REPO_DIR=${REPO})"
 ( cd "$proj" && NROS_REPO_DIR="$REPO" "$NROS" sync )
 echo "::endgroup::"
 
+# Issue 1265 -- the scaffolded node must be PROBED, not degraded. Before the
+# template target-scoped its board, HAL and panic handler, the host probe
+# compiled them too and died on `bkpt` fed to an x86 assembler; sync still
+# exited 0 and left `<component>.json.unprobeable`, so every pool stayed at the
+# crate default and this job PASSED. The probe's output is the artifact.
+if [ ! -s "$proj/metadata/${name}.json" ] || [ -e "$proj/metadata/${name}.json.unprobeable" ]; then
+    echo "FAIL: nros sync did not probe the scaffolded node (issue 1265):" >&2
+    ls -la "$proj/metadata" >&2 2>/dev/null || echo "      no metadata/ dir at all" >&2
+    cat "$proj/metadata/${name}.json.unprobeable" >&2 2>/dev/null || true
+    exit 1
+fi
+echo "  [ok] nros sync probed the scaffolded node (metadata/${name}.json)"
+
 # The managed patch block must redirect both `nros` and the board crate to paths.
 for crate in "nros = {" "nros-board"; do
     if ! grep -q "$crate" "$proj/Cargo.toml"; then
