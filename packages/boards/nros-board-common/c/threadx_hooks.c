@@ -90,18 +90,35 @@ _Static_assert(sizeof(ULONG) == 4,
  * `nros_executor_t` objects are file-scope statics and were never drawn from
  * this pool, so there is nothing to give back.
  */
-/* The BASE is an undeclared number (issue 1557, split from 1145). The SUBTRAHEND below is
- * carefully derived — one rung, two readers, never written down twice — and the
- * 4 MiB it is subtracted FROM was chosen by nobody who wrote down why.
+/* The BASE, documented against measured peaks (issue 1557, split from 1145).
+ * The SUBTRAHEND below is derived — one rung, two readers, never written down
+ * twice. The 4 MiB it is subtracted FROM dates from phase 152's "4 MB byte
+ * pool" and was never derived; it is now MEASURED against, and kept.
  *
- * Every image now prints its own `nros: byte pool peak` line so the next person
- * reads a number instead of inheriting this one; the reporter is in
- * nros-board-threadx/src/entry.rs, which records the first measurements and,
- * more importantly, what they do not cover. Short version: a hosted
- * threadx-linux talker touches 181,144 bytes of this, but that board's NetX
- * init is a no-op overlay, so the packet pool and the IP/ARP/BSD stacks this
- * block names as the pool's other consumers allocate nothing there. The RISC-V
- * board is where the base has to be judged, and it has not been. */
+ * Every image prints its own `nros: byte pool peak` line (the reporter is in
+ * nros-board-threadx/src/entry.rs; the figure is `total - min-ever-free`, read
+ * after it has been stable, i.e. with the session up and traffic flowing):
+ *
+ *   board / image (zenoh, rmw_zenohd, 2026-10-01)        peak of the pool
+ *   rv-virt-threadx rust action-server (goal served)        725,088 B
+ *   rv-virt-threadx rust action-client (result received)    721,128 B
+ *   rv-virt-threadx rust talker (publishing)                706,136 B
+ *   rv-virt-threadx rust listener (39 samples received)     705,384 B
+ *   threadx-linux talker (issue 1145; NetX is a no-op)      181,144 B
+ *
+ * The RISC-V board is the one that judges the base: its NetX allocates the
+ * packet pool and the IP/ARP/BSD thread stacks from here, which threadx-linux
+ * never does. Its pool is 4,105,752 B (the base less its stated
+ * 11,069-word backing), so the worst measured image leaves 3,380,664 B free —
+ * the base carries 5.7x the measured worst case.
+ *
+ * Why the margin is KEPT rather than derived away: every row above is zenoh.
+ * The Cyclone images of this board allocate their participant, discovery
+ * endpoints and sample buffers from this same pool, and no Cyclone rust image
+ * links today (issue 1590), while the C/C++ Cyclone images do not run the peak
+ * reporter at all. A base cut to the zenoh figure would be a guess about
+ * Cyclone in the unsafe direction. Measure a Cyclone image's peak before moving
+ * this number, and add its row here. */
 #define BYTE_POOL_BASE_SIZE     (4 * 1024 * 1024)
 
 #ifndef NROS_EXECUTOR_BACKING_U64S

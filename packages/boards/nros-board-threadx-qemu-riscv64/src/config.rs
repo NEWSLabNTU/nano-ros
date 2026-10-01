@@ -1,7 +1,13 @@
 //! Configuration for ThreadX QEMU RISC-V 64-bit virt nodes
 //!
-//! Same IP presets as the ThreadX Linux board crate, designed for the
-//! TAP bridge topology used by QEMU E2E tests.
+//! The presets are QEMU user-mode (slirp) networking's DEFAULT plan —
+//! `10.0.2.0/24`, host (and router) at `10.0.2.2` — which is what every
+//! launcher of this board provides (`nros_tests::qemu::start_riscv64_virt` is
+//! plain `-netdev user`), what the board's `NROS_APP_CONFIG` emitters bring
+//! NetX up on, and what the entry lane's locator default names
+//! (`cmake/NanoRosEntryLocator.cmake`). Until issue 1557 they were the
+//! threadx-linux TAP-bridge plan (`192.0.3.0/24`), a network nothing here
+//! launches any more.
 //!
 //! phase-337 W4.b — the `{mac, ip, netmask, gateway, locator, domain_id}`
 //! core, the `nros.toml` scanner and the three `no_std` parsers now come from
@@ -10,15 +16,17 @@
 //! `Config` is a newtype whose job is to carry the board's DEFAULTS and the
 //! trait impls the family driver dispatches on.
 
-use nros_board_common::BaseConfig;
-use nros_board_common::base_config::{for_each_toml_field, parse_u32};
+use nros_board_common::{
+    BaseConfig,
+    base_config::{for_each_toml_field, parse_u32},
+};
 
 /// Network and node configuration for ThreadX QEMU RISC-V.
 ///
 /// # Default (Talker)
 ///
-/// - IP: 192.0.3.10/24, Gateway: 192.0.3.1
-/// - Zenoh: `tcp/192.0.3.1:7447`
+/// - IP: 10.0.2.40/24, Gateway: 10.0.2.2 (QEMU slirp's host)
+/// - Zenoh: `tcp/10.0.2.2:7447`
 /// - MAC: 52:54:00:12:34:56 (QEMU default)
 #[derive(Clone)]
 pub struct Config {
@@ -28,15 +36,13 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        // Issue #214 — build-env DOMAIN bake. The CMake/CycloneDDS path boots
-        // via `run_app_thread(Config::default(), ...)` with NO deploy overlay,
-        // so this domain drives the Executor/Cyclone participant; the NetX
-        // wire identity (IP/MAC) on that path comes from the cmake-generated
-        // `NROS_APP_CONFIG` (`NROS_APP_NET_{IP,MAC}_LAST` cache vars applied
-        // by startup.c BEFORE the kernel), not from this struct. `NROS_DOMAIN_ID`
-        // is set per-build by `nros_threadx_rv64_rust_cyclone_app` (corrosion
-        // env), matching the C fixtures' `-DNROS_DOMAIN_ID` bake. The zenoh
-        // path is unaffected: its deploy overlay overrides after `default()`.
+        // Issue #214 — build-env DOMAIN bake. The CMake path boots via
+        // `run_app_thread` with NO deploy overlay, so this domain drives the
+        // Executor/Cyclone participant. The NetX wire identity (IP/MAC) and the
+        // locator on that path come from the image itself (`image_config()` in
+        // lib.rs, issue 1557), not from these defaults. `NROS_DOMAIN_ID` is set
+        // per-build by `nros_threadx_rv64_rust_app` (corrosion env), matching
+        // the C fixtures' `-DNROS_DOMAIN_ID` bake.
         //
         // `option_env!` deliberately stays in the BOARD crate rather than
         // moving to `BaseConfig`: it is expanded where it is written, and the
@@ -48,10 +54,10 @@ impl Default for Config {
         Self {
             base: BaseConfig {
                 mac: [0x52, 0x54, 0x00, 0x12, 0x34, 0x56],
-                ip: [192, 0, 3, 10],
+                ip: [10, 0, 2, 40],
                 netmask: [255, 255, 255, 0],
-                gateway: [192, 0, 3, 1],
-                zenoh_locator: "tcp/192.0.3.1:7447",
+                gateway: [10, 0, 2, 2],
+                zenoh_locator: "tcp/10.0.2.2:7447",
                 domain_id,
             },
         }
@@ -64,10 +70,10 @@ impl Config {
         Self {
             base: BaseConfig {
                 mac: [0x52, 0x54, 0x00, 0x12, 0x34, 0x57],
-                ip: [192, 0, 3, 11],
+                ip: [10, 0, 2, 41],
                 netmask: [255, 255, 255, 0],
-                gateway: [192, 0, 3, 1],
-                zenoh_locator: "tcp/192.0.3.1:7447",
+                gateway: [10, 0, 2, 2],
+                zenoh_locator: "tcp/10.0.2.2:7447",
                 domain_id: 0,
             },
         }
@@ -103,7 +109,7 @@ impl Config {
     }
 
     /// Builder: set the transport locator the RMW backend connects
-    /// through (e.g. `"tcp/192.0.3.1:7447"`,
+    /// through (e.g. `"tcp/10.0.2.2:7447"`,
     /// `"serial/UART_0#baudrate=115200"`).
     pub fn with_locator(mut self, locator: &'static str) -> Self {
         self.base.zenoh_locator = locator;
@@ -132,10 +138,10 @@ impl Config {
     ///
     /// ```toml
     /// [[transport]]
-    /// ip = "192.0.3.10/24"
+    /// ip = "10.0.2.40/24"
     /// mac = "52:54:00:12:34:56"
-    /// gateway = "192.0.3.1"
-    /// locator = "tcp/192.0.3.1:7447"
+    /// gateway = "10.0.2.2"
+    /// locator = "tcp/10.0.2.2:7447"
     ///
     /// [node]
     /// domain_id = 0

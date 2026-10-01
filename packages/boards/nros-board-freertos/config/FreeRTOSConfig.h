@@ -52,14 +52,30 @@
 #define configSUPPORT_STATIC_ALLOCATION         0
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
 /* Phase 175.B / 204.6 — FreeRTOS heap (heap_4 `ucHeap[]`, the dominant bss).
- * CycloneDDS participant startup creates the builtin discovery endpoints plus
- * lwIP socket semaphores before the Rust talker can publish, so the default is
- * sized for that heavy boot path (within the 4 MiB MPS2-AN385 SRAM budget).
- * Lighter RMWs (zenoh-pico ~12 KB working set, XRCE static pools) override it
- * per-example via the build env `NROS_FREERTOS_HEAP_KB` (the kernel build.rs
- * forwards it as `-DNROS_FREERTOS_HEAP_KB`), e.g. `[env] NROS_FREERTOS_HEAP_KB
- * = "256"` in the example's `.cargo/config.toml`. Tune to the RMW's measured
- * high-water (`xPortGetMinimumEverFreeHeapSize()`); default stays cyclone-safe. */
+ *
+ * WHO GETS THIS NUMBER (issue 1557). Not a zenoh image: the board build.rs
+ * replaces it with the measured derivation
+ * `nros_board_common::freertos_config::default_heap_bytes` whenever `rmw-zenoh`
+ * is on, and every in-tree board crate over this header (mps2-an385, s32z270)
+ * defaults that feature on; mps3-an536 states its own 32 MiB. What reaches 3072
+ * is a build of the family crate WITHOUT `rmw-zenoh` — Cyclone or XRCE — whose
+ * only in-tree instance is the S32Z270 Cyclone C++ workspace entry, a
+ * LINK-ONLY witness (no emulator models that SoC; `examples/fixtures.toml`).
+ *
+ * MEASURED: nothing, and that is stated rather than implied (issue 1557,
+ * 2026-10-01). No in-tree image that takes this default can run here: the
+ * S32Z270 cell links and never boots, the mps2-an385 Rust Cyclone fixture is
+ * retired (`tests/freertos_qemu.rs`, `#[ignore]`), and no FreeRTOS XRCE image
+ * exists. The basis is still the phase-175.B one — Cyclone's participant
+ * startup creates the builtin discovery endpoints plus lwIP socket semaphores
+ * before the first publish — bounded by the 4 MiB MPS2-AN385 SRAM. For scale,
+ * the zenoh derivation is 720,896 B (704 KiB) at the shipped app stack, every
+ * term of it measured and documented beside it. The first image that boots on this default prints
+ * `nros: heap peak <used> of <total>` (`xPortGetMinimumEverFreeHeapSize()`);
+ * record it here with its image and date, and derive this number from it.
+ *
+ * Override per image with the build env `NROS_FREERTOS_HEAP_KB` (the board
+ * build.rs forwards it as `-DNROS_FREERTOS_HEAP_KB`). */
 #ifndef NROS_FREERTOS_HEAP_KB
 #define NROS_FREERTOS_HEAP_KB                   3072
 #endif

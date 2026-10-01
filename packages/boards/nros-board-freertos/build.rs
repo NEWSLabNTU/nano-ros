@@ -159,7 +159,8 @@ fn main() {
     //
     //      Still below the cyclone DDS-discovery default; cyclone/xrce don't
     //      enable this feature on the base crate, so they keep
-    //      `FreeRTOSConfig.h`'s 3 MiB, which this PR did not measure. Tune with
+    //      `FreeRTOSConfig.h`'s 3 MiB (who reaches it, and why it is still
+    //      unmeasured, is stated beside the define — issue 1557). Tune with
     //      the env, and read the image's own `nros: heap peak` boot line first —
     //      it is `xPortGetMinimumEverFreeHeapSize()` and it is what the terms
     //      above were derived from.

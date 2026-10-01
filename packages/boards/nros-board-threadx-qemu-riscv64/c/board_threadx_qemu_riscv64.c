@@ -82,9 +82,9 @@ static NX_PACKET_POOL packet_pool;
 static NX_IP          ip_instance;
 
 /* ---- Configuration (set from Rust before tx_kernel_enter) ---- */
-static uint8_t cfg_ip[4]      = {192, 0, 3, 10};
+static uint8_t cfg_ip[4]      = {10, 0, 2, 40};
 static uint8_t cfg_netmask[4] = {255, 255, 255, 0};
-static uint8_t cfg_gateway[4] = {192, 0, 3, 1};
+static uint8_t cfg_gateway[4] = {10, 0, 2, 2};
 static uint8_t cfg_mac[6]     = {0x52, 0x54, 0x00, 0x12, 0x34, 0x56};
 
 /* VirtIO MMIO config: slot 0 = 0x10001000, IRQ 1 */

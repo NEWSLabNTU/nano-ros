@@ -44,7 +44,7 @@ It also quietly weakens issue 1145's ThreadX entry, which records
 the mechanism is in place awaiting a measurement on that board's own images.
 That measurement cannot be taken while the board crate will not build. (1145 is
 resolved; that remainder is now
-[issue 1557](1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md),
+[issue 1557](archived/1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md),
 which this issue blocks.)
 
 ## What this is NOT
@@ -287,3 +287,14 @@ here.
 This issue's acceptance is unchanged and still unmet: the lane reaching a
 verdict on its cells. It is now blocked on 1590 for half the coordinate rather
 than on all of it.
+
+## 2026-10-01 — the zenoh rust leaves deliver (issue 1557)
+
+The "boots, no session" observation in the phase-472 F5 entry above was the rust
+app thread dialling the board crate's stale `192.0.3.0/24` default while NetX
+sat on slirp's `10.0.2.0/24`. Fixed under
+[issue 1557](archived/1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md):
+the image now dials its own `system.toml` locator, and a hand run with
+`start_riscv64_virt`'s arguments delivers (talker/listener 39 samples in 40 s,
+action round trip complete). This issue's acceptance — the nightly lane reaching
+a verdict on its cells — is unchanged, and the Cyclone half is still issue 1590.

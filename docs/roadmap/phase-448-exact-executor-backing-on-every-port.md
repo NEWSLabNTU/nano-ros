@@ -148,7 +148,7 @@ PRs is how it ends up wrong.
 The rest of [issue 1145](../issues/archived/1145-executor-backing-static-unpaired-with-rtos-heap.md),
 resolved 2026-09-29 for NuttX, ESP32 and `threadx-linux`; `threadx-riscv64`'s
 own statement and the undeclared allocator bases moved to
-[issue 1557](../issues/1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md).
+[issue 1557](../issues/archived/1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md).
 **One platform per commit**, as the issue specifies: the failure mode
 is a runtime allocation failure, and a three-platform diff makes it
 unattributable. The knob is Zephyr-only so far; on the other ports it is spelled
