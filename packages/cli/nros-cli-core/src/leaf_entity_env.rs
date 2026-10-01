@@ -25,6 +25,15 @@
 //! `[build] target` with `[unstable] build-std` nor a board crate with no host
 //! build allows that. Issue 1061.
 //!
+//! **Issue 1265 — check that before declaring.** The common cause is not the
+//! board but the leaf's own PACKAGE: cargo builds a lib against the whole of
+//! `[dependencies]`, so a board crate, HAL or panic handler named there — which
+//! only `main.rs` uses — is compiled for the host too and the probe dies on it
+//! (`bkpt` fed to an x86 assembler, esp-hal's `portable-atomic` cfg). Moving
+//! those under `[target.'cfg(target_os = "none")'.dependencies]` lets the node
+//! lib host-build, and every esp32-c3 and non-RTIC mps2 example now probes
+//! instead of declaring.
+//!
 //! For those, the leaf DECLARES instead, on its `system.toml` `[[component]]`
 //! row (RFC-0098 D8):
 //!

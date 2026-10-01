@@ -3458,8 +3458,9 @@ skip_probe = true
 # Entity budgets are NOT here any more (issue 1052). Stating them here bound
 # them to the FIXTURE build: an example is a standalone copy-out project, and
 # this one did not link on its own — `.bss` overflowed DRAM by 11,184 B.
-# phase-445 W1 — the pools are now DERIVED from the leaf's `system.toml`
-# `[[component]] entities` and carried in its `build/<image>/nros-cargo.toml`
+# phase-445 W1 — the pools are now DERIVED and carried in the leaf's
+# `build/<image>/nros-cargo.toml` — since issue 1265 from the metadata PROBE
+# (the leaf no longer states `[[component]] entities`)
 # (the entity facts size `ZPICO_MAX_QUERYABLES`; the inventory sizes
 # `ZPICO_MAX_SUBSCRIBERS`), which this lane builds through. What the leaf's
 # `.cargo/config.toml [env]` still states (the arena, the large-buffer size)

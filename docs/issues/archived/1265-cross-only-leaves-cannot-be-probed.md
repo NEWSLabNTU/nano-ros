@@ -1,10 +1,11 @@
 ---
 id: 1265
 title: "The metadata probe cannot run for a cross-only leaf, so esp32 and mps2 examples must DECLARE their entities by hand"
-status: open
+status: resolved
+resolved_in: 2026-10-01
 type: tech-debt
 area: [tooling, build]
-related: [1061, 1142, 1555, 1556, 0827, 0939, rfc-0098, phase-445]
+related: [1061, 1142, 1555, 1556, 1601, 1602, 1603, 0827, 0939, rfc-0098, phase-445]
 ---
 
 ## What
@@ -128,3 +129,95 @@ Two things that makes worse than the classified shapes:
 Not the fix this issue is waiting for — the fix is still "read the entities from
 the artifact that IS built" — but classifying this shape is independently worth
 doing, and cheap.
+
+## Resolution (2026-10-01)
+
+**Neither candidate in the fix direction -- a third one, cheaper than both: the
+probe could not build these leaves because their PACKAGE named crates only the
+IMAGE needs.** The probe compiles the leaf's LIB for the host, and cargo resolves
+a package's whole `[dependencies]` for its lib, so `esp-hal`, `esp-backtrace`,
+the board crate, `cortex-m(-rt)` and `panic-semihosting` -- none of which
+`lib.rs` names -- were compiled for x86 too. The measured failures were exactly
+those crates: `portable_atomic_unsafe_assume_single_core ... not supported on
+this architecture` (esp32-c3, via esp-hal) and `invalid instruction mnemonic
+'bkpt'` (mps2 and the `nros new` scaffold, via cortex-m semihosting). `main.rs`
+(the Entry) is never built for the host, so those crates move to
+`[target.'cfg(target_os = "none")'.dependencies]` and the node lib builds
+everywhere. Nothing is read from the cross artifact and no board shim exists.
+
+What changed:
+
+* **`examples/esp32-c3-baremetal/rust/{talker,listener}`** -- image-only deps
+  target-scoped; `lib.rs` logs through `nros::log_info!` / `nros::get_logger`
+  instead of the board's `nros_log` re-export (same crate, now reached without
+  the board); the `entities` lists are DELETED from `system.toml`.
+* **`examples/mps2-an385-baremetal/rust/{talker,listener,serial-talker,
+  serial-listener,talker-xrce}`** -- the same target-scoping. These declared
+  nothing and were at the crate defaults; they now derive.
+* **The `nros new` baremetal/esp32 template** (`cargo-nano-ros/src/scaffold.rs`)
+  -- the same target-scoping, so the "third shape" above is not classified but
+  removed: a scaffolded project PROBES. Cross-building the scaffold for the first
+  time also found two template bugs that had nothing to do with probing and had
+  kept every baremetal/esp32 scaffold from compiling: `nros::main!()` emitting a
+  second `panic_impl` beside the crate's own panic handler (E0152, now
+  `panic = "own"`, as every example spells it), and an esp32 `main.rs` calling
+  `esp_hal::esp_app_desc!()`, which does not exist (E0433, now the board's
+  `esp_bootloader_esp_idf` re-export). The lib also asks for `nros/macros`
+  itself instead of inheriting it from the board.
+* **Two manifest readers that skipped `[target.*]` tables**, found because the
+  first esp32 sync after the move silently dropped the board's
+  `[patch.crates-io]` row (the cross build would have resolved
+  `nros-board-esp32-qemu = "*"` against crates.io): `ws::registry_style_dep_names`
+  (feeds the leaf patch rows via `build::registry_patches_from`) and
+  `nros-build`'s `board_framework::resolve_board_crate` (the out-of-tree
+  `emit_board_framework` seam). Its sibling `extract_consumer_registry_nros_deps`
+  already walked them -- two readers of one manifest disagreed. One test each.
+* **`scripts/ci/scaffold-journey-check.sh`** (the scheduled `gate` job
+  `nros new -> sync -> resolve`) now FAILS unless the scaffolded node was probed
+  (`metadata/<name>.json` present, no `.unprobeable`). Before, the job passed
+  while printing the `bkpt` line quoted above.
+
+### Measured
+
+| leaf | before | after |
+| --- | --- | --- |
+| esp32 talker | `.unprobeable`; pools from `entities = [publisher, timer]` | probed; `build/esp32-c3-baremetal/nros-cargo.toml` **byte-identical**; sizing descriptor byte-identical |
+| esp32 listener | `.unprobeable`; pools from `entities = [sub]` | probed; `nros-cargo.toml` **byte-identical**. The descriptor gains one OBSERVED fact: the subscription's `registration_path = "in_place"` (was refused, issue 1522) |
+| mps2 talker / listener | `.unprobeable`, nothing declared: every pool at the crate default, descriptor `status = "refused"` | probed; e.g. talker `NROS_EXECUTOR_MAX_CBS=1`, `ZPICO_MAX_PUBLISHERS=1`, listener `NROS_RMW_SUBSCRIBER_SLOTS=1`; descriptor `status = "partial"` with counts stated |
+| mps2 serial-talker / serial-listener / talker-xrce | same as above | probed |
+
+Declared-vs-probed agreement was also checked the way the tree checks it: the
+first sync after the move ran with the esp32 declarations STILL PRESENT, and
+`leaf_entity_env::reconcile` (which refuses on any per-kind disagreement)
+accepted both.
+
+Acceptance, both halves:
+
+* *no declaration, same pools*: the esp32 rows above.
+* *adding a subscription changes them without touching a declaration*: adding
+  `create_subscription_for_callback_name::<StringMsg>("on_echo", "/echo")` to the
+  esp32 talker's `register` and re-syncing moved `NROS_EXECUTOR_MAX_CBS` 1 -> 2,
+  `NROS_RMW_SUBSCRIBER_SLOTS` 0 -> 1 and the descriptor's `subscriber_count` /
+  `subscription_entities` 0 -> 1. Reverted; a re-sync is byte-identical to the
+  baseline again.
+
+Images, built and run on this host: `just esp32 build-qemu` (both flash images,
+stack-floor check OK) and `test_esp32_qemu_talker_boots` +
+`test_esp32_talker_listener_e2e` PASS; `fixtures-build.sh baremetal rust` (every
+`mps2-an385-baremetal` row) and `test_qemu_bsp_pubsub_e2e` +
+`test_qemu_serial_pubsub_e2e` PASS on the derived pools. The baremetal and esp32
+scaffolds both cross-compile after `nros sync`.
+`test_qemu_xrce_pubsub_e2e` FAILS -- "no RMW backend is registered" -- for a
+reason on `origin/main` that this change does not touch: **issue 1601**.
+
+### Not done here, filed
+
+* **Issue 1603** -- 32 other cross-only Rust leaves still reach no probe (8 RTIC,
+  6 Zephyr, and 18 FreeRTOS/NuttX/ThreadX leaves whose result in this worktree
+  was "vendored source not provisioned", i.e. unmeasured). None of them declares,
+  so none of them was what this issue owned; they are the same class.
+* **Issue 1602** -- on the probe road the descriptor's subscription rows name the
+  callback (`on_chatter`) in `topic`; it was `/chatter` while the esp32 listener
+  declared.
+* The twelve NuttX C/C++ leaves (issue 1556) are now the ONLY leaves that
+  declare entities by hand.

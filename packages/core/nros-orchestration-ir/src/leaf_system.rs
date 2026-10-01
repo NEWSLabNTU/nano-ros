@@ -110,7 +110,8 @@ pub struct LeafComponent {
     pub class: Option<String>,
     pub name: Option<String>,
     /// Declared entities, in `EntityDecl::parse` grammar, for a board whose
-    /// component cannot be host-probed (issue 1265). `None` = not declared;
+    /// component cannot be host-probed (issues 1556, 1603; issue 1265 retired
+    /// the esp32-c3 / mps2 cases). `None` = not declared;
     /// `Some(vec![])` = declared to have none.
     pub entities: Option<Vec<String>>,
     /// Dispatch strategy (`"inline"` | `"deferred"` | `"from_isr"`,

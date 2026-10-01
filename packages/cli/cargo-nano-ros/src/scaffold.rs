@@ -1111,7 +1111,12 @@ panic-semihosting = {{ version = "0.6", features = ["exit"] }}
 "#
             ),
             // The macro emits `#[cortex_m_rt::entry]` for this deploy.
-            "#![no_std]\n#![no_main]\nuse panic_semihosting as _;\nnros::main!();\n".to_string(),
+            // `panic = "own"`: `panic-semihosting` IS the panic handler, and the
+            // macro's default (`panic_to_platform!`) would define a second
+            // `panic_impl` (E0152) -- which every baremetal scaffold failed to
+            // build on until the template was first cross-compiled (issue 1265).
+            "#![no_std]\n#![no_main]\nuse panic_semihosting as _;\nnros::main!(panic = \"own\");\n"
+                .to_string(),
         ),
         SelfBringupRuntime::Esp32 => (
             // The esp32 board crate's default features own the RMW backend.
@@ -1121,9 +1126,18 @@ esp-hal = {{ version = "~1.0.0", features = ["esp32c3", "unstable"] }}
 esp-backtrace = {{ version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }}
 "#
             ),
-            // esp-backtrace is the panic handler; the macro emits `#[esp_hal::main]`.
-            "#![no_std]\n#![no_main]\nuse esp_backtrace as _;\nesp_hal::esp_app_desc!();\nnros::main!();\n"
-                .to_string(),
+            // esp-backtrace is the panic handler (so `panic = "own"`, as above);
+            // the macro emits `#[esp_hal::main]`.
+            //
+            // The app descriptor comes from the BOARD's `esp_bootloader_esp_idf`
+            // re-export, as in `examples/esp32-c3-baremetal/rust/talker`:
+            // `esp_hal` has no `esp_app_desc!`, so the template's old
+            // `esp_hal::esp_app_desc!()` never compiled (E0433, found when issue
+            // 1265 first cross-built the scaffold).
+            format!(
+                "#![no_std]\n#![no_main]\nuse esp_backtrace as _;\n{}::esp_bootloader_esp_idf::esp_app_desc!();\nnros::main!(panic = \"own\");\n",
+                board_crate.replace('-', "_")
+            ),
         ),
     };
 
@@ -1148,14 +1162,22 @@ path = "src/lib.rs"
 crate-type = ["rlib"]
 
 # `nros::main!()` resolves the board from `system.toml` beside this manifest
-# (`[image.*] board = "{deploy}"`, RFC-0098 D3). Every dep below is what that
-# board needs to link + boot.
+# (`[image.*] board = "{deploy}"`, RFC-0098 D3).
 
 [dependencies]
-nros = {{ version = "*", default-features = false, features = ["alloc", "rmw-cffi", "{edition_feature}"] }}
-{runtime_deps}nros-log = {{ version = "*", default-features = false }}
+# `macros` because `lib.rs` calls `nros::node!` itself: inheriting the feature
+# from the board crate works only where the board is built, and the host probe
+# never builds it.
+nros = {{ version = "*", default-features = false, features = ["alloc", "rmw-cffi", "{edition_feature}", "macros"] }}
+nros-log = {{ version = "*", default-features = false }}
 std_msgs = {{ version = "*", default-features = false }}
-{CARGO_PROFILES}"#
+
+# What the board needs to link + boot, and nothing the node in `lib.rs` uses.
+# TARGET-scoped so that `lib.rs` also builds for the host: `nros sync` probes
+# what the node creates by compiling it there, and these crates do not build
+# for the host (issue 1265). `main.rs` is never built for the host.
+[target.'cfg(target_os = "none")'.dependencies]
+{runtime_deps}{CARGO_PROFILES}"#
     );
     fs::write(dir.join("Cargo.toml"), cargo_toml)?;
     fs::write(dir.join("src/main.rs"), main_rs)?;
@@ -1702,6 +1724,27 @@ mod tests {
                 "{platform}:\n{toml}"
             );
             assert!(toml.contains("[lib]"), "{platform}: missing [lib]:\n{toml}");
+            // Issue 1265 -- the board (and every other image-only crate) is
+            // TARGET-scoped, so the node lib host-builds and `nros sync` can
+            // probe it. A board in `[dependencies]` is what made the scaffold's
+            // probe die on `bkpt` fed to an x86 assembler.
+            let doc: toml::Value = toml.parse().expect("scaffolded manifest parses");
+            assert!(
+                doc["dependencies"].get(crate_name).is_none(),
+                "{platform}: the board must not be a host-visible dep:\n{toml}"
+            );
+            assert!(
+                doc["target"]["cfg(target_os = \"none\")"]["dependencies"]
+                    .get(crate_name)
+                    .is_some(),
+                "{platform}: the board must be target-scoped:\n{toml}"
+            );
+            for host_dep in ["nros", "nros-log", "std_msgs"] {
+                assert!(
+                    doc["dependencies"].get(host_dep).is_some(),
+                    "{platform}: `{host_dep}` is what lib.rs uses and must stay host-visible:\n{toml}"
+                );
+            }
             // phase-445 W3b — the board lives in system.toml, never the manifest.
             assert!(
                 !toml.contains("[package.metadata.nros.entry]")
@@ -1709,7 +1752,10 @@ mod tests {
                 "{platform}: retired deployment table in the manifest:\n{toml}"
             );
             let main = fs::read_to_string(d.path().join("src/main.rs")).unwrap();
-            assert!(main.contains("nros::main!();"), "{platform}:\n{main}");
+            assert!(
+                main.contains("nros::main!(panic = \"own\");"),
+                "{platform}:\n{main}"
+            );
             assert!(
                 !main.contains("no_mangle"),
                 "{platform}: retired stub:\n{main}"

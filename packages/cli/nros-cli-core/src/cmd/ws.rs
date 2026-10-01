@@ -4535,7 +4535,7 @@ pub(crate) fn registry_style_dep_names(body: &str) -> Vec<String> {
     let Ok(doc) = body.parse::<DocumentMut>() else {
         return Vec::new();
     };
-    // NOTE: deliberately different from `collect_extra_patch_names`'s local
+    // NOTE: deliberately different from `extract_consumer_registry_nros_deps`'s local
     // `is_registry_style` — here `path` + `version` must NOT count: cargo
     // resolves such a dep from the path (never the registry), so a narrower
     // patch table cannot strand it. It is the RFC-0067 recommended spelling
@@ -4552,17 +4552,36 @@ pub(crate) fn registry_style_dep_names(body: &str) -> Vec<String> {
             _ => false,
         }
     }
-    let mut out = Vec::new();
-    let root = doc.as_table();
-    for kind in ["dependencies", "dev-dependencies", "build-dependencies"] {
-        if let Some(tbl) = root.get(kind).and_then(|i| i.as_table_like()) {
-            for (name, item) in tbl.iter() {
-                if is_registry_style(item) {
-                    out.push(name.to_string());
+    fn scan(tables: &dyn toml_edit::TableLike, out: &mut Vec<String>) {
+        for kind in ["dependencies", "dev-dependencies", "build-dependencies"] {
+            if let Some(tbl) = tables.get(kind).and_then(|i| i.as_table_like()) {
+                for (name, item) in tbl.iter() {
+                    if is_registry_style(item) {
+                        out.push(name.to_string());
+                    }
                 }
             }
         }
     }
+    let mut out = Vec::new();
+    let root = doc.as_table();
+    scan(root, &mut out);
+    // Issue 1265 -- and the `[target.<cfg>.<kind>]` tables. A cross-only leaf
+    // keeps its board, HAL and panic handler TARGET-scoped so its node lib builds
+    // for the host and the metadata probe can run; those deps are registry-named
+    // all the same, and reading only the top-level tables dropped the board's
+    // `[patch.crates-io]` row, which sends the cross build to crates.io for a
+    // crate that is not published there. `extract_consumer_registry_nros_deps`
+    // above already walked these tables; two readers of one manifest disagreed.
+    if let Some(target) = root.get("target").and_then(|i| i.as_table_like()) {
+        for (_cfg, cfg_item) in target.iter() {
+            if let Some(cfg_tbl) = cfg_item.as_table_like() {
+                scan(cfg_tbl, &mut out);
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
     out
 }
 
@@ -6009,6 +6028,32 @@ nros-rmw-zenoh = { version = "*" }
 "#;
         let got = extract_consumer_registry_nros_deps(body);
         assert_eq!(got, vec!["nros-rmw-zenoh".to_string()]);
+    }
+
+    /// Issue 1265 -- the reader the leaf `[patch]` rows come from walks the same
+    /// target tables. A cross-only leaf scopes its board to the target so its
+    /// node lib host-builds for the metadata probe; reading only the top-level
+    /// tables dropped the board's patch row and sent the cross build to
+    /// crates.io.
+    #[test]
+    fn registry_style_dep_names_reads_target_cfg_tables() {
+        let body = r#"
+[dependencies]
+nros = { version = "*", default-features = false }
+std_msgs = { path = "generated/std_msgs" }
+
+[target.'cfg(target_os = "none")'.dependencies]
+nros-board-esp32-qemu = { version = "*" }
+esp-hal = { version = "~1.0.0" }
+"#;
+        assert_eq!(
+            registry_style_dep_names(body),
+            vec![
+                "esp-hal".to_string(),
+                "nros".to_string(),
+                "nros-board-esp32-qemu".to_string(),
+            ]
+        );
     }
 
     /// `cyclonedds-sys` lives under `packages/rmw/cyclonedds/` and is intentionally

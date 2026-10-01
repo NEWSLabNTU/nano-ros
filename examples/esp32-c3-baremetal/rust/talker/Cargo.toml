@@ -24,10 +24,6 @@ bench = false
 # entities live in `system.toml` beside this manifest (RFC-0098 D3/D5/D8).
 
 [dependencies]
-# Board crate — ESP32-C3 QEMU + OpenETH + zenoh. Provides the
-# `Esp32QemuEntry` board ZST + the `esp_bootloader_esp_idf` re-export.
-nros-board-esp32-qemu = { version = "*" }
-
 # nros — `nros::node!` (lib) + `nros::main!` (bin) macros + Executor API.
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
 
@@ -37,6 +33,17 @@ std_msgs = { path = "generated/std_msgs", default-features = false }
 # Per-message log lines (Published:/Received:) routed to the console by the
 # board log writer; the esp32 e2e harness waits on them.
 log = { version = "0.4", default-features = false }
+
+# Everything only the IMAGE needs — the board, the HAL and the panic handler —
+# is TARGET-scoped, so the node in `lib.rs` builds for the host as well (issue
+# 1265). That is what lets `nros sync` PROBE what the node creates instead of
+# this leaf declaring it by hand: the probe compiles the lib for the host, and
+# esp-hal / esp-backtrace / the board crate do not. `main.rs` (the Entry) is
+# never built for the host, so it keeps reaching all three.
+[target.'cfg(target_os = "none")'.dependencies]
+# Board crate — ESP32-C3 QEMU + OpenETH + zenoh. Provides the
+# `Esp32QemuEntry` board ZST + the `esp_bootloader_esp_idf` re-export.
+nros-board-esp32-qemu = { version = "*" }
 
 # Required for the `#[esp_hal::main]` boot symbol the macro emits.
 esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }

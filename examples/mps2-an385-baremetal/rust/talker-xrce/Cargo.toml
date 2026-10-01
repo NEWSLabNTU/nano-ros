@@ -24,9 +24,6 @@ crate-type = ["rlib"]
 # nros + the XRCE RMW (rmw-xrce makes `__register_linked_rmw()` register the
 # XRCE backend on `target_os = "none"`; it pulls nros-rmw-xrce-cffi + linkme-register).
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
-# Board built with the XRCE custom transport (xrce-transport → serial UART +
-# nros-rmw-xrce-cffi). `board-entry` pulls the BoardEntry impl + setup_transport.
-nros-board-mps2-an385 = { version = "*", default-features = false, features = ["board-entry", "xrce-transport"] }
 # User diagnostics route through `nros-log`; the dispatcher is installed by the
 # board BoardEntry boot scaffold — this crate only registers its Logger handle.
 # phase-338 W7 — one facade in user source: the body logs through `log`,
@@ -34,6 +31,17 @@ nros-board-mps2-an385 = { version = "*", default-features = false, features = ["
 log = { version = "0.4", default-features = false }
 # Generated message types (from package.xml via `nros generate-rust`).
 std_msgs = { path = "generated/std_msgs", default-features = false }
+
+# Everything only the IMAGE needs is TARGET-scoped, so the node in `lib.rs`
+# builds for the host as well (issue 1265). That is what lets `nros sync`
+# PROBE what the node creates instead of this leaf declaring it by hand: the
+# probe compiles the lib for the host, and these crates do not build there.
+# `main.rs` (the Entry) is never built for the host, so it keeps reaching all
+# of them.
+[target.'cfg(target_os = "none")'.dependencies]
+# Board built with the XRCE custom transport (xrce-transport → serial UART +
+# nros-rmw-xrce-cffi). `board-entry` pulls the BoardEntry impl + setup_transport.
+nros-board-mps2-an385 = { version = "*", default-features = false, features = ["board-entry", "xrce-transport"] }
 
 # Bare-metal Cortex-M entry: `nros::main!()` emits `#[cortex_m_rt::entry]`.
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }

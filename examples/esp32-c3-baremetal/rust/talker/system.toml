@@ -7,17 +7,13 @@ name = "esp32_qemu_talker"
 rmw = "zenoh"
 domain_id = 0
 
-# `entities` — what this component creates, STATED because it cannot be probed
-# (RFC-0098 D8, issue 1265): the probe compiles a component for the host, and
-# this leaf builds for a foreign target with `build-std` against a board crate
-# that has no host build. Same grammar as `nano_ros_node_register(... ENTITIES
-# ...)`, parsed by the same code; `nros sync` cross-checks it against the probe
-# on any leaf where the probe does run. A publisher and the timer that drives it.
+# No `entities` list: `nros sync` PROBES what this component creates. The
+# node lib builds for the host because the board, HAL and panic handler are
+# target-scoped in `Cargo.toml` (issue 1265).
 [[component]]
 pkg = "esp32_qemu_talker"
 class = "esp32_qemu_talker::Talker"
 name = "talker"
-entities = ["publisher:std_msgs/msg/String:/chatter", "timer"]
 
 # ESP32-C3 (QEMU, OpenETH). The board default `Config` (MAC …) supplies the
 # remaining smoltcp knobs.
