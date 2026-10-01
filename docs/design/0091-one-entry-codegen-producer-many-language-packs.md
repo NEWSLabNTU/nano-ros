@@ -130,6 +130,10 @@ dependency list is `serde` and nothing else.
 The other three types stay and stop being independent: `All` becomes a CLI
 affordance over `Language`; `ComponentLang` becomes a comparison; `PayloadLang`
 stays a genuine narrowing and **says** it is one.
+*(2026-10-01, phase-469 W3: `cmd::generate::Lang` now derives — `Lang::languages()`
+maps each value onto `Language`, `All` is `Language::ALL`, and the per-language work
+is an exhaustive `match Language`. Until then it re-spelled the three variants and a
+fourth would have been skipped by `all` in silence.)*
 
 > **Rule: one enumeration, many narrowings — and a narrowing DERIVES rather than
 > re-spells.**
