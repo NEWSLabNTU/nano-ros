@@ -3,11 +3,12 @@ id: 1588
 title: "The build-input path gate keys on a variable having a row, so a
   path-valued name with no in-repo default is outside its subject by
   construction"
-status: open
+status: resolved
 type: tech-debt
 area: build
 severity: low
 found: 2026-09-29
+resolved: 2026-10-01
 related: [0196, 1280, 1452, 1527, 1558, 1560, phase-471, RFC-0101]
 ---
 
@@ -86,3 +87,79 @@ a non-path `env::var` of a string parameter must NOT be reported.
 * Issue 1452 — a reach WIDER than the rule, and why deriving the subject is the
   remedy in both directions.
 * RFC-0101 D3/D4 — the rule, and the `sdk-env.just` row as one carrier of it.
+
+## Resolution (2026-10-01) — the measurement refuted this issue's own direction
+
+Gate: `check-foreign-env-path-inputs`, on the fast line, with
+`.config/foreign-env-path-inputs-baseline.txt` as a ratchet.
+
+**The direction recorded above was "widen the subject to *a name whose value is
+used as a path*". Measuring it first — which this issue said to do — is what
+showed it cannot work.** It fails in BOTH directions at once, and the two
+failures have different causes:
+
+* **Too wide.** `OUT_DIR`, `CARGO_MANIFEST_DIR` and `DEP_*` are read and joined
+  as paths in **55 places**. They are cargo's OWN namespace: set per build,
+  absolute, and incapable of naming another checkout — so re-rooting them would
+  be wrong, not missing. A type-flow test reports every one.
+* **Too narrow.** `APP_MAIN_CPP`, `APP_INCLUDE_DIRS`, `APP_FFI_LIBS_FILE`,
+  `APP_EXTRA_SOURCES`, `APP_INTERFACE_SOURCES`, `APP_INCLUDE_DIRS_FILE` are
+  paths that **never become a `Path`** — they are carried as `String` into a
+  `cc` flag or written into a file. The discriminator this issue proposed
+  borrowing (`PATH_TYPED`, *a path resolver says so in its types*) is true of a
+  HELPER, which returns `PathBuf`. It is false of a variable read in a script
+  that handles paths as strings.
+
+So path-ness is **not decidable** from the source here, and the gate does not
+try to decide it.
+
+### What it asks instead
+
+Three derived predicates, no authored list. A read is FOREIGN when:
+
+1. the name has no `sdk-env.just` / board-descriptor row (the existing subject);
+2. it is outside cargo's own namespace — prefix `CARGO_`/`DEP_`/`RUSTC`/
+   `RUSTDOC`, or one of the fixed names cargo sets. Prefix-shaped, so a rule
+   rather than a list of ours;
+3. **nothing in this repo sets it** — no `export` / `set(ENV{})` / assignment in
+   `just/`, `cmake/`, `scripts/`, `zephyr/`, `packages/cli/` or `examples/`.
+
+Predicate 3 is what the measurement turned up and the issue did not have. It
+separates `THREADX_PORT` (set by `cmake/board/nano-ros-board-rv-virt-threadx.cmake`)
+and the `NUTTX_*` family (set by `scripts/nuttx/riscv-env.sh`, and **relative**,
+so outside issue 1280 by construction) from `APP_MAIN_CPP`, which NuttX's own
+apps build hands us. Without it the report is 36 names, most of them internal
+channels whose values we chose.
+
+A foreign read then routes through `nros_build_paths::env_path`, **or** carries
+a baseline row saying what the value is. A count, a flag, a compiler string are
+all fine answers; having no answer is what is refused. That is RFC-0101 D3 read
+literally — the rule is about the CALL.
+
+### What it found
+
+22 foreign reads across 7 files, every one now classified. **Seven name a PATH
+and are not routed** — the NuttX apps channel (`APP_*`) — which is issue 1560's
+defect in a family nobody had looked at:
+
+| | |
+| --- | --- |
+| `APP_MAIN_CPP` | the C/C++ source file to compile |
+| `APP_INCLUDE_DIRS` / `APP_INCLUDE_DIRS_FILE` | include dirs, and a file listing them |
+| `APP_EXTRA_SOURCES` / `APP_INTERFACE_SOURCES` | `;`-separated source files |
+| `APP_FFI_LIBS_FILE` | a file listing absolute `lib<name>.a` paths |
+| `APP_EXTRA_SOURCE_PKGS` | `<source-path>=<pkg>` pairs; the left half is a path |
+
+**Seeded rather than migrated, deliberately.** Changing how the NuttX apps
+channel resolves needs a NuttX build to accept it, which is separate work —
+the same argument phase-471 W2 made for the FreeRTOS overlays and 1562 made for
+the RISC-V flags. The gate prints the seven on **every run**, not only when the
+set changes: a known defect parked in a baseline is only safe while somebody can
+still see it.
+
+### Backlog
+
+The seven `APP_*` rows are the remaining work, and they leave the baseline one
+at a time as each call site routes through `env_path` / `env_path_list`. A
+follow-on issue is not filed for them because the baseline IS the list, and a
+second copy of it would drift.

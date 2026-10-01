@@ -1,0 +1,46 @@
+# issue 1588 — FOREIGN environment variables a build script reads without
+# routing them through `nros_build_paths`. A RATCHET: it may only SHRINK.
+#
+# Foreign means all three: no `sdk-env.just`/board-descriptor row, outside
+# cargo's own namespace, and nothing in this repo sets it. So the value arrives
+# from outside, and an inherited one outranks the checkout being built (1280).
+#
+# Each row is `<NAME>  <classification>`. The classification is what the value
+# IS, because that is the thing the call site knows and no probe can infer —
+# issue 1588 measured both failures of inferring it (cargo's own path-valued
+# variables report as violations; paths carried as `String` are invisible to a
+# type test).
+#
+# A row marked `path, unrouted` is a KNOWN defect of 1560's class, kept visible
+# rather than fixed blind: accepting a change to how the NuttX apps channel
+# resolves needs a NuttX build, which is separate work. Every run prints how
+# many remain.
+#
+# A row leaves when the call site routes through `nros_build_paths::env_path`
+# (or `env_path_list` for a `;`-separated one), or when the name gains a
+# producer in this repo and stops being foreign.
+#
+# Regenerate ONLY to record a name that is gone:
+#     python3 scripts/check-foreign-env-path-inputs.py --write-baseline
+APP_COMPILE_DEFS  not a path — `;`-separated `NAME[=VALUE]` preprocessor defines
+APP_EXTRA_SOURCES  path, unrouted — `;`-separated source files
+APP_EXTRA_SOURCE_PKGS  mixed — `;`-separated `<source-path>=<pkg>` pairs; the left half is a path
+APP_FFI_LIBS_FILE  path, unrouted — a file listing absolute `lib<name>.a` paths
+APP_INCLUDE_DIRS  path, unrouted — `;`-separated include dirs
+APP_INCLUDE_DIRS_FILE  path, unrouted — a file listing include dirs, one per line
+APP_INTERFACE_SOURCES  path, unrouted — `;`-separated generated interface sources
+APP_MAIN_CPP  path, unrouted — the C/C++ source file to compile
+FREERTOS_CFLAGS  not a path — extra compiler flags (RFC-0049 extension point)
+NROS_BOOT_REPORT  not a path — a boolean flag
+NROS_DECLARED_MAX_QOS_DEPTH  not a path — a count
+NROS_EXECUTOR_BACKING_SECTION  not a path — a linker section NAME (RFC-0002 4.4b)
+NROS_FREERTOS_APP_STACK_KB  not a path — a size in KiB (issue 1146)
+NROS_FREERTOS_HEAP_KB  not a path — a size in KiB
+NROS_PARAM_DECLARATION_REASON  not a path — a human-readable reason string
+NROS_PARAM_DECLARATION_STATUS  not a path — a status word
+NROS_TRACE  not a path — a boolean flag
+NROS_ZPICO_DEBUG  not a path — a boolean flag
+NUTTX_ARCH_CFLAGS  not a path — compiler flags for the arch
+NUTTX_LIBGCC_FLAGS  not a path — libgcc link flags
+NUTTX_LINKER_SCRIPT  not in 1280's scope — RELATIVE to `NUTTX_DIR`, which IS routed
+PKG_CONFIG_PATH  outside any checkout — a system search path; `reroot_foreign` keeps it

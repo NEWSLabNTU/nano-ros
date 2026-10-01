@@ -63,8 +63,11 @@ way and be discoverable from outside its own tree.
 
 ## The stance, and the evidence it already works
 
-`integrations/nano-ros/CMakeLists.txt` is the whole ESP-IDF story — **146 lines**,
-under Phase 139's documented ≤200 LoC hard cap per shell. It does four things:
+`integrations/nano-ros/CMakeLists.txt` **was** the whole ESP-IDF story — **146
+lines**, under Phase 139's documented ≤200 LoC hard cap per shell. phase-468 W2
+(`083d2c10d`) deleted it along with the platform crate and the cmake file below;
+it is quoted here as the EVIDENCE this RFC's stance was workable, not as
+something a reader can go and look at. It did four things:
 
 ```cmake
 set(NANO_ROS_PLATFORM "esp_idf" CACHE STRING "" FORCE)   # 1. name the platform
@@ -73,8 +76,8 @@ add_subdirectory("${_nros_root}" nano_ros_root)           # 3. pull in the build
 target_link_libraries(${COMPONENT_LIB} INTERFACE NanoRos::NanoRos)  # 4. re-export
 ```
 
-Plus, in `cmake/platform/nano-ros-esp_idf.cmake`, the only board-ish work there
-ever is:
+Plus, in `cmake/platform/nano-ros-esp_idf.cmake` (also deleted in phase-468 W2),
+the only board-ish work there ever was:
 
 ```cmake
 add_library(freertos_kernel INTERFACE)
@@ -1113,8 +1116,7 @@ nano-ros should be an embeddable library shipping its build system.
   per RTOS"; Layer 4 is "Vendor BSP — owned BY the vendor, NOT by nano-ros".
   Revision 1 of this RFC had partially re-derived it while still modelling boards
   by enumeration. R2 drops the enumeration.
-- **Layer 3 is real, not aspirational**: `integrations/nano-ros` (ESP-IDF, 3
-  files, 146 lines under a documented 200-line cap), `integrations/nuttx` (15
+- **Layer 3 is real, not aspirational**: `integrations/nuttx` (15
   files — CMake entry + Kconfig/Make.defs for make-driven configs),
   `integrations/px4` (13), `integrations/platformio` (2, thin). Plus `zephyr/`
   with `module.yml` declaring cmake + kconfig entry points, `snippet_root`, and

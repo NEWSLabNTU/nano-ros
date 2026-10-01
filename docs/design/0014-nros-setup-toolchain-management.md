@@ -191,7 +191,11 @@ package set:
 
 ```
 nucleo_f767zi → { arm-none-eabi-gcc, freertos-kernel, lwip, qemu(optional), rmw=<sel> }
-esp32-c3      → { esp-toolchain (via espup-style), esp-idf|baremetal, rmw }
+esp32-c3      → { esp-toolchain (via espup-style), baremetal, rmw }
+                 (`esp-idf` was an alternative here; phase-468 W2 deleted the
+                  port and `nros-sdk-index.toml` has never had an ESP-IDF entry,
+                  so this row described a provisioning model that was never
+                  implemented — issues 1525/1526)
 native        → { host cc, zenohd(optional) }
 ```
 
@@ -397,7 +401,7 @@ Measured composition of today's 7.4 GB `third-party/` (the thing W.5 attacks):
 |---|---|---|---|
 | **qemu** | **2.7 GB** | source clone **+ a 1.4 GB compiled `build/` tree** | **prebuilt QEMU binary** (~30–80 MB) → −~2.6 GB |
 | **zenoh** | 813 MB | full Zenoh (router) source/build | **prebuilt `zenohd`** release binary → −~0.8 GB (zenoh-*pico* is small + builds with the app) |
-| esp32 | 1.4 GB | ESP-IDF source tree | **board-scoped** — only when targeting esp32 |
+| esp32 | — | ~~ESP-IDF source tree~~ | **gone** — phase-468 W2 deleted the port, and no ESP-IDF entry ever existed in `nros-sdk-index.toml` for this row to describe. Bare-metal esp32 provisions a toolchain, not an SDK tree |
 | px4 | 1.2 GB | PX4 source repo | board-scoped — vendor-module only |
 | nuttx / threadx | 655 / 389 MB | RTOS kernel source | board-scoped + redistributable tarball (no build) |
 
