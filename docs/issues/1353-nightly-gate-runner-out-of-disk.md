@@ -1589,3 +1589,83 @@ runner the lane names whichever gate happened to be running when the space ran
 out. Neither red is evidence about the gate it names (see the 2026-09-30 entry
 on issue **1453** for that argument in full). A lane in this state has no signal
 capacity regardless of what it prints.
+
+## The streak ended at one night, and the fourth datum confirms which variable decides (2026-10-01)
+
+Run **36804891948** (scheduled `gate`, 02:14:31Z, head `e61d7dfd2`), job
+**110186978795**. Steps 27 `just check build` and 30 `just check no-std` both
+**failed**, steps 31–34 never started, and the job's log is the two-line
+`BlobNotFound` because the runner process died:
+
+```
+Unhandled exception. System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20261001-021449-utc.log'
+```
+
+So the `gate` arm's acceptance — *"a scheduled run reaching a VERDICT on
+`check build` and `check no-std`"*, three nights running — stands at **one of
+three**, and the streak is broken.
+
+### The transcripts, which both uploaded
+
+```
+before: 89% used, 17G free — 33G packages/cli/target; 20G examples; 4.2G build
+reclaim: freed 6740 MB; 24597392 KB free          (~23.5 G)
+after:  100% used, 256K free — 34G packages/cli/target; 20G examples; 11G target
+```
+
+Added to the table this issue has been keeping:
+
+| | 2026-09-27 | 2026-09-28 | 2026-09-29 | **2026-10-01** |
+| --- | --- | --- | --- | --- |
+| before the tier | 86%, 21G free | 94%, 9.7G free | 75%, 38G free | **89%, 17G free** |
+| `packages/cli/target` | 30G | 41G | **14G** | **33G** |
+| reclaim frees | 6,703 MB | 6,704 MB | 6,711 MB | **6,740 MB** |
+| post-reclaim headroom | ~27.3G | ~16.2G | ~43.9G | **~23.5G** |
+| after the tier | 100%, 272K | 100%, 264K | **89%, 17G** | **100%, 256K** |
+| verdict | died | died | **success** | **died** |
+
+Two things this fourth point settles, which three points could not.
+
+**The reclaim is a constant.** 6,740 MB, within 37 MB of all three earlier
+nights. Four measurements, one number — it is not the variable and no tuning of
+it is the remedy.
+
+**`packages/cli/target` is the variable, and it predicts the outcome in both
+directions.** 30G → died, 41G → died, **14G → the one success**, 33G → died.
+The 2026-09-29 entry derived that direction from a single favourable night and
+said explicitly that *"a runner with a different cache state, a cache eviction,
+and a deliberate change would all look like this from one transcript"*. This
+night is the confirming datum on the other side: the directory came back to 33G
+and the tier died again, at the same reclaim, on the same workflow. Nothing was
+changed between them, so the green night was an arrival state and not a fix.
+
+**The tier's demand is stable too** — ~23.3G spent here (23.5 → 0.25) against
+~27G on the green night. It is the supply that moves.
+
+### What `check build` actually spends it on
+
+The after-transcript names the growth, which no earlier entry here has:
+
+| | before | after |
+| --- | ---: | ---: |
+| `target/` | 1.1G | **11G** (`target/debug` 1.1→7.2G, `target/nros-relwithdebinfo` 0→3.1G) |
+| `build/` | 4.2G | **11G** |
+| nine `target-*` siblings | absent | **~5.2G** (`target-embedded` 975M, `target-check-cpp-cyclone-embedded` 829M, `target-check-c` 767M, `target-check-census-hooks` 701M, `target-check-cpp` 602M, `target-check-cpp-clippy-zenoh` 483M, `target-excluded-tests` 332M, …) |
+
+Those per-lane `target-*` directories exist because a cargo `--target-dir`
+serves exactly one workspace root (issue 0616), so they are not waste to be
+deleted — but they are ~5.2G of the ~23.3G, and they are the part this issue has
+never counted.
+
+### What this does NOT say
+
+- Not that `packages/cli/target` is *stale residue*. This is a GitHub-hosted
+  `ubuntu-22.04` runner, which arrives clean, so those 33G were built by steps
+  7–23 of this same job. It is the lane's own legitimate output, which is why
+  the reclaim step does not touch it and should not.
+- Nothing about whether step 30 `check no-std` has a defect of its own. Both 27
+  and 30 are marked failed and the log is gone, and with the volume at 100% the
+  parsimonious reading is one cause; that reading is not a measurement, and only
+  a run with headroom can separate them.
+- Nothing about `host-tests` or `live-peer`, whose arms are unchanged.
