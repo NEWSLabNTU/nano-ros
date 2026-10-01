@@ -34,8 +34,9 @@ pub mod zephyr_image;
 
 pub use image::{
     AgeRow, ComponentKind, ComponentSeam, GroupBind, LoweredBoot, LoweredBootConfig, LoweredProbe,
-    LoweredRunners, LoweredSched, LoweredServices, LoweredTiers, MonitorRow, MonitorTable,
-    NodeBind, SchedContext, SetupNode, TierRow, TierSetup, family_from_str,
+    LoweredRunners, LoweredSched, LoweredServices, LoweredTaskMemory, LoweredTiers, MonitorRow,
+    MonitorTable, NodeBind, SchedContext, SetupNode, TaskStackRow, TierRow, TierSetup,
+    family_from_str,
 };
 pub use node::{LoweredEntry, LoweredNode, NodeIdentity, QosOverride, sanitize_pkg};
 
@@ -177,26 +178,44 @@ impl BoardFamily {
                 // priced by nothing and a second road beside the shared one);
                 // now they take the entry's `.bss` like every RTOS runner.
                 takes_executor_storage: true,
+                // A host thread's stack is the process's to map.
+                tier_task_memory: None,
             }),
             BoardFamily::Freertos => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
-                run_tiers: Some("nros_board_freertos_run_tiers_in"),
+                run_tiers: Some("nros_board_freertos_run_tiers_tasks_in"),
                 takes_executor_storage: true,
+                // Issue 1598 — each spawned tier's stack + TCB are the entry's
+                // statics (`xTaskCreateStatic`), not heap_4 blocks. The
+                // runner boots the LEAST urgent tier, the last of the table.
+                // 256 KiB is issue #126's verified tier stack (64 KiB
+                // HardFaults at the first context switch); it moved here
+                // from the runner so the number sits where it is reserved.
+                tier_task_memory: Some(TierTaskMemory {
+                    header: "nros/tier_task_memory_freertos.h",
+                    boot_tier: BootTier::Last,
+                    default_stack_bytes: 262_144,
+                }),
             }),
             BoardFamily::Zephyr => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: Some("nros_board_zephyr_run_tiers_in"),
                 takes_executor_storage: true,
+                tier_task_memory: None,
             }),
             BoardFamily::Nuttx => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: Some("nros_board_nuttx_run_tiers_in"),
                 takes_executor_storage: true,
+                // A NuttX tier is a pthread whose stack the kernel allocates;
+                // not moved (yet).
+                tier_task_memory: None,
             }),
             BoardFamily::Threadx => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: None,
                 takes_executor_storage: true,
+                tier_task_memory: None,
             }),
         }
     }
@@ -294,6 +313,62 @@ pub struct CAbiRunners {
     /// was the last exception (its Rust runners built the context on a stack)
     /// and took the same method in issue 1597.
     pub takes_executor_storage: bool,
+    /// Issues 1598 + 1232 — the tier runner also takes each SPAWNED tier's
+    /// task memory (stack + control block) from the entry, which declares
+    /// them as statics sized from the tier's `stack_bytes`: `run_tiers` is
+    /// then `(…, storage, stride, task_memory) -> int32_t`. `None` keeps the
+    /// kernel allocating the stack.
+    pub tier_task_memory: Option<TierTaskMemory>,
+}
+
+/// How a family's generated entry declares its tier tasks' memory. See
+/// [`CAbiRunners::tier_task_memory`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TierTaskMemory {
+    /// The header the entry includes for the per-RTOS spelling
+    /// (`NROS_TIER_TASK_MEMORY_DEFINE` / `NROS_TIER_TASK_MEMORY` /
+    /// `NROS_TIER_TASK_MEMORY_NONE`).
+    pub header: &'static str,
+    /// Which tier the runner runs on the CALLER's task, which therefore gets
+    /// no memory. The runner REFUSES an entry that disagrees, so a drift here
+    /// is a boot-time refusal naming the cause, never a tier with no stack.
+    pub boot_tier: BootTier,
+    /// The stack a tier that declares no `stack_bytes` gets, stated where it
+    /// is reserved. The port's floor is applied on top by the header's macro
+    /// (issue 0667: a task size is a floor the port raises).
+    pub default_stack_bytes: u64,
+}
+
+/// Which tier of a highest-priority-first table a runner boots on the caller.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BootTier {
+    /// `tiers[0]` — Zephyr, whose table is in descending RAW priority number
+    /// and lower-number-wins, so index 0 is the least urgent.
+    First,
+    /// `tiers[n - 1]` — FreeRTOS, bigger-number-wins (issue 0636).
+    Last,
+}
+
+impl TierTaskMemory {
+    /// The stack each tier of an `n`-tier table gets, by tier index: `None`
+    /// for the boot tier, the declared `stack_bytes` (or the default) for
+    /// every spawned one.
+    pub fn stacks(&self, declared: &[Option<u64>]) -> alloc::vec::Vec<Option<u64>> {
+        let boot = match self.boot_tier {
+            BootTier::First => 0,
+            BootTier::Last => declared.len().saturating_sub(1),
+        };
+        declared
+            .iter()
+            .enumerate()
+            .map(|(i, d)| {
+                (i != boot).then(|| match d {
+                    Some(b) if *b > 0 => *b,
+                    _ => self.default_stack_bytes,
+                })
+            })
+            .collect()
+    }
 }
 
 impl CAbiRunners {
@@ -560,6 +635,7 @@ mod tests {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: None,
                 takes_executor_storage: true,
+                tier_task_memory: None,
             })
         );
         assert!(BoardFamily::Threadx.has_c_run_components());
@@ -579,6 +655,29 @@ mod tests {
                 assert!(name.ends_with("_in"), "{}: {name}", f.as_str());
             }
         }
+    }
+
+    /// Issue 1598 — the boot tier gets no task memory (it runs on the caller),
+    /// a declared size is kept, and an undeclared one gets the stated default.
+    #[test]
+    fn tier_task_stacks_skip_the_boot_tier_and_default_the_undeclared() {
+        let m = BoardFamily::Freertos
+            .c_abi_runners()
+            .and_then(|r| r.tier_task_memory)
+            .expect("FreeRTOS takes tier task memory");
+        assert_eq!(
+            m.stacks(&[Some(65_536), None, Some(0)]),
+            alloc::vec![Some(65_536), Some(262_144), None],
+            "FreeRTOS boots the LAST tier"
+        );
+        let first = TierTaskMemory {
+            boot_tier: BootTier::First,
+            ..m
+        };
+        assert_eq!(
+            first.stacks(&[None, Some(8_192)]),
+            alloc::vec![None, Some(8_192)]
+        );
     }
 
     /// Every family now has a C-ABI `run_components` (issue 1286 closed the

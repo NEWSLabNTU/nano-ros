@@ -28,9 +28,9 @@ use std::collections::HashMap;
 
 use nros_entry_lower::{
     AgeRow, ComponentKind, ComponentSeam, GroupBind, LoweredBoot, LoweredBootConfig, LoweredEntry,
-    LoweredNode, LoweredProbe, LoweredRunners, LoweredSched, LoweredServices, LoweredTiers,
-    MonitorRow, MonitorTable, NodeBind, NodeIdentity, QosOverride, SchedContext, SetupNode,
-    TierRow, TierSetup,
+    LoweredNode, LoweredProbe, LoweredRunners, LoweredSched, LoweredServices, LoweredTaskMemory,
+    LoweredTiers, MonitorRow, MonitorTable, NodeBind, NodeIdentity, QosOverride, SchedContext,
+    SetupNode, TierRow, TierSetup,
 };
 use nros_orchestration_ir::ResolvedTierTable;
 
@@ -323,7 +323,15 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
                 family.c_abi_runners().map(Into::into).unwrap_or_default();
             let raw = family.c_abi_runners();
             let tiered = e.tiers.is_some();
+            // Issues 1598 + 1232 — the spawned tiers' task memory, sized from
+            // each tier row's `stack_bytes` by the family's one lowering.
+            let task_memory = e.tiers.as_ref().and_then(|t| {
+                let mem = raw.and_then(|r| r.tier_task_memory)?;
+                let bytes: Vec<u64> = t.rows.iter().map(|r| r.stack_bytes).collect();
+                Some(LoweredTaskMemory::for_tiers(&mem, &bytes))
+            });
             e.boot = Some(LoweredBoot {
+                task_memory,
                 tier_storage: tiered && raw.is_some_and(|r| r.tiers_take_static_storage()),
                 component_storage: !tiered
                     && raw.is_some_and(|r| r.components_take_static_storage()),

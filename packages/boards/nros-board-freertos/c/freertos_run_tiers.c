@@ -149,6 +149,23 @@ typedef struct {
     const char* deadline_policy;
 } nros_tier_spec_t;
 
+/* Issue 1598 — one tier task's memory, owned by the generated entry. Mirror of
+ * `nros_tier_task_memory_t` in <nros/main.h> (this TU is compiled where no
+ * nros header is in reach — the cargo lane's `build.rs` glue). Three pointer-
+ * sized fields, so the layout cannot drift by padding; the assert pins it.
+ *
+ *   stack       — the task's stack (`StackType_t[]`), NULL for "none".
+ *   stack_bytes — its size in bytes, as the entry declared it (already raised
+ *                 to the port's floor by the entry's macro, issue 0667).
+ *   tcb         — the task's `StaticTask_t`. */
+typedef struct {
+    void* stack;
+    size_t stack_bytes;
+    void* tcb;
+} nros_tier_task_memory_t;
+_Static_assert(sizeof(nros_tier_task_memory_t) == 3u * sizeof(void*),
+               "nros_tier_task_memory_t mirrors <nros/main.h>: three pointer-sized fields");
+
 /* --- Per-tier task context ---
  *
  * Heap-allocated by the boot task before xTaskCreate; lives for the firmware
@@ -174,6 +191,11 @@ typedef struct {
      * issue 1551). */
     unsigned char* rest_storage;
     size_t storage_stride;
+    /* issue 1598 — the task memory for rest[0] (rest[k] at rest_task_memory[k]),
+     * carried down the chain beside the specs it belongs to; NULL when the
+     * caller supplied none (an `_in` / `_ns` entry), which keeps those tiers on
+     * `xTaskCreate`. */
+    const nros_tier_task_memory_t* rest_task_memory;
     /* issue 0636 — the tier's identity and declared priority, so the task can
      * ANNOUNCE what it got (#579). The task already holds the priority from
      * `xTaskCreate`; what was missing was any way to say so. */
@@ -311,7 +333,8 @@ static void freertos_announce_spawn_failure(const char* name, const char* why) {
  * recursive (each tier's task spawns the next tier via this helper). */
 static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
                                     const nros_tier_spec_t* remaining, size_t n_remaining,
-                                    unsigned char* storage, size_t storage_stride);
+                                    unsigned char* storage, size_t storage_stride,
+                                    const nros_tier_task_memory_t* task_memory);
 
 /* Minimum spin delay: 1 ms (FreeRTOS tick resolution on MPS2-AN385). */
 #define SPIN_PERIOD_FLOOR_MS 1u
@@ -393,7 +416,8 @@ static void freertos_tier_task(void* arg) {
      * DOWNSTREAM spawn must NOT stop this tier spinning its own work, so ignore
      * the return (freertos_spawn_next_tier frees what it allocated on failure). */
     (void)freertos_spawn_next_tier(ctx->session_handle, (uint8_t)ctx->domain_id, ctx->rest,
-                                   ctx->n_rest, ctx->rest_storage, ctx->storage_stride);
+                                   ctx->n_rest, ctx->rest_storage, ctx->storage_stride,
+                                   ctx->rest_task_memory);
 
     /* Spin loop. Pass the tier period as the spin_once timeout — a BLOCKING
      * read (issue #126 defect B): timeout 0 returns immediately and never drives
@@ -436,7 +460,8 @@ static void freertos_tier_task(void* arg) {
  * does NOT touch boot_storage — the caller (boot) owns that. */
 static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
                                     const nros_tier_spec_t* remaining, size_t n_remaining,
-                                    unsigned char* storage, size_t storage_stride) {
+                                    unsigned char* storage, size_t storage_stride,
+                                    const nros_tier_task_memory_t* task_memory) {
     if (n_remaining == 0u) {
         return 0;
     }
@@ -468,6 +493,7 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
     ctx->n_rest = n_remaining - 1u;
     ctx->rest_storage = storage + storage_stride;
     ctx->storage_stride = storage_stride;
+    ctx->rest_task_memory = (task_memory != NULL) ? task_memory + 1 : NULL;
     ctx->name = t->name;
     ctx->priority = (uint32_t)((t->priority < 0) ? 0 : t->priority);
 
@@ -481,6 +507,13 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
      * emit_cpp (the pre-W2 literal hardcoded 0), so a configured stack is
      * honored; this default covers unset specs. */
     uint32_t stack_words = (t->stack_bytes > 0u) ? (uint32_t)(t->stack_bytes / 4u) : (262144u / 4u);
+    /* Issue 1598 — the entry owns this tier's stack: its size is what the
+     * entry DECLARED (the 256 KiB default above moved to the emitter, which
+     * states it where it is reserved, and the port's floor was applied there
+     * too — issue 0667). The fallback above is only the `_in`/`_ns` road. */
+    if (task_memory != NULL) {
+        stack_words = (uint32_t)(task_memory->stack_bytes / sizeof(StackType_t));
+    }
 
     /* The EFFECTIVE stack, not the declared one: an unset `stack_bytes` still
      * gets 256 KiB above, and a bound derived from `0` would leave the
@@ -498,12 +531,26 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
                            : (UBaseType_t)1u;
 
     TaskHandle_t task = NULL;
-    BaseType_t ret = xTaskCreate(freertos_tier_task, (t->name != NULL) ? t->name : "nros_tier",
-                                 stack_words, ctx, prio, &task);
-    if (ret != pdPASS) {
-        freertos_announce_spawn_failure(t->name, "xTaskCreate failed (FreeRTOS heap)");
-        nros_platform_dealloc(ctx);
-        return -1;
+    if (task_memory != NULL) {
+        /* Issue 1598 — the stack and TCB are the entry's statics: no heap_4
+         * block, and an image whose stacks do not fit fails at LINK. */
+        task = xTaskCreateStatic(freertos_tier_task, (t->name != NULL) ? t->name : "nros_tier",
+                                 stack_words, ctx, prio, (StackType_t*)task_memory->stack,
+                                 (StaticTask_t*)task_memory->tcb);
+        if (task == NULL) {
+            freertos_announce_spawn_failure(t->name, "xTaskCreateStatic refused the entry's "
+                                                     "task memory");
+            nros_platform_dealloc(ctx);
+            return -1;
+        }
+    } else {
+        BaseType_t ret = xTaskCreate(freertos_tier_task, (t->name != NULL) ? t->name : "nros_tier",
+                                     stack_words, ctx, prio, &task);
+        if (ret != pdPASS) {
+            freertos_announce_spawn_failure(t->name, "xTaskCreate failed (FreeRTOS heap)");
+            nros_platform_dealloc(ctx);
+            return -1;
+        }
     }
     /* RFC-0052 W2/W5.11 — core pin (core_plus1: 0 = unpinned) is the placement
      * dim. Only SMP builds (configUSE_CORE_AFFINITY) expose the affinity API;
@@ -546,6 +593,11 @@ int32_t nros_board_freertos_run_tiers_in(const char* locator, uint8_t domain_id,
                                          const char* session_name, const char* node_namespace,
                                          const nros_tier_spec_t* tiers, size_t n_tiers,
                                          void* executor_storage, size_t storage_stride);
+int32_t nros_board_freertos_run_tiers_tasks_in(const char* locator, uint8_t domain_id,
+                                               const char* session_name, const char* node_namespace,
+                                               const nros_tier_spec_t* tiers, size_t n_tiers,
+                                               void* executor_storage, size_t storage_stride,
+                                               const nros_tier_task_memory_t* task_memory);
 
 int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
                                       const char* session_name, const nros_tier_spec_t* tiers,
@@ -623,6 +675,48 @@ int32_t nros_board_freertos_run_tiers_in(const char* locator, uint8_t domain_id,
                                          const char* session_name, const char* node_namespace,
                                          const nros_tier_spec_t* tiers, size_t n_tiers,
                                          void* executor_storage, size_t storage_stride) {
+    /* Issue 1598 — kept for an entry TU generated before
+     * `nros_board_freertos_run_tiers_tasks_in` existed: no task memory, so its
+     * tiers' stacks stay `xTaskCreate` blocks of heap_4. */
+    return nros_board_freertos_run_tiers_tasks_in(locator, domain_id, session_name, node_namespace,
+                                                  tiers, n_tiers, executor_storage, storage_stride,
+                                                  NULL);
+}
+
+/* The boot tier's index: the LEAST urgent tier, i.e. the last of a table the
+ * emitter sorts highest-priority-first (issue 0636 — see the long note at the
+ * call site). An unsorted table falls back to index 0 and says so. */
+static size_t freertos_boot_tier_index(const nros_tier_spec_t* tiers, size_t n_tiers) {
+    for (size_t i = 1u; i < n_tiers; ++i) {
+        if (tiers[i].priority > tiers[i - 1u].priority) {
+            nros_board_freertos_console_write(
+                "nros: tier table is not sorted highest-priority-first — "
+                "boot tier falls back to index 0 (issue 0636)\n");
+            return 0u;
+        }
+    }
+    return n_tiers - 1u;
+}
+
+/*
+ * Issue 1598 — the runner, over caller-supplied executor storage AND
+ * caller-supplied task memory, and the one a generated tiered FreeRTOS entry
+ * calls (`CAbiRunners::takes_tier_task_memory`).
+ *
+ * `task_memory` is indexed by TIER (`task_memory[i]` is `tiers[i]`'s), NULL
+ * for "none" — then every tier task is `xTaskCreate`d as before. When given,
+ * every SPAWNED tier must have a stack and a TCB, and the boot tier (which runs
+ * on the caller's task) must have none: the entry and this runner agree on
+ * which tier boots, and a disagreement is REFUSED before the session opens
+ * rather than discovered as a tier with no stack. Each spawned tier is then
+ * `xTaskCreateStatic` over the entry's statics: no heap_4 block, and an image
+ * whose stacks do not fit RAM fails at link.
+ */
+int32_t nros_board_freertos_run_tiers_tasks_in(const char* locator, uint8_t domain_id,
+                                               const char* session_name, const char* node_namespace,
+                                               const nros_tier_spec_t* tiers, size_t n_tiers,
+                                               void* executor_storage, size_t storage_stride,
+                                               const nros_tier_task_memory_t* task_memory) {
     if (tiers == NULL || n_tiers == 0 || executor_storage == NULL) {
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
@@ -633,6 +727,56 @@ int32_t nros_board_freertos_run_tiers_in(const char* locator, uint8_t domain_id,
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
     unsigned char* storage = (unsigned char*)executor_storage;
+
+    /* --- Choose the boot tier: the LEAST urgent one (issue 0636) --- */
+    /*
+     * This was `&tiers[0]`, which the emitter documents as the MOST urgent
+     * tier ("sorted highest-priority-first", nros/main.hpp), and FreeRTOS is a
+     * bigger-number-wins kernel. The boot task owns the session and spins
+     * forever, so making it outrank the tiers it spawned starves them: FreeRTOS
+     * runs the highest-priority READY task and a spin loop does not reliably
+     * stop being ready. `17666723d` removed this arrangement from the Rust
+     * NuttX/Linux arms and left `freertos` on `tiers[0]`; that is this half.
+     *
+     * The least urgent tier is the LAST element of a descending table, which
+     * also leaves the remaining tiers CONTIGUOUS — required here, because the
+     * chain-spawn hands each tier a `rest` SLICE and skipping an interior index
+     * would change that protocol. That is why this does not call
+     * `nros_platform::boot_tier_index` (the Rust NuttX/Linux arms do): same
+     * rule, different mechanics forced by the chain.
+     *
+     * The ordering is CHECKED rather than assumed. A table that is not
+     * non-increasing means the emitter's contract changed, and the failure that
+     * would otherwise follow is silent starvation on one platform seconds after
+     * boot — the thing issue 0636 spent its history chasing. Fall back to
+     * index 0, the behaviour before this change, and say so.
+     *
+     * Issue 1598 — chosen BEFORE the session opens now, because the entry's
+     * task memory is checked against it.
+     */
+    const size_t boot_idx = freertos_boot_tier_index(tiers, n_tiers);
+    if (task_memory != NULL) {
+        for (size_t i = 0u; i < n_tiers; ++i) {
+            const nros_tier_task_memory_t* m = &task_memory[i];
+            const int has = (m->stack != NULL) && (m->tcb != NULL);
+            if (i == boot_idx) {
+                if (m->stack != NULL || m->tcb != NULL) {
+                    nros_board_freertos_console_write(
+                        "nros: freertos run_tiers: the entry gave the BOOT tier a task stack "
+                        "(it runs on the caller's task) — the entry and this runner disagree "
+                        "about which tier boots; refused\n");
+                    return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+                }
+                continue;
+            }
+            if (!has || m->stack_bytes < (size_t)configMINIMAL_STACK_SIZE * sizeof(StackType_t)) {
+                freertos_announce_spawn_failure(
+                    tiers[i].name, "the entry's task memory is missing or below "
+                                   "configMINIMAL_STACK_SIZE; refused before the session opens");
+                return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+            }
+        }
+    }
 
     /* Belt-and-suspenders network wait (startup.c already brought the network
      * up; this calls the weak no-op on MPS2-AN385 or a board's strong override). */
@@ -671,39 +815,7 @@ int32_t nros_board_freertos_run_tiers_in(const char* locator, uint8_t domain_id,
      * overlap the next tier's setup, which is SAFE — a spin exchanges
      * keepalives/data, not declares. */
 
-    /* --- Choose the boot tier: the LEAST urgent one (issue 0636) --- */
-    /*
-     * This was `&tiers[0]`, which the emitter documents as the MOST urgent
-     * tier ("sorted highest-priority-first", nros/main.hpp), and FreeRTOS is a
-     * bigger-number-wins kernel. The boot task owns the session and spins
-     * forever, so making it outrank the tiers it spawned starves them: FreeRTOS
-     * runs the highest-priority READY task and a spin loop does not reliably
-     * stop being ready. `17666723d` removed this arrangement from the Rust
-     * NuttX/Linux arms and left `freertos` on `tiers[0]`; that is this half.
-     *
-     * The least urgent tier is the LAST element of a descending table, which
-     * also leaves the remaining tiers CONTIGUOUS — required here, because the
-     * chain-spawn hands each tier a `rest` SLICE and skipping an interior index
-     * would change that protocol. That is why this does not call
-     * `nros_platform::boot_tier_index` (the Rust NuttX/Linux arms do): same
-     * rule, different mechanics forced by the chain.
-     *
-     * The ordering is CHECKED rather than assumed. A table that is not
-     * non-increasing means the emitter's contract changed, and the failure that
-     * would otherwise follow is silent starvation on one platform seconds after
-     * boot — the thing issue 0636 spent its history chasing. Fall back to
-     * index 0, the behaviour before this change, and say so.
-     */
-    size_t boot_idx = n_tiers - 1u;
-    for (size_t i = 1u; i < n_tiers; ++i) {
-        if (tiers[i].priority > tiers[i - 1u].priority) {
-            nros_board_freertos_console_write(
-                "nros: tier table is not sorted highest-priority-first — "
-                "boot tier falls back to index 0 (issue 0636)\n");
-            boot_idx = 0u;
-            break;
-        }
-    }
+    /* The boot tier was chosen above, before the session opened (issue 1598). */
     const nros_tier_spec_t* boot = &tiers[boot_idx];
     /* Everything except `boot`; both arrangements leave a contiguous run. */
     const nros_tier_spec_t* rest_first = (boot_idx == 0u) ? &tiers[1] : &tiers[0];
@@ -767,8 +879,12 @@ int32_t nros_board_freertos_run_tiers_in(const char* locator, uint8_t domain_id,
     /* A boot-side spawn failure is fatal: tear down boot_storage (which the
      * helper never touches) and return error. Downstream tier tasks handle
      * their own spawn failures by logging + continuing to spin. */
+    /* The task memory runs parallel to `tiers`, so `rest_first`'s is at the
+     * same offset (issue 1598). */
+    const nros_tier_task_memory_t* rest_mem =
+        (task_memory != NULL) ? task_memory + (size_t)(rest_first - tiers) : NULL;
     int src = freertos_spawn_next_tier(session_handle, domain_id, rest_first, n_rest,
-                                       storage + storage_stride, storage_stride);
+                                       storage + storage_stride, storage_stride, rest_mem);
     if (src != 0) {
         nros_cpp_fini(boot_storage);
         return -1;

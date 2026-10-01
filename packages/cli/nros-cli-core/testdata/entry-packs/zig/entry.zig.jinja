@@ -154,11 +154,15 @@ var __nros_tier_executor_storage: [{{ boot.n_tiers }}][(c.NROS_CPP_EXECUTOR_STOR
 {% elif boot.component_storage %}
 var __nros_executor_storage: [(c.NROS_CPP_EXECUTOR_STORAGE_SIZE + 7) / 8]u64 = undefined;
 {% endif %}
+{#- Issues 1598 + 1232 — this fixture does not spell the RTOS's static task
+    types (`boot.task_memory`; the C/C++ packs do, through the family header's
+    macros), so it passes NULL: FreeRTOS then `xTaskCreate`s each tier and
+    Zephyr's runner refuses, naming the missing memory. -#}
 {%- set name = "c.nros_boot_config_node_name(&NROS_BOOT_CONFIG), c.nros_boot_config_namespace(&NROS_BOOT_CONFIG)" %}
 {%- set connect = "" if boot_shape == "host" else "c.NROS_ENTRY_LOCATOR, c.NROS_ENTRY_DOMAIN_ID, " %}
 fn run() i32 {
 {%- if boot.tiers %}
-    return c.{{ boot.runners.run_tiers }}({{ connect }}{{ name }}, &__nros_tiers, __nros_tiers.len{% if boot.tier_storage %}, &__nros_tier_executor_storage, @sizeOf(@TypeOf(__nros_tier_executor_storage[0])){% endif %});
+    return c.{{ boot.runners.run_tiers }}({{ connect }}{{ name }}, &__nros_tiers, __nros_tiers.len{% if boot.tier_storage %}, &__nros_tier_executor_storage, @sizeOf(@TypeOf(__nros_tier_executor_storage[0])){% endif %}{% if boot.task_memory %}, null{% endif %});
 {%- else %}
     return c.{{ boot.runners.run_components }}({{ connect }}{{ name }}, &__nros_entry_setup{% if boot.component_storage %}, &__nros_executor_storage, @sizeOf(@TypeOf(__nros_executor_storage)){% endif %});
 {%- endif %}

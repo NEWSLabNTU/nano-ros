@@ -49,7 +49,12 @@
 #define configTASK_NOTIFICATION_ARRAY_ENTRIES   3
 
 /* ---- Memory ---- */
-#define configSUPPORT_STATIC_ALLOCATION         0
+/* Issue 1598 — ON, so each tier task's stack and TCB are statics the generated
+ * entry owns (`xTaskCreateStatic`), sized by the build, placed and priced by the
+ * linker, named by `mem-report`. The two hooks this obliges the application to
+ * supply are in `c/freertos_hooks.c`. Dynamic allocation stays on: every other
+ * task (app, zenoh read/lease, poll) is still `xTaskCreate`. */
+#define configSUPPORT_STATIC_ALLOCATION         1
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
 /* Phase 175.B / 204.6 — FreeRTOS heap (heap_4 `ucHeap[]`, the dominant bss).
  *

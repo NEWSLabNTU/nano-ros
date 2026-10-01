@@ -306,6 +306,41 @@ NROS_PUBLIC int32_t nros_board_freertos_run_tiers_in(const char* locator, uint8_
                                                      size_t n_tiers, void* executor_storage,
                                                      size_t storage_stride);
 
+/* Issues 1598 + 1232 — one tier task's memory, owned by the generated entry:
+ * the task's stack and its control block, as statics the linker places, prices
+ * and `mem-report` names. THIS DECLARATION IS CANONICAL; the RTOS tier runners
+ * (compiled where no nros header is in reach) mirror it, and each asserts the
+ * three-pointer layout.
+ *
+ * `stack`       — the stack (FreeRTOS `StackType_t[]`, Zephyr
+ *                 `k_thread_stack_t[]`); NULL means "this tier has none" —
+ *                 the boot tier, which runs on the caller's own task.
+ * `stack_bytes` — the size the kernel is handed, in bytes. The entry's macro
+ *                 has already applied the port's floor (issue 0667: the floor
+ *                 belongs to the port, so the declared size is raised, never
+ *                 refused) and, on Zephyr, the kernel's reserved area.
+ * `tcb`         — FreeRTOS `StaticTask_t*` / Zephyr `struct k_thread*`.
+ *
+ * Spelled per RTOS by `<nros/tier_task_memory_<rtos>.h>`, which the generated
+ * entry includes; the array it passes is indexed by TIER. */
+typedef struct {
+    void* stack;
+    size_t stack_bytes;
+    void* tcb;
+} nros_tier_task_memory_t;
+
+/* Issue 1598 — the same runner, plus each tier task's memory from the entry,
+ * and the one a generated tiered FreeRTOS entry calls. `task_memory[i]` is
+ * `tiers[i]`'s: every SPAWNED tier is `xTaskCreateStatic`d over its stack and
+ * TCB (no heap_4 block; stacks that do not fit RAM fail at LINK), and the boot
+ * tier's entry must be empty. A spawned tier without memory, or a boot tier
+ * with some, is refused before the session opens. NULL `task_memory` is the
+ * `_in` behaviour (`xTaskCreate`), which `_in` above now delegates to. */
+NROS_PUBLIC int32_t nros_board_freertos_run_tiers_tasks_in(
+    const char* locator, uint8_t domain_id, const char* session_name, const char* node_namespace,
+    const nros_native_tier_spec_t* tiers, size_t n_tiers, void* executor_storage,
+    size_t storage_stride, const nros_tier_task_memory_t* task_memory);
+
 /* phase-432 W3.1 — run a SINGLE-executor embedded C entry on ANY RTOS board:
  * the C-ABI twin of `nros::board::<Rtos>Board::run_components`, so a C-only
  * consumer (certified C compiler, MISRA-style, no C++ runtime) can boot an
