@@ -358,6 +358,7 @@ fn main() {
     }
 
     let archive_stem = "nros_rmw_xrce_c_inline";
+    nros_cc_flags::header_deps::track_header_deps(&mut build);
     build.compile(archive_stem);
 
     // phase-420 W9 step 4 — SAY WHERE THE ARCHIVE IS, in the one place a
@@ -425,9 +426,15 @@ fn main() {
             .file(posix_src.join("platform.c"))
             .file(posix_src.join("net.c"))
             .file(posix_src.join("timer.c"));
+        nros_cc_flags::header_deps::track_header_deps(&mut posix_build);
         posix_build.compile("nros_platform_posix_link");
         println!("cargo:rerun-if-changed={}", posix_src.display());
     }
+    // issue 1580 — declare every file the compiles above OPENED (the `-MMD`
+    // depfiles): the vendored client + micro-CDR sources and headers, the
+    // transport and platform ports, and the platform-api headers. The
+    // directory watches below stay for the source LISTS this script reads.
+    nros_cc_flags::header_deps::emit_header_deps(&out_dir);
 
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed={}", xrce_c.join("src").display());

@@ -122,6 +122,7 @@ fn main() {
     // Applied BEFORE the clone below, so the generated bindings take it too:
     // `warnings(false)` only drops `-Wall -Wextra`, never these two `-Werror=`.
     nros_cc_flags::strict_decls(&mut build);
+    nros_cc_flags::header_deps::track_header_deps(&mut build);
     build.compile("baremetal_c_talker_app");
 
     let mut bindings = build.clone();
@@ -156,5 +157,12 @@ fn main() {
          somewhere else.",
         generated.display()
     );
+    nros_cc_flags::header_deps::track_header_deps(&mut bindings);
     bindings.compile("baremetal_c_talker_msgs");
+    // issue 1580 — every file both compiles OPENED: the generated message
+    // headers, the nros-c headers and the per-build config header, beyond the
+    // `src/talker.c` and the one config header this script names by hand.
+    nros_cc_flags::header_deps::emit_header_deps(&PathBuf::from(
+        std::env::var("OUT_DIR").expect("OUT_DIR"),
+    ));
 }
