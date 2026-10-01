@@ -102,7 +102,7 @@ export const NROS_BOOT_CONFIG: c.struct_nros_baked_boot_config linksection(".nro
 var __nros_tier_executor_storage: [2][(c.NROS_CPP_EXECUTOR_STORAGE_SIZE + 7) / 8]u64 = undefined;
 
 fn run() i32 {
-    return c.nros_board_zephyr_run_tiers_in(c.NROS_ENTRY_LOCATOR, c.NROS_ENTRY_DOMAIN_ID, c.nros_boot_config_node_name(&NROS_BOOT_CONFIG), c.nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_tiers, __nros_tiers.len, &__nros_tier_executor_storage, @sizeOf(@TypeOf(__nros_tier_executor_storage[0])));
+    return c.nros_board_zephyr_run_tiers_tasks_in(c.NROS_ENTRY_LOCATOR, c.NROS_ENTRY_DOMAIN_ID, c.nros_boot_config_node_name(&NROS_BOOT_CONFIG), c.nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_tiers, __nros_tiers.len, &__nros_tier_executor_storage, @sizeOf(@TypeOf(__nros_tier_executor_storage[0])), null);
 }
 
 export fn main() c_int {

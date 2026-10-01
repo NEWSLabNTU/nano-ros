@@ -199,9 +199,20 @@ impl BoardFamily {
             }),
             BoardFamily::Zephyr => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
-                run_tiers: Some("nros_board_zephyr_run_tiers_in"),
+                run_tiers: Some("nros_board_zephyr_run_tiers_tasks_in"),
                 takes_executor_storage: true,
-                tier_task_memory: None,
+                // Issue 1232 — each spawned tier's thread + stack are the
+                // entry's `K_THREAD_STACK_DEFINE`, sized from the tier's own
+                // `stack_bytes`; the fixed pool slot ignored it. The runner
+                // boots `tiers[0]` (Zephyr is lower-number-wins and the table
+                // is descending, issue 0251). 0 = the header's default,
+                // CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE, which keeps that knob's
+                // meaning for a tier that declares nothing.
+                tier_task_memory: Some(TierTaskMemory {
+                    header: "nros/tier_task_memory_zephyr.h",
+                    boot_tier: BootTier::First,
+                    default_stack_bytes: 0,
+                }),
             }),
             BoardFamily::Nuttx => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
@@ -335,7 +346,9 @@ pub struct TierTaskMemory {
     pub boot_tier: BootTier,
     /// The stack a tier that declares no `stack_bytes` gets, stated where it
     /// is reserved. The port's floor is applied on top by the header's macro
-    /// (issue 0667: a task size is a floor the port raises).
+    /// (issue 0667: a task size is a floor the port raises). `0` hands the
+    /// choice to the header, which names the board's own knob (Zephyr:
+    /// CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE).
     pub default_stack_bytes: u64,
 }
 
