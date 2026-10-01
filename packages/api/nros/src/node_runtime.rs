@@ -1473,17 +1473,25 @@ impl NodeRuntime for ExecutorSink<'_> {
         }
         // Phase 305 W3 (issue 0255) — expand `~`/relative source names against
         // the owning node's identity and apply the launch remap rules (shared
-        // `node_metadata::resolve_name` seam) before any name reaches the wire.
+        // `nros_node::names` seam) before any name reaches the wire.
         // Timers have no wire name; parameter names are NOT remapped (matches
         // ROS 2 basic name remapping — param remaps are a separate rule class).
+        //
+        // `resolve_name_layered`, not `resolve_name`: `self.remaps` is the
+        // launch projection and therefore AUTHORITATIVE, and the empty
+        // fallback tier is where a second channel — the `--ros-args` parse
+        // `nros::init_with_args` refuses — would arrive. Naming the tier is
+        // what stops that channel being appended to this one slice, where
+        // precedence would silently be whichever the emitter wrote first.
         let resolved_name = match metadata.kind {
             EntityKind::Timer | EntityKind::Parameter => None,
             _ => Some(
-                crate::node_metadata::resolve_name(
+                nros_node::names::resolve_name_layered(
                     metadata.source_name.as_str(),
                     &node_name,
                     &node_ns,
                     self.remaps.iter().copied(),
+                    core::iter::empty::<(&str, &str)>(),
                 )
                 .map_err(|_| NodeDeclError::Runtime)?,
             ),

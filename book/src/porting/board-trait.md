@@ -83,7 +83,7 @@ The `setup` callback is the only place user code runs inside `run`. Everything e
 
 ```rust
 pub struct RuntimeCtx<'a> {
-    pub params:  &'a [(&'a str, &'a str)],   // <param name=… value=…/> + -p name:=value
+    pub params:  &'a [(&'a str, &'a str)],   // <param name=… value=…/>, projected at build time
     pub remaps:  &'a [(&'a str, &'a str)],   // topic/service/action renames
     pub env:     &'a [(&'a str, &'a str)],   // env-style key/value (rarely set on embedded)
 }

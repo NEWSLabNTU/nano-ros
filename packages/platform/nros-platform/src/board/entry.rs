@@ -88,8 +88,9 @@ pub struct DeployOverlay {
 pub trait BoardEntry: super::Board {
     /// Drive the full boot → user-closure → exit flow.
     ///
-    /// `setup` receives a `&mut RuntimeCtx` with overlay knobs from
-    /// the launch file / CLI args. Returning `Err` from `setup` makes
+    /// `setup` receives a `&mut RuntimeCtx` with overlay knobs projected
+    /// from the launch file at BUILD time (there is no CLI parse; see
+    /// [`super::RuntimeCtx`]). Returning `Err` from `setup` makes
     /// `run` route to [`super::BoardExit::exit_failure`]; `Ok`
     /// proceeds to executor spin + clean exit.
     ///

@@ -425,9 +425,10 @@ macro_rules! println {
 ///    Same magic number `run` / `run_generic` use.
 /// 3. Flush stdout (NuttX line-buffers around `write(2)`).
 /// 4. Build a [`nros_platform::RuntimeCtx`]. Today this is the
-///    [`nros_platform::RuntimeCtx::with_runtime`] placeholder; Phase 212.N.4
-///    codegen will populate `params` / `remaps` / `env` from the
-///    launch overlay + `--ros-args` CLI parsing.
+///    [`nros_platform::RuntimeCtx::with_runtime`] placeholder; the codegen
+///    road populates `params` / `remaps` from the launch overlay, projected
+///    into the generated entry at BUILD time. There is no `--ros-args` CLI
+///    parse on any road — `nros::init_with_args` refuses the flag.
 /// 5. Invoke `setup(&mut runtime)` and **return its result**.
 ///
 /// ## Why this does not diverge
