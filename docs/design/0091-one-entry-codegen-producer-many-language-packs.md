@@ -3,8 +3,8 @@ rfc: 0091
 title: "One codegen producer, many language packs — target-agnostic output, pinned representations"
 status: Stable
 since: 2026-09
-last-reviewed: 2026-09
-implements-tracked-by: [phase-432]
+last-reviewed: 2026-10
+implements-tracked-by: [phase-432, phase-474]
 supersedes: []
 superseded-by: null
 ---
@@ -561,6 +561,10 @@ context, not the seed for a per-surface projection. The entry pipeline has not
 paid this cost yet because it has two surfaces; W2.3 (converting `emit_cpp`) is
 where it would first bite.
 
+> **Done, 2026-10-01 (phase-474, Amendment 1 below).** `LoweredEntry` IS the
+> context now: `emit_c.rs` and `emit_cpp.rs` are deleted and both packs render
+> it directly.
+
 ## 7. One path per outcome
 
 **Retire the `--lang rust` VERB, and KEEP the renderer.** *(Amended by
@@ -632,16 +636,26 @@ CMake-side property no pack can state about itself.
 1. `packs/entry/<lang>/entry.<ext>.jinja` — over `LoweredEntry`. Boot shape,
    board path, tier rows, QoS codes and escaped literals arrive computed.
 2. `packs/entry/<lang>/pack.toml` and one row in the pack registry
-   (`include_str!`).
+   (`include_str!`). *(Amendment 1: no registry row — the build script
+   discovers the directory. The manifest declares `templates`, `context`,
+   `filters`, `components` and `c_abi_runners`.)*
 3. One variant on `Language`. Every consumer sees it — one enumeration.
 4. **An entry emitter in Rust**, `codegen/entry/emit_<lang>.rs`, that builds
    the pack's view of the plan and renders it. `emit_c.rs` (321 non-test lines,
    5 view structs) and `emit_cpp.rs` (559, 7) are the models.
+   *(Amendment 1: RETIRED. There is no per-language emitter; the one renderer
+   is `codegen/entry/emit/mod.rs`. What a language may need instead is a
+   spelling FILTER — one function and one row in `codegen/entry/filters.rs` —
+   and only when no existing filter spells its values. `check-entry-pack-
+   conformance` refuses a new `emit_<x>.rs`.)*
 5. **Its dispatch arms**: `typed_entry_emitter` in `cmd/codegen.rs` (no
    wildcard, so a new variant does not compile until it has an arm there),
    the emit `match` below it, `entry_pack_for` in `pack.rs`, and
    `run_entry_node` if the language's components register through
    `nano_ros_add_node` (that path renders C++ for every component today).
+   *(Amendment 1: RETIRED. A language's pack is the manifest that declares it;
+   `typed_entry_emitter`, the emit `match` and the `entry_pack_for` table are
+   gone. `run_entry_node` is unchanged.)*
 6. Goldens: add the coordinate to `golden.rs`, which has its own harness `Lang`
    and one emit arm per language; `NROS_UPDATE_GOLDEN=1`; **read the diff**.
    The generated source is a file, not a claim.
@@ -649,7 +663,8 @@ CMake-side property no pack can state about itself.
    message layout), add it to the cross-language size corpus in §5.
 
 No lowering code. An entry language does bring Rust: its view-building emitter
-and its dispatch arms. *(Corrected 2026-09-11. This line used to read "no
+and its dispatch arms. *(Amendment 1: no longer — its Rust is the `Language`
+variant (step 3) and, only if it needs a new spelling, a filter.)* *(Corrected 2026-09-11. This line used to read "no
 lowering code, no emitter, no dispatch arms", which was the goal and not the
 tree. The dispatch sent any non-C language to `emit_cpp` through a `_ =>` arm,
 so a language added by these steps got a C++ entry and nothing said so. The arm
@@ -769,7 +784,8 @@ language first is what made the shortcut visible at all.
   has a Rust generator per kind (`generator/{msg,srv,action,cpp}.rs`) that
   assembles its context and names its files, plus an arm in `nros generate`.
   For entries, a language contributes a pack, a Rust view-building emitter
-  (`emit_<lang>.rs`) and its dispatch arms (§8).
+  (`emit_<lang>.rs`) and its dispatch arms (§8). *(Amendment 1: for entries it
+  is now a pack and, if needed, a filter — no emitter, no dispatch arm.)*
 - The proc-macro and the CLI share lowering; a gate compares the two Rust
   renderings.
 - The tier table uses designated initialisers, and the mirror gate covers
@@ -780,6 +796,9 @@ language first is what made the shortcut visible at all.
   entries — an entry emitter plus its dispatch arms. None of those can be
   forgotten silently: every dispatch over `Language` is an exhaustive `match`,
   so a missing arm is a compile error.
+  *(Amendment 1: for entries, no emitter and no dispatch arm — a pack, and a
+  filter only if it needs a new spelling. A language with no pack is refused
+  by name and reds `check-entry-pack-conformance`.)*
 - *(Note, 2026-09-11.)* The two bullets above read, until this date, "a
   language contributes a pack and a FILTER SET, and nothing else in Rust" and
   "adding a language touches no Rust beyond one `Language` variant". Both
@@ -845,3 +864,66 @@ dispatch DOES call `emit_c` for all five boards. The rows now record what the
 pipeline produces: each calls its family's runner in its boot shape.
 `c_threadx_one` used to pin the refusal text; `c_threadx_tiers` pins the
 sched-context path a tiered ThreadX C plan takes.
+
+---
+
+## Amendment 1 (2026-10-01, phase-474) — the entry emitters are data
+
+§6b's entry clause — "`LoweredEntry` must be the context, not the seed for a
+per-surface projection" — was the blocker phase-469 deferred. Phase-474 paid it.
+
+**What was measured first.** Read side by side, `emit_c.rs` (340 non-test
+lines, 4 view structs) and `emit_cpp.rs` (797, 7) were ONE projection written
+twice, with a third, shared set of six views in `mod.rs` (~330 lines): the same
+per-tier setups with the same node→tier filter and the same per-executor index
+(issue 1272), the same tier rows (1172), sched binds (1283), boot config (0794)
+and services, and the same `time_slice_us` refusal word for word. What differed
+fell into three kinds, and only one of them was language:
+
+| kind | what | where it went |
+| --- | --- | --- |
+| data shaping | nodes' resolved name/namespace/launch identity, component KIND, class; family, boot shape, C-ABI runner names; the executor layout (single / sched contexts / per-tier setups with `(node, on_executor)`); tier rows; services; boot blob; monitor tables sliced per executor; the probe tail | `nros_entry_lower::LoweredEntry` (types, `#[serde(default)]` so the parity corpus is unchanged) built by ONE `lower.rs` in `nros-cli-core` |
+| spelling | string escaping, package identifiers, the C++ board class | three Rust FILTERS (`c_str`, `pkg_ident`, `cpp_board_class`) in `filters.rs`, each declared by the packs that call it |
+| pack requirements | which component kinds a pack constructs, whether it calls the C-ABI runners, whether it renders a probe tail | `pack.toml` fields (`components`, `c_abi_runners`, `metadata_probe`), checked by one generic admission step |
+
+Things that looked like spelling and were not: the executor EXPRESSION
+(`executor` vs `::nros::global_handle()`) and the monitor table's symbol tag
+and banner are template text, so the templates write them.
+
+**What did not change, by decision.**
+
+* Correctness properties stay where the compiler reaches them. A spelling is a
+  filter in Rust, never a table row — phase-469's declined-`spelling.toml`
+  argument, unchanged. The boot-config byte budgets and the
+  `time_slice_us` refusal stay in the lowering.
+* The ROUTING rule (a C entry on a family with no C-ABI runner renders through
+  the C++ pack) stays Rust, as phase-432 W3.2 argued; it now reads the pack's
+  own `c_abi_runners` declaration and finds a language's pack by its manifest.
+* The Rust entry is the `nros::main!` proc-macro (§7, issue 0083). The Rust
+  pack keeps its own view (`context = "rust-parity"`), because it is the parity
+  rendering of that macro; the generic renderer refuses it by that declaration.
+
+**What a new entry language costs now.** A `pack.toml` and its templates; the
+`Language` variant (§8 step 3); a filter only if it needs a spelling none of
+the three provides. Proved two ways:
+
+1. `emit_c.rs` and `emit_cpp.rs` are deleted; every entry golden is
+   byte-identical with `NROS_UPDATE_GOLDEN` unset, and a 510-render control
+   (every golden plan through every entry point, with and without monitor rows,
+   plus a namespaced/param/QoS/session variant of each) is identical except the
+   C pack's component-refusal TEXT, which is now generated from the manifest.
+2. A toy Zig pack — the language §8b used as its probe — lives in
+   `testdata/entry-packs/zig/` as a manifest and one template, and renders every
+   golden C plan through the same admission, lowering and renderer; its outputs
+   are goldens. They are not compiled (no Zig toolchain on the host). §8b's three
+   defects are each absent from what it needed: no board class path, no
+   pre-escaped literal, no pre-rendered C.
+
+`check-entry-pack-conformance` holds both: it covers the fixture root, and it
+refuses a new `codegen/entry/emit_<x>.rs` (the Rust parity renderer is the one
+exemption, by §7).
+
+**One finding filed rather than fixed.** The C pack never received the
+contract monitor rows (phase-462 W1 wired the C++ road only), so a C image with
+declared contracts runs unmonitored — issue 1604. Since this amendment the fix
+is a template edit with no Rust; it is an output change, so it was not made here.
