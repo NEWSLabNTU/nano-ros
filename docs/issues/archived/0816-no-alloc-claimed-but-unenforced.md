@@ -2,7 +2,7 @@
 id: 816
 title: "The book promises no-alloc integrations and nothing checks the linked
   image, so it is a claim rather than a property"
-status: open
+status: resolved
 type: test-gap
 area: tooling
 related: [issue-0817, phase-391]
@@ -35,7 +35,7 @@ with no diagnostic, and the book keeps promising otherwise.
 
 ## Evidence that this class of drift is real
 
-[Issue 0817](archived/0817-platform-funnel-bypassed-in-zephyr-port.md) found
+[Issue 0817](0817-platform-funnel-bypassed-in-zephyr-port.md) found
 sixteen allocation sites in the Zephyr platform port that bypassed
 `nros_platform_alloc` and called `k_malloc` directly. They compiled, linked,
 ran, and passed every lane for as long as they existed. A source grep is what
@@ -55,7 +55,7 @@ a per-tier strictness:
 
 That turns both the book's promise and RFC-0034 D6's single-funnel rule into
 things a build can fail on. Owned by
-[phase 391](../roadmap/archived/phase-391-allocation-unification-and-tier-model.md).
+[phase 391](../../roadmap/archived/phase-391-allocation-unification-and-tier-model.md).
 
 ## What landed: `scripts/check-no-alloc-image.py`
 
@@ -137,3 +137,59 @@ zenoh-pico routes through `z_malloc`/`z_free` and
 - No `just` recipe is wired yet (the lane belongs with the fixture, above).
 - `--claims` is a listing, not a gate — wiring it as one would red-line every
   lane until the no-alloc fixture exists.
+
+## Resolution (2026-10-01)
+
+The fixture this issue named as its remaining half had already landed
+(phase-391 W5-endgame): `heap-free-poc-mps2` builds `nros` without `alloc`, and
+`just ci l3` runs `check-no-alloc-image.py --tier heap-free` on the linked ELF
+(also the depth of `just ci matrix build`). What was still missing was the
+other end: the book claims were not connected to it, `--claims` was a listing
+that always exited 0 and still reported "0 of 4 backed", and it ran only in
+`build-serial` (schedule-only) while its own comment said "fast line".
+
+Done:
+
+1. **The image covers more of what the book says.** `heap-free-poc-mps2` now
+   also links `spin_some`/`spin_forever` and the core `ParameterServer`
+   (`new_in`/`declare`/`set`/`get` over a caller-owned `ParameterStorage<4>`),
+   printing the value read back so it cannot be optimised out. Measured:
+   `--tier heap-free` OK, symbols read 552 (was ~460); QEMU mps2-an385 prints
+   `HEAP-FREE-POC: parameter rate_hz = 42` then the open-refused marker.
+2. **`--claims` is a gate.** It harvests every `book/src/**/*.md` line with
+   no-alloc wording (`no-alloc`, `heap-free`, `without alloc`, `no heap`,
+   `fully static allocation`, `allocation-free`, `zero allocations`); each must
+   be a roster row, matched by TEXT (two of the old four line numbers had
+   drifted). A row of kind `image` must name an image the L3 recipe actually
+   runs through `--tier heap-free` — read from `just/ci.just`, so it cannot go
+   stale toward OK. Other rows (`type-level`, `rationale`, `disclaimer`,
+   `tool`) carry a written reason. There is no `unbacked` kind. The selftest
+   proves each failure direction. Moved onto the fast line.
+3. **The book now says what is checked.** Embassy's "no-alloc contract" and
+   dispatch-strategy's "no-alloc + framework-task-routed contract" now name the
+   checked image and what it does NOT cover (no Embassy image is built; every
+   shipped transport allocates in C). `two-layer-api.md` dropped "zero
+   allocations". Three XRCE sentences ("fully static allocation, no heap
+   required" twice, "heap-free" in the porting guide) were FALSE — every XRCE
+   session and entity is a `nros_xrce_calloc` through `nros_platform_alloc` —
+   and now say it allocates at open/create, never per message.
+
+Measured before/after: `--claims` before = "0 of 4 backed", exit 0 always;
+after = "OK — 8 image promise(s) … 12 other line(s) classified", exit 0; with
+L3's `--tier heap-free` line removed = 9 problems, exit 1; a book line
+"We are fully no-alloc." added = UNROSTERED, exit 1.
+
+Sweep: `grep -rniE 'no-alloc|without alloc\b|heap-free|\bno heap\b|fully
+static (memory )?allocation|allocation-free|zero allocations' book/src`.
+
+NOT done / not measured:
+
+- The `unified` tier is still not wired into a lane (cyclone's `operator new`
+  in four TUs, as recorded above) — unchanged scope, still needs a fix or an
+  `--allow` with a tracked id.
+- No Embassy or RTIC image is built heap-free; the book now says so rather
+  than implying it.
+- The phrase set is a declared list; wording outside it ("no allocator",
+  e.g. the generated rmw-api-comparison page) is not harvested.
+- `scripts/rmw-alloc-sites.py` reports no XRCE row at all because it does not
+  see the `nros_xrce_calloc` helper — filed as [issue 1605](../1605-rmw-alloc-sites-blind-to-xrce-helper.md).

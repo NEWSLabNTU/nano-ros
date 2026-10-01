@@ -132,7 +132,7 @@ image, so this is a tier, not a global choice:
 The tree is already built for this: `alloc` is a Cargo feature and every core
 crate gates `extern crate alloc` on it. What is missing is enforcement — the
 book already promises "fully no-alloc" for embassy and RTIC with nothing
-checking it ([issue 0816](../../issues/0816-no-alloc-claimed-but-unenforced.md)).
+checking it ([issue 0816](../../issues/archived/0816-no-alloc-claimed-but-unenforced.md)).
 
 ## Waves
 
@@ -860,7 +860,7 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0816](../../issues/0816-no-alloc-claimed-but-unenforced.md) | the book promises no-alloc integrations and nothing checks the linked image |
+| [#0816](../../issues/archived/0816-no-alloc-claimed-but-unenforced.md) | the book promises no-alloc integrations and nothing checks the linked image |
 | [#0827](../../issues/archived/0827-unused-rmw-pools-dominate-static-ram.md) | static RAM is a property of the RMW, not of the node |
 | [#0857](../../issues/archived/0857-cell-registry-inline-capacity-heap-regression.md) | ComponentCell's inline registries cost worst-case x biggest-payload heap per component |
 

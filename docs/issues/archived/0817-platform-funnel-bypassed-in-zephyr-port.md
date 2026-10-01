@@ -47,7 +47,7 @@ is latent there and load-bearing for TCP/UDP builds.
 ## What it left behind
 
 - A source grep found these; it cannot see vendored C. The durable check is a
-  link-time symbol gate — [issue 0816](../0816-no-alloc-claimed-but-unenforced.md).
+  link-time symbol gate — [issue 0816](0816-no-alloc-claimed-but-unenforced.md).
 - `net.c` still frees `ep->iptcp` with `zsock_freeaddrinfo` regardless of which
   allocator produced it — [issue 0811](../0811-zephyr-net-iptcp-allocator-provenance-mismatch.md).
   Benign while both routes bottom out in `k_malloc`; not benign after the
