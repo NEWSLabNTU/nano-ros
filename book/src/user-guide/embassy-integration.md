@@ -93,7 +93,7 @@ an `async fn`. We don't — for two reasons:
    What is CHECKED, and what is not: `heap-free-poc-mps2` — a bare-metal Cortex-M3 image built with
    `nros` minus its `alloc` feature, which opens an executor over static
    backing, installs a component, spins, and uses the `ParameterServer` —
-   links with no allocation symbol at all, and `just ci l3` fails if it
+   links with no allocation symbol at all, and the L3 CI lane fails if it
    ever does (`scripts/check-no-alloc-image.py --tier heap-free`).
    No Embassy image is built, and every shipped RMW backend allocates in
    C, so this is a property of the executor and dispatch path — not of an

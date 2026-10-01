@@ -515,14 +515,17 @@ def check_claims(book_files, ci_text, roster=BOOK_CLAIMS):
 
 
 def load_book():
+    """Every TRACKED book page (an index lookup, never a filesystem walk)."""
     book = {}
-    base = os.path.join(ROOT, "book", "src")
-    for dirpath, _dirs, files in os.walk(base):
-        for f in files:
-            if f.endswith(".md"):
-                full = os.path.join(dirpath, f)
-                with open(full, encoding="utf-8") as fh:
-                    book[os.path.relpath(full, ROOT)] = fh.read()
+    out = subprocess.run(
+        ["git", "-C", ROOT, "ls-files", "--", "book/src/*.md", "book/src/**/*.md"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    for rel in sorted(set(out.split())):
+        with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
+            book[rel] = fh.read()
     return book
 
 
