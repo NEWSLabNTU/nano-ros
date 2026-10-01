@@ -1637,6 +1637,35 @@ fn verify_params_projected(model_path: &Path, system_toml: &Path) -> Result<()> 
     )
 }
 
+/// The WARNING-severity entries of a resolved model's `meta.diagnostics`
+/// (issue 1372).
+///
+/// The resolver renders each checker finding as `[<rule>] <severity>: <msg>`,
+/// optionally prefixed by the scope file. Errors never reach a written model
+/// (the resolver refuses emission), and infos are deliberately left in the
+/// file. An unreadable model yields nothing: this is a report, and the
+/// consumers that NEED the model already refuse one they cannot parse.
+fn resolver_warnings(model_path: &Path) -> Vec<String> {
+    let Ok(text) = std::fs::read_to_string(model_path) else {
+        return Vec::new();
+    };
+    let Ok(model) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&text) else {
+        return Vec::new();
+    };
+    model
+        .get("meta")
+        .and_then(|m| m.get("diagnostics"))
+        .and_then(|d| d.as_sequence())
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|d| d.as_str())
+                .filter(|d| d.contains("] warning:"))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn system_toml_model_decls(system_toml: &Path) -> Vec<ModelDecl> {
     let Ok(raw) = std::fs::read_to_string(system_toml) else {
         return Vec::new();
@@ -2335,6 +2364,16 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                         .unwrap_or("launch"),
                     model.strip_prefix(&pkg.dir).unwrap_or(&model).display()
                 );
+            }
+            // Issue 1372 -- the resolver's WARNINGS reach the author. A
+            // checker warning (an error refuses emission) is embedded in
+            // `meta.diagnostics` and was read by nothing: a contract stating
+            // `trigger.timer.rate_hz: 10` beside `min_rate_hz: 30` got its
+            // `[min-rate-mismatch]` written into a build artifact and no line
+            // of output. Infos stay in the model; they say a declaration is
+            // redundant, which is not something to interrupt a sync for.
+            for w in resolver_warnings(&model) {
+                eprintln!("sync: {}: {w}", pkg.name);
             }
         }
     }
@@ -6789,6 +6828,41 @@ nros-zephyr-build = { path = "../../packages/tooling/nros-zephyr-build" }  # nro
 
         // No existing managed block (fresh leaf) -> nothing to narrow.
         assert!(narrowed_generated_entries("", &new_names, &requested).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod resolver_warnings_tests {
+    use super::*;
+
+    /// Issue 1372: the two entries are copied from a model the pinned resolver
+    /// wrote for `derived-tiers-cpp` with one promise raised above its timer
+    /// (`min_rate_hz: 30` on a 10 Hz path). The warning is what `nros sync` now
+    /// prints; the info beside it stays in the file.
+    #[test]
+    fn only_the_warnings_of_a_resolved_model_are_reported() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let model = dir.path().join("system_model.yaml");
+        std::fs::write(
+            &model,
+            "meta:\n  diagnostics:\n  \
+             - 'system.launch.xml: [satisfiability] info: satisfiability analysis not run'\n  \
+             - '[min-rate-mismatch] warning: publisher ''/op/status'' promises min_rate_hz 30 \
+             on ''/status'', but the timers that drive it derive only 10.0000 Hz. (at \
+             nodes./op.pub.status.min_rate_hz)'\nstructure: {}\n",
+        )
+        .unwrap();
+        let got = resolver_warnings(&model);
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert!(
+            got[0].starts_with("[min-rate-mismatch] warning:"),
+            "{got:?}"
+        );
+        assert!(got[0].contains("min_rate_hz 30"), "{got:?}");
+
+        std::fs::write(&model, "meta: {}\n").unwrap();
+        assert!(resolver_warnings(&model).is_empty());
+        assert!(resolver_warnings(&dir.path().join("absent.yaml")).is_empty());
     }
 }
 

@@ -267,8 +267,8 @@ fn every_declared_component_language_has_a_producer() {
 ///    `"callback_groups": ["main"]` rows.
 /// 2. The launch file and its `system.contract.yaml` sidecar resolve through
 ///    the pinned resolver into a model with four nodes, four timer-driven
-///    paths (empty `input`), the 30/10 Hz publish rates the ranker orders by,
-///    and no execution tiers - the input shape `derive_tiers_from_contracts`
+///    paths (empty `input`) whose `trigger.timer.rate_hz` is the 30/10 Hz the
+///    ranker orders by, and no execution tiers - the input shape `derive_tiers_from_contracts`
 ///    keys on.
 #[test]
 fn derived_tiers_cpp_fixture_declares_four_groupful_components_and_resolves() {
@@ -371,17 +371,24 @@ fn derived_tiers_cpp_fixture_declares_four_groupful_components_and_resolves() {
             "{fqn}/on_timer publishes {endpoint}: {:?}",
             path.output
         );
+        assert_eq!(
+            path.trigger,
+            Some(ros_launch_manifest_sched::EffectiveTrigger::Timer { rate_hz: rate }),
+            "{fqn}/on_timer: the rate the derivation ranks by is the path's \
+             `trigger.timer.rate_hz` (issue 1372 / phase-459 W7)"
+        );
         let ep = format!("{fqn}/{endpoint}");
         let contract = model
             .contracts
             .pub_endpoints
             .get(&ep)
             .unwrap_or_else(|| panic!("{ep} has a publish contract"));
-        assert_eq!(
-            contract.min_rate_hz,
-            Some(rate),
-            "{ep}: the rate the derivation ranks by (issue 1372: read from \
-             `min_rate_hz`, equal to the trigger rate on purpose)"
+        assert!(
+            contract.min_rate_hz.is_some_and(|promise| promise < rate),
+            "{ep}: the fixture's publication floor sits BELOW the trigger on \
+             purpose, so a derivation reading the promise instead of the trigger \
+             is caught by `derived_tiers_bake` (issue 1372); got {:?}",
+            contract.min_rate_hz
         );
     }
 }

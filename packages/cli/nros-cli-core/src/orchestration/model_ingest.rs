@@ -1216,8 +1216,10 @@ mod tests {
         );
         let mut node_paths = BTreeMap::new();
         // Periodic 100 Hz control path with a 5 ms deadline. phase-457 W1:
-        // the rate is the path's `trigger` (rlm v0.1.37); the `min_rate_hz`
-        // promise below equals it and stays until W2 stops reading it.
+        // the rate is the path's `trigger` (rlm v0.1.37). The `min_rate_hz`
+        // promise below is the publisher-monitor row this test is about, not a
+        // schedule input: since phase-457 W2 nothing derives a period from it
+        // (issue 1372).
         node_paths.insert(
             "/ctrl/loop".to_string(),
             PathContract {

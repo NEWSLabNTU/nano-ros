@@ -310,3 +310,181 @@ fn without_the_keyword_every_node_is_groupless_and_nothing_derives() {
         "one groupless note per node (issue 1371's persisted form)"
     );
 }
+
+/// The fixture's contract, edited in place in its private copy: every
+/// occurrence of `from` replaced by `to`, and `count` of them required, so an
+/// edit that matched nothing fails here rather than as a schedule that did not
+/// move.
+fn edit_contract(fixture: &Fixture, from: &str, to: &str, count: usize) {
+    let path = fixture.bringup().join("launch/system.contract.yaml");
+    let raw = fs::read_to_string(&path).expect("read the fixture's contract");
+    assert_eq!(
+        raw.matches(from).count(),
+        count,
+        "the fixture's contract no longer spells `{from}` {count} time(s)"
+    );
+    fs::write(&path, raw.replace(from, to)).expect("write the fixture's contract");
+}
+
+/// `node name -> the derived tier's period (us)`.
+fn periods(derived: &DerivedSchedule) -> BTreeMap<String, Option<u64>> {
+    derived
+        .overrides
+        .iter()
+        .map(|ov| {
+            let tier = &ov.callback_groups[0].tier;
+            (ov.name.clone(), derived.tiers[tier].period_us)
+        })
+        .collect()
+}
+
+/// phase-459 W7 / issue 1372: the schedule follows each path's
+/// `trigger.timer.rate_hz`, not the `min_rate_hz` its output promises.
+///
+/// The fixture's two numbers DIFFER, chosen so that ranking by the promises
+/// inverts the schedule (30 Hz pair promises 5 Hz, 10 Hz pair 8 Hz). Before
+/// phase-457 W2 the mapper rebuilt a node's rate from its first output's
+/// `min_rate_hz`, which would put the 10 Hz pair first with 125 ms / 200 ms
+/// periods; the issue measured exactly that substitution on the island, where
+/// it was invisible because every contract stated the two numbers equal.
+///
+/// Then the issue's own experiment, reversed: editing the TRIGGER must move the
+/// schedule. Issue 1372: "A reader editing `trigger: { timer: { rate_hz: 10 } }`
+/// to `20` and rebuilding gets a byte-identical schedule". Raising the slow
+/// pair's trigger to 60 Hz while leaving every promise untouched must put it
+/// FIRST, at 16.7 ms.
+#[test]
+fn the_schedule_follows_the_timer_trigger_not_the_publication_promise() {
+    let fixture = Fixture::copy("trigger-rate");
+    fixture.configure(&["main"]);
+    let model = resolve_model(&fixture.bringup(), false);
+
+    // Precondition: the promises really do disagree with the triggers, in the
+    // direction that would invert the order. Without this the test below could
+    // pass on a fixture whose numbers had been made equal again.
+    let promise = |node: &str| -> f64 {
+        model
+            .contracts
+            .pub_endpoints
+            .iter()
+            .find(|(ep, _)| ep.starts_with(&format!("/{node}/")))
+            .and_then(|(_, c)| c.min_rate_hz)
+            .unwrap_or_else(|| panic!("/{node} promises a min_rate_hz"))
+    };
+    for f in FAST {
+        for s in SLOW {
+            assert!(
+                promise(f) < promise(s),
+                "the fixture must promise LESS on the 30 Hz pair than on the 10 Hz \
+                 pair, or it cannot tell the trigger from the promise: {f}={} {s}={}",
+                promise(f),
+                promise(s)
+            );
+        }
+    }
+
+    let system = system_toml(&fixture.bringup());
+    let derived = derive(&fixture, &model, &system);
+    let per = periods(&derived);
+    for f in FAST {
+        assert_eq!(
+            per[f],
+            Some(33_333),
+            "{f}: 30 Hz trigger -> 33.3 ms. 200000 is its `min_rate_hz: 5` \
+             promise (the issue-1372 substitute): {per:?}"
+        );
+    }
+    for s in SLOW {
+        assert_eq!(
+            per[s],
+            Some(100_000),
+            "{s}: 10 Hz trigger -> 100 ms. 125000 is its `min_rate_hz: 8` \
+             promise: {per:?}"
+        );
+    }
+    let prio = priorities(&derived);
+    assert!(
+        FAST.iter()
+            .all(|f| SLOW.iter().all(|s| prio[*f] < prio[*s])),
+        "rate-monotonic by TRIGGER: the 30 Hz pair outranks the 10 Hz pair \
+         although it promises less: {prio:?}"
+    );
+
+    // The experiment: move the trigger, touch no promise.
+    let raised = Fixture::copy("trigger-rate-raised");
+    raised.configure(&["main"]);
+    edit_contract(
+        &raised,
+        "timer: { rate_hz: 10 }",
+        "timer: { rate_hz: 60 }",
+        2,
+    );
+    let model = resolve_model(&raised.bringup(), false);
+    let system = system_toml(&raised.bringup());
+    let derived = derive(&raised, &model, &system);
+    let per = periods(&derived);
+    for s in SLOW {
+        assert_eq!(
+            per[s],
+            Some(16_667),
+            "{s}: the edited 60 Hz trigger is the period now: {per:?}"
+        );
+    }
+    let prio = priorities(&derived);
+    assert!(
+        SLOW.iter()
+            .all(|s| FAST.iter().all(|f| prio[*s] < prio[*f])),
+        "editing the TRIGGER reorders the schedule - the pair now at 60 Hz \
+         outranks the 30 Hz pair: {prio:?}"
+    );
+}
+
+/// Issue 1372 item 1: a contract whose promise EXCEEDS its own timer is
+/// reported where both numbers exist - by the resolver, as
+/// `[min-rate-mismatch]`, carried in the model's `meta.diagnostics` and
+/// printed by `nros sync` (`cmd::ws::resolver_warnings`).
+///
+/// A promise BELOW the timer is a loose floor and true, so the shipped fixture
+/// (5 Hz and 8 Hz floors under 30 Hz and 10 Hz timers) is the negative control:
+/// it must resolve with no warning at all.
+#[test]
+fn a_promise_above_the_timer_rate_is_a_resolver_warning() {
+    let shipped = Fixture::copy("promise-shipped");
+    let model = resolve_model(&shipped.bringup(), false);
+    let warnings: Vec<&String> = model
+        .meta
+        .diagnostics
+        .iter()
+        .filter(|d| d.contains("] warning:"))
+        .collect();
+    assert!(
+        warnings.is_empty(),
+        "the shipped fixture's promises are all below their timers: {warnings:?}"
+    );
+
+    let over = Fixture::copy("promise-over");
+    edit_contract(
+        &over,
+        "status: { min_rate_hz: 8 }",
+        "status: { min_rate_hz: 30 }",
+        1,
+    );
+    let model = resolve_model(&over.bringup(), false);
+    let mismatch = model
+        .meta
+        .diagnostics
+        .iter()
+        .find(|d| d.contains("[min-rate-mismatch] warning:"))
+        .unwrap_or_else(|| {
+            panic!(
+                "a 30 Hz promise on a 10 Hz timer must be reported; the resolver \
+                 emitted:\n{}",
+                model.meta.diagnostics.join("\n")
+            )
+        });
+    assert!(
+        mismatch.contains("/mrm_comfortable_stop_operator/status")
+            && mismatch.contains("min_rate_hz 30"),
+        "{mismatch}"
+    );
+}

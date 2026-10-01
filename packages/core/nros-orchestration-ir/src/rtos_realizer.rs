@@ -262,7 +262,7 @@ fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
         // first answer.
         let mut path_deadline_ms: Option<f64> = None;
         let mut budget_ms: Option<f64> = None;
-        let mut period_ms: Option<f64> = None;
+        let mut path_period_ms: Option<f64> = None;
         // Every declared WCET on this node, so the blocking term can name the
         // longest one that is NOT the callback being blocked. Collected rather
         // than folded because `B_i` is a max over a set with one element
@@ -280,7 +280,7 @@ fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
                 && *rate_hz > 0.0
             {
                 let per = 1000.0 / rate_hz;
-                period_ms = Some(period_ms.map_or(per, |cur: f64| cur.min(per)));
+                path_period_ms = Some(path_period_ms.map_or(per, |cur: f64| cur.min(per)));
             }
         }
         // `B_i` for the WORST-placed callback on this node: the longest
@@ -315,6 +315,24 @@ fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
             .deadline_us
             .map(|us| us as f64 / 1000.0)
             .or(path_deadline_ms);
+
+        // Issue 1372 -- the PERIOD takes the same road as the deadline above.
+        // `MapperNode.rate_hz` is the shared derivation's fastest `Timer`
+        // trigger over the node's paths: the AUTHORED
+        // `paths.<p>.trigger.timer.rate_hz`, carried into the model as
+        // `PathContract::trigger` (rlm v0.1.37) and nothing else. Before
+        // phase-457 W2 this crate rebuilt the rate from the first output's
+        // `pub.<ep>.min_rate_hz` -- a publication PROMISE -- so editing the
+        // trigger changed no schedule. Reading the shared value is what keeps
+        // the Zephyr period and play_launch's rate-monotonic rank ONE answer;
+        // the path fold is the fallback for a hand-built `MapperInput` that
+        // leaves `rate_hz` unset, and through the real derivation the two
+        // agree (max rate == min period).
+        let period_ms = node
+            .rate_hz
+            .filter(|hz| *hz > 0.0)
+            .map(|hz| 1000.0 / hz)
+            .or(path_period_ms);
 
         out.insert(
             node.name.as_str(),
@@ -1883,5 +1901,139 @@ mod tests {
         );
         assert_eq!(tier.sched_class, "edf");
         assert_eq!(tier.deadline_real, DimRealization::Native);
+    }
+
+    /// Issue 1372 -- the tier's PERIOD is the authored
+    /// `paths.<p>.trigger.timer.rate_hz`, not the `min_rate_hz` any output
+    /// promises.
+    ///
+    /// The model is the shape the issue measured, made to DISAGREE: a 25 Hz
+    /// timer path publishing two endpoints, the first-listed promising
+    /// `min_rate_hz: 10` and the second `40`. The pre-phase-457 reader took the
+    /// first output that carried a promise (`find_map`), so this would have
+    /// been 100 ms; listed the other way round, 25 ms. The trigger says 40 ms.
+    /// Neither promise is a schedule input: a floor below the fire rate is
+    /// loose and true, and one above it is the resolver's `min-rate-mismatch`
+    /// warning.
+    ///
+    /// Driven from a real `SystemModel` through `mapper_input_from_model`, for
+    /// the same reason as the deadline case above: the claim is about the
+    /// CONTRACT field.
+    #[test]
+    fn the_timer_trigger_rate_is_the_tier_period_whatever_the_outputs_promise() {
+        use ros_launch_manifest_model::{
+            Contracts, NodeInstance, PathContract, PubContract, Structure, SystemModel,
+        };
+        use ros_launch_manifest_sched::EffectiveTrigger;
+        use std::collections::BTreeMap;
+
+        let mut nodes = indexmap::IndexMap::new();
+        nodes.insert(
+            "/op".to_string(),
+            NodeInstance {
+                scope: "bringup.launch.xml".to_string(),
+                criticality: Some("high".to_string()),
+                ..Default::default()
+            },
+        );
+        let mut node_paths = BTreeMap::new();
+        node_paths.insert(
+            "/op/on_timer".to_string(),
+            PathContract {
+                input: vec![],
+                output: vec![
+                    "/op/slow_promise".to_string(),
+                    "/op/fast_promise".to_string(),
+                ],
+                trigger: Some(EffectiveTrigger::Timer { rate_hz: 25.0 }),
+                max_latency_ms: Some(20.0),
+                ..Default::default()
+            },
+        );
+        let mut pub_endpoints = BTreeMap::new();
+        for (ep, hz) in [("/op/slow_promise", 10.0), ("/op/fast_promise", 40.0)] {
+            pub_endpoints.insert(
+                ep.to_string(),
+                PubContract {
+                    min_rate_hz: Some(hz),
+                    ..Default::default()
+                },
+            );
+        }
+        let model = SystemModel {
+            structure: Structure {
+                nodes,
+                ..Default::default()
+            },
+            contracts: Contracts {
+                node_paths,
+                pub_endpoints,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let input = crate::mapper_input::mapper_input_from_model(&model);
+        let node = input
+            .nodes
+            .iter()
+            .find(|n| n.name == "/op")
+            .expect("the shared derivation dropped /op");
+        assert_eq!(
+            node.rate_hz,
+            Some(25.0),
+            "the shared derivation's node rate is the trigger's; 10 or 40 means \
+             the pinned derivation reads a promise again -- check the pin"
+        );
+
+        let fifo = caps(false, false, false);
+        let ranked = chain_aware_rank(&input);
+        let plan = realize_rtos(&ranked, &input, &fifo, &plan_for(&fifo));
+        let tier = plan
+            .nodes
+            .iter()
+            .find(|n| n.name == "/op")
+            .expect("the realizer dropped /op");
+        assert_eq!(
+            tier.period_us,
+            Some(40_000),
+            "25 Hz trigger -> 40 ms period. 100000 is the first output's \
+             `min_rate_hz: 10` (the issue-1372 substitute); 25000 is the second's"
+        );
+    }
+
+    /// Issue 1372 -- ONE derivation of the period. `node_facts` reads the
+    /// shared `MapperNode.rate_hz` first, as it reads `deadline_us` (phase-457
+    /// W4), so the Zephyr period and play_launch's rate-monotonic rank cannot
+    /// come from two folds that drift apart. The path fold survives only for a
+    /// hand-built input that leaves `rate_hz` unset -- every older test in this
+    /// module -- which is why the second half asserts it still answers.
+    #[test]
+    fn the_period_reads_the_shared_rate_before_re_folding_the_paths() {
+        let fifo = caps(false, false, false);
+
+        let mut node = node_with_rate("/n", 50.0, 1.0);
+        node.rate_hz = Some(25.0);
+        let input = MapperInput {
+            nodes: vec![node],
+            ..Default::default()
+        };
+        let plan = realize_rtos(&chain_aware_rank(&input), &input, &fifo, &plan_for(&fifo));
+        assert_eq!(
+            plan.nodes[0].period_us,
+            Some(40_000),
+            "the shared rate (25 Hz) wins over this crate's own path fold (50 Hz)"
+        );
+
+        let input = MapperInput {
+            nodes: vec![node_with_rate("/n", 50.0, 1.0)],
+            ..Default::default()
+        };
+        let plan = realize_rtos(&chain_aware_rank(&input), &input, &fifo, &plan_for(&fifo));
+        assert_eq!(
+            plan.nodes[0].period_us,
+            Some(20_000),
+            "no shared rate: the path fold still answers (50 Hz -> 20 ms)"
+        );
     }
 }
