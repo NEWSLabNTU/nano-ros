@@ -780,6 +780,18 @@ const ACTION_CLIENT_SUBSCRIPTIONS: usize = 1;
 const PARAM_SERVICE_QUERYABLES: usize = 6;
 const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
 
+/// MIRROR of `nros_node::lifecycle_services::LIFECYCLE_SERVICE_PUBLISHERS`,
+/// held the same way (issue 1587).
+///
+/// The REP-2002 family is five service servers AND one publisher,
+/// `~/transition_event`. It is VOLATILE — MEASURED against a live humble
+/// `lifecycle_talker`, see the constant's own doc — so it is a term in
+/// [`DerivedEntityKnobs::max_publishers`] and in the liveliness pool that
+/// counts publishers, and in NOTHING else. In particular it adds nothing to
+/// `tl_publishers`, the queryable table or the retention pool, and
+/// `a_lifecycle_image_pays_one_publisher_and_no_queryable` holds that.
+const LIFECYCLE_SERVICE_PUBLISHERS: usize = 1;
+
 /// MIRROR of `nros_node::executor::action::ACTION_CLIENT_SERVICE_CLIENTS`,
 /// held there by `check-infra-queryable-counts`: the three service clients an
 /// action client opens, each of which declares a liveliness token.
@@ -874,6 +886,29 @@ impl InfraServices {
         PARAM_SERVICE_QUERYABLES * self.param_nodes(components) + lifecycle
     }
 
+    /// PUBLISHERS the two families claim at boot — issue 1587.
+    ///
+    /// One, `~/transition_event`, when the bringup declares `lifecycle`; the
+    /// parameter family has none. Once per EXECUTOR and not per node, exactly
+    /// as [`LIFECYCLE_SERVICE_QUERYABLES`] is: `register_lifecycle_services`
+    /// builds one set under the executor's own FQN, which is why
+    /// [`Self::queryables`] multiplies the parameter term by
+    /// [`Self::param_nodes`] and leaves the lifecycle term alone.
+    ///
+    /// Counted here rather than conjured below the declaration. The bringup
+    /// states the FEATURE, so this inventory can see it — the same argument
+    /// issue 1270 makes for the five queryables, and the reason
+    /// `crate::rosout`'s publisher is the user's to declare while this one is
+    /// not: `/rosout` is an opt-in capability with no feature in the model,
+    /// and the lifecycle family has one.
+    pub fn publishers(self) -> usize {
+        if self.lifecycle {
+            LIFECYCLE_SERVICE_PUBLISHERS
+        } else {
+            0
+        }
+    }
+
     /// Either source declaring a family declares it: this is a fact about the
     /// bringup, not a count two sources could each get partly right.
     fn union(self, other: Self) -> Self {
@@ -943,6 +978,14 @@ pub struct DerivedEntityKnobs {
     pub max_subscribers: usize,
     /// `NROS_MAX_PUBLISHERS` -- declared publishers plus the feedback and
     /// status topics each action server publishes.
+    ///
+    /// INCLUDES the lifecycle family's `~/transition_event` when the bringup
+    /// declares `lifecycle` ([`InfraServices::publishers`], issue 1587) --
+    /// the same argument issue 1270 makes for the five queryables one field
+    /// down: the bringup states the feature, so this is a fact the inventory
+    /// can read rather than an entity the runtime conjures below the
+    /// declaration. VOLATILE, so it is a term HERE and in
+    /// [`Self::max_liveliness`] and in nothing else.
     pub max_publishers: usize,
     /// `NROS_MAX_QUERYABLES` -- a service server IS a queryable, and an action
     /// server is [`ACTION_SERVER_QUERYABLES`] of them.
@@ -2704,8 +2747,6 @@ impl EntityInventory {
         let n = |tag: &str| per_kind.get(tag).copied().unwrap_or(0);
         let max_subscribers = n(EntityKind::Subscription.tag())
             + n(EntityKind::ActionClient.tag()) * ACTION_CLIENT_SUBSCRIPTIONS;
-        let max_publishers = n(EntityKind::Publisher.tag())
-            + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_PUBLISHERS;
         // Issue 1270 -- plus the servers the runtime creates for the families
         // the bringup declares: six per node for `param_services`, five once
         // for `lifecycle`. Not a guess: the bringup states the feature, and
@@ -2713,6 +2754,15 @@ impl EntityInventory {
         // check-infra-queryable-counts.
         let components = self.components.len();
         let infra_queryables = self.infra.queryables(components);
+        // Issue 1587 -- the lifecycle family is a publisher too. REP-2002's
+        // communication interface is the five services AND
+        // `~/transition_event`, and `register_lifecycle_services` creates it.
+        // VOLATILE (measured against upstream), so it lands here and in the
+        // liveliness pool below, and NOT in `tl_queryables`.
+        let infra_publishers = self.infra.publishers();
+        let max_publishers = n(EntityKind::Publisher.tag())
+            + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_PUBLISHERS
+            + infra_publishers;
         let param_service_nodes = self.infra.param_nodes(components);
         // Issue 1378 -- plus one cache queryable per TRANSIENT_LOCAL publisher.
         // Such a publisher retains its last sample and declares a queryable on
@@ -5434,12 +5484,59 @@ mod tests {
         let both = knobs("param_services, lifecycle");
         assert_eq!(
             both.max_liveliness - none.max_liveliness,
-            both.infra_queryables + 1,
-            "one token per runtime server, plus one node name for lifecycle"
+            both.infra_queryables + LIFECYCLE_SERVICE_PUBLISHERS + 1,
+            "one token per runtime server, one for the `~/transition_event`
+             publisher (issue 1587), plus one node name for lifecycle"
         );
         assert_eq!(
             both.infra_queryables,
             2 * PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+        );
+    }
+
+    /// Issue 1587 — what a lifecycle image pays for REP-2002's announcement
+    /// channel, and what it does NOT pay.
+    ///
+    /// phase-467's study priced this row as the most expensive of its
+    /// thirteen on the assumption that `~/transition_event` is
+    /// TRANSIENT_LOCAL, which would have put a SIXTH slot into every
+    /// lifecycle image's queryable table — `ZPICO_MAX_QUERYABLES` defaults to
+    /// 8 embedded against the eleven `[param_services]` + `[lifecycle]`
+    /// already claim (issues 0460 / 1378). Measured against a live humble
+    /// `lifecycle_talker`, the topic is RELIABLE / VOLATILE, so the bill is
+    /// one publisher and one liveliness token and nothing else.
+    ///
+    /// Asserted as a DIFFERENCE between the two images rather than against
+    /// absolute numbers, so the test says what the feature costs rather than
+    /// re-stating the derivation's arithmetic.
+    #[test]
+    fn a_lifecycle_image_pays_one_publisher_and_no_queryable() {
+        let knobs = |features: &str| {
+            EntityInventory::from_model("t", &infra_model(features))
+                .expect("model describes wiring")
+                .derive()
+                .knobs()
+                .expect("derived")
+                .clone()
+        };
+        let none = knobs("");
+        let lifecycle = knobs("lifecycle");
+
+        assert_eq!(
+            lifecycle.max_publishers - none.max_publishers,
+            LIFECYCLE_SERVICE_PUBLISHERS,
+            "declaring `lifecycle` buys the `~/transition_event` publisher a slot"
+        );
+        assert_eq!(
+            lifecycle.max_queryables - none.max_queryables,
+            LIFECYCLE_SERVICE_QUERYABLES,
+            "the five service servers and NOT a sixth cache queryable — the \
+             announcement publisher is VOLATILE, so it declares none"
+        );
+        assert_eq!(
+            lifecycle.tl_publishers, none.tl_publishers,
+            "and it is not a transient-local publisher, so the retention pool \
+             and `transient_local_publishers_over`'s count do not move either"
         );
     }
 
