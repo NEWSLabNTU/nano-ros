@@ -203,3 +203,89 @@ fail. Whatever lands has to either set `NROS_CHECK_SKIP_LEDGER` from the recipe
 translates into a `nros_check_skip` call — the shell ledger being the one that
 demonstrably reaches the summary. The two existing readers should move to the
 same spelling in that sweep; they are part of it, not a precedent for it.
+
+## It is not only agent worktrees — main's push `gate` lane has this on every push (2026-10-02)
+
+The entry above frames "no tree to look at" as the ordinary condition **in a
+linked agent worktree**. It is also the ordinary condition on the `push` event
+in CI, which this issue did not record, and there it costs a lane on `main`.
+
+Every completed push `gate` run on `main` on 2026-10-01 failed, five of five,
+with the same two gates and the same count:
+
+```
+2 of 379 gate(s) FAILED
+check-capability-conditionals: packages/…/zenoh-pico/include/… is missing
+check-xrce-vendored-versions: no vendored tree checked out — nothing verified.
+```
+
+Runs 36938229122 (`2eb977f6f`), 36933780738 (`0183a0434`), 36926328875
+(`d84a808b8`), 36920672159 (`d986c270a`), 36867095678 (`85ae1d156`) — job
+`check (fast + PR source gates; …)`, step 14 `just check fast`. The second
+string is verbatim the one measured in the worktree above, so the mechanism is
+identical; only the host differs.
+
+### Why the push lane has no tree, and why the PR lane does
+
+`gate.yml`'s provisioning step is conditioned on the event, and `push` is not in
+the list:
+
+```yaml
+- name: Provision compile-tier sources
+  if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+  run: |
+    nros setup --source px4-rs --source zenoh-pico --source mbedtls \
+      --source micro-cdr --source micro-xrce-dds-client --source cyclonedds-src
+```
+
+Measured on both sides of that condition, same job, same gate list:
+
+| event | `Provision compile-tier sources` | `just check fast` |
+| --- | --- | --- |
+| `pull_request` (36941574537, 36941816207) | success | **success** |
+| `push` (the five runs above) | **skipped** | **failure** |
+
+Step 12, `Init submodules whose pin moved (commits only)`, does run on push —
+but it fetches commits for `check-submodule-pins`, not working trees, so it
+cannot satisfy either gate.
+
+### What this makes it
+
+The comment immediately below that step in `gate.yml` states the contract these
+two gates break:
+
+> check-fast is buildless + source-free: the C/C++ gates here are clang-format
+> only … The compile gates … (which pull the ros-launch-resolve submodule + the
+> zenoh-pico source) live in [the compile tier]
+
+So the lane's own authored contract says `check fast` needs no sources, and two
+of its 379 gates need vendored sources. That is the `check-lane-contracts` rule
+— a gate in an affordability tier may only resolve artifacts the job itself
+provides — one event over from where that gate looks.
+
+The consequence is the one CLAUDE.md names: **a lane red every cycle has no
+signal capacity.** A genuine `check fast` regression landing on `main` today
+would have arrived as `2 of 379 gate(s) FAILED` beside two gates that examined
+nothing, indistinguishable from yesterday's failure, on every push.
+
+### What this is NOT
+
+It is not a merge-gating failure and nothing broken lands because of it. The
+required `CI` context on a pull request is produced on the `pull_request` event,
+where the step runs and `check fast` passes; the merge queue runs on
+`merge_group`, which is also in the list. This is why it survived a whole day
+unremarked — the lane that is uniformly red is the one no one is required to
+read.
+
+It is also not 1226. There the gate ran nowhere; here it runs, on an event where
+it cannot answer.
+
+### What would close this half
+
+The three-outcome treatment this issue already prescribes — a reported
+NOT VERIFIED through the `nros_check_skip` ledger when the tree is absent,
+rather than a hard FAIL — fixes the push lane and the agent worktree with one
+change, and leaves the gates fully load-bearing on the three events that
+provision. Adding `push` to the step's event list would also turn the lane
+green, but it buys a provisioning run on every push for two gates, and it
+leaves every agent worktree exactly where this issue found it.
