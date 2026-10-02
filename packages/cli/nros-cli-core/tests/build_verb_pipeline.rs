@@ -90,7 +90,7 @@ fn fixture(dir: &Path) {
         &dir.join("src/demo_bringup/system.toml"),
         "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
          [image_defaults]\nrmw = \"zenoh\"\n\n\
-         [image.zephyr]\nboard = \"native_sim/native/64\"\n\n\
+         [image.zephyr]\nboard = \"zephyr\"\n\n\
          [image.native]\nboard = \"linux\"\n",
     );
     // phase-383 F4 — a cargo package carrying no package.xml. Found by the walk:
@@ -129,8 +129,8 @@ fn selected_args(ws: &Path, images: &[&str], select: &[&str], up_to: &[&str]) ->
 
 #[test]
 fn a_zephyr_image_resolves_to_west_and_needs_no_generated_root() {
-    // The composition defect this test exists for. `native_sim/native/64` says
-    // nothing about being Zephyr, so choosing a driver on the board NAME picked
+    // The composition defect this test exists for. The board id (`zephyr`) says
+    // nothing about how it is BUILT, so choosing a driver on the board NAME picked
     // cargo and demanded a root a west app does not need (RFC-0065 D3).
     let tmp = tempfile::tempdir().unwrap();
     fixture(tmp.path());
@@ -149,6 +149,29 @@ fn a_zephyr_image_resolves_to_west_and_needs_no_generated_root() {
         "the handoff carries the FRAMEWORK board string: {}",
         hand.display()
     );
+}
+
+/// Issue 1519 — the image authors the NANO-ROS id (`zephyr`, above) and `-b`
+/// is the descriptor's `[board.zephyr] west_board`. Authoring that framework
+/// string instead used to work only because the descriptor also listed it as
+/// a name; it is refused now, naming the id to write, before any plan exists.
+#[test]
+fn an_image_authoring_the_framework_board_string_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let sys = tmp.path().join("src/demo_bringup/system.toml");
+    let text = std::fs::read_to_string(&sys).unwrap();
+    write(
+        &sys,
+        &text.replace(
+            "[image.zephyr]\nboard = \"zephyr\"",
+            "[image.zephyr]\nboard = \"native_sim/native/64\"",
+        ),
+    );
+    let e = plan_builds(&args(tmp.path(), &["zephyr"])).expect_err("framework id on an image");
+    let msg = format!("{e:#}");
+    assert!(msg.contains("[image.zephyr] board"), "{msg}");
+    assert!(msg.contains("board = \"zephyr\""), "names the fix: {msg}");
 }
 
 #[test]
@@ -312,8 +335,8 @@ fn zephyr_overlays_go_through_extra_conf_file_never_conf_file() {
     write(
         &sys,
         &text.replace(
-            "[image.zephyr]\nboard = \"native_sim/native/64\"",
-            "[image.zephyr]\nboard = \"native_sim/native/64\"\nconf = [\"prj-edf.conf\"]",
+            "[image.zephyr]\nboard = \"zephyr\"",
+            "[image.zephyr]\nboard = \"zephyr\"\nconf = [\"prj-edf.conf\"]",
         ),
     );
 
@@ -1119,7 +1142,7 @@ fn second_bringup(dir: &Path, image_id: &str) {
         &format!(
             "[system]\nname = \"derived\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
              [image_defaults]\nrmw = \"zenoh\"\n\n\
-             [image.{image_id}]\nboard = \"native_sim/native/64\"\n"
+             [image.{image_id}]\nboard = \"zephyr\"\n"
         ),
     );
 }

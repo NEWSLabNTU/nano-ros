@@ -18,7 +18,6 @@ scripts/check-cargo-profile-mirror.sh
 scripts/check-cbindgen-pin.sh
 scripts/check-cli-fresh.sh
 scripts/check-cpp-ffi-error-mapping.py
-scripts/check-deploy-board-resolves.py
 scripts/check-doc-refs.sh
 scripts/check-example-leaf-build-dirs.py
 scripts/check-example-matrix.sh

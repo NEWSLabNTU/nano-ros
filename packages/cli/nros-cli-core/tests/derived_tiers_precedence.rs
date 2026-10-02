@@ -40,7 +40,7 @@ use nros_orchestration_ir::derive::{
 };
 
 /// The board these bakes are for. The fixture's `[image.zephyr]` names
-/// `native_sim/native/64`, whose descriptor's platform gives this tier key.
+/// `zephyr`, whose descriptor's platform gives this tier key.
 const TARGET_RTOS: &str = "zephyr";
 
 /// The Zephyr application pool this board's Kconfig resolves to (RFC-0079

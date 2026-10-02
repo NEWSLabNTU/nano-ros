@@ -50,7 +50,7 @@ use nros_orchestration_ir::{
 use ros_launch_manifest_model::SystemModel;
 
 /// The board this bake is for. The fixture's `[image.zephyr]` names
-/// `native_sim/native/64`, whose descriptor's platform gives this tier key.
+/// `zephyr`, whose descriptor's platform gives this tier key.
 const TARGET_RTOS: &str = "zephyr";
 
 /// The fixture's own `system.toml`, as the bake loads it.

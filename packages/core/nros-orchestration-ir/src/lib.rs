@@ -133,18 +133,13 @@ pub fn is_known_framework(name: &str) -> bool {
 pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
     Some(match key {
         "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => "rtic",
-        // BOTH names of the zephyr board descriptor
-        // (`packages/boards/zephyr/nros-board.toml`: `names = ["zephyr",
-        // "native_sim/native/64"]`). Issue 1435 — `native_sim/native/64`
-        // became a `BOARD_PATHS` key in phase-445 W5 and was not added here,
-        // so it resolved to `None`, which every caller reads as `owned-spin`,
-        // which emits `<ZephyrBoard as BoardEntry>::run` — and that crate has
-        // ZERO `BoardEntry` impls, so the entry cannot compile. Latent only
-        // because no board crate declares a framework (making this table the
-        // one in-tree route) and every live Rust Zephyr leaf writes the short
-        // name. A key is a name of a BOARD; both names of one board want the
-        // same entry shape, always.
-        "zephyr" | "native_sim/native/64" => "zephyr",
+        // Issue 1435 — `native_sim/native/64` was a second `BOARD_PATHS` key
+        // for this board and was missing here, so it read `owned-spin` and
+        // emitted a `BoardEntry::run` `ZephyrBoard` does not implement. Issue
+        // 1519 retired that key (it is Zephyr's id, never an image's), so the
+        // board has one name again; `every_key_of_one_board_zst_wants_one_
+        // framework` still holds the rule for any future second name.
+        "zephyr" => "zephyr",
         "esp32-qemu" | "esp32-c3-baremetal" => "esp32",
         // NuttX, FreeRTOS, ThreadX and native ride `owned-spin`: the RTOS (or
         // the board crate's own entry symbol) calls `main`, and the macro emits
@@ -260,24 +255,18 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
         "::nros_board_esp32_qemu::Esp32QemuEntry",
         false,
     ),
-    ("zephyr", "::nros_board_zephyr::ZephyrBoard", false),
-    // The SAME board under the zephyr descriptor's second name
-    // (`names = ["zephyr", "native_sim/native/64"]`). It became a key in
-    // phase-445 W5, when a Zephyr entry's board stopped being a hand-written
-    // `deploy = "zephyr"` token and started being read from the image that
-    // builds it — and `examples/workspaces/rust` spells that image's board
-    // this way.
-    //
     // `links_std` is FALSE even though native_sim compiles for the host
     // triple: the entry is a `#![no_std]` staticlib (Zephyr owns `main`), and
     // `zephyr/CMakeLists.txt` appending `,std` to the feature list makes `std`
     // REACHABLE, never present in the crate root. Issue 0589 is the other half
     // of the same fact.
-    (
-        "native_sim/native/64",
-        "::nros_board_zephyr::ZephyrBoard",
-        false,
-    ),
+    //
+    // ONE key for this board. `native_sim/native/64` was a second one from
+    // phase-445 W5 until issue 1519: it is Zephyr's id for the board, not a
+    // nano-ros one, so no `[image.*] board` may author it (`nros build`
+    // refuses it, naming `zephyr`) and a key for it here would be a second
+    // opinion that still accepted it.
+    ("zephyr", "::nros_board_zephyr::ZephyrBoard", false),
     (
         "rtic-mps2-an385",
         "::nros_board_mps2_an385::RticMps2An385",

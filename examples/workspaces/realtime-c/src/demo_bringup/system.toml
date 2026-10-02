@@ -115,7 +115,7 @@ board = "qemu-armv7a-nuttx"
 board = "rv-virt-nuttx"
 
 [image.zephyr]
-board = "native_sim/native/64"
+board = "zephyr"
 conf = ["prj-zenoh.conf"]
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the

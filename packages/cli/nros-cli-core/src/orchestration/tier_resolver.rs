@@ -347,7 +347,7 @@ const DEPLOY_KIND_SELF: &str = "self";
 /// CATALOG (issue 1285 follow-up).
 ///
 /// The board id from [`target_board_id`] is an IMAGE board id. That is the
-/// catalog's namespace (`native_sim/native/64`, `qemu-armv7a-nsh`,
+/// catalog's namespace (`zephyr`, `qemu-armv7a-nsh`,
 /// `esp32c3`), not the entry key table. So it resolves through
 /// [`resolve_board_id`](super::image::resolve_board_id), the same rule
 /// `nros build` uses for the image. The descriptor's `platform` then gives the
@@ -398,6 +398,13 @@ pub fn derive_target_platform(
         return Ok(super::board_descriptor::PlatformKind::Posix);
     };
     let descriptor = super::image::resolve_board_id(catalog, &origin, &board)?;
+    // Issue 1519 — the image arm of `target_board_id` holds an AUTHORED image
+    // board, so it obeys the same rule `nros build` applies to it; a deploy
+    // board may name the downstream id (issue 0606). `origin` is the label
+    // `target_board_id` built for exactly this distinction.
+    if origin.starts_with("[image.") {
+        super::image::refuse_framework_board(&origin, &board, descriptor)?;
+    }
     Ok(descriptor.platform)
 }
 
@@ -493,7 +500,6 @@ mod tests {
             for (id, want) in [
                 ("native", "posix"),
                 ("zephyr", "zephyr"),
-                ("native_sim/native/64", "zephyr"),
                 ("threadx-linux", "threadx"),
                 ("rv-virt-threadx", "threadx"),
                 ("mps2-an385-freertos", "freertos"),
@@ -516,6 +522,18 @@ mod tests {
             }
         }
 
+        /// Issue 1519 — an IMAGE authoring the framework's board id is refused
+        /// here exactly as `nros build` refuses it, while a DEPLOY may name it
+        /// (issue 0606).
+        #[test]
+        fn an_image_authoring_a_framework_board_id_is_refused() {
+            let s = sys("[image.fw]\nboard=\"native_sim/native/64\"\n");
+            let err = rtos(&s, Some("fw")).expect_err("framework id on an image");
+            assert!(err.contains("board = \"zephyr\""), "names the fix: {err}");
+            let s = sys("[deploy.fw]\nkind=\"flash\"\nboard=\"native_sim/native/64\"\n");
+            assert_eq!(rtos(&s, Some("fw")), Ok("zephyr"));
+        }
+
         /// Ids the substring match answered wrongly. `native_sim/native/64`
         /// is a Zephyr board (`packages/boards/zephyr`), and `native` in its
         /// name is the ROLE (a host process), not the platform. So its tiers
@@ -523,7 +541,6 @@ mod tests {
         #[test]
         fn substring_victims_read_their_platform() {
             for (id, was, now) in [
-                ("native_sim/native/64", "posix", "zephyr"),
                 ("qemu-cortex-a53", "posix", "zephyr"),
                 ("mps2-an385-zephyr", "zephyr", "zephyr"),
                 ("s32z270", "posix", "freertos"),
@@ -534,6 +551,10 @@ mod tests {
                 let s = sys(&format!("[image.fw]\nboard=\"{id}\"\n"));
                 assert_eq!(rtos(&s, Some("fw")), Ok(now), "`{id}` (was `{was}`)");
             }
+            // `native_sim/native/64` is the framework's id, so an image may
+            // not author it (issue 1519); a deploy still reaches its platform.
+            let s = sys("[deploy.fw]\nkind=\"flash\"\nboard=\"native_sim/native/64\"\n");
+            assert_eq!(rtos(&s, Some("fw")), Ok("zephyr"), "was `posix`");
         }
 
         /// An id no descriptor claims is refused, naming the line and the known
@@ -549,7 +570,7 @@ mod tests {
             );
             // Descriptor NAMES. (`mps2-an385-freertos` resolves too, through
             // the directory alias, but the list names only `names` entries.)
-            for known in ["freertos", "native_sim/native/64", "native"] {
+            for known in ["freertos", "zephyr", "native"] {
                 assert!(err.contains(known), "message omits `{known}`: {err}");
             }
             let s = sys("[deploy.fw]\nkind=\"embedded\"\n");

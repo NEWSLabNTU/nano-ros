@@ -4,9 +4,14 @@
 # CMake layer via `rust_cargo_application()`.
 
 [[board]]
-# phase-351 / issue 0606 — the ZEPHYR board string a deploy names — `[deploy.*].board` carries the
-# downstream ecosystem's id, and for Zephyr that is `<board>/<soc>/<variant>`.
-names = ["zephyr", "native_sim/native/64"]
+# Issue 1519 — ONE name, the nano-ros id an `[image.*] board` authors. The
+# Zephyr board string (`native_sim/native/64`) used to sit here as a second
+# name so images could author it; it is `[board.zephyr] west_board` below now,
+# and `BoardDescriptor::answers_to` still resolves it from there (a
+# `[deploy.*].board` naming the downstream id keeps working, issue 0606). An
+# `[image.*] board` that spells it is REFUSED, naming `zephyr` — see
+# `image::refuse_framework_board`.
+names = ["zephyr"]
 platform = "zephyr"
 toolchain = "stable"
 entry_kind = "zephyr-staticlib"
@@ -48,11 +53,9 @@ crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
 # authored, which is right only for an image that spells a Zephyr board — the
 # thing `ImageBlock::board` says never to author. Measured: 21 in-tree images
 # author `board = "zephyr"`, and every one of them emitted `west build -b
-# zephyr`, a board Zephyr does not have. The two `names` above are the same
-# board, so both must reach the same `-b`, and this is the field that says so
-# (the doc-comment on `west_build_board` calls the second `names` entry
-# "smuggling" for exactly this reason — retiring it is a separate change; this
-# makes the two agree meanwhile).
+# zephyr`, a board Zephyr does not have. Issue 1519 then retired the second
+# `names` entry this used to sit beside, so this is the ONLY place the Zephyr
+# spelling is stated.
 [board.zephyr]
 west_board = "native_sim/native/64"
 

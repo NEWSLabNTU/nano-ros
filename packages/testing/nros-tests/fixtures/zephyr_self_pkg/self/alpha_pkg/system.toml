@@ -12,4 +12,4 @@ class = "alpha_pkg::Node"
 name = "selfpkg"
 
 [image.zephyr]
-board = "native_sim/native/64"
+board = "zephyr"

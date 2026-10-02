@@ -317,12 +317,21 @@ fixture rows already said as `conf_files`.
 
 ## D7 — the board is a NAME on a descriptor, not a free-form west argument
 
+> **Amended by issue 1519.** The "two jobs from one string" below is how D7
+> shipped, and it is retired: `[image.*] board` is the nano-ros id ONLY, and the
+> string `west build -b` receives is the descriptor's `[board.zephyr]
+> west_board`. The `zephyr` descriptor now reads `names = ["zephyr"]` +
+> `[board.zephyr] west_board = "native_sim/native/64"`; the framework string
+> still RESOLVES (a `[deploy.*].board` may name it, issue 0606) but an image
+> authoring it is refused, naming `zephyr`. `-b` was measured unchanged for
+> every migrated image.
+
 `[image.*] board` does two jobs from one string. It is passed to `west build
 -b` verbatim, AND it is resolved against nano-ros's board catalog, where a
 descriptor carries a **name set**:
 
 ```toml
-# packages/boards/zephyr/nros-board.toml
+# packages/boards/zephyr/nros-board.toml  (as shipped; see the note above)
 names = ["zephyr", "native_sim/native/64"]
 platform = "zephyr"
 entry_kind = "zephyr-staticlib"
@@ -448,7 +457,8 @@ default answer.
 `[image.*] board` is both the catalog lookup key AND, for a Zephyr image, the
 string west receives. The in-tree descriptors hide the collision by convention:
 their name lists carry the Zephyr spelling (`names = ["zephyr",
-"native_sim/native/64"]`) and the examples author that one.
+"native_sim/native/64"]`) and the examples author that one. (Until issue 1519,
+which ended the convention — see the note on D7.)
 
 A workspace-local board makes the convention hard to keep, because the natural
 name for a package is the friendly one. Measured, before the field existed:

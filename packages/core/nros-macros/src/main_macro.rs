@@ -559,9 +559,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // which also made a TYPO build for whatever board the image id
             // names: `[image.native] board = "frobnicator"` compiled as native,
             // the declared value unable to take effect and nothing saying so
-            // (`unknown_board_emits_compile_error`). The Zephyr spelling is a
-            // key of its own now (`native_sim/native/64`), so the table is
-            // the one answer, as it was before W5.
+            // (`unknown_board_emits_compile_error`). The table is the one
+            // answer, as it was before W5 — and a framework spelling such as
+            // `native_sim/native/64` is not in it, because an image never
+            // authors one (issue 1519: `nros build` refuses it, naming the
+            // nano-ros id, `zephyr`).
             let deploy = declared;
             let resolved = board_path_for(&deploy).ok_or_else(|| {
                 syn::Error::new(

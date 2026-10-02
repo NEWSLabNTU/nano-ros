@@ -191,7 +191,7 @@ locator = "tcp/127.0.0.1:9030"
 # `prj-xrce.conf` / `prj-cyclonedds.conf` moved too and are inert until an
 # image names one — a fragment is only applied when `conf` lists it.
 [image.zephyr]
-board = "native_sim/native/64"
+board = "zephyr"
 conf = ["prj-zenoh.conf"]
 locator = "tcp/10.0.2.2:7430"
 
@@ -200,7 +200,7 @@ locator = "tcp/10.0.2.2:7430"
 # one above, because `entry` names a package whose name is NOT `<id>_entry` and
 # that is the case the locate path has to keep answering.
 [image.zephyr_robot1]
-board = "native_sim/native/64"
+board = "zephyr"
 entry = "zephyr_entry_robot1"
 conf = ["prj-zenoh.conf"]
 launch = "multihost.launch.xml"

@@ -437,12 +437,12 @@ impl CAbiRunners {
 pub const BOARD_KEYS: &[(&str, BoardFamily)] = &[
     ("native", BoardFamily::Native),
     ("posix", BoardFamily::Native),
+    // ONE key for the zephyr descriptor. `native_sim/native/64` was a second
+    // from phase-445 W5 until issue 1519, because bringups authored it as an
+    // image board; that is Zephyr's id, which `nros build` now refuses on an
+    // image (naming `zephyr`), so a key here would accept what the CLI does
+    // not.
     ("zephyr", BoardFamily::Zephyr),
-    // The zephyr descriptor's second name, and a key since phase-445 W5:
-    // a Zephyr entry's board is now READ from the image that builds it
-    // rather than written as a `deploy = "zephyr"` token, and
-    // `examples/workspaces/rust` spells that image's board this way.
-    ("native_sim/native/64", BoardFamily::Zephyr),
     ("fvp-aemv8r-smp", BoardFamily::Zephyr),
     ("armfvp", BoardFamily::Zephyr),
     ("nuttx", BoardFamily::Nuttx),
@@ -591,10 +591,11 @@ mod tests {
         }
         // 19 keys the C++ emitter knew, plus the two RTOS keys only the Rust
         // pack knew (`nuttx-riscv`, `freertos-qemu-mps2-an385`, issue 1285),
-        // plus `native_sim/native/64` (phase-445 W5).
+        // plus `native_sim/native/64` (phase-445 W5), which issue 1519 retired
+        // again.
         assert_eq!(
             BOARD_KEYS.len(),
-            22,
+            21,
             "a key was added or removed without a row"
         );
     }

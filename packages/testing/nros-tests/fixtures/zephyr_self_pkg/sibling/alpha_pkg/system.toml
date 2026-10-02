@@ -17,5 +17,5 @@ name = "selfpkg"
 # variant the application IS this package and its own `system.toml` answers,
 # so no `entry` is needed there.)
 [image.zephyr]
-board = "native_sim/native/64"
+board = "zephyr"
 entry = "caller"
