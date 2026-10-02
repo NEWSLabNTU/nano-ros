@@ -70,6 +70,21 @@ struct SubState {
     bool pending_too_small{false};
     /// Issue 1269 — the graph this reader is listed in (see PubState::graph).
     GraphState* graph{nullptr};
+    /// Issue 1495 — publication handle → writer GUID, for `take_with_info`.
+    ///
+    /// A sample carries its writer's instance HANDLE, which is local to this
+    /// participant and means nothing to anyone else; the GUID is the identity
+    /// `get_gid_for_publisher` reports and a peer's graph prints. The lookup
+    /// (`dds_get_matched_publication_data`) allocates, so the last few answers
+    /// are kept: a subscription almost always hears from a handful of
+    /// writers, and a miss costs one lookup, never a wrong answer.
+    struct WriterGuid {
+        dds_instance_handle_t handle;
+        dds_guid_t guid;
+    };
+    static constexpr size_t kWriterGuidCache = 4;
+    WriterGuid writer_guids[kWriterGuidCache]{};
+    size_t writer_guid_next{0};
 };
 
 inline SubState* as_state(const rmw_subscription_t* s) {
@@ -209,8 +224,12 @@ rmw_ret_t subscription_destroy(rmw_subscription_t* subscriber) {
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_span_t* out,
-                            bool* out_taken) {
+/// One take, reporting the sample's `dds_sample_info_t` to `si_out` when the
+/// caller wants it. `subscription_take` and `subscription_take_with_info` are
+/// this function with and without that out-parameter — one body, so the two
+/// entry points cannot disagree about which sample they return.
+static rmw_ret_t take_one(const rmw_subscription_t* subscriber, rmw_mut_byte_span_t* out,
+                          bool* out_taken, dds_sample_info_t* si_out) {
     /* phase-406 W2 — by pointer: `capacity` in, `len` out. */
     if (out == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
     uint8_t* buf = out->data;
@@ -278,6 +297,97 @@ rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_s
 
     *out_len = static_cast<size_t>(total);
     *out_taken = true;
+    if (si_out != nullptr) {
+        *si_out = si[0];
+    }
+    return NROS_RMW_RET_OK;
+}
+
+rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_span_t* out,
+                            bool* out_taken) {
+    return take_one(subscriber, out, out_taken, nullptr);
+}
+
+/// Issue 1495 — the writer GUID behind a publication handle, or false.
+static bool writer_guid_of(SubState* state, dds_instance_handle_t handle, dds_guid_t* out) {
+    if (handle == 0) {
+        return false;
+    }
+    for (const auto& e : state->writer_guids) {
+        if (e.handle == handle) {
+            *out = e.guid;
+            return true;
+        }
+    }
+    dds_builtintopic_endpoint_t* ep = dds_get_matched_publication_data(state->reader, handle);
+    if (ep == nullptr) {
+        // The writer is already gone (unmatched between delivery and this
+        // take). Not an error: the gid is reported unknown, the sample is not.
+        return false;
+    }
+    *out = ep->key;
+    dds_builtintopic_free_endpoint(ep);
+    state->writer_guids[state->writer_guid_next] = SubState::WriterGuid{handle, *out};
+    state->writer_guid_next = (state->writer_guid_next + 1) % SubState::kWriterGuidCache;
+    return true;
+}
+
+/// Issue 1495 — `take` plus the sample's metadata.
+///
+/// This is the C-backend half of the publisher-gid defect. Before it, a pure
+/// C/C++ backend had no way to report metadata at all — the runtime's side
+/// table is written only by the Rust adapter — so a Cyclone `message_info()`
+/// callback saw `None`. `rmw_vtable.h`'s `take_with_info` slot is the channel
+/// that was designed for it; the runtime now dispatches it.
+///
+/// What each field is, and what it is NOT:
+///
+/// * `publisher_gid` — the WRITER GUID, zero-padded: the same 16 bytes
+///   `cyclone_get_gid_for_publisher` reports for that writer and a peer's
+///   `ros2 topic info --verbose` prints for it. Deliberately not what a stock
+///   Humble `rmw_cyclonedds_cpp` subscriber reports there: it copies the
+///   8-byte publication HANDLE (`rmw_node.cpp`, 1.3.4), a participant-local
+///   number no other participant and no gid query can match. Unknown (all
+///   zero) when the writer has unmatched before the take.
+/// * `source_timestamp` — the writer's stamp, ns.
+/// * `received_timestamp` — 0, "not stamped": Cyclone 0.10's sample info
+///   carries no reception time and a stamp taken HERE would be the take time,
+///   which is a different fact.
+/// * both sequence numbers — the UNSUPPORTED sentinel. 0.10's sample info has
+///   none, and a counter of our own would be a reception count posing as the
+///   writer's.
+/// * `from_intra_process` — the writer's GUID prefix is our participant's.
+///
+/// The implementation identifier is set by the vtable wrapper, which owns it.
+rmw_ret_t subscription_take_with_info(const rmw_subscription_t* subscriber,
+                                      rmw_mut_byte_span_t* out, bool* out_taken,
+                                      rmw_message_info_t* info) {
+    if (info == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    dds_sample_info_t si;
+    std::memset(&si, 0, sizeof(si));
+    const rmw_ret_t rc = take_one(subscriber, out, out_taken, &si);
+    if (rc != NROS_RMW_RET_OK || !*out_taken) {
+        return rc;
+    }
+    std::memset(info, 0, sizeof(*info));
+    info->source_timestamp = static_cast<rmw_time_point_value_t>(si.source_timestamp);
+    info->received_timestamp = 0;
+    info->publication_sequence_number = RMW_MESSAGE_INFO_SEQUENCE_NUMBER_UNSUPPORTED;
+    info->reception_sequence_number = RMW_MESSAGE_INFO_SEQUENCE_NUMBER_UNSUPPORTED;
+
+    SubState* state = as_state(subscriber);
+    dds_guid_t writer;
+    if (writer_guid_of(state, si.publication_handle, &writer)) {
+        static_assert(sizeof(writer.v) <= RMW_GID_STORAGE_SIZE, "cyclone GUID must fit rmw_gid_t");
+        std::memcpy(info->publisher_gid.data, writer.v, sizeof(writer.v));
+        dds_guid_t ours;
+        if (dds_get_guid(dds_get_participant(state->reader), &ours) == DDS_RETCODE_OK) {
+            // A GUID is a 12-byte participant prefix plus a 4-byte entity id.
+            info->from_intra_process = std::memcmp(ours.v, writer.v, 12) == 0;
+        }
+    }
     return NROS_RMW_RET_OK;
 }
 

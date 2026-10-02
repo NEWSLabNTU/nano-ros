@@ -159,10 +159,12 @@ INERT_FAMILIES = {
         "that blocks inside one backend does not fit that",
     ),
     "with-info-takes": Family(
-        ("take_with_info", "take_loaned_message_with_info"),
-        "metadata-carrying variants of takes whose plain forms are live. The "
-        "runtime gets publisher GID and timestamps from the attachment on the "
-        "message it already took, so it has never needed the variant",
+        ("take_loaned_message_with_info",),
+        "the metadata-carrying variant of a loaned take. Its family-mate "
+        "`take_with_info` left in issue 1495: a pure C/C++ backend has no other "
+        "metadata channel, so the runtime now dispatches it and Cyclone fills "
+        "it. No backend loans on the receive path with metadata, so this one "
+        "still has nothing to carry it for",
     ),
     # The `graph-guard` family stood here and is DELETED, not reworded
     # (phase-467 Row 8). Its reason had two clauses and the second stopped

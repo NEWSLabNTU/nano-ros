@@ -312,12 +312,12 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     ///   DDS writer GUID the same way. The padding has one spelling
     ///   ([`nros_rmw::pad_publisher_gid`]) so two gids naming one entity
     ///   compare equal.
-    /// * **Not comparable with a gid from a TAKE, yet.** A received sample's
+    /// * **Comparable with a gid from a TAKE** on zenoh and Cyclone. A
+    ///   received sample's
     ///   [`MessageInfo::publisher_gid`](nros_core::MessageInfo::publisher_gid)
-    ///   is the same TYPE and, on every backend shipped today, is not
-    ///   produced from the same source as this — zenoh is the one exception,
-    ///   where both are its attachment gid. Making the rest agree is issue
-    ///   1495.
+    ///   is produced from the same source as this (issue 1495): zenoh's
+    ///   XXH3-128 of the publisher's liveliness keyexpr, Cyclone's writer
+    ///   GUID — the same gid `ros2 topic info --verbose` prints.
     /// * **`Err(Unsupported)` is a real answer, and it is not zero.** A
     ///   backend with no identity for this publisher (XRCE, uORB) says so;
     ///   nothing here ever hands back an all-zero gid, because that is what

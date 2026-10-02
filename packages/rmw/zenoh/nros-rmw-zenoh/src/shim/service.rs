@@ -9,7 +9,7 @@ use nros_rmw::{ClientTrait, ServiceInfo, ServiceRequest, ServiceTrait, Transport
 
 use super::{
     AtomicSeqCounter, Context, KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, RMW_ATTACHMENT_SIZE,
-    RMW_GID_SIZE, RmwAttachment, SeqScalar,
+    RMW_GID_SIZE, SeqScalar,
 };
 use crate::{
     config::{
@@ -1302,6 +1302,11 @@ pub struct ZenohServiceClient {
     /// attachment on the query — `service_take_request` errors without it and
     /// the ROS 2 server never replies (nano↔nano tolerates its absence,
     /// which kept this invisible in-tree).
+    ///
+    /// Issue 1495 — derived like a publisher's: XXH3-128 of this client's
+    /// liveliness keyexpr, set by the session through [`Self::set_gid`]. A
+    /// stock server keys the request id on it, so it is the client's identity
+    /// on the wire, not a nonce.
     rmw_gid: [u8; RMW_GID_SIZE],
     /// Issue 0153 — per-client request sequence counter for the attachment.
     request_seq: AtomicSeqCounter,
@@ -1382,11 +1387,16 @@ impl ZenohServiceClient {
             session_index: session_index as usize,
             timeout_ms: SERVICE_DEFAULT_TIMEOUT_MS,
             pending_handles: heapless::Vec::new(),
-            rmw_gid: RmwAttachment::generate_gid(),
+            rmw_gid: [0u8; RMW_GID_SIZE],
             request_seq: AtomicSeqCounter::new(0),
             granted_qos: nros_rmw::QoSProfile::QOS_PROFILE_UNKNOWN,
             _phantom: PhantomData,
         })
+    }
+
+    /// Issue 1495 — see the `rmw_gid` field.
+    pub(super) fn set_gid(&mut self, gid: [u8; RMW_GID_SIZE]) {
+        self.rmw_gid = gid;
     }
 
     /// Record what `qos::admit` granted, for `*_actual_qos` to answer with.

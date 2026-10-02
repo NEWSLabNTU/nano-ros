@@ -822,50 +822,37 @@ fields — but through a different seam:
   C mirrors this with `nros_executor_register_subscription_raw_with_info`
   (the callback receives the payload plus the attachment/metadata
   arguments directly — there is no info struct on the C side).
-- **What's carved out.** The hot `take` vtable slot returns
-  bytes ONLY. The metadata rides a separate `MessageInfoSlot`
-  side-channel that the backend populates from its native attachment /
-  sample-info (Zenoh attachment, DDS sample-info, XRCE topic callback)
-  and the runtime pairs with the payload. A `take_with_info`-shaped
-  vtable slot would widen the ABI of the byte-count-return take path
-  (`int32_t` bytes) for no functional gain — the side-channel already
-  delivers the info to the `message_info()` builder.
+- **Two backend channels.** The hot `take` vtable slot returns bytes
+  only. A backend that fills the optional `take_with_info` slot reports
+  `rmw_message_info_t` in caller-owned storage, and the runtime dispatches
+  it whenever it is present — that is how a C/C++ backend (Cyclone)
+  reports metadata (issue 1495). A Rust backend behind the adapter writes a
+  `MessageInfoSlot` side-channel instead, which the runtime pairs with the
+  payload. Either way the `message_info()` builder sees the same
+  `MessageInfo`.
 
-### Publisher identity: per-message GID, no standalone query
+### Publisher identity: one GID, from one source
 
 Upstream exposes `rmw_get_gid_for_publisher(pub, out_gid)` and stamps
-every sample with the writer's GID.
+every sample with the writer's GID, so a subscriber can name the
+publisher that sent a message. nano-ros does both, and — since issue
+1495 — the two answers are the same bytes:
 
-nano-ros **does carry a publisher GID** where the wire supports it: a
-zenoh publisher generates a 16-byte GID at create time
-(`RmwAttachment::generate_gid`) and stamps it into the per-sample
-attachment; the subscriber zero-extends it into
-`MessageInfo.publisher_gid`, so **per-message publisher attribution is
-observable** via `info.publisher_gid()` (populated on the zenoh path;
-zero-filled on backends whose wire carries no writer GID).
+| backend | `get_gid()` and `MessageInfo::publisher_gid` |
+| --- | --- |
+| zenoh-pico | XXH3-128 of the entity's liveliness keyexpr, 16 bytes zero-extended to 24 — `rmw_zenoh_cpp`'s own derivation, so a stock peer's `ros2 topic info --verbose` prints the same GID |
+| cyclonedds | the DDS writer GUID, 16 bytes zero-extended; the take path reports it through the `take_with_info` slot |
+| XRCE-DDS, uORB | `UNSUPPORTED`; no metadata on a take |
 
-The field is **24 bytes** — upstream's `RMW_GID_STORAGE_SIZE`, the same
-width as the ABI's `rmw_gid_t` (the phase-467 RMW gap-closure design
-study's Q1(a); it was 16 before). The 16 is zenoh's *wire* width and
-stays there: `rmw_zenoh_cpp`'s attachment reader rejects any other
-length. So the widths no longer differ — but the two gids are still not
-one VALUE, because no backend fills both. See the `rmw_gid_t` comment in
-`rmw_entity.h`, and issue 1495.
+The field is **24 bytes**, upstream's `RMW_GID_STORAGE_SIZE`. The 16 is
+zenoh's *wire* width and stays there: `rmw_zenoh_cpp`'s attachment
+reader rejects any other length.
 
-- **What's carved out.** The standalone `rmw_get_gid_for_publisher`
-  QUERY — reading a *publisher's own* GID back through a C API — is not
-  provided. The publisher holds its GID internally, but no in-tree
-  consumer needs to query it: the one need, bridge loop-suppression /
-  dedup, is served by the `bridge_origin` attachment, and per-message
-  attribution is already covered by `MessageInfo.publisher_gid`.
-
-### If a consumer shows up
-
-Both carved-out shapes — a `take_with_info` vtable slot and a
-`get_publisher_gid` query slot — can land later as NULL-able optional
-vtable slots (the established tail-append extension pattern, RFC-0035)
-without an ABI break, the day a concrete consumer needs the upstream-exact
-entry point rather than the builder / per-message forms above.
+One upstream divergence worth knowing when comparing against a stock
+peer: a Humble `rmw_cyclonedds_cpp` subscriber puts the 8-byte
+publication *handle* in `message_info.publisher_gid`, not the writer
+GUID it reports everywhere else, so its take-side gid matches no gid
+query. Ours reports the GUID.
 
 ## See also
 

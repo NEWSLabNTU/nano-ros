@@ -4391,6 +4391,68 @@ pub struct CffiSubscription {
 }
 
 impl CffiSubscription {
+    /// Issue 1495 — `take_serialized` through the `take_with_info` slot, the
+    /// sample's `rmw_message_info_t` converted to a [`MessageInfo`].
+    ///
+    /// The same pending-status and event-poll rules as `take_serialized`, so
+    /// a caller cannot tell the two entry points apart except by the metadata.
+    fn take_serialized_via_slot(
+        &mut self,
+        buf: &mut [u8],
+        take_with_info: unsafe extern "C" fn(
+            *const generated::rmw_subscription_t,
+            *mut generated::rmw_mut_byte_span_t,
+            *mut bool,
+            *mut generated::rmw_message_info_t,
+        ) -> generated::rmw_ret_t,
+    ) -> Result<Option<(usize, Option<MessageInfo>)>, TransportError> {
+        if let Some(status) = self.pending_status.take() {
+            return Err(status);
+        }
+        self.poll_status_events();
+        let view = self.make_view();
+        let mut taken = false;
+        let mut span = generated::rmw_mut_byte_span_t {
+            data: buf.as_mut_ptr(),
+            capacity: buf.len(),
+            len: 0,
+        };
+        // SAFETY: an all-zero `rmw_message_info_t` is valid (null identifier,
+        // zero gid, false flag); the backend overwrites it on a take.
+        let mut raw: generated::rmw_message_info_t = unsafe { core::mem::zeroed() };
+        // SAFETY: `view` borrows this subscription's backend handle, `span`
+        // points into `buf` with its true capacity, and every out-pointer is
+        // a live local for the duration of the call.
+        let rc = unsafe { take_with_info(&view, &mut span, &mut taken, &mut raw) };
+        if rc != NROS_RMW_RET_OK {
+            return Err(error_from_ret(rc));
+        }
+        if !taken {
+            return Ok(None);
+        }
+        let len = checked_take_len(span.len, buf.len())?;
+        Ok(Some((len, Some(message_info_from_raw(&raw)))))
+    }
+}
+
+/// Issue 1495 — `rmw_message_info_t` → [`MessageInfo`].
+///
+/// The ABI's "unsupported" sequence sentinel becomes 0, `MessageInfo`'s
+/// default — it has no unsupported spelling, and a sentinel cast to `i64` would
+/// read as `-1`, a sequence number nobody sent.
+pub(crate) fn message_info_from_raw(raw: &generated::rmw_message_info_t) -> MessageInfo {
+    const UNSUPPORTED: u64 = u64::MAX;
+    let seq = |v: u64| if v == UNSUPPORTED { 0 } else { v as i64 };
+    let mut info = MessageInfo::new();
+    info.set_source_timestamp(nros_rmw::Time::from_nanos(raw.source_timestamp));
+    info.set_received_timestamp(nros_rmw::Time::from_nanos(raw.received_timestamp));
+    info.set_publication_sequence_number(seq(raw.publication_sequence_number));
+    info.set_reception_sequence_number(seq(raw.reception_sequence_number));
+    info.set_publisher_gid(raw.publisher_gid.data);
+    info
+}
+
+impl CffiSubscription {
     fn make_view(&mut self) -> NrosRmwSubscription {
         NrosRmwSubscription {
             topic_name: self.topic_name_buf.as_ptr().cast(),
@@ -4722,6 +4784,16 @@ impl nros_rmw::Subscription for CffiSubscription {
         &mut self,
         buf: &mut [u8],
     ) -> Result<Option<(usize, Option<MessageInfo>)>, TransportError> {
+        // Issue 1495 — a backend that fills the `take_with_info` slot reports
+        // metadata through caller-owned storage, which is the only channel a
+        // pure C/C++ backend has: the side table below is written by the Rust
+        // adapter alone, so before this dispatch existed Cyclone's
+        // `message_info()` callback saw `None` for every sample. A NULL slot
+        // keeps the side-table path unchanged (the Rust adapter leaves it
+        // NULL and writes the table).
+        if let Some(take_with_info) = self.vtable.take_with_info {
+            return self.take_serialized_via_slot(buf, take_with_info);
+        }
         let key = self.backend_data as usize;
         self.take_serialized(buf)
             .map(|opt| opt.map(|len| (len, take_cffi_message_info(key))))

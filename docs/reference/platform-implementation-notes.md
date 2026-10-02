@@ -374,22 +374,23 @@ Two things NOT to change while reading this:
 The test is `packages/rmw/cffi/tests/publisher_gid.rs`; the one spelling of
 "the application owns the assertion" is `QoSLivelinessPolicy::is_manual`.
 
-## Publisher GID: one width, and not yet one value
+## Publisher GID: one width, one value
 
-Same study, Q1. `Publisher::get_gid()` — upstream's
+Same study, Q1, and issue 1495. `Publisher::get_gid()` — upstream's
 `rmw_get_gid_for_publisher` — is 24 bytes on every surface, matching
-upstream's `RMW_GID_STORAGE_SIZE`.
+upstream's `RMW_GID_STORAGE_SIZE`, and on every backend that answers it is
+produced from the same source as the gid a take reports:
 
-| backend | `get_gid()` | `MessageInfo::publisher_gid` on a take |
-| --- | --- | --- |
-| cyclonedds | the DDS writer GUID, 16 bytes zero-extended to 24 | never written — a pure C/C++ backend reports no `MessageInfo` at all, so the callback sees `None` |
-| zenoh-pico | the 16-byte attachment gid, zero-extended | the same bytes, from the received attachment |
-| XRCE-DDS, uORB | `UNSUPPORTED` — NULL slot | never written |
+| backend | `get_gid()` and `MessageInfo::publisher_gid` on a take |
+| --- | --- |
+| cyclonedds | the DDS writer GUID, 16 bytes zero-extended to 24. The take reaches it through `take_with_info` (publication handle → `dds_get_matched_publication_data`, cached per subscription) |
+| zenoh-pico | XXH3-128 of the entity's liveliness keyexpr (`shim/entity_gid.rs`), 16 bytes zero-extended — `rmw_zenoh_cpp`'s derivation. A peer RE-SERIALISES our token before hashing, so the token's QoS field must be upstream's canonical form (defaults elided) or the peer's gid for us diverges |
+| XRCE-DDS, uORB | `UNSUPPORTED` — NULL slot; no metadata on a take |
 
-So the two gids are one TYPE and, except on zenoh, are not one VALUE. Issue
-1495 is the item that makes each backend derive both from one source; it
-moves a value a stock ROS 2 peer reads off our wire, which is why it is
-separate.
+Verified against live peers in `graph_interop` (cells
+`native-graph-rust-{zenoh,cyclone}-r2n`). A Humble `rmw_cyclonedds_cpp`
+subscriber reports the 8-byte publication handle as its take-side gid, so
+it is not a valid oracle for ours.
 
 **Never report an all-zero gid as an answer.** That is what an uninitialised
 `rmw_gid_t` holds, and a caller cannot tell it from an identity. A backend

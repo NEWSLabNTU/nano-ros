@@ -6,7 +6,7 @@ use nros_rmw::{Publisher, TransportError};
 
 use super::{
     AtomicSeqCounter, Context, KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, LivelinessToken,
-    RMW_ATTACHMENT_SIZE, RMW_GID_SIZE, RmwAttachment,
+    RMW_ATTACHMENT_SIZE, RMW_GID_SIZE,
 };
 use crate::keyexpr::TopicKeyExpr;
 
@@ -380,7 +380,12 @@ pub struct ZenohPublisher {
     /// field.
     granted_qos: nros_rmw::QoSProfile,
 
-    /// RMW GID (generated once per publisher)
+    /// The 16-byte entity gid stamped into every attachment — issue 1495.
+    ///
+    /// `rmw_zenoh_cpp`'s derivation: XXH3-128 of this publisher's liveliness
+    /// keyexpr, set by the session through [`Self::set_gid`] from the same
+    /// keyexpr it declares (`ZenohSession::entity_identity`). All-zero until
+    /// then, which is the ABI's spelling for "unknown", never an identity.
     rmw_gid: [u8; RMW_GID_SIZE],
     /// Sequence number counter (atomic for interior mutability)
     sequence_counter: AtomicSeqCounter,
@@ -532,7 +537,7 @@ impl ZenohPublisher {
         let now = now_ms();
         Ok(Self {
             publisher,
-            rmw_gid: RmwAttachment::generate_gid(),
+            rmw_gid: [0u8; RMW_GID_SIZE],
             sequence_counter: AtomicSeqCounter::new(0),
             _liveliness: liveliness,
             #[cfg(feature = "lending")]
@@ -693,6 +698,12 @@ impl ZenohPublisher {
 
     pub(super) fn set_liveliness(&mut self, liveliness: Option<LivelinessToken>) {
         self._liveliness = liveliness;
+    }
+
+    /// Issue 1495 — the gid derived from this publisher's liveliness keyexpr.
+    /// See the `rmw_gid` field.
+    pub(super) fn set_gid(&mut self, gid: [u8; RMW_GID_SIZE]) {
+        self.rmw_gid = gid;
     }
 
     /// Phase 108.C.zenoh.{2,3} — current platform time as nanoseconds
@@ -1042,10 +1053,10 @@ impl Publisher for ZenohPublisher {
     /// 16 bytes, which is `rmw_zenoh_cpp`'s layout and whose reader rejects
     /// any other length.
     ///
-    /// What it is NOT: derived from anything a stock ROS 2 peer would compute
-    /// for the same publisher. `generate_gid()` is a counter and a stack
-    /// address, not the session's `ZenohId`; making it mean something to a
-    /// peer is issue 1495 and moves a wire value.
+    /// And since issue 1495 it is the value a stock ROS 2 peer computes for
+    /// the same publisher: XXH3-128 of our liveliness keyexpr, which is how
+    /// `rmw_zenoh_cpp` derives every entity's gid, so the GID
+    /// `ros2 topic info --verbose` prints for our token is this one too.
     fn get_gid(&self) -> Result<[u8; nros_rmw::PUBLISHER_GID_SIZE], Self::Error> {
         Ok(nros_rmw::pad_publisher_gid(&self.rmw_gid))
     }

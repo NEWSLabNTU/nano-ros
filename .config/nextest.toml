@@ -324,6 +324,16 @@ max-threads = 3
 [test-groups.ros2-interop]
 max-threads = 1
 
+# Issue 1495 — `graph_interop` runs its cases ONE AT A TIME. Its enumeration
+# probe settles on "two equal sweeps", which a loaded host can reach before a
+# peer's ENDPOINTS have arrived: measured, `cyclone_enumerates_a_stock_ros2_node`
+# failed 2 of 6 suite runs (count_publishers(/chatter) == 0 with a talker up)
+# once the gid cases ran beside it, 0 of 5 without them and 3 of 3 solo. The
+# gid cases poll `ros2 topic info`, which is CPU-heavy rclpy; that is load, not
+# cross-talk (each case has its own domain or router). Serial costs ~40 s.
+[test-groups.graph-interop]
+max-threads = 1
+
 # Per-platform bindings for the QEMU / bridge-networked binaries.
 # Each override assigns one binary (or one slice of rtos_e2e) to its
 # matching platform group. Slow-timeout + retries stay identical to
@@ -333,6 +343,11 @@ max-threads = 1
 # W4 (rtic 10200/10210/10220; bsp 10500, mixed 10510, large-msg 10520) —
 # the former serial `qemu-baremetal-shared` sub-group is retired and the
 # platform group is purely the QEMU host-load throttle.
+# Issue 1495 — see `[test-groups.graph-interop]`.
+[[profile.default.overrides]]
+filter = "binary(graph_interop)"
+test-group = "graph-interop"
+
 [[profile.default.overrides]]
 filter = "binary(emulator) or binary(large_msg)"
 test-group = "qemu-baremetal"

@@ -31,15 +31,36 @@
 //!                             backend TOLD us the graph moved" — the one
 //!                             claim eleven green enumeration slots are
 //!                             entirely compatible with being false.
+//!   `GRAPH_PROBE_GID`         issue 1495 — the PUBLISHER-IDENTITY mode, in
+//!                             place of the graph sweep. Publishes
+//!                             `std_msgs/String` on `GRAPH_PROBE_GID_PUB_TOPIC`
+//!                             (default `/nros_gid_out`) and prints that
+//!                             publisher's own `get_gid()` as
+//!                             `GRAPH_PROBE_PUB_GID <48 hex>`; subscribes to
+//!                             `GRAPH_PROBE_GID_SUB_TOPIC` (default
+//!                             `/nros_gid_in`) through the `message_info()`
+//!                             builder and prints each sample's
+//!                             `MessageInfo::publisher_gid` as
+//!                             `GRAPH_PROBE_TAKE_GID <48 hex>` (or
+//!                             `GRAPH_PROBE_TAKE_ABSENT` when the backend
+//!                             delivered no metadata); and prints what OUR
+//!                             graph reports as that sub topic's publisher gid
+//!                             as `GRAPH_PROBE_PEER_GRAPH_GID <48 hex>`. Runs
+//!                             until the budget is spent. The peer and the
+//!                             comparisons are the test's.
 //!
 //! The markers below are spelled as literals here and as constants in
 //! `nros_tests::output`; this leaf has its own workspace and does not depend
 //! on `nros-tests`, which is why the rule about grepping for constants binds
 //! the TEST side rather than this one.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::{Duration, Instant},
+};
 
 use nros::{Executor, ExecutorConfig};
 
@@ -81,6 +102,11 @@ fn main() {
         .domain_id(domain_id);
     println!("GRAPH_PROBE_DOMAIN {domain_id}");
     let mut executor = Executor::open(&config).expect("open session");
+    if std::env::var_os("GRAPH_PROBE_GID").is_some() {
+        gid_mode(&mut executor, budget_ms);
+        let _ = executor.close();
+        return;
+    }
     let _node = executor.create_node("graph_probe").expect("create node");
 
     // phase-467 Row 8 — the graph-CHANGE guard condition, registered before
@@ -290,9 +316,7 @@ fn main() {
     // The node these checks are ABOUT, and a topic it publishes. Both come
     // from the environment so the probe is not welded to `demo_nodes_cpp`;
     // the defaults are what the interop cell starts.
-    let node = expect_node
-        .clone()
-        .unwrap_or_else(|| "talker".to_string());
+    let node = expect_node.clone().unwrap_or_else(|| "talker".to_string());
     let topic = std::env::var("GRAPH_PROBE_TOPIC").unwrap_or_else(|_| "/chatter".to_string());
     let topic = topic.as_str();
 
@@ -306,7 +330,10 @@ fn main() {
     let mut unsupported: Vec<&str> = Vec::new();
     macro_rules! classify {
         ($slot:expr, $e:expr) => {{
-            if matches!($e, nros::NodeError::Transport(nros::TransportError::Unsupported)) {
+            if matches!(
+                $e,
+                nros::NodeError::Transport(nros::TransportError::Unsupported)
+            ) {
                 unsupported.push($slot);
                 false
             } else {
@@ -347,7 +374,9 @@ fn main() {
         Ok(n) => {
             println!("GRAPH_COUNT_PUB {n}");
             if n == 0 {
-                failures.push(format!("count_publishers({topic}) == 0 with a talker running"));
+                failures.push(format!(
+                    "count_publishers({topic}) == 0 with a talker running"
+                ));
             }
         }
         Err(e) => {
@@ -486,7 +515,10 @@ fn main() {
         for f in &failures {
             eprintln!("GRAPH_PROBE_SLOT_FAIL {f}");
         }
-        eprintln!("GRAPH_PROBE_FAIL: {} of 11 graph slots failed", failures.len());
+        eprintln!(
+            "GRAPH_PROBE_FAIL: {} of 11 graph slots failed",
+            failures.len()
+        );
         let _ = executor.close();
         std::process::exit(5);
     }
@@ -506,4 +538,96 @@ fn main() {
 
     println!("GRAPH_PROBE_DONE");
     let _ = executor.close();
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Issue 1495 — see `GRAPH_PROBE_GID` in the module doc.
+///
+/// Every line is something a peer can be checked against: the gid we CLAIM
+/// for our publisher, the gid our RMW READ off a stock publisher's sample, and
+/// the gid our GRAPH reports for that stock publisher. The probe compares
+/// none of them itself — a probe that decided its own verdict would be one
+/// more check of our code against our code.
+fn gid_mode(executor: &mut Executor, budget_ms: u64) {
+    use std_msgs::msg::String as StringMsg;
+
+    let pub_topic: &'static str = Box::leak(
+        std::env::var("GRAPH_PROBE_GID_PUB_TOPIC")
+            .unwrap_or_else(|_| "/nros_gid_out".into())
+            .into_boxed_str(),
+    );
+    let sub_topic: &'static str = Box::leak(
+        std::env::var("GRAPH_PROBE_GID_SUB_TOPIC")
+            .unwrap_or_else(|_| "/nros_gid_in".into())
+            .into_boxed_str(),
+    );
+
+    let nid = executor
+        .node_builder("graph_probe")
+        .build()
+        .expect("build node");
+    let publisher = executor
+        .node_mut(nid)
+        .create_publisher::<StringMsg>(pub_topic)
+        .expect("create publisher");
+    match publisher.get_gid() {
+        Ok(gid) => println!("GRAPH_PROBE_PUB_GID {}", hex(&gid)),
+        Err(e) => println!("GRAPH_PROBE_PUB_GID_ERR {e:?}"),
+    }
+
+    let takes = Arc::new(AtomicUsize::new(0));
+    let counter = takes.clone();
+    executor
+        .node_mut(nid)
+        .subscription(sub_topic)
+        .typed::<StringMsg>()
+        .message_info()
+        .build(move |_msg: &StringMsg, info: Option<&nros::MessageInfo>| {
+            // The first few are enough and the rest is noise in a log a
+            // failing test prints whole.
+            if counter.fetch_add(1, Ordering::Relaxed) >= 3 {
+                return;
+            }
+            match info {
+                Some(mi) => println!("GRAPH_PROBE_TAKE_GID {}", hex(mi.publisher_gid())),
+                None => println!("GRAPH_PROBE_TAKE_ABSENT"),
+            }
+        })
+        .expect("create subscription");
+    println!("GRAPH_PROBE_GID_READY pub={pub_topic} sub={sub_topic}");
+
+    let deadline = Instant::now() + Duration::from_millis(budget_ms);
+    let mut next_pub = Instant::now();
+    let mut last_graph_gid = String::new();
+    let mut n: u32 = 0;
+    while Instant::now() < deadline {
+        executor.spin_once(Duration::from_millis(50));
+        if Instant::now() >= next_pub {
+            n += 1;
+            let mut msg = StringMsg::default();
+            let _ = msg.data.push_str("graph-probe-gid");
+            let _ = publisher.publish(&msg);
+            next_pub = Instant::now() + Duration::from_millis(200);
+            // Our graph's view of whoever publishes on the sub topic. Printed
+            // on change only, and never our own publisher (different topic).
+            let mut seen = Vec::new();
+            let _ = executor.get_publishers_info_by_topic(sub_topic, &mut |info| {
+                seen.push(format!(
+                    "GRAPH_PROBE_PEER_GRAPH_GID {} node={}",
+                    hex(&info.endpoint_gid),
+                    info.node_name
+                ));
+                true
+            });
+            let joined = seen.join("\n");
+            if !joined.is_empty() && joined != last_graph_gid {
+                println!("{joined}");
+                last_graph_gid = joined;
+            }
+        }
+    }
+    println!("GRAPH_PROBE_GID_DONE published={n}");
 }

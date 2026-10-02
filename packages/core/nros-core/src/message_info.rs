@@ -120,33 +120,29 @@ impl MessageInfo {
     /// Get the publisher's Global Identifier (GID).
     ///
     /// **The array is 24 bytes. How many of them MEAN anything is a backend
-    /// property, and today it is never all 24.**
+    /// property.**
     ///
     /// The width is upstream's ([`PUBLISHER_GID_SIZE`]), so this value and the
-    /// `rmw_gid_t` the `get_gid_for_publisher` vtable slot fills are one type.
-    /// What the width does NOT say:
+    /// `rmw_gid_t` the `get_gid_for_publisher` vtable slot fills are one type
+    /// — and, since issue 1495, one VALUE on the backends that produce either:
     ///
-    /// * **zenoh fills 16 and zero-pads 8.** `RMW_ATTACHMENT_SIZE` carries a
-    ///   16-byte gid because that is `rmw_zenoh_cpp`'s wire layout — its reader
-    ///   REJECTS any other length — so the trailing 8 bytes here are padding
-    ///   written by [`pad_publisher_gid`] and carry no information. Compare
-    ///   whole arrays anyway: the padding is deterministic, and truncating to
-    ///   16 by hand is how a future backend's extra bytes get silently dropped.
-    /// * **Cyclone never fills it.** A pure C/C++ backend writes no
-    ///   `MessageInfo` at all — the `message_info()` callback sees `None`
-    ///   there, not a gid — and nothing on the Cyclone receive path calls
-    ///   [`set_publisher_gid`](Self::set_publisher_gid). Wherever a
-    ///   `MessageInfo` does exist unpopulated it keeps its `Default`: all
-    ///   zeros, which is the ABI's spelling for "unknown", not an identity.
-    /// * **A gid from here is NOT today comparable with one from
-    ///   `get_gid_for_publisher`.** No backend produces both: on Cyclone the
-    ///   vtable slot returns a real DDS writer GUID and this field is never
-    ///   written; on zenoh this field is a per-publisher value and the slot is
-    ///   NULL. Making the two answers agree is issue 1495 — it changes a value
-    ///   a stock ROS 2 peer reads off our wire, so it is deliberately not part
-    ///   of the widening that made them the same type.
+    /// * **zenoh fills 16 and zero-pads 8.** The 16 are XXH3-128 of the
+    ///   sending entity's liveliness keyexpr — `rmw_zenoh_cpp`'s own
+    ///   derivation, so it is the gid the sender's `get_gid` reports and the
+    ///   gid `ros2 topic info --verbose` prints for it, ours or a stock peer's.
+    ///   `RMW_ATTACHMENT_SIZE` carries 16 because that is `rmw_zenoh_cpp`'s
+    ///   wire layout (its reader REJECTS any other length); the padding is
+    ///   written by [`pad_publisher_gid`]. Compare whole arrays anyway.
+    /// * **Cyclone fills 16 and zero-pads 8**: the sending WRITER's GUID,
+    ///   which is what its `get_gid` reports and a DDS graph prints. A stock
+    ///   Humble `rmw_cyclonedds_cpp` subscriber reports something else here
+    ///   (the 8-byte publication handle), so do not compare this field against
+    ///   one read from such a peer.
+    /// * **XRCE and uORB never fill it.** A backend that reports no metadata
+    ///   leaves the `message_info()` callback a `None`, not a zeroed gid.
     ///
-    /// An all-zero gid therefore means "this backend did not say", never "the
+    /// An all-zero gid therefore means "this backend did not say" (or, on
+    /// Cyclone, that the writer unmatched before the take), never "the
     /// publisher's id is zero".
     pub const fn publisher_gid(&self) -> &[u8; PUBLISHER_GID_SIZE] {
         &self.publisher_gid

@@ -76,31 +76,24 @@ where = "ros2 distrobox, Humble"
 evidence = "4/4: matched counts on both edges, GID, actual QoS read back from the peer, serialization format. First run of this cell; a fixture SELECTOR bug had made every case resolve to a skip."
 
 [[verdict]]
-cell = "native-logging-rust-zenoh-n2r"
-date = "2026-09-29"
-verdict = "pass"
-tests = ["a_nano_ros_log_call_reaches_ros2_topic_echo_rosout"]
-run = "cargo nextest run -p nros-tests -E 'binary(=rosout_interop)'"
-where = "ros2 distrobox, Humble, tree with phase-467 Q4's /rosout bridge"
-evidence = "First run of this cell — it is the first time a nano-ros node published /rosout at all. A stock `ros2 topic echo /rosout rcl_interfaces/msg/Log` saw 44 of the probe's records (45 pumped, dropped=0, suppressed=0), with the logger name carried, both INFO (20) and WARN (30) on rcutils's number line, and non-zero stamps. Negative control measured the same day: stub out `rosout::pump` and the same peer sees 0 of 4."
-
-[[verdict]]
 cell = "native-graph-rust-cyclone-r2n"
-date = "2026-09-07"
+date = "2026-10-03"
 verdict = "pass"
-tests = ["cyclone_enumerates_a_stock_ros2_node"]
+tests = ["cyclone_a_peer_leaving_fires_the_graph_change_guard", "cyclone_enumerates_a_stock_ros2_node", "cyclone_take_gid_is_the_publishers_graph_gid"]
 run = "cargo nextest run -p nros-tests --test graph_interop"
-where = "ros2 distrobox, Humble, tree with #684 + #692"
-evidence = "1 case(s) produced a result in graph_interop.xml"
+where = "ros2 distrobox (Ubuntu 22.04, Humble: rmw_zenoh_cpp 0.1.9, rmw_cyclonedds_cpp 1.3.4), box tree at 8c2cdc971"
+evidence = "3/3, 4 suite runs. Issue 1495: our Cyclone take now REPORTS a publisher gid (it printed GRAPH_PROBE_TAKE_ABSENT before the take_with_info dispatch) and it equals the writer GUID `ros2 topic info --verbose` prints for a stock `ros2 topic pub`; our get_gid equals the GID the peer prints for our publisher. Negative control the same day: disable the dispatch and the case fails on TAKE_ABSENT."
+issue = "1495"
 
 [[verdict]]
 cell = "native-graph-rust-zenoh-r2n"
-date = "2026-09-07"
+date = "2026-10-03"
 verdict = "pass"
-tests = ["nano_ros_enumerates_a_stock_ros2_node"]
+tests = ["a_peer_leaving_fires_the_graph_change_guard", "nano_ros_enumerates_a_stock_ros2_node", "zenoh_publisher_gid_is_the_one_a_stock_peer_reads_and_reports"]
 run = "cargo nextest run -p nros-tests --test graph_interop"
-where = "ros2 distrobox, Humble, tree with #684 + #692"
-evidence = "1 case(s) produced a result in graph_interop.xml"
+where = "ros2 distrobox (Ubuntu 22.04, Humble: rmw_zenoh_cpp 0.1.9, rmw_cyclonedds_cpp 1.3.4), box tree at 8c2cdc971"
+evidence = "3/3, 4 suite runs. Issue 1495: one gid in three readings — our get_gid, the publisher_gid a stock rmw_zenoh_cpp subscriber read off our sample (rcl_take via message_info_peer.py), and the GID `ros2 topic info --verbose` prints for our publisher; plus our take gid equals the GID ros2 prints for a stock publisher. Negative control the same day: restore the pre-1495 QoS token encoding and the graph reading disagrees."
+issue = "1495"
 
 [[verdict]]
 cell = "native-lifecycle-rust-zenoh"
@@ -110,6 +103,15 @@ tests = ["interop::case_9_zenoh_lifecycle_full_cycle"]
 run = "cargo nextest run -p nros-tests --test interop_e2e"
 where = "ros2 distrobox, Humble, tree with #684 + #692"
 evidence = "1 case(s) produced a result in interop_e2e.xml"
+
+[[verdict]]
+cell = "native-logging-rust-zenoh-n2r"
+date = "2026-09-29"
+verdict = "pass"
+tests = ["a_nano_ros_log_call_reaches_ros2_topic_echo_rosout"]
+run = "cargo nextest run -p nros-tests -E 'binary(=rosout_interop)'"
+where = "ros2 distrobox, Humble, tree with phase-467 Q4's /rosout bridge"
+evidence = "First run of this cell — it is the first time a nano-ros node published /rosout at all. A stock `ros2 topic echo /rosout rcl_interfaces/msg/Log` saw 44 of the probe's records (45 pumped, dropped=0, suppressed=0), with the logger name carried, both INFO (20) and WARN (30) on rcutils's number line, and non-zero stamps. Negative control measured the same day: stub out `rosout::pump` and the same peer sees 0 of 4."
 
 [[verdict]]
 cell = "native-multinode-cpp-zenoh"

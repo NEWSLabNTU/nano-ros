@@ -756,6 +756,78 @@ impl ZenohSession {
         &self,
         build_keyexpr: impl FnOnce(&ZenohId, u32) -> heapless::String<256>,
     ) -> Option<LivelinessToken> {
+        let zid = self.zid_or_log()?;
+        let entity_id = self.next_entity_id();
+        let keyexpr = build_keyexpr(&zid, entity_id);
+        self.declare_keyexpr(&keyexpr)
+    }
+
+    /// Issue 1495 — an entity's token AND its gid, from ONE keyexpr.
+    ///
+    /// `rmw_zenoh_cpp` derives an entity's gid by hashing that entity's
+    /// liveliness keyexpr (`entity_gid`), so the attachment gid a stock peer
+    /// reads off our samples, the gid `get_gid_for_publisher` reports, and the
+    /// gid a stock graph query prints for our token are one value only if all
+    /// three come from the keyexpr this function builds. That is why the gid is
+    /// derived HERE, beside the declaration, rather than in the entity's
+    /// constructor: the constructor never sees the keyexpr.
+    ///
+    /// The keyexpr is built whether or not a token is DECLARED. The
+    /// `no-liveliness` opt-out quiets the wire; it does not make an entity
+    /// anonymous, and a publisher still stamps a gid into every sample.
+    ///
+    /// An entity with no node (a transport-level publisher created without
+    /// `TopicInfo::node_name`) has no keyexpr any peer could parse, so no
+    /// token. Its gid is then the same hash over what DOES identify it — the
+    /// session id and the entity id — which keeps it unique and deterministic
+    /// without pretending to be a token a peer could rebuild.
+    fn entity_identity(
+        &self,
+        node_name: Option<&str>,
+        build_keyexpr: impl FnOnce(&ZenohId, u32, &str) -> heapless::String<256>,
+    ) -> (Option<LivelinessToken>, [u8; super::RMW_GID_SIZE]) {
+        // A zid failure is logged by `zid_or_log`; the entity still needs a
+        // gid, and an all-zero session id plus the entity id is the least
+        // wrong one available (the session is not open, so nothing will be
+        // published under it anyway).
+        let zid = self
+            .zid_or_log()
+            .unwrap_or_else(|| ZenohId::from_bytes([0u8; 16]));
+        let entity_id = self.next_entity_id();
+        match node_name {
+            Some(node_name) => {
+                let keyexpr = build_keyexpr(&zid, entity_id, node_name);
+                let gid = super::entity_gid::entity_gid(keyexpr.as_str());
+                let token = if self.should_declare_liveliness() {
+                    self.declare_keyexpr(&keyexpr)
+                } else {
+                    None
+                };
+                (token, gid)
+            }
+            None => {
+                let mut zid_hex = [0u8; super::ZID_HEX_SIZE];
+                zid.to_hex_bytes(&mut zid_hex);
+                let mut key: heapless::String<64> = heapless::String::new();
+                let _ = core::fmt::write(
+                    &mut key,
+                    format_args!(
+                        "{}/0/{}",
+                        core::str::from_utf8(&zid_hex).unwrap_or(""),
+                        entity_id
+                    ),
+                );
+                (None, super::entity_gid::entity_gid(key.as_str()))
+            }
+        }
+    }
+
+    fn next_entity_id(&self) -> u32 {
+        self.entity_counter
+            .fetch_add(1, core::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn zid_or_log(&self) -> Option<ZenohId> {
         // phase-412 — every arm below SAYS why it produced `None`.
         //
         // This helper returned `Option`, and `.ok()` on the declare erased the
@@ -783,22 +855,20 @@ impl ZenohSession {
         // design (RFC — a graph outage is not a data outage), and issue 0283
         // settled that a missing token must be ANNOUNCED, not fatal. What
         // changes is that it is no longer silent.
-        let zid = match self.context.zid() {
-            Ok(zid) => zid,
+        match self.context.zid() {
+            Ok(zid) => Some(zid),
             Err(_e) => {
                 nros_log::log_error!(
                     nros_log::get_logger("nros_rmw_zenoh"),
                     "liveliness: no zenoh id, so no token was declared — this \
                      entity will not appear in `ros2 node list`."
                 );
-                return None;
+                None
             }
-        };
-        let entity_id = self
-            .entity_counter
-            .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-        let keyexpr = build_keyexpr(&zid, entity_id);
+        }
+    }
 
+    fn declare_keyexpr(&self, keyexpr: &heapless::String<256>) -> Option<LivelinessToken> {
         #[cfg(feature = "std")]
         log::debug!("liveliness keyexpr: {}", keyexpr.as_str());
 
@@ -1212,25 +1282,20 @@ impl Session for ZenohSession {
         if let Some(node_name) = topic.node_name {
             self.ensure_node_liveliness(topic.domain_id, topic.namespace, node_name);
         }
-        let liveliness_token = self
-            .should_declare_liveliness()
-            .then_some(())
-            .and_then(|_| {
-                topic.node_name.and_then(|node_name| {
-                    self.declare_entity_liveliness(|zid, entity_id| {
-                        Ros2Liveliness::publisher_keyexpr::<256>(
-                            topic.domain_id,
-                            zid,
-                            entity_id,
-                            topic.namespace,
-                            node_name,
-                            topic,
-                            &qos,
-                        )
-                    })
-                })
+        let (liveliness_token, gid) =
+            self.entity_identity(topic.node_name, |zid, entity_id, node_name| {
+                Ros2Liveliness::publisher_keyexpr::<256>(
+                    topic.domain_id,
+                    zid,
+                    entity_id,
+                    topic.namespace,
+                    node_name,
+                    topic,
+                    &qos,
+                )
             });
         publisher.set_liveliness(liveliness_token);
+        publisher.set_gid(gid);
         Ok(publisher)
     }
 
@@ -1249,23 +1314,19 @@ impl Session for ZenohSession {
         if let Some(node_name) = topic.node_name {
             self.ensure_node_liveliness(topic.domain_id, topic.namespace, node_name);
         }
-        let liveliness_token = self
-            .should_declare_liveliness()
-            .then_some(())
-            .and_then(|_| {
-                topic.node_name.and_then(|node_name| {
-                    self.declare_entity_liveliness(|zid, entity_id| {
-                        Ros2Liveliness::subscriber_keyexpr::<256>(
-                            topic.domain_id,
-                            zid,
-                            entity_id,
-                            topic.namespace,
-                            node_name,
-                            topic,
-                            &qos,
-                        )
-                    })
-                })
+        // `_gid`: a subscriber/server sends no attachment of its own, so it has
+        // nowhere to put a gid; the entity id it consumes is what matters.
+        let (liveliness_token, _gid) =
+            self.entity_identity(topic.node_name, |zid, entity_id, node_name| {
+                Ros2Liveliness::subscriber_keyexpr::<256>(
+                    topic.domain_id,
+                    zid,
+                    entity_id,
+                    topic.namespace,
+                    node_name,
+                    topic,
+                    &qos,
+                )
             });
         subscriber.set_liveliness(liveliness_token);
         Ok(subscriber)
@@ -1292,23 +1353,19 @@ impl Session for ZenohSession {
         if let Some(node_name) = service.node_name {
             self.ensure_node_liveliness(service.domain_id, service.namespace, node_name);
         }
-        let liveliness_token = self
-            .should_declare_liveliness()
-            .then_some(())
-            .and_then(|_| {
-                service.node_name.and_then(|node_name| {
-                    self.declare_entity_liveliness(|zid, entity_id| {
-                        Ros2Liveliness::service_server_keyexpr::<256>(
-                            service.domain_id,
-                            zid,
-                            entity_id,
-                            service.namespace,
-                            node_name,
-                            service,
-                            &qos,
-                        )
-                    })
-                })
+        // `_gid`: a subscriber/server sends no attachment of its own, so it has
+        // nowhere to put a gid; the entity id it consumes is what matters.
+        let (liveliness_token, _gid) =
+            self.entity_identity(service.node_name, |zid, entity_id, node_name| {
+                Ros2Liveliness::service_server_keyexpr::<256>(
+                    service.domain_id,
+                    zid,
+                    entity_id,
+                    service.namespace,
+                    node_name,
+                    service,
+                    &qos,
+                )
             });
         server.set_liveliness(liveliness_token);
         server.set_granted_qos(qos);
@@ -1328,23 +1385,17 @@ impl Session for ZenohSession {
         if let Some(node_name) = service.node_name {
             self.ensure_node_liveliness(service.domain_id, service.namespace, node_name);
         }
-        let liveliness_token = self
-            .should_declare_liveliness()
-            .then_some(())
-            .and_then(|_| {
-                service.node_name.and_then(|node_name| {
-                    self.declare_entity_liveliness(|zid, entity_id| {
-                        Ros2Liveliness::service_client_keyexpr::<256>(
-                            service.domain_id,
-                            zid,
-                            entity_id,
-                            service.namespace,
-                            node_name,
-                            service,
-                            &qos,
-                        )
-                    })
-                })
+        let (liveliness_token, gid) =
+            self.entity_identity(service.node_name, |zid, entity_id, node_name| {
+                Ros2Liveliness::service_client_keyexpr::<256>(
+                    service.domain_id,
+                    zid,
+                    entity_id,
+                    service.namespace,
+                    node_name,
+                    service,
+                    &qos,
+                )
             });
         // phase-428 W13 — the matched-server set `service_is_ready` answers
         // from IS the graph cache, so it must be running before the first
@@ -1364,6 +1415,7 @@ impl Session for ZenohSession {
             log::warn!("graph cache unavailable; service_is_ready will report Unsupported: {_e:?}");
         }
         let mut client = ZenohServiceClient::new(&self.context, service, liveliness_token)?;
+        client.set_gid(gid);
         client.set_granted_qos(qos);
         Ok(client)
     }
@@ -1620,11 +1672,16 @@ impl Session for ZenohSession {
                 node_namespace: ns.as_str(),
                 topic_type: e.type_name.unwrap_or(""),
                 is_publisher: publishers,
-                // The liveliness token carries no GID — it identifies the
-                // entity by keyexpr, not by a 24-byte id. All-zero is the
-                // ABI's "this backend has none", which is honest; synthesising
-                // one from the zid would invent an identity a peer cannot match.
-                endpoint_gid: [0u8; 24],
+                // Issue 1495 — the token carries no gid FIELD, but it carries
+                // everything `rmw_zenoh_cpp` derives one from: an entity's gid
+                // is XXH3-128 of its whole keyexpr. So this is the gid that
+                // entity stamps into its own attachments and reports from its
+                // own `get_gid_for_publisher` — ours or a stock peer's — not a
+                // synthesised one. (This used to be all-zero, on the reading
+                // that a token has no gid to report.)
+                endpoint_gid: nros_rmw::pad_publisher_gid(&super::entity_gid::entity_gid(
+                    e.keyexpr,
+                )),
             };
             visit(&info)
         });

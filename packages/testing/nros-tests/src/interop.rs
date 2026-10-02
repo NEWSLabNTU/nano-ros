@@ -742,6 +742,14 @@ pub const CASE_CELLS: &[CaseOwner] = &[
        "native-graph-rust-zenoh-r2n"),
     co("graph_interop", "cyclone_a_peer_leaving_fires_the_graph_change_guard",
        "native-graph-rust-cyclone-r2n"),
+    // Issue 1495 — the PUBLISHER GID, one case per RMW, same two cells: the
+    // coordinate did not move, the question did. A gid is a graph identity —
+    // what `ros2 topic info --verbose` prints for an endpoint — so the graph
+    // cells are where it is asked.
+    co("graph_interop", "zenoh_publisher_gid_is_the_one_a_stock_peer_reads_and_reports",
+       "native-graph-rust-zenoh-r2n"),
+    co("graph_interop", "cyclone_take_gid_is_the_publishers_graph_gid",
+       "native-graph-rust-cyclone-r2n"),
 
     // ── rust_multi_node_per_node_graph — one image, one case per RMW ────
     // Issue 1269. Each case names its backend in the body (the fixture it

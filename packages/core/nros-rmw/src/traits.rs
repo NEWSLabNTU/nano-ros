@@ -1225,8 +1225,9 @@ qos_profiles! {
 //       NOT the sentinel, and Cyclone's own reader/writer default IS
 //       `DDS_LIVELINESS_AUTOMATIC` — so both spellings put AUTOMATIC on the
 //       wire.
-//     - zenoh: invisible. `QosKeyExpr::to_qos_string` (`keyexpr.rs:214-222`)
-//       emits `"{rel}:{dur}:{hist},{depth}:,:,:,,"` — the liveliness and lease
+//     - zenoh: invisible. `QosKeyExpr::to_qos_string` (`keyexpr.rs`)
+//       emits `"{rel}:{dur}:{hist},{depth}:,:,:,,"` (defaults elided, issue
+//       1495) — the liveliness and lease
 //       positions are EMPTY for every profile, so the value never reaches a
 //       peer's graph parse.
 //     - xrce: invisible. `uxrQoS_t` has no liveliness field at all.
@@ -2768,9 +2769,9 @@ pub trait Publisher {
     /// which is the identity of whoever sent a message we RECEIVED. Since
     /// that study's Q1(a) the two are one TYPE — both
     /// [`PUBLISHER_GID_SIZE`](nros_core::PUBLISHER_GID_SIZE) wide, nothing
-    /// truncated, no mapping — and they are still not one VALUE: no backend
-    /// we ship fills both from one source, so comparing a gid from a take
-    /// against a gid from here is meaningful only once issue 1495 lands.
+    /// truncated, no mapping — and since issue 1495 they are one VALUE on
+    /// zenoh and Cyclone: a take reports the gid this publisher's own
+    /// `get_gid` reports, so the two compare. (XRCE and uORB answer neither.)
     ///
     /// **How many of the 24 bytes MEAN anything is a backend property.** A
     /// backend whose identity is narrower zero-extends through

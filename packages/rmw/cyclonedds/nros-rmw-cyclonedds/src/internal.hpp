@@ -264,6 +264,10 @@ rmw_ret_t subscription_create(const rmw_node_t* node,
 rmw_ret_t           subscription_destroy(rmw_subscription_t *subscriber);
 rmw_ret_t subscription_take(const rmw_subscription_t *subscriber,
                                  rmw_mut_byte_span_t *out, bool *taken);
+/** Issue 1495 — `take` plus the sample's metadata; see subscriber.cpp. */
+rmw_ret_t subscription_take_with_info(const rmw_subscription_t *subscriber,
+                                      rmw_mut_byte_span_t *out, bool *out_taken,
+                                      rmw_message_info_t *info);
 rmw_ret_t subscription_take_sequence(const rmw_subscription_t *subscriber, uint8_t *buf,
                                           size_t per_msg_cap, size_t max_msgs, size_t *out_lens,
                                           size_t *taken);

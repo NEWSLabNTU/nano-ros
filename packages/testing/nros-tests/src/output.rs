@@ -1229,6 +1229,29 @@ pub const GRAPH_PROBE_CHANGE_UNSUPPORTED: &str = "GRAPH_PROBE_CHANGE_UNSUPPORTED
 pub const GRAPH_PROBE_CHANGE_NONE: &str = "GRAPH_PROBE_CHANGE_NONE";
 
 // ---------------------------------------------------------------------------
+// Issue 1495 — publisher identity (`graph-probe` with `GRAPH_PROBE_GID`, and
+// the stock `message_info_peer.py`). Each carries 48 hex digits: a whole
+// 24-byte `rmw_gid_t::data`.
+// ---------------------------------------------------------------------------
+
+/// The probe's entities exist; a peer may be started against them.
+pub const GRAPH_PROBE_GID_READY: &str = "GRAPH_PROBE_GID_READY";
+/// What our publisher's `get_gid()` reports for itself.
+pub const GRAPH_PROBE_PUB_GID: &str = "GRAPH_PROBE_PUB_GID ";
+/// `MessageInfo::publisher_gid` of a sample our subscription took.
+pub const GRAPH_PROBE_TAKE_GID: &str = "GRAPH_PROBE_TAKE_GID ";
+/// Our subscription took a sample and the backend reported NO metadata —
+/// Cyclone's state before the `take_with_info` dispatch.
+pub const GRAPH_PROBE_TAKE_ABSENT: &str = "GRAPH_PROBE_TAKE_ABSENT";
+/// Our graph's endpoint gid for the peer publishing on the probe's sub topic.
+pub const GRAPH_PROBE_PEER_GRAPH_GID: &str = "GRAPH_PROBE_PEER_GRAPH_GID ";
+/// The stock peer's subscription exists.
+pub const MESSAGE_INFO_PEER_READY: &str = "PEER_READY";
+/// `rmw_message_info_t::publisher_gid.data` as a STOCK rmw read it off one of
+/// our samples.
+pub const MESSAGE_INFO_PEER_TAKE_GID: &str = "PEER_TAKE_GID ";
+
+// ---------------------------------------------------------------------------
 // phase-467 Q4 — the `/rosout` bridge (`rosout-talker`), ledger row
 // `c:logging_rosout_enabled`.
 //
