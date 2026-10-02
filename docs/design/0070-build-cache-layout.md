@@ -79,8 +79,10 @@ construction, and that is correct rather than a gap.
 
 Every build cache lives under `$NROS_BUILD_ROOT` (default `<repo>/build/`,
 overridable so the whole tree can move to a faster or larger volume — the
-generalisation of the jobs audit's NVMe relocation, which today only `zephyr`
-honours via `NROS_ZEPHYR_BUILD_ROOT`).
+generalisation of the jobs audit's NVMe relocation, which `zephyr` once
+honoured alone via `NROS_ZEPHYR_BUILD_ROOT`; since issue 1596 the Zephyr west
+dirs are the `zephyr-workspace-builds/<version>` kind under this root, with
+`NROS_ZEPHYR_BUILD_ROOT` kept as their own override).
 
 **Nothing writes build output inside a source directory.** Not
 `examples/**/target-*`, not `examples/**/build-*`, not a workspace dir.
