@@ -3,7 +3,7 @@ id: 1498
 title: "A Zephyr west entry sizes the zenoh queryable table for its
   transient-local publishers and not the retention pool beside it; the slot
   is a flat 1024 B; and zenoh-pico's cond pool has no floor"
-status: open
+status: resolved
 type: bug
 area: rmw, build, cli
 severity: high
@@ -127,3 +127,84 @@ Still open, unchanged by this pass:
   at its `CONFIG_MAX_PTHREAD_COND_COUNT=16` (subs + qrys must stay <= 8; the
   in-tree derived tables read 0-4 queryables, and a crossing is a configure
   FATAL_ERROR naming the knob, not a silent failure).
+
+## Resolution (2026-10-02, branch `fix/zephyr-1498-1611-1613`)
+
+Every item the two notes above left open is closed.
+
+**1. The retention SLOT on the leaf and CMake roads.** Both now derive it with
+the cmake road's own refusals, so the three roads agree about when an answer
+exists:
+
+- leaf (sizing descriptor): `nros_sizing_descriptor::transient_local_retain_bytes`
+  -- the largest `wire_bound_bytes` over the publisher rows stating
+  `transient_local`; refused when the TL count is not stated, when an
+  `action_server` row is present (its `/status` type is in no row), or when a
+  TL row is unpriced; absent at a count of 0. `wire_bound_bytes` is the
+  type's RECEIVE bound (`BoundState::rx`, never below `tx`), so this road can
+  only over-size the slot, by the transport framing and XCDR2 header.
+- CMake (declared): `_nros_payload_facts_env` carries the derived
+  `NROS_DERIVED_TL_RETAIN_BYTES` as `NROS_DECLARED_TL_RETAIN_BYTES`, ahead of
+  the payload guards (the slot depends on the published types only).
+- `nros-rmw-zenoh/build.rs` (`transient_local_retain_demand`) takes either as
+  the rung under `ZPICO_TL_RETAIN_BYTES`, which still outranks both; the
+  descriptor wins when both exist, as it does for the count.
+
+`check-declared-fact-carriers` reports no OPEN road any more (it reported both
+of these under this issue). Checked: `NROS_DECLARED_TL_RETAIN_BYTES=105` builds
+`TL_RETAIN_BYTES = 105`, unset builds 1024; `cmake-message-bounds-tests.sh`
+106/106 (three new Q cases: crosses even when the payload join refused, rides
+beside the payload keys, absent stays absent); `nros-sizing-descriptor` 55/55
+(two new cases).
+
+**2. `NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS` is delivered.** The loader no longer
+keeps a list: it re-exports every `set(NROS_DERIVED_...)` the knobs file holds,
+so a new fact needs no second edit. Measured on a real Zephyr image that
+derives the join -- `examples/workspaces/cpp` `[image.zephyr]` (talker +
+listener, `std_msgs/msg/Int32`, native_sim/native/64), built twice in one build
+dir with only the loader swapped:
+
+| | `check-knob-delivery` | `NROS_RESOLVED_NROS_SUBSCRIBED_TYPE_BOUNDS` | `NROS_EXECUTOR_SIZE` | `.bss` |
+| --- | --- | --- | --- | --- |
+| old loader | RED: "was DERIVED but ... never reached the resolver" | absent | 20,680 | 443,552 |
+| new loader | every knob reached the compile | `std_msgs/msg/Int32=12` | 20,680 | 443,552 |
+
+The "re-prices every subscribing image" concern did not materialise here, and
+cannot raise a price anywhere: the table charges each subscription its OWN
+type's bound instead of the image-wide maximum, and a type missing from it falls
+back to that maximum, so delivery can only keep or lower a subscription's
+region. This image has one subscribed type, which IS the maximum, so nothing
+moved; it ran (`Published: 0..5`, `Received: 0..`). The Rust example confs no
+longer state an executor backing (issue 1611), so no stated claim can be broken
+by a smaller default either.
+
+**3. Pool counts on mps2_an385** (QEMU, lan9118 slirp, live `rmw_zenohd`,
+`gdb-multiarch` counting `pthread_{mutex,cond}_init` over 25 s; inits are an
+UPPER bound on live slots):
+
+| image | subs | qrys | mutex | cond |
+| --- | --- | --- | --- | --- |
+| c/talker | 0 | 0 | 9 | 2 |
+| c/listener | 1 | 0 | 9 | 3 |
+| c/service-server | 0 | 1 | 9 | 3 |
+| rust/talker | 0 | 0 | 9 | 2 |
+
+One cond per subscriber and per queryable holds on a second board. The FIXED
+cond count is 2 on mps2 (the island's figure) and 4 only under native_sim's
+NSOS, so the floor's fixed term stays 4, the larger. The mutex count did not
+grow with a sync group on either line (9 here, 11 on native_sim), so the
+island's 24 -- read off a pool that FILLED at 11 subscribers + 29 queryables --
+remains the only measurement of the per-entity mutex demand and stays the
+binding term; it over-provisions these small images, which is the safe side.
+Recorded beside the floor in `zephyr/cmake/nros_cargo_build.cmake`.
+
+The one in-tree DERIVED-table image built here (the cpp workspace, 1 sub + 1
+queryable) needs a cond floor of 10 against 16; it configures.
+
+Not measured: a real image whose retention slot is DERIVED on the leaf or CMake
+road -- no in-tree leaf or CMake entry states a `transient_local` publisher
+(the cpp workspace's one TL slot is 1572's worst case for an undeclared
+durability, and the slot correctly refuses there: "the durability table names
+0 transient-local publisher(s) and the inventory counts 1"). The per-entity
+mutex demand on mps2 at the island's scale. Other DERIVED-table Zephyr images
+were not built.
