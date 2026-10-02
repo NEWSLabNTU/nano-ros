@@ -564,6 +564,28 @@ message-bound-knobs:
     fi
     ./tests/cmake-message-bounds-tests.sh
 
+# Issue 1647 -- the canonical generator's message-bound FRAGMENT must exist at the
+# end of the CONFIGURE that reads it, not only after the build. As a build-time
+# output only, every configure pass of a clean build dir's first build composed
+# "N of N fragments have not been written yet", so the first `nros build` linked
+# an image sized at the placeholder knobs and only the second was the fixed point.
+# Configure-only (no compiler, no cargo); needs the in-tree CLI, so a pristine
+# worktree SKIPS through the ledger rather than reporting a green it never earned.
+bounds-fragment-configure:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # shellcheck source=scripts/build/check-skip.sh
+    source scripts/build/check-skip.sh
+    if ! command -v cmake >/dev/null 2>&1; then
+        nros_check_skip bounds-fragment-configure "missing host tool: cmake"
+        exit 0
+    fi
+    if [ ! -x packages/cli/target/release/nros ]; then
+        nros_check_skip bounds-fragment-configure "no in-tree CLI -- run \`just setup-cli\`"
+        exit 0
+    fi
+    ./tests/cmake-bounds-fragment-configure-tests.sh
+
 # Issue 0978 — the generated config header a leaf compiles against must be the
 # CURRENT one, not merely a PRESENT one.
 #

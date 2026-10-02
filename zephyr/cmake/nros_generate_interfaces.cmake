@@ -286,25 +286,17 @@ function(nros_generate_interfaces target)
   # site, not of whether the image also called `nano_ros_entry()`.
   nros_codegen_tool_reconfigure("${_NROS_ZEPHYR_CODEGEN_TOOL}")
 
-  set(_codegen_needed FALSE)
-  foreach(_out ${_expected_outputs})
-    if(NOT EXISTS "${_out}")
-      set(_codegen_needed TRUE)
-    endif()
-  endforeach()
   # issue 1470 — every `nros-codegen.toml` that reaches this generation (the
   # discovered chain plus an explicit CODEGEN_CONFIG that exists) is an input to
   # the BOUNDS in every generated header, and the args file changes only when a
   # config appears or moves. Same set the canonical lane hangs on
   # `add_custom_command`'s DEPENDS; `_nros_write_codegen_args_json` composes it.
-  foreach(_dep ${_interface_files} "${_args_file}" "${_NROS_ZEPHYR_CODEGEN_TOOL}"
-          ${_NROS_CODEGEN_CONFIG_CHAIN})
-    foreach(_out ${_expected_outputs})
-      if(EXISTS "${_out}" AND "${_dep}" IS_NEWER_THAN "${_out}")
-        set(_codegen_needed TRUE)
-      endif()
-    endforeach()
-  endforeach()
+  # The predicate is shared with the canonical lane's fragment pre-emit (issue
+  # 1647), so the two lanes cannot disagree on what "stale" means.
+  nros_codegen_outputs_stale(_codegen_needed
+    OUTPUTS ${_expected_outputs}
+    INPUTS ${_interface_files} "${_args_file}" "${_NROS_ZEPHYR_CODEGEN_TOOL}"
+           ${_NROS_CODEGEN_CONFIG_CHAIN})
 
   # issue 1360 — and the EMITTED CODEGEN VERSION, which no mtime can express.
   #
