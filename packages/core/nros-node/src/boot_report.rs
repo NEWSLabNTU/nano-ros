@@ -58,13 +58,13 @@
 //! same rule issue 0900's arena knob and phase-403's `rx_buffer_from_type()`
 //! both keep.
 //!
-//! Enabled, it costs `BootReport::struct_size` bytes of `.bss` -- 104, the
+//! Enabled, it costs `BootReport::struct_size` bytes of `.bss` -- 120, the
 //! same on every target because every field is a `u32` -- and a handful of
 //! relaxed atomic stores on paths that run once per entity at registration.
 //!
-//! The 104 is not a detail: it is the LENGTH an operator types into `savemem`,
+//! The 120 is not a detail: it is the LENGTH an operator types into `savemem`,
 //! and this sentence said 60 for as long as the record had fifteen fields. A
-//! short dump decodes -- `read-boot-report.py` needs `26 * 4` bytes and a
+//! short dump decodes -- `read-boot-report.py` needs `30 * 4` bytes and a
 //! 100-byte one is refused, but a reader who trusts the prose over the tool
 //! spends the refusal looking at the wrong thing. Ask the tool instead:
 //! `read-boot-report.py --addr-only <elf>` prints the address AND the length,
@@ -83,7 +83,7 @@
 //!    reading the new word as one it knows;
 //! 3. `FIELDS` in `scripts/read-boot-report.py`, same name, same position, and
 //!    `KNOWN_VERSION` to match;
-//! 4. the field count in `the_record_is_twenty_six_packed_u32s` below.
+//! 4. the field count in `the_record_is_thirty_packed_u32s` below.
 //!
 //! `check-boot-report-layout` fails on 1 without 3, and the Rust test fails if
 //! the compiler laid the record out with padding. Appending is what keeps a
@@ -103,8 +103,9 @@ pub const MAGIC: u32 = 0x4e52_5352;
 /// 5 since phase-460 W7 appended `samples_dropped_too_small`;
 /// 6 since issue 1549 appended `rmw_local_queryable`;
 /// 7 since issue 1550 appended `domain_id`;
-/// 8 since issue 1573 appended `failed_alloc_arena`.
-pub const VERSION: u32 = 8;
+/// 8 since issue 1573 appended `failed_alloc_arena`;
+/// 9 since issue 1036 appended the four `error_log_*` words.
+pub const VERSION: u32 = 9;
 
 /// Which allocator refused the allocation `BootReport::failed_alloc_size`
 /// names.
@@ -425,6 +426,35 @@ mod enabled {
         /// Written in the same first-writer branch as the pair it qualifies,
         /// so the three words always describe ONE failure.
         failed_alloc_arena: AtomicU32,
+
+        // Issue 1036, appended on the same rule: every ERROR-level `nros_log`
+        // record, counted where a console-less board can be asked for it.
+        //
+        // The sweep that found these: 79 `log_error!`/`log_fatal!` call sites
+        // in the core, RMW, API and board crates, and about a third of them
+        // report a condition the image then LIVES WITH -- a zenoh reply-slot
+        // table that stops answering requests, an entity that never reaches
+        // `ros2 node list`, a parameter service that drops a request, a
+        // typed sample that does not deserialize. On a board whose console is
+        // not wired each of those is indistinguishable from nothing having
+        // happened. Teaching 79 sites (and the next one) to write the record
+        // is a rule nobody can keep, so the record listens to the one channel
+        // all of them already use: `boot_report::init` appends a sink to
+        // `nros_log`, and it counts ERROR and FATAL records here.
+        /// How many ERROR/FATAL `nros_log` records this boot raised.
+        /// SATURATES rather than wrapping, like the drop tally above.
+        error_log_count: AtomicU32,
+        /// Address of the FIRST such record's source FILE (`core::file!()`,
+        /// a static string already in the image), or 0 if none or if the
+        /// address does not fit 32 bits. The reader resolves it from the ELF,
+        /// so the record names `file:line` without carrying a copy of either.
+        error_log_file_ptr: AtomicU32,
+        /// Length of the string at [`Self::error_log_file_ptr`].
+        error_log_file_len: AtomicU32,
+        /// Line of that first record. First-writer-wins, like
+        /// [`Self::failed_alloc_size`]: the first error is the one that
+        /// explains the boot, later ones are often its consequences.
+        error_log_line: AtomicU32,
     }
 
     impl BootReport {
@@ -456,6 +486,10 @@ mod enabled {
                 rmw_local_queryable: AtomicU32::new(0),
                 domain_id: AtomicU32::new(0),
                 failed_alloc_arena: AtomicU32::new(0),
+                error_log_count: AtomicU32::new(0),
+                error_log_file_ptr: AtomicU32::new(0),
+                error_log_file_len: AtomicU32::new(0),
+                error_log_line: AtomicU32::new(0),
             }
         }
 
@@ -508,6 +542,10 @@ mod enabled {
         pub rmw_local_queryable: u32,
         pub domain_id: u32,
         pub failed_alloc_arena: u32,
+        pub error_log_count: u32,
+        pub error_log_file_ptr: u32,
+        pub error_log_file_len: u32,
+        pub error_log_line: u32,
     }
 
     /// Read the record.
@@ -548,6 +586,10 @@ mod enabled {
             rmw_local_queryable: g(&r.rmw_local_queryable),
             domain_id: g(&r.domain_id),
             failed_alloc_arena: g(&r.failed_alloc_arena),
+            error_log_count: g(&r.error_log_count),
+            error_log_file_ptr: g(&r.error_log_file_ptr),
+            error_log_file_len: g(&r.error_log_file_len),
+            error_log_line: g(&r.error_log_line),
         }
     }
 
@@ -584,8 +626,68 @@ mod enabled {
         );
         r.rmw_local_queryable
             .store(crate::config::BOOT_RMW_LOCAL_QUERYABLE, Ordering::Relaxed);
+        install_error_log_sink();
         r.magic.store(MAGIC, Ordering::Relaxed);
         checkpoint(Stage::ReportReady);
+    }
+
+    /// Issue 1036 -- the sink that puts every ERROR/FATAL `nros_log` record
+    /// into the record (see the `error_log_*` fields for why).
+    struct ErrorLogRecorder;
+
+    impl nros_log::LogSink for ErrorLogRecorder {
+        fn log(&self, record: &nros_log::Record<'_>) {
+            if record.severity >= nros_log::Severity::Error {
+                record_error_log(&NROS_BOOT_REPORT, record.file, record.line);
+            }
+        }
+    }
+
+    static ERROR_LOG_RECORDER: ErrorLogRecorder = ErrorLogRecorder;
+
+    /// Append [`ErrorLogRecorder`] to `nros_log`'s sinks, ONCE however many
+    /// times `init` runs (it is idempotent and an image with two executors
+    /// calls it twice). APPENDED rather than `nros_log::init`ed, so the
+    /// board's own delivery -- the console, where there is one -- is
+    /// untouched, and records raised before this point are REPLAYED into it,
+    /// so an error before the executor opened is still counted.
+    ///
+    /// If `nros_log`'s appendable list is already full the sink is not
+    /// installed; the record then simply carries no error count, which the
+    /// reader cannot tell from "no errors" -- so it is said here rather than
+    /// discovered, and the list (4) is far from full in any image today.
+    fn install_error_log_sink() {
+        static INSTALLED: core::sync::atomic::AtomicBool =
+            core::sync::atomic::AtomicBool::new(false);
+        if !INSTALLED.swap(true, Ordering::Relaxed) {
+            let _ = nros_log::add_sink(&ERROR_LOG_RECORDER);
+        }
+    }
+
+    /// Count one ERROR-level log record, keeping the FIRST one's location.
+    ///
+    /// On any record, so a test can exercise first-writer-wins without racing
+    /// every other test that logs into the image's static. The count is the
+    /// first-writer gate: whoever moves it off zero writes the location, so
+    /// the three location words always describe one record.
+    pub(crate) fn record_error_log(r: &BootReport, file: &'static str, line: u32) {
+        let prev = r
+            .error_log_count
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+                Some(n.saturating_add(1))
+            })
+            .unwrap_or(u32::MAX);
+        if prev == 0 {
+            // An address past 4 GiB cannot be stored in the record's u32; 0
+            // reads as "no location", never as the wrong one.
+            let ptr = u32::try_from(file.as_ptr() as usize).unwrap_or(0);
+            r.error_log_file_ptr.store(ptr, Ordering::Relaxed);
+            r.error_log_file_len.store(
+                if ptr == 0 { 0 } else { saturate(file.len()) },
+                Ordering::Relaxed,
+            );
+            r.error_log_line.store(line, Ordering::Relaxed);
+        }
     }
 
     /// Record that boot reached `stage`.
@@ -835,6 +937,14 @@ mod enabled {
             .store(v, Ordering::Relaxed);
     }
 
+    /// Preload a record's error-log tally. TEST ONLY, for the reason
+    /// [`set_samples_dropped_too_small_for_test`] exists: the saturation rule
+    /// is worth a test and `u32::MAX` is not reachable by calling the writer.
+    #[cfg(test)]
+    pub(crate) fn set_error_log_count_for_test(r: &BootReport, v: u32) {
+        r.error_log_count.store(v, Ordering::Relaxed);
+    }
+
     /// `usize` -> `u32`, saturating.
     ///
     /// Every field is a `u32` so the record's layout does not change between a
@@ -922,21 +1032,67 @@ mod disabled {
 mod tests {
     use super::*;
 
-    /// The reader decodes twenty-six u32s positionally, so the record must
+    /// The reader decodes thirty u32s positionally, so the record must
     /// be exactly that and nothing else -- no padding, no reordering.
     ///
     /// `size_of` on the TARGET, which is the half `check-boot-report-layout.py`
     /// cannot see: that gate compares two source files, and this compares the
     /// source against what the compiler actually laid out.
     #[test]
-    fn the_record_is_twenty_six_packed_u32s() {
-        assert_eq!(BootReport::struct_size(), 26 * 4);
+    fn the_record_is_thirty_packed_u32s() {
+        assert_eq!(BootReport::struct_size(), 30 * 4);
         assert_eq!(
             core::mem::size_of::<BootReport>(),
-            26 * core::mem::size_of::<u32>(),
+            30 * core::mem::size_of::<u32>(),
             "the record grew padding; the reader decodes positionally"
         );
         assert_eq!(core::mem::align_of::<BootReport>(), 4);
+    }
+
+    /// Issue 1036 -- the first ERROR names where it was raised, later ones
+    /// only count, and the count saturates rather than wrapping to the "no
+    /// errors" zero.
+    #[test]
+    fn the_first_error_log_is_kept_and_the_rest_are_counted() {
+        let r = BootReport::new();
+        assert_eq!(snapshot_of(&r).error_log_count, 0);
+        record_error_log(&r, "first.rs", 11);
+        record_error_log(&r, "second.rs", 22);
+        let s = snapshot_of(&r);
+        assert_eq!(s.error_log_count, 2);
+        assert_eq!(s.error_log_line, 11, "a later error relocated the first");
+        // A board's (and a non-PIE native_sim image's) addresses fit the
+        // record's u32; a PIE host test binary's do not, and then BOTH words
+        // read 0 -- "no location", never a truncated wrong one.
+        match u32::try_from("first.rs".as_ptr() as usize) {
+            Ok(ptr) => {
+                assert_eq!(s.error_log_file_ptr, ptr);
+                assert_eq!(s.error_log_file_len, "first.rs".len() as u32);
+            }
+            Err(_) => assert_eq!((s.error_log_file_ptr, s.error_log_file_len), (0, 0)),
+        }
+        set_error_log_count_for_test(&r, u32::MAX);
+        record_error_log(&r, "third.rs", 33);
+        assert_eq!(snapshot_of(&r).error_log_count, u32::MAX, "it wrapped");
+    }
+
+    /// Issue 1036 -- the channel end to end: `init` installs the sink, an
+    /// ERROR through the ordinary macro is counted, a WARN is not.
+    ///
+    /// Counted as a DELTA, because the image's static is shared with every
+    /// other test in this binary, and any of them may log an error first.
+    #[test]
+    fn init_counts_error_logs_into_the_record() {
+        init();
+        let logger = nros_log::get_logger("boot_report_test");
+        let before = snapshot().error_log_count;
+        nros_log::log_warn!(logger, "a warning is advisory and is not counted");
+        assert_eq!(snapshot().error_log_count, before);
+        nros_log::log_error!(logger, "an error a console-less board must still see");
+        assert_eq!(snapshot().error_log_count, before.saturating_add(1));
+        init();
+        nros_log::log_error!(logger, "a second init must not install a second sink");
+        assert_eq!(snapshot().error_log_count, before.saturating_add(2));
     }
 
     /// Issue 1549 -- `build.rs` restates these numbers (it cannot name the

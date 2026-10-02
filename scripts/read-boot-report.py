@@ -45,7 +45,7 @@ SYMBOL = "NROS_BOOT_REPORT"
 # "NRSR". Must match boot_report.rs MAGIC.
 MAGIC = 0x4E525352
 # Layout this script knows how to decode. Must match boot_report.rs VERSION.
-KNOWN_VERSION = 8
+KNOWN_VERSION = 9
 
 # The headroom `CONFIG_NROS_ZEPHYR_HEAP_SIZE` must keep above the measured
 # peak, in bytes.
@@ -100,6 +100,13 @@ FIELDS = (
     # Issue 1573, appended on the same rule: which allocator refused the
     # allocation `failed_alloc_size` names (`ALLOC_ARENA` below).
     "failed_alloc_arena",
+    # Issue 1036, appended on the same rule: every ERROR/FATAL `nros_log`
+    # record, counted, and the FIRST one's source file (address + length of a
+    # static string in the image, resolved from the ELF) and line.
+    "error_log_count",
+    "error_log_file_ptr",
+    "error_log_file_len",
+    "error_log_line",
 )
 
 # `boot_report::AllocArena`. Append only; `the_alloc_arena_codes_match_the_record`
@@ -272,6 +279,68 @@ def resolve_symbol(elf: Path, symbol: str = SYMBOL) -> tuple[int, int]:
     raise SystemExit("no usable `nm` found (tried nm, arm-zephyr-eabi-nm, llvm-nm)")
 
 
+def elf_bytes(elf: Path | None, addr: int, length: int) -> bytes | None:
+    """`length` bytes at virtual address `addr` of a LOADED section of `elf`.
+
+    Issue 1036. The record carries where a static string is, not a copy of it,
+    and the ELF the decoder already requires holds the bytes. A minimal reader
+    of the section headers (ELF32/ELF64, little-endian) rather than a
+    dependency: every target nano-ros builds for is little-endian, and the
+    whole job is one address range lookup. `None` -- never a guess -- when the
+    address is in no section that has file contents.
+    """
+    if elf is None or not addr or not length:
+        return None
+    try:
+        data = elf.read_bytes()
+    except OSError:
+        return None
+    if data[:4] != b"\x7fELF" or data[5] != 1:
+        return None
+    is64 = data[4] == 2
+    if is64:
+        shoff, = struct.unpack_from("<Q", data, 0x28)
+        shentsize, shnum = struct.unpack_from("<HH", data, 0x3A)
+    else:
+        shoff, = struct.unpack_from("<I", data, 0x20)
+        shentsize, shnum = struct.unpack_from("<HH", data, 0x2E)
+    for i in range(shnum):
+        off = shoff + i * shentsize
+        if is64:
+            sh_type, sh_flags, sh_addr, sh_offset, sh_size = struct.unpack_from(
+                "<IQQQQ", data, off + 4
+            )
+        else:
+            sh_type, sh_flags, sh_addr, sh_offset, sh_size = struct.unpack_from(
+                "<IIIII", data, off + 4
+            )
+        SHT_NOBITS, SHF_ALLOC = 8, 0x2
+        if sh_type == SHT_NOBITS or not sh_flags & SHF_ALLOC:
+            continue
+        if sh_addr <= addr and addr + length <= sh_addr + sh_size:
+            start = sh_offset + (addr - sh_addr)
+            return data[start : start + length]
+    return None
+
+
+def error_log_line(rec: dict[str, int], elf: Path | None) -> str:
+    """The `measured on the board` line for the issue-1036 error-log words."""
+    n = rec["error_log_count"]
+    if not n:
+        return "  error-level log records      0"
+    raw = elf_bytes(elf, rec["error_log_file_ptr"], rec["error_log_file_len"])
+    if raw is not None:
+        where = f"{raw.decode('utf-8', 'replace')}:{rec['error_log_line']}"
+    elif rec["error_log_file_ptr"]:
+        where = (
+            f"file at 0x{rec['error_log_file_ptr']:08x} ({rec['error_log_file_len']} "
+            f"bytes, not in this ELF), line {rec['error_log_line']}"
+        )
+    else:
+        where = f"file not recorded, line {rec['error_log_line']}"
+    return f"  error-level log records      {n}   (the first raised at {where})"
+
+
 def decode(blob: bytes, fields: tuple[str, ...] = FIELDS) -> dict[str, int]:
     want = len(fields) * 4
     if len(blob) < want:
@@ -361,7 +430,7 @@ def heap_headroom(rec: dict[str, int]) -> tuple[bool, list[str]]:
     ]
 
 
-def report(rec: dict[str, int]) -> int:
+def report(rec: dict[str, int], elf: Path | None = None) -> int:
     """Print the record. Returns the process exit code."""
     if rec["magic"] != MAGIC:
         print(
@@ -433,6 +502,10 @@ def report(rec: dict[str, int]) -> int:
         print()
     print(f"  platform heap capacity        {hcap} bytes   (NROS_ZEPHYR_HEAP_SIZE)")
     print(f"  samples dropped (too small)   {rec['samples_dropped_too_small']}")
+    # Issue 1036 -- informational, never scored: an error the image logged and
+    # lived with is the thing a console-less board could not otherwise show,
+    # and it is not by itself a failed boot.
+    print(error_log_line(rec, elf))
     # PRINTED here, SCORED only under `--heap-headroom`. This function's exit
     # code means "the boot failed", and a thin heap on a board that booted is
     # not that -- it is a sizing verdict, and folding it in would turn every
@@ -732,6 +805,13 @@ def report_alloc(rec: dict[str, int]) -> int:
     return 1
 
 
+def make_dump_rec(**fields: int) -> dict[str, int]:
+    """A decoded record with every field zero but `fields` (self-test only)."""
+    rec = dict.fromkeys(FIELDS, 0)
+    rec.update(fields)
+    return rec
+
+
 def make_dump(**fields: int) -> bytes:
     """A synthetic record, for the gate's own negative controls.
 
@@ -928,6 +1008,20 @@ def self_test() -> int:
             ok = False
             print("  self-test FAIL junk: a record-less dump did not refuse", file=sys.stderr)
     ok = self_test_alloc_verdicts() and ok
+    # Issue 1036 -- the error-log line must never invent a location: no ELF
+    # resolves nothing, and a count of zero says so rather than naming a file.
+    if "the first raised at" in error_log_line(make_dump_rec(), None):
+        ok = False
+        print("  self-test FAIL error-log: a zero count named a location", file=sys.stderr)
+    named = error_log_line(
+        make_dump_rec(error_log_count=3, error_log_file_ptr=0x1000, error_log_file_len=9,
+                      error_log_line=7),
+        None,
+    )
+    if "0x00001000" not in named or "line 7" not in named or ": 3" in named:
+        ok = False
+        print(f"  self-test FAIL error-log: unresolved location misprinted: {named}",
+              file=sys.stderr)
     print(
         "read-boot-report --self-test: " + ("OK" if ok else "FAILED"),
         file=sys.stderr,
@@ -1004,7 +1098,7 @@ def main() -> int:
     blob = args.dump.read_bytes()
     if args.alloc:
         return report_alloc(decode(blob, ALLOC_FIELDS))
-    return report(decode(blob))
+    return report(decode(blob), args.elf)
 
 
 if __name__ == "__main__":
