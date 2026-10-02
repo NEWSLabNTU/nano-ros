@@ -156,10 +156,12 @@ just zephyr build-fvp-board-import
 ```
 
 Each recipe shells `west build -b fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp`
-inside the `zephyr-workspace/` directory and produces `zephyr.elf` at:
+from the Zephyr workspace and writes `zephyr.elf` into the checkout's Zephyr
+build root (`scripts/lib/zephyr-workspace.sh build-root`, by default
+`build/zephyr-workspace-builds/<version>/`):
 
-- `zephyr-workspace/build-fvp-ws-entry/zephyr/zephyr.elf`
-- `zephyr-workspace/build-fvp-board-import/zephyr/zephyr.elf`
+- `<build root>/build-fvp-ws-entry/zephyr/zephyr.elf`
+- `<build root>/build-fvp-board-import/zephyr/zephyr.elf`
 
 Run (once the build artifacts and `ARM_FVP_DIR` / `ARMFVP_BIN_PATH` are
 in place):

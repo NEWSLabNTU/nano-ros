@@ -545,7 +545,8 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   build script does not re-emit the byproduct, the POST_BUILD copy has nothing to copy,
   and ninja records its custom command as successful. Deleting the stamp does not help;
   building the header target directly does not help; only `rm -rf` on the west build dir
-  does. Survey with: for each `zephyr-workspace/build-*/nros-rust/nros-{cpp,c}-generated/nros`,
+  does. Survey with: for each `<zephyr build root>/build-*/nros-rust/nros-{cpp,c}-generated/nros`
+  (`scripts/lib/zephyr-workspace.sh build-root` — per CHECKOUT since issue 1596),
   a `.stamp` with no `.h` beside it. Two such leaves stopped a whole `lane=all` sweep.
 - **`rm -rf` + rebuild is an ANTIPATTERN — it destroys the evidence and fixes nothing.**
   The build system supports incremental builds; if an incremental build produces a wrong

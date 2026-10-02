@@ -91,6 +91,11 @@ setup *ARGS:
         # residue, so a build started in between cannot recreate it. Honours
         # `NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS=1`, which is somebody choosing to
         # keep them.
+        #
+        # issue 1596 — it now acts on THIS checkout's build root
+        # (`zephyr-workspace.sh build-root`), never on the shared workspace: the
+        # build dirs moved out of it, and deleting dirs there would destroy a
+        # directory another live session's old-layout build is using.
         python3 scripts/check-zephyr-workspace-foreign-checkout.py \
             --retire-foreign-build-dirs --workspace "$WORKSPACE"
     else
