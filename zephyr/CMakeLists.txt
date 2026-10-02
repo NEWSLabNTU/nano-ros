@@ -223,18 +223,11 @@ if((CONFIG_NROS_C_API OR CONFIG_NROS_CPP_API) AND
     zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/heap_stub_native.c)
 endif()
 
-# C++ images link a SECOND Rust staticlib per message package — the generated
-# `nano_ros_cpp_ffi_<pkg>` FFI crate — beside `libnros_cpp.a`, and each carries
-# its own copy of the Rust runtime closure. Measured with this flag removed
-# (issue 1636): cpp/talker on native_sim 392 and on mps2/an385 571 duplicate
-# symbols, every one of them `compiler_builtins` / `core` / `alloc` / LLVM
-# `anon.*` constants out of `libnano_ros_cpp_ffi_std_msgs.a`. No nano-ros
-# C-ABI symbol and no `REGISTRY` among them — the backend staticlib that once
-# carried a second registry is no longer linked (below). Allowlisted until the
-# message FFI is folded into the one runtime staticlib.
-if(CONFIG_NROS_CPP_API)
-    zephyr_ld_options(-Wl,--allow-multiple-definition)
-endif()
+# No `--allow-multiple-definition` here (issue 1636). The one remaining use is
+# in `cmake/nros_generate_interfaces.cmake`, scoped to the images that link a
+# generated C++ message-FFI staticlib — the only second Rust staticlib left.
+# An image without one (`examples/zephyr/c/talker`, measured) links with the
+# flag absent, so a duplicate there is a link error.
 
 # =============================================================================
 # phase-366 / RFC-0077 — the image's ENDING, resolved ONCE for every API path
