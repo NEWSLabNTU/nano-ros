@@ -4,12 +4,14 @@ title: "`stale_gaps()` exempts EVERY `gap` that carries a disposition, so a
   closed gap with one is unreachable by any gate — the reach is wider than the
   rule, and `c:log_severity_t` sat in the work queue for twelve days saying
   LANDED and FIXED"
-status: open
+status: resolved
 type: tech-debt
 area: [api, tooling]
 severity: medium
 found: 2026-09-23
-related: [0196, 1040, 1226, 1188]
+resolved: 2026-10-02
+resolved_in: "branch issue-1463-dispositioned-gap-reach — `owed` witness on a gap over a declared name"
+related: [0196, 1040, 1226, 1188, 1637]
 ---
 
 ## The rule
@@ -127,3 +129,54 @@ none of them obviously right:
 
 Whichever lands, the acceptance is the same: a closed dispositioned `gap`
 planted in a shard must make a gate red.
+
+## Resolution (2026-10-02)
+
+**Chosen: a witness, which is candidate 1's mechanism aimed at candidate 2's
+target.** A `gap` whose subject OUR side declares (`same`, `systematic`,
+`arity-only`, `differs`, `ours-only`) must carry
+
+    "owed": {"what": "...", "witness": {"file": "<repo path>", "text": "<literal>"}}
+
+where the witness is a literal that exists in the tree BECAUSE the behaviour is
+owed — the refusal text, the fallback. Doing the work deletes it, and the row
+goes red. The disposition decides nothing any more. Meaning lives in
+`docs/reference/api-parity-ledger/SCHEMA.md` "`owed`".
+
+**Measured before choosing, and the tree disagreed with the brief twice.**
+
+- The ledger held **1** `gap` (down from 22 when this was filed, 80 at the
+  phase-428 peak): `rust:init_with_args`, `adopt-bounded` — and on an
+  **`ours-only`** key. `stale_gaps()` was scoped to `same`/`systematic`, so
+  deleting the exemption alone would STILL have reached zero live rows. The
+  reach was narrow for two independent reasons, and the second was already
+  written down in phase-444 ("on an `ours-only` key … which it cannot reach")
+  without anything acting on it. With this change `--check` went red on
+  exactly that row until it named its witness
+  (`packages/api/nros/src/init.rs`, "Nothing in this process parses --ros-args
+  yet" — inside `REFUSE_INIT_ARGS`, which the parse would retire).
+- **Candidate 3 had already happened, de facto, without a new verdict.**
+  phase-467 moved permanent behaviour bounds off `gap` onto `divergence`
+  (`c:log_severity_t` itself, `f7e030114`) and deleted the closed ones. What
+  was missing was never a NAME for "behaviour owed" — it was a CLOSURE SIGNAL
+  for a gap the correlator already matches, and a new verdict would need the
+  same signal. So the split is recorded as a rule in SCHEMA.md (a permanent
+  bound is a `divergence`) rather than as a seventh verdict.
+- **Candidate 2 (a dated `owed`) was rejected:** a date is a self-attestation
+  in the same trust class as the prose it replaces — the cheap response to a
+  calendar alarm is to bump the date. The witness is a tree fact.
+- **Candidate 1 (prove the `adopt-bounded` envelope)** catches a false
+  envelope, not a closed gap, so it does not close this issue. It is real
+  debt of its own over 93 rows and is filed as **issue 1637**.
+
+**Negative control, on every run.** `--self-test` writes a shard FILE into a
+temp ledger dir, reads it back through `load_ledger`, and decides it with
+`closed_gap_findings` — the function `--check` calls. It plants: a dispositioned
+`gap` on `same` with LANDED/FIXED prose and no witness (this issue's case),
+the `ours-only` shape, a witness whose text the fix deleted, a witness whose
+file is gone — all must be RED — and a live witness, a `theirs-only` gap, a
+shim-only correlation and a `divergence`, which must not be. Three mutations
+were run against it (restore the disposition exemption; restore the
+`same`/`systematic` scope; never compare witness text) and each turns it red.
+`broken_witnesses` needs no correlation, so it also runs against the REAL
+ledger in `--self-test`, i.e. on the fast line, not only under `--check`.

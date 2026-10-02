@@ -279,6 +279,12 @@ it cannot reach. Bound: `just api-parity` runs without `--check`, and issue 1066
 no workflow runs `--check` at all. The gate holds locally and nowhere else until 1066
 is fixed.
 
+*Amended by issue 1463 (2026-10-02):* the disposition exemption reached EVERY `gap`
+(all carried one), so the gate could flag none, and the `ours-only` reach named above
+was the one live row. A `gap` on any subject our side declares now carries an `owed`
+witness — a literal the fix would delete — and the disposition decides nothing
+(`docs/reference/api-parity-ledger/SCHEMA.md` "`owed`").
+
 ### What is left, measured
 
 **The live count lives in [phase-417](phase-417-ros2-api-adoption.md) §"The
