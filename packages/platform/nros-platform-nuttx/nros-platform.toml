@@ -40,7 +40,7 @@ arch = "cortex-a7"
 compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
 pic = false
 required_env = [
-  { name = "NUTTX_DIR", help = "NuttX OS source. just setup-nuttx; export NUTTX_DIR=$PWD/third-party/nuttx/nuttx", validate_subdir = "include" },
+  { name = "NUTTX_DIR", help = "NuttX OS source. just nuttx setup; export NUTTX_DIR=$PWD/third-party/nuttx/nuttx", validate_subdir = "include" },
 ]
 include_paths = [
   "{nros}/c/include",

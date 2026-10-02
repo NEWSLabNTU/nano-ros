@@ -114,9 +114,9 @@ extra_sources = [
 arch = ["cortex-m3", "cortex-m7", "cortex-r5", "cortex-r52"]
 compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
 required_env = [
-  { name = "FREERTOS_DIR", help = "FreeRTOS kernel source. just setup-freertos; export FREERTOS_DIR=$PWD/third-party/freertos/kernel", validate_subdir = "include" },
+  { name = "FREERTOS_DIR", help = "FreeRTOS kernel source. just freertos setup; export FREERTOS_DIR=$PWD/third-party/freertos/kernel", validate_subdir = "include" },
   { name = "FREERTOS_PORT", help = "FreeRTOS portable layer. Examples: export FREERTOS_PORT=GCC/ARM_CM3 (Cortex-M3) | GCC/ARM_CM7/r0p1 (Cortex-M7)" },
-  { name = "LWIP_DIR", help = "lwIP source. just setup-freertos; export LWIP_DIR=$PWD/third-party/freertos/lwip", validate_subdir = "src/include", when = { capability = { ip_stack = true } } },
+  { name = "LWIP_DIR", help = "lwIP source. just freertos setup; export LWIP_DIR=$PWD/third-party/freertos/lwip", validate_subdir = "src/include", when = { capability = { ip_stack = true } } },
   { name = "FREERTOS_CONFIG_DIR", help = "Directory containing FreeRTOSConfig.h + lwipopts.h. Example: packages/boards/nros-board-mps2-an385-freertos/config" },
 ]
 include_paths = [
