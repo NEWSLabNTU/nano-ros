@@ -340,3 +340,52 @@ side effect — less debuginfo is less to write and link — but that was not
 measured, and the disk margin it buys is the only claim made here. A trigger
 change or a cheaper job is still what moves the cadence, and the cheaper job
 is now known not to be a lane-narrowing.
+
+## 2026-10-02 — it is not only `host-tests`, and BOTH lanes went a full day with zero green
+
+This issue has been written about `host-tests` throughout. The same arithmetic
+now applies to `gate`, and the two together have a consequence neither of their
+own issues states: **the push lane produced no successful verdict at all on
+2026-10-01/02.**
+
+Every completed push-event run on `main` in the window, by lane and conclusion
+(300 runs enumerated with the `created=` range form):
+
+| lane | success | failure | cancelled |
+| --- | --- | --- | --- |
+| `gate` | **0** | 7 | 9 |
+| `host-tests` | **0** | 5 | 11 |
+| `docs` | 8 | 1 | 0 |
+| `post-submit` | 26 | 3 | 2 |
+
+Sixteen completed `gate` runs and sixteen completed `host-tests` runs, and not
+one green between them. The two columns have different causes and neither is
+new on its own — `gate`'s seven failures are all issue **1345** confirmed by
+text, and `host-tests`'s five are **1353**, **1147** and the Rust 1.99 event —
+but the **cancelled** column is this issue, and it is the larger half in both
+lanes.
+
+The interval is the reason, and it got shorter rather than longer: the last
+three pushes of the window landed at `01:42:19`, `01:48:39` and `01:49:42`,
+i.e. **63 seconds apart** at the tightest. `host-tests` integration runs over
+an hour.
+
+### Why the zero matters more than either number
+
+A lane with a failing cause still has signal capacity in principle — fix the
+cause and the greens return. A lane that is *also* being superseded faster than
+it can finish has none even after the fix, and you cannot tell the two apart
+from the conclusion column: a cancelled run and a run that never started look
+identical, and both read as "not green". So the remedy question this issue has
+been deferring is now load-bearing for 1345 and 1353 as well — when those are
+fixed, `gate` and `host-tests` will still answer nothing on a one-minute merge
+cadence.
+
+`docs` and `post-submit` are the control, and they behave: both are short
+enough to finish inside the interval, and both report.
+
+### What this does not change
+
+No remedy is picked here either, for the reason the earlier section gives. The
+new fact is only that the cost is now measurable as a zero rather than as a
+percentage, and that it is two lanes rather than one.
