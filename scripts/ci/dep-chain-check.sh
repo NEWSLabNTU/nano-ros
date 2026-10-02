@@ -163,7 +163,14 @@ for cell in "${CELLS[@]}"; do
             echo "  [ok] crate/feature dep chain resolves (${feat_args[*]:-default features})"
         else
             echo "  [FAIL] cargo tree did not resolve (${feat_args[*]:-default features}):"
-            ( cd "$ex" && cargo tree "${feat_args[@]}" -e no-dev 2>&1 | grep -iE 'error|failed' | head -3 | sed 's/^/      /' )
+            # The DIAGNOSTIC, not a pattern over the output. `cargo tree` writes
+            # the tree to stdout and its errors to stderr, so keeping stderr is
+            # exact; a grep over the merged stream is not, because crate names
+            # contain the words it looks for. `grep -iE 'error|failed'` matched
+            # three `thiserror v2.0.21` rows on 2026-10-02 (run 36945033296,
+            # job 110645078601) and printed them INSTEAD of the cause, so the
+            # one red this lane produced in twelve runs could not be attributed.
+            ( cd "$ex" && cargo tree "${feat_args[@]}" -e no-dev 2>&1 1>/dev/null | head -10 | sed 's/^/      /' )
             cell_ok=0
         fi
     fi

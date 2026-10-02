@@ -93,7 +93,10 @@ if ( cd "$proj" && cargo tree -e no-dev >/dev/null 2>&1 ); then
     echo "  [ok] scaffolded project resolves via the source-release patch block"
 else
     echo "FAIL: cargo tree did not resolve the scaffolded project:" >&2
-    ( cd "$proj" && cargo tree -e no-dev 2>&1 | grep -iE 'error|failed' | head -5 | sed 's/^/      /' ) >&2
+    # Keep stderr, do not pattern-match the merged stream -- see the note at
+    # the same site in dep-chain-check.sh: a crate called `thiserror` matches
+    # `grep -i error`, so the tree is printed and the cause is lost.
+    ( cd "$proj" && cargo tree -e no-dev 2>&1 1>/dev/null | head -10 | sed 's/^/      /' ) >&2
     exit 1
 fi
 echo "::endgroup::"
