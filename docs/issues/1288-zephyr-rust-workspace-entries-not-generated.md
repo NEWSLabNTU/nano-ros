@@ -746,3 +746,34 @@ one-time event in a 15-minute window; the failure after it is permanent until
 something rebuilds the source tree, which no lane does. A fix that only stops the
 deletion would leave every workspace that has already lost its app broken until
 someone clears the build dir by hand.
+
+## Also on the 07:19 nightly, in a different workspace (2026-10-02)
+
+Third lane, same string. tier-2 **nightly** run **36829686786** (schedule
+2026-10-01T07:19:46Z, head `c7db50ad6`), job **110263209636**
+`tier 2 nightly (pairwise cover)`, step `just build tier2-nightly`:
+
+```
+CMake Error: The source directory
+  "<ws>/examples/workspaces/rust/build/zephyr-zenoh/zephyr_entry" does not exist.
+ninja: error: rebuilding 'build.ninja': subcommand failed
+```
+
+printed **three times**, then
+
+```
+make[1]: *** [… zephyr-fixtures-20261001-100242-449981-3502.mk:77:
+  zephyr-fixture-23-build-ws-rs-entry-zenoh] Error 1
+✗ Zephyr fixture build FAILED (exit 2) — judging the tier-priority
+error: recipe `build-fixtures` failed with exit code 2
+```
+
+The named fixture is `ws-rs-entry-zenoh`, the same entry leaf. Recorded because
+the entry above bracketed this on one workspace and said nothing re-emits the
+directory; a second lane on a different head reaching the identical state is
+consistent with that and rules out a one-workspace accident.
+
+Not asserted: whether this runner's workspace is persistent. The path root is
+`/home/runner/_work/…`, which both a hosted and a self-hosted runner use, so it
+does not distinguish the two and nothing here should be read as "it also fails
+on a fresh checkout".

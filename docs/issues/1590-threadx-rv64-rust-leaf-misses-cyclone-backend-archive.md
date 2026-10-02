@@ -126,3 +126,23 @@ a way that reorders ld's single pass through the whole-archive group.
    ThreadX/riscv64 — this lane is simply the one that builds them nightly.
 3. Not closed by the tally reaching 12/12 alone: issue **1355** owns the lane's
    verdict and stays open for the cells.
+
+## It is not nightly-only — tier 2 carries the same six (2026-10-02)
+
+Filed from the nightly `threadx_riscv64` job. The **tier-2 1-wise matrix** fails
+on it too, so the defect is in the lane's build and not in the nightly's
+coordinates.
+
+- nightly **36829686786** (schedule 07:19:46Z, `c7db50ad6`), job
+  **110263557235** `threadx_riscv64`, step `Build (threadx_riscv64)`:
+  `rust-lld: error: undefined symbol: nros_rmw_cyclonedds_register_descriptor`,
+  `ThreadX-RV64 rust leaves: 6/12 ok, 6 failed`.
+- run-matrix **36825211926** (schedule 06:31:16Z, `bc615cb84`), job
+  **110249254587** `tier 2 (1-wise matrix)`, step `just build tier2`: the same
+  symbol, **six** times (log lines 12259, 12382, 12503, 12626, 12749, 12871),
+  then `error: recipe \`build-fixture-extras\` failed with exit code 1`.
+
+Same count, same symbol, two different lanes and two different heads. Worth
+noting for 1158's axis as well: this tier-2 run **reached the build stage** —
+its failure is a link error, not a provisioning one — so a `failure` on
+`run-matrix` is not automatically the never-reached-the-cells shape.
