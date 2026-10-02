@@ -671,6 +671,46 @@ function(nros_message_bounds_files _output_dir _json_var _cmake_var)
     set(${_cmake_var} "${_output_dir}/nros_message_bounds.cmake" PARENT_SCOPE)
 endfunction()
 
+# nros_codegen_outputs_stale(<out_var> OUTPUTS <files…> INPUTS <files…>)
+#
+# THE configure-time "must codegen run now?" predicate: TRUE when any OUTPUT is
+# missing, or any INPUT is newer than any OUTPUT that exists. It is the mtime
+# half only; the emitted-codegen-VERSION half (issue 1360) is
+# `nros_codegen_version_stale()`, which each caller ORs in.
+#
+# Two callers, which is why it is a function. The Zephyr lane runs ALL of its
+# codegen at configure time through it. The canonical lane (issue 1647) runs
+# codegen at configure time only when the message-bound FRAGMENT needs it,
+# because the fragment is the one codegen output a configure READS: left as a
+# build-time output only, a clean build dir composed "N of N fragments have not
+# been written yet" on every configure pass of its first build, so the first
+# `nros build` linked an image sized at the placeholder knobs and only the
+# second was the fixed point.
+function(nros_codegen_outputs_stale _out)
+    cmake_parse_arguments(_S "" "" "OUTPUTS;INPUTS" ${ARGN})
+    set(_stale FALSE)
+    foreach(_o IN LISTS _S_OUTPUTS)
+        if(NOT EXISTS "${_o}")
+            set(_stale TRUE)
+            break()
+        endif()
+    endforeach()
+    if(NOT _stale)
+        foreach(_i IN LISTS _S_INPUTS)
+            foreach(_o IN LISTS _S_OUTPUTS)
+                if("${_i}" IS_NEWER_THAN "${_o}")
+                    set(_stale TRUE)
+                    break()
+                endif()
+            endforeach()
+            if(_stale)
+                break()
+            endif()
+        endforeach()
+    endif()
+    set(${_out} ${_stale} PARENT_SCOPE)
+endfunction()
+
 # _nros_predict_generated_outputs(<headers_var> <sources_var> <rs_var>
 #     LANGUAGE C|CPP PACKAGE <name> OUTPUT_DIR <dir> INTERFACE_FILES <files...>)
 #

@@ -398,11 +398,10 @@ function(nros_generate_interfaces target)
   # list, so `nros_find_interfaces()` composes the closure without knowing which
   # generator produced each fragment.
   #
-  # This lane emits the fragment as a BUILD-time custom-command output, so on a
-  # clean tree it does not exist yet at configure time and the derivation
-  # refuses (loudly, naming the missing file's package). It is present from the
-  # next configure on. The Zephyr lane runs codegen AT configure time and has it
-  # immediately -- the difference is the lane's, not this wave's.
+  # The fragment is on disk by the time `nros_find_interfaces()` composes it:
+  # the configure-time pre-emit below (issue 1647) produces it when it is
+  # missing or stale. It used to be a BUILD-time output only, which made the
+  # derivation refuse on every pass of a clean dir's first build.
   nros_message_bounds_register_fragment("${_bounds_cmake}")
 
   # ---- The emitted codegen version, as a build-graph input (issue 1360) ----
@@ -429,6 +428,56 @@ function(nros_generate_interfaces target)
   if(_nros_gi_version_stale)
     file(REMOVE ${_nros_gi_version_bad})
   endif()
+
+  # ---- The message-bound fragment is a CONFIGURE input (issue 1647) ----
+  #
+  # Everything else this command emits is consumed by the BUILD, so a
+  # build-time custom command is the right producer for it. The bound fragment
+  # is not: `nros_find_interfaces()` composes it into
+  # `nros/message_bound_knobs.cmake` (and `nano_ros_entry()` prices the service
+  # and action inboxes from it) DURING THE CONFIGURE, and the answer is baked
+  # into the cargo commands of `nros-c`/`nros-cpp`/the RMW backend. Produced
+  # only at build time, a clean build dir configured every pass of its first
+  # build against "N of N fragments have not been written yet", compiled every
+  # message-bound knob at its placeholder, and only the SECOND `nros build`
+  # re-configured with the real answer and rebuilt -- measured on
+  # `examples/workspaces/cpp` `demo_bringup:native`: `native_entry` differed
+  # between build 1 and build 2 and settled at build 2.
+  #
+  # So when the fragment is missing or older than an input, codegen runs NOW,
+  # with the same command the build would run. Its other outputs land too, and
+  # the custom command below then finds them current and does not run again --
+  # one codegen, earlier, not two. The Zephyr lane has always worked this way
+  # for every output; this lane does it for the one output a configure reads.
+  #
+  # The inputs are also CONFIGURE dependencies, so an edit that moves a bound
+  # (a `.msg`, an `nros-codegen.toml` cap, a rebuilt tool) re-configures and
+  # re-emits here instead of rewriting the fragment mid-build, which is the
+  # same lag one build later. Codegen keeps mtimes still on unchanged bytes
+  # (write-if-changed), so this costs a configure, not a rebuild.
+  set(_nros_gi_fragment_inputs ${_interface_files} "${_NANO_ROS_CODEGEN_TOOL}"
+      ${_NROS_CODEGEN_CONFIG_CHAIN})
+  nros_codegen_outputs_stale(_nros_gi_fragment_stale
+    OUTPUTS "${_bounds_json}" "${_bounds_cmake}"
+    INPUTS ${_nros_gi_fragment_inputs} "${_args_file}")
+  if(_nros_gi_fragment_stale OR _nros_gi_version_stale)
+    execute_process(
+      COMMAND "${_NANO_ROS_CODEGEN_TOOL}" codegen --language "${_lang_flag}" --args-file "${_args_file}"
+      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+      RESULT_VARIABLE _nros_gi_codegen_rc
+      OUTPUT_VARIABLE _nros_gi_codegen_out
+      ERROR_VARIABLE _nros_gi_codegen_err)
+    if(NOT _nros_gi_codegen_rc EQUAL 0)
+      message(FATAL_ERROR
+        "nros codegen failed for ${target} (exit ${_nros_gi_codegen_rc}):\n"
+        "  stdout: ${_nros_gi_codegen_out}\n"
+        "  stderr: ${_nros_gi_codegen_err}")
+    endif()
+  endif()
+  # Issue 1018 -- a configure-time emitter must re-run when the tool moves.
+  nros_codegen_tool_reconfigure("${_NANO_ROS_CODEGEN_TOOL}")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+      ${_interface_files} ${_NROS_CODEGEN_CONFIG_CHAIN})
 
   # ---- Custom command ----
   add_custom_command(

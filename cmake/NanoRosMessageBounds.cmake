@@ -460,10 +460,12 @@ function(nros_derive_message_bound_knobs)
     # from it. A mixed-version tree (one package regenerated, one not) is the
     # case that would otherwise read a moved field as if it had not moved.
     #
-    # A MISSING fragment is a refusal, not a fatal: on the canonical lane
-    # codegen is a build-time custom command, so on a clean tree the file is a
-    # promise rather than a fact. A fragment that EXISTS and is malformed or
-    # from another schema IS fatal -- that is a broken producer, not a lane
+    # A MISSING fragment is a refusal, not a fatal: a generator may register a
+    # fragment it has not produced yet. Both in-tree generators now produce it
+    # AT CONFIGURE time (the canonical lane pre-emits it since issue 1647, the
+    # Zephyr lane always did), so a refusal here on a clean dir means a producer
+    # that registered without emitting. A fragment that EXISTS and is malformed
+    # or from another schema IS fatal -- that is a broken producer, not a lane
     # that has not run yet.
     set(_pending "")
     foreach(_frag IN LISTS _fragments)
