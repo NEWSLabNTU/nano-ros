@@ -2086,9 +2086,10 @@ pub fn run() {
                 }
             }
         }
+        // issue 1599 — the compiler names what it read (alias TU + headers).
+        nros_cc_flags::header_deps::track_header_deps(&mut alias_build);
         alias_build.compile("zpico_platform_aliases");
-        println!("cargo:rerun-if-changed=c/zpico/platform_aliases.c");
-        println!("cargo:rerun-if-changed=c/zpico/nros_zenoh_generic_platform.h");
+        nros_cc_flags::header_deps::emit_header_deps(&out_dir);
     }
 
     if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() && !use_freertos && platform_resolved
@@ -2206,21 +2207,22 @@ pub fn run() {
                 }
             }
         }
+        // issue 1599 — the compiler names what it read (alias TU + headers).
+        nros_cc_flags::header_deps::track_header_deps(&mut alias_build);
         alias_build.compile("zpico_platform_aliases");
-        println!("cargo:rerun-if-changed=c/zpico/platform_aliases.c");
-        println!("cargo:rerun-if-changed=c/zpico/nros_zenoh_generic_platform.h");
+        nros_cc_flags::header_deps::emit_header_deps(&out_dir);
     }
 
-    // Rerun triggers
-    println!("cargo:rerun-if-changed=c/zpico/zpico.c");
-    println!("cargo:rerun-if-changed=c/zpico/nuttx_clock.c");
-    println!("cargo:rerun-if-changed=c/platform/bare-metal/platform.h");
-    println!("cargo:rerun-if-changed=c/platform/errno_override.h");
-    // c/platform/zenoh_generic_config.h was a stale pre-134.3 copy that could
-    // shadow the OUT_DIR-generated header on the bare-metal shim include path;
-    // deleted in the #135 fix (every TU now consumes the generated config).
-    println!("cargo:rerun-if-changed=c/platform/zenoh_generic_platform.h");
-    // Watch the TREES, not a list of files (issue 0911).
+    // Rerun triggers.
+    //
+    // issue 1599 — every C file a compile here READ (the shim's `c/` sources and
+    // headers, zenoh-pico's headers, a platform header from
+    // `packages/platform/*`, a board include dir) is declared from the
+    // compiler's own depfiles (`emit_header_deps` after each compile), so the
+    // hand list of `c/` files that stood here is gone: it named what its author
+    // knew, and missed every header reached from outside those paths.
+    //
+    // Watch the SOURCE tree, not a list of files (issue 0911).
     //
     // This used to name five zenoh-pico sources out of the several hundred the
     // build actually compiles. Everything else — protocol, transport, codec,
@@ -2232,12 +2234,14 @@ pub fn run() {
     // and nearly produced a "the fix does not work" verdict about a fix that had
     // never been built.
     //
-    // `cargo:rerun-if-changed` accepts a directory and cargo walks it, so two
-    // lines cover the compiled set with no list to maintain. The cost is that any
-    // touch under these trees re-runs the build script; for a vendored library
-    // that changes only when someone patches it, that is the right trade.
+    // `cargo:rerun-if-changed` accepts a directory and cargo walks it. Since
+    // issue 1599 the depfiles name every file a compile READ, so this line is
+    // kept for one job the depfiles cannot do: `zenoh-sources.txt` selects
+    // sources by DIRECTORY GLOB, so a `.c` ADDED under a selected directory is
+    // a new member no depfile can have named. (`zenoh-pico/include` is gone —
+    // a header matters only once something includes it, and that includer is
+    // in a depfile.)
     println!("cargo:rerun-if-changed=zenoh-pico/src");
-    println!("cargo:rerun-if-changed=zenoh-pico/include");
     println!("cargo:rerun-if-changed=c/zenoh-pico-version.h.in");
     println!("cargo:rerun-if-changed=zenoh-pico/version.txt");
     println!("cargo:rerun-if-changed=src/ffi.rs");
@@ -2248,7 +2252,6 @@ pub fn run() {
     // headers this shim compiles against are declared per file above. The PORT
     // is a name, so it stays.
     println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
-    println!("cargo:rerun-if-changed=c/size_probe.c");
 
     // Phase 160 — probe moved to before alias-TU compile (see
     // comment above `probe_net_type_sizes` call earlier in this
@@ -2502,7 +2505,14 @@ fn probe_net_type_sizes(
     // Compile to a separate static library (may fail on targets without
     // C standard library headers, e.g. RISC-V without picolibc)
     build.cargo_metadata(false); // Don't emit link flags
-    if let Err(e) = build.try_compile("size_probe") {
+    // issue 1599 — size_probe.c and every header it reaches. On failure there
+    // is no object, so no depfile; the declaration happens on success below.
+    nros_cc_flags::header_deps::track_header_deps(&mut build);
+    let probe = build.try_compile("size_probe");
+    if probe.is_ok() {
+        nros_cc_flags::header_deps::emit_header_deps(out_dir);
+    }
+    if let Err(e) = probe {
         // Probe failure means the `_z_sys_net_socket_t` /
         // `_z_sys_net_endpoint_t` sizes are UNKNOWN. Guessing them skews the
         // pass-by-value FFI ABI (the Rust shim reads its opaque buffer from
@@ -2855,7 +2865,9 @@ fn build_c_shim(
     if zpico_debug_requested() {
         build.debug(true);
     }
+    nros_cc_flags::header_deps::track_header_deps(&mut build);
     build.compile("zpico");
+    nros_cc_flags::header_deps::emit_header_deps(out_dir);
 }
 
 /// Phase 136.4 — unified zenoh-pico cc-rs builder, driven by the
@@ -3178,7 +3190,17 @@ fn build_zenoh_pico_unified(
     // touch here so it doesn't go cold under the borrow checker.
     let _ = link;
 
+    // issue 1599 — zenoh-pico is the largest C compile in an image group, and
+    // the pair pins the compiler, so it no longer goes through sccache. That
+    // was MEASURED to cost nothing worth keeping: sccache's key includes the
+    // absolute OUT_DIR paths on these command lines, so a fresh target dir (a
+    // new fixture group, a CI checkout) hit 8 of 134 C compiles and the
+    // wrapper's overhead made the build script SLOWER (23.8 s vs 16.4 s); only
+    // a re-run in the SAME target dir hit (10.6 s vs 13.8 s). Issue 1599's
+    // resolution has the table.
+    nros_cc_flags::header_deps::track_header_deps(&mut build);
     build.compile("zenohpico");
+    nros_cc_flags::header_deps::emit_header_deps(out_dir);
 
     // Step 12 — register additional rerun-if-env-changed hooks.
     for var in &plat.rerun_if_env_changed {

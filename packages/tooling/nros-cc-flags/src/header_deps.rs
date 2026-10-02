@@ -76,9 +76,14 @@ use std::{
 ///
 /// Naming the compiler explicitly is cc-rs's documented way to bypass that
 /// fallback (`get_base_compiler` returns the bare tool when one is set). The
-/// cost is that these compiles are no longer cached by sccache; the board and
-/// NuttX archives this helper serves are seconds of C, and an object that
-/// is fresh but whose edges are unknown is the museum binary 1570 measured.
+/// cost is that these compiles are no longer cached by sccache, and issue 1599
+/// measured it on the biggest one, zenoh-pico (`zpico-sys` posix, build-script
+/// run): uncached 16.4 s; through sccache 24.4 s cold and 23.8 s with a WARM
+/// cache in a fresh target dir — 8 of 134 C compiles hit, because the key
+/// carries the absolute `OUT_DIR` paths on the command line — and 10.6 s only
+/// for a re-run in the SAME target dir. So the wrapper was a net cost for every
+/// new fixture group, and an object that is fresh but whose edges are unknown
+/// is the museum binary 1570 measured.
 pub fn track_header_deps(build: &mut cc::Build) -> &mut cc::Build {
     let compiler = build.get_compiler().path().to_path_buf();
     build.compiler(compiler).flag("-MMD")
