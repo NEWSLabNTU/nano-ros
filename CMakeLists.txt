@@ -422,6 +422,20 @@ elseif(NROS_RMW_LINK_STRATEGY STREQUAL "cmake")
         # Phase 241.D3-rev — the C++ umbrella no longer links the C one, so it
         # must pull the backend itself. One defect, two consumers, one helper.
         _nros_link_cmake_rmw(nros-cpp-headers)
+        # The backend WITHOUT an umbrella, for a binary that carries the Rust
+        # runtime itself (`nros_declare_rust_runtime_carrier`). Issue 1467
+        # drops the umbrella for such a binary, because its own staticlib
+        # already holds `nros` / `nros-rmw-cffi` — and the umbrella was the
+        # only thing that whole-archived this backend, so all six
+        # `threadx_riscv64` Cyclone leaves then linked with no Cyclone at all
+        # (`undefined symbol: nros_rmw_cyclonedds_register_descriptor`, from
+        # the IDL register constructors). `nano_ros_link_rmw` links this into
+        # a carrier; a C/C++ binary keeps getting the backend from its
+        # umbrella and never sees it, so nothing is whole-archived twice.
+        add_library(NanoRosRmwBackend INTERFACE)
+        set_property(TARGET NanoRosRmwBackend PROPERTY
+            NANO_ROS_RMW "${NROS_RMW_NAME}")
+        _nros_link_cmake_rmw(NanoRosRmwBackend)
     else()
         message(FATAL_ERROR
             "nano-ros: rmw '${NROS_RMW_NAME}' declares cmake target "

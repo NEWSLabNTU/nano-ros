@@ -115,6 +115,21 @@ function(nano_ros_link_rmw TARGET)
             LINK_DEPENDS "$<TARGET_FILE:${NROS_RMW_CMAKE_TARGET}>")
     endif()
 
+    # A Rust runtime carrier links no umbrella (issue 1467), so a `cmake`
+    # strategy backend reaches it only through the umbrella-free
+    # `NanoRosRmwBackend` the root declares. Without this the image has no
+    # backend: the threadx_riscv64 Cyclone leaves failed at link on the IDL
+    # register constructors' `nros_rmw_cyclonedds_register_descriptor`. The
+    # property check keeps a C/C++ binary out, since its umbrella already
+    # whole-archives the same file.
+    get_target_property(_nros_rust_carrier ${TARGET} NROS_CARRIES_RUST_RUNTIME)
+    if(_nros_rust_carrier AND TARGET NanoRosRmwBackend)
+        get_target_property(_nros_backend_rmw NanoRosRmwBackend NANO_ROS_RMW)
+        if(_nros_backend_rmw STREQUAL _chosen)
+            target_link_libraries(${TARGET} PRIVATE NanoRosRmwBackend)
+        endif()
+    endif()
+
     # Issue 0837 — the SAME edge for every other file named in that flag.
     #
     # The fix above covered the backend archive and stopped there, but the flag
