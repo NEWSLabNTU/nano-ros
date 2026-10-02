@@ -48,3 +48,24 @@ type = "std_msgs/msg/Int32"
 topic = "/status"
 reliability = "best_effort"
 durability = "volatile"
+
+# issue 1608 -- two PUBLISHER rows. The descriptor is the only carrier of a
+# publisher's declaration, so these are what prove it reaches
+# `DECLARED_PUBLISHER_QOS_ROWS`: the lane expects a FOURTH declared-image test
+# on this carrier's step. `/latched` is a latched topic (a default publisher is
+# RAISED to it); `/plain` is declared volatile, so a transient_local publisher
+# there is REFUSED -- the opposite direction from a subscription's rule.
+[[endpoint]]
+kind = "publisher"
+type = "std_msgs/msg/Int32"
+topic = "/latched"
+history = "keep_last"
+depth = 1
+reliability = "reliable"
+durability = "transient_local"
+
+[[endpoint]]
+kind = "publisher"
+type = "std_msgs/msg/Int32"
+topic = "/plain"
+durability = "volatile"
