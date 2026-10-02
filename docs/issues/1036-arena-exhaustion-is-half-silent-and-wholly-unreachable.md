@@ -294,7 +294,7 @@ that assume a sink is also unchanged.
 
 ## 2026-10-02 — the sweep is closed by construction, and the console-less path is proven on QEMU
 
-Branch `fix/arena-1036-1340-1370`, commit `a9bb05354`.
+Branch `fix/arena-1036-1340-1370`, landed on `main` as "fix(#1036): every ERROR log reaches the boot record, so a console-less board shows it".
 
 ### The sibling sweep
 
