@@ -295,6 +295,20 @@ function(_nros_payload_facts_env _out_var)
     endif()
     # Read into THIS function's scope; the file is a plain list of `set()`s.
     include("${_knobs}")
+    # issue 1498 -- the transient-local retention SLOT, and it is read BEFORE
+    # the two conditions below on purpose: `_nros_bounds_tl_retain` answers
+    # from the types this image PUBLISHES transient-local, so it is independent
+    # of both the closure refusal and the subscription join, and the
+    # derivation writes it into either status's file. The Zephyr resolver road
+    # forwards the same fact as `ZPICO_TL_RETAIN_BYTES`; this road carries it
+    # as a DECLARED default the knob still outranks. Absent = the derivation
+    # refused (it said why on its STATUS line) or there is nothing to retain.
+    set(_tl_retain_env "")
+    if(DEFINED NROS_DERIVED_TL_RETAIN_BYTES)
+        set(_tl_retain_env
+            "NROS_DECLARED_TL_RETAIN_BYTES=${NROS_DERIVED_TL_RETAIN_BYTES}")
+    endif()
+    set(${_out_var} "${_tl_retain_env}" PARENT_SCOPE)
     if(NOT NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS STREQUAL "derived")
         return()
     endif()
@@ -313,7 +327,7 @@ function(_nros_payload_facts_env _out_var)
     # SIZE for a class with no blocks would be inventing a number
     # (`_nros_bounds_publish_payload_classes`). Absent therefore means "no
     # answer" here exactly as it does there.
-    set(_out "")
+    set(_out "${_tl_retain_env}")
     if(DEFINED NROS_DERIVED_MAX_LARGE_SUBSCRIBERS)
         list(APPEND _out
             "NROS_DECLARED_LARGE_SUBSCRIBERS=${NROS_DERIVED_MAX_LARGE_SUBSCRIBERS}")

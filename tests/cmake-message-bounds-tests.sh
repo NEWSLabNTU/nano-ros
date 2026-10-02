@@ -1099,6 +1099,7 @@ payload_env() {
             [ -n "${3:-}" ] && printf 'set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS %s)\n' "$3"
             [ -n "${4:-}" ] && printf 'set(NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE %s)\n' "$4"
             [ -n "${5:-}" ] && printf 'set(NROS_DERIVED_SUBSCRIBER_LARGE_SIZE %s)\n' "$5"
+            [ -n "${TL_RETAIN:-}" ] && printf 'set(NROS_DERIVED_TL_RETAIN_BYTES %s)\n' "$TL_RETAIN"
         } > "$dir/nros/message_bound_knobs.cmake"
     fi
     cat > "$dir/run.cmake" <<EOF
@@ -1163,6 +1164,29 @@ check
 _got="$(payload_env derived subscribed 0)"
 if [ "$_got" != "NROS_DECLARED_LARGE_SUBSCRIBERS=0" ]; then
     fail "Q: an unpublished SIZE must not be invented -- got ${_got:-<empty>}"
+fi
+check
+
+# issue 1498 -- the transient-local retention SLOT crosses on this road too, and
+# it is NOT behind the two payload guards: `_nros_bounds_tl_retain` answers from
+# the types the image PUBLISHES transient-local, so a closure basis or a refused
+# subscription join says nothing about it. Before this the CMake road kept the
+# flat 1024 B slot while the Zephyr resolver forwarded the derived size.
+_got="$(TL_RETAIN=105 payload_env refused subscribed)"
+if [ "$_got" != "NROS_DECLARED_TL_RETAIN_BYTES=105" ]; then
+    fail "Q: the retain slot crosses even when the payload join refused -- got ${_got:-<empty>}"
+fi
+check
+_got="$(TL_RETAIN=105 payload_env derived subscribed 2)"
+if [ "$_got" != "NROS_DECLARED_TL_RETAIN_BYTES=105;NROS_DECLARED_LARGE_SUBSCRIBERS=2" ]; then
+    fail "Q: the retain slot travels beside the payload keys -- got ${_got:-<empty>}"
+fi
+check
+# Not derived (no transient-local publisher, or the derivation refused): absent,
+# never a zero -- a zero-byte slot would retain nothing and say so per publish.
+_got="$(payload_env refused subscribed)"
+if [ "$_got" != "" ]; then
+    fail "Q: no derived retain slot carries nothing -- got ${_got:-<empty>}"
 fi
 check
 

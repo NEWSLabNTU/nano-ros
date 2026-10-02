@@ -570,6 +570,9 @@ KEPT = {
         "consumer ranks it first the way `transient_local_publishers` does",
     ),
     "NROS_DECLARED_TL_PUBLISHERS": Kept(1407, _LEAF_ROAD),
+    # issue 1498 -- the retention slot beside that count; the leaf road reads
+    # it off the descriptor (`transient_local_retain_demand`) already.
+    "NROS_DECLARED_TL_RETAIN_BYTES": Kept(1407, _LEAF_ROAD),
     "NROS_DECLARED_NODES": Kept(
         1407,
         _LEAF_ROAD + "; and it is emitted even for a model that describes NO "
