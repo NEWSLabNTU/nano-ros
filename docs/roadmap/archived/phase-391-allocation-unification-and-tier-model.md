@@ -117,6 +117,15 @@ holds only *infrastructure* — zenoh-pico's sessions, key expressions and
 strings, and Rust `String`/`Vec` churn — has a narrow spread, and the bound
 becomes cheap to defend.
 
+**Measured since, and corrected (issue 1370, 2026-10-02): the external term is
+UNBOUNDED for the spreads that ship, and nothing here defends a number.** The
+steady state IS narrow (16..64 B on Zephyr, 8..33 B on FreeRTOS), but boot-time
+buffers put the TLSF path's spread at n/m = 683 (Zephyr C talker) to 21,845
+(native), and a stress pattern in the C talker's own range at its own 15,504-B
+peak needs 4.76× that — more than the shipped 64 KiB arena. Recorded traffic
+needs 1.03–1.33× its peak, which is sizing EVIDENCE, not a bound. The operative
+guard is the exhaustion verdict (FRAGMENTED vs TOO SMALL); read issue 1370.
+
 ## The tier model
 
 Heap-freedom is not nano-ros's to give up or keep — **it is the vendor RMW that

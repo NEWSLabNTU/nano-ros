@@ -8,7 +8,7 @@ type: bug
 area: core, boards, testing
 severity: high
 found: 2026-09-04
-related: [issue-0900, issue-0589, phase-412, phase-403, phase-409]
+related: [issue-1640, issue-1370, issue-1425, issue-0900, issue-0589, phase-412, phase-403, phase-409]
 ---
 
 ## What happens
@@ -291,3 +291,87 @@ The on-silicon run this issue has carried since 2026-09-05 — an image with
 `CONFIG_NROS_BOOT_REPORT=y` exhausted on purpose, halted, dumped — is still not
 done: no board or hardware lane here. The sibling sweep of `nros_log` sites
 that assume a sink is also unchanged.
+
+## 2026-10-02 — the sweep is closed by construction, and the console-less path is proven on QEMU
+
+Branch `fix/arena-1036-1340-1370`, commit `a9bb05354`.
+
+### The sibling sweep
+
+`git grep -c 'log_error!\|log_fatal!' -- 'packages/{core,rmw,api,platform,boards}/**/*.rs'`
+(excluding tests and `nros-log` itself): **79 sites in 25 files**. Read one by
+one, they split three ways:
+
+- a refusal RETURNED as an error the caller sees (`DeclaredQosMismatch`,
+  `InvalidArgument`, `Transport(..)`, `NROS_RMW_RET_ERROR`): the error code
+  reaches the C++ FFI funnel, which already writes `err_class` into the record;
+- a failure the image REPORTS AND LIVES WITH — zenoh's reply-slot table
+  exhausted (`shim/service.rs:1138`), a liveliness token not declared
+  (`shim/session.rs:789/818/833/1092/1126`), a transient-local history query not
+  sent (`shim/subscriber.rs:951/971`), a parameter request dropped
+  (`parameter_services.rs:1531-1562`), a typed sample that did not deserialize
+  (`executor/arena.rs:2324`), a `destroy_*` that failed (`rmw/cffi/src/lib.rs`
+  ×6). On a board with no console each of these was indistinguishable from
+  nothing having happened, and none reached the record or a hook;
+- the arena exhaustion itself, which already wrote the record and (since
+  2026-10-01) reaches the fatal hook.
+
+Teaching the middle group — and the next one written — to write the record is a
+rule nobody keeps, so the record now listens to the one channel all 79 use:
+`boot_report::init` APPENDS an `nros_log` sink (the board's own console
+delivery is untouched, and records raised before it are replayed into it) that
+counts ERROR/FATAL records and keeps the FIRST one's `file!()` (pointer and
+length of the static string, resolved from the ELF by the decoder) and `line!()`.
+Record v9, 30 words / 120 bytes; `read-boot-report.py` prints
+
+    error-level log records      1   (the first raised at packages/core/nros-node/src/executor/arena.rs:677)
+
+Tests: `the_first_error_log_is_kept_and_the_rest_are_counted` (first-writer,
+saturation, and a pointer past 4 GiB reading as "no location", never a
+truncated one), `init_counts_error_logs_into_the_record` (end to end through
+the ordinary macro; a WARN is not counted; a second `init` installs no second
+sink). Mutation: dropping the `add_sink` call fails the second.
+
+### The console-less path, on QEMU
+
+`examples/zephyr/c/talker`, zenoh, `mps2/an385` (32-bit Cortex-M3, Zephyr's
+own IP stack), Zephyr 3.7, with an extra conf: `CONFIG_CONSOLE=n`,
+`CONFIG_UART_CONSOLE=n`, `CONFIG_LOG=n`, `CONFIG_NROS_BOOT_REPORT=y`,
+`CONFIG_NROS_ARENA_EXHAUSTION_IS_FATAL=y`,
+`CONFIG_NROS_EXECUTOR_ARENA_SIZE=32` (exhausted on purpose — the image's first
+registration claims 48 B). (`CONFIG_PRINTK` stays `y` because the board
+selects it; with no console it has no sink — the UART capture file is 0 bytes.)
+QEMU with `-serial file:` and `-gdb`, a breakpoint on
+`k_sys_fatal_error_handler`, the record dumped with gdb's `dump binary memory`
+at the address and length `read-boot-report.py --addr-only` names:
+
+    Breakpoint 1, k_sys_fatal_error_handler (reason=4, ...)   <- K_ERR_KERNEL_PANIC
+    UART bytes: 0
+    stage      4  RegisteringEntities -- an entity claimed arena; registration in flight
+    error-level log records      1   (the first raised at packages/core/nros-node/src/executor/arena.rs:677)
+    ARENA EXHAUSTED: an allocation of 48 bytes did not fit, short by 16 bytes.
+      set NROS_EXECUTOR_ARENA_SIZE >= 48
+
+Negative control, same image with `CONFIG_NROS_ARENA_EXHAUSTION_IS_FATAL=n`:
+attached after 40 s, the core is in the idle thread — the image ran on with the
+entity missing — and the record still names the exhaustion (stage 4, 48 B short
+by 16). That control image was built before the error-log words existed (record
+v8), so it shows the hook's on/off behaviour, not the new sink.
+(A first run of the control decoded `stage 2, Transport ConnectionFailed`: the
+router had not finished binding; it is the record correctly naming THAT
+failure, not a fault in the path. Re-run with the router up: as above.)
+
+This is the step the earlier sections said only silicon could perform, minus
+the probe: the ELF symbol resolution, the dump length, the decode, both
+channels (record and fatal hook) and the console being absent are all now
+exercised on a real 32-bit image.
+
+### STILL open — and this is all of it
+
+**The on-silicon run.** Nothing on this host has a board or a probe; the run
+the island needs is `pyocd commander -t s32k344 -c halt -c "savemem <addr>
+<len> report.bin"` on an image built as above, and the expected output is
+written above. Also not done: making the QEMU run a LANE (it was run by hand;
+the recipe is the conf above, a `-gdb` QEMU, a breakpoint on
+`k_sys_fatal_error_handler`, `dump binary memory`, and `read-boot-report.py`).
+The three bare-metal TLSF ports' silent heap refusals are issue 1640.
