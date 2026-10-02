@@ -401,6 +401,16 @@ build-fixtures:
     probe_rc=0
     scripts/build/zephyr-fixture-leaves.sh --emit records "${zephyr_leaf_args[@]}" \
         >"$probe_records" 2>"$probe_err" || probe_rc=$?
+    # issue 1536 — exit 3 is "the filter selected no LEAF", which is not a
+    # failure on its own: the same filter also narrows the compile-check west
+    # rows below, and a filter naming one of those (`zephyr_self_pkg_sibling`)
+    # legitimately matches no leaf. Whether the filter matched NOTHING AT ALL is
+    # decided after both halves have answered.
+    if [ "$probe_rc" -eq 3 ] && [ -n "$fixture_filter" ]; then
+        echo "  (no Zephyr leaf matched the filter — only the west compile-check rows can)"
+        : >"$probe_records"
+        probe_rc=0
+    fi
     if [ "$probe_rc" -ne 0 ]; then
         echo "  ✗ the Zephyr records probe FAILED (exit $probe_rc) — NOT 'no fixtures" >&2
         echo "    matched'. Its stderr:" >&2
@@ -440,10 +450,6 @@ build-fixtures:
     # row, which ended that: the leaf goes through the same driver as every
     # other one, honours the same filter, and writes the same
     # `build-logging-smoke` dir the test reads. The second builder is gone.
-    if [ "$normal_records" = "0" ]; then
-        echo "  ✗ no Zephyr fixtures matched NROS_ZEPHYR_FIXTURE_FILTER=$fixture_filter"
-        exit 1
-    fi
     if [ ${#failures[@]} -gt 0 ]; then
         printf '  ✗ failed: %s\n' "${failures[@]}"
         exit 1
@@ -465,7 +471,8 @@ build-fixtures:
     #
     # issue 1583 — and it runs RIGHT AFTER the leaves, whatever happens next.
     # It reads only the leaves' `.config`s, yet sat at the END of the recipe,
-    # behind west-fixtures (issue 1536's `zephyr_self_pkg_sibling` is red there)
+    # behind west-fixtures (red there on `west_bringup_zephyr_cyclone_user_config`;
+    # issue 1536 first blamed `zephyr_self_pkg_sibling`, which was counted ok)
     # and behind any failing leaf, so on the tier-2 nightly it was placed and
     # never produced a verdict. When a leaf failed it judges the leaves that DID
     # build (joblog status `ok`, joined to the records on the leaf id): only
@@ -509,6 +516,17 @@ build-fixtures:
     # status is collected, not discarded: it still fails the recipe below.
     west_rc=0
     ZEPHYR_BASE="$workspace/zephyr" bash scripts/build/west-fixtures.sh || west_rc=$?
+    # issue 1536 — the filter narrows BOTH halves, so "matched nothing" is a
+    # verdict over both: west-fixtures' exit 3 is "no compile-check row
+    # matched", benign when a leaf did and fatal when nothing did (issue 0406).
+    if [ "$west_rc" -eq 3 ]; then
+        if [ "$normal_records" = "0" ]; then
+            echo "  ✗ no Zephyr fixtures matched NROS_ZEPHYR_FIXTURE_FILTER=$fixture_filter"
+            echo "    (neither a [[fixture]] west leaf nor a west [[compile_check_fixture]] row)"
+            exit 1
+        fi
+        west_rc=0
+    fi
     if [ "$gate_rc" -ne 0 ]; then
         echo "  ✗ tier-priority-plan-image FAILED (exit $gate_rc) — see its verdict above"
         exit "$gate_rc"
