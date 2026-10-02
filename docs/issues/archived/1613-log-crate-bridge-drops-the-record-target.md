@@ -57,4 +57,5 @@ a real `LogSink`, and with the old line restored it fails with
 workspace member, so neither test (nor the pre-existing `log_compat` unit tests)
 ran in `test-unit`; both now run in `just check required-features-tests`.
 
-Not measured: an mps2-an385 Rust image's console (same crate, same bridge).
+Also measured on an mps2_an385 `rust/talker` under QEMU (lan9118 slirp, live
+router): `<inf> nros: rustapp: Publishing: 'Hello World: 1'`.
