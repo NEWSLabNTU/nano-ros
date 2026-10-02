@@ -290,6 +290,9 @@ ways a ported program can compile and differ.
   subject now correlates and that carries no disposition is refused, so a
   shipped name cannot leave a stale `gap` behind it. Sixteen `gap` rows carry a
   disposition today.
+  *(Amended by issue 1463: that exemption reached every `gap`, so the check
+  answered nothing; a `gap` on a declared subject now names an `owed` witness
+  instead, and the disposition no longer exempts it.)*
 * W3.g — **LANDED 2026-09-11. The C half: five measured behaviour defects behind
   adopted rcl names.** Every one compiled exactly as upstream's does and
   differed, which is the case this stage exists for; each is now fixed with a
