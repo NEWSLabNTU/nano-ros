@@ -170,6 +170,8 @@ UPSTREAM_TOKENS = ("rcl", "rclcpp", "rclrs", "rclc", "rcl_interfaces",
 #   adopt          same name, same observable contract.
 #   adopt-bounded  same name and contract, weaker inside an envelope that the
 #                  doc comment states. The envelope is part of the API.
+#                  The row names WHERE in an `envelope` {file, text}, checked
+#                  against the tree (issue 1637, `envelope_findings`).
 #   refuse-loud    we cannot have the contract, and the name is common enough
 #                  that a user will reach for it -- so the name EXISTS as a
 #                  deleted overload or a `static_assert` naming the constraint
@@ -863,6 +865,7 @@ def validate_ledger(entries):
             )
         problems.extend(validate_their_rename(key, value))
         problems.extend(validate_owed(key, value))
+        problems.extend(validate_envelope(key, value))
         pattern = key.partition(":")[2]
         if "*" in pattern and value.get("bucket") not in BUCKETS:
             problems.append(
@@ -1037,20 +1040,87 @@ def validate_owed(key, value):
     problems = []
     if not isinstance(owed.get("what"), str) or not owed["what"].strip():
         problems.append("ledger %s: `owed.what` must say what behaviour is still owed" % key)
-    witness = owed.get("witness")
+    problems.extend(_validate_witness(key, "owed.witness", owed.get("witness")))
+    return problems
+
+
+def _validate_witness(key, label, witness):
+    """Shape of a `{file, text}` witness -- ONE spelling for `owed.witness`
+    (issue 1463) and `envelope` (issue 1637). `label` is the field path the
+    complaint names."""
     if not isinstance(witness, dict):
-        problems.append("ledger %s: `owed.witness` must be an object with %s"
-                        % (key, " and ".join(WITNESS_FIELDS)))
-        return problems
+        return ["ledger %s: `%s` must be an object with %s"
+                % (key, label, " and ".join(WITNESS_FIELDS))]
+    problems = []
     for field in WITNESS_FIELDS:
         if not isinstance(witness.get(field), str) or not witness[field].strip():
-            problems.append("ledger %s: `owed.witness.%s` must be a non-empty string"
-                            % (key, field))
+            problems.append("ledger %s: `%s.%s` must be a non-empty string"
+                            % (key, label, field))
     path = witness.get("file") or ""
     if isinstance(path, str) and (os.path.isabs(path) or ".." in path.split("/")):
-        problems.append("ledger %s: `owed.witness.file` must be repo-relative, inside "
-                        "the checkout (got %r)" % (key, path))
+        problems.append("ledger %s: `%s.file` must be repo-relative, inside "
+                        "the checkout (got %r)" % (key, label, path))
     return problems
+
+
+_TRACKED_CACHE = {}
+
+
+def _tracked_files(root):
+    """The files a FRESH CLONE of `root` has, or None when `root` is not a git
+    checkout (the self-test's planted tree).
+
+    `os.path.isfile` is not that question: an initialised submodule satisfies
+    it, and so does an untracked file, and neither exists in a clone. `git
+    ls-files` lists a submodule as its gitlink path only, so a witness inside
+    one is refused here -- which is the point.
+    """
+    if root not in _TRACKED_CACHE:
+        try:
+            out = subprocess.run(
+                ["git", "-C", root, "ls-files", "-z"], check=True,
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL).stdout
+            # A planted tree inside a checkout is NOT that checkout: only trust
+            # the listing when `root` is the top of the work tree.
+            top = subprocess.run(
+                ["git", "-C", root, "rev-parse", "--show-toplevel"], check=True,
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                text=True).stdout.strip()
+            if os.path.realpath(top) != os.path.realpath(root):
+                _TRACKED_CACHE[root] = None
+            else:
+                _TRACKED_CACHE[root] = set(
+                    f.decode("utf-8", "replace") for f in out.split(b"\0") if f)
+        except (OSError, subprocess.CalledProcessError):
+            _TRACKED_CACHE[root] = None
+    return _TRACKED_CACHE[root]
+
+
+def witness_missing(witness, root=ROOT):
+    """Why a well-formed `{file, text}` witness does not hold, or None.
+
+    The one reader behind `broken_witnesses` (an `owed` gap) and
+    `broken_envelopes` (an `adopt-bounded` envelope). The two fields mean
+    opposite things about the FUTURE -- an owed witness is deleted by the fix,
+    an envelope must outlive every edit -- but the same thing about NOW: the
+    literal the row cites is in a file a clone has, or the row is false.
+    """
+    rel = witness["file"]
+    text = witness["text"]
+    tracked = _tracked_files(root)
+    if tracked is not None and rel not in tracked:
+        path = os.path.join(root, rel)
+        if os.path.isfile(path):
+            return ("%s is not a tracked file -- a fresh clone does not have it "
+                    "(untracked, or inside a submodule)" % rel)
+        return "file %s no longer exists" % rel
+    path = os.path.join(root, rel)
+    if not os.path.isfile(path):
+        return "file %s no longer exists" % rel
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        if text not in fh.read():
+            return "text is no longer in %s: %r" % (rel, text)
+    return None
 
 
 def broken_witnesses(entries, root=ROOT):
@@ -1074,15 +1144,9 @@ def broken_witnesses(entries, root=ROOT):
         owed = value.get("owed")
         if not owed:
             continue
-        rel = owed["witness"]["file"]
-        text = owed["witness"]["text"]
-        path = os.path.join(root, rel)
-        if not os.path.isfile(path):
-            out.append((key, "witness file %s no longer exists" % rel))
-            continue
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            if text not in fh.read():
-                out.append((key, "witness text is no longer in %s: %r" % (rel, text)))
+        reason = witness_missing(owed["witness"], root)
+        if reason:
+            out.append((key, "witness " + reason))
     return out
 
 
@@ -1142,6 +1206,105 @@ def closed_gap_findings(ledger, per_lang_rows, root=ROOT):
         found.setdefault(key, reason)
     return sorted(found.items())
 
+
+
+# issue 1637. Where an `adopt-bounded` row's envelope is WRITTEN -- see
+# SCHEMA.md "`envelope`" for the meaning, which lives there and only there.
+ENVELOPE_BASELINE = os.path.join(ROOT, ".config", "adopt-bounded-envelope-baseline.txt")
+
+
+def validate_envelope(key, value):
+    """Structural complaints about a row's `envelope` object (issue 1637).
+
+    Shape only, through the same `_validate_witness` as `owed.witness` (issue
+    1463) -- one spelling of `{file, text}`, not two. `envelope` belongs to
+    `adopt-bounded` alone: it is the one disposition that asserts something
+    OUTSIDE the ledger, and on any other row the object would be a claim
+    nothing reads.
+    """
+    if "envelope" not in value:
+        return []
+    if value.get("disposition") != "adopt-bounded":
+        return ["ledger %s: `envelope` is for an `adopt-bounded` row only (this is %r)"
+                % (key, value.get("disposition"))]
+    return _validate_witness(key, "envelope", value["envelope"])
+
+
+def broken_envelopes(entries, root=ROOT):
+    """`adopt-bounded` rows whose `envelope` text is not in the tree.
+
+    The SAME reader as `broken_witnesses` (`witness_missing`), pointed the
+    other way in time: an owed witness is expected to disappear when the work
+    lands, an envelope is expected never to. Either way the row is red the
+    moment its literal is gone. Malformed envelopes are `validate_envelope`'s
+    and are skipped here rather than reported twice.
+    """
+    out = []
+    for key, value in sorted(entries.items()):
+        if "envelope" not in value or validate_envelope(key, value):
+            continue
+        reason = witness_missing(value["envelope"], root)
+        if reason:
+            out.append((key, "envelope " + reason))
+    return out
+
+
+def read_envelope_baseline(path=None):
+    """Ledger keys of `adopt-bounded` rows grandfathered WITHOUT an envelope.
+
+    A RATCHET -- see the file's header. Blank lines and `#` lines skipped.
+    """
+    keys = set()
+    try:
+        with open(path or ENVELOPE_BASELINE, encoding="utf8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    keys.add(line)
+    except FileNotFoundError:
+        pass
+    return keys
+
+
+def envelope_findings(ledger, baseline, root=ROOT):
+    """The ONE decision about an `adopt-bounded` envelope: (key, reason) pairs.
+
+    Three ways to be red, and the self-test plants each through this same
+    function:
+
+      * an `adopt-bounded` row with no `envelope` that the baseline does not
+        grandfather -- a NEW unwitnessed claim, which is what the ratchet
+        refuses from day one;
+      * an `envelope` whose text is no longer in its (tracked) file;
+      * a baseline entry that no longer needs to be there -- the row gained an
+        envelope, left `adopt-bounded`, or no longer exists. That is what
+        makes the baseline only SHRINK: a stale line is an error, so it
+        cannot be kept around as headroom for the next unwitnessed row.
+
+    Needs no build and no correlation, so it runs on the fast line
+    (`--self-test`, which `--check` also runs first).
+    """
+    found = {}
+    for key, value in sorted(ledger.items()):
+        if value.get("disposition") != "adopt-bounded":
+            continue
+        if "envelope" not in value and key not in baseline:
+            found[key] = ("`adopt-bounded` with no `envelope` -- name the {file, text} "
+                          "where the envelope is written")
+    for key, reason in broken_envelopes(ledger, root):
+        found.setdefault(key, reason)
+    for key in sorted(baseline):
+        value = ledger.get(key)
+        if value is None:
+            found.setdefault(key, "in the envelope baseline, but no such ledger row "
+                                  "-- delete the baseline line")
+        elif value.get("disposition") != "adopt-bounded":
+            found.setdefault(key, "in the envelope baseline, but no longer "
+                                  "`adopt-bounded` -- delete the baseline line")
+        elif "envelope" in value:
+            found.setdefault(key, "carries an `envelope` AND is in the envelope "
+                                  "baseline -- delete the baseline line")
+    return sorted(found.items())
 
 # The C++ refusal messages. Every `static_assert(detail::refuse<...>, MSG)`
 # names one of these, so the macro list IS the list of refusal concepts, and
@@ -2421,6 +2584,106 @@ def self_test():
     for key, reason in broken_witnesses(load_ledger()):
         failures.append("ledger %s: %s -- the gap may have closed (issue 1463)"
                         % (key, reason))
+
+    # issue 1637: an `adopt-bounded` row names where its envelope is WRITTEN,
+    # and the text must be there. Planted as a SHARD FILE through
+    # `load_ledger`, decided by `envelope_findings` -- the function the real
+    # ledger goes through two lines below -- so the negative controls are the
+    # gate's own property, not a sibling's.
+    #   N  adopt-bounded, no envelope, NOT baselined   -> RED (the ratchet: a new
+    #                                                   unwitnessed row)
+    #   B  adopt-bounded, no envelope, baselined       -> green (grandfathered)
+    #   G  adopt-bounded, envelope present             -> green
+    #   X  adopt-bounded, envelope text GONE           -> RED (1637's own case:
+    #                                                   the row cites a bound the
+    #                                                   code does not state)
+    #   F  adopt-bounded, envelope FILE gone           -> RED
+    #   S  adopt-bounded, envelope AND baselined       -> RED (stale baseline)
+    #   M  adopt, baselined                            -> RED (stale baseline)
+    #   Z  baselined, no such row                      -> RED (stale baseline)
+    #   A  adopt, no envelope                          -> green (not bounded)
+    with tempfile.TemporaryDirectory() as plant:
+        shard_dir = os.path.join(plant, "ledger")
+        tree = os.path.join(plant, "tree")
+        os.makedirs(shard_dir)
+        os.makedirs(os.path.join(tree, "include"))
+        with open(os.path.join(tree, "include", "q.h"), "w") as fh:
+            fh.write("/* history depth is capped at 16 samples on every target */\n")
+
+        def env(file, text):
+            return {"file": file, "text": text}
+
+        stated = env("include/q.h", "capped at 16 samples")
+        with open(os.path.join(shard_dir, "qos.json"), "w") as fh:
+            json.dump({
+                "_doc": "planted by api-parity --self-test (issue 1637)",
+                "cpp:N": {"verdict": "divergence", "why": "x",
+                          "disposition": "adopt-bounded"},
+                "cpp:B": {"verdict": "divergence", "why": "x",
+                          "disposition": "adopt-bounded"},
+                "cpp:G": {"verdict": "divergence", "why": "x",
+                          "disposition": "adopt-bounded", "envelope": stated},
+                "cpp:X": {"verdict": "divergence", "why": "stated on to_facade",
+                          "disposition": "adopt-bounded",
+                          "envelope": env("include/q.h", "stated on to_facade")},
+                "cpp:F": {"verdict": "declined", "why": "x",
+                          "disposition": "adopt-bounded",
+                          "envelope": env("include/gone.h", "anything")},
+                "cpp:S": {"verdict": "divergence", "why": "x",
+                          "disposition": "adopt-bounded", "envelope": stated},
+                "cpp:M": {"verdict": "divergence", "why": "x", "disposition": "adopt"},
+                "cpp:A": {"verdict": "divergence", "why": "x", "disposition": "adopt"},
+            }, fh)
+        planted_ledger = load_ledger(shard_dir)
+        check("the planted envelope shard is structurally valid",
+              validate_ledger(planted_ledger), [])
+        check("an unwitnessed, broken or stale envelope is RED (issue 1637)",
+              [k for k, _ in envelope_findings(
+                  planted_ledger, {"cpp:B", "cpp:S", "cpp:M", "cpp:Z"}, root=tree)],
+              ["cpp:F", "cpp:M", "cpp:N", "cpp:S", "cpp:X", "cpp:Z"])
+        # The baseline parser is the other half of the ratchet: a parse that
+        # returned everything would silently grandfather every new row.
+        bl = os.path.join(plant, "baseline.txt")
+        with open(bl, "w") as fh:
+            fh.write("# header\n\ncpp:B\n  # indented comment\ncpp:S  \n")
+        check("the envelope baseline parses rows, skips comments and blanks",
+              read_envelope_baseline(bl), {"cpp:B", "cpp:S"})
+
+    check("`envelope` is refused on a disposition other than adopt-bounded",
+          validate_envelope("c:X", {"verdict": "divergence", "why": "x",
+                                    "disposition": "adopt",
+                                    "envelope": {"file": "a", "text": "b"}}) != [],
+          True)
+    check("`envelope` needs a file and text",
+          len(validate_envelope("c:X", {"verdict": "divergence", "why": "x",
+                                        "disposition": "adopt-bounded",
+                                        "envelope": {"file": ""}})),
+          2)
+    check("`envelope.file` may not leave the checkout",
+          validate_envelope("c:X", {"verdict": "divergence", "why": "x",
+                                    "disposition": "adopt-bounded",
+                                    "envelope": {"file": "/etc/x", "text": "b"}}) != [],
+          True)
+    # A witness must be in a file a FRESH CLONE has. In the real checkout an
+    # initialised submodule's file passes `isfile` and is still refused.
+    if _tracked_files(ROOT) is not None:
+        sub = next((line.split("=", 1)[1].strip() for line in
+                    open(os.path.join(ROOT, ".gitmodules"), encoding="utf8")
+                    if line.strip().startswith("path")), None)
+        if sub and os.path.isdir(os.path.join(ROOT, sub)):
+            inner = next((os.path.join(sub, n) for n in sorted(os.listdir(
+                os.path.join(ROOT, sub))) if os.path.isfile(os.path.join(ROOT, sub, n))),
+                None)
+            if inner:
+                check("an initialised submodule's file is not a clone's file",
+                      "not a tracked file" in (witness_missing(
+                          {"file": inner, "text": ""}) or ""), True)
+
+    # And the real ledger: every envelope in the tree, the ratchet held.
+    for key, reason in envelope_findings(load_ledger(), read_envelope_baseline()):
+        failures.append("ledger %s: %s (issue 1637; SCHEMA.md \"envelope\", "
+                        "baseline %s)" % (key, reason,
+                                         os.path.relpath(ENVELOPE_BASELINE, ROOT)))
 
     # The inverse: every refusal MESSAGE the headers define must be cited by
     # some row, whatever its disposition. Planted both ways, and the reader

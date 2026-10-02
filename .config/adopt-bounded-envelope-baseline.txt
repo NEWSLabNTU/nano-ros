@@ -1,0 +1,118 @@
+# `adopt-bounded` ledger rows that do not yet name where their envelope is
+# written (issue 1637).
+#
+# A RATCHET, not an allowlist: this file may only SHRINK. The gate
+# (`scripts/api-parity.py --self-test`, on the fast line, and first thing in
+# every `--check`) fails when an `adopt-bounded` row carries no `envelope` and
+# is not listed here, AND when a line here stops being needed -- the row gained
+# an `envelope`, left `adopt-bounded`, or no longer exists. So the debt cannot
+# grow, and a stale line cannot be kept as headroom for the next one.
+#
+# What a line means: the row asserts "same name and contract, weaker inside an
+# envelope that is stated somewhere" and nobody has yet pointed at the
+# somewhere. It is NOT a finding that the envelope is missing -- issue 1637's
+# archived record lists the rows that WERE re-read and whose envelope could not
+# be located, which is a different and stronger statement. To clear a line:
+# find where the envelope is actually documented (a doc comment, a header, the
+# book), add `"envelope": {"file": ..., "text": ...}` to the row (SCHEMA.md
+# "`envelope`"), and delete the line here. If it is documented nowhere, the
+# row's claim is false: document the bound where a porting user will read it,
+# or change the disposition. Never edit a doc comment merely so it contains a
+# string this gate wants.
+#
+# Do not regenerate this file from the ledger: that would turn the ratchet
+# into an allowlist of whatever exists today.
+
+c:action_expire_goals
+c:client_init_default
+c:log_severity_t
+c:node_get_graph_guard_condition
+c:publisher_get_subscription_count
+c:service_init_default
+c:service_server_is_available
+c:subscription_get_publisher_count
+cpp:CancelResponse
+cpp:Client::Client<A>
+cpp:Client::cancel_goal
+cpp:Client::get_result
+cpp:Client::get_result_future
+cpp:Client::send_goal
+cpp:Client::send_goal_future
+cpp:Client::set_callbacks
+cpp:Client::wait_for_action_server
+cpp:Executor::spin_once
+cpp:GoalResponse
+cpp:LifecycleNode::declare_parameters
+cpp:LifecycleNode::undeclare_parameter
+cpp:Logger
+cpp:Logger::set_level
+cpp:Node::Node
+cpp:Node::create_client
+cpp:Node::create_service
+cpp:Node::create_subscription
+cpp:Node::declare_parameters
+cpp:Node::get_logger
+cpp:Node::shared_from_this
+cpp:Node::undeclare_parameter
+cpp:Publisher::assert_liveliness
+cpp:Publisher::get_gid
+cpp:Publisher::get_subscription_count
+cpp:Publisher::publish
+cpp:Rate
+cpp:Rate::reset
+cpp:Rate::sleep
+cpp:RosoutQoS
+cpp:RosoutQoS::RosoutQoS
+cpp:Server
+cpp:Server::Server<A>
+cpp:Server::abort
+cpp:Server::canceled
+cpp:Server::complete_goal
+cpp:Server::publish_feedback
+cpp:Server::set_accepted_callback
+cpp:Server::set_cancel_callback
+cpp:Server::set_goal_callback
+cpp:Server::succeed
+cpp:State
+cpp:State::State
+cpp:Subscription::Subscription<M>
+cpp:Subscription::get_publisher_count
+cpp:Timer::time_until_trigger
+cpp:Transition::label
+cpp:Transition::start_state
+cpp:WallRate
+cpp:create_publisher
+cpp:create_timer
+cpp:init
+cpp:qos_policy_kind_to_cstr
+cpp:spin_until_future_complete
+rust:Client::service_name
+rust:Clock::new
+rust:Context
+rust:Context::create_executor
+rust:Context::from_env
+rust:Context::new
+rust:DeclarationError
+rust:Executor::register_graph_change_guard
+rust:Executor::register_graph_change_guard_on
+rust:Executor::spin
+rust:Executor::spin_async
+rust:InitOptions
+rust:Logger::set_default_level
+rust:Logger::unset_level
+rust:MessageInfo
+rust:Node::get_publishers_info_by_topic
+rust:Node::get_subscriptions_info_by_topic
+rust:NodeOptions
+rust:ParameterBuilder::default_from_iter
+rust:ParameterBuilder::default_string_array
+rust:Parameters
+rust:Publisher
+rust:Publisher::get_subscription_count
+rust:Publisher::topic_name
+rust:RmwParameterConversionError
+rust:Service::service_name
+rust:Subscription
+rust:Time::to_ros_msg
+rust:Timer
+rust:init_with_args
