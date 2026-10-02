@@ -102,6 +102,46 @@ verdict is one of:
               `owed` is refused on any other verdict. Nothing reads the date
               a row was last re-measured; the witness is what is checked.
 
+`envelope` -- where an `adopt-bounded` row's envelope is WRITTEN (issue 1637).
+
+              RFC-0089's `adopt-bounded` says "same name and contract, weaker
+              inside an envelope the documentation states -- the envelope is
+              part of the API". It is the one disposition that asserts
+              something OUTSIDE the ledger, so the row names where:
+
+                "envelope": {"file": "<repo-relative path>",
+                             "text": "<literal in that file>"}
+
+              The same `{file, text}` shape as `owed.witness`, validated and
+              read by the same code. What differs is the direction in time: an
+              owed witness exists BECAUSE work is outstanding and the fix
+              deletes it; an envelope must outlive every edit. Both are red
+              the moment the literal is gone.
+
+              Point at the place a PORTING USER reads -- the doc comment on
+              the declaration, the public header, the book page -- and pick
+              text that states the bound itself (the limit, the refused
+              value, the missing behaviour), not a symbol name that would
+              survive the bound being deleted. The ledger's own `why` is not
+              an envelope: the user never reads it. `file` must be TRACKED
+              (`git ls-files`): a file inside a submodule or an untracked one
+              is absent from a fresh clone, and is refused.
+
+              `c:log_severity_t` is why this exists: its row said the envelope
+              was stated on `to_facade` and in `log.h`; it was in neither, and
+              `to_facade`'s doc said the opposite.
+
+              Required on every `adopt-bounded` row EXCEPT those listed in
+              `.config/adopt-bounded-envelope-baseline.txt`, a ratchet that
+              may only shrink: a new unwitnessed row is red, and so is a
+              baseline line whose row has since gained an envelope, left
+              `adopt-bounded`, or gone. If the envelope is documented
+              nowhere, the row is wrong -- document the bound or change the
+              disposition; do not edit a comment just to hold a string.
+              `envelope` is refused on any other disposition. Checked by
+              `scripts/api-parity.py --self-test` (fast line), which every
+              `--check` runs first.
+
 This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies
 the rest. `--check` is deliberately not wired into `just check` until then --
 a gate that fails on ~2000 rows from the day it lands is one somebody
