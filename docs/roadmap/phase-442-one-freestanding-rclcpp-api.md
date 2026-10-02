@@ -252,7 +252,7 @@ the rest and do not depend on each other.
   measurement.
 
 > **W8, W9 and W10 MOVED to
-> [phase-456](phase-456-cpp-api-is-a-handle-over-the-rust-arena.md)
+> [phase-456](archived/phase-456-cpp-api-is-a-handle-over-the-rust-arena.md)
 > (2026-09-12).** RFC-0096 D9 revision 3 changed what they are: the remaining
 > work is not "move the surface onto `Owned<T>`" but "the C++ API becomes a
 > handle over the arena the Rust side already owns", and W9 cannot be last
