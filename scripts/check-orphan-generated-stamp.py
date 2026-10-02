@@ -67,14 +67,19 @@ def candidate_target_dirs(root):
     """Every plausible cargo target dir, WITHOUT walking the tree.
 
     A leaf's target dir sits beside its `Cargo.toml`, so the index names the
-    parents; `zephyr-workspace/build-*/nros-rust` and the repo-level `target/`
+    parents; `<zephyr build root>/build-*/nros-rust` and the repo-level `target/`
     and `build/` are the roots no manifest points at.
     """
     out = []
     for fixed in FIXED_ROOTS:
         out.append(os.path.join(root, fixed))
-    # west build dirs: `zephyr-workspace/build-<leaf>/nros-rust`
-    ws = os.path.join(root, "zephyr-workspace")
+    # west build dirs: `<zephyr build root>/build-<leaf>/nros-rust` — issue
+    # 1596's one derivation, asked of the checkout being scanned.
+    ws = subprocess.run(
+        ["bash", os.path.join(root, "scripts/lib/zephyr-workspace.sh"), "--root", root,
+         "build-root"],
+        capture_output=True, text=True,
+    ).stdout.strip()
     try:
         for entry in os.scandir(ws):
             if entry.is_dir() and entry.name.startswith("build-"):

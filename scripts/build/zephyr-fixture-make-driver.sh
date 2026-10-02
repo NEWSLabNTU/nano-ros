@@ -265,15 +265,20 @@ if [ "$dry_run" = "1" ]; then
     exit 0
 fi
 
-# issue #19 — serialize concurrent invocations on the shared Zephyr workspace.
+# issue #19 — serialize concurrent invocations IN ONE CHECKOUT.
 # Within ONE invocation, leaves use disjoint `build-<name>` dirs (safe under
 # `-j`), but two OVERLAPPING `just zephyr build-fixtures` runs (e.g. a manual
-# build alongside a CI/agent build) write the same `zephyr-workspace/build-*`
+# build alongside a CI/agent build) write the same `<build root>/build-*`
 # trees and race — a torn-down build dir surfaces as garbled cmake/ninja errors
 # and `nros-c` size-probe `.fingerprint` write failures. A repo-level advisory
 # lock makes a second invocation queue instead of clobbering the first. The
 # lock is held only for the build phase and auto-releases when fd 9 closes on
 # exit. flock-absent hosts skip it (best-effort).
+#
+# The lock is per CHECKOUT (`nros_build_dir`), and since issue 1596 so are the
+# build dirs (`zephyr-workspace.sh build-root`). Before, the dirs lived in the
+# SHARED workspace while this lock did not, so two worktrees never queued and
+# configured each other's dirs in turn.
 lockfile="$(nros_build_dir "$NROS_KIND_ZEPHYR_FIXTURE_BUILD").lock"
 mkdir -p "$(dirname "$lockfile")"
 exec 9>"$lockfile"

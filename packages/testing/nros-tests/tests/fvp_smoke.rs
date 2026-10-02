@@ -105,16 +105,15 @@ fn fvp_board_import_fixture_boots() {
     }
 
     // 3. Zephyr workspace set up?
-    let workspace = match resolve_zephyr_workspace(&root) {
-        Some(w) => w,
-        None => skip!(
-            "Zephyr workspace not set up (run `just zephyr setup` or set NROS_ZEPHYR_WORKSPACE)"
-        ),
-    };
+    if resolve_zephyr_workspace(&root).is_none() {
+        skip!("Zephyr workspace not set up (run `just zephyr setup` or set NROS_ZEPHYR_WORKSPACE)");
+    }
 
     // 4. Fixture ELF prebuilt? `build-fvp-board-import/zephyr/zephyr.elf`
     // matches `just zephyr build-fvp-board-import` (215.G.1 build dir).
-    let elf = workspace
+    // issue 1596 — the image is in THIS checkout's build root; the workspace
+    // above is only the precondition that a build could have happened.
+    let elf = nros_tests::zephyr::zephyr_build_root()
         .join("build-fvp-board-import")
         .join("zephyr")
         .join("zephyr.elf");

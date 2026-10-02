@@ -150,11 +150,12 @@ build-fixtures:
     nros_root="$(pwd)"
     log_dir="$nros_root/build/zephyr-fixtures"
     mkdir -p "$log_dir"
-    build_root="${NROS_ZEPHYR_BUILD_ROOT:-$workspace}"
-    if [ "$build_root" = "$workspace" ] && [ ! -w "$workspace" ]; then
-        build_root="$nros_root/build/zephyr-workspace-builds"
-        echo "  workspace not writable; using build root: $build_root"
-    fi
+    # issue 1596 — THIS checkout's build root, never the shared workspace: the
+    # build dirs were named by leaf alone inside the workspace, so every worktree
+    # configured every other worktree's. One derivation, shared with the test
+    # resolvers and the foreign-checkout gate.
+    build_root="$(scripts/lib/zephyr-workspace.sh --version "{{NROS_ZEPHYR_VERSION}}" build-root)"
+    echo "  build root: $build_root"
     mkdir -p "$build_root"
     toolchain_cache_dir="${NROS_ZEPHYR_TOOLCHAIN_CACHE_DIR:-$nros_root/build/zephyr-cache/ToolchainCapabilityDatabase}"
     mkdir -p "$toolchain_cache_dir"

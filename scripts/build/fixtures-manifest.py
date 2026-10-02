@@ -580,9 +580,9 @@ def row_artifact_root(entry):
     if not d:
         return ""
     # phase-350 W1 — a `west` row's artifacts do NOT land under `dir`. They land
-    # in the Zephyr WORKSPACE (`$build_root/<west_build_name>`), whose root is a
-    # host fact (`NROS_ZEPHYR_BUILD_ROOT`, the in-repo `zephyr-workspace/`, or a
-    # sibling checkout) that no manifest can name. Return "" — UNATTRIBUTABLE —
+    # in the checkout's Zephyr build root (`$build_root/<west_build_name>`,
+    # `zephyr-workspace.sh build-root`, issue 1596), which is relocatable
+    # (`NROS_ZEPHYR_BUILD_ROOT`) and so no manifest can name. Return "" — UNATTRIBUTABLE —
     # rather than a repo-relative guess: `fixtures::lane` fails closed on an
     # empty root (never skips), and a wrong path would be worse than none, which
     # is the whole lesson of phase-344 W2. Giving these rows a real artifact

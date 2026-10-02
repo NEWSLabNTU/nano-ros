@@ -37,7 +37,15 @@ defect it exists to catch.
    tree's `zephyr/`, platform sources and headers every image in that workspace
    compiles.
 
-2. **Every `<ws>/build*/CMakeCache.txt` value** — the DURABLE half. Repairing
+2. **Every `<build-root>/build*/CMakeCache.txt` value** — the DURABLE half.
+   `<build-root>` is THIS checkout's west build root
+   (`scripts/lib/zephyr-workspace.sh build-root`, issue 1596). Until 1596 the
+   build dirs lived in the shared workspace, named by leaf alone, so every
+   worktree configured every other worktree's dirs and this subject was red in
+   every agent session BY CONSTRUCTION — a gate that is always red reports
+   nothing. Dirs still sitting in the workspace from that layout are no longer
+   any checkout's images; they are counted and NAMED (a note, never a finding)
+   so they can be reclaimed. Repairing
    the link does not repair the images already built against it: the module
    root is a configure-time identity and the cached `_NROS_*_DIR` entries are
    exactly what a reconfigure would be asked to correct, so issue 1387's own
@@ -202,6 +210,35 @@ def resolve_workspace(here: str) -> str | None:
     return ws if ws and os.path.isdir(ws) else None
 
 
+def resolve_build_root(here: str) -> str | None:
+    """THIS checkout's west build root — the ONE derivation (issue 1596).
+
+    Asked of `zephyr-workspace.sh build-root`, the same call the fixture
+    builder, the FVP recipes and (through its Rust twin) the test resolvers
+    make. Never joined here by hand: a gate that computed its own answer would
+    be checking a directory the build does not write.
+    """
+    p = subprocess.run(
+        ["bash", str(WS_RESOLVER), "--root", here, "build-root"],
+        capture_output=True,
+        text=True,
+    )
+    root = p.stdout.strip()
+    return root if p.returncode == 0 and root else None
+
+
+def legacy_shared_build_dirs(ws: str | None) -> list[str]:
+    """Build dirs left INSIDE the shared workspace by the pre-1596 layout.
+
+    No checkout builds or reads there any more, so they are not this tree's
+    images and not a finding about it — but they are disk, and naming them is
+    how they get reclaimed (`--retire-legacy-build-dirs`).
+    """
+    if not ws:
+        return []
+    return [str(c.parent) for c in sorted(Path(ws).glob("build*/CMakeCache.txt"))]
+
+
 def manifest_project(ws: str) -> str | None:
     """`<ws>/<[manifest] path>` from `.west/config`, or None."""
     cfg = os.path.join(ws, ".west", "config")
@@ -268,7 +305,13 @@ def venv_shebangs(here: str, ws: str | None) -> list[tuple[str, str]]:
 # --------------------------------------------------------------------------
 
 
-def scan(here: str, ws: str | None, marker: str, manifest_only: bool) -> tuple[list[str], int]:
+def scan(
+    here: str,
+    ws: str | None,
+    marker: str,
+    manifest_only: bool,
+    build_root: str | None = None,
+) -> tuple[list[str], int]:
     """Findings, and how many subjects were actually looked at.
 
     The subject COUNT is returned so the caller can tell "clean" from "there
@@ -303,9 +346,9 @@ def scan(here: str, ws: str | None, marker: str, manifest_only: bool) -> tuple[l
     # subject is its build dirs must still count them, or silencing subject 2
     # would turn the run into a "nothing provisioned" skip.
     allow_artifacts = os.environ.get("NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS") == "1"
-    if not manifest_only and ws:
+    if not manifest_only and build_root and os.path.isdir(build_root):
         crossed: list[tuple[str, str, str]] = []
-        caches = sorted(Path(ws).glob("build*/CMakeCache.txt"))
+        caches = sorted(Path(build_root).glob("build*/CMakeCache.txt"))
         for cache in caches:
             subjects += 1
             for name, value in cache_values(cache):
@@ -370,7 +413,7 @@ def scan(here: str, ws: str | None, marker: str, manifest_only: bool) -> tuple[l
 # --------------------------------------------------------------------------
 
 
-def foreign_build_dirs(ws: str, here: str, marker: str) -> list[tuple[str, str, str]]:
+def foreign_build_dirs(build_root: str, here: str, marker: str) -> list[tuple[str, str, str]]:
     """`(build_dir, condemning NAME, its VALUE)` for each dir built from two trees.
 
     Reuses `foreign_owner` rather than restating the rule: a second spelling of
@@ -381,7 +424,7 @@ def foreign_build_dirs(ws: str, here: str, marker: str) -> list[tuple[str, str, 
     x ~10 crossed variables, and the unit of repair is the directory.
     """
     out: list[tuple[str, str, str]] = []
-    for cache in sorted(Path(ws).glob("build*/CMakeCache.txt")):
+    for cache in sorted(Path(build_root).glob("build*/CMakeCache.txt")):
         for name, value in cache_values(cache):
             owner = foreign_owner(value, here, marker)
             if owner:
@@ -390,7 +433,7 @@ def foreign_build_dirs(ws: str, here: str, marker: str) -> list[tuple[str, str, 
     return out
 
 
-def retire_foreign_build_dirs(ws: str, here: str, marker: str, dry_run: bool) -> int:
+def retire_foreign_build_dirs(build_root: str, here: str, marker: str, dry_run: bool) -> int:
     """Remove the build dirs that were configured against ANOTHER checkout.
 
     This is the one remedy issue 1387 leaves. The module root is a
@@ -418,15 +461,18 @@ def retire_foreign_build_dirs(ws: str, here: str, marker: str, dry_run: bool) ->
         )
         return 0
 
-    found = foreign_build_dirs(ws, here, marker)
+    found = foreign_build_dirs(build_root, here, marker)
     if not found:
-        print(f"retire-foreign-build-dirs: none — no build dir under {ws} names another checkout")
+        print(
+            f"retire-foreign-build-dirs: none — no build dir under {build_root} names "
+            "another checkout"
+        )
         return 0
 
-    ws_real = _real(ws)
+    ws_real = _real(build_root)
     removed = 0
     for bdir, name, value in found:
-        # Three guards, because this deletes: inside the workspace we resolved,
+        # Three guards, because this deletes: inside the build root we resolved,
         # a real directory rather than a link, and actually a build dir.
         if not _real(bdir).startswith(ws_real + os.sep):
             print(f"retire-foreign-build-dirs: REFUSING {bdir} — outside {ws_real}", file=sys.stderr)
@@ -541,8 +587,10 @@ def self_test(verbose: bool = False) -> bool:
         )
 
         # Subject 2: a cached value crossing, beside two that must NOT fire.
-        build = Path(ws, "build-c-talker-zenoh")
-        build.mkdir()
+        # In THIS checkout's build root (issue 1596), not the workspace.
+        broot = str(Path(here, "build", "zephyr-workspace-builds", "3.7"))
+        build = Path(broot, "build-c-talker-zenoh")
+        build.mkdir(parents=True)
         outside = tmp / "opt/zephyr-sdk/bin/gcc"
         outside.parent.mkdir(parents=True)
         outside.write_text("")
@@ -552,7 +600,7 @@ def self_test(verbose: bool = False) -> bool:
             f"CMAKE_C_COMPILER:FILEPATH={outside}\n"
             f"SOME_FLAGS:STRING=-Wall -Wextra\n"
         )
-        problems, _ = scan(here, ws, marker, manifest_only=False)
+        problems, _ = scan(here, ws, marker, manifest_only=False, build_root=broot)
         chk(
             "a cached value naming a foreign checkout fails the gate",
             len(problems) == 1,
@@ -565,13 +613,13 @@ def self_test(verbose: bool = False) -> bool:
         )
         chk(
             "--manifest-only stops at subject 1",
-            not scan(here, ws, marker, manifest_only=True)[0],
+            not scan(here, ws, marker, manifest_only=True, build_root=broot)[0],
             "the manifest-only scan reached the build caches",
         )
 
         # The escape hatch silences subject 2 and only subject 2.
         os.environ["NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS"] = "1"
-        hatched, _ = scan(here, ws, marker, manifest_only=False)
+        hatched, _ = scan(here, ws, marker, manifest_only=False, build_root=broot)
         os.environ.pop("NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS")
         chk(
             "NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS silences the cache subject",
@@ -593,7 +641,7 @@ def self_test(verbose: bool = False) -> bool:
         Path(binp, "west").write_text(f"#!{foreign}/scripts/zephyr/.venv/bin/python3\n")
         Path(binp, "ours").write_text(f"#!{here}/scripts/zephyr/.venv/bin/python3\n")
         Path(binp, "system").write_text("#!/usr/bin/env python3\n")
-        problems, _ = scan(here, ws, marker, manifest_only=False)
+        problems, _ = scan(here, ws, marker, manifest_only=False, build_root=broot)
         chk(
             "a venv shebang naming a foreign interpreter fails the gate, and "
             "ours and the system one do not",
@@ -601,12 +649,46 @@ def self_test(verbose: bool = False) -> bool:
             f"expected the cache finding plus one shebang finding, got {problems}",
         )
         os.environ["NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS"] = "1"
-        hatched, _ = scan(here, ws, marker, manifest_only=False)
+        hatched, _ = scan(here, ws, marker, manifest_only=False, build_root=broot)
         os.environ.pop("NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS")
         chk(
             "the hatch does NOT silence the venv shebang (configuration, not artifacts)",
             len(hatched) == 1 and "venv console script" in hatched[0],
             f"got {hatched}",
+        )
+
+        # Issue 1596, the positive direction: a dir ANOTHER worktree configured
+        # in the shared workspace (the pre-1596 layout, and the measured shape:
+        # 110+ entries naming the last configurer) is not this checkout's image,
+        # so it is a legacy note, never a finding — the gate that was red in
+        # every session by construction.
+        shared = Path(ws, "build-ws-rs-realtime-entry-zenoh")
+        shared.mkdir()
+        Path(shared, "CMakeCache.txt").write_text(f"NROS_REPO_DIR:PATH={foreign}\n")
+        os.remove(Path(build, "CMakeCache.txt"))
+        Path(build, "CMakeCache.txt").write_text(f"NROS_REPO_DIR:PATH={here}\n")
+        problems, _ = scan(here, ws, marker, manifest_only=False, build_root=broot)
+        chk(
+            "a crossed dir in the SHARED workspace does not fail this checkout "
+            "(issue 1596: it is no checkout's image)",
+            not any("cached value" in p for p in problems),
+            f"reported {problems}",
+        )
+        chk(
+            "and it is still NAMED, as a legacy dir to reclaim",
+            legacy_shared_build_dirs(ws) == [str(shared)],
+            f"got {legacy_shared_build_dirs(ws)}",
+        )
+        # ...and the negative control: the SAME crossing in this checkout's own
+        # build root still fails (a genuinely crossed dir, e.g. a build root
+        # shared through NROS_ZEPHYR_BUILD_ROOT).
+        os.remove(Path(build, "CMakeCache.txt"))
+        Path(build, "CMakeCache.txt").write_text(f"NROS_REPO_DIR:PATH={foreign}\n")
+        problems, _ = scan(here, ws, marker, manifest_only=False, build_root=broot)
+        chk(
+            "a crossed dir in THIS checkout's build root still fails the gate",
+            any("cached value" in p for p in problems),
+            f"reported {problems}",
         )
 
         # Nothing provisioned at all is a SKIP, not a pass.
@@ -638,14 +720,14 @@ def self_test(verbose: bool = False) -> bool:
         tmp = Path(td)
         here = _make_checkout(tmp / "here", marker)
         foreign = _make_checkout(tmp / "other", marker)
-        ws = _make_workspace(tmp / "here")
+        broot = str(Path(here, "build", "zephyr-workspace-builds", "3.7"))
 
-        crossed = Path(ws) / "build-crossed"
+        crossed = Path(broot) / "build-crossed"
         crossed.mkdir(parents=True, exist_ok=True)
         (crossed / "CMakeCache.txt").write_text(
             f"NROS_REPO_DIR:PATH={foreign}\n_NROS_MESSAGE_BOUNDS_DIR:PATH={foreign}/cmake\n"
         )
-        clean = Path(ws) / "build-clean"
+        clean = Path(broot) / "build-clean"
         clean.mkdir(parents=True, exist_ok=True)
         (clean / "CMakeCache.txt").write_text(
             f"NROS_REPO_DIR:PATH={here}\nCMAKE_MAKE_PROGRAM:FILEPATH=/usr/bin/ninja\n"
@@ -653,18 +735,18 @@ def self_test(verbose: bool = False) -> bool:
 
         chk(
             "the repair names exactly the build dir configured against another checkout",
-            [d for d, _, _ in foreign_build_dirs(ws, here, marker)] == [str(crossed)],
-            f"it named {[d for d, _, _ in foreign_build_dirs(ws, here, marker)]}",
+            [d for d, _, _ in foreign_build_dirs(broot, here, marker)] == [str(crossed)],
+            f"it named {[d for d, _, _ in foreign_build_dirs(broot, here, marker)]}",
         )
 
-        rc = retire_foreign_build_dirs(ws, here, marker, dry_run=True)
+        rc = retire_foreign_build_dirs(broot, here, marker, dry_run=True)
         chk(
             "a dry run removes nothing",
             rc == 0 and crossed.is_dir() and clean.is_dir(),
             "it removed something",
         )
 
-        rc = retire_foreign_build_dirs(ws, here, marker, dry_run=False)
+        rc = retire_foreign_build_dirs(broot, here, marker, dry_run=False)
         chk(
             "the repair removes the crossed dir and leaves the clean one",
             rc == 0 and not crossed.exists() and clean.is_dir(),
@@ -672,10 +754,10 @@ def self_test(verbose: bool = False) -> bool:
         )
 
         os.environ["NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS"] = "1"
-        again = Path(ws) / "build-crossed2"
+        again = Path(broot) / "build-crossed2"
         again.mkdir(parents=True, exist_ok=True)
         (again / "CMakeCache.txt").write_text(f"NROS_REPO_DIR:PATH={foreign}\n")
-        rc = retire_foreign_build_dirs(ws, here, marker, dry_run=False)
+        rc = retire_foreign_build_dirs(broot, here, marker, dry_run=False)
         chk(
             "the opt-out hatch stops the repair acting on a stated decision",
             rc == 0 and again.is_dir(),
@@ -689,7 +771,9 @@ def self_test(verbose: bool = False) -> bool:
         print(
             "  self-test ok: foreign manifest link reported, self-pointing link and "
             "unbound project clean, cache crossing reported beside an out-of-tree "
-            "and an in-tree value, venv shebang reported, bare checkout examines nothing, "
+            "and an in-tree value, a shared-workspace dir is a note and the same "
+            "crossing in this build root a finding, venv shebang reported, bare "
+            "checkout examines nothing, "
             "repair retires the crossed dir and spares the clean one",
             file=sys.stderr,
         )
@@ -733,14 +817,26 @@ def main() -> int:
     ws = args.workspace or resolve_workspace(here)
     if ws and not os.path.isdir(ws):
         ws = None
+    build_root = resolve_build_root(here)
 
     if args.retire_foreign_build_dirs:
-        if not ws:
-            print("retire-foreign-build-dirs: no Zephyr workspace resolves here; nothing to do")
+        if not build_root or not os.path.isdir(build_root):
+            print("retire-foreign-build-dirs: this checkout has no Zephyr build root yet; "
+                  "nothing to do")
             return 0
-        return retire_foreign_build_dirs(ws, here, marker, args.dry_run)
+        return retire_foreign_build_dirs(build_root, here, marker, args.dry_run)
 
-    problems, subjects = scan(here, ws, marker, args.manifest_only)
+    problems, subjects = scan(here, ws, marker, args.manifest_only, build_root)
+
+    # Issue 1596 — said, never failed on: the pre-1596 shared dirs are nobody's
+    # images now, and a finding about them would be red in every session again.
+    legacy = [] if args.manifest_only else legacy_shared_build_dirs(ws)
+    if legacy:
+        print(
+            f"  note: {len(legacy)} build dir(s) left in the SHARED workspace by the "
+            f"pre-issue-1596 layout (e.g. {legacy[0]}); no checkout builds or reads "
+            f"there now — reclaim the disk once no session still runs an old branch."
+        )
 
     if subjects == 0:
         where = "no Zephyr workspace resolves here" if not ws else f"{ws} holds none of its subjects"
@@ -764,7 +860,7 @@ def main() -> int:
     scope = "manifest project" if args.manifest_only else "manifest project, build caches, venv shebangs"
     print(
         f"check-zephyr-workspace-foreign-checkout: ok — {subjects} subject(s) examined "
-        f"({scope}) in {ws}, none names another checkout"
+        f"({scope}) in {ws} and build root {build_root}, none names another checkout"
     )
     return 0
 

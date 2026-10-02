@@ -577,6 +577,50 @@ scenario '
         "$mixed"
 '
 
+echo "issue 1596 — the Zephyr west build root is a build cache of THIS checkout:"
+
+# The writer (`zephyr-workspace.sh build-root`, read by the fixture builder, the
+# FVP recipes and the foreign-checkout gate) and the reader
+# (`nros_tests::zephyr::zephyr_build_root`) must name ONE directory, and it must
+# not be the shared west workspace. LITERALS on the expected side.
+scenario '
+    unset NROS_BUILD_ROOT NROS_ZEPHYR_BUILD_ROOT NROS_ZEPHYR_VERSION
+    export NROS_REPO_ROOT="$repo_root"
+    check "default: <repo>/build/zephyr-workspace-builds/3.7" \
+        "$repo_root/build/zephyr-workspace-builds/3.7" \
+        "$(bash scripts/lib/zephyr-workspace.sh --root "$repo_root" build-root)"
+    check "the line is a coordinate (4.4 and 3.7 name leaves identically)" \
+        "$repo_root/build/zephyr-workspace-builds/4.4" \
+        "$(bash scripts/lib/zephyr-workspace.sh --version 4.4 --root "$repo_root" build-root)"
+    check "NROS_BUILD_ROOT relocates it with the rest of the cache" \
+        "/scratch/nros/zephyr-workspace-builds/3.7" \
+        "$(NROS_BUILD_ROOT=/scratch/nros bash scripts/lib/zephyr-workspace.sh build-root)"
+    check "NROS_ZEPHYR_BUILD_ROOT wins, trailing slash stripped" \
+        "/z/builds" \
+        "$(NROS_ZEPHYR_BUILD_ROOT=/z/builds/ bash scripts/lib/zephyr-workspace.sh build-root)"
+    check "the kind is the vocabulary constant" "zephyr-workspace-builds" \
+        "$NROS_KIND_ZEPHYR_WORKSPACE_BUILDS"
+'
+scenario '
+    f=packages/testing/nros-tests/src/zephyr.rs
+    if nros_grep_q "pub fn zephyr_build_root() -> PathBuf" "$f" \
+       && nros_grep_q "var_os(\"NROS_ZEPHYR_BUILD_ROOT\")" "$f" \
+       && nros_grep_q "var(\"NROS_ZEPHYR_VERSION\")" "$f" \
+       && nros_grep_q "build_dir(crate::kind::ZEPHYR_WORKSPACE_BUILDS, &\[&version\])" "$f"; then
+        echo "  ok   the Rust twin reads the same override, version and kind"
+    else
+        echo "  FAIL nros_tests::zephyr::zephyr_build_root does not mirror zephyr-workspace.sh build-root"
+        rc=1
+    fi
+    g=packages/testing/nros-tests/src/fixtures/binaries/mod.rs
+    if nros_grep_q "crate::zephyr::zephyr_build_root()" "$g"; then
+        echo "  ok   the fixture resolver delegates to the twin (no second spelling)"
+    else
+        echo "  FAIL fixtures::binaries spells its own Zephyr build root"
+        rc=1
+    fi
+'
+
 if [ "$fail" -ne 0 ]; then
     echo "build_root_derivation: FAILED" >&2
     exit 1

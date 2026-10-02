@@ -33,14 +33,10 @@
 just/zephyr-dev.just  # the two-line sweep has its OWN override pair (NROS_ZEPHYR_WORKSPACE_37/_44) so it can drive BOTH lines in one run — the helper answers for one line at a time
 justfile  # the nextest deselect guard mirrors west-fixtures.sh's ladder inline; it runs before any `source`, inside a just recipe body. Fold with W4
 packages/cli/nros-cli-core/src/cmd/build.rs  # the CLI's own resolver, in Rust, with a `--zephyr-workspace` flag rung the shell chain does not have. RFC-0095 D2 makes this the resolver a USER meets; it needs its own fold, not a shell call
-packages/testing/nros-tests/src/fixtures/binaries/mod.rs  # Rust; picks the west BUILD root, which is the workspace only when that tree is writable — a different question with a shared first half
 packages/testing/nros-tests/src/zephyr.rs  # Rust; keys on `ZEPHYR_NANO_ROS` and accepts a `zephyr-workspace` SYMLINK, so it is a third rung set again
 packages/testing/nros-tests/tests/fvp_runtime_ws.rs  # Rust test-local copy; folds with zephyr.rs
 packages/testing/nros-tests/tests/fvp_smoke.rs  # Rust test-local copy; folds with zephyr.rs
-scripts/build/gc-zephyr-builds.py  # Python; a DEFAULT_WS constant for `--workspace`, not a ladder walk
-scripts/build/zephyr-fixture-leaves.sh  # shell ladder that picks a BUILD root; a straight fold candidate once W4 separates source from build output
 scripts/check-fixtures-stale.sh  # shell ladder inside the staleness probe; a straight fold candidate
-scripts/check-tier-priority-plan-image.py  # Python; sweeps BOTH roots at once looking for images, so it wants the candidate LIST, not the first hit
 scripts/check-zephyr-kconfig-symbols.py  # Python; needs the per-line Kconfig trees and has a `build/zephyr-kconfig/` rung of its own
 scripts/check-zephyr-workspace-checkout.sh  # the RFC-0095 D1 guard: it must sweep EVERY provisioned tree, not resolve one. phase-440 W5 generalises it away
 scripts/check-zephyr-workspace-resolvers.py  # this gate's own pattern and the prose that explains it

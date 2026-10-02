@@ -59,7 +59,7 @@
 # cannot literally share code, so `just` CALLS this rather than restating it).
 #
 #   scripts/lib/zephyr-workspace.sh [--version V] [--root DIR] [--absolute] \
-#       <candidates|resolve|resolve-or-default|default|store-dir|version>
+#       <candidates|resolve|resolve-or-default|default|store-dir|build-root|version>
 #
 # shellcheck shell=bash
 
@@ -205,6 +205,57 @@ nros_zephyr_ws_resolve_or_default() {
     nros_zephyr_ws_default "$version"
 }
 
+# WHERE this checkout's west BUILD dirs live — issue 1596. A different question
+# from the ladder above, and deliberately NOT answered by it.
+#
+# The workspace is SOURCE (zephyr, modules, the SDK venv): read-only to a build,
+# provisioned once per host, shared by every checkout (RFC-0095 D1/D2). A build
+# dir is OUTPUT, and its identity includes the checkout that configured it —
+# its CMakeCache names that checkout's sources, CLI and module root. They used
+# to share a directory: `west build -d <ws>/build-<leaf>`, named by the leaf
+# alone, so every worktree's `build-ws-rs-realtime-entry-zenoh` was the SAME
+# directory, each configure re-pointed 110+ cache entries at whichever checkout
+# ran last, a cell run from one worktree executed an image another configured,
+# and `check-zephyr-workspace-foreign-checkout` was red in every agent session
+# by construction.
+#
+# So the build root is a BUILD CACHE of this checkout:
+#
+#   $NROS_ZEPHYR_BUILD_ROOT                       explicit operator choice, as is
+#   <nros_build_root>/zephyr-workspace-builds/<version>   otherwise
+#
+# `nros_build_root` is RFC-0070's one root (`<checkout>/build`, `NROS_BUILD_ROOT`
+# to relocate, issue 1280's re-root for an inherited `NROS_REPO_DIR`). The
+# VERSION is a coordinate because the 3.7 and 4.4 lines name their leaves
+# identically and each used to get a workspace of its own.
+#
+# Everything that writes or reads a west build dir — the fixture builder, the
+# FVP recipes, the test resolvers (`nros_tests::zephyr::zephyr_build_root`, the
+# Rust twin, pinned by `build_root_derivation.sh`), the foreign-checkout gate,
+# the tier-priority image sweep — asks THIS. The west-leaf routing (issue 1016)
+# keys on the build-dir NAME and is unaffected: the name is unchanged, only the
+# directory holding it moved.
+#
+# Args: [version] [root]. `root` is the checkout to derive for (default: the one
+# this file is in); it is handed to `nros_build_root` as `NROS_REPO_ROOT`.
+nros_zephyr_build_root() {
+    local version="${1:-}" root="${2:-}"
+    [ -n "$version" ] || version="$(nros_zephyr_ws_version)"
+    if [ -n "${NROS_ZEPHYR_BUILD_ROOT:-}" ]; then
+        printf '%s\n' "${NROS_ZEPHYR_BUILD_ROOT%/}"
+        return 0
+    fi
+    local lib
+    lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    (
+        [ -z "$root" ] || export NROS_REPO_ROOT="$root"
+        # shellcheck source=scripts/build/build-root.sh
+        . "$lib/../build/build-root.sh"
+        nros_build_dir "$NROS_KIND_ZEPHYR_WORKSPACE_BUILDS" "$version"
+    )
+    printf '\n'
+}
+
 # ---------------------------------------------------------------------------
 # Command form. `just` cannot call a shell function, so it calls this.
 # ---------------------------------------------------------------------------
@@ -284,6 +335,10 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
         store-dir)
             nros_zephyr_ws_store_dir "$_nros_zws_version"
             ;;
+        build-root)
+            # issue 1596 — this checkout's west build dirs, not the workspace.
+            nros_zephyr_build_root "$_nros_zws_version" "$_nros_zws_root"
+            ;;
         version)
             if [ -n "$_nros_zws_version" ]; then
                 printf '%s\n' "$_nros_zws_version"
@@ -293,7 +348,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
             ;;
         *)
             echo "zephyr-workspace.sh: unknown mode ${_nros_zws_mode}" >&2
-            echo "  modes: candidates resolve resolve-or-default default store-dir version" >&2
+            echo "  modes: candidates resolve resolve-or-default default store-dir build-root version" >&2
             exit 2
             ;;
     esac

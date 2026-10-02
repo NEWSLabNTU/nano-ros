@@ -40,8 +40,8 @@ Usage:
 """
 
 import importlib.util
-import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -111,17 +111,19 @@ def discover():
     the caller pick which one to prove is how a green comes to mean less than
     it looks.
     """
-    ws = os.environ.get("NROS_ZEPHYR_WORKSPACE") or ""
-    roots = [Path(ws)] if ws else []
-    roots += [ROOT / "zephyr-workspace", ROOT.parent / "nano-ros-workspace"]
-    found = []
-    for r in roots:
-        if not r.is_dir():
-            continue
-        found += sorted(r.glob("build-*/zephyr/.config"))
-        if found:
-            break
-    return found
+    # issue 1596 — "every image this TREE has built" is exactly this
+    # checkout's build root, the one derivation. It used to sweep the WORKSPACE
+    # candidates, i.e. the directory every checkout shared, so it judged images
+    # other worktrees configured from other sources.
+    p = subprocess.run(
+        ["bash", str(ROOT / "scripts/lib/zephyr-workspace.sh"), "--root", str(ROOT),
+         "build-root"],
+        capture_output=True, text=True,
+    )
+    r = Path(p.stdout.strip()) if p.returncode == 0 and p.stdout.strip() else None
+    if r is None or not r.is_dir():
+        return []
+    return sorted(r.glob("build-*/zephyr/.config"))
 
 
 def check_one(dotconfig, tier_key, plans, bringups):

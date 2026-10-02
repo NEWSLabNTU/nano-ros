@@ -374,8 +374,13 @@ def derived_roots():
     group key — it is the same one, read.
     """
     build_root = os.environ.get("NROS_BUILD_ROOT") or os.path.join(ROOT, "build")
-    zephyr_root = (os.environ.get("NROS_ZEPHYR_BUILD_ROOT")
-                   or os.path.join(ROOT, "zephyr-workspace"))
+    # issue 1596 — the one derivation, never a literal: this read the in-tree
+    # `zephyr-workspace/` long after builds stopped landing there.
+    zephyr_root = subprocess.run(
+        ["bash", os.path.join(ROOT, "scripts/lib/zephyr-workspace.sh"), "--root", ROOT,
+         "build-root"],
+        capture_output=True, text=True,
+    ).stdout.strip() or os.path.join(build_root, "zephyr-workspace-builds")
 
     roots = set()
     # `<artifact_root>\x1f<platform>\x1f<group_slug>\x1f<eligible>` — an empty

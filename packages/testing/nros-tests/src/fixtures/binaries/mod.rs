@@ -4591,38 +4591,17 @@ pub fn build_threadx_linux_cmake_example_rmw(
 /// Phase 168.1 — collapsed-shape Zephyr Rust example resolver.
 ///
 /// Zephyr west builds drop the artifact at
-/// `zephyr-workspace/build-rs-<case>-<rmw>/zephyr/zephyr.exe` (not
+/// `<zephyr_build_root>/build-<lang>-<case>-<rmw>/zephyr/zephyr.exe` (not
 /// inside the example dir), so this helper resolves to that path
 /// instead of using `build_example_rmw`. `case` is the directory
 /// name under `examples/zephyr/rust/` (talker, listener, …).
 fn zephyr_build_root() -> PathBuf {
-    if let Some(path) = std::env::var_os("NROS_ZEPHYR_BUILD_ROOT") {
-        return PathBuf::from(path);
-    }
-    let root = project_root();
-    // Mirror just/zephyr.just's ZEPHYR_WORKSPACE selection: the in-tree
-    // `zephyr-workspace` (canonical), else the legacy `../nano-ros-workspace`
-    // sibling. The build stages fixtures into whichever it picks (when
-    // writable), falling back to `build/zephyr-workspace-builds` only when no
-    // writable workspace exists — so the resolver must look in the same order.
-    let in_tree = root.join("zephyr-workspace");
-    let workspace = if in_tree.is_dir() || in_tree.is_symlink() {
-        in_tree
-    } else {
-        match root.parent().map(|p| p.join("nano-ros-workspace")) {
-            Some(sibling) if sibling.is_dir() => sibling,
-            _ => in_tree,
-        }
-    };
-    if workspace
-        .metadata()
-        .map(|m| !m.permissions().readonly())
-        .unwrap_or(false)
-    {
-        workspace
-    } else {
-        root.join("build/zephyr-workspace-builds")
-    }
+    // issue 1596 — ONE derivation, `crate::zephyr::zephyr_build_root`. This
+    // used to restate the WORKSPACE ladder (in-tree, then the legacy sibling)
+    // and put images wherever the workspace was, i.e. in the tree every
+    // worktree shares; once phase-440 W4 promoted the store it also looked in a
+    // place the build no longer wrote.
+    crate::zephyr::zephyr_build_root()
 }
 
 // issue 1016 — `build_zephyr_rust_example_rmw` stood here and named
