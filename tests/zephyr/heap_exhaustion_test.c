@@ -162,9 +162,11 @@ size_t nros_zephyr_heap_peak(void) {
 }
 
 /* issue 1370 -- the walk of the free blocks. The SHAPE is a fixture a case
- * sets, and the classification rule is restated here exactly as zpico-alloc's
- * `Exhaustion::classify` states it, because the Rust half is not linked; the
- * rule itself is unit-tested there. What this file tests is that platform.c
+ * sets, and the classification rule is a SIMPLIFICATION of zpico-alloc's
+ * `Exhaustion::classify`, because the Rust half is not linked: the real rule
+ * compares the largest hole with `reachable_payload(size)` (TLSF skips the
+ * request's own size class), which equals `size` for none of these fixtures'
+ * shapes and is unit-tested there. What this file tests is that platform.c
  * ASKS for the shape and PRINTS the verdict. */
 static size_t shape_largest_free = 32;
 static size_t shape_free_total = 48;

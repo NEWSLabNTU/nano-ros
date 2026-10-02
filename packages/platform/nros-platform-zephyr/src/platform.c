@@ -332,9 +332,10 @@ void *nros_platform_alloc(size_t size) {
                "      (addr2line -f -e zephyr.elf %p to name it; %s)\n",
                fragmented ? "FRAGMENTED" : "TOO SMALL", size, capacity, free_total,
                largest_free, __builtin_return_address(0), __builtin_return_address(0),
-               fragmented ? "the bytes are free and no single hole holds the request -- "
-                            "a larger CONFIG_NROS_ZEPHYR_HEAP_SIZE only postpones this "
-                            "(issue 1370)"
+               fragmented ? "the bytes are free and no hole the size-class search "
+                            "reaches holds the request (the largest may still exceed it: "
+                            "TLSF skips the request's own class) -- a larger "
+                            "CONFIG_NROS_ZEPHYR_HEAP_SIZE only postpones this (issue 1370)"
                           : "raise CONFIG_NROS_ZEPHYR_HEAP_SIZE / NROS_ZEPHYR_HEAP_SIZE "
                             "only once you know what asked");
         nros_zephyr_heap_exhaustion_is_fatal(size, capacity);

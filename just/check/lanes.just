@@ -2691,6 +2691,17 @@ node-std-tests:
         cargo test -p nros-node --features std,rmw-cffi --test executor_backing_claims \
         --quiet -- --ignored --exact every_stated_executor_backing_meets_the_measured_default
 
+    # Issue 1370 — the PLATFORM arena's own counters, the same defect class one
+    # crate over. `zpico-alloc`'s `stats` feature gates `request_spread`,
+    # `peak`, the replay engine and every test of them, and no workspace member
+    # turns it on (the crates that do — the Zephyr/bare-metal platforms — are
+    # excluded or feature-gated), so `--workspace` ran none of them: measured,
+    # `cargo tree -e features -i zpico-alloc --workspace` shows `default` only.
+    # `--lib --tests`, not a bare `cargo test`: the crate's two doctests are
+    # `ignore`d, and their `0 passed` line would trip the zero-tests guard.
+    ran_tests "zpico-alloc stats tests (issue 1370)" \
+        cargo test -p zpico-alloc --features stats --lib --tests --quiet
+
     # phase-412 #4 — the arena's host oracle, seen to FIRE. `arena_oracle` holds
     # the default arena to the declared model in a `const` item, and a const
     # item nobody has watched fail reads exactly like one that passes. So: the

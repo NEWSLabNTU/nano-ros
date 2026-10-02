@@ -608,7 +608,12 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
 /// [`FreeListHeap::free_shape`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct FreeShape {
-    /// The largest single request the arena could serve right now.
+    /// The PAYLOAD of the largest free block. NOT "the largest request the
+    /// arena could serve": rlsf's O(1) search only looks in size classes every
+    /// block of which is large enough, so a request is served from this block
+    /// only when it is at least [`Exhaustion::reachable_payload`] of the
+    /// request (issue 1370 — measured: a 65,535-byte request refused with a
+    /// 65,712-byte hole free).
     pub largest_free: usize,
     /// Sum of every free block's payload.
     pub free_total: usize,
@@ -622,20 +627,62 @@ pub enum Exhaustion {
     /// The free bytes, all together, are fewer than the request: the arena is
     /// too small for what is live, and raising it is the remedy.
     TooSmall,
-    /// The free bytes would hold the request but no single hole does: the
-    /// failure is EXTERNAL FRAGMENTATION, and raising the arena only postpones
-    /// it.
+    /// The free bytes would hold the request but no hole the allocator can
+    /// REACH does: the failure is EXTERNAL FRAGMENTATION, and raising the arena
+    /// only postpones it.
     Fragmented,
 }
 
 impl Exhaustion {
     /// The rule, separated from the walk so it is testable on any shape.
+    ///
+    /// "No hole holds it" is measured against [`Self::reachable_payload`], not
+    /// against `size`: TLSF is a GOOD fit, not a best fit. It rounds the search
+    /// up to the first size class whose EVERY block is large enough and never
+    /// looks inside the request's own class, so a free block a little larger
+    /// than the request can sit in the arena unused while the request is
+    /// refused. Comparing against `size` called exactly that case TOO SMALL —
+    /// the remedy for a full arena — on an arena with twice the request free
+    /// (issue 1370, found by replaying a native talker's recorded traffic:
+    /// 65,535 B refused, 128,704 B free in 2 holes, the larger 65,712 B).
     pub const fn classify(size: usize, shape: FreeShape) -> Self {
-        if shape.free_total >= size && shape.largest_free < size {
+        if shape.free_total >= size && shape.largest_free < Self::reachable_payload(size) {
             Exhaustion::Fragmented
         } else {
             Exhaustion::TooSmall
         }
+    }
+
+    /// The smallest free-block PAYLOAD from which rlsf is GUARANTEED to serve
+    /// a `size`-byte request at this crate's alignment and `SLLEN`.
+    ///
+    /// rlsf 0.2.3's `allocate`: the search size is `size` plus the used-block
+    /// header (`GRANULARITY / 2`; the 8-byte alignment adds no padding because
+    /// `GRANULARITY / 2 >= 8`), rounded up to `GRANULARITY`; `map_ceil` then
+    /// rounds that up to the floor of the first second-level list above it,
+    /// i.e. to a multiple of `2^(floor(log2(search)) - log2(SLLEN))`. A free
+    /// block is at least that large exactly when its payload
+    /// (`size - GRANULARITY / 2`, rlsf's `max_payload_size`) is at least the
+    /// value returned here. Checked against the allocator itself by
+    /// `reachable_payload_is_the_allocators_own_threshold`.
+    pub const fn reachable_payload(size: usize) -> usize {
+        let g = rlsf::GRANULARITY;
+        let search = match size.checked_add(g / 2 + g - 1) {
+            Some(v) => v & !(g - 1),
+            None => return usize::MAX,
+        };
+        let log2 = usize::BITS - 1 - search.leading_zeros();
+        let sli = SLLEN.trailing_zeros();
+        let list_min = if log2 <= sli {
+            search
+        } else {
+            let unit = 1usize << (log2 - sli);
+            match search.checked_add(unit - 1) {
+                Some(v) => v & !(unit - 1),
+                None => return usize::MAX,
+            }
+        };
+        list_min - g / 2
     }
 
     /// The word the exhaustion report prints.
@@ -920,11 +967,91 @@ mod tests {
             Exhaustion::classify(100, shape(50, 100)),
             Exhaustion::Fragmented
         );
-        // A hole that fits is not an exhaustion at all; classify says TooSmall
-        // (not Fragmented) because fragmentation did not refuse it.
+        // A hole the allocator can reach is not an exhaustion at all; classify
+        // says TooSmall (not Fragmented) because fragmentation did not refuse
+        // it.
+        let reach = Exhaustion::reachable_payload(100);
         assert_eq!(
-            Exhaustion::classify(100, shape(100, 200)),
+            Exhaustion::classify(100, shape(reach, 2 * reach)),
             Exhaustion::TooSmall
+        );
+        // A hole that holds the bytes but sits in a class the O(1) search
+        // skips IS the fragmentation verdict — the case issue 1370's replay
+        // found misreported as TooSmall.
+        assert!(reach > 100);
+        assert_eq!(
+            Exhaustion::classify(100, shape(reach - 1, 2 * reach)),
+            Exhaustion::Fragmented
+        );
+    }
+
+    /// Issue 1370 — `reachable_payload` restates rlsf's search rounding, so it
+    /// is checked against the allocator rather than trusted: for a spread of
+    /// request sizes, an arena whose one usable free block has exactly the
+    /// reachable payload serves the request, and one granule less refuses it.
+    /// The hole is cut by allocating it, pinning the rest of the arena behind
+    /// it, and freeing it.
+    #[test]
+    fn reachable_payload_is_the_allocators_own_threshold() {
+        let g = rlsf::GRANULARITY;
+        let mut skipped_holes_that_fit = 0;
+        for &size in &[65usize, 100, 200, 333, 1000, 2048, 4000, 9000, 20000] {
+            let reach = Exhaustion::reachable_payload(size);
+            assert!(reach >= size, "{size}: {reach}");
+            for (payload, expect_ok) in [(reach, true), (reach - g, false)] {
+                let heap: FreeListHeap<65536> = FreeListHeap::new();
+                // Occupy the slab, so a sub-64-byte hole is cut from (and a
+                // sub-64-byte request served by) TLSF — the slab-overflow path
+                // every image takes once its eight cells are in use.
+                for _ in 0..SLAB_SLOT_COUNT {
+                    assert!(!heap.alloc(SLAB_SLOT_SIZE).is_null());
+                }
+                let hole = heap.alloc(payload);
+                assert!(!hole.is_null());
+                // Pin everything behind the hole so it cannot coalesce with
+                // it and no tail block competes with it: keep taking the
+                // largest block the allocator will still hand out (which is
+                // itself below `largest_free`, by the very rounding under
+                // test) until what is left is smaller than one granule.
+                loop {
+                    let mut pin = heap.free_shape().largest_free;
+                    while pin >= g && heap.alloc(pin).is_null() {
+                        pin -= g;
+                    }
+                    if pin < g {
+                        break;
+                    }
+                }
+                heap.free(hole);
+                let s = heap.free_shape();
+                assert_eq!(
+                    s.largest_free, payload,
+                    "{size}: precondition — the hole is the largest free block: {s:?}"
+                );
+                let got = heap.alloc(size);
+                assert_eq!(
+                    !got.is_null(),
+                    expect_ok,
+                    "{size} from a {payload}-byte hole (reach {reach}): {s:?}"
+                );
+                if !expect_ok {
+                    // A hole that HOLDS the request and is still refused is
+                    // the case the old `largest_free < size` rule called
+                    // TOO SMALL; it is fragmentation, and must say so.
+                    let want = if payload >= size {
+                        skipped_holes_that_fit += 1;
+                        Exhaustion::Fragmented
+                    } else {
+                        Exhaustion::TooSmall
+                    };
+                    assert_eq!(heap.classify_refusal(size), want, "{size}: {s:?}");
+                }
+            }
+        }
+        assert!(
+            skipped_holes_that_fit >= 3,
+            "the spread must include requests whose refusing hole still held them: \
+             {skipped_holes_that_fit}"
         );
     }
 
