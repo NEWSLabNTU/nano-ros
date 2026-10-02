@@ -10,6 +10,13 @@
 //! symbol in a bin target would never reach it. Both RMWs build this way now,
 //! so there is no second crate root to disagree with.
 
+// Issue 1603 -- the IMAGE's glue only. `nros sync` builds this crate's lib for
+// the HOST to probe what the node in `lib.rs` creates, and the board crate this
+// module anchors has no host build (its deps are target-scoped in Cargo.toml),
+// so on the host the module does not exist. The image is always built for the
+// target, where it does.
+#![cfg(target_os = "none")]
+
 extern crate alloc;
 
 // rustc's staticlib DCE drops a dependency's `#[no_mangle]` exports without a

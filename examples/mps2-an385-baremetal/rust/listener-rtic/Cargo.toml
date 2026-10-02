@@ -31,6 +31,11 @@ log = { version = "0.4", default-features = false }
 std_msgs = { path = "generated/std_msgs", default-features = false }
 # nros declarative-node + main! API.
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
+
+# Everything only the IMAGE needs is TARGET-scoped, so the node in `lib.rs`
+# builds for the host as well and `nros sync` can PROBE what it creates
+# (issues 1265, 1603). `main.rs` (the Entry) is never built for the host.
+[target.'cfg(target_os = "none")'.dependencies]
 # RTIC board entry (RticBoardEntry) for QEMU MPS2-AN385.
 # phase-337 W6.a — the RTIC entry surface is the base board crate's `rtic`
 # feature; `nros-board-rtic-mps2-an385` no longer exists.
@@ -38,16 +43,12 @@ nros-board-mps2-an385 = { version = "*", features = ["rtic"] }
 # RMW backend — bare-metal callers link it explicitly so the boot scaffold
 # can register it.
 nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
-
 # MPS2-AN385 PAC (interrupt bindings for RTIC dispatchers)
 mps2-an385-pac = { version = "*" }
-
 # RTIC v2
 rtic = { version = "2.1", features = ["thumbv7-backend"] }
-
 # Cortex-M runtime
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
-
 # Panic handler (required for no_std)
 panic-semihosting = { version = "0.6", features = ["exit"] }
 
