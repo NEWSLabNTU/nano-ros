@@ -1,0 +1,115 @@
+# Advisory "try the next stable" lane — issue 1642.
+#
+# `rust-toolchain.toml` is PINNED to a version (issue 1447, PR #1556), because
+# the floating `stable` channel took `main` red for everyone the day Rust 1.99.0
+# released. The pin's cost is drift: nothing says a bump is due or how large it
+# will be. This lane answers that once a week. It runs the merge-gating lint
+# gates twice on the same tree — under the pin and under the current `stable` —
+# and reports the diagnostic sites `stable` adds (PR #1536's A/B, made routine):
+#
+#   green    the bump is free today — take it
+#   red      the next bump costs the sites listed in the job summary
+#   no verdict (exit 2, also red) the A/B could not measure; see the summary
+#
+# IT MUST NEVER GATE A MERGE. A gating lane on an unpinned toolchain blocks
+# every pull request on a compiler nobody chose, which is issue 1447 itself.
+# Three properties keep it out of the merge path, and each is one edit away
+# from being lost, so `scripts/ci/next-stable-delta.py --selftest` (a fast-tier
+# gate, `just check next-stable-advisory`) refuses a change to any of them:
+#
+#   1. TRIGGERS: `schedule` + `workflow_dispatch` only. No `pull_request`, no
+#      `merge_group`, no `push` — so no check run ever attaches to a PR head or
+#      a queue batch.
+#   2. NOT IN THE AGGREGATOR: the one required check is the `CI` context, which
+#      is `gate.yml`'s `ci-ok` job. Its `needs:` can only name jobs in gate.yml;
+#      a job in this file cannot become one of them.
+#   3. NOT NAMED `CI`: the ruleset requires the context by bare NAME (no app
+#      id), so a job here called `CI` would report into it.
+#
+# WHO SEES IT. A run nobody reads has no signal capacity (issue 1158). The
+# report goes to the job SUMMARY (the run page), an `::error`/`::notice`
+# annotation naming the price, and a `next-stable-report` artifact with every
+# log. GitHub sends a scheduled workflow's failure notification to whoever last
+# edited its `cron:` line. `gh run list --workflow next-stable.yml` is the
+# history; whoever bumps the pin reads the latest run first, or runs
+# `scripts/ci/next-stable-delta.py` locally (same A/B, same report).
+name: next-stable
+
+on:
+  schedule:
+    # Mondays 04:17 UTC — weekly is enough for a six-week release cadence, and
+    # it catches a new stable within a week of its release.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: "Toolchain to try against the pin (stable, beta, 1.100.0, ...)"
+        required: false
+        default: "stable"
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: next-stable
+  cancel-in-progress: true
+
+jobs:
+  next-stable:
+    name: next-stable (advisory — gates nothing)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Reclaim disk (two full lint builds, one per toolchain)
+        run: scripts/ci/reclaim-disk.sh "before next-stable A/B"
+
+      # The CLI is built under the PIN (rust-toolchain.toml), as every other
+      # lane builds it — the candidate is applied per gate, not to the setup.
+      - name: Build the in-tree nros CLI
+        uses: ./.github/actions/setup-nros-cli
+
+      - name: Provision compile-tier sources
+        run: |
+          source ./activate.sh
+          nros setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      - name: Measure the next-stable delta
+        id: measure
+        env:
+          CANDIDATE: ${{ inputs.candidate || 'stable' }}
+        run: |
+          set -uo pipefail
+          source ./activate.sh
+          rc=0
+          python3 scripts/ci/next-stable-delta.py --install \
+            --candidate "$CANDIDATE" --out tmp/next-stable || rc=$?
+          cat tmp/next-stable/report.md >> "$GITHUB_STEP_SUMMARY" || true
+          case "$rc" in
+            0) echo "::notice title=next-stable: bump is free::$CANDIDATE raises nothing the pin does not." ;;
+            1) echo "::error title=next-stable: bump is priced::$CANDIDATE adds diagnostic sites the pin does not — see the job summary." ;;
+            *) echo "::error title=next-stable: no verdict::The A/B could not measure the toolchain (exit $rc) — fix the lane, not the code. See the job summary." ;;
+          esac
+          exit "$rc"
+
+      - name: Upload logs + report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-stable-report
+          path: tmp/next-stable/
+          if-no-files-found: warn
+          retention-days: 30
