@@ -560,13 +560,37 @@ So the honest statement is narrower than either version: a second waiter is not
 independent evidence *while a runner exists*, and it becomes the primary evidence
 the moment one does not.
 
-#### This one needs an operator
+#### The deregistration was TRANSIENT — about ten minutes, and it does not need an operator
 
-The first shape is not self-healing in the way the third apparently is: there is
-nothing for GitHub to assign. Re-registering `nano-ros-runner` (all five labels —
-`self-hosted`, `Linux`, `X64`, `nros-qemu`, `nros-sdk-zephyr`, `nros-big`) is a
-host-side action, outside what an unattended sweep can do. Until then both tier-2
-lanes and `queue.yml`'s `L3` have no runner at all.
+Correcting the paragraph that stood here. It read "this one needs an operator",
+on the reasoning that the first shape cannot self-heal because there is nothing
+for GitHub to assign. The premise was measured; the conclusion did not survive
+ten minutes.
+
+| time | `GET /actions/runners` |
+| --- | --- |
+| ~08:20 | `nano-ros-runner` `online` `busy=false` |
+| ~08:55 | `{"total_count":0,"runners":[]}` — twice, 15 s apart |
+| ~09:05 | `total_count: 1`, `nano-ros-runner online busy=false` — three times, 8 s apart |
+
+So the runner deregistered and re-registered on its own inside roughly ten
+minutes. **No operator action is needed, and the standing assumption that this
+issue's first condition is met still holds.**
+
+What the episode does establish is narrower and worth keeping: the runner's
+registration is not a stable fact to reason from. A single read of
+`/actions/runners` can show `total_count: 0` for a runner that is present either
+side of it, so "the runner is not registered" needs two reads minutes apart
+before it is written down — which is the mistake this very section made, and the
+reason the correction is kept rather than the paragraph quietly replaced.
+
+#### Where that leaves the second waiter
+
+Back to the third shape, not the first. `tier 2 nightly (pairwise cover)`
+(110745358608) has been queued since 07:17:45 — past 99 minutes — with the
+runner present, online and idle on every read since it returned. That is the same
+idle-with-a-waiter condition the entry above measures, now on its second job of
+the day.
 
 #### What the resolved instance then did, so the lane is not mistaken for silent
 
