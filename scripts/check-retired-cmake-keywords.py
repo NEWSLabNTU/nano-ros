@@ -84,6 +84,36 @@ RETIREMENT_ANY = re.compile(
 # The gate harnesses exercise refusals on purpose; vendored cmake is not ours.
 EXEMPT_PREFIXES = ("tests/", "third-party/")
 
+
+def verdict_fixture_dirs(root):
+    """The source dirs of the manifest's VERDICT rows — issue 1620.
+
+    A `cargo-check-verdict` / `cmake-configure-verdict` row exists to RECORD a
+    diagnostic — `cmake_node_register_misuse` passes the retired `ENTITIES` on
+    purpose, three ways, and asserts the tombstone fires — and its build stage
+    configures it, so the error does report to somebody: the consuming test.
+    That is the `tests/` exemption's reason, and like it the subject is DERIVED
+    (the manifest says which dirs are verdict rows) rather than authored here.
+    """
+    import importlib.util
+
+    path = os.path.join(root, "scripts", "build", "fixtures-manifest.py")
+    manifest = os.path.join(root, "examples", "fixtures.toml")
+    if not (os.path.exists(path) and os.path.exists(manifest)):
+        return ()
+    spec = importlib.util.spec_from_file_location("_nros_fixtures_manifest", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return tuple(
+        sorted(
+            {
+                e["dir"].rstrip("/") + "/"
+                for e in mod.load_compile_check_fixtures(manifest)
+                if e.get("builder") in mod.VERDICT_COMPILE_CHECK_BUILDERS and e.get("dir")
+            }
+        )
+    )
+
 TOKEN = r"(?<![A-Za-z0-9_]){}(?![A-Za-z0-9_])"
 CALL = re.compile(r"(?<![A-Za-z0-9_$])([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 KEYWORD = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -114,9 +144,10 @@ def cmake_files(root):
             for fn in filenames:
                 if fn == "CMakeLists.txt" or fn.endswith(".cmake"):
                     paths.append(os.path.relpath(os.path.join(dirpath, fn), root))
+    exempt = EXEMPT_PREFIXES + verdict_fixture_dirs(root)
     return sorted(
         p for p in paths
-        if not p.startswith(EXEMPT_PREFIXES) and "/third-party/" not in p
+        if not p.startswith(exempt) and "/third-party/" not in p
     )
 
 

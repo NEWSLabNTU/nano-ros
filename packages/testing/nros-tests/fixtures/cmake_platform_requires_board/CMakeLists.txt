@@ -13,8 +13,7 @@ project(plat_smoke C)
 set(NANO_ROS_PLATFORM threadx)
 set(NANO_ROS_RMW     zenoh)
 
+# The FATAL_ERROR fires inside this call, so nothing below it would run. No
+# executable is declared on purpose: an image here would have to claim a panic
+# ending (`check-cmake-image-policy`) for a link that must never happen.
 add_subdirectory("@NANO_ROS_ROOT@" nano_ros)
-
-add_executable(plat_smoke main.c)
-target_link_libraries(plat_smoke PRIVATE NanoRos::NanoRos)
-nros_platform_link_app(plat_smoke)
