@@ -174,7 +174,7 @@ pub fn refresh_stale_sidecars(
         if decl.deploy_bound
             && key
                 .as_deref()
-                .is_some_and(|k| is_known_unprobeable(&sidecar, k))
+                .is_some_and(|k| is_known_unprobeable(&sidecar, k, nano_ros))
         {
             // issue 1469, same class as the C/C++ branch above: the skip is
             // absorbing, so the marker's recorded cause is the only place the
@@ -226,7 +226,14 @@ pub fn refresh_stale_sidecars(
             // a real bug and still hard-fails.
             Err(why) if decl.deploy_bound => {
                 if let Some(k) = key.as_deref() {
-                    mark_unprobeable_with_reason(&sidecar, k, Some(&format!("{why:#}")));
+                    // A cargo probe path-depends on `nano_ros` itself, so that
+                    // IS the compile root.
+                    mark_unprobeable_with_reason(
+                        &sidecar,
+                        k,
+                        Some(nano_ros),
+                        Some(&format!("{why:#}")),
+                    );
                 }
                 report.unsupported.push(format!(
                     "{}::{} (deploy-bound probe failed: {why:#})",
@@ -251,6 +258,11 @@ pub fn refresh_stale_sidecars(
                 cpp_batch.len()
             );
         }
+        // Issue 1593 — what the probe build dir ACTUALLY compiled, read back
+        // from its cache after the run: the marker records it, so a marker
+        // whose compile was another tree reads as stale, never as authority.
+        let compile_root =
+            || crate::orchestration::metadata_probe_cmake::cached_probe_root(&dir.join("build"));
         match crate::orchestration::metadata_probe_cmake::run_probes(&dir, &cpp_batch) {
             Ok(outcomes) => {
                 for (o, opts) in outcomes.iter().zip(cpp_batch.iter()) {
@@ -272,6 +284,7 @@ pub fn refresh_stale_sidecars(
                                 &opts.output_path,
                                 &opts.package_dir,
                                 nano_ros,
+                                compile_root().as_deref(),
                                 &text,
                             );
                             report
@@ -279,6 +292,20 @@ pub fn refresh_stale_sidecars(
                                 .push(format!("{}::{} ({text})", o.package, o.component));
                         }
                     }
+                }
+            }
+            // Issue 1593 — the build dir compiles another tree. That says
+            // nothing about any component, so NO marker: report it, naming
+            // both roots, and let the next sync try again.
+            Err(why)
+                if why
+                    .downcast_ref::<crate::orchestration::metadata_probe_cmake::ProbeRootMismatch>()
+                    .is_some() =>
+            {
+                for opts in &cpp_batch {
+                    report
+                        .unsupported
+                        .push(format!("{}::{} ({why})", opts.package, opts.component));
                 }
             }
             // A configure failure is the whole project, not one component.
@@ -289,7 +316,13 @@ pub fn refresh_stale_sidecars(
                     // failed to configure, so every one of them is unprobeable
                     // until something changes — mark each, or the next sync
                     // rebuilds the same broken project.
-                    mark_unprobeable_now(&opts.output_path, &opts.package_dir, nano_ros, &text);
+                    mark_unprobeable_now(
+                        &opts.output_path,
+                        &opts.package_dir,
+                        nano_ros,
+                        compile_root().as_deref(),
+                        &text,
+                    );
                     report
                         .unsupported
                         .push(format!("{}::{} ({text})", opts.package, opts.component));
@@ -471,14 +504,24 @@ fn is_known_unprobeable_now(
     nano_ros: Option<&Path>,
 ) -> bool {
     probe_inputs_key(&decl.package_root, nano_ros)
-        .is_some_and(|k| is_known_unprobeable(sidecar, &k))
+        .is_some_and(|k| is_known_unprobeable(sidecar, &k, nano_ros))
 }
 
 /// Record a C/C++ probe failure against [`probe_inputs_key`], WITH its reason
 /// (issue 1469 — the cause survives the cache that suppresses it).
-fn mark_unprobeable_now(sidecar: &Path, package_dir: &Path, nano_ros: Option<&Path>, why: &str) {
+///
+/// `compile_root` is the tree the probe build dir's cache says it compiled
+/// (issue 1593); `None` (no cache yet) falls back to `nano_ros`, which is what
+/// the pinned configure asked for.
+fn mark_unprobeable_now(
+    sidecar: &Path,
+    package_dir: &Path,
+    nano_ros: Option<&Path>,
+    compile_root: Option<&Path>,
+    why: &str,
+) {
     if let Some(key) = probe_inputs_key(package_dir, nano_ros) {
-        mark_unprobeable_with_reason(sidecar, &key, Some(why));
+        mark_unprobeable_with_reason(sidecar, &key, compile_root.or(nano_ros), Some(why));
     }
 }
 
@@ -488,14 +531,42 @@ fn mark_unprobeable_now(sidecar: &Path, package_dir: &Path, nano_ros: Option<&Pa
 /// half of `None`.
 const UNKEYED: &str = "unkeyed";
 
-fn is_known_unprobeable(sidecar: &Path, digest: &str) -> bool {
-    std::fs::read_to_string(unprobeable_marker(sidecar))
-        .map(|m| marker_key(&m) == digest)
-        .unwrap_or(false)
+/// Issue 1593 — a marker is honoured only when its KEY matches AND the tree
+/// its probe COMPILED (the `root:` line) is the tree this sync keys on. The key
+/// describes the tree the CLI asked for; a cached probe build dir could compile
+/// another one, and a failure recorded under the first key then stood for a
+/// probe that never ran against it. A marker with no `root:` line predates the
+/// rule and is not honoured either: it costs one re-probe, once.
+fn is_known_unprobeable(sidecar: &Path, digest: &str, root: Option<&Path>) -> bool {
+    let Ok(body) = std::fs::read_to_string(unprobeable_marker(sidecar)) else {
+        return false;
+    };
+    marker_key(&body) == digest
+        && match (marker_root(&body), root) {
+            (Some(recorded), Some(want)) => same_tree(&recorded, want),
+            _ => false,
+        }
+}
+
+fn same_tree(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => a == b,
+    }
 }
 
 fn marker_key(body: &str) -> &str {
     body.lines().next().unwrap_or("").trim()
+}
+
+const MARKER_ROOT: &str = "root: ";
+
+/// The compile root a marker records — its second line, `root: <path>`.
+fn marker_root(body: &str) -> Option<PathBuf> {
+    body.lines()
+        .nth(1)
+        .and_then(|l| l.strip_prefix(MARKER_ROOT))
+        .map(|p| PathBuf::from(p.trim()))
 }
 
 /// Why a prior sync gave up on this component, as it recorded it — `None` when
@@ -503,8 +574,11 @@ fn marker_key(body: &str) -> &str {
 fn recorded_unprobeable_reason(sidecar: &Path) -> Option<String> {
     let body = std::fs::read_to_string(unprobeable_marker(sidecar)).ok()?;
     let reason = body
-        .split_once('\n')
-        .map(|(_, rest)| rest)?
+        .lines()
+        .skip(1)
+        .filter(|l| !l.starts_with(MARKER_ROOT))
+        .collect::<Vec<_>>()
+        .join("\n")
         .trim()
         .to_string();
     (!reason.is_empty()).then_some(reason)
@@ -521,11 +595,22 @@ fn recorded_unprobeable_reason(sidecar: &Path) -> Option<String> {
 /// Autoware Safety Island's eight `E0428`s were recovered by deleting the marker
 /// by hand. A cache entry that suppresses a diagnosis it does not record costs
 /// every future reader the same excavation.
-fn mark_unprobeable_with_reason(sidecar: &Path, digest: &str, why: Option<&str>) {
-    let body = match why.map(first_error_line) {
-        Some(line) if !line.is_empty() => format!("{digest}\n{line}\n"),
-        _ => digest.to_string(),
+fn mark_unprobeable_with_reason(
+    sidecar: &Path,
+    digest: &str,
+    compile_root: Option<&Path>,
+    why: Option<&str>,
+) {
+    // Issue 1593 — no compile root, no marker: one that cannot say which tree
+    // failed could only ever be honoured on faith.
+    let Some(root) = compile_root else {
+        return;
     };
+    let mut body = format!("{digest}\n{MARKER_ROOT}{}\n", root.display());
+    if let Some(line) = why.map(first_error_line).filter(|l| !l.is_empty()) {
+        body.push_str(&line);
+        body.push('\n');
+    }
     // Issue 0498 — atomic, like the sidecar beside it: `is_known_unprobeable`
     // compares the marker's KEY against a digest, so a concurrent reader catching
     // a truncated one reads "not unprobeable" and pays the full failing probe
@@ -918,18 +1003,24 @@ mod tests {
         let sidecar = dir.join("metadata").join("comp.json");
         std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
 
-        assert!(!is_known_unprobeable(&sidecar, "d1"), "no marker yet");
-
-        mark_unprobeable_with_reason(&sidecar, "d1", None);
-        assert!(is_known_unprobeable(&sidecar, "d1"), "recorded at d1");
         assert!(
-            !is_known_unprobeable(&sidecar, "d2"),
+            !is_known_unprobeable(&sidecar, "d1", Some(&dir)),
+            "no marker yet"
+        );
+
+        mark_unprobeable_with_reason(&sidecar, "d1", Some(&dir), None);
+        assert!(
+            is_known_unprobeable(&sidecar, "d1", Some(&dir)),
+            "recorded at d1"
+        );
+        assert!(
+            !is_known_unprobeable(&sidecar, "d2", Some(&dir)),
             "a source change (new digest) must retry, not stay skipped"
         );
 
         clear_unprobeable(&sidecar);
         assert!(
-            !is_known_unprobeable(&sidecar, "d1"),
+            !is_known_unprobeable(&sidecar, "d1", Some(&dir)),
             "a successful probe / fix clears the marker so it stops shadowing"
         );
     }
@@ -948,14 +1039,14 @@ mod tests {
                    \x20  Compiling nano-ros-cpp-ffi-nav_msgs v0.0.0\n\
                    error[E0428]: the name `builtin_interfaces_msg_time_t` is defined multiple times\n\
                    \x20 --> src/../../../pkg/nano_ros_cpp/…/types.rs:19:1\n";
-        mark_unprobeable_with_reason(&sidecar, "d1", Some(log));
+        mark_unprobeable_with_reason(&sidecar, "d1", Some(&dir), Some(log));
 
         assert!(
-            is_known_unprobeable(&sidecar, "d1"),
+            is_known_unprobeable(&sidecar, "d1", Some(&dir)),
             "the key is the FIRST LINE, so a reason must not break the skip"
         );
         assert!(
-            !is_known_unprobeable(&sidecar, "d2"),
+            !is_known_unprobeable(&sidecar, "d2", Some(&dir)),
             "a source change must still retry"
         );
         let why = recorded_unprobeable_reason(&sidecar).expect("a reason was recorded");
@@ -964,17 +1055,64 @@ mod tests {
             "the recorded line must be the one that says what is wrong, not the frame around it"
         );
 
-        // A marker written before this change (key only) is still valid, and
-        // honestly reports that it knows no reason.
-        mark_unprobeable_with_reason(&sidecar, "d1", None);
+        // A marker with no reason still skips, and honestly reports that it
+        // knows no reason (the `root:` line is not a reason).
+        mark_unprobeable_with_reason(&sidecar, "d1", Some(&dir), None);
         assert!(
-            is_known_unprobeable(&sidecar, "d1"),
-            "key-only still matches"
+            is_known_unprobeable(&sidecar, "d1", Some(&dir)),
+            "reason-less still matches"
         );
         assert_eq!(
             recorded_unprobeable_reason(&sidecar),
             None,
             "no reason recorded must read as None, never as an empty one"
+        );
+    }
+
+    /// Issue 1593 — a marker records the tree its probe COMPILED, and is
+    /// honoured only by a sync keyed on that tree. The key alone described the
+    /// tree the CLI asked for, so a failure compiled against checkout B and
+    /// keyed on checkout A skipped A's probe for ever.
+    #[test]
+    fn a_marker_from_another_compile_root_is_never_honoured() {
+        let dir = tmp("negcache-root");
+        let a = dir.join("checkout-a");
+        let b = dir.join("checkout-b");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let sidecar = dir.join("metadata").join("comp.json");
+        std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+
+        // The probe build dir compiled B; this sync's key is A's.
+        mark_unprobeable_with_reason(&sidecar, "kA", Some(&b), Some("error: from B"));
+        assert!(
+            !is_known_unprobeable(&sidecar, "kA", Some(&a)),
+            "B's failure must not stand for a probe that never ran against A"
+        );
+        assert!(
+            is_known_unprobeable(&sidecar, "kA", Some(&b)),
+            "B's own sync honours it"
+        );
+        assert_eq!(
+            recorded_unprobeable_reason(&sidecar).as_deref(),
+            Some("error: from B"),
+            "the root line is not mistaken for the reason"
+        );
+
+        // A marker written before the rule (key + reason, no root) is not
+        // honoured: it cannot say which tree failed.
+        std::fs::write(unprobeable_marker(&sidecar), "kA\nerror: legacy\n").unwrap();
+        assert!(
+            !is_known_unprobeable(&sidecar, "kA", Some(&a)),
+            "legacy marker"
+        );
+
+        // And no root, no marker at all.
+        clear_unprobeable(&sidecar);
+        mark_unprobeable_with_reason(&sidecar, "kA", None, Some("error: x"));
+        assert!(
+            !unprobeable_marker(&sidecar).exists(),
+            "rootless marker written"
         );
     }
 

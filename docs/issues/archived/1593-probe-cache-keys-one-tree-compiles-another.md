@@ -1,12 +1,13 @@
 ---
 id: 1593
 title: "A metadata probe's `.unprobeable` marker is keyed on the nano-ros tree the CLI asked for, while its cached CMake build compiles whichever tree it was first configured against"
-status: open
+status: resolved
 type: bug
 area: [cli, build, metadata]
 severity: medium
 found: 2026-10-01
 related: [issue-1280, issue-1469, issue-0627, issue-1575]
+resolved_in: "branch fix/build-correctness-1593-1596-1599-1605"
 ---
 
 ## What happened (reported by the issue-1575 agent; not re-measured)
@@ -69,3 +70,52 @@ Prefer the first: it removes the second tree rather than detecting it.
    to write an `.unprobeable` marker and names both roots.
 2. A marker written from B's failure is never honoured by a sync from A.
 3. A no-op sync from A stays a no-op (no reconfigure treadmill).
+
+## Resolution
+
+Took the issue's preferred direction (pin, so the second tree is removed rather
+than detected) and kept the other two as belts.
+
+- **Pinned on every probe** (`metadata_probe_cmake.rs::configure_project`):
+  the configure passes `-Dnano_ros_DIR=<nano_ros>` and
+  `-D_NANO_ROS_CODEGEN_TOOL=<this nros>` (the documented caller pre-set,
+  `NanoRosBootstrapCodegen` rung 1), and every probe cmake invocation —
+  configure AND build, since a build can re-run cmake itself — carries
+  `NROS_WORKSPACE` and `NROS_CLI` (`pin_probe_env`). `-D` rewrites the cached
+  entries in place; nothing is wiped.
+- **Read back** (`check_probe_root`): after configure, the cache's
+  `nano_ros_DIR` is compared with `nano_ros`; a mismatch is a typed
+  `ProbeRootMismatch` naming both roots and the `cmake … -Dnano_ros_DIR=` that
+  repairs it, and the refresh writes NO marker for it (the failure is about the
+  cache, not a component).
+- **The marker records its compile root** (`root: <path>`, second line, read
+  from the probe cache after the run; the cargo path uses `nano_ros` itself,
+  which it path-depends on). `is_known_unprobeable` honours a marker only when
+  key AND root match; a marker with no root line (every pre-fix one) is not
+  honoured — one re-probe, once. A marker cannot be written without a root.
+
+Measured on `examples/workspaces/realtime-c` (2 C components), A = this
+worktree, B = the main checkout (`tmp/sync1593.sh`, `tmp/poison1593.sh`):
+
+1. After `cmake <probe>/build -Dnano_ros_DIR=$B -D_NANO_ROS_CODEGEN_TOOL=$B/…/nros`,
+   the PRE-FIX configure command (`cmake -S … -B … -DCMAKE_PREFIX_PATH=$A`)
+   left `nano_ros_DIR=$B` and the B CLI cached, and its output named
+   `$B/cmake/NanoRosMessageBounds.cmake` — the defect reproduced.
+2. With the sidecars removed, `nros sync` from A with the fixed CLI: 16 s,
+   `2 rebuilt`, cache back to `nano_ros_DIR=$A` and A's CLI; the generated
+   Makefiles reference A 37 times and B's `cmake/`/`packages/` zero times.
+3. An immediate second sync: `0 rebuilt, 2 already current`, 0 s, CMakeCache
+   mtime unchanged — no reconfigure treadmill.
+
+Acceptance 2 (B's marker never honoured from A, a rootless legacy marker not
+honoured, the root line never read as the reason) and the mismatch refusal
+naming both roots are unit tests:
+`a_marker_from_another_compile_root_is_never_honoured`,
+`a_build_dir_caching_another_tree_is_refused_naming_both`.
+
+Not measured: a live sync hitting `ProbeRootMismatch` — with the `-D` pin it is
+unreachable short of a cmake module overriding `nano_ros_DIR`, so only the unit
+test exercises that arm. Not changed: the POSITIVE sidecar stamp carries no
+root. After the pin, a successful probe compiled the key's tree by
+construction, and a sidecar keyed on B's closure content equal to A's describes
+identical sources, so trusting it is correct.

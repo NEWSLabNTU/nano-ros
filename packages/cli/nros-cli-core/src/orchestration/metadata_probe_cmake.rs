@@ -410,7 +410,7 @@ pub fn run_probes(probe_dir: &Path, comps: &[CmakeProbeOptions]) -> Result<Vec<P
     // unprobeable component degrades to the sidecar-less path by NAME rather
     // than taking the whole workspace with it.
     let targets: Vec<String> = comps.iter().map(|c| c.probe_target()).collect();
-    let batched = build_all(&build_dir, &targets);
+    let batched = build_all(&build_dir, &targets, nano_ros);
 
     let mut out = Vec::new();
     for c in comps {
@@ -477,9 +477,10 @@ fn discard_cache_if_asked(build_dir: &Path, outcomes: &[ProbeOutcome]) {
 }
 
 /// Build every probe target in ONE parallel `cmake --build`.
-fn build_all(build_dir: &Path, targets: &[String]) -> Result<()> {
+fn build_all(build_dir: &Path, targets: &[String], nano_ros: &Path) -> Result<()> {
     let mut cmd = Command::new("cmake");
     cmd.arg("--build").arg(build_dir).arg("--parallel");
+    pin_probe_env(&mut cmd, nano_ros);
     // Multiple `--target` arguments in one invocation: CMake >= 3.15, and this
     // project pins 3.22.
     cmd.arg("--target");
@@ -490,12 +491,14 @@ fn build_all(build_dir: &Path, targets: &[String]) -> Result<()> {
 }
 
 fn build_and_run_one(build_dir: &Path, c: &CmakeProbeOptions, target: &str) -> Result<()> {
+    let mut cmd = Command::new("cmake");
+    cmd.arg("--build")
+        .arg(build_dir)
+        .arg("--target")
+        .arg(target);
+    pin_probe_env(&mut cmd, &c.nano_ros_workspace);
     run_step(
-        Command::new("cmake")
-            .arg("--build")
-            .arg(build_dir)
-            .arg("--target")
-            .arg(target),
+        &mut cmd,
         "build",
         &format!("{}::{}", c.package, c.component),
     )?;
@@ -524,18 +527,102 @@ fn run_one(build_dir: &Path, c: &CmakeProbeOptions, target: &str) -> Result<()> 
 }
 
 /// One configure of the probe project.
+///
+/// Issue 1593 — the configure is PINNED to `nano_ros` on every probe. The build
+/// dir persists across syncs, and `find_package` caches `nano_ros_DIR` (and the
+/// CLI resolver caches its answer) on the FIRST configure; `CMAKE_PREFIX_PATH`
+/// is only consulted while `nano_ros_DIR` is unset, so a later configure with a
+/// different prefix kept compiling whichever checkout configured it first,
+/// while the sidecar/marker key described `nano_ros`. Passing both values as
+/// `-D` overwrites the cached entries in place — a reconfigure, never a wipe —
+/// and the cache is then READ BACK ([`check_probe_root`]) so a value some
+/// other rung re-derived cannot slip past.
 fn configure_project(probe_dir: &Path, build_dir: &Path, nano_ros: &Path) -> Result<()> {
-    run_step(
-        Command::new("cmake")
-            .arg("-S")
-            .arg(probe_dir)
-            .arg("-B")
-            .arg(build_dir)
-            .arg(format!("-DCMAKE_PREFIX_PATH={}", nano_ros.display()))
-            .env("NROS_WORKSPACE", nano_ros),
-        "configure",
-        "workspace",
-    )
+    let mut cmd = Command::new("cmake");
+    cmd.arg("-S")
+        .arg(probe_dir)
+        .arg("-B")
+        .arg(build_dir)
+        .arg(format!("-DCMAKE_PREFIX_PATH={}", nano_ros.display()))
+        // `nano_rosConfig.cmake` sits at the checkout root.
+        .arg(format!("-Dnano_ros_DIR={}", nano_ros.display()));
+    pin_probe_env(&mut cmd, nano_ros);
+    // The documented caller pre-set of the codegen tool (NanoRosBootstrapCodegen
+    // rung 1): THIS process is the CLI whose stamp the key carries.
+    if let Ok(exe) = std::env::current_exe() {
+        cmd.arg(format!("-D_NANO_ROS_CODEGEN_TOOL={}", exe.display()));
+    }
+    run_step(&mut cmd, "configure", "workspace")?;
+    check_probe_root(build_dir, nano_ros)
+}
+
+/// The environment every probe cmake invocation carries — configure AND build,
+/// because a build can re-run cmake on its own (`RERUN_CMAKE`) and must resolve
+/// the same tree and CLI the configure did.
+fn pin_probe_env(cmd: &mut Command, nano_ros: &Path) {
+    cmd.env("NROS_WORKSPACE", nano_ros);
+    if let Ok(exe) = std::env::current_exe() {
+        cmd.env("NROS_CLI", exe);
+    }
+}
+
+/// Issue 1593 — the probe's build dir compiled a different nano-ros tree than
+/// the one its result would be keyed on. Never recorded as "unprobeable": the
+/// failure (if any) is about the cache, not the component.
+#[derive(Debug)]
+pub struct ProbeRootMismatch {
+    pub wanted: PathBuf,
+    pub cached: PathBuf,
+    pub build_dir: PathBuf,
+}
+
+impl std::fmt::Display for ProbeRootMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "metadata probe build dir {} compiles nano-ros at {} but this sync's nano-ros is {} \
+             (issue 1593); no marker written — reconfigure it with \
+             `cmake {} -Dnano_ros_DIR={}`",
+            self.build_dir.display(),
+            self.cached.display(),
+            self.wanted.display(),
+            self.build_dir.display(),
+            self.wanted.display()
+        )
+    }
+}
+
+impl std::error::Error for ProbeRootMismatch {}
+
+/// The nano-ros root a probe build dir's CMakeCache says it compiles —
+/// `nano_ros_DIR`, where `find_package(nano_ros)` found `nano_rosConfig.cmake`.
+pub fn cached_probe_root(build_dir: &Path) -> Option<PathBuf> {
+    let cache = std::fs::read_to_string(build_dir.join("CMakeCache.txt")).ok()?;
+    cache.lines().find_map(|l| {
+        let (key, value) = l.split_once('=')?;
+        let name = key.split(':').next()?;
+        (name == "nano_ros_DIR" && !value.is_empty() && !value.ends_with("-NOTFOUND"))
+            .then(|| PathBuf::from(value))
+    })
+}
+
+fn same_dir(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => a == b,
+    }
+}
+
+/// Refuse a probe build dir whose cache names another tree.
+fn check_probe_root(build_dir: &Path, nano_ros: &Path) -> Result<()> {
+    match cached_probe_root(build_dir) {
+        Some(cached) if !same_dir(&cached, nano_ros) => Err(eyre::Report::new(ProbeRootMismatch {
+            wanted: nano_ros.to_path_buf(),
+            cached,
+            build_dir: build_dir.to_path_buf(),
+        })),
+        _ => Ok(()),
+    }
 }
 
 /// Components CMake blamed in a configure failure — phase-367 W4.
@@ -871,5 +958,70 @@ mod tests {
                 "{t}\n{txt}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod probe_root_tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = crate::test_support::scratch_dir(&format!("probe-root-{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Issue 1593 — the probe build dir's cached `nano_ros_DIR` is read back,
+    /// and a dir caching ANOTHER tree is refused, naming both, with a typed
+    /// error the caller recognises as "write no marker".
+    #[test]
+    fn a_build_dir_caching_another_tree_is_refused_naming_both() {
+        let dir = scratch("mismatch");
+        let (a, b, build) = (dir.join("a"), dir.join("b"), dir.join("build"));
+        for d in [&a, &b, &build] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        assert_eq!(cached_probe_root(&build), None, "no cache yet");
+        assert!(
+            check_probe_root(&build, &a).is_ok(),
+            "no cache is not a mismatch"
+        );
+
+        std::fs::write(
+            build.join("CMakeCache.txt"),
+            format!(
+                "# comment\nCMAKE_PREFIX_PATH:UNINITIALIZED={a}\nnano_ros_DIR:PATH={b}\n",
+                a = a.display(),
+                b = b.display()
+            ),
+        )
+        .unwrap();
+        assert_eq!(cached_probe_root(&build), Some(b.clone()));
+        let err = check_probe_root(&build, &a).expect_err("B cached, A wanted");
+        let mm = err
+            .downcast_ref::<ProbeRootMismatch>()
+            .expect("typed refusal");
+        assert_eq!(
+            (mm.wanted.as_path(), mm.cached.as_path()),
+            (a.as_path(), b.as_path())
+        );
+        let text = format!("{err}");
+        assert!(
+            text.contains(&a.display().to_string()) && text.contains(&b.display().to_string()),
+            "the refusal names both roots: {text}"
+        );
+        assert!(
+            check_probe_root(&build, &b).is_ok(),
+            "the matching tree passes"
+        );
+
+        // A NOTFOUND entry is not a root.
+        std::fs::write(
+            build.join("CMakeCache.txt"),
+            "nano_ros_DIR:PATH=nano_ros_DIR-NOTFOUND\n",
+        )
+        .unwrap();
+        assert_eq!(cached_probe_root(&build), None);
     }
 }
