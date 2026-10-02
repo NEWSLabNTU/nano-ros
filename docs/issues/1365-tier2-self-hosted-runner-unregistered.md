@@ -517,3 +517,62 @@ at 26 h 20 m with no operator action, so waiting is not evidence either way.
 What the 17-minute boundary adds is a much better window for whoever can read
 the runner's own `_diag` logs: the transition is between 06:12:27, when it
 completed a job, and 06:29:39, when it first declined one.
+
+### That instance ended at 118 minutes — and then the runner DEREGISTERED, so the first shape is back (2026-10-02)
+
+Two separate facts, in order, because the second one changes what the first means.
+
+**The third-shape instance closed by itself**, with no operator action:
+
+```
+job 110733196977  tier 2 (1-wise matrix)
+  enqueued  06:29:39
+  started   08:28:00   runner nano-ros-runner      ← 118 min unclaimed
+  completed 08:50:37   failure at step 6 `just build tier2`
+```
+
+**118 minutes**, against the previous self-resolution's 26 h 20 m. Two measured
+self-resolutions, two orders of magnitude apart, both unaided — so the shape is
+transient and its duration is not predictable from anything measured here.
+
+**Then the runner left the repository's runner list entirely.** It read
+`online, busy=false` at about 08:20; by 08:55 the API returns
+
+```json
+{"total_count":0,"runners":[]}
+```
+
+on consecutive reads, so this is a real deregistration and not a transient error.
+
+#### What that does to the second waiter, and to a correction I nearly made
+
+The entry above reported **two** waiters. I was about to record that only the
+first had ever been evidence — that once the runner took job 110733196977 it was
+busy, and the nightly's `tier 2 nightly (pairwise cover)` (110745358608) was
+merely queued behind it, which is capacity rather than a stall.
+
+**That reading was right for about twenty minutes and is now wrong.** The runner
+is gone, so 110745358608 — queued since 07:17:45, past 96 minutes — is waiting
+for a runner that **no longer exists**. That is this issue's FIRST shape, the one
+its title describes, returning after the resolved-half entry declared it fixed.
+
+So the honest statement is narrower than either version: a second waiter is not
+independent evidence *while a runner exists*, and it becomes the primary evidence
+the moment one does not.
+
+#### This one needs an operator
+
+The first shape is not self-healing in the way the third apparently is: there is
+nothing for GitHub to assign. Re-registering `nano-ros-runner` (all five labels —
+`self-hosted`, `Linux`, `X64`, `nros-qemu`, `nros-sdk-zephyr`, `nros-big`) is a
+host-side action, outside what an unattended sweep can do. Until then both tier-2
+lanes and `queue.yml`'s `L3` have no runner at all.
+
+#### What the resolved instance then did, so the lane is not mistaken for silent
+
+It ran 22 minutes and failed in the BUILD stage, the interlock reporting
+`tier 2 — NO VERDICT: stopped in …`. The cause is issue **1590** confirmed by
+text — six occurrences of `rust-lld: error: undefined symbol:
+nros_rmw_cyclonedds_register_descriptor`, the same string and count that issue
+already records for this lane. Tier 2's verdict is still absent, for a reason
+that is filed and is not this issue.
