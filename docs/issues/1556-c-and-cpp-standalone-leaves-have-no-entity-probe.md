@@ -150,3 +150,41 @@ image reach neither. So the remaining work is two pieces, both still open:
    reaches a non-cargo standalone leaf.
 
 Acceptance is unchanged.
+
+## Status 2026-10-03 -- still OPEN, and the chain is longer than two pieces
+
+Re-read against the code after issue 1419's census became the default check
+for workspace images (PR *the census default is refuse*). Reusing the C
+workspace's census path -- the generated C entry creates each node with
+`nros_cpp_node_create` and its components create entities through the hooked
+`nros_cpp_*` ABI -- does NOT carry over to these twelve, because they reach
+neither half of it:
+
+1. **Their entities never cross a hook.** A `nros_app_main` application calls
+   the rclc-style `nros-c` API (`rclc_node_init_default`,
+   `rclc_publisher_init_default`, `nros_timer_init`, ...). The recording
+   backend sees its publishers and subscriptions with NO node attribution,
+   and its timers not at all -- the census hooks (`on_node_create`,
+   `on_timer_create`, ...) live in `nros-cpp`'s `metadata_hooks.rs`, which
+   `nros-c` cannot call. That is issue 1419's item "a C node that opens its
+   own node through `nros-c`". The shape of the fix: hook bodies move to
+   `nros` (both API crates depend on it; bodies `#[cfg(feature =
+   "metadata-mode")]`, calls unconditional), and `nros-c`'s node, timer,
+   guard-condition and parameter entry points call them --
+   `check-census-hooks-complete` then has to hold the `nros-c` entry points
+   too.
+2. **Nothing stops them before the spin.** The hosted census switch
+   (`nros_cpp_census_begin` / `_finish`) sits in the C++ board runners; a C
+   application owns its own loop (`rclc_executor_spin_period`). The switch
+   needs a C half: `NROS_APP_MAIN_REGISTER()`'s hosted `main`, or the first
+   spin call, writes the census and exits when `$NROS_CENSUS_OUT` is set.
+3. **A standalone C leaf links no recorder.** `metadata-mode` is on the
+   NATIVE C++ umbrella only (`cmake/NanoRosFeatureSet.cmake`); a C leaf's
+   native configure would have to link that umbrella.
+4. **No host configure of the leaf exists, and nothing enumerates it** -- the
+   two pieces this issue already named.
+5. **Nothing turns a census into a leaf's pools.** The workspace road compares
+   a census with a contract; this road would have to DERIVE from it, where
+   `system.toml` `entities` is read today (`--from-leaf`, `leaf_entity_env`).
+
+Acceptance is unchanged. None of 1-5 landed in this session.
