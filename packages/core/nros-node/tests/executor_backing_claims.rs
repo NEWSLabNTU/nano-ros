@@ -3,8 +3,8 @@
 //!
 //! A Zephyr image that lowers `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE` states the
 //! reservation it pays for, `CONFIG_NROS_EXECUTOR_BACKING_U64S=<words>` (issues
-//! 1145/1171). `check-executor-backing-arena-pairing` holds `arena + 8 * words
-//! == base` — that the numbers SUM. Whether `words` is ENOUGH is
+//! 1145/1171; that arena pairing is retired on Zephyr by issue 1611, and the
+//! claims left are ThreadX's rung). Whether `words` is ENOUGH is
 //! `executor::backing`'s const assertion, a compile error, and no merge-gating
 //! lane builds a Zephyr Rust image: twelve leaves stayed exactly paired at
 //! 11041 and then 11045 while the default grew to 11065 and then 11069 under
@@ -169,8 +169,9 @@ fn every_stated_executor_backing_meets_the_measured_default() {
                             (
                                 format!("CONFIG_NROS_EXECUTOR_BACKING_U64S={words}"),
                                 format!(
-                                    "Restate it as {default} and re-pair the arena \
-                                     (`arena = nros-arena-base - 8 * {default}`)."
+                                    "Restate it as {default}, or delete the line to \
+                                     take the derived default (issue 1611: no arena \
+                                     is paired with it on Zephyr any more)."
                                 ),
                             )
                         };

@@ -694,7 +694,7 @@ and verified.
 - **QEMU:** `-icount shift=auto`; use `nros_tests::qemu::qemu_system_arm_cmd()`.
 - **Embedded Cyclone:** transient samples use `ddsrt_{malloc,calloc,free}`, never libc — RTOS heap is separate.
 - **XRCE:** flush `uxr_buffer_request_data` immediately; reliable `STREAM_HISTORY ≥ 2`.
-- **Zephyr Rust allocator is picolibc `malloc`** — size `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE` (default 16 KB), NOT `CONFIG_HEAP_MEM_POOL_SIZE`.
+- **Zephyr Rust allocator is the nros heap** (`CONFIG_NROS_ZEPHYR_HEAP_SIZE`, issue 1324) — NOT picolibc `malloc` (`CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE`, which no Rust allocation reaches: issue 1611 measured zero calls) and NOT `CONFIG_HEAP_MEM_POOL_SIZE`.
 - **Manual native_sim pair repros need distinct `--seed`** — unseeded processes share entropy → identical GUIDs/ports → discovery sees the peer as itself → false-negative "no delivery".
 - **Never clang-format `cmake/templates/*`** — reflow splits `@VAR@` configure_file tokens → generated TU fails "stray '@'". `.clang-format-ignore` guards.
 - **Hand-mirrored FFI structs drift on append** (QoS `tx_express`, `callback_group` — 3×): mirror-only TU passes a SHORTER struct by value → tail field garbage. Gated: `check-ffi-struct-mirrors` (push lane) + cross-include TU in `check-c`. Include order is one-way: `nros_cpp_ffi.h` BEFORE `component.h`.
