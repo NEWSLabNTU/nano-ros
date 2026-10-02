@@ -137,28 +137,107 @@ gains move 4b (an incomplete census is written and refused);
 runs the PREBUILT C++ workspace fixture in census mode (negative control
 measured: with the header change reverted it fails, exit 156, no file).
 
+### 2026-10-02 -- the census is not sized by the contract it checks
+
+Fixed in the PR that carries this section (*the census is not sized by the
+contract it checks*). All measured on copies of `examples/workspaces/{cpp,c}`
+with no router running; none of the census runs needs one.
+
+**Issue 1600's workaround is gone.** With PR #1557 (the multi-entry fragment
+is the union of every entry) on main, the pristine `examples/workspaces/cpp`
+`native_entry` census exits 0 with `1 sub / 1 pub / 1 timer` and no
+`NROS_EXECUTOR_MAX_CBS` override. That union is also why E3a, rebuilt from the
+edited contract, now names its row on THIS workspace -- the action and service
+entries' callbacks give `native_entry` headroom. That is luck, not structure:
+a single-entry image (the island's) has none.
+
+**E3a names its row whatever the image's sizing** (item 2 above, done). The
+census run opens its executor at the executor's own ceilings -- 64 callback
+slots (the `u64` ready-set bitmask), 64 nodes, a 16 MiB `MaybeUninit` arena,
+leaked from the host heap -- instead of at the contract-derived `MAX_CBS`
+(`CENSUS_SIZING` in `nros-cpp`, armed by `census_select_backend` and consumed
+by the one executor open that follows, so a normal boot of the same image keeps
+the build's sizing). Measured with the native image built at
+`NROS_EXECUTOR_MAX_CBS=1` from the E3a contract:
+
+| | census run | threadx configure |
+| --- | --- | --- |
+| before | `ExecutorFull`, exit 250, `0 sub / 1 pub / 1 timer`, INCOMPLETE | REFUSED: `census INCOMPLETE`, no row named |
+| after | exit 0, `1 sub / 1 pub / 1 timer` | REFUSED: `error missing-in-contract listener sub /chatter`, remedy names the two lines |
+
+Test: `census_funnel_tests::census_is_not_sized_by_the_contract_it_checks`
+(`MAX_CBS + 3` timers through the real funnel; red before -- "7 callbacks
+against a build sized for 4 must record every one, not stop at ExecutorFull"
+-- green after), whose second half is the negative control: the same setup on
+the same funnel with no `$NROS_CENSUS_OUT` still stops at the build's
+`MAX_CBS`.
+
+**A model with no contract has nothing to reconcile** (found here).
+`examples/workspaces/c` has no `*.contract.yaml`; its threadx configure warned
+"census missing" with no census and FAILED the moment one was taken (`no
+--contract, and the model names no *.contract.yaml`) -- producing the evidence
+broke the build. The check now says `no contract ... nothing for a census to
+reconcile` and passes, with or without a census, under either policy (gate
+move 6, red on the old CLI). Measured: the C threadx configure builds with the
+census present.
+
+**`warn` is loud now, and stays the default** (item 1: measured, not flipped).
+Every cross image that reaches the check today is a C or C++ entry and CAN
+produce a census, but nothing that builds them unattended takes one first:
+`build-test-fixtures` configures the `examples/workspaces/cpp` cross rows
+(`freertos_posix`, `s32z270`, `mps3_an536`, `threadx`, ...) with no native
+census run before them, so `refuse` would fail those builds for a reason the
+build cannot fix. What changed is that the warning is a **CMake WARNING**
+naming this issue, saying that the image's pools come from a contract nothing
+compared with the code, and naming `[census] on_missing = "refuse"` -- not a
+`STATUS` line among hundreds (gate move 5 asserts both texts).
+
+**C entries are census producers** (item 3, half). Measured on
+`examples/workspaces/c`: `native_entry` writes `talker` (1 publisher, 1 wall
+timer) and `listener` (1 subscription), attributed per node. The generated C
+entry runs through `nros_board_native_run_components_named_in` (issue 1597),
+creates each node with `nros_cpp_node_create` (which opens the recorder's node
+cursor) before configuring its component, and a C component creates its
+entities through the same `nros_cpp_*` ABI the hooks sit on. phase-463's
+"Limits" note was about a C node that opens its own node through `nros-c`;
+that case is still unattributed. Pinned by
+`workspace_metadata::cmake_c_workspace_entry_writes_a_census_without_a_router`
+beside the C++ one, which now asserts a COMPLETE census (exit 0) instead of
+tolerating issue 1600's exit 250.
+
+**phase-463 W5, two of four invariants as gates.** `check-census-no-conditional-api`
+(I2: no tracked `nros-cpp` header has a preprocessor conditional naming the
+metadata / profile / census modes, and the census pair stays declared; a
+planted `#ifdef NROS_METADATA_MODE` in `main.hpp` measured red) and
+`check-rtos-feature-set-excludes-analysis` (I3a: asks `nros_feature_set` for
+all 32 crate x platform x cross sets and holds the OUTPUT to `metadata-mode`
+iff cpp + posix + native, `profile-mode` never; widening the guard to
+`if(_FS_CRATE STREQUAL "cpp")` measured red). Both carry an on-every-run
+negative control.
+
 ### What is left (why this stays open)
 
-* **`on_missing` / `on_stale` still land as `warn`.** A workspace that never
-  takes a census still builds its RTOS image unchecked; the original failure
-  (`ExecutorFull` on the board) is reachable by not running the producer.
-  phase-463 W6 (the island flip, then the default) is not started.
-* **E3a after a native rebuild refuses as INCOMPLETE, not as one named
-  `missing-in-contract` row.** Either the recorder records a REFUSED
-  registration (the 14 `next_entry_slot` sites), or the census-capable native
-  image is sized independently of the contract it checks. Neither is done.
-* **Rust and C entries have no census.** `boot_hosted` refuses
-  `$NROS_CENSUS_OUT` for a Rust entry; a C entry's entities reach the
-  recorder with no node attribution (phase-463 Limits). The class is checked
-  for C++ entries only.
-* **phase-463 W5** (the RTOS-image-unaffected invariants as gates) is not
-  started; the new FFI pair is `#[cfg(feature = "env")]`, which no RTOS
-  umbrella has, but nothing gates it.
-* **Issue 1600** (found here): a multi-entry configure sizes its one runtime
-  from the LAST entry's model, so `examples/workspaces/cpp`'s `native_entry`
-  dies at boot with `ExecutorFull` on the pristine contract -- and so does its
-  census run. The measurements above used `NROS_EXECUTOR_MAX_CBS=8` stated for
-  the native build to step around it.
+* **The default is still `warn`.** Flipping it needs unattended builds to take
+  a census before configuring each cross row of a contracted workspace (the
+  fixture pipeline builds the native image anyway; it does not run it in
+  census mode first), then the flip itself. phase-463 W6 (the island flip and
+  retiring `count_callbacks_with_recorded`'s max) is not started.
+* **Rust entries have no census, and the cargo road has no consumer.**
+  `boot_hosted` refuses `$NROS_CENSUS_OUT` for a Rust entry (the hooks are on
+  the C++ ABI; a Rust node's timers and node identity never cross it), and the
+  freshness check is called from `cmake/NanoRosEntry.cmake` only, so a Rust
+  RTOS image built by cargo is never checked even when its workspace has a
+  contract (`examples/workspaces/realtime-rust` does). Both halves are open.
+* **A C node that opens its own node through `nros-c`** reaches the recording
+  backend with no node attribution. No in-tree C workspace does this.
+* **phase-463 W5 I1, I3(b), I3(c)**: the census-binary `nm` equality, `nm` of
+  an RTOS staticlib finding no recorder symbol (measured once by hand in W2,
+  not gated), and the image-facts byte comparison for the reference Zephyr
+  image. They need built images, so they belong in a build-tier lane.
+* **What still stops a census run** is code that boots at no sizing: more than
+  64 callbacks in one executor, a constructor's own error, or the parameter
+  store (`CENSUS_SIZING` resizes the executor only). Those still produce an
+  INCOMPLETE census, which every check refuses.
 
 ## Fix / direction
 

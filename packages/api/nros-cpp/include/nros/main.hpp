@@ -227,12 +227,13 @@ class LinuxBoard {
         int32_t rc = setup();
         // "Write what the recorder saw and exit" exactly where the spin is:
         // every component has been constructed and configured by now. Written
-        // EVEN WHEN setup failed, and the failure is still the exit code: a
-        // native image is sized from the contract this census checks, so a
-        // contract one entity short stops setup at `ExecutorFull`. Discarding
-        // the file there left the cross configure reading "census missing"
-        // (a warning); kept, the CLI marks it incomplete and every check
-        // against it refuses.
+        // EVEN WHEN setup failed, and the failure is still the exit code. The
+        // census executor is not sized from the contract it checks (issue
+        // 1419: `nros_cpp_census_begin` resizes it), so what still stops setup
+        // here is code that boots at no sizing -- a constructor's own error,
+        // more than 64 callbacks. Discarding the file left the cross configure
+        // reading "census missing" (a warning); kept, the CLI marks it
+        // incomplete and every check against it refuses.
         if (census) {
             int32_t cr = ::nros_cpp_census_finish(sn);
             (void)nros::shutdown();

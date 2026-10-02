@@ -1,7 +1,10 @@
 # phase-463 - the host census: the code's entities, compared with the contract before any image is built
 
-**Status (2026-09-21). PROPOSED - nothing landed. W0-W7 are open. W7 (the
-profiling half) is deliberately last and is a separate decision from W1-W6.**
+**Status (2026-10-02). W0-W4 landed; W5 half landed (I2 + I3a gated, I1 /
+I3b / I3c open); W6 and W7 open. W7 (the profiling half) is deliberately last
+and is a separate decision from W1-W6.** Each wave's own Status line below is
+the current one; this line used to read "PROPOSED - nothing landed" after four
+waves had merged.
 Opened from the safety-island experiments of 2026-09-20 (E3a/E3b/E3c in the
 island's experiment brief) and from the layer map they produced. Home phase for
 [issue 1419](../issues/1419-no-layer-reconciles-contract-endpoints-with-the-code.md).
@@ -395,7 +398,7 @@ Four invariants, each with a gate and a negative control:
 I3(c) is the one that matters and the one that cannot be argued from
 structure: it is measured, and this document records the two numbers.
 
-Claim: phase-463-W5. Depends on: phase-463-W2 (I1, I3b, I3c); none for I2 and I3a. Owns: census-no-conditional-api in just/check/abi.just (new), rtos-feature-set-excludes-analysis in just/check/platform.just (new), packages/api/nros-cpp/src/metadata_hooks.rs (inline empty bodies), the I3(c) numbers in this document. Gate: the two new recipes, just check api-parity, the image-facts lane. Status: not started.
+Claim: phase-463-W5. Depends on: phase-463-W2 (I1, I3b, I3c); none for I2 and I3a. Owns: census-no-conditional-api in just/check/abi.just (new), rtos-feature-set-excludes-analysis in just/check/platform.just (new), packages/api/nros-cpp/src/metadata_hooks.rs (inline empty bodies), the I3(c) numbers in this document. Gate: the two new recipes, just check api-parity, the image-facts lane. Status: half landed (issue 1419, the PR *the census is not sized by the contract it checks*). I2 is `check-census-no-conditional-api` (no tracked `nros-cpp` header has a conditional naming the metadata / profile / census modes; the census pair stays declared; a planted `#ifdef NROS_METADATA_MODE` measured red). I3(a) is `check-rtos-feature-set-excludes-analysis` (all 32 crate x platform x cross sets `nros_feature_set` returns, held to `metadata-mode` iff cpp + posix + native and `profile-mode` never; widening the guard measured red). Both run on the fast line with an every-run negative control. I1, I3(b) and I3(c) need built images and are not gated; the two I3(c) numbers are not recorded. The empty-`#[inline]`-hook half of the claim is unchanged.
 
 ### W6 - retire the max, flip the island
 
@@ -503,6 +506,18 @@ Claim: phase-463-W7. Depends on: phase-463-W2, phase-463-W5, and the separate go
   the recording backend but not attributed to a node (no cursor) and its
   timers are not seen. Rust nodes take phase-307's own producer. The census
   covers C++ first because that is what the reference consumer is written in.
+  **Narrower than this reads (issue 1419, measured 2026-10-02):** a GENERATED
+  C entry creates each node with `nros_cpp_node_create` and its components
+  create entities through the hooked `nros_cpp_*` ABI, so
+  `examples/workspaces/c`'s census attributes every row. Only a C node that
+  opens its own node through `nros-c` is unattributed.
+* **The census executor is not the boot executor's size.** A census run opens
+  its executor at the executor's ceilings (64 callbacks, 64 nodes, a 16 MiB
+  arena), not at the contract-derived sizing, so a contract one entity short is
+  a named `missing-in-contract` row rather than `ExecutorFull` (issue 1419).
+  The same objects run; only the instrument's ruler differs. What still stops a
+  census is code that boots at no sizing (more than 64 callbacks, a failing
+  constructor, the parameter store, which is not resized).
 * **One node per class instance is assumed by nothing** - the cursor keys by
   FQN - but two instances of one class with different launch parameters are
   two census rows, and the check compares each against its own contract entry.

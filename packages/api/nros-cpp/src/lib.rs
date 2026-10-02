@@ -919,15 +919,12 @@ pub unsafe extern "C" fn nros_cpp_init_rmw(
     // it and write it (offset 0) + domain_id. Heap-free; the executor's slices
     // point into the final (pinned) buffer location, so nothing is moved after.
     let ctx_ptr = storage as *mut CppContext;
-    let backing: &'static mut [core::mem::MaybeUninit<u64>] = unsafe {
-        core::slice::from_raw_parts_mut(
-            core::ptr::addr_of_mut!((*ctx_ptr).backing) as *mut core::mem::MaybeUninit<u64>,
-            CPP_EXECUTOR_BACKING_U64S,
-        )
-    };
-    // SAFETY: `backing` is sized/aligned per `ExecutorSizing::DEFAULT` and lives
-    // for the program (caller owns the buffer); `open_in`'s contract is met.
-    match unsafe { CppExecutor::open_in(&config, backing, nros_node::ExecutorSizing::DEFAULT) } {
+    // Issue 1419 -- the inline tail at the build's sizing, except for a census
+    // run, which opens at the executor's ceilings over a heap block.
+    let (backing, sizing) = unsafe { executor_backing_for_open(ctx_ptr) };
+    // SAFETY: `backing` is sized/aligned for `sizing` and lives for the program
+    // (caller owns the buffer, or the block is leaked); `open_in`'s contract is met.
+    match unsafe { CppExecutor::open_in(&config, backing, sizing) } {
         Ok(executor) => {
             // Write directly into caller-provided storage — no heap allocation.
             unsafe {
@@ -1691,6 +1688,89 @@ fn census_select_backend() {
     // before any tier task is spawned, so the process is single-threaded at
     // this point -- the condition `set_var` asks for.
     unsafe { std::env::set_var("NROS_RMW", "metadata") };
+    // Issue 1419 -- and the executor the init is about to open is sized for
+    // the CODE, not for the contract. See `CENSUS_SIZING`.
+    CENSUS_SIZING_PENDING.store(true, core::sync::atomic::Ordering::Release);
+}
+
+/// Issue 1419 -- the census executor's sizing, independent of the contract it
+/// checks.
+///
+/// A native image's callback table, node table and arena are DERIVED from the
+/// contract (`nros ws entity-inventory`, phase-412), with no headroom on
+/// purpose. The census producer is that same image. So a contract one entity
+/// short sized its own census run one slot short: setup stopped at
+/// `ExecutorFull`, and because the executor refuses a registration before the
+/// backend is reached, the entity that did not fit was the one the recorder
+/// never saw. The census came out INCOMPLETE rather than naming the row -- the
+/// instrument measured with the ruler it was meant to check.
+///
+/// A census opens its executor at the executor's own ceilings instead: 64
+/// callback slots (the `u64` ready-set bitmask caps it, so 64 is the most any
+/// image can hold, not a guess), 64 nodes, and an arena large enough for 64 of
+/// the largest entries at any depth a real component asks for. Every one of
+/// those is CENSUS-ONLY: the backing is leaked from the heap of a host process
+/// that writes one file and exits, it is never touched by a normal boot (the
+/// flag below is only set by `census_select_backend`), and none of it exists
+/// on the RTOS road, where neither `env` nor `metadata-mode` is compiled.
+/// `boot_report` still states the BUILD's `MAX_CBS`, which is the number the
+/// shipped image has; the census is what checks it.
+#[cfg(all(feature = "rmw-cffi", feature = "env", feature = "metadata-mode"))]
+pub(crate) const CENSUS_SIZING: nros_node::ExecutorSizing = {
+    let d = nros_node::ExecutorSizing::DEFAULT;
+    nros_node::ExecutorSizing {
+        cbs: 64,
+        sc: d.sc,
+        nodes: if d.nodes > 64 { d.nodes } else { 64 },
+        // 16 MiB of address space, never written beyond what registrations
+        // carve (the slice is `MaybeUninit`), so a census run's resident size is
+        // what its entities use, not this number.
+        arena: if d.arena > (16 << 20) {
+            d.arena
+        } else {
+            16 << 20
+        },
+    }
+};
+
+/// Issue 1419 -- set by `census_select_backend`, CONSUMED by the next executor
+/// open (`executor_backing_for_open`). Consumed rather than sticky, so the one
+/// executor a census opens is the one that is resized, and a later open in the
+/// same process -- a test, or a runner that boots after a census -- gets the
+/// build's sizing back.
+#[cfg(all(feature = "rmw-cffi", feature = "env", feature = "metadata-mode"))]
+static CENSUS_SIZING_PENDING: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
+
+/// The backing and sizing `nros_cpp_init_rmw` opens its executor over: the
+/// `CppContext`'s own inline tail at the build's sizing, or -- for a census
+/// run only -- [`CENSUS_SIZING`] over a leaked heap block (issue 1419).
+///
+/// # Safety
+/// `ctx_ptr` must point at caller storage of at least `sizeof(CppContext)`
+/// bytes that outlives the executor, as `nros_cpp_init`'s own contract says.
+#[cfg(feature = "rmw-cffi")]
+unsafe fn executor_backing_for_open(
+    ctx_ptr: *mut CppContext,
+) -> (
+    &'static mut [core::mem::MaybeUninit<u64>],
+    nros_node::ExecutorSizing,
+) {
+    #[cfg(all(feature = "env", feature = "metadata-mode"))]
+    if CENSUS_SIZING_PENDING.swap(false, core::sync::atomic::Ordering::AcqRel) {
+        let block: &'static mut [core::mem::MaybeUninit<u64>] =
+            alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(CENSUS_SIZING.u64_len()));
+        return (block, CENSUS_SIZING);
+    }
+    // SAFETY: caller contract -- the inline tail is `CPP_EXECUTOR_BACKING_U64S`
+    // words sized for `ExecutorSizing::DEFAULT` and lives as long as the buffer.
+    let backing = unsafe {
+        core::slice::from_raw_parts_mut(
+            core::ptr::addr_of_mut!((*ctx_ptr).backing) as *mut core::mem::MaybeUninit<u64>,
+            CPP_EXECUTOR_BACKING_U64S,
+        )
+    };
+    (backing, nros_node::ExecutorSizing::DEFAULT)
 }
 
 /// Write the census of everything the setup path declared.
@@ -1941,11 +2021,12 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_in(
     // every component in launch order, on the parameters this entry seeded.
     //
     // Issue 1419 -- written EVEN WHEN setup failed, with the failure still the
-    // exit code. The native image is sized from the contract this census
-    // checks, so a contract one entity short stops setup at `ExecutorFull`.
-    // Discarding the file there left the cross configure reading "census
-    // missing" (a warning); kept, the CLI marks it incomplete and every check
-    // against it refuses.
+    // exit code. The census executor is not sized from the contract it checks
+    // (`CENSUS_SIZING`), so what still stops setup here is code that boots at
+    // no sizing -- a constructor's own error, more than 64 callbacks.
+    // Discarding the file left the cross configure reading "census missing"
+    // (a warning); kept, the CLI marks it incomplete and every check against
+    // it refuses.
     if let Some(path) = census {
         let rc = census_write(name_resolved, &path);
         unsafe { nros_cpp_fini(sptr) };
@@ -5979,6 +6060,123 @@ mod census_funnel_tests {
             "two parameters: {params}"
         );
 
+        nros::metadata_mode::reset();
+    }
+
+    /// More callback slots than this build's executor holds: the build's
+    /// `MAX_CBS` plus three, all wall timers (each claims one slot, and a timer
+    /// is the one entity whose slot is the whole of its cost).
+    fn over_sized_timer_count() -> usize {
+        nros_node::ExecutorSizing::DEFAULT.cbs + 3
+    }
+
+    /// A component whose code creates more callbacks than the build was sized
+    /// for -- what a contract one entity short produces, since the native
+    /// image's `MAX_CBS` is derived from the contract.
+    unsafe extern "C" fn over_sized_setup(exec: *mut c_void) -> i32 {
+        let opts = nros_cpp_node_options_t::default();
+        let mut node = MaybeUninit::<nros_cpp_node_t>::uninit();
+        let rc = unsafe {
+            nros_cpp_node_create_ex(exec, c"census_oversized".as_ptr(), &opts, node.as_mut_ptr())
+        };
+        if rc != NROS_CPP_RET_OK {
+            return rc as i32;
+        }
+        for i in 0..over_sized_timer_count() {
+            let mut handle_id = 0usize;
+            let rc = unsafe {
+                nros_cpp_timer_create(
+                    exec,
+                    100 + i as u64,
+                    Some(noop),
+                    core::ptr::null_mut(),
+                    &mut handle_id,
+                )
+            };
+            if rc != NROS_CPP_RET_OK {
+                return rc as i32;
+            }
+        }
+        0
+    }
+
+    /// Issue 1419 -- the census executor is sized for the CODE, not for the
+    /// contract it checks.
+    ///
+    /// Before: the census run opened its executor at the build's `MAX_CBS`, so
+    /// the slot the contract forgot stopped setup at `ExecutorFull`, the census
+    /// came out INCOMPLETE, and the entity that did not fit was the one row the
+    /// recorder never saw. Measured on `examples/workspaces/cpp`'s
+    /// `native_entry` built with `NROS_EXECUTOR_MAX_CBS=1`: exit 250,
+    /// `0 sub / 1 pub / 1 timer`, `census INCOMPLETE`. After: every timer is
+    /// recorded and the run exits 0.
+    ///
+    /// The second half is the negative control, and the reason the resize is
+    /// keyed on the census switch rather than on `metadata-mode`: the SAME
+    /// setup on the same funnel with no `$NROS_CENSUS_OUT` -- a normal boot of
+    /// the census-capable image -- still stops at the build's `MAX_CBS`. The
+    /// shipped image's sizing is unchanged; only the instrument stopped being
+    /// measured with the ruler it checks.
+    #[test]
+    fn census_is_not_sized_by_the_contract_it_checks() {
+        nros::metadata_mode::reset();
+        let out = env::temp_dir().join("nros-census-oversized.json");
+        let _ = fs::remove_file(&out);
+        // SAFETY: single-threaded by this module's contract (see above).
+        unsafe {
+            env::set_var("NROS_CENSUS_OUT", &out);
+            env::remove_var("NROS_RMW");
+            env::remove_var("NROS_ENTRY_SPIN_MS");
+        }
+        let rc = unsafe {
+            crate::nros_board_native_run_components_named(
+                c"census_oversized".as_ptr(),
+                Some(over_sized_setup),
+            )
+        };
+        unsafe { env::remove_var("NROS_CENSUS_OUT") };
+        assert_eq!(
+            rc,
+            0,
+            "a census of code with {} callbacks against a build sized for {} must \
+             record every one, not stop at ExecutorFull",
+            over_sized_timer_count(),
+            nros_node::ExecutorSizing::DEFAULT.cbs
+        );
+        let json = fs::read_to_string(&out).expect("the census file");
+        let _ = fs::remove_file(&out);
+        let timers = array_between(&json, "\"timers\":");
+        assert_eq!(
+            timers.matches("\"kind\":\"wall\"").count(),
+            over_sized_timer_count(),
+            "every timer the code created: {timers}"
+        );
+        nros::metadata_mode::reset();
+
+        // Negative control: a NORMAL boot of the same image, same setup. The
+        // recording backend is selected by hand only so that no router is
+        // needed; what is under test is the executor's sizing.
+        let _ = nros_rmw_metadata::nros_rmw_metadata_register();
+        // SAFETY: as above.
+        unsafe {
+            env::set_var("NROS_RMW", "metadata");
+            env::set_var("NROS_ENTRY_SPIN_MS", "1");
+        }
+        let rc = unsafe {
+            crate::nros_board_native_run_components_named(
+                c"census_oversized".as_ptr(),
+                Some(over_sized_setup),
+            )
+        };
+        unsafe {
+            env::remove_var("NROS_RMW");
+            env::remove_var("NROS_ENTRY_SPIN_MS");
+        }
+        assert_ne!(
+            rc, 0,
+            "a normal boot must keep the build's MAX_CBS -- the census resize leaked \
+             out of census mode"
+        );
         nros::metadata_mode::reset();
     }
 

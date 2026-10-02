@@ -270,8 +270,8 @@ cat > "$NROS_CENSUS_OUT" <<JSON
   "parameters": []
 }
 JSON
-# Issue 1419 -- a setup that failed AFTER the recorder wrote: what a native
-# image sized from a contract one entity short does (`ExecutorFull`, exit 250).
+# Issue 1419 -- a setup that failed AFTER the recorder wrote (exit 250): code
+# that boots at no sizing, e.g. a component whose constructor fails.
 if [ -n "${FIXTURE_SETUP_FAILS:-}" ]; then
     exit 250
 fi
@@ -438,9 +438,9 @@ want "2 confirmed, 0 error" "move 4"
 echo "check-entity-census: move 4 ok -- a touch leaves the census fresh"
 
 # ---------------------------------------------------------------------------
-# Move 4b -- the census RUN stops early (issue 1419). The native image is sized
-# from the contract this census checks, so a contract one entity short stops
-# setup at `ExecutorFull` on the host. Every row the run DID record agrees with
+# Move 4b -- the census RUN stops early (issue 1419): code that boots at no
+# sizing (the census executor is NOT sized from the contract it checks, so a
+# contract one entity short is a named row, not this). Every row the run DID record agrees with
 # the contract, and the check must still refuse: nothing after the failure was
 # observed. Before 1419 the run discarded its census, the configure read
 # "census missing", and the landing `warn` let the image build.
@@ -483,7 +483,60 @@ check --require-fresh || fail "move 5: the landing default is warn, not refuse:
 $(cat "$ws/check.log")"
 want "WARNING" "move 5 is not silent"
 want "on_missing" "move 5 names the key that decided"
+# Issue 1419 -- and says WHY it matters and how to make it a refusal, which is
+# what the configure raises as a CMake WARNING rather than a status line.
+want "NOTHING has compared" "move 5 says the pools are unchecked"
+want "on_missing = \"refuse\"" "move 5 names the setting that refuses"
 echo "check-entity-census: move 5 ok -- the landing default warns and continues"
+
+# ---------------------------------------------------------------------------
+# Move 6 -- NO CONTRACT (issue 1419). A model that folds in no
+# `*.contract.yaml` has no contract-derived pool, so there is nothing for a
+# census to reconcile, and the check says so and passes -- under `refuse`,
+# with no census AND with one. Measured on `examples/workspaces/c` before:
+# its threadx configure warned "census missing", and FAILED the moment a
+# census was taken (`no --contract, and the model names no *.contract.yaml`),
+# so producing the evidence broke the build.
+# ---------------------------------------------------------------------------
+cat > "$bringup/system.toml" <<'TOML'
+[system]
+name = "census_fixture"
+rmw = "zenoh"
+domain_id = 0
+
+[census]
+on_missing = "refuse"
+on_stale = "refuse"
+TOML
+cp "$contract" "$ws/contract.keep"
+rm -f "$contract"
+cat > "$model" <<'YAML'
+meta:
+  version: 1
+  inputs: []
+structure:
+  nodes:
+    /fixture_node:
+      scope: census_fixture_bringup/fixture.launch.xml
+      pkg: census_fixture_node
+      exec: fixture_node
+YAML
+rm -f "$census"
+check --require-fresh || fail "move 6: a model with no contract has nothing to reconcile, so
+even \`refuse\` with no census must pass:
+$(cat "$ws/check.log")"
+want "no contract" "move 6 says why it passed"
+want_not "census missing" "move 6: no census is asked for where none could be compared"
+take_census || fail "move 6: the census run failed:
+$(cat "$ws/run.log")"
+check --require-fresh || fail "move 6: taking a census of a contract-less model must not
+break its configure:
+$(cat "$ws/check.log")"
+want "no contract" "move 6, with a census"
+mv "$ws/contract.keep" "$contract"
+stamp_model
+rm -f "$census"
+echo "check-entity-census: move 6 ok -- no contract, nothing to reconcile, with or without a census"
 
 # ---------------------------------------------------------------------------
 # The NEGATIVE CONTROL, on the normal path (phase-395)
@@ -541,4 +594,4 @@ $(cat "$ws/run.log")"
 
 self_test
 
-echo "check-entity-census: PASS -- 7 moves (missing, fresh, stale, re-run, add-row, touch-only, incomplete) + self-test, producer and consumer naming the census only by its model"
+echo "check-entity-census: PASS -- 8 moves (missing, fresh, stale, re-run, add-row, touch-only, incomplete, no-contract) + self-test, producer and consumer naming the census only by its model"

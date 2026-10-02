@@ -169,7 +169,11 @@ endfunction()
 # SOFT BY DEFAULT. `[census] on_missing` / `on_stale` in the bringup's
 # `system.toml` decide, and both land as `warn` so that no consumer is broken on
 # the day this merges. phase-463 W6 flips the island to `refuse`; the default
-# follows once two consumers have run under it.
+# follows once two consumers have run under it AND unattended builds take a
+# census first (issue 1419: `build-test-fixtures` configures the cpp
+# workspace's cross rows with no census run, so `refuse` would fail them).
+# Soft is not quiet: the warning is a CMake WARNING, and a model with no
+# contract is skipped with a note, since it has no contract-derived pool.
 function(_nros_entry_require_fresh_census)
     cmake_parse_arguments(_RFC "" "NAME;MODEL;BRINGUP" "DEPLOY" ${ARGN})
 
@@ -271,7 +275,12 @@ function(_nros_entry_require_fresh_census)
             "${_rfc_out}${_rfc_err}")
     endif()
     string(STRIP "${_rfc_out}" _rfc_out)
-    if(NOT _rfc_out STREQUAL "")
+    if(_rfc_out MATCHES "\\(WARNING, \\[census\\]")
+        # Issue 1419 -- `warn` is the default, and a default that reads as a
+        # STATUS line among hundreds is the state the issue is about: this
+        # image's pools come from a contract nothing compared with the code.
+        message(WARNING "nano_ros_entry(${_RFC_NAME}): ${_rfc_out}")
+    elseif(NOT _rfc_out STREQUAL "")
         message(STATUS "nano-ros: ${_rfc_out}")
     endif()
 endfunction()

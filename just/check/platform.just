@@ -950,3 +950,11 @@ build-script-path-resolution:
 # value is, is known at the call site and by no probe. A ratchet; it falls only.
 foreign-env-path-inputs:
     @python3 scripts/check-foreign-env-path-inputs.py
+
+# phase-463 W5 I3(a) (issue 1419) -- no RTOS umbrella resolves an analysis mode.
+# ASKS `nros_feature_set` for every crate x platform x cross combination and
+# holds the OUTPUT to one rule: `metadata-mode` iff cpp + posix + native,
+# `profile-mode` never. A planted FreeRTOS set carrying the recorder is its
+# negative control, every run.
+rtos-feature-set-excludes-analysis:
+    @cmake -P scripts/check/rtos-feature-set-excludes-analysis.cmake
