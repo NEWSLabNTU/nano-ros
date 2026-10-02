@@ -196,6 +196,29 @@ pub struct Context {
     pub rmw: alloc::string::String,
     /// Source of this context — useful for diagnostics + tests.
     pub source: ContextSource,
+    /// The `-r`/`--remap` rules `init_with_args` / `Context::new` parsed
+    /// out of `--ros-args`, in argv order. Installed as the FALLBACK remap
+    /// tier of every executor this context creates
+    /// (`Context::create_executor`, `Context::create_executor_in`).
+    ///
+    /// rcl keeps its global arguments on the context for the same reason: the
+    /// context is what the process was started with, and every node created
+    /// from it inherits them. Private, because nothing outside the parse
+    /// should write a rule here — and a rule that bypassed the parse would
+    /// bypass its refusals too.
+    #[cfg_attr(not(feature = "env"), allow(dead_code))]
+    ros_args: alloc::vec::Vec<ArgvRemap>,
+}
+
+/// One `-r [node:]from:=to` rule, owned so a [`Context`] can outlive the
+/// argument vector it came from.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(not(feature = "env"), allow(dead_code))]
+struct ArgvRemap {
+    node: Option<alloc::string::String>,
+    from: alloc::string::String,
+    to: alloc::string::String,
 }
 
 /// Where the [`Context`] came from. Diagnostics only.
@@ -335,8 +358,19 @@ impl Context {
     // phase-427 W10 — the one legitimate remaining use of the deprecated
     // builder spelling: this method IS the executor-is-the-node shape, so it
     // asks for it deliberately rather than by not having heard.
+    ///
+    /// # Refused when the context carries `--ros-args` remaps
+    ///
+    /// An [`ExecutorConfig`] has nowhere to put them, so the executor
+    /// `Executor::open` builds from it would never see them — the silent drop
+    /// `init_with_args` exists to prevent. Such a context PANICS here,
+    /// naming `Context::create_executor`, which installs them.
     #[allow(deprecated)]
     pub fn config<'a>(&'a self, node_name: &'a str) -> ExecutorConfig<'a> {
+        #[cfg(feature = "env")]
+        if !self.ros_args.is_empty() {
+            refuse_ros_args(&RosArgsRefusal::UnreachableExecutor);
+        }
         ExecutorConfig::new(self.locator.as_str())
             .node_name(node_name)
             .domain_id(self.domain_id)
@@ -378,14 +412,10 @@ impl Context {
     /// the compiler says so.
     ///
     /// **What it does with the arguments:** the same as [`init_with_args`] —
-    /// it does NOT parse them, and it does not silently ignore them either. A
-    /// vector carrying `--ros-args` is REFUSED LOUDLY at the call (logged
-    /// through `nros_log`, then a panic naming the flag —
-    /// [`REFUSE_INIT_ARGS`]); any other vector passes through to
-    /// [`Context::from_env`] untouched, because nothing was dropped. Parsing
-    /// `--ros-args` is remap resolution (RFC-0020 class 4) and belongs beside
-    /// `nros::resolve_name`, not in a constructor. RFC-0089: only the VALUE
-    /// carries the defect, so the call is the earliest point it is knowable.
+    /// `-r`/`--remap` rules inside `--ros-args` are parsed onto the returned
+    /// context and every other ROS argument is REFUSED LOUDLY at the call
+    /// ([`REFUSE_INIT_ARGS`]). Arguments outside a `--ros-args` scope are the
+    /// program's own and are left alone.
     ///
     /// `S: AsRef<str>` is a superset of rclrs's `Item = String`, so
     /// `Context::new(std::env::args(), InitOptions::new())` compiles as
@@ -396,8 +426,10 @@ impl Context {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        refuse_ros_args(args);
-        Self::from_env(options)
+        let ros_args = parse_ros_args_or_refuse(args);
+        let mut context = Self::from_env(options)?;
+        context.ros_args = ros_args;
+        Ok(context)
     }
 
     /// phase-427 W9 — the freestanding constructor: the constants baked into
@@ -450,6 +482,7 @@ impl Context {
             mode: SessionMode::Client,
             rmw: alloc::string::String::new(),
             source: ContextSource::Baked,
+            ros_args: alloc::vec::Vec::new(),
         })
     }
 
@@ -527,8 +560,36 @@ impl Context {
     /// let mut executor = context.create_executor()?;
     /// let mut node = executor.create_node("talker")?;
     /// ```
+    ///
+    /// The `-r` rules `init_with_args` / `Context::new` parsed are
+    /// installed in the new executor as its fallback remap tier.
     pub fn create_executor(&self) -> Result<Executor<'static>, InitError> {
-        Executor::open(&self.session_config()).map_err(InitError::ExecutorOpenFailed)
+        let mut executor =
+            Executor::open(&self.session_config()).map_err(InitError::ExecutorOpenFailed)?;
+        self.install_ros_args(&mut executor);
+        Ok(executor)
+    }
+
+    /// Put this context's `--ros-args` remaps into `executor`'s fallback tier.
+    /// A rule that does not fit is REFUSED rather than dropped.
+    fn install_ros_args(&self, executor: &mut Executor<'_>) {
+        #[cfg(feature = "env")]
+        {
+            let rules = self.ros_args.iter().map(|r| nros_node::ros_args::RemapArg {
+                node: r.node.as_deref(),
+                from: r.from.as_str(),
+                to: r.to.as_str(),
+            });
+            if let Err(rule) = nros_node::ros_args::install_argv_remaps(executor, rules) {
+                refuse_ros_args(&RosArgsRefusal::DoesNotFit {
+                    node: rule.node,
+                    from: rule.from,
+                    to: rule.to,
+                });
+            }
+        }
+        #[cfg(not(feature = "env"))]
+        let _ = executor;
     }
 
     /// OURS — [`create_executor`](Self::create_executor) with the storage
@@ -569,8 +630,10 @@ impl Context {
         // directly above), is `u64`-aligned by its element type, is uniquely
         // borrowed for `'b`, and the returned `Executor<'b>` is the only thing
         // that can reach it for that lifetime.
-        unsafe { Executor::open_in(&self.session_config(), backing, sizing) }
-            .map_err(InitError::ExecutorOpenFailed)
+        let mut executor = unsafe { Executor::open_in(&self.session_config(), backing, sizing) }
+            .map_err(InitError::ExecutorOpenFailed)?;
+        self.install_ros_args(&mut executor);
+        Ok(executor)
     }
 }
 
@@ -610,6 +673,7 @@ fn read_env_context(source: ContextSource) -> Result<Context, InitError> {
         mode,
         rmw,
         source,
+        ros_args: alloc::vec::Vec::new(),
     })
 }
 
@@ -628,31 +692,31 @@ pub fn init() -> Result<Context, InitError> {
     read_env_context(ContextSource::Env)
 }
 
-/// The refusal [`init_with_args`] and [`Context::new`] emit when handed
-/// `--ros-args`. The same text `NROS_RCLCPP_REFUSE_INIT_ARGV` carries for the
-/// C++ twin (`packages/api/nros-cpp/include/nros/log.hpp`), with the Rust
-/// spellings.
+/// The refusal [`init_with_args`] and [`Context::new`] emit for a ROS
+/// argument nano-ros does not honour. Panics carry this text followed by the
+/// refused argument. `NROS_RCLCPP_REFUSE_INIT_ARGV` is the C++ twin
+/// (`packages/api/nros-cpp/include/nros/log.hpp`), which still refuses
+/// `--ros-args` outright.
 #[cfg(feature = "env")]
-pub const REFUSE_INIT_ARGS: &str = "nros::init_with_args / nros::Context::new was given --ros-args, which nano-ros cannot \
-honour (RFC-0089, phase-417 W3.b). Proceeding would DISCARD it, so `-r chatter:=/other` would \
-silently become a wrong-topic bug at runtime -- the 'compiles and differs' the rule \
-forbids. Nothing in this process parses --ros-args yet, and honouring them is remap \
-resolution -- RFC-0020 violation class 4 -- so the parser belongs beside nros::resolve_name, \
-not in this wrapper. Today remaps and parameter overrides reach a node from `nros sync`, which \
-projects the launch file's rules into the GENERATED ENTRY at BUILD time -- `runtime.remaps` / \
-`runtime.params` on the Rust road, nros_cpp_declare_remap / nros_cpp_declare_param calls on the \
-C and C++ roads. They do NOT travel in the process environment, which carries the domain, \
-locator, session mode and RMW hint and nothing else. Call nros::init() / \
-nros::Context::default_from_env(); nros::init_with_launch_auto() reads the same environment \
-under a different ContextSource and parses no launch file yet.";
+pub const REFUSE_INIT_ARGS: &str = "nros::init_with_args / nros::Context::new was given a --ros-args \
+argument nano-ros cannot honour (RFC-0089, phase-417 W3.b). Proceeding would DISCARD it -- the \
+'compiles and differs' the rule forbids. HONOURED inside --ros-args ... --: -r / --remap \
+[node:]from:=to, applied as the FALLBACK beneath any remap the launch file projected for the same \
+name (RFC-0046; rcl's local-before-global), through Context::create_executor / \
+create_executor_in. REFUSED: -p / --param / --params-file (runtime parameters belong to RFC-0015 \
+section 9's channel), node-identity remaps (__node, __name, __ns), -e / --enclave, the log flags, \
+and any token that is not a ROS flag. A nros sync image does not read argv at all: its launch \
+remaps and parameters are projected into the GENERATED ENTRY at BUILD time.";
 
-/// The refusal's predicate, separately checkable (RFC-0089 §"where the
-/// refusal fires": an abort inlined into `init` can only be observed by a
-/// process that then dies, which is the shape of a check nothing runs).
+/// Does `args` open a `--ros-args` scope at all?
+///
+/// No longer the refusal's predicate — since the `-r` parse landed, a vector
+/// with `--ros-args` is parsed, and only what it cannot honour is refused
+/// (`nros_node::ros_args::parse_ros_args`). Kept because "will this argv be
+/// read?" is still a question a caller can ask before handing it over.
 ///
 /// Exact match only. `--ros-args-extra` is not the flag, and a prefix match
-/// would refuse an argument nano-ros never drops — the mutation the C++
-/// predicate's `static_assert`s pin, pinned here by a unit test.
+/// would claim an argument nano-ros never reads — pinned by a unit test.
 #[cfg(feature = "env")]
 pub fn args_have_ros_args<I, S>(args: I) -> bool
 where
@@ -662,46 +726,131 @@ where
     args.into_iter().any(|a| a.as_ref() == "--ros-args")
 }
 
-/// The one refusal site, shared by [`init_with_args`] and [`Context::new`]:
-/// logged through `nros_log` (never `std::println!`, issue 0589), then a
-/// panic naming the flag — the same shape `rclcpp::init(argc, argv)` has in
-/// `nros.hpp`.
+/// Why a `--ros-args` vector, or a context carrying one, was refused.
 #[cfg(feature = "env")]
-fn refuse_ros_args<I, S>(args: I)
+enum RosArgsRefusal<'a> {
+    /// The parse itself refused an argument.
+    Parse(nros_node::ros_args::RosArgsError<'a>),
+    /// A parsed rule did not fit the executor's remap table.
+    #[cfg(feature = "rmw-cffi")]
+    DoesNotFit {
+        node: Option<&'a str>,
+        from: &'a str,
+        to: &'a str,
+    },
+    /// [`Context::config`] was asked for a config that cannot carry the rules.
+    UnreachableExecutor,
+}
+
+#[cfg(feature = "env")]
+impl core::fmt::Display for RosArgsRefusal<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Parse(e) => e.fmt(f),
+            #[cfg(feature = "rmw-cffi")]
+            Self::DoesNotFit { node, from, to } => {
+                let node = node.map(|n| alloc::format!("{n}:")).unwrap_or_default();
+                write!(
+                    f,
+                    "`-r {node}{from}:={to}` does not fit the executor's remap table (MAX_REMAPS rules, \
+                     shared with launch remaps; names up to {} bytes)",
+                    nros_node::names::MAX_RESOLVED_NAME_LEN
+                )
+            }
+            Self::UnreachableExecutor => f.write_str(
+                "Context::config() cannot carry this context's --ros-args remaps into the executor \
+                 Executor::open builds from it; use Context::create_executor() or \
+                 create_executor_in(), which install them",
+            ),
+        }
+    }
+}
+
+/// The one refusal site: logged through `nros_log` (never `std::println!`,
+/// issue 0589), then a panic carrying [`REFUSE_INIT_ARGS`] and the reason —
+/// the shape `rclcpp::init(argc, argv)` has in `nros.hpp`, and the shape
+/// rclcpp's own `UnknownROSArgsError` has.
+#[cfg(feature = "env")]
+fn refuse_ros_args(why: &RosArgsRefusal<'_>) -> ! {
+    nros_log::log_error!(
+        nros_log::get_logger("nros"),
+        "{}\n  refused: {}",
+        REFUSE_INIT_ARGS,
+        why
+    );
+    panic!("{REFUSE_INIT_ARGS}\n  refused: {why}");
+}
+
+/// Parse `args` (rcl's grammar — `nros_node::ros_args`) into owned rules, or
+/// refuse. Shared by [`init_with_args`] and [`Context::new`], so the two stay
+/// one behaviour.
+#[cfg(feature = "env")]
+fn parse_ros_args_or_refuse<I, S>(args: I) -> alloc::vec::Vec<ArgvRemap>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
-    if args_have_ros_args(args) {
-        nros_log::log_error!(nros_log::get_logger("nros"), "{}", REFUSE_INIT_ARGS);
-        panic!("{}", REFUSE_INIT_ARGS);
+    let owned: alloc::vec::Vec<alloc::string::String> = args
+        .into_iter()
+        .map(|a| alloc::string::String::from(a.as_ref()))
+        .collect();
+    let mut rules = alloc::vec::Vec::new();
+    let parsed = nros_node::ros_args::parse_ros_args(owned.iter().map(|a| a.as_str()), |r| {
+        rules.push(ArgvRemap {
+            node: r.node.map(alloc::string::String::from),
+            from: alloc::string::String::from(r.from),
+            to: alloc::string::String::from(r.to),
+        })
+    });
+    if let Err(e) = parsed {
+        refuse_ros_args(&RosArgsRefusal::Parse(e));
     }
+    rules
 }
 
-/// Pattern 3 — like [`init()`] but accepts a `[--arg=value, ...]`-style argv
-/// iterator. The free-function twin of [`Context::new`] with default options.
+/// Pattern 3 — like [`init()`] but takes the process arguments, the way
+/// `rclcpp::init(argc, argv)` / rclrs's `Context::new(args, ..)` do. The
+/// free-function twin of [`Context::new`] with default options.
 ///
-/// **What it does with the arguments:** it does NOT parse them, and it does
-/// not silently ignore them either. The structured argv parse (`--ros-args -p
-/// foo:=42`, remaps) is remap resolution, which belongs beside
-/// `nros::resolve_name` and lands with the runtime-overlay wave. Until it
-/// does, an argument vector that carries `--ros-args` is REFUSED LOUDLY at the
-/// call: the refusal is logged through `nros_log` (never `std::println!`,
-/// issue 0589) and the process panics naming the flag — the same shape
-/// `rclcpp::init(argc, argv)` has in `nros.hpp`. A vector with no ROS
-/// arguments is unaffected, because nothing was dropped.
+/// # What it does with the arguments
 ///
-/// RFC-0089: only the VALUE carries the defect, so the call is the earliest
-/// point it is knowable; silence there is the "compiles and differs" the
-/// compile-or-conform rule forbids.
+/// It parses `--ros-args` with rcl's grammar (Humble `rcl/arguments.h`): ROS
+/// arguments live between `--ros-args` and `--` (or the end), several scopes
+/// may appear, and everything outside them is the program's own and is left
+/// alone.
+///
+/// * **`-r` / `--remap [node:]from:=to` — honoured.** The rules ride on the
+///   returned [`Context`] and are installed in every executor it creates
+///   (`Context::create_executor` / `Context::create_executor_in`) as the
+///   FALLBACK remap tier: a launch-projected rule for the same name wins
+///   (RFC-0046), exactly as rcl checks a node's local arguments before the
+///   process's global ones. They reach entities on every road — the handle
+///   `Executor::create_node` returns, `nros::node!` components, and the C and
+///   C++ APIs.
+/// * **Everything else inside a scope — refused, loudly**: parameter
+///   overrides (RFC-0015 §9 owns that channel), node-identity remaps, enclaves,
+///   log flags, unknown tokens. Logged through `nros_log`, then a panic
+///   carrying [`REFUSE_INIT_ARGS`] and the argument. rclcpp refuses unknown
+///   ROS arguments too (`UnknownROSArgsError`).
+///
+/// # Where the rules do NOT reach
+///
+/// [`Context::config`] refuses a context that carries rules, because an
+/// `ExecutorConfig` cannot carry them. Entities created through the
+/// executor's own `add_*` registration methods or a `node_mut` context are
+/// not remapped either: those are also where the C ABI and the component
+/// sink hand their ALREADY-RESOLVED names, so remapping there would apply a
+/// rule twice.
 #[cfg(feature = "env")]
 pub fn init_with_args<I, S>(args: I) -> Result<Context, InitError>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
-    refuse_ros_args(args);
-    init()
+    let ros_args = parse_ros_args_or_refuse(args);
+    let mut context = init()?;
+    context.ros_args = ros_args;
+    Ok(context)
 }
 
 #[cfg(all(test, feature = "env"))]
@@ -720,18 +869,75 @@ mod ros_args_refusal_tests {
         assert!(!args_have_ros_args(core::iter::empty::<&str>()));
     }
 
-    #[test]
-    #[should_panic(expected = "--ros-args")]
-    fn ros_args_are_refused_loudly() {
-        let _env = crate::env::test_env_lock();
-        let _ = init_with_args(["--ros-args"]);
+    fn remap(node: Option<&str>, from: &str, to: &str) -> ArgvRemap {
+        ArgvRemap {
+            node: node.map(alloc::string::String::from),
+            from: alloc::string::String::from(from),
+            to: alloc::string::String::from(to),
+        }
     }
 
     #[test]
-    #[should_panic(expected = "--ros-args")]
-    fn ros_args_are_refused_loudly_anywhere_in_argv() {
+    fn remap_rules_ride_on_the_context_in_argv_order() {
         let _env = crate::env::test_env_lock();
-        let _ = init_with_args(["/usr/bin/talker", "--ros-args", "-r", "chatter:=/other"]);
+        let ctx = init_with_args([
+            "/usr/bin/talker",
+            "--ros-args",
+            "-r",
+            "chatter:=/other",
+            "--remap",
+            "talker:~/out:=/wire",
+            "--",
+            "positional",
+        ])
+        .expect("init");
+        assert_eq!(
+            ctx.ros_args,
+            [
+                remap(None, "chatter", "/other"),
+                remap(Some("talker"), "~/out", "/wire")
+            ]
+        );
+    }
+
+    #[test]
+    fn an_empty_scope_is_not_a_refusal() {
+        let _env = crate::env::test_env_lock();
+        assert!(
+            init_with_args(["--ros-args"])
+                .expect("init")
+                .ros_args
+                .is_empty()
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "refused: `-p`")]
+    fn parameter_overrides_are_still_refused_by_name() {
+        let _env = crate::env::test_env_lock();
+        let _ = init_with_args(["/usr/bin/talker", "--ros-args", "-r", "a:=b", "-p", "x:=1"]);
+    }
+
+    #[test]
+    #[should_panic(expected = "remaps a node's identity")]
+    fn identity_remaps_are_refused() {
+        let _env = crate::env::test_env_lock();
+        let _ = init_with_args(["--ros-args", "-r", "__ns:=/robot"]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Context::config() cannot carry")]
+    fn config_refuses_a_context_that_carries_remaps() {
+        let _env = crate::env::test_env_lock();
+        let ctx = init_with_args(["--ros-args", "-r", "chatter:=/other"]).expect("init");
+        let _ = ctx.config("talker");
+    }
+
+    #[test]
+    fn config_is_unaffected_without_remaps() {
+        let _env = crate::env::test_env_lock();
+        let ctx = init_with_args(["/usr/bin/talker", "--verbose"]).expect("init");
+        assert_eq!(ctx.config("talker").node_name, "talker");
     }
 
     #[test]
@@ -830,13 +1036,30 @@ mod ros_args_refusal_tests {
     }
 
     #[test]
-    #[should_panic(expected = "--ros-args")]
-    fn context_new_refuses_ros_args() {
+    #[should_panic(expected = "refused: `--enclave`")]
+    fn context_new_refuses_what_it_cannot_honour() {
         let _env = crate::env::test_env_lock();
         let _ = Context::new(
-            ["/usr/bin/talker", "--ros-args", "-r", "chatter:=/other"],
+            [
+                "/usr/bin/talker",
+                "--ros-args",
+                "-r",
+                "chatter:=/other",
+                "--enclave",
+                "/e",
+            ],
             InitOptions::new(),
         );
+    }
+
+    #[test]
+    fn context_new_parses_exactly_like_init_with_args() {
+        let _env = crate::env::test_env_lock();
+        let argv = ["/usr/bin/talker", "--ros-args", "-r", "chatter:=/other"];
+        let a = Context::new(argv, InitOptions::new()).expect("Context::new");
+        let b = init_with_args(argv).expect("init_with_args");
+        assert_eq!(a.ros_args, b.ros_args);
+        assert_eq!(a.ros_args, [remap(None, "chatter", "/other")]);
     }
 
     #[test]

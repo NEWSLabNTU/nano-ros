@@ -186,12 +186,15 @@ where
 /// **Launch is authoritative; anything else is a fallback for a name the launch
 /// projected no rule for.** That is RFC-0046's precedence for node identity
 /// (launch overrides the code-provided default) applied to the remap half of
-/// the same question. Today `authoritative` is the only tier with a producer —
-/// both roads pass their codegen-projected launch rules there and an empty
-/// fallback. The tier exists so that when a second channel arrives (the
-/// `--ros-args` parse `nros::init_with_args` refuses, `init.json`'s
-/// `rust:init_with_args`), adding it is choosing a parameter rather than
-/// appending to a flat list whose order nobody guaranteed.
+/// the same question, and it is rcl's own arrangement: `rcl_remap_topic_name`
+/// checks the node's LOCAL arguments (how a launch file or component container
+/// hands a node its rules) and only on no match the process's GLOBAL ones (the
+/// argv given to `rcl_init`) — Humble `rcl/remap.h`.
+///
+/// The producers: both roads pass their codegen-projected launch rules as
+/// `authoritative`; the fallback is the `--ros-args` parse
+/// ([`crate::ros_args`]), which `nros::init_with_args` carries on its
+/// `Context` into every executor that context creates.
 #[allow(clippy::result_unit_err)]
 pub fn resolve_name_layered<'a, 'b, A, F>(
     source: &str,
@@ -205,13 +208,47 @@ where
     F: IntoIterator<Item = (&'b str, &'b str)>,
 {
     let expanded = expand_name(source, node_name, namespace)?;
-    if let Some(hit) = first_substitution(&expanded, node_name, namespace, authoritative) {
-        return Ok(hit);
-    }
-    if let Some(hit) = first_substitution(&expanded, node_name, namespace, fallback) {
-        return Ok(hit);
-    }
-    Ok(expanded)
+    Ok(
+        substitute_layered(&expanded, node_name, namespace, authoritative, fallback)
+            .unwrap_or(expanded),
+    )
+}
+
+fn substitute_layered<'a, 'b, A, F>(
+    expanded: &ResolvedName,
+    node_name: &str,
+    namespace: &str,
+    authoritative: A,
+    fallback: F,
+) -> Option<ResolvedName>
+where
+    A: IntoIterator<Item = (&'a str, &'a str)>,
+    F: IntoIterator<Item = (&'b str, &'b str)>,
+{
+    first_substitution(expanded, node_name, namespace, authoritative)
+        .or_else(|| first_substitution(expanded, node_name, namespace, fallback))
+}
+
+/// [`resolve_name_layered`]'s SUBSTITUTION, without its expansion: the name the
+/// first matching rule (authoritative tier first) sends `source` to, or `None`
+/// when no rule matches or `source` does not expand.
+///
+/// For a caller that has never expanded names and must not start: on `None` it
+/// passes `source` through exactly as before, so a node with no matching rule
+/// sees no change at all. `NodeHandle` is that caller.
+pub fn remap_layered<'a, 'b, A, F>(
+    source: &str,
+    node_name: &str,
+    namespace: &str,
+    authoritative: A,
+    fallback: F,
+) -> Option<ResolvedName>
+where
+    A: IntoIterator<Item = (&'a str, &'a str)>,
+    F: IntoIterator<Item = (&'b str, &'b str)>,
+{
+    let expanded = expand_name(source, node_name, namespace).ok()?;
+    substitute_layered(&expanded, node_name, namespace, authoritative, fallback)
 }
 
 #[cfg(test)]

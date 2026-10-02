@@ -121,6 +121,7 @@ pub mod limits;
 pub mod names;
 mod node;
 mod publisher;
+pub mod ros_args;
 #[cfg(any(has_rmw, test))]
 pub mod session;
 mod subscriber;

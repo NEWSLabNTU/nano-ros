@@ -1266,23 +1266,77 @@ pub(crate) struct FreedRegion {
 /// raise here if a plan legitimately outgrows it.
 pub const MAX_REMAPS: usize = 16;
 
-/// Phase 305 W3 (issue 0255) — one launch `<remap from= to=/>` rule, scoped to
-/// the node that declared it. `from`/`to` are stored RAW (as written); the
-/// lookup in [`Executor::resolve_entity_name_for`] expands both sides against
-/// the owning node's identity via `crate::names` (exact-FQN match, no
-/// wildcards).
+/// Which of [`crate::names::resolve_name_layered`]'s two tiers a stored rule
+/// belongs to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RemapTier {
+    /// Projected from the launch file (`declare_remap`, which the generated
+    /// entry calls). AUTHORITATIVE, scoped to one `(name, namespace)`.
+    Launch,
+    /// Parsed from `--ros-args` (`crate::ros_args::install_argv_remaps`).
+    /// FALLBACK — consulted only when no launch rule matched. Scoped to every
+    /// node, or to the nodes of one NAME (rcl matches a `node:` prefix
+    /// against the name alone).
+    Argv,
+}
+
+/// Phase 305 W3 (issue 0255) — one remap rule. `from`/`to` are stored RAW (as
+/// written); the lookup in [`Executor::resolve_entity_name_for`] expands both
+/// sides against the owning node's identity via `crate::names` (exact-FQN
+/// match, no wildcards).
 ///
-/// There is no provenance field, deliberately: every rule that reaches this
-/// table came from the launch file, and the precedence a provenance field
-/// would decide is expressed one level up, as
-/// [`crate::names::resolve_name_layered`]'s two tiers. A field here would also
-/// only ever cover the C and C++ roads — the Rust road's remaps are a bare
-/// `&[(&str, &str)]` on `RuntimeCtx` and never enter this struct.
+/// The table holds BOTH tiers, so each rule records which one it belongs to.
+/// The tier is still decided at resolution, by
+/// [`crate::names::resolve_name_layered`]'s two parameters, never by where a
+/// rule sits in this table — `tier_rules` splits the table into those two
+/// arguments. That is what keeps declaration order from deciding between the
+/// channels: an argv rule installed before a launch rule still loses to it.
 pub(crate) struct RemapRule {
+    /// For [`RemapTier::Launch`]: the owning node. For [`RemapTier::Argv`]:
+    /// the node name a `name:from:=to` rule was restricted to, or EMPTY for a
+    /// rule that applies to every node.
     pub(crate) node_name: heapless::String<64>,
+    /// For [`RemapTier::Launch`] only (normalised, `/` for root). Unused by
+    /// argv rules, whose node prefix carries no namespace.
     pub(crate) namespace: heapless::String<64>,
     pub(crate) from: heapless::String<{ crate::names::MAX_RESOLVED_NAME_LEN }>,
     pub(crate) to: heapless::String<{ crate::names::MAX_RESOLVED_NAME_LEN }>,
+    pub(crate) tier: RemapTier,
+}
+
+impl RemapRule {
+    /// Does this rule belong to `tier` and apply to the node `(node_name, ns)`?
+    /// `ns` must already be normalised (`/` for root).
+    fn applies(&self, tier: RemapTier, node_name: &str, ns: &str) -> bool {
+        self.tier == tier
+            && match tier {
+                RemapTier::Launch => {
+                    self.node_name.as_str() == node_name && self.namespace.as_str() == ns
+                }
+                RemapTier::Argv => {
+                    self.node_name.is_empty() || self.node_name.as_str() == node_name
+                }
+            }
+    }
+}
+
+/// The rules of one tier that apply to one node, in declaration order, as the
+/// `(from, to)` pairs [`crate::names::resolve_name_layered`] takes. The ONE
+/// place a stored table is split into the two tiers — the executor's resolver,
+/// `NodeHandle`, and the Rust component road (through
+/// `crate::ros_args::argv_fallback`) all read through it.
+pub(crate) fn tier_rules<'r>(
+    table: &'r [Option<RemapRule>],
+    tier: RemapTier,
+    node_name: &'r str,
+    namespace: &'r str,
+) -> impl Iterator<Item = (&'r str, &'r str)> + 'r {
+    let ns = if namespace.is_empty() { "/" } else { namespace };
+    table
+        .iter()
+        .flatten()
+        .filter(move |r| r.applies(tier, node_name, ns))
+        .map(|r| (r.from.as_str(), r.to.as_str()))
 }
 
 /// The executor's halt flag, in the one shape each configuration can hold.
@@ -2502,11 +2556,11 @@ impl<'s> Executor<'s> {
     /// this rather than silently dropping a routing rule.
     ///
     /// **This declares an AUTHORITATIVE rule.** Declaration order settles
-    /// which of two launch rules for one name wins; it is not how a rule from
-    /// some OTHER channel would be ranked against a launch rule. That
-    /// precedence lives in [`crate::names::resolve_name_layered`], which the
-    /// resolution reads through, so a second channel cannot acquire authority
-    /// by calling this earlier.
+    /// which of two launch rules for one name wins; it is not how an argv rule
+    /// is ranked against a launch rule. The `--ros-args` rules share this table
+    /// but are tagged as the fallback tier, and resolution reads both tiers
+    /// through [`crate::names::resolve_name_layered`] — so an argv rule
+    /// installed BEFORE a launch rule still loses to it.
     #[allow(clippy::result_unit_err)]
     pub fn declare_remap(
         &mut self,
@@ -2520,6 +2574,7 @@ impl<'s> Executor<'s> {
             namespace: heapless::String::new(),
             from: heapless::String::new(),
             to: heapless::String::new(),
+            tier: RemapTier::Launch,
         };
         rule.node_name.push_str(node_name)?;
         let ns = if namespace.is_empty() { "/" } else { namespace };
@@ -2540,15 +2595,13 @@ impl<'s> Executor<'s> {
     /// wins). Nodes with no rules still get expansion. Errors on an
     /// unexpandable name (see `crate::names::expand_name`).
     ///
-    /// Every rule in this table is AUTHORITATIVE: it was projected from the
-    /// launch file by `nros sync` into the generated entry, which declares it
-    /// before the component configure. It goes to
-    /// [`crate::names::resolve_name_layered`]'s authoritative tier, and the
-    /// fallback tier is empty because no second remap channel has a producer
-    /// yet — that is where the `--ros-args` parse would arrive
-    /// (`init.json`'s `rust:init_with_args`). See that function for the
-    /// precedence rule and for why the tier is an argument there rather than a
-    /// field on `RemapRule`.
+    /// Two tiers, through [`crate::names::resolve_name_layered`]: the rules
+    /// [`Self::declare_remap`] recorded for this node are AUTHORITATIVE (the
+    /// generated entry declares the launch projection there), and the
+    /// `--ros-args` rules `crate::ros_args::install_argv_remaps` put in the
+    /// same table are the FALLBACK, consulted only when no launch rule
+    /// matched. rcl does the same with its local and global arguments
+    /// (`rcl_remap_topic_name`, Humble `rcl/remap.h`).
     #[allow(clippy::result_unit_err)]
     pub fn resolve_entity_name_for(
         &self,
@@ -2557,17 +2610,13 @@ impl<'s> Executor<'s> {
         source: &str,
     ) -> Result<crate::names::ResolvedName, ()> {
         let ns = if namespace.is_empty() { "/" } else { namespace };
-        let launch_rules = self.remap_table[..self.remap_len]
-            .iter()
-            .flatten()
-            .filter(|r| r.node_name.as_str() == node_name && r.namespace.as_str() == ns)
-            .map(|r| (r.from.as_str(), r.to.as_str()));
+        let table = &self.remap_table[..self.remap_len];
         crate::names::resolve_name_layered(
             source,
             node_name,
             ns,
-            launch_rules,
-            core::iter::empty::<(&str, &str)>(),
+            tier_rules(table, RemapTier::Launch, node_name, ns),
+            tier_rules(table, RemapTier::Argv, node_name, ns),
         )
     }
 
@@ -3799,6 +3848,23 @@ impl<'s> Executor<'s> {
         }
     }
 
+    /// [`Self::session_at_mut`] plus a shared borrow of the remap table, for
+    /// building a [`NodeHandle`] — which needs both at once, and gets them
+    /// here as two disjoint field borrows rather than through two `&mut self`
+    /// calls the borrow checker could not split.
+    pub(crate) fn session_and_remaps_at_mut(
+        &mut self,
+        idx: u8,
+    ) -> Option<(&mut session::ConcreteSession, &[Option<RemapRule>])> {
+        let remaps = &self.remap_table[..self.remap_len];
+        let session = if idx == 0 {
+            Some(&mut *self.session)
+        } else {
+            self.extra_sessions.get_mut((idx - 1) as usize)
+        };
+        session.map(|s| (s, remaps))
+    }
+
     /// Phase 104.C.9.b — resolve the per-Node session for direct
     /// entity creation paths (C++ FFI publisher / subscription /
     /// service that bypass the `register_*_on` arena dispatch).
@@ -4311,8 +4377,8 @@ impl<'s> Executor<'s> {
         let age_monitors = self.age_table;
         let epoch = self.epoch_us_fn;
         let domain_id = self.domain_id;
-        let session = self
-            .session_at_mut(session_idx)
+        let (session, remaps) = self
+            .session_and_remaps_at_mut(session_idx)
             .ok_or(NodeError::BackendMismatch)?;
         // SAFETY: short-lived scoped reference. `Node::new` takes
         // `&mut ConcreteSession`; lifetime is bound to this fn's
@@ -4325,7 +4391,7 @@ impl<'s> Executor<'s> {
         // about, one constructor over: `loan_e2e` publishes through a handle and
         // subscribes through the arena, so it delivered on domain 0 and on
         // nothing else.
-        let mut node = NodeHandle::new(name, ns, session, domain_id);
+        let mut node = NodeHandle::new(name, ns, session, remaps, domain_id);
         // RFC-0052 W3b.4/.5 — seed the baked monitor tables so contracted
         // publishers/subscribers attach their cells without entry glue.
         node.set_monitors(monitors);
@@ -4429,6 +4495,7 @@ impl<'s> Executor<'s> {
             node_name,
             self.namespace.clone(),
             &mut self.session,
+            &self.remap_table[..self.remap_len],
             domain_id,
         );
         node.set_monitors(self.monitor_table);
@@ -4504,8 +4571,8 @@ impl<'s> Executor<'s> {
         let age_monitors = self.age_table;
         let epoch = self.epoch_us_fn;
         let domain_id = self.domain_id;
-        let session = self
-            .session_at_mut(session_idx)
+        let (session, remaps) = self
+            .session_and_remaps_at_mut(session_idx)
             .ok_or(NodeError::NodeTableFull)?;
         // issue 0801 (second half) — the executor's domain, NOT a literal 0.
         // 429d5a581 fixed the ELEVEN arena `TopicInfo`s and left the THREE
@@ -4515,7 +4582,7 @@ impl<'s> Executor<'s> {
         // about, one constructor over: `loan_e2e` publishes through a handle and
         // subscribes through the arena, so it delivered on domain 0 and on
         // nothing else.
-        let mut node = NodeHandle::new(node_name, namespace, session, domain_id);
+        let mut node = NodeHandle::new(node_name, namespace, session, remaps, domain_id);
         node.set_monitors(monitors);
         node.set_age_monitors(age_monitors, epoch);
         Ok(node)

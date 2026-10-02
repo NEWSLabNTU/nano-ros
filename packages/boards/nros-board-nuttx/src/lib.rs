@@ -427,8 +427,9 @@ macro_rules! println {
 /// 4. Build a [`nros_platform::RuntimeCtx`]. Today this is the
 ///    [`nros_platform::RuntimeCtx::with_runtime`] placeholder; the codegen
 ///    road populates `params` / `remaps` from the launch overlay, projected
-///    into the generated entry at BUILD time. There is no `--ros-args` CLI
-///    parse on any road — `nros::init_with_args` refuses the flag.
+///    into the generated entry at BUILD time. A board image reads no argv:
+///    the `--ros-args` parse (`nros::init_with_args`) serves a HOSTED `main`
+///    that builds its own `Context`, which this entry does not.
 /// 5. Invoke `setup(&mut runtime)` and **return its result**.
 ///
 /// ## Why this does not diverge

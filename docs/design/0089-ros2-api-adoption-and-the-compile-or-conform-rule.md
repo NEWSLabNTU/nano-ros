@@ -3583,7 +3583,7 @@ impl Context {
     pub fn from_env(o: InitOptions) -> Result<Context, InitError>;  // + domain override
     #[cfg(feature = "env")]
     pub fn new(args: impl IntoIterator<Item = String>, o: InitOptions) -> Result<Context, InitError>;
-                                                                    // refuses --ros-args loudly; absent freestanding
+                                                                    // honours -r, refuses other --ros-args loudly; absent freestanding
     #[cfg(feature = "alloc")]
     pub fn create_executor(&self) -> Result<Executor<'static>, InitError>;
     pub fn create_executor_in<'b>(&self, backing: &'b mut [MaybeUninit<u64>]) -> Result<Executor<'b>, InitError>;
@@ -3600,7 +3600,7 @@ pub fn init() -> Result<Context, InitError>;   // stays: the C++-symmetric ancho
 | --- | --- | --- |
 | `Context::default_from_env` | same | `adopt`; source bounded on freestanding, stated in the row |
 | `Context::from_env(InitOptions)` | same, domain only | `adopt-bounded` |
-| `Context::new(args, InitOptions)` | same hosted, refuses `--ros-args` at run time | `adopt-bounded` hosted, `absent` freestanding (no argv) |
+| `Context::new(args, InitOptions)` | same hosted; parses `--ros-args`, honours `-r`/`--remap` as the fallback beneath launch remaps, refuses every other ROS argument at run time (phase-467 Row 11) | `adopt-bounded` hosted, `absent` freestanding (no argv) |
 | `Context::create_executor` | returns `Result`, `alloc` only | `adopt-bounded` |
 | `create_executor_in` | ours | `extension` |
 | `Executor::create_node` | same | `adopt` |

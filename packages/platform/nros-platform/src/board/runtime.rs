@@ -6,9 +6,9 @@
 //!
 //! - **params** — `(key, value)` pairs from launch XML
 //!   `<param name="…" value="…"/>`, projected here by `nros sync` at BUILD
-//!   time. NOT from `--ros-args -p k:=v`: nothing in this process parses
-//!   argv, and `nros::init_with_args` refuses `--ros-args` rather than
-//!   pretending to honour it.
+//!   time. NOT from `--ros-args -p k:=v`: a generated entry reads no argv,
+//!   and the hosted `nros::init_with_args` parse refuses `-p` rather than
+//!   pretending to honour it (runtime parameters are RFC-0015 §9's channel).
 //! - **remaps** — `(from, to)` topic/service renames, from launch
 //!   `<remap from= to=/>` by the same build-time projection.
 //! - **env** — environment-style key/value pairs (POSIX `getenv`
@@ -229,10 +229,9 @@ pub struct RuntimeCtx<'a> {
     /// `<param name=… value=…/>` from launch XML, baked here by
     /// `nros::main!` from the resolved model at BUILD time.
     ///
-    /// NOT `-p name:=value` CLI overrides: no argv parser exists on any road
-    /// (`nros::init_with_args` refuses `--ros-args` loudly instead), so launch
-    /// is the only producer. See `nros_node::names::resolve_name_layered` for
-    /// the precedence a second channel would have to be given.
+    /// NOT `-p name:=value` CLI overrides: a generated entry reads no argv,
+    /// and the hosted `nros::init_with_args` parse refuses `-p` loudly, so
+    /// launch is the only producer of these.
     pub params: &'a [(&'a str, &'a str)],
 
     /// Topic / service / action remaps: `(from, to)`, set per component by
@@ -244,8 +243,9 @@ pub struct RuntimeCtx<'a> {
     ///
     /// These are AUTHORITATIVE rules: `ExecutorSink::create_entity` passes
     /// them as `nros_node::names::resolve_name_layered`'s authoritative tier,
-    /// so a rule from any future second channel can only apply to a name the
-    /// launch projected no rule for.
+    /// beneath which the executor's `--ros-args` rules (installed by a hosted
+    /// `nros::Context`) can only apply to a name the launch projected no rule
+    /// for.
     pub remaps: &'a [(&'a str, &'a str)],
 
     /// Environment-style key/value pairs (mostly POSIX). Empty on
