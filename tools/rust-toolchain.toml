@@ -3,7 +3,10 @@
 # `-Z emit-stack-sizes` in `scripts/stack-analysis.sh`, and nightly-only
 # target adds (e.g. `thumbv7m-none-eabi`, `armv7a-nuttx-eabi`).
 #
-# The root `rust-toolchain.toml` stays on stable for the workspace build.
+# The root `rust-toolchain.toml` carries the workspace build toolchain. It is
+# PINNED TO A VERSION too since issue 1447 (2026-10-01) — it used to say
+# `stable`, and the day that channel moved it took `main` red for everyone. So
+# both files now pin, and both bumps are commits someone makes deliberately.
 # Recipes that need nightly read this file's channel via awk and pass it
 # as `+<channel>`, so the version lives only here.
 #
