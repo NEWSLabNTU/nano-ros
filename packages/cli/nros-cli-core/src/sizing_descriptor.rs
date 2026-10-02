@@ -542,7 +542,7 @@ fn endpoint_rows(
             // both inventories key on `(kind, type, topic)`. Skipping it would
             // be an under-report, so it is counted as undeclared instead, by
             // being absent from a table whose `undeclared_endpoints` says so.
-            let (Some(ty), Some(topic)) = (d.type_name.as_deref(), d.name.as_deref()) else {
+            let (Some(ty), Some(topic)) = (d.type_name.as_deref(), d.topic()) else {
                 continue;
             };
             rows.push(endpoint_row(kind, ty, topic, d, inputs, target));
@@ -622,7 +622,7 @@ fn tl_rows(
                 Some(v) => nros_sizing_descriptor::Fact::Stated(v),
                 None => nros_sizing_descriptor::Fact::Absent,
             },
-            topic: d.name.as_deref().unwrap_or("<unnamed>"),
+            topic: d.topic().unwrap_or("<unnamed>"),
             type_name: d.type_name.as_deref().unwrap_or("<untyped>"),
         })
     })
@@ -2201,6 +2201,53 @@ mod tests {
         d.history = Some(QoSHistoryPolicy::KeepLast);
         d.in_place_capable = in_place_capable;
         d
+    }
+
+    /// Issue 1602 -- on the metadata-PROBE road a subscription's `id` is its
+    /// CALLBACK name, and the row's `topic` must be the topic it registers on.
+    ///
+    /// Goes through the real probe reader (`declaration_from_probe`) rather than
+    /// hand-building the row, because the defect was the two halves disagreeing
+    /// about which field holds the topic: the reader carries it in
+    /// `source_topic`, and the writer read `name`. Measured before the fix on
+    /// `examples/esp32-c3-baremetal/rust/listener`: `topic = "on_chatter"`.
+    #[test]
+    fn a_probe_road_subscription_row_names_its_topic_not_its_callback() {
+        let (_, _, declaration) = crate::leaf_entity_env::declaration_from_probe(
+            r#"{"package":"listener","component":"listener","nodes":[{"id":"listener",
+                "subscribers":[{"id":"on_chatter",
+                  "unresolved_topic":{"value":"/chatter","kind":"absolute"},
+                  "interface":{"package":"std_msgs","name":"msg/String","kind":"message"}}],
+                "publishers":[{"id":"/echo",
+                  "unresolved_topic":{"value":"/echo","kind":"absolute"},
+                  "interface":{"package":"std_msgs","name":"msg/String","kind":"message"}}]}]}"#,
+        )
+        .unwrap();
+        let mut inv = EntityInventory::new("metadata");
+        inv.insert(ComponentEntities {
+            pkg: "listener".into(),
+            component: "listener".into(),
+            class: "Listener".into(),
+            declaration,
+        });
+        let desc = build(&base(&inv));
+        let topics: Vec<(EndpointKind, &str)> = desc
+            .endpoints
+            .iter()
+            .map(|e| (e.kind, e.topic.as_str()))
+            .collect();
+        assert!(
+            topics.contains(&(EndpointKind::Subscription, "/chatter")),
+            "{topics:?}"
+        );
+        assert!(
+            topics.contains(&(EndpointKind::Publisher, "/echo")),
+            "{topics:?}"
+        );
+        assert!(
+            !topics.iter().any(|(_, t)| *t == "on_chatter"),
+            "a callback name is not a topic: {topics:?}"
+        );
     }
 
     /// Issue 1378 — the adapter answers with the DESCRIPTOR's rule, over rows a
