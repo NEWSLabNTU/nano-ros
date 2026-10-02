@@ -134,10 +134,52 @@ TEMPLATE_DIRS = [
 # the identifiers live INSIDE string literals, which is the exact opposite of
 # how a runtime source is read.
 EMITTER_SRC = "packages/cli/rosidl-codegen/src"
-RUST_RUNTIME = [
-    ("nros_core", "packages/core/nros-core/src"),
-    ("nros_serdes", "packages/core/nros-serdes/src"),
-]
+# issue 1616 (W7): the Rust runtime crates are HARVESTED from what the
+# templates name (`nros_rmw::register_type_descriptor` lived outside the
+# authored `nros_core` / `nros_serdes` pair, so its signature could move with
+# no codegen bump). Each harvested crate must resolve to a tracked Cargo
+# package, or be exempt here with a reason (`scripts/lib/harvest.py` fails a
+# stale or reason-less row).
+RUST_CRATE_EXEMPT = {
+    "nros_rmw_cyclonedds": "named only in a `#` comment of a CMake template "
+                           "(`nros_rmw_cyclonedds::register::<M>()`), never emitted as code",
+}
+_RUST_PATH = re.compile(r"(?<![A-Za-z0-9_])(?:::)?(nros_[a-z0-9_]+)::")
+
+
+def harvested_rust_crates(text=None):
+    text = template_text() if text is None else text
+    return sorted(set(_RUST_PATH.findall(text)))
+
+
+def rust_runtime(text=None, errors=None):
+    """[(crate, src dir)] for every runtime crate generated code names."""
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+    import harvest
+
+    names, problems = harvest.reconcile(harvested_rust_crates(text), RUST_CRATE_EXEMPT,
+                                        what="runtime crate")
+    dirs = {}
+    for toml in subprocess.run(["git", "-C", ROOT, "ls-files", "*/Cargo.toml"],
+                               capture_output=True, text=True, check=True).stdout.split():
+        if "/third-party/" in toml or "/generated/" in toml:
+            continue
+        m = re.search(r'^name\s*=\s*"([^"]+)"', open(os.path.join(ROOT, toml)).read(), re.M)
+        if m:
+            dirs.setdefault(m.group(1).replace("-", "_"), os.path.dirname(toml) + "/src")
+    out = []
+    for n in names:
+        if n in dirs:
+            out.append((n, dirs[n]))
+        else:
+            problems.append(f"generated code names `{n}::` and no tracked crate is called that")
+    if errors is not None:
+        errors.extend(problems)
+    elif problems:
+        raise SystemExit("codegen-version-surface: " + "; ".join(problems))
+    return out
+
+
 C_RUNTIME = "packages/api/nros-c/include/nros"
 CPP_RUNTIME = "packages/api/nros-cpp/include/nros"
 
@@ -314,14 +356,15 @@ def demand(text=None):
     text = template_text() if text is None else text
     rust, c, cpp, prefixes = set(), set(), set(), set()
 
-    for m in re.finditer(r"use\s+(?:::)?(nros_core|nros_serdes)::\{([^}]*)\}", text):
+    crates = "|".join(re.escape(c) for c in harvested_rust_crates(text)) or "nros_core|nros_serdes"
+    for m in re.finditer(r"use\s+(?:::)?(" + crates + r")::\{([^}]*)\}", text):
         for part in m.group(2).split(","):
             part = part.strip()
             if part:
                 rust.add(part)
-    for m in re.finditer(r"use\s+(?:::)?(nros_core|nros_serdes)::([A-Za-z_][A-Za-z0-9_]*)\s*;", text):
+    for m in re.finditer(r"use\s+(?:::)?(" + crates + r")::([A-Za-z_][A-Za-z0-9_]*)\s*;", text):
         rust.add(m.group(2))
-    for m in re.finditer(r"(?:::)?(?:nros_core|nros_serdes)::((?:[A-Za-z_][A-Za-z0-9_]*::)*[A-Za-z_][A-Za-z0-9_]*)",
+    for m in re.finditer(r"(?:::)?(?:" + crates + r")::((?:[A-Za-z_][A-Za-z0-9_]*::)*[A-Za-z_][A-Za-z0-9_]*)",
                          text):
         for seg in m.group(1).split("::"):
             rust.add(seg)
@@ -426,7 +469,7 @@ def rust_files(rel):
 def rust_surface(wanted, prefixes):
     """Declarations in the Rust runtime for the names generated code writes."""
     out = {}
-    for crate, rel in RUST_RUNTIME:
+    for crate, rel in rust_runtime():
         for path in rust_files(rel):
             with open(path, encoding="utf8") as fh:
                 text = _drop_test_mods(sanitize(fh.read(), rust=True))
@@ -826,6 +869,10 @@ def self_test(quiet=False):
     The pair that actually tests the SURFACE DEFINITION is the last one: a
     cosmetic edit must NOT move a digest, and a signature edit MUST.
     """
+    # issue 1616: a crate the templates name joins the runtime set, and its
+    # items join the demand — no authored list to forget it on.
+    assert harvested_rust_crates("x = ::nros_rmw::register_type_descriptor(a);\nuse nros_serdes::{Cdr};") == ["nros_rmw", "nros_serdes"]
+    assert "register_type_descriptor" in demand("::nros_rmw::register_type_descriptor(a);")[0]
     base = {"rust|trait|nros_core::Serialize": digest("pub trait Serialize { fn serialize; }")}
     surf = {"rust|trait|nros_core::Serialize": "pub trait Serialize { fn serialize; }"}
 

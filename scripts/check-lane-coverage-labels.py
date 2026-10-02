@@ -46,6 +46,28 @@ PR_TIER_CLAIMS = (
 )
 
 
+# issue 1616 (W7): the claim is a SHAPE, not a list of phrases — a clause that
+# names the compile tier (or "full") AND a pull request. The authored phrase
+# list missed "full compile tier for every PR".
+_TIER = re.compile(r"\b(full|compile[\s-]+tier)\b", re.I)
+_PR = re.compile(r"\b(PRs?|pull[\s-]+requests?)\b", re.I)
+_NEG = re.compile(r"\b(not|never|no|except|only\s+on\s+(?:nightly|schedule|push|manual))\b", re.I)
+
+
+def pr_tier_claims(blob: str) -> list[str]:
+    """Clauses of `blob` that claim the compile tier runs on a pull request."""
+    out = []
+    for clause in re.split(r"[;.\n]|\s+-{1,2}\s+|—", blob):
+        c = clause.strip(" #()")
+        if _TIER.search(c) and _PR.search(c) and not _NEG.search(c):
+            out.append(c)
+    for pat in PR_TIER_CLAIMS:
+        m = re.search(pat, blob, re.I)
+        if m and m.group(0) not in " ".join(out):
+            out.append(m.group(0))
+    return out
+
+
 def build_step_events(text: str) -> set[str] | None:
     """Events the `just check build` step runs on, measured from its `if:`."""
     m = re.search(
@@ -84,11 +106,10 @@ def scan(text: str) -> list[str]:
     out: list[str] = []
     name = check_job_name(text)
     for where, blob in (("the `check` job's `name:`", name or ""), ("the workflow header", header(text))):
-        for pat in PR_TIER_CLAIMS:
-            m = re.search(pat, blob, re.I)
-            if m:
+        for claim in pr_tier_claims(blob):
+            if claim:
                 out.append(
-                    f"gate.yml: {where} claims {m.group(0)!r}, but `just check "
+                    f"gate.yml: {where} claims {claim!r}, but `just check "
                     f"build` runs only on {sorted(events)} — never on a pull "
                     f"request (issue 1514).\n"
                     f"    A PR gets `check compile-smoke`, not the tier. Say that, "
@@ -109,6 +130,10 @@ def self_test() -> None:
         "NEGATIVE CONTROL FAILED: a job name claiming 'full on PR' was accepted "
         "while `just check build` excludes pull_request — that is issue 1514"
     )
+
+    assert scan(good.replace(check_job_name(good) or "", "check (fast + full compile tier for every PR)", 1)), \
+        "NEGATIVE CONTROL FAILED: 'full compile tier for every PR' was accepted (issue 1616)"
+    assert not pr_tier_claims("check (fast + PR source gates; full compile tier on nightly/manual)")
 
     bad_hdr = good.replace(
         "# nano-ros", "# the compile tier runs on PR + nightly only\n# nano-ros", 1

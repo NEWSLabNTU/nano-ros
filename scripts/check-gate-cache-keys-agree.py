@@ -110,6 +110,30 @@ def cache_entries(body):
     return out
 
 
+def restore_only_keys(body):
+    """Keys a job RESTORES with `actions/cache/restore` (no save of its own)."""
+    out = []
+    for m in re.finditer(
+        r"uses:\s*actions/cache/restore@[^\n]*\n(.*?)(?=\n\s*- name:|\Z)", body, re.S
+    ):
+        key = re.search(r"^\s*key:\s*(.+)$", m.group(1), re.M)
+        if key:
+            out.append(key.group(1).strip())
+    return out
+
+
+def produced_keys(body):
+    """Keys a job WRITES: `actions/cache` (restores and saves) or `/save`."""
+    out = set()
+    for m in re.finditer(
+        r"uses:\s*actions/cache(?:/save)?@[^\n]*\n(.*?)(?=\n\s*- name:|\Z)", body, re.S
+    ):
+        key = re.search(r"^\s*key:\s*(.+)$", m.group(1), re.M)
+        if key:
+            out.add(key.group(1).strip())
+    return out
+
+
 def self_test():
     t = (
         "jobs:\n"
@@ -133,6 +157,9 @@ def self_test():
         cache_entries(js["b"]),
     )
     assert cache_entries(js["a"])[0][1] == "k-1"
+    # issue 1616: a restore-only key nobody writes is caught; a written one is not.
+    assert restore_only_keys(js["a"]) == ["k-1"] and produced_keys(js["b"]) == {"k-1"}
+    assert produced_keys(js["a"]) == set(), "a restore-only step writes nothing"
 
     # A restore step (with `restore-keys:`) and a save step (without) for the
     # SAME multi-line `path: |` + `key:` must parse to the SAME entry — this
@@ -199,6 +226,19 @@ def main():
                 % (consumer, warmer, len(ce), len(we))
             )
             continue
+        # issue 1616 (W7): the CONSUMER direction too. A restore-only step whose
+        # key neither the warmer nor the consumer itself ever writes restores
+        # nothing, forever — and a one-way check (warmer -> consumer) let one
+        # be added with the gate green.
+        written = produced_keys(js[warmer]) | produced_keys(js[consumer])
+        for key in restore_only_keys(js[consumer]):
+            checked += 1
+            if key not in written:
+                problems.append(
+                    "`%s` restores key\n      %s\n    which neither `%s` nor `%s` ever "
+                    "saves (%s). A restore of a key nobody writes is a cache miss on "
+                    "every run that reads as a cold cache." % (consumer, key, warmer, consumer, what)
+                )
         for key, paths in we.items():
             checked += 1
             if key not in ce:

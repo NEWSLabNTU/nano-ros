@@ -40,6 +40,31 @@ MODEL = "packages/cli/nros-cli-core/src/entity_inventory.rs"
 SPIN = "packages/core/nros-node/src/executor/spin.rs"
 ACTION = "packages/core/nros-node/src/executor/action.rs"
 C_API = "packages/api/nros-c/src/executor.rs"
+# issue 1616 (W7): the claiming files are HARVESTED from the crate that owns
+# the executor — every `.rs` under it — not the authored SPIN/ACTION pair. An
+# `impl Executor` block in `executor/mod.rs` claiming a slot was invisible.
+EXECUTOR_CRATE_SRC = "packages/core/nros-node/src"
+
+
+def claim_files(root):
+    if os.path.abspath(root) == ROOT:
+        import subprocess
+        ls = subprocess.run(["git", "-C", ROOT, "ls-files", "--", EXECUTOR_CRATE_SRC],
+                            capture_output=True, text=True, check=True).stdout.split()
+        return sorted(p for p in ls if p.endswith(".rs"))
+    base = os.path.join(root, EXECUTOR_CRATE_SRC)
+    out = []
+    for d, _dirs, files in os.walk(base):  # walk-ok: the selftest's temp root has no git index
+        for f in files:
+            if f.endswith(".rs"):
+                out.append(os.path.relpath(os.path.join(d, f), root))
+    return sorted(out)
+
+
+def _code(text):
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+    import comments
+    return comments.strip_comments(text, "rust")
 
 # fn-name fragment -> entity kind, IN ORDER. `service_client` must be tried
 # before `service`, and both action kinds before either, or a client is
@@ -153,9 +178,9 @@ def check(root):
         )
 
     sites = []
-    for rel in (SPIN, ACTION):
+    for rel in claim_files(root):
         try:
-            sites.extend(claiming_fns(read(root, rel)))
+            sites.extend(claiming_fns(_code(read(root, rel))))
         except OSError as e:
             problems.append(f"cannot read {rel}: {e}")
     if not sites:
@@ -347,6 +372,11 @@ pub unsafe extern "C" fn nros_executor_add_publisher() {
         ((0, pub_site, ""), 1, "a publisher registration started claiming a slot"),
         ((0, unknown_site, ""), 1, "an unclassifiable registration claims a slot"),
         ((0, "", c_pub), 1, "the C API started counting a publisher as a handle"),
+        ((0, "", "", "impl Executor {" + pub_site + "}\n"), 1,
+         "a claim in ANOTHER executor file (issue 1616)"),
+        ((0, "", "", "impl Executor {\n    // let s = self.next_entry_slot()?;\n"
+          "    pub fn register_publisher_x(&mut self) {}\n}\n"), 0,
+         "a commented claim is not a claim"),
     ]
     failures = 0
     tmp = tempfile.mkdtemp()
@@ -354,7 +384,11 @@ pub unsafe extern "C" fn nros_executor_add_publisher() {
         for args, want, label in cases:
             root = os.path.join(tmp, "t")
             shutil.rmtree(root, ignore_errors=True)
-            _write(root, *args)
+            _write(root, *args[:3])
+            if len(args) > 3:
+                extra = os.path.join(root, EXECUTOR_CRATE_SRC, "executor", "mod.rs")
+                with open(extra, "w", encoding="utf8") as fh:
+                    fh.write(args[3])
             got = 1 if check(root) else 0
             if got != want:
                 sys.stderr.write(f"  self-test FAIL: {label} - got {got}, want {want}\n")
@@ -380,7 +414,7 @@ def main():
             sys.stderr.write(f"  - {p}\n")
         sys.exit(1)
     costs = declared_costs(read(ROOT, MODEL))
-    sites = claiming_fns(read(ROOT, SPIN)) + claiming_fns(read(ROOT, ACTION))
+    sites = [f for rel in claim_files(ROOT) for f in claiming_fns(_code(read(ROOT, rel)))]
     claiming = sorted({classify(f) for f in sites})
     print(f"  ok    {len(sites)} registration site(s) claim a callback slot")
     print(f"  ok    claiming kinds: {', '.join(claiming)}")

@@ -71,13 +71,24 @@ ROOT = Path(__file__).resolve().parent.parent
 # caught, and it is why the entry stays a name.
 PRODUCERS: list[tuple[str, str, str]] = [
     # (glob, marker that proves a session name is passed, human name)
-    (
-        "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/"
-        "boot_wrapper.jinja",
-        "nros_boot_config_node_name",
-        "the shared entry pack's boot wrapper",
-    ),
+    #
+    # issue 1616 (W7): HARVESTED, not authored. Every entry-pack template that
+    # emits a runner call is a producer — the C boot wrapper emits the same
+    # `run_components` / `run_tiers` calls as the C++ one and was not listed,
+    # so blanking its node name passed. `producer_globs()` derives the list.
 ]
+PACKS = "packages/cli/nros-cli-core/src/codegen/entry/packs"
+MARKER = "nros_boot_config_node_name"
+
+
+def producer_globs() -> list[tuple[str, str, str]]:
+    out = []
+    from tracked import tracked
+    for path in tracked(ROOT / PACKS, suffix=".jinja"):
+        if calls(code_only(path.read_text(encoding="utf8"))):
+            rel = str(path.relative_to(ROOT))
+            out.append((rel, MARKER, f"entry-pack template {rel}"))
+    return out
 
 
 def strip_tests(text: str) -> str:
@@ -126,7 +137,9 @@ def calls(blob: str) -> list[str]:
     `[^)]*` would stop at the inner close and silently read a truncated call —
     which is exactly the kind of check that passes while proving nothing."""
     out = []
-    for m in re.finditer(r"run_components\s*\(", blob):
+    # Both runners, and the jinja spelling of the callee
+    # (`{{ boot.runners.run_components }}(`) as well as the C++ one.
+    for m in re.finditer(r"\b(?:run_components|run_tiers)\s*(?:\}\})?\s*\(", blob):
         depth, i = 0, m.end() - 1
         while i < len(blob):
             if blob[i] == "(":
@@ -262,6 +275,12 @@ def self_test(quiet: bool = True) -> int:
     cases = [
         # (name, text, marker, is_rust, expect_violation)
         ("fixed kernel/app shape (3-arg)", _TPL_FIXED_KERNEL, "nros_boot_config_node_name", False, False),
+        ("C jinja runner, node name blanked (issue 1616)",
+         '{{ boot.runners.run_components }}("", nros_boot_config_namespace(&NROS_BOOT_CONFIG), &s)\n',
+         "nros_boot_config_node_name", False, True),
+        ("C jinja run_tiers with node name",
+         '{{ boot.runners.run_tiers }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), ns, t, 2u)\n',
+         "nros_boot_config_node_name", False, False),
         ("fixed host shape (2-arg)", _TPL_FIXED_HOST, "nros_boot_config_node_name", False, False),
         ("issue-1003 shape", _TPL_BROKEN, "nros_boot_config_node_name", False, True),
         ("rust string continuation", _RS_CONTINUATION, "nros_boot_config_node_name", True, False),
@@ -439,7 +458,12 @@ def main() -> int:
         )
         return 1
 
-    for glob, marker, label in PRODUCERS:
+    producers = PRODUCERS + producer_globs()
+    if not producers:
+        print(f"ERROR: no entry-pack template under {PACKS} emits a runner call — "
+              f"the harvest found nothing, so this gate is off.", file=sys.stderr)
+        return 2
+    for glob, marker, label in producers:
         paths = sorted(ROOT.glob(glob))
         if not paths:
             print(

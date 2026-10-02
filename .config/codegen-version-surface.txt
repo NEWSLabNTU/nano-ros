@@ -137,6 +137,7 @@ ef2d34463c53305d c|type|subscription.h|nros_message_type_t
 00560764c4419753 rust|enum|nros_serdes::DeserError
 f2f63bb6d001fbee rust|enum|nros_serdes::FieldType
 e298fca3b6a8d063 rust|enum|nros_serdes::SerError
+4ea79593fd321241 rust|fn|nros_rmw::register_type_descriptor
 e62f14fe540a7eae rust|method|nros_serdes::CdrReader::align
 330efd65d0a0d178 rust|method|nros_serdes::CdrReader::begin_dheader
 f6a177f294344afd rust|method|nros_serdes::CdrReader::end_dheader
@@ -208,6 +209,7 @@ b8d6b91fcebdd992 rust|reexport|nros_core|action::
 8a02d9e49c131476 rust|reexport|nros_core|nros_serdes::
 acedc58c8c253b6b rust|reexport|nros_core|time::
 3e8c91d37a454288 rust|reexport|nros_core|types::
+7af00a91420b0d4b rust|reexport|nros_rmw|type_descriptor::
 1e2ce90d8c437d47 rust|reexport|nros_serdes|cdr::
 8fd7fafa0e77df6a rust|reexport|nros_serdes|error::
 842caa50a45df29b rust|reexport|nros_serdes|schema::

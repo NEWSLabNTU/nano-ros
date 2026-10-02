@@ -68,6 +68,13 @@ CITE_RE = re.compile(
     % "|".join(EXTS)
 )
 # `W4.c`, `Q1.b`, `F2.md`: a work-item label, not a file.
+# Include roots of the upstream ROS 2 headers the ledger compares against —
+# a citation under one names THEIR file, which this tree does not carry.
+UPSTREAM_ROOTS = ("rclrs", "rclcpp", "rcl", "rmw", "rcutils", "rclcpp_action", "rcl_action",
+                  "rosidl_runtime_cpp", "rclc", "rclpy", "rcpputils",
+                  "rmw_dds_common", "rclcpp_lifecycle", "rcl_lifecycle", "lifecycle_msgs",
+                  "builtin_interfaces", "std_msgs", "action_msgs", "unique_identifier_msgs")
+UPSTREAM_ROOTS_RE = re.compile(r"(^|/)(%s)/" % "|".join(UPSTREAM_ROOTS))
 LABEL_RE = re.compile(r"^[A-Za-z]{1,2}\d+$")
 # The allow-list. Small on purpose: a sentence that says a file is gone may
 # name it; nothing else excuses a bare name that matches no tracked file.
@@ -154,6 +161,14 @@ def orphans_in(text, basenames, crates):
                     d = crates.get(seg)
                     if d is None or not (ROOT / d / rest).exists():
                         yield ("crate", path)
+                    continue
+                # issue 1616 (W7): a prefix that is neither a repo root nor one
+                # of our crates is not thereby UPSTREAM. `src/x.rs` was skipped
+                # as if it were an include path. Fall through to the bare check:
+                # the file must exist SOMEWHERE in the tree, or be named gone.
+                if name in basenames or GONE_RE.search(sentence) or UPSTREAM_ROOTS_RE.search(prefix):
+                    continue
+                yield ("prefixed", path)
                 continue
             if LABEL_RE.match(name.rsplit(".", 1)[0]):
                 continue
@@ -211,6 +226,8 @@ def self_test(basenames, crates):
                 "cpp:crate-live": {"why": "regenerates nros-rmw-cffi/src/generated.rs."},
                 "cpp:crate-orphan": {"why": "we had it in nros-core/src/error.rs then."},
                 "cpp:crate-gone-crate": {"why": "see nros-gone-crate/src/lib.rs for it."},
+                "cpp:prefixed-orphan": {"why": "see `src/rerun_missing_x.rs` -- it holds it."},
+                "cpp:prefixed-upstream": {"why": "upstream rclrs/src/never_here.rs does it."},
                 "cpp:other-sentence": {
                     "why": "`%s` still holds the profile. The shim was deleted." % dead
                 },
@@ -221,7 +238,7 @@ def self_test(basenames, crates):
     caught = {k for _, k, _, _ in hits}
     want = {
         "cpp:orphan", "cpp:bare-orphan", "cpp:bare-range", "cpp:nested", "cpp:other-sentence",
-        "cpp:crate-orphan", "cpp:crate-gone-crate",
+        "cpp:crate-orphan", "cpp:crate-gone-crate", "cpp:prefixed-orphan",
     }
     missed = want - caught
     assert not missed, "self-test: planted dead reference(s) not caught: %s" % sorted(missed)
