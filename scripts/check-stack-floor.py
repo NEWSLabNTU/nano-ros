@@ -131,7 +131,11 @@ def find_nm() -> str:
     nothing — and it shipped in a published conclusion. Hence: resolve
     explicitly, raise if absent.
     """
-    for name in ("riscv32-esp-elf-nm", "riscv64-unknown-elf-nm", "llvm-nm"):
+    # `riscv-none-elf-nm` first: it ships with the `riscv-none-elf-gcc` the
+    # esp32-c3 board DECLARES (issue 0399), so `nros setup` puts it on PATH
+    # wherever this gate's images are built. Leaving it out made the tier-2
+    # esp32 cell refuse on a self-hosted runner holding that very toolchain.
+    for name in ("riscv-none-elf-nm", "riscv32-esp-elf-nm", "riscv64-unknown-elf-nm", "llvm-nm"):
         found = shutil.which(name)
         if found:
             return found
@@ -141,7 +145,7 @@ def find_nm() -> str:
                 if os.access(cand, os.X_OK):
                     return str(cand)
     raise Failure(
-        "no RISC-V `nm` found (tried riscv32-esp-elf-nm, riscv64-unknown-elf-nm, "
+        "no RISC-V `nm` found (tried riscv-none-elf-nm, riscv32-esp-elf-nm, riscv64-unknown-elf-nm, "
         "llvm-nm, and ~/.espressif/tools/riscv32-esp-elf/*/riscv32-esp-elf/bin/).\n"
         "Refusing to report a verdict without one — a missing tool is not a pass."
     )
