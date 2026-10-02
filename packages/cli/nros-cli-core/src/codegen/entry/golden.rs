@@ -44,14 +44,22 @@ pub(super) enum Emitter {
     /// unguarded.
     CppProbe,
     C,
+    /// `emit_typed_monitored` through the C pack, with [`golden_monitor_rows`].
+    /// Its own variant for the reason `CppProbe` has one: the monitored emit
+    /// is a second entry point, and the plain `C` rows pass no rows, so the
+    /// monitor region (issue 1604) would otherwise reach no golden at all.
+    CMonitored,
+    /// The same rows through the C++ pack — the reference the C rows are read
+    /// against, side by side, since both install through one C ABI.
+    CppMonitored,
     Rust,
 }
 
 impl Emitter {
     fn ext(self) -> &'static str {
         match self {
-            Emitter::Cpp | Emitter::CppProbe => "cpp",
-            Emitter::C => "c",
+            Emitter::Cpp | Emitter::CppProbe | Emitter::CppMonitored => "cpp",
+            Emitter::C | Emitter::CMonitored => "c",
             Emitter::Rust => "rs",
         }
     }
@@ -390,6 +398,37 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
         Emitter::C,
     ));
 
+    // issue 1604 — the C pack dropped the model's contract monitor rows; these
+    // pin the C spelling of the region (file-scope rows + storage, an install
+    // before the first node) on both executor shapes, and the C++ rows beside
+    // them are the reference it mirrors.
+    let monitored_pair = || {
+        plan(
+            "native",
+            vec![
+                c_node("c_talker_pkg", "talker"),
+                c_node("c_listener_pkg", "listener"),
+            ],
+        )
+    };
+    out.push(("c_native_monitors", monitored_pair(), Emitter::CMonitored));
+    out.push((
+        "c_native_tiers_monitors",
+        c_tiered_plan("native"),
+        Emitter::CMonitored,
+    ));
+    out.push((
+        "cpp_native_monitors",
+        plan(
+            "native",
+            vec![
+                typed_node("talker_pkg", "talker"),
+                typed_node("listener_pkg", "listener"),
+            ],
+        ),
+        Emitter::CppMonitored,
+    ));
+
     out.push((
         "rust_native_one",
         plan("native", vec![node("talker_pkg", "talker", None)]),
@@ -639,8 +678,52 @@ fn render(p: &Plan, emitter: Emitter) -> Result<String, String> {
             },
         ),
         Emitter::C => super::emit::emit_typed(Lang::C, p),
+        Emitter::CMonitored | Emitter::CppMonitored => {
+            let (rows, ages) = golden_monitor_rows();
+            let lang = if emitter == Emitter::CMonitored {
+                Lang::C
+            } else {
+                Lang::Cpp
+            };
+            super::emit::emit_typed_monitored(lang, p, &rows, &ages)
+        }
         Emitter::Rust => super::emit_rust::emit(p),
     }
+}
+
+/// The contract monitor rows every `*Monitored` case renders with — one rate
+/// row and one age row per node the monitored plans construct (`talker` /
+/// `listener` single-executor, `ctrl` / `telem` tiered), plus one row for a
+/// node NO plan constructs, which the lowering must drop. The lowering slices
+/// by node, so each plan keeps exactly its own.
+fn golden_monitor_rows() -> (
+    Vec<crate::orchestration::model_ingest::MonitorRow>,
+    Vec<crate::orchestration::model_ingest::AgeRow>,
+) {
+    use crate::orchestration::model_ingest::{AgeRow, MonitorRow};
+    let rate = |topic: &str, fqn: &str, hz_milli: u32, lat: u32| MonitorRow {
+        topic: topic.into(),
+        fqn: fqn.into(),
+        min_rate_hz_milli: hz_milli,
+        max_latency_ms: lat,
+    };
+    let age = |topic: &str, fqn: &str, ms: u32| AgeRow {
+        topic: topic.into(),
+        fqn: fqn.into(),
+        max_age_ms: ms,
+    };
+    (
+        vec![
+            rate("/chatter", "/talker/chatter", 10_000, 30),
+            rate("/cmd", "/ctrl/cmd", 100_000, 5),
+            rate("/telemetry", "/telem/telemetry", 1_000, 0),
+            rate("/elsewhere", "/not_in_this_image/elsewhere", 1_000, 0),
+        ],
+        vec![
+            age("/chatter", "/listener/chatter", 150),
+            age("/cmd", "/telem/cmd", 50),
+        ],
+    )
 }
 
 /// Where the goldens live.

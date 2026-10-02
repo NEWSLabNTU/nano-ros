@@ -640,3 +640,175 @@ fn typed_emit_no_tiers_uses_plain_node_create() {
         "no-tier plan must use plain nros_cpp_node_create"
     );
 }
+
+// -----------------------------------------------------------------------
+// issue 1604 -- the contract monitor region, on the C road.
+//
+// phase-462 W1 baked the model's monitor rows into the C++ entry only; the C
+// pack received the same rows from the lowering (phase-474) and rendered none,
+// so a pure-C image with declared contracts ran unmonitored and said nothing.
+// These are `tests_cpp.rs`'s monitor tests, asked of the C pack.
+// -----------------------------------------------------------------------
+
+use crate::orchestration::model_ingest::{AgeRow, MonitorRow, render_monitor_rs};
+
+fn emit_typed_monitored(
+    plan: &Plan,
+    monitors: &[MonitorRow],
+    ages: &[AgeRow],
+) -> Result<String, String> {
+    super::emit_typed_monitored(Lang::C, plan, monitors, ages)
+}
+
+fn c_monitor_fixture_rows() -> (Vec<MonitorRow>, Vec<AgeRow>) {
+    (
+        vec![MonitorRow {
+            topic: "/chatter".into(),
+            fqn: "/talker/chatter".into(),
+            min_rate_hz_milli: 10_000,
+            max_latency_ms: 30,
+        }],
+        vec![AgeRow {
+            topic: "/chatter".into(),
+            fqn: "/listener/chatter".into(),
+            max_age_ms: 150,
+        }],
+    )
+}
+
+/// The C entry bakes the SAME rows the Rust road renders into
+/// `system_monitors.rs`, field for field, and installs them on the setup's
+/// executor before the first node exists.
+#[test]
+fn typed_emit_bakes_monitor_table_before_nodes() {
+    let plan = fixture_plan(&[("talker_pkg", "talker"), ("listener_pkg", "listener")]);
+    let (rows, ages) = c_monitor_fixture_rows();
+    let src = emit_typed_monitored(&plan, &rows, &ages).expect("monitored C emit ok");
+    let rust = render_monitor_rs(&rows, &ages);
+
+    for r in &rows {
+        let c_row = format!(
+            "{{ \"{}\", \"{}\", {}u, {}u }},",
+            r.topic, r.fqn, r.min_rate_hz_milli, r.max_latency_ms
+        );
+        let rust_row = format!(
+            "topic: {:?}, fqn: {:?}, min_rate_hz_milli: {}u32, max_latency_ms: {}u32",
+            r.topic, r.fqn, r.min_rate_hz_milli, r.max_latency_ms
+        );
+        assert!(src.contains(&c_row), "C row `{c_row}` missing; src:\n{src}");
+        assert!(rust.contains(&rust_row), "Rust row `{rust_row}` missing");
+    }
+    for a in &ages {
+        let c_row = format!("{{ \"{}\", \"{}\", {}u }},", a.topic, a.fqn, a.max_age_ms);
+        assert!(
+            src.contains(&c_row),
+            "C age row `{c_row}` missing; src:\n{src}"
+        );
+    }
+    assert!(
+        src.contains("static const nros_cpp_monitor_row_t __nros_mon_rows[1] = {"),
+        "{src}"
+    );
+    assert!(
+        src.contains("static const nros_cpp_age_row_t __nros_age_rows[1] = {"),
+        "{src}"
+    );
+    // 8-aligned storage without C11 `_Alignas`, sized from the ABI's own
+    // per-row constant.
+    assert!(
+        src.contains(
+            "static uint64_t __nros_mon_storage[(1u * NROS_CPP_MONITOR_ROW_STORAGE + 7u) / 8u];"
+        ),
+        "{src}"
+    );
+    assert!(
+        src.contains(".n_rows = 1u,") && src.contains(".n_ages = 1u,"),
+        "{src}"
+    );
+    // Installed on the setup's own executor, and checked: a refused install
+    // (a table over `NROS_EXECUTOR_MAX_MONITORS`) aborts setup rather than
+    // running unmonitored.
+    assert!(
+        src.contains("nros_cpp_install_monitors(executor, &mtables);"),
+        "{src}"
+    );
+    assert!(
+        src.contains("if (mret != NROS_CPP_RET_OK) return (int32_t)mret;"),
+        "{src}"
+    );
+    let install_at = src.find("nros_cpp_install_monitors(").unwrap();
+    let create_at = src.find("nros_cpp_node_create(").unwrap();
+    assert!(
+        install_at < create_at,
+        "install must precede node create:\n{src}"
+    );
+}
+
+/// RFC-0052's zero-cost claim, on the C road: no rows, no table, no call --
+/// and the TU is byte-identical to the unmonitored emit (the goldens).
+#[test]
+fn typed_emit_no_monitor_rows_is_byte_identical() {
+    let plan = fixture_plan(&[("talker_pkg", "talker")]);
+    let plain = emit_typed(&plan).expect("emit ok");
+    let monitored = emit_typed_monitored(&plan, &[], &[]).expect("emit ok");
+    assert_eq!(plain, monitored);
+    assert!(!plain.contains("nros_cpp_install_monitors"), "{plain}");
+    assert!(!plain.contains("nros_cpp_monitor_row_t"), "{plain}");
+
+    // A row for a node this entry does not construct is not this entry's.
+    let (rows, ages) = c_monitor_fixture_rows();
+    let only_talker = emit_typed_monitored(&plan, &rows, &ages).expect("emit ok");
+    assert!(only_talker.contains("\"/talker/chatter\""), "{only_talker}");
+    assert!(
+        !only_talker.contains("\"/listener/chatter\""),
+        "{only_talker}"
+    );
+    assert!(
+        only_talker.contains(".ages = NULL,") && only_talker.contains(".n_ages = 0u,"),
+        "{only_talker}"
+    );
+}
+
+/// run_tiers shape: each tier installs ITS nodes' rows on ITS executor.
+#[test]
+fn typed_emit_tiers_slice_monitor_rows_per_tier() {
+    let plan = fixture_plan_with_tiers();
+    let rows = vec![
+        MonitorRow {
+            topic: "/cmd".into(),
+            fqn: "/ctrl/cmd".into(),
+            min_rate_hz_milli: 100_000,
+            max_latency_ms: 5,
+        },
+        MonitorRow {
+            topic: "/telemetry".into(),
+            fqn: "/telem/telemetry".into(),
+            min_rate_hz_milli: 1_000,
+            max_latency_ms: 0,
+        },
+    ];
+    let src = emit_typed_monitored(&plan, &rows, &[]).expect("tiered C emit ok");
+    assert!(
+        src.contains("__nros_mon_rows_t0[1]") && src.contains("__nros_mon_rows_t1[1]"),
+        "{src}"
+    );
+    let t0 = src
+        .find("static int32_t __nros_entry_setup_tier_0(void* executor)")
+        .unwrap();
+    let t1 = src
+        .find("static int32_t __nros_entry_setup_tier_1(void* executor)")
+        .unwrap();
+    let setup0 = &src[t0..t1];
+    let setup1 = &src[t1..];
+    assert!(setup0.contains(".rows = __nros_mon_rows_t0,"), "{setup0}");
+    assert!(!setup0.contains("__nros_mon_rows_t1"), "{setup0}");
+    assert!(setup1.contains(".rows = __nros_mon_rows_t1,"), "{setup1}");
+    let i0 = setup0.find("nros_cpp_install_monitors(").unwrap();
+    let c0 = setup0.find("nros_cpp_node_create").unwrap();
+    assert!(i0 < c0, "{setup0}");
+    assert!(
+        !emit_typed(&plan)
+            .unwrap()
+            .contains("nros_cpp_install_monitors")
+    );
+}

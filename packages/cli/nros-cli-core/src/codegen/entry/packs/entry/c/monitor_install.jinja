@@ -1,0 +1,33 @@
+{%- set tag %}{% if m.tier is not none %}_t{{ m.tier }}{% endif %}{% endset %}
+{#-
+  Issue 1604 — the C spelling of `../cpp/monitor_install.jinja`: install one
+  contract monitor table (phase-462 W1, RFC-0052) on one executor, inside the
+  setup function that is about to create that executor's nodes. `m` is the
+  table (its rows and its symbol tag), `mexec` the executor expression the
+  caller hands in — the setup's own `executor` parameter on both C bodies,
+  which each setup has already NULL-checked. The install is C ABI
+  (`nros/nros_cpp_ffi.h`), so the C pack calls it exactly as the C++ one does;
+  only the spellings differ (`NULL`, C casts, C99 designated initialisers).
+
+  Whitespace: this comment closes WITHOUT the dash so the newline after it
+  survives -- it is the line break between the statement the caller rendered
+  last and this block's first line. The trailing newline of this file is
+  dropped by the renderer, so the caller's next line follows the closing brace
+  directly.
+#}
+    /* phase-462 W1 -- contract monitor table{% if m.tier is not none %} (tier[{{ m.tier }}] {{ m.tier_name }}){% endif %}: installed BEFORE any node
+     * exists, because a publisher attaches its counter cell at create time. */
+    {
+        nros_cpp_monitor_tables_t mtables = {
+            .rows = {% if m.rows %}__nros_mon_rows{{ tag }}{% else %}NULL{% endif %},
+            .n_rows = {{ m.rows | length }}u,
+            .row_storage = {% if m.rows %}__nros_mon_storage{{ tag }}{% else %}NULL{% endif %},
+            .row_storage_len = {% if m.rows %}sizeof(__nros_mon_storage{{ tag }}){% else %}0u{% endif %},
+            .ages = {% if m.ages %}__nros_age_rows{{ tag }}{% else %}NULL{% endif %},
+            .n_ages = {{ m.ages | length }}u,
+            .age_storage = {% if m.ages %}__nros_age_storage{{ tag }}{% else %}NULL{% endif %},
+            .age_storage_len = {% if m.ages %}sizeof(__nros_age_storage{{ tag }}){% else %}0u{% endif %},
+        };
+        nros_cpp_ret_t mret = nros_cpp_install_monitors({{ mexec }}, &mtables);
+        if (mret != NROS_CPP_RET_OK) return (int32_t)mret;
+    }

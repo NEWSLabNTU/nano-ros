@@ -81,11 +81,40 @@ extern int32_t __nros_c_component_{{ c.pkg | pkg_ident }}_configure(const nros_c
 {% for n in nodes -%}
 static nros_cpp_node_t __nros_node_{{ loop.index0 }};
 {% endfor %}
+{%- for m in monitor_tables %}{% set tag %}{% if m.tier is not none %}_t{{ m.tier }}{% endif %}{% endset %}
+/* issue 1604 / phase-462 W1 (RFC-0052) -- contract monitor rows{% if m.tier is not none %} (tier[{{ m.tier }}] {{ m.tier_name }}){% endif %}: one
+ * per contracted publisher and per age contract, the same rows the Rust road
+ * bakes into `system_monitors.rs` and the C++ pack into its entry. The runtime
+ * builds its spec/cell tables in the storage below at install
+ * (`nros_cpp_install_monitors`), so an image with no contract carries none of
+ * this. The storage is `uint64_t` so it is 8-aligned without C11 `_Alignas`. */
+{%- if m.rows %}
+static const nros_cpp_monitor_row_t __nros_mon_rows{{ tag }}[{{ m.rows | length }}] = {
+{%- for r in m.rows %}
+    { "{{ r.topic | c_str }}", "{{ r.fqn | c_str }}", {{ r.min_rate_hz_milli }}u, {{ r.max_latency_ms }}u },
+{%- endfor %}
+};
+static uint64_t __nros_mon_storage{{ tag }}[({{ m.rows | length }}u * NROS_CPP_MONITOR_ROW_STORAGE + 7u) / 8u];
+{%- endif %}
+{%- if m.ages %}
+static const nros_cpp_age_row_t __nros_age_rows{{ tag }}[{{ m.ages | length }}] = {
+{%- for r in m.ages %}
+    { "{{ r.topic | c_str }}", "{{ r.fqn | c_str }}", {{ r.max_age_ms }}u },
+{%- endfor %}
+};
+static uint64_t __nros_age_storage{{ tag }}[({{ m.ages | length }}u * NROS_CPP_AGE_ROW_STORAGE + 7u) / 8u];
+{%- endif %}
+{% endfor %}
 {% if tiers -%}
 /* Phase 274.W2 — per-tier setup functions (one per tier). */
 {% for t in tiers.setups -%}
 static int32_t __nros_entry_setup_tier_{{ t.index }}(void* executor) {
     if (executor == NULL) return (int32_t)NROS_CPP_RET_NOT_INIT;
+{%- if t.monitors %}
+{%- with m = t.monitors, mexec = "executor" %}
+{%- include "monitor_install_c.jinja" %}
+{%- endwith %}
+{%- endif %}
 {%- for s in t.nodes %}{% set n = nodes[s.node] %}
     {
 {%- with dexec = "executor", at = s.on_executor, idx = s.node %}
@@ -172,6 +201,11 @@ static int32_t __nros_entry_setup(void* executor) {
         if (brc != NROS_CPP_RET_OK) return (int32_t)brc;
     }
 {%- endfor %}
+{%- endif %}
+{%- if monitors %}
+{%- with m = monitors, mexec = "executor" %}
+{%- include "monitor_install_c.jinja" %}
+{%- endwith %}
 {%- endif %}
 {%- for n in nodes %}
     {
