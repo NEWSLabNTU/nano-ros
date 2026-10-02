@@ -295,13 +295,22 @@ function(_nros_load_derived_message_bounds)
     # after this point leaves nothing future-dated behind.
     nros_reconfigure_settle("${_knobs}")
     include("${_knobs}")
-    foreach(_v
-        NROS_MESSAGE_BOUNDS_STATUS
-        NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE
-        NROS_DERIVED_SUBSCRIBER_LARGE_SIZE
-        NROS_DERIVED_MAX_LARGE_SUBSCRIBERS
-        NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE
-        NROS_DERIVED_TL_RETAIN_BYTES)
+    # issue 1498 -- re-export every DERIVED fact the file sets, read off the
+    # file itself rather than a hand-kept list. The list this replaced named
+    # five of the six facts the writer publishes and left out
+    # NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS, so its `_nros_resolve_derivable_knob`
+    # call below saw the variable undefined on every image and the island's
+    # `check-knob-delivery` showed that one knob red from phase-412 W4 on. A
+    # producer gaining a fact must not need a second edit here to deliver it.
+    file(STRINGS "${_knobs}" _set_lines REGEX "^[ \t]*set\\((NROS_DERIVED_[A-Z0-9_]+)")
+    set(_names NROS_MESSAGE_BOUNDS_STATUS)
+    foreach(_line IN LISTS _set_lines)
+        if(_line MATCHES "^[ \t]*set\\((NROS_DERIVED_[A-Z0-9_]+)")
+            list(APPEND _names "${CMAKE_MATCH_1}")
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _names)
+    foreach(_v IN LISTS _names)
         if(DEFINED ${_v})
             set(${_v} "${${_v}}" PARENT_SCOPE)
         endif()
