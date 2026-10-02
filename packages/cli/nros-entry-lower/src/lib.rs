@@ -375,7 +375,7 @@ impl TierTaskMemory {
             .iter()
             .enumerate()
             .map(|(i, d)| {
-                (i != boot).then(|| match d {
+                (i != boot).then_some(match d {
                     Some(b) if *b > 0 => *b,
                     _ => self.default_stack_bytes,
                 })
