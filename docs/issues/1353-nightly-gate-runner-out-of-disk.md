@@ -2046,3 +2046,20 @@ ballast the tier gets **45 minutes and 33 G in without exhausting anything**,
 where the 15–33 G arrivals were at 100 % well before finishing. The next tier-1
 run that both starts clean and runs to completion is the measurement that would
 settle it.
+
+### The `live-peer` startup death did not recur on the third night (2026-10-02)
+
+The pair recorded above — 2026-09-30 and 2026-10-01, both at the 04:18 slot, the
+runner's worker dying on its own `_diag` log two seconds after the run was
+created — did **not** repeat tonight.
+
+Run **36963917981** (schedule, 2026-10-02T04:17:37Z, the same slot) ran for over
+an hour: `which recorded rows need which runner` succeeded, and both build jobs
+reached `Build the fixtures those rows resolve`. No ENOSPC annotation on any job.
+The lane's red is a fixture failure with a readable log — a Cyclone `idlc` the
+lane never provisioned, plus the `zephyr_self_pkg` rows of issue 1536 — not this
+issue.
+
+So the 24-hour recurrence was a pair, not a pattern, and the arrival state is
+again the variable that decided it. Worth keeping because a third consecutive
+instance would have made it a schedule-coupled fault; it is not one.

@@ -191,3 +191,38 @@ west-fixtures: 1 of 5 fixture(s) FAILED to build.
 
 The other 4 of 5 built. This is the whole of that job's failure, so the
 live-peer lane's red on that run is this issue and nothing else.
+
+## Wider than the title: `zephyr_self_pkg_rust` fails identically, and the harness has been hiding both (2026-10-02)
+
+`live-peer regression` run **36963917981**, job **110703711587**. The `self`
+variant fails with the same error as the `sibling` one:
+
+```
+-- nros_system_generate: baking …/zephyr_self_pkg/self/alpha_pkg → …/zephyr_self_pkg_rust/nros-system (rmw=zenoh)
+-- Configuring done
+CMake Error at …/extensions.cmake:428 (add_library):
+  No SOURCES given to target: app
+CMake Generate step failed.
+```
+
+So this is not a `sibling`-layout problem. Both rows of `zephyr_self_pkg` —
+`self/alpha_pkg` (`zephyr_self_pkg_rust`) and `sibling/caller`
+(`zephyr_self_pkg_sibling`) — reach Zephyr's generate step with no sources on the
+`app` target. Our half completes in both: the package is baked, the domain
+agrees, `Configuring done` prints.
+
+### And this explains the intermittency the title records
+
+The entry above says "reported but NOT reproduced in a main checkout". The
+reproduction was never the problem — **the harness counts these rows as built**.
+Both declare `output = "nros-system/system_config.h"`, which
+`nros_system_generate` writes *before* the generate step that fails, so
+`scripts/build/west-fixtures.sh` finds the artifact and reports `ok`. In this run
+four fixtures hit `FATAL ERROR` and the summary read `1 of 5 fixture(s) FAILED`.
+That is filed separately as issue **1627**, because it is a measurement defect
+that hides this one rather than a cause of it.
+
+Practical consequence for anyone working on this issue: a green
+`just zephyr build-fixtures` does **not** mean these two configure. Read the log
+for `CMake Generate step failed`, or check for `build.ninja` in
+`build/west-fixtures/zephyr_self_pkg_{rust,sibling}/`.
