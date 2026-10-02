@@ -204,7 +204,7 @@ roles: every image carries `EXECUTOR_BACKING` = `0x159e8` = 88,552 B and
 49 samples, `add_two_ints` = 5, Fibonacci order 10 result `[0, 1, …, 55]` —
 but only with the zenoh locator changed in a measurement-only build (not
 committed). Why the shipped image cannot reach a router is a separate defect,
-filed as [issue 1619](../1619-threadx-rv64-rust-cmake-path-dials-board-default-locator.md)
+filed as [issue 1619](1619-threadx-rv64-rust-cmake-path-dials-board-default-locator.md)
 (NetX on `10.0.2.40` from `NROS_APP_CONFIG`, zenoh dialling `192.0.3.1:7447`
 from `Config::default()`, captured with a QEMU `filter-dump`). It is what issue
 1355 recorded as "no session in 60 s".
