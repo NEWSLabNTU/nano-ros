@@ -1796,6 +1796,10 @@
     "verdict": "divergence",
     "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
+  "rust:Subscription::refused_sample_len": {
+    "verdict": "extension",
+    "why": "issue 1612 — the size the sample the most recent take REFUSED as too big for the caller's buffer needed (`None` = the backend cannot know). Upstream `rmw_take` hands back a typed message into storage the caller does not size against the wire, so it never refuses on length; ours copies into a caller-owned buffer, so a too-small buffer is a refusal and the reader needs to know how big it has to be. The Rust face of the C ABI's `rmw_mut_byte_span_t.len` on `NROS_RMW_RET_BUFFER_TOO_SMALL` (`rmw_entity.h`). A query beside the error rather than a payload on `TransportError::BufferTooSmall`, because that variant is returned by a dozen paths that have no sample."
+  },
   "rust:Subscription::register_event_callback": {
     "verdict": "divergence",
     "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
