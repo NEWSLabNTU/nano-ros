@@ -188,12 +188,20 @@
   "cpp:State": {
     "verdict": "divergence",
     "why": "RE-VERDICTED phase-417 G6 — the TYPE now exists. It said 'ours is `cpp:LifecycleState`, a `uint8_t`-backed `enum class`', and that was true of the tree that had no receiver for `State::label`. `nros::State` (`packages/api/nros-cpp/include/nros/lifecycle.hpp`) is a value type over the same id, mirroring the `Transition` fifty lines above it, so `state.id()` and `state.label()` compile as written. The enum stays and keeps its own row (`cpp:LifecycleState`); `State` wraps it.\n\n`adopt-bounded`, and the bound is what the object OWNS. `rclcpp_lifecycle::State` wraps an `rcl_lifecycle_state_t` — an id, a HEAP-ALLOCATED `label` string, and the `rcl_allocator_t` that owns it — and is copy-constructible, assignable and destructible accordingly. Ours is one `uint8_t` with no allocator (RFC-0022), so there is nothing to own: `label()` borrows a `'static` pointer into the one table in `nros_core` and returns `nullptr` for an id we do not implement, where upstream returns a `std::string`. A ported file compiles and gets a borrowed pointer instead of an owned string, which is exactly the class RFC-0089 asks a disposition to record.",
-    "disposition": "adopt-bounded"
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/lifecycle.hpp",
+      "text": "There is no allocator here (RFC-0022), so there is nothing to own: this"
+    }
   },
   "cpp:State::State": {
     "verdict": "divergence",
     "why": "RE-VERDICTED phase-417 G6 — it said 'no constructor, because ours is an enum rather than a class', and there is a class now. Two constructors: `State(uint8_t)` and `State(LifecycleState)`, both `constexpr` and both `explicit`. Upstream's take `(uint8_t id, const std::string& label, rcutils_allocator_t)` and `(const rcl_lifecycle_state_t*, rcutils_allocator_t)` — the arity differs because the LABEL and the ALLOCATOR are not ours to be given: the label is looked up from the id against `nros_core`'s one table, so a caller cannot supply a second spelling of it, and there is no allocator (RFC-0022). See `cpp:State`.",
-    "disposition": "adopt-bounded"
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/lifecycle.hpp",
+      "text": "**It stores an id and nothing else**, exactly like [`Transition`]"
+    }
   },
   "cpp:State::id": {
     "verdict": "divergence",

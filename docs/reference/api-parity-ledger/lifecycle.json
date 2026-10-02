@@ -484,11 +484,19 @@
   "cpp:Transition::label": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/lifecycle.hpp",
+      "text": "`label()` returns a BORROWED `const char*` with static lifetime rather"
+    },
     "why": "upstream returns `const std::string&` into the `rcl_lifecycle_transition_t` its `Transition` owns; ours returns a BORROWED `const char*` with static lifetime, pointing at the one label table in `nros_core::lifecycle` (see `c:lifecycle_transition_label`). No allocator, nothing owned, nothing freed -- and no copy of `lifecycle_msgs`, which is the reason our `Transition` stores an id and asks rather than carrying the text. `nullptr` for an id we do not implement; upstream cannot be asked, because its `Transition` is built from a map entry that exists."
   },
   "cpp:Transition::start_state": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/lifecycle.hpp",
+      "text": "`start_state()` / `goal_state()` return [`LifecycleState`], not a"
+    },
     "why": "RE-VERDICTED phase-417 W4.f. was `gap` -- `cpp:Transition` as a whole was, and the note on this row said that if C++ grew the type it should take rclcpp's `start_state` spelling rather than adding a third beside Rust's `source_state`. It did. What remains is the RETURN: upstream hands back a `rclcpp_lifecycle::State`, an object owning an `rcl_state_t` and an allocator; ours returns the `LifecycleState` enum, and the only thing upstream's object adds over it is the label, which is `nros::state_label`. `goal_state` is the same statement. No allocator, so there is no owner to hand back."
   },
   "cpp:Transition::transition": {
