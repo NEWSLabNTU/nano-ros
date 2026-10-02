@@ -230,7 +230,7 @@ STORAGE_ROLES = [
         "component storage",
         r"__nros_comp_buf_\d+",
         "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/entry.cpp.jinja",
-        "static unsigned char __nros_comp_buf_{{ s.index }}[",
+        "static unsigned char __nros_comp_buf_{{ loop.index0 }}[",
     ),
     (
         "component storage",
