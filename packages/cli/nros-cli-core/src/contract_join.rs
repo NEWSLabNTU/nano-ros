@@ -407,6 +407,153 @@ fn refused(row: &EntityDecl, why: String, notes: &mut Vec<String>) -> EntityDecl
     }
 }
 
+/// What [`observe_registrations`] produced.
+pub struct Observed {
+    /// The target inventory, with `in_place_capable` set on every subscription
+    /// row an observation could be attributed to.
+    pub inventory: EntityInventory,
+    /// Subscription rows that received an observation.
+    pub observed: usize,
+    /// Subscription rows that did not, and so keep refusing their
+    /// `registration_path` on an in-place backend.
+    pub unobserved: usize,
+}
+
+/// Issue 1594 — carry the metadata probe's per-subscription REGISTRATION
+/// observation (`in_place`, sidecar schema v3) onto a MODEL-road inventory.
+///
+/// The model road (`write_for_model`) composes the SystemModel with
+/// `nros-metadata.json`, and neither carries how an endpoint registers: the
+/// observation lives in the probe's per-component sidecars. The join key is the
+/// problem [`join`] already solved for QoS — the sidecar keys a subscription by
+/// its CALLBACK id with the WRITTEN topic beside it, the model by the RESOLVED
+/// topic — so this runs THAT join, never a second rule: `probe` is attributed to
+/// the contract in `model` exactly as the leaf road attributes it (no remaps on
+/// the node, an absolute written name, `(kind, type, name)` unique on BOTH
+/// sides), and only a row the join attributed lends its observation.
+///
+/// The attributed key then has to pick out exactly one subscription row of the
+/// same component in `target`, or nothing is written: `target` may be a
+/// composition (`merged_per_kind_max` with the metadata), and an observation
+/// copied onto one of two indistinguishable rows is the mis-attribution the
+/// whole rule exists to refuse.
+///
+/// A row nothing observed keeps `None`, which REFUSES its `registration_path`
+/// on an in-place backend — today's price, the safe direction. An observation is
+/// never inferred from the backend or the language (phase-457 W3): nine of the
+/// executor's eleven subscription entry points cannot dispatch in place.
+#[must_use]
+pub fn observe_registrations(
+    target: &EntityInventory,
+    probe: &EntityInventory,
+    model: &ros_launch_manifest_model::SystemModel,
+) -> Observed {
+    let joined = join(probe, model);
+
+    // (component, key) -> what the probe observed, for attributed rows only.
+    // `join` already refused every key that is not unique on both sides, so a
+    // key appears here at most once per component.
+    let mut seen: BTreeMap<(String, Key), bool> = BTreeMap::new();
+    if joined.contract_seen {
+        for c in joined.inventory.components() {
+            for r in c.declaration.entities() {
+                if r.kind != EntityKind::Subscription || r.contract_refusal.is_some() {
+                    continue;
+                }
+                let (Some(obs), Some(k)) = (r.in_place_capable, key_of(r, r.name.as_deref()))
+                else {
+                    continue;
+                };
+                seen.insert((c.component.clone(), k), obs);
+            }
+        }
+    }
+
+    let mut observed = 0usize;
+    let mut unobserved = 0usize;
+    let mut rows_out: Vec<ComponentEntities> = Vec::new();
+    for c in target.components() {
+        let Declaration::Stated(rows) = &c.declaration else {
+            rows_out.push((*c).clone());
+            continue;
+        };
+        let mut per_key: BTreeMap<Key, usize> = BTreeMap::new();
+        for r in rows {
+            if r.kind == EntityKind::Subscription
+                && let Some(k) = key_of(r, r.name.as_deref())
+            {
+                *per_key.entry(k).or_default() += 1;
+            }
+        }
+        let new_rows: Vec<EntityDecl> = rows
+            .iter()
+            .map(|r| {
+                if r.kind != EntityKind::Subscription {
+                    return r.clone();
+                }
+                if r.in_place_capable.is_some() {
+                    observed += 1;
+                    return r.clone();
+                }
+                let obs = key_of(r, r.name.as_deref())
+                    .filter(|k| per_key.get(k) == Some(&1))
+                    .and_then(|k| seen.get(&(c.component.clone(), k)).copied());
+                match obs {
+                    Some(v) => {
+                        observed += 1;
+                        EntityDecl {
+                            in_place_capable: Some(v),
+                            ..r.clone()
+                        }
+                    }
+                    None => {
+                        unobserved += 1;
+                        r.clone()
+                    }
+                }
+            })
+            .collect();
+        rows_out.push(ComponentEntities {
+            declaration: Declaration::Stated(new_rows),
+            ..(*c).clone()
+        });
+    }
+
+    Observed {
+        inventory: target.with_components(rows_out),
+        observed,
+        unobserved,
+    }
+}
+
+/// Issue 1594 — [`observe_registrations`] over a WORKSPACE's fresh probe
+/// sidecars: the one composition both model-road producers call (`nros ws
+/// sizing-descriptor --from-model --workspace` for a cmake entry, `nros build`
+/// for a workspace cargo image), so the two cannot come to read different
+/// sidecars.
+///
+/// Returns the observed inventory, the sidecars read (configure inputs), and the
+/// notes to print — one per skipped sidecar plus a one-line tally.
+pub fn observe_workspace_registrations(
+    target: &EntityInventory,
+    model: &ros_launch_manifest_model::SystemModel,
+    ws_root: &std::path::Path,
+) -> eyre::Result<(EntityInventory, Vec<std::path::PathBuf>, Vec<String>)> {
+    let nano_ros = crate::orchestration::nano_ros_root::resolve(None, ws_root);
+    let (probe, read, mut notes) = crate::orchestration::metadata_refresh::fresh_probe_inventory(
+        ws_root,
+        nano_ros.as_deref(),
+    )?;
+    let observed = observe_registrations(target, &probe, model);
+    notes.push(format!(
+        "registration observed for {} of {} subscription row(s), from {} probe sidecar(s)",
+        observed.observed,
+        observed.observed + observed.unobserved,
+        read.len()
+    ));
+    Ok((observed.inventory, read, notes))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -686,5 +833,126 @@ mod tests {
         assert_eq!(out[0].kind, EntityKind::Timer);
         assert!(out[0].contract_refusal.is_none());
         assert_eq!(out[1].depth, Some(1), "its neighbour still joined");
+    }
+
+    // ---- issue 1594: the registration observation on the MODEL road -------
+
+    fn observed_sub(callback: &str, written: Option<&str>, in_place: Option<bool>) -> EntityDecl {
+        EntityDecl {
+            in_place_capable: in_place,
+            ..probe_sub("std_msgs/msg/String", callback, written)
+        }
+    }
+
+    fn model_row_observation(target: &EntityInventory) -> Option<bool> {
+        rows_of(target)
+            .iter()
+            .find(|r| r.kind == EntityKind::Subscription)
+            .expect("the model has a subscription row")
+            .in_place_capable
+    }
+
+    /// THE join: the model's `/chatter` row gains the sidecar's observation of
+    /// the callback-named registration that writes `/chatter`. Before issue
+    /// 1594 the model road had no way to carry it, so this row was `None`.
+    #[test]
+    fn a_model_row_takes_the_probes_observation_through_the_contract_join() {
+        let m = model_yaml("listener", "/chatter", "std_msgs/msg/String", "");
+        let target = EntityInventory::from_model("model", &m).unwrap();
+        assert_eq!(
+            model_row_observation(&target),
+            None,
+            "from_model observes nothing"
+        );
+
+        for obs in [true, false] {
+            let p = probe(
+                "listener",
+                vec![observed_sub("on_chatter", Some("/chatter"), Some(obs))],
+            );
+            let o = observe_registrations(&target, &p, &m);
+            assert_eq!(model_row_observation(&o.inventory), Some(obs));
+            assert_eq!((o.observed, o.unobserved), (1, 0));
+        }
+    }
+
+    /// The join's refusals carry over: a remapped node, a relative written
+    /// name, a different topic, and an unobserved probe row each leave the
+    /// model row UNOBSERVED -- which refuses `registration_path`, the safe
+    /// direction -- rather than lending it somebody else's observation.
+    #[test]
+    fn an_unattributable_probe_row_lends_the_model_row_nothing() {
+        let plain = model_yaml("listener", "/chatter", "std_msgs/msg/String", "");
+        let remapped = model_yaml(
+            "listener",
+            "/chatter",
+            "std_msgs/msg/String",
+            "      remaps:\n      - from: /chatter\n        to: /other\n",
+        );
+        let cases: [(&SystemModel, EntityDecl, &str); 5] = [
+            (
+                &remapped,
+                observed_sub("on_chatter", Some("/chatter"), Some(true)),
+                "remapped node",
+            ),
+            (
+                &plain,
+                observed_sub("on_chatter", Some("chatter"), Some(true)),
+                "relative written name",
+            ),
+            (
+                &plain,
+                observed_sub("on_status", Some("/status"), Some(true)),
+                "a different topic",
+            ),
+            (
+                &plain,
+                observed_sub("on_chatter", Some("/chatter"), None),
+                "nothing observed",
+            ),
+            (
+                &plain,
+                observed_sub("on_chatter", None, Some(true)),
+                "no written topic",
+            ),
+        ];
+        for (m, row, why) in cases {
+            let target = EntityInventory::from_model("model", m).unwrap();
+            let o = observe_registrations(&target, &probe("listener", vec![row]), m);
+            assert_eq!(model_row_observation(&o.inventory), None, "{why}");
+            assert_eq!((o.observed, o.unobserved), (0, 1), "{why}");
+        }
+    }
+
+    /// Two registrations on one topic: the join refuses the pair, so the model
+    /// row stays unobserved rather than taking whichever the probe listed
+    /// first. MUTATION CONTROL for "unique on both sides".
+    #[test]
+    fn two_registrations_on_one_topic_observe_nothing() {
+        let m = model_yaml("listener", "/chatter", "std_msgs/msg/String", "");
+        let target = EntityInventory::from_model("model", &m).unwrap();
+        let p = probe(
+            "listener",
+            vec![
+                observed_sub("a", Some("/chatter"), Some(true)),
+                observed_sub("b", Some("/chatter"), Some(false)),
+            ],
+        );
+        let o = observe_registrations(&target, &p, &m);
+        assert_eq!(model_row_observation(&o.inventory), None);
+    }
+
+    /// A probe component the model does not launch is never matched to a
+    /// model component of another name.
+    #[test]
+    fn another_components_sidecar_observes_nothing_here() {
+        let m = model_yaml("listener", "/chatter", "std_msgs/msg/String", "");
+        let target = EntityInventory::from_model("model", &m).unwrap();
+        let p = probe(
+            "talker",
+            vec![observed_sub("on_chatter", Some("/chatter"), Some(true))],
+        );
+        let o = observe_registrations(&target, &p, &m);
+        assert_eq!(model_row_observation(&o.inventory), None);
     }
 }

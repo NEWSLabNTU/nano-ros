@@ -49,6 +49,7 @@ fn args() -> SizingDescriptorArgs {
         build_dir: None,
         entry: None,
         metadata: None,
+        workspace: None,
         rmw: None,
         target_triple: None,
         host_build: false,

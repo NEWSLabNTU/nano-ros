@@ -455,9 +455,12 @@ sentence for all three producers — **compose with the same code, refuse per fi
 on the input that is actually missing, and name THAT input** — and a model road
 and a leaf road handed the same inputs are asserted to AGREE field by field. What
 still refuses on a model road is narrower than the road: a closure that
-registered no table (said so), and an unobserved subscription on an in-place
-backend, because the model road's inventory joins no probe sidecar
-([issue 1594](../issues/1594-model-road-subscription-rows-carry-no-registration-observation.md)).
+registered no table (said so), and a subscription on an in-place backend that no
+CURRENT probe sidecar could be attributed to. The model road joins the
+workspace's sidecars onto its rows by the contract join's own rule — no remaps on
+the node, an absolute written name, a key unique on both sides — so the
+observation the leaf road reads reaches it too
+([issue 1594](../issues/archived/1594-model-road-subscription-rows-carry-no-registration-observation.md)).
 
 **This is D6 doing the work it exists for.** A partial descriptor is safe to
 publish precisely because `Fact::stated()` is the only accessor that yields a

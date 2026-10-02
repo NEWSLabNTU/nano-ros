@@ -438,6 +438,82 @@ fn build_options(
     }
 }
 
+/// Issue 1594 — the workspace's CURRENT probe sidecars, as one inventory, for a
+/// consumer that joins their per-endpoint observations onto a model-road row.
+///
+/// Only FRESH sidecars count — the key [`refresh_stale_sidecars`] itself trusts
+/// ([`probe_inputs_key`]). A stale one describes source that may since have
+/// moved to another subscription entry point, and an `in_place: true` read off
+/// it would price that endpoint at no receive region (issue 1578 measured a
+/// stale `in_place` being reused). A stale, missing or unreadable sidecar is
+/// SKIPPED with a note, which leaves its rows unobserved: the refusal, never
+/// the under-size.
+///
+/// Two sidecars naming one component are both dropped: the join keys rows by
+/// component, so either would be attributed to the other's endpoints.
+///
+/// Returns the inventory, the sidecar paths it READ (configure-time inputs —
+/// issue 1018), and one note per skip.
+pub fn fresh_probe_inventory(
+    ws_root: &Path,
+    nano_ros: Option<&Path>,
+) -> Result<(
+    crate::entity_inventory::EntityInventory,
+    Vec<PathBuf>,
+    Vec<String>,
+)> {
+    use crate::entity_inventory::{ComponentEntities, EntityInventory};
+
+    let workspace = Workspace::discover(ws_root)?;
+    let mut notes = Vec::new();
+    let mut read: Vec<PathBuf> = Vec::new();
+    let mut rows: Vec<ComponentEntities> = Vec::new();
+    for decl in workspace.component_declarations()? {
+        let sidecar = decl.source_metadata_path();
+        if !sidecar.is_file() {
+            continue;
+        }
+        let fresh = probe_inputs_key(&decl.package_root, nano_ros)
+            .is_some_and(|k| sidecar_is_fresh(&sidecar, &k));
+        if !fresh {
+            notes.push(format!(
+                "{}: stale against its sources (re-run `nros sync`), so its registration \
+                 observations are not used",
+                sidecar.display()
+            ));
+            continue;
+        }
+        let raw = std::fs::read_to_string(&sidecar)
+            .wrap_err_with(|| format!("read {}", sidecar.display()))?;
+        match crate::leaf_entity_env::declaration_from_probe(&raw) {
+            Ok((pkg, component, declaration)) => {
+                read.push(sidecar);
+                rows.push(ComponentEntities {
+                    pkg,
+                    class: component.clone(),
+                    component,
+                    declaration,
+                });
+            }
+            Err(e) => notes.push(format!("{}: {e}", sidecar.display())),
+        }
+    }
+    let mut inv = EntityInventory::new("source-metadata");
+    for row in &rows {
+        if rows.iter().filter(|r| r.component == row.component).count() > 1 {
+            notes.push(format!(
+                "component `{}` has more than one probe sidecar in this workspace, so neither's \
+                 observations are attributed",
+                row.component
+            ));
+            continue;
+        }
+        inv.insert(row.clone());
+    }
+    notes.dedup();
+    Ok((inv, read, notes))
+}
+
 /// A sidecar is fresh iff it parses AND its recorded provenance digest matches
 /// the sources on disk. An unparseable or unstamped sidecar is stale by
 /// definition — that is the "museum data" case, and rebuilding is the only
