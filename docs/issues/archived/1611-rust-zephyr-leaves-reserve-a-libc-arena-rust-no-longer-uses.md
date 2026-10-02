@@ -83,7 +83,8 @@ arena is Cyclone's own -- Zephyr compiles ddsrt's `heap/posix` (libc `malloc`),
 not the nano-ros funnel (`NROS_DDSRT_PLATFORM_FUNNEL` is set only by
 `ProvideCycloneDDS.cmake`, which the Zephyr road does not use) -- so it returns
 to the 16 MiB its C/C++ siblings state and `zephyr/Kconfig`'s
-`configdefault` already supplies.
+`configdefault` already supplies. That Cyclone bypasses the platform funnel on
+Zephyr at all is filed as issue 1633.
 
 **The gate** (`check-executor-backing-arena-pairing`): the `zephyr` port is
 recorded `none` with the measurement as its reason; the one conf rule left is
