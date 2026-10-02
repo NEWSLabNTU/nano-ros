@@ -8,29 +8,6 @@
 
 if(CONFIG_NROS)
 
-# phase-337 W2.b — ONE spelling of "which flavour of Zephyr is this".
-# The C-API branch and the C++ branch below each build
-# nros-rmw-zenoh-staticlib, and each computed this feature string itself. When
-# the bare-metal arm was added, patching only the first left the second
-# silently on the old answer — so the two spellings become one macro here.
-#
-# Why it needs an arm at all: native_sim borrows the HOST's std, which supplies
-# the global allocator and the panic handler. Every real board is no_std and
-# must bring its own (`platform-zephyr-baremetal`). native_sim being the only
-# Zephyr target this repo has ever built is why nothing noticed.
-#
-# A macro, not a function: it sets the caller's variable directly. A function
-# would need PARENT_SCOPE, which is the same scope footgun the `_NROS_ENTRY_DIR`
-# pattern exists to dodge (AGENTS.md CMake Pitfalls).
-macro(_nros_zephyr_backend_features _out)
-    set(${_out} "platform-zephyr")
-    if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
-        string(APPEND ${_out} ",std")
-    else()
-        string(APPEND ${_out} ",platform-zephyr-baremetal")
-    endif()
-endmacro()
-
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_cargo_build.cmake)
 
 # phase-351 W5 / issue 0605 — resolve the board facts ONCE per Zephyr configure,
@@ -229,28 +206,33 @@ else()
 endif() # RMW backend
 
 # =============================================================================
-# Native linker workaround for Rust staticlibs (C and C++ API)
+# native_sim allocator glue (C and C++ API) — issue 1636
 #
-# Rust staticlibs built with std for x86_64-unknown-linux-gnu reference
-# malloc/free, pulling picolibc's nano-malloc into the link. This conflicts
-# with Zephyr's COMMON_LIBC_MALLOC. Fix:
-#   --allow-multiple-definition: Zephyr's malloc wins (linked first)
-#   heap_stub_native.c: provides __heap_start/__heap_end for picolibc's sbrk
+# A host-triple Rust staticlib calls `posix_memalign`, which Zephyr's
+# COMMON_LIBC_MALLOC does not define; picolibc's members for it also define
+# `malloc`/`free`/`aligned_alloc`. `heap_stub_native.c` supplies the two missing
+# entry points on Zephyr's allocator, so picolibc's allocator is never linked.
+# This replaced a `--allow-multiple-definition` that settled the three
+# duplicates by link order — and also hid 33 zenoh-pico system symbols defined
+# twice (zpico's `platform_aliases.c` + `nros_zenoh_zephyr_system.c`), now
+# skipped at the source (`NROS_PLATFORM_ALIASES_SKIP_SYSTEM`).
 # =============================================================================
 
 if((CONFIG_NROS_C_API OR CONFIG_NROS_CPP_API) AND
    (CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX))
-    zephyr_ld_options(-Wl,--allow-multiple-definition)
     zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/heap_stub_native.c)
 endif()
 
-# C++ Zephyr builds can link several Rust staticlibs in one final ELF:
-# nros-cpp, optional generated message FFI libs, and sometimes nros-c for
-# shared C/C++ surfaces. Each no_std staticlib is a Rust binary artifact and
-# therefore carries allocator, panic, and critical-section lang items. Let the
-# first definition win at the final Zephyr link.
-if(CONFIG_NROS_CPP_API AND
-   NOT (CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX))
+# C++ images link a SECOND Rust staticlib per message package — the generated
+# `nano_ros_cpp_ffi_<pkg>` FFI crate — beside `libnros_cpp.a`, and each carries
+# its own copy of the Rust runtime closure. Measured with this flag removed
+# (issue 1636): cpp/talker on native_sim 392 and on mps2/an385 571 duplicate
+# symbols, every one of them `compiler_builtins` / `core` / `alloc` / LLVM
+# `anon.*` constants out of `libnano_ros_cpp_ffi_std_msgs.a`. No nano-ros
+# C-ABI symbol and no `REGISTRY` among them — the backend staticlib that once
+# carried a second registry is no longer linked (below). Allowlisted until the
+# message FFI is folded into the one runtime staticlib.
+if(CONFIG_NROS_CPP_API)
     zephyr_ld_options(-Wl,--allow-multiple-definition)
 endif()
 
@@ -480,22 +462,11 @@ if(CONFIG_NROS_C_API)
     # Link the built library
     zephyr_library_link_libraries(nros_c_cargo)
 
-    # Phase 168.4 — Phase 134.fix dropped `dep:nros-rmw-zenoh` and
-    # `dep:nros-rmw-dds` from `nros-c`'s feature graph so `libnros_c.a`
-    # no longer carries `nros_rmw_<x>_register` for those backends.
-    # The Phase 160.A strong stub below still references those symbols,
-    # so the C-API Zephyr link fails for zenoh + dds without a
-    # standalone backend staticlib. XRCE keeps `dep:nros-rmw-xrce-cffi`
-    # under `cffi-xrce-c`, so it does NOT need a separate staticlib.
-    if(CONFIG_NROS_RMW_ZENOH)
-        _nros_zephyr_backend_features(_nros_backend_features)
-        nros_cargo_build(
-            PACKAGE nros-rmw-zenoh-staticlib
-            FEATURES "${_nros_backend_features}"
-        )
-        add_dependencies(app nros_rmw_zenoh_staticlib_cargo_build)
-        zephyr_library_link_libraries(nros_rmw_zenoh_staticlib_cargo)
-    endif()
+    # issue 1636 — no standalone `nros-rmw-zenoh-staticlib` here. `nros-c`'s
+    # `rmw-zenoh` feature carries `dep:nros-rmw-zenoh` again (Phase 241.D3-rev),
+    # so `libnros_c.a` already holds the backend and `nros_rmw_zenoh_register`;
+    # a second staticlib was a second backend closure and REGISTRY, linked only
+    # because `--allow-multiple-definition` let the first copy win.
     # Phase 169.4 retired dust-dds; the Rust DDS path (and its
     # `nros-rmw-dds-staticlib`) is gone. Future Cyclone DDS Rust
     # support comes via Phase 169.5's `nros-rmw-cyclonedds-sys`
@@ -916,23 +887,9 @@ if(CONFIG_NROS_CPP_API)
         zephyr_library_link_libraries(nros_cpp_cargo)
     endif()
 
-    # Phase 168.4 — same backend staticlib link as the C-API branch
-    # above. `nros-cpp`'s `rmw-zenoh-cffi` feature does NOT pull
-    # `dep:nros-rmw-zenoh` (Phase 134.fix), so the Phase 160.A strong
-    # stub below references `nros_rmw_zenoh_register` with no provider
-    # unless we link the standalone backend staticlib. `rmw-xrce-cffi`
-    # still carries its dep, so it doesn't need this extra step.
-    if(CONFIG_NROS_RMW_ZENOH)
-        _nros_zephyr_backend_features(_nros_cpp_backend_features)
-        if(NOT TARGET nros_rmw_zenoh_staticlib_cargo)
-            nros_cargo_build(
-                PACKAGE nros-rmw-zenoh-staticlib
-                FEATURES "${_nros_cpp_backend_features}"
-            )
-        endif()
-        add_dependencies(app nros_rmw_zenoh_staticlib_cargo_build)
-        zephyr_library_link_libraries(nros_rmw_zenoh_staticlib_cargo)
-    endif()
+    # issue 1636 — no standalone `nros-rmw-zenoh-staticlib` here either:
+    # `nros-cpp`'s `rmw-zenoh-cffi` feature carries `dep:nros-rmw-zenoh`, so
+    # `libnros_cpp.a` holds the backend (see the C-API branch above).
 
     # Phase 160.A — same register-stub emission as the C-API branch
     # above. C++ apps call `nros_cpp_init` which internally invokes
