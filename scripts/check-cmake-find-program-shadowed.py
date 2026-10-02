@@ -64,6 +64,15 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import comments  # noqa: E402
+import file_kinds  # noqa: E402
+import population  # noqa: E402
+
+# issue 1617 (W8): the CACHE / PARENT_SCOPE exemption is keyed on the KEYWORD,
+# in code — never on the substring anywhere on the line, which a string
+# argument (`set(V "no CACHE here")`) satisfied for free.
+SCOPE_KW = re.compile(r"\b(CACHE|PARENT_SCOPE)\b")
 
 FIND = re.compile(
     r"^\s*(find_program|find_path|find_file|find_library)\s*\(\s*"
@@ -76,17 +85,15 @@ UNSET = re.compile(r"^\s*unset\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\b")
 
 
 def cmake_files() -> list[Path]:
-    """Tracked cmake sources, via the git index (issue 0721 — never a walk)."""
-    out = subprocess.run(
-        ["git", "ls-files", "-z", "*.cmake", "*CMakeLists.txt"],
-        cwd=ROOT, capture_output=True, text=True, check=True,
-    ).stdout
-    return [ROOT / p for p in out.split("\0") if p]
+    """Every tracked CMake file, by KIND (`scripts/lib/file_kinds.py`)."""
+    return [ROOT / p for p in file_kinds.files_of_kind("cmake", repo=ROOT)]
 
 
 def scan(text: str) -> list[tuple[int, int, str, str]]:
     """Return (set_line, find_line, var, command) for each dead search."""
-    lines = text.split("\n")
+    # Comments and string CONTENTS blanked (same offsets), so neither a
+    # commented `set` nor a quoted "CACHE" is read as code.
+    lines = comments.strip_comments(text, "cmake", strings=True).split("\n")
     # Last plain `set` of each var, invalidated by a later `unset`.
     pending: dict[str, int] = {}
     hits: list[tuple[int, int, str, str]] = []
@@ -112,7 +119,7 @@ def scan(text: str) -> list[tuple[int, int, str, str]]:
 
         m = SETV.match(line)
         if m:
-            if "CACHE" in line or "PARENT_SCOPE" in line:
+            if SCOPE_KW.search(line):
                 pending.pop(m.group(1), None)
             else:
                 pending[m.group(1)] = i
@@ -129,6 +136,9 @@ SELF_TESTS: list[tuple[str, str, int]] = [
     ("CACHE set is not a shadow", 'set(V "" CACHE INTERNAL "d")\nfind_program(V nros)\n', 0),
     ("PARENT_SCOPE set is not a shadow", 'set(V "" PARENT_SCOPE)\nfind_program(V nros)\n', 0),
     ("commented-out set", '# set(V "")\nfind_program(V nros)\n', 0),
+    ("CACHE inside a string is not the keyword", 'set(V "no CACHE here")\nfind_program(V nros)\n', 1),
+    ("PARENT_SCOPE inside a string is not the keyword", 'set(V "PARENT_SCOPE")\nfind_program(V nros)\n', 1),
+    ("trailing comment naming CACHE", 'set(V "") # not CACHE\nfind_program(V nros)\n', 1),
     ("other find_ commands too", 'set(V "")\nfind_library(V m)\n', 1),
     ("set AFTER the find is not this bug", 'find_program(V nros)\nset(V "")\n', 0),
     ("intervening lines still count", 'set(V "")\nif(X)\nendif()\nfind_program(V nros)\n', 1),
@@ -150,11 +160,15 @@ def self_test() -> int:
 
 
 def main() -> int:
-    if "--self-test" in sys.argv:
-        return self_test()
+    rc = self_test()
+    if "--self-test" in sys.argv or rc:
+        return rc
 
     findings = []
-    for path in cmake_files():
+    files = cmake_files()
+    if not population.require_population(files, "CMake file(s)", gate="check-cmake-find-program-shadowed"):
+        return 1
+    for path in files:
         try:
             text = path.read_text(errors="replace")
         except OSError:

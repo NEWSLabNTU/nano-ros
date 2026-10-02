@@ -96,6 +96,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 INTEROP_RS = ROOT / "packages" / "testing" / "nros-tests" / "src" / "interop.rs"
 LEDGER = ROOT / ".config" / "interop-cells-without-runner.txt"
@@ -409,6 +412,9 @@ def _negated_spans(text: str) -> list[tuple[int, int]]:
 # step NAMED "just check build + no_std" is prose, and reading it as an
 # invocation attributed a recipe to every event the workflow had.
 YAML_LABEL = re.compile(r"^\s*-?\s*name\s*:")
+# issue 1617 (W3): an `echo` / `printf` line PRINTS a filter; it runs nothing.
+# `@echo "run binary(=x) by hand"` was credited as x's runner.
+PRINT_LINE = re.compile(r"^\s*(?:-\s+)?(?:run\s*:\s*)?[@-]*\s*(?:echo|printf)\b")
 
 
 def _is_prose(line: str) -> bool:
@@ -420,7 +426,8 @@ def _is_prose(line: str) -> bool:
     three real runners are spelled, so a "the line must also say cargo" filter
     would drop them.
     """
-    return line.lstrip().startswith("#") or bool(YAML_LABEL.match(line))
+    return (line.lstrip().startswith("#") or bool(YAML_LABEL.match(line))
+            or bool(PRINT_LINE.match(line)))
 
 
 def invocations_in(text: str) -> dict[str, int]:
@@ -468,6 +475,10 @@ def runners() -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for path in runner_sources():
         text = path.read_text(encoding="utf-8", errors="replace")
+        lang = comments.lang_for(path)
+        if lang:
+            # The one stripper (W3): a TRAILING `# --test x` is prose too.
+            text = comments.strip_comments(text, lang)
         for test, line in invocations_in(text).items():
             out.setdefault(test, []).append(
                 f"{path.relative_to(ROOT)}:{line}"
@@ -676,6 +687,12 @@ def self_test(verbose: bool = False) -> None:
     assert "delta_e2e" not in invocations_in(
         "      - name: run --test delta_e2e\n        run: just check fast\n"
     ), "selftest: read a workflow step LABEL as a runner"
+    assert "zeta_e2e" not in invocations_in(
+        "r:\n    @echo \"run binary(=zeta_e2e) by hand\"\n"
+    ), "selftest: read an `echo` of a filter as a runner (issue 1617)"
+    assert "eta_e2e" not in invocations_in(
+        "r:\n    printf '%s\\n' '--test eta_e2e'\n"
+    ), "selftest: read a `printf` of a filter as a runner"
     assert "eps_e2e" in invocations_in(
         "r:\n    args=(-p nros-tests --test eps_e2e --no-fail-fast)\n"
     ), "selftest: missed a `--test` on a bare shell-array line"

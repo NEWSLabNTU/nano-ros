@@ -143,6 +143,19 @@ def default_list():
     return []
 
 
+def _constant_false(guard):
+    """True for a guard that can never hold: `false`, `${{ false }}`, or a
+    conjunction (no `||`) with a literal `false` conjunct."""
+    g = re.sub(r"^\s*if:\s*(>-?|\|)?", "", guard.strip()).strip()
+    m = re.fullmatch(r"\$\{\{(.*)\}\}", g, re.S)
+    if m:
+        g = m.group(1).strip()
+    if "||" in g:
+        return False
+    return any(c.strip().strip("()").strip() in ("false", "0")
+               for c in g.split("&&"))
+
+
 def _events_of(guard, wf_events):
     """Which of the workflow's events this `if:` guard admits.
 
@@ -153,6 +166,10 @@ def _events_of(guard, wf_events):
     """
     if not guard:
         return set(wf_events)
+    if _constant_false(guard):
+        # issue 1617 (W8): `if: false` admits NO event. Over-approximating it
+        # to "every event" credited a disabled step with running everywhere.
+        return set()
     in_list = re.search(r"fromJSON\(\s*'\[([^\]]*)\]'\s*\)\s*,\s*github\.event_name", guard)
     if in_list:
         named = set(re.findall(r"['\"](" + "|".join(EVENTS) + r")['\"]", in_list.group(1)))
@@ -431,6 +448,12 @@ def self_test():
         _events_of("        if: >-\n"
                    "          ${{ contains(fromJSON('[\"pull_request\"]'), github.event_name)\n"
                    "              && !cancelled() }}", allev) == {"pull_request"})
+    chk("`if: false` must admit no event (issue 1617)", _events_of("if: false", allev) == set())
+    chk("`if: ${{ false }}` must admit no event", _events_of("if: ${{ false }}", allev) == set())
+    chk("a false conjunct must admit no event",
+        _events_of("if: ${{ false && github.event_name == 'push' }}", allev) == set())
+    chk("`false || x` is not constant",
+        _events_of("if: ${{ false || github.event_name == 'push' }}", allev) == {"push"})
     chk("an exclusion OR-ed with a non-event condition must not exclude",
         _events_of("if: ${{ always() && (github.event_name != 'pull_request'"
                    " || needs.changes.outputs.code == 'true') }}", allev) == allev)

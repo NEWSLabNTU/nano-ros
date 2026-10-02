@@ -38,15 +38,48 @@ future arm added without a peer to point at.
 import re
 import subprocess
 import sys
+from pathlib import Path
 
-# `pub unsafe extern "C" fn NAME(` … up to the closing `) -> ret {` and body.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402
+
+# issue 1617 (W4): EVERY `extern "C" fn` is in the population — `pub`,
+# `pub(crate)`, `unsafe` or not. Matching only `pub unsafe extern "C" fn`
+# meant dropping `unsafe` from an arm took it out of the gate silently.
 FN = re.compile(
-    r'pub unsafe extern "C" fn (\w+)\s*\((?P<args>[^)]*)\)[^{]*\{(?P<body>.*?)\n\}',
+    r'(?:pub(?:\([^)]*\))?\s+)?(?:unsafe\s+)?extern\s+"C"\s+fn\s+(\w+)\s*'
+    r'\((?P<args>[^)]*)\)[^{;]*\{(?P<body>.*?)\n\}',
     re.S,
 )
 
 
+def arms(src):
+    """[(name, ok)] for each goal_cdr-taking extern fn; ok is True when its
+    body forwards to `send_goal_raw` only through `strip_cdr_header`."""
+    out = []
+    for m in FN.finditer(comments.strip_comments(src, "rust")):
+        if "goal_cdr" not in m.group("args"):
+            continue
+        body = m.group("body")
+        ok = "send_goal_raw" not in body or "strip_cdr_header" in body
+        out.append((m.group(1), ok))
+    return out
+
+
+def self_test():
+    good = 'pub unsafe extern "C" fn a(goal_cdr: *const u8) {\n    x.send_goal_raw(strip_cdr_header(s))\n}\n'
+    bad = 'pub unsafe extern "C" fn a(goal_cdr: *const u8) {\n    x.send_goal_raw(s)\n}\n'
+    assert arms(good) == [("a", True)], arms(good)
+    assert arms(bad) == [("a", False)]
+    # Dropping `unsafe` / `pub` must not take an arm out of the population.
+    assert arms(bad.replace("pub unsafe ", "")) == [("a", False)]
+    assert arms(bad.replace("unsafe ", "")) == [("a", False)]
+    # A commented strip call is not a strip.
+    assert arms(bad.replace("x.send_goal_raw(s)", "x.send_goal_raw(s) // strip_cdr_header")) == [("a", False)]
+
+
 def main() -> int:
+    self_test()
     files = subprocess.run(
         ["git", "grep", "-l", "goal_cdr", "--", "packages/api"],
         capture_output=True, text=True,

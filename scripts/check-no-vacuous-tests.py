@@ -116,6 +116,9 @@ CONTROL_RE = re.compile(
     r"^\s*(\}?\s*(match|if|if\s+let|else|else\s+if|for|while|loop)\b|\}|\{|\)|\],?|.*=>\s*\{?$)"
 )
 LET_RE = re.compile(r"^\s*let\b")
+# issue 1617 (W3): a bare `return;` is control flow, not an effect. Reading it
+# as one let `eprintln!(..); return;` — the exact shape CLAUDE.md names — pass.
+RETURN_RE = re.compile(r"^\s*return\s*(\(\s*\))?\s*;?\s*\}?\s*$")
 
 
 def strip_comments(text: str) -> str:
@@ -174,7 +177,7 @@ def is_vacuous(body: str) -> bool:
             saw_print = True
             pending = max(0, s.count("(") - s.count(")"))
             continue
-        if LET_RE.match(s) or CONTROL_RE.match(s):
+        if LET_RE.match(s) or CONTROL_RE.match(s) or RETURN_RE.match(s):
             continue
         # A statement that is neither a binding, a print, nor control flow is a
         # real effect — possibly an assertion one frame down. Not our shape.
@@ -289,6 +292,16 @@ SELF_TESTS = [
         "#[test]\nfn t() {\n    let a = probe();\n    eprintln!(\n"
         '        "toolchain available: {}",\n        a\n    );\n}\n',
         True,
+    ),
+    (
+        "print then a bare return -> flagged (issue 1617)",
+        '#[test]\nfn t() {\n    eprintln!("not available");\n    return;\n}\n',
+        True,
+    ),
+    (
+        "guarded return then a real effect -> ok",
+        '#[test]\nfn t() {\n    if !ready() {\n        eprintln!("x");\n        return;\n    }\n    run();\n}\n',
+        False,
     ),
     (
         "multi-line print then a real effect -> ok",
