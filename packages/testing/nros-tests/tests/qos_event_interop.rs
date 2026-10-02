@@ -64,28 +64,6 @@ use nros_tests::{
     ros2::{DEFAULT_ROS_DISTRO, Ros2Process, require_ros2},
 };
 
-/// The coordinates `interop::CELLS` declares for `qos_event_interop`.
-///
-/// One row, not two: the Cyclone shape is a `CarveOut`, and `coords_for` /
-/// `assert_test_bound` only compare `Tier::Runtime` cells, so listing it here
-/// would make the tripwire red.
-const QOS_EVENT_CELLS: [(
-    nros_tests::matrix::PlatformId,
-    nros_tests::matrix::Lang,
-    nros_tests::matrix::Rmw,
-    nros_tests::matrix::Workload,
-); 1] = [(
-    nros_tests::matrix::PlatformId::Linux,
-    // Derived from the binary this test actually spawns —
-    // `fixtures::build_qos_event_probe()`, whose `examples/fixtures.toml` row is
-    // `lang = "rust"`. Phase-433 W3's lesson: `scenario_coord` returned
-    // `Lang::Rust` unconditionally while the cases spawned C binaries, so the
-    // language axis was inverted and agreed with itself.
-    nros_tests::matrix::Lang::Rust,
-    nros_tests::matrix::Rmw::Zenoh,
-    nros_tests::matrix::Workload::QosEvents,
-)];
-
 /// A stock ROS 2 publisher appearing on our topic delivers a
 /// `LivelinessChanged` event to a nano-ros application callback.
 ///
@@ -103,7 +81,25 @@ fn stock_ros2_publisher_raises_a_liveliness_event() {
     // The coordinate tripwire — a cell added without a test, or a test that
     // drifts off its cell, is a failure rather than silent non-coverage. It
     // needs no fixtures and no peer, so it runs on this host too.
-    interop::assert_test_bound("qos_event_interop", &QOS_EVENT_CELLS);
+    //
+    // Stated INLINE, as every sibling interop test does — a named `…_CELLS`
+    // table here was a second spelling of `interop::CELLS`, which RFC-0051's
+    // single-matrix rule forbids and `no_local_axis_tables` refuses (issue
+    // 1620). One row, not two: the Cyclone shape is a `CarveOut`, and
+    // `coords_for` / `assert_test_bound` compare only `Tier::Runtime` cells,
+    // so listing it would make the tripwire red. `Lang::Rust` is derived from
+    // the binary this test spawns — `fixtures::build_qos_event_probe()`, whose
+    // `examples/fixtures.toml` row is `lang = "rust"` (phase-433 W3: the
+    // language axis was once inverted and agreed with itself).
+    interop::assert_test_bound(
+        "qos_event_interop",
+        &[(
+            nros_tests::matrix::PlatformId::Linux,
+            nros_tests::matrix::Lang::Rust,
+            nros_tests::matrix::Rmw::Zenoh,
+            nros_tests::matrix::Workload::QosEvents,
+        )],
+    );
 
     if !require_ros2() {
         nros_tests::skip!("ROS 2 + rmw_zenoh_cpp not available");

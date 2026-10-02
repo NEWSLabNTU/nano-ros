@@ -3900,14 +3900,20 @@ pub fn build_native_param_two_node_talker() -> TestResult<&'static Path> {
     static NATIVE_PARAM_TWO_NODE_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NATIVE_PARAM_TWO_NODE_BINARY
         .get_or_try_init(|| {
-            // issue 1268 — `select_row(.., plain())`, not `select_sole_row`: the
-            // leaf has TWO rows now (the Cyclone sibling below), and the sole-row
-            // selector refuses a multi-row leaf rather than guessing. `plain()` is
-            // the zenoh row precisely because it authors no `rmw` and no features
-            // — its default features select zenoh.
+            // issue 1268 — `select_row`, not `select_sole_row`: the leaf has TWO
+            // rows (the Cyclone sibling below), and the sole-row selector refuses
+            // a multi-row leaf rather than guessing.
+            //
+            // issue 1620 — `rmw(Zenoh)`, not `plain()`. This said `plain()` "because
+            // the zenoh row authors no `rmw` and no features", but `b6055b6f3`
+            // gave that row `rmw = "zenoh"`, `no_default_features` and
+            // `features = ["rmw-zenoh"]` so it mirrors its Cyclone sibling — and
+            // `plain()` then matched NO row, so both zenoh cases failed with
+            // `no [[fixture]] row … Selector { rmw: "" … }` in every lane. The two
+            // builders now select by the same rule.
             let row = crate::fixtures::groups::select_row(
                 "packages/testing/nros-tests/bins/param-two-node-talker",
-                &crate::fixtures::groups::FixtureVariant::plain(),
+                &crate::fixtures::groups::FixtureVariant::rmw(crate::fixtures::Rmw::Zenoh),
             )?;
             let profile = cargo_target_profile_dir();
             let rel = PathBuf::from(format!("{profile}/param-two-node-talker"));

@@ -11,7 +11,6 @@
 
 mod app_main;
 
-
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
     Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
@@ -66,6 +65,15 @@ impl ExecutableNode for AddTwoIntsClient {
             return;
         }
         state.pending = false;
+        // rclcpp: `while (!client->wait_for_service(1s)) { RCLCPP_INFO(...,
+        // "service not available, waiting again..."); }`. A tick cannot block
+        // the executor that drives it, so the wait is one check per timer
+        // tick. `Err` is "the backend cannot say" — call anyway, the request
+        // is then the probe (as it always was on such backends).
+        if let Ok(false) = ctx.service_is_ready_for_name("/add_two_ints") {
+            log::info!("service not available, waiting again...");
+            return;
+        }
         let req = AddTwoIntsRequest { a: 2, b: 3 };
         match ctx
             .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>("/add_two_ints", &req)
@@ -89,4 +97,3 @@ nros::node!(AddTwoIntsClient);
 // still done by `nros_app_register_backends` — this is only a DCE anchor
 // (issues 0155 / 0163). cyclonedds needs none: its register entry lives in the
 // Zephyr module's C++ lib, which the image already links.
-

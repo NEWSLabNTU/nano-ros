@@ -1,7 +1,7 @@
 # Phase 475 — which test targets a lane can run: a census, not an inference
 
-**Status (2026-10-01). W0 (the measurement) and W1 (the census tool) LANDED;
-W2–W6 open.** A design study with its measurement done first. The question is
+**Status (2026-10-02). W0, W1 LANDED; W2 (the reds) LANDED; W6 DECIDED (the
+package is in); W3–W5 open.** A design study with its measurement done first. The question is
 issue 0922's, asked for every `nros-tests` target at once: *which of them reach
 a verdict in which lane?* The answer it reaches is that **only the lane's own
 environment can say, and asking it costs 24 seconds** — so the classifier is a
@@ -123,10 +123,10 @@ The `nros-launch-resolve` row is the lower bound showing: those three, plus
 `native_orchestration_misuse`, very likely reach a verdict in the real lane,
 which builds the resolver before `test-lane-contracts` runs.
 
-One apt package, `ros-humble-rmw-zenoh-cpp`, is the difference between the gate
-image and **32** more targets reaching a verdict at merge time. That is a
-capacity decision (W6), but it is the kind of number the classifier exists to
-produce.
+One apt package, `ros-humble-rmw-zenoh-cpp`, looked like the difference between
+the gate image and **32** more targets reaching a verdict. **It was not, and the
+census is what showed it** (W6): a skip names the FIRST unmet precondition, not
+the last, so a count of "skipped for X" is an upper bound on what X alone buys.
 
 The 14 *fixture-as-skip* targets are worth their own look: issue 0584's
 `check-skip-budget` asserts that a missing fixture is a hard failure, never a
@@ -193,15 +193,17 @@ root-owned reaches the host; mounts a linked worktree's gitdir at its own path;
 refuses to report if `git`, the CLI build or the `nros-tests` build fails,
 because a census of a broken build is a census of nothing.
 
-### W2 — the four reds the census found
+### W2 — the four reds the census found (LANDED)
 
-`loc_budgets` is fixed (#1514). The other three are filed in issue 1620:
-`example_portability`, `no_local_axis_tables`,
-`params_per_node_interop::cases_bound_to_interop_cells`. Each needs a decision
-from whoever owns that surface — a divergence entry or identical copies, moving
-`QOS_EVENT_CELLS` into `matrix.rs`, a missing case or a stale cell — so they are
-not fixed blind here. `native_orchestration_misuse` is a precondition hidden as
-a failure and goes in the same issue.
+`loc_budgets` was fixed by #1514; the other three in the PR that landed W6.
+Each was a DIFFERENT side going stale, so each fix went a different way —
+recorded in issue 1620, which stays open for what remains
+(`native_orchestration_misuse`, the 14 fixture-as-skip targets, and two tests
+that compile at run time and contend under a parallel census).
+
+`example_portability` turned out to hold **three** divergences, not one: the
+first read of the failure stopped at its first entry. One of them,
+`rust/service-client`, had been red since 2026-09-06.
 
 ### W3 — admission from the census
 
@@ -226,10 +228,30 @@ that hangs instead of skipping is always a defect).
 
 ### W6 — the image lever (a decision, not a task)
 
-`ros-humble-rmw-zenoh-cpp` in `ci-base` would let **32** more targets reach a
-verdict in the gate. It costs image size and a package the ROS side pins
-(issue 0609's drift class). Whoever owns the image should make the call; this
-phase supplies the number.
+**DECIDED 2026-10-02 — added**, and re-measured with it in.
+
+The census with the router present: **0** targets still skip on `zenohd`, and
+**0** of the 32 became PASS. Four moved SKIP → FIXTURE — they now get past the
+router and stop at a fixture, which this census never stages — and the rest
+stop at the next precondition they meet. For the gate lane, which stages no
+fixtures, the package buys nothing yet.
+
+It was added anyway, for the lane that DOES stage fixtures: `host-tests` runs
+in the same `nano-ros-ci` image, so every zenoh interop target there was
+skipping on the router before reaching the fixtures it had built. That benefit
+is the expected one, not a measured one — `host-tests` has no green run to
+compare against (issue 1500).
+
+The lesson is about the census rather than the package. **A skip reports the
+first missing precondition, so "N targets skip for X" is an upper bound on
+what X alone buys.** W5's missing-capability ranking must say so, or it will
+send the next image change after a number that is not real.
+
+The package also changed the image's frozen `ENV`: sourcing ROS now puts
+`/opt/ros/humble/opt/zenoh_cpp_vendor/lib` FIRST on `LD_LIBRARY_PATH`. The
+snapshot was re-captured, and `rmw_zenohd` was confirmed to bind that
+`libzenohc` and start — issue 0774's distinction between a router that
+resolves and one that runs.
 
 ## What this phase deliberately does not do
 
