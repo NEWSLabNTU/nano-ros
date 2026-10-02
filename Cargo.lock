@@ -1791,6 +1791,7 @@ name = "nros-cbindgen-headers"
 version = "0.5.0"
 dependencies = [
  "nros-build-helpers",
+ "nros-build-paths",
  "nros-zpico-build",
 ]
 
