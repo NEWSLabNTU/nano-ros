@@ -1,13 +1,19 @@
 ---
 id: 1607
-title: "A multi-entry configure sizes every entry from the LAST entry's model — `examples/workspaces/cpp`'s `native_entry` dies `ExecutorFull` at boot"
-status: open
+title: "Duplicate of #1600 — a multi-entry configure sizes every entry from the LAST entry's model — `examples/workspaces/cpp`'s `native_entry` dies `ExecutorFull` at boot"
+status: wontfix  # duplicate of issue 1600
 type: bug
 area: [build, orchestration]
 severity: medium
 found: 2026-10-01
-related: [1407, 1564, 1393, phase-454]
+related: [1600, 1407, 1564, 1393, phase-454]
 ---
+
+> **Duplicate of [issue 1600](../1600-multi-entry-configure-sizes-runtime-from-last-entry.md)**,
+> filed the same day from a different direction (issue 1564's work on the same
+> workspace). Its distinct measurements and its fix direction were folded into
+> 1600's "Also measured" section; track the bug there. The text below is kept
+> as filed.
 
 ## What
 
