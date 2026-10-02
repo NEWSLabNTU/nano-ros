@@ -37,8 +37,11 @@
 //! total count would still be right, but `nodes[]` would be a fiction for any
 //! multi-node component.
 //!
-//! [`begin_node`] closes that: `nros_cpp_node_create*` is hooked to open a node
-//! and make it current, and every entity recorded afterwards attributes to it.
+//! [`begin_node`] closes that: every node entry point — `nros_cpp_node_create*`,
+//! `nros-c`'s `nros_executor_node_init` / `nros_node_init_ex`, and the Rust
+//! install path's `ExecutorSink::create_node` — calls
+//! [`crate::census_hooks::on_node_create`] to open a node and make it current,
+//! and every entity recorded afterwards attributes to it.
 //! `configure()` declares one node's entities at a time, so a cursor is the
 //! correct model — not a heuristic.
 
@@ -98,9 +101,10 @@ pub fn reset() {
     });
 }
 
-/// Open a node and make it current. Returns false if the recorder is full or
-/// the node is a duplicate — never silently drops, because a dropped node makes
-/// every entity after it vanish from the count.
+/// Open a node and make it current. Returns false if the recorder is full —
+/// never silently drops, because a dropped node makes every entity after it
+/// vanish from the count. A node already open under this name is made current
+/// again (issue 1419: a tiered Rust entry creates each node once per tier).
 ///
 /// phase-428 W6 remainder: `#[must_use]` because the doc comment above states
 /// the consequence of ignoring the answer and `bool` says nothing at a call
@@ -117,6 +121,15 @@ pub fn begin_node(name: &str, namespace: &str, domain_id: u32) -> bool {
     listen_for_registrations();
     state().with(|st| {
         let id = String::from(name);
+        // Issue 1419 — a node of this name is already open: make it current
+        // again. A tiered Rust entry runs a component's `register()` once per
+        // tier executor, so the same node is created once per tier, and each
+        // tier's run declares only the entities its groups admit. Re-opening
+        // is what makes the census their union rather than a panic on tier 2.
+        if st.recorder.has_node(&id) {
+            st.current_node = Some(id);
+            return true;
+        }
         if st
             .recorder
             .push_node(NodeId::new(&id), name, namespace, domain_id)
@@ -127,6 +140,14 @@ pub fn begin_node(name: &str, namespace: &str, domain_id: u32) -> bool {
         st.current_node = Some(id);
         true
     })
+}
+
+/// Issue 1556 item 1 -- is a node open? An executor-side entity the C API
+/// allows before any node (`nros_timer_init` needs only a support context)
+/// asks this before it records, so it can open the executor scope instead of
+/// failing.
+pub fn has_current_node() -> bool {
+    state().with(|st| st.current_node.is_some())
 }
 
 /// phase-463 W1 -- everything an adapter can say about one entity.
@@ -350,6 +371,50 @@ mod tests {
     // across a whole test body, which is exactly the case a spin lock is wrong
     // for. Production never contends — see the module doc.
     static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Issue 1419 -- a tiered Rust entry runs a component's `register()` once
+    /// per tier executor, so the SAME node is opened once per tier. Re-opening
+    /// makes it current again: one node row, holding the union of what each
+    /// tier declared. Red before (measured): the second `begin_node` returned
+    /// false, which the hook turns into a panic on tier 2.
+    #[test]
+    fn reopening_a_node_makes_it_current_again() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset();
+        assert!(begin_node("ctrl", "/", 0));
+        assert!(record_entity(
+            EntityKind::Timer,
+            "t0",
+            "",
+            Some("t0"),
+            Some(10)
+        ));
+        assert!(begin_node("telem", "/", 0));
+        assert!(
+            begin_node("ctrl", "/", 0),
+            "a re-opened node is not a failure"
+        );
+        assert!(record_entity(
+            EntityKind::Timer,
+            "t1",
+            "",
+            Some("t1"),
+            Some(20)
+        ));
+        let json = to_json(&SourceMetadataExport::new("p", "c")).expect("serialize");
+        assert_eq!(
+            json.matches("\"source_default_name\":\"ctrl\"").count(),
+            1,
+            "one node row, not two: {json}"
+        );
+        let ctrl = &json[json.find("\"source_default_name\":\"ctrl\"").unwrap()
+            ..json.find("\"source_default_name\":\"telem\"").unwrap()];
+        assert!(
+            ctrl.contains("\"period_ms\":10,") && ctrl.contains("\"period_ms\":20,"),
+            "both tiers' timers on the one node: {ctrl}"
+        );
+        reset();
+    }
 
     /// The C++ shape that motivates phase-307 and 308 together: one
     /// subscription the SystemModel can see, plus timers it cannot. Recorded

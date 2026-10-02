@@ -911,7 +911,11 @@ mod service_backed {
                         return NROS_RET_INVALID_ARGUMENT;
                     };
                     let exec = get_executor(&mut (*executor)._opaque);
-                    if exec.declare_parameter(n, $from(value)) {
+                    let pv = $from(value);
+                    // Issue 1556 item 1 — the declaration as the code made it, BEFORE
+                    // the store answers (an adopted seed is still a declaration).
+                    nros::census_hooks::on_param_declare(n, &pv);
+                    if exec.declare_parameter(n, pv) {
                         NROS_RET_OK
                     } else {
                         NROS_RET_ALREADY_EXISTS
@@ -936,7 +940,9 @@ mod service_backed {
                     let Some(id) = node_key(exec, executor, node) else {
                         return NROS_RET_INVALID_ARGUMENT;
                     };
-                    if exec.declare_parameter_on(id, n, $from(value)) {
+                    let pv = $from(value);
+                    nros::census_hooks::on_param_declare(n, &pv);
+                    if exec.declare_parameter_on(id, n, pv) {
                         NROS_RET_OK
                     } else {
                         NROS_RET_ALREADY_EXISTS
@@ -1078,6 +1084,7 @@ mod service_backed {
             return NROS_RET_INVALID_ARGUMENT;
         };
         let exec = get_executor(&mut (*executor)._opaque);
+        nros::census_hooks::on_param_declare(n, &pv);
         if exec.declare_parameter(n, pv) {
             NROS_RET_OK
         } else {
@@ -1106,6 +1113,7 @@ mod service_backed {
         let Some(id) = node_key(exec, executor, node) else {
             return NROS_RET_INVALID_ARGUMENT;
         };
+        nros::census_hooks::on_param_declare(n, &pv);
         if exec.declare_parameter_on(id, n, pv) {
             NROS_RET_OK
         } else {

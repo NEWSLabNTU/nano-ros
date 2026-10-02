@@ -443,7 +443,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_bool(
         // a no-op unless `metadata-mode` is on. Sits BEFORE the store so a
         // declaration the code makes is recorded whatever the store answers
         // (an adopted launch seed is still a declaration).
-        crate::metadata_hooks::on_param_declare(name, &ParameterValue::from_bool(value));
+        nros::census_hooks::on_param_declare(name, &ParameterValue::from_bool(value));
         declare_on_node(ctx, id, name, ParameterValue::from_bool(value))
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
@@ -471,7 +471,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_integer(
         // a no-op unless `metadata-mode` is on. Sits BEFORE the store so a
         // declaration the code makes is recorded whatever the store answers
         // (an adopted launch seed is still a declaration).
-        crate::metadata_hooks::on_param_declare(name, &ParameterValue::from_integer(value));
+        nros::census_hooks::on_param_declare(name, &ParameterValue::from_integer(value));
         declare_on_node(ctx, id, name, ParameterValue::from_integer(value))
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
@@ -499,7 +499,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_double(
         // a no-op unless `metadata-mode` is on. Sits BEFORE the store so a
         // declaration the code makes is recorded whatever the store answers
         // (an adopted launch seed is still a declaration).
-        crate::metadata_hooks::on_param_declare(name, &ParameterValue::from_double(value));
+        nros::census_hooks::on_param_declare(name, &ParameterValue::from_double(value));
         declare_on_node(ctx, id, name, ParameterValue::from_double(value))
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
@@ -532,7 +532,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_string(
             return NROS_CPP_RET_FULL;
         };
         // phase-463 W1 -- the census hook; see `nros_cpp_node_declare_param_bool`.
-        crate::metadata_hooks::on_param_declare(name, &pv);
+        nros::census_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
@@ -883,7 +883,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_double_array(
             return NROS_CPP_RET_FULL;
         };
         // phase-463 W1 -- the census hook; see `nros_cpp_node_declare_param_bool`.
-        crate::metadata_hooks::on_param_declare(name, &pv);
+        nros::census_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
@@ -915,7 +915,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_integer_array(
             return NROS_CPP_RET_FULL;
         };
         // phase-463 W1 -- the census hook; see `nros_cpp_node_declare_param_bool`.
-        crate::metadata_hooks::on_param_declare(name, &pv);
+        nros::census_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
@@ -947,7 +947,7 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_bool_array(
             return NROS_CPP_RET_FULL;
         };
         // phase-463 W1 -- the census hook; see `nros_cpp_node_declare_param_bool`.
-        crate::metadata_hooks::on_param_declare(name, &pv);
+        nros::census_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]

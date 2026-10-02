@@ -2502,7 +2502,7 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     // for the same reason the `_ex` path does: the recorder must see the
     // namespace the node LANDED in, not the one the caller asked for.
     let ns_str = handle_namespace(out);
-    crate::metadata_hooks::on_node_create(name_str, ns_str, ctx.domain_id);
+    nros::census_hooks::on_node_create(name_str, ns_str, ctx.domain_id);
 
     NROS_CPP_RET_OK
 }
@@ -2681,7 +2681,7 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
     // of the handle just written rather than re-derived, so the recorder sees
     // the namespace the node LANDED in. No-op unless `metadata-mode` is on.
     let ns_str = handle_namespace(out);
-    crate::metadata_hooks::on_node_create(name_str, ns_str, ctx.domain_id);
+    nros::census_hooks::on_node_create(name_str, ns_str, ctx.domain_id);
 
     NROS_CPP_RET_OK
 }

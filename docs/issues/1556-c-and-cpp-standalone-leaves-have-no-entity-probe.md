@@ -216,3 +216,48 @@ Files for item 1: `packages/api/nros/` (new hook module),
 `packages/api/nros-cpp/src/metadata_hooks.rs` (becomes calls),
 `packages/api/nros-c/src/` (the node / timer / guard-condition / parameter entry
 points), `check-census-hooks-complete`. No overlap with issues 1608 / 1647.
+
+## Status 2026-10-03 -- item 1 done (the hooks live in `nros`)
+
+Fixed in the PR that carries this section (*the census hooks move into `nros`*),
+shared with issue 1419's Rust item. The four hook bodies moved from `nros-cpp`'s
+`metadata_hooks.rs` to `nros::census_hooks` (bodies behind `metadata-mode`,
+calls unconditional), and `nros-cpp`'s entry points now call them there; no
+`nros-c` copy exists. `nros-c`'s node / timer / guard-condition / parameter
+entry points call the same four:
+
+| `nros-c` entry point | hook |
+| --- | --- |
+| `nros_executor_node_init`, `nros_node_init_ex` (and `rclc_node_init_default`, which forwards) | `on_node_create` (the namespace and domain the node LANDED in) |
+| `rclc_executor_add_timer`, `nros_executor_add_timer_in_group` | `on_timer_create` (`Wall` / `Clock` / `InGroup`) |
+| `nros_node_create_guard_condition` | `on_guard_condition_create` |
+| `nros_executor_declare_param_*` and `*_on` (scalar pairs are `paste!`-generated) | `on_param_declare` |
+
+`nros_parameter_declare_*` (the node-LESS legacy parameter server) is not a
+census entry point: it sizes no node's store.
+
+Two behaviour changes the move needed, each tested:
+
+* **A re-opened node is made current again** instead of refused. A tiered Rust
+  entry runs `register()` once per tier executor, so the same node is opened
+  once per tier; the old refusal is a panic on tier 2.
+  (`metadata_mode::tests::reopening_a_node_makes_it_current_again`.)
+* **An executor-side entity created before ANY node is counted under an
+  executor scope (`__executor__`)** instead of panicking. That is legal C
+  (`nros_timer_init` needs only a support context; `nros-c`'s own
+  `tests/run/timer_clock_source.c` does it), and with the hooks live in `nros-c`
+  it would otherwise panic every native image that links the recorder.
+
+Tests (`just check census-hooks-complete`, the lane that builds `metadata-mode`
+with the recording backend): `census_hooks_reach_every_api::{a_c_node_opened_through_nros_c_is_attributed,
+an_rclc_node_opens_the_census_cursor, a_node_less_c_timer_is_counted_under_the_executor_scope,
+a_rust_component_registered_through_the_runtime_is_attributed}`. Measured red
+before: with `nros-c/src` and `nros/src/node_runtime.rs` reverted to `main`, all
+three attribution tests fail (the C node is absent from `nodes[]`; the Rust
+`register_node` fails `Runtime`, because the recording backend refuses an
+entity with no current node). `check-census-hooks-complete` now holds the C and
+Rust entry points too (26 hooked, up from 15) and reads `paste!`-generated
+names; three new mutations (a C group timer, a generated `declare_param_*_on`,
+the Rust `create_node`) each go red.
+
+Items 2-5 are still open.

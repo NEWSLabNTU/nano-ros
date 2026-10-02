@@ -1467,6 +1467,29 @@ pub unsafe extern "C" fn nros_executor_node_init(
     // multi-Session variants. Support pointer stays NULL on this path —
     // legacy single-Node paths key off support, multi-Node paths key
     // off node_id + executor pointer (Phase 156 Sub-bug D).
+    // Issue 1556 item 1 — open this node in the census recorder so the
+    // entities a C node declares next attribute to it (the RMW seam carries no
+    // node). The namespace and domain the node LANDED in, read back from the
+    // executor, as `nros-cpp`'s node entry points report them. No-op unless
+    // `metadata-mode` is on.
+    {
+        let rust_exec = get_executor(&mut executor._opaque);
+        let ns = match rust_exec.node(node_id).map(|r| r.namespace.as_str()) {
+            Some(s) if !s.is_empty() => s,
+            _ => "/",
+        };
+        let domain = if opts.domain_id_override != NROS_DOMAIN_ID_INHERIT {
+            opts.domain_id_override
+        } else {
+            rust_exec.domain_id()
+        };
+        nros::census_hooks::on_node_create(
+            core::str::from_utf8_unchecked(&node_ref.name[..node_ref.name_len]),
+            ns,
+            domain,
+        );
+    }
+
     node_ref.node_id = node_id.raw();
     node_ref.support = core::ptr::null();
     node_ref.executor = executor as *const nros_executor_t;
@@ -2368,6 +2391,20 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
         let period = nros_node::TimerDuration::from_micros(period_us);
         match rust_exec.register_timer_on_clock(period, source, wrapper) {
             Ok(handle_id) => {
+                // Issue 1556 item 1 — a timer never reaches the RMW, so the
+                // recording backend cannot see it; this hook is how a C timer
+                // enters the census. `Clock` when the timer was initialised on
+                // a clock (`nros_timer_init_on_clock`), `Wall` otherwise — the
+                // same split `nros-cpp`'s two entry points report. No-op unless
+                // `metadata-mode` is on.
+                nros::census_hooks::on_timer_create(
+                    if timer_ref.clock.is_null() {
+                        nros::node_metadata::TimerKind::Wall
+                    } else {
+                        nros::node_metadata::TimerKind::Clock
+                    },
+                    period_us / 1_000,
+                );
                 // Store handle ID and executor pointer for cancel/reset operations
                 let timer_mut = &mut *timer;
                 timer_mut.set_handle_id(handle_id);
@@ -2574,6 +2611,12 @@ pub unsafe extern "C" fn nros_executor_add_timer_in_group(
         let period = nros_node::TimerDuration::from_micros(period_us);
         match rust_exec.register_timer_on(None, period, wrapper, group_str) {
             Ok(handle_id) => {
+                // Issue 1556 item 1 — as `rclc_executor_add_timer`, under the
+                // in-group kind `nros-cpp`'s group entry point reports.
+                nros::census_hooks::on_timer_create(
+                    nros::node_metadata::TimerKind::InGroup,
+                    period_us / 1_000,
+                );
                 let timer_mut = &mut *timer;
                 timer_mut.set_handle_id(handle_id);
                 timer_mut.set_executor_ptr(executor._opaque.as_mut_ptr() as *mut core::ffi::c_void);
