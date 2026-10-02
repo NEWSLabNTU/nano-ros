@@ -319,6 +319,23 @@ pub fn depend_names(xml: &str) -> Vec<String> {
     out
 }
 
+/// The rosidl names an interface package declares to have its messages
+/// generated — which nano-ros's own codegen does instead
+/// ([`self_satisfied_buildtools`]).
+pub const ROSIDL_SERVED_BY_CODEGEN: &[&str] =
+    &["rosidl_default_generators", "rosidl_default_runtime"];
+
+/// Whether a `package.xml` declares itself an interface package — the ROS
+/// convention, `<member_of_group>rosidl_interface_packages</member_of_group>`.
+#[must_use]
+pub fn is_interface_package(xml: &str) -> bool {
+    xml.match_indices("<member_of_group>").any(|(i, _)| {
+        let rest = &xml[i + "<member_of_group>".len()..];
+        rest.find("</member_of_group>")
+            .is_some_and(|end| rest[..end].trim() == "rosidl_interface_packages")
+    })
+}
+
 /// `<build_type>` -> the buildtool package that build type implies.
 ///
 /// Measured on this tree: 345 of 367 packages declare a `<build_type>` and NOT
@@ -359,18 +376,34 @@ pub fn build_type(xml: &str) -> Option<String> {
 /// declares it has a build type implying it. One package declaring
 /// `ament_cmake` while being built some other way keeps the name on the normal
 /// ladder, where an ambient ROS or a `[prereq.*]` key still has to claim it.
+///
+/// The same holds for the generator an INTERFACE package names
+/// ([`ROSIDL_SERVED_BY_CODEGEN`]): `nros sync` generates that package's
+/// messages itself, so `rosidl_default_generators` / `_runtime` are served by
+/// the builder exactly as `ament_cmake` is. Same rule, same conservatism —
+/// every declarer must be a `rosidl_interface_packages` member. Without it a
+/// workspace carrying its own `.msg` package could not build on a ROS-less
+/// host, which is the design of the tier-2 runner (`runner-container.sh`):
+/// `examples/workspaces/features`' `custom_msgs` stopped that lane's native
+/// fixtures at `2 <depend> name(s) resolve to nothing`.
 #[must_use]
 pub fn self_satisfied_buildtools(ws_root: &Path) -> BTreeSet<String> {
     let mut implied: BTreeMap<String, (usize, usize)> = BTreeMap::new();
     for (_path, text) in package_xml_files(ws_root) {
         let own = build_type(&text).and_then(|bt| buildtool_for_build_type(&bt));
+        let interface_pkg = is_interface_package(&text);
         for dep in depend_names(&text) {
-            if buildtool_for_build_type(&dep).is_some() || dep == "nros" {
-                let e = implied.entry(dep.clone()).or_insert((0, 0));
-                e.1 += 1;
-                if own == Some(dep.as_str()) {
-                    e.0 += 1;
-                }
+            let satisfied = if buildtool_for_build_type(&dep).is_some() || dep == "nros" {
+                own == Some(dep.as_str())
+            } else if ROSIDL_SERVED_BY_CODEGEN.contains(&dep.as_str()) {
+                interface_pkg
+            } else {
+                continue;
+            };
+            let e = implied.entry(dep.clone()).or_insert((0, 0));
+            e.1 += 1;
+            if satisfied {
+                e.0 += 1;
             }
         }
     }
@@ -624,6 +657,39 @@ mod tests {
             ),
             Resolution::RosPackage,
         );
+    }
+
+    /// An interface package's rosidl generator deps are served by nros codegen,
+    /// and only an interface package's: one non-interface declarer keeps the
+    /// name on the normal ladder.
+    #[test]
+    fn interface_package_rosidl_deps_are_served_by_codegen() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
+        let pkg = |name: &str, body: &str| {
+            let d = dir.join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("package.xml"), body).unwrap();
+        };
+        pkg(
+            "msgs",
+            "<package><build_depend>rosidl_default_generators</build_depend>\
+             <exec_depend>rosidl_default_runtime</exec_depend>\
+             <member_of_group>rosidl_interface_packages</member_of_group>\
+             <export><build_type>ament_cmake</build_type></export></package>",
+        );
+        let got = self_satisfied_buildtools(&dir);
+        assert!(got.contains("rosidl_default_generators"), "{got:?}");
+        assert!(got.contains("rosidl_default_runtime"), "{got:?}");
+        // a second declarer that is NOT an interface package
+        pkg(
+            "app",
+            "<package><depend>rosidl_default_runtime</depend>\
+             <export><build_type>ament_cmake</build_type></export></package>",
+        );
+        let got = self_satisfied_buildtools(&dir);
+        assert!(got.contains("rosidl_default_generators"), "{got:?}");
+        assert!(!got.contains("rosidl_default_runtime"), "{got:?}");
     }
 
     /// The mapping is per build type, and nano-ros's own builders resolve to
