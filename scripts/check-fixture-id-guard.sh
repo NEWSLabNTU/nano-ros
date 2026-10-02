@@ -184,6 +184,51 @@ else
     echo "  ok    unfiltered empty coordinate stays silent and green"
 fi
 
+# issue 1616 (W7) — WHICH builders must call the guard is harvested, not the
+# one `fixtures-build.sh` row above: every shell script that takes an id filter
+# (a `--id)` arm, or `=${NROS_FIXTURE_ID...}`) must call
+# `nros_fixture_id_no_match` in CODE. `workspace-fixtures-build.sh` could drop
+# its call and exit 0 on a no-match with this gate green.
+echo "check-fixture-id-guard: every id-taking builder calls the guard"
+if ! python3 - <<'PY'
+import re, sys
+sys.path.insert(0, "scripts/lib")
+import comments, file_kinds, harvest
+
+TAKES = re.compile(r"(^|\s)--id\)|=\s*\"?\$\{NROS_FIXTURE_ID\b", re.M)
+CALL = re.compile(r"(^|[;&|({]\s*|\s)nros_fixture_id_no_match(\s|$)", re.M)
+
+def takes_and_calls(text):
+    code = comments.strip_comments(text, "sh")
+    return bool(TAKES.search(code)), bool(CALL.search(code))
+
+# Normal-path selftest, both directions.
+assert takes_and_calls('case "$1" in\n  --id) x=$2;;\nesac\nnros_fixture_id_no_match "$x" flag k p l\n') == (True, True)
+assert takes_and_calls('f="${NROS_FIXTURE_ID:-}"\n# nros_fixture_id_no_match "$f"\nexit 0\n') == (True, False)
+
+EXEMPT = {"scripts/build/fixture-id-guard.sh": "the guard's own definition file"}
+takers, bad = [], []
+for rel in file_kinds.files_of_kind("shell"):
+    if not rel.startswith("scripts/") or rel == "scripts/check-fixture-id-guard.sh":
+        continue
+    takes, calls = takes_and_calls(open(rel, errors="replace").read())
+    if takes or rel in EXEMPT:
+        takers.append(rel)
+        if takes and not calls and rel not in EXEMPT:
+            bad.append(rel)
+checked, problems = harvest.reconcile(takers, EXEMPT, what="id-taking builder")
+for b in bad:
+    print(f"  FAIL  {b} takes an id filter and never calls nros_fixture_id_no_match")
+for p in problems:
+    print(f"  FAIL  {p}")
+if bad or problems:
+    sys.exit(1)
+print(f"  ok    {len(checked)} id-taking builder(s) call the guard: {', '.join(checked)}")
+PY
+then
+    fails=$((fails + 1))
+fi
+
 if [ "$fails" -ne 0 ]; then
     echo "check-fixture-id-guard: ${fails} case(s) failed" >&2
     exit 1

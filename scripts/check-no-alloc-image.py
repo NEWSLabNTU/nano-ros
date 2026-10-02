@@ -201,47 +201,14 @@ CXX_DEMANGLED_PREFIXES = (
 # `_Zdl`/`_Zda` are delete/delete[]; the suffix encodes the overload.
 CXX_MANGLED_PREFIXES = ("_Znw", "_Zna", "_Zdl", "_Zda")
 
-RTOS_HEAP = {
-    # Zephyr
-    "k_malloc",
-    "k_calloc",
-    "k_free",
-    "k_aligned_alloc",
-    "k_heap_alloc",
-    "k_heap_aligned_alloc",
-    "k_heap_free",
-    "sys_heap_alloc",
-    "sys_heap_free",
-    # FreeRTOS
-    "pvPortMalloc",
-    "pvPortCalloc",
-    "vPortFree",
-    "pvPortMallocStack",
-    "vPortFreeStack",
-    # ThreadX
-    "tx_byte_allocate",
-    "tx_byte_release",
-    "_txe_byte_allocate",
-    "_txe_byte_release",
-    "_tx_byte_allocate",
-    "_tx_byte_release",
-    # NuttX
-    "kmm_malloc",
-    "kmm_calloc",
-    "kmm_realloc",
-    "kmm_zalloc",
-    "kmm_memalign",
-    "kmm_free",
-    # ESP-IDF
-    "heap_caps_malloc",
-    "heap_caps_calloc",
-    "heap_caps_realloc",
-    "heap_caps_free",
-}
+# issue 1616 (W7): the RTOS allocators are the kernels' NAMING SCHEME, shared
+# with `check-no-direct-kernel-alloc.sh` (`scripts/lib/kernel_alloc.py`) — not
+# an authored name set, which knew `k_calloc` and not `k_realloc`.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+import kernel_alloc  # noqa: E402
 
 FAMILIES = (
     ("c-heap", C_HEAP),
-    ("rtos-heap", RTOS_HEAP),
 )
 
 # RFC-0034 D6's funnel. Not an allocation symbol to deny — it is the symbol the
@@ -607,6 +574,8 @@ def classify(name):
     for family, members in FAMILIES:
         if base in members or leaf in members:
             return family
+    if kernel_alloc.is_kernel_alloc(base) or kernel_alloc.is_kernel_alloc(leaf):
+        return "rtos-heap"
     if RUST_ALLOC_RE.search(n) or RUST_SHIM_RE.search(n):
         return "rust-alloc-shim"
     if base.startswith(CXX_DEMANGLED_PREFIXES) or leaf.startswith(

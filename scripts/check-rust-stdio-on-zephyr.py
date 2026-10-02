@@ -53,21 +53,53 @@ STDIO = re.compile(r"(?<![A-Za-z_])(?:std::)?(?:e?print(?:ln)?)\s*!")
 # expansion, and doc comments quote it to explain the hazard.
 ALLOW_MARK = "nros-allow-std-stdio"
 
+# issue 1616 (W7): the population was the two authored crates above. Every crate
+# whose PACKAGE NAME says Zephyr is harvested in too — the board crate and the
+# Zephyr example images were outside the rule they are the subject of. A
+# harvested crate that is not linked into an image is exempt WITH A REASON
+# (`scripts/lib/harvest.py` refuses a stale or reason-less row).
+HOST_ONLY_EXEMPT = {
+    "nros-zephyr-build": "a build-script helper crate: runs on the HOST inside "
+                         "cargo, never linked into a Zephyr image",
+}
+
+
+def zephyr_crate_srcs():
+    import harvest
+
+    names, dirs = [], {}
+    for toml in tracked(REPO, name="Cargo.toml"):
+        rel = toml.relative_to(REPO).as_posix()
+        if "third-party/" in rel or "/generated/" in rel:
+            continue
+        m = re.search(r'^name\s*=\s*"([^"]+)"', toml.read_text(errors="replace"), re.M)
+        if m and "zephyr" in m.group(1):
+            names.append(m.group(1))
+            dirs[m.group(1)] = toml.parent.relative_to(REPO).as_posix() + "/src"
+    keep, problems = harvest.reconcile(names, HOST_ONLY_EXEMPT, what="zephyr crate")
+    if problems:
+        raise SystemExit("check-rust-stdio-on-zephyr: " + "; ".join(problems))
+    return [dirs[n] for n in keep]
+
 
 def main() -> int:
     failures: list[str] = []
     scanned = 0
 
-    for rel in SCOPED:
+    import comments
+
+    for rel in SCOPED + zephyr_crate_srcs():
         root = REPO / rel
         if not root.is_dir():
             continue
         for path in tracked(root, suffix=".rs"):
             scanned += 1
             in_macro_def = False
-            for lineno, line in enumerate(path.read_text().splitlines(), 1):
+            raw = path.read_text()
+            code = comments.strip_comments(raw, "rust").splitlines()
+            for lineno, (line, rawline) in enumerate(zip(code, raw.splitlines()), 1):
                 stripped = line.lstrip()
-                if stripped.startswith("//"):
+                if not stripped:
                     continue  # a comment explaining the hazard is not the hazard
                 # The sanctioned wrapper: its non-Zephyr arm IS `std::eprintln!`.
                 if "macro_rules! cpp_diag" in line:
@@ -77,7 +109,7 @@ def main() -> int:
                     if stripped.startswith("}"):
                         in_macro_def = False
                     continue
-                if ALLOW_MARK in line:
+                if ALLOW_MARK in rawline:
                     continue
                 if STDIO.search(line):
                     failures.append(
@@ -98,7 +130,8 @@ def main() -> int:
         )
         return 1
 
-    print(f"check-rust-stdio-on-zephyr: OK ({scanned} file(s) in {len(SCOPED)} crate(s))")
+    print(f"check-rust-stdio-on-zephyr: OK ({scanned} file(s) in "
+          f"{len(SCOPED) + len(zephyr_crate_srcs())} crate(s))")
     return 0
 
 

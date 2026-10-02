@@ -31,33 +31,47 @@ cd "$(dirname "$0")/.."
 # Consumers whose link inputs must come from the snapshot. The build script that
 # PRODUCES the tree is excluded by construction — it is the one thing that must
 # name `staging/`.
-CONSUMERS=(
-    "packages/boards/nros-board-common/src/nuttx_ffi_build.rs"
-    "packages/boards/nros-board-common/src/nuttx_image_link.rs"
-)
-
+# issue 1616 (W7): the consumer list was AUTHORED (two files), so a third
+# build script — `nros-board-nuttx-qemu/build.rs` joining `staging` itself —
+# passed. The population is now every tracked Rust source (comments stripped):
+# the live-tree spelling may appear exactly ONCE, in the resolver's documented
+# compatibility fallback, and nowhere else.
 fail=0
-for f in "${CONSUMERS[@]}"; do
-    [ -f "$f" ] || continue
-    # `join("staging")` is the live-tree spelling. The compatibility fallback in
-    # `nuttx_export.rs` is the ONE sanctioned use, and it lives in that file.
-    hits="$(grep -nE '\.join\("staging"\)' "$f" || true)"
-    if [ -n "$hits" ]; then
-        echo "[FAIL] $f links the SHARED live NuttX tree:" >&2
-        printf '  %s\n' "$hits" >&2
-        fail=1
-    fi
-done
+if ! python3 - <<'PY'
+import re, sys
+sys.path.insert(0, "scripts/lib")
+import comments, file_kinds, population
 
-# The fallback is allowed exactly once, in the resolver that owns the policy.
-resolver="packages/boards/nros-board-common/src/nuttx_export.rs"
-if [ -f "$resolver" ]; then
-    n="$(grep -cE '\.join\("staging"\)' "$resolver" || true)"
-    if [ "$n" -gt 1 ]; then
-        echo "[FAIL] $resolver names the live tree $n times — expected exactly one" >&2
-        echo "       (the documented pre-phase-339 compatibility fallback)." >&2
-        fail=1
-    fi
+LIVE = re.compile(r'\.join\(\s*"staging"\s*\)')
+RESOLVER = "packages/boards/nros-board-common/src/nuttx_export.rs"
+
+def count(text):
+    return len(LIVE.findall(comments.strip_comments(text, "rust")))
+
+# Normal-path selftest: a comment is not a use; a real join is.
+assert count('// p.join("staging")\nfn f() {}\n') == 0
+assert count('fn f(p: &P) -> Q { p.join("staging") }\n') == 1
+
+files = file_kinds.files_of_kind("rust")
+if not population.require_population(files, "Rust source(s)", gate="nuttx-links-snapshot"):
+    sys.exit(1)
+bad = []
+for rel in files:
+    try:
+        n = count(open(rel, errors="replace").read())
+    except OSError:
+        continue
+    want = 1 if rel == RESOLVER else 0
+    if n > want:
+        bad.append(f"{rel}: {n} live-tree join(s), {want} allowed")
+    if rel == RESOLVER and n == 0:
+        bad.append(f"{rel}: the documented fallback is gone — drop this exemption")
+for b in bad:
+    print(f"[FAIL] {b}", file=sys.stderr)
+sys.exit(1 if bad else 0)
+PY
+then
+    fail=1
 fi
 
 if [ "$fail" != 0 ]; then

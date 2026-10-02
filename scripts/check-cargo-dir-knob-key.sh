@@ -170,6 +170,10 @@ for want in ZPICO_MAX_QUERYABLES NROS_EXECUTOR_MAX_CBS NROS_XRCE_MAX_SUBSCRIBERS
     fail=1
 done
 
+# issue 1616 (W7) — the probe above proves the HELPER; this proves every CALL
+# SITE uses it. The sites are harvested, not listed.
+python3 scripts/check-cargo-dir-knob-key-sites.py || fail=1
+
 if [ "$fail" != 0 ]; then
     echo "" >&2
     echo "  Every cargo-directory key carries the resolve digest (RFC-0094 D4)." >&2

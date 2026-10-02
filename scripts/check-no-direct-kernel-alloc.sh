@@ -28,7 +28,10 @@ set -euo pipefail
 # (Allocation only — thread/sync/net primitives are a later wave.)
 # Word-boundaried so the short names (`k_malloc`/`k_free`) don't substring-
 # match `task_free` / `zsock_freeaddrinfo` etc.
-SYMBOLS='\b(pvPortMalloc|vPortFree|tx_byte_allocate|tx_byte_release|heap_caps_malloc|heap_caps_free|k_malloc|k_free)\b'
+# issue 1616 (W7): the symbol population is each kernel's allocator NAMING
+# SCHEME, shared with check-no-alloc-image.py (scripts/lib/kernel_alloc.py).
+# The authored list here knew `k_malloc` and not `k_calloc`/`k_realloc`.
+SYMBOLS="$(python3 "$(dirname "${BASH_SOURCE[0]}")/lib/kernel_alloc.py" --ere)"
 
 # Roots to scan (nros-owned C + Rust).
 ROOTS='packages'
@@ -68,12 +71,31 @@ cd "$repo_root"
 # them (the phase-291 80-minute-crawl class, incompletely fixed). Tracked
 # files can never include build output; EXCLUDE_RE still filters vendored
 # sources + prose-only crates.
+# issue 1616: comments are stripped by the one stripper (scripts/lib/comments.py)
+# rather than by dropping every line that STARTS with `#` — which also dropped
+# `#define ALLOC(n) pvPortMalloc(n)`, a real use. Output is `path:line:text`.
 mapfile -t hits < <(
     git ls-files $ROOTS \
         | grep -E '\.(c|cc|cpp|h|hpp|rs|S|s)$' \
-        | xargs -r -d '\n' grep -InE "$SYMBOLS" -- 2>/dev/null \
         | grep -vE "$EXCLUDE_RE" \
-        | grep -vE ':[[:space:]]*(//|\*|#)' \
+        | NROS_KA_ERE="$SYMBOLS" python3 -c '
+import os, re, sys
+sys.path.insert(0, "scripts/lib")
+import comments
+pat = re.compile(os.environ["NROS_KA_ERE"])
+for rel in sys.stdin.read().split("\n"):
+    if not rel:
+        continue
+    lang = comments.lang_for(rel)
+    try:
+        raw = open(rel, errors="replace").read()
+    except OSError:
+        continue
+    code = comments.strip_comments(raw, lang) if lang else raw
+    for n, (cl, rl) in enumerate(zip(code.split("\n"), raw.split("\n")), 1):
+        if pat.search(cl):
+            print(f"{rel}:{n}:{rl.strip()}")
+' \
         || true
 )
 

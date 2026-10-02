@@ -62,27 +62,55 @@ fi
 # 2. each probe entry point accounts, reports and clears.
 # `|| true`: finding nothing is this gate's own negative control and grep
 # spells it exit 1, so without this the [FAIL] below never prints (issue 1249).
-entries="$(grep -oE 'fn require_prebuilt_binary_fresh[a-z_]*' "$PROBES" | sed 's/^fn //' | sort -u || true)"
-[ -n "$entries" ] || {
-    echo "[FAIL] no \`require_prebuilt_binary_fresh*\` entry points found in $PROBES" >&2
+# issue 1616 (W7): the probes are HARVESTED — every non-test fn in the test
+# crate's sources whose body opens a probe (`staleness::begin_probe()`) — not
+# the `require_prebuilt_binary_fresh*` name prefix, which missed
+# `require_prebuilt_row_binary_fresh`: its `record_fresh` could be deleted with
+# this gate green. Comments are stripped and `#[cfg(test)]` items blanked.
+probe_report="$(python3 - "$SRC" <<'PY'
+import re, sys
+from pathlib import Path
+sys.path.insert(0, "scripts/lib")
+import comments, per_item, tracked as _t
+
+REQUIRED = ("staleness::begin_probe()", "staleness::stale_error", "staleness::record_fresh")
+FN = re.compile(r"\bfn\s+([A-Za-z_][A-Za-z0-9_]*)")
+
+def probes(text):
+    code = per_item.rust_cfg_test_blank(comments.strip_comments(text, "rust"))
+    out = []
+    for m, a, b in per_item.blocks(code, FN):
+        body = code[a:b]
+        # The innermost fn owns the call: skip a body that only CONTAINS a probe fn.
+        if "staleness::begin_probe()" in body and not FN.search(body):
+            out.append((m.group(1), [r for r in REQUIRED if r not in body]))
+    return out
+
+# Normal-path selftest.
+ok = 'fn a() { staleness::begin_probe(); return Err(staleness::stale_error(x)); staleness::record_fresh(p); }'
+assert probes(ok) == [("a", [])], probes(ok)
+bad = 'fn b() { staleness::begin_probe(); return Err(staleness::stale_error(x)); }'
+assert probes(bad) == [("b", ["staleness::record_fresh"])]
+assert probes("#[cfg(test)]\nmod t { fn c() { staleness::begin_probe(); } }\n") == []
+
+n = 0
+for path in _t.tracked(sys.argv[1], suffix=".rs"):
+    for name, missing in probes(path.read_text(errors="replace")):
+        n += 1
+        for r in missing:
+            print(f"MISSING {path} {name} {r}")
+print(f"COUNT {n}")
+PY
+)" || { echo "[FAIL] the probe harvest did not run" >&2; exit 1; }
+checked="$(sed -n 's/^COUNT //p' <<<"$probe_report")"
+if [ -z "$checked" ] || [ "$checked" -lt 1 ]; then
+    echo "[FAIL] no staleness probe (a fn calling staleness::begin_probe()) found under $SRC" >&2
     exit 1
-}
-checked=0
-for name in $entries; do
-    # The function body: from its signature to the next top-level `fn `/doc.
-    body="$(awk -v pat="fn $name" '
-        $0 ~ pat {inside=1}
-        inside {print}
-        inside && /^}/ {exit}
-    ' "$PROBES")"
-    checked=$((checked + 1))
-    for required in "staleness::begin_probe()" "staleness::stale_error" "staleness::record_fresh"; do
-        if ! nros_grep_q -F -- "$required" <<<"$body"; then
-            echo "[FAIL] $name is missing \`$required\`" >&2
-            fail=1
-        fi
-    done
-done
+fi
+while read -r _tag file name required; do
+    echo "[FAIL] $file: $name is missing \`$required\`" >&2
+    fail=1
+done < <(grep '^MISSING ' <<<"$probe_report" || true)
 
 if [ "$fail" != 0 ]; then
     echo "" >&2
