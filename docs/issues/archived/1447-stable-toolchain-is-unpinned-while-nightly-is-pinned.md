@@ -4,11 +4,11 @@ title: "`rust-toolchain.toml` pins the LINTING toolchain to a moving channel
   (`stable`) while the FORMATTING one is pinned to a date — so a lint set can
   change under a checkout with no commit, on the one lane that runs clippy and
   gates no merge"
-status: open
+status: resolved
 type: bug
 area: [ci, build]
 severity: medium
-related: [1445, 1380, 0319, 1040]
+related: [1445, 1380, 0319, 1040, 1642]
 found: 2026-09-22
 ---
 
@@ -165,3 +165,37 @@ sweep could not reach because a green lane is the only instrument we have.
 **The pin itself is deliberately NOT part of that change** — the fix shape above
 is a decision for the maintainer, and clearing a red is not the moment to take
 it silently.
+
+## RESOLVED 2026-10-02 — pinned to `1.99.0` (PR #1556)
+
+`rust-toolchain.toml` now reads `channel = "1.99.0"`, with the same comment
+discipline `tools/rust-toolchain.toml` already had. The version is the one
+PR #1536 had already cleared, so the pin changed no diagnostics on the day it
+landed; what it changed is who decides when they change next. A toolchain move
+is now a reviewable commit that runs every lane before it lands, instead of
+something that reaches every checkout and CI at once with no diff.
+
+`tools/rust-toolchain.toml`'s comment, which asserted "the root
+`rust-toolchain.toml` stays on stable", was corrected in the same PR — true
+when written, false from that commit on.
+
+### What this issue was right about, and what it undersold
+
+The fix shape below held exactly. The framing did not: it said clippy's lint
+SET moves with the channel, and **three tools move, not one**. PR #1536's nine
+sites were 2 clippy, 5 rustdoc, and 7 errors from rustc's own future-incompat
+set (`semicolon_in_expressions_from_non_local_macros`), which `-D warnings`
+turns into a hard error — and those seven were not even our code, but eyre
+0.6.12's `bail!`. Anyone weighing a future "let it float again" proposal should
+weigh all three, not the one this issue named.
+
+### What the pin does NOT do — each now owned elsewhere
+
+- **It creates a drift risk.** A pin that ages silently is how a six-week bump
+  becomes a sixty-site one. The mitigation the post-mortem recommended — an
+  advisory "try the next stable" lane that is allowed to be red — is filed as
+  **issue 1642**, rather than kept open here as residue this issue never owned.
+- **It makes no clippy lane merge-gating.** That is **issue 1445**, a separate
+  decision, as this issue's own fix-shape section said. A pin stops the
+  surprise, not the gap.
+
