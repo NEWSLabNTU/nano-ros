@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Every entity a C++ node creates crosses one ABI entry point, and every one
-of those entry points calls its census hook -- phase-463 W1 (issue 1419).
+"""Every entity a node creates crosses one entry point, and every one of those
+entry points calls its census hook -- phase-463 W1 (issue 1419), widened to all
+three node APIs when the hooks moved into `nros` (issue 1419's Rust item, issue
+1556 item 1, RFC-0100 Amendment 1).
 
 THE CLASS
 ---------
@@ -23,12 +25,22 @@ under-count that puts `ExecutorFull` on a board with no console.
 
 WHAT THIS REFUSES
 -----------------
-1. An executor-side entry point whose body does not call its hook:
-   `nros_cpp_timer_create*` -> `on_timer_create`,
+1. An executor-side entry point whose body does not call its hook, in EVERY
+   node API (the hooks live once, in `nros::census_hooks`):
+   C++ -- `nros_cpp_timer_create*` -> `on_timer_create`,
    `nros_cpp_guard_condition_create` -> `on_guard_condition_create`,
    `nros_cpp_node_declare_param_*` -> `on_param_declare`,
    `nros_cpp_node_create` / `_ex` -> `on_node_create` (the cursor every other
-   record attributes to).
+   record attributes to);
+   C -- `nros_executor_node_init` / `nros_node_init_ex` -> `on_node_create`,
+   `rclc_executor_add_timer` / `nros_executor_add_timer_in_group` ->
+   `on_timer_create`, `nros_node_create_guard_condition` ->
+   `on_guard_condition_create`, `nros_executor_declare_param_*` (the
+   paste-generated scalar pairs included) -> `on_param_declare`;
+   Rust -- `ExecutorSink::create_node` -> `on_node_create`,
+   `ExecutorSink::create_entity` -> `on_timer_create` and `on_param_declare`.
+   (`nros_parameter_declare_*` is the node-LESS legacy parameter server: it
+   sizes no node's store, so it is not a census entry point.)
 2. An RMW seam in `nros-rmw-metadata` that does not record, or records without
    the QoS it was handed (a `_qos` parameter is the 2026-09 defect verbatim).
 3. A hook whose `metadata-mode` body no longer reaches the recorder.
@@ -65,23 +77,58 @@ import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = Path(__file__).resolve().parent.parent
 
-HOOKS = "packages/api/nros-cpp/src/metadata_hooks.rs"
+# Issue 1419 / 1556 item 1 -- the hooks live in `nros`, the crate all three
+# node APIs sit on. `nros-cpp`'s `metadata_hooks.rs` keeps only the dump entry
+# point and the fixture census, and is held to the layer rule as an adapter.
+HOOKS = "packages/api/nros/src/census_hooks.rs"
+CPP_ADAPTER = "packages/api/nros-cpp/src/metadata_hooks.rs"
 BACKEND = "packages/rmw/metadata/src/lib.rs"
 TIMER = "packages/api/nros-cpp/src/timer.rs"
 GUARD = "packages/api/nros-cpp/src/guard_condition.rs"
 PARAMS = "packages/api/nros-cpp/src/params_shim.rs"
 NODE = "packages/api/nros-cpp/src/lib.rs"
+C_NODE = "packages/api/nros-c/src/node.rs"
+C_EXEC = "packages/api/nros-c/src/executor.rs"
+C_GUARD = "packages/api/nros-c/src/guard_condition.rs"
+C_PARAMS = "packages/api/nros-c/src/parameter.rs"
+RUST_SINK = "packages/api/nros/src/node_runtime.rs"
 
-SUBJECTS = (HOOKS, BACKEND, TIMER, GUARD, PARAMS, NODE)
+SUBJECTS = (
+    HOOKS,
+    CPP_ADAPTER,
+    BACKEND,
+    TIMER,
+    GUARD,
+    PARAMS,
+    NODE,
+    C_NODE,
+    C_EXEC,
+    C_GUARD,
+    C_PARAMS,
+    RUST_SINK,
+)
 
 # Executor-side entry points and the hook each must call. A PREFIX matches
 # every `pub unsafe extern "C" fn` whose name starts with it, so a fifth timer
 # entry or an eighth declare variant is held to the rule the day it is added.
 ENTRY_HOOKS: tuple[tuple[str, str, str], ...] = (
-    (TIMER, "nros_cpp_timer_create", "metadata_hooks::on_timer_create("),
-    (GUARD, "nros_cpp_guard_condition_create", "metadata_hooks::on_guard_condition_create("),
-    (PARAMS, "nros_cpp_node_declare_param_", "metadata_hooks::on_param_declare("),
-    (NODE, "nros_cpp_node_create", "metadata_hooks::on_node_create("),
+    # C++ (`nros-cpp`).
+    (TIMER, "nros_cpp_timer_create", "census_hooks::on_timer_create("),
+    (GUARD, "nros_cpp_guard_condition_create", "census_hooks::on_guard_condition_create("),
+    (PARAMS, "nros_cpp_node_declare_param_", "census_hooks::on_param_declare("),
+    (NODE, "nros_cpp_node_create", "census_hooks::on_node_create("),
+    # C (`nros-c`) -- issue 1556 item 1.
+    (C_NODE, "nros_node_init_ex", "census_hooks::on_node_create("),
+    (C_EXEC, "nros_executor_node_init", "census_hooks::on_node_create("),
+    (C_EXEC, "rclc_executor_add_timer", "census_hooks::on_timer_create("),
+    (C_EXEC, "nros_executor_add_timer_in_group", "census_hooks::on_timer_create("),
+    (C_GUARD, "nros_node_create_guard_condition", "census_hooks::on_guard_condition_create("),
+    (C_PARAMS, "nros_executor_declare_param_", "census_hooks::on_param_declare("),
+    # Rust (`nros::node_runtime`, the install path `nros::main!` takes) --
+    # issue 1419's Rust item.
+    (RUST_SINK, "create_node", "census_hooks::on_node_create("),
+    (RUST_SINK, "create_entity", "census_hooks::on_timer_create("),
+    (RUST_SINK, "create_entity", "census_hooks::on_param_declare("),
 )
 
 # The RMW seams: each must record, and must pass the profile it received.
@@ -183,7 +230,10 @@ def without_tests(src: str) -> str:
 
 # --- function bodies -------------------------------------------------------
 
-FN_HEAD = re.compile(r"\bfn\s+([A-Za-z_][A-Za-z0-9_]*)\s*[<(]")
+# A plain `fn name(` / `fn name<`, or a `paste!` name `fn [<prefix $x suffix>](`
+# -- `nros-c` generates its scalar parameter entry points that way, and a gate
+# that cannot see a generated entry point is narrower than its rule (0196).
+FN_HEAD = re.compile(r"\bfn\s+(?:\[<\s*([^>]*?)\s*>\]|([A-Za-z_][A-Za-z0-9_]*))\s*[<(]")
 
 
 def function_bodies(code: str) -> dict[str, str]:
@@ -195,7 +245,7 @@ def function_bodies(code: str) -> dict[str, str]:
     """
     bodies: dict[str, str] = {}
     for m in FN_HEAD.finditer(code):
-        name = m.group(1)
+        name = m.group(2) or " ".join(m.group(1).split())
         start = code.find("{", m.end())
         semi = code.find(";", m.end())
         if start < 0 or (0 <= semi < start):
@@ -229,7 +279,9 @@ def check(files: dict[str, str]) -> tuple[list[str], dict[str, int]]:
     # JSON to assert on it); the entry-point files are read whole, because
     # `nros-cpp/src/lib.rs` has test modules ABOVE its node entry points.
     stripped = {
-        rel: strip_comments_and_strings(without_tests(src) if rel in (HOOKS, BACKEND) else src)
+        rel: strip_comments_and_strings(
+            without_tests(src) if rel in (HOOKS, CPP_ADAPTER, BACKEND, RUST_SINK) else src
+        )
         for rel, src in files.items()
     }
     bodies = {rel: function_bodies(code) for rel, code in stripped.items()}
@@ -293,8 +345,8 @@ def check(files: dict[str, str]) -> tuple[list[str], dict[str, int]]:
         elif hook != "record" and "#[cfg(feature = \"metadata-mode\")]" not in files[HOOKS]:
             errs.append(f"{HOOKS}: the hooks are no longer gated on `metadata-mode`")
 
-    # 4. The phase-308 layer rule on the two adapters.
-    for rel in (HOOKS, BACKEND):
+    # 4. The phase-308 layer rule on the adapters.
+    for rel in (HOOKS, CPP_ADAPTER, BACKEND):
         code = stripped[rel]
         for token in LAYER_FORBIDDEN:
             if re.search(r"\b" + re.escape(token), code):
@@ -340,13 +392,13 @@ def self_test(files: dict[str, str]) -> None:
 
     # 1. The guard-condition entry point stops calling its hook.
     m = dict(files)
-    drop_once(GUARD, m, "crate::metadata_hooks::on_guard_condition_create();")
+    drop_once(GUARD, m, "nros::census_hooks::on_guard_condition_create();")
     red("guard hook call deleted", m, "nros_cpp_guard_condition_create")
 
     # 2. One of the seven declare variants stops calling the parameter hook.
     m = dict(files)
     body_start = m[PARAMS].find("fn nros_cpp_node_declare_param_double(")
-    call = m[PARAMS].find("crate::metadata_hooks::on_param_declare(", body_start)
+    call = m[PARAMS].find("nros::census_hooks::on_param_declare(", body_start)
     call_end = m[PARAMS].find(";", call) + 1
     m[PARAMS] = m[PARAMS][:call] + m[PARAMS][call_end:]
     red("one declare variant unhooked", m, "nros_cpp_node_declare_param_double")
@@ -357,8 +409,8 @@ def self_test(files: dict[str, str]) -> None:
     drop_once(
         TIMER,
         m,
-        "crate::metadata_hooks::on_timer_create(\n                nros::node_metadata::TimerKind::Oneshot,",
-        "// crate::metadata_hooks::on_timer_create(\n                // nros::node_metadata::TimerKind::Oneshot,",
+        "nros::census_hooks::on_timer_create(nros::node_metadata::TimerKind::Oneshot, delay_ms);",
+        "// nros::census_hooks::on_timer_create(nros::node_metadata::TimerKind::Oneshot, delay_ms);",
     )
     red("oneshot hook commented out", m, "nros_cpp_timer_create_oneshot")
 
@@ -377,7 +429,7 @@ def self_test(files: dict[str, str]) -> None:
     drop_once(
         HOOKS,
         m,
-        "if !nros::metadata_mode::record_parameter(_name, _value) {",
+        "if !crate::metadata_mode::record_parameter(_name, _value) {",
         "if false {",
     )
     red("parameter hook emptied", m, "on_param_declare")
@@ -400,6 +452,31 @@ def self_test(files: dict[str, str]) -> None:
     )
     red("recorder type named in the hooks", m, "MetadataRecorder")
 
+    # 7. A C entry point loses its hook: the group timer -- issue 1556 item 1.
+    m = dict(files)
+    body_start = m[C_EXEC].find("fn nros_executor_add_timer_in_group(")
+    call = m[C_EXEC].find("nros::census_hooks::on_timer_create(", body_start)
+    call_end = m[C_EXEC].find(";", call) + 1
+    m[C_EXEC] = m[C_EXEC][:call] + m[C_EXEC][call_end:]
+    red("C group timer unhooked", m, "nros_executor_add_timer_in_group")
+
+    # 8. One of the paste-generated C declare pairs loses its hook -- the
+    #    entry point a plain `fn name(` reader could not see at all.
+    m = dict(files)
+    body_start = m[C_PARAMS].find("fn [<nros_executor_declare_param_ $name _on>](")
+    call = m[C_PARAMS].find("nros::census_hooks::on_param_declare(", body_start)
+    call_end = m[C_PARAMS].find(";", call) + 1
+    m[C_PARAMS] = m[C_PARAMS][:call] + m[C_PARAMS][call_end:]
+    red("generated C declare_on unhooked", m, "nros_executor_declare_param_ $name _on")
+
+    # 9. The Rust install path stops opening the census cursor -- issue 1419.
+    m = dict(files)
+    body_start = m[RUST_SINK].find("fn create_node(")
+    call = m[RUST_SINK].find("crate::census_hooks::on_node_create(", body_start)
+    call_end = m[RUST_SINK].find(";", call) + 1
+    m[RUST_SINK] = m[RUST_SINK][:call] + m[RUST_SINK][call_end:]
+    red("Rust create_node unhooked", m, "`create_node`")
+
 
 def main() -> int:
     try:
@@ -414,8 +491,9 @@ def main() -> int:
         for e in errs:
             print(f"  - {e}", file=sys.stderr)
         print(
-            "\n  Every `nros_cpp_*_create` / `nros_cpp_node_declare_param_*` entry point calls\n"
-            "  its `metadata_hooks::on_*` hook, every RMW seam in nros-rmw-metadata records\n"
+            "\n  Every C, C++ and Rust entry point that creates a node, timer, guard condition\n"
+            "  or parameter calls its `nros::census_hooks::on_*` hook, every RMW seam in\n"
+            "  nros-rmw-metadata records\n"
             "  the QoS it is handed, and neither adapter spells JSON or a slot itself\n"
             "  (phase-463 W1, issue 1419).",
             file=sys.stderr,
@@ -424,7 +502,7 @@ def main() -> int:
     print(
         "check-census-hooks-complete: OK "
         f"({stats['entry_points']} entry points hooked, {stats['rmw_seams']} RMW seams record "
-        f"QoS, {stats['hooks']} hooks reach the recorder, layer rule clean; 7 mutations red)"
+        f"QoS, {stats['hooks']} hooks reach the recorder, layer rule clean; 10 mutations red)"
     )
     return 0
 

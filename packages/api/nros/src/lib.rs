@@ -153,6 +153,10 @@ pub mod config;
 // phase-391 W5 — caller-supplied component-pool storage sizing. Ungated for the
 // same reason `config` is: plain arithmetic, useful to size a `static` whether
 // or not `node_runtime` is compiled in.
+// Issue 1419 / issue 1556 item 1 — the census hooks every language's node API
+// calls (unconditionally; the bodies exist only under `metadata-mode`).
+#[doc(hidden)]
+pub mod census_hooks;
 pub mod dispatch_tag;
 pub mod guide;
 #[cfg(feature = "metadata-mode")]

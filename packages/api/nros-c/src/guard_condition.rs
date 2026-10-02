@@ -218,6 +218,9 @@ pub unsafe extern "C" fn nros_node_create_guard_condition(
 
     match rust_exec.register_guard_condition_on(Some(node_id), wrapper) {
         Ok((handle_id, guard_handle)) => {
+            // Issue 1556 item 1 — a guard condition is a callback slot the
+            // recording backend never sees. No-op unless `metadata-mode` is on.
+            nros::census_hooks::on_guard_condition_create();
             guard.callback = callback;
             guard.context = context;
             guard.triggered = false;

@@ -1,144 +1,21 @@
-//! phase-308 — the two-function gap the recording RMW backend cannot close.
+//! phase-308 — the C++ ABI's half of the host metadata probe and census.
 //!
-//! Publishers, subscriptions, services and clients reach the RMW session, so
-//! `nros-rmw-metadata` records them with no help from this crate. **Timers and
-//! guard conditions never touch the RMW** — they register directly on the
-//! executor — so a backend cannot observe them at all. That matters more here
-//! than anywhere: a timer is precisely the entity the SystemModel also cannot
-//! see, and missing them would reproduce the bug the sidecars exist to fix
-//! (issue 0257).
+//! The four executor-side HOOKS (node / timer / guard condition / parameter)
+//! used to live here. They moved to `nros::census_hooks` (issue 1419, issue
+//! 1556 item 1, RFC-0100 Amendment 1): a census instrument whose hooks sit on
+//! one language's ABI cannot attribute a Rust node or a C node that opens its
+//! own node through `nros-c`, and `nros` is the crate all three node APIs sit
+//! on. The `nros_cpp_*` entry points call them there — unconditionally, with
+//! bodies only under `metadata-mode`, exactly as before the move.
 //!
-//! Plus one more, found while reading the seam: the RMW's `create_publisher`
-//! carries no node — by that layer the owning node is already resolved away.
-//! So a backend alone yields a sidecar whose entities belong to no node. The
-//! `node_create` hook opens each node and makes it current; `configure()`
-//! declares one node's entities at a time, so a cursor is exact, not a guess.
+//! What stays is what is C++-ABI-specific: the dump entry point the probe TU
+//! and the hosted census funnel call, and the fixture census of a component
+//! that creates one of everything through this crate's own `extern "C"` entry
+//! points. `check-census-hooks-complete` holds every entry point to its hook.
 //!
-//! Four hooks total (phase-463 W1 added the parameter one). Every one is a
-//! no-op unless `metadata-mode` is on, so the call sites in the shipping paths
-//! are unconditional and cost nothing.
-//!
-//! phase-463 W1 -- the hooks tell the whole truth: a timer carries its KIND
-//! (which of the four `nros_cpp_timer_create*` entries it came through), a
-//! guard condition is recorded under its own kind instead of as a timer, and
-//! `on_param_declare` sits on the `nros_cpp_node_declare_param_*` family.
-//! C++ has no call that declares a parameter without crossing that ABI, so
-//! the set of parameters a sidecar carries is complete by construction.
-//! `check-census-hooks-complete` holds every entry point to its hook, and the
-//! fixture test at the bottom of this file is the census of a component that
-//! creates one of everything.
-//!
-//! This module records; it does not serialize. No JSON, no schema struct, no
-//! slot arithmetic — those live once in `nros::node_metadata` (phase-308's
-//! layer constraint).
-
-/// A node was created — make it current so subsequent entities attribute to it.
-#[inline]
-pub(crate) fn on_node_create(_name: &str, _namespace: &str, _domain_id: u32) {
-    #[cfg(feature = "metadata-mode")]
-    {
-        // A refused begin means the recorder is full; every entity after it
-        // would be silently dropped, so say so rather than produce a sidecar
-        // that under-counts.
-        if !nros::metadata_mode::begin_node(_name, _namespace, _domain_id) {
-            panic!(
-                "nros metadata mode: recorder rejected node `{_name}` — raise the \
-                 MetadataRecorder capacity"
-            );
-        }
-    }
-}
-
-/// A timer was registered on the executor.
-///
-/// Timers carry no name at this ABI (they are bound by function identity —
-/// `bind_timer<T, &T::method>`), so the recorded id is synthetic. That is fine:
-/// the count is what the executor sizing reads, and a C++ timer has no
-/// user-visible name to preserve.
-///
-/// phase-463 W1 -- `kind` names the entry point (wall / clock / oneshot /
-/// in-group) so the census can tell a repeating timer from a one-shot delay;
-/// the period is recorded as the code passed it, which for the generated
-/// native entry is the LAUNCHED value (the entry seeds parameters before the
-/// constructor runs).
-#[inline]
-pub(crate) fn on_timer_create(_kind: nros::node_metadata::TimerKind, _period_ms: u64) {
-    #[cfg(feature = "metadata-mode")]
-    {
-        record(
-            nros::node_metadata::EntityKind::Timer,
-            _kind,
-            "timer",
-            Some(_period_ms),
-        );
-    }
-}
-
-/// A guard condition was registered on the executor. One callback slot, same as
-/// a timer.
-///
-/// phase-463 W1 -- recorded as `TimerKind::GuardCondition`: still a `timers[]`
-/// row (one slot each, which is what the sizing consumers count) but with
-/// `kind: "guard_condition"`, so the count is unchanged and the census no
-/// longer reads a guard as a timer of period 0.
-#[inline]
-pub(crate) fn on_guard_condition_create() {
-    #[cfg(feature = "metadata-mode")]
-    {
-        record(
-            nros::node_metadata::EntityKind::Timer,
-            nros::node_metadata::TimerKind::GuardCondition,
-            "guard",
-            None,
-        );
-    }
-}
-
-/// phase-463 W1 -- a node declared a parameter, with the type and default the
-/// code passed.
-///
-/// Called from every `nros_cpp_node_declare_param_*` entry point, BEFORE the
-/// store answers: an adopted launch seed (`NROS_CPP_RET_ALREADY_EXISTS`) is
-/// still a declaration the code makes, and a full store is a boot failure the
-/// census should still describe. Attributed to the current node through the
-/// phase-308 cursor, like every other entity.
-#[inline]
-pub(crate) fn on_param_declare(_name: &str, _value: &nros::ParameterValue) {
-    #[cfg(feature = "metadata-mode")]
-    {
-        if !nros::metadata_mode::record_parameter(_name, _value) {
-            panic!(
-                "nros metadata mode: recorder rejected parameter `{_name}` -- a census \
-                 built from this sidecar would say the node declares fewer than it does"
-            );
-        }
-    }
-}
-
-#[cfg(feature = "metadata-mode")]
-fn record(
-    kind: nros::node_metadata::EntityKind,
-    timer_kind: nros::node_metadata::TimerKind,
-    prefix: &str,
-    period_ms: Option<u64>,
-) {
-    use core::sync::atomic::{AtomicUsize, Ordering};
-    static SEQ: AtomicUsize = AtomicUsize::new(0);
-    let n = SEQ.fetch_add(1, Ordering::Relaxed);
-    let id = alloc::format!("{prefix}{n}");
-    let rec = nros::metadata_mode::EntityRecord {
-        callback_id: Some(&id),
-        period_ms,
-        timer_kind,
-        ..nros::metadata_mode::EntityRecord::new(kind, &id, "")
-    };
-    if !nros::metadata_mode::record(rec) {
-        panic!(
-            "nros metadata mode: recorder rejected `{id}` — an executor sized from \
-             this sidecar would be too small"
-        );
-    }
-}
+//! This module records nothing and serializes nothing itself. No JSON, no
+//! schema struct, no slot arithmetic — those live once in
+//! `nros::node_metadata` (phase-308's layer constraint).
 
 /// phase-308 — write the recorded sidecar. The probe's last call.
 ///
@@ -532,6 +409,292 @@ mod census_fixture_tests {
         // rather than adding any. A count that moved by more than two would mean
         // the observation had started recording as well as annotating.
         assert_eq!(nros::metadata_mode::entity_count(), 8);
+        nros::metadata_mode::reset();
+    }
+}
+
+/// Issue 1419 / issue 1556 item 1 -- the census hooks moved to `nros`, so they
+/// reach the two node APIs that are NOT this crate's ABI.
+///
+/// Before the move, a C node that opens its own node through `nros-c`
+/// (`nros_executor_node_init`, `rclc_node_init_default`) reached the recording
+/// backend with no node attribution and its timers, guard conditions and
+/// parameters not at all; a Rust node's `register()` (the `nros::main!` install
+/// path, `ExecutorSink`) reached none of the hooks. Each test drives the REAL
+/// entry points of its API against the recording backend and asserts the facts
+/// land on the node that declared them.
+///
+/// Lives here rather than in `nros-c` / `nros` because this is the one lane
+/// that builds `metadata-mode` with the recording backend linked
+/// (`just check census-hooks-complete`), and both APIs are reachable from it:
+/// `nros-cpp` bundles `nros-c`, and `nros` is a direct dependency.
+#[cfg(all(
+    test,
+    feature = "metadata-mode",
+    feature = "param-services",
+    feature = "rmw-cffi"
+))]
+mod census_hooks_reach_every_api {
+    use core::ffi::c_void;
+
+    /// The JSON of ONE node: from its `source_default_name` to the next node's
+    /// (or the end). Entities are nested inside their node, so a fact found
+    /// here is a fact attributed to that node.
+    fn node_section<'a>(json: &'a str, name: &str) -> &'a str {
+        let needle = alloc::format!("\"source_default_name\":\"{name}\"");
+        let start = json
+            .find(&needle)
+            .unwrap_or_else(|| panic!("no node `{name}` in {json}"));
+        let rest = &json[start + needle.len()..];
+        match rest.find("\"source_default_name\":") {
+            Some(end) => &json[start..start + needle.len() + end],
+            None => &json[start..],
+        }
+    }
+
+    unsafe extern "C" fn timer_noop(_t: *mut nros_c::nros_timer_t, _c: *mut c_void) {}
+    unsafe extern "C" fn guard_noop(_c: *mut c_void) {}
+
+    /// A C node opened through `nros-c`'s own node entry point: its timer,
+    /// guard condition and parameter are census rows ON THAT NODE.
+    ///
+    /// Red before the move (measured): the node is absent from `nodes[]`, so
+    /// `node_section` panics -- the recorder never heard of it, and every
+    /// executor-side entity after it was dropped for want of a current node.
+    #[test]
+    fn a_c_node_opened_through_nros_c_is_attributed() {
+        use nros_c::*;
+        nros::metadata_mode::reset();
+        let _ = nros_rmw_metadata::nros_rmw_metadata_register();
+
+        let mut support = alloc::boxed::Box::new(nros_support_get_zero_initialized());
+        let rc = unsafe {
+            nros_support_init_rmw(
+                &mut *support,
+                core::ptr::null(),
+                0,
+                c"census_c".as_ptr(),
+                c"metadata".as_ptr(),
+            )
+        };
+        assert_eq!(rc, NROS_RET_OK, "the metadata backend must open");
+
+        let mut executor = alloc::boxed::Box::new(rclc_executor_get_zero_initialized_executor());
+        let rc = unsafe { nros_executor_init(&mut *executor, &*support, 8) };
+        assert_eq!(rc, NROS_RET_OK);
+
+        let mut node = alloc::boxed::Box::new(rcl_get_zero_initialized_node());
+        let rc = unsafe {
+            nros_executor_node_init(
+                &mut *executor,
+                &mut *node,
+                c"c_census_node".as_ptr(),
+                core::ptr::null(),
+            )
+        };
+        assert_eq!(rc, NROS_RET_OK);
+
+        let mut timer = alloc::boxed::Box::new(rcl_get_zero_initialized_timer());
+        let rc = unsafe {
+            nros_timer_init(
+                &mut *timer,
+                &*support,
+                50_000_000,
+                Some(timer_noop),
+                core::ptr::null_mut(),
+            )
+        };
+        assert_eq!(rc, NROS_RET_OK);
+        let rc = unsafe { rclc_executor_add_timer(&mut *executor, &mut *timer) };
+        assert_eq!(rc, NROS_RET_OK);
+
+        let mut guard = alloc::boxed::Box::new(rcl_get_zero_initialized_guard_condition());
+        let rc = unsafe {
+            nros_node_create_guard_condition(
+                &mut *node,
+                &mut *guard,
+                Some(guard_noop),
+                core::ptr::null_mut(),
+            )
+        };
+        assert_eq!(rc, NROS_RET_OK);
+
+        let rc =
+            unsafe { nros_executor_declare_param_double(&mut *executor, c"gain".as_ptr(), 1.5) };
+        assert_eq!(rc, NROS_RET_OK);
+
+        let export =
+            nros::node_metadata::SourceMetadataExport::new("c_pkg", "c_census_node").language("c");
+        let json = nros::metadata_mode::to_json(&export).expect("serialize");
+        let section = node_section(&json, "c_census_node");
+        assert!(
+            section.contains("\"kind\":\"wall\",\"period_ms\":50,"),
+            "the C wall timer, at the code's period, on the C node: {section}"
+        );
+        assert!(
+            section.contains("\"kind\":\"guard_condition\""),
+            "the C guard condition, under its own kind: {section}"
+        );
+        assert!(
+            section.contains("\"name\":\"gain\",\"type\":\"double\",\"default\":1.5,"),
+            "the C parameter, as declared: {section}"
+        );
+        nros::metadata_mode::reset();
+    }
+
+    /// The legacy rclc-style node (`rclc_node_init_default` ->
+    /// `nros_node_init_ex`), which is what every `nros_app_main` application
+    /// (the twelve NuttX C leaves of issue 1556) opens.
+    #[test]
+    fn an_rclc_node_opens_the_census_cursor() {
+        use nros_c::*;
+        nros::metadata_mode::reset();
+        let _ = nros_rmw_metadata::nros_rmw_metadata_register();
+
+        let mut support = alloc::boxed::Box::new(nros_support_get_zero_initialized());
+        let rc = unsafe {
+            nros_support_init_rmw(
+                &mut *support,
+                core::ptr::null(),
+                7,
+                c"census_rclc".as_ptr(),
+                c"metadata".as_ptr(),
+            )
+        };
+        assert_eq!(rc, NROS_RET_OK);
+        let mut node = alloc::boxed::Box::new(rcl_get_zero_initialized_node());
+        let rc = unsafe {
+            rclc_node_init_default(
+                &mut *node,
+                c"rclc_node".as_ptr(),
+                c"/robot".as_ptr(),
+                &*support,
+            )
+        };
+        assert_eq!(rc, NROS_RET_OK);
+
+        let export = nros::node_metadata::SourceMetadataExport::new("c_pkg", "rclc_node");
+        let json = nros::metadata_mode::to_json(&export).expect("serialize");
+        let section = node_section(&json, "rclc_node");
+        assert!(
+            section.contains("\"namespace\":\"/robot\""),
+            "the namespace the code asked for: {section}"
+        );
+        nros::metadata_mode::reset();
+    }
+
+    /// A C timer registered before ANY node -- legal (`nros_timer_init` needs
+    /// only a support context; `nros-c`'s `timer_clock_source.c` does it). The
+    /// slot is counted under the executor scope instead of panicking the
+    /// process, which is what a bare `record` with no current node would do in
+    /// every native image that links the recorder.
+    #[test]
+    fn a_node_less_c_timer_is_counted_under_the_executor_scope() {
+        use nros_c::*;
+        nros::metadata_mode::reset();
+        let _ = nros_rmw_metadata::nros_rmw_metadata_register();
+
+        let mut support = alloc::boxed::Box::new(nros_support_get_zero_initialized());
+        let rc = unsafe {
+            nros_support_init_rmw(
+                &mut *support,
+                core::ptr::null(),
+                0,
+                c"census_scope".as_ptr(),
+                c"metadata".as_ptr(),
+            )
+        };
+        assert_eq!(rc, NROS_RET_OK);
+        let mut executor = alloc::boxed::Box::new(rclc_executor_get_zero_initialized_executor());
+        assert_eq!(
+            unsafe { nros_executor_init(&mut *executor, &*support, 4) },
+            NROS_RET_OK
+        );
+        let mut timer = alloc::boxed::Box::new(rcl_get_zero_initialized_timer());
+        let rc = unsafe {
+            nros_timer_init(
+                &mut *timer,
+                &*support,
+                10_000_000,
+                Some(timer_noop),
+                core::ptr::null_mut(),
+            )
+        };
+        assert_eq!(rc, NROS_RET_OK);
+        assert_eq!(
+            unsafe { rclc_executor_add_timer(&mut *executor, &mut *timer) },
+            NROS_RET_OK
+        );
+
+        let json = nros::metadata_mode::to_json(&nros::node_metadata::SourceMetadataExport::new(
+            "c_pkg", "scope",
+        ))
+        .expect("serialize");
+        let section = node_section(&json, nros::census_hooks::EXECUTOR_SCOPE);
+        assert!(
+            section.contains("\"period_ms\":10,"),
+            "the node-less timer, counted: {section}"
+        );
+        nros::metadata_mode::reset();
+    }
+
+    /// A Rust component, through the SAME install path a `nros::main!` entry
+    /// takes (`ExecutorNodeRuntime::register_node` -> `ExecutorSink`): its node,
+    /// its timer and its parameter are census rows on its node.
+    ///
+    /// Red before the move (measured): `nodes[]` has no `rust_census_node` --
+    /// `ExecutorSink` called no hook, so the recorder had no node and the timer
+    /// and parameter were never recorded.
+    #[test]
+    fn a_rust_component_registered_through_the_runtime_is_attributed() {
+        struct CensusComp;
+        impl nros::Node for CensusComp {
+            const NAME: &'static str = "rust_census_node";
+            fn register(ctx: &mut nros::NodeContext<'_>) -> nros::NodeResult<()> {
+                let mut node = ctx.create_node(nros::NodeOptions::new("rust_census_node"))?;
+                let _t = node.create_timer_for_callback_name(
+                    "on_tick",
+                    nros::TimerDuration::from_millis(25),
+                )?;
+                let _p = node.declare_parameter_for_name_with_default(
+                    "limit",
+                    nros::node_metadata::ParameterDefault::Integer(7),
+                )?;
+                Ok(())
+            }
+        }
+        impl nros::ExecutableNode for CensusComp {
+            type State = ();
+            fn init() -> Self::State {}
+            fn on_callback(
+                _state: &mut Self::State,
+                _callback: nros::Callback<'_>,
+                _ctx: &mut nros::CallbackCtx<'_>,
+            ) {
+            }
+        }
+
+        nros::metadata_mode::reset();
+        let _ = nros_rmw_metadata::nros_rmw_metadata_register();
+        let config = nros::ExecutorConfig::new("").rmw("metadata");
+        let executor = nros::Executor::open(&config).expect("the metadata backend must open");
+        let mut runtime = nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
+        runtime
+            .register_node::<CensusComp>()
+            .expect("register through the runtime");
+
+        let export = nros::node_metadata::SourceMetadataExport::new("rust_pkg", "rust_census_node")
+            .language("rust");
+        let json = nros::metadata_mode::to_json(&export).expect("serialize");
+        let section = node_section(&json, "rust_census_node");
+        assert!(
+            section.contains("\"kind\":\"wall\",\"period_ms\":25,"),
+            "the Rust timer, at the code's period, on the Rust node: {section}"
+        );
+        assert!(
+            section.contains("\"name\":\"limit\",\"type\":\"integer\",\"default\":7,"),
+            "the Rust parameter, as declared: {section}"
+        );
         nros::metadata_mode::reset();
     }
 }

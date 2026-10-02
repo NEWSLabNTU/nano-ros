@@ -1416,6 +1416,18 @@ impl NodeRuntime for ExecutorSink<'_> {
             .domain_id(options.domain_id)
             .build()
             .map_err(decl_err_from_node)?;
+        // Issue 1419 — open this node in the census recorder so the entities
+        // `register()` declares next attribute to it (the RMW seam carries no
+        // node). The namespace the node LANDED in, read back from the
+        // executor, as the C and C++ node entry points report it. No-op unless
+        // `metadata-mode` is on.
+        {
+            let landed = match self.executor.node(node_id).map(|r| r.namespace.as_str()) {
+                Some(s) if !s.is_empty() => s,
+                _ => "/",
+            };
+            crate::census_hooks::on_node_create(name, landed, options.domain_id);
+        }
         // Issue #52 — install the bake BEFORE the component declares any
         // entity on this node; entities created earlier could not be folded.
         if !self.qos_overrides.is_empty() {
@@ -1626,6 +1638,20 @@ impl NodeRuntime for ExecutorSink<'_> {
                         dispatch_into_cell(cell.view(), &cb_id_owned, &[]);
                     })
                     .map_err(decl_err_from_node)?;
+                // Issue 1419 — a Rust timer never reaches the RMW, so this hook
+                // is how it enters the census. Recorded AFTER the tier gate
+                // above, so a tiered entry's census holds each timer once, on
+                // the tier that owns it. `Wall` on the steady clock, `Clock`
+                // on any other — the split the C and C++ entry points report.
+                crate::census_hooks::on_timer_create(
+                    match metadata.timer_clock {
+                        nros_node::executor::TimerClockSource::Steady => {
+                            crate::node_metadata::TimerKind::Wall
+                        }
+                        _ => crate::node_metadata::TimerKind::Clock,
+                    },
+                    period.as_millis(),
+                );
                 Ok(())
             }
             // Phase 212.M-F.23 — service / action client + server dispatch on
@@ -1778,6 +1804,13 @@ impl NodeRuntime for ExecutorSink<'_> {
                 Ok(())
             }
             EntityKind::Parameter => {
+                // Issue 1419 — the declaration as the code made it, BEFORE the
+                // store answers and whether or not `param-services` gives this
+                // image a store at all: the census describes the code.
+                crate::census_hooks::on_param_declare(
+                    metadata.source_name.as_str(),
+                    &param_default_to_value(metadata.parameter_default.as_ref()),
+                );
                 // Phase 212.M-F.23 Wave 2 — declarative parameter dispatch on
                 // the single-node runtime. The first declared parameter lazily
                 // stands up the 6 ROS 2 parameter services for this executor's
@@ -1871,7 +1904,6 @@ impl NodeRuntime for ExecutorSink<'_> {
 /// `NotSet` — the parameter is still declared, just without a concrete array
 /// default. A `Double` default is stored as a string at the metadata layer and
 /// parsed here (unparseable → `0.0`).
-#[cfg(feature = "param-services")]
 fn param_default_to_value(
     default: Option<&crate::node_metadata::ParameterDefault>,
 ) -> nros_params::ParameterValue {

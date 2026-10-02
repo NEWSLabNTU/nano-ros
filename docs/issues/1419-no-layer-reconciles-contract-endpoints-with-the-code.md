@@ -384,3 +384,15 @@ Files: the hook move — `packages/api/nros/`, `packages/api/nros-cpp/src/metada
 (the cargo stage-4 block) and `cmd/entity_census.rs`. **Overlap warning:**
 `cmd/build.rs` is also where issue 1647's fix would make the first build the
 fixed point — coordinate with whoever holds 1647.
+
+### 2026-10-03 -- the hooks are in `nros` (first half of the Rust item)
+
+The census hooks moved to `nros::census_hooks` in the PR that carries this
+section (*the census hooks move into `nros`*; issue 1556 item 1, same move). A
+Rust component's `register()` now crosses them on the install path every
+`nros::main!` entry takes (`ExecutorSink::create_node` -> `on_node_create`;
+`create_entity` -> `on_timer_create` / `on_param_declare`), and so does a C node
+that opens its own node through `nros-c` -- the "A C node that opens its own
+node through `nros-c`" item above is closed by it (measured, issue 1556's
+section of the same date). Still open here: `boot_hosted` still refuses
+`$NROS_CENSUS_OUT` for a Rust entry, and the cargo road still checks no census.
