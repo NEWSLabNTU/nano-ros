@@ -2160,6 +2160,60 @@ platform = "baremetal"
 lang = "rust"
 dir = "packages/testing/nros-bench/large-msg-baremetal"
 
+# ---------------------------------------------------------------------------
+# baremetal — C and C++ (issue 1512). The tree's first `lang = "c"`/`"cpp"`
+# rows with `builder = "cargo"`: the APPLICATION is C/C++, but on a board with
+# no RTOS the startup, clock and LAN9118/smoltcp bring-up are Rust, so the link
+# root is the leaf's own cargo package (`src/main.rs` boots and calls
+# `app_main()`, `build.rs` compiles the C/C++). The builder is the declared
+# fact; `fixtures-build.sh` and `check-fixtures-stale.sh` select each row's lane
+# by it, so these build and probe exactly like their `rust/` siblings above.
+# `matrix::CELLS` carries them as BuildOnly — the runtime lane needs the entry
+# locator baked into the C compile, which issue 1512 still tracks.
+# ---------------------------------------------------------------------------
+
+[[fixture]]
+platform = "baremetal"
+lang = "c"
+builder = "cargo"
+dir = "examples/mps2-an385-baremetal/c/talker"
+
+[[fixture]]
+platform = "baremetal"
+lang = "c"
+builder = "cargo"
+dir = "examples/mps2-an385-baremetal/c/listener"
+
+[[fixture]]
+platform = "baremetal"
+lang = "c"
+builder = "cargo"
+dir = "examples/mps2-an385-baremetal/c/service-server"
+
+[[fixture]]
+platform = "baremetal"
+lang = "c"
+builder = "cargo"
+dir = "examples/mps2-an385-baremetal/c/service-client"
+
+[[fixture]]
+platform = "baremetal"
+lang = "c"
+builder = "cargo"
+dir = "examples/mps2-an385-baremetal/c/action-server"
+
+[[fixture]]
+platform = "baremetal"
+lang = "c"
+builder = "cargo"
+dir = "examples/mps2-an385-baremetal/c/action-client"
+
+[[fixture]]
+platform = "baremetal"
+lang = "cpp"
+builder = "cargo"
+dir = "examples/mps2-an385-baremetal/cpp/talker"
+
 # ===========================================================================
 # freertos (qemu MPS2-AN385) — Rust. The six role Entry pkgs. Codegen runs in
 # the recipe.

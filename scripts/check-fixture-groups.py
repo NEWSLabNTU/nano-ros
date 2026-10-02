@@ -65,7 +65,7 @@ Three arms, all fatal:
 
         A2a  the export and this gate's own derivation must agree, row for row.
              Both shell into `nros_fixture_group_batch`, but by different paths
-             (`list --lang rust --with-platform` here, `is_cargo_row` +
+             (`list --builder cargo --with-platform` here, `is_cargo_row` +
              `cargo_args()` there), and a resolver reading a table this gate
              never checked is the two-derivations defect one level up.
         A2b  for every SHARED platform, `artifact_root -> slug` must be a
@@ -165,7 +165,7 @@ KNOWN_COLLISIONS: dict[str, list[str]] = {}
 
 
 def rows():
-    """Every rust fixture row, as `Row`s.
+    """Every cargo-built fixture row, whatever its language, as `Row`s.
 
     Straight from `fixtures-manifest.py`, which is the manifest's only reader —
     this gate does not parse `examples/fixtures.toml` itself.
@@ -175,13 +175,14 @@ def rows():
             sys.executable,
             os.path.join(ROOT, "scripts/build/fixtures-manifest.py"),
             "list",
-            "--lang",
-            "rust",
             # phase-344 W2 — `--lang rust` alone was a PROXY for "cargo builds
             # it", and A2a exists to catch the two derivations drifting apart.
-            # A rust-through-cmake row makes the proxy wrong, so say what is
-            # meant. Still an independent selection from the export's
-            # `is_cargo_row` call path — that independence is A2a's whole value.
+            # A rust-through-cmake row made the proxy wrong in one direction;
+            # issue 1512's cargo-rooted bare-metal C/C++ rows made it wrong in
+            # the other (seven rows in the export, none here). So the builder
+            # alone says what is meant — no `--lang`. Still an independent
+            # selection from the export's `is_cargo_row` call path, which is
+            # A2a's whole value.
             "--builder",
             "cargo",
             "--with-platform",
@@ -437,7 +438,7 @@ def main():
     # --- A2a: the export the Rust resolver reads agrees with this gate ------
     #
     # Multiset of (platform, slug), because the two derivations select rows by
-    # different predicates (`--lang rust` here, `is_cargo_row` there) and
+    # different predicates (`list --builder cargo` here, `is_cargo_row` there) and
     # assemble the cargo args by different call paths. Same shell function
     # underneath — which is the point: if these ever differ, one of the two
     # CALLERS is feeding it something else, and the Rust resolver would be

@@ -789,6 +789,21 @@ pub const CELLS: &[Cell] = &[
          CarveOut("rtic demo set is pubsub-only by design (phase-289 scope)")),
     cell(QemuBaremetal, Rust, Zenoh, Action, Example,
          CarveOut("rtic demo set is pubsub-only by design (phase-289 scope)")),
+    // issue 1512 — the C/C++ API on the same board. Cargo-rooted leaves
+    // (`builder = "cargo"` rows): the Rust startup owns the link and
+    // compiles the C/C++ application in. They BUILD in the lane and BOOT to
+    // the session open; they are not `Runtime` because the C/C++ entry dials
+    // `NROS_ENTRY_LOCATOR`, whose bare-metal rung is still `""` (the backend's
+    // own default, unreachable from the guest) — baking `[image.*] locator`
+    // into the C compile is what issue 1512 still tracks.
+    cell(QemuBaremetal, C,   Zenoh, Pubsub,  Example,
+         BuildOnly("issue 1512 — no entry locator reaches a cargo-rooted C image yet")),
+    cell(QemuBaremetal, C,   Zenoh, Service, Example,
+         BuildOnly("issue 1512 — no entry locator reaches a cargo-rooted C image yet")),
+    cell(QemuBaremetal, C,   Zenoh, Action,  Example,
+         BuildOnly("issue 1512 — no entry locator reaches a cargo-rooted C image yet")),
+    cell(QemuBaremetal, Cpp, Zenoh, Pubsub,  Example,
+         BuildOnly("issue 1512 — no entry locator reaches a cargo-rooted C++ image yet")),
 
     // phase-337 W7.a — the three `Stm32F4` BuildOnly cells left with the board.
     // They were `BuildOnly`, i.e. ZERO Runtime, so the removal costs no

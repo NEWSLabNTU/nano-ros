@@ -17,6 +17,12 @@ fn main() {
 fn emit_config_include() {
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
     println!("cargo:config_include={out_dir}/nros-cpp-generated");
+    // issue 1512 — this crate's own headers (`<nros/nros.hpp>` …), the twin of
+    // `nros-c`'s `cargo:include`. A cargo-rooted C++ image (the bare-metal
+    // leaves, whose `build.rs` compiles the application) reads it as
+    // `DEP_NROS_CPP_INCLUDE` instead of guessing a path into this checkout.
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    println!("cargo:include={manifest_dir}/include");
 }
 
 /// Phase 241 W11 (Option D) — emit a `#[used]` anchor that force-references every

@@ -73,9 +73,14 @@ esac
 echo "check-fixtures-stale: scope=${SCOPE} (${NROS_FIXTURE_SCOPE_ORIGIN:-direct})\
 ${NROS_FIXTURE_COORDS:+ coords=$NROS_FIXTURE_COORDS ($(wc -l < "$NROS_FIXTURE_COORDS") coordinate(s))}"
 
+# BUILDER-keyed, like the cargo half below and like `fixtures-build.sh`, which
+# picks each row's lane the same way (issue 1512). This was `--lang c` +
+# `--lang cpp`: the language proxy for "cmake", which handed a cargo-rooted C
+# leaf (`mps2-an385-baremetal/c/talker`) to `cmake-fixture-stale.sh` with a cargo
+# record, and left the cmake-built rust leaves (rv-virt-threadx) in no probe
+# at all. `--builder cmake` is every cmake row whatever its language.
 cmake_records() {
-    python3 scripts/build/fixtures-manifest.py list --for-probe --lang c "${scope_args[@]}"
-    python3 scripts/build/fixtures-manifest.py list --for-probe --lang cpp "${scope_args[@]}"
+    python3 scripts/build/fixtures-manifest.py list --for-probe --builder cmake "${scope_args[@]}"
 }
 
 cmake_stale=()

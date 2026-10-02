@@ -78,18 +78,13 @@ const TEST_DRIVEN_BUILDERS: &[&str] = &[
     // justfile still read as a complete lane. An allowlist can only excuse a
     // gap; retiring the code is what closes it.
     //
-    // issue 1512 — the first C leaf in either bare-metal family. Built by
-    // `just qemu build-examples` (just/qemu-baremetal.just), whose loop globs
-    // every tracked `examples/mps2-an385-baremetal/**/Cargo.toml` and runs
-    // `nros sync` + `cargo build` per leaf; `nightly.yml` reaches that recipe.
-    // A real build in a real lane, so this is coverage rather than an ALLOWLIST
-    // excuse — but it is NOT a `[[fixture]]` row, and the reason is written down
-    // on issue 1512: this is the tree's first `lang = "c"` row that would want
-    // `builder = "cargo"`, and `fixtures-build.sh` still selects the CARGO lane
-    // by a `case "$lang"` proxy (the half phase-344 W2 fixed on the manifest side
-    // and left at this call site). Giving it a row means fixing that proxy in
-    // both directions plus a `matrix::CELLS` cell, which is its own change.
-    "mps2-an385-baremetal/c/talker",
+    // issue 1512 — `mps2-an385-baremetal/c/talker` sat here, built only by
+    // `just qemu build-examples`, because it would have been the tree's first
+    // `lang = "c"` row wanting `builder = "cargo"` and `fixtures-build.sh`
+    // still picked the cargo lane by a `case "$lang"` proxy. The proxy is gone
+    // (the driver and `check-fixtures-stale.sh` both select by BUILDER), so it
+    // and its bare-metal C/C++ siblings are ordinary `[[fixture]]` rows now —
+    // covered above, which is why the entry left rather than stayed beside them.
 ];
 
 /// Tracked exceptions: (dir relative to `examples/`, reason). A dir here must

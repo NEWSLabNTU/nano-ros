@@ -1,0 +1,58 @@
+[package]
+name = "baremetal-cpp-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "C++ talker on the pure bare-metal MPS2-AN385: C++ application, Rust link root (issue 1512)"
+
+[[bin]]
+name = "baremetal-cpp-talker"
+test = false
+bench = false
+
+[dependencies]
+# The C++ ABI. `nros-cpp` bundles `nros-c` (the C ABI the C++ headers call
+# into) and forwards every feature named here to it, so this is the one
+# runtime selection in the image — the same "one umbrella" rule the cmake road
+# follows (`libnros_cpp.a` is the only Rust staticlib a C++ binary links).
+# `platform-mps2-an385` is the bare-metal arm issue 1512 added; see the `c/`
+# sibling's manifest for why `panic-platform` is named explicitly and why this
+# leaf carries no `panic-semihosting`.
+nros-cpp = { version = "*", default-features = false, features = [
+    "alloc",
+    "rmw-zenoh-cffi",
+    "ros-humble",
+    "platform-mps2-an385",
+    "panic-platform",
+] }
+# Named for its `links = "nros_c"` channel only — `DEP_NROS_C_INCLUDE` & co.
+# reach the build script of a DIRECT dependent, and the C++ headers include the
+# C ones. No features: cargo unifies this with the set `nros-cpp` forwards, so
+# this line selects nothing and cannot disagree with it.
+nros-c = { version = "*", default-features = false }
+# The board: reset vector, clock, LAN9118 + smoltcp bring-up, console, and the
+# `nros_log` sink. Same reason as the `c/` sibling: none of it has a C entry.
+nros-board-mps2-an385 = { version = "*" }
+# `ros-humble` on the backend, which `nros-cpp`'s own `ros-humble` does not
+# forward (the same line every `rust/` and the `c/` sibling carry).
+nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
+# The CDR codec the generated C++ message glue serializes with (`src/main.rs`
+# compiles that glue in; on the cmake road it is a per-package staticlib that
+# names this same crate).
+nros-serdes = { version = "*", default-features = false }
+
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+
+[build-dependencies]
+# Compiles `src/talker.cpp` for `thumbv7m-none-eabi`; the generated message
+# headers are header-only C++, their serializers are Rust (see `src/main.rs`).
+cc = "1"
+# The nano-ros cc policy every C/C++ compile in the tree takes (issue 1542),
+# held by `check-cc-build-policy`.
+nros-cc-flags = { version = "*" }
+
+# Phase 208.F1 — standalone workspace root, so cargo never adopts this leaf
+# into the outer nano-ros workspace or a copy-out user's one.
+[workspace]

@@ -200,6 +200,12 @@ build-fixtures:
     fi
     echo "Building QEMU bare-metal test fixtures..."
     scripts/build/fixtures-build.sh baremetal rust
+    # issue 1512 — the C and C++ leaves. Cargo-rooted (the link belongs to the
+    # Rust startup on a board with no RTOS), so their rows say
+    # `builder = "cargo"` and `fixtures-build.sh` routes them by that, not by
+    # language.
+    scripts/build/fixtures-build.sh baremetal c
+    scripts/build/fixtures-build.sh baremetal cpp
     # issue 0488 residue 1 — "remains ad-hoc until reference package coverage
     # moves into the fixture manifest" is done: it has a row, so the
     # `fixtures-build.sh` call above builds it with a coordinate and a group.

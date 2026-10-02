@@ -3,9 +3,17 @@
 Publishes `std_msgs/String` `"Hello World: N"` on `/chatter` once a second from
 an ordinary nano-ros **C** application, on a Cortex-M3 with **no RTOS at all**.
 
-This is the first C leaf in either bare-metal family (issue 1512). Read the next
-section before copying it: the *shape* differs from every other C example in the
-tree, and the reason is the board, not the C API.
+This is the first C leaf in either bare-metal family (issue 1512), and the one
+whose README explains the family: `c/{listener,service-server,service-client,
+action-server,action-client}` and `cpp/talker` beside it take the same shape.
+Read the next section before copying any of them: the *shape* differs from
+every other C example in the tree, and the reason is the board, not the C API.
+
+`build.rs` and `src/main.rs` are **leaf-agnostic** and byte-identical across the
+six C leaves: the script compiles every `src/*.c` and binds every interface
+package `nros generate c` resolves from `package.xml`, so a leaf differs from its
+siblings in `package.xml`, its own C file and (for a receiver of
+`std_msgs/String`) an `nros-codegen.toml` bound — nowhere else.
 
 ## Why the link root is Rust here
 
@@ -69,15 +77,21 @@ nros sync examples/mps2-an385-baremetal/c/talker
 cd examples/mps2-an385-baremetal/c/talker && cargo build --release
 ```
 
-`nros sync` writes the `[patch.crates-io]` rows and the board's
-`.cargo/config.toml` (triple, QEMU runner, `--gc-sections`,
-`CC_thumbv7m_none_eabi`). `build.rs` then runs `nros generate c` for the
-`<depend>` list in `package.xml` and compiles the bindings beside `talker.c`.
+`nros sync` renders the board's settings into
+`build/mps2-an385-baremetal/nros-cargo.toml` (triple, QEMU runner,
+`--gc-sections`, `CC_thumbv7m_none_eabi`) and writes a gitignored
+`.cargo/config.toml` that includes it beside the `[patch.crates-io]` rows.
+`build.rs` then runs `nros generate c` for the `<depend>` list in `package.xml`
+and compiles the bindings beside `talker.c`. The fixture lane builds the same
+leaf as a `[[fixture]]` row (`builder = "cargo"`):
+`scripts/build/fixtures-build.sh baremetal c`.
 
 ## Status
 
-Build-only. `matrix::CELLS` carries this cell as `BuildOnly`, and issue 1512
-records what a runtime lane needs next: this image dials
+Build-only, and booted by hand: the image comes up in QEMU, runs
+`nros_support_init`, and stops at the session open (`zpico Session ->
+ConnectionFailed`). `matrix::CELLS` carries the cell as `BuildOnly`, and issue
+1512 records what a runtime lane needs next: this image dials
 `NROS_ENTRY_LOCATOR`, whose bare-metal bottom rung is the empty string, so the
 backend picks its own default instead of the `[image.*] locator` in
 `system.toml`. Baking that is an entry-codegen job, not a thing this leaf should

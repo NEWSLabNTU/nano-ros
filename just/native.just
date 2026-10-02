@@ -148,6 +148,9 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # (plain default builds; each example's .cargo/config.toml selects the cross
     # target). No codegen prep needed (no generated-msg consumers).
     bash scripts/build/fixtures-build.sh baremetal rust
+    # issue 1512 — the cargo-rooted bare-metal C/C++ leaves (`builder = "cargo"`).
+    bash scripts/build/fixtures-build.sh baremetal c
+    bash scripts/build/fixtures-build.sh baremetal cpp
     # Phase 181.4.h — esp32 (ESP32-C3, riscv32imc) from the manifest. It needs
     # the workspace nightly + rust-src/build-std (NOT xtensa/espup) +
     # SSID/PASSWORD; inject those as platform env.
