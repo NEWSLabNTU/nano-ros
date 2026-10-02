@@ -184,6 +184,18 @@ impl LoweredTaskMemory {
                 .collect(),
         }
     }
+
+    /// The bytes the spawned tiers' stacks reserve, summed — what left the
+    /// RTOS heap for `.bss` (issue 1598). A row of `0` defers to the family
+    /// header's board knob, so it is counted as nothing: this is a floor on
+    /// what moved, never more than the entry declares.
+    pub fn spawned_bytes(&self) -> u64 {
+        self.rows
+            .iter()
+            .filter(|r| r.spawned)
+            .map(|r| r.bytes)
+            .sum()
+    }
 }
 
 /// The `run_tiers` executor layout: one setup per tier, and the rows of the
@@ -360,5 +372,32 @@ mod tests {
             assert_eq!(family_from_str(f.as_str()), Some(f));
         }
         assert_eq!(family_from_str("zigos"), None);
+    }
+
+    /// What moved to `.bss` is every SPAWNED tier's stack — the boot tier
+    /// runs on the caller and reserves none — with an undeclared tier at the
+    /// family default. Issue 1598's follow-up subtracts exactly this from the
+    /// FreeRTOS heap default, so counting the boot tier would shrink the heap
+    /// by a stack that never left it.
+    #[test]
+    fn spawned_bytes_counts_spawned_tiers_only() {
+        let mem = crate::TierTaskMemory {
+            header: "h",
+            boot_tier: crate::BootTier::Last,
+            default_stack_bytes: 262_144,
+        };
+        // tier 0 declares 4 KiB, tier 1 nothing, tier 2 is the boot tier.
+        let lowered = LoweredTaskMemory::for_tiers(&mem, &[4096, 0, 999]);
+        assert_eq!(lowered.spawned_bytes(), 4096 + 262_144);
+        // A Zephyr-shaped default of 0 defers to a board knob, so it states
+        // nothing rather than a number it does not know.
+        let deferred = crate::TierTaskMemory {
+            default_stack_bytes: 0,
+            ..mem
+        };
+        assert_eq!(
+            LoweredTaskMemory::for_tiers(&deferred, &[0, 0]).spawned_bytes(),
+            0
+        );
     }
 }

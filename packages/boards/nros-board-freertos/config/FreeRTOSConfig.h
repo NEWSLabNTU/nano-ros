@@ -81,9 +81,26 @@
  * Tracked as issue 1624.
  *
  * Override per image with the build env `NROS_FREERTOS_HEAP_KB` (the board
- * build.rs forwards it as `-DNROS_FREERTOS_HEAP_KB`). */
+ * build.rs forwards it as `-DNROS_FREERTOS_HEAP_KB`).
+ *
+ * CORRECTION to the list above (2026-10-02): it covers the CARGO road only.
+ * A C/C++ image built through cmake compiles this kernel in
+ * `freertos_kernel`, which never runs the board build.rs, so it takes 3072
+ * whatever its RMW — measured, realtime-cpp `demo_bringup:freertos` (zenoh)
+ * links `ucHeap` at 0x300000.
+ *
+ * MINUS the tier stacks the entry moved to `.bss` (issue 1598). Those stacks
+ * came out of this heap until 1598 gave each spawned tier a static one, and
+ * this default was never lowered, so the bytes were reserved twice — the
+ * realtime-cpp image above overflowed RAM by 151,024 bytes. `nano_ros_entry`
+ * defines `NROS_FREERTOS_TIER_STACKS_IN_BSS_KB` from the generated entry's
+ * own declarations; it is subtracted here only, never from an explicit
+ * `NROS_FREERTOS_HEAP_KB`, which is a size someone chose. */
+#ifndef NROS_FREERTOS_TIER_STACKS_IN_BSS_KB
+#define NROS_FREERTOS_TIER_STACKS_IN_BSS_KB     0
+#endif
 #ifndef NROS_FREERTOS_HEAP_KB
-#define NROS_FREERTOS_HEAP_KB                   3072
+#define NROS_FREERTOS_HEAP_KB                   (3072 - (NROS_FREERTOS_TIER_STACKS_IN_BSS_KB))
 #endif
 #define configTOTAL_HEAP_SIZE                   ((size_t)((NROS_FREERTOS_HEAP_KB) * 1024))
 #define configAPPLICATION_ALLOCATED_HEAP        0
