@@ -32,16 +32,12 @@ alloc            = ["nros/alloc"]
 # (RFC-0098 D3/D5).
 
 [dependencies]
-nros-board-threadx-qemu-riscv64 = { version = "*" }
 nros = { version = "*", default-features = false, features = ["rmw-cffi", "ros-humble", "macros"] }
-nros-platform = { version = "*", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }
 std_msgs = { path = "generated/std_msgs", default-features = false }
 # phase-277 W4 — chatter log lines (`Publishing:` / `I heard:`) route through
 # the `log` facade; the platform entry runtime owns the sink.
 log = "0.4"
 
-nros-rmw-zenoh = { version = "*", features = ["platform-threadx", "ros-humble"], optional = true }
-nros-rmw-cyclonedds-sys = { version = "*", default-features = false, optional = true }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the
@@ -49,4 +45,14 @@ nros-rmw-cyclonedds-sys = { version = "*", default-features = false, optional = 
 # workspace `members` glob when they copy this example out, breaking the
 # README's "standalone copy-out template" promise. Canonical in-tree builds
 # also pass via the root `exclude = [...]` list (belt-and-braces).
+
+# Everything only the IMAGE needs is TARGET-scoped, so the node in `lib.rs`
+# builds for the host as well and `nros sync` can PROBE what it creates
+# (issues 1265, 1603). `main.rs` (the Entry) is never built for the host.
+[target.'cfg(target_os = "none")'.dependencies]
+nros-board-threadx-qemu-riscv64 = { version = "*" }
+nros-platform = { version = "*", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }
+nros-rmw-zenoh = { version = "*", features = ["platform-threadx", "ros-humble"], optional = true }
+nros-rmw-cyclonedds-sys = { version = "*", default-features = false, optional = true }
+
 [workspace]

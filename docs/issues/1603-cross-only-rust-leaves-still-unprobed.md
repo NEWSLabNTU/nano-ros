@@ -54,3 +54,65 @@ Per row, because the blockers differ:
 Acceptance: each leaf either probes (a `metadata/<component>.json`, pools
 derived) or is in a named, cross-checked declared population — none left at the
 silent crate default.
+
+## 2026-10-03 -- 14 of the 32 probe now, 6 already did, 12 need a different answer
+
+Measured with every vendored source this needs provisioned in the worktree
+(`nros setup --source freertos-kernel lwip threadx threadx-netxduo nuttx-libc
+nuttx-kernel nuttx-apps`), one `nros sync` per leaf, metadata wiped first.
+
+| family | leaves | on a provisioned host, unchanged | change | after |
+| --- | --- | --- | --- | --- |
+| `mps2-an385-freertos/rust/*` | 6 | **all 6 PROBE** (`metadata/<component>.json`) -- the row above was the unprovisioned worktree, not the leaves; issue 0288's host-probe gates on the board crate already work | none | probed |
+| `mps2-an385-baremetal/rust/*-rtic*` | 8 | `.unprobeable` (`bkpt`) | issue 1265's target-scoping: board, `nros-rmw-zenoh`, `mps2-an385-pac`, `rtic`, `cortex-m`, `panic-semihosting` under `[target.'cfg(target_os = "none")'.dependencies]` | **all 8 probe** |
+| `rv-virt-threadx/rust/*` | 6 | `.unprobeable` (`E0152 duplicate lang item panic_impl`, then `E0463 can't find crate nros_board_threadx_qemu_riscv64`) | the same target-scoping (board, `nros-platform`, both RMW backends), AND `#![cfg(target_os = "none")]` on `src/app_main.rs` -- the lib IS the staticlib image here, and its glue module anchors the board | **all 6 probe** |
+| `qemu-armv7a-nuttx/rust/*` | 6 | `.unprobeable` (`nros setup --source nuttx-kernel`; provisioned: `E0152 duplicate lang item in crate core: sized`) | target-scoping (`cfg(target_os = "nuttx")`) does NOT help -- reverted | not probed |
+| `zephyr/rust/*` | 6 | `.unprobeable` (`no matching package named zephyr-build`) | none tried | not probed |
+
+The correction to the table above: **no RTIC leaf's `lib.rs` uses `rtic::`.**
+The four that the survey said did (`talker-rtic`, `listener-rtic`,
+`*-rtic-mixed`) name `rtic` only in `//!` doc comments; the generated
+`#[rtic::app]` lives in the entry, so target-scoping was enough for all eight.
+
+**Measured derivation, before -> after** (`build/<image>/nros-cargo.toml`, the
+derived `[env]` rows): before, NO derived row -- every pool at the crate
+default. After, e.g. `talker-rtic` `NROS_EXECUTOR_MAX_CBS=1`,
+`ZPICO_MAX_PUBLISHERS=1`, `NROS_RMW_SUBSCRIBER_SLOTS=0`; `service-server-rtic`
+`NROS_DECLARED_SERVICE_SERVERS=1`, `NROS_CYCLONEDDS_MAX_KINDS=4`;
+`rv-virt-threadx/action-server` `NROS_DECLARED_SERVICE_SERVERS=4`,
+`NROS_EXECUTOR_ACTION_CLIENTS=1`, `ZPICO_MAX_PUBLISHERS=2`,
+`NROS_CYCLONEDDS_MAX_KINDS=11`. The cross images still build:
+`fixtures-build.sh baremetal rust` (all 13 baremetal rows, the 8 RTIC among
+them) and `just threadx_riscv64 build-fixture-extras` (the six leaves, zenoh
+and cyclonedds) exit 0, and the ThreadX images still export `app_main`
+(`nm`), i.e. the cfg'd glue is in the target build.
+
+### What is left (why this stays open)
+
+* **NuttX -- the leaf's cargo config poisons a HOST build, and the probe cannot
+  subtract it.** The NuttX target is tier 3, so the board's `cargo_config`
+  carries `[unstable] build-std = ["core", "alloc", "panic_abort"]`, and the
+  leaf's (sync-written, gitignored) `.cargo/config.toml` `include`s it -- the
+  probe harness, run inside the leaf for the `[patch.crates-io]` rows, inherits
+  it. `metadata_build`'s `CARGO_UNSTABLE_BUILD_STD=""` override was meant to
+  neutralise exactly this and does not: cargo MERGES config arrays, so neither
+  the empty env value nor `--config 'unstable.build-std=[]'` removes the
+  included list (both measured: `E0152 duplicate lang item in crate core`).
+  Building `std` from source for the host instead (`=std,panic_abort`) fails
+  differently: the leaf's `libc` patch is the NuttX fork, and host `std` built
+  against it does not compile (`E0599 no ... default for timespec`). The
+  answer is a probe that does not inherit the board's `cargo_config` at all --
+  run the harness OUTSIDE the leaf with only the patch rows (`nros-patch.toml`
+  + the leaf's generated rows) named by `--config` -- which is a
+  `metadata_build` change, not an example change.
+* **Zephyr -- `zephyr` / `zephyr-build` resolve only inside a west build**, and
+  the lib IS the image (`crate-type = ["staticlib"]`, `zephyr_component_main!`
+  in `src/app_main.rs`, a `build.rs` that calls `zephyr_build`). A
+  build-dependency cannot be target-scoped, so the host probe fails at
+  RESOLUTION. Answers: split the node into its own crate the image depends on,
+  or read the entities from the west build's artifact (1265's original
+  direction).
+* **Outside this issue's 32, the same shape**:
+  `packages/testing/nros-tests/bins/rtic-run-plan-e2e` is `.unprobeable` and
+  cannot take the target-scoping alone -- its `lib.rs` calls
+  `nros_board_mps2_an385::exit_success()`.
