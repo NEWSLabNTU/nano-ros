@@ -140,6 +140,7 @@ def knob_word(word: int) -> tuple[int, str]:
     src = (word >> 8) & 0xFF
     return word & 0xFF, KNOB_SOURCE.get(src, f"unknown source {src}")
 
+
 STAGES = {
     0: "Untouched -- the image never entered nros_cpp_init",
     1: "ReportReady -- entered nros_cpp_init; arguments NOT yet validated",
@@ -155,27 +156,61 @@ STAGES = {
 # only, and kept in step by hand -- the Rust side is exhaustive, so a new
 # variant fails THERE first, which is the half that matters.
 ERR_CLASS = {
-    0: "(none)", 1: "Transport", 2: "NameTooLong", 3: "Serialization",
-    4: "Deserialization", 5: "BufferTooSmall", 6: "ActionCreationFailed",
-    7: "ServiceRequestFailed", 8: "ServiceReplyFailed", 9: "Timeout",
-    10: "NotInitialized", 11: "RequestInFlight", 12: "NoSchedContextSlot",
-    13: "InvalidSchedContextBinding", 14: "NodeTableFull", 15: "ExecutorFull",
-    16: "BackendMismatch", 17: "ShutdownCallbacksFull",
+    0: "(none)",
+    1: "Transport",
+    2: "NameTooLong",
+    3: "Serialization",
+    4: "Deserialization",
+    5: "BufferTooSmall",
+    6: "ActionCreationFailed",
+    7: "ServiceRequestFailed",
+    8: "ServiceReplyFailed",
+    9: "Timeout",
+    10: "NotInitialized",
+    11: "RequestInFlight",
+    12: "NoSchedContextSlot",
+    13: "InvalidSchedContextBinding",
+    14: "NodeTableFull",
+    15: "ExecutorFull",
+    16: "BackendMismatch",
+    17: "ShutdownCallbacksFull",
 }
 
 # Assigned by `transport_error_class` in the same file.
 ERR_TRANSPORT = {
-    0: "(none)", 1: "ConnectionFailed", 2: "Disconnected",
-    3: "PublisherCreationFailed", 4: "SubscriberCreationFailed",
-    5: "ServiceServerCreationFailed", 6: "ServiceClientCreationFailed",
-    7: "PublishFailed", 8: "ServiceRequestFailed", 9: "ServiceReplyFailed",
-    10: "SerializationError", 11: "DeserializationError", 12: "BufferTooSmall",
-    13: "MessageTooLarge", 14: "Timeout", 15: "InvalidConfig", 16: "WouldBlock",
-    17: "TooLarge", 18: "TaskStartFailed", 19: "PollFailed",
-    20: "KeepaliveFailed", 21: "JoinFailed", 22: "InvalidArgument",
-    23: "Unsupported", 24: "BadAlloc", 25: "IncompatibleQos",
-    26: "TopicNameInvalid", 27: "NodeNameNonExistent", 28: "LoanNotSupported",
-    29: "NoData", 30: "IncompatibleAbi", 31: "Backend", 32: "BackendDynamic",
+    0: "(none)",
+    1: "ConnectionFailed",
+    2: "Disconnected",
+    3: "PublisherCreationFailed",
+    4: "SubscriberCreationFailed",
+    5: "ServiceServerCreationFailed",
+    6: "ServiceClientCreationFailed",
+    7: "PublishFailed",
+    8: "ServiceRequestFailed",
+    9: "ServiceReplyFailed",
+    10: "SerializationError",
+    11: "DeserializationError",
+    12: "BufferTooSmall",
+    13: "MessageTooLarge",
+    14: "Timeout",
+    15: "InvalidConfig",
+    16: "WouldBlock",
+    17: "TooLarge",
+    18: "TaskStartFailed",
+    19: "PollFailed",
+    20: "KeepaliveFailed",
+    21: "JoinFailed",
+    22: "InvalidArgument",
+    23: "Unsupported",
+    24: "BadAlloc",
+    25: "IncompatibleQos",
+    26: "TopicNameInvalid",
+    27: "NodeNameNonExistent",
+    28: "LoanNotSupported",
+    29: "NoData",
+    30: "IncompatibleAbi",
+    31: "Backend",
+    32: "BackendDynamic",
 }
 
 # Pools and tables map to NROS_CPP_RET_FULL, never to the transport code, so
@@ -221,8 +256,16 @@ ALLOC_FIELDS = (
 # Backend("rmw_ret error") -- issues 0870 and 0465.
 ZPICO_ERR = {
     0: "(none -- the declare succeeded)",
-    1: "Generic", 2: "Config", 3: "Session", 4: "Task", 5: "KeyExpr",
-    6: "Full", 7: "Invalid", 8: "Publish", 9: "NotOpen", 10: "Timeout",
+    1: "Generic",
+    2: "Config",
+    3: "Session",
+    4: "Task",
+    5: "KeyExpr",
+    6: "Full",
+    7: "Invalid",
+    8: "Publish",
+    9: "NotOpen",
+    10: "Timeout",
 }
 
 # Exit markers stamped by `zpico_declare_subscriber_ring` in the C shim.
@@ -299,10 +342,10 @@ def elf_bytes(elf: Path | None, addr: int, length: int) -> bytes | None:
         return None
     is64 = data[4] == 2
     if is64:
-        shoff, = struct.unpack_from("<Q", data, 0x28)
+        (shoff,) = struct.unpack_from("<Q", data, 0x28)
         shentsize, shnum = struct.unpack_from("<HH", data, 0x3A)
     else:
-        shoff, = struct.unpack_from("<I", data, 0x20)
+        (shoff,) = struct.unpack_from("<I", data, 0x20)
         shentsize, shnum = struct.unpack_from("<HH", data, 0x2E)
     for i in range(shnum):
         off = shoff + i * shentsize
@@ -384,8 +427,7 @@ def heap_headroom(rec: dict[str, int]) -> tuple[bool, list[str]]:
 
     if cap == 0:
         return False, [
-            "HEAP HEADROOM: REFUSED -- a peak of "
-            f"{peak} with a capacity of 0.",
+            f"HEAP HEADROOM: REFUSED -- a peak of {peak} with a capacity of 0.",
             "",
             "  The two words are written together by `nros_boot_report_note_heap`,",
             "  so a capacity of 0 means the heap reported none. There is nothing",
@@ -463,7 +505,9 @@ def report(rec: dict[str, int], elf: Path | None = None) -> int:
         return 2
 
     stage = rec["stage"]
-    print(f"stage      {stage}  {STAGES.get(stage, 'UNKNOWN -- newer image than this script')}")
+    print(
+        f"stage      {stage}  {STAGES.get(stage, 'UNKNOWN -- newer image than this script')}"
+    )
     print()
     print("compiled in (compare against what the build believed it delivered):")
     print(f"  NROS_EXECUTOR_ARENA_SIZE      {rec['arena_size']}")
@@ -612,8 +656,8 @@ def report(rec: dict[str, int], elf: Path | None = None) -> int:
                     f"  backend message at 0x{rec['err_backend_ptr']:08x}, "
                     f"{rec['err_backend_len']} bytes. Read it with:\n"
                     f"    pyocd commander -t <target> --connect attach \\\n"
-                    f"      -c \"savemem 0x{rec['err_backend_ptr']:08x} "
-                    f"{rec['err_backend_len']} msg.bin\""
+                    f'      -c "savemem 0x{rec["err_backend_ptr"]:08x} '
+                    f'{rec["err_backend_len"]} msg.bin"'
                 )
         if cls in POOL_CLASSES:
             print(
@@ -682,8 +726,11 @@ def report_alloc(rec: dict[str, int]) -> int:
         )
         return 2
     if rec["version"] != ALLOC_VERSION:
-        print(f"alloc record version {rec['version']}, this script decodes "
-              f"{ALLOC_VERSION}.", file=sys.stderr)
+        print(
+            f"alloc record version {rec['version']}, this script decodes "
+            f"{ALLOC_VERSION}.",
+            file=sys.stderr,
+        )
         return 2
 
     print("payload classes, as compiled:")
@@ -731,7 +778,9 @@ def report_alloc(rec: dict[str, int]) -> int:
         # and the second is unconditional on Zephyr since phase-412 -- so a
         # zero here is an arena that was never asked, not a feature that was
         # left off. Issue 1424 found the same stale name in platform.c.
-        print("  platform heap                   not instrumented (zpico-alloc/stats off)")
+        print(
+            "  platform heap                   not instrumented (zpico-alloc/stats off)"
+        )
     print()
     kl, kc = rec["keyexpr_len"], rec["keyexpr_cap"]
     print(f"  last keyexpr length             {kl} of {kc}")
@@ -747,7 +796,9 @@ def report_alloc(rec: dict[str, int]) -> int:
     if rec["zpico_err"] or zx:
         zr = rec["zpico_ret"]
         zr_s = zr - (1 << 32) if zr >= (1 << 31) else zr
-        print(f"  zpico declare exit              {zx} -- {ZPICO_EXIT.get(zx, 'unknown')}")
+        print(
+            f"  zpico declare exit              {zx} -- {ZPICO_EXIT.get(zx, 'unknown')}"
+        )
         if zx == 5:
             print(f"  z_declare_subscriber returned   {zr_s}")
         elif zx == 0:
@@ -766,9 +817,13 @@ def report_alloc(rec: dict[str, int]) -> int:
                 "  This exit has no printk, which is why the console showed nothing."
             )
         elif ze == 1:
-            print("  Generic -- z_declare_subscriber itself failed; zpico printk carries the code.")
+            print(
+                "  Generic -- z_declare_subscriber itself failed; zpico printk carries the code."
+            )
         elif ze == 6:
-            print("  Full -- the zpico subscriber table is exhausted (ZPICO_MAX_SUBSCRIBERS).")
+            print(
+                "  Full -- the zpico subscriber table is exhausted (ZPICO_MAX_SUBSCRIBERS)."
+            )
     print()
 
     r = rec["refusal"]
@@ -976,7 +1031,10 @@ def self_test() -> int:
         ),
         (
             "headroom exactly at the floor",
-            {"heap_peak_bytes": 94208 - HEAP_HEADROOM_FLOOR, "heap_capacity_bytes": 94208},
+            {
+                "heap_peak_bytes": 94208 - HEAP_HEADROOM_FLOOR,
+                "heap_capacity_bytes": 94208,
+            },
             True,
         ),
         (
@@ -985,7 +1043,11 @@ def self_test() -> int:
             True,
         ),
         # A peak above capacity is not a thin heap, it is a broken counter.
-        ("peak above capacity", {"heap_peak_bytes": 99999, "heap_capacity_bytes": 94208}, False),
+        (
+            "peak above capacity",
+            {"heap_peak_bytes": 99999, "heap_capacity_bytes": 94208},
+            False,
+        ),
     ]
     ok = True
     with tempfile.TemporaryDirectory() as d:
@@ -1006,22 +1068,33 @@ def self_test() -> int:
         junk.write_bytes(b"\x00" * (len(FIELDS) * 4))
         if check_heap_headroom(junk, quiet=True) != 2:
             ok = False
-            print("  self-test FAIL junk: a record-less dump did not refuse", file=sys.stderr)
+            print(
+                "  self-test FAIL junk: a record-less dump did not refuse",
+                file=sys.stderr,
+            )
     ok = self_test_alloc_verdicts() and ok
     # Issue 1036 -- the error-log line must never invent a location: no ELF
     # resolves nothing, and a count of zero says so rather than naming a file.
     if "the first raised at" in error_log_line(make_dump_rec(), None):
         ok = False
-        print("  self-test FAIL error-log: a zero count named a location", file=sys.stderr)
+        print(
+            "  self-test FAIL error-log: a zero count named a location", file=sys.stderr
+        )
     named = error_log_line(
-        make_dump_rec(error_log_count=3, error_log_file_ptr=0x1000, error_log_file_len=9,
-                      error_log_line=7),
+        make_dump_rec(
+            error_log_count=3,
+            error_log_file_ptr=0x1000,
+            error_log_file_len=9,
+            error_log_line=7,
+        ),
         None,
     )
     if "0x00001000" not in named or "line 7" not in named or ": 3" in named:
         ok = False
-        print(f"  self-test FAIL error-log: unresolved location misprinted: {named}",
-              file=sys.stderr)
+        print(
+            f"  self-test FAIL error-log: unresolved location misprinted: {named}",
+            file=sys.stderr,
+        )
     print(
         "read-boot-report --self-test: " + ("OK" if ok else "FAILED"),
         file=sys.stderr,
