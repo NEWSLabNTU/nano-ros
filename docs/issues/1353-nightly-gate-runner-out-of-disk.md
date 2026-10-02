@@ -1897,3 +1897,48 @@ The same run's sibling job, `rows whose board is NOT this runner`
 configure, filed on issue **1536**. A dead runner and a broken fixture in one
 run are two findings; attributing the whole run to this issue would have hidden
 the other.
+
+## Tier 1, sixth point — two gates red in ONE job, and only one of them is disk (2026-10-02)
+
+Run **36938229060** (push `host-tests`, 2026-10-01T22:58:53Z, head `2eb977f6f`),
+job **110623429320**, step 15 `just ci tier1`. `freed 33358 MB` — the same
+reclaim constant as the fifth point, to the megabyte — and then
+`Free space left: 0 MB`.
+
+What makes this point worth recording is not the disk number. It is that the
+tier failed **two** gates and they have **different causes**:
+
+```
+===== FAIL (mem-report, rc=1, 2944ms) =====
+AssertionError: STORAGE_ROLES (component storage): …/entry/cpp/entry.cpp.jinja
+  no longer contains 'static unsigned char __nros_comp_buf_{{ s.index }}['
+===== FAIL (template-copy-out, rc=1, 744378ms) =====
+```
+
+`mem-report` is **not** this issue. It answered in **2.9 seconds** with a Python
+`AssertionError`, which no amount of free space changes; that is issue 1147's
+drift tripwire firing on a template rename, since fixed on `main` by PR #1541.
+`template-copy-out` ran for **744 seconds** and died beside `Free space left:
+0 MB`, which is this issue.
+
+### Why that matters for reading this lane
+
+The 2026-09-30 entry argued that on a disk-starved runner the lane names
+whichever gate happened to be running when the space ran out, and showed it
+with two runs naming two different gates. This is the sharper version of the
+same point, inside a single job: **a red from this lane is not one finding.**
+Here one of the two reds is attributable to a real source defect with a
+one-line fix, the other is the disk, and nothing in the step name or the
+recipe's exit code separates them — only the elapsed time and the error text
+do.
+
+So the triage rule this issue implies is concrete: for every FAIL in a
+disk-starved tier-1 job, read its own duration and message before attributing
+it here. A gate that answered in seconds with a diagnostic of its own was not
+starved of anything.
+
+### What this does not change
+
+Acceptance is unchanged and unmet. Six runs, six times at or near 100 %; the
+reclaim has now been within 72 MB of 33.3 G on six consecutive measurements,
+and the arrival state is still what decides.
