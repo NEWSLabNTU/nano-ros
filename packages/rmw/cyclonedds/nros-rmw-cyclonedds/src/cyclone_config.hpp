@@ -156,6 +156,21 @@ constexpr const char* kEmbeddedCycloneConfig =
     "<StackSize>16 KiB</StackSize>"
     "</Thread>"
     "</Threads>"
+    // Issue 1634 — where a trace GOES, stated for a target with no filesystem.
+    //
+    // Cyclone's default `<OutputFile>` is `cyclonedds.log`, and it opens it as
+    // soon as ANY category is enabled. A user config that says only
+    // `<Verbosity>warning</Verbosity>` — the bringup sample in
+    // `examples/workspaces/cpp` does exactly that — therefore made
+    // `dds_create_domain` fail on FreeRTOS with
+    // `cyclonedds.log: cannot open for writing`, and the image died at
+    // `RMW session open failed` with no word about tracing. `stderr` is one of
+    // the two names Cyclone special-cases (`q_init.c`, no `fopen`), and it is
+    // the console on every platform this baseline is compiled for. A scalar,
+    // so a user who names a file still wins (later tokens override).
+    "<Tracing>"
+    "<OutputFile>stderr</OutputFile>"
+    "</Tracing>"
     "</Domain>"
     "</CycloneDDS>";
 #else
