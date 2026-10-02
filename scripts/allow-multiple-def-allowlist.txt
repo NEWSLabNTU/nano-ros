@@ -1,16 +1,21 @@
 # Phase 251 — audited allowlist of build files permitted to use the linker flag
 # `--allow-multiple-definition`. SINGLE SOURCE OF TRUTH for
-# scripts/check-no-allow-multiple-def.sh (and `just check no-allow-multiple-def`).
+# scripts/check-no-allow-multiple-def.py (and `just check no-allow-multiple-def`).
 #
 # The flag is FORBIDDEN by default: it lets two different functions with the same
 # name coexist and silently binds callers to whichever copy the linker picks first
 # (the #48-class wrong-copy hazard). Every surviving use is a tracked exception
 # with a reason + owning issue; the target is ZERO entries.
 #
-# Format: <repo-relative-path>   # reason (owning issue / wave)
-# Only ACTUAL link-flag uses count (a comment that merely names the flag does not).
-# Drift fails the gate: a new unlisted use, or a listed file that no longer uses it.
+# Format: <repo-relative-path> <count>   # reason (owning issue NNNN)
+# <count> is the EXACT number of uses in that file: one more is a new, unaudited
+# use; one fewer must lower the row (the count may only fall). `-z muldefs` is
+# the same flag. Only ACTUAL uses count (a comment that merely names it does not).
 
-# (empty — phase-251 W1 + W2 removed both uses: threadx-riscv64 board (strong/weak
-#  mem override, relink-validated) and APPLE cyclonedds force_load tail. The
-#  invariant is now fully enforced: ANY `--allow-multiple-definition` fails the gate.)
+# phase-251 W1 + W2 removed the two uses the gate could SEE and this list said
+# "ANY use fails". Issue 1618: four more sat in files the gate never read. Each
+# is load-bearing until the image links ONE Rust staticlib; removing them is
+# issue 1636's work, not a flag edit.
+zephyr/CMakeLists.txt 2             # (a) native_sim C/C++: picolibc's malloc vs Zephyr COMMON_LIBC_MALLOC, Zephyr's wins; (b) C++ image links nros-cpp + nros-rmw-zenoh-staticlib, two Rust staticlibs with a shared closure (issue 1636)
+integrations/nuttx/Make.defs 1      # libnros_c.a + libnros_cpp.a + per-package FFI staticlibs, overlapping closures (Phase 157.C.17; issue 1636)
+integrations/s32ds/makefile.defs 1  # same multi-staticlib shape as the NuttX Make.defs; user-editable S32DS fragment (issue 1636)

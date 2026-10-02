@@ -483,7 +483,7 @@ workspace-exclude-list:
 # carries the audited exceptions, target empty. Buildless.
 [private]
 no-allow-multiple-def:
-    @bash scripts/check-no-allow-multiple-def.sh
+    @python3 scripts/check-no-allow-multiple-def.py
 
 [group("check")]
 no-tracked-file-find:

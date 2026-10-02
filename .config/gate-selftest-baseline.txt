@@ -36,7 +36,6 @@ scripts/check-interface-glob-configure-depends.py
 scripts/check-lane-scope-consumers.py
 scripts/check-manifests-parse.py
 scripts/check-no-absolute-model-paths.sh
-scripts/check-no-allow-multiple-def.sh
 scripts/check-no-board-init.sh
 scripts/check-no-direct-kernel-alloc.sh
 scripts/check-no-silent-sample-drop.py
