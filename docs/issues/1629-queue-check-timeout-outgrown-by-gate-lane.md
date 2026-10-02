@@ -115,7 +115,7 @@ long the second time.**
 | 36969459579 | 05:33:03 | **73 min** | success — but the entry was ejected `checks_timed_out` at 63 min |
 | 36975759614 | 06:53:02 | **38 min** | success, merged |
 
-Head `7c3b1d900` both times. Same branch, same diff, same gate list. So the
+The same head of PR #1551 both times (a branch commit since rebased away). Same branch, same diff, same gate list. So the
 60-minute window is not a verdict on any pull request's content or size — it is a
 coin flip on how long the lane happens to take, and this PR lost once and won
 once without changing a byte.
