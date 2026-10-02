@@ -52,7 +52,18 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
-DEFAULT_WS = REPO.parent / "nano-ros-workspace"
+
+
+def default_build_root() -> str:
+    """THIS checkout's west build root — issue 1596's one derivation
+    (`scripts/lib/zephyr-workspace.sh build-root`). It used to default to the
+    legacy SIBLING workspace, i.e. a tree every checkout shared; pass
+    `--workspace <ws>` to sweep a pre-1596 shared workspace's dirs."""
+    return subprocess.run(
+        ["bash", str(REPO / "scripts/lib/zephyr-workspace.sh"), "--root", str(REPO),
+         "build-root"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
 
 def profile_dirs(rust_dir: Path):
     """Every cargo PROFILE directory under `nros-rust/`, at either depth.
@@ -95,11 +106,12 @@ def du_mb(p: Path) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--workspace", default=str(DEFAULT_WS))
+    ap.add_argument("--workspace", default=None,
+                    help="dir holding the build-* dirs (default: this checkout's build root)")
     ap.add_argument("--prune", action="store_true")
     args = ap.parse_args()
 
-    ws = Path(args.workspace)
+    ws = Path(args.workspace or default_build_root())
     if not ws.is_dir():
         print(f"gc-zephyr-builds: no workspace at {ws} — nothing to do.")
         return 0

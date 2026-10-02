@@ -16,8 +16,9 @@ Options:
   --emit records            required; emit fixture leaf records
   --zephyr-version VERSION  Zephyr line selector (default: $NROS_ZEPHYR_VERSION or 3.7)
   --nros-root DIR           nano-ros checkout root (default: current repo)
-  --build-root DIR          Zephyr build root (default: $NROS_ZEPHYR_BUILD_ROOT,
-                            else selected workspace path)
+  --build-root DIR          Zephyr build root (default: `zephyr-workspace.sh
+                            build-root` — $NROS_ZEPHYR_BUILD_ROOT, else this
+                            checkout's build/zephyr-workspace-builds/<version>)
   --codegen-tool PATH       host codegen tool used in signatures
                             (default: resolved nros CLI, or build/host-codegen/nros-codegen
                             when nros is unavailable)
@@ -159,17 +160,11 @@ source "$nros_root/scripts/build/fixture-matrix.sh"
 source "$nros_root/scripts/build/cargo.sh"
 
 if [ -z "$build_root" ]; then
-    if [ -n "${NROS_ZEPHYR_BUILD_ROOT:-}" ]; then
-        build_root="$NROS_ZEPHYR_BUILD_ROOT"
-    elif [ "$zephyr_version" = "4.4" ]; then
-        build_root="$nros_root/../nano-ros-workspace-4.4"
-    elif [ -d "$nros_root/zephyr-workspace" ]; then
-        build_root="$nros_root/zephyr-workspace"
-    elif [ -d "$nros_root/../nano-ros-workspace" ]; then
-        build_root="$nros_root/../nano-ros-workspace"
-    else
-        build_root="$nros_root/zephyr-workspace"
-    fi
+    # issue 1596 — this checkout's build root, the one derivation. This used to
+    # be a FOURTH workspace ladder that put build dirs inside whichever
+    # workspace it found, i.e. the shared one.
+    build_root="$("$nros_root/scripts/lib/zephyr-workspace.sh" --version "$zephyr_version" \
+        --root "$nros_root" build-root)"
 fi
 if [ -z "$codegen_tool" ]; then
     codegen_tool="$(nros_cargo_codegen_c_bin 2>/dev/null || true)"

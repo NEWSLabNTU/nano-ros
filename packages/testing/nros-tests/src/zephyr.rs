@@ -909,21 +909,29 @@ pub fn zephyr_workspace_path() -> Option<PathBuf> {
     None
 }
 
-fn zephyr_build_root(workspace: &Path) -> PathBuf {
-    if let Some(path) = std::env::var_os("NROS_ZEPHYR_BUILD_ROOT") {
-        return PathBuf::from(path);
+/// Where THIS checkout's west build dirs live — issue 1596. The Rust twin of
+/// `scripts/lib/zephyr-workspace.sh build-root`, pinned to it by
+/// `build_root_derivation.sh`:
+///
+/// ```text
+/// $NROS_ZEPHYR_BUILD_ROOT                                   as is, else
+/// <build_root()>/zephyr-workspace-builds/<NROS_ZEPHYR_VERSION or 3.7>
+/// ```
+///
+/// NOT the Zephyr workspace. The workspace is shared source; a build dir is
+/// this checkout's output, and keeping the two in one directory (named by leaf
+/// alone) made every worktree configure every other worktree's images. The
+/// west-leaf routing keys on the build-dir NAME and is unaffected.
+pub fn zephyr_build_root() -> PathBuf {
+    if let Some(path) = std::env::var_os("NROS_ZEPHYR_BUILD_ROOT").filter(|p| !p.is_empty()) {
+        let s = path.to_string_lossy();
+        return PathBuf::from(s.trim_end_matches('/'));
     }
-    if workspace_is_writable(workspace) {
-        workspace.to_path_buf()
-    } else {
-        crate::build_dir(crate::kind::ZEPHYR_WORKSPACE_BUILDS, &[])
-    }
-}
-
-fn workspace_is_writable(path: &Path) -> bool {
-    path.metadata()
-        .map(|m| !m.permissions().readonly())
-        .unwrap_or(false)
+    let version = std::env::var("NROS_ZEPHYR_VERSION")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "3.7".to_string());
+    crate::build_dir(crate::kind::ZEPHYR_WORKSPACE_BUILDS, &[&version])
 }
 
 /// Check if west command is available
@@ -1170,10 +1178,9 @@ pub fn get_prebuilt_zephyr_example(
     example_name: &str,
     platform: ZephyrPlatform,
 ) -> TestResult<PathBuf> {
-    let workspace = zephyr_workspace_path()
-        .ok_or_else(|| TestError::BuildFailed("Zephyr workspace not found".to_string()))?;
-
-    let build_root = zephyr_build_root(&workspace);
+    // issue 1596 — the image lives in this checkout's build root, which does
+    // not depend on where (or whether) the shared workspace resolves.
+    let build_root = zephyr_build_root();
     let build_dir = build_dir_for_example(example_name);
 
     // phase-350 W1.b — a coordinate-scoped lane build now omits west leaves
@@ -1254,10 +1261,7 @@ const ZEPHYR_WORKSPACE_ENTRY_SRC_KEY: &str = "workspaces/rust";
 /// # Returns
 /// Path to `build-ws-rs-entry-zenoh/zephyr/zephyr.exe`.
 pub fn get_prebuilt_zephyr_workspace_entry() -> TestResult<PathBuf> {
-    let workspace = zephyr_workspace_path()
-        .ok_or_else(|| TestError::BuildFailed("Zephyr workspace not found".to_string()))?;
-
-    let build_root = zephyr_build_root(&workspace);
+    let build_root = zephyr_build_root();
     // phase-350 W1.b — same coordinate route as `get_prebuilt_zephyr_example`.
     // phase-470 W5.a (issue 1288) — the label names the WORKSPACE, because the
     // application is generated under `build/<coord>/` now and `src/zephyr_entry`

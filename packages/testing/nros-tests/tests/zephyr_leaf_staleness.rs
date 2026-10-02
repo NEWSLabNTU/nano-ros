@@ -31,7 +31,10 @@ use std::{fs, path::PathBuf};
 /// Zephyr fixtures.
 fn built_leaf(build_dir: &str, leaf: &str) -> Option<(PathBuf, PathBuf)> {
     let root = nros_tests::project_root();
-    let exe = root.join(format!("zephyr-workspace/{build_dir}/zephyr/zephyr.exe"));
+    // issue 1596 — this checkout's build root (the one derivation); the
+    // in-tree `zephyr-workspace/` stopped being where images land long ago.
+    let exe =
+        nros_tests::zephyr::zephyr_build_root().join(format!("{build_dir}/zephyr/zephyr.exe"));
     let src = root.join(leaf);
     (exe.is_file() && src.is_dir()).then_some((exe, src))
 }
@@ -90,7 +93,8 @@ fn assert_conf_edit_is_seen(build_dir: &str, leaf: &str, resolve: fn() -> TestRe
 #[test]
 fn a_shared_cmake_input_marks_the_image_stale() {
     let root = nros_tests::project_root();
-    let exe = root.join("zephyr-workspace/build-c-talker-cyclonedds/zephyr/zephyr.exe");
+    let exe =
+        nros_tests::zephyr::zephyr_build_root().join("build-c-talker-cyclonedds/zephyr/zephyr.exe");
     if !exe.is_file() {
         skip!("build-c-talker-cyclonedds not built here — nothing to probe");
     }

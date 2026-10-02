@@ -488,9 +488,12 @@ test-c:
 [group("main")]
 clean:
     #!/usr/bin/env bash
-    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
-    rm -rf "$WORKSPACE"/build-{talker,listener,service-server,service-client,action-server,action-client,service-client-async,async-service-client,c-talker,c-listener,cpp-talker,cpp-listener,cpp-service-server,cpp-service-client,cpp-action-server,cpp-action-client,xrce-rs-talker,xrce-rs-listener,xrce-c-talker,xrce-c-listener}
-    echo "Zephyr build directories cleaned"
+    # issue 1596 — THIS checkout's build dirs, which no longer live in the
+    # shared workspace (the list that stood here named 20 leaf spellings the
+    # manifest retired long ago, in a directory every worktree shares).
+    build_root="$(scripts/lib/zephyr-workspace.sh --version "{{NROS_ZEPHYR_VERSION}}" build-root)"
+    rm -rf "$build_root"/build-*
+    echo "Zephyr build directories cleaned under $build_root"
 
 # Force rebuild Zephyr examples
 rebuild: clean build-examples

@@ -169,6 +169,12 @@ export NROS_KIND_TOOLS="tools"
 export NROS_KIND_XRCE_AGENT="xrce-agent"
 export NROS_KIND_ZENOHD="zenohd"
 export NROS_KIND_ZEPHYR_FIXTURE_BUILD="zephyr-fixture-build"
+# issue 1596 — this CHECKOUT's west build dirs (`build-<leaf>`), one subdir per
+# Zephyr line. They used to live in the SHARED west workspace, named by leaf
+# alone, so every worktree configured every other worktree's dirs. Read through
+# `scripts/lib/zephyr-workspace.sh build-root`, never joined here by hand; the
+# Rust twin is `nros_tests::kind::ZEPHYR_WORKSPACE_BUILDS`.
+export NROS_KIND_ZEPHYR_WORKSPACE_BUILDS="zephyr-workspace-builds"
 export NROS_KIND_ZEPHYR_FIXTURE_MAKE_DRIVER="zephyr-fixture-make-driver"
 # issue 0535 — the last two fixtures whose path was a literal on BOTH sides.
 export NROS_KIND_ESP32_QEMU="esp32-qemu"

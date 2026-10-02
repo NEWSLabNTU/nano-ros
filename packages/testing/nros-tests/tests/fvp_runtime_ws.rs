@@ -96,15 +96,14 @@ fn fvp_ws_entry_two_tier_publishes() {
     }
 
     // 3. Zephyr workspace set up?
-    let workspace = match resolve_zephyr_workspace(&root) {
-        Some(w) => w,
-        None => skip!(
-            "Zephyr workspace not set up (run `just zephyr setup` or set NROS_ZEPHYR_WORKSPACE)"
-        ),
-    };
+    if resolve_zephyr_workspace(&root).is_none() {
+        skip!("Zephyr workspace not set up (run `just zephyr setup` or set NROS_ZEPHYR_WORKSPACE)");
+    }
 
     // 4. ws-entry ELF prebuilt?
-    let elf = workspace
+    // issue 1596 — the image is in THIS checkout's build root; the workspace
+    // above is only the precondition that a build could have happened.
+    let elf = nros_tests::zephyr::zephyr_build_root()
         .join("build-fvp-ws-entry")
         .join("zephyr")
         .join("zephyr.elf");

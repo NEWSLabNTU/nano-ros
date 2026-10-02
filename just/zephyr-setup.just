@@ -256,6 +256,8 @@ build-fvp-ws-entry:
     if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
         nros_lane_skip "{{ZEPHYR_WORKSPACE}} not set up"
     fi
+    # issue 1596 — THIS checkout's build root, not the shared workspace.
+    fvp_build="$(bash scripts/lib/zephyr-workspace.sh --version "{{NROS_ZEPHYR_VERSION}}" build-root)/build-fvp-ws-entry"
     # issue 1254 — ASK the resolver. This literal was one of four copies of a
     # path the store now owns, and of a version `setup.sh` already chooses.
     sdk="$(bash scripts/lib/zephyr-sdk.sh resolve)"
@@ -310,7 +312,7 @@ build-fvp-ws-entry:
     # store workspace hands this one a module from whichever tree provisioned it
     # with no mismatch to notice. See scripts/lib/zephyr-module.sh.
     west build \
-        -d build-fvp-ws-entry -p auto \
+        -d "$fvp_build" -p auto \
         "$nros_root/examples/workspaces/realtime-cpp/src/fvp_entry" \
         -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin" \
         "$nros_module_arg"
@@ -353,7 +355,9 @@ run-fvp-ws-entry:
     if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
         nros_lane_skip "{{ZEPHYR_WORKSPACE}} not set up"
     fi
-    if [ ! -f "$workspace/build-fvp-ws-entry/zephyr/zephyr.elf" ]; then
+    # issue 1596 — THIS checkout's build root, not the shared workspace.
+    fvp_build="$(bash scripts/lib/zephyr-workspace.sh --version "{{NROS_ZEPHYR_VERSION}}" build-root)/build-fvp-ws-entry"
+    if [ ! -f "$fvp_build/zephyr/zephyr.elf" ]; then
         nros_lane_skip "Zephyr/FVP-ws-entry run skip: build-fvp-ws-entry/zephyr/zephyr.elf missing — run \`just zephyr build-fvp-ws-entry\` first"
     fi
     nros_root="$(pwd)"
@@ -383,7 +387,7 @@ run-fvp-ws-entry:
     export ZEPHYR_SDK_INSTALL_DIR="$(bash "$nros_root/scripts/lib/zephyr-sdk.sh" --root "$nros_root" resolve)"
     export NROS_REPO_DIR="$nros_root"
     export ARMFVP_EXTRA_FLAGS="-C cache_state_modelled=0"
-    west build -d build-fvp-ws-entry -t run
+    west build -d "$fvp_build" -t run
 
 # phase-298 W3.3 (issue 0232) — the maintainer pre-release gate: build the
 # ws-entry image, then run the `fvp_runtime_ws` assertion test. One command
@@ -441,6 +445,8 @@ build-fvp-board-import:
     if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
         nros_lane_skip "{{ZEPHYR_WORKSPACE}} not set up"
     fi
+    # issue 1596 — THIS checkout's build root, not the shared workspace.
+    fvp_build="$(bash scripts/lib/zephyr-workspace.sh --version "{{NROS_ZEPHYR_VERSION}}" build-root)/build-fvp-board-import"
     # issue 1254 — ASK the resolver. This literal was one of four copies of a
     # path the store now owns, and of a version `setup.sh` already chooses.
     sdk="$(bash scripts/lib/zephyr-sdk.sh resolve)"
@@ -496,7 +502,7 @@ build-fvp-board-import:
     echo "Building board-import fixture via nano_ros_use_board(fvp-aemv8r-smp)..."
     # issue 1379 — name our OWN nros module (see the sibling recipe above).
     west build \
-        -d build-fvp-board-import -p auto \
+        -d "$fvp_build" -p auto \
         "$src" \
         -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin" \
         "$nros_module_arg"
@@ -537,7 +543,9 @@ run-fvp-board-import:
     if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
         nros_lane_skip "{{ZEPHYR_WORKSPACE}} not set up"
     fi
-    if [ ! -f "$workspace/build-fvp-board-import/zephyr/zephyr.elf" ]; then
+    # issue 1596 — THIS checkout's build root, not the shared workspace.
+    fvp_build="$(bash scripts/lib/zephyr-workspace.sh --version "{{NROS_ZEPHYR_VERSION}}" build-root)/build-fvp-board-import"
+    if [ ! -f "$fvp_build/zephyr/zephyr.elf" ]; then
         nros_lane_skip "Zephyr/FVP board-import run skip: build-fvp-board-import/zephyr/zephyr.elf missing — run \`just zephyr build-fvp-board-import\` first"
     fi
     nros_root="$(pwd)"
@@ -565,7 +573,7 @@ run-fvp-board-import:
     export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
     # issue 1254 — the resolver, not a fifth spelling of the path.
     export ZEPHYR_SDK_INSTALL_DIR="$(bash "$nros_root/scripts/lib/zephyr-sdk.sh" --root "$nros_root" resolve)"
-    west build -d build-fvp-board-import -t run
+    west build -d "$fvp_build" -t run
 
 # phase-337 W7.b — the S32Z270-DC RTU0 board left the tree with the other
 # scaffolds: `nros-board-s32z270dc2-r52` had ZERO cargo consumers, its
