@@ -3,12 +3,13 @@ id: 1370
 title: "The unified TLSF arena bounds INTERNAL fragmentation at 6.25% and bounds
   external fragmentation nowhere: the phase-391 argument is that Robson's bound
   is 'cheap to defend', and nothing in the tree defends it"
-status: open
+status: resolved
+resolved_in: 2026-10-02
 type: tech-debt
 area: [memory, zephyr, rmw]
 severity: medium
 found: 2026-09-18
-related: [issue-0968, issue-1010, issue-1033, phase-391, phase-392, phase-412, rfc-0034]
+related: [issue-1640, issue-0968, issue-1010, issue-1033, phase-391, phase-392, phase-412, rfc-0034]
 ---
 
 ## The one bound that exists
@@ -192,3 +193,98 @@ state, so Robson's bound still cannot be evaluated and phase-391:110-118 still
 states no inequality. What changed is that the next occurrence of an exhaustion
 says which of the two it is, and the measurement is one read of two counters on
 an image built with `stats` (every Zephyr image is).
+
+## Resolution (2026-10-02) — steps 2 and 3: the spread is measured, no honest bound exists, and the FRAGMENTED verdict is the operative guard
+
+Branch `fix/arena-1036-1340-1370`.
+
+### How it was measured
+
+- `scripts/heap-trace/gdb_heap_trace.py` records every call through the
+  allocation funnel of a RUNNING image, unmodified, under gdb (native process,
+  Zephyr native_sim `zephyr.exe`, or a QEMU guest through its gdb stub). On
+  Zephyr it breaks on the rlsf arena's own exports (`nros_zephyr_heap_alloc` /
+  `_free`): the C funnel `nros_platform_alloc` is a LOCAL symbol LTO inlines
+  into some callers, and a first trace on it caught 1,116 frees and zero
+  allocations.
+- `cargo run -p zpico-alloc --features stats --example heap_replay -- <trace>`
+  replays a trace into the REAL `FreeListHeap` (slab and rlsf parameters as
+  shipped) at 127 arena sizes, and reports the arena's own `request_spread()`
+  and `peak()`, the smallest arena from which every larger one serves the run,
+  and the verdict just below it. `--adversary <min> <max> <live>` runs a
+  Robson-style stress pattern over the same size range at the same live budget.
+- `zpico-alloc/tests/heap_replay.rs` keeps one recorded trace (the Zephyr
+  native_sim C talker) as a fixture: the replay reproduces the image's OWN
+  `nros_zephyr_heap_peak()` (15,504) to the byte, which is what makes the
+  replay a measurement of the allocator rather than of a model of it.
+
+### The served request range, off shipped images (runs of 35–60 s: boot, session open, steady publishing)
+
+| image | funnel sees | requests | TLSF path (`request_spread`) | peak | smallest safe arena | ratio |
+|---|---|---|---|---|---|---|
+| native rust talker | zenoh-pico C side (POSIX `malloc`) | 3..65,535 | 3..65,535 | 105,632 | 139,264 | 1.32 |
+| native rust listener | same | 3..65,535 | 3..65,535 | 105,072 | 139,264 | 1.33 |
+| Zephyr native_sim C talker (zenoh) | rlsf arena, C + Rust | 3..2,048 | 3..2,048 | 15,504 | 16,896 | 1.09 |
+| Zephyr native_sim C listener | same | 3..2,048 | 3..2,048 | 14,880 | 16,384 | 1.10 |
+| Zephyr native_sim Rust talker | same | 3..26,128 | 3..26,128 | 43,760 | 45,056 | 1.03 |
+| Zephyr native_sim Rust listener | same | 3..26,128 | 3..26,128 | 42,672 | 45,056 | 1.06 |
+| FreeRTOS mps2-an385 Rust talker (QEMU) | `pvPortMalloc` (heap_4, NOT TLSF — replayed as a what-if) | 3..1,500 | 3..1,500 | 9,056 | 10,240 | 1.13 |
+
+(The TLSF path's minimum is 3 rather than 65 because once the 8 slab cells are
+taken, a small request falls through to rlsf — every image fills them.)
+
+The SHAPE matters more than the extremes: the large blocks are boot-time
+(zenoh-pico's batch buffers, 49,152 B ×2 long-lived and 65,535 B transient on
+native; 2,048 B on Zephyr) and the steady state after session open is
+16..64 B on Zephyr and 8..33 B on FreeRTOS — a narrow spread, as phase-391
+argued. Every refusal just below the safe size was TOO SMALL, except one.
+
+### What the replay found that was wrong
+
+The one exception: the native trace at 131,072 B refuses a 65,535-byte request
+with **128,736 B free in 2 holes, the larger 65,712 B** — a hole that HOLDS the
+request. The verdict said **TOO SMALL**, which is the remedy for the other
+failure. TLSF is a good fit, not a best fit: its O(1) search rounds up to the
+first size class every block of which fits and never looks inside the
+request's own class. Fixed (`16037f0ce`): `Exhaustion::classify` compares the
+largest hole with `Exhaustion::reachable_payload(size)` (rlsf 0.2.3's rounding,
+checked against the allocator by `reachable_payload_is_the_allocators_own_threshold`;
+the old rule turns two tests red). The Zephyr `HEAP EXHAUSTED (FRAGMENTED)`
+text says so.
+
+### The bound: none that is honest
+
+- Robson's results bound the WORST case over all request sequences with live
+  bytes ≤ M and sizes in [m, n]. For ANY non-moving allocator the worst case
+  grows with log2(n/m); for the best-fit family — which TLSF approximates — it
+  grows roughly linearly in n/m (Robson 1977). The measured TLSF-path spreads
+  are n/m = 683 (Zephyr C), 8,709 (Zephyr Rust), 21,845 (native): no bound in
+  either family is a usable arena size at those ratios.
+- Measured, not argued: the adversary over the Zephyr C talker's OWN range
+  (3..2,048 B) at its OWN peak (15,504 B live) needs **73,728 B (4.76×)** —
+  above the shipped 66,048-byte arena — and a 62,016-byte arena (4×) refuses it
+  as FRAGMENTED with the bytes free (`the_same_range_under_stress_defeats_any_peak_margin`).
+  Narrower ranges still need 2.64× (16..64), 3.30× (65..2,048), 4.30× (FreeRTOS
+  3..1,500 at 9,056 live); the Rust range (3..26,128 at 43,760 live) is refused
+  by every candidate up to 256 KiB.
+- Real traffic needs 1.03–1.33× its peak. That is a property of the traffic
+  recorded, not a bound: it is the evidence a size is set from, plus headroom,
+  and nothing guarantees it under different traffic.
+
+**So the operative guard is the verdict, not a size.** An exhaustion says
+FRAGMENTED or TOO SMALL, correctly now, and the two have different remedies;
+the arena is sized from a measured peak (the boot record carries it, issue
+1424) plus headroom, and phase-391's paragraph now says the external term is
+unbounded and points here.
+
+### Not measured / not done
+
+- Only the Zephyr port REPORTS the verdict. mps2-an385, stm32f4 and esp32-qemu
+  hold the same arena and return NULL silently — filed as **issue 1640**.
+- The replays run on the 64-bit host; rlsf's granularity is 16 B on a 32-bit
+  target and 32 B here, so a Cortex-M arena is slightly OVER-stated. The Zephyr
+  native_sim images are 64-bit, so their rows are exact in that respect.
+- Runs of under a minute; no long-duration or reconnect-churn trace, no XRCE
+  or Cyclone image, no real silicon. The FreeRTOS trace lost 9 return values
+  (`# lost-return`, frames that unwound under gdb), so its replay's live set is
+  conservative.
