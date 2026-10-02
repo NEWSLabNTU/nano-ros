@@ -1,0 +1,13 @@
+# RFC-0033 capacity for the stock `std_msgs/String` this example carries.
+#
+# Issue 0964, decided 2026-09-05: a type that states no serialized-size bound
+# may not size a buffer, because the number would be invented. A consumer of
+# someone else's `.msg` cannot add the bound at the source, so it states it
+# here -- beside `package.xml`, where the leaf already declares WHICH
+# interfaces it wants, is where it says how big they may be
+# (`_nros_generate_declared_interfaces`, cmake/NanoRosVerbs.cmake).
+#
+# 256 is this demo's number: the payloads are one short line
+# ("Hello, world N"), so the bound is generous rather than tight. Issue 1098.
+[fields]
+"std_msgs/String.data" = 256

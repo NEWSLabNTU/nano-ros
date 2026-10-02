@@ -41,16 +41,16 @@ nros-board-mps2-an385 = { version = "*" }
 # `ros-humble` does NOT forward to the backend — the same reason every `rust/`
 # sibling names it here. Registration is explicit (bare metal runs no
 # `.init_array`, so the linkme section is never walked) and lives in
-# `src/talker.c`'s `nros_app_register_backends`, not in `main.rs`.
+# the C application's `nros_app_register_backends`, not in `main.rs`.
 nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
 
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 
 [build-dependencies]
-# Compiles `src/talker.c` and the generated `std_msgs` C bindings for
+# Compiles `src/*.c` and the generated message C bindings for
 # `thumbv7m-none-eabi`. `CC_thumbv7m_none_eabi` comes from the board's
-# `cargo_config` (written into `.cargo/config.toml` by `nros sync`).
+# `cargo_config`, rendered into `build/<image>/nros-cargo.toml` by `nros sync`.
 cc = "1"
 # The nano-ros cc policy every C compile in the tree takes (issue 1542): the
 # strict-declaration diagnostics as errors (issue 0383 — the pinned

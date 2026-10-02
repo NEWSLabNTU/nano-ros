@@ -43,18 +43,23 @@ Test lanes: `just qemu test`, `test-basic`, `test-zenoh`, `test-all`.
 | rust | service-server / service-client | `-rtic` |
 | rust | action-server / action-client | `-rtic` |
 | rust | talker-xrce | XRCE-DDS transport variant |
-| c | talker | plain (issue 1512 — the first C leaf here) |
+| c | talker / listener | plain (issue 1512) |
+| c | service-server / service-client | plain (issue 1512) |
+| c | action-server / action-client | plain (issue 1512) |
+| cpp | talker | plain (issue 1512) |
 
-**The C leaf's SHAPE differs from every other C example in the tree, and the
-reason is the board rather than the C API** — read
-[`c/talker/README.md`](c/talker/README.md) before copying it. On an RTOS a C
+**The C/C++ leaves' SHAPE differs from every other C/C++ example in the tree,
+and the reason is the board rather than the API** — read
+[`c/talker/README.md`](c/talker/README.md) before copying one. On an RTOS a C
 example is a C program: the RTOS supplies `main`, a C startup and a C platform
 port, and `libnros_c.a` is linked *in*. This board has no RTOS, so the reset
 vector (`cortex-m-rt`), the clock (CMSDK Timer0) and the network (LAN9118 +
 smoltcp) are all Rust with no C entry point. The leaf is therefore rooted in
 cargo: `src/main.rs` boots the board and calls `app_main()`, and `build.rs`
-compiles `src/talker.c` into the image. `nano_ros_add_executable` is not
-available on this platform.
+compiles the leaf's `src/*.c` (or `src/talker.cpp`) into the image.
+`nano_ros_add_executable` is not available on this platform. Each leaf is a
+`[[fixture]]` row with `builder = "cargo"`, built by `just qemu build-fixtures`
+(`scripts/build/fixtures-build.sh baremetal c` / `cpp`).
 
 Status: build-only. It boots in QEMU and reaches session open, but it dials
 `NROS_ENTRY_LOCATOR`'s empty bottom rung rather than the `[image.*] locator` in

@@ -110,23 +110,26 @@ the reset vector is `cortex-m-rt`, the clock is
 `nros_platform_mps2_an385::clock`, and the LAN9118/smoltcp bring-up is
 `nros_board_mps2_an385::init_hardware`, none of them with a C entry point
 (`nros-platform-mps2-an385` holds zero `.c` files, where every RTOS port holds a
-`platform.c`). So `mps2-an385-baremetal/c/talker` is cargo-rooted: `src/main.rs`
-boots the board and calls `app_main()`, `build.rs` compiles `src/talker.c` with
-`cc`, and `nano_ros_add_executable` is not available on that platform. Issue
-1512; the leaf's own README carries the table. Recount it the same mechanical
-way — a C or C++ leaf that is a cargo package:
+`platform.c`). So every `mps2-an385-baremetal/{c,cpp}/*` leaf is cargo-rooted:
+`src/main.rs` boots the board and calls `app_main()`, `build.rs` compiles the
+leaf's `src/*.c` (or `src/talker.cpp`) with `cc`, and `nano_ros_add_executable`
+is not available on that platform. Issue 1512; `c/talker/README.md` carries the
+table. Their `[[fixture]]` rows say `builder = "cargo"`, and the fixture driver
+and staleness probe pick each row's lane by that declared fact, never by
+`lang`. Recount it the same mechanical way — a C or C++ leaf that is a cargo
+package:
 
 ```sh
 git ls-files 'examples/*/c/*/Cargo.toml' 'examples/*/cpp/*/Cargo.toml' \
   | xargs -r -n1 dirname
 ```
 
-Two hits, and only the first is an image: `mps2-an385-baremetal/c/talker` above,
-and `px4/cpp/bridge/ffi`, which is not an example image at all — px4 is a
-foreign build integration (issue 1516) and that crate is the FFI half **PX4's
-own** build links. Neither has a `CMakeLists.txt`, so the count is the same
-either way; the distinction is whose build owns the image, which is the question
-this section asks.
+Eight hits, and seven are images: the six `mps2-an385-baremetal/c/*` roles and
+`mps2-an385-baremetal/cpp/talker` above. The eighth is `px4/cpp/bridge/ffi`,
+which is not an example image at all — px4 is a foreign build integration
+(issue 1516) and that crate is the FFI half **PX4's own** build links. None has a
+`CMakeLists.txt`, so the count is the same either way; the distinction is whose
+build owns the image, which is the question this section asks.
 
 For **Rust it varies by platform**, and that variation is the whole of
 what gets called "the Zephyr layout":
@@ -214,10 +217,10 @@ rather than left unnamed for the next survey to invent:
   **zero live consumers**. The C road was built and never driven, so this is
   feature wiring, and it dissolves into classes 3 and 4. (The
   [Intentionally empty cells](#intentionally-empty-cells) row for
-  `mps2-an385-baremetal/{c,cpp}` still states the old cause and is being
-  corrected under
-  [issue 1512](../docs/issues/1512-c-api-does-not-reach-bare-metal.md), which
-  measured all of this — believe the seam, not the row.)
+  `mps2-an385-baremetal` C/C++ used to state the old cause;
+  [issue 1512](../docs/issues/1512-c-api-does-not-reach-bare-metal.md) measured
+  all of this, and the family now has six C leaves and a C++ talker — rooted in
+  cargo, not in that cmake seam, which still has no consumer.)
 
 ### `examples/px4/` — class X, a foreign-build integration
 
@@ -264,6 +267,8 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 | `native`                  | rust     | 6+    | 6+   | 6          | –    |
 | `px4`                     | cpp      | –     | –    | –          | – ²  |
 | `px4`                     | rust     | –     | companion+stub | – | –    |
+| `mps2-an385-baremetal`      | c        | 6 ³   | –    | –          | –    |
+| `mps2-an385-baremetal`      | cpp      | 1 ³   | –    | –          | –    |
 | `mps2-an385-baremetal`      | rust     | 6+rtic+serial | – | –     | –    |
 | `mps2-an385-freertos`       | c        | 6     | –    | –          | –    |
 | `mps2-an385-freertos`       | cpp      | 6     | –    | –          | –    |
@@ -291,6 +296,13 @@ there is nothing to copy out. phase-316 W3.1 moved it out of this tree.
 example fixtures compile, but the action runtime lanes were
 deliberately dropped from the run matrix in 182.5 (pub/sub + service
 remain runtime-tested).
+
+³ `mps2-an385-baremetal` C/C++ leaves are cargo-rooted (see "Question 1"
+above) and build-only: each `[[fixture]]` row builds in the `baremetal` lane and
+the image boots in QEMU as far as the session open, but the C/C++ entry dials
+`NROS_ENTRY_LOCATOR`'s empty bottom rung — the backend's own default, which the
+guest cannot reach — instead of its `system.toml` locator. Baking that is what
+the runtime lane needs (issue 1512). `cpp/` has the talker only.
 
 `rv-virt-nuttx` currently ships only `c/talker`, built by the separate
 `build-riscv-c` recipe in `just/nuttx.just` (its own riscv toolchain/board
@@ -342,7 +354,7 @@ spin up examples here without first lifting the underlying constraint.
 
 | Cell                                                   | Why empty                                                                                                                                                                                                                                                          | Lift requires                                                                                                                                                                  |
 |--------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `mps2-an385-baremetal/cpp/*`, and `c/` beyond `talker`   | **The cause this row used to give was stale in all five of its terms** (issue 1512). It read "`nros-c` / `nros-cpp` … assume a hosted RTOS for startup, heap, libc, RNG, and clock": the heap is `nros-platform-mps2-an385`'s 128 KB `FreeListHeap` in `.bss`, libc and RNG are `nros-baremetal-common`, the clock is the `cffi-export` `nros_platform_clock_ns`, and startup is `cortex-m-rt`. What was missing was feature wiring — no `platform-mps2-an385` arm on `nros-c`/`nros-cpp`, and no bare-metal branch in `nros_feature_set()`'s PLATFORM ladder. Both landed; `c/talker` builds and boots in QEMU. What is *actually* missing is narrower: the image dials `NROS_ENTRY_LOCATOR`'s empty bottom rung instead of its `system.toml` locator, so there is no runtime lane; there is no `[[fixture]]` row (this is the tree's first `lang = "c"` row that wants `builder = "cargo"`); and `cpp/` plus the other five roles are unwritten. Note the SHAPE: the link root here is Rust (`src/main.rs` boots the board, `build.rs` compiles the C), because a board with no RTOS has no C startup and no C-reachable board init — `nano_ros_add_executable` is not available on this platform and that is a property of the board, not of the C API. | issue 1512: bake the entry locator into the C TU, fix `fixtures-build.sh`'s `case "$lang"` builder proxy, add a `matrix::CELLS` cell, then write the remaining roles and the `cpp/` sibling. |
+| `mps2-an385-baremetal/cpp/*` beyond `talker`, and a RUNTIME lane for any of its C/C++ leaves | **The cause this row used to give was stale in all five of its terms** (issue 1512). It read "`nros-c` / `nros-cpp` … assume a hosted RTOS for startup, heap, libc, RNG, and clock": the heap is `nros-platform-mps2-an385`'s 128 KB `FreeListHeap` in `.bss`, libc and RNG are `nros-baremetal-common`, the clock is the `cffi-export` `nros_platform_clock_ns`, and startup is `cortex-m-rt`. What was missing was feature wiring, and it landed: six C roles and `cpp/talker` build in the `baremetal` fixture lane (`builder = "cargo"` rows) and boot in QEMU to the session open. What is *actually* missing is narrower: every one of them dials `NROS_ENTRY_LOCATOR`'s empty bottom rung instead of its `system.toml` locator, so there is no runtime lane (the `matrix::CELLS` cells are `BuildOnly`); and the C++ roles beyond `talker` are unwritten — mechanical now that `nros generate cpp` has a standalone (`package.xml`) front door. Note the SHAPE: the link root here is Rust (`src/main.rs` boots the board, `build.rs` compiles the C/C++), because a board with no RTOS has no C startup and no C-reachable board init — `nano_ros_add_executable` is not available on this platform and that is a property of the board, not of the C API. | issue 1512: bake the entry locator into the C/C++ compile of a cargo-rooted image (an entry-codegen job — `<nros/entry_config.h>` stays the one producer), then the five remaining `cpp/` roles. |
 | `esp32-c3-baremetal/{c,cpp}/*`                       | An AUTHORED decision, not a missing port (issue 1512). `PlatformKind::Esp32::cmake_deploy()` returns `None`, so `nros ws leaf-system` derives no `NANO_ROS_PLATFORM` for a C/C++ leaf here: this tree is the no-IDF / pure-Rust HAL path (`esp-hal`), and C/C++ on the same silicon is the ESP-IDF component road (phase-139), which belongs under a hypothetical `esp32-idf/` tree. A `cmake/board/nano-ros-board-esp32-c3-baremetal.cmake` overlay does exist and says so in its own header ("kept for symmetry with the other board overlays"); it is for a non-IDF C parent build, not for a leaf here. | Nothing to lift on this tree. Lifting the sibling means deciding whether ESP-IDF-hosted C/C++ examples deserve their own platform dir. |
 | `px4/{c,rust}/*` (px4 has no example-tree uORB cell)   | PX4 integration is uORB-only (the platform's native pub/sub), and Phase 115.K.4 collapsed `nros-rmw-uorb` to a single C++ port (the legacy Rust crate was deleted). `packages/testing/nros-px4-register-check/` is the canonical surface (the former `examples/px4/rust/uorb/` README-only placeholder was retired in phase-277 W7). | Won't lift: C is not on the PX4 module API, and the Rust uORB backend was retired in Phase 115.K.4 (see `docs/roadmap/phase-115-runtime-transport-vtable.md`). No C/Rust PX4 examples are planned.                  |
 | `cyclonedds` on bare-metal (`mps2-an385-baremetal`, `esp32-c3-baremetal`) | Cyclone DDS requires a hosted runtime — BSD sockets, threads, heap, libc. Pure Cortex-M / esp-hal bare-metal targets have none, so the C++ Cyclone stack cannot run (Phase 171.C.gate decision). | Won't lift on bare-metal. Cyclone DDS is the hosted-platform DDS backend; embedded targets use the zenoh-pico or XRCE backends instead. |

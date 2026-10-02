@@ -456,3 +456,157 @@ described. Both moved together, in that order.
   leaf builds its text and calls `nros_log_emit_at`. Whether the C log surface
   should offer a real bounded formatter on freestanding targets is a separate
   question nobody has posed.
+
+---
+
+## Residue, second pass (2026-10-02) — rows, the proxy, the C++ leaf, the five roles
+
+### The builder proxy is gone, in both places it lived
+
+`scripts/build/fixtures-build.sh` chose its lane with
+`case "$lang" in c | cpp) ;; *) --builder cargo ;; esac` — "C and C++ build
+with cmake, everything else with cargo". It was wrong in both directions: the
+rv-virt-threadx `rust/*` rows are cmake-built (phase-344 W2's half, which this
+script answered by adding `--builder cargo` for non-C languages and keeping the
+proxy for the rest), and a `lang = "c"` row with `builder = "cargo"` was handed
+to the CMAKE lane, whose record reader would have read a cargo record
+(`dir`/env/args) as `dir`/`build_subdir`/defs/target. The driver now runs BOTH
+lanes for whatever language it is asked for, each over the rows whose declared
+`builder` it is (`fixtures-manifest.py list --builder cmake|cargo`, i.e.
+`row_builder()`), and `lang` only narrows. Measured over the manifest before
+the change: every existing `(platform, lang)` call selects exactly the rows it
+did before, because no platform had a row whose builder disagreed with the
+proxy except `threadx-riscv64 rust` (12 cmake rows), and its only call is
+`--id`-narrowed.
+
+**The staleness probe had the same proxy, which the brief did not name.**
+`scripts/check-fixtures-stale.sh` built its cmake list from `--lang c` +
+`--lang cpp`, so it would have handed the new cargo C rows to
+`cmake-fixture-stale.sh` — and it left the 12 cmake-built rv-virt-threadx rust
+rows in no probe at all (its own comment claimed they were "ALSO in the cmake
+list"; they were not). It now reads `--builder cmake`, the twin of the cargo
+half's existing `--builder cargo`, so build-set and probe-set are one predicate.
+
+Two more sites carried the same proxy and were swept with it (sweep:
+`git grep -nE 'lang in \{"c", "cpp"\}|--lang", *"rust"|--lang c' -- scripts`):
+`check-fixture-groups.py` selected its A2a derivation with
+`--lang rust --builder cargo`, so the seven new cargo rows were in the export
+and not in the gate — it went red on exactly them; and `fixture-inventory.py`
+derived `build_root`/`kind` from `lang in {"c", "cpp"}`, which would have
+reported a cmake `build/` dir nothing writes. Both now ask the builder
+(`row_artifact_root()` / `row_builder()`).
+
+### Rows and cells
+
+Seven `[[fixture]]` rows, all `platform = "baremetal"`, `builder = "cargo"`:
+`c/{talker,listener,service-server,service-client,action-server,action-client}`
+and `cpp/talker`. `just qemu build-fixtures` and `just native`'s example build
+call `fixtures-build.sh baremetal c` / `cpp` beside the existing `rust` call.
+`matrix::CELLS` gains `(QemuBaremetal, C, Zenoh, {Pubsub,Service,Action})` and
+`(QemuBaremetal, Cpp, Zenoh, Pubsub)`, all `BuildOnly` naming this issue — the
+entry-locator gap below is why none is `Runtime`. `c/talker` left
+`examples_fixture_coverage.rs`'s `TEST_DRIVEN_BUILDERS` (a dir covered twice is
+a stale exception, per that list's own rule). The c/talker README said
+"`matrix::CELLS` carries this cell as `BuildOnly`" before any such cell
+existed; it is true now.
+
+### The C++ leaf — and the codegen front door it needed
+
+`examples/mps2-an385-baremetal/cpp/talker` builds and boots. The surprise was
+not in the `nros-cpp` headers — `-ffreestanding` plus the both-probes rule
+(`__STDC_HOSTED__` AND `__has_include`) kept every hosted-STL include out with
+no source change, and the issue-0038 heap guard did not fire because `heap =
+true` already supplies `NROS_PLATFORM_HAS_MALLOC` — it was one level up:
+**`nros generate cpp` refused outright** ("standalone mode is not yet wired
+up"), so a cargo-rooted C++ image had no way to get message bindings at all.
+It is wired now as a FRONT DOOR, not a second emitter:
+`generate_cpp_from_package_xml` resolves packages the way the C standalone
+does (`standalone_interface_packages`, now shared by both), collects files with
+the cmake road's own `collect_interface_files`, and hands each package to
+`generate_cpp_with` — the body `generate_cpp_from_args_file` runs.
+`cargo-nano-ros/tests/test_generate_cpp_standalone.rs` asserts the two roads
+write a byte-identical tree for `builtin_interfaces`. (`nros generate all`
+still skips C++: C and C++ would share one `<out>/<pkg>/msg/`.)
+
+The other C++-specific pieces, each measured by the link failing without it:
+
+* the generated serializers are RUST (`*_types.rs` / `*_exports.rs`); the cmake
+  road wraps them in a per-package staticlib (`cmake/ffi_lib_rs.in`), and here
+  `build.rs` writes one `include!` per file and `src/main.rs` compiles them into
+  the binary under the four names the glue expects (`nros_serdes`'s codec
+  types, `fixed_str`, `nros_cpp_publish_raw`);
+* `cpp_link_stdlib(None)` — cc-rs links `-lstdc++` by default and rust-lld
+  refuses (`unable to find library -lstdc++`); with `-fno-exceptions -fno-rtti
+  -fno-threadsafe-statics -fno-use-cxa-atexit` nothing asks for it;
+* `nros-cpp` now publishes `cargo:include` (`DEP_NROS_CPP_INCLUDE`), the twin
+  of `nros-c`'s; the leaf names `nros-c` with no features purely for its
+  `DEP_NROS_C_*` channel (features unify with what `nros-cpp` forwards);
+* no namespace-scope C++ objects: `cortex-m-rt` runs no `.init_array`.
+
+### The five C roles — all of them, mechanically
+
+`listener`, `service-server`, `service-client`, `action-server`,
+`action-client`: each the FreeRTOS sibling's program with the libc and
+`printf` uses replaced by hand-built records through `nros_log_emit_at`. The
+C talker's `build.rs` and `src/main.rs` became LEAF-AGNOSTIC (compile every
+`src/*.c`, bind every package `nros generate c` resolved), so all six C leaves
+carry byte-identical copies of both and differ in `package.xml` and their own C
+file. One non-mechanical find: the listener needs `nros-codegen.toml` bounding
+`std_msgs/String.data` — typed delivery has no receive bound for an unbounded
+type and codegen poisons rather than invents one (issue 0964), exactly as on
+FreeRTOS. The work did not stop being mechanical; the five C++ roles beyond
+`talker` are left only because the brief scoped C++ to one leaf.
+
+### What each leaf does under QEMU (measured, `-icount shift=auto`, fixture-lane builds)
+
+```text
+$ qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -icount shift=auto -nographic \
+    -semihosting-config enable=on,target=native -kernel <bin>
+  nros QEMU Platform … Initializing LAN9118 Ethernet… IP: 192.0.3.10  Ethernet ready.
+  [ERROR] nros: [    2.702038] zpico Session -> ConnectionFailed (…)
+  nros: application complete
+```
+
+That output, identical but for the timestamp, from all six C images; the C++
+talker reaches its own error path too:
+
+```text
+[ERROR] nros: [    2.702075] zpico Session -> ConnectionFailed (…)
+[ERROR] nros: [    2.702087] RMW session open failed — ConnectionFailed
+[ERROR] nros: [    2.702099] nros: NodeError::Transport(ConnectionFailed)
+[ERROR] nros: [    2.702109] nros::init failed
+```
+
+(text/data/bss: C talker 394844/4980/544480, listener 396252/4980/545552,
+service-server 396172/4980/545264, service-client 396292/4988/549856,
+action-server 413844/4980/551744, action-client 405736/4988/551072, C++ talker
+480120/4980/544976.)
+
+### What still keeps this issue open
+
+1. **The entry locator** (unchanged from the first pass, and now the one thing
+   between seven built leaves and a runtime lane). Every C/C++ leaf dials
+   `NROS_ENTRY_LOCATOR`'s empty bottom rung, so the backend substitutes
+   `tcp/127.0.0.1:7447`, which is the guest's own loopback. Measured: the
+   rendered `build/mps2-an385-baremetal/nros-cargo.toml` carries no locator, so
+   there is nothing for a `build.rs` to read even if a leaf were allowed to.
+   The Rust leaves get theirs from `nros::main!`'s deploy overlay.
+2. **The C++ roles beyond `talker`** — mechanical now.
+3. **The C-rooted CMake road** (`cmake/platform/nano-ros-baremetal.cmake` +
+   `cmake/board/nano-ros-board-mps2-an385-baremetal.cmake`, zero live
+   consumers), NOT attempted. What it would need, in the order a link would ask
+   for it:
+   * **a full linker script with `SECTIONS` and `ENTRY`** — the overlay passes
+     `-T…/nros-board-mps2-an385/mps2-an385.x`, which is `cortex-m-rt`'s
+     `memory.x` (a `MEMORY{}` fragment for `link.x` to `INCLUDE`), and with
+     `-nostartfiles` that yields an image with no vector table;
+   * **a C reset/vector startup** — `.data` copy, `.bss` zero, the exception
+     table; today `cortex-m-rt` does all three in Rust;
+   * **a C-callable board init** — `nros_board_mps2_an385::init_hardware` (CMSDK
+     Timer0, LAN9118, smoltcp, the `nros_log` sink list) is reachable only from
+     Rust, and the C `nros_platform_*` symbols only work after it ran. That
+     needs a new staticlib crate for the board seam, because `nros-c` cannot
+     depend on a board (RFC-0064);
+   * then `nros_board_capability_defines()` and the bare-metal arm of
+     `nros_feature_set()` (both landed in the first pass, measured in `cmake -P`
+     only) would get their first real consumer.

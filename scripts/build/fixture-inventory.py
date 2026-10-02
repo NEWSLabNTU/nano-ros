@@ -76,14 +76,27 @@ def role_from_dir(path):
     return name
 
 
+def _fixtures_manifest():
+    """`fixtures-manifest.py`, loaded once (hyphenated filename, so importlib)."""
+    mod = sys.modules.get("_nros_fixtures_manifest")
+    if mod is None:
+        import importlib.util
+
+        path = Path(__file__).resolve().with_name("fixtures-manifest.py")
+        spec = importlib.util.spec_from_file_location("_nros_fixtures_manifest", path)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["_nros_fixtures_manifest"] = mod
+        spec.loader.exec_module(mod)
+    return mod
+
+
 def fixture_build_root(row):
-    lang = row.get("lang", "")
-    directory = row.get("dir", "")
-    if lang in {"c", "cpp"}:
-        subdir = row.get("build_subdir") or (f"build-{row['rmw']}" if row.get("rmw") else "build")
-        return f"{directory}/{subdir}"
-    target_dir = row.get("target_dir") or "target"
-    return f"{directory}/{target_dir}"
+    # issue 1512 — `row_artifact_root()` is THE computation of where a row's
+    # bytes land, keyed on the row's declared BUILDER. This used to re-derive
+    # it from `lang in {"c", "cpp"}`, the proxy `fixtures-build.sh` also had,
+    # and it would have reported a cmake `build/` dir for the cargo-rooted
+    # bare-metal C/C++ rows, which nothing writes.
+    return _fixtures_manifest().row_artifact_root(row)
 
 
 def fixture_scheduler(row):
@@ -135,7 +148,9 @@ def manifest_fixture_rows(manifest):
             "source": "examples/fixtures.toml",
             "id": stable_id(row),
             "platform": row.get("platform", ""),
-            "kind": "manifest-cmake" if row.get("lang") in {"c", "cpp"} else "manifest-cargo",
+            # The row's declared builder (`row_builder()`), never its language —
+            # issue 1512's cargo-rooted C/C++ rows are `manifest-cargo`.
+            "kind": f"manifest-{_fixtures_manifest().row_builder(row)}",
             "lang": row.get("lang", ""),
             "rmw": row.get("rmw", ""),
             "role": role_from_dir(row.get("dir", "")),

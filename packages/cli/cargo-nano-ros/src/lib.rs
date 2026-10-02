@@ -1341,43 +1341,11 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
 /// 3. Collects .msg/.srv/.action files for each interface package
 /// 4. Generates C code (headers + sources) in the output directory
 pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<()> {
-    use package_xml::PackageXml;
-
     let edition = parse_ros_edition(&config.ros_edition)?;
     let type_hash = edition.type_hash();
 
-    // Parse package.xml
-    let pkg_xml = PackageXml::parse(&config.manifest_path)?;
-
-    // Per-field capacity config (RFC-0033), discovered from the manifest dir.
-    let manifest_dir = config
-        .manifest_path
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."));
-    let resolver = rosidl_codegen::CapacityResolver::resolve_for(
-        config.codegen_config.as_deref(),
-        manifest_dir,
-        None,
-    )?;
-    resolver.report_deprecations();
-
-    if config.verbose {
-        println!("Package: {} v{}", pkg_xml.name, pkg_xml.version);
-        println!(
-            "Dependencies from package.xml: {:?}",
-            pkg_xml.all_dependencies()
-        );
-    }
-
-    // Load ament index (with bundled interface fallback)
-    let index = load_index_with_fallback(config.verbose)?;
-
-    // Resolve all dependencies (including transitive)
-    let all_deps =
-        resolve_transitive_dependencies(&index, pkg_xml.all_dependencies(), config.verbose)?;
-
-    // Filter to interface packages only
-    let interface_packages = filter_interface_packages(&index, &all_deps, config.verbose)?;
+    let resolver = standalone_capacity_resolver(&config)?;
+    let interface_packages = standalone_interface_packages(&config)?;
 
     if interface_packages.is_empty() {
         println!("No interface packages found in dependencies");
@@ -1445,21 +1413,7 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
         let mut action_headers = Vec::new();
 
         // Collect dependency names for umbrella header
-        let pkg_xml_path = package.share_dir.join("package.xml");
-        let pkg_deps: Vec<String> = if pkg_xml_path.exists() {
-            if let Ok(dep_xml) = package_xml::PackageXml::parse(&pkg_xml_path) {
-                dep_xml
-                    .all_dependencies()
-                    .iter()
-                    .filter(|d| interface_packages.iter().any(|(n, _)| n == *d))
-                    .cloned()
-                    .collect()
-            } else {
-                vec![]
-            }
-        } else {
-            vec![]
-        };
+        let pkg_deps = standalone_package_deps(package, &interface_packages);
 
         // phase-403 W6 — same lookup and same rule as the args-file path, so a
         // package generated through `package.xml` and one generated through
@@ -1573,6 +1527,134 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
 
     println!("✓ Generated C bindings in {}", config.output_dir.display());
 
+    Ok(())
+}
+
+/// Per-field capacity config (RFC-0033) for a STANDALONE (`package.xml`)
+/// generation, discovered from the manifest dir — shared by the C and C++
+/// standalone front doors so the two languages size one package one way.
+fn standalone_capacity_resolver(
+    config: &GenerateCStandaloneConfig,
+) -> Result<rosidl_codegen::CapacityResolver> {
+    let manifest_dir = config
+        .manifest_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let resolver = rosidl_codegen::CapacityResolver::resolve_for(
+        config.codegen_config.as_deref(),
+        manifest_dir,
+        None,
+    )?;
+    resolver.report_deprecations();
+    Ok(resolver)
+}
+
+/// The interface packages a `package.xml` reaches, transitively, resolved
+/// through the ament index with the bundled-interface fallback. One spelling
+/// for the C and C++ standalone front doors (issue 1512 added the second).
+fn standalone_interface_packages(
+    config: &GenerateCStandaloneConfig,
+) -> Result<Vec<(String, Package)>> {
+    let pkg_xml = package_xml::PackageXml::parse(&config.manifest_path)?;
+    if config.verbose {
+        println!("Package: {} v{}", pkg_xml.name, pkg_xml.version);
+        println!(
+            "Dependencies from package.xml: {:?}",
+            pkg_xml.all_dependencies()
+        );
+    }
+    let index = load_index_with_fallback(config.verbose)?;
+    let all_deps =
+        resolve_transitive_dependencies(&index, pkg_xml.all_dependencies(), config.verbose)?;
+    filter_interface_packages(&index, &all_deps, config.verbose)
+}
+
+/// The interface packages `package` itself depends on, among the resolved set —
+/// what its umbrella header includes.
+fn standalone_package_deps(
+    package: &Package,
+    interface_packages: &[(String, Package)],
+) -> Vec<String> {
+    let pkg_xml_path = package.share_dir.join("package.xml");
+    if !pkg_xml_path.exists() {
+        return vec![];
+    }
+    let Ok(dep_xml) = package_xml::PackageXml::parse(&pkg_xml_path) else {
+        return vec![];
+    };
+    dep_xml
+        .all_dependencies()
+        .iter()
+        .filter(|d| interface_packages.iter().any(|(n, _)| n == *d))
+        .cloned()
+        .collect()
+}
+
+/// Generate C++ bindings from `package.xml` dependencies (standalone mode).
+///
+/// The C++ twin of [`generate_c_from_package_xml`], and the front door a
+/// cargo-rooted C++ image needs (issue 1512: on a board with no RTOS the link
+/// root is a cargo package whose `build.rs` compiles the application, so there
+/// is no CMake `nano_ros_generate_interfaces(LANGUAGE CPP)` to call).
+///
+/// It is a FRONT DOOR, not a second emitter: each resolved package is handed to
+/// [`generate_cpp_with`], the body the CMake args-file path runs, so a header
+/// and its Rust FFI glue are byte-identical whichever road produced them. Per
+/// package it writes `<output>/<pkg>/{msg,srv,action}/*.hpp` + the `*_types.rs`
+/// / `*_exports.rs` FFI glue + `<pkg>.hpp` + `mod.rs`, exactly the CMake
+/// layout. Compiling the glue is the consumer's job, as it is on the CMake road
+/// (which wraps it in a per-package staticlib): the glue needs `nros_serdes` in
+/// scope and an `extern "C" nros_cpp_publish_raw`, the two things
+/// `cmake/ffi_lib_rs.in` supplies.
+///
+/// Interface files are collected by [`collect_interface_files`] — the CMake
+/// road's own collector, which drops the derived `srv/<Srv>_Request.msg`
+/// siblings an ament install carries.
+pub fn generate_cpp_from_package_xml(config: GenerateCStandaloneConfig) -> Result<()> {
+    // Validate the edition before resolving anything, as the C front door does.
+    parse_ros_edition(&config.ros_edition)?;
+    let resolver = standalone_capacity_resolver(&config)?;
+    let interface_packages = standalone_interface_packages(&config)?;
+
+    if interface_packages.is_empty() {
+        println!("No interface packages found in dependencies");
+        return Ok(());
+    }
+
+    println!(
+        "Generating C++ bindings for {} interface packages...",
+        interface_packages.len()
+    );
+    std::fs::create_dir_all(&config.output_dir)?;
+
+    for (pkg_name, package) in &interface_packages {
+        let pkg_output = config.output_dir.join(pkg_name);
+        if pkg_output.exists() && !config.force {
+            if config.verbose {
+                println!("  Skipping {} (already exists)", pkg_name);
+            }
+            continue;
+        }
+        let interface_files = collect_interface_files(&package.share_dir)?;
+        if interface_files.is_empty() {
+            continue;
+        }
+        let args = GenerateCArgs {
+            package_name: pkg_name.clone(),
+            output_dir: pkg_output,
+            interface_files,
+            dependencies: standalone_package_deps(package, &interface_packages),
+            ros_edition: config.ros_edition.clone(),
+            codegen_config: config.codegen_config.clone(),
+            codegen_config_chain: Vec::new(),
+        };
+        generate_cpp_with(&args, &resolver, config.verbose)?;
+    }
+
+    println!(
+        "✓ Generated C++ bindings in {}",
+        config.output_dir.display()
+    );
     Ok(())
 }
 
@@ -1817,13 +1899,25 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
     let args: GenerateCArgs = serde_json::from_str(&args_content)
         .wrap_err_with(|| format!("Failed to parse args file: {}", config.args_file.display()))?;
 
+    // Per-field capacity config (RFC-0033) — one spelling for both languages.
+    let resolver = resolve_caps_for_args(&args)?;
+    generate_cpp_with(&args, &resolver, config.verbose)
+}
+
+/// The C++ emitter for ONE interface package: headers, split FFI glue, the
+/// umbrella `.hpp`, `mod.rs` and the bound inventory. Both front doors reach it —
+/// the CMake args file ([`generate_cpp_from_args_file`]) and `package.xml`
+/// ([`generate_cpp_from_package_xml`]) — and each supplies the capacity
+/// resolver its own discovery rule produces.
+fn generate_cpp_with(
+    args: &GenerateCArgs,
+    resolver: &rosidl_codegen::CapacityResolver,
+    verbose: bool,
+) -> Result<()> {
     let edition = parse_ros_edition(&args.ros_edition)?;
     let type_hash = edition.type_hash();
 
-    // Per-field capacity config (RFC-0033) — one spelling for both languages.
-    let resolver = resolve_caps_for_args(&args)?;
-
-    if config.verbose {
+    if verbose {
         println!("Generating C++ bindings for package: {}", args.package_name);
         println!("Output directory: {}", args.output_dir.display());
         println!("Interface files: {:?}", args.interface_files);
@@ -1892,7 +1986,7 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                     file_name,
                     &parsed,
                     type_hash,
-                    &resolver,
+                    resolver,
                     &nested_lookup,
                 )
                 .wrap_err_with(|| {
@@ -1927,11 +2021,11 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                 inventory.record_message(
                     &format!("{}/msg/{}", args.package_name, file_name),
                     &parsed,
-                    &resolver,
+                    resolver,
                     &nested_lookup,
                 );
 
-                if config.verbose {
+                if verbose {
                     println!("  Generated message: {}", file_name);
                 }
             }
@@ -1944,7 +2038,7 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                     file_name,
                     &parsed,
                     type_hash,
-                    &resolver,
+                    resolver,
                 )
                 .wrap_err_with(|| {
                     format!("Failed to generate C++ code for service: {}", file_name)
@@ -1975,11 +2069,11 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                 inventory.record_service(
                     &format!("{}/srv/{}", args.package_name, file_name),
                     &parsed,
-                    &resolver,
+                    resolver,
                     &nested_lookup,
                 );
 
-                if config.verbose {
+                if verbose {
                     println!("  Generated service: {}", file_name);
                 }
             }
@@ -1992,7 +2086,7 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                     file_name,
                     &parsed,
                     type_hash,
-                    &resolver,
+                    resolver,
                 )
                 .wrap_err_with(|| {
                     format!("Failed to generate C++ code for action: {}", file_name)
@@ -2030,11 +2124,11 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                 inventory.record_action(
                     &format!("{}/action/{}", args.package_name, file_name),
                     &parsed,
-                    &resolver,
+                    resolver,
                     &nested_lookup,
                 );
 
-                if config.verbose {
+                if verbose {
                     println!("  Generated action: {}", file_name);
                 }
             }
@@ -2066,7 +2160,7 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
     // phase-403 W6 — the derived bounds leave codegen here.
     write_bound_inventory(&args.output_dir, &inventory)?;
 
-    if config.verbose {
+    if verbose {
         println!("  Generated umbrella header: {}.hpp", args.package_name);
         println!("  Generated FFI mod.rs ({} modules)", ffi_rs_files.len());
         println!(

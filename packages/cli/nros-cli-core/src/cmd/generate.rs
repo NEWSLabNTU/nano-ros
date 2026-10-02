@@ -5,10 +5,10 @@
 
 use cargo_nano_ros::{
     GenerateCStandaloneConfig, GenerateConfig, generate_c_from_package_xml,
-    generate_from_package_xml, parse_rename,
+    generate_cpp_from_package_xml, generate_from_package_xml, parse_rename,
 };
 use clap::{Args as ClapArgs, ValueEnum};
-use eyre::{Result, eyre};
+use eyre::Result;
 use std::{collections::HashMap, path::PathBuf};
 
 use crate::abi_guard::{self, Verb};
@@ -158,16 +158,13 @@ pub fn run(args: Args) -> Result<()> {
         match language {
             nros_lang::Language::Rust => generate_rust(&args)?,
             nros_lang::Language::C => generate_c(&args)?,
-            // C++ standalone path missing: an explicit `cpp` is refused, and
-            // `all` skips it (what it has always done).
+            // issue 1512 — an explicit `cpp` is wired now: a cargo-rooted C++
+            // image (the bare-metal leaves) has no CMake to run
+            // `nano_ros_generate_interfaces(LANGUAGE CPP)`. `all` still skips
+            // it, as it always has — C and C++ would share one
+            // `<out>/<pkg>/msg/` tree, a combined layout nobody has asked for.
             nros_lang::Language::Cpp if matches!(args.lang, Lang::All) => {}
-            nros_lang::Language::Cpp => {
-                return Err(eyre!(
-                    "`nros generate cpp` standalone mode is not yet wired up. \
-                     Use the CMake `nano_ros_generate_interfaces(... LANGUAGE CPP)` \
-                     integration for C++ codegen."
-                ));
-            }
+            nros_lang::Language::Cpp => generate_cpp(&args)?,
         }
     }
     Ok(())
@@ -231,13 +228,21 @@ fn generate_rust_from_config(cfg: GenerateConfig) -> Result<()> {
 }
 
 fn generate_c(args: &Args) -> Result<()> {
-    let cfg = GenerateCStandaloneConfig {
+    generate_c_from_package_xml(standalone_config(args))
+}
+
+fn generate_cpp(args: &Args) -> Result<()> {
+    generate_cpp_from_package_xml(standalone_config(args))
+}
+
+/// The C and C++ standalone front doors take one config, built one way.
+fn standalone_config(args: &Args) -> GenerateCStandaloneConfig {
+    GenerateCStandaloneConfig {
         manifest_path: args.manifest.clone(),
         output_dir: args.output.clone(),
         force: args.force,
         verbose: args.verbose,
         ros_edition: args.ros_edition.clone(),
         codegen_config: args.codegen_config.clone(),
-    };
-    generate_c_from_package_xml(cfg)
+    }
 }

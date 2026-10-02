@@ -1,0 +1,65 @@
+[package]
+name = "baremetal-c-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "C listener on the pure bare-metal MPS2-AN385: C application, Rust link root (issue 1512)"
+
+[[bin]]
+name = "baremetal-c-listener"
+test = false
+bench = false
+
+[dependencies]
+# The C ABI. `platform-mps2-an385` is the arm issue 1512 added: bare metal is
+# the one platform where `nros-platform`'s feature is board-specific, because
+# the board IS the port.
+#
+# `panic-platform` is the image's ending (RFC-0077 `platform`): the handler in
+# `nros-c` routes to `nros_platform_panic`, which the board's platform crate
+# exports through `nros_platform_export_panic!` and lands on semihosting. It is
+# named EXPLICITLY rather than left to `default-features` because this crate's
+# `staticlib` crate-type is a FINAL artifact even when it is only a dependency,
+# so without a provider cargo fails with `#[panic_handler] function required,
+# but not found` — for the rlib the binary actually links. And it is the reason
+# this leaf does NOT also carry `panic-semihosting` like its `rust/` siblings:
+# two providers in one graph is a duplicate lang item.
+nros-c = { version = "*", default-features = false, features = [
+    "alloc",
+    "rmw-zenoh",
+    "ros-humble",
+    "platform-mps2-an385",
+    "panic-platform",
+] }
+# The board: reset vector (`cortex-m-rt`), CMSDK Timer0 clock, LAN9118 +
+# smoltcp bring-up, semihosting console, and the `nros_log` sink. None of that
+# is reachable from C, which is why this leaf is rooted in Rust.
+nros-board-mps2-an385 = { version = "*" }
+# The linked backend. `nros-c/rmw-zenoh` already brings it and already forwards
+# `platform-bare-metal`; what this line adds is `ros-humble`, which nros-c's own
+# `ros-humble` does NOT forward to the backend — the same reason every `rust/`
+# sibling names it here. Registration is explicit (bare metal runs no
+# `.init_array`, so the linkme section is never walked) and lives in
+# the C application's `nros_app_register_backends`, not in `main.rs`.
+nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
+
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+
+[build-dependencies]
+# Compiles `src/*.c` and the generated message C bindings for
+# `thumbv7m-none-eabi`. `CC_thumbv7m_none_eabi` comes from the board's
+# `cargo_config`, rendered into `build/<image>/nros-cargo.toml` by `nros sync`.
+cc = "1"
+# The nano-ros cc policy every C compile in the tree takes (issue 1542): the
+# strict-declaration diagnostics as errors (issue 0383 — the pinned
+# arm-none-eabi-gcc 13.2 only WARNS on an implicit declaration) and the
+# gcc-safe frame pointer (issue 0478 — cc-rs hands gcc the clang-only
+# `-mno-omit-leaf-frame-pointer` on a debug build, which gcc rejects).
+# `check-cc-build-policy` holds every tracked `cc::Build` to it.
+nros-cc-flags = { version = "*" }
+
+# Phase 208.F1 — standalone workspace root, so cargo never adopts this leaf
+# into the outer nano-ros workspace or a copy-out user's one.
+[workspace]
