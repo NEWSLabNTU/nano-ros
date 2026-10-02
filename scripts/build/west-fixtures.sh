@@ -139,6 +139,29 @@ records="$(python3 "$repo_root/scripts/build/fixtures-manifest.py" \
     python3 "$repo_root/scripts/build/fixtures-manifest.py" \
     list-compile-checks --builder west-configure)"
 
+# issue 1536 — `NROS_ZEPHYR_FIXTURE_FILTER` narrows THESE rows too.
+#
+# It is the Zephyr lane's one narrowing, and `just zephyr build-fixtures` builds
+# two record types: the `[[fixture]]` west leaves (`zephyr-fixture-leaves.sh`)
+# and these `[[compile_check_fixture]]` rows. The filter reached only the first,
+# so there was no way to build ONE of these by id — verifying one cost the whole
+# lane — and a lane narrowed to one leaf (live-peer's
+# `build-ws-rs-qos-entry-zenoh`) still built all of these and went red on them.
+#
+# Same variable, same REGEX semantics, same haystack SHAPE as the leaves'
+# (`board build_dir src conf_files id`), so one pattern means one thing across
+# both: here the build dir is `$id` (`west-fixtures/<id>`), the source is the
+# west application dir, and the conf slot carries the row's `west_extra`.
+#
+#   NROS_ZEPHYR_FIXTURE_FILTER=zephyr_self_pkg_sibling bash scripts/build/west-fixtures.sh
+#
+# A filter that selects NONE of these rows exits 3, not 0 — the issue-0406 rule
+# (a narrowing that selects nothing must say so) — and 3 rather than 1 so
+# `just zephyr build-fixtures` can tell "this half matched nothing" from "this
+# half failed", and fail only when NEITHER half matched.
+fixture_filter="${NROS_ZEPHYR_FIXTURE_FILTER:-}"
+[ -z "$fixture_filter" ] || echo "west-fixtures: filter: $fixture_filter"
+
 n=0
 # issue 0700 — see the exit check at the end of the loop.
 failed=0
@@ -149,6 +172,10 @@ while IFS= read -r record; do
     IFS=$'\x1f' read -r id builder src _pkg _manifest_dir _target _profiles output subdir board extra \
         <<< "$record"
     [ -n "$id" ] || continue
+    if [ -n "$fixture_filter" ] &&
+        ! [[ "$board $id $src/$subdir $extra $id" =~ $fixture_filter ]]; then
+        continue
+    fi
     total=$((total + 1))
     [ -d "$repo_root/$src" ] || { echo "west-fixtures: src missing: $src" >&2; continue; }
     bld="$out_root/$id"
@@ -328,6 +355,10 @@ while IFS= read -r record; do
         failed=$((failed + 1))
     fi
 done <<< "$records"
+if [ -n "$fixture_filter" ] && [ "$total" -eq 0 ]; then
+    echo "west-fixtures: no compile-check row matched NROS_ZEPHYR_FIXTURE_FILTER=$fixture_filter" >&2
+    exit 3
+fi
 echo "west fixtures: $n/$total ok ($reused reused, $((n - reused)) built)."
 
 # issue 0700 — the class the retired `idf-fixtures.sh` shared, same fix. This printed

@@ -2,12 +2,13 @@
 id: 1536
 title: "The `zephyr_self_pkg_sibling` compile-check fixture fails its
   west-configure, reported but NOT reproduced in a main checkout"
-status: open
+status: resolved
 type: bug
 area: testing, zephyr
 severity: medium
 found: 2026-09-28
-related: [1501, 1521, phase-470]
+resolved: 2026-10-02
+related: [1501, 1521, 1627, 0406, phase-470]
 ---
 
 ## What this is
@@ -226,3 +227,119 @@ Practical consequence for anyone working on this issue: a green
 `just zephyr build-fixtures` does **not** mean these two configure. Read the log
 for `CMake Generate step failed`, or check for `build.ninja` in
 `build/west-fixtures/zephyr_self_pkg_{rust,sibling}/`.
+
+## Resolution (2026-10-02)
+
+Three findings, in the order that matters.
+
+### 1. The reported failure was never this fixture — both CI "reproductions" misattribute the lane's one failure
+
+Re-reading the two runs cited above, by the per-row verdict lines rather than the
+summary:
+
+| run (job) | `zephyr_self_pkg_sibling` | the ONE row counted FAILED |
+| --- | --- | --- |
+| 36668247728 (109737902225), 2026-09-30 | `ok … (nros-system/system_config.h)` | `west_bringup_zephyr_cyclone_user_config` — `MISSING zephyr/zephyr.exe` |
+| 36814478655 (110216752409), 2026-10-01 | `ok … (nros-system/system_config.h)` | `west_bringup_zephyr_cyclone_user_config` — `host Cyclone idlc not found.` |
+
+In the 10-01 log the stderr summary `west-fixtures: 1 of 5 fixture(s) FAILED to
+build.` is interleaved one line ABOVE the sibling's stdout `ok` line, which is
+how it read as "that one is this fixture". It is not: the failing row is the
+Cyclone one, both days, and its cause is issue 1627's "provisioning gap underneath
+the idlc half". So "`zephyr_self_pkg_sibling` fails its west-configure" — the
+title — has no measurement behind it, then or now, and the blame on
+`fix(#1501): the sibling self-pkg routes as cargo…` is withdrawn: that commit
+changed `alpha_pkg/package.xml`'s build type, and the sibling's bake succeeds
+after it on every run read here.
+
+### 2. What IS true: neither `zephyr_self_pkg` row has ever GENERATED, and that is now fixed
+
+`No SOURCES given to target: app` is real, on BOTH rows (`self` and `sibling`),
+and it is not a regression from anything: neither `CMakeLists.txt` has named a
+source for Zephyr's `app` library since the fixtures were committed
+(`test(0041): convert zephyr_self_pkg to build-stage fixtures`, 2026-06-13). The
+configure ran `nros_system_generate` — the bake these rows exist to assert,
+issue 0041 / §212.M-F.3 — and then failed at Zephyr's GENERATE step; the row
+passed because its declared `output` is written before that (issue 1627).
+
+Measured locally, before the change (worktree Zephyr 3.7 workspace, `cp -al`):
+
+```
+$ NROS_ZEPHYR_FIXTURE_FILTER=zephyr_self_pkg_sibling bash scripts/build/west-fixtures.sh
+== west-fixture: zephyr_self_pkg_sibling (west-configure, board=native_sim/native/64) ==
+-- nros_system_generate: baking …/zephyr_self_pkg/sibling/alpha_pkg → …/west-fixtures/zephyr_self_pkg_sibling/nros-system (rmw=zenoh)
+-- Configuring done
+CMake Error at …/zephyr/cmake/modules/extensions.cmake:428 (add_library):
+  No SOURCES given to target: app
+CMake Generate step failed.  Build files cannot be regenerated correctly.
+   ok …/build/west-fixtures/zephyr_self_pkg_sibling (nros-system/system_config.h)
+west fixtures: 1/1 ok (0 reused, 1 built).
+```
+
+Fix, from #1501's (and 0041's) intent — the rows test that
+`nros_system_generate(.)` / `nros_system_generate(alpha_pkg)` resolves a self-pkg
+bringup and bakes, at configure time, with no link: each application gains a
+`src/main.c` (`int main(void) { return 0; }`, never compiled — the rows are
+`west-configure`) and `target_sources(app PRIVATE src/main.c)`. Nothing about
+the bringup, the routing, or `alpha_pkg` changes. After:
+
+```
+$ NROS_ZEPHYR_FIXTURE_FILTER=zephyr_self_pkg bash scripts/build/west-fixtures.sh
+== west-fixture: zephyr_self_pkg_rust (west-configure, board=native_sim/native/64) ==
+-- Generating done
+   ok …/build/west-fixtures/zephyr_self_pkg_rust (nros-system/system_config.h)
+== west-fixture: zephyr_self_pkg_sibling (west-configure, board=native_sim/native/64) ==
+-- Generating done
+   ok …/build/west-fixtures/zephyr_self_pkg_sibling (nros-system/system_config.h)
+west fixtures: 2/2 ok (0 reused, 2 built).
+```
+
+Both build dirs now hold `build.ninja`, so issue 1627's proposed gate (a
+`west-configure` row's output is something only GENERATE writes) holds for these
+two rows. The consumer, `cargo nextest run -p nros-tests --test zephyr_self_pkg`,
+passes 2/2 against them.
+
+### 3. One compile-check fixture, by id
+
+`NROS_ZEPHYR_FIXTURE_FILTER` is the Zephyr lane's one narrowing, and that lane
+builds two record types; the filter reached only the `[[fixture]]` leaves. It now
+narrows the west `[[compile_check_fixture]]` rows too — same variable, same
+REGEX semantics, same haystack shape (`board build_dir src conf_files id`) — so
+no second filter exists:
+
+```
+# just the west compile checks, seconds once warm:
+NROS_ZEPHYR_FIXTURE_FILTER=zephyr_self_pkg_sibling bash scripts/build/west-fixtures.sh
+# through the lane (its prep included):
+NROS_ZEPHYR_FIXTURE_FILTER=zephyr_self_pkg_sibling just zephyr build-fixtures
+```
+
+A filter that selects nothing still fails (issue 0406): each half exits 3 for
+"matched nothing", and `just zephyr build-fixtures` fails only when NEITHER half
+matched (`✗ no Zephyr fixtures matched … (neither a [[fixture]] west leaf nor a
+west [[compile_check_fixture]] row)`). And `NROS_FIXTURE_ID=<id> bash
+scripts/build/compile-check-fixtures.sh` — the one-row spelling for the OTHER
+compile-check builders — now names that command for a `west-*` id instead of the
+guard's "not a compile_check_fixture for platform= lang=".
+
+Consequence worth knowing: a narrowed Zephyr lane no longer builds all five west
+compile checks as a side effect. That is what the live-peer board job's
+`NROS_ZEPHYR_FIXTURE_FILTER=build-ws-rs-qos-entry-zenoh` always asked for — it
+says "NARROWED to the leaves these rows resolve" — and is why that job's red on
+both runs above was a Cyclone row it never consumes. `just zephyr build-rust-examples`
+and its three siblings narrow the same way.
+
+### Reachability from a merge-gating event: none
+
+The west compile-check rows are built by `scripts/build/west-fixtures.sh`, whose
+only caller is `just zephyr build-fixtures`, reached from `build-test-fixtures`
+(`justfile`, `run_stage zephyr`). Not from `check-build` — no recipe under
+`just/check*` reaches either (the "What this is" note above conflated the two
+compile-check builders; `compile-check-fixtures.sh` never builds `west-*` rows).
+Workflows that reach it: `run-matrix.yml` (`just build tier2`), `nightly.yml`
+(`just build tier2-nightly`), `live-peer.yml` (`just build zephyr`) — all
+`schedule` / `workflow_dispatch`. The merge-gating ones do not: `gate.yml` on
+`pull_request` / `merge_group` runs the compile-tier gates, and `queue.yml`'s L3
+on `merge_group` runs `just ci matrix build` = `l3` = `rust-rtos-link-check` plus
+`mem-report --check`, no fixture build. So this fixture is the same unwatched
+class as issue 1521; left to that issue, deliberately.

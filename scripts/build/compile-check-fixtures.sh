@@ -549,6 +549,20 @@ if [ -n "$id_filter" ]; then
         _cc_matched=$((_cc_matched + $(python3 "$repo_root/scripts/build/fixtures-manifest.py" \
             list-compile-checks --builder "$_cc_builder" --id "$id_filter" | wc -l)))
     done
+    # issue 1536 — a `west-*` compile-check row is built by the Zephyr lane
+    # (`west-fixtures.sh`), never here. Say so and name the narrowing that
+    # builds it, instead of the guard's "not a compile_check_fixture for
+    # platform= lang=" — true of no coordinate, and no help.
+    if [ "$_cc_matched" -eq 0 ]; then
+        for _cc_builder in west-build west-configure; do
+            if [ -n "$(python3 "$repo_root/scripts/build/fixtures-manifest.py" \
+                list-compile-checks --builder "$_cc_builder" --id "$id_filter")" ]; then
+                echo "fixtures: NROS_FIXTURE_ID='${id_filter}' is a ${_cc_builder} compile check, built by the Zephyr west lane, not here. Build it alone with:"
+                echo "            NROS_ZEPHYR_FIXTURE_FILTER=${id_filter} bash scripts/build/west-fixtures.sh"
+                exit 0
+            fi
+        done
+    fi
     if [ "$_cc_matched" -eq 0 ]; then
         # shellcheck source=scripts/build/fixture-id-guard.sh
         source "$repo_root/scripts/build/fixture-id-guard.sh"

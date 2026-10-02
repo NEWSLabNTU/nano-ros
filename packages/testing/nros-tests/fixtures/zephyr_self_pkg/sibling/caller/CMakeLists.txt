@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(caller)
+# Issue 1536 — Zephyr's `app` must have a source or GENERATE fails. Never
+# compiled: this fixture is `west-configure` and asserts the bake below.
+target_sources(app PRIVATE src/main.c)
 # Sibling form: the bringup arg names the self-pkg dir, resolved relative to
 # this caller — must still hit the M-F.3 self-pkg branch. That branch is
 # `system.toml` BESIDE a package marker since phase-445 W3b (RFC-0098 D3); the

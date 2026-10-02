@@ -29,7 +29,10 @@ Options:
   --pristine auto|always|never
                             record desired pristine mode (default: env or auto)
   --filter REGEX            filter against "board build_dir src conf_files id"
-                            (default: $NROS_ZEPHYR_FIXTURE_FILTER)
+                            (default: $NROS_ZEPHYR_FIXTURE_FILTER). The same
+                            variable narrows the west [[compile_check_fixture]]
+                            rows in west-fixtures.sh (issue 1536). Selecting no
+                            leaf exits 3.
   --include-workspace-entry also emit the Zephyr workspace-Entry leaf
   -h, --help                show this help
 
@@ -521,7 +524,11 @@ done < <(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-leaves "${
 # onto its row in examples/fixtures.toml, because the manifest is where the
 # question "why does this cell exist?" should be answerable.
 
+# issue 1536 — exit 3, not 1: "the filter selected no leaf" is a distinct
+# answer from "this script failed". The filter also narrows the
+# `[[compile_check_fixture]]` west rows (`west-fixtures.sh`, same exit code), so
+# `just zephyr build-fixtures` fails only when NEITHER half matched.
 if [ "$selected" -eq 0 ]; then
     echo "zephyr-fixture-leaves: no records matched filter: $fixture_filter" >&2
-    exit 1
+    exit 3
 fi

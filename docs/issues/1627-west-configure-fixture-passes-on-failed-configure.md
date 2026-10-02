@@ -150,3 +150,14 @@ Cyclone fixture without ever running `nros setup <board> --rmw cyclonedds`, whic
 is what the error's own remedy text names. The `SDK store hints []` in the
 message is the index saying it was never consulted. If the harness is fixed per
 the section above, that gap becomes a second visible red rather than a new one.
+
+## Two of the four now generate (2026-10-02, issue 1536)
+
+`zephyr_self_pkg_rust` and `zephyr_self_pkg_sibling` never named a source for
+Zephyr's `app`, which is the whole of their `No SOURCES given to target: app`.
+Issue 1536 gave each a never-compiled `src/main.c`; both now print
+`-- Generating done` and leave `build.ninja`, so the `build.ninja` output this
+issue proposes would hold for them. `west_board_import` (idlc) remains a row it
+would turn red. Separately, a narrowed Zephyr lane no longer builds these rows at
+all (1536 widened `NROS_ZEPHYR_FIXTURE_FILTER` to them), so the live-peer board
+job no longer reaches any of the four.
