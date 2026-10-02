@@ -13,8 +13,9 @@
 #define NROS_BOARD_CPU_CLOCK_HZ 62500000
 #define NROS_BOARD_PRIO_BITS    5 /* GICv3 supports 32 priority levels here */
 
-/* Heap. The family default is 3 MiB, sized for the MPS2-AN385 demo cells on a
- * board with 16 MiB of SRAM. This one has 3 GiB of DDR and exists to host REAL
+/* Heap. The family's non-zenoh default is 640 KiB, derived from THIS board's
+ * own demo cell (issue 1624: `workspace-cpp-mps3-an536-freertos` peaks at
+ * 447,944 bytes). This one has 3 GiB of DDR and exists to host REAL
  * consumer images: the ASI controller (MPC + PID, a 256-slot parameter store,
  * 16 KiB subscription buffers and CycloneDDS) exhausts 3 MiB during node
  * construction and dies with `*** MALLOC FAILED ***` right after `Network

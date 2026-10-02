@@ -25,7 +25,8 @@
 //! Or: `cargo nextest run -p nros-tests --test freertos_qemu`
 
 use nros_tests::fixtures::{
-    QemuProcess, Rmw, build_freertos_rust_example_rmw,
+    QemuProcess, RequireFixture, Rmw, build_freertos_rust_example_rmw,
+    build_freertos_workspace_cpp_an536_entry,
     freertos::{is_arm_gcc_available, is_freertos_available, is_lwip_available},
     is_qemu_available,
 };
@@ -191,4 +192,83 @@ fn test_freertos_rust_cyclonedds_local_pubsub_e2e() {
     eprintln!("FreeRTOS Rust CycloneDDS local pubsub output:\n{}", output);
     nros_tests::output::assert_talker(&output, 1);
     nros_tests::output::assert_listener(&output, 1);
+}
+
+// =============================================================================
+// Issue 1624 — the non-zenoh FreeRTOS heap default, kept MEASURED
+// =============================================================================
+
+/// The KiB `FreeRTOSConfig.h` states for a non-zenoh (Cyclone / XRCE) image —
+/// read from the header, because the header is what the image compiles.
+fn shared_header_dds_heap_bytes() -> usize {
+    let header = include_str!("../../../boards/nros-board-freertos/config/FreeRTOSConfig.h");
+    let kb: usize = header
+        .lines()
+        .find_map(|l| {
+            l.trim()
+                .strip_prefix("#define NROS_FREERTOS_DDS_HEAP_KB")
+                .map(|rest| rest.trim().parse().expect("a decimal KiB literal"))
+        })
+        .expect("FreeRTOSConfig.h defines NROS_FREERTOS_DDS_HEAP_KB");
+    kb * 1024
+}
+
+/// `nros: heap peak <used> of <total> bytes` -> `used`.
+fn heap_peak_bytes(output: &str) -> Option<usize> {
+    output.lines().find_map(|l| {
+        l.split("nros: heap peak ")
+            .nth(1)?
+            .split_whitespace()
+            .next()?
+            .parse()
+            .ok()
+    })
+}
+
+/// Issue 1624 — the AN536 Cyclone C++ entry boots, DELIVERS in-image, and its
+/// heap peak fits the non-zenoh default `FreeRTOSConfig.h` states.
+///
+/// That default is derived from this image (`default_dds_heap_bytes` in
+/// `nros-board-common`): it is the emulated twin of the link-only S32Z270 row,
+/// the only in-tree image that compiles the default. The board itself states
+/// 32 MiB, so the peak printed here is unconstrained — what the image NEEDS,
+/// not what it was given. A peak above the default means the default is now
+/// wrong for the image it was measured on: re-derive it from this line.
+///
+/// Delivery is asserted first because a peak from an image whose session never
+/// opened is not a Cyclone working set — issue 1634 is exactly that: the image
+/// died at `RMW session open failed` and still printed a 96,744-byte "peak".
+#[test]
+fn an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default() {
+    require_freertos();
+    if !is_qemu_available() {
+        nros_tests::skip!("qemu-system-arm not found");
+    }
+    let binary = build_freertos_workspace_cpp_an536_entry().require("mps3-an536 Cyclone C++ entry");
+    // A group per process, so two runs on one host do not share a LAN.
+    let port = 40_000 + (std::process::id() % 20_000);
+    let mut qemu = QemuProcess::start_mps3_an536_mcast(binary, &format!("230.0.16.24:{port}"))
+        .expect("spawn qemu mps3-an536");
+    let output = qemu.collect_until("nros: heap peak", Duration::from_secs(120));
+    let cmdline = qemu.command_line().to_string();
+    qemu.kill();
+
+    let received = output.matches("Received: ").count();
+    assert!(
+        received >= 3,
+        "the AN536 Cyclone entry did not deliver in-image ({received} `Received:` \
+         lines) — its heap peak is not a Cyclone working set.\nqemu: {cmdline}\n\
+         output:\n{output}"
+    );
+    let peak = heap_peak_bytes(&output).unwrap_or_else(|| {
+        panic!("no `nros: heap peak` line within 120 s.\nqemu: {cmdline}\noutput:\n{output}")
+    });
+    let budget = shared_header_dds_heap_bytes();
+    assert!(
+        peak <= budget,
+        "the AN536 Cyclone entry peaks at {peak} bytes of heap, above the {budget}-byte \
+         non-zenoh default in nros-board-freertos/config/FreeRTOSConfig.h — re-derive \
+         `default_dds_heap_bytes` (nros-board-common) from this line (issue 1624).\n\
+         qemu: {cmdline}"
+    );
 }

@@ -227,7 +227,7 @@ The base was NOT lowered: Cyclone does not link on this board yet (issue 1590),
 and a DDS participant is what the old number was sized for — lowering it is a
 policy change this measurement enables, not one it makes.
 
-**Item 2, FreeRTOS — split to [issue 1624](../1624-freertos-cyclone-heap-base-unmeasurable-in-qemu.md).**
+**Item 2, FreeRTOS — split to [issue 1624](1624-freertos-cyclone-heap-base-unmeasurable-in-qemu.md).**
 The 3 MiB non-zenoh default reaches exactly one in-tree image,
 `workspace-cpp-s32z270-freertos`, on hardware with no QEMU model (mps2-an385
 has no xrce/cyclone board feature and no such fixture row; mps3-an536 states

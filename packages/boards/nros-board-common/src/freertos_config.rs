@@ -267,13 +267,68 @@ pub const DEFAULT_HEAP_WORKING_SET_BYTES: usize = 65_536;
 /// `rmw_zenohd`: the worst peak is `realtime-rust`'s **389,064**, so the default
 /// carries 1.85x what the deepest image has ever asked for.
 ///
-/// Not applied to the cyclone / XRCE lane, which keeps `FreeRTOSConfig.h`'s
-/// 3 MiB: DDS discovery's working set is a different measurement and this PR did
-/// not take it.
+/// Not applied to the cyclone / XRCE lane: DDS discovery's working set is a
+/// different measurement, and it has its own derivation —
+/// [`default_dds_heap_bytes`] (issue 1624).
 pub const fn default_heap_bytes(app_stack_bytes: u32) -> usize {
     (app_stack_bytes as usize) * DEFAULT_HEAP_APP_TASK_SLOTS
         + DEFAULT_HEAP_SPARE_EXECUTOR_BYTES * (DEFAULT_HEAP_APP_TASK_SLOTS - 1)
         + DEFAULT_HEAP_WORKING_SET_BYTES
+}
+
+// =============================================================================
+// The DDS heap default (issue 1624) — `FreeRTOSConfig.h`'s
+// `NROS_FREERTOS_DDS_HEAP_KB`, which every Cyclone / XRCE image on the CMAKE road
+// takes (`cmake/platform/nano-ros-freertos.cmake` selects it by RMW, because
+// that road never runs the board build.rs). MEASURED, not inherited.
+// =============================================================================
+
+/// Everything in a Cyclone image's heap that is not the app task's stack.
+///
+/// MEASURED at **382,408** bytes — `workspace-cpp-mps3-an536-freertos` (the
+/// C++ `demo_bringup` entry: talker + listener over CycloneDDS, in-image
+/// delivery, lwIP on the LAN9118) on qemu `mps3-an536`, 2026-10-02:
+/// `nros: heap peak 447944 of 33554432 bytes` less its one 65,536-byte app
+/// task stack. That is the SAME entry, CPU (Cortex-R52) and kernel port
+/// (`GCC/ARM_CRx_No_GIC`) as `workspace-cpp-s32z270-freertos`, the one in-tree
+/// image that compiles this default and cannot boot here. 229,376 of it are
+/// the five Cyclone thread stacks the embedded baseline names
+/// (`cyclone_config.hpp`: dq.builtins / recv / dq.user at 64 KiB, tev / gc at
+/// 16 KiB); the rest is lwIP and the participant's own discovery state.
+///
+/// 589,824 is 1.54x it — the zenoh term's margin (1.43x) and a little more,
+/// because what was NOT measured is a REMOTE participant: the run had none on
+/// its LAN, and every remote participant and endpoint adds proxy state that
+/// this measurement cannot price. An image in a populated graph reads its own
+/// `nros: heap peak` line and raises `NROS_FREERTOS_HEAP_KB` from it. XRCE has
+/// no FreeRTOS image at all; its working set is static pools rather than DDS
+/// discovery, so a Cyclone-derived bound over-provisions it rather than under.
+pub const DEFAULT_HEAP_DDS_WORKING_SET_BYTES: usize = 589_824;
+
+/// The app-task stack the C/C++ typed carrier gives every FreeRTOS image —
+/// `.app_stack_bytes` in `cmake/templates/freertos_app_config.c.in`, where it
+/// is measured. Every in-tree non-zenoh FreeRTOS image is C or C++ (the Rust
+/// Cyclone fixture is retired, `tests/freertos_qemu.rs`), so this is the stack
+/// the non-zenoh default is sized for. A test below reads the template, so the
+/// two cannot drift apart.
+pub const C_CARRIER_APP_STACK_BYTES: u32 = 65_536;
+
+/// The FreeRTOS heap default for a Cyclone / XRCE image, in BYTES.
+///
+/// ```text
+/// app_stack_bytes + DDS_WORKING_SET
+/// ```
+///
+/// ONE app-sized task, not [`DEFAULT_HEAP_APP_TASK_SLOTS`]: on the C/C++
+/// carrier only the app task's stack comes from heap_4 — tier task stacks and
+/// TCBs are the entry's statics since issue 1598 — and no tier executor's
+/// backing reaches the heap since issue 1568. At the carrier's 65,536-byte
+/// stack this is **655,360** bytes (640 KiB), which is what
+/// `FreeRTOSConfig.h`'s `NROS_FREERTOS_DDS_HEAP_KB` states; a test below holds
+/// the header to it. It replaced a 3 MiB budget nobody had measured. NOT minus
+/// the `.bss` tier stacks (issue 1598): the derivation never contained them.
+pub const fn default_dds_heap_bytes(app_stack_bytes: u32) -> usize {
+    app_stack_bytes as usize + DEFAULT_HEAP_DDS_WORKING_SET_BYTES
 }
 
 /// Const decimal parser for the `NROS_FREERTOS_APP_STACK_KB` build env.
@@ -325,6 +380,58 @@ mod tests {
             "the derived heap default no longer covers the deepest image this \
              tree has measured — re-run the FreeRTOS images and read their \
              `nros: heap peak` lines before moving a term"
+        );
+    }
+
+    /// Issue 1624 — the measured Cyclone image fits the derived default, with
+    /// the margin the term claims.
+    #[test]
+    fn the_dds_heap_default_covers_the_measured_cyclone_image() {
+        // `workspace-cpp-mps3-an536-freertos`, qemu mps3-an536, 2026-10-02.
+        const MEASURED_PEAK: usize = 447_944;
+        const MEASURED_APP_STACK: usize = 65_536;
+        let budget = default_dds_heap_bytes(C_CARRIER_APP_STACK_BYTES);
+        assert!(budget >= MEASURED_PEAK);
+        assert!(
+            DEFAULT_HEAP_DDS_WORKING_SET_BYTES * 2 >= (MEASURED_PEAK - MEASURED_APP_STACK) * 3,
+            "the DDS working-set term no longer carries 1.5x what was measured"
+        );
+    }
+
+    /// Issue 1624 — `FreeRTOSConfig.h` is a C header and cannot call this
+    /// function, so the number is a literal there. This holds the literal to the
+    /// derivation, and the carrier's app stack to the constant the derivation
+    /// uses: three files, one fact.
+    #[test]
+    fn the_header_states_the_derived_dds_default() {
+        let header = include_str!("../../nros-board-freertos/config/FreeRTOSConfig.h");
+        let kb: usize = header
+            .lines()
+            .find_map(|l| {
+                l.trim()
+                    .strip_prefix("#define NROS_FREERTOS_DDS_HEAP_KB")
+                    .map(|rest| rest.trim().parse().expect("a decimal KiB literal"))
+            })
+            .expect("FreeRTOSConfig.h defines NROS_FREERTOS_DDS_HEAP_KB");
+        assert_eq!(
+            kb * 1024,
+            default_dds_heap_bytes(C_CARRIER_APP_STACK_BYTES),
+            "FreeRTOSConfig.h's non-zenoh heap default is not the derivation"
+        );
+        let template = include_str!("../../../../cmake/templates/freertos_app_config.c.in");
+        let carrier = template
+            .lines()
+            .find_map(|l| {
+                l.trim()
+                    .strip_prefix(".app_stack_bytes")
+                    .and_then(|r| r.trim().strip_prefix('='))
+                    .map(|v| v.trim().trim_end_matches(',').trim_end_matches('u'))
+            })
+            .expect("the carrier template states .app_stack_bytes");
+        assert_eq!(
+            carrier.parse::<u32>().expect("a decimal byte count"),
+            C_CARRIER_APP_STACK_BYTES,
+            "the C/C++ carrier's app stack moved; the DDS heap default must follow it"
         );
     }
 

@@ -15,8 +15,9 @@
  *       or the D-cache reads stale descriptors and RX stalls after one
  *       ring — the hardware lesson recorded in phase-372's findings).
  *   0x3180_0000 - 0x31EF_FFFF : SRAM (7 MiB) — code + data + bss + heap +
- *       stacks. Cyclone needs multi-MiB heap (the QEMU cell budgets 3 MiB;
- *       the Zephyr S32Z bring-up needed the 7 MiB region).
+ *       stacks. The in-tree demo entry's heap default is 640 KiB, measured
+ *       on its an536 twin (issue 1624); a real consumer needs multi-MiB
+ *       (the Zephyr S32Z bring-up needed the 7 MiB region).
  *
  * FIRST-CUT CAVEAT (deliberate): the exact split between cacheable and
  * non-cacheable is a function of the consumer's MPU tables (S32 Config

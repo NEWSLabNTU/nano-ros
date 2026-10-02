@@ -729,6 +729,8 @@ cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "s32z270-freerto
 # delivers pub/sub through CycloneDDS. `FREERTOS_PORT` is named explicitly
 # because `activate.sh` exports `GCC/ARM_CM3` repo-wide and an M-profile port
 # cannot build for an R52 (the overlay fails loudly on it).
+# Consumed by `tests/freertos_qemu.rs` (issue 1624): it must DELIVER in-image and
+# its `nros: heap peak` must fit the non-zenoh heap default derived from it.
 [[workspace_fixture]]
 id = "workspace-cpp-mps3-an536-freertos"
 platform = "freertos"
