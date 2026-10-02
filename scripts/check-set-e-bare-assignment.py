@@ -677,6 +677,11 @@ def tracked_shell() -> list[str]:
          *workflow_commands.ACTION_PATHSPECS],
         capture_output=True, text=True, check=True,
     ).stdout.split()
+    # issue 1614 (W5): a shell script is a SHEBANG, not a suffix —
+    # `scripts/bin/cargo` is bash and was outside every pathspec above.
+    import file_kinds  # noqa: PLC0415
+
+    out = set(out) | set(file_kinds.shebang_shell())
     return sorted(
         f for f in out
         if "/third-party/" not in f and "/generated/" not in f and not f.startswith("tmp/")

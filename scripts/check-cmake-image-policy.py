@@ -44,7 +44,20 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Produces an image: an executable target that links the nano-ros umbrella.
 MAKES_EXE = re.compile(r"\b(add_executable|ament_auto_add_executable)\s*\(", re.I)
-LINKS_NROS = re.compile(r"NanoRos::NanoRos(Cpp)?\b")
+# issue 1614 (W5): an image is also one that carries the Rust runtime without
+# the umbrella target — `nros_threadx_rv64_rust_app` links its staticlib and
+# declares the carrier, and deleting its policy call passed.
+LINKS_NROS = re.compile(r"NanoRos::NanoRos(Cpp)?\b|\bnros_declare_rust_runtime_carrier\s*\(")
+
+# Per-image seams that build an image OUTSIDE `nano_ros_entry()`, so the seam
+# itself must apply the policy. Each row states why; a row whose file stops
+# defining a link seam is stale and fails.
+REQUIRED_SEAMS = {
+    "cmake/platform/nano-ros-nuttx.cmake":
+        "NuttX images do not go through nano_ros_entry(): NuttX's apps build calls "
+        "nros_platform_link_app per target (issue 0719)",
+}
+SEAM_DEF = re.compile(r"\bfunction\s*\(\s*nros_(?:platform|board)_link_app\b")
 
 # Applies the policy — as a CALL. `nano_ros_entry` / `nano_ros_add_executable`
 # apply it for their callers, so either satisfies the rule.
@@ -84,14 +97,9 @@ def cmake_files():
     """
     import subprocess
 
-    out = subprocess.run(
-        ["git", "ls-files", "-z", "*.cmake", "CMakeLists.txt", "*/CMakeLists.txt"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return [p for p in out.stdout.split("\0") if p]
+    import file_kinds  # issue 1614 (W5): the KIND, one definition of "CMake file"
+
+    return file_kinds.files_of_kind("cmake", repo=ROOT)
 
 
 def offenders():
@@ -103,6 +111,12 @@ def offenders():
         try:
             body = strip_comments(open(path, encoding="utf-8").read())
         except (OSError, UnicodeDecodeError):
+            continue
+        if rel in REQUIRED_SEAMS:
+            if not SEAM_DEF.search(body):
+                out.append(f"{rel} (REQUIRED_SEAMS row is stale: no link seam defined here)")
+            elif not APPLIES.search(body):
+                out.append(rel)
             continue
         if not (MAKES_EXE.search(body) and LINKS_NROS.search(body)):
             continue

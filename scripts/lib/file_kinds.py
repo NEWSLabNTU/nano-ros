@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import functools
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -124,6 +125,32 @@ def files_of_kind(*kinds, repo=None, exclude_parts=DEFAULT_EXCLUDE_PARTS,
     )
 
 
+_SH_SHEBANG = re.compile(rb"^#!\s*(?:/usr)?/bin/(?:env\s+)?(?:ba|da|z)?sh\b")
+
+
+def shebang_shell(repo=None, exclude_parts=DEFAULT_EXCLUDE_PARTS) -> list:
+    """Tracked EXTENSION-LESS files whose shebang names a POSIX shell.
+
+    A shell script needs no `.sh`: `scripts/bin/cargo` (the `--locked` shim every
+    cargo call goes through) is bash, and a suffix-keyed population never read it
+    (issue 1614, `check-set-e-bare-assignment`). The shebang is the kind.
+    """
+    repo = str(repo or REPO)
+    out = []
+    for p in _index(repo):
+        name = os.path.basename(p)
+        if "." in name or set(exclude_parts).intersection(p.split("/")[:-1]):
+            continue
+        try:
+            with open(os.path.join(repo, p), "rb") as fh:
+                head = fh.read(64)
+        except OSError:
+            continue
+        if _SH_SHEBANG.match(head):
+            out.append(p)
+    return sorted(out)
+
+
 def self_test() -> None:
     import tempfile
 
@@ -154,6 +181,11 @@ def self_test() -> None:
         assert "packages/i/generated/g.rs" in files_of_kind("rust", repo=tmp, include_generated=True)
         assert files_of_kind("cpp", repo=tmp) == ["packages/api/nros-cpp/include/nros/x.hpp"]
         assert files_of_kind("jinja", repo=tmp) == ["packages/cli/p/t.c.jinja"]
+        w("scripts/bin/tool", "#!/usr/bin/env bash\nset -e\n")
+        w("scripts/bin/py", "#!/usr/bin/env python3\n")
+        subprocess.run(["git", "-C", tmp, "add", "-A"], check=True, env=env)
+        _index.cache_clear()
+        assert shebang_shell(repo=tmp) == ["scripts/bin/tool"], shebang_shell(repo=tmp)
         # Both make spellings: NuttX's `Make.defs` and an IDE's lowercase fragment.
         assert files_of_kind("make", repo=tmp) == [
             "integrations/n/Make.defs", "integrations/s/makefile.defs"], files_of_kind("make", repo=tmp)

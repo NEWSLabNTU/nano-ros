@@ -3,3 +3,6 @@
 #
 # Regenerate ONLY to record a rename that removed one:
 #     python3 scripts/check-board-name-reach.py --write-baseline
+alias:esp32-qemu
+alias:esp32c3
+alias:threadx-qemu-riscv64

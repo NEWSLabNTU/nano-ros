@@ -38,7 +38,10 @@ while IFS= read -r manifest; do
 # `git grep` over a tracked pathspec, not a recursive walk: the manifests are
 # all tracked, so this is an index lookup (check-no-tracked-file-find enforces
 # the rule; measured 7m36s -> 0.8s for the same paths).
-done < <(git grep -lE 'path = "generated/' -- 'packages/**/Cargo.toml' 'examples/**/Cargo.toml' | sort)
+done < <(git grep -lE 'path = "generated/' -- 'Cargo.toml' '**/Cargo.toml' ':!third-party' | sort)
+# issue 1614 (W5): EVERY tracked Cargo.toml, not `packages/**` + `examples/**`:
+# a leaf under `integrations/` or `templates/` consumes generated/ just the same,
+# and `scripts/regenerate-bindings.sh` is equally blind to it.
 
 if [ "$violations" -ne 0 ]; then
     {

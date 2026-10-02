@@ -1,7 +1,8 @@
 ---
 id: 1614
 title: "Gate re-run 2026-10-01, W5: 18 gates still read a population narrower than their rule — scan roots, file kinds and single-file producers"
-status: open
+status: resolved
+resolved_in: 2026-10-02
 type: tech-debt
 area: testing, build
 severity: medium
@@ -12,7 +13,7 @@ related: [phase-472, 1614, 1615, 1616, 1617, 1618]
 ## What
 
 The 2026-10-01 re-run of the phase-472 audit
-([findings](../development/audit-findings-2026-10-01-rerun.md)) re-applied each
+([findings](../../development/audit-findings-2026-10-01-rerun.md)) re-applied each
 mutation the 2026-09-28 audit recorded, plus new audits and spot-checks. Every
 gate below still exits **0** on the mutation in its row, and each has a positive
 CONTROL that exits non-zero: the same defect placed where the gate does read.
@@ -50,3 +51,34 @@ Per CLAUDE.md "Fix the CLASS": move each gate onto the class's shared helper,
 add the negative control its row names, and re-run the row's mutation to show
 it now fails. Phase-472's acceptance ("no confirmed hole in any class") stays
 unmet until this list is empty.
+
+## Resolution (2026-10-02)
+
+Every row's population is now the KIND the rule is about (`scripts/lib/file_kinds.py`)
+or a harvested set. All 18 recorded mutations fail (rc 0 → 1), as do all 18
+controls. `no-allow-multiple-def` was closed by issue 1618 (#1559).
+
+| gate | population now |
+| --- | --- |
+| `cmake-image-policy` | `file_kinds cmake`. A Rust-runtime carrier (`nros_declare_rust_runtime_carrier`) is an image too. NuttX's `nros_platform_link_app` is a REQUIRED seam, with its reason (images there bypass `nano_ros_entry`), and a stale row fails. |
+| `board-name-reach` | plus every descriptor ALIAS (`names = [...]`), judged by its overlay's reach. A platform selector (`nuttx`, `threadx-riscv64`) is not a machine claim. **3 pre-existing alias violations** (`esp32-qemu`, `esp32c3`, `threadx-qemu-riscv64`) entered the ratchet baseline: they are compatibility ids, so renaming them is phase-437's call. |
+| `ci-doc-workflow-refs` | the `.github/workflows/x.yml` spelling, across every live doc (development/reference/design/book). This fixed one dead citation in `versioning.md`. |
+| `c-knob-guard-order` | the `c-family` kind (`.hpp` included). A header's OWN later `#define` no longer counts as "defined by a header". |
+| `build-tool-verbs-exempt` | `file_kinds cmake` (zephyr included). A GUARDED top-level verb that keeps the workspace check fails unless rowed (`plan`, run in the user's workspace). The top-verb mutation is re-expressed with a guarded verb (`sync`); an unguarded `rerun-verb` is correctly fine (control row passes). |
+| `dist-floors` | every index table with a `dist` map. `[rust.rustup]`'s 3 floorless rows became baseline debt (ceiling 0 → 3), so a fourth host fails. |
+| `feature-gated-modules` | gated `mod` declarations in every `.rs` of the crate, not just `lib.rs`. 5 more features are now compiled alone, all clean. |
+| `cross-toolchain-provenance` | every CMake file that selects a compiler, not only `cmake/toolchain/`. |
+| `generated-leaf-regenerable` | every tracked `Cargo.toml`. |
+| `message-crate-identity` | plus `[workspace.dependencies]`. |
+| `orphan-generated-stamp` | the shared cargo dirs below `build/` and `target/`: a bounded-depth glob of untracked build output (0.8 s). |
+| `qos-profile-ssot` rule 6 | every Rust source. An alias of a fenced preset is allowed (`nros` re-exports the rclrs names that way). |
+| `set-e-bare-assignment` | plus shebang-shell files (`file_kinds.shebang_shell`: `scripts/bin/cargo`, `.githooks/pre-push`). This caught one new violation in this PR's own edit, which was fixed. |
+| `retired-cmake-keywords` | plus the CMake the CLI EMITS (Rust string literals and `.jinja` under `packages/cli`). |
+| `zenoh-platform-macros` | plus every CMake producer, attributed to a port by path. |
+| `zephyr-workspace-resolvers` | `CMakeLists.txt` is code, not `.txt` prose. |
+| `zenoh-feature-off-compile` | every CMake file of the Zephyr module. |
+
+The harness used for these re-runs now sources the worktree's `activate.sh`
+before each gate. The calling shell carried another checkout's
+`NROS_REPO_DIR`, and `check-feature-gated-modules` honours that variable, so
+its control was reading the wrong tree.

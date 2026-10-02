@@ -221,6 +221,47 @@ def scan(root, board, overlay_path):
     return bool(why), why[:4], vendor
 
 
+def descriptor_aliases(root, found):
+    """[(alias, overlay board)] — every `names = [...]` entry of every board
+    descriptor (`file_kinds` board-descriptor), attributed to the overlay one of
+    its names owns. Issue 1614 (W5): the population was the overlay FILE NAMES
+    and the index, so an alias added to a descriptor (`riscv-qemu`) — which a
+    user types exactly like a board name — was never asked.
+
+    A descriptor with no overlay among its names is out of scope here, as the
+    index entries without an arch are: there is no build to read the reach from.
+    """
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib
+    sys.path.insert(0, os.path.join(root, "scripts", "lib"))
+    import file_kinds
+
+    out = []
+    for rel in file_kinds.files_of_kind("board-descriptor", repo=root):
+        if "/tests/fixtures/" in rel:
+            continue  # a CLI test's fixture workspace, not a shipped board
+        try:
+            with open(os.path.join(root, rel), "rb") as fh:
+                doc = tomllib.load(fh)
+        except (OSError, ValueError):
+            continue
+        for b in doc.get("board", []) or []:
+            names = [n for n in b.get("names", []) or [] if isinstance(n, str)]
+            owner = next((n for n in names if n in found), None)
+            if owner:
+                out.extend((n, owner) for n in names if n != owner)
+    return out
+
+
+def is_platform_selector(alias):
+    """`nuttx`, `threadx-riscv64`: a STACK (optionally + arch) names the platform's
+    default board for that arch — a selector, not a claim about a machine."""
+    segs = [x.lower() for x in segments(alias)]
+    return any(x in STACK for x in segs) and all(x in STACK or x in ARCH for x in segs)
+
+
 def segments(name):
     return [s for s in re.split(r"[-_]", name) if s]
 
@@ -325,6 +366,15 @@ def main():
         ok, msg = verdict(board, pinned, vendor)
         if not ok:
             violations[board] = (msg, why)
+
+    # Every descriptor ALIAS too (issue 1614), judged by its overlay's reach.
+    for alias, owner in descriptor_aliases(ROOT, found):
+        if is_platform_selector(alias):
+            continue
+        pinned, why, vendor = scan(ROOT, owner, found[owner])
+        ok, msg = verdict(alias, pinned, vendor)
+        if not ok:
+            violations[f"alias:{alias}"] = (f"alias of {owner}: {msg}", why)
 
     # The INDEX namespace too. A cross `arch` means the entry is tied to a
     # target — the index has no linker script to read, but it does say what it

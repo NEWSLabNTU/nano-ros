@@ -339,6 +339,44 @@ def stray_presets(text):
     return out
 
 
+ALIAS_RHS = re.compile(r"=\s*QoSProfile::[A-Z][A-Z0-9_]*\s*;")
+
+
+def stray_presets_elsewhere():
+    """Rule 6 over EVERY Rust source, not only `traits.rs` — issue 1614 (W5).
+
+    A preset defined with VALUES in another file (`nros/src/lib.rs`) is the
+    drift rule 6 forbids, and it was outside the population. An ALIAS of a
+    fenced preset (`= QoSProfile::QOS_PROFILE_DEFAULT;`) restates no value and
+    is allowed: that is how `nros` re-exports the rclrs names.
+    """
+    import sys as _s
+    _s.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import comments
+    import file_kinds
+
+    errs = []
+    for rel in file_kinds.files_of_kind("rust", repo=ROOT):
+        path = ROOT / rel
+        if path == TRAITS:
+            continue
+        try:
+            raw = path.read_text(encoding="utf8", errors="replace")
+        except OSError:
+            continue
+        if "QoSProfile" not in raw:
+            continue
+        code = comments.strip_comments(raw, "rust")
+        lines = code.split("\n")
+        for lineno, name in stray_presets(code):
+            stmt = "\n".join(lines[lineno - 1:lineno + 3])
+            stmt = stmt[: stmt.find(";") + 1] if ";" in stmt else stmt
+            if not ALIAS_RHS.search(stmt):
+                errs.append(f"rule 6: {rel}:{lineno} defines preset `{name}` outside the "
+                            f"`nros-qos-table` fence — alias the fenced const instead")
+    return errs
+
+
 # --------------------------------------------------------------------------
 # The sites that cannot READ the SSoT — phase-454 W1 / issue 1256
 # --------------------------------------------------------------------------
@@ -1767,6 +1805,7 @@ def main():
         errs = compare(rows, record, deviations, absences, stray_presets(
             TRAITS.read_text(encoding="utf8")
         ))
+        errs += stray_presets_elsewhere()
 
         # phase-454 W1 — and the sites that cannot READ the table. Upstream ←
         # record ← table is only half a chain while five transcriptions of the

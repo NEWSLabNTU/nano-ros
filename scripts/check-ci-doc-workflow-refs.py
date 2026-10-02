@@ -35,6 +35,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKFLOWS = os.path.join(ROOT, ".github", "workflows")
+_REAL_ROOT = ROOT
 
 DOCS = (
     "docs/development/ci-conventions.md",
@@ -42,7 +43,18 @@ DOCS = (
     "docs/development/multi-agent-ci-workflow.md",
 )
 
-REF = re.compile(r"`([a-z0-9][a-z0-9._-]*\.ya?ml)`")
+REF = re.compile(r"`(?:\.github/workflows/)?([a-z0-9][a-z0-9._-]*\.ya?ml)`")
+# issue 1614 (W5): the PATH spelling is unambiguous wherever it appears, so it
+# is checked across every LIVE doc (not only the three CI docs, where the bare
+# name is also checked). `.github/workflows/rerun-nonexistent.yml` in a CI doc
+# passed because the regex required the name to START the backticks.
+PATH_REF = re.compile(r"\.github/workflows/([A-Za-z0-9._-]+\.ya?ml)")
+LIVE_DOC_ROOTS = ("docs/development/", "docs/reference/", "docs/design/", "book/src/")
+# Fictional names an AUDIT RECORD uses to describe a mutation it applied.
+FICTIONAL = {
+    "rerun-nonexistent.yml": "the gate re-run's planted dead citation",
+    "rerun-probe.yml": "the gate re-run's planted probe workflow",
+}
 HISTORICAL_HEAD = re.compile(r"^#+\s*Historical workflow names\s*$", re.M | re.I)
 
 # Names that are a FORMAT, not one of our workflows. Kept explicit rather than
@@ -82,7 +94,27 @@ def scan():
             if name in existing or name in allowed:
                 continue
             problems.append((rel, name))
+    for rel in live_docs():
+        if rel in DOCS:
+            continue
+        with open(os.path.join(ROOT, rel), encoding="utf8", errors="replace") as fh:
+            text = fh.read()
+        allowed = historical_names(text)
+        for name in sorted(set(PATH_REF.findall(text))):
+            checked += 1
+            if name in existing or name in allowed or name in FICTIONAL:
+                continue
+            problems.append((rel, f".github/workflows/{name}"))
     return problems, checked, existing
+
+
+def live_docs():
+    if ROOT != _REAL_ROOT:
+        return []  # the selftest's temp tree carries only its own DOCS
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+    import file_kinds
+    return [p for p in file_kinds.files_of_kind("markdown", repo=ROOT)
+            if p.startswith(LIVE_DOC_ROOTS) and "/archived/" not in p]
 
 
 def main():
@@ -128,6 +160,9 @@ def selftest(verbose=False):
         else:
             fail += 1
 
+    check("the PATH spelling is a citation (issue 1614)",
+          REF.findall("See `.github/workflows/x.yml`.") == ["x.yml"]
+          and PATH_REF.findall("in .github/workflows/y.yaml") == ["y.yaml"])
     real_root, real_docs = ROOT, DOCS
     with tempfile.TemporaryDirectory() as d:
         os.makedirs(os.path.join(d, ".github", "workflows"))
