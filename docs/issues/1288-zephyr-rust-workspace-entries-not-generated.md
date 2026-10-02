@@ -1,6 +1,6 @@
 ---
 id: 1288
-title: "The 15 hand-written workspace entries are all Zephyr — `nros build` has no generator for a west application"
+title: "The last hand-written Zephyr workspace entries — the generator exists; three remain, each for a recorded reason"
 status: open
 type: tech-debt
 area: tooling, examples, zephyr
@@ -777,3 +777,29 @@ Not asserted: whether this runner's workspace is persistent. The path root is
 `/home/runner/_work/…`, which both a hosted and a self-hosted runner use, so it
 does not distinguish the two and nothing here should be read as "it also fails
 on a fresh checkout".
+
+## Where it stands (2026-10-03)
+
+**The title changed, and not only its count.** It read "`nros build` has no
+generator for a west application", which stopped being true at phase-470 W5.a.
+The count is dropped rather than corrected — phase-470 W1's lesson: a number in
+prose is a fact every reader re-verifies and every maintainer re-measures, and
+this one was wrong from its first commit.
+
+The generator now reaches Rust (W5.a, W5.b1, W5.b2) and C/C++ (W5.b3, PR #1511).
+Hand-written entries went from 15 to 3. The three left are not generator gaps;
+each is blocked by something else, recorded in phase-470 §W5:
+
+- `realtime-c/src/zephyr_entry` — one package serves `[image.zephyr]` in two
+  bringups, and the generated directory is keyed on `(platform, rmw)` rather than
+  the bringup, so the two would overwrite each other silently. Needs a distinct
+  image id for the SMP row and a board correction on it.
+- `realtime-cpp/src/fvp_entry` — cannot be BUILT on the hosts in use (Zephyr 3.7,
+  `aarch64-zephyr-elf`, the Arm FVP), and acceptance here is a build.
+- `rust/src/zephyr_entry_robot1` — the only image whose `entry =` exercises the
+  explicit-entry rung over the `<id>_entry` rung, with no unit test of that
+  precedence. Add the test, then migrate it.
+
+Stays OPEN until those three are resolved or each is recorded as a deliberate
+exception.
+

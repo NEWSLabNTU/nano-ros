@@ -1,8 +1,13 @@
 # Phase 470 — example layout unification
 
-**Status (2026-09-28). W1–W4, W6 and W5.a LANDED; W5.b and W7 open.** W5 was
-unblocked and its first half is done: the generator exists and one image is
-migrated and builds (see W5). The remaining 14 entry packages are W5.b.
+**Status (2026-10-03). W1–W6 LANDED; W7 open; three entry packages remain
+hand-written, each for a recorded reason.** W5 is done as far as a build can
+prove it: the generator reaches Rust and C/C++, and hand-written Zephyr entries
+went from 15 to 3 (W5.b1 PR #1380, W5.b2, W5.b3 PR #1511). The three left are
+named in W5 below with what unblocks each — none is a generator gap. The
+follow-up issues this phase raised are closed or narrowed: 1521 (PR #1581),
+1536 (PR #1561), 1519 (PR #1584), and 1512's residue (PR #1585; the issue stays
+open for the C-ROOTED cmake road only).
 W2 had answered the board question W5 waited on, and answered it differently than
 either this phase or issue 1517 predicted (see W2). W6 shipped a bare-metal C
 leaf that builds and boots, and in doing so falsified this phase's own
@@ -383,6 +388,29 @@ for the whole zephyr lane — the `conf_files` row key that must go, and the
 `zephyr_application_is_generated` predicate the fixture manifest now shares with
 the builder) → [issue 1288](../issues/1288-zephyr-rust-workspace-entries-not-generated.md),
 section "2026-09-28".
+
+**DONE (2026-10-03) — W5.b.** Three parts, each built at W5.a's bar (the package
+deleted, the merged Kconfig byte-identical to a baseline from the hand-written
+one):
+
+- **W5.b1** (PR #1380) — the three `features` images. Their three Kconfig sets
+  were byte-identical apart from a comment, so they became ONE shared
+  `demo_bringup/boards/native_sim_native_64/`.
+- **W5.b2** — `realtime-rust` and `safety`. Of the two "undeclared features" this
+  phase named as blockers, one was derivable and the other was never a feature.
+- **W5.b3** (PR #1511) — six C/C++ images. W5.a's "a C/C++ arm adds fields, not
+  a second emitter" is half right: resolution collapses into one `WestApp`,
+  rendering does not (`rust_cargo_application()` and `nano_ros_add_executable()`
+  share four lines). The cyclone image needed NOTHING extra — on the C/C++ path
+  the node packages' `nros_find_interfaces` already emits the descriptors.
+
+**Three remain hand-written, and none of them is a generator gap:**
+
+| package | why | what unblocks it |
+| --- | --- | --- |
+| `realtime-c/src/zephyr_entry` | serves `[image.zephyr]` in TWO bringups, and the generated dir is keyed on `(platform, rmw)`, not the bringup — both resolve to one path and the second write wins silently | a distinct image id for the SMP row, plus fixing that row's board (it declares `native_sim` and builds `qemu_cortex_a53`) |
+| `realtime-cpp/src/fvp_entry` | needs a Zephyr 3.7 workspace, `aarch64-zephyr-elf` and the Arm FVP; acceptance is a build | a host that can build it |
+| `rust/src/zephyr_entry_robot1` | the ONLY image whose `entry =` distinguishes rung 1 (explicit entry) from rung 2 (`<id>_entry`), and that precedence has no unit test — migrating it retires the only evidence for a live branch | a `cmd::build` unit test for entry-wins precedence |
 
 
 ### W6 — the bare-metal C/C++ arm
