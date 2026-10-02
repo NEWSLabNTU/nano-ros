@@ -12,10 +12,15 @@
 # use; one fewer must lower the row (the count may only fall). `-z muldefs` is
 # the same flag. Only ACTUAL uses count (a comment that merely names it does not).
 
-# phase-251 W1 + W2 removed the two uses the gate could SEE and this list said
-# "ANY use fails". Issue 1618: four more sat in files the gate never read. Each
-# is load-bearing until the image links ONE Rust staticlib; removing them is
-# issue 1636's work, not a flag edit.
-zephyr/CMakeLists.txt 2             # (a) native_sim C/C++: picolibc's malloc vs Zephyr COMMON_LIBC_MALLOC, Zephyr's wins; (b) C++ image links nros-cpp + nros-rmw-zenoh-staticlib, two Rust staticlibs with a shared closure (issue 1636)
-integrations/nuttx/Make.defs 1      # libnros_c.a + libnros_cpp.a + per-package FFI staticlibs, overlapping closures (Phase 157.C.17; issue 1636)
-integrations/s32ds/makefile.defs 1  # same multi-staticlib shape as the NuttX Make.defs; user-editable S32DS fragment (issue 1636)
+# Issue 1636 removed each use it could show was masking a fixable duplicate,
+# by building the image without the flag and reading the linker's list:
+#   * native_sim C/C++: 3 allocator symbols (picolibc's posix_memalign path) and
+#     33 zenoh-pico system symbols (zpico's platform_aliases.c twice over) —
+#     both fixed at the source; that use is GONE.
+#   * the standalone nros-rmw-zenoh-staticlib (a second backend + REGISTRY) is
+#     no longer linked at all.
+# What stays is measured, and owned by issue 1645 (fold the message FFI into
+# the one runtime staticlib):
+zephyr/CMakeLists.txt 1             # C++ API: libnano_ros_cpp_ffi_<pkg>.a beside libnros_cpp.a duplicates the Rust runtime closure — cpp/talker 392 dups on native_sim, 571 on mps2/an385, all compiler_builtins/core/alloc/anon.*, no nano-ros C-ABI symbol (issue 1645)
+integrations/nuttx/Make.defs 1      # UNVERIFIED (no build recipe for the apps-external shell on this host): libnros_c.a + libnros_cpp.a + per-package FFI staticlibs (Phase 157.C.17; issue 1645)
+integrations/s32ds/makefile.defs 1  # UNVERIFIED (no S32DS on this host): same multi-staticlib shape as the NuttX Make.defs, in a user-editable fragment (issue 1645)

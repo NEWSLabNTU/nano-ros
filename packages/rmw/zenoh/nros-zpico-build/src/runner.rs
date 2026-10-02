@@ -2179,6 +2179,14 @@ pub fn run() {
         if use_threadx {
             alias_build.define("NROS_PLATFORM_ALIASES_SKIP_TASK", None);
         }
+        // issue 1636 — Zephyr compiles its OWN zenoh-pico system ABI in C
+        // (`zephyr/nros_zenoh_zephyr_system.c`, POSIX-shaped types). The
+        // generic time/clock/task/mutex/condvar wrappers here were a second
+        // definition of all 33 of those symbols, which only
+        // `--allow-multiple-definition` let link (first one wins). Skip them.
+        if use_zephyr {
+            alias_build.define("NROS_PLATFORM_ALIASES_SKIP_SYSTEM", None);
+        }
         // Phase 129.D — bare-metal cross targets
         // (`target_os = "none"`) often lack a usable newlib on the
         // host (`#include <stdint.h>` falls into gcc's own header

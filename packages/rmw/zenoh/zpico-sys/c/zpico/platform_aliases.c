@@ -131,6 +131,13 @@ static uint64_t nros_zp_now_ms(void) {
     return nros_platform_time_now_ns() / 1000000ULL;
 }
 
+/* issue 1636 — `NROS_PLATFORM_ALIASES_SKIP_SYSTEM`: the port compiles its OWN
+ * C system ABI (Zephyr: `zephyr/nros_zenoh_zephyr_system.c`, POSIX-shaped
+ * `pthread_*` / `struct timespec` types), so the generic time, clock, task,
+ * mutex and condvar wrappers here would be a SECOND definition of every one of
+ * those 33 symbols. Measured on native_sim with `--allow-multiple-definition`
+ * removed: all 33 collided, and only link order picked the Zephyr copy. */
+#ifndef NROS_PLATFORM_ALIASES_SKIP_SYSTEM
 uint64_t z_time_now(void) {
     return nros_zp_now_ms();
 }
@@ -149,6 +156,7 @@ uint64_t z_time_elapsed_s(const uint64_t *time) {
     uint64_t now = nros_zp_now_ms();
     return (now - *time) / 1000ULL;
 }
+#endif /* !NROS_PLATFORM_ALIASES_SKIP_SYSTEM */
 
 struct nros_z_time_since_epoch {
     uint32_t secs;
@@ -200,7 +208,7 @@ uint64_t smoltcp_clock_now_ms(void) {
  *  link error.
  * ----------------------------------------------------------------------- */
 
-#ifndef NROS_PLATFORM_ALIASES_SKIP_TASK
+#if !defined(NROS_PLATFORM_ALIASES_SKIP_TASK) && !defined(NROS_PLATFORM_ALIASES_SKIP_SYSTEM)
 
 int8_t _z_task_init(void *task, void *attr, void *(*entry)(void *), void *arg) {
     return nros_platform_task_init(task, attr, entry, arg);
@@ -227,6 +235,8 @@ void _z_task_free(void **task) {
 }
 
 #endif  /* NROS_PLATFORM_ALIASES_SKIP_TASK */
+
+#ifndef NROS_PLATFORM_ALIASES_SKIP_SYSTEM
 
 /* -------------------------------------------------------------------------
  *  Threading: non-recursive mutex.
@@ -301,6 +311,7 @@ int8_t _z_condvar_signal_all(void *cv) {
 int8_t _z_condvar_wait(void *cv, void *m) {
     return nros_platform_condvar_wait(cv, m);
 }
+#endif /* !NROS_PLATFORM_ALIASES_SKIP_SYSTEM */
 
 /* -------------------------------------------------------------------------
  *  `_z_condvar_wait_until` — only safe to emit when the build defined
@@ -315,6 +326,7 @@ int8_t _z_condvar_wait(void *cv, void *m) {
 
 #ifdef NROS_PLATFORM_ALIASES
 
+#ifndef NROS_PLATFORM_ALIASES_SKIP_SYSTEM
 int8_t _z_condvar_wait_until(void *cv, void *m, const uint64_t *abstime_ms) {
     if (abstime_ms == NULL) {
         return nros_platform_condvar_wait(cv, m);
@@ -384,6 +396,7 @@ void z_clock_advance_s(uint64_t *clock, unsigned long duration) {
     if (clock == NULL) return;
     *clock += (uint64_t) duration * 1000ULL;
 }
+#endif /* !NROS_PLATFORM_ALIASES_SKIP_SYSTEM */
 
 /* -------------------------------------------------------------------------
  *  Networking. Wraps zenoh-pico's `_z_open_tcp` / `_z_open_udp_*` /
