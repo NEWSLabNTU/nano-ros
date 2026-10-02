@@ -1,5 +1,28 @@
 [toolchain]
-channel = "stable"
+# PINNED, not floating — issue 1447, which this moved from a prediction to a
+# measurement on 2026-10-01. `stable` is a MOVING channel, so the day 1.99.0
+# released it reached every checkout and CI at once with no commit: no diff, no
+# blame, nobody deciding to take it. `main` went red for everyone, two finished
+# pull requests were blocked on lints their authors did not write, and the
+# break could not be reproduced locally because this host's `stable` was still
+# 1.98.1.
+#
+# THREE tools move with this line, not one — the issue's own framing undersold
+# it by two thirds. Clearing 1.99.0 took 9 sites: 2 clippy
+# (`needless_borrows_for_generic_args`), 5 rustdoc
+# (`redundant_explicit_links`), and 7 rustc errors from a FUTURE-INCOMPAT lint
+# (`semicolon_in_expressions_from_non_local_macros`) that `-D warnings` turns
+# into a hard error — those last were not even our code, but eyre 0.6.12's
+# `bail!`, fixed by taking 0.6.14.
+#
+# BUMPING IS NOW A COMMIT SOMEBODY MAKES. The work is the same; it moves to a
+# moment someone chose, runs every lane before it lands, and is reviewable.
+# The cost this buys is a recurring chore, and the risk it creates is drift —
+# a pin that ages silently is how a six-week bump becomes a sixty-site one.
+#
+# This does NOT make any clippy lane merge-gating; that is issue 1445 and a
+# separate decision. A pin stops the surprise, not the gap.
+channel = "1.99.0"
 components = ["rustfmt", "clippy", "rust-src", "llvm-tools"]
 # phase-418 418.3 — `armv7r-none-eabi` joins the hard-float triple already
 # here: the Orin SPE FSP is softfp (AAPCS base), so the `hf` triple is the
