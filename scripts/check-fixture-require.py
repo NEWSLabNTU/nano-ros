@@ -187,11 +187,60 @@ def sites(files, names):
     return sorted(found)
 
 
-def read_baseline():
+# Issue 1620 — the SECOND way to decide absence without the helper, and the one
+# this gate could not see: never calling a resolver at all. A site that probes
+# the artifact itself —
+#
+#     if !bin.is_file() { skip!("… not built …") }
+#
+# — has no `build_*` call to key on, so `sites()` above reports nothing, while
+# the skip fires in EVERY run, a gated one included, where an absent in-lane
+# fixture is a broken promise (issue 0584 part 2). The census for 1620 found
+# six such sites (`ros_env::e2e_setup*` ×3, `borrowed_e2e`, the two
+# `zephyr_leaf_staleness` probes) skipping where the shared funnel would have
+# failed. Keyed on the SHAPE — an existence probe as the guard of a block whose
+# effect is a `skip!` — never on the skip's wording, for the reason the header
+# gives. Not every such site is a fixture (a probe for an SDK checkout is a
+# capability), so it is a ratchet like the other half: a new one is refused,
+# and an existing one either converts to `require_prebuilt_artifact(..)
+# .require(..)` or stays at its recorded count.
+EXISTENCE_GUARD = re.compile(
+    r"\bif\s+!\s*[^{};]*?\.(?:is_file|exists|is_dir)\s*\(\s*\)\s*\{"
+)
+SKIP_CALL = re.compile(r"\bskip(?:_class)?!\s*\(")
+EXISTENCE_BASELINE = ROOT / ".config" / "fixture-existence-skip-baseline.txt"
+
+
+def existence_skip_sites(files):
+    """`if !<path>.is_file()/exists()/is_dir() { … skip!(…) … }` call sites."""
+    found = []
+    for f in files:
+        text = f.read_text(errors="replace")
+        for m in EXISTENCE_GUARD.finditer(text):
+            # Comment lines are prose about the shape, not the shape.
+            line_start = text.rfind("\n", 0, m.start()) + 1
+            if text[line_start : m.start()].lstrip().startswith("//"):
+                continue
+            body_end = statement_end(text, m.end())
+            if SKIP_CALL.search(text[m.end() : body_end]):
+                found.append(f"{_rel(f)}:{text[: m.start()].count(chr(10)) + 1}")
+    return sorted(found)
+
+
+def per_file_counts(found):
+    out = {}
+    for s in found:
+        k = s.rsplit(":", 1)[0]
+        out[k] = out.get(k, 0) + 1
+    return out
+
+
+def read_baseline(path=None):
     """file -> allowed count of unconverted sites."""
+    path = path or BASELINE
     out = {}
     try:
-        text = BASELINE.read_text()
+        text = path.read_text()
     except OSError:
         # MISSING means nothing is allowed, not everything. A ratchet whose
         # absent file means "allow all" has stopped ratcheting.
@@ -205,16 +254,17 @@ def read_baseline():
     return out
 
 
-def verdict(per_file, base):
+def verdict(per_file, base, baseline=None):
     """(rose moves, fall lines) — the per-file ratchet, both directions.
 
     A file whose count FELL must be recorded in the same change (phase-472 W9):
     before, this printed "(shrink it)" and passed, so the file could regrow to
     its recorded count unobserved.
     """
+    baseline = baseline or BASELINE
     rose, fell = judge(per_file, base)
     lines = fell_instructions(
-        fell, str(BASELINE.relative_to(ROOT)),
+        fell, str(baseline.relative_to(ROOT)),
         lambda f, n: f"{n} {f}" if n else None,
         "python3 scripts/check-fixture-require.py --write-baseline") if fell else []
     return rose, lines
@@ -253,6 +303,30 @@ def self_test():
             if got != want:
                 print(f"  self-test FAIL: {text!r} -> {got}, want {want}")
                 bad += 1
+    # Issue 1620 — the existence-probe half, both directions, through the
+    # function `main` runs.
+    existence_cases = [
+        ('if !bin.is_file() {\n    skip!("fixture not built");\n}', True),
+        ('if !dir.join(".compile-ok").exists() {\n    nros_tests::skip!("x");\n}', True),
+        ('if !root.is_dir() {\n    nros_tests::skip_class!(lane, "x");\n}', True),
+        # a probe whose block does not skip is not a decision about absence
+        ('if !conf.is_file() {\n    panic!("missing");\n}', False),
+        # a skip guarded by something that is not an existence probe
+        ('if !nros_tests::process::require_cmake() {\n    skip!("cmake");\n}', False),
+        # the converted form
+        ('let b = require_prebuilt_artifact(&p, "r").require("w");', False),
+        # a comment describing the shape
+        ('// if !bin.is_file() { skip!(..) } was the old shape\nlet x = 1;', False),
+    ]
+    with tempfile.TemporaryDirectory() as td:
+        for k, (text, want) in enumerate(existence_cases):
+            f = Path(td) / f"exist{k}.rs"
+            f.write_text("fn t() {\n    " + text + "\n}\n")
+            got = bool(existence_skip_sites([f]))
+            if got != want:
+                print(f"  self-test FAIL (existence): {text!r} -> {got}, want {want}")
+                bad += 1
+    cases = cases + existence_cases
     # The ratchet, through `verdict` — the function `main` runs.
     for desc, cur, base, want_rose, want_fell in (
         ("at its count", {"a": 2}, {"a": 2}, False, False),
@@ -277,10 +351,11 @@ def main():
         return 1
     names = resolvers(files)
     current = sites(files, names)
+    per_file = per_file_counts(current)
+    # Issue 1620 — the half that calls no resolver at all.
+    existence = existence_skip_sites(files)
+    existence_per_file = per_file_counts(existence)
 
-    per_file = {}
-    for s in current:
-        per_file[s.rsplit(":", 1)[0]] = per_file.get(s.rsplit(":", 1)[0], 0) + 1
     if "--write-baseline" in sys.argv:
         BASELINE.write_text(
             "# issue 1129 / phase-450 W1 — how many call sites in each file still\n"
@@ -293,12 +368,27 @@ def main():
             "# it, so a line-keyed baseline went red on the edit it rewards.\n"
             + "".join(f"{n} {f}\n" for f, n in sorted(per_file.items()))
         )
-        print(f"check-fixture-require: baseline written — {len(current)} site(s) "
-              f"in {len(per_file)} file(s), {len(names)} resolver(s).")
+        EXISTENCE_BASELINE.write_text(
+            "# issue 1620 — how many sites in each file guard a `skip!` with their\n"
+            "# OWN existence probe (`if !p.is_file() { skip!(..) }`) instead of\n"
+            "# asking the shared absence funnel\n"
+            "# (`require_prebuilt_artifact(..).require(..)` or a `build_*`\n"
+            "# resolver). Such a skip fires in a gated run too, where an absent\n"
+            "# in-lane fixture must FAIL (issue 0584). Some are genuine capability\n"
+            "# probes (an SDK checkout, a host tool); the count only SHRINKS.\n"
+            "#\n"
+            "# Generated by `python3 scripts/check-fixture-require.py"
+            " --write-baseline`.\n"
+            + "".join(f"{n} {f}\n" for f, n in sorted(existence_per_file.items()))
+        )
+        print(f"check-fixture-require: baselines written — {len(current)} resolver "
+              f"site(s) in {len(per_file)} file(s), {len(names)} resolver(s); "
+              f"{len(existence)} existence-probe skip(s) in "
+              f"{len(existence_per_file)} file(s).")
         return 0
 
-    base = read_baseline()
-    rose, fell_lines = verdict(per_file, base)
+    rc = 0
+    rose, fell_lines = verdict(per_file, read_baseline())
     grew = [(m.key, m.now, m.was) for m in rose]
     if grew:
         print("check-fixture-require: FAIL — "
@@ -312,16 +402,45 @@ def main():
         print('      let bin = build_x().require("what it is");')
         print("  `require` skips a `FixtureNotBuilt` and panics on anything else,")
         print("  which is the rule 260 sites used to each restate in prose.")
-        return 1
-
+        rc = 1
     if fell_lines:
         print("check-fixture-require: FAIL — the baseline records more unconverted "
               "sites than the tree has:")
         print("\n".join(fell_lines))
-        return 1
+        rc = 1
+
+    e_rose, e_fell_lines = verdict(
+        existence_per_file, read_baseline(EXISTENCE_BASELINE), EXISTENCE_BASELINE
+    )
+    if e_rose:
+        print("check-fixture-require: FAIL — "
+              f"{len(e_rose)} file(s) guard a `skip!` with their own existence "
+              "probe more often than the baseline allows:")
+        rose_keys = {m.key for m in e_rose}
+        for site in existence:
+            if site.rsplit(":", 1)[0] in rose_keys:
+                print(f"  {site}")
+        print()
+        print("  `if !p.is_file() { skip!(..) }` skips in EVERY run — including a")
+        print("  gated one, where an absent in-lane fixture is a broken promise and")
+        print("  must fail (issue 0584). Ask the funnel that knows the lane:")
+        print('      let p = nros_tests::fixtures::require_prebuilt_artifact(&p, "<build cmd>")')
+        print('          .require("what it is");')
+        print("  or the row's `build_*` resolver. A probe for something that is NOT")
+        print("  a build-stage artifact (an SDK checkout, a host tool) is a capability")
+        print("  skip — name the tool, and use a probe that is not a path existence test.")
+        rc = 1
+    if e_fell_lines:
+        print("check-fixture-require: FAIL — the existence-probe baseline records "
+              "more sites than the tree has:")
+        print("\n".join(e_fell_lines))
+        rc = 1
+    if rc:
+        return rc
 
     print(f"check-fixture-require: OK — {len(names)} resolver(s), "
-          f"{len(current)} unconverted site(s), every file at its recorded count")
+          f"{len(current)} unconverted resolver site(s), {len(existence)} "
+          "existence-probe skip(s), every file at its recorded count")
     return 0
 
 

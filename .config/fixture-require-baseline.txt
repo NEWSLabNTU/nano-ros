@@ -13,6 +13,5 @@
 1 packages/testing/nros-tests/tests/native_async_roundtrip_e2e.rs
 1 packages/testing/nros-tests/tests/pubsub_zephyr_cortex_m_ros2_interop_e2e.rs
 4 packages/testing/nros-tests/tests/ros2_action_e2e.rs
-2 packages/testing/nros-tests/tests/sim_time_clock_e2e.rs
 2 packages/testing/nros-tests/tests/threadx_riscv64_qemu.rs
 1 packages/testing/nros-tests/tests/zephyr_cortex_m_qemu.rs
