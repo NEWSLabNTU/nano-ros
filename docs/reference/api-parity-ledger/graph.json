@@ -113,6 +113,10 @@
   "c:service_server_is_available": {
     "verdict": "rename",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-c/include/nros/nros_generated.h",
+      "text": "`-1` if the backend cannot answer (e.g. XRCE without participant"
+    },
     "provides": [
       "nros_client_server_available",
       "nros_client_service_is_ready"
@@ -407,11 +411,19 @@
   "rust:Executor::register_graph_change_guard": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/core/nros-node/src/executor/spin.rs",
+      "text": "storage with its callback bound at creation. So this CREATES one"
+    },
     "why": "phase-467 Row 8. The Rust half of `nros_node_get_graph_guard_condition` -- a guard condition the BACKEND triggers when the ROS graph changes, which is upstream's `rcl_node_get_graph_guard_condition` under this project's guard-condition shape.\n\nOURS-ONLY against rclrs, which has no graph-change surface at all: rclrs exposes no `Node::get_graph_change_event`, no graph guard condition and no wait set, so there is nothing for this to be a rename OF. It is not an `extension` in the \"ROS 2 has none\" sense either, because rcl does have the capability -- what rcl has is a RETURNED borrowed handle you add to a wait set, and two platform constraints rule that out here: no allocator at the entity seam (RFC-0018/0019 -- every entity is caller storage with the status in the return) and no wait set (RFC-0002 -- one executor per RTOS task, `cpp:WaitSet` declined). So the guard is CREATED, exactly as `register_guard_condition_on` creates one, and differs only in who pulls the trigger: the application there, the backend's discovery path here.\n\nThe C twin `c:node_get_graph_guard_condition` (node.json) carries the full envelope, the backend measurements and the live acceptance. Read it there rather than in a second copy here.\n\nThe NODELESS form, paired with `rust:Executor::register_guard_condition` exactly as `register_graph_change_guard_on` is paired with `register_guard_condition_on`: an image with a session and no node still has to be able to make one."
   },
   "rust:Executor::register_graph_change_guard_on": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/core/nros-node/src/executor/spin.rs",
+      "text": "storage with its callback bound at creation. So this CREATES one"
+    },
     "why": "phase-467 Row 8. The Rust half of `nros_node_get_graph_guard_condition` -- a guard condition the BACKEND triggers when the ROS graph changes, which is upstream's `rcl_node_get_graph_guard_condition` under this project's guard-condition shape.\n\nOURS-ONLY against rclrs, which has no graph-change surface at all: rclrs exposes no `Node::get_graph_change_event`, no graph guard condition and no wait set, so there is nothing for this to be a rename OF. It is not an `extension` in the \"ROS 2 has none\" sense either, because rcl does have the capability -- what rcl has is a RETURNED borrowed handle you add to a wait set, and two platform constraints rule that out here: no allocator at the entity seam (RFC-0018/0019 -- every entity is caller storage with the status in the return) and no wait set (RFC-0002 -- one executor per RTOS task, `cpp:WaitSet` declined). So the guard is CREATED, exactly as `register_guard_condition_on` creates one, and differs only in who pulls the trigger: the application there, the backend's discovery path here.\n\nThe C twin `c:node_get_graph_guard_condition` (node.json) carries the full envelope, the backend measurements and the live acceptance. Read it there rather than in a second copy here.\n\nThe NODE-BOUND form, and the one the C entry point calls. The registered slot takes that node's default `SchedContext`, which is what \"the node owns it\" has to mean for a callback sharing one executor with every other tier in the image (RFC-0047) -- the same reason `register_guard_condition_on` exists."
   },
   "rust:Node::get_client_names_and_types_by_node": {

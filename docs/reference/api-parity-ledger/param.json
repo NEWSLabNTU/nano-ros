@@ -566,6 +566,10 @@
   "cpp:Node::undeclare_parameter": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/node.hpp",
+      "text": "throws; ours reports (RFC-0089's error-channel rule"
+    },
     "why": "SHIPPED phase-417 W4.a. `rclcpp::Node::undeclare_parameter(name)` forwards to `ParameterServer::remove` through `nros_cpp_node_undeclare_param`, on the one store, so the slot is freed for a later declaration and a sibling node's identical name is untouched. The envelope: upstream returns `void` and THROWS `ParameterNotDeclaredException`; ours returns `nros::Result` and answers `NOT_FOUND`, which is RFC-0089's error-channel rule (there are no exceptions here), not a choice made for this verb. A ported call site compiles either way; one that relies on the throw to skip the rest of a block does not."
   },
   "cpp:NodeOptions::allow_undeclared_parameters": {
@@ -724,6 +728,10 @@
   "rust:DeclarationError": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/core/nros-params/src/server.rs",
+      "text": "Ours is a subset of rclrs's, and the"
+    },
     "why": "SHIPPED phase-417 W4.a. `nros_params::DeclarationError`, returned by `ParameterServer::try_declare` / `try_declare_with_descriptor` and exported from the `nros` facade. `declare` returned a bare `bool` for 'the name was taken', 'the table was full' and 'the default is outside its range' alike; the `bool` spellings now forward to these, so there is one declare path. The envelope: OUR VARIANT SET IS A SUBSET of rclrs's, and the difference is structural rather than an omission. Ours are `AlreadyDeclared`, `InvalidRange`, `InitialValueOutOfRange` (all three rclrs's), plus `StorageFull` and `NameTooLong`, which rclrs has no correspondent for because its store grows and ours is the storage the caller placed. rclrs's `NoValueAvailable`, `OverrideValueTypeMismatch` and `PriorValueTypeMismatch` are about a launch OVERRIDE arriving before the declaration and disagreeing with it; nano-ros seeds overrides through the same `ParameterServer::apply` a remote set uses, so a disagreeing override is a `SetParameterResult` on the write that carried it and cannot reach a declaration."
   },
   "rust:DeclarationError::*": {

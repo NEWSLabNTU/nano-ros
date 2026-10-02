@@ -145,6 +145,10 @@
   "c:action_expire_goals": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-c/include/nros/nros_generated.h",
+      "text": "**No timeout.** `ActionServerCore` is `no_std` with no time source"
+    },
     "why": "reclaims a completed goal's retained result and reports how many went. SHIPPED as `nros_action_expire_goals(server, size_t *num_expired)` in phase-417 W4.b; was a `gap` because the entry point did not exist at all. ADOPT-BOUNDED, and the envelope is two named refusals rather than a weaker version of one thing. rcl's trigger is a CLOCK -- a goal expires `result_timeout` after it terminates, 15 min by default -- and it fills a caller-supplied `rcl_action_goal_info_t` array with the goals that went. Ours takes no array and has no timeout: `ActionServerCore` is `no_std` with no time source threaded through it (RFC-0036), so there is nothing to measure a `result_timeout` against, and an entry is reclaimed the moment its result has been DELIVERED, which makes 'which goals expired' a question about a clock we do not have. The count survives that and is what the call returns. The memory bound upstream's timer exists to provide is already held by a different mechanism here: issue 0796 made `complete_goal_raw` compact the slab and evict completed results on demand, so the slab no longer only grows whether or not anybody calls this. What this buys is EAGERNESS -- returning the slab before a long idle period rather than at the next completion. Both tiers answer: L2 through `ActionServerRawHandle::expire_goals`, L1 straight into the inline core. Phase 379 W3 filed it; phase-417 W4.b decided it."
   },
   "c:action_get_*names_and_types*": {
@@ -1386,6 +1390,10 @@
   "cpp:Client::Client<A>": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/action_client.hpp",
+      "text": "creates an uninitialized action client."
+    },
     "why": "the action client's constructor. rclcpp_action reaches a client through `rclcpp_action::create_client(...)`, which returns a `SharedPtr`; ours is default-constructed by the caller and initialised in place by `Node::create_action_client(out, name, qos)` -- the `out-param-first` and `no-shared-ptr` rules, because there is no allocator (RFC-0022). Copy is `= delete`d and move is the only transfer. Exactly the shape recorded one entity over at `cpp:Publisher::Publisher<M>`; the theirs-only half is `cpp:Client::Client<ActionT>`.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own."
   },
   "cpp:Client::send_goal": {
@@ -1400,11 +1408,19 @@
   "cpp:Client::send_goal_future": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "docs/guides/cpp-api.md",
+      "text": "return a `Future<T>` that polls the same arena slot"
+    },
     "why": "the future-shaped send. Returns `nros::Future<GoalAccept>`, which the caller drives with the executor (RFC-0021: a blocking helper takes the executor and drives it) rather than a `std::shared_future` a second thread completes. rclcpp_action's counterpart is `async_send_goal`'s return value. See `cpp:Client::async_send_request` for the same divergence on the service client.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own."
   },
   "cpp:Client::get_result": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/action_client.hpp",
+      "text": "Sends a get_result request and spins the executor until a reply"
+    },
     "why": "reads a finished goal's result into caller storage, blocking on the executor. rclcpp_action's is `async_get_result(goal_handle)`, returning a future of a `WrappedResult`; ours is keyed by goal id because our goals live in a static arena addressed by UUID rather than in an owning handle (see `rust:ActionClient::wait_for_action_server` for the typestate half of the same constraint). `Client::get_result_future` is the future-shaped spelling.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own."
   },
   "cpp:Client::get_result_sized": {
@@ -1418,6 +1434,10 @@
   "cpp:Client::get_result_future": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "docs/guides/cpp-api.md",
+      "text": "return a `Future<T>` that polls the same arena slot"
+    },
     "why": "`nros::Future<ResultType>` over a goal's result, driven by the executor (RFC-0021). rclcpp_action's `async_get_result` returns a `std::shared_future`; the difference is the future TYPE and who drives it, not the capability. See `cpp:Client::get_result`.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own."
   },
   "cpp:Client::get_result_future_sized": {
@@ -1427,6 +1447,10 @@
   "cpp:Client::cancel_goal": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/action_client.hpp",
+      "text": "returns a future, which RFC-0021 has no runtime to await."
+    },
     "why": "sends a CancelGoal request for one goal id. rclcpp_action's is `async_cancel_goal(goal_handle)`, returning a future of the cancel response; ours sends and then reports through `Client::try_recv_cancel_response` or the cancel callback -- the fire-then-read shape our C API uses too (`c:action_client_cancel_goal`). Added by issue 0796, which found the C++ callback tier had no client-side cancel at all. The theirs-only half is `cpp:Client::async_cancel_goal`.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own."
   },
   "cpp:Client::try_recv_cancel_response": {
@@ -1457,11 +1481,19 @@
   "cpp:Server::Server<A>": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/action_server.hpp",
+      "text": "creates an uninitialized action server."
+    },
     "why": "the action server's constructor. rclcpp_action reaches a server through `rclcpp_action::create_server(...)`, which returns a `SharedPtr`; ours is constructed into caller-owned storage by `Node::create_action_server` -- the `out-param-first` and `no-shared-ptr` rules, because there is no allocator (RFC-0022). See `cpp:ActionServerStorage` for the buffer a component declares, and `cpp:Publisher::Publisher<M>` for the same shape one entity over. The theirs-only half is `cpp:Server::Server<ActionT>`.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own."
   },
   "cpp:Server::set_goal_callback": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/action_server.hpp",
+      "text": "must be a stateless callable that decays to `TypedGoalFn`"
+    },
     "why": "installs the accept/reject decision for an incoming goal, returning `nros::GoalResponse`. rclcpp_action takes the same callback as the `handle_goal` argument of `create_server`; ours is a setter because RFC-0041 binds callbacks to the entity AFTER creation, which is what lets a component construct the entity in static storage and wire it up in its own `on_init`. Takes a STATELESS callable (empty-capture lambda or function pointer): there is no `std::function` here, so per-instance closure storage does not exist -- `set_goal_callback_with_ctx` is the spelling that carries state.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own."
   },
   "cpp:Server::set_goal_callback_with_ctx": {
@@ -1471,6 +1503,10 @@
   "cpp:Server::set_cancel_callback": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/action_server.hpp",
+      "text": "F must be a stateless callable convertible to TypedCancelFn."
+    },
     "why": "installs the accept/reject decision for a cancel request, returning `nros::CancelResponse`. rclcpp_action takes it as `create_server`'s `handle_cancel` argument; ours is a setter for the reason `cpp:Server::set_goal_callback` gives, and stateless for the same reason.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own."
   },
   "cpp:Server::set_cancel_callback_with_ctx": {
