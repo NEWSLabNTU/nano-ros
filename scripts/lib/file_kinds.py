@@ -52,7 +52,13 @@ KINDS = {
     "rust": ((".rs",), ()),
     "shell": ((".sh", ".bash"), ()),
     "python": ((".py",), ()),
-    "make": ((".mk",), ("Makefile", "Make.defs", "Makefile.in")),
+    # GNU make reads `GNUmakefile`, `makefile` and `Makefile`, and an IDE's
+    # generated makefile includes its own lowercase fragments (S32DS reads
+    # `makefile.defs` / `makefile.init` / `makefile.targets` from the project
+    # root). Issue 1618: `integrations/s32ds/makefile.defs` carried a live
+    # `--allow-multiple-definition` that the `Makefile`-only spelling never read.
+    "make": ((".mk",), ("Makefile", "Make.defs", "Makefile.in", "GNUmakefile", "makefile",
+                        "makefile.defs", "makefile.init", "makefile.targets")),
     "toml": ((".toml",), ()),
     "markdown": ((".md",), ()),
     "yaml": ((".yml", ".yaml"), ()),
@@ -129,7 +135,8 @@ def self_test() -> None:
         for rel in ("cmake/a.cmake", "zephyr/CMakeLists.txt", "packages/x/cmake/b.cmake",
                     "packages/x/src/lib.rs", "third-party/v/CMakeLists.txt",
                     "packages/i/generated/g.rs", "packages/api/nros-cpp/include/nros/x.hpp",
-                    "justfile", "just/m.just", "packages/cli/p/t.c.jinja"):
+                    "justfile", "just/m.just", "packages/cli/p/t.c.jinja",
+                    "integrations/n/Make.defs", "integrations/s/makefile.defs"):
             w(rel)
         w("justfile", "mod m 'just/m.just'\n")
         # A git hook can reach this (via a gate); never let an inherited GIT_DIR
@@ -147,6 +154,9 @@ def self_test() -> None:
         assert "packages/i/generated/g.rs" in files_of_kind("rust", repo=tmp, include_generated=True)
         assert files_of_kind("cpp", repo=tmp) == ["packages/api/nros-cpp/include/nros/x.hpp"]
         assert files_of_kind("jinja", repo=tmp) == ["packages/cli/p/t.c.jinja"]
+        # Both make spellings: NuttX's `Make.defs` and an IDE's lowercase fragment.
+        assert files_of_kind("make", repo=tmp) == [
+            "integrations/n/Make.defs", "integrations/s/makefile.defs"], files_of_kind("make", repo=tmp)
         assert files_of_kind("just", repo=tmp) == ["just/m.just", "justfile"]
         assert files_of_kind("cmake", repo=tmp, exclude_prefixes=("zephyr/",)) == [
             "cmake/a.cmake", "packages/x/cmake/b.cmake"]
