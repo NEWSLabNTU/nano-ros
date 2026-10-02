@@ -75,6 +75,8 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 from issue_status import refused_deferrals  # noqa: E402
+import comments  # noqa: E402
+import per_item  # noqa: E402
 
 VTABLE_H = os.path.join(
     ROOT, "packages", "core", "nros-rmw-abi", "include", "nros", "rmw_vtable.h"
@@ -183,6 +185,17 @@ INERT_FAMILIES = {
     # a consumer at `create_client` / `create_service` in `cffi/src/lib.rs`,
     # so they classify `produced` and a family entry for them would be the
     # stale-claim shape this table checks for.
+    "matched-counts": Family(
+        ("publisher_count_matched_subscriptions", "subscription_count_matched_publishers"),
+        "upstream `rmw_*_count_matched_*` parity (phase-393 W2). Cyclone fills "
+        "both, and their only readers are the advertised-state interop probe and "
+        "the backend's own `tests/graph_counts.cpp`, which measure them against a "
+        "peer. No nros node API exposes a matched count, so no RUNTIME path reads "
+        "them: issue 1617 stopped counting test readers as consumers, which is "
+        "what moved these two here. A test reader proves the slot answers, not "
+        "that anything that ships asks",
+        defer=1643,
+    ),
     "rx-sizing": Family(
         ("required_rx_bytes",),
         "zenoh-pico fills it (phase-403 W4) and no dispatch site exists: the "
@@ -317,13 +330,33 @@ def _consumers(slots):
             continue
         if "generated.rs" in rel or "/src/vtable." in rel or "rust_adapter.rs" in rel:
             continue
+        if is_test_only(rel):
+            continue
         try:
-            consumed |= consumers_in(
-                open(os.path.join(ROOT, rel), encoding="utf-8", errors="replace").read(), slots
-            )
+            text = open(os.path.join(ROOT, rel), encoding="utf-8", errors="replace").read()
         except OSError:
             continue
+        consumed |= consumers_in(runtime_code(rel, text), slots)
     return consumed
+
+
+def is_test_only(rel):
+    """issue 1617 (W8): a TEST reading a slot does not make it live.
+
+    `inert` means no RUNTIME path reads the slot. A reader in an integration
+    test, a test bin or the test crate is exercised only by `cargo test`, so
+    crediting it re-classified `feature_supported` as consumed on the strength
+    of a `tests/` helper nothing ships.
+    """
+    parts = rel.split("/")
+    return "tests" in parts[:-1] or rel.startswith("packages/testing/")
+
+
+def runtime_code(rel, text):
+    """Comments stripped, and a Rust file's `#[cfg(test)]` items blanked."""
+    if rel.endswith(".rs"):
+        return per_item.rust_cfg_test_blank(comments.strip_comments(text, "rust"))
+    return comments.strip_comments(text, "cpp" if rel.endswith(".cpp") else "c")
 
 
 def scan():
@@ -369,6 +402,17 @@ def scan_detail():
 
 def self_test():
     bad = []
+
+    # issue 1617 (W8): a test reader is not a runtime consumer.
+    if not is_test_only("packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs"):
+        bad.append("an integration test must be test-only")
+    if not is_test_only("packages/testing/nros-tests/bins/p/src/main.rs"):
+        bad.append("the test crate must be test-only")
+    if is_test_only("packages/rmw/cffi/src/lib.rs"):
+        bad.append("a runtime source must not be test-only")
+    rt = runtime_code("x.rs", "fn a(vt: &V) {}\n#[cfg(test)]\nmod t {\n fn b(vt: &V) { vt.take.is_some(); }\n}\n")
+    if consumers_in(rt, {"take"}):
+        bad.append("a #[cfg(test)] reader must not count")
 
     slots = {"take", "publish", "set_log_severity"}
     if producers_in("/*take*/ nullptr,\n/*publish*/ &do_publish,\n", slots) != {"publish"}:

@@ -17,7 +17,6 @@ scripts/check-cargo-locked.sh
 scripts/check-cargo-profile-mirror.sh
 scripts/check-cbindgen-pin.sh
 scripts/check-cli-fresh.sh
-scripts/check-cmake-find-program-shadowed.py
 scripts/check-cpp-ffi-error-mapping.py
 scripts/check-deploy-board-resolves.py
 scripts/check-doc-refs.sh
@@ -30,7 +29,6 @@ scripts/check-fixture-groups.py
 scripts/check-fixture-id-guard.sh
 scripts/check-flavour-lanes.py
 scripts/check-generated-leaf-regenerable.sh
-scripts/check-goal-cdr-stripped.py
 scripts/check-image-panic-policy.py
 scripts/check-interface-glob-configure-depends.py
 scripts/check-lane-scope-consumers.py

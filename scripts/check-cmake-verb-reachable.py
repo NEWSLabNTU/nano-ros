@@ -44,6 +44,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import comments  # noqa: E402
 # A PUBLIC verb: `nano_ros_*`, no leading underscore. `_nros_*` / `_nano_ros_*`
 # are internal by this tree's convention and carry no promise to a reader.
 VERB_RE = re.compile(r"^\s*(?:function|macro)\(\s*(nano_ros_[a-z0-9_]+)", re.M)
@@ -82,9 +84,27 @@ def referenced_from_elsewhere(rel: str, verbs: set[str]) -> list[str]:
             text=True,
         )
         for line in r.stdout.splitlines():
-            if line and line != rel:
+            if line and line != rel and names_in_code(ROOT / line, needle):
                 hits.add(line)
     return sorted(hits)
+
+
+def names_in_code(path: Path, needle: str) -> bool:
+    """Issue 1617 (W3): a reference is CODE that names the module or verb.
+
+    Prose cannot reach a cmake module: a Markdown page, or a comment, that
+    mentions it is exactly what a dead module accumulates. So a referrer must
+    be a language `scripts/lib/comments.py` models (cmake, shell, just, python,
+    Rust, C/C++, TOML, YAML), and the needle must survive comment stripping.
+    """
+    lang = comments.lang_for(path)
+    if lang is None:
+        return False
+    try:
+        text = path.read_text(errors="replace")
+    except OSError:
+        return False
+    return needle in comments.strip_comments(text, lang)
 
 
 def run(list_only: bool) -> int:
@@ -153,6 +173,17 @@ def self_test() -> bool:
         "a call site is not mistaken for a definition",
         VERB_RE.findall("    nano_ros_link_rmw(app)") == [],
     )
+    chk(
+        "a Markdown mention is not a reference",
+        not names_in_code(Path("docs/x.md"), "nano_ros_x"),
+    )
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        c = Path(td) / "a.cmake"
+        c.write_text("# include(NanoRosDead.cmake)\n")
+        chk("a commented include is not a reference", not names_in_code(c, "NanoRosDead.cmake"))
+        c.write_text('include("${D}/NanoRosDead.cmake")\n')
+        chk("a real include is a reference", names_in_code(c, "NanoRosDead.cmake"))
     # The live tree must contain at least one module with a public verb, or the
     # discovery half is broken and every run would pass over nothing.
     chk("discovery finds modules in this tree", len(modules_with_verbs()) > 0)

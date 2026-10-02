@@ -56,7 +56,11 @@ WORKFLOWS = os.path.join(ROOT, ".github", "workflows")
 DOCTOR = re.compile(r"\brunner-doctor\b")
 # `just setup <scope>` -- the provisioning verb (phase-411: a CI job is
 # `just setup <scope>` then one command a developer can type).
-SETUP = re.compile(r"\bjust\s+setup\b")
+# `just setup` / `just setup <tier>` provisions; `just setup-cli` and
+# `just setup-launch-resolve` are different recipes that provision nothing a
+# runner label asserts (issue 1617: `\b` matched them, so a composite action
+# that ran `setup-cli` earlier credited any later doctor as "after setup").
+SETUP = re.compile(r"\bjust\s+setup(?![-\w])")
 
 
 def step_kinds(steps):
@@ -81,13 +85,16 @@ def violations(steps):
 
 
 def load_workflows():
-    import yaml
+    """Every workflow AND every local composite action (issue 1617, W1).
 
-    docs = []
-    for path in sorted(glob.glob(os.path.join(WORKFLOWS, "*.yml"))):
-        with open(path, encoding="utf8") as fh:
-            docs.append((os.path.basename(path), yaml.safe_load(fh)))
-    return docs
+    A composite action's steps run in its caller's job, so a doctor-before-
+    setup pair inside `.github/actions/*/action.yml` is the same defect.
+    Reading `.github/workflows/*.yml` only left that file outside the rule.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+    import workflow_commands
+
+    return [(str(p), d) for p, d in workflow_commands.load_workflows(include_actions=True)]
 
 
 def scan(docs):
@@ -126,6 +133,7 @@ def self_test():
         (steps("just runner-doctor nros-big", "just setup tier2", "just setup zephyr"), [0]),
         # a checkout before either is not a step this gate has an opinion about
         (steps("git submodule update --init", "just setup tier2", "just runner-doctor x"), []),
+        (steps("just setup-cli", "just runner-doctor x", "just setup tier1"), [1]),
     ]
     failures = 0
     for i, (s, want) in enumerate(cases):
@@ -135,6 +143,12 @@ def self_test():
             failures += 1
 
     # A step with no `run:` (a `uses:` step) must not crash the scan.
+    comp = {"jobs": {"(composite action)": {"steps": steps(
+        "bash scripts/ci/runner-doctor.sh", "just setup tier1")}}}
+    if scan([("action.yml", comp)])[0] == []:
+        print("  self-test FAIL: a composite action's pair was not read")
+        failures += 1
+
     if violations([{"uses": "actions/checkout@v4"}, {"run": "just setup tier2"}]) != []:
         print("  self-test FAIL: a `uses:` step was not tolerated")
         failures += 1

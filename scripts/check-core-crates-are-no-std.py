@@ -45,6 +45,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402
 from core_crates import (  # noqa: E402
     core_crate_paths,
     layout,
@@ -74,7 +75,9 @@ def offenders(roots=None, repo=None):
         if not lib.is_file():
             out.append((rel, "no src/lib.rs"))
             continue
-        text = lib.read_text(errors="replace")
+        # issue 1617 (W3): a `#![no_std]` inside a block comment is not an
+        # attribute. Match the CODE, via the one Rust comment stripper.
+        text = comments.strip_comments(lib.read_text(errors="replace"), "rust")
         if UNCONDITIONAL.search(text):
             continue
         if CONDITIONAL.search(text):
@@ -109,6 +112,8 @@ def self_test():
         ),
         ("// nothing\n", 1, "no `#![no_std]` at all", "missing is caught"),
         ("//! docs\n#![no_std]\n", 0, None, "unconditional after a doc comment passes"),
+        ("/*\n#![no_std]\n*/\n", 1, "no `#![no_std]` at all", "a block-commented attribute is caught"),
+        ("// #![no_std]\n", 1, "no `#![no_std]` at all", "a line-commented attribute is caught"),
     ]
     failures = 0
     with tempfile.TemporaryDirectory() as td:

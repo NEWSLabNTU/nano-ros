@@ -88,9 +88,17 @@ def known_targets(root: Path) -> set[str]:
         cwd=root,
     ).stdout.split()
 
+    members = workspace_members(root)
     targets: set[str] = set()
     for f in files:
         p = Path(f)
+        # issue 1617 (W8): `.config/nextest.toml` configures the ROOT
+        # workspace's `cargo nextest`, so only its members' targets exist for
+        # it. A `tests/integration_tests.rs` in `packages/cli` (another
+        # workspace) or an example leaf satisfied `binary(integration_tests)`.
+        crate = p.parent.parent if p.suffix == ".rs" else p.parent
+        if not _member_of(crate, members):
+            continue
         if p.suffix == ".rs" and p.parent.name == "tests":
             targets.add(p.stem)
         elif p.name == "Cargo.toml":
@@ -105,6 +113,22 @@ def known_targets(root: Path) -> set[str]:
             if isinstance(pkg, dict) and "name" in pkg:
                 targets.add(str(pkg["name"]).replace("-", "_"))
     return targets
+
+
+def workspace_members(root: Path) -> list[str]:
+    """The root workspace's member globs (`[workspace] members`, minus `exclude`)."""
+    doc = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
+    ws = doc.get("workspace") or {}
+    members = [m.rstrip("/") for m in ws.get("members") or []]
+    if "package" in doc:
+        members.append(".")
+    return [m for m in members if m not in set(ws.get("exclude") or [])]
+
+
+def _member_of(crate: Path, members: list[str]) -> bool:
+    import fnmatch
+    c = crate.as_posix() or "."
+    return any(fnmatch.fnmatchcase(c, m) for m in members)
 
 
 def filters(doc: dict):
@@ -163,6 +187,13 @@ SELF_TESTS = [
 
 def self_test() -> int:
     failures = 0
+    # Membership: a target of ANOTHER workspace is not one of ours.
+    mem = ["packages/api/nros", "packages/rmw/*"]
+    for crate, want in (("packages/api/nros", True), ("packages/rmw/x", True),
+                        ("packages/cli/cargo-nano-ros", False), ("examples/a/b", False)):
+        if _member_of(Path(crate), mem) != want:
+            print(f"  [FAIL] membership of {crate} should be {want}")
+            failures += 1
     with tempfile.TemporaryDirectory() as td:
         for name, body, targets, expected in SELF_TESTS:
             f = Path(td) / "nextest.toml"
