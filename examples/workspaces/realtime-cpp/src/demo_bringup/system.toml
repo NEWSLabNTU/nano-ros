@@ -215,7 +215,7 @@ board = "qemu-armv7a-nuttx"
 board = "rv-virt-nuttx"
 
 [image.zephyr]
-board = "native_sim/native/64"
+board = "zephyr"
 conf = ["prj-zenoh.conf"]
 # phase-470 W5.b3 (issue 1288) — the west application is GENERATED, so no
 # `entry =`: a generated application is found by construction at

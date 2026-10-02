@@ -54,11 +54,13 @@ use super::board_descriptor::{BoardCatalog, BoardDescriptor, DeployResolution};
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ImageBlock {
-    /// nano-ros board id — resolved through `packages/boards/board-support.toml`
-    /// (RFC-0065 D9). NEVER a framework's own board string: the registry
-    /// carries `framework_board` for platforms that have one, so
-    /// `native_sim/native/64` is a resolution RESULT, not something authored
-    /// here.
+    /// nano-ros board id — resolved through the board catalog
+    /// (`packages/boards/**/nros-board.toml`, RFC-0065 D9). NEVER a
+    /// framework's own board string: the descriptor carries that
+    /// ([`BoardDescriptor::framework_board`] — `[board.zephyr] west_board`),
+    /// so `native_sim/native/64` is a resolution RESULT, not something
+    /// authored here. Authoring it is refused (issue 1519,
+    /// [`refuse_framework_board`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub board: Option<String>,
 
@@ -621,11 +623,13 @@ mod selection_tests {
 /// `Ambiguous` without knowing which image asked, and a user needs the image id
 /// to find the line to fix.
 ///
-/// Note this is also why D9 needs no new registry field. A descriptor already
-/// carries the downstream ecosystem's board id among its `names` — Zephyr's
-/// `native_sim/native/64` sits beside `zephyr` in
-/// `packages/boards/zephyr/nros-board.toml` — so both spellings already resolve
-/// to one descriptor.
+/// One rule is added on top, and it is the field's own: an image authors the
+/// NANO-ROS id, never the framework's (issue 1519). A descriptor's framework
+/// id still resolves — `[board.zephyr] west_board` answers through
+/// [`BoardDescriptor::answers_to`], because a `[deploy.*].board` legitimately
+/// carries it (issue 0606) — so an image spelling it would build. It is
+/// refused here instead, naming the id to write
+/// ([`refuse_framework_board`]).
 /// An image's `launch`, checked against the bringup's `launch/` directory.
 ///
 /// phase-383 W10.a. W9.a wrote three images whose `launch` was a fragment of
@@ -722,7 +726,50 @@ pub fn resolve_image_board<'c>(
              compile for."
         ));
     };
-    resolve_board_id(catalog, &format!("[image.{image_id}] board"), board)
+    let origin = format!("[image.{image_id}] board");
+    let d = resolve_board_id(catalog, &origin, board)?;
+    refuse_framework_board(&origin, board, d)?;
+    Ok(d)
+}
+
+/// Issue 1519 — an `[image.*] board` that spells the FRAMEWORK's board id
+/// (`native_sim/native/64`, `mps2_an385`, …) rather than the nano-ros one.
+///
+/// [`ImageBlock::board`] says never to author it, and for a year the tree did
+/// anyway: 13 rows wrote `native_sim/native/64`, and they reached the right
+/// `west build -b` only because the `zephyr` descriptor carried that string as
+/// a second NAME. The other 24 Zephyr rows wrote `zephyr` — both readings of
+/// one rule, live at once, with the forbidden one the one that worked.
+///
+/// So the id is resolved first (an unknown board keeps its own, more useful
+/// error), and only then compared with what the descriptor states as its
+/// framework id ([`BoardDescriptor::framework_board`]). A descriptor whose ONLY
+/// name is its framework id has nothing better to offer, so it is accepted —
+/// refusing would leave no legal spelling.
+///
+/// Applies to images only. `[deploy.*].board` carries the downstream id by
+/// design (issue 0606).
+pub fn refuse_framework_board(
+    origin: &str,
+    board: &str,
+    descriptor: &BoardDescriptor,
+) -> Result<(), String> {
+    if descriptor.framework_board() != Some(board) {
+        return Ok(());
+    }
+    let Some(id) = descriptor.names.iter().find(|n| n.as_str() != board) else {
+        return Ok(());
+    };
+    Err(format!(
+        "`{origin} = \"{board}\"` is the FRAMEWORK's board id, not a nano-ros one. \
+         Write `board = \"{id}\"`: an image names the nano-ros board, and the \
+         descriptor ({}) states `{board}` as the id `west build -b` receives, so \
+         the build is unchanged (issue 1519).",
+        descriptor
+            .source
+            .as_deref()
+            .unwrap_or("in-memory descriptor")
+    ))
 }
 
 /// Resolve a board id through the catalog's ONE rule
@@ -780,12 +827,15 @@ mod board_tests {
 
     const BOARDS: &str = r##"
 [[board]]
-names = ["zephyr", "native_sim/native/64"]
+names = ["zephyr"]
 platform = "zephyr"
 toolchain = "stable"
 platform_feature = "platform-zephyr"
 link_kind = "none"
 entry_kind = "zephyr-staticlib"
+
+[board.zephyr]
+west_board = "native_sim/native/64"
 
 [[board]]
 names = ["mps2-an385-freertos"]
@@ -816,23 +866,44 @@ entry_kind = "board-run"
         assert_eq!(d.platform_feature, "platform-freertos");
     }
 
+    /// Issue 1519 — the framework id RESOLVES (a `[deploy.*].board` needs it
+    /// to), but an image may not author it, and the refusal names the id to
+    /// write instead.
     #[test]
-    fn resolves_the_framework_board_string_as_an_alias() {
-        // D9 needs no new registry field: the descriptor already carries the
-        // downstream ecosystem's id among its `names`.
+    fn an_image_authoring_the_framework_board_string_is_refused() {
         let cat = catalog();
-        let d = resolve_image_board(&cat, "zephyr", &image_with_board("native_sim/native/64"))
-            .expect("resolves");
-        assert_eq!(d.platform_feature, "platform-zephyr");
+        let e = resolve_image_board(&cat, "zephyr", &image_with_board("native_sim/native/64"))
+            .expect_err("the framework id is not an image board");
+        assert!(e.contains("[image.zephyr] board"), "names the line: {e}");
+        assert!(e.contains("board = \"zephyr\""), "names the fix: {e}");
+        assert!(e.contains("1519"), "{e}");
+        // The SAME string still resolves for a deploy (issue 0606).
+        assert!(matches!(
+            cat.resolve_deploy("native_sim/native/64"),
+            DeployResolution::Board(_)
+        ));
     }
 
+    /// The nano-ros id reaches the same `-b` the framework id used to author.
     #[test]
-    fn both_spellings_reach_the_same_descriptor() {
+    fn the_nano_ros_id_reaches_the_framework_board() {
         let cat = catalog();
-        let a = resolve_image_board(&cat, "z", &image_with_board("zephyr")).expect("a");
-        let b =
-            resolve_image_board(&cat, "z", &image_with_board("native_sim/native/64")).expect("b");
-        assert_eq!(a.platform_feature, b.platform_feature);
+        let d = resolve_image_board(&cat, "z", &image_with_board("zephyr")).expect("resolves");
+        assert_eq!(d.west_build_board("zephyr"), "native_sim/native/64");
+    }
+
+    /// A descriptor whose only name IS its framework id has no better spelling
+    /// to offer, so refusing would leave none.
+    #[test]
+    fn a_framework_id_that_is_the_only_name_is_accepted() {
+        let f: BoardFile = toml::from_str(
+            "[[board]]\nnames = [\"mps2_an385\"]\nplatform = \"zephyr\"\n\
+             toolchain = \"stable\"\nentry_kind = \"zephyr-staticlib\"\n\
+             [board.zephyr]\nwest_board = \"mps2_an385\"\n",
+        )
+        .expect("parse");
+        let cat = BoardCatalog::from_descriptors(f.boards);
+        resolve_image_board(&cat, "z", &image_with_board("mps2_an385")).expect("accepted");
     }
 
     #[test]

@@ -47,18 +47,23 @@ fn every_table_key_maps_to_its_family_through_every_consumer() {
 /// An unknown key is an error at every consumer: never `Native`, never
 /// `posix`. The error names the known keys.
 ///
-/// `native_sim/native/64` was in this list until phase-445 W5, and should not
-/// have been: it is the zephyr descriptor's SECOND NAME
-/// (`packages/boards/zephyr/nros-board.toml` `names = ["zephyr",
-/// "native_sim/native/64"]`), and five workspace bringups — C and C++ among
-/// them — spell their Zephyr image's board exactly that way. A key a bringup
-/// can write is not an unknown key; leaving it out of the family table is the
-/// shape issue 1285 fixed one spelling of. `rtic-mps2-an385` takes its place
-/// here: a real Rust key whose board has no RTOS, so asking its family is an
-/// error by design rather than by omission.
+/// `native_sim/native/64` was in this list until phase-445 W5, left it while
+/// five bringups authored it as an image board (it was the zephyr
+/// descriptor's second NAME then), and is back since issue 1519: it is
+/// Zephyr's id for the board, `[board.zephyr] west_board`, which no image may
+/// author — `nros build` refuses it naming `zephyr` — so no consumer may
+/// accept it as a key either. `rtic-mps2-an385` is here as a real Rust key
+/// whose board has no RTOS, so asking its family is an error by design rather
+/// than by omission.
 #[test]
 fn an_unknown_key_errors_at_every_consumer() {
-    for key in ["zigos", "esp32-qemu", "mps2-an385", "rtic-mps2-an385"] {
+    for key in [
+        "zigos",
+        "esp32-qemu",
+        "mps2-an385",
+        "rtic-mps2-an385",
+        "native_sim/native/64",
+    ] {
         let err = board_family(key).expect_err(key).to_string();
         for known in known_board_keys() {
             assert!(
@@ -461,8 +466,12 @@ fn the_framework_agrees_with_the_descriptors_entry_kind() {
         "only {checked} BOARD_PATHS keys were matched to a descriptor — the name \
          matching has probably broken, so this test is checking nothing"
     );
+    // ONE since issue 1519: the floor was 2 while the zephyr board had two
+    // keys (`zephyr` and its Zephyr id `native_sim/native/64`), and that second
+    // key was retired with the framework spelling. The point of the floor —
+    // the zephyr shape is represented at all — needs only one.
     assert!(
-        zephyr_keys >= 2,
+        zephyr_keys >= 1,
         "only {zephyr_keys} matched key(s) belong to a `zephyr-staticlib` board — the \
          one shape this test can actually name is unrepresented, so it is checking \
          nothing that matters"

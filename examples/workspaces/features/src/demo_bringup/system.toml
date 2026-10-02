@@ -344,10 +344,11 @@ launch = "rust_remap.launch.xml"
 # `.config` against each image's pre-migration baseline afterwards.
 #
 # `board = "zephyr"` is the descriptor id, and it projects to the west board
-# `native_sim/native/64` through `BoardDescriptor::west_build_board` — so this
-# and `examples/workspaces/rust`'s literal spelling reach the SAME `-b` and the
-# SAME `boards/<board>/` directory (W5.a fixed that descriptor; verified here
-# with `--dry-run` rather than assumed).
+# `native_sim/native/64` through `BoardDescriptor::west_build_board` — the SAME
+# `-b` and the SAME `boards/<board>/` directory every Zephyr image reaches (W5.a
+# fixed that descriptor; verified here with `--dry-run` rather than assumed).
+# Issue 1519 then migrated the images that wrote the literal Zephyr spelling to
+# this one, and an image writing it is refused.
 [image.zephyr_rust_lifecycle]
 board = "zephyr"
 conf = ["prj-zenoh.conf"]

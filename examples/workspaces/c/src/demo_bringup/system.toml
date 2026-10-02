@@ -151,7 +151,7 @@ board = "rv-virt-threadx"
 board = "threadx-linux"
 
 [image.zephyr]
-board = "native_sim/native/64"
+board = "zephyr"
 conf = ["prj-zenoh.conf"]
 # phase-470 W5.b3 (issue 1288) — the west application is GENERATED, and this is
 # the one fact its hand-written predecessor stated that no other declaration

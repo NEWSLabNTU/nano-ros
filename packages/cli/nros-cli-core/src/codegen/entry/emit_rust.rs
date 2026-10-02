@@ -233,7 +233,7 @@ const RENDERED_FRAMEWORK: &str = "owned-spin";
 /// the board wants. MEASURED, by compiling the rendering of each key against
 /// stub crates carrying the board ZSTs' real impl sets:
 ///
-/// - `zephyr` / `native_sim/native/64` → `ZephyrBoard`, which implements
+/// - `zephyr` → `ZephyrBoard`, which implements
 ///   `BoardInit` / `BoardPrint` / `BoardExit` and **no** `BoardEntry`
 ///   (Zephyr owns `main`; the macro's `Framework::Zephyr` arm emits a
 ///   `rust_main` staticlib export instead) —
@@ -603,7 +603,6 @@ mod tests {
                 "esp32-qemu",
                 "esp32-c3-baremetal",
                 "zephyr",
-                "native_sim/native/64",
                 "rtic-mps2-an385",
                 "qemu-rtic-mps2-an385",
             ],

@@ -53,8 +53,13 @@ pub struct EntryScaffold {
     pub bringup_dir: PathBuf,
     /// Cargo workspace root whose `exclude` list gains this package.
     pub workspace_root: PathBuf,
-    /// Zephyr board target, e.g. `native_sim/native/64`.
+    /// The image's board — a NANO-ROS id (`zephyr`), written into
+    /// `[image.<id>] board` (issue 1519).
     pub board: String,
+    /// The id `west build -b` receives for it (`native_sim/native/64`),
+    /// resolved through the board catalog. Names Zephyr's per-board
+    /// `boards/<board>.conf`, which is Zephyr's spelling, not ours.
+    pub west_board: String,
     /// RMW backend, e.g. `zenoh`.
     pub rmw: String,
 }
@@ -190,9 +195,9 @@ pub fn scaffold_entry(cfg: &EntryScaffold) -> Result<EntryScaffoldOut> {
     // native_sim needs it to be useful at all: without NSOS the image takes
     // the `zeth` TAP driver, which needs a host interface set up as root, and
     // a scaffold whose output cannot run unprivileged is not a starting point.
-    if let Some(board_conf) = render_board_conf(&cfg.board) {
+    if let Some(board_conf) = render_board_conf(&cfg.west_board) {
         put(
-            &format!("boards/{}.conf", sanitize_board(&cfg.board)),
+            &format!("boards/{}.conf", sanitize_board(&cfg.west_board)),
             board_conf,
         )?;
     }

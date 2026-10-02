@@ -327,17 +327,15 @@ mod resolve_target_block_tests {
     fn resolve_target_block_refuses_a_key_no_block_carries_and_lists_the_blocks() {
         // The island's hand-run form: a platform-rmw pair where a block key
         // goes, on a bringup whose real Zephyr image is called something else.
-        let s = sys(
-            "[image.zephyr_native_sim]\nboard=\"native_sim/native/64\"\n\
+        let s = sys("[image.zephyr_native_sim]\nboard=\"zephyr\"\n\
              [image.native]\nboard=\"native\"\n\
-             [deploy.robot]\nkind=\"flash\"\nboard=\"qemu-armv7a-nuttx\"\n",
-        );
+             [deploy.robot]\nkind=\"flash\"\nboard=\"qemu-armv7a-nuttx\"\n");
         let err = resolve(Some("zephyr-cyclonedds"), &s)
             .expect_err("a key no block carries must not resolve to the host")
             .to_string();
         assert!(err.contains("--target `zephyr-cyclonedds`"), "{err}");
         assert!(
-            err.contains("[image.zephyr_native_sim]  board = \"native_sim/native/64\""),
+            err.contains("[image.zephyr_native_sim]  board = \"zephyr\""),
             "the refusal names the block to use, with its board: {err}"
         );
         assert!(err.contains("[image.native]  board = \"native\""), "{err}");
@@ -354,10 +352,8 @@ mod resolve_target_block_tests {
 
     #[test]
     fn resolve_target_block_accepts_an_image_key_and_a_deploy_key() {
-        let s = sys(
-            "[image.zephyr_native_sim]\nboard=\"native_sim/native/64\"\n\
-             [deploy.robot]\nkind=\"flash\"\n",
-        );
+        let s = sys("[image.zephyr_native_sim]\nboard=\"zephyr\"\n\
+             [deploy.robot]\nkind=\"flash\"\n");
         assert_eq!(
             resolve(Some("zephyr_native_sim"), &s).expect("an image key resolves"),
             Some("zephyr_native_sim".to_string())
@@ -2040,7 +2036,7 @@ priority = 10
 priority = 9
 
 [image.zephyr_native_sim]
-board = "native_sim/native/64"
+board = "zephyr"
 launch = "system.launch.xml"
 entry = "zephyr_app"
 "#,
@@ -2142,7 +2138,7 @@ execution:
             .to_string();
         assert!(
             err.contains("--target `zephyr-zenoh`")
-                && err.contains("[image.zephyr_native_sim]  board = \"native_sim/native/64\""),
+                && err.contains("[image.zephyr_native_sim]  board = \"zephyr\""),
             "the refusal names the key given and the key to use: {err}"
         );
         assert!(
@@ -2200,7 +2196,7 @@ launch = "system.launch.xml"
 # And a Zephyr image whose block carries the host's name. Legal: the block
 # namespace is the author's, and nothing ties it to a platform.
 [image.native]
-board = "native_sim/native/64"
+board = "zephyr"
 launch = "system.launch.xml"
 "#,
         )
@@ -2991,7 +2987,7 @@ class = "alpha_pkg::Node"
 name = "alpha"
 
 [package.metadata.nros.deploy.native]
-board = "native_sim/native/64"
+board = "zephyr"
 rmw = "zenoh"
 domain_id = 7
 locator = "tcp/127.0.0.1:7447"
@@ -3198,7 +3194,7 @@ class = "nros_zephyr_action_client::Node"
 name = "action_client"
 
 [package.metadata.nros.deploy.zephyr]
-board = "native_sim/native/64"
+board = "zephyr"
 rmw = "cyclonedds"
 domain_id = 5
 "#,

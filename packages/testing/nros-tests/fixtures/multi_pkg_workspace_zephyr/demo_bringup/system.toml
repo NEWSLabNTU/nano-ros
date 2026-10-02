@@ -28,6 +28,6 @@ name = "listener"
 # a generated entry would be `zephyr_native_sim_entry`, and this one is
 # hand-written — which is exactly the case `entry =` exists for.
 [image.zephyr_native_sim]
-board = "native_sim/native/64"
+board = "zephyr"
 launch = "system.launch.xml"
 entry = "zephyr_app"

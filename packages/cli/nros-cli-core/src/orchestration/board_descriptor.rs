@@ -526,10 +526,10 @@ pub struct BoardDescriptor {
 pub struct BoardZephyr {
     /// Zephyr `BOARD` string, hwv2 `<board>/<soc>/<variant>` form.
     ///
-    /// The one irreducible fact. Note it is also what `names` was being used to
-    /// smuggle: the `zephyr` descriptor declares
+    /// The one irreducible fact. It is also what `names` was once used to
+    /// smuggle: the `zephyr` descriptor declared
     /// `names = ["zephyr", "native_sim/native/64"]`, a real name beside a
-    /// Zephyr id, because there was nowhere else to put the second one.
+    /// Zephyr id, until issue 1519 moved the id here.
     pub west_board: String,
     /// Zephyr-SDK toolchain ABI target (`aarch64-zephyr-elf`). `None` for a
     /// board built with the SDK's default for its arch.
@@ -694,9 +694,13 @@ impl BoardDescriptor {
     /// second is a DERIVATION, not a second place to write a name: a Zephyr
     /// build is configured with `BOARD=<id>`, so an id has to resolve, and
     /// before RFC-0064 R5 the id was smuggled into `names` instead — the
-    /// `zephyr` descriptor still reads
-    /// `names = ["zephyr", "native_sim/native/64"]`, one real name beside a
-    /// board id, because there was nowhere else to put the second.
+    /// `zephyr` descriptor read `names = ["zephyr", "native_sim/native/64"]`
+    /// until issue 1519.
+    ///
+    /// Answering to a framework id is not the same as an IMAGE being allowed
+    /// to author it: a `[deploy.*].board` carries the downstream ecosystem's
+    /// id (issue 0606), an `[image.*] board` never does
+    /// ([`crate::orchestration::image::refuse_framework_board`]).
     ///
     /// It also replaces what `attach_bundle_aliases` used to do by reading a
     /// bundle's `board.cmake` and pushing its `NROS_BOARD_ZEPHYR_ID` onto
@@ -705,6 +709,20 @@ impl BoardDescriptor {
     pub fn answers_to(&self, key: &str) -> bool {
         self.names.iter().any(|n| n == key)
             || self.zephyr.as_ref().is_some_and(|z| z.west_board == key)
+    }
+
+    /// The framework's OWN id for this board, when the descriptor states one:
+    /// the board-agnostic [`Self::west_board`], else [`BoardZephyr::west_board`].
+    ///
+    /// Issue 1519 — this is the string an `[image.*] board` must NOT author
+    /// (see [`crate::orchestration::image::refuse_framework_board`]). It still
+    /// RESOLVES through [`Self::answers_to`], because a `[deploy.*].board`
+    /// legitimately carries the downstream ecosystem's id (issue 0606).
+    #[must_use]
+    pub fn framework_board(&self) -> Option<&str> {
+        self.west_board
+            .as_deref()
+            .or_else(|| self.zephyr.as_ref().map(|z| z.west_board.as_str()))
     }
 
     /// The string `west build -b` receives for this board, given the id the
@@ -718,17 +736,15 @@ impl BoardDescriptor {
     /// exactly when the image authors a Zephyr board string, the thing
     /// [`crate::orchestration::image::ImageBlock::board`] says never to author.
     ///
-    /// The authored id remains the last resort, because the `zephyr`
-    /// descriptor states no `[board.zephyr]` at all and instead carries
-    /// `native_sim/native/64` as a second NAME — the smuggling the field was
-    /// added to retire. Retiring it changes `-b` for every image that spells
-    /// that board, so it is tracked separately, not done here.
+    /// The authored id remains the last resort, for a descriptor that states
+    /// no framework id at all. Every in-tree Zephyr descriptor states one now:
+    /// issue 1519 moved the `zephyr` descriptor's `native_sim/native/64` out
+    /// of `names` and into `[board.zephyr]`, and migrated the images that
+    /// authored it to `board = "zephyr"` — measured, `-b` unchanged for each.
     #[must_use]
     pub fn west_build_board(&self, authored: &str) -> String {
-        self.west_board
-            .clone()
-            .or_else(|| self.zephyr.as_ref().map(|z| z.west_board.clone()))
-            .unwrap_or_else(|| authored.to_string())
+        self.framework_board()
+            .map_or_else(|| authored.to_string(), str::to_string)
     }
 
     /// Board-crate path relative to the workspace root, applying the
@@ -1304,7 +1320,9 @@ impl BoardCatalog {
         // consumers each grew their own directory fallback — the site-config
         // gate, `board-facts`, and the standalone-leaf path — which is three
         // opinions about what a board is called. This is the one rule they now
-        // share; the descriptors carry the downstream ids in `names`.
+        // share. A downstream id answers through `answers_to` (a Zephyr
+        // descriptor's `[board.zephyr] west_board`, issue 1519) or through
+        // `names` for the ecosystems that have no typed field for it.
         let by_dir: Vec<&BoardDescriptor> = self
             .descriptors
             .iter()

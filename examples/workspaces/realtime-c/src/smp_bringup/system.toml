@@ -133,5 +133,5 @@ rmw = "zenoh"
 # the bringup itself (`CONFIG_SMP`), and each fixture row gets its own west
 # build dir.
 [image.zephyr]
-board = "native_sim/native/64"
+board = "zephyr"
 conf = ["prj-zenoh.conf"]

@@ -61,24 +61,59 @@ def descriptor_paths():
     )
 
 
-def descriptors():
-    """`alias -> {directory}`, from `names` plus the directory itself.
+def framework_id(entry):
+    """The framework's own id for a `[[board]]` entry, or None.
 
-    The alias mirrors `BoardDescriptor::directory_alias`: the containing
+    Mirrors `BoardDescriptor::framework_board`: the board-agnostic
+    `west_board`, else `[board.zephyr] west_board`. (A `[[board]]` entry keeps
+    its sub-tables under itself — `[board.zephyr]` parses as `entry["zephyr"]`.)
+    """
+    if entry.get("west_board"):
+        return entry["west_board"]
+    zephyr = entry.get("zephyr")
+    if isinstance(zephyr, dict) and zephyr.get("west_board"):
+        return zephyr["west_board"]
+    return None
+
+
+def descriptors():
+    """`(alias -> {directory}, framework id -> nano-ros id to write instead)`.
+
+    An alias is a `names` entry, the directory itself, or the descriptor's
+    framework id — what `BoardDescriptor::answers_to` + `directory_alias`
+    resolve. The directory alias mirrors `directory_alias`: the containing
     directory's name with any `nros-board-` prefix stripped. A nested
     descriptor's directory carries no prefix (`boards/fvp-aemv8r-smp/`), so it
     is the name itself — which is what makes it addressable at all.
+
+    Issue 1519 — the framework id was missing here, so this gate was NARROWER
+    than `answers_to` (0196's shape): a `[deploy.*].board` naming Zephyr's id
+    resolved for `nros` and failed here, which is half of why that id had been
+    smuggled into `names`. The second map is the other half: for each
+    framework id, the nano-ros name an IMAGE must write instead (`None` when
+    the descriptor has no other name, so there is nothing better to offer —
+    the same exemption `image::refuse_framework_board` makes).
     """
-    out = {}
+    out, framework = {}, {}
     for path in descriptor_paths():
         with open(path, "rb") as fh:
             doc = tomllib.load(fh)
         dir_name = os.path.basename(os.path.dirname(path))
         alias = dir_name[len("nros-board-"):] if dir_name.startswith("nros-board-") else dir_name
         for entry in doc.get("board", []):
-            for name in list(entry.get("names", [])) + [alias]:
+            names = list(entry.get("names", []))
+            fw = framework_id(entry)
+            # `answers_to` derives only the ZEPHYR id; the board-agnostic
+            # `west_board` reaches `-b` and is never a lookup key.
+            zephyr = entry.get("zephyr")
+            answers = names + [alias]
+            if isinstance(zephyr, dict) and zephyr.get("west_board"):
+                answers.append(zephyr["west_board"])
+            for name in answers:
                 out.setdefault(name, set()).add(alias)
-    return out
+            if fw:
+                framework[fw] = next((n for n in names if n != fw), None)
+    return out, framework
 
 
 def deploy_values():
@@ -124,8 +159,82 @@ def deploy_values():
     return out
 
 
+def classify(known, framework, values):
+    """`(unknown, ambiguous, framework_on_image)` — the whole rule, pure.
+
+    `values` maps a board string to its `"<file> [<table>.<name>]"` sites.
+    The image rule (issue 1519) reads the TABLE from that label, so a
+    `[deploy.*]` naming a framework id passes while an `[image.*]` or
+    `[image_defaults]` naming the same string does not — the same split
+    `image::refuse_framework_board` and `tier_resolver` make.
+    """
+    unknown, ambiguous, on_image = [], [], []
+    for value, wheres in sorted(values.items()):
+        dirs = known.get(value)
+        if not dirs:
+            unknown.append((value, wheres))
+            continue
+        if len(dirs) > 1:
+            ambiguous.append((value, sorted(dirs), wheres))
+            continue
+        instead = framework.get(value)
+        if instead:
+            images = [w for w in wheres if "[image." in w or "[image_defaults]" in w]
+            if images:
+                on_image.append((value, instead, images))
+    return unknown, ambiguous, on_image
+
+
+def selftest():
+    """The gate's own red, on every run (`check-gate-selftests`).
+
+    A synthetic catalog with the shape the `zephyr` descriptor has since issue
+    1519 — one name plus a `[board.zephyr] west_board` — and one case of each
+    verdict, plus the two that must PASS (a deploy naming the framework id, and
+    a framework id that is its descriptor's only name). If any comes back
+    wrong, the rule is not being applied and the OK below would mean nothing.
+    """
+    known = {
+        "zephyr": {"zephyr"},
+        "native_sim/native/64": {"zephyr"},
+        "threadx": {"threadx-linux", "threadx-qemu-riscv64"},
+        "lonely_fw": {"lonely"},
+    }
+    framework = {"native_sim/native/64": "zephyr", "lonely_fw": None}
+    values = {
+        "zephyr": ["a/system.toml [image.zephyr]"],
+        "native_sim/native/64": [
+            "a/system.toml [deploy.robot]",
+            "b/system.toml [image.zephyr]",
+            "c/system.toml [image_defaults]",
+        ],
+        "lonely_fw": ["d/system.toml [image.x]"],
+        "threadx": ["e/system.toml [image.t]"],
+        "nonesuch": ["f/system.toml [image.n]"],
+    }
+    unknown, ambiguous, on_image = classify(known, framework, values)
+    problems = []
+    if [v for v, _ in unknown] != ["nonesuch"]:
+        problems.append(f"unknown: {unknown}")
+    if [v for v, _, _ in ambiguous] != ["threadx"]:
+        problems.append(f"ambiguous: {ambiguous}")
+    want = [(
+        "native_sim/native/64",
+        "zephyr",
+        ["b/system.toml [image.zephyr]", "c/system.toml [image_defaults]"],
+    )]
+    if on_image != want:
+        problems.append(f"framework id on an image (a deploy must pass): {on_image}")
+    if problems:
+        sys.exit(
+            "check-deploy-board-resolves: SELFTEST FAILED — the rule no longer "
+            "catches what it exists for:\n  " + "\n  ".join(problems)
+        )
+
+
 def main():
-    known = descriptors()
+    selftest()
+    known, framework = descriptors()
     values = deploy_values()
     if not values:
         sys.exit(
@@ -133,15 +242,9 @@ def main():
             "values — wrong root?"
         )
 
-    unknown, ambiguous = [], []
-    for value, wheres in sorted(values.items()):
-        dirs = known.get(value)
-        if not dirs:
-            unknown.append((value, wheres))
-        elif len(dirs) > 1:
-            ambiguous.append((value, sorted(dirs), wheres))
+    unknown, ambiguous, on_image = classify(known, framework, values)
 
-    if unknown or ambiguous:
+    if unknown or ambiguous or on_image:
         sys.stderr.write("check-deploy-board-resolves: FAILED\n")
         for value, wheres in unknown:
             sys.stderr.write(f"  `{value}` — no descriptor claims it\n")
@@ -151,18 +254,31 @@ def main():
             sys.stderr.write(f"  `{value}` — claimed by {len(dirs)}: {', '.join(dirs)}\n")
             for w in wheres[:2]:
                 sys.stderr.write(f"      {w}\n")
+        for value, instead, wheres in on_image:
+            sys.stderr.write(
+                f"  `{value}` — the FRAMEWORK's board id, on an image; write "
+                f'`board = "{instead}"`\n'
+            )
+            for w in wheres:
+                sys.stderr.write(f"      {w}\n")
         sys.stderr.write(
-            "\n  A `[deploy.*].board` names the DOWNSTREAM ecosystem's board (Zephyr's\n"
-            "  `native_sim/native/64`, PlatformIO's `esp32dev`, NuttX's `qemu-armv7a-nsh`).\n"
-            "  The nano-ros descriptor that covers it must CLAIM that spelling in its\n"
-            "  `names`, or the deploy resolves to nothing and `nros sync` skips the leaf\n"
-            "  with a count rather than a name (issue 0606).\n"
+            "\n  The two tables name a board differently, on purpose:\n"
+            "  * `[image.*].board` (and `[image_defaults]`) is a NANO-ROS board id, a\n"
+            "    descriptor `names` entry such as `zephyr` — never the framework's own\n"
+            "    string. The descriptor states that (`[board.zephyr] west_board`) and\n"
+            "    `nros build` passes it to `west build -b`; an image naming it is\n"
+            "    refused (`ImageBlock::board`, issue 1519).\n"
+            "  * `[deploy.*].board` may name the DOWNSTREAM ecosystem's board (Zephyr's\n"
+            "    `native_sim/native/64`, PlatformIO's `esp32dev`, NuttX's\n"
+            "    `qemu-armv7a-nsh`). It must still resolve to ONE descriptor — a `names`\n"
+            "    entry, the directory, or the descriptor's `[board.zephyr] west_board` —\n"
+            "    or `nros sync` skips the leaf with a count rather than a name (0606).\n"
         )
         return 1
 
     print(
         f"deploy boards resolve: OK ({len(values)} distinct value(s), "
-        f"{len(known)} descriptor alias(es))"
+        f"{len(known)} descriptor alias(es); no image names a framework board id)"
     )
     return 0
 

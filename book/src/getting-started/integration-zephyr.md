@@ -431,7 +431,7 @@ The Zephyr images in `examples/workspaces/*` are the worked examples:
 
 ```toml
 [image.zephyr]
-board = "native_sim/native/64"
+board = "zephyr"
 entry = "zephyr_entry"          # only when several entries match, see below
 conf  = ["prj-zenoh.conf"]      # the RMW overlay this app requires
 ```
@@ -441,8 +441,8 @@ conf  = ["prj-zenoh.conf"]      # the RMW overlay this app requires
   the bringup — the app rung matters because a Zephyr app keeps its
   `prj-<rmw>.conf` next to the `CMakeLists.txt` west builds. These entries
   `FATAL_ERROR` without an RMW overlay, so the image has to say which one.
-* **`board`** is the Zephyr board target — and also a name nano-ros must know.
-  See below.
+* **`board`** is a nano-ros board id, which nano-ros resolves to the Zephyr
+  board target. See below.
 * **`entry`** names the application package. Normally leave it out: an entry
   declares the deploy target it serves — its own `system.toml` in Rust,
   `nano_ros_add_executable(... DEPLOY zephyr)` in `CMakeLists.txt` — and one
@@ -489,15 +489,23 @@ wiring in front of the stock `west build -t run`. Two things worth knowing:
 
 #### Which boards you can name
 
-`board` does two jobs from one string: it is passed to `west build -b`
-verbatim, and it is looked up in nano-ros's board catalog, where a descriptor
-carries a set of names:
+`board` names a board in nano-ros's catalog, and the board's descriptor
+states the Zephyr id `west build -b` receives:
 
 ```toml
-names = ["zephyr", "native_sim/native/64"]
+# packages/boards/zephyr/nros-board.toml
+names = ["zephyr"]                        # what your images say
+
+[board.zephyr]
+west_board = "native_sim/native/64"       # what west is given
 ```
 
-So it is not free-form. A board the catalog does not know is refused with the
+So an image writes `board = "zephyr"`, never `board = "native_sim/native/64"`:
+the Zephyr spelling is the descriptor's to state, and an image that authors it
+is refused with the id to write instead (issue 1519). A `[deploy.*].board` may
+still name the Zephyr id; it resolves to the same descriptor.
+
+Nor is it free-form. A board the catalog does not know is refused with the
 list of ones it does, because the descriptor supplies more than the `-b` string
 — the platform, the toolchain, the entry kind, the declared capabilities. There
 is no safe default for those.
@@ -534,8 +542,9 @@ board = "my-board"
 
 No environment variable, nothing outside the tree, nothing copied into the
 nano-ros checkout. `west_board` is what lets the friendly name be the one your
-workspace uses — leave it out when your board name already *is* the west board
-target, which is what the shipped descriptors do.
+workspace uses, which is also what the shipped Zephyr descriptors do (under
+`[board.zephyr]`). Leave it out only when your board name already *is* the west
+board target and you have no other name for it.
 
 For a board shared by **several** workspaces there is no single workspace to
 put it in, and `$NROS_EXTRA_BOARD_PATH` still covers that: PATH-style, naming

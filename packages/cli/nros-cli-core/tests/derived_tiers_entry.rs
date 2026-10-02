@@ -39,7 +39,7 @@ use nros_cli_core::codegen::entry::{
 };
 
 /// The board key the entry bakes for. The fixture's `[image.zephyr]` names
-/// `native_sim/native/64`; `codegen entry` is given the FAMILY key, which is
+/// `zephyr`; `codegen entry` is given the FAMILY key, which is
 /// what selects the `[tiers.*.zephyr]` sub-table and `ZephyrBoard::run_tiers`.
 const BOARD: &str = "zephyr";
 

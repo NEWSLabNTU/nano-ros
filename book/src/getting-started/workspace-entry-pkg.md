@@ -144,7 +144,7 @@ launch = "multihost.launch.xml"
 args = { host = "robot1" }
 
 [image.zephyr]
-board = "native_sim/native/64"
+board = "zephyr"
 conf = ["prj-zenoh.conf"]
 ```
 
@@ -296,7 +296,7 @@ the row is Zephyr-specific:
 
 ```toml
 [image.zephyr]
-board = "native_sim/native/64"
+board = "zephyr"
 conf  = ["prj-zenoh.conf"]
 ```
 
@@ -322,10 +322,16 @@ coordinate, and `--dry-run` reads it off the image rather than asking you to
 spell it.)
 
 **One workspace covers every Zephyr board.** Zephyr owns its board abstraction,
-so the board is chosen by the image's `board` key (which becomes `west build
--b`) and never baked into a package. Swap `native_sim/native/64` for
-`nrf52840dk/nrf52840` and `prj-zenoh.conf` for `prj-xrce.conf`: what changes is
-which `boards/<board>/` directory is read, and nothing in `src/` at all.
+so the board is chosen by the image's `board` key and never baked into a
+package. That key is a **nano-ros board id** (`zephyr`), never Zephyr's own
+spelling: its board descriptor states the Zephyr id
+(`[board.zephyr] west_board = "native_sim/native/64"`), and that is what
+`west build -b` receives. Writing `board = "native_sim/native/64"` on the image
+is refused, naming the id to use. To target another Zephyr board, name a
+descriptor that states its `west_board` — `nrf52840dk/nrf52840`, say, from a
+board package in your workspace — and swap `prj-zenoh.conf` for
+`prj-xrce.conf`: what changes is which `boards/<board>/` directory is read, and
+nothing in `src/` at all.
 
 The `entry` key exists for the case where *several* packages could answer to
 one image. An application package no longer declares the board it serves —

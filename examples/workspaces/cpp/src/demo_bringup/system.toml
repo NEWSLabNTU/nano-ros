@@ -142,7 +142,7 @@ launch = "service_server.launch.xml"
 board = "threadx-linux"
 
 [image.zephyr]
-board = "native_sim/native/64"
+board = "zephyr"
 conf = ["prj-zenoh.conf"]
 # phase-470 W5.b3 (issue 1288) — `entry = "zephyr_entry"` is GONE, and with it
 # the ambiguity it was added to resolve. That line existed because two images
@@ -163,7 +163,7 @@ conf = ["prj-zenoh.conf"]
 # backend and the bytes reached the OBJECT but not the IMAGE. This entry links
 # `talker_pkg` + `listener_pkg`, so the backend is referenced and survives.
 [image.zephyr_cyclonedds]
-board = "native_sim/native/64"
+board = "zephyr"
 rmw = "cyclonedds"
 conf = ["prj-cyclonedds.conf"]
 # phase-470 W5.b3 (issue 1288) — GENERATED, so no `entry =`. The two images

@@ -312,14 +312,36 @@ pub fn run(args: Args) -> Result<()> {
             None => crate::cmd::new_entry::sole_bringup(&ws_root.join("src"))?,
         };
 
+        // Issue 1519 — `--board` is the image's `board`, so it is a NANO-ROS id
+        // (`zephyr`), never the framework's (`native_sim/native/64`). The
+        // scaffold still needs the framework's id for the one thing it writes
+        // per board — Zephyr's own `boards/<west board>.conf` — so it resolves
+        // the id through the catalog exactly as `nros build` does, which also
+        // refuses a framework string here instead of writing it into the
+        // user's `system.toml`. With no nano-ros checkout to read, the
+        // authored id is all there is, which is what `west_build_board` falls
+        // back to as well.
+        let board = args.board.clone().unwrap_or_else(|| "zephyr".to_string());
+        let west_board = match crate::orchestration::nano_ros_root::resolve(None, &ws_root) {
+            Some(root) => {
+                let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&root)
+                    .map_err(|e| eyre::eyre!("board catalog under {}: {e}", root.display()))?;
+                let image = crate::orchestration::image::ImageBlock {
+                    board: Some(board.clone()),
+                    ..Default::default()
+                };
+                crate::orchestration::image::resolve_image_board(&catalog, &entry_name, &image)
+                    .map_err(|e| eyre::eyre!("{e}"))?
+                    .west_build_board(&board)
+            }
+            None => board.clone(),
+        };
         let out = crate::cmd::new_entry::scaffold_entry(&crate::cmd::new_entry::EntryScaffold {
             entry_dir: into.join(&entry_name),
             bringup_dir: bringup_dir.clone(),
             workspace_root: ws_root,
-            board: args
-                .board
-                .clone()
-                .unwrap_or_else(|| "native_sim/native/64".to_string()),
+            board,
+            west_board,
             rmw: args.rmw.clone().unwrap_or_else(|| "zenoh".to_string()),
         })?;
 

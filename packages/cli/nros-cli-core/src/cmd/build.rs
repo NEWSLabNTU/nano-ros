@@ -4701,7 +4701,7 @@ mod generated_output_collision_tests {
         let t = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(t.path().join("src/zephyr_entry")).unwrap();
         std::fs::write(t.path().join("src/zephyr_entry/CMakeLists.txt"), "").unwrap();
-        let z = img("native_sim/native/64");
+        let z = img("zephyr");
         for d in [Driver::West, Driver::Cargo, Driver::CMake] {
             assert!(
                 generated_outputs(t.path(), "zephyr", &z, "zephyr", d).is_empty(),
