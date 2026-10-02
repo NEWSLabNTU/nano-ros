@@ -490,6 +490,24 @@ pub struct EntityDecl {
 }
 
 impl EntityDecl {
+    /// The topic / service / action name this endpoint REGISTERS on — the one
+    /// spelling every topic-keyed view of this row means (issue 1602).
+    ///
+    /// Not [`Self::name`]: on the metadata-probe road `name` is the entity's
+    /// `id`, which for a subscription is the CALLBACK (`on_chatter`), a name
+    /// that exists nowhere on the wire. The probe carries the written topic in
+    /// [`Self::source_topic`], so that wins where it was stated; every other
+    /// producer leaves it `None` and already puts the topic in `name`.
+    ///
+    /// A row the contract join ATTRIBUTED has `name` rewritten to the
+    /// contract's resolved spelling, and the join attributes only an absolute
+    /// written name with no remaps, so the two agree there by construction.
+    /// An unattributed probe row reports what the source WROTE, which may be
+    /// relative: still the endpoint's own name, never the callback's.
+    pub fn topic(&self) -> Option<&str> {
+        self.source_topic.as_deref().or(self.name.as_deref())
+    }
+
     /// A row that states no QoS policy at all.
     ///
     /// Every producer but `from_model` builds one of these -- the `ENTITIES`
@@ -3328,7 +3346,7 @@ impl EntityInventory {
                         c.pkg,
                         c.component,
                         e.kind.tag(),
-                        match &e.name {
+                        match e.topic() {
                             Some(n) => format!(" on `{n}`"),
                             None => String::new(),
                         }
@@ -3430,7 +3448,7 @@ impl EntityInventory {
                             c.pkg,
                             c.component,
                             e.kind.tag(),
-                            e.name.as_deref().unwrap_or("<unnamed>"),
+                            e.topic().unwrap_or("<unnamed>"),
                             match e.depth {
                                 Some(d) => format!(" with `depth: {d}` beside it"),
                                 None => String::new(),
@@ -3485,11 +3503,11 @@ impl EntityInventory {
                         .ok()
                         .map(|depth| (depth, DepthSource::DerivedFromRates)),
                 };
-                match (resolved, &e.type_name, &e.name) {
+                match (resolved, &e.type_name, e.topic()) {
                     (Some((depth, source)), Some(t), Some(n)) => rows.push(DeclaredDepth {
                         kind: e.kind,
                         type_name: t.clone(),
-                        topic: n.clone(),
+                        topic: n.to_string(),
                         depth,
                         source,
                     }),
@@ -3550,7 +3568,7 @@ impl EntityInventory {
                 if e.kind != EntityKind::Subscription {
                     continue;
                 }
-                let Some(topic) = e.name.as_deref() else {
+                let Some(topic) = e.topic() else {
                     continue;
                 };
                 out.push(QueueDepthDefault {
@@ -3587,7 +3605,7 @@ impl EntityInventory {
                 if !e.kind.carries_qos_depth() {
                     continue;
                 }
-                let Some(topic) = e.name.as_deref() else {
+                let Some(topic) = e.topic() else {
                     continue;
                 };
                 if let Some(d) = diagnose(e.kind.tag(), topic, e.buffer, e.depth) {
@@ -3659,12 +3677,12 @@ impl EntityInventory {
                         // topic cannot be JOINED to anything, so it counts as
                         // undeclared rather than being dropped -- the rule the
                         // depth view applies to the same shape.
-                        if !stated || e.type_name.is_none() || e.name.is_none() {
+                        if !stated || e.type_name.is_none() || e.topic().is_none() {
                             counts[i] += 1;
                         }
                     }
                 }
-                let (Some(t), Some(n)) = (&e.type_name, &e.name) else {
+                let (Some(t), Some(n)) = (&e.type_name, e.topic()) else {
                     continue;
                 };
                 if e.reliability.is_none() && e.durability.is_none() && e.history.is_none() {
@@ -3673,7 +3691,7 @@ impl EntityInventory {
                 rows.push(DeclaredQosPolicies {
                     kind: e.kind,
                     type_name: t.clone(),
-                    topic: n.clone(),
+                    topic: n.to_string(),
                     reliability: e.reliability,
                     durability: e.durability,
                     history: e.history,

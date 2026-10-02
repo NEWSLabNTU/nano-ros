@@ -1,11 +1,12 @@
 ---
 id: 1602
 title: "On the probe road the sizing descriptor's subscription rows name the CALLBACK in `topic`, not the topic"
-status: open
+status: resolved
 type: bug
 area: [tooling, build]
 severity: low
 found: 2026-10-01
+resolved: 2026-10-03
 related: [1265, 1340, 1522, 0827, phase-454, phase-457, rfc-0100]
 ---
 
@@ -47,3 +48,39 @@ that exists nowhere on the wire.
 Prefer `source_topic` over `name` for the row's `topic` where the probe stated
 one (one helper, used by both `endpoint_row` and `tl_rows`), and add a probe-road
 case to the descriptor tests asserting the topic of a subscription row.
+
+## Resolution
+
+One accessor, `EntityDecl::topic()` — `source_topic` where the probe stated
+one, else `name` — and every view that means "the topic" now reads it instead
+of `name`. The class was wider than the two descriptor sites named above: the
+same `name`-as-topic read sat in `declared_depths`, `declared_qos`,
+`queue_depth_defaults`, `buffer_diagnostics`, and the KEEP_ALL / untyped-entity
+refusal prose. Sweep: `git grep -nE '\b(e|d|row|r)\.name\b' --
+'packages/cli/nros-cli-core/src/*.rs'`. The JSON inventory dump keeps `name`
+deliberately: there it is the entity's identity, not a topic.
+
+**What the wrong key cost — measured, and less than the field suggests.**
+`contract_join` REWRITES `name` to the contract's resolved spelling on every row
+it attributes, so every row carrying stated QoS — the only rows the depth/QoS
+tables publish, and the only rows `nros_node::declared_qos::{check,honour}` look
+up by `(type, topic)` — already had the right topic:
+`examples/native/rust/listener`, which has a contract, wrote `topic = "/chatter"`
+before this change. The callback name reached only UNATTRIBUTED probe rows (no
+contract, or a refused join), and there it cost:
+
+* every build-script diagnostic that names a subscription (`nros-rmw-zenoh`'s
+  ring-depth warnings, `nros-rmw-xrce-cffi`'s ring notes) named the callback;
+* `NrosRmwUorbSizing.cmake` dedups its registry by `NROS_SIZING_ENDPOINT_TOPIC`,
+  so a publisher and a subscription on one topic counted twice — an over-count,
+  the safe direction, on a road (uORB/PX4) the probe does not reach today.
+
+No pool was mis-sized.
+
+**Measured after:** `nros sync examples/mps2-an385-baremetal/rust/listener`
+writes `topic = "/chatter"` (was `"on_message"`).
+
+**Test:** `sizing_descriptor::tests::a_probe_road_subscription_row_names_its_topic_not_its_callback`
+goes through the real probe reader (`declaration_from_probe`); with the writer
+reading `name` again it fails with
+`[(Publisher, "/echo"), (Subscription, "on_chatter")]`.
