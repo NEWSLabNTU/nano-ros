@@ -83,14 +83,13 @@ TRACK_HELPERS = {
 }
 
 # path -> reason. A cc-rs compile with no depfile edge, on purpose.
-EXEMPT = {
-    "packages/rmw/zenoh/nros-zpico-build/src/runner.rs": (
-        "issue 1599 (open): adopting the pair bypasses sccache for zenoh-pico, "
-        "the largest C compile in every image group; that cost is to be "
-        "measured and decided there. Until then the runner keeps its hand "
-        "watches (the vendored library tree by directory, its own c/ files)"
-    ),
-}
+#
+# EMPTY since issue 1599: its one entry (`nros-zpico-build/src/runner.rs`) was
+# exempt to keep sccache on zenoh-pico, and the measurement said sccache bought
+# nothing there — its key carries the absolute OUT_DIR paths, so a fresh target
+# dir missed 126 of 134 C compiles and ran SLOWER through the wrapper. A new
+# entry needs the same: a reason, and a tracked issue id if it is "not yet".
+EXEMPT: dict = {}
 
 
 def strip_comments(text: str) -> str:
@@ -108,14 +107,18 @@ def counts(text: str):
     )
 
 
-def classify(text: str, rel: str = "<snippet>"):
-    """Return a list of (rule, detail) violations for one file's text."""
+def classify(text: str, rel: str = "<snippet>", exempt=None):
+    """Return a list of (rule, detail) violations for one file's text.
+
+    `exempt` defaults to `EXEMPT`; the self-test passes its own so the
+    exemption ARM stays tested while the real table is empty."""
+    exempt = EXEMPT if exempt is None else exempt
     n_compile, n_track, n_emit, is_definition = counts(text)
     if is_definition:
         return []
     out = []
     if n_compile:
-        if rel in EXEMPT:
+        if rel in exempt:
             return []
         if not n_emit:
             out.append(
@@ -182,11 +185,12 @@ def self_test():
             next(iter(TRACKED_BY_CONFIGURATOR)),
             [],
         ),
-        ("exempt file", bare, next(iter(EXEMPT)), []),
+        ("exempt file", bare, "<selftest-exempt>", []),
         ("listed track helper", track_only, next(iter(TRACK_HELPERS)), []),
     ]
+    selftest_exempt = {"<selftest-exempt>": "self-test only"}
     for name, text, rel, want in cases:
-        got = [rule for rule, _ in classify(text, rel)]
+        got = [rule for rule, _ in classify(text, rel, {**EXEMPT, **selftest_exempt})]
         if got != want:
             sys.stderr.write(
                 f"check-cc-header-deps: SELF-TEST FAILED on {name}: "
