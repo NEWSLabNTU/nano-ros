@@ -301,15 +301,19 @@ impl BoardEntry for Mps2An385 {
     }
 
     /// Phase-244.D1 — install the XRCE-over-UART custom transport when the
-    /// deploy overlay requests `transport = "xrce"`. `nros::main!()` calls this
+    /// image declares `rmw = "xrce"` over `transport = "serial"`
+    /// ([`DeployOverlay::selects`]). Until issue 1601 this compared
+    /// `deploy.transport` against `"xrce"` — the RMW name, which phase-445 W6
+    /// moved out of the link slot — so the XRCE image booted with no backend.
+    /// `nros::main!()` calls this
     /// immediately before `__register_linked_rmw()`, so the vtable is in place
     /// before the XRCE backend registers (the ordering `set_custom_transport_ops`
     /// requires). Wraps the board's shared CMSDK UART0 (`framing = true` selects
     /// XRCE HDLC framing for the byte-stream link). No-op without the
-    /// `xrce-transport` feature or for any other `transport` value.
+    /// `xrce-transport` feature or for any other `rmw` / `transport` pair.
     fn setup_transport(deploy: &DeployOverlay) {
         #[cfg(feature = "xrce-transport")]
-        if deploy.transport == Some("xrce") {
+        if deploy.selects("xrce", nros_platform::LinkKind::Serial) {
             let ops = crate::xrce_transport::xrce_transport_ops();
             // SAFETY: `ops`' fn pointers are static; XRCE's custom-transport
             // contract (no concurrent read/write, no ISR invocation) is met by
@@ -328,6 +332,16 @@ impl BoardEntry for Mps2An385 {
                 Mps2An385::println(format_args!("XRCE RMW register failed: {err:?}"));
                 Mps2An385::exit_failure();
             }
+        } else if deploy.rmw == Some("xrce") {
+            // Issue 1601 — an XRCE image this board cannot carry must say so
+            // here, not as `no RMW backend is registered` from inside
+            // `Executor::open`: XRCE on this board rides UART0 only.
+            Mps2An385::println(format_args!(
+                "XRCE on qemu-mps2-an385 rides UART0: the image declares rmw = \"xrce\" \
+                 but transport = {:?}; set `[image.<id>] transport = \"serial\"`",
+                deploy.transport.map(nros_platform::LinkKind::name)
+            ));
+            Mps2An385::exit_failure();
         }
         let _ = deploy;
     }

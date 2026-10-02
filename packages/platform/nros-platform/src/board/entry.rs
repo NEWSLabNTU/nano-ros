@@ -59,11 +59,25 @@ pub struct DeployOverlay {
     pub netmask: Option<[u8; 4]>,
     /// `domain_id = 0` — ROS 2 domain. `None` → keep the board default.
     pub domain_id: Option<u32>,
-    /// `transport = "xrce"` — select a board custom transport that must be
-    /// installed BEFORE the linked RMW registers (e.g. an XRCE-over-UART vtable).
-    /// `None` → the board's default transport. Honored by
-    /// [`BoardEntry::setup_transport`] (phase-244.D1).
-    pub transport: Option<&'static str>,
+    /// `[image.<id>] transport = "serial"` — the LINK kind the image rides
+    /// (RFC-0086 D2). `None` → the board's default link. Read by
+    /// [`BoardEntry::setup_transport`] (phase-244.D1), which may install a
+    /// board custom transport for it BEFORE the linked RMW registers.
+    ///
+    /// Typed, not a string (issue 1601): phase-445 W6 moved the leaf key from
+    /// the RMW name (`"xrce"`) to the link kind (`"serial"`), and the one
+    /// board reading it kept comparing against `"xrce"` — a comparison that
+    /// could no longer be true and compiled anyway. A [`LinkKind`] cannot be
+    /// compared against an RMW name.
+    pub transport: Option<LinkKind>,
+    /// `rmw = "xrce"` — the RMW backend the image declares (`[image.<id>]
+    /// rmw` > `[image_defaults] rmw` > `[system] rmw`), verbatim. `None` → not
+    /// declared (a Form 2 entry, or a leaf with no `system.toml`).
+    ///
+    /// The BACKEND choice, which [`transport`](Self::transport) is not: an
+    /// XRCE image over a UART states both, and a board that registers a
+    /// backend keys on this field (issue 1601).
+    pub rmw: Option<&'static str>,
     /// The ROS graph node name for the primary session, baked from the launch
     /// file's single `<node name=…>` / `system.toml` `[[component]].name` (issue
     /// #98). `None` → the board default (`from_env()`'s `"node"`). Only set by
@@ -78,6 +92,52 @@ pub struct DeployOverlay {
     /// read by the board to resolve node_name/locator/domain. `None` on hosted /
     /// when the macro emits no static.
     pub boot_config: Option<&'static nros_platform_api::BakedBootConfig>,
+}
+
+impl DeployOverlay {
+    /// Does the image declare RMW `rmw` riding link `link`? Both halves are
+    /// required: the backend is `rmw`, the link is `[image.<id>] transport`,
+    /// and neither stands in for the other (issue 1601).
+    pub fn selects(&self, rmw: &str, link: LinkKind) -> bool {
+        self.rmw == Some(rmw) && self.transport == Some(link)
+    }
+}
+
+/// The link kind an image rides — `[image.<id>] transport` (RFC-0086 D2).
+///
+/// The same three words as `nros_orchestration_ir::leaf_system::TRANSPORT_KINDS`
+/// (and `nros_platform_config`'s copy), which `nros::main!` maps onto these
+/// variants: an unknown word is refused when the leaf is read, and a word the
+/// macro maps to a variant missing here fails the image's compile. It names a
+/// LINK, never an RMW — `"xrce"` is not one (issue 1601).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinkKind {
+    /// A byte-stream link (UART, USB-CDC, …).
+    Serial,
+    /// TCP over the board's IP stack.
+    Tcp,
+    /// UDP over the board's IP stack.
+    Udp,
+}
+
+impl LinkKind {
+    /// Every link kind, in `TRANSPORT_KINDS` order.
+    pub const ALL: [LinkKind; 3] = [LinkKind::Serial, LinkKind::Tcp, LinkKind::Udp];
+
+    /// The `system.toml` spelling.
+    pub const fn name(self) -> &'static str {
+        match self {
+            LinkKind::Serial => "serial",
+            LinkKind::Tcp => "tcp",
+            LinkKind::Udp => "udp",
+        }
+    }
+
+    /// Parse the `system.toml` spelling; `None` for anything that is not a
+    /// link kind — an RMW name included.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|k| k.name() == name)
+    }
 }
 
 /// Per-board boot driver.
@@ -151,7 +211,7 @@ pub trait BoardEntry: super::Board {
     }
 
     /// **Custom-transport install seam.** Install a board-specific transport
-    /// selected by `deploy.transport`, BEFORE the linked RMW registers
+    /// selected by `deploy.rmw` + `deploy.transport`, BEFORE the linked RMW registers
     /// (phase-244.D1).
     ///
     /// `nros::main!()` always emits a `setup_transport` call (gated on
@@ -164,10 +224,52 @@ pub trait BoardEntry: super::Board {
     /// registered automatically (Zenoh, native sockets, etc.). The only
     /// current override is **`nros-board-mps2-an385`** with the
     /// `xrce-transport` feature, which installs an XRCE-over-UART vtable
-    /// when `deploy.transport == Some("xrce")`. Future boards that need to
+    /// when the image declares `rmw = "xrce"` over `transport = "serial"`
+    /// ([`DeployOverlay::selects`]). Future boards that need to
     /// pre-register a custom transport vtable should override this method in
     /// the same pattern.
     ///
     /// Failures are the board's to handle (it owns `exit_failure`).
     fn setup_transport(_deploy: &DeployOverlay) {}
+}
+
+#[cfg(test)]
+mod link_kind_tests {
+    use super::{DeployOverlay, LinkKind};
+
+    #[test]
+    fn link_kinds_round_trip_and_an_rmw_name_is_not_one() {
+        for k in LinkKind::ALL {
+            assert_eq!(LinkKind::from_name(k.name()), Some(k));
+        }
+        for rmw in ["xrce", "zenoh", "cyclonedds", "uorb"] {
+            assert_eq!(
+                LinkKind::from_name(rmw),
+                None,
+                "`{rmw}` is an RMW, not a link"
+            );
+        }
+    }
+
+    /// Issue 1601: the XRCE-over-UART image declares `rmw = "xrce"` and
+    /// `transport = "serial"`; the board's predicate must answer yes to that
+    /// pair and no when either half is something else.
+    #[test]
+    fn selects_needs_both_the_rmw_and_the_link() {
+        let xrce_uart = DeployOverlay {
+            rmw: Some("xrce"),
+            transport: Some(LinkKind::Serial),
+            ..Default::default()
+        };
+        assert!(xrce_uart.selects("xrce", LinkKind::Serial));
+        assert!(!xrce_uart.selects("zenoh", LinkKind::Serial));
+        assert!(!xrce_uart.selects("xrce", LinkKind::Udp));
+        let zenoh_serial = DeployOverlay {
+            rmw: Some("zenoh"),
+            transport: Some(LinkKind::Serial),
+            ..Default::default()
+        };
+        assert!(!zenoh_serial.selects("xrce", LinkKind::Serial));
+        assert!(!DeployOverlay::default().selects("xrce", LinkKind::Serial));
+    }
 }

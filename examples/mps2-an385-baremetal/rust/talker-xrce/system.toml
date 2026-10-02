@@ -29,8 +29,11 @@ locator = "custom://uart"
 # the sibling `serial-talker`, whose `system.toml` carries the numbers.
 #
 # This key read `transport = "xrce"` until phase-445 W6 — the RMW name, which
-# is `[system] rmw`, in the slot that names the LINK. Nothing read the key, so
-# nothing said so; it is refused now (`leaf_system::TRANSPORT_KINDS`).
+# is `[system] rmw`, in the slot that names the LINK; it is refused now
+# (`leaf_system::TRANSPORT_KINDS`). One thing DID read it: the board's XRCE
+# registration compared it against "xrce", so the rename left this image
+# booting with no backend (issue 1601). The board now keys on `rmw` AND the
+# link (`DeployOverlay::selects`), and the link is a typed `LinkKind`.
 transport = "serial"
 
 # The APP rung (RFC-0049, RFC-0098 D4) — the XRCE session pools, stated by the
