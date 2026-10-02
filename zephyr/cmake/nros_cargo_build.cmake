@@ -815,6 +815,15 @@ function(nros_resolve_knobs)
         # measurements. (The mutex count did not move with a sync group on this
         # line, so the island's 24 stays the binding figure; inits are an UPPER
         # bound on live slots, which is the safe direction for a floor.)
+        #
+        # And on mps2_an385 under QEMU (issue 1498, 2026-10-02), the same
+        # gdb count over a 25 s run against a live router:
+        #   c/talker         (0 sub, 0 qry): 9 mutex, 2 cond
+        #   c/listener       (1 sub, 0 qry): 9 mutex, 3 cond
+        #   c/service-server (0 sub, 1 qry): 9 mutex, 3 cond
+        #   rust/talker      (0 sub, 0 qry): 9 mutex, 2 cond
+        # So the fixed cond count is 2 on a real-network board (the island's
+        # figure) and 4 only under native_sim's NSOS; 4 stays, as the larger.
         # Same +4 headroom as the floor above. Only on a DERIVED table: an
         # undeclared image's table is a default, not a demand, and the floor
         # above keeps answering for it.
