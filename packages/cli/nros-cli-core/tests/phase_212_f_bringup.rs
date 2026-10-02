@@ -1,10 +1,11 @@
 //! Phase 212.F end-to-end CLI tests — `nros new system` + `nros check
 //! --bringup` + `cargo nros plan <dir>` discovery walk.
 
+mod common;
+
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use nros_cli_core::cmd::{
@@ -14,10 +15,7 @@ use nros_cli_core::cmd::{
 };
 
 fn temp_root(tag: &str) -> PathBuf {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let stamp = common::unique_stamp();
     let dir =
         std::env::temp_dir().join(format!("phase-212-f-{tag}-{}-{stamp}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);

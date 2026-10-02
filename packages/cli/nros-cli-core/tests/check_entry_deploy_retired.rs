@@ -9,10 +9,11 @@
 //! asserted against `nros check --workspace`, the surface downstream tooling
 //! reads the diagnostic id from.
 
+mod common;
+
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use nros_cli_core::cmd::check;
@@ -22,10 +23,7 @@ fn fixture_root() -> PathBuf {
 }
 
 fn temp_root(tag: &str) -> PathBuf {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let stamp = common::unique_stamp();
     let dir =
         std::env::temp_dir().join(format!("phase-445-w5-{tag}-{}-{stamp}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);

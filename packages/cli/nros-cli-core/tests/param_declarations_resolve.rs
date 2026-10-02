@@ -14,7 +14,6 @@ mod common;
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use nros_cli_core::entity_inventory::{EntityInventory, ParamDeclarations};
@@ -159,10 +158,7 @@ fn resolve(stem: &str) -> SystemModel {
 /// Unique scratch dir under the repo's gitignored `tmp/` (repo rule: temp
 /// files live in `$project/tmp/`, not the system temp dir).
 fn temp_output(repo: &Path, name: &str) -> PathBuf {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let stamp = common::unique_stamp();
     let dir = repo.join("tmp").join(format!(
         "param-declarations-{name}-{}-{stamp}",
         std::process::id()

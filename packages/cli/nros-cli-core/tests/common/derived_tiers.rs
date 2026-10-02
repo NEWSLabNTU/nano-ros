@@ -19,7 +19,6 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 /// The two 30 Hz components, in the island's naming.
@@ -66,10 +65,7 @@ pub struct Fixture {
 impl Fixture {
     pub fn copy(tag: &str) -> Self {
         let repo = repo_root();
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock")
-            .as_nanos();
+        let stamp = super::unique_stamp();
         let root = repo.join("tmp").join(format!(
             "derived-tiers-{tag}-{}-{stamp}",
             std::process::id()
