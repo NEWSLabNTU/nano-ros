@@ -2005,3 +2005,44 @@ is below 100 %. What these pairs add is that the remedy has to bound
 `target/`'s growth — a cargo target dir per check lane is the shape that
 produced eight extra directories here — rather than only reclaiming more before
 the tier starts.
+
+### The tier-1 half of the same distinction: ballast decides, and here it was 458 M
+
+Measured the same day, on the other lane, and it is the first tier-1 run in this
+window that did **not** exhaust the disk.
+
+`host-tests` run **36950039916** (push, head `0db0eeb18`), job
+**110660733210**, step 15 `just ci tier1`, 02:33:34 → 03:19:12 (**45.6 min**):
+
+```
+before: 90% used, 15G free — 43G examples; 13G build; 458M packages/cli/target
+reclaim: freed 32532 MB; 48681576 KB free
+after:  92% used, 13G free — 43G examples; 19G build; 13G target
+```
+
+**13 G still free at the end.** Every other tier-1 point in this issue ends at
+0–560 K. The one variable that is different at arrival is the one the section
+above says is ballast rather than consumer: `packages/cli/target` is **458 M**
+here, against 15 G, 24 G and 33 G in the runs that died. Consumption itself was
+ordinary — `build/` 13 G → 19 G and a 13 G `target/`, about 33 G in all, the same
+order as the runs that ran out.
+
+So the two halves fit together: **`packages/cli/target` does not consume the
+space, it decides how much there is to consume**, and this is the first
+measurement where it was small enough for the tier's ordinary appetite to fit.
+
+### What this point does NOT establish
+
+It is not proof that the full tier fits. This run **aborted at 45.6 minutes on a
+single gate** — `===== FAIL (mem-report, rc=1, 1586ms)`, which is issue 1147's
+drift tripwire, on a head that predates its fix: #1541 merged at 01:21:52 and
+this run's head `0db0eeb18` was created at 01:15:15, so it still carries the old
+`__nros_comp_buf_{{ s.index }}[` literal. The remaining work — fixtures and the
+rest of the matrix — never ran, and that work is where the earlier points spent
+their last gigabytes.
+
+What it does establish is narrower and still useful: with negligible arrival
+ballast the tier gets **45 minutes and 33 G in without exhausting anything**,
+where the 15–33 G arrivals were at 100 % well before finishing. The next tier-1
+run that both starts clean and runs to completion is the measurement that would
+settle it.
