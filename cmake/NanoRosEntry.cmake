@@ -1426,6 +1426,7 @@ function(_nros_entry_invoke_codegen)
         ENTRY     "${_NRX_NAME}"
         BUILD_DIR "${CMAKE_BINARY_DIR}"
         METADATA  "${_nrx_metadata}"
+        WORKSPACE "${_ws_root}"
         RMW       "${_nrx_rmw}")
     nros_sizing_descriptor_path(_nrx_sizing_path "${CMAKE_BINARY_DIR}" "${_NRX_NAME}")
     nros_sizing_descriptor_read("${_nrx_sizing_path}")

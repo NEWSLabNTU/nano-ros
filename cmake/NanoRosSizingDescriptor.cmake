@@ -184,8 +184,9 @@ endfunction()
 # closure registered (`_nros_sizing_bound_args`), phase-457 W4 the triple
 # (`_nros_sizing_target_args`), and the producer composes each field with the
 # leaf road's own code. What still refuses is per input: a table not built yet
-# (named), and an in-place backend's subscription path, which no observation
-# reaches this road for (issue 1594). `Fact::stated()` is the only accessor
+# (named), and an in-place backend's subscription path wherever no FRESH probe
+# sidecar in `WORKSPACE` could be attributed to it by the contract join
+# (issue 1594). `Fact::stated()` is the only accessor
 # that yields a value, so a consumer cannot read a refusal as a default.
 #
 # ## Three things this function does NOT do
@@ -203,7 +204,7 @@ endfunction()
 #   cross one (phase-457 W4); a cross configure with no resolvable triple gets a
 #   REFUSED `[target]`, naming the board rule (RFC-0100 D1), and says so.
 function(nros_sizing_descriptor_from_model _out_var)
-    cmake_parse_arguments(_nsw "" "CLI;MODEL;ENTRY;BUILD_DIR;RMW;METADATA" "" ${ARGN})
+    cmake_parse_arguments(_nsw "" "CLI;MODEL;ENTRY;BUILD_DIR;RMW;METADATA;WORKSPACE" "" ${ARGN})
     set(${_out_var} "" PARENT_SCOPE)
 
     if(NOT _nsw_ENTRY OR NOT _nsw_MODEL OR NOT EXISTS "${_nsw_MODEL}")
@@ -257,13 +258,26 @@ function(nros_sizing_descriptor_from_model _out_var)
 
     _nros_sizing_bound_args(_bound_args)
 
+    # Issue 1594 -- the WORKSPACE whose metadata-probe sidecars carry each
+    # subscription's REGISTRATION observation (`in_place`). Without it every
+    # subscription on an in-place backend (zenoh, XRCE) refuses its
+    # `registration_path` and keeps a receive region. The CLI joins a FRESH
+    # sidecar's observation onto the model's rows by the contract join's own rule
+    # and prints every sidecar it read as an `input <path>` line, registered below
+    # as a configure dependency (issue 1018). A root that is not a workspace is
+    # reported by the CLI and costs nothing but the observation.
+    set(_ws_arg "")
+    if(_nsw_WORKSPACE AND IS_DIRECTORY "${_nsw_WORKSPACE}/src")
+        set(_ws_arg --workspace "${_nsw_WORKSPACE}")
+    endif()
+
     execute_process(
         COMMAND "${_nsw_CLI}" ws sizing-descriptor
                 --from-model "${_nsw_MODEL}"
                 --build-dir "${_build_dir}"
                 --entry "${_nsw_ENTRY}"
                 --road "a cmake entry"
-                ${_host_arg} ${_rmw_arg} ${_meta_arg} ${_bound_args}
+                ${_host_arg} ${_rmw_arg} ${_meta_arg} ${_ws_arg} ${_bound_args}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc
@@ -279,6 +293,15 @@ function(nros_sizing_descriptor_from_model _out_var)
         # The model describes no wiring. The CLI already said so on stderr.
         return()
     endif()
+    # Line 1 is the descriptor; each later `input <path>` line is a probe sidecar
+    # the observation join read (issue 1594).
+    string(REPLACE "\n" ";" _lines "${_out}")
+    list(GET _lines 0 _out)
+    foreach(_line IN LISTS _lines)
+        if(_line MATCHES "^input (.+)$")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
+        endif()
+    endforeach()
     set(${_out_var} "${_out}" PARENT_SCOPE)
     set_property(GLOBAL APPEND PROPERTY NROS_SIZING_DESCRIPTOR_PATHS "${_out}")
 endfunction()

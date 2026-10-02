@@ -4,12 +4,13 @@ title: "The model-road sizing descriptor never sees a registration OBSERVATION �
   it composes the SystemModel with `nros-metadata.json`, while `in_place` lives in
   the probe's per-component sidecars — so every subscription on zenoh / XRCE
   refuses its `registration_path` and keeps a receive region it may never claim"
-status: open
+status: resolved
 type: tech-debt
 area: [build, cli]
 severity: medium
 found: 2026-10-01
-related: [1340, 1393, 1522, 1407, 1419]
+resolved: 2026-10-03
+related: [1340, 1393, 1522, 1407, 1419, 1648]
 ---
 
 ## What is open
@@ -85,3 +86,64 @@ language. Nine of the executor's eleven subscription entry points cannot use an
 in-place dispatch; crediting an unobserved endpoint with it prices it at NO
 receive region, which is `NodeError::BufferTooSmall` at a registration the
 oracle passed (phase-457 W3's reproduction).
+
+## Resolution
+
+The join is `contract_join::observe_registrations` — and it IS the contract
+join, not a second rule. It runs `join(probe, model)` over the workspace's probe
+sidecars exactly as the leaf road does (no remaps on the node, an absolute
+written name, `(kind, type, name)` unique on BOTH sides), and only a row the
+join ATTRIBUTED lends its `in_place` to the model row with the same component
+and key — which must itself be unique in the composed (metadata ⨯ model)
+inventory, or nothing is written. Every other row stays `None` and keeps
+refusing: today's price, the safe direction.
+
+* **Only CURRENT sidecars count.** `metadata_refresh::fresh_probe_inventory`
+  uses the key `refresh_stale_sidecars` itself trusts (`probe_inputs_key` —
+  sources, CLI stamp, probe closure; issue 1578). A stale sidecar is skipped with
+  a note, because a reused `in_place: true` against code that moved to a
+  buffered entry point would price that endpoint at no receive region. Two
+  sidecars naming one component are both dropped.
+* **Both model-road producers call one composition**,
+  `contract_join::observe_workspace_registrations`: `nros ws sizing-descriptor
+  --from-model ... --workspace <ws>` (the cmake entry road —
+  `nano_ros_entry()` passes its `_ws_root`) and `nros build`'s workspace cargo
+  image (`ResolvedImage` now carries the model beside the inventory). Neither
+  is fatal on a workspace that does not discover.
+* **The sidecars are configure inputs** (issue 1018): the verb prints each one
+  it read as an `input <path>` line after the descriptor path, and
+  `nros_sizing_descriptor_from_model` registers them in
+  `CMAKE_CONFIGURE_DEPENDS`. `tests/cmake-sizing-descriptor-tests.sh` G4 checks
+  both halves, with a negative control for each (dropping the line split, and
+  dropping the registration, each fail it).
+
+### Measured
+
+`examples/workspaces/cpp` after `nros sync` (six sidecars written, the
+listener's subscription `in_place: true`), descriptor for `native_entry` written
+by the in-tree CLI from `system_model.yaml`, `--rmw zenoh --host-build`:
+
+| | `/chatter` subscription `registration_path` |
+| --- | --- |
+| no `--workspace` (before) | refused, naming this issue |
+| `--workspace examples/workspaces/cpp` | `"in_place"` — "registration observed for 1 of 1 subscription row(s), from 6 probe sidecar(s)" |
+| same, after appending a comment to `listener_pkg/src/Listener.cpp` | refused — the sidecar is reported stale and the descriptor is byte-identical to the no-workspace one |
+
+The image-level byte saving is issue 1340's (10,840 bytes per `KEEP_LAST(10)`
+subscription once the image clears `ARENA_FLOOR`, measured on the leaf road);
+it was not re-measured on a built cmake image here.
+
+### Tests
+
+`contract_join`: `a_model_row_takes_the_probes_observation_through_the_contract_join`
+(both `true` and `false` carried), `an_unattributable_probe_row_lends_the_model_row_nothing`
+(remapped node, relative name, other topic, unobserved, no written topic),
+`two_registrations_on_one_topic_observe_nothing`,
+`another_components_sidecar_observes_nothing_here`.
+`sizing_descriptor`: `the_model_road_states_in_place_once_the_probe_observation_is_joined`.
+
+### Not done here
+
+The LANGUAGE half — an observed `false` row on a schemaless backend still
+refuses, because the model road has no one entry language and the join does not
+carry the sidecar's — is issue 1648.

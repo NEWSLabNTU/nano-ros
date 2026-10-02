@@ -89,8 +89,9 @@
 //! What stays refused is narrower than a road and is said in the reason: a road
 //! handed no bound table at all ([`ModelHorizon::bound_inventory`]), and an
 //! in-place-dispatching backend whose rows no probe observed
-//! ([`ModelHorizon::registration_path`] — on the model road that is every row,
-//! because the composed inventory carries no observation; issue 1594).
+//! ([`ModelHorizon::registration_path`] — on the model road, every row no
+//! CURRENT probe sidecar could be attributed to by the contract join; issue
+//! 1594 joined the rest, `crate::contract_join::observe_registrations`).
 
 use nros_sizing_descriptor::{
     Basis, CapacityNeed, Durability, Endpoint, EndpointKind, History, Params, RegistrationPath,
@@ -184,16 +185,16 @@ pub enum BackendDispatch {
     Buffered,
 }
 
-/// The follow-up a model-road `registration_path` refusal names.
+/// The issue a model-road `registration_path` refusal names.
 ///
 /// issue 1393 closed the FIELD axis: every field a model road used to refuse
 /// for being a model road is now composed from an input that road carries. The
-/// one per-row refusal left that is about the ROAD is an unobserved
-/// registration on a backend that dispatches in place — the model road's
-/// composed inventory (the SystemModel plus `nros-metadata.json`) carries no
-/// per-endpoint observation, although the probe sidecars a workspace's
-/// `nros sync` writes do. That is issue 1594, and ONE spelling of it keeps the
-/// refusals in a written descriptor greppable for the day it closes.
+/// one per-row refusal left is an unobserved registration on a backend that
+/// dispatches in place. Issue 1594 joined the workspace's probe sidecars onto
+/// the model's rows (`contract_join::observe_registrations`), so a row refuses
+/// now only where no FRESH sidecar could be attributed to it; the refusal
+/// still names the issue, because that is where the attribution rule and its
+/// remedies are written down.
 pub const UNOBSERVED_ON_MODEL_ROAD_ISSUE: &str = "issue 1594";
 
 /// What a producer that has no LEAF inventories reads, and what that costs.
@@ -234,15 +235,16 @@ const FROM_LEAF_DECLARATION: &str =
 ///
 /// The two sources lack the observation for different reasons, and the
 /// remedies differ. The model road's rows describe endpoints whose code a
-/// workspace probe DID run — the sidecars carry `in_place` — but the inventory
-/// this producer composes reads neither sidecar, so the fact exists and is not
-/// joined (issue 1594). A leaf DECLARATION names an entity and no call site at
+/// workspace probe DID run — the sidecars carry `in_place` — and since issue
+/// 1594 the producer joins them; a row still unobserved is one no FRESH
+/// sidecar could be attributed to. A leaf DECLARATION names an entity and no call site at
 /// all; issue 1522 ruled that population a refusal by design, because there is
 /// no registrar for a classifier to be consistent with.
-const MODEL_ROWS_ARE_NOT_JOINED_TO_THE_PROBE: &str = "the inventory composed here carries no \
-     per-endpoint observation: the SystemModel names endpoints from the launch tree and the \
-     contract, and `nros-metadata.json` names components, while the observation lives in the \
-     probe's per-component sidecars, which this producer does not read";
+const MODEL_ROWS_ARE_NOT_JOINED_TO_THE_PROBE: &str = "no per-endpoint observation was joined \
+     onto this row: the observation lives in the workspace's metadata-probe sidecars, and none \
+     that is CURRENT could be attributed to this endpoint by the contract join (no workspace \
+     named to this producer, a stale or missing sidecar, a remapped node, a relative written \
+     name, or a key that is not unique on both sides)";
 const A_DECLARATION_IS_NOT_A_CALL_SITE: &str = "a declaration names the entity, never the CALL \
      SITE that registers it, and nine of the executor's eleven subscription entry points cannot \
      dispatch in place -- which one a site calls is visible only in the source (issue 1522 rules \
@@ -314,7 +316,10 @@ impl ModelHorizon {
             road = self.road,
             why = self.unobserved,
             tracked = if self.unobserved == MODEL_ROWS_ARE_NOT_JOINED_TO_THE_PROBE {
-                format!("Tracked by {UNOBSERVED_ON_MODEL_ROAD_ISSUE}")
+                format!(
+                    "Run `nros sync` in the workspace so its probe sidecars are current; the \
+                     attribution rule is {UNOBSERVED_ON_MODEL_ROAD_ISSUE}'s"
+                )
             } else {
                 "Refused by design on this road".to_string()
             },
@@ -1133,9 +1138,9 @@ fn registration_path(
     let Some(language) = inputs.language else {
         // A schemaless backend, and the language decides the row: a Rust
         // registration takes `RX_BUF`, a C/C++ one its typed hint. On the model
-        // road that is unreachable today -- every row there is UNOBSERVED, so it
-        // refused above -- and when issue 1594 joins the probe's observation in,
-        // it is the probe that knows the component's language, not this road.
+        // road an OBSERVED `false` row (issue 1594) lands here, and refuses: it
+        // is the probe that knows the component's language, not this road, and
+        // carrying that half per row is issue 1648, not a guess made here.
         return Err(registration_path_refusal(inputs));
     };
     Ok(match (language, schema) {
@@ -1830,8 +1835,8 @@ pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<WrittenDescriptor> 
         // No ONE entry language: this road is several packages. Since issue
         // 1393 that costs nothing a backend can answer without it — on a
         // descriptor-carrying backend every language gives `typed_bound`, and
-        // on an in-place one the row turns on the OBSERVATION first (which
-        // this road does not have yet: issue 1594).
+        // on an in-place one the row turns on the OBSERVATION first (joined
+        // from the workspace's probe sidecars by the caller: issue 1594).
         language: None,
         // phase-457 W3 — the BACKEND halves are supplied, and they always could
         // have been: they are a function of `rmw` alone, which this road has.
@@ -2522,6 +2527,61 @@ mod tests {
             bounds_error: None,
             ..model_only(inv)
         }
+    }
+
+    /// Issue 1594 -- the MODEL road states `in_place` for a subscription the
+    /// probe OBSERVED registering in place, once the observation is joined.
+    /// Before the join the same row refuses, naming the issue; the row with
+    /// `in_place: false` falls to the buffered rows (and, with no entry
+    /// language on this road, refuses there instead of guessing one).
+    #[test]
+    fn the_model_road_states_in_place_once_the_probe_observation_is_joined() {
+        let model = ros_launch_manifest_model::SystemModel::from_yaml_str(
+            "meta:\n  version: 1\nstructure:\n  nodes:\n    /listener:\n      scope: \
+             system.launch.xml\n      pkg: demo\n      exec: listener\n      node_name: \
+             listener\n  topics:\n    /chatter:\n      type: std_msgs/msg/String\n      sub:\n      \
+             - /listener/ep\ncontracts:\n  sub_endpoints:\n    /listener/ep:\n      qos:\n        \
+             history: keep_last\n        depth: 1\n",
+        )
+        .unwrap();
+        let inv = EntityInventory::from_model("model", &model).unwrap();
+        let path =
+            |inv: &EntityInventory| build(&model_with_tables(inv)).endpoints[0].registration_path();
+
+        let before = path(&inv);
+        assert!(
+            before
+                .refusal()
+                .is_some_and(|r| r.contains(UNOBSERVED_ON_MODEL_ROAD_ISSUE)),
+            "{before:?}"
+        );
+
+        let probe_with = |obs: bool| {
+            let mut p = EntityInventory::new("source-metadata");
+            p.insert(ComponentEntities {
+                pkg: "demo".into(),
+                component: "listener".into(),
+                class: "listener".into(),
+                declaration: Declaration::Stated(vec![EntityDecl {
+                    source_topic: Some("/chatter".into()),
+                    in_place_capable: Some(obs),
+                    ..EntityDecl::bare(
+                        EntityKind::Subscription,
+                        Some("std_msgs/msg/String".into()),
+                        Some("on_chatter".into()),
+                    )
+                }]),
+            });
+            p
+        };
+        let observed = crate::contract_join::observe_registrations(&inv, &probe_with(true), &model);
+        assert_eq!(
+            path(&observed.inventory).stated(),
+            Some(&RegistrationPath::InPlace)
+        );
+        let buffered =
+            crate::contract_join::observe_registrations(&inv, &probe_with(false), &model);
+        assert!(path(&buffered.inventory).refusal().is_some());
     }
 
     #[test]

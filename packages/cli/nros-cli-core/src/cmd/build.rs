@@ -571,7 +571,33 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // guards on in order to say nothing.
                 let mut path_env: std::collections::BTreeMap<String, PathBuf> =
                     std::collections::BTreeMap::new();
-                if let Some(inv) = resolved.as_ref().and_then(|r| r.inventory.as_ref()) {
+                if let Some((inv, model)) = resolved
+                    .as_ref()
+                    .and_then(|r| r.inventory.as_ref().zip(r.model.as_ref()))
+                {
+                    // issue 1594 -- the probe sidecars' per-subscription
+                    // registration observation, joined by the contract join's
+                    // own rule. Not fatal: an unreadable workspace leaves every
+                    // row unobserved, which refuses `registration_path` (the
+                    // over-size, never the under-size).
+                    let observed = match crate::contract_join::observe_workspace_registrations(
+                        inv, model, &root,
+                    ) {
+                        Ok((observed, _, notes)) => {
+                            for n in notes {
+                                eprintln!("nros build:   {n}");
+                            }
+                            observed
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "nros build: warning: no registration observation joined \
+                                 ({e}); every subscription keeps its receive region"
+                            );
+                            inv.clone()
+                        }
+                    };
+                    let inv = &observed;
                     // phase-457-payload W2 — the workspace's own `generated/`
                     // tables, found by the discovery a single-package leaf uses
                     // and read by the reader every road shares. This is the
@@ -2741,6 +2767,10 @@ struct ResolvedImage {
     /// also the signal that NO descriptor is written for this image — "no
     /// contract, no change" (phase-454 W12's control, held on this road too).
     inventory: Option<crate::entity_inventory::EntityInventory>,
+    /// The resolved model the inventory was composed from -- issue 1594's
+    /// observation join needs its contract and its remaps. `Some` exactly when
+    /// `inventory` is.
+    model: Option<ros_launch_manifest_model::SystemModel>,
 }
 
 fn resolve_image(
@@ -2775,7 +2805,9 @@ fn resolve_image(
         .iter()
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    let inventory: Result<EntityInventory, String> = (|| {
+    // The model rides beside the inventory for issue 1594's observation join.
+    type Composed = (EntityInventory, ros_launch_manifest_model::SystemModel);
+    let inventory: Result<Composed, String> = (|| {
         let model_rel =
             model_location::launch_to_model_rel(bringup_dir, image.launch.as_deref(), &args_vec)
                 .map_err(|e| format!("cannot resolve the launch for this image: {e}"))?;
@@ -2827,7 +2859,7 @@ fn resolve_image(
         EntityInventory::from_model(model_path.display().to_string(), &model)
             .map(|mut inv| {
                 inv.set_param_declarations(params.clone());
-                inv
+                (inv, model.clone())
             })
             .ok_or_else(|| {
                 debug_assert!(
@@ -2856,7 +2888,7 @@ fn resolve_image(
     // come to disagree").
     let composed = inventory.as_ref().ok().cloned();
     let written = match inventory {
-        Ok(inv) => write_resolved(&dir, ident, &inv),
+        Ok((inv, _)) => write_resolved(&dir, ident, &inv),
         Err(reason) => {
             let r = crate::resolve::Resolved::unresolvable(
                 ident,
@@ -2915,7 +2947,8 @@ fn resolve_image(
             Some(ResolvedImage {
                 dir,
                 resolved: w.resolved,
-                inventory: composed,
+                model: composed.as_ref().map(|(_, m)| m.clone()),
+                inventory: composed.map(|(i, _)| i),
             })
         }
     }

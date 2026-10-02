@@ -330,6 +330,8 @@ if [ -n "${NROS_WRITER_SILENT:-}" ]; then exit 0; fi
 mkdir -p "$build_dir/nros/sizing"
 echo 'schema_version = 1' > "$build_dir/nros/sizing/$entry.toml"
 echo "$build_dir/nros/sizing/$entry.toml"
+# Issue 1594 -- the probe sidecars the observation join read, one per line.
+if [ -n "${NROS_WRITER_INPUT:-}" ]; then echo "input $NROS_WRITER_INPUT"; fi
 STUB_EOF
 chmod +x "$WRITER_STUB"
 
@@ -346,6 +348,10 @@ nros_sizing_descriptor_from_model(_first
     BUILD_DIR "${CMAKE_BINARY_DIR}"
     RMW       "zenoh")
 message(STATUS "WROTE_FIRST=${_first}")
+string(FIND "${_first}" "input" _input_at)
+message(STATUS "WROTE_FIRST_INPUT_AT=${_input_at}")
+get_property(_deps DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS)
+message(STATUS "CONFIGURE_DEPENDS=${_deps}")
 nros_sizing_descriptor_cargo_env(_row)
 message(STATUS "CARGO_ROW_ONE=${_row}")
 if(DEFINED ENV{NROS_TEST_SECOND})
@@ -409,6 +415,26 @@ check
 if ! nros_grep_q "CARGO_ROW_ONE=NROS_SIZING_DESCRIPTOR=.*/nros/sizing/one.toml" <<<"$OUT"; then
     fail "G2: no cargo env row, so the Rust half of a cmake image sizes from its own \
 literals while the C half reads the descriptor (issue 0460's shape) -- $OUT"
+fi
+
+log_info "G4. an observation input is a configure dependency, never part of the path (issue 1594)"
+SIDECAR="$TEST_TMPDIR/listener.json"
+echo '{}' > "$SIDECAR"
+OUT="$(NROS_WRITER_INPUT="$SIDECAR" run_writer "" "")"
+check
+if ! nros_grep_q "WROTE_FIRST_INPUT_AT=-1\$" <<<"$OUT"; then
+    fail "G4: the descriptor path absorbed the \`input\` line, so every consumer would be \
+handed a path that does not exist -- $OUT"
+fi
+check
+if ! nros_grep_q "CONFIGURE_DEPENDS=.*$SIDECAR" <<<"$OUT"; then
+    fail "G4: the sidecar the observation came from is not a configure dependency, so a \
+re-probed \`in_place\` would not reach the descriptor until something else re-configured \
+(issue 1018) -- $OUT"
+fi
+check
+if ! nros_grep_q "CARGO_ROW_ONE=NROS_SIZING_DESCRIPTOR=[^ ]*/nros/sizing/one.toml\$" <<<"$OUT"; then
+    fail "G4: the cargo row carries more than the descriptor path -- $OUT"
 fi
 
 log_info "G3. TWO descriptors in one configure name NONE to cargo"

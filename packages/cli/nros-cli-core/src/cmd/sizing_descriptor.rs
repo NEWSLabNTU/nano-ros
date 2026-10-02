@@ -97,6 +97,17 @@ pub struct SizingDescriptorArgs {
     #[arg(long, value_name = "PATH")]
     pub metadata: Option<PathBuf>,
 
+    /// issue 1594 — `--from-model`: the colcon workspace whose metadata probe
+    /// sidecars carry each subscription's REGISTRATION observation (`in_place`).
+    ///
+    /// Without it every subscription on an in-place backend refuses its
+    /// `registration_path` (the safe direction). With it, a FRESH sidecar's
+    /// observation is joined onto the model's rows by the contract join's own
+    /// rule. Every sidecar read is printed as an `input <path>` line after the
+    /// descriptor path, so a configure can register it (issue 1018).
+    #[arg(long, value_name = "DIR")]
+    pub workspace: Option<PathBuf>,
+
     /// phase-457-payload W2 — a bound table this image's interface closure
     /// REGISTERED: the `nros_message_bounds.json` codegen emitted beside a
     /// `nros_message_bounds.cmake` fragment. Repeat once per table.
@@ -275,6 +286,34 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
         return Ok(());
     };
 
+    // issue 1594 — the probe's per-subscription registration observation. AFTER
+    // the composition, so it lands on the rows the descriptor actually writes.
+    let (inventory, observation_inputs) = match &args.workspace {
+        // NOT fatal on a workspace that does not discover: a configure's best
+        // guess at the root can be a plain cmake project, and losing the whole
+        // descriptor over an observation would be the regression RFC-0100 D6
+        // forbids. Every row then stays unobserved, which refuses.
+        Some(ws) => {
+            match crate::contract_join::observe_workspace_registrations(&inventory, &model, ws) {
+                Ok((inv, read, notes)) => {
+                    for n in notes {
+                        eprintln!("nros ws sizing-descriptor: {n}");
+                    }
+                    (inv, read)
+                }
+                Err(e) => {
+                    eprintln!(
+                        "nros ws sizing-descriptor: no registration observation joined from `{}` \
+                         ({e}); every subscription keeps its receive region",
+                        ws.display()
+                    );
+                    (inventory, Vec::new())
+                }
+            }
+        }
+        None => (inventory, Vec::new()),
+    };
+
     let written =
         crate::sizing_descriptor::write_for_model(&crate::sizing_descriptor::ModelImage {
             build_dir,
@@ -290,6 +329,9 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
             ),
         })?;
     println!("{}", written.path.display());
+    for p in observation_inputs {
+        println!("input {}", p.display());
+    }
     Ok(())
 }
 
@@ -616,6 +658,7 @@ mod tests {
             build_dir: None,
             entry: None,
             metadata: None,
+            workspace: None,
             rmw: None,
             target_triple: None,
             host_build: false,
@@ -731,6 +774,7 @@ mod tests {
         run(SizingDescriptorArgs {
             from_model: Some(model),
             metadata: Some(metadata),
+            workspace: None,
             build_dir: Some(build_dir.clone()),
             entry: Some("island".into()),
             host_build: true,
@@ -798,6 +842,7 @@ mod tests {
         run(SizingDescriptorArgs {
             from_model: Some(model),
             metadata: Some(metadata),
+            workspace: None,
             build_dir: Some(build_dir.clone()),
             entry: Some("island".into()),
             host_build: true,
