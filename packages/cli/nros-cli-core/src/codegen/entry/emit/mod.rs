@@ -42,7 +42,20 @@ pub fn emit_typed_monitored(
     monitors: &[MonitorRow],
     ages: &[AgeRow],
 ) -> Result<String, String> {
-    emit(
+    emit_typed_monitored_lowered(language, plan, monitors, ages).map(|(src, _)| src)
+}
+
+/// [`emit_typed_monitored`], also handing back the [`LoweredEntry`] the TU was
+/// rendered from — for a caller that states a fact about the image beside the
+/// TU (the `--emit-link-libs` sidecar), so the fact and the TU come from ONE
+/// lowering rather than two that could disagree.
+pub fn emit_typed_monitored_lowered(
+    language: Lang,
+    plan: &Plan,
+    monitors: &[MonitorRow],
+    ages: &[AgeRow],
+) -> Result<(String, LoweredEntry), String> {
+    emit_lowered(
         language,
         plan,
         &LowerOptions {
@@ -85,13 +98,22 @@ pub fn emit_typed_probe(plan: &Plan, export: &ProbeExport) -> Result<String, Str
 
 /// Route, admit, lower, render.
 pub fn emit(language: Lang, plan: &Plan, opts: &LowerOptions<'_>) -> Result<String, String> {
+    emit_lowered(language, plan, opts).map(|(src, _)| src)
+}
+
+/// [`emit`], keeping the lowered entry.
+fn emit_lowered(
+    language: Lang,
+    plan: &Plan,
+    opts: &LowerOptions<'_>,
+) -> Result<(String, LoweredEntry), String> {
     let info =
         entry_pack_for(language, &plan.board).map_err(|e| format!("typed entry emit: {e}"))?;
     let all = manifests()?;
     let manifest = all
         .get(info.pack.as_str())
         .ok_or_else(|| format!("no entry pack `{}`", info.pack))?;
-    render_pack(&info.pack, manifest, &all, plan, opts)
+    render_pack_lowered(&info.pack, manifest, &all, plan, opts)
 }
 
 /// Admit `plan` against `manifest`, lower it, and render the pack's entry
@@ -106,12 +128,24 @@ pub(crate) fn render_pack(
     plan: &Plan,
     opts: &LowerOptions<'_>,
 ) -> Result<String, String> {
+    render_pack_lowered(pack, manifest, all, plan, opts).map(|(src, _)| src)
+}
+
+/// [`render_pack`], keeping the lowered entry.
+fn render_pack_lowered(
+    pack: &str,
+    manifest: &PackManifest,
+    all: &std::collections::BTreeMap<&'static str, PackManifest>,
+    plan: &Plan,
+    opts: &LowerOptions<'_>,
+) -> Result<(String, LoweredEntry), String> {
     let lowered = admit_and_lower(pack, manifest, all, plan, opts)?;
     let template = manifest
         .entry_template
         .as_deref()
         .ok_or_else(|| format!("entry pack `{pack}` declares no entry_template"))?;
-    super::render::render(template, &lowered)
+    let src = super::render::render(template, &lowered)?;
+    Ok((src, lowered))
 }
 
 /// Steps 2 and 3, split out so a pack loaded from outside the bundle (the

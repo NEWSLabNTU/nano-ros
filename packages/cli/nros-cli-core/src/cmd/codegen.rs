@@ -413,7 +413,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         None => (Vec::new(), Vec::new()),
     };
 
-    let src = if args.typed {
+    let (src, lowered) = if args.typed {
         // Refused HERE, before the metadata is read — the same point the old
         // `lang != Cpp && lang != C` test refused it, so the error order a
         // user sees is unchanged.
@@ -465,7 +465,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         // phase-462 W1 — the contract monitor rows go to every pack; a pack
         // that renders no install block (the C pack today, issue 1604)
         // ignores them.
-        entry_codegen::emit::emit_typed_monitored(lang, &plan, &monitor_rows, &age_rows)
+        entry_codegen::emit::emit_typed_monitored_lowered(lang, &plan, &monitor_rows, &age_rows)
             .map_err(|e| eyre!("{e}"))?
     } else {
         match lang {
@@ -516,7 +516,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     }
 
     if let Some((exe_target, sidecar)) = args.emit_link_libs.as_ref() {
-        write_link_libs_sidecar(exe_target, &plan, sidecar)?;
+        write_link_libs_sidecar(exe_target, &plan, &lowered, sidecar)?;
     }
 
     Ok(())
@@ -708,6 +708,7 @@ fn run_entry_node(args: EntryNodeArgs) -> Result<()> {
 fn write_link_libs_sidecar(
     exe_target: &str,
     plan: &entry_codegen::Plan,
+    lowered: &nros_entry_lower::LoweredEntry,
     sidecar: &PathBuf,
 ) -> Result<()> {
     use std::fmt::Write;
@@ -731,6 +732,25 @@ fn write_link_libs_sidecar(
         }
     }
     out.push_str(")\n");
+    // Issue 1598 moved each spawned tier's task stack out of the RTOS heap
+    // and into `.bss`, where the entry TU above declares it. The heap a board
+    // reserves by default was sized when those stacks still lived in it, so
+    // the same bytes ended up reserved twice and a three-tier C++ FreeRTOS
+    // image overflowed RAM. This states the moved total on the executable;
+    // the board decides what its heap default does with it
+    // (`NanoRosEntry.cmake`). Absent when the entry reserves no tier stacks.
+    if let Some(bytes) = lowered
+        .boot
+        .as_ref()
+        .and_then(|b| b.task_memory.as_ref())
+        .map(|m| m.spawned_bytes())
+        .filter(|b| *b > 0)
+    {
+        let _ = writeln!(
+            out,
+            "set_property(TARGET {exe_target} PROPERTY NROS_TIER_STACKS_BSS_BYTES {bytes})"
+        );
+    }
     if let Some(parent) = sidecar.parent() {
         std::fs::create_dir_all(parent)
             .wrap_err_with(|| format!("create sidecar parent `{}`", parent.display()))?;

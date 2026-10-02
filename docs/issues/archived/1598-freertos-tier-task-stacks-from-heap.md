@@ -110,3 +110,27 @@ A MOVE, not a saving: the bytes leave heap_4 and become linker-visible.
   instead of `app_stack_bytes`. The measured peak above (29 KiB) says both are
   generous; settling ONE measured default for both roads is left to a
   follow-up rather than guessed here.
+
+## Follow-up (2026-10-02): the heap default still budgeted for the moved stacks
+
+The C/C++ road compiles the kernel in cmake (`freertos_kernel`), so its
+`ucHeap` is `FreeRTOSConfig.h`'s 3 MiB default whatever the RMW. Once the
+stacks moved to `.bss` that default still made room for them, so the bytes were
+reserved twice. The unbuilt C++ image above is the one that showed it: the
+nightly `freertos` lane failed on realtime-cpp `demo_bringup:freertos` (three
+tiers, two spawned) with `region 'RAM' overflowed by 151024 bytes`. Measured
+locally: `ucHeap` 0x300000 beside two 0x40000 `__nros_tier_stack_*`.
+
+Fix: the entry sidecar states the spawned tiers' total
+(`NROS_TIER_STACKS_BSS_BYTES`, from the same lowering that renders the TU),
+`nano_ros_entry` defines `NROS_FREERTOS_TIER_STACKS_IN_BSS_KB` PUBLIC on
+`freertos_kernel`, and the header's DEFAULT subtracts it. An explicit
+`NROS_FREERTOS_HEAP_KB` is not touched. After: `ucHeap` 0x280000, the image
+links, and every target that compiles `FreeRTOSConfig.h` and reads
+`configTOTAL_HEAP_SIZE` carries the same define (issue 1197).
+
+Still open: the cargo road's derivation
+(`nros_board_common::freertos_config::default_heap_bytes`) charges
+`app_stack_bytes` for three task slots, two of which are tiers whose stacks are
+now in `.bss` too. It does not overflow anything (704 KiB), so it is left for
+whoever next re-measures that heap, rather than changed here without a run.
