@@ -1466,6 +1466,10 @@ def main():
             # `platform` or `lang` had NO coordinate and fell out of every lane
             # silently.
             "validate-fixtures",
+            # Issue 1419 -- the CROSS images whose configure checks a census,
+            # so a fixture build can take every census before it configures
+            # them (`scripts/build/census-prepass.sh`).
+            "census-images",
         ],
     )
     p.add_argument("--manifest", default=DEFAULT_MANIFEST)
@@ -1839,6 +1843,31 @@ def main():
 
         for e in entries:
             sys.stdout.write(f"{compile_check_record(e)}\n")
+        return
+
+    if a.command == "census-images":
+        # Issue 1419 -- one line per (workspace dir, qualified image) whose
+        # cmake / west configure runs `nros ws entity-census check
+        # --require-fresh`: a workspace row that names an `image`, is not a
+        # host row (`linux` is the census PRODUCER's own platform) and is not a
+        # pure-Rust row (the cargo road has no census consumer, and a Rust entry
+        # no producer). Whether the image's model has a contract at all is
+        # `nros ws entity-census take`'s question, not this table's: it answers
+        # "nothing to reconcile" for the rest, and one rule for that lives in
+        # the CLI. Deduplicated, in manifest order.
+        seen = set()
+        ws_rows = load_workspace_fixtures(a.manifest)
+        for e in ws_rows:
+            if not matches_filters(e, a, all_entries=ws_rows, kind="workspace_fixture"):
+                continue
+            if not e.get("image") or e.get("lang") == "rust" or e.get("platform") == "linux":
+                continue
+            bringup = Path(e.get("bringup", "")).name
+            key = (e["dir"], f"{bringup}:{e['image']}")
+            if key in seen:
+                continue
+            seen.add(key)
+            sys.stdout.write(f"{key[0]}\t{key[1]}\n")
         return
 
     if a.command in ("list-workspaces", "validate-workspaces"):

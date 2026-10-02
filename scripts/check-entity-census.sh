@@ -169,8 +169,8 @@ cat > "$bringup/package.xml" <<'XML'
 XML
 
 # `refuse` on both keys, because this gate is asserting that the refusal
-# HAPPENS. The shipped default is `warn`, which the last move below checks
-# separately so that both arms of the policy are exercised.
+# HAPPENS. It is also the shipped default since issue 1419; move 5 checks the
+# default and the `warn` opt-out separately so both arms are exercised.
 cat > "$bringup/system.toml" <<'TOML'
 [system]
 name = "census_fixture"
@@ -341,7 +341,10 @@ if check --require-fresh; then
     fail "move 0: a configure with NO census and on_missing=refuse must refuse"
 fi
 want "census missing" "move 0"
-want "entity-census run --model $model" "move 0 names the remedy"
+# Issue 1419 -- the remedy is ONE pasteable command naming the image asking
+# (`rtos_entry` -> `rtos`, under the model's bringup); `take` finds the native
+# sibling itself.
+want "entity-census take --image census_fixture_bringup:rtos" "move 0 names the remedy"
 echo "check-entity-census: move 0 ok -- no census refuses, and names the producer"
 
 # ---------------------------------------------------------------------------
@@ -470,8 +473,10 @@ echo "check-entity-census: move 4b ok -- an incomplete census is written and ref
 # ---------------------------------------------------------------------------
 # Move 5 -- the OTHER policy arm. `warn` says the same thing and continues.
 # ---------------------------------------------------------------------------
-# Both arms matter: `warn` is what this phase LANDS with, so a `warn` that went
-# silent would ship the defect issue 1419 is about with a gate's name on it.
+# Both arms matter. Issue 1419 made `refuse` the DEFAULT, so a bringup that
+# says nothing must refuse -- and `warn` is the explicit opt-out, which must
+# still say the same thing loudly and continue, since a `warn` that went silent
+# would ship the defect issue 1419 is about with a gate's name on it.
 cat > "$bringup/system.toml" <<'TOML'
 [system]
 name = "census_fixture"
@@ -479,15 +484,29 @@ rmw = "zenoh"
 domain_id = 0
 TOML
 rm -f "$census"
-check --require-fresh || fail "move 5: the landing default is warn, not refuse:
+if check --require-fresh; then
+    fail "move 5: a bringup that sets no [census] policy must refuse (the default is refuse):
+$(cat "$ws/check.log")"
+fi
+want "census missing" "move 5: the default refuses"
+cat > "$bringup/system.toml" <<'TOML'
+[system]
+name = "census_fixture"
+rmw = "zenoh"
+domain_id = 0
+
+[census]
+on_missing = "warn"
+TOML
+check --require-fresh || fail "move 5: on_missing = \"warn\" is the opt-out and continues:
 $(cat "$ws/check.log")"
 want "WARNING" "move 5 is not silent"
 want "on_missing" "move 5 names the key that decided"
-# Issue 1419 -- and says WHY it matters and how to make it a refusal, which is
-# what the configure raises as a CMake WARNING rather than a status line.
+# And says WHY it matters and how to make it a refusal, which is what the
+# configure raises as a CMake WARNING rather than a status line.
 want "NOTHING has compared" "move 5 says the pools are unchecked"
-want "on_missing = \"refuse\"" "move 5 names the setting that refuses"
-echo "check-entity-census: move 5 ok -- the landing default warns and continues"
+want "the default is \`refuse\`" "move 5 names how to refuse"
+echo "check-entity-census: move 5 ok -- the default refuses; the warn opt-out warns and continues"
 
 # ---------------------------------------------------------------------------
 # Move 6 -- NO CONTRACT (issue 1419). A model that folds in no

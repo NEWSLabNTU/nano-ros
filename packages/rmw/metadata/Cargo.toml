@@ -26,7 +26,7 @@ nros = { path = "../../api/nros", default-features = false, features = ["metadat
 # `supports_process_in_place() == false`, i.e. it BUFFERS. Declared, so a probe
 # build is sized conservatively rather than from an in-place row.
 nros-rmw = { path = "../../core/nros-rmw", default-features = false, features = ["std", "buffered-dispatch"] }
-nros-rmw-cffi = { path = "../cffi", default-features = false, features = ["std", "alloc"] }
+nros-rmw-cffi = { path = "../cffi", default-features = false, features = ["std", "alloc", "recorder-slot"] }
 
 [lints]
 workspace = true

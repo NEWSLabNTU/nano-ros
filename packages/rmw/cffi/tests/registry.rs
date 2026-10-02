@@ -133,11 +133,19 @@ fn empty_name_rejected() {
 
 fn capacity_full_returns_error() {
     let v = dummy_vtable();
-    // Default MAX_BACKENDS = 8. Fill remaining registry slots, then
-    // over-register to hit the cap.
+    // Fill the remaining registry slots, then over-register to hit the cap.
+    // The cap is read, not assumed: the default is 8, and issue 1419's
+    // `recorder-slot` adds one whenever `nros-rmw-metadata` is in the graph
+    // (a workspace test run unifies it in).
+    let cap = nros_rmw_cffi::MAX_BACKENDS;
     let count_before = unsafe { nros_rmw_cffi_registered_names(core::ptr::null_mut(), 0) } as usize;
-    let names: [&core::ffi::CStr; 8] = [c"a", c"b", c"c", c"d", c"e", c"f", c"g", c"h"];
-    for n in names.iter().take(8 - count_before) {
+    let names: [&core::ffi::CStr; 10] =
+        [c"a", c"b", c"c", c"d", c"e", c"f", c"g", c"h", c"i", c"j"];
+    assert!(
+        cap <= names.len(),
+        "extend the name list to cover MAX_BACKENDS = {cap}"
+    );
+    for n in names.iter().take(cap - count_before) {
         assert_eq!(
             unsafe { nros_rmw_cffi_register_named(n.as_ptr(), v) },
             NROS_RMW_RET_OK,

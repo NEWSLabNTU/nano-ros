@@ -115,6 +115,37 @@ pub enum Sub {
     /// of that path, for a caller -- a cmake configure -- that has to register
     /// the file before the check reads it.
     Path(PathArgs),
+    /// Make sure the census a CROSS image's configure will check exists and
+    /// is fresh: build the native image generated from the same launch file,
+    /// to its fixed point, and run it in census mode (issue 1419).
+    ///
+    /// The one command a cross build runs before its configure. It does
+    /// nothing when there is nothing to do -- a host image, a model with no
+    /// contract, a census that is already fresh -- so a build script can call
+    /// it before every cross image.
+    Take(TakeArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct TakeArgs {
+    /// The image whose configure will CHECK the census: `<bringup>:<image>`,
+    /// or a bare id when one bringup declares it. Usually a cross image
+    /// (`demo_bringup:threadx`); the census itself is taken by the native
+    /// image generated from the same launch file.
+    #[arg(long, value_name = "IMAGE")]
+    pub image: String,
+
+    /// Workspace root. Defaults to the current directory.
+    #[arg(long, value_name = "DIR")]
+    pub workspace: Option<PathBuf>,
+
+    /// Build the native image with `nros build --offline`.
+    #[arg(long)]
+    pub offline: bool,
+
+    /// Give up on a census run that has not exited in this many seconds.
+    #[arg(long, default_value = "60", value_name = "SECS")]
+    pub timeout_secs: u64,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -251,7 +282,227 @@ pub fn run(args: EntityCensusArgs) -> Result<()> {
             println!("{}", census_path_for_model(&a.model).display());
             Ok(())
         }
+        Sub::Take(a) => take_census(a),
     }
+}
+
+// ---------------------------------------------------------------------------
+// issue 1419 -- `take`: the census a cross configure will ask for, produced
+// before it asks
+// ---------------------------------------------------------------------------
+
+/// How many builds `take` allows the native image to reach its fixed point in.
+///
+/// Measured on `examples/workspaces/cpp` (2026-10-03): from a CLEAN build
+/// directory the first `nros build demo_bringup:native` links a `native_entry`
+/// whose bytes the second build changes -- the message-bound fragments are
+/// written by codegen DURING the first build, so its knobs are the
+/// placeholders and only the next configure reads the real ones (issue 1252,
+/// the one re-configure that survives). A census of the first binary is stale
+/// the moment anything rebuilds the image. The second and every later build
+/// are byte-identical, so two builds is the fixed point and three is the
+/// ceiling before this calls the image non-convergent.
+const TAKE_MAX_BUILDS: usize = 3;
+
+/// The one sibling that takes the census for `model_rel`: a HOST image of
+/// the same bringup resolved from the same launch and arguments.
+///
+/// "Host" is read off the board descriptor's platform, never off the image
+/// id or the board name -- an image is conventionally called `native`, and a
+/// convention is what issue 1397 found wrong when it was relied on. Several
+/// host images can share one model (`native`, `native_cyclonedds`,
+/// `native_xrce` all resolve the default launch); their census is the same
+/// statement about the same components, so the FIRST by id is taken and the
+/// choice is stable -- a second producer for one census file would make the
+/// file's recorded binary depend on which ran last.
+fn census_producer_for<'a>(
+    images: &'a [(
+        String,
+        PathBuf,
+        String,
+        crate::orchestration::image::ImageBlock,
+    )],
+    bringup: &str,
+    model_rel: &str,
+    is_host: &dyn Fn(&crate::orchestration::image::ImageBlock) -> bool,
+) -> Option<&'a (
+    String,
+    PathBuf,
+    String,
+    crate::orchestration::image::ImageBlock,
+)> {
+    images.iter().find(|(b, dir, _, img)| {
+        b == bringup && is_host(img) && image_model_rel(dir, img).is_ok_and(|rel| rel == model_rel)
+    })
+}
+
+/// The model an image is resolved into, relative to its bringup -- the same
+/// call `nros build` makes for the same image.
+fn image_model_rel(
+    bringup_dir: &Path,
+    image: &crate::orchestration::image::ImageBlock,
+) -> std::result::Result<String, String> {
+    let args: Vec<(String, String)> = image
+        .args
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    nros_orchestration_ir::model_location::launch_to_model_rel(
+        bringup_dir,
+        image.launch.as_deref(),
+        &args,
+    )
+}
+
+fn take_census(args: TakeArgs) -> Result<()> {
+    use crate::{
+        builder::{discover, plan},
+        orchestration::board_descriptor::{BoardCatalog, PlatformKind},
+    };
+
+    let root = match &args.workspace {
+        Some(w) => w.clone(),
+        None => std::env::current_dir().wrap_err("no current directory")?,
+    };
+    let root = std::fs::canonicalize(&root)
+        .wrap_err_with(|| format!("resolving workspace root {}", root.display()))?;
+
+    let members = discover::cargo_members_or_walk(&root);
+    let found = discover::discover(&root, &members).map_err(|e| eyre::eyre!("{e}"))?;
+    let bringups = crate::cmd::build::collect_images(&found.packages)?;
+    let asked = plan::resolve(&bringups, std::slice::from_ref(&args.image))
+        .map_err(|e| eyre::eyre!("{e}"))?;
+    let (bringup, bringup_dir, image_id, image) = asked
+        .into_iter()
+        .next()
+        .ok_or_else(|| eyre::eyre!("`{}` resolved to no image", args.image))?;
+    let asked_q = plan::qualified(&bringup, &image_id);
+
+    let nano_ros_root = crate::orchestration::nano_ros_root::resolve(None, &root)
+        .ok_or_else(|| eyre::eyre!("{}", crate::orchestration::nano_ros_root::not_found_help()))?;
+    let pkg_dirs: Vec<PathBuf> = found.packages.iter().map(|p| p.dir.clone()).collect();
+    let catalog = BoardCatalog::load_with_packages(&nano_ros_root, &pkg_dirs)
+        .map_err(|e| eyre::eyre!("loading board descriptors: {e}"))?;
+    let is_host = |img: &crate::orchestration::image::ImageBlock| -> bool {
+        img.board
+            .as_deref()
+            .and_then(|b| catalog.resolve(b, ""))
+            .is_some_and(|d| d.platform == PlatformKind::Posix)
+    };
+
+    if is_host(&image) {
+        println!(
+            "entity-census take {asked_q}: a host image is the census PRODUCER, and its own \
+             configure checks nothing -- nothing to take"
+        );
+        return Ok(());
+    }
+
+    let model_rel = image_model_rel(&bringup_dir, &image)
+        .map_err(|e| eyre::eyre!("cannot resolve the launch of `{asked_q}`: {e}"))?;
+    let (model_path, _) =
+        nros_orchestration_ir::model_location::ensure_model(&bringup_dir, &model_rel)
+            .map_err(|e| eyre::eyre!("cannot resolve the SystemModel of `{asked_q}`: {e}"))?;
+
+    // Same question the configure asks first, answered the same way.
+    if discover_contract(Some(&model_path)).is_none() {
+        println!(
+            "entity-census take {asked_q}: no contract -- `{}` folds in no `*.contract.yaml`, so \
+             its configure has nothing for a census to reconcile",
+            model_path.display()
+        );
+        return Ok(());
+    }
+
+    let census_path = census_path_for_model(&model_path);
+    if let Freshness::Fresh = census_freshness(&census_path, &root) {
+        let complete = std::fs::read_to_string(&census_path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+            .is_some_and(|c| incomplete_reason(&c).is_none());
+        if complete {
+            println!(
+                "entity-census take {asked_q}: fresh -> {}",
+                census_path.display()
+            );
+            return Ok(());
+        }
+    }
+
+    let all = plan::all_images(&bringups);
+    let Some((_, _, native_id, _)) = census_producer_for(&all, &bringup, &model_rel, &is_host)
+    else {
+        bail!(
+            "`{asked_q}` is resolved from `{model_rel}`, whose contract its configure checks \
+             against a census -- and bringup `{bringup}` declares no HOST image resolved from the \
+             same launch and arguments to take one. Declare one beside it (`[image.native] board \
+             = \"native\"`, with the same `launch`/`args`); the census binary IS a host build of \
+             the same components (phase-463 W2)."
+        );
+    };
+    let native_q = plan::qualified(&bringup, native_id);
+    let entry = crate::builder::entry::package_name(native_id);
+    println!("entity-census take {asked_q}: taking the census with `{native_q}` ({entry})");
+
+    let nros = std::env::current_exe().wrap_err("locating this nros binary")?;
+    let build_dir = root.join("build");
+    let mut previous: Option<String> = None;
+    let mut binary = None;
+    for attempt in 1..=TAKE_MAX_BUILDS {
+        let mut cmd = Command::new(&nros);
+        cmd.arg("build")
+            .arg(&native_q)
+            .arg("--workspace")
+            .arg(&root);
+        if args.offline {
+            cmd.arg("--offline");
+        }
+        let status = cmd
+            .status()
+            .wrap_err_with(|| format!("running `nros build {native_q}`"))?;
+        if !status.success() {
+            bail!("`nros build {native_q}` exited {status}; no census can be taken without it");
+        }
+        let bin = locate_entry_binary(&build_dir, &entry).wrap_err_with(|| {
+            format!(
+                "`nros build {native_q}` succeeded but left no `{entry}` binary. A Rust entry has \
+                 no census producer yet (issue 1419): its hooks are on the C++ ABI"
+            )
+        })?;
+        let digest = file_digest(&bin)?;
+        if previous.as_deref() == Some(digest.as_str()) {
+            binary = Some(bin);
+            break;
+        }
+        if attempt == TAKE_MAX_BUILDS {
+            bail!(
+                "`{native_q}` did not reach a fixed point in {TAKE_MAX_BUILDS} builds -- `{entry}` \
+                 changed on every one, so any census of it is stale the moment it is written. A \
+                 build that does not converge is the defect; see issue 1252"
+            );
+        }
+        previous = Some(digest);
+    }
+    let binary = binary.expect("the loop breaks with a binary or bails");
+
+    // Asked AGAIN, after the build. Before it, an unsynced workspace has no
+    // `build/nros/models/` and `ensure_model` answers from its cache; the
+    // build resolves the model into the workspace, which is the path the
+    // cross configure reads -- so a census keyed by the first answer would
+    // sit beside a model no configure opens.
+    let (model_path, _) =
+        nros_orchestration_ir::model_location::ensure_model(&bringup_dir, &model_rel)
+            .map_err(|e| eyre::eyre!("cannot resolve the SystemModel of `{asked_q}`: {e}"))?;
+
+    run_census(RunArgs {
+        entry,
+        workspace: Some(root.clone()),
+        build_dir,
+        binary: Some(binary),
+        model: Some(model_path),
+        out: None,
+        timeout_secs: args.timeout_secs,
+    })
 }
 
 fn check_census(args: CheckArgs) -> Result<()> {
@@ -564,6 +815,34 @@ fn is_freshness_input(role: &str) -> bool {
     matches!(role, "binary" | "source_tree" | "entry_tu")
 }
 
+/// The command that makes a missing or stale census fresh, as one line a
+/// person can paste.
+///
+/// Issue 1419 -- it names `take` for the IMAGE asking, when the asking entry
+/// and the model say which image that is: a generated entry is
+/// `<image>_entry` (`leaf_system::entry_package_name`) and the model lives
+/// under its bringup. `take` then finds the native sibling, builds it to its
+/// fixed point and runs it. Spelling `run --entry <native entry>` here instead
+/// left the reader to work out which native image, to build it first, and --
+/// measured -- to build it twice, since a census of a clean first build is
+/// stale after the next one (issue 1252).
+fn census_remedy(entry: Option<&str>, model: Option<&Path>) -> String {
+    let image = entry.and_then(|e| e.strip_suffix("_entry"));
+    let bringup = model
+        .and_then(crate::model_gate::infer_bringup_dir)
+        .and_then(|d| d.file_name().map(|n| n.to_string_lossy().into_owned()));
+    let take = match (bringup, image) {
+        (Some(b), Some(i)) => format!("nros ws entity-census take --image {b}:{i}"),
+        _ => "nros ws entity-census take --image <bringup>:<this image>".to_string(),
+    };
+    format!(
+        "Take a census of the code as it is now, from the workspace root:\n    {take}\nIt builds \
+         the NATIVE image generated from the same launch file and runs it in census mode. This \
+         configure does not run it for you: building the native image from inside a cross \
+         configure is the cross-cutting compile issue 0641 refuses."
+    )
+}
+
 /// Apply `[census] on_missing` / `on_stale` to what freshness found.
 ///
 /// Both arms say the SAME thing about the census and differ only in whether
@@ -576,34 +855,18 @@ fn freshness_verdict(
     entry: Option<&str>,
     model: Option<&Path>,
 ) -> Result<()> {
-    // Issue 1419 -- the remedy names the MODEL, because that is what the census
-    // is of, and it does NOT name `entry` as the thing to run: the entry asking
-    // is usually a CROSS image (`threadx_entry`), which has no host binary. The
-    // census is taken by the NATIVE entry generated from the same launch file,
-    // and it lands beside the model, where this check reads it.
-    let model_arg = model
-        .map(|m| m.display().to_string())
-        .unwrap_or_else(|| "<model>".to_string());
-    let asking = entry
-        .map(|e| format!(" (`{e}` is the image asking; it need not be one a host can run)"))
-        .unwrap_or_default();
-    let remedy = format!(
-        "Take a census of the code as it is now, with the NATIVE entry generated from the same \
-         launch file{asking}:\n    nros ws entity-census run --model {model_arg} --entry \
-         <native entry>\nThis configure does not run it for you: building the native image from \
-         inside a cross configure is the cross-cutting compile issue 0641 refuses."
-    );
+    // Issue 1419 -- the remedy names the IMAGE asking and `take`, which finds
+    // the NATIVE sibling generated from the same launch file: the entry asking
+    // is usually a CROSS image (`threadx_entry`), which has no host binary.
+    let remedy = census_remedy(entry, model);
     if policy.refuses() {
         bail!("census {what}: {why}\n{remedy}");
     }
-    // Not silent, and not quiet either. `warn` stays the default (issue 1419,
-    // measured 2026-10-02): every cross image that reaches this check today is
-    // a C or C++ entry and CAN produce a census, but nothing that builds them
-    // unattended takes one first -- `build-test-fixtures` configures the
-    // `examples/workspaces/cpp` cross rows with no native census run before
-    // them -- so `refuse` would fail those builds for a reason the build
-    // cannot fix. What `warn` must not be is a status line: this image's pools
-    // are derived from a contract nothing has checked, which is exactly the
+    // `warn` is an opt-OUT now (issue 1419, 2026-10-03): `refuse` became the
+    // default once every unattended build that configures a contracted cross
+    // image takes the census first (`scripts/build/census-prepass.sh`). A
+    // system that writes `warn` still hears it loudly, because this image's
+    // pools are derived from a contract nothing compared with the code -- the
     // state that shipped `ExecutorFull` to a board with no console. The
     // `(WARNING` marker is what the configure keys a CMake WARNING on.
     println!("census {what} (WARNING, [census] on_{what} = \"warn\"): {why}");
@@ -612,9 +875,8 @@ fn freshness_verdict(
     }
     println!(
         "  This image's pools are derived from a contract that NOTHING has compared with the \
-         code (issue 1419). `warn` is the default only because unattended builds take no \
-         census first; set `[census] on_{what} = \"refuse\"` in the bringup's `system.toml` \
-         to make this a refusal."
+         code (issue 1419). The bringup's `system.toml` sets `[census] on_{what} = \"warn\"`; \
+         remove it (the default is `refuse`) to make this a refusal."
     );
     Ok(())
 }
@@ -1204,6 +1466,98 @@ mod tests {
             .expect_err("nothing names a census")
             .to_string();
         assert!(err.contains("no --census and no --model"), "{err}");
+    }
+
+    /// Issue 1419 -- the remedy is ONE pasteable command for the image asking.
+    /// A generated entry is `<image>_entry` and the model sits under its
+    /// bringup, so both halves of `<bringup>:<image>` are known here.
+    #[test]
+    fn the_remedy_names_take_for_the_image_asking() {
+        let dir = tempfile::tempdir().unwrap();
+        let bringup = dir.path().join("src/demo_bringup");
+        std::fs::create_dir_all(bringup.join("config")).unwrap();
+        std::fs::write(bringup.join("system.toml"), "").unwrap();
+        let model = bringup.join("config/system_model.yaml");
+        let remedy = super::census_remedy(Some("threadx_entry"), Some(&model));
+        assert!(
+            remedy.contains("nros ws entity-census take --image demo_bringup:threadx"),
+            "{remedy}"
+        );
+        // Neither half known: still the verb, with the shape spelled out.
+        let bare = super::census_remedy(None, None);
+        assert!(
+            bare.contains("entity-census take --image <bringup>:"),
+            "{bare}"
+        );
+    }
+
+    /// Issue 1419 -- `take` picks the census producer by MODEL and by board
+    /// PLATFORM: a host image of the same bringup resolved from the same
+    /// launch and arguments, the first by id when several share it, and never
+    /// a host image of another launch.
+    #[test]
+    fn take_picks_the_first_host_sibling_of_the_same_model() {
+        use crate::orchestration::image::ImageBlock;
+
+        let dir = tempfile::tempdir().unwrap();
+        let bringup = dir.path().join("demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[[model]]\nlaunch = \"multihost.launch.xml\"\nout = \"robot1_model.yaml\"\nargs = { host = \"robot1\" }\n",
+        )
+        .unwrap();
+        let img = |board: &str, launch: Option<&str>, args: &[(&str, &str)]| ImageBlock {
+            board: Some(board.to_string()),
+            launch: launch.map(str::to_string),
+            args: args
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            ..ImageBlock::default()
+        };
+        let row = |id: &str, block: ImageBlock| {
+            (
+                "demo_bringup".to_string(),
+                bringup.clone(),
+                id.to_string(),
+                block,
+            )
+        };
+        // Sorted by id, as `plan::all_images` returns them.
+        let images = vec![
+            row("native", img("native", None, &[])),
+            row("native_cyclonedds", img("native", None, &[])),
+            row(
+                "native_robot1",
+                img(
+                    "native",
+                    Some("multihost.launch.xml"),
+                    &[("host", "robot1")],
+                ),
+            ),
+            row("zephyr", img("native_sim/native/64", None, &[])),
+        ];
+        let is_host = |b: &ImageBlock| b.board.as_deref() == Some("native");
+
+        let pick = |model_rel: &str| {
+            super::census_producer_for(&images, "demo_bringup", model_rel, &is_host)
+                .map(|(_, _, id, _)| id.as_str())
+        };
+        assert_eq!(pick("config/system_model.yaml"), Some("native"));
+        assert_eq!(pick("config/robot1_model.yaml"), Some("native_robot1"));
+        assert_eq!(pick("config/nobody_model.yaml"), None);
+        assert_eq!(
+            super::census_producer_for(
+                &images,
+                "other_bringup",
+                "config/system_model.yaml",
+                &is_host
+            )
+            .map(|(_, _, id, _)| id.as_str()),
+            None,
+            "a sibling is in the SAME bringup"
+        );
     }
 
     #[test]

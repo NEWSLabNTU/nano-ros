@@ -173,7 +173,15 @@ fn emit_max_backends(rungs: &RmwKnobs, sizing: Option<&SizingDescriptor>) {
     let backends = rungs.max_backends.or_else(|| {
         sizing.and_then(|d| derived_rung(&d.image.backend_count(), "backend_count", 8))
     });
-    let parsed = knob("NROS_RMW_MAX_BACKENDS", backends, 8);
+    let declared = knob("NROS_RMW_MAX_BACKENDS", backends, 8);
+    // Issue 1419 — the recording backend is linked BESIDE the backends the
+    // image declares (the `recorder-slot` feature, enabled by
+    // `nros-rmw-metadata`), so its slot is added to the declaration rather
+    // than taken out of it. Without it a one-RMW native C++ image's registry
+    // was full before the census could register its recorder.
+    let recorder = usize::from(std::env::var_os("CARGO_FEATURE_RECORDER_SLOT").is_some());
+    println!("cargo:rustc-env=NROS_RMW_DECLARED_BACKENDS={declared}");
+    let parsed = declared + recorder;
 
     if !(1..=64).contains(&parsed) {
         panic!(

@@ -3397,7 +3397,7 @@ fn entry_dirs_where(
 
 /// `(bringup name, bringup dir, its images)` per bringup — the shape every
 /// stage after DISCOVER passes around.
-type Bringups = Vec<(String, PathBuf, plan::ImageSet)>;
+pub(crate) type Bringups = Vec<(String, PathBuf, plan::ImageSet)>;
 
 /// Read every bringup's `[image.*]`.
 ///
@@ -3407,7 +3407,7 @@ type Bringups = Vec<(String, PathBuf, plan::ImageSet)>;
 /// root and so cannot see the canonical `<root>/src/<name>_bringup/` layout;
 /// and deliberately not a second walk of our own, which would be a third
 /// opinion about what a package is (issue 0809's class).
-fn collect_images(
+pub(crate) fn collect_images(
     packages: &[cargo_nano_ros::provider_scan::WorkspacePackage],
 ) -> Result<Bringups> {
     let (out, warnings) = collect_images_with_warnings(

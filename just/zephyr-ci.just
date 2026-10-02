@@ -367,6 +367,13 @@ build-fixtures:
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
 
+    # Issue 1419 -- the census each contracted workspace image's configure will
+    # check, taken here, SERIALLY, before the leaves fan out: two leaves of one
+    # workspace (`cpp` has `zephyr` and `zephyr_cyclonedds`) would otherwise
+    # each build its native image into one tree at once. A no-op under
+    # `build-test-fixtures`, which took every census before any stage started.
+    bash scripts/build/census-prepass.sh --platform zephyr
+
     zephyr_leaf_args=(
         --zephyr-version "{{NROS_ZEPHYR_VERSION}}"
         --nros-root "$nros_root"

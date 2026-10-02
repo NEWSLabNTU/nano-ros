@@ -358,7 +358,16 @@ function(nros_px4_add_module)
         string(APPEND _c "    (void)nros_rmw_${_b}_register();\n")
     endforeach()
     string(APPEND _c "}\n")
-    file(WRITE "${_stub}" "${_c}")
+    # Write-if-changed (issue 1419): an unconditional `file(WRITE)` re-dates the
+    # TU on every configure, so every re-configure recompiles it and relinks the
+    # module with no input changed. Same idiom as `nano_ros_link_rmw`'s stub.
+    set(_existing "")
+    if(EXISTS "${_stub}")
+        file(READ "${_stub}" _existing)
+    endif()
+    if(NOT _existing STREQUAL _c)
+        file(WRITE "${_stub}" "${_c}")
+    endif()
 
     # Issue 1050 defect (3) — `BACKENDS` also decides which backend
     # `nros::init()` OPENS, not only which ones get registered.

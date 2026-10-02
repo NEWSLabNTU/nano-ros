@@ -1966,6 +1966,22 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
         if [ -z "$lane_modules" ]; then return 0; fi
         printf '%s\n' "$lane_modules" | grep -qx "$1"
     }
+    # Issue 1419 -- every census a cross configure in this lane will check,
+    # taken ONCE, here, before the platform stages start in parallel. `take`
+    # builds a workspace's native image into the tree the native stage builds
+    # into, so taking it from inside a cross stage would race that stage; done
+    # first and serially it is a plain build, and every stage after it finds the
+    # census fresh (NROS_CENSUS_PREPASS=done turns their own pre-pass off).
+    # Only for a lane that configures some cross image -- the native module
+    # configures none.
+    census_lane=0
+    for _m in zephyr qemu freertos nuttx threadx_linux threadx_riscv64 esp32 px4; do
+        if in_lane "$_m"; then census_lane=1; fi
+    done
+    if [ "$census_lane" = "1" ]; then
+        bash scripts/build/census-prepass.sh
+    fi
+    export NROS_CENSUS_PREPASS=done
     # Phase 226.C — direct fallback fixture fan-out uses a temporary make graph
     # instead of GNU parallel or a raw Zephyr background lane. The pinned fifo
     # jobserver path enters through build-all; this fallback still centralizes

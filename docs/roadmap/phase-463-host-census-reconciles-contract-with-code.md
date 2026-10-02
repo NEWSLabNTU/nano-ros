@@ -1,7 +1,9 @@
 # phase-463 - the host census: the code's entities, compared with the contract before any image is built
 
-**Status (2026-10-02). W0-W4 landed; W5 half landed (I2 + I3a gated, I1 /
-I3b / I3c open); W6 and W7 open. W7 (the profiling half) is deliberately last
+**Status (2026-10-03). W0-W4 landed, and W4's `[census]` default is now
+`refuse` (issue 1419: `nros ws entity-census take`, the fixture pre-pass);
+W5 half landed (I2 + I3a gated; I1 holds by construction and I3b measured by
+hand, neither gated; I3c open); W6 and W7 open. W7 (the profiling half) is deliberately last
 and is a separate decision from W1-W6.** Each wave's own Status line below is
 the current one; this line used to read "PROPOSED - nothing landed" after four
 waves had merged.
@@ -380,7 +382,7 @@ configure refuses with "census stale: autoware_mrm_handler changed since
 the contract row and it configures. Touch a file without changing it and
 nothing is stale.
 
-Claim: phase-463-W4. Depends on: phase-463-W3, phase-460-W1. Owns: the entity-census recipe in just/check/codegen.just (new), packages/cli/nros-cli-core/src/cmd/ws.rs (the sync: source metadata block), packages/cli/nros-cli-core/src/orchestration/metadata_refresh.rs, cmake/NanoRosEntry.cmake (the --require-fresh call), the [census] policy keys in cargo_metadata_schema.rs. Gate: just check entity-census (new). Status: landed in PR #1233. Run end to end on `examples/workspaces/cpp` (issue 1419, 2026-10-01) the road had three defects the fixture gate could not see -- the typed C++ native entry never reached the census switch, producer and consumer keyed the census by their own entry and build dir so they never named one file, and `run` could not find an `nros build` binary -- fixed by keying the census by the MODEL (`<model-dir>/<stem>.census.json`, asked of `nros ws entity-census path`), and the threadx configure now refuses E3a/E3b/E3c with one named row each.
+Claim: phase-463-W4. Depends on: phase-463-W3, phase-460-W1. Owns: the entity-census recipe in just/check/codegen.just (new), packages/cli/nros-cli-core/src/cmd/ws.rs (the sync: source metadata block), packages/cli/nros-cli-core/src/orchestration/metadata_refresh.rs, cmake/NanoRosEntry.cmake (the --require-fresh call), the [census] policy keys in cargo_metadata_schema.rs. Gate: just check entity-census (new). Status: landed in PR #1233. Run end to end on `examples/workspaces/cpp` (issue 1419, 2026-10-01) the road had three defects the fixture gate could not see -- the typed C++ native entry never reached the census switch, producer and consumer keyed the census by their own entry and build dir so they never named one file, and `run` could not find an `nros build` binary -- fixed by keying the census by the MODEL (`<model-dir>/<stem>.census.json`, asked of `nros ws entity-census path`), and the threadx configure now refuses E3a/E3b/E3c with one named row each. 2026-10-03 (issue 1419, the PR *the census default is refuse*): the default is `refuse`, `warn` the opt-out. `nros ws entity-census take --image <bringup>:<image>` builds the image's native sibling to its fixed point and runs it; `scripts/build/census-prepass.sh` runs it for every cross workspace image before `build-test-fixtures`' stages start (and inside the workspace / Zephyr builders when they run alone). Three defects fixed on the way, each of which kept the census stale or absent: the RMW stub rewritten on every configure (every rebuild relinked, so the `binary` digest never held), a clean first build not being the fixed point (issue 1647), and a single-entry native image's RMW registry having no slot for the recorder (`recorder-slot`).
 
 ### W5 - the compatibility invariants, as gates
 
@@ -423,7 +425,7 @@ The island half (the `[census]` flip to `refuse` and the deleted
 `NROS_EXECUTOR_MAX_CBS=32` export) is a separate unit, `island-W2`, in the
 island's own phase doc; the nano-ros half above is what this claim covers.
 
-Claim: phase-463-W6. Depends on: phase-463-W3, phase-463-W4. Owns: packages/core/nros-orchestration-ir/src/executor_sizing.rs, packages/cli/nros-cli-core/src/orchestration/model_ingest.rs (:406); the island half is island-W2 in the island's own phase doc. Gate: cargo test -p nros-orchestration-ir and just check entity-census on the island. Status: not started.
+Claim: phase-463-W6. Depends on: phase-463-W3, phase-463-W4. Owns: packages/core/nros-orchestration-ir/src/executor_sizing.rs, packages/cli/nros-cli-core/src/orchestration/model_ingest.rs (:406); the island half is island-W2 in the island's own phase doc. Gate: cargo test -p nros-orchestration-ir and just check entity-census on the island. Status: not started. The default half the island was to lead now leads in-tree instead: issue 1419 flipped `[census]` to `refuse` for every bringup on 2026-10-03, once the fixture pipeline took the census before each cross configure. What remains here is the max: its one CLI caller is `codegen-system`'s capacity check (`model_ingest::check_executor_capacity`), which holds neither a census nor the inventory, so replacing the max with the census verdict needs that check to open both first.
 
 ### W7 - the profiling half (later, and a separate decision)
 
