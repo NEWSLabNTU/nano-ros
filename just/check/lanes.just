@@ -339,6 +339,32 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/executor_bound_node
     ./tmp/executor_bound_node
+    echo "  - issue 1609: a C action server/client is REMOVED from its executor, and a"
+    echo "    create/remove loop runs past the handle table and the arena"
+    # Compile+link+run, same reason as every probe above: `fini` returning
+    # NROS_RET_OK while the arena entry stays registered (context = the C
+    # struct, the action still on the graph, `handle_count` still raised) IS the
+    # defect, and it compiles. 200 add/remove/fini cycles per kind, with the
+    # arena's used bytes pinned at the first cycle (reuse, not mere headroom),
+    # the backend's live-entity count back to baseline after every remove (the
+    # action left the graph), and a negative control in the same binary: the
+    # pre-1609 teardown (`fini` alone) must exhaust the executor. The stub runs
+    # in ACCEPT mode here so its creates succeed and are counted.
+    # `test -f` first -- a missing TU must not read as a pass (issue 0196).
+    test -f packages/api/nros-c/tests/run/action_remove_cycles.c || { \
+        echo "ERROR: action_remove_cycles.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$gen/nros-c-generated" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/action_remove_cycles.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/action_remove_cycles
+    ./tmp/action_remove_cycles
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
     # `run_tiers.c` call `extern`. Its weak default used to live in

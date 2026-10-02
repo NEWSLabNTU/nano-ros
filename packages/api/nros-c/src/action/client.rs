@@ -1002,6 +1002,12 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
 }
 
 /// Finalize an action client.
+///
+/// Issue 1609 — `fini` does NOT remove the client from an executor; its arena
+/// entry holds this struct as its callback `context`. Call
+/// `nros_executor_remove_action_client(executor, client)` first, which drops
+/// the entry (the action leaves the graph) and brings the executor's
+/// `handle_count` back down.
 // The reset path zeroes the probed-size `_opaque` slot, which exceeds
 // clippy's 16 KB stack-array threshold. The assignment writes directly
 // through the existing `*mut` — no transient stack copy in release.
@@ -1015,7 +1021,9 @@ pub unsafe extern "C" fn nros_action_client_fini(client: *mut nros_action_client
     match client.state {
         nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED => {
             // L2: client lives in executor arena (if registered) —
-            // reset metadata only.
+            // reset metadata only. Releasing the entry needs the owning
+            // `nros_executor_t` (issue 1609): that is
+            // `nros_executor_remove_action_client`.
         }
         nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_POLLING => {
             // L1: drop the inline ActionClientCore so its channel

@@ -65,4 +65,14 @@ const char* nros_stub_rmw_last_entity_name(void);
  *  satisfied by an earlier call's value. */
 void nros_stub_rmw_clear_last_entity_name(void);
 
+/** Issue 1609 — make every `create_*` slot SUCCEED (and count the entity
+ *  live) instead of refusing. Off by default; the refusal stays the contract
+ *  for every probe that does not ask. */
+void nros_stub_rmw_set_accept_entities(bool accept);
+
+/** Entities created in accept mode and not yet destroyed. An entity the
+ *  runtime released has left this count, which is how a probe sees it leave
+ *  the graph. */
+int32_t nros_stub_rmw_live_entities(void);
+
 #endif /* NROS_TESTS_STUB_RMW_BACKEND_H */

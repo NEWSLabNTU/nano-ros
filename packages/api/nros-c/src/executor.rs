@@ -3187,6 +3187,161 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
     }
 }
 
+/// Remove an action server from the executor — issue 1609, the C twin of
+/// issue 1496's resolution 2.
+///
+/// `nros_executor_add_action_server` registers an arena entry whose callback
+/// `context` is `&server->_internal`, and `nros_action_server_fini` does not
+/// (and cannot) undo it: `fini` is handed only the entity, and the executor's
+/// own tables — `handle_count` and the trigger entity table — live in the
+/// `nros_executor_t` it never sees. This is the call that can, in rclc's shape
+/// (`rclc_executor_remove_*`: the executor and the entity).
+///
+/// It undoes all three tables at once:
+/// * the arena entry is DROPPED in place
+///   (`Executor::release_action_server_raw_sized`, with the same const
+///   parameters the add used) — the action's three service servers and two
+///   publishers are destroyed, so it LEAVES THE GRAPH and no late goal can
+///   reach `server`; its callback slot is freed and its arena bytes go on the
+///   executor's free list, where the next registration reuses them;
+/// * `handle_count` comes back down, so a create/remove loop never hits
+///   `max_handles`;
+/// * the trigger table's entity pointer for the slot is cleared.
+///
+/// The server stays INITIALIZED: it can be re-added, or finalised with
+/// `nros_action_server_fini`. Call this BEFORE `fini` and before the
+/// `nros_action_server_t` storage goes away. A server that is never removed
+/// keeps its entry until `rclc_executor_fini`, which drops every entry.
+///
+/// # Returns
+/// * `NROS_RET_OK` — removed.
+/// * `NROS_RET_INVALID_ARGUMENT` — a NULL pointer.
+/// * `NROS_RET_NOT_INIT` — the executor or the server is not initialised.
+/// * `NROS_RET_NOT_FOUND` — the server is not registered on THIS executor.
+/// * `NROS_RET_REENTRANT` — called from inside a callback this executor is
+///   dispatching; the entry may be the one running.
+///
+/// # Safety
+/// `executor` and `server` must be valid pointers to initialised objects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_remove_action_server(
+    executor: *mut nros_executor_t,
+    server: *mut nros_action_server_t,
+) -> nros_ret_t {
+    validate_not_null!(executor, server);
+
+    let executor = &mut *executor;
+    let server = &mut *server;
+
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    validate_state!(
+        server,
+        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED
+    );
+    if executor.in_dispatch {
+        return NROS_RET_REENTRANT;
+    }
+
+    let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
+    if !server._internal.is_handle_set() || server._internal.executor_ptr != opaque_ptr {
+        return NROS_RET_NOT_FOUND;
+    }
+
+    let handle_id = server._internal.handle.handle_id();
+    let rust_exec = get_executor_from_ptr(opaque_ptr);
+    // SAFETY: the entry was registered by `nros_executor_add_action_server`
+    // through `register_action_server_raw_sized` with exactly these const
+    // parameters, and `server._internal` (the only copy of its handle) is
+    // reset below, so nothing names the slot after it is handed back.
+    let released = rust_exec.release_action_server_raw_sized::<
+        MESSAGE_BUFFER_SIZE,
+        MESSAGE_BUFFER_SIZE,
+        MESSAGE_BUFFER_SIZE,
+        NROS_MAX_CONCURRENT_GOALS,
+    >(handle_id.0);
+    // Whatever the arena said, the server no longer owns an entry here: a
+    // `false` means the slot was not a live action server, and keeping the
+    // handle would let a later remove release whatever registered into that
+    // slot since.
+    server._internal = ActionServerInternal::invalid_default();
+    if !released {
+        return NROS_RET_NOT_FOUND;
+    }
+    record_trigger_entity(&mut executor._handle_entities, handle_id, ptr::null_mut());
+    executor.handle_count = executor.handle_count.saturating_sub(1);
+    NROS_RET_OK
+}
+
+/// Remove an action client from the executor — issue 1609.
+///
+/// The client half of [`nros_executor_remove_action_server`], with the same
+/// three tables and the same reason: the arena entry
+/// `nros_executor_add_action_client` registered holds `client` itself as its
+/// callback `context`, and `nros_action_client_fini` cannot reach the
+/// executor to undo it. The entry is dropped in place
+/// (`Executor::release_action_client_raw`, the default-sized form the add
+/// used) — its three service clients and feedback subscription are destroyed
+/// and its slot and bytes are reused — `handle_count` comes back down, and the
+/// trigger table forgets the client.
+///
+/// The client stays INITIALIZED (re-addable, or finalisable with
+/// `nros_action_client_fini`). Any goal it was waiting on is abandoned with
+/// the entry.
+///
+/// # Returns
+/// As [`nros_executor_remove_action_server`].
+///
+/// # Safety
+/// `executor` and `client` must be valid pointers to initialised objects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_remove_action_client(
+    executor: *mut nros_executor_t,
+    client: *mut nros_action_client_t,
+) -> nros_ret_t {
+    validate_not_null!(executor, client);
+
+    let executor = &mut *executor;
+    let client = &mut *client;
+
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    validate_state!(
+        client,
+        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+    );
+    if executor.in_dispatch {
+        return NROS_RET_REENTRANT;
+    }
+
+    let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
+    if client._internal.arena_entry_index < 0 || client._internal.executor_ptr != opaque_ptr {
+        return NROS_RET_NOT_FOUND;
+    }
+
+    let entry_index = client._internal.arena_entry_index as usize;
+    let rust_exec = get_executor_from_ptr(opaque_ptr);
+    // SAFETY: registered by `nros_executor_add_action_client` through the
+    // default-sized `register_action_client_raw`; the index is cleared below,
+    // so no copy of it is used after the slot is handed back.
+    let released = rust_exec.release_action_client_raw(entry_index);
+    client._internal = crate::action::ActionClientInternal::new();
+    if !released {
+        return NROS_RET_NOT_FOUND;
+    }
+    record_trigger_entity(
+        &mut executor._handle_entities,
+        nros_node::executor::HandleId(entry_index),
+        ptr::null_mut(),
+    );
+    executor.handle_count = executor.handle_count.saturating_sub(1);
+    NROS_RET_OK
+}
+
 /// Goal response trampoline — adapts nros-node callback to C API callback.
 ///
 /// # Safety
@@ -3688,6 +3843,60 @@ pub unsafe extern "C" fn nros_executor_get_handle_count(executor: *const nros_ex
 
     let executor = &*executor;
     executor.handle_count as c_int
+}
+
+/// Bytes of the executor's arena currently claimed — its high-water mark.
+///
+/// Issue 1609 — the arena is a bump allocator with a free list of released
+/// regions (issue 1496): a registration first reuses a released region that
+/// fits and only then moves the bump pointer, so this number grows only when
+/// a registration found nothing to reuse. A create / remove loop whose value
+/// stays at the first cycle's is reusing its bytes; one that climbs is
+/// leaking them. Pair it with `nros_executor_get_arena_capacity` for the
+/// headroom.
+///
+/// Returns 0 for NULL or an executor that is not initialised.
+///
+/// # Safety
+/// `executor` must be NULL or a valid pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_get_arena_used(executor: *const nros_executor_t) -> usize {
+    if executor.is_null() {
+        return 0;
+    }
+    let executor = &*executor;
+    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        && executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+    {
+        return 0;
+    }
+    // The cast drops `const` only to reach the shared accessor; nothing is
+    // mutated (the same shape as `nros_executor_is_spinning`).
+    let opaque = &raw const executor._opaque;
+    get_executor(&mut *opaque.cast_mut()).arena_used()
+}
+
+/// Total bytes of arena this executor was given (`NROS_EXECUTOR_ARENA_SIZE`
+/// as carved from its inline backing). 0 for NULL or an executor that is not
+/// initialised.
+///
+/// # Safety
+/// `executor` must be NULL or a valid pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_get_arena_capacity(
+    executor: *const nros_executor_t,
+) -> usize {
+    if executor.is_null() {
+        return 0;
+    }
+    let executor = &*executor;
+    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        && executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+    {
+        return 0;
+    }
+    let opaque = &raw const executor._opaque;
+    get_executor(&mut *opaque.cast_mut()).arena_capacity()
 }
 
 /// Check if executor is valid (initialized).
