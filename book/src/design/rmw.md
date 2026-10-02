@@ -20,9 +20,10 @@ must sustain traffic) or in CREATE/INIT (bounded, so it lands in startup):
 
 | backend | steady-state | create / init |
 | --- | ---: | ---: |
-| Cyclone DDS | 6 | 6 |
-| XRCE-DDS | 0 | 9 |
+| Cyclone DDS | 1 | 8 |
+| XRCE-DDS | 0 | 7 |
 | uORB | 0 | 3 |
+| zenoh-pico | 0 | 0 |
 
 Run the script rather than trusting this table; it is the re-runnable source and
 this is a snapshot of it. Two caveats it states and this page inherits: it
@@ -98,7 +99,7 @@ relocation work at startup, not the indirect call.
 entity handles are inline. The BACKENDS are another matter, and this page
 overstated it for years ("no heap", flatly). Issue 0777 established that;
 `scripts/rmw-alloc-sites.py` now answers it precisely and repeatably. Only
-Cyclone DDS allocates on the steady-state path in nano-ros's own code (6 sites);
+Cyclone DDS allocates on the steady-state path in nano-ros's own code (1 site);
 XRCE and uORB allocate at entity/transport setup only. Plan the heap budget from
 your backend's row in that report — and remember it excludes what the middleware
 libraries do underneath, which for Cyclone and zenoh-pico is a general allocator
