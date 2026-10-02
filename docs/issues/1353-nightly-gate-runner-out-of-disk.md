@@ -1942,3 +1942,66 @@ starved of anything.
 Acceptance is unchanged and unmet. Six runs, six times at or near 100 %; the
 reclaim has now been within 72 MB of 33.3 G on six consecutive measurements,
 and the arrival state is still what decides.
+
+## The scheduled `gate` arm is ATTRIBUTED, and `packages/cli/target` is not the consumer (2026-10-02)
+
+Two complete before/after pairs for the scheduled `gate` lane, both failing at
+step 27 `just check build`, both with the runner-death log shape. Earlier
+entries called this lane's red undiagnosed because its step log is the two-line
+`BlobNotFound`. It was not undiagnosed; it was unread — **the annotation was on
+the `check` job all along**, and a previous pass read the aggregator `CI` job's
+annotations instead, which say only `Process completed with exit code 1`.
+
+| | 2026-10-01 run **36804891948** job **110186978795** | 2026-10-02 run **36954274069** job **110673704948** |
+| --- | --- | --- |
+| before | 89 % used, 17 G free | 84 % used, 25 G free |
+| `packages/cli/target` | 33 G | 24 G |
+| `target/` | 1.1 G | 1.1 G |
+| reclaim | freed 6,740 MB → **23.46 G** | freed 6,761 MB → **30.77 G** |
+| step 27 | failure | failure (29 min) |
+| after | **100 % used, 256K free** | **100 % used, 256K free** |
+| `target/` after | **11 G** | **17 G** |
+| `packages/cli/target` after | 34 G | 25 G |
+
+Both annotations are the same ENOSPC on the runner's own diagnostic log:
+
+```
+Unhandled exception. System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20261002-020914-utc.log'
+```
+
+### Three things these pairs settle
+
+**The missing log is a SYMPTOM, not a second fault.** The worker cannot write
+its diagnostic log because the filesystem is full, so nothing is uploaded and
+the step log reads `BlobNotFound`. Anyone chasing runner infrastructure from
+that two-line log is chasing this issue. Note the job did **not** die: steps 28
+and 29 ran and uploaded the after-transcript, and step 30 was still going — so
+this is a different shape from the `live-peer` instances above, where the job
+had no failing step at all. Here the step fails, the job continues, and only the
+log is lost.
+
+**`packages/cli/target` is the arrival ballast, not the consumer.** This issue's
+gate-arm table has been pairing survival against that directory's size. Across
+these two runs it moves by **1 G** (33→34, 24→25) while **`target/` goes 1.1 G →
+11 G and 1.1 G → 17 G**. The compile tier's growth is `target/`, `build/`
+(4.2 G → 11 G on 10-02) and eight new `target-check-*` directories; the
+`packages/cli/target` number predicts how much room is left to start with, which
+is not the same claim.
+
+**More headroom did not buy survival — it bought more growth.** 23.46 G
+available produced an 11 G `target/`; 30.77 G available produced a 17 G
+`target/`. Both ended at exactly `100 % used, 256K free`. Stated as an
+observation on n=2, not a law: the alternative is that the two runs simply had
+different work to do (the fast line grew from 379 to 382 gates between them, and
+`check build` is per-feature and per-example). But it is the first evidence in
+this issue that the compile tier may expand to fill what it is given, and that
+matters because "raise the headroom" has been the implicit remedy throughout.
+
+### What would close this arm
+
+Unchanged in kind, sharper in target: a scheduled `gate` run whose after-report
+is below 100 %. What these pairs add is that the remedy has to bound
+`target/`'s growth — a cargo target dir per check lane is the shape that
+produced eight extra directories here — rather than only reclaiming more before
+the tier starts.
