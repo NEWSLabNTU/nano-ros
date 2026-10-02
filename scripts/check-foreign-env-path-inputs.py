@@ -64,9 +64,16 @@ not about which value happens to arrive.
 `.config/foreign-env-path-inputs-baseline.txt` is a RATCHET — it may only
 SHRINK. It is seeded with the 19 names the measurement found, each with its
 classification, so a twentieth cannot appear unclassified. Seeding rather than
-migrating is deliberate: the `APP_*` family is the NuttX apps channel and
+migrating was deliberate: the `APP_*` family is the NuttX apps channel and
 changing how those resolve needs a NuttX build to accept it, which is a
 different piece of work from stopping the next one.
+
+That work is done (issue 1588, 2026-10-03): the seven `APP_*` path inputs go
+through `env_path` / `env_path_list_sep` / `env_path_pairs` /
+`env_path_list_file` — the last two being the forms a `<path>=<pkg>` list and a
+file OF paths need — and their rows left the baseline, accepted on four NuttX
+images built byte-identical before and after. `APP_COMPILE_DEFS` stays: it is
+not a path.
 
 Run:  python3 scripts/check-foreign-env-path-inputs.py [--self-test] [--write-baseline]
 """
@@ -99,13 +106,14 @@ BASELINE_HEADER = (
     "# type test).\n"
     "#\n"
     "# A row marked `path, unrouted` is a KNOWN defect of 1560's class, kept visible\n"
-    "# rather than fixed blind: accepting a change to how the NuttX apps channel\n"
-    "# resolves needs a NuttX build, which is separate work. Every run prints how\n"
-    "# many remain.\n"
+    "# rather than fixed blind. Every run prints how many remain. The seven it was\n"
+    "# seeded with (the NuttX `APP_*` channel) were routed by issue 1588.\n"
     "#\n"
     "# A row leaves when the call site routes through `nros_build_paths::env_path`\n"
-    "# (or `env_path_list` for a `;`-separated one), or when the name gains a\n"
-    "# producer in this repo and stops being foreign.\n"
+    "# (or a sibling: `env_path_list` / `env_path_list_sep` for a list,\n"
+    "# `env_path_pairs` for `<path>=<key>` pairs, `env_path_list_file` for a file\n"
+    "# of paths), or when the name gains a producer in this repo and stops being\n"
+    "# foreign.\n"
     "#\n"
     "# Regenerate ONLY to record a name that is gone:\n"
     "#     python3 scripts/check-foreign-env-path-inputs.py --write-baseline\n"
@@ -156,6 +164,16 @@ def repo_produces(name: str) -> str | None:
     return None
 
 
+# The `nros_build_paths` resolvers that take a variable NAME as a literal. One
+# pattern, so the self-test exercises the exact text the scan uses.
+ROUTED_FORMS = r"nros_build_paths::env_path(?:_list(?:_sep|_file)?|_pairs|_watched)?"
+
+
+def is_routed(code: str, name: str) -> bool:
+    """Does `code` hand `name` to one of the `nros_build_paths` resolvers?"""
+    return re.search(rf'{ROUTED_FORMS}\(\s*"{re.escape(name)}"', code) is not None
+
+
 def foreign_reads(census) -> dict[str, set[str]]:
     """{name: {file, …}} for every FOREIGN read, by the three predicates."""
     rows = census.build_scripts() + census.build_script_libs()
@@ -170,8 +188,7 @@ def foreign_reads(census) -> dict[str, set[str]]:
                 continue
             # Already routed? `env_path` takes the name as a LITERAL there, so a
             # read that reaches the resolver is not a bare read at all.
-            if re.search(rf'nros_build_paths::env_path(?:_list|_watched)?\(\s*"{re.escape(name)}"',
-                         code):
+            if is_routed(code, name):
                 continue
             if repo_produces(name):
                 continue
@@ -216,6 +233,20 @@ def self_test() -> int:
         repo_produces("THREADX_PORT") is not None)
     chk("…and one nothing here sets is foreign",
         repo_produces("NROS_DEFINITELY_NOT_A_REAL_VARIABLE_1588") is None)
+
+    # The routed-form test, both directions. Each sibling resolver must count
+    # as routing (a missing alternative would report a fixed site as bare),
+    # and a look-alike must not (a raw `env::var` beside a comment naming the
+    # resolver, or a resolver handed a DIFFERENT name, would launder a read).
+    chk("every nros_build_paths resolver form counts as routed",
+        all(is_routed(f'nros_build_paths::{fn}("APP_X"{rest})', "APP_X")
+            for fn, rest in (("env_path", ""), ("env_path_watched", ""),
+                             ("env_path_list", ""), ("env_path_list_sep", ", ';'"),
+                             ("env_path_pairs", ", ';', '='"),
+                             ("env_path_list_file", ""))))
+    chk("…and a bare read, or a resolver given another name, does not",
+        not is_routed('let v = env::var("APP_X"); // env_path("APP_X")', "APP_X")
+        and not is_routed('nros_build_paths::env_path_list_sep("APP_Y", \';\')', "APP_X"))
 
     # The baseline must parse into rows that carry a reason. A row with no
     # classification is the thing this gate exists to refuse, so an empty
