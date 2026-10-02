@@ -34,6 +34,7 @@
 
 NROS_ACTION_INBOX_BYTES | pool | nros_rmw_zenoh::shim::service::ACTION_INBOX | slot bytes of each action-family inbox ring; the element is an `InboxStorage` struct (ring header + slots), so only the compiler knows the product
 NROS_ACTION_INBOX_DEPTH | pool | nros_rmw_zenoh::shim::service::ACTION_INBOX | ring depth of each action-family inbox; same `InboxStorage` element
+NROS_BOOT_REPORT | pool | nros_node::boot_report::NROS_BOOT_REPORT | a switch, not a count: on (the native_sim default since issue 1424, and wherever CONFIG_NROS_BOOT_REPORT=y) it links the one boot-record static, measured per image by `mem-report`; off, it links nothing
 NROS_SERVICE_INBOX_BYTES | pool | nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX | slot bytes of each user-service inbox ring (`InboxStorage` element); its default is DERIVED from the declared request types, so no static figure exists either
 NROS_SERVICE_INBOX_DEPTH | pool | nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX | ring depth of each user-service inbox (`InboxStorage` element)
 ZPICO_SERVICE_BUFFER_SIZE | pool | nros_rmw_zenoh::shim::service::SERVICE_BUFFERS | payload bytes inside each `ServiceBuffer` struct; also the default for the two inbox slot sizes above
