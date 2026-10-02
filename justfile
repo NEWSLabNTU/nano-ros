@@ -2777,7 +2777,23 @@ rust-rtos-link-check: _codegen
             exit 1
         fi
     }
+    # issue 0551's rule, applied to all three leaves rather than one. This lane
+    # LINKS against each RTOS's kernel source, and `just setup native` — what a
+    # host lane runs — provisions only the index's `build_sources` (the RMW
+    # sources), never an RTOS kernel. So on a fresh runner the FreeRTOS leaf
+    # died inside zpico-build with `FREERTOS_DIR=…: missing include`, and the
+    # NuttX and ThreadX-Linux leaves behind it were never reached (host-tests,
+    # 2026-10-02 — the first time tier 1 got this far, after the disk fix).
+    # Each arm now provisions exactly what it consumes, right before building,
+    # through the index (`dest`/`ref`/`submodule` from data, never a path
+    # here). Idempotent: a provisioned tree makes it a no-op, so a developer's
+    # host pays nothing. NOT a skip when absent — linking without the kernel
+    # cannot exist, and a skip would be the vacuous green this lane prevents.
+    # The names are the boards' `[source.*]` sets as `nros setup <board>
+    # --dry-run` reports them, minus what `build_sources` already guarantees.
+    nros_link_check_sources() { "$nros_cli" setup "$@" >/dev/null; }
     if command -v arm-none-eabi-gcc >/dev/null; then
+        nros_link_check_sources --source freertos-kernel --source lwip
         echo "  freertos talker ($(nros_cargo_platform_profile freertos)):"
         # #60 T5: the freertos talker Node pkg is platform/RMW-agnostic now —
         # the `rmw-zenoh` parity feature was removed (RMW flows from the board
@@ -2810,6 +2826,7 @@ rust-rtos-link-check: _codegen
         # links without NuttX cannot exist — a skip here would be the vacuous
         # green the lane exists to prevent.
         echo "  nuttx kernel (prerequisite for the leaf below):"
+        nros_link_check_sources --source nuttx-kernel --source nuttx-apps --source nuttx-libc
         scripts/nuttx/build-nuttx.sh >/dev/null
         echo "  nuttx talker ($(nros_cargo_platform_profile nuttx)):"
         mapfile -t nuttx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile nuttx)")
@@ -2822,6 +2839,7 @@ rust-rtos-link-check: _codegen
     # for it and `nros_cargo_platform_profile` returns exactly that. Routed
     # through the same accessor anyway, so the three leaves read alike and a
     # future carve-out reaches this one without an edit here.
+    nros_link_check_sources --source threadx --source threadx-netxduo
     echo "  threadx-linux talker ($(nros_cargo_platform_profile threadx-linux)):"
     mapfile -t threadx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile threadx-linux)")
     assert_leaf_settings_included examples/threadx-linux/rust/talker
