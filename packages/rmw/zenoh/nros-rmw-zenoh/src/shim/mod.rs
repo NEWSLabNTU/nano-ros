@@ -39,6 +39,7 @@
 //! session.spin_once(core::time::Duration::from_millis(10))?;
 //! ```
 
+pub mod entity_gid;
 pub mod occupancy;
 pub mod publisher;
 pub mod qos;
@@ -46,8 +47,6 @@ pub mod service;
 pub mod session;
 pub mod subscriber;
 pub mod transport;
-
-use portable_atomic::Ordering;
 
 // Use AtomicI64 on 64-bit targets, AtomicI32 on 32-bit (e.g. Cortex-M, riscv32)
 // portable-atomic provides fetch_add/fetch_sub even on targets without native
@@ -103,9 +102,6 @@ pub(crate) const SAFETY_CRC_SIZE: usize = 4;
 /// Total attachment size with safety CRC (37 bytes)
 #[cfg(feature = "safety-e2e")]
 pub(crate) const RMW_ATTACHMENT_SIZE_WITH_CRC: usize = RMW_ATTACHMENT_SIZE + SAFETY_CRC_SIZE;
-
-/// LCG multiplier for GID PRNG generation.
-const GID_PRNG_MULTIPLIER: u64 = 0x517cc1b727220a95;
 
 /// Null-terminated locator string buffer size.
 pub(crate) const LOCATOR_BUFFER_SIZE: usize = 128;
@@ -345,36 +341,13 @@ pub struct RmwAttachment {
     pub sequence_number: i64,
     /// Timestamp in nanoseconds
     pub timestamp: i64,
-    /// RMW Global Identifier (random, generated once per publisher)
+    /// The sender's entity gid — XXH3-128 of its liveliness keyexpr
+    /// ([`entity_gid::entity_gid`], issue 1495), the derivation
+    /// `rmw_zenoh_cpp` uses for its own entities.
     pub rmw_gid: [u8; RMW_GID_SIZE],
 }
 
 impl RmwAttachment {
-    /// Create a new attachment with a random GID
-    pub fn new() -> Self {
-        Self {
-            sequence_number: 0,
-            timestamp: 0,
-            rmw_gid: Self::generate_gid(),
-        }
-    }
-
-    /// Generate a random GID using a simple PRNG
-    pub fn generate_gid() -> [u8; RMW_GID_SIZE] {
-        let mut gid = [0u8; RMW_GID_SIZE];
-        static COUNTER: AtomicSeqCounter = AtomicSeqCounter::new(0);
-        let seed = COUNTER.fetch_add(1, Ordering::Relaxed) as u64;
-        // Use address of gid as additional entropy
-        let addr = &gid as *const _ as u64;
-        let mixed = seed.wrapping_mul(GID_PRNG_MULTIPLIER) ^ addr;
-
-        for (i, byte) in gid.iter_mut().enumerate() {
-            let shift = (i % 8) * 8;
-            *byte = ((mixed.wrapping_mul((i as u64).wrapping_add(1))) >> shift) as u8;
-        }
-        gid
-    }
-
     /// Serialize the attachment in the format expected by rmw_zenoh_cpp
     ///
     /// Format:
@@ -391,12 +364,6 @@ impl RmwAttachment {
         buf[16] = RMW_GID_SIZE as u8;
         // GID bytes
         buf[17..33].copy_from_slice(&self.rmw_gid);
-    }
-}
-
-impl Default for RmwAttachment {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -538,6 +505,10 @@ impl EntityKind {
 /// parsed from, and names stay MANGLED — see `Ros2Liveliness::parse`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LivelinessEntity<'a> {
+    /// The whole token, as received. Issue 1495: `rmw_zenoh_cpp` derives an
+    /// entity's gid by hashing exactly this string ([`entity_gid::entity_gid`]),
+    /// so it is what a graph query reports an endpoint's gid from.
+    pub keyexpr: &'a str,
     pub domain_id: u32,
     pub zid: &'a str,
     pub node_id: u32,
@@ -928,6 +899,7 @@ impl Ros2Liveliness {
         }
 
         Some(LivelinessEntity {
+            keyexpr: key,
             domain_id,
             zid,
             node_id,
@@ -1008,9 +980,11 @@ mod tests {
 
     #[test]
     fn test_rmw_attachment_serialization() {
-        let mut att = RmwAttachment::new();
-        att.sequence_number = 42;
-        att.timestamp = 1000000;
+        let att = RmwAttachment {
+            sequence_number: 42,
+            timestamp: 1000000,
+            rmw_gid: entity_gid::entity_gid("@ros2_lv/0/x/0/1/MP"),
+        };
 
         let mut buf = [0u8; RMW_ATTACHMENT_SIZE];
         att.serialize(&mut buf);
@@ -1697,6 +1671,7 @@ mod tests {
 mod ghost_checks {
     use super::*;
     use nros_ghost_types::{ServiceBufferGhost, SubscriberBufferGhost};
+    use portable_atomic::Ordering;
     use service::ServiceBuffer;
     use subscriber::SubscriberBuffer;
 

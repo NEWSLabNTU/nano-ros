@@ -588,9 +588,8 @@ pub const NROS_PUBLISHER_GID_SIZE: usize = 24;
 ///   backend whose identity is narrower zero-extends into the tail, so two
 ///   gids naming one entity compare equal. Gids from two different backends
 ///   in one image are never comparable.
-/// * **Not comparable with the gid on a received sample, yet.** They are the
-///   same width and, on every backend but zenoh, are not produced from the
-///   same source. Issue 1495.
+/// * **Comparable with the gid on a received sample** on zenoh and Cyclone,
+///   which derive both from one source (issue 1495).
 /// * **An all-zero gid is never returned as an answer.** A backend with no
 ///   identity for this publisher reports `NROS_RET_UNSUPPORTED`, because
 ///   all-zero is what an unwritten buffer holds and the two must not read

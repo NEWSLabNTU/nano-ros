@@ -486,9 +486,9 @@ template <typename M> class Publisher {
     ///   backend whose identity is narrower zero-extends into the tail, so
     ///   two gids naming one entity compare equal. Gids produced by two
     ///   different backends in one image are never comparable.
-    /// * **Not comparable with the gid on a RECEIVED sample, yet.** Same
-    ///   width, and on every backend but zenoh not the same source — issue
-    ///   1495.
+    /// * **Comparable with the gid on a RECEIVED sample** on zenoh and
+    ///   Cyclone, which derive both from one source (issue 1495): a
+    ///   subscriber's `MessageInfo` names this publisher by these bytes.
     /// * **An all-zero gid is never handed back as an answer.** A backend
     ///   with no identity for this publisher reports
     ///   `ErrorCode::Unsupported`, because all-zero is what an unwritten

@@ -3,13 +3,58 @@ id: 1495
 title: "The publisher GID is one TYPE on every backend and one VALUE on none —
   a take's gid and `get_gid_for_publisher`'s gid are never produced from the
   same source"
-status: open
+status: resolved
+resolved: 2026-10-03
 type: bug
 area: rmw
 severity: medium
 related: [rfc-0089, phase-444, phase-467]
 found: 2026-09-25
 ---
+
+> **RESOLVED 2026-10-03.** Both halves landed together and each was observed
+> by a live peer. The "what is true today" table below is the state when
+> filed; it was already partly stale by then — PR #1321 had filled zenoh's
+> `get_gid_for_publisher` slot (Rust-adapter trampoline +
+> `ZenohPublisher::get_gid`), so on zenoh the take gid and `get_gid()` were
+> already the same BYTES. What remained was what those bytes MEANT, and all of
+> Cyclone.
+>
+> * **zenoh.** The gid is XXH3-128 of the entity's liveliness keyexpr
+>   (`shim/entity_gid.rs`, a port of `rmw_zenoh_cpp` 0.1.9's
+>   `simplified_xxhash3.cpp`, vectors produced by compiling upstream's own
+>   file) — upstream's derivation, not merely "derived from the ZenohId and
+>   entity id" (the keyexpr carries both). The wire stays 16 bytes. Getting a
+>   peer to AGREE took a second change the issue did not anticipate: a peer
+>   parses our token and RE-SERIALISES it before hashing, and our QoS field
+>   (`1:2:1,10`) did not survive that round trip (upstream writes `::,10`,
+>   eliding its defaults, depth default 42). Measured: with the hash alone,
+>   `ros2 topic info --verbose` printed a gid for our publisher that matched
+>   none of our samples. Tokens now carry the canonical form
+>   (parse-equivalent for every peer). Our graph's endpoint gids are derived
+>   the same way, so they match a stock peer's own.
+> * **Cyclone.** The ABI already had the channel — `take_with_info` — and
+>   nothing dispatched it. Cyclone fills it (writer GUID via the publication
+>   handle, cached per subscription) and `nros-rmw-cffi` now calls it.
+> * **Acceptance.** `graph_interop`'s
+>   `zenoh_publisher_gid_is_the_one_a_stock_peer_reads_and_reports` (our
+>   `get_gid` == the `publisher_gid` a stock `rmw_zenoh_cpp` subscriber read
+>   via `rcl_take` == the GID `ros2 topic info --verbose` prints; and the take
+>   side against a stock publisher) and
+>   `cyclone_take_gid_is_the_publishers_graph_gid` (our take reports the GUID
+>   ros2 prints for a stock publisher; our `get_gid` is the GUID ros2 prints
+>   for us). Both fail with their half reverted. Recorded in
+>   `.config/interop-verdicts.toml`.
+> * **Acceptance item 2 as written could not be met, and the reason is
+>   upstream's:** a Humble `rmw_cyclonedds_cpp` subscriber reports the 8-byte
+>   publication HANDLE as `message_info.publisher_gid` (`rmw_node.cpp`
+>   1.3.4; measured `1d5ff9fccbaee4f7` + zeros against GUID `01.10.0f.46.…`).
+>   The graph GID is the shared identity, and that is what the Cyclone case
+>   compares.
+> * **Item 3 (stable across restart):** exactly as stable as the session's
+>   zenoh id — stable when `session_zid` is configured, fresh per run by
+>   default. That is upstream's behaviour too; distinct between two publishers
+>   in one process by construction (distinct entity ids).
 
 # What is true today
 

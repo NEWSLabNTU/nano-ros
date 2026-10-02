@@ -115,18 +115,14 @@ typedef int64_t rmw_time_point_value_t;
  *  identifier shorter than 24 bytes rather than leave the tail undefined —
  *  otherwise two gids naming the same entity compare unequal on stack garbage.
  *
- *  **The width discrepancy is GONE; the identity one is not.** `nros-core`'s
- *  `MessageInfo::publisher_gid` was 16 bytes against this 24 until the
- *  phase-467 RMW gap-closure design study's Q1(a). `PUBLISHER_GID_SIZE` is 24
- *  now, so a gid obtained from a take and a gid obtained from
- *  `get_gid_for_publisher` are ONE TYPE and need no mapping. What they still
- *  are not is one VALUE: no backend fills both. Cyclone fills this slot from
- *  the DDS writer GUID and never writes `MessageInfo::publisher_gid` — a pure
- *  C/C++ backend reports no `MessageInfo` at all; zenoh fills
- *  `MessageInfo::publisher_gid` from its 16-byte attachment gid
- *  (zero-extended) and leaves this slot NULL. Making the two agree is issue
- *  1495 — it changes a value a stock ROS 2 peer reads, so it is deliberately
- *  separate from the widening. */
+ *  **One type and one value.** A gid obtained from a take
+ *  (`rmw_message_info_t::publisher_gid`) and one obtained from
+ *  `get_gid_for_publisher` are the same width (the phase-467 RMW gap-closure
+ *  design study's Q1(a)) and, since issue 1495, produced from ONE source on
+ *  every backend that produces either: Cyclone's writer GUID on both sides
+ *  (`take_with_info`); zenoh's XXH3-128 of the entity's liveliness keyexpr,
+ *  which is `rmw_zenoh_cpp`'s own derivation and so also the gid a stock
+ *  graph query prints for the entity. */
 /** Bytes to READ — phase-406 W2.
  *
  *  `len` is a FACT: how many bytes exist. Nothing is written through this, and
@@ -224,14 +220,16 @@ typedef struct rmw_gid_t {
 
 /** Per-sample metadata — upstream `rmw_message_info_t`, field for field.
  *
- *  Phase 376 W4. Today this metadata reaches Rust callers through
- *  `MESSAGE_INFO_TABLE`, a side table in `nros-rmw-cffi` keyed on the
- *  subscription's `backend_data` ADDRESS. That table is a workaround, not a
- *  design, and it never crosses the seam it exists for: only the Rust
- *  trampoline writes it, so a C or C++ backend has no symbol to call and
- *  message info is permanently absent for them. It also claims a pool slot per
- *  subscription and never releases it, so a reused handle address inherits the
- *  previous subscription's metadata.
+ *  Phase 376 W4. Two channels carry this metadata to Rust callers today. A
+ *  backend that fills `take_with_info` reports it here, in caller-owned
+ *  storage, and the runtime dispatches that slot whenever it is non-NULL
+ *  (issue 1495 — before that nothing called it, and a C/C++ backend such as
+ *  Cyclone delivered every sample with no metadata at all). The Rust adapter
+ *  instead writes `MESSAGE_INFO_TABLE`, a side table in `nros-rmw-cffi` keyed
+ *  on the subscription's `backend_data` ADDRESS. That table is a workaround,
+ *  not a design: it claims a pool slot per subscription and never releases
+ *  it, so a reused handle address inherits the previous subscription's
+ *  metadata.
  *
  *  Passing the struct by pointer on the take call — which is what upstream does
  *  — removes all of that: the caller owns the storage, it lives exactly as long

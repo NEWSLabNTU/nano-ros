@@ -162,6 +162,21 @@ static rmw_ret_t cyclone_get_gid_for_publisher(const rmw_publisher_t *publisher,
     return NROS_RMW_RET_OK;
 }
 
+/* Issue 1495 — the with-info take. The body is the subscriber's; this wrapper
+ * adds the one field that belongs to the registration rather than to the
+ * sample: which backend produced the gid, so it is compared only against gids
+ * from the same one (`rmw_entity.h`). */
+static rmw_ret_t cyclone_take_with_info(const rmw_subscription_t *subscription,
+                                        rmw_mut_byte_span_t *message, bool *taken,
+                                        rmw_message_info_t *message_info) {
+    const rmw_ret_t rc = nros_rmw_cyclonedds::subscription_take_with_info(subscription, message,
+                                                                          taken, message_info);
+    if (rc == NROS_RMW_RET_OK && taken != nullptr && *taken) {
+        message_info->publisher_gid.implementation_identifier = kImplementationIdentifier;
+    }
+    return rc;
+}
+
 /* phase-393 W1 — the client/service half of the QoS read-back (issue 0823).
  *
  * Same `out`-carries-the-request contract as the publisher and subscription
@@ -434,7 +449,7 @@ const nros_rmw_vtable_t kVtable = {
     /*service_request_subscription_get_actual_qos*/ cyclone_service_request_subscription_get_actual_qos,
     /*service_response_publisher_get_actual_qos*/ cyclone_service_response_publisher_get_actual_qos,
     /*publisher_wait_for_all_acked*/ nullptr,
-    /*take_with_info*/ nullptr,
+    /*take_with_info*/ cyclone_take_with_info,
     /*take_loaned_message_with_info*/ nullptr,
     /*get_node_names*/ cyclone_get_node_names,
     /* phase-444 W3 — the other eleven-twelfths of the graph family, from the

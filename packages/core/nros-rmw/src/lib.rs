@@ -91,6 +91,10 @@ pub use traits::{
 // `Subscription::take_serialized_with_info` don't need their own direct
 // nros-core dep.
 pub use nros_core::MessageInfo;
+// Issue 1495 — and the `Time` its setters take, so a seam that BUILDS a
+// `MessageInfo` from a C backend's `rmw_message_info_t` (nros-rmw-cffi's
+// `take_with_info` dispatch) can name it without a direct nros-core dep.
+pub use nros_core::Time;
 
 // Same reason, one method over: [`Publisher::get_gid`]'s return type is
 // `[u8; PUBLISHER_GID_SIZE]`, so a backend implementing it — or a caller

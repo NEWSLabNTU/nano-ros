@@ -393,3 +393,339 @@ fn cyclone_a_peer_leaving_fires_the_graph_change_guard() {
         "a peer leaving the graph must reach the guard condition:\n{out}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Issue 1495 — the PUBLISHER GID, against a stock peer
+// ---------------------------------------------------------------------------
+//
+// A gid's whole job is that someone ELSE recognises it, so every comparison
+// below is between a value we produced and a value a stock rmw produced for
+// the same entity — never ours against ours. Three readings, one entity:
+//
+// * what our publisher's `get_gid()` CLAIMS;
+// * what a stock subscriber's RMW READ off one of our samples
+//   (`message_info_peer.py` — rclpy on Humble exposes no publisher gid, so it
+//   takes with `rcl_take` and prints `rmw_message_info_t::publisher_gid`);
+// * what `ros2 topic info --verbose` PRINTS for our publisher, which a zenoh
+//   peer derives by hashing our liveliness token and a Cyclone peer reads from
+//   the writer GUID it discovered.
+//
+// And the take side, the other way round: a stock `ros2 topic pub` publishes,
+// our `message_info()` callback reports its gid, and `ros2 topic info` names
+// the gid that publisher is known by.
+//
+// Same two cells as everything else in this file: the coordinate did not move,
+// the question did (`interop::CASE_CELLS`).
+
+const GID_PUB_TOPIC: &str = "/nros_gid_out";
+const GID_SUB_TOPIC: &str = "/nros_gid_in";
+const GID_PROBE_BUDGET_MS: &str = "90000";
+const GID_WAIT: Duration = Duration::from_secs(45);
+const GID_DISCOVERY: Duration = Duration::from_secs(25);
+
+/// The 24 bytes after `marker` on the first line carrying it.
+fn gid_after(out: &str, marker: &str) -> Vec<u8> {
+    let hex = out
+        .lines()
+        .find_map(|l| l.trim().strip_prefix(marker))
+        .unwrap_or_else(|| panic!("no `{marker}` line.\nOutput:\n{out}"))
+        .trim();
+    assert_eq!(
+        hex.len(),
+        48,
+        "`{marker}` must carry a whole 24-byte gid: {hex}"
+    );
+    (0..24)
+        .map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).expect("hex gid"))
+        .collect()
+}
+
+fn hex(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+/// An identity, not an absence: all-zero is the ABI's "unknown".
+fn assert_identity(gid: &[u8], what: &str) {
+    assert!(
+        gid[..16].iter().any(|b| *b != 0),
+        "{what} is all-zero, which is the ABI's spelling for `unknown`: {}",
+        hex(gid)
+    );
+}
+
+/// The single publisher on `topic` that is NOT our probe, from a topic report.
+fn stock_publisher_gid(report: &str, topic: &str) -> Vec<u8> {
+    let stock: Vec<_> = nros_tests::ros2::topic_endpoints(report)
+        .into_iter()
+        .filter(|e| e.kind == "PUBLISHER" && e.node != "graph_probe")
+        .collect();
+    let [one] = stock.as_slice() else {
+        panic!(
+            "expected exactly one stock publisher on {topic}, found {}.\n{report}",
+            stock.len()
+        );
+    };
+    nros_tests::ros2::endpoint_gid_bytes(&one.block).unwrap_or_else(|| {
+        panic!("`ros2 topic info --verbose` printed no GID for the stock publisher.\n{report}")
+    })
+}
+
+/// Poll a topic report until `pred` holds or the budget is spent; returns the
+/// last report. A single-shot query is a race (issues 0705, 0761).
+fn await_report(mut query: impl FnMut() -> String, pred: impl Fn(&str) -> bool) -> String {
+    let deadline = std::time::Instant::now() + GID_DISCOVERY;
+    loop {
+        let report = query();
+        if pred(&report) || std::time::Instant::now() >= deadline {
+            return report;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+
+fn has_stock_publisher(report: &str) -> bool {
+    nros_tests::ros2::topic_endpoints(report)
+        .iter()
+        .any(|e| e.kind == "PUBLISHER" && e.node != "graph_probe")
+}
+
+/// zenoh: the gid we stamp, the gid a stock subscriber reads, and the gid a
+/// stock graph prints for us are ONE value — and the take side agrees too.
+///
+/// What fails without issue 1495's fix, and why the second assertion is the
+/// one that matters: since #1321 the attachment and `get_gid()` were already
+/// the same BYTES, so a peer's `message_info` matched ours even when those
+/// bytes were a counter XORed with a stack address. What did not match was the
+/// third reading — `rmw_zenoh_cpp` derives every entity's gid as XXH3-128 of
+/// its liveliness keyexpr, so the gid it printed for our publisher was one we
+/// never stamped. That was measured twice on the way: once with the random gid,
+/// and once with the hash over a token whose QoS field (`1:2:1,10`) did not
+/// survive upstream's parse-and-reserialise (`::,10`).
+///
+/// Interop cell: `native-graph-rust-zenoh-r2n` (`interop::CASE_CELLS`).
+#[test]
+fn zenoh_publisher_gid_is_the_one_a_stock_peer_reads_and_reports() {
+    interop::assert_test_bound("graph_interop", &GRAPH_COORDS);
+
+    if !require_ros2() {
+        nros_tests::skip!("ROS 2 + rmw_zenoh_cpp not available");
+    }
+    let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
+    let locator = router.locator();
+
+    let probe_bin = fixtures::build_graph_probe().require("prebuilt graph-probe");
+    let mut cmd = Command::new(probe_bin);
+    cmd.env("NROS_LOCATOR", &locator)
+        .env("GRAPH_PROBE_GID", "1")
+        .env("GRAPH_PROBE_GID_PUB_TOPIC", GID_PUB_TOPIC)
+        .env("GRAPH_PROBE_GID_SUB_TOPIC", GID_SUB_TOPIC)
+        .env("GRAPH_PROBE_TIMEOUT_MS", GID_PROBE_BUDGET_MS);
+    let mut probe =
+        ManagedProcess::spawn_command(cmd, "graph-probe-gid").expect("spawn the gid probe");
+    let ready = probe
+        .wait_for_output_pattern(output::GRAPH_PROBE_GID_READY, GID_WAIT)
+        .expect("the probe must create its publisher and subscription");
+    let ours = gid_after(&ready, output::GRAPH_PROBE_PUB_GID);
+    assert_identity(&ours, "our publisher's get_gid()");
+    assert!(
+        ours[16..].iter().all(|b| *b == 0),
+        "zenoh's gid is 16 bytes on the wire, zero-extended to 24: {}",
+        hex(&ours)
+    );
+
+    // (1) A stock subscriber's RMW reads our attachment.
+    let (env_setup, _cfg) =
+        nros_tests::ros2::ros2_env_setup_with_locator(DEFAULT_ROS_DISTRO, &locator);
+    let script = nros_tests::project_root()
+        .join("packages/testing/nros-tests/fixtures/ros2-message-info-peer/message_info_peer.py");
+    let peer = Command::new("bash")
+        .args([
+            "-c",
+            &format!(
+                "{env_setup} && timeout --foreground 40 python3 {} {GID_PUB_TOPIC} 30",
+                script.display()
+            ),
+        ])
+        .output()
+        .expect("run the stock message-info peer");
+    let peer_out = format!(
+        "{}{}",
+        String::from_utf8_lossy(&peer.stdout),
+        String::from_utf8_lossy(&peer.stderr)
+    );
+    assert!(
+        peer_out.contains(output::MESSAGE_INFO_PEER_TAKE_GID),
+        "the stock subscriber never took one of our samples:\n{peer_out}"
+    );
+    let theirs_take = gid_after(&peer_out, output::MESSAGE_INFO_PEER_TAKE_GID);
+    assert_eq!(
+        hex(&theirs_take),
+        hex(&ours),
+        "the gid a stock rmw_zenoh_cpp subscriber read off our sample is not the one our \
+         get_gid() reports"
+    );
+
+    // (2) A stock graph derives our gid from our token.
+    let report = await_report(
+        || {
+            nros_tests::ros2::ros2_topic_info_verbose(&locator, DEFAULT_ROS_DISTRO, GID_PUB_TOPIC)
+                .expect("ros2 topic info")
+        },
+        |r| !nros_tests::ros2::topic_endpoints_for_node(r, "PUBLISHER", "graph_probe").is_empty(),
+    );
+    let ep = nros_tests::ros2::topic_endpoints_for_node(&report, "PUBLISHER", "graph_probe");
+    let [ep] = ep.as_slice() else {
+        panic!("expected our one publisher on {GID_PUB_TOPIC}.\n{report}");
+    };
+    let theirs_graph = nros_tests::ros2::endpoint_gid_bytes(&ep.block)
+        .unwrap_or_else(|| panic!("no GID line for our publisher.\n{report}"));
+    assert_eq!(
+        hex(&theirs_graph[..16]),
+        hex(&ours[..16]),
+        "`ros2 topic info --verbose` knows our publisher by a gid we never stamp. rmw_zenoh_cpp \
+         hashes the liveliness token it parsed and RE-SERIALISED, so our token must round-trip \
+         byte for byte (issue 1495).\n{report}"
+    );
+
+    // (3) The take side: a stock publisher, our MessageInfo, its graph gid.
+    let _stock_pub = Ros2Process::topic_pub(
+        GID_SUB_TOPIC,
+        "std_msgs/msg/String",
+        "{data: gid}",
+        5,
+        &locator,
+        DEFAULT_ROS_DISTRO,
+    )
+    .expect("start a stock publisher");
+    let took = probe.collect_until("GRAPH_PROBE_TAKE_", GID_WAIT);
+    assert!(
+        !took.contains(output::GRAPH_PROBE_TAKE_ABSENT),
+        "zenoh delivered a sample with no MessageInfo:\n{took}"
+    );
+    let ours_take = gid_after(&took, output::GRAPH_PROBE_TAKE_GID);
+    assert_identity(&ours_take, "the gid our take reported");
+    let report = await_report(
+        || {
+            nros_tests::ros2::ros2_topic_info_verbose(&locator, DEFAULT_ROS_DISTRO, GID_SUB_TOPIC)
+                .expect("ros2 topic info")
+        },
+        has_stock_publisher,
+    );
+    let stock = stock_publisher_gid(&report, GID_SUB_TOPIC);
+    probe.kill();
+    assert_eq!(
+        hex(&ours_take[..16]),
+        hex(&stock[..16]),
+        "our MessageInfo names a different publisher from the one ros2 reports.\n{report}"
+    );
+}
+
+/// Cyclone: our take now REPORTS a gid, and it is the writer GUID the graph
+/// prints — plus our own publisher's gid is the one the graph prints for us.
+///
+/// What fails without issue 1495's fix: the probe prints
+/// `GRAPH_PROBE_TAKE_ABSENT`. A pure C/C++ backend had no metadata channel —
+/// the runtime's side table is written by the Rust adapter alone — so every
+/// Cyclone sample reached `message_info()` with `None`. The ABI's
+/// `take_with_info` slot is that channel; Cyclone fills it and the runtime now
+/// dispatches it.
+///
+/// Why there is no stock-SUBSCRIBER reading here, unlike the zenoh case: a
+/// Humble `rmw_cyclonedds_cpp` subscriber does not report the writer GUID in
+/// `message_info.publisher_gid` — it copies the 8-byte publication HANDLE
+/// (`rmw_node.cpp`, 1.3.4), a participant-local number. Measured with
+/// `message_info_peer.py` against a stock talker: `1d5ff9fccbaee4f7` and 16
+/// zero bytes, against a GUID of `01.10.0f.46.…` from `ros2 topic info`. No
+/// gid query can ever match that value, so comparing ours to it would test
+/// upstream's choice, not ours; the graph GID is the identity both sides share.
+///
+/// Interop cell: `native-graph-rust-cyclone-r2n` (`interop::CASE_CELLS`).
+#[test]
+fn cyclone_take_gid_is_the_publishers_graph_gid() {
+    interop::assert_test_bound("graph_interop", &GRAPH_COORDS);
+
+    if !nros_tests::ros2::require_ros2_cyclonedds() {
+        nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
+    }
+    let domain = nros_tests::unique_ros_domain_id();
+
+    let probe_bin = fixtures::build_graph_probe_rmw(nros_tests::fixtures::Rmw::Cyclonedds)
+        .require("prebuilt cyclone graph-probe");
+    let mut cmd = Command::new(probe_bin);
+    cmd.env("GRAPH_PROBE_GID", "1")
+        .env("GRAPH_PROBE_GID_PUB_TOPIC", GID_PUB_TOPIC)
+        .env("GRAPH_PROBE_GID_SUB_TOPIC", GID_SUB_TOPIC)
+        .env("GRAPH_PROBE_TIMEOUT_MS", GID_PROBE_BUDGET_MS)
+        .env("ROS_DOMAIN_ID", domain.to_string())
+        .env("NROS_DOMAIN_ID", domain.to_string());
+    // Issue 1137 — the same bus as the stock side.
+    nros_tests::dds_isolation::apply_to_command(&mut cmd);
+    let mut probe = ManagedProcess::spawn_command(cmd, "graph-probe-gid-cyclone")
+        .expect("spawn the cyclone gid probe");
+    let ready = probe
+        .wait_for_output_pattern(output::GRAPH_PROBE_GID_READY, GID_WAIT)
+        .expect("the probe must create its publisher and subscription");
+    let ours = gid_after(&ready, output::GRAPH_PROBE_PUB_GID);
+    assert_identity(&ours, "our publisher's get_gid()");
+
+    // Our publisher, as the stock graph knows it.
+    let report = await_report(
+        || {
+            nros_tests::ros2::ros2_topic_info_verbose_cyclonedds(
+                DEFAULT_ROS_DISTRO,
+                domain,
+                GID_PUB_TOPIC,
+            )
+            .expect("ros2 topic info")
+        },
+        |r| !nros_tests::ros2::topic_endpoints_for_node(r, "PUBLISHER", "graph_probe").is_empty(),
+    );
+    let ep = nros_tests::ros2::topic_endpoints_for_node(&report, "PUBLISHER", "graph_probe");
+    let [ep] = ep.as_slice() else {
+        panic!("expected our one publisher on {GID_PUB_TOPIC}.\n{report}");
+    };
+    let theirs_graph = nros_tests::ros2::endpoint_gid_bytes(&ep.block)
+        .unwrap_or_else(|| panic!("no GID line for our publisher.\n{report}"));
+    assert_eq!(
+        hex(&theirs_graph[..16]),
+        hex(&ours[..16]),
+        "get_gid_for_publisher is not the writer GUID the peer discovered.\n{report}"
+    );
+
+    // The take side — the half issue 1495 found silent.
+    let _stock_pub = Ros2DdsProcess::topic_pub_cyclonedds_with_domain(
+        GID_SUB_TOPIC,
+        "std_msgs/msg/String",
+        "{data: gid}",
+        5,
+        DEFAULT_ROS_DISTRO,
+        domain,
+    )
+    .expect("start a stock cyclone publisher");
+    let took = probe.collect_until("GRAPH_PROBE_TAKE_", GID_WAIT);
+    assert!(
+        !took.contains(output::GRAPH_PROBE_TAKE_ABSENT),
+        "Cyclone delivered a sample with NO MessageInfo — the take path has no metadata \
+         channel (issue 1495):\n{took}"
+    );
+    let ours_take = gid_after(&took, output::GRAPH_PROBE_TAKE_GID);
+    assert_identity(&ours_take, "the gid our take reported");
+    let report = await_report(
+        || {
+            nros_tests::ros2::ros2_topic_info_verbose_cyclonedds(
+                DEFAULT_ROS_DISTRO,
+                domain,
+                GID_SUB_TOPIC,
+            )
+            .expect("ros2 topic info")
+        },
+        has_stock_publisher,
+    );
+    let stock = stock_publisher_gid(&report, GID_SUB_TOPIC);
+    probe.kill();
+    assert_eq!(
+        hex(&ours_take[..16]),
+        hex(&stock[..16]),
+        "our MessageInfo names a different publisher from the writer GUID ros2 reports.\n{report}"
+    );
+}

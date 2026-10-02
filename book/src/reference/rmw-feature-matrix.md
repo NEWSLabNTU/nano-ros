@@ -39,7 +39,7 @@ backends land implementations.
 | Publisher GID / matched counts | — | — | wired |
 | Actual-QoS read-back | wired | — | wired |
 | Wait-for-acked | — | — | — |
-| Take-with-info | wired | — | — |
+| Take-with-info | wired | — | wired |
 | Graph introspection (names/types/counts) | wired | — | wired |
 
 ## Node-layer features

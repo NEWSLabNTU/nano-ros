@@ -1060,14 +1060,13 @@ typedef struct nros_rmw_vtable_t {
      *  `rmw_subscription_allocation_t` — see `take`, which carries the full
      *  reason and the two wrong ones that preceded it.
      *
-     *  NULL slot: nothing dispatches this slot at all, so a NULL one
-     *  changes nothing — the runtime calls `take` because `take` is
-     *  the only take it calls, not because it fell back. The
-     *  observable result ("no metadata, for every backend") is the
-     *  same either way, which is exactly why the fallback prose
-     *  survived unchallenged; the mechanism it described did not
-     *  exist (phase-428 W12). Filling this slot on a backend today
-     *  changes no behaviour. */
+     *  DISPATCHED since issue 1495: a with-info take on the runtime
+     *  calls this slot when it is non-NULL and converts the struct to
+     *  `MessageInfo`. A NULL slot falls back to `take` plus the Rust
+     *  adapter's side table, which is metadata for a Rust backend and
+     *  none for a C/C++ one. (Before 1495 nothing called this slot at
+     *  all, so filling it changed no behaviour — phase-428 W12 found
+     *  the fallback prose describing a mechanism that did not exist.) */
     rmw_ret_t (*take_with_info)(const rmw_subscription_t *subscription,
         rmw_mut_byte_span_t *message, bool *taken, rmw_message_info_t *message_info);
 

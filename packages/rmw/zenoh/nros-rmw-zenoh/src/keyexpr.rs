@@ -229,17 +229,44 @@ impl QosKeyExpr for QoSProfile {
             QoSHistoryPolicy::Unknown => 0,
         };
 
-        let _ = core::fmt::write(
-            &mut s,
-            format_args!(
-                "{}:{}:{},{}:,:,:,,",
-                reliability, durability, history, self.depth
-            ),
-        );
+        // Issue 1495 — CANONICAL form: a field equal to `rmw_zenoh_cpp`'s own
+        // default is written EMPTY, exactly as upstream's `qos_to_keyexpr`
+        // writes it. Parse-equivalent either way (upstream's `keyexpr_to_qos`
+        // reads an empty field as that default), so no peer reads a different
+        // profile. What it changes is the STRING, and the string is an
+        // identity: a peer derives our entity gid by parsing this token and
+        // re-serialising it, so a token that does not round-trip through
+        // upstream's parser byte for byte hashes to a gid we never stamped.
+        // Measured: `1:2:1,10` here made `ros2 topic info --verbose` print a
+        // gid for our publisher that matched none of our samples.
+        fn field<const N: usize>(s: &mut heapless::String<N>, v: u32, default: u32, sep: char) {
+            if v != default {
+                let _ = core::fmt::write(s, format_args!("{v}"));
+            }
+            let _ = s.push(sep);
+        }
+        field(&mut s, reliability, UPSTREAM_DEFAULT_RELIABILITY, ':');
+        field(&mut s, durability, UPSTREAM_DEFAULT_DURABILITY, ':');
+        field(&mut s, history, UPSTREAM_DEFAULT_HISTORY, ',');
+        if self.depth != UPSTREAM_DEFAULT_DEPTH {
+            let _ = core::fmt::write(&mut s, format_args!("{}", self.depth));
+        }
+        // Deadline, lifespan and liveliness are never stated, so they read as
+        // upstream's defaults — which is also what upstream writes for them.
+        let _ = s.push_str(":,:,:,,");
 
         s
     }
 }
+
+/// `rmw_zenoh_cpp`'s `QoS::default_qos()` (`detail/qos.cpp`, 0.1.9): the
+/// values its `qos_to_keyexpr` elides. NOT `rmw_qos_profile_default` — the
+/// depth is 42, upstream's own choice, and eliding 10 would make every
+/// default-profile token mean depth 42 to a peer.
+const UPSTREAM_DEFAULT_RELIABILITY: u32 = 1; // RELIABLE
+const UPSTREAM_DEFAULT_DURABILITY: u32 = 2; // VOLATILE
+const UPSTREAM_DEFAULT_HISTORY: u32 = 1; // KEEP_LAST
+const UPSTREAM_DEFAULT_DEPTH: u32 = 42;
 
 #[cfg(test)]
 mod tests {
@@ -336,14 +363,14 @@ mod tests {
     fn test_qos_string_sensor_data() {
         let qos = QoSProfile::QOS_PROFILE_SENSOR_DATA;
         let s: heapless::String<32> = qos.to_qos_string();
-        assert_eq!(s.as_str(), "2:2:1,5:,:,:,,");
+        assert_eq!(s.as_str(), "2::,5:,:,:,,");
     }
 
     #[test]
     fn test_qos_string_default() {
         let qos = QoSProfile::QOS_PROFILE_DEFAULT;
         let s: heapless::String<32> = qos.to_qos_string();
-        assert_eq!(s.as_str(), "1:2:1,10:,:,:,,");
+        assert_eq!(s.as_str(), "::,10:,:,:,,");
     }
 
     /// issue 0793 — this asserted `1:1:1` (TransientLocal) while testing
@@ -355,7 +382,7 @@ mod tests {
     fn test_qos_string_parameters_is_volatile() {
         let qos = QoSProfile::QOS_PROFILE_PARAMETERS;
         let s: heapless::String<32> = qos.to_qos_string();
-        assert_eq!(s.as_str(), "1:2:1,1000:,:,:,,");
+        assert_eq!(s.as_str(), "::,1000:,:,:,,");
     }
 
     /// Keeps the TransientLocal ENCODING covered, which the rename above would
@@ -365,7 +392,7 @@ mod tests {
     fn test_qos_string_transient_local() {
         let qos = QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT;
         let s: heapless::String<32> = qos.to_qos_string();
-        assert_eq!(s.as_str(), "1:1:1,1:,:,:,,");
+        assert_eq!(s.as_str(), ":1:,1:,:,:,,");
     }
 
     /// The KEEP_ALL encoding (history digit 2), built rather than borrowed.
@@ -384,7 +411,7 @@ mod tests {
     fn test_qos_string_keep_all() {
         let qos = QoSProfile::new().keep_all().depth(0);
         let s: heapless::String<32> = qos.to_qos_string();
-        assert_eq!(s.as_str(), "1:2:2,0:,:,:,,");
+        assert_eq!(s.as_str(), "::2,0:,:,:,,");
     }
 
     #[test]
@@ -395,7 +422,7 @@ mod tests {
             .keep_all()
             .depth(42);
         let s: heapless::String<32> = qos.to_qos_string();
-        assert_eq!(s.as_str(), "2:1:2,42:,:,:,,");
+        assert_eq!(s.as_str(), "2:1:2,:,:,:,,");
     }
 
     /// phase-428 W5 finding 3 — the namespace never reaches the key, so a name

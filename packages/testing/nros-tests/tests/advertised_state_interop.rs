@@ -17,12 +17,15 @@
 //!
 //! ## Cyclone, and only Cyclone
 //!
-//! Cyclone is the one backend that fills any of these. zenoh reaches the vtable
-//! through `RustBackendAdapter::VTABLE`, which ends `..EMPTY_VTABLE` and names
-//! none of them; `nros-rmw-xrce`'s designated initialiser stops before them and
-//! uORB's positional one does too. So the cell here is `linux/rust/cyclonedds`
-//! and there is no zenoh sibling to write — a zenoh probe would assert against
-//! six NULL pointers, which is a fact about the vtable, not about a peer.
+//! Cyclone is the one backend that fills the matched-count, actual-QoS and
+//! serialization-format slots. zenoh reaches the vtable through
+//! `RustBackendAdapter::VTABLE`, which since the phase-467 study fills
+//! `get_gid_for_publisher` and none of the other five; `nros-rmw-xrce`'s
+//! designated initialiser stops before them and uORB's positional one does
+//! too. So the cell here is `linux/rust/cyclonedds`. zenoh's GID — and
+//! Cyclone's take-side gid — are asked against live peers in
+//! `graph_interop` (issue 1495), where a gid's meaning as a GRAPH identity is
+//! the question.
 //!
 //! ## Why the nano side is a raw vtable driver
 //!
