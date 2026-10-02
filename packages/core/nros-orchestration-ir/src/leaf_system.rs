@@ -86,8 +86,11 @@ pub fn entry_package_name(image_id: &str) -> String {
 /// nothing would leave every implication unapplied and the image would build
 /// with the wrong links on, which is exactly what
 /// `examples/mps2-an385-baremetal/rust/talker-xrce` did: it named the RMW
-/// (`transport = "xrce"`) where the link kind goes, and nothing read the key,
-/// so nothing said so.
+/// (`transport = "xrce"`) where the link kind goes. (One reader DID read the
+/// key — the mps2 board's XRCE registration, comparing it with `"xrce"` — so
+/// the W6 rename silently unregistered that image's backend, issue 1601. The
+/// value now reaches boards as the typed `nros_platform::LinkKind`, which
+/// `nros::main!` maps from this list.)
 pub const TRANSPORT_KINDS: &[&str] = &["serial", "tcp", "udp"];
 
 /// Deployment identity (RFC-0098 D5): what the image dials and what it is.

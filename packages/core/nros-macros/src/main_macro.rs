@@ -3000,7 +3000,12 @@ struct DeployOverlayLit {
     gateway: Option<[u8; 4]>,
     netmask: Option<[u8; 4]>,
     domain_id: Option<u32>,
+    /// `[image.<id>] transport` — a LINK kind (`leaf_system::TRANSPORT_KINDS`),
+    /// baked as `nros_platform::LinkKind` (issue 1601).
     transport: Option<String>,
+    /// The image's declared RMW (`LeafSystem::rmw`). A board keys backend
+    /// registration on THIS, never on `transport` (issue 1601).
+    rmw: Option<String>,
     /// Issue #98 — the ROS graph node name for the primary session, set from the
     /// launch file's single `<node name>` (only when the launch declares exactly
     /// one node). NOT read from `[deploy.*]`: it is a launch identity, threaded
@@ -3039,9 +3044,84 @@ fn overlay_from_leaf(leaf: &nros_orchestration_ir::leaf_system::LeafSystem) -> D
         netmask: net.netmask.as_deref().and_then(parse_ipv4_lit),
         domain_id: net.domain_id,
         transport: net.transport.clone(),
+        rmw: leaf.rmw.clone(),
         // Issue #98 — not a deployment key; the caller fills this from the
         // parsed launch when it declares exactly one node.
         node_name: None,
+    }
+}
+
+/// Map a `[image.<id>] transport` word onto its `nros_platform::LinkKind`
+/// variant. Total over `leaf_system::TRANSPORT_KINDS` (bound by
+/// `link_kind_tests`); anything else — an RMW name in the link slot, which is
+/// issue 1601's shape — is an error naming the vocabulary.
+fn link_kind_variant(word: &str) -> Result<proc_macro2::Ident, String> {
+    let v = match word {
+        "serial" => "Serial",
+        "tcp" => "Tcp",
+        "udp" => "Udp",
+        other => {
+            return Err(format!(
+                "nros::main!: `transport = \"{other}\"` is not a link kind — it is one of {} \
+                 (RFC-0086 D2); the RMW is `rmw = \"…\"`",
+                nros_orchestration_ir::leaf_system::TRANSPORT_KINDS.join(", ")
+            ));
+        }
+    };
+    Ok(proc_macro2::Ident::new(v, proc_macro2::Span::call_site()))
+}
+
+#[cfg(test)]
+mod link_kind_tests {
+    use super::link_kind_variant;
+    use nros_orchestration_ir::leaf_system::TRANSPORT_KINDS;
+
+    /// Every word the leaf reader accepts maps to a `LinkKind` variant, so a
+    /// link kind added there without one here fails HERE rather than as an
+    /// image whose `transport` bakes a `compile_error!`.
+    #[test]
+    fn every_transport_kind_maps_to_a_link_kind() {
+        for k in TRANSPORT_KINDS {
+            assert!(
+                link_kind_variant(k).is_ok(),
+                "`{k}` has no LinkKind variant"
+            );
+        }
+    }
+
+    /// Issue 1601: an RMW name is not a link kind.
+    #[test]
+    fn an_rmw_name_is_refused_in_the_link_slot() {
+        let e = link_kind_variant("xrce").unwrap_err();
+        assert!(e.contains("not a link kind"), "{e}");
+    }
+
+    /// Issue 1601, the leaf half, without booting QEMU: the overlay the macro
+    /// bakes for `examples/mps2-an385-baremetal/rust/talker-xrce` must carry
+    /// exactly the pair `nros-board-mps2-an385` registers XRCE on —
+    /// `DeployOverlay::selects("xrce", LinkKind::Serial)`. Before the fix the
+    /// board asked for `transport == "xrce"`, which no leaf can state any more,
+    /// and the only witness was a QEMU e2e no merge lane runs.
+    #[test]
+    fn the_xrce_uart_leaf_bakes_the_pair_its_board_registers_on() {
+        let leaf_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../examples/mps2-an385-baremetal/rust/talker-xrce");
+        let leaf = nros_orchestration_ir::leaf_system::read(&leaf_dir)
+            .expect("talker-xrce system.toml must parse")
+            .expect("talker-xrce must declare a deployment");
+        let lit = super::overlay_from_leaf(&leaf);
+        assert_eq!(lit.rmw.as_deref(), Some("xrce"), "the backend is `rmw`");
+        assert_eq!(
+            lit.transport.as_deref(),
+            Some("serial"),
+            "the link is `transport`"
+        );
+        let ts = super::deploy_overlay_tokens(&lit).to_string();
+        assert!(
+            ts.contains("LinkKind :: Serial")
+                && ts.contains("rmw : :: core :: option :: Option :: Some (\"xrce\")"),
+            "the baked overlay must carry rmw = xrce over LinkKind::Serial:\n{ts}"
+        );
     }
 }
 
@@ -3065,7 +3145,17 @@ fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
         Some(d) => quote! { ::core::option::Option::Some(#d) },
         None => quote! { ::core::option::Option::None },
     };
-    let transport = match &lit.transport {
+    let transport = match lit.transport.as_deref().map(link_kind_variant) {
+        Some(Ok(v)) => quote! {
+            ::core::option::Option::Some(::nros::__macro_support::nros_platform::LinkKind::#v)
+        },
+        // `leaf_system::read` refuses an unknown link kind, so this arm is
+        // reached only by a vocabulary that grew on one side; say so at the
+        // image's compile rather than baking `None` (issue 1601).
+        Some(Err(msg)) => quote! { ::core::compile_error!(#msg) },
+        None => quote! { ::core::option::Option::None },
+    };
+    let rmw = match &lit.rmw {
         Some(s) => quote! { ::core::option::Option::Some(#s) },
         None => quote! { ::core::option::Option::None },
     };
@@ -3081,6 +3171,7 @@ fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
             netmask: #netmask,
             domain_id: #domain_id,
             transport: #transport,
+            rmw: #rmw,
             node_name: #node_name,
             boot_config: ::core::option::Option::Some(&NROS_BOOT_CONFIG),
         }

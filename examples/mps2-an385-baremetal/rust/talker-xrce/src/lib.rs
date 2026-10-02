@@ -2,7 +2,8 @@
 //! (phase-244.D1). Identical application shape to `serial_talker_pkg`; the only
 //! difference is the *transport* (XRCE-over-UART), which is a board-build +
 //! deploy-overlay concern (the entry builds the board with the `xrce-transport`
-//! feature + sets `transport = "xrce"`, so `BoardEntry::setup_transport` installs
+//! feature + declares `rmw = "xrce"` over `transport = "serial"`, so
+//! `BoardEntry::setup_transport` installs
 //! the XRCE custom-transport vtable before the RMW registers), never node logic.
 //! Publishes the `std_msgs/String` demo payload (`Hello World: N`) on `/chatter` once per second.
 
