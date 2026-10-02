@@ -96,7 +96,8 @@ descriptor to cargo, so its carriers still decide — and they agree.
 
 **Ledger.** The three rows moved from this issue to issue 1407: the reason that
 keeps them is now the ROAD (a multi-entry configure and a Zephyr west entry name
-no descriptor to cargo), not a missing reader.
+no descriptor to cargo), not a missing reader. (Issue 1407 then closed the Zephyr
+west road, and the rows moved on to issue 1649, the multi-entry configure.)
 
 **Still open here:** `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` (`RX_BUF`). Its
 basis is the CLOSURE — every type the image could receive or publish, because

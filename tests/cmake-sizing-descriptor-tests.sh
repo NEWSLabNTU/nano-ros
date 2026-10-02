@@ -354,6 +354,16 @@ get_property(_deps DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS)
 message(STATUS "CONFIGURE_DEPENDS=${_deps}")
 nros_sizing_descriptor_cargo_env(_row)
 message(STATUS "CARGO_ROW_ONE=${_row}")
+# Issue 1407 -- the Zephyr WEST road's record of the same decision, read back
+# the way `_nros_load_west_sizing_descriptor` reads it.
+function(_west_record_and_read _tag)
+    nros_sizing_descriptor_record_for_west()
+    nros_sizing_descriptor_west_fragment(_west)
+    unset(NROS_SIZING_DESCRIPTOR_FOR_CARGO)
+    include("${_west}")
+    message(STATUS "WEST_${_tag}=${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+endfunction()
+_west_record_and_read(ONE)
 if(DEFINED ENV{NROS_TEST_SECOND})
     nros_sizing_descriptor_from_model(_second
         CLI       "$ENV{NROS_TEST_CLI}"
@@ -363,6 +373,7 @@ if(DEFINED ENV{NROS_TEST_SECOND})
         RMW       "zenoh")
     nros_sizing_descriptor_cargo_env(_row2)
     message(STATUS "CARGO_ROW_TWO=${_row2}")
+    _west_record_and_read(TWO)
 endif()
 EOF
 
@@ -435,6 +446,20 @@ fi
 check
 if ! nros_grep_q "CARGO_ROW_ONE=NROS_SIZING_DESCRIPTOR=[^ ]*/nros/sizing/one.toml\$" <<<"$OUT"; then
     fail "G4: the cargo row carries more than the descriptor path -- $OUT"
+fi
+
+log_info "G5. the west road records the SAME one-or-none decision (issue 1407)"
+OUT="$(run_writer "" "")"
+check
+if ! nros_grep_q "WEST_ONE=[^ ]*/nros/sizing/one.toml\$" <<<"$OUT"; then
+    fail "G5: one descriptor and the west fragment names none -- the Zephyr knob \
+resolver would forward nothing and every descriptor consumer keeps its carrier -- $OUT"
+fi
+OUT="$(run_writer "" 1)"
+check
+if ! nros_grep_q "WEST_TWO=\$" <<<"$OUT"; then
+    fail "G5: two descriptors and the west fragment named one -- the shared archive \
+would be sized from one of N images on the west road only -- $OUT"
 fi
 
 log_info "G3. TWO descriptors in one configure name NONE to cargo"

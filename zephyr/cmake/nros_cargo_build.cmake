@@ -33,6 +33,10 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosResolved.cmake")
 # them the right place to clear a date a previous pass armed. FILE scope, same
 # reason as the two above.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosReconfigure.cmake")
+# Issue 1407 -- `nros_sizing_descriptor_west_fragment`, the one path both the
+# entry (writer) and `_nros_load_west_sizing_descriptor` (reader) name. FILE
+# scope, same reason as the three above.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosSizingDescriptor.cmake")
 # Issues 1015 + 1033 / RFC-0100 D7 -- `_nros_c_array_pool_floor`, the ONE CMake
 # spelling of "raise a derived demand to what a fixed C array can be sized to".
 # It lives in `cmake/` rather than here because phase-454 W6.d gave it a second
@@ -371,6 +375,37 @@ function(_nros_load_derived_entity_inventory)
     endforeach()
 endfunction()
 
+# _nros_load_west_sizing_descriptor()
+#
+# Issue 1407 -- read the fragment `nros_sizing_descriptor_record_for_west()`
+# wrote on the previous pass, and resolve `NROS_SIZING_DESCRIPTOR` from it.
+#
+# Resolved as a knob, so it joins `NROS_RESOLVED_KNOBS` and rides the C lane's
+# command like every other one (issue 0460). Rung 1 still wins: a descriptor
+# path exported by a caller is theirs. Only a path to a file that EXISTS is
+# forwarded -- a named descriptor that is not there is an error in every
+# consumer (RFC-0100 D6), and the fragment can outlive the file it names.
+function(_nros_load_west_sizing_descriptor)
+    nros_sizing_descriptor_west_fragment(_frag)
+    if(NOT EXISTS "${_frag}")
+        # Created EMPTY rather than skipped, for the reason the bounds loader
+        # gives: it is registered as a configure dependency below, and a ninja
+        # input with no producing rule is a hard error at load.
+        get_filename_component(_dir "${_frag}" DIRECTORY)
+        file(MAKE_DIRECTORY "${_dir}")
+        file(WRITE "${_frag}" "set(NROS_SIZING_DESCRIPTOR_FOR_CARGO \"\")\n")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_frag}")
+    nros_reconfigure_settle("${_frag}")
+    include("${_frag}")
+    if(NOT NROS_SIZING_DESCRIPTOR_FOR_CARGO STREQUAL ""
+       AND EXISTS "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+        message(STATUS
+            "nros: sizing descriptor named to cargo -- ${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+        _nros_resolve_knob(NROS_SIZING_DESCRIPTOR "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}" derived)
+    endif()
+endfunction()
+
 # _nros_resolve_derivable_knob(<env_name> <kconfig_value> <derived_var>
 #                              [<source-name> <reason-file>])
 #
@@ -487,6 +522,14 @@ function(nros_resolve_knobs)
             "${NROS_DERIVED_EXECUTOR_MAX_CBS} of them claim a callback slot); "
             "a Kconfig or environment value still wins")
     endif()
+
+    # Issue 1407 -- the SIZING DESCRIPTOR, named to cargo. This road writes one
+    # (`nano_ros_entry()` -> `nros_sizing_descriptor_from_model`) and used to
+    # name none, so every descriptor-first consumer fell to the `NROS_DECLARED_*`
+    # carriers resolved around this call. Same lag and same loader shape as the
+    # two inventories above: the entry records the one-or-none decision after
+    # this has run, and arms a re-configure when it changes.
+    _nros_load_west_sizing_descriptor()
 
     # phase-412 W1 -- the SESSION pools, on the same ladder and with the same
     # fallback. These are what the ZENOH SESSION sizes its tables from, not what

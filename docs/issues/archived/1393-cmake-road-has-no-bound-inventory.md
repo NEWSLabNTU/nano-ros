@@ -133,7 +133,7 @@ inventory) **— and that the other 22 are blocked by something else.** Closing
 this issue therefore does NOT unblock the retirement:
 
 * the entity counts and the queryable raw inputs are
-  [issue 1407](../1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md)
+  [issue 1407](1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md)
   — the model-only producer reads a POORER inventory than the carriers' verb
   does, and a standalone leaf has no model to read at all. Neither mechanism is
   touched by filling in a bound;

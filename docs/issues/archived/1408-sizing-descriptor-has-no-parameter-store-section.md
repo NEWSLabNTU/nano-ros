@@ -37,7 +37,7 @@ nine `NROS_DECLARED_*` carriers:
 ## Why this is a different shape from 1393
 
 [Issue 1393](1393-cmake-road-has-no-bound-inventory.md) and
-[issue 1407](../1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md)
+[issue 1407](1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md)
 are both about a PRODUCER that cannot source a field the schema HAS. This is the
 opposite: the producer has the fact — `ParamDeclarations` is composed on the
 leaf road and the model road alike — and there is nowhere in the file to put it.
