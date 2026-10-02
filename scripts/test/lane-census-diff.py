@@ -5,6 +5,10 @@
 
 Prints three things, for the scheduled census to put in its summary:
 
+Rows are whole targets or single `<target>::<test>` tests, compared as
+written, so a target moving from partial to whole admission shows as one new
+row and its retired per-test rows.
+
 * NEWLY ADMISSIBLE — passes every run now and is not admitted. A missed
   opportunity; regenerate the list to take it.
 * NO LONGER PASSING — admitted, and the census says it would not pass. The
@@ -31,7 +35,8 @@ def main() -> int:
     hung = sorted(t for t, v in per.items() if v["outcome"] == "TIMEOUT")
 
     def why(t):
-        w = per.get(t, {}).get("why") or {}
+        # A `<target>::<test>` row carries its target's reasons.
+        w = per.get(t.split("::", 1)[0], {}).get("why") or {}
         return max(w.items(), key=lambda kv: kv[1])[0] if w else "absent from the run"
 
     print(f"admitted {len(committed)}; the census would admit {len(fresh)}\n")

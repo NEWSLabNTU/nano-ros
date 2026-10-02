@@ -35,9 +35,11 @@ ADMIT_HEADER = (
     "#         --admit .config/lane-admission/gate.txt\n"
     "#\n"
     "# One name per line. `lib` is the crate's own unit tests (`--lib`); every\n"
-    "# other name is a `--test` target. `test-lane-contracts` runs exactly this set,\n"
-    "# and `check-lane-contracts` reads it, so a target here that resolves a fixture\n"
-    "# its job does not build is still refused.\n"
+    "# other bare name is a `--test` target, admitted WHOLE. `<target>::<test>` is\n"
+    "# ONE test of a target that is not admissible whole, because a sibling skips,\n"
+    "# needs a fixture or fails here. `test-lane-contracts` runs exactly this set,\n"
+    "# and `check-lane-contracts` reads it — per test for a `::` row — so an\n"
+    "# admitted test that resolves a fixture its job does not build is refused.\n"
 )
 
 
@@ -51,13 +53,16 @@ def target_of(suite_name: str) -> str:
 
 def classify(junit: str) -> dict:
     root = ET.parse(junit).getroot()
-    per = collections.defaultdict(lambda: {"cases": 0, "outcome": "PASS", "why": collections.Counter()})
+    per = collections.defaultdict(lambda: {"cases": 0, "outcome": "PASS", "why": collections.Counter(),
+                                           "case": {}})
     for suite in root.iter("testsuite"):
         target = target_of(suite.get("name", ""))
         for case in suite.iter("testcase"):
             t = per[target]; t["cases"] += 1
+            name = case.get("name", "")
             fail = case.find("failure") if case.find("failure") is not None else case.find("error")
             if fail is None:
+                t["case"][name] = "PASS"
                 continue
             text = (fail.get("message") or "") + "\n" + (fail.text or "")
             so = case.find("system-out"); se = case.find("system-err")
@@ -72,6 +77,7 @@ def classify(junit: str) -> dict:
             else:
                 first = next((l.strip() for l in text.splitlines() if l.strip() and "panicked" not in l), "")
                 kind, why = "FAIL", first[:110]
+            t["case"][name] = kind
             if RANK[kind] > RANK[t["outcome"]]:
                 t["outcome"] = kind
             t["why"][f"{kind} | {why}"] += 1
@@ -97,7 +103,13 @@ def main() -> int:
         for r in runs:
             if t in r:
                 why.update(r[t]["why"])
-        merged[t] = {"outcome": worst, "per_run": seen, "why": dict(why)}
+        # A test is admissible on its own only when it PASSED in EVERY run —
+        # absent from one run counts against it, the same rule as a target.
+        cases = sorted(set().union(*(r[t]["case"] for r in runs if t in r)))
+        stable_pass = [c for c in cases
+                       if all(t in r and r[t]["case"].get(c) == "PASS" for r in runs)]
+        merged[t] = {"outcome": worst, "per_run": seen, "why": dict(why),
+                     "cases": len(cases), "passing_cases": stable_pass}
         if len(set(seen)) > 1:
             unstable.append((t, seen))
 
@@ -122,12 +134,26 @@ def main() -> int:
     json.dump(merged, open(a.out, "w"), indent=1, sort_keys=True)
 
     if a.admit:
-        admitted = sorted(by["PASS"])
+        whole = sorted(by["PASS"])
+        # A target that is not admissible whole still has tests that reached a
+        # verdict here — `params_per_node_interop`'s fixture-free tripwire beside
+        # three cases that need a fixture. Per-TARGET admission left those in no
+        # gating lane at all (issue 0922's defect one level down: excluded by the
+        # unit the TOOL counts, where the real property is per TEST). The list
+        # is explicit tests, never "the target minus its failures", so a test
+        # added later to such a target is not admitted until a census has seen it.
+        partial = [(t, merged[t]["passing_cases"]) for t in sorted(merged)
+                   if t not in whole and merged[t]["passing_cases"]]
         with open(a.admit, "w") as fh:
             fh.write(ADMIT_HEADER)
-            for t in admitted:
+            for t in whole:
                 fh.write(t + "\n")
-        print(f"\nadmitted {len(admitted)} target(s) -> {a.admit}")
+            for t, cs in partial:
+                for c in cs:
+                    fh.write(f"{t}::{c}\n")
+        n = sum(len(cs) for _, cs in partial)
+        print(f"\nadmitted {len(whole)} whole target(s) + {n} test(s) of "
+              f"{len(partial)} partial target(s) -> {a.admit}")
     return 0
 
 
