@@ -4397,6 +4397,84 @@ pub fn require_compile_check_bin(id: &str, rel: &str) -> TestResult<PathBuf> {
     require_prebuilt_binary_fresh(&dir.join(rel))
 }
 
+/// One compile's recorded verdict: its exit status and its output, verbatim.
+#[derive(Debug, Clone)]
+pub struct CompileOutcome {
+    /// The compile's exit status (`-1` if the build stage recorded none).
+    pub exit: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+impl CompileOutcome {
+    pub fn success(&self) -> bool {
+        self.exit == 0
+    }
+}
+
+/// A `cargo-check-verdict` / `cmake-configure-verdict` row's recorded verdict.
+#[derive(Debug, Clone)]
+pub struct CompileVerdict {
+    /// The compile the row exists to record.
+    pub outcome: CompileOutcome,
+    /// The FIRST compile, for a row that compiles twice (rebuild tracking);
+    /// `None` for every other row.
+    pub prelude: Option<CompileOutcome>,
+}
+
+/// Resolve a build-stage **verdict** fixture (issue 1620).
+///
+/// A compile that MUST FAIL used to be the one standing exception to "no
+/// compilation inside tests" — the test ran `cargo check` / `cmake -S` itself
+/// and asserted the diagnostic. The build stage now runs that compile
+/// (`scripts/build/compile-check-fixtures.sh`, builders `cargo-check-verdict` /
+/// `cmake-configure-verdict`), records its exit status and output, and succeeds
+/// whatever it said; this returns what it recorded. The ASSERTION stays in the
+/// test, where it belongs.
+///
+/// Same resolution as every compile-check row — `.verdict` is the stamp, so a
+/// missing one is a hard failure in a gated run (issue 0584: never a skip), a
+/// stale one is STALE, and the launch-resolver identity is checked (issue 1454).
+pub fn require_compile_verdict(id: &str) -> TestResult<CompileVerdict> {
+    let dir = build_dir(crate::kind::COMPILE_CHECK, &[id]);
+    let stamp = dir.join(".verdict");
+    require_stamped_launch_resolver(&stamp, id)?;
+    require_prebuilt_binary_fresh(&stamp)?;
+    let read = |prefix: &str| -> TestResult<Option<CompileOutcome>> {
+        let exit_path = dir.join(format!("{prefix}.exit"));
+        let Ok(exit_text) = fs::read_to_string(&exit_path) else {
+            return Ok(None);
+        };
+        let exit = exit_text.trim().parse::<i32>().map_err(|e| {
+            TestError::BuildFailed(format!(
+                "verdict fixture `{id}`: unparseable exit status in {}: {e}",
+                exit_path.display()
+            ))
+        })?;
+        let text = |ext: &str| fs::read_to_string(dir.join(format!("{prefix}.{ext}")));
+        Ok(Some(CompileOutcome {
+            exit,
+            stdout: text("stdout").unwrap_or_default(),
+            stderr: text("stderr").map_err(|e| {
+                TestError::BuildFailed(format!(
+                    "verdict fixture `{id}`: {prefix}.stderr unreadable: {e}"
+                ))
+            })?,
+        }))
+    };
+    let outcome = read("verdict")?.ok_or_else(|| {
+        TestError::BuildFailed(format!(
+            "verdict fixture `{id}` has a stamp but no recorded verdict under {} — \
+             rebuild it: NROS_FIXTURE_ID={id} bash scripts/build/compile-check-fixtures.sh",
+            dir.display()
+        ))
+    })?;
+    Ok(CompileVerdict {
+        outcome,
+        prelude: read("verdict.prelude")?,
+    })
+}
+
 /// Resolve a file inside a build-stage **cmake** fixture's persistent build dir
 /// (issue 0034). `compile-check-fixtures.sh` cmake-configures + builds a C/C++
 /// template into `build/cmake-fixtures/<id>/`, keeping generated TUs / link

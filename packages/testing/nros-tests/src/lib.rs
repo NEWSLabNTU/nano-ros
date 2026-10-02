@@ -1063,11 +1063,10 @@ mod probe_ran_tests {
 /// `$PATH`, where a stale `~/.nros/bin` copy shadows the in-tree one).
 /// `just setup-launch-resolve` builds it; `None` means it has not been built.
 ///
-/// Lives here because two suites need it now: `multihost_partition_bake` and
-/// `native_main_macro_misuse`, the latter since phase-330 W4 made the
-/// SystemModel a build artifact and tests that want one have to RESOLVE it
-/// (issue 0414). A second private copy would be a second spelling of "where is
-/// the resolver".
+/// Lives here so there is one spelling of "where is the resolver" — a second
+/// private copy would be a second answer. (`native_main_macro_misuse` was the
+/// other caller until issue 1620 moved its compiles, and the resolve that came
+/// with them, into the build stage.)
 pub fn launch_resolver_bin() -> Option<std::path::PathBuf> {
     let p =
         project_root().join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");

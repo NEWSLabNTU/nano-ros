@@ -3,10 +3,19 @@
 //! ## The rule (AGENTS.md E1 / issue 0196)
 //!
 //! "No compilation inside tests." A test's build/compile/link belongs in the
-//! FIXTURE BUILD stage; the test consumes the prebuilt artifact. The sanctioned
-//! exception is a FAIL-PATH diagnostic — a configure/compile/link that MUST FAIL
-//! (or, for a few, a build whose repetition/sandbox IS the assertion) cannot be a
-//! passing prebuilt fixture.
+//! FIXTURE BUILD stage; the test consumes the prebuilt artifact.
+//!
+//! A FAIL-PATH diagnostic — a configure/compile that MUST FAIL — used to be the
+//! blanket exception, on the grounds that it "cannot be a passing prebuilt
+//! fixture". Issue 1620 retired that premise: the build stage can record the
+//! compile's VERDICT (exit status + stderr) and succeed whatever it said, and
+//! the test asserts the verdict (`cargo-check-verdict` /
+//! `cmake-configure-verdict` rows, `nros_tests::fixtures::require_compile_verdict`).
+//! Five files moved that way (`native_main_macro_misuse`, `cmake_platform_matrix`,
+//! `cmake_node_register_misuse`, `diagnostic_verbatim`, and
+//! `native_orchestration_misuse`, deleted as a duplicate of `orch_tiers_multi`).
+//! So "it must fail" is no longer, by itself, a reason to be on this list — every
+//! row below states what ELSE keeps it at run time.
 //!
 //! This module is the explicit allowlist of every test file permitted to invoke a
 //! compiler/build tool (`cargo build|check` / `cmake` / `cc` / `gcc` / `g++` /
@@ -86,48 +95,19 @@ const REGISTRY: &[Entry] = &[
                  cached artifact would prove the resolver ran once, not that it resolves \
                  the same way in every scope cmake presents",
     },
-    // ---- FAIL-PATH diagnostics (must fail; can't be a passing prebuilt) ----
-    Entry {
-        file: "diagnostic_verbatim.rs",
-        kind: Kind::FailPath,
-        tool: "cargo check + cmake",
-        reason: "asserts a rustc E0432 and a cmake package-not-found diagnostic reach the \
-                 terminal VERBATIM — both fixtures must FAIL to build/configure",
-    },
-    Entry {
-        file: "cmake_node_register_misuse.rs",
-        kind: Kind::FailPath,
-        tool: "cmake",
-        reason: "asserts nano_ros_node_register/entry FATAL_ERRORs at configure on an \
-                 unqualified class / embedded deploy (RFC-0057 D2) — a must-fail configure",
-    },
-    Entry {
-        file: "cmake_platform_matrix.rs",
-        kind: Kind::FailPath,
-        tool: "cmake",
-        reason: "asserts a missing NANO_ROS_BOARD FATAL_ERRORs at configure — a must-fail configure",
-    },
-    Entry {
-        file: "native_main_macro_misuse.rs",
-        kind: Kind::FailPath,
-        tool: "cargo check",
-        reason: "asserts nros::main! misuse (custom_tasks outside RTIC, unknown board) fails \
-                 `cargo check` with a specific compile diagnostic — must-fail",
-    },
-    Entry {
-        file: "native_orchestration_misuse.rs",
-        kind: Kind::FailPath,
-        tool: "cargo check",
-        reason: "asserts the removed `launch=` arm fails `cargo check` with a removal \
-                 diagnostic (RFC-0032 §7) — must-fail",
-    },
+    // ---- FAIL-PATH diagnostics that need MORE than a recorded verdict ----
+    // (issue 1620 moved every plain must-fail compile to a verdict row; what is
+    // left here is relative, sandboxed, or not a compile_check builder's shape.)
     Entry {
         file: "zpico_drift_gate.rs",
         kind: Kind::FailPath,
         tool: "cargo build",
         reason: "a corrupted platform tree must PANIC the zpico-sys build script (drift \
                  sentinel); the pristine round-trip needs the NROS_PLATFORMS_DIR sandbox \
-                 injected at configure, so neither half is a static artifact",
+                 injected at configure, so neither half is a static artifact. A verdict row \
+                 could record the corrupted half (issue 1620), but the corruption is a \
+                 per-run sandbox of the CANONICAL platform tree, which a row's `dir` \
+                 staging does not model — recorded on issue 1620 as open",
     },
     Entry {
         file: "cross_libc_precedence_gate.rs",
@@ -142,7 +122,10 @@ const REGISTRY: &[Entry] = &[
         kind: Kind::FailPath,
         tool: "g++",
         reason: "the bare-metal heap-WITHOUT-malloc cell MUST fail to compile (#38 negative); \
-                 the 9 POSITIVE cells already moved to cxx-syntax fixtures (phase-329 W5)",
+                 the 9 POSITIVE cells already moved to cxx-syntax fixtures (phase-329 W5). \
+                 Convertible in principle — it is a plain must-fail compile — but the \
+                 verdict builders issue 1620 added are cargo and cmake ones; a `cxx-syntax` \
+                 verdict builder is the open half (recorded on issue 1620)",
     },
     // ---- RUNTIME BUILD EXCEPTIONS (positive, but un-prebuildable) ----
     Entry {

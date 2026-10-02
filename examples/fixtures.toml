@@ -3604,6 +3604,113 @@ builder = "cargo-check"
 dir = "packages/testing/nros-tests/fixtures/n9_workspace"
 output = ".compile-ok"
 
+# --- cargo-check-verdict / cmake-configure-verdict: the compile's VERDICT is
+#     the artifact (issue 1620). Same staging as `cargo-check`; the build stage
+#     runs the compile, records `exit=` + its stderr under the row's dir, and
+#     never fails on what the compile said. The test asserts the verdict.
+#
+# This retired the one standing exception to "no compilation inside tests" —
+# a compile that MUST FAIL. The exception's premise was that "a fixture whose
+# configure fails fails the BUILD"; that is true of a fixture whose artifact is
+# the compiled output and false of one whose artifact is the verdict. Moving
+# them also fixed a parallelism defect that premise had hidden: run as part of
+# a full-crate nextest run, `cmake_platform_matrix` and
+# `native_main_macro_misuse` contended with each other and failed, while each
+# passed alone. Consumers: `native_main_macro_misuse.rs`,
+# `cmake_platform_matrix.rs`, `cmake_node_register_misuse.rs`,
+# `diagnostic_verbatim.rs`, each via `require_compile_verdict`.
+#
+# `n9_workspace` rows: the per-id `main.rs` / `system.toml` overlay is
+# `post_stage` in `compile-check-fixtures.sh`, like the `main_macro_form*` rows.
+[[compile_check_fixture]]
+id = "main_macro_misuse_custom_tasks"
+builder = "cargo-check-verdict"
+dir = "packages/testing/nros-tests/fixtures/n9_workspace"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "main_macro_misuse_custom_tasks_empty"
+builder = "cargo-check-verdict"
+dir = "packages/testing/nros-tests/fixtures/n9_workspace"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "main_macro_misuse_unknown_board"
+builder = "cargo-check-verdict"
+dir = "packages/testing/nros-tests/fixtures/n9_workspace"
+output = ".verdict"
+
+# Positive, and staged WITHOUT `nros sync`: the macro must resolve the model
+# from the bringup's inputs when no build system produced one (issue 0414).
+[[compile_check_fixture]]
+id = "main_macro_resolves_from_inputs"
+builder = "cargo-check-verdict"
+dir = "packages/testing/nros-tests/fixtures/n9_workspace"
+output = ".verdict"
+
+# Two compiles across a touch of the synced model; the first is recorded as
+# `verdict.prelude.*`, the second (which must RE-check demo_entry) as `verdict.*`.
+[[compile_check_fixture]]
+id = "main_macro_rebuilds_on_model_touch"
+builder = "cargo-check-verdict"
+dir = "packages/testing/nros-tests/fixtures/n9_workspace"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "diagnostic_rustc_verbatim"
+builder = "cargo-check-verdict"
+dir = "packages/testing/nros-tests/fixtures/diagnostic_rustc_fixture"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "diagnostic_cmake_verbatim"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/diagnostic_cmake_fixture"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "cmake_platform_threadx_requires_board"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_platform_requires_board"
+output = ".verdict"
+
+# `cmake_node_register_misuse` — one fixture, one `cases/<id>.cmake` per row.
+[[compile_check_fixture]]
+id = "cmake_register_unqualified_class"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "cmake_entry_rejects_embedded_deploy"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "cmake_register_entities_after_sources"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "cmake_register_entities_before_sources"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "cmake_register_entities_valueless"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "cmake_register_without_entities"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_node_register_misuse"
+output = ".verdict"
+
 # --- cargo-clippy: the LINT verdict on the staged tree is the point.
 # issue 1230 — the four `cargo check` / `cargo clippy` runs that used to happen
 # inside `packages/cli/rosidl-codegen/tests/compilation_test.rs`, at test time,

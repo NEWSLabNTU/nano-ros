@@ -5,8 +5,10 @@
 # whose `system.toml` declares no image, and read this file first too
 # (`leaf_system::for_entry`). This was `[package.metadata.nros.entry]
 # deploy = "native"` in the manifest until phase-445 W5 retired the key.
-# `native_main_macro_misuse.rs` rewrites the `board` line below to prove an
-# unknown board is refused at expansion time.
+# The `main_macro_misuse_unknown_board` verdict row (`post_stage` in
+# `scripts/build/compile-check-fixtures.sh`) rewrites the `board` line below to
+# prove an unknown board is refused at expansion time; the row refuses to build
+# if the line is gone.
 
 [system]
 name = "demo_entry"

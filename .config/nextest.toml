@@ -505,34 +505,14 @@ filter = "binary(pubsub_freertos_ros2_interop_e2e)"
 test-group = "matrix-consumers-serial"
 slow-timeout = { period = "180s", terminate-after = 3 }
 
-# Issue #34 — host-integration "compile-shape" tests shell out to cargo / nros
-# to build a generated crate or workspace, so a COLD build legitimately exceeds
-# the 60s default kill (period 30s × terminate-after 2). Measured: a single
-# `orchestration_tiers_native` case passes in ~72s. Under the 60s limit these
-# were terminated mid-compile and counted as failures — the bulk of the 31
-# failures the now-honest host-integration lane surfaced. Give them headroom
-# (120s × 4 = 480s) so a slow compile is not a false failure. These binaries do
-# not match any earlier override, so first-match-wins routing reaches this rule.
-#
-# This is a STOPGAP, not the fix. The durable fix (AGENTS.md "No compilation
-# inside tests") is to convert each compile-in-test into a build-stage fixture
-# (examples/fixtures.toml) that the test merely asserts exists — see the
-# `native_entry_boot` conversion. As each binary is converted it becomes
-# fast and is dropped from this filter (phase216_b already converted + removed);
-# the rule shrinks to empty when the last compile-in-test is gone.
-[[profile.default.overrides]]
-# NOTE: as each compile-in-test binary is CONVERTED to consume a build-stage
-# fixture (issue 0034 — it becomes a fast artifact check, no in-test cargo), it
-# is removed from this list; it no longer needs the headroom AND nextest errors
-# on a `binary()` that matches nothing. Converted so far:
-# phase212_n_entry_poc_runs → native_entry_boot. (phase216_b →
-# `stm32f4_rtic_main_macro` was the other one; both it and the fixture it
-# asserted left with the board in phase-337 W7.a.)
-filter = """
-  binary(native_orchestration_misuse) \
-  or binary(native_main_macro_misuse) \
-"""
-slow-timeout = { period = "120s", terminate-after = 4 }
+# Issue #34 — host-integration "compile-shape" tests used to shell out to cargo
+# / nros at test time and carried a 120s x 4 headroom override here. The rule
+# shrank to empty as each was converted to consume a build-stage fixture, and the
+# override is GONE: the last two, `native_orchestration_misuse` (deleted — it
+# duplicated `orch_tiers_multi`) and `native_main_macro_misuse` (now reads
+# `cargo-check-verdict` rows), were converted by issue 1620. A `binary()` that
+# matches nothing is a nextest PARSE error (issue 0743), so the block could not
+# stay behind as a comment-only reminder; this comment is the reminder.
 
 # Phase 169.4 — bare-metal Rust DDS E2E binary removed.
 # W4 — the 12 per-variant rtos_e2e serialization overrides (Phase 89.12's
@@ -1053,7 +1033,9 @@ fail-fast = true
 # phase-373 W4 — `cpp_parameters` folded into `parameters_roundtrip` (its cpp
 # CASE). The old `test(cpp_parameters_roundtrip)` would have gone silently
 # inert, which is the failure mode this file has hit before.
-filter = "binary(cmake_add_subdirectory) or binary(cmake_platform_matrix) or binary(parameters_roundtrip)"
+# issue 1620 — `cmake_platform_matrix` left this filter: its configure moved to
+# the build stage (a `cmake-configure-verdict` row), so it compiles nothing now.
+filter = "binary(cmake_add_subdirectory) or binary(parameters_roundtrip)"
 slow-timeout = { period = "60s", terminate-after = 10 }
 
 # ── phase-318 W5.b — QEMU host-load cap (RFC-0061) ─────────────────────────────
