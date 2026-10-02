@@ -13,7 +13,7 @@ related: [1557, 1197, 1145]
 
 ## Background
 
-Split from [issue 1557](archived/1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md)
+Split from [issue 1557](1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md)
 item 2, whose ThreadX half is closed by measurement. Its FreeRTOS half asked for
 the cyclone/XRCE base to be derived from those images' `nros: heap peak`, as
 issue 1197 did for zenoh (`freertos_config::default_heap_bytes`).
