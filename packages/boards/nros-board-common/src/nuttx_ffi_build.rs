@@ -1,4 +1,8 @@
-use std::{env, path::PathBuf, process::Command};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 /// 194.3c.1 — back-compat shim. The arm board's FFI crate calls
 /// `run_qemu_arm()`; it now forwards to the arch-generic `run_nuttx()`,
@@ -17,6 +21,13 @@ pub fn run_qemu_arm() {
 pub fn run_nuttx() {
     // APP_MAIN_CPP: path to the C or C++ source file to compile (set by CMake)
     // APP_INCLUDE_DIRS: semicolon-separated include directories (set by CMake)
+    //
+    // issue 1588 — every `APP_*` PATH input (the main source, the include-dir
+    // list and list file, the extra / interface source lists, the left half of
+    // each source=pkg pair, the FFI lib list file and every line in both files)
+    // is resolved through `nros_build_paths`, i.e. under issue 1280's rule: a
+    // value naming ANOTHER nano-ros checkout is re-rooted onto this one, with a
+    // `cargo::warning`. `APP_COMPILE_DEFS` is not a path and is read as text.
     // Phase 208.B Track A — paths come from `nros-build-paths`
     // (walks up from CARGO_MANIFEST_DIR to `nros-sdk-index.toml`);
     // env vars stay valid as out-of-tree overrides. The helper also
@@ -72,15 +83,14 @@ pub fn run_nuttx() {
     println!("cargo:rerun-if-env-changed=NUTTX_LINKER_SCRIPT");
     println!("cargo:rerun-if-env-changed=NUTTX_ARCH_INCLUDES");
 
-    let main_src = env::var("APP_MAIN_CPP").unwrap_or_else(|_| {
+    let main_src = nros_build_paths::env_path("APP_MAIN_CPP").unwrap_or_else(|| {
         panic!(
             "APP_MAIN_CPP not set. Set it to the path of the C/C++ source file.\n\
              Example: APP_MAIN_CPP=examples/qemu-armv7a-nuttx/c/zenoh/talker/src/main.c"
         )
     });
 
-    let is_cpp =
-        main_src.ends_with(".cpp") || main_src.ends_with(".cxx") || main_src.ends_with(".cc");
+    let is_cpp = is_cxx_ext(&main_src);
 
     let sizes_includes = per_build_sizes_includes();
 
@@ -92,16 +102,13 @@ pub fn run_nuttx() {
     // C++ — mangling the C node's register symbol. Compile `.c` sources in a
     // separate C `cc::Build` (and `.cpp/.cc/.cxx` in a C++ one), so each source
     // keeps its native linkage. The two archives both link into the kernel ELF.
-    let is_cxx_ext = |p: &str| p.ends_with(".cpp") || p.ends_with(".cxx") || p.ends_with(".cc");
-
     // Resolve the source-tree stub dirs so the APP_INCLUDE_DIRS_FILE pass can
     // defer them (they hold `#error` stubs of nros_{,cpp_}config_generated.h;
     // the per-build mirror must win). Same logic as pre-238.C.
     let nros_c_src = nros_c_include.clone();
     let nros_cpp_src = nros_cpp_include.clone();
-    let is_src_tree_stub = |dir: &str| -> bool {
-        let p = PathBuf::from(dir);
-        let canon = p.canonicalize().unwrap_or(p);
+    let is_src_tree_stub = |dir: &Path| -> bool {
+        let canon = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
         canon == nros_c_src.canonicalize().unwrap_or(nros_c_src.clone())
             || canon == nros_cpp_src.canonicalize().unwrap_or(nros_cpp_src.clone())
     };
@@ -111,32 +118,20 @@ pub fn run_nuttx() {
     //     the source-tree stubs deferred to the end (the per-build generated
     //     header wins).
     //   * `app_include_dirs` — the legacy APP_INCLUDE_DIRS semicolon list.
-    let mut file_regular: Vec<String> = Vec::new();
-    let mut file_deferred: Vec<String> = Vec::new();
-    if let Ok(includes_file) = env::var("APP_INCLUDE_DIRS_FILE") {
-        match std::fs::read_to_string(&includes_file) {
-            Ok(contents) => {
-                for line in contents.lines() {
-                    let dir = line.trim();
-                    if dir.is_empty() {
-                        continue;
-                    }
-                    if is_src_tree_stub(dir) {
-                        file_deferred.push(dir.to_string());
-                    } else {
-                        file_regular.push(dir.to_string());
-                    }
+    let mut file_regular: Vec<PathBuf> = Vec::new();
+    let mut file_deferred: Vec<PathBuf> = Vec::new();
+    let includes_file =
+        nros_build_paths::env_path_list_file("APP_INCLUDE_DIRS_FILE").map(|(file, dirs)| {
+            for dir in dirs {
+                if is_src_tree_stub(&dir) {
+                    file_deferred.push(dir);
+                } else {
+                    file_regular.push(dir);
                 }
             }
-            Err(e) => panic!("APP_INCLUDE_DIRS_FILE={includes_file} not readable: {e}"),
-        }
-    }
-    let app_include_dirs: Vec<String> = env::var("APP_INCLUDE_DIRS")
-        .unwrap_or_default()
-        .split(';')
-        .filter(|d| !d.is_empty())
-        .map(String::from)
-        .collect();
+            file
+        });
+    let app_include_dirs = nros_build_paths::env_path_list_sep("APP_INCLUDE_DIRS", ';');
     // Compile defs (APP_COMPILE_DEFS) shared by both builds (incl NROS_PKG_NAME
     // so the C node's NROS_NODE_REGISTER macro emits the right symbol).
     let compile_defs: Vec<(String, Option<String>)> = env::var("APP_COMPILE_DEFS")
@@ -245,23 +240,18 @@ pub fn run_nuttx() {
     };
 
     // Partition all sources (main + extras) by language.
-    let mut cpp_files: Vec<String> = Vec::new();
-    let mut c_files: Vec<String> = Vec::new();
+    let mut cpp_files: Vec<PathBuf> = Vec::new();
+    let mut c_files: Vec<PathBuf> = Vec::new();
     if is_cpp {
         cpp_files.push(main_src.clone());
     } else {
         c_files.push(main_src.clone());
     }
-    if let Ok(extra_sources) = env::var("APP_EXTRA_SOURCES") {
-        for src in extra_sources.split(';') {
-            if src.is_empty() {
-                continue;
-            }
-            if is_cxx_ext(src) {
-                cpp_files.push(src.to_string());
-            } else {
-                c_files.push(src.to_string());
-            }
+    for src in nros_build_paths::env_path_list_sep("APP_EXTRA_SOURCES", ';') {
+        if is_cxx_ext(&src) {
+            cpp_files.push(src);
+        } else {
+            c_files.push(src);
         }
     }
 
@@ -274,24 +264,21 @@ pub fn run_nuttx() {
     // entry keep the shared builds (back-compat with the single-node carrier, where the one
     // `NROS_PKG_NAME` in `APP_COMPILE_DEFS` is correct). This is the NuttX analog of how
     // Zephyr compiles each component as a separate static lib (phase-263 C2d).
-    let mut src_pkg: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    if let Ok(map) = env::var("APP_EXTRA_SOURCE_PKGS") {
-        for pair in map.split(';') {
-            if let Some((s, p)) = pair.split_once('=')
-                && !s.is_empty()
-                && !p.is_empty()
-            {
-                src_pkg.insert(s.to_string(), p.to_string());
-            }
-        }
-    }
+    //
+    // issue 1588 — the lookup below matches a pair's path against an
+    // `APP_EXTRA_SOURCES` element, so both are resolved by the SAME
+    // `nros_build_paths` rule; resolving only one side would miss every pair.
+    let src_pkg: std::collections::HashMap<PathBuf, String> =
+        nros_build_paths::env_path_pairs("APP_EXTRA_SOURCE_PKGS", ';', '=')
+            .into_iter()
+            .collect();
 
     // Mapped sources compile solo; the rest stay in the shared per-language archives. The
     // C++ shared archive carries the entry + header-only runtime; the C shared archive any
     // declarative C node(s) without a per-source pkg (single-node carrier path).
-    let mut shared_cpp: Vec<String> = Vec::new();
-    let mut shared_c: Vec<String> = Vec::new();
-    let mut solo: Vec<(String, bool, String)> = Vec::new(); // (path, want_cpp, pkg)
+    let mut shared_cpp: Vec<PathBuf> = Vec::new();
+    let mut shared_c: Vec<PathBuf> = Vec::new();
+    let mut solo: Vec<(PathBuf, bool, String)> = Vec::new(); // (path, want_cpp, pkg)
     for f in &cpp_files {
         if let Some(pkg) = src_pkg.get(f) {
             solo.push((f.clone(), true, pkg.clone()));
@@ -350,19 +337,11 @@ pub fn run_nuttx() {
     // These TUs carry no `NROS_C_COMPONENT`, so no `-DNROS_PKG_NAME` is needed. Skipped
     // cleanly when empty (the pure-C pub/sub nuttx entry, whose nodes use no generated
     // serdes, passes nothing here).
-    if let Ok(iface_sources) = env::var("APP_INTERFACE_SOURCES") {
-        let mut iface_cpp: Vec<&str> = Vec::new();
-        let mut iface_c: Vec<&str> = Vec::new();
-        for src in iface_sources.split(';') {
-            if src.is_empty() {
-                continue;
-            }
-            if is_cxx_ext(src) {
-                iface_cpp.push(src);
-            } else {
-                iface_c.push(src);
-            }
-        }
+    {
+        let (iface_cpp, iface_c): (Vec<PathBuf>, Vec<PathBuf>) =
+            nros_build_paths::env_path_list_sep("APP_INTERFACE_SOURCES", ';')
+                .into_iter()
+                .partition(|src| is_cxx_ext(src));
         if !iface_c.is_empty() {
             let mut build = cc::Build::new();
             configure(&mut build, false);
@@ -545,55 +524,75 @@ pub fn run_nuttx() {
     println!("cargo:rustc-link-arg={libgcc}");
     println!("cargo:rustc-link-arg=-Wl,--end-group");
 
-    println!("cargo:rerun-if-changed={}", main_src);
+    // issue 1588 — every content watch names the RESOLVED path. Watching the
+    // raw value would, in exactly the case the re-root exists for, watch the
+    // OTHER checkout's file while compiling this one's: an edit here would
+    // never re-run the script.
+    println!("cargo:rerun-if-changed={}", main_src.display());
     println!("cargo:rerun-if-changed={}", linker_script.display());
+    if let Some(includes_file) = &includes_file {
+        println!("cargo:rerun-if-changed={}", includes_file.display());
+    }
+    // Each line is an absolute path to a `lib<name>.a` static lib.
+    // Forward to rustc as a link search dir + a -l static link.
+    // Avoids `undefined reference to nros_cpp_serialize_…` from the
+    // Rust FFI glue that the `<pkg>__nano_ros_cpp` interface library
+    // would normally drag in via cmake's regular link graph.
+    if let Some((ffi_libs_file, libs)) = nros_build_paths::env_path_list_file("APP_FFI_LIBS_FILE") {
+        println!("cargo:rerun-if-changed={}", ffi_libs_file.display());
+        for lib_path in libs {
+            let dir = lib_path.parent().unwrap_or_else(|| Path::new("."));
+            let stem = lib_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .and_then(|s| s.strip_prefix("lib"))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "FFI lib path {} has no `lib<name>.a` shape",
+                        lib_path.display()
+                    )
+                });
+            println!("cargo:rustc-link-search=native={}", dir.display());
+            println!("cargo:rustc-link-lib=static={stem}");
+            // Issue 1570 — the archive's CONTENT is a link input. Cargo
+            // does not fingerprint a `rustc-link-lib`, so without this a
+            // rebuilt archive left the image linked against the old one
+            // (0475's class: a lib reached with no file-level edge).
+            println!("cargo:rerun-if-changed={}", lib_path.display());
+        }
+    }
+    // issue 0491 forbids fingerprinting a PATH variable's spelling, and these
+    // stay anyway — deliberately, and not on the "owns its target dir" premise
+    // they used to be exempted on (issue 0805 made the NuttX leaves SHARE one).
+    // The value is not a respelling of one input here, it SELECTS the inputs:
+    // this one unit compiles each leaf's own sources into its own image, so
+    // leaf B after leaf A in the shared dir MUST re-run it, and the content
+    // watches above cannot say so — they name A's files, which did not change.
+    // 0491's cost (siblings invalidating each other) is therefore no cost: two
+    // leaves never share this script's output. The content watches are what
+    // catch an edit WITHIN one leaf. Argued in check-path-env-fingerprints.py.
+    //
+    // Spelled as literals, one a line, so that gate can READ them: a loop over
+    // an array would interpolate the name and pass it unexamined.
+    // `APP_EXTRA_SOURCE_PKGS` had no directive at all before issue 1588 — a
+    // changed source=pkg map with an unchanged source list re-ran nothing.
     println!("cargo:rerun-if-env-changed=APP_MAIN_CPP");
     println!("cargo:rerun-if-env-changed=APP_INCLUDE_DIRS");
     println!("cargo:rerun-if-env-changed=APP_INCLUDE_DIRS_FILE");
-    if let Ok(includes_file) = env::var("APP_INCLUDE_DIRS_FILE") {
-        println!("cargo:rerun-if-changed={includes_file}");
-    }
     println!("cargo:rerun-if-env-changed=APP_FFI_LIBS_FILE");
-    if let Ok(ffi_libs_file) = env::var("APP_FFI_LIBS_FILE") {
-        println!("cargo:rerun-if-changed={ffi_libs_file}");
-        // Each line is an absolute path to a `lib<name>.a` static lib.
-        // Forward to rustc as a link search dir + a -l static link.
-        // Avoids `undefined reference to nros_cpp_serialize_…` from the
-        // Rust FFI glue that the `<pkg>__nano_ros_cpp` interface library
-        // would normally drag in via cmake's regular link graph.
-        match std::fs::read_to_string(&ffi_libs_file) {
-            Ok(contents) => {
-                for line in contents.lines() {
-                    let path = line.trim();
-                    if path.is_empty() {
-                        continue;
-                    }
-                    let lib_path = std::path::Path::new(path);
-                    let dir = lib_path
-                        .parent()
-                        .unwrap_or_else(|| std::path::Path::new("."));
-                    let stem = lib_path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .and_then(|s| s.strip_prefix("lib"))
-                        .unwrap_or_else(|| {
-                            panic!("FFI lib path {path} has no `lib<name>.a` shape")
-                        });
-                    println!("cargo:rustc-link-search=native={}", dir.display());
-                    println!("cargo:rustc-link-lib=static={stem}");
-                    // Issue 1570 — the archive's CONTENT is a link input. Cargo
-                    // does not fingerprint a `rustc-link-lib`, so without this a
-                    // rebuilt archive left the image linked against the old one
-                    // (0475's class: a lib reached with no file-level edge).
-                    println!("cargo:rerun-if-changed={path}");
-                }
-            }
-            Err(e) => panic!("APP_FFI_LIBS_FILE={ffi_libs_file} not readable: {e}"),
-        }
-    }
     println!("cargo:rerun-if-env-changed=APP_EXTRA_SOURCES");
+    println!("cargo:rerun-if-env-changed=APP_EXTRA_SOURCE_PKGS");
     println!("cargo:rerun-if-env-changed=APP_INTERFACE_SOURCES");
     println!("cargo:rerun-if-env-changed=APP_COMPILE_DEFS");
+}
+
+/// A C++ translation unit, by extension — the split between the C and the C++
+/// `cc::Build` (phase 238.C).
+fn is_cxx_ext(p: &Path) -> bool {
+    matches!(
+        p.extension().and_then(|e| e.to_str()),
+        Some("cpp" | "cxx" | "cc")
+    )
 }
 
 /// issue 1569 — the per-build sizes header directories of the `nros-c` and

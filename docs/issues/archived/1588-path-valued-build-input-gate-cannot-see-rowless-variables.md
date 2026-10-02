@@ -163,3 +163,59 @@ The seven `APP_*` rows are the remaining work, and they leave the baseline one
 at a time as each call site routes through `env_path` / `env_path_list`. A
 follow-on issue is not filed for them because the baseline IS the list, and a
 second copy of it would drift.
+
+## 2026-10-03 — the backlog is routed, and accepted on a NuttX build
+
+All seven `APP_*` rows left the baseline (23 → 16 rows; the gate now prints no
+"not yet routed" list). The reader is one function,
+`packages/boards/nros-board-common/src/nuttx_ffi_build.rs::run_nuttx`, and each
+input now resolves through `nros_build_paths` under issue 1280's rule:
+
+| variable | resolved by | note |
+| --- | --- | --- |
+| `APP_MAIN_CPP` | `env_path` | |
+| `APP_INCLUDE_DIRS` | `env_path_list_sep(…, ';')` | the producer writes a cmake LIST, so `:` (what `env_path_list` splits on) cannot be the separator; one helper with a parameter rather than a second spelling of the element rule |
+| `APP_EXTRA_SOURCES`, `APP_INTERFACE_SOURCES` | `env_path_list_sep(…, ';')` | |
+| `APP_EXTRA_SOURCE_PKGS` | `env_path_pairs(…, ';', '=')` (new) | left half resolved, package name verbatim; splits on the LAST `=` (a package name cannot hold one, a path can). The per-source `NROS_PKG_NAME` lookup only matches because both sides go through the same `resolve_path_value` — resolving one side alone would silently drop every pair |
+| `APP_INCLUDE_DIRS_FILE`, `APP_FFI_LIBS_FILE` | `env_path_list_file` (new) | the file AND every line |
+
+**Why the file CONTENTS get the rule too.** The file is written by the same
+cmake configure that sets the variable, so in every consistent build its lines
+already belong to this checkout or to none and the re-root is a no-op. The one
+build where it is not is the one 1280 is about, and there re-rooting the file
+but not what it names would put two trees in one `cc::Build` while the warning
+said this one was built.
+
+**The fingerprint side.** Every content watch now names the RESOLVED path —
+watching the raw value would, in exactly the re-rooted case, watch the other
+checkout's file while compiling this one's. The `rerun-if-env-changed`
+directives STAY (and `APP_EXTRA_SOURCE_PKGS` gained the one it never had), but
+their exemption in `check-path-env-fingerprints.py` was resting on a false
+premise — "cmake-set per build dir, which owns its target dir"; issue 0805 made
+the NuttX leaves share one. The invariant that does hold is the opposite of
+0491's: the value SELECTS the leaf's inputs, and leaves never share this
+script's output, so a change of value must re-run it. Reason replaced,
+conclusion unchanged.
+
+**Acceptance (built, not grepped)** — in an agent worktree with its own NuttX
+kernel, before and after the change, all four images **byte-identical**
+(sha256), each with `nros-nuttx-ffi` recompiled:
+`examples/qemu-armv7a-nuttx/{c,cpp}/talker` and the `workspace-c-nuttx` /
+`realtime-c` entries (the latter two exercise `APP_EXTRA_SOURCE_PKGS` and
+`APP_INTERFACE_SOURCES`). Then the re-root itself: the real `workspace-c-nuttx`
+and `realtime-cpp` cargo commands, run from the worktree with every `APP_*`
+value — and every line of copies of both list files — spelled into the MAIN
+checkout. Every input warned (`$APP_MAIN_CPP named another nano-ros checkout …
+building this one instead`; 33 include-file lines, 32 interface sources, 2 FFI
+lib lines, …) and both images came out identical to the worktree's own build.
+Negative control: the same probe against `origin/main`'s reader warned
+nothing and failed — `cc1: fatal error: /home/aeon/repos/nano-ros/examples/…/
+nuttx_entry_nros_main_generated.c: No such file or directory`, i.e. it compiled
+(or tried to) the OTHER checkout's tree.
+
+Noticed, not changed: predicate 3 reads these seven as foreign although this
+repo DOES set them — `packages/api/nros-c/cmake/nros-nuttx.cmake` passes them
+as `cmake -E env "APP_MAIN_CPP=…"`, a spelling none of its patterns matches, in
+a directory outside `PRODUCER_DIRS`. Routing them was right either way (a bare
+`cargo build` of the FFI crate inherits them from the shell), but the
+predicate's reach is narrower than "nothing here sets it".

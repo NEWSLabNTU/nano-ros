@@ -12,24 +12,18 @@
 # type test).
 #
 # A row marked `path, unrouted` is a KNOWN defect of 1560's class, kept visible
-# rather than fixed blind: accepting a change to how the NuttX apps channel
-# resolves needs a NuttX build, which is separate work. Every run prints how
-# many remain.
+# rather than fixed blind. Every run prints how many remain. The seven it was
+# seeded with (the NuttX `APP_*` channel) were routed by issue 1588.
 #
 # A row leaves when the call site routes through `nros_build_paths::env_path`
-# (or `env_path_list` for a `;`-separated one), or when the name gains a
-# producer in this repo and stops being foreign.
+# (or a sibling: `env_path_list` / `env_path_list_sep` for a list,
+# `env_path_pairs` for `<path>=<key>` pairs, `env_path_list_file` for a file
+# of paths), or when the name gains a producer in this repo and stops being
+# foreign.
 #
 # Regenerate ONLY to record a name that is gone:
 #     python3 scripts/check-foreign-env-path-inputs.py --write-baseline
 APP_COMPILE_DEFS  not a path — `;`-separated `NAME[=VALUE]` preprocessor defines
-APP_EXTRA_SOURCES  path, unrouted — `;`-separated source files
-APP_EXTRA_SOURCE_PKGS  mixed — `;`-separated `<source-path>=<pkg>` pairs; the left half is a path
-APP_FFI_LIBS_FILE  path, unrouted — a file listing absolute `lib<name>.a` paths
-APP_INCLUDE_DIRS  path, unrouted — `;`-separated include dirs
-APP_INCLUDE_DIRS_FILE  path, unrouted — a file listing include dirs, one per line
-APP_INTERFACE_SOURCES  path, unrouted — `;`-separated generated interface sources
-APP_MAIN_CPP  path, unrouted — the C/C++ source file to compile
 FREERTOS_CFLAGS  not a path — extra compiler flags (RFC-0049 extension point)
 NROS_ARENA_EXHAUSTION_IS_FATAL  not a path — a boolean flag
 NROS_BOOT_REPORT  not a path — a boolean flag

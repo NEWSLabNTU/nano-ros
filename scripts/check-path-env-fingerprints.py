@@ -133,12 +133,26 @@ ALLOWED = {
     # filesystem location. One spelling everywhere by construction.
     "NUTTX_ARCH_INCLUDES": "NuttX-relative subpath list, not a location",
     "NUTTX_BOARD_LIB_DIR": "NuttX-relative subpath, not a location",
-    # Set by CMake for the corrosion build it configures; that build dir owns
-    # its own cargo target dir, so two spellings cannot meet in one
-    # `.fingerprint/`.
-    "APP_INCLUDE_DIRS": "cmake-set per build dir, which owns its target dir",
-    "APP_INCLUDE_DIRS_FILE": "cmake-set per build dir, which owns its target dir",
-    "APP_FFI_LIBS_FILE": "cmake-set per build dir, which owns its target dir",
+    # issue 1588 — REASON REPLACED, conclusion unchanged (the DOTCONFIG story
+    # above, a second time). These read "cmake-set per build dir, which owns
+    # its target dir", and issue 0805 made that false: the NuttX leaves now
+    # SHARE one cargo target dir per (triple, profile, ffi crate, kernel,
+    # knobs) key — `nros-nuttx.cmake`'s `nros_shared_cargo_dir`.
+    #
+    # The invariant the directive actually rests on survives the sharing,
+    # because it is the opposite of 0491's premise. 0491 is about ONE input
+    # with several SPELLINGS, where a respelling re-runs a script whose output
+    # would not change. Here the value SELECTS the inputs: `nros-nuttx-ffi`'s
+    # build script compiles each leaf's OWN sources into that leaf's image, so
+    # two leaves in the shared dir never share its output (three leaves, three
+    # distinct images, measured in 0805). Leaf B after leaf A MUST re-run it,
+    # and nothing else can say so — the content watches name A's files, which
+    # did not change. Dropping the directive would link A's app into B's image.
+    # The content watches (`rerun-if-changed` on the RESOLVED paths, since
+    # 1588) are what catch an edit within one leaf.
+    "APP_INCLUDE_DIRS": "selects the leaf's inputs; leaves never share this script's output",
+    "APP_INCLUDE_DIRS_FILE": "selects the leaf's inputs; leaves never share this script's output",
+    "APP_FFI_LIBS_FILE": "selects the leaf's inputs; leaves never share this script's output",
 }
 
 

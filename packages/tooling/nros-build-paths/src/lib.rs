@@ -287,7 +287,7 @@ pub fn watch_skip_cause(sdk_root: &std::path::Path) -> bool {
 /// from — the 0135/0460 class if it names another tree's.
 pub fn env_path(env_name: &str) -> Option<PathBuf> {
     match std::env::var(env_name) {
-        Ok(v) if !v.is_empty() => Some(canonical(&reroot_env_value(env_name, PathBuf::from(v)))),
+        Ok(v) if !v.is_empty() => Some(resolve_path_value(env_name, &v)),
         _ => None,
     }
 }
@@ -343,19 +343,114 @@ pub fn env_path_watched(env_name: &str) -> Option<PathBuf> {
 /// element to [`watch_path`] — which `nros-board-threadx` already does.
 #[must_use]
 pub fn env_path_list(env_name: &str) -> Vec<PathBuf> {
+    env_path_list_sep(env_name, ':')
+}
+
+/// [`env_path_list`] over an explicit separator — for a list whose PRODUCER
+/// chose the separator, so the reader may not.
+///
+/// issue 1588 — the NuttX apps channel (`APP_EXTRA_SOURCES`,
+/// `APP_INTERFACE_SOURCES`, `APP_INCLUDE_DIRS`) is written by
+/// `packages/api/nros-c/cmake/nros-nuttx.cmake` as a cmake LIST, i.e. joined
+/// with `;`, so `:` cannot be the separator there. Same element rule as
+/// [`env_path_list`] — empty dropped, relative kept, each element re-rooted on
+/// its own — so a second separator is a parameter rather than a second
+/// spelling of the rule.
+#[must_use]
+pub fn env_path_list_sep(env_name: &str, sep: char) -> Vec<PathBuf> {
     let Ok(raw) = std::env::var(env_name) else {
         return Vec::new();
     };
-    split_list(&raw)
-        .map(|s| canonical(&reroot_env_value(env_name, PathBuf::from(s))))
+    split_list(&raw, sep)
+        .map(|s| resolve_path_value(env_name, s))
         .collect()
+}
+
+/// A `sep`-separated list of `<path><kv><key>` pairs; the PATH half resolved
+/// like [`env_path`], the key half returned verbatim.
+///
+/// issue 1588 — `APP_EXTRA_SOURCE_PKGS="<abs-src>=<pkg>;…"`. The left half is a
+/// source file the build compiles, so it is a path input under issue 1280 like
+/// any other; the right half is a ROS package name, which is not a path and is
+/// never touched. The caller looks the left half up against a list it resolved
+/// through [`env_path_list_sep`], and that lookup only matches because both
+/// sides went through the SAME [`resolve_path_value`] — resolving one side and
+/// not the other would silently drop every per-component `NROS_PKG_NAME`.
+///
+/// The pair splits on the LAST `kv`: a package name cannot contain `=`, a path
+/// can. A pair with an empty half is dropped, as before.
+#[must_use]
+pub fn env_path_pairs(env_name: &str, sep: char, kv: char) -> Vec<(PathBuf, String)> {
+    let Ok(raw) = std::env::var(env_name) else {
+        return Vec::new();
+    };
+    split_pairs(&raw, sep, kv)
+        .map(|(path, key)| (resolve_path_value(env_name, path), key.to_string()))
+        .collect()
+}
+
+/// An env var naming a FILE whose lines are paths: the file itself and every
+/// non-blank line, each resolved like [`env_path`]. `None` when the variable
+/// is unset or empty. Panics, naming both, when the file cannot be read — a
+/// build script told to read a list it cannot open has no correct way on.
+///
+/// issue 1588 — `APP_INCLUDE_DIRS_FILE` and `APP_FFI_LIBS_FILE`. **The lines
+/// get the rule too, and that is a decision, not a reflex.** The file is
+/// written by the same cmake configure that sets the variable, so in every
+/// consistent build its lines already belong to this checkout or to none, and
+/// re-rooting them is a no-op (measured on four NuttX images: byte-identical
+/// before and after). The only build where it is NOT a no-op is the one 1280
+/// is about — a value that came from another checkout — and there, re-rooting
+/// the FILE but not what it names would put two trees into one `cc::Build`
+/// (the 0135/0460 class) while the warning claimed this one was built. Every
+/// rewrite is announced, line by line.
+///
+/// Emits no directive. The caller watches the resolved file, and whatever of
+/// its contents it consumes (issue 0491: the CONTENT, never the spelling).
+#[must_use]
+pub fn env_path_list_file(env_name: &str) -> Option<(PathBuf, Vec<PathBuf>)> {
+    let file = env_path(env_name)?;
+    let contents = std::fs::read_to_string(&file)
+        .unwrap_or_else(|e| panic!("{env_name}={} not readable: {e}", file.display()));
+    let origin = format!("{env_name} (a line of {})", file.display());
+    let entries = split_lines(&contents)
+        .map(|line| resolve_path_value(&origin, line))
+        .collect();
+    Some((file, entries))
+}
+
+/// One path VALUE that arrived from outside this checkout's own resolution —
+/// an env value, an element of an env list, a line of a file an env var names
+/// — resolved under issue 1280's rule and [`canonical`]ised. `origin` is what
+/// the re-root warning names. Every `env_path*` form ends here, so there is
+/// one answer to "what does an inherited path resolve to".
+#[must_use]
+pub fn resolve_path_value(origin: &str, value: &str) -> PathBuf {
+    canonical(&reroot_env_value(origin, PathBuf::from(value)))
 }
 
 /// The separator and the empty-element rule, in ONE place — a caller that
 /// re-spells `split(':')` is free to forget the filter, which is the drift the
 /// list form exists to remove.
-fn split_list(raw: &str) -> impl Iterator<Item = &str> {
-    raw.split(':').filter(|s| !s.is_empty())
+fn split_list(raw: &str, sep: char) -> impl Iterator<Item = &str> {
+    raw.split(sep).filter(|s| !s.is_empty())
+}
+
+/// [`split_list`] whose elements are `<path><kv><key>` pairs. Splits on the
+/// LAST `kv` (a key is a package name and cannot hold one; a path can), and
+/// drops a pair with no `kv` or with an empty half.
+fn split_pairs(raw: &str, sep: char, kv: char) -> impl Iterator<Item = (&str, &str)> {
+    split_list(raw, sep).filter_map(move |pair| {
+        let (path, key) = pair.rsplit_once(kv)?;
+        (!path.is_empty() && !key.is_empty()).then_some((path, key))
+    })
+}
+
+/// The lines of a path-list FILE: trimmed, blank ones dropped. A line is one
+/// path, so surrounding whitespace is never part of it (cmake's `file(WRITE)`
+/// leaves a trailing newline; an editor may leave a `\r`).
+fn split_lines(contents: &str) -> impl Iterator<Item = &str> {
+    contents.lines().map(str::trim).filter(|l| !l.is_empty())
 }
 
 // Named resolvers for every var in `just/sdk-env.just`. Use these
@@ -852,9 +947,9 @@ mod reroot_tests {
     /// dir on the include path.
     #[test]
     fn an_empty_list_element_is_dropped_not_turned_into_the_cwd() {
-        assert_eq!(split_list("").collect::<Vec<_>>(), Vec::<&str>::new());
-        assert_eq!(split_list(":").collect::<Vec<_>>(), Vec::<&str>::new());
-        assert_eq!(split_list("a::b:").collect::<Vec<_>>(), vec!["a", "b"]);
+        assert_eq!(split_list("", ':').collect::<Vec<_>>(), Vec::<&str>::new());
+        assert_eq!(split_list(":", ':').collect::<Vec<_>>(), Vec::<&str>::new());
+        assert_eq!(split_list("a::b:", ':').collect::<Vec<_>>(), vec!["a", "b"]);
     }
 
     /// Every element gets the rule, and gets it INDEPENDENTLY: one list can
@@ -877,7 +972,7 @@ mod reroot_tests {
             vendor.display(),
             "ports/linux/gnu/inc",
         );
-        let got: Vec<PathBuf> = split_list(&raw)
+        let got: Vec<PathBuf> = split_list(&raw, ':')
             .map(|e| reroot_foreign(Path::new(e), &worktree))
             .collect();
 
@@ -890,6 +985,87 @@ mod reroot_tests {
                 PathBuf::from("ports/linux/gnu/inc"),
             ]
         );
+    }
+
+    /// issue 1588 — the NuttX apps channel is a cmake LIST, joined with `;`.
+    /// The separator is the producer's, and the element rule must not change
+    /// with it: a `:` inside a `;` list is part of a path, not a boundary.
+    #[test]
+    fn a_semicolon_list_splits_on_semicolons_only() {
+        assert_eq!(split_list("", ';').collect::<Vec<_>>(), Vec::<&str>::new());
+        assert_eq!(
+            split_list(";;", ';').collect::<Vec<_>>(),
+            Vec::<&str>::new()
+        );
+        assert_eq!(
+            split_list("/a/x.c;;/b/y.cpp;", ';').collect::<Vec<_>>(),
+            vec!["/a/x.c", "/b/y.cpp"]
+        );
+        assert_eq!(
+            split_list("/odd:dir/x.c;/b/y.c", ';').collect::<Vec<_>>(),
+            vec!["/odd:dir/x.c", "/b/y.c"]
+        );
+    }
+
+    /// `APP_EXTRA_SOURCE_PKGS` — `<path>=<pkg>` pairs. The PACKAGE half cannot
+    /// hold `=`, the path half can, so the split is on the LAST one; a pair
+    /// missing either half is dropped exactly as the pre-1588 reader dropped it.
+    #[test]
+    fn a_pair_splits_on_its_last_equals_and_drops_incomplete_pairs() {
+        let got: Vec<_> = split_pairs(
+            "/ws/src/talker_pkg/src/Talker.c=talker_pkg;;/odd=dir/L.c=listener_pkg;\
+             /no/pkg.c=;=orphan;/no/equals.c",
+            ';',
+            '=',
+        )
+        .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("/ws/src/talker_pkg/src/Talker.c", "talker_pkg"),
+                ("/odd=dir/L.c", "listener_pkg"),
+            ]
+        );
+    }
+
+    /// A path-list FILE: one path a line, whitespace is never part of it, and
+    /// a blank line is not a path (`PathBuf::from("")` as `-I` is the CWD).
+    #[test]
+    fn a_list_file_yields_trimmed_non_blank_lines() {
+        assert_eq!(
+            split_lines("/a/include\n\n  /b/include  \r\n\n").collect::<Vec<_>>(),
+            vec!["/a/include", "/b/include"]
+        );
+        assert_eq!(split_lines("").collect::<Vec<_>>(), Vec::<&str>::new());
+    }
+
+    /// The pair form's lookup contract: a pair's path half and a list element
+    /// naming the same file must resolve to the SAME `PathBuf`, or the
+    /// per-component `NROS_PKG_NAME` lookup in `nuttx_ffi_build` silently
+    /// misses. Driven through `reroot_foreign`, the pure half of
+    /// `resolve_path_value`.
+    #[test]
+    fn a_pair_path_and_a_list_element_resolve_identically() {
+        let s = Scratch::new("pairs");
+        let main = s.checkout("main");
+        let worktree = s.checkout("worktree");
+        let src = main.join("examples/workspaces/c/src/talker_pkg/src/Talker.c");
+        let list = format!("{};{}", src.display(), worktree.join("x.c").display());
+        let pairs = format!("{}=talker_pkg", src.display());
+
+        let from_list: Vec<PathBuf> = split_list(&list, ';')
+            .map(|e| reroot_foreign(Path::new(e), &worktree))
+            .collect();
+        let from_pair: Vec<PathBuf> = split_pairs(&pairs, ';', '=')
+            .map(|(p, _)| reroot_foreign(Path::new(p), &worktree))
+            .collect();
+        assert_eq!(
+            from_list[0],
+            worktree.join("examples/workspaces/c/src/talker_pkg/src/Talker.c")
+        );
+        assert_eq!(from_pair, vec![from_list[0].clone()]);
+        // …and an element already in this checkout is kept, not doubled.
+        assert_eq!(from_list[1], worktree.join("x.c"));
     }
 
     /// The walk stops at the INNERMOST checkout. Agent worktrees live under
