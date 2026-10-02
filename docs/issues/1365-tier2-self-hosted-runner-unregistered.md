@@ -451,3 +451,69 @@ down, which makes it harder to catch, not less worth instrumenting.
 permission — is still the only thing that would say which of the two surviving
 readings is true, and an intermittent fault is exactly the case where a
 once-a-day reading beats waiting for someone to be watching.
+
+## The third shape again, 2026-10-02 — and this time the boundary is 17 minutes wide
+
+Fifth instance of the idle-with-waiters shape, and the most tightly bounded one
+yet: the runner **worked, then stopped claiming, inside the same hour.**
+
+Measured at 07:20 UTC:
+
+| waiter | job | queued since | waiting |
+| --- | --- | --- | ---: |
+| run-matrix 36973805253 | `tier 2 (1-wise matrix)` | **110733196977** | 06:29:39 | 50 min |
+| nightly 36977810939 | `tier 2 nightly (pairwise cover)` | **110745358608** | 07:17:45 | 3 min |
+
+Both request exactly `self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big`.
+The runner carries every one of them:
+
+```
+nano-ros-runner  online  busy=false
+  labels: self-hosted,Linux,X64,nros-qemu,nros-sdk-zephyr,nros-big
+```
+
+`busy=false` on **three** reads spread over several minutes.
+
+### The 17-minute boundary
+
+The last job to run on this runner succeeded, and recently:
+
+```
+job 110723473649  L3 (cross build + link)  success
+  started 06:02:02  completed 06:12:27  runner nano-ros-runner
+```
+
+That is **17 minutes before** the first waiter enqueued. So this instance cannot
+be explained by a runner that was unhealthy all along — it took work, finished
+it green, and then declined the next job that matched it. Every earlier entry in
+this issue measured the stall after hours of silence; this one brackets the
+transition.
+
+### What is ruled out, by measurement rather than by elimination
+
+- **Not the first shape.** The runner is registered and online; the API returns
+  it with all five labels. That half stays resolved.
+- **Not a concurrency hold.** `run-matrix.yml` declares `concurrency: {group:
+  run-matrix, cancel-in-progress: false}`, and no other `run-matrix` run is live.
+- **Not occupied by the long `host-tests` run.** That lane is GitHub-hosted —
+  its jobs report `runner_name: GitHub Actions 1000087431` and
+  `labels: ubuntu-22.04`, so it never competes for this runner.
+- **Not merge traffic, even though the queue IS busy this time.** Four `gate`
+  runs were in progress (two `pull_request`, two `merge_group`). Earlier entries
+  argued merge traffic could not explain the stall because there was none; today
+  there is plenty, and it still cannot, because those jobs are GitHub-hosted.
+  The only self-hosted job in that family is `queue.yml`'s `L3`, and the runner
+  reports idle.
+- **Not an unmet `needs:`.** The run-matrix run has one job besides the
+  interlock reporter, and it is the queued one.
+
+### What it still does not establish
+
+Why the runner declines a matching job while reporting idle. Nothing readable
+from the API distinguishes "listener wedged", "job assignment lost" and "runner
+accepting but the service has not polled". The previous instance ended by itself
+at 26 h 20 m with no operator action, so waiting is not evidence either way.
+
+What the 17-minute boundary adds is a much better window for whoever can read
+the runner's own `_diag` logs: the transition is between 06:12:27, when it
+completed a job, and 06:29:39, when it first declined one.
