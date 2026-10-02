@@ -1,0 +1,80 @@
+# phase-475 W5 — the periodic lane census.
+#
+# Runs every nros-tests target in the gate lane's OWN image, twice, with nothing
+# staged, and compares what would be admitted with `.config/lane-admission/
+# gate.txt` — the list `test-lane-contracts` runs. It reports newly admissible
+# targets (a missed opportunity) and admitted targets that would no longer pass
+# (the gate goes red on those anyway — W4 — this names them sooner, with a
+# reason), and the missing-capability table for whoever owns the image.
+#
+# It fails ONLY on a TIMEOUT: a test that hangs instead of skipping is always a
+# defect. Everything else is information; failing on every new red would make
+# this a second gate nobody asked for.
+#
+# Provisions exactly what the gate's `check` job provisions before
+# `test-lane-contracts`, step for step, because the census is only a statement
+# about that environment.
+name: lane-census
+
+on:
+  schedule:
+    - cron: "40 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  census:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Build the in-tree nros CLI (as the gate job does)
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          # phase-429 W5 — ASSERT the binary matches the checkout, as the gate
+          # job does; a census run against a stale CLI measures a different tree.
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      - name: Provision compile-tier sources (as the gate job does)
+        run: |
+          source ./activate.sh
+          nros setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      - name: Census (2 runs, in this image)
+        run: |
+          scripts/test/lane-census.sh --here census-out --runs 2 \
+            --admit census-out/gate.txt | tee census-out/summary.txt
+
+      - name: Compare with the committed admission list
+        run: |
+          python3 scripts/test/lane-census-diff.py \
+            .config/lane-admission/gate.txt census-out/gate.txt \
+            census-out/per-target.json | tee census-out/diff.txt
+          { echo '```'; cat census-out/summary.txt census-out/diff.txt; echo '```'; } \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the census
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-census
+          path: census-out/
+          retention-days: 14

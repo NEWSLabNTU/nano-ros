@@ -395,6 +395,13 @@ COMPILE_RESOLVERS = ("require_compile_check", "require_compile_check_bin")
 RESOLVER_SOURCES = ("packages/testing/nros-tests/src/fixtures",)
 NOT_A_RESOLVER = {
     "require_coord_in_lane": "asks whether a coordinate is IN the run's lane; resolves no artifact",
+    # phase-475 W3 — found by the census disagreeing with this harvest:
+    # `fixture_group_resolution` reached a verdict in the gate image with
+    # nothing staged, twice, while this file called it a runtime-fixture user.
+    # `build_dir` is a PATH JOIN (`build_root()/kind/coords…`) — no existence
+    # check, no build, no stamp. It matches `build_\w+` by NAME, which is the
+    # whole reason it was harvested.
+    "build_dir": "joins a path under build_root(); checks no artifact exists and resolves none",
 }
 _RESOLVER_DEF = re.compile(r"\bpub fn ((?:build|require)_\w+)\s*[(<]")
 
@@ -646,11 +653,41 @@ def _join_continuations(body):
     return out
 
 
+# phase-475 W3 — a lane may take its targets from a GENERATED admission list
+# instead of literal `--test` tokens. Reading only the literals would leave this
+# gate blind to every target the list admits (issue 0196's shape), so a body
+# line that names the file contributes the file's names.
+ADMISSION = re.compile(r"\.config/lane-admission/([A-Za-z0-9_-]+)\.txt")
+
+
+def admission_names(lane_file):
+    """The target names a lane-admission file admits, comments stripped.
+
+    Resolved beside the justfile being read, so the selftest's temp tree and the
+    real checkout agree. A MISSING file is an error, never an empty set: an
+    empty admission list read as "inspected nothing" is exactly how a gate goes
+    quiet instead of red.
+    """
+    path = os.path.join(os.path.dirname(JUSTFILE), ".config", "lane-admission",
+                        f"{lane_file}.txt")
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"a recipe names lane-admission list `{lane_file}` and "
+            f"{os.path.relpath(path, os.path.dirname(JUSTFILE))} does not exist")
+    with open(path, encoding="utf8") as fh:
+        return [l.split("#", 1)[0].strip() for l in fh
+                if l.split("#", 1)[0].strip()]
+
+
 def tests_invoked(recipes, names):
-    """{test_name: recipe} for every `--test NAME` in the closure's bodies."""
+    """{test_name: recipe} for every `--test NAME` in the closure's bodies,
+    plus every name in a lane-admission list a body reads."""
     out = {}
     for r in names:
         for line in _join_continuations(recipes.get(r, {}).get("body", [])):
+            for m in ADMISSION.finditer(line):
+                for name in admission_names(m.group(1)):
+                    out.setdefault(name, r)
             if "cargo test" not in line and "nextest" not in line:
                 continue
             for m in CARGO_TEST.finditer(line):
@@ -1504,6 +1541,29 @@ def selftest(verbose=False):
         r = parse_justfile()
         chk("a `just <mod> <recipe>` call is ONE edge to <mod>::<recipe>",
             "t_module" in tests_invoked(r, closure(r, "ci-l1")))
+
+        # phase-475 W3 — targets taken from a GENERATED admission list. The
+        # literal scan alone saw none of them; the runtime-fixture rule must
+        # still reach every admitted name.
+        adm = os.path.join(os.path.dirname(jf), ".config", "lane-admission")
+        os.makedirs(adm, exist_ok=True)
+        with open(os.path.join(adm, "gate.txt"), "w", encoding="utf8") as fh:
+            fh.write("# header\nt_admitted   # trailing note\n\nt_runtime\n")
+        with open(jf, "w", encoding="utf8") as fh:
+            fh.write("ci-l1:\n    @just gate-a\n\n"
+                     "gate-a:\n    grep -v '^#' .config/lane-admission/gate.txt\n")
+        r = parse_justfile()
+        found = tests_invoked(r, closure(r, "ci-l1"))
+        chk("a lane-admission list's names are inspected, comments stripped",
+            set(found) == {"t_admitted", "t_runtime"})
+        chk("...including one that resolves a RUNTIME fixture (the rule still bites)",
+            "t_runtime" in found)
+        os.remove(os.path.join(adm, "gate.txt"))
+        try:
+            tests_invoked(r, closure(r, "ci-l1"))
+            chk("a MISSING admission list is an error, not an empty set", False)
+        except FileNotFoundError:
+            chk("a MISSING admission list is an error, not an empty set", True)
 
     globals()["JUSTFILE"], globals()["TESTS_DIR"] = real
     # ---- phase-396 W5: the pieces that were BLIND, each with a case ----

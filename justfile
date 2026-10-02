@@ -3337,17 +3337,58 @@ test-lane-contracts:
     # resolvers; a redundant step propped up by a wrong diagnosis is how a lane
     # accretes cost nobody can later justify removing.
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    # issue 1610 — `loc_budgets` is admitted on the SAME rule as the three
-    # above: it reads source files through the `tokei` library and resolves no
-    # fixture stamp. It sat in no merge-gating lane (this crate is excluded from
-    # `test-unit` by CRATE), so when `zephyr/cmake/nros_system_generate.cmake`
-    # crossed its 200-LoC budget on 2026-09-28 nothing between that commit and
-    # its merge asked, and it stayed red. The recipe's NAME is narrower than its
-    # rule — the rule is "an nros-tests target that builds no fixture", which is
-    # what `check-lane-contracts` actually enforces here.
-    cargo nextest run "${cargo_nextest_args[@]}" -p nros-tests \
-        --test lane_run_narrowing --test matrix_fixture_coverage \
-        --test lane_build_covers_run --test loc_budgets
+    # phase-475 W3 — the targets are the GATE IMAGE'S CENSUS, not a hand list.
+    # This list was four names (the three above, plus `loc_budgets` from issue
+    # 1610) chosen one red at a time; the census ran every nros-tests target in
+    # the gate image with nothing staged and admits those that PASSED IN EVERY
+    # RUN. Regenerate it, never edit it:
+    #     scripts/test/lane-census.sh <gate-image> --runs 2 \
+    #         --admit .config/lane-admission/gate.txt
+    # `check-lane-contracts` reads the same file, so an admitted target that
+    # resolves a runtime fixture is still refused.
+    # shellcheck disable=SC1091
+    source scripts/lib/grep-q.sh
+    admission=.config/lane-admission/gate.txt
+    admitted=()
+    while IFS= read -r line; do
+        line="${line%%#*}"; line="${line//[[:space:]]/}"
+        [ -n "$line" ] && admitted+=("$line")
+    done < "$admission"
+    if [ "${#admitted[@]}" -eq 0 ]; then
+        echo "test-lane-contracts: $admission admits nothing -- refusing to report" >&2
+        echo "  green over an empty run (a gate that checks nothing reads as OK)." >&2
+        exit 1
+    fi
+    args=()
+    for t in "${admitted[@]}"; do
+        if [ "$t" = lib ]; then args+=(--lib); else args+=(--test "$t"); fi
+    done
+    echo "test-lane-contracts: ${#admitted[@]} target(s) admitted by the gate-image census"
+    # phase-475 W4 — an ADMITTED target that skips FAILS this lane. That holds by
+    # construction: this is bare nextest, which counts a `[SKIPPED]` panic as a
+    # failure, and nothing here rewrites junit. Do not add the skip-tolerant
+    # rewrite `test-all` uses: an admitted target skipping means its admission is
+    # stale (it gained a precondition), and tolerating that is how a lane's
+    # coverage narrows to whatever still passes. What the run CANNOT do alone is
+    # say so, because a `[SKIPPED]` line reads like an expected skip — hence the
+    # explanation below, printed only on the failure path.
+    rc=0
+    cargo nextest run "${cargo_nextest_args[@]}" -p nros-tests "${args[@]}" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        junit=target/nextest/default/junit.xml
+        if [ -f "$junit" ] && nros_grep_q '\[SKIPPED' "$junit"; then
+            echo "" >&2
+            echo "test-lane-contracts: an ADMITTED target SKIPPED (phase-475 W4)." >&2
+            echo "  The census admitted it because it reached a verdict in the gate" >&2
+            echo "  image with nothing staged; a skip now means it gained a" >&2
+            echo "  precondition, so its admission is stale. Either remove that" >&2
+            echo "  precondition, or regenerate the list:" >&2
+            echo "      scripts/test/lane-census.sh <gate-image> --runs 2 --admit $admission" >&2
+            python3 scripts/test/lane-census-classify.py --out /dev/null --show SKIP \
+                "$junit" 2>/dev/null | sed -n '/^== SKIP ==/,$p' >&2 || true
+        fi
+        exit "$rc"
+    fi
 
 [group("ci")]
 ci-l1:
