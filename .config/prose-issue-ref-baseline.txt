@@ -49,8 +49,6 @@
 #         asked for rather than a duplicate filing. REMOVE THESE ROWS when
 #         #1263 merges.
 #
-docs/issues/1620-fixture-free-nros-tests-red-on-main-unseen-by-any-gating-lane.md:1610
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
-docs/roadmap/phase-475-test-target-lane-admission.md:1610
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
