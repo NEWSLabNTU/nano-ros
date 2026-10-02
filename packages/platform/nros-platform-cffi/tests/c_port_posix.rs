@@ -176,6 +176,13 @@ fn condvar_signal_wakes_waiter() {
 
     let woken = Arc::new(AtomicBool::new(false));
     let woken_thread = Arc::clone(&woken);
+    // The predicate the wait is for. Without it this test raced: on a loaded
+    // runner the worker could reach `condvar_wait` after the signal had already
+    // been sent, and a condvar does not remember a signal nobody was waiting
+    // for, so the worker slept until nextest's 60 s timeout killed it. Written
+    // and read only under `m`, so "check, then wait" is atomic with the signal.
+    let signalled = Arc::new(AtomicBool::new(false));
+    let signalled_thread = Arc::clone(&signalled);
 
     // Allocate cv + mutex on the heap so the worker thread shares
     // the same address with the test thread.
@@ -191,8 +198,10 @@ fn condvar_signal_wakes_waiter() {
         let cv = cv_addr as *mut c_void;
         let m = m_addr as *mut c_void;
         assert_eq!(CffiPlatform::mutex_lock(m), 0);
-        // Wait for the signal.
-        assert_eq!(CffiPlatform::condvar_wait(cv, m), 0);
+        // Wait for the signal — in a loop, which also absorbs a spurious wakeup.
+        while !signalled_thread.load(Ordering::SeqCst) {
+            assert_eq!(CffiPlatform::condvar_wait(cv, m), 0);
+        }
         woken_thread.store(true, Ordering::SeqCst);
         assert_eq!(CffiPlatform::mutex_unlock(m), 0);
     });
@@ -200,6 +209,7 @@ fn condvar_signal_wakes_waiter() {
     // Give the worker a moment to enter the wait.
     std::thread::sleep(Duration::from_millis(20));
     assert_eq!(CffiPlatform::mutex_lock(m), 0);
+    signalled.store(true, Ordering::SeqCst);
     assert_eq!(CffiPlatform::condvar_signal(cv), 0);
     assert_eq!(CffiPlatform::mutex_unlock(m), 0);
 
