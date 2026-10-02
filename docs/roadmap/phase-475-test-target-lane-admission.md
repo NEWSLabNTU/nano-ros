@@ -1,7 +1,6 @@
 # Phase 475 — which test targets a lane can run: a census, not an inference
 
-**Status (2026-10-02). W0, W1 LANDED; W2 (the reds) LANDED; W6 DECIDED (the
-package is in); W3–W5 open.** A design study with its measurement done first. The question is
+**Status (2026-10-03). W0–W5 LANDED; W6 DECIDED (the package is in).** A design study with its measurement done first. The question is
 issue 0922's, asked for every `nros-tests` target at once: *which of them reach
 a verdict in which lane?* The answer it reaches is that **only the lane's own
 environment can say, and asking it costs 24 seconds** — so the classifier is a
@@ -205,26 +204,63 @@ that compile at run time and contend under a parallel census).
 first read of the failure stopped at its first entry. One of them,
 `rust/service-client`, had been red since 2026-09-06.
 
-### W3 — admission from the census
+### W3 — admission from the census (LANDED)
 
-`test-lane-contracts` holds a hand-written list of four. Replace it with a list
-generated from the gate image's census. Its name is already narrower than its
-rule (#1514 said so); rename it for what it runs. W2 must land first: admitting
-the census's verdict set today would admit three reds and turn the lane red for
-reasons nobody on the PR caused.
+`test-lane-contracts` now runs `.config/lane-admission/gate.txt`, a list the
+census GENERATES: every target that passed in **both** of two runs in the gate
+image (with `ros-humble-rmw-zenoh-cpp`, #1569) with nothing staged.
 
-### W4 — an admitted target that skips fails the lane
+| | before | after |
+| --- | --- | --- |
+| targets | 4, chosen one red at a time | **47** (46 `--test` targets + the crate's `--lib` unit tests) |
+| test cases | 30 | **357** |
+| cold build, sccache off | 18 s | 20 s |
+| run | 0.8 s | 5.2 s |
+| target dir | 2.1 GB | 3.5 GB |
 
-A third property for `check-skip-budget`, beside 0584's two. Acceptance: a
-target in the admitted list that skips — any class — makes the lane red and
-says which precondition it met, with a negative control that plants exactly
-that.
+The cost is disk, not time — +1.4 GB in the job that also runs `test-unit`, which
+issue 1353 is about.
 
-### W5 — the periodic census
+`check-lane-contracts` reads the same file (a body line that names
+`.config/lane-admission/<lane>.txt` contributes its names), so an admitted target
+that resolves a runtime fixture is still refused, and a MISSING list is an error
+rather than an empty set — reading only literal `--test` tokens would have left
+the gate blind to all 47 (issue 0196's shape). Three selftest cases cover it.
 
-On `schedule`, in the published `nano-ros-ci` image, uploading the per-target
-table and the missing-capability ranking, and failing only on a TIMEOUT (a test
-that hangs instead of skipping is always a defect).
+**Why two runs.** Two targets that compile at test time contend under a
+parallel run (issue 1620). Here both runs agreed — both FAILed them — so nothing
+was unstable; the repeat is what would keep a target that flakes the other way
+out.
+
+**One limit, measured.** Admission is per TARGET. `params_per_node_interop`
+holds a fixture-free tripwire (`cases_bound_to_interop_cells`, red until #1569)
+beside cases that need fixtures, so it is not admitted and its tripwire still
+gates nowhere. Admitting by nextest filter expression instead of `--test` would
+reach it; not done here.
+
+### W4 — an admitted target that skips fails the lane (LANDED)
+
+True by construction, and now SAID: the lane is bare nextest, which counts a
+`[SKIPPED]` panic as a failure, and the recipe states that the skip-tolerant
+junit rewrite `test-all` uses must never be added. On the failure path it names
+each admitted target that skipped, with its reason, and the command that
+regenerates the list — because a `[SKIPPED]` line otherwise reads like an
+expected skip.
+
+### W5 — the periodic census (LANDED)
+
+`.github/workflows/lane-census.yml`, nightly and on dispatch, in the published
+`nano-ros-ci` image, provisioning exactly what the gate's `check` job does before
+`test-lane-contracts`. `scripts/test/lane-census.sh --here` runs the same
+`lane-census-run.sh` a local `<image>` run does, so the two cannot measure
+different things. `lane-census-diff.py` reports NEWLY ADMISSIBLE, NO LONGER
+PASSING and TIMEOUT, and the job fails only on a TIMEOUT. Not yet run in CI: it
+lands with this phase.
+
+Why the list must come from the IMAGE, measured: the same tree admits **53**
+targets in a `--here` run on a provisioned dev host and **47** in the gate
+image — the host has the launch resolver, QEMU and more. `--here --admit`
+outside CI therefore prints a warning naming the right command.
 
 ### W6 — the image lever (a decision, not a task)
 
