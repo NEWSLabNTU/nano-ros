@@ -1,0 +1,53 @@
+# Issue 1340 — what this image's eight subscriptions DECLARE. Every one is
+# `KEEP_LAST(1)`, and every name is ABSOLUTE and exactly what `lib.rs`
+# registers (a contract states resolved names; a mismatch is refused, not
+# guessed at). Without this file there is no sizing descriptor, no
+# `registration_path` row, and so nothing for the in-place pricing to act on.
+
+version: 1
+
+nodes:
+  eight_listener:
+    sub:
+      chatter1:
+        qos: { history: keep_last, depth: 1 }
+      chatter2:
+        qos: { history: keep_last, depth: 1 }
+      chatter3:
+        qos: { history: keep_last, depth: 1 }
+      chatter4:
+        qos: { history: keep_last, depth: 1 }
+      chatter5:
+        qos: { history: keep_last, depth: 1 }
+      chatter6:
+        qos: { history: keep_last, depth: 1 }
+      chatter7:
+        qos: { history: keep_last, depth: 1 }
+      chatter8:
+        qos: { history: keep_last, depth: 1 }
+
+topics:
+  /chatter1:
+    type: std_msgs/msg/String
+    sub: [eight_listener/chatter1]
+  /chatter2:
+    type: std_msgs/msg/String
+    sub: [eight_listener/chatter2]
+  /chatter3:
+    type: std_msgs/msg/String
+    sub: [eight_listener/chatter3]
+  /chatter4:
+    type: std_msgs/msg/String
+    sub: [eight_listener/chatter4]
+  /chatter5:
+    type: std_msgs/msg/String
+    sub: [eight_listener/chatter5]
+  /chatter6:
+    type: std_msgs/msg/String
+    sub: [eight_listener/chatter6]
+  /chatter7:
+    type: std_msgs/msg/String
+    sub: [eight_listener/chatter7]
+  /chatter8:
+    type: std_msgs/msg/String
+    sub: [eight_listener/chatter8]
