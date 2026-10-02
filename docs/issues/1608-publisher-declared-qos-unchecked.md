@@ -50,3 +50,56 @@ fails the build (C/C++, where the QoS is a constant expression) or the
 registration (Rust, and every non-constant C/C++ call site), with a negative
 control in `just check declared-qos-header` and `just check
 declared-qos-registration` the way the subscription side has one.
+
+## Update (2026-10-03) -- the RUNTIME half landed; the compile-time half is open
+
+**What landed.** The sizing descriptor's PUBLISHER rows now reach
+`nros_node::config::DECLARED_PUBLISHER_QOS_ROWS` (descriptor only -- the
+`NROS_ENTITY_DECLARED_DEPTHS` env carrier is subscription depths by definition
+and no knob was added), and every publisher registration goes through
+`nros_node::declared_qos::honour_publisher`: the Rust seams
+(`create_publisher_with_qos`, `create_publisher_raw_with_qos`, and
+`Executor::create_raw_publisher_handle_on`, which every `NodeCtx` publisher
+reaches) and the C/C++ FFI seams (`nros_publisher_init_with_qos`,
+`nros_cpp_publisher_create`). The call is placed BEFORE QoS validation, so a
+policy the contract raises a publisher to is one the backend is asked about.
+
+**The rule, and why it is not the subscription's.** Depth is shared (take a
+shallower declaration, refuse a deeper one). The two POLICIES are RxO-matched,
+and the tolerant direction is opposite for a writer: a publisher that asks LESS
+than its declaration is RAISED to it (the build reserved it, and every reader
+that matched the lower offer still matches); one that asks MORE is REFUSED --
+lowering it could break a match, and keeping it rides storage the build did not
+count (the TL writer's queryable slot and retained samples, XRCE's reliable
+stream). The FFI seams HONOUR rather than strict-check, because no C/C++
+call-site seam takes a publisher's declaration the way `NROS_SUBSCRIBE` does.
+
+**Measured, `examples/native/rust/talker` (zenoh, native), private router:**
+
+* contract `/chatter` `keep_last 1` + `transient_local`: the default publisher
+  registers depth 1, transient_local (`... :1:,1: ...` in its liveliness QoS),
+  with both takes reported at WARN, and publishes as before;
+* contract `/chatter` `reliability: best_effort`: registration refused,
+  `NodeError::DeclaredQosMismatch`, the image exits naming the topic;
+* no contract: `honour_publisher` folds away -- no `declared_qos` symbol in the
+  binary, and removing the call leaves `create_raw_publisher_handle_on` the same
+  size (the +32 B of `.text` against `origin/main` is code-generation-unit
+  noise from the other edits, measured by that removal).
+
+Tests: `declared_qos::tests::a_publisher_*` (three, one of which runs the same
+row through the subscription rule and gets the opposite verdict; mutating the
+publisher arm to the subscription's direction reds two), and the
+`declared-qos-registration` lane's descriptor step now expects FOUR
+declared-image tests -- the fourth compiled only where a publisher row arrived
+(negative control: filtering the descriptor back to subscriptions reds it).
+
+**Still open -- the compile-time half (C and C++).** The generated
+`nros_declared_qos_generated.h` table carries no publisher rows. The smallest
+shape that does not move the existing row arity: a SECOND X-macro list
+(`NROS_DECLARED_PUB_QOS_ROWS` / `_Q`) beside the subscription one, written by
+the same loop in `EntityInventory::to_declared_qos_header`, plus
+`NROS_ASSERT_DECLARED_PUB_{DEPTH,RELIABILITY,DURABILITY}` in
+`nros/declared_qos.h`. C++ additionally needs a call-site seam to assert at --
+`create_publisher_in` is a plain call with no macro form -- which is an API
+decision, not a mechanical extension. Until then a constant-expression C/C++
+publisher that disagrees is refused at REGISTRATION (boot), not at build.

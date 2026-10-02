@@ -3977,6 +3977,10 @@ impl<'s> Executor<'s> {
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
+        // issue 1608 -- the publisher half of the declared-QoS check, before
+        // validation so a policy the contract raises this publisher to is one
+        // the backend is asked about. See `declared_qos::honour_publisher`.
+        let qos = crate::declared_qos::honour_publisher(topic.type_name, topic.name, qos)?;
         let session = self
             .session_at_mut(session_idx)
             .ok_or(NodeError::BackendMismatch)?;

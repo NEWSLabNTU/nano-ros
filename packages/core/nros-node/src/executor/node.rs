@@ -349,12 +349,6 @@ impl<'a> NodeHandle<'a> {
         );
         // Phase 108.B — synchronous QoS validation against backend's
         // `supported_qos_policies()` mask. No silent downgrade.
-        validate_qos_or_report(
-            &qos,
-            nros_rmw::Session::supported_qos_policies(self.session),
-            "publisher",
-            topic_name,
-        )?;
         let remapped = self.remapped(topic_name);
         let topic = Self::topic_info(
             self.domain_id,
@@ -364,6 +358,16 @@ impl<'a> NodeHandle<'a> {
             <M as RosMessage>::TYPE_NAME,
             <M as RosMessage>::TYPE_HASH,
         );
+        // issue 1608 -- the publisher half of the declared-QoS check. BEFORE
+        // validation, so a policy the contract raises this publisher to is
+        // one the backend is asked whether it can honour.
+        let qos = crate::declared_qos::honour_publisher(topic.type_name, topic.name, qos)?;
+        validate_qos_or_report(
+            &qos,
+            nros_rmw::Session::supported_qos_policies(self.session),
+            "publisher",
+            topic_name,
+        )?;
         let handle = self
             .session
             .create_publisher(&topic, qos)
@@ -412,12 +416,6 @@ impl<'a> NodeHandle<'a> {
             nros_rmw::QoSOverrideRole::Publisher,
             self.qos_overrides,
         );
-        validate_qos_or_report(
-            &qos,
-            nros_rmw::Session::supported_qos_policies(self.session),
-            "publisher",
-            topic_name,
-        )?;
         let remapped = self.remapped(topic_name);
         let topic = Self::topic_info(
             self.domain_id,
@@ -427,6 +425,14 @@ impl<'a> NodeHandle<'a> {
             type_name,
             type_hash,
         );
+        // issue 1608 -- see `create_publisher_with_qos`.
+        let qos = crate::declared_qos::honour_publisher(topic.type_name, topic.name, qos)?;
+        validate_qos_or_report(
+            &qos,
+            nros_rmw::Session::supported_qos_policies(self.session),
+            "publisher",
+            topic_name,
+        )?;
         let handle = self
             .session
             .create_publisher(&topic, qos)

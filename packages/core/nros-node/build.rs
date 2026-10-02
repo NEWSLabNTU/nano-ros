@@ -536,7 +536,16 @@ fn main() {
     // phase-454 W10 — the per-endpoint declared depths, for the REGISTRATION
     // check. Same carrier `subs_arena` sizes from, different guard: see
     // `declared_qos_rows`.
-    let declared_qos_rows = declared_qos_rows(sizing.as_ref());
+    // issue 1608 -- and every declared PUBLISHER, from the descriptor alone.
+    // Computed first: the binding below shadows the function's name.
+    let declared_publisher_qos_rows = declared_qos_rows(
+        sizing.as_ref(),
+        nros_sizing_descriptor::EndpointKind::Publisher,
+    );
+    let declared_qos_rows = declared_qos_rows(
+        sizing.as_ref(),
+        nros_sizing_descriptor::EndpointKind::Subscription,
+    );
     // phase-454 W10 — "this build was handed a contract's depths".
     //
     // Emitted so the declared-image half of `declared_qos`'s tests can EXIST
@@ -559,6 +568,12 @@ fn main() {
         || declared_qos_rows.contains("durability: Some(")
     {
         println!("cargo:rustc-cfg=nros_declared_qos_policy_table");
+    }
+    // issue 1608 -- "this build was handed a declared PUBLISHER", for the
+    // declared-image publisher test, on the same reasoning as the two above.
+    println!("cargo:rustc-check-cfg=cfg(nros_declared_publisher_qos_table)");
+    if declared_publisher_qos_rows != "None" {
+        println!("cargo:rustc-cfg=nros_declared_publisher_qos_table");
     }
     // Phase 104.C.2 — multi-Node-per-Executor (rclcpp `add_node`
     // pattern). Most apps run a single Node per Executor; bridge
@@ -1097,6 +1112,13 @@ fn main() {
          before.\n\
          pub const DECLARED_QOS_ROWS: Option<&[crate::declared_qos::DeclaredEndpoint]> = \
          {declared_qos_rows};\n\
+         \n\
+         /// issue 1608 -- the same for every PUBLISHER the system declared \
+         something about, from the sizing descriptor's publisher rows. Read by \
+         `declared_qos::honour_publisher` at every publisher registration.\n\
+         pub const DECLARED_PUBLISHER_QOS_ROWS: \
+         Option<&[crate::declared_qos::DeclaredEndpoint]> = \
+         {declared_publisher_qos_rows};\n\
          \n\
          /// Maximum number of Nodes attached to a single Executor \
          (set via NROS_EXECUTOR_MAX_NODES, default 4). Phase 104.C.2.\n\
@@ -1697,12 +1719,23 @@ fn declared_param_service_shapes(
 /// ranked; a `(type, topic)` both state with DIFFERENT depths fails the build,
 /// because silently preferring one of two answers is how a road ends up checked
 /// against a number nobody on it wrote.
-fn declared_qos_rows(desc: Option<&nros_sizing_descriptor::SizingDescriptor>) -> String {
+fn declared_qos_rows(
+    desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
+    kind: nros_sizing_descriptor::EndpointKind,
+) -> String {
     // The name is an ARGUMENT and not written at the `env::var` call, for the
     // reason `declared_param_service_shapes` records: a literal
     // `env::var("<forwarded knob>")` is issue 0460's shape.
     println!("cargo:rerun-if-env-changed=NROS_ENTITY_DECLARED_DEPTHS");
-    let raw = declared_fact("NROS_ENTITY_DECLARED_DEPTHS").unwrap_or_default();
+    // issue 1608 -- the env carrier is SUBSCRIPTION depths by definition (the
+    // entity inventory writes subscriptions only), so a publisher table reads
+    // the descriptor alone. No knob is added for publishers: a second carrier
+    // for a fact the descriptor states is the 0460/0491 shape.
+    let raw = if kind == nros_sizing_descriptor::EndpointKind::Subscription {
+        declared_fact("NROS_ENTITY_DECLARED_DEPTHS").unwrap_or_default()
+    } else {
+        String::new()
+    };
     // One row per `(type, topic)`, in the ROS type spelling, with the three
     // columns a contract can state for a subscription -- issue 1256 added the
     // two policies. The DDS-mangled twin is added at RENDER time, once, so a
@@ -1767,11 +1800,7 @@ fn declared_qos_rows(desc: Option<&nros_sizing_descriptor::SizingDescriptor>) ->
     // C/C++ compile-time table, which IS rendered per component, still checks
     // both.
     if let Some(desc) = desc {
-        for ep in desc
-            .endpoints
-            .iter()
-            .filter(|ep| ep.kind == nros_sizing_descriptor::EndpointKind::Subscription)
-        {
+        for ep in desc.endpoints.iter().filter(|ep| ep.kind == kind) {
             // A refused or absent column contributes nothing. The endpoint
             // exists and nobody stated that policy, which is exactly the case
             // "absence is not zero" is about -- a default taken here would be

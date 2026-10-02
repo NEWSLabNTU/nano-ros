@@ -302,6 +302,20 @@ pub unsafe extern "C" fn nros_publisher_init_with_qos(
             crate::qos::QOS_OVERRIDE_ROLE_PUBLISHER,
         );
 
+        // issue 1608 -- the publisher half of the declared-QoS check. A C
+        // publisher has no compile-time seam that took the declaration, so it
+        // is HONOURED here (raised to a stronger declared policy, refused when
+        // it asks for more than the contract declares) rather than
+        // strict-checked. See `nros_node::declared_qos::honour_publisher`.
+        let _qos_settings = match nros_node::declared_qos::honour_publisher(
+            topic_info.type_name,
+            topic_info.name,
+            _qos_settings,
+        ) {
+            Ok(q) => q,
+            Err(_) => return NROS_RET_ERROR,
+        };
+
         // Create publisher — write handle directly into inline opaque storage
         match session.create_publisher(&topic_info, _qos_settings) {
             Ok(pub_handle) => {

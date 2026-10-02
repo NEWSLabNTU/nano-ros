@@ -75,6 +75,29 @@
 //! added for them: re-carrying a fact the descriptor already states is the
 //! 0460/0491 shape), and [`check`](crate::declared_qos::check) / [`honour`](crate::declared_qos::honour) treat them by the same rules as
 //! the depth, with the order of the two values standing in for "deeper".
+//!
+//! # issue 1608 -- PUBLISHERS too, with the policy direction REVERSED
+//!
+//! A contract can state the same three things about a publisher, and
+//! `transient_local` is the one QoS fact that is publisher-side by nature: it is
+//! what a zenoh image spends a queryable slot on. The descriptor's publisher
+//! rows reach [`DECLARED_PUBLISHER_QOS_ROWS`](crate::declared_qos::DECLARED_PUBLISHER_QOS_ROWS)
+//! (a table of its own: a publisher and a subscription on one `(type, topic)`
+//! are two endpoints), and every publisher registration -- the Rust seams and
+//! the C/C++ FFI seams alike -- goes through
+//! [`honour_publisher`](crate::declared_qos::honour_publisher).
+//!
+//! Its rule is NOT the subscription's copied across. Reliability and durability
+//! are matched request-vs-offered, so the tolerant direction flips: a reader may
+//! ask for less than a writer offers, a writer may offer more than a reader asks.
+//! A publisher asking LESS than its declaration is therefore RAISED to it (the
+//! build reserved it, and every reader that matched the lower offer still
+//! matches); one asking MORE is REFUSED (lowering it could break a match, and
+//! keeping it rides storage the build did not count). The depth rule is shared.
+//! Measured on `examples/native/rust/talker` with a contract declaring
+//! `/chatter` `transient_local`, depth 1: the default publisher registers
+//! transient_local, depth 1, and reports both takes; declaring `best_effort`
+//! instead refuses the registration and the image exits naming the topic.
 
 use crate::executor::NodeError;
 use nros_rmw::{QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy};
@@ -102,6 +125,11 @@ pub struct DeclaredEndpoint {
 /// Every subscription this image's contract declares something about, or
 /// `None` when it declares nothing.
 pub use crate::config::DECLARED_QOS_ROWS;
+
+/// issue 1608 -- every PUBLISHER this image's contract declares something
+/// about, or `None`. Same row shape as [`DECLARED_QOS_ROWS`]; read by
+/// [`honour_publisher`].
+pub use crate::config::DECLARED_PUBLISHER_QOS_ROWS;
 
 /// Do two topic spellings name the same endpoint?
 ///
@@ -388,19 +416,114 @@ fn honour_in(
     topic: &str,
     qos: QoSProfile,
 ) -> Result<QoSProfile, NodeError> {
+    honour_role_in(rows, type_name, topic, qos, Role::Subscription)
+}
+
+/// Which side of a match an endpoint is on -- issue 1608.
+///
+/// It decides ONE thing: which direction of a POLICY disagreement
+/// [`honour_role_in`] may take. Depth is not a matched policy and is treated
+/// the same on both sides. Reliability and durability are request-vs-offered
+/// (RxO) matched, and the tolerant direction is OPPOSITE for the two roles: a
+/// reader may ask for LESS than a writer offers, a writer may offer MORE than a
+/// reader asks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Role {
+    Subscription,
+    Publisher,
+}
+
+impl Role {
+    fn noun(self) -> &'static str {
+        match self {
+            Role::Subscription => "subscription",
+            Role::Publisher => "publisher",
+        }
+    }
+
+    /// Why a [`PolicyVerdict::Refuse`] refuses, in the log line's words.
+    fn refusal_reason(self) -> &'static str {
+        match self {
+            Role::Subscription => "widen what the code narrowed",
+            Role::Publisher => {
+                "weaken the offer below the call site's, and a reader asking for it stops matching"
+            }
+        }
+    }
+}
+
+/// What [`honour_role_in`] does with one POLICY column that disagrees.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PolicyVerdict {
+    /// Take the declaration and report the divergence.
+    Take,
+    /// Take the declaration silently: the call site stated no opinion.
+    TakeSilently,
+    /// Refuse the registration.
+    Refuse,
+}
+
+/// THE rule for a policy disagreement, for both roles, in rank space (`None`
+/// is "no opinion" -- see [`reliability_rank`]).
+///
+/// * **Subscription** -- refuse when the code asked for LESS than was declared
+///   (taking would widen what the code narrowed); otherwise take, which lowers
+///   the request into what the build reserved and is the direction RxO
+///   tolerates for a reader.
+/// * **Publisher** -- refuse when the code asked for MORE than was declared.
+///   Taking would WEAKEN the offer below what the code asked, so a reader that
+///   requests what the code offered stops matching -- an incompatible-QoS pair
+///   never delivers -- while keeping the ask rides storage the build did not
+///   reserve: a `transient_local` writer is a zenoh queryable slot plus its
+///   retained samples, and a `reliable` one is XRCE's reliable stream history,
+///   both counted from the declaration. Otherwise take: RAISING a writer's
+///   offer keeps every reader that matched the lower one, and it is what the
+///   build reserved.
+///
+/// So the two roles share the asymmetry's REASON -- never ride storage the
+/// build did not reserve, never silently break a match -- and get opposite
+/// directions from it, because RxO is directional.
+fn policy_verdict(role: Role, asked: Option<u8>, declared: Option<u8>) -> PolicyVerdict {
+    let (Some(asked), Some(declared)) = (asked, declared) else {
+        return PolicyVerdict::TakeSilently;
+    };
+    let refuse = match role {
+        Role::Subscription => asked < declared,
+        Role::Publisher => asked > declared,
+    };
+    if refuse {
+        PolicyVerdict::Refuse
+    } else {
+        PolicyVerdict::Take
+    }
+}
+
+/// [`honour`] / [`honour_publisher`] for either [`Role`].
+fn honour_role_in(
+    rows: &[DeclaredEndpoint],
+    type_name: &str,
+    topic: &str,
+    qos: QoSProfile,
+    role: Role,
+) -> Result<QoSProfile, NodeError> {
     let Some(row) = row_in(rows, type_name, topic) else {
         return Ok(qos);
     };
     let mut granted = qos;
+    // The DEPTH rule is the same for both roles: a subscription's depth
+    // multiplies the executor arena, a publisher's is its history cache (the
+    // samples a transient_local writer retains for late joiners), and in both
+    // the build reserved the DECLARED number.
     if let Some(declared) = row.depth
         && declared != qos.depth
     {
         if declared > qos.depth {
             nros_log::log_error!(
                 nros_log::get_logger("nros_node"),
-                "declared depth: `{}` registers KEEP_LAST({}) and the contract declares {} -- \
-                 DEEPER. Taking it would widen a queue the code narrowed; fix the contract row \
-                 or the call site (type `{}`).",
+                "declared depth: {} `{}` registers KEEP_LAST({}) and the contract declares {} \
+                 -- DEEPER. Taking it would widen a queue the code narrowed; fix the contract \
+                 row or the call site (type `{}`).",
+                role.noun(),
                 topic,
                 qos.depth,
                 declared,
@@ -411,9 +534,10 @@ fn honour_in(
         granted.depth = declared;
         nros_log::log_warn!(
             nros_log::get_logger("nros_node"),
-            "declared depth: taking KEEP_LAST({}) on `{}`; the call site asked {} and the build \
-             reserved {}. Raise the contract row to keep more (type `{}`).",
+            "declared depth: taking KEEP_LAST({}) on {} `{}`; the call site asked {} and the \
+             build reserved {}. Raise the contract row to keep more (type `{}`).",
             declared,
+            role.noun(),
             topic,
             qos.depth,
             declared,
@@ -423,68 +547,117 @@ fn honour_in(
     if let Some(declared) = row.reliability
         && declared != qos.reliability
     {
-        match reliability_rank(qos.reliability) {
-            Some(asked) if asked < reliability_rank(declared).unwrap_or(asked) => {
+        match policy_verdict(
+            role,
+            reliability_rank(qos.reliability),
+            reliability_rank(declared),
+        ) {
+            PolicyVerdict::Refuse => {
                 nros_log::log_error!(
                     nros_log::get_logger("nros_node"),
-                    "declared QoS: `{}` registers {} and the contract declares reliability {} \
-                     -- STRONGER. Taking it would widen what the code narrowed; fix the \
-                     contract row or the call site.",
+                    "declared QoS: {} `{}` registers {} and the contract declares reliability \
+                     {}; taking it would {}. Fix the contract row or the call site.",
+                    role.noun(),
                     topic,
                     reliability_spelling(qos.reliability),
-                    reliability_spelling(declared)
+                    reliability_spelling(declared),
+                    role.refusal_reason()
                 );
                 return Err(NodeError::DeclaredQosMismatch);
             }
-            Some(_) => {
+            PolicyVerdict::Take => {
                 nros_log::log_warn!(
                     nros_log::get_logger("nros_node"),
-                    "declared QoS: taking reliability {} on `{}`; the call site asked {} and the \
-                     contract declares {}. Raise the contract row to keep it.",
+                    "declared QoS: taking reliability {} on {} `{}`; the call site asked {}. \
+                     Change the contract row to keep the call site's.",
                     reliability_spelling(declared),
+                    role.noun(),
                     topic,
-                    reliability_spelling(qos.reliability),
-                    reliability_spelling(declared)
+                    reliability_spelling(qos.reliability)
                 );
             }
             // The call site stated no opinion: nothing diverged, so nothing is
             // reported.
-            None => {}
+            PolicyVerdict::TakeSilently => {}
         }
         granted.reliability = declared;
     }
     if let Some(declared) = row.durability
         && declared != qos.durability
     {
-        match durability_rank(qos.durability) {
-            Some(asked) if asked < durability_rank(declared).unwrap_or(asked) => {
+        match policy_verdict(
+            role,
+            durability_rank(qos.durability),
+            durability_rank(declared),
+        ) {
+            PolicyVerdict::Refuse => {
                 nros_log::log_error!(
                     nros_log::get_logger("nros_node"),
-                    "declared QoS: `{}` registers {} and the contract declares durability {} \
-                     -- STRONGER. Taking it would widen what the code narrowed; fix the \
-                     contract row or the call site.",
+                    "declared QoS: {} `{}` registers {} and the contract declares durability \
+                     {}; taking it would {}. Fix the contract row or the call site.",
+                    role.noun(),
                     topic,
                     durability_spelling(qos.durability),
-                    durability_spelling(declared)
+                    durability_spelling(declared),
+                    role.refusal_reason()
                 );
                 return Err(NodeError::DeclaredQosMismatch);
             }
-            Some(_) => {
+            PolicyVerdict::Take => {
                 nros_log::log_warn!(
                     nros_log::get_logger("nros_node"),
-                    "declared QoS: taking durability {} on `{}`; the call site asked {} and the \
-                     contract declares {}. Raise the contract row to keep it.",
+                    "declared QoS: taking durability {} on {} `{}`; the call site asked {}. \
+                     Change the contract row to keep the call site's.",
                     durability_spelling(declared),
+                    role.noun(),
                     topic,
-                    durability_spelling(qos.durability),
-                    durability_spelling(declared)
+                    durability_spelling(qos.durability)
                 );
             }
-            None => {}
+            PolicyVerdict::TakeSilently => {}
         }
         granted.durability = declared;
     }
     Ok(granted)
+}
+
+/// issue 1608 -- the PUBLISHER counterpart of [`honour`]: the QoS a publisher
+/// registers with once the contract has had its say.
+///
+/// The rule is `policy_verdict`'s, with the POLICY direction reversed from a
+/// subscription's because RxO is directional: a publisher that asked for less
+/// than the contract declares is RAISED to the declaration (the build reserved
+/// it, and every reader that matched the lower offer still matches), and one
+/// that asked for more is REFUSED (lowering it could break a match, keeping it
+/// rides storage nobody reserved). The depth rule is the subscription's.
+///
+/// Called at every publisher registration -- the Rust seams AND the C/C++ FFI
+/// seams. Unlike a subscription, a publisher has no call-site seam in C or C++
+/// that already took the declaration (`NROS_SUBSCRIBE`'s three-argument form
+/// has no publisher counterpart, and the compile-time table carries no
+/// publisher rows), so the FFI seams honour too rather than strict-checking: a
+/// strict check there would refuse every `create_publisher_in<M>(topic)` whose
+/// default profile the contract refines.
+///
+/// `#[inline]` for [`honour`]'s measured reason: a `None` table must fold the
+/// call to `Ok(qos)` so an image with no contract is byte-identical.
+#[inline]
+pub fn honour_publisher(
+    type_name: &str,
+    topic: &str,
+    qos: QoSProfile,
+) -> Result<QoSProfile, NodeError> {
+    let Some(rows) = DECLARED_PUBLISHER_QOS_ROWS else {
+        return Ok(qos);
+    };
+    honour_role_in(rows, type_name, topic, qos, Role::Publisher)
+}
+
+/// issue 1608 -- the declared row for a PUBLISHER on `(type_name, topic)`, or
+/// `None`. A table of its own because a publisher and a subscription on one
+/// `(type, topic)` are two endpoints with two declarations.
+pub fn declared_publisher(type_name: &str, topic: &str) -> Option<DeclaredEndpoint> {
+    row_in(DECLARED_PUBLISHER_QOS_ROWS?, type_name, topic).copied()
 }
 
 #[cfg(test)]
@@ -762,6 +935,114 @@ mod tests {
         );
     }
 
+    /// issue 1608 -- a PUBLISHER row declaring the STRONG value of each
+    /// policy: a latched topic, which is what a zenoh image spends a queryable
+    /// slot on.
+    const PUB_LATCHED: &[DeclaredEndpoint] = &[DeclaredEndpoint {
+        type_name: "std_msgs/msg/Int32",
+        topic: "/latched",
+        depth: Some(1),
+        reliability: Some(QoSReliabilityPolicy::Reliable),
+        durability: Some(QoSDurabilityPolicy::TransientLocal),
+    }];
+
+    /// ...and one declaring the WEAK value of each: a sensor stream.
+    const PUB_SENSOR: &[DeclaredEndpoint] = &[DeclaredEndpoint {
+        type_name: "std_msgs/msg/Int32",
+        topic: "/sensor",
+        depth: None,
+        reliability: Some(QoSReliabilityPolicy::BestEffort),
+        durability: Some(QoSDurabilityPolicy::Volatile),
+    }];
+
+    fn honour_pub(
+        rows: &[DeclaredEndpoint],
+        topic: &str,
+        qos: QoSProfile,
+    ) -> Result<QoSProfile, NodeError> {
+        honour_role_in(rows, "std_msgs/msg/Int32", topic, qos, Role::Publisher)
+    }
+
+    /// issue 1608 -- the publisher TAKE. A default-profile publisher (VOLATILE,
+    /// KEEP_LAST(10)) on a topic the contract declares `transient_local` with
+    /// depth 1 registers as transient_local, depth 1: the offer is RAISED to
+    /// what the build reserved (the queryable slot and one retained sample),
+    /// and every reader that matched a volatile writer still matches.
+    #[test]
+    fn a_publisher_is_raised_to_a_stronger_declared_policy() {
+        let asked = QoSProfile::QOS_PROFILE_DEFAULT;
+        assert_eq!(asked.durability, QoSDurabilityPolicy::Volatile);
+        let granted = honour_pub(PUB_LATCHED, "/latched", asked)
+            .expect("a publisher asking LESS than its declaration is raised, not refused");
+        assert_eq!(granted.durability, QoSDurabilityPolicy::TransientLocal);
+        assert_eq!(granted.reliability, QoSReliabilityPolicy::Reliable);
+        assert_eq!(granted.depth, 1, "the depth rule is the subscription's");
+        let mut be = asked;
+        be.reliability = QoSReliabilityPolicy::BestEffort;
+        assert_eq!(
+            honour_pub(PUB_LATCHED, "/latched", be).map(|q| q.reliability),
+            Ok(QoSReliabilityPolicy::Reliable),
+            "a best_effort writer is raised to the declared reliable"
+        );
+    }
+
+    /// issue 1608 -- the publisher REFUSAL, and THE control for the direction.
+    ///
+    /// A publisher asking for MORE than the contract declares is refused: taking
+    /// the declaration would WEAKEN its offer (a reader requesting what the code
+    /// offered stops matching) and keeping the ask rides storage the build did
+    /// not reserve. This is the OPPOSITE direction from a subscription -- the
+    /// last assertion runs the same row and profile through the subscription
+    /// rule and gets a take, so a rule copied across without reversing fails
+    /// here rather than in an image.
+    #[test]
+    fn a_publisher_asking_more_than_its_declaration_is_refused() {
+        let asked = QoSProfile::QOS_PROFILE_DEFAULT;
+        assert_eq!(asked.reliability, QoSReliabilityPolicy::Reliable);
+        assert_eq!(
+            honour_pub(PUB_SENSOR, "/sensor", asked),
+            Err(NodeError::DeclaredQosMismatch),
+            "declared best_effort, asked reliable: lowering the offer could break a match"
+        );
+        let mut tl = asked;
+        tl.reliability = QoSReliabilityPolicy::BestEffort;
+        tl.durability = QoSDurabilityPolicy::TransientLocal;
+        assert_eq!(
+            honour_pub(PUB_SENSOR, "/sensor", tl),
+            Err(NodeError::DeclaredQosMismatch),
+            "declared volatile, asked transient_local: the build counted no queryable slot"
+        );
+        let granted = honour_in(PUB_SENSOR, "std_msgs/msg/Int32", "/sensor", asked)
+            .expect("the SUBSCRIPTION rule takes the same disagreement");
+        assert_eq!(granted.reliability, QoSReliabilityPolicy::BestEffort);
+    }
+
+    /// issue 1608 -- agreement, no opinion, and absence stay silent and
+    /// unchanged for a publisher too.
+    #[test]
+    fn a_publisher_that_agrees_or_has_no_opinion_or_no_row_passes() {
+        let mut agrees = QoSProfile::QOS_PROFILE_DEFAULT;
+        agrees.reliability = QoSReliabilityPolicy::BestEffort;
+        assert_eq!(honour_pub(PUB_SENSOR, "/sensor", agrees), Ok(agrees));
+        let mut none = QoSProfile::QOS_PROFILE_DEFAULT;
+        none.reliability = QoSReliabilityPolicy::SystemDefault;
+        none.durability = QoSDurabilityPolicy::SystemDefault;
+        let granted = honour_pub(PUB_LATCHED, "/latched", none).expect("no opinion");
+        assert_eq!(granted.durability, QoSDurabilityPolicy::TransientLocal);
+        let deep = QoSProfile::QOS_PROFILE_DEFAULT;
+        assert_eq!(honour_pub(PUB_LATCHED, "/undeclared", deep), Ok(deep));
+        assert_eq!(
+            honour_pub(PUB_LATCHED, "/latched", {
+                let mut q = deep;
+                q.durability = QoSDurabilityPolicy::TransientLocal;
+                q.depth = 0;
+                q
+            }),
+            Err(NodeError::DeclaredDepthMismatch),
+            "a declaration DEEPER than the ask is refused for a publisher as for a subscription"
+        );
+    }
+
     /// The public entry point over THIS build's table. In-tree that table is
     /// `None` (no contract reaches a unit-test build), so this asserts the
     /// no-declaration behaviour rather than a lookup -- and says so, because a
@@ -788,6 +1069,12 @@ mod tests {
         // image with no contract registers exactly the profile it built.
         let asked = QoSProfile::QOS_PROFILE_DEFAULT;
         assert_eq!(honour("std_msgs/msg/Int32", "/chatter", asked), Ok(asked));
+        // issue 1608 -- and so is the publisher take.
+        assert!(DECLARED_PUBLISHER_QOS_ROWS.is_none());
+        assert_eq!(
+            honour_publisher("std_msgs/msg/Int32", "/chatter", asked),
+            Ok(asked)
+        );
     }
 
     /// THE NEGATIVE CONTROL, over the build's OWN table.
@@ -926,6 +1213,45 @@ mod tests {
                 ),
                 Err(NodeError::DeclaredQosMismatch),
                 "and the FFI seams' strict check refuses the same disagreement"
+            );
+        }
+
+        /// issue 1608 -- a declared PUBLISHER, over the build's own table.
+        ///
+        /// Compiled only where the descriptor delivered a publisher row
+        /// (`tests/fixtures/declared-qos-descriptor.toml` declares `/latched`
+        /// transient_local, depth 1). `just check declared-qos-registration`
+        /// expects FOUR tests on the descriptor step -- so a descriptor whose
+        /// publisher rows stopped reaching `DECLARED_PUBLISHER_QOS_ROWS` fails
+        /// the lane instead of passing three of four.
+        #[cfg(nros_declared_publisher_qos_table)]
+        #[test]
+        fn a_declared_publisher_reaches_the_registration_from_the_descriptor() {
+            let row = declared_publisher("std_msgs::msg::dds_::Int32_", "/latched").expect(
+                "the descriptor declares a publisher on `/latched`; if this is None its \
+                 publisher rows are not reaching DECLARED_PUBLISHER_QOS_ROWS",
+            );
+            assert_eq!(row.durability, Some(QoSDurabilityPolicy::TransientLocal));
+            assert!(
+                declared_publisher("std_msgs/msg/Int32", "/chatter").is_none(),
+                "`/chatter` is declared for a SUBSCRIPTION only; a publisher table that \
+                 carried it would hold every publisher to a reader's declaration"
+            );
+            let granted = honour_publisher(
+                "std_msgs::msg::dds_::Int32_",
+                "/latched",
+                QoSProfile::QOS_PROFILE_DEFAULT,
+            )
+            .expect("a default publisher is raised to the declared transient_local");
+            assert_eq!(granted.durability, QoSDurabilityPolicy::TransientLocal);
+            assert_eq!(granted.depth, 1);
+            let mut be = QoSProfile::QOS_PROFILE_DEFAULT;
+            be.durability = QoSDurabilityPolicy::TransientLocal;
+            assert_eq!(
+                honour_publisher("std_msgs/msg/Int32", "/plain", be),
+                Err(NodeError::DeclaredQosMismatch),
+                "the descriptor declares `/plain` volatile; a transient_local publisher there \
+                 asks for a queryable slot the build never counted"
             );
         }
     }

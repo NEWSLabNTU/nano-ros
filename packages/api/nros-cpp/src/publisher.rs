@@ -158,6 +158,21 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
         None => ctx.executor.session_mut(),
     };
 
+    // issue 1608 -- the publisher half of the declared-QoS check. C++ has no
+    // `NROS_SUBSCRIBE`-style seam for a publisher that took the declaration at
+    // the call site, so it is HONOURED here rather than strict-checked: a
+    // `create_publisher_in<M>(topic)` default profile is raised to a stronger
+    // declared policy, and a call site asking for MORE than the contract
+    // declares is refused. See `nros_node::declared_qos::honour_publisher`.
+    let qos_settings = match nros_node::declared_qos::honour_publisher(
+        topic_info.type_name,
+        topic_info.name,
+        qos_settings,
+    ) {
+        Ok(q) => q,
+        Err(_) => return crate::NROS_CPP_RET_DECLARED_DEPTH_MISMATCH,
+    };
+
     match session.create_publisher(&topic_info, qos_settings) {
         Ok(handle) => {
             // phase-462 W1 -- attach the contracted endpoint's counter cell by
