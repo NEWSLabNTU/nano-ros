@@ -1,7 +1,8 @@
 ---
 id: 1615
 title: "Gate re-run 2026-10-01, W6: 34 gates still match one spelling, one line or one file where their rule is per item"
-status: open
+status: resolved
+resolved_in: 2026-10-02
 type: tech-debt
 area: testing, build
 severity: medium
@@ -12,7 +13,7 @@ related: [phase-472, 1614, 1615, 1616, 1617, 1618]
 ## What
 
 The 2026-10-01 re-run of the phase-472 audit
-([findings](../development/audit-findings-2026-10-01-rerun.md)) re-applied each
+([findings](../../development/audit-findings-2026-10-01-rerun.md)) re-applied each
 mutation the 2026-09-28 audit recorded, plus new audits and spot-checks. Every
 gate below still exits **0** on the mutation in its row, and each has a positive
 CONTROL that exits non-zero: the same defect placed where the gate does read.
@@ -69,3 +70,52 @@ Per CLAUDE.md "Fix the CLASS": move each gate onto the class's shared helper,
 add the negative control its row names, and re-run the row's mutation to show
 it now fails. Phase-472's acceptance ("no confirmed hole in any class") stays
 unmet until this list is empty.
+
+## Resolution (2026-10-02)
+
+All 37 rows now fail on their recorded mutation (rc 0 → 1). That includes
+`generated-cmake-keywords · plus-equals`, whose row had no control, and all 37
+controls still fail. Each gate now matches per ITEM: per logical command, per
+call, per binding, per imported path, per chain or per scope. Two shared
+spellings were added to the class helpers:
+
+- `scripts/lib/workflow_commands.py` `logical_lines`: shell continuations
+  joined into one command.
+- `scripts/lib/per_item.py` `rust_use_paths`: use-trees expanded across lines,
+  `as` aliases dropped.
+
+| gate | now per |
+| --- | --- |
+| `book-links` | reference definitions (`[id]: path`) too; normal-path selftest, so it left the selftest baseline |
+| `capability-slot-counts` | field, visibility-prefixed (`pub(crate) x:`) included |
+| `cbindgen-pin` | parsed dependency row (dotted keys, `[target.*]` tables) |
+| `ci-no-verb-fallback` | logical command (`logical_lines`) |
+| `component-entity-bounds` | path-qualified `impl nros::Node for` |
+| `component-lang-vocabulary` | `get_property(.. TARGET .. PROPERTY ..)` as well as `get_target_property` |
+| `config-header-single-writer` | `cmake -E copy*` inside custom commands / `execute_process` |
+| `cpp-ffi-error-mapping` | any `Err(_name)` binding |
+| `cxx-standard-floor` | every spelling of the number (`CACHE`, target properties). One legitimate C++11 test target found, and exempted inline with its reason |
+| `deferred-call-args` | EVAL'd code, evaluated the way EVAL does (an escaped `\${x}` stays a reference) |
+| `eyre-context-alias`, `no-board-init` | imported path (`rust_use_paths`); both now fail closed if the scan errors |
+| `feature-contract` | `cfg_attr(.., global_allocator)`; `builder/` is no longer pruned as build output |
+| `fixture-require` | path-qualified scrutinee. This surfaced **3 live bypass sites** (2 in `native_api.rs`, 1 in `threadx_riscv64_qemu.rs`) that turned any build error into a skip; all are converted to `.require()` |
+| `fixture-stamp-honesty` | the guard's CONDITION (H4: it must be the bare test) |
+| `fixture-variant-features` | `FixtureVariant::rmw(Rmw::X)`: the crate must declare that rmw feature (mapping harvested from `Rmw::cargo_feature`) |
+| `generated-cmake-keywords` | every append spelling (`+=`, `write!`, any `.push_str`) |
+| `image-paths-apply-policy` | scope (each `function()` body and the top level) |
+| `interface-glob-configure-depends` | call across lines |
+| `interlock-visibility` | reporter, which must `needs:` the job it reports |
+| `knob-resolved-once` | pair of calls that can both run |
+| `msg-dep-is-path` | dotted-key dependency |
+| `no-silent-sample-drop` | multi-line `_deserialize(..)` call; a file-local helper that reaches a log sink (the no-libc bare-metal `emit()`) counts as saying something |
+| `no-std-stdio` | stdio handles (`std::io::stderr()`) and `use std::eprintln` |
+| `no-tracked-file-find` | `.` root, `-iname` / `-ipath` / `-iwholename` |
+| `prelude-tiers` | imported path; a glob re-export is refused |
+| `release-manifest` | any non-zero exit |
+| `ros-env-spelling` | triple-quoted VALUE (only an expression-statement docstring is prose) |
+| `runtime-umbrella-link-sites` | umbrella bound through a variable |
+| `self-pkg-package-xml` | the CLI's own predicate: a `system.toml` is present (not only `[[component]]`) |
+| `single-rust-staticlib` | call across lines |
+| `test-domain-assignment` | every literal spelling (`ROS_DOMAIN_ID=N`, `EnvGuard::set`). `init_api.rs` parses the variable in-process and is excluded with that reason |
+| `wait-evidence-discarded` | adapter chain (`.or_else(..).unwrap_or_default()`). This surfaced **3 live discarding waits** in `services.rs` (the issue-1044 shape), all converted to `collect_until` |
+| `zenohd-spawn-sites` | tainted binding, whatever the variable is called |

@@ -68,6 +68,20 @@ def analyze(text):
             "H3: the skip guard sits AFTER the `have = all` early return, so a "
             "full-lane build returns `covered` without consulting it — exactly "
             "the laundering this exists to stop.")
+    # H4 — issue 1615 (W6): the guard must be LIVE. Presence and order were
+    # read; the CONDITION was not, so `if false && [ -n "$stamp_skipped" ]`
+    # kept both and disabled the guard. Every `if` that tests the skip list
+    # must test it alone: `if [ -n "$stamp_skipped" ]; then` (or `[[ … ]]`).
+    live = re.compile(r'^\s*if\s+\[\[?\s+-n\s+"\$stamp_skipped"\s+\]\]?\s*;\s*then\s*$')
+    tests = [l for l in text.split("\n")
+             if re.match(r"^\s*(el)?if\b", l) and "$stamp_skipped" in l]
+    if not tests:
+        problems.append("H4: no `if` tests `$stamp_skipped` — the guard is gone.")
+    for l in tests:
+        if not live.match(l):
+            problems.append(
+                f"H4: the skip guard's condition is not the bare test: {l.strip()!r} — "
+                f"anything else beside `[ -n \"$stamp_skipped\" ]` can disable it.")
     return problems
 
 
@@ -77,8 +91,11 @@ def selftest():
             'nros_fixtures_stamp_skipped() { :; }\n'
             'echo "skipped_module=$m"\n'
             'stamp_skipped="$(nros_fixtures_stamp_skipped 2>/dev/null)"\n'
+            '    if [ -n "$stamp_skipped" ]; then\n'
             'if [ "$have" = "all" ]; then\n')
     assert not analyze(good), f"a correct file must pass: {analyze(good)}"
+    dead = good.replace('if [ -n "$stamp_skipped" ]', 'if false && [ -n "$stamp_skipped" ]')
+    assert any("H4" in p for p in analyze(dead)), "a neutralised guard must be caught (issue 1615)"
 
     # The ORDER is the invariant, so swapping it must be caught — a file with
     # every required symbol present and the guard one line too late.

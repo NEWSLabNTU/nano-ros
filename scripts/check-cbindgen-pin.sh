@@ -60,7 +60,53 @@ fi
 pin="${req#=}"
 
 # 2. No crate carries its own cbindgen version.
-offenders="$(git grep -n '^cbindgen = ' -- '*/Cargo.toml' | grep -v 'workspace = true' || true)"
+# issue 1615 (W6): per DEPENDENCY ROW, parsed — not one line spelling. A
+# `cbindgen.version = "0.26"` dotted key, or a row under
+# `[target.'cfg(..)'.build-dependencies]`, is its own version just the same.
+offenders="$(python3 - <<'PY'
+import subprocess, sys
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
+
+TABLES = ("dependencies", "dev-dependencies", "build-dependencies")
+
+def rows(doc):
+    for t in TABLES:
+        yield t, doc.get(t) or {}
+    for plat, td in (doc.get("target") or {}).items():
+        for t in TABLES:
+            yield f"target.{plat}.{t}", (td or {}).get(t) or {}
+
+def bad_rows(doc):
+    out = []
+    for where, table in rows(doc):
+        for key, spec in table.items():
+            name = spec.get("package", key) if isinstance(spec, dict) else key
+            if name != "cbindgen":
+                continue
+            if not (isinstance(spec, dict) and spec.get("workspace") is True):
+                out.append(f"[{where}] {key} = {spec!r}")
+    return out
+
+# Normal-path selftest, both directions.
+assert bad_rows(tomllib.loads("[build-dependencies]\ncbindgen = { workspace = true }\n")) == []
+assert bad_rows(tomllib.loads("[target.'cfg(any())'.build-dependencies]\ncbindgen.version = \"0.26\"\n"))
+
+files = subprocess.run(["git", "ls-files", "*/Cargo.toml"], capture_output=True,
+                       text=True, check=True).stdout.split()
+for f in files:
+    if "/third-party/" in f or f.startswith("third-party/"):
+        continue
+    try:
+        doc = tomllib.load(open(f, "rb"))
+    except Exception:
+        continue
+    for r in bad_rows(doc):
+        print(f"{f}: {r}")
+PY
+)"
 if [ -n "$offenders" ]; then
     echo "[FAIL] these manifests spell their own cbindgen version instead of" >&2
     echo "       inheriting the workspace pin (\`cbindgen = { workspace = true }\`):" >&2

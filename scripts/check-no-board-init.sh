@@ -39,27 +39,44 @@ legacy='board_init|BoardInit|BoardPrint|BoardExit|BoardEntry|DirectExec'
 # Tracked Rust sources only (git index → no build/target/_deps traversal;
 # submodules list as one gitlink, so third-party is excluded for free). Skip
 # generated + this script's doc.
-mapfile -t files < <(
-    git ls-files 'packages/**/*.rs' 'examples/**/*.rs' \
-        | grep -vE '/(generated|third-party)/'
-)
+# issue 1615 (W6): per IMPORTED PATH (use-trees expanded across lines, comments
+# stripped — `scripts/lib/per_item.py`), plus any qualified path in code. A
+# `use nros_board_common::{` with `board_init::BoardInit` on the next line was
+# invisible to the line-at-a-time scan.
+scan_rc=0
+scan_out="$(LEGACY="$legacy" python3 - <<'PY'
+import os, re, sys
+sys.path.insert(0, "scripts/lib")
+import comments, file_kinds, per_item
 
+LEG = re.compile(r"\b(%s)\b" % os.environ["LEGACY"])
+
+def hits_in(text):
+    code = comments.strip_comments(text, "rust")
+    out = set()
+    for p, off in per_item.rust_use_paths(code):
+        if p.startswith("nros_board_common::") and LEG.search(p):
+            out.add((code.count("\n", 0, off) + 1, p))
+    for m in re.finditer(r"\bnros_board_common::[A-Za-z0-9_:]+", code):
+        if LEG.search(m.group(0)):
+            out.add((code.count("\n", 0, m.start()) + 1, m.group(0)))
+    return sorted(out)
+
+assert hits_in("use nros_board_common::{\n    board_init::BoardInit,\n};\n")
+assert not hits_in("// use nros_board_common::board_init;\nuse nros_board_common::x;\n")
+for rel in file_kinds.files_of_kind("rust"):
+    if not rel.startswith(("packages/", "examples/")):
+        continue
+    for n, p in hits_in(open(rel, errors="replace").read()):
+        print(f"{rel}:{n}:{p}")
+PY
+)" || scan_rc=$?
+if [ "$scan_rc" -ne 0 ]; then
+    echo "✗ no-board-init: the scan itself failed (rc=$scan_rc) — not a pass." >&2
+    exit 1
+fi
 violations=()
-for f in "${files[@]}"; do
-    [ -f "$f" ] || continue
-    while IFS= read -r ln; do
-        [ -z "$ln" ] && continue
-        num="${ln%%:*}"
-        text="${ln#*:}"
-        # Strip a trailing line comment, then a full-line doc/comment.
-        code="${text%%//*}"
-        stripped="$(printf '%s' "$code" | sed 's/^[[:space:]]*//')"
-        case "$stripped" in ''|'*'*|'#'*) continue;; esac
-        nros_grep_q -E "nros_board_common" <<<"$code" || continue
-        nros_grep_q -E "\b($legacy)\b" <<<"$code" || continue
-        violations+=("$f:$num:$stripped")
-    done < <(grep -nE "nros_board_common" "$f" 2>/dev/null || true)
-done
+[ -n "$scan_out" ] && mapfile -t violations <<<"$scan_out"
 
 if [ "${#violations[@]}" -gt 0 ]; then
     echo "✗ no-board-init: the retired nros_board_common::board_init API is used:" >&2

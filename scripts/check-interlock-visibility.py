@@ -77,8 +77,14 @@ def reporting_jobs(doc):
             continue
         if "always()" not in str(job.get("if", "")):
             continue
+        # issue 1615 (W6): the reporter must actually NEED the job it reports.
+        # `needs.<x>.result` for a job not in `needs:` evaluates to an empty
+        # string, so a reporter with `needs: []` "reported" nothing and passed.
+        needs = job.get("needs") or []
+        needs = [needs] if isinstance(needs, str) else list(needs)
         for ref in re.findall(r"needs\.([A-Za-z0-9_-]+)\.result", body):
-            out[ref] = jid
+            if ref in needs:
+                out[ref] = jid
     return out
 
 
@@ -122,6 +128,13 @@ def selftest():
     }}
     assert check_doc(lazy, "x"), "a reporter without always() must not satisfy the rule"
 
+    # A reporter that does not NEED the job reads an empty result (issue 1615).
+    unwired = {"jobs": {
+        "heavy": {"if": "vars.X == 'true'", "steps": [{"run": "x"}]},
+        "coverage": {"needs": [], "if": "always()", "steps": [
+            {"run": f"./scripts/ci/{REPORTER} 'L' \"${{{{ needs.heavy.result }}}}\" x"}]},
+    }}
+    assert check_doc(unwired, "t"), "a reporter without `needs:` must not count"
     # An ungated job needs no reporter.
     assert not check_doc({"jobs": {"plain": {"steps": []}}}, "x")
 

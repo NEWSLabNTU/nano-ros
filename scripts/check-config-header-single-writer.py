@@ -43,7 +43,14 @@ HEADER = "config_generated"
 WRITER = "mirror-generated-header.sh"
 
 # cmake commands that write a file somewhere.
-_WRITE_CMD = re.compile(r"\b(configure_file|file)\s*\(", re.I)
+_WRITE_CMD = re.compile(
+    r"\b(configure_file|file|add_custom_command|add_custom_target|execute_process)\s*\(", re.I)
+# issue 1615 (W6): `cmake -E copy_if_different` inside a custom command writes a
+# file exactly as `file(COPY_FILE)` does, and only `configure_file`/`file` were
+# read. A command-running call counts as a write when it runs one of these.
+_E_WRITE = re.compile(
+    r"-E\s+(copy|copy_if_different|create_symlink|create_hardlink|rename|cat)\b")
+_RUNS = ("add_custom_command", "add_custom_target", "execute_process")
 
 
 def strip_comments(text: str) -> str:
@@ -83,6 +90,8 @@ def offenders(text: str) -> list[tuple[int, str]]:
                     break
             i += 1
         span = stripped[m.start(): (end + 1) if end else m.end() + 400]
+        if m.group(1).lower() in _RUNS and not _E_WRITE.search(span):
+            continue
         names_header = HEADER in span or any(
             f"${{{v}}}" in span for v in hvars
         )
@@ -110,6 +119,11 @@ def self_test() -> None:
     # A comment naming the old spelling must not fire (issue 0985 leaves several).
     assert not offenders('# file(COPY_FILE) of nros_config_generated.h, retired'), \
         "a comment is not a writer"
+    assert offenders('add_custom_command(OUTPUT h COMMAND ${CMAKE_COMMAND} -E '
+                     'copy_if_different s.h ${B}/nros/nros_config_generated.h)'), \
+        "a `cmake -E copy_if_different` of the header must be flagged (issue 1615)"
+    assert not offenders('add_custom_command(OUTPUT h COMMAND gen nros_config_generated.h)'), \
+        "a custom command that does not COPY is not this rule"
     # An unrelated copy must not fire.
     assert not offenders('file(COPY "${X}/src" DESTINATION "${Y}")'), \
         "unrelated file(COPY) must not be flagged"

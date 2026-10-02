@@ -339,6 +339,7 @@ def scan_text(path, text):
     hits = []
     in_block = False   # /* ... */
     in_doc = None      # python triple-quote delimiter currently open
+    in_value = None    # python triple-quoted VALUE string currently open
     for n, line in enumerate(text.splitlines(), start=1):
         stripped = line.strip()
 
@@ -347,11 +348,25 @@ def scan_text(path, text):
                 if in_doc in line:
                     in_doc = None
                 continue
-            for delim in ('"""', "'''"):
-                first = line.find(delim)
-                if first != -1 and line.count(delim) % 2 == 1:
-                    in_doc = delim
-                    line = line[:first]
+            if in_value is not None:
+                # Inside a triple-quoted VALUE: scanned like code; its closing
+                # delimiter ends it and opens nothing.
+                if in_value in line:
+                    in_value = None
+            else:
+                for delim in ('"""', "'''"):
+                    first = line.find(delim)
+                    if first == -1 or line.count(delim) % 2 == 0:
+                        continue
+                    # issue 1615 (W6): only a DOCSTRING is prose — a triple quote
+                    # opening an expression statement. One after `=`, `(` or `,`
+                    # is a VALUE (`CMD = """` + `source /opt/ros/...`), executed
+                    # like any other string, so its lines are scanned.
+                    if line[:first].strip().lower() in ("", "r", "b", "u", "f", "rb", "br"):
+                        in_doc = delim
+                        line = line[:first]
+                    else:
+                        in_value = delim
                     break
 
         if style == "slash":
@@ -419,6 +434,8 @@ def self_test(quiet=False):
         "a block comment must NOT fire"
     assert not fires("a/b.py", '"""\nsource /opt/ros/humble/setup.bash\n"""'), \
         "a python docstring must NOT fire"
+    assert fires("a/b.py", 'CMD = """\nsource /opt/ros/humble/setup.bash\n"""'), \
+        "a triple-quoted VALUE must FIRE (issue 1615)"
     assert fires("a/b.py", 'run("source /opt/ros/humble/setup.bash")'), \
         "python code after a docstring-free line must FIRE"
     assert not fires("a/b.rs", 'let x = 1; // source /opt/ros/humble/setup.bash'), \

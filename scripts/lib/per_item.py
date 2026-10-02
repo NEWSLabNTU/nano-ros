@@ -178,7 +178,57 @@ def rust_cfg_test_blank(code: str, cfg_re=None) -> str:
     return "".join(out)
 
 
+_USE = re.compile(r"\buse\s+")
+
+
+def rust_use_paths(code: str) -> list:
+    """[(path, offset)] for every path a `use` imports, use-trees EXPANDED.
+
+    phase-472 W6 / issue 1615: `use eyre::{\n    Context,\n};` imports
+    `eyre::Context` across three lines, and a line grep for `use eyre::{...Context`
+    never saw it. Pass COMMENT-STRIPPED code. `as` aliases are dropped (the path
+    is what is imported); `self` resolves to its parent.
+    """
+    out = []
+    for m in _USE.finditer(code):
+        end = code.find(";", m.end())
+        if end < 0:
+            continue
+        tree = re.sub(r"\s+", " ", code[m.end():end])
+        tree = re.sub(r"\s*(::|[{},])\s*", r"\1", tree).strip()
+
+        def expand(prefix, t):
+            t = t.strip()
+            if not t:
+                return
+            if "{" not in t:
+                path = prefix + t.split(" as ", 1)[0].strip()
+                if path.endswith("::self"):
+                    path = path[: -len("::self")]
+                out.append((path, m.start()))
+                return
+            head, rest = t.split("{", 1)
+            inner = rest[: rest.rfind("}")]
+            depth, cur, parts = 0, "", []
+            for ch in inner:
+                if ch == "," and depth == 0:
+                    parts.append(cur)
+                    cur = ""
+                    continue
+                depth += (ch == "{") - (ch == "}")
+                cur += ch
+            parts.append(cur)
+            for part in parts:
+                expand(prefix + head, part)
+
+        expand("", tree)
+    return out
+
+
 def self_test() -> None:
+    paths = [p for p, _ in rust_use_paths(
+        "use eyre::{\n    Context,\n    Result as R,\n};\nuse a::{b::{c, d as e}, self};\n")]
+    assert paths == ["eyre::Context", "eyre::Result", "a::b::c", "a::b::d", "a"], paths
     code = "fn a() { if x { y(); } }\nfn b();\nfn c() { z(); }\n"
     got = [(m.group(0), code[o:e]) for m, o, e in blocks(code, r"\bfn \w+\(\)")]
     assert got == [("fn a()", "{ if x { y(); } }"), ("fn c()", "{ z(); }")], got

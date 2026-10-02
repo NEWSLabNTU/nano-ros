@@ -79,7 +79,29 @@ for f in "${candidates[@]}"; do
         packages/testing/*/fixtures/*) continue ;;  # compile-only smoke, never links
     esac
     checked=$((checked + 1))
-    if nros_grep_q 'nano_ros_entry(\|nano_ros_add_executable(\|nros_apply_panic_policy(' <<<"$body"; then
+    # issue 1615 (W6): per SCOPE, not per file. Each `function()` body, and the
+    # file's top level, is its own image path: a policy applied inside
+    # `nros_platform_link_app` says nothing about a top-level `add_executable`
+    # beside it, and "the file mentions the applier somewhere" passed both.
+    if python3 - "$f" <<'PY'
+import re, sys
+sys.path.insert(0, "scripts/lib")
+import comments
+code = comments.strip_comments(open(sys.argv[1], errors="replace").read(), "cmake")
+APPLIES = re.compile(r"\b(nano_ros_entry|nano_ros_add_executable|nros_apply_panic_policy)\s*\(")
+EXE = re.compile(r"\b(add_executable|idf_component_register)\s*\(")
+scopes, top, pos = [], [], 0
+for m in re.finditer(r"\b(function|macro)\s*\((.*?)\n(.*?)\bend\1\s*\(", code, re.S):
+    top.append(code[pos:m.start()])
+    scopes.append(m.group(0))
+    pos = m.end()
+top.append(code[pos:])
+scopes.append("".join(top))
+bad = [sc for sc in scopes
+       if EXE.search(sc) and "NanoRos::NanoRos" in sc and not APPLIES.search(sc)]
+sys.exit(1 if bad else 0)
+PY
+    then
         continue
     fi
     fail=1

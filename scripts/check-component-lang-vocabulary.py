@@ -80,7 +80,8 @@ LANG_PRODUCERS = ("_nros_infer_lang", "nros_language_of_sources")
 PROP_WRITE = re.compile(
     r"(?:set_property|set_target_properties)\s*\(([^()]*)\)", re.DOTALL
 )
-GET_PROP = re.compile(r"get_target_property\s*\(\s*(\w+)\s+\S+\s+(\w+)\s*\)")
+GET_PROP = re.compile(r"get_target_property\s*\(\s*(\w+)\s+\S+\s+(\w+)\s*\)"
+                      r"|get_property\s*\(\s*(\w+)\s+TARGET\s+\S+\s+PROPERTY\s+(\w+)\s*\)")
 PRODUCER = re.compile(
     r"\b(" + "|".join(LANG_PRODUCERS) + r")\s*\(\s*(\w+)\b"
 )
@@ -134,9 +135,12 @@ def scan_text(rel: str, raw: str) -> tuple[list[str], int, int]:
     # that binds both, and the one the pitfall is about, is the CASE.
     strict_vars: dict[str, str] = {}
     lower_vars: dict[str, str] = {}
+    # issue 1615 (W6): `get_property(<v> TARGET <t> PROPERTY <p>)` reads the
+    # property exactly as `get_target_property` does.
     for m in GET_PROP.finditer(text):
-        if m.group(2) == PROPERTY:
-            strict_vars[m.group(1)] = f"get_target_property(... {PROPERTY})"
+        var, prop = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+        if prop == PROPERTY:
+            strict_vars[var] = f"get_target_property(... {PROPERTY})"
     for m in PRODUCER.finditer(text):
         lower_vars[m.group(2)] = f"{m.group(1)}()"
 

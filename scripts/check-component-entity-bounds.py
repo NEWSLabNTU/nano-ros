@@ -97,7 +97,7 @@ NODE_MACRO_RE = re.compile(
     re.MULTILINE,
 )
 
-IMPL_NODE_RE = r"impl\s+Node\s+for\s+{name}\s*\{{"
+IMPL_NODE_RE = r"impl\s+(?:(?:::)?[A-Za-z_][A-Za-z0-9_]*::)*Node\s+for\s+{name}\s*\{{"
 
 # `EntityBounds::exact(p, ss, sc, ac, as)` — the five bounds, positionally, in
 # the order the constructor takes them.

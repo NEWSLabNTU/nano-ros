@@ -29,6 +29,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import comments  # noqa: E402
 
 # `file(GLOB …)` / `file(GLOB_RECURSE …)` up to the closing paren, one line.
 GLOB = re.compile(r"file\s*\(\s*GLOB(?:_RECURSE)?\b([^)]*)\)", re.IGNORECASE)
@@ -36,6 +38,7 @@ INTERFACE_EXT = re.compile(r"\*\.(msg|srv|action)\b")
 
 
 def main() -> int:
+    assert GLOB.search('file(GLOB _m\n    "${D}/msg/*.msg")'), "multi-line glob (issue 1615)"
     listing = subprocess.run(
         ["git", "-C", str(ROOT), "ls-files", "--", "*.cmake", "*CMakeLists.txt"],
         capture_output=True, text=True, check=True,
@@ -51,14 +54,18 @@ def main() -> int:
             text = p.read_text(encoding="utf-8")
         except (UnicodeDecodeError, FileNotFoundError):
             continue
-        for n, line in enumerate(text.splitlines(), 1):
-            for m in GLOB.finditer(line):
-                body = m.group(1)
-                if not INTERFACE_EXT.search(body):
-                    continue
-                checked += 1
-                if "CONFIGURE_DEPENDS" not in body.upper():
-                    offenders.append((rel, n, line.strip()[:100]))
+        # issue 1615 (W6): per CALL over the whole (comment-stripped) file — a
+        # `file(GLOB _x\n  "…/msg/*.msg")` spans lines, and a per-LINE match
+        # never saw the pattern beside the GLOB.
+        code = comments.strip_comments(text, "cmake")
+        for m in GLOB.finditer(code):
+            body = m.group(1)
+            if not INTERFACE_EXT.search(body):
+                continue
+            checked += 1
+            if "CONFIGURE_DEPENDS" not in body.upper():
+                n = code.count("\n", 0, m.start()) + 1
+                offenders.append((rel, n, " ".join(m.group(0).split())[:100]))
 
     if offenders:
         print("[FAIL] interface glob without CONFIGURE_DEPENDS (phase-363 / W2):")

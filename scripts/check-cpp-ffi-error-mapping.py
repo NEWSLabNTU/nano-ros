@@ -47,7 +47,7 @@ SRC = REPO / "packages" / "api" / "nros-cpp" / "src"
 # (The first version of this gate matched every `Err(_) => <any code>` and
 # reported 43 sites, most of them correct. A gate that flags correct code teaches
 # people to ignore it, which is worse than not having one.)
-DISCARD = re.compile(r"Err\(\s*_\s*\)\s*=>\s*(?:crate::)?NROS_CPP_RET_TRANSPORT_ERROR")
+DISCARD = re.compile(r"Err\(\s*_[A-Za-z0-9_]*\s*\)\s*=>\s*(?:crate::)?NROS_CPP_RET_TRANSPORT_ERROR")
 
 # A mapper must exist and must not carry a catch-all arm, or the exhaustiveness
 # that makes this whole scheme work is gone.

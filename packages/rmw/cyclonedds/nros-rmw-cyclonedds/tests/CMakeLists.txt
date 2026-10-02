@@ -822,6 +822,7 @@ endif()
 # which is the point: the test proves the header is consumable at C++11 without
 # dragging the rest of the tree back to it.
 add_executable(nros_rmw_cyclonedds_sertype_sample_cxx11 sertype_sample_cxx11.cpp)
+# nros-cxx-floor-exempt: this target exists to compile the Cyclone sertype header at C++11, the Zephyr lane's dialect; it consumes no nros-cpp header
 set_target_properties(nros_rmw_cyclonedds_sertype_sample_cxx11 PROPERTIES
     CXX_STANDARD 11
     CXX_STANDARD_REQUIRED ON

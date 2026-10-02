@@ -81,13 +81,22 @@ for f in tomls:
     if not f or "/generated/" in f:
         continue
     cur = None
+    in_deps = False
+    deps_head = re.compile(r"^\[(?:target\.[^\]]*\.)?(?:dev-|build-)?dependencies\]\s*$")
+    dotted = re.compile(r"^\s*([A-Za-z0-9_]+)\.(version|registry|git)\s*=")
     for n, line in enumerate(open(os.path.join(root, f), encoding="utf-8", errors="replace"), 1):
         if line.startswith("["):
             m = head.match(line.strip())
             cur = m.group(1) if m and m.group(1) in names else None
+            in_deps = bool(deps_head.match(line.strip()))
             continue
         if cur and re.match(r"\s*version\s*=", line):
             print(f"{f}:{n}:{cur}")
+        # issue 1615 (W6): the DOTTED-KEY spelling inside a deps table —
+        # `std_msgs.version = "*"` — is the same registry dependency.
+        d = dotted.match(line) if in_deps else None
+        if d and d.group(1) in names:
+            print(f"{f}:{n}:{d.group(1)}")
 PY
 }
 

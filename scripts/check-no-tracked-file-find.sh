@@ -43,7 +43,9 @@ TRACKED = r"package\.xml|Cargo\.toml|Cargo\.lock|\*\.rs|README\.md|\*\.msg|\*\.s
 # ran 230+ times per invocation, the worst possible shape. Matching any variable
 # root is the safer default: an out-of-repo root (a ROS install prefix) is the
 # rare case, and it is excluded below by name rather than by omission.
-ROOT = r'"?(?:examples|packages|\$\{?\w+)'
+# issue 1615 (W6): `.` (the repo root, or wherever cwd is) is a root too, and
+# `-iname` / `-ipath` / `-wholename` are the same search as `-name` / `-path`.
+ROOT = r'"?(?:examples|packages|\$\{?\w+|\.(?=[/\s"]))'
 
 # Roots where git has NO index entry to consult, so `find` is the only option:
 # either outside the repo entirely (a ROS install prefix), or a build/staging
@@ -103,7 +105,7 @@ for f in FILES:
             # Stop at a pipe: `find ... | xargs grep -l package.xml` is a filter
             # on find's OUTPUT, not a scan FOR that name.
             head = buf.split("|")[0]
-            m = re.search(r"find\s+" + ROOT + r".*?(?:-name|-path)\s+'?\"?(" + TRACKED + ")", head)
+            m = re.search(r"find\s+" + ROOT + r".*?-(?:i?name|i?path|i?wholename)\s+'?\"?(" + TRACKED + ")", head)
             if m and not any(re.search(o, head) for o in NO_INDEX):
                 bad.append(f"  {f}:{start+1}: find searches for {m.group(1)}")
 

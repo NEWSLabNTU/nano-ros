@@ -34,35 +34,55 @@ from lib.tracked import tracked  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 SCOPE = ["examples"]
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import comments  # noqa: E402
+import per_item  # noqa: E402
 # The arm opener: any `_deserialize(...)` used as a failure test.
 OPENER = re.compile(r"_deserialize\s*\(.*\)\s*!=\s*0\s*\)\s*\{")
 # `log_error`/`log_warn` are the post-phase-417 Rust spellings; `nros_error`/
 # `nros_warn` stay listed because the C API and older prose still use them.
 SAYS_SOMETHING = re.compile(
-    r"\b(printf|fprintf|puts|log_error|log_warn|nros_error|nros_warn|NROS_LOG|std::cerr)\b"
+    r"\b(printf|fprintf|puts|log_error|log_warn|nros_error|nros_warn|NROS_LOG|std::cerr|nros_log_emit\w*)\b"
 )
 
 
 def offenders(path: Path):
+    """Per CALL over the comment-stripped file — issue 1615 (W6).
+
+    The opener was matched per LINE, so a `_deserialize(&msg, data,\n len)`
+    split across lines (clang-format does that) was never an arm at all. The
+    arm is now the balanced `{…}` after `if (<call with _deserialize> != 0)`.
+    """
     try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        raw = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
+    lang = comments.lang_for(path) or "c"
+    code = comments.strip_comments(raw, lang)
     out = []
-    for i, line in enumerate(lines):
-        if not OPENER.search(line):
-            continue
-        # Walk the arm to its closing brace (these are small, flat blocks).
-        body, depth = [], 1
-        for nxt in lines[i + 1 : i + 25]:
-            depth += nxt.count("{") - nxt.count("}")
-            if depth <= 0:
-                break
-            body.append(nxt)
-        arm = "\n".join(body)
-        if "return" in arm and not SAYS_SOMETHING.search(arm):
-            out.append(f"{path.relative_to(ROOT)}:{i + 1}")
+    for m in OPENER_ML.finditer(code):
+        brace = code.find("{", m.end() - 1)
+        end = per_item.block_end(code, brace)
+        arm = code[brace + 1:end - 1]
+        if "return" in arm and not SAYS_SOMETHING.search(arm) and not calls_local_sink(arm, code):
+            out.append(f"{path.relative_to(ROOT)}:{code.count(chr(10), 0, m.start()) + 1}")
     return out
+
+
+def calls_local_sink(arm, code):
+    """A file-local helper whose own body reaches a sink (`emit()` in the
+    no-libc bare-metal leaves wraps `nros_log_emit_at`) says something too."""
+    for name in set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", arm)):
+        m = re.search(r"\b" + re.escape(name) + r"\s*\([^;{]*\)\s*\{", code)
+        if m:
+            body = code[m.end() - 1:per_item.block_end(code, m.end() - 1)]
+            if SAYS_SOMETHING.search(body):
+                return True
+    return False
+
+
+# `_deserialize(` … `) != 0) {` with the argument list allowed to span lines.
+OPENER_ML = re.compile(r"_deserialize\s*\([^;{}]*?\)\s*!=\s*0\s*\)\s*\{", re.S)
 
 
 def main() -> int:

@@ -239,6 +239,9 @@ COMPARES = re.compile(
 )
 
 
+FATAL_EXIT = re.compile(r"\bexit\s+(?:[1-9][0-9]*|\"?\$)")
+
+
 def fatal_paragraphs(text):
     """Every `exit 1` and the contiguous non-blank block it ends.
 
@@ -249,7 +252,9 @@ def fatal_paragraphs(text):
     lines = text.splitlines()
     out = []
     for i, line in enumerate(lines):
-        if "exit 1" not in line:
+        # issue 1615 (W6): ANY non-zero exit is fatal, not only `exit 1` —
+        # an `exit 2` version gate was invisible to every rule below.
+        if not FATAL_EXIT.search(line):
             continue
         start = i
         while start > 0 and lines[start - 1].strip():

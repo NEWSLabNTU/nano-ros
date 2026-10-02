@@ -66,6 +66,12 @@ from pathlib import Path
 # `std::`-qualified stdio. `::std::` is the same reach with a leading root
 # token, which is what a macro EXPANSION spells, so both forms count.
 STDIO_RE = re.compile(r"(?<![A-Za-z0-9_])(?:::)?std::(?:e?println|e?print|dbg)!")
+# issue 1615 (W6): the same reach, two more spellings — the stdio HANDLES
+# (`writeln!(std::io::stderr(), ..)` goes through the same `zvfs_write`) and a
+# `use` that imports the macros (`use std::eprintln as e;` then `e!(..)`).
+IO_HANDLE_RE = re.compile(r"(?<![A-Za-z0-9_])(?:::)?std::io::(?:stdout|stderr|stdin)\s*\(")
+STDIO_USE_PATHS = {"std::println", "std::eprintln", "std::print", "std::eprint", "std::dbg",
+                   "std::io::stdout", "std::io::stderr", "std::io::stdin"}
 
 ALLOW_RE = re.compile(r"//\s*nros-allow-std-stdio:")
 
@@ -80,6 +86,9 @@ NO_STD_RE = re.compile(r"^\s*#!\[[^\n]*\bno_std\b", re.MULTILINE)
 PROC_MACRO_RE = re.compile(r"^\s*proc-macro\s*=\s*true", re.MULTILINE)
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+import comments  # noqa: E402
+import per_item  # noqa: E402
 
 SKIP_DIRS = {"generated", "target", "build", ".git", "third-party", "node_modules"}
 
@@ -186,8 +195,21 @@ def scan_crate(crate_root):
             continue
         if any(p in SKIP_DIRS for p in rs.parts):
             continue
-        lines = rs.read_text(errors="replace").splitlines()
+        raw = rs.read_text(errors="replace")
+        lines = raw.splitlines()
+        code = comments.strip_comments(raw, "rust")
+        for path, off in per_item.rust_use_paths(code):
+            if path.lstrip(":") in STDIO_USE_PATHS:
+                i = code.count("\n", 0, off)
+                if not exempted_above(lines, i):
+                    hits.append((rs, i + 1, lines[i].strip()))
         for i, line in enumerate(lines):
+            for m in IO_HANDLE_RE.finditer(line):
+                comment = line.find("//")
+                if (comment != -1 and m.start() > comment) or line.lstrip().startswith(("//", "*", "/*")):
+                    continue
+                if not exempted_above(lines, i):
+                    hits.append((rs, i + 1, line.strip()))
             # Per OCCURRENCE, not per line: two calls on one line are two
             # landmines, and reporting the line once leaves the second one
             # unfixed and unmentioned.

@@ -77,6 +77,29 @@ def command_lines(run: str):
     return out
 
 
+def logical_lines(run: str):
+    """`command_lines`, with shell continuations JOINED into one command.
+
+    A line ending in `\\` continues; so does one ending in `||`, `&&` or `|`.
+    phase-472 W6 / issue 1615: `just a \\` + `|| just b` is ONE fallback
+    command split over two lines, and a per-LINE matcher never saw both halves.
+    """
+    out, cur = [], ""
+    for line in command_lines(run):
+        s = line.rstrip()
+        if s.endswith("\\"):
+            cur += s[:-1] + " "
+            continue
+        if re.search(r"(\|\||&&|\|)\s*$", s):
+            cur += s + " "
+            continue
+        out.append(cur + s)
+        cur = ""
+    if cur:
+        out.append(cur)
+    return out
+
+
 ACTIONS = REPO / ".github" / "actions"
 
 # phase-472 W1 — the CI SHELL population, for every gate that reads it: the

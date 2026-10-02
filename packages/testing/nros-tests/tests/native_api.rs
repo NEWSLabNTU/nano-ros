@@ -804,12 +804,9 @@ fn test_cpp_action_goal_rejection(zenohd_unique: ZenohRouter) {
 // only represent the native half. The Rust half is always the same.
 
 fn native_rust_pubsub_interop(lang: Language, locator: &str) {
-    let rust_listener = match nros_tests::fixtures::build_native_listener() {
-        Ok(p) => p.to_path_buf(),
-        Err(e) => {
-            nros_tests::skip!("could not build Rust listener: {}", e);
-        }
-    };
+    let rust_listener = nros_tests::fixtures::build_native_listener()
+        .require("Rust listener")
+        .to_path_buf();
 
     let mut listener_cmd = Command::new(&rust_listener);
     listener_cmd.env("NROS_LOCATOR", locator);
@@ -1250,12 +1247,9 @@ fn test_threadx_linux_cyclonedds_action() {
 }
 
 fn native_rust_service_interop(lang: Language, locator: &str) {
-    let rust_client = match nros_tests::fixtures::build_native_service_client() {
-        Ok(p) => p.to_path_buf(),
-        Err(e) => {
-            nros_tests::skip!("could not build Rust service client: {}", e);
-        }
-    };
+    let rust_client = nros_tests::fixtures::build_native_service_client()
+        .require("Rust service client")
+        .to_path_buf();
 
     let server_bin = lang.service_server_binary();
     let mut server = spawn_native(&server_bin, lang, "service-server", locator);

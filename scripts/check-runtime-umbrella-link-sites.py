@@ -126,9 +126,17 @@ def scan_text(rel: str, raw: str) -> tuple[list[str], int]:
     violations: list[str] = []
     private = 0
 
+    # issue 1615 (W6): an umbrella reached through a VARIABLE is the same link.
+    # `set(_u NanoRos::NanoRosCpp)` + `target_link_libraries(t INTERFACE ${_u})`
+    # named no umbrella in the call, so it was never read. Variables BOUND to an
+    # umbrella in this file (`set` / `list(APPEND)`) are expanded in the body.
+    bound = {mm.group(1) for mm in re.finditer(
+        r"\b(?:set|list\s*\(\s*APPEND)\s*\(?\s*([A-Za-z_][A-Za-z0-9_]*)\b([^()]*)\)",
+        text) if _names_an_umbrella(mm.group(2))}
     for m in TLL.finditer(text):
         body = m.group(1)
-        if not _names_an_umbrella(body):
+        if not (_names_an_umbrella(body)
+                or any("${" + v + "}" in body for v in bound)):
             continue
         line = _line_of(text, m.start())
         if re.search(r"\b(PUBLIC|INTERFACE)\b", body):

@@ -95,6 +95,18 @@ def crate_features(manifest_path):
     return names
 
 
+def rmw_features(root=ROOT):
+    """{Rmw variant: cargo feature}, HARVESTED from `Rmw::cargo_feature` in the
+    resolver crate — one spelling, never a second table here."""
+    with open(os.path.join(root, RESOLVER_REL_FOR_RMW), encoding="utf-8") as fh:
+        text = fh.read()
+    m = re.search(r"fn cargo_feature\(self\)[^{]*\{(.*?)\n    \}", text, re.S)
+    return dict(re.findall(r'Rmw::(\w+)\s*=>\s*"([^"]+)"', m.group(1))) if m else {}
+
+
+RESOLVER_REL_FOR_RMW = "packages/testing/nros-tests/src/fixtures/binaries/mod.rs"
+
+
 def call_sites(text):
     """(dir, kind, args) for every feature-bearing `select_row` call."""
     out = []
@@ -128,6 +140,17 @@ def check(resolver_path=RESOLVER, root=ROOT):
                 f"select_sole_row when the crate has exactly one coordinate."
             )
             continue
+        if kind == "rmw":
+            # issue 1615 (W6): `FixtureVariant::rmw(Rmw::X)` selects the row whose
+            # features are `rmw-<x>` — the crate must DECLARE that one feature.
+            # The table merely existing was the only check.
+            m = re.search(r"\bRmw::(\w+)", args)
+            want = rmw_features(root).get(m.group(1)) if m else None
+            if want and want not in declared:
+                problems.append(
+                    f"{directory}: FixtureVariant::rmw({args}) selects the `{want}` row, "
+                    f"and this crate does not declare `{want}` (has: "
+                    f"{', '.join(sorted(declared)) or 'none'})")
         if kind == "features":
             for name in re.findall(r'"([^"]+)"', args):
                 if name not in declared:
