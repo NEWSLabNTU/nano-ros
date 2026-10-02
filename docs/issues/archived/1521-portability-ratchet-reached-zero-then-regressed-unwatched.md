@@ -2,12 +2,13 @@
 id: 1521
 title: "The example-portability ratchet reached zero, then took 11 regressions
   that no merge-gating lane could report"
-status: open
+status: resolved
+resolved_in: 2026-10-02
 type: bug
 area: examples, ci, testing
 severity: medium
 found: 2026-09-28
-related: [1226, 1509, 1512, phase-338, phase-437, phase-470]
+related: [1226, 1509, 1512, 1048, 1644, phase-338, phase-428, phase-437, phase-470]
 ---
 
 ## What this is
@@ -182,3 +183,64 @@ below is about.
 - A lane that runs on `pull_request` or `merge_group` fails when a twelfth
   divergence is introduced — demonstrated by introducing one, not by reading the
   lane list.
+
+## Resolution (2026-10-02)
+
+**Re-measured first.** On `main` at resolution time the test still failed with
+the same 11 divergences — but the esp32 call sites were no longer the ones this
+issue quotes: the issue-1265 fix (2026-10-01) had already respelled them
+`nros::log_info!(nros::get_logger(..), ..)`, dropping the board path but keeping
+the divergence. `example_shape` was green (phase-470 W5.b1's floor fix holds).
+
+**The ten esp32 divergences — converged on `log::info!`, and the board made it
+work.** Decided by what the C/C++ copies and the book teach, not by majority:
+the C/C++ copies print the markers plainly, and
+`book/src/getting-started/first-node-rust.md` tells the reader the talker logs
+via `log::info!`. The obstacle was real and is why issue 1048 moved the esp32
+copies off `log`: nothing installed a `log` logger on this board, so a
+`log::info!` there is silent. MEASURED, both directions, with `just esp32
+build-qemu` + `test_esp32_talker_listener_e2e`:
+
+- node copies on `log::info!`, board unchanged: FAIL — `esp32-qemu did not
+  print 'Subscriber created for topic:' within 60s`;
+- node copies on `log::info!`, board installs a logger: PASS (talker published,
+  listener received).
+
+Issue 1048's root cause was half right. `log::set_logger`/`set_max_level` are
+`#[cfg(target_has_atomic = "ptr")]` and riscv32imc lacks them — but
+`log::set_logger_racy`/`set_max_level_racy` exist on every target (and `log`'s
+state falls back to a `Cell` there), which is precisely `log`'s answer for this
+target class; esp-println's own `init_logger` uses them. The board now installs a
+`ConsoleLogger` through the racy pair at its log-writer funnel
+(`packages/boards/nros-board-esp32-qemu/src/node.rs`), idempotent, same
+`[LEVEL] name: message` shape as the platform writer. Node logic no longer names
+any esp32 crate.
+
+**The service-client divergence — converged.** Phase-428 W13 added the
+`service_is_ready_for_name` readiness gate (rclcpp's `wait_for_service` loop) to
+the native copy only; the phase doc says so. The gate is backend-neutral (`Err`
+= "cannot say", call anyway — XRCE's permanent answer), so it was added to the
+FreeRTOS, NuttX, ThreadX-RV64 and ThreadX-Linux copies. MEASURED:
+`test_rtos_service_e2e` Rust on FreeRTOS (QEMU) and ThreadX-Linux PASS on freshly
+built fixtures. NuttX and ThreadX-RV64 were not built here.
+`KNOWN_DIVERGENCE` stays empty.
+
+**A lane that gates.** The mechanism already existed — `just
+test-lane-contracts`, "an nros-tests target that builds no fixture", which runs
+as the last step of `just ci gate` and on `merge_group` in `gate.yml`, and which
+`check-lane-contracts` audits per target. `example_portability` and
+`example_shape` joined it, plus fifteen more found by measurement rather than
+picked: of the 71 `nros-tests` targets that call no fixture resolver and need no
+`required-features`, those that pass with no fixture built and spawn no process
+(list and rule in the recipe's comment). The ones that did not pass include three
+source-level reds on `main` with the same "nothing runs them" cause — filed as
+issue 1644 rather than folded in here.
+
+**Acceptance, demonstrated.** A twelfth divergence was introduced
+(`examples/threadx-linux/rust/talker/src/lib.rs`: `"Publishing: '{}'"` →
+`"Publishing: {}"`) and `just test-lane-contracts` went red, 87/88, reporting
+`rust/talker [A-scheduled]: threadx-linux differs from esp32-c3-baremetal` —
+then green (88/88) once reverted.
+
+Not done here: `host-tests.yml` being red-or-cancelled on most pushes (the
+separable fourth item above) is still undiagnosed.
