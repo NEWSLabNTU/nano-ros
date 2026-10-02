@@ -4,17 +4,18 @@
 //! publisher on the same topic, on an XRCE-DDS egress session opened
 //! against the agent at `XRCE_LOCATOR`.
 //!
-//! Differs from the Phase 110.G `tt-zenoh-to-xrce` example in two ways:
+//! Two properties are load-bearing for the e2e that consumes it:
 //!
 //! 1. **Type name + hash match `std_msgs::msg::String`**, the type the
 //!    `native-rs-talker` + `native-rs-listener` fixtures use (phase-277
 //!    flipped the demos to the official String chatter). A type mismatch
 //!    here carries from the publisher's `RawSubscription` keyexpr into
 //!    the XRCE side and nothing on the listener matches.
-//! 2. **No TT scheduling** — a single zenoh-side callback republishes
-//!    directly. The TT gate is irrelevant for the 211.I assertion
-//!    (that a sample crosses the RMW boundary) and adds variance to
-//!    the e2e timeout window.
+//! 2. **No time-triggered scheduling** — a single zenoh-side callback
+//!    republishes directly. A TT gate is irrelevant to the 211.I assertion
+//!    (that a sample crosses the RMW boundary) and adds variance to the
+//!    e2e timeout window. (The Phase 110.G `tt-zenoh-to-xrce` example that
+//!    did combine the two was deleted by phase-477.)
 //!
 //! ## Env vars
 //!

@@ -20,8 +20,8 @@ Typical reasons:
   republishes to a best-effort backend so dashboards never
   starve the critical pipeline.
 
-This chapter walks the model, the build knobs, and the three
-shipped examples.
+This chapter walks the model, the build knobs, and what in
+the tree demonstrates each.
 
 ## The mental model — `rclcpp::Node`, twice
 
@@ -225,31 +225,51 @@ block the fast one.
 
 ## Shipped examples
 
-### `examples/bridges/rust/tt-zenoh-to-xrce/`
+### Declarative: `examples/workspaces/bridge-cyclonedds/` and `bridge-xrce/`
 
-Pure-Rust bridge. Zenoh ingress → XRCE-DDS egress under an
-ARINC-653-style time-triggered cyclic schedule. Read this
-first — it shows the multi-RMW
-`Executor::open_with_rmw("zenoh", ...)` plus
-`node_builder.rmw("xrce")` per-session pin, with raw byte
-forwarding and no codegen.
+Start here. A bridge is a `[[bridge]]` row in the workspace's
+`system.toml`, between two `[[domain]]` rows naming the backends — no
+`build.rs` and no user bridge code. `nros sync` resolves each topic name
+to its ROS type and the generated entry runs the forwarder (`open_multi`
+over both sessions, one `PubSubBridge` per row):
 
-```sh
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
-build/xrce-agent/MicroXRCEAgent udp4 -p 8888 &
-XRCE_LOCATOR=127.0.0.1:8888 \
-    cargo run -p native-rs-bridge-tt-zenoh-to-xrce
+```toml
+[[domain]]
+name = "zen"; rmw = "zenoh"; id = 0
+[[domain]]
+name = "dds"; rmw = "cyclonedds"; id = 5
+[[bridge]]
+name = "gw"; from = "zenoh:zen"; to = "cyclonedds:dds"
 ```
 
-### `examples/bridges/rust/tt-zenoh-to-cyclonedds/`
+- [`bridge-cyclonedds/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/bridge-cyclonedds)
+  forwards zenoh `/chatter` onto Cyclone DDS, where a stock
+  `rmw_cyclonedds_cpp` peer receives it.
+- [`bridge-xrce/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/bridge-xrce) is the XRCE
+  variant: the egress `[[domain]]` carries the Micro-XRCE-DDS Agent's
+  `locator`, and XRCE registers types lazily, so nothing is staged.
 
-The stock-Cyclone-DDS sibling: same TT schedule, but the egress is
-`.rmw("cyclonedds")`, forwarding onto the DDS databus where a stock
-`rmw_cyclonedds_cpp` (e.g. an Autoware listener) or another nano-ros cyclonedds
-node receives the samples. **One structural difference** from the XRCE variant:
-Cyclone rejects a raw publisher whose topic type has no registered
-`dds_topic_descriptor_t`, so the egress type's schema is staged **before** the
-raw publisher is created —
+Each workspace's README has the build and run lines. Both are fixture
+rows and are exercised end to end by the
+`declarative_bridge_zenoh_to_{cyclonedds,xrce}` tests.
+
+### Imperative: the e2e gateway fixtures
+
+The hand-written form above — `open_with_rmw` for the primary session
+plus `node_builder(..).rmw(..)` for the second — has no example of its
+own. The nearest worked code is the two gateway binaries the mixed-RMW
+e2e tests run,
+[`bridge-zenoh-to-xrce-fwd`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd)
+and
+[`bridge-zenoh-to-cyclonedds-fwd`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/testing/nros-tests/bins/bridge-zenoh-to-cyclonedds-fwd).
+They are test fixtures, not copy-out projects, but each is one short
+`main.rs`: register both backends, open two sessions, forward raw bytes
+from a zenoh subscription to a raw publisher on the other backend.
+
+The Cyclone one shows the **one structural difference** between the two
+egresses. Cyclone rejects a raw publisher whose topic type has no
+registered `dds_topic_descriptor_t`, so the egress type's schema is
+staged **before** the raw publisher is created:
 
 ```rust
 // The Cyclone backend installs the registrar during its register():
@@ -260,31 +280,39 @@ nros_rmw::register_type_descriptor(
     "std_msgs/msg/String\0",
     &[nros_serdes::schema::Field { name: "data\0", ty: FieldType::String, offset: 0 }],
 )?;
-let pub_out = node_out.create_publisher_raw("/chatter", "std_msgs/msg/String", hash)?;
+// The raw publisher itself names the DDS-mangled type:
+let pub_out = node_out.create_publisher_raw("/chatter", "std_msgs::msg::dds_::String_", hash)?;
 ```
 
-XRCE registers lazily from name+hash; Cyclone needs the descriptor up front. The
-backend links the vendored CycloneDDS (no `-DNANO_ROS_RMW` needed for the Rust
-binary — the `nros-rmw-cyclonedds-sys` dep is the selection).
+XRCE registers lazily from name+hash; Cyclone needs the descriptor up
+front. The backend links the vendored CycloneDDS (no `-DNANO_ROS_RMW`
+needed for a Rust binary — the `nros-rmw-cyclonedds-sys` dep is the
+selection).
 
-```sh
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
-ROS_DOMAIN_ID=0 cargo run -p native-rs-bridge-tt-zenoh-to-cyclonedds
-# subscribe on Cyclone DDS /chatter (stock ROS 2 or a nano-ros cyclone node on
-# the same ROS_DOMAIN_ID) and publish on zenoh /chatter to see bridged samples.
-```
+### Not demonstrated: a time-triggered bridge
+
+Two examples used to run a bridge under an ARINC-653-style
+time-triggered cyclic schedule (Phase 110.G: ingress and egress in
+non-overlapping windows of a 10 ms major frame, via
+`Executor::apply_time_triggered_schedule`). No lane ever built them, and
+phase-477 deleted them. **No example in the tree combines a bridge with
+time-triggered windows today**, and none demonstrates TT windows at all;
+the window gate is covered only by three `nros-node` executor unit tests
+(`test_tt_window_gate_suppresses_outside_window` and the two
+`test_time_triggered_*` cases in `executor/tests.rs`). The API is unchanged:
+`Executor::apply_time_triggered_schedule` (validates the windows, sets the
+major frame and returns one `SchedContextId` per window to bind handles
+to), or `register_time_triggered_dispatcher` plus a `SchedContext`'s
+`tt_window_offset_us` / `tt_window_duration_us` by hand — the rustdoc on
+those two methods is the reference.
 
 ## Coverage matrix
 
-Bridge examples live under
-`examples/bridges/<lang>/<name>/` (cross-platform, transport-
-spanning) or under their canonical
-`examples/<plat>/<lang>/bridge/<name>/` cell when the bridge
-is platform-specific. The
-[examples README coverage
-matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md#coverage-matrix)
-lists which `<plat> × <lang>` combinations ship a bridge today
-(a bridge spans RMW backends by nature, so RMW is not a directory axis).
+Bridges are workspaces: a `[[bridge]]` row in a workspace's
+`system.toml`, listed under `workspaces/` in the
+[examples README](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).
+There is no separate bridge category and no per-RMW directory — a bridge
+spans RMW backends by nature, so RMW is not a directory axis.
 
 ## Troubleshooting
 

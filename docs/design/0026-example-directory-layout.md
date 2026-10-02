@@ -145,14 +145,6 @@ locks — the leaf may create its first lock and re-resolve after a later
 ## Sibling categories
 
 - `examples/<plat>/<lang>/<example>/` — the canonical per-platform examples.
-- `examples/bridges/<lang>/<name>/` — cross-RMW gateways (link ≥2 backends).
-  The language level is the CANONICAL one, not a bridge invention: `bridges/` is
-  a sibling category because the RMW axis does not describe it (a bridge holds
-  two backends open at once, so no build-time choice names it), and that says
-  nothing about the language axis, which applies to a bridge exactly as it does
-  to a per-platform example. Both current bridges are Rust, so they sit under
-  `bridges/rust/` (2026-09-27). What `bridges/` replaces is the PLATFORM level,
-  and only that: a gateway is a host process, so there is no platform to name.
 - `examples/templates/<name>/` — multi-platform copy-out recipes (Pattern A workspaces, etc.).
 - `examples/workspaces/…` — multi-node workspace examples (Node pkg + Bringup
   pkg + Entry pkg; see RFC-0024/0025), in a **two-layer scheme**:
@@ -163,6 +155,11 @@ locks — the leaf may create its first lock and re-resolve after a later
     (`ws-qos-rust`, `ws-lifecycle-cpp`, `ws-realtime-cpp-subnode`, …): each
     demonstrates one feature axis (params, QoS, lifecycle, launch, safety,
     custom-msg, bridge, realtime tiers) on top of the base shape.
+
+There is no `examples/bridges/` category. A cross-RMW gateway is a workspace
+whose `system.toml` declares a `[[bridge]]` row (`workspaces/bridge-cyclonedds/`,
+`workspaces/bridge-xrce/`), so it is built by a fixture row like any other
+workspace. The category existed until 2026-10-03 (see Changelog).
 
 Variant naming uses a **suffix** form so variants sort with their peers:
 `talker-rtic`, `service-client-async`, `talker-rtic-mixed`.
@@ -183,9 +180,8 @@ Three README tiers, linted by `scripts/check-example-matrix.sh`:
 1. `examples/README.md` — the authoritative coverage matrix + copy-out contract.
 2. `examples/<platform>/README.md` — per-platform: prerequisites, RMW knob,
    build/run one example, case table. Required for every platform dir.
-3. Per-example `README.md` — **only** for variants, `bridges/<lang>/*`, `ws-*`
-   and `templates/*` (dirs whose purpose isn't obvious from the role name).
-   `bridges/<lang>/` itself carries none: a language level never does.
+3. Per-example `README.md` — **only** for variants, `ws-*` and `templates/*`
+   (dirs whose purpose isn't obvious from the role name).
    Canonical role examples (`talker`, `listener`, …) deliberately carry no
    per-example README — the platform README covers them.
 
@@ -221,6 +217,15 @@ under `packages/testing/{nros-tests/bins,nros-bench,nros-smoke}/`, not `examples
 
 ## Changelog
 
+- 2026-10-03 — `examples/bridges/` deleted (phase-477). Its two
+  leaves, `rust/tt-zenoh-to-{xrce,cyclonedds}`, had no `fixtures.toml` row and
+  no `system.toml`, so no lane built them — and the category carve-outs in
+  `examples_fixture_coverage.rs` and `example_shape.rs` are what kept the
+  coverage gate from saying so. The carve-outs and the README tier walk's
+  depth-4 bridges pass went with it. Bridging is demonstrated by the
+  declarative `workspaces/bridge-{cyclonedds,xrce}/`, both fixture rows; the
+  Phase 110.G time-triggered schedule the two leaves also showed has no example
+  now.
 - 2026-09-27 — `examples/bridges/` took the language level:
   `bridges/tt-zenoh-to-{xrce,cyclonedds}` → `bridges/rust/tt-zenoh-to-{xrce,cyclonedds}`.
   It was the one example category with no language axis, which read as a

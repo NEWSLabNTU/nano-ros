@@ -317,10 +317,12 @@ under `examples/px4/` and adds no uORB axis value.
 Already conformant. `platform/lang/example` holds for the six real platforms
 (`native`, `mps2-an385-freertos`, `qemu-armv7a-nuttx`, `threadx-linux`,
 `zephyr`,
-plus the bare-metal trees). Only three trees deviate and each is a separate,
-cheap follow-up rather than part of this work: `bridges/` (no language level),
-`templates/` (copy-out scaffolds — a different kind of artifact), and the
-partial-language trees (`px4`, `stm32f4`, `esp32-c3-baremetal`).
+plus the bare-metal trees). Only three trees deviated and each was a separate,
+cheap follow-up rather than part of this work: `bridges/` (no language level —
+given one 2026-09-27, then deleted with both its leaves by phase-477, since no
+lane built them), `templates/` (copy-out scaffolds — a different kind of
+artifact), and the partial-language trees (`px4`, `stm32f4`,
+`esp32-c3-baremetal`).
 
 ## Relationship to adjacent work
 

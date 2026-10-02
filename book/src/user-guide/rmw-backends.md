@@ -160,12 +160,13 @@ open additional sessions on other backends. Both backends must be
 in the binary's link line (Cargo manifest deps + `register()` call
 each).
 
-Two worked examples live under
-[`examples/bridges/rust/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/bridges/rust):
-[`tt-zenoh-to-xrce/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/bridges/rust/tt-zenoh-to-xrce)
-and
-[`tt-zenoh-to-cyclonedds/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/bridges/rust/tt-zenoh-to-cyclonedds),
-each showing the pattern under an ARINC-653-style cyclic schedule.
+Two worked examples declare the bridge in `system.toml` instead of
+writing it:
+[`examples/workspaces/bridge-cyclonedds/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/bridge-cyclonedds)
+(zenoh → Cyclone DDS) and
+[`examples/workspaces/bridge-xrce/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/bridge-xrce)
+(zenoh → XRCE Agent). The hand-written form above has no example of its
+own; the walkthrough points at the e2e gateway fixtures that use it.
 
 Full walkthrough: [Cross-backend Bridges](./cross-backend-bridges.md).
 
