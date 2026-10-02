@@ -14,13 +14,14 @@
 
 # Issue 1636 removed each use it could show was masking a fixable duplicate,
 # by building the image without the flag and reading the linker's list:
-#   * native_sim C/C++: 3 allocator symbols (picolibc's posix_memalign path) and
-#     33 zenoh-pico system symbols (zpico's platform_aliases.c twice over) —
-#     both fixed at the source; that use is GONE.
-#   * the standalone nros-rmw-zenoh-staticlib (a second backend + REGISTRY) is
-#     no longer linked at all.
-# What stays is measured, and owned by issue 1645 (fold the message FFI into
-# the one runtime staticlib):
-zephyr/CMakeLists.txt 1             # C++ API: libnano_ros_cpp_ffi_<pkg>.a beside libnros_cpp.a duplicates the Rust runtime closure — cpp/talker 392 dups on native_sim, 571 on mps2/an385, all compiler_builtins/core/alloc/anon.*, no nano-ros C-ABI symbol (issue 1645)
-integrations/nuttx/Make.defs 1      # UNVERIFIED (no build recipe for the apps-external shell on this host): libnros_c.a + libnros_cpp.a + per-package FFI staticlibs (Phase 157.C.17; issue 1645)
-integrations/s32ds/makefile.defs 1  # UNVERIFIED (no S32DS on this host): same multi-staticlib shape as the NuttX Make.defs, in a user-editable fragment (issue 1645)
+#   * Zephyr native_sim C/C++: 3 allocator symbols (picolibc's posix_memalign
+#     path) and 33 zenoh-pico system symbols (zpico's platform_aliases.c twice
+#     over) — both fixed at the source.
+#   * Zephyr: the standalone nros-rmw-zenoh-staticlib (a second backend +
+#     REGISTRY) is no longer linked; zephyr/CMakeLists.txt carries no use.
+#   * NuttX Make.defs: libnros_c.a + libnros_cpp.a — 392 duplicates, 297 of them
+#     `nros_*` plus REGISTRY. A C++ image now links libnros_cpp.a ONLY (it holds
+#     299/299 of nros-c's C-ABI symbols); the use is gone.
+# What stays is measured (or says why it cannot be), owned by issue 1645:
+zephyr/cmake/nros_generate_interfaces.cmake 1  # C++ message FFI: per-package staticlibs, each whole-archived — cpp/talker (std_msgs + builtin_interfaces) 392 dups on native_sim/native/64 (340 compiler_builtins, 35 `__*` intrinsics, 15 anon.*, 2 core), 571 on mps2/an385 (all compiler_builtins), FFI vs FFI; no nros_*, no REGISTRY. Scoped to images that link one; c/talker links without it (issue 1645)
+integrations/s32ds/makefile.defs 1  # UNVERIFIED: S32DS 3.6.10 is installed but no S32DS project (.cproject + RTD + FreeRTOS + lwIP) exists on the host, and the CDT link is the project's. Its nros-libs.mk links `corrosion/*.a`, which can hold libnros_c.a AND libnros_cpp.a — the shape NuttX measured at 392 dups incl. REGISTRY (issue 1645)

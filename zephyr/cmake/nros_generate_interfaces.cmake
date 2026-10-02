@@ -600,6 +600,19 @@ targets = [\"${NROS_RUST_TARGET}\"]
       target_link_libraries(app PRIVATE
         "-Wl,--whole-archive,${_ffi_lib},--no-whole-archive")
       add_dependencies(app ${target}_cpp_ffi_build)
+
+      # Issue 1636 / 1645 — each FFI archive is its own Rust staticlib and
+      # bundles its whole closure, and the line above whole-archives it, so
+      # every member is forced in. Measured with the flag removed,
+      # `examples/zephyr/cpp/talker` (zenoh; std_msgs + builtin_interfaces):
+      # 392 duplicate symbols on native_sim/native/64, 571 on mps2/an385, every
+      # one `compiler_builtins` (plus `__*` intrinsics, `anon.*` and 2 `core`
+      # fns on the host triple) BETWEEN the two FFI archives — no `nros_*`
+      # C-ABI symbol, no `REGISTRY`, no zenoh-pico state. Scoped HERE, to the
+      # images that link one, so every other Zephyr image links without it.
+      # Removing it is issue 1645 (fold the message FFI into the one runtime
+      # staticlib).
+      zephyr_ld_options(-Wl,--allow-multiple-definition)
     endif()
 
   else()
