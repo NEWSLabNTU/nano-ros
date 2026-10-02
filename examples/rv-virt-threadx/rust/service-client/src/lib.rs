@@ -78,6 +78,15 @@ impl ExecutableNode for AddTwoIntsClient {
             return;
         }
         state.pending = false;
+        // rclcpp: `while (!client->wait_for_service(1s)) { RCLCPP_INFO(...,
+        // "service not available, waiting again..."); }`. A tick cannot block
+        // the executor that drives it, so the wait is one check per timer
+        // tick. `Err` is "the backend cannot say" — call anyway, the request
+        // is then the probe (as it always was on such backends).
+        if let Ok(false) = ctx.service_is_ready_for_name("/add_two_ints") {
+            log::info!("service not available, waiting again...");
+            return;
+        }
         let req = AddTwoIntsRequest { a: 2, b: 3 };
         // Stack-buf sizes: AddTwoInts request = 2 × i64 + CDR header = 24 B;
         // response = 1 × i64 + header = 16 B. 64 each is generous.

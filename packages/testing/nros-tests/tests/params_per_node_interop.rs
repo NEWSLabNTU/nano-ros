@@ -541,8 +541,15 @@ fn ros2_param_cli_addresses_each_node_on_cyclonedds() -> nros_tests::TestResult<
 fn cases_bound_to_interop_cells() {
     #[allow(unused_imports)]
     use nros_tests::matrix::{Lang::*, PlatformId::*, Rmw::*, Workload::*};
+    // Issue 1620 — the Cyclone row was added to `interop::CELLS` by issue 1268
+    // together with `ros2_param_cli_addresses_each_node_on_cyclonedds` below,
+    // and this tripwire was not, so it went red the day it gained a second
+    // RMW. The cases and the cells agreed; the tripwire was the stale side.
     nros_tests::interop::assert_test_bound(
         "params_per_node_interop",
-        &[(Linux, Rust, Zenoh, Params)],
+        &[
+            (Linux, Rust, Zenoh, Params),
+            (Linux, Rust, Cyclonedds, Params),
+        ],
     );
 }

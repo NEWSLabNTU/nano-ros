@@ -70,9 +70,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 # updated — `ros-humble-rmw-zenoh-cpp` adding
 # `<prefix>/opt/zenoh_cpp_vendor/lib` to `LD_LIBRARY_PATH` is the case issue
 # 0774 is about. Re-run the capture command above after changing the ROS package
-# set rather than assuming.
+# set rather than assuming. (It has happened: adding ros-humble-rmw-zenoh-cpp
+# put `zenoh_cpp_vendor/lib` FIRST, re-captured 2026-10-02. Without it the
+# router's SONAME lookup takes whatever libzenohc the loader finds -- 0774.)
 ENV AMENT_PREFIX_PATH=/opt/ros/humble \
-    LD_LIBRARY_PATH=/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib \
+    LD_LIBRARY_PATH=/opt/ros/humble/opt/zenoh_cpp_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib \
     PYTHONPATH=/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages \
     ROS_VERSION=2 \
     ROS_PYTHON_VERSION=3 \
@@ -145,6 +147,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         `# ^ the stock add_two_ints_server ros2_srv_e2e's B.2 sub-case calls` \
         `# (nros client -> stock server). Without it B.2 printed "SKIP" and` \
         `# the cell still passed, so that direction had never run in CI.` \
+        ros-humble-rmw-zenoh-cpp \
+        `# ^ the ROUTER (rmw_zenohd) and the stock zenoh RMW. We ship no` \
+        `# router (RFC-0075): nros_zenohd_bin resolves rmw_zenohd under` \
+        `# AMENT_PREFIX_PATH. phase-475's census measured 32 nros-tests` \
+        `# targets skipping in this image for its absence alone. Unlike the` \
+        `# two above it EXTENDS LD_LIBRARY_PATH (zenoh_cpp_vendor) -- issue` \
+        `# 0774 -- so the ENV snapshot above was re-captured with it in.` \
     && rm -rf /var/lib/apt/lists/*
 
 # uv (Python 3.12 venvs) + just (recipe runner) via their canonical installers.

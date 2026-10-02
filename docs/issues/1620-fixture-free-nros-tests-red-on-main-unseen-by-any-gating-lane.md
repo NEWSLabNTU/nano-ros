@@ -84,3 +84,61 @@ The three remaining reds fixed or ruled, `native_orchestration_misuse` skipping
 on its missing tool, and the fourteen either confirmed as 0584's known sites or
 added to its scan. phase-475 W3 (admitting targets by census) waits on the reds,
 so that admitting them does not turn the gate lane red for reasons no PR caused.
+
+## 2026-10-02 — the three reds are fixed; what was wrong was different in each
+
+**Each was a different side going stale, so each fix went the other way.**
+
+| red | stale side | fix |
+| --- | --- | --- |
+| `no_local_axis_tables` | the TEST — `qos_event_interop.rs` kept its coordinate in a named `QOS_EVENT_CELLS` table | stated inline at `assert_test_bound`, as every sibling interop test does; the gate was right |
+| `params_per_node_interop::cases_bound_to_interop_cells` | the TRIPWIRE — issue 1268 added the Cyclone cell and its case, not the tripwire row | `(Linux, Rust, Cyclonedds, Params)` added |
+| `example_portability` | **three groups, not one** — the failure listed several and the first read stopped at the first | see below |
+
+**`params_per_node_interop` also had a second, deeper break** the census showed
+as `no [[fixture]] row … Selector { rmw: "" … }`. `b6055b6f3` (#1268) gave the
+zenoh row `rmw`/`no_default_features`/`features` so it mirrors its Cyclone
+sibling, and `build_native_param_two_node_talker()` kept selecting `plain()` —
+which then matched NO row, so both zenoh cases failed in every lane, fixtures
+or not. The builder now selects `rmw(Zenoh)`, the same rule as its sibling.
+Swept: every other `plain()` site (25 resolutions, including the 20 literal
+callers of `build_example` / `build_test_fixture_at_profile`) has a matching
+plain row.
+
+**`example_portability` had three divergences:**
+
+* `rust/listener` and `rust/talker` on **esp32-c3** — `eb95b378a` (#1265, a day
+  earlier) switched their two log calls to `nros::log_info!` while target-scoping
+  the board deps. The switch was incidental: the manifest still declares `log`
+  as a host-buildable dependency and still documents it as the console path, so
+  the esp32 copies went back to `log::info!`, the group's form in seven of eight.
+* `rust/service-client` — `c27a9601f` (#1087, 09-06) added rclcpp's
+  `wait_for_service` gate (`service_is_ready_for_name`) to the **native** copy
+  only. Here native was the deliberate improvement, so it went the other way:
+  the guard was propagated to all five other group copies. It is safe on every
+  backend by construction — `Err` means "the backend cannot say" and the
+  request goes out as before (Cyclone and XRCE leave the slot NULL) — and the
+  six C/C++ wait loops already rely on the same `service_is_ready` on every
+  platform. **This test had been red since 09-06**, which is how long a
+  fixture-free test can stay red when no merge-gating lane runs it.
+
+Acceptance, built rather than read: `freertos rust` and `threadx-linux rust`
+fixture families built, and both `service-client` images (thumbv7m and
+ThreadX-linux) carry the guard's string; the esp32 talker and listener
+cross-built for `riscv32imc` (that family's later **packing** step fails with
+`nros_fixture_row_artifact_dir: command not found` — a function the make
+driver's subshell cannot see, unrelated to these files, not investigated). The
+NuttX, rv-virt-ThreadX and Zephyr copies were not built here (no provisioned
+SDK); they share the edited `lib.rs` shape and the `TickCtx` API that the two
+built images type-checked.
+
+## Still open
+
+* `native_orchestration_misuse` — a missing tool reported as a FAIL, and a
+  compile at test time.
+* the 14 fixture-as-skip targets.
+* **new**: in a full-crate parallel run inside the gate image,
+  `cmake_platform_matrix` and `native_main_macro_misuse` fail, and both pass in
+  isolation in BOTH image variants with identical source. Both compile at test
+  time; they contend with each other under parallelism. phase-475 W3 must not
+  admit a test that compiles at run time until it runs isolated or is fixed.
