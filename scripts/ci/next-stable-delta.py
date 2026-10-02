@@ -59,8 +59,8 @@ number; worth saying.
 
 Usage::
 
-    next-stable-delta.py [--candidate stable] [--install] [--out DIR]
-                         [--gates g1,g2,...]
+    next-stable-delta.py [--candidate stable] [--pin VER] [--install]
+                         [--out DIR] [--gates g1,g2,...]
     next-stable-delta.py --selftest
 """
 
@@ -87,6 +87,13 @@ GATE_WORKFLOW = ROOT / ".github" / "workflows" / "gate.yml"
 #   rustdoc-links       the published crates' rustdoc (pull_request)
 #   rustdoc-workspace   every crate's rustdoc (pull_request)
 #
+#   cli-clippy          the CLI sub-workspace clippy — ALSO inside test-targets,
+#                       listed on its own because test-targets is `set -e`:
+#                       when its workspace clippy fails, its per-crate pass and
+#                       cli-clippy never run. Measured in the 1.98.1 -> 1.99.0
+#                       replay: without this row the 4 rustc future-incompat
+#                       errors in cargo-nano-ros (#1536) were invisible.
+#
 # These are exactly the five that failed on 2026-10-01 (`workspace-all` being
 # the parent of the first two). `compile-smoke` is not listed: it is
 # `cargo check` over a subset of what `test-targets` clippies, with no
@@ -95,6 +102,7 @@ GATE_WORKFLOW = ROOT / ".github" / "workflows" / "gate.yml"
 # step drifts this list loudly rather than into measuring a gate nothing runs.
 GATES = [
     ("test-targets", "workspace-all"),
+    ("cli-clippy", "workspace-all"),
     ("workspace-embedded", "workspace-all"),
     ("rustdoc-links", "rustdoc-links"),
     ("rustdoc-workspace", "rustdoc-workspace"),
@@ -114,7 +122,7 @@ SUMMARY = re.compile(
     r"|Compilation failed|failed to run custom build command)"
 )
 CLIPPY_URL = re.compile(r"rust-clippy/[^#\s]*#(?P<lint>[a-z0-9_]+)")
-LINT_NOTE = re.compile(r"`(?:#\[(?:deny|warn)\(|-[DW] )(?P<lint>[a-z0-9_:]+)")
+LINT_NOTE = re.compile(r"`(?:#\[(?:deny|warn)\(|-[DW] )(?P<lint>[a-z0-9_:-]+)")
 
 
 def pinned_channel():
@@ -153,14 +161,21 @@ def normalise(loc):
 
 
 def parse(text, gate):
-    """{(gate, loc, msg): lint} — one entry per diagnostic SITE in a log."""
-    sites = {}
-    cur = None  # [msg, loc, lint]
+    """{(gate, loc, msg): (lint, severity)} — one entry per diagnostic SITE.
+
+    A diagnostic without a `-->` span still counts: rustdoc reports
+    `redundant explicit link target` with NO location (measured in the 1.99
+    replay), so those are keyed `<no span #k>` by their k-th occurrence of
+    that message in the log. A lint named only on the first occurrence of a
+    message (rustdoc's and rustc's `-D ... implied by` note) is carried to the
+    later occurrences of the same message.
+    """
+    raw_sites = []
+    cur = None  # [msg, loc, lint, severity]
 
     def flush():
-        if cur and cur[1]:
-            key = (gate, cur[1], cur[0])
-            sites.setdefault(key, cur[2])
+        if cur:
+            raw_sites.append(list(cur))
 
     for raw in text.splitlines():
         line = ANSI.sub("", raw)
@@ -168,7 +183,7 @@ def parse(text, gate):
         if h:
             flush()
             msg = h.group("msg").strip()
-            cur = None if SUMMARY.match(msg) else [msg, None, h.group("code")]
+            cur = None if SUMMARY.match(msg) else [msg, None, h.group("code"), h.group(1)]
             continue
         if cur is None:
             continue
@@ -183,8 +198,17 @@ def parse(text, gate):
                 continue
             m = LINT_NOTE.search(line)
             if m:
-                cur[2] = m.group("lint")
+                cur[2] = m.group("lint").replace("-", "_")
     flush()
+
+    lint_of_msg = {r[0]: r[2] for r in raw_sites if r[2]}
+    nospan = {}
+    sites = {}
+    for msg, loc, lint, sev in raw_sites:
+        if loc is None:
+            nospan[msg] = nospan.get(msg, 0) + 1
+            loc = f"<no span #{nospan[msg]}>"
+        sites.setdefault((gate, loc, msg), (lint or lint_of_msg.get(msg), sev))
     return sites
 
 
@@ -215,15 +239,20 @@ def report(pin, pin_ver, cand, cand_ver, rows, new_sites, out):
     """Markdown report. Returns (exit_code, text)."""
     no_verdict = [r for r in rows if r["pin_rc"] != 0 or
                   (r["cand_rc"] != 0 and r["new"] == 0)]
+    n_err = sum(1 for _lint, sev in new_sites.values() if sev == "error")
+    n_warn = len(new_sites) - n_err
+    warn_note = f" (+{n_warn} new warning(s), listed as early notice)" if n_warn else ""
     if no_verdict:
         code, head = 2, "NO VERDICT — the A/B could not measure the toolchain"
-    elif new_sites:
-        code, head = 1, f"PRICED — the next bump costs at least {len(new_sites)} site(s)"
+    elif n_err:
+        code, head = 1, (f"PRICED — the next bump costs at least {n_err} error site(s)"
+                         + warn_note)
     else:
-        code, head = 0, "FREE — the candidate raises nothing the pin does not; take the bump"
+        code, head = 0, ("FREE — the candidate raises no error the pin does not; take the bump"
+                         + warn_note)
 
     by_tool = {}
-    for (gate, _loc, _msg), lint in new_sites.items():
+    for (gate, _loc, _msg), (lint, _sev) in new_sites.items():
         t = tool_of(gate, lint)
         by_tool[t] = by_tool.get(t, 0) + 1
 
@@ -236,24 +265,25 @@ def report(pin, pin_ver, cand, cand_ver, rows, new_sites, out):
         "same tree, toolchain the only variable. This lane is advisory: it gates "
         "no merge.",
         "",
-        "| gate | pin | candidate | new sites |",
-        "| --- | --- | --- | --- |",
+        "| gate | pin | candidate | new errors | new warnings |",
+        "| --- | --- | --- | --- | --- |",
     ]
     for r in rows:
         lines.append(f"| `{r['gate']}` | {'ok' if r['pin_rc'] == 0 else 'FAIL'} "
                      f"({r['pin_s']:.0f}s) | {'ok' if r['cand_rc'] == 0 else 'FAIL'} "
-                     f"({r['cand_s']:.0f}s) | {r['new']} |")
+                     f"({r['cand_s']:.0f}s) | {r['new']} | {r['warn']} |")
     lines.append("")
     if by_tool:
         lines.append("By tool: " + ", ".join(f"{n} {t}" for t, n in sorted(by_tool.items())))
         lines.append("")
     if new_sites:
-        lines += ["| tool | lint | site | gate | message |",
-                  "| --- | --- | --- | --- | --- |"]
-        for (gate, loc, msg), lint in sorted(new_sites.items(),
-                                             key=lambda kv: (tool_of(kv[0][0], kv[1]), kv[0][1])):
+        lines += ["| tool | level | lint | site | gate | message |",
+                  "| --- | --- | --- | --- | --- | --- |"]
+        for (gate, loc, msg), (lint, sev) in sorted(
+                new_sites.items(), key=lambda kv: (tool_of(kv[0][0], kv[1][0]), kv[0][1])):
             m = msg.replace("|", "\\|")
-            lines.append(f"| {tool_of(gate, lint)} | `{lint or '?'}` | `{loc}` | {gate} | {m} |")
+            lines.append(f"| {tool_of(gate, lint)} | {sev} | `{lint or '?'}` | `{loc}` "
+                         f"| {gate} | {m} |")
         lines.append("")
         lines.append("A **lower bound**: cargo stops an invocation at the first failing "
                      "crate, so crates behind it were not linted. Re-run after fixing.")
@@ -277,7 +307,7 @@ def report(pin, pin_ver, cand, cand_ver, rows, new_sites, out):
 
 
 def measure(args):
-    pin = pinned_channel()
+    pin = args.pin or pinned_channel()
     cand = args.candidate
     if args.install:
         install(cand)
@@ -309,8 +339,9 @@ def measure(args):
         cand_sites = parse(clog.read_text(errors="replace"), gate)
         new = {k: v for k, v in cand_sites.items() if k not in base}
         new_sites.update(new)
+        n_err = sum(1 for _l, sev in new.values() if sev == "error")
         rows.append(dict(gate=gate, pin_rc=prc, cand_rc=crc, pin_s=ps, cand_s=cs,
-                         new=len(new), cand_log=clog))
+                         new=n_err, warn=len(new) - n_err, cand_log=clog))
     code, text = report(pin, pin_ver, cand, cand_ver, rows, new_sites, out)
     print(text)
     return code
@@ -347,11 +378,12 @@ def _gates_still_run(gate_text):
     return bad
 
 
-def selftest():
+def selftest(verbose=True):
     fails = []
 
     def chk(what, ok):
-        print(f"  {'ok  ' if ok else 'FAIL'} {what}")
+        if verbose or not ok:
+            print(f"  {'ok  ' if ok else 'FAIL'} {what}")
         if not ok:
             fails.append(what)
 
@@ -384,14 +416,42 @@ warning: `cargo-nano-ros` (lib) generated 1 warning
         list(s) == [("test-targets", "packages/core/nros-node/src/executor/spin.rs:9112:27",
                      "the borrowed expression implements the required traits")])
     chk("clippy lint named from the per-site help URL",
-        list(s.values()) == ["clippy::needless_borrows_for_generic_args"])
+        list(s.values()) == [("clippy::needless_borrows_for_generic_args", "error")])
     s = parse(rustdoc_log, "rustdoc-links")
     chk("rustdoc: two sites, summary line ignored", len(s) == 2)
     chk("rustdoc sites classify as rustdoc even without a lint note",
-        {tool_of(g, v) for (g, _, _), v in s.items()} == {"rustdoc"})
+        {tool_of(g, v[0]) for (g, _, _), v in s.items()} == {"rustdoc"})
     s = parse(rustc_log, "test-targets")
     chk("rustc future-incompat site classifies as rustc",
-        [tool_of(g, v) for (g, _, _), v in s.items()] == ["rustc"])
+        [tool_of(g, v[0]) for (g, _, _), v in s.items()] == ["rustc"])
+    # Verbatim shape from the 1.98.1 -> 1.99.0 replay: rustdoc gives NO span,
+    # and names the lint only on the first occurrence.
+    nospan_log = """\
+error: redundant explicit link target
+  |
+  = note: when a link's destination is not specified,
+          the label is used to resolve intra-doc links
+  = note: `-D rustdoc::redundant-explicit-links` implied by `-D warnings`
+
+error: redundant explicit link target
+  |
+  = note: when a link's destination is not specified,
+          the label is used to resolve intra-doc links
+
+error: could not document `nros`
+warning: trailing semicolon in macro used in expression position
+   --> packages/cli/nros-pkg-index/src/lib.rs:98:17
+"""
+    s = parse(nospan_log, "rustdoc-links")
+    chk("span-less diagnostics still count, one per occurrence",
+        sorted(k[1] for k in s) == ["<no span #1>", "<no span #2>",
+                                    "packages/cli/nros-pkg-index/src/lib.rs:98:17"])
+    chk("a lint named once is carried to later same-message sites",
+        {v for k, v in s.items() if k[1].startswith("<no span")}
+        == {("rustdoc::redundant_explicit_links", "error")})
+    chk("severity is kept, so a capped warning is not priced as an error",
+        s[("rustdoc-links", "packages/cli/nros-pkg-index/src/lib.rs:98:17",
+           "trailing semicolon in macro used in expression position")][1] == "warning")
     chk("a summary-only log yields no sites",
         parse("error: could not compile `x` due to 2 previous errors\n", "g") == {})
     reg = normalise("/home/u/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/eyre-0.6.12/src/lib.rs:1:1")
@@ -432,7 +492,8 @@ warning: `cargo-nano-ros` (lib) generated 1 warning
     if fails:
         print(f"next-stable-delta selftest: {len(fails)} failure(s)")
         return 1
-    print("next-stable-delta selftest: OK")
+    if verbose:
+        print("next-stable-delta selftest: OK")
     return 0
 
 
@@ -440,6 +501,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--candidate", default="stable",
                     help="toolchain to try against the pin (default: stable)")
+    ap.add_argument("--pin",
+                    help="baseline toolchain (default: rust-toolchain.toml's channel). "
+                         "Overriding it replays a past bump, e.g. --pin 1.98.1 "
+                         "--candidate 1.99.0 on a tree from before #1536")
     ap.add_argument("--install", action="store_true",
                     help="rustup-install the candidate as a NAMED toolchain first")
     ap.add_argument("--out", default=str(ROOT / "tmp" / "next-stable"),
@@ -448,7 +513,14 @@ def main():
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
     if args.selftest:
-        return selftest()
+        return selftest(verbose=True)
+    # The normal path runs the controls too (AGENTS.md "a gate must run its own
+    # selftest"), and here it is a real preflight: a parser that cannot read
+    # the three tools' output, or a workflow that has drifted into the merge
+    # path, must not produce a verdict. ~10 ms against an A/B of two builds.
+    if selftest(verbose=False) != 0:
+        print("next-stable: selftest failed — NO VERDICT (exit 2)")
+        return 2
     return measure(args)
 
 

@@ -8,7 +8,7 @@ status: resolved
 type: bug
 area: [ci, build]
 severity: medium
-related: [1445, 1380, 0319, 1040, 1642]
+related: [1380, 0319, 1040, 1642]
 found: 2026-09-22
 ---
 
@@ -46,8 +46,9 @@ no blame to read and no moment at which anyone decided to take it.
 
 That would be survivable if the lane were merge-gating. It is not. Per
 `gate.yml`'s own comments the compile gates `check-c` / `check-cpp` run on NO
-merge-gating event — only their clang-format halves do — which is issue 1445.
-So the sequence is:
+merge-gating event — only their clang-format halves do. (This sentence used to
+end "which is issue 1445"; that citation was wrong — see the correction at the
+end.) So the sequence is:
 
 1. stable moves; clippy gains a lint;
 2. nothing on any pull request or merge-group event runs `nros-cpp` clippy;
@@ -97,9 +98,11 @@ something that happens to a checkout. Then the ratchet question above becomes
 answerable once, at the bump, instead of discovered one crate at a time.
 
 If the channel must float, the alternative is to make a clippy lane
-merge-gating so a new lint cannot reach `main` — but that is issue 1445's
-decision, not this one's, and the two should not be conflated: 1445 is about
-which lanes gate, this is about a toolchain that changes with no diff.
+merge-gating so a new lint cannot reach `main` — but that is a separate
+decision, not this one's, and the two should not be conflated: one is about
+which lanes gate, this is about a toolchain that changes with no diff. (This
+paragraph used to name issue 1445 as that decision; see the correction at the
+end.)
 
 ## 2026-10-01 — it happened, and `main` went red for everyone
 
@@ -142,7 +145,7 @@ So the framing "clippy's lint SET grows every release" undersells it: **three
 tools move with `channel = "stable"`** — clippy, rustdoc, and rustc's own
 future-incompat set, which `-D warnings` turns into a hard error the day the
 compiler starts emitting it. A pin covers all three; a merge-gating clippy lane
-(issue 1445) covers one.
+covers one.
 
 The last row is also the one a lane could never have caught in advance, and
 not for a lane reason: the defect is in **eyre 0.6.12's `bail!`**, which expands
@@ -195,7 +198,54 @@ weigh all three, not the one this issue named.
   becomes a sixty-site one. The mitigation the post-mortem recommended — an
   advisory "try the next stable" lane that is allowed to be red — is filed as
   **issue 1642**, rather than kept open here as residue this issue never owned.
-- **It makes no clippy lane merge-gating.** That is **issue 1445**, a separate
-  decision, as this issue's own fix-shape section said. A pin stops the
-  surprise, not the gap.
+- **It makes no clippy lane merge-gating.** That is a separate decision, as
+  this issue's own fix-shape section said, and **no issue owns it** — this
+  bullet used to say "That is issue 1445", which was wrong (see the correction
+  below). A pin stops the surprise, not the gap.
+
+## Correction (2026-10-03) — "issue 1445" was never the clippy-gating issue
+
+Four sentences above (and the `related:` list) cited **issue 1445** as "which lanes gate merges" / "the
+merge-gating clippy decision". That was false from this issue's original text
+onward, and the error was copied into issue 1642 and the `rust-toolchain.toml`
+comment without anyone opening 1445. **Issue 1445 is
+`l3-link-check-passes-the-linker-script-twice`** — `rust-rtos-link-check`
+passing `-Tmps2_an385.ld` twice (resolved and archived 2026-09-22), nothing to
+do with clippy. The citations are corrected in place above, in 1642, and in
+`rust-toolchain.toml`; this note is here so the edit to an archived record is
+visible rather than silent.
+
+**No issue owns "clippy lanes do not gate merges".** Searched every issue
+(open and archived) for clippy x merge-gating: the nearest are 1163
+(`compile-smoke` checks the wrong feature set — a compile gap, not clippy),
+1380 (one `nros-rmw-zenoh` feature combination no lane lints) and 0379 (the CLI
+was never clippied — resolved). None is the general question, so the sentences
+now cite nothing.
+
+**The premise, measured on `origin/main` d3c4e96fa6 (2026-10-03).** The
+blanket reading — "clippy gates no merge" — is FALSE, and was already false when
+this issue was filed:
+
+- `check workspace-all` runs on `pull_request` AND `merge_group` in
+  `gate.yml`'s `check` job, which feeds the required `CI` context. Since
+  `2440745e86` (2026-09-10) its host half is `check test-targets`: `cargo
+  clippy --workspace --all-targets -D warnings`, then every crate ALONE, then
+  `check cli-clippy`. Its embedded half is `check workspace-embedded`
+  (thumbv7em clippy, `-D warnings`).
+- `check rustdoc-links` and `check rustdoc-workspace` run on `pull_request`.
+- The 2026-10-01 incident above is itself the proof: all five failing gates
+  (`rustdoc-links`, `rustdoc-workspace`, `test-targets`, `workspace-embedded`,
+  `workspace-all`) are on the required context, which is exactly why they
+  blocked #1516 and #1523 rather than sitting unseen on a nightly.
+
+What does NOT gate a merge, and so is what this issue's title is actually
+about: **`nros-cpp`'s clippy.** `nros-cpp` is excluded from BOTH workspace
+clippies (`scripts/build/embedded-only-members.sh` for the host,
+`scripts/build/host-only-members.sh` for the embedded target) and is linted
+only by `check cpp`, which is in `check build` — `schedule`/`workflow_dispatch`
+only. That is where the two lints fixed in `45d6c1790` sat. The same holds for
+the feature-combination clippies in `check workspace-features` (including the
+`nros-c` shipped-shape combo), also `check build` only. So
+"the one lane that runs clippy and gates no merge" is true of `check cpp`, as
+the title says, and wrong if read as all clippy.
 
