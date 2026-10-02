@@ -2893,6 +2893,12 @@ required-features-tests:
     # test, because it reads as coverage.
     cargo nextest run "${cargo_nextest_args[@]}" \
         -p nros-c --features rmw-cffi --lib
+    # Issue 1613 -- nros-log's `log` bridge is behind `log-compat`, which no
+    # workspace member enables by default, so neither its unit tests nor the
+    # delivery test ran in `test-unit`.
+    cargo nextest run "${cargo_nextest_args[@]}" \
+        -p nros-log --features log-compat \
+        --lib --test log_bridge_keeps_the_target
     # Issue 0779 — two more of the baseline five, retired. Both were reachable
     # all along; what kept them dark was that the FEATURE NAMED IN THE ISSUE IS
     # NOT ENOUGH. Each file's crate-level cfg is a CONJUNCTION:

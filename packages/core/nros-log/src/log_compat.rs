@@ -103,7 +103,27 @@ impl LogSink for LogCrateSink {
 /// Looks up an intern'd nros-log [`Logger`] keyed on
 /// `log::Record::target` (the canonical `log` crate per-call-site
 /// name); falls back to [`DEFAULT_LOGGER`] when not registered.
+///
+/// The fallback lends its THRESHOLD, never its NAME (issue 1613): a
+/// record whose target nobody interned is still filed under that target
+/// (`rustapp`, `my_crate::driver`), because the target is the only thing
+/// that says where the record came from. Before, every such record read
+/// `nros:`, which on a Zephyr Rust image was every `log::info!` the app
+/// made once issue 1324 moved those images onto this bridge.
 pub struct LogCrateBridge;
+
+/// The name a bridged record is filed under: the interned logger's own
+/// name when the target resolved to one, else the `log` target itself.
+///
+/// An empty target (`log::Record::builder()` without `.target`) has
+/// nothing to say, so it keeps the resolved logger's name.
+fn bridged_logger_name<'a>(logger: &'static crate::Logger, target: &'a str) -> &'a str {
+    if target.is_empty() || !core::ptr::eq(logger, &crate::DEFAULT_LOGGER) {
+        logger.name()
+    } else {
+        target
+    }
+}
 
 impl log::Log for LogCrateBridge {
     fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
@@ -134,7 +154,7 @@ impl log::Log for LogCrateBridge {
         // caller embedded it.
         let nros_record = Record {
             severity: sev,
-            logger_name: logger.name(),
+            logger_name: bridged_logger_name(logger, record.target()),
             message: buf.as_str(),
             file: "<log-compat-bridge>",
             line: 0,
@@ -203,5 +223,24 @@ mod tests {
             .target("totally-unregistered-target")
             .build();
         assert!(BRIDGE.enabled(&metadata));
+    }
+
+    /// Issue 1613: the default logger lends its threshold, not its name.
+    #[test]
+    fn un_interned_target_is_the_record_name() {
+        assert_eq!(bridged_logger_name(&DEFAULT_LOGGER, "rustapp"), "rustapp");
+        assert_eq!(
+            bridged_logger_name(&DEFAULT_LOGGER, "rustapp::driver"),
+            "rustapp::driver"
+        );
+        // Nothing to say: keep the resolved logger's name.
+        assert_eq!(bridged_logger_name(&DEFAULT_LOGGER, ""), "nros");
+    }
+
+    /// A resolved (interned) logger names itself, whatever the target.
+    #[test]
+    fn interned_logger_names_itself() {
+        static OWN: Logger = Logger::new("own");
+        assert_eq!(bridged_logger_name(&OWN, "something-else"), "own");
     }
 }

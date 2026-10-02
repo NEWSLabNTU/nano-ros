@@ -136,6 +136,12 @@ portable-atomic = { version = "1", default-features = false, features = ["unsafe
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
 nros-platform-cffi = { path = "../../platform/nros-platform-cffi", default-features = false, features = ["posix-c-port"] }
 
+# Issue 1613 -- the `log` bridge files a record under its target. Run by
+# `just check required-features-tests`; `test-unit` activates no features.
+[[test]]
+name = "log_bridge_keeps_the_target"
+required-features = ["log-compat"]
+
 [lints]
 workspace = true
 
