@@ -611,8 +611,11 @@ def refresh(langs, prefix, rclc_root, rclrs_root):
 # --------------------------------------------------------------------------
 
 
-def load_ledger():
+def load_ledger(ledger_dir=None):
     """Every ledger shard, merged, minus their documentation.
+
+    `ledger_dir` defaults to the real ledger; the self-test passes a temporary
+    directory so a planted row goes through the same loader a real one does.
 
     One file per language. The split is for CONCURRENCY, not taste: classifying
     ~1300 rows is work for several people at once, and a single file makes every
@@ -635,14 +638,15 @@ def load_ledger():
     `topics.topic_of` the report groups by, so a shard cannot disagree with the
     taxonomy.
     """
+    ledger_dir = ledger_dir or LEDGER_DIR
     merged = {}
-    if not os.path.isdir(LEDGER_DIR):
+    if not os.path.isdir(ledger_dir):
         return merged
-    for name in sorted(os.listdir(LEDGER_DIR)):
+    for name in sorted(os.listdir(ledger_dir)):
         if not name.endswith(".json"):
             continue
         shard_topic = name[: -len(".json")]
-        with open(os.path.join(LEDGER_DIR, name)) as fh:
+        with open(os.path.join(ledger_dir, name)) as fh:
             text = fh.read()
         # A DUPLICATE KEY is silently survivable and therefore dangerous: JSON
         # parsers keep the last occurrence, so a second row for the same symbol
@@ -858,6 +862,7 @@ def validate_ledger(entries):
                 % (key, value.get("disposition"), ", ".join(DISPOSITIONS))
             )
         problems.extend(validate_their_rename(key, value))
+        problems.extend(validate_owed(key, value))
         pattern = key.partition(":")[2]
         if "*" in pattern and value.get("bucket") not in BUCKETS:
             problems.append(
@@ -1001,43 +1006,141 @@ def misdeclared_refusals(ledger, lang, rows):
     return sorted(out)
 
 
+# issue 1463. What a `gap` on a name we DECLARE must carry -- see SCHEMA.md
+# "`owed`" for the meaning, which lives there and only there.
+OWED_FIELDS = ("what", "witness")
+WITNESS_FIELDS = ("file", "text")
+
+# The buckets in which OUR side declares the subject. A `gap` on any of these
+# cannot be closed by the correlator moving the key, because the key already
+# corresponds as far as the correlator will ever say; only `theirs-only` can.
+DECLARED_BUCKETS = ("same", "systematic", "arity-only", "differs", "ours-only")
+
+
+def validate_owed(key, value):
+    """Structural complaints about a row's `owed` object (issue 1463).
+
+    Shape only -- whether the witness is still in the tree is
+    `broken_witnesses`, which reads files. `owed` belongs to `gap` alone: on
+    any other verdict it would be a work-queue claim no gate looks at, which
+    is the defect this field exists to end.
+    """
+    if "owed" not in value:
+        return []
+    owed = value["owed"]
+    if value.get("verdict") != "gap":
+        return ["ledger %s: `owed` is for a `gap` row only (this is %r)"
+                % (key, value.get("verdict"))]
+    if not isinstance(owed, dict):
+        return ["ledger %s: `owed` must be an object with %s"
+                % (key, " and ".join(OWED_FIELDS))]
+    problems = []
+    if not isinstance(owed.get("what"), str) or not owed["what"].strip():
+        problems.append("ledger %s: `owed.what` must say what behaviour is still owed" % key)
+    witness = owed.get("witness")
+    if not isinstance(witness, dict):
+        problems.append("ledger %s: `owed.witness` must be an object with %s"
+                        % (key, " and ".join(WITNESS_FIELDS)))
+        return problems
+    for field in WITNESS_FIELDS:
+        if not isinstance(witness.get(field), str) or not witness[field].strip():
+            problems.append("ledger %s: `owed.witness.%s` must be a non-empty string"
+                            % (key, field))
+    path = witness.get("file") or ""
+    if isinstance(path, str) and (os.path.isabs(path) or ".." in path.split("/")):
+        problems.append("ledger %s: `owed.witness.file` must be repo-relative, inside "
+                        "the checkout (got %r)" % (key, path))
+    return problems
+
+
+def broken_witnesses(entries, root=ROOT):
+    """`gap` rows whose `owed.witness` is no longer in the tree.
+
+    A witness is a literal that exists in our tree BECAUSE the behaviour is
+    owed -- the refusal text, the fallback, the stub. Doing the work removes
+    it, and this is the half of issue 1463 that reaches a gap closed under a
+    name we already declared, where the correlator cannot see anything move.
+
+    Needs no build and no correlation, so it runs in `--self-test` (the fast
+    line) against the real ledger as well as in `--check`.
+
+    Returns (key, reason) pairs. Shape errors are `validate_owed`'s; a row
+    whose `owed` is malformed is skipped here rather than reported twice.
+    """
+    out = []
+    for key, value in sorted(entries.items()):
+        if value.get("verdict") != "gap" or validate_owed(key, value):
+            continue
+        owed = value.get("owed")
+        if not owed:
+            continue
+        rel = owed["witness"]["file"]
+        text = owed["witness"]["text"]
+        path = os.path.join(root, rel)
+        if not os.path.isfile(path):
+            out.append((key, "witness file %s no longer exists" % rel))
+            continue
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            if text not in fh.read():
+                out.append((key, "witness text is no longer in %s: %r" % (rel, text)))
+    return out
+
+
 def stale_gaps(ledger, lang, rows):
-    """`gap` rows whose subject now CORRELATES and that carry no disposition.
+    """`gap` rows on a subject OUR side declares that carry no `owed` witness.
 
-    phase-444 truth pass (2026-09-11). A `gap` says "ROS 2 has it and we do
-    not", so it is written against a `theirs-only` key -- and when someone
-    ships the name, the key moves to `same` (or to `systematic`, where a rule
-    explains the shape) and the row silently stops being true. Nothing asked:
-    a `same` row needs no ledger entry, so `--check` never looks at the one it
-    has. Measured before this gate existed: 18 such rows, every one of them a
-    closed gap still counted in the campaign's work queue (`c:timer_is_ready`,
-    `cpp:FutureReturnCode`, the four C++ parameter methods, ...).
+    phase-444 truth pass (2026-09-11), re-scoped by issue 1463 (2026-10-02).
+    A `gap` says "ROS 2 has it and we do not", so it is written against a
+    `theirs-only` key -- and when someone ships the name, the key moves to a
+    bucket where we declare it and the row silently stops being true. Nothing
+    asked: a `same` row needs no ledger entry, so `--check` never looks at the
+    one it has. Measured before this gate existed: 18 such rows.
 
-    The DISPOSITION is what separates the two kinds of `gap` that can sit on a
-    corresponding key. phase-428's sweep deliberately filed BEHAVIOUR defects
-    as `gap` on names we share with upstream -- `c:executor_spin_some` compiles
-    and returns TIMEOUT where rclc returns OK -- and every one of those carries
-    the disposition RFC-0089 asks of a same-shaped difference. A `gap` on a
-    corresponding key with no disposition is the other kind: an absence that
-    is no longer absent. Delete the row, or say what behaviour is still owed
-    and give it a disposition.
+    The first version exempted every `gap` that carried a DISPOSITION, because
+    phase-428 filed behaviour defects as `gap` on shared names and those are
+    true. But every `gap` in the ledger carried one, so its live reach was
+    zero (`c:log_severity_t` sat twelve days reading LANDED / FIXED). It was
+    also keyed on `same`/`systematic` only, so a `gap` on an `ours-only` key --
+    the one `gap` left when 1463 was closed, `rust:init_with_args` -- was out
+    of reach for a second, independent reason.
+
+    So the disposition no longer decides anything here. A `gap` on a declared
+    subject is either an absence that is no longer absent (delete it), or a
+    BEHAVIOUR still owed under a name we ship -- and then it must say what is
+    owed and point at the literal in the tree that exists because it is owed
+    (`owed`, SCHEMA.md). That witness is the closure signal the correlator
+    cannot give for a name it already matches; `broken_witnesses` checks it.
 
     Keyed on the NATIVE bucket when the row has one: a subject that correlates
-    only through the compat shim is not closed on our own surface, and several
-    rows argued exactly that before phase-427 merged the two.
+    only through the compat shim is not declared on our own surface.
     """
     out = set()
     for r in rows:
         bucket = r.get("native_bucket") or r.get("bucket")
-        if bucket not in ("same", "systematic"):
+        if bucket not in DECLARED_BUCKETS:
             continue
         entry = ledger.get(ledger_key(lang, r["key"]))
         if entry is None or entry.get("verdict") != "gap":
             continue
-        if entry.get("disposition"):
+        if entry.get("owed"):
             continue
         out.add(ledger_key(lang, r["key"]))
     return sorted(out)
+
+
+def closed_gap_findings(ledger, per_lang_rows, root=ROOT):
+    """The ONE decision `--check` makes about a `gap`: (key, reason) pairs.
+
+    The self-test plants rows through this same function, so the property it
+    asserts is the one the gate enforces rather than a sibling of it.
+    """
+    found = {}
+    for lang, rows in per_lang_rows:
+        for key in stale_gaps(ledger, lang, rows):
+            found.setdefault(key, "declared on our side, and carries no `owed` witness")
+    for key, reason in broken_witnesses(ledger, root):
+        found.setdefault(key, reason)
+    return sorted(found.items())
 
 
 # The C++ refusal messages. Every `static_assert(detail::refuse<...>, MSG)`
@@ -1291,7 +1394,7 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
     misfiled = []
     same_shaped = []
     misdeclared = []
-    stale = []
+    per_lang_rows = []
     with tempfile.TemporaryDirectory() as tmpdir:
         for lang in langs:
             rows, prov, removed = run_lang(lang, tmpdir, include_internal)
@@ -1314,8 +1417,9 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
             # phase-428 Q1: a refusal is a declaration, so a refuse-loud
             # subject must be on OUR side of the correlation.
             misdeclared.extend(misdeclared_refusals(ledger, lang, rows))
-            # phase-444: a `gap` whose subject now correlates is a closed gap.
-            stale.extend(stale_gaps(ledger, lang, rows))
+            # phase-444 / issue 1463: a `gap` on a subject we declare is closed
+            # unless it names the witness that proves it open.
+            per_lang_rows.append((lang, rows))
 
             print("\n=== %s vs %s ===" % (lang, prov.get("package", "?")))
             if prov:
@@ -1451,18 +1555,20 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
                 print("  %s  is in %s.json, belongs in %s.json" % (key, was, want),
                       file=sys.stderr)
             return 1
-        closed = sorted(set(stale))
+        closed = closed_gap_findings(ledger, per_lang_rows)
         if closed:
             print(
-                "\n%d `gap` ledger row(s) name a subject that now CORRELATES (same or "
-                "systematic) and carry no disposition. A gap says ROS 2 has it and we "
-                "do not; this one shipped. Delete the row -- or, if a BEHAVIOUR is "
-                "still owed under the shared name, say what it is and add "
-                "`\"disposition\"` (one of: %s):" % (len(closed), ", ".join(DISPOSITIONS)),
+                "\n%d `gap` ledger row(s) may be CLOSED (issue 1463). A gap says ROS 2 "
+                "has it and we do not. Once our side declares the subject, or the "
+                "row's witness has left the tree, nothing else can tell. Delete the "
+                "row -- or, if a BEHAVIOUR is still owed under a name we ship, give it "
+                "`\"owed\": {\"what\": ..., \"witness\": {\"file\": ..., \"text\": ...}}` "
+                "naming the literal that exists BECAUSE it is owed (SCHEMA.md "
+                "\"owed\"). A disposition does not exempt a gap:" % len(closed),
                 file=sys.stderr,
             )
-            for key in closed:
-                print("  " + key, file=sys.stderr)
+            for key, reason in closed:
+                print("  %s  -- %s" % (key, reason), file=sys.stderr)
             return 1
         if require_disposition:
             missing = undisposed(ledger)
@@ -2235,30 +2341,86 @@ def self_test():
                       {"key": "V::m", "bucket": "theirs-only"}]),
           ["cpp:V", "cpp:V::m"])
 
-    # phase-444: a `gap` on a subject that now correlates is a closed gap,
-    # unless it carries a disposition (phase-428's behaviour findings do).
-    #   G  gap, same, no disposition           -> MUST be reported
-    #   Y  gap, systematic, no disposition     -> MUST be reported
-    #   B  gap, same, disposition adopt        -> must NOT be (behaviour owed)
-    #   T  gap, theirs-only                    -> must NOT be (still a gap)
-    #   N  gap, theirs-only natively, same only through the shim -> must NOT be
-    #   D  divergence, same                    -> must NOT be (not a gap)
-    gled_stale = {
-        "c:G": {"verdict": "gap", "why": "x"},
-        "c:Y": {"verdict": "gap", "why": "x"},
-        "c:B": {"verdict": "gap", "why": "x", "disposition": "adopt"},
-        "c:T": {"verdict": "gap", "why": "x"},
-        "c:N": {"verdict": "gap", "why": "x"},
-        "c:D": {"verdict": "divergence", "why": "x"},
-    }
-    grows_stale = [{"key": "G", "bucket": "same"},
-                   {"key": "Y", "bucket": "systematic"},
-                   {"key": "B", "bucket": "same"},
-                   {"key": "T", "bucket": "theirs-only"},
-                   {"key": "N", "bucket": "same", "native_bucket": "theirs-only"},
-                   {"key": "D", "bucket": "same"}]
-    check("a gap on a correlating subject with no disposition is a closed gap",
-          stale_gaps(gled_stale, "c", grows_stale), ["c:G", "c:Y"])
+    # phase-444 / issue 1463: a `gap` on a subject OUR side declares is a
+    # closed gap unless its `owed` witness is still in the tree. The
+    # disposition decides NOTHING -- the first version exempted every
+    # dispositioned gap and so could flag none. Planted as SHARD FILES and read
+    # back through `load_ledger`, and decided by `closed_gap_findings`, the
+    # function `--check` calls -- so this is the gate's own property, checked
+    # on every run, not a sibling of it asserted once.
+    #   S  gap, same, adopt-bounded, no owed       -> RED (1463's own case)
+    #   O  gap, ours-only, adopt-bounded, no owed  -> RED (init_with_args' reach)
+    #   Y  gap, systematic, no disposition, no owed -> RED
+    #   C  gap, same, owed, witness text GONE       -> RED (the work landed)
+    #   F  gap, same, owed, witness FILE gone       -> RED
+    #   W  gap, same, owed, witness present         -> green (behaviour owed)
+    #   T  gap, theirs-only, no owed                -> green (still absent)
+    #   N  gap, theirs-only natively, same through the shim -> green
+    #   D  divergence, same                         -> green (not a gap)
+    with tempfile.TemporaryDirectory() as plant:
+        shard_dir = os.path.join(plant, "ledger")
+        tree = os.path.join(plant, "tree")
+        os.makedirs(shard_dir)
+        os.makedirs(os.path.join(tree, "src"))
+        with open(os.path.join(tree, "src", "w.rs"), "w") as fh:
+            fh.write('pub const REFUSE: &str = "nothing parses --ros-args yet";\n')
+
+        def owed(file, text):
+            return {"what": "the parse", "witness": {"file": file, "text": text}}
+
+        with open(os.path.join(shard_dir, "init.json"), "w") as fh:
+            json.dump({
+                "_doc": "planted by api-parity --self-test (issue 1463)",
+                "c:S": {"verdict": "gap", "why": "LANDED. FIXED. still owed: x",
+                        "disposition": "adopt-bounded"},
+                "c:O": {"verdict": "gap", "why": "x", "disposition": "adopt-bounded"},
+                "c:Y": {"verdict": "gap", "why": "x"},
+                "c:C": {"verdict": "gap", "why": "x", "disposition": "adopt-bounded",
+                        "owed": owed("src/w.rs", "a refusal the fix deleted")},
+                "c:F": {"verdict": "gap", "why": "x", "disposition": "adopt",
+                        "owed": owed("src/gone.rs", "anything")},
+                "c:W": {"verdict": "gap", "why": "x", "disposition": "adopt-bounded",
+                        "owed": owed("src/w.rs", "nothing parses --ros-args yet")},
+                "c:T": {"verdict": "gap", "why": "x"},
+                "c:N": {"verdict": "gap", "why": "x"},
+                "c:D": {"verdict": "divergence", "why": "x"},
+            }, fh)
+        planted_ledger = load_ledger(shard_dir)
+        check("the planted gap shard is structurally valid",
+              validate_ledger(planted_ledger), [])
+        planted_rows = [{"key": "S", "bucket": "same"},
+                        {"key": "O", "bucket": "ours-only"},
+                        {"key": "Y", "bucket": "systematic"},
+                        {"key": "C", "bucket": "same"},
+                        {"key": "F", "bucket": "same"},
+                        {"key": "W", "bucket": "same"},
+                        {"key": "T", "bucket": "theirs-only"},
+                        {"key": "N", "bucket": "same", "native_bucket": "theirs-only"},
+                        {"key": "D", "bucket": "same"}]
+        check("a closed gap is RED whatever its disposition (issue 1463)",
+              [k for k, _ in closed_gap_findings(
+                  planted_ledger, [("c", planted_rows)], root=tree)],
+              ["c:C", "c:F", "c:O", "c:S", "c:Y"])
+
+    check("`owed` is refused on a verdict other than gap",
+          validate_owed("c:X", {"verdict": "divergence", "why": "x",
+                                "owed": {"what": "y",
+                                         "witness": {"file": "a", "text": "b"}}}) != [],
+          True)
+    check("`owed` needs a witness file and text",
+          len(validate_owed("c:X", {"verdict": "gap", "why": "x",
+                                    "owed": {"what": "y", "witness": {"file": ""}}})),
+          2)
+    check("`owed.witness.file` may not leave the checkout",
+          validate_owed("c:X", {"verdict": "gap", "why": "x",
+                                "owed": {"what": "y",
+                                         "witness": {"file": "../x", "text": "b"}}}) != [],
+          True)
+    # And the real ledger's witnesses must be in the real tree -- this half
+    # needs no correlation, so it is checked on the fast line too.
+    for key, reason in broken_witnesses(load_ledger()):
+        failures.append("ledger %s: %s -- the gap may have closed (issue 1463)"
+                        % (key, reason))
 
     # The inverse: every refusal MESSAGE the headers define must be cited by
     # some row, whatever its disposition. Planted both ways, and the reader
