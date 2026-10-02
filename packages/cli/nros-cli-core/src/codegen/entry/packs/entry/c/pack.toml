@@ -40,6 +40,7 @@ c_abi_runners = true
 templates = [
     { key = "entry_c.c", file = "entry.c.jinja" },
     { key = "node_body_c.jinja", file = "node_body.jinja" },
+    { key = "monitor_install_c.jinja", file = "monitor_install.jinja" },
     { key = "boot_wrapper_c.jinja", file = "boot_wrapper.jinja" },
     { key = "service_trailer_c.jinja", file = "service_trailer.jinja" },
 ]
