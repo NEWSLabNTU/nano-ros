@@ -61,3 +61,44 @@ descriptor to cargo (issue 1407), so the carriers stay for those roads until tha
 closes. This issue is the one that has to move FIRST: on a road that does name a
 descriptor, retiring a carrier nobody reads the replacement for would lose the
 fact outright.
+
+## Progress, 2026-10-03 — the three subscriber classes have a reader; `RX_BUF` is what is left
+
+**Wired (RFC-0100 D5).** `nros_sizing_descriptor::subscriber_payload_classes`
+computes the small/large classes from the descriptor's `subscription` rows, with
+the CALLER's ceiling, and `nros-rmw-zenoh/build.rs` ranks it FIRST for
+`NROS_SUBSCRIBER_BUFFER_SIZE`, `ZPICO_SUBSCRIBER_LARGE_SIZE` and
+`ZPICO_MAX_LARGE_SUBSCRIBERS`; the `NROS_DECLARED_*` carrier is the next rung.
+The classification is `PayloadClasses::add` — ONE Rust spelling, which the
+cargo-leaf join (`leaf_payload_classes::join`) now calls too (issue 1025). The
+CMake twin stays `_nros_bounds_publish_payload_classes`.
+
+It refuses (and the carrier rung answers) when the rows cannot be the whole
+subscribed set — `[image] subscription_entities` unstated or unequal to the row
+count — or a subscription row has no `wire_bound_bytes`. A class derived over a
+subset is the under-size D6 forbids.
+
+**Measured**, `nros-rmw-zenoh`'s generated consts, the descriptor being
+`examples/workspaces/cpp`'s `native_entry` (one `std_msgs/msg/Int32`
+subscription, bound 12) and the carriers its own configure emitted:
+
+| inputs | `SUBSCRIBER_BUFFER_SIZE` | `MAX_LARGE_SUBSCRIBERS` | `SUBSCRIBER_LARGE_SIZE` |
+| --- | --- | --- | --- |
+| neither (control) | 1024 | 2 | 16384 |
+| carriers only (`=12`, `=0`) | 12 | 0 | 16384 |
+| descriptor only | 12 | 0 | 16384 |
+| descriptor + conflicting carriers (`=999`, `=3`) | 12 | 0 | 16384 |
+| a REFUSING descriptor (`examples/native/rust/listener`, unbounded `String`) + those carriers | 999 | 3 | 16384 |
+
+No in-tree image changes size: the one bounded-subscription image with a
+contract (`examples/workspaces/cpp`) is a MULTI-ENTRY configure, which names no
+descriptor to cargo, so its carriers still decide — and they agree.
+
+**Ledger.** The three rows moved from this issue to issue 1407: the reason that
+keeps them is now the ROAD (a multi-entry configure and a Zephyr west entry name
+no descriptor to cargo), not a missing reader.
+
+**Still open here:** `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` (`RX_BUF`). Its
+basis is the CLOSURE — every type the image could receive or publish, because
+`DEFAULT_TX_BUF` aliases it — and no set of `[[endpoint]]` rows spans that, so it
+needs a descriptor field (an RFC-0100 D4 amendment) before any reader can exist.

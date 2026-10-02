@@ -78,9 +78,25 @@ fn main() {
     // large count below. The derivation publishes it only when something
     // received actually fits under the ceiling, so an absent variable is "no
     // answer" and the crate default stands.
+    //
+    // issue 1595 (RFC-0100 D5) -- and the DESCRIPTOR outranks that carrier. The
+    // three payload classes are computed HERE, over the descriptor's
+    // subscription rows, with this crate's own ceiling (the routing threshold
+    // below); the carrier is the fallback for a road that names no descriptor
+    // (a multi-entry cmake configure, a Zephyr west entry -- issue 1407) or one
+    // whose rows cannot be the whole subscribed set.
+    let size_threshold: usize = env_usize("ZPICO_SUBSCRIBER_SIZE_THRESHOLD", 2048);
+    let described_classes = described_payload_classes(sizing.as_ref(), size_threshold);
     let sub_size: usize = env_usize_rung(
         "NROS_SUBSCRIBER_BUFFER_SIZE",
-        declared_usize("NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE"),
+        match described_classes {
+            // Published only when something received fits under the ceiling,
+            // the derivation's own rule: 0 means "no small answer", and the
+            // carrier is NOT consulted then -- it is the same fact, derived
+            // elsewhere, and mixing the two would size one class from each.
+            Some(c) => (c.small_max > 0).then_some(c.small_max),
+            None => declared_usize("NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE"),
+        },
         1024,
     );
     // phase-454 W6.a - the `SLOT_BYTES` factor of the service inbox
@@ -223,10 +239,12 @@ fn main() {
     // and `DERIVED_PAYLOAD_ENV_KEYS` repeats for the leaf road.
     let large_size: usize = env_usize_rung(
         "ZPICO_SUBSCRIBER_LARGE_SIZE",
-        declared_usize("NROS_DECLARED_SUBSCRIBER_LARGE_SIZE"),
+        match described_classes {
+            Some(c) => (c.large_count > 0).then_some(c.large_max),
+            None => declared_usize("NROS_DECLARED_SUBSCRIBER_LARGE_SIZE"),
+        },
         16384,
     );
-    let size_threshold: usize = env_usize("ZPICO_SUBSCRIBER_SIZE_THRESHOLD", 2048);
     // Phase 403 W4 — the count of LARGE-class blocks, and 0 is legal.
     //
     // This carried issue 0827's floor of 1 until W4, on the stated ground that
@@ -257,7 +275,10 @@ fn main() {
     // unreachable, silently.
     let max_large: usize = env_usize_rung(
         "ZPICO_MAX_LARGE_SUBSCRIBERS",
-        declared_usize("NROS_DECLARED_LARGE_SUBSCRIBERS"),
+        match described_classes {
+            Some(c) => Some(c.large_count),
+            None => declared_usize("NROS_DECLARED_LARGE_SUBSCRIBERS"),
+        },
         2,
     );
     // Phase 268 — per-session per-node NN liveliness token cap. One zenoh
@@ -636,6 +657,32 @@ fn sizing_descriptor() -> Option<SizingDescriptor> {
 ///
 /// No crate prefix: cargo already stamps `nros-rmw-zenoh@<ver>:` on a build
 /// script's warning, and adding one prints the name twice.
+/// The three payload classes from the sizing descriptor, or `None` for "this
+/// rung has no answer" -- issue 1595, RFC-0100 D5.
+///
+/// The classification is `nros_sizing_descriptor::PayloadClasses::add`, the
+/// one Rust spelling of the rule (the cargo-leaf road's join calls it too), so
+/// the descriptor reader and the carrier it outranks cannot disagree about
+/// which side of the ceiling a type lands on. A refusal is PRINTED and falls to
+/// the carrier rung -- never to a number nobody derived (D6).
+fn described_payload_classes(
+    desc: Option<&SizingDescriptor>,
+    ceiling: usize,
+) -> Option<nros_sizing_descriptor::PayloadClasses> {
+    match nros_sizing_descriptor::subscriber_payload_classes(desc?, ceiling) {
+        Fact::Stated(c) => Some(c),
+        Fact::Absent => None,
+        Fact::Refused(reason) => {
+            warn(&format!(
+                "sizing descriptor cannot size the subscriber payload classes: {reason}. \
+                 NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE / _LARGE_SIZE / LARGE_SUBSCRIBERS \
+                 (or the crate defaults) decide them instead"
+            ));
+            None
+        }
+    }
+}
+
 fn warn(msg: &str) {
     println!("cargo::warning={msg}");
 }

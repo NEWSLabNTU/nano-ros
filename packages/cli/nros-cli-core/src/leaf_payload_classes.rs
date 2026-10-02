@@ -290,6 +290,9 @@ pub fn join(
     };
 
     let mut out = DerivedPayloadClasses::default();
+    // Issue 1595 -- the classification itself is `nros_sizing_descriptor`'s,
+    // the one Rust spelling `nros-rmw-zenoh`'s descriptor reader also calls.
+    let mut classes = nros_sizing_descriptor::PayloadClasses::default();
     let mut open: Vec<String> = Vec::new();
     let mut unpriced: Vec<String> = Vec::new();
     for (type_name, count) in subscribed {
@@ -302,13 +305,13 @@ pub fn join(
             open.push(format!("{type_name} ({})", bound.tag()));
             continue;
         };
-        if *rx > ceiling {
-            out.large_count += count;
-            out.large_max = out.large_max.max(*rx);
-        } else {
-            out.small_max = out.small_max.max(*rx);
+        for _ in 0..count {
+            classes.add(*rx, ceiling);
         }
     }
+    out.large_count = classes.large_count;
+    out.large_max = classes.large_max;
+    out.small_max = classes.small_max;
 
     // Checked before `unpriced`, the same order and for the same reason as the
     // CMake join: a type this image RECEIVES and this tree cannot bound is a
