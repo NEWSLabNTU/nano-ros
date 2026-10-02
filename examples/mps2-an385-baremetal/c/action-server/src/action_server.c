@@ -218,6 +218,9 @@ int nros_app_main(int argc, char** argv) {
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 8), 1);
     NROS_CHECK_RET(nros_executor_add_action_server(&app.executor, &app.action_server), 1);
 
+    // The readiness marker the harness waits on (`expect_ready`, phase-342 W7).
+    emit(NROS_LOG_SEVERITY_INFO, "Waiting for action goals", __FILE__, __LINE__);
+
     // Spin forever: `app_main` returning is the end of the image.
     nros_ret_t ret = rclc_executor_spin_period(&app.executor, 100000000ULL);
     if (ret != NROS_RET_OK) {

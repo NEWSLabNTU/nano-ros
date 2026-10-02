@@ -61,7 +61,7 @@ name = "alpha"
 default_namespace = "/"
 
 [package.metadata.nros.deploy.native]
-board = "native_sim/native/64"
+board = "zephyr"
 rmw = "zenoh"
 domain_id = 7
 locator = "tcp/127.0.0.1:7447"
