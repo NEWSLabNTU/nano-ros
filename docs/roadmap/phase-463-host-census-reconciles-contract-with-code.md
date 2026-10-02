@@ -527,6 +527,28 @@ Claim: phase-463-W7. Depends on: phase-463-W2, phase-463-W5, and the separate go
   whose constructor blocks on discovery cannot be censused, and says so
   (issue 0286's shape); the `unobserved` verdict is the honest result.
 
+### After the build path moved (reviewed 2026-10-03)
+
+Three things RFC-0065, phase-470 and phase-474 changed under this phase, for
+whoever picks up W6 or issue 1419's open items:
+
+* **`codegen/entry/emit_cpp.rs` no longer exists.** phase-474 W3/W4 deleted both
+  C-family emitters; every C and C++ entry renders through one generic pack
+  renderer from `LoweredEntry`, whose `LoweredProbe` is the metadata-probe tail.
+  The `emit_cpp.rs` rows in the parallel plan above are history: an edit they
+  name now lands in the C++ pack's templates (`codegen/entry/packs/entry/cpp/`) or in
+  `codegen/entry/lower.rs`.
+* **The Rust census producer and the C attribution gap are one move.** The
+  hooks are in `nros-cpp`'s `metadata_hooks.rs`, which a Rust node and a C node
+  opening its node through `nros-c` never reach. `nros-c` and `nros-cpp` both
+  depend on `nros`, and a Rust node's API IS `nros`, so hook bodies in `nros`
+  (behind `metadata-mode`, calls unconditional) reach all three languages from
+  one place — issue 1419's Rust item and issue 1556's item 1 together.
+* **The cargo road's census check belongs at `nros build` stage 4**, where that
+  road already resolves the image's model and writes its sizing descriptor, not
+  in a build script. The cmake configure keeps its check for a hand-run
+  `cmake --build` of the generated root.
+
 ## Composition with the declared-QoS and declared-params checks
 
 | check | keyed by | runs | sees | cannot see |
@@ -578,6 +600,13 @@ that is a census defect and a bug against this phase.
    file per entry, and the check compares each entry's census against the
    model that entry was generated from. Two entries sharing a component see
    it twice; that is correct, they may launch it with different parameters.
+   **Answered differently (issue 1419, 2026-10-01): one file per MODEL**, at
+   `<model-dir>/<stem>.census.json` (`census_path_for_model`), because the
+   model is the one document a host image and its cross siblings share — the
+   per-entry key named a file the cross configure could never find. That is
+   also the unit RFC-0100 D12 composes a shared runtime's descriptor over, so an
+   N:1 cmake configure's descriptor is trustworthy exactly when each of its
+   models' censuses is fresh.
 
 ## Docs to update when waves land
 

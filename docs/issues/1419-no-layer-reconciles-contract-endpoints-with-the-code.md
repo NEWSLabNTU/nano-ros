@@ -350,3 +350,37 @@ with a feature-set check, an `nm` check and the image-facts byte comparison.
 Acceptance for closing this issue is phase-463 W3's: the three edits above
 each refuse on the host with one named row, before any RTOS image is
 configured.
+
+## Revised direction for the two Rust items (2026-10-03, RFC-0100 Amendment 1)
+
+Re-read against the unified build path (RFC-0065 `nros build`, phase-470's
+generated entries, phase-474's one entry lowering):
+
+* **The Rust census producer — move the hooks, do not add a Rust copy.** The
+  hook bodies sit in `nros-cpp`'s `metadata_hooks.rs`; a Rust node's API is the
+  `nros` crate, and `nros-c` and `nros-cpp` both depend on `nros`. Moving the
+  bodies to `nros` (behind `metadata-mode`, calls unconditional) gives a Rust
+  node's node / timer / parameter creation the same hooks, and is also issue
+  1556's item 1 (a C node opening its node through `nros-c`). Then
+  `boot_hosted` honours `$NROS_CENSUS_OUT` for a Rust entry instead of refusing
+  it; the generated Rust entry is the `nros::main!` parity rendering
+  (RFC-0091 §7), so the switch belongs in the hosted arm `nros::main!` expands
+  to, not in an emitter.
+* **The cargo-road consumer — `nros build` stage 4, not a build script.** That
+  stage already resolves a cargo image's model and writes its sizing descriptor
+  (`cmd::build`), so it is the one place on the cargo road that holds both the
+  model and the image before any compile. A `build.rs` that refuses on a census
+  file would be a fourth reader of the census path and would fire inside every
+  incremental `cargo build`. The cmake configure keeps its check, because the
+  generated cmake root is a real build tree that may be rebuilt by hand.
+* **The census is per MODEL, which is what RFC-0100 D12 composes over** — so in
+  an N:1 cmake configure (several images sharing one runtime) the runtime's
+  descriptor is trustworthy exactly when each model's census is fresh. Nothing
+  to change here; recorded so the two are not designed apart.
+
+Files: the hook move — `packages/api/nros/`, `packages/api/nros-cpp/src/metadata_hooks.rs`,
+`packages/api/nros-c/src/`, `packages/boards/nros-board-linux/src/lib.rs`
+(`boot_hosted`); the consumer — `packages/cli/nros-cli-core/src/cmd/build.rs`
+(the cargo stage-4 block) and `cmd/entity_census.rs`. **Overlap warning:**
+`cmd/build.rs` is also where issue 1647's fix would make the first build the
+fixed point — coordinate with whoever holds 1647.
