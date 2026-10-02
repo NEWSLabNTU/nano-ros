@@ -426,6 +426,14 @@
     "verdict": "divergence",
     "why": "the `action_msgs/srv/CancelGoal` RPC-level return code (OK / REJECTED / UNKNOWN_GOAL / GOAL_TERMINATED), distinct from the per-goal `nros_cancel_response_t` above -- the C header says so itself. rclc has no counterpart: rcl_action hands the caller the generated `CancelGoal_Response` and the value is a field on it. RESOLVED (issue 0796): our Rust used to spell this same RPC-level enum `CancelResponse`, the name C and C++ use for the PER-GOAL decision, and `CallbackCtx::set_cancel_response` then took the RPC-level enum to express a per-goal accept/reject. Two concepts, three languages, one name. C was the only one that named them apart, and it is the one that needed a doc comment to explain the split -- so the other two followed it: `nros_core::CancelReturnCode` / `nros::CancelReturnCode` for the RPC status, `CancelResponse` for the per-goal decision everywhere. `set_cancel_response` now takes the per-goal one. Phase 379 W5."
   },
+  "c:executor_remove_action_client": {
+    "verdict": "extension",
+    "why": "rclc has no action removal either (its `rclc_executor_remove_*` family covers subscription, timer, client, service and guard condition only). The arena entry `nros_executor_add_action_client` registers holds the client struct as its callback context, and `nros_action_client_fini` is handed only the entity, so it cannot undo the entry, `handle_count` or the trigger table; this does all three, dropping the entry so the action leaves the graph and its slot and bytes are reused. Issue 1609."
+  },
+  "c:executor_remove_action_server": {
+    "verdict": "extension",
+    "why": "The server half of `c:executor_remove_action_client`, in rclc's `(executor, entity)` shape. Issue 1609."
+  },
   "c:feedback_callback_t": {
     "verdict": "divergence",
     "why": "the callback is bound to the ENTITY at creation (RFC-0041), so its type belongs to the action server/client rather than to the executor's add call. rclc's counterparts are passed to `rclc_executor_add_action_server` / `_client` -- the `executor-owns-no-entity-storage` rule, seen as a type. See the pubsub stage's `c:subscription_callback_t`. The client side: feedback arrives at a callback bound to the client rather than to a subscription the caller owns."

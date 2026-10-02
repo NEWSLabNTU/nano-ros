@@ -56,6 +56,14 @@
     "verdict": "extension",
     "why": "RFC-0002 section 4.2 / RFC-0047 / RFC-0079 -- the SchedContext surface, which ROS 2 has no counterpart for at all. A mixed-criticality image runs a 20 ms control loop and best-effort telemetry on ONE executor on ONE RTOS task, so the criticality ordering has to live in user space: N callbacks must not cost N kernel priority slots (RFC-0002 non-goal 3), and RFC-0079 exists because the raw kernel number is unwritable by hand -- each RTOS has its own range and its own DIRECTION. rclcpp's nearest answer is one `MultiThreadedExecutor` thread per priority, which an MCU cannot pay for. The auto-created FIFO context every unbound callback maps to, so 'no scheduling opinion' is a real value rather than a null."
   },
+  "c:executor_get_arena_capacity": {
+    "verdict": "extension",
+    "why": "the arena's total size (`NROS_EXECUTOR_ARENA_SIZE` as carved from the executor's inline backing). Paired with `c:executor_get_arena_used` it is the headroom, which rclc has no notion of because rclc allocates. Issue 1609."
+  },
+  "c:executor_get_arena_used": {
+    "verdict": "extension",
+    "why": "the arena's high-water mark. Since issue 1496 the arena reuses released regions before it moves its bump pointer, so a create/remove loop whose value stays at the first cycle's is REUSING its bytes and one that climbs is leaking them -- the measurement `action_remove_cycles.c` pins from C. Issue 1609."
+  },
   "c:executor_get_handle_count": {
     "verdict": "extension",
     "why": "how many arena slots are in use. The arena is a compile-time-sized table (`NROS_EXECUTOR_MAX_HANDLES`), so 'did my registrations fit?' is a real question with a cheap answer; rclc answers it only by failing the next `add_*`. See `c:executor_get_remaining_handles`."
@@ -111,7 +119,7 @@
   "c:executor_remove_*": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "rclc can drop a subscription, client, service, timer or guard condition from a spinning executor. static entity storage: the executor's entity table is an arena sized at compile time (`NROS_EXECUTOR_MAX_HANDLES`) with no allocator behind it, and a `HandleId` is an index into it. Registration is one-way -- no slot is ever reclaimed and no handle is ever invalidated. What a user loses: retiring an entity at runtime to reclaim its slot -- a mode change has to register every entity it may ever need at boot and gate them, which is also what a memory budget that must be known before flashing wants. This is a deliberate shape, not an oversight; if it is ever wanted, slot reuse needs handle generation counters first.",
+    "why": "rclc can drop a subscription, client, service, timer or guard condition from a spinning executor. static entity storage: the executor's entity table is an arena sized at compile time (`NROS_EXECUTOR_MAX_HANDLES`) with no allocator behind it, and a `HandleId` is an index into it. Registration is one-way for these five kinds -- the arena CAN now release a region (issue 1496), and the two action kinds use it (`c:executor_remove_action_server` / `_client`, issue 1609), but these kinds have no sized release yet; issue 1631 tracks them and `check-c-executor-remove-coverage` holds the list. What a user loses: retiring an entity at runtime to reclaim its slot -- a mode change has to register every entity it may ever need at boot and gate them, which is also what a memory budget that must be known before flashing wants. This is a deliberate shape, not an oversight; if it is ever wanted, slot reuse needs handle generation counters first.",
     "bucket": "theirs-only"
   },
   "c:executor_remove_on_shutdown_callback": {
