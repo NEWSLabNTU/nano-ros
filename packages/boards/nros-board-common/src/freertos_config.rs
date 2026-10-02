@@ -392,10 +392,12 @@ mod tests {
         const MEASURED_APP_STACK: usize = 65_536;
         let budget = default_dds_heap_bytes(C_CARRIER_APP_STACK_BYTES);
         assert!(budget >= MEASURED_PEAK);
-        assert!(
-            DEFAULT_HEAP_DDS_WORKING_SET_BYTES * 2 >= (MEASURED_PEAK - MEASURED_APP_STACK) * 3,
-            "the DDS working-set term no longer carries 1.5x what was measured"
-        );
+        const {
+            assert!(
+                DEFAULT_HEAP_DDS_WORKING_SET_BYTES * 2 >= (MEASURED_PEAK - MEASURED_APP_STACK) * 3,
+                "the DDS working-set term no longer carries 1.5x what was measured"
+            )
+        };
     }
 
     /// Issue 1624 — `FreeRTOSConfig.h` is a C header and cannot call this
