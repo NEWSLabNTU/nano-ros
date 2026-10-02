@@ -156,9 +156,28 @@ typedef struct rmw_mut_byte_span_t {
     uint8_t *data;
     /** In: bytes available at `data`. */
     size_t capacity;
-    /** Out: bytes actually written. Undefined on failure. */
+    /** Out: bytes actually written.
+     *
+     *  On `NROS_RMW_RET_BUFFER_TOO_SMALL` from the subscription `take` slot it
+     *  is the size the refused sample NEEDED, or
+     *  `NROS_RMW_TAKE_LEN_UNKNOWN` when the backend cannot know it (issue
+     *  1612). Undefined on every other failure. */
     size_t len;
 } rmw_mut_byte_span_t;
+
+/** `rmw_mut_byte_span_t.len` after a too-small `take` whose sample size the
+ *  backend does not know — issue 1612.
+ *
+ *  ZERO, and that is what makes the rule additive rather than a flag day: a
+ *  sample of zero bytes fits every buffer, so no real refusal can need zero,
+ *  and the CALLER sets `len` to zero before the call. A backend written before
+ *  this rule, which never touches `len` on failure, therefore reports
+ *  "unknown" rather than garbage, and the slot's signature does not move.
+ *
+ *  Before it, a too-small take could only say THAT the sample did not fit:
+ *  "non-negative = bytes, negative = error" left no room for a size, so the
+ *  drop log named the buffer and never the sample. */
+#define NROS_RMW_TAKE_LEN_UNKNOWN 0
 
 /** A message type's identity — phase-406 W1.
  *

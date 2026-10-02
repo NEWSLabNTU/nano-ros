@@ -175,6 +175,38 @@ unsafe extern "C" fn stub_take_too_small(
         }
     }
 }
+/// Issue 1612 — what the refusing stub does with the span's `len`. One stub
+/// and one registered name for all three cells: the registry holds
+/// `MAX_BACKENDS` names per process and this binary already uses most of them.
+const REFUSED_SAMPLE_LEN: usize = 500;
+/// The backend knows the size and writes it, as `rmw_vtable.h` now asks.
+const WRITES_SIZE: u8 = 0;
+/// A backend written before the rule: never touches `len` on a refusal.
+const LEAVES_LEN: u8 = 1;
+/// A backend that breaks the rule: writes a `len` that would have FIT.
+const WRITES_FITTING_LEN: u8 = 2;
+static REFUSAL_MODE: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(WRITES_SIZE);
+unsafe extern "C" fn stub_take_refuses(
+    _: *const NrosRmwSubscription,
+    buf: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
+    taken: *mut bool,
+) -> NrosRmwRet {
+    unsafe {
+        assert_eq!(
+            (*buf).len,
+            nros_rmw_cffi::generated::NROS_RMW_TAKE_LEN_UNKNOWN as usize,
+            "the caller must pre-set `len` to UNKNOWN, or a backend that never \
+             writes it reports whatever was there"
+        );
+        match REFUSAL_MODE.load(Ordering::SeqCst) {
+            WRITES_SIZE => (*buf).len = REFUSED_SAMPLE_LEN,
+            WRITES_FITTING_LEN => (*buf).len = 1,
+            _ => {}
+        }
+        *taken = false;
+    }
+    NROS_RMW_RET_BUFFER_TOO_SMALL
+}
 unsafe extern "C" fn stub_has_data(
     _: *mut NrosRmwSubscription,
     out_has_data: *mut bool,
@@ -317,6 +349,11 @@ const fn make_vtable_too_small() -> NrosRmwVtable {
         ..make_vtable_fallback()
     }
 }
+
+static VTABLE_REFUSES: NrosRmwVtable = NrosRmwVtable {
+    take: Some(stub_take_refuses),
+    ..make_vtable_fallback()
+};
 
 static VTABLE_NATIVE: NrosRmwVtable = make_vtable_native();
 static VTABLE_FALLBACK: NrosRmwVtable = make_vtable_fallback();
@@ -587,4 +624,41 @@ fn take_sequence_fallback_errors_when_nothing_was_taken() {
         .take_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
         .expect_err("nothing was delivered, so the status is not deferred");
     assert_eq!(err, TransportError::BufferTooSmall);
+}
+
+/// Issue 1612 — a too-small take reaches the caller as `refused_sample_len`,
+/// beside the error it always produced: the size when the backend wrote one,
+/// UNKNOWN when it did not (a backend predating the rule), and UNKNOWN when
+/// the number it wrote would have fit (a breach is not a size).
+#[test]
+fn a_refused_take_reports_the_size_the_sample_needed() {
+    let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+    let mut sub = open_subscriber("tb_refused_len", &VTABLE_REFUSES);
+    assert_eq!(sub.refused_sample_len(), None, "nothing refused yet");
+    let mut buf = [0u8; 16];
+    for (mode, want, why) in [
+        (
+            WRITES_SIZE,
+            Some(REFUSED_SAMPLE_LEN),
+            "the backend said the sample needed 500 bytes; the drop log can \
+             only print what reaches here",
+        ),
+        (
+            LEAVES_LEN,
+            None,
+            "a backend that never writes `len` must read as unknown",
+        ),
+        (
+            WRITES_FITTING_LEN,
+            None,
+            "a `len` that would have fit is a breach, not a size",
+        ),
+    ] {
+        REFUSAL_MODE.store(mode, Ordering::SeqCst);
+        assert_eq!(
+            sub.take_serialized(&mut buf),
+            Err(TransportError::BufferTooSmall)
+        );
+        assert_eq!(sub.refused_sample_len(), want, "{why}");
+    }
 }

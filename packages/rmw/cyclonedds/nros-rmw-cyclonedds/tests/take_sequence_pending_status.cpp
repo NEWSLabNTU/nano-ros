@@ -28,6 +28,7 @@
 #include <thread>
 #include <chrono>
 
+#include "nros/rmw_entity.h"
 #include "nros/rmw_ret.h"
 #include "nros/rmw_vtable.h"
 #include "nros_rmw_cyclonedds.h"
@@ -115,9 +116,9 @@ int main() {
     uint8_t small_cdr[64];
     uint8_t big_cdr[512];
     const size_t small_len = build_cdr(small_cdr, sizeof(small_cdr), "hi");
-    const size_t big_len = build_cdr(
-        big_cdr, sizeof(big_cdr),
-        "this string is comfortably longer than the slot the drain will be given");
+    const size_t big_len =
+        build_cdr(big_cdr, sizeof(big_cdr),
+                  "this string is comfortably longer than the slot the drain will be given");
     if (small_len == 0 || big_len == 0 || big_len <= small_len) {
         std::fprintf(stderr, "test payloads are wrong: small=%zu big=%zu\n", small_len, big_len);
         return 5;
@@ -141,8 +142,7 @@ int main() {
     bool saw_too_small = false;
     for (int attempt = 0; attempt < 40 && !saw_too_small; ++attempt) {
         size_t taken = 0;
-        rmw_ret_t rc =
-            g_vt->take_sequence(&sub, buf, per_msg_cap, kMaxMsgs, out_lens, &taken);
+        rmw_ret_t rc = g_vt->take_sequence(&sub, buf, per_msg_cap, kMaxMsgs, out_lens, &taken);
         if (rc == NROS_RMW_RET_BUFFER_TOO_SMALL) {
             saw_too_small = true;
             // Contract: the status call reports nothing else. `taken` is only
@@ -196,10 +196,55 @@ int main() {
         return 13;
     }
 
+    // Issue 1612 — a refusal names the size the sample NEEDED, on both roads
+    // to it: the single `take` refusing directly, and the single `take`
+    // reporting a refusal a batch parked. The span's `len` starts at UNKNOWN,
+    // as the caller sets it, so a backend that forgot would read as 0 here.
+    for (int road = 0; road < 2; ++road) {
+        if (g_vt->publish(&pub, rmw_byte_span_t{big_cdr, big_len}) != NROS_RMW_RET_OK) {
+            std::fprintf(stderr, "publish failed\n");
+            return 14;
+        }
+        rmw_ret_t rc_refused = NROS_RMW_RET_OK;
+        rmw_mut_byte_span_t span{buf, per_msg_cap, NROS_RMW_TAKE_LEN_UNKNOWN};
+        for (int attempt = 0; attempt < 40; ++attempt) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(25));
+            if (road == 1) {
+                // Park it: the batch consumes the sample and returns its count.
+                size_t parked_count = 0;
+                if (g_vt->take_sequence(&sub, buf, per_msg_cap, kMaxMsgs, out_lens,
+                                        &parked_count) != NROS_RMW_RET_OK) {
+                    std::fprintf(stderr, "take_sequence failed while parking\n");
+                    return 15;
+                }
+            }
+            bool took = false;
+            span.len = NROS_RMW_TAKE_LEN_UNKNOWN;
+            rc_refused = g_vt->take(&sub, &span, &took);
+            if (rc_refused != NROS_RMW_RET_OK || took) {
+                break;
+            }
+        }
+        if (rc_refused != NROS_RMW_RET_BUFFER_TOO_SMALL) {
+            std::fprintf(stderr, "road %d: expected BUFFER_TOO_SMALL, got %d\n", road,
+                         static_cast<int>(rc_refused));
+            return 16;
+        }
+        if (span.len != big_len) {
+            std::fprintf(stderr,
+                         "road %d: refusal reported len %zu, the sample needed %zu "
+                         "(buffer %zu)\n",
+                         road, span.len, big_len, per_msg_cap);
+            return 17;
+        }
+        std::printf("road %d: %zu-byte sample refused by a %zu-byte buffer, len reported %zu\n",
+                    road, big_len, per_msg_cap, span.len);
+    }
+
     g_vt->destroy_publisher(&pub);
     g_vt->destroy_subscription(&sub);
     (void)g_vt->destroy_session(&s);
     std::printf("OK take_sequence_pending_status — 1 delivered, BUFFER_TOO_SMALL reported once, "
-                "then cleared\n");
+                "then cleared; refusals name the sample's size\n");
     return 0;
 }

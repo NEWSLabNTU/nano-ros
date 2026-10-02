@@ -2859,6 +2859,24 @@ pub trait Subscription {
     /// error (preferred).
     fn take_serialized(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
 
+    /// Issue 1612 — how many bytes the sample the most recent take REFUSED
+    /// as too big for the caller's buffer needed.
+    ///
+    /// Read it right after a take returns `BufferTooSmall`; a later take may
+    /// overwrite it. `None` means the backend does not know the size (the
+    /// default, and the honest answer for one that never measured it), never
+    /// "zero bytes" — a zero-byte sample fits every buffer, so no refusal can
+    /// need zero.
+    ///
+    /// A query beside the error rather than a payload on
+    /// `TransportError::BufferTooSmall`: that variant is the same word a dozen
+    /// unrelated paths return (arena exhaustion, a short reply buffer), so
+    /// giving it a field would make every one of them invent a size. Only a
+    /// take ever has one, and only a take is asked.
+    fn refused_sample_len(&self) -> Option<usize> {
+        None
+    }
+
     /// Phase 128.F.4 — receive with attachment bytes alongside the
     /// payload.
     ///

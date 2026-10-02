@@ -1033,7 +1033,7 @@ unsafe extern "C" fn take_trampoline<R: RustBackend>(
                 unsafe { *taken = false };
                 NROS_RMW_RET_OK
             }
-            Err(e) => ret_from_error(&e),
+            Err(e) => refused_take_ret(s, &e, out_len),
         };
     }
 
@@ -1050,8 +1050,29 @@ unsafe extern "C" fn take_trampoline<R: RustBackend>(
             unsafe { *taken = false };
             NROS_RMW_RET_OK
         }
-        Err(e) => ret_from_error(&e),
+        Err(e) => refused_take_ret(s, &e, out_len),
     }
+}
+
+/// Issue 1612 — a Rust backend's refused take, carried across the C ABI.
+///
+/// The status alone says THAT the sample did not fit; `rmw_vtable.h` now
+/// also asks for `out->len` to say how big it was. The Rust backend answers
+/// through [`Subscription::refused_sample_len`], so this is where the two
+/// halves meet. Unknown leaves `len` at the caller's
+/// `NROS_RMW_TAKE_LEN_UNKNOWN`, which is the answer the header gives for it.
+fn refused_take_ret<S: Subscription<Error = TransportError>>(
+    s: &S,
+    e: &TransportError,
+    out_len: *mut usize,
+) -> NrosRmwRet {
+    if matches!(e, TransportError::BufferTooSmall) {
+        if let Some(needed) = s.refused_sample_len() {
+            // SAFETY: the caller checked `out_len` non-null before the take.
+            unsafe { *out_len = needed };
+        }
+    }
+    ret_from_error(e)
 }
 
 unsafe extern "C" fn has_data_trampoline<R: RustBackend>(

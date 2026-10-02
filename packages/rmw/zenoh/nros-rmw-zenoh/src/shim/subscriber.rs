@@ -984,6 +984,21 @@ fn query_history(context: &Context, handle: i32, key: &str, topic: &str) {
 // ============================================================================
 
 /// Zenoh subscriber wrapping nros-rmw-zenoh ZenohSubscriber
+/// The one spelling of "the head sample does not fit the caller's buffer".
+///
+/// Drops it — a sample nobody can take would wedge the ring — and records how
+/// big it was, which is what [`Subscription::refused_sample_len`] reports
+/// (issue 1612). Every refusal site goes through here, so none of them can
+/// drop a sample and forget its size.
+pub(super) fn refuse_oversized_head(
+    buffer: &SubscriberBuffer,
+    len: usize,
+    refused: &core::cell::Cell<Option<usize>>,
+) {
+    buffer.consume_head();
+    refused.set(Some(len));
+}
+
 pub struct ZenohSubscriber {
     /// The subscriber handle (kept alive to maintain subscription)
     _subscriber: crate::zpico::Subscriber<'static>,
@@ -1026,6 +1041,12 @@ pub struct ZenohSubscriber {
     /// (`take_serialized`) has always done consume-then-refuse, so the two entry
     /// points contradicted each other on the same subscriber.
     pending_too_small: core::cell::Cell<bool>,
+    /// Issue 1612 — the ring length of the sample the last refusal dropped,
+    /// for [`Subscription::refused_sample_len`]. The ring stores every
+    /// sample's exact length before any take sees it, so this backend always
+    /// knows; a refusal parked by `take_sequence` records it at park time,
+    /// and the take that later reports the park leaves it alone.
+    refused_len: core::cell::Cell<Option<usize>>,
     /// Phase 108.C.zenoh.3 — sample lifespan in ms (`0` = infinite).
     /// Captured from QoS at create time; samples whose attachment
     /// timestamp is older than `now - lifespan_ms` are dropped in
@@ -1255,6 +1276,7 @@ impl ZenohSubscriber {
             msg_lost_total: core::cell::Cell::new(0),
             msg_lost_cb: core::cell::Cell::new(None),
             pending_too_small: core::cell::Cell::new(false),
+            refused_len: core::cell::Cell::new(None),
             // nros-qos-honours: LIFESPAN — `take_serialized` drops a sample
             // whose attachment timestamp is older than `now - lifespan_ms`
             // instead of delivering it.
@@ -1554,7 +1576,7 @@ impl ZenohSubscriber {
         if len > buf.len() {
             // Oversized for the caller's buffer — drop the slot so the
             // subscription isn't permanently stuck.
-            buffer.consume_head();
+            refuse_oversized_head(buffer, len, &self.refused_len);
             return Err(TransportError::BufferTooSmall);
         }
 
@@ -1615,7 +1637,7 @@ impl ZenohSubscriber {
         if len > buf.len() {
             // Oversized for the caller's buffer — drop the slot; the
             // subscription recovers on the next message.
-            buffer.consume_head();
+            refuse_oversized_head(buffer, len, &self.refused_len);
             return Err(TransportError::BufferTooSmall);
         }
 
@@ -1665,7 +1687,7 @@ impl Subscription for ZenohSubscriber {
         if len > buf.len() {
             // Oversized for the caller's buffer — drop the slot; the
             // subscription recovers on the next message.
-            buffer.consume_head();
+            refuse_oversized_head(buffer, len, &self.refused_len);
             return Err(TransportError::BufferTooSmall);
         }
 
@@ -1699,6 +1721,10 @@ impl Subscription for ZenohSubscriber {
         buffer.consume_head();
 
         Ok(Some(len))
+    }
+
+    fn refused_sample_len(&self) -> Option<usize> {
+        self.refused_len.get()
     }
 
     fn has_data(&self) -> bool {
@@ -1907,7 +1933,7 @@ impl Subscription for ZenohSubscriber {
                 // (`subscriber.cpp:341`) so the two backends now agree on the
                 // count as well as the status; continuing would have made zenoh
                 // deliver a different number of messages for the same burst.
-                buffer.consume_head();
+                refuse_oversized_head(buffer, len, &self.refused_len);
                 self.pending_too_small.set(true);
                 break;
             }
@@ -2093,6 +2119,16 @@ pub(super) mod tests {
         slot: usize,
         recv_buf: &mut [u8],
     ) -> Result<Option<usize>, TransportError> {
+        take_subscription_recording(slot, recv_buf, &core::cell::Cell::new(None))
+    }
+
+    /// `take_subscription`, with the refused-size cell a `ZenohSubscriber`
+    /// carries, so a test can read what the refusal recorded.
+    pub(in crate::shim) fn take_subscription_recording(
+        slot: usize,
+        recv_buf: &mut [u8],
+        refused: &core::cell::Cell<Option<usize>>,
+    ) -> Result<Option<usize>, TransportError> {
         let buf_ref = SubscriberBufferRef::new(slot);
         let buffer = buf_ref.get();
 
@@ -2101,7 +2137,7 @@ pub(super) mod tests {
         };
         let len = buffer.ring_len[s];
         if len > recv_buf.len() {
-            buffer.consume_head();
+            refuse_oversized_head(buffer, len, refused);
             return Err(TransportError::BufferTooSmall);
         }
         recv_buf[..len].copy_from_slice(buffer.payload_slot(s, len));
@@ -2457,8 +2493,12 @@ pub(super) mod tests {
         simulate_subscription_callback(slot, &payload);
 
         let mut small_buf = [0u8; 256];
-        let result = take_subscription(slot, &mut small_buf);
+        let refused = core::cell::Cell::new(None);
+        let result = take_subscription_recording(slot, &mut small_buf, &refused);
         assert!(matches!(result, Err(TransportError::BufferTooSmall)));
+        // Issue 1612 — the refusal names the sample's size, not only that it
+        // did not fit: this is what reaches the drop log beside the 256.
+        assert_eq!(refused.get(), Some(512));
 
         // Slot consumed (the message that didn't fit is dropped).
         let buffer = SubscriberBufferRef::new(slot).get();

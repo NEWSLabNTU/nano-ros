@@ -192,7 +192,10 @@ rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_s
         return NROS_RMW_RET_OK;
     }
     if (buf_len < state->meta->o_size) {
-        // Don't drain — caller may retry with a larger buffer.
+        // Don't drain — caller may retry with a larger buffer. Issue 1612: a
+        // uORB sample is always `o_size` bytes, so the refusal names the size
+        // the retry needs.
+        *out_len = static_cast<size_t>(state->meta->o_size);
         return NROS_RMW_RET_BUFFER_TOO_SMALL;
     }
     if (orb_copy(state->meta, state->sub_handle, buf) != 0) {
