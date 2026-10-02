@@ -1,15 +1,17 @@
 //! Phase 211.I — mixed-RMW bridge e2e.
 //!
-//! Reuses the Phase 110.G `tt-zenoh-to-xrce` bridge example as the gateway
-//! fixture: it opens TWO RMW sessions in one process (zenoh ingress + XRCE
-//! egress) via `Executor::open_with_rmw` + a second per-node `rmw()` builder
-//! step, copies bytes from the zenoh `/chatter` subscription into a shared
-//! buffer, and republishes them on XRCE under a TT-gated egress window.
+//! The gateway is the `bridge-zenoh-to-xrce-fwd` fixture
+//! (`packages/testing/nros-tests/bins/`): it opens TWO RMW sessions in one
+//! process (zenoh ingress + XRCE egress) via `Executor::open_with_rmw` + a
+//! second per-node `rmw()` builder step, and its zenoh `/chatter` callback
+//! republishes each sample directly on XRCE. (This doc used to name the Phase
+//! 110.G `tt-zenoh-to-xrce` example as the gateway; the resolver had already
+//! selected the `bins/` row, and that example was deleted by phase-477.)
 //!
 //! ## Topology
 //!
 //! ```text
-//!   native_rs_talker  ─── zenoh ───►  zenohd  ───► tt-zenoh-to-xrce bridge
+//!   native_rs_talker  ─── zenoh ───►  zenohd  ───► bridge-zenoh-to-xrce-fwd
 //!   (rmw-zenoh fixture)               (router)         │
 //!                                                      │  in-process pump
 //!                                                      ▼

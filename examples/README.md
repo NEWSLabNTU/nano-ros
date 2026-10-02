@@ -9,7 +9,6 @@ Copy-out templates for users porting nano-ros to a new platform and language.
 ```
 examples/
 ├── <platform>/<language>/<example>/           # canonical
-├── bridges/<name>/                            # cross-RMW gateways
 ├── workspaces/<language-or-mix>/              # Node + Bringup + Entry workspaces
 └── templates/<name>/                          # multi-platform recipes (Pattern A workspace, etc.)
 ```
@@ -372,15 +371,17 @@ Phase 118.I blocks untriaged retired RMW roots.
 
 ## Sibling categories
 
-### `bridges/` — cross-RMW gateways
+### Cross-RMW bridges live in `workspaces/`, not a category of their own
 
-Examples that bridge two RMW backends; span the transport slot so they don't fit one platform cell. See [`book/src/user-guide/cross-backend-bridges.md`](../book/src/user-guide/cross-backend-bridges.md) for the model + build-knob walkthrough.
-
-The shape is `bridges/<lang>/<name>/` — the category drops the PLATFORM level (a
-gateway is a host process), never the language one.
-
-- `bridges/rust/tt-zenoh-to-xrce/` — Rust bridge, zenoh ↔ XRCE-DDS
-- `bridges/rust/tt-zenoh-to-cyclonedds/` — Rust bridge, zenoh ↔ Cyclone DDS
+There is no `bridges/` category. It held two hand-written time-triggered
+gateways (`tt-zenoh-to-xrce`, `tt-zenoh-to-cyclonedds`) that no fixture row,
+lane or `system.toml` ever built, and phase-477 deleted them. A
+bridge is a `[[bridge]]` row in a workspace's `system.toml`:
+[`workspaces/bridge-cyclonedds/`](workspaces/bridge-cyclonedds/) and
+[`workspaces/bridge-xrce/`](workspaces/bridge-xrce/) below, both built and
+e2e-tested. See
+[`book/src/user-guide/cross-backend-bridges.md`](../book/src/user-guide/cross-backend-bridges.md)
+for the model and the build knobs.
 
 ### `workspaces/` — product-shaped multi-package workspaces
 

@@ -45,9 +45,9 @@ static NATIVE_CT_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Phase 115.F — cached path to the custom-transport-listener example.
 static NATIVE_CT_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Phase 211.I — cached path to the `tt-zenoh-to-xrce` bridge binary used by
-/// the mixed-RMW bridge e2e (Phase 110.G.bridge example reused as fixture).
-static NATIVE_BRIDGE_TT_ZENOH_XRCE_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// Phase 211.I — cached path to the `bridge-zenoh-to-xrce-fwd` fixture used by
+/// the mixed-RMW bridge e2e (`tests/bridge_mixed_rmw.rs`).
+static NATIVE_BRIDGE_ZENOH_XRCE_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Issue #53 — cached path to the `bridge-zenoh-to-cyclonedds-fwd` fixture
 /// (the stock-cyclonedds sibling of `bridge-zenoh-to-xrce-fwd`).
@@ -5078,17 +5078,14 @@ pub fn build_native_custom_transport_talker() -> TestResult<&'static Path> {
 /// Phase 211.I — resolve the prebuilt mixed-RMW bridge fixture binary
 /// (`packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd`). Used by
 /// `tests/bridge_mixed_rmw.rs` to forward zenoh `/chatter` samples into an
-/// XRCE-DDS session. A minimal sibling to the Phase 110.G
-/// `tt-zenoh-to-xrce` example: same dual-session topology, but the type
-/// name matches `std_msgs::msg::Int32` (the type the talker/listener
-/// fixtures use) and no TT-window gating — the 211.I assertion is "a
-/// sample crosses the RMW boundary", which the TT example's String-type
-/// constants would block at keyexpr registration.
+/// XRCE-DDS session: two RMW sessions in one process, one zenoh-side callback
+/// republishing directly onto the XRCE egress, with no time-triggered window
+/// gating. Its type constants are documented in the bin's own `main.rs`.
 ///
 /// The fixture sits in its own Cargo workspace (`[workspace]` table); the
 /// test skips cleanly when the binary is missing.
 pub fn build_bridge_zenoh_to_xrce_fwd() -> TestResult<&'static Path> {
-    NATIVE_BRIDGE_TT_ZENOH_XRCE_BINARY
+    NATIVE_BRIDGE_ZENOH_XRCE_BINARY
         .get_or_try_init(|| {
             let row = crate::fixtures::groups::select_sole_row(
                 "packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd",
@@ -5105,7 +5102,7 @@ pub fn build_bridge_zenoh_to_xrce_fwd() -> TestResult<&'static Path> {
 /// `tests/bridge_zenoh_to_cyclonedds.rs` to forward zenoh `/chatter` samples onto
 /// a Cyclone DDS egress session. The stock-cyclonedds sibling of
 /// [`build_bridge_zenoh_to_xrce_fwd`]; links the vendored CycloneDDS and stages
-/// the `std_msgs/Int32` descriptor before raw publish. Its own Cargo workspace;
+/// the `std_msgs/String` descriptor before raw publish. Its own Cargo workspace;
 /// the test skips cleanly when the binary is missing.
 pub fn build_bridge_zenoh_to_cyclonedds_fwd() -> TestResult<&'static Path> {
     NATIVE_BRIDGE_ZENOH_CYCLONEDDS_BINARY

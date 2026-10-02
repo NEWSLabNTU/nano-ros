@@ -11,8 +11,10 @@
 //! A directory under `examples/` that carries a `package.xml` and is a
 //! standalone copy-out project (per CLAUDE.md "Examples = Standalone
 //! Projects"). Excluded from per-leaf gating:
-//! - `examples/templates/`, `examples/bridges/` — sibling categories with
-//!   their own conventions (same carve-out as `examples_canonical_shape.rs`).
+//! - `examples/templates/` — a sibling category with its own conventions
+//!   (same carve-out as `examples_canonical_shape.rs`). `examples/bridges/`
+//!   was skipped here too, which is how its two leaves went unbuilt by any
+//!   lane without this gate noticing; phase-477 deleted it.
 //! - `examples/workspaces/<ws>/src/<pkg>` — workspace *member* packages are
 //!   not independent cells; the workspace is built as a unit by
 //!   `scripts/build/workspace-fixtures-build.sh` and exercised end-to-end by
@@ -44,7 +46,7 @@ use std::{
 };
 
 /// Top-level `examples/` children skipped wholesale.
-const SKIP_TOP_LEVEL: &[&str] = &["templates", "bridges"];
+const SKIP_TOP_LEVEL: &[&str] = &["templates"];
 
 // phase-350 W1.c — the `ZEPHYR_LANGS` x `ZEPHYR_ROLES` constants that lived
 // here are GONE. They were the THIRD spelling of the zephyr matrix: the bash

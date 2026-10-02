@@ -36,7 +36,7 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 EXAMPLES = REPO / "examples"
-SKIP_TOP = {"workspaces", "templates", "bridges"}
+SKIP_TOP = {"workspaces", "templates"}
 
 # Platforms whose binaries run on the host; everything else is cross-built and
 # run under QEMU / on hardware, so we point at the platform README instead of

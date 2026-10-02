@@ -222,8 +222,9 @@ Two things that ARE proven and remove risk:
 
 - **`publish_raw` / `subscription_take` are already public** on both the C and C++
   APIs. The direct example needs no new data-plane machinery.
-- **Two live backends in one image works.** `examples/bridges/rust/tt-zenoh-to-cyclonedds`
-  does `nros_rmw_zenoh::register()` + `nros_rmw_cyclonedds_sys::register()` then
+- **Two live backends in one image works.** `packages/testing/nros-tests/bins/bridge-zenoh-to-cyclonedds-fwd`
+  (the gateway the mixed-RMW e2e runs; this line cited `examples/bridges/rust/tt-zenoh-to-cyclonedds`
+  until phase-477 deleted that example, which made the same calls) does `nros_rmw_zenoh::register()` + `nros_rmw_cyclonedds_sys::register()` then
   `Executor::open_with_rmw("zenoh", &cfg)` and opens a second session.
   `open_with_rmw` takes the backend by **name**, so build-time selection needs
   only a cargo feature choosing which `register()` compiles in and which name
@@ -859,6 +860,15 @@ is a second example; when it does not, the honest answer is one.
 
 - [x] **W4.1** Decided: leave them. Recorded above with the measurement.
 
+**Superseded 2026-10-03 (phase-477): both were deleted.** W4 asked
+whether the two should be ONE example, and the answer above stands — they were
+not duplicates. Phase-477 asked a different question, whether anything built
+them: no `fixtures.toml` row, no `system.toml`, no lane, and the mixed-RMW e2e
+tests already resolved their own `bins/bridge-zenoh-to-{xrce,cyclonedds}-fwd`
+fixtures. The setup-contract difference W4 measured (Cyclone's staged
+descriptor vs XRCE's lazy registration) survives in those two fixtures and in
+the declarative `examples/workspaces/bridge-{cyclonedds,xrce}/`.
+
 **No code change.** The value here was refusing a refactor that a surface
 resemblance suggested — the two bridges look like duplicates in a directory
 listing and are not in the source.
@@ -889,7 +899,7 @@ listing and are not in the source.
 | W1 | PX4 SITL module links `libnros_cpp.a`; `nm` shows resolved nano-ros symbols; module starts from pxh |
 | W2 | a stock PX4 consumer (`listener <topic>`) prints a message published by the nano-ros node, asserted by a test |
 | W3 | a real ROS 2 subscriber receives a stock PX4 module's uORB topic through the bridge; same source builds against a second backend |
-| W4 | decision recorded here before any edit to `examples/bridges/rust/tt-zenoh-to-*` |
+| W4 | decision recorded here before any edit to the (since deleted, phase-477) `tt-zenoh-to-*` bridge examples |
 
 ## Provenance
 

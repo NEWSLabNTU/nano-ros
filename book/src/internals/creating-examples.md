@@ -12,8 +12,12 @@ Every example is a **self-contained, copy-out project** under one of:
 | Path | Used for |
 |---|---|
 | `examples/<plat>/<lang>/<example>/` | The standard cell. RMW is selected at **build time** (Cargo features / `-DNANO_ROS_RMW=` / Kconfig overlay), not encoded in the path. A single-package "app" example here is the canonical **starter** shape; the multi-package workspace shape (Node + Bringup + Entry pkgs) kicks in at ≥2 nodes — see [Multi-Node Projects](../getting-started/workspace-from-app-node.md). |
-| `examples/bridges/<lang>/<name>/` | Cross-RMW gateway examples (one binary, multiple backends). The category drops the `<plat>` level — a gateway is a host process — and keeps `<lang>`. |
 | `examples/templates/<name>/` | Multi-platform copy-out recipes (e.g. `multi-package-workspace`). |
+
+A cross-RMW gateway is not a separate category: it is a workspace whose
+`system.toml` declares a `[[bridge]]` row (`examples/workspaces/bridge-cyclonedds/`,
+`examples/workspaces/bridge-xrce/`). The `examples/bridges/` category that
+held hand-written gateways was deleted in phase-477 — no lane built them.
 
 The `<plat>` × `<lang>` coverage matrix (RMW chosen at build time) is authoritative in
 [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).
