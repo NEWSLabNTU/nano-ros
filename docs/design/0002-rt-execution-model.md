@@ -442,6 +442,11 @@ executor knobs AND of the target — 87,256 B on `mps2_an385` against 88,328 B o
 once. A STATED size is `8 * words` everywhere, the arena's lowering becomes
 arithmetic a gate can check (`check-executor-backing-arena-pairing`), and a
 statement below what the executor needs is a compile error naming the knob.
+**On Zephyr that arena half is retired** (issue 1611): since issue 1324 a Rust
+image allocates from the nros heap (`CONFIG_NROS_ZEPHYR_HEAP_SIZE`), not
+picolibc's arena, so there is no arena the backing was paid out of and no
+lowering to check; the gate now refuses the old `# nros-arena-base:` marker.
+ThreadX's rung pairing is unaffected.
 
 **What this does NOT buy, contrary to the original text.** It does not shrink a
 task stack. The claim that raising `NROS_SUBSCRIPTION_BUFFER_SIZE` "lands on

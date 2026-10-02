@@ -97,6 +97,22 @@ move out of the allocator arena like the boot reservation; no in-tree conf
 lowers an arena for it, and one that does is not checkable here because there
 is no stated number to add up.
 
+ZEPHYR'S ARENA HALF IS RETIRED (issue 1611). Everything above about
+`arena + 8 * words == base` was true while a Zephyr Rust image's `alloc` went
+to picolibc `malloc`. Issue 1324 moved it onto the nros heap
+(`CONFIG_NROS_ZEPHYR_HEAP_SIZE`, an rlsf arena in `nros-platform`), so the libc
+arena holds no Rust allocation to give back: measured on native_sim
+rust/talker with gdb on Zephyr's common-libc `malloc`, zero calls in a 6 s
+publishing run, and the image's only static caller is NSOS `getaddrinfo`'s
+`strdup`. The six zenoh confs that reserved ~940 KiB for it now state no arena
+and no backing. The heap Rust DOES use is not paired by arithmetic either: the
+backing is a `.bss` static and never comes out of it, and its size is scored
+against a MEASURED boot peak by issue 1424's gate. So the zephyr port is
+recorded `none`, and the only conf rule left is that the retired marker
+`# nros-arena-base:` must not come back -- it would assert a pairing nothing
+honours. A stated `CONFIG_NROS_EXECUTOR_BACKING_U64S` is still a CLAIM and the
+claim half below still checks it.
+
 Usage:
     python3 scripts/check-executor-backing-arena-pairing.py [--self-test | --claims]
 """
@@ -143,12 +159,17 @@ RUNG_RE = re.compile(rf"^\s*{RUNG_KEY}\s*=\s*(\d+)\s*$", re.M)
 # A port is keyed by the `platform =` its board descriptors declare, because
 # that is what the descriptor and the build rungs both use.
 PORTS = {
+    # issue 1611 -- was `kconfig` (issue 1171's arithmetic). Since issue 1324
+    # no Rust allocation reaches picolibc's arena, so there is nothing in it to
+    # give back; see the module docstring for the measurement.
     "zephyr": {
-        "kind": "kconfig",
+        "kind": "none",
         "why": (
-            "picolibc's `malloc_arena` is sized by "
-            "CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE; the conf states the words "
-            "and lowers the arena, and the three numbers must sum (issue 1171)"
+            "Rust allocates from the nros heap (CONFIG_NROS_ZEPHYR_HEAP_SIZE, "
+            "issue 1324), which the `.bss` backing never came out of and whose "
+            "size issue 1424 scores against a measured peak; picolibc's arena "
+            "holds no Rust allocation (issue 1611, measured: zero `malloc` "
+            "calls on native_sim rust/talker)"
         ),
     },
     "threadx-linux": {"kind": "rung", "site": "threadx"},
@@ -389,41 +410,26 @@ def last_int(pattern, text):
 
 
 def check_conf(text):
-    """-> list of complaint strings for one conf file's body."""
-    words = last_int(BACKING_RE, text)
-    arena = last_int(ARENA_RE, text)
+    """-> list of complaint strings for one conf file's body.
+
+    issue 1611 -- the pairing this used to check (`arena + 8 * words == base`,
+    issues 1145/1171) is retired with its premise, so the one thing left to
+    refuse is its MARKER: `# nros-arena-base:` says "this arena was lowered by
+    the executor backing", and on Zephyr nothing has made that true since issue
+    1324. A conf may still state the backing -- that is a claim the claim half
+    checks -- and may size the arena for whatever C code really allocates there
+    (Cyclone's ddsrt heap), with no arithmetic between the two.
+    """
     base = last_int(BASE_RE, text)
-
-    stated = words is not None and words > 0
-    if not stated and base is None:
+    if base is None:
         return []
-
-    bad = []
-    if base is not None and not stated:
-        bad.append(
-            f"carries `# {BASE_MARKER}: {base}` but states no {BACKING_KEY}, so "
-            f"nothing says what the arena was lowered BY"
-        )
-    if stated and base is None:
-        bad.append(
-            f"states {BACKING_KEY}={words} but no `# {BASE_MARKER}: <bytes>`, so "
-            f"the arena's lowering cannot be checked against anything"
-        )
-    if stated and arena is None:
-        bad.append(
-            f"states {BACKING_KEY}={words} but does not set {ARENA_KEY}, so the "
-            f"reservation is made and nothing is given back"
-        )
-    # `words is not None` is implied by `stated`, but a type checker cannot see
-    # through the alias, so it is spelled out rather than suppressed.
-    if stated and words is not None and base is not None and arena is not None:
-        want = base - words * BYTES_PER_WORD
-        if arena != want:
-            bad.append(
-                f"{ARENA_KEY}={arena}, but {base} - {BYTES_PER_WORD} * {words} "
-                f"= {want}. Set the arena to {want}, or restate the base."
-            )
-    return bad
+    return [
+        f"carries `# {BASE_MARKER}: {base}`, the retired executor-backing "
+        f"pairing marker. Since issue 1324 no Rust allocation reaches "
+        f"{ARENA_KEY}, so no arena is lowered BY the backing any more (issue "
+        f"1611). Drop the marker, and size the arena for what really allocates "
+        f"there"
+    ]
 
 
 def board_platform(text):
@@ -506,26 +512,18 @@ def check_threadx_site(pool_c, forwarder_rs):
 
 SELF_TESTS = [
     # (name, body, expected number of complaints)
-    ("paired exactly", f"# {BASE_MARKER}: 1048576\n{BACKING_KEY}=11041\n{ARENA_KEY}=960248\n", 0),
+    # issue 1611 -- the marker is retired, whatever surrounds it.
+    ("the retired pairing, exactly as it used to be written",
+     f"# {BASE_MARKER}: 1048576\n{BACKING_KEY}=11041\n{ARENA_KEY}=960248\n", 1),
+    ("the marker alone", f"# {BASE_MARKER}: 1048576\n", 1),
     ("silent about both", f"{ARENA_KEY}=1048576\n", 0),
-    # the drift this gate exists for: a knob moved, the backing was restated,
-    # the arena was not.
-    ("arena not lowered with it",
-     f"# {BASE_MARKER}: 1048576\n{BACKING_KEY}=12000\n{ARENA_KEY}=960248\n", 1),
-    ("arena lowered too far",
-     f"# {BASE_MARKER}: 1048576\n{BACKING_KEY}=11041\n{ARENA_KEY}=900000\n", 1),
-    ("stated with no base",
-     f"{BACKING_KEY}=11041\n{ARENA_KEY}=960248\n", 1),
-    ("base with no statement",
-     f"# {BASE_MARKER}: 1048576\n{ARENA_KEY}=960248\n", 1),
-    ("stated with no arena at all",
-     f"# {BASE_MARKER}: 1048576\n{BACKING_KEY}=11041\n", 1),
-    # `0` declines the static, so there is nothing to pair; `-1` derives.
+    # a stated backing is a claim, not a pairing: no arena is required beside it
+    ("a stated backing needs no arena", f"{BACKING_KEY}=11041\n", 0),
+    ("a backing beside an arena C code uses",
+     f"{BACKING_KEY}=11069\n{ARENA_KEY}=16777216\n", 0),
     ("declined", f"{BACKING_KEY}=0\n{ARENA_KEY}=1048576\n", 0),
-    ("derived", f"{BACKING_KEY}=-1\n{ARENA_KEY}=1048576\n", 0),
-    # last-wins, the way Zephyr merges fragments (issue 0876)
-    ("last assignment wins",
-     f"# {BASE_MARKER}: 1048576\n{BACKING_KEY}=11041\n{ARENA_KEY}=1\n{ARENA_KEY}=960248\n", 0),
+    ("derived", f"{BACKING_KEY}=-1\n", 0),
+    ("nothing at all", "CONFIG_NET_TCP=y\n", 0),
 ]
 
 
@@ -847,7 +845,8 @@ def main():
             )
             continue
         bad = check_conf(text)
-        if not bad:
+        words = last_int(BACKING_RE, text)
+        if not bad and words is not None and words > 0:
             paired += 1
         for complaint in bad:
             failures.append(f"  {rel}: {complaint}")
@@ -914,18 +913,13 @@ def main():
         print("check-executor-backing-arena-pairing: FAIL\n")
         print("\n".join(failures))
         print(
-            "\nThe executor backing is a `.bss` static since phase-392 W6, and on\n"
-            "Zephyr the picolibc arena it used to be leaked out of is itself a\n"
-            "fixed static. An image that states the reservation must give the\n"
-            "same bytes back:\n"
-            "\n"
-            f"    # {BASE_MARKER}: <the arena before it was lowered>\n"
-            f"    {BACKING_KEY}=<words>\n"
-            f"    {ARENA_KEY}=<base - 8 * words>\n"
-            "\n"
-            "See issues 1145 and 1171. That the three numbers SUM says nothing\n"
-            "about whether <words> MEETS the executor's default -- that half is\n"
-            "`just check node-std-tests` (issue 1284)."
+            "\nThe executor backing is a `.bss` static since phase-392 W6. A port\n"
+            "whose allocator reservation is a fixed static must give the same\n"
+            "bytes back (issues 1145/1171) -- on ThreadX through the stated\n"
+            "rung. Zephyr's arm is retired (issue 1611): since issue 1324 Rust\n"
+            "allocates from the nros heap, and picolibc's arena holds nothing\n"
+            "the backing could be paired with. Whether a stated <words> MEETS\n"
+            "the executor's default is `just check node-std-tests` (issue 1284)."
         )
         return 1
 
@@ -943,7 +937,7 @@ def main():
 
     print(
         "check-executor-backing-arena-pairing: OK "
-        f"({paired} conf(s) pair the arena with a stated backing; "
+        f"({paired} conf(s) state a backing, no arena paired with it (issue 1611); "
         f"{rung_stated} board(s) pair it through `{RUNG_KEY}`; "
         f"{len(got)} (conf, board) claim(s) attributed for node-std-tests; "
         f"{len(confs)} conf(s) + {len(boards)} board descriptor(s) scanned)"

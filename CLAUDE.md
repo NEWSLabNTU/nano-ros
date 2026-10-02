@@ -919,6 +919,8 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `8 x` it, because the DERIVED size is knob- AND target-dependent (87,256 B on
   mps2_an385 vs 88,328 B on native_sim/native/64 for ONE conf), so a subtrahend copied
   from `nm` drifts on the next knob move and was never right for both boards.
+  **Zephyr's arena half is retired** (issue 1611: since 1324 no Rust byte reaches
+  picolibc's arena, so no conf lowers it; the gate refuses the old marker).
   Gate: `check-executor-backing-arena-pairing`; a statement below what the executor
   needs is a compile error naming the knob — and, since that fails only in an image
   no merge lane builds, `node-std-tests` checks it against the MEASURED default (issue 1284).

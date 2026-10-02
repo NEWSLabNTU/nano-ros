@@ -78,6 +78,11 @@
 //! knob, which is the direction that would otherwise re-create the double
 //! reservation in silence.
 //!
+//! **Zephyr no longer pairs it** (issue 1611). Issue 1324 moved every Zephyr
+//! Rust allocation onto the nros heap, so picolibc's arena holds no Rust bytes
+//! and the six example confs that lowered it now state neither number. The
+//! pairing above survives on ThreadX's rung.
+//!
 //! # Why there is no `// nros-pool:` annotation
 //!
 //! `scripts/gen-pool-inventory.py` evaluates a pool as a PRODUCT of knobs at

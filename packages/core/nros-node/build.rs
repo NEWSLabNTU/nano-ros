@@ -1260,6 +1260,10 @@ fn emit_executor_backing(out_dir: &str) {
     // every `-1 = derive` knob here falls through), so the shipped Kconfig
     // default is still "the crate's own sizing".
     //
+    // Issue 1611 -- that Zephyr pairing is RETIRED: since issue 1324 a Zephyr
+    // Rust image allocates from the nros heap, not picolibc's arena, so no
+    // in-tree conf lowers the arena for this reservation any more.
+    //
     // phase-448 W5 / issue 1145 -- the ports with NO Kconfig (NuttX, ThreadX,
     // ESP32) reach the same statement through the RFC-0049 ladder instead, as
     // `[board.knobs.executor] backing_u64s`. That rung matters because the
