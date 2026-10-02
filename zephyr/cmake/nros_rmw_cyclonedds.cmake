@@ -348,10 +348,14 @@ else()
             # Say so. A store lookup that fails silently is indistinguishable
             # from a store that has nothing, and only one of those is worth
             # acting on (issues 0500, 0625).
+            # rc=0 with no `bin/` is the store naming where cyclonedds WOULD
+            # live, not having it — the live-peer lane printed `(rc=0: )` for
+            # exactly that and named no path. Say which path was empty.
             string(STRIP "${_nros_cyclone_err}" _nros_cyclone_err)
             message(STATUS
                 "nano-ros: SDK store has no usable cyclonedds "
-                "(rc=${_nros_cyclone_rc}: ${_nros_cyclone_err}); "
+                "(rc=${_nros_cyclone_rc}: ${_nros_cyclone_err}; "
+                "no bin/ under '${_nros_cyclone_dir}'); "
                 "falling back to PATH for idlc")
         endif()
     endif()
