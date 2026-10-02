@@ -1804,3 +1804,47 @@ arm and does nothing for this one.
 
 Acceptance for this arm is unchanged and still unmet: a `host-tests` run reaching
 a tier-1 verdict with the after-report below 100%. Four runs, four times 100%.
+
+## Tier 1, fifth point — the first ENOSPC that names the write, and it is in `/tmp` (2026-10-02)
+
+Run **36933780739** (push `host-tests`, 2026-10-01T22:13:56Z, head `0183a0434`),
+job step 15 `just ci tier1`. `workspace unit tests` passed; the integration job
+died on `workspace-features` for the third consecutive point.
+
+```
+before: 91% used, 14G free — 43G examples; 14G build; 549M packages/cli/target
+reclaim: freed 33358 MB; 48573712 KB free          (~46.3 G)
+after:  100% used, 560K free — 43G examples; 20G build; 15G packages/cli/target
+```
+
+**What is new: the failure is diagnostic rather than truncated.** Every earlier
+point in this arm ended in a cut-off log or a bare gate name. This one names the
+write, the temp file and the compiland:
+
+```
+running: cd ".../target/debug/build/cyclonedds-sys-d6a24355a5931f7a/out/build" && … cmake …
+third-party/dds/cyclonedds/src/tools/idlc/src/types.c:696:1:
+  fatal error: error writing to /tmp/ccWQgwjh.s: No space left on device
+```
+
+Three things follow that the four previous points could not show.
+
+**It is gcc's assembler temporary in `/tmp`, not a cargo or cmake output.** The
+transcripts only ever measure `/__w` and the checkout; `/tmp` has never appeared
+in them. On this runner the two share one filesystem — `df` reports a single
+`/dev/root` at 146 G for both `/__w` and `/` — so filling the workspace starves
+the compiler's scratch space as well. Any remedy that counts only build
+directories is counting the wrong total.
+
+**The compiland is `cyclonedds-sys`'s build script**, reached from
+`workspace-features`, so the tier dies inside the DDS backend's own cmake build
+rather than in nano-ros code.
+
+**The reclaim is a constant over five runs** — 33,286 / 33,286 / 33,336 /
+33,353 / **33,358 MB**, a 72 MB spread — and all five end at 100%: 264K, 260K,
+276K, 272K, **560K** free.
+
+### What this does not change
+
+Acceptance for this arm is unchanged and unmet: a `host-tests` run reaching a
+tier-1 verdict with the after-report below 100%. Five runs, five times 100%.
