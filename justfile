@@ -3380,11 +3380,30 @@ test-lane-contracts:
         echo "  green over an empty run (a gate that checks nothing reads as OK)." >&2
         exit 1
     fi
+    # A bare name admits a target WHOLE; `<target>::<test>` admits ONE test of a
+    # target a sibling keeps from being admitted whole. Every named target is
+    # BUILT (`--test`/`--lib`, so the lane never compiles the 120 it does not
+    # run), and one filterset says what RUNS — a partial target contributes
+    # exactly its listed tests, so its fixture-needing siblings never start.
     args=()
-    for t in "${admitted[@]}"; do
-        if [ "$t" = lib ]; then args+=(--lib); else args+=(--test "$t"); fi
+    filters=()
+    declare -A built=()
+    whole=0 single=0
+    for row in "${admitted[@]}"; do
+        t="${row%%::*}"
+        if [ "$t" = lib ]; then bin="binary_id(nros-tests)"; flag=(--lib)
+        else bin="binary_id(nros-tests::$t)"; flag=(--test "$t"); fi
+        if [ -z "${built[$t]:-}" ]; then built[$t]=1; args+=("${flag[@]}"); fi
+        if [ "$row" = "$t" ]; then
+            filters+=("$bin"); whole=$((whole + 1))
+        else
+            filters+=("($bin & test(=${row#*::}))"); single=$((single + 1))
+        fi
     done
-    echo "test-lane-contracts: ${#admitted[@]} target(s) admitted by the gate-image census"
+    expr="${filters[0]}"
+    for f in "${filters[@]:1}"; do expr="$expr | $f"; done
+    args+=(-E "$expr")
+    echo "test-lane-contracts: $whole whole target(s) + $single single test(s) admitted by the gate-image census"
     # phase-475 W4 — an ADMITTED target that skips FAILS this lane. That holds by
     # construction: this is bare nextest, which counts a `[SKIPPED]` panic as a
     # failure, and nothing here rewrites junit. Do not add the skip-tolerant

@@ -1,6 +1,6 @@
 # Phase 475 — which test targets a lane can run: a census, not an inference
 
-**Status (2026-10-03). W0–W5 LANDED; W6 DECIDED (the package is in).** A design study with its measurement done first. The question is
+**Status (2026-10-03). W0–W5 and W7 LANDED; W6 DECIDED (the package is in).** A design study with its measurement done first. The question is
 issue 0922's, asked for every `nros-tests` target at once: *which of them reach
 a verdict in which lane?* The answer it reaches is that **only the lane's own
 environment can say, and asking it costs 24 seconds** — so the classifier is a
@@ -232,11 +232,9 @@ parallel run (issue 1620). Here both runs agreed — both FAILed them — so not
 was unstable; the repeat is what would keep a target that flakes the other way
 out.
 
-**One limit, measured.** Admission is per TARGET. `params_per_node_interop`
-holds a fixture-free tripwire (`cases_bound_to_interop_cells`, red until #1569)
-beside cases that need fixtures, so it is not admitted and its tripwire still
-gates nowhere. Admitting by nextest filter expression instead of `--test` would
-reach it; not done here.
+**One limit, measured — and closed by W7.** Admission was per TARGET.
+`params_per_node_interop` holds a fixture-free tripwire beside cases that need
+fixtures, so it was not admitted and its tripwire gated nowhere. See W7.
 
 ### W4 — an admitted target that skips fails the lane (LANDED)
 
@@ -288,6 +286,50 @@ The package also changed the image's frozen `ENV`: sourcing ROS now puts
 snapshot was re-captured, and `rmw_zenohd` was confirmed to bind that
 `libzenohc` and start — issue 0774's distinction between a router that
 resolves and one that runs.
+
+### W7 — per-TEST admission (LANDED)
+
+A target that is not admissible whole now contributes the tests that passed in
+EVERY run: `.config/lane-admission/gate.txt` holds bare names (whole targets)
+and `<target>::<test>` rows. The recipe still builds only the named targets
+(`--test`/`--lib`) and runs one nextest filterset, so a partial target's
+fixture-needing siblings never start. The rows are explicit tests, never "the
+target minus its failures": a test added later to such a target is not admitted
+until a census has seen it pass.
+
+`check-lane-contracts` reads a `::` row PER TEST, not per file — otherwise it
+would refuse exactly the rows W7 exists for, since their siblings are what kept
+the target out. A row reaches its own fn (the rstest fn for a `case_N` path),
+every same-file fn its body mentions, transitively, and everything outside any
+fn body (consts, statics, item macros); a module-path segment (`x::interop::f`)
+does not reach a local `fn interop`, which is what `interop_e2e`'s tripwire
+measured on the first run. Six selftest cases, including the negative control:
+a fixture reached through a same-file helper still refuses.
+
+Measured, three census runs in the gate image:
+
+| | W3 | W7 |
+| --- | --- | --- |
+| whole targets | 47 | **50** |
+| single tests of partial targets | 0 | **33**, across 29 targets |
+| tests run by the lane | 357 | **396** |
+
+The 33 are almost all the `cases_bound_to_interop_cells` /
+`*_cases_cover_every_matrix_cell` tripwires — the fixture-free halves of
+interop and e2e targets, which is the coverage W3's limit named.
+
+**The census found a flake the hand list never could.** The first W7 census
+measured the crate's own `lib` UNSTABLE (FAIL in one run of two):
+`a_bound_daemon_port_makes_the_domain_busy` and
+`the_probe_sees_a_real_bound_discovery_port` both pick the host's lowest free
+domain, and the second BINDS that domain's SPDP port while the first asserts it
+still reads free. nextest runs each test in its own process, so they now share
+the `domain-probe-host-ports` test-group (`max-threads = 1`); three runs
+afterwards, `lib` is admitted whole again. Per-test admission is what kept the
+gate lane running the other 212 `lib` tests in the meantime.
+
+It also surfaced two fixture-free reds on `main` that no gating lane runs —
+issue 1654.
 
 ## What this phase deliberately does not do
 

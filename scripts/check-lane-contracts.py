@@ -701,13 +701,93 @@ def tests_invoked(recipes, names):
 ID_RE = re.compile(r'require_compile_(?:check(?:_bin)?|verdict)\(\s*"([A-Za-z0-9_]+)"')
 
 
+_FN_DEF = re.compile(r"\bfn\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+
+
+def _fn_spans(stripped):
+    """{fn name: [(start, end)]} — the BODY span of every `fn` item in a file
+    whose comments and strings are already blanked, so a brace inside either
+    cannot unbalance the walk. Same-name fns in different modules each keep a
+    span; a trait declaration (`fn f();`) has none."""
+    spans = {}
+    for m in _FN_DEF.finditer(stripped):
+        i = m.end()
+        while i < len(stripped) and stripped[i] not in "{;":
+            i += 1
+        if i >= len(stripped) or stripped[i] == ";":
+            continue
+        depth, j = 0, i
+        while j < len(stripped):
+            c = stripped[j]
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        spans.setdefault(m.group(1), []).append((i, j + 1))
+    return spans
+
+
+def test_source(test_name, *, strings_blanked):
+    """(text, found) — the source a lane-admitted test can REACH.
+
+    A bare name is a whole `--test` target: its file. `<target>::<path>` is ONE
+    test (phase-475 per-test admission), and reading its whole file would refuse
+    it for exactly the siblings that kept the target from being admitted whole —
+    `params_per_node_interop`'s fixture-free tripwire sits beside three cases that
+    resolve a runtime fixture. So a test reaches: its own fn (the rightmost path
+    segment that names a fn here, which is the rstest fn for a `case_N` path),
+    every same-file fn that body mentions, transitively, and everything OUTSIDE
+    any fn body — consts, statics and item macros, which any test may read. A
+    MENTION, not a call: a helper passed by value (`run(helper)`) is reached
+    too — except as a module path segment (`x::interop::f` does not reach a
+    local `fn interop`, which is what `interop_e2e`'s tripwire measured). Over-broad is the safe direction here; a path that names no fn falls
+    back to the whole file."""
+    target, _, case = test_name.partition("::")
+    path = os.path.join(TESTS_DIR, f"{target}.rs")
+    if not os.path.exists(path):
+        return "", False
+    with open(path, encoding="utf8", errors="replace") as fh:
+        raw = fh.read()
+    stripped = _strip_rust_comments(raw)
+    text = stripped if strings_blanked else raw
+    if not case:
+        return text, True
+    spans = _fn_spans(stripped)
+    root = next((seg for seg in reversed(case.split("::")) if seg in spans), None)
+    if root is None:
+        return text, True
+    reached, todo = set(), [root]
+    while todo:
+        name = todo.pop()
+        if name in reached:
+            continue
+        reached.add(name)
+        for a, b in spans[name]:
+            for other in spans:
+                # `name::` is a module path (`nros_tests::interop::…` names no
+                # local fn `interop`); `name::<` is a turbofish call and counts.
+                if other not in reached and re.search(
+                        rf"\b{re.escape(other)}\b(?!::(?!<))", stripped[a:b]):
+                    todo.append(other)
+    inside = sorted(sp for sps in spans.values() for sp in sps)
+    outside, pos = [], 0
+    for a, b in inside:
+        if a > pos:
+            outside.append(text[pos:a])
+        pos = max(pos, b)
+    outside.append(text[pos:])
+    parts = outside + [text[a:b] for n in sorted(reached) for a, b in spans[n]]
+    return "\n".join(parts), True
+
+
 def stamp_ids_used(test_name):
     """The compile-check fixture ids a test names literally."""
-    path = os.path.join(TESTS_DIR, f"{test_name}.rs")
-    if not os.path.exists(path):
+    text, found = test_source(test_name, strings_blanked=False)
+    if not found:
         return set()
-    with open(path, encoding="utf8", errors="replace") as fh:
-        text = fh.read()
     ids = set(ID_RE.findall(text))
     # Most tests keep the ids in a `const FOO: &[&str] = &["a", "b"];` and pass
     # the loop variable, so the literal call site names nothing. Fall back to
@@ -795,11 +875,9 @@ def _strip_rust_comments(text):
 
 
 def resolvers_used(test_name):
-    path = os.path.join(TESTS_DIR, f"{test_name}.rs")
-    if not os.path.exists(path):
+    text, found = test_source(test_name, strings_blanked=True)
+    if not found:
         return set(), False
-    with open(path, encoding="utf8", errors="replace") as fh:
-        text = _strip_rust_comments(fh.read())
     # A CALL, word-bounded: with ~300 harvested names, a bare substring test would
     # read `build_example_rmw` inside `build_example_rmw_at` and the like.
     return set(_RESOLVER_CALL.findall(text)), True
@@ -1561,6 +1639,31 @@ def selftest(verbose=False):
             set(found) == {"t_admitted", "t_runtime"})
         chk("...including one that resolves a RUNTIME fixture (the rule still bites)",
             "t_runtime" in found)
+        # Per-TEST admission: `<target>::<test>` reads what THAT test reaches,
+        # never its siblings — and still bites on a fixture it reaches itself.
+        with open(os.path.join(td, "t_mixed.rs"), "w", encoding="utf8") as fh:
+            fh.write(
+                'const IDS: &[&str] = &["stamp_xyz"];\n'
+                '#[test]\nfn tripwire() { check(IDS); nros_tests::interop::f(); }\n'
+                'fn check(_: &[&str]) {}\n'
+                '// fn tripwire2() { require_cmake_fixture("a", "b"); }\n'
+                '#[test]\nfn live() { let s = "{"; spawn(); }\n'
+                'fn spawn() { require_cmake_fixture("a", "b"); }\n'
+                'fn interop() { require_cmake_fixture("c", "d"); }\n'
+                '#[rstest]\nfn cased(#[case] _n: u8) { helper(); }\n'
+                'fn helper() { require_cmake_fixture("e", "f"); }\n')
+        chk("a per-test row reaches its own fn, not a fixture-resolving sibling",
+            resolvers_used("t_mixed::tripwire") == (set(), True))
+        chk("...nor a local fn sharing a MODULE PATH segment's name (`x::interop::f`)",
+            "require_cmake_fixture" not in resolvers_used("t_mixed::tripwire")[0])
+        chk("...but a fixture it reaches through a same-file helper still bites",
+            "require_cmake_fixture" in resolvers_used("t_mixed::live")[0])
+        chk("...including from an rstest `<fn>::case_N` path",
+            "require_cmake_fixture" in resolvers_used("t_mixed::cased::case_1")[0])
+        chk("...and a path naming no fn here falls back to the WHOLE file",
+            "require_cmake_fixture" in resolvers_used("t_mixed::nowhere")[0])
+        chk("a per-test row still sees file-level consts (stamp ids)",
+            "stamp_xyz" in stamp_ids_used("t_mixed::tripwire"))
         os.remove(os.path.join(adm, "gate.txt"))
         try:
             tests_invoked(r, closure(r, "ci-l1"))

@@ -101,6 +101,18 @@ max-threads = 3
 [test-groups.cyclone-baked-domain-107]
 max-threads = 1
 
+# phase-475 census — RESOURCE: the host's lowest free ROS domain. Two of the
+# crate's own unit tests each pick "the first domain whose ports read free":
+# `the_probe_sees_a_real_bound_discovery_port` then BINDS that domain's SPDP
+# port, and `a_bound_daemon_port_makes_the_domain_busy` asserts the domain it
+# picked still reads free (its negative control). Run at once, both pick
+# domain 1, so the second reads the first's socket: the gate-image census
+# measured it FAIL in one run of two ("domain 1 was picked for being free and
+# did not read free"). nextest gives each test its own process, so only a
+# group can serialise them.
+[test-groups.domain-probe-host-ports]
+max-threads = 1
+
 # issue #141 — RESOURCE: one baked image serves two tests. The qos zephyr entry
 # image + its baked router port (allocator 7460) are shared by the sink-based
 # capability e2e (the `zephyr_rust_qos` cell, now a case inside
@@ -1132,3 +1144,8 @@ retries = 2
 filter = "binary(realtime_tiers_e2e) or binary(entry_e2e) or binary(multihost_e2e) or binary(roundtrip_xprocess_e2e)"
 test-group = "matrix-consumers-serial"
 slow-timeout = { period = "180s", terminate-after = 3 }
+
+[[profile.default.overrides]]
+# See [test-groups.domain-probe-host-ports].
+filter = "binary_id(nros-tests) and (test(a_bound_daemon_port_makes_the_domain_busy) or test(the_probe_sees_a_real_bound_discovery_port))"
+test-group = "domain-probe-host-ports"

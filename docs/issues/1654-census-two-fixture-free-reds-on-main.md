@@ -1,0 +1,57 @@
+---
+id: 1654
+title: "Two fixture-free nros-tests targets are red on main and no gating lane runs
+  them: `fixture_source_coverage` (an unrowed bin) and `multihost_partition_bake`
+  (a retired verb)"
+status: open
+type: bug
+area: testing
+severity: medium
+found: 2026-10-03
+related: [1620, 1340, phase-475, phase-432]
+---
+
+## How it was found
+
+The phase-475 lane census, three runs in the gate image
+(`nros-ci-local:humble-zenoh`, i.e. `nano-ros-ci:humble` with
+`ros-humble-rmw-zenoh-cpp`) with nothing staged, on a tree 16 commits behind
+`origin/main` at 2026-10-03. Both reds were confirmed still present on
+`origin/main` by reading the sources. Both FAIL in all three runs, so neither
+target is admitted to `test-lane-contracts`, and nothing else that gates runs
+them — issue 1620's class, two more instances.
+
+## 1. `fixture_source_coverage::every_test_bin_is_a_row_or_a_tracked_exception`
+
+```
+1 test bin(s) with NO `dir =` row in examples/fixtures.toml and no tracked
+exception. ... Add a row, or add a BINS_ALLOWLIST entry naming the lane that
+builds it:
+  - in-place-subscriptions
+```
+
+`packages/testing/nros-tests/bins/in-place-subscriptions` landed in `629b24b6a`
+(issue 1340, the eight-subscription in-place measurement) without a
+`[[fixture]]` row. The gate is right; the bin needs a row (preferred — it then
+gets a coordinate and a lane) or an allowlist entry naming the lane that builds
+it.
+
+## 2. `multihost_partition_bake::multihost_bake_emits_only_the_hosts_node`
+
+```
+Error: --lang rust entry is retired (phase-432 W2.4): a Rust entry is emitted by
+the `nros::main!()` proc-macro at compile time.
+```
+
+The test's third seam runs `nros codegen entry --lang rust --model <per-host
+model>` (line 194). phase-432 W2.4 retired that verb for Rust, so the seam it
+checks — "the bake of a per-host model registers only that host's node" — now
+has no Rust spelling at the CLI. It also compiles nothing but does run the CLI
+at test time. Options: bake through a language whose entry the CLI still emits
+(a C/C++ workspace has the same `multihost.launch.xml`), or move the seam to
+the proc-macro side as a build-stage fixture. Not decided here.
+
+## Acceptance
+
+Both targets PASS in the census, and `lane-census-diff.py` reports them NEWLY
+ADMISSIBLE.
