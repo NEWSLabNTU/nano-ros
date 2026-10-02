@@ -1,8 +1,19 @@
 # phase-456 — the C++ API becomes a handle over the Rust arena
 
-**Status (2026-09-12). Opened.** Carries the remainder of
-[phase-442](phase-442-one-freestanding-rclcpp-api.md) under the design
-[RFC-0096 D9 revision 3](../design/0096-cpp-freestanding-core-and-porting-layer.md)
+**Status (2026-10-02). CLOSED.** Every work item is on `main` or decided:
+W1, W2, W2b, W3, W3b-i, W4, W5, W7, W8 and W9 landed; W3b-ii is REFUSED; W6
+landed its structural half, and its unreachable half — driving the capability
+macros to zero — is handed to
+[phase-476](../phase-476-cpp-freestanding-spellings-for-the-gated-overloads.md)
+with its count re-measured. **Two arguments in this doc were retired after it
+was written**, by `9768795b1d` (2026-10-02, issue 1496 resolution 2), which gave
+the arena a removal path. Each is amended in place rather than deleted — read
+"The arena gained a removal path" below before relying on any sentence here that
+says it has none.
+
+*Originally:* **Status (2026-09-12). Opened.** Carries the remainder of
+[phase-442](../phase-442-one-freestanding-rclcpp-api.md) under the design
+[RFC-0096 D9 revision 3](../../design/0096-cpp-freestanding-core-and-porting-layer.md)
 settled on. phase-442 keeps W0–W7, which landed; its W8 text describes a design
 that revision superseded, and the work items below replace it.
 
@@ -564,6 +575,10 @@ Four things follow, and each is a simplification rather than a trade:
      (*"would relocate 872 bytes, not remove them"*), and it is worse here,
      because the arena has no removal path at all (issue 1496) while a
      `CppActionServer` field costs nothing after its owner dies.
+     **[Amended 2026-10-02.]** The "worse here" clause expired: `9768795b1d`
+     made the arena return an action entry's bytes on release. The relocation
+     itself still stands — four words moved are four words not removed — and
+     reasons 1 and 2 are untouched, so the refusal holds.
 
   *What would make it viable, stated so the next reader does not re-derive it.*
   One of: the core grows a second callback vocabulary whose ABI matches the C
@@ -625,8 +640,11 @@ Four things follow, and each is a simplification rather than a trade:
   argument about what a MOVE would create, and it says nothing either way about
   an entity that was moved four phases ago. **Issue 1496 has since made the
   destructor detach the entry's callbacks and context, so a goal arriving after
-  destruction is rejected instead of reading freed C++ storage; the arena still
-  has no removal path.**
+  destruction is rejected instead of reading freed C++ storage. And
+  `9768795b1d` then gave the arena a removal path: an action server or client is
+  now RELEASED on destruction — its RMW entities leave the graph and its bytes
+  return to the arena — so "its destructor already does nothing" is no longer
+  true either.**
 
 * **W4 [cpp] — publishers. DECIDED: `Owned<T>` stays, and an arena slot is
   refused.** No dispatch, so no arena slot exists today. `nros::Owned<T>` covers
@@ -666,6 +684,21 @@ Four things follow, and each is a simplification rather than a trade:
   `nros::Owned<Publisher<M>>` is a faithful C++ mirror of exactly it. Giving the
   C++ publisher an arena slot would make the C++ lifetime model DIVERGE from the
   Rust one, which is the opposite of what this phase is for.
+
+  **[Amended 2026-10-02 — this argument EXPIRED; W4's decision stands on the
+  other three.]** `9768795b1d` (issue 1496 resolution 2) gave the arena a removal
+  path: a bounded table of 8 released regions, coalescing, first-fit with split,
+  which every arena allocator tries before moving the bump pointer. So an arena
+  publisher would NOT have to make `reset()` a no-op — release could be wired, as
+  it now is for action servers and clients. The paragraph below is therefore no
+  longer a reason. **The refusal holds anyway**, on the arguments that never
+  depended on it: the governing principle (Rust's `EmbeddedPublisher<M>` is a
+  caller-owned value with a `Drop`, so an arena slot makes C++ DIVERGE from Rust,
+  which is the opposite of this phase's purpose); the corpus (46 method calls, so
+  the handle must dereference, which `Owned<T>` does and an arena handle would
+  re-export as nine forwarders); and the size accounting (872 bytes relocated,
+  not removed). Read the paragraph below as the historical argument, not a live
+  one.
 
   *Why the refusal is about correctness, not tidiness.* The arena is a bump
   allocator: `arena_used` only grows, and nothing anywhere sets an entry slot
@@ -787,7 +820,9 @@ Four things follow, and each is a simplification rather than a trade:
   scope exit no-ops holding a live RMW publisher for the executor's lifetime —
   a regression against upstream rclcpp AND against our own Rust API, where
   `EmbeddedPublisher<M>` has a `Drop`. `Owned<T>` mirrors that Rust lifetime;
-  an arena slot would diverge from it.
+  an arena slot would diverge from it. *[Amended 2026-10-02: the "no removal
+  path" half expired with `9768795b1d`; the "diverge from Rust" half is the one
+  that still carries the decision — see W4.]*
 
   **2. `Publisher<M>::UniquePtr` collapses into `SharedPtr`.** `Owned<T>` IS
   unique ownership — move-only, one owner, destroys on scope exit — so a
@@ -1022,6 +1057,14 @@ Four things follow, and each is a simplification rather than a trade:
   looking is worse than a ratchet**, which is the whole reason this item exists.
   The structural half is what W6 delivers; the count stays measured and stated
   here until those items land.
+
+  **[Handed off 2026-10-02.]** The unreachable half is now
+  [phase-476](../phase-476-cpp-freestanding-spellings-for-the-gated-overloads.md),
+  which re-measured the table above (unchanged except `NROS_CPP_STD`, +1 from a
+  legitimate `<cstdio>` gate in `log.hpp`) and found the chrono row smaller than
+  this doc implies: `Rate` and `create_timer` already take `::nros::Duration`
+  with chrono as sugar, so only `create_wall_timer(period, cb)` remains, and it
+  waits on the timer handle rather than on a duration type.
 
   *Follow-ups this creates:* ~~`Client<S>` as a handle with one verb, with its
   poll half split off (W3's measurement is the input)~~ — **LANDED as W9**; timer
@@ -1498,9 +1541,40 @@ Two smaller ones, noted so a reader does not rediscover them:
 
 ## Related
 
-* [RFC-0096](../design/0096-cpp-freestanding-core-and-porting-layer.md) — D9
+* [RFC-0096](../../design/0096-cpp-freestanding-core-and-porting-layer.md) — D9
   revision 3 is the design; D5's fourth entry narrows to publishers when W2
   lands.
-* [phase-442](phase-442-one-freestanding-rclcpp-api.md) — W0–W7, landed.
+* [phase-442](../phase-442-one-freestanding-rclcpp-api.md) — W0–W7, landed.
 * issue 1335 — the C++ API uses the poll path where it means the dispatch path.
 * issue 1225 — the capability-layout rule these entities kept breaking.
+
+## The arena gained a removal path — what that retired, and what it opened (2026-10-02)
+
+`9768795b1d` (issue 1496 resolution 2) landed after this phase's work and changes
+the ground several sections stand on. The executor keeps a bounded table of
+RELEASED arena regions — 8, coalescing, first-fit with split — that
+`arena_alloc`, `arena_alloc_bytes` and `arena_alloc_with_trailing` try before
+moving the bump pointer. `release_action_server_raw` / `release_action_client_raw`
+drop the entry in place, so the RMW entities leave the graph, and return its
+bytes. Measured there: 200 create/release cycles on a 4-slot arena hold
+`arena_used` at the first cycle's high-water mark.
+
+**What it retired**, each amended in place above rather than deleted:
+
+* **W4's correctness argument** ("an arena publisher would make `reset()` a
+  no-op"). W4's decision STANDS on its other three grounds.
+* **W3b-ii reason 3's aggravating clause** ("worse here, because the arena has no
+  removal path"). The refusal STANDS on reasons 1 and 2 and on the relocation
+  itself.
+* **"An action's destructor does nothing."** It now releases.
+
+**What it opened, and is NOT done:** only action servers and clients use the
+release path. `SubscriptionHandle<M>` still has no `cancel()`, and this doc
+justified that by the arena having no removal path — that justification is gone,
+so `cancel()` is now a missing feature rather than an impossible one. The same
+holds for service servers and clients in the arena. Two cautions for whoever
+takes it: the table is BOUNDED (8 regions), so a workload that churns many
+entities can still fragment, which `9768795b1d`'s "arena FRAGMENTED" diagnostic
+exists to name; and a handle that outlives a released slot must not be able to
+reach whatever reuses it, which is a generation-check question a two-word handle
+does not answer today.
