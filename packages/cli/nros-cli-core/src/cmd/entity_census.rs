@@ -284,6 +284,36 @@ fn check_census(args: CheckArgs) -> Result<()> {
         ),
     };
 
+    // Issue 1419 -- WHICH contract, before anything else is asked. A model
+    // that folds in no `*.contract.yaml` has no contract-derived pool, so a
+    // census of it has nothing to reconcile -- and asking for one would make
+    // the configure demand (or warn about) an artifact that could never be
+    // compared. Measured on `examples/workspaces/c`, which has no contract:
+    // its threadx configure warned "census missing" with no census, and
+    // FAILED the moment a census was taken ("no --contract, and the model
+    // names no `*.contract.yaml`"), i.e. producing the evidence broke the
+    // build. A missing contract the model DOES name never gets here: the
+    // phase-460 W1 gate above re-hashes every input the model records.
+    let contract_path = match args.contract.clone() {
+        Some(p) => p,
+        None => match discover_contract(args.model.as_deref()) {
+            Some(p) => p,
+            None if args.model.is_some() => {
+                println!(
+                    "census check: no contract -- the model folds in no `*.contract.yaml`, so no \
+                     pool of this image is derived from one and there is nothing for a census \
+                     to reconcile (issue 1419)"
+                );
+                return Ok(());
+            }
+            None => bail!(
+                "no --contract, and no --model to find one in. The contract is \
+                 `<bringup>/launch/<stem>.contract.yaml`, beside the launch file this entry was \
+                 resolved from."
+            ),
+        },
+    };
+
     // phase-463 W4 -- the freshness question, BEFORE the comparison. A check
     // that compares against a museum census and then passes has said
     // something true about two documents and nothing at all about the code.
@@ -320,16 +350,6 @@ fn check_census(args: CheckArgs) -> Result<()> {
     let census: serde_json::Value = serde_json::from_str(&census_raw)
         .wrap_err_with(|| format!("`{}` is not JSON", census_path.display()))?;
 
-    let contract_path = match args.contract.clone() {
-        Some(p) => p,
-        None => discover_contract(args.model.as_deref()).ok_or_else(|| {
-            eyre::eyre!(
-                "no --contract, and the model names no `*.contract.yaml` to fall back on. The \
-                 contract is `<bringup>/launch/<stem>.contract.yaml`, beside the launch file \
-                 this entry was resolved from."
-            )
-        })?,
-    };
     let contract = ros_launch_manifest_types::parse_manifest(&contract_path)
         .map_err(|e| eyre::eyre!("{e}"))
         .wrap_err_with(|| format!("cannot read contract `{}`", contract_path.display()))?;
@@ -576,13 +596,26 @@ fn freshness_verdict(
     if policy.refuses() {
         bail!("census {what}: {why}\n{remedy}");
     }
-    // Not silent. `warn` is the landing default so that no consumer breaks on
-    // the day this merges, and a default that said nothing would be the state
-    // issue 1419 is about.
+    // Not silent, and not quiet either. `warn` stays the default (issue 1419,
+    // measured 2026-10-02): every cross image that reaches this check today is
+    // a C or C++ entry and CAN produce a census, but nothing that builds them
+    // unattended takes one first -- `build-test-fixtures` configures the
+    // `examples/workspaces/cpp` cross rows with no native census run before
+    // them -- so `refuse` would fail those builds for a reason the build
+    // cannot fix. What `warn` must not be is a status line: this image's pools
+    // are derived from a contract nothing has checked, which is exactly the
+    // state that shipped `ExecutorFull` to a board with no console. The
+    // `(WARNING` marker is what the configure keys a CMake WARNING on.
     println!("census {what} (WARNING, [census] on_{what} = \"warn\"): {why}");
     for line in remedy.lines() {
         println!("  {line}");
     }
+    println!(
+        "  This image's pools are derived from a contract that NOTHING has compared with the \
+         code (issue 1419). `warn` is the default only because unattended builds take no \
+         census first; set `[census] on_{what} = \"refuse\"` in the bringup's `system.toml` \
+         to make this a refusal."
+    );
     Ok(())
 }
 
@@ -648,16 +681,19 @@ struct Census {
 
 /// Issue 1419 -- the key that marks a census whose run stopped early.
 ///
-/// Why a census like that is WRITTEN rather than discarded: the native image
-/// is sized from the contract this census checks, so a contract one entity
-/// short makes the census run itself stop at `ExecutorFull`. Discarding the
-/// document there left nothing for the cross configure to compare -- it read
-/// "census missing", which `[census] on_missing` lands as a warning -- so the
-/// one edit phase-463 exists to catch (the island's E3a) produced a warning
-/// on the host and `ExecutorFull` on the board. Kept, it is a refusal on the
-/// host. It does NOT name the omitted entity: the executor refuses a
-/// registration (`next_entry_slot`) before the recorder sees it, so the rows
-/// are only what fit (measured on `examples/workspaces/cpp`, issue 1419).
+/// Why a census like that is WRITTEN rather than discarded: discarding the
+/// document left nothing for the cross configure to compare -- it read
+/// "census missing", which `[census] on_missing` lands as a warning. Kept, it
+/// is a refusal on the host.
+///
+/// It used to be how the island's E3a ended: the native image is sized from
+/// the contract this census checks, so a contract one entity short stopped
+/// the census run at `ExecutorFull`, and the omitted entity was the one row
+/// the recorder never saw. Since issue 1419's census sizing the run opens its
+/// executor at the executor's ceilings instead (`CENSUS_SIZING` in
+/// `nros-cpp`), so E3a is a named `missing-in-contract` row (measured on
+/// `examples/workspaces/cpp` built with `NROS_EXECUTOR_MAX_CBS=1`). What is
+/// left to land here is code that cannot boot at any sizing.
 ///
 /// Why every check REFUSES it, whatever its rows say: a partial observation
 /// cannot confirm that the contract is complete, and the failure that cut it
@@ -730,12 +766,15 @@ fn run_census(args: RunArgs) -> Result<()> {
     let incomplete = (!status.success()).then(|| {
         format!(
             "the census run of `{}` exited {status}: setup stopped before every component \
-             was constructed (the funnel printed the reason -- `ExecutorFull` names a callback \
-             table one short). A native image is sized from the contract, so a contract that \
-             declares fewer entities than the code creates stops HERE, on the host. The entity \
-             that did not fit is NOT among the recorded rows -- the executor refuses a \
-             registration before the recorder sees it -- and a node with fewer rows than its \
-             code creates is where to look",
+             was constructed (the funnel printed the reason). A census opens its executor at \
+             the executor's own ceilings (64 callbacks, 64 nodes), not at the contract's, so \
+             a contract one entity short no longer stops it -- that is a named \
+             `missing-in-contract` row. What stops a census run is code that could not boot \
+             on ANY sizing: more than 64 callbacks in one executor, a constructor that fails, \
+             or a pool the census does not resize (the parameter store). The rows recorded \
+             are what was created before the failure; an image built before issue 1419's \
+             census sizing still stops at its contract's `ExecutorFull`, and rebuilding it is \
+             the remedy",
             binary.display()
         )
     });
@@ -1138,9 +1177,8 @@ mod tests {
     }
 
     /// Issue 1419 -- a census whose run stopped early refuses even when every
-    /// row it holds is confirmed: nothing after the failure was observed, and
-    /// the failure is the island's E3a showing up one step early (a native
-    /// image sized from a contract one entity short).
+    /// row it holds is confirmed: nothing after the failure was observed, so a
+    /// partial observation cannot confirm that the contract is complete.
     #[test]
     fn an_incomplete_census_refuses_whatever_its_rows_say() {
         let dir = tempfile::tempdir().expect("tempdir");

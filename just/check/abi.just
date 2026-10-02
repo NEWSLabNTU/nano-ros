@@ -329,3 +329,12 @@ c-array-guard-probe:
 [private]
 cffi-cfg-implication:
     @python3 scripts/check-cffi-cfg-implication.py
+
+# phase-463 W5 I2 (issue 1419) -- the nros-cpp public surface is identical with
+# the census on and off. The census binary IS the native boot binary, so a
+# declaration conditional on `metadata-mode` / `profile-mode` would make the
+# census observe code the RTOS image does not compile. Refuses any such
+# preprocessor conditional in the tracked headers, and requires the census pair
+# to stay declared; a planted `#ifdef NROS_METADATA_MODE` is its negative control.
+census-no-conditional-api:
+    @python3 scripts/check-census-no-conditional-api.py
