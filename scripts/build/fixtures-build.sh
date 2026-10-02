@@ -341,6 +341,7 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
     export -f nros_fixture_target_dir_flag nros_fixture_group nros_fixture_group_slug \
               nros_fixture_platform_is_shared \
               nros_fixture_strip_authored_target_dir _nros_fixture_variant_sig \
+              nros_fixture_row_artifact_dir \
               nros_build_root nros_build_dir
     # phase-445 W4b — the settings-file invocation, shared with the staleness
     # probe so the two cannot build a row two ways.
@@ -489,6 +490,12 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
         # test.
         python3 "$NROS_REPO_ROOT/scripts/check-stack-floor.py" --row "$dir" "$adir"
     }
+    # issue 1620 — `nros_fixture_row_artifact_dir` (fixtures-target-dir.sh) is
+    # this function's callee, so it rides in the resolver's `export -f` list
+    # above. It was missing, and every esp32 row died in its make leaf with
+    # "nros_fixture_row_artifact_dir: command not found" — invisible to
+    # `check-export-f-closure`, which read only column-0 definitions and so
+    # never walked this indented one.
     export -f nros_fixture_check_stack_floor
     export -f nros_fixture_build_one
 
