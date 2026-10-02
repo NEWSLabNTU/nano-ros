@@ -103,3 +103,30 @@ that no longer existed. Dequeue-to-push costs a full batch of runner time, and
 with `min_entries_to_merge: 3` and only two open PRs it also resets the
 5-minute grouping wait. Worth batching such pushes rather than doing them one
 PR at a time.
+
+## The same head, two batches, 73 minutes and 38 minutes — it is lane variance (2026-10-02)
+
+PR #1551 merged at 07:32:19, and the way it got there is the cleanest evidence
+this issue can have: **the same head was batched twice and the gate took half as
+long the second time.**
+
+| batch gate | enqueued | gate duration | outcome |
+| --- | --- | --- | --- |
+| 36969459579 | 05:33:03 | **73 min** | success — but the entry was ejected `checks_timed_out` at 63 min |
+| 36975759614 | 06:53:02 | **38 min** | success, merged |
+
+Head `7c3b1d900` both times. Same branch, same diff, same gate list. So the
+60-minute window is not a verdict on any pull request's content or size — it is a
+coin flip on how long the lane happens to take, and this PR lost once and won
+once without changing a byte.
+
+That also retires the most tempting reading of the first ejection: that a
+docs-only change somehow attracted a slow lane. It did not; the second run of the
+identical tree finished in 38 minutes.
+
+### What it costs when it loses
+
+The 05:33 attempt burned a full 73-minute gate whose green verdict arrived for an
+entry that no longer existed, and `main` stayed frozen from 04:49:21 to 07:32:19
+— **2 h 43 m** — with nothing wrong anywhere. The throughput argument in this
+issue is that figure, not the ejection count.
