@@ -62,6 +62,35 @@ closes. This issue is the one that has to move FIRST: on a road that does name a
 descriptor, retiring a carrier nobody reads the replacement for would lose the
 fact outright.
 
+## Fix direction, revised 2026-10-03 (RFC-0100 Amendment 1)
+
+*(Placed above the progress log so it is read first; the log below is what
+landed.)*
+
+* **The field `RX_BUF` needs is now decided: `[types] max_wire_bound_bytes`** —
+  the largest wire bound over every type the image's interface closure
+  REGISTERED, taken per column like `[types]`' other three maxima. It refuses
+  naming the type when a registered type is unbounded or unpriced, and naming
+  the table when a registered table is absent (a clean tree's first configure —
+  issue 1647). Same inputs as `[types]` today (phase-457-payload W2's
+  registered bound tables), so every producer road can state it; in an N:1
+  cmake configure the registration is already configure-wide, i.e. it IS the
+  shared runtime's closure, and needs no reduction (D12 rule 3). It is a
+  `schema_version` bump, which D12's `[meta]` change shares — land the two in
+  one bump, not two.
+* **Then the reader:** `nros-node/build.rs` ranks it first for
+  `NROS_SUBSCRIPTION_BUFFER_SIZE`, the carrier second — the shape the three
+  subscriber classes already have.
+* **The road for all four is issue 1649 (RFC-0100 D12),** not this issue. After
+  the field and the reader land here, the four payload rows retire together with
+  1649's, by the W14 knob diff.
+
+Files: `packages/tooling/nros-sizing-descriptor` (schema + reader),
+`packages/cli/nros-cli-core/src/sizing_descriptor.rs` (the composer),
+`packages/core/nros-node/build.rs` (the `RX_BUF` reader). **Overlap:** the
+composer and schema are also where 1649's D12 lands — one owner for both, so
+the schema moves once.
+
 ## Progress, 2026-10-03 — the three subscriber classes have a reader; `RX_BUF` is what is left
 
 **Wired (RFC-0100 D5).** `nros_sizing_descriptor::subscriber_payload_classes`

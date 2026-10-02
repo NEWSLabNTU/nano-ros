@@ -36,3 +36,34 @@ Carry it per ROW through the join (an `EntityDecl` field beside
 `DescriptorInputs::language`. Never infer the language from anything else:
 phase-457 W3 removed that inference for the in-place row, and the buffered rows
 deserve the same evidence.
+
+## Revised direction (2026-10-03, RFC-0100 Amendment 1)
+
+Two things changed the answer above.
+
+* **The language is no longer the probe's alone.** phase-474 put each node's
+  component KIND on `LoweredNode` (`c` / `rust` / `rclcpp` / `configure`, read
+  from `nros-metadata.json`'s `lang` — `codegen::entry::lower::component_kind`),
+  so the model road has a per-COMPONENT language from the same plan the entry is
+  generated from, with no join through a sidecar.
+* **But a language is still a proxy.** Issue 1319's table has a C/C++ row with
+  no type hint that takes `RX_BUF` exactly like the Rust generic registration —
+  so "C/C++ ⇒ `typed_bound`" is an inference of the kind W3 removed for the
+  in-place row.
+
+So the preferred fix is the W3 shape applied to the buffered rows: the
+registration funnel already computes the slot size it claims, so the probe
+records WHICH buffered row (`typed_bound` / `unbounded`) each subscription took,
+beside `in_place`, and the join carries that observation. Language disappears
+from `registration_path` entirely. The per-component language from the plan is
+the fallback for a row the probe did not observe — never the image-wide
+`DescriptorInputs::language`, which a model image of several packages cannot
+have.
+
+In an N:1 cmake configure (RFC-0100 D12) a component's observation is per
+component, so it unions without conflict; if two entries' sidecars ever disagree
+for one component, the row refuses (D12 rule 2).
+
+Files: the probe sidecar schema (`nros::node_metadata`, a version bump), the
+registration funnel that reports `in_place` today, `contract_join`, and
+`sizing_descriptor::registration_path`. No overlap with issues 1608 / 1647.

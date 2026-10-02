@@ -103,3 +103,28 @@ the same loop in `EntityInventory::to_declared_qos_header`, plus
 `create_publisher_in` is a plain call with no macro form -- which is an API
 decision, not a mechanical extension. Until then a constant-expression C/C++
 publisher that disagrees is refused at REGISTRATION (boot), not at build.
+
+## Design note (2026-10-03, RFC-0100 Amendment 1) — what the build path changes
+
+Nothing in the fix shape above; two constraints on WHERE it can be shown to
+work, both from RFC-0065 D8 (one cmake configure per coordinate, so several
+images share one runtime):
+
+* **The Rust half has no table on an N:1 cmake configure today.** The declared
+  policies reach Rust only on the sizing descriptor (`nros-node/build.rs`,
+  `declared_qos_rows`), and a configure with several entries names no
+  descriptor to cargo (issue 1649) — so there the Rust registration checks the
+  subscription DEPTH (from `NROS_ENTITY_DECLARED_DEPTHS`) and no policy at all,
+  and a publisher row added here would be equally absent. Demonstrate the Rust
+  half on a cargo image or a single-entry configure; it reaches the
+  `examples/workspaces/cpp` native configure when RFC-0100 D12 lands (one
+  runtime descriptor per configure), with no change to this issue's code. Do
+  NOT add an env carrier for the policies to cover that road — D10 forbids it,
+  and D12 is the road's fix.
+* **The C/C++ table's KIND column must be folded by the SAME per-component
+  union** issue 1564 uses for subscriptions (and D12 rule 1 uses for the
+  descriptor): a publisher row on which two entries' models disagree is
+  REFUSED, naming both models — never resolved to one of them.
+
+(Another agent holds this issue's code; this note changes no direction it is
+following, only where the acceptance can be measured.)

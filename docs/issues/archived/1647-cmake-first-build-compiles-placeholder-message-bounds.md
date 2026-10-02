@@ -122,3 +122,36 @@ fragment's bytes and mtime alone. Against the previous generator A and B fail.
 `nros ws entity-census take`'s build-to-the-fixed-point loop
 (`TAKE_MAX_BUILDS`, issue 1419) is left as it is: it is a ceiling, and it now
 stops after the one no-op build that confirms the digest.
+
+## Record: design note (2026-10-03, RFC-0100 Amendment 1) — the sizing descriptor has the same fixed point
+
+*Written against the OPEN issue, before the resolution above landed; kept as
+the record of the descriptor half of the acceptance. Whether the configure-time
+codegen also settles the descriptor's bound fields on build 1 was not measured
+when this note was carried onto the archived issue.*
+
+The descriptor is written at configure time from the bound tables the
+configure REGISTERED (`_nros_sizing_bound_args`), and those are the same
+codegen outputs as the message-bound fragments. On a clean tree the first
+configure registers tables that do not exist yet, so the descriptor REFUSES
+`wire_bound_bytes` and `[types]` ("the rest are built by the first build"); the
+second configure states them. Any consumer that ranks the descriptor's bound
+fields first (zenoh's payload classes since issue 1595, for one) therefore
+changes its inputs between build 1 and build 2 for
+the same reason the fragments do — wherever a descriptor is named to cargo
+(single-entry configures today, every configure once RFC-0100 D12 lands).
+
+So:
+
+* the direction above fixes both, and should be checked against both — a
+  pre-configure producer that wrote the fragments but left the descriptor's
+  tables for the build would leave half of this open;
+* **acceptance gains one line:** the image's sizing descriptor(s) under
+  `build/<coord>/cmake/nros/sizing/` are byte-identical between build 1 and
+  build 2 from a clean dir, beside `native_entry`'s sha256;
+* RFC-0100 D4's planned `[types] max_wire_bound_bytes` (issue 1595) is a
+  fourth field with the same input, and will have the same fixed point until
+  this lands.
+
+(Another agent holds this issue's code; this note adds an acceptance line and
+changes no direction it is following.)

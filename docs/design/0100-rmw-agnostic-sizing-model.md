@@ -1,6 +1,9 @@
 # RFC-0100 — One sizing model: the contract states facts, every backend derives its own buffers
 
-**Status:** Draft (2026-09-11)
+**Status:** Draft (2026-09-11; last reviewed 2026-10-03 — see
+[Amendment 1](#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model),
+which adds D12 and revises D4's producer and road language against RFC-0065's
+unified build path)
 
 Builds on RFC-0049 (the four-rung knob ladder supplies the precedence this model
 needs and is not re-litigated), RFC-0033 (storage modes decide whether a cap
@@ -418,6 +421,9 @@ copied-out leaf syncs and builds to the same 172,298 bytes with zero absolute
 paths in the file).
 
 ### TWO producers, one composer (phase-454 W14)
+
+*(Heading kept as landed. phase-457 W0.b added a third producer, `--from-leaf`;
+Amendment 1 restates the set by INPUT and adds the multi-entry runtime, D12.)*
 
 **Landed.** The other two roads — a workspace cargo image, and every cmake /
 Zephyr west / NuttX entry — now write one too. They have ONE input where the
@@ -850,3 +856,199 @@ made it worse.
 
 The last row is still the model's clearest argument: the running code did not
 change. Only whether the build was told what it registers.
+
+## Amendment 1 (2026-10-03) — the unified build path moved under this model
+
+D4 was written when "a road" meant a hand-written entry and the build tool it
+happened to use. Since then RFC-0065 made `nros build` the one front door
+(five stages, the driver chosen by the board), phase-470 generated every
+workspace entry but three, and phase-474 made one lowering (`LoweredEntry`) the
+context every entry pack renders. None of that changed what a descriptor
+STATES. It changed what D4 assumed about where one is CONSUMED, and the model
+has to say so rather than carry the old premise in its phases.
+
+### What the build path made true
+
+**The cmake road builds ONE runtime for every image of a coordinate.** RFC-0065
+D8: *"One configure per coordinate"* (platform, rmw, feature-sig). Every
+`[image.*]` row of a bringup that resolves to the same coordinate is an entry of
+the same `build/<coord>/cmake` configure, and they link ONE runtime staticlib
+(`nros-cpp` / `nros-c` plus the backends, imported through Corrosion). The cargo
+road does not do this: `build/<coord>/<image>_entry/` is each image's own cargo
+root with its own target directory, so a cargo image always has a runtime of its
+own. So the ratio of entries to runtime builds is a property of the DRIVER:
+
+| road | entries per runtime build | descriptor named to the runtime's cargo |
+| --- | --- | --- |
+| cargo leaf | 1 | yes (`cmd::leaf_settings`) |
+| cargo workspace image | 1 | yes (`cmd::build`, stage 4) |
+| cmake standalone leaf | 1 | yes (`--from-leaf`, phase-457 W0.b) |
+| west entry through `nano_ros_entry()` | 1 | yes (issue 1407, PR #1601) |
+| generated Rust west application (`rust_cargo_application()`, phase-470 W5.a) | 1 | not measured here |
+| **cmake workspace configure** | **N — every image of the coordinate** | **no** — `nros_sizing_descriptor_cargo_env()` names one of N or none, and says none (issue 1649) |
+
+phase-457 W0.c kept that refusal on the measured premise that "no configure in
+this tree declares more than one entry". The premise was true of hand-written
+entries and is false of generated ones: `examples/workspaces/cpp`'s native
+configure holds five entries and writes five descriptors (issue 1649, measured
+2026-10-03), and [issue 1600](../issues/archived/1600-multi-entry-configure-sizes-runtime-from-last-entry.md)
+had already met the same configure from the entity side. It is not an edge case
+to revisit when it occurs; it is the cmake road's normal shape for any bringup
+with more than one image per coordinate.
+
+### D12 — the unit a descriptor sizes is the RUNTIME BUILD, not the entry
+
+> **Every runtime build is named exactly one descriptor. Where entries and
+> runtime builds are 1:1, it is the entry's descriptor, unchanged. Where they are
+> N:1, it is the RUNTIME's descriptor: the same composer
+> (`sizing_descriptor::build`) over the reduction issue 1600 already defined for
+> the entity fragment.**
+
+"Exactly one or none" becomes "exactly one". The per-entry descriptors are still
+written — they are what `nros ws sizing-descriptor --descriptor` inspects and
+what a per-entry reader would read — but in an N:1 configure none of them is
+named to cargo.
+
+Four rules, each chosen so the runtime descriptor cannot disagree with what the
+configure already delivers:
+
+1. **One reduction, three outputs.** The entity fragment (issue 1600,
+   `EntityInventory::shared_runtime_over` over `NROS_ENTITY_INVENTORY_MODELS`),
+   the declared-QoS header table
+   ([issue 1564](../issues/archived/1564-declared-depth-check-has-no-adopter.md),
+   the union per component) and the runtime descriptor fold the SAME model list
+   by the SAME rule: a component any entry launches is counted once, at
+   `merged_per_kind_max` of its declarations. Rows and `[image]` counts therefore
+   agree by construction. A second reduction written for the descriptor would be
+   issue 1025's shape — one formula, its inputs derived twice.
+2. **A per-endpoint fact on which the entries AGREE is stated; one on which they
+   DISAGREE is REFUSED, naming both models — never the max.** The max would be
+   the safe direction for sizing alone, but the descriptor is also the ONLY
+   carrier of the declared reliability and durability to the Rust registration
+   check (D10), and an equality check fed a max refuses the image that declared
+   less. A refusal costs sizing nothing it needs: the consumer prices that
+   endpoint at its worst case (D6), which covers both declarations, and the
+   check skips a row it was not given rather than enforcing a number nobody
+   wrote. This is issue 1564's rule for the C/C++ table, held on the descriptor.
+3. **The closure facts need no reduction.** `wire_bound_bytes` and `[types]` come
+   from the bound tables the configure REGISTERED (phase-457-payload W2), and
+   that registration is already configure-wide — it IS the shared runtime's
+   closure.
+4. **The file says what it covers.** `[meta] entry` names the runtime, and the
+   descriptor lists the entries it composed — the reason `[meta] entry` exists at
+   all ("a copied file still says what it is about"). The reader refuses unknown
+   keys, so this is a `schema_version` bump, shared with the closure field below.
+
+**The cost is the one the carriers already pay, so retiring them onto D12 moves
+no byte.** Every entry of an N:1 configure is sized for the envelope of its
+coordinate's images. That is what the `NROS_DECLARED_*` carriers deliver today
+(issue 1600's union), so the retirement test for each KEPT row on issue 1649 is
+the W14 method: build the configure with the runtime descriptor named and the
+carriers removed, diff the knobs each consumer emits, require no difference.
+
+**D12 closes the ROAD axis only.** Eleven KEPT rows carry a second reason in
+their ledger text — the descriptor has no `[image]` field for the fact (callback
+slots over timers and guard conditions, scheduling contexts, action clients,
+publishers, monitor rows, the infra-queryable feature), no component attribution
+on its rows, no consumer that ranks it first, or no file at all for a model with
+no wiring. Those are a FIELD axis D12 does not touch, and they are
+[issue 1655](../issues/1655-descriptor-has-no-field-for-eleven-kept-carriers.md).
+
+**Not decided here: whether the cmake road should build a runtime per IMAGE**,
+as the cargo road already does, so each image is sized for itself rather than
+for its coordinate's envelope. That is RFC-0065 D8's trade — one runtime build
+per coordinate against N — and neither side is measured: the bytes the smaller
+images over-provision, and the build time of N Corrosion imports of the
+runtime. D12 is correct under either answer; the measurement belongs to D8's
+owner.
+
+### D4 revised — producers are named by INPUT; the road is where they are CALLED
+
+D4 says "THREE producers, one composer" in CLAUDE.md and "TWO producers" in the
+heading above, because phase-457 W0.b added `--from-leaf` after W14 named the
+section. Restated by what each READS, which is the distinction that survives the
+build path changing under it:
+
+| producer | reads | called from |
+| --- | --- | --- |
+| leaf (`write_for_leaf`) | the leaf's probe, its `generated/` bound tables, its synthesised model and `system.contract.yaml` | `nros sync` on a single-package cargo leaf |
+| model (`write_for_model`) | the resolved SystemModel(s), the registered bound tables, the board's triple, the workspace's probe sidecars | `nros build` stage 4 on a cargo workspace image; `nano_ros_entry()` at configure on cmake and west |
+| declaration (`--from-leaf`) | a standalone cmake leaf's `[[component]] entities` | `nros_record_leaf_entity_facts` |
+
+D12's runtime descriptor is not a fourth producer; it is the model producer over
+a list of models. Generated entries changed none of the INPUTS, so the split
+stands. What the build path does change is where an input COULD come from:
+
+* **The board is resolved once, at stage 2/4, for every road** — so a board
+  fact the cmake configure cannot resolve (phase-457 W4's still-refused
+  `heap_budget_bytes`) is a fact stage 4 should hand to the configure, never one
+  the configure should learn to read.
+  [Issue 1653](../issues/1653-cmake-road-descriptor-never-states-the-board-heap.md).
+* **The component's language is on the plan.** phase-474 put each node's
+  component KIND (`c` / `rust` / `rclcpp` / `configure`, read from
+  `nros-metadata.json`'s `lang`) on `LoweredNode`. So the model road has a
+  per-COMPONENT language without the probe — but a language is still a proxy for
+  the registration call (a C/C++ registration with no type hint takes `RX_BUF`,
+  [issue 1319](../issues/archived/1319-arena-prices-a-subscription-below-what-a-schemaless-backend-allocates.md)).
+  The direction for
+  [issue 1648](../issues/1648-model-road-observed-buffered-subscription-needs-probe-language.md)
+  is to OBSERVE the buffered row the way phase-457 W3 observed the in-place one
+  — the registration funnel computes the slot size, so it knows which row it
+  claimed — with the plan's per-component language as the fallback, and never an
+  image-wide one.
+* **The declaration producer shrinks with the leaves it serves.** It exists for
+  the twelve standalone NuttX C/C++ leaves
+  ([issue 1556](../issues/1556-c-and-cpp-standalone-leaves-have-no-entity-probe.md))
+  — phase-470 kept standalone leaves (its classes 3 and 4) and did not touch
+  these. It retires when those leaves get a census or a synthesised model, not
+  before.
+
+### D4 extended — the closure field `RX_BUF` needs
+
+[Issue 1595](../issues/1595-subscriber-payload-carriers-have-no-descriptor-reader.md)
+found the one payload carrier no `[[endpoint]]` row can replace: `RX_BUF` is a
+CLOSURE fact (every type the image could receive or publish, because
+`DEFAULT_TX_BUF` aliases it), and an undeclared endpoint's type is in the
+closure and in no row. So `[types]` gains **`max_wire_bound_bytes`**, taken per
+column like the three maxima beside it: the largest wire bound over every type
+the closure registered. It refuses — naming the type — when a registered type is
+unbounded or unpriced (D6's third and fourth rows), and naming the table when a
+registered table is absent (the first-configure state below). Same inputs as
+`[types]` today, so every producer road can state it.
+
+### The fixed point is a descriptor property too
+
+On the cmake road the bound tables are written by codegen DURING the build, so a
+clean tree's first configure registers tables that do not exist yet and the
+descriptor REFUSES its bound fields (`_nros_sizing_bound_args`: "the rest are
+built by the first build"); the second configure states them, the consumers'
+inputs change, and the runtime rebuilds. That is
+[issue 1647](../issues/1647-cmake-first-build-compiles-placeholder-message-bounds.md)'s
+two-build fixed point seen from the descriptor, and its fix — a pre-configure
+producer of the bound tables,
+[issue 1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md)'s
+direction — closes both at once. Acceptance for either includes the
+descriptor's bytes, not only the binary's.
+
+### The census is the evidence, and it is per MODEL
+
+phase-463's census is what makes a stated fact trustworthy: the descriptor
+carries what the contract says, and the census checks that the code agrees. It
+is keyed per MODEL (`<model-dir>/<stem>.census.json`), which is what D12
+composes over — so an N:1 runtime descriptor is trustworthy exactly when each of
+its models' censuses is fresh and passing. Two gaps in that chain are the build
+path's to close, not the descriptor's: the census hooks live in `nros-cpp`, so a
+Rust node, and a C node that opens its own node through `nros-c`, are not
+attributed; and only the cmake configure checks a census, so a cargo image is
+never checked
+([issue 1419](../issues/1419-no-layer-reconciles-contract-endpoints-with-the-code.md)).
+The direction for both: the hooks move to `nros`, the crate every language's node
+API sits on, and the cargo road checks at `nros build` stage 4, where it already
+writes this descriptor.
+
+### What this amendment does not change
+
+D1–D11 stand. Refusal stays per field and never a default; demand stays
+unfloored; a descriptor stays relative and self-contained; the backend still
+owns its formula. D12 adds a unit (the runtime) and a reduction it borrows; it
+adds no fact and no carrier.

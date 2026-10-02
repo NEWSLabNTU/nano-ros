@@ -6,6 +6,11 @@ shortfall: 2 mechanisms retired, **26 `NROS_DECLARED_*` carriers KEPT**, each
 against a tracked blocker, in a ledger the gate enforces. See "W9 — retirement"
 below for the per-fact table.
 
+**Reviewed 2026-10-03 against the unified build path** — see "After the build
+path moved" at the end. Nothing here is re-opened; two premises the later waves
+inherited are corrected there (the multi-entry configure, and the producer
+count), and the remaining retirement work is RFC-0100 D12's.
+
 **The last sentence of the old header was wrong, and W9 measured it.** It read
 *"The carriers that deliver only COUNTS and QoS are a different matter, and W9
 can take them first"*, on the reasoning that
@@ -1226,3 +1231,25 @@ whether the build was told what it registers.
 * **`lifespan`, `deadline`, `liveliness`.** They bound occupancy or liveness, not
   capacity. They stay runtime-only.
 * **RFC-0049's ladder.** Precedence is unchanged.
+
+## After the build path moved (reviewed 2026-10-03)
+
+RFC-0065 (`nros build`, one configure per coordinate), phase-470 (generated
+entries) and phase-474 (one entry lowering) landed after this phase. Re-read
+against them, two premises this phase handed its successors are wrong, and
+[RFC-0100 Amendment 1](../design/0100-rmw-agnostic-sizing-model.md#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model)
+carries the corrections:
+
+* **"A multi-entry configure names no descriptor to cargo" is not a permanent
+  road refusal.** W11 and W14 treated it as one, and phase-457 W0.c kept it
+  because no configure had several entries. RFC-0065 D8 builds every image of a
+  coordinate in one cmake configure with one runtime, so generated entries make
+  that the cmake road's normal shape (issue 1649 measured five entries in
+  `examples/workspaces/cpp`'s native configure). RFC-0100 D12 names that runtime
+  exactly one descriptor, composed by issue 1600's reduction.
+* **The W9 ledger's reasons have two axes, not one.** Most rows wait only on the
+  road (D12). Eleven also wait on a field, a reader or a file the descriptor does
+  not have — issue 1655 — and would not retire on D12 alone.
+
+What W9 measured stands: no carrier retires until its fact is stated AND
+delivered on every road it reaches.

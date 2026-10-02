@@ -1,6 +1,17 @@
 # phase-457 — payload-class sizing on every road, and the registration fact both halves need
 
-**Status (2026-09-21). Queued, not started.** Successor to
+**Status (2026-10-03). W0, W0.b, W1, W2, W3, W5 LANDED; W4 answered and then
+superseded by issue 1393's closure; W0.c's "keep the refusal" decision is
+WITHDRAWN** — its premise ("no configure in this tree declares more than one
+entry") is false of generated entries, and
+[RFC-0100 Amendment 1](../design/0100-rmw-agnostic-sizing-model.md#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model)
+replaces it with D12 (one descriptor per RUNTIME build). What is left of this
+phase's acceptance — the carriers retiring — is now issue 1649's (the N:1 cmake
+configure) and issue 1595's (`RX_BUF`'s closure field); see "W0.c revisited"
+below. This header read "Queued, not started" for twelve days after W0 landed,
+which is the stale-header defect phase-454's own header records.
+
+**Original status (2026-09-21). Queued, not started.** Successor to
 [phase-454](phase-454-contract-states-facts-backends-derive.md), which
 implemented [RFC-0100](../design/0100-rmw-agnostic-sizing-model.md) and named its
 own ceiling. Closes [issue 1393](../issues/archived/1393-cmake-road-has-no-bound-inventory.md)
@@ -176,7 +187,8 @@ exactly the images that describe themselves (phase-454 W9's lesson):
 
 * a **multi-entry cmake configure** names no descriptor to cargo — and W0.c below
   re-affirmed that refusal as the PERMANENT answer, so this is not a gap waiting
-  on a wave;
+  on a wave; *(withdrawn 2026-10-03: such configures exist, and RFC-0100 D12
+  names their runtime one descriptor — see "W0.c revisited")*
 * a **standalone Zephyr leaf** reaches neither, because `nano_rosConfig.cmake`'s
   Zephyr arm returns before the leaf-facts call by design (the Kconfig derive
   sentinel is that road's own front-end, RFC-0049).
@@ -237,6 +249,34 @@ direction — but it sizes every image in the configure for the worst case of al
 of them, and whether that beats each image keeping crate defaults is empirical.
 It cannot be measured without such a configure, so building it now would be
 speculative generality for a shape nobody has.
+
+### W0.c revisited (2026-10-03) — the condition occurs, and it is structural
+
+**Withdrawn, with the measurement that withdrew it.** The count above was of
+HAND-WRITTEN `nano_ros_entry(` call sites. RFC-0065 D8 builds one cmake configure
+per COORDINATE, and phase-470 generated the workspace entries, so every image of
+a bringup that resolves to the same coordinate is an entry of one configure
+linking one runtime. `examples/workspaces/cpp`'s native configure holds five
+entries and writes five descriptors (issue 1649, measured 2026-10-03), and issue
+1600 had met the same configure a day earlier from the entity side. The "revisit
+when a multi-entry configure exists" trigger fired; nobody was watching it,
+because a premise recorded as a count is re-verified by nobody.
+
+**The answer is not the envelope this section sketched.** It proposed "where two
+entries state the same `(kind, type, name)` at different depths, take the
+larger". RFC-0100 D12 takes the reduction issue 1600 already landed for the
+entity fragment (per component, `merged_per_kind_max`, over every entry's model)
+and REFUSES a per-endpoint fact the entries disagree on, rather than taking the
+max: the descriptor is the only carrier of the declared policies to the Rust
+registration check (RFC-0100 D10), and an equality check fed a max refuses the
+image that declared less. The empirical question this section deferred — "does
+the envelope beat crate defaults?" — dissolved: the carriers ALREADY deliver
+1600's union to that runtime, so moving them onto a descriptor composed by the
+same rule changes no byte, and the retirement test is the W14 knob diff.
+
+What stays open is RFC-0065 D8's, not this phase's: whether the cmake road should
+build a runtime per image, as the cargo road does (RFC-0100 Amendment 1, "Not
+decided here").
 
 ### W2 — EXPORT, not re-derive; and both halves already exist
 
@@ -667,7 +707,9 @@ Plus, on both axes:
   each surviving one names a narrower, still-open reason; and
 * **the thirteen carriers 1407 blocks retire** — the nine entity counts and the
   four queryable raw inputs — each registered in `check-knob-single-reader` with
-  its single legitimate reader, per phase-454 W9's ledger.
+  its single legitimate reader, per phase-454 W9's ledger. *(2026-10-03: with
+  1407's west half fixed by PR #1601, every KEPT row moves to issue 1649, and its
+  remedy is RFC-0100 D12.)*
 
 W9's gate derives ledger completeness from `check-declared-fact-carriers.produced()`
 and requires each row's issue to be open, so **closing 1393 or 1407 automatically

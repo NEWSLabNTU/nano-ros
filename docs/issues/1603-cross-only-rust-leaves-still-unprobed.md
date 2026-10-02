@@ -112,7 +112,42 @@ and cyclonedds) exit 0, and the ThreadX images still export `app_main`
   RESOLUTION. Answers: split the node into its own crate the image depends on,
   or read the entities from the west build's artifact (1265's original
   direction).
+* **(Revised direction for both, 2026-10-03 — see the section at the end.)**
 * **Outside this issue's 32, the same shape**:
   `packages/testing/nros-tests/bins/rtic-run-plan-e2e` is `.unprobeable` and
   cannot take the target-scoping alone -- its `lib.rs` calls
   `nros_board_mps2_an385::exit_success()`.
+
+## Revised direction (2026-10-03, against the unified build path)
+
+phase-470 did not touch either remaining family: `qemu-armv7a-nuttx/rust/*`
+stays a class-3 leaf (cargo owns the link) and `zephyr/rust/*` a class-4 leaf
+(cmake owns the link, `rust_cargo_application()`). Both still exist and both
+still take the LEAF producer of RFC-0100 D4 (`write_for_leaf`), which needs the
+probe. What the unified path changed is that each blocker now has an in-tree
+precedent to converge on, rather than a new mechanism to invent:
+
+* **NuttX — converge the probe on the BUILD road's config convention.**
+  RFC-0098 / phase-445 already moved the image build off the leaf's own cargo
+  config: `nros build` runs cargo from the directory ABOVE the leaf with
+  `--config build/<image>/nros-cargo.toml`. The gitignored leaf-local
+  `.cargo/config.toml` survives for exactly two readers — a bare `cargo` run
+  inside the leaf, and this probe — and it is the file that `include`s the
+  board's `build-std`. So the fix recorded above (run the harness outside the
+  leaf, with only the patch rows named by `--config`) is not a probe-specific
+  workaround; it is the probe adopting the road the build already takes, and it
+  leaves that leaf-local file with one reader fewer.
+* **Zephyr — the split already exists, as the workspace shape.** phase-470 W5
+  generated the Zephyr workspace entries: the node is an ordinary package that
+  host-builds (so the probe answers for it), and the west application is
+  GENERATED around it (`builder::west_app`, `rust_cargo_application()`). A
+  standalone Zephyr leaf whose node lives in its own crate and whose
+  `CMakeLists.txt` + `app_main.rs` are the thin image half is the same split
+  done by hand in a copy-out leaf (RFC-0026 keeps leaves self-contained, so the
+  leaf does not become a workspace). Prefer this over reading the west
+  artifact: it makes the leaf probe like every other Rust package, where the
+  artifact route would be a fourth way of learning entities.
+
+Neither change belongs to RFC-0100; both are probe/leaf work. Files: NuttX —
+`orchestration::metadata_build` (the harness invocation) only; Zephyr — the six
+`examples/zephyr/rust/*` leaves only. No overlap with issues 1608 / 1647.

@@ -188,3 +188,31 @@ neither half of it:
    `system.toml` `entities` is read today (`--from-leaf`, `leaf_entity_env`).
 
 Acceptance is unchanged. None of 1-5 landed in this session.
+
+## Revised direction (2026-10-03, RFC-0100 Amendment 1)
+
+**The twelve still exist, and still take their own road.** phase-470 unified the
+WORKSPACE entries (generated, 15 hand-written Zephyr entries down to 3) and kept
+standalone leaves as a deliberate shape (RFC-0026); it did not touch
+`examples/qemu-armv7a-nuttx/{c,cpp}/*`. So these remain the only users of RFC-0100
+D4's third producer (`--from-leaf`, over `[[component]] entities`), and that
+producer retires with this issue, not before.
+
+**Item 1 is the same move as issue 1419's Rust census producer.** The hooks sit
+in `nros-cpp`; `nros-c` and `nros-cpp` both depend on `nros`, and a Rust node's
+API is `nros`. Hook bodies in `nros` (behind `metadata-mode`, calls
+unconditional) reach C, C++ and Rust from one place, so 1-5's first step should
+be done once for both issues rather than as an `nros-c` copy of
+`metadata_hooks.rs` — a second hook layer is the second spelling this repository
+keeps paying for.
+
+**Order.** Item 1 (shared with 1419) → item 2 (the C census switch in the hosted
+`NROS_APP_MAIN_REGISTER()` main) → items 3-4 (link the recorder; a host configure
+of the leaf and its enumeration) → item 5 (derive the leaf's pools from the
+census where `system.toml` `entities` is read today). Until item 5, the
+declaration stays authored and `--from-leaf` stays its producer.
+
+Files for item 1: `packages/api/nros/` (new hook module),
+`packages/api/nros-cpp/src/metadata_hooks.rs` (becomes calls),
+`packages/api/nros-c/src/` (the node / timer / guard-condition / parameter entry
+points), `check-census-hooks-complete`. No overlap with issues 1608 / 1647.
