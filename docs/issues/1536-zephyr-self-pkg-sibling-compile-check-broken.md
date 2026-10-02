@@ -136,3 +136,58 @@ error, and only the sibling — whose product is missing — fails.
 Whether that asymmetry is correct is not decided here. It does mean the error
 message alone does not distinguish the two, which is worth knowing before
 treating the sibling's failure as unique to it.
+
+## REPRODUCED in CI, 2026-10-01 — with the west command line (2026-10-02)
+
+The title's qualifier can come off: this is no longer only a report. The
+**live-peer regression** lane reproduced it on a scheduled run.
+
+Run **36814478655** (schedule, 2026-10-01T04:18:17Z, head `e61d7dfd2`), job
+**110216752409** `rows whose board is NOT this runner`, step `Build the fixtures
+those rows resolve`:
+
+```
+CMake Error at …/zephyr/cmake/modules/extensions.cmake:428 (add_library):
+  No SOURCES given to target: app
+Call Stack (most recent call first):
+  …/kernel.cmake:216 (zephyr_library_named)
+  …/zephyr_default.cmake:141 (include)
+  …/ZephyrConfig.cmake:66 (include_boilerplate)
+  …/ZephyrConfig.cmake:92 (include_boilerplate)
+  CMakeLists.txt:2 (find_package)
+CMake Generate step failed.  Build files cannot be regenerated correctly.
+```
+
+and the command, which is the thing a reproduction attempt needs and the
+earlier report did not carry:
+
+```
+FATAL ERROR: command exited with status 1: /usr/bin/cmake \
+  -DWEST_PYTHON=/usr/bin/python3 \
+  -B<ws>/build/west-fixtures/zephyr_self_pkg_sibling -GNinja \
+  -DBOARD=native_sim/native/64 -DCONF_FILE=prj.conf \
+  -DZEPHYR_EXTRA_MODULES=<ws> \
+  -S<ws>/packages/testing/nros-tests/fixtures/zephyr_self_pkg/sibling/caller
+```
+
+Zephyr `3.7` from the provisioned workspace
+(`~/.nros/workspaces/zephyr/3.7/zephyr`).
+
+Two things the log settles. **The configure got far enough to do our work**:
+`nros_system_generate` baked `…/zephyr_self_pkg/sibling/alpha_pkg` into
+`build/west-fixtures/zephyr_self_pkg_sibling/nros-system`, reported `domain 0
+agrees`, resolved the codegen tool, and printed `Configuring done` — the failure
+is at Zephyr's GENERATE step, after ours. So whatever is missing is the `app`
+target's sources in the `caller` subdir, not the sync this fixture's siblings
+(1488, 1501) were about.
+
+**And the lane counts it correctly**, which is why it is visible at all:
+
+```
+west-fixtures: 1 of 5 fixture(s) FAILED to build.
+               A fixture build that produces nothing is a build FAILURE,
+               not a skip — the lane cannot promise what it did not build.
+```
+
+The other 4 of 5 built. This is the whole of that job's failure, so the
+live-peer lane's red on that run is this issue and nothing else.

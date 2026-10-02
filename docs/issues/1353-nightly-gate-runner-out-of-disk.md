@@ -1848,3 +1848,52 @@ rather than in nano-ros code.
 
 Acceptance for this arm is unchanged and unmet: a `host-tests` run reaching a
 tier-1 verdict with the after-report below 100%. Five runs, five times 100%.
+
+## The runner-log death recurred at the SAME schedule slot, one night later (2026-10-02)
+
+Not a new shape — the 2026-09-30 entry above already measured this one, on this
+same lane. What is new is that it happened **again at the same slot**, which
+makes it the only failure in this issue with two instances an exact 24 hours
+apart:
+
+| date | run | job | lane / slot |
+| --- | --- | --- | --- |
+| 2026-09-30 | 36668247728 | 109737476632 | `live-peer regression`, 04:18 |
+| 2026-10-01 | **36814478655** | **110216447223** | `live-peer regression`, 04:18 |
+
+The 2026-10-01 annotation (head `e61d7dfd2`, created 04:18:17Z):
+
+```
+Unhandled exception. System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20261001-041819-utc.log'
+```
+
+One number the earlier entry did not have: the filename's timestamp is
+`041819`, **two seconds after the run was created**. The worker died writing its
+first diagnostic line, before any step of ours ran — so "no failing step and no
+log to read" is not an artefact of where it got to, it is because it never
+started.
+
+### The known failing writes, consolidated
+
+Worth having in one place now that a third target has an instance, because it
+bears on the remedy rather than on the diagnosis:
+
+| where the write failed | first recorded | shape |
+| --- | --- | --- |
+| build dirs / workspace | the original entry | truncation, `Free space left: N MB` |
+| `/home/runner/actions-runner/…/_diag/Worker_*.log` | 2026-09-30 (above) | runner death, annotation only |
+| `/tmp/ccWQgwjh.s` (gcc assembler temp) | the tier-1 fifth point, above | named ENOSPC mid-compile |
+
+Only the first is somewhere the reclaim and the before/after transcripts can
+see. **A remedy that counts only build output is counting the wrong total** —
+the point the fifth point made, now with two targets outside that total rather
+than one.
+
+### One run, two findings
+
+The same run's sibling job, `rows whose board is NOT this runner`
+(110216752409), also failed, and for an unrelated reason — a west fixture's
+configure, filed on issue **1536**. A dead runner and a broken fixture in one
+run are two findings; attributing the whole run to this issue would have hidden
+the other.
