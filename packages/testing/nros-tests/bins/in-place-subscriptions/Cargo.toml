@@ -1,0 +1,46 @@
+# Issue 1340 — a TRACKED image with enough in-place subscriptions to clear the
+# executor arena's 8,192-byte floor, so the in-place saving is a measurement
+# anyone can repeat rather than a number recorded off a throw-away copy.
+#
+# Eight `KEEP_LAST(1)` subscriptions registered through the generic
+# `create_subscription_for_callback_name` path (the one that can dispatch in
+# place), stated in `system.contract.yaml` so `nros sync` writes eight
+# `registration_path = "in_place"` descriptor rows. Zenoh only: the backend
+# has to claim in-place dispatch for the rows to price as entry structs.
+#
+# Measure (from this directory):
+#     nros sync && nros build native
+#     just mem-report build/native/target/debug/in-place-subscriptions
+# The before/after the issue records is that report with `--baseline` against
+# the same image built with the in-place rows priced as buffered.
+[package]
+name = "in-place-subscriptions"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "in-place-subscriptions"
+path = "src/main.rs"
+
+[lib]
+name = "in_place_subscriptions"
+crate-type = ["rlib"]
+path = "src/lib.rs"
+
+[features]
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
+
+[dependencies]
+nros = { version = "*", default-features = false, features = ["std", "alloc", "env", "rmw-cffi", "macros"] }
+nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
+nros-board-linux = { version = "*", default-features = false }
+nros-rmw-zenoh = { version = "*", default-features = false, features = ["std", "platform-posix", "ros-humble"], optional = true }
+std_msgs = { path = "generated/std_msgs", default-features = false }
+log = "0.4"
+env_logger = "0.11"
+
+# A standalone workspace root, like every leaf under `bins/`.
+[workspace]

@@ -1,0 +1,16 @@
+# Issue 1340 fixture — see Cargo.toml for what this image is for.
+
+[system]
+name = "in_place_subscriptions"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "in_place_subscriptions"
+class = "in_place_subscriptions::EightListener"
+name = "eight_listener"
+
+# Host build; the locator and domain stay runtime env (`NROS_LOCATOR` /
+# `ROS_DOMAIN_ID`).
+[image.native]
+board = "native"

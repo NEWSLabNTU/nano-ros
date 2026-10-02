@@ -226,6 +226,44 @@ image has), or giving the ROS-demo `listener` four subscriptions it does not
 have. Neither is worth the maintenance for a number that is now recorded and
 reproducible from the recipe above.
 
+### Addendum (2026-10-02) — the acceptance as originally written, on a TRACKED image
+
+The amendment above is no longer needed: the measurement now has a tracked
+image to stand on. `packages/testing/nros-tests/bins/in-place-subscriptions`
+is a cargo leaf whose one component registers EIGHT subscriptions through
+`create_subscription_for_callback_name` (`/chatter1` … `/chatter8`), with a
+`system.contract.yaml` stating each `KEEP_LAST(1)`. It lives under
+`nros-tests/bins/` — a test image, not a themed example — so RFC-0066's
+objection does not reach it, and it has no fixture row: it is measured with
+`nros build native` + `mem-report`, which need no matrix cell. Eight, not five,
+so BOTH sides clear the 8,192-byte floor and the delta is the whole per-row
+saving rather than "saving minus floor".
+
+`nros sync` writes eight `registration_path = "in_place"` rows and
+`subscription_entities = 8`. Before = the same tree with `in_place_dispatch_trusted()`
+in `nros-node/build.rs` forced false (a temporary local edit, reverted; the
+rebuilt "after" ELF is byte-identical — `cmp` — to the first one):
+
+```
+ARENA_SIZE   before 34,816   after 10,240   (= 2,048 + 8 x 4,096  vs  2,048 + 8 x 1,024)
+
+$ python3 scripts/nros-mem-report.py --baseline before.json after.elf
+RAM (writable allocated sections): 199,514 bytes
+vs baseline: section RAM -24,576, symbol RAM -24,576
+        20,832   10.4%  nros_node::executor::backing::EXECUTOR_BACKING (...)  (-24,576)
+        20,832   10.4%  [executor storage]  (-24,576)
+```
+
+**−24,576 bytes = 8 × 3,072**, all of it `EXECUTOR_BACKING`, nothing else in
+RAM moved. **It runs on the smaller arena:** against `rmw_zenohd`, eight
+`Subscriber created` lines, then `ros2 topic pub -t 3` (humble,
+`rmw_zenoh_cpp`) on each of the eight topics delivered **24 of 24** samples,
+three per topic, with no `BufferTooSmall` and no arena-exhaustion line.
+
+Found on the way: renaming the fixture's component left its
+`metadata/<old>.json` behind and the leaf road composed it in — 13 rows and a
+162,936-byte arena for an image that registers 8. Filed as issue 1639.
+
 ### What guards it instead
 
 `packages/core/nros-node/tests/arena_model_in_place.rs`, on the `test-unit`
