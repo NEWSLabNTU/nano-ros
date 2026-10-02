@@ -2047,19 +2047,55 @@ where the 15–33 G arrivals were at 100 % well before finishing. The next tier-
 run that both starts clean and runs to completion is the measurement that would
 settle it.
 
-### The `live-peer` startup death did not recur on the third night (2026-10-02)
+### It DID recur on the third night — and a correction to this issue's own reading of the first two (2026-10-02)
 
-The pair recorded above — 2026-09-30 and 2026-10-01, both at the 04:18 slot, the
-runner's worker dying on its own `_diag` log two seconds after the run was
-created — did **not** repeat tonight.
+**This replaces a wrong section I wrote earlier the same day**, which said the
+recurrence had not repeated. It had; I read the run while one of its two jobs was
+still in flight, and that job went on to die of exactly this.
 
-Run **36963917981** (schedule, 2026-10-02T04:17:37Z, the same slot) ran for over
-an hour: `which recorded rows need which runner` succeeded, and both build jobs
-reached `Build the fixtures those rows resolve`. No ENOSPC annotation on any job.
-The lane's red is a fixture failure with a readable log — a Cyclone `idlc` the
-lane never provisioned, plus the `zephyr_self_pkg` rows of issue 1536 — not this
-issue.
+Run **36963917981** (schedule, 2026-10-02T04:17:37Z, the same 04:18 slot), job
+**110703389886** `rows whose board IS this runner`, 04:17:39 → 05:27:41:
 
-So the 24-hour recurrence was a pair, not a pattern, and the arrival state is
-again the variable that decided it. Worth keeping because a third consecutive
-instance would have made it a schedule-coupled fault; it is not one.
+```
+System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20261002-041739-utc.log'
+```
+
+Three consecutive nights, same lane, same slot, same write. It is a pattern.
+
+#### The correction: the `_diag` filename is the job's START, not the failure
+
+The 2026-10-02 entry above reads the filename timestamp `041819` as "two seconds
+after the run was created" and concludes the worker "died writing its first
+diagnostic line, before any step of ours ran … it never started". **That
+inference is wrong.** The filename dates when the worker OPENED its log, which is
+job start; it says nothing about when the write failed. Measured, for all three:
+
+| night | job | steps succeeded | died at |
+| --- | --- | --- | --- |
+| 2026-09-30 | 109737476632 | **8 of 15** | — |
+| 2026-10-01 | 110216447223 | **8 of 15** | — |
+| 2026-10-02 | 110703389886 | 8 of 15, failing in step 9 | 70 min in, `Build the fixtures those rows resolve` |
+
+So none of the three "never started". All three got eight steps in — the CLI
+build, the submodule checkout, the system-closure provisioning, the XRCE Agent —
+and died in the fixture build, which is where this lane spends its disk. That is
+a better fit for everything else in this issue than a startup fault was, and it
+is the same consumption story as the tier-1 and gate arms rather than a separate
+shape.
+
+What survives from the earlier reading: the missing step log really is a symptom,
+the job really does report `failure` with no failing step, and that really does
+look like a cancellation. Only the "it never started" part was an over-reading of
+a filename.
+
+#### What this does NOT touch
+
+The other failing job in the same run, **110703711587** `rows whose board is NOT
+this runner`, is **not** this issue, and that matters because issue 1627 is filed
+from it. Its annotations carry no ENOSPC — they read `first failing step: Build
+the fixtures those rows resolve`, `Process completed with exit code 1`, and
+`freed 5264 MB; 67912372 KB free`, i.e. **65 G free**. It ran 04:19:05 → 04:56:48
+and completed every later step. So 1627's four-fatal-errors-counted-as-one
+measurement is an accounting defect observed on a job with ample disk, not a disk
+artifact.
