@@ -1979,6 +1979,59 @@ impl ParamDeclarations {
         }
     }
 
+    /// Issue 1600 -- the declarations of SEVERAL images that share one runtime
+    /// (a multi-entry configure), as one store must hold them.
+    ///
+    /// The rule is the single-image rule applied to the union of the images:
+    /// a store sized over only the nodes that declared is a count over a
+    /// subset, which is what `Refused` exists for. So every image declaring
+    /// gives the union of their parameters, every image silent stays `Absent`,
+    /// and any mix -- or any image that already refused -- refuses, naming the
+    /// sources. A SUM over images over-sizes a store any one image needs, and
+    /// that is the safe direction for a capacity.
+    pub fn union_over_images(images: &[(String, ParamDeclarations)]) -> Self {
+        let mut nodes: Vec<String> = Vec::new();
+        let mut params: Vec<DeclaredParam> = Vec::new();
+        let mut silent: Vec<&str> = Vec::new();
+        let mut declared: Vec<&str> = Vec::new();
+        for (src, p) in images {
+            match p {
+                ParamDeclarations::Absent => silent.push(src),
+                ParamDeclarations::Refused { reason } => {
+                    return ParamDeclarations::Refused {
+                        reason: format!("`{src}` refused: {reason}"),
+                    };
+                }
+                ParamDeclarations::Declared {
+                    nodes: n,
+                    params: ps,
+                } => {
+                    declared.push(src);
+                    nodes.extend(n.iter().cloned());
+                    params.extend(ps.iter().cloned());
+                }
+            }
+        }
+        if declared.is_empty() {
+            return ParamDeclarations::Absent;
+        }
+        if !silent.is_empty() {
+            return ParamDeclarations::Refused {
+                reason: format!(
+                    "this configure links one runtime for several images, and {} declare                      parameters while {} declare none ({}). A store sized over the images that                      declared would be short for the ones that did not -- declare `params:` in                      every image's contract, or in none (issue 1600)",
+                    declared.len(),
+                    silent.len(),
+                    silent.join(", ")
+                ),
+            };
+        }
+        nodes.sort();
+        nodes.dedup();
+        params.sort_by(|a, b| (&a.node, &a.name).cmp(&(&b.node, &b.name)));
+        params.dedup();
+        ParamDeclarations::Declared { nodes, params }
+    }
+
     /// Read `contracts.node_params` against the nodes the model runs.
     pub fn from_model(model: &ros_launch_manifest_model::SystemModel) -> Self {
         let declared = &model.contracts.node_params;
@@ -2164,6 +2217,24 @@ impl EntityInventory {
     /// agree between them (issue 1228).
     pub fn set_param_declarations(&mut self, params: ParamDeclarations) {
         self.params = params;
+    }
+
+    /// Issue 1600 -- undo issue 1402's `NotLaunched` reclassification.
+    ///
+    /// `merged_per_kind_max` marks a registered component the model does not
+    /// launch as `NotLaunched`, which is sound for ONE image: that image's
+    /// launch tree is the whole population. When several images share the
+    /// runtime and one of them is a model that describes no wiring, a
+    /// component it runs is invisible to every other model -- calling it "not
+    /// launched" would size the shared runtime without it. Returning such rows
+    /// to `Absent` makes `derive` refuse, naming them, which is the answer this
+    /// configure can actually give.
+    pub fn reopen_not_launched(&mut self) {
+        for c in &mut self.components {
+            if matches!(c.declaration, Declaration::NotLaunched) {
+                c.declaration = Declaration::Absent;
+            }
+        }
     }
 
     pub fn param_declarations(&self) -> &ParamDeclarations {
@@ -2670,6 +2741,47 @@ impl EntityInventory {
             });
         }
         Some(inv)
+    }
+
+    /// Issue 1600 -- the inventory ONE runtime must satisfy when several images
+    /// link it: every image a multi-entry configure builds.
+    ///
+    /// `images` is `(source, wiring, params)` per image, `wiring` being what
+    /// [`Self::from_model`] made of its model (`None` = describes no wiring).
+    /// Each wired image folds in through [`Self::merged_per_kind_max`], the
+    /// rule one model already uses, so a component keeps the larger declaration
+    /// per kind and a component ANY image launches is launched. The result is
+    /// the UNION of the images, which SUMS where the true need is the largest
+    /// single image: an over-size, the only direction a reduction over images
+    /// may err in. (The composition this replaces wrote one fragment per entry,
+    /// last writer winning -- the other direction.)
+    ///
+    /// An image with no wiring states nothing, and does not say which
+    /// components it runs, so when there is one, every row another image
+    /// marked `NotLaunched` goes back to `Absent` and [`Self::derive`] refuses,
+    /// naming them. Returns the unwired sources so the caller can say so.
+    /// Parameters reduce by [`ParamDeclarations::union_over_images`].
+    pub fn shared_runtime_over(
+        &self,
+        images: &[(String, Option<EntityInventory>, ParamDeclarations)],
+    ) -> (EntityInventory, Vec<String>) {
+        let mut inv = self.clone();
+        let mut unwired = Vec::new();
+        for (src, wiring, _) in images {
+            match wiring {
+                Some(model_inv) => inv = inv.merged_per_kind_max(model_inv),
+                None => unwired.push(src.clone()),
+            }
+        }
+        if !unwired.is_empty() {
+            inv.reopen_not_launched();
+        }
+        let params: Vec<(String, ParamDeclarations)> = images
+            .iter()
+            .map(|(src, _, p)| (src.clone(), p.clone()))
+            .collect();
+        inv.set_param_declarations(ParamDeclarations::union_over_images(&params));
+        (inv, unwired)
     }
 
     /// phase-412 -- combine a declaration-derived inventory with a
@@ -9040,5 +9152,192 @@ contracts:
             "the refusal names the fact that is missing: {}",
             row.line()
         );
+    }
+}
+
+/// Issue 1600 -- several images, one shared runtime.
+#[cfg(test)]
+mod shared_runtime_tests {
+    use super::*;
+
+    fn row(comp: &str, declaration: Declaration) -> ComponentEntities {
+        ComponentEntities {
+            pkg: "p".into(),
+            component: comp.into(),
+            class: format!("p::{comp}"),
+            declaration,
+        }
+    }
+
+    fn stated(comp: &str, specs: &[&str]) -> ComponentEntities {
+        let mut decls = Vec::new();
+        for s in specs {
+            decls.extend(EntityDecl::parse(s).expect("spec parses"));
+        }
+        row(comp, Declaration::Stated(decls))
+    }
+
+    /// What `nros-metadata.json` is in a multi-entry configure: every
+    /// component registered, none of them stating its entities (issue 1555
+    /// retired that reader -- the contract is where they are declared).
+    fn registered(comps: &[&str]) -> EntityInventory {
+        let mut inv = EntityInventory::new("metadata");
+        for c in comps {
+            inv.insert(row(c, Declaration::Absent));
+        }
+        inv
+    }
+
+    /// One image's wiring, as `from_model` makes it: the components its
+    /// launch tree runs, and what each creates.
+    fn image(rows: Vec<ComponentEntities>) -> EntityInventory {
+        let mut inv = EntityInventory::new("model");
+        for r in rows {
+            inv.insert(r);
+        }
+        inv
+    }
+
+    fn max_cbs(inv: &EntityInventory) -> usize {
+        inv.derive().knobs().expect("derived").max_cbs
+    }
+
+    /// `examples/workspaces/cpp`'s shape, cut down: the heavier image is NOT
+    /// the last one. The old composition wrote one fragment per entry and the
+    /// last entry's won, so the shared runtime got the service server's one
+    /// callback and `native_entry` (two) died `ExecutorFull` at boot.
+    #[test]
+    fn the_shared_runtime_holds_every_image_whatever_order_they_come_in() {
+        let meta = registered(&["talker", "listener", "server"]);
+        let pubsub = image(vec![
+            stated(
+                "talker",
+                &["timer", "publisher:std_msgs/msg/String:/chatter"],
+            ),
+            stated("listener", &["subscription:std_msgs/msg/String:/chatter"]),
+        ]);
+        let service = image(vec![stated(
+            "server",
+            &["service_server:example/srv/Add:/add"],
+        )]);
+
+        let alone_pubsub = max_cbs(&meta.merged_per_kind_max(&pubsub));
+        let alone_service = max_cbs(&meta.merged_per_kind_max(&service));
+        assert!(
+            alone_pubsub > alone_service,
+            "the fixture must make the LAST image the smaller one ({alone_pubsub} vs {alone_service})"
+        );
+
+        let none = ParamDeclarations::Absent;
+        let forward = [
+            ("pubsub".to_string(), Some(pubsub.clone()), none.clone()),
+            ("service".to_string(), Some(service.clone()), none.clone()),
+        ];
+        let reverse = [forward[1].clone(), forward[0].clone()];
+        for images in [&forward[..], &reverse[..]] {
+            let (shared, unwired) = meta.shared_runtime_over(images);
+            assert!(unwired.is_empty());
+            let got = max_cbs(&shared);
+            assert!(
+                got >= alone_pubsub && got >= alone_service,
+                "the shared runtime ({got}) is narrower than one of its images \
+                 ({alone_pubsub}, {alone_service})"
+            );
+        }
+    }
+
+    /// A component some image launches is launched, even if every OTHER image
+    /// marks it `NotLaunched`.
+    #[test]
+    fn a_component_one_image_runs_is_not_dropped_by_another_that_does_not() {
+        let meta = registered(&["a", "b"]);
+        let only_a = image(vec![stated("a", &["timer"])]);
+        let only_b = image(vec![stated("b", &["timer", "timer"])]);
+        let (shared, _) = meta.shared_runtime_over(&[
+            ("a".into(), Some(only_a), ParamDeclarations::Absent),
+            ("b".into(), Some(only_b), ParamDeclarations::Absent),
+        ]);
+        for c in shared.components() {
+            assert!(
+                matches!(c.declaration, Declaration::Stated(_)),
+                "{} is launched by one of the images: {:?}",
+                c.component,
+                c.declaration
+            );
+        }
+    }
+
+    /// An image with no wiring says nothing, including which components it
+    /// runs -- so nothing may be ruled out, and the derivation refuses.
+    #[test]
+    fn an_unwired_image_reopens_what_the_others_ruled_out_and_the_derivation_refuses() {
+        let meta = registered(&["a", "only_in_the_silent_image"]);
+        let wired = image(vec![stated("a", &["timer"])]);
+        let (shared, unwired) = meta.shared_runtime_over(&[
+            (
+                "wired".into(),
+                Some(wired.clone()),
+                ParamDeclarations::Absent,
+            ),
+            ("silent".into(), None, ParamDeclarations::Absent),
+        ]);
+        assert_eq!(unwired, vec!["silent".to_string()]);
+        match shared.derive() {
+            Derivation::Refused { reason } => assert!(
+                reason.contains("only_in_the_silent_image"),
+                "the refusal names the component nobody can rule out: {reason}"
+            ),
+            Derivation::Derived(k) => panic!(
+                "derived MAX_CBS {} over a configure that cannot see one image's components",
+                k.max_cbs
+            ),
+        }
+        // Negative control: the same images WITHOUT the silent one derive.
+        let (one, _) =
+            meta.shared_runtime_over(&[("wired".into(), Some(wired), ParamDeclarations::Absent)]);
+        assert!(matches!(one.derive(), Derivation::Derived(_)));
+    }
+
+    fn declared(node: &str, name: &str) -> ParamDeclarations {
+        ParamDeclarations::Declared {
+            nodes: vec![node.into()],
+            params: vec![DeclaredParam {
+                node: node.into(),
+                name: name.into(),
+                ty: ros_launch_manifest_model::ParamType::Integer,
+            }],
+        }
+    }
+
+    #[test]
+    fn parameters_union_when_every_image_declares_and_refuse_on_a_mix() {
+        let both = ParamDeclarations::union_over_images(&[
+            ("a".into(), declared("/a", "rate")),
+            ("b".into(), declared("/b", "gain")),
+        ]);
+        match both {
+            ParamDeclarations::Declared { nodes, params } => {
+                assert_eq!(nodes, vec!["/a".to_string(), "/b".to_string()]);
+                assert_eq!(params.len(), 2);
+            }
+            other => panic!("expected the union, got {other:?}"),
+        }
+        assert!(matches!(
+            ParamDeclarations::union_over_images(&[
+                ("a".into(), ParamDeclarations::Absent),
+                ("b".into(), ParamDeclarations::Absent),
+            ]),
+            ParamDeclarations::Absent
+        ));
+        let mix = ParamDeclarations::union_over_images(&[
+            ("a".into(), declared("/a", "rate")),
+            ("silent".into(), ParamDeclarations::Absent),
+        ]);
+        match mix {
+            ParamDeclarations::Refused { reason } => {
+                assert!(reason.contains("silent"), "{reason}")
+            }
+            other => panic!("a store sized over the images that declared is short: {other:?}"),
+        }
     }
 }

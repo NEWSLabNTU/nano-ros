@@ -297,19 +297,15 @@ fn with_model(
 /// describes ONE image, and a "merge" of several images' entity counts is a
 /// number nobody defined -- so those are refused, never computed.
 fn run_several_models(args: &EntityInventoryArgs, metadata_inv: &EntityInventory) -> Result<()> {
+    // Reached only WITH `--component` (the per-component tables). The
+    // image-wide projections over several models are `run`'s, without
+    // `--component` -- the shared runtime is not one component's (issue 1600).
     if args.output_json.is_some() || args.output_cmake.is_some() || args.output_dir.is_some() {
         eyre::bail!(
-            "entity-inventory: --model was given {} times. Only the per-component tables \
-             (--output-header, --output-params-header) are defined over several models; the \
-             JSON and CMake projections describe ONE image and must be rendered per model.",
-            args.model.len()
-        );
-    }
-    if args.component.is_none() {
-        eyre::bail!(
-            "entity-inventory: --model was given {} times without --component. The union of \
-             several models' tables is defined per COMPONENT -- the unit compiled once for all \
-             of them.",
+            "entity-inventory: --model was given {} times with --component. Only the \
+             per-component tables (--output-header, --output-params-header) are defined per \
+             component over several models; for the JSON and CMake projections of the runtime \
+             those images share, drop --component.",
             args.model.len()
         );
     }
@@ -323,7 +319,12 @@ fn run_several_models(args: &EntityInventoryArgs, metadata_inv: &EntityInventory
         let mut first_unwired: Option<(String, DeclaredQosHeaderTable)> = None;
         for (src, model) in &models {
             let (inv, wired) = with_model(metadata_inv, src, model);
-            let inv = narrow_to_component(&inv, args.component.as_deref().expect("checked above"))?;
+            let inv = narrow_to_component(
+                &inv,
+                args.component
+                    .as_deref()
+                    .expect("run_several_models is reached only with --component"),
+            )?;
             let table = inv.declared_qos_header_table();
             if wired {
                 tables.push((src.clone(), table));
@@ -380,7 +381,7 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
         .unwrap_or_else(|| PathBuf::from("nros-metadata.json"));
     let metadata_inv = inventory_from_metadata_file(&metadata)?;
 
-    if args.model.len() > 1 {
+    if args.model.len() > 1 && args.component.is_some() {
         return run_several_models(&args, &metadata_inv);
     }
 
@@ -396,7 +397,23 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
     // phase-446 W6 -- rendered from the same model, when there is one.
     let mut inv = metadata_inv;
     let mut params_header: Option<String> = None;
-    if let Some(model_path) = args.model.first() {
+    if args.model.len() > 1 {
+        // Issue 1600 -- the IMAGE-WIDE outputs over several models: one runtime
+        // that every entry of a multi-entry configure links.
+        if args.output_header.is_some() || args.output_params_header.is_some() {
+            eyre::bail!(
+                "entity-inventory: --model was given {} times with a per-component header \
+                 output but no --component. Those tables are defined per COMPONENT -- the \
+                 unit compiled once for all of the images.",
+                args.model.len()
+            );
+        }
+        let mut models: Vec<(String, ros_launch_manifest_model::SystemModel)> = Vec::new();
+        for p in &args.model {
+            models.push((p.display().to_string(), load_model(p)?));
+        }
+        inv = fold_models_for_shared_runtime(&inv, &models);
+    } else if let Some(model_path) = args.model.first() {
         let model = load_model(model_path)?;
         if args.output_params_header.is_some() {
             params_header = Some(crate::declared_params_header::render(
@@ -497,6 +514,35 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
 /// (`the_committed_compile_fixture_is_what_this_emitter_renders`): a fixture
 /// rendered by a second spelling of the composition is how a gate comes to
 /// assert something no configure produces.
+/// Issue 1600 -- several models, one shared runtime: see
+/// `EntityInventory::shared_runtime_over` for the rule.
+fn fold_models_for_shared_runtime(
+    metadata_inv: &EntityInventory,
+    models: &[(String, ros_launch_manifest_model::SystemModel)],
+) -> EntityInventory {
+    let images: Vec<_> = models
+        .iter()
+        .map(|(src, model)| {
+            (
+                src.clone(),
+                EntityInventory::from_model(src.clone(), model),
+                crate::entity_inventory::ParamDeclarations::from_model(model),
+            )
+        })
+        .collect();
+    let (inv, unwired) = metadata_inv.shared_runtime_over(&images);
+    if !unwired.is_empty() {
+        eprintln!(
+            "nros: entity inventory: {} of {} models in this configure describe no wiring ({}); \
+             the components they run cannot be ruled out of the shared runtime (issue 1600)",
+            unwired.len(),
+            models.len(),
+            unwired.join(", ")
+        );
+    }
+    inv
+}
+
 fn fold_model(
     inv: EntityInventory,
     model_source: &str,

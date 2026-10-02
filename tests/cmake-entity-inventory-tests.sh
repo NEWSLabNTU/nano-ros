@@ -135,6 +135,8 @@ if [ -n "${NROS_STUB_BODY:-}" ] && [ -n "$out" ]; then
     cp "$NROS_STUB_BODY" "$out"
 fi
 if [ -n "${NROS_STUB_STDERR:-}" ]; then echo "$NROS_STUB_STDERR" >&2; fi
+# Case J -- one line per invocation, so a case can read what the LAST call got.
+if [ -n "${NROS_STUB_ARGV:-}" ]; then printf '%s\n' "$*" >> "$NROS_STUB_ARGV"; fi
 exit "${NROS_STUB_RC:-0}"
 STUB_EOF
 chmod +x "$STUB"
@@ -878,6 +880,50 @@ check
 if ! I_OUT="$(cmake -P "$I_INCLUDE" 2>&1)"; then
     fail "I: the appended fragment does not parse on re-include -- this is \
 issue 1480, and it takes every cmake workspace image down at configure -- $I_OUT"
+fi
+
+# ---------------------------------------------------------------------------
+# J. Issue 1600 -- MODEL accumulates across the calls of one configure.
+#
+# A multi-entry configure calls the derivation once per entry, each with its
+# own model, into ONE fragment, and links ONE runtime into every entry. When
+# each call passed only its own model, the fragment the readers found after
+# the entries was the LAST entry's, and `examples/workspaces/cpp`'s
+# `native_entry` (two callbacks) got the service server's MAX_CBS of 1 and died
+# `ExecutorFull` at boot. The last call must name EVERY model, each once.
+# ---------------------------------------------------------------------------
+log_info "J. every entry's model reaches the last derivation, each once"
+J_A="$TEST_TMPDIR/j-model-a.yaml"; : > "$J_A"
+J_B="$TEST_TMPDIR/j-model-b.yaml"; : > "$J_B"
+J_ARGV="$TEST_TMPDIR/j-argv.txt"; : > "$J_ARGV"
+J_SEQ="$TEST_TMPDIR/j-seq.cmake"
+cat > "$J_SEQ" <<EOF
+include("$MODULE")
+foreach(_m "$J_A" "$J_B" "$J_A" "$TEST_TMPDIR/j-model-missing.yaml")
+    nros_derive_entity_inventory_knobs(CLI "$STUB" METADATA "$META" MODEL "\${_m}"
+        OUTPUT_FILE "$TEST_TMPDIR/j.cmake" QUIET)
+endforeach()
+EOF
+OUT="$(NROS_STUB_BODY="$DERIVED_BODY" NROS_STUB_ARGV="$J_ARGV" cmake -P "$J_SEQ" 2>&1)"
+J_LAST="$(tail -n 1 "$J_ARGV")"
+check
+if [ "$(wc -l < "$J_ARGV")" -ne 4 ]; then
+    fail "J: expected four derivations, the stub saw $(wc -l < "$J_ARGV") -- $OUT"
+fi
+check
+if [ "$(grep -o -- "--model $J_A" <<<"$J_LAST" | wc -l)" -ne 1 ] ||
+   [ "$(grep -o -- "--model $J_B" <<<"$J_LAST" | wc -l)" -ne 1 ]; then
+    fail "J: the last derivation must name BOTH models exactly once (a repeated \
+model is one image, not two) -- it got: $J_LAST"
+fi
+check
+if nros_grep_q -- "j-model-missing" <<<"$J_LAST"; then
+    fail "J: a model path that does not exist reached the verb, where \
+'--model <missing>' is an error: $J_LAST"
+fi
+check
+if [ "$(head -n 1 "$J_ARGV" | grep -o -- "--model" | wc -l)" -ne 1 ]; then
+    fail "J: the FIRST call must still pass exactly its own model -- $(head -n 1 "$J_ARGV")"
 fi
 
 # ---------------------------------------------------------------------------
