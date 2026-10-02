@@ -51,16 +51,24 @@ exported_list() {
         }' "$@" | tr ' \t' '\n\n' | grep -v '^$' | sort -u
 }
 
-# Every `name() {` definition across the files.
+# Every `name() {` definition across the files — INDENTED ones included.
+#
+# Issue 1620: this read column-0 definitions only, and the two functions
+# `fixtures-build.sh` actually ships to its make leaves (`nros_fixture_build_one`,
+# `nros_fixture_check_stack_floor`) are defined inside an `if` block, four spaces
+# in. So the walk started from them found no body, checked nothing, and printed
+# OK while every esp32 row died in its leaf on an unexported callee
+# (`nros_fixture_row_artifact_dir`). The issue-0196 shape: a gate whose reach is
+# narrower than the rule it enforces, on exactly the definitions that matter.
 defined_funcs() {
-    grep -hoE '^[a-zA-Z_][a-zA-Z_0-9]*\(\)' "$@" | tr -d '()' | sort -u
+    grep -hoE '^[[:space:]]*[a-zA-Z_][a-zA-Z_0-9]*\(\)' "$@" | tr -d '() \t' | sort -u
 }
 
 # Body of one function, from its definition line to the closing brace at depth 0.
 body_of() {
     local func="$1"; shift
     awk -v f="$func" '
-        $0 ~ ("^" f "\\(\\) \\{") { inside = 1; depth = 0 }
+        !inside && $0 ~ ("^[[:space:]]*" f "\\(\\) \\{") { inside = 1; depth = 0 }
         inside {
             n = gsub(/\{/, "{"); m = gsub(/\}/, "}")
             depth += n - m
@@ -72,7 +80,7 @@ body_of() {
 # Which file defines a name — so the diagnostic says where to look, not just what.
 defined_in() {
     local func="$1"; shift
-    grep -lE "^${func}\(\)" "$@" 2>/dev/null | head -1 | sed "s|^$ROOT/||"
+    grep -lE "^[[:space:]]*${func}\(\)" "$@" 2>/dev/null | head -1 | sed "s|^$ROOT/||"
 }
 
 audit() {
@@ -99,7 +107,11 @@ audit() {
         # Calls to functions this project defines. The function's OWN name is
         # dropped rather than the first LINE: a one-line definition
         # (`f() { g; }`) is its whole body, and dropping the line drops the call.
-        called="$(printf '%s\n' "$body" |
+        # Whole-line comments are dropped first: a DEFINED function named in a
+        # comment is not a call (fixtures-build.sh's leaf body cites the parent's
+        # `nros_presync_row_dirs` while explaining why it no longer calls it).
+        # Only whole lines — a trailing `#` is too often `$#` / `${x#…}`.
+        called="$(printf '%s\n' "$body" | grep -vE '^[[:space:]]*#' |
                   grep -ohE '\bnros_[a-zA-Z_0-9]+\b' | sort -u || true)"
         for c in $called; do
             [ "$c" = "$f" ] && continue
@@ -205,6 +217,43 @@ EOF
         echo "  FAIL  a helper defined in a sibling file must be exported"; ok=1
     else
         echo "  ok    a helper defined in a sibling file must be exported"
+    fi
+
+    # Issue 1620 — a definition INDENTED inside a block (fixtures-build.sh
+    # defines its leaf functions inside an `if`) is walked like any other. A
+    # column-0-only reader found no body for it and passed vacuously.
+    cat > "$tmp/src.sh" <<'EOF'
+nros_helper() { echo hi; }
+if true; then
+    nros_entry() {
+        nros_helper
+    }
+fi
+EOF
+    cat > "$tmp/driver.sh" <<'EOF'
+    export -f nros_entry
+EOF
+    if audit "$tmp/driver.sh" "$tmp/src.sh" >/dev/null; then
+        echo "  FAIL  an indented definition's callees are walked"; ok=1
+    else
+        echo "  ok    an indented definition's callees are walked"
+    fi
+
+    # A DEFINED function cited in a whole-line comment is not a call.
+    cat > "$tmp/src.sh" <<'EOF'
+nros_parent_only() { echo parent; }
+nros_entry() {
+    # this used to call nros_parent_only; the parent does it now
+    echo leaf
+}
+EOF
+    cat > "$tmp/driver.sh" <<'EOF'
+    export -f nros_entry
+EOF
+    if audit "$tmp/driver.sh" "$tmp/src.sh" >/dev/null; then
+        echo "  ok    a defined function named in a comment is not a missing export"
+    else
+        echo "  FAIL  a defined function named in a comment is not a missing export"; ok=1
     fi
 
     # A name that is merely MENTIONED (a comment, a message) is not a call to a
