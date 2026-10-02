@@ -192,4 +192,4 @@ NOT done / not measured:
 - The phrase set is a declared list; wording outside it ("no allocator",
   e.g. the generated rmw-api-comparison page) is not harvested.
 - `scripts/rmw-alloc-sites.py` reports no XRCE row at all because it does not
-  see the `nros_xrce_calloc` helper — filed as [issue 1605](../1605-rmw-alloc-sites-blind-to-xrce-helper.md).
+  see the `nros_xrce_calloc` helper — filed as [issue 1605](1605-rmw-alloc-sites-blind-to-xrce-helper.md).
