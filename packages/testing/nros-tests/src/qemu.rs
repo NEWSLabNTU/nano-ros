@@ -407,6 +407,44 @@ impl QemuProcess {
         Self::spawn(cmd)
     }
 
+    /// Start QEMU `mps3-an536` (Cortex-R52) on a multicast-socket LAN.
+    ///
+    /// Issue 1624 — the FreeRTOS AN536 board's runner (its `nros-board.toml`)
+    /// with a LAN9118 on a `-net socket,mcast` backend: no `sudo`, no tap, and
+    /// unlike slirp it carries the SPDP multicast a CycloneDDS participant
+    /// sends. A guest alone on the group still delivers to itself, which is
+    /// what an in-image talker + listener needs.
+    pub fn start_mps3_an536_mcast(binary: &Path, mcast_addr_port: &str) -> TestResult<Self> {
+        if !binary.exists() {
+            return Err(TestError::BuildFailed(format!(
+                "Binary not found: {}",
+                binary.display()
+            )));
+        }
+
+        let mut cmd = qemu_system_arm_cmd();
+        cmd.args([
+            "-machine",
+            "mps3-an536",
+            "-nographic",
+            "-icount",
+            "shift=auto",
+            "-semihosting-config",
+            "enable=on,target=native",
+            "-kernel",
+        ])
+        .arg(binary)
+        .args([
+            "-nic",
+            &format!("socket,model=lan9118,mcast={mcast_addr_port}"),
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        Self::spawn(cmd)
+    }
+
     /// Start QEMU with MPS2-AN385 machine + external serial device
     ///
     /// Connects UART0 to the given serial device path (e.g., a socat PTY).

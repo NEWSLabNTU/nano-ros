@@ -17,7 +17,8 @@
  * The FLASH window is deliberately generous (16 MiB): a cyclonedds image with
  * the C++ runtime is multi-MiB, and DDR here is 3 GiB, so there is nothing to
  * economise against. RAM gets 48 MiB, well past the multi-MiB heap Cyclone
- * needs (the QEMU MPS2 cell budgets 3 MiB on a far smaller board).
+ * needs (the demo cell peaks at 448 KB — issue 1624 — but real consumer
+ * images need far more).
  *
  * NOTE the `.bss (NOLOAD)` rule the shared layout carries: without it `.bss`
  * continues `.data`'s load region, QEMU computes one PT_LOAD whose p_memsz

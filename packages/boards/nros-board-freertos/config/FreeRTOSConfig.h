@@ -58,49 +58,54 @@
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
 /* Phase 175.B / 204.6 — FreeRTOS heap (heap_4 `ucHeap[]`, the dominant bss).
  *
- * WHO GETS THIS NUMBER (issue 1557). Not a zenoh image: the board build.rs
- * replaces it with the measured derivation
- * `nros_board_common::freertos_config::default_heap_bytes` whenever `rmw-zenoh`
- * is on, and every in-tree board crate over this header (mps2-an385, s32z270)
- * defaults that feature on; mps3-an536 states its own 32 MiB. What reaches 3072
- * is a build of the family crate WITHOUT `rmw-zenoh` — Cyclone or XRCE — whose
- * only in-tree instance is the S32Z270 Cyclone C++ workspace entry, a
- * LINK-ONLY witness (no emulator models that SoC; `examples/fixtures.toml`).
+ * WHO GETS WHICH NUMBER — three roads, decided by WHERE the RMW is known.
  *
- * MEASURED: nothing, and that is stated rather than implied (issue 1557,
- * 2026-10-01). No in-tree image that takes this default can run here: the
- * S32Z270 cell links and never boots, the mps2-an385 Rust Cyclone fixture is
- * retired (`tests/freertos_qemu.rs`, `#[ignore]`), and no FreeRTOS XRCE image
- * exists. The basis is still the phase-175.B one — Cyclone's participant
- * startup creates the builtin discovery endpoints plus lwIP socket semaphores
- * before the first publish — bounded by the 4 MiB MPS2-AN385 SRAM. For scale,
- * the zenoh derivation is 720,896 B (704 KiB) at the shipped app stack, every
- * term of it measured and documented beside it. The first image that boots on this default prints
- * `nros: heap peak <used> of <total>` (`xPortGetMinimumEverFreeHeapSize()`);
- * record it here with its image and date, and derive this number from it.
- * Tracked as issue 1624.
+ * 1. CARGO road, `rmw-zenoh` on: the board build.rs passes
+ *    `-DNROS_FREERTOS_HEAP_KB` from the measured derivation
+ *    `nros_board_common::freertos_config::default_heap_bytes`. Nothing below
+ *    applies (an explicit size is never adjusted).
+ * 2. CMAKE road (every C/C++ image: the kernel is `freertos_kernel`, which never
+ *    runs the board build.rs), Cyclone or XRCE: `cmake/platform/
+ *    nano-ros-freertos.cmake` defines `NROS_FREERTOS_HEAP_DEFAULT_DDS`, and the
+ *    heap is `NROS_FREERTOS_DDS_HEAP_KB` below — issue 1624's MEASURED
+ *    derivation, `default_dds_heap_bytes(C_CARRIER_APP_STACK_BYTES)` = 65,536
+ *    (the carrier's app stack) + 589,824 (the DDS working set) = 640 KiB. A C
+ *    header cannot call the Rust function, so the literal is held to it by
+ *    `freertos_config::tests::the_header_states_the_derived_dds_default`.
+ *    MEASURED on `workspace-cpp-mps3-an536-freertos` (the S32Z270 Cyclone
+ *    entry's emulated twin: same C++ entry, Cortex-R52, kernel port) on qemu
+ *    mps3-an536, 2026-10-02: `nros: heap peak 447944 of 33554432 bytes`, i.e.
+ *    382,408 beside the app stack; the term is 1.54x that (no remote
+ *    participant was on the LAN). Kept measured by
+ *    `freertos_qemu::an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default`.
+ *    NO tier-stack subtraction here: that image has no tiers, and on this road
+ *    tier stacks (1598) and tier executors (1568) are `.bss`, so the derivation
+ *    never contained them — subtracting would take them out twice.
+ * 3. Everything else — CMAKE road on zenoh, and a cargo build of the family
+ *    crate with no RMW feature — takes the FALLBACK, 3072 KiB minus the tier
+ *    stacks the entry moved to `.bss` (issue 1598): those stacks came out of
+ *    this budget until 1598 gave each spawned tier a static one, so without
+ *    the subtraction the bytes were reserved twice (realtime-cpp's
+ *    `demo_bringup:freertos` overflowed RAM by 151,024 bytes with `ucHeap` at
+ *    0x300000). `nano_ros_entry` defines `NROS_FREERTOS_TIER_STACKS_IN_BSS_KB`
+ *    from the generated entry's own declarations. The zenoh cmake images were
+ *    NOT re-derived: on this host they open a session and never tick, on main
+ *    as on this change, so no heap peak past session open could be read
+ *    (issue 1657) — a cut nobody could measure is not made here.
  *
- * Override per image with the build env `NROS_FREERTOS_HEAP_KB` (the board
- * build.rs forwards it as `-DNROS_FREERTOS_HEAP_KB`).
- *
- * CORRECTION to the list above (2026-10-02): it covers the CARGO road only.
- * A C/C++ image built through cmake compiles this kernel in
- * `freertos_kernel`, which never runs the board build.rs, so it takes 3072
- * whatever its RMW — measured, realtime-cpp `demo_bringup:freertos` (zenoh)
- * links `ucHeap` at 0x300000.
- *
- * MINUS the tier stacks the entry moved to `.bss` (issue 1598). Those stacks
- * came out of this heap until 1598 gave each spawned tier a static one, and
- * this default was never lowered, so the bytes were reserved twice — the
- * realtime-cpp image above overflowed RAM by 151,024 bytes. `nano_ros_entry`
- * defines `NROS_FREERTOS_TIER_STACKS_IN_BSS_KB` from the generated entry's
- * own declarations; it is subtracted here only, never from an explicit
- * `NROS_FREERTOS_HEAP_KB`, which is a size someone chose. */
+ * Override per image with `NROS_FREERTOS_HEAP_KB` (cargo: the build env, which
+ * build.rs forwards; cmake: a compile definition). It is a size someone chose
+ * and is never adjusted by either rule above. */
 #ifndef NROS_FREERTOS_TIER_STACKS_IN_BSS_KB
 #define NROS_FREERTOS_TIER_STACKS_IN_BSS_KB     0
 #endif
+#define NROS_FREERTOS_DDS_HEAP_KB 640
 #ifndef NROS_FREERTOS_HEAP_KB
+#if defined(NROS_FREERTOS_HEAP_DEFAULT_DDS) && NROS_FREERTOS_HEAP_DEFAULT_DDS
+#define NROS_FREERTOS_HEAP_KB                   (NROS_FREERTOS_DDS_HEAP_KB)
+#else
 #define NROS_FREERTOS_HEAP_KB                   (3072 - (NROS_FREERTOS_TIER_STACKS_IN_BSS_KB))
+#endif
 #endif
 #define configTOTAL_HEAP_SIZE                   ((size_t)((NROS_FREERTOS_HEAP_KB) * 1024))
 #define configAPPLICATION_ALLOCATED_HEAP        0

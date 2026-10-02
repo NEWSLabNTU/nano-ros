@@ -142,7 +142,9 @@ fn main() {
         &freertos_config_dir,
     );
     // Phase 204.6 — right-size the FreeRTOS heap (heap_4 `ucHeap`, the dominant
-    // bss). FreeRTOSConfig.h defaults to a cyclone-safe 3 MiB. Two overrides,
+    // bss). FreeRTOSConfig.h holds the defaults this crate does not pass —
+    // its fallback, and the DDS one the CMAKE road selects by RMW
+    // (`default_dds_heap_bytes` = 640 KiB, issue 1624). Two overrides,
     // env wins:
     //   1. explicit `NROS_FREERTOS_HEAP_KB` build env (any value), else
     //   2. the `rmw-zenoh` feature (forwarded from the board) → the DERIVATION
@@ -165,10 +167,10 @@ fn main() {
     //      Now it follows the app stack automatically: lower that knob and this
     //      falls by three times as much, with no second edit to forget.
     //
-    //      Still below the cyclone DDS-discovery default; cyclone/xrce don't
-    //      enable this feature on the base crate, so they keep
-    //      `FreeRTOSConfig.h`'s 3 MiB (who reaches it, and why it is still
-    //      unmeasured, is stated beside the define — issue 1557). Tune with
+    //      A build of this crate with no RMW feature takes `FreeRTOSConfig.h`'s
+    //      fallback: this crate cannot know a Cyclone/XRCE image is one. The
+    //      in-tree ones are C/C++ and come through cmake, which selects the
+    //      measured `default_dds_heap_bytes` (issues 1557, 1624). Tune with
     //      the env, and read the image's own `nros: heap peak` boot line first —
     //      it is `xPortGetMinimumEverFreeHeapSize()` and it is what the terms
     //      above were derived from.
@@ -189,7 +191,7 @@ fn main() {
         .then(|| nros_board_common::freertos_config::default_heap_bytes(app_stack_bytes) / 1024);
     let heap_kb = match nros_board_common::platform_config::BuildRungs::from_build_env() {
         Some(rungs) => {
-            // No lane default means "leave FreeRTOSConfig.h's 3 MiB alone",
+            // No lane default means "leave FreeRTOSConfig.h's default alone",
             // which is not a number this can invent — so only ask the ladder
             // when something below it has an opinion.
             zenoh_default_kb.map(|kb| rungs.memory_value("heap_bytes", kb * 1024) / 1024)

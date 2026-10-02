@@ -208,6 +208,24 @@ if(NANO_ROS_RMW STREQUAL "cyclonedds" AND NROS_FREERTOS_BOARD_HAS_LWIP
 endif()
 
 # ---------------------------------------------------------------------------
+# Issue 1624 — the heap DEFAULT is per RMW, and this is where the RMW is known.
+#
+# On this (cmake) road the kernel is `freertos_kernel`, which never runs the
+# board build.rs, so `FreeRTOSConfig.h`'s default is the whole answer whatever
+# the RMW. A Cyclone / XRCE image takes the MEASURED DDS derivation
+# (`NROS_FREERTOS_DDS_HEAP_KB`, held to `default_dds_heap_bytes` by a unit test
+# in nros-board-common); a zenoh image keeps the header's fallback, which is the
+# one this road has run on (issue 1657 records why it was not re-derived here).
+# A selector rather than a number, so the number has one home: the header.
+# PUBLIC, because every TU that reads `configTOTAL_HEAP_SIZE` must agree on it
+# (issue 1197). An explicit `NROS_FREERTOS_HEAP_KB` still wins over both.
+# ---------------------------------------------------------------------------
+string(TOLOWER "${NANO_ROS_RMW}" _nros_freertos_rmw)
+if(TARGET freertos_kernel AND _nros_freertos_rmw MATCHES "^(cyclonedds|xrce)$")
+    target_compile_definitions(freertos_kernel PUBLIC NROS_FREERTOS_HEAP_DEFAULT_DDS=1)
+endif()
+
+# ---------------------------------------------------------------------------
 # Native-C platform shim (`packages/platform/nros-platform-freertos`). The
 # board overlay must have declared `freertos_kernel` + `lwip` (the shim
 # CMakeLists picks them up via FREERTOS_KERNEL_TARGET / FREERTOS_LWIP_TARGET

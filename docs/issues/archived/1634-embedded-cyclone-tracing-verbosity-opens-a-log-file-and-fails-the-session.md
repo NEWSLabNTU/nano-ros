@@ -37,8 +37,9 @@ once, above an error that names the transport.
 So any user config that merely turns tracing up kills every embedded Cyclone
 image — FreeRTOS, ThreadX, native_sim compose the baked baseline the same way.
 The an536 C++ row (`examples/fixtures.toml`: "this one RUNS") had not booted
-since phase-206 W2 shipped that sample; it is BuildOnly-in-practice because no
-test runs it (issue 1624 / 1635).
+since phase-206 W2 shipped that sample, and nothing noticed because no test
+ran it. Issue 1624 added the test that does
+(`freertos_qemu::an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default`).
 
 ## Resolution (2026-10-02)
 

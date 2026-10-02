@@ -3322,6 +3322,24 @@ pub fn build_threadx_linux_workspace_cpp_entry() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Issue 1624 — the FreeRTOS QEMU MPS3-AN536 (Cortex-R52) C++ CycloneDDS
+/// workspace entry, `[image.mps3_an536]`. The emulated twin of the link-only
+/// S32Z270 row: the one non-zenoh FreeRTOS image this tree can BOOT, so the
+/// one whose `nros: heap peak` line the non-zenoh heap default is derived from.
+pub fn build_freertos_workspace_cpp_an536_entry() -> TestResult<&'static Path> {
+    static FREERTOS_WORKSPACE_CPP_AN536_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+    FREERTOS_WORKSPACE_CPP_AN536_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-cpp-mps3-an536-freertos",
+                "cpp",
+                "build/freertos-cyclonedds-mps3-an536-freertos/cmake",
+                "mps3_an536_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// phase-263 C2c — the FreeRTOS (QEMU MPS2-AN385) C++ workspace embedded entry (cached).
 pub fn build_freertos_workspace_cpp_entry() -> TestResult<&'static Path> {
     FREERTOS_WORKSPACE_CPP_ENTRY_BINARY
