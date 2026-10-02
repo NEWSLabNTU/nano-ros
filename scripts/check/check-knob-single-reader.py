@@ -379,27 +379,24 @@ def rfc_text(number):
 
 # The payload class. Issue 1393 (closed) was the FIELD gap: the model-only
 # producer refused `wire_bound_bytes` / `storage_bytes` on two roads of three.
-# phase-457-payload W2 + issue 1393's closure fill both on every producer road,
-# so the per-fact test was re-run for these four, and the answer is still no,
-# for a reason that is not about the descriptor's fields at all:
+# phase-457-payload W2 + issue 1393's closure fill both on every producer road.
 #
-#   * NO CONSUMER READS THEM OFF THE DESCRIPTOR. `nros-rmw-zenoh` sizes its
-#     small/large subscriber classes from `NROS_DECLARED_*` alone and
-#     `nros-node` its `RX_BUF` from `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE`
-#     alone; the cargo-leaf road delivers the same facts as plain knob rows
-#     (`DERIVED_PAYLOAD_ENV_KEYS` / `DERIVED_CLOSURE_ENV_KEYS`), not through the
-#     descriptor either. The descriptor STATING the bound buys nothing until a
-#     consumer ranks it first -- `NROS_DECLARED_SERVICE_SERVERS`'s shape.
-#   * a Zephyr west entry and a multi-entry configure name no descriptor to
-#     cargo at all (issue 1407).
+# Issue 1595 then gave the three SUBSCRIBER classes a reader (RFC-0100 D5):
+# `nros-rmw-zenoh` computes them from the descriptor's subscription rows through
+# `nros_sizing_descriptor::subscriber_payload_classes` -- the classification the
+# cargo-leaf join calls too -- and ranks that FIRST. Measured equal to the
+# carriers on `examples/workspaces/cpp` `native_entry` (12 / 0 large), with the
+# carrier winning only when the descriptor refuses. So what keeps these three
+# is the ROAD: a multi-entry configure and a Zephyr west entry name no
+# descriptor to cargo (issue 1407), and the carrier is the only delivery there.
 #
-# Issue 1595 tracks the first, which is the one that has to move before the
-# second matters.
+# `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` is different and stays on 1595: its
+# basis is the CLOSURE, which no set of `[[endpoint]]` rows spans, so it needs
+# a descriptor FIELD before any reader can exist.
 _PAYLOAD = (
-    "no consumer reads the subscriber payload classes off the descriptor -- "
-    "the descriptor states each subscription's `wire_bound_bytes` on every "
-    "producer road since phase-457-payload W2, and zenoh's classes are still "
-    "sized from this carrier alone"
+    "the descriptor states this class and `nros-rmw-zenoh` reads it FIRST "
+    "(issue 1595); the carrier is the only delivery on a road that names no "
+    "descriptor to cargo -- a multi-entry configure or a Zephyr west entry"
 )
 
 # Issue 1407 -- the count class. Three independent mechanisms, none of which
@@ -502,16 +499,17 @@ _BOARD_CAPACITY = (
 )
 
 KEPT = {
-    # ---- payload class (issue 1595; was 1393, closed) -------------------
-    "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": Kept(1595, _PAYLOAD),
+    # ---- payload class (1595 wired the reader; 1393 closed) -------------
+    "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": Kept(1407, _PAYLOAD),
     "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": Kept(
         1595,
-        _PAYLOAD + "; and its basis is the CLOSURE -- every type the image could "
-        "receive OR publish, because `DEFAULT_TX_BUF` aliases `RX_BUF` -- which "
-        "no set of `[[endpoint]]` rows spans, so it also needs a field",
+        "no consumer reads it off the descriptor, and none can: its basis is the "
+        "CLOSURE -- every type the image could receive OR publish, because "
+        "`DEFAULT_TX_BUF` aliases `RX_BUF` -- which no set of `[[endpoint]]` "
+        "rows spans, so it needs a descriptor field first",
     ),
-    "NROS_DECLARED_LARGE_SUBSCRIBERS": Kept(1595, _PAYLOAD),
-    "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": Kept(1595, _PAYLOAD),
+    "NROS_DECLARED_LARGE_SUBSCRIBERS": Kept(1407, _PAYLOAD),
+    "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": Kept(1407, _PAYLOAD),
     # ---- the entity counts (issue 1407) ---------------------------------
     # Three of these the schema could not state even with 1407 closed, and
     # each is a DIFFERENT structural reason -- worth keeping distinct, because

@@ -299,6 +299,99 @@ pub fn transient_local_retain_bytes(desc: &SizingDescriptor) -> Fact<usize> {
     Fact::Stated(max)
 }
 
+/// The zenoh subscriber PAYLOAD CLASSES an image's subscriptions need — issue
+/// 1595, RFC-0100 D5 ("each backend's build reads the descriptor and computes
+/// its own knobs").
+///
+/// Three numbers that move together, for the reason the leaf road's module
+/// gives (`nros_cli_core::leaf_payload_classes`): the runtime routes on
+/// `min(threshold, small block)`, so publishing the large COUNT without the
+/// small BLOCK classifies a type here one way and routes it another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PayloadClasses {
+    /// Subscribing ENTITIES whose `rx` bound is over the ceiling. Entities,
+    /// not types: two subscriptions on one large type need two blocks. Zero is
+    /// an answer ("every type fits the small class"), never an abstention.
+    pub large_count: usize,
+    /// The largest `rx` among those, or 0 when there are none.
+    pub large_max: usize,
+    /// The largest `rx` at or under the ceiling, or 0 when nothing fits under it.
+    pub small_max: usize,
+}
+
+impl PayloadClasses {
+    /// Classify ONE subscribing entity by its `rx` bound.
+    ///
+    /// THE rule — `rx > ceiling` is large — and the only spelling of it in Rust:
+    /// the cargo-leaf road's join and `nros-rmw-zenoh`'s descriptor reader both
+    /// call this, so the two cannot come to disagree about which side of the
+    /// ceiling a type lands on (issue 1025). The CMake twin is
+    /// `_nros_bounds_publish_payload_classes`.
+    pub fn add(&mut self, rx: usize, ceiling: usize) {
+        if rx > ceiling {
+            self.large_count += 1;
+            self.large_max = self.large_max.max(rx);
+        } else {
+            self.small_max = self.small_max.max(rx);
+        }
+    }
+}
+
+/// [`PayloadClasses`] over a descriptor's `subscription` rows, or a refusal.
+///
+/// REFUSES — and the caller keeps its other rung — when the rows cannot be the
+/// whole subscribed set or a row has no bound:
+///
+/// * `[image] subscription_entities` is not stated, or does not equal the
+///   number of `subscription` rows. A row the endpoint table dropped (no type,
+///   no topic) is a subscription whose size nobody priced, and a class
+///   derived over the rest is SHORT — `SubscriberCreationFailed` at
+///   registration, the direction RFC-0100 D6 forbids.
+/// * a `subscription` row's `wire_bound_bytes` is not stated.
+///
+/// [`Fact::Absent`] never: an image that subscribes to nothing states
+/// `subscription_entities = 0` and gets the all-zero classes, which is the
+/// answer (no large block at all).
+pub fn subscriber_payload_classes(desc: &SizingDescriptor, ceiling: usize) -> Fact<PayloadClasses> {
+    let subs: Vec<&Endpoint> = desc
+        .endpoints
+        .iter()
+        .filter(|e| e.kind == EndpointKind::Subscription)
+        .collect();
+    match desc.image.subscription_entities() {
+        Fact::Stated(n) if n == subs.len() => {}
+        Fact::Stated(n) => {
+            return Fact::Refused(format!(
+                "the image creates {n} subscription(s) and the endpoint table describes {}, so \
+                 a payload class derived over the rows would leave the rest unpriced",
+                subs.len()
+            ));
+        }
+        f => {
+            return Fact::Refused(format!(
+                "`[image] subscription_entities` is not stated ({}), so nothing says the \
+                 subscription rows are every subscription this image creates",
+                f.refusal().unwrap_or("absent")
+            ));
+        }
+    }
+    let mut classes = PayloadClasses::default();
+    for s in subs {
+        match s.wire_bound_bytes() {
+            Fact::Stated(rx) => classes.add(rx, ceiling),
+            f => {
+                return Fact::Refused(format!(
+                    "subscription {} ({}) states no `wire_bound_bytes`: {}",
+                    s.topic,
+                    s.type_name,
+                    f.refusal().unwrap_or("nothing derived it")
+                ));
+            }
+        }
+    }
+    Fact::Stated(classes)
+}
+
 /// The prefix of the `NROS_DECLARED_TL_PUBLISHERS` value that carries a
 /// REFUSED count's worst case: `refused:<bound>`.
 ///
@@ -605,6 +698,67 @@ fn from_env_value_emitting(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1595 -- the payload classes over a descriptor's subscription rows.
+    fn subs_desc(bounds: &[Option<usize>], entities: Option<usize>) -> SizingDescriptor {
+        let mut d = SizingDescriptor::new("e", Status::Derived, Basis::Contract);
+        for (i, b) in bounds.iter().enumerate() {
+            let mut s = Endpoint::new(EndpointKind::Subscription, "p/msg/T", format!("/t{i}"));
+            s.set_wire_bound_bytes(*b);
+            d.endpoints.push(s);
+        }
+        d.image.set_subscription_entities(entities);
+        d
+    }
+
+    #[test]
+    fn payload_classes_split_entities_at_the_ceiling() {
+        let d = subs_desc(&[Some(12), Some(1500), Some(4096), Some(4096)], Some(4));
+        assert_eq!(
+            subscriber_payload_classes(&d, 2048),
+            Fact::Stated(PayloadClasses {
+                large_count: 2,
+                large_max: 4096,
+                small_max: 1500,
+            }),
+            "two subscriptions on one large type need two blocks"
+        );
+        // The ceiling is the caller's: the same rows under a 1024 ceiling.
+        assert_eq!(
+            subscriber_payload_classes(&d, 1024)
+                .stated()
+                .map(|c| c.large_count),
+            Some(3)
+        );
+        // Nothing subscribed is an ANSWER: no large block, no small size.
+        assert_eq!(
+            subscriber_payload_classes(&subs_desc(&[], Some(0)), 2048),
+            Fact::Stated(PayloadClasses::default())
+        );
+    }
+
+    /// The two refusals -- each is an under-size if it were not one.
+    #[test]
+    fn payload_classes_refuse_an_incomplete_or_unpriced_row_set() {
+        // A subscription the table does not describe.
+        assert!(
+            subscriber_payload_classes(&subs_desc(&[Some(12)], Some(2)), 2048)
+                .refusal()
+                .is_some()
+        );
+        // Nothing says the rows are complete.
+        assert!(
+            subscriber_payload_classes(&subs_desc(&[Some(12)], None), 2048)
+                .refusal()
+                .is_some()
+        );
+        // A row with no bound.
+        assert!(
+            subscriber_payload_classes(&subs_desc(&[Some(12), None], Some(2)), 2048)
+                .refusal()
+                .is_some_and(|r| r.contains("/t1"))
+        );
+    }
 
     fn island() -> SizingDescriptor {
         let mut d = SizingDescriptor::new("talker", Status::Derived, Basis::Contract);
