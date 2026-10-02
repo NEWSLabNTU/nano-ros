@@ -3,7 +3,8 @@ id: 1600
 title: "A multi-entry configure sizes its ONE runtime staticlib from the LAST
   entry's model, so `native_entry` of examples/workspaces/cpp dies at boot with
   `ExecutorFull`"
-status: open
+status: resolved
+resolved_in: 2026-10-02
 type: bug
 severity: high
 area: [build, cmake]
@@ -99,3 +100,66 @@ component this configure registered") must become true of the MODELS too, and
 a gate should build a two-entry configure whose LAST entry is the smaller one
 and assert the delivered `NROS_DECLARED_EXECUTOR_MAX_CBS` is the larger.
 Owned by whoever holds the cmake carrier road (issue 1407's area).
+
+## Resolution (2026-10-02)
+
+The fragment is now derived over EVERY model the configure has seen, not the
+last one.
+
+* **cmake** — `nros_derive_entity_inventory_knobs` appends its `MODEL` to a
+  GLOBAL list (`NROS_ENTITY_INVENTORY_MODELS`, deduplicated, missing paths
+  dropped) and passes the whole list as repeated `--model`. Each entry still
+  calls it once; the last call composes over all of them, and the readers that
+  run after the entries (`_nros_entity_budget_env`, deferred) find that union.
+  The intermediate rewrites settle: `nros_reconfigure_on_change` compares
+  against the snapshot taken before the FIRST call of the pass (issue 1119).
+* **CLI** — `nros ws entity-inventory` now defines the image-wide outputs
+  (`--output-cmake`/`--output-json`/stdout env) over several `--model`s:
+  `EntityInventory::shared_runtime_over` folds each wired model in through
+  `merged_per_kind_max` (the rule one model already uses), so a component keeps
+  the larger declaration per kind and a component ANY image launches is
+  launched. Parameters reduce by `ParamDeclarations::union_over_images`: every
+  image declaring → the union, every image silent → absent, any mix → refused,
+  naming the silent ones. A model that describes NO wiring cannot be folded and
+  does not say what it runs, so every row another model marked `NotLaunched`
+  goes back to `Absent` and `derive` refuses, naming them. The per-component
+  header path (`--component`, issue 1564) is unchanged.
+
+The reduction is the UNION of the images, which SUMS where the true need is
+the largest single image. That is the safe direction, and it is a real cost:
+measured below, the arena advisory reports 752 of 66,816 bytes claimed at first
+spin. A per-knob MAX over each image's own derivation would be tight, but the
+fragment is not only numbers (declared-QoS tables, type lists, per-component
+rows), so it would need a second, field-by-field reducer beside `derive` --
+the shape this repo keeps paying for. Recorded here, not done.
+
+### Measured
+
+`examples/workspaces/cpp`, `nros sync` + `nros build native`, then
+`scripts/build/workspace-fixtures-build.sh linux cpp --id workspace-cpp-native`:
+
+| | before (main) | after |
+| --- | --- | --- |
+| `NROS_ENTITY_INVENTORY_NOT_LAUNCHED` | `fib_client;fib_server;listener;add_client;talker` | absent (every component is launched by some entry) |
+| `NROS_DERIVED_EXECUTOR_MAX_CBS` | 1 | 9 |
+| `NROS_DECLARED_EXECUTOR_MAX_CBS` on the nros-cpp cargo command | 1 | 9 |
+| `native_entry` against `rmw_zenohd` | `NodeError::ExecutorFull`, exit 250 | boots; `Published: 0..5`, `Received: 0..4`, exit 0 |
+| `workspace_features::case_12_cpp_logging` | fails (0.4 s) | passes (3.4 s) |
+
+`examples/workspaces/c` and `mixed`: their fragments refuse, as they did
+before — neither has a contract, so every model is unwired and there is
+nothing to fold. (The `mixed` fixture build then failed in its BUILD step on a
+cached `CMAKE_MAKE_PROGRAM` pointing at a deleted `third-party/make/gmake`,
+the stale-cache class issue 1406 describes; unrelated to this change.)
+
+### Gates
+
+* `entity_inventory::shared_runtime_tests` (4): the shared runtime is never
+  narrower than any image in either order; a component one image runs is not
+  dropped by another; an unwired image makes the derivation refuse, naming the
+  component (with a negative control); the parameter union/mix rules. Mutating
+  the fold to keep only the last image turns two of them red.
+* `tests/cmake-entity-inventory-tests.sh` case J: four calls (A, B, A, a
+  missing path) — the last derivation names A and B exactly once each and no
+  missing path; the first still names only its own. Reverting the cmake
+  accumulation turns it red.
