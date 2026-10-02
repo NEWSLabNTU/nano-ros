@@ -386,9 +386,12 @@ endfunction()
 # EXACTLY ONE OR NONE. A configure that declared several entries has several
 # descriptors and one shared staticlib, and `NROS_SIZING_DESCRIPTOR` names a
 # single file: handing cargo one of N would size the shared archive from one
-# image and call it derived. The entity facts take a MAX across models for the
-# same collision; a descriptor is a whole per-endpoint table and has no max, so
-# this refuses instead and says so.
+# image and call it derived. The entity facts reduce across models for the
+# same collision -- the `ws entity-facts` accumulator takes a MAX, and the
+# entity-inventory fragment folds every entry's model into the union the shared
+# runtime must hold (issue 1600; until then it was last-entry-wins, which this
+# comment claimed it was not). A descriptor is a whole per-endpoint table and
+# has no such reduction, so this refuses instead and says so.
 function(nros_sizing_descriptor_cargo_env _out_var)
     set(${_out_var} "" PARENT_SCOPE)
     get_property(_paths GLOBAL PROPERTY NROS_SIZING_DESCRIPTOR_PATHS)

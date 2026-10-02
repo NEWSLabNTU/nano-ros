@@ -145,6 +145,10 @@
 # when the path is empty or missing, and the verb abstains on a model that
 # describes no wiring, so an image with no contract sees no change.
 #
+# MODEL ACCUMULATES across calls in one configure (issue 1600): each call
+# composes over every model passed so far, because a multi-entry configure
+# links ONE runtime into every entry and that runtime must hold all of them.
+#
 # Sets in the CALLER's scope:
 #
 #   NROS_ENTITY_INVENTORY_STATUS          derived | refused
@@ -529,10 +533,32 @@ function(nros_derive_entity_inventory_knobs)
     # names no bringup resolves no model, and a path that is empty or absent
     # must not reach the verb: `--model <missing>` is an error there, and the
     # absence of a contract is a normal state, not a broken configure.
-    set(_model_arg "")
+    #
+    # Issue 1600 -- and EVERY model this configure has seen, not just this
+    # call's. A multi-entry configure calls this once per entry and links ONE
+    # runtime into all of them, while the fragment is one file per configure:
+    # passing only this entry's model made each call overwrite the last, so the
+    # runtime was sized for whichever entry cmake happened to process LAST.
+    # `examples/workspaces/cpp`'s `native_entry` (two callbacks) got the service
+    # server's `MAX_CBS` of 1 and died `ExecutorFull` at boot. Accumulated
+    # here, the final call composes over all of them -- the verb folds several
+    # models into the union the shared runtime must hold -- and the fragment
+    # the readers find after the entries is that union. The intermediate
+    # rewrites settle: `nros_reconfigure_on_change` compares against the
+    # snapshot taken before the FIRST call of the pass (issue 1119).
     if(_E_MODEL AND EXISTS "${_E_MODEL}")
-        set(_model_arg --model "${_E_MODEL}")
+        set_property(GLOBAL APPEND PROPERTY NROS_ENTITY_INVENTORY_MODELS "${_E_MODEL}")
     endif()
+    get_property(_models GLOBAL PROPERTY NROS_ENTITY_INVENTORY_MODELS)
+    if(_models)
+        list(REMOVE_DUPLICATES _models)
+    endif()
+    set(_model_arg "")
+    foreach(_m IN LISTS _models)
+        if(EXISTS "${_m}")
+            list(APPEND _model_arg --model "${_m}")
+        endif()
+    endforeach()
     execute_process(
         COMMAND "${_E_CLI}" ws entity-inventory
                 --metadata "${_metadata}"
