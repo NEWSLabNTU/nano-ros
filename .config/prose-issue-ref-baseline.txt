@@ -49,12 +49,6 @@
 #         asked for rather than a duplicate filing. REMOVE THESE ROWS when
 #         #1263 merges.
 #
-#   1627  IN FLIGHT — filed on PR #1552 (`west-configure-fixture-passes-on-
-#         failed-configure`). Issue 1629 cites it for the shape they share: a
-#         stated rule whose premise moved, rather than an oversight. REMOVE
-#         THIS ROW when #1552 merges.
-#
-docs/issues/1629-queue-check-timeout-outgrown-by-gate-lane.md:1627
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
