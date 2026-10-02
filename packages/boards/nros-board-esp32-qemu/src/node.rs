@@ -350,6 +350,45 @@ where
     }
 }
 
+/// Issue 1521 — the `log` facade's console logger for this board. Same line
+/// shape as the platform writer `register_log_writer` installs, so a record
+/// reads the same whichever facade raised it.
+struct ConsoleLogger;
+
+impl log::Log for ConsoleLogger {
+    fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+        // Filtered by `log::max_level()` already.
+        true
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        esp_println::println!(
+            "[{}] {}: {}",
+            record.level(),
+            record.target(),
+            record.args()
+        );
+    }
+
+    fn flush(&self) {}
+}
+
+static CONSOLE_LOGGER: ConsoleLogger = ConsoleLogger;
+
+/// Install [`ConsoleLogger`] as the `log` facade's logger. Idempotent: a
+/// second call finds the logger set and changes nothing.
+fn install_log_facade() {
+    // SAFETY: `set_logger_racy` must not race another `set_logger*` call.
+    // This runs on the boot funnel of a single-core image before any task or
+    // interrupt handler that could log exists, and nothing else in the image
+    // installs a `log` logger (esp-println's own `init_logger` is not called).
+    unsafe {
+        if log::set_logger_racy(&CONSOLE_LOGGER).is_ok() {
+            log::set_max_level_racy(log::LevelFilter::Info);
+        }
+    }
+}
+
 /// Phase 88.15.f — register an `esp_println`-backed writer with
 /// `nros-platform-esp32-qemu`'s log fn-ptr slot. Called once from
 /// [`run()`] right after `init_hardware`. Mirrors the wifi board's
@@ -381,21 +420,21 @@ pub(crate) fn register_log_writer() {
 
     // Issue #64 — bridge the `log` crate facade too, so a node body written
     // against `log::info!` (and nros's own framework `::log::info!`) reaches the
-    // same console. esp-println's logger writes straight to it.
+    // same console, in the same `[LEVEL] name: message` shape as the writer
+    // above.
     //
-    // Issue 1048 — and the CFG IS THE POINT, not decoration. `log::set_logger`
-    // and `log::set_max_level` are both `#[cfg(target_has_atomic = "ptr")]` in
-    // `log` 0.4, and this board's target is `riscv32imc-unknown-none-elf` — RV32
-    // I M C, no `A` extension, so `rustc --print cfg` lists no
-    // `target_has_atomic="ptr"` and NEITHER FUNCTION EXISTS. `init_logger` was
-    // therefore a call that compiled, ran, and installed nothing: no logger can
-    // be installed on this board, by anyone, and every `log::*` record was
-    // dropped. Writing the condition out means the dead call is dead in the
-    // SOURCE rather than only in the binary, and any future board on a
-    // non-atomic target (thumbv6m is the other one rustc reports here) gets the
-    // same statement instead of the same silence.
-    #[cfg(target_has_atomic = "ptr")]
-    esp_println::logger::init_logger(log::LevelFilter::Info);
+    // Issue 1521 — installed through `log::set_logger_racy`, which exists on
+    // EVERY target. Issue 1048 found that `log::set_logger` / `set_max_level`
+    // are `#[cfg(target_has_atomic = "ptr")]` and that riscv32imc has no atomic
+    // pointers, and concluded no logger could be installed here, so the esp32
+    // node copies were moved off `log::info!` — the one divergence from their
+    // siblings that the example-portability gate then reported. The `_racy`
+    // pair is `log`'s own answer for exactly this target class (its `STATE` and
+    // level filter fall back to a `Cell` there), and its one precondition — no
+    // concurrent `set_logger*` call — holds at this boot funnel: one core, no
+    // other task yet, and nothing else in the image installs a `log` logger.
+    // A second call (both funnels reach this fn) is a no-op, never a panic.
+    install_log_facade();
 
     // Issue 1048 — publish the `nros_log` sink list, which is what actually
     // delivers on this board, and publish it at EVERY funnel: `run_bare` did

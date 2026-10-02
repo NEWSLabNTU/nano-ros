@@ -3361,9 +3361,32 @@ test-lane-contracts:
     # its merge asked, and it stayed red. The recipe's NAME is narrower than its
     # rule — the rule is "an nros-tests target that builds no fixture", which is
     # what `check-lane-contracts` actually enforces here.
+    #
+    # issue 1521 — `example_portability` and `example_shape` join on the same
+    # rule: both walk `examples/**` source and manifests, resolve no fixture
+    # stamp, and run in ~0.02 s. The portability ratchet reached ZERO on
+    # 2026-08-06 and then took 11 regressions over seven weeks, and
+    # `example_shape`'s Zephyr floor sat red on `main` for a day after a correct
+    # deletion — both unreported, because no merge-gating lane ran either.
+    #
+    # The other fifteen in the second group were MEASURED, not picked: of the
+    # 71 `nros-tests` targets that call no fixture resolver and need no
+    # `required-features`, these are the ones that pass with no fixture built
+    # AND spawn no process (no CLI, cmake, compiler, QEMU or ROS) — they read
+    # tracked source/manifests or exercise library code in-process. A target
+    # that shells out is not admitted here even if it passes on a dev host,
+    # because the runner is not a dev host.
     cargo nextest run "${cargo_nextest_args[@]}" -p nros-tests \
         --test lane_run_narrowing --test matrix_fixture_coverage \
-        --test lane_build_covers_run --test loc_budgets
+        --test lane_build_covers_run --test loc_budgets \
+        --test example_portability --test example_shape \
+        --test board_link_archives --test contract_derived_chain_parity \
+        --test exec_model_matrix --test fixture_source_coverage \
+        --test init_api --test logging --test nvidia_ivc_mock_wire_format \
+        --test on_violation_lowering --test sched_dims_model_coverage \
+        --test schema_serializer_round_trip --test serialized_size_bound \
+        --test time_to_ros_msg --test zephyr_prjconf_requirements \
+        --test examples_fixture_coverage --test output_marker_gate
 
 [group("ci")]
 ci-l1:

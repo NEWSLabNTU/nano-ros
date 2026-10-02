@@ -22,7 +22,7 @@ mps2-an385-pac                       0   1     1       2      0
 nros                                58  13     2      25      0
 nros-baremetal-common               23   0     0      20      0
 nros-board-cffi                      3   0     0       6      0
-nros-board-esp32-qemu               10   1     1       0      0
+nros-board-esp32-qemu               11   1     1       0      0
 nros-board-freertos                 55   1     0      17      0
 nros-board-linux                     5   0     1       2      0
 nros-board-mps2-an385               28   6     1       4      0
