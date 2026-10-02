@@ -30,6 +30,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
 
@@ -242,6 +243,56 @@ void test_composition_keeps_both(uint32_t domain_id) {
           "composition: the user's MaxAutoParticipantIndex was lost");
 }
 
+/// Issue 1634 — a user config that enables tracing but names no file must not
+/// cost the session on a target with nowhere to write one.
+///
+/// Reproduced on the host by running from a directory that cannot be written,
+/// which is what a FreeRTOS image is: Cyclone's default `cyclonedds.log` cannot
+/// be opened, and `dds_create_domain` fails. The CONTROL (the user fragment
+/// alone) must fail that way, or this test is not reaching the path; the
+/// baseline + the same fragment must come up.
+void test_verbosity_without_a_file_keeps_the_session(uint32_t domain_id) {
+    const char* kUserVerbosityOnly = "<CycloneDDS><Domain Id=\"any\"><Tracing>"
+                                     "<Verbosity>warning</Verbosity>"
+                                     "</Tracing></Domain></CycloneDDS>";
+    char ro_dir[] = "nros_cyclone_ro_XXXXXX";
+    if (mkdtemp(ro_dir) == nullptr) {
+        fail("verbosity: mkdtemp failed");
+        return;
+    }
+    char here[1024];
+    if (getcwd(here, sizeof(here)) == nullptr || chmod(ro_dir, 0500) != 0 || chdir(ro_dir) != 0) {
+        fail("verbosity: could not enter a read-only directory");
+        (void)rmdir(ro_dir);
+        return;
+    }
+    // Root can write anywhere, which would make the control pass vacuously.
+    const bool can_write = access(".", W_OK) == 0;
+
+    const dds_entity_t control = dds_create_domain(domain_id, kUserVerbosityOnly);
+    const char* frags[2] = {kEmbeddedCycloneConfig, kUserVerbosityOnly};
+    char composed[kCycloneConfigMax];
+    const bool ok = compose_cyclone_config(composed, sizeof(composed), frags, 2);
+    const dds_entity_t fixed = ok ? dds_create_domain(domain_id + 1, composed) : -1;
+
+    if (control > 0) (void)dds_delete(control);
+    if (fixed > 0) (void)dds_delete(fixed);
+    if (chdir(here) != 0) fail("verbosity: could not leave the read-only directory");
+    (void)chmod(ro_dir, 0700);
+    (void)rmdir(ro_dir);
+
+    if (can_write) {
+        fail("verbosity: the read-only directory is writable (running as root?) — "
+             "the control cannot reach the defect");
+        return;
+    }
+    check(control < 0, "verbosity: CONTROL came up — the user fragment alone did not "
+                       "reach the cannot-open path, so this proves nothing");
+    check(ok, "verbosity: compose failed");
+    check(fixed > 0, "verbosity: baseline + `<Verbosity>` with no file failed "
+                     "dds_create_domain — the session dies on a target with no filesystem");
+}
+
 } // namespace
 
 int main() {
@@ -251,6 +302,7 @@ int main() {
     const uint32_t domain = nros_test_domain(61);
     test_user_alone_loses_the_baseline(domain);
     test_composition_keeps_both(domain);
+    test_verbosity_without_a_file_keeps_the_session(domain + 2);
 
     if (g_failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", g_failures);
