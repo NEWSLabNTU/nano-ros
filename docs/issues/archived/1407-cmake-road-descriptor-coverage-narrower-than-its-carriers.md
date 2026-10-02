@@ -4,11 +4,12 @@ title: "On the cmake road the sizing descriptor is written from a POORER
   inventory than the `NROS_DECLARED_*` carriers, is not written at all for a
   standalone leaf or a no-wiring model, and is withheld from cargo entirely in a
   multi-entry configure — three reasons a count carrier cannot retire"
-status: open
+status: resolved
 type: tech-debt
 area: [build, cli]
-related: [1393, 1378, 1122, 1199, 1408, 1288, 0460, 1595]
+related: [1393, 1378, 1122, 1199, 1408, 1288, 0460, 1595, 1649]
 found: 2026-09-21
+resolved: 2026-10-03
 ---
 
 ## What is open
@@ -18,7 +19,7 @@ phase-454 W14 gave the sizing descriptor a second producer
 reaches all three roads. W9 then asked the retirement question per fact — **can
 the descriptor state this fact, on all three roads, today?** — and for the
 COUNT-class `NROS_DECLARED_*` carriers the answer is no, for three mechanisms
-that are independent of [issue 1393](archived/1393-cmake-road-has-no-bound-inventory.md)
+that are independent of [issue 1393](1393-cmake-road-has-no-bound-inventory.md)
 and of each other.
 
 1393 is about which FIELDS the model-only producer refuses. This is about **where
@@ -171,3 +172,66 @@ reason: `nano_rosConfig.cmake`'s Zephyr arm returns before
 `nros_record_leaf_entity_facts`, so such a leaf gets no CARRIER either, and the
 retirement test asks only about roads a carrier reaches. Rewritten to name the
 Zephyr west ENTRY, which is the road that matters.
+
+## Resolution, 2026-10-03 — the Zephyr west entry names its descriptor; the carriers stay for a road that now exists
+
+**The open road is closed.** The west entry's problem was ORDER, not delivery:
+`zephyr/cmake/nros_cargo_build.cmake`'s `nros_resolve_knobs()` runs during
+`find_package(Zephyr)`, long before `nano_ros_entry()` writes the descriptor. It
+is closed with the same producer-after-reader mechanism the entity inventory
+uses (issue 0991):
+
+* `nano_ros_entry()` (on the Zephyr road only — detected by the module's own
+  `nros_set_cargo_env_from_kconfig`) calls `nros_sizing_descriptor_record_for_west()`,
+  which writes the ONE-OR-NONE decision `nros_sizing_descriptor_cargo_env()`
+  makes for the cmake road — the same function, so a multi-entry west configure
+  lands on "none" exactly as the cmake road does — to
+  `<build>/nros/sizing/west-cargo-descriptor.cmake`, and arms a re-configure when
+  it changes.
+* `_nros_load_west_sizing_descriptor()`, beside the two inventory loaders in
+  `nros_resolve_knobs()`, reads it and resolves `NROS_SIZING_DESCRIPTOR` as a
+  knob, so it joins `NROS_RESOLVED_KNOBS` and rides the C lane's cargo command
+  (issue 0460 — never a bare `set(ENV{})`). Only a path to a file that exists is
+  forwarded. It is a PATH; the rebuild edge stays on the file's content
+  (`load_for_build_script`, issue 0491).
+
+A Rust west application (`rust_cargo_application()`) calls no `nano_ros_entry()`
+and has no descriptor to name; `check-kconfig-knob-forwarding` records the knob
+under `NO_RUST_READER` with that reason.
+
+### Measured — `examples/workspaces/cpp`, `[image.zephyr]` (native_sim/native/64, zenoh)
+
+| | before | after |
+| --- | --- | --- |
+| `NROS_SIZING_DESCRIPTOR` on the C lane's command | absent | `<build>/nros/sizing/zephyr_entry.toml` |
+| configures in the incremental `west build` that picked it up | — | 2 (the second is the armed re-configure) |
+| `nros_rmw_cffi::NODE_TABLE` | 576 B (default node count) | 288 B (`[image] node_count = 2`) |
+| cffi backend `REGISTRY` | 328 B | 48 B (`backend_count = 1`) |
+| `size zephyr.exe` text / data / bss | 1,035,991 / 39,748 / 443,552 | 1,036,775 / 39,740 / **442,976** (−576 B bss) |
+| runtime, 15 s against `rmw_zenohd` | published 14 / received 14 | published 14 / received 14 |
+
+The baseline was rebuilt from the same tree with only the loader call commented
+out, and reproduced the original baseline byte for byte, so the difference is
+the descriptor and nothing else. Every generated `out/*.rs` config file of the
+image's cargo builds was diffed and is identical: the zenoh payload classes and
+the ring depth are STATED on this road (Kconfig and the resolver forward them),
+and a stated rung outranks a descriptor's default, as it should. The entry's
+contract declares `/chatter` at depth 1, but `CONFIG_NROS_SUBSCRIBER_RING_DEPTH`
+states 4, so the ring keeps 4 — the board's statement wins.
+
+Tests: `tests/cmake-sizing-descriptor-tests.sh` G5 — one descriptor is recorded
+for the west road, two record none (negative control: writing an empty path
+fails G5).
+
+### What retired: nothing, and why
+
+The per-fact test was re-run for every row this issue held. None retires, for one
+reason: every one of them is also emitted for a MULTI-ENTRY cmake configure
+(`nros_entity_facts_env`), which names no descriptor to cargo. phase-457 W0.c kept
+that refusal because "no in-tree configure is in this state" — and that is no
+longer true: `nros build --workspace examples/workspaces/cpp native` (the
+`workspace-cpp-native` fixture's build dir) configures FIVE entries in one
+configure and prints "5 sizing descriptors in this configure ... none is named
+to cargo". That is filed as **issue 1649**, and the 27 `Kept` rows moved there
+in `scripts/check/check-knob-single-reader.py`, with the Zephyr clause removed
+from every reason that carried one.

@@ -713,7 +713,8 @@ mod queryable_default_tests {
     /// and only one kind of image could reach it: a descriptor was written for a
     /// single-package cargo leaf and for nothing else, so every cmake / Zephyr /
     /// NuttX entry supplied `0` here however many action servers it declared.
-    /// (A Zephyr west entry still names no descriptor to cargo — issue 1407.)
+    /// (A multi-entry cmake configure still names no descriptor to cargo — issue 1649;
+    /// a Zephyr west entry names its own since issue 1407.)
     #[test]
     fn the_declared_road_supplies_the_same_term_when_there_is_no_descriptor() {
         assert_eq!(

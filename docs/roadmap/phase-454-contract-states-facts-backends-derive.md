@@ -16,7 +16,7 @@ is** — `nros ws sizing-descriptor --from-model` builds
 `EntityInventory::from_model` alone, where the carrier's verb composes that with
 `nros-metadata.json`, and only the carrier's can refuse on a component that
 declared nothing. That, plus a standalone leaf having no model at all, is
-[issue 1407](../issues/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md);
+[issue 1407](../issues/archived/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md);
 the parameter family's separate blocker is
 [issue 1408](../issues/archived/1408-sizing-descriptor-has-no-parameter-store-section.md).
 
@@ -629,8 +629,8 @@ fails.
 | class | n | blocker | why |
 | --- | --- | --- | --- |
 | payload | 4 | [1393](../issues/archived/1393-cmake-road-has-no-bound-inventory.md) | the model-only producer REFUSES `wire_bound_bytes` / `storage_bytes`, so on 2 roads of 3 this carrier is the only thing stating a size |
-| entity counts | 9 | [1407](../issues/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md) | the descriptor's producer reads a POORER inventory than the carrier's |
-| queryable raw inputs | 4 | [1407](../issues/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md) | their live road is the STANDALONE LEAF, which has no model and so can never have a model-written descriptor |
+| entity counts | 9 | [1407](../issues/archived/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md) | the descriptor's producer reads a POORER inventory than the carrier's |
+| queryable raw inputs | 4 | [1407](../issues/archived/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md) | their live road is the STANDALONE LEAF, which has no model and so can never have a model-written descriptor |
 | parameter store | 9 | [1408](../issues/archived/1408-sizing-descriptor-has-no-parameter-store-section.md) | the D4 schema has no parameter section at all, on ANY road — not a refusal, an absent vocabulary |
 
 **The count class is the one the plan misjudged, and the reason is not 1393.**
@@ -1186,7 +1186,7 @@ the retirement of the `NROS_DECLARED_*` carriers. W9 then measured that
 retirement per fact and retired NONE of them — and found the block is NOT only
 the refusals. It is also the producer, still: `--from-model` reads a poorer
 inventory than the carrier's verb does, and a standalone leaf has no model to
-read at all ([issue 1407](../issues/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md)).
+read at all ([issue 1407](../issues/archived/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md)).
 The sentence above — *"all three now write a descriptor, so the block is the
 REFUSALS rather than the producer"* — is the claim W9 disproved; it is left
 here rather than edited away, because it is the exact step where "a descriptor

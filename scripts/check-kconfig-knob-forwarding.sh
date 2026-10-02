@@ -179,6 +179,16 @@ NO_RUST_READER=(
     NROS_MAX_PUBLISHERS
     NROS_MAX_QUERYABLES
     NROS_MAX_SUBSCRIBERS
+
+    # issue 1407 — a PATH, not a tuning knob, and its readers do not spell it:
+    # every descriptor consumer reaches it through
+    # `nros_sizing_descriptor::from_build_env()` (`DESCRIPTOR_ENV`), which puts
+    # the rebuild edge on the FILE (issue 0491). It is forwarded only on the
+    # C/C++ west road, because only `nano_ros_entry()` writes a descriptor
+    # there; a Rust west application (`rust_cargo_application()`) has no
+    # `nano_ros_entry()`, so there is no file for this knob to name and no
+    # Kconfig symbol a `$DOTCONFIG` rung could carry a path in.
+    NROS_SIZING_DESCRIPTOR
 )
 
 # --- pure harvests, so the self-test can drive them on synthetic text --------

@@ -1440,6 +1440,12 @@ function(_nros_entry_invoke_codegen)
         RMW       "${_nrx_rmw}")
     nros_sizing_descriptor_path(_nrx_sizing_path "${CMAKE_BINARY_DIR}" "${_NRX_NAME}")
     nros_sizing_descriptor_read("${_nrx_sizing_path}")
+    # Issue 1407 -- the Zephyr WEST road names it to cargo through the module's
+    # knob resolver, which ran before this entry existed. Detected by the
+    # resolver's own presence: only the Zephyr module defines it.
+    if(COMMAND nros_set_cargo_env_from_kconfig)
+        nros_sizing_descriptor_record_for_west()
+    endif()
 
     # issue 1033 — tell the deferred non-entry composer to stand down. An entry
     # composes HERE, after its own registrations, which is the earliest correct

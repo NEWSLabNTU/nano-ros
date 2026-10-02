@@ -387,8 +387,8 @@ def rfc_text(number):
 # cargo-leaf join calls too -- and ranks that FIRST. Measured equal to the
 # carriers on `examples/workspaces/cpp` `native_entry` (12 / 0 large), with the
 # carrier winning only when the descriptor refuses. So what keeps these three
-# is the ROAD: a multi-entry configure and a Zephyr west entry name no
-# descriptor to cargo (issue 1407), and the carrier is the only delivery there.
+# is the ROAD: a multi-entry configure names no descriptor to cargo (issue
+# 1649), and the carrier is the only delivery there.
 #
 # `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` is different and stays on 1595: its
 # basis is the CLOSURE, which no set of `[[endpoint]]` rows spans, so it needs
@@ -396,7 +396,7 @@ def rfc_text(number):
 _PAYLOAD = (
     "the descriptor states this class and `nros-rmw-zenoh` reads it FIRST "
     "(issue 1595); the carrier is the only delivery on a road that names no "
-    "descriptor to cargo -- a multi-entry configure or a Zephyr west entry"
+    "descriptor to cargo -- a multi-entry configure (issue 1649)"
 )
 
 # Issue 1407 -- the count class. Three independent mechanisms, none of which
@@ -412,9 +412,13 @@ _PAYLOAD = (
 # poorer set cost was `[image] node_count`, measured stating 1 for an image
 # registering 3 (`NodeError::NodeTableFull` at boot).
 #
-# What still keeps these rows is the SECOND and THIRD mechanisms -- the roads
-# that have no descriptor at all -- plus, for most of them, a per-carrier
-# structural reason the schema cannot answer whatever the roads do.
+# The Zephyr WEST entry was the last road that wrote a descriptor and named
+# none (issue 1407, closed 2026-10-03: `_nros_load_west_sizing_descriptor`).
+# What still keeps these rows is the THIRD mechanism -- a MULTI-ENTRY configure
+# names no descriptor to cargo, which phase-457 W0.c kept on the ground that no
+# such configure existed, and which `examples/workspaces/cpp`'s native image now
+# is (five entries, one configure; issue 1649) -- plus, for most rows, a
+# per-carrier structural reason the schema cannot answer whatever the roads do.
 _COUNTS = "the descriptor's producer does not run on every road this carrier reaches"
 
 # Issue 1407 -- the queryable raw inputs.
@@ -433,10 +437,11 @@ _COUNTS = "the descriptor's producer does not run on every road this carrier rea
 #     whole per-endpoint table and has no MAX; the entity facts do have one and
 #     still travel). So this is not a gap waiting on a wave -- it is a road where
 #     the carrier is structurally the only answer.
-#   * a ZEPHYR WEST entry writes a descriptor and names NONE to cargo:
-#     `zephyr/cmake/nros_cargo_build.cmake` forwards the transient-local count
-#     (`_nros_resolve_derivable_knob(NROS_DECLARED_TL_PUBLISHERS ...)`) and has no
-#     `NROS_SIZING_DESCRIPTOR` row at all.
+#   * a ZEPHYR WEST entry wrote a descriptor and named NONE to cargo -- CLOSED
+#     by issue 1407: the entry records the one-or-none decision and the
+#     module's knob resolver forwards `NROS_SIZING_DESCRIPTOR` on the C lane's
+#     command (measured on `examples/workspaces/cpp`'s Zephyr image: the cffi
+#     node table and backend registry derive from it, -576 B bss).
 #
 # CORRECTED 2026-10-01: this said "a standalone ZEPHYR leaf reaches neither
 # producer". True, and not a reason to keep anything -- `nano_rosConfig.cmake`'s
@@ -447,9 +452,10 @@ _COUNTS = "the descriptor's producer does not run on every road this carrier rea
 # Retiring on "the descriptor states the fact" would re-open 1378 on exactly the
 # images that describe themselves, which is phase-454 W9's lesson.
 _LEAF_ROAD = (
-    "the standalone-leaf road has a descriptor since phase-457 W0.b; a "
-    "multi-entry configure names no descriptor to cargo, and a Zephyr west "
-    "entry names none while forwarding the carriers it reads"
+    "the standalone-leaf road has a descriptor since phase-457 W0.b and the "
+    "Zephyr west entry names its own since issue 1407; a multi-entry configure "
+    "names no descriptor to cargo (issue 1649), and the carrier is the only "
+    "delivery there"
 )
 
 # The parameter store. Issue 1408 (closed) was the SCHEMA gap: `[params]` is in
@@ -461,15 +467,14 @@ _LEAF_ROAD = (
 # 1436 (archived).
 #
 # What is left is the RETIREMENT, and the per-fact test was re-run when 1408
-# closed. It is a COVERAGE answer now, so these rows moved to issue 1407:
+# closed. It is a COVERAGE answer now, so these rows moved to issue 1407, and
+# from there to issue 1649 when 1407 closed the Zephyr road:
 #
 #   * a MULTI-ENTRY cmake configure names no descriptor to cargo while the
 #     facts still travel (a MAX across the models) -- every row below;
-#   * a ZEPHYR WEST entry forwards the three NEEDS and the service shape under
-#     these very names (`nros_cargo_build.cmake`) and names no descriptor --
-#     the `_PARAM_ZEPHYR` rows only. The two counts travel there as the knob
-#     itself (`_nros_resolve_derivable_knob(NROS_MAX_PARAMETERS ...)`), not as
-#     this carrier.
+#   * a ZEPHYR WEST entry forwarded the three NEEDS and the service shape and
+#     named no descriptor -- CLOSED by issue 1407; it names its descriptor now,
+#     so the `_PARAM_ZEPHYR` rows share the multi-entry reason.
 #
 # CORRECTED 2026-10-01: this listed "a STANDALONE cargo leaf with no resolved
 # model" as a third road. It is not one: with no model there is no
@@ -480,9 +485,10 @@ _PARAM_MULTI_ENTRY = (
     "descriptor to cargo"
 )
 _PARAM_ZEPHYR = (
-    "the descriptor states it and is read FIRST; a Zephyr west entry forwards "
-    "this carrier and names no descriptor to cargo, and neither does a "
-    "multi-entry cmake configure"
+    "the descriptor states it and is read FIRST; a Zephyr west entry names its "
+    "descriptor since issue 1407 and still forwards this carrier beside it, and "
+    "a multi-entry cmake configure names none (issue 1649), where this carrier "
+    "is the only delivery"
 )
 
 # The three BOARD capacities. Not waiting on any issue: they are RFC-0100 D1
@@ -500,7 +506,7 @@ _BOARD_CAPACITY = (
 
 KEPT = {
     # ---- payload class (1595 wired the reader; 1393 closed) -------------
-    "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": Kept(1407, _PAYLOAD),
+    "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": Kept(1649, _PAYLOAD),
     "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": Kept(
         1595,
         "no consumer reads it off the descriptor, and none can: its basis is the "
@@ -508,122 +514,121 @@ KEPT = {
         "`DEFAULT_TX_BUF` aliases `RX_BUF` -- which no set of `[[endpoint]]` "
         "rows spans, so it needs a descriptor field first",
     ),
-    "NROS_DECLARED_LARGE_SUBSCRIBERS": Kept(1407, _PAYLOAD),
-    "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": Kept(1407, _PAYLOAD),
-    # ---- the entity counts (issue 1407) ---------------------------------
-    # Three of these the schema could not state even with 1407 closed, and
+    "NROS_DECLARED_LARGE_SUBSCRIBERS": Kept(1649, _PAYLOAD),
+    "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": Kept(1649, _PAYLOAD),
+    # ---- the entity counts (issue 1649; 1407 closed the Zephyr road) ----
+    # Three of these the schema could not state even with 1649 closed, and
     # each is a DIFFERENT structural reason -- worth keeping distinct, because
     # "the counts" is exactly the grouping W9 was told not to assume.
     "NROS_DECLARED_EXECUTOR_MAX_CBS": Kept(
-        1407,
+        1649,
         _COUNTS + "; and `max_cbs` sums `callback_slots()` over Timer and "
         "GuardCondition, which `endpoint_kind` drops (they carry no type and "
         "no topic, so no endpoint table can key on them)",
     ),
     "NROS_DECLARED_EXECUTOR_MAX_SC": Kept(
-        1407,
+        1649,
         _COUNTS + "; and the scheduling-context count comes from "
         "`execution.tiers` -- the SCHEDULE, which the schema does not model",
     ),
     "NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES": Kept(
-        1407,
+        1649,
         _COUNTS + "; and it is a max over PER-COMPONENT per-kind counts, while "
         "`[[endpoint]]` rows carry no component attribution",
     ),
     "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS": Kept(
-        1407,
+        1649,
         _COUNTS + "; and `heavy_slots` has no `[image]` field -- counting rows "
         "and multiplying is the third mirror RFC-0100 D4 refuses",
     ),
     "NROS_DECLARED_MAX_PUBLISHERS": Kept(
-        1407,
+        1649,
         _COUNTS + "; and unlike `subscriber_count` it has no `[image]` field, "
         "so a consumer would have to restate the action expansion",
     ),
-    "NROS_DECLARED_EXECUTOR_MAX_NODES": Kept(1407, _COUNTS),
+    "NROS_DECLARED_EXECUTOR_MAX_NODES": Kept(1649, _COUNTS),
     # phase-467 W1 (issue 1471) -- the contract-monitor row counts. The sizing
     # descriptor has no field for them: they are counts of CONTRACT rows
     # (`min_rate_hz` / `max_latency_ms` / `max_age_ms`), not of endpoints, so no
     # `[[endpoint]]` row can state them without restating `monitor_rows`.
     "NROS_DECLARED_EXECUTOR_MAX_MONITORS": Kept(
-        1407,
+        1649,
         _COUNTS + "; and the count is of contract rows carrying `min_rate_hz` or "
         "`max_latency_ms` (`monitor_rows`), which no descriptor field states",
     ),
     "NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS": Kept(
-        1407,
+        1649,
         _COUNTS + "; and the count is of contract rows carrying `max_age_ms` "
         "(`age_rows`), which no descriptor field states",
     ),
-    "NROS_DECLARED_MAX_SUBSCRIBERS": Kept(1407, _COUNTS),
-    "NROS_DECLARED_RMW_SUBSCRIBER_SLOTS": Kept(1407, _COUNTS),
-    # ---- the queryable raw inputs (issue 1407) --------------------------
+    "NROS_DECLARED_MAX_SUBSCRIBERS": Kept(1649, _COUNTS),
+    "NROS_DECLARED_RMW_SUBSCRIBER_SLOTS": Kept(1649, _COUNTS),
+    # ---- the queryable raw inputs (issue 1649) --------------------------
     # phase-457 W0.b: all four now have a descriptor on the standalone-leaf road.
     # What each still needs is recorded per row, because the four differ.
     "NROS_DECLARED_SERVICE_SERVERS": Kept(
-        1407,
+        1649,
         _LEAF_ROAD + "; and no consumer reads the application service-server "
         "count OFF the descriptor yet -- `queryable_floor_from` takes it from "
         "this carrier alone, so the descriptor stating it buys nothing until a "
         "consumer ranks it first the way `transient_local_publishers` does",
     ),
-    "NROS_DECLARED_TL_PUBLISHERS": Kept(1407, _LEAF_ROAD),
+    "NROS_DECLARED_TL_PUBLISHERS": Kept(1649, _LEAF_ROAD),
     # issue 1498 -- the retention slot beside that count; the leaf road reads
     # it off the descriptor (`transient_local_retain_demand`) already.
-    "NROS_DECLARED_TL_RETAIN_BYTES": Kept(1407, _LEAF_ROAD),
+    "NROS_DECLARED_TL_RETAIN_BYTES": Kept(1649, _LEAF_ROAD),
     "NROS_DECLARED_NODES": Kept(
-        1407,
+        1649,
         _LEAF_ROAD + "; and it is emitted even for a model that describes NO "
         "wiring, which is exactly where `write_for_model` writes no file",
     ),
     "NROS_DECLARED_INFRA_QUERYABLES": Kept(
-        1407,
+        1649,
         _LEAF_ROAD + "; and it is a FEATURE token from `execution.features`, "
         "not a count -- the schema has no field of that kind",
     ),
-    # ---- the parameter store (issue 1407; was 1408, closed) -------------
-    "NROS_DECLARED_MAX_PARAMETERS": Kept(1407, _PARAM_MULTI_ENTRY),
-    "NROS_DECLARED_MAX_PARAM_NAME_LEN": Kept(1407, _PARAM_MULTI_ENTRY),
+    # ---- the parameter store (issue 1649; was 1408, then 1407) ----------
+    "NROS_DECLARED_MAX_PARAMETERS": Kept(1649, _PARAM_MULTI_ENTRY),
+    "NROS_DECLARED_MAX_PARAM_NAME_LEN": Kept(1649, _PARAM_MULTI_ENTRY),
     "NROS_DECLARED_MAX_STRING_VALUE_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
     "NROS_DECLARED_MAX_ARRAY_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
     "NROS_DECLARED_MAX_BYTE_ARRAY_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN": Kept(1407, _PARAM_ZEPHYR),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": Kept(1407, _PARAM_ZEPHYR),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": Kept(1407, _PARAM_ZEPHYR),
-    "NROS_DECLARED_PARAM_SERVICE_SHAPE": Kept(1407, _PARAM_ZEPHYR),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN": Kept(1649, _PARAM_ZEPHYR),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": Kept(1649, _PARAM_ZEPHYR),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": Kept(1649, _PARAM_ZEPHYR),
+    "NROS_DECLARED_PARAM_SERVICE_SHAPE": Kept(1649, _PARAM_ZEPHYR),
     # ---- the two inbox families (issue 1352, phase-461 W3) --------------
     # These are the newest carriers and the retirement question has a clear
     # answer for them: the descriptor DOES state the fact -- W3 makes
     # `[[endpoint]] wire_bound_bytes` resolve for a service and an action row
     # by joining on the REQUEST type, and `declared_service_request_bytes`
-    # reads exactly that, ranked FIRST in `nros-rmw-zenoh/build.rs`. What keeps
-    # the carrier is the road. phase-454 W11 measured that no cmake / Zephyr
-    # west entry produced a descriptor at all; W14 gave both a producer, and
-    # the plain cmake road names it to cargo beside this carrier -- but the
-    # Zephyr WEST entry, the safety island's road (the image this phase exists
-    # for), still names NO descriptor to cargo while `nros_cargo_build.cmake`
-    # forwards this carrier. Re-run per fact when 1393 closed: blocked on the
-    # coverage axis, so the rows moved from 1393 to issue 1407.
+    # reads exactly that in `nros-rmw-zenoh/build.rs`. What keeps the carrier
+    # is the road. phase-454 W11 measured that no cmake / Zephyr west entry
+    # produced a descriptor at all; W14 gave both a producer, the plain cmake
+    # road names it to cargo, and issue 1407 made the Zephyr WEST entry (the
+    # safety island's road) name its own. Re-run per fact when 1407 closed:
+    # `nros_entity_facts_env` still emits this carrier for a MULTI-ENTRY
+    # configure, which names no descriptor (issue 1649) -- so it stays.
     "NROS_DECLARED_SERVICE_INBOX_BYTES": Kept(
-        1407,
-        "the descriptor states this fact and is read FIRST; the carrier is the "
-        "only road for a Zephyr west entry, which writes a descriptor and names "
-        "none to cargo, and is the safety island's road",
+        1649,
+        "the descriptor states this fact and is read beside it; a multi-entry "
+        "cmake configure names no descriptor to cargo (issue 1649), and this "
+        "carrier is the only delivery there",
     ),
     "NROS_DECLARED_ACTION_INBOX_BYTES": Kept(
-        1407,
+        1649,
         "the action half of the row above, same descriptor field and same "
         "road gap; priced apart because the two families have separate rings "
         "and separate depths since phase-461 W1",
     ),
-    # ---- QoS depth (issue 1407) -----------------------------------------
+    # ---- QoS depth (issue 1649) -----------------------------------------
     # The one carrier whose FACT the descriptor states on all three roads. It
     # stays for the road reason above, and because its sibling
     # `NROS_ENTITY_DECLARED_DEPTHS` is deliberately UNIONED with the descriptor
     # rather than ranked (phase-454 W10/W13): the two are disjoint in practice
     # and a `(type, topic)` both state with different depths fails the build.
     "NROS_DECLARED_MAX_QOS_DEPTH": Kept(
-        1407,
+        1649,
         _COUNTS + "; and the reduction it carries (the MAX, guarded on every "
         "subscription having declared) is a consumer-side restatement nothing "
         "shares today",
