@@ -73,6 +73,9 @@ pub struct NodeHandle<'a> {
     name: heapless::String<64>,
     namespace: heapless::String<64>,
     session: &'a mut session::ConcreteSession,
+    /// The executor's remap table, both tiers. Consulted only to SUBSTITUTE a
+    /// name some rule matches — see `NodeHandle::remapped`.
+    remaps: &'a [Option<super::spin::RemapRule>],
     domain_id: u32,
     /// Phase 211.H — per-node QoS overrides lowered from the launch
     /// `qos_overrides.<topic>.<role>.<policy>` params and baked into a
@@ -97,12 +100,14 @@ impl<'a> NodeHandle<'a> {
         name: heapless::String<64>,
         namespace: heapless::String<64>,
         session: &'a mut session::ConcreteSession,
+        remaps: &'a [Option<super::spin::RemapRule>],
         domain_id: u32,
     ) -> Self {
         Self {
             name,
             namespace,
             session,
+            remaps,
             domain_id,
             qos_overrides: &[],
             monitors: &[],
@@ -280,6 +285,36 @@ impl<'a> NodeHandle<'a> {
         ActionInfo::new(action_name, type_name, type_hash).with_domain(domain_id)
     }
 
+    /// The name a rule in either tier sends `source` to, or `None` when no
+    /// rule matches — in which case the caller passes `source` through
+    /// UNCHANGED, exactly as this handle always has.
+    ///
+    /// Launch rules (`Executor::declare_remap`) are authoritative and
+    /// `--ros-args` rules are the fallback, through
+    /// [`crate::names::remap_layered`] — the same two tiers
+    /// `Executor::resolve_entity_name_for` gives the C and C++ roads and
+    /// `ExecutorSink` gives Rust components.
+    ///
+    /// Substitution-only, deliberately. This handle has never expanded a name
+    /// (`~`/relative) before handing it to the backend, and doing so now for
+    /// every entity would move wire names nobody asked to move. A matched rule
+    /// yields a fully-qualified name, which is what every other road hands the
+    /// backend too.
+    ///
+    /// Before this the handle consulted no remap at all: a rule declared on
+    /// the executor reached C, C++ and component entities and silently missed
+    /// every entity created through `Executor::create_node`'s handle.
+    fn remapped(&self, source: &str) -> Option<crate::names::ResolvedName> {
+        use super::spin::{RemapTier, tier_rules};
+        crate::names::remap_layered(
+            source,
+            &self.name,
+            &self.namespace,
+            tier_rules(self.remaps, RemapTier::Launch, &self.name, &self.namespace),
+            tier_rules(self.remaps, RemapTier::Argv, &self.name, &self.namespace),
+        )
+    }
+
     // -- Publishers --
 
     /// Create a publisher for the given topic.
@@ -320,11 +355,12 @@ impl<'a> NodeHandle<'a> {
             "publisher",
             topic_name,
         )?;
+        let remapped = self.remapped(topic_name);
         let topic = Self::topic_info(
             self.domain_id,
             &self.name,
             &self.namespace,
-            topic_name,
+            remapped.as_deref().unwrap_or(topic_name),
             <M as RosMessage>::TYPE_NAME,
             <M as RosMessage>::TYPE_HASH,
         );
@@ -382,11 +418,12 @@ impl<'a> NodeHandle<'a> {
             "publisher",
             topic_name,
         )?;
+        let remapped = self.remapped(topic_name);
         let topic = Self::topic_info(
             self.domain_id,
             &self.name,
             &self.namespace,
-            topic_name,
+            remapped.as_deref().unwrap_or(topic_name),
             type_name,
             type_hash,
         );
@@ -456,11 +493,12 @@ impl<'a> NodeHandle<'a> {
             "subscription",
             topic_name,
         )?;
+        let remapped = self.remapped(topic_name);
         let topic = Self::topic_info(
             self.domain_id,
             &self.name,
             &self.namespace,
-            topic_name,
+            remapped.as_deref().unwrap_or(topic_name),
             <M as RosMessage>::TYPE_NAME,
             <M as RosMessage>::TYPE_HASH,
         );
@@ -523,11 +561,12 @@ impl<'a> NodeHandle<'a> {
             "subscription",
             topic_name,
         )?;
+        let remapped = self.remapped(topic_name);
         let topic = Self::topic_info(
             self.domain_id,
             &self.name,
             &self.namespace,
-            topic_name,
+            remapped.as_deref().unwrap_or(topic_name),
             type_name,
             type_hash,
         );
@@ -599,11 +638,12 @@ impl<'a> NodeHandle<'a> {
             "service",
             service_name,
         )?;
+        let remapped = self.remapped(service_name);
         let info = Self::service_info(
             self.domain_id,
             &self.name,
             &self.namespace,
-            service_name,
+            remapped.as_deref().unwrap_or(service_name),
             Svc::SERVICE_NAME,
             Svc::SERVICE_HASH,
         );
@@ -665,11 +705,12 @@ impl<'a> NodeHandle<'a> {
             "client",
             service_name,
         )?;
+        let remapped = self.remapped(service_name);
         let info = Self::service_info(
             self.domain_id,
             &self.name,
             &self.namespace,
-            service_name,
+            remapped.as_deref().unwrap_or(service_name),
             Svc::SERVICE_NAME,
             Svc::SERVICE_HASH,
         );
@@ -709,11 +750,12 @@ impl<'a> NodeHandle<'a> {
         type_name: &str,
         type_hash: &str,
     ) -> Result<crate::executor::handles::RawServiceServer<REQ_BUF, RESP_BUF>, NodeError> {
+        let remapped = self.remapped(service_name);
         let info = Self::service_info(
             self.domain_id,
             &self.name,
             &self.namespace,
-            service_name,
+            remapped.as_deref().unwrap_or(service_name),
             type_name,
             type_hash,
         );
@@ -744,11 +786,12 @@ impl<'a> NodeHandle<'a> {
         type_name: &str,
         type_hash: &str,
     ) -> Result<crate::executor::handles::RawServiceClient<REQ_BUF, REPLY_BUF>, NodeError> {
+        let remapped = self.remapped(service_name);
         let info = Self::service_info(
             self.domain_id,
             &self.name,
             &self.namespace,
-            service_name,
+            remapped.as_deref().unwrap_or(service_name),
             type_name,
             type_hash,
         );
@@ -805,6 +848,8 @@ impl<'a> NodeHandle<'a> {
         super::action_core::ActionServerCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
         NodeError,
     > {
+        let remapped = self.remapped(action_name);
+        let action_name = remapped.as_deref().unwrap_or(action_name);
         let action_info = Self::action_info(self.domain_id, action_name, type_name, type_hash);
 
         // Issue 0454 / phase-354 W3 — per-CHANNEL DDS type, not the bare
@@ -940,6 +985,8 @@ impl<'a> NodeHandle<'a> {
         type_hash: &str,
     ) -> Result<super::action_core::ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>, NodeError>
     {
+        let remapped = self.remapped(action_name);
+        let action_name = remapped.as_deref().unwrap_or(action_name);
         let action_info = Self::action_info(self.domain_id, action_name, type_name, type_hash);
 
         // Issue 0454 / phase-354 W3 — per-CHANNEL DDS type, not the bare
@@ -1082,6 +1129,8 @@ impl<'a> NodeHandle<'a> {
         // path (`executor/action.rs`) already did this; this node.rs path — the one
         // `create_action_server` materialises through — did not.
         A::register_protocol_types().map_err(|()| NodeError::ActionCreationFailed)?;
+        let remapped = self.remapped(action_name);
+        let action_name = remapped.as_deref().unwrap_or(action_name);
         let action_info =
             Self::action_info(self.domain_id, action_name, A::ACTION_NAME, A::ACTION_HASH);
 
@@ -1247,6 +1296,8 @@ impl<'a> NodeHandle<'a> {
         // generic seam. Without it the cancel_goal client has no Cyclone descriptor
         // → `ActionCreationFailed`. Mirrors the server path.
         A::register_protocol_types().map_err(|()| NodeError::ActionCreationFailed)?;
+        let remapped = self.remapped(action_name);
+        let action_name = remapped.as_deref().unwrap_or(action_name);
         let action_info =
             Self::action_info(self.domain_id, action_name, A::ACTION_NAME, A::ACTION_HASH);
 
@@ -3081,7 +3132,7 @@ mod builder_tests {
     #[test]
     fn publisher_builder_typed_and_generic() {
         let mut session = MockSession::new();
-        let mut node = NodeHandle::new(s("n"), s("/"), &mut session, 0);
+        let mut node = NodeHandle::new(s("n"), s("/"), &mut session, &[], 0);
 
         // typed: node.publisher(t).typed::<M>().qos(..).build()
         let _typed = node
@@ -3098,6 +3149,58 @@ mod builder_tests {
             .generic("std_msgs/msg/Int32", "hash")
             .build()
             .expect("generic publisher builds");
+    }
+
+    // The handle `Executor::create_node` returns resolves through the same two
+    // tiers. Asserted on the name the BACKEND was handed (`MockPublisher`
+    // records it), not on a helper's return value.
+
+    fn argv_rule(from: &'static str, to: &'static str) -> crate::ros_args::RemapArg<'static> {
+        crate::ros_args::RemapArg {
+            node: None,
+            from,
+            to,
+        }
+    }
+
+    #[test]
+    fn create_node_handle_applies_an_argv_remap() {
+        let mut exec: Executor = Executor::from_session(MockSession::new());
+        crate::ros_args::install_argv_remaps(&mut exec, [argv_rule("chatter", "/from_argv")])
+            .unwrap();
+        let mut node = exec.create_node("talker").expect("node");
+        let p = node
+            .create_publisher::<TestMsg>("chatter")
+            .expect("publisher");
+        assert_eq!(p.handle.topic_name(), "/from_argv");
+    }
+
+    #[test]
+    fn create_node_handle_prefers_a_launch_rule_over_argv() {
+        let mut exec: Executor = Executor::from_session(MockSession::new());
+        crate::ros_args::install_argv_remaps(&mut exec, [argv_rule("chatter", "/from_argv")])
+            .unwrap();
+        exec.declare_remap("talker", "/", "chatter", "/from_launch")
+            .unwrap();
+        let mut node = exec.create_node("talker").expect("node");
+        let p = node
+            .create_publisher::<TestMsg>("chatter")
+            .expect("publisher");
+        assert_eq!(p.handle.topic_name(), "/from_launch");
+    }
+
+    #[test]
+    fn create_node_handle_passes_an_unmatched_name_through_unchanged() {
+        // No rule matches, so the handle hands the backend exactly what it was
+        // given — NOT the expanded `/talker_ns/chatter`. This handle has never
+        // expanded names, and a remap that does not fire must not start.
+        let mut exec: Executor = Executor::from_session(MockSession::new());
+        crate::ros_args::install_argv_remaps(&mut exec, [argv_rule("other", "/x")]).unwrap();
+        let mut node = exec.create_node("talker").expect("node");
+        let p = node
+            .create_publisher::<TestMsg>("chatter")
+            .expect("publisher");
+        assert_eq!(p.handle.topic_name(), "chatter");
     }
 
     #[test]

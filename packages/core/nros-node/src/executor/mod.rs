@@ -105,7 +105,7 @@ pub(crate) mod ready_set;
 pub mod registration_observer;
 pub mod sched_context;
 #[cfg(any(has_rmw, test))]
-mod spin;
+pub(crate) mod spin;
 #[cfg(any(has_rmw, test))]
 pub(crate) mod spsc_ring;
 #[cfg(any(has_rmw, test))]

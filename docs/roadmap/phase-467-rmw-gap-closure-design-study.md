@@ -26,7 +26,7 @@ is not what a study predicts well.
 | Row 8 `c:node_get_graph_guard_condition` | SHIPPED, both backends — see "Row 8 … LANDED" |
 | Row 9 `c:lifecycle_change_state` | SHIPPED — #1587; the "expensive" price was measured against the wrong QoS, see "Row 9 … LANDED" |
 | Row 10 `rust:Logger::set_default_level` | CLOSED as `divergence` — #1302 |
-| Row 11 `rust:init_with_args` | **STILL OPEN**, premise refuted — #1317 |
+| Row 11 `rust:init_with_args` | `-r` parse SHIPPED; row stays `gap` for `-p` alone (`owed`, witnessed) — premise refuted by PR #1317, tiers by PR #1523 |
 | Row 12 `cpp:Node::create_subscription` | SHIPPED — #1321 |
 | Row 13 `cpp:Subscription::get_actual_qos` | SHIPPED, row DELETED — #1321 |
 
@@ -1225,6 +1225,46 @@ as a CLI channel — `RuntimeCtx`'s module and `params` docs ("or `--ros-args -p
 k:=v`"), `BoardEntry::run` ("the launch file / CLI args"), `nros-board-nuttx`
 ("launch overlay + `--ros-args` CLI parsing") and the book's `board-trait.md` —
 was invisible to it. Five more sites, corrected with this pass.
+
+**SHIPPED 2026-10-03 — the `--ros-args` parse, as the fallback tier's
+producer.** `rust:init_with_args` stays `gap` + `adopt-bounded` for ONE
+residue, parameter overrides, now an `owed` entry whose witness is the
+`REFUSED: -p …` clause of `REFUSE_INIT_ARGS` (issue 1463's mechanism). It is
+not a `divergence`: the `-p` refusal is not permanent — RFC-0015 §9 will land
+that channel, with this parser as its POSIX producer.
+
+- **Carrier: the `Context`.** The parsed `-r` rules ride on it privately, and
+  `Context::create_executor` / `create_executor_in` install them in the
+  executor's remap table tagged as the FALLBACK tier. That is where rcl keeps
+  them too — its global arguments live on the context. `Context::config()`
+  cannot carry them, so it REFUSES a context that has any.
+- **Consumers:** `Executor::resolve_entity_name_for` (C, C++),
+  `ExecutorSink::create_entity` (components), and `Executor::create_node`'s
+  handle — which, measured, consulted NO remap before this, so even a declared
+  rule missed every entity created through it.
+- **Upstream already has two tiers.** `rcl_remap_topic_name` checks a node's
+  LOCAL arguments, then the GLOBAL ones `rcl_init` received (Humble
+  `rcl/remap.h`). Launch-authoritative-argv-fallback is that, not a nano-ros
+  invention.
+- **Grammar** (Humble `rcl/arguments.h`, read in the box): `--ros-args` …
+  `--` scopes, `-r`/`--remap [node:]from:=to`, argv order, first match wins.
+  **Refused loudly, by name:** `-p`/`--param`/`--params-file`, identity remaps
+  (`__node`/`__name`/`__ns`), `rostopic://`, enclaves, log flags, unknown
+  tokens — rclcpp refuses unknown ROS args too (`UnknownROSArgsError`).
+
+**RFC-0015 §9, and why this is not a second answer to it.** §9 is a
+PARAMETER-value channel (`nros_runtime_arg_t {name, value}`,
+`apply_runtime_param_overrides`), and its §9.2 classes topic remaps as graph
+topology that "cannot be runtime". That holds for the images §9 is about —
+their names are inventoried at build time — and those images read no argv. The
+hosted `init_with_args` road has no build-time inventory and resolves names at
+entity creation, so a runtime remap there is sound. `-p` stays refused and is
+§9's to land; when it does, this parser is its POSIX producer.
+
+**Residue, named:** the executor's `add_*` / `node_mut` entry points are also
+the sink the C ABI and components hand already-resolved names to, so they are
+not remapped (doing so would chain `a:=b b:=c`); and the C++ `rclcpp::init(argc,
+argv)` still refuses `--ros-args` outright — it could now call the same parser.
 
 ## Row 12 — `cpp:Node::create_subscription` [gap, adopt]: the argument order
 

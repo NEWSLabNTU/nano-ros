@@ -1477,12 +1477,13 @@ impl NodeRuntime for ExecutorSink<'_> {
         // Timers have no wire name; parameter names are NOT remapped (matches
         // ROS 2 basic name remapping — param remaps are a separate rule class).
         //
-        // `resolve_name_layered`, not `resolve_name`: `self.remaps` is the
-        // launch projection and therefore AUTHORITATIVE, and the empty
-        // fallback tier is where a second channel — the `--ros-args` parse
-        // `nros::init_with_args` refuses — would arrive. Naming the tier is
-        // what stops that channel being appended to this one slice, where
-        // precedence would silently be whichever the emitter wrote first.
+        // Two tiers: `self.remaps` is the launch projection and therefore
+        // AUTHORITATIVE; the executor's `--ros-args` rules (installed by
+        // `nros::Context::create_executor` from `init_with_args`) are the
+        // FALLBACK, consulted only when no launch rule matched — RFC-0046's
+        // precedence, and rcl's local-before-global. Executors no `Context`
+        // seeded carry no argv rules, so for every generated image this is the
+        // launch slice alone, as it always was.
         let resolved_name = match metadata.kind {
             EntityKind::Timer | EntityKind::Parameter => None,
             _ => Some(
@@ -1491,7 +1492,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                     &node_name,
                     &node_ns,
                     self.remaps.iter().copied(),
-                    core::iter::empty::<(&str, &str)>(),
+                    nros_node::ros_args::argv_fallback(&*self.executor, &node_name, &node_ns),
                 )
                 .map_err(|_| NodeDeclError::Runtime)?,
             ),
