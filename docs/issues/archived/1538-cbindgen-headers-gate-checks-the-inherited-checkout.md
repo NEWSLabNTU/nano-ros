@@ -3,12 +3,12 @@ id: 1538
 title: "`nros-cbindgen-headers` takes `NROS_REPO_DIR` env-first with no
   re-rooting, so in an agent worktree `just check cbindgen-headers` verifies the
   MAIN checkout's committed headers instead of the ones being edited"
-status: open
+status: resolved
 type: bug
 area: [tooling, build]
 severity: medium
 found: 2026-09-28
-related: [1280, 1391, 1336, 1510, 0196]
+related: [1280, 1391, 1336, 1510, 0196, 1641]
 ---
 
 ## What happens
@@ -80,12 +80,43 @@ belongs in a shared helper both can reach, not copied.
 * Whether any OTHER reader of `NROS_REPO_DIR` has the same gap is stated, since
   this is the second one found: `git grep -n 'NROS_REPO_DIR' -- '*.rs' '*.py' '*.sh'`.
 
-## How it was measured
+## Fix — 2026-10-02
 
-```sh
-sed -n '100,106p' packages/tooling/nros-cbindgen-headers/src/main.rs
+The root goes through `nros_build_paths::reroot_foreign`, the issue-1280 rule,
+rather than a second spelling of it: a value outside every checkout is kept, a
+value inside this checkout is kept, and a value inside a DIFFERENT checkout is
+re-rooted onto this one, with a line on stderr saying so. `nros-build-paths` was
+already in this crate's graph through `nros-build-helpers`, so the direct edge
+costs the root lock one line and moves no version (recorded with `just
+lock-update`). The crate CAN reach it, which the filing left open.
+
+## Verified, end to end — the filing's own gap closed
+
+This issue was filed from reading only and said so. It is now reproduced, in the
+NESTED shape (`<main>/.claude/worktrees/e2e-1538`), which is the hard case:
+
+```
+worktree at origin/main (pre-fix), its nros_cpp_ffi.h edited to be STALE,
+NROS_REPO_DIR=<main> inherited:
+    check-cbindgen-headers: OK (3 committed headers match a fresh generation)   rc=0
+
+same worktree, same stale edit, checked out at the fix:
+    $NROS_REPO_DIR named another nano-ros checkout (<main>); using this one (<wt>)
+    [FAIL] these committed headers are STALE against their crate sources:
+             <wt>/packages/api/nros-cpp/include/nros/nros_cpp_ffi.h            rc=1
 ```
 
-Reading only — the wrong-tree verdict was reported by a worktree session that had
-to override the variable to get a real answer; this issue has not yet reproduced
-the false OK end to end, which the acceptance test above is what would.
+The false OK is real, and the fix turns it into the failure it should have been.
+
+Unit tests build both checkout shapes on disk (sibling and nested) plus the two
+cases that must not change (outside every checkout; this checkout).
+Mutation-checked: reverting to env-first fails exactly the sibling and nested
+tests and leaves the two keep-cases passing.
+
+## The sweep — answered, and it is not small
+
+`git grep -n 'NROS_REPO_DIR' -- '*.rs'` finds **seven more raw readers**, all
+CLI-side, none going through issue 1510's resolver. Two are worse than this
+issue — one WRITES into the root it picks, one emits path deps that would compile
+the parent's core crates. Filed as **issue 1641** with a per-site table rather
+than folded in here: they span four crates and need a decision each.
