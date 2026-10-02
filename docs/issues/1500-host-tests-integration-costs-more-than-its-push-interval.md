@@ -389,3 +389,37 @@ enough to finish inside the interval, and both report.
 No remedy is picked here either, for the reason the earlier section gives. The
 new fact is only that the cost is now measurable as a zero rather than as a
 percentage, and that it is two lanes rather than one.
+
+## The ceiling fired again, and this time the step breakdown says where the 150 minutes go (2026-10-02)
+
+`host-tests` run **36999487841** (push, head `5439c00f7`), job **110813666069**
+`nros-tests integration (host)`, started 13:19:18, cancelled 15:50:21:
+
+```
+The job has exceeded the maximum execution time of 2h30m0s
+```
+
+Per-step durations (every step over a minute):
+
+| step | duration |
+| --- | --- |
+| 10 `Build rust core fixtures` | 13 min |
+| 11 `Build workspace fixtures` | **60 min** |
+| 15 `just ci tier1` | 69 min → cancelled |
+
+**Half the window went on fixtures before a single test ran.** `just ci tier1`
+started with 79 minutes left and used 69 of them without producing a `FAIL`, a
+panic or a `gate(s) FAILED` line — so this red is the ceiling and nothing else.
+
+Two things it is not, checked rather than assumed:
+
+- **Not 1353.** The job's own annotation reads `93% used, 12G free — 43G
+  examples; 20G build; 13G target`: it was not near the disk.
+- **Not 1628.** No `FREERTOS_DIR … missing include` panic appears anywhere in the
+  log; tier 1 was still running when the clock stopped it, so this run never got
+  as far as that wall.
+
+It also queued for 2 h 10 m before starting (run created 11:09:53, job started
+13:19:18), which is the oversubscription half of this issue on the same run. The
+cost of the ceiling, measured here: a run that waited over two hours, spent 2 h 31
+m on a runner, and produced no verdict.
