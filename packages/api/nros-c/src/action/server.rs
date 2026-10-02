@@ -1011,6 +1011,15 @@ fn c_status_to_rust(status: nros_goal_status_t) -> nros_node::GoalStatus {
 }
 
 /// Finalize an action server.
+///
+/// Issue 1609 — `fini` does NOT remove the server from an executor. It is
+/// handed only the entity, and an executor-registered server's arena entry
+/// (its three service servers, two publishers and the callback `context`
+/// `&server->_internal`) is undone by
+/// `nros_executor_remove_action_server(executor, server)`, which also brings
+/// the executor's `handle_count` back down. Call that first; a server that is
+/// finalised while still registered keeps answering goals into this struct
+/// until `rclc_executor_fini`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_server_fini(server: *mut nros_action_server_t) -> nros_ret_t {
     validate_not_null!(server);
@@ -1020,7 +1029,9 @@ pub unsafe extern "C" fn nros_action_server_fini(server: *mut nros_action_server
     match server.state {
         nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED => {
             // L2: action server lives in executor arena (if registered) —
-            // reset metadata only.
+            // reset metadata only. Releasing the entry needs the owning
+            // `nros_executor_t` (issue 1609): that is
+            // `nros_executor_remove_action_server`.
         }
         nros_action_server_state_t::NROS_ACTION_SERVER_STATE_POLLING => {
             // L1: drop the inline ActionServerCore so its 5 channel

@@ -37,7 +37,41 @@ void nros_stub_rmw_clear_last_entity_name(void) {
     s_last_entity_name[0] = '\0';
 }
 
-/* ---- Session lifecycle: the only slots that succeed ---------------------- */
+/* Issue 1609 — the ACCEPT mode. Off by default, so every existing probe still
+ * gets the loud refusal it was written against. On, every `create_*` succeeds
+ * with a handle naming `s_entity_token` and counts it live, and the matching
+ * `destroy_*` counts it dead: so a probe can watch an entity LEAVE THE GRAPH,
+ * which is the half of "release" that no executor-side number shows. */
+static bool s_accept_entities = false;
+static int s_entity_token = 0;
+static int32_t s_live_entities = 0;
+
+void nros_stub_rmw_set_accept_entities(bool accept) {
+    s_accept_entities = accept;
+}
+
+int32_t nros_stub_rmw_live_entities(void) {
+    return s_live_entities;
+}
+
+/* The create half of the accept mode: `true` (and the handle filled) when the
+ * stub is accepting, `false` to fall through to the refusal. */
+static bool accept_create(void** backend_data) {
+    if (!s_accept_entities) return false;
+    *backend_data = &s_entity_token;
+    s_live_entities++;
+    return true;
+}
+
+/* The destroy half: only a handle THIS mode minted is counted, so a refusal
+ * path's destroy can never drive the count below what was created. */
+static bool accept_destroy(void* backend_data) {
+    if (backend_data != &s_entity_token) return false;
+    s_live_entities--;
+    return true;
+}
+
+/* ---- Session lifecycle: the only slots that succeed outside accept mode -- */
 
 static rmw_ret_t stub_create_session(const char* locator, uint8_t mode, uint32_t domain_id,
                                      const char* node_name, const rmw_session_options_t* options,
@@ -89,11 +123,13 @@ stub_create_publisher(const rmw_node_t* node, const rmw_message_type_support_t* 
     (void)qos;
     (void)options;
     (void)out;
+    if (accept_create(&out->backend_data)) return NROS_RMW_RET_OK;
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
 static rmw_ret_t stub_destroy_publisher(rmw_publisher_t* publisher) {
     (void)publisher;
+    if (publisher != NULL && accept_destroy(publisher->backend_data)) return NROS_RMW_RET_OK;
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
@@ -114,11 +150,13 @@ stub_create_subscription(const rmw_node_t* node, const rmw_message_type_support_
     (void)qos;
     (void)options;
     (void)out;
+    if (accept_create(&out->backend_data)) return NROS_RMW_RET_OK;
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
 static rmw_ret_t stub_destroy_subscription(rmw_subscription_t* subscription) {
     (void)subscription;
+    if (subscription != NULL && accept_destroy(subscription->backend_data)) return NROS_RMW_RET_OK;
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
@@ -150,11 +188,13 @@ static rmw_ret_t stub_create_service(const rmw_node_t* node,
     (void)domain_id;
     (void)qos;
     (void)out;
+    if (accept_create(&out->backend_data)) return NROS_RMW_RET_OK;
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
 static rmw_ret_t stub_destroy_service(rmw_service_t* server) {
     (void)server;
+    if (server != NULL && accept_destroy(server->backend_data)) return NROS_RMW_RET_OK;
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
@@ -195,11 +235,13 @@ static rmw_ret_t stub_create_client(const rmw_node_t* node,
     (void)domain_id;
     (void)qos;
     (void)out;
+    if (accept_create(&out->backend_data)) return NROS_RMW_RET_OK;
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
 static rmw_ret_t stub_destroy_client(rmw_client_t* client) {
     (void)client;
+    if (client != NULL && accept_destroy(client->backend_data)) return NROS_RMW_RET_OK;
     return NROS_RMW_RET_UNSUPPORTED;
 }
 

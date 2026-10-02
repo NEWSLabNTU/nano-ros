@@ -4269,6 +4269,12 @@ NROS_PUBLIC nros_ret_t nros_action_client_poll(struct nros_action_client_t *clie
 
 /**
  * Finalize an action client.
+ *
+ * Issue 1609 — `fini` does NOT remove the client from an executor; its arena
+ * entry holds this struct as its callback `context`. Call
+ * `nros_executor_remove_action_client(executor, client)` first, which drops
+ * the entry (the action leaves the graph) and brings the executor's
+ * `handle_count` back down.
  */
 NROS_PUBLIC nros_ret_t nros_action_client_fini(struct nros_action_client_t *client);
 
@@ -4706,6 +4712,15 @@ nros_ret_t nros_action_get_goal_status(const struct nros_action_server_t *server
 
 /**
  * Finalize an action server.
+ *
+ * Issue 1609 — `fini` does NOT remove the server from an executor. It is
+ * handed only the entity, and an executor-registered server's arena entry
+ * (its three service servers, two publishers and the callback `context`
+ * `&server->_internal`) is undone by
+ * `nros_executor_remove_action_server(executor, server)`, which also brings
+ * the executor's `handle_count` back down. Call that first; a server that is
+ * finalised while still registered keeps answering goals into this struct
+ * until `rclc_executor_fini`.
  */
 NROS_PUBLIC nros_ret_t nros_action_server_fini(struct nros_action_server_t *server);
 
@@ -5759,6 +5774,75 @@ nros_ret_t nros_executor_add_action_client(struct nros_executor_t *executor,
                                            struct nros_action_client_t *client);
 
 /**
+ * Remove an action server from the executor — issue 1609, the C twin of
+ * issue 1496's resolution 2.
+ *
+ * `nros_executor_add_action_server` registers an arena entry whose callback
+ * `context` is `&server->_internal`, and `nros_action_server_fini` does not
+ * (and cannot) undo it: `fini` is handed only the entity, and the executor's
+ * own tables — `handle_count` and the trigger entity table — live in the
+ * `nros_executor_t` it never sees. This is the call that can, in rclc's shape
+ * (`rclc_executor_remove_*`: the executor and the entity).
+ *
+ * It undoes all three tables at once:
+ * * the arena entry is DROPPED in place
+ *   (`Executor::release_action_server_raw_sized`, with the same const
+ *   parameters the add used) — the action's three service servers and two
+ *   publishers are destroyed, so it LEAVES THE GRAPH and no late goal can
+ *   reach `server`; its callback slot is freed and its arena bytes go on the
+ *   executor's free list, where the next registration reuses them;
+ * * `handle_count` comes back down, so a create/remove loop never hits
+ *   `max_handles`;
+ * * the trigger table's entity pointer for the slot is cleared.
+ *
+ * The server stays INITIALIZED: it can be re-added, or finalised with
+ * `nros_action_server_fini`. Call this BEFORE `fini` and before the
+ * `nros_action_server_t` storage goes away. A server that is never removed
+ * keeps its entry until `rclc_executor_fini`, which drops every entry.
+ *
+ * # Returns
+ * * `NROS_RET_OK` — removed.
+ * * `NROS_RET_INVALID_ARGUMENT` — a NULL pointer.
+ * * `NROS_RET_NOT_INIT` — the executor or the server is not initialised.
+ * * `NROS_RET_NOT_FOUND` — the server is not registered on THIS executor.
+ * * `NROS_RET_REENTRANT` — called from inside a callback this executor is
+ *   dispatching; the entry may be the one running.
+ *
+ * # Safety
+ * `executor` and `server` must be valid pointers to initialised objects.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_remove_action_server(struct nros_executor_t *executor,
+                                              struct nros_action_server_t *server);
+
+/**
+ * Remove an action client from the executor — issue 1609.
+ *
+ * The client half of [`nros_executor_remove_action_server`], with the same
+ * three tables and the same reason: the arena entry
+ * `nros_executor_add_action_client` registered holds `client` itself as its
+ * callback `context`, and `nros_action_client_fini` cannot reach the
+ * executor to undo it. The entry is dropped in place
+ * (`Executor::release_action_client_raw`, the default-sized form the add
+ * used) — its three service clients and feedback subscription are destroyed
+ * and its slot and bytes are reused — `handle_count` comes back down, and the
+ * trigger table forgets the client.
+ *
+ * The client stays INITIALIZED (re-addable, or finalisable with
+ * `nros_action_client_fini`). Any goal it was waiting on is abandoned with
+ * the entry.
+ *
+ * # Returns
+ * As [`nros_executor_remove_action_server`].
+ *
+ * # Safety
+ * `executor` and `client` must be valid pointers to initialised objects.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_remove_action_client(struct nros_executor_t *executor,
+                                              struct nros_action_client_t *client);
+
+/**
  * Spin the executor once.
  *
  * Drives middleware I/O, then dispatches ready callbacks.
@@ -5870,6 +5954,34 @@ NROS_PUBLIC nros_ret_t rclc_executor_fini(struct nros_executor_t *executor);
  * Get the number of handles in the executor.
  */
 NROS_PUBLIC int nros_executor_get_handle_count(const struct nros_executor_t *executor);
+
+/**
+ * Bytes of the executor's arena currently claimed — its high-water mark.
+ *
+ * Issue 1609 — the arena is a bump allocator with a free list of released
+ * regions (issue 1496): a registration first reuses a released region that
+ * fits and only then moves the bump pointer, so this number grows only when
+ * a registration found nothing to reuse. A create / remove loop whose value
+ * stays at the first cycle's is reusing its bytes; one that climbs is
+ * leaking them. Pair it with `nros_executor_get_arena_capacity` for the
+ * headroom.
+ *
+ * Returns 0 for NULL or an executor that is not initialised.
+ *
+ * # Safety
+ * `executor` must be NULL or a valid pointer.
+ */
+NROS_PUBLIC size_t nros_executor_get_arena_used(const struct nros_executor_t *executor);
+
+/**
+ * Total bytes of arena this executor was given (`NROS_EXECUTOR_ARENA_SIZE`
+ * as carved from its inline backing). 0 for NULL or an executor that is not
+ * initialised.
+ *
+ * # Safety
+ * `executor` must be NULL or a valid pointer.
+ */
+NROS_PUBLIC size_t nros_executor_get_arena_capacity(const struct nros_executor_t *executor);
 
 /**
  * Check if executor is valid (initialized).

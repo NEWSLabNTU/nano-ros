@@ -66,6 +66,14 @@ goals, requesting results, and cancelling:
   `nros_action_client_wait_for_action_server()` and
   `nros_action_client_action_server_is_ready()`. Calling any of them
   from inside a dispatch callback returns `NROS_RET_REENTRANT`.
+- **Teardown:** `nros_action_server_fini()` / `nros_action_client_fini()`
+  reset only the struct. To take an action off an executor that keeps
+  running, call `nros_executor_remove_action_server()` /
+  `nros_executor_remove_action_client()` first: they drop the arena entry
+  (the action leaves the graph), free its callback slot and arena bytes for
+  reuse, and bring `nros_executor_get_handle_count()` back down. A program
+  that tears the executor down with `rclc_executor_fini()` needs neither —
+  that drops every entry (issue 1609).
 
 The equivalent service client helper `nros_client_call()` does **not**
 take an explicit executor — the client stashes the executor pointer
