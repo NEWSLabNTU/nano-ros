@@ -262,6 +262,19 @@ pub extern "C" fn nros_rmw_metadata_register() -> nros_rmw_cffi::NrosRmwRet {
     }
 }
 
+/// Issue 1419 -- the slots of the registry [`nros_rmw_metadata_register`]
+/// registers into, and how many of them the image DECLARED for its own
+/// backends. Linking this crate reserves one slot beyond the declaration
+/// (`nros-rmw-cffi`'s `recorder-slot`), so the two differ by exactly one; a
+/// caller that cannot depend on `nros-rmw-cffi` reads them here.
+pub const REGISTRY_SLOTS: usize = nros_rmw_cffi::MAX_BACKENDS;
+
+/// See [`REGISTRY_SLOTS`].
+pub const DECLARED_BACKENDS: usize = nros_rmw_cffi::DECLARED_BACKENDS;
+
+/// See [`REGISTRY_SLOTS`].
+pub const RECORDER_SLOT: bool = nros_rmw_cffi::RECORDER_SLOT;
+
 // issue 1530 — there is deliberately NO `nros_rmw_register_backend!` here.
 //
 // This crate carried one, on the argument that "the probe is a host binary, so

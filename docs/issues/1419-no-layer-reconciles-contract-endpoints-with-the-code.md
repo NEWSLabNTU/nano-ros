@@ -8,7 +8,7 @@ type: bug
 area: [build, cmake, testing]
 severity: high
 found: 2026-09-21
-related: [0257, 0965, 1084, 0641, 0304, phase-308, phase-313, phase-403, phase-446, phase-463, rfc-0100, 1600]
+related: [0257, 0965, 1084, 0641, 0304, phase-308, phase-313, phase-403, phase-446, phase-463, rfc-0100, 1600, 1647, 1252]
 ---
 
 ## Problem
@@ -215,13 +215,106 @@ iff cpp + posix + native, `profile-mode` never; widening the guard to
 `if(_FS_CRATE STREQUAL "cpp")` measured red). Both carry an on-every-run
 negative control.
 
+### 2026-10-03 -- the default is `refuse`
+
+Fixed in the PR that carries this section (*the census default is refuse*).
+Measured on copies of nothing -- the in-tree `examples/workspaces/cpp` and
+`derived-tiers-cpp`, no router running.
+
+**`nros ws entity-census take --image <bringup>:<image>`** is the one command a
+cross build runs first. It resolves the image's model, answers "nothing to
+take" for a host image, a model with no contract or a census that is already
+fresh, and otherwise finds the HOST sibling of the same bringup resolved from
+the same launch and arguments (board platform `posix`, first by id), builds it
+with `nros build`, and runs it in census mode. The configure's refusal now
+prints exactly that command for the image asking (`take --image
+demo_bringup:threadx`), and `nros sync`'s stale-census line names it too.
+
+**Three defects stood between the census and the flip, each measured:**
+
+1. **The native image was never the same file twice.** `nano_ros_link_rmw`
+   rewrote `nros_app_register_backends.c` with `file(WRITE)` on every
+   configure, and `nros build` configures on every run, so every rebuild
+   recompiled it and relinked all seven native entries of
+   `examples/workspaces/cpp` with no input changed (14 compile/link lines per
+   no-op build). The census's `binary` freshness input therefore went stale on
+   every rebuild of the image that produced it -- measured: census taken,
+   `nros build demo_bringup:native` again, the threadx configure read `census
+   stale: binary ... changed`. Write-if-changed now (and the identical PX4
+   module stub): a no-op `nros build` compiles and links nothing, the binary
+   keeps its digest, and the census stays fresh across the native fixture
+   rows' own rebuilds (measured: `native_robot1` and `native` rebuilt after a
+   take, `take` still answers `fresh`).
+2. **A clean first build is not the fixed point** (filed as issue 1647). From
+   a clean build dir the first `nros build` links `native_entry` with the
+   message-bound knobs at their placeholders and the second changes its bytes;
+   builds 2, 3 and 4 are identical. `take` builds until two consecutive
+   binaries agree (ceiling 3), so a census is never of a build the next one
+   will replace.
+3. **The island-shaped workspace could not produce a census at all.**
+   `examples/workspaces/derived-tiers-cpp`'s native image is a single-entry
+   configure, so its sizing descriptor reaches cargo and says `backend_count
+   = 1`; the RMW registry then held exactly zenoh's slot, the recorder's
+   registration failed silently (`let _ =`), and the census run died at
+   backend selection: `$NROS_RMW names a backend that is not registered`, exit
+   253, no file. `nros-rmw-metadata` now enables `nros-rmw-cffi`'s
+   `recorder-slot`, which adds the recorder's slot BESIDE the declared
+   backends, and a failing registration says so. Measured after: `4 node(s),
+   0 sub / 4 pub / 4 timer slot(s)`, and the check against its contract reads
+   `8 confirmed, 0 error(s)`. Test:
+   `census_funnel_tests::the_recorder_has_a_registry_slot_of_its_own` (red
+   with the feature removed from `nros-rmw-metadata`, measured).
+
+**Unattended builds take the census first.** `scripts/build/census-prepass.sh`
+enumerates every cross workspace image in scope (`fixtures-manifest.py
+census-images`: a `[[workspace_fixture]]` row with an `image`, not `linux`, not
+pure Rust) and runs `take` for each. `build-test-fixtures` runs it ONCE, serially,
+before the platform stages start in parallel, and exports
+`NROS_CENSUS_PREPASS=done`; `workspace-fixtures-build.sh` and the Zephyr leaf
+lane run it themselves only when invoked directly. The order is the point:
+`take` builds a workspace's native image into the tree the native stage builds
+into, so a take inside a cross stage would race that stage.
+
+**The flip.** `[census] on_missing` / `on_stale` default to `refuse`; `warn`
+is the explicit opt-out and stays a CMake WARNING. Measured on
+`examples/workspaces/cpp` through the fixture builder
+(`workspace-fixtures-build.sh threadx-linux cpp`), census file deleted first:
+
+| | threadx configure |
+| --- | --- |
+| `NROS_CENSUS_PREPASS=done` (no census taken) | REFUSED: `census missing`, remedy `nros ws entity-census take --image demo_bringup:threadx` |
+| the builder's own pre-pass | `take` builds `demo_bringup:native` and runs it; `census check: 3 confirmed, 0 error(s)`; `threadx_entry` built |
+
+Every in-tree configure that reaches the check is one of the two contracted
+C++ workspaces' cross images (`cpp`: `freertos`, `freertos_posix`, `s32z270`,
+`mps3_an536`, `threadx`, `zephyr`, `zephyr_cyclonedds`; `derived-tiers-cpp`:
+`zephyr`), all built through the three callers above, and both workspaces'
+censuses were measured taking and passing. NOT measured: a Zephyr configure
+itself (the only Zephyr workspace on this host belongs to another checkout,
+and building through it would measure that tree -- issue 1280); the check
+there is the same cmake function.
+
+Gates: `check-entity-census` move 0 asserts the remedy names `take` for the
+image asking, and move 5 now asserts that a bringup with NO `[census]` refuses
+and that `warn` is the loud opt-out (the main checkout's CLI measured red on
+move 0). Unit tests pin the remedy and the sibling choice (by model and by
+platform, first by id, same bringup only).
+
+**phase-463 W5, measured by hand on the images above** (not gated -- they need
+built images): I3(b) holds -- the threadx-linux `libnros_cpp.a` defines no
+`nros_cpp_metadata_dump` and no `nros_rmw_metadata*` symbol (the native one
+defines 1 and 97), and `threadx_entry` links none (`native_entry`: 102). I1
+holds by construction: `take` runs the binary `nros build` wrote, at the path
+the boot runs. I3(c) (the image-facts bytes of the reference Zephyr image) is
+not measured.
+
 ### What is left (why this stays open)
 
-* **The default is still `warn`.** Flipping it needs unattended builds to take
-  a census before configuring each cross row of a contracted workspace (the
-  fixture pipeline builds the native image anyway; it does not run it in
-  census mode first), then the flip itself. phase-463 W6 (the island flip and
-  retiring `count_callbacks_with_recorded`'s max) is not started.
+* **phase-463 W6** -- retiring `count_callbacks_with_recorded`'s
+  `max(model, recorded)` in favour of the census verdict -- is not started.
+  Its one CLI caller is `codegen-system`'s capacity check
+  (`model_ingest::check_executor_capacity`), which has no census or inventory
+  in hand; the island half (`island-W2`) is external.
 * **Rust entries have no census, and the cargo road has no consumer.**
   `boot_hosted` refuses `$NROS_CENSUS_OUT` for a Rust entry (the hooks are on
   the C++ ABI; a Rust node's timers and node identity never cross it), and the
@@ -230,10 +323,10 @@ negative control.
   contract (`examples/workspaces/realtime-rust` does). Both halves are open.
 * **A C node that opens its own node through `nros-c`** reaches the recording
   backend with no node attribution. No in-tree C workspace does this.
-* **phase-463 W5 I1, I3(b), I3(c)**: the census-binary `nm` equality, `nm` of
-  an RTOS staticlib finding no recorder symbol (measured once by hand in W2,
-  not gated), and the image-facts byte comparison for the reference Zephyr
-  image. They need built images, so they belong in a build-tier lane.
+* **phase-463 W5 I1, I3(b), I3(c) are not GATED**: I1 holds by construction
+  and I3(b) was measured by hand again above; I3(c), the image-facts byte
+  comparison for the reference Zephyr image, is not measured. All three need
+  built images, so they belong in a build-tier lane.
 * **What still stops a census run** is code that boots at no sizing: more than
   64 callbacks in one executor, a constructor's own error, or the parameter
   store (`CENSUS_SIZING` resizes the executor only). Those still produce an

@@ -236,7 +236,19 @@ function(nano_ros_link_rmw TARGET)
             "    (void)nros_rmw_${_rmw_name}_register();\n")
     endforeach()
     string(APPEND _stub_content "}\n")
-    file(WRITE "${_stub_path}" "${_stub_content}")
+    # Issue 1419 -- WRITE-IF-CHANGED. This runs at every configure, and an
+    # unconditional `file(WRITE)` gave the TU a new mtime each time, so every
+    # re-configure recompiled it and RELINKED every image, with no input
+    # changed. `nros build` re-configures on every run, so a native image was
+    # never the same file twice in a row, and the census's `binary` freshness
+    # input went stale on each rebuild of the very image that produced it.
+    set(_stub_existing "")
+    if(EXISTS "${_stub_path}")
+        file(READ "${_stub_path}" _stub_existing)
+    endif()
+    if(NOT _stub_existing STREQUAL _stub_content)
+        file(WRITE "${_stub_path}" "${_stub_content}")
+    endif()
     target_sources(${TARGET} PRIVATE "${_stub_path}")
 
     # Phase 177.27 / 249 P2(a) — some backends need the C++ linker driver on the

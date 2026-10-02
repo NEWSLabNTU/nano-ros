@@ -3356,12 +3356,20 @@ fn report_census_freshness(ws_root: &Path) {
             Some(stem) => {
                 let model = path.with_file_name(format!("{stem}.yaml"));
                 let shown = model.strip_prefix(ws_root).unwrap_or(&model).display();
+                // Issue 1419 -- `take` for the cross image that checks it: it
+                // finds the native sibling, builds it to its fixed point and
+                // runs it, which `run --entry <native entry>` left to the reader.
+                let bringup = path
+                    .parent()
+                    .and_then(|d| d.file_name())
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "<bringup>".to_string());
                 (
                     format!("model {shown}"),
-                    format!("--model {shown} --entry <native entry>"),
+                    format!("take --image {bringup}:<the cross image that checks it>"),
                 )
             }
-            None => (format!("entry {name}"), format!("--entry {name}")),
+            None => (format!("entry {name}"), format!("run --entry {name}")),
         };
         rows.push((label, verdict, how));
     }
@@ -3370,7 +3378,7 @@ fn report_census_freshness(ws_root: &Path) {
         println!("sync: source metadata -- entity census for {label} is {verdict}");
         if verdict.starts_with("STALE") {
             println!(
-                "sync: source metadata -- take a new one with `nros ws entity-census run {how}`; \
+                "sync: source metadata -- take a new one with `nros ws entity-census {how}`; \
                  sync does not build the native image it needs (issue 0641)"
             );
         }

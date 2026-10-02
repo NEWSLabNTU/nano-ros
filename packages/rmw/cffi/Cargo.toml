@@ -83,6 +83,16 @@ lending = ["nros-rmw/lending"]
 # C toolchain on the build host. `cargo test --features c-stub-test`
 # turns it on for the integration test.
 c-stub-test = []
+# Issue 1419 — one registry slot MORE than the image declares, for the
+# recording backend (`nros-rmw-metadata`), which enables it. The declared
+# backend count (`backend_count` in the sizing descriptor) is the backends the
+# image SHIPS with; the recorder is the census's instrument and is linked
+# beside them in every native C++ image (`metadata-mode`). Sized from the
+# declaration alone, a single-RMW image's registry held exactly one slot, the
+# recorder's registration failed silently, and its census run died at backend
+# selection — measured on `examples/workspaces/derived-tiers-cpp`
+# (`$NROS_RMW names a backend that is not registered`, exit 253).
+recorder-slot = []
 
 [lints]
 workspace = true

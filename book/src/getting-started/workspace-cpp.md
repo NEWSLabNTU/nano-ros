@@ -207,6 +207,33 @@ count and the derived `MAX_CBS` are legitimately different numbers.
 > short by one, and the eleventh subscription failed at boot with a transport
 > error that named nothing.
 
+#### The census: the contract checked against the code
+
+Since the contract is still a statement beside the code, a CROSS image (any
+image whose board is not `native`) checks it before it configures: the native
+image generated from the same launch file is run once in census mode — it
+constructs every component against a recording backend, writes what they
+created, and exits without spinning or dialling a router — and the configure
+compares that census with the contract row by row. An endpoint the code creates
+and the contract omits refuses as `missing-in-contract` (not waivable: it is
+the short pool); one the contract declares and the code never creates refuses
+as `phantom` (waivable per row under `[census.waive]`).
+
+The configure never builds the native image itself, so a cross build takes the
+census first:
+
+```console
+$ nros ws entity-census take --image demo_bringup:zephyr
+$ nros build zephyr
+```
+
+`take` does nothing when there is nothing to do — a model with no contract, or a
+census that still matches the code (freshness is by content: touching a file
+changes nothing, adding a subscription does). With no census, or a stale one,
+the configure REFUSES and prints that command. A bringup that wants the old
+behaviour writes `[census] on_missing = "warn"` / `on_stale = "warn"` in its
+`system.toml`, and gets a CMake WARNING instead.
+
 ```cpp
 // src/talker_pkg/include/talker_pkg/Talker.hpp
 #pragma once

@@ -1683,7 +1683,19 @@ fn census_out_path() -> Option<alloc::string::String> {
 /// record nothing.
 #[cfg(all(feature = "rmw-cffi", feature = "env", feature = "metadata-mode"))]
 fn census_select_backend() {
-    let _ = nros_rmw_metadata::nros_rmw_metadata_register();
+    // Issue 1419 -- NOT `let _ =`. A full registry made this fail silently,
+    // and the census died one call later with "$NROS_RMW names a backend that
+    // is not registered", which names the selector and not the cause. The slot
+    // is reserved now (`nros-rmw-cffi`'s `recorder-slot`); if it ever is not,
+    // say which registration failed.
+    let ret = nros_rmw_metadata::nros_rmw_metadata_register();
+    if ret != 0 {
+        cpp_diag!(
+            "nros census: registering the recording backend failed (rc={ret}); the RMW registry \
+             holds {} slot(s) -- is the recorder's slot (`recorder-slot`) missing?",
+            nros_rmw_metadata::REGISTRY_SLOTS
+        );
+    }
     // SAFETY: this runs in the boot funnel BEFORE the executor opens and
     // before any tier task is spawned, so the process is single-threaded at
     // this point -- the condition `set_var` asks for.
@@ -6178,6 +6190,30 @@ mod census_funnel_tests {
              out of census mode"
         );
         nros::metadata_mode::reset();
+    }
+
+    /// Issue 1419 -- an image that links the recorder reserves the recorder's
+    /// registry slot BESIDE the backends it declares, never out of them.
+    ///
+    /// Measured on `examples/workspaces/derived-tiers-cpp`: a single-entry
+    /// native configure names its sizing descriptor to cargo, the descriptor
+    /// says `backend_count = 1`, and the registry held exactly that one slot --
+    /// zenoh's. The census's recorder registration then failed silently and the
+    /// run died at backend selection (`$NROS_RMW names a backend that is not
+    /// registered`, exit 253), so the island-shaped workspace could not produce
+    /// a census at all. This build of `nros-cpp` links the recorder
+    /// (`metadata-mode`), so its registry must say so.
+    #[test]
+    fn the_recorder_has_a_registry_slot_of_its_own() {
+        assert!(
+            nros_rmw_metadata::RECORDER_SLOT,
+            "metadata-mode links nros-rmw-metadata, which must reserve its own slot"
+        );
+        assert_eq!(
+            nros_rmw_metadata::REGISTRY_SLOTS,
+            nros_rmw_metadata::DECLARED_BACKENDS + 1,
+            "the recorder's slot is added to the declared backends, not carved out of them"
+        );
     }
 
     /// No switch, no mode: the funnel that was not asked for a census must not

@@ -721,6 +721,14 @@ for dir in "${group_dirs[@]:-}"; do
     ( cd "$repo_root/$dir" && "$nros_cli" sync --no-provider-index >/dev/null )
 done
 
+# Issue 1419 -- every census this platform's cross configures will check,
+# taken BEFORE the rows fan out (serial, in the parent, after the sync above).
+# A no-op under `build-test-fixtures`, which took them all before any platform
+# stage started -- `scripts/build/census-prepass.sh` says why that order is the
+# race-free one.
+bash "$repo_root/scripts/build/census-prepass.sh" --platform "$platform" \
+    ${lang_filter:+--lang "$lang_filter"} ${id_filter:+--id "$id_filter"}
+
 pinned_make="$(nros sdk-path make)/bin/make"
 use_pool=0
 if [ "${NROS_JOBSERVER:-}" != "1" ] && [ "${#group_dirs[@]}" -gt 1 ] && \

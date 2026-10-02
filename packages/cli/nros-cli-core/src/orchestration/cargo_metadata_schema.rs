@@ -744,9 +744,9 @@ pub struct SystemCensus {
     /// phase-463 W4 -- `[census] on_missing`: what a configure that requires a
     /// fresh census does when there is NO census for this entry.
     ///
-    /// The phase lands with `warn` so that no consumer is broken on the day it
-    /// merges; the island flips to `refuse` in W6, and the default follows
-    /// once two consumers have run under it.
+    /// The phase landed with `warn` so that no consumer broke on the day it
+    /// merged. Issue 1419 flipped the default to `refuse` once the in-tree
+    /// unattended builds take the census first; `warn` is now an opt-out.
     #[serde(default, skip_serializing_if = "CensusPolicy::is_default")]
     pub on_missing: CensusPolicy,
 
@@ -769,18 +769,26 @@ pub struct SystemCensus {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CensusPolicy {
-    /// Print the reason and let the configure proceed. The landing default.
-    #[default]
+    /// Print the reason and let the configure proceed. The landing default
+    /// until issue 1419 flipped it; now an explicit opt-out.
     Warn,
     /// Fail the configure, naming the command that produces a fresh census.
+    ///
+    /// The default since issue 1419 (2026-10-03). It was `warn` while nothing
+    /// that builds cross images unattended took a census first, so `refuse`
+    /// would have failed `build-test-fixtures` for a reason the build could
+    /// not fix. `scripts/build/census-prepass.sh` takes every census a lane's
+    /// cross configures check before they configure, and `nros ws
+    /// entity-census take --image <q>` is the one command a person runs.
+    #[default]
     Refuse,
 }
 
 impl CensusPolicy {
-    /// `true` for the landing default, so a `system.toml` that never mentions
-    /// the key round-trips without gaining one.
+    /// `true` for the default, so a `system.toml` that never mentions the key
+    /// round-trips without gaining one.
     pub fn is_default(&self) -> bool {
-        *self == CensusPolicy::Warn
+        *self == CensusPolicy::Refuse
     }
 
     /// `refuse` spelled the way a message says it.
@@ -1569,8 +1577,8 @@ mod tests {
     /// phase-463 W4 -- `[census] on_missing` / `on_stale`, the two policy keys
     /// a configure reads, and the landing default when neither is written.
     #[test]
-    fn the_census_policy_keys_default_to_warn_and_reject_a_third_word() {
-        use super::{CensusPolicy, SystemToml};
+    fn the_census_policy_keys_default_to_refuse_and_reject_a_third_word() {
+        use super::{CensusPolicy, SystemCensus, SystemToml};
 
         let silent: SystemToml =
             toml::from_str("[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n[census]\n")
@@ -1578,10 +1586,23 @@ mod tests {
         let census = silent.census.expect("[census] is present");
         assert_eq!(
             census.on_missing,
-            CensusPolicy::Warn,
-            "the phase lands with warn so no consumer breaks on the day it merges"
+            CensusPolicy::Refuse,
+            "issue 1419: `refuse` is the default once unattended builds take the census first"
         );
-        assert_eq!(census.on_stale, CensusPolicy::Warn);
+        assert_eq!(census.on_stale, CensusPolicy::Refuse);
+        // And with no `[census]` table at all -- the shape every in-tree
+        // bringup has -- which is what `check_census` falls back to.
+        assert_eq!(SystemCensus::default().on_missing, CensusPolicy::Refuse);
+        assert_eq!(SystemCensus::default().on_stale, CensusPolicy::Refuse);
+
+        let opted_out: SystemToml = toml::from_str(
+            "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n[census]\non_missing = \"warn\"\n",
+        )
+        .expect("warn still parses");
+        assert!(
+            !opted_out.census.expect("[census]").on_missing.refuses(),
+            "`warn` is the explicit opt-out"
+        );
 
         let strict: SystemToml = toml::from_str(
             "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n[census]\non_missing = \"warn\"\non_stale = \"refuse\"\n",

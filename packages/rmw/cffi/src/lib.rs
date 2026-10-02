@@ -729,6 +729,15 @@ fn empty_event_payload() -> NrosRmwEventPayload {
 /// (`build.rs`). Default 8.
 pub const MAX_BACKENDS: usize = parse_max_backends(env!("NROS_RMW_MAX_BACKENDS"));
 
+/// Issue 1419 — how many of [`MAX_BACKENDS`] the image DECLARED: its own
+/// backends, before the recorder's slot (`recorder-slot`) is added beside
+/// them. Equal to `MAX_BACKENDS` in an image that links no recorder.
+pub const DECLARED_BACKENDS: usize = parse_max_backends(env!("NROS_RMW_DECLARED_BACKENDS"));
+
+/// Issue 1419 — whether this registry reserves a slot for the recording
+/// backend, i.e. whether `nros-rmw-metadata` is linked.
+pub const RECORDER_SLOT: bool = cfg!(feature = "recorder-slot");
+
 const fn parse_max_backends(s: &str) -> usize {
     parse_env_usize(s, "NROS_RMW_MAX_BACKENDS must be a decimal integer")
 }
