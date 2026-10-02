@@ -97,8 +97,11 @@ is what they are for.
 - **Not 1016.** That is about a west leaf whose build-dir NAME no lane models, so
   its verdict is a stale message. Here the row is modelled, built, and reported —
   reported OK.
-- Not a disk or runner fault: this job ran 60+ minutes and the other three
-  fixtures built.
+- **Not a disk or runner fault.** The run's OTHER job did die of issue 1353's
+  ENOSPC, so this needs saying precisely: THIS job (110703711587) carries no
+  ENOSPC annotation, reported `freed 5264 MB; 67912372 KB free` — **65 G free** —
+  ran 04:19:05 to 04:56:48 and completed every step after the failing one. The
+  miscount happened with ample disk.
 
 ## What would close this
 
