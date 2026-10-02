@@ -24,10 +24,14 @@ Both tier-1 arms, the same failure, on different events and different heads:
 thread 'main' panicked at packages/rmw/zenoh/nros-zpico-build/src/runner.rs:2900:17:
 FREERTOS_DIR=…/third-party/freertos/kernel: missing include (expected at
 …/third-party/freertos/kernel/include). FreeRTOS kernel source.
-just setup-freertos; export FREERTOS_DIR=$PWD/third-party/freertos/kernel
+<remedy>; export FREERTOS_DIR=$PWD/third-party/freertos/kernel
 error: recipe `rust-rtos-link-check` failed with exit code 101
 error: recipe `tier1` failed with exit code 101
 ```
+
+`<remedy>` stands in for what the message actually printed, which was a recipe
+name that **does not exist** — see the section below. Writing it verbatim here
+makes `check-doc-recipe-refs` fail, which is how this was found.
 
 **The build script is behaving correctly.** It refuses loudly, names the missing
 directory, and names the remedy. The defect is that the lane asks for a source it
@@ -89,3 +93,48 @@ Three options, and the trade-off is real rather than obvious:
 Acceptance either way: a `host-tests` run that reaches `just ci tier1`'s later
 steps, so the lane's verdict is about the tests rather than about its own
 environment.
+
+## Found on the way: the remedy text named a recipe that does not exist
+
+`check-doc-recipe-refs` rejected the first version of this issue:
+
+```
+check-doc-recipe-refs: 1 document(s) name a recipe that does not exist:
+  docs/issues/1628-….md: just setup-freertos;
+  A reader copies these. Name the recipe that exists, or drop the line.
+```
+
+The gate is right, and the stale name was not mine — I had quoted it from the
+panic. **Ten live sites told a reader to run a recipe that was never defined**,
+across three kinds of file:
+
+| file | sites | what a reader sees |
+| --- | --- | --- |
+| `just/freertos.just` | 4 | `ERROR: FreeRTOS not found at … Run: <stale>` |
+| `packages/platform/nros-platform-freertos/nros-platform.toml` | 2 | the `help` for `FREERTOS_DIR` and `LWIP_DIR` — what the panic above prints |
+| `packages/platform/nros-platform-nuttx/nros-platform.toml` | 1 | the `help` for `NUTTX_DIR` |
+| `packages/testing/nros-tests/tests/freertos_{posix,qemu}.rs` | 3 | the skip message when the env is unset |
+
+The working spellings are `just freertos setup` and `just nuttx setup` —
+`just setup-platform <platform>` is their documented alias and is literally
+`@just "{{platform}}" setup`. All ten are corrected with this issue.
+
+### The gate's reach is narrower than its rule (issue 0196's shape)
+
+`check-doc-recipe-refs` says "a reader copies these", and reads `docs/` only. The
+remedy text a reader actually hits — a build-script panic, a `just` recipe's
+error echo, a test's skip message — is in `just/`, `packages/**/*.toml` and
+`packages/**/*.rs`, where the gate cannot see it. That is why ten sites survived
+while the gate guarded the documentation. Widening it to those three file kinds
+would be a small change and would have caught all ten.
+
+### FOUR threadx sites are deliberately left alone
+
+The threadx equivalent (`setup-threadx`, written without the `just` prefix here for the same reason as above) is also undefined — `packages/platform/nros-platform-threadx/nros-platform.toml`
+lines 71 and 73, and `packages/testing/nros-tests/tests/threadx_riscv64_qemu.rs`
+lines 54 and 59 — but unlike freertos and nuttx, **`just --list threadx` has no
+`setup` recipe at all**, so there is no correct spelling to substitute and
+guessing one would just move the lie. `just/check/codegen.just:245` already
+carries a comment noting this exact case, so it has been seen once before and
+recorded rather than fixed. Deciding what provisions ThreadX is a separate change
+with an owner who knows the answer.

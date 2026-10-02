@@ -99,11 +99,11 @@ build-examples:
     nros_require_sync "$nros_cli"
     echo "Building FreeRTOS QEMU MPS2-AN385 examples..."
     if [ ! -d "$FREERTOS_DIR/include" ]; then
-        echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just setup-freertos"
+        echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just freertos setup"
         exit 1
     fi
     if [ ! -d "$LWIP_DIR/src/include" ]; then
-        echo "ERROR: lwIP not found at $LWIP_DIR. Run: just setup-freertos"
+        echo "ERROR: lwIP not found at $LWIP_DIR. Run: just freertos setup"
         exit 1
     fi
     # Codegen prep (per-platform); build options come from the SSOT manifest
@@ -320,11 +320,11 @@ test verbose="": build-fixtures
     bash scripts/dev/deprecated-scope-alias.sh freertos test "just test freertos"
     set -e
     if [ ! -d "$FREERTOS_DIR/include" ]; then
-        echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just setup-freertos"
+        echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just freertos setup"
         exit 1
     fi
     if [ ! -d "$LWIP_DIR/src/include" ]; then
-        echo "ERROR: lwIP not found at $LWIP_DIR. Run: just setup-freertos"
+        echo "ERROR: lwIP not found at $LWIP_DIR. Run: just freertos setup"
         exit 1
     fi
     # `rtos_e2e`'s `Platform__Freertos` cells, NOT the `freertos_qemu` target.
