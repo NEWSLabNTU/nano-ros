@@ -616,6 +616,20 @@ workflow-indexed-apt:
 workflow-just-provisioning:
     @python3 scripts/check-workflow-just-provisioning.py
 
+# issue 1642 — the advisory "try the next stable" lane must stay OUT of the merge
+# path. It runs the lint gates under an UNPINNED toolchain, so the day it gated a
+# merge it would re-create issue 1447: every pull request blocked on a compiler
+# nobody chose. Three properties keep it out, each a one-line edit from lost and
+# none of which would fail anything on the day it was lost: `next-stable.yml` is
+# triggered on `schedule`/`workflow_dispatch` only, it is a separate file from
+# `gate.yml` (whose `ci-ok` job is the required `CI` context), and no job in it is
+# named `CI` (the ruleset requires that context by bare name). Also checks the
+# lane's gate list is still run by gate.yml, and the diagnostic parser against
+# the three tools #1536 measured. Pure text, no build, no network.
+[private]
+next-stable-advisory:
+    @python3 scripts/ci/next-stable-delta.py --selftest
+
 # issue 1158 — `run-matrix.yml`'s stage report must still describe the steps that
 # exist. The step->stage map is AUTHORED (the workflow hands `lane-stage.py` a
 # copy of its own `- name:` lines), and an authored map drifts the moment a step
