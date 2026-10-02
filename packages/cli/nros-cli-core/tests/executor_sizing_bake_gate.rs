@@ -21,16 +21,12 @@ mod common;
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use nros_cli_core::cmd::codegen_system::{self, Args};
 
 fn temp_root(tag: &str) -> PathBuf {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let stamp = common::unique_stamp();
     let dir =
         std::env::temp_dir().join(format!("nros-307-w6-{tag}-{}-{stamp}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);

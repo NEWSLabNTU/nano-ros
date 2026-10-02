@@ -17,10 +17,11 @@
 //! Run with:
 //! `cargo test --manifest-path packages/cli/Cargo.toml --test sizing_descriptor_model_road`
 
+mod common;
+
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use nros_cli_core::{
@@ -449,10 +450,7 @@ fn scratch(name: &str) -> PathBuf {
         .ancestors()
         .nth(3)
         .expect("repo root");
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let stamp = common::unique_stamp();
     let dir = repo.join("tmp").join(format!(
         "sizing-model-road-{name}-{}-{stamp}",
         std::process::id()

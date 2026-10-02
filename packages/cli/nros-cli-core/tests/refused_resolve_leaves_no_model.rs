@@ -24,7 +24,6 @@ mod common;
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use clap::Parser;
@@ -56,10 +55,7 @@ fn repo_root() -> PathBuf {
 /// A scratch workspace under the repo's gitignored `tmp/` (repo rule), holding
 /// a copy of the fixture so the test may edit its contract.
 fn scratch_workspace() -> PathBuf {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let stamp = common::unique_stamp();
     let ws = repo_root()
         .join("tmp")
         .join(format!("refused-resolve-{}-{stamp}", std::process::id()));

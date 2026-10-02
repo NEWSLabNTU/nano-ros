@@ -7,7 +7,31 @@
 // the helpers it needs, so anything the others use is dead code from here.
 #![allow(dead_code)]
 
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+/// A scratch-directory stamp that is unique within this test process.
+///
+/// Eighteen helpers in this directory named their scratch dir
+/// `<tag>-<pid>-<nanos>`, which is unique across PROCESSES and not across the
+/// threads one test binary runs in parallel: two tests asking for the same tag
+/// in the same nanosecond get the SAME directory. `publisher_depth_resolve`'s
+/// two tests both resolve `"depths"`, and each deletes its directory after
+/// reading the model — so on the merge-queue runner one test removed the
+/// other's model mid-read (`read the resolved model: NotFound`) and ejected
+/// five unrelated pull requests. The counter makes a collision impossible
+/// rather than unlikely; the time is kept so names stay sortable.
+pub fn unique_stamp() -> String {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    format!("{nanos}-{}", NEXT.fetch_add(1, Ordering::Relaxed))
+}
 
 /// The nano-ros checkout this test binary was compiled from.
 fn repo_root() -> PathBuf {

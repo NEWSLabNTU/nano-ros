@@ -27,7 +27,6 @@ mod common;
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use nros_cli_core::orchestration::{source_metadata::ComponentLanguage, workspace::Workspace};
@@ -397,10 +396,7 @@ fn derived_tiers_cpp_fixture_declares_four_groupful_components_and_resolves() {
 /// sidecar) through the pinned resolver, by ABSOLUTE path (issue 0285).
 fn resolve_through_pinned_resolver(repo: &Path, bringup: &Path, stem: &str) -> SystemModel {
     let resolver = common::pinned_launch_resolver();
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let stamp = common::unique_stamp();
     // Repo rule: temp files live in `$project/tmp/`, not the system temp dir.
     let out = repo.join("tmp").join(format!(
         "derived-tiers-cpp-{stem}-{}-{stamp}",

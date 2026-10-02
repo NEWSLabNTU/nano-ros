@@ -31,7 +31,6 @@ mod common;
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use nros_orchestration_ir::qos_agreement::{QosAgreementError, check_model};
@@ -265,10 +264,7 @@ fn repo_root() -> PathBuf {
 /// Unique scratch dir under the repo's gitignored `tmp/` (repo rule: temp
 /// files live in `$project/tmp/`, not the system temp dir).
 fn temp_output(repo: &Path, name: &str) -> PathBuf {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let stamp = common::unique_stamp();
     let dir = repo.join("tmp").join(format!(
         "qos-agreement-{name}-{}-{stamp}",
         std::process::id()

@@ -17,20 +17,18 @@
 //!   `synthetic` provenance marker is set (the synth artifact landed in
 //!   the planner's metadata slice and survived dedup).
 
+mod common;
+
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use nros_cli_core::orchestration::planner::{PlanOptions, plan_system};
 use serde_json::Value;
 
 fn temp_root(tag: &str) -> PathBuf {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let stamp = common::unique_stamp();
     let dir = std::env::temp_dir().join(format!(
         "phase-212-mf17-{tag}-{}-{stamp}",
         std::process::id()
