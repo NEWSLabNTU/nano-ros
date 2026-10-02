@@ -65,6 +65,9 @@ fn main() {
     // (`transient_local_publisher_demand`).
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_TL_PUBLISHERS");
     println!("cargo:rerun-if-env-changed=ZPICO_TL_RETAIN_BYTES");
+    // issue 1498 -- the retention SLOT's declared size, for the CMake road
+    // (`_nros_payload_facts_env`); the leaf road reads it off the descriptor.
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_TL_RETAIN_BYTES");
 
     // Phase 214.C.3 — default coordinated with
     // `packages/core/nros-node/build.rs::NROS_SUBSCRIPTION_BUFFER_SIZE`
@@ -290,7 +293,13 @@ fn main() {
     // per TL publisher. See `transient_local_publisher_demand` for what the
     // descriptor can and cannot answer, and why an image that declares nothing
     // keeps a builtin rather than deriving zero.
-    let tl_retain_bytes: usize = env_usize("ZPICO_TL_RETAIN_BYTES", TL_RETAIN_BYTES_DEFAULT);
+    // issue 1498 -- the slot SIZE is derived on every road now, not only the
+    // Zephyr resolver's: see `transient_local_retain_demand`.
+    let tl_retain_bytes: usize = env_usize_rung(
+        "ZPICO_TL_RETAIN_BYTES",
+        transient_local_retain_demand(sizing.as_ref()),
+        TL_RETAIN_BYTES_DEFAULT,
+    );
     let tl_demand = transient_local_publisher_demand(sizing.as_ref());
     let max_tl_publishers: usize = resolve_max_tl_publishers(tl_demand);
     // phase-461 W2b - resolved HERE and not beside its two siblings above,
@@ -746,6 +755,41 @@ fn transient_local_publisher_demand(desc: Option<&SizingDescriptor>) -> Option<u
             let bound = nros_sizing_descriptor::transient_local_publishers_bound(desc).unwrap_or(0);
             warn_tl_worst_case(&reason, bound);
             Some(bound)
+        }
+    }
+}
+
+/// The bytes ONE transient-local retention slot must hold, as this image's
+/// declarations state them -- or `None`, and the slot keeps its builtin.
+///
+/// Issue 1498. Three roads reach this crate and each had a different answer:
+/// the Zephyr resolver forwarded the cmake derivation as `ZPICO_TL_RETAIN_BYTES`
+/// itself, and the other two kept a flat [`TL_RETAIN_BYTES_DEFAULT`] whatever
+/// was published into the slot.
+///
+/// * **A descriptor** (a cargo leaf): `nros_sizing_descriptor::
+///   transient_local_retain_bytes`, the largest bound over its transient-local
+///   publisher rows. A refusal is printed, because a refusal that reaches no
+///   log is a default nobody chose (D6).
+/// * **No descriptor**: the CMake road's `NROS_DECLARED_TL_RETAIN_BYTES`,
+///   composed by `_nros_payload_facts_env` from the same
+///   `NROS_DERIVED_TL_RETAIN_BYTES` the Zephyr resolver forwards. Absent means
+///   the derivation refused or there is nothing to retain.
+///
+/// The descriptor wins when both are present, as it does for the count.
+fn transient_local_retain_demand(desc: Option<&SizingDescriptor>) -> Option<usize> {
+    let Some(desc) = desc else {
+        return declared_usize("NROS_DECLARED_TL_RETAIN_BYTES");
+    };
+    match nros_sizing_descriptor::transient_local_retain_bytes(desc) {
+        Fact::Stated(n) => Some(n),
+        Fact::Absent => None,
+        Fact::Refused(reason) => {
+            warn(&format!(
+                "{reason}. The transient-local retention slot (ZPICO_TL_RETAIN_BYTES) keeps \
+                 its builtin of {TL_RETAIN_BYTES_DEFAULT} B"
+            ));
+            None
         }
     }
 }

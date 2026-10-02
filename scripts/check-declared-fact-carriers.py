@@ -411,13 +411,13 @@ FACT_DISPOSITION = {
     },
     "NROS_DERIVED_TL_RETAIN_BYTES": {
         "resolver": ("NROS_RESOLVED_ZPICO_TL_RETAIN_BYTES",),
-        "sidecar": OpenGap(
-            1498, "a leaf's descriptor states `wire_bound_bytes` per endpoint, "
-            "and nothing yet prices the retention slot from it; the slot keeps "
-            "its builtin 1024 B there"),
-        "declared": OpenGap(
-            1498, "the CMake road composes no bound for the types an entry "
-            "publishes transient-local; the slot keeps its builtin 1024 B"),
+        "sidecar": NotCarried(
+            _LEAF, _INBOX_DESCRIPTOR_ANSWERS,
+            "a cargo leaf names its sizing descriptor to cargo, and "
+            "`transient_local_retain_demand` prices the slot from its "
+            "transient-local publisher rows' `wire_bound_bytes` -- the same "
+            "refusals as `_nros_bounds_tl_retain` (issue 1498)"),
+        "declared": ("NROS_DECLARED_TL_RETAIN_BYTES",),
     },
     # issue 1549 -- zenoh-pico's same-session query path, a 0/1 derived from
     # whether the image holds a service client AND a service server. Only the

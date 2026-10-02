@@ -262,6 +262,10 @@ KNOB_CLASS = {
     # user tunes. `ZPICO_MAX_QUERYABLES` / `CONFIG_NROS_MAX_QUERYABLES` is the
     # knob and still outranks it, bounded from below by this term.
     "NROS_DECLARED_TL_PUBLISHERS": ("infra", "a COUNT the resolver passes down, not a knob"),
+    # issue 1498 -- the retention SLOT beside that count, derived from the types
+    # the image publishes transient-local. `ZPICO_TL_RETAIN_BYTES` is the knob
+    # and still outranks it.
+    "NROS_DECLARED_TL_RETAIN_BYTES": ("infra", "a SIZE the resolver passes down, not a knob"),
     # issue 1122 — the same shape one pool over: cmake DERIVES the large-payload
     # class count and this carries it to the build script as a DEFAULT on lanes
     # with no Kconfig. Not a knob: `ZPICO_MAX_LARGE_SUBSCRIBERS` is the knob and

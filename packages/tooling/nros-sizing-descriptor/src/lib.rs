@@ -233,6 +233,72 @@ pub fn transient_local_publishers_bound(desc: &SizingDescriptor) -> Option<usize
     }))
 }
 
+/// The bytes ONE transient-local retention slot must hold, from a descriptor's
+/// `[[endpoint]]` rows -- the LEAF road's answer to the question
+/// `_nros_bounds_tl_retain` (`cmake/NanoRosMessageBounds.cmake`) answers on the
+/// cmake roads (issue 1498).
+///
+/// `nros-rmw-zenoh` keeps one slot per transient-local publisher, each
+/// `ZPICO_TL_RETAIN_BYTES` long, and the slot was a flat 1024 B on every road
+/// that is not the Zephyr resolver: measured on the Autoware Safety Island,
+/// five latched publishers of 13-105 B each held 5 x 1024 B.
+///
+/// The slot is the largest `wire_bound_bytes` over the publisher rows that state
+/// `transient_local`. That is the type's RECEIVE bound (`BoundState::rx`, the
+/// larger of the XCDR1/XCDR2 encodings, transport-framed), which is never below
+/// what this stack serializes (`tx`), so it can only over-size the slot -- the
+/// safe direction, by at most the framing and the XCDR2 header.
+///
+/// The SAME refusals as the cmake function, so the roads cannot disagree about
+/// WHEN an answer exists:
+///
+/// * the count is not [`Fact::Stated`] (no rows, or a publisher states no
+///   durability) -- the refusal is carried, or [`Fact::Absent`] passes through;
+/// * the count is zero -- a pool of no slots has no slot size, so
+///   [`Fact::Absent`] and the consumer keeps its builtin;
+/// * an `action_server` row is present -- its `/status` publisher is
+///   transient-local by protocol and its type appears in no row, so a maximum
+///   over the rows would miss it;
+/// * any transient-local publisher row has no stated `wire_bound_bytes`.
+///
+/// Not floored (D7): a consumer that needs a minimum applies its own.
+pub fn transient_local_retain_bytes(desc: &SizingDescriptor) -> Fact<usize> {
+    match transient_local_publishers(desc) {
+        Fact::Stated(0) | Fact::Absent => return Fact::Absent,
+        Fact::Refused(r) => return Fact::Refused(r),
+        Fact::Stated(_) => {}
+    }
+    if let Some(a) = desc
+        .endpoints
+        .iter()
+        .find(|e| e.kind == EndpointKind::ActionServer)
+    {
+        return Fact::Refused(format!(
+            "action server {} ({}) declares a transient-local `/status` publisher whose \
+             type no endpoint row names, so no maximum over the rows bounds its slot",
+            a.topic, a.type_name
+        ));
+    }
+    let mut max = 0usize;
+    for e in desc.endpoints.iter().filter(|e| {
+        e.kind == EndpointKind::Publisher
+            && matches!(e.durability(), Fact::Stated(Durability::TransientLocal))
+    }) {
+        match e.wire_bound_bytes() {
+            Fact::Stated(b) => max = max.max(b),
+            f => {
+                return Fact::Refused(format!(
+                    "publisher {} ({}) is transient-local and states no `wire_bound_bytes`: {}",
+                    e.topic,
+                    e.type_name,
+                    f.refusal().unwrap_or("nothing derived it"),
+                ));
+            }
+        }
+    }
+    Fact::Stated(max)
+}
+
 /// The prefix of the `NROS_DECLARED_TL_PUBLISHERS` value that carries a
 /// REFUSED count's worst case: `refused:<bound>`.
 ///
@@ -594,6 +660,73 @@ mod tests {
             "/fibonacci",
         ));
         assert_eq!(transient_local_publishers(&d), Fact::Stated(2));
+    }
+
+    /// Issue 1498 -- the LEAF road's retention slot: the largest bound over the
+    /// transient-local publisher rows, and the cmake road's refusals.
+    #[test]
+    fn transient_local_retain_bytes_is_the_largest_tl_publisher_bound() {
+        let mut d = island();
+        // No transient-local publisher: no slot to size.
+        assert_eq!(transient_local_retain_bytes(&d), Fact::Absent);
+
+        let mut small = Endpoint::new(EndpointKind::Publisher, "pkg/msg/Small", "/a");
+        small
+            .set_durability(Some(Durability::TransientLocal))
+            .set_wire_bound_bytes(Some(16));
+        d.endpoints.push(small);
+        let mut big = Endpoint::new(EndpointKind::Publisher, "pkg/msg/Big", "/b");
+        big.set_durability(Some(Durability::TransientLocal))
+            .set_wire_bound_bytes(Some(112));
+        d.endpoints.push(big);
+        // A volatile publisher's bound is not a retention slot's business,
+        // however large -- and neither is the 1170 B subscription.
+        let mut vol = Endpoint::new(EndpointKind::Publisher, "pkg/msg/Huge", "/c");
+        vol.set_durability(Some(Durability::Volatile))
+            .set_wire_bound_bytes(Some(4096));
+        d.endpoints.push(vol);
+        assert_eq!(transient_local_retain_bytes(&d), Fact::Stated(112));
+
+        // An unpriced transient-local row refuses, naming itself.
+        let mut open = Endpoint::new(EndpointKind::Publisher, "pkg/msg/Open", "/open");
+        open.set_durability(Some(Durability::TransientLocal));
+        let mut with_open = d.clone();
+        with_open.endpoints.push(open);
+        match transient_local_retain_bytes(&with_open) {
+            Fact::Refused(r) => assert!(r.contains("/open"), "{r}"),
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+
+        // An action server's `/status` type is in no row: refused.
+        d.endpoints.push(Endpoint::new(
+            EndpointKind::ActionServer,
+            "example_interfaces/action/Fibonacci",
+            "/fibonacci",
+        ));
+        assert!(matches!(
+            transient_local_retain_bytes(&d),
+            Fact::Refused(r) if r.contains("/fibonacci")
+        ));
+    }
+
+    /// A refused COUNT refuses the slot size too: the silent publisher may be
+    /// latched, and its type was never looked at.
+    #[test]
+    fn a_refused_tl_count_refuses_the_retain_bytes() {
+        let mut d = island();
+        let mut tl = Endpoint::new(EndpointKind::Publisher, "pkg/msg/Small", "/a");
+        tl.set_durability(Some(Durability::TransientLocal))
+            .set_wire_bound_bytes(Some(16));
+        d.endpoints.push(tl);
+        d.endpoints.push(Endpoint::new(
+            EndpointKind::Publisher,
+            "pkg/msg/Silent",
+            "/silent",
+        ));
+        assert!(matches!(
+            transient_local_retain_bytes(&d),
+            Fact::Refused(r) if r.contains("/silent")
+        ));
     }
 
     /// A publisher that states no durability REFUSES the count, naming itself:
