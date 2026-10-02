@@ -101,7 +101,13 @@ FLOOR_RE = re.compile(
 # R1 — the declaration a leaf package writes. `CXX_STANDARD_REQUIRED ON` beside
 # it is what makes it beat a toolchain's raw `-std=`; this rule is about the
 # NUMBER, so it does not look at that.
-R_CMAKE_STANDARD = re.compile(r"\bset\s*\(\s*CMAKE_CXX_STANDARD\s+(\d+)\s*\)")
+# issue 1615 (W6): every spelling of the NUMBER — `set(CMAKE_CXX_STANDARD 11
+# CACHE ...)` and a target's `CXX_STANDARD 11` property (`set_target_properties`
+# / `set_property(TARGET .. PROPERTY CXX_STANDARD 11)`) declare one exactly as
+# the bare `set` does, and only that one was matched.
+R_CMAKE_STANDARD = re.compile(
+    r"\bset\s*\(\s*CMAKE_CXX_STANDARD\s+(\d+)\b[^)]*\)"
+    r"|\b(?:set_target_properties|set_property)\s*\([^)]*?\bCXX_STANDARD\s+(\d+)\b")
 # R2 — the requirement a library propagates to its consumers.
 R_COMPILE_FEATURE = re.compile(r"\bcxx_std_(\d+)\b")
 # R3 — Zephyr's, which reaches the compiler through Kconfig and not through
@@ -284,7 +290,7 @@ def scan(
             if is_conf != (rule == "CONFIG_STD_CPPN"):
                 continue
             for m in pattern.finditer(text):
-                declared = int(m.group(1))
+                declared = int(next(g for g in m.groups() if g is not None))
                 if declared >= floor:
                     continue
                 lineno = text.count("\n", 0, m.start()) + 1

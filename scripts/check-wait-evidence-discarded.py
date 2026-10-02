@@ -66,8 +66,17 @@ SCAN_DIRS = ["packages/testing/nros-tests/tests", "packages/testing/nros-tests/s
 # baseline was taken, which is the only time it is cheap to catch.
 # The argument list may span lines and may contain ONE level of nested parens
 # (`Duration::from_secs(10)`), which is the shape every real call has.
+# issue 1615 (W6): per CHAIN, not per adjacency — an adapter between the wait
+# and the default (`.or_else(|_| Ok(String::new())).unwrap_or_default()`)
+# discards the same evidence, and the adjacency regex never saw it. Arguments
+# nest three levels (a closure returning `Ok::<_, _>(String::new())`).
+_A1 = r"(?:[^()]|\([^()]*\))*"
+_A2 = r"(?:[^()]|\(" + _A1 + r"\))*"
+_A3 = r"(?:[^()]|\(" + _A2 + r"\))*"
 DISCARD = re.compile(
-    r"(wait_for_\w*output\w*)\s*\((?:[^()]|\([^()]*\))*\)\s*\.\s*unwrap_or_default\s*\(\s*\)",
+    r"(wait_for_\w*output\w*)\s*\(" + _A2 + r"\)"
+    r"(?:\s*\.\s*(?:or_else|or|map_err|map|ok|and_then|inspect_err)\s*\(" + _A3 + r"\))*"
+    r"\s*\.\s*unwrap_or_default\s*\(\s*\)",
     re.S,
 )
 
@@ -128,6 +137,7 @@ SELF_TESTS = [
     ("p.wait_for_output_count(RULE, 1, Duration::from_secs(9)).unwrap_or_default()", True),
     ("p.wait_for_output(\"x\", Duration::from_secs(1))\n    .unwrap_or_default()", True),
     ("p.wait_for_all_output(&[\"a\"], t).unwrap_or_default()", True),
+    ("p.wait_for_output(t)\n    .or_else(|_| Ok::<String, ()>(String::new()))\n    .unwrap_or_default()", True),
     # The remedies must NOT be flagged.
     ("let (seen, why) = p.collect_until_count(RULE, 1, t);", False),
     ("let seen = p.collect_until(RULE, t);", False),

@@ -92,12 +92,15 @@ def check(paths):
         stripped = "\n".join(
             line for line in text.splitlines() if not line.lstrip().startswith("#"))
         for knob, paths in sorted(scan(stripped).items()):
-            reachable = [
-                p for i, p in enumerate(paths)
-                if not any(exclusive(p, q) for j, q in enumerate(paths) if i != j)
-            ]
-            n = len(reachable)
-            if n > 1:
+            # issue 1615 (W6): per PAIR. The old filter dropped a call that was
+            # exclusive with ANY other, so an if/else pair (exclusive with each
+            # other) plus an unconditional third call counted ONE — while the
+            # third always runs after whichever arm did.
+            n = 1 + max((sum(1 for j in range(len(paths)) if j != i
+                             and not exclusive(paths[i], paths[j]))
+                         for i in range(len(paths))), default=0)
+            if any(not exclusive(paths[i], paths[j])
+                   for i in range(len(paths)) for j in range(i + 1, len(paths))):
                 problems.append(
                     "%s is resolved %d times in %s. The LAST call wins, and if "
                     "it passes the raw Kconfig value that is the `-1` DERIVE "

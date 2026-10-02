@@ -81,10 +81,29 @@ for f in "${candidates[@]}"; do
     fi
     # `Command::new(<something zenohd>)` is the spawn signature. Match the
     # helper reaching a Command, on one line or via a local binding.
-    if grep -nE 'Command::new\(&?[A-Za-z_:]*zenohd' "$f" >/dev/null 2>&1 ||
-        grep -nE 'Command::new\(.*ros_zenohd_path' "$f" >/dev/null 2>&1; then
+    # issue 1615 (W6): per BINDING, not per variable NAME. A binding from
+    # `ros_zenohd_path` named `router` reached `Command::new(&router)` and the
+    # `*zenohd` name pattern never saw it. Taint every `let <v> = …ros_zenohd_path…`
+    # and flag `Command::new(&?<v>)` / a direct call, in comment-stripped code.
+    spawn_rc=0
+    spawns="$(python3 - "$f" <<'PY'
+import re, sys
+sys.path.insert(0, "scripts/lib")
+import comments
+code = comments.strip_comments(open(sys.argv[1], errors="replace").read(), "rust")
+tainted = set(re.findall(r"\blet\s+(?:mut\s+)?([A-Za-z_][A-Za-z0-9_]*)\b[^;]*ros_zenohd_path", code))
+for m in re.finditer(r"Command::new\s*\(\s*&?\s*([^)]*)\)", code):
+    arg = m.group(1).strip()
+    if "ros_zenohd_path" in arg or arg in tainted or re.fullmatch(r"[A-Za-z_:]*zenohd", arg):
+        print(f"{code.count(chr(10), 0, m.start()) + 1}: {m.group(0)}")
+PY
+)" || spawn_rc=$?
+    if [ "$spawn_rc" -ne 0 ]; then
+        echo "ERROR: the spawn scan failed on $f (rc=$spawn_rc)" >&2
+        fail=1
+    elif [ -n "$spawns" ]; then
         echo "ERROR: $f spawns zenohd directly — use nros_tests::fixtures::ZenohRouter" >&2
-        grep -nE 'Command::new\(&?[A-Za-z_:]*zenohd|Command::new\(.*ros_zenohd_path' "$f" >&2
+        printf '%s\n' "$spawns" >&2
         fail=1
     fi
 done

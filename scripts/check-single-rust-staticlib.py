@@ -90,44 +90,53 @@ def check(path: Path):
     # buggy C link was then never compared against anything.
     sites = []  # (umbrella, line, branch-path)
 
+    # Pass 1: the branch path of every LINE.
+    path_at = {}
     for lineno, line in enumerate(text.splitlines(), 1):
         low = line.strip()
         if re.match(r"^if\s*\(", low):
             path_stack.append([next_if, 0])
             next_if += 1
-            continue
-        if re.match(r"^(elseif|else)\s*\(", low):
+        elif re.match(r"^(elseif|else)\s*\(", low):
             if path_stack:
                 path_stack[-1][1] += 1
-            continue
-        if re.match(r"^endif\s*\(", low):
+        elif re.match(r"^endif\s*\(", low):
             if path_stack:
                 path_stack.pop()
-            continue
+        path_at[lineno] = tuple(tuple(p) for p in path_stack)
 
-        for call in LINK_CALLS:
-            if f"{call}(" not in line:
+    # Pass 2: per CALL, its whole balanced argument list — issue 1615 (W6). A
+    # `target_link_libraries(t PRIVATE\n NanoRos::NanoRos\n NanoRos::NanoRosCpp)`
+    # spans lines, and the per-LINE scan read only the line with the call name.
+    for m in re.finditer(r"\b(" + "|".join(LINK_CALLS) + r")\s*\(", text):
+        depth, i = 0, m.end() - 1
+        while i < len(text):
+            depth += (text[i] == "(") - (text[i] == ")")
+            if depth == 0:
+                break
+            i += 1
+        args = text[m.end():i]
+        lineno = text.count("\n", 0, m.start()) + 1
+        key = path_at.get(lineno, ())
+        for token in re.findall(r"[A-Za-z_][A-Za-z0-9_:.-]*", args):
+            which = umbrella_of(token)
+            if which is None:
                 continue
-            for token in re.findall(r"[A-Za-z_][A-Za-z0-9_:.-]*", line):
-                which = umbrella_of(token)
-                if which is None:
+            for other, other_line, other_key in sites:
+                if other == which:
                     continue
-                key = tuple(tuple(p) for p in path_stack)
-                for other, other_line, other_key in sites:
-                    if other == which:
-                        continue
-                    # Same branch path, or one ENCLOSES the other: both run in
-                    # the same image. Sibling arms (differing arm index at some
-                    # level) are the correct shape and are not flagged.
-                    if key[: len(other_key)] == other_key or other_key[: len(key)] == key:
-                        violations.append(
-                            f"{path.relative_to(ROOT)}:{lineno}: links the "
-                            f"'{which}' umbrella ({token}) on the same branch as "
-                            f"the '{other}' umbrella linked at line {other_line}. "
-                            f"A staticlib bundles its whole closure — linking two "
-                            f"duplicates it. See issue 0734."
-                        )
-                sites.append((which, lineno, key))
+                # Same branch path, or one ENCLOSES the other: both run in
+                # the same image. Sibling arms (differing arm index at some
+                # level) are the correct shape and are not flagged.
+                if key[: len(other_key)] == other_key or other_key[: len(key)] == key:
+                    violations.append(
+                        f"{path.relative_to(ROOT)}:{lineno}: links the "
+                        f"'{which}' umbrella ({token}) on the same branch as "
+                        f"the '{other}' umbrella linked at line {other_line}. "
+                        f"A staticlib bundles its whole closure — linking two "
+                        f"duplicates it. See issue 0734."
+                    )
+            sites.append((which, lineno, key))
     return violations
 
 

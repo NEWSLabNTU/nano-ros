@@ -141,6 +141,9 @@ def syntactic_bypass(text, call_start, call_end):
     s = max(text.rfind(";", 0, call_start), text.rfind("{", 0, call_start),
             text.rfind("}", 0, call_start)) + 1
     before = text[s:call_start]
+    # issue 1615 (W6): a PATH-QUALIFIED call (`match nros_tests::fixtures::f(..)`)
+    # is the same scrutinee — the qualifier sat between `match` and the name.
+    before = re.sub(r"(?:(?:::)?[A-Za-z_][A-Za-z0-9_]*\s*::\s*)+$", "", before)
     after = text[call_end:call_end + 80]
     if MATCH_BEFORE.search(before) and BLOCK_AFTER.match(after):
         return "match"

@@ -110,7 +110,8 @@ ALLOCATOR_OWNER = os.path.join("packages", "platform", "nros-platform")
 ANY_HEAP_CFG = re.compile(
     r'any\s*\(\s*feature\s*=\s*"(alloc|std)"\s*,\s*feature\s*=\s*"(alloc|std)"\s*\)'
 )
-GLOBAL_ALLOC = re.compile(r"^\s*#\[global_allocator\]")
+# issue 1615 (W6): `#[cfg_attr(<pred>, global_allocator)]` declares one too.
+GLOBAL_ALLOC = re.compile(r"^\s*#\[(?:cfg_attr\s*\(.*,\s*)?global_allocator\s*[\])]")
 
 
 def is_build_output(name):
@@ -123,7 +124,10 @@ def is_build_output(name):
     authored dep-sites made clause (d) unfalsifiable: every `default` feature
     looked reachable because a generated probe manifest reached it.
     """
-    return name.startswith("build") or name.startswith("target") or name == "generated"
+    # issue 1615 (W6): `build` / `build-<x>` / `target` / `target-<x>` — a
+    # PREFIX match also took `builder/` (nros-cli-core's builder module) for
+    # build output, so a `#[global_allocator]` there was never read.
+    return bool(re.fullmatch(r"(build|target)([-_.].*)?", name)) or name == "generated"
 
 
 _INDEX_CACHE = {}
@@ -529,7 +533,7 @@ def clause_e(crate_dirs, root):
     found = []
     for crate in crate_dirs:
         for f in rust_files(crate, subdirs=("src",)):
-            for i, line in enumerate(read(f).splitlines(), 1):
+            for i, line in enumerate(strip_comments(read(f)).splitlines(), 1):
                 if GLOBAL_ALLOC.match(line):
                     found.append((f, i))
     owner = os.path.join(root, ALLOCATOR_OWNER)

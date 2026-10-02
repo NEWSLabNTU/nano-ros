@@ -60,11 +60,12 @@ def declares_components(path):
     has for an array-of-tables header, so a parser would answer the same
     question at the cost of the lane's premise. `path` is absolute.
     """
-    try:
-        with open(path, encoding="utf-8") as fh:
-            return any(line.strip() == "[[component]]" for line in fh)
-    except OSError:
-        return False
+    # issue 1615 (W6): the CLI's own predicate is "a `system.toml` is PRESENT"
+    # (`codegen_system.rs`, R-code.1: "a bringup that DECLARES system semantics
+    # (system.toml present) must resolve them into a SystemModel"), so every
+    # table — `[lifecycle]`, `[param_services]`, `[tiers.*]` — demands a model,
+    # not only `[[component]]`. Keyed on what the refusal keys on.
+    return os.path.isfile(path)
 
 
 def is_violation(abs_dir):

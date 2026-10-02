@@ -41,6 +41,7 @@ the statement this gate reads.
 Run: python3 scripts/check-deferred-call-args.py [--self-test]
 """
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -145,6 +146,19 @@ def offenders_in(text, rel):
         if tokens is None:
             i += len(needle)
             continue
+        if tokens[:2] == ["EVAL", "CODE"] and len(tokens) > 2:
+            # issue 1615 (W6): the EVAL form is safe only because EVAL EXPANDS
+            # `${x}` into a literal before DEFER stores it. An ESCAPED `\${x}`
+            # is not expanded, so DEFER stores the reference again — the very
+            # defect, one quoting level down. Evaluate the string the way EVAL
+            # does (expand unescaped refs to a literal, unescape the rest) and
+            # read the code it produces.
+            for tok in tokens[2:]:
+                code = tok.strip('"')
+                code = re.sub(r"(?<!\\)\$\{[^}]*\}", "VALUE", code)
+                code = code.replace('\\$', "$").replace('\\"', '"')
+                line = text.count("\n", 0, i) + 1
+                bad.extend((rel, line, t) for _r, _l, t in offenders_in(code, rel))
         if "DEFER" in tokens and "CALL" in tokens:
             k = tokens.index("CALL")
             # tokens[k+1] is the callee NAME; the arguments follow it.

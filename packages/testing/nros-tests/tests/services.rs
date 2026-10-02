@@ -210,10 +210,7 @@ fn test_service_multiple_sequential_calls(
             .expect("Failed to start service client");
 
         // Wait for the client's single result line (event-driven)
-        let output = client
-            .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(15))
-            .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-            .unwrap_or_default();
+        let output = client.collect_until(SERVICE_RESULT_PREFIX, Duration::from_secs(15));
 
         let responses = count_pattern(&output, SERVICE_RESULT_PREFIX);
         eprintln!("Run {}: {} responses", run, responses);
@@ -357,14 +354,8 @@ fn test_service_server_multiple_clients(
         .expect("Failed to start client 2");
 
     // Wait for both clients' single result line (event-driven)
-    let output1 = client1
-        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(15))
-        .or_else(|_| client1.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
-    let output2 = client2
-        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(15))
-        .or_else(|_| client2.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
+    let output1 = client1.collect_until(SERVICE_RESULT_PREFIX, Duration::from_secs(15));
+    let output2 = client2.collect_until(SERVICE_RESULT_PREFIX, Duration::from_secs(15));
 
     server.kill();
 

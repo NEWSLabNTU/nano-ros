@@ -99,7 +99,14 @@ FORWARD_TARGET = ("cmake/NanoRosEntry.cmake", "nano_ros_entry")
 
 # `out.push_str("…")` / `out.push_str(&format!("…", …))` — the emitter's only
 # two writing spellings. `out.push('\n')` adds no keyword.
-PUSH_RE = re.compile(r'out\.push_str\(\s*(?:&format!\(\s*)?"((?:[^"\\]|\\.)*)"', re.S)
+# issue 1615 (W6): every way the emitter APPENDS text — `x.push_str(..)`,
+# `*x += ".."` / `x += ".."`, `write!(x, "..")` / `writeln!` — not only the
+# `out.push_str` spelling; a `*out += "nano_ros_workspace(\n  BOGUS x\n)"` was
+# emitted CMake this gate never read.
+PUSH_RE = re.compile(
+    r'(?:\b\w+\.push_str\(\s*(?:&format!\(\s*)?'
+    r'|\*?\b\w+\s*\+=\s*(?:&format!\(\s*)?'
+    r'|\bwrite(?:ln)?!\(\s*\w+\s*,\s*)"((?:[^"\\]|\\.)*)"', re.S)
 
 # A cmake keyword as the generator writes it: indented, ALL CAPS, at the start
 # of an emitted line.

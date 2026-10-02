@@ -42,6 +42,10 @@ import sys
 # of them (`](custom-platform.md)`, `](no-std.md)`, six and six). A gate whose
 # green is narrower than its message is the thing it was written to prevent.
 LINK_RE = re.compile(r"\]\(([^)#\s]+)(?:#[^)\s]*)?\)")
+# issue 1615 (W6): a REFERENCE definition (`[id]: ./page.md`) is a link too —
+# `[text][id]` resolves through it, and only the inline form was read. Same
+# spelling as `check-markdown-links.py`'s REFDEF.
+REFDEF_RE = re.compile(r"^ {0,3}\[[^\]\n]+\]:[ \t]*<?([^\s>#]+)(?:#[^\s>]*)?>?", re.M)
 
 # Not ours to resolve: absolute URLs, protocol-relative, mail, and same-page
 # anchors (which LINK_RE's optional group already strips to an empty target).
@@ -54,7 +58,14 @@ EXTERNAL = re.compile(r"^(?:[a-z][a-z0-9+.-]*:|//)", re.I)
 GENERATED_API = re.compile(r"(?:^|/)api/.*\.html$")
 
 
+def self_test() -> None:
+    """Both link spellings are read (issue 1615)."""
+    assert [m.group(1) for m in REFDEF_RE.finditer("x\n[r]: ./p.md#a\n")] == ["./p.md"]
+    assert [m.group(1) for m in LINK_RE.finditer("[t](./q.md)")] == ["./q.md"]
+
+
 def main() -> int:
+    self_test()
     repo_root = pathlib.Path(__file__).resolve().parent.parent
     listed = subprocess.run(
         ["git", "ls-files", "book/src/**/*.md", "book/src/*.md"],
@@ -68,7 +79,8 @@ def main() -> int:
     links = 0
     for rel in listed:
         page = repo_root / rel
-        for match in LINK_RE.finditer(page.read_text()):
+        text = page.read_text()
+        for match in [*LINK_RE.finditer(text), *REFDEF_RE.finditer(text)]:
             link = match.group(1)
             if not link or EXTERNAL.match(link) or link.startswith("/"):
                 continue

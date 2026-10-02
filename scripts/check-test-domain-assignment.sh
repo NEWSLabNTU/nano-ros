@@ -57,10 +57,17 @@ fail=0
 #    in those smoke tests is not a shared bus. Matching the third argument
 #    specifically also keeps the SECOND one (a length, always 0) out of it — the
 #    first draft of this gate flagged every already-fixed site for that reason.
-env_literals="$(git grep -nE '\.env\("ROS_DOMAIN_ID", *"[0-9]+"\)|ROS_DOMAIN_ID="?\$\{ROS_DOMAIN_ID:-[0-9]+\}' \
+# issue 1615 (W6): every SPELLING of a literal domain — `export ROS_DOMAIN_ID=117`
+# inside a command string, and `EnvGuard::set("ROS_DOMAIN_ID", "42")` — not
+# only `.env("ROS_DOMAIN_ID", "N")` and the `${..:-N}` default. Comment lines
+# are prose. `init_api.rs` parses the variable IN-PROCESS (it asserts the
+# parsed value) and joins no bus, so a literal there is the test's subject.
+env_literals="$(git grep -nE '\.env\("ROS_DOMAIN_ID", *"[0-9]+"\)|ROS_DOMAIN_ID="?\$\{ROS_DOMAIN_ID:-[0-9]+\}|ROS_DOMAIN_ID="?[0-9]+|set\("ROS_DOMAIN_ID", *"[0-9]+"\)' \
     -- packages/testing packages/rmw \
     | grep -v 'px4_xrce_e2e.rs' \
     | grep -v 'src/ros_env.rs' \
+    | grep -v 'tests/init_api.rs' \
+    | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|#|\*)' \
     || true)"
 session_literals="$(git grep -nE 'create_session\([^,]+, *[^,]+, *[0-9]+ *,' \
     -- packages/rmw/cyclonedds \

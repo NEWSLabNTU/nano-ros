@@ -477,10 +477,8 @@ fn test_threadx_riscv64_errno_is_per_thread() {
         nros_tests::skip!("qemu-system-riscv64 not found");
     }
 
-    let binary = match nros_tests::fixtures::threadx_riscv64::build_rv64_c_errno_isolation() {
-        Ok(p) => p,
-        Err(e) => nros_tests::skip!("errno-isolation fixture unavailable: {e}"),
-    };
+    let binary = nros_tests::fixtures::threadx_riscv64::build_rv64_c_errno_isolation()
+        .require("errno-isolation fixture");
 
     // Self-contained image: the netdev exists only because the board brings up
     // NetX at boot, and nothing in this test talks to it.

@@ -130,17 +130,25 @@ def prelude_names(text):
                 break
         i += 1
     body = text[start : i + 1]
+    # issue 1615 (W6): per IMPORTED PATH (`per_item.rust_use_paths`, use-trees
+    # expanded, comments stripped) — a path-qualified `pub use crate::action::
+    # ActiveGoal;` and a glob `pub use crate::embedded::*;` both publish names,
+    # and only `crate::{..}` / `crate::Name` were read. A glob publishes the
+    # module's whole contents, so it is returned as the name `*<path>` and
+    # refused by `main` — the prelude's membership must be legible.
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+    import comments
+    import per_item
+
     names = set()
-    for group in re.findall(r"pub use crate::\{(.*?)\};", body, re.S):
-        for raw in group.split(","):
-            name = raw.strip().split(" as ")[0].strip()
-            # skip comments and paths
-            if not name or name.startswith("//") or "::" in name:
-                continue
-            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
-                names.add(name)
-    for single in re.findall(r"pub use crate::([A-Za-z_][A-Za-z0-9_]*);", body):
-        names.add(single)
+    for path, _off in per_item.rust_use_paths(comments.strip_comments(body, "rust")):
+        if not path.startswith("crate::"):
+            continue
+        leaf = path.rsplit("::", 1)[-1]
+        if leaf == "*":
+            names.add("*" + path[: -len("::*")])
+        elif re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", leaf):
+            names.add(leaf)
     return names
 
 
@@ -295,6 +303,10 @@ def main():
 
     bad = []
     for name in sorted(names):
+        if name.startswith("*"):
+            bad.append((name, "a GLOB re-export: it publishes whatever that module holds, "
+                              "extensions included — name the items"))
+            continue
         if name in exts and name not in ALLOWED_EXTENSIONS:
             bad.append((name, exts[name]))
 

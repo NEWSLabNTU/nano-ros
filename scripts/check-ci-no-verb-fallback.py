@@ -81,7 +81,9 @@ def offenders(docs):
     for path, doc in docs:
         for job_name, job in (doc.get("jobs") or {}).items():
             for step in job.get("steps", []) or []:
-                for line in command_lines(step.get("run") or ""):
+                # issue 1615 (W6): per LOGICAL command — a `\\`-continued
+                # `just a \\` / `|| just b` is one fallback over two lines.
+                for line in workflow_commands.logical_lines(step.get("run") or ""):
                     if FALLBACK.search(line):
                         bad.append(
                             (path, job_name, step.get("name") or "(unnamed)", line.strip())
@@ -96,6 +98,9 @@ def load():
 
 
 def self_test() -> int:
+    assert FALLBACK.search(workflow_commands.logical_lines(
+        "just zephyr build-all \\\n  || just zephyr build-examples\n")[0]), \
+        "a continued fallback must be one command (issue 1615)"
     cases = [
         ("just a build-all || just a build-examples", True),
         ("just a build-all || just a build-examples || just a build", True),

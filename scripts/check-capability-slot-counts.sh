@@ -38,6 +38,8 @@ cd "$(dirname "$0")/.."
 fail=0
 
 count_fields() {
+    # issue 1615 (W6): a `pub` / `pub(crate)` field is a field too — the
+    # visibility prefix took one out of the count.
     # SERVER fields between `pub struct <name> {` and the closing brace: a
     # field whose type is the file's generic server alias (`ParamServer<Svc>`,
     # `LcSrv<Svc>`). A field with a non-generic type is bookkeeping, not a
@@ -48,7 +50,7 @@ count_fields() {
     awk -v pat="pub struct $1 [{]" '
         $0 ~ pat {inside=1; next}
         inside && /^\}/ {inside=0}
-        inside && /^[[:space:]]*[a-z_]+:[[:space:]]*[A-Za-z_][A-Za-z0-9_]*</ {n++}
+        inside && /^[[:space:]]*(pub(\([a-z]+\))?[[:space:]]+)?[a-z_]+:[[:space:]]*[A-Za-z_][A-Za-z0-9_]*</ {n++}
         END {print n+0}
     ' <(python3 scripts/lib/comments.py --lang rust "$2")
 }
@@ -64,10 +66,10 @@ const_of() {
 self_test() {
     local t got
     t="$(mktemp)"
-    printf '%s\n' 'pub struct S {' '    a: Srv<A>,' '    /*' '    b: Srv<B>,' '    */' '    k: Key,' '}' > "$t"
+    printf '%s\n' 'pub struct S {' '    a: Srv<A>,' '    /*' '    b: Srv<B>,' '    */' '    k: Key,' '    pub(crate) c: Srv<C>,' '}' > "$t"
     got="$(count_fields S "$t")"
     rm -f "$t"
-    [ "$got" = 1 ] || { echo "check-capability-slot-counts SELFTEST FAILED: counted $got server(s), want 1" >&2; exit 1; }
+    [ "$got" = 2 ] || { echo "check-capability-slot-counts SELFTEST FAILED: counted $got server(s), want 2" >&2; exit 1; }
 }
 self_test
 
