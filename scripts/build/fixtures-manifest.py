@@ -114,6 +114,12 @@ COMPILE_CHECK_BUILDERS = (
     # LINT verdict on the staged tree (generated code under `#![deny(warnings)]`
     # + `#![deny(clippy::all)]`), which `cargo check` cannot answer.
     "cargo-clippy",
+    # issue 1620 — the VERDICT builders. Same staging, but the compile's exit
+    # status and diagnostics are the artifact (`.verdict` + `verdict.stderr`),
+    # and the build stage never fails on them. This is how a compile that MUST
+    # FAIL moves out of the test: the test asserts the recorded diagnostic.
+    "cargo-check-verdict",
+    "cmake-configure-verdict",
     "cargo-build",  # stage the tree, `cargo build`, keep the binary
     "cmake-configure",  # cmake configure (+ build) into build/cmake-fixtures/<id>
     "cross-build",  # `cargo build --target <target>` for one or more profiles
@@ -127,6 +133,10 @@ COMPILE_CHECK_BUILDERS = (
     "west-build",  # full `west build`; `output` is the image
     "west-configure",  # `west build --cmake-only`; `output` is a configure artifact
 )
+
+# The builders whose build stage never fails on the compile's own status, so a
+# row of theirs that no test reads reports NOTHING (issue 1032's shape).
+VERDICT_COMPILE_CHECK_BUILDERS = ("cargo-check-verdict", "cmake-configure-verdict")
 
 # The two builders above, so the west lane and the compile-check lane can each
 # ask "is this one of mine?" without restating the pair.
@@ -194,6 +204,13 @@ def validate_compile_check_fixture(entry):
             _fail(entry, f"missing required key 'dir' for builder {builder!r}")
         _require_dir(entry, Path(entry["dir"]), "fixture dir")
 
+    if builder in VERDICT_COMPILE_CHECK_BUILDERS and entry.get("output") != ".verdict":
+        _fail(
+            entry,
+            f"builder {builder!r} records a VERDICT, so its output is '.verdict' "
+            f"(got {entry.get('output')!r}) — the stamp the test resolves",
+        )
+
     if builder == "cross-build" and not entry.get("target"):
         _fail(entry, "missing required key 'target' for builder 'cross-build'")
 
@@ -252,10 +269,13 @@ def _cxx_rows_without_a_consumer(entries):
         for rel in listed.split("\0")
         if rel.endswith(".rs")
     )
+    # issue 1620 — a VERDICT row has the same property: its build succeeds
+    # whatever the compile said, so only a consumer can report it.
+    unreported = ("cxx-syntax", *VERDICT_COMPILE_CHECK_BUILDERS)
     return [
         e["id"]
         for e in entries
-        if e.get("builder") == "cxx-syntax" and f'"{e["id"]}"' not in hay
+        if e.get("builder") in unreported and f'"{e["id"]}"' not in hay
     ]
 
 
@@ -270,13 +290,14 @@ def validate_compile_check_fixtures(entries):
     orphans = _cxx_rows_without_a_consumer(entries)
     if orphans:
         raise ValueError(
-            "cxx-syntax row(s) whose `.compile-ok` no test asserts: "
+            "cxx-syntax / verdict row(s) whose stamp no test asserts: "
             + ", ".join(sorted(orphans))
             + f"\nThe build stage does not fail on a snippet that will not compile — "
             f"it defers the report to a consuming test (issue 1032). With no "
             f"consumer, nothing reports it at all.\nAdd an assertion under "
             f"{CXX_CONSUMER_DIR.relative_to(SCRIPT_ROOT)}/ that calls "
-            f"`nros_tests::fixtures::require_compile_check(\"<id>\")`."
+            f"`nros_tests::fixtures::require_compile_check(\"<id>\")` (a verdict "
+            f"row: `require_compile_verdict(\"<id>\")`)."
         )
     return len(seen)
 

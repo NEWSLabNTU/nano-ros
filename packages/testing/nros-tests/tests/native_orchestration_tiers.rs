@@ -34,6 +34,44 @@ fn multi_tier_main_macro_emits_run_tiers_and_compiles() -> nros_tests::TestResul
     Ok(())
 }
 
+/// `nros::main!(launch = "<bringup>[:file]")` is the SUPPORTED entry spelling
+/// (phase-330 W7): an entry names its INPUT and the build owns the model.
+///
+/// issue 1620 — this was `native_orchestration_misuse::launch_arm_resolves_the_bringup`,
+/// which staged this same fixture, wrote the same `main.rs` line the fixture
+/// already commits, and ran `cargo check` at TEST time — so it compiled what the
+/// `orch_tiers_multi` build row already builds, and hard-FAILED where the
+/// resolver was missing instead of reporting a precondition. The build is the
+/// proof; what this adds is the pin that the build row is still compiling the
+/// launch arm, because a fixture that quietly moved to `model =` would keep
+/// every assertion above green (issue 0438 is that silent collapse).
+#[test]
+fn launch_arm_resolves_the_bringup() -> nros_tests::TestResult<()> {
+    let main_rs = nros_tests::fixtures::fixture_dir("orchestration_tiers_native")
+        .join("src/demo_entry/src/main.rs");
+    let src = std::fs::read_to_string(&main_rs)
+        .unwrap_or_else(|e| panic!("read {}: {e}", main_rs.display()));
+    let invocation: Vec<&str> = src
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.starts_with("//") && l.contains("nros::main!"))
+        .collect();
+    assert_eq!(
+        invocation,
+        ["nros::main!(launch = \"demo_bringup\");"],
+        "the `orch_tiers_multi` fixture must compile the LAUNCH arm — it is the multi-tier \
+         compile proof of it ({})",
+        main_rs.display()
+    );
+    let bin = multi_tier_bin()?;
+    assert!(
+        bin.exists(),
+        "launch-arm fixture binary missing: {}",
+        bin.display()
+    );
+    Ok(())
+}
+
 #[test]
 fn multi_tier_binary_boots_into_run_tiers() -> nros_tests::TestResult<()> {
     // Proof the macro emitted `run_tiers` AND the boot tier executed: the binary

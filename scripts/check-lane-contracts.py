@@ -384,7 +384,10 @@ def _events_of(step_if, wf_events):
     return set(wf_events)
 
 # Legitimate in a compile tier, when the gate produces them itself.
-COMPILE_RESOLVERS = ("require_compile_check", "require_compile_check_bin")
+# issue 1620 — `require_compile_verdict` reads a VERDICT row (`cargo-check-verdict`
+# / `cmake-configure-verdict`): the same compile-check lane and stamp dir, a
+# recorded exit status instead of a `.compile-ok`. Compile-stage, like the pair.
+COMPILE_RESOLVERS = ("require_compile_check", "require_compile_check_bin", "require_compile_verdict")
 
 # phase-472 W7 — the RUNTIME resolvers are HARVESTED: every `pub fn build_*` /
 # `require_*` the fixture resolver modules define, minus the compile-stage pair
@@ -658,7 +661,7 @@ def tests_invoked(recipes, names):
     return out
 
 
-ID_RE = re.compile(r'require_compile_check(?:_bin)?\(\s*"([A-Za-z0-9_]+)"')
+ID_RE = re.compile(r'require_compile_(?:check(?:_bin)?|verdict)\(\s*"([A-Za-z0-9_]+)"')
 
 
 def stamp_ids_used(test_name):

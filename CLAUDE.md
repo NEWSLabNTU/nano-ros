@@ -438,7 +438,8 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   passes a `spin_once` that never waited.
 - **No compilation inside tests** — never `cargo`/`cmake`/`idf.py`/`west build` at run time. Compile in
   the build stage (`build-test-fixtures` + `examples/fixtures.toml`); the test consumes the prebuilt
-  fixture. "Does it compile?" intent → make it a build-step fixture and assert the artifact. → AGENTS.md Testing.
+  fixture. "Does it compile?" intent → make it a build-step fixture and assert the artifact. "Must it FAIL to
+  compile?" is the same rule: a `*-verdict` row records exit + stderr, the test asserts them (issue 1620). → AGENTS.md Testing.
 - **Fixture builds are LANE-SCOPED (#393):** `just build-test-fixtures lane=<all|native|tier1|tier2|tier2-nightly>`
   narrows both the platform-family fan-out and the manifest rows; the `.fixtures-built` stamp
   records `lane=` + per-coordinate rows, and `_require-fixtures` checks COVERAGE against the run's

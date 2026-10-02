@@ -26,140 +26,50 @@
 //!   only check; the rest of the link is board-specific and lives in
 //!   the per-board overlays under `cmake/board/`.
 //!
-//! ## Why this runs cmake at test time (phase-373 W5 — labelled exception)
+//! ## The configure runs in the BUILD stage (issue 1620)
 //!
-//! CLAUDE.md forbids compilation inside tests, and phase-329 W5 moved that class
-//! to the build stage. This file is the exception, deliberately:
-//!
-//! * It **configures only** (`cmake -S -B`) — no compile, no link. Seconds.
-//! * It asserts the configure **FAILS**, with `NANO_ROS_BOARD` named in the
-//!   FATAL_ERROR. A build-stage fixture cannot express that: a fixture whose
-//!   configure fails fails the BUILD, which is the opposite of the assertion.
-//!
-//! That is the general shape of every remaining run-time-toolchain test here —
-//! `*_misuse`, `negative_diagnostic_registry`, `diagnostic_verbatim`,
-//! `zpico_drift_gate`. Each asserts a diagnostic that only exists on the failure
-//! path, so the artifact the build stage would produce is precisely the artifact
-//! that must not exist. The rule's target is a test that BUILDS ITS OWN FIXTURE
-//! and then uses it; these build nothing they keep.
+//! This file used to configure at test time, as the labelled exception to "No
+//! compilation inside tests": the configure must FAIL, and "a fixture whose
+//! configure fails fails the BUILD". That is true only of a fixture whose
+//! artifact is the configured tree. The fixture here is a VERDICT — the
+//! `cmake_platform_threadx_requires_board` row (`builder =
+//! "cmake-configure-verdict"`, project in `fixtures/cmake_platform_requires_board/`)
+//! configures, records the exit status and stderr, and succeeds whatever cmake
+//! said; the test asserts the recorded verdict. Running it here had also made
+//! this file fail in a full-crate parallel run while passing alone.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use nros_tests::{TestResult, fixtures::require_compile_verdict};
 
-/// Phase 195.D — skip the matrix when the host `nros` build tool isn't
-/// installed. Phase 218 brought the CLI in-tree (`packages/cli/`, built
-/// by `just setup-cli`); the root CMakeLists resolves it from `$NROS_CLI`
-/// / PATH (incl `packages/cli/target/release/` via `activate.sh`) /
-/// `~/.nros/bin` (transitional).
-fn require_codegen_or_skip() {
-    if let Some(p) = std::env::var_os("NROS_CLI")
-        && Path::new(&p).is_file()
-    {
-        return;
-    }
-    if Command::new("nros")
-        .arg("--version")
-        .output()
-        .is_ok_and(|o| o.status.success())
-    {
-        return;
-    }
-    let home = std::env::var_os("NROS_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".nros")));
-    if home.map(|h| h.join("bin/nros").is_file()).unwrap_or(false) {
-        return;
-    }
-    nros_tests::skip!(
-        "nros build tool not installed — run `just setup-cli` + `source ./activate.sh` first"
-    );
-}
-
-const USER_CMAKE_TEMPLATE: &str = r#"cmake_minimum_required(VERSION 3.22)
-project(plat_smoke C)
-
-set(NANO_ROS_PLATFORM @PLATFORM@)
-set(NANO_ROS_RMW     zenoh)
-
-add_subdirectory("@NANO_ROS_ROOT@" nano_ros)
-
-add_executable(plat_smoke main.c)
-target_link_libraries(plat_smoke PRIVATE NanoRos::NanoRos)
-nros_platform_link_app(plat_smoke)
-"#;
-
-const USER_MAIN_C: &str = r#"/* Phase 138.6 smoke test — link-correctness only. */
-#include <nros/init.h>
-
-int main(void) {
-    nros_support_t support = nros_support_get_zero_initialized();
-    (void)support;
-    return 0;
-}
-"#;
-
-// -----------------------------------------------------------------------
 // POSIX dispatch + cross-compile platforms intentionally have no smoke cell
-// here:
-// - The POSIX §A path (configure + build + `nros_platform_link_app`) is
-//   covered by `cmake_add_subdirectory::cmake_add_subdirectory_smoke`, which
-//   was a near-identical clean configure+build of the same stack; Phase 182.2
-//   merged the two and kept the add_subdirectory variant (it carries the same
-//   `nros_platform_link_app(target)` assertion now).
-// - Cross-compile platforms (zephyr, freertos, nuttx, threadx) are covered by
-//   the real C/C++ example builds + `rtos_e2e` + the Phase 139
-//   `integrations/<rtos>/` shells (see the module header). Their placeholder
-//   cells only ever `skip!`ed and were removed.
-// The one remaining cell below is the non-overlapping FATAL_ERROR check.
-// -----------------------------------------------------------------------
+// here — see the module header. The one remaining cell is the
+// non-overlapping FATAL_ERROR check.
 
 #[test]
-fn cmake_platform_threadx_requires_board() {
-    require_codegen_or_skip();
+fn cmake_platform_threadx_requires_board() -> TestResult<()> {
     // Phase 150.D — rewritten from the original
     // `cmake_platform_baremetal_requires_board` after Phase 138
     // collapsed "baremetal" into per-board platform values
     // (`freertos_armcm3`, `threadx_linux`, `threadx_riscv64`,
     // `threadx`+board, …). The only platform whose CMakeLists.txt
     // still requires a separate `NANO_ROS_BOARD` value today is
-    // `threadx` (lines 73-81 of `packages/api/nros-c/CMakeLists.txt`),
-    // which disambiguates the std-vs-no_std split between
+    // `threadx`, which disambiguates the std-vs-no_std split between
     // `threadx-linux` (host libc) and `rv-virt-threadx` (bare-metal).
     //
     // Verifies: `NANO_ROS_PLATFORM=threadx` without `NANO_ROS_BOARD`
     // FATAL_ERRORs at configure time and the error message mentions
     // NANO_ROS_BOARD.
-    let root = nros_tests::project_root();
-    let tmp = root.join("tmp").join("phase-150-smoke-threadx-noboard");
-    if tmp.exists() {
-        fs::remove_dir_all(&tmp).expect("clear previous tmp dir");
-    }
-    let user = tmp.join("user_project");
-    let build = tmp.join("build");
-    fs::create_dir_all(&user).expect("create user_project dir");
-    let cmake_body = USER_CMAKE_TEMPLATE
-        .replace("@PLATFORM@", "threadx")
-        .replace("@NANO_ROS_ROOT@", root.to_str().unwrap());
-    fs::write(user.join("CMakeLists.txt"), cmake_body).expect("write user CMakeLists.txt");
-    fs::write(user.join("main.c"), USER_MAIN_C).expect("write user main.c");
-
-    let configure = Command::new("cmake")
-        .args(["-S", user.to_str().unwrap(), "-B", build.to_str().unwrap()])
-        .output()
-        .expect("failed to invoke cmake configure");
-    let stderr = String::from_utf8_lossy(&configure.stderr);
-    if configure.status.success() {
-        panic!(
-            "expected NANO_ROS_PLATFORM=threadx without NANO_ROS_BOARD to FATAL_ERROR at configure time, but cmake exited 0.\nstdout:\n{}\nstderr:\n{}",
-            String::from_utf8_lossy(&configure.stdout),
-            stderr
-        );
-    }
+    let v = require_compile_verdict("cmake_platform_threadx_requires_board")?.outcome;
     assert!(
-        stderr.contains("NANO_ROS_BOARD"),
-        "expected the FATAL_ERROR message to mention NANO_ROS_BOARD; got:\n{stderr}"
+        !v.success(),
+        "expected NANO_ROS_PLATFORM=threadx without NANO_ROS_BOARD to FATAL_ERROR at \
+         configure time, but cmake exited 0.\nstdout:\n{}\nstderr:\n{}",
+        v.stdout,
+        v.stderr
     );
+    assert!(
+        v.stderr.contains("NANO_ROS_BOARD"),
+        "expected the FATAL_ERROR message to mention NANO_ROS_BOARD; got:\n{}",
+        v.stderr
+    );
+    Ok(())
 }

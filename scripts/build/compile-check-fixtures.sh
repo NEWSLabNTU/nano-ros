@@ -96,6 +96,30 @@ post_stage() {
             # `model =` arm still works during its window; resolves the BUILD
             # artifact (the sync below materialises it) via the ladder.
             printf '//! n9 form 4 (all explicit: board + explicit model file — DEPRECATED arm).\n\nnros::main!(\n    board = ::nros_board_linux::LinuxBoard,\n    model = "demo_bringup:config/system_model.yaml",\n);\n' > "$main_rs" ;;
+        # issue 1620 — the `nros::main!` misuse VERDICTS (`cargo-check-verdict`
+        # rows). These used to be `cargo check`s run by
+        # `native_main_macro_misuse.rs` at TEST time; the test now reads the
+        # verdict this stage records. Each must FAIL to compile, and the test
+        # asserts the diagnostic in the recorded stderr.
+        main_macro_misuse_custom_tasks)
+            printf 'nros::main!(custom_tasks = [adc_sample, ui_redraw]);\n' > "$main_rs" ;;
+        main_macro_misuse_custom_tasks_empty)
+            printf 'nros::main!(custom_tasks = []);\n' > "$main_rs" ;;
+        main_macro_misuse_unknown_board)
+            # The entry states its board in the `system.toml` beside the
+            # manifest (phase-445 W5). Refuse a no-op rewrite: a fixture edit
+            # that drops the `board = "native"` line would otherwise turn this
+            # row into a second `nros::main!()` form proof that "fails" for
+            # whatever unrelated reason it fails.
+            local sys_toml="$staged/src/demo_entry/system.toml"
+            grep -q '^board = "native"$' "$sys_toml" || {
+                echo "compile-check: $id: no \`board = \"native\"\` line in $sys_toml to rewrite" >&2
+                return 2
+            }
+            sed -i 's/^board = "native"$/board = "frobnicator"/' "$sys_toml"
+            printf 'nros::main!();\n' > "$main_rs" ;;
+        main_macro_resolves_from_inputs|main_macro_rebuilds_on_model_touch)
+            printf 'nros::main!(model = "demo_bringup");\n' > "$main_rs" ;;
         orch_tiers_single)
             # Strip the tier table so the macro takes the legacy single-tier
             # BoardEntry::run path (RFC-0032 §5 gate G.4).
@@ -147,6 +171,35 @@ PYSTRIP
 # can never be recorded against the next.
 _cc_resolver_arg=""
 
+# Rows whose build must NOT run `nros sync` — issue 1620.
+#
+# `stage_tree` syncs any staged tree with a `package.xml`, because that is what a
+# user build does. Two kinds of row ask a different question and would be
+# answered wrongly by a sync:
+#
+#   * `main_macro_resolves_from_inputs` asserts the macro resolves the model
+#     from `system.toml` + the launch file ITSELF when no build system produced
+#     one (issue 0414). A sync is exactly the build system it must not have.
+#   * the `main_macro_misuse_*` verdicts reproduce a plain `cargo check` of a
+#     misused entry. `unknown_board` would make the SYNC refuse first, so the
+#     row would record nros's refusal instead of the macro's diagnostic.
+_cc_row_skips_sync() {
+    case "$1" in
+        main_macro_resolves_from_inputs | main_macro_misuse_*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Rows whose build runs `nros-launch-resolve` OUTSIDE `nros sync` — issue 1454's
+# stamp question, asked of a row that skips the sync. The macro resolves the
+# bringup itself here, so the stamp must name the resolver all the same.
+_cc_row_resolves_in_macro() {
+    case "$1" in
+        main_macro_resolves_from_inputs) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 stage_tree() {
     local id="$1" src="$2" staged="$3"
     _cc_resolver_arg=""
@@ -173,7 +226,13 @@ stage_tree() {
     # INPUTS (main.rs, system.toml) are what gets resolved.
     # Any staged pkg (package.xml) can be a bringup — system.toml is OPTIONAL
     # to the resolver (o4's bringup is launch/ + package.xml only).
-    if find "$staged" -maxdepth 3 -name package.xml -print -quit 2>/dev/null | grep -q .; then
+    if _cc_row_skips_sync "$id"; then
+        # An `if`, not `&&`: as the last command of this branch a false `&&`
+        # list would become stage_tree's return status and trip errexit.
+        if _cc_row_resolves_in_macro "$id"; then
+            _cc_resolver_arg="--resolver"
+        fi
+    elif find "$staged" -maxdepth 3 -name package.xml -print -quit 2>/dev/null | grep -q .; then
         local _sync_cli="${NROS_CLI_BIN:-${NROS_CLI:-$(command -v nros || true)}}"
         if [ -z "$_sync_cli" ]; then
             echo "compile-check: nros CLI not found — cannot resolve staged models (just setup-cli)" >&2
@@ -243,6 +302,127 @@ stage_and_build() {
     nros_write_compile_ok "$staged" "$_cc_resolver_arg"
     # profile-literal-ok: dir vocabulary: echoes the manifest's target-directory name
     echo "   built $staged/$manifest_dir/target/debug/$pkg"
+}
+
+# --- VERDICT builders (issue 1620) ------------------------------------------
+#
+# "No compilation inside tests" had one standing exception: a FAIL-path
+# diagnostic, on the grounds that "a build-stage fixture cannot express a
+# compile that must fail — a fixture whose configure fails fails the BUILD".
+# That conflated two things. What a must-fail test needs from the build stage is
+# not an artifact of a SUCCESSFUL compile; it is the compile's VERDICT — its exit
+# status and its diagnostics — and a verdict is an artifact like any other.
+#
+# So these builders run the compile, record what it said, and succeed whatever
+# it said. The test asserts the verdict: "it failed, with THIS diagnostic", or,
+# for the positive rows, "it succeeded" (plus whatever else the stderr shows).
+# The build stage never decides pass/fail for a verdict row — that would put the
+# assertion in the wrong place and turn an expected diagnostic into a red build.
+#
+# Recorded under the row's compile-check dir:
+#   .verdict          the STAMP: date, the resolver line (issue 1454) and
+#                     `exit=<status>`. Written LAST, so a crashed builder leaves
+#                     no stamp and the resolver reports the row as not built.
+#   verdict.stdout    / verdict.stderr — the compile's own output, verbatim.
+#   verdict.prelude.* — for a row that compiles twice (`*_rebuilds_on_*`), the
+#                     FIRST compile's verdict; the files above are the second's.
+#
+# Infrastructure failures (no source tree, a sync that refuses, cmake absent)
+# still fail the BUILD — those are not verdicts about the code under test.
+
+# Write the `.verdict` stamp. $1 staged dir, $2 the recorded compile's exit
+# status; `_cc_capture` has already put its stdout/stderr/exit in place.
+_cc_write_verdict_stamp() {
+    local staged="$1" status="$2"
+    {
+        date -u +%Y-%m-%dT%H:%M:%SZ
+        if [ "$_cc_resolver_arg" = "--resolver" ]; then
+            printf 'tool:nros-launch-resolve=%s\n' \
+                "$(nros_launch_resolver_identity "$repo_root" || echo absent)"
+        fi
+        printf 'exit=%s\n' "$status"
+    } > "$staged/.verdict"
+}
+
+# Run one compile, capturing its verdict under $2 (a file prefix). Never fails on
+# the compile's status — returns 0 and records it.
+_cc_capture() {
+    local staged="$1" prefix="$2"; shift 2
+    local rc=0
+    ( cd "$staged" && "$@" ) > "$staged/$prefix.stdout" 2> "$staged/$prefix.stderr" || rc=$?
+    printf '%s\n' "$rc" > "$staged/$prefix.exit"
+    _cc_last_rc="$rc"
+}
+
+# Per-row step BEFORE the recorded compile. Only the rebuild-tracking row has
+# one: it compiles once (recorded as the prelude), then touches the model the
+# sync produced, so the recorded compile is the one that must RE-check.
+_cc_verdict_prelude() {
+    local id="$1" staged="$2"; shift 2
+    case "$id" in
+        main_macro_rebuilds_on_model_touch)
+            local model="$staged/build/nros/models/demo_bringup/system_model.yaml"
+            [ -f "$model" ] || {
+                echo "compile-check: $id: the sync wrote no model at $model" >&2
+                return 2
+            }
+            _cc_capture "$staged" verdict.prelude "$@"
+            # Past cargo's mtime resolution, then rewrite the model in place —
+            # the same bytes, a new mtime: what `nros sync` does on a re-run.
+            sleep 1.1
+            cp "$model" "$model.tmp" && mv "$model.tmp" "$model"
+            ;;
+        *) : ;;
+    esac
+}
+
+stage_and_check_verdict() {
+    local id="$1" src="$2"
+    local staged="$out_root/$id"
+    echo "== compile-verdict: $id =="
+    stage_tree "$id" "$src" "$staged"
+    rm -f "$staged/.verdict" "$staged"/verdict.*
+    # Hermetic: an inherited NROS_MODEL_DIR would answer the model question for
+    # the macro, which is the very question `main_macro_resolves_from_inputs`
+    # asks (issue 0414) — and would point the others at someone else's model.
+    local cmd=(env -u NROS_MODEL_DIR cargo check --color never --manifest-path Cargo.toml)
+    _cc_verdict_prelude "$id" "$staged" "${cmd[@]}"
+    _cc_capture "$staged" verdict "${cmd[@]}"
+    _cc_write_verdict_stamp "$staged" "$_cc_last_rc"
+    echo "   recorded $staged/.verdict (exit=$_cc_last_rc)"
+}
+
+# cmake configure verdict. A FAILED configure writes neither
+# `CMakeFiles/Makefile.cmake` nor a `build.ninja`, so the dep closure
+# `compile-check-signature.sh` reads (CMAKE_MAKEFILE_DEPENDS / the RERUN_CMAKE
+# edge) does not exist for exactly these rows — and the files they exist to
+# test (`cmake/NanoRosNodeRegister.cmake`, the root `CMakeLists.txt`) are outside
+# the row's own dir. Without a measured closure an edit to the module under test
+# would leave a museum verdict looking fresh (issue 0196). CMake's own trace
+# records every listfile it EXECUTED, failure or not, so the closure comes from
+# there, as a Make-syntax `verdict.d` the signature's dep-info reader already
+# understands.
+stage_and_configure_verdict() {
+    local id="$1" src="$2"
+    local staged="$out_root/$id"
+    echo "== configure-verdict: $id =="
+    command -v cmake >/dev/null 2>&1 || {
+        echo "configure-verdict: cmake absent — row $id records a cmake verdict and cannot be built without it" >&2
+        exit 2
+    }
+    stage_tree "$id" "$src" "$staged"
+    rm -f "$staged/.verdict" "$staged"/verdict.*
+    rm -rf "$staged/build"
+    local cmd=(cmake -S . -B build
+        --trace-format=json-v1 --trace-redirect="$staged/verdict.trace.json")
+    # A fixture holding per-case bodies (`cases/<id>.cmake`) is told which one.
+    [ -d "$staged/cases" ] && cmd+=("-DNROS_VERDICT_CASE=$id")
+    _cc_capture "$staged" verdict "${cmd[@]}"
+    python3 "$repo_root/scripts/build/cmake-trace-deps.py" \
+        "$staged/verdict.trace.json" "$staged/verdict.d"
+    rm -f "$staged/verdict.trace.json"
+    _cc_write_verdict_stamp "$staged" "$_cc_last_rc"
+    echo "   recorded $staged/.verdict (exit=$_cc_last_rc)"
 }
 
 # cmake fixtures (id : template-dir relative to repo). Configure + build a C/C++
@@ -508,7 +688,9 @@ id_filter="${NROS_FIXTURE_ID:-}"
 # filter already follows one line down: a narrowing that selects nothing must
 # say so rather than "succeed".
 builder_filter="${NROS_FIXTURE_BUILDER:-}"
-_cc_all_builders="cargo-check cargo-clippy cargo-build cross-build cmake-configure cxx-syntax"
+# The ONE spelling of this script's builder set — the id guard, the pool fan-out
+# and this validation all iterate it (they were three literal copies).
+_cc_all_builders="cargo-check cargo-clippy cargo-check-verdict cargo-build cross-build cmake-configure cmake-configure-verdict cxx-syntax"
 if [ -n "$builder_filter" ]; then
     for _cc_want in ${builder_filter//,/ }; do
         case " $_cc_all_builders " in
@@ -542,7 +724,7 @@ compile_check_records() {
 # broken invocation; the guard owns the distinction.
 if [ -n "$id_filter" ]; then
     _cc_matched=0
-    for _cc_builder in cargo-check cargo-clippy cargo-build cross-build cmake-configure cxx-syntax; do
+    for _cc_builder in $_cc_all_builders; do
         # Deliberately NOT `compile_check_records` — that honours the builder
         # narrowing, and "this id is in a builder you did not ask for" is not
         # the same fact as "this id does not exist" (issue 0406's distinction).
@@ -586,7 +768,7 @@ fi
 # tokens (NROS_JOBSERVER=1) or pinned make 4.4 is absent.
 if [ -z "$id_filter" ] && [ "${NROS_COMPILE_CHECK_POOL:-1}" = "1" ]; then
     _cc_ids=""
-    for _cc_builder in cargo-check cargo-clippy cargo-build cross-build cmake-configure cxx-syntax; do
+    for _cc_builder in $_cc_all_builders; do
         while IFS=$'\x1f' read -r _id _rest; do
             [ -n "$_id" ] || continue
             case " $_cc_ids " in *" $_id "*) continue ;; esac
@@ -608,7 +790,7 @@ if [ -z "$id_filter" ] && [ "${NROS_COMPILE_CHECK_POOL:-1}" = "1" ]; then
         # aggregate itself — otherwise the last unit's counts (check=1 …) read
         # as the whole stage's.
         if [ "$_cc_rc" = "0" ]; then
-            echo "compile-check fixtures built: $(printf '%s\n' $_cc_ids | wc -l) row(s) across 5 builders."
+            echo "compile-check fixtures built: $(printf '%s\n' $_cc_ids | wc -l) row(s) across $(printf '%s\n' $_cc_all_builders | wc -l) builders."
         fi
         exit $_cc_rc
     fi
@@ -706,6 +888,22 @@ while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     run_fixture "$out_root/$id" "$id" "$builder" stage_and_clippy "$id" "$dir"
     write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
 done < <(_lane_on cargo-clippy && compile_check_records cargo-clippy || true)
+
+# cargo-check-verdict (issue 1620) — record the compile's verdict, never fail on it.
+while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
+    [ -n "$id" ] || continue
+    run_fixture "$out_root/$id" "$id" "$builder" stage_and_check_verdict "$id" "$dir"
+    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+done < <(_lane_on cargo-check-verdict && compile_check_records cargo-check-verdict || true)
+
+# cmake-configure-verdict (issue 1620). Stamps under compile-check/<id>, NOT
+# cmake-fixtures/<id>: it shares the verdict contract with the cargo rows above,
+# and the signature/stale probe key their dir on `builder = cmake-configure`.
+while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
+    [ -n "$id" ] || continue
+    run_fixture "$out_root/$id" "$id" "$builder" stage_and_configure_verdict "$id" "$dir"
+    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+done < <(_lane_on cmake-configure-verdict && compile_check_records cmake-configure-verdict || true)
 
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue
@@ -1135,12 +1333,13 @@ fi
 
 # phase-319 W2 — counts come from the manifest now, not from array lengths.
 check_n="$(compile_check_records cargo-check | wc -l)"
+verdict_n="$(( $(compile_check_records cargo-check-verdict | wc -l) + $(compile_check_records cmake-configure-verdict | wc -l) ))"
 build_n="$(compile_check_records cargo-build | wc -l)"
 # Issue 0695 — a lane that was SKIPPED says so here. `cmake=0` used to be the
 # summary for "skipped every one of them" AND for "there were none to build",
 # and a reader downstream cannot tell those apart from an artifact that isn't
 # there either way.
-echo "fixtures built (check=$check_n build=$build_n cmake=$(_lane_count "$cmake_n" "$cmake_skipped") cxx=$(_lane_count "$cxx_n" "$cxx_skipped") cargo-check=$cargo_check_n px4=$(_lane_count "$px4_n/$((px4_n + px4_fail_n))" "$px4_skipped"))."
+echo "fixtures built (check=$check_n verdict=$verdict_n build=$build_n cmake=$(_lane_count "$cmake_n" "$cmake_skipped") cxx=$(_lane_count "$cxx_n" "$cxx_skipped") cargo-check=$cargo_check_n px4=$(_lane_count "$px4_n/$((px4_n + px4_fail_n))" "$px4_skipped"))."
 if [ "${#lane_skips[@]}" -gt 0 ]; then
     echo "compile-check: ${#lane_skips[@]} lane(s) SKIPPED — their fixtures are NOT built:" >&2
     printf '  - %s\n' "${lane_skips[@]}" >&2

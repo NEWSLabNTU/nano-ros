@@ -8,10 +8,10 @@
 //! > truncation. CI test injects a synthetic compile error and greps
 //! > for the original message.
 //!
-//! This regression test stages two tiny stock-tooling fixtures (one
-//! Rust crate, one CMake project) that each contain a deliberate
-//! compile error and asserts the well-known diagnostic prefix appears
-//! verbatim on stderr after a vanilla `cargo check` / `cmake -B build`.
+//! Two tiny stock-tooling fixtures (one Rust crate, one CMake project)
+//! each contain a deliberate compile error; this regression test asserts
+//! the well-known diagnostic prefix appears verbatim on the stderr of a
+//! vanilla `cargo check` / `cmake -B build`.
 //!
 //! The contract being protected is the §Non-Goals rule: nano-ros never
 //! wraps, aggregates, or truncates the underlying toolchain's
@@ -19,82 +19,31 @@
 //! rustc / cmake error into a "build failed" summary, these tests
 //! regress.
 //!
-//! Both `cargo` and `cmake` are tier-0 SDK requirements (`just doctor`
-//! refuses to proceed without them), so this test does NOT carry a
-//! `[SKIPPED]` path — a missing toolchain is a hard fail. The clang
-//! variant is intentionally folded into the rustc path: rustc's own
-//! E0432 emission is identical to a frontend diagnostic and exercises
-//! the same "pass stderr through unchanged" contract.
+//! **Both compiles run in the BUILD stage** (issue 1620): the
+//! `diagnostic_rustc_verbatim` (`cargo-check-verdict`) and
+//! `diagnostic_cmake_verbatim` (`cmake-configure-verdict`) rows stage each
+//! fixture, run a vanilla `cargo check` / `cmake -S . -B build`, and record the
+//! exit status and stderr byte for byte. These tests assert the recorded
+//! verdict. That keeps the contract under test — the toolchain's own text,
+//! unwrapped — while removing the compile from test time.
+//!
+//! A missing toolchain fails the fixture BUILD (the builders refuse to record
+//! a verdict without `cmake`), and a missing verdict fails the test hard in a
+//! gated run (issue 0584) — there is no `[SKIPPED]` path, as before: both are
+//! tier-0 SDK requirements (`just doctor`).
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
-
-fn fixture_src(name: &str) -> PathBuf {
-    nros_tests::fixtures::fixture_dir(name)
-}
-
-/// Copy a fixture tree into a fresh tempdir so the `cargo check` /
-/// `cmake -B build` invocation does not leave a `target/` or `build/`
-/// dir inside the source tree.
-fn stage_fixture(name: &str) -> (tempfile::TempDir, PathBuf) {
-    let src = fixture_src(name);
-    assert!(
-        src.is_dir(),
-        "fixture missing: {} — did you delete the diagnostic fixture?",
-        src.display()
-    );
-    let dst = tempfile::tempdir().expect("tempdir");
-    copy_tree(&src, dst.path()).expect("copy fixture");
-    let root = dst.path().to_path_buf();
-    (dst, root)
-}
-
-fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let ty = entry.file_type()?;
-        let from = entry.path();
-        let to = dst.join(entry.file_name());
-        if ty.is_dir() {
-            // Skip any stale build artefacts that leaked into the
-            // source fixture (defensive — `.gitignore` keeps them out
-            // of git, but a local `cargo check` run inside the fixture
-            // would have populated them).
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if nros_tests::treewalk::is_build_output_dir(&name) {
-                continue;
-            }
-            copy_tree(&from, &to)?;
-        } else if ty.is_file() {
-            fs::copy(&from, &to)?;
-        }
-    }
-    Ok(())
-}
+use nros_tests::{TestResult, fixtures::require_compile_verdict};
 
 /// rustc's `error[E0432]: unresolved import` message must reach the
 /// terminal verbatim. We grep stderr for the exact prefix to ensure no
 /// layer between the user and rustc rewrote / truncated it.
 #[test]
-fn rustc_diagnostic_verbatim() {
-    let (_guard, root) = stage_fixture("diagnostic_rustc_fixture");
-
-    let output = Command::new("cargo")
-        .args(["check", "--offline", "--color", "never"])
-        .current_dir(&root)
-        .output()
-        .expect("spawn cargo check");
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
+fn rustc_diagnostic_verbatim() -> TestResult<()> {
+    let output = require_compile_verdict("diagnostic_rustc_verbatim")?.outcome;
+    let (stdout, stderr) = (&output.stdout, &output.stderr);
 
     assert!(
-        !output.status.success(),
+        !output.success(),
         "cargo check unexpectedly succeeded — fixture lost its compile error.\n\
          stdout:\n{stdout}\nstderr:\n{stderr}"
     );
@@ -119,6 +68,7 @@ fn rustc_diagnostic_verbatim() {
          Expected stderr to mention `{span_needle}`.\n\
          stdout:\n{stdout}\nstderr:\n{stderr}"
     );
+    Ok(())
 }
 
 /// CMake's `Could not find a package configuration file provided by ...`
@@ -126,38 +76,12 @@ fn rustc_diagnostic_verbatim() {
 /// rustc variant — we are protecting against any orchestration layer
 /// that swallows a downstream `cmake` failure into a generic summary.
 #[test]
-fn cmake_diagnostic_verbatim() {
-    // Hard fail (not a skip) — `cmake` is a tier-0 SDK requirement per
-    // §Non-Goals "we are not a build system replacement: cmake stays a
-    // hard dep". A missing `cmake` binary is a doctor-level failure,
-    // not a per-test gate.
-    let cmake_present = Command::new("cmake")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    assert!(
-        cmake_present,
-        "cmake binary missing or non-functional — install cmake \
-         (tier-0 dep, see `just doctor`)"
-    );
-
-    let (_guard, root) = stage_fixture("diagnostic_cmake_fixture");
-    let build_dir = root.join("build");
-
-    let output = Command::new("cmake")
-        .args(["-B"])
-        .arg(&build_dir)
-        .arg("-S")
-        .arg(&root)
-        .output()
-        .expect("spawn cmake");
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
+fn cmake_diagnostic_verbatim() -> TestResult<()> {
+    let output = require_compile_verdict("diagnostic_cmake_verbatim")?.outcome;
+    let (stdout, stderr) = (&output.stdout, &output.stderr);
 
     assert!(
-        !output.status.success(),
+        !output.success(),
         "cmake unexpectedly succeeded — fixture lost its find_package error.\n\
          stdout:\n{stdout}\nstderr:\n{stderr}"
     );
@@ -183,4 +107,5 @@ fn cmake_diagnostic_verbatim() {
          Expected stderr to mention `{span_needle}`.\n\
          stdout:\n{stdout}\nstderr:\n{stderr}"
     );
+    Ok(())
 }

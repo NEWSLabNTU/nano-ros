@@ -211,16 +211,27 @@ regeneration that strips a dim (0380) fails structurally instead of silently.
 The cells boot the `ws-realtime` fixtures already in `fixtures.toml`.
 
 **6b. Negative-diagnostic registry.** The E1 "no compilation/failure in tests"
-rule has one sanctioned exception: a diagnostic whose subject MUST fail to
-build/configure cannot be a passing prebuilt fixture, so it runs at test time.
-That set is now an explicit table (module or `fixtures.toml` section) — each
-entry names the tool it invokes (`cmake`/`cargo`/`cc`) and why it cannot be
-prebuilt (`cmake_node_register_misuse`, `cmake_platform_matrix`,
-`native_main_macro_misuse`, `native_orchestration_misuse`,
-`diagnostic_verbatim`, …). A gate greps `tests/` for build-tool invocations and
-fails on any file NOT in the registry (the 0196 rule: gate the class, not the
-known sites). Positive-compile checks do NOT belong here — they move to the
-fixture build stage (the phase's W5).
+rule had one sanctioned exception: a diagnostic whose subject MUST fail to
+build/configure was held to be un-prebuildable, so it ran at test time. That set
+is an explicit table (`negative_diagnostic_registry.rs`) — each entry names the
+tool it invokes (`cmake`/`cargo`/`cc`) and why it cannot be prebuilt — and a gate
+greps `tests/` for build-tool invocations and fails on any file NOT in the
+registry (the 0196 rule: gate the class, not the known sites). Positive-compile
+checks do NOT belong there — they move to the fixture build stage (the phase's
+W5).
+
+**Amended (issue 1620): a must-fail compile is not, by itself, a reason to be
+on the registry.** The premise conflated a fixture whose artifact is the
+compiled output with one whose artifact is the compile's VERDICT. The
+`cargo-check-verdict` / `cmake-configure-verdict` builders run the compile in
+the build stage, record its exit status and stderr, and succeed whatever it
+said; the test asserts the verdict through `require_compile_verdict`.
+`native_main_macro_misuse`, `cmake_platform_matrix`, `cmake_node_register_misuse`
+and `diagnostic_verbatim` moved that way (and `native_orchestration_misuse` was
+deleted as a duplicate of the `orch_tiers_multi` build). A configure verdict's
+dependency closure comes from cmake's own `--trace-format=json-v1` record,
+because a FAILED configure writes neither `Makefile.cmake` nor `build.ninja`.
+What remains registered states what ELSE keeps it at run time.
 
 **Open question 2 resolved (as implemented):** workspace `Mixed` is a
 first-class `Lang` value, NOT a workload — the `Lang` enum in the shipped

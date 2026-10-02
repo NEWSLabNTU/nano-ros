@@ -9,7 +9,8 @@
 //! cmake fn and emit `nros-metadata.json`. These tests inspect the prebuilt JSON
 //! rather than running cmake at run time (issue 0034 / 0041). The negative
 //! reject-diagnostic cases (the configure must FAIL) live in
-//! `cmake_node_register_misuse.rs` (a documented exception).
+//! `cmake_node_register_misuse.rs`, which reads `cmake-configure-verdict` rows
+//! (issue 1620).
 
 fn metadata(id: &str) -> nros_tests::TestResult<String> {
     let p = nros_tests::fixtures::require_cmake_fixture(id, "nros-metadata.json")?;

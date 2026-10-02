@@ -104,7 +104,7 @@ ALLOWLIST: dict[str, tuple[str, ...]] = {
     ),
     "scripts/build/compile-check-fixtures.sh": (
         'if ! rustup target list --installed 2>/dev/null | grep -qx "$target"; then',
-        'if find "$staged" -maxdepth 3 -name package.xml -print -quit 2>/dev/null | grep -q .; then',
+        'elif find "$staged" -maxdepth 3 -name package.xml -print -quit 2>/dev/null | grep -q .; then',
     ),
     "scripts/build/fixture-make-driver.sh": (
         '"$(nros sdk-path make)/bin/make" --version | head -1 | grep -q "4.4" && \\',
