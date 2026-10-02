@@ -70,6 +70,38 @@ verdict is one of:
               upstream correspondent, so a `their-rename` name is prelude-
               eligible; only `extension` is excluded there.
 
+`owed` -- what a `gap` on a name WE DECLARE must carry (issue 1463).
+
+              A `gap` is normally written against a `theirs-only` key, and
+              the correlator closes it: when we ship the name the key moves
+              and `--check` notices. A `gap` whose subject our side already
+              declares (`same`, `systematic`, `arity-only`, `differs`,
+              `ours-only`) is a BEHAVIOUR still owed under a name we ship,
+              and there the correlator has nothing left to move. Such a row
+              MUST carry:
+
+                "owed": {
+                  "what":    "the behaviour still owed, one clause",
+                  "witness": {"file": "<repo-relative path>",
+                              "text": "<literal in that file>"}
+                }
+
+              The witness is a literal that exists in our tree BECAUSE the
+              behaviour is owed -- the refusal message, the fallback, the
+              stub. Doing the work removes it, and `--check` and `--self-test`
+              then fail on the row: delete it, or re-point the witness at
+              what is still owed. Pick text the fix would have to delete,
+              not a line number or a symbol name that survives the fix.
+
+              A DISPOSITION DOES NOT EXEMPT A GAP. The first version of this
+              check exempted every dispositioned `gap`, every `gap` carried
+              one, and `c:log_severity_t` read LANDED / FIXED in the work
+              queue for twelve days. A behaviour bound that is PERMANENT is
+              not a `gap` at all -- it is a `divergence` with its constraint.
+
+              `owed` is refused on any other verdict. Nothing reads the date
+              a row was last re-measured; the witness is what is checked.
+
 This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies
 the rest. `--check` is deliberately not wired into `just check` until then --
 a gate that fails on ~2000 rows from the day it lands is one somebody
