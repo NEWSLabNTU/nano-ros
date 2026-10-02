@@ -117,7 +117,8 @@ line on the configure output. A model that describes no wiring at all declares
 nothing and is skipped. The declared-PARAMETERS header (same render, same
 abstention) got the same union by node FQN. Every image-wide output of the verb
 refuses a second `--model`: a merge of several images' counts was never
-defined (and the one place this configure DOES merge them is issue 1607).
+defined (and the one place this configure DOES merge them is issue 1600, filed
+there as 1607 and folded in).
 
 **The adopter.** `examples/workspaces/cpp`: `system.contract.yaml` declares
 `listener`'s `chatter: { qos: { depth: 1 } }`, and `Listener.cpp` states
@@ -136,8 +137,8 @@ Runtime: `native_robot1_entry` + `native_robot2_entry` (the listener at
 KEEP_LAST(1)) delivered 7 of 7 samples through `rmw_zenohd`. `native_entry`
 itself dies at boot with `NodeError::ExecutorFull` -- PRE-EXISTING, measured
 identically on the main checkout's 2026-09-29 build of the same directory, and
-filed as issue 1607 (the configure's image-wide entity fragment is
-last-entry-wins).
+filed as issue 1607, a duplicate of issue 1600 (the configure's image-wide
+entity fragment is last-entry-wins).
 
 **Gates.** `just check declared-qos-header` case H drives the several-model
 seam end to end -- the union carries the one declaration among three models,

@@ -7,7 +7,7 @@ status: open
 type: bug
 severity: high
 area: [build, cmake]
-related: [1419, 1407, 1199, 1233, phase-412, phase-463]
+related: [1419, 1407, 1199, 1233, 1564, 1607, phase-412, phase-463]
 found: 2026-10-01
 ---
 
@@ -64,7 +64,32 @@ so a census run of `native_entry` stops at the same `ExecutorFull` (issue
 1419's incomplete-census refusal reports it, correctly, as a census that
 cannot confirm anything).
 
-## Direction
+## Also measured (folded in from issue 1607)
+
+Issue 1607 was filed the same day, independently, from issue 1564's work on
+the same workspace, and is this bug. What it adds:
+
+* **It is not new.** The same fragment and the same `ExecutorFull` were
+  measured on a build of `examples/workspaces/cpp` dated 2026-09-29, before
+  either issue's PR.
+* **A test that spawns `native_entry` already fails on it:**
+  `workspace_features::case_12_cpp_logging` exits in 0.4 s. Whether any CI
+  lane currently reports that cell green was not measured.
+* **A second comment states the false rule.**
+  `cmake/NanoRosSizingDescriptor.cmake` says a multi-entry configure's
+  "entity facts take a MAX across models for the same collision"; the
+  inventory FRAGMENT does not. Both comments become true together or not at
+  all.
+* **The reduction has a home.** Issue 1564 gave `nros ws entity-inventory` a
+  repeatable `--model` for the per-component compile-time tables (a union by
+  endpoint), while the image-wide outputs still refuse a second `--model`
+  because merging several images' counts was undefined. A per-kind MAX —
+  `EntityInventory::merged_per_kind_max`, already used for metadata + one
+  model — is the only reduction that cannot under-size; defining it for the
+  image-wide outputs and calling the verb once per configure is one shape of
+  the fix below.
+
+
 
 Fold per entry the way the accumulator already does for
 `nros_record_entity_facts` (max of the counts, union of the infra flags), or
