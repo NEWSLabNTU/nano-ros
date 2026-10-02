@@ -88,7 +88,6 @@ jobs:
             --source micro-xrce-dds-client --source cyclonedds-src
 
       - name: Measure the next-stable delta
-        id: measure
         env:
           CANDIDATE: ${{ inputs.candidate || 'stable' }}
         run: |

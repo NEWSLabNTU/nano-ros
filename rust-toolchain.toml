@@ -20,8 +20,15 @@
 # The cost this buys is a recurring chore, and the risk it creates is drift —
 # a pin that ages silently is how a six-week bump becomes a sixty-site one.
 #
-# This does NOT make any clippy lane merge-gating; that is issue 1445 and a
-# separate decision. A pin stops the surprise, not the gap.
+# What keeps the pin from AGING silently is `.github/workflows/next-stable.yml`
+# (issue 1642): weekly, advisory, it runs the merge-gating lint gates under
+# this pin and under the current `stable` and reports the sites a bump would
+# cost. Green there means the bump is free — take it. It gates nothing.
+#
+# The workspace clippy (`check workspace-all`) and rustdoc gates already gate
+# every pull request; `nros-cpp`'s clippy (`check cpp`, schedule only) does
+# not. (This line used to cite issue 1445 for that; 1445 is an unrelated
+# linker-script bug — see the correction in archived issue 1447.)
 channel = "1.99.0"
 components = ["rustfmt", "clippy", "rust-src", "llvm-tools"]
 # phase-418 418.3 — `armv7r-none-eabi` joins the hard-float triple already
