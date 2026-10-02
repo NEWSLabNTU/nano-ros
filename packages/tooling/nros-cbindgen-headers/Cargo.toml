@@ -41,6 +41,10 @@ host-only-reason = "developer tool, regenerates committed headers on the host"
 # for nothing.
 [dependencies]
 nros-build-helpers = { workspace = true, features = ["cbindgen-drift-check"] }
+# issue 1538 — the issue-1280 rule for `$NROS_REPO_DIR`. Already in every graph
+# this crate is in, through nros-build-helpers, so the edge costs the root lock
+# one line and moves no version.
+nros-build-paths = { path = "../nros-build-paths" }
 nros-zpico-build = { path = "../../rmw/zenoh/nros-zpico-build" }
 
 [lints]
