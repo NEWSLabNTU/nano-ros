@@ -1,7 +1,9 @@
 # Phase 470 — example layout unification
 
-**Status (2026-10-03). W1–W6 LANDED; W7 open; three entry packages remain
-hand-written, each for a recorded reason.** W5 is done as far as a build can
+**Status (2026-10-03). COMPLETE — archived. W1–W6 LANDED; W7 and every
+remaining gap MOVED to [phase-477](../phase-477-example-gaps-and-unreported-lanes.md),
+regrouped by theme. Three entry packages remain hand-written, each for a recorded
+reason (now phase-477 W1).** W5 is done as far as a build can
 prove it: the generator reaches Rust and C/C++, and hand-written Zephyr entries
 went from 15 to 3 (W5.b1 PR #1380, W5.b2, W5.b3 PR #1511). The three left are
 named in W5 below with what unblocks each — none is a generator gap. The
@@ -14,8 +16,8 @@ leaf that builds and boots, and in doing so falsified this phase's own
 link-ownership rule (see below). Gives `examples/` a named,
 measured taxonomy; collapses the shapes that differ for no reason; and documents
 the ones that differ for a reason. Implements no new RFC — it finishes
-[RFC-0026](../design/0026-example-directory-layout.md) (standalone copy-out leaves)
-and [RFC-0098](../design/0098-generated-leaf-build-config.md) D9 (entries are
+[RFC-0026](../../design/0026-example-directory-layout.md) (standalone copy-out leaves)
+and [RFC-0098](../../design/0098-generated-leaf-build-config.md) D9 (entries are
 GENERATED) across the trees that were never migrated to them.
 
 **Prior:** phase-331 (workspace consolidation, the `ws-*` dirs), phase-383 W10.a
@@ -386,7 +388,7 @@ Detail, and the full W5.b inheritance list (the five `just/zephyr-ci.just` guard
 still keyed on an entry package — one of which gates `--include-workspace-entry`
 for the whole zephyr lane — the `conf_files` row key that must go, and the
 `zephyr_application_is_generated` predicate the fixture manifest now shares with
-the builder) → [issue 1288](../issues/1288-zephyr-rust-workspace-entries-not-generated.md),
+the builder) → [issue 1288](../../issues/1288-zephyr-rust-workspace-entries-not-generated.md),
 section "2026-09-28".
 
 **DONE (2026-10-03) — W5.b.** Three parts, each built at W5.a's bar (the package
@@ -495,6 +497,8 @@ macros do not substitute on bare metal — `nros-baremetal-common`'s `vsnprintf`
 copies the format verbatim, deliberately — so `"n=%d"` prints literally.
 
 ### W7 — the node-package invariance gate
+
+**MOVED to phase-477 W4 (2026-10-03).** Kept below as filed.
 
 Issue 1509, filed and deferred. A node package documents what it DOES, not which
 platform or RMW carries it. Code-only violations are already **0**; the raw-text

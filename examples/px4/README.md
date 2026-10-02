@@ -44,7 +44,7 @@ that do not share PX4's constraints. Not worth it.
 Measured in
 [issue 1516](../../docs/issues/archived/1516-px4-is-a-foreign-build-integration.md);
 written down by
-[phase-470](../../docs/roadmap/phase-470-example-layout-unification.md) W4.
+[phase-470](../../docs/roadmap/archived/phase-470-example-layout-unification.md) W4.
 
 ## Prerequisites
 

@@ -8,40 +8,37 @@ structure is therefore kept parallel on purpose (phase-331 W2b, RFC-0066).
 
 The whole-tree taxonomy lives in
 [`examples/README.md` § Layout classes](../README.md#layout-classes) — two
-questions (*who owns the link?* and *leaf or workspace?*), six classes, and the
+questions (*who owns the link?* and *leaf or workspace?*), the classes, and the
 two that deliberately do not exist. This file owns the **workspace** half of it.
 Survey and work items:
-[phase-470](../../docs/roadmap/phase-470-example-layout-unification.md).
+[phase-470](../../docs/roadmap/archived/phase-470-example-layout-unification.md) (done); open gaps:
+[phase-477](../../docs/roadmap/phase-477-example-gaps-and-unreported-lanes.md).
 
 Three classes reach this directory, and **the class is a property of an IMAGE,
 not of a directory**:
 
 | class | the image's entry | recognise it by |
 | --- | --- | --- |
-| **1** | **generated** per `[image.*]` (RFC-0098 D9) | `.colcon_workspace` + `src/*_bringup/system.toml`, and no `*_entry` package claims the row |
-| **1z** | a **hand-written** `src/*_entry` package ([RFC-0085](../../docs/design/0085-zephyr-workspace-and-west-handoff.md) D4 — a Zephyr image NAMES its entry) | the row carries `entry = "<pkg>"`, or the derived spelling lands on a package that exists; every one of them calls `find_package(Zephyr)` |
+| **1** | **generated** per `[image.*]` (RFC-0098 D9), built by cargo or cmake | `.colcon_workspace` + `src/*_bringup/system.toml`; the image's board is not a Zephyr board |
+| **1z** | built through **west** — a Zephyr image. Its west application is **generated** (phase-470 W5) unless a hand-written `src/*_entry` package still claims the row ([RFC-0085](../../docs/design/0085-zephyr-workspace-and-west-handoff.md) D4) | the image's board resolves to a Zephyr board; a still-hand-written one also carries `entry = "<pkg>"` or lands on an existing `<id>_entry` package calling `find_package(Zephyr)` |
 | **1b** | none — no bringup at all | `.colcon_workspace` with no `*_bringup`; `nros build` builds every package in dependency order, colcon's default. Both members live in `examples/templates/`, not here |
 
-So `rust/` is not "a class": it declares 17 `[image.*]` rows, 16 of them class 1
-and one — `zephyr_robot1` — class 1z. `[image.zephyr]` was the seventeenth until
-phase-470 W5.a taught `nros build` to generate a west application; it is class 1
-now, and it is the first Zephyr row that is.
+So `rust/` is not "a class": it declares 17 `[image.*]` rows, 15 of them
+class 1 and two — `zephyr` and `zephyr_robot1` — class 1z. Of those two, only
+`zephyr_robot1` still has a hand-written entry.
 
-**1z is the only hand-written entry shape left, and it is Zephyr by
-construction**, not by coincidence: the entry itself is derivable, and until
-phase-470 W5.a the west application around it was not
-([issue 1288](../../docs/issues/1288-zephyr-rust-workspace-entries-not-generated.md)).
-Measured 2026-09-27: **15** entry packages serving **16** Zephyr image rows
-across 10 workspaces — 7 Rust, 8 C/C++, all 15 calling `find_package(Zephyr)`,
-`fvp_entry` included. `realtime-c`'s single `zephyr_entry` serves the
-`[image.zephyr]` row of both `demo_bringup` and `smp_bringup`, which is why the
-two counts differ by one.
+**1z is defined by the ROAD, not by who wrote the entry.** It used to read "a
+hand-written Zephyr entry", which made it shrink to zero as phase-470 W5
+migrated rows — a class that exists only because something is unfinished, which
+is exactly what [`examples/README.md`](../README.md#two-classes-that-deliberately-do-not-exist)
+refuses to name ("class 2"). A hand-written entry is a migration STATE of a 1z
+image, not a class.
 
-W5.a landed the generator and migrated ONE of them — `rust`'s `[image.zephyr]`.
-W5.b3 extended it to the C/C++ shape and migrated six more: `c`, `cpp` (both
-its Zephyr images), `derived-tiers-cpp`, `mixed`, `realtime-cpp`. **Recount with
-the commands below rather than reading a number here** — W5.b is landing in
-parallel waves and any figure written down is stale by the next one.
+That migration (issue 1288) took 15 hand-written entry packages, serving 16
+Zephyr image rows, down to a handful — W5.a for the first Rust image, W5.b1/b2
+for the rest of Rust, W5.b3 for six C/C++ images. Each one still hand-written is
+blocked by something other than the generator, recorded in issue 1288. **Recount
+with the commands below rather than reading a number here.**
 
 Two C/C++ packages are deliberately NOT migrated, and both reasons are about
 the generated application's ADDRESS rather than its content. `realtime-c`'s one

@@ -98,7 +98,8 @@ An example's layout is decided by **two** questions, and only the second has
 ever been written down. That is why the first keeps getting re-derived from
 whichever tree shows it most vividly, and re-attributed to that tree's platform.
 (Survey and work items:
-[phase-470](../docs/roadmap/phase-470-example-layout-unification.md).)
+[phase-470](../docs/roadmap/archived/phase-470-example-layout-unification.md) (done); open gaps:
+[phase-477](../docs/roadmap/phase-477-example-gaps-and-unreported-lanes.md).)
 
 ### Question 1 — who owns the link?
 
@@ -136,7 +137,7 @@ what gets called "the Zephyr layout":
 
 | | Rust leaf files | trees |
 | --- | --- | --- |
-| **cargo owns the link** | `Cargo.toml` + `src/main.rs` (plus `src/lib.rs` where the node logic is shared) | `native`, `bridges`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `esp32-c3-baremetal`, `qemu-armv7a-nuttx`, `threadx-linux` |
+| **cargo owns the link** | `Cargo.toml` + `src/main.rs` (plus `src/lib.rs` where the node logic is shared) | `native`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `esp32-c3-baremetal`, `qemu-armv7a-nuttx`, `threadx-linux` |
 | **cmake owns the link** | `CMakeLists.txt` + `src/lib.rs` + `src/app_main.rs`; cargo emits a **staticlib**, and cmake links it into an image whose startup is C | `zephyr/rust/*`, `rv-virt-threadx/rust/*` |
 
 The predicate is mechanical, so recount rather than trusting the lists above —
@@ -166,9 +167,8 @@ ThreadX RV64 board's `app_main!` exports `app_main()`.
 
 A **leaf** is `<platform>/<language>/<example>/` — one standalone copy-out
 package ([RFC-0026](../docs/design/0026-example-directory-layout.md)), its
-deployment in its own `system.toml`. `bridges/<language>/<name>/` is a leaf too:
-it drops the *platform* level because a gateway is a host process, and keeps
-everything else, so it answers question 1 like any other leaf.
+deployment in its own `system.toml` — except class 3a below, which owns its own
+`main` and has none.
 
 A **workspace** is a directory of packages with no root build file: `src/<pkg>/`
 plus a bringup that declares the `[image.*]` rows, and the entry package for
@@ -181,10 +181,11 @@ by phase-445 W5).
 | class | shape | how to recognise it | members |
 | --- | --- | --- | --- |
 | **1** | workspace, generated entry | `.colcon_workspace` + `src/*_bringup/system.toml`; no `*_entry` package claims the image | every workspace under `workspaces/`, for every non-Zephyr `[image.*]` row |
-| **1z** | workspace, Zephyr image | the image row is served by a hand-written `src/*_entry` package calling `find_package(Zephyr)` | **15** entry packages serving **16** Zephyr image rows across 10 workspaces — [issue 1288](../docs/issues/1288-zephyr-rust-workspace-entries-not-generated.md) |
+| **1z** | workspace, Zephyr image | the image row builds through `west`; its application is GENERATED (phase-470 W5) unless a hand-written `src/*_entry` package still claims it | every Zephyr `[image.*]` row. The few still hand-written are each blocked for a recorded reason — [issue 1288](../docs/issues/1288-zephyr-rust-workspace-entries-not-generated.md); count them with the command below, not from this table |
 | **1b** | workspace with **no bringup** | `.colcon_workspace`, no `*_bringup` — builds every package in dependency order, colcon's default | `templates/local-msg-package` (a `system.toml` beside a *package*) and `templates/workspace-shadowing` (none at all) |
-| **3** | leaf, cargo owns the link | leaf has `Cargo.toml`, no `CMakeLists.txt` | the majority of Rust leaves — question 1, first row |
-| **4** | leaf, cmake owns the link | leaf has `CMakeLists.txt` (`+ prj*.conf` on Zephyr) | every C and C++ leaf, necessarily; plus `zephyr/rust/*` and `rv-virt-threadx/rust/*` |
+| **3** | leaf, cargo owns the link, node-class | leaf has `Cargo.toml`, no `CMakeLists.txt`, and a `system.toml` | most Rust leaves (question 1, first row) **and** the cargo-rooted bare-metal C/C++ leaves |
+| **3a** | leaf, cargo owns the link, **application-shaped** | `[package.metadata.nros.application]` in `Cargo.toml`; the leaf owns `main` and its executor; **no `system.toml`**, never built through `nros build` | 16 `native/rust/*` leaves — the RTIC, async, custom-transport, serial, lifecycle and logging demos. They show what the node-class shape cannot express (the imperative executor API, a user-supplied transport, an RTIC app), so they are a class, not a backlog |
+| **4** | leaf, cmake owns the link | leaf has `CMakeLists.txt` (`+ prj*.conf` on Zephyr) | every C and C++ leaf on a platform whose startup is C — all but the bare-metal ones; plus `zephyr/rust/*` and `rv-virt-threadx/rust/*` |
 | **X** | foreign-build integration | no `system.toml` and nothing for `nros build` to generate; a *foreign* build consumes the tree | `examples/px4/` — see below |
 
 **1 and 1z are properties of an IMAGE, not of a directory.** The same workspace
@@ -205,10 +206,12 @@ A name makes a shape look intentional, so these two are recorded as *absent*
 rather than left unnamed for the next survey to invent:
 
 - **"class 2", hand-written entries.** Not a class — it is class 1z before
-  issue 1288. Every one of the 15 hand-written entry packages is a Zephyr west
-  application, and the only reason it is hand-written is that the generator does
-  not reach west yet. A shape that exists because a generator is missing must
-  not get a number that makes it look like a design.
+  issue 1288. The generator reaches west for Rust and C/C++ since phase-470 W5,
+  and the entry packages still hand-written are each blocked by something OTHER
+  than the generator (two bringups sharing one generated directory, a board this
+  host cannot build, a precedence rule with no test) — recorded in issue 1288.
+  A shape that exists because something is unfinished must not get a number
+  that makes it look like a design.
 - **"class 3r", Rust-only leaf families.** Not a class either. It looks like a
   missing platform port on `mps2-an385-baremetal` and `esp32-c3-baremetal`, and
   it is not: the bare-metal heap has existed since RFC-0034 D6 landed, and the
