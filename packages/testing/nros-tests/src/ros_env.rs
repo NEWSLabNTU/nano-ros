@@ -815,17 +815,33 @@ impl DockerRosEnv {
     }
 }
 
+/// A per-edition example binary, through the shared absence funnel (issue 1620).
+///
+/// The three `e2e_setup*` guards each probed `bin.is_file()` and `skip!`ped,
+/// which skipped in every run — a gated one included, where an absent fixture
+/// is a broken promise, not an environment fact (issue 0584 part 2). One
+/// spelling now, and it is the resolvers' own: `require_prebuilt_artifact`
+/// decides, `require` converts.
+fn require_edition_example(
+    bin: std::path::PathBuf,
+    example: &str,
+    remedy: &str,
+) -> std::path::PathBuf {
+    use crate::fixtures::RequireFixture;
+    crate::fixtures::require_prebuilt_artifact(&bin, remedy)
+        .require(&format!("ros-editions example `{example}`"))
+}
+
 /// phase-310 E2E lane guard: resolve the target edition, its per-edition example
 /// binary, a fresh RTPS domain, and a docker env on it. `skip!`s (never a silent
 /// pass) when the fixture, docker, or image is absent.
 pub fn e2e_setup(example: &str) -> (DockerRosEnv, std::path::PathBuf, u8) {
     let ed = test_edition();
-    let bin = example_bin(example, &ed);
-    if !bin.is_file() {
-        crate::skip!(
-            "example `{example}` not built for {ed} — run `just ros_editions build-e2e-fixtures {ed}`"
-        );
-    }
+    let bin = require_edition_example(
+        example_bin(example, &ed),
+        example,
+        &format!("just ros_editions build-e2e-fixtures {ed}"),
+    );
     let domain = crate::unique_ros_domain_id();
     let env = DockerRosEnv::new(&ed, Middleware::Cyclonedds { domain_id: domain });
     if !env.available() {
@@ -1052,12 +1068,11 @@ pub fn e2e_setup_xrce(
     u16,
 ) {
     let ed = test_edition();
-    let bin = example_bin_rmw(example, &ed, Rmw::Xrce);
-    if !bin.is_file() {
-        crate::skip!(
-            "example `{example}` not built for {ed}/xrce — run `just ros_editions build-e2e-fixtures {ed} xrce`"
-        );
-    }
+    let bin = require_edition_example(
+        example_bin_rmw(example, &ed, Rmw::Xrce),
+        example,
+        &format!("just ros_editions build-e2e-fixtures {ed} xrce"),
+    );
     let agent = host_xrce_agent_bin().unwrap_or_else(|| {
         crate::skip!("micro-XRCE Agent not in the nros store — run `nros setup … --rmw xrce`")
     });
@@ -1079,12 +1094,11 @@ pub fn e2e_setup_xrce(
 /// `(zenoh_env, zenoh_bin, domain, locator)`.
 pub fn e2e_setup_zenoh(example: &str) -> (DockerRosEnv, std::path::PathBuf, u8, String) {
     let ed = test_edition();
-    let bin = example_bin_rmw(example, &ed, Rmw::Zenoh);
-    if !bin.is_file() {
-        crate::skip!(
-            "example `{example}` not built for {ed}/zenoh — run `just ros_editions build-e2e-fixtures {ed} zenoh`"
-        );
-    }
+    let bin = require_edition_example(
+        example_bin_rmw(example, &ed, Rmw::Zenoh),
+        example,
+        &format!("just ros_editions build-e2e-fixtures {ed} zenoh"),
+    );
     // The native zpico zenoh node uses a COMPILE-TIME domain (0) — unlike the
     // cyclone path it does not read `ROS_DOMAIN_ID`/`NROS_DOMAIN_ID` at runtime,
     // and the domain is the FIRST keyexpr segment, so the `rmw_zenoh_cpp` peer

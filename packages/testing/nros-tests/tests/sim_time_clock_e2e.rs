@@ -20,7 +20,7 @@
 use std::{path::Path, process::Command, time::Duration};
 
 use nros_tests::{
-    fixtures::{build_sim_clock_listener, build_sim_clock_publisher},
+    fixtures::{RequireFixture, build_sim_clock_listener, build_sim_clock_publisher},
     output::{SIMCLOCK_PUB_STOPPED, SIMCLOCK_REPORT_PREFIX},
     process::ManagedProcess,
 };
@@ -111,22 +111,14 @@ fn spawn_listener(bin: &Path, domain: u8, observe_ms: u64) -> ManagedProcess {
 ///    its cadence.
 #[rstest]
 fn use_sim_time_makes_a_ros_timer_follow_the_clock_publisher() {
+    // issue 1620 — `require`, the one conversion: these two decided the `Err`
+    // themselves and skipped on ANY error, a stale fixture included (0445).
     let publisher_bin = build_sim_clock_publisher()
         .map(Path::to_path_buf)
-        .unwrap_or_else(|e| {
-            nros_tests::skip!(
-                "sim-clock-publisher cyclonedds fixture not built \
-                 (run `just build-test-fixtures`): {e:?}"
-            )
-        });
+        .require("sim-clock-publisher (cyclonedds)");
     let listener_bin = build_sim_clock_listener()
         .map(Path::to_path_buf)
-        .unwrap_or_else(|e| {
-            nros_tests::skip!(
-                "sim-clock-listener cyclonedds fixture not built \
-                 (run `just build-test-fixtures`): {e:?}"
-            )
-        });
+        .require("sim-clock-listener (cyclonedds)");
 
     let domain = nros_tests::unique_ros_domain_id();
     let run_ms = 3000;

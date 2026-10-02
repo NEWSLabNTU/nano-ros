@@ -195,6 +195,46 @@ fn row_binary(fixture_id: &str, root: &Path) -> Option<PathBuf> {
     None
 }
 
+/// The row's built binary, if [`row_binary`] can locate it.
+///
+/// issue 1620 — also counts the rows this run's lane PROMISED
+/// (coordinate-scoped, in lane, no light-tier opt-out) into `promised`, so an
+/// audit that located none of them FAILS instead of skipping. Deliberately not
+/// a per-row failure: `row_binary` is a locator over `artifact_root`, and for
+/// rows whose images land elsewhere (the Zephyr workspace rows share
+/// `examples/workspaces/<ws>/target` with their host siblings while the image
+/// lands in the Zephyr build root) "not located" is not evidence of "not
+/// built". Zero located out of N promised is — either the lane did not build
+/// what it promised, or the locator has rotted, and both are findings.
+fn built_row_binary(
+    row: &nros_tests::fixtures::lane::Row,
+    promised: &mut usize,
+) -> Option<PathBuf> {
+    if nros_tests::fixtures::lane::absent_row_breaks_promise(row) {
+        *promised += 1;
+    }
+    let root = nros_tests::project_root().join(&row.artifact_root);
+    root.is_dir().then(|| row_binary(&row.id, &root)).flatten()
+}
+
+/// The audit located nothing. In a gated run that promised rows, that is a
+/// broken promise and FAILS (issue 0584 part 2 — no `[SKIPPED]` marker, so no
+/// rewrite can count it as a skip). Otherwise nothing was promised, and a skip
+/// is the honest verdict.
+fn none_located(promised: usize, why: &str) -> ! {
+    assert!(
+        promised == 0,
+        "Test fixture binary MISSING for an in-lane coordinate — this run's lane \
+         selected {promised} workspace row(s) and the audit located the built \
+         artifact of none of them ({why}). A gated run already asserted the \
+         lane's fixtures are built, so this is a broken promise, not an \
+         environment skip (issue 0584). Build them (`just build-test-fixtures \
+         lane=<this lane>`), or, if they ARE built, `row_binary` no longer \
+         models where they land."
+    );
+    nros_tests::skip!("no generated entry could be checked here — {why}");
+}
+
 /// Does this workspace declare a `[[bridge]]`?
 ///
 /// A bridge links TWO backends on purpose — `from = "zenoh:zen"`,
@@ -221,6 +261,7 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
     let mut checked = 0usize;
     let mut unreadable = 0usize;
     let mut wrong: Vec<String> = Vec::new();
+    let mut promised = 0usize;
 
     for row in nros_tests::fixtures::lane::manifest_rows() {
         if row.kind != "workspace_fixture" {
@@ -233,14 +274,12 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
         if !BACKENDS.iter().any(|(n, _)| *n == declared) {
             continue;
         }
-        let root = nros_tests::project_root().join(&row.artifact_root);
-        if !root.is_dir() {
-            continue; // not built for this lane
-        }
 
         {
-            let Some(bin) = row_binary(&row.id, &root) else {
-                continue; // not built for this lane
+            // Not located: `built_row_binary` says why that alone fails
+            // nothing, and `none_located` when it does.
+            let Some(bin) = built_row_binary(row, &mut promised) else {
+                continue;
             };
             let Some(counts) = backend_symbols(&bin) else {
                 unreadable += 1;
@@ -286,6 +325,9 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
         }
     }
 
+    if checked == 0 && unreadable == 0 {
+        none_located(promised, "no workspace artifact was located");
+    }
     if checked == 0 {
         nros_tests::skip!(
             "no workspace artifact with readable backend symbols was built for \
@@ -377,18 +419,17 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
     let mut ran = 0usize;
     let mut no_peer: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
+    let mut promised = 0usize;
+    let mut located = 0usize;
 
     for row in nros_tests::fixtures::lane::manifest_rows() {
         if row.kind != "workspace_fixture" {
             continue;
         }
-        let root = nros_tests::project_root().join(&row.artifact_root);
-        if !root.is_dir() {
-            continue; // not built for this lane
-        }
-        let Some(bin) = row_binary(&row.id, &root) else {
-            continue; // not built for this lane
+        let Some(bin) = built_row_binary(row, &mut promised) else {
+            continue;
         };
+        located += 1;
 
         let (status, text) = run_entry(&bin);
         let registered_ok = status.map(|s| s.success()).unwrap_or(false)
@@ -436,6 +477,9 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
         ));
     }
 
+    if located == 0 {
+        none_located(promised, "no workspace_fixture row's artifact was located");
+    }
     assert!(
         failed.is_empty(),
         "{} generated entr{} opened a session and could NOT register {} nodes \

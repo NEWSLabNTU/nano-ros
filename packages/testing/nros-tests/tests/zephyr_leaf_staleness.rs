@@ -19,24 +19,31 @@
 use nros_tests::{
     TestResult,
     fixtures::{
-        Rmw, build_zephyr_cmake_example_rmw, build_zephyr_workspace_c_realtime_entry,
-        build_zephyr_workspace_rust_realtime_entry,
+        RequireFixture, Rmw, build_zephyr_cmake_example_rmw,
+        build_zephyr_workspace_c_realtime_entry, build_zephyr_workspace_rust_realtime_entry,
     },
-    skip,
 };
 use std::{fs, path::PathBuf};
 
-/// A built `zephyr.exe` plus the leaf it came from. Returns `None` when the west
-/// lane has not run here, which is the normal state on a host that never built
-/// Zephyr fixtures.
-fn built_leaf(build_dir: &str, leaf: &str) -> Option<(PathBuf, PathBuf)> {
-    let root = nros_tests::project_root();
-    // issue 1596 — this checkout's build root (the one derivation); the
-    // in-tree `zephyr-workspace/` stopped being where images land long ago.
-    let exe =
-        nros_tests::zephyr::zephyr_build_root().join(format!("{build_dir}/zephyr/zephyr.exe"));
-    let src = root.join(leaf);
-    (exe.is_file() && src.is_dir()).then_some((exe, src))
+/// The leaf a west image is built from, once its RESOLVER has accepted the
+/// image as built and fresh.
+///
+/// issue 1620 — this used to probe `zephyr.exe` itself and return `None`
+/// (→ `skip!`) on a miss, in every run. The resolver already makes that
+/// decision with the lane in hand: out-of-lane is a `lane` skip, absent in an
+/// ungated run is a `fixture not built` skip, and absent for an in-lane
+/// coordinate is a hard failure (issue 0584 part 2). A missing LEAF directory
+/// is a tracked-tree fact, so it is asserted: skipping on it is how a renamed
+/// leaf made this test skip forever (phase-470 W5.b2's note below).
+fn built_leaf(build_dir: &str, leaf: &str, resolve: fn() -> TestResult<PathBuf>) -> PathBuf {
+    let src = nros_tests::project_root().join(leaf);
+    assert!(
+        src.is_dir(),
+        "{build_dir}: leaf {} does not exist — the probe would watch nothing",
+        src.display()
+    );
+    resolve().require(&format!("zephyr west image {build_dir}"));
+    src
 }
 
 /// Editing a leaf's `prj.conf` must flip the verdict to stale, and restoring the
@@ -45,9 +52,7 @@ fn built_leaf(build_dir: &str, leaf: &str) -> Option<(PathBuf, PathBuf)> {
 /// content is NOT stale (otherwise every pull reports the whole lane stale and
 /// the verdict becomes noise nobody reads).
 fn assert_conf_edit_is_seen(build_dir: &str, leaf: &str, resolve: fn() -> TestResult<PathBuf>) {
-    let Some((_exe, src)) = built_leaf(build_dir, leaf) else {
-        skip!("west lane has not built {build_dir} here — nothing to probe");
-    };
+    let src = built_leaf(build_dir, leaf, resolve);
     let conf = src.join("prj.conf");
     assert!(
         conf.is_file(),
@@ -93,11 +98,10 @@ fn assert_conf_edit_is_seen(build_dir: &str, leaf: &str, resolve: fn() -> TestRe
 #[test]
 fn a_shared_cmake_input_marks_the_image_stale() {
     let root = nros_tests::project_root();
-    let exe =
-        nros_tests::zephyr::zephyr_build_root().join("build-c-talker-cyclonedds/zephyr/zephyr.exe");
-    if !exe.is_file() {
-        skip!("build-c-talker-cyclonedds not built here — nothing to probe");
-    }
+    // issue 1620 — the resolver decides absence (lane / ungated skip / in-lane
+    // failure), not a local `zephyr.exe` probe that skipped in every run.
+    build_zephyr_cmake_example_rmw("c", "talker", Rmw::Cyclonedds)
+        .require("zephyr west image build-c-talker-cyclonedds");
     // A shared module every Zephyr configure reads, well outside the leaf.
     let shared = root.join("cmake/NanoRosCodegenCore.cmake");
     assert!(shared.is_file(), "{} vanished", shared.display());

@@ -38,7 +38,7 @@
 use std::time::Duration;
 
 use nros_tests::{
-    fixtures::{ZenohRouter, is_zenohd_available, require_zenohd},
+    fixtures::{RequireFixture, ZenohRouter, is_zenohd_available, require_zenohd},
     qemu::QemuProcess,
 };
 // Phase 141.B.2 / .C — wake-latency probe lives behind a Cargo
@@ -88,14 +88,11 @@ fn wake_latency_cortex_m3_p99_within_bound() {
 
     let sub_binary = bench_image("wake-latency-cortex-m3");
     let pub_binary = bench_image("wake-latency-pub");
+    // issue 1620 — the shared absence funnel decides (lane skip / ungated skip /
+    // in-lane failure), not a local `exists()` that skipped in every run.
     for (label, b) in [("subscriber", &sub_binary), ("publisher", &pub_binary)] {
-        if !b.exists() {
-            nros_tests::skip!(
-                "wake-latency {label} image not prebuilt: {} — run \
-                 `just freertos build-fixture-extras` first",
-                b.display()
-            );
-        }
+        nros_tests::fixtures::require_prebuilt_artifact(b, "just freertos build-fixture-extras")
+            .require(&format!("wake-latency {label} image"));
     }
 
     // FreeRTOS QEMU port reservation lives in

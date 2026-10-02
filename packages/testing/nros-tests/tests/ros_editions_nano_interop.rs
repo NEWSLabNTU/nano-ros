@@ -16,7 +16,10 @@
 
 use std::{path::PathBuf, process::Command};
 
-use nros_tests::ros_env::{self, DockerRosEnv, Middleware, RosEnv};
+use nros_tests::{
+    fixtures::RequireFixture,
+    ros_env::{self, DockerRosEnv, Middleware, RosEnv},
+};
 
 /// issue 0488 residue 1 — derived from the same `<kind>/<coordinate>` rule
 /// `just ros_editions build-fixture <edition>` builds with, instead of a
@@ -36,12 +39,12 @@ fn fixture_bin(edition: &str) -> PathBuf {
 #[test]
 fn nano_ros_posestamped_survives_edition_domain_bridge() {
     let ed = ros_env::test_edition();
-    let bin = fixture_bin(&ed);
-    if !bin.is_file() {
-        nros_tests::skip!(
-            "nano-ros pose publisher fixture not built — run `just ros_editions build-fixture {ed}`"
-        );
-    }
+    // issue 1620 — the shared absence funnel, not a local `is_file()` + `skip!`.
+    let bin = nros_tests::fixtures::require_prebuilt_artifact(
+        &fixture_bin(&ed),
+        &format!("just ros_editions build-fixture {ed}"),
+    )
+    .require("nano-ros pose publisher");
 
     let base = nros_tests::unique_ros_domain_id();
     let (d_from, d_to) = if base >= 232 {

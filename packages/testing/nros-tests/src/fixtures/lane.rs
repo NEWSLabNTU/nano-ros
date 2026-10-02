@@ -514,6 +514,23 @@ pub fn is_in_lane(row: &Row, coords: &BTreeSet<Coord>) -> bool {
     coords.contains(&row.coord)
 }
 
+/// Is an ABSENT artifact for `row` a broken promise in this run? Issue 1620.
+///
+/// For a test that AUDITS rows — walks `manifest_rows()` and checks whatever
+/// was built — rather than resolving one fixture. Such a loop cannot take a
+/// resolver's skip (one out-of-lane row would skip the whole test), and before
+/// this it answered every absence with `continue; // not built for this lane`,
+/// which in a coordinate-scoped run silently dropped rows the lane DID select:
+/// issue 0584's laundering with no skip line for any scan to see.
+///
+/// True exactly when `absent_fixture_verdict_in` (in `fixtures::binaries`) would
+/// panic for a resolver: the run is scoped by coordinate, the row is inside
+/// it, and the light tier's `NROS_FIXTURES_OPTIONAL` opt-out is not set.
+pub fn absent_row_breaks_promise(row: &Row) -> bool {
+    std::env::var_os("NROS_FIXTURES_OPTIONAL").is_none()
+        && run_coords().is_some_and(|c| is_in_lane(row, c))
+}
+
 /// Skip when a coordinate the caller ALREADY resolved is outside this run's
 /// lane — issue 0517 step 1.
 ///

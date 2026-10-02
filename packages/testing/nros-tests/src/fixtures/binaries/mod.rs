@@ -579,6 +579,33 @@ pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> TestResult<PathBuf>
     require_prebuilt_binary_checks(binary_path)
 }
 
+/// The absence funnel for a build-stage artifact that no `build_*` resolver
+/// names — a bespoke recipe's output (the per-edition `ros_editions` builds,
+/// `just freertos build-fixture-extras`). Issue 1620.
+///
+/// NOT for an artifact only a `ci gate`-reachable recipe produces
+/// (`build/borrowed-e2e/`): this is a RUNTIME resolver to
+/// `check-lane-contracts`, and a gated `test-all` would fail on an artifact no
+/// lane in it builds (issue 1656).
+///
+/// Those sites used to probe `path.is_file()` themselves and `skip!` on a
+/// miss, which skipped in EVERY run — including a gated one, where an absent
+/// in-lane fixture is a broken promise and must fail (issue 0584 part 2). The
+/// rule lives in `absent_fixture_verdict_in`; this reaches it with the same
+/// lane check first, so a site gets the gated panic, the light-tier skip, the
+/// `.build-failed` marker and the out-of-lane skip without restating any of
+/// them. Pair it with [`RequireFixture::require`](crate::fixtures::RequireFixture)
+/// like any resolver.
+///
+/// `remedy` is the command that builds it, and lands in the message.
+pub fn require_prebuilt_artifact(path: &Path, remedy: &str) -> TestResult<PathBuf> {
+    crate::fixtures::lane::require_in_lane(path)?;
+    if path.exists() {
+        return Ok(path.to_path_buf());
+    }
+    absent_fixture_verdict_in(path, remedy, AbsenceEnv::from_process_env())
+}
+
 /// Everything both chokepoints do once the path is final: existence, the
 /// build-failure marker, and the tier-aware skip. Split out so the row-keyed
 /// entry point cannot drift from the path-keyed one.
