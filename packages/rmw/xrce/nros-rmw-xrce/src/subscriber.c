@@ -257,6 +257,10 @@ rmw_ret_t xrce_subscription_take(const rmw_subscription_t* subscriber, rmw_mut_b
     if (entry->overflow) {
         ret = NROS_RMW_RET_MESSAGE_TOO_LARGE;
     } else if (entry->len > buf_len) {
+        /* Issue 1612 — the staged length is the sample's whole size (CDR
+         * header included, as a successful take would report it), so the
+         * caller can name what it dropped, not only that it did not fit. */
+        *out_len = entry->len;
         ret = NROS_RMW_RET_BUFFER_TOO_SMALL;
     } else {
         slot->locked = true;

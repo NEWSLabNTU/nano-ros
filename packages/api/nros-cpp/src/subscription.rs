@@ -43,13 +43,14 @@ static SAMPLES_DROPPED_TOO_SMALL: core::sync::atomic::AtomicU32 =
 ///
 /// **What this can and cannot say.** The BUFFER capacity is known here and is
 /// the actionable half: it names the knob to raise
-/// (`NROS_SUBSCRIPTION_BUFFER_SIZE`). The SAMPLE size is NOT -- the RMW C ABI
-/// is "non-negative = bytes produced, negative = error code" with no
-/// required-length out-param (`rmw_vtable.h`), so `TransportError` carries no
-/// size and the backend cannot report how big the sample was. The topic is not
-/// either: it lives on the C++ class, not in the storage this function is
-/// reached from. Both are ABI changes worth doing on their own merits, and
-/// `arena.rs` says the same about the same two facts.
+/// (`NROS_SUBSCRIPTION_BUFFER_SIZE`). The SAMPLE size is known when the backend
+/// knows it -- issue 1612 made a too-small `take` carry the size the sample
+/// needed in the span's `len` (`rmw_entity.h`), which reaches this layer as
+/// [`SubscriberTrait::refused_sample_len`] -- and printed as `?` when it does
+/// not. Zenoh, XRCE, Cyclone and uORB all know it. A `MessageTooLarge` drop is
+/// the BACKEND's staging buffer, refused before any take saw a length, so it
+/// is always `?`. The topic is still not known: it lives on the C++ class, not
+/// in the storage this function is reached from.
 ///
 /// First drop, then every 64th: `arena.rs`'s throttle, on the same reasoning.
 /// A forty-participant graph must not turn one misconfigured subscription into
@@ -67,7 +68,7 @@ static SAMPLES_DROPPED_TOO_SMALL: core::sync::atomic::AtomicU32 =
 /// at 72 characters. Everything a reader needs that is not a number lives in
 /// this comment; the line carries the two numbers and the one knob.
 #[cold]
-fn note_sample_dropped_too_small(err: &TransportError, buf_len: usize) {
+fn note_sample_dropped_too_small(err: &TransportError, buf_len: usize, needed: Option<usize>) {
     let n = SAMPLES_DROPPED_TOO_SMALL.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
     // The RECORD, always -- a board with no console is exactly the case this
     // exists for, and it is the throttled LOG that would tell it nothing.
@@ -76,11 +77,36 @@ fn note_sample_dropped_too_small(err: &TransportError, buf_len: usize) {
         return;
     }
     let total = n.saturating_add(1);
+    let needed = SampleLen(needed);
     crate::cpp_diag!(
-        "C++ take DROPPED ({err:?}): sample too big for the {buf_len}-byte \
+        "C++ take DROPPED ({err:?}): {needed}-byte sample, {buf_len}-byte \
          buffer; ACKed then discarded. Raise NROS_SUBSCRIPTION_BUFFER_SIZE to \
          SERIALIZED_SIZE_MAX. {total} dropped so far (issue 1425)."
     );
+}
+
+/// Issue 1612 -- a sample size that may be unknown, printed without an
+/// allocator: the number, or `?` when the backend could not say.
+struct SampleLen(Option<usize>);
+
+impl core::fmt::Display for SampleLen {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self.0 {
+            Some(n) => write!(f, "{n}"),
+            None => f.write_str("?"),
+        }
+    }
+}
+
+/// The size the backend says the dropped sample needed -- only for the drop it
+/// can have measured. `MessageTooLarge` is a refusal by the backend's own
+/// staging buffer before any take, so a size recorded by an earlier
+/// `BufferTooSmall` must not be printed beside it.
+fn refused_len_for(sub: &nros::internals::RmwSubscriber, err: &TransportError) -> Option<usize> {
+    match err {
+        TransportError::BufferTooSmall => sub.refused_sample_len(),
+        _ => None,
+    }
 }
 
 /// Create a subscription on a node.
@@ -782,7 +808,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_take_serialized(
             // -- COUNTED before the return, because `out_len = 0` with
             // `NROS_CPP_RET_FULL` is what the C++ wrapper reads as "nothing
             // waiting".
-            note_sample_dropped_too_small(&e, out_capacity);
+            note_sample_dropped_too_small(&e, out_capacity, refused_len_for(sub, &e));
             unsafe {
                 *out_len = 0;
             }
@@ -861,7 +887,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_take_validated(
             // this path drops on exactly the same condition, so leaving it
             // uncounted would make the tally depend on which feature the image
             // was built with.
-            note_sample_dropped_too_small(&e, out_capacity);
+            note_sample_dropped_too_small(&e, out_capacity, refused_len_for(sub, &e));
             unsafe {
                 *out_len = 0;
             }
@@ -927,7 +953,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_take_serialized_with_attachment(
             // overran the attachment buffer is a different fault with a
             // different knob, and naming one size for both would send the
             // reader to the wrong one.
-            note_sample_dropped_too_small(&e, out_capacity);
+            note_sample_dropped_too_small(&e, out_capacity, refused_len_for(sub, &e));
             unsafe {
                 *out_len = 0;
                 *out_att_len = 0;
@@ -1233,12 +1259,12 @@ mod tests {
     //! by exactly one, and the line a reader sees carries the number they have
     //! to act on.
     //!
-    //! The half of the gate that cannot be asserted ANYWHERE is the sample
-    //! size, and that is a property of the ABI rather than of this test: the
-    //! RMW C contract is "non-negative = bytes produced, negative = error
-    //! code", so `TransportError` carries no length and no layer below can
-    //! report one. `nros_node::executor::arena` records the same limitation
-    //! about the same fact for the Rust half of the same drop.
+    //! The sample size is issue 1612. A too-small `take` now carries the size
+    //! the sample needed in the span's `len`; each backend's own suite proves
+    //! it writes that number, `nros-rmw-cffi`'s `refused_take_len.rs` proves
+    //! it reaches [`SubscriberTrait::refused_sample_len`], and the cells below
+    //! prove the line prints it beside the buffer -- or `?` when the backend
+    //! could not know.
 
     use super::*;
     use core::sync::atomic::Ordering;
@@ -1315,7 +1341,7 @@ mod tests {
     fn a_too_small_take_is_counted_once_and_named_in_the_log() {
         let _serial = fresh();
 
-        note_sample_dropped_too_small(&TransportError::BufferTooSmall, 16);
+        note_sample_dropped_too_small(&TransportError::BufferTooSmall, 16, Some(1000));
 
         assert_eq!(
             SAMPLES_DROPPED_TOO_SMALL.load(Ordering::Relaxed),
@@ -1333,9 +1359,22 @@ mod tests {
         );
         let line = &lines[0];
         assert!(
-            line.contains("16"),
+            line.contains("16-byte buffer"),
             "the line does not name the buffer size, which is the number to \
              act on: {line}"
+        );
+        // Issue 1612 -- BOTH sizes: the one to raise the knob to, beside the
+        // one it is now.
+        assert!(
+            line.contains("1000-byte sample"),
+            "the line does not name the sample's size, which is what the knob \
+             must reach: {line}"
+        );
+        // `nros_log`'s push is all-or-nothing into 256 bytes, so a line that
+        // grew past it loses its tail whole; the issue number is the tail.
+        assert!(
+            line.contains("(issue 1425)."),
+            "the line was truncated -- it no longer fits nros_log's buffer: {line}"
         );
         assert!(
             line.contains("NROS_SUBSCRIPTION_BUFFER_SIZE"),
@@ -1347,6 +1386,21 @@ mod tests {
         );
     }
 
+    /// Issue 1612 -- a backend that cannot know the sample's size says so,
+    /// rather than printing a number nobody measured.
+    #[test]
+    fn an_unknown_sample_size_is_printed_as_unknown() {
+        let _serial = fresh();
+        note_sample_dropped_too_small(&TransportError::BufferTooSmall, 64, None);
+        let lines = logged();
+        assert_eq!(lines.len(), 1, "got {lines:?}");
+        assert!(
+            lines[0].contains("?-byte sample") && lines[0].contains("64-byte buffer"),
+            "an unknown size must read as unknown beside the known buffer: {}",
+            lines[0]
+        );
+    }
+
     /// The throttle: the first, then every 64th. A forty-participant graph must
     /// not turn one misconfigured subscription into a log flood (issue 0371's
     /// shape), and a throttle nobody measured is a claim.
@@ -1354,7 +1408,7 @@ mod tests {
     fn the_drop_log_is_throttled_but_never_silent() {
         let _serial = fresh();
         for _ in 0..65 {
-            note_sample_dropped_too_small(&TransportError::MessageTooLarge, 32);
+            note_sample_dropped_too_small(&TransportError::MessageTooLarge, 32, None);
         }
         let lines = logged();
         assert_eq!(
@@ -1381,7 +1435,7 @@ mod tests {
     fn the_tally_counts_every_drop_not_only_the_logged_ones() {
         let _serial = fresh();
         for _ in 0..10 {
-            note_sample_dropped_too_small(&TransportError::BufferTooSmall, 8);
+            note_sample_dropped_too_small(&TransportError::BufferTooSmall, 8, Some(9));
         }
         assert_eq!(
             SAMPLES_DROPPED_TOO_SMALL.load(Ordering::Relaxed),

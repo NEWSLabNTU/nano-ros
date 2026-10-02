@@ -2817,6 +2817,7 @@ impl Session for CffiSession {
             backend_data: core::ptr::null_mut(),
             supports_in_place: false,
             pending_status: None,
+            refused_len: None,
             polled_events: [const { Cell::new(None) }; SUB_EVENT_KINDS.len()],
             polling_events: Cell::new(false),
         };
@@ -4389,6 +4390,9 @@ pub struct CffiSubscription {
     /// nothing — moved one call later because that is where the contract leaves
     /// room for it.
     pending_status: Option<TransportError>,
+    /// Issue 1612 — what the last refused take said the sample needed, as
+    /// [`nros_rmw::Subscription::refused_sample_len`] reports it.
+    refused_len: Option<usize>,
     /// Issue 1164 — callbacks the runtime serves by polling
     /// `subscription_take_event`, indexed by [`SUB_EVENT_KINDS`]. See the
     /// note above [`PolledEventReg`].
@@ -4713,6 +4717,17 @@ fn checked_take_len(out_len: usize, cap: usize) -> Result<usize, TransportError>
     Ok(out_len)
 }
 
+/// Issue 1612 — read the size a refused `take` says its sample needed.
+///
+/// `NROS_RMW_TAKE_LEN_UNKNOWN` (zero, which the caller pre-sets) is a backend
+/// that cannot know, or one written before the rule. A value that would have
+/// FIT is not a size anybody needed — a backend that wrote it broke the
+/// contract — so it is reported as unknown too, rather than as a number the
+/// drop log would print beside a buffer it is smaller than.
+fn refused_len_from_span(len: usize, cap: usize) -> Option<usize> {
+    (len != generated::NROS_RMW_TAKE_LEN_UNKNOWN as usize && len > cap).then_some(len)
+}
+
 impl nros_rmw::Subscription for CffiSubscription {
     type Error = TransportError;
 
@@ -4771,22 +4786,37 @@ impl nros_rmw::Subscription for CffiSubscription {
         let mut taken = false;
         // phase-406 W2 — by POINTER: the callee sets `len`, and a by-value copy
         // would discard it. `capacity` in, `len` out.
+        //
+        // Issue 1612 — `len` starts at `NROS_RMW_TAKE_LEN_UNKNOWN`, and that is
+        // load-bearing: it is what lets a backend that never writes `len` on a
+        // refusal report "unknown" instead of whatever was on the stack.
         let mut span = generated::rmw_mut_byte_span_t {
             data: buf.as_mut_ptr(),
             capacity: buf.len(),
-            len: 0,
+            len: generated::NROS_RMW_TAKE_LEN_UNKNOWN as usize,
         };
         let rc = unsafe {
             (self.vtable.take.expect("rmw vtable: take"))(&mut view, &mut span, &mut taken)
         };
         let out_len = span.len;
         if rc != NROS_RMW_RET_OK {
+            if rc == NROS_RMW_RET_BUFFER_TOO_SMALL {
+                self.refused_len = refused_len_from_span(out_len, buf.len());
+            }
             return Err(error_from_ret(rc));
         }
         if !taken {
             return Ok(None);
         }
-        Ok(Some(checked_take_len(out_len, buf.len())?))
+        // An over-long `out_len` (issue 0773) is refused here, and the number
+        // that broke the contract is exactly the size the sample needed.
+        checked_take_len(out_len, buf.len())
+            .inspect_err(|_| self.refused_len = Some(out_len))
+            .map(Some)
+    }
+
+    fn refused_sample_len(&self) -> Option<usize> {
+        self.refused_len
     }
 
     fn take_serialized_with_info(
@@ -4864,6 +4894,10 @@ impl nros_rmw::Subscription for CffiSubscription {
                 )
             };
             if rc != NROS_RMW_RET_OK {
+                // Issue 1612 — the batch slot has no span to carry a size, so a
+                // refusal here is an UNKNOWN one; an earlier take's number must
+                // not be read as this sample's.
+                self.refused_len = None;
                 return Err(error_from_ret(rc));
             }
             return Ok(taken);

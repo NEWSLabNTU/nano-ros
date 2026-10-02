@@ -448,6 +448,14 @@ int main() {
         std::fprintf(stderr, "short take returned %d, expected BUFFER_TOO_SMALL\n", (int)rc);
         return 1;
     }
+    // Issue 1612 — the refusal names the size the retry needs (`o_size`), not
+    // only that 4 bytes were too few. `uorb_test_take` starts `len` at 0, which
+    // is NROS_RMW_TAKE_LEN_UNKNOWN, so a backend that forgot reads as 0.
+    if (n != static_cast<size_t>(kFakeMeta.o_size)) {
+        std::fprintf(stderr, "short take reported len %zu, the sample needs %u\n", n,
+                     kFakeMeta.o_size);
+        return 1;
+    }
     if (!g_orb.pending) {
         std::fprintf(stderr, "short take drained the queue (should not)\n");
         return 1;

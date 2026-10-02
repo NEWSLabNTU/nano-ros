@@ -68,6 +68,10 @@ struct SubState {
     /// take — check the flag first, clear it, return the error, take nothing —
     /// moved one call later, because that is where the contract leaves room.
     bool pending_too_small{false};
+    /// Issue 1612 — the serdata size of the sample that set
+    /// `pending_too_small`, so the take that reports the park can still say
+    /// how big the dropped sample was (`rmw_entity.h`, `rmw_mut_byte_span_t`).
+    size_t pending_too_small_len{0};
     /// Issue 1269 — the graph this reader is listed in (see PubState::graph).
     GraphState* graph{nullptr};
     /// Issue 1495 — publication handle → writer GUID, for `take_with_info`.
@@ -253,6 +257,7 @@ static rmw_ret_t take_one(const rmw_subscription_t* subscriber, rmw_mut_byte_spa
     // to act on it before it asks for more.
     if (state->pending_too_small) {
         state->pending_too_small = false;
+        *out_len = state->pending_too_small_len; // issue 1612
         return NROS_RMW_RET_BUFFER_TOO_SMALL;
     }
 
@@ -290,6 +295,9 @@ static rmw_ret_t take_one(const rmw_subscription_t* subscriber, rmw_mut_byte_spa
     const uint32_t total = ddsi_serdata_size(d);
     if (buf_len < total) {
         ddsi_serdata_unref(d);
+        // Issue 1612 — the serdata knows the sample's size before any copy, so
+        // the refusal can carry it: the caller names what it dropped.
+        *out_len = static_cast<size_t>(total);
         return NROS_RMW_RET_BUFFER_TOO_SMALL;
     }
     ddsi_serdata_to_ser(d, 0, total, buf);
@@ -459,6 +467,7 @@ static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscr
         const uint32_t total = ddsi_serdata_size(ds[i]);
         if (per_msg_cap < total) {
             state->pending_too_small = true;
+            state->pending_too_small_len = static_cast<size_t>(total); // issue 1612
             break;
         }
         ddsi_serdata_to_ser(ds[i], 0, total, buf + produced * per_msg_cap);

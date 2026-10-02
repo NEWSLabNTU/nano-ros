@@ -34,3 +34,10 @@ add_executable(nros_rmw_xrce_entity_lifetime entity_lifetime.c)
 target_link_libraries(nros_rmw_xrce_entity_lifetime PRIVATE nros_rmw_xrce)
 
 add_test(NAME nros_rmw_xrce_entity_lifetime COMMAND nros_rmw_xrce_entity_lifetime)
+
+# Issue 1612 — a too-small take leaves the refused sample's size in the span's
+# `len`. No agent: the ring is filled directly, as in `entity_lifetime.c`.
+add_executable(nros_rmw_xrce_take_refused_len take_refused_len.c)
+target_link_libraries(nros_rmw_xrce_take_refused_len PRIVATE nros_rmw_xrce)
+
+add_test(NAME nros_rmw_xrce_take_refused_len COMMAND nros_rmw_xrce_take_refused_len)

@@ -276,7 +276,12 @@ typedef struct nros_rmw_vtable_t {
      *  `NROS_RMW_RET_BUFFER_TOO_SMALL`), never a truncated success.
      *  That holds however the backend treated
      *  `rmw_subscription_options_t.rx_buffer_hint`, whose doc writes the
-     *  rule out in full. */
+     *  rule out in full.
+     *
+     *  Issue 1612 — on that failure `out->len` is the size the sample
+     *  NEEDED, so the caller can say how big the dropped sample was rather
+     *  than only that it did not fit. A backend that cannot know leaves it at
+     *  `NROS_RMW_TAKE_LEN_UNKNOWN`, which is what the caller pre-sets. */
     rmw_ret_t (*take)(const rmw_subscription_t *subscription,
         rmw_mut_byte_span_t *out, bool *taken);
     /** Phase 376 W3.d step A — status in the return, answer in the

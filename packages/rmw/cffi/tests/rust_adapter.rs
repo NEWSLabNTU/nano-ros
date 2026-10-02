@@ -48,6 +48,12 @@ static SUB_EVENT_HITS: AtomicU32 = AtomicU32::new(0);
 static PUB_EVENT_HITS: AtomicU32 = AtomicU32::new(0);
 static ASSERT_LIVELINESS_HITS: AtomicU32 = AtomicU32::new(0);
 static EVENT_CALLBACK_HITS: AtomicU32 = AtomicU32::new(0);
+/// Issue 1612 — when non-zero, the next take refuses a sample of this many
+/// bytes, and `refused_sample_len` says so. Only
+/// `rust_backend_adapter_routes_every_slot` takes, so no other cell sees it.
+static REFUSE_NEXT_TAKE_WITH: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static LAST_REFUSED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 fn reset() {
     for c in [
@@ -314,7 +320,18 @@ impl Subscription for NoopSubscriber {
     type Error = TransportError;
     fn take_serialized(&mut self, _buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
         TRY_RECV_HITS.fetch_add(1, Ordering::SeqCst);
+        let refuse = REFUSE_NEXT_TAKE_WITH.swap(0, Ordering::SeqCst);
+        if refuse != 0 {
+            LAST_REFUSED.store(refuse, Ordering::SeqCst);
+            return Err(TransportError::BufferTooSmall);
+        }
         Ok(None)
+    }
+    fn refused_sample_len(&self) -> Option<usize> {
+        match LAST_REFUSED.load(Ordering::SeqCst) {
+            0 => None,
+            n => Some(n),
+        }
     }
     fn has_data(&self) -> bool {
         HAS_DATA_HITS.fetch_add(1, Ordering::SeqCst);
@@ -545,6 +562,24 @@ fn rust_backend_adapter_routes_every_slot() {
     assert_eq!(rc, NROS_RMW_RET_OK);
     assert!(!recv_taken, "an empty subscription takes nothing");
     assert_eq!(TRY_RECV_HITS.load(Ordering::SeqCst), 1);
+
+    // Issue 1612 — a Rust backend's refusal crosses the C ABI WITH its size:
+    // the status says the sample did not fit, `len` says how big it was.
+    REFUSE_NEXT_TAKE_WITH.store(300, Ordering::SeqCst);
+    let mut refused_span = nros_rmw_cffi::generated::rmw_mut_byte_span_t {
+        data: recv_buf.as_mut_ptr(),
+        capacity: recv_buf.len(),
+        len: nros_rmw_cffi::generated::NROS_RMW_TAKE_LEN_UNKNOWN as usize,
+    };
+    let mut refused_taken = true;
+    let rc = unsafe {
+        (vt.take.expect("vtable slot"))(&mut subr, &mut refused_span, &mut refused_taken)
+    };
+    assert_eq!(rc, nros_rmw_cffi::NROS_RMW_RET_BUFFER_TOO_SMALL);
+    assert_eq!(
+        refused_span.len, 300,
+        "the Rust backend knew the sample's size; the adapter dropped it"
+    );
     unsafe { (vt.destroy_subscription.expect("vtable slot"))(&mut subr) };
     assert_eq!(DESTROY_SUB_HITS.load(Ordering::SeqCst), 1);
 

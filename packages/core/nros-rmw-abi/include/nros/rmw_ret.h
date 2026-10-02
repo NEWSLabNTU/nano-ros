@@ -128,7 +128,9 @@ typedef int32_t rmw_ret_t;
 #define NROS_RMW_RET_WOULD_BLOCK             (NROS_RMW_RET_EXTENSION_BASE + 4)
 
 /** Buffer supplied by the caller is smaller than the data the
- *  backend wants to deliver. */
+ *  backend wants to deliver. From a subscription `take`, the span's `len`
+ *  carries the size the sample needed (`NROS_RMW_TAKE_LEN_UNKNOWN` when the
+ *  backend cannot know it) — issue 1612, `rmw_entity.h`. */
 #define NROS_RMW_RET_BUFFER_TOO_SMALL        (NROS_RMW_RET_EXTENSION_BASE + 5)
 
 /** Incoming message exceeded the backend's static capacity. */
