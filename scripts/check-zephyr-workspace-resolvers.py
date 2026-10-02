@@ -58,6 +58,8 @@ from tracked import tracked  # noqa: E402  (issue 0721 — the index, never a wa
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RATCHET = os.path.join(".config", "zephyr-workspace-resolvers.txt")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+import file_kinds  # noqa: E402
 
 # The legacy sibling rung. `(?<!-)` drops `--nano-ros-workspace`, an unrelated
 # `nros metadata` flag naming the nano-ros repo.
@@ -95,7 +97,11 @@ def ladder_lines(text):
 
 def spells_ladder(path):
     """Line numbers on which `path` spells the ladder outside a comment."""
-    if path.endswith(SKIP_SUFFIX) or path.startswith(SKIP_PREFIX):
+    # issue 1614 (W5): `.txt` is prose EXCEPT `CMakeLists.txt`, which is code —
+    # the suffix skip dropped `zephyr/CMakeLists.txt`, the one file the Zephyr
+    # module configures from. The KIND decides, not the suffix.
+    is_code = bool(file_kinds.kind_of(path) - {"markdown", "yaml"})
+    if (path.endswith(SKIP_SUFFIX) and not is_code) or path.startswith(SKIP_PREFIX):
         return []
     full = os.path.join(ROOT, path)
     try:

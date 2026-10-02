@@ -94,7 +94,14 @@ selftest
 
 [ -f "$LIB" ] || { echo "check-feature-gated-modules: $LIB not found" >&2; exit 1; }
 
-feats="$(derive_features "$LIB")"
+# issue 1614 (W5): a feature-gated module may be declared in ANY file of the
+# crate (`executor/mod.rs` declares its own submodules), not only lib.rs. The
+# population is every tracked `.rs` under the crate's src.
+feats_rc=0
+feats="$(git ls-files -- "$(dirname "$LIB")" \
+    | while IFS= read -r f; do case "$f" in *.rs) derive_features "$f" ;; esac; done \
+    | sort -u)" || feats_rc=$?
+[ "$feats_rc" -eq 0 ] || { echo "check-feature-gated-modules: listing $(dirname "$LIB") failed (rc=$feats_rc)" >&2; exit 1; }
 [ -n "$feats" ] || { echo "check-feature-gated-modules: derived NO features from $LIB" >&2; exit 1; }
 
 # The floor every row shares: a host build with a backend, so `has_rmw` is on

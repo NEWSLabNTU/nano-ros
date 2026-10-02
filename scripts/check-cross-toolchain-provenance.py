@@ -215,10 +215,29 @@ def exempt_still_needed(read, exists):
 
 
 def tracked_toolchain_files():
-    out = subprocess.run(
-        ["git", "ls-files", f"{TOOLCHAIN_DIR}/*.cmake"],
-        cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
-    return [p for p in out if os.path.basename(p) != MODULE]
+    """Every CMake file that SELECTS a cross compiler, plus `cmake/toolchain/`.
+
+    issue 1614 (W5): the population was the directory, so a board overlay that
+    sets `CMAKE_C_COMPILER` itself (`/usr/bin/arm-none-eabi-gcc`) sat outside
+    the rule it breaks. A file selecting a compiler anywhere is in, by KIND
+    (`scripts/lib/file_kinds.py`); the listed gaps stay in EXEMPT.
+    """
+    import file_kinds
+
+    out = []
+    for p in file_kinds.files_of_kind("cmake", repo=ROOT):
+        if os.path.basename(p) == MODULE or p in EXEMPT:
+            continue
+        if p.startswith(TOOLCHAIN_DIR + "/") and p.endswith(".cmake"):
+            out.append(p)
+            continue
+        try:
+            with open(os.path.join(ROOT, p), encoding="utf8", errors="replace") as fh:
+                if SET_COMPILER.search(strip_comments(fh.read())):
+                    out.append(p)
+        except OSError:
+            continue
+    return out
 
 
 def main():

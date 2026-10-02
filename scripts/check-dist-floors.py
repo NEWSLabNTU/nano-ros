@@ -43,7 +43,7 @@ BASELINE = os.path.join(ROOT, ".config", "dist-floor-baseline.txt")
 
 # The number of rows `.config/dist-floor-baseline.txt` may hold. It may only go
 # DOWN: lower it in the same change that removes a row.
-BASELINE_CEILING = 0
+BASELINE_CEILING = 3  # issue 1614: the three [rust.rustup] rows that entered the population
 
 LINUX_FIELDS = ("glibc", "glibcxx")
 MAC_FIELDS = ("macos",)
@@ -81,12 +81,37 @@ def covered(host, floor):
     return any(floor.get(f) for f in fields)
 
 
+def dist_tables(index):
+    """[(name, table)] for EVERY table in the index that carries a `dist` map.
+
+    issue 1614 (W5): the population was `[tool.*]`, so `[rust.rustup]` — whose
+    `dist.<host>` rows download an installer exactly like a tool's — could gain
+    a host with no floor. A `[tool.X]` keeps the name `X` (the baseline's
+    spelling); anything else is named by its dotted path (`rust.rustup`).
+    """
+    out = []
+
+    def walk(node, path):
+        if not isinstance(node, dict):
+            return
+        if isinstance(node.get("dist"), dict) and path:
+            name = path[1] if path[0] == "tool" and len(path) == 2 else ".".join(path)
+            out.append((name, node))
+        for k, v in node.items():
+            if k != "dist":
+                walk(v, path + [k])
+
+    walk(index, [])
+    return sorted(out, key=lambda t: t[0])
+
+
 def audit(index, baseline, ceiling):
     """Problems, as printable lines. Empty means the gate holds."""
     rows = {}
-    for name, tool in sorted((index.get("tool") or {}).items()):
+    for name, tool in dist_tables(index):
         for host, dist in sorted((tool.get("dist") or {}).items()):
-            rows[(name, host)] = covered(host, dist.get("floor"))
+            if isinstance(dist, dict):
+                rows[(name, host)] = covered(host, dist.get("floor"))
     problems = []
     listed = set(baseline)
     for (name, host), ok in rows.items():

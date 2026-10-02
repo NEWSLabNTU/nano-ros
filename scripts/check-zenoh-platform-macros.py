@@ -93,6 +93,17 @@ def platform_of(path: Path) -> str | None:
     return None
 
 
+def cmake_port_of(rel: str) -> str | None:
+    """The port a CMake file belongs to, from its path."""
+    if rel.startswith("zephyr/"):
+        return "zephyr"
+    name = rel.rsplit("/", 1)[-1].lower()
+    for plat in OWN_MACRO:
+        if re.search(r"(^|[-_])" + plat + r"([-_.]|$)", name):
+            return plat
+    return platform_of(Path(rel))
+
+
 def main() -> int:
     failures: list[str] = []
     checked = 0
@@ -153,6 +164,33 @@ def main() -> int:
                     f"branch defines {macro}"
                 )
     checked += 1
+
+    # issue 1614 (W5): a THIRD producer kind — CMake. `zephyr_compile_definitions(
+    # ZENOH_ZEPHYR)` in `zephyr/cmake/` defines the macro for every Zephyr TU and
+    # was outside the two producers above. Every CMake file (`file_kinds`) is
+    # read, comments stripped; a file is attributed to a port by its path
+    # (`zephyr/` -> zephyr, a `nano-ros-<plat>` / `-<plat>.cmake` name), and a
+    # macro in a file attributable to NO port is a failure on its own.
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import comments
+    import file_kinds
+
+    tok = re.compile(r"(?<![A-Za-z0-9_])(ZENOH_[A-Z0-9_]+)(?![A-Za-z0-9_])")
+    for rel in file_kinds.files_of_kind("cmake", repo=ROOT):
+        try:
+            code = comments.strip_comments((ROOT / rel).read_text(errors="replace"), "cmake")
+        except OSError:
+            continue
+        found = {m.group(1) for m in tok.finditer(code)} & PLATFORM_MACROS
+        if not found:
+            continue
+        checked += 1
+        plat = cmake_port_of(rel)
+        for macro in sorted(found):
+            if plat is None:
+                failures.append(f"{rel}: declares {macro}, and the file belongs to no port")
+            elif macro not in OWN_MACRO.get(plat, set()):
+                failures.append(f"{rel}: the {plat} port's CMake declares {macro}")
 
     if failures:
         print(

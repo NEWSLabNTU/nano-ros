@@ -373,7 +373,60 @@ def check(root):
                 f"{', '.join(sorted(accepts)) or 'none'}). A remedy naming a dead "
                 f"keyword is a second tombstone (issue 1554)."
             )
+
+    problems += emitted_calls(root, refusers)
     return problems
+
+
+def emitted_calls(root, refusers):
+    """Rule 2 over CMake that the CLI EMITS — issue 1614 (W5).
+
+    `nros` writes CMake from Rust string literals (`builder/cmake_root.rs`) and
+    from `.jinja` templates, and that text is configured by a user's build
+    exactly like a tracked CMakeLists. A retired keyword passed to the verb that
+    retired it there passed: the population was tracked `*.cmake` files only.
+    Reads string CONTENTS of non-test Rust under `packages/cli`, and template
+    text, for `<retiring verb>(... <KEYWORD> ...)`.
+    """
+    import sys as _s
+    _s.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+    import subprocess as _sp
+
+    import comments
+    import file_kinds
+    import per_item
+
+    out = []
+    calls = [(kw, fn) for kw, fns in sorted(refusers.items()) for fn in sorted(fns)]
+    if not calls:
+        return out
+    pats = [(kw, fn, re.compile(r"\b" + re.escape(fn) + r"\s*\(([^()]*)\)"))
+            for kw, fn in calls]
+    try:
+        files = [p for p in file_kinds.files_of_kind("rust", "jinja", repo=root)
+                 if p.startswith("packages/cli/") and "/tests/" not in p]
+    except _sp.CalledProcessError:
+        return out  # the selftest's temp tree is not a git repo
+    finally:
+        file_kinds._index.cache_clear()
+    for rel in files:
+        try:
+            raw = open(os.path.join(root, rel), encoding="utf8", errors="replace").read()
+        except OSError:
+            continue
+        if rel.endswith(".rs"):
+            code = per_item.rust_cfg_test_blank(comments.strip_comments(raw, "rust"))
+            text = "\n".join(re.findall(r'"((?:[^"\\]|\\.)*)"', code)).replace("\\n", "\n")
+        else:
+            text = raw
+        for kw, fn, rx in pats:
+            for m in rx.finditer(text):
+                if re.search(r"(?<![A-Za-z0-9_])" + re.escape(kw) + r"(?![A-Za-z0-9_])", m.group(1)):
+                    out.append(
+                        f"{rel}: emits `{fn}(... {kw} ...)`, but {fn}() RETIRED {kw}. "
+                        f"Every build configured from this generated CMake hits the "
+                        f"tombstone's FATAL_ERROR (issue 1614).")
+    return out
 
 
 def _write(root, files):

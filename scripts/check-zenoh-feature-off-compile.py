@@ -239,6 +239,23 @@ def self_test(cc: str | None) -> list[str]:
     return bad
 
 
+def zephyr_cmake_text() -> str:
+    """Every CMake file of the Zephyr module, concatenated — issue 1614 (W5).
+
+    `zephyr_compile_definitions(Z_FEATURE_…=0)` reaches every Zephyr TU from
+    ANY file of the module, not only the zenoh RMW file this read: one appended
+    to `zephyr/CMakeLists.txt` turned a zenoh link off unchecked. Each file is
+    a whole unit (balanced `if`/`endif`), so concatenation keeps the arms.
+    """
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import file_kinds
+
+    files = [p for p in file_kinds.files_of_kind("cmake", repo=ROOT) if p.startswith("zephyr/")]
+    if CMAKE.relative_to(ROOT).as_posix() not in files:
+        files.append(CMAKE.relative_to(ROOT).as_posix())
+    return "\n".join((ROOT / p).read_text(encoding="utf-8") for p in sorted(files))
+
+
 def main(argv: list[str]) -> int:
     cc = compiler()
     problems = self_test(cc)
@@ -261,7 +278,7 @@ def main(argv: list[str]) -> int:
         )
         return SKIP
 
-    configs = with_required_axis(derive_configs(CMAKE.read_text(encoding="utf-8")))
+    configs = with_required_axis(derive_configs(zephyr_cmake_text()))
     if configs == [REQUIRED_AXIS]:
         print(
             f"check-zenoh-feature-off-compile: read NO Z_FEATURE definition from "

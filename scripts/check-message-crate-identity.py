@@ -312,6 +312,13 @@ def scan_manifests(manifests: list):
                 dep_name = spec.get("package", key)
                 if dep_name in gen_names and "version" in spec:
                     versioned_rows.append((path, table, key, spec["version"]))
+        # issue 1614 (W5): `[workspace.dependencies]` is a dependency row too —
+        # a versioned pin there reaches every member that says `workspace = true`.
+        for key, spec in ((doc.get("workspace") or {}).get("dependencies") or {}).items():
+            if isinstance(spec, dict):
+                dep_name = spec.get("package", key)
+                if dep_name in gen_names and "version" in spec:
+                    versioned_rows.append((path, "workspace.dependencies", key, spec["version"]))
         for _plat, tdoc in (doc.get("target") or {}).items():
             if not isinstance(tdoc, dict):
                 continue

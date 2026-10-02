@@ -34,6 +34,7 @@ the nros-C side where the failure is not self-describing.
 Runs its own negative control on every invocation, per AGENTS.md.
 """
 
+import glob
 import os
 import subprocess
 import sys
@@ -73,6 +74,16 @@ def candidate_target_dirs(root):
     out = []
     for fixed in FIXED_ROOTS:
         out.append(os.path.join(root, fixed))
+        # issue 1614 (W5): the SHARED cargo dirs live BELOW a fixed root —
+        # `build/corrosion-cargo/<platform>/<hash>/<key>/` (RFC-0094) — so the
+        # root itself was the only target dir read there. These are untracked
+        # build output, so a bounded-depth glob of the build root is the
+        # sanctioned scan (never a walk of examples/ or packages/); measured
+        # 0.8 s over this tree.
+        for depth in range(1, 6):
+            for gen in GEN_DIRS:
+                for hit in glob.glob(os.path.join(root, fixed, *(["*"] * depth), gen)):
+                    out.append(os.path.dirname(hit))
     # west build dirs: `<zephyr build root>/build-<leaf>/nros-rust` — issue
     # 1596's one derivation, asked of the checkout being scanned.
     ws = subprocess.run(

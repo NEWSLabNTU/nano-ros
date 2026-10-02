@@ -75,18 +75,20 @@ def header_defines(repo: Path, headers):
         for line in path.read_text(errors="replace").split("\n"):
             m = DEFINE_RE.match(line)
             if m:
-                found.setdefault(m.group(1), rel)
+                found.setdefault(m.group(1), set()).add(rel)
     return found
 
 
-def check_file(text, in_headers):
+def check_file(text, in_headers, rel=None):
     guards, defs = guards_and_defs(text)
     bad = []
     for knob, gline in sorted(guards.items(), key=lambda kv: kv[1]):
         dline = defs.get(knob)
         if dline is not None and dline < gline:
             continue
-        if knob in in_headers:
+        # issue 1614: a header's OWN later `#define` is exactly the wrong order,
+        # not "defined by a header" — the self-reference exempted node.hpp.
+        if set(in_headers.get(knob, ())) - {rel}:
             continue
         bad.append((knob, gline, dline))
     return bad
@@ -139,15 +141,15 @@ def main():
 
     # Tracked files only: a filesystem walk reaches build output and other
     # checkouts' worktrees (issues 1157/1166).
-    files = [
-        f
-        for f in subprocess.run(
-            ["git", "ls-files", "-z", "*.c", "*.h"],
-            capture_output=True, text=True, check=True, cwd=repo,
-        ).stdout.split("\0")
-        if f
-    ]
-    in_headers = header_defines(repo, [f for f in files if f.endswith(".h")])
+    # issue 1614 (W5): the rule is about the C PREPROCESSOR, which C++ headers
+    # and sources run too — `nros-cpp/include/nros/*.hpp` was outside `*.c *.h`.
+    # The population is the `c-family` KIND (scripts/lib/file_kinds.py).
+    sys.path.insert(0, str(repo / "scripts" / "lib"))
+    import file_kinds
+
+    files = file_kinds.files_of_kind("c-family", repo=repo)
+    in_headers = header_defines(
+        repo, [f for f in files if f.endswith((".h", ".hpp", ".hh", ".hxx"))])
 
     failures, scanned, guarded = [], 0, 0
     for rel in files:
@@ -158,7 +160,7 @@ def main():
         if "< 1" not in text:
             continue
         scanned += 1
-        bad = check_file(text, in_headers)
+        bad = check_file(text, in_headers, rel)
         guarded += len(guards_and_defs(text)[0])
         for knob, gline, dline in bad:
             where = f"defined at line {dline}" if dline else "never defined here"

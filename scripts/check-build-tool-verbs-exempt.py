@@ -88,24 +88,41 @@ INVOKE = re.compile(r'(?:COMMAND\s+"\$\{[^}]+\}"|set\(\s*\w+)\s+([a-z][a-z0-9-]*
 
 
 def invoked(root):
-    """{(verb, sub_or_None)} that cmake actually runs."""
-    files = subprocess.run(
-        ["git", "ls-files", "cmake/*.cmake", "cmake/**/*.cmake"],
-        cwd=root, capture_output=True, text=True,
-    ).stdout.split()
+    """{(verb, sub_or_None, file, is_command_form)} that cmake actually runs.
+
+    issue 1614 (W5): every CMake file by KIND (`scripts/lib/file_kinds.py`) —
+    `zephyr/cmake/*.cmake` invokes the CLI too and was outside `cmake/**`.
+    Comments are stripped by the one stripper (`scripts/lib/comments.py`).
+    """
+    sys.path.insert(0, os.path.join(root, "scripts", "lib"))
+    import comments
+    import file_kinds
+
     out = set()
-    for rel in files:
+    for rel in file_kinds.files_of_kind("cmake", repo=root):
         try:
             with open(os.path.join(root, rel), encoding="utf8") as fh:
-                lines = fh.read().split("\n")
+                code = comments.strip_comments(fh.read(), "cmake")
         except OSError:
             continue
-        for line in lines:
-            if COMMENT.match(line):
-                continue
+        for line in code.split("\n"):
             for m in INVOKE.finditer(line):
-                out.add((m.group(1), m.group(2) or "", rel))
+                out.add((m.group(1), m.group(2) or "", rel, m.group(0).startswith("COMMAND")))
     return out
+
+
+def guarded_verbs(guard_src):
+    """The verbs `command_is_guarded` matches — the ones the guard can refuse."""
+    m = re.search(r"fn command_is_guarded\(name: &str\) -> bool \{(.*?)\n\}", guard_src, re.S)
+    return set(re.findall(r'"([a-z][a-z0-9-]*)"', m.group(1))) if m else set()
+
+
+# A guarded top verb cmake may run WITH the workspace check, and why. Keyed on
+# the verb exactly (scripts/lib/harvest.py fails a stale or reason-less row).
+TOP_VERB_CHECKED_ON_PURPOSE = {
+    "plan": "nano_ros_workspace_metadata runs it with WORKING_DIRECTORY = the "
+            "user's workspace root, so the workspace check asks the right question",
+}
 
 
 def self_test():
@@ -155,9 +172,33 @@ def main():
         )
         return 1
 
-    problems = []
     seen = 0
-    for verb, sub, rel in sorted(invoked(ROOT)):
+    # issue 1614: a guarded TOP-LEVEL verb cmake runs is refused from a foreign
+    # checkout exactly like a `ws` sub — unless the workspace check is exempt
+    # for it, or it is run in the user's workspace on purpose (rowed above).
+    guarded = guarded_verbs(guard)
+    if not guarded:
+        sys.stderr.write("error: could not read `command_is_guarded`'s verbs.\n")
+        return 1
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+    import harvest
+    inv = invoked(ROOT)
+    cmd_top = {v for v, _s, _r, is_cmd in inv if is_cmd and v != "ws"}
+    _keep, hprobs = harvest.reconcile(sorted(cmd_top & guarded) or ["-"],
+                                      TOP_VERB_CHECKED_ON_PURPOSE, what="guarded top verb")
+    problems = [f"  {p}" for p in hprobs if "STALE" in p or "no reason" in p]
+    for verb, _sub, rel, is_cmd in sorted(inv):
+        if not is_cmd or verb == "ws" or verb not in guarded:
+            continue
+        if verb in top_exempt or verb in TOP_VERB_CHECKED_ON_PURPOSE:
+            continue
+        problems.append(
+            f"  {rel}: cmake invokes `nros {verb}`, a guarded verb that keeps the\n"
+            f"      workspace check (`workspace_check_applies`). From a build directory\n"
+            f"      under another checkout it is refused. Exempt it in the CLI, or row\n"
+            f"      it in TOP_VERB_CHECKED_ON_PURPOSE with the reason it must keep it."
+        )
+    for verb, sub, rel, _is_cmd in sorted(inv):
         if verb != "ws":
             continue
         if not sub:

@@ -7,3 +7,10 @@
 # growing it is a visible edit, and a new dist declares its floor instead.
 #
 # Measure a floor: python3 scripts/sdk/measure-dist-floor.py <tool> --host <host>
+# issue 1614 — `[rust.rustup]` joined the population (every index table with a
+# `dist` map, not only `[tool.*]`). Its three rows predate that and carry no
+# floor; the CLI's rust bootstrap (`rust_toolchain.rs`) reads none either, so
+# measuring them is a two-sided change. Recorded here, so a FOURTH host fails.
+rust.rustup linux-arm64
+rust.rustup linux-x86_64
+rust.rustup macos-arm64

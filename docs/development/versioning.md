@@ -47,7 +47,7 @@ Two `Cargo.toml` files carry a `[workspace.package].version` field:
 | `packages/cli/Cargo.toml` | CLI sub-workspace (nros, nros-cli-core, nros-build, rosidl-*, codegen) |
 
 These two MUST stay in lockstep. `scripts/check-version-lockstep.sh`
-(wired into `.github/workflows/lint.yml`) errors if they diverge.
+(run as `just check version-lockstep`, on the fast lane) errors if they diverge.
 `just release-bump <X.Y.Z>` updates both atomically.
 
 Inside each workspace, every member crate inherits the version via
@@ -133,5 +133,5 @@ was chosen so that:
 - ABI guard impl: `packages/cli/nros-cli-core/src/abi_guard.rs`
 - Lockstep check: `scripts/check-version-lockstep.sh`
 - Bump recipe: `just release-bump` in the root `justfile`
-- (The pre-288 `.github/workflows/release.yml` prebuilt pipeline is
+- (The pre-288 `release.yml` prebuilt workflow is
   deleted — tags publish no artifacts.)
