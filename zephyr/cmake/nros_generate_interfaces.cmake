@@ -154,9 +154,24 @@ function(nros_generate_interfaces target)
   # `app`; a later call for the same (target, language) is a no-op — consumers (the component
   # libs) reach the generated headers via app's include set (the C2d entry/app mirror).
   string(TOLOWER "${_ARG_LANGUAGE}" _nros_iface_lang)
-  if(TARGET ${target}_${_nros_iface_lang}_ffi_build)
+  #
+  # issue 1675 — keyed on a GLOBAL PROPERTY, not on `<target>_<lang>_ffi_build`.
+  # Only the C++ path ever creates an `_ffi_build` target (it builds an FFI
+  # staticlib); the C path builds none, so for C this guard could never fire and
+  # every node package regenerated the shared interface packages' C bindings into
+  # the one `app`. A multi-node C workspace entry therefore compiled `std_msgs`
+  # and `builtin_interfaces` once per node package. The global
+  # `--allow-multiple-definition` hid that until issue 1636 scoped the flag to C++
+  # FFI images; after it, every Zephyr C workspace entry failed to link.
+  # The property is language-keyed, so it says the same thing for both paths;
+  # the TARGET check stays as a second witness for C++.
+  get_property(_nros_iface_done GLOBAL PROPERTY
+      "_NROS_IFACE_GENERATED_${target}_${_nros_iface_lang}")
+  if(_nros_iface_done OR TARGET ${target}_${_nros_iface_lang}_ffi_build)
     return()
   endif()
+  set_property(GLOBAL PROPERTY
+      "_NROS_IFACE_GENERATED_${target}_${_nros_iface_lang}" TRUE)
 
   # --- Resolve or auto-discover interface files ---
   set(_interface_files "")
