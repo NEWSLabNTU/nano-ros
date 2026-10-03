@@ -260,6 +260,20 @@ mod macros;
 #[cfg(all(not(cbindgen), feature = "rmw-cffi"))]
 pub(crate) mod config;
 
+// Issue 1556 item 2 — the C census switch. Its calls are unconditional; its
+// bodies are empty without `std` (see the module).
+#[cfg(feature = "rmw-cffi")]
+mod census;
+
+// Issue 1556 — `metadata-mode` writes a census FILE named by an environment
+// variable, which is what `std` is for: a capability the consumer picks
+// requires it rather than granting it (ARCHITECTURE §2, `check-feature-contract`).
+#[cfg(all(feature = "metadata-mode", not(feature = "std")))]
+compile_error!(
+    "`nros-c/metadata-mode` records a census and writes it to the file `$NROS_CENSUS_OUT` \
+     names: add \"std\" to this crate's features"
+);
+
 // Backend-independent modules (always available)
 mod cdr;
 mod clock;

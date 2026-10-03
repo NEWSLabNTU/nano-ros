@@ -261,3 +261,41 @@ names; three new mutations (a C group timer, a generated `declare_param_*_on`,
 the Rust `create_node`) each go red.
 
 Items 2-5 are still open.
+
+## Status 2026-10-03 -- items 2 and 3 done (a C application is a census producer)
+
+Fixed in the PR that carries this section (*a C application that owns its own
+`main` is a census producer*), on top of item 1.
+
+* **Item 2 -- the C switch** (`nros-c/src/census.rs`). An rclc-style C
+  application has no board funnel: it opens its own support context and runs
+  its own spin. So the switch rides the two calls every such program makes, in
+  order. `nros_support_init*` (all three funnel through `_rmw`) ARMS it before
+  the session resolves its backend -- registers the recorder and selects it
+  through `$NROS_RMW`, the two halves of `nros-cpp`'s `census_select_backend`
+  -- and the first `rclc_executor_spin{,_some,_period,_one_period}` writes the
+  census through `nros::metadata_mode::to_json` and exits instead of spinning
+  (0 when written). An image without the recorder REFUSES at support init, so
+  the run exits non-zero with no file rather than dialling a router.
+* **Item 3 -- the recorder is linked.** `nros-c` gains `metadata-mode` (`std`
+  + `nros/metadata-mode` + the recording backend), `nros-cpp`'s `metadata-mode`
+  forwards to it (that umbrella bundles `nros-c`, and it is the one a native C
+  binary links today), and `nros_feature_set` turns it on for the native C
+  umbrella too. `check-rtos-feature-set-excludes-analysis`'s rule moved with
+  it: `metadata-mode` iff (c OR cpp) + posix + native, with a second negative
+  control for the native C set.
+
+Measured on `examples/native/c/talker` (the rclc API: `nros_support_init`,
+`rclc_node_init_default`, `rclc_publisher_init_default`, `nros_timer_init`,
+`rclc_executor_add_timer`, `rclc_executor_spin_period`), built by the native
+fixture lane, run with `$NROS_CENSUS_OUT` and no router: exit 0, census node
+`talker` with publisher `/chatter` and one `wall` timer at 1000 ms. Test:
+`workspace_metadata::an_rclc_c_application_writes_a_census_without_a_router`
+-- measured red with `nros-c/src` at its previous state (exit 1 after the
+connect attempt, no file) and green after.
+
+**Still open: items 4 and 5** -- a host configure of a standalone NuttX leaf
+(the same `src/` against the native board) with the enumeration that reaches
+it, and deriving the leaf's pools from the census where `system.toml`
+`entities` is read today. Until then the twelve leaves keep their authored
+declarations and `--from-leaf` stays their producer.

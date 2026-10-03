@@ -1,18 +1,19 @@
 # phase-463 W5 I3(a) (issue 1419) -- no RTOS umbrella resolves an analysis mode.
 #
 # The census binary IS the native boot binary (phase-463 W2), so `metadata-mode`
-# is in the NATIVE C++ umbrella's feature set and must be in no other. An RTOS
+# is in the NATIVE C and C++ umbrellas' feature sets and must be in no other
+# (issue 1556 items 2-3 gave `nros-c` the feature and the C census switch). An RTOS
 # image that carried it would link the recorder, the recording backend and the
 # census FFI into firmware -- bytes on a board for a mode that cannot run there
 # (the switch is read through `env`, which no RTOS board has). Issue 0304 is the
 # precedent for checking a feature set rather than assuming it: a
-# `metadata-mode` once reached `nros-c`, which has no such feature.
+# `metadata-mode` once reached `nros-c` before that crate had the feature.
 #
 # So this ASKS the one function that assembles every umbrella's features,
 # `nros_feature_set` in cmake/NanoRosFeatureSet.cmake, for every crate x
 # platform x cross combination it accepts, and holds the answer to one rule:
 #
-#   `metadata-mode` iff CRATE cpp AND PLATFORM posix AND NOT cross;
+#   `metadata-mode` iff CRATE (c OR cpp) AND PLATFORM posix AND NOT cross;
 #   `profile-mode`  never (phase-463 W7 has not landed; when it does, the same
 #                   rule applies and this line moves with it).
 #
@@ -34,7 +35,8 @@ set(_platforms posix freertos freertos_armcm3 nuttx nuttx_armv7a threadx threadx
 # Returns, in `out`, an error line or "" for one evaluated feature list.
 function(_analysis_violation out crate platform cross feats)
     set(_want_metadata FALSE)
-    if(crate STREQUAL "cpp" AND platform STREQUAL "posix" AND NOT cross)
+    if((crate STREQUAL "cpp" OR crate STREQUAL "c") AND platform STREQUAL "posix"
+       AND NOT cross)
         set(_want_metadata TRUE)
     endif()
     set(_has_metadata FALSE)
@@ -43,9 +45,9 @@ function(_analysis_violation out crate platform cross feats)
     endif()
     set(_msg "")
     if(_has_metadata AND NOT _want_metadata)
-        set(_msg "CRATE ${crate} PLATFORM ${platform} cross=${cross}: resolves `metadata-mode` -- an RTOS (or non-C++) umbrella carries the census recorder")
+        set(_msg "CRATE ${crate} PLATFORM ${platform} cross=${cross}: resolves `metadata-mode` -- an RTOS umbrella carries the census recorder")
     elseif(_want_metadata AND NOT _has_metadata)
-        set(_msg "CRATE ${crate} PLATFORM ${platform} cross=${cross}: the NATIVE C++ umbrella lost `metadata-mode` -- its entry can no longer be the census producer")
+        set(_msg "CRATE ${crate} PLATFORM ${platform} cross=${cross}: a NATIVE C/C++ umbrella lost `metadata-mode` -- its entry can no longer be the census producer")
     elseif("profile-mode" IN_LIST feats)
         set(_msg "CRATE ${crate} PLATFORM ${platform} cross=${cross}: resolves `profile-mode`")
     endif()
@@ -61,6 +63,12 @@ endif()
 _analysis_violation(_planted cpp posix FALSE "std;platform-posix")
 if(_planted STREQUAL "")
     message(FATAL_ERROR "rtos-feature-set-excludes-analysis: self-test -- a native C++ set "
+        "WITHOUT `metadata-mode` was not refused")
+endif()
+# Issue 1556 -- and the native C set, which is a census producer now too.
+_analysis_violation(_planted c posix FALSE "std;platform-posix")
+if(_planted STREQUAL "")
+    message(FATAL_ERROR "rtos-feature-set-excludes-analysis: self-test -- a native C set "
         "WITHOUT `metadata-mode` was not refused")
 endif()
 
@@ -88,8 +96,8 @@ endforeach()
 if(_failures)
     list(JOIN _failures "\n  " _lines)
     message(FATAL_ERROR "rtos-feature-set-excludes-analysis: FAIL (phase-463 W5 I3a)\n  ${_lines}\n"
-        "Only the NATIVE C++ umbrella may carry `metadata-mode`; see the analysis block in "
+        "Only the NATIVE C and C++ umbrellas may carry `metadata-mode`; see the analysis block in "
         "cmake/NanoRosFeatureSet.cmake.")
 endif()
 message(STATUS "rtos-feature-set-excludes-analysis: OK -- ${_n} umbrella feature sets; "
-    "`metadata-mode` only in cpp/posix/native, `profile-mode` in none")
+    "`metadata-mode` only in c|cpp/posix/native, `profile-mode` in none")

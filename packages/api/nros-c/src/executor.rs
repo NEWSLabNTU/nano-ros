@@ -3512,6 +3512,8 @@ pub unsafe extern "C" fn rclc_executor_spin_some(
     timeout_ns: u64,
 ) -> nros_ret_t {
     validate_not_null!(executor);
+    // Issue 1556 item 2 — a census run writes and exits here, instead of spinning.
+    crate::census::finish_if_armed();
 
     let executor = &mut *executor;
 
@@ -3550,6 +3552,8 @@ pub unsafe extern "C" fn rclc_executor_spin_some(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_spin(executor: *mut nros_executor_t) -> nros_ret_t {
     validate_not_null!(executor);
+    // Issue 1556 item 2 — a census run writes and exits here, instead of spinning.
+    crate::census::finish_if_armed();
 
     let executor_ref = &mut *executor;
 
@@ -3635,6 +3639,8 @@ pub unsafe extern "C" fn rclc_executor_spin_period(
     period_ns: u64,
 ) -> nros_ret_t {
     validate_not_null!(executor);
+    // Issue 1556 item 2 — a census run writes and exits here, instead of spinning.
+    crate::census::finish_if_armed();
 
     if period_ns == 0 {
         return NROS_RET_INVALID_ARGUMENT;
@@ -3709,6 +3715,8 @@ pub unsafe extern "C" fn rclc_executor_spin_one_period(
     period_ns: u64,
 ) -> nros_ret_t {
     validate_not_null!(executor);
+    // Issue 1556 item 2 — a census run writes and exits here, instead of spinning.
+    crate::census::finish_if_armed();
 
     if period_ns == 0 {
         return NROS_RET_INVALID_ARGUMENT;

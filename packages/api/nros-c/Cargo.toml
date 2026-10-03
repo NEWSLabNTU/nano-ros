@@ -53,6 +53,16 @@ default = ["panic-platform"]
 # selection would vanish from the C API silently.
 env = ["nros/env"]
 std = ["alloc", "env", "nros/std", "nros-node/std", "nros-rmw/std"]
+# Issue 1556 items 2-3 — a C application is a census PRODUCER. With this
+# feature the hosted support init answers `$NROS_CENSUS_OUT` by selecting the
+# recording backend, and the first spin writes what the recorder saw (the
+# hooks are `nros::census_hooks`, which every `nros-c` node / timer / guard /
+# parameter entry point calls) and exits instead of spinning. Host-only: it
+# REQUIRES `std` (the switch is an environment variable and the census a file;
+# `compile_error!` without it),
+# which no RTOS image has. `nros-cpp`'s `metadata-mode` forwards here, because
+# that umbrella bundles this crate.
+metadata-mode = ["nros/metadata-mode", "dep:nros-rmw-metadata"]
 alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 
 # RMW backend (cffi vtable dispatch) — every backend ships as a cffi
@@ -363,6 +373,8 @@ nros = { version = "0.5.0", path = "../nros", default-features = false, features
 nros-node.workspace = true
 nros-rmw.workspace = true
 nros-core.workspace = true
+# Issue 1556 — the recording backend, behind `metadata-mode` (host census only).
+nros-rmw-metadata = { path = "../../rmw/metadata", optional = true }
 # Phase 248 C5c — platform impl + the `nros_platform_*` cffi symbols come from
 # here (via the `platform-X` features above), not the agnostic `nros` umbrella.
 nros-platform = { workspace = true, default-features = false }
