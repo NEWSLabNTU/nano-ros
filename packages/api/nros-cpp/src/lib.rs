@@ -2580,8 +2580,12 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     // unless `metadata-mode` is on. Reads the namespace back out of the handle
     // for the same reason the `_ex` path does: the recorder must see the
     // namespace the node LANDED in, not the one the caller asked for.
-    let ns_str = handle_namespace(out);
-    nros::census_hooks::on_node_create(name_str, ns_str, ctx.domain_id);
+    // Under `ACTIVE`: reading the namespace back is work an empty hook body
+    // does not remove (phase-463 W5 I4).
+    if nros::census_hooks::ACTIVE {
+        let ns_str = handle_namespace(out);
+        nros::census_hooks::on_node_create(name_str, ns_str, ctx.domain_id);
+    }
 
     NROS_CPP_RET_OK
 }
@@ -2759,8 +2763,12 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
     // declared next attribute to it (the RMW seam carries no node). Read out
     // of the handle just written rather than re-derived, so the recorder sees
     // the namespace the node LANDED in. No-op unless `metadata-mode` is on.
-    let ns_str = handle_namespace(out);
-    nros::census_hooks::on_node_create(name_str, ns_str, ctx.domain_id);
+    // Under `ACTIVE`: reading the namespace back is work an empty hook body
+    // does not remove (phase-463 W5 I4).
+    if nros::census_hooks::ACTIVE {
+        let ns_str = handle_namespace(out);
+        nros::census_hooks::on_node_create(name_str, ns_str, ctx.domain_id);
+    }
 
     NROS_CPP_RET_OK
 }

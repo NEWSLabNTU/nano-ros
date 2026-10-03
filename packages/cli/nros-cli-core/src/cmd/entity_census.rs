@@ -79,6 +79,34 @@ pub(crate) fn census_path_for_model(model: &Path) -> PathBuf {
     model.with_file_name(format!("{stem}.census.json"))
 }
 
+/// phase-463 W6 -- the callback slots the CODE consumes, read from a model's
+/// census, when that census is current and complete; `None` otherwise.
+///
+/// The same per-node rule the sidecar count and the `nros::main!` macro use
+/// (`nros_orchestration_ir::sidecar_slots::slots_of_node`), over the census's
+/// nodes -- a census and a probe sidecar are one document schema. This is the
+/// EXACT count the `max(model, recorded)` rule approximates: the census ran the
+/// code, so it sees the timers the model has no entity for and every entity
+/// the model's wiring names.
+pub(crate) fn census_callback_slots(model: &Path, ws: &Path) -> Option<usize> {
+    let path = census_path_for_model(model);
+    if !matches!(census_freshness(&path, ws), Freshness::Fresh) {
+        return None;
+    }
+    let doc: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).ok()?).ok()?;
+    if incomplete_reason(&doc).is_some() {
+        return None;
+    }
+    let nodes = doc.get("census")?.get("nodes")?.as_array()?;
+    Some(
+        nodes
+            .iter()
+            .map(nros_orchestration_ir::sidecar_slots::slots_of_node)
+            .sum(),
+    )
+}
+
 /// This wrapper's own schema. The recorder's version travels beside it under
 /// `census.version`, unchanged; they move independently and a reader that
 /// confuses them would read the wrong field.
