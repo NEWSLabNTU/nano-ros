@@ -1060,7 +1060,7 @@ path's to close, not the descriptor's: the census hooks live in `nros-cpp`, so a
 Rust node, and a C node that opens its own node through `nros-c`, are not
 attributed; and only the cmake configure checks a census, so a cargo image is
 never checked
-([issue 1419](../issues/1419-no-layer-reconciles-contract-endpoints-with-the-code.md)).
+([issue 1419](../issues/archived/1419-no-layer-reconciles-contract-endpoints-with-the-code.md)).
 The direction for both: the hooks move to `nros`, the crate every language's node
 API sits on, and the cargo road checks at `nros build` stage 4, where it already
 writes this descriptor.

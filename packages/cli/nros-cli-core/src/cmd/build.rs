@@ -457,8 +457,11 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // its one point of comparison. A HOST image is the census
                 // producer and checks nothing (the configure's `native` rule).
                 if !args.dry_run
-                    && descriptor.platform
-                        != crate::orchestration::board_descriptor::PlatformKind::Posix
+                    && stage4_checks_census(
+                        Driver::Cargo,
+                        descriptor.platform,
+                        image_has_non_rust(&image, &bringup_dir),
+                    )
                 {
                     crate::cmd::entity_census::check_cargo_image(
                         &root,
@@ -984,6 +987,32 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 )
             }
             Driver::West => {
+                // Issue 1419 — a RUST west application (`rust_cargo_application()`)
+                // calls no `nano_ros_entry()`, so the configure-time census check
+                // a C/C++ Zephyr entry runs never reaches it. Stage 4 is that
+                // road's one point that holds the model and the image before any
+                // compile -- the cargo road's reason, one driver over. A C/C++
+                // west application keeps its configure check.
+                if !args.dry_run
+                    && stage4_checks_census(
+                        Driver::West,
+                        descriptor.platform,
+                        image_has_non_rust(&image, &bringup_dir),
+                    )
+                {
+                    crate::cmd::entity_census::check_cargo_image(
+                        &root,
+                        &bringup_dir,
+                        &image_id,
+                        &image,
+                    )
+                    .wrap_err_with(|| {
+                        format!(
+                            "`{qual}`: the census and the contract disagree, or the census no \
+                             longer describes the code (issue 1419)"
+                        )
+                    })?;
+                }
                 // W5 — overlays reach Zephyr through EXTRA_CONF_FILE and
                 // APPLICATION_CONFIG_DIR. Never CONF_FILE: that suppresses
                 // Zephyr's own boards/ and socs/ discovery entirely.
@@ -3741,6 +3770,29 @@ fn effective_images(
         .collect()
 }
 
+/// Issue 1419 -- does `nros build` stage 4 check this image's census?
+///
+/// Exactly the images no CONFIGURE checks: a CROSS image whose road calls no
+/// `nano_ros_entry()`. That is every cargo-driver image (a cargo image never
+/// configures) and a west image whose node graph is all Rust
+/// (`rust_cargo_application()`). A C/C++ west or cmake image is checked by its
+/// own configure (`cmake/NanoRosEntry.cmake`), so checking it here too would
+/// be a second reader of one verdict; a HOST image is the census PRODUCER.
+pub(crate) fn stage4_checks_census(
+    driver: Driver,
+    platform: crate::orchestration::board_descriptor::PlatformKind,
+    has_non_rust: bool,
+) -> bool {
+    if platform == crate::orchestration::board_descriptor::PlatformKind::Posix {
+        return false;
+    }
+    match driver {
+        Driver::Cargo => true,
+        Driver::West => !has_non_rust,
+        Driver::CMake => false,
+    }
+}
+
 #[cfg(test)]
 mod effective_images_tests {
     use super::effective_images;
@@ -4823,5 +4875,49 @@ mod generated_output_collision_tests {
             claim(t.path(), "b:x", &other, "freertos", Driver::CMake),
         ];
         assert!(generated_output_collisions(&apart).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod stage4_census_tests {
+    use super::{Driver, stage4_checks_census};
+    use crate::orchestration::board_descriptor::PlatformKind;
+
+    /// Issue 1419 -- stage 4 checks the census of exactly the cross images no
+    /// configure checks: every cargo image, and a west image whose graph is all
+    /// Rust (`rust_cargo_application()` calls no `nano_ros_entry()`). Before,
+    /// the west road checked nothing, so `realtime-rust`'s `zephyr_derived` --
+    /// the one contracted Rust Zephyr image -- was never compared with its code.
+    #[test]
+    fn stage4_checks_the_census_no_configure_checks() {
+        // The Rust Zephyr image: checked here (was: never).
+        assert!(stage4_checks_census(
+            Driver::West,
+            PlatformKind::Zephyr,
+            false
+        ));
+        // A C/C++ Zephyr image: its configure (`nano_ros_entry`) checks it.
+        assert!(!stage4_checks_census(
+            Driver::West,
+            PlatformKind::Zephyr,
+            true
+        ));
+        // Every cross cargo image, as before.
+        assert!(stage4_checks_census(
+            Driver::Cargo,
+            PlatformKind::ThreadxLinux,
+            false
+        ));
+        // cmake images are their configure's; host images are the producer.
+        assert!(!stage4_checks_census(
+            Driver::CMake,
+            PlatformKind::Freertos,
+            true
+        ));
+        assert!(!stage4_checks_census(
+            Driver::Cargo,
+            PlatformKind::Posix,
+            false
+        ));
     }
 }

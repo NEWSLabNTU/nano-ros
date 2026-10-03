@@ -546,17 +546,31 @@ fn resolve_max_cbs_through_ladder(platform: &str) -> Option<usize> {
 /// named after its platform: a hosted image called `rt_host` was told to raise
 /// `NROS_EXECUTOR_MAX_CBS` for a model it sizes its way out of, and a Zephyr
 /// image called `native` was waved through to a boot-time `code=-6 Full`.
+///
+/// phase-463 W6 -- `census_slots` is the count a CURRENT, complete census of
+/// this model records ([`crate::cmd::entity_census::census_callback_slots`]).
+/// Where it exists it IS the count, and the `max(model, recorded)` rule is not
+/// consulted: that max exists because neither of its two sources is complete
+/// (the model sees no timers, a sidecar sees only what one component's probe
+/// ran), and the census is the run of the whole image's code. The max stays
+/// only where no census exists -- a model with no contract (nothing takes a
+/// census of it) and the `nros::main!` macro's leaf packages.
 pub fn check_executor_capacity(
     model: &SystemModel,
     platform: super::board_descriptor::PlatformKind,
     declared: Option<usize>,
     slots: &BTreeMap<(String, String), usize>,
+    census_slots: Option<usize>,
 ) -> Result<()> {
     use nros_orchestration_ir::executor_sizing as sz;
 
-    // phase-307 W4 — exact where a sidecar exists, model bound where it does
-    // not. With no sidecars this is byte-identical to the pre-307 check.
-    let counted = count_callbacks_with_metadata(model, slots);
+    // phase-463 W6 -- exact from a census where one exists. Otherwise
+    // phase-307 W4: exact where a sidecar exists, model bound where it does
+    // not; with no sidecars this is byte-identical to the pre-307 check.
+    let counted = match census_slots {
+        Some(n) => n,
+        None => count_callbacks_with_metadata(model, slots),
+    };
     if counted == 0 {
         return Ok(());
     }
@@ -912,13 +926,14 @@ mod executor_capacity_tests {
     #[test]
     fn recorded_timers_raise_the_count_past_the_model_bound() {
         let model = with_node(model_with(1), "/listener0", "listener_pkg", "listener");
-        check_executor_capacity(&model, ZEPHYR, None, &no_metadata())
+        check_executor_capacity(&model, ZEPHYR, None, &no_metadata(), None)
             .expect("model bound alone: 2 entities fit the default 4");
         let err = check_executor_capacity(
             &model,
             ZEPHYR,
             None,
             &slots(&[("listener_pkg", "listener", 6)]),
+            None,
         )
         .expect_err("6 recorded slots on one node do not fit 4")
         .to_string();
@@ -931,11 +946,41 @@ mod executor_capacity_tests {
     #[test]
     fn metadata_never_lowers_the_model_bound() {
         let model = with_node(model_with(8), "/adder", "adder_pkg", "adder");
-        let err =
-            check_executor_capacity(&model, ZEPHYR, None, &slots(&[("adder_pkg", "adder", 0)]))
-                .expect_err("still 9")
-                .to_string();
+        let err = check_executor_capacity(
+            &model,
+            ZEPHYR,
+            None,
+            &slots(&[("adder_pkg", "adder", 0)]),
+            None,
+        )
+        .expect_err("still 9")
+        .to_string();
         assert!(err.contains("registers 9 callback entities"), "got: {err}");
+    }
+
+    /// phase-463 W6 -- a current census IS the count: the max of model and
+    /// sidecar is not consulted. Both directions, because the max hides each:
+    /// a census that records MORE than the model and the sidecar (timers on a
+    /// node no probe ran) refuses where the max passed, and one that records
+    /// FEWER than the model bound (the wiring names a client the code never
+    /// registers on this executor) passes where the max refused.
+    #[test]
+    fn a_census_count_replaces_the_max_in_both_directions() {
+        let model = with_node(model_with(1), "/listener0", "listener_pkg", "listener");
+        check_executor_capacity(&model, ZEPHYR, None, &no_metadata(), None)
+            .expect("the max (model bound 2) fits the default 4");
+        let err = check_executor_capacity(&model, ZEPHYR, None, &no_metadata(), Some(7))
+            .expect_err("the census records 7")
+            .to_string();
+        assert!(err.contains("registers 7 callback entities"), "got: {err}");
+
+        let model = with_node(model_with(8), "/adder", "adder_pkg", "adder");
+        let err = check_executor_capacity(&model, ZEPHYR, None, &no_metadata(), None)
+            .expect_err("the max (model bound 9) does not fit 4")
+            .to_string();
+        assert!(err.contains("registers 9 callback entities"), "got: {err}");
+        check_executor_capacity(&model, ZEPHYR, None, &no_metadata(), Some(3))
+            .expect("the census records 3, and 3 fits 4");
     }
 
     /// `n` subscribers + one service server = `n + 1` callback entities.
@@ -965,13 +1010,13 @@ mod executor_capacity_tests {
         // The pre-0257 bake for every in-tree example that authors no
         // `<stem>.contract.yaml` beside its launch file — 109 of 114 on
         // 2026-09-06 (issue 0973).
-        check_executor_capacity(&SystemModel::default(), ZEPHYR, None, &no_metadata())
+        check_executor_capacity(&SystemModel::default(), ZEPHYR, None, &no_metadata(), None)
             .expect("nothing to count");
     }
 
     #[test]
     fn over_capacity_model_on_a_firmware_board_fails_the_bake() {
-        let err = check_executor_capacity(&model_with(8), ZEPHYR, None, &no_metadata())
+        let err = check_executor_capacity(&model_with(8), ZEPHYR, None, &no_metadata(), None)
             .expect_err("9 entities do not fit the default 4")
             .to_string();
         assert!(err.contains("registers 9 callback entities"), "got: {err}");
@@ -982,7 +1027,7 @@ mod executor_capacity_tests {
 
     #[test]
     fn declared_max_callbacks_below_the_count_fails_the_bake() {
-        let err = check_executor_capacity(&model_with(8), POSIX, Some(4), &no_metadata())
+        let err = check_executor_capacity(&model_with(8), POSIX, Some(4), &no_metadata(), None)
             .expect_err("declared 4 does not fit 9")
             .to_string();
         assert!(err.contains("max_callbacks"), "got: {err}");
@@ -991,7 +1036,7 @@ mod executor_capacity_tests {
 
     #[test]
     fn declared_max_callbacks_above_the_count_passes() {
-        check_executor_capacity(&model_with(8), ZEPHYR, Some(32), &no_metadata())
+        check_executor_capacity(&model_with(8), ZEPHYR, Some(32), &no_metadata(), None)
             .expect("32 fits 9");
     }
 
@@ -999,7 +1044,7 @@ mod executor_capacity_tests {
     fn sizing_honoring_board_derives_its_way_out() {
         // posix opens via `run_with_deploy_sized`, so the derived size applies
         // and no operator action is needed — mirroring the macro.
-        check_executor_capacity(&model_with(8), POSIX, None, &no_metadata())
+        check_executor_capacity(&model_with(8), POSIX, None, &no_metadata(), None)
             .expect("derived sizing covers the count on a hosted board");
     }
 
