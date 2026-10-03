@@ -482,6 +482,15 @@ function(_nros_entity_budget_env _out_var)
     # that infrastructure term at the consumer from per-entry facts; the
     # liveliness pool has no such completion, so it keeps the zpico default.
     set(_out "")
+    # Issue 1649 (RFC-0100 D12) -- NINE entity counts were retired onto the
+    # sizing descriptor: EXECUTOR_MAX_CBS, _MAX_SC, _ACTION_CLIENTS, _MAX_NODES,
+    # _MAX_MONITORS, _MAX_AGE_MONITORS, MAX_PUBLISHERS, MAX_SUBSCRIBERS and
+    # RMW_SUBSCRIBER_SLOTS. Every road this list reached names a descriptor now
+    # (a multi-entry configure its shared runtime's), the descriptor states each
+    # as an `[image]` field from the SAME `derive` (issue 1655), its consumer
+    # reads it first, and the per-carrier knob diff was ZERO on both measured
+    # images. A carrier delivering the same number a second way is the
+    # 0460/0491 shape the descriptor exists to remove.
     foreach(_pair
             # issue 1130 -- the per-kind cell registry capacity for a class that
             # states no ENTITY_BOUNDS. Composed across entries by MAX with no
@@ -490,26 +499,6 @@ function(_nros_entity_budget_env _out_var)
             # is the largest component's -- and it is absent (the whole road
             # abstains) when any component declared nothing.
             "NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES;NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES"
-            "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS;NROS_DERIVED_EXECUTOR_ACTION_CLIENTS"
-            "NROS_DECLARED_EXECUTOR_MAX_CBS;NROS_DERIVED_EXECUTOR_MAX_CBS"
-            "NROS_DECLARED_EXECUTOR_MAX_NODES;NROS_DERIVED_EXECUTOR_MAX_NODES"
-            "NROS_DECLARED_EXECUTOR_MAX_SC;NROS_DERIVED_EXECUTOR_MAX_SC"
-            # phase-467 W1 (issue 1471) -- the contract-monitor tables, counted
-            # from the contract the entry bakes them from. Present only when the
-            # fragment saw a model; a table past either knob is REFUSED at
-            # install naming it, never truncated.
-            "NROS_DECLARED_EXECUTOR_MAX_MONITORS;NROS_DERIVED_EXECUTOR_MAX_MONITORS"
-            "NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS;NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS"
-            "NROS_DECLARED_RMW_SUBSCRIBER_SLOTS;NROS_DERIVED_RMW_SUBSCRIBER_SLOTS"
-            "NROS_DECLARED_MAX_PUBLISHERS;NROS_DERIVED_MAX_PUBLISHERS"
-            "NROS_DECLARED_MAX_SUBSCRIBERS;NROS_DERIVED_MAX_SUBSCRIBERS"
-            # issue 1233 — the node table. Withheld from phase-412 W1 because
-            # under-counting HALTS the board, and admitted to the resolver road
-            # on 2026-09-03 once `NodeError::NodeTableFull` was made to name the
-            # knob. That precondition is a property of the FAILURE, not of the
-            # road, so it holds here too; nothing in the tree ever said why the
-            # other two roads were left out.
-            "NROS_DECLARED_EXECUTOR_MAX_NODES;NROS_DERIVED_EXECUTOR_MAX_NODES"
             # phase-461 W3 (issue 1352) -- the two service-inbox families' slot
             # sizes, joined in `NanoRosEntityInventory.cmake` from this image's
             # declared service and action REQUEST types. Absent unless every

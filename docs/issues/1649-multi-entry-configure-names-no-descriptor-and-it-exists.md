@@ -193,3 +193,37 @@ ONE carrier dropped, diffed against the run that kept it):
 producer and fallback rung, and moving the row to `RETIRED`), plus a
 measurement for the unmeasured ones on an image that delivers them. The ledger
 rows that wait on that point here; the rest moved to issue 1655.
+
+## Progress, 2026-10-03 — nine carriers retired; thirteen rows say why they stay
+
+**Retired** (producer deleted from `_nros_entity_budget_env`, fallback rung
+deleted from each consumer, `RETIRED` entry in `check-knob-single-reader` with
+the forbidden spellings): `EXECUTOR_MAX_CBS`, `EXECUTOR_MAX_SC`,
+`EXECUTOR_ACTION_CLIENTS`, `EXECUTOR_MAX_NODES`, `EXECUTOR_MAX_MONITORS`,
+`EXECUTOR_MAX_AGE_MONITORS`, `MAX_PUBLISHERS`, `MAX_SUBSCRIBERS`,
+`RMW_SUBSCRIBER_SLOTS` — each answered by an `[image]` field (issue 1655) read
+first by its consumer.
+
+Measured three ways: all nine dropped from the configure's own cargo command
+on `examples/workspaces/cpp` native (7 entries) and `freertos_posix` (1 entry,
+Cyclone) — 0 generated files differ on either; and after the retirement, the
+native configure rebuilt with the producers gone against the pre-retirement
+build — 0 generated files differ. Roads checked: the leaf-declaration road
+never received these (the entity-inventory fragment refuses there), and the
+Zephyr west road delivers the derived values as the knob itself
+(`NROS_EXECUTOR_MAX_CBS` …, through the module resolver), not as these
+carriers.
+
+**Still `Kept(1649)` — thirteen rows, each with its reason in the ledger:**
+
+* `SUBSCRIBER_BUFFER_SIZE`, `LARGE_SUBSCRIBERS` — zero-diff, but produced as a
+  trio with `SUBSCRIBER_LARGE_SIZE`, which neither measured image delivers;
+  retire the three together after an image with a non-empty large class.
+* `SUBSCRIBER_LARGE_SIZE`, `TL_RETAIN_BYTES` and the six parameter rows —
+  not delivered by any measured image (no in-tree multi-entry configure
+  declares parameters).
+* `SERVICE_INBOX_BYTES`, `ACTION_INBOX_BYTES` — zero-diff on the native image,
+  but `nros-rmw-zenoh` ranks the carrier FIRST and the west resolver forwards
+  it; flip the rank and measure a west image first.
+* `TL_PUBLISHERS` — one of the four queryable-floor inputs whose siblings stay
+  (issue 1655 / RFC-0100 D4).

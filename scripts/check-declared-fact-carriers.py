@@ -206,17 +206,27 @@ _QUERYABLES_COMPLETED = "sizes the queryable table from"
 _ZPICO_BUILD = "packages/rmw/zenoh/nros-zpico-build/src/lib.rs"
 _LOCAL_LOOPBACK_ALWAYS = "Enabled on EVERY target, embedded included"
 
+# Issue 1649 (RFC-0100 D12) -- nine entity counts left the declared road: the
+# sizing descriptor states each as an `[image]` field (issue 1655) and every
+# road that carried them names a descriptor now. The decision is quoted from
+# the producer, where it was taken.
+_RETIRED_ONTO_DESCRIPTOR = NotCarried(
+    _FACTS,
+    "NINE entity counts were retired onto the",
+    "retired onto the sizing descriptor's `[image]` fields (issue 1649); "
+    "its consumer reads the descriptor first")
+
 FACT_DISPOSITION = {
     # ---- the entity inventory's counts -----------------------------------
     "NROS_DERIVED_EXECUTOR_MAX_CBS": {
         "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_CBS",),
         "sidecar": ("NROS_EXECUTOR_MAX_CBS",),
-        "declared": ("NROS_DECLARED_EXECUTOR_MAX_CBS",),
+        "declared": _RETIRED_ONTO_DESCRIPTOR,
     },
     "NROS_DERIVED_EXECUTOR_ACTION_CLIENTS": {
         "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_ACTION_CLIENTS",),
         "sidecar": ("NROS_EXECUTOR_ACTION_CLIENTS",),
-        "declared": ("NROS_DECLARED_EXECUTOR_ACTION_CLIENTS",),
+        "declared": _RETIRED_ONTO_DESCRIPTOR,
     },
     "NROS_DERIVED_MAX_SUBSCRIBERS": {
         # TWO resolved knobs from one fact -- the zenoh session pool and the
@@ -224,17 +234,17 @@ FACT_DISPOSITION = {
         "resolver": ("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS",
                      "NROS_RESOLVED_NROS_XRCE_MAX_SUBSCRIBERS"),
         "sidecar": ("ZPICO_MAX_SUBSCRIBERS",),
-        "declared": ("NROS_DECLARED_MAX_SUBSCRIBERS",),
+        "declared": _RETIRED_ONTO_DESCRIPTOR,
     },
     "NROS_DERIVED_MAX_PUBLISHERS": {
         "resolver": ("NROS_RESOLVED_NROS_MAX_PUBLISHERS",),
         "sidecar": ("ZPICO_MAX_PUBLISHERS",),
-        "declared": ("NROS_DECLARED_MAX_PUBLISHERS",),
+        "declared": _RETIRED_ONTO_DESCRIPTOR,
     },
     "NROS_DERIVED_RMW_SUBSCRIBER_SLOTS": {
         "resolver": ("NROS_RESOLVED_NROS_RMW_SUBSCRIBER_SLOTS",),
         "sidecar": ("NROS_RMW_SUBSCRIBER_SLOTS",),
-        "declared": ("NROS_DECLARED_RMW_SUBSCRIBER_SLOTS",),
+        "declared": _RETIRED_ONTO_DESCRIPTOR,
     },
     # phase-412 W2 -- the liveliness pool. Every token is declared by THIS
     # session (one per node name, one per publisher/subscriber/service server
@@ -289,7 +299,7 @@ FACT_DISPOSITION = {
     "NROS_DERIVED_EXECUTOR_MAX_NODES": {
         "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_NODES",),
         "sidecar": ("NROS_EXECUTOR_MAX_NODES",),
-        "declared": ("NROS_DECLARED_EXECUTOR_MAX_NODES",),
+        "declared": _RETIRED_ONTO_DESCRIPTOR,
     },
     # issue 1198 / phase-448 W6 -- the executor's OTHER fixed table, and the one
     # that was on NO road: `MAX_SC` was not even published as a fact. It is the
@@ -299,7 +309,7 @@ FACT_DISPOSITION = {
     "NROS_DERIVED_EXECUTOR_MAX_SC": {
         "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_SC",),
         "sidecar": ("NROS_EXECUTOR_MAX_SC",),
-        "declared": ("NROS_DECLARED_EXECUTOR_MAX_SC",),
+        "declared": _RETIRED_ONTO_DESCRIPTOR,
     },
     # phase-467 W1 (issue 1471) -- the contract-monitor tables. Counted from
     # the MODEL (`monitor_rows` / `age_rows`, the functions the entry emitters
@@ -308,12 +318,12 @@ FACT_DISPOSITION = {
     "NROS_DERIVED_EXECUTOR_MAX_MONITORS": {
         "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_MONITORS",),
         "sidecar": ("NROS_EXECUTOR_MAX_MONITORS",),
-        "declared": ("NROS_DECLARED_EXECUTOR_MAX_MONITORS",),
+        "declared": _RETIRED_ONTO_DESCRIPTOR,
     },
     "NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS": {
         "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_AGE_MONITORS",),
         "sidecar": ("NROS_EXECUTOR_MAX_AGE_MONITORS",),
-        "declared": ("NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS",),
+        "declared": _RETIRED_ONTO_DESCRIPTOR,
     },
     # ---- the message-bound inventory's sizes -----------------------------
     "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE": {
@@ -504,6 +514,15 @@ ROAD_PAIRS = {
     if len(_carried(e, "sidecar")) == 1 and len(_carried(e, "declared")) == 1
 }
 
+# Issue 1649 -- a leaf-road knob whose CMake twin is now the SIZING DESCRIPTOR
+# (its declared carrier retired onto an `[image]` field). Derived from the same
+# disposition table, so a row cannot claim a descriptor twin it was not given.
+DESCRIPTOR_TWINS = {
+    _carried(e, "sidecar")[0]
+    for e in FACT_DISPOSITION.values()
+    if len(_carried(e, "sidecar")) == 1 and e["declared"] is _RETIRED_ONTO_DESCRIPTOR
+}
+
 # Facts with no leaf-road twin, each for a stated reason.
 ROAD_UNPAIRED = {
     "NROS_DECLARED_INFRA_QUERYABLES":
@@ -519,8 +538,9 @@ ROAD_UNPAIRED = {
         "parameter services register once PER NODE, so the node count is a "
         "term in ZPICO_MAX_QUERYABLES, which is DELIBERATELY NOT DERIVED. It "
         "is NOT the executor node table -- NROS_DERIVED_EXECUTOR_MAX_NODES "
-        "travels the declared road as NROS_DECLARED_EXECUTOR_MAX_NODES "
-        "(issue 1233) -- and only the zpico build script reads this.",
+        "travelled the declared road as NROS_DECLARED_EXECUTOR_MAX_NODES "
+        "(issue 1233) until it retired onto the descriptor's `[image] "
+        "node_count` (issue 1649) -- and only the zpico build script reads this.",
     "NROS_DECLARED_TL_PUBLISHERS":
         "a FOURTH raw input to the same queryable sizing (issue 1378): a "
         "TRANSIENT_LOCAL publisher declares a CACHE QUERYABLE, and an action "
@@ -810,7 +830,7 @@ def check_roads(prod):
     """The two roads must deliver the same knobs (issue 1199)."""
     findings = []
     keys = leaf_keys()
-    for key in sorted(keys - set(ROAD_PAIRS)):
+    for key in sorted(keys - set(ROAD_PAIRS) - DESCRIPTOR_TWINS):
         findings.append(
             "%s is on the cargo-LEAF road and has no CMake twin in ROAD_PAIRS.\n"
             "       An image sized one way by a leaf build and another way by a\n"

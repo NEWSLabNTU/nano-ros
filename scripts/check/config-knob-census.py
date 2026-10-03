@@ -275,14 +275,8 @@ KNOB_CLASS = {
     # above: each is a number cmake DERIVED for this image and hands to a build
     # script as a DEFAULT. The knob is the `ZPICO_*` / `NROS_*` name beside it,
     # which still outranks the declared value.
-    "NROS_DECLARED_MAX_PUBLISHERS": ("infra", "a COUNT the resolver passes down, not a knob"),
-    "NROS_DECLARED_MAX_SUBSCRIBERS": ("infra", "a COUNT the resolver passes down, not a knob"),
-    "NROS_DECLARED_RMW_SUBSCRIBER_SLOTS": ("infra", "a COUNT the resolver passes down, not a knob"),
     "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": ("infra", "a SIZE the resolver passes down, not a knob"),
     "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": ("infra", "a SIZE the resolver passes down, not a knob"),
-    "NROS_DECLARED_EXECUTOR_MAX_CBS": ("infra", "a COUNT the resolver passes down, not a knob"),
-    "NROS_DECLARED_EXECUTOR_MAX_NODES": ("infra", "a COUNT the resolver passes down, not a knob"),
-    "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS": ("infra", "a COUNT the resolver passes down, not a knob"),
     # phase-467 W1 (issue 1471) -- the contract-monitor tables. DERIVED, and
     # deliberately not ladder candidates: the row count is a property of the
     # CONTRACT the image bakes, never of the board it runs on (phase-467's rule:
@@ -297,8 +291,6 @@ KNOB_CLASS = {
         "age monitor rows per executor; counted from the contract's `age_rows` "
         "by the entity inventory, phase-467 W1",
     ),
-    "NROS_DECLARED_EXECUTOR_MAX_MONITORS": ("derived", "the declared rung of NROS_EXECUTOR_MAX_MONITORS, phase-467 W1"),
-    "NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS": ("derived", "the declared rung of NROS_EXECUTOR_MAX_AGE_MONITORS, phase-467 W1"),
     # issue 1130 — the per-kind cell registry capacity the image declares; a
     # rung below the board's in `nros/build.rs`, never an override.
     "NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES": ("infra", "a COUNT the resolver passes down, not a knob"),
@@ -630,6 +622,9 @@ READ_CALLEES = {
     "env_usize_declared",
     # issue 1595 -- `env_usize_declared` with a descriptor rung before the carrier.
     "env_usize_declared_or",
+    # issue 1649 -- the ladder with the descriptor's fact where a retired
+    # DECLARED carrier used to sit.
+    "env_usize_described",
     "declared_usize",
     "declared_floored",
     # issue 1227 -- the declared QoS depth TABLE is a string, not a usize, and
