@@ -1023,7 +1023,7 @@ clean tree's first configure registers tables that do not exist yet and the
 descriptor REFUSES its bound fields (`_nros_sizing_bound_args`: "the rest are
 built by the first build"); the second configure states them, the consumers'
 inputs change, and the runtime rebuilds. That is
-[issue 1647](../issues/1647-cmake-first-build-compiles-placeholder-message-bounds.md)'s
+[issue 1647](../issues/archived/1647-cmake-first-build-compiles-placeholder-message-bounds.md)'s
 two-build fixed point seen from the descriptor, and its fix — a pre-configure
 producer of the bound tables,
 [issue 1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md)'s
