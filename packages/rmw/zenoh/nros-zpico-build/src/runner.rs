@@ -225,10 +225,24 @@ fn resolve_queryable_default() -> QueryableSizing {
     // service_server_queryables` is the same derivation the carrier delivers,
     // and `nros-rmw-zenoh` reads it in the same order, so the table and the
     // builtin share it is subtracted from agree on one number.
-    let declared = described_service_server_queryables()
-        .map(|n| n.to_string())
-        .or_else(|| declared_fact("NROS_DECLARED_SERVICE_SERVERS"));
+    //
+    // BUT ONLY BESIDE A STATED INFRASTRUCTURE TERM. The two carriers always
+    // travelled as a pair, and `queryable_floor_from` reads an absent infra
+    // as "assume every runtime service is present" -- right for a table it
+    // SIZES, wrong for a floor it REFUSES on. The Zephyr west road names a
+    // descriptor (issue 1407) and carries neither carrier: its table comes
+    // from the resolver's `NROS_MAX_QUERYABLES`, which already counts the
+    // infrastructure. Taking the descriptor's count there turned a floor of 0
+    // into "app + every param/lifecycle service" and refused a talker image at
+    // 1 slot against a floor of 12 (measured, `examples/workspaces/cpp`
+    // zephyr). Where no infra fact arrived, the app count stays the carrier's
+    // -- i.e. none on that road, exactly as before.
     let infra = declared_fact("NROS_DECLARED_INFRA_QUERYABLES");
+    let declared = app_count_from(
+        infra.as_deref(),
+        described_service_server_queryables,
+        declared_fact("NROS_DECLARED_SERVICE_SERVERS"),
+    );
     let nodes = declared_fact("NROS_DECLARED_NODES");
     let tl = transient_local_publishers();
     QueryableSizing {
@@ -319,6 +333,22 @@ fn transient_local_publishers() -> usize {
             warn_worst_case(&reason, bound);
             bound
         }
+    }
+}
+
+/// Issue 1655 -- which answer the application's queryable count takes: the
+/// descriptor's, ONLY beside a stated infrastructure term, else the carrier's.
+/// A rule over values so the west-road case is testable in-process (see the
+/// comment at the call site for why the pairing matters).
+fn app_count_from(
+    infra: Option<&str>,
+    described: impl FnOnce() -> Option<usize>,
+    carrier: Option<String>,
+) -> Option<String> {
+    if stated(infra).is_some() {
+        described().map(|n| n.to_string()).or(carrier)
+    } else {
+        carrier
     }
 }
 
@@ -651,6 +681,33 @@ mod queryable_default_tests {
             queryable_floor_from(Some("2"), Some("lifecycle"), None, 0),
             7
         );
+    }
+
+    /// Issue 1655 -- the descriptor's application count is taken only beside
+    /// a STATED infrastructure term. The Zephyr west road names a descriptor
+    /// and carries neither carrier; taking the count there made the floor
+    /// "app + every runtime service" (the absent-infra reading) and refused a
+    /// talker at 1 slot against 12. Measured red before the pairing rule.
+    #[test]
+    fn the_descriptor_app_count_needs_the_infra_term_beside_it() {
+        // cmake / leaf road: infra stated -> the descriptor answers first.
+        assert_eq!(
+            app_count_from(Some("none"), || Some(4), Some("3".into())).as_deref(),
+            Some("4")
+        );
+        // ...and the carrier where the descriptor has nothing.
+        assert_eq!(
+            app_count_from(Some("none"), || None, Some("3".into())).as_deref(),
+            Some("3")
+        );
+        // West road: no infra fact, no carrier -> NO app count, so the floor
+        // stays the undeclared 0 it always was there.
+        let app = app_count_from(None, || Some(0), None);
+        assert_eq!(app, None);
+        assert_eq!(queryable_floor_from(app.as_deref(), None, None, 1), 0);
+        // The value that refused the image, for the record: the descriptor's
+        // 0 beside an absent infra term floors at every runtime service.
+        assert!(queryable_floor_from(Some("0"), None, None, 1) > 1);
     }
 
     fn sizing(declared: Option<&str>, infra: Option<&str>) -> QueryableSizing {
