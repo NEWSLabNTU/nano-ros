@@ -290,6 +290,9 @@ static rmw_ret_t xrce_service_take_request_len(const rmw_service_t* server, uint
     size_t len = e->len;
     if (len > buf_len) {
         XRCE_REQ_RING_POP();
+        /* Issue 1632 — the staged length is the request's whole size, so the
+         * caller can name what it dropped (the `take` rule, issue 1612). */
+        *out_len = len;
         return NROS_RMW_RET_BUFFER_TOO_SMALL;
     }
     /* Phase 237 — move the request's `SampleIdentity` into a seq-keyed reply
@@ -348,6 +351,9 @@ rmw_ret_t xrce_service_take_request(const rmw_service_t* server, rmw_mut_byte_sp
     rmw_ret_t rc = xrce_service_take_request_len(server, buf, buf_len, seq_out, &n);
     if (rc == NROS_RMW_RET_NO_DATA) {
         return NROS_RMW_RET_OK;
+    }
+    if (rc == NROS_RMW_RET_BUFFER_TOO_SMALL) {
+        *out_len = n; /* issue 1632 — the size the request needed */
     }
     if (rc != NROS_RMW_RET_OK) {
         return rc;
@@ -498,6 +504,8 @@ static rmw_ret_t xrce_service_take_response_raw_len(const rmw_client_t* client, 
     size_t len = slot->len;
     if (len > reply_buf_len) {
         slot->has_reply = false;
+        /* Issue 1632 — as for a refused request. */
+        *out_len = len;
         return NROS_RMW_RET_BUFFER_TOO_SMALL;
     }
     if (reply_buf != NULL && len > 0) {
@@ -537,6 +545,9 @@ rmw_ret_t xrce_service_take_response(const rmw_client_t* client, rmw_mut_byte_sp
         xrce_service_take_response_raw_len(client, reply_buf, reply_buf_len, seq_out, &n);
     if (rc == NROS_RMW_RET_NO_DATA) {
         return NROS_RMW_RET_OK;
+    }
+    if (rc == NROS_RMW_RET_BUFFER_TOO_SMALL) {
+        *out_len = n; /* issue 1632 — the size the reply needed */
     }
     if (rc != NROS_RMW_RET_OK) {
         return rc;
