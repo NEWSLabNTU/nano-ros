@@ -262,12 +262,24 @@ pub fn declaration_from_probe(doc_json: &str) -> Result<(String, String, Declara
 /// deleted the fallback — `leaf_system::read` is `system.toml`-only. W9 retired
 /// the manifest field to match, so there is no second place to look.
 pub fn declared_entities(leaf: &Path) -> Result<Option<Vec<EntityDecl>>> {
+    // Issue 1556 item 4 -- the HOST census build of this leaf reads neither the
+    // declaration nor a census: the producer is not sized by what it checks.
+    if std::env::var_os(crate::cmd::entity_census::LEAF_CENSUS_HOST_ENV)
+        .is_some_and(|v| !v.is_empty())
+    {
+        return Ok(None);
+    }
     let Some(decl) = nros_orchestration_ir::leaf_system::read(leaf).map_err(|e| eyre::eyre!(e))?
     else {
         return Ok(None);
     };
+    let census = census_entities(leaf)?;
     let Some(specs) = decl.declared_entities() else {
-        return Ok(None);
+        // Issue 1556 item 5 -- no authored declaration: the leaf's own CENSUS
+        // (`nros ws entity-census take --leaf`), when one is current and
+        // complete. What the program creates, observed by running it, in
+        // place of what a person wrote down about it.
+        return Ok(census);
     };
     let origin = decl.origin_path().display().to_string();
     let mut out = Vec::new();
@@ -278,7 +290,92 @@ pub fn declared_entities(leaf: &Path) -> Result<Option<Vec<EntityDecl>>> {
             .map_err(|e| eyre::eyre!("{origin}: entities entry `{spec}`: {e}"))?;
         out.extend(decls);
     }
+    // Issue 1556 item 5 -- an authored declaration WITH a current census is a
+    // cross-checked declaration: per-kind counts must agree, the same rule the
+    // cargo-leaf probe road holds a declaration to (`reconcile`). A
+    // declaration that has gone stale under-size is the failure this exists
+    // for (`ExecutorFull` on a board with no console).
+    if let Some(observed) = &census {
+        reconcile(&origin, &out, observed)?;
+    }
     Ok(Some(out))
+}
+
+/// Issue 1556 item 5 -- the entities a standalone leaf's census recorded,
+/// when the census is current (content-addressed, the same freshness rule a
+/// workspace census is held to) and complete. `Ok(None)` otherwise: a missing,
+/// stale or incomplete census says nothing, and the caller's fallback decides.
+fn census_entities(leaf: &Path) -> Result<Option<Vec<EntityDecl>>> {
+    use crate::cmd::entity_census::{
+        Freshness, census_freshness, incomplete_reason, leaf_census_path,
+    };
+    let path = leaf_census_path(leaf);
+    if !matches!(census_freshness(&path, leaf), Freshness::Fresh) {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|e| eyre::eyre!("cannot read `{}`: {e}", path.display()))?;
+    let doc: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|e| eyre::eyre!("`{}` is not JSON: {e}", path.display()))?;
+    if incomplete_reason(&doc).is_some() {
+        return Ok(None);
+    }
+    let Some(recorded) = doc.get("census") else {
+        return Ok(None);
+    };
+    let (_, _, declaration) = declaration_from_probe(&recorded.to_string())?;
+    Ok(Some(fold_action_constituents(declaration.entities())))
+}
+
+/// Issue 1556 item 5 -- a census records an action as the RMW entities it is
+/// made of, because the recording backend is the RMW seam: an action server is
+/// three service servers (`<name>/_action/{send_goal,cancel_goal,get_result}`)
+/// and two publishers (`feedback`, `status`); a client is the three service
+/// clients and the `feedback` subscription. A declaration states the action.
+/// Folding the constituents back -- keyed on the ROS action naming convention
+/// the constituents carry, one action per `<name>/_action/send_goal` row -- is
+/// what lets the two be compared kind for kind, and what lets the census feed
+/// the same counting rule (`ACTION_SERVER_QUERYABLES` per action server) a
+/// declaration does.
+fn fold_action_constituents(rows: &[EntityDecl]) -> Vec<EntityDecl> {
+    use crate::entity_inventory::EntityKind as K;
+    const MARK: &str = "/_action/";
+    let base_of = |r: &EntityDecl| -> Option<String> {
+        let topic = r.topic()?;
+        topic.find(MARK).map(|i| topic[..i].to_string())
+    };
+    let mut out: Vec<EntityDecl> = Vec::new();
+    let mut folded: Vec<(String, bool)> = Vec::new(); // (base, is_server)
+    for r in rows {
+        if let Some(topic) = r.topic()
+            && topic.ends_with("/_action/send_goal")
+            && matches!(r.kind, K::ServiceServer | K::ServiceClient)
+        {
+            let base = base_of(r).unwrap_or_default();
+            let server = r.kind == K::ServiceServer;
+            let ty = r
+                .type_name
+                .as_deref()
+                .map(|t| t.trim_end_matches("_SendGoal").to_string());
+            out.push(EntityDecl::bare(
+                if server {
+                    K::ActionServer
+                } else {
+                    K::ActionClient
+                },
+                ty,
+                Some(base.clone()),
+            ));
+            folded.push((base, server));
+        }
+    }
+    for r in rows {
+        let constituent = base_of(r).is_some_and(|b| folded.iter().any(|(fb, _)| *fb == b));
+        if !constituent {
+            out.push(r.clone());
+        }
+    }
+    out
 }
 
 /// Compare a declaration with what the probe found, as multisets of KIND.

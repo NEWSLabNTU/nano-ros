@@ -307,8 +307,17 @@ function(nano_ros_read_leaf_system)
     # (A leftover `<nano_ros …/>` tuple never reaches here:
     # nano_ros_read_package_export() refuses it — phase-445 W3b.)
     nros_resolve_cli(_nros CONTEXT "nano_ros_read_leaf_system (${_NRL_DIR}/system.toml)")
+    # Issue 1556 item 4 -- `-DNANO_ROS_LEAF_BOARD=<board>` answers for that
+    # board instead of the image's: the host census configure of a standalone
+    # leaf (`nros ws entity-census take --leaf`) builds the leaf's own `src/`
+    # for `native`. Unset, nothing changes.
+    set(_nrl_board_arg "")
+    if(DEFINED NANO_ROS_LEAF_BOARD AND NOT NANO_ROS_LEAF_BOARD STREQUAL "")
+        set(_nrl_board_arg --board "${NANO_ROS_LEAF_BOARD}")
+    endif()
     execute_process(
         COMMAND "${_nros}" ws leaf-system "${_NRL_DIR}" --nano-ros-path "${NANO_ROS_ROOT}"
+                ${_nrl_board_arg}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc

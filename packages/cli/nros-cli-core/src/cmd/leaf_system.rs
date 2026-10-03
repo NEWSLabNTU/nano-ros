@@ -31,6 +31,16 @@ pub struct LeafSystemArgs {
     /// Default: `$NROS_REPO_DIR`, then the checkout enclosing the leaf.
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
+
+    /// Issue 1556 item 4 -- answer for THIS board instead of the image's.
+    ///
+    /// The host census of a standalone leaf builds the leaf's own `src/` for
+    /// the host (`nros ws entity-census take --leaf`, which configures with
+    /// `-DNANO_ROS_LEAF_BOARD=native`). Every other row -- RMW, domain,
+    /// locator -- stays the leaf's: only the board, and the deploy token it
+    /// implies, change.
+    #[arg(long, value_name = "BOARD")]
+    pub board: Option<String>,
 }
 
 /// The C/C++ deploy token (the `NANO_ROS_PLATFORM` axis) a board implies:
@@ -104,6 +114,10 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
                 dir.join(leaf_system::SYSTEM_TOML).display()
             )
         })?;
+    let mut leaf = leaf;
+    if let Some(over) = &args.board {
+        leaf.board = Some(over.clone());
+    }
     let board = leaf.board.clone().ok_or_else(|| {
         eyre!(
             "{}: names no board (RFC-0098 D3: `[image.<id>] board`)",
