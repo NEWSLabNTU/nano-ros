@@ -248,106 +248,27 @@ function(_nros_entity_facts_flush)
     endif()
 endfunction()
 
-# _nros_payload_facts_env(<out-var>)
+# _nros_payload_facts_env -- RETIRED (issue 1649).
 #
-# issue 1122 — carry the DERIVED large-payload class count across the lane
-# boundary, as a DECLARED fact.
+# It carried the payload trio (`NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE`,
+# `_LARGE_SUBSCRIBERS`, `_SUBSCRIBER_LARGE_SIZE`, issue 1122) and the
+# transient-local retention slot (`NROS_DECLARED_TL_RETAIN_BYTES`, issue 1498).
+# Every road that delivered them names a sizing descriptor (RFC-0100 D12 for a
+# multi-entry configure), `nros-rmw-zenoh` reads the same facts off it first
+# (`subscriber_payload_classes`, `transient_local_retain_bytes`), and the knob
+# diff with them dropped was ZERO: `examples/workspaces/cpp` native (five
+# entries) and freertos (mps2-an385, zenoh), both with a non-empty large class
+# and a transient-local publisher (measured under a lowered ceiling and a
+# temporary latched `/chatter`, issue 1649). The Zephyr resolver carries the
+# same derivations as the KNOBS themselves (`ZPICO_*`), not as these carriers.
 #
-# `nros_derive_message_bound_knobs()` already computes this correctly on every
-# lane and writes it to `${CMAKE_BINARY_DIR}/nros/message_bound_knobs.cmake`.
-# Its only consumer in the tree is `_nros_resolve_derivable_knob` in
-# `zephyr/cmake/nros_cargo_build.cmake`, reached only through
-# `zephyr/CMakeLists.txt`, so on FreeRTOS / ThreadX / NuttX / posix the number
-# was computed, written to disk, and discarded. Measured on the first
-# out-of-tree consumer: `LARGE_PAYLOADS` was 131,072 B of bss on a node that
-# never calls `declare_subscriber`, while the same build dir held
-# `set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS 0)`.
-#
-# The FILE and not a variable: this runs at the deferred flush, in the
-# top-level scope, where `nros_find_interfaces()`'s variables are not visible.
-#
-# TWO CONDITIONS, and they are the whole safety argument. `derived` says the
-# join answered rather than refusing; `subscribed` says it answered over the
-# subscriptions this image DECLARES. On the `closure` basis the count is a
-# count of large TYPES in the linked closure, which under-counts an image with
-# two subscriptions on one large type -- so we refuse there and leave the
-# crate default alone. Under-sizing this pool is a `SubscriberCreationFailed`
-# at `create_subscription`, and picking that up by accident is worse than the
-# bytes.
-#
-# It travels as `NROS_DECLARED_*`, not `ZPICO_MAX_LARGE_SUBSCRIBERS`, so it is
-# a DEFAULT the build script may override rather than a value set in the child
-# environment. Setting the knob itself would silently break rung 1 of the
-# ladder: a consumer who names `ZPICO_MAX_LARGE_SUBSCRIBERS` must still win.
-#
-# WHAT IS DELIBERATELY NOT HERE, issue 1255's per-type table
+# STILL DELIBERATELY NOT ON THIS ROAD, issue 1255's per-type table
 # (`NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS`). Its only consumer is the executor
-# ARENA, and the arena's per-kind sum runs only where the entity counts
-# arrive. Since issue 1577 that is every road with a sizing descriptor
-# (`[image] *_entities`) as well as the Zephyr resolver road's
+# ARENA, whose per-kind sum runs wherever a sizing descriptor states `[image]
+# *_entities` (issue 1577) or the Zephyr resolver forwards
 # `NROS_ENTITY_COUNT_*`; and where the descriptor states `[[endpoint]]` rows,
 # their `claimed_slot_bytes` already price each receive region, so a bound
-# table delivered here would price nothing the rows do not. It stays off this
-# road until a consumer is found that the rows cannot answer -- a wire to a
-# consumer that is not listening is issue 1122's shape, one fact over.
-function(_nros_payload_facts_env _out_var)
-    set(${_out_var} "" PARENT_SCOPE)
-    if(NOT COMMAND nros_message_bounds_knobs_file)
-        return()
-    endif()
-    nros_message_bounds_knobs_file(_knobs)
-    if(NOT EXISTS "${_knobs}")
-        return()
-    endif()
-    # Read into THIS function's scope; the file is a plain list of `set()`s.
-    include("${_knobs}")
-    # issue 1498 -- the transient-local retention SLOT, and it is read BEFORE
-    # the two conditions below on purpose: `_nros_bounds_tl_retain` answers
-    # from the types this image PUBLISHES transient-local, so it is independent
-    # of both the closure refusal and the subscription join, and the
-    # derivation writes it into either status's file. The Zephyr resolver road
-    # forwards the same fact as `ZPICO_TL_RETAIN_BYTES`; this road carries it
-    # as a DECLARED default the knob still outranks. Absent = the derivation
-    # refused (it said why on its STATUS line) or there is nothing to retain.
-    set(_tl_retain_env "")
-    if(DEFINED NROS_DERIVED_TL_RETAIN_BYTES)
-        set(_tl_retain_env
-            "NROS_DECLARED_TL_RETAIN_BYTES=${NROS_DERIVED_TL_RETAIN_BYTES}")
-    endif()
-    set(${_out_var} "${_tl_retain_env}" PARENT_SCOPE)
-    if(NOT NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS STREQUAL "derived")
-        return()
-    endif()
-    if(NOT NROS_MESSAGE_BOUNDS_BASIS STREQUAL "subscribed")
-        return()
-    endif()
-    # issue 1199 — the THREE payload keys, and the set is not ours to choose:
-    # it mirrors `DERIVED_PAYLOAD_ENV_KEYS` in
-    # `packages/cli/nros-cli-core/src/leaf_entity_env.rs`, which is the same
-    # decision made for the cargo-LEAF road. Two roads delivering different key
-    # sets is how an image's sizing depends on which lane built it.
-    #
-    # Each of the two SIZES is published by the derivation only under its own
-    # condition, and this reads DEFINED rather than re-deriving them: a small
-    # class of 0 means nothing received fits under the ceiling, and a large
-    # SIZE for a class with no blocks would be inventing a number
-    # (`_nros_bounds_publish_payload_classes`). Absent therefore means "no
-    # answer" here exactly as it does there.
-    set(_out "${_tl_retain_env}")
-    if(DEFINED NROS_DERIVED_MAX_LARGE_SUBSCRIBERS)
-        list(APPEND _out
-            "NROS_DECLARED_LARGE_SUBSCRIBERS=${NROS_DERIVED_MAX_LARGE_SUBSCRIBERS}")
-    endif()
-    if(DEFINED NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE)
-        list(APPEND _out
-            "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE=${NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE}")
-    endif()
-    if(DEFINED NROS_DERIVED_SUBSCRIBER_LARGE_SIZE)
-        list(APPEND _out
-            "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE=${NROS_DERIVED_SUBSCRIBER_LARGE_SIZE}")
-    endif()
-    set(${_out_var} "${_out}" PARENT_SCOPE)
-endfunction()
+# table delivered here would price nothing the rows do not.
 
 # _nros_take_buffer_env(<out-var>)
 #
@@ -652,10 +573,15 @@ function(_nros_param_store_env _out_var)
     endif()
     # Both names written IN FULL, for the reason `_nros_entity_budget_env`
     # gives: an interpolated name resolves EMPTY and is invisible to grep.
+    #
+    # Issue 1649 -- MAX_PARAMETERS and MAX_PARAM_NAME_LEN left this list: the
+    # descriptor's `[params]` states both, `nros-params` reads it first, the
+    # knob diff with them dropped was zero on a parameter-declaring
+    # `examples/workspaces/cpp` native configure, and no other road carries
+    # them under these names. The NEEDS rows and the service shape stay: the
+    # Zephyr resolver forwards them, and no west image declares parameters.
     set(_out "")
     foreach(_pair
-            "NROS_DECLARED_MAX_PARAMETERS;NROS_DERIVED_MAX_PARAMETERS"
-            "NROS_DECLARED_MAX_PARAM_NAME_LEN;NROS_DERIVED_MAX_PARAM_NAME_LEN"
             "NROS_DECLARED_MAX_STRING_VALUE_LEN;NROS_DERIVED_MAX_STRING_VALUE_LEN"
             "NROS_DECLARED_MAX_ARRAY_LEN;NROS_DERIVED_MAX_ARRAY_LEN"
             "NROS_DECLARED_MAX_BYTE_ARRAY_LEN;NROS_DERIVED_MAX_BYTE_ARRAY_LEN"
@@ -697,11 +623,11 @@ function(nros_entity_facts_env _target)
     if(_NEF_ENV_OUT)
         set(${_NEF_ENV_OUT} "" PARENT_SCOPE)
     endif()
-    # issue 1122 — the payload fact is INDEPENDENT of the entity facts below.
-    # An image with no LAUNCH entry still links interface packages and still
-    # gets a message-bound derivation, so this is computed before the
-    # queryable-table early return rather than after it.
-    _nros_payload_facts_env(_payload_env)
+    # issue 1122 — the accumulator starts with the payload facts, which are
+    # INDEPENDENT of the entity facts below; the trio and the retention slot
+    # retired onto the sizing descriptor (issue 1649), and the take buffer
+    # stays (below).
+    set(_payload_env "")
     _nros_entity_budget_env(_budget_env)
     _nros_take_buffer_env(_take_buf_env)
     if(_take_buf_env)

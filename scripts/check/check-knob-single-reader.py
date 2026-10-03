@@ -344,6 +344,31 @@ RETIRED = {
             (":(glob)packages/**/*.rs", r'"NROS_DECLARED_(RUNTIME_MAX_CELL_ENTITIES|MAX_QOS_DEPTH)"'),
         ],
     ),
+    # Issue 1649 -- the payload trio, the transient-local retention slot and
+    # two parameter-store counts. Each consumer reads the descriptor first
+    # (`subscriber_payload_classes`, `transient_local_retain_bytes`,
+    # `[params]`); the W14 diff with them dropped was ZERO on a configure that
+    # DELIVERS each -- `examples/workspaces/cpp` native (five entries) and
+    # freertos (mps2-an385, zenoh), with temporary `params:`, a latched
+    # `/chatter` and a 4 B class ceiling so the large class is non-empty --
+    # while with NO descriptor named the same drops move every one of them.
+    # The Zephyr resolver carries the payload facts as the knobs themselves and
+    # the two parameter counts not at all.
+    "the payload-trio, retention-slot and parameter-count `NROS_DECLARED_*` carriers": Retired(
+        what="NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE, _LARGE_SUBSCRIBERS, "
+        "_SUBSCRIBER_LARGE_SIZE, _TL_RETAIN_BYTES, _MAX_PARAMETERS, _MAX_PARAM_NAME_LEN",
+        resolves_now=(
+            "the sizing descriptor: `subscriber_payload_classes` and "
+            "`transient_local_retain_bytes` (nros-rmw-zenoh), `[params]` "
+            "max_parameters / max_param_name_len (nros-params)"
+        ),
+        wave="issue 1649",
+        forbid=[
+            (":(glob)cmake/**/*.cmake", r"NROS_DECLARED_(SUBSCRIBER_BUFFER_SIZE|LARGE_SUBSCRIBERS|SUBSCRIBER_LARGE_SIZE|TL_RETAIN_BYTES|MAX_PARAMETERS|MAX_PARAM_NAME_LEN)[;=]"),
+            (":(glob)zephyr/**/*.cmake", r"NROS_DECLARED_(SUBSCRIBER_BUFFER_SIZE|LARGE_SUBSCRIBERS|SUBSCRIBER_LARGE_SIZE|TL_RETAIN_BYTES|MAX_PARAMETERS|MAX_PARAM_NAME_LEN)[;=]"),
+            (":(glob)packages/**/*.rs", r'"NROS_DECLARED_(SUBSCRIBER_BUFFER_SIZE|LARGE_SUBSCRIBERS|SUBSCRIBER_LARGE_SIZE|TL_RETAIN_BYTES|MAX_PARAMETERS|MAX_PARAM_NAME_LEN)"'),
+        ],
+    ),
     "the `nros-metadata.json` `entities` reader": Retired(
         what="the Rust reader of a component's declared entities in nros-metadata.json",
         resolves_now=(
@@ -514,22 +539,31 @@ _CONTRACTLESS_FEATURE = (
     "on none"
 )
 
+# Issue 1649 -- the two reasons the remaining zero-diff rows wait on. Each was
+# measured zero-diff on the cmake road with a configure that DELIVERS it (a
+# temporarily parameter-declaring, latched, service-carrying native configure
+# of `examples/workspaces/cpp`, five entries); what is unmeasured is the Zephyr
+# WEST road, whose module resolver forwards these by name.
+_PARAM_WEST = (
+    "zero-diff with it dropped on a parameter-declaring cmake configure "
+    "(issue 1649), but the Zephyr west resolver forwards it by this name and "
+    "no west image can declare parameters for the measurement: the census "
+    "refuses a contract `params:` entry the code does not declare "
+    "(`param-phantom`), so it needs a component that really declares one"
+)
+_INBOX_WEST = (
+    "read descriptor-first since issue 1649 and zero-diff with it dropped on "
+    "a five-entry native configure with service and action servers, but the "
+    "Zephyr west resolver forwards it by this name and no in-tree west image "
+    "declares a service, so the west half of the drop is unmeasured"
+)
+
 _BOARD_CAPACITY = (
     "a BOARD capacity (RFC-0100 D1 target fact), deliberately absent from the "
     "descriptor -- the contract states the NEED, never the size"
 )
 
 KEPT = {
-    # ---- payload class (1595 wired the reader; 1393 closed; D12 the road) --
-    "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": Kept(
-        1649,
-        _D12_ZERO_DIFF + "; NOT retired with the nine entity counts: it is "
-        "one of a trio `_nros_payload_facts_env` produces as one payload "
-        "(`tests/cmake-message-bounds-tests.sh` Q asserts the trio), and the "
-        "third, SUBSCRIBER_LARGE_SIZE, was not delivered by either measured "
-        "image -- retire the three together after an image with a non-empty "
-        "large class is measured"
-    ),
     # Issue 1595 (resolved): `[types] max_wire_bound_bytes` states the closure
     # bound and `nros-node` reads it FIRST, measured equal to this carrier.
     # What keeps the carrier is not a field or a reader but the FILE: cmake
@@ -537,49 +571,38 @@ KEPT = {
     # and a contract-less image writes no descriptor -- ruled by design
     # (RFC-0100 D4, 2026-10-03, issue 1655).
     "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": ByDesign(100, "D4", _CONTRACTLESS),
-    "NROS_DECLARED_LARGE_SUBSCRIBERS": Kept(
-        1649,
-        _D12_ZERO_DIFF + "; NOT retired with the nine entity counts: it is "
-        "one of a trio `_nros_payload_facts_env` produces as one payload "
-        "(`tests/cmake-message-bounds-tests.sh` Q asserts the trio), and the "
-        "third, SUBSCRIBER_LARGE_SIZE, was not delivered by either measured "
-        "image -- retire the three together after an image with a non-empty "
-        "large class is measured"
-    ),
-    # Same consumer function as the two above, but the measured image's large
-    # class is EMPTY, so the carrier was not delivered and nothing was diffed.
-    "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": Kept(1649, _D12_UNMEASURED),
-    # ---- the entity counts -------------------------------------------------
-    # Issue 1655 gave each its `[image]` field (or a reader of an existing
-    # one); the last, MAX_CELL_ENTITIES, is RETIRED above.
-    # phase-467 W1 (issue 1471) -- the contract-monitor row counts: counts of
-    # CONTRACT rows, not of endpoints, so they are `[image] monitor_rows` /
-    # `age_monitor_rows` (issue 1655), never an `[[endpoint]]` column.
     # ---- the queryable raw inputs ----------------------------------------
     # Issue 1655 -- `[image] service_server_queryables` states it and both
     # consumers (`nros-zpico-build`, `nros-rmw-zenoh`) read it FIRST; knob diff
-    # with the carrier dropped ZERO on freertos (mps2-an385, zenoh) and on
-    # freertos_posix. What keeps it is the ROAD, not a field.
+    # with the carrier dropped ZERO on freertos (mps2-an385, zenoh),
+    # freertos_posix, and a five-entry native configure. What keeps it is the
+    # ROAD, not a field.
     "NROS_DECLARED_SERVICE_SERVERS": Kept(
         1649,
         "the descriptor field and its descriptor-first readers landed (issue "
         "1655) and the cmake knob diff is ZERO, but the CARGO-LEAF road also "
         "carries this fact (`leaf_entity_env::leaf_facts` writes it into the "
         "leaf's `nros-cargo.toml`), and that road was not measured with it "
-        "dropped -- retire both producers together after a cargo leaf with a "
-        "service server is diffed",
+        "dropped; and `nros-zpico-build` takes the descriptor's count only "
+        "beside a stated INFRA term (`app_count_from` -- a west image refused "
+        "at 1 slot against a floor of 12 without that pairing) -- retire both "
+        "producers together after a cargo leaf with a service server is diffed",
     ),
+    # Measured zero-diff on all three roads it reaches as a carrier: cmake
+    # native (five entries) and freertos (mps2-an385, zenoh), and the Zephyr
+    # WEST road (`examples/workspaces/cpp` zephyr, a temporarily latched
+    # `/chatter`; no descriptor -> the same drop moves MAX_TL_PUBLISHERS).
     "NROS_DECLARED_TL_PUBLISHERS": Kept(
         1649,
-        _D12_ZERO_DIFF + "; NOT retired: it is one of the four raw inputs the "
-        "zenoh queryable floor completes (with SERVICE_SERVERS, "
-        "INFRA_QUERYABLES and NODES, which stay -- issue 1655 / RFC-0100 D4), "
-        "the standalone-leaf road carries it beside them, and the west "
-        "resolver forwards it"
+        "zero-diff with it dropped on the cmake road (native, freertos) AND the "
+        "Zephyr west road (issue 1649's measurement), so it can retire -- but "
+        "its retirement is three deletions that must land together: the "
+        "`nros_entity_facts_env` producer (which also feeds the standalone-leaf "
+        "road), the west resolver's `_nros_resolve_derivable_knob` forward, and "
+        "the `refused:<n>` token path both zenoh build scripts parse (issue "
+        "1572); the standalone-leaf half rests on `sizing_descriptor_leaf_road` "
+        "rather than a diff"
     ),
-    # issue 1498 -- the retention slot beside that count; the leaf road reads
-    # it off the descriptor (`transient_local_retain_demand`) already.
-    "NROS_DECLARED_TL_RETAIN_BYTES": Kept(1649, _D12_UNMEASURED),
     "NROS_DECLARED_NODES": ByDesign(100, "D4", _CONTRACTLESS),
     # Issue 1655 ruling: the feature token is a MODEL-only fact. It exists
     # for a model with no wiring at all (`declared_infra` is always emitted,
@@ -591,36 +614,20 @@ KEPT = {
     # 6 -> 23 (the table becomes undeclared).
     "NROS_DECLARED_INFRA_QUERYABLES": ByDesign(100, "D4", _CONTRACTLESS_FEATURE),
     # ---- the parameter store (was 1408, then 1407; the road is D12's) ----
-    "NROS_DECLARED_MAX_PARAMETERS": Kept(1649, _D12_UNMEASURED),
-    "NROS_DECLARED_MAX_PARAM_NAME_LEN": Kept(1649, _D12_UNMEASURED),
     "NROS_DECLARED_MAX_STRING_VALUE_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
     "NROS_DECLARED_MAX_ARRAY_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
     "NROS_DECLARED_MAX_BYTE_ARRAY_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN": Kept(1649, _D12_UNMEASURED),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": Kept(1649, _D12_UNMEASURED),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": Kept(1649, _D12_UNMEASURED),
-    "NROS_DECLARED_PARAM_SERVICE_SHAPE": Kept(1649, _D12_UNMEASURED),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN": Kept(1649, _PARAM_WEST),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": Kept(1649, _PARAM_WEST),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": Kept(1649, _PARAM_WEST),
+    "NROS_DECLARED_PARAM_SERVICE_SHAPE": Kept(1649, _PARAM_WEST),
     # ---- the two inbox families (issue 1352, phase-461 W3) --------------
-    # The descriptor states the request bound per family and
-    # `declared_service_request_bytes` reads it; the carrier is ranked FIRST
-    # in `nros-rmw-zenoh/build.rs` today, so zero-diff here means the two
-    # agree, which is the precondition for flipping the rank and retiring.
-    "NROS_DECLARED_SERVICE_INBOX_BYTES": Kept(
-        1649,
-        _D12_ZERO_DIFF + " on `examples/workspaces/cpp` native; NOT retired: "
-        "`nros-rmw-zenoh` ranks this carrier FIRST (the descriptor is its "
-        "fallback), and the Zephyr west road forwards it through the module "
-        "resolver (`zephyr/cmake/nros_cargo_build.cmake`) -- flip the rank and "
-        "measure a west image first"
-    ),
-    "NROS_DECLARED_ACTION_INBOX_BYTES": Kept(
-        1649,
-        _D12_ZERO_DIFF + " on `examples/workspaces/cpp` native; NOT retired: "
-        "`nros-rmw-zenoh` ranks this carrier FIRST (the descriptor is its "
-        "fallback), and the Zephyr west road forwards it through the module "
-        "resolver (`zephyr/cmake/nros_cargo_build.cmake`) -- flip the rank and "
-        "measure a west image first"
-    ),
+    # Issue 1649 FLIPPED the rank: `nros-rmw-zenoh` reads the descriptor's
+    # per-family request bound (`declared_service_request_bytes`) FIRST now,
+    # the carrier second. Both are one join over one set of rows and bound
+    # tables, so where both answer they agree.
+    "NROS_DECLARED_SERVICE_INBOX_BYTES": Kept(1649, _INBOX_WEST),
+    "NROS_DECLARED_ACTION_INBOX_BYTES": Kept(1649, _INBOX_WEST),
     # ---- QoS depth ---------------------------------------------------------
     # `NROS_DECLARED_MAX_QOS_DEPTH` is RETIRED above (issue 1655). Its sibling
     # `NROS_ENTITY_DECLARED_DEPTHS` is deliberately UNIONED with the descriptor

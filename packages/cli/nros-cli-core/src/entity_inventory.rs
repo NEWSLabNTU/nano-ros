@@ -2046,21 +2046,21 @@ impl ParamDeclarations {
     pub fn union_over_images(images: &[(String, ParamDeclarations)]) -> Self {
         let mut nodes: Vec<String> = Vec::new();
         let mut params: Vec<DeclaredParam> = Vec::new();
-        let mut silent: Vec<&str> = Vec::new();
-        let mut declared: Vec<&str> = Vec::new();
+        let mut silent: Vec<String> = Vec::new();
+        let mut declared: Vec<String> = Vec::new();
         for (src, p) in images {
             match p {
-                ParamDeclarations::Absent => silent.push(src),
+                ParamDeclarations::Absent => silent.push(image_label(src)),
                 ParamDeclarations::Refused { reason } => {
                     return ParamDeclarations::Refused {
-                        reason: format!("`{src}` refused: {reason}"),
+                        reason: format!("`{}` refused: {reason}", image_label(src)),
                     };
                 }
                 ParamDeclarations::Declared {
                     nodes: n,
                     params: ps,
                 } => {
-                    declared.push(src);
+                    declared.push(image_label(src));
                     nodes.extend(n.iter().cloned());
                     params.extend(ps.iter().cloned());
                 }
@@ -2072,7 +2072,10 @@ impl ParamDeclarations {
         if !silent.is_empty() {
             return ParamDeclarations::Refused {
                 reason: format!(
-                    "this configure links one runtime for several images, and {} declare                      parameters while {} declare none ({}). A store sized over the images that                      declared would be short for the ones that did not -- declare `params:` in                      every image's contract, or in none (issue 1600)",
+                    "this configure links one runtime for several images, and {} declare \
+                     parameters while {} declare none ({}). A store sized over the images that \
+                     declared would be short for the ones that did not -- declare `params:` in \
+                     every image's contract, or in none (issue 1600)",
                     declared.len(),
                     silent.len(),
                     silent.join(", ")
@@ -5116,6 +5119,25 @@ fn cmake_escape(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('\n', "\\n")
+}
+
+/// Issue 1649 -- how a refusal NAMES one image of a multi-entry runtime.
+///
+/// The sources are model PATHS, and a refusal reason is prose a sizing
+/// descriptor carries: an absolute path there fails the portability check
+/// (issue 0320) and took the whole D12 runtime descriptor with it -- measured
+/// on `examples/workspaces/cpp` native with `params:` on one image, which
+/// wrote NO runtime descriptor, so every consumer fell to its defaults. The
+/// bringup directory and the model's file name say which image it is and are
+/// the same in every checkout.
+fn image_label(src: &str) -> String {
+    let p = std::path::Path::new(src);
+    match (p.parent().and_then(|d| d.file_name()), p.file_name()) {
+        (Some(dir), Some(file)) if p.is_absolute() => {
+            format!("{}/{}", dir.to_string_lossy(), file.to_string_lossy())
+        }
+        _ => src.to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -9392,6 +9414,27 @@ mod shared_runtime_tests {
                 assert!(reason.contains("silent"), "{reason}")
             }
             other => panic!("a store sized over the images that declared is short: {other:?}"),
+        }
+        // Issue 1649 -- a refusal names a MODEL PATH's image, never the
+        // absolute path: the reason lands in a sizing descriptor, and the
+        // portability check refuses the whole runtime file over one.
+        let abs = ParamDeclarations::union_over_images(&[
+            (
+                "/ws/build/nros/models/demo_bringup/system_model.yaml".into(),
+                declared("/a", "rate"),
+            ),
+            (
+                "/ws/build/nros/models/demo_bringup/robot_model.yaml".into(),
+                ParamDeclarations::Absent,
+            ),
+        ]);
+        match abs {
+            ParamDeclarations::Refused { reason } => {
+                assert!(reason.contains("demo_bringup/robot_model.yaml"), "{reason}");
+                assert!(!reason.contains("/ws/"), "{reason}");
+                assert!(!reason.contains("  "), "no runs of spaces: {reason}");
+            }
+            other => panic!("{other:?}"),
         }
     }
 }

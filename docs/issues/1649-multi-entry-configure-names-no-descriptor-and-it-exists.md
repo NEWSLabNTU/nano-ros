@@ -6,7 +6,7 @@ type: tech-debt
 area: [build, cli]
 severity: low
 found: 2026-10-03
-related: [1407, 1595, 1600, rfc-0100, phase-457]
+related: [1407, 1595, 1600, 1669, rfc-0100, phase-457]
 ---
 
 ## What
@@ -227,3 +227,69 @@ carriers.
   it; flip the rank and measure a west image first.
 * `TL_PUBLISHERS` — one of the four queryable-floor inputs whose siblings stay
   (issue 1655 / RFC-0100 D4).
+
+## Progress, 2026-10-03 — six more retired, the inbox rank flipped, seven rows say exactly what is left
+
+**How the unmeasured rows were measured.** No in-tree configure delivered
+them, so the W14 diff ran on TEMPORARY edits to `examples/workspaces/cpp`, all
+reverted after measuring:
+
+* `params:` on the talker (integer, string, byte_array, integer_array) and the
+  listener (string), `params: {}` on every other image's node, and the two
+  multihost robot images (no contract) dropped from the native configure, so
+  the D12 runtime's parameter declaration was `declared`, not `refused`;
+* a TRANSIENT_LOCAL `/chatter` (contract + `Talker.cpp`, so the census agrees);
+* the message-bound small-class ceiling lowered 2048 -> 4 B in
+  `NanoRosMessageBounds.cmake` (with `ZPICO_SUBSCRIBER_SIZE_THRESHOLD=4` on both
+  sides of every diff), so the large class is non-empty.
+
+Images: native (five entries, one runtime), freertos (mps2-an385, zenoh, one
+entry), and on the Zephyr WEST road `zephyr` (native_sim, zenoh) in a
+worktree-local `cp -al` Zephyr workspace.
+
+| carrier(s) | dropped, descriptor named | dropped, NO descriptor (negative control) | outcome |
+| --- | --- | --- | --- |
+| `SUBSCRIBER_BUFFER_SIZE`, `LARGE_SUBSCRIBERS`, `SUBSCRIBER_LARGE_SIZE` | 0 files (native, freertos) | `SUBSCRIBER_LARGE_SIZE` 12 -> 16384, `MAX_LARGE_SUBSCRIBERS` 1 -> 2 | **retired** |
+| `TL_RETAIN_BYTES` | 0 (freertos) | `TL_RETAIN_BYTES` 8 -> 1024 | **retired** |
+| `MAX_PARAMETERS`, `MAX_PARAM_NAME_LEN` | 0 (native) | 11 -> 32, 17 -> 64 | **retired** |
+| `PARAM_NEEDS_*` x3, `PARAM_SERVICE_SHAPE` | 0 (native) | shapes `Some(..)` -> `None` | kept: the west resolver forwards them and no west image can declare parameters (census `param-phantom`) |
+| `SERVICE_INBOX_BYTES`, `ACTION_INBOX_BYTES` | 0 (native) | 24 / 44 -> 1024 | **rank flipped** (descriptor first); kept: west forwards them, no west image declares a service |
+| `TL_PUBLISHERS` | 0 (native, freertos, **west**) | `MAX_TL_PUBLISHERS` 1 -> 2 (west) | kept: three deletions that must land together (producer, west forward, the `refused:<n>` token path) |
+| `SERVICE_SERVERS` | 0 (native, freertos) | `DECLARED_APP_QUERYABLES` Some(4) -> None | kept: the cargo-leaf road carries it too |
+
+After deleting the producers (`_nros_payload_facts_env` whole, two rows of
+`_nros_param_store_env`) and the fallback rungs, freertos re-configured and
+rebuilt against the pre-retirement build: 0 generated files differ.
+`check-knob-single-reader` has the RETIRED entry (forbidden spellings in
+cmake, zephyr and Rust); `cmake-message-bounds` Q and the inventory test's
+parameter row moved with the producers.
+
+**Three defects the measurement found, two fixed here:**
+
+1. **A D12 runtime descriptor could not be written when one image declared
+   parameters and another did not.** `ParamDeclarations::union_over_images`
+   named each image by its absolute MODEL PATH in the refusal, the
+   descriptor's portability check (issue 0320) refuses an absolute path, and
+   so the whole runtime file was refused ("no runtime sizing descriptor
+   written ... Every consumer keeps its own default sizes"). It now names
+   `<bringup>/<model file>`. The same prose had runs of spaces from a broken
+   line continuation. Unit test extended, red against the old labels.
+2. **PR #1633's descriptor-first `SERVICE_SERVERS` reader broke the west road.**
+   West carries no `INFRA_QUERYABLES`, and `queryable_floor_from` reads a
+   missing infra term as "every runtime service is present", so the floor went
+   0 -> 12 and the zephyr image refused to build at 1 slot. Fixed in #1633
+   (`app_count_from`: the descriptor's count only beside a stated infra term).
+3. **`nros build` gives west no build directory**, so two Zephyr images of one
+   workspace collide in `<ws>/build` — issue 1669.
+
+**What D12's union does to the queryable table, recorded.** With the
+descriptor named, native sizes `ZPICO_MAX_QUERYABLES` from the runtime union
+(four service-server queryables + two transient-local caches = 6); the
+carriers composed per-entry MAXIMA (3 + 1 = 4). Both cover every entry; the
+union is the larger by construction.
+
+**Still `Kept(1649)` — seven rows**, each with its remaining step in the ledger:
+`TL_PUBLISHERS`, `SERVICE_SERVERS`, the two inbox families and the four
+parameter rows the west resolver forwards. What closes them is a west image
+that declares a service and a parameter in its CODE (so the census agrees),
+and a cargo leaf with a service server.

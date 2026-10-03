@@ -680,7 +680,7 @@ if [ "$RC" -ne 0 ]; then
     fail "param: a DECLARED store did not configure -- $OUT"
 fi
 check
-if ! nros_grep_q "PARAM=\[NROS_DECLARED_MAX_PARAMETERS=25;NROS_DECLARED_MAX_PARAM_NAME_LEN=35;NROS_DECLARED_MAX_STRING_VALUE_LEN=0;NROS_DECLARED_MAX_ARRAY_LEN=0;NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN=/system/diag_aggregator:blob:byte_array;NROS_DECLARED_PARAM_SERVICE_SHAPE=8:170:1:17:0:0:0:0:0\]" <<<"$OUT"; then
+if ! nros_grep_q "PARAM=\[NROS_DECLARED_MAX_STRING_VALUE_LEN=0;NROS_DECLARED_MAX_ARRAY_LEN=0;NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN=/system/diag_aggregator:blob:byte_array;NROS_DECLARED_PARAM_SERVICE_SHAPE=8:170:1:17:0:0:0:0:0\]" <<<"$OUT"; then
     fail "param: a DECLARED store did not cross with every number -- $OUT"
 fi
 

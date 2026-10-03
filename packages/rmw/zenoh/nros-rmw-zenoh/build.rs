@@ -53,9 +53,6 @@ fn main() {
     // loses a subscription keeps its previously-sized pool until something
     // else forces a rebuild, and the sizing then reads as applied while being
     // stale.
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_LARGE_SUBSCRIBERS");
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE");
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_SUBSCRIBER_LARGE_SIZE");
     println!("cargo:rerun-if-env-changed=NROS_EXECUTOR_MAX_NODES");
     println!("cargo:rerun-if-env-changed=ZPICO_PUBLISHER_TX_BUFFER_SIZE");
     // phase-455 W5 / issue 1341 — the TRANSIENT_LOCAL retention pool.
@@ -66,7 +63,6 @@ fn main() {
     println!("cargo:rerun-if-env-changed=ZPICO_TL_RETAIN_BYTES");
     // issue 1498 -- the retention SLOT's declared size, for the CMake road
     // (`_nros_payload_facts_env`); the leaf road reads it off the descriptor.
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_TL_RETAIN_BYTES");
 
     // Phase 214.C.3 — default coordinated with
     // `packages/core/nros-node/build.rs::NROS_SUBSCRIPTION_BUFFER_SIZE`
@@ -88,14 +84,10 @@ fn main() {
     let described_classes = described_payload_classes(sizing.as_ref(), size_threshold);
     let sub_size: usize = env_usize_rung(
         "NROS_SUBSCRIBER_BUFFER_SIZE",
-        match described_classes {
-            // Published only when something received fits under the ceiling,
-            // the derivation's own rule: 0 means "no small answer", and the
-            // carrier is NOT consulted then -- it is the same fact, derived
-            // elsewhere, and mixing the two would size one class from each.
-            Some(c) => (c.small_max > 0).then_some(c.small_max),
-            None => declared_usize("NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE"),
-        },
+        // Published only when something received fits under the ceiling, the
+        // derivation's own rule: 0 means "no small answer". The descriptor is
+        // the only source since the declared carrier retired (issue 1649).
+        described_classes.and_then(|c| (c.small_max > 0).then_some(c.small_max)),
         1024,
     );
     // phase-454 W6.a - the `SLOT_BYTES` factor of the service inbox
@@ -133,18 +125,27 @@ fn main() {
     // carrier the entity inventory writes (every cmake / Zephyr west image,
     // which is the road the island is on -- phase-454 W11 measured that the
     // descriptor is inert there). A stated knob still outranks both.
+    //
+    // Issue 1649 - the DESCRIPTOR ranks first now. W11's premise expired: every
+    // road names a descriptor (the Zephyr west entry since issue 1407, the
+    // multi-entry configure since RFC-0100 D12), and both answers are the same
+    // join over the same rows and bound tables -- the carrier is the entity
+    // inventory's, the descriptor's rows are that inventory's -- so where both
+    // answer they agree (measured zero-diff), and where the descriptor refuses
+    // a row the carrier is absent too. The carrier stays the fallback until
+    // its own retirement.
     let service_inbox_bytes: usize = env_usize_rung(
         "NROS_SERVICE_INBOX_BYTES",
-        declared_usize("NROS_DECLARED_SERVICE_INBOX_BYTES")
-            .or_else(|| declared_service_request_bytes(sizing.as_ref(), SERVICE_FAMILY)),
+        declared_service_request_bytes(sizing.as_ref(), SERVICE_FAMILY)
+            .or_else(|| declared_usize("NROS_DECLARED_SERVICE_INBOX_BYTES")),
         svc_size,
     );
     let service_inbox_depth: usize =
         env_usize_min("NROS_SERVICE_INBOX_DEPTH", SERVICE_INBOX_DEPTH_DEFAULT, 1);
     let action_inbox_bytes: usize = env_usize_rung(
         "NROS_ACTION_INBOX_BYTES",
-        declared_usize("NROS_DECLARED_ACTION_INBOX_BYTES")
-            .or_else(|| declared_service_request_bytes(sizing.as_ref(), ACTION_FAMILY)),
+        declared_service_request_bytes(sizing.as_ref(), ACTION_FAMILY)
+            .or_else(|| declared_usize("NROS_DECLARED_ACTION_INBOX_BYTES")),
         svc_size,
     );
     let action_inbox_depth: usize =
@@ -238,10 +239,7 @@ fn main() {
     // and `DERIVED_PAYLOAD_ENV_KEYS` repeats for the leaf road.
     let large_size: usize = env_usize_rung(
         "ZPICO_SUBSCRIBER_LARGE_SIZE",
-        match described_classes {
-            Some(c) => (c.large_count > 0).then_some(c.large_max),
-            None => declared_usize("NROS_DECLARED_SUBSCRIBER_LARGE_SIZE"),
-        },
+        described_classes.and_then(|c| (c.large_count > 0).then_some(c.large_max)),
         16384,
     );
     // Phase 403 W4 — the count of LARGE-class blocks, and 0 is legal.
@@ -274,10 +272,7 @@ fn main() {
     // unreachable, silently.
     let max_large: usize = env_usize_rung(
         "ZPICO_MAX_LARGE_SUBSCRIBERS",
-        match described_classes {
-            Some(c) => Some(c.large_count),
-            None => declared_usize("NROS_DECLARED_LARGE_SUBSCRIBERS"),
-        },
+        described_classes.map(|c| c.large_count),
         2,
     );
     // Phase 268 — per-session per-node NN liveliness token cap. One zenoh
@@ -831,16 +826,12 @@ fn transient_local_publisher_demand(desc: Option<&SizingDescriptor>) -> Option<u
 ///   transient_local_retain_bytes`, the largest bound over its transient-local
 ///   publisher rows. A refusal is printed, because a refusal that reaches no
 ///   log is a default nobody chose (D6).
-/// * **No descriptor**: the CMake road's `NROS_DECLARED_TL_RETAIN_BYTES`,
-///   composed by `_nros_payload_facts_env` from the same
-///   `NROS_DERIVED_TL_RETAIN_BYTES` the Zephyr resolver forwards. Absent means
-///   the derivation refused or there is nothing to retain.
-///
-/// The descriptor wins when both are present, as it does for the count.
+/// * **No descriptor**: nothing. The CMake road's `NROS_DECLARED_TL_RETAIN_BYTES`
+///   retired onto the descriptor (issue 1649) -- every road with a
+///   transient-local publisher names one -- and the Zephyr resolver
+///   forwards the derivation as the knob `ZPICO_TL_RETAIN_BYTES` itself.
 fn transient_local_retain_demand(desc: Option<&SizingDescriptor>) -> Option<usize> {
-    let Some(desc) = desc else {
-        return declared_usize("NROS_DECLARED_TL_RETAIN_BYTES");
-    };
+    let desc = desc?;
     match nros_sizing_descriptor::transient_local_retain_bytes(desc) {
         Fact::Stated(n) => Some(n),
         Fact::Absent => None,
