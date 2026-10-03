@@ -58,3 +58,26 @@ with `Error 101`. Its error text was not in the excerpt, and the run uploads no
 - A tier-2 nightly whose Zephyr fixture build reports 32 of 32.
 - Uploading `tmp/build-test-fixtures-*/zephyr.log` as an artifact on failure
   would have named all 10 failures here. That is a cheap separate improvement.
+
+## Second sighting, same day, a different leaf (2026-10-03, 07:13 nightly)
+
+Run **37105887851** (`nightly`, schedule 07:17Z, head `4c1e2dd0b`), job
+**111154196280** `tier 2 nightly (pairwise cover)`, step
+`build-test-fixtures-leaves`. This time 24 of 32 Zephyr images built (the 05:11
+run had 22). The excerpt names a different leaf, and a second crate:
+
+```
+error[E0463]: can't find crate for `core`
+error: could not compile `byteorder` (lib) due to 1 previous error
+error: could not compile `stable_deref_trait` (lib) due to 1 previous error
+FATAL ERROR: command exited with status 101: /usr/bin/cmake --build .../build/zephyr-workspace-builds/3.7/build-ws-rs-params-entry-zenoh
+```
+
+So this is not one leaf's dependency set. Two workspace Rust entries
+(`lifecycle`, then `params`) each fail compiling plain `no_std` crates for
+their target, which points at the target or toolchain wiring of the
+workspace-entry road, not at either leaf. The job log does print
+`[zephyr setup] ensuring armv7a-none-eabi Rust target...`, but the excerpt
+does not say which triple these crates were built for. Still no `zephyr.log`
+artifact. The `provision-zenohd` exit 78 in the same job is the reported lane
+skip (no `ros-humble-rmw-zenoh-cpp`), not this failure.
