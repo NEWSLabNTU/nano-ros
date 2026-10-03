@@ -78,7 +78,10 @@ non-numeric value is a FATAL_ERROR. `nros_sizing_descriptor_apply_cyclonedds_hea
 (called by `nano_ros_entry()` after the read) puts the descriptor's STATED
 `[target] heap_budget_bytes` on `nros_rmw_cyclonedds` as
 `NROS_CYCLONEDDS_HEAP_BUDGET_BYTES`; refused or absent defines nothing. The
-configure still reads no board file.
+configure still reads no board file. (Issue 1661 renamed it
+`nros_sizing_descriptor_apply_cyclonedds()` and moved it to the deferred
+entity-facts flush, where it runs once over the RUNTIME's descriptor and
+carries the `[types]` facts too.)
 
 **Measured** on `examples/workspaces/cpp` `freertos_posix` (cmake, Cyclone,
 FreeRTOS POSIX port) with a TEMPORARY `[board.knobs.memory] heap_bytes` on the

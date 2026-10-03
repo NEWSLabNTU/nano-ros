@@ -667,6 +667,170 @@ the NROS_DECLARED_* carrier still delivers -- $OUT"
 fi
 
 # ---------------------------------------------------------------------------
+# I. the Cyclone facts reach `nros_rmw_cyclonedds` (issues 1653 + 1661,
+#    RFC-0100 D5/D11) -- `nros_sizing_descriptor_apply_cyclonedds`.
+#
+#   I1. every STATED fact Cyclone reads (`[target] heap_budget_bytes`, `[types]`
+#       `max_fields` / `max_kinds` / `max_nested_depth`) becomes ONE definition
+#       on the target, however many times the function is called. Before issue
+#       1661 only the heap arrived, so D11's floor was computed from the
+#       header's 256 kinds while the descriptor stated 1;
+#   I2. the facts come from the descriptor CARGO is named -- with several
+#       entries that is the RUNTIME's (RFC-0100 D12), never an entry's: the
+#       target is shared, so a per-entry `-D` let the last entry win;
+#   I3. a REFUSED fact defines nothing -- the negative control. A function that
+#       defined every knob it knows (or a default for a refused one) passes I1
+#       and fails here.
+# ---------------------------------------------------------------------------
+CYC_BODY="$TEST_TMPDIR/cyclone-projection.cmake"
+cat > "$CYC_BODY" <<'EOF'
+set(NROS_SIZING_SCHEMA_VERSION 2)
+set(NROS_SIZING_STATUS "derived")
+set(NROS_SIZING_BASIS "contract")
+set(NROS_SIZING_ENDPOINT_COUNT 0)
+set(NROS_SIZING_TARGET_HEAP_BUDGET_BYTES 65536)
+set(NROS_SIZING_TYPES_DISTINCT_COUNT 1)
+set(NROS_SIZING_TYPES_MAX_FIELDS 3)
+set(NROS_SIZING_TYPES_MAX_KINDS 5)
+set(NROS_SIZING_TYPES_MAX_NESTED_DEPTH 2)
+EOF
+CYC_REFUSED_BODY="$TEST_TMPDIR/cyclone-refused.cmake"
+cat > "$CYC_REFUSED_BODY" <<'EOF'
+set(NROS_SIZING_SCHEMA_VERSION 2)
+set(NROS_SIZING_STATUS "partial")
+set(NROS_SIZING_BASIS "contract")
+set(NROS_SIZING_ENDPOINT_COUNT 0)
+set(NROS_SIZING_TARGET_HEAP_BUDGET_BYTES_REFUSED "the board states no memory rung")
+set(NROS_SIZING_TYPES_MAX_FIELDS_REFUSED "a type has no schema")
+set(NROS_SIZING_TYPES_MAX_KINDS_REFUSED "a type has no schema")
+set(NROS_SIZING_TYPES_MAX_NESTED_DEPTH_REFUSED "a type has no schema")
+EOF
+
+CYC_DRIVER="$TEST_TMPDIR/cyclone-driver.cmake"
+cat > "$CYC_DRIVER" <<'EOF'
+function(nros_resolve_cli _out)
+    set(${_out} "$ENV{NROS_TEST_CLI}" PARENT_SCOPE)
+endfunction()
+include("$ENV{NROS_TEST_MODULE}")
+file(WRITE "${CMAKE_BINARY_DIR}/cyc.c" "int nros_test_cyc;\n")
+add_library(nros_rmw_cyclonedds STATIC "${CMAKE_BINARY_DIR}/cyc.c")
+# The configure's recorded entries and descriptors, as `nano_ros_entry()` and
+# the producers leave them.
+foreach(_e IN LISTS NROS_TEST_ENTRIES)
+    set_property(GLOBAL APPEND PROPERTY NROS_SIZING_RUNTIME_ENTRIES "${_e}")
+endforeach()
+set_property(GLOBAL APPEND PROPERTY NROS_SIZING_DESCRIPTOR_PATHS "$ENV{NROS_TEST_DESCRIPTOR}")
+if(NOT "$ENV{NROS_TEST_RUNTIME}" STREQUAL "")
+    # What `nros_sizing_descriptor_from_model` records for D12's runtime write.
+    set_property(GLOBAL PROPERTY NROS_SIZING_RUNTIME_CLI "$ENV{NROS_TEST_CLI}")
+    set_property(GLOBAL PROPERTY NROS_SIZING_RUNTIME_BUILD_DIR "${CMAKE_BINARY_DIR}")
+    set_property(GLOBAL APPEND PROPERTY NROS_ENTITY_INVENTORY_MODELS "$ENV{NROS_TEST_MODEL}")
+    set_property(GLOBAL APPEND PROPERTY NROS_SIZING_RUNTIME_RMWS "cyclonedds")
+endif()
+nros_sizing_descriptor_apply_cyclonedds()
+nros_sizing_descriptor_apply_cyclonedds()
+get_target_property(_defs nros_rmw_cyclonedds COMPILE_DEFINITIONS)
+message(STATUS "CYC_DEFS=${_defs}")
+EOF
+CYC_PROJ="$TEST_TMPDIR/cycproj"
+mkdir -p "$CYC_PROJ"
+cat > "$CYC_PROJ/CMakeLists.txt" <<'EOF'
+cmake_minimum_required(VERSION 3.20)
+project(nros_sizing_descriptor_cyclone_test C)
+set(NROS_TEST_ENTRIES "$ENV{NROS_TEST_ENTRIES}")
+include("$ENV{NROS_TEST_DRIVER}")
+EOF
+
+# run_cyc <body> <entries;...> <runtime-stub-or-empty> -> stdout+stderr
+run_cyc() {
+    rm -rf "$CYC_PROJ/build"
+    NROS_TEST_MODULE="$MODULE" \
+    NROS_TEST_DRIVER="$CYC_DRIVER" \
+    NROS_TEST_CLI="${3:-$STUB}" \
+    NROS_TEST_RUNTIME="$3" \
+    NROS_TEST_MODEL="$MODEL" \
+    NROS_TEST_DESCRIPTOR="$DESCRIPTOR" \
+    NROS_TEST_ENTRIES="$2" \
+    NROS_STUB_BODY="$1" \
+    NROS_STUB_RC=0 \
+        cmake -S "$CYC_PROJ" -B "$CYC_PROJ/build" 2>&1
+}
+
+log_info "I1. every stated Cyclone fact reaches nros_rmw_cyclonedds, once (issue 1661)"
+OUT="$(run_cyc "$CYC_BODY" "talker" "")"
+for want in NROS_CYCLONEDDS_HEAP_BUDGET_BYTES=65536 NROS_CYCLONEDDS_MAX_FIELDS=3 \
+            NROS_CYCLONEDDS_MAX_KINDS=5 NROS_CYCLONEDDS_MAX_NESTED_DEPTH=2; do
+    check
+    if ! nros_grep_q "CYC_DEFS=.*$want" <<<"$OUT"; then
+        fail "I1: $want did not reach nros_rmw_cyclonedds, so heap_budget.hpp keeps its \
+default and D11's floor is not this image's -- $OUT"
+    fi
+done
+check
+if nros_grep_q "CYC_DEFS=.*MAX_KINDS=5.*MAX_KINDS=5" <<<"$OUT"; then
+    fail "I1: a second call defined the facts twice -- the function must apply once per \
+configure -- $OUT"
+fi
+check
+if nros_grep_q "CYC_DEFS=.*MAX_DESCRIPTOR_TYPES" <<<"$OUT"; then
+    fail "I1: MAX_DESCRIPTOR_TYPES was defined from the descriptor, a second writer of \
+model_ingest's knob -- $OUT"
+fi
+
+log_info "I2. several entries: the RUNTIME descriptor decides, never an entry's (D12)"
+# Answers D12's runtime write with a file, serves the I1 projection for a read of
+# THAT file and a different one (max_kinds 99) for any other -- so an entry's
+# descriptor reaching the target is visible as 99.
+CYC_RT_STUB="$TEST_TMPDIR/nros-cyc-runtime-stub"
+cat > "$CYC_RT_STUB" <<'STUB_EOF'
+#!/bin/bash
+build_dir="" out="" prev="" composed=""
+for a in "$@"; do
+    case "$prev" in
+        --build-dir) build_dir="$a" ;;
+        --output-cmake) out="$a" ;;
+    esac
+    case "$a" in --composed-entry) composed=1 ;; esac
+    prev="$a"
+done
+if [ -n "$composed" ]; then
+    mkdir -p "$build_dir/nros/sizing/runtime"
+    echo 'schema_version = 2' > "$build_dir/nros/sizing/runtime/shared.toml"
+    echo "$build_dir/nros/sizing/runtime/shared.toml"
+    exit 0
+fi
+if [ -n "$out" ]; then
+    case "$*" in
+        *runtime/shared.toml*) cp "$NROS_STUB_BODY" "$out" ;;
+        *) echo 'set(NROS_SIZING_TYPES_MAX_KINDS 99)' > "$out" ;;
+    esac
+fi
+STUB_EOF
+chmod +x "$CYC_RT_STUB"
+OUT="$(run_cyc "$CYC_BODY" "one;two" "$CYC_RT_STUB")"
+check
+if ! nros_grep_q "CYC_DEFS=.*NROS_CYCLONEDDS_MAX_KINDS=5" <<<"$OUT"; then
+    fail "I2: the runtime descriptor's facts did not reach the shared target -- $OUT"
+fi
+check
+if nros_grep_q "MAX_KINDS=99" <<<"$OUT"; then
+    fail "I2: an ENTRY's descriptor sized the shared Cyclone target -- issue 1600's \
+last-writer shape on the C++ half -- $OUT"
+fi
+
+log_info "I3. a refused fact defines nothing (negative control)"
+OUT="$(run_cyc "$CYC_REFUSED_BODY" "talker" "")"
+check
+if nros_grep_q "CYC_DEFS=.*NROS_CYCLONEDDS_" <<<"$OUT"; then
+    fail "I3: a refused fact produced a definition -- D6 forbids a value for a fact \
+nobody stated -- $OUT"
+fi
+check
+if ! nros_grep_q "states no Cyclone fact" <<<"$OUT"; then
+    fail "I3: an all-refused descriptor was silent about keeping the defaults -- $OUT"
+fi
+
+# ---------------------------------------------------------------------------
 echo
 if [ "$FAILURES" -eq 0 ]; then
     log_success "cmake sizing-descriptor reader: $CHECKS checks passed"

@@ -683,22 +683,45 @@ function(nros_sizing_descriptor_record_for_west)
     endif()
 endfunction()
 
-# nros_sizing_descriptor_apply_cyclonedds_heap() — issue 1653, RFC-0100 D11
+# nros_sizing_descriptor_apply_cyclonedds() — issues 1653 + 1661, RFC-0100 D5/D11
 #
-# Hand the descriptor's STATED `[target] heap_budget_bytes` to the Cyclone TUs
-# this configure compiles, as `NROS_CYCLONEDDS_HEAP_BUDGET_BYTES` -- the macro
-# `heap_budget.hpp` reads, and the one `nros-rmw-cyclonedds-sys/build.rs`
-# defines from the same fact on the cargo road. Call it after
-# `nros_sizing_descriptor_read()`, whose `NROS_SIZING_TARGET_HEAP_BUDGET_BYTES`
-# it reads from the caller's scope.
+# Hand the Cyclone facts the RUNTIME's descriptor states to the C++ TUs this
+# configure compiles, as the `NROS_CYCLONEDDS_*` definitions `heap_budget.hpp`
+# reads -- the same four `WrittenDescriptor::cyclonedds_env` turns into cargo
+# `[env]` rows, and `nros-rmw-cyclonedds-sys/build.rs` into `-D`s, on the cargo
+# roads (RFC-0100 D5: Cyclone reads `[types]` and `[target].heap_budget_bytes`,
+# and nothing else):
 #
-# A refused or absent budget defines NOTHING, so `kHeapBudgetStated` stays
-# false and D11's boot check stays a no-op -- "nobody said" is not "too small".
-# Only the `nros_rmw_cyclonedds` target is reached: it is where `session.cpp`
-# compiles on this road. A Zephyr module library compiles it elsewhere and is
-# not handled here (issue 1653 records the west half as open).
-function(nros_sizing_descriptor_apply_cyclonedds_heap)
-    if(NOT DEFINED NROS_SIZING_TARGET_HEAP_BUDGET_BYTES)
+#     [target] heap_budget_bytes   -> NROS_CYCLONEDDS_HEAP_BUDGET_BYTES   (1653)
+#     [types]  max_fields          -> NROS_CYCLONEDDS_MAX_FIELDS          (1661)
+#     [types]  max_kinds           -> NROS_CYCLONEDDS_MAX_KINDS           (1661)
+#     [types]  max_nested_depth    -> NROS_CYCLONEDDS_MAX_NESTED_DEPTH    (1661)
+#
+# A REFUSED or ABSENT fact defines NOTHING, so the header keeps its default and
+# `kHeapBudgetStated` stays false -- "nobody said" is not "too small" (D6).
+#
+# WHICH descriptor: the one this configure names to CARGO
+# (`nros_sizing_descriptor_cargo_env`), because the unit a descriptor sizes is
+# the RUNTIME build (RFC-0100 D12) and `nros_rmw_cyclonedds` is part of that
+# runtime -- one target, linked into every entry. Applying each ENTRY's facts as
+# the entry configured (issue 1653's first cut) put one `-D` per entry on a
+# shared target, so in a multi-entry configure the LAST entry's `max_kinds` would
+# have won: issue 1600's shape, one level down. So this runs ONCE, from the
+# deferred entity-facts flush, after every entry has registered, and reads the
+# same file cargo is handed -- one entry's own descriptor, the D12 runtime
+# descriptor for several, a standalone leaf's when there is no entry, or none.
+#
+# NOT here: `NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES`. Its single writer is
+# `model_ingest::resolve_cyclonedds_max_descriptor_types`, which only ever RAISES
+# the header's 256 and is not a descriptor fact; issue 1663 records why the
+# cmake road does not carry it.
+#
+# Only a non-imported `nros_rmw_cyclonedds` is reached: it is where
+# `session.cpp` compiles on this road. The Zephyr module compiles the same TUs
+# into its own library through `zephyr/cmake/nros_rmw_cyclonedds.cmake`.
+function(nros_sizing_descriptor_apply_cyclonedds)
+    get_property(_done GLOBAL PROPERTY NROS_SIZING_CYCLONEDDS_APPLIED)
+    if(_done)
         return()
     endif()
     if(NOT TARGET nros_rmw_cyclonedds)
@@ -708,11 +731,41 @@ function(nros_sizing_descriptor_apply_cyclonedds_heap)
     if(_imported)
         return()
     endif()
-    target_compile_definitions(nros_rmw_cyclonedds PRIVATE
-        "NROS_CYCLONEDDS_HEAP_BUDGET_BYTES=${NROS_SIZING_TARGET_HEAP_BUDGET_BYTES}")
+    set_property(GLOBAL PROPERTY NROS_SIZING_CYCLONEDDS_APPLIED TRUE)
+
+    nros_sizing_descriptor_cargo_env(_row)
+    string(REGEX REPLACE "^NROS_SIZING_DESCRIPTOR=" "" _path "${_row}")
+    if(_path STREQUAL "")
+        message(STATUS
+            "nano-ros: no sizing descriptor names this runtime, so nros_rmw_cyclonedds keeps "
+            "its header defaults (RFC-0100 D6)")
+        return()
+    endif()
+    nros_sizing_descriptor_read("${_path}" QUIET)
+
+    set(_defs "")
+    foreach(_pair IN ITEMS
+            "TARGET_HEAP_BUDGET_BYTES:HEAP_BUDGET_BYTES"
+            "TYPES_MAX_FIELDS:MAX_FIELDS"
+            "TYPES_MAX_KINDS:MAX_KINDS"
+            "TYPES_MAX_NESTED_DEPTH:MAX_NESTED_DEPTH")
+        string(REPLACE ":" ";" _pair "${_pair}")
+        list(GET _pair 0 _fact)
+        list(GET _pair 1 _knob)
+        if(DEFINED NROS_SIZING_${_fact})
+            list(APPEND _defs "NROS_CYCLONEDDS_${_knob}=${NROS_SIZING_${_fact}}")
+        endif()
+    endforeach()
+    if(NOT _defs)
+        message(STATUS
+            "nano-ros: ${_path} states no Cyclone fact, so nros_rmw_cyclonedds keeps its "
+            "header defaults (RFC-0100 D6)")
+        return()
+    endif()
+    target_compile_definitions(nros_rmw_cyclonedds PRIVATE ${_defs})
     message(STATUS
-        "nano-ros: Cyclone heap budget ${NROS_SIZING_TARGET_HEAP_BUDGET_BYTES} B from the "
-        "sizing descriptor -> nros_rmw_cyclonedds (RFC-0100 D11, issue 1653)")
+        "nano-ros: Cyclone sized from the runtime's sizing descriptor -- ${_defs} "
+        "-> nros_rmw_cyclonedds (RFC-0100 D5/D11, issues 1653/1661)")
 endfunction()
 
 # nros_sizing_descriptor_read(<descriptor> [QUIET])
