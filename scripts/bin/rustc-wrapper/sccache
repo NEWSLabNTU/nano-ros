@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+#
+# sccache, minus the one unit it caches WRONG: a Rust `staticlib` (issue 1646).
+#
+# WHAT WENT WRONG
+#
+# A staticlib bundles its WHOLE closure — every transitive rlib, and every
+# native object those rlibs bundle (`zpico-sys`'s build script compiles
+# `platform_aliases.c` into `libzpico_platform_aliases.a`, and the `zpico-sys`
+# rlib carries it). sccache keys a rustc call on its sources, its `--extern`
+# rlibs and its `-l static=` libs. A TRANSITIVE dependency is none of those:
+# rustc reaches it through `-L dependency=<deps>`, which sccache does not hash.
+#
+# So editing a C source a build script compiles changes the `zpico-sys` rlib,
+# cargo correctly re-runs everything above it, and the crates in between
+# (`nros-rmw-zenoh`, …) recompile to byte-identical rlibs, because a crate's
+# metadata records its dependencies' crate HASHES, not their native objects.
+# `nros-cpp` then presents the same key it presented before the edit and
+# sccache serves the OLD `libnros_cpp.a`: a museum binary under a FRESH cargo
+# verdict. Measured (cargo only, host): after `platform_aliases.c` gained a
+# symbol, `out/libzpico_platform_aliases.a` and the `zpico-sys` rlib had it and
+# `libnros_cpp.a` did not. `cmake/NanoRosCorrosion.cmake` said sccache does not
+# cache `--crate-type=staticlib`; sccache 0.8 refuses only bin / dylib / cdylib
+# / proc-macro, and caches `staticlib` beside `lib`.
+#
+# THE EDGE, and why it is here: the missing input is the transitive closure,
+# which only rustc resolves. Short of re-implementing that resolution to feed
+# sccache a key, the unit cannot be keyed correctly, so it is not cached: a
+# rustc call that emits a `staticlib` runs rustc directly. Every rlib below it
+# is still cached, and a staticlib is a final assembly step, so the cost is the
+# one rustc call per image that was being served wrong.
+#
+# WHY THIS FILE IS NAMED `sccache`
+#
+# cc-rs reads `RUSTC_WRAPPER` too: when its file stem is `sccache` it prefixes
+# it to the C COMPILER (`header_deps.rs`, issue 1580). Keeping the name keeps
+# that behaviour exactly as it was; a C compile reaches the real sccache below.
+#
+# CONTRACT
+#   RUSTC_WRAPPER points HERE (the justfile and the CI workflow set it). The
+#   real sccache is `NROS_SCCACHE_REAL` if set, else the first `sccache` on
+#   PATH that is not this file. With none, the command runs uncached — a
+#   missing cache is a slower build, never a failed one (issue 0874).
+#   Selftest: `just check rustc-wrapper-staticlib`.
+
+set -euo pipefail
+
+self_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+
+real="${NROS_SCCACHE_REAL:-}"
+if [ -z "$real" ]; then
+    IFS=: read -r -a _path <<<"${PATH:-}"
+    for d in "${_path[@]}"; do
+        [ -n "$d" ] && [ -x "$d/sccache" ] || continue
+        [ "$(cd "$d" 2>/dev/null && pwd -P)" = "$self_dir" ] && continue
+        real="$d/sccache"
+        break
+    done
+fi
+
+# Does this rustc call emit a staticlib? `--crate-type staticlib`,
+# `--crate-type=staticlib`, and comma lists (`staticlib,lib`) all count.
+emits_staticlib() {
+    local prev="" a types
+    for a in "$@"; do
+        types=""
+        case "$a" in
+            --crate-type=*) types="${a#--crate-type=}" ;;
+            *) [ "$prev" = "--crate-type" ] && types="$a" ;;
+        esac
+        case ",$types," in
+            *,staticlib,*) return 0 ;;
+        esac
+        prev="$a"
+    done
+    return 1
+}
+
+if [ "$#" -gt 0 ] && emits_staticlib "$@"; then
+    exec "$@"
+fi
+if [ -n "$real" ]; then
+    exec "$real" "$@"
+fi
+exec "$@"
