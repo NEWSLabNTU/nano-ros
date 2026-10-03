@@ -513,20 +513,24 @@ pub unsafe extern "C" fn nros_node_init_ex(
     // entities attribute to the node it named. An empty namespace is the root,
     // the one spelling every other node entry point reports. No-op unless
     // `metadata-mode` is on.
-    let ns = match core::str::from_utf8(&node.namespace[..node.namespace_len]) {
-        Ok(s) if !s.is_empty() => s,
-        _ => "/",
-    };
-    let domain = if node.domain_id_override != NROS_DOMAIN_ID_INHERIT {
-        node.domain_id_override
-    } else {
-        support_ref.domain_id as u32
-    };
-    nros::census_hooks::on_node_create(
-        core::str::from_utf8(&node.name[..node.name_len]).unwrap_or(""),
-        ns,
-        domain,
-    );
+    // Under `ACTIVE`: the arguments are work (two UTF-8 validations) that an
+    // empty hook body does not remove (phase-463 W5 I4).
+    if nros::census_hooks::ACTIVE {
+        let ns = match core::str::from_utf8(&node.namespace[..node.namespace_len]) {
+            Ok(s) if !s.is_empty() => s,
+            _ => "/",
+        };
+        let domain = if node.domain_id_override != NROS_DOMAIN_ID_INHERIT {
+            node.domain_id_override
+        } else {
+            support_ref.domain_id as u32
+        };
+        nros::census_hooks::on_node_create(
+            core::str::from_utf8(&node.name[..node.name_len]).unwrap_or(""),
+            ns,
+            domain,
+        );
+    }
 
     NROS_RET_OK
 }

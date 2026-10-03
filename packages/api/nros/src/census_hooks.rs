@@ -78,6 +78,17 @@ pub const CENSUS_SIZING: nros_node::ExecutorSizing = {
 /// Re-opening a node of the same name makes it current again rather than
 /// failing: a tiered Rust entry runs a component's `register()` once per tier
 /// executor, and each tier's run creates the same node (issue 1419).
+/// phase-463 W5 I4 -- `true` iff the hook bodies exist (`metadata-mode`).
+///
+/// An empty `#[inline]` body costs nothing, but its ARGUMENTS still do: a
+/// namespace read back from the executor, a `from_utf8` over the node name.
+/// LLVM keeps those, because it cannot prove a lookup or a validation loop is
+/// free of effects -- measured: 48 bytes of `nros_node_init_ex` in every
+/// NuttX C image with the hook "off". A call site whose arguments do work
+/// computes them under `if ACTIVE`, a constant, so the whole block folds away
+/// and the call is still there for `check-census-hooks-complete` to see.
+pub const ACTIVE: bool = cfg!(feature = "metadata-mode");
+
 #[inline]
 pub fn on_node_create(_name: &str, _namespace: &str, _domain_id: u32) {
     #[cfg(feature = "metadata-mode")]

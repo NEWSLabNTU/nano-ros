@@ -383,3 +383,74 @@ fn parse_counter(output: &str, key: &str) -> Option<usize> {
         .collect::<String>();
     value.parse().ok()
 }
+
+/// phase-463 W5 I3(b) -- the census recorder is a HOST capability: an RTOS
+/// image links no recording backend and no dump export. The symbols are named
+/// by what the recorder IS (`nros_rmw_metadata*`, the backend's C ABI;
+/// `nros_cpp_metadata_dump`, the C++ dump), so the gate is an `nm` over the
+/// built image -- no compile, the fixture is the build stage's. Its negative
+/// control is [`a_native_entry_links_the_census_recorder`]: the same predicate
+/// over the native image must FIND them, or the RTOS tests prove nothing.
+fn census_recorder_symbols(image: &std::path::Path) -> Vec<String> {
+    let out = Command::new("nm")
+        .arg("--defined-only")
+        .arg(image)
+        .output()
+        .unwrap_or_else(|e| panic!("run nm on {}: {e}", image.display()));
+    assert!(
+        out.status.success(),
+        "nm {} failed: {}",
+        image.display(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| l.split_whitespace().nth(2))
+        .filter(|s| s.starts_with("nros_rmw_metadata") || *s == "nros_cpp_metadata_dump")
+        .map(str::to_string)
+        .collect()
+}
+
+/// I3(b) on the ThreadX-Linux C++ workspace image (issue 1419 measured it by
+/// hand: `threadx_entry` linked none, `native_entry` 102).
+#[test]
+fn a_threadx_cpp_image_links_no_census_recorder() {
+    let image = nros_tests::fixtures::build_threadx_linux_workspace_cpp_entry()
+        .require("threadx-linux C++ workspace Entry");
+    let found = census_recorder_symbols(image);
+    assert!(
+        found.is_empty(),
+        "an RTOS image links the census recorder: {found:?}"
+    );
+}
+
+/// I3(b) on the ThreadX-Linux C workspace image -- the C umbrella gained
+/// `metadata-mode` for its NATIVE set (issue 1556), so the cross set is the
+/// one that must still exclude it.
+#[test]
+fn a_threadx_c_image_links_no_census_recorder() {
+    let image = nros_tests::fixtures::build_threadx_linux_workspace_c_entry()
+        .require("threadx-linux C workspace Entry");
+    let found = census_recorder_symbols(image);
+    assert!(
+        found.is_empty(),
+        "an RTOS image links the census recorder: {found:?}"
+    );
+}
+
+/// The negative control for the two I3(b) tests: the predicate FINDS the
+/// recorder in the image that is meant to carry it.
+#[test]
+fn a_native_entry_links_the_census_recorder() {
+    let image = nros_tests::fixtures::build_native_workspace_cpp_entry()
+        .require("native C++ workspace Entry");
+    let found = census_recorder_symbols(image);
+    assert!(
+        found.iter().any(|s| s == "nros_cpp_metadata_dump"),
+        "the native image is the census producer and must link the dump: {found:?}"
+    );
+    assert!(
+        found.iter().any(|s| s.starts_with("nros_rmw_metadata")),
+        "and the recording backend: {found:?}"
+    );
+}
