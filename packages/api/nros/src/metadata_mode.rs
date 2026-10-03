@@ -298,7 +298,17 @@ pub fn listen_for_registrations() {
         // backend did not record (a second executor, a test harness), and the
         // consumer's refusal is the right outcome — so this reports and carries
         // on rather than panicking inside a registration.
-        if !record_subscription_registration(reg.topic, reg.type_name, reg.in_place_capable) {
+        let buffered = if reg.claims_closure_buffer {
+            crate::node_metadata::BufferedRow::Unbounded
+        } else {
+            crate::node_metadata::BufferedRow::TypedBound
+        };
+        if !record_subscription_registration(
+            reg.topic,
+            reg.type_name,
+            reg.in_place_capable,
+            buffered,
+        ) {
             nros_log::log_warn!(
                 nros_log::get_logger("nros::metadata_mode"),
                 "registration of `{}` ({}) matched no recorded subscription row; its \
@@ -319,10 +329,15 @@ pub fn record_subscription_registration(
     source_name: &str,
     type_name: &str,
     in_place_capable: bool,
+    buffered_row: crate::node_metadata::BufferedRow,
 ) -> bool {
     state().with(|st| {
-        st.recorder
-            .observe_subscription_registration(source_name, type_name, in_place_capable)
+        st.recorder.observe_subscription_registration(
+            source_name,
+            type_name,
+            in_place_capable,
+            buffered_row,
+        )
     })
 }
 
@@ -631,12 +646,14 @@ mod tests {
         assert!(record_subscription_registration(
             "/plain",
             "std_msgs/msg/String",
-            true
+            true,
+            crate::node_metadata::BufferedRow::TypedBound
         ));
         assert!(record_subscription_registration(
             "/with_info",
             "std_msgs/msg/String",
-            false
+            false,
+            crate::node_metadata::BufferedRow::Unbounded
         ));
         let export = SourceMetadataExport::new("fixture_pkg", "fixture").language("cpp");
         let json = to_json(&export).expect("serialize");
@@ -647,6 +664,16 @@ mod tests {
             "got: {json}"
         );
         assert!(json[info..].contains("\"in_place\":false"), "got: {json}");
+        // Issue 1648 -- the buffered row rides the same observation, on the same
+        // row, and is not restated across rows.
+        assert!(
+            json[plain..info].contains("\"buffered\":\"typed_bound\""),
+            "got: {json}"
+        );
+        assert!(
+            json[info..].contains("\"buffered\":\"unbounded\""),
+            "got: {json}"
+        );
         reset();
     }
 
@@ -671,25 +698,29 @@ mod tests {
         assert!(record_subscription_registration(
             "/dup",
             "std_msgs/msg/String",
-            true
+            true,
+            crate::node_metadata::BufferedRow::TypedBound
         ));
         assert!(record_subscription_registration(
             "/dup",
             "std_msgs/msg/String",
-            false
+            false,
+            crate::node_metadata::BufferedRow::Unbounded
         ));
         // A third has no row left to land on.
         assert!(!record_subscription_registration(
             "/dup",
             "std_msgs/msg/String",
-            true
+            true,
+            crate::node_metadata::BufferedRow::TypedBound
         ));
         // And a topic nobody recorded is refused rather than attributed to a
         // neighbour.
         assert!(!record_subscription_registration(
             "/never",
             "std_msgs/msg/String",
-            true
+            true,
+            crate::node_metadata::BufferedRow::TypedBound
         ));
         let export = SourceMetadataExport::new("fixture_pkg", "fixture").language("cpp");
         let json = to_json(&export).expect("serialize");

@@ -478,6 +478,23 @@ mod census_fixture_tests {
              saving cannot be taken from an image-level fact: {}",
             row("/buffers_anyway")
         );
+        // Issue 1648 -- and which BUFFERED row each claimed. Both registered
+        // with default options, i.e. no type hint, so both claim the closure
+        // buffer: the C/C++ row issue 1319 found taking `RX_BUF` exactly like a
+        // Rust generic one, which the language alone would have called
+        // `typed_bound`.
+        for topic in ["/in_place_capable", "/buffers_anyway"] {
+            assert!(
+                row(topic).contains("\"buffered\":\"unbounded\""),
+                "a hint-less C++ registration claims RX_BUF: {}",
+                row(topic)
+            );
+        }
+        assert!(
+            !row("/control/command/control_cmd").contains("\"buffered\""),
+            "nothing registered it, so nothing observed a row: {}",
+            row("/control/command/control_cmd")
+        );
         assert!(
             !row("/control/command/control_cmd").contains("\"in_place\""),
             "a subscription nothing REGISTERED carries no registration fact at \

@@ -67,3 +67,44 @@ for one component, the row refuses (D12 rule 2).
 Files: the probe sidecar schema (`nros::node_metadata`, a version bump), the
 registration funnel that reports `in_place` today, `contract_join`, and
 `sizing_descriptor::registration_path`. No overlap with issues 1608 / 1647.
+
+## Status 2026-10-03 -- the probe observes the buffered row; the join carries it
+
+Done in the PR that carries this section (*the probe records which buffered row
+each subscription claimed*), per the revised direction above; the CONSUMER half
+is not, and is why this stays open.
+
+* **Observed at the funnel.** `Executor::open_subscription` reports
+  `claims_closure_buffer` beside `in_place_capable` on the registration
+  observer: `true` when the slot it is about to claim is the closure buffer
+  (`DEFAULT_RX_BUF_SIZE`, i.e. `RX_BUF`), `false` when the call site stated a
+  bound. Read off the request, never inferred from a language.
+* **Recorded on the row, sidecar schema v4.** `EntityMetadata::buffered_row`
+  (`nros::node_metadata::BufferedRow`), emitted as `"buffered":"typed_bound"` /
+  `"unbounded"` beside `in_place`, present exactly when it is.
+  `SOURCE_METADATA_SCHEMA_VERSION` and the CLI's `RECORDER_SCHEMA_VERSION` move
+  3 -> 4 together (so every census taken under v3 reads stale and is re-taken).
+* **Carried through the join.** `EntityDecl::observed_buffered_row`
+  (`ObservedBufferedRow`), read by both sidecar readers (`leaf_entity_env`,
+  and `source_metadata`'s `deny_unknown_fields` struct -- issue 0518's trap)
+  and carried by `contract_join::observe_registrations` as ONE observation with
+  the in-place half, under the same attribution rule.
+
+Measured on a copy of `examples/workspaces/cpp` (`nros sync`): the listener's
+sidecar is `version: 4` and its subscription row reads `in_place: true,
+buffered: "typed_bound"`. Tests: `metadata_mode::tests::an_observed_registration_lands_on_its_own_row`
+(both rows, both values); `census_fixture_tests` (two hint-less C++
+registrations both read `unbounded` -- 1319's row, which the language would
+have called `typed_bound` -- and an unregistered row carries no `buffered`);
+`leaf_entity_env::tests::an_observed_subscription_carries_its_buffered_row`;
+`contract_join::tests::a_model_row_takes_the_probes_buffered_row_with_its_in_place_half`
+(measured red with the join dropping the row).
+
+**What is left:** `sizing_descriptor::registration_path` still turns the
+buffered rows on `DescriptorInputs::language` and refuses on the model road;
+reading `EntityDecl::observed_buffered_row` first (and the plan's
+per-component language as the fallback, never the image-wide one) is the
+consumer change, and `registration_path` is owned by the RFC-0100 descriptor
+work (Package A of this round), so it was deliberately not touched here. A
+Rust component's probe still declares without registering, so its rows stay
+unobserved (issue 1522).

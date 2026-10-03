@@ -453,7 +453,13 @@ pub fn observe_registrations(
     // (component, key) -> what the probe observed, for attributed rows only.
     // `join` already refused every key that is not unique on both sides, so a
     // key appears here at most once per component.
-    let mut seen: BTreeMap<(String, Key), bool> = BTreeMap::new();
+    // Issue 1648 -- the observation is a PAIR now: the in-place half and the
+    // buffered row the same registration claimed. They travel together, under
+    // the same attribution rule, so a row never carries one without the other.
+    let mut seen: BTreeMap<
+        (String, Key),
+        (bool, Option<crate::entity_inventory::ObservedBufferedRow>),
+    > = BTreeMap::new();
     if joined.contract_seen {
         for c in joined.inventory.components() {
             for r in c.declaration.entities() {
@@ -464,7 +470,7 @@ pub fn observe_registrations(
                 else {
                     continue;
                 };
-                seen.insert((c.component.clone(), k), obs);
+                seen.insert((c.component.clone(), k), (obs, r.observed_buffered_row));
             }
         }
     }
@@ -499,10 +505,11 @@ pub fn observe_registrations(
                     .filter(|k| per_key.get(k) == Some(&1))
                     .and_then(|k| seen.get(&(c.component.clone(), k)).copied());
                 match obs {
-                    Some(v) => {
+                    Some((v, buffered)) => {
                         observed += 1;
                         EntityDecl {
                             in_place_capable: Some(v),
+                            observed_buffered_row: buffered,
                             ..r.clone()
                         }
                     }
@@ -850,6 +857,48 @@ mod tests {
             .find(|r| r.kind == EntityKind::Subscription)
             .expect("the model has a subscription row")
             .in_place_capable
+    }
+
+    /// Issue 1648 -- the BUFFERED row rides the same join as the in-place
+    /// half: an observed `in_place: false` row on the model road now says WHICH
+    /// buffered row it took, so a reader no longer needs the component's
+    /// language for it. Red before (measured): the model row carried
+    /// `in_place_capable` and no buffered row at all.
+    #[test]
+    fn a_model_row_takes_the_probes_buffered_row_with_its_in_place_half() {
+        use crate::entity_inventory::ObservedBufferedRow;
+        let m = model_yaml("listener", "/chatter", "std_msgs/msg/String", "");
+        let target = EntityInventory::from_model("model", &m).unwrap();
+        for row in [
+            ObservedBufferedRow::TypedBound,
+            ObservedBufferedRow::Unbounded,
+        ] {
+            let p = probe(
+                "listener",
+                vec![EntityDecl {
+                    observed_buffered_row: Some(row),
+                    ..observed_sub("on_chatter", Some("/chatter"), Some(false))
+                }],
+            );
+            let o = observe_registrations(&target, &p, &m);
+            let sub = rows_of(&o.inventory)
+                .into_iter()
+                .find(|r| r.kind == EntityKind::Subscription)
+                .expect("sub row");
+            assert_eq!(sub.in_place_capable, Some(false));
+            assert_eq!(sub.observed_buffered_row, Some(row), "{sub:?}");
+        }
+        // A probe row with no observation lends neither half.
+        let p = probe(
+            "listener",
+            vec![observed_sub("on_chatter", Some("/chatter"), None)],
+        );
+        let o = observe_registrations(&target, &p, &m);
+        let sub = rows_of(&o.inventory)
+            .into_iter()
+            .find(|r| r.kind == EntityKind::Subscription)
+            .expect("sub row");
+        assert_eq!(sub.observed_buffered_row, None);
     }
 
     /// THE join: the model's `/chatter` row gains the sidecar's observation of

@@ -5879,6 +5879,11 @@ impl<'s> Executor<'s> {
             topic: topic.name,
             type_name: topic.type_name,
             in_place_capable: req.in_place_capable,
+            // Issue 1648 -- the slot this registration is about to claim, read
+            // off the request rather than inferred: `DEFAULT_RX_BUF_SIZE`
+            // (`RX_BUF`) is the closure buffer (`unbounded`), anything else a
+            // stated bound.
+            claims_closure_buffer: req.slot_bytes == crate::config::DEFAULT_RX_BUF_SIZE,
         });
         Ok(SubscriptionOpen {
             slot,
