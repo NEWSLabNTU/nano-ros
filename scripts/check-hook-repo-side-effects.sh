@@ -205,6 +205,67 @@ if [ "${#hazardous[@]}" -eq 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# The CLI's Rust: every `git` it spawns goes through ONE helper — issue 1659.
+# ---------------------------------------------------------------------------
+#
+# The rule above reached `scripts/` and `.githooks/`, and the `nros` CLI is
+# what those scripts and every `just` recipe RUN — so a hook, or `git bisect
+# run`, hands it the same environment. Its `source_stamp::git` did not clear
+# it: under an inherited `GIT_DIR` the play_launch pin read the SUPERPROJECT's
+# HEAD and `nros sync` refused 25 consecutive bisect steps; and the store
+# provisioner's `git init <store dir>` is 0986's exact hazard in Rust.
+#
+# Wider than "builds a repository" on purpose: in the CLI a WRONG READ is the
+# defect that was measured, so the rule is about every spawn. Two shapes:
+#
+#   * `Command::new("git")` / `Command::new(git_program())` — refused outright
+#     outside the helper. The spelling is `nros_git_command(..)`.
+#   * an argv runner (`&["git", …]` / `vec!["git", …]`) — the file must route
+#     its runner through `nros_clear_inherited_git_env`, the identifier this
+#     gate credits in every language.
+CLI_GIT_HELPER="packages/cli/build-support/git_env.rs"
+# cli_git_offences — Rust text in, offending lines out (empty = clean).
+cli_git_offences() {
+    local text
+    text="$(cat)"
+    # A `//` comment that NAMES the forbidden spelling is prose, not a spawn.
+    printf '%s\n' "$text" \
+        | grep -nE 'Command::new\((std::ffi::OsStr::new\()?"git"\)|Command::new\(git_program\(\)\)' \
+        | grep -vE '^[0-9]+:[[:space:]]*//' || true
+    if printf '%s\n' "$text" | nros_grep_q -E '(&|vec!)\[[[:space:]]*"git",' \
+        && ! printf '%s\n' "$text" | nros_grep_q -- "$CLEAR_FN"; then
+        printf '%s\n' "$text" | grep -nE '(&|vec!)\[[[:space:]]*"git",' | head -1
+    fi
+}
+# Negative control first: a probe that cannot fire would report the sweep below
+# as clean over any tree.
+if [ -z "$(printf 'let o = Command::new("git").output();\n' | cli_git_offences)" ] \
+   || [ -z "$(printf 'sh(&["git", "init", d]);\n' | cli_git_offences)" ] \
+   || [ -n "$(printf 'sh(&["git", "init", d]);\nfn r(c: &mut Command) { %s(c); }\n' "$CLEAR_FN" | cli_git_offences)" ]; then
+    bad "cli_git_offences failed its own negative control — the CLI sweep below proves nothing."
+fi
+echo "check-hook-repo-side-effects: every git the CLI spawns clears the inherited environment"
+cli_git_files=0
+cli_git_bad=0
+while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    [ "$f" = "$CLI_GIT_HELPER" ] && continue
+    hits="$(cli_git_offences < "$f")"
+    nros_grep_q -E '"git"|git_program\(\)' < "$f" && cli_git_files=$((cli_git_files + 1))
+    [ -z "$hits" ] && continue
+    cli_git_bad=$((cli_git_bad + 1))
+    bad "$f spawns git without the shared helper (issue 1659):
+$(printf '%s\n' "$hits" | sed 's/^/            /')
+        Spawn it as \`nros_git_command(\"git\")\` (from $CLI_GIT_HELPER), or route
+        an argv runner through \`$CLEAR_FN\`."
+done < <(git ls-files 'packages/cli/*.rs' 'packages/cli/**/*.rs' ':!packages/cli/third-party' ':!packages/cli/testing_workspaces')
+if [ "$cli_git_files" -eq 0 ]; then
+    bad "no CLI Rust file names git at all — the CLI enumeration is broken."
+elif [ "$cli_git_bad" -eq 0 ]; then
+    ok "$cli_git_files CLI Rust file(s) name git; every spawn goes through the helper"
+fi
+
+# ---------------------------------------------------------------------------
 # The dynamic half: run them, and compare the victim byte for byte.
 # ---------------------------------------------------------------------------
 

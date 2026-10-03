@@ -32,7 +32,13 @@
 // build-dependency would have to resolve in every `--locked` build of this
 // sub-workspace for no gain.
 
-use std::{collections::BTreeSet, path::Path, process::Command};
+use std::{collections::BTreeSet, path::Path};
+
+// Issue 1659 — every `git` this file spawns clears the inherited repository-
+// local environment first. Included HERE rather than in `build.rs` so the
+// crate and the build script, which both compile this file, get it from one
+// place; the path resolves against this file in both.
+include!("../../build-support/git_env.rs");
 
 /// The stamp's INPUTS, by label — issue 1018.
 ///
@@ -189,7 +195,11 @@ fn git_program() -> &'static std::ffi::OsString {
 }
 
 fn git(root: &Path, args: &[&str]) -> Option<String> {
-    let out = Command::new(git_program())
+    // `nros_git_command`, never `Command::new`: under an inherited `GIT_DIR`
+    // (`git bisect run`, a hook) `-C root` is overridden, and every answer below
+    // — the play_launch pin above all — would be about the CALLER's repository
+    // (issue 1659).
+    let out = nros_git_command(git_program())
         .arg("-C")
         .arg(root)
         .args(args)
@@ -600,34 +610,16 @@ pub fn modified_cli_files(root: &Path) -> Vec<String> {
 mod tests {
     use super::*;
 
-    /// The git variables an inherited environment uses to override BOTH a path
-    /// argument and `-C` — issues 0986/0988. A test that runs `git init` or
-    /// `git worktree add` in a temp dir must not be steerable by them: under an
-    /// inherited `GIT_DIR` (which a push from a linked worktree sets, i.e. how
-    /// parallel sessions here work) `git init <tmp>` builds nothing and writes
-    /// into the CALLER's repository instead.
-    ///
-    /// ASKED of git, never hand-listed. `scripts/lib/git-hook-env.sh` and
-    /// `scripts/lib/git_hook_env.py` are the hook-side spellings of this same
-    /// rule and derive the list the same way, for the reason CLAUDE.md records:
-    /// all four hand-written copies that preceded them had already drifted, and
-    /// popping some `GIT_*` names is never what earns the credit.
-    fn inherited_git_env_vars() -> &'static Vec<String> {
-        static VARS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
-        VARS.get_or_init(|| {
-            git(Path::new("."), &["rev-parse", "--local-env-vars"])
-                .unwrap_or_default()
-                .split_whitespace()
-                .map(str::to_string)
-                .collect()
-        })
-    }
-
+    /// A test that runs `git init` or `git worktree add` in a temp dir must not
+    /// be steerable by an inherited git environment — issues 0986/0988: under
+    /// an inherited `GIT_DIR` (which a push from a linked worktree sets, i.e.
+    /// how parallel sessions here work) `git init <tmp>` builds nothing and
+    /// writes into the CALLER's repository instead. The shared helper the
+    /// production `git()` uses (issue 1659), so the tests and the code they
+    /// test clear the same list.
     fn sh(dir: &Path, cmd: &str) {
         let mut command = std::process::Command::new("sh");
-        for var in inherited_git_env_vars() {
-            command.env_remove(var);
-        }
+        nros_clear_inherited_git_env(&mut command);
         let ok = command
             .args(["-c", cmd])
             .current_dir(dir)
@@ -895,6 +887,93 @@ mod tests {
         assert!(
             source_stamp(root).is_none(),
             "and the stamp refuses too, which is why the silence is correct"
+        );
+    }
+
+    /// `git -C <root> rev-parse HEAD`, run CLEAN — the expected answer, taken
+    /// independently of whatever process environment the assertion runs in.
+    fn head_of(root: &Path) -> String {
+        let out = nros_git_command("git")
+            .arg("-C")
+            .arg(root)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .expect("spawn git");
+        assert!(out.status.success(), "rev-parse HEAD in {}", root.display());
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// Issue 1659 — under an INHERITED `GIT_DIR` naming another repository,
+    /// the play_launch pin is still the submodule's own HEAD.
+    ///
+    /// `git bisect run` exports `GIT_DIR`, and `GIT_DIR` overrides `-C`; before
+    /// the fix every `nros` built under it stamped the SUPERPROJECT's HEAD as
+    /// its play_launch pin and `nros sync` refused the resolver. The variable
+    /// has to be INHERITED to test that — setting it on a `Command` this test
+    /// builds would test the helper's arguments, not the process environment
+    /// the real spawn reads — and a test must not write to its own process's
+    /// environment, which every concurrently running test reads. So the
+    /// assertion runs in a CHILD: this same test binary, re-run on this one
+    /// test with `GIT_DIR` set in the child's environment.
+    #[test]
+    fn play_launch_pin_ignores_an_inherited_git_dir() {
+        const ROOT: &str = "NROS_TEST_1659_ROOT";
+        const WANT: &str = "NROS_TEST_1659_WANT";
+        if let Some(root) = std::env::var_os(ROOT) {
+            // The child: `GIT_DIR` arrived from the parent's spawn.
+            assert!(
+                std::env::var_os("GIT_DIR").is_some(),
+                "the child must run with an inherited GIT_DIR, or it tests nothing"
+            );
+            let want = std::env::var(WANT).expect("parent passes the expected pin");
+            assert_eq!(
+                play_launch_pin(Path::new(&root)).as_deref(),
+                Some(want.as_str()),
+                "play_launch_pin answered about the repository GIT_DIR names, \
+                 not the submodule `-C` names (issue 1659)"
+            );
+            return;
+        }
+
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("checkout");
+        let sub = root.join(PLAY_LAUNCH_DIR);
+        let other = tmp.path().join("other");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        sh(
+            &root,
+            "git init -q -b main . && git commit -q --allow-empty -m super",
+        );
+        sh(
+            &sub,
+            "git init -q -b main . && git commit -q --allow-empty -m pin",
+        );
+        sh(
+            &other,
+            "git init -q -b main . && git commit -q --allow-empty -m other",
+        );
+        let want = head_of(&sub);
+        let decoy = head_of(&other);
+        assert_ne!(want, decoy, "the two repositories must disagree");
+
+        let name = format!(
+            "{}::play_launch_pin_ignores_an_inherited_git_dir",
+            module_path!().split_once("::").map_or("", |(_, rest)| rest)
+        );
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([name.as_str(), "--exact", "--nocapture", "--test-threads=1"])
+            .env(ROOT, &root)
+            .env(WANT, &want)
+            .env("GIT_DIR", other.join(".git"))
+            .output()
+            .expect("re-run this test binary");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            out.status.success() && stdout.contains("1 passed"),
+            "child run under GIT_DIR={} failed:\n{stdout}\n{stderr}",
+            other.join(".git").display()
         );
     }
 
