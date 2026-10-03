@@ -297,9 +297,17 @@ fn main() {
     // the number cmake derived. The floor stays, because the lookup path here
     // indexes the pool unconditionally (issue 0827) while `nros-node`'s does
     // not — one derivation, two consumers, two legal minima.
+    //
+    // Issue 1655 -- and the descriptor's `[image] node_count` ranks above the
+    // carrier: the same `derive`, on every road that names a descriptor, which
+    // is the order `nros-node` reads it in too.
     let max_nodes: usize = env_usize_min(
         "NROS_EXECUTOR_MAX_NODES",
-        declared_usize("NROS_DECLARED_EXECUTOR_MAX_NODES").unwrap_or(4),
+        sizing
+            .as_ref()
+            .and_then(|d| d.image.node_count().stated().copied())
+            .or_else(|| declared_usize("NROS_DECLARED_EXECUTOR_MAX_NODES"))
+            .unwrap_or(4),
         1,
     );
     // Issue 0813 — per-publisher TX arena capacity for the zero-copy loan path

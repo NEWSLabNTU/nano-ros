@@ -1065,6 +1065,53 @@ The direction for both: the hooks move to `nros`, the crate every language's nod
 API sits on, and the cargo road checks at `nros build` stage 4, where it already
 writes this descriptor.
 
+### Ruling, 2026-10-03 — how `[image]` grows, and what earns a file (issue 1655)
+
+Issue 1655 asked for two rulings to be made once rather than per carrier.
+
+**1. `[image]` grows by one rule: a field is a fact a carrier already DELIVERS,
+stated from the derivation that carrier comes from.** D4 admitted `[image]` for
+the counts no endpoint row can carry; that kind is now closed under a test
+rather than a list. A field enters only when (a) it is a field of
+`DerivedEntityKnobs` — the `EntityInventory::derive` the `NROS_DECLARED_*`
+carriers are written from, so the two cannot disagree — never a reduction a
+consumer would redo over rows (D4's "third mirror"); (b) it is stated iff the
+derivation derived, and refused with the derivation's own reason otherwise;
+and (c) on an N:1 runtime it is D12's fold, with no per-field reduction. Seven
+landed under it: `callback_slots`, `action_client_slots`, `publisher_count`,
+`sched_context_count`, `monitor_rows`, `age_monitor_rows`, `cell_entities`.
+
+Its corollary is the one that bit: **a field takes over a delivered fact; it
+never introduces one.** The standalone-leaf DECLARATION road (`--from-leaf`)
+had no carrier for any of these — its builtins sized those images — and its
+declarations were checked against their runtimes for their queryables only
+(issue 1378). Stating them there would shrink every executor and session table
+the declaration does not mention (measured with `--from-leaf` over the twelve
+NuttX C/C++ leaves: `publisher_count` 1 and `callback_slots` 1 for a talker,
+against builtins of 8 and 4), so that road REFUSES the seven, naming
+this ruling. Introducing a derived size on a road is its own change, with its
+own runtime evidence.
+
+**2. "No contract ⇒ no file" is restated as what both producers actually do:
+no STATED entity fact ⇒ no file.** The model road states none for a model that
+describes no wiring and writes nothing; the cargo LEAF road's probe states the
+entities the image creates, so it writes a file with or without a contract.
+That is the file observed for `examples/native/rust/talker` after `nros sync`
+with no contract — `basis = "contract"`, no QoS fields, `undeclared_endpoints =
+1`: neither stale nor a writer bug, and re-measured on a fresh sync.
+`Basis::Contract` means "the rows are THIS IMAGE's endpoint set, not the link
+closure", whichever input stated them (its vocabulary doc now says so).
+
+What does NOT earn a file is a closure-only or model-only fact on its own — the
+largest wire bound in the closure (`RX_BUF`), or the parameter-service node
+count of a model with no wiring. A descriptor whose every entity fact refuses
+is a second spelling of "nobody said" that every consumer must read through to
+reach the one number it carries. So the two carriers that deliver such a fact
+to a contract-less image — `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` and
+`NROS_DECLARED_NODES` — stay by design: where a descriptor IS named, its own
+field or count ranks first; where none is, the carrier is the delivery. They
+are `ByDesign` rows in `check-knob-single-reader`, citing D4.
+
 ### What this amendment does not change
 
 D1–D11 stand. Refusal stays per field and never a default; demand stays

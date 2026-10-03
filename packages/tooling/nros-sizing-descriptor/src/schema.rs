@@ -610,6 +610,13 @@ pub struct Image {
     action_server_entities: Option<usize>,
     service_client_entities: Option<usize>,
     guard_condition_entities: Option<usize>,
+    callback_slots: Option<usize>,
+    action_client_slots: Option<usize>,
+    publisher_count: Option<usize>,
+    sched_context_count: Option<usize>,
+    monitor_rows: Option<usize>,
+    age_monitor_rows: Option<usize>,
+    cell_entities: Option<usize>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
 }
@@ -626,6 +633,13 @@ impl Image {
         "action_server_entities",
         "service_client_entities",
         "guard_condition_entities",
+        "callback_slots",
+        "action_client_slots",
+        "publisher_count",
+        "sched_context_count",
+        "monitor_rows",
+        "age_monitor_rows",
+        "cell_entities",
     ];
 
     /// Distinct `(name, namespace)` nodes the image registers — one per declared
@@ -732,6 +746,65 @@ impl Image {
         )
     }
 
+    /// Issue 1655 — Executor callback slots — `EntityInventory::derive`'s `max_cbs`.
+    ///
+    /// Summed over EVERY entity kind's `callback_slots()`, timers and guard
+    /// conditions included, which have no `[[endpoint]]` row: a consumer
+    /// counting rows would be short by exactly those.
+    pub fn callback_slots(&self) -> Fact<usize> {
+        fact(&self.callback_slots, "callback_slots", &self.refused)
+    }
+
+    /// Issue 1655 — Callback slots priced at the ACTION entry size — `heavy_slots`.
+    ///
+    /// An action client's entry is the heavy one; multiplying rows by a
+    /// per-kind constant in a consumer is the third mirror RFC-0100 D4
+    /// refuses, so the producer states the count.
+    pub fn action_client_slots(&self) -> Fact<usize> {
+        fact(
+            &self.action_client_slots,
+            "action_client_slots",
+            &self.refused,
+        )
+    }
+
+    /// Issue 1655 — Publisher slots one session opens — `max_publishers`, the action
+    /// expansion included (a server's status/feedback publishers), for the same
+    /// reason [`Self::subscriber_count`] is a fact.
+    pub fn publisher_count(&self) -> Fact<usize> {
+        fact(&self.publisher_count, "publisher_count", &self.refused)
+    }
+
+    /// Issue 1655 — Scheduling contexts the executor creates — `max_sc`: slot 0 plus the
+    /// larger of the authored tier count and the node count. The SCHEDULE
+    /// (`execution.tiers`) is an input no endpoint row carries.
+    pub fn sched_context_count(&self) -> Fact<usize> {
+        fact(
+            &self.sched_context_count,
+            "sched_context_count",
+            &self.refused,
+        )
+    }
+
+    /// Issue 1655 — Contract-monitor rate/latency rows — `max_monitors`: contract rows
+    /// carrying `min_rate_hz` or `max_latency_ms`, which are not endpoints.
+    pub fn monitor_rows(&self) -> Fact<usize> {
+        fact(&self.monitor_rows, "monitor_rows", &self.refused)
+    }
+
+    /// Issue 1655 — Contract-monitor age rows — `max_age_monitors`: contract rows carrying
+    /// `max_age_ms`.
+    pub fn age_monitor_rows(&self) -> Fact<usize> {
+        fact(&self.age_monitor_rows, "age_monitor_rows", &self.refused)
+    }
+
+    /// Issue 1655 — The largest per-component entity count — `max_cell_entities`. A max
+    /// over COMPONENTS, and `[[endpoint]]` rows carry no component, so no
+    /// consumer can recompute it from the table.
+    pub fn cell_entities(&self) -> Fact<usize> {
+        fact(&self.cell_entities, "cell_entities", &self.refused)
+    }
+
     pub fn new(
         node_count: Option<usize>,
         backend_count: Option<usize>,
@@ -789,6 +862,34 @@ impl Image {
         self.guard_condition_entities = v;
         self
     }
+    pub fn set_callback_slots(&mut self, v: Option<usize>) -> &mut Self {
+        self.callback_slots = v;
+        self
+    }
+    pub fn set_action_client_slots(&mut self, v: Option<usize>) -> &mut Self {
+        self.action_client_slots = v;
+        self
+    }
+    pub fn set_publisher_count(&mut self, v: Option<usize>) -> &mut Self {
+        self.publisher_count = v;
+        self
+    }
+    pub fn set_sched_context_count(&mut self, v: Option<usize>) -> &mut Self {
+        self.sched_context_count = v;
+        self
+    }
+    pub fn set_monitor_rows(&mut self, v: Option<usize>) -> &mut Self {
+        self.monitor_rows = v;
+        self
+    }
+    pub fn set_age_monitor_rows(&mut self, v: Option<usize>) -> &mut Self {
+        self.age_monitor_rows = v;
+        self
+    }
+    pub fn set_cell_entities(&mut self, v: Option<usize>) -> &mut Self {
+        self.cell_entities = v;
+        self
+    }
 
     pub fn refuse(&mut self, field: &str, reason: impl Into<String>) -> &mut Self {
         debug_assert!(
@@ -815,6 +916,13 @@ impl Image {
             "action_server_entities" => self.action_server_entities?.to_string(),
             "service_client_entities" => self.service_client_entities?.to_string(),
             "guard_condition_entities" => self.guard_condition_entities?.to_string(),
+            "callback_slots" => self.callback_slots?.to_string(),
+            "action_client_slots" => self.action_client_slots?.to_string(),
+            "publisher_count" => self.publisher_count?.to_string(),
+            "sched_context_count" => self.sched_context_count?.to_string(),
+            "monitor_rows" => self.monitor_rows?.to_string(),
+            "age_monitor_rows" => self.age_monitor_rows?.to_string(),
+            "cell_entities" => self.cell_entities?.to_string(),
             _ => return None,
         })
     }
@@ -853,6 +961,13 @@ impl Image {
                     "guard_condition_entities",
                     self.guard_condition_entities.is_some(),
                 ),
+                ("callback_slots", self.callback_slots.is_some()),
+                ("action_client_slots", self.action_client_slots.is_some()),
+                ("publisher_count", self.publisher_count.is_some()),
+                ("sched_context_count", self.sched_context_count.is_some()),
+                ("monitor_rows", self.monitor_rows.is_some()),
+                ("age_monitor_rows", self.age_monitor_rows.is_some()),
+                ("cell_entities", self.cell_entities.is_some()),
             ],
         )
     }

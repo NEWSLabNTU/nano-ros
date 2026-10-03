@@ -413,6 +413,11 @@ def rfc_text(number):
 #                 descriptor states the fact and its consumer reads it. They
 #                 wait on the retirement itself (deleting the producer and the
 #                 fallback rung), which is the last step of issue 1649.
+#                 Issue 1655's `[image]` fields + readers (2026-10-03) moved
+#                 eight more here, each re-measured zero-diff on the same image:
+#                 EXECUTOR_MAX_CBS / _MAX_SC / _ACTION_CLIENTS / _MAX_NODES /
+#                 _MAX_MONITORS / _MAX_AGE_MONITORS, MAX_PUBLISHERS,
+#                 MAX_SUBSCRIBERS.
 #   differs    -- every other carrier this image delivers, each for a reason
 #                 issue 1655 owns: no `[image]` field (MAX_CBS, MAX_SC,
 #                 ACTION_CLIENTS, MAX_PUBLISHERS, both MONITORS, INFRA,
@@ -442,6 +447,18 @@ _D12_UNMEASURED = (
 # owns; these carry the RESOLVED number for the cmake road. They pointed at
 # issue 1408 while it was open, which was a reason that would have decayed the
 # day it closed -- hence `ByDesign`.
+# RFC-0100 ruling of 2026-10-03 (issue 1655): what earns a descriptor FILE is
+# a stated entity fact, and a closure-only or model-only fact on its own does
+# not. These two deliver exactly such a fact to a CONTRACT-LESS image -- the
+# closure's largest bound (`RX_BUF`), and the parameter-service node count of a
+# model with no wiring -- so where a descriptor is named its own field ranks
+# first, and where none is, the carrier is the delivery.
+_CONTRACTLESS = (
+    "delivers a fact that exists without a contract to an image that has no "
+    "descriptor file by design (RFC-0100 D4, ruled 2026-10-03, issue 1655); "
+    "where a descriptor is named its own field ranks first"
+)
+
 _BOARD_CAPACITY = (
     "a BOARD capacity (RFC-0100 D1 target fact), deliberately absent from the "
     "descriptor -- the contract states the NEED, never the size"
@@ -454,79 +471,36 @@ KEPT = {
     # bound and `nros-node` reads it FIRST, measured equal to this carrier.
     # What keeps the carrier is not a field or a reader but the FILE: cmake
     # emits it whenever the message-bound closure derived, contract or not,
-    # and a contract-less image writes no descriptor (RFC-0100 D4's "no
-    # contract => no file") -- the ruling issue 1655 owns.
-    "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": Kept(
-        1655,
-        "the descriptor states it (`[types] max_wire_bound_bytes`) and "
-        "`nros-node` reads it FIRST, measured equal; but this carrier is "
-        "emitted whenever the bound closure derived, with or without a "
-        "contract, and a contract-less image has no descriptor file to carry it",
-    ),
+    # and a contract-less image writes no descriptor -- ruled by design
+    # (RFC-0100 D4, 2026-10-03, issue 1655).
+    "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": ByDesign(100, "D4", _CONTRACTLESS),
     "NROS_DECLARED_LARGE_SUBSCRIBERS": Kept(1649, _D12_ZERO_DIFF),
     # Same consumer function as the two above, but the measured image's large
     # class is EMPTY, so the carrier was not delivered and nothing was diffed.
     "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": Kept(1649, _D12_UNMEASURED),
-    # ---- the entity counts (issue 1655: a field or a reader is missing) --
-    # Each row names its OWN structural reason -- "the counts" is exactly the
-    # grouping W9 was told not to assume.
-    "NROS_DECLARED_EXECUTOR_MAX_CBS": Kept(
-        1655,
-        "`max_cbs` sums `callback_slots()` over Timer and GuardCondition, which "
-        "`endpoint_kind` drops (no type, no topic, so no endpoint row); measured "
-        "under D12 dropping it moves MAX_CBS 9 -> 4",
-    ),
-    "NROS_DECLARED_EXECUTOR_MAX_SC": Kept(
-        1655,
-        "the scheduling-context count comes from `execution.tiers` -- the "
-        "SCHEDULE, which the schema does not model; measured under D12 "
-        "dropping it moves MAX_SC 7 -> 8",
-    ),
+    # ---- the entity counts -------------------------------------------------
+    # Issue 1655 gave each its `[image]` field (or a reader of an existing
+    # one) and every one re-measured zero-diff; `MAX_CELL_ENTITIES` alone
+    # still lacks its reader.
+    "NROS_DECLARED_EXECUTOR_MAX_CBS": Kept(1649, _D12_ZERO_DIFF),
+    "NROS_DECLARED_EXECUTOR_MAX_SC": Kept(1649, _D12_ZERO_DIFF),
     "NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES": Kept(
         1655,
-        "a max over PER-COMPONENT per-kind counts, while `[[endpoint]]` rows "
-        "carry no component attribution; measured under D12 dropping it "
-        "moves MAX_CELL_ENTITIES 1 -> 8",
+        "`[image] cell_entities` states it since issue 1655's ruling, and "
+        "`nros/build.rs` does not read it: that crate has no "
+        "`nros-sizing-descriptor` build-dependency, and adding one moves every "
+        "leaf lockfile that resolves `nros`; measured under D12 dropping it "
+        "moves MAX_CELL_ENTITIES 1 -> 8"
     ),
-    "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS": Kept(
-        1655,
-        "`heavy_slots` has no `[image]` field -- counting rows and "
-        "multiplying is the third mirror RFC-0100 D4 refuses; measured under "
-        "D12 dropping it moves ARENA_ACTION_CLIENTS 2 -> 9",
-    ),
-    "NROS_DECLARED_MAX_PUBLISHERS": Kept(
-        1655,
-        "unlike `subscriber_count` it has no `[image]` field, so a consumer "
-        "would have to restate the action expansion; measured under D12 "
-        "dropping it moves ZPICO_MAX_PUBLISHERS 3 -> 8",
-    ),
-    "NROS_DECLARED_EXECUTOR_MAX_NODES": Kept(
-        1655,
-        "`[image] node_count` states it and neither `nros-node` nor "
-        "`nros-rmw-zenoh` reads it first; measured under D12 dropping the "
-        "carrier moves MAX_NODES and MAX_PER_NODE_LIVELINESS 6 -> 4",
-    ),
+    "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS": Kept(1649, _D12_ZERO_DIFF),
+    "NROS_DECLARED_MAX_PUBLISHERS": Kept(1649, _D12_ZERO_DIFF),
+    "NROS_DECLARED_EXECUTOR_MAX_NODES": Kept(1649, _D12_ZERO_DIFF),
     # phase-467 W1 (issue 1471) -- the contract-monitor row counts: counts of
-    # CONTRACT rows (`min_rate_hz` / `max_latency_ms` / `max_age_ms`), not of
-    # endpoints, so no `[[endpoint]]` row can state them.
-    "NROS_DECLARED_EXECUTOR_MAX_MONITORS": Kept(
-        1655,
-        "the count is of contract rows carrying `min_rate_hz` or "
-        "`max_latency_ms` (`monitor_rows`), which no descriptor field states; "
-        "measured under D12 dropping it moves MAX_MONITORS 0 -> 8",
-    ),
-    "NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS": Kept(
-        1655,
-        "the count is of contract rows carrying `max_age_ms` (`age_rows`), "
-        "which no descriptor field states; measured under D12 dropping it "
-        "moves MAX_AGE_MONITORS 0 -> 8",
-    ),
-    "NROS_DECLARED_MAX_SUBSCRIBERS": Kept(
-        1655,
-        "`[image] subscriber_count` states it and `nros-zpico-build` does not "
-        "read it first; measured under D12 dropping the carrier moves "
-        "ZPICO_MAX_SUBSCRIBERS 2 -> 8",
-    ),
+    # CONTRACT rows, not of endpoints, so they are `[image] monitor_rows` /
+    # `age_monitor_rows` (issue 1655), never an `[[endpoint]]` column.
+    "NROS_DECLARED_EXECUTOR_MAX_MONITORS": Kept(1649, _D12_ZERO_DIFF),
+    "NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS": Kept(1649, _D12_ZERO_DIFF),
+    "NROS_DECLARED_MAX_SUBSCRIBERS": Kept(1649, _D12_ZERO_DIFF),
     "NROS_DECLARED_RMW_SUBSCRIBER_SLOTS": Kept(1649, _D12_ZERO_DIFF),
     # ---- the queryable raw inputs ----------------------------------------
     "NROS_DECLARED_SERVICE_SERVERS": Kept(
@@ -540,13 +514,7 @@ KEPT = {
     # issue 1498 -- the retention slot beside that count; the leaf road reads
     # it off the descriptor (`transient_local_retain_demand`) already.
     "NROS_DECLARED_TL_RETAIN_BYTES": Kept(1649, _D12_UNMEASURED),
-    "NROS_DECLARED_NODES": Kept(
-        1655,
-        "it is emitted even for a model that describes NO wiring, which is "
-        "exactly where `write_for_model` writes no file (\"no contract => no "
-        "file\", RFC-0100 D4); zero-diff on the D12 image only because that "
-        "image counts no parameter services",
-    ),
+    "NROS_DECLARED_NODES": ByDesign(100, "D4", _CONTRACTLESS),
     "NROS_DECLARED_INFRA_QUERYABLES": Kept(
         1655,
         "a FEATURE token from `execution.features`, not a count -- the schema "
