@@ -50,6 +50,14 @@ pub struct RefreshReport {
     /// Components skipped because no producer exists for their language yet
     /// (C/C++ — phase-307 W3). Reported, never silently dropped.
     pub unsupported: Vec<String>,
+    /// Issue 1639 — sidecars the probe wrote for a component no declaration
+    /// names any more (a rename, a deletion), removed this pass.
+    pub pruned: Vec<PathBuf>,
+    /// Issue 1639 — `*.json` files in a sidecar directory that name no
+    /// declared component and carry no probe provenance, so this pass did not
+    /// write them and will not delete them. Every reader that globs the
+    /// directory still sees them, so they are REPORTED.
+    pub undeclared_kept: Vec<PathBuf>,
 }
 
 impl RefreshReport {
@@ -74,6 +82,9 @@ pub fn refresh_stale_sidecars(
     if declarations.is_empty() {
         return Ok(report);
     }
+    // Issue 1639 — before anything is probed, so a stale sidecar can never be
+    // read by this pass either.
+    prune_undeclared_sidecars(&declarations, &mut report);
     let probe_root = ws_root.join("build").join("nros-metadata");
     // Issue 0286 — resolved once, not per component.
     let host = host_triple();
@@ -512,6 +523,72 @@ pub fn fresh_probe_inventory(
     }
     notes.dedup();
     Ok((inv, read, notes))
+}
+
+/// Issue 1639 — remove the sidecars of components no declaration names.
+///
+/// The probe writes one `<dir>/<component>.json` per DECLARED component, and
+/// every reader of that directory — `leaf_entity_env::inventory_for_leaf`
+/// (the cargo-leaf sizing descriptor), `Workspace::source_metadata_files`
+/// (the planner, model ingest, `nros metadata`) — globs `*.json` in it. So a
+/// rename left the old component's sidecar behind and the next sync composed
+/// it into the image: measured on `bins/in-place-subscriptions` after
+/// `five_listener` → `eight_listener`, 13 subscription rows for an image
+/// registering 8, and `ARENA_SIZE = 162,936` where the image needs 10,240.
+///
+/// Pruned here, at the one writer, rather than filtered at four readers: the
+/// directory then means what every reader already assumes it means. Only
+/// within a directory a declared sidecar lives in, and only a file the PROBE
+/// wrote — one carrying [`SourceMetadataProvenance`], which [`stamp_provenance`]
+/// sets on every successful probe. A `*.json` without it (a hand-written test
+/// fixture) is not this pass's to delete; it is reported instead, because the
+/// readers still see it. An orphaned `.json.unprobeable` marker is always this
+/// module's, and goes with its component.
+fn prune_undeclared_sidecars(declarations: &[ComponentDeclaration], report: &mut RefreshReport) {
+    use std::collections::BTreeSet;
+    let declared: BTreeSet<PathBuf> = declarations
+        .iter()
+        .map(ComponentDeclaration::source_metadata_path)
+        .collect();
+    let dirs: BTreeSet<PathBuf> = declared
+        .iter()
+        .filter_map(|p| p.parent().map(Path::to_path_buf))
+        .collect();
+    for dir in dirs {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut entries: Vec<PathBuf> = rd.filter_map(|e| e.ok()).map(|e| e.path()).collect();
+        entries.sort();
+        for path in entries {
+            let name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default();
+            if let Some(json) = name.strip_suffix(".unprobeable") {
+                if json.ends_with(".json") && !declared.contains(&dir.join(json)) {
+                    let _ = std::fs::remove_file(&path);
+                }
+                continue;
+            }
+            if !name.ends_with(".json") || declared.contains(&path) {
+                continue;
+            }
+            let probe_wrote = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|raw| serde_json::from_str::<SourceMetadata>(&raw).ok())
+                .is_some_and(|m| m.provenance.is_some());
+            if probe_wrote && std::fs::remove_file(&path).is_ok() {
+                let _ = std::fs::remove_file(unprobeable_marker(&path));
+                report.pruned.push(path);
+            } else if path.exists() {
+                // `exists()` because several fixture rows of one leaf sync
+                // concurrently (issue 0498): a sibling that pruned it first
+                // is not a file this pass kept.
+                report.undeclared_kept.push(path);
+            }
+        }
+    }
 }
 
 /// A sidecar is fresh iff it parses AND its recorded provenance digest matches
@@ -1455,5 +1532,81 @@ mod tests {
         assert!(!sidecar_is_fresh(&sidecar, "fnv1a64:0"), "missing ⇒ stale");
         std::fs::write(&sidecar, "not json").unwrap();
         assert!(!sidecar_is_fresh(&sidecar, "fnv1a64:0"), "garbage ⇒ stale");
+    }
+
+    /// A sidecar body as the probe leaves it: `stamped` adds the provenance
+    /// [`stamp_provenance`] writes on every successful probe.
+    fn sidecar_body(component: &str, stamped: bool) -> String {
+        let provenance = if stamped {
+            r#", "provenance": {"inputs_digest": "fnv1a64:0", "generator": "nros test"}"#
+        } else {
+            ""
+        };
+        format!(
+            r#"{{"version": 4, "package": "demo_pkg", "component": "{component}",
+                "language": "rust", "executable": null, "exported_symbol": null,
+                "nodes": [], "callbacks": [], "parameters": [],
+                "trace": {{"generator": "t", "package_manifest": "package.xml",
+                           "source_artifacts": []}}{provenance}}}"#
+        )
+    }
+
+    /// Issue 1639 — a renamed component's old sidecar is REMOVED, so no reader
+    /// that globs the directory can compose it into the image again.
+    ///
+    /// The declared one stays, a hand-written (unstamped) one stays and is
+    /// REPORTED, and the old one's negative-cache marker goes with it, as does a
+    /// marker whose component is gone. The leaf reader is asserted directly,
+    /// because it is the one that sized issue 1639's 162,936-byte arena.
+    #[test]
+    fn a_renamed_components_old_sidecar_is_pruned() {
+        let dir = tmp("prune");
+        let md = dir.join("metadata");
+        std::fs::create_dir_all(&md).unwrap();
+        // `probeable_decl` declares `metadata/talker.json`.
+        let decl = probeable_decl(&dir, ComponentLanguage::Rust);
+        std::fs::write(md.join("talker.json"), sidecar_body("talker", true)).unwrap();
+        std::fs::write(md.join("old_talker.json"), sidecar_body("old_talker", true)).unwrap();
+        std::fs::write(md.join("old_talker.json.unprobeable"), "k").unwrap();
+        std::fs::write(md.join("gone.json.unprobeable"), "k").unwrap();
+        std::fs::write(md.join("hand.json"), sidecar_body("hand", false)).unwrap();
+        std::fs::write(md.join("notes.txt"), "not a sidecar").unwrap();
+
+        let (before, _) = crate::leaf_entity_env::inventory_for_leaf(&dir).unwrap();
+        assert_eq!(
+            before.len(),
+            3,
+            "precondition: the leaf reader globs all three sidecars"
+        );
+
+        let mut report = RefreshReport::default();
+        prune_undeclared_sidecars(std::slice::from_ref(&decl), &mut report);
+
+        assert_eq!(report.pruned, vec![md.join("old_talker.json")]);
+        assert_eq!(report.undeclared_kept, vec![md.join("hand.json")]);
+        assert!(
+            md.join("talker.json").exists(),
+            "the declared sidecar stays"
+        );
+        assert!(
+            md.join("hand.json").exists(),
+            "an unstamped file is not ours"
+        );
+        assert!(md.join("notes.txt").exists());
+        assert!(!md.join("old_talker.json").exists());
+        assert!(!md.join("old_talker.json.unprobeable").exists());
+        assert!(!md.join("gone.json.unprobeable").exists());
+
+        let (after, _) = crate::leaf_entity_env::inventory_for_leaf(&dir).unwrap();
+        assert_eq!(
+            after.len(),
+            2,
+            "the renamed-away component is no longer read"
+        );
+
+        // Idempotent: a second pass finds nothing more to remove.
+        let mut again = RefreshReport::default();
+        prune_undeclared_sidecars(std::slice::from_ref(&decl), &mut again);
+        assert!(again.pruned.is_empty());
     }
 }
