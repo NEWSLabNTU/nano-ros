@@ -56,6 +56,26 @@
  * task (app, zenoh read/lease, poll) is still `xTaskCreate`. */
 #define configSUPPORT_STATIC_ALLOCATION         1
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
+
+/* Issue 1657 — ON, and stated HERE rather than as a `-D` on one target.
+ *
+ * It changes the LAYOUT of `TCB_t`/`StaticTask_t` and `Queue_t`/
+ * `StaticQueue_t` (+`uxTCBNumber`/`uxTaskNumber`, +`uxQueueNumber`/
+ * `ucQueueType`), so it is an ABI fact every TU that names a kernel type must
+ * agree on — and the only carrier every TU reads is this file. It used to
+ * arrive as `target_compile_definitions(freertos_kernel PUBLIC
+ * configUSE_TRACE_FACILITY=1)` on the cmake road (CycloneDDS's
+ * `ddsrt_gettid()` needs `vTaskGetInfo()`), which reached the kernel and its
+ * cmake consumers but never the cargo-built C: zenoh-pico (`zpico-sys`) sized
+ * an embedded `StaticSemaphore_t` at 72 bytes against a kernel that writes 80.
+ * Harmless while every kernel object came from the heap; once
+ * `configSUPPORT_STATIC_ALLOCATION 1` (issue 1598) made zenoh-pico embed its
+ * mutexes, initialising `_mutex_rx` wrote its `ucQueueType` over the
+ * neighbouring `_mutex_tx`'s `pcHead`, turning that recursive mutex into a
+ * plain semaphore, and the first recursive re-take deadlocked the app task in
+ * session open. Never pass a `config*` macro on a command line — gate
+ * `check-freertos-config-single-carrier`. */
+#define configUSE_TRACE_FACILITY                1
 /* Phase 175.B / 204.6 — FreeRTOS heap (heap_4 `ucHeap[]`, the dominant bss).
  *
  * WHO GETS WHICH NUMBER — three roads, decided by WHERE the RMW is known.
@@ -170,9 +190,11 @@ extern void freertos_assert_failed(const char *file, int line);
 #define configCHECK_FOR_STACK_OVERFLOW          2
 #define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1
 
-/* ---- Tonbandgeraet tracing (opt-in via NROS_TRACE=1) ---- */
+/* ---- Tonbandgeraet tracing (opt-in via NROS_TRACE=1) ----
+ * `configUSE_TRACE_FACILITY` is unconditionally on above (issue 1657), so the
+ * opt-in adds only the trace hooks and the tick hook, neither of which changes
+ * a kernel type's layout. */
 #ifdef NROS_TRACE
-#define configUSE_TRACE_FACILITY                1
 #include "tband.h"
 #endif
 

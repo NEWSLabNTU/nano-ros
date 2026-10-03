@@ -485,6 +485,17 @@ knob-fixpoint:
 c-array-pool-floors:
     @python3 scripts/check-c-array-pool-floors.py
 
+# issue 1657 — a FreeRTOS `config*` macro has ONE carrier, FreeRTOSConfig.h.
+# `configUSE_TRACE_FACILITY=1` as a `-D` on the cmake `freertos_kernel` target
+# never reached the cargo-built zenoh-pico, so the two disagreed on the size of
+# `StaticSemaphore_t` (72 vs 80) and, once issue 1598 embedded kernel objects
+# in caller memory, every cmake-built zenoh C/C++ FreeRTOS image deadlocked in
+# session open. Refuses any `-Dconfig*` / `.define("config*")` /
+# `*_compile_definitions(... config*)` in a tracked build file.
+[private]
+freertos-config-single-carrier:
+    @python3 scripts/check-freertos-config-single-carrier.py
+
 # issue 1125 — the small/large payload split is a number TWO derivations
 # classify against and a THIRD routes on, in three files no build reads
 # together. cmake cannot read a Rust `const`, so agreement is checked here

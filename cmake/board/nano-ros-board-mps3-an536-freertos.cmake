@@ -126,9 +126,10 @@ if(NOT TARGET freertos_kernel)
         nros_freertos_build_kernel(PORT "${FREERTOS_PORT}")
     endif()
 endif()
-if(TARGET freertos_kernel)
-    target_compile_definitions(freertos_kernel PUBLIC configUSE_TRACE_FACILITY=1)
-endif()
+# configUSE_TRACE_FACILITY (CycloneDDS's ddsrt_gettid() needs vTaskGetInfo())
+# is stated in FreeRTOSConfig.h, never as a compile definition here: it changes
+# the layout of every kernel object, and a `-D` on this target never reached the
+# cargo-built C that embeds those objects (issue 1657).
 # lwIP sizing for REAL ROS payloads, not for the smallest board in the family.
 #
 # An Autoware trajectory is ~13 KiB, which RTPS puts on the wire as ~10
