@@ -232,8 +232,8 @@ cli_git_offences() {
     printf '%s\n' "$text" \
         | grep -nE 'Command::new\((std::ffi::OsStr::new\()?"git"\)|Command::new\(git_program\(\)\)' \
         | grep -vE '^[0-9]+:[[:space:]]*//' || true
-    if printf '%s\n' "$text" | nros_grep_q -E '(&|vec!)\[[[:space:]]*"git",' \
-        && ! printf '%s\n' "$text" | nros_grep_q -- "$CLEAR_FN"; then
+    if nros_grep_q -E '(&|vec!)\[[[:space:]]*"git",' <<<"$text" \
+        && ! nros_grep_q -- "$CLEAR_FN" <<<"$text"; then
         printf '%s\n' "$text" | grep -nE '(&|vec!)\[[[:space:]]*"git",' | head -1
     fi
 }
