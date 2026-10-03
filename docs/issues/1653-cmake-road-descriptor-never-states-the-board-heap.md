@@ -66,3 +66,41 @@ stated, the Cyclone TU compiles with `kHeapBudgetStated == true`, and a board
 heap set below `kRequiredHeapBytes` fails at boot with D11's message (the
 non-default probe, `canonical-build-path.md`'s rule) — and the same on one west
 image.
+
+## Progress, 2026-10-03 — the cmake road states the heap and arms D11; the west half is open
+
+**Landed.** `nros build` stage 4 passes the board heap it already resolves
+(`board_heap_budget`, the cargo road's function) to the cmake configure as
+`-DNROS_BOARD_HEAP_BUDGET_BYTES=<n>`, only when the board states one.
+`_nros_sizing_heap_args` turns it into `--heap-budget-bytes` for all three
+cmake producers (the entry, D12's shared runtime, the standalone leaf); a
+non-numeric value is a FATAL_ERROR. `nros_sizing_descriptor_apply_cyclonedds_heap()`
+(called by `nano_ros_entry()` after the read) puts the descriptor's STATED
+`[target] heap_budget_bytes` on `nros_rmw_cyclonedds` as
+`NROS_CYCLONEDDS_HEAP_BUDGET_BYTES`; refused or absent defines nothing. The
+configure still reads no board file.
+
+**Measured** on `examples/workspaces/cpp` `freertos_posix` (cmake, Cyclone,
+FreeRTOS POSIX port) with a TEMPORARY `[board.knobs.memory] heap_bytes` on the
+`freertos-posix` board (no in-tree board states one — `git grep heap_bytes --
+'*.toml'` is empty):
+
+* `heap_bytes = 65536`: the configure line carries
+  `-DNROS_BOARD_HEAP_BUDGET_BYTES=65536`, the descriptor states
+  `heap_budget_bytes = 65536`, `nros_rmw_cyclonedds`'s `flags.make` carries the
+  define, and the image refuses at boot with D11's message —
+  `configured heap 65536 bytes is below the 112640 this image is certain to
+  need ...`, then `RMW session open failed — BadAlloc`;
+* `heap_bytes = 1048576`: same chain, the image boots and its talker/listener
+  pair delivers (`Published: N` / `Received: N`).
+
+Test: `tests/cmake-sizing-descriptor-tests.sh` G7 (the heap reaches the entry
+and runtime producers; absent stays absent; non-numeric is fatal).
+
+**Still open:** the WEST road. A Zephyr image compiles Cyclone into the module
+library, and the west road has no stage-4 configure line to carry the board
+heap (RFC-0065 D3: no root is emitted) — it needs the generated west
+application or the module's knob resolver to carry it, as issue 1407 did for
+the descriptor path. Also found: the cmake road forwards none of Cyclone's
+`[types]` facts either, so D11's floor there is computed from the header
+defaults (256 types × 256 kinds) — issue 1661.

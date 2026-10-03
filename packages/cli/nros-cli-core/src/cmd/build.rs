@@ -919,6 +919,19 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 if let Some(d) = &resolved_dir {
                     a.push(format!("-DNROS_RESOLVED_DIR={}", d.display()));
                 }
+                // Issue 1653 (RFC-0100 Amendment 1, "D4 revised") — the BOARD
+                // heap, resolved here at stage 4 for every road, handed to the
+                // configure the way the triple is. The configure does not read
+                // `nros-board.toml` and must not learn to (a second reader of
+                // the board's knobs, the shape RFC-0064 R5 D4 removed);
+                // `nano_ros_entry()` passes it to the descriptor producer as
+                // `--heap-budget-bytes`, so `[target] heap_budget_bytes` is
+                // stated and Cyclone's D11 boot check is armed on this road.
+                // Absent when the board states no `[board.knobs.memory]
+                // heap_bytes`, which keeps the field REFUSED -- "nobody said".
+                if let Some(h) = board_heap_budget(descriptor, &board) {
+                    a.push(format!("-DNROS_BOARD_HEAP_BUDGET_BYTES={h}"));
+                }
                 // Issue 1304 — the ROOT this generated file's
                 // `find_package(nano_ros)` resolves against. `nano_rosConfig.cmake`
                 // sits at the SDK root and is located through `nano_ros_ROOT`,

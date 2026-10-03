@@ -329,6 +329,7 @@ cat > "$WRITER_STUB" <<'STUB_EOF'
 # test can assert the composition's INPUT (the reduction itself is Rust's, and
 # is tested there). NROS_WRITER_RUNTIME_SILENT=1 mimics no wired model.
 build_dir="" entry="" prev="" models="" entries=""
+if [ -n "${NROS_WRITER_ARGS_LOG:-}" ]; then echo "$*" >> "$NROS_WRITER_ARGS_LOG"; fi
 for a in "$@"; do
     case "$prev" in
         --build-dir) build_dir="$a" ;;
@@ -425,7 +426,8 @@ run_writer() {
     NROS_TEST_MODEL_SMALL="$MODEL_SMALL" \
     NROS_WRITER_SILENT="$1" \
     NROS_TEST_SECOND="$2" \
-        cmake -S "$WPROJ" -B "$WPROJ/build" 2>&1
+        cmake -S "$WPROJ" -B "$WPROJ/build" \
+            ${NROS_TEST_HEAP:+"-DNROS_BOARD_HEAP_BUDGET_BYTES=$NROS_TEST_HEAP"} 2>&1
 }
 MODULE_ENV="$MODULE"
 
@@ -521,6 +523,34 @@ check
 if ! nros_grep_q "CARGO_ROW_TWO=$" <<<"$OUT"; then
     fail "G6: no runtime descriptor was written and a row was still emitted -- it can \
 only name one ENTRY's file, which sizes the shared archive from one image -- $OUT"
+fi
+
+log_info "G7. the board heap stage 4 hands the configure reaches the producer (issue 1653)"
+ARGS_LOG="$TEST_TMPDIR/writer-args.log"
+rm -f "$ARGS_LOG"
+OUT="$(NROS_WRITER_ARGS_LOG="$ARGS_LOG" NROS_TEST_HEAP=65536 run_writer "" 1)"
+check
+if ! nros_grep_q -- "--from-model .* --heap-budget-bytes 65536" "$ARGS_LOG"; then
+    fail "G7: -DNROS_BOARD_HEAP_BUDGET_BYTES did not reach the entry producer as \
+--heap-budget-bytes, so [target] heap_budget_bytes stays refused and Cyclone's D11 \
+check is inert on the cmake road -- $(cat "$ARGS_LOG" 2>&1)"
+fi
+check
+if ! nros_grep_q -- "--composed-entry .*--heap-budget-bytes 65536" "$ARGS_LOG"; then
+    fail "G7: the RUNTIME producer was not handed the board heap -- $(cat "$ARGS_LOG" 2>&1)"
+fi
+rm -f "$ARGS_LOG"
+OUT="$(NROS_WRITER_ARGS_LOG="$ARGS_LOG" run_writer "" "")"
+check
+if nros_grep_q -- "--heap-budget-bytes" "$ARGS_LOG"; then
+    fail "G7: no board heap was stated and the producer was handed one anyway -- \
+'nobody said' must stay refused, never a default (RFC-0100 D6) -- $(cat "$ARGS_LOG")"
+fi
+OUT="$(NROS_TEST_HEAP=lots run_writer "" "" 2>&1)"
+RC=$?
+check
+if ! nros_grep_q "is not a count of bytes" <<<"$OUT"; then
+    fail "G7: a non-numeric board heap configured silently -- $OUT"
 fi
 
 # ---------------------------------------------------------------------------
