@@ -52,12 +52,10 @@ FFI = re.compile(
 
 # Entity type -> the OPEN issue that tracks its missing remover. A row is a debt
 # with an owner, not a blessing; it must name an issue that is still open.
-UNREMOVABLE = {
-    "nros_subscription_t": "1631",
-    "nros_timer_t": "1631",
-    "nros_service_t": "1631",
-    "nros_client_t": "1631",
-}
+# Empty since issue 1631 added the last four removers; kept, with its stale and
+# closed-issue checks, so a NEW add verb without a remover still has to name
+# its owner here.
+UNREMOVABLE: dict[str, str] = {}
 
 
 def scan(sources: dict[str, str]) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
