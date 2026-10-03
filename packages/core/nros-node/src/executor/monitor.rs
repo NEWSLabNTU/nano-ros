@@ -319,14 +319,41 @@ pub struct Violation {
 /// A function and an opaque context rather than a closure, because the
 /// executor is not generic and the reporter it reaches lives in a crate above
 /// this one (`nros-cpp` publishes on `/diagnostics` through
-/// `nros-diagnostics`). Called from `spin_once`, between dispatches, never from
-/// inside a callback — so the sink may publish.
+/// `nros-diagnostics`). Called at DETECTION, from inside the executor's spin
+/// (never from inside a user callback) — so the sink may publish.
 ///
 /// # Safety
 /// The sink is called with the `ctx` it was installed with; whoever installs it
 /// guarantees `ctx` is valid for every call until the sink is replaced or the
 /// executor is dropped.
 pub type ViolationSink = unsafe fn(ctx: *mut core::ffi::c_void, v: &Violation);
+
+/// Issue 1635 — THE one place a detected violation goes: the log floor (issue
+/// 0514) when enabled, the image's sink when one is installed, and the ring
+/// [`drain_violations`] reads (a full ring counts the drop). Eight sites
+/// spelled the first and last of these by hand; the sink would have been a
+/// ninth copy.
+///
+/// [`drain_violations`]: super::Executor::drain_violations
+pub(crate) fn record_violation(
+    v: Violation,
+    report: bool,
+    sink: Option<(ViolationSink, usize)>,
+    ring: &mut super::storage::CarvedVec<'_, Violation>,
+    dropped: &mut u32,
+) {
+    if report {
+        log_violation(&v);
+    }
+    if let Some((f, ctx)) = sink {
+        // SAFETY: `Executor::set_violation_sink`'s contract — `ctx` is valid
+        // for every call until the sink is replaced or the executor dropped.
+        unsafe { f(ctx as *mut core::ffi::c_void, &v) };
+    }
+    if ring.push(v).is_err() {
+        *dropped = dropped.saturating_add(1);
+    }
+}
 
 /// Per-spec accounting state (parallel to the spec table).
 #[derive(Debug, Clone, Copy, Default)]
