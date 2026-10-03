@@ -41,7 +41,8 @@ fn args() -> SizingDescriptorArgs {
     SizingDescriptorArgs {
         descriptor: None,
         output_cmake: None,
-        from_model: None,
+        from_model: Vec::new(),
+        composed_entry: Vec::new(),
         from_leaf: None,
         // phase-457-payload W2 -- no tables: the payload class refuses,
         // naming the missing registration (issue 1393 closed the road).

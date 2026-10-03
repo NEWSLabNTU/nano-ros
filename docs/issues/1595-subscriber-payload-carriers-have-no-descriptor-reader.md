@@ -132,3 +132,21 @@ west road, and the rows moved on to issue 1649, the multi-entry configure.)
 basis is the CLOSURE — every type the image could receive or publish, because
 `DEFAULT_TX_BUF` aliases it — and no set of `[[endpoint]]` rows spans that, so it
 needs a descriptor field (an RFC-0100 D4 amendment) before any reader can exist.
+
+## Progress, 2026-10-03 — the field exists (schema 2); the reader is what is left
+
+`[types] max_wire_bound_bytes` landed in the schema-2 bump it shares with issue
+1649 (RFC-0100 D12). Every producer road fills it through ONE rule,
+`leaf_take_buffer::derive` — the cargo leaf's `NROS_SUBSCRIPTION_BUFFER_SIZE`
+derivation, called rather than restated (issue 1025) — over every type of every
+bound table the image REGISTERED, never over the endpoint rows. It refuses
+naming the open types, or naming the absent table (`bounds_error`), and is
+projected to cmake as `NROS_SIZING_TYPES_MAX_WIRE_BOUND_BYTES`.
+
+Measured on `examples/workspaces/cpp`'s native runtime descriptor: REFUSED,
+naming 38 unbounded types (`example_interfaces/msg/String`, the `*MultiArray`
+family, ...) — the same answer the cmake take-buffer derivation gives there
+(`NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` is not emitted for that configure).
+
+**Still open:** the `nros-node` reader, and the retirement question for the
+carrier.

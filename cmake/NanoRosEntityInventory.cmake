@@ -507,6 +507,16 @@ function(nros_derive_entity_inventory_knobs)
         unset(${_v} PARENT_SCOPE)
     endforeach()
 
+    # Issue 1600 -- record this entry's model in the configure-wide list FIRST,
+    # before either early return below. The list is not this function's alone:
+    # RFC-0100 D12 (issue 1649) composes the shared runtime's SIZING DESCRIPTOR
+    # over the same list (`nros_sizing_descriptor_cargo_env`), and "one
+    # reduction, three outputs" holds only while all three read one list. A
+    # configure with no `nros-metadata.json` still has entries and models.
+    if(_E_MODEL AND EXISTS "${_E_MODEL}")
+        set_property(GLOBAL APPEND PROPERTY NROS_ENTITY_INVENTORY_MODELS "${_E_MODEL}")
+    endif()
+
     if(NOT _E_CLI OR NOT EXISTS "${_E_CLI}")
         set(_why "the `nros` CLI was not available to this configure")
         _nros_entity_publish(NROS_ENTITY_INVENTORY_REASON "${_why}")
@@ -546,9 +556,6 @@ function(nros_derive_entity_inventory_knobs)
     # the readers find after the entries is that union. The intermediate
     # rewrites settle: `nros_reconfigure_on_change` compares against the
     # snapshot taken before the FIRST call of the pass (issue 1119).
-    if(_E_MODEL AND EXISTS "${_E_MODEL}")
-        set_property(GLOBAL APPEND PROPERTY NROS_ENTITY_INVENTORY_MODELS "${_E_MODEL}")
-    endif()
     get_property(_models GLOBAL PROPERTY NROS_ENTITY_INVENTORY_MODELS)
     if(_models)
         list(REMOVE_DUPLICATES _models)

@@ -110,3 +110,86 @@ shares), `packages/cli/nros-cli-core/src/sizing_descriptor.rs` +
 (a two-entry configure whose LAST entry is the smaller, asserting the runtime
 descriptor is named and holds the union), and `scripts/check/check-knob-single-reader.py`
 (the rows that retire).
+
+## Progress, 2026-10-03 — D12 landed; the retirement test re-run; retirement itself is what remains
+
+**The runtime descriptor is named.** `nano_ros_entry()` records every entry of
+the configure (`NROS_SIZING_RUNTIME_ENTRIES`, before any early return), and
+`nros_sizing_descriptor_cargo_env()` answers "exactly one" (RFC-0100 D12): one
+entry keeps its own descriptor, several get
+`<build>/nros/sizing/runtime/shared.toml`, written by
+`nros ws sizing-descriptor --from-model <m>... --composed-entry <e>...` over
+`NROS_ENTITY_INVENTORY_MODELS` — issue 1600's list, now recorded before the
+inventory's early returns so a configure with no `nros-metadata.json` still has
+it — and composed by `cmd::entity_inventory::fold_models_for_shared_runtime`,
+the call the entity fragment makes. Rule 2 is
+`sizing_descriptor::reconcile_runtime_qos`: keyed on `(component, kind, type)`,
+not the topic, because a remap gives one subscription a different topic per
+image; a disagreement clears the fact on the composed rows and the descriptor
+refuses it naming both models (a `history` disagreement takes `depth` and
+`storage_bytes` with it); silence takes a uniformly stated value (issue 1564's
+rule). Rule 4: `[meta] composed_entries`, in the schema-2 bump shared with
+issue 1595's `[types] max_wire_bound_bytes`. No model wired ⇒ no runtime file,
+and a stale one is deleted.
+
+Measured, `nros build --workspace examples/workspaces/cpp native` (the
+`workspace-cpp-native` configure — SEVEN entries here, the five this issue
+counted plus `native_robot{1,2}_entry`):
+
+```
+nano-ros: runtime sizing descriptor for 7 entries (native_entry;...;native_service_server_entry)
+  -- .../build/posix-zenoh-native/cmake/nros/sizing/runtime/shared.toml (RFC-0100 D12)
+```
+
+and `NROS_SIZING_DESCRIPTOR=<that path>` on both Corrosion commands (`nros_c`,
+`nros_cpp`). The file states `node_count = 6`, the union's six endpoint rows
+and `composed_entries` = all seven.
+
+**What naming it changes, carriers kept** (the configure's own `nros_cpp` cargo
+command, run with and without `NROS_SIZING_DESCRIPTOR`, every build script's
+generated output diffed). Ten files move, and every move is a consumer that
+reads the descriptor FIRST answering from the union where the multi-entry road
+used to fall to a carrier or a builtin — the behaviour a single-entry configure
+already had:
+
+| consumer | knob | carriers only | + runtime descriptor |
+| --- | --- | --- | --- |
+| `nros-node` | `ARENA_SIZE` (per-kind model on) | 66,816 | 36,488 |
+| `nros-rmw-cffi` | `MAX_BACKENDS` / `DECLARED_BACKENDS` | 9 / 8 | 2 / 1 |
+| `nros-rmw-cffi` | `MAX_NODES` | 4 | 6 |
+| `nros-rmw-zenoh` | `ACTION_INBOX_QUERYABLES` | 0 | 3 |
+| `nros-rmw-zenoh` | `BUILTIN_INBOX_BYTES` (no infra family here) | 1,024 | 24 |
+| `nros-rmw-zenoh` | `SUBSCRIBER_RING_DEPTH` | 4 | 1 |
+| `nros-rmw-zenoh` | `MAX_TL_PUBLISHERS` | 1 | 2 |
+| `zpico-sys` | `ZPICO_MAX_QUERYABLES` | 9 | 10 |
+
+(plus the C/C++ executor storage headers that follow `ARENA_SIZE`). The
+downward moves are derived from the UNION, which no entry exceeds (no entry
+here runs more than two of the six nodes, and every subscription declares depth
+1); `ACTION_INBOX_QUERYABLES = 0` was not a short table but the single-table
+geometry, action queryables drawing user-service rings.
+
+**The retirement test, per carrier** (same command, runtime descriptor named,
+ONE carrier dropped, diffed against the run that kept it):
+
+* **zero-diff** — `SUBSCRIBER_BUFFER_SIZE`, `LARGE_SUBSCRIBERS`,
+  `SERVICE_INBOX_BYTES`, `ACTION_INBOX_BYTES`, `TL_PUBLISHERS`,
+  `RMW_SUBSCRIBER_SLOTS` (and `NODES`, vacuously: this image has no parameter
+  services to count it into).
+* **differs** — `EXECUTOR_MAX_CBS` (9→4), `EXECUTOR_MAX_SC` (7→8),
+  `EXECUTOR_ACTION_CLIENTS` (2→9), `EXECUTOR_MAX_NODES` (6→4, and zenoh's
+  liveliness table with it), both `MAX_*MONITORS` (0→8), `MAX_PUBLISHERS`
+  (3→8), `MAX_SUBSCRIBERS` (2→8), `RUNTIME_MAX_CELL_ENTITIES` (1→8),
+  `INFRA_QUERYABLES` (queryable table un-declared, 10→32), `MAX_QOS_DEPTH`
+  (arena depth 1→10). Each is a missing field or a field nobody reads first —
+  issue 1655, where the ledger rows now point. `EXECUTOR_MAX_NODES` and
+  `MAX_SUBSCRIBERS` are in that set although the descriptor STATES both
+  (`[image] node_count`, `subscriber_count`): their consumers (`nros-node`,
+  `nros-rmw-zenoh`, `nros-zpico-build`) never read them.
+* **not delivered by this image** — the parameter rows, `TL_RETAIN_BYTES`,
+  `SERVICE_SERVERS`, `SUBSCRIBER_LARGE_SIZE`: unmeasured.
+
+**What remains here:** the retirement of the zero-diff rows (deleting each
+producer and fallback rung, and moving the row to `RETIRED`), plus a
+measurement for the unmeasured ones on an image that delivers them. The ledger
+rows that wait on that point here; the rest moved to issue 1655.

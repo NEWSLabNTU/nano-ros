@@ -777,9 +777,10 @@ fn declared_ring_depth(desc: Option<&SizingDescriptor>) -> Option<usize> {
 /// because a refusal that reaches no log is a default nobody chose (D6).
 ///
 /// **No descriptor: the DECLARED carrier.** A multi-entry cmake configure
-/// names no descriptor to cargo (issue 1649 -- the coverage gap; a Zephyr west
-/// entry did too until issue 1407, and it is the road measured below; issue
-/// 1393's field gap is closed), and before this the pool then
+/// named no descriptor to cargo until RFC-0100 D12 (issue 1649 -- it names the
+/// shared RUNTIME's now), and a Zephyr west entry did not until issue 1407,
+/// which is the road measured below; issue 1393's field gap is closed. Before
+/// this the pool then
 /// kept its builtin of [`TL_PUBLISHERS_DEFAULT`] while the queryable table --
 /// sized from the same rule on the same road -- counted every transient-local
 /// publisher. Measured on the Autoware Safety Island (Zephyr, west): table 31,

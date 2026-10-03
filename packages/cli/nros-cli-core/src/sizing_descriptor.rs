@@ -1455,6 +1455,7 @@ fn type_facts(inputs: &DescriptorInputs<'_>, endpoints: &[Endpoint]) -> Types {
         t.refuse("max_fields", why);
         t.refuse("max_kinds", why);
         t.refuse("max_nested_depth", why);
+        closure_wire_bound(&mut t, inputs);
         return t;
     };
 
@@ -1529,7 +1530,37 @@ fn type_facts(inputs: &DescriptorInputs<'_>, endpoints: &[Endpoint]) -> Types {
         t.refuse("max_kinds", why.clone());
         t.refuse("max_nested_depth", why);
     }
+    closure_wire_bound(&mut t, inputs);
     t
+}
+
+/// Issue 1595 — `[types] max_wire_bound_bytes`, the CLOSURE fact `RX_BUF` is
+/// sized from (RFC-0100 Amendment 1, "D4 extended").
+///
+/// Over [`DescriptorInputs::bounds`] — EVERY type of every bound table the
+/// image registered — and never over the endpoint rows: `DEFAULT_TX_BUF`
+/// aliases `RX_BUF`, so a type the image only publishes, or receives through an
+/// endpoint nobody declared, has to fit too.
+///
+/// The rule is [`crate::leaf_take_buffer::derive`]'s and is CALLED, not
+/// restated: that is the cargo leaf's `NROS_SUBSCRIPTION_BUFFER_SIZE`, and
+/// `cmake/NanoRosMessageBounds.cmake`'s `NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE`
+/// is the same maximum over the same registered set. A third spelling is issue
+/// 1025's shape. Independent of the inventory, because the closure is a
+/// property of what the image LINKS, not of what it declares.
+fn closure_wire_bound(t: &mut Types, inputs: &DescriptorInputs<'_>) {
+    let derived = crate::leaf_take_buffer::derive(|| match &inputs.bounds_error {
+        Some(e) => Err(format!("no bound inventory for this entry: {e}")),
+        None => Ok(inputs.bounds.clone()),
+    });
+    match derived {
+        crate::leaf_take_buffer::TakeBuffer::Derived(bytes) => {
+            t.set_max_wire_bound_bytes(Some(bytes));
+        }
+        crate::leaf_take_buffer::TakeBuffer::Refused { reason } => {
+            t.refuse("max_wire_bound_bytes", reason);
+        }
+    }
 }
 
 /// Endpoints that state no per-endpoint QoS fact at all.
@@ -1793,6 +1824,346 @@ pub struct ModelImage<'a> {
 /// cmake consumer registers the result in `CMAKE_CONFIGURE_DEPENDS` (issue 1018)
 /// and identical bytes must keep their mtime.
 pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<WrittenDescriptor> {
+    write_model_descriptor(img, None)
+}
+
+/// RFC-0100 D12 (issue 1649) — the descriptor for a RUNTIME that several
+/// entries link: a multi-entry cmake configure's one shared staticlib.
+///
+/// The same composer as [`write_for_model`], over an inventory the caller
+/// composed with issue 1600's reduction (`EntityInventory::shared_runtime_over`)
+/// and reconciled with [`reconcile_runtime_qos`]. What differs is only what the
+/// file SAYS it is: it lands at
+/// [`nros_sizing_descriptor::runtime_descriptor_path`], `[meta] entry` names
+/// the runtime, `[meta] composed_entries` names the images it is the envelope
+/// of, and every per-endpoint fact the entries' models disagree on is REFUSED
+/// naming both (rule 2 — never the max: the descriptor is also the Rust
+/// declared-QoS check's only policy carrier, RFC-0100 D10, and an equality
+/// check fed a max refuses the image that declared less).
+pub fn write_for_runtime(
+    img: &ModelImage<'_>,
+    runtime: &RuntimeComposition<'_>,
+) -> eyre::Result<WrittenDescriptor> {
+    write_model_descriptor(img, Some(runtime))
+}
+
+/// What a RUNTIME descriptor records beyond an entry's (RFC-0100 D12).
+pub struct RuntimeComposition<'a> {
+    /// The entries that link this runtime — `[meta] composed_entries`.
+    pub entries: &'a [String],
+    /// Every model composed, for the portability check's roots (issue 0320).
+    pub model_paths: &'a [std::path::PathBuf],
+    /// Per-endpoint facts the models disagree on — from
+    /// [`reconcile_runtime_qos`], refused on the rows they name.
+    pub conflicts: &'a [QosConflict],
+}
+
+/// One per-endpoint QoS fact two composed models state DIFFERENTLY.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QosConflict {
+    pub kind: EndpointKind,
+    pub type_name: String,
+    pub topic: String,
+    /// `depth`, `history`, `reliability` or `durability`.
+    pub field: &'static str,
+    /// Which model states what — the prose the refusal carries.
+    pub detail: String,
+}
+
+/// The four per-endpoint QoS facts D12 rule 2 reduces.
+#[derive(Clone, Copy)]
+enum QosField {
+    Depth,
+    History,
+    Reliability,
+    Durability,
+}
+
+impl QosField {
+    const ALL: [QosField; 4] = [
+        QosField::Depth,
+        QosField::History,
+        QosField::Reliability,
+        QosField::Durability,
+    ];
+
+    fn name(self) -> &'static str {
+        match self {
+            QosField::Depth => "depth",
+            QosField::History => "history",
+            QosField::Reliability => "reliability",
+            QosField::Durability => "durability",
+        }
+    }
+
+    /// The stated value, spelled for comparison and for prose.
+    fn get(self, d: &crate::entity_inventory::EntityDecl) -> Option<String> {
+        match self {
+            QosField::Depth => d.depth.map(|v| v.to_string()),
+            QosField::History => d.history.map(|v| format!("{v:?}")),
+            QosField::Reliability => d.reliability.map(|v| format!("{v:?}")),
+            QosField::Durability => d.durability.map(|v| format!("{v:?}")),
+        }
+    }
+
+    fn clear(self, d: &mut crate::entity_inventory::EntityDecl) {
+        match self {
+            QosField::Depth => d.depth = None,
+            QosField::History => d.history = None,
+            QosField::Reliability => d.reliability = None,
+            QosField::Durability => d.durability = None,
+        }
+    }
+
+    fn copy(
+        self,
+        to: &mut crate::entity_inventory::EntityDecl,
+        from: &crate::entity_inventory::EntityDecl,
+    ) {
+        match self {
+            QosField::Depth => to.depth = from.depth,
+            QosField::History => to.history = from.history,
+            QosField::Reliability => to.reliability = from.reliability,
+            QosField::Durability => to.durability = from.durability,
+        }
+    }
+}
+
+/// How a model is NAMED in a refusal: `<parent dir>/<file>`, never the
+/// absolute path (issue 0320 — a descriptor is byte-identical across two
+/// checkouts, and `write_model_descriptor` refuses one that names a checkout).
+/// The parent is the bringup's model directory, so the label says which image.
+pub fn model_label(path: &std::path::Path) -> String {
+    let file = path
+        .file_name()
+        .map(|f| f.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    match path.parent().and_then(|d| d.file_name()) {
+        Some(dir) => format!("{}/{file}", dir.to_string_lossy()),
+        None => file,
+    }
+}
+
+/// RFC-0100 D12 rule 2 — reconcile the per-endpoint QoS of a SHARED runtime's
+/// composed inventory against every model it was composed from.
+///
+/// `composed` is issue 1600's union (`shared_runtime_over`), which keeps, per
+/// component and kind, ONE model's declaration list whole — so its rows carry
+/// whichever model's QoS won the fold, and the other models' statements are
+/// simply not there. `models` is each wired model's own inventory with its
+/// label.
+///
+/// The comparison is keyed on `(component, kind, type)`, deliberately NOT on
+/// the topic: one component's code is linked once, and a remap gives the same
+/// subscription a different topic in each image — keyed on the topic, `/a` at
+/// depth 1 in one image and `/b` at depth 50 in another would never meet, and
+/// the union's row would price the depth-50 image at 1. Per key and per field,
+/// each model contributes the SORTED list of what its rows state:
+///
+/// * every model that states anything states the same list — **agreement**:
+///   the composed rows stand, and a composed row that is SILENT where the
+///   agreed list is one value everywhere takes that value (issue 1564's rule:
+///   silence is not a declaration, so it contradicts nothing);
+/// * two models state different lists — **disagreement**: the field is cleared
+///   on every composed row of the key and a [`QosConflict`] names both models.
+///   Never the max (see [`write_for_runtime`]).
+///
+/// A `history` disagreement also clears `depth`: a depth is meaningless under
+/// `keep_all`, so a row priced at one image's depth while another keeps all is
+/// the under-size D6 forbids.
+pub fn reconcile_runtime_qos(
+    composed: &EntityInventory,
+    models: &[(String, EntityInventory)],
+) -> (EntityInventory, Vec<QosConflict>) {
+    use std::collections::BTreeMap;
+    type Key = (String, EntityKind, String);
+
+    let key_of = |component: &str, d: &crate::entity_inventory::EntityDecl| -> Option<Key> {
+        endpoint_kind(d.kind)?;
+        Some((component.to_string(), d.kind, d.type_name.clone()?))
+    };
+
+    // key -> per model (label, its rows for the key)
+    let mut per_key: BTreeMap<Key, Vec<(&str, Vec<&crate::entity_inventory::EntityDecl>)>> =
+        BTreeMap::new();
+    for (label, inv) in models {
+        let mut mine: BTreeMap<Key, Vec<&crate::entity_inventory::EntityDecl>> = BTreeMap::new();
+        for c in inv.components() {
+            for d in c.declaration.entities() {
+                if let Some(k) = key_of(&c.component, d) {
+                    mine.entry(k).or_default().push(d);
+                }
+            }
+        }
+        for (k, rows) in mine {
+            per_key.entry(k).or_default().push((label.as_str(), rows));
+        }
+    }
+
+    // key -> field -> Ok(Some(fill)) | Err(detail)
+    enum Verdict<'d> {
+        Agree(Option<&'d crate::entity_inventory::EntityDecl>),
+        Disagree(String),
+    }
+    let mut verdicts: BTreeMap<(Key, usize), Verdict<'_>> = BTreeMap::new();
+    for (key, sides) in &per_key {
+        for (fi, field) in QosField::ALL.iter().enumerate() {
+            let mut first: Option<(&str, Vec<Option<String>>)> = None;
+            let mut detail: Option<String> = None;
+            let mut fill: Option<&crate::entity_inventory::EntityDecl> = None;
+            let mut uniform = true;
+            for (label, rows) in sides {
+                let mut vals: Vec<Option<String>> = rows.iter().map(|d| field.get(d)).collect();
+                if vals.iter().all(Option::is_none) {
+                    continue; // silence contradicts nothing
+                }
+                vals.sort();
+                if let Some(d) = rows.iter().find(|d| field.get(d).is_some()) {
+                    fill.get_or_insert(d);
+                }
+                let distinct: std::collections::BTreeSet<&Option<String>> = vals.iter().collect();
+                if distinct.len() != 1 || vals.iter().any(Option::is_none) {
+                    uniform = false;
+                }
+                match &first {
+                    None => first = Some((label, vals)),
+                    Some((l0, v0)) if *v0 != vals => {
+                        let show = |v: &[Option<String>]| {
+                            v.iter()
+                                .map(|x| x.clone().unwrap_or_else(|| "unstated".into()))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        };
+                        detail.get_or_insert_with(|| {
+                            format!(
+                                "{} states {} {} in {l0} but {} in {label}",
+                                key.0,
+                                field.name(),
+                                show(v0),
+                                show(&vals)
+                            )
+                        });
+                    }
+                    Some(_) => {}
+                }
+            }
+            let verdict = match detail {
+                Some(d) => Verdict::Disagree(d),
+                None => Verdict::Agree(if uniform { fill } else { None }),
+            };
+            verdicts.insert((key.clone(), fi), verdict);
+        }
+    }
+
+    let mut conflicts: Vec<QosConflict> = Vec::new();
+    let mut rows_out = Vec::new();
+    for c in composed.components() {
+        let Declaration::Stated(decls) = &c.declaration else {
+            rows_out.push((*c).clone());
+            continue;
+        };
+        let mut new_decls = decls.clone();
+        for d in &mut new_decls {
+            let Some(key) = key_of(&c.component, d) else {
+                continue;
+            };
+            // A row the contract join could not attribute refuses all four
+            // already; nothing here may restate one.
+            if d.contract_refusal.is_some() {
+                continue;
+            }
+            let mut history_conflict = false;
+            for (fi, field) in QosField::ALL.iter().enumerate() {
+                match verdicts.get(&(key.clone(), fi)) {
+                    Some(Verdict::Disagree(detail)) => {
+                        field.clear(d);
+                        if matches!(field, QosField::History) {
+                            history_conflict = true;
+                        }
+                        if let (Some(kind), Some(ty), Some(topic)) =
+                            (endpoint_kind(d.kind), d.type_name.clone(), d.topic())
+                        {
+                            conflicts.push(QosConflict {
+                                kind,
+                                type_name: ty,
+                                topic: topic.to_string(),
+                                field: field.name(),
+                                detail: detail.clone(),
+                            });
+                        }
+                    }
+                    Some(Verdict::Agree(Some(src))) if field.get(d).is_none() => {
+                        field.copy(d, src);
+                    }
+                    _ => {}
+                }
+            }
+            if history_conflict {
+                QosField::Depth.clear(d);
+            }
+        }
+        rows_out.push(crate::entity_inventory::ComponentEntities {
+            declaration: Declaration::Stated(new_decls),
+            ..(*c).clone()
+        });
+    }
+    conflicts.sort_by(|a, b| {
+        (a.kind, &a.type_name, &a.topic, a.field).cmp(&(b.kind, &b.type_name, &b.topic, b.field))
+    });
+    conflicts.dedup();
+    (composed.with_components(rows_out), conflicts)
+}
+
+/// Refuse every conflicted field on the rows a [`QosConflict`] names.
+fn refuse_conflicts(desc: &mut SizingDescriptor, conflicts: &[QosConflict]) {
+    for c in conflicts {
+        let reason = format!(
+            "the entries this runtime is shared by state DIFFERENT {} here: {}. Refused rather              than taking the max (RFC-0100 D12 rule 2) -- a consumer prices this endpoint at its              worst case, which covers both, and the declared-QoS check skips it",
+            c.field, c.detail
+        );
+        for ep in desc
+            .endpoints
+            .iter_mut()
+            .filter(|e| e.kind == c.kind && e.type_name == c.type_name && e.topic == c.topic)
+        {
+            let depth_too = matches!(c.field, "depth" | "history");
+            match c.field {
+                "history" => {
+                    ep.set_history(None).refuse("history", reason.clone());
+                }
+                "reliability" => {
+                    ep.set_reliability(None)
+                        .refuse("reliability", reason.clone());
+                }
+                "durability" => {
+                    ep.set_durability(None).refuse("durability", reason.clone());
+                }
+                _ => {}
+            }
+            if depth_too {
+                ep.set_depth(None).refuse(
+                    "depth",
+                    if c.field == "depth" {
+                        reason.clone()
+                    } else {
+                        format!("`history` is refused ({reason}), and a depth is meaningless under keep_all")
+                    },
+                );
+                if c.kind.receives_topic_sample() {
+                    ep.set_storage_bytes(None).refuse(
+                        "storage_bytes",
+                        "`depth` is refused (the entries sharing this runtime disagree on it), and                          a receive region is sized from it",
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn write_model_descriptor(
+    img: &ModelImage<'_>,
+    runtime: Option<&RuntimeComposition<'_>>,
+) -> eyre::Result<WrittenDescriptor> {
     let horizon = img.horizon.clone();
     // phase-457-payload W2 — the closure's bound tables, when the caller has
     // them, through the SAME reader and projection the leaf road uses. None
@@ -1850,24 +2221,34 @@ pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<WrittenDescriptor> 
         rmw: img.rmw.clone(),
         horizon: Some(horizon),
     };
-    let desc = build(&inputs);
+    let mut desc = build(&inputs);
+    if let Some(rt) = runtime {
+        desc.meta.set_composed_entries(rt.entries.to_vec());
+        refuse_conflicts(&mut desc, rt.conflicts);
+    }
     let body = nros_sizing_descriptor::render(&desc);
 
     // Issue 0320, the same rule the leaf road holds to and for the same reason:
     // two checkouts of one tree at different paths must render identical bytes,
     // or every freshness comparison against this file is a lie. The directories
-    // this producer read from are the build dir and the model the inventory
-    // names.
+    // this producer read from are the build dir and the model(s) the inventory
+    // was composed from.
     let source = std::path::PathBuf::from(&img.inventory.source);
     let mut roots: Vec<&std::path::Path> = vec![img.build_dir];
     if let Some(parent) = source.parent() {
         roots.push(parent);
     }
+    if let Some(rt) = runtime {
+        roots.extend(rt.model_paths.iter().filter_map(|p| p.parent()));
+    }
     if let Some(why) = nros_sizing_descriptor::portability_violation(&body, &roots) {
         return Err(eyre::eyre!("{why}"));
     }
 
-    let path = nros_sizing_descriptor::descriptor_path(img.build_dir, img.entry);
+    let path = match runtime {
+        Some(_) => nros_sizing_descriptor::runtime_descriptor_path(img.build_dir),
+        None => nros_sizing_descriptor::descriptor_path(img.build_dir, img.entry),
+    };
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| eyre::eyre!("create `{}`: {e}", dir.display()))?;
     }
@@ -2025,6 +2406,14 @@ pub fn to_cmake(desc: &SizingDescriptor) -> String {
         desc.meta.status.tag(),
         desc.meta.basis.tag(),
     ));
+    // RFC-0100 D12 -- a RUNTIME descriptor's composed entries, as a cmake
+    // list. Empty (and so unset) for an entry's own descriptor.
+    if !desc.meta.composed_entries().is_empty() {
+        out.push_str(&format!(
+            "set(NROS_SIZING_COMPOSED_ENTRIES \"{}\")\n",
+            desc.meta.composed_entries().join(";")
+        ));
+    }
     emit_cmake_fact(
         &mut out,
         "NROS_SIZING_UNDECLARED_ENDPOINTS",
@@ -2067,6 +2456,12 @@ pub fn to_cmake(desc: &SizingDescriptor) -> String {
         &mut out,
         "NROS_SIZING_TYPES_MAX_NESTED_DEPTH",
         &desc.types.max_nested_depth(),
+    );
+    // Issue 1595 -- the closure's largest wire bound (`RX_BUF`'s basis).
+    emit_cmake_fact(
+        &mut out,
+        "NROS_SIZING_TYPES_MAX_WIRE_BOUND_BYTES",
+        &desc.types.max_wire_bound_bytes(),
     );
     // phase-454 W6 — the three image counts. uORB reads the subscriber one and
     // the endpoint TOPIC column beside it; a C/C++ consumer of the cffi shim
@@ -4049,5 +4444,195 @@ mod tests {
         // ...and the model road really is narrower elsewhere, so this test
         // cannot pass by the horizon having stopped working.
         assert!(model.endpoints[0].wire_bound_bytes().refusal().is_some());
+    }
+
+    // ---- RFC-0100 D12 (issue 1649) and issue 1595 ----------------------
+
+    fn component(name: &str, decls: Vec<EntityDecl>) -> ComponentEntities {
+        ComponentEntities {
+            pkg: "demo".into(),
+            component: name.into(),
+            class: name.into(),
+            declaration: Declaration::Stated(decls),
+        }
+    }
+
+    fn inv_of(rows: Vec<ComponentEntities>) -> EntityInventory {
+        let mut inv = EntityInventory::new("model");
+        for r in rows {
+            inv.insert(r);
+        }
+        inv
+    }
+
+    fn row_depth(inv: &EntityInventory, comp: &str) -> Option<u32> {
+        inv.components()
+            .into_iter()
+            .find(|c| c.component == comp)
+            .and_then(|c| c.declaration.entities().first().map(|d| d.depth))
+            .flatten()
+    }
+
+    /// D12 rule 2 -- two images that declare the SAME depth for one
+    /// component's subscription agree, and the composed row keeps it.
+    #[test]
+    fn a_shared_runtime_keeps_a_depth_its_entries_agree_on() {
+        let a = inv_of(vec![component(
+            "l",
+            vec![sub("std_msgs/msg/Int32", "/a", Some(5))],
+        )]);
+        let b = inv_of(vec![component(
+            "l",
+            vec![sub("std_msgs/msg/Int32", "/a", Some(5))],
+        )]);
+        let (out, conflicts) = reconcile_runtime_qos(
+            &a,
+            &[("a/m.yaml".into(), a.clone()), ("b/m.yaml".into(), b)],
+        );
+        assert!(conflicts.is_empty(), "{conflicts:?}");
+        assert_eq!(row_depth(&out, "l"), Some(5));
+    }
+
+    /// D12 rule 2 -- a DISAGREEMENT is refused naming both models, never
+    /// maxed. Keyed on the component and the type rather than the topic: a
+    /// remap gives the same subscription `/a` in one image and `/b` in the
+    /// other, and a topic-keyed comparison would let the union price the
+    /// depth-50 image at 1.
+    #[test]
+    fn a_shared_runtime_refuses_a_depth_its_entries_disagree_on_even_across_a_remap() {
+        let a = inv_of(vec![component(
+            "l",
+            vec![sub("std_msgs/msg/Int32", "/a", Some(1))],
+        )]);
+        let b = inv_of(vec![component(
+            "l",
+            vec![sub("std_msgs/msg/Int32", "/b", Some(50))],
+        )]);
+        let (out, conflicts) = reconcile_runtime_qos(
+            &a,
+            &[("a/m.yaml".into(), a.clone()), ("b/m.yaml".into(), b)],
+        );
+        assert_eq!(
+            row_depth(&out, "l"),
+            None,
+            "the composed row must not keep either depth"
+        );
+        let depth: Vec<_> = conflicts.iter().filter(|c| c.field == "depth").collect();
+        assert_eq!(depth.len(), 1, "{conflicts:?}");
+        assert!(depth[0].detail.contains("a/m.yaml"), "{}", depth[0].detail);
+        assert!(depth[0].detail.contains("b/m.yaml"), "{}", depth[0].detail);
+        assert!(depth[0].detail.contains("50"), "{}", depth[0].detail);
+
+        // ...and the DESCRIPTOR refuses it on the row, with the receive region
+        // that is sized from it -- the consumer prices its worst case.
+        let mut desc = build(&base(&out));
+        refuse_conflicts(&mut desc, &conflicts);
+        let ep = &desc.endpoints[0];
+        assert!(
+            ep.depth().refusal().unwrap().contains("D12"),
+            "{:?}",
+            ep.depth()
+        );
+        assert!(ep.storage_bytes().refusal().is_some());
+        assert_eq!(ep.depth().stated(), None);
+    }
+
+    /// Issue 1564's rule, held on the descriptor: silence is not a declaration,
+    /// so it contradicts nothing, and a composed row that is silent takes the
+    /// value the other image states.
+    #[test]
+    fn a_silent_image_does_not_contradict_a_stated_depth() {
+        let a = inv_of(vec![component(
+            "l",
+            vec![sub("std_msgs/msg/Int32", "/a", None)],
+        )]);
+        let b = inv_of(vec![component(
+            "l",
+            vec![sub("std_msgs/msg/Int32", "/a", Some(7))],
+        )]);
+        let (out, conflicts) = reconcile_runtime_qos(
+            &a,
+            &[("a/m.yaml".into(), a.clone()), ("b/m.yaml".into(), b)],
+        );
+        assert!(conflicts.is_empty(), "{conflicts:?}");
+        assert_eq!(row_depth(&out, "l"), Some(7));
+    }
+
+    /// A `history` disagreement takes the depth with it: a depth priced for a
+    /// `keep_last` image is the under-size of the `keep_all` one.
+    #[test]
+    fn a_history_disagreement_also_refuses_the_depth() {
+        let mut keep_all = sub("std_msgs/msg/Int32", "/a", Some(5));
+        keep_all.history = Some(QoSHistoryPolicy::KeepAll);
+        let a = inv_of(vec![component(
+            "l",
+            vec![sub("std_msgs/msg/Int32", "/a", Some(5))],
+        )]);
+        let b = inv_of(vec![component("l", vec![keep_all])]);
+        let (out, conflicts) = reconcile_runtime_qos(
+            &a,
+            &[("a/m.yaml".into(), a.clone()), ("b/m.yaml".into(), b)],
+        );
+        assert!(
+            conflicts.iter().any(|c| c.field == "history"),
+            "{conflicts:?}"
+        );
+        assert_eq!(row_depth(&out, "l"), None);
+        let mut desc = build(&base(&out));
+        refuse_conflicts(&mut desc, &conflicts);
+        assert!(desc.endpoints[0].history().refusal().is_some());
+        assert!(desc.endpoints[0].depth().refusal().is_some());
+    }
+
+    /// Issue 1595 -- `[types] max_wire_bound_bytes` is the largest bound over
+    /// the whole REGISTERED closure, not over the endpoint rows: the 4096-byte
+    /// type is one this image only publishes (no row names it), and
+    /// `DEFAULT_TX_BUF` aliases `RX_BUF`, so it still has to fit.
+    #[test]
+    fn the_closure_bound_covers_a_type_no_endpoint_row_names() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(1))]);
+        let mut inputs = base(&inv);
+        inputs.bounds.push(bounded("big/msg/Blob", 4096));
+        let desc = build(&inputs);
+        assert_eq!(desc.types.max_wire_bound_bytes().stated(), Some(&4096));
+        // Same rule as the cargo leaf's take buffer -- called, not restated.
+        let leaf = crate::leaf_take_buffer::derive(|| Ok(inputs.bounds.clone()));
+        assert_eq!(leaf, crate::leaf_take_buffer::TakeBuffer::Derived(4096));
+    }
+
+    /// ...and refuses, naming the TYPE, when one registered type is open --
+    /// a maximum over the types that did answer is the under-size D6 forbids.
+    #[test]
+    fn one_unbounded_type_in_the_closure_refuses_the_closure_bound() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(1))]);
+        let mut inputs = base(&inv);
+        inputs.bounds.push((
+            "open/msg/Text".into(),
+            BoundState::Unbounded {
+                reason: "member `data` is an unbounded string".into(),
+            },
+        ));
+        let desc = build(&inputs);
+        let f = desc.types.max_wire_bound_bytes();
+        assert_eq!(f.stated(), None);
+        assert!(f.refusal().unwrap().contains("open/msg/Text"), "{f:?}");
+    }
+
+    /// ...and naming the TABLE when a registered table is absent (the cmake
+    /// road's first-configure state, issue 1647).
+    #[test]
+    fn a_missing_bound_table_refuses_the_closure_bound_naming_it() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(1))]);
+        let mut inputs = base(&inv);
+        inputs.bounds.clear();
+        inputs.bounds_error = Some("std_msgs/nros_message_bounds.json not on disk yet".into());
+        let desc = build(&inputs);
+        let f = desc.types.max_wire_bound_bytes();
+        assert!(
+            f.refusal()
+                .unwrap()
+                .contains("std_msgs/nros_message_bounds.json"),
+            "{f:?}"
+        );
     }
 }

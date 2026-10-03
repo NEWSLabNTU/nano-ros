@@ -244,9 +244,10 @@ fn sizing_descriptor() -> Option<nros_sizing_descriptor::SizingDescriptor> {
 /// consumer cannot read a refusal as a value, because `Fact::stated` is the only
 /// accessor that yields one.
 ///
-/// **The env carrier is NOT retired here, deliberately.** It is the only road
-/// for a standalone leaf with no model, for a multi-entry cmake configure that
-/// names no descriptor to cargo, and for the Zephyr west lane -- and phase-454
+/// **The env carrier is NOT retired here, deliberately.** It was the only road
+/// for a standalone leaf with no model, for a multi-entry cmake configure (which
+/// names its RUNTIME descriptor since RFC-0100 D12, issue 1649), and for the
+/// Zephyr west lane (which names its own since issue 1407) -- and phase-454
 /// W9 is titled "the retirement wave that mostly did not retire" for exactly
 /// that reason. Retirement is its own wave, once both roads are MEASURED
 /// delivering; `check-knob-single-reader.py`'s KEPT ledger carries the carriers
