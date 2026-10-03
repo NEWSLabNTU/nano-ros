@@ -41,3 +41,10 @@ add_executable(nros_rmw_xrce_take_refused_len take_refused_len.c)
 target_link_libraries(nros_rmw_xrce_take_refused_len PRIVATE nros_rmw_xrce)
 
 add_test(NAME nros_rmw_xrce_take_refused_len COMMAND nros_rmw_xrce_take_refused_len)
+
+# Issue 1632 — the same rule on take_request / take_response. No agent: the
+# request ring and the reply slot are filled directly.
+add_executable(nros_rmw_xrce_service_refused_len service_refused_len.c)
+target_link_libraries(nros_rmw_xrce_service_refused_len PRIVATE nros_rmw_xrce)
+
+add_test(NAME nros_rmw_xrce_service_refused_len COMMAND nros_rmw_xrce_service_refused_len)
