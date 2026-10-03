@@ -318,6 +318,21 @@ fn cmake_c_workspace_entry_writes_a_census_without_a_router() {
     assert_entry_writes_a_complete_census(entry, "C");
 }
 
+/// Issue 1419 -- the generated native RUST entry is a census producer.
+///
+/// Before, `nros-board-linux`'s `boot_hosted` answered `$NROS_CENSUS_OUT` with
+/// a refusal ("a RUST entry has no recorder to dump"), because the census hooks
+/// sat on the C++ ABI and the Rust install path crossed none of them. The hooks
+/// are in `nros` now, and the generated host entry turns on
+/// `nros-board-linux/census`, which selects the recording backend, opens the
+/// executor at the census ceilings and writes what the recorder saw.
+#[test]
+fn cargo_rust_workspace_entry_writes_a_census_without_a_router() {
+    let entry = nros_tests::fixtures::build_native_workspace_rust_entry()
+        .require("native Rust workspace Entry");
+    assert_entry_writes_a_complete_census(entry, "Rust");
+}
+
 fn parse_counter(output: &str, key: &str) -> Option<usize> {
     let start = output.rfind(key)? + key.len();
     let value = output[start..]

@@ -450,6 +450,29 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         let mut cargo_prepare: Option<Handoff> = None;
         let handoff = match driver {
             Driver::Cargo => {
+                // Issue 1419 — the cargo road's census check, BEFORE anything is
+                // generated or compiled. A cross image's pools come from its
+                // contract; the cmake road compares that contract with the code
+                // at configure, and a cargo image never configures, so this is
+                // its one point of comparison. A HOST image is the census
+                // producer and checks nothing (the configure's `native` rule).
+                if !args.dry_run
+                    && descriptor.platform
+                        != crate::orchestration::board_descriptor::PlatformKind::Posix
+                {
+                    crate::cmd::entity_census::check_cargo_image(
+                        &root,
+                        &bringup_dir,
+                        &image_id,
+                        &image,
+                    )
+                    .wrap_err_with(|| {
+                        format!(
+                            "`{qual}`: the census and the contract disagree, or the census no \
+                             longer describes the code (issue 1419)"
+                        )
+                    })?;
+                }
                 // RFC-0098 D9 — a workspace has no root build file. A root the
                 // phase-383 builder left behind (gitignored, so every checkout
                 // that ran it still has one) claims the entry below it and

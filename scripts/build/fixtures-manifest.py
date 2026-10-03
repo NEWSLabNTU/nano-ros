@@ -1868,11 +1868,14 @@ def main():
 
     if a.command == "census-images":
         # Issue 1419 -- one line per (workspace dir, qualified image) whose
-        # cmake / west configure runs `nros ws entity-census check
-        # --require-fresh`: a workspace row that names an `image`, is not a
-        # host row (`linux` is the census PRODUCER's own platform) and is not a
-        # pure-Rust row (the cargo road has no census consumer, and a Rust entry
-        # no producer). Whether the image's model has a contract at all is
+        # build checks a census with `nros ws entity-census check
+        # --require-fresh`: a workspace row that names an `image` and is not a
+        # host row (`linux` is the census PRODUCER's own platform). A pure-Rust
+        # row is included unless it is Zephyr: since issue 1419's cargo-road
+        # check, `nros build` stage 4 asks for a census of a cross CARGO image
+        # (and a Rust host entry produces one), while a Rust Zephyr image takes
+        # the west road through `rust_cargo_application()`, which no census
+        # check reaches yet. Whether the image's model has a contract at all is
         # `nros ws entity-census take`'s question, not this table's: it answers
         # "nothing to reconcile" for the rest, and one rule for that lives in
         # the CLI. Deduplicated, in manifest order.
@@ -1881,7 +1884,9 @@ def main():
         for e in ws_rows:
             if not matches_filters(e, a, all_entries=ws_rows, kind="workspace_fixture"):
                 continue
-            if not e.get("image") or e.get("lang") == "rust" or e.get("platform") == "linux":
+            if not e.get("image") or e.get("platform") == "linux":
+                continue
+            if e.get("lang") == "rust" and e.get("platform") == "zephyr":
                 continue
             bringup = Path(e.get("bringup", "")).name
             key = (e["dir"], f"{bringup}:{e['image']}")

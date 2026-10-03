@@ -465,8 +465,8 @@ fn take_census(args: TakeArgs) -> Result<()> {
         }
         let bin = locate_entry_binary(&build_dir, &entry).wrap_err_with(|| {
             format!(
-                "`nros build {native_q}` succeeded but left no `{entry}` binary. A Rust entry has \
-                 no census producer yet (issue 1419): its hooks are on the C++ ABI"
+                "`nros build {native_q}` succeeded but left no `{entry}` binary under its cmake or \
+                 cargo image root"
             )
         })?;
         let digest = file_digest(&bin)?;
@@ -502,6 +502,46 @@ fn take_census(args: TakeArgs) -> Result<()> {
         model: Some(model_path),
         out: None,
         timeout_secs: args.timeout_secs,
+    })
+}
+
+/// Issue 1419 -- the cargo road's census check, called from `nros build`
+/// stage 4 for a CROSS cargo image.
+///
+/// The cmake road asks the same question at configure
+/// (`_nros_entry_require_fresh_census` in `cmake/NanoRosEntry.cmake`); a cargo
+/// image never configures, so before this nothing on its road compared its
+/// contract with its code. Stage 4 is the one place that holds both the model
+/// and the image before any compile, which is why the check is here and not in
+/// a build script (a `build.rs` would be a fourth census reader and would fire
+/// inside every incremental `cargo build`).
+///
+/// Same verb, same arguments, same policy as the configure: `--require-fresh`,
+/// the model, the workspace root, the bringup's `system.toml` (`[census]`
+/// policy + waivers), and the entry so the refusal names `take --image`. A
+/// model with no contract passes with a note, exactly as there.
+pub(crate) fn check_cargo_image(
+    root: &Path,
+    bringup_dir: &Path,
+    image_id: &str,
+    image: &crate::orchestration::image::ImageBlock,
+) -> Result<()> {
+    let model_rel = image_model_rel(bringup_dir, image)
+        .map_err(|e| eyre::eyre!("cannot resolve the launch of `{image_id}`: {e}"))?;
+    let (model, _) =
+        nros_orchestration_ir::model_location::ensure_model(bringup_dir, &model_rel)
+            .map_err(|e| eyre::eyre!("cannot resolve the SystemModel of `{image_id}`: {e}"))?;
+    let system_toml = bringup_dir.join("system.toml");
+    check_census(CheckArgs {
+        census: None,
+        contract: None,
+        inventory: None,
+        system_toml: system_toml.is_file().then_some(system_toml),
+        model: Some(model),
+        strict: false,
+        require_fresh: true,
+        workspace: Some(root.to_path_buf()),
+        entry: Some(crate::builder::entry::package_name(image_id)),
     })
 }
 
@@ -1015,8 +1055,9 @@ fn run_census(args: RunArgs) -> Result<()> {
         }
         bail!(
             "`{}` exited 0 in census mode but wrote no census at `{}` -- the image is built \
-             without `metadata-mode`, or it is not a C++ entry (a Rust entry's funnel says so \
-             and exits non-zero)",
+             without `metadata-mode` (a C/C++ native umbrella) or without `nros-board-linux/census` \
+             (a Rust entry) -- both funnels say so and exit non-zero, so a zero exit with no file \
+             is a binary with no census funnel at all",
             binary.display(),
             raw.display()
         );
@@ -1154,9 +1195,50 @@ fn locate_entry_binary(build: &Path, entry: &str) -> Result<PathBuf> {
         })
         .unwrap_or_default();
     roots.sort();
+    // Issue 1419 -- and the CARGO road's: each image is its own cargo root at
+    // `<build>/<coord>/<entry>/`, with its binary under that root's own target
+    // dir, `target/[<triple>/]<profile>/<entry>`. A Rust host entry is a
+    // census producer now, so `take` must find what `nros build` wrote there.
+    let cargo_bins = |root: &Path| -> Vec<PathBuf> {
+        let target = root.join(entry).join("target");
+        let mut out = Vec::new();
+        let dirs = |d: &Path| -> Vec<PathBuf> {
+            std::fs::read_dir(d)
+                .map(|rd| {
+                    rd.filter_map(|e| e.ok())
+                        .map(|e| e.path())
+                        .filter(|p| p.is_dir())
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        for level1 in dirs(&target) {
+            let direct = level1.join(entry);
+            if direct.is_file() {
+                out.push(direct);
+            }
+            for level2 in dirs(&level1) {
+                let nested = level2.join(entry);
+                if nested.is_file() {
+                    out.push(nested);
+                }
+            }
+        }
+        // One cargo root, one image: if several profiles are on disk, the one
+        // `nros build` wrote LAST is the image (its digest is what `take`
+        // compares across builds).
+        out.into_iter()
+            .max_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
+            .into_iter()
+            .collect::<Vec<_>>()
+    };
     let found: Vec<PathBuf> = roots
         .iter()
-        .map(|r| r.join("cmake").join(entry))
+        .flat_map(|r| {
+            let mut v: Vec<PathBuf> = vec![r.join("cmake").join(entry)];
+            v.extend(cargo_bins(r));
+            v
+        })
         .filter(|c| c.is_file())
         .collect();
     match found.as_slice() {
@@ -1325,6 +1407,23 @@ fn summarise(recorded: &serde_json::Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1419 -- the cargo road's layout: each image is its own cargo root
+    /// at `<build>/<coord>/<entry>/`, its binary under that root's target dir.
+    /// A Rust host entry is a census producer, so `take` must find it there.
+    #[test]
+    fn a_cargo_image_root_binary_is_found() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bin = dir
+            .path()
+            .join("posix-zenoh/native_entry/target/nros-relwithdebinfo/native_entry");
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        std::fs::write(&bin, b"elf").unwrap();
+        assert_eq!(
+            locate_entry_binary(dir.path(), "native_entry").expect("found"),
+            bin
+        );
+    }
 
     #[test]
     fn a_missing_binary_names_every_path_it_tried() {

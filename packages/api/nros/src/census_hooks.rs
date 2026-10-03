@@ -43,6 +43,35 @@
 //! `check-census-hooks-complete` holds both the rule and every entry point's
 //! call.
 
+/// Issue 1419 -- the census executor's sizing, independent of the contract it
+/// checks. ONE spelling for every hosted census funnel (`nros-cpp`'s and
+/// `nros-board-linux`'s).
+///
+/// A native image's callback table, node table and arena are DERIVED from the
+/// contract (`nros ws entity-inventory`, phase-412), with no headroom on
+/// purpose, and the census producer is that same image. So a contract one
+/// entity short sized its own census run one slot short: setup stopped at
+/// `ExecutorFull` before the recorder saw the entity that did not fit. A census
+/// opens its executor at the executor's own ceilings instead: 64 callback slots
+/// (the `u64` ready-set bitmask), 64 nodes, and 16 MiB of `MaybeUninit` arena
+/// (address space, not resident memory). Census-only: the backing is leaked
+/// from the heap of a host process that writes one file and exits, and none of
+/// it exists on the RTOS road, where `metadata-mode` is not compiled.
+#[cfg(all(feature = "metadata-mode", feature = "rmw-cffi"))]
+pub const CENSUS_SIZING: nros_node::ExecutorSizing = {
+    let d = nros_node::ExecutorSizing::DEFAULT;
+    nros_node::ExecutorSizing {
+        cbs: 64,
+        sc: d.sc,
+        nodes: if d.nodes > 64 { d.nodes } else { 64 },
+        arena: if d.arena > (16 << 20) {
+            d.arena
+        } else {
+            16 << 20
+        },
+    }
+};
+
 /// A node was created — make it current so subsequent entities attribute to
 /// it.
 ///

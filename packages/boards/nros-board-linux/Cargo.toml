@@ -96,6 +96,8 @@ libc = "0.2"
 nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", features = ["platform-posix"], optional = true }
 nros-rmw-xrce-cffi = { path = "../../rmw/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"], optional = true }
 nros-rmw-cyclonedds-sys = { path = "../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", features = ["platform-posix"], optional = true }
+# Issue 1419 — the recording backend, behind `census`.
+nros-rmw-metadata = { path = "../../rmw/metadata", optional = true }
 
 [features]
 # Default keeps the historic host zenoh wiring active so existing Entry pkgs /
@@ -111,3 +113,12 @@ rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]
 # rmw-zenoh. This host board validates the forwarding pattern the embedded
 # boards use.
 safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
+# Issue 1419 — the Rust entry is a census PRODUCER. With this feature the hosted
+# funnels answer `$NROS_CENSUS_OUT` by selecting the recording backend,
+# registering every component on an executor sized at its own ceilings
+# (`nros::census_hooks::CENSUS_SIZING`), and writing what the recorder saw —
+# the C++ funnel's behaviour, through the same hooks (`nros::census_hooks`).
+# Host-only by construction: this crate IS the host board. The recording
+# backend is registered explicitly and only when a census is asked for, so a
+# normal boot's backend selection is unchanged (issue 1530: no ctor).
+census = ["nros/metadata-mode", "dep:nros-rmw-metadata"]
