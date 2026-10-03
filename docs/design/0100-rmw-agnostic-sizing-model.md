@@ -952,7 +952,7 @@ slots over timers and guard conditions, scheduling contexts, action clients,
 publishers, monitor rows, the infra-queryable feature), no component attribution
 on its rows, no consumer that ranks it first, or no file at all for a model with
 no wiring. Those are a FIELD axis D12 does not touch, and they are
-[issue 1655](../issues/1655-descriptor-has-no-field-for-eleven-kept-carriers.md).
+[issue 1655](../issues/archived/1655-descriptor-has-no-field-for-eleven-kept-carriers.md).
 
 **Not decided here: whether the cmake road should build a runtime per IMAGE**,
 as the cargo road already does, so each image is sized for itself rather than

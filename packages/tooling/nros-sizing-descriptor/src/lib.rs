@@ -116,6 +116,52 @@ pub fn transient_local_publishers(desc: &SizingDescriptor) -> Fact<usize> {
     }))
 }
 
+/// Issue 1655 — the largest QoS depth any SUBSCRIPTION declares, guarded on
+/// every one of them declaring.
+///
+/// The rule `NROS_DECLARED_MAX_QOS_DEPTH` carried, given ONE spelling here so
+/// a consumer reads the descriptor rather than restating the reduction:
+///
+/// * [`Fact::Stated`] — the maximum, when EVERY subscription row states its
+///   depth. A table over the annotated subset would size the image from part
+///   of itself, which is why one silent row refuses the whole answer.
+/// * [`Fact::Refused`] — some subscription row's depth is refused or absent;
+///   the prose names it. The consumer keeps its builtin (ROS's KEEP_LAST(10)),
+///   which is the safe direction for a ring depth.
+/// * [`Fact::Absent`] — no subscription rows at all: nothing to read.
+///
+/// A row refused by D12 rule 2 (two entries' models disagreeing on one
+/// subscription's depth) refuses here too, for the same reason: neither value
+/// is the runtime's.
+pub fn max_subscription_depth(desc: &SizingDescriptor) -> Fact<usize> {
+    let mut max: Option<usize> = None;
+    for e in desc
+        .endpoints
+        .iter()
+        .filter(|e| e.kind == EndpointKind::Subscription)
+    {
+        match e.depth() {
+            Fact::Stated(d) => {
+                let d = d as usize;
+                max = Some(max.map_or(d, |m| m.max(d)));
+            }
+            f => {
+                return Fact::Refused(format!(
+                    "subscription {} ({}) states no depth{}, so the image's largest depth \
+                     is not known",
+                    e.topic,
+                    e.type_name,
+                    f.refusal().map(|r| format!(": {r}")).unwrap_or_default()
+                ));
+            }
+        }
+    }
+    match max {
+        Some(m) => Fact::Stated(m),
+        None => Fact::Absent,
+    }
+}
+
 /// One row of the [`transient_local_publishers`] rule.
 ///
 /// Issue 1378 — the rule needed a SECOND caller, and the descriptor is not it.
@@ -837,6 +883,43 @@ mod tests {
             "/fibonacci",
         ));
         assert_eq!(transient_local_publishers(&d), Fact::Stated(2));
+    }
+
+    /// Issue 1655 -- the guarded MAX the `NROS_DECLARED_MAX_QOS_DEPTH` carrier
+    /// delivered, given one spelling: every subscription states a depth, or no
+    /// answer.
+    #[test]
+    fn max_subscription_depth_is_the_guarded_max_over_subscriptions() {
+        let mut d = island();
+        assert_eq!(max_subscription_depth(&d), Fact::Stated(10));
+
+        let mut one = Endpoint::new(EndpointKind::Subscription, "std_msgs/msg/Int32", "/n");
+        one.set_depth(Some(1));
+        d.endpoints.push(one);
+        assert_eq!(max_subscription_depth(&d), Fact::Stated(10), "a max");
+
+        // A PUBLISHER's depth is not a receive ring's: it does not count.
+        let mut p = Endpoint::new(EndpointKind::Publisher, "std_msgs/msg/Int32", "/p");
+        p.set_depth(Some(50));
+        d.endpoints.push(p);
+        assert_eq!(max_subscription_depth(&d), Fact::Stated(10));
+
+        // One silent subscription refuses the WHOLE answer -- a max over the
+        // rows that answered is not a bound on the one that did not.
+        d.endpoints.push(Endpoint::new(
+            EndpointKind::Subscription,
+            "std_msgs/msg/String",
+            "/silent",
+        ));
+        assert!(
+            max_subscription_depth(&d)
+                .refusal()
+                .is_some_and(|r| r.contains("/silent"))
+        );
+
+        // No subscription at all is not "depth 0": there is nothing to read.
+        let empty = SizingDescriptor::new("e", Status::Derived, Basis::Contract);
+        assert_eq!(max_subscription_depth(&empty), Fact::Absent);
     }
 
     /// Issue 1498 -- the LEAF road's retention slot: the largest bound over the

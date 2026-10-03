@@ -94,13 +94,16 @@ fn main() {
     // one number -- issue 0460's shape, with the halves free to disagree.
     // Zero is legal: an image whose components create none of the five cell
     // kinds carries empty registries.
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES");
-    let declared_cells = env::var("NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES")
-        .ok()
-        .and_then(|v| v.trim().parse::<usize>().ok());
+    //
+    // Issue 1655 -- that declared fact is the sizing descriptor's `[image]
+    // cell_entities` now (composed where `derive` counts it, folded by D12 on a
+    // multi-entry runtime). The `NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES`
+    // carrier that used to deliver it retired once the knob diff with it
+    // dropped was zero on three images; the cargo-leaf road still writes the
+    // knob itself, which is the env rung above.
     let max_cell_entities = env_usize(
         "NROS_RUNTIME_MAX_CELL_ENTITIES",
-        rungs.max_cell_entities.or(declared_cells),
+        rungs.max_cell_entities.or(described_cell_entities()),
         8,
     );
 
@@ -124,6 +127,19 @@ fn main() {
          pub const MAX_CELL_ENTITIES: usize = {max_cell_entities};\n"
     );
     std::fs::write(Path::new(&out_dir).join("nros_runtime_config.rs"), contents).unwrap();
+}
+
+/// Issue 1655 -- `[image] cell_entities` from the descriptor this build was
+/// named, or `None` (no descriptor, or the field refused/absent).
+///
+/// A descriptor that is named and cannot be read PANICS, as in every other
+/// consumer: sizing from a literal while a user believes they supplied numbers
+/// is the silent default RFC-0100 D6 forbids. The rebuild edge is on the
+/// file's CONTENT, placed by `load_for_build_script` (issue 0491: never on the
+/// path variable's text).
+fn described_cell_entities() -> Option<usize> {
+    let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"))?;
+    desc.image.cell_entities().stated().copied()
 }
 
 /// phase-400 W6 — `rung` is the platform/board answer from `[knobs.runtime]`,

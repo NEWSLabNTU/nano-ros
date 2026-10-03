@@ -491,14 +491,13 @@ function(_nros_entity_budget_env _out_var)
     # reads it first, and the per-carrier knob diff was ZERO on both measured
     # images. A carrier delivering the same number a second way is the
     # 0460/0491 shape the descriptor exists to remove.
+    #
+    # Issue 1655 -- and the per-kind cell registry capacity (issue 1130's
+    # RUNTIME_MAX_CELL_ENTITIES) followed them: `[image] cell_entities`, read
+    # first by `nros/build.rs`, zero-diff with this carrier dropped on
+    # `examples/workspaces/cpp` native, freertos_posix and freertos (mps2,
+    # zenoh).
     foreach(_pair
-            # issue 1130 -- the per-kind cell registry capacity for a class that
-            # states no ENTITY_BOUNDS. Composed across entries by MAX with no
-            # accumulator here: the fragment is ONE per configure, derived over
-            # every component this configure registered, so its number already
-            # is the largest component's -- and it is absent (the whole road
-            # abstains) when any component declared nothing.
-            "NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES;NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES"
             # phase-461 W3 (issue 1352) -- the two service-inbox families' slot
             # sizes, joined in `NanoRosEntityInventory.cmake` from this image's
             # declared service and action REQUEST types. Absent unless every
@@ -522,91 +521,16 @@ function(_nros_entity_budget_env _out_var)
     set(${_out_var} "${_out}" PARENT_SCOPE)
 endfunction()
 
-# _nros_qos_depth_env(<out-var>)
+# _nros_qos_depth_env -- RETIRED (issue 1655).
 #
-# phase-412 W3 / phase-403 step 2 — carry the declared QoS DEPTH to the arena.
-#
-# `nros-node/build.rs` bills every pub/sub callback slot at `PUBSUB_QOS_DEPTH`,
-# a CONSTANT 10, and says why: "Carrying the declared depths here instead is
-# phase-403 step 2's remaining wiring: `NROS_ENTITY_DECLARED_DEPTHS` and
-# `NROS_ENTITY_UNDECLARED_DEPTH_COUNT` reach cmake and stop there, so this lane
-# has nothing better to read yet." This is that wiring, on the road issue 1122
-# built.
-#
-# The over-billing is structural rather than marginal. `buffered_region` gives a
-# `depth <= 1` subscription a TripleBuffer of 3 slots and anything deeper an
-# `SpscRing` of `depth + 1`, so an image whose subscriptions all declare depth 1
-# is charged 11 slots for 3 -- on every lane, before this.
-#
-# WHAT TRAVELS IS THE MAXIMUM, not the table. The arena charges every pub/sub
-# slot the same `pubsub_entry`, so one number is what the consumer can use, and
-# the max is the only reduction that cannot under-size it. Shipping the triples
-# would hand the build script a table it has no way to attribute to slots.
-#
-# TWO GUARDS, and the second is the producer's own instruction. The status must
-# be `resolved`, and the UNDECLARED count must be ZERO --
-# `NanoRosEntityInventory.cmake` calls it "what a consumer must refuse on",
-# because a table over the endpoints that happened to be annotated sizes an
-# image from a subset of itself. One unannotated subscription and the max is a
-# lower bound rather than a bound, which is the under-size direction.
-#
-# phase-454 W2 -- and the count is the SUBSCRIPTION-scoped one, because the list
-# it guards is the subscription list. Two reasons, and the second is the one
-# that made this move now:
-#
-#   * it is issue 1227's ruling applied to this function's sibling. The broad
-#     count spans every depth-carrying kind, so on the reference island it is 18
-#     against 11 while all eleven subscriptions declare, and refusing on it keeps
-#     that image on the worst case forever for endpoints this number does not
-#     price. `subs_arena` was moved off the broad count for exactly that; this
-#     was the one consumer left on it.
-#   * a publisher can now DECLARE a depth (phase-454 W2), so the broad count is
-#     something a publisher's contract can move. Guarding a subscription number
-#     on it would mean a publisher declaration flips a subscription lane -- a
-#     coupling in the one direction this wave exists to rule out, since nothing
-#     prices a publisher's depth yet.
-#
-# Measured: no in-tree image moves. Every in-tree contract leaves at least one
-# subscription silent (`demo_bringup`'s says `sub: { chatter: {} }`), so both
-# spellings of the guard return early on all of them. And where the new guard
-# DOES pass, `subs_arena`'s own guard passes with it -- it is the same predicate
-# -- so `NROS_DECLARED_MAX_QOS_DEPTH` only reaches `pubsub_entry`, which is that
-# function's FALLBACK price and unused on the branch that took it.
-function(_nros_qos_depth_env _out_var)
-    set(${_out_var} "" PARENT_SCOPE)
-    if(NOT COMMAND nros_entity_inventory_knobs_file)
-        return()
-    endif()
-    nros_entity_inventory_knobs_file(_inv)
-    if(NOT EXISTS "${_inv}")
-        return()
-    endif()
-    include("${_inv}")
-    if(NOT NROS_ENTITY_DECLARED_DEPTH_STATUS STREQUAL "resolved")
-        return()
-    endif()
-    if(NOT DEFINED NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION
-            OR NOT NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION EQUAL 0)
-        return()
-    endif()
-    if(NOT DEFINED NROS_ENTITY_DECLARED_DEPTHS)
-        return()
-    endif()
-    # `type|topic=depth` triples. The depth is what follows the LAST `=`, so a
-    # topic containing one does not shift the field.
-    set(_max 0)
-    foreach(_triple IN LISTS NROS_ENTITY_DECLARED_DEPTHS)
-        string(REGEX MATCH "=([0-9]+)$" _m "${_triple}")
-        if(_m)
-            if(CMAKE_MATCH_1 GREATER _max)
-                set(_max "${CMAKE_MATCH_1}")
-            endif()
-        endif()
-    endforeach()
-    if(_max GREATER 0)
-        set(${_out_var} "NROS_DECLARED_MAX_QOS_DEPTH=${_max}" PARENT_SCOPE)
-    endif()
-endfunction()
+# It carried `NROS_DECLARED_MAX_QOS_DEPTH`, the largest declared subscription
+# depth, guarded on every subscription having declared one (phase-412 W3). The
+# sizing descriptor states every row's depth and every road names one, so the
+# same guarded MAX is now ONE function in the descriptor crate
+# (`nros_sizing_descriptor::max_subscription_depth`), read first by
+# `nros-node/build.rs` -- and the knob diff with this carrier dropped was ZERO
+# on `examples/workspaces/cpp` native, freertos_posix and freertos (mps2,
+# zenoh). Two spellings of one reduction is what the descriptor exists to end.
 
 # _nros_declared_depth_table_env(<out-var>)
 #
@@ -619,7 +543,7 @@ endfunction()
 # producer and a consumer quietly stop meeting. `nros-node/build.rs` reads it
 # twice, for two different jobs.
 #
-# ONE GUARD, where `_nros_qos_depth_env` above has two, and the difference is
+# ONE GUARD, where the retired `_nros_qos_depth_env` had two, and the difference is
 # the point. That function SIZES: the arena charges every pub/sub slot the same
 # price, so a table over the endpoints that happened to be declared would size
 # an image from a subset of itself, and it must refuse unless the UNDECLARED
@@ -779,11 +703,6 @@ function(nros_entity_facts_env _target)
     endif()
     if(_budget_env)
         list(APPEND _payload_env ${_budget_env})
-    endif()
-
-    _nros_qos_depth_env(_depth_env)
-    if(_depth_env)
-        list(APPEND _payload_env "${_depth_env}")
     endif()
 
     # phase-454 W10 -- the per-endpoint table, for the REGISTRATION check.

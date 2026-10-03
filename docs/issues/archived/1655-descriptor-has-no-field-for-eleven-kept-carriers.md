@@ -1,7 +1,8 @@
 ---
 id: 1655
 title: "Eleven KEPT `NROS_DECLARED_*` carriers have a second blocker no road fix answers — the sizing descriptor has no field, no reader, or no file for the fact they carry"
-status: open
+status: resolved
+resolved_in: 2026-10-03
 type: tech-debt
 area: [build, cli, core]
 severity: low
@@ -127,3 +128,52 @@ issue 1649's retirement step.
 | `SERVICE_SERVERS` | the app service-server count is `service_server_entities` + the action servers' three channels each; stating it needs a field with that expansion owned by the producer, not a reader multiplying rows |
 | `INFRA_QUERYABLES` | a FEATURE token (`execution.features`), not a count — needs a vocabulary field, not an `[image]` count |
 | `MAX_QOS_DEPTH` | the guarded MAX over subscription depths has no shared spelling; a field would be the reduction moved into `derive` |
+
+## Resolution, 2026-10-03 — the last four rows
+
+Measured with the W14 method (the configure's own Corrosion cargo command,
+re-run with one carrier dropped, every build script's generated output diffed)
+on three `examples/workspaces/cpp` configures: native (seven entries, D12's
+runtime descriptor), freertos_posix (one entry, Cyclone) and freertos
+(mps2-an385, one entry, zenoh — the only measured image whose consumers read
+the queryable facts).
+
+| carrier | outcome | reader / rule | knob diff, carrier dropped |
+| --- | --- | --- | --- |
+| `RUNTIME_MAX_CELL_ENTITIES` | **retired** | `nros/build.rs` reads `[image] cell_entities` first | 0 / 0 / 0 files; readers reverted: `MAX_CELL_ENTITIES` moves |
+| `MAX_QOS_DEPTH` | **retired** | `nros_sizing_descriptor::max_subscription_depth` (the guarded MAX, one spelling), read first by `nros-node` | 0 / 0 / 0; readers reverted: depth 1 -> 10, `ARENA_SIZE` 8192 -> 14444 |
+| `SERVICE_SERVERS` | reader landed; `Kept(1649)` for the ROAD | `[image] service_server_queryables` (`local_query_servers`), read first by `nros-zpico-build` and `nros-rmw-zenoh` | 0 on freertos zenoh / freertos_posix; readers reverted: `ZPICO_MAX_QUERYABLES` 1 -> 9 |
+| `INFRA_QUERYABLES` | **`ByDesign(RFC-0100 D4)`** | — | native: 6 -> 23 slots (table un-declared) |
+
+**The lockfile question.** `nros/build.rs` reading the descriptor needs
+`nros-sizing-descriptor` as a build-dependency of `nros`. That crate was already
+in every graph that resolves `nros` (through `nros-node`'s build script), so
+`just lock-update` over the 22 tracked locks that resolve `nros` added exactly
+one line each — the edge in `nros`'s own dependency list — and no package.
+Justified: the alternative was a `links` relay through `nros-node`, a carrier by
+another name.
+
+**`SERVICE_SERVERS`, and what the reader changed.** Read descriptor-first, the
+native multi-entry configure (whose carrier was ABSENT — one entry's model
+describes no wiring, so `NROS_ENTITY_SERVERS_UNKNOWN`) now sizes the queryable
+table from the runtime's union: `ZPICO_MAX_QUERYABLES` 10 -> 6
+(`DECLARED_APP_QUERYABLES` None -> Some(6): four service-server queryables plus
+two transient-local caches). The union holds every entry's need (the
+action-server entry needs 3 + 1). The carrier stays because the cargo-LEAF road
+also writes it (`leaf_entity_env::leaf_facts`) and that road was not diffed —
+issue 1649 holds that.
+
+**`INFRA_QUERYABLES` ruling.** The param/lifecycle feature token exists for a
+model with no wiring (`declared_infra` is always emitted, contract or not), and
+under "no stated entity fact => no file" exactly those images have no
+descriptor. A field would repeat the token on the images that have one and
+retire it on none, so the carrier is the delivery by design (`_CONTRACTLESS_FEATURE`
+in the ledger), beside `NODES`'s identical ruling.
+
+Retirement re-checked after the producers were deleted: the native and
+freertos configures, rebuilt with no `RUNTIME_MAX_CELL_ENTITIES` /
+`MAX_QOS_DEPTH` on the command, against the pre-retirement build — 0 generated
+files differ. Gate: `check-knob-single-reader` RETIRED entry, negative control
+measured (a re-added producer line in `NanoRosEntityFacts.cmake` fails it).
+
+The ledger holds no row whose second reason is a missing field, reader or file.

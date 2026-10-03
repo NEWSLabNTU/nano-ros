@@ -617,6 +617,7 @@ pub struct Image {
     monitor_rows: Option<usize>,
     age_monitor_rows: Option<usize>,
     cell_entities: Option<usize>,
+    service_server_queryables: Option<usize>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
 }
@@ -640,6 +641,7 @@ impl Image {
         "monitor_rows",
         "age_monitor_rows",
         "cell_entities",
+        "service_server_queryables",
     ];
 
     /// Distinct `(name, namespace)` nodes the image registers — one per declared
@@ -805,6 +807,24 @@ impl Image {
         fact(&self.cell_entities, "cell_entities", &self.refused)
     }
 
+    /// Issue 1655 — the APPLICATION's queryables a service server claims:
+    /// declared service servers plus three per action server (its
+    /// `send_goal` / `cancel_goal` / `get_result` channels) — `local_query_servers` in the entity derivation, the
+    /// number `NROS_DECLARED_SERVICE_SERVERS` carries.
+    ///
+    /// A field, not a sum a consumer computes from `service_server_entities`
+    /// and `action_server_entities`: the action expansion is the producer's
+    /// (the third-mirror rule D4 refuses). The runtime's own parameter and
+    /// lifecycle servers and the transient-local cache queryables are NOT in
+    /// it; each consumer adds those terms from their own facts.
+    pub fn service_server_queryables(&self) -> Fact<usize> {
+        fact(
+            &self.service_server_queryables,
+            "service_server_queryables",
+            &self.refused,
+        )
+    }
+
     pub fn new(
         node_count: Option<usize>,
         backend_count: Option<usize>,
@@ -890,6 +910,10 @@ impl Image {
         self.cell_entities = v;
         self
     }
+    pub fn set_service_server_queryables(&mut self, v: Option<usize>) -> &mut Self {
+        self.service_server_queryables = v;
+        self
+    }
 
     pub fn refuse(&mut self, field: &str, reason: impl Into<String>) -> &mut Self {
         debug_assert!(
@@ -923,6 +947,7 @@ impl Image {
             "monitor_rows" => self.monitor_rows?.to_string(),
             "age_monitor_rows" => self.age_monitor_rows?.to_string(),
             "cell_entities" => self.cell_entities?.to_string(),
+            "service_server_queryables" => self.service_server_queryables?.to_string(),
             _ => return None,
         })
     }
@@ -968,6 +993,10 @@ impl Image {
                 ("monitor_rows", self.monitor_rows.is_some()),
                 ("age_monitor_rows", self.age_monitor_rows.is_some()),
                 ("cell_entities", self.cell_entities.is_some()),
+                (
+                    "service_server_queryables",
+                    self.service_server_queryables.is_some(),
+                ),
             ],
         )
     }

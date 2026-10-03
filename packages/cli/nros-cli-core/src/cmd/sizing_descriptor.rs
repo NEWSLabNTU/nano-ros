@@ -713,6 +713,10 @@ fn summary(desc: &nros_sizing_descriptor::SizingDescriptor) -> String {
         ("monitor_rows", desc.image.monitor_rows()),
         ("age_monitor_rows", desc.image.age_monitor_rows()),
         ("cell_entities", desc.image.cell_entities()),
+        (
+            "service_server_queryables",
+            desc.image.service_server_queryables(),
+        ),
     ] {
         let _ = writeln!(s, "    {name:<23} {f}");
     }
