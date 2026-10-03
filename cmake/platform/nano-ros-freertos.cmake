@@ -203,7 +203,7 @@ if(NANO_ROS_RMW STREQUAL "cyclonedds" AND NROS_FREERTOS_BOARD_HAS_LWIP
         "-I${LWIP_DIR}/contrib/ports/freertos/include")
     string(JOIN " " _cyc_freertos_inc_str ${_cyc_freertos_inc})
     set(CMAKE_C_FLAGS
-        "${CMAKE_C_FLAGS} ${_cyc_freertos_inc_str} -D__int64_t_defined=1 -DconfigUSE_TRACE_FACILITY=1"
+        "${CMAKE_C_FLAGS} ${_cyc_freertos_inc_str} -D__int64_t_defined=1"
         CACHE STRING "" FORCE)
 endif()
 

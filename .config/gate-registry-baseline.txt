@@ -132,6 +132,7 @@ fixtures-manifest
 flake-quarantine
 flavour-lanes
 format-macro-scope
+freertos-config-single-carrier
 gate-cache-keys-agree
 gate-lists
 gate-selftests
