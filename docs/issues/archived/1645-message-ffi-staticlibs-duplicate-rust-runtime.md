@@ -1,12 +1,13 @@
 ---
 id: 1645
 title: "C++ Zephyr images whole-archive one message-FFI Rust staticlib per package, duplicating the Rust runtime closure — the last reason for --allow-multiple-definition"
-status: open
+status: resolved
+resolved_in: 2026-10-03
 type: tech-debt
 area: build, zephyr, nuttx
 severity: low
 found: 2026-10-02
-related: [1636, 1618, 0734, phase-251]
+related: [1636, 1618, 0734, phase-251, 1664]
 ---
 
 ## What
@@ -51,3 +52,40 @@ here, but it has to be verified against a real S32DS link.
   confirm the CDT link without the flag on a real project. Then drop that row.
 
 `check-no-allow-multiple-def` fails until each row is lowered.
+
+## Resolution (2026-10-03)
+
+**Zephyr: fixed.** `zephyr/cmake/nros_generate_interfaces.cmake` builds ONE
+message-FFI staticlib per image (`libnano_ros_cpp_ffi_image.a`) instead of one
+per package.
+
+- Each `nros_generate_interfaces(... CPP)` call now only contributes its
+  closure (dependency TYPES plus its own EXPORTS, phase-306 W1's split) to a
+  global property.
+- The first call defers `_nros_zephyr_cpp_ffi_image()` to the end of the app
+  directory (`cmake_language(DEFER)`). That function writes a single crate
+  over the de-duplicated union, builds it and whole-archives it once.
+- An exports file belongs to exactly one package, so no `nros_cpp_*` symbol
+  can appear twice. `compiler_builtins` now reaches the link once.
+- The flag and its allowlist row are gone.
+
+Measured on `examples/zephyr/cpp/talker` (zenoh, native_sim/native/64):
+
+| layout | flag | link |
+| --- | --- | --- |
+| per-package archives (`main`) | removed | **392** `multiple definition` errors, the issue's count |
+| one image archive (this change) | removed | links clean |
+
+With the fix, `build.ninja` names only `libnano_ros_cpp_ffi_image.a` and no
+`--allow-multiple-definition`. The image was run against an `rmw_zenohd`
+router started and stopped by hand. A stock `ros2 topic echo /chatter`
+(`rmw_zenoh_cpp`) received `data: 'Hello World: 3'`. The two `.eh_frame_hdr`
+linker notes also appear in `main`'s build, so they are not new.
+
+NOT measured: mps2/an385. Its 571 duplicates were the same FFI-vs-FFI class,
+and the change is board-independent, but only native_sim was built here.
+
+**S32DS: not feasible on this host**, and moved to **issue 1664**. S32DS
+3.6.10 is installed, but no S32DS project exists, and the CDT link that the
+flag affects is the project's. The row stays allowlisted under 1664.
+
