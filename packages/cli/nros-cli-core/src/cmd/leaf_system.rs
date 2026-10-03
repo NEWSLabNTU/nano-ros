@@ -110,10 +110,9 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
             leaf.origin_path().display()
         )
     })?;
-    let root = args
-        .nano_ros_path
-        .or_else(|| std::env::var_os("NROS_REPO_DIR").map(PathBuf::from))
-        .or_else(|| crate::cmd::ws::autodetect_nano_ros_path(&dir));
+    // issue 1641 — the 1510 ladder: the leaf's own checkout outranks an
+    // inherited `$NROS_REPO_DIR` (in a linked worktree, the PARENT's).
+    let root = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path, &dir);
     let catalog = root.as_deref().and_then(|r| BoardCatalog::load(r).ok());
     let deploy = deploy_token(catalog.as_ref(), &board);
     let settings = match root.as_deref() {

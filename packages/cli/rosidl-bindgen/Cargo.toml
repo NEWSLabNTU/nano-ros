@@ -28,6 +28,9 @@ rosidl-parser.workspace = true
 # nros-core / nros-serdes, so the emitted dep is a path dep and stays
 # host-invariant for a committed `generated/` tree.
 pathdiff = "0.2"
+# issue 1641 — the generated crate's OWN checkout, found by the one CLI-side
+# marker walk, outranks an inherited `$NROS_REPO_DIR`.
+nros-launcher = { path = "../nros-launcher" }
 
 [dev-dependencies]
 tempfile = "3.8"

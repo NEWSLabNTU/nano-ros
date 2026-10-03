@@ -317,6 +317,7 @@ name = "nros-orchestration-ir"
 version = "0.5.0"
 dependencies = [
  "indexmap",
+ "nros-build-paths",
  "nros-rmw",
  "ros-launch-manifest-derive",
  "ros-launch-manifest-model",

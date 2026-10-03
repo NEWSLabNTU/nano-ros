@@ -563,6 +563,23 @@ inherited-checkout-paths:
 git-dir-layout-assumptions:
     @python3 scripts/check-git-dir-layout-assumptions.py
 
+# issue 1641 — the FOURTH time one rule was fixed where its symptom was seen.
+# `$NROS_REPO_DIR` in a linked worktree names the PARENT checkout (it is
+# inherited from the shell that spawned the worktree), and each Rust reader that
+# used it as given made the worktree act on the parent: 1280 compiled the
+# parent's sources, 1510 resolved the parent's SDK root, 1538 certified the
+# parent's headers, and 1641 found seven more — one WROTE the central patch file
+# into the parent and one emitted path deps that compiled the parent's core crates.
+#
+# A read is allowed only where it is handed to something that applies the rule,
+# and the site says which in a `repo-dir-env-ok: <reason>` comment within three
+# lines. A reason AT THE SITE rather than an allowlist here, because an allowlist
+# does not move when the code does. Verified against the pre-fix tree: it flags
+# all seven 1641 readers, plus the two correct ones that stated no reason.
+[private]
+repo-dir-readers:
+    @python3 scripts/check-repo-dir-readers.py
+
 # Issue 0336 — a retired submodule path must not survive anywhere that a user or
 # a CI job would follow it. RFC-0060's sweep missed scripts/bootstrap.sh, nine
 # doc copies and eight workflow refs; this grep would have caught all of them.

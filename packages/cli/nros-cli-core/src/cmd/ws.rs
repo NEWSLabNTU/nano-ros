@@ -2536,6 +2536,7 @@ fn resolver_beside(exe: &std::path::Path) -> Option<std::path::PathBuf> {
     resolver_from(
         exe,
         std::env::var_os("NROS_LAUNCH_RESOLVE").map(std::path::PathBuf::from),
+        // repo-dir-env-ok: only rung 4 of `resolver_from`, after the running CLI's own checkout (issue 1641).
         std::env::var_os("NROS_REPO_DIR").map(std::path::PathBuf::from),
     )
 }
@@ -2579,17 +2580,29 @@ fn resolver_from(
             .join("release")
             .join(LAUNCH_RESOLVER)
     };
-    if let Some(root) = repo_dir {
-        let p = in_checkout(&root);
-        if p.is_file() {
-            return Some(p);
-        }
-    }
-    // `dir` is <repo>/packages/cli/target/release, so <repo> is four
-    // ancestors up (target, cli, packages, repo).
-    dir.ancestors()
+    // issue 1641 — the RUNNING CLI's own checkout comes BEFORE
+    // `$NROS_REPO_DIR`. It came after, so a worktree's CLI resolved launch
+    // files with the PARENT checkout's resolver: the variable is inherited from
+    // the shell that spawned the worktree. That defeated the reason stated just
+    // above — "each worktree carries its own tools, with no cross-tree skew" —
+    // and a resolver from another layer-2 checkout writes models that are
+    // MISSING DATA rather than failing (issue 0409).
+    //
+    // `dir` is <repo>/packages/cli/target/release, so <repo> is four ancestors
+    // up (target, cli, packages, repo).
+    if let Some(p) = dir
+        .ancestors()
         .nth(4)
         .map(in_checkout)
+        .filter(|p| p.is_file())
+    {
+        return Some(p);
+    }
+    // 4. A CLI that is not inside a checkout (an installed one with no sibling
+    //    resolver): the environment is then the only statement of which
+    //    checkout's resolver is meant.
+    repo_dir
+        .map(|root| in_checkout(&root))
         .filter(|p| p.is_file())
 }
 
@@ -4000,23 +4013,62 @@ fn warn_if_cargo_predates_config_include(ws_root: &Path) {
 
 #[derive(Debug, ClapArgs)]
 pub struct CentralPatchArgs {
-    /// nano-ros checkout to write into. Defaults to `NROS_REPO_DIR`, then cwd.
+    /// nano-ros checkout to write into. Defaults to the checkout containing the
+    /// current directory, then `$NROS_REPO_DIR`.
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
 }
 
 /// issue 1038 — write the central patch file, with no workspace and no codegen.
 fn run_central_patch(args: CentralPatchArgs) -> Result<()> {
-    let root = match args.nano_ros_path {
-        Some(p) => p,
-        None => match std::env::var_os("NROS_REPO_DIR") {
-            Some(v) => PathBuf::from(v),
-            None => std::env::current_dir()?,
-        },
-    };
+    let cwd = std::env::current_dir()?;
+    let root = central_patch_root(
+        args.nano_ros_path,
+        &cwd,
+        // repo-dir-env-ok: `central_patch_root` puts the checkout containing cwd first (issue 1641).
+        std::env::var_os("NROS_REPO_DIR").map(PathBuf::from),
+    )?;
     let dst = write_central_patch_file(&root)?;
     println!("{}", dst.display());
     Ok(())
+}
+
+/// Which checkout `nros ws central-patch` may WRITE into — issue 1641.
+///
+/// This used to be `--nano-ros-path`, else `$NROS_REPO_DIR`, else the current
+/// directory itself. A linked worktree inherits `$NROS_REPO_DIR` from the shell
+/// that spawned it, so from inside a worktree the command wrote the PARENT
+/// checkout's central patch file — a silent cross-tree WRITE, not a misread.
+///
+/// The ladder now puts the checkout that CONTAINS the current directory above
+/// the environment, by the CLI's one marker walk, which stops at the innermost
+/// marker and so separates a nested agent worktree from its parent (issue
+/// 1391). The variable is still honoured when the current directory is in no
+/// checkout at all, which is the out-of-tree case env-first exists for.
+///
+/// Deliberately NOT `nano_ros_root::resolve`, which answers "where is an SDK
+/// root a build READS": its last rung is the installed toolchain's own
+/// `share/nano-ros`, and writing into that is worse than the bug this fixes.
+/// And no longer "the current directory itself" as a last resort: that wrote a
+/// patch file into whatever directory the command happened to run in.
+fn central_patch_root(
+    explicit: Option<PathBuf>,
+    cwd: &Path,
+    env_root: Option<PathBuf>,
+) -> Result<PathBuf> {
+    if let Some(p) = explicit {
+        return Ok(p);
+    }
+    if let Some(here) = nros_launcher::checkout::find_monorepo_root(cwd) {
+        return Ok(here);
+    }
+    env_root.ok_or_else(|| {
+        eyre::eyre!(
+            "`nros ws central-patch`: {} is not inside a nano-ros checkout and \
+             $NROS_REPO_DIR is unset. Pass --nano-ros-path <checkout>.",
+            cwd.display()
+        )
+    })
 }
 
 fn write_central_patch_file(nano_ros_path: &Path) -> Result<PathBuf> {
@@ -5893,6 +5945,108 @@ mod launch_resolver_tests {
             resolver_from(&exe, None, None),
             Some(helper),
             "and the walk-up should find it without the env var"
+        );
+    }
+
+    /// issue 1641 — a worktree's CLI uses the worktree's resolver, even with the
+    /// PARENT checkout inherited in `$NROS_REPO_DIR`. Built in the NESTED shape
+    /// agent worktrees actually have (`<main>/.claude/worktrees/<id>`), where the
+    /// parent's root is a strict prefix of the worktree's (issue 1391).
+    #[test]
+    fn a_worktree_cli_does_not_borrow_the_parents_resolver() {
+        let tmp = tempfile::tempdir().unwrap();
+        let in_tree = |root: &std::path::Path| {
+            root.join("packages")
+                .join("cli")
+                .join(LAUNCH_RESOLVER)
+                .join("target")
+                .join("release")
+                .join(LAUNCH_RESOLVER)
+        };
+        let parent = tmp.path().join("main");
+        let worktree = parent.join(".claude").join("worktrees").join("x");
+        touch(&in_tree(&parent));
+        touch(&in_tree(&worktree));
+        let exe = worktree
+            .join("packages")
+            .join("cli")
+            .join("target")
+            .join("release")
+            .join("nros");
+        touch(&exe);
+
+        assert_eq!(
+            resolver_from(&exe, None, Some(parent.clone())),
+            Some(in_tree(&worktree)),
+            "the inherited parent must not outrank the running CLI's own checkout"
+        );
+    }
+
+    /// The case the environment rung still exists for: a CLI that lives in no
+    /// checkout and ships no sibling resolver.
+    #[test]
+    fn an_out_of_tree_cli_still_takes_the_named_checkouts_resolver() {
+        let tmp = tempfile::tempdir().unwrap();
+        let checkout = tmp.path().join("sdk");
+        let helper = checkout
+            .join("packages")
+            .join("cli")
+            .join(LAUNCH_RESOLVER)
+            .join("target")
+            .join("release")
+            .join(LAUNCH_RESOLVER);
+        touch(&helper);
+        let exe = tmp.path().join("opt").join("bin").join("nros");
+        touch(&exe);
+
+        assert_eq!(resolver_from(&exe, None, Some(checkout)), Some(helper));
+    }
+
+    /// A directory `find_monorepo_root` recognises — the real marker file.
+    fn fake_checkout(root: &std::path::Path) -> std::path::PathBuf {
+        touch(&root.join(nros_launcher::checkout::MONOREPO_MARKER));
+        root.to_path_buf()
+    }
+
+    /// issue 1641 — `nros ws central-patch` from inside a worktree writes into
+    /// the WORKTREE, with the parent inherited in `$NROS_REPO_DIR`. Nested
+    /// shape, as agent worktrees are.
+    #[test]
+    fn central_patch_from_a_worktree_does_not_write_into_the_parent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let parent = fake_checkout(&tmp.path().join("main"));
+        let worktree = fake_checkout(&parent.join(".claude").join("worktrees").join("x"));
+        let cwd = worktree.join("examples");
+        std::fs::create_dir_all(&cwd).unwrap();
+
+        let got = central_patch_root(None, &cwd, Some(parent.clone())).unwrap();
+        assert_eq!(
+            got, worktree,
+            "the write must land in the checkout cwd is in"
+        );
+        assert_ne!(got, parent);
+    }
+
+    #[test]
+    fn central_patch_outside_every_checkout_takes_the_named_one_or_refuses() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sdk = fake_checkout(&tmp.path().join("sdk"));
+        let elsewhere = tmp.path().join("not-a-checkout");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+
+        assert_eq!(
+            central_patch_root(None, &elsewhere, Some(sdk.clone())).unwrap(),
+            sdk
+        );
+        // It used to fall back to writing into `cwd` itself; now it refuses.
+        let err = central_patch_root(None, &elsewhere, None)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("--nano-ros-path"), "{err}");
+        // An explicit path always wins, inside a checkout or not.
+        assert_eq!(
+            central_patch_root(Some(sdk.clone()), &elsewhere, None).unwrap(),
+            sdk
         );
     }
 

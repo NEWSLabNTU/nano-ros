@@ -124,6 +124,7 @@ pub fn resolve_from(rungs: Rungs<'_>) -> Option<PathBuf> {
 pub fn resolve(explicit: Option<PathBuf>, workspace: &Path) -> Option<PathBuf> {
     resolve_from(Rungs {
         explicit,
+        // repo-dir-env-ok: THE 1510 ladder: `resolve_from` puts the workspace walk-up above this rung.
         repo_dir: std::env::var_os("NROS_REPO_DIR").map(PathBuf::from),
         workspace: Some(workspace),
         exe: std::env::current_exe()

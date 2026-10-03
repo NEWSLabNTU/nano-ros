@@ -678,12 +678,19 @@ const _: () = assert!(
 ///     own `nros sync`, exactly like the central `nros-patch.toml` it replaces,
 ///     so a host path is correct there.
 ///
-/// With no `NROS_REPO_DIR` (codegen invoked outside a workspace), fall back to
-/// the registry form so behaviour is unchanged rather than emitting a path that
-/// cannot resolve.
+/// WHICH checkout is decided by [`checkout_for_output`], never by
+/// `$NROS_REPO_DIR` alone (issue 1641): see there.
+///
+/// With neither (codegen invoked outside any checkout and with no SDK named),
+/// fall back to the registry form so behaviour is unchanged rather than
+/// emitting a path that cannot resolve.
 fn nros_dep_line(crate_name: &str, package_output: &Path) -> String {
     let registry = format!(r#"{crate_name} = {{ version = "*", default-features = false }}"#);
-    let Some(root) = std::env::var_os("NROS_REPO_DIR").map(PathBuf::from) else {
+    let Some(root) = checkout_for_output(
+        package_output,
+        // repo-dir-env-ok: `checkout_for_output` uses the output's own checkout first (issue 1641).
+        std::env::var_os("NROS_REPO_DIR").map(PathBuf::from),
+    ) else {
         return registry;
     };
     // Subpath per crate: most live under packages/core, the RMW backends do not.
@@ -710,6 +717,37 @@ fn nros_dep_line(crate_name: &str, package_output: &Path) -> String {
         target.display().to_string()
     };
     format!(r#"{crate_name} = {{ path = "{spec}", default-features = false }}"#)
+}
+
+/// The nano-ros checkout a generated crate at `package_output` must depend on —
+/// issue 1641.
+///
+/// A generated tree INSIDE a checkout depends on THAT checkout, always: the doc
+/// on [`nros_dep_line`] already requires its path to be relative to it, and a
+/// committed `generated/` tree is only portable that way. `$NROS_REPO_DIR` used
+/// to win outright, and a linked worktree inherits it from the shell that
+/// spawned it, pointing at the PARENT. So `nros sync` in a worktree emitted
+/// `{ path = "../../…" }` into the PARENT's `packages/core/*`, and the worktree
+/// then compiled the parent's core crates against its own generated messages —
+/// issue 1280's symptom, reached through codegen instead of a build script.
+///
+/// Outside every checkout (a copy-out project), the variable is the only
+/// statement of which SDK the user means, so it is used as given — that is the
+/// case env-first exists for, and the reason this is not a plain "ignore the
+/// environment". "Which checkout" is `find_monorepo_root`, the CLI's one marker
+/// walk, which stops at the INNERMOST marker — what separates an agent worktree
+/// nested at `<main>/.claude/worktrees/<id>` from its parent (issue 1391).
+fn checkout_for_output(package_output: &Path, env_root: Option<PathBuf>) -> Option<PathBuf> {
+    let probe = package_output
+        .canonicalize()
+        .unwrap_or_else(|_| package_output.to_path_buf());
+    // The output dir may not exist yet; walk from its nearest existing ancestor.
+    let start = probe
+        .ancestors()
+        .find(|p| p.exists())
+        .map(Path::to_path_buf)
+        .unwrap_or(probe);
+    nros_launcher::checkout::find_monorepo_root(&start).or(env_root)
 }
 
 /// phase-403 W6 -- write the derived-bound inventory into a generated Rust
@@ -1882,5 +1920,42 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("no_such_topic"), "{err}");
+    }
+}
+
+/// issue 1641 — which checkout a generated crate depends on.
+#[cfg(test)]
+mod checkout_for_output_tests {
+    use super::checkout_for_output;
+    use std::path::{Path, PathBuf};
+
+    fn fake_checkout(root: &Path) -> PathBuf {
+        let marker = root.join(nros_launcher::checkout::MONOREPO_MARKER);
+        std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        std::fs::write(&marker, "[package]\nname = \"nros-core\"\n").unwrap();
+        root.canonicalize().unwrap()
+    }
+
+    /// The defect: `nros sync` inside a worktree emitted path deps into the
+    /// PARENT's `packages/core/*`. Nested shape, as agent worktrees are; the
+    /// output dir need not exist yet, as it does not on a first sync.
+    #[test]
+    fn a_generated_crate_in_a_worktree_depends_on_the_worktree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let parent = fake_checkout(&tmp.path().join("main"));
+        let worktree = fake_checkout(&parent.join(".claude/worktrees/x"));
+        let out = worktree.join("examples/demo/generated/std_msgs");
+
+        assert_eq!(checkout_for_output(&out, Some(parent)), Some(worktree));
+    }
+
+    #[test]
+    fn a_copy_out_project_takes_the_named_sdk_or_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sdk = fake_checkout(&tmp.path().join("sdk"));
+        let out = tmp.path().join("my_project/generated/std_msgs");
+
+        assert_eq!(checkout_for_output(&out, Some(sdk.clone())), Some(sdk));
+        assert_eq!(checkout_for_output(&out, None), None);
     }
 }
