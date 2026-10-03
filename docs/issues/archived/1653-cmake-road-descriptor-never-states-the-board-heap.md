@@ -1,7 +1,8 @@
 ---
 id: 1653
 title: "No cmake or west entry's sizing descriptor states the board heap, so RFC-0100 D11's Cyclone heap assertion is inert on exactly the roads embedded Cyclone images build on"
-status: open
+status: resolved
+resolved_in: 2026-10-03
 type: tech-debt
 area: [build, cmake, rmw]
 severity: low
@@ -107,3 +108,68 @@ application or the module's knob resolver to carry it, as issue 1407 did for
 the descriptor path. Also found: the cmake road forwards none of Cyclone's
 `[types]` facts either, so D11's floor there is computed from the header
 defaults (256 types × 256 kinds) — issue 1661.
+
+## Resolution, 2026-10-03 — the west half, and two defects the measurement found in the cmake half
+
+**The west road carries it the same way.** West emits no root (RFC-0065 D3), but
+its second argument zone IS a cmake command line, and `nros build` already
+writes `-DNROS_RESOLVED_DIR` there. Stage 4 now writes the board heap there too,
+through ONE helper both arms call (`board_heap_configure_arg`), so the entry's
+producer states `[target] heap_budget_bytes` on the west road exactly as on the
+cmake one. The C++ half is the module's own `nros` library, so
+`zephyr/CMakeLists.txt` calls `nros_sizing_descriptor_apply_cyclonedds(TARGET
+nros DESCRIPTOR <path>)` (issue 1661's function, given a target and a path)
+with the descriptor the west fragment names to cargo (issue 1407) — one file for
+the C++ and the Rust halves of the image.
+
+**The module reads the descriptor BEFORE the entry rewrites it**, so a board-heap
+edit landed one configure late (measured: heap 1048576 -> 2097152, the image
+compiled with the OLD value while the descriptor stated the new one, because
+the PATH the fragment records had not moved). The module now settles the
+descriptor as it reads it, and `nros_sizing_descriptor_record_for_west()` arms
+a re-configure when the entry's rewrite changed its CONTENT
+(`nros_reconfigure_on_change`, the issue 0991 mechanism) — only when the module
+read it this pass, so a Rust-only image arms nothing. Measured: the same edit
+now lands in the same `nros build` (two configure passes, the second applying
+2097152).
+
+**Two defects in the cmake half, found by measuring the west one:**
+
+1. `board_heap_budget` opened the descriptor's `source` as given, i.e. relative
+   to the CWD — but an in-tree `source` is relative to the NANO-ROS ROOT. It
+   worked only when `nros build` ran from the checkout root; from the workspace
+   directory a user builds in, the heap read as unstated and D11 was inert. It
+   now joins onto the root, the way `board_facts` resolves `NROS_BOARD_TOML`.
+   Unit test `board_heap_tests::the_board_heap_resolves_against_the_nano_ros_root_not_the_cwd`
+   fails against the old reader (the test's cwd is the crate dir).
+2. A `-D` is a CACHE entry, so deleting the board's `heap_bytes` left the old
+   value in `CMakeCache.txt` and the descriptor kept stating it — measured on
+   both roads (`freertos_posix` kept 111000, `zephyr_cyclonedds` 2097152). The
+   argument is now ALWAYS emitted, empty when the board states nothing (the
+   configure's own spelling of "nobody said"); measured: the next
+   `zephyr_cyclonedds` build refused the field again and dropped the define.
+
+**Measured on the west road** (`examples/workspaces/cpp` `zephyr_cyclonedds`,
+native_sim/native/64, a worktree-local `cp -al` Zephyr workspace, a TEMPORARY
+`[board.knobs.memory] heap_bytes` on the `zephyr` board, `nros build` run from
+the WORKSPACE directory):
+
+* before: no `-D` on the west command, `[target] heap_budget_bytes` refused,
+  `kHeapBudgetStated == false` — the check could not fire at any heap;
+* `heap_bytes = 65536`: `-DNROS_BOARD_HEAP_BUDGET_BYTES=65536` in west's cmake
+  zone, the descriptor states it, `nros` compiles with
+  `HEAP_BUDGET_BYTES=65536 MAX_FIELDS=1 MAX_KINDS=1 MAX_NESTED_DEPTH=1`, and the
+  image refuses at boot: `configured heap 65536 bytes is below the 110600 this
+  image is certain to need ... RMW session open failed — BadAlloc`;
+* `heap_bytes = 2097152`: the check passes and the participant is created.
+  (This image then spins on `os_sockWaitsetWait: select failed` and delivers
+  nothing — measured identically with NO heap stated, so it is not this
+  change; hand-run, outside the test harness.)
+
+Tests: `tests/cmake-sizing-descriptor-tests.sh` I4/I4b (the `nros` target and
+an explicit descriptor; an empty one defines nothing rather than falling back),
+plus the two `board_heap_tests` units.
+
+A bare `west build` / bare `cmake` still states no heap: nothing on those
+commands names the board's knobs, and the configure must not learn to read
+the board file (RFC-0064 R5 D4).

@@ -637,7 +637,11 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                             // host, and that is the ONE case where this
                             // process's own width is the target's.
                             host_build: descriptor.target.is_none(),
-                            heap_budget_bytes: board_heap_budget(descriptor, &board),
+                            heap_budget_bytes: board_heap_budget(
+                                descriptor,
+                                &board,
+                                Some(nros_root),
+                            ),
                             rmw: image.rmw.clone(),
                             bound_inventories: &bound_tables,
                             horizon: crate::sizing_descriptor::ModelHorizon::new(
@@ -952,9 +956,11 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // stated and Cyclone's D11 boot check is armed on this road.
                 // Absent when the board states no `[board.knobs.memory]
                 // heap_bytes`, which keeps the field REFUSED -- "nobody said".
-                if let Some(h) = board_heap_budget(descriptor, &board) {
-                    a.push(format!("-DNROS_BOARD_HEAP_BUDGET_BYTES={h}"));
-                }
+                a.push(board_heap_configure_arg(
+                    descriptor,
+                    &board,
+                    nano_ros_root.as_deref(),
+                ));
                 // Issue 1304 — the ROOT this generated file's
                 // `find_package(nano_ros)` resolves against. `nano_rosConfig.cmake`
                 // sits at the SDK root and is located through `nano_ros_ROOT`,
@@ -1109,10 +1115,22 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 let west_opts = crate::builder::zephyr::west_args(&overlays);
                 // RFC-0094 D1 — same seam as the cmake driver, in west's
                 // second argument zone. See the note there.
-                let resolved_opt: Vec<String> = resolved_dir
+                let mut resolved_opt: Vec<String> = resolved_dir
                     .as_ref()
                     .map(|d| vec![format!("-DNROS_RESOLVED_DIR={}", d.display())])
                     .unwrap_or_default();
+                // Issue 1653's west half -- the board heap, on the same
+                // configure line the cmake arm hands it on. West emits no root
+                // (RFC-0065 D3), but its second argument zone IS a cmake
+                // command line, and the entry's descriptor producer reads the
+                // cache variable the same way on both roads. A bare `west
+                // build` passes nothing and the field stays refused, exactly as
+                // a bare `cmake` does.
+                resolved_opt.push(board_heap_configure_arg(
+                    descriptor,
+                    &board,
+                    nano_ros_root.as_deref(),
+                ));
                 if !west_opts.is_empty() || !cmake_extra.is_empty() || !resolved_opt.is_empty() {
                     // Everything after `--` is a cmake option for the app.
                     a.push("--".to_string());
@@ -2769,19 +2787,67 @@ fn entries_for_other_boards(
 /// file that no longer parses — and `None` is an ANSWER here: `[target]` then
 /// refuses `heap_budget_bytes`, which is Cyclone's "a board that states no heap
 /// gets no judgement" (RFC-0100 D11).
+///
+/// An in-tree descriptor's `source` is RELATIVE TO THE NANO-ROS ROOT (it goes
+/// into committed artifacts), so it is joined onto that root, the way
+/// `board_facts` resolves `NROS_BOARD_TOML`. It used to be opened as given,
+/// i.e. relative to the CWD: correct only when `nros build` ran from the
+/// checkout root, and silently `None` -- the heap unstated, D11 inert -- from
+/// the workspace directory a user actually builds in (found by issue 1653's
+/// west measurement). An absolute `source` (an extra root or a workspace
+/// board) is unaffected by the join.
 fn board_heap_budget(
     descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
     board: &str,
+    nano_ros_root: Option<&std::path::Path>,
 ) -> Option<usize> {
-    let src = descriptor.source.as_deref()?;
-    nros_board_common::platform_config::BoardKnobsFile::load_for_board(
-        std::path::Path::new(src),
-        Some(board),
-    )
-    .ok()?
-    .knobs
-    .memory
-    .heap_bytes
+    let path = board_descriptor_file(descriptor, nano_ros_root)?;
+    nros_board_common::platform_config::BoardKnobsFile::load_for_board(&path, Some(board))
+        .ok()?
+        .knobs
+        .memory
+        .heap_bytes
+}
+
+/// Issue 1653 — the BOARD heap as a configure argument, for the two drivers
+/// whose configure line `nros build` writes (cmake, and west's cmake zone).
+///
+/// `-DNROS_BOARD_HEAP_BUDGET_BYTES=<n>` when the board states `[board.knobs.memory]
+/// heap_bytes`; the configure never reads the board file itself (RFC-0064 R5 D4).
+/// ONE spelling for both arms: the west arm had none, which is the half issue
+/// 1653 left open.
+///
+/// **ALWAYS emitted, empty when the board states nothing.** A `-D` is a CACHE
+/// entry, so omitting the argument once a board stops stating a heap leaves the
+/// previous value in `CMakeCache.txt`, and the descriptor goes on stating a heap
+/// nobody states any more -- measured on both roads (`freertos_posix` kept
+/// 111000, `zephyr_cyclonedds` 2097152, each after the board line was deleted).
+/// The empty value is the configure's own spelling of "nobody said"
+/// (`_nros_sizing_heap_args` treats it as unset), so the field goes back to
+/// refused on the next configure.
+fn board_heap_configure_arg(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    board: &str,
+    nano_ros_root: Option<&std::path::Path>,
+) -> String {
+    let value = board_heap_budget(descriptor, board, nano_ros_root)
+        .map(|h| h.to_string())
+        .unwrap_or_default();
+    format!("-DNROS_BOARD_HEAP_BUDGET_BYTES={value}")
+}
+
+/// The file a descriptor was parsed from: its `source`, joined onto the
+/// nano-ros root when relative. `None` for an in-memory descriptor, or a
+/// relative source with no root to resolve it against.
+fn board_descriptor_file(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    nano_ros_root: Option<&std::path::Path>,
+) -> Option<std::path::PathBuf> {
+    let src = std::path::Path::new(descriptor.source.as_deref()?);
+    if src.is_absolute() {
+        return Some(src.to_path_buf());
+    }
+    Some(nano_ros_root?.join(src))
 }
 
 /// What stage 3.5 resolved for one image.
@@ -4823,5 +4889,88 @@ mod generated_output_collision_tests {
             claim(t.path(), "b:x", &other, "freertos", Driver::CMake),
         ];
         assert!(generated_output_collisions(&apart).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod board_heap_tests {
+    use super::*;
+
+    /// A nano-ros root holding one board that states `heap_bytes`, loaded the
+    /// way `plan_builds` loads it -- so `source` is ROOT-relative.
+    fn root_with_board(heap: Option<usize>) -> tempfile::TempDir {
+        let t = tempfile::tempdir().unwrap();
+        let dir = t.path().join("packages/boards/nros-board-heapy");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut text = String::from(
+            "[[board]]\nnames = [\"heapy\"]\nplatform = \"freertos\"\ntoolchain = \"stable\"\n\
+             entry_kind = \"hosted-main\"\nsupported_netstacks = []\n",
+        );
+        if let Some(h) = heap {
+            text.push_str(&format!("[board.knobs.memory]\nheap_bytes = {h}\n"));
+        }
+        std::fs::write(dir.join("nros-board.toml"), text).unwrap();
+        std::fs::write(
+            dir.join("package.xml"),
+            "<package format=\"3\"><name>nros_board_heapy</name><export>\
+             <nano_ros_provides kind=\"board\" name=\"heapy\"/></export></package>\n",
+        )
+        .unwrap();
+        t
+    }
+
+    fn descriptor(
+        root: &std::path::Path,
+    ) -> crate::orchestration::board_descriptor::BoardDescriptor {
+        let cat = crate::orchestration::board_descriptor::BoardCatalog::load_with_extra(root, &[])
+            .unwrap();
+        let d = cat
+            .descriptors()
+            .iter()
+            .find(|d| d.names.iter().any(|n| n == "heapy"))
+            .expect("the test board")
+            .clone();
+        assert!(
+            !std::path::Path::new(d.source.as_deref().unwrap()).is_absolute(),
+            "the premise: an in-tree source is root-relative"
+        );
+        d
+    }
+
+    /// Issue 1653 -- the heap reaches the configure line from ANY cwd. The
+    /// relative `source` used to be opened against the cwd, so from anywhere
+    /// but the checkout root the board's heap read as unstated. The test's cwd
+    /// is the crate dir, never the temp root, so the old reader fails here.
+    #[test]
+    fn the_board_heap_resolves_against_the_nano_ros_root_not_the_cwd() {
+        let t = root_with_board(Some(65536));
+        let d = descriptor(t.path());
+        assert_eq!(
+            board_heap_configure_arg(&d, "heapy", Some(t.path())),
+            "-DNROS_BOARD_HEAP_BUDGET_BYTES=65536"
+        );
+        assert_eq!(board_heap_budget(&d, "heapy", Some(t.path())), Some(65536));
+    }
+
+    /// Negative control: a board that states no heap hands the configure an
+    /// EMPTY value -- "nobody said" stays refused (RFC-0100 D6), never a
+    /// default -- and an empty value rather than no argument, because a `-D`
+    /// is a cache entry and its absence would keep the last build's heap. With
+    /// no root to resolve a relative source against, empty too: never a read
+    /// relative to whatever the cwd happens to be.
+    #[test]
+    fn a_board_with_no_heap_clears_the_configure_value() {
+        let t = root_with_board(None);
+        let d = descriptor(t.path());
+        assert_eq!(
+            board_heap_configure_arg(&d, "heapy", Some(t.path())),
+            "-DNROS_BOARD_HEAP_BUDGET_BYTES="
+        );
+        let t2 = root_with_board(Some(4096));
+        let d2 = descriptor(t2.path());
+        assert_eq!(
+            board_heap_configure_arg(&d2, "heapy", None),
+            "-DNROS_BOARD_HEAP_BUDGET_BYTES="
+        );
     }
 }
