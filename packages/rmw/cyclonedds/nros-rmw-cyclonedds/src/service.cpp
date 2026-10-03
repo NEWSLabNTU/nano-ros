@@ -463,16 +463,22 @@ int32_t build_wire_with_header(const uint8_t* user_bytes, size_t user_len, const
 //
 // Returns user-payload length (incl. 4-byte encap) on success, or
 // negative error.
+//
+// Issue 1632 — on BUFFER_TOO_SMALL, `*refused` (when non-null) gets the user
+// payload's size: what the caller's buffer would have needed.
 int32_t split_wire_header(const uint8_t* wire_cdr, size_t wire_len,
                           const dds_topic_descriptor_t* payload_desc, RequestId* out_id,
-                          uint8_t* user_out, size_t user_cap) {
+                          uint8_t* user_out, size_t user_cap, size_t* refused = nullptr) {
     if (wire_len < kEncapLen + kHeaderBytes) return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
     if (out_id != nullptr) {
         out_id->guid = static_cast<uint64_t>(get_le64(wire_cdr + kEncapLen));
         out_id->seq = get_le64(wire_cdr + kEncapLen + kGuidBytes);
     }
     size_t user_len = wire_len - kHeaderBytes; // (encap stays + user fields)
-    if (user_len > user_cap) return wire_status(NROS_RMW_RET_BUFFER_TOO_SMALL);
+    if (user_len > user_cap) {
+        if (refused != nullptr) *refused = user_len;
+        return wire_status(NROS_RMW_RET_BUFFER_TOO_SMALL);
+    }
     // Encap.
     std::memcpy(user_out, wire_cdr, kEncapLen);
     // User fields.
@@ -547,7 +553,11 @@ rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* desc,
 // is no round trip now, so `Fibonacci_GetResult_Response_` needs no hand-built
 // struct and `_SendGoal_*` needs no memcpy branch. `ros2_action_e2e` is what
 // makes their removal checkable — both directions against a real ROS 2 peer.
-int32_t take_typed_wire(dds_entity_t reader, uint8_t* out_buf, size_t out_cap) {
+//
+// Issue 1632 — on BUFFER_TOO_SMALL, `*refused_total` (when non-null) gets the
+// serdata's whole wire size; the sample is consumed either way.
+int32_t take_typed_wire(dds_entity_t reader, uint8_t* out_buf, size_t out_cap,
+                        size_t* refused_total = nullptr) {
     if (reader <= 0 || out_buf == nullptr) return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
 
     struct ddsi_serdata* d = nullptr;
@@ -566,6 +576,7 @@ int32_t take_typed_wire(dds_entity_t reader, uint8_t* out_buf, size_t out_cap) {
     const uint32_t total = ddsi_serdata_size(d);
     if (out_cap < total) {
         ddsi_serdata_unref(d);
+        if (refused_total != nullptr) *refused_total = total;
         return wire_status(NROS_RMW_RET_BUFFER_TOO_SMALL);
     }
     ddsi_serdata_to_ser(d, 0, total, out_buf);
@@ -850,8 +861,14 @@ rmw_ret_t service_destroy(rmw_service_t* server) {
     return rc < 0 ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
 }
 
+// Issue 1632 — the caller-visible size a refused wire sample needed: the wire
+// carries the 16-byte request header the caller never sees.
+static size_t user_len_of_wire(size_t wire_total) {
+    return wire_total > kHeaderBytes ? wire_total - kHeaderBytes : 0;
+}
+
 static int32_t service_take_request_len(const rmw_service_t* server, uint8_t* buf, size_t buf_len,
-                                        int64_t* seq_out) {
+                                        int64_t* seq_out, size_t* refused) {
     if (server == nullptr || server->backend_data == nullptr || buf == nullptr) {
         return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
     }
@@ -882,12 +899,16 @@ static int32_t service_take_request_len(const rmw_service_t* server, uint8_t* bu
     }
 
     uint8_t wire[kWireScratch];
-    int32_t wire_len = take_typed_wire(state->reader, wire, sizeof(wire));
+    size_t wire_total = 0;
+    int32_t wire_len = take_typed_wire(state->reader, wire, sizeof(wire), &wire_total);
+    if (wire_is_status(wire_len) && wire_status_code(wire_len) == NROS_RMW_RET_BUFFER_TOO_SMALL) {
+        *refused = user_len_of_wire(wire_total);
+    }
     if (wire_is_status(wire_len) || wire_len == 0) return wire_len;
 
     RequestId id{};
-    int32_t user_len =
-        split_wire_header(wire, static_cast<size_t>(wire_len), state->req_desc, &id, buf, buf_len);
+    int32_t user_len = split_wire_header(wire, static_cast<size_t>(wire_len), state->req_desc, &id,
+                                         buf, buf_len, refused);
     if (wire_is_status(user_len)) return user_len;
 
     // Commit the slot reserved above with the (writer_guid, seq) pair so the
@@ -917,9 +938,12 @@ rmw_ret_t service_take_request(const rmw_service_t* server, rmw_mut_byte_span_t*
     if (out_len == nullptr || taken == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    int32_t n = service_take_request_len(server, buf, buf_len, seq_out);
+    size_t refused = NROS_RMW_TAKE_LEN_UNKNOWN;
+    int32_t n = service_take_request_len(server, buf, buf_len, seq_out, &refused);
     if (wire_is_status(n)) {
         const rmw_ret_t st = wire_status_code(n);
+        // Issue 1632 — the size the refused request needed.
+        if (st == NROS_RMW_RET_BUFFER_TOO_SMALL) *out_len = refused;
         // An empty queue is NOT a failure: `taken = false` with OK, which is
         // upstream's "nothing was pending" (`rmw.h:2348`).
         //
@@ -1240,7 +1264,8 @@ rmw_ret_t service_send_request_raw(const rmw_client_t* client, rmw_byte_span_t r
 }
 
 static int32_t service_take_response_raw_len(const rmw_client_t* client, uint8_t* reply_buf,
-                                             size_t reply_buf_len, int64_t* seq_out) {
+                                             size_t reply_buf_len, int64_t* seq_out,
+                                             size_t* refused) {
     if (client == nullptr || client->backend_data == nullptr || reply_buf == nullptr) {
         return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
     }
@@ -1283,12 +1308,16 @@ static int32_t service_take_response_raw_len(const rmw_client_t* client, uint8_t
     // one lost. `dds_take` below is the authoritative check, exactly as
     // `take_serialized` is on the subscription side.
     uint8_t wire_rep[kWireScratch];
-    int32_t wlen = take_typed_wire(state->reader, wire_rep, sizeof(wire_rep));
+    size_t wire_total = 0;
+    int32_t wlen = take_typed_wire(state->reader, wire_rep, sizeof(wire_rep), &wire_total);
+    if (wire_is_status(wlen) && wire_status_code(wlen) == NROS_RMW_RET_BUFFER_TOO_SMALL) {
+        *refused = user_len_of_wire(wire_total);
+    }
     if (wire_is_status(wlen)) return wlen;
 
     RequestId got_id{};
     int32_t user_len = split_wire_header(wire_rep, static_cast<size_t>(wlen), state->rep_desc,
-                                         &got_id, reply_buf, reply_buf_len);
+                                         &got_id, reply_buf, reply_buf_len, refused);
     if (wire_is_status(user_len)) return user_len;
 
     // Issue 0778 — accept a reply for ANY request this client is waiting on,
@@ -1322,9 +1351,12 @@ rmw_ret_t service_take_response(const rmw_client_t* client, rmw_mut_byte_span_t*
     if (out_len == nullptr || taken == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    int32_t n = service_take_response_raw_len(client, reply_buf, reply_buf_len, seq_out);
+    size_t refused = NROS_RMW_TAKE_LEN_UNKNOWN;
+    int32_t n = service_take_response_raw_len(client, reply_buf, reply_buf_len, seq_out, &refused);
     if (wire_is_status(n)) {
         const rmw_ret_t st = wire_status_code(n);
+        // Issue 1632 — the size the refused reply needed.
+        if (st == NROS_RMW_RET_BUFFER_TOO_SMALL) *out_len = refused;
         // An empty queue and a would-block are NOT failures: report
         // `taken = false` with OK, which is what the shim's contract says.
         if (st == NROS_RMW_RET_NO_DATA || st == NROS_RMW_RET_WOULD_BLOCK) {
