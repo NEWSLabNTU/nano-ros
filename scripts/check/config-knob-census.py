@@ -108,8 +108,9 @@ KNOB_CLASS = {
     # is for. Default 10 is ROS 2's own `rmw_qos_profile_default` KEEP_LAST(10).
     "NROS_PUBSUB_QOS_DEPTH": (
         "sizing",
-        "the arena's per-subscription history depth; the derived per-endpoint "
-        "form is phase-412 W3's NROS_DECLARED_MAX_QOS_DEPTH, which this outranks",
+        "the arena's per-subscription history depth; the derived form is the "
+        "sizing descriptor's max_subscription_depth (issue 1655), which this "
+        "outranks",
     ),
     "ZPICO_SUBSCRIBER_BUFFER_SIZE": ("derived", "SMALL_PAYLOADS class (phase-403)"),
     "ZPICO_SUBSCRIBER_LARGE_SIZE": ("derived", "LARGE_PAYLOADS class (phase-403)"),
@@ -291,13 +292,6 @@ KNOB_CLASS = {
         "age monitor rows per executor; counted from the contract's `age_rows` "
         "by the entity inventory, phase-467 W1",
     ),
-    # issue 1130 — the per-kind cell registry capacity the image declares; a
-    # rung below the board's in `nros/build.rs`, never an override.
-    "NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES": ("infra", "a COUNT the resolver passes down, not a knob"),
-    # phase-412 W3 — a DEPTH the resolver passes down. Same category as the
-    # counts beside it: nobody tunes it, it is what the image DECLARED, and the
-    # arena derivation multiplies by it.
-    "NROS_DECLARED_MAX_QOS_DEPTH": ("infra", "a DEPTH the resolver passes down, not a knob"),
     # phase-446 W4 -- the parameter store, from the contract's `params:`. Same
     # category: what the image DECLARED, handed down as a default that every
     # `NROS_MAX_*` rung outranks. The NEEDS facts are not numbers at all: they

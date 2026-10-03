@@ -323,6 +323,27 @@ RETIRED = {
             (":(glob)packages/**/*.rs", r'"NROS_DECLARED_(EXECUTOR_MAX_CBS|EXECUTOR_MAX_SC|EXECUTOR_ACTION_CLIENTS|EXECUTOR_MAX_NODES|EXECUTOR_MAX_MONITORS|EXECUTOR_MAX_AGE_MONITORS|MAX_PUBLISHERS|MAX_SUBSCRIBERS|RMW_SUBSCRIBER_SLOTS)"'),
         ],
     ),
+    # Issue 1655 -- the last two entity-shaped carriers with a field or a
+    # shared rule on the descriptor. `[image] cell_entities` (read first by
+    # `nros/build.rs`) and `nros_sizing_descriptor::max_subscription_depth`
+    # (the guarded MAX, ONE spelling, read first by `nros-node`). Knob diff
+    # with each dropped: ZERO on `examples/workspaces/cpp` native (7 entries),
+    # freertos_posix (Cyclone) and freertos (mps2-an385, zenoh); with the
+    # readers reverted the same drop moves MAX_CELL_ENTITIES and the arena
+    # (depth 1 -> 10, ARENA_SIZE 8192 -> 14444), so the diff can see them.
+    "the cell-capacity and max-QoS-depth `NROS_DECLARED_*` carriers": Retired(
+        what="NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES and NROS_DECLARED_MAX_QOS_DEPTH",
+        resolves_now=(
+            "the sizing descriptor: `[image] cell_entities` (nros/build.rs) and "
+            "`max_subscription_depth` over the `[[endpoint]]` depths (nros-node)"
+        ),
+        wave="issue 1655",
+        forbid=[
+            (":(glob)cmake/**/*.cmake", r"NROS_DECLARED_(RUNTIME_MAX_CELL_ENTITIES|MAX_QOS_DEPTH)[;=]"),
+            (":(glob)zephyr/**/*.cmake", r"NROS_DECLARED_(RUNTIME_MAX_CELL_ENTITIES|MAX_QOS_DEPTH)[;=]"),
+            (":(glob)packages/**/*.rs", r'"NROS_DECLARED_(RUNTIME_MAX_CELL_ENTITIES|MAX_QOS_DEPTH)"'),
+        ],
+    ),
     "the `nros-metadata.json` `entities` reader": Retired(
         what="the Rust reader of a component's declared entities in nros-metadata.json",
         resolves_now=(
@@ -485,6 +506,14 @@ _CONTRACTLESS = (
     "where a descriptor is named its own field ranks first"
 )
 
+_CONTRACTLESS_FEATURE = (
+    "a FEATURE token (`execution.features`: param / lifecycle services) that "
+    "exists for a model with no wiring, i.e. for the contract-less images that "
+    "write no descriptor by design (RFC-0100 D4, ruled 2026-10-03, issue "
+    "1655); a field would repeat it on the images that have one and retire it "
+    "on none"
+)
+
 _BOARD_CAPACITY = (
     "a BOARD capacity (RFC-0100 D1 target fact), deliberately absent from the "
     "descriptor -- the contract states the NEED, never the size"
@@ -522,26 +551,23 @@ KEPT = {
     "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": Kept(1649, _D12_UNMEASURED),
     # ---- the entity counts -------------------------------------------------
     # Issue 1655 gave each its `[image]` field (or a reader of an existing
-    # one) and every one re-measured zero-diff; `MAX_CELL_ENTITIES` alone
-    # still lacks its reader.
-    "NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES": Kept(
-        1655,
-        "`[image] cell_entities` states it since issue 1655's ruling, and "
-        "`nros/build.rs` does not read it: that crate has no "
-        "`nros-sizing-descriptor` build-dependency, and adding one moves every "
-        "leaf lockfile that resolves `nros`; measured under D12 dropping it "
-        "moves MAX_CELL_ENTITIES 1 -> 8"
-    ),
+    # one); the last, MAX_CELL_ENTITIES, is RETIRED above.
     # phase-467 W1 (issue 1471) -- the contract-monitor row counts: counts of
     # CONTRACT rows, not of endpoints, so they are `[image] monitor_rows` /
     # `age_monitor_rows` (issue 1655), never an `[[endpoint]]` column.
     # ---- the queryable raw inputs ----------------------------------------
+    # Issue 1655 -- `[image] service_server_queryables` states it and both
+    # consumers (`nros-zpico-build`, `nros-rmw-zenoh`) read it FIRST; knob diff
+    # with the carrier dropped ZERO on freertos (mps2-an385, zenoh) and on
+    # freertos_posix. What keeps it is the ROAD, not a field.
     "NROS_DECLARED_SERVICE_SERVERS": Kept(
-        1655,
-        "no consumer reads the application service-server count OFF the "
-        "descriptor yet -- `queryable_floor_from` takes it from this carrier "
-        "alone, so the descriptor stating it buys nothing until a consumer "
-        "ranks it first the way `transient_local_publishers` does",
+        1649,
+        "the descriptor field and its descriptor-first readers landed (issue "
+        "1655) and the cmake knob diff is ZERO, but the CARGO-LEAF road also "
+        "carries this fact (`leaf_entity_env::leaf_facts` writes it into the "
+        "leaf's `nros-cargo.toml`), and that road was not measured with it "
+        "dropped -- retire both producers together after a cargo leaf with a "
+        "service server is diffed",
     ),
     "NROS_DECLARED_TL_PUBLISHERS": Kept(
         1649,
@@ -555,12 +581,15 @@ KEPT = {
     # it off the descriptor (`transient_local_retain_demand`) already.
     "NROS_DECLARED_TL_RETAIN_BYTES": Kept(1649, _D12_UNMEASURED),
     "NROS_DECLARED_NODES": ByDesign(100, "D4", _CONTRACTLESS),
-    "NROS_DECLARED_INFRA_QUERYABLES": Kept(
-        1655,
-        "a FEATURE token from `execution.features`, not a count -- the schema "
-        "has no field of that kind; measured under D12 dropping it un-declares "
-        "the zenoh queryable table (10 -> 32 slots)",
-    ),
+    # Issue 1655 ruling: the feature token is a MODEL-only fact. It exists
+    # for a model with no wiring at all (`declared_infra` is always emitted,
+    # contract or not), and "no stated entity fact => no file" (RFC-0100 D4,
+    # 2026-10-03) means exactly those images have no descriptor -- so the
+    # carrier is the delivery there by design, and a descriptor field would
+    # duplicate it on the images that have one without retiring it anywhere.
+    # Measured: dropping it on the native configure moves ZPICO_MAX_QUERYABLES
+    # 6 -> 23 (the table becomes undeclared).
+    "NROS_DECLARED_INFRA_QUERYABLES": ByDesign(100, "D4", _CONTRACTLESS_FEATURE),
     # ---- the parameter store (was 1408, then 1407; the road is D12's) ----
     "NROS_DECLARED_MAX_PARAMETERS": Kept(1649, _D12_UNMEASURED),
     "NROS_DECLARED_MAX_PARAM_NAME_LEN": Kept(1649, _D12_UNMEASURED),
@@ -593,15 +622,9 @@ KEPT = {
         "measure a west image first"
     ),
     # ---- QoS depth ---------------------------------------------------------
-    # Its sibling `NROS_ENTITY_DECLARED_DEPTHS` is deliberately UNIONED with
-    # the descriptor rather than ranked (phase-454 W10/W13).
-    "NROS_DECLARED_MAX_QOS_DEPTH": Kept(
-        1655,
-        "the reduction it carries (the MAX, guarded on every subscription "
-        "having declared) is a consumer-side restatement nothing shares "
-        "today; measured under D12 dropping it moves the arena's budgeted "
-        "depth 1 -> 10 (36,488 -> 44,768 B)",
-    ),
+    # `NROS_DECLARED_MAX_QOS_DEPTH` is RETIRED above (issue 1655). Its sibling
+    # `NROS_ENTITY_DECLARED_DEPTHS` is deliberately UNIONED with the descriptor
+    # rather than ranked (phase-454 W10/W13).
 }
 
 

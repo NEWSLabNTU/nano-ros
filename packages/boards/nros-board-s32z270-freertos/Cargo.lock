@@ -195,6 +195,7 @@ dependencies = [
  "nros-rmw",
  "nros-rmw-cffi",
  "nros-serdes",
+ "nros-sizing-descriptor",
  "nros-zephyr-build",
  "paste",
  "portable-atomic",

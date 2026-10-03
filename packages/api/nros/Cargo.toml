@@ -21,6 +21,11 @@ nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
 # ladder crate (a board crate would be a cycle for anything the platform layer
 # reaches; see `nros-platform-config`).
 nros-platform-config = { path = "../../tooling/nros-platform-config" }
+# Issue 1655 -- `[image] cell_entities`, read off the sizing descriptor FIRST.
+# Leaf by construction (serde + toml only) and already in every graph that
+# resolves `nros` (through `nros-node`'s build script), so this adds an edge,
+# never a package.
+nros-sizing-descriptor = { path = "../../tooling/nros-sizing-descriptor" }
 
 [features]
 # phase-361 W3 / issue 0591 — EMPTY; `std` is opt-in per dep-site.

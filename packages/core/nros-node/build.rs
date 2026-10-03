@@ -872,9 +872,22 @@ fn main() {
     // `rmw_qos_profile_default`'s KEEP_LAST(10), which is what a subscription
     // created with no QoS argument actually gets, so an image that says nothing
     // is still sized the way ROS would size it.
+    //
+    // Issue 1655 -- the declared rung is the DESCRIPTOR's
+    // (`nros_sizing_descriptor::max_subscription_depth`: the largest
+    // subscription depth, refused unless every subscription states one). It
+    // replaced the `NROS_DECLARED_MAX_QOS_DEPTH` carrier, which delivered the
+    // same guarded MAX reduced a second time in cmake.
     let pubsub_depth = env_usize(
         "NROS_PUBSUB_QOS_DEPTH",
-        declared_max_qos_depth().unwrap_or(PUBSUB_QOS_DEPTH),
+        sizing
+            .as_ref()
+            .and_then(|d| {
+                nros_sizing_descriptor::max_subscription_depth(d)
+                    .stated()
+                    .copied()
+            })
+            .unwrap_or(PUBSUB_QOS_DEPTH),
     );
     // issue 1319 -- `pubsub_slot_bytes`, not `rx_recv_size`. The two are the
     // same number on every image that states no registration path, so nothing
@@ -1529,22 +1542,6 @@ fn env_opt_usize_laddered(name: &str) -> Option<usize> {
 ///
 /// The front-end keeps winning. Migrating a knob into the ladder must not take
 /// an operator's override away, which is half of this wave's own gate.
-/// phase-412 W3 — the largest QoS depth this image DECLARES, if it declared
-/// every one.
-///
-/// `None` when cmake made no claim, which covers three different situations and
-/// deliberately does not distinguish them here: no entity inventory, a
-/// `refused` depth status, or at least one endpoint that could have stated a
-/// depth and did not. All three mean the same thing to a consumer that sizes
-/// from depth — the table describes a SUBSET of the image — and the remedy is
-/// the same, so the guard lives at the producer where the count is visible.
-fn declared_max_qos_depth() -> Option<usize> {
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_QOS_DEPTH");
-    std::env::var("NROS_DECLARED_MAX_QOS_DEPTH")
-        .ok()
-        .and_then(|v| v.trim().parse().ok())
-}
-
 /// issue 1485 -- the refusal for a STATED `NROS_PARAM_SERVICE_INBOX_BYTES=0`.
 ///
 /// RFC-0065 D2: refuse, and name the remedy. `nros-rmw-zenoh/build.rs` reads

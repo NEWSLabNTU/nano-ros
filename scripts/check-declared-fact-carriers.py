@@ -216,6 +216,14 @@ _RETIRED_ONTO_DESCRIPTOR = NotCarried(
     "retired onto the sizing descriptor's `[image]` fields (issue 1649); "
     "its consumer reads the descriptor first")
 
+# Issue 1655 -- the per-kind cell capacity followed the nine onto the
+# descriptor (`[image] cell_entities`). Quoted from the producer, as above.
+_RETIRED_CELLS = NotCarried(
+    _FACTS,
+    "the per-kind cell registry capacity (issue 1130's",
+    "retired onto the sizing descriptor's `[image] cell_entities` (issue "
+    "1655); `nros/build.rs` reads it first")
+
 FACT_DISPOSITION = {
     # ---- the entity inventory's counts -----------------------------------
     "NROS_DERIVED_EXECUTOR_MAX_CBS": {
@@ -276,7 +284,8 @@ FACT_DISPOSITION = {
             "fact on the declared road; a CONFIG_ spelling would be a second "
             "rung for one number"),
         "sidecar": ("NROS_RUNTIME_MAX_CELL_ENTITIES",),
-        "declared": ("NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES",),
+        # Issue 1655 -- `[image] cell_entities`, read first by `nros/build.rs`.
+        "declared": _RETIRED_CELLS,
     },
     "NROS_DERIVED_MAX_QUERYABLES": {
         "resolver": ("NROS_RESOLVED_NROS_MAX_QUERYABLES",
@@ -520,7 +529,8 @@ ROAD_PAIRS = {
 DESCRIPTOR_TWINS = {
     _carried(e, "sidecar")[0]
     for e in FACT_DISPOSITION.values()
-    if len(_carried(e, "sidecar")) == 1 and e["declared"] is _RETIRED_ONTO_DESCRIPTOR
+    if len(_carried(e, "sidecar")) == 1
+    and any(e["declared"] is r for r in (_RETIRED_ONTO_DESCRIPTOR, _RETIRED_CELLS))
 }
 
 # Facts with no leaf-road twin, each for a stated reason.
@@ -557,12 +567,6 @@ ROAD_UNPAIRED = {
         "every cmake / Zephyr west / NuttX entry when 1378 measured the gap, "
         "and since phase-454 W14 / phase-457 W0.b a Zephyr west entry and a "
         "multi-entry cmake configure (issue 1407).",
-    "NROS_DECLARED_MAX_QOS_DEPTH":
-        "the largest DECLARED QoS depth (phase-412 W3), reduced at the "
-        "producer from the inventory's `type|topic=depth` triples and only "
-        "when every endpoint stated one. No inventory publishes it as an "
-        "NROS_DERIVED_* fact and no leaf road carries it; nros-node's build "
-        "script reads it to size from depth.",
     "NROS_DECLARED_QOS_MODELS": "QoS wiring, not a pool size.",
     "NROS_DECLARED_QOS_PENDING": "QoS wiring, not a pool size.",
     "NROS_DECLARED_QOS_SCHEDULED": "QoS wiring, not a pool size.",

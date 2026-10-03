@@ -221,7 +221,13 @@ fn resolve_queryable_default() -> QueryableSizing {
     // accident (they parse and fall back) and two PANIC on one; routing them
     // together is what stops the next carrier inheriting whichever half its
     // author copied.
-    let declared = declared_fact("NROS_DECLARED_SERVICE_SERVERS");
+    // Issue 1655 -- the application's count, DESCRIPTOR FIRST: `[image]
+    // service_server_queryables` is the same derivation the carrier delivers,
+    // and `nros-rmw-zenoh` reads it in the same order, so the table and the
+    // builtin share it is subtracted from agree on one number.
+    let declared = described_service_server_queryables()
+        .map(|n| n.to_string())
+        .or_else(|| declared_fact("NROS_DECLARED_SERVICE_SERVERS"));
     let infra = declared_fact("NROS_DECLARED_INFRA_QUERYABLES");
     let nodes = declared_fact("NROS_DECLARED_NODES");
     let tl = transient_local_publishers();
@@ -314,6 +320,15 @@ fn transient_local_publishers() -> usize {
             bound
         }
     }
+}
+
+/// Issue 1655 -- `[image] service_server_queryables` from the named
+/// descriptor, or `None` (no descriptor, or the field refused/absent -- the
+/// carrier answers then). A named descriptor that cannot be read panics, as
+/// [`transient_local_publishers`] does one function up.
+fn described_service_server_queryables() -> Option<usize> {
+    let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"))?;
+    desc.image.service_server_queryables().stated().copied()
 }
 
 /// Issue 1378 — the DECLARED road's transient-local count, for an image with no

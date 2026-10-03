@@ -294,7 +294,6 @@ SIZING_KNOBS = {
     "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": "the declared rung of the same (issue 1233)",
     "NROS_SUBSCRIBER_BUFFER_SIZE": "the arena's pub/sub region",
     "NROS_PUBSUB_QOS_DEPTH": "the arena's pub/sub region depth (issue 1190)",
-    "NROS_DECLARED_MAX_QOS_DEPTH": "the declared rung of that depth",
     "NROS_ENTITY_COUNT_SUBSCRIPTION": "the per-kind arena sum (phase-403)",
     "NROS_ENTITY_COUNT_TIMER": "the per-kind arena sum",
     "NROS_ENTITY_COUNT_SERVICE_SERVER": "the per-kind arena sum",

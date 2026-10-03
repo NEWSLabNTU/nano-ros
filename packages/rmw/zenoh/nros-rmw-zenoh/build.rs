@@ -340,7 +340,7 @@ fn main() {
     // resolver road carried no application count at all, so an image whose
     // contract declares the parameter family built its builtin table empty
     // and every parameter service fell through to a user-service ring.
-    let declared_app_queryables = match declared_app_queryables(tl_demand) {
+    let declared_app_queryables = match declared_app_queryables(sizing.as_ref(), tl_demand) {
         Some(n) => format!("Some({n})"),
         None => "None".to_string(),
     };
@@ -523,9 +523,14 @@ fn declared_action_queryables(desc: Option<&SizingDescriptor>) -> usize {
 /// the per-kind counts. Same rule as above: the subtraction is taken against
 /// the number the table was sized from. Read SECOND, because an image that
 /// has the CMake road's carriers sized its table from them.
-fn declared_app_queryables(tl: Option<usize>) -> Option<usize> {
+///
+/// Issue 1655 -- the application's count is read DESCRIPTOR FIRST (`[image]
+/// service_server_queryables`, the derivation the carrier delivers), in the
+/// same order `nros-zpico-build` reads it, for the subtraction rule above.
+fn declared_app_queryables(desc: Option<&SizingDescriptor>, tl: Option<usize>) -> Option<usize> {
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_TL_PUBLISHERS");
-    match declared_usize("NROS_DECLARED_SERVICE_SERVERS") {
+    let described = desc.and_then(|d| d.image.service_server_queryables().stated().copied());
+    match described.or_else(|| declared_usize("NROS_DECLARED_SERVICE_SERVERS")) {
         Some(app) => Some(
             app + tl
                 .or_else(|| declared_usize("NROS_DECLARED_TL_PUBLISHERS"))

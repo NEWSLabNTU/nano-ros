@@ -616,98 +616,14 @@ if ! nros_grep_q "NROS_DERIVED_EXECUTOR_MAX_CBS 19" "$KEEP"; then
 fi
 
 # ---------------------------------------------------------------------------
-log_header "the declared QoS DEPTH crosses the lane boundary (phase-412 W3)"
-
-# The inventory publishes the depth table and, before this, nothing read it:
-# `nros-node/build.rs` said so itself — "reach cmake and stop there, so this
-# lane has nothing better to read yet". `_nros_qos_depth_env` in
-# `cmake/NanoRosEntityFacts.cmake` is the crossing, and it is tested beside the
-# writer.
-#
-# The GUARDS are the whole safety argument and each gets a case. A table over
-# the endpoints that happened to be annotated sizes an image from a subset of
-# itself, so one unannotated endpoint must mean "no answer" — the max would
-# otherwise be a lower bound presented as a bound, which is the under-size
-# direction the arena cannot survive.
-#
-# phase-454 W2 — the count guarding this is `..._COUNT_SUBSCRIPTION`, not the
-# broad one, so `depth_env`'s second argument writes that name. The list is the
-# SUBSCRIPTION depths and a guard must range over the same set as the thing it
-# guards; and since a publisher can now declare a depth, a guard on the broad
-# count would let a publisher's contract resize a subscription. The last case
-# below is that regression: publisher facts in the fragment, no effect here.
+# The declared QoS DEPTH's cmake crossing (`_nros_qos_depth_env`, phase-412 W3)
+# is RETIRED (issue 1655): the guarded MAX is one function in the descriptor
+# crate, `nros_sizing_descriptor::max_subscription_depth`, and its cases --
+# the maximum, one silent subscription refusing the whole answer, a publisher
+# neither entering nor suppressing it, no rows at all -- are that crate's unit
+# test `max_subscription_depth_is_the_guarded_max_over_subscriptions`. The
+# gate `check-knob-single-reader` refuses the carrier coming back.
 FACTS="$PROJECT_ROOT/cmake/NanoRosEntityFacts.cmake"
-
-depth_env() {
-    # depth_env <status> <undeclared-subscription-count> <depths…>
-    #
-    # NROS_DEPTH_ENV_EXTRA, when set, is appended to the fragment verbatim —
-    # used to put publisher-side facts in it and assert they change nothing.
-    local dir="$TEST_TMPDIR/depth"
-    rm -rf "$dir"; mkdir -p "$dir/nros"
-    {
-        printf 'set(NROS_ENTITY_DECLARED_DEPTH_STATUS "%s")\n' "$1"
-        [ "$2" != "-" ] && printf 'set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION %s)\n' "$2"
-        shift 2
-        [ "$#" -gt 0 ] && printf 'set(NROS_ENTITY_DECLARED_DEPTHS "%s")\n' "$*"
-        [ -n "${NROS_DEPTH_ENV_EXTRA:-}" ] && printf '%s\n' "$NROS_DEPTH_ENV_EXTRA"
-    } > "$dir/nros/entity_inventory.cmake"
-    cat > "$dir/run.cmake" <<EOF
-include("$MODULE")
-include("$FACTS")
-_nros_qos_depth_env(_out)
-message(STATUS "DEPTH=\${_out}")
-EOF
-    # `cmake -P` resolves CMAKE_BINARY_DIR to the CWD, and the carrier finds the
-    # fragment through `nros_entity_inventory_knobs_file()`.
-    (cd "$dir" && cmake -P run.cmake 2>&1) | sed -n 's/^-- DEPTH=//p'
-}
-
-_want() {
-    local label="$1" want="$2" got="$3"
-    if [ "$got" != "$want" ]; then
-        fail "depth: $label -- wanted '${want:-<empty>}', got '${got:-<empty>}'"
-    fi
-    check
-}
-
-_want "a fully declared table crosses as its MAXIMUM" \
-    "NROS_DECLARED_MAX_QOS_DEPTH=10" \
-    "$(depth_env resolved 0 'a|/t1=1;b|/t2=10;c|/t3=5')"
-_want "a single endpoint at depth 1 crosses as 1" \
-    "NROS_DECLARED_MAX_QOS_DEPTH=1" \
-    "$(depth_env resolved 0 'a|/t1=1')"
-# The guard the producer's own doc demands.
-_want "ONE undeclared endpoint carries nothing" \
-    "" \
-    "$(depth_env resolved 3 'a|/t1=1;b|/t2=10')"
-_want "a refused status carries nothing" \
-    "" \
-    "$(depth_env refused 0 'a|/t1=1')"
-_want "no depth table carries nothing" \
-    "" \
-    "$(depth_env resolved 0)"
-_want "a missing undeclared COUNT carries nothing" \
-    "" \
-    "$(depth_env resolved - 'a|/t1=1')"
-# A topic containing `=` must not shift the depth field.
-_want "the depth is what follows the LAST '='" \
-    "NROS_DECLARED_MAX_QOS_DEPTH=7" \
-    "$(depth_env resolved 0 'a|/odd=name=7')"
-
-# phase-454 W2 — a PUBLISHER's declaration is invisible here, in both
-# directions. Nothing prices a publisher's depth yet, so a publisher that
-# declares must not change a subscription number, and a publisher that stays
-# SILENT must not suppress one. The second half is the defect issue 1227
-# measured for `subs_arena` and this function was the last consumer still
-# carrying: the broad count is 18 on the reference island against 11
-# subscriptions that all declare.
-_want "a declaring publisher does not enter the subscription maximum" \
-    "NROS_DECLARED_MAX_QOS_DEPTH=1" \
-    "$(NROS_DEPTH_ENV_EXTRA=$'set(NROS_ENTITY_DECLARED_DEPTHS_PUBLISHER "p|/t9=50")\nset(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER 0)\nset(NROS_ENTITY_UNDECLARED_DEPTH_COUNT 0)' depth_env resolved 0 'a|/t1=1')"
-_want "a silent publisher does not suppress the subscription maximum" \
-    "NROS_DECLARED_MAX_QOS_DEPTH=1" \
-    "$(NROS_DEPTH_ENV_EXTRA=$'set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER 4)\nset(NROS_ENTITY_UNDECLARED_DEPTH_COUNT 4)' depth_env resolved 0 'a|/t1=1')"
 
 # ---------------------------------------------------------------------------
 log_header "a PARTIAL params: declaration is a refusal, not a default (phase-460 W2)"

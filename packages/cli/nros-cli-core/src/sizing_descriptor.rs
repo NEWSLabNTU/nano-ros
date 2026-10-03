@@ -1310,6 +1310,13 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
                     }
                 }
             }
+            // Issue 1655 — the application's service-server queryables, on
+            // EVERY road `derive` answers, the leaf declaration's included:
+            // unlike the counts above, a carrier already delivers this one
+            // there (`nros ws entity-facts --leaf` -> NROS_DECLARED_SERVICE_SERVERS,
+            // issue 1378), so stating it takes a fact over rather than
+            // introducing one.
+            img.set_service_server_queryables(Some(k.local_query_servers));
             // Issue 1577 — the per-kind counts the executor arena's model sums,
             // from the SAME `per_kind` the cmake road emits as
             // `NROS_ENTITY_COUNT_*`. `derive` seeds every kind at zero, so a
@@ -1332,7 +1339,8 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
         }
         Some(Derivation::Refused { reason }) => {
             img.refuse("node_count", reason.clone())
-                .refuse("subscriber_count", reason.clone());
+                .refuse("subscriber_count", reason.clone())
+                .refuse("service_server_queryables", reason.clone());
             for field in ENTITY_COUNT_FIELDS
                 .iter()
                 .map(|(f, _)| *f)
@@ -1345,7 +1353,8 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
             let why = "the entity inventory did not compose for this entry, so the image's \
                        node, subscriber and entity counts are not known -- absence is not zero";
             img.refuse("node_count", why)
-                .refuse("subscriber_count", why);
+                .refuse("subscriber_count", why)
+                .refuse("service_server_queryables", why);
             for field in ENTITY_COUNT_FIELDS
                 .iter()
                 .map(|(f, _)| *f)
@@ -2574,6 +2583,10 @@ pub fn to_cmake(desc: &SizingDescriptor) -> String {
         (
             "NROS_SIZING_IMAGE_CELL_ENTITIES",
             desc.image.cell_entities(),
+        ),
+        (
+            "NROS_SIZING_IMAGE_SERVICE_SERVER_QUERYABLES",
+            desc.image.service_server_queryables(),
         ),
     ] {
         emit_cmake_fact(&mut out, var, &f);
@@ -4761,6 +4774,10 @@ mod tests {
         assert_eq!(img.publisher_count().stated(), Some(&k.max_publishers));
         assert_eq!(img.sched_context_count().stated(), Some(&k.max_sc));
         assert_eq!(img.cell_entities().stated(), Some(&k.max_cell_entities));
+        assert_eq!(
+            img.service_server_queryables().stated(),
+            Some(&k.local_query_servers)
+        );
         // The timer has no row, and still counts: the reason it is a field.
         assert_eq!(desc.endpoints.len(), 1);
         assert_eq!(k.max_cbs, 2, "a subscription and a timer each take a slot");
@@ -4785,7 +4802,9 @@ mod tests {
         ] {
             assert!(f.refusal().unwrap().contains("1655"), "{f:?}");
         }
-        // ...while the counts that road already stated stay stated.
+        // ...while the counts that road already stated stay stated -- and
+        // the service-server queryables, whose carrier DOES reach that road.
         assert!(desc.image.node_count().is_stated());
+        assert!(desc.image.service_server_queryables().is_stated());
     }
 }
