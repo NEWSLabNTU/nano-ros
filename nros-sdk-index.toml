@@ -2245,6 +2245,11 @@ components = ["rustfmt", "miri", "rust-src", "llvm-tools"]
 [rust.target.thumbv7em-hf]
 triple = "thumbv7em-none-eabihf"
 
+# issue 1672 — Zephyr native_sim. Picked by zephyr-lang-rust at build time,
+# so it was declared nowhere and provisioned only by `scripts/zephyr/setup.sh`.
+[rust.target.x86_64-none]
+triple = "x86_64-unknown-none"
+
 [rust.target.thumbv7m]
 triple = "thumbv7m-none-eabi"
 

@@ -108,3 +108,12 @@ thumbv8m.main-none-eabihf       rustup
 # native_sim 32-bit: `CONFIG_64BIT=n` on the POSIX arch selects this, and the
 # host-triple branch beside it needs no row (it is whatever the host already is).
 i686-unknown-linux-gnu          rustup
+# issue 1672 — Zephyr native_sim. zephyr-lang-rust picks this triple for the
+# board at BUILD time, so no board descriptor, toolchain file or cargo config
+# in this tree DECLARED it, and it never had a row: it reached hosts only
+# through `scripts/zephyr/setup.sh`'s `rustup target add`, onto whatever
+# toolchain was active. Once the root pin moved off `stable` (issue 1447) a
+# fresh pinned toolchain had no `core` for it, and every Zephyr native_sim
+# WORKSPACE Rust leaf failed with E0463. The declaring producer is now read:
+# `examples/zephyr/rust-toolchain.toml` lists it.
+x86_64-unknown-none             rustup
