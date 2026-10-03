@@ -246,9 +246,13 @@ void test_composition_keeps_both(uint32_t domain_id) {
 /// Issue 1634 — a user config that enables tracing but names no file must not
 /// cost the session on a target with nowhere to write one.
 ///
-/// Reproduced on the host by running from a directory that cannot be written,
-/// which is what a FreeRTOS image is: Cyclone's default `cyclonedds.log` cannot
-/// be opened, and `dds_create_domain` fails. The CONTROL (the user fragment
+/// Reproduced on the host by running from a directory where Cyclone's default
+/// `cyclonedds.log` cannot be opened for writing, which is what a FreeRTOS
+/// image is, so `dds_create_domain` fails. The name is taken by a DIRECTORY,
+/// not denied by permissions: `fopen(..., "w")` on a directory fails with
+/// EISDIR for every user. A read-only directory did not, because root can write
+/// anywhere: the tier-1 container runs as root, and there the control
+/// passed and the test failed on its own precondition. The CONTROL (the user fragment
 /// alone) must fail that way, or this test is not reaching the path; the
 /// baseline + the same fragment must come up.
 void test_verbosity_without_a_file_keeps_the_session(uint32_t domain_id) {
@@ -260,14 +264,15 @@ void test_verbosity_without_a_file_keeps_the_session(uint32_t domain_id) {
         fail("verbosity: mkdtemp failed");
         return;
     }
+    char blocker[sizeof(ro_dir) + 32];
+    std::snprintf(blocker, sizeof(blocker), "%s/cyclonedds.log", ro_dir);
     char here[1024];
-    if (getcwd(here, sizeof(here)) == nullptr || chmod(ro_dir, 0500) != 0 || chdir(ro_dir) != 0) {
-        fail("verbosity: could not enter a read-only directory");
+    if (getcwd(here, sizeof(here)) == nullptr || mkdir(blocker, 0700) != 0 || chdir(ro_dir) != 0) {
+        fail("verbosity: could not enter a directory whose cyclonedds.log is a directory");
+        (void)rmdir(blocker);
         (void)rmdir(ro_dir);
         return;
     }
-    // Root can write anywhere, which would make the control pass vacuously.
-    const bool can_write = access(".", W_OK) == 0;
 
     const dds_entity_t control = dds_create_domain(domain_id, kUserVerbosityOnly);
     const char* frags[2] = {kEmbeddedCycloneConfig, kUserVerbosityOnly};
@@ -277,15 +282,10 @@ void test_verbosity_without_a_file_keeps_the_session(uint32_t domain_id) {
 
     if (control > 0) (void)dds_delete(control);
     if (fixed > 0) (void)dds_delete(fixed);
-    if (chdir(here) != 0) fail("verbosity: could not leave the read-only directory");
-    (void)chmod(ro_dir, 0700);
+    if (chdir(here) != 0) fail("verbosity: could not leave the test directory");
+    (void)rmdir(blocker);
     (void)rmdir(ro_dir);
 
-    if (can_write) {
-        fail("verbosity: the read-only directory is writable (running as root?) — "
-             "the control cannot reach the defect");
-        return;
-    }
     check(control < 0, "verbosity: CONTROL came up — the user fragment alone did not "
                        "reach the cannot-open path, so this proves nothing");
     check(ok, "verbosity: compose failed");
