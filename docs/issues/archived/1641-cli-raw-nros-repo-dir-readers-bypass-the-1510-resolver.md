@@ -3,7 +3,7 @@ id: 1641
 title: "Seven CLI-side readers take `$NROS_REPO_DIR` raw and bypass issue 1510's
   resolver, so from a linked worktree they act on the PARENT checkout — one
   writes a file into it, and one emits path deps that compile its crates"
-status: open
+status: resolved
 type: bug
 area: [cli, build]
 severity: medium
@@ -75,3 +75,59 @@ four crates without the per-site decisions.
 * A gate, so an eighth raw reader cannot land: the 0196 lesson is that this is
   now the third time the rule was fixed where the symptom was seen.
 * A test in the nested worktree shape for at least the two acting sites.
+
+## Fix — 2026-10-03
+
+Every reader now hands the value to something that puts the caller's OWN
+checkout first, and says which at the site. Per site, because they did not
+share one fix:
+
+| site | now | why not the 1510 resolver, where it is not |
+| --- | --- | --- |
+| `cmd/build.rs` | `nano_ros_root::resolve` | — a read, and a drop-in |
+| `cmd/leaf_system.rs` | `nano_ros_root::resolve` | — a read, and a drop-in |
+| `cmd/ws.rs` `run_central_patch` | `central_patch_root`: explicit > the checkout CONTAINING cwd > env > **error** | it WRITES. `resolve`'s last rung is the installed toolchain's own `share/nano-ros`, and writing there is worse than the bug. The old last resort, "the current directory itself", wrote a patch file into whatever directory the command ran in; it now refuses and names `--nano-ros-path` |
+| `cmd/ws.rs` `resolver_from` | the RUNNING CLI's own checkout moved ABOVE `$NROS_REPO_DIR` | it locates a binary, not an SDK. The order contradicted its own comment ("each worktree carries its own tools, with no cross-tree skew") |
+| `orchestration/sdk_store.rs` | `nano_ros_root::resolve(None, cwd)` | — a read; matters exactly when a worktree tests a toolchain bump |
+| `rosidl-bindgen` `nros_dep_line` | `checkout_for_output`: the checkout CONTAINING the generated crate, else env | it is below `nros-cli-core`; `nros-launcher`'s `find_monorepo_root` is reachable and is the CLI's one marker walk |
+| `nros-orchestration-ir` `launch_resolver_bin` | new `launch_resolver_bin_near(near)`, through `nros_build_paths::reroot_foreign`, called with the launch file | a core crate, so it takes the canonical walker rather than a fourth copy of the marker that `check-inherited-checkout-paths` would not know about. A rerooted checkout with no built resolver falls through to the store rather than borrowing the parent's |
+
+The "severity unknown" row is resolved by the fix rather than by measurement:
+whatever `nros sync` exports to `rosidl-bindgen`, the generated crate's own
+checkout now wins inside a checkout, so the answer no longer depends on it.
+
+### Lockfiles
+
+`rosidl-bindgen` gains `nros-launcher` and `nros-orchestration-ir` gains
+`nros-build-paths`. Both were already in every affected graph, so the 16 locks
+moved by exactly 16 × `+ "nros-build-paths",` and 1 × `+ "nros-launcher",` —
+insertions only, no package added or removed, no version moved. Recorded with
+`just lock-update "" "" <dir>` per lock.
+
+### Tests, in the nested shape
+
+Six new tests, built on disk in the shape agent worktrees actually have
+(`<main>/.claude/worktrees/<id>`, so the parent's root is a strict prefix of the
+worktree's — issue 1391), plus the out-of-tree case each ladder must keep:
+
+* `central_patch_from_a_worktree_does_not_write_into_the_parent`
+* `central_patch_outside_every_checkout_takes_the_named_one_or_refuses`
+* `a_worktree_cli_does_not_borrow_the_parents_resolver`
+* `an_out_of_tree_cli_still_takes_the_named_checkouts_resolver`
+* `a_generated_crate_in_a_worktree_depends_on_the_worktree`
+* `a_copy_out_project_takes_the_named_sdk_or_none`
+
+**Mutation-checked:** reverting each of the three new ladders to env-first fails
+exactly its own nested-worktree test.
+
+### The gate — the class, after four sightings
+
+`check-repo-dir-readers` (fast line): every Rust read of `$NROS_REPO_DIR`
+outside test code must carry a `repo-dir-env-ok: <reason>` comment within three
+lines, naming where the rule is applied. A reason at the site rather than an
+allowlist, because an allowlist does not move when the code does.
+
+Verified against the **pre-fix tree**, not only its selftest: run over
+`origin/main`'s sources it flags all seven readers this issue listed, plus the
+two that were already correct (1510's `nano_ros_root`, 1538's tool) and simply
+stated no reason. After the fix: 6 reads, each naming its rule.

@@ -1200,11 +1200,12 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
 /// measured reason (the leaf's own `.cargo/` would double the board's link
 /// flags until W6 deletes it).
 fn plan_single_package(args: &Args, root: &std::path::Path) -> Result<Option<Vec<ResolvedBuild>>> {
-    let Some(nros_root) = args
-        .nano_ros_path
-        .clone()
-        .or_else(|| std::env::var_os("NROS_REPO_DIR").map(PathBuf::from))
-        .or_else(|| crate::cmd::ws::autodetect_nano_ros_path(root))
+    // issue 1641 — the 1510 ladder, not a hand-spelled one: the checkout the
+    // workspace sits in outranks an inherited `$NROS_REPO_DIR`, which in a
+    // linked worktree names the PARENT. This was `explicit > env > walk-up`,
+    // i.e. the order 1510 fixed in `nano_ros_root` and left standing here.
+    let Some(nros_root) =
+        crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), root)
     else {
         // The workspace road reports a missing checkout in its own words.
         return Ok(None);

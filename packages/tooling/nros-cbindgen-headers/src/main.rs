@@ -141,6 +141,7 @@ fn resolve_root(env_value: Option<PathBuf>, here: &Path) -> PathBuf {
 fn main() -> ExitCode {
     let check = std::env::args().any(|a| a == "--check");
     let root = resolve_root(
+        // repo-dir-env-ok: `resolve_root` applies `nros_build_paths::reroot_foreign` (issue 1538).
         std::env::var_os("NROS_REPO_DIR").map(PathBuf::from),
         &repo_root(),
     );

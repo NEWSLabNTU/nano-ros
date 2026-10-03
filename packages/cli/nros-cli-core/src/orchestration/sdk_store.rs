@@ -760,12 +760,18 @@ fn execute_install(
             // the recipe opts out. `None` (unreadable pin, or opted out) keeps
             // the old behaviour: rustup resolves from the checkout, which may
             // download a second toolchain.
+            //
+            // issue 1641 — WHICH checkout's pin is the 1510 ladder anchored at the
+            // current directory, not `$NROS_REPO_DIR` alone: a linked worktree
+            // inherits that from the PARENT, so a worktree testing a toolchain
+            // bump built its tools with the parent's pin — the one case where
+            // the two pins differ, and so the one case this read exists for.
             let toolchain: Option<String> = if *respect_toolchain {
                 None
             } else {
-                std::env::var("NROS_REPO_DIR")
+                std::env::current_dir()
                     .ok()
-                    .map(PathBuf::from)
+                    .and_then(|cwd| crate::orchestration::nano_ros_root::resolve(None, &cwd))
                     .as_deref()
                     .and_then(workspace_rust_channel)
             };
