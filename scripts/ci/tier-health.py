@@ -165,7 +165,7 @@ class Lane:
 # The per-merge runtime lane. EMPTY, and that is the finding, not an oversight:
 # tier 1 promises runtime evidence every merge and no lane delivers it today.
 # The host-executable group's runtime cells run only in the nightly sweep and in
-# host-tests' POST-merge push lane. `ci-l2` is phase-395 W16 and has not landed.
+# host-tests' nightly lane. `ci-l2` is phase-395 W16 and has not landed.
 #
 # When W16 lands, add its (workflow, job) here — one line. Until then every
 # tier-1 row reports its obligation as ABSENT, which is the true state.
@@ -189,7 +189,7 @@ HOST_TESTS_LANE = Lane(
     "daily",
     "host-tests.yml",
     "nros-tests integration (host)",
-    "host-tests.yml — push to main + cron 0 3, just test-integration",
+    "host-tests.yml — cron 0 3, just test-integration",
 )
 
 # `nightly_token = "zephyr"` does not name a job in the platform matrix: the

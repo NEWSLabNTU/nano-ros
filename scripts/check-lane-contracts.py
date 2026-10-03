@@ -76,7 +76,7 @@ LANES = {
     # per-merge lane, run by `queue.yml` on `merge_group`, so a fixture
     # dependency here would make every merge pay a fixture build. (It used to
     # name build-wide.yml, which ran the SAME recipe on push to main until
-    # phase-413 W1 collapsed the duplicate; that file is dispatch-only now.)
+    # phase-413 W1 collapsed the duplicate; that file is deleted now.)
     "ci::_matrix-build": "cross build + link, NO fixture build (phase-410)",
     "check::fast": "buildless and source-only",
 }

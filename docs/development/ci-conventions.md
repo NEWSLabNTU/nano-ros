@@ -200,3 +200,4 @@ lessons were learned from them; do not go looking for them.
 | `codegen-convention.yml` | `gate.yml`; the lint is `scripts/ci/codegen-invocation-check.sh` |
 | `sdk-index-gate.yml` | `gate.yml`, job `sdk-index` |
 | `host-integration-tests.yml` | `host-tests.yml` |
+| `build-wide.yml` | `queue.yml`'s self-hosted L3 job (`just ci matrix build` per merge group) — deleted 2026-10-03, dispatch-only since phase-413 W1 |

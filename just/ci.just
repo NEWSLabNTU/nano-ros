@@ -337,7 +337,8 @@ _matrix-run:
 # BUILD depth over the tier-2 breadth: cross build + link, no boot. This is
 # what `queue.yml` runs on every merge group (phase-413 W1 — it ran in two
 # places, `queue.yml` and `build-wide.yml`, with different provisioning and
-# opposite verdicts; the latter is dispatch-only now).
+# opposite verdicts; the latter was deleted on 2026-10-03, the queue's L3
+# job having carried the lane per merge group since).
 #
 # It IS `l3` — build depth means build, link, AND verify the link, which is the
 # ELF symbol interrogation plus the heap-free gate that `l3` already does.

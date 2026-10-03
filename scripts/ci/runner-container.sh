@@ -25,8 +25,9 @@
 # root on the host. Guidance that says "containers are insufficient" is talking
 # about jobs that build images or start containers.
 #
-# nano-ros' self-hosted jobs do neither. MEASURED across all four
-# (`build-wide`, `run-matrix`, `queue` L3, `nightly` matrix-nightly): zero
+# nano-ros' self-hosted jobs do neither. MEASURED across all of them
+# (`run-matrix`, `queue` L3, `nightly` matrix-nightly; also the since-deleted
+# `build-wide`): zero
 # references to docker, zero to KVM, zero device mounts. The work is cargo,
 # cmake and QEMU in PURE EMULATION — `-icount shift=auto`, which is
 # deterministic and incompatible with KVM, so not even `/dev/kvm` is wanted.

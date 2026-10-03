@@ -2,7 +2,7 @@
 #
 # CI is BREADTH x DEPTH and only depth is expensive. This is RUN depth over the
 # 1-wise breadth: measured 2026-08-31, an 11 min warm fixture rebuild plus a
-# 9.5 min run, against 46 s for the build-depth lane in `build-wide.yml`.
+# 9.5 min run, against 46 s for the build-depth lane (`queue.yml`'s L3 job).
 #
 # WHY A SCHEDULE AND NOT push(main)
 #

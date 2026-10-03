@@ -1,16 +1,15 @@
 # Host-test tier (CI reorg / phase-253) — the host-side regression net.
 #
 # Folds the two host suites into one tier file (separate jobs, separate
-# concurrency so the cheap unit lane can cancel-on-PR while the heavy
-# integration lane always completes):
+# concurrency, and neither cancels — both must complete):
 #   - unit        : `just test-unit` — workspace unit tests
 #                   (`cargo nextest --workspace --exclude nros-tests`).
 #   - integration : `just test-integration` — the nros-tests crate (QEMU/Zephyr/
 #                   ROS-interop groups excluded), the scaffold/launch/codegen net.
 #
-# Medium/heavy lanes: PR (path-scoped) + nightly + on-demand — NOT every direct
-# push to main (a per-push run was cancelled by the next push within ~10 min and
-# never completed; #57 root). See docs/development/ci-workflow-reorg.md.
+# Nightly (03:00 UTC) + on-demand ONLY — never per push (a per-push run was
+# cancelled by the next push and never completed: #57, and again 26 of 29 push
+# runs to 2026-10-03). See docs/development/ci-workflow-reorg.md.
 #
 # EVERY step that invokes `just` or `nros` sources `./activate.sh` first. That is
 # the repo's activation SSoT and CLAUDE.md's sweep contract; three steps here
@@ -35,22 +34,21 @@ on:
   # (only `check` is required), so running it per-PR bought no safety and cost a
   # concurrent runner on every agent push.
   #
-  # `push` to main rather than schedule-only: this is L2, and bounding a
-  # regression to one commit is most of what post-submit is for. It comes back
-  # pre-merge when a self-hosted runner can actually satisfy it (W6).
-  push:
-    branches: [main]
-    paths:
-      - "packages/**"
-      - "examples/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "justfile"
-      - "just/**"
-      - "cmake/**"
-      - "zephyr/cmake/**"
-      - "nros-sdk-index.toml"
-      - ".github/workflows/host-tests.yml"
+  # SCHEDULE-ONLY since 2026-10-03. It ran on `push` to main to bound a
+  # regression to one commit, and that bought nothing measurable: of the last
+  # 29 push runs, 26 were CANCELLED, 1 failed and 2 passed. The cause is not
+  # `cancel-in-progress` — the integration job already had it `false` — but
+  # GitHub's concurrency model: a group keeps ONE pending run, so each merge
+  # that arrived while a run was in flight replaced the one waiting. With the
+  # merge queue landing faster than this lane's 45-150 min, almost no commit
+  # was ever measured. `run-matrix.yml` moved to a schedule for the same reason;
+  # the header above has said "NOT every direct push" since #57, and the
+  # trigger contradicted it. One run a night that FINISHES is a verdict;
+  # twenty-six that do not are noise.
+  #
+  # Bounding a regression is now a bisect over one day's merges, which the
+  # queue keeps linear. `workflow_dispatch` answers "is THIS commit good" on
+  # demand.
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
@@ -67,15 +65,12 @@ jobs:
     # those and still an eighth of the default it replaces. It has never
     # wedged; this is what a bound costs when nothing is wrong.
     timeout-minutes: 45
-    # Per-job concurrency: the cheap unit lane supersedes its older PR run; the
-    # heavy integration lane below uses its own group (cancel: false).
+    # Per-job concurrency, one group per job; neither cancels.
     concurrency:
       group: host-tests-unit-${{ github.ref }}-${{ github.event_name }}
-      # Was keyed on `pull_request`, which this workflow no longer fires on —
-      # the condition would have been permanently false, silently disabling
-      # superseding. On push-to-main superseding is CORRECT: post-submit asks
-      # "is main good now", so a newer commit's answer subsumes an older one's.
-      cancel-in-progress: ${{ github.event_name == 'push' }}
+      # Schedule + dispatch only, so nothing supersedes: a nightly run that
+      # finishes is the whole point of the lane (see `on:`).
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: read
