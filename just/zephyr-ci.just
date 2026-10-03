@@ -166,7 +166,13 @@ build-fixtures:
     if [ ! -x "$make_bin" ]; then
         make_bin="$(command -v make)"
     fi
-    tool_path="$(nros sdk-path make)/bin:$(nros sdk-path ninja)/bin:$PATH"
+    # issue 1638 — only store dirs that EXIST go first, and a missing pin is
+    # said out loud with the binary PATH resolves instead. The unconditional
+    # prepend was a silent no-op on a host with no store ninja, so the leaf
+    # cached whatever `ninja` PATH named (once, another checkout's).
+    source scripts/lib/sdk-tool-path.sh
+    sdk_tool_prefix="$(nros_sdk_tool_path_prefix make ninja)"
+    tool_path="${sdk_tool_prefix:+$sdk_tool_prefix:}$PATH"
     # Phase 178.J — fail/regenerate Zephyr Rust generated crates before
     # scheduling expensive west builds. Direct `just zephyr build-fixtures`
     # is allowed, so do not rely solely on the root `generate-bindings`

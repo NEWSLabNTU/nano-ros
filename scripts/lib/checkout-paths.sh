@@ -138,6 +138,86 @@ nros_reroot_checkout_path() {
     return 0
 }
 
+# nros_reroot_checkout_pathlist <list> <here>
+#
+# The same rule, applied to each entry of a `:`-separated search list — PATH.
+# Issue 1638: the rule above reached NAMED variables, and a tool resolved by
+# NAME through PATH crossed checkouts anyway. A worktree whose parent shell
+# put `<main>/third-party/ninja` first on PATH configured its Zephyr leaf with
+# `CMAKE_MAKE_PROGRAM=<main>/third-party/ninja/ninja`, and
+# `check-zephyr-workspace-foreign-checkout` (correctly) refused the cache.
+#
+# Per entry:
+#   outside any checkout, or inside THIS one   -> kept, unchanged
+#   inside ANOTHER checkout, counterpart here  -> re-rooted here
+#   inside ANOTHER checkout, no counterpart    -> DROPPED
+#
+# The third row is what a list adds over a single value. A single path is
+# re-rooted even if absent (its consumer reports the missing directory by
+# name), but a PATH entry that does not exist is skipped SILENTLY by every
+# lookup, so re-rooting `<main>/third-party/ninja` to a worktree that has no
+# such directory would be a no-op and leave nothing to report — and keeping
+# the original is exactly the crossing. Dropping it lets the lookup fall
+# through to the next entry, which is the documented fallback (the SDK
+# store's tool, else the system's).
+#
+# Order and empty entries are preserved. The owning-checkout walk is done
+# inline (no subshell) so a 40-entry PATH costs a fork only for the entries a
+# checkout actually owns — `just` evaluates this on every invocation.
+nros_reroot_checkout_pathlist() {
+    _nros_pl_rest="${1:-}"
+    _nros_pl_here="${2:-}"
+    _nros_pl_out=""
+    _nros_pl_first=1
+    while :; do
+        case "$_nros_pl_rest" in
+            *:*)
+                _nros_pl_entry="${_nros_pl_rest%%:*}"
+                _nros_pl_rest="${_nros_pl_rest#*:}"
+                _nros_pl_more=1
+                ;;
+            *)
+                _nros_pl_entry="$_nros_pl_rest"
+                _nros_pl_more=0
+                ;;
+        esac
+        _nros_pl_keep=1
+        _nros_pl_new="$_nros_pl_entry"
+        _nros_pl_d="$_nros_pl_entry"
+        _nros_pl_owned=0
+        case "$_nros_pl_d" in
+            /*)
+                while [ -n "$_nros_pl_d" ] && [ "$_nros_pl_d" != "/" ]; do
+                    if [ -f "$_nros_pl_d/$NROS_CHECKOUT_MARKER" ]; then
+                        _nros_pl_owned=1
+                        break
+                    fi
+                    _nros_pl_d="${_nros_pl_d%/*}"
+                done
+                ;;
+        esac
+        if [ "$_nros_pl_owned" = 1 ] && [ -n "$_nros_pl_here" ]; then
+            _nros_pl_new="$(nros_reroot_checkout_path "$_nros_pl_entry" "$_nros_pl_here")"
+            if [ "$_nros_pl_new" != "$_nros_pl_entry" ] && [ ! -d "$_nros_pl_new" ]; then
+                _nros_pl_keep=0
+            fi
+        fi
+        if [ "$_nros_pl_keep" = 1 ]; then
+            if [ "$_nros_pl_first" = 1 ]; then
+                _nros_pl_out="$_nros_pl_new"
+                _nros_pl_first=0
+            else
+                _nros_pl_out="$_nros_pl_out:$_nros_pl_new"
+            fi
+        fi
+        [ "$_nros_pl_more" = 1 ] || break
+    done
+    printf '%s' "$_nros_pl_out"
+    unset _nros_pl_rest _nros_pl_here _nros_pl_out _nros_pl_first _nros_pl_entry \
+        _nros_pl_more _nros_pl_keep _nros_pl_new _nros_pl_d _nros_pl_owned
+    return 0
+}
+
 # `build-root.sh` ships `nros_build_root` to its `make` leaves with `export -f`,
 # and a leaf gets the function but never sources this file — so the two helpers
 # it now calls have to travel with it. bash-only; every other shell sources
