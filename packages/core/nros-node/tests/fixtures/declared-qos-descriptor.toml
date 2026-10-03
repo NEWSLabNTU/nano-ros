@@ -22,7 +22,7 @@
 # `/chatter` is a question about `/chatter`. If the check ever starts borrowing
 # the sizing guard, this fixture stops producing a table and the lane goes red.
 
-schema_version = 1
+schema_version = 2
 
 [meta]
 entry = "declared-qos-fixture"

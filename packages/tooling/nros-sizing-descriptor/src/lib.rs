@@ -120,8 +120,9 @@ pub fn transient_local_publishers(desc: &SizingDescriptor) -> Fact<usize> {
 ///
 /// Issue 1378 — the rule needed a SECOND caller, and the descriptor is not it.
 /// A cmake / Zephyr / NuttX entry had no sizing descriptor at all when 1378 was
-/// filed, and a Zephyr west entry still names none to cargo (issue 1407), so
-/// the only rows such a road can offer are its DECLARED ENTITIES. Without a row shape
+/// filed (a Zephyr west entry named none to cargo until issue 1407, a
+/// multi-entry configure until RFC-0100 D12), so the only rows such a road
+/// could offer were its DECLARED ENTITIES. Without a row shape
 /// to offer them as, such a caller's only alternative is to re-implement "an
 /// action server has a transient-local `/status` publisher" somewhere else,
 /// which is issue 1025's defect exactly: one number, two derivations, agreeing
@@ -492,7 +493,14 @@ pub fn transient_local_publishers_from_build_env() -> Result<Fact<usize>, Descri
 /// number whose MEANING moved — the rule that took the entity inventory to 5 over
 /// `history = keep_all`. A version this reader does not know is a refusal to
 /// read, never a best effort.
-pub const SCHEMA_VERSION: u32 = 1;
+///
+/// **2** (RFC-0100 Amendment 1, issues 1649 + 1595 — ONE bump for both, as the
+/// amendment requires): `[meta] composed_entries` (D12, the runtime a
+/// multi-entry configure shares) and `[types] max_wire_bound_bytes` (the
+/// closure fact `RX_BUF` is sized from). Both are new KEYS, and the reader
+/// refuses unknown keys, so a version-1 reader handed either would fail on the
+/// key rather than on the version — the bump makes that failure say why.
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Where descriptors live under a build directory.
 pub const SIZING_SUBDIR: &str = "nros/sizing";
@@ -513,6 +521,21 @@ pub const DESCRIPTOR_ENV: &str = "NROS_SIZING_DESCRIPTOR";
 /// independently and two of them drifted.
 pub fn descriptor_path(build_dir: &Path, entry: &str) -> PathBuf {
     build_dir.join(SIZING_SUBDIR).join(format!("{entry}.toml"))
+}
+
+/// RFC-0100 D12 (issue 1649) — `<build_dir>/nros/sizing/runtime/shared.toml`,
+/// the descriptor for the ONE runtime a multi-entry configure links into every
+/// entry.
+///
+/// A sub-DIRECTORY rather than a reserved stem beside the entries: an entry is
+/// a CMake target name, and `[A-Za-z0-9_.+-]` can spell any stem this could
+/// pick, while no target name contains a `/`. So the runtime's file can never
+/// be an entry's, and an entry named `runtime` keeps `runtime.toml`.
+pub fn runtime_descriptor_path(build_dir: &Path) -> PathBuf {
+    build_dir
+        .join(SIZING_SUBDIR)
+        .join("runtime")
+        .join("shared.toml")
 }
 
 /// What went wrong reading one.
@@ -1286,14 +1309,14 @@ mod tests {
         assert!(msg.contains("needed_by:"), "{msg}");
     }
 
-    /// Backward compatibility: `[params]` is purely ADDITIVE, so
-    /// `SCHEMA_VERSION` stays 1 and a descriptor written before it exists parses
-    /// unchanged. Every accessor then answers `Absent`, which is the true
-    /// answer — the file's writer knew nothing about parameters.
+    /// `[params]` is purely ADDITIVE (issue 1408 did not bump the version), so
+    /// a descriptor with no such section parses. Every accessor then answers
+    /// `Absent`, which is the true answer — the file's writer knew nothing
+    /// about parameters.
     #[test]
     fn a_descriptor_with_no_params_section_parses_and_reads_absent() {
         let text = "\
-schema_version = 1
+schema_version = 2
 
 [meta]
 entry = \"legacy\"
@@ -1394,6 +1417,66 @@ basis = \"contract\"
         let msg = err.to_string();
         assert!(msg.contains("schema_version"), "{msg}");
         assert!(msg.contains("nros sync"), "{msg}");
+    }
+
+    /// RFC-0100 Amendment 1 — the ONE bump D12 and issue 1595 share. A
+    /// version-1 file is refused by the version, naming the remedy, rather
+    /// than read with two keys it could not have had.
+    #[test]
+    fn a_version_one_descriptor_is_refused_after_the_d12_bump() {
+        assert_eq!(SCHEMA_VERSION, 2);
+        let text = render(&island()).replace("schema_version = 2", "schema_version = 1");
+        let err = parse(&text, Path::new("t.toml")).unwrap_err();
+        assert!(err.to_string().contains("nros sync"), "{err}");
+    }
+
+    /// D12 rule 4 + issue 1595 — both new keys round-trip, and an entry's own
+    /// descriptor (no composed entries) carries no `composed_entries` line, so
+    /// it reads exactly as before apart from the version.
+    #[test]
+    fn the_runtime_identity_and_the_closure_bound_round_trip() {
+        let mut d = island();
+        d.meta
+            .set_composed_entries(vec!["b_entry".into(), "a_entry".into(), "b_entry".into()]);
+        d.types.set_max_wire_bound_bytes(Some(1496));
+        let text = render(&d);
+        assert!(
+            text.contains("composed_entries = [\"a_entry\", \"b_entry\"]"),
+            "sorted and de-duplicated: {text}"
+        );
+        let back = parse(&text, Path::new("shared.toml")).unwrap();
+        assert_eq!(back.meta.composed_entries(), ["a_entry", "b_entry"]);
+        assert_eq!(back.types.max_wire_bound_bytes().stated(), Some(&1496));
+        assert_eq!(back, {
+            let mut want = d.clone();
+            want.meta
+                .set_composed_entries(vec!["a_entry".into(), "b_entry".into()]);
+            want
+        });
+
+        let mut plain = island();
+        plain
+            .types
+            .refuse("max_wire_bound_bytes", "a/msg/Open is unbounded");
+        let text = render(&plain);
+        assert!(!text.contains("composed_entries"), "{text}");
+        let back = parse(&text, Path::new("p.toml")).unwrap();
+        assert!(back.meta.composed_entries().is_empty());
+        assert_eq!(
+            back.types.max_wire_bound_bytes().refusal(),
+            Some("a/msg/Open is unbounded")
+        );
+    }
+
+    /// The runtime's file can never be an entry's: an entry is a CMake target
+    /// name and none contains a `/`.
+    #[test]
+    fn the_runtime_path_is_disjoint_from_every_entry_path() {
+        let b = Path::new("/b");
+        let rt = runtime_descriptor_path(b);
+        assert_eq!(rt, Path::new("/b/nros/sizing/runtime/shared.toml"));
+        assert_ne!(rt, descriptor_path(b, "runtime"));
+        assert_ne!(rt, descriptor_path(b, "shared"));
     }
 
     #[test]

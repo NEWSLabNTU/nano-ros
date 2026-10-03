@@ -962,6 +962,21 @@ images over-provision, and the build time of N Corrosion imports of the
 runtime. D12 is correct under either answer; the measurement belongs to D8's
 owner.
 
+**Landed 2026-10-03 (issue 1649).** The runtime descriptor lives at
+`<build>/nros/sizing/runtime/shared.toml` — a sub-directory, because an entry
+is a CMake target name and no target name contains a `/`, so it can never be an
+entry's file — with `[meta] entry = "shared-runtime"` and `[meta]
+composed_entries` (schema 2, shared with `[types] max_wire_bound_bytes`). Rule
+2's comparison is keyed on `(component, kind, type)` and NOT on the topic: a
+remap gives one subscription a different topic in each image, so a topic-keyed
+comparison would let `/a` at depth 1 and `/b` at depth 50 never meet and the
+union price the second image at 1. A `history` disagreement refuses `depth`
+too. Measured on `examples/workspaces/cpp` native (seven entries): the per-carrier
+knob diff found six carriers zero-diff and eleven that are issue 1655's; and
+naming the descriptor at all moves ten generated files against the carriers-only
+build, every move a descriptor-first consumer answering from the union where the
+multi-entry road had fallen to a builtin (issue 1649 has the table).
+
 ### D4 revised — producers are named by INPUT; the road is where they are CALLED
 
 D4 says "THREE producers, one composer" in CLAUDE.md and "TWO producers" in the

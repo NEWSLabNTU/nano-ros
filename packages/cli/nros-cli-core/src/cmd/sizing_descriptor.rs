@@ -52,8 +52,21 @@ pub struct SizingDescriptorArgs {
     ///
     /// The model-only road: counts and all four QoS policies are stated, and
     /// every field that needs a leaf's inventories is refused by name.
+    ///
+    /// RFC-0100 D12 (issue 1649) — REPEATABLE with `--composed-entry`: the
+    /// RUNTIME descriptor of a multi-entry configure, composed over every
+    /// model by issue 1600's reduction. Without `--composed-entry` exactly one
+    /// is accepted, because one entry has one model.
     #[arg(long, value_name = "PATH", requires = "build_dir", requires = "entry")]
-    pub from_model: Option<PathBuf>,
+    pub from_model: Vec<PathBuf>,
+
+    /// RFC-0100 D12 (issue 1649) — an entry that links the SHARED runtime this
+    /// descriptor sizes. Repeat once per entry; any one given switches
+    /// `--from-model` to the runtime write: the file lands at
+    /// `<build-dir>/nros/sizing/runtime/shared.toml`, `--entry` names the
+    /// runtime, and these become `[meta] composed_entries`.
+    #[arg(long = "composed-entry", value_name = "NAME", requires = "from_model")]
+    pub composed_entry: Vec<String>,
 
     /// phase-457 W0.b (issues 1407 / 1378) — WRITE a descriptor for a STANDALONE
     /// LEAF, from its own `system.toml` `[[component]] entities`.
@@ -165,8 +178,17 @@ pub const DEFAULT_MODEL_ROAD: &str = "a cmake entry";
 pub const DEFAULT_LEAF_ROAD: &str = "a standalone cmake leaf";
 
 pub fn run(args: SizingDescriptorArgs) -> Result<()> {
-    if let Some(model) = &args.from_model {
-        return write_from_model(&args, model);
+    if !args.composed_entry.is_empty() {
+        return write_runtime_from_models(&args);
+    }
+    match args.from_model.as_slice() {
+        [] => {}
+        [model] => return write_from_model(&args, model),
+        several => eyre::bail!(
+            "{} `--from-model`s and no `--composed-entry`: several models size a SHARED runtime \
+             (RFC-0100 D12), so name the entries that link it",
+            several.len()
+        ),
     }
     if let Some(leaf) = &args.from_leaf {
         return write_from_leaf(&args, leaf);
@@ -216,19 +238,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
         eyre::bail!("`--from-model` needs `--build-dir` and `--entry`");
     };
 
-    let raw = std::fs::read_to_string(model_path)
-        .wrap_err_with(|| format!("reading `{}`", model_path.display()))?;
-    let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)
-        .wrap_err_with(|| format!("parsing `{}`", model_path.display()))?;
-
-    // phase-454 W3 / W7 — the same two refusals the seed makes, and for the same
-    // reason: a descriptor composed from a QoS value this build could not read,
-    // or from a contract a `qos_overrides.*` parameter disagrees with, describes
-    // an image nobody is going to run. FATAL here rather than a refusal reason,
-    // because unlike the seed this producer is reached only when a contract was
-    // authored -- so a broken one is a configuration error, not a normal state.
-    crate::cmd::entity_inventory::reject_unknown_qos_values(&model)?;
-    crate::cmd::entity_inventory::reject_qos_override_divergence(&model)?;
+    let model = load_model(model_path)?;
 
     // phase-457 W0 (issue 1407) — read the metadata BEFORE the contract's own
     // predicate is consulted, so a metadata file the caller named and this
@@ -328,6 +338,155 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
                 args.road.as_deref().unwrap_or(DEFAULT_MODEL_ROAD),
             ),
         })?;
+    println!("{}", written.path.display());
+    for p in observation_inputs {
+        println!("input {}", p.display());
+    }
+    Ok(())
+}
+
+/// Read one SystemModel and apply the two refusals every model producer makes.
+fn load_model(model_path: &std::path::Path) -> Result<ros_launch_manifest_model::SystemModel> {
+    let raw = std::fs::read_to_string(model_path)
+        .wrap_err_with(|| format!("reading `{}`", model_path.display()))?;
+    let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)
+        .wrap_err_with(|| format!("parsing `{}`", model_path.display()))?;
+
+    // phase-454 W3 / W7 — the same two refusals the seed makes, and for the same
+    // reason: a descriptor composed from a QoS value this build could not read,
+    // or from a contract a `qos_overrides.*` parameter disagrees with, describes
+    // an image nobody is going to run. FATAL here rather than a refusal reason,
+    // because unlike the seed this producer is reached only when a contract was
+    // authored -- so a broken one is a configuration error, not a normal state.
+    crate::cmd::entity_inventory::reject_unknown_qos_values(&model)?;
+    crate::cmd::entity_inventory::reject_qos_override_divergence(&model)?;
+    Ok(model)
+}
+
+/// RFC-0100 D12 (issue 1649) — the RUNTIME write: one descriptor for the
+/// shared staticlib a multi-entry cmake configure links into every entry.
+///
+/// ONE REDUCTION, three outputs (D12 rule 1). The inventory is composed by
+/// `cmd::entity_inventory::fold_models_for_shared_runtime` — the call the
+/// entity-inventory FRAGMENT makes over the same `NROS_ENTITY_INVENTORY_MODELS`
+/// list (issue 1600) — so the descriptor's `[image]` counts and the fragment's
+/// `NROS_DECLARED_*` carriers cannot disagree. Then the per-endpoint QoS is
+/// reconciled (rule 2: disagreement REFUSES, never maxes), the registration
+/// observation is joined per model, and the closure facts (`wire_bound_bytes`,
+/// `[types]`) come from the configure's registered tables unchanged (rule 3).
+///
+/// No model wired ⇒ no file, exactly as for one entry ("no contract, no
+/// change"). A STALE runtime descriptor is deleted then, because the cmake
+/// side names whatever is at the path to cargo.
+fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
+    let (Some(build_dir), Some(entry)) = (&args.build_dir, &args.entry) else {
+        eyre::bail!("a runtime descriptor needs `--build-dir` and `--entry`");
+    };
+    if args.from_model.is_empty() {
+        eyre::bail!("a runtime descriptor needs at least one `--from-model`");
+    }
+    let mut models = Vec::new();
+    for path in &args.from_model {
+        models.push((path.clone(), load_model(path)?));
+    }
+    let metadata_inventory = match &args.metadata {
+        Some(path) => crate::cmd::entity_inventory::inventory_from_metadata_file(path)?,
+        // No metadata is the contract's set alone -- the single-entry road's
+        // `None` arm, spelled as an empty left side so the ONE fold runs.
+        None => crate::entity_inventory::EntityInventory::new("no component metadata"),
+    };
+
+    let wired: Vec<(String, crate::entity_inventory::EntityInventory)> = models
+        .iter()
+        .filter_map(|(p, m)| {
+            crate::entity_inventory::EntityInventory::from_model(p.display().to_string(), m)
+                .map(|inv| (crate::sizing_descriptor::model_label(p), inv))
+        })
+        .collect();
+    let path = nros_sizing_descriptor::runtime_descriptor_path(build_dir);
+    if wired.is_empty() {
+        eprintln!(
+            "nros ws sizing-descriptor: none of the {} model(s) this runtime is shared by \
+             describes wiring, so no runtime descriptor is written and every consumer keeps its \
+             own defaults",
+            models.len()
+        );
+        if path.exists() {
+            std::fs::remove_file(&path)
+                .wrap_err_with(|| format!("removing the stale `{}`", path.display()))?;
+        }
+        return Ok(());
+    }
+
+    let labelled: Vec<(String, ros_launch_manifest_model::SystemModel)> = models
+        .iter()
+        .map(|(p, m)| (p.display().to_string(), m.clone()))
+        .collect();
+    let composed = crate::cmd::entity_inventory::fold_models_for_shared_runtime(
+        &metadata_inventory,
+        &labelled,
+    );
+    let (mut inventory, conflicts) =
+        crate::sizing_descriptor::reconcile_runtime_qos(&composed, &wired);
+    for c in &conflicts {
+        eprintln!(
+            "nros ws sizing-descriptor: {} {} `{}`: {} REFUSED -- {}",
+            c.kind.tag(),
+            c.topic,
+            c.type_name,
+            c.field,
+            c.detail
+        );
+    }
+
+    // issue 1594 — the registration observation, joined per MODEL: each one
+    // attributes only within its own contract, and a row already observed
+    // keeps its observation.
+    let mut observation_inputs = Vec::new();
+    if let Some(ws) = &args.workspace {
+        let nano_ros = crate::orchestration::nano_ros_root::resolve(None, ws);
+        match crate::orchestration::metadata_refresh::fresh_probe_inventory(ws, nano_ros.as_deref())
+        {
+            Ok((probe, read, notes)) => {
+                for n in notes {
+                    eprintln!("nros ws sizing-descriptor: {n}");
+                }
+                for (_, model) in &models {
+                    inventory =
+                        crate::contract_join::observe_registrations(&inventory, &probe, model)
+                            .inventory;
+                }
+                observation_inputs = read;
+            }
+            Err(e) => eprintln!(
+                "nros ws sizing-descriptor: no registration observation joined from `{}` ({e}); \
+                 every subscription keeps its receive region",
+                ws.display()
+            ),
+        }
+    }
+
+    let model_paths: Vec<PathBuf> = models.iter().map(|(p, _)| p.clone()).collect();
+    let written = crate::sizing_descriptor::write_for_runtime(
+        &crate::sizing_descriptor::ModelImage {
+            build_dir,
+            entry,
+            inventory: &inventory,
+            target_triple: args.target_triple.clone(),
+            host_build: args.host_build,
+            heap_budget_bytes: args.heap_budget_bytes,
+            rmw: args.rmw.clone(),
+            bound_inventories: &args.bound_inventory,
+            horizon: crate::sizing_descriptor::ModelHorizon::new(
+                args.road.as_deref().unwrap_or(DEFAULT_MODEL_ROAD),
+            ),
+        },
+        &crate::sizing_descriptor::RuntimeComposition {
+            entries: &args.composed_entry,
+            model_paths: &model_paths,
+            conflicts: &conflicts,
+        },
+    )?;
     println!("{}", written.path.display());
     for p in observation_inputs {
         println!("input {}", p.display());
@@ -498,6 +657,13 @@ fn summary(desc: &nros_sizing_descriptor::SizingDescriptor) -> String {
         desc.meta.basis.tag(),
         desc.schema_version
     );
+    if !desc.meta.composed_entries().is_empty() {
+        let _ = writeln!(
+            s,
+            "  composed entries (a shared runtime, RFC-0100 D12): {}",
+            desc.meta.composed_entries().join(", ")
+        );
+    }
     let _ = writeln!(
         s,
         "  undeclared endpoints: {}",
@@ -547,6 +713,11 @@ fn summary(desc: &nros_sizing_descriptor::SizingDescriptor) -> String {
     let _ = writeln!(s, "    max_fields        {}", desc.types.max_fields());
     let _ = writeln!(s, "    max_kinds         {}", desc.types.max_kinds());
     let _ = writeln!(s, "    max_nested_depth  {}", desc.types.max_nested_depth());
+    let _ = writeln!(
+        s,
+        "    max_wire_bound_bytes {}",
+        desc.types.max_wire_bound_bytes()
+    );
     let _ = writeln!(s, "  endpoints: {}", desc.endpoints.len());
     for ep in &desc.endpoints {
         let _ = writeln!(s, "    {} {} [{}]", ep.kind.tag(), ep.topic, ep.type_name);
@@ -654,7 +825,8 @@ mod tests {
         SizingDescriptorArgs {
             descriptor: None,
             output_cmake: None,
-            from_model: None,
+            from_model: Vec::new(),
+            composed_entry: Vec::new(),
             build_dir: None,
             entry: None,
             metadata: None,
@@ -708,7 +880,7 @@ mod tests {
         std::fs::write(&model, serde_yaml_ng::to_string(&empty).unwrap()).unwrap();
         let build_dir = dir.path().join("build");
         run(SizingDescriptorArgs {
-            from_model: Some(model),
+            from_model: vec![model],
             build_dir: Some(build_dir.clone()),
             entry: Some("nobody".into()),
             ..args()
@@ -718,6 +890,163 @@ mod tests {
             !nros_sizing_descriptor::descriptor_path(&build_dir, "nobody").exists(),
             "an image with nothing to declare must get no descriptor at all"
         );
+    }
+
+    // ---- RFC-0100 D12 (issue 1649) — the RUNTIME descriptor -------------
+
+    /// A model YAML with a `/listener` subscribing `/chatter` (contract QoS
+    /// `reliability`) and, when `with_talker`, a `/talker` publishing it.
+    fn runtime_model(with_talker: bool, reliability: &str) -> String {
+        let talker_node = if with_talker {
+            "    /talker:\n      scope: system.launch.xml\n      pkg: demo\n      exec: talker\n      node_name: talker\n"
+        } else {
+            ""
+        };
+        let talker_pub = if with_talker {
+            "      pub:\n      - /talker/out\n"
+        } else {
+            ""
+        };
+        format!(
+            "meta:\n  version: 1\nstructure:\n  nodes:\n{talker_node}    /listener:\n      scope: system.launch.xml\n      pkg: demo\n      exec: listener\n      node_name: listener\n  topics:\n    /chatter:\n      type: std_msgs/msg/Int32\n{talker_pub}      sub:\n      - /listener/in\ncontracts:\n  sub_endpoints:\n    /listener/in:\n      qos:\n        history: keep_last\n        depth: 1\n        reliability: {reliability}\n"
+        )
+    }
+
+    fn write_model(dir: &std::path::Path, name: &str, yaml: &str) -> std::path::PathBuf {
+        let d = dir.join(name);
+        std::fs::create_dir_all(&d).unwrap();
+        let p = d.join("system_model.yaml");
+        std::fs::write(&p, yaml).unwrap();
+        p
+    }
+
+    /// THE ACCEPTANCE (issue 1649): two entries share one runtime, and the
+    /// LAST one's model is the SMALLER -- it launches only the listener. A
+    /// last-writer-wins composition (issue 1600's defect, one artifact over)
+    /// would describe one node and no publisher; the runtime descriptor holds
+    /// the UNION, names itself, and lists both entries.
+    #[test]
+    fn a_shared_runtime_descriptor_holds_the_union_with_the_smaller_entry_last() {
+        let dir = tempfile::tempdir().unwrap();
+        let big = write_model(dir.path(), "big", &runtime_model(true, "reliable"));
+        let small = write_model(dir.path(), "small", &runtime_model(false, "reliable"));
+        let build_dir = dir.path().join("build");
+        run(SizingDescriptorArgs {
+            from_model: vec![big, small],
+            composed_entry: vec!["big_entry".into(), "small_entry".into()],
+            build_dir: Some(build_dir.clone()),
+            entry: Some("shared-runtime".into()),
+            host_build: true,
+            ..args()
+        })
+        .unwrap();
+        let path = nros_sizing_descriptor::runtime_descriptor_path(&build_dir);
+        let desc = nros_sizing_descriptor::read(&path).unwrap();
+        assert_eq!(desc.meta.entry, "shared-runtime");
+        assert_eq!(
+            desc.meta.composed_entries(),
+            ["big_entry".to_string(), "small_entry".to_string()]
+        );
+        assert_eq!(
+            desc.image.node_count().stated().copied(),
+            Some(2),
+            "the union holds both nodes, though the LAST model launches one"
+        );
+        assert!(
+            desc.endpoints
+                .iter()
+                .any(|e| e.kind == nros_sizing_descriptor::EndpointKind::Publisher),
+            "the bigger image's publisher must be in the runtime's table"
+        );
+        let sub = desc
+            .endpoints
+            .iter()
+            .find(|e| e.kind == nros_sizing_descriptor::EndpointKind::Subscription)
+            .expect("the subscription row");
+        assert!(
+            sub.reliability().is_stated(),
+            "two images that AGREE keep the policy"
+        );
+        // Neither entry's own file is written by the runtime write, and the
+        // runtime's never lands at an entry's path.
+        assert!(!nros_sizing_descriptor::descriptor_path(&build_dir, "big_entry").exists());
+        assert!(!nros_sizing_descriptor::descriptor_path(&build_dir, "small_entry").exists());
+    }
+
+    /// D12 rule 2 through the verb: two images state DIFFERENT reliability for
+    /// one endpoint, and the runtime descriptor refuses it naming both models
+    /// rather than keeping either (the Rust declared-QoS check reads it).
+    #[test]
+    fn a_shared_runtime_descriptor_refuses_a_policy_its_entries_disagree_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = write_model(dir.path(), "a", &runtime_model(true, "reliable"));
+        let b = write_model(dir.path(), "b", &runtime_model(false, "best_effort"));
+        let build_dir = dir.path().join("build");
+        run(SizingDescriptorArgs {
+            from_model: vec![a, b],
+            composed_entry: vec!["a_entry".into(), "b_entry".into()],
+            build_dir: Some(build_dir.clone()),
+            entry: Some("shared-runtime".into()),
+            host_build: true,
+            ..args()
+        })
+        .unwrap();
+        let desc = nros_sizing_descriptor::read(&nros_sizing_descriptor::runtime_descriptor_path(
+            &build_dir,
+        ))
+        .unwrap();
+        let sub = desc
+            .endpoints
+            .iter()
+            .find(|e| e.kind == nros_sizing_descriptor::EndpointKind::Subscription)
+            .unwrap();
+        let rel = sub.reliability();
+        let why = rel.refusal().expect("a disagreement refuses");
+        assert!(why.contains("a/system_model.yaml"), "{why}");
+        assert!(why.contains("b/system_model.yaml"), "{why}");
+        // The depth both state alike stays stated -- per FACT, not per row.
+        assert_eq!(sub.depth().stated().copied(), Some(1));
+    }
+
+    /// No model wired ⇒ no runtime file, and a stale one is REMOVED: the
+    /// cmake side names whatever is at the runtime path to cargo.
+    #[test]
+    fn a_runtime_with_no_wired_model_writes_nothing_and_clears_a_stale_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let empty = ros_launch_manifest_model::SystemModel::default();
+        let m = write_model(dir.path(), "e", &serde_yaml_ng::to_string(&empty).unwrap());
+        let build_dir = dir.path().join("build");
+        let stale = nros_sizing_descriptor::runtime_descriptor_path(&build_dir);
+        std::fs::create_dir_all(stale.parent().unwrap()).unwrap();
+        std::fs::write(&stale, "schema_version = 2\n").unwrap();
+        run(SizingDescriptorArgs {
+            from_model: vec![m],
+            composed_entry: vec!["x".into(), "y".into()],
+            build_dir: Some(build_dir.clone()),
+            entry: Some("shared-runtime".into()),
+            ..args()
+        })
+        .unwrap();
+        assert!(
+            !stale.exists(),
+            "a stale runtime descriptor must not survive"
+        );
+    }
+
+    /// Several models with no `--composed-entry` is a caller error, not a
+    /// silent pick of one.
+    #[test]
+    fn several_models_without_entries_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = write_model(dir.path(), "a", &runtime_model(true, "reliable"));
+        let err = run(SizingDescriptorArgs {
+            from_model: vec![a.clone(), a],
+            build_dir: Some(dir.path().join("build")),
+            entry: Some("e".into()),
+            ..args()
+        })
+        .unwrap_err();
+        assert!(format!("{err:#}").contains("composed-entry"), "{err:#}");
     }
 
     /// A model that publishes `/chatter` from node `/talker`, so
@@ -772,7 +1101,7 @@ mod tests {
         .unwrap();
         let build_dir = dir.path().join("build");
         run(SizingDescriptorArgs {
-            from_model: Some(model),
+            from_model: vec![model],
             metadata: Some(metadata),
             workspace: None,
             build_dir: Some(build_dir.clone()),
@@ -840,7 +1169,7 @@ mod tests {
 
         let build_dir = dir.path().join("build");
         run(SizingDescriptorArgs {
-            from_model: Some(model),
+            from_model: vec![model],
             metadata: Some(metadata),
             workspace: None,
             build_dir: Some(build_dir.clone()),
@@ -878,7 +1207,7 @@ mod tests {
         .unwrap();
         let build_dir = dir.path().join("build");
         run(SizingDescriptorArgs {
-            from_model: Some(model),
+            from_model: vec![model],
             build_dir: Some(build_dir.clone()),
             entry: Some("island".into()),
             host_build: true,

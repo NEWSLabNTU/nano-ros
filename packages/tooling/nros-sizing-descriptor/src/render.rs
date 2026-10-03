@@ -67,6 +67,16 @@ pub fn render(desc: &SizingDescriptor) -> String {
     out.push_str(&format!("entry = \"{}\"\n", escape(&desc.meta.entry)));
     out.push_str(&format!("status = \"{}\"\n", desc.meta.status.tag()));
     out.push_str(&format!("basis = \"{}\"\n", desc.meta.basis.tag()));
+    // RFC-0100 D12 — only a RUNTIME descriptor composes entries, so an entry's
+    // own descriptor carries no line for it and reads as it always did.
+    let composed = desc.meta.composed_entries();
+    if !composed.is_empty() {
+        let list: Vec<String> = composed
+            .iter()
+            .map(|e| format!("\"{}\"", escape(e)))
+            .collect();
+        out.push_str(&format!("composed_entries = [{}]\n", list.join(", ")));
+    }
     emit_values(&mut out, Meta::FIELDS, |f| desc.meta.raw_value(f));
     emit_refusals(&mut out, "meta.refused", desc.meta.refusals());
 

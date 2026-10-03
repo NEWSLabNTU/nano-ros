@@ -377,118 +377,61 @@ def rfc_text(number):
     return hits[0].read_text(encoding="utf-8", errors="ignore") if hits else None
 
 
-# The payload class. Issue 1393 (closed) was the FIELD gap: the model-only
-# producer refused `wire_bound_bytes` / `storage_bytes` on two roads of three.
-# phase-457-payload W2 + issue 1393's closure fill both on every producer road.
+# How the rows got here, condensed (each step is in its issue):
 #
-# Issue 1595 then gave the three SUBSCRIBER classes a reader (RFC-0100 D5):
-# `nros-rmw-zenoh` computes them from the descriptor's subscription rows through
-# `nros_sizing_descriptor::subscriber_payload_classes` -- the classification the
-# cargo-leaf join calls too -- and ranks that FIRST. Measured equal to the
-# carriers on `examples/workspaces/cpp` `native_entry` (12 / 0 large), with the
-# carrier winning only when the descriptor refuses. So what keeps these three
-# is the ROAD: a multi-entry configure names no descriptor to cargo (issue
-# 1649), and the carrier is the only delivery there.
+#   * issue 1393 (closed) filled the FIELD gap -- `wire_bound_bytes` and
+#     `storage_bytes` on every producer road; issue 1595 gave the three
+#     SUBSCRIBER classes a descriptor-first reader in `nros-rmw-zenoh`;
+#   * issue 1407 (closed) composed `--metadata` into the model producer
+#     (phase-457 W0) and made the Zephyr WEST entry name its descriptor;
+#     phase-457 W0.b gave the STANDALONE LEAF a producer (`--from-leaf`);
+#   * issue 1408 (closed) gave the parameter store its `[params]` section,
+#     read FIRST by `nros-params` / `nros-node`;
+#   * the last road -- a multi-entry cmake configure -- is RFC-0100 D12 below.
 #
-# `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` is different and stays on 1595: its
-# basis is the CLOSURE, which no set of `[[endpoint]]` rows spans, so it needs
-# a descriptor FIELD before any reader can exist.
-_PAYLOAD = (
-    "the descriptor states this class and `nros-rmw-zenoh` reads it FIRST "
-    "(issue 1595); the carrier is the only delivery on a road that names no "
-    "descriptor to cargo -- a multi-entry configure (issue 1649)"
+# CORRECTED 2026-10-01 (kept because it is the kind of reason that recurs): "a
+# standalone ZEPHYR leaf reaches neither producer" is true and keeps nothing --
+# such a leaf gets no CARRIER either, and the retirement test asks only about
+# roads a carrier reaches. Nor is "a standalone cargo leaf with no model" a
+# parameter road: with no model there is no `ParamDeclarations` to carry.
+#
+# ---------------------------------------------------------------------------
+# RFC-0100 D12 (issue 1649, 2026-10-03) -- the ROAD these rows named is closed.
+#
+# A multi-entry cmake configure names its shared RUNTIME's descriptor to cargo
+# now (`_nros_sizing_descriptor_runtime`, composed over the same model list and
+# the same `shared_runtime_over` fold the carriers come from). So the reason
+# "a multi-entry configure names no descriptor" is no longer true of ANY row,
+# and the per-fact retirement test was re-run -- the W14 method, on
+# `examples/workspaces/cpp`'s native configure (seven entries, one runtime):
+# the configure's own Corrosion cargo command, built with the runtime
+# descriptor named, then once per carrier with that ONE carrier dropped, every
+# build script's generated output diffed against the run that kept it.
+#
+#   zero-diff  -- SUBSCRIBER_BUFFER_SIZE, LARGE_SUBSCRIBERS, SERVICE_INBOX_BYTES,
+#                 ACTION_INBOX_BYTES, TL_PUBLISHERS, RMW_SUBSCRIBER_SLOTS: the
+#                 descriptor states the fact and its consumer reads it. They
+#                 wait on the retirement itself (deleting the producer and the
+#                 fallback rung), which is the last step of issue 1649.
+#   differs    -- every other carrier this image delivers, each for a reason
+#                 issue 1655 owns: no `[image]` field (MAX_CBS, MAX_SC,
+#                 ACTION_CLIENTS, MAX_PUBLISHERS, both MONITORS, INFRA,
+#                 MAX_CELL_ENTITIES) or a field nobody reads first
+#                 (EXECUTOR_MAX_NODES, MAX_SUBSCRIBERS, MAX_QOS_DEPTH).
+#   unmeasured -- carriers this image does not deliver at all (the parameter
+#                 rows, TL_RETAIN_BYTES, SERVICE_SERVERS, SUBSCRIBER_LARGE_SIZE,
+#                 and NODES, which is zero-diff only because this image has no
+#                 parameter services to count it into).
+_D12_ZERO_DIFF = (
+    "RFC-0100 D12 names the shared runtime's descriptor on the multi-entry "
+    "road (the last road this row named), and the W14 knob diff on "
+    "`examples/workspaces/cpp` native is ZERO with this carrier dropped; what "
+    "is left is the retirement itself -- the producer and the fallback rung"
 )
-
-# Issue 1407 -- the count class. Three independent mechanisms, none of which
-# 1393's remedy touches.
-#
-# **phase-457 W0 CLOSED THE FIRST ONE**: `nros ws sizing-descriptor --from-model`
-# now takes `--metadata` and composes it with the contract through the same
-# `merged_per_kind_max` the inventory verb uses, so the two producers derive over
-# ONE component population. The reproduction was an UNDER-COUNT, not the refusal
-# 1407 predicted: issue 1402 reclassifies "in the metadata, absent from the
-# contract" to `Declaration::NotLaunched`, which `derive` deliberately does not
-# refuse on, and phase-454 W9 retired the metadata `entities` key -- so what the
-# poorer set cost was `[image] node_count`, measured stating 1 for an image
-# registering 3 (`NodeError::NodeTableFull` at boot).
-#
-# The Zephyr WEST entry was the last road that wrote a descriptor and named
-# none (issue 1407, closed 2026-10-03: `_nros_load_west_sizing_descriptor`).
-# What still keeps these rows is the THIRD mechanism -- a MULTI-ENTRY configure
-# names no descriptor to cargo, which phase-457 W0.c kept on the ground that no
-# such configure existed, and which `examples/workspaces/cpp`'s native image now
-# is (five entries, one configure; issue 1649) -- plus, for most rows, a
-# per-carrier structural reason the schema cannot answer whatever the roads do.
-_COUNTS = "the descriptor's producer does not run on every road this carrier reaches"
-
-# Issue 1407 -- the queryable raw inputs.
-#
-# **phase-457 W0.b gave the STANDALONE LEAF a producer** (`ws sizing-descriptor
-# --from-leaf`, reached from `nros_record_leaf_entity_facts`), so the road issue
-# 1378 measured FAILING now has a descriptor and it is MEASURED to agree with
-# these carriers (`sizing_descriptor_leaf_road.rs`, over both
-# `examples/qemu-armv7a-nuttx/{c,cpp}/action-server`).
-#
-# They still do not retire, and the reason MOVED rather than going away. Two
-# roads remain, and neither is 1393's:
-#
-#   * a MULTI-ENTRY cmake configure names no descriptor to cargo, and phase-457
-#     W0.c re-affirmed that refusal as the permanent answer (a descriptor is a
-#     whole per-endpoint table and has no MAX; the entity facts do have one and
-#     still travel). So this is not a gap waiting on a wave -- it is a road where
-#     the carrier is structurally the only answer.
-#   * a ZEPHYR WEST entry wrote a descriptor and named NONE to cargo -- CLOSED
-#     by issue 1407: the entry records the one-or-none decision and the
-#     module's knob resolver forwards `NROS_SIZING_DESCRIPTOR` on the C lane's
-#     command (measured on `examples/workspaces/cpp`'s Zephyr image: the cffi
-#     node table and backend registry derive from it, -576 B bss).
-#
-# CORRECTED 2026-10-01: this said "a standalone ZEPHYR leaf reaches neither
-# producer". True, and not a reason to keep anything -- `nano_rosConfig.cmake`'s
-# Zephyr arm returns before `nros_record_leaf_entity_facts`, so such a leaf gets
-# no CARRIER either, and the retirement test asks only about roads a carrier
-# reaches. The Zephyr road that does matter is the west ENTRY above.
-#
-# Retiring on "the descriptor states the fact" would re-open 1378 on exactly the
-# images that describe themselves, which is phase-454 W9's lesson.
-_LEAF_ROAD = (
-    "the standalone-leaf road has a descriptor since phase-457 W0.b and the "
-    "Zephyr west entry names its own since issue 1407; a multi-entry configure "
-    "names no descriptor to cargo (issue 1649), and the carrier is the only "
-    "delivery there"
-)
-
-# The parameter store. Issue 1408 (closed) was the SCHEMA gap: `[params]` is in
-# the D4 schema, the shared composer fills it on every producer road, and
-# `nros-params`/`nros-node` read it at the rung the carrier occupies -- measured
-# identical on the road that has both (`nros_params_config.rs` byte-for-byte,
-# and `DECLARED_PARAM_SERVICE_SHAPES` byte-for-byte). Its last open piece, a
-# PARAMETER-ONLY contract reaching no descriptor on the cargo road, was issue
-# 1436 (archived).
-#
-# What is left is the RETIREMENT, and the per-fact test was re-run when 1408
-# closed. It is a COVERAGE answer now, so these rows moved to issue 1407, and
-# from there to issue 1649 when 1407 closed the Zephyr road:
-#
-#   * a MULTI-ENTRY cmake configure names no descriptor to cargo while the
-#     facts still travel (a MAX across the models) -- every row below;
-#   * a ZEPHYR WEST entry forwarded the three NEEDS and the service shape and
-#     named no descriptor -- CLOSED by issue 1407; it names its descriptor now,
-#     so the `_PARAM_ZEPHYR` rows share the multi-entry reason.
-#
-# CORRECTED 2026-10-01: this listed "a STANDALONE cargo leaf with no resolved
-# model" as a third road. It is not one: with no model there is no
-# `ParamDeclarations`, so the carrier delivers nothing there either.
-_PARAM_MULTI_ENTRY = (
-    "the descriptor states it and is read FIRST; the one road where only this "
-    "carrier delivers is a multi-entry cmake configure, which names no "
-    "descriptor to cargo"
-)
-_PARAM_ZEPHYR = (
-    "the descriptor states it and is read FIRST; a Zephyr west entry names its "
-    "descriptor since issue 1407 and still forwards this carrier beside it, and "
-    "a multi-entry cmake configure names none (issue 1649), where this carrier "
-    "is the only delivery"
+_D12_UNMEASURED = (
+    "RFC-0100 D12 names the shared runtime's descriptor on the multi-entry "
+    "road; the retirement test is NOT yet run for this fact -- no in-tree "
+    "multi-entry configure delivers it"
 )
 
 # The three BOARD capacities. Not waiting on any issue: they are RFC-0100 D1
@@ -505,133 +448,131 @@ _BOARD_CAPACITY = (
 )
 
 KEPT = {
-    # ---- payload class (1595 wired the reader; 1393 closed) -------------
-    "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": Kept(1649, _PAYLOAD),
+    # ---- payload class (1595 wired the reader; 1393 closed; D12 the road) --
+    "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": Kept(1649, _D12_ZERO_DIFF),
     "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": Kept(
         1595,
-        "no consumer reads it off the descriptor, and none can: its basis is the "
+        "the descriptor field exists now (`[types] max_wire_bound_bytes`, "
+        "RFC-0100 Amendment 1) and no consumer reads it yet; its basis is the "
         "CLOSURE -- every type the image could receive OR publish, because "
-        "`DEFAULT_TX_BUF` aliases `RX_BUF` -- which no set of `[[endpoint]]` "
-        "rows spans, so it needs a descriptor field first",
+        "`DEFAULT_TX_BUF` aliases `RX_BUF`",
     ),
-    "NROS_DECLARED_LARGE_SUBSCRIBERS": Kept(1649, _PAYLOAD),
-    "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": Kept(1649, _PAYLOAD),
-    # ---- the entity counts (issue 1649; 1407 closed the Zephyr road) ----
-    # Three of these the schema could not state even with 1649 closed, and
-    # each is a DIFFERENT structural reason -- worth keeping distinct, because
-    # "the counts" is exactly the grouping W9 was told not to assume.
+    "NROS_DECLARED_LARGE_SUBSCRIBERS": Kept(1649, _D12_ZERO_DIFF),
+    # Same consumer function as the two above, but the measured image's large
+    # class is EMPTY, so the carrier was not delivered and nothing was diffed.
+    "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": Kept(1649, _D12_UNMEASURED),
+    # ---- the entity counts (issue 1655: a field or a reader is missing) --
+    # Each row names its OWN structural reason -- "the counts" is exactly the
+    # grouping W9 was told not to assume.
     "NROS_DECLARED_EXECUTOR_MAX_CBS": Kept(
-        1649,
-        _COUNTS + "; and `max_cbs` sums `callback_slots()` over Timer and "
-        "GuardCondition, which `endpoint_kind` drops (they carry no type and "
-        "no topic, so no endpoint table can key on them)",
+        1655,
+        "`max_cbs` sums `callback_slots()` over Timer and GuardCondition, which "
+        "`endpoint_kind` drops (no type, no topic, so no endpoint row); measured "
+        "under D12 dropping it moves MAX_CBS 9 -> 4",
     ),
     "NROS_DECLARED_EXECUTOR_MAX_SC": Kept(
-        1649,
-        _COUNTS + "; and the scheduling-context count comes from "
-        "`execution.tiers` -- the SCHEDULE, which the schema does not model",
+        1655,
+        "the scheduling-context count comes from `execution.tiers` -- the "
+        "SCHEDULE, which the schema does not model; measured under D12 "
+        "dropping it moves MAX_SC 7 -> 8",
     ),
     "NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES": Kept(
-        1649,
-        _COUNTS + "; and it is a max over PER-COMPONENT per-kind counts, while "
-        "`[[endpoint]]` rows carry no component attribution",
+        1655,
+        "a max over PER-COMPONENT per-kind counts, while `[[endpoint]]` rows "
+        "carry no component attribution; measured under D12 dropping it "
+        "moves MAX_CELL_ENTITIES 1 -> 8",
     ),
     "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS": Kept(
-        1649,
-        _COUNTS + "; and `heavy_slots` has no `[image]` field -- counting rows "
-        "and multiplying is the third mirror RFC-0100 D4 refuses",
+        1655,
+        "`heavy_slots` has no `[image]` field -- counting rows and "
+        "multiplying is the third mirror RFC-0100 D4 refuses; measured under "
+        "D12 dropping it moves ARENA_ACTION_CLIENTS 2 -> 9",
     ),
     "NROS_DECLARED_MAX_PUBLISHERS": Kept(
-        1649,
-        _COUNTS + "; and unlike `subscriber_count` it has no `[image]` field, "
-        "so a consumer would have to restate the action expansion",
+        1655,
+        "unlike `subscriber_count` it has no `[image]` field, so a consumer "
+        "would have to restate the action expansion; measured under D12 "
+        "dropping it moves ZPICO_MAX_PUBLISHERS 3 -> 8",
     ),
-    "NROS_DECLARED_EXECUTOR_MAX_NODES": Kept(1649, _COUNTS),
-    # phase-467 W1 (issue 1471) -- the contract-monitor row counts. The sizing
-    # descriptor has no field for them: they are counts of CONTRACT rows
-    # (`min_rate_hz` / `max_latency_ms` / `max_age_ms`), not of endpoints, so no
-    # `[[endpoint]]` row can state them without restating `monitor_rows`.
+    "NROS_DECLARED_EXECUTOR_MAX_NODES": Kept(
+        1655,
+        "`[image] node_count` states it and neither `nros-node` nor "
+        "`nros-rmw-zenoh` reads it first; measured under D12 dropping the "
+        "carrier moves MAX_NODES and MAX_PER_NODE_LIVELINESS 6 -> 4",
+    ),
+    # phase-467 W1 (issue 1471) -- the contract-monitor row counts: counts of
+    # CONTRACT rows (`min_rate_hz` / `max_latency_ms` / `max_age_ms`), not of
+    # endpoints, so no `[[endpoint]]` row can state them.
     "NROS_DECLARED_EXECUTOR_MAX_MONITORS": Kept(
-        1649,
-        _COUNTS + "; and the count is of contract rows carrying `min_rate_hz` or "
-        "`max_latency_ms` (`monitor_rows`), which no descriptor field states",
+        1655,
+        "the count is of contract rows carrying `min_rate_hz` or "
+        "`max_latency_ms` (`monitor_rows`), which no descriptor field states; "
+        "measured under D12 dropping it moves MAX_MONITORS 0 -> 8",
     ),
     "NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS": Kept(
-        1649,
-        _COUNTS + "; and the count is of contract rows carrying `max_age_ms` "
-        "(`age_rows`), which no descriptor field states",
+        1655,
+        "the count is of contract rows carrying `max_age_ms` (`age_rows`), "
+        "which no descriptor field states; measured under D12 dropping it "
+        "moves MAX_AGE_MONITORS 0 -> 8",
     ),
-    "NROS_DECLARED_MAX_SUBSCRIBERS": Kept(1649, _COUNTS),
-    "NROS_DECLARED_RMW_SUBSCRIBER_SLOTS": Kept(1649, _COUNTS),
-    # ---- the queryable raw inputs (issue 1649) --------------------------
-    # phase-457 W0.b: all four now have a descriptor on the standalone-leaf road.
-    # What each still needs is recorded per row, because the four differ.
+    "NROS_DECLARED_MAX_SUBSCRIBERS": Kept(
+        1655,
+        "`[image] subscriber_count` states it and `nros-zpico-build` does not "
+        "read it first; measured under D12 dropping the carrier moves "
+        "ZPICO_MAX_SUBSCRIBERS 2 -> 8",
+    ),
+    "NROS_DECLARED_RMW_SUBSCRIBER_SLOTS": Kept(1649, _D12_ZERO_DIFF),
+    # ---- the queryable raw inputs ----------------------------------------
     "NROS_DECLARED_SERVICE_SERVERS": Kept(
-        1649,
-        _LEAF_ROAD + "; and no consumer reads the application service-server "
-        "count OFF the descriptor yet -- `queryable_floor_from` takes it from "
-        "this carrier alone, so the descriptor stating it buys nothing until a "
-        "consumer ranks it first the way `transient_local_publishers` does",
+        1655,
+        "no consumer reads the application service-server count OFF the "
+        "descriptor yet -- `queryable_floor_from` takes it from this carrier "
+        "alone, so the descriptor stating it buys nothing until a consumer "
+        "ranks it first the way `transient_local_publishers` does",
     ),
-    "NROS_DECLARED_TL_PUBLISHERS": Kept(1649, _LEAF_ROAD),
+    "NROS_DECLARED_TL_PUBLISHERS": Kept(1649, _D12_ZERO_DIFF),
     # issue 1498 -- the retention slot beside that count; the leaf road reads
     # it off the descriptor (`transient_local_retain_demand`) already.
-    "NROS_DECLARED_TL_RETAIN_BYTES": Kept(1649, _LEAF_ROAD),
+    "NROS_DECLARED_TL_RETAIN_BYTES": Kept(1649, _D12_UNMEASURED),
     "NROS_DECLARED_NODES": Kept(
-        1649,
-        _LEAF_ROAD + "; and it is emitted even for a model that describes NO "
-        "wiring, which is exactly where `write_for_model` writes no file",
+        1655,
+        "it is emitted even for a model that describes NO wiring, which is "
+        "exactly where `write_for_model` writes no file (\"no contract => no "
+        "file\", RFC-0100 D4); zero-diff on the D12 image only because that "
+        "image counts no parameter services",
     ),
     "NROS_DECLARED_INFRA_QUERYABLES": Kept(
-        1649,
-        _LEAF_ROAD + "; and it is a FEATURE token from `execution.features`, "
-        "not a count -- the schema has no field of that kind",
+        1655,
+        "a FEATURE token from `execution.features`, not a count -- the schema "
+        "has no field of that kind; measured under D12 dropping it un-declares "
+        "the zenoh queryable table (10 -> 32 slots)",
     ),
-    # ---- the parameter store (issue 1649; was 1408, then 1407) ----------
-    "NROS_DECLARED_MAX_PARAMETERS": Kept(1649, _PARAM_MULTI_ENTRY),
-    "NROS_DECLARED_MAX_PARAM_NAME_LEN": Kept(1649, _PARAM_MULTI_ENTRY),
+    # ---- the parameter store (was 1408, then 1407; the road is D12's) ----
+    "NROS_DECLARED_MAX_PARAMETERS": Kept(1649, _D12_UNMEASURED),
+    "NROS_DECLARED_MAX_PARAM_NAME_LEN": Kept(1649, _D12_UNMEASURED),
     "NROS_DECLARED_MAX_STRING_VALUE_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
     "NROS_DECLARED_MAX_ARRAY_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
     "NROS_DECLARED_MAX_BYTE_ARRAY_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN": Kept(1649, _PARAM_ZEPHYR),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": Kept(1649, _PARAM_ZEPHYR),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": Kept(1649, _PARAM_ZEPHYR),
-    "NROS_DECLARED_PARAM_SERVICE_SHAPE": Kept(1649, _PARAM_ZEPHYR),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN": Kept(1649, _D12_UNMEASURED),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": Kept(1649, _D12_UNMEASURED),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": Kept(1649, _D12_UNMEASURED),
+    "NROS_DECLARED_PARAM_SERVICE_SHAPE": Kept(1649, _D12_UNMEASURED),
     # ---- the two inbox families (issue 1352, phase-461 W3) --------------
-    # These are the newest carriers and the retirement question has a clear
-    # answer for them: the descriptor DOES state the fact -- W3 makes
-    # `[[endpoint]] wire_bound_bytes` resolve for a service and an action row
-    # by joining on the REQUEST type, and `declared_service_request_bytes`
-    # reads exactly that in `nros-rmw-zenoh/build.rs`. What keeps the carrier
-    # is the road. phase-454 W11 measured that no cmake / Zephyr west entry
-    # produced a descriptor at all; W14 gave both a producer, the plain cmake
-    # road names it to cargo, and issue 1407 made the Zephyr WEST entry (the
-    # safety island's road) name its own. Re-run per fact when 1407 closed:
-    # `nros_entity_facts_env` still emits this carrier for a MULTI-ENTRY
-    # configure, which names no descriptor (issue 1649) -- so it stays.
-    "NROS_DECLARED_SERVICE_INBOX_BYTES": Kept(
-        1649,
-        "the descriptor states this fact and is read beside it; a multi-entry "
-        "cmake configure names no descriptor to cargo (issue 1649), and this "
-        "carrier is the only delivery there",
-    ),
-    "NROS_DECLARED_ACTION_INBOX_BYTES": Kept(
-        1649,
-        "the action half of the row above, same descriptor field and same "
-        "road gap; priced apart because the two families have separate rings "
-        "and separate depths since phase-461 W1",
-    ),
-    # ---- QoS depth (issue 1649) -----------------------------------------
-    # The one carrier whose FACT the descriptor states on all three roads. It
-    # stays for the road reason above, and because its sibling
-    # `NROS_ENTITY_DECLARED_DEPTHS` is deliberately UNIONED with the descriptor
-    # rather than ranked (phase-454 W10/W13): the two are disjoint in practice
-    # and a `(type, topic)` both state with different depths fails the build.
+    # The descriptor states the request bound per family and
+    # `declared_service_request_bytes` reads it; the carrier is ranked FIRST
+    # in `nros-rmw-zenoh/build.rs` today, so zero-diff here means the two
+    # agree, which is the precondition for flipping the rank and retiring.
+    "NROS_DECLARED_SERVICE_INBOX_BYTES": Kept(1649, _D12_ZERO_DIFF),
+    "NROS_DECLARED_ACTION_INBOX_BYTES": Kept(1649, _D12_ZERO_DIFF),
+    # ---- QoS depth ---------------------------------------------------------
+    # Its sibling `NROS_ENTITY_DECLARED_DEPTHS` is deliberately UNIONED with
+    # the descriptor rather than ranked (phase-454 W10/W13).
     "NROS_DECLARED_MAX_QOS_DEPTH": Kept(
-        1649,
-        _COUNTS + "; and the reduction it carries (the MAX, guarded on every "
-        "subscription having declared) is a consumer-side restatement nothing "
-        "shares today",
+        1655,
+        "the reduction it carries (the MAX, guarded on every subscription "
+        "having declared) is a consumer-side restatement nothing shares "
+        "today; measured under D12 dropping it moves the arena's budgeted "
+        "depth 1 -> 10 (36,488 -> 44,768 B)",
     ),
 }
 

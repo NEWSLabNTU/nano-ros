@@ -278,6 +278,16 @@ What stays open is RFC-0065 D8's, not this phase's: whether the cmake road shoul
 build a runtime per image, as the cargo road does (RFC-0100 Amendment 1, "Not
 decided here").
 
+**Landed and measured (2026-10-03, issue 1649) — and "changes no byte" was half
+right.** Per CARRIER it held for six of them: dropping each one with the runtime
+descriptor named moved nothing. But naming the descriptor AT ALL moved ten
+generated files against the carriers-only build of
+`examples/workspaces/cpp` native, because several consumers read facts no
+carrier ever carried (the arena's per-kind model, the cffi backend count, the
+zenoh action-inbox and ring-depth geometry) and fell to builtins on this road
+until now. Every move is the single-entry road's existing behaviour, derived from
+the union; issue 1649 tabulates them.
+
 ### W2 — EXPORT, not re-derive; and both halves already exist
 
 The question was whether the cmake entry's interface closure is re-derived or

@@ -516,7 +516,11 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
 /// assert something no configure produces.
 /// Issue 1600 -- several models, one shared runtime: see
 /// `EntityInventory::shared_runtime_over` for the rule.
-fn fold_models_for_shared_runtime(
+///
+/// `pub(crate)` for RFC-0100 D12 (issue 1649): the runtime SIZING DESCRIPTOR of
+/// a multi-entry configure composes over this same call, so the fragment and
+/// the descriptor fold one model list by one rule (`cmd::sizing_descriptor`).
+pub(crate) fn fold_models_for_shared_runtime(
     metadata_inv: &EntityInventory,
     models: &[(String, ros_launch_manifest_model::SystemModel)],
 ) -> EntityInventory {

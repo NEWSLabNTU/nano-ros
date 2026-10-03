@@ -187,7 +187,7 @@ DESCRIPTOR="$TEST_TMPDIR/build/nros/sizing/talker.toml"
 mkdir -p "$(dirname "$DESCRIPTOR")"
 # Content is irrelevant to the CMake side -- the CLI is what reads it. What
 # matters here is only that it EXISTS.
-echo 'schema_version = 1' > "$DESCRIPTOR"
+echo 'schema_version = 2' > "$DESCRIPTOR"
 
 # ---------------------------------------------------------------------------
 # A. the values reach the CALLER's scope
@@ -307,28 +307,48 @@ fi
 #   G2. ONE descriptor in a configure yields the cargo `[env]` row, which is
 #       how the knob reaches the emitted command rather than `set(ENV{})`
 #       (issue 0460);
-#   G3. TWO descriptors yield NO row. One shared cargo archive serves every
-#       entry and `NROS_SIZING_DESCRIPTOR` names a single file, so handing
-#       cargo one of N would size the archive from one image and call it
-#       derived. This is the negative control for G2 -- a function that always
-#       produced a row would pass G2 and fail nothing.
+#   G3. TWO entries name the RUNTIME's descriptor (RFC-0100 D12, issue 1649),
+#       never either entry's. One shared cargo archive serves every entry and
+#       `NROS_SIZING_DESCRIPTOR` names a single file, so handing cargo one of N
+#       would size the archive from one image and call it derived -- the
+#       reason phase-457 W0.c named none. The runtime descriptor is composed
+#       over EVERY entry's model (`NROS_ENTITY_INVENTORY_MODELS`, issue 1600's
+#       list), and the case is built so the LAST entry's model is the smaller:
+#       a last-writer-wins composition would hand the CLI one model.
+#   G6. TWO entries whose runtime write produces nothing (no model wired) name
+#       NONE -- the negative control for G3: a function that always produced a
+#       row, or fell back to one entry's file, would pass G3 and fail nothing.
 # ---------------------------------------------------------------------------
 WRITER_STUB="$TEST_TMPDIR/nros-writer-stub"
 cat > "$WRITER_STUB" <<'STUB_EOF'
 #!/bin/bash
 # Mimics `nros ws sizing-descriptor --from-model`: writes the file at the path
 # rule and echoes it. NROS_WRITER_SILENT=1 mimics a model with no wiring.
-build_dir="" entry="" prev=""
+# With `--composed-entry` it is the RUNTIME write (RFC-0100 D12): the file lands
+# at the runtime path and records the models and entries it was handed, so the
+# test can assert the composition's INPUT (the reduction itself is Rust's, and
+# is tested there). NROS_WRITER_RUNTIME_SILENT=1 mimics no wired model.
+build_dir="" entry="" prev="" models="" entries=""
 for a in "$@"; do
     case "$prev" in
         --build-dir) build_dir="$a" ;;
         --entry) entry="$a" ;;
+        --from-model) models="$models $a" ;;
+        --composed-entry) entries="$entries $a" ;;
     esac
     prev="$a"
 done
+if [ -n "$entries" ]; then
+    if [ -n "${NROS_WRITER_RUNTIME_SILENT:-}" ]; then exit 0; fi
+    mkdir -p "$build_dir/nros/sizing/runtime"
+    printf 'schema_version = 2\n# entry %s\n# models%s\n# entries%s\n' \
+        "$entry" "$models" "$entries" > "$build_dir/nros/sizing/runtime/shared.toml"
+    echo "$build_dir/nros/sizing/runtime/shared.toml"
+    exit 0
+fi
 if [ -n "${NROS_WRITER_SILENT:-}" ]; then exit 0; fi
 mkdir -p "$build_dir/nros/sizing"
-echo 'schema_version = 1' > "$build_dir/nros/sizing/$entry.toml"
+echo 'schema_version = 2' > "$build_dir/nros/sizing/$entry.toml"
 echo "$build_dir/nros/sizing/$entry.toml"
 # Issue 1594 -- the probe sidecars the observation join read, one per line.
 if [ -n "${NROS_WRITER_INPUT:-}" ]; then echo "input $NROS_WRITER_INPUT"; fi
@@ -337,10 +357,18 @@ chmod +x "$WRITER_STUB"
 
 MODEL="$TEST_TMPDIR/system_model.yaml"
 echo 'meta: {}' > "$MODEL"
+# G3 -- the SECOND entry's model, the smaller one, declared LAST.
+MODEL_SMALL="$TEST_TMPDIR/small/system_model.yaml"
+mkdir -p "$(dirname "$MODEL_SMALL")"
+echo 'meta: {}' > "$MODEL_SMALL"
 
 WRITER_DRIVER="$TEST_TMPDIR/writer-driver.cmake"
 cat > "$WRITER_DRIVER" <<'EOF'
 include("$ENV{NROS_TEST_MODULE}")
+# Issue 1600's model list, as `nros_derive_entity_inventory_knobs` records it
+# for each entry before this producer runs (the inventory module is not loaded
+# here, so the driver records what it would).
+set_property(GLOBAL APPEND PROPERTY NROS_ENTITY_INVENTORY_MODELS "$ENV{NROS_TEST_MODEL}")
 nros_sizing_descriptor_from_model(_first
     CLI       "$ENV{NROS_TEST_CLI}"
     MODEL     "$ENV{NROS_TEST_MODEL}"
@@ -365,9 +393,11 @@ function(_west_record_and_read _tag)
 endfunction()
 _west_record_and_read(ONE)
 if(DEFINED ENV{NROS_TEST_SECOND})
+    set_property(GLOBAL APPEND PROPERTY NROS_ENTITY_INVENTORY_MODELS
+        "$ENV{NROS_TEST_MODEL_SMALL}")
     nros_sizing_descriptor_from_model(_second
         CLI       "$ENV{NROS_TEST_CLI}"
-        MODEL     "$ENV{NROS_TEST_MODEL}"
+        MODEL     "$ENV{NROS_TEST_MODEL_SMALL}"
         ENTRY     "two"
         BUILD_DIR "${CMAKE_BINARY_DIR}"
         RMW       "zenoh")
@@ -392,6 +422,7 @@ run_writer() {
     NROS_TEST_DRIVER="$WRITER_DRIVER" \
     NROS_TEST_CLI="$WRITER_STUB" \
     NROS_TEST_MODEL="$MODEL" \
+    NROS_TEST_MODEL_SMALL="$MODEL_SMALL" \
     NROS_WRITER_SILENT="$1" \
     NROS_TEST_SECOND="$2" \
         cmake -S "$WPROJ" -B "$WPROJ/build" 2>&1
@@ -457,22 +488,39 @@ resolver would forward nothing and every descriptor consumer keeps its carrier -
 fi
 OUT="$(run_writer "" 1)"
 check
-if ! nros_grep_q "WEST_TWO=\$" <<<"$OUT"; then
-    fail "G5: two descriptors and the west fragment named one -- the shared archive \
-would be sized from one of N images on the west road only -- $OUT"
+if ! nros_grep_q "WEST_TWO=[^ ]*/nros/sizing/runtime/shared.toml\$" <<<"$OUT"; then
+    fail "G5: two entries and the west fragment did not name the RUNTIME descriptor -- \
+the shared archive would be sized from one of N images, or from nothing, on the west \
+road only (RFC-0100 D12) -- $OUT"
 fi
 
-log_info "G3. TWO descriptors in one configure name NONE to cargo"
+log_info "G3. TWO entries name the RUNTIME descriptor, composed over both models (D12)"
 OUT="$(run_writer "" 1)"
 check
-if ! nros_grep_q "CARGO_ROW_TWO=$" <<<"$OUT"; then
-    fail "G3: a row was emitted with two entries in scope -- one shared cargo archive \
-would be sized from one of N images and read as derived -- $OUT"
+if ! nros_grep_q "CARGO_ROW_TWO=NROS_SIZING_DESCRIPTOR=[^ ]*/nros/sizing/runtime/shared.toml\$" <<<"$OUT"; then
+    fail "G3: two entries share one cargo archive and the row does not name the \
+runtime's descriptor -- one entry's file would size every image, or none would \
+(issue 1649) -- $OUT"
+fi
+RUNTIME_DESC="$WPROJ/build/nros/sizing/runtime/shared.toml"
+check
+if ! nros_grep_q "# models $MODEL $MODEL_SMALL\$" "$RUNTIME_DESC"; then
+    fail "G3: the runtime write was not handed BOTH entries' models in configure order \
+-- with the smaller model declared LAST, a last-writer-wins list sizes the shared \
+runtime from it (issue 1600's shape) -- $(cat "$RUNTIME_DESC" 2>&1)"
 fi
 check
-if ! nros_grep_q "sizing descriptors in this configure" <<<"$OUT"; then
-    fail "G3: the refusal was silent -- 'the fallback decided' and 'the declaration \
-decided' must not look alike in a log (issue 0973's rule) -- $OUT"
+if ! nros_grep_q "# entries one two\$" "$RUNTIME_DESC"; then
+    fail "G3: the runtime descriptor does not name the entries it composed \
+([meta] composed_entries, D12 rule 4) -- $(cat "$RUNTIME_DESC" 2>&1)"
+fi
+
+log_info "G6. TWO entries and no runtime descriptor written name NONE (G3's control)"
+OUT="$(NROS_WRITER_RUNTIME_SILENT=1 run_writer "" 1)"
+check
+if ! nros_grep_q "CARGO_ROW_TWO=$" <<<"$OUT"; then
+    fail "G6: no runtime descriptor was written and a row was still emitted -- it can \
+only name one ENTRY's file, which sizes the shared archive from one image -- $OUT"
 fi
 
 # ---------------------------------------------------------------------------
@@ -511,7 +559,7 @@ for a in "$@"; do
 done
 if [ -z "$saw_leaf" ]; then echo "stub: no --from-leaf" >&2; exit 2; fi
 mkdir -p "$build_dir/nros/sizing"
-echo 'schema_version = 1' > "$build_dir/nros/sizing/$entry.toml"
+echo 'schema_version = 2' > "$build_dir/nros/sizing/$entry.toml"
 echo "$build_dir/nros/sizing/$entry.toml"
 STUB_EOF
 chmod +x "$LEAF_STUB"

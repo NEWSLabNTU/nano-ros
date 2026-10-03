@@ -1791,14 +1791,16 @@ fn declared_qos_rows(
     // sizes a different thing).
     //
     // issue 1256 -- the descriptor is also the ONLY carrier of the two
-    // policies, on every road that names one (the cargo leaf road, and a
-    // single-entry cmake configure since phase-454 W14). No env knob carries
-    // them and none is added: a second carrier for a fact the descriptor
-    // already states is the 0460/0491 shape this model exists to remove. A
-    // multi-entry configure names no descriptor to cargo (phase-457 W0.c), so
-    // there the Rust registration checks the depth and not the policies -- the
-    // C/C++ compile-time table, which IS rendered per component, still checks
-    // both.
+    // policies, on every road that names one (the cargo leaf road, a
+    // single-entry cmake configure since phase-454 W14, and a multi-entry one
+    // since RFC-0100 D12 -- issue 1649). No env knob carries them and none is
+    // added: a second carrier for a fact the descriptor already states is the
+    // 0460/0491 shape this model exists to remove. A multi-entry configure's
+    // RUNTIME descriptor REFUSES a policy its entries disagree on (D12 rule 2),
+    // so such a row reaches this loop with no stated value and is skipped
+    // rather than checked against one image's number -- the C/C++
+    // compile-time table, which IS rendered per component, refuses the same
+    // disagreement (issue 1564).
     if let Some(desc) = desc {
         for ep in desc.endpoints.iter().filter(|ep| ep.kind == kind) {
             // A refused or absent column contributes nothing. The endpoint

@@ -122,6 +122,18 @@ pub struct Meta {
     pub status: Status,
     /// What the numbers describe. D6 forbids widening it silently.
     pub basis: Basis,
+    /// RFC-0100 D12 (issue 1649) — the entries this descriptor was COMPOSED
+    /// over, when it sizes a RUNTIME shared by several of them.
+    ///
+    /// Empty for an entry's own descriptor, which is every descriptor where
+    /// entries and runtime builds are 1:1. Non-empty only for the one
+    /// descriptor a multi-entry cmake configure names to cargo: there
+    /// [`Self::entry`] names the runtime and this list says which images it
+    /// is the envelope of — the reason `[meta] entry` exists at all ("a copied
+    /// file still says what it is about"), held for a file that is about
+    /// several.
+    #[serde(default)]
+    composed_entries: Vec<String>,
     undeclared_endpoints: Option<usize>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
@@ -150,6 +162,21 @@ impl Meta {
 
     pub fn set_undeclared_endpoints(&mut self, v: Option<usize>) -> &mut Self {
         self.undeclared_endpoints = v;
+        self
+    }
+
+    /// RFC-0100 D12 — the entries a RUNTIME descriptor composed; empty for an
+    /// entry's own. Identity, not a fact: it is never refused.
+    pub fn composed_entries(&self) -> &[String] {
+        &self.composed_entries
+    }
+
+    /// Record the entries this descriptor composed, sorted and de-duplicated so
+    /// the artifact is byte-stable whatever order a configure declared them in.
+    pub fn set_composed_entries(&mut self, mut entries: Vec<String>) -> &mut Self {
+        entries.sort();
+        entries.dedup();
+        self.composed_entries = entries;
         self
     }
 
@@ -841,6 +868,7 @@ pub struct Types {
     max_fields: Option<usize>,
     max_kinds: Option<usize>,
     max_nested_depth: Option<usize>,
+    max_wire_bound_bytes: Option<usize>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
 }
@@ -851,6 +879,7 @@ impl Types {
         "max_fields",
         "max_kinds",
         "max_nested_depth",
+        "max_wire_bound_bytes",
     ];
 
     pub fn distinct_count(&self) -> Fact<usize> {
@@ -866,6 +895,29 @@ impl Types {
         fact(&self.max_nested_depth, "max_nested_depth", &self.refused)
     }
 
+    /// Issue 1595 (RFC-0100 Amendment 1, "D4 extended") — the largest wire
+    /// bound over EVERY type the image's interface closure registered.
+    ///
+    /// A CLOSURE fact, which is why it is here and not on an `[[endpoint]]`
+    /// row: `RX_BUF` is one global size for every entity and `DEFAULT_TX_BUF`
+    /// aliases it, so it must hold any type the image could receive OR
+    /// publish — and an undeclared endpoint's type is in the closure and in no
+    /// row. Refused, naming the type, when one registered type is unbounded or
+    /// unpriced; refused, naming the table, when a registered table is absent.
+    /// A maximum over the types that DID answer is the under-size D6 forbids.
+    pub fn max_wire_bound_bytes(&self) -> Fact<usize> {
+        fact(
+            &self.max_wire_bound_bytes,
+            "max_wire_bound_bytes",
+            &self.refused,
+        )
+    }
+
+    pub fn set_max_wire_bound_bytes(&mut self, v: Option<usize>) -> &mut Self {
+        self.max_wire_bound_bytes = v;
+        self
+    }
+
     pub fn new(
         distinct_count: Option<usize>,
         max_fields: Option<usize>,
@@ -877,6 +929,7 @@ impl Types {
             max_fields,
             max_kinds,
             max_nested_depth,
+            max_wire_bound_bytes: None,
             refused: BTreeMap::new(),
         }
     }
@@ -900,6 +953,7 @@ impl Types {
             "max_fields" => self.max_fields?.to_string(),
             "max_kinds" => self.max_kinds?.to_string(),
             "max_nested_depth" => self.max_nested_depth?.to_string(),
+            "max_wire_bound_bytes" => self.max_wire_bound_bytes?.to_string(),
             _ => return None,
         })
     }
@@ -914,6 +968,7 @@ impl Types {
                 ("max_fields", self.max_fields.is_some()),
                 ("max_kinds", self.max_kinds.is_some()),
                 ("max_nested_depth", self.max_nested_depth.is_some()),
+                ("max_wire_bound_bytes", self.max_wire_bound_bytes.is_some()),
             ],
         )
     }
@@ -1281,6 +1336,7 @@ impl SizingDescriptor {
                 entry: entry.into(),
                 status,
                 basis,
+                composed_entries: Vec::new(),
                 undeclared_endpoints: None,
                 refused: BTreeMap::new(),
             },

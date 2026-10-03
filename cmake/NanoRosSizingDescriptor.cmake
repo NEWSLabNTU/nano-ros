@@ -207,15 +207,37 @@ function(nros_sizing_descriptor_from_model _out_var)
     cmake_parse_arguments(_nsw "" "CLI;MODEL;ENTRY;BUILD_DIR;RMW;METADATA;WORKSPACE" "" ${ARGN})
     set(${_out_var} "" PARENT_SCOPE)
 
+    set(_build_dir "${_nsw_BUILD_DIR}")
+    if(NOT _build_dir)
+        set(_build_dir "${CMAKE_BINARY_DIR}")
+    endif()
+
+    # RFC-0100 D12 (issue 1649) -- every ENTRY of this configure links the one
+    # runtime, whether or not its model describes wiring, so it is recorded
+    # BEFORE the early returns below: an entry that writes no descriptor still
+    # shares the runtime, and `nros_sizing_descriptor_cargo_env` must not size
+    # that runtime from the others' file as if it were alone. The inputs every
+    # entry hands the producer are recorded beside it for the runtime write.
+    if(_nsw_ENTRY)
+        set_property(GLOBAL APPEND PROPERTY NROS_SIZING_RUNTIME_ENTRIES "${_nsw_ENTRY}")
+        set_property(GLOBAL APPEND PROPERTY NROS_SIZING_RUNTIME_RMWS "${_nsw_RMW}")
+        set_property(GLOBAL PROPERTY NROS_SIZING_RUNTIME_BUILD_DIR "${_build_dir}")
+        if(_nsw_CLI)
+            set_property(GLOBAL PROPERTY NROS_SIZING_RUNTIME_CLI "${_nsw_CLI}")
+        endif()
+        if(_nsw_METADATA)
+            set_property(GLOBAL PROPERTY NROS_SIZING_RUNTIME_METADATA "${_nsw_METADATA}")
+        endif()
+        if(_nsw_WORKSPACE)
+            set_property(GLOBAL PROPERTY NROS_SIZING_RUNTIME_WORKSPACE "${_nsw_WORKSPACE}")
+        endif()
+    endif()
+
     if(NOT _nsw_ENTRY OR NOT _nsw_MODEL OR NOT EXISTS "${_nsw_MODEL}")
         return()
     endif()
     if(NOT _nsw_CLI OR NOT EXISTS "${_nsw_CLI}")
         return()
-    endif()
-    set(_build_dir "${_nsw_BUILD_DIR}")
-    if(NOT _build_dir)
-        set(_build_dir "${CMAKE_BINARY_DIR}")
     endif()
 
     # Issue 1018 — the MODEL is an input to a CONFIGURE-TIME emitter, so its
@@ -383,15 +405,134 @@ function(nros_sizing_descriptor_from_leaf _out_var)
         return()
     endif()
     set(${_out_var} "${_out}" PARENT_SCOPE)
-    # A property of its OWN, not `NROS_SIZING_DESCRIPTOR_PATHS`. The entry road's
-    # "exactly one or none" rule is a DECISION about a shared staticlib
-    # (phase-457 W0.c re-affirmed it), and appending a leaf path to that list
-    # would turn a leaf that also declares an entry into "two descriptors,
-    # therefore none" — silently withdrawing a fact the carrier still delivers.
+    # A property of its OWN, not `NROS_SIZING_DESCRIPTOR_PATHS`. The entry road
+    # decides which file sizes a shared staticlib (RFC-0100 D12: one entry's
+    # own, or the runtime's for several), and appending a leaf path to that
+    # list would make a leaf that also declares an entry read as a second
+    # descriptor of one image — a file the decision has no rule for.
     # Measured 2026-09-27: no `nano_ros_entry(` call site in the tree has a
     # `system.toml` at all, so the collision does not occur today; keeping the
     # lists apart makes that a property of the code rather than of the survey.
     set_property(GLOBAL APPEND PROPERTY NROS_SIZING_DESCRIPTOR_LEAF_PATHS "${_out}")
+endfunction()
+
+# _nros_sizing_descriptor_runtime(<out_var>) — RFC-0100 D12, issue 1649
+#
+# WRITE the descriptor for the ONE runtime a multi-entry configure links into
+# every entry, and return its path (empty when none was written).
+#
+# RFC-0065 D8 builds one cmake configure per COORDINATE, so every image of a
+# bringup that resolves to one coordinate is an entry here and they share one
+# `nros-cpp`/`nros-c` staticlib. phase-457 W0.c refused to name any descriptor
+# for that shape on the premise that no configure had it; generated entries
+# made it the normal one (`examples/workspaces/cpp` native: five entries).
+#
+# ONE REDUCTION, THREE OUTPUTS (D12 rule 1). The model list is
+# `NROS_ENTITY_INVENTORY_MODELS` -- the list the entity-inventory fragment
+# folds (issue 1600) -- and the CLI composes it with the same Rust call, so the
+# descriptor's counts are the carriers' counts by construction. A second list
+# assembled here would be issue 1025's shape: one formula, inputs derived twice.
+#
+# Memoised on its inputs, because `nros_entity_facts_env` runs once per
+# Corrosion target and the west road records on every entry.
+function(_nros_sizing_descriptor_runtime _out_var)
+    set(${_out_var} "" PARENT_SCOPE)
+    get_property(_entries GLOBAL PROPERTY NROS_SIZING_RUNTIME_ENTRIES)
+    get_property(_models GLOBAL PROPERTY NROS_ENTITY_INVENTORY_MODELS)
+    get_property(_rmws GLOBAL PROPERTY NROS_SIZING_RUNTIME_RMWS)
+    get_property(_cli GLOBAL PROPERTY NROS_SIZING_RUNTIME_CLI)
+    get_property(_build_dir GLOBAL PROPERTY NROS_SIZING_RUNTIME_BUILD_DIR)
+    get_property(_meta GLOBAL PROPERTY NROS_SIZING_RUNTIME_METADATA)
+    get_property(_ws GLOBAL PROPERTY NROS_SIZING_RUNTIME_WORKSPACE)
+    list(REMOVE_DUPLICATES _entries)
+    if(_models)
+        list(REMOVE_DUPLICATES _models)
+    endif()
+    list(REMOVE_DUPLICATES _rmws)
+    list(LENGTH _entries _n)
+
+    if(NOT _cli OR NOT EXISTS "${_cli}")
+        return()
+    endif()
+    set(_model_args "")
+    foreach(_m IN LISTS _models)
+        if(EXISTS "${_m}")
+            list(APPEND _model_args --from-model "${_m}")
+        endif()
+    endforeach()
+    if(NOT _model_args)
+        message(STATUS
+            "nano-ros: ${_n} entries share this configure's runtime and none resolved a "
+            "model, so no runtime sizing descriptor is written (RFC-0100 D12)")
+        return()
+    endif()
+    list(LENGTH _rmws _nrmw)
+    if(_nrmw GREATER 1)
+        # One configure is one coordinate, so this does not happen through
+        # `nros build`; a hand-written configure could. Two backends in one
+        # runtime have no single `registration_path`, so refuse the file.
+        message(STATUS
+            "nano-ros: the entries sharing this runtime name different backends "
+            "(${_rmws}), so no runtime sizing descriptor is written (RFC-0100 D12)")
+        return()
+    endif()
+    set(_entry_args "")
+    foreach(_e IN LISTS _entries)
+        list(APPEND _entry_args --composed-entry "${_e}")
+    endforeach()
+    set(_rmw_arg "")
+    if(_rmws)
+        set(_rmw_arg --rmw "${_rmws}")
+    endif()
+    set(_meta_arg "")
+    if(_meta AND EXISTS "${_meta}")
+        set(_meta_arg --metadata "${_meta}")
+    endif()
+    set(_ws_arg "")
+    if(_ws AND IS_DIRECTORY "${_ws}/src")
+        set(_ws_arg --workspace "${_ws}")
+    endif()
+    _nros_sizing_target_args(_host_arg)
+    _nros_sizing_bound_args(_bound_args)
+
+    set(_args ${_model_args} ${_entry_args} --build-dir "${_build_dir}"
+        --entry shared-runtime --road "a multi-entry cmake configure"
+        ${_host_arg} ${_rmw_arg} ${_meta_arg} ${_ws_arg} ${_bound_args})
+    string(SHA256 _key "${_cli};${_args}")
+    get_property(_memo_key GLOBAL PROPERTY NROS_SIZING_RUNTIME_MEMO_KEY)
+    if(_memo_key STREQUAL _key)
+        get_property(_memo GLOBAL PROPERTY NROS_SIZING_RUNTIME_MEMO_PATH)
+        set(${_out_var} "${_memo}" PARENT_SCOPE)
+        return()
+    endif()
+
+    execute_process(
+        COMMAND "${_cli}" ws sizing-descriptor ${_args}
+        OUTPUT_VARIABLE _out
+        ERROR_VARIABLE _err
+        RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    set(_path "")
+    if(NOT _rc EQUAL 0)
+        string(REGEX REPLACE "\n+" " " _why "${_err}")
+        message(STATUS
+            "nano-ros: no runtime sizing descriptor written -- ${_why}. Every consumer "
+            "keeps its own default sizes (RFC-0100 D6).")
+    elseif(NOT _out STREQUAL "")
+        string(REPLACE "\n" ";" _lines "${_out}")
+        list(GET _lines 0 _path)
+        foreach(_line IN LISTS _lines)
+            if(_line MATCHES "^input (.+)$")
+                set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
+            endif()
+        endforeach()
+        message(STATUS
+            "nano-ros: runtime sizing descriptor for ${_n} entries (${_entries}) -- ${_path} "
+            "(RFC-0100 D12)")
+    endif()
+    set_property(GLOBAL PROPERTY NROS_SIZING_RUNTIME_MEMO_KEY "${_key}")
+    set_property(GLOBAL PROPERTY NROS_SIZING_RUNTIME_MEMO_PATH "${_path}")
+    set(${_out_var} "${_path}" PARENT_SCOPE)
 endfunction()
 
 # nros_sizing_descriptor_cargo_env(<out_var>) — phase-454 W14, issue 0460
@@ -406,24 +547,35 @@ endfunction()
 # carrier as the entity facts, onto the same Corrosion targets, at the same
 # deferred moment.
 #
-# EXACTLY ONE OR NONE. A configure that declared several entries has several
-# descriptors and one shared staticlib, and `NROS_SIZING_DESCRIPTOR` names a
-# single file: handing cargo one of N would size the shared archive from one
-# image and call it derived. The entity facts reduce across models for the
-# same collision -- the `ws entity-facts` accumulator takes a MAX, and the
-# entity-inventory fragment folds every entry's model into the union the shared
-# runtime must hold (issue 1600; until then it was last-entry-wins, which this
-# comment claimed it was not). A descriptor is a whole per-endpoint table and
-# has no such reduction, so this refuses instead and says so.
+# EXACTLY ONE (RFC-0100 D12, issue 1649). `NROS_SIZING_DESCRIPTOR` names a
+# single file, and the unit it sizes is the RUNTIME BUILD. One entry: its own
+# descriptor, unchanged. Several entries share one staticlib, so handing cargo
+# one entry's file would size the shared archive from one image -- that is the
+# collision phase-457 W0.c answered with "none". D12 answers it with the
+# runtime's own descriptor (`_nros_sizing_descriptor_runtime`), composed by
+# the reduction the entity fragment already uses (issue 1600), so the
+# carriers' union and the descriptor's rows describe one runtime.
 function(nros_sizing_descriptor_cargo_env _out_var)
     set(${_out_var} "" PARENT_SCOPE)
+    get_property(_entries GLOBAL PROPERTY NROS_SIZING_RUNTIME_ENTRIES)
+    if(_entries)
+        list(REMOVE_DUPLICATES _entries)
+    endif()
+    list(LENGTH _entries _n_entries)
+    if(_n_entries GREATER 1)
+        _nros_sizing_descriptor_runtime(_runtime)
+        if(_runtime AND EXISTS "${_runtime}")
+            set(${_out_var} "NROS_SIZING_DESCRIPTOR=${_runtime}" PARENT_SCOPE)
+        endif()
+        return()
+    endif()
     get_property(_paths GLOBAL PROPERTY NROS_SIZING_DESCRIPTOR_PATHS)
     if(NOT _paths)
         # phase-457 W0.b — the STANDALONE LEAF road, BELOW the entry road and
         # never beside it. An entry's descriptor is derived from the resolved
         # model of the image about to be built; a leaf declaration is what
         # answers when there is no entry at all. Ranked rather than merged, so
-        # the entry road's one-or-none rule keeps deciding on its own terms.
+        # the entry road's rule keeps deciding on its own terms.
         get_property(_paths GLOBAL PROPERTY NROS_SIZING_DESCRIPTOR_LEAF_PATHS)
     endif()
     if(NOT _paths)
@@ -432,6 +584,9 @@ function(nros_sizing_descriptor_cargo_env _out_var)
     list(REMOVE_DUPLICATES _paths)
     list(LENGTH _paths _n)
     if(_n GREATER 1)
+        # Only reachable with several descriptors and at most one recorded
+        # ENTRY -- i.e. a hand-written caller of the producer. Kept as the
+        # refusal it always was rather than guessing which file is the image.
         message(STATUS
             "nano-ros: ${_n} sizing descriptors in this configure and one shared cargo "
             "archive, so none is named to cargo -- the Rust half keeps its own defaults "
@@ -464,16 +619,17 @@ endfunction()
 # `NROS_DECLARED_*` carriers the descriptor was meant to replace.
 #
 # The same producer-after-reader shape the entity inventory has (issue 0991),
-# closed the same way: write the ONE-OR-NONE decision (the same rule, the same
-# function) to a fragment, and arm a re-configure when it changes, so the
+# closed the same way: write the decision (the same rule, the same function --
+# RFC-0100 D12's "exactly one") to a fragment, and arm a re-configure when it changes, so the
 # resolver of the next pass — inside the same `west build` — puts
 # `NROS_SIZING_DESCRIPTOR` into `NROS_RESOLVED_KNOBS`. From there it rides the
 # C lane's command exactly like every other resolved knob (issue 0460: never a
 # `set(ENV{})` on its own). It is a PATH, and nothing watches the variable's
 # text (issue 0491): `load_for_build_script` puts the edge on the file.
 #
-# Called on every entry; the last call of a pass sees every entry's descriptor,
-# so a multi-entry configure lands on "none" exactly as the cmake road does.
+# Called on every entry; the last call of a pass sees every entry, so a
+# multi-entry configure lands on the RUNTIME descriptor exactly as the cmake road
+# does (RFC-0100 D12).
 function(nros_sizing_descriptor_record_for_west)
     nros_sizing_descriptor_west_fragment(_frag)
     nros_sizing_descriptor_cargo_env(_row)
