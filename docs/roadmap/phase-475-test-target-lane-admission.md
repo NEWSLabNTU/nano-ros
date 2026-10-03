@@ -310,13 +310,25 @@ Measured, three census runs in the gate image:
 
 | | W3 | W7 |
 | --- | --- | --- |
-| whole targets | 47 | **50** |
-| single tests of partial targets | 0 | **33**, across 29 targets |
-| tests run by the lane | 357 | **396** |
+| whole targets | 47 | **46** |
+| single tests of partial targets | 0 | **32**, across 28 targets |
+| tests run by the lane | 357 | **384** |
 
-The 33 are almost all the `cases_bound_to_interop_cells` /
+The 32 are almost all the `cases_bound_to_interop_cells` /
 `*_cases_cover_every_matrix_cell` tripwires — the fixture-free halves of
 interop and e2e targets, which is the coverage W3's limit named.
+
+**Why the whole-target count went DOWN (measured after rebasing onto #1610).**
+Before #1610, four targets compiled at TEST time and passed in the image:
+`cmake_node_register_misuse`, `cmake_platform_matrix`, `diagnostic_verbatim`
+and `native_main_macro_misuse`. #1610 rightly moved their compiles into the
+build stage as compile-check verdict rows, so they now resolve a compile stamp
+— and the census stages none, so they read FIXTURE and left the lane
+(`native_orchestration_misuse` was deleted outright). `fixture_source_coverage`
+came back whole (its unrowed bin got a row on `main`). Getting the four back is
+a lane change, not a census one: `test-lane-contracts` would have to build
+their verdict stamps, which `check-lane-contracts` permits for a compile stage
+(~15 s / 475 MB cold per cargo row). Recorded on issue 1656.
 
 **The census found a flake the hand list never could.** The first W7 census
 measured the crate's own `lib` UNSTABLE (FAIL in one run of two):
