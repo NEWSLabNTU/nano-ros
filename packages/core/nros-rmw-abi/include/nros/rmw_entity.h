@@ -158,15 +158,18 @@ typedef struct rmw_mut_byte_span_t {
     size_t capacity;
     /** Out: bytes actually written.
      *
-     *  On `NROS_RMW_RET_BUFFER_TOO_SMALL` from the subscription `take` slot it
-     *  is the size the refused sample NEEDED, or
-     *  `NROS_RMW_TAKE_LEN_UNKNOWN` when the backend cannot know it (issue
-     *  1612). Undefined on every other failure. */
+     *  On `NROS_RMW_RET_BUFFER_TOO_SMALL` from any of the three TAKE slots —
+     *  the subscription `take` (issue 1612), the service `take_request` and
+     *  the client `take_response` (issue 1632) — it is the size the refused
+     *  sample, request or reply NEEDED, or `NROS_RMW_TAKE_LEN_UNKNOWN` when
+     *  the backend cannot know it. The caller pre-sets it to that value on
+     *  all three. Undefined on every other failure. */
     size_t len;
 } rmw_mut_byte_span_t;
 
-/** `rmw_mut_byte_span_t.len` after a too-small `take` whose sample size the
- *  backend does not know — issue 1612.
+/** `rmw_mut_byte_span_t.len` after a too-small `take`, `take_request` or
+ *  `take_response` whose payload size the backend does not know — issues
+ *  1612 and 1632.
  *
  *  ZERO, and that is what makes the rule additive rather than a flag day: a
  *  sample of zero bytes fits every buffer, so no real refusal can need zero,
