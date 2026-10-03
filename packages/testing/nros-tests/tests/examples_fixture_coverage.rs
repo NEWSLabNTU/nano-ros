@@ -135,7 +135,9 @@ fn collect_pkg_dirs(root: &Path) -> Vec<PathBuf> {
                 has_pkg_xml = true;
             }
         }
-        if has_pkg_xml {
+        // Issue 1603 -- a leaf's `node/` package is part of that leaf, which
+        // is the example a fixture builds.
+        if has_pkg_xml && !nros_tests::treewalk::is_leaf_node_package(dir) {
             acc.push(dir.to_path_buf());
         }
         for s in subdirs {

@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+# Issue 1603 -- the NODE half of the `service-server` Zephyr leaf: the component
+# logic, and nothing Zephyr. It host-builds, so the metadata probe answers for
+# it (`metadata/service_server.json`). Nothing on the west road reads that
+# sidecar yet, so the image's pools are not derived from it (issue 1662).
+# The west application is the leaf ABOVE this directory, which depends on this
+# crate by path -- the same split phase-470 W5 generates for a Zephyr
+# WORKSPACE image, done by hand in a copy-out leaf (RFC-0026). The node is
+# DECLARED where a leaf declares everything: the leaf's `system.toml`, as a
+# `[[component]]` row naming this package.
+
+[package]
+name = "zephyr_rs_service_server_node"
+version = "0.1.0"
+edition = "2021"
+description = "nros Zephyr service-server node (host-buildable component)"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
+log = "0.4"
+example_interfaces = { path = "../generated/example_interfaces", default-features = false }
+
+[package.metadata.ament]
+build_depend = ["example_interfaces"]
+exec_depend = ["example_interfaces"]

@@ -14,8 +14,8 @@ rmw = "zenoh"
 domain_id = 0
 
 [[component]]
-pkg = "zephyr_listener"
-class = "nros_zephyr_listener::Listener"
+pkg = "zephyr_listener_node"
+class = "zephyr_listener_node::Listener"
 name = "listener"
 
 # The Zephyr family; the concrete Zephyr board (`native_sim/native/64`) is the

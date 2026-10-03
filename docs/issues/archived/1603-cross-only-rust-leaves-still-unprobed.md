@@ -1,12 +1,13 @@
 ---
 id: 1603
 title: "32 cross-only Rust example leaves still reach no metadata probe, and declare nothing — their pools stay at the crate defaults"
-status: open
+status: resolved
 type: tech-debt
 area: [tooling, build, examples]
 severity: medium
 found: 2026-10-01
-related: [1265, 1556, 1061, 0827, 0288, rfc-0098]
+related: [1265, 1556, 1061, 0827, 0288, 1662, rfc-0098]
+resolved_in: "branch zephyr-rust-node-split"
 ---
 
 ## What
@@ -192,3 +193,71 @@ shape: an included `build-std`, an included generated-rows sidecar, an inline
 relative patch -- extracted file has both patches, absolute, and no `unstable`).
 
 **Still open here: the six `examples/zephyr/rust/*` leaves.**
+
+## 2026-10-03 -- Zephyr probes: the node is its own package (the workspace split, by hand)
+
+Fixed in the PR that carries this section (*the Zephyr Rust leaves split into a
+host-buildable node package and the west image half*), per the revised
+direction: each of the six `examples/zephyr/rust/*` leaves now holds its
+component in `node/` -- a package of its own (`<leaf pkg>_node`, a
+`package.xml` and a `Cargo.toml`) that depends on nothing Zephyr -- and the
+leaf crate is the image half: `src/lib.rs` re-exports the
+node type, `src/app_main.rs` keeps the boot glue, and `Cargo.toml` depends on
+`node/` by path. `system.toml`'s `[[component]]` names the node package, so the
+leaf's own (deploy-bound, `zephyr-build`-needing) package is no longer a probe
+candidate. The leaf stays a single self-contained copy-out directory
+(RFC-0026); `node/` is not under `src/`, so `nros sync` keeps treating the leaf
+as a single package (a `src/<pkg>/package.xml` would flip it to a colcon
+workspace and drop the leaf's own patch rows -- measured, the west build then
+failed `no matching package named nros-platform`).
+
+Two things it needed beyond the examples:
+
+* **Discovery follows the leaf's path dependency.** `Workspace::discover`
+  enumerated the root package and `src/*/package.xml` only, so a node package
+  beside the leaf was a component nothing probed. It now also takes a package a
+  single-package root reaches by a cargo `path` dependency INSIDE the root
+  (`root_path_dep_packages`) -- the edge `nros sync`'s own scan already follows
+  for message generation. A dep into the checkout, or a generated message crate
+  (no `package.xml`), is not one. Such a package's components are the LEAF's
+  `system.toml` rows that name it (`declared_node_summaries`), NOT
+  deploy-bound -- the leaf's tree states nothing in a manifest table
+  (`check-leaf-deployment-spelling`). Two sibling gates learned the shape:
+  `check-msg-dep-is-path` (the node's message deps are the leaf's
+  `../generated/`, the same edge) and `check-rmw-ret-sign`'s baseline (the
+  action server's one counted site moved files). Test:
+  `workspace::tests::a_leaf_discovers_the_node_package_it_path_depends_on`.
+* **`action-server`'s reply-slot report moved into the node.** The node called
+  UP into the image glue (`crate::app_main::reply_slot_refusals`); a separate
+  package cannot. It is a node function behind a `reply-slot-diag` feature the
+  image's `rmw-zenoh` turns on, so the host build (no zenoh shim) answers
+  `None` and the image still reports `refusals=0` (measured below).
+
+Measured, metadata wiped first:
+
+| | `nros sync` probe | west build (`native_sim/native/64`, zenoh) |
+| --- | --- | --- |
+| before (listener) | `listener.json.unprobeable` -- `no matching package named zephyr-build` | builds |
+| after, all six | `node/metadata/{talker,listener,service_server,service_client,action_server,action_client}.json` | all six build |
+
+Runtime, against `rmw_zenohd` on loopback (the split images, no test harness):
+talker -> listener 5/5 (`I heard: [Hello World: N]`); service client gets
+`Result of add_two_ints: 5`; action client receives the Fibonacci feedback and
+`Result received: [0, 1, 1, ... 55]`, and the server keeps printing
+`reply-slot: refusals=0`.
+
+**What this does NOT do:** derive the Zephyr leaves' pools. The sidecar exists,
+and nothing on the west road (`rust_cargo_application()` + the module's Kconfig
+knob resolver) reads it -- the listener's `.bss` is 857,144 bytes before and
+after. Filed as
+[issue 1662](../1662-zephyr-standalone-rust-leaf-reads-no-probe-sidecar.md).
+
+## Resolution
+
+Every leaf in this issue's table now probes: the 8 RTIC and 6 ThreadX leaves
+(the 2026-10-03 section above), the 6 FreeRTOS leaves (already did, once
+provisioned), the 6 NuttX leaves (the probe takes the build road's config
+convention) and the 6 Zephyr leaves (the node split). On every family but
+Zephyr the probe also reaches the pools; Zephyr's consumer is issue 1662.
+`packages/testing/nros-tests/bins/rtic-run-plan-e2e` (outside the 32) is
+unchanged.

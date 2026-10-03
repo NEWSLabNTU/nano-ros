@@ -13,8 +13,8 @@ rmw = "zenoh"
 domain_id = 0
 
 [[component]]
-pkg = "zephyr_talker"
-class = "nros_zephyr_talker::Talker"
+pkg = "zephyr_talker_node"
+class = "zephyr_talker_node::Talker"
 name = "talker"
 
 # The Zephyr family; the concrete Zephyr board (`native_sim/native/64`) is the

@@ -219,6 +219,23 @@ impl Workspace {
         let root = root.to_path_buf();
         if root.join("package.xml").is_file() {
             packages.push(discover_package(&root)?);
+            // Issue 1603 -- a single-package leaf whose node lives in a package
+            // of its own, reached by a cargo PATH dependency (the Zephyr leaves:
+            // the node host-builds, the leaf is the west image half). `nros
+            // sync`'s scan already follows that edge for message generation
+            // (`scan_one_pkg_dir`); discovery has to as well, or the node's
+            // `[package.metadata.nros.node]` is a component nothing enumerates.
+            for dep in root_path_dep_packages(&root) {
+                let mut pkg = discover_package(&dep)?;
+                // The node is declared where the LEAF declares everything: its
+                // `system.toml`, as a `[[component]]` row naming this package
+                // (RFC-0098 D3 -- a leaf's tree carries no manifest-table
+                // spelling, `check-leaf-deployment-spelling`).
+                if pkg.cargo_component_metadata.is_empty() {
+                    pkg.cargo_component_metadata = declared_node_summaries(&root, &dep, &pkg.name)?;
+                }
+                packages.push(pkg);
+            }
         }
         let src = root.join("src");
         if src.is_dir() {
@@ -578,6 +595,46 @@ impl ComponentDeclaration {
             self.package_root.join(raw)
         }
     }
+}
+
+/// Issue 1603 -- the ROS packages a single-package root reaches by a cargo
+/// `path` dependency: a dependency directory INSIDE the root that carries its
+/// own `package.xml`. Inside the root only, so a leaf's path deps into the
+/// nano-ros checkout (`../../../packages/...`) are never mistaken for its own
+/// packages; the root itself is excluded. Sorted, so discovery is stable.
+fn root_path_dep_packages(root: &Path) -> Vec<PathBuf> {
+    let Ok(body) = fs::read_to_string(root.join("Cargo.toml")) else {
+        return Vec::new();
+    };
+    let Ok(manifest) = body.parse::<toml::Table>() else {
+        return Vec::new();
+    };
+    let Ok(canon_root) = fs::canonicalize(root) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for table in ["dependencies", "build-dependencies", "dev-dependencies"] {
+        let Some(deps) = manifest.get(table).and_then(|t| t.as_table()) else {
+            continue;
+        };
+        for spec in deps.values() {
+            let Some(path) = spec.get("path").and_then(|p| p.as_str()) else {
+                continue;
+            };
+            let Ok(dir) = fs::canonicalize(root.join(path)) else {
+                continue;
+            };
+            if dir != canon_root
+                && dir.starts_with(&canon_root)
+                && dir.join("package.xml").is_file()
+                && !out.contains(&dir)
+            {
+                out.push(dir);
+            }
+        }
+    }
+    out.sort();
+    out
 }
 
 fn discover_package(root: &Path) -> Result<Package> {
@@ -1341,6 +1398,69 @@ fn leaf_system_summaries(
         .collect())
 }
 
+/// Issue 1603 -- the components a single-package leaf's `system.toml` declares
+/// for a NODE package it path-depends on (`[[component]] pkg = "<that pkg>"`).
+///
+/// [`leaf_system_summaries`] skips such rows for the leaf's own package ("not
+/// this package's declaration"); this is where they land instead. NOT
+/// deploy-bound: the node package names no board and depends on nothing the
+/// board needs, which is the whole reason it was split out -- the host probe
+/// builds it as an ordinary package.
+fn declared_node_summaries(
+    leaf_root: &Path,
+    node_root: &Path,
+    pkg_name: &str,
+) -> Result<Vec<CargoComponentSummary>> {
+    let cargo_toml = node_root.join("Cargo.toml");
+    let Ok(raw) = fs::read_to_string(&cargo_toml) else {
+        return Ok(Vec::new());
+    };
+    let envelope: CargoManifestEnvelope = toml::from_str(&raw)
+        .wrap_err_with(|| format!("failed to parse {}", cargo_toml.display()))?;
+    let Some(package) = envelope.package else {
+        return Ok(Vec::new());
+    };
+    let crate_name = package.name.replace('-', "_");
+    let bins: Vec<String> = envelope
+        .bin
+        .iter()
+        .flat_map(|b| b.iter())
+        .filter_map(|b| b.name.clone())
+        .collect();
+    let Some(decl) =
+        nros_orchestration_ir::leaf_system::read(leaf_root).map_err(|e| eyre::eyre!(e))?
+    else {
+        return Ok(Vec::new());
+    };
+    let rows: Vec<_> = decl
+        .components
+        .iter()
+        .filter(|c| c.pkg.as_deref() == Some(pkg_name))
+        .collect();
+    let keyed = rows.len() > 1;
+    Ok(rows
+        .into_iter()
+        .map(|c| {
+            let component = ComponentMetadata {
+                class: c.class.clone(),
+                name: c.name.clone(),
+                dispatch: c.dispatch.clone(),
+                ..ComponentMetadata::default()
+            };
+            let key = if keyed { c.name.as_deref() } else { None };
+            synthesise_summary(
+                pkg_name,
+                &crate_name,
+                false,
+                key,
+                &component,
+                &bins,
+                &cargo_toml,
+            )
+        })
+        .collect())
+}
+
 /// Build a [`CargoComponentSummary`] for one `[component]` / `[node]`
 /// (single) or `[components.<Name>]` / `[nodes.<Name>]` (multi) entry.
 ///
@@ -1733,6 +1853,76 @@ version = "0.1.0"
 class = "demo_pkg::Demo"
 name = "demo"
 "#;
+
+    /// Issue 1603 -- a single-package leaf whose node lives in a package of its
+    /// own (the Zephyr leaves' shape) discovers that package through its cargo
+    /// path dependency, so the node's `[package.metadata.nros.node]` is a
+    /// component the probe enumerates. Only a dependency INSIDE the leaf that
+    /// carries a `package.xml` counts: not one into the checkout, not a
+    /// generated message crate. Red before (measured): `packages` held the leaf
+    /// alone and the node was never probed.
+    #[test]
+    fn a_leaf_discovers_the_node_package_it_path_depends_on() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = tmp.path().join("leaf");
+        let outside = tmp.path().join("outside");
+        for d in [
+            leaf.join("node/src"),
+            leaf.join("generated/std_msgs"),
+            outside.clone(),
+        ] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let pkg = |name: &str| {
+            format!(
+                "<?xml version=\"1.0\"?>\n<package format=\"3\"><name>{name}</name>\
+                 <version>0.1.0</version><description>d</description>\
+                 <maintainer email=\"a@b.c\">m</maintainer><license>MIT</license></package>\n"
+            )
+        };
+        std::fs::write(leaf.join("package.xml"), pkg("leaf_pkg")).unwrap();
+        std::fs::write(leaf.join("node/package.xml"), pkg("leaf_pkg_node")).unwrap();
+        std::fs::write(outside.join("package.xml"), pkg("outside_pkg")).unwrap();
+        std::fs::write(
+            leaf.join("Cargo.toml"),
+            "[package]\nname = \"leaf\"\nversion = \"0.1.0\"\n\n[dependencies]\n\
+             leaf_pkg_node = { path = \"node\" }\n\
+             std_msgs = { path = \"generated/std_msgs\" }\n\
+             outside_pkg = { path = \"../outside\" }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            leaf.join("node/Cargo.toml"),
+            "[package]\nname = \"leaf_pkg_node\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        // The leaf declares the node, in its own `system.toml`, by package.
+        std::fs::write(
+            leaf.join("system.toml"),
+            "[system]\nname = \"leaf\"\nrmw = \"zenoh\"\n\n[[component]]\n\
+             pkg = \"leaf_pkg_node\"\nclass = \"leaf_pkg_node::Node\"\nname = \"n\"\n\n\
+             [image.zephyr]\nboard = \"zephyr\"\n",
+        )
+        .unwrap();
+
+        let ws = Workspace::discover(&leaf).unwrap();
+        let names: Vec<&str> = ws.packages.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, vec!["leaf_pkg", "leaf_pkg_node"], "{names:?}");
+        let comps = ws.component_declarations().unwrap();
+        let node = comps
+            .iter()
+            .find(|c| c.config.package == "leaf_pkg_node")
+            .expect("the node package is a probe candidate");
+        assert!(node.package_root.ends_with("node"), "rooted at its own dir");
+        assert!(
+            !node.deploy_bound,
+            "the node names no board: host-probeable"
+        );
+        assert!(
+            comps.iter().all(|c| c.config.package != "leaf_pkg"),
+            "the leaf's own (deploy-bound) package declares no component of its own"
+        );
+    }
 
     #[test]
     fn deploy_table_alone_marks_the_package_deploy_bound() {
