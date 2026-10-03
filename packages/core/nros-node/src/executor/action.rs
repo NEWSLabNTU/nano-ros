@@ -348,6 +348,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::ActionServer,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             has_data: always_ready,
             pre_sample: no_pre_sample,
             invocation: InvocationMode::Always,
@@ -912,6 +913,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::ActionServer,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             has_data: always_ready,
             pre_sample: no_pre_sample,
             invocation: InvocationMode::Always,
@@ -1180,11 +1182,13 @@ impl<'s> Executor<'s> {
     /// `false`, touching nothing, when `entry_index` is not a live action
     /// server.
     ///
+    /// The const parameters are no longer load-bearing (issue 1631): the
+    /// bytes released are the ones the registration RECORDED, so a mismatch
+    /// cannot release the wrong length. They stay so existing callers compile.
+    ///
     /// # Safety
-    /// The entry must have been registered by
-    /// `register_action_server_raw_sized` with the SAME const parameters, and
-    /// no [`ActionServerRawHandle`] naming it may be used afterwards — the slot
-    /// is handed to the next registration.
+    /// No [`ActionServerRawHandle`] naming the entry may be used afterwards —
+    /// the slot is handed to the next registration.
     pub unsafe fn release_action_server_raw_sized<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
@@ -1194,15 +1198,7 @@ impl<'s> Executor<'s> {
         &mut self,
         entry_index: usize,
     ) -> bool {
-        unsafe {
-            self.release_entry(
-                entry_index,
-                EntryKind::ActionServer,
-                core::mem::size_of::<
-                    ActionServerRawArenaEntry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
-                >(),
-            )
-        }
+        unsafe { self.release_entry(entry_index, EntryKind::ActionServer) }
     }
 
     /// [`release_action_server_raw_sized`](Self::release_action_server_raw_sized)
@@ -1243,9 +1239,11 @@ impl<'s> Executor<'s> {
 
     /// The sized form of [`release_action_client_raw`](Self::release_action_client_raw).
     ///
+    /// As for the server, the const parameters are no longer load-bearing
+    /// (issue 1631): the released length is the recorded one.
+    ///
     /// # Safety
-    /// The entry must have been registered by
-    /// `register_action_client_raw_sized` with the SAME const parameters.
+    /// No copy of `entry_index` may be used afterwards.
     pub unsafe fn release_action_client_raw_sized<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
@@ -1254,14 +1252,7 @@ impl<'s> Executor<'s> {
         &mut self,
         entry_index: usize,
     ) -> bool {
-        unsafe {
-            self.release_entry(
-                entry_index,
-                EntryKind::ActionClient,
-                core::mem::size_of::<ActionClientRawArenaEntry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>>(
-                ),
-            )
-        }
+        unsafe { self.release_entry(entry_index, EntryKind::ActionClient) }
     }
 }
 
@@ -1759,6 +1750,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::ActionClient,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             has_data: always_ready,
             pre_sample: no_pre_sample,
             invocation: InvocationMode::Always,
@@ -1950,6 +1942,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::ActionClient,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             has_data: always_ready,
             pre_sample: no_pre_sample,
             invocation: InvocationMode::Always,
@@ -2012,6 +2005,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::ActionClient,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             has_data: always_ready,
             pre_sample: no_pre_sample,
             invocation: InvocationMode::Always,
@@ -2162,6 +2156,7 @@ mod terminal_verb_tests {
         CallbackMeta {
             offset: 0,
             kind: EntryKind::ActionServer,
+            arena_len: crate::executor::arena::ArenaLen::UNRECORDED,
             try_process: never_processes,
             has_data: always_ready,
             pre_sample: no_pre_sample,
