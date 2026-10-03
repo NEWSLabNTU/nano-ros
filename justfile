@@ -1433,7 +1433,13 @@ _nextest-platform test_name verbose="" feature_args="" filter="":
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    args=(-p nros-tests --test {{test_name}} --no-fail-fast)
+    # `test_name` may name SEVERAL targets, space-separated (issue 1658): a
+    # platform lane whose cells live in more than one SHARED consumer runs them
+    # in ONE nextest invocation, so they share one junit, one skip budget and
+    # one verdict. Two calls would each reset the junit (`_nextest-tolerant`),
+    # and the job would upload whichever ran last.
+    args=(-p nros-tests --no-fail-fast)
+    for t in {{test_name}}; do args+=(--test "$t"); done
     # `filter` is a nextest `-E` expression, for a lane whose tests live in a
     # SHARED target rather than a per-platform one. The NuttX lane needs it: its
     # own suite was one boot micro-test that `rtos_e2e`'s `Platform::Nuttx` cells
