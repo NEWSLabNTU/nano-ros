@@ -6,8 +6,14 @@
 //! not: `nros_cpp_action_server_destroy` drops a struct whose every field is
 //! `Copy` or a raw pointer, so it runs no destructor — while the five RMW
 //! entities, the goal table and the result slab it appears to release live in
-//! an `ActionServerRawArenaEntry` in the executor arena, which is a bump
-//! allocator with no removal path.
+//! an `ActionServerRawArenaEntry` in the executor arena. When this table was
+//! written the arena had no removal path; since `9768795b1d` (issue 1496) both
+//! ACTION entries are released through the executor — the client's inside
+//! `nros_cpp_action_client_destroy` before its `drop_in_place`, the server's in
+//! `nros_cpp_action_server_detach`, which `~Server` calls before
+//! `nros_cpp_action_server_destroy`. So for the action rows `NO_OP` describes
+//! the DROP, not the entity's fate. The guard-condition row is still a no-op
+//! destroy (issue 1667).
 //!
 //! WHY A TABLE, AND WHY THE COMPILER ANSWERS IT
 //!
@@ -40,8 +46,11 @@ use crate::{
 const RELEASES: bool = true;
 
 /// The `drop_in_place` runs nothing at all. Whatever the entity owns is
-/// elsewhere — for the three below, in the executor arena, which never gives a
-/// slot back (issue 1496).
+/// elsewhere — for the three below, in the executor arena. That is a statement
+/// about the DROP: both action entries are now released through the executor
+/// (`9768795b1d` — the client in its destroy, the server in the detach `~Server`
+/// calls first), and only the guard condition's entry is never released (issue
+/// 1667).
 const NO_OP: bool = false;
 
 macro_rules! destroy_shapes {

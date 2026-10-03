@@ -156,10 +156,9 @@ struct StubService {
 // `std::shared_ptr` could not do.
 //
 // NOT an arena handle, unlike `Subscription<M>::SharedPtr` below, and W4
-// measured why: the arena is a bump allocator with no removal path, so an arena
-// publisher would make `reset()` and scope exit no-ops over a live RMW
-// publisher. The Rust side returns `EmbeddedPublisher<M>` BY VALUE with a
-// `Drop`, and `Owned<T>` mirrors that lifetime exactly.
+// measured why: the Rust side returns `EmbeddedPublisher<M>` BY VALUE with a
+// `Drop`, and `Owned<T>` mirrors that lifetime exactly; an arena slot would
+// diverge from it. (W4's no-removal-path argument expired with `9768795b1d`.)
 static_assert(std::is_same<::nros::Publisher<StringMsg>::SharedPtr,
                            ::nros::Owned<::nros::Publisher<StringMsg>>>::value,
               "Publisher<M>::SharedPtr must be nros::Owned<Publisher<M>>");

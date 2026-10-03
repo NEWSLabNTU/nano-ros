@@ -9981,8 +9981,9 @@ unsafe extern "C" fn accept_and_record_context(
 /// that names freed memory.
 ///
 /// `nros_cpp_action_server_register` hands the arena `storage` itself as the
-/// callback context, and the arena is a bump allocator with no removal path, so
-/// the entry and its three service servers survive the owner unconditionally.
+/// callback context, and a DETACH leaves the entry in place (only
+/// `release_action_server_raw` removes it), so the entry and its three service
+/// servers survive the owner.
 /// `Executor::detach_action_server_raw` is the cut: the two callbacks become
 /// context-free stubs and the context goes null.
 ///

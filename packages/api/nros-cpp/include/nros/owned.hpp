@@ -37,16 +37,15 @@ namespace nros {
 /// uniformity. It should not, and the reason is not that the slot would be
 /// redundant — it is that the slot would be WRONG.
 ///
-/// The arena is a bump allocator with no removal path: `arena_used` only grows
-/// and nothing sets an entry slot back to `None`, which is why
-/// `SubscriptionHandle<M>` offers no `cancel()` and says so. A dispatch
-/// subscription lives with that, because firing until the executor dies is what
-/// it IS. A publisher cannot: `~Publisher()` calls
-/// `nros_cpp_publisher_destroy`, and `reset()` below destroys NOW. An arena
-/// publisher would turn both into no-ops holding a live RMW publisher forever —
-/// a regression against upstream rclcpp, where the last reference destroys, and
-/// against our own Rust API, where `EmbeddedPublisher<M>` is returned BY VALUE
-/// from `Node::create_publisher_with_qos` and has a `Drop`.
+/// When this was written the arena was a bump allocator with no removal path,
+/// and that was the first reason given here: an arena publisher would have
+/// turned `~Publisher()` and `reset()` into no-ops over a live RMW publisher.
+/// `9768795b1d` (issue 1496) retired that reason — the arena can release an
+/// entry now, so the release could be wired. The decision does NOT rest on it.
+/// `~Publisher()` calls `nros_cpp_publisher_destroy` and `reset()` below
+/// destroys NOW, matching upstream rclcpp, where the last reference destroys,
+/// and our own Rust API, where `EmbeddedPublisher<M>` is returned BY VALUE from
+/// `Node::create_publisher_with_qos` and has a `Drop`.
 ///
 /// That last point is the whole argument in one line. This phase's principle is
 /// that entity lifetime is defined by a Rust data structure; for a publisher

@@ -117,10 +117,11 @@ namespace rclcpp {
 /// already satisfied here, and `nros::Owned<Publisher<M>>` mirrors that
 /// structure exactly.
 ///
-/// It also could not be moved without losing something. The arena is a bump
-/// allocator with no removal path, so an arena publisher could never be
-/// destroyed before its executor — `~Publisher()` below and `Owned<T>::reset()`
-/// would become no-ops over a live RMW publisher.
+/// It was also argued that it could not be moved without losing something —
+/// the arena then had no removal path, so an arena publisher could never have
+/// been destroyed before its executor. `9768795b1d` (issue 1496) retired that
+/// argument; the one above, that an arena slot would make C++ diverge from the
+/// Rust lifetime, is what carries the decision.
 ///
 /// Measured, so the question does not get re-opened on a size argument:
 /// `sizeof(Publisher<M>)` is 872 bytes and INDEPENDENT of `M` — identical for a
@@ -149,11 +150,11 @@ template <typename M> class Publisher {
     /// keeps working, and no allocator, control block or `<memory>` anywhere.
     ///
     /// IT IS NOT AN ARENA HANDLE, and that is a decision rather than an
-    /// omission — W4 measured the case and refused it. The executor arena is a
-    /// bump allocator with no removal path (`EntryKind` has no publisher at
-    /// all), so an arena publisher would turn `~Publisher()` and
-    /// `Owned<T>::reset()` into no-ops holding a live RMW publisher for the
-    /// executor's lifetime. The Rust side settles it: `create_publisher_with_qos`
+    /// omission — W4 measured the case and refused it. It was first argued from
+    /// the arena having no removal path (`EntryKind` has no publisher at all), so
+    /// that `~Publisher()` and `Owned<T>::reset()` would become no-ops; that
+    /// argument expired with `9768795b1d` (issue 1496). The Rust side is what
+    /// settles it: `create_publisher_with_qos`
     /// returns an `EmbeddedPublisher<M>` BY VALUE, with a `Drop`, and this
     /// phase's principle is that the C++ lifetime mirrors the Rust one.
     /// `owned.hpp` carries the long form.

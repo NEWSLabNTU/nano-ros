@@ -965,9 +965,10 @@ impl<'s> Executor<'s> {
 
 /// The `goal_callback` a DETACHED raw action server entry carries.
 ///
-/// Issue 1496 — the arena is a bump allocator with no removal path, so an
-/// action server's five RMW entities stay advertised after the object that
-/// registered them is gone and a `send_goal` query still reaches its entry.
+/// Issue 1496 — a DETACHED entry is not a released one: detaching leaves the
+/// action server's five RMW entities advertised after the object that
+/// registered them is gone, so a `send_goal` query still reaches its entry.
+/// (`release_action_server_raw`, resolution 2, is what removes them.)
 /// What must not survive is the DISPATCH: the registered `context` is the
 /// address of the owner's storage (for the C++ tier, the `storage_` member of
 /// a destroyed `rclcpp_action::Server<A>`), so calling the real trampoline
@@ -1009,9 +1010,9 @@ impl<'s> Executor<'s> {
     ///
     /// This is not a release and does not pretend to be one. The entry keeps
     /// its slot, its arena bytes and its five RMW entities for the executor's
-    /// lifetime, because `arena_alloc` is a bump
-    /// allocator with no removal path (resolution 2 of issue 1496, which would
-    /// change the arena into something with a free list, is not this). What it
+    /// lifetime: detaching is not releasing. Resolution 2 of issue 1496 —
+    /// [`release_action_server_raw`](Self::release_action_server_raw), over the
+    /// arena's free list — is what gives those back; this keeps them. What it
     /// does is cut the one edge that outlives the owner: the registered
     /// `context`, and the two callbacks that dereference it.
     ///

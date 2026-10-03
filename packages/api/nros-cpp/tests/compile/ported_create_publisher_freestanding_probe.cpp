@@ -18,10 +18,10 @@
 // W5 removed the premise rather than the rule. `Publisher<M>::SharedPtr` is
 // `nros::Owned<Publisher<M>>` now: the publisher BY VALUE, move-only, with an
 // `operator->` so `pub->publish(m)` keeps working, and with no allocator, no
-// control block and no `<memory>`. W4 measured the case for it — the arena has
-// no removal path, so an arena publisher would make `reset()` and scope exit
-// no-ops, and the Rust `create_publisher_with_qos` returns an
-// `EmbeddedPublisher<M>` by value with a `Drop` that `Owned<T>` mirrors. With
+// control block and no `<memory>`. W4 measured the case for it — the Rust
+// `create_publisher_with_qos` returns an `EmbeddedPublisher<M>` by value with a
+// `Drop` that `Owned<T>` mirrors. (Its other argument, that the arena had no
+// removal path, expired with `9768795b1d`.) With
 // no allocation to hide, there is nothing left to refuse, and refusing anyway
 // would be a divergence this API exists to remove.
 //
