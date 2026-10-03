@@ -5843,6 +5843,106 @@ nros_ret_t nros_executor_remove_action_client(struct nros_executor_t *executor,
                                               struct nros_action_client_t *client);
 
 /**
+ * Remove a subscription from the executor — issue 1631, rclc's
+ * `rclc_executor_remove_subscription`.
+ *
+ * Every `nros_executor_add_subscription*` that takes a
+ * `nros_subscription_t` registers an arena entry and records it in the
+ * subscription; `nros_subscription_fini` is handed only the subscription, so
+ * it cannot undo the executor's side. This does, the way
+ * [`nros_executor_remove_action_server`] does for an action: the arena entry
+ * is DROPPED (the subscriber leaves the graph, its callback slot and its
+ * arena bytes — receive ring included — are reused by the next
+ * registration), `handle_count` and `subscription_count` come back down, and
+ * the trigger table forgets the subscription.
+ *
+ * The subscription stays INITIALIZED: it can be re-added, or finalised with
+ * `nros_subscription_fini`. Call this BEFORE `fini`. Typed message storage
+ * handed to `nros_executor_add_subscription_typed*` is not written again
+ * after this returns.
+ *
+ * # Returns
+ * * `NROS_RET_OK` — removed.
+ * * `NROS_RET_INVALID_ARGUMENT` — a NULL pointer.
+ * * `NROS_RET_NOT_INIT` — the executor or the subscription is not initialised.
+ * * `NROS_RET_NOT_FOUND` — the subscription is not registered on THIS executor.
+ * * `NROS_RET_REENTRANT` — called from inside a callback this executor is
+ *   dispatching; the entry may be the one running.
+ *
+ * # Safety
+ * `executor` and `subscription` must be valid pointers to initialised objects.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_remove_subscription(struct nros_executor_t *executor,
+                                             struct nros_subscription_t *subscription);
+
+/**
+ * Remove a timer from the executor — issue 1631, rclc's
+ * `rclc_executor_remove_timer`.
+ *
+ * The arena entry `rclc_executor_add_timer` / `nros_executor_add_timer_in_group`
+ * registered wraps the timer's C callback in a closure that captured the
+ * `nros_timer_t *` itself, so after `rcl_timer_fini` alone it kept firing
+ * with a pointer to the finalised (or freed) struct. This drops the entry —
+ * the closure with it — and undoes `handle_count`, `timer_count` and the
+ * trigger table, as [`nros_executor_remove_subscription`] does.
+ *
+ * The timer keeps its state (RUNNING or CANCELED) and can be re-added, or
+ * finalised with `rcl_timer_fini`. Call this BEFORE `fini`.
+ *
+ * # Returns
+ * As [`nros_executor_remove_subscription`].
+ *
+ * # Safety
+ * `executor` and `timer` must be valid pointers to initialised objects.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_remove_timer(struct nros_executor_t *executor,
+                                      struct nros_timer_t *timer);
+
+/**
+ * Remove a service server from the executor — issue 1631, rclc's
+ * `rclc_executor_remove_service`.
+ *
+ * Drops the arena entry `nros_executor_add_service{,_raw}` registered (the
+ * server leaves the graph; its slot and bytes are reused) and undoes
+ * `handle_count`, `service_count` and the trigger table, as
+ * [`nros_executor_remove_subscription`] does. The service stays INITIALIZED.
+ *
+ * # Returns
+ * As [`nros_executor_remove_subscription`].
+ *
+ * # Safety
+ * `executor` and `service` must be valid pointers to initialised objects.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_remove_service(struct nros_executor_t *executor,
+                                        struct nros_service_t *service);
+
+/**
+ * Remove a service client from the executor — issue 1631, rclc's
+ * `rclc_executor_remove_client`.
+ *
+ * The arena entry `nros_executor_add_client` registered dispatches replies
+ * through `client_response_trampoline`, which READS the `nros_client_t`, so
+ * after `nros_client_fini` alone a late reply was a use-after-free of a stack
+ * or freed client. This drops the entry (the client leaves the graph, and a
+ * reply it was still waiting for is abandoned), undoes `handle_count` and the
+ * trigger table, and returns the client from REGISTERED to INITIALIZED — so
+ * it can be re-added, or finalised with `nros_client_fini`. Its timeout
+ * setting is kept.
+ *
+ * # Returns
+ * As [`nros_executor_remove_subscription`].
+ *
+ * # Safety
+ * `executor` and `client` must be valid pointers to initialised objects.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_remove_client(struct nros_executor_t *executor,
+                                       struct nros_client_t *client);
+
+/**
  * Spin the executor once.
  *
  * Drives middleware I/O, then dispatches ready callbacks.

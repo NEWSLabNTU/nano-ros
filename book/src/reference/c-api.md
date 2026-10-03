@@ -74,6 +74,17 @@ goals, requesting results, and cancelling:
   reuse, and bring `nros_executor_get_handle_count()` back down. A program
   that tears the executor down with `rclc_executor_fini()` needs neither —
   that drops every entry (issue 1609).
+- **The same holds for every other entity the executor registers** (issue
+  1631): `nros_executor_remove_subscription()`, `nros_executor_remove_timer()`,
+  `nros_executor_remove_service()` and `nros_executor_remove_client()` — rclc's
+  `rclc_executor_remove_*` shape — each drop the arena entry (receive ring
+  included), free the slot and bring `handle_count` back down. Call one before
+  the entity's `fini` when the executor keeps running; a timer or client that
+  is `fini`'d without it is still dispatched into. A removed client returns to
+  INITIALIZED and can be re-added. All return `NROS_RET_NOT_FOUND` for an
+  entity not registered on that executor and `NROS_RET_REENTRANT` from inside
+  a callback. `nros_executor_add_subscription_raw_with_info()` takes no
+  subscription object and so has nothing to remove it by (issue 1668).
 
 The equivalent service client helper `nros_client_call()` does **not**
 take an explicit executor — the client stashes the executor pointer

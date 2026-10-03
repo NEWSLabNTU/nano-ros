@@ -276,6 +276,18 @@ static rmw_ret_t stub_set_wake_callback(rmw_session_t* session, void (*cb)(void*
     return NROS_RMW_RET_OK;
 }
 
+/* Issue 1631 — in ACCEPT mode the stub honours the four policies every
+ * profile states, so a service or client (which requires RELIABLE) can be
+ * created and counted. Outside accept mode it honours nothing, which is the
+ * answer the NULL slot gave and every refusing probe was written against. */
+static rmw_ret_t stub_supported_qos_policies(const rmw_session_t* session, uint32_t* out_mask) {
+    (void)session;
+    if (out_mask != NULL) {
+        *out_mask = s_accept_entities ? NROS_RMW_QOS_POLICY_CORE : NROS_RMW_QOS_POLICY_NONE;
+    }
+    return NROS_RMW_RET_OK;
+}
+
 static const nros_rmw_vtable_t STUB_VTABLE = {
     .create_session = stub_create_session,
     .destroy_session = stub_destroy_session,
@@ -295,6 +307,7 @@ static const nros_rmw_vtable_t STUB_VTABLE = {
     .create_client = stub_create_client,
     .destroy_client = stub_destroy_client,
     .set_wake_callback = stub_set_wake_callback,
+    .supported_qos_policies = stub_supported_qos_policies,
 };
 
 int32_t nros_stub_rmw_register(void) {
