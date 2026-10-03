@@ -240,6 +240,12 @@ function(_nros_entity_facts_flush)
             nros_entity_facts_env("${_t}")
         endif()
     endforeach()
+    # Issues 1653/1661 -- the C++ half of the same runtime gets the Cyclone facts
+    # from the same descriptor cargo was just handed, once, now that every entry
+    # has registered (RFC-0100 D12).
+    if(COMMAND nros_sizing_descriptor_apply_cyclonedds)
+        nros_sizing_descriptor_apply_cyclonedds()
+    endif()
 endfunction()
 
 # _nros_payload_facts_env(<out-var>)
