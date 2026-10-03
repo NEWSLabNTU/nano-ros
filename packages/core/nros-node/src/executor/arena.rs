@@ -1267,17 +1267,32 @@ mod arena_headroom_tests {
 /// **What this can and cannot say.** The buffer capacity is known here and is
 /// the actionable half — it names the knob to raise
 /// (`NROS_SUBSCRIPTION_BUFFER_SIZE`, or `NROS_SUBSCRIBER_BUFFER_SIZE` /
-/// `ZPICO_SUBSCRIBER_LARGE_SIZE` on zenoh). The SAMPLE size is not: the C ABI
-/// contract is "non-negative = bytes produced, negative = error code"
-/// (`rmw_vtable.h`), with no required-length out-param, so the backend cannot
-/// report how big the sample was. The topic is not either: `SubBufferedEntry`
-/// carries no name and adding one changes arena sizing. Both are ABI/struct
-/// changes worth doing on their own merits, not smuggled in behind a log line.
+/// `ZPICO_SUBSCRIBER_LARGE_SIZE` on zenoh). The SAMPLE size is known when the
+/// backend knows it: issue 1612 made a too-small `take` carry the size the
+/// sample needed (`rmw_entity.h`), which reaches here as
+/// `Subscription::refused_sample_len`, and issue 1632 made this line print it
+/// beside the buffer (`?` when unknown — `nros_rmw::RefusedLen`'s rule, which
+/// the C++ drop log shares). The topic is still not known: `SubBufferedEntry`
+/// carries no name and adding one changes arena sizing.
 ///
 /// `nros_log`, never stdio: this site is reached on `no_std` targets and inside
 /// Zephyr `native_sim`, where a Rust `std` stdio call is FATAL (issue 0589).
+/// `take_serialized`, with a refusal reported through [`report_dropped_take`]
+/// together with the size the backend says the sample needed — the one
+/// spelling of the five buffered drain sites.
+fn take_reporting_drop(
+    handle: &mut session::RmwSubscriber,
+    slot: &mut [u8],
+) -> Result<Option<usize>, TransportError> {
+    let cap = slot.len();
+    handle.take_serialized(slot).inspect_err(|e| {
+        report_dropped_take(e, cap, handle.refused_sample_len());
+    })
+}
+
 #[cold]
-fn report_dropped_take(err: &TransportError, buf_len: usize) {
+fn report_dropped_take(err: &TransportError, buf_len: usize, recorded: Option<usize>) {
+    let needed = nros_rmw::RefusedLen::for_error(err, recorded);
     let n = DROPPED_TAKES.fetch_add(1, portable_atomic::Ordering::Relaxed);
     // First, then every 64th. A 40-participant graph must not turn one
     // misconfigured subscription into a log flood (issue 0371's shape).
@@ -1286,8 +1301,8 @@ fn report_dropped_take(err: &TransportError, buf_len: usize) {
     }
     nros_log::log_error!(
         nros_log::get_logger("nros"),
-        "subscription take DROPPED ({err:?}); buffer is {buf_len} bytes. The \
-         sample was received and ACKed, then discarded — raise the subscription \
+        "subscription take DROPPED ({err:?}): {needed}-byte sample, {buf_len}-byte \
+         buffer. Received and ACKed, then discarded — raise the subscription \
          buffer knob if this is BufferTooSmall. Dropped {} so far (issue 0757)",
         n + 1
     );
@@ -1299,19 +1314,13 @@ unsafe fn drain_into_buffer<M, F>(
     match &entry.buffer {
         BufferStrategy::Triple(tb) => {
             let slot = tb.write_slot();
-            let cap = slot.len();
-            if let Some(len) = entry.handle.take_serialized(slot).inspect_err(|e| {
-                report_dropped_take(e, cap);
-            })? {
+            if let Some(len) = take_reporting_drop(&mut entry.handle, slot)? {
                 tb.writer_publish(len);
             }
         }
         BufferStrategy::Ring(ring) => {
             while let Some(slot) = ring.try_push() {
-                let cap = slot.len();
-                match entry.handle.take_serialized(slot).inspect_err(|e| {
-                    report_dropped_take(e, cap);
-                })? {
+                match take_reporting_drop(&mut entry.handle, slot)? {
                     Some(len) => ring.commit_push(len),
                     None => break,
                 }
@@ -1518,19 +1527,13 @@ unsafe fn drain_into_buffer_raw<F>(
     match &entry.buffer {
         BufferStrategy::Triple(tb) => {
             let slot = tb.write_slot();
-            let cap = slot.len();
-            if let Some(len) = entry.handle.take_serialized(slot).inspect_err(|e| {
-                report_dropped_take(e, cap);
-            })? {
+            if let Some(len) = take_reporting_drop(&mut entry.handle, slot)? {
                 tb.writer_publish(len);
             }
         }
         BufferStrategy::Ring(ring) => {
             while let Some(slot) = ring.try_push() {
-                let cap = slot.len();
-                match entry.handle.take_serialized(slot).inspect_err(|e| {
-                    report_dropped_take(e, cap);
-                })? {
+                match take_reporting_drop(&mut entry.handle, slot)? {
                     Some(len) => ring.commit_push(len),
                     None => break,
                 }
@@ -1657,10 +1660,7 @@ where
     // C copy: report the actionable size, then let the error out.
     {
         let slot = tb.write_slot();
-        let cap = slot.len();
-        if let Some(len) = entry.handle.take_serialized(slot).inspect_err(|e| {
-            report_dropped_take(e, cap);
-        })? {
+        if let Some(len) = take_reporting_drop(&mut entry.handle, slot)? {
             tb.writer_publish(len);
         }
     }
@@ -4376,5 +4376,82 @@ mod handle_offset_tests {
             "ServiceClientRawArenaEntry" => ServiceClientRawArenaEntry<53>,
             "ServiceClientSendHeader" => ServiceClientSendHeader<59>,
         }
+    }
+}
+
+/// Issue 1632 — the Rust arena's drop log prints the size the sample needed
+/// beside the buffer, as the C++ one has since issue 1612.
+///
+/// The sink keeps what was logged, so the test reads what a human would see.
+/// Process-global counter and sink, so the cells serialise and reset.
+#[cfg(test)]
+mod dropped_take_log_tests {
+    use super::{DROPPED_TAKES, report_dropped_take};
+    use nros_rmw::TransportError;
+
+    struct CapturingSink {
+        lines: std::sync::Mutex<std::vec::Vec<std::string::String>>,
+    }
+
+    impl nros_log::LogSink for CapturingSink {
+        fn log(&self, record: &nros_log::Record<'_>) {
+            if record.message.contains("subscription take DROPPED") {
+                self.lines
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push(record.message.into());
+            }
+        }
+    }
+
+    static CAPTURE: std::sync::OnceLock<&'static CapturingSink> = std::sync::OnceLock::new();
+    static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn logged_one(err: TransportError, cap: usize, recorded: Option<usize>) -> std::string::String {
+        let _g = SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let sink = CAPTURE.get_or_init(|| {
+            let sink: &'static CapturingSink =
+                std::boxed::Box::leak(std::boxed::Box::new(CapturingSink {
+                    lines: std::sync::Mutex::new(std::vec::Vec::new()),
+                }));
+            assert!(nros_log::add_sink(sink), "no sink slot left");
+            sink
+        });
+        // The FIRST drop is always reported; a cell that inherited another
+        // cell's count would be asserting about drop number N instead.
+        DROPPED_TAKES.store(0, portable_atomic::Ordering::Relaxed);
+        sink.lines
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear();
+        report_dropped_take(&err, cap, recorded);
+        let mut lines = sink
+            .lines
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert_eq!(lines.len(), 1, "the first drop must be reported: {lines:?}");
+        lines.remove(0)
+    }
+
+    #[test]
+    fn the_drop_log_names_the_sample_size_beside_the_buffer() {
+        let line = logged_one(TransportError::BufferTooSmall, 16, Some(1000));
+        assert!(line.contains("1000-byte sample"), "no sample size: {line}");
+        assert!(line.contains("16-byte buffer"), "no buffer size: {line}");
+        // nros_log's buffer is all-or-nothing; the issue number is the tail.
+        assert!(line.contains("(issue 0757)"), "truncated: {line}");
+    }
+
+    #[test]
+    fn an_unknown_size_and_a_staging_refusal_print_as_unknown() {
+        let unknown = logged_one(TransportError::BufferTooSmall, 64, None);
+        assert!(unknown.contains("?-byte sample"), "{unknown}");
+        // `MessageTooLarge` is the backend's staging buffer, refused before a
+        // take measured anything: an earlier take's size must not be printed.
+        let staging = logged_one(TransportError::MessageTooLarge, 64, Some(1000));
+        assert!(staging.contains("?-byte sample"), "{staging}");
+        assert!(!staging.contains("1000"), "{staging}");
     }
 }

@@ -77,7 +77,7 @@ fn note_sample_dropped_too_small(err: &TransportError, buf_len: usize, needed: O
         return;
     }
     let total = n.saturating_add(1);
-    let needed = SampleLen(needed);
+    let needed = nros_rmw::RefusedLen(needed);
     crate::cpp_diag!(
         "C++ take DROPPED ({err:?}): {needed}-byte sample, {buf_len}-byte \
          buffer; ACKed then discarded. Raise NROS_SUBSCRIPTION_BUFFER_SIZE to \
@@ -85,28 +85,12 @@ fn note_sample_dropped_too_small(err: &TransportError, buf_len: usize, needed: O
     );
 }
 
-/// Issue 1612 -- a sample size that may be unknown, printed without an
-/// allocator: the number, or `?` when the backend could not say.
-struct SampleLen(Option<usize>);
-
-impl core::fmt::Display for SampleLen {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self.0 {
-            Some(n) => write!(f, "{n}"),
-            None => f.write_str("?"),
-        }
-    }
-}
-
 /// The size the backend says the dropped sample needed -- only for the drop it
-/// can have measured. `MessageTooLarge` is a refusal by the backend's own
-/// staging buffer before any take, so a size recorded by an earlier
-/// `BufferTooSmall` must not be printed beside it.
+/// can have measured. Which refusals carry one is `nros_rmw::RefusedLen`'s
+/// rule (issue 1632 moved it there, so `nros-node`'s arena drop log reads the
+/// same one).
 fn refused_len_for(sub: &nros::internals::RmwSubscriber, err: &TransportError) -> Option<usize> {
-    match err {
-        TransportError::BufferTooSmall => sub.refused_sample_len(),
-        _ => None,
-    }
+    nros_rmw::RefusedLen::for_error(err, sub.refused_sample_len()).0
 }
 
 /// Create a subscription on a node.
