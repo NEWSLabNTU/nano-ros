@@ -11528,13 +11528,14 @@ fn retargeting_a_raw_action_client_moves_its_context() {
     let _ = new_home;
 }
 
-/// Issue 1635 — with a sink installed, `spin_once` itself drains the ring into
-/// it: an image whose entry never calls `drain_violations` still reports.
-/// Without one (every test above), the ring is left for `drain_violations`.
+/// Issue 1635 — with a sink installed, every violation reaches it at
+/// DETECTION, so an image whose entry never calls `drain_violations` still
+/// reports. The ring is filled as before, so a hand-draining application or
+/// fixture sees exactly what it did; removing the sink stops the feed.
 #[cfg(feature = "alloc")]
 #[test]
 #[cfg(feature = "std")]
-fn an_installed_violation_sink_is_drained_by_spin_once() {
+fn an_installed_violation_sink_sees_every_violation_at_detection() {
     static SEEN: std::sync::Mutex<alloc::vec::Vec<(&'static str, u32)>> =
         std::sync::Mutex::new(alloc::vec::Vec::new());
     unsafe fn sink(ctx: *mut core::ffi::c_void, v: &super::monitor::Violation) {
@@ -11551,29 +11552,32 @@ fn an_installed_violation_sink_is_drained_by_spin_once() {
         .unwrap();
     unsafe { executor.set_violation_sink(Some((sink, 0x1635usize as *mut core::ffi::c_void))) };
 
-    // A stall worth ~12 periods, then one ordinary spin: the overrun verdict
-    // recorded by the first reaches the sink on the second at the latest.
+    // A stall worth ~12 periods: one overrun verdict.
     let _ = elapse_then_spin_once(&mut executor, 120);
     let _ = elapse_then_spin_once(&mut executor, 10);
     let overruns = executor.timer_overruns(id).unwrap();
     let seen = SEEN.lock().unwrap().clone();
-    assert!(
+    assert_eq!(
         seen.iter()
-            .any(|&(r, m)| r == "timer-overrun-runtime" && m == overruns),
-        "the sink received the overrun verdict: {seen:?}"
+            .filter(|&&(r, m)| r == "timer-overrun-runtime" && m == overruns)
+            .count(),
+        1,
+        "the sink received the overrun verdict once: {seen:?}"
     );
-    let mut left = alloc::vec::Vec::new();
-    executor.drain_violations(|v| left.push(v.rule));
-    assert!(left.is_empty(), "the sink drained the ring: {left:?}");
+    let mut ring = alloc::vec::Vec::new();
+    executor.drain_violations(|v| ring.push(v.rule));
+    assert!(
+        ring.contains(&"timer-overrun-runtime"),
+        "the ring keeps the verdict for a hand drain too: {ring:?}"
+    );
 
-    // Removing the sink hands the ring back to `drain_violations`.
+    // Removing the sink stops the feed; the ring still fills.
     unsafe { executor.set_violation_sink(None) };
+    SEEN.lock().unwrap().clear();
     let _ = elapse_then_spin_once(&mut executor, 120);
     let _ = elapse_then_spin_once(&mut executor, 10);
+    assert!(SEEN.lock().unwrap().is_empty(), "no sink, no feed");
     let mut kept = alloc::vec::Vec::new();
     executor.drain_violations(|v| kept.push(v.rule));
-    assert!(
-        kept.contains(&"timer-overrun-runtime"),
-        "with no sink the ring keeps the verdict: {kept:?}"
-    );
+    assert!(kept.contains(&"timer-overrun-runtime"), "{kept:?}");
 }
