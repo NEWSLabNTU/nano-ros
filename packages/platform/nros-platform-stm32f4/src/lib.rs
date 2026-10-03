@@ -92,6 +92,31 @@ impl nros_platform_api::PlatformLog for Stm32f4Platform {
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_log!(Stm32f4Platform);
 
+// Issue 1640 — the fatal hook (RFC-0077), which the heap-refusal report halts
+// through when the image asks for it. The sibling MPS2-AN385 port's shape:
+// say it where a human can read it (defmt over RTT here), give an attached
+// debugger the trap, then stop. Not exported as `nros_platform_panic`: the
+// trait impl is what the shared report needs, and this port's images resolve
+// that symbol where they always have.
+impl nros_platform_api::PlatformPanic for Stm32f4Platform {
+    fn panic(msg: *const u8, len: usize) -> ! {
+        let text = if msg.is_null() || len == 0 {
+            ""
+        } else {
+            // SAFETY: the ABI contract is `len` readable bytes at `msg`.
+            let bytes = unsafe { core::slice::from_raw_parts(msg, len) };
+            core::str::from_utf8(bytes).unwrap_or("<non-utf8>")
+        };
+        defmt::error!("nros: PANIC {=str}", text);
+        // SAFETY: a breakpoint is architecturally defined on Cortex-M; with no
+        // debugger attached it escalates to a fault, and we are ending anyway.
+        unsafe { core::arch::asm!("bkpt #0") };
+        loop {
+            cortex_m::asm::wfi();
+        }
+    }
+}
+
 // Phase 121.9 — Cortex-M PRIMASK critical section. See sibling
 // mps2-an385 for rationale.
 impl nros_platform_api::PlatformCriticalSection for Stm32f4Platform {
