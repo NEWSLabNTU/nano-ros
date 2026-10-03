@@ -155,4 +155,4 @@ here.
 ### Why nothing noticed
 
 No lane that boots one of these images reached its cells — filed as
-[issue 1658](../1658-freertos-zenoh-boot-regression-reaches-no-lane.md).
+[issue 1658](1658-freertos-zenoh-boot-regression-reaches-no-lane.md).
