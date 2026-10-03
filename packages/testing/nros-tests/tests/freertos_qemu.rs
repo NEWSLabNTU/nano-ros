@@ -253,10 +253,11 @@ fn an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default() {
     let cmdline = qemu.command_line().to_string();
     qemu.kill();
 
-    let received = output.matches("Received: ").count();
+    let listener = nros_tests::output::INT32_LISTENER_LOG_PREFIX;
+    let received = output.matches(listener).count();
     assert!(
         received >= 3,
-        "the AN536 Cyclone entry did not deliver in-image ({received} `Received:` \
+        "the AN536 Cyclone entry did not deliver in-image ({received} `{listener}` \
          lines) — its heap peak is not a Cyclone working set.\nqemu: {cmdline}\n\
          output:\n{output}"
     );
