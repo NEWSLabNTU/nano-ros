@@ -4641,6 +4641,25 @@ int32_t zpico_get_check(zpico_session_t* session, int32_t handle, uint8_t* reply
     return 0;
 }
 
+/* Issue 1632 — the length of the reply a pending get RECEIVED, for the caller
+ * that `zpico_get_check` refused with `ZPICO_ERR_FULL` because the reply did not
+ * fit its buffer. That refusal says only THAT it did not fit; this says how big
+ * it was, so the client can report the size a refused take needed.
+ *
+ * `ZPICO_ERR_INVALID` when the handle is out of range or no reply was received.
+ * Read-only: the slot's state is `zpico_get_check`'s to change. */
+int32_t zpico_get_reply_len(zpico_session_t* session, int32_t handle) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (s == NULL || handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
+        return ZPICO_ERR_INVALID;
+    }
+    pending_get_slot_t* ps = &s->pending_gets[handle];
+    if (!__atomic_load_n(&ps->ctx.received, __ATOMIC_SEQ_CST)) {
+        return ZPICO_ERR_INVALID;
+    }
+    return (int32_t)ps->ctx.len;
+}
+
 void zpico_set_reply_waker(zpico_session_t* session, zpico_waker_fn fn) {
     struct zpico_session* s = (struct zpico_session*)session;
     s->reply_waker = fn;
