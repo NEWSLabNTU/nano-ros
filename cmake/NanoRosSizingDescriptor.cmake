@@ -162,6 +162,31 @@ function(_nros_sizing_bound_args _out_var)
     set(${_out_var} "${_args}" PARENT_SCOPE)
 endfunction()
 
+# _nros_sizing_heap_args(<out_var>) — issue 1653, RFC-0100 D11
+#
+# `--heap-budget-bytes <n>` when the caller of this configure stated the BOARD
+# heap (`-DNROS_BOARD_HEAP_BUDGET_BYTES`, which `nros build` stage 4 passes from
+# `[board.knobs.memory] heap_bytes`), or nothing -- and then the descriptor
+# REFUSES `[target] heap_budget_bytes`, Cyclone's "nobody said".
+#
+# The configure never reads the board file itself: that would be a second
+# reader of the board's knobs (RFC-0064 R5 D4). A value that is not a count is a
+# FATAL_ERROR, because sizing a heap check from a typo while the board believes
+# it stated one is the silent default D6 forbids.
+function(_nros_sizing_heap_args _out_var)
+    set(${_out_var} "" PARENT_SCOPE)
+    if(NOT DEFINED NROS_BOARD_HEAP_BUDGET_BYTES OR NROS_BOARD_HEAP_BUDGET_BYTES STREQUAL "")
+        return()
+    endif()
+    if(NOT NROS_BOARD_HEAP_BUDGET_BYTES MATCHES "^[0-9]+$")
+        message(FATAL_ERROR
+            "nano-ros: NROS_BOARD_HEAP_BUDGET_BYTES=${NROS_BOARD_HEAP_BUDGET_BYTES} is not a "
+            "count of bytes. It is the board's `[board.knobs.memory] heap_bytes`, passed by "
+            "`nros build`; unset it to leave the heap budget unstated.")
+    endif()
+    set(${_out_var} --heap-budget-bytes "${NROS_BOARD_HEAP_BUDGET_BYTES}" PARENT_SCOPE)
+endfunction()
+
 # nros_sizing_descriptor_from_model(<out_var>) — phase-454 W14
 #
 # WRITE a descriptor for this entry from its resolved SystemModel, and remember
@@ -279,6 +304,7 @@ function(nros_sizing_descriptor_from_model _out_var)
     endif()
 
     _nros_sizing_bound_args(_bound_args)
+    _nros_sizing_heap_args(_heap_args)
 
     # Issue 1594 -- the WORKSPACE whose metadata-probe sidecars carry each
     # subscription's REGISTRATION observation (`in_place`). Without it every
@@ -299,7 +325,7 @@ function(nros_sizing_descriptor_from_model _out_var)
                 --build-dir "${_build_dir}"
                 --entry "${_nsw_ENTRY}"
                 --road "a cmake entry"
-                ${_host_arg} ${_rmw_arg} ${_meta_arg} ${_ws_arg} ${_bound_args}
+                ${_host_arg} ${_heap_args} ${_rmw_arg} ${_meta_arg} ${_ws_arg} ${_bound_args}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc
@@ -380,6 +406,7 @@ function(nros_sizing_descriptor_from_leaf _out_var)
 
     _nros_sizing_target_args(_host_arg)
     _nros_sizing_bound_args(_bound_args)
+    _nros_sizing_heap_args(_heap_args)
 
     execute_process(
         COMMAND "${_nsl_CLI}" ws sizing-descriptor
@@ -387,7 +414,7 @@ function(nros_sizing_descriptor_from_leaf _out_var)
                 --build-dir "${_build_dir}"
                 --entry "${_nsl_ENTRY}"
                 --road "a standalone cmake leaf"
-                ${_host_arg} ${_bound_args}
+                ${_host_arg} ${_heap_args} ${_bound_args}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc
@@ -494,10 +521,11 @@ function(_nros_sizing_descriptor_runtime _out_var)
     endif()
     _nros_sizing_target_args(_host_arg)
     _nros_sizing_bound_args(_bound_args)
+    _nros_sizing_heap_args(_heap_args)
 
     set(_args ${_model_args} ${_entry_args} --build-dir "${_build_dir}"
         --entry shared-runtime --road "a multi-entry cmake configure"
-        ${_host_arg} ${_rmw_arg} ${_meta_arg} ${_ws_arg} ${_bound_args})
+        ${_host_arg} ${_heap_args} ${_rmw_arg} ${_meta_arg} ${_ws_arg} ${_bound_args})
     string(SHA256 _key "${_cli};${_args}")
     get_property(_memo_key GLOBAL PROPERTY NROS_SIZING_RUNTIME_MEMO_KEY)
     if(_memo_key STREQUAL _key)
@@ -653,6 +681,38 @@ function(nros_sizing_descriptor_record_for_west)
         nros_reconfigure_on_change("${_frag}" "${_before}"
             LABEL "the sizing descriptor this image names to cargo")
     endif()
+endfunction()
+
+# nros_sizing_descriptor_apply_cyclonedds_heap() — issue 1653, RFC-0100 D11
+#
+# Hand the descriptor's STATED `[target] heap_budget_bytes` to the Cyclone TUs
+# this configure compiles, as `NROS_CYCLONEDDS_HEAP_BUDGET_BYTES` -- the macro
+# `heap_budget.hpp` reads, and the one `nros-rmw-cyclonedds-sys/build.rs`
+# defines from the same fact on the cargo road. Call it after
+# `nros_sizing_descriptor_read()`, whose `NROS_SIZING_TARGET_HEAP_BUDGET_BYTES`
+# it reads from the caller's scope.
+#
+# A refused or absent budget defines NOTHING, so `kHeapBudgetStated` stays
+# false and D11's boot check stays a no-op -- "nobody said" is not "too small".
+# Only the `nros_rmw_cyclonedds` target is reached: it is where `session.cpp`
+# compiles on this road. A Zephyr module library compiles it elsewhere and is
+# not handled here (issue 1653 records the west half as open).
+function(nros_sizing_descriptor_apply_cyclonedds_heap)
+    if(NOT DEFINED NROS_SIZING_TARGET_HEAP_BUDGET_BYTES)
+        return()
+    endif()
+    if(NOT TARGET nros_rmw_cyclonedds)
+        return()
+    endif()
+    get_target_property(_imported nros_rmw_cyclonedds IMPORTED)
+    if(_imported)
+        return()
+    endif()
+    target_compile_definitions(nros_rmw_cyclonedds PRIVATE
+        "NROS_CYCLONEDDS_HEAP_BUDGET_BYTES=${NROS_SIZING_TARGET_HEAP_BUDGET_BYTES}")
+    message(STATUS
+        "nano-ros: Cyclone heap budget ${NROS_SIZING_TARGET_HEAP_BUDGET_BYTES} B from the "
+        "sizing descriptor -> nros_rmw_cyclonedds (RFC-0100 D11, issue 1653)")
 endfunction()
 
 # nros_sizing_descriptor_read(<descriptor> [QUIET])

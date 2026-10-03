@@ -1440,6 +1440,8 @@ function(_nros_entry_invoke_codegen)
         RMW       "${_nrx_rmw}")
     nros_sizing_descriptor_path(_nrx_sizing_path "${CMAKE_BINARY_DIR}" "${_NRX_NAME}")
     nros_sizing_descriptor_read("${_nrx_sizing_path}")
+    # Issue 1653 -- the board heap the descriptor states reaches the Cyclone TUs.
+    nros_sizing_descriptor_apply_cyclonedds_heap()
     # Issue 1407 -- the Zephyr WEST road names it to cargo through the module's
     # knob resolver, which ran before this entry existed. Detected by the
     # resolver's own presence: only the Zephyr module defines it.
