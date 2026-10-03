@@ -14,8 +14,11 @@ use eyre::{Result, bail};
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::Command,
 };
+
+// Issue 1659 — the CLI's one spelling of a `git` spawn (shared with
+// `nros-cli-core`, which this crate does not depend on, by `include!`).
+include!("../../build-support/git_env.rs");
 
 /// Issue 0249 — maintainer line for generated `package.xml`. Sourced from
 /// `git config user.name`/`user.email` so scaffolded packages carry the real
@@ -23,7 +26,10 @@ use std::{
 /// which shipped verbatim through colcon/bloom surfaces).
 fn maintainer_xml() -> String {
     fn git_config(key: &str) -> Option<String> {
-        let out = Command::new("git").args(["config", key]).output().ok()?;
+        let out = nros_git_command("git")
+            .args(["config", key])
+            .output()
+            .ok()?;
         if !out.status.success() {
             return None;
         }

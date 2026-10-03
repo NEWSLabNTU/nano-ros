@@ -444,23 +444,10 @@ mod attribution_tests {
         // Issues 0986/0988 — a test that runs `git init` in a temp dir must not
         // be steerable by an inherited git environment: under a `GIT_DIR` (which
         // every linked worktree here sets) `git init <tmp>` builds nothing and
-        // writes into the CALLER's repository instead. The list is ASKED of git
-        // so it cannot drift, exactly as `source_stamp`'s own tests do.
-        let vars: Vec<String> = std::process::Command::new("git")
-            .args(["rev-parse", "--local-env-vars"])
-            .output()
-            .ok()
-            .map(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .split_whitespace()
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default();
+        // writes into the CALLER's repository instead. The one shared helper
+        // (issue 1659), so this cannot drift from what the production code clears.
         let mut command = std::process::Command::new("sh");
-        for var in vars {
-            command.env_remove(var);
-        }
+        crate::source_stamp::nros_clear_inherited_git_env(&mut command);
         let ok = command
             .args(["-c", cmd])
             .current_dir(dir)

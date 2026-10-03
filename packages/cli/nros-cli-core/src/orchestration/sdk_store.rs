@@ -1586,7 +1586,7 @@ fn take_command_log() -> Vec<String> {
 fn sh_with_toolchain(args: &[&str], cwd: Option<&Path>, toolchain: Option<&str>) -> Result<()> {
     let (cmd, rest) = args.split_first().ok_or_else(|| eyre!("empty command"))?;
     record_command(args);
-    let mut c = Command::new(cmd);
+    let mut c = store_command(cmd);
     c.args(rest);
     if let Some(d) = cwd {
         c.current_dir(d);
@@ -1671,10 +1671,26 @@ pub(crate) fn sh_capture(args: &[&str], cwd: Option<&Path>) -> Result<String> {
 /// form there is not a near miss: every clean submodule reads as `+`, the
 /// fast skip never fires, and the bug is invisible because the fallback is
 /// the old (correct, slow) behaviour.
+/// The process every provisioning command runs in — issue 1659.
+///
+/// Both runners above spawn `git init <store dir>`, `git -C <dir> fetch` and
+/// `git -C <workspace> submodule update`, and run tools (`make`, `cmake`,
+/// `cargo`) that spawn git themselves. An inherited `GIT_DIR` — a git hook,
+/// `git bisect run` — overrides `-C` and the path argument alike, so that
+/// `git init` would rewrite the CALLER's repository instead of building a
+/// store checkout (issue 0986's hazard, one language over). Provisioning never
+/// means the repository the environment names, so every command it spawns,
+/// git or not, gets the inherited repository-local git environment removed.
+fn store_command(cmd: &str) -> Command {
+    let mut c = Command::new(cmd);
+    crate::source_stamp::nros_clear_inherited_git_env(&mut c);
+    c
+}
+
 fn sh_capture_raw(args: &[&str], cwd: Option<&Path>) -> Result<String> {
     let (cmd, rest) = args.split_first().ok_or_else(|| eyre!("empty command"))?;
     record_command(args);
-    let mut c = Command::new(cmd);
+    let mut c = store_command(cmd);
     c.args(rest);
     if let Some(d) = cwd {
         c.current_dir(d);

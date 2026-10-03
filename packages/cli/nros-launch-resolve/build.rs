@@ -17,9 +17,8 @@
 //! with no git). It stamps `unknown`, and the consumer treats an unknown stamp
 //! as unverifiable rather than as a mismatch.
 
-use std::process::Command;
-
 include!("../build-support/submodule_watch.rs");
+include!("../build-support/git_env.rs");
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
@@ -56,8 +55,11 @@ fn main() {
             // index holds only the gitlink, so a superproject-side lookup would
             // report the pin the tree is *supposed* to be at rather than the one
             // actually checked out — and the checked-out one is what got
-            // compiled in.
-            Command::new("git")
+            // compiled in. Issue 1659: through `nros_git_command`, or an
+            // inherited `GIT_DIR` (`git bisect run`) overrides `-C` and this
+            // stamps the SUPERPROJECT's HEAD as the play_launch pin — the same
+            // lie 0419 guards against, reached through the environment.
+            nros_git_command("git")
                 .args(["-C", &p.display().to_string(), "rev-parse", "HEAD"])
                 .output()
                 .ok()
