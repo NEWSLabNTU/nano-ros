@@ -1471,8 +1471,9 @@ pub unsafe extern "C" fn nros_executor_node_init(
     // entities a C node declares next attribute to it (the RMW seam carries no
     // node). The namespace and domain the node LANDED in, read back from the
     // executor, as `nros-cpp`'s node entry points report them. No-op unless
-    // `metadata-mode` is on.
-    {
+    // `metadata-mode` is on -- and under `ACTIVE`, because the namespace
+    // lookup is work an empty hook body does not remove (phase-463 W5 I4).
+    if nros::census_hooks::ACTIVE {
         let rust_exec = get_executor(&mut executor._opaque);
         let ns = match rust_exec.node(node_id).map(|r| r.namespace.as_str()) {
             Some(s) if !s.is_empty() => s,

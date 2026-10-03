@@ -3,7 +3,8 @@ id: 1419
 title: "No layer reconciles the contract's declared endpoints with what the node
   code creates; the first catch of an omitted subscription is ExecutorFull at
   boot"
-status: open
+status: resolved
+resolved_in: 2026-10-03
 type: bug
 area: [build, cmake, testing]
 severity: high
@@ -334,7 +335,7 @@ not measured.
 
 ## Fix / direction
 
-[phase-463](../roadmap/phase-463-host-census-reconciles-contract-with-code.md):
+[phase-463](../../roadmap/phase-463-host-census-reconciles-contract-with-code.md):
 complete the recorder (QoS as passed, a parameter hook, timer kinds), make the
 generated native ENTRY the census producer (same binary as boot, switched by
 `NROS_CENSUS_OUT` in the hosted funnel, where the `env` capability already
@@ -460,3 +461,78 @@ file) and green with it; `builder::entry::tests::only_the_host_entry_links_the_c
   not collide with `demo_bringup:native`, issue 1582).
 * **phase-463 W5 I1, I3(b), I3(c)** -- unchanged (not gated).
 * **What still stops a census run** -- unchanged.
+
+## Resolution (2026-10-03) -- the last three items
+
+Fixed in the PR that carries this section (*the Rust Zephyr image is checked,
+W6 retires the max, W5 is gated and measured*). The acceptance above (E3a /
+E3b / E3c each refused on the host with one named row, before any RTOS image
+is configured) was met on 2026-10-01; what follows closes the rest of the list.
+
+**The Rust Zephyr image is checked** (the west road). `nros build` stage 4 now
+runs the same `check --require-fresh` for a west image whose node graph is all
+Rust (`stage4_checks_census`: every cross cargo image, a Rust west image; a
+C/C++ west or cmake image keeps its configure check, a host image is the
+producer). `derived_bringup` gains its host sibling, `[image.native_derived]`
+(not `native` -- issue 1582), and `fixtures-manifest.py census-images` stops
+excluding Rust Zephyr rows, so the prepass takes that census before the Zephyr
+lane builds. Measured on `examples/workspaces/realtime-rust`, no router, no
+Zephyr workspace (the check runs before west is looked for):
+
+| step | result |
+| --- | --- |
+| `nros build derived_bringup:zephyr_derived`, no census | REFUSED: `census missing`, remedy `nros ws entity-census take --image derived_bringup:zephyr_derived` |
+| `take --image derived_bringup:zephyr_derived` | builds `derived_bringup:native_derived` and runs it: `2 node(s), 0 sub / 2 pub / ... / 2 timer slot(s)` |
+| build again | `census check: 4 confirmed, 0 error(s)`; then `west application -> .../zephyr_derived_entry` (west itself absent here) |
+| contract drops `telem_node`'s `pub` + `/telem`, `nros sync`, build | REFUSED: `error missing-in-contract telem_node pub /telem` |
+
+Test: `cmd::build::stage4_census_tests::stage4_checks_the_census_no_configure_checks`.
+
+**phase-463 W6 -- the max is retired where a census exists.**
+`codegen-system`'s capacity check (`model_ingest::check_executor_capacity`)
+takes `census_slots`: the callback slots a CURRENT, complete census of the
+model records (`entity_census::census_callback_slots`, the same
+`sidecar_slots::slots_of_node` rule over the census's nodes). Where it exists
+it IS the count and `max(model, recorded)` is not consulted; the max stays only
+where no census exists (a model with no contract, and `nros::main!`'s leaf
+packages, as the phase doc keeps). Measured: `nros codegen-system --bringup
+src/derived_bringup` on `realtime-rust` prints `callback count from the census
+of this model: 2 slot(s)` (the model's wiring counts 0 -- two timer-driven
+publishers). Test: `model_ingest::tests::a_census_count_replaces_the_max_in_both_directions`
+(a census of 7 refuses where the max of 2 passed; a census of 3 passes where the
+max of 9 refused). The island half (`island-W2`) is external.
+
+**phase-463 W5.**
+* **I3(b) is gated**: `workspace_metadata::a_threadx_{cpp,c}_image_links_no_census_recorder`
+  run `nm --defined-only` over the prebuilt ThreadX-Linux workspace images and
+  find no `nros_rmw_metadata*` / `nros_cpp_metadata_dump`; the negative control
+  `a_native_entry_links_the_census_recorder` holds the same predicate to FIND
+  them in the native C++ entry. Measured: native 2 symbols, both ThreadX
+  images 0.
+* **I3(c) / I4 measured -- and it was false by 48 bytes.** Every census hook
+  CALL deleted from `nros`, `nros-c` and `nros-cpp` (30 calls, 11 files, lines
+  kept so no panic location moves), the twelve NuttX ARM C/C++ images rebuilt,
+  against the same tree with the calls in. Before this PR the C images
+  differed: `.text` 32-64 B larger with the hooks "off" (`c/talker` 471,076
+  vs 471,012), `nros_node_init_ex` 416 vs 368 bytes -- the hook body was empty
+  but its ARGUMENTS (two `from_utf8` validations, a namespace read back from
+  the executor) were not removed by the optimizer. Fixed by
+  `nros::census_hooks::ACTIVE` (`cfg!(feature = "metadata-mode")`): the five
+  node-hook call sites that compute arguments do so under `if ACTIVE`, which
+  folds away. After: **the loadable bytes (`objcopy -O binary`) of all twelve
+  images are identical** with and without the calls; the only ELF difference
+  left is one local symbol's numbering suffix in `.symtab`
+  (`ret_from_error.741` vs `.731`). The fix itself shrank `c/talker`'s `.text`
+  by 128 B and `cpp/talker`'s by 96 B. Measured on NuttX ARM, not on the
+  reference Zephyr image named in the phase doc (no Zephyr workspace for this
+  checkout; the hook layer is the same crates on every RTOS road).
+* **I1 is ruled, not gated**: holds by construction. The census binary is the
+  file `nros build` wrote for the boot -- `take` runs the image's own path and
+  records its digest as the `binary` freshness input -- and there is no census
+  build flag for a component TU to see. A gate would compare a file with
+  itself.
+
+**What still stops a census run** (code that boots at no sizing: more than 64
+callbacks in one executor, a constructor's own error, the parameter store) is a
+limit of the instrument, recorded in phase-463's Limits; such a census is
+INCOMPLETE and every check refuses it. Not an open item of this issue.

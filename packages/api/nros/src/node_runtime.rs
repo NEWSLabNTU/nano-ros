@@ -1420,8 +1420,9 @@ impl NodeRuntime for ExecutorSink<'_> {
         // `register()` declares next attribute to it (the RMW seam carries no
         // node). The namespace the node LANDED in, read back from the
         // executor, as the C and C++ node entry points report it. No-op unless
-        // `metadata-mode` is on.
-        {
+        // `metadata-mode` is on -- and under `ACTIVE`, because the namespace
+        // lookup is work an empty hook body does not remove (phase-463 W5 I4).
+        if crate::census_hooks::ACTIVE {
             let landed = match self.executor.node(node_id).map(|r| r.namespace.as_str()) {
                 Some(s) if !s.is_empty() => s,
                 _ => "/",

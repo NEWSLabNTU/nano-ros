@@ -541,6 +541,13 @@ pub fn run(args: Args) -> Result<()> {
         // the timers the model has no entity for. Per-node `max(model,
         // recorded)`, so a workspace with no sidecars keeps the pre-307 bound
         // and no existing build regresses.
+        let census_slots = crate::cmd::entity_census::census_callback_slots(model_path, &workspace);
+        if let Some(n) = census_slots {
+            eprintln!(
+                "codegen-system: callback count from the census of this model: {n} slot(s) \
+                 (phase-463 W6; the model/sidecar max is not consulted)"
+            );
+        }
         let metadata_slots = crate::orchestration::model_ingest::metadata_slot_counts(
             &crate::orchestration::model_ingest::load_workspace_metadata(&workspace),
         );
@@ -549,6 +556,9 @@ pub fn run(args: Args) -> Result<()> {
             target_platform,
             crate::orchestration::model_ingest::declared_max_callbacks(&bringup.manifest_path),
             &metadata_slots,
+            // phase-463 W6 -- the census of this model, when one is current,
+            // is the exact count and retires the max above for this bake.
+            census_slots,
         )?;
         // Issue 0284 — size (or gate) the CycloneDDS type registry from the same
         // model. Auto-manages `NROS_CYCLONEDDS_MAX_TYPES` in the workspace
