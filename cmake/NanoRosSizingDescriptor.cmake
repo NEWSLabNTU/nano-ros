@@ -681,6 +681,26 @@ function(nros_sizing_descriptor_record_for_west)
         nros_reconfigure_on_change("${_frag}" "${_before}"
             LABEL "the sizing descriptor this image names to cargo")
     endif()
+    # Issue 1653 (west half) -- the module ALSO compiled Cyclone's C++ TUs from
+    # this descriptor's CONTENT, at configure time and before this entry
+    # rewrote it (`nros_sizing_descriptor_apply_cyclonedds` in
+    # `zephyr/CMakeLists.txt`, which settles the file as it reads it). The Rust
+    # half re-reads it at build time and needs nothing; the C++ half does, or a
+    # board-heap edit lands one configure late -- measured: the image kept the
+    # old `HEAP_BUDGET_BYTES` while the descriptor stated the new one, because
+    # the PATH (all the fragment above records) had not moved. Armed only when
+    # the module read it this pass: a descriptor nobody settled has no basis,
+    # and measuring it against "nothing" would arm every configure.
+    if(NOT _path STREQUAL "" AND EXISTS "${_path}"
+       AND COMMAND nros_reconfigure_on_change
+       AND COMMAND _nros_reconfigure_pass_props)
+        _nros_reconfigure_pass_props("${_path}" _basis_prop _armed_prop)
+        get_property(_module_read GLOBAL PROPERTY ${_basis_prop} SET)
+        if(_module_read)
+            nros_reconfigure_on_change("${_path}" ""
+                LABEL "the sizing descriptor the module compiled Cyclone from")
+        endif()
+    endif()
 endfunction()
 
 # nros_sizing_descriptor_apply_cyclonedds() — issues 1653 + 1661, RFC-0100 D5/D11
@@ -716,29 +736,45 @@ endfunction()
 # the header's 256 and is not a descriptor fact; issue 1663 records why the
 # cmake road does not carry it.
 #
-# Only a non-imported `nros_rmw_cyclonedds` is reached: it is where
-# `session.cpp` compiles on this road. The Zephyr module compiles the same TUs
-# into its own library through `zephyr/cmake/nros_rmw_cyclonedds.cmake`.
+# Only a non-imported target is reached. On the cmake road that is
+# `nros_rmw_cyclonedds`, where `session.cpp` compiles. The Zephyr WEST road
+# compiles the same TUs into the module's own `nros` library
+# (`zephyr/cmake/nros_rmw_cyclonedds.cmake`) and names its descriptor through
+# the fragment `nros_sizing_descriptor_record_for_west()` writes, so it passes
+# both explicitly (issue 1653's west half):
+#
+#     nros_sizing_descriptor_apply_cyclonedds(TARGET nros DESCRIPTOR <path>)
+#
+# `DESCRIPTOR` given but empty means "this road named none" -- the defaults
+# stay, never a guess at which entry's file to read.
 function(nros_sizing_descriptor_apply_cyclonedds)
+    cmake_parse_arguments(_nac "" "TARGET;DESCRIPTOR" "" ${ARGN})
+    if(NOT _nac_TARGET)
+        set(_nac_TARGET nros_rmw_cyclonedds)
+    endif()
     get_property(_done GLOBAL PROPERTY NROS_SIZING_CYCLONEDDS_APPLIED)
     if(_done)
         return()
     endif()
-    if(NOT TARGET nros_rmw_cyclonedds)
+    if(NOT TARGET ${_nac_TARGET})
         return()
     endif()
-    get_target_property(_imported nros_rmw_cyclonedds IMPORTED)
+    get_target_property(_imported ${_nac_TARGET} IMPORTED)
     if(_imported)
         return()
     endif()
     set_property(GLOBAL PROPERTY NROS_SIZING_CYCLONEDDS_APPLIED TRUE)
 
-    nros_sizing_descriptor_cargo_env(_row)
-    string(REGEX REPLACE "^NROS_SIZING_DESCRIPTOR=" "" _path "${_row}")
-    if(_path STREQUAL "")
+    if(DEFINED _nac_DESCRIPTOR OR "DESCRIPTOR" IN_LIST _nac_KEYWORDS_MISSING_VALUES)
+        set(_path "${_nac_DESCRIPTOR}")
+    else()
+        nros_sizing_descriptor_cargo_env(_row)
+        string(REGEX REPLACE "^NROS_SIZING_DESCRIPTOR=" "" _path "${_row}")
+    endif()
+    if(_path STREQUAL "" OR NOT EXISTS "${_path}")
         message(STATUS
-            "nano-ros: no sizing descriptor names this runtime, so nros_rmw_cyclonedds keeps "
-            "its header defaults (RFC-0100 D6)")
+            "nano-ros: no sizing descriptor names this runtime, so ${_nac_TARGET}'s Cyclone "
+            "TUs keep their header defaults (RFC-0100 D6)")
         return()
     endif()
     nros_sizing_descriptor_read("${_path}" QUIET)
@@ -758,14 +794,14 @@ function(nros_sizing_descriptor_apply_cyclonedds)
     endforeach()
     if(NOT _defs)
         message(STATUS
-            "nano-ros: ${_path} states no Cyclone fact, so nros_rmw_cyclonedds keeps its "
+            "nano-ros: ${_path} states no Cyclone fact, so ${_nac_TARGET} keeps its "
             "header defaults (RFC-0100 D6)")
         return()
     endif()
-    target_compile_definitions(nros_rmw_cyclonedds PRIVATE ${_defs})
+    target_compile_definitions(${_nac_TARGET} PRIVATE ${_defs})
     message(STATUS
         "nano-ros: Cyclone sized from the runtime's sizing descriptor -- ${_defs} "
-        "-> nros_rmw_cyclonedds (RFC-0100 D5/D11, issues 1653/1661)")
+        "-> ${_nac_TARGET} (RFC-0100 D5/D11, issues 1653/1661)")
 endfunction()
 
 # nros_sizing_descriptor_read(<descriptor> [QUIET])

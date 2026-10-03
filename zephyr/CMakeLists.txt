@@ -972,4 +972,30 @@ include("${NROS_REPO_DIR}/cmake/NanoRosCodegenCore.cmake")
 include("${NROS_REPO_DIR}/cmake/NanoRosImageAgreement.cmake")
 nros_check_image_agreement(KCONFIG_RMW "${_nros_kconfig_rmw}")
 
+# Issue 1653 (west half) -- the Cyclone facts the image's sizing descriptor
+# states (`[target] heap_budget_bytes`, `[types]`) reach the C++ TUs this
+# module compiles into `nros`, as they reach `nros_rmw_cyclonedds` on the cmake
+# road. The descriptor is the one this configure names to CARGO, recorded by the
+# entry on the previous pass (issue 1407's fragment, which
+# `_nros_load_west_sizing_descriptor` has already registered as a configure
+# dependency) -- so the C++ and Rust halves of one image read one file. LAST,
+# for the reason the check above is: `nros_resolve_cli`, which the reader needs,
+# comes from `NanoRosCodegenCore.cmake`.
+if(CONFIG_NROS_RMW_CYCLONEDDS)
+    nros_sizing_descriptor_west_fragment(_nros_west_sizing_frag)
+    set(NROS_SIZING_DESCRIPTOR_FOR_CARGO "")
+    if(EXISTS "${_nros_west_sizing_frag}")
+        include("${_nros_west_sizing_frag}")
+    endif()
+    # Record what this pass compiles from, so the entry -- which rewrites the
+    # descriptor AFTER this runs -- can arm another configure when the content
+    # moved (`nros_sizing_descriptor_record_for_west`).
+    if(NOT NROS_SIZING_DESCRIPTOR_FOR_CARGO STREQUAL ""
+       AND EXISTS "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+        nros_reconfigure_settle("${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+    endif()
+    nros_sizing_descriptor_apply_cyclonedds(
+        TARGET nros DESCRIPTOR "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+endif()
+
 endif() # CONFIG_NROS

@@ -727,9 +727,20 @@ if(NOT "$ENV{NROS_TEST_RUNTIME}" STREQUAL "")
     set_property(GLOBAL APPEND PROPERTY NROS_ENTITY_INVENTORY_MODELS "$ENV{NROS_TEST_MODEL}")
     set_property(GLOBAL APPEND PROPERTY NROS_SIZING_RUNTIME_RMWS "cyclonedds")
 endif()
-nros_sizing_descriptor_apply_cyclonedds()
-nros_sizing_descriptor_apply_cyclonedds()
-get_target_property(_defs nros_rmw_cyclonedds COMPILE_DEFINITIONS)
+if("$ENV{NROS_TEST_WEST}" STREQUAL "")
+    nros_sizing_descriptor_apply_cyclonedds()
+    nros_sizing_descriptor_apply_cyclonedds()
+    get_target_property(_defs nros_rmw_cyclonedds COMPILE_DEFINITIONS)
+else()
+    # The Zephyr WEST road (issue 1653): the module's own `nros` library, and
+    # the descriptor the west fragment names -- possibly none.
+    add_library(nros STATIC "${CMAKE_BINARY_DIR}/cyc.c")
+    nros_sizing_descriptor_apply_cyclonedds(
+        TARGET nros DESCRIPTOR "$ENV{NROS_TEST_WEST_DESCRIPTOR}")
+    get_target_property(_defs nros COMPILE_DEFINITIONS)
+    get_target_property(_cdefs nros_rmw_cyclonedds COMPILE_DEFINITIONS)
+    message(STATUS "CYC_OTHER_TARGET=${_cdefs}")
+endif()
 message(STATUS "CYC_DEFS=${_defs}")
 EOF
 CYC_PROJ="$TEST_TMPDIR/cycproj"
@@ -816,6 +827,25 @@ check
 if nros_grep_q "MAX_KINDS=99" <<<"$OUT"; then
     fail "I2: an ENTRY's descriptor sized the shared Cyclone target -- issue 1600's \
 last-writer shape on the C++ half -- $OUT"
+fi
+
+log_info "I4. the west road: TARGET nros, DESCRIPTOR from the west fragment (issue 1653)"
+OUT="$(NROS_TEST_WEST=1 NROS_TEST_WEST_DESCRIPTOR="$DESCRIPTOR" run_cyc "$CYC_BODY" "talker" "")"
+check
+if ! nros_grep_q "CYC_DEFS=.*NROS_CYCLONEDDS_HEAP_BUDGET_BYTES=65536.*MAX_KINDS=5" <<<"$OUT"; then
+    fail "I4: the west road's descriptor did not reach the module's nros library, so a \
+Zephyr Cyclone image's D11 check stays inert -- $OUT"
+fi
+check
+if nros_grep_q "CYC_OTHER_TARGET=.*NROS_CYCLONEDDS_" <<<"$OUT"; then
+    fail "I4: TARGET nros was asked for and nros_rmw_cyclonedds got the facts -- $OUT"
+fi
+log_info "I4b. the west road named NO descriptor: nothing, even though cargo_env has one"
+OUT="$(NROS_TEST_WEST=1 NROS_TEST_WEST_DESCRIPTOR= run_cyc "$CYC_BODY" "talker" "")"
+check
+if nros_grep_q "CYC_DEFS=.*NROS_CYCLONEDDS_" <<<"$OUT"; then
+    fail "I4b: an empty DESCRIPTOR fell back to another file -- the west road names its \
+descriptor or none, never a guess -- $OUT"
 fi
 
 log_info "I3. a refused fact defines nothing (negative control)"

@@ -998,7 +998,9 @@ stands. What the build path does change is where an input COULD come from:
   fact the cmake configure cannot resolve (phase-457 W4's still-refused
   `heap_budget_bytes`) is a fact stage 4 should hand to the configure, never one
   the configure should learn to read.
-  [Issue 1653](../issues/1653-cmake-road-descriptor-never-states-the-board-heap.md).
+  [Issue 1653](../issues/archived/1653-cmake-road-descriptor-never-states-the-board-heap.md)
+  (resolved: `-DNROS_BOARD_HEAP_BUDGET_BYTES` on the cmake configure line and in
+  west's cmake zone, always emitted so a removed heap clears the cache).
 * **The component's language is on the plan.** phase-474 put each node's
   component KIND (`c` / `rust` / `rclcpp` / `configure`, read from
   `nros-metadata.json`'s `lang`) on `LoweredNode`. So the model road has a
