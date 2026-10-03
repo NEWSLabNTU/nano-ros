@@ -151,3 +151,44 @@ precedent to converge on, rather than a new mechanism to invent:
 Neither change belongs to RFC-0100; both are probe/leaf work. Files: NuttX —
 `orchestration::metadata_build` (the harness invocation) only; Zephyr — the six
 `examples/zephyr/rust/*` leaves only. No overlap with issues 1608 / 1647.
+
+## 2026-10-03 -- NuttX probes: the probe takes the build road's config convention
+
+Fixed in the PR that carries this section (*the metadata probe runs outside the
+leaf and reads only its `[patch]` rows*), as the revised direction above says --
+a `metadata_build` change, no example touched.
+
+The harness used to run with its cwd inside the leaf so cargo's config walk-up
+would hand it the leaf's `[patch.crates-io]` rows (phase-307 W1), and that same
+walk-up handed it the board's `include`d `[unstable] build-std`. It now runs
+from the nano-ros checkout it already points its `nros` path dep at, and the
+patch rows travel by `--config`: `probe_patch_config` reads every
+`.cargo/config{,.toml}` cargo WOULD have read from the harness dir up to (not
+including) that cwd's own chain, follows each file's `include`s, keeps the
+`[patch]` tables and nothing else (nearer files override farther, cargo's own
+precedence), makes a relative `path` absolute against the directory holding the
+`.cargo/` dir, and writes `<harness>/nros-probe-patch.toml`. No patch rows, no
+`--config`.
+
+Measured, all six `examples/qemu-armv7a-nuttx/rust/*` leaves, metadata wiped
+first, NuttX sources provisioned:
+
+| | `nros sync` probe |
+| --- | --- |
+| before (the CLI from `main`, `talker`) | `talker.json.unprobeable` -- `error[E0152]: duplicate lang item in crate core (which std depends on): sized` |
+| after | `talker.json`, `listener.json`, `service_client.json`, `service_server.json`, `action_client.json`, `action_server.json` -- all six probe |
+
+The derivation now reaches the image: e.g. `action-server`'s
+`build/qemu-armv7a-nuttx/nros-cargo.toml` gains `NROS_DECLARED_SERVICE_SERVERS
+= 4`, `NROS_EXECUTOR_ACTION_CLIENTS = 1`, `ZPICO_MAX_PUBLISHERS = 2`,
+`NROS_CYCLONEDDS_MAX_KINDS = 11` where every pool used to be the crate default.
+All six cross images still build with `nros build` (ARM ELF, `armv7a-nuttx-eabihf`);
+they were not booted here. Regressions checked on the other probe roads (each
+probes after the change): `esp32-c3-baremetal/rust/talker`,
+`mps2-an385-baremetal/rust/talker-rtic`, `native/rust/listener`, and a
+workspace (`realtime-rust`, both node packages). Test:
+`metadata_build::tests::the_probe_takes_only_the_leafs_patch_rows` (the NuttX
+shape: an included `build-std`, an included generated-rows sidecar, an inline
+relative patch -- extracted file has both patches, absolute, and no `unstable`).
+
+**Still open here: the six `examples/zephyr/rust/*` leaves.**
