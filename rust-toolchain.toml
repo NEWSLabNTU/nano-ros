@@ -63,4 +63,8 @@ targets = [
     "thumbv8m.main-none-eabi",
     "thumbv8m.main-none-eabihf",
     "i686-unknown-linux-gnu",
+    # issue 1672 — Zephyr native_sim. A WORKSPACE Zephyr leaf
+    # (`examples/workspaces/*`) has no toolchain file of its own and resolves
+    # THIS one, so the triple Zephyr picks for native_sim has to be here.
+    "x86_64-unknown-none",
 ]

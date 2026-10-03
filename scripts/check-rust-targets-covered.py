@@ -133,6 +133,30 @@ def declared_rows():
         for m in re.finditer(r'NROS_RUST_TARGET=["\']?([A-Za-z0-9_.]+-[A-Za-z0-9_.-]+)', text):
             rows.append((m.group(1), rel))
 
+    # issue 1672 — the SIXTH producer: the `targets` array of every tracked
+    # `rust-toolchain.toml` other than the root one, which is the MIRROR this
+    # gate holds to the list and so cannot also be a source of rows.
+    #
+    # Zephyr picks its Rust triple for a board at BUILD time
+    # (zephyr-lang-rust), so for native_sim nothing above declared
+    # `x86_64-unknown-none`: not a board descriptor (native_sim is Zephyr's
+    # board, not ours), not a toolchain cmake, not an `NROS_RUST_TARGET`
+    # assignment. The one tracked file that DID name it was
+    # `examples/zephyr/rust-toolchain.toml`, which this gate never read. The
+    # triple therefore had no row, the root pin did not list it, and it reached
+    # hosts only through `scripts/zephyr/setup.sh`'s `rustup target add` onto
+    # whatever toolchain was active — until issue 1447 moved the root pin off
+    # `stable`, after which every Zephyr native_sim WORKSPACE Rust leaf (which
+    # resolves the ROOT pin) failed with `can't find crate for core`. A green
+    # gate the whole time, which is issue 0196's shape again.
+    for rel in tracked("*rust-toolchain.toml"):
+        if rel == "rust-toolchain.toml":
+            continue
+        text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
+        m = re.search(r"^targets\s*=\s*\[(.*?)\]", text, re.S | re.M)
+        if m:
+            rows += [(t, rel) for t in re.findall(r'"([^"]+)"', m.group(1))]
+
     # NOT scanned, deliberately: `rustup target add` in `ci/docker/*/Dockerfile`.
     # Issue 1153 names it as a third missed site and it is not one. That image
     # installs a hardcoded set AND then the SSoT's own rows
