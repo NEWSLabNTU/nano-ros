@@ -1,7 +1,8 @@
 ---
 id: 1648
 title: "On the model road an OBSERVED `in_place: false` subscription on a schemaless backend still refuses its `registration_path` — the row needs the component's LANGUAGE, which the probe sidecar knows and the join does not carry"
-status: open
+status: resolved
+resolved_in: 2026-10-03
 type: tech-debt
 area: [build, cli]
 severity: low
@@ -108,3 +109,41 @@ consumer change, and `registration_path` is owned by the RFC-0100 descriptor
 work (Package A of this round), so it was deliberately not touched here. A
 Rust component's probe still declares without registering, so its rows stay
 unobserved (issue 1522).
+
+## Resolution, 2026-10-03 — the consumer reads the observation
+
+`sizing_descriptor::registration_path` takes the probe's
+`EntityDecl::observed_buffered_row` (carried by #1616) and the language stops
+deciding the buffered rows:
+
+* **observed** -> the row it names, `typed_bound` or `unbounded`, on every road
+  the probe reached, the model road included (it has no single entry
+  language and used to refuse);
+* **unobserved, no language** (the model road) -> refused, with the horizon's
+  prose or the new 1648 refusal;
+* **unobserved, Rust** -> `unbounded`. Kept because it is the LARGER row and
+  a Rust probe declares without registering (issue 1522), so these rows are
+  unobserved by construction -- an inference that cannot under-size;
+* **unobserved, C/C++** -> REFUSED, naming this issue. "C/C++ supplies a typed
+  hint" is the inference this issue measured false (two hint-less C++
+  registrations read `unbounded`), and crediting a site with the smaller row
+  it may not claim is an under-size. In production no road sets the C/C++
+  language today (the cargo leaf is Rust, the model road has none), so this
+  arm changes no shipped descriptor; it stops a future road inheriting the
+  guess.
+
+A descriptor-carrying backend (Cyclone) still answers `typed_bound` before any
+of this: `default_subscription_rx_bytes` reaches the bound at a type-erased
+site there, whatever the call site stated.
+
+**Measured**, `examples/workspaces/cpp` native, the D12 runtime descriptor
+written by the CLI at `origin/main` and by this change: **byte-identical**.
+The listener's sidecar reads `in_place: true, buffered: "typed_bound"`, and on
+zenoh the in-place row wins before the buffered one is asked; both schemaless
+backends in the tree dispatch in place, so a buffered row is only reached by an
+`in_place: false` registration, and no contract-declared in-tree image has one
+observed. The change is therefore pinned by unit tests:
+`the_registration_path_reads_dispatch_before_schema` (an unobserved C/C++
+buffered row refuses; each observation decides its row for both languages)
+and `an_observed_row_lets_the_model_road_state_the_in_place_path` (the model
+road now STATES an observed `unbounded` row it used to refuse).

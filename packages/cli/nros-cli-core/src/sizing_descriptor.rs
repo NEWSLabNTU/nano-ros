@@ -734,7 +734,7 @@ fn endpoint_row(
     // the language and still refuse with the horizon's own prose. So the
     // road-specific refusal moved INSIDE the composer, where the arm that
     // actually runs out of inputs is the one that reports.
-    match registration_path(kind, inputs, d.in_place_capable) {
+    match registration_path(kind, inputs, d.in_place_capable, d.observed_buffered_row) {
         Ok(path) => {
             ep.set_registration_path(Some(path));
         }
@@ -1091,6 +1091,7 @@ fn registration_path(
     kind: EndpointKind,
     inputs: &DescriptorInputs<'_>,
     observed_in_place_capable: Option<bool>,
+    observed_buffered_row: Option<crate::entity_inventory::ObservedBufferedRow>,
 ) -> Result<RegistrationPath, String> {
     let Some(dispatch) = inputs.backend_dispatch else {
         return Err(registration_path_refusal(inputs));
@@ -1144,36 +1145,60 @@ fn registration_path(
     if schema == BackendSchema::Descriptors {
         return Ok(RegistrationPath::TypedBound);
     }
+    // Issue 1648 -- a schemaless backend, and the BUFFERED row is now an
+    // OBSERVATION: the probe records, at `Executor::open_subscription`, whether
+    // the slot this registration claims is a bound the call site stated or the
+    // closure buffer (`RX_BUF`). Read off the request, so it answers on every
+    // road the probe reached -- the model road included, which has no single
+    // entry language -- and it is right where the language was a proxy: a
+    // hint-less C/C++ registration claims `RX_BUF` exactly like a Rust generic
+    // one (issue 1319), and the language called it `TypedBound`.
+    use crate::entity_inventory::ObservedBufferedRow;
+    match observed_buffered_row {
+        Some(ObservedBufferedRow::TypedBound) => return Ok(RegistrationPath::TypedBound),
+        Some(ObservedBufferedRow::Unbounded) => return Ok(RegistrationPath::Unbounded),
+        None => {}
+    }
     let Some(language) = inputs.language else {
-        // A schemaless backend, and the language decides the row: a Rust
-        // registration takes `RX_BUF`, a C/C++ one its typed hint. On the model
-        // road an OBSERVED `false` row (issue 1594) lands here, and refuses: it
-        // is the probe that knows the component's language, not this road, and
-        // carrying that half per row is issue 1648, not a guess made here.
-        return Err(registration_path_refusal(inputs));
+        // Nobody observed it and no single entry language exists (the model
+        // road). Refused: guessing a row is what issue 1648 removed.
+        return Err(match &inputs.horizon {
+            Some(h) => h.registration_path(),
+            None => unobserved_buffered_refusal(inputs),
+        });
     };
-    Ok(match (language, schema) {
-        // A C/C++ entry that registers typed supplies `rx_size_bound<M>`, so it
-        // is credited with a stated bound. That credit is an ASSUMPTION about
-        // call sites this writer cannot see, and phase-456 W7 narrowed how far
-        // it reaches: every registration site in the nros-cpp headers now states
-        // a bound, enforced by `check-cpp-subscription-bound-supplied`, so a C++
-        // entry earns it unless it calls the one deliberately type-erased site
-        // (`nros::bind_subscription_raw`, which passes the named
-        // `nros::rx_bound_unknown`). The C API's own helper
-        // (`nros_cpp_subscription_register_hinted`) has always required the
-        // hint. What remains untrue is CONSUMER code passing `options = NULL`
-        // with the type in scope -- seven C example listeners do, which is
-        // issue 1376.
-        (EntryLanguage::CFamily, _) => RegistrationPath::TypedBound,
-        // Rust against a descriptor-carrying backend: the bound is reachable
-        // from `MessageForRmw`, so the registration is priced at the type.
-        (EntryLanguage::Rust, BackendSchema::Descriptors) => RegistrationPath::TypedBound,
-        // Rust against a schemaless backend where this registration does NOT
-        // dispatch in place: no schema, so no bound exists to state at the
-        // type-erased site, and the registration takes `RX_BUF`.
-        (EntryLanguage::Rust, BackendSchema::Schemaless) => RegistrationPath::Unbounded,
-    })
+    // UNOBSERVED, with a language. Only the inference that cannot under-size
+    // survives: a Rust registration on a schemaless backend is credited with
+    // the LARGER row (`RX_BUF`), which is what a Rust typed one claims anyway
+    // (a Rust probe declares without registering, issue 1522, so these rows
+    // are unobserved by construction). The C/C++ inference -- "it supplies a
+    // typed hint" -- is the one issue 1648 measured false (two hint-less C++
+    // registrations read `unbounded`), and crediting a site with the smaller
+    // row it may not claim is an UNDER-size, so it refuses.
+    if language == EntryLanguage::CFamily {
+        return Err(unobserved_buffered_refusal(inputs));
+    }
+    // Rust, unobserved, on a schemaless backend where this registration does
+    // NOT dispatch in place (the `Descriptors` schema returned above): no
+    // schema, so no bound exists to state at the type-erased site, and the
+    // registration takes `RX_BUF`.
+    debug_assert_eq!(language, EntryLanguage::Rust);
+    debug_assert_eq!(schema, BackendSchema::Schemaless);
+    Ok(RegistrationPath::Unbounded)
+}
+
+/// Issue 1648 — the refusal when nothing observed which BUFFERED row this
+/// registration claimed and no inference that cannot under-size is left.
+fn unobserved_buffered_refusal(inputs: &DescriptorInputs<'_>) -> String {
+    let rmw = inputs.rmw.as_deref().unwrap_or("this image's backend");
+    format!(
+        "backend `{rmw}` carries no type schema, so this registration's receive slot is either a \
+         bound its call site stated or the closure buffer `RX_BUF` -- and nothing OBSERVED which. \
+         The metadata probe records it at `Executor::open_subscription` (sidecar `buffered`, \
+         schema v4); a language is not evidence for it, because a C/C++ registration with no \
+         type hint claims `RX_BUF` exactly like a Rust generic one (issue 1319). Refused rather \
+         than credited with the smaller row (issue 1648)"
+    )
 }
 
 /// phase-457 W3 — the refusal when the backend dispatches in place and NOTHING
@@ -2676,7 +2701,7 @@ fn cmake_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entity_inventory::{ComponentEntities, EntityDecl};
+    use crate::entity_inventory::{ComponentEntities, EntityDecl, ObservedBufferedRow};
     use nros_orchestration_ir::qos_override::{QoSDurabilityPolicy, QoSHistoryPolicy};
 
     fn inventory(decls: Vec<EntityDecl>) -> EntityInventory {
@@ -3205,23 +3230,48 @@ mod tests {
                 "{schema:?} + {dispatch:?}"
             );
         }
-        // phase-456 W8 — a C/C++ entry takes the SAME rows a Rust one does. It
-        // is credited with a stated bound when the backend buffers (W7), and it
-        // reaches the in-place row when the backend dispatches in place, which
-        // it could not before W8 gave the capability one consulting site.
-        for (dispatch, want) in [
-            (BackendDispatch::InPlace, RegistrationPath::InPlace),
-            (BackendDispatch::Buffered, RegistrationPath::TypedBound),
+        // phase-456 W8 — a C/C++ entry reaches the in-place row when the
+        // backend dispatches in place, like a Rust one.
+        let mut i = base(&inv);
+        i.language = Some(EntryLanguage::CFamily);
+        i.backend_dispatch = Some(BackendDispatch::InPlace);
+        assert_eq!(
+            build(&i).endpoints[0].registration_path().stated(),
+            Some(&RegistrationPath::InPlace)
+        );
+        // Issue 1648 — but its BUFFERED row is no longer credited from the
+        // language. Unobserved, a C/C++ registration on a buffering schemaless
+        // backend REFUSES: a hint-less site claims `RX_BUF` (issue 1319), so
+        // "C/C++ => typed_bound" would under-size it.
+        let mut i = base(&inv);
+        i.language = Some(EntryLanguage::CFamily);
+        i.backend_dispatch = Some(BackendDispatch::Buffered);
+        let path = build(&i).endpoints[0].registration_path();
+        assert!(
+            path.refusal().is_some_and(|r| r.contains("issue 1648")),
+            "{path:?}"
+        );
+        // ...and the OBSERVATION decides it, both ways, whatever the language.
+        for (row, want) in [
+            (
+                ObservedBufferedRow::TypedBound,
+                RegistrationPath::TypedBound,
+            ),
+            (ObservedBufferedRow::Unbounded, RegistrationPath::Unbounded),
         ] {
-            let mut i = base(&inv);
-            i.language = Some(EntryLanguage::CFamily);
-            i.backend_dispatch = Some(dispatch);
-            let d = build(&i);
-            assert_eq!(
-                d.endpoints[0].registration_path().stated(),
-                Some(&want),
-                "C family + {dispatch:?}"
-            );
+            let mut observed = sub("std_msgs/msg/String", "/chatter", Some(10));
+            observed.observed_buffered_row = Some(row);
+            let inv = inventory(vec![observed]);
+            for language in [EntryLanguage::CFamily, EntryLanguage::Rust] {
+                let mut i = base(&inv);
+                i.language = Some(language);
+                i.backend_dispatch = Some(BackendDispatch::Buffered);
+                assert_eq!(
+                    build(&i).endpoints[0].registration_path().stated(),
+                    Some(&want),
+                    "{language:?} observed {row:?}"
+                );
+            }
         }
     }
 
@@ -3942,16 +3992,25 @@ mod tests {
             "the observation plus the backend is the whole of the in-place row, \
              and this road has both"
         );
-        // The other row is a BUFFERED row on a schemaless backend, where the
-        // language decides it (Rust `unbounded`, C/C++ `typed_bound`) and this
-        // road has none -- so it refuses, naming the missing half. No road-wide
-        // reason: issue 1393 closed that.
+        // The other row is a BUFFERED row on a schemaless backend. Nothing
+        // observed which buffered row it claims and this road has no language,
+        // so it refuses. No road-wide reason: issue 1393 closed that.
         let path = by_topic("/generic").registration_path();
         let why = path
             .refusal()
-            .expect("a schemaless buffered row still needs the entry language");
-        assert!(why.contains("the entry's language"), "{why}");
+            .expect("an unobserved schemaless buffered row has nothing to read");
         assert!(!why.contains("issue 1393"), "{why}");
+
+        // Issue 1648 — with the probe's BUFFERED observation joined, the model
+        // road states that row too: the observation needs no entry language.
+        let mut generic = sub_observed("std_msgs/msg/String", "/generic", Some(1), Some(false));
+        generic.observed_buffered_row = Some(ObservedBufferedRow::Unbounded);
+        let inv = inventory(vec![generic]);
+        let d = build(&model_only(&inv));
+        assert_eq!(
+            d.endpoints[0].registration_path().stated(),
+            Some(&RegistrationPath::Unbounded)
+        );
     }
 
     /// issue 1393 — a descriptor-carrying backend answers `registration_path`

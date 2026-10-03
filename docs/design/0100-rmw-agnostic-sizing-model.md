@@ -1006,7 +1006,7 @@ stands. What the build path does change is where an input COULD come from:
   the registration call (a C/C++ registration with no type hint takes `RX_BUF`,
   [issue 1319](../issues/archived/1319-arena-prices-a-subscription-below-what-a-schemaless-backend-allocates.md)).
   The direction for
-  [issue 1648](../issues/1648-model-road-observed-buffered-subscription-needs-probe-language.md)
+  [issue 1648](../issues/archived/1648-model-road-observed-buffered-subscription-needs-probe-language.md)
   is to OBSERVE the buffered row the way phase-457 W3 observed the in-place one
   — the registration funnel computes the slot size, so it knows which row it
   claimed — with the plan's per-component language as the fallback, and never an
