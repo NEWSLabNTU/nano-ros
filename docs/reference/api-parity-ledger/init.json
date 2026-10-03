@@ -127,7 +127,7 @@
   "cpp:remove_ros_arguments": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "argv filtering, and there is no argv. RFC-0045 resolves boot config from baked values and the board."
+    "why": "argv filtering. On a device there is no argv: RFC-0045 resolves boot config from baked values and the board.\n\nphase-467 Row 11 follow-through (2026-10-03) -- CORRECTED. \"there is no argv\" was the whole reason, and it stopped being true on a hosted build: since #1591 the RUST entries (`nros::init_with_args` / `nros::Context::new`) parse `--ros-args` and honour `-r`. The C++ surface still has nothing to strip -- `nros::init(argc, argv)` calls no parser and ABORTS on `--ros-args` (`NROS_RCLCPP_REFUSE_INIT_ARGV`, `packages/api/nros-cpp/include/nros/nros.hpp`), so a C++ caller never hands ROS arguments past `init` that this would remove. Stays `absent` until a C++ entry parses; the Rust parse already scopes `--ros-args ... --` itself, so the program's own arguments are never mistaken for ROS ones."
   },
   "cpp:shutdown": {
     "verdict": "divergence",
