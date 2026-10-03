@@ -450,12 +450,18 @@ _BOARD_CAPACITY = (
 KEPT = {
     # ---- payload class (1595 wired the reader; 1393 closed; D12 the road) --
     "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": Kept(1649, _D12_ZERO_DIFF),
+    # Issue 1595 (resolved): `[types] max_wire_bound_bytes` states the closure
+    # bound and `nros-node` reads it FIRST, measured equal to this carrier.
+    # What keeps the carrier is not a field or a reader but the FILE: cmake
+    # emits it whenever the message-bound closure derived, contract or not,
+    # and a contract-less image writes no descriptor (RFC-0100 D4's "no
+    # contract => no file") -- the ruling issue 1655 owns.
     "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": Kept(
-        1595,
-        "the descriptor field exists now (`[types] max_wire_bound_bytes`, "
-        "RFC-0100 Amendment 1) and no consumer reads it yet; its basis is the "
-        "CLOSURE -- every type the image could receive OR publish, because "
-        "`DEFAULT_TX_BUF` aliases `RX_BUF`",
+        1655,
+        "the descriptor states it (`[types] max_wire_bound_bytes`) and "
+        "`nros-node` reads it FIRST, measured equal; but this carrier is "
+        "emitted whenever the bound closure derived, with or without a "
+        "contract, and a contract-less image has no descriptor file to carry it",
     ),
     "NROS_DECLARED_LARGE_SUBSCRIBERS": Kept(1649, _D12_ZERO_DIFF),
     # Same consumer function as the two above, but the measured image's large

@@ -488,9 +488,15 @@ fn main() {
     // So an absent variable means the join refused (some type in the closure
     // carried no bound), and the crate default stands. A present one is an
     // upper bound over every type the image could receive OR publish.
-    let rx_buf_size = env_usize_declared(
+    //
+    // issue 1595 -- and the DESCRIPTOR outranks that carrier: `[types]
+    // max_wire_bound_bytes` is the same closure maximum (RFC-0100 Amendment 1),
+    // composed by the cargo leaf's own rule, and it reaches every road that
+    // names a descriptor. A stated rung still wins over both.
+    let rx_buf_size = env_usize_declared_or(
         "NROS_SUBSCRIPTION_BUFFER_SIZE",
         "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE",
+        described_closure_bound(sizing.as_ref()),
         1024,
     );
     // phase-446 F3 -- the parameter-service buffer. A rung that STATES a size
@@ -1572,6 +1578,51 @@ fn watch_declared_facts() {
     // phase-467 W1 -- the two contract-monitor tables, which had no rung.
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_MONITORS");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS");
+}
+
+/// issue 1595 -- the closure bound `RX_BUF` is sized from, off the descriptor.
+///
+/// `Some` only for a STATED `[types] max_wire_bound_bytes`. A refusal is
+/// printed (RFC-0100 D6: the fallback is always loud) and answers `None`, so the
+/// `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` carrier -- the same maximum, derived
+/// by cmake -- and then the crate default decide. The two cannot disagree on a
+/// road that has both: they are one rule over one registered closure.
+fn described_closure_bound(
+    desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
+) -> Option<usize> {
+    let desc = desc?;
+    let fact = desc.types.max_wire_bound_bytes();
+    if let Some(why) = fact.refusal() {
+        println!(
+            "cargo::warning=nros-node: the sizing descriptor cannot size RX_BUF: {why}. \
+             NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE (or the 1024 default) decides it instead"
+        );
+    }
+    fact.stated().copied()
+}
+
+/// [`env_usize_declared`] with a DESCRIPTOR rung between the stated rungs and
+/// the carrier: env / dotconfig / board rungs, then `described`, then the
+/// `declared` carrier, then `default`. One ladder implementation, probed the
+/// same way.
+fn env_usize_declared_or(
+    name: &str,
+    declared: &str,
+    described: Option<usize>,
+    default: usize,
+) -> usize {
+    match described {
+        Some(v) => {
+            // Watch the carrier anyway: dropping the descriptor must re-run.
+            println!("cargo:rerun-if-env-changed={declared}");
+            let probe = usize::MAX;
+            match env_usize(name, probe) {
+                p if p == probe => v,
+                stated => stated,
+            }
+        }
+        None => env_usize_declared(name, declared, default),
+    }
 }
 
 fn env_usize_declared(name: &str, declared: &str, default: usize) -> usize {

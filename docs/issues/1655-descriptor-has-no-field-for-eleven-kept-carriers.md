@@ -67,3 +67,14 @@ file.
 After issue 1649 (D12): until a multi-entry configure names a descriptor, these
 rows cannot retire on that road whatever fields exist, and adding fields first
 risks a reduction that disagrees with D12's.
+
+## Rows added 2026-10-03, from the D12 knob diff (issue 1649)
+
+Re-running the per-carrier test once the multi-entry road named a descriptor
+moved three more rows here, each for a reason of this issue's kind:
+
+| what is missing | carrier | measured on `examples/workspaces/cpp` native |
+| --- | --- | --- |
+| a READER — `[image] node_count` states it | `EXECUTOR_MAX_NODES` | dropping it: `nros-node` `MAX_NODES` and zenoh `MAX_PER_NODE_LIVELINESS` 6 → 4 |
+| a READER — `[image] subscriber_count` states it | `MAX_SUBSCRIBERS` | dropping it: `ZPICO_MAX_SUBSCRIBERS` 2 → 8 |
+| a FILE — emitted whenever the bound closure derived, contract or not | `SUBSCRIPTION_BUFFER_SIZE` | field + reader landed (issue 1595); zero-diff where a descriptor is named |
