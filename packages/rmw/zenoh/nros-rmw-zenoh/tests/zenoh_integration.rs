@@ -1267,3 +1267,116 @@ fn a_service_server_receives_through_the_ring_the_caller_supplied() {
     drop(server);
     session.close().expect("Failed to close session");
 }
+
+// ============================================================================
+// Issue 1632 - a refused take_request / take_response names the size it needed
+// ============================================================================
+
+/// Its own key, so nothing else answers on it.
+const REFUSED_SERVICE: ServiceInfo<'static> = ServiceInfo::new(
+    "/nros_refused_len_probe",
+    "example_interfaces/srv/AddTwoInts",
+    "TypeHashNotSupported",
+);
+
+/// The real queryable and the real client, through the real C shim:
+///
+/// 1. a 64-byte request into a 16-byte buffer is `BufferTooSmall`, and
+///    `refused_request_len` is 64;
+/// 2. a 200-byte reply into a 32-byte buffer is `BufferTooSmall` - not the
+///    `InvalidConfig` it used to surface as, which is `ZPICO_ERR_FULL`'s
+///    pool-exhaustion meaning (issue 0465) - and `refused_response_len` is
+///    200, read back through `zpico_get_reply_len`.
+#[test]
+fn refused_service_takes_name_the_size_they_needed() {
+    use nros_rmw::ClientTrait;
+
+    if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
+        nros_tests::skip_class!(capability, "{why}");
+    }
+    let _router = or_skip(ZenohRouter::start_unique());
+    let router_locator = _router.locator();
+    let config = TransportConfig {
+        locator: Some(router_locator.as_str()),
+        mode: SessionMode::Client,
+        properties: &[],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
+    };
+    let mut session = ZenohTransport::open(&config)
+        .unwrap_or_else(|e| panic!("could not open a client session on {router_locator}: {e:?}"));
+    let qos = QoSProfile::services_default();
+    let mut server = session
+        .create_service(&REFUSED_SERVICE, qos)
+        .expect("the service server is declared");
+    let mut client = session
+        .create_client(&REFUSED_SERVICE, qos)
+        .expect("the service client is declared");
+    let budget = Duration::from_secs(5);
+
+    // 1 - the request refused, with its size.
+    let request = [0x51u8; 64];
+    client.send_request_raw(&request).expect("request sent");
+    assert!(
+        spin_until_request(&mut session, &server, budget),
+        "the request never reached the server"
+    );
+    let mut small = [0u8; 16];
+    assert!(
+        matches!(
+            server.take_request(&mut small),
+            Err(nros_rmw::TransportError::BufferTooSmall)
+        ),
+        "64 bytes into 16 must be BufferTooSmall"
+    );
+    assert_eq!(
+        server.refused_request_len(),
+        Some(request.len()),
+        "the server knew the request's size; it must say so"
+    );
+
+    // 2 - a request taken whole, answered with a reply too big for the client.
+    client.send_request_raw(&request).expect("request sent");
+    assert!(
+        spin_until_request(&mut session, &server, budget),
+        "the second request never reached the server"
+    );
+    let mut whole = [0u8; 256];
+    let seq = server
+        .take_request(&mut whole)
+        .expect("a 256-byte buffer holds the request")
+        .expect("the ring reported a request")
+        .sequence_number;
+    let reply = [0x52u8; 200];
+    server.send_response(seq, &reply).expect("reply sent");
+
+    let mut tiny = [0u8; 32];
+    let deadline = std::time::Instant::now() + budget;
+    let verdict = loop {
+        let _ = session.spin_once(5);
+        match client.take_response_raw(&mut tiny) {
+            Ok(None) if std::time::Instant::now() < deadline => continue,
+            other => break other,
+        }
+    };
+    assert_eq!(
+        verdict,
+        Err(nros_rmw::TransportError::BufferTooSmall),
+        "a 200-byte reply into 32 bytes must be BufferTooSmall"
+    );
+    assert_eq!(
+        client.refused_response_len(),
+        Some(reply.len()),
+        "the client held the reply; it must say how big it was"
+    );
+    println!(
+        "issue 1632: refused request {:?} B, refused reply {:?} B",
+        server.refused_request_len(),
+        client.refused_response_len()
+    );
+
+    drop(client);
+    drop(server);
+    session.close().expect("Failed to close session");
+}

@@ -977,6 +977,14 @@ impl Context {
         }
     }
 
+    /// Issue 1632 — the size of the reply [`get_check`](Self::get_check)
+    /// refused with [`ZpicoError::Full`] because it did not fit `reply_buf`.
+    /// `None` when no reply was received on `handle`.
+    pub fn get_reply_len(&self, handle: i32) -> Option<usize> {
+        let ret = ffi_guard(|| unsafe { zpico_sys::zpico_get_reply_len(self.handle, handle) });
+        usize::try_from(ret).ok()
+    }
+
     /// Start a non-blocking liveliness query.
     ///
     /// Returns a slot handle on success that can be polled with

@@ -848,6 +848,17 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
+    /// Issue 1632 — the length of the reply a pending get received.
+    ///
+    /// For the caller `zpico_get_check` refused with `ZPICO_ERR_FULL`: that
+    /// says the reply did not fit; this says how big it was. Returns
+    /// `ZPICO_ERR_INVALID` when the handle is out of range or nothing was
+    /// received. Read-only.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_get_reply_len(_session: *mut zpico_session_t, _handle: i32) -> i32 {
+        -1 // stub: not available
+    }
+
     /// Start a non-blocking liveliness query (for wait_for_service).
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_liveliness_get_start(
