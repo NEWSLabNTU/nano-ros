@@ -1438,6 +1438,30 @@ impl SystemHeader {
     }
 }
 
+/// `[[component]] entities` -- an authored list, or where the list comes from
+/// instead (issue 1556).
+///
+/// Untagged: a TOML array is [`Self::Declared`], the string `"census"` is
+/// [`Self::Source`]. Any other string is refused by [`EntitySource`]'s own
+/// variant set, so a typo is a parse error rather than a silent "declared".
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ComponentEntitiesSpec {
+    /// The `EntityDecl::parse` rows a person wrote.
+    Declared(Vec<String>),
+    /// Not authored: read from somewhere the build produces.
+    Source(EntitySource),
+}
+
+/// Where an unauthored `entities` comes from (issue 1556).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EntitySource {
+    /// The leaf's own census: its program, built for the host and run with
+    /// `$NROS_CENSUS_OUT` (`nros ws entity-census take --leaf`).
+    Census,
+}
+
 /// `[[component]]` row.
 ///
 /// `Eq` is deliberately absent: `params` holds `toml::Value`, which is only
@@ -1484,8 +1508,12 @@ pub struct SystemComponentEntry {
     /// phase-454 W9 retired — so this is now the ONLY declaration surface, not
     /// the preferred one of two. The resolver's own `[[component]]` reader is
     /// lenient, so this key costs it nothing.
+    ///
+    /// Issue 1556 -- or the word `"census"`: this component's entities are what
+    /// the leaf's own program CREATES, observed by running it on the host
+    /// (`nros ws entity-census take --leaf <dir>`), and no list is authored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub entities: Option<Vec<String>>,
+    pub entities: Option<ComponentEntitiesSpec>,
     /// Issue 1278 (phase-445 W3b) — the component's dispatch strategy,
     /// `"inline"` | `"deferred"` | `"from_isr"` (phase-216 A.5), replacing
     /// `[package.metadata.nros.node] dispatch`. Its reader is `nros check`'s
@@ -1622,6 +1650,31 @@ mod tests {
             .expect_err("`ignore` is not a policy")
             .to_string();
         assert!(err.contains("on_stale") || err.contains("ignore"), "{err}");
+    }
+
+    /// Issue 1556 -- `[[component]] entities` is a list, or the word
+    /// `"census"`, and nothing else: the typed schema `nros sync` reads every
+    /// `system.toml` through must accept the opt-in and refuse a typo.
+    #[test]
+    fn component_entities_is_a_list_or_the_census_opt_in() {
+        let doc = |entities: &str| {
+            format!(
+                "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n[[component]]\n\
+                 pkg = \"p\"\nclass = \"p::C\"\nname = \"c\"\nentities = {entities}\n"
+            )
+        };
+        let parsed = toml::from_str::<SystemToml>(&doc("\"census\"")).expect("the opt-in parses");
+        assert_eq!(
+            parsed.components[0].entities,
+            Some(ComponentEntitiesSpec::Source(EntitySource::Census))
+        );
+        let parsed = toml::from_str::<SystemToml>(&doc("[\"timer\"]")).expect("a list parses");
+        assert_eq!(
+            parsed.components[0].entities,
+            Some(ComponentEntitiesSpec::Declared(vec!["timer".into()]))
+        );
+        toml::from_str::<SystemToml>(&doc("\"timer\""))
+            .expect_err("a bare string other than `census` is neither shape");
     }
 
     /// issue 0358 — the two spellings must answer identically.

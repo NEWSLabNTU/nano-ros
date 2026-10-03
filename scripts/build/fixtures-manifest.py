@@ -368,6 +368,18 @@ def builds_through_leaf_settings(entry):
     return (d / "system.toml").is_file() and (d / "Cargo.toml").is_file()
 
 
+def leaf_entities_from_census(leaf):
+    """Issue 1556 -- does this leaf's `system.toml` take a component's
+    entities from its census (`entities = "census"`)? The same word
+    `nros_orchestration_ir::leaf_system` reads."""
+    path = Path(leaf) / "system.toml"
+    if not path.is_file() or not (Path(leaf) / "CMakeLists.txt").is_file():
+        return False
+    with open(path, "rb") as fh:
+        doc = tomllib.load(fh)
+    return any(c.get("entities") == "census" for c in doc.get("component", []))
+
+
 def is_cargo_row(entry):
     """Does this row build with `cargo` (as opposed to `cmake`)?
 
@@ -1491,6 +1503,10 @@ def main():
             # so a fixture build can take every census before it configures
             # them (`scripts/build/census-prepass.sh`).
             "census-images",
+            # Issue 1556 -- the standalone C/C++ LEAVES whose entities come
+            # from their own census (`entities = "census"`), so a fixture
+            # build can take each census before it cross-configures the leaf.
+            "census-leaves",
         ],
     )
     p.add_argument("--manifest", default=DEFAULT_MANIFEST)
@@ -1894,6 +1910,27 @@ def main():
                 continue
             seen.add(key)
             sys.stdout.write(f"{key[0]}\t{key[1]}\n")
+        return
+
+    if a.command == "census-leaves":
+        # Issue 1556 -- one line per `[[fixture]]` leaf dir whose `system.toml`
+        # has a `[[component]]` with `entities = "census"`: its configure reads
+        # the leaf's census (`nros ws entity-facts --leaf`, `sizing-descriptor
+        # --from-leaf`) and REFUSES without a fresh one, so the build takes it
+        # first (`nros ws entity-census take --leaf`). Keyed on the leaf's own
+        # opt-in, never on its shape: a leaf that did not opt in keeps the
+        # sizing it has, census or not. Deduplicated, in manifest order.
+        seen = set()
+        fixture_rows = load(a.manifest)
+        for e in fixture_rows:
+            if not matches_filters(e, a, all_entries=fixture_rows):
+                continue
+            d = e.get("dir", "")
+            if not d or d in seen or is_cargo_row(e):
+                continue
+            if leaf_entities_from_census(Path(a.manifest).resolve().parents[1] / d):
+                seen.add(d)
+                sys.stdout.write(f"{d}\n")
         return
 
     if a.command in ("list-workspaces", "validate-workspaces"):

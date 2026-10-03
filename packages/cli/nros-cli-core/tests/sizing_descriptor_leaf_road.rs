@@ -36,6 +36,42 @@ fn repo() -> PathBuf {
         .to_path_buf()
 }
 
+/// What `examples/qemu-armv7a-nuttx/<lang>/action-server` creates, stated as
+/// a list. Issue 1556: the leaf itself states `entities = "census"` now -- its
+/// entities are its program's, read from a census a BUILD takes -- and a test
+/// takes no census (no compilation inside tests). So the leaf is copied and the
+/// copy states the list its census records (measured equal, issue 1556): the
+/// subject here is the descriptor road agreeing with the carrier for one input,
+/// and the opt-in itself is covered by `the_census_opt_in_refuses_without_a_census`.
+const ACTION_SERVER: &str = "action_server:example_interfaces/action/Fibonacci:/fibonacci";
+
+/// A copy of the REAL leaf's `system.toml` + `CMakeLists.txt` under `into`,
+/// with its `entities = "census"` replaced by `entities` (TOML).
+fn leaf_copy(lang: &str, into: &Path, entities: &str) -> PathBuf {
+    let real = repo().join(format!("examples/qemu-armv7a-nuttx/{lang}/action-server"));
+    assert!(
+        real.join("system.toml").is_file(),
+        "{}: the leaf issue 1378 was filed against must exist -- if it moved, \
+         re-point this test rather than deleting it",
+        real.display()
+    );
+    let system = std::fs::read_to_string(real.join("system.toml")).expect("reads");
+    assert!(
+        system.contains("entities = \"census\""),
+        "{}: expected the census opt-in (issue 1556); update this test with the leaf",
+        real.display()
+    );
+    let leaf = into.join(format!("{lang}-action-server"));
+    std::fs::create_dir_all(&leaf).expect("mkdir");
+    std::fs::write(
+        leaf.join("system.toml"),
+        system.replace("entities = \"census\"", &format!("entities = {entities}")),
+    )
+    .expect("write");
+    std::fs::copy(real.join("CMakeLists.txt"), leaf.join("CMakeLists.txt")).expect("copy");
+    leaf
+}
+
 /// Every field default, so a case states only what it is about.
 fn args() -> SizingDescriptorArgs {
     SizingDescriptorArgs {
@@ -70,13 +106,7 @@ fn the_leaves_issue_1378_measured_get_a_descriptor_that_agrees_with_the_carrier(
     let dir = tempfile::tempdir().expect("scratch");
     let mut checked = 0;
     for lang in ["c", "cpp"] {
-        let leaf = repo().join(format!("examples/qemu-armv7a-nuttx/{lang}/action-server"));
-        assert!(
-            leaf.join("system.toml").is_file(),
-            "{}: the leaf issue 1378 was filed against must exist — if it moved, \
-             re-point this test rather than deleting it",
-            leaf.display()
-        );
+        let leaf = leaf_copy(lang, dir.path(), &format!("[\"{ACTION_SERVER}\"]"));
 
         // The CARRIER's answer, from the verb the cmake leaf road already calls.
         let facts = entity_facts::facts_from_leaf(&leaf)
@@ -152,7 +182,7 @@ fn the_leaves_issue_1378_measured_get_a_descriptor_that_agrees_with_the_carrier(
 #[test]
 fn the_leaf_roads_descriptor_carries_no_absolute_path() {
     let dir = tempfile::tempdir().expect("scratch");
-    let leaf = repo().join("examples/qemu-armv7a-nuttx/c/action-server");
+    let leaf = leaf_copy("c", dir.path(), &format!("[\"{ACTION_SERVER}\"]"));
     let build_dir = dir.path().join("b");
     run(SizingDescriptorArgs {
         from_leaf: Some(leaf.clone()),
@@ -174,4 +204,28 @@ fn the_leaf_roads_descriptor_carries_no_absolute_path() {
             "the descriptor leaked `{needle}`:\n{body}"
         );
     }
+}
+
+/// Issue 1556 -- the leaves as they ARE: `entities = "census"` with no census
+/// taken refuses on BOTH readers (the carrier verb and this descriptor road),
+/// naming the command that takes it. Never a silent fall back to the RMW's
+/// guess, which for this leaf is issue 1142's tens of kilobytes.
+#[test]
+fn the_census_opt_in_refuses_without_a_census() {
+    let dir = tempfile::tempdir().expect("scratch");
+    let leaf = leaf_copy("cpp", dir.path(), "\"census\"");
+    let err = entity_facts::facts_from_leaf(&leaf)
+        .expect_err("no census, no answer")
+        .to_string();
+    assert!(err.contains("entity-census take --leaf"), "{err}");
+    let err = run(SizingDescriptorArgs {
+        from_leaf: Some(leaf.clone()),
+        build_dir: Some(dir.path().join("b")),
+        entry: Some("e".into()),
+        host_build: true,
+        ..args()
+    })
+    .expect_err("the descriptor road refuses too")
+    .to_string();
+    assert!(err.contains("entity-census take --leaf"), "{err}");
 }

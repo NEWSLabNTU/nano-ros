@@ -881,6 +881,14 @@ pub unsafe extern "C" fn nros_cpp_init_rmw(
         }
     };
 
+    // Issue 1556 (c) -- an application census is decided BEFORE the session
+    // resolves its backend, because it decides which backend that is (the
+    // recorder, through the `$NROS_RMW` that `resolve_boot` reads).
+    if let Err(ret) = census_arm_application(node_name_str) {
+        nros_node::boot_report::note_cpp_init_ret(ret);
+        return ret;
+    }
+
     // RFC-0045 / issue #206 — route through the ONE boot-config resolver
     // (precedence model A: hosted env > baked overlay > compiled default).
     // The header's arg/NROS_ENTRY_* chain arrives as the BAKED rung here;
@@ -1700,6 +1708,9 @@ fn census_select_backend() {
     // before any tier task is spawned, so the process is single-threaded at
     // this point -- the condition `set_var` asks for.
     unsafe { std::env::set_var("NROS_RMW", "metadata") };
+    // Issue 1556 (c) -- whoever selected it owns this census; the application
+    // arm in `nros_cpp_init_rmw` stands down.
+    CENSUS_SELECTED.store(true, core::sync::atomic::Ordering::Release);
     // Issue 1419 -- and the executor the init is about to open is sized for
     // the CODE, not for the contract. See `CENSUS_SIZING`.
     CENSUS_SIZING_PENDING.store(true, core::sync::atomic::Ordering::Release);
@@ -1795,7 +1806,11 @@ fn census_write(session: &core::ffi::CStr, out_path: &str) -> i32 {
 /// No recorder to point at: the census run refuses in [`census_write`] a
 /// moment later, and the backend the image does link stays selected.
 #[cfg(all(feature = "rmw-cffi", feature = "env", not(feature = "metadata-mode")))]
-fn census_select_backend() {}
+fn census_select_backend() {
+    // Issue 1556 (c) -- a runner still owns this census (and refuses it in
+    // `census_write`), so the application arm stands down here too.
+    CENSUS_SELECTED.store(true, core::sync::atomic::Ordering::Release);
+}
 
 /// The census switch in an image built WITHOUT `metadata-mode`: there is no
 /// recorder, so there is no census to write.
@@ -1870,6 +1885,103 @@ pub unsafe extern "C" fn nros_cpp_census_finish(session_name: *const c_char) -> 
         if s.is_empty() { c"node" } else { s }
     };
     census_write(name, &path)
+}
+
+// ---------------------------------------------------------------------------
+// Issue 1556 (c) -- the census switch for a C++ APPLICATION that owns its own
+// `main` and its own loop (`nros_app_main` + `nros::init*` + `nros::spin_once`
+// / `wait_for_service` / `call`), the C++ sibling of `nros-c`'s `census.rs`.
+//
+// The two runners above answer `$NROS_CENSUS_OUT` where the BOARD owns the
+// boot: they select the recorder before `nros::init`, run `setup`, and write
+// instead of spinning. A standalone application has no such runner, so the
+// switch rides the two calls every such program makes, in the order it makes
+// them -- the C half's shape, on this crate's own funnel:
+//
+// 1. `nros_cpp_init_rmw` ARMS it (`census_arm_application`), before the
+//    session resolves its backend: the same `census_select_backend` the
+//    runners call, so the recorder is selected by name and the executor opens
+//    at `CENSUS_SIZING`. Skipped when a runner has already selected it -- the
+//    runner owns that census and writes it after `setup`.
+// 2. The first BLOCKING call writes the census and exits
+//    (`census_finish_application_if_armed`): an application declares, then
+//    blocks, and its first block is where everything it creates up front has
+//    been created. `nros_cpp_spin_once` (which `spin_for`, `spin` and every
+//    `Future::wait` loop on), the service client's `wait_for_service` and
+//    blocking `call`, and the action client's `wait_for_action_server`,
+//    `send_goal` and `get_result`.
+//
+// Hosted only, like every census path: `env` is a capability no RTOS board
+// has, and without it both calls are empty.
+// ---------------------------------------------------------------------------
+
+/// Set by `census_select_backend`: a census has been selected for this process
+/// by SOMEONE -- a runner, or the application arm below. Sticky, so the arm in
+/// `nros_cpp_init_rmw` never takes over a runner's census.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+static CENSUS_SELECTED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
+/// The application census armed by `nros_cpp_init_rmw`: the session name it
+/// opened with, written into the census as the identity a runner would stamp.
+/// `Some` iff armed.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+static APPLICATION_CENSUS: nros_rmw::sync::Mutex<Option<alloc::ffi::CString>> =
+    nros_rmw::sync::Mutex::new(None);
+
+/// Issue 1556 (c) -- arm an APPLICATION census at `nros_cpp_init_rmw`.
+///
+/// `Ok(())` means "carry on": no census was asked for, a runner owns it, or the
+/// recorder is now selected and the first blocking call will write it. An image
+/// without the recorder REFUSES (non-zero from `nros::init`, no file) rather
+/// than booting normally and dialling a router -- `nros-c`'s rule.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+fn census_arm_application(session: &str) -> Result<(), nros_cpp_ret_t> {
+    if CENSUS_SELECTED.load(core::sync::atomic::Ordering::Acquire) {
+        return Ok(());
+    }
+    let Some(path) = census_out_path() else {
+        return Ok(());
+    };
+    if !cfg!(feature = "metadata-mode") {
+        cpp_diag!(
+            "nros census: $NROS_CENSUS_OUT=`{path}` but this C++ image was built without \
+             `metadata-mode` -- there is no recorder to dump"
+        );
+        return Err(NROS_CPP_RET_UNSUPPORTED);
+    }
+    census_select_backend();
+    let name = alloc::ffi::CString::new(if session.is_empty() { "node" } else { session })
+        .unwrap_or_else(|_| alloc::ffi::CString::from(c"node"));
+    APPLICATION_CENSUS.with(|armed| *armed = Some(name));
+    Ok(())
+}
+
+#[cfg(all(feature = "rmw-cffi", not(feature = "env")))]
+fn census_arm_application(_session: &str) -> Result<(), nros_cpp_ret_t> {
+    Ok(())
+}
+
+/// Issue 1556 (c) -- at the head of every blocking entry point: if
+/// `nros_cpp_init_rmw` armed an application census, write it and exit the
+/// process instead of blocking. Returns only when none is armed (always, on a
+/// build without `env`).
+#[cfg(feature = "rmw-cffi")]
+pub(crate) fn census_finish_application_if_armed() {
+    #[cfg(feature = "env")]
+    {
+        let armed = APPLICATION_CENSUS.with(Option::take);
+        let Some(name) = armed else {
+            return;
+        };
+        let code = match census_out_path() {
+            Some(path) => census_write(&name, &path),
+            None => {
+                cpp_diag!("nros census: armed at init, but $NROS_CENSUS_OUT is gone");
+                NROS_CPP_RET_INVALID_ARGUMENT
+            }
+        };
+        std::process::exit(code);
+    }
 }
 
 /// Issue 1434 — [`nros_board_native_run_components_named`] with the primary
@@ -2976,6 +3088,9 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     handle: *mut c_void,
     timeout_ms: i32,
 ) -> nros_cpp_ret_t {
+    // Issue 1556 (c) -- an application census writes and exits at its first
+    // blocking call, instead of blocking.
+    crate::census_finish_application_if_armed();
     let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };

@@ -165,8 +165,18 @@ pub struct TakeArgs {
 #[derive(Debug, ClapArgs)]
 pub struct PathArgs {
     /// The resolved SystemModel the census is of.
-    #[arg(long, value_name = "PATH")]
-    pub model: PathBuf,
+    #[arg(
+        long,
+        value_name = "PATH",
+        required_unless_present = "leaf",
+        conflicts_with = "leaf"
+    )]
+    pub model: Option<PathBuf>,
+
+    /// Issue 1556 -- or a STANDALONE leaf directory: the census
+    /// `take --leaf` writes for it, which its configure reads.
+    #[arg(long, value_name = "DIR")]
+    pub leaf: Option<PathBuf>,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -293,7 +303,11 @@ pub fn run(args: EntityCensusArgs) -> Result<()> {
         Sub::Run(a) => run_census(a),
         Sub::Check(a) => check_census(a),
         Sub::Path(a) => {
-            println!("{}", census_path_for_model(&a.model).display());
+            match (&a.model, &a.leaf) {
+                (Some(model), _) => println!("{}", census_path_for_model(model).display()),
+                (None, Some(leaf)) => println!("{}", leaf_census_path(leaf).display()),
+                (None, None) => bail!("`path` needs --model <PATH> or --leaf <DIR>"),
+            }
             Ok(())
         }
         Sub::Take(a) => take_census(a),
@@ -1633,8 +1647,11 @@ mod tests {
     /// Issue 1556 items 4-5 -- a standalone leaf's census, end to end through
     /// the reader every leaf consumer calls (`leaf_entity_env::declared_entities`):
     ///
-    /// * no `entities` declared + a current census -> the census's entities,
-    ///   with an action's RMW constituents folded back into the action;
+    /// * `entities = "census"` + a current census -> the census's entities,
+    ///   with an action's RMW constituents folded back into the action; no
+    ///   `entities` at all -> nothing, census or not;
+    /// * `entities = "census"` + a stale or missing census -> refused, naming
+    ///   `take --leaf`;
     /// * the host census build (`NROS_LEAF_CENSUS_HOST`) reads neither;
     /// * a declaration that DISAGREES with a current census is refused;
     /// * editing `system.toml` does not stale the census (it is not the
@@ -1697,6 +1714,14 @@ mod tests {
         assert!(matches!(census_freshness(&out, leaf), Freshness::Fresh));
 
         let read = crate::leaf_entity_env::declared_entities;
+        // No `entities` at all: nothing is stated, and a census on disk is
+        // not read -- running `take --leaf` by hand must not move a leaf's
+        // sizing that never opted in.
+        assert!(read(leaf).unwrap().is_none(), "no opt-in, no answer");
+
+        // `entities = "census"`: the census answers.
+        std::fs::write(leaf.join("system.toml"), system("entities = \"census\"\n")).unwrap();
+        assert!(matches!(census_freshness(&out, leaf), Freshness::Fresh));
         let got = read(leaf).unwrap().expect("the census answers");
         assert_eq!(got.len(), 1, "one action, not five constituents: {got:?}");
         assert_eq!(
@@ -1727,11 +1752,30 @@ mod tests {
         let err = read(leaf).unwrap_err().to_string();
         assert!(err.contains("the code creates"), "{err}");
 
-        // A source edit stales the census: it no longer answers.
-        std::fs::write(leaf.join("system.toml"), system("")).unwrap();
+        // A source edit stales the census. Opted in, that REFUSES and names the
+        // command -- never a silent fall back to the hosted defaults.
+        std::fs::write(leaf.join("system.toml"), system("entities = \"census\"\n")).unwrap();
         std::fs::write(leaf.join("src/main.c"), "int main(void){return 1;}\n").unwrap();
         assert!(matches!(census_freshness(&out, leaf), Freshness::Stale(_)));
-        assert!(read(leaf).unwrap().is_none(), "a stale census says nothing");
+        let err = read(leaf).unwrap_err().to_string();
+        assert!(
+            err.contains("stale") && err.contains("entity-census take --leaf"),
+            "{err}"
+        );
+        // Missing: the same refusal.
+        std::fs::remove_file(&out).unwrap();
+        let err = read(leaf).unwrap_err().to_string();
+        assert!(
+            err.contains("missing") && err.contains("entity-census take --leaf"),
+            "{err}"
+        );
+        // A declared list with no census to check it against still answers.
+        std::fs::write(
+            leaf.join("system.toml"),
+            system("entities = [\"action_server:example_interfaces/action/Fibonacci:/fib\"]\n"),
+        )
+        .unwrap();
+        assert_eq!(read(leaf).unwrap().unwrap().len(), 1);
     }
 
     #[test]

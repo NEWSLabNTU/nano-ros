@@ -119,6 +119,14 @@ if [ -n "${NROS_FIXTURE_COORDS:-}" ]; then
     coords_args=(--coords-from "$NROS_FIXTURE_COORDS")
 fi
 
+# Issue 1556 -- every leaf census this platform's cmake rows will read, taken
+# BEFORE the rows fan out (serial, here). A leaf that states `entities =
+# "census"` refuses to configure without a fresh one. A no-op under
+# `build-test-fixtures`, which took them all before any stage started
+# (`NROS_CENSUS_PREPASS=done`).
+bash scripts/build/census-prepass.sh --only leaves --platform "$platform" --lang "$lang" \
+    ${fixture_id:+--id "$fixture_id"}
+
 # The LANE is chosen by each row's BUILDER — the fact the manifest declares
 # (`row_builder()` in fixtures-manifest.py) — and `lang` only NARROWS which rows
 # are asked for. Both lanes run for whatever language the caller named.

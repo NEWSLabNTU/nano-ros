@@ -15,13 +15,13 @@ domain_id = 0
 pkg = "nuttx_c_service_server"
 class = "nuttx_c_service_server::ServiceServer"
 name = "add_two_ints_server"
-# What this component creates (RFC-0098 D8, issue 1142) — read from src/, in the
-# `nano_ros_node_register(... ENTITIES ...)` grammar. A standalone leaf has no
-# bringup and no SystemModel, so this is the ONLY thing that can size its pools;
-# without it the RMW guesses (`if hosted { 32 } else { 8 }`).
-entities = [
-    "service_server:example_interfaces/srv/AddTwoInts:/add_two_ints",
-]
+# What this component creates is what its program CREATES (issue 1556): the
+# leaf's own `src/`, built for the host and run once with `$NROS_CENSUS_OUT`
+# (`nros ws entity-census take --leaf .`; the fixture build does it before it
+# configures). The census sizes the pools a hand-written list used to
+# (issue 1142), and a configure with no fresh census REFUSES, naming that
+# command, rather than falling back to the RMW's guess.
+entities = "census"
 
 # NuttX on the QEMU ARM virt machine.
 [image.qemu-armv7a-nuttx]

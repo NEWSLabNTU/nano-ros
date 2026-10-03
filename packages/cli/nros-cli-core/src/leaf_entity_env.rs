@@ -273,15 +273,43 @@ pub fn declared_entities(leaf: &Path) -> Result<Option<Vec<EntityDecl>>> {
     else {
         return Ok(None);
     };
-    let census = census_entities(leaf)?;
-    let Some(specs) = decl.declared_entities() else {
-        // Issue 1556 item 5 -- no authored declaration: the leaf's own CENSUS
-        // (`nros ws entity-census take --leaf`), when one is current and
-        // complete. What the program creates, observed by running it, in
-        // place of what a person wrote down about it.
-        return Ok(census);
-    };
     let origin = decl.origin_path().display().to_string();
+    if decl.entities_from_census() {
+        // Issue 1556 -- `entities = "census"`: nothing is authored, and the
+        // leaf's own CENSUS (`nros ws entity-census take --leaf`) is the
+        // answer -- what the program creates, observed by running it, in
+        // place of what a person wrote down about it. It is the ONLY answer:
+        // a missing, stale or incomplete census REFUSES, naming the command,
+        // because falling back to "nothing declared" would size this image at
+        // the hosted defaults (issue 1142's 31 KB on `cpp/action-client`)
+        // without anyone having chosen that.
+        if decl.components.len() != 1 {
+            eyre::bail!(
+                "{origin}: `entities = \"census\"` on a leaf with {} `[[component]]` rows -- a \
+                 census records ONE program, and splitting it across components would be \
+                 inventing an attribution. Declare each component's `entities` list instead.",
+                decl.components.len()
+            );
+        }
+        return match census_entities(leaf)? {
+            Ok(rows) => Ok(Some(rows)),
+            Err(why) => Err(eyre::eyre!(
+                "{origin}: `entities = \"census\"`, and {why}.\n  Take it first: \
+                 nros ws entity-census take --leaf {}",
+                leaf.display()
+            )),
+        };
+    }
+    let Some(specs) = decl.declared_entities() else {
+        // Nothing declared, and no census opt-in: nothing is stated. A census
+        // that happens to be on disk is NOT read here -- a leaf whose sizing
+        // moves because someone ran `take --leaf` by hand would be a derived
+        // size introduced without anyone asking for it (RFC-0100 Amendment 1,
+        // ruling 1's corollary).
+        return Ok(None);
+    };
+    // A census on disk is the evidence a declaration is checked against.
+    let census = census_entities(leaf)?.ok();
     let mut out = Vec::new();
     for spec in &specs {
         // The SAME parser the CMake path uses. A private grammar here is how a
@@ -303,28 +331,35 @@ pub fn declared_entities(leaf: &Path) -> Result<Option<Vec<EntityDecl>>> {
 
 /// Issue 1556 item 5 -- the entities a standalone leaf's census recorded,
 /// when the census is current (content-addressed, the same freshness rule a
-/// workspace census is held to) and complete. `Ok(None)` otherwise: a missing,
-/// stale or incomplete census says nothing, and the caller's fallback decides.
-fn census_entities(leaf: &Path) -> Result<Option<Vec<EntityDecl>>> {
+/// workspace census is held to) and complete. `Ok(Err(why))` otherwise: a
+/// missing, stale or incomplete census says nothing, and the caller decides
+/// whether that is a refusal (`entities = "census"`) or no evidence (a
+/// declaration with nothing to check it against).
+fn census_entities(leaf: &Path) -> Result<std::result::Result<Vec<EntityDecl>, String>> {
     use crate::cmd::entity_census::{
         Freshness, census_freshness, incomplete_reason, leaf_census_path,
     };
     let path = leaf_census_path(leaf);
-    if !matches!(census_freshness(&path, leaf), Freshness::Fresh) {
-        return Ok(None);
+    match census_freshness(&path, leaf) {
+        Freshness::Fresh => {}
+        Freshness::Missing(why) => return Ok(Err(format!("its census is missing ({why})"))),
+        Freshness::Stale(why) => return Ok(Err(format!("its census is stale ({why})"))),
     }
     let raw = std::fs::read_to_string(&path)
         .map_err(|e| eyre::eyre!("cannot read `{}`: {e}", path.display()))?;
     let doc: serde_json::Value = serde_json::from_str(&raw)
         .map_err(|e| eyre::eyre!("`{}` is not JSON: {e}", path.display()))?;
-    if incomplete_reason(&doc).is_some() {
-        return Ok(None);
+    if let Some(why) = incomplete_reason(&doc) {
+        return Ok(Err(format!("its census is INCOMPLETE ({why})")));
     }
     let Some(recorded) = doc.get("census") else {
-        return Ok(None);
+        return Ok(Err(format!(
+            "`{}` holds no `census` document",
+            path.display()
+        )));
     };
     let (_, _, declaration) = declaration_from_probe(&recorded.to_string())?;
-    Ok(Some(fold_action_constituents(declaration.entities())))
+    Ok(Ok(fold_action_constituents(declaration.entities())))
 }
 
 /// Issue 1556 item 5 -- a census records an action as the RMW entities it is

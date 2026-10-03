@@ -117,6 +117,11 @@ pub struct LeafComponent {
     /// the esp32-c3 / mps2 cases). `None` = not declared;
     /// `Some(vec![])` = declared to have none.
     pub entities: Option<Vec<String>>,
+    /// Issue 1556 -- `entities = "census"`: nothing is authored, and this
+    /// component's entities are what the leaf's own program creates, read from
+    /// its census (`nros ws entity-census take --leaf`). `entities` is `None`
+    /// when this is set; the two are one key, so a component cannot state both.
+    pub entities_from_census: bool,
     /// Dispatch strategy (`"inline"` | `"deferred"` | `"from_isr"`,
     /// phase-216 A.5), replacing `[package.metadata.nros.node] dispatch`
     /// (issue 1278). Read by `nros check`'s framework × dispatch lint; `None`
@@ -194,6 +199,12 @@ impl LeafSystem {
             }
         }
         any.then_some(out)
+    }
+
+    /// Issue 1556 -- does any component take its entities from the leaf's
+    /// census (`entities = "census"`)?
+    pub fn entities_from_census(&self) -> bool {
+        self.components.iter().any(|c| c.entities_from_census)
     }
 }
 
@@ -346,14 +357,24 @@ fn features_key(t: Option<&toml::Table>, file: &Path) -> Result<Vec<String>, Str
         .collect()
 }
 
-fn entities_key(t: &toml::Table, file: &Path) -> Result<Option<Vec<String>>, String> {
+/// The word `entities` takes instead of a list (issue 1556).
+pub const ENTITIES_FROM_CENSUS: &str = "census";
+
+/// `entities` as `(declared list, from census)`: an array is a declaration,
+/// the string [`ENTITIES_FROM_CENSUS`] is the census opt-in, anything else is
+/// refused naming both shapes.
+fn entities_key(t: &toml::Table, file: &Path) -> Result<(Option<Vec<String>>, bool), String> {
     let Some(v) = t.get("entities") else {
-        return Ok(None);
+        return Ok((None, false));
     };
+    if v.as_str() == Some(ENTITIES_FROM_CENSUS) {
+        return Ok((None, true));
+    }
     let arr = v.as_array().ok_or_else(|| {
         format!(
             "{}: `entities` must be an ARRAY of strings, e.g. \
-             [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"]",
+             [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"], or the word \
+             \"{ENTITIES_FROM_CENSUS}\" (read from the leaf's census, issue 1556)",
             file.display()
         )
     })?;
@@ -367,7 +388,7 @@ fn entities_key(t: &toml::Table, file: &Path) -> Result<Option<Vec<String>>, Str
             })
         })
         .collect::<Result<Vec<_>, _>>()
-        .map(Some)
+        .map(|v| (Some(v), false))
 }
 
 fn parse_file(path: &Path) -> Result<toml::Table, String> {
@@ -492,11 +513,13 @@ fn image_system(
             let t = row.as_table().ok_or_else(|| {
                 format!("{}: every `[[component]]` must be a table", path.display())
             })?;
+            let (entities, entities_from_census) = entities_key(t, path)?;
             components.push(LeafComponent {
                 pkg: str_key(Some(t), "pkg"),
                 class: str_key(Some(t), "class"),
                 name: str_key(Some(t), "name"),
-                entities: entities_key(t, path)?,
+                entities,
+                entities_from_census,
                 dispatch: str_key(Some(t), "dispatch"),
             });
         }
@@ -1022,5 +1045,33 @@ domain_id = 4
         let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &bad)]);
         let e = read(d.path()).unwrap_err();
         assert!(e.contains("system.toml") && e.contains("ARRAY"), "{e}");
+    }
+
+    /// Issue 1556 -- `entities = "census"` is the opt-in for a leaf whose
+    /// entities are read from its own census: no list, and the flag set. Only
+    /// that one word; any other string is still the malformed-list refusal.
+    #[test]
+    fn entities_census_is_the_census_opt_in_and_nothing_else_is() {
+        let census = SYSTEM.replace(
+            "entities = [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"]",
+            "entities = \"census\"",
+        );
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &census)]);
+        let l = read(d.path()).unwrap().unwrap();
+        assert!(l.entities_from_census());
+        assert_eq!(l.components[0].entities, None);
+        assert_eq!(
+            l.declared_entities(),
+            None,
+            "the opt-in is not a declaration"
+        );
+
+        let typo = SYSTEM.replace(
+            "entities = [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"]",
+            "entities = \"Census\"",
+        );
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &typo)]);
+        let e = read(d.path()).unwrap_err();
+        assert!(e.contains("ARRAY") && e.contains("\"census\""), "{e}");
     }
 }

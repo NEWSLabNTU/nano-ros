@@ -337,7 +337,13 @@ BASELINE = {
     # rustfmt over several lines, which is more than `is_test_gate` reads, so
     # the module is counted as production and one import is the honest way to
     # keep that from inflating the number.
-    "nros-cpp": {"cfg": 3, "path": 6},
+    #
+    # Issue 1556 (c) -- path 6 -> 7, deliberately: `std::process::exit` in the
+    # APPLICATION census switch. A standalone C++ program owns its own loop,
+    # so its first blocking call is where the census is written and the
+    # process ends -- the same capability `nros-c`'s `census.rs` spends. The
+    # armed session name rides `nros_rmw::sync::Mutex`, not `std::sync`.
+    "nros-cpp": {"cfg": 3, "path": 7},
     # 2026-09-06: cfg 1 -> 0. The one site was the crate attribute itself,
     # `#![cfg_attr(not(feature = "std"), no_std)]`, and it bought nothing --
     # this crate's `std` is `std = ["alloc"]` over `alloc = []`, so it enables

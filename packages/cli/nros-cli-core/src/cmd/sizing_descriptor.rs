@@ -560,6 +560,26 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
     let mut any_declared = false;
     for (i, c) in system.components.iter().enumerate() {
         let declaration = match &c.entities {
+            // Issue 1556 -- `entities = "census"`: the leaf's census answers,
+            // through the ONE leaf reader `entity-facts --leaf` uses, so the
+            // descriptor and the `NROS_DECLARED_*` carriers cannot read two
+            // different things (a missing or stale census refuses there).
+            None if c.entities_from_census => {
+                match crate::leaf_entity_env::declared_entities(&dir)? {
+                    Some(decls) => {
+                        any_declared = true;
+                        if decls.is_empty() {
+                            Declaration::None
+                        } else {
+                            Declaration::Stated(decls)
+                        }
+                    }
+                    // The host census build reads no census (it IS the
+                    // producer): no descriptor, exactly as a leaf nobody
+                    // described.
+                    None => Declaration::Absent,
+                }
+            }
             None => Declaration::Absent,
             Some(specs) => {
                 any_declared = true;

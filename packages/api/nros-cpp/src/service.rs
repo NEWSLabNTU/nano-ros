@@ -478,6 +478,9 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
     resp_len: *mut usize,
     timeout_ms: u32,
 ) -> nros_cpp_ret_t {
+    // Issue 1556 (c) -- an application census writes and exits at its first
+    // blocking call, instead of blocking.
+    crate::census_finish_application_if_armed();
     if storage.is_null() || req_data.is_null() || resp_data.is_null() || resp_len.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
@@ -872,6 +875,9 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
     handle_id: usize,
     timeout_ms: u32,
 ) -> nros_cpp_ret_t {
+    // Issue 1556 (c) -- an application census writes and exits at its first
+    // blocking call, instead of blocking.
+    crate::census_finish_application_if_armed();
     use nros_rmw::ClientTrait as _;
 
     let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
