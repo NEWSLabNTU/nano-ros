@@ -988,7 +988,7 @@ build path changing under it:
 | --- | --- | --- |
 | leaf (`write_for_leaf`) | the leaf's probe, its `generated/` bound tables, its synthesised model and `system.contract.yaml` | `nros sync` on a single-package cargo leaf |
 | model (`write_for_model`) | the resolved SystemModel(s), the registered bound tables, the board's triple, the workspace's probe sidecars | `nros build` stage 4 on a cargo workspace image; `nano_ros_entry()` at configure on cmake and west |
-| declaration (`--from-leaf`) | a standalone cmake leaf's `[[component]] entities` | `nros_record_leaf_entity_facts` |
+| declaration (`--from-leaf`) | a standalone cmake leaf's `[[component]] entities` -- an authored list, or, for `entities = "census"`, the leaf's own census (issue 1556) | `nros_record_leaf_entity_facts` |
 
 D12's runtime descriptor is not a fourth producer; it is the model producer over
 a list of models. Generated entries changed none of the INPUTS, so the split
@@ -1011,12 +1011,15 @@ stands. What the build path does change is where an input COULD come from:
   — the registration funnel computes the slot size, so it knows which row it
   claimed — with the plan's per-component language as the fallback, and never an
   image-wide one.
-* **The declaration producer shrinks with the leaves it serves.** It exists for
+* **The declaration producer shrinks with the leaves it serves.** It existed for
   the twelve standalone NuttX C/C++ leaves
-  ([issue 1556](../issues/1556-c-and-cpp-standalone-leaves-have-no-entity-probe.md))
+  ([issue 1556](../issues/archived/1556-c-and-cpp-standalone-leaves-have-no-entity-probe.md))
   — phase-470 kept standalone leaves (its classes 3 and 4) and did not touch
-  these. It retires when those leaves get a census or a synthesised model, not
-  before.
+  these. *(2026-10-03: they got a census. Each states `entities = "census"`,
+  the producer reads the census through the one leaf reader, and the twelve
+  NuttX images came out byte-identical to their hand-declared builds. What the
+  producer still serves is an authored list on a leaf that keeps one; its
+  INPUT, not its road, is what moved.)*
 
 ### D4 extended — the closure field `RX_BUF` needs
 

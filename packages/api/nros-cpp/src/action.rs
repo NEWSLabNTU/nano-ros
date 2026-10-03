@@ -1093,6 +1093,9 @@ pub unsafe extern "C" fn nros_cpp_action_client_wait_for_action_server(
     handle: *mut c_void,
     timeout_ms: u32,
 ) -> nros_cpp_ret_t {
+    // Issue 1556 (c) -- an application census writes and exits at its first
+    // blocking call, instead of blocking.
+    crate::census_finish_application_if_armed();
     if handle.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
@@ -1187,6 +1190,9 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     goal_len: usize,
     goal_id_out: *mut [u8; 16],
 ) -> nros_cpp_ret_t {
+    // Issue 1556 (c) -- an application census writes and exits at its first
+    // blocking call, instead of blocking.
+    crate::census_finish_application_if_armed();
     if handle.is_null() || goal_buf.is_null() || goal_id_out.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
@@ -1331,6 +1337,9 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     result_buf_len: usize,
     result_len: *mut usize,
 ) -> nros_cpp_ret_t {
+    // Issue 1556 (c) -- an application census writes and exits at its first
+    // blocking call, instead of blocking.
+    crate::census_finish_application_if_armed();
     if handle.is_null() || goal_id.is_null() || result_buf.is_null() || result_len.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }

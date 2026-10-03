@@ -726,7 +726,7 @@ done
 # A no-op under `build-test-fixtures`, which took them all before any platform
 # stage started -- `scripts/build/census-prepass.sh` says why that order is the
 # race-free one.
-bash "$repo_root/scripts/build/census-prepass.sh" --platform "$platform" \
+bash "$repo_root/scripts/build/census-prepass.sh" --only images --platform "$platform" \
     ${lang_filter:+--lang "$lang_filter"} ${id_filter:+--id "$id_filter"}
 
 pinned_make="$(nros sdk-path make)/bin/make"

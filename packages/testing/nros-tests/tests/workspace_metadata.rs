@@ -375,6 +375,59 @@ fn an_rclc_c_application_writes_a_census_without_a_router() {
     );
 }
 
+/// Issue 1556 (c) -- a C++ APPLICATION that owns its own `main` (`nros::init`,
+/// then its own loop) is a census producer: `nros_cpp_init_rmw` selects the
+/// recording backend, the application creates its node and entities through
+/// the hooked `nros_cpp_*` ABI, and its FIRST BLOCKING CALL writes the census
+/// and exits 0 -- no router. Two programs, because "the first blocking call"
+/// is not one function: the talker's first block is `nros::spin_once`, the
+/// service client's is `wait_for_service`, which never spins.
+///
+/// Before: only the two board RUNNERS answered `$NROS_CENSUS_OUT`, so both
+/// binaries ignored it, dialled zenoh and exited on `ConnectionFailed` with no
+/// file.
+#[test]
+fn a_cpp_application_writes_a_census_at_its_first_blocking_call() {
+    for (case, bin, node, list, topic) in [
+        ("talker", "cpp_talker", "talker", "publishers", "/chatter"),
+        (
+            "service-client",
+            "cpp_service_client",
+            "add_two_ints_client",
+            "service_clients",
+            "/add_two_ints",
+        ),
+    ] {
+        let exe = nros_tests::fixtures::build_native_cpp_example_rmw(
+            case,
+            bin,
+            nros_tests::fixtures::Rmw::Zenoh,
+        )
+        .require("native C++ example (zenoh)");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("census.json");
+        let status = Command::new(exe)
+            .env("NROS_CENSUS_OUT", &out)
+            .env_remove("NROS_ENTRY_SPIN_MS")
+            .status()
+            .expect("run the C++ example");
+        let raw = fs::read_to_string(&out)
+            .unwrap_or_else(|e| panic!("{case}: exited {status} and wrote no census: {e}"));
+        assert!(status.success(), "{case}: a census run exits 0: {status}");
+        let census: serde_json::Value = serde_json::from_str(&raw).expect("census is JSON");
+        let n = census["nodes"]
+            .as_array()
+            .and_then(|n| n.iter().find(|n| n["id"].as_str() == Some(node)))
+            .unwrap_or_else(|| panic!("{case}: no `{node}` node: {raw}"));
+        assert!(
+            n[list].as_array().is_some_and(|rows| rows.iter().any(|r| {
+                r["unresolved_topic"]["value"] == topic || r["unresolved_name"]["value"] == topic
+            })),
+            "{case}: `{topic}` under `{list}`, on its node: {raw}"
+        );
+    }
+}
+
 fn parse_counter(output: &str, key: &str) -> Option<usize> {
     let start = output.rfind(key)? + key.len();
     let value = output[start..]

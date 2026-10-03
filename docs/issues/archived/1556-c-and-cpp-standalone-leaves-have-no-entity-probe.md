@@ -3,7 +3,8 @@ id: 1556
 title: "The twelve standalone NuttX C/C++ leaves declare their entities for a
   reason issue 1265 does not describe — no probe REACHES them, and there is no
   model either"
-status: open
+status: resolved
+resolved_in: 2026-10-03
 type: tech-debt
 area: [tooling, build]
 related: [1265, 1555, 1142, 0827, 1061, rfc-0098, phase-412]
@@ -362,3 +363,85 @@ equal on this road, and deleting is still not safe):
 
 Until all three hold, `--from-leaf` stays the descriptor's producer for these
 leaves and the declarations stay authored -- cross-checked by any census taken.
+
+## Resolution (2026-10-03) -- the twelve size from their census; no list is authored
+
+Fixed in the PR that carries this section (*the twelve NuttX leaves size from
+their census*), on top of items 1-5. The three reasons the previous section
+gave for keeping the declarations each closed:
+
+1. **The C++ leaves have a census switch.** `nros-cpp` gains the application
+   half of `$NROS_CENSUS_OUT`, the sibling of `nros-c`'s `census.rs`:
+   `nros_cpp_init_rmw` ARMS it (the same `census_select_backend` the board
+   runners call, so the recorder is selected by name and the executor opens at
+   the census sizing) unless a runner already selected it, and the program's
+   FIRST BLOCKING CALL writes the census and exits -- `nros_cpp_spin_once`
+   (which `spin_for`, `spin` and every `Future::wait` loop on), the service
+   client's `wait_for_service` and blocking `call`, and the action client's
+   `wait_for_action_server`, `send_goal` and `get_result`. An image without
+   `metadata-mode` refuses at `nros::init` (non-zero, no file). Test:
+   `workspace_metadata::a_cpp_application_writes_a_census_at_its_first_blocking_call`
+   (native `cpp/talker` blocks first in `spin_once`, `cpp/service-client` in
+   `wait_for_service`) -- measured red with `nros-cpp/src` reverted (`talker:
+   exited exit status: 1 and wrote no census`), green after.
+2. **The descriptor road reads the census.** A component opts in with
+   `entities = "census"` -- one key, so a component cannot state both a list
+   and the census. `leaf_entity_env::declared_entities` answers it from a
+   CURRENT, complete census and REFUSES otherwise (missing, stale or
+   incomplete), naming `nros ws entity-census take --leaf <dir>`;
+   `sizing-descriptor --from-leaf` goes through that same reader for an
+   opted-in component, so the descriptor and the `NROS_DECLARED_*` carriers
+   cannot read two different things. `nros_record_leaf_entity_facts` turns that
+   refusal into a configure FATAL_ERROR for an opted-in leaf (its STATUS-and-
+   fallback branch stays for every other leaf), and re-configures when the
+   census is re-taken (`nros ws entity-census path --leaf`, asked rather than
+   spelled). A leaf that did NOT opt in is not read from a census even when one
+   is on disk: a sizing moved by someone running `take --leaf` by hand would be
+   a derived size nobody asked for (RFC-0100 Amendment 1, ruling 1's
+   corollary). Tests: `entity_census::tests::a_leaf_census_feeds_the_leaf_reader_and_cross_checks_a_declaration`
+   (opt-in answers; absent says nothing; stale and missing refuse naming the
+   command), `leaf_system::tests::entities_census_is_the_census_opt_in_and_nothing_else_is`,
+   `cargo_metadata_schema::tests::component_entities_is_a_list_or_the_census_opt_in`.
+3. **Unattended builds take the leaf census first.**
+   `fixtures-manifest.py census-leaves` lists every `[[fixture]]` leaf whose
+   `system.toml` says `entities = "census"`, and `census-prepass.sh` runs
+   `take --leaf` for each (once, before the stages, under
+   `build-test-fixtures`; and from `fixtures-build.sh` itself, `--only leaves`,
+   when that is invoked directly). The leaf's host build lands in
+   `<leaf>/build/census-host`, a tree no fixture row builds into.
+
+**The twelve declarations are deleted** -- each `entities = [...]` became
+`entities = "census"` -- because the derived facts are MEASURED equal, three
+ways, on this host (arm-none-eabi 13.2, NuttX 12.13, Release):
+
+| measured | result |
+| --- | --- |
+| `entity-facts --leaf`, all 12, list vs census | identical `NROS_DECLARED_*` lines |
+| `sizing-descriptor --from-leaf`, all 12 | byte-identical files for 11; `c/listener` differs in one REFUSAL REASON (its census observed `in_place`/`buffered` on the subscription, the leaf road still has no language) -- the `--output-cmake` projection is identical |
+| the 12 NuttX ARM images, built by the fixture builder before and after | **every ELF byte-identical** (sha256) |
+
+`cpp/action-client`, issue 1142's subject, on the same tree:
+
+| `system.toml` | `.bss` | `SERVICE_BUFFERS` |
+| --- | --- | --- |
+| authored list (before) | 241,968 | 300 |
+| `entities = "census"` (after) | 241,968 (same ELF) | 300 |
+| no `entities` at all (the fallback) | 501,440 | 2,400 |
+| `entities = "census"` + an `AddTwoInts` client added to `src/` only | 246,064 | 300 |
+
+(1142's own 4,448 / 467,248 were measured on an older tree; the before/after
+pair is what this change answers for.) The last row is the acceptance's second
+half: the prepass saw the census stale, re-took it (`4 service client`), and
+the image changed with no declaration touched. With the census deleted and the
+prepass off (`NROS_CENSUS_PREPASS=done`) the configure refuses:
+`` `entities = "census"`, and its census is missing ... Take it first: nros ws
+entity-census take --leaf <dir> ``.
+
+Booted under QEMU (`qemu-system-arm` virt, NuttX, `rmw_zenohd`):
+`rtos_e2e` `{pubsub,service,action}` x `Nuttx` x `{C,Cpp}` -- 6 passed, on the
+census-sized images.
+
+What this does not do: `native/cpp/talker` still carries an authored list
+(a native leaf, cross-checked against its probe as before), and no other
+standalone leaf (FreeRTOS, ThreadX, Zephyr) opted in -- each would be a sizing
+change of its own, with its own runtime evidence.

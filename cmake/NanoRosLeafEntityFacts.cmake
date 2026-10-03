@@ -97,6 +97,13 @@ function(nros_record_leaf_entity_facts _dir)
     endif()
     set_property(GLOBAL PROPERTY ${_memo} TRUE)
 
+    # Issue 1556 -- `entities = "census"`: the leaf states that its entities
+    # are what its program creates, read from its census. Read here from the
+    # file itself, not inferred from the verb's message: whether a failure
+    # below may degrade to the fallback budget is a property of the leaf.
+    file(STRINGS "${_dir}/system.toml" _nros_leaf_census_optin
+        REGEX "^[ \t]*entities[ \t]*=[ \t]*\"census\"")
+
     execute_process(
         COMMAND "${_nros}" ws entity-facts --leaf "${_dir}"
         OUTPUT_VARIABLE _out
@@ -104,10 +111,43 @@ function(nros_record_leaf_entity_facts _dir)
         RESULT_VARIABLE _rc
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _rc EQUAL 0)
+        # A leaf that sizes from its census has NO other statement to fall back
+        # on: degrading to the backend's guess here is issue 1142's 31 KB
+        # (`cpp/action-client`) chosen by nobody. Refuse, with the verb's own
+        # reason -- it names the command that takes the census.
+        if(_nros_leaf_census_optin)
+            message(FATAL_ERROR
+                "nano-ros: ${_dir}/system.toml sizes from its census, and the census "
+                "cannot answer:\n${_err}")
+        endif()
         string(REGEX REPLACE "\n+" " " _why "${_err}")
         string(SUBSTRING "${_why}" 0 200 _why)
         message(STATUS
             "nano-ros: leaf entity facts NOT read from ${_dir}/system.toml — ${_why}")
+        return()
+    endif()
+    if(_nros_leaf_census_optin)
+        # Re-taking the census (after a `src/` edit) must reconfigure, because
+        # this configure is what read it. ASKED for, never spelled: the CLI
+        # owns where a leaf's census lives.
+        execute_process(
+            COMMAND "${_nros}" ws entity-census path --leaf "${_dir}"
+            OUTPUT_VARIABLE _nros_leaf_census
+            RESULT_VARIABLE _nros_leaf_census_rc
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(_nros_leaf_census_rc EQUAL 0 AND EXISTS "${_nros_leaf_census}")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                "${_nros_leaf_census}")
+        endif()
+    endif()
+
+    if(_out STREQUAL "" AND _nros_leaf_census_optin)
+        # The verb abstained for a census leaf: this IS the host census build
+        # (`nros ws entity-census take --leaf`), which is not sized by the
+        # census it produces.
+        message(STATUS
+            "nano-ros: ${_dir} -- host census build; pools at the hosted defaults "
+            "(issue 1556)")
         return()
     endif()
 

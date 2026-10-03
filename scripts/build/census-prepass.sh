@@ -28,8 +28,20 @@
 # (`workspace-fixtures-build.sh`, the Zephyr leaf lane) run it themselves only
 # when invoked directly, where nothing else is building concurrently.
 #
-# Usage: census-prepass.sh [--platform P] [--lang L] [--id ID]
+# Issue 1556 -- and every standalone C/C++ LEAF whose `system.toml` takes a
+# component's entities from its census (`entities = "census"`): its configure
+# reads that census through `nros ws entity-facts --leaf` and `sizing-descriptor
+# --from-leaf`, and refuses without a fresh one. `fixtures-manifest.py
+# census-leaves` lists them and `nros ws entity-census take --leaf <dir>`
+# builds the leaf's own `src/` for the host and runs it, into
+# `<leaf>/build/census-host` -- a tree no fixture row builds into, so this half
+# could run anywhere; it runs here for the same reason as the images: once,
+# before the rows fan out.
+#
+# Usage: census-prepass.sh [--platform P] [--lang L] [--id ID] [--only images|leaves]
 #   Honours NROS_FIXTURE_COORDS (the lane's coordinates) like the builders do.
+#   `--only` narrows to one half: the workspace builder asks for images, the
+#   plain-row builder (`fixtures-build.sh`) for leaves.
 set -euo pipefail
 
 if [ "${NROS_CENSUS_PREPASS:-}" = "done" ]; then
@@ -41,8 +53,17 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
 
 filter_args=()
+only=""
 while [ $# -gt 0 ]; do
     case "$1" in
+        --only)
+            [ $# -ge 2 ] || { echo "census-prepass.sh: --only needs images|leaves" >&2; exit 2; }
+            case "$2" in
+                images|leaves) only="$2" ;;
+                *) echo "census-prepass.sh: --only takes images|leaves, not \`$2\`" >&2; exit 2 ;;
+            esac
+            shift 2
+            ;;
         --platform|--lang|--id)
             [ $# -ge 2 ] || { echo "census-prepass.sh: $1 needs a value" >&2; exit 2; }
             filter_args+=("$1" "$2")
@@ -50,7 +71,7 @@ while [ $# -gt 0 ]; do
             ;;
         *)
             echo "census-prepass.sh: unknown option: $1" >&2
-            echo "usage: census-prepass.sh [--platform P] [--lang L] [--id ID]" >&2
+            echo "usage: census-prepass.sh [--platform P] [--lang L] [--id ID] [--only images|leaves]" >&2
             exit 2
             ;;
     esac
@@ -60,7 +81,34 @@ if [ -n "${NROS_FIXTURE_COORDS:-}" ]; then
 fi
 
 source "$repo_root/scripts/build/cargo.sh"
-nros_cli="$(nros_cli_bin)" || exit 3
+# Resolved on first use: a builder with nothing in scope (a cargo-only
+# platform's rows) must not need a current CLI to learn that.
+nros_cli=""
+need_cli() {
+    if [ -z "$nros_cli" ]; then
+        nros_cli="$(nros_cli_bin)" || exit 3
+    fi
+}
+
+# Issue 1556 -- the leaves first: each is independent of every workspace.
+if [ "$only" != "images" ]; then
+    leaves_rc=0
+    leaves="$(python3 "$repo_root/scripts/build/fixtures-manifest.py" census-leaves \
+        "${filter_args[@]}")" || leaves_rc=$?
+    if [ "$leaves_rc" -ne 0 ]; then
+        echo "census-prepass: fixtures-manifest.py census-leaves failed (exit $leaves_rc)" >&2
+        exit 1
+    fi
+    while IFS= read -r leaf; do
+        [ -n "$leaf" ] || continue
+        echo "census-prepass: leaf $leaf"
+        need_cli
+        "$nros_cli" ws entity-census take --leaf "$repo_root/$leaf"
+    done <<< "$leaves"
+fi
+if [ "$only" = "leaves" ]; then
+    exit 0
+fi
 
 rows_rc=0
 rows="$(python3 "$repo_root/scripts/build/fixtures-manifest.py" census-images \
@@ -74,6 +122,7 @@ if [ -z "$rows" ]; then
     exit 0
 fi
 
+need_cli
 synced=""
 while IFS=$'\t' read -r dir image; do
     [ -n "$dir" ] || continue
