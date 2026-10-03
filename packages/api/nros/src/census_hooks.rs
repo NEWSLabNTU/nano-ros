@@ -38,7 +38,8 @@
 //! # Layer rule (phase-308)
 //!
 //! These are ADAPTERS. No JSON, no schema struct, no slot arithmetic — those
-//! live once in [`crate::node_metadata`] and [`crate::metadata_mode`].
+//! live once in [`crate::node_metadata`] and `crate::metadata_mode` (plain
+//! text, not a link: that module exists only under `metadata-mode`).
 //! `check-census-hooks-complete` holds both the rule and every entry point's
 //! call.
 
