@@ -11434,6 +11434,169 @@ fn released_regions_split_and_coalesce() {
     assert_eq!(executor.arena_used(), high_water);
 }
 
+// ====================================================================
+// Issue 1631 — every entry kind is releasable, by its RECORDED length
+// ====================================================================
+
+unsafe extern "C" fn release_probe_sub(_d: *const u8, _l: usize, _c: *mut core::ffi::c_void) {}
+
+unsafe extern "C" fn release_probe_srv(
+    _req: *const u8,
+    _req_len: usize,
+    _resp: *mut u8,
+    _resp_cap: usize,
+    _resp_len: *mut usize,
+    _ctx: *mut core::ffi::c_void,
+) -> bool {
+    false
+}
+
+unsafe extern "C" fn release_probe_reply(_d: *const u8, _l: usize, _c: *mut core::ffi::c_void) {}
+
+/// A BUFFERED subscription: depth 4 and a stated receive size, so the entry
+/// carries a runtime-sized trailing ring. 1496's caller-stated size could not
+/// release this one — no caller can name its length.
+fn register_buffered_sub(executor: &mut Executor<'_>) -> Result<HandleId, NodeError> {
+    executor.add_arena_subscription_c_callback::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+        None,
+        "/release_probe",
+        "test/msg/TestMsg",
+        "test_hash",
+        QoSProfile::default().keep_last(4),
+        release_probe_sub,
+        core::ptr::null_mut(),
+        None,
+        96,
+    )
+}
+
+/// The four kinds 1631 adds a remover for, each in a create/release loop far
+/// past the slot table and the arena. The high-water mark is set by the
+/// FIRST registration and never moves: the released bytes are reused.
+#[test]
+fn every_entry_kind_created_and_released_in_a_loop_never_exhausts() {
+    type Reg = fn(&mut Executor<'_>) -> Result<HandleId, NodeError>;
+    type Rel = unsafe fn(&mut Executor<'_>, HandleId) -> bool;
+    let kinds: [(&str, Reg, Rel); 4] = [
+        ("subscription", register_buffered_sub, |e, h| unsafe {
+            e.release_subscription(h)
+        }),
+        (
+            "timer",
+            |e| e.register_timer(TimerDuration::from_millis(1000), || {}),
+            |e, h| unsafe { e.release_timer(h) },
+        ),
+        (
+            "service",
+            |e| {
+                e.register_service_raw(
+                    "/release_probe",
+                    "test/srv/T",
+                    "h",
+                    release_probe_srv,
+                    core::ptr::null_mut(),
+                )
+            },
+            |e, h| unsafe { e.release_service(h) },
+        ),
+        (
+            "service client",
+            |e| {
+                e.register_service_client_raw(
+                    "/release_probe",
+                    "test/srv/T",
+                    "h",
+                    Some(release_probe_reply),
+                    core::ptr::null_mut(),
+                )
+            },
+            |e, h| unsafe { e.release_service_client(h) },
+        ),
+    ];
+    for (name, register, release) in kinds {
+        let mut executor: Executor = executor_with_clock(MockSession::new());
+        let first = register(&mut executor).unwrap_or_else(|e| panic!("{name}: first: {e:?}"));
+        let high_water = executor.arena_used();
+        assert!(high_water > 0, "{name}: the registration claimed bytes");
+        assert_eq!(
+            executor.entries[first.0].unwrap().arena_len.get(),
+            Some(high_water),
+            "{name}: the only entry's recorded region is the whole used arena"
+        );
+        assert!(unsafe { release(&mut executor, first) }, "{name}: release");
+        assert!(executor.entries[first.0].is_none(), "{name}: slot freed");
+        assert!(
+            executor.arena_released() > 0,
+            "{name}: bytes on the free list"
+        );
+        assert!(
+            !unsafe { release(&mut executor, first) },
+            "{name}: a second release finds nothing"
+        );
+        const N: usize = 200;
+        for i in 0..N {
+            let h = register(&mut executor)
+                .unwrap_or_else(|e| panic!("{name} iteration {i}: registration failed: {e:?}"));
+            assert_eq!(
+                executor.arena_used(),
+                high_water,
+                "{name} iteration {i}: the arena grew; the released region was not reused"
+            );
+            assert!(unsafe { release(&mut executor, h) }, "{name} iteration {i}");
+        }
+        assert!(
+            N > crate::config::MAX_CBS,
+            "precondition: the loop out-runs the slot table"
+        );
+    }
+}
+
+/// The buffered subscription's TRAILING region is released with it. Released
+/// at the entry's `size_of` alone (1496's rule), the ring would stay claimed
+/// and every cycle would bump the arena by its length.
+#[test]
+fn a_buffered_subscription_releases_its_trailing_region_too() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let h = register_buffered_sub(&mut executor).expect("sub");
+    let recorded = executor.entries[h.0]
+        .unwrap()
+        .arena_len
+        .get()
+        .expect("recorded");
+    let used = executor.arena_used();
+    assert!(unsafe { executor.release_subscription(h) });
+    assert_eq!(
+        executor.arena_released(),
+        recorded,
+        "every recorded byte went back to the free list"
+    );
+    assert_eq!(recorded, used, "the only entry spans the whole used arena");
+}
+
+/// A release names its kind, so a timer handle never releases a subscription
+/// that happens to occupy the slot.
+#[test]
+fn a_kind_release_of_another_kind_is_refused() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let h = register_buffered_sub(&mut executor).expect("sub");
+    assert!(!unsafe { executor.release_timer(h) });
+    assert!(!unsafe { executor.release_service(h) });
+    assert!(!unsafe { executor.release_service_client(h) });
+    assert!(executor.entries[h.0].is_some());
+    assert_eq!(executor.arena_released(), 0);
+}
+
+/// The recorded length rides in `CallbackMeta`'s tail padding: the entry
+/// table — and so every stated executor backing size — does not grow.
+#[test]
+fn callback_meta_len_rides_in_padding() {
+    assert_eq!(
+        core::mem::size_of::<Option<super::arena::CallbackMeta>>(),
+        6 * core::mem::size_of::<usize>(),
+        "offset + four fn pointers + one word for kind, invocation and arena_len"
+    );
+}
+
 /// Issue 1036 — with the fatal knob on, arena exhaustion reaches the fatal
 /// hook (a latch in a test build), after the record is written.
 #[cfg(nros_arena_exhaustion_fatal)]
