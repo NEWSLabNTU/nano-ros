@@ -3323,6 +3323,17 @@ pub trait ServiceTrait {
         buf: &'a mut [u8],
     ) -> Result<Option<ServiceRequest<'a>>, Self::Error>;
 
+    /// Issue 1632 — how many bytes the request the most recent
+    /// [`take_request`](Self::take_request) REFUSED as too big for the
+    /// caller's buffer needed.
+    ///
+    /// [`Subscription::refused_sample_len`]'s contract, for the service
+    /// server: read it right after a take returns `BufferTooSmall`; `None`
+    /// means the backend does not know (the default), never "zero bytes".
+    fn refused_request_len(&self) -> Option<usize> {
+        None
+    }
+
     /// Send a reply for the given sequence number. Non-blocking
     /// from the application's perspective; the backend may queue
     /// the reply for transport-level transmission.
@@ -3593,6 +3604,14 @@ pub trait ClientTrait {
         &mut self,
         reply_buf: &mut [u8],
     ) -> Result<Option<(usize, i64)>, Self::Error>;
+
+    /// Issue 1632 — how many bytes the reply the most recent
+    /// [`take_response_raw`](Self::take_response_raw) REFUSED as too big for
+    /// the caller's buffer needed. [`Subscription::refused_sample_len`]'s
+    /// contract, for the client: `None` is "the backend does not know".
+    fn refused_response_len(&self) -> Option<usize> {
+        None
+    }
 
     /// Send a typed service request without waiting for a reply (non-blocking).
     ///
