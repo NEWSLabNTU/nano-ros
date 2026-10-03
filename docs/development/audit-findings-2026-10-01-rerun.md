@@ -323,3 +323,37 @@ run's.
 | `check-cargo-config-tracked.sh` · cargo-config-tracked/generated-patch | `packages/boards/nros-board-nuttx-qemu/nros-nuttx-ffi/.cargo/config.toml` += [patch.crates-io] | 1 | clean (fails) |
 | `check-core-crates-are-no-std.py` · core-crates-are-no-std/removed | `packages/core/nros-core/src/lib.rs`: (delete) #![no_std] | 1 | control: fails ✓ |
 | `check-rust-stdio-on-zephyr.py` · rust-stdio-on-zephyr/nros-c | `packages/api/nros-c/src/lib.rs` += fn rerun_print() { | 1 | control: fails ✓ |
+
+## Final re-run (2026-10-03) — after issues 1614–1618 and 1636
+
+Every recorded mutation was re-applied against `main` after #1559 (1618),
+#1563 (1617), #1583 (1616), #1595 (1614), #1607 (1615) and the 1636 PR,
+using the same harness. Three things changed in the method:
+
+- each gate now runs under the worktree's own `activate.sh` (the calling
+  shell carried another checkout's `NROS_REPO_DIR`, and one gate honours it);
+- four rows were re-expressed where the original mutation was not a defect:
+  `goal-cdr-stripped` (drop `unsafe` AND the strip), `default-gates-run-somewhere`
+  (proved at the classifier), `build-tool-verbs-exempt` top-verb (a GUARDED
+  verb), and `no-allow-multiple-def` (the gate is now `.py`);
+- R2 rows added by the fixes (third use, `-z muldefs`, fallen count, and so
+  on) are included.
+
+| | entries |
+| --- | ---: |
+| harness entries run | 292 |
+| recorded findings (incl. facets and re-expressions): **FAIL now** | **163** |
+| recorded findings: expected PASS (`rmw-slot-producers` test-only reader) | 1 |
+| recorded findings: N/A (2 gates deleted, 2 need artifacts this host lacks) | 4 |
+| spot-checks: FAIL now | 14 of 14 |
+| new audits: FAIL now / **HOLE** / N/A | 15 / **4** / 2 |
+| controls: fail as they must / known-vacuous | 80 / 2 |
+| R2 rows: fail / pass as intended | 4 / 3 |
+
+**Zero recorded holes remain.** Four holes survive, all from this doc's
+"New audits" table. They were never assigned to a class issue and are now
+**issue 1660**: `board-vocabulary`, `build-type-spelling`,
+`cmake-generated-source-owners` and `xrce-config-manifest`. The two
+known-vacuous controls (`default-gates-run-somewhere/removed`,
+`cmake-generated-source-owners/cmake-dir`) cannot fail by construction and are
+not counted as holes.

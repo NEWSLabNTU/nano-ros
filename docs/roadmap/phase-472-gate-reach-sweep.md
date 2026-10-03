@@ -1,6 +1,6 @@
 # Phase 472 — gate reach sweep
 
-**Status (2026-10-01). W1–W9 DONE; ACCEPTANCE RE-RUN — NOT MET.** The re-run ([audit-findings-2026-10-01-rerun](../development/audit-findings-2026-10-01-rerun.md)) found 75 holes still standing: 70 of the 156 recorded findings, plus 5 in new audits and spot-checks. They are filed by class as issues 1614–1617, with live defect 1618. See "Acceptance" below. An audit of every tracked
+**Status (2026-10-03). W1–W9 DONE; issues 1614–1618 and 1636 CLOSED; ACCEPTANCE — NOT MET on 4 new-audit holes (issue 1660).** Previously (2026-10-01): **ACCEPTANCE RE-RUN — NOT MET.** The re-run ([audit-findings-2026-10-01-rerun](../development/audit-findings-2026-10-01-rerun.md)) found 75 holes still standing: 70 of the 156 recorded findings, plus 5 in new audits and spot-checks. They are filed by class as issues 1614–1617, with live defect 1618. See "Acceptance" below. An audit of every tracked
 `scripts/check-*` gate against one question, the codebase-audit checklist's **I6
 second-order** rule: *a gate must be able to fail on the case it names.*
 
@@ -784,3 +784,12 @@ the next. Every surviving hole also has a positive control that fails.
 
 The phase stays open until 1614–1617 are closed and this audit, re-run again,
 finds no confirmed hole.
+
+### Acceptance re-run (2026-10-03): NOT MET — 4 holes, all outside 1614–1617
+
+After 1618 (#1559), 1617 (#1563), 1616 (#1583), 1614 (#1595), 1615 (#1607) and
+1636, every recorded finding FAILS on its mutation (163 entries; 1 expected
+pass; 4 N/A), and so do all 14 spot-checks. Four holes from the first
+re-run's NEW audits were never filed under a class issue. They still stand and
+are now **issue 1660** (W5/W6/W7). Details are in the findings doc, "Final re-run".
+The phase stays open until 1660 closes.
