@@ -331,7 +331,12 @@ typedef struct nros_rmw_vtable_t {
      *  with `send_response` — returns `NROS_RMW_RET_WOULD_BLOCK`,
      *  consumes nothing, and leaves the request for a later take.
      *  Folding that into `taken = false` makes a saturated server
-     *  indistinguishable from an idle one (issue 1088). */
+     *  indistinguishable from an idle one (issue 1088).
+     *
+     *  Issue 1632 — a request bigger than `request->capacity` is refused with
+     *  `NROS_RMW_RET_BUFFER_TOO_SMALL`, and `request->len` then carries the
+     *  size it NEEDED (`NROS_RMW_TAKE_LEN_UNKNOWN`, which the caller pre-sets,
+     *  when the backend cannot know) — the `take` slot's rule, widened. */
     rmw_ret_t (*take_request)(const rmw_service_t *server,
         rmw_mut_byte_span_t *request, int64_t *seq_out, bool *taken);
     /** Phase 376 W3.d step A — the service-side sibling of
@@ -388,7 +393,10 @@ typedef struct nros_rmw_vtable_t {
      *  (The paragraph that used to sit here described `>= 0` = bytes and
      *  "other negative = backend error", the pre-W3.d shape, three phases
      *  after step A moved the count to an out-parameter and step B made the
-     *  errors positive.) */
+     *  errors positive.)
+     *
+     *  Issue 1632 — on `NROS_RMW_RET_BUFFER_TOO_SMALL`, `reply->len` is the
+     *  size the reply NEEDED, as for `take_request`. */
     rmw_ret_t (*take_response)(const rmw_client_t *client,
         rmw_mut_byte_span_t *reply, int64_t *seq_out, bool *taken);
 
