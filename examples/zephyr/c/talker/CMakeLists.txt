@@ -15,25 +15,12 @@ project(nros_zephyr_talker_c)
 # package.xml SSoT: generate the typed C bindings for the interface closure
 # (std_msgs) into `app` — same call the zephyr C service/action examples use.
 
-# Phase 11W.12 — Cyclone DDS needs a C `dds_topic_descriptor_t` for
-# each message type (the backend's `find_descriptor` looks it up by
-# mangled name). The nros C codegen emits the rcl-style C message
-# struct but not Cyclone's descriptor, so generate it here from
-# std_msgs/String and compile it into the app.
-if(CONFIG_NROS_RMW_CYCLONEDDS)
-    # The nano-ros Zephyr module exports NROS_CYCLONE_* and its cmake
-    # helper dir; pull the helper onto the module path by exported name
-    # (no repo-tree walk) so include() resolves it copy-out clean.
-    list(APPEND CMAKE_MODULE_PATH "${NROS_CYCLONE_CMAKE_DIR}")
-    set(IDLC_EXECUTABLE "${NROS_CYCLONE_IDLC}" CACHE FILEPATH "" FORCE)
-    set(ENV{NROS_RMW_CYCLONEDDS_SCRIPTS_DIR} "${NROS_CYCLONE_SCRIPTS_DIR}")
-    include(NrosRmwCycloneddsTypeSupport)
-    nros_rmw_cyclonedds_generate_from_msg(_nros_cyc_types
-        PKG_NAME   std_msgs
-        PKG_DIR    "$ENV{NROS_STD_MSGS_DIR}"
-        INTERFACES msg/String.msg)
-    target_sources(app PRIVATE ${_nros_cyc_types})
-endif()
+# Cyclone DDS topic descriptors for this image's interface packages are generated
+# by the shared interface pipeline (`zephyr/cmake/nros_generate_interfaces.cmake`)
+# when `find_package(<pkg>)` runs below. A hand-written descriptor block here
+# used to generate the same descriptors a second time; with the global
+# `--allow-multiple-definition` gone (issue 1636) that was a duplicate-symbol
+# link error, so it is gone too (issue 1673).
 
 # The Zephyr typed carrier branch (LANGUAGE C) configure_files
 # the shared entry pack (`nros codegen entry-node`) + compiles src/Talker.c with

@@ -17,11 +17,12 @@ project(zephyr_cpp_action_client LANGUAGES CXX C)
 find_package(nano_ros REQUIRED)
 find_package(example_interfaces REQUIRED)
 
-if(CONFIG_NROS_RMW_CYCLONEDDS)
-    list(APPEND CMAKE_MODULE_PATH "${NROS_CYCLONE_CMAKE_DIR}")
-    include(NrosZephyrCycloneddsActionTypes)
-    nros_zephyr_add_cyclonedds_action_descriptors(app)
-endif()
+# Cyclone DDS topic descriptors for this image's interface packages are generated
+# by the shared interface pipeline (`zephyr/cmake/nros_generate_interfaces.cmake`)
+# when `find_package(<pkg>)` runs below. A hand-written descriptor block here
+# used to generate the same descriptors a second time; with the global
+# `--allow-multiple-definition` gone (issue 1636) that was a duplicate-symbol
+# link error, so it is gone too (issue 1673).
 
 # The Zephyr typed carrier branch keys on NANO_ROS_PLATFORM=zephyr + DEPLOY
 # zephyr + TARGET app + TYPED, and target_sources/target_link_libraries the
