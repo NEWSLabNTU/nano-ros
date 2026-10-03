@@ -299,3 +299,66 @@ connect attempt, no file) and green after.
 it, and deriving the leaf's pools from the census where `system.toml`
 `entities` is read today. Until then the twelve leaves keep their authored
 declarations and `--from-leaf` stays their producer.
+
+## Status 2026-10-03 -- items 4 and 5 for the six C leaves; the declarations stay
+
+Done in the PR that carries this section (*a standalone leaf's census, and
+the leaf reader that uses it*).
+
+* **Item 4 -- host configure + enumeration.** `nros ws entity-census take
+  --leaf <dir>` configures the leaf's OWN `src/` for the host
+  (`-DNANO_ROS_LEAF_BOARD=native`, which `nano_ros_read_leaf_system` passes to
+  `nros ws leaf-system --board`; every other row stays the leaf's), builds it
+  to its fixed point, runs the program in census mode (item 2's switch) and
+  writes `<leaf>/build/nros/census/leaf.census.json`. The census build is not
+  sized by what it checks: `NROS_LEAF_CENSUS_HOST` makes the leaf reader
+  ignore both the declaration and any census. Provenance is the program, not
+  the leaf: the binary, `src/` and `CMakeLists.txt` -- so deleting a
+  declaration from `system.toml` does not stale the census, and a source edit
+  does.
+* **Item 5 -- the reader.** `leaf_entity_env::declared_entities` -- the one
+  reader `entity-facts --leaf` (the `NROS_DECLARED_*` carriers of
+  `nros_record_leaf_entity_facts`) goes through -- now answers from a CURRENT,
+  complete census when the leaf declares no `entities`, and CROSS-CHECKS a
+  declaration against a current census when it does (`reconcile`, per-kind
+  counts: a stale declaration is refused, naming both). The recorder sees an
+  action as its RMW constituents (three services, two topics), so the census
+  rows are folded back by the ROS action naming convention before either use.
+
+Measured on all six `examples/qemu-armv7a-nuttx/c/*` leaves (NuttX sources
+provisioned; no router): every `take --leaf` writes a complete census, and the
+entity facts computed from the census alone (declaration removed from
+`system.toml`) are IDENTICAL to the facts from the authored declaration --
+
+| leaf | census | `NROS_DECLARED_*` from census == from declaration |
+| --- | --- | --- |
+| talker | 1 pub, 1 timer | yes (`SERVICE_SERVERS=0`, `TL_PUBLISHERS=refused:1`) |
+| listener | 1 sub | yes |
+| service-server | 1 service server | yes (`SERVICE_SERVERS=1`) |
+| service-client | 1 service client | yes |
+| action-server | 3 srv + 2 pub = 1 action server | yes (`SERVICE_SERVERS=3`, `TL_PUBLISHERS=1`) |
+| action-client | 3 cli + 1 sub = 1 action client | yes |
+
+-- so each authored declaration is now a CROSS-CHECKED one wherever a census
+is taken. Test:
+`entity_census::tests::a_leaf_census_feeds_the_leaf_reader_and_cross_checks_a_declaration`.
+
+**Why no declaration was deleted** ("only where measured equal" -- they are
+equal on this road, and deleting is still not safe):
+
+1. The DESCRIPTOR road reads `entities` itself: `sizing-descriptor --from-leaf`
+   (`cmd/sizing_descriptor.rs`, the RFC-0100 descriptor work, not this change)
+   iterates `[[component]] entities` and writes NO descriptor without them.
+   Deleting a declaration today drops the leaf's sizing descriptor and every
+   descriptor-first consumer falls back to its default. It has to read the
+   leaf census through `declared_entities` (or the same helper) first.
+2. No unattended build takes a LEAF census: `census-prepass.sh` takes workspace
+   images only. A fixture build of a leaf with no declaration and no census
+   would size at the hosted/RTOS defaults -- issue 1142's 31 KB regression.
+3. The six C++ leaves cannot produce a census yet: a C++ APPLICATION
+   (`nros::init_with_launch_auto` + its own `nros::spin_once` / `wait_for_*` /
+   `call`) has no census switch -- only the C++ board funnels do. It needs the
+   C switch's two halves on `nros-cpp`'s init and first blocking call.
+
+Until all three hold, `--from-leaf` stays the descriptor's producer for these
+leaves and the declarations stay authored -- cross-checked by any census taken.

@@ -132,8 +132,22 @@ pub struct TakeArgs {
     /// or a bare id when one bringup declares it. Usually a cross image
     /// (`demo_bringup:threadx`); the census itself is taken by the native
     /// image generated from the same launch file.
-    #[arg(long, value_name = "IMAGE")]
-    pub image: String,
+    #[arg(
+        long,
+        value_name = "IMAGE",
+        required_unless_present = "leaf",
+        conflicts_with = "leaf"
+    )]
+    pub image: Option<String>,
+
+    /// Issue 1556 item 4 -- a STANDALONE C/C++ leaf (`system.toml` beside a
+    /// `CMakeLists.txt`, no bringup) instead of a workspace image: configure
+    /// the leaf's own `src/` for the HOST board, build it, and run it in census
+    /// mode. The census is written to `<leaf>/build/nros/census/leaf.census.json`,
+    /// which is where `entity-facts --leaf` and `sizing-descriptor --from-leaf`
+    /// read it.
+    #[arg(long, value_name = "DIR")]
+    pub leaf: Option<PathBuf>,
 
     /// Workspace root. Defaults to the current directory.
     #[arg(long, value_name = "DIR")]
@@ -360,6 +374,14 @@ fn take_census(args: TakeArgs) -> Result<()> {
         orchestration::board_descriptor::{BoardCatalog, PlatformKind},
     };
 
+    if let Some(leaf) = &args.leaf {
+        return take_leaf_census(leaf, args.timeout_secs);
+    }
+    let image = args
+        .image
+        .clone()
+        .ok_or_else(|| eyre::eyre!("`take` needs --image <bringup>:<image> or --leaf <dir>"))?;
+
     let root = match &args.workspace {
         Some(w) => w.clone(),
         None => std::env::current_dir().wrap_err("no current directory")?,
@@ -370,12 +392,12 @@ fn take_census(args: TakeArgs) -> Result<()> {
     let members = discover::cargo_members_or_walk(&root);
     let found = discover::discover(&root, &members).map_err(|e| eyre::eyre!("{e}"))?;
     let bringups = crate::cmd::build::collect_images(&found.packages)?;
-    let asked = plan::resolve(&bringups, std::slice::from_ref(&args.image))
-        .map_err(|e| eyre::eyre!("{e}"))?;
+    let asked =
+        plan::resolve(&bringups, std::slice::from_ref(&image)).map_err(|e| eyre::eyre!("{e}"))?;
     let (bringup, bringup_dir, image_id, image) = asked
         .into_iter()
         .next()
-        .ok_or_else(|| eyre::eyre!("`{}` resolved to no image", args.image))?;
+        .ok_or_else(|| eyre::eyre!("`{image}` resolved to no image"))?;
     let asked_q = plan::qualified(&bringup, &image_id);
 
     let nano_ros_root = crate::orchestration::nano_ros_root::resolve(None, &root)
@@ -542,6 +564,164 @@ pub(crate) fn check_cargo_image(
         require_fresh: true,
         workspace: Some(root.to_path_buf()),
         entry: Some(crate::builder::entry::package_name(image_id)),
+    })
+}
+
+/// Issue 1556 item 4 -- where a STANDALONE leaf's census lives: beside the
+/// leaf's own build output, the one place every reader of the leaf
+/// (`entity-facts --leaf`, `sizing-descriptor --from-leaf`) can name from the
+/// leaf directory alone. A standalone leaf has no model to sit beside.
+pub(crate) fn leaf_census_path(leaf: &Path) -> PathBuf {
+    leaf.join("build")
+        .join("nros")
+        .join("census")
+        .join("leaf.census.json")
+}
+
+/// Issue 1556 item 4 -- set on the HOST census configure of a standalone leaf.
+///
+/// The census producer must not be sized by what it is meant to replace: with
+/// this set, the leaf's `system.toml` `entities` (and any census already on
+/// disk) are not read, so the host build sizes its pools at the hosted
+/// defaults and a component that creates more than its declaration says is
+/// still recorded rather than stopped at a pool one short (issue 1419's
+/// "census sized by the contract it checks", one road over).
+pub(crate) const LEAF_CENSUS_HOST_ENV: &str = "NROS_LEAF_CENSUS_HOST";
+
+/// The executable a standalone leaf's `CMakeLists.txt` adds: the first
+/// `nano_ros_add_executable(<name> ...)`. A leaf builds ONE image (RFC-0098
+/// D3), and that call is how a C/C++ leaf names it.
+fn leaf_executable_name(leaf: &Path) -> Result<String> {
+    let raw = std::fs::read_to_string(leaf.join("CMakeLists.txt"))
+        .wrap_err_with(|| format!("cannot read {}/CMakeLists.txt", leaf.display()))?;
+    let code: String = raw
+        .lines()
+        .map(|l| l.split('#').next().unwrap_or(""))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let key = "nano_ros_add_executable(";
+    let start = code.find(key).ok_or_else(|| {
+        eyre::eyre!(
+            "{}/CMakeLists.txt adds no `nano_ros_add_executable(<name> ...)`: a standalone \
+             leaf's census is a run of the program it builds",
+            leaf.display()
+        )
+    })? + key.len();
+    let name: String = code[start..]
+        .trim_start()
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+        .collect();
+    if name.is_empty() {
+        bail!(
+            "{}/CMakeLists.txt: `nano_ros_add_executable(` names no target",
+            leaf.display()
+        );
+    }
+    Ok(name)
+}
+
+/// Issue 1556 item 4 -- `take --leaf`: the census of a standalone C/C++ leaf.
+///
+/// The SAME `src/` the cross image compiles, configured for the HOST board
+/// (`-DNANO_ROS_LEAF_BOARD=native`, which `nros ws leaf-system --board`
+/// honours), built to its fixed point like a workspace's native image, and run
+/// in census mode. Every input that decides what the program creates is the
+/// cross image's own; only the board differs, and the board is not a fact the
+/// census records.
+fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
+    let leaf = std::fs::canonicalize(leaf)
+        .wrap_err_with(|| format!("resolving leaf {}", leaf.display()))?;
+    if !leaf.join("CMakeLists.txt").is_file()
+        || !leaf
+            .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+            .is_file()
+    {
+        bail!(
+            "{} is not a standalone C/C++ leaf (a `system.toml` beside a `CMakeLists.txt`)",
+            leaf.display()
+        );
+    }
+    let exe = leaf_executable_name(&leaf)?;
+    let out = leaf_census_path(&leaf);
+    if let Freshness::Fresh = census_freshness(&out, &leaf) {
+        let complete = std::fs::read_to_string(&out)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+            .is_some_and(|c| incomplete_reason(&c).is_none());
+        if complete {
+            println!(
+                "entity-census take --leaf {}: fresh -> {}",
+                leaf.display(),
+                out.display()
+            );
+            return Ok(());
+        }
+    }
+
+    let root = crate::orchestration::nano_ros_root::resolve(None, &leaf)
+        .ok_or_else(|| eyre::eyre!("{}", crate::orchestration::nano_ros_root::not_found_help()))?;
+    let build = leaf.join("build").join("census-host");
+    let mut previous: Option<String> = None;
+    let mut binary = None;
+    for attempt in 1..=TAKE_MAX_BUILDS {
+        let status = Command::new("cmake")
+            .arg("-S")
+            .arg(&leaf)
+            .arg("-B")
+            .arg(&build)
+            .arg("-G")
+            .arg("Ninja")
+            .arg(format!("-Dnano_ros_DIR={}", root.display()))
+            .arg("-DNANO_ROS_LEAF_BOARD=native")
+            .env(LEAF_CENSUS_HOST_ENV, "1")
+            .status()
+            .wrap_err("running cmake (configure) for the host census build")?;
+        if !status.success() {
+            bail!(
+                "host census configure of {} exited {status}",
+                leaf.display()
+            );
+        }
+        let status = Command::new("cmake")
+            .arg("--build")
+            .arg(&build)
+            .env(LEAF_CENSUS_HOST_ENV, "1")
+            .status()
+            .wrap_err("running cmake --build for the host census build")?;
+        if !status.success() {
+            bail!("host census build of {} exited {status}", leaf.display());
+        }
+        let bin = build.join(&exe);
+        if !bin.is_file() {
+            bail!(
+                "the host census build of {} left no `{}`",
+                leaf.display(),
+                bin.display()
+            );
+        }
+        let digest = file_digest(&bin)?;
+        if previous.as_deref() == Some(digest.as_str()) {
+            binary = Some(bin);
+            break;
+        }
+        if attempt == TAKE_MAX_BUILDS {
+            bail!(
+                "the host census build of {} did not reach a fixed point in {TAKE_MAX_BUILDS} \
+                 builds",
+                leaf.display()
+            );
+        }
+        previous = Some(digest);
+    }
+    run_census(RunArgs {
+        entry: exe,
+        workspace: Some(leaf.clone()),
+        build_dir: build,
+        binary,
+        model: None,
+        out: Some(out),
+        timeout_secs,
     })
 }
 
@@ -852,7 +1032,7 @@ pub(crate) fn census_freshness(path: &Path, ws: &Path) -> Freshness {
 /// door by the phase-460 W1 gate, which `check` calls FIRST, before anything
 /// here is read. That is the right place for it, and it is not this one.
 fn is_freshness_input(role: &str) -> bool {
-    matches!(role, "binary" | "source_tree" | "entry_tu")
+    matches!(role, "binary" | "source_tree" | "entry_tu" | "build_file")
 }
 
 /// The command that makes a missing or stale census fresh, as one line a
@@ -1293,6 +1473,31 @@ fn collect_inputs(ws: &Path, binary: &Path, model: Option<&Path>) -> Result<Vec<
     }];
 
     let Some(model_path) = model else {
+        // Issue 1556 item 4 -- a STANDALONE leaf has no model, so its
+        // provenance is its own program: the `src/` tree and the
+        // `CMakeLists.txt` that builds it. NOT the whole leaf: its
+        // `system.toml` is where the declaration this census replaces lives,
+        // and deleting that declaration must not make the census stale.
+        if ws.join("CMakeLists.txt").is_file()
+            && ws
+                .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+                .is_file()
+        {
+            let src = ws.join("src");
+            if src.is_dir() {
+                inputs.push(Input {
+                    role: "source_tree",
+                    path: rel(&src),
+                    digest: crate::orchestration::metadata_refresh::source_digest(&src)?,
+                });
+            }
+            let cml = ws.join("CMakeLists.txt");
+            inputs.push(Input {
+                role: "build_file",
+                path: rel(&cml),
+                digest: file_digest(&cml)?,
+            });
+        }
         return Ok(inputs);
     };
 
@@ -1423,6 +1628,110 @@ mod tests {
             locate_entry_binary(dir.path(), "native_entry").expect("found"),
             bin
         );
+    }
+
+    /// Issue 1556 items 4-5 -- a standalone leaf's census, end to end through
+    /// the reader every leaf consumer calls (`leaf_entity_env::declared_entities`):
+    ///
+    /// * no `entities` declared + a current census -> the census's entities,
+    ///   with an action's RMW constituents folded back into the action;
+    /// * the host census build (`NROS_LEAF_CENSUS_HOST`) reads neither;
+    /// * a declaration that DISAGREES with a current census is refused;
+    /// * editing `system.toml` does not stale the census (it is not the
+    ///   program), editing `src/` does.
+    #[test]
+    fn a_leaf_census_feeds_the_leaf_reader_and_cross_checks_a_declaration() {
+        let td = tempfile::tempdir().unwrap();
+        let leaf = td.path();
+        std::fs::create_dir_all(leaf.join("src")).unwrap();
+        std::fs::write(leaf.join("src/main.c"), "int main(void){return 0;}\n").unwrap();
+        std::fs::write(
+            leaf.join("CMakeLists.txt"),
+            "project(x C)\nnano_ros_add_executable(c_server src/main.c)\n",
+        )
+        .unwrap();
+        let system = |entities: &str| {
+            format!(
+                "[system]\nname = \"x\"\nrmw = \"zenoh\"\n\n[[component]]\npkg = \"x\"\n\
+                 class = \"x::S\"\nname = \"s\"\n{entities}\n[image.nuttx]\n\
+                 board = \"qemu-armv7a-nuttx\"\n"
+            )
+        };
+        std::fs::write(leaf.join("system.toml"), system("")).unwrap();
+        assert_eq!(leaf_executable_name(leaf).unwrap(), "c_server");
+
+        // The run's raw recorder document: an action server, as the RMW sees it.
+        let row = |topic: &str, name: &str| {
+            serde_json::json!({"id": topic,
+                "unresolved_topic": {"value": topic, "kind": "absolute"},
+                "unresolved_name": {"value": topic, "kind": "absolute"},
+                "interface": {"package": "example_interfaces", "name": name, "kind": "message"}})
+        };
+        let recorded = serde_json::json!({"version": crate::orchestration::metadata_refresh::RECORDER_SCHEMA_VERSION, "package": "c_server",
+            "component": "c_server", "nodes": [{"id": "s",
+            "services": [row("/fib/_action/send_goal", "action/Fibonacci_SendGoal"),
+                         row("/fib/_action/cancel_goal", "srv/CancelGoal"),
+                         row("/fib/_action/get_result", "action/Fibonacci_GetResult")],
+            "publishers": [row("/fib/_action/feedback", "action/Fibonacci_FeedbackMessage"),
+                           row("/fib/_action/status", "msg/GoalStatusArray")],
+            "subscribers": [], "timers": [], "actions": []}]});
+        let bin = leaf.join("build/census-host/c_server");
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        std::fs::write(&bin, b"\x7fELF").unwrap();
+        let out = leaf_census_path(leaf);
+        std::fs::create_dir_all(out.parent().unwrap()).unwrap();
+        let write_census = || {
+            let census = Census {
+                schema: CENSUS_SCHEMA,
+                entry: "c_server".into(),
+                provenance: Provenance {
+                    tool: "test".into(),
+                    inputs: collect_inputs(leaf, &bin, None).unwrap(),
+                },
+                incomplete: None,
+                census: recorded.clone(),
+            };
+            std::fs::write(&out, serde_json::to_string(&census).unwrap()).unwrap();
+        };
+        write_census();
+        assert!(matches!(census_freshness(&out, leaf), Freshness::Fresh));
+
+        let read = crate::leaf_entity_env::declared_entities;
+        let got = read(leaf).unwrap().expect("the census answers");
+        assert_eq!(got.len(), 1, "one action, not five constituents: {got:?}");
+        assert_eq!(
+            got[0].kind,
+            crate::entity_inventory::EntityKind::ActionServer
+        );
+        assert_eq!(
+            got[0].type_name.as_deref(),
+            Some("example_interfaces/action/Fibonacci")
+        );
+
+        // A matching declaration is accepted; editing system.toml did not
+        // stale the census.
+        std::fs::write(
+            leaf.join("system.toml"),
+            system("entities = [\"action_server:example_interfaces/action/Fibonacci:/fib\"]\n"),
+        )
+        .unwrap();
+        assert!(matches!(census_freshness(&out, leaf), Freshness::Fresh));
+        assert_eq!(read(leaf).unwrap().unwrap().len(), 1);
+
+        // A declaration that disagrees with the census is refused.
+        std::fs::write(
+            leaf.join("system.toml"),
+            system("entities = [\"service_server:example_interfaces/srv/AddTwoInts:/add\"]\n"),
+        )
+        .unwrap();
+        let err = read(leaf).unwrap_err().to_string();
+        assert!(err.contains("the code creates"), "{err}");
+
+        // A source edit stales the census: it no longer answers.
+        std::fs::write(leaf.join("system.toml"), system("")).unwrap();
+        std::fs::write(leaf.join("src/main.c"), "int main(void){return 1;}\n").unwrap();
+        assert!(matches!(census_freshness(&out, leaf), Freshness::Stale(_)));
+        assert!(read(leaf).unwrap().is_none(), "a stale census says nothing");
     }
 
     #[test]
