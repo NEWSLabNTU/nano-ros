@@ -14,8 +14,8 @@ rmw = "zenoh"
 domain_id = 0
 
 [[component]]
-pkg = "zephyr_rs_service_client"
-class = "nros_zephyr_service_client::AddTwoIntsClient"
+pkg = "zephyr_rs_service_client_node"
+class = "zephyr_rs_service_client_node::AddTwoIntsClient"
 name = "service_client"
 
 # The Zephyr family; the concrete Zephyr board (`native_sim/native/64`) is the

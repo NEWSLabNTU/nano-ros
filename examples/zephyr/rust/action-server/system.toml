@@ -14,8 +14,8 @@ rmw = "zenoh"
 domain_id = 0
 
 [[component]]
-pkg = "zephyr_action_server"
-class = "nros_zephyr_action_server::FibonacciServer"
+pkg = "zephyr_action_server_node"
+class = "zephyr_action_server_node::FibonacciServer"
 name = "action_server"
 
 # The Zephyr family; the concrete Zephyr board (`native_sim/native/64`) is the

@@ -48,6 +48,34 @@ pub fn is_build_output_dir(name: &str) -> bool {
     )
 }
 
+/// Issue 1603 — is `dir` the NODE package of a single-package leaf rather than
+/// an example of its own?
+///
+/// The Zephyr Rust leaves hold their component in `<leaf>/node/`, a package
+/// with its own `package.xml` that the leaf reaches by a cargo `path`
+/// dependency: the host-buildable half the metadata probe builds. It is part
+/// of the leaf (one copy-out directory, RFC-0026), so a walker that treats
+/// every `package.xml` as an example would count it as a seventh example with
+/// no fixture, no README and no classification. Same edge, same rule as the
+/// CLI's `Workspace::discover` (`root_path_dep_packages`): the dir carries a
+/// `package.xml`, its PARENT is a package with a `Cargo.toml`, and that
+/// manifest names the dir by `path`.
+pub fn is_leaf_node_package(dir: &std::path::Path) -> bool {
+    let Some(parent) = dir.parent() else {
+        return false;
+    };
+    let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    if !dir.join("package.xml").is_file() || !parent.join("package.xml").is_file() {
+        return false;
+    }
+    let Ok(manifest) = std::fs::read_to_string(parent.join("Cargo.toml")) else {
+        return false;
+    };
+    manifest.contains(&format!("path = \"{name}\""))
+}
+
 /// `is_build_output_dir`, plus the VCS/tooling dirs and generated output no
 /// source walker wants to descend into.
 ///

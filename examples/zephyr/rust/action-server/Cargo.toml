@@ -30,7 +30,7 @@ default = ["rmw-zenoh"]
 # image has no libnros_c.a, so the register symbol must ride in librustapp.a
 # (mirrors nros-c's `rmw-zenoh = [..., "dep:nros-rmw-zenoh"]`). cyclonedds
 # stays inert — its register entry comes from the Zephyr module's C++ lib.
-rmw-zenoh = ["dep:nros-rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "zephyr_action_server_node/reply-slot-diag"]
 rmw-cyclonedds = []
 rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
 
@@ -49,8 +49,10 @@ nros-platform = { version = "*", default-features = false, features = ["platform
 nros-rmw-zenoh = { version = "*", optional = true, default-features = false, features = ["platform-zephyr"] }
 nros-rmw-xrce-cffi = { version = "*", optional = true, default-features = false }
 
-example_interfaces = { path = "generated/example_interfaces", default-features = false }
-heapless = "0.8"
+
+# Issue 1603 -- the component lives in its own host-buildable package beside
+# this one; this crate is the Zephyr image half (staticlib + boot glue).
+zephyr_action_server_node = { path = "node" }
 
 [build-dependencies]
 zephyr-build = "0.1.0"

@@ -124,7 +124,8 @@ fn walk(root: &Path, mut visit: impl FnMut(&Path)) {
 fn discover_example_leaves() -> Vec<PathBuf> {
     let mut leaves = Vec::new();
     walk(&examples_dir(), |dir| {
-        if dir.join("package.xml").is_file() {
+        // Issue 1603 -- a leaf's `node/` package is part of that leaf.
+        if dir.join("package.xml").is_file() && !nros_tests::treewalk::is_leaf_node_package(dir) {
             leaves.push(dir.to_path_buf());
         }
     });
@@ -676,7 +677,27 @@ fn component_class_strings_match_package_name() {
         // Rust module path mangles `-` → `_`. The class field carries
         // the Rust module-path form, so compare with `-` → `_`.
         let pkg_module = pkg.replace('-', "_");
-        if !class.starts_with(&format!("{}::", pkg_module)) {
+        // Issue 1603 -- or the crate of a NODE package of this leaf, when the
+        // component lives there (the Zephyr Rust leaves' `node/`): the class
+        // names the crate that defines it, which is the rule this test holds.
+        let node_modules: Vec<String> = std::fs::read_dir(&leaf)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|d| nros_tests::treewalk::is_leaf_node_package(d))
+            .filter_map(|d| {
+                let raw = fs::read_to_string(d.join("Cargo.toml")).ok()?;
+                let doc: toml::Table = raw.parse().ok()?;
+                let name = doc.get("package")?.get("name")?.as_str()?;
+                Some(name.replace('-', "_"))
+            })
+            .collect();
+        if !class.starts_with(&format!("{}::", pkg_module))
+            && !node_modules
+                .iter()
+                .any(|m| class.starts_with(&format!("{m}::")))
+        {
             mismatches.push(format!(
                 "{}: class='{}' does not start with '{}::'",
                 rel.to_string_lossy(),

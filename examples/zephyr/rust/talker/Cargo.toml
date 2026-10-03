@@ -49,7 +49,10 @@ nros-platform = { version = "*", default-features = false, features = ["platform
 nros-rmw-zenoh = { version = "*", optional = true, default-features = false, features = ["platform-zephyr"] }
 nros-rmw-xrce-cffi = { version = "*", optional = true, default-features = false }
 
-std_msgs = { path = "generated/std_msgs", default-features = false }
+
+# Issue 1603 -- the component lives in its own host-buildable package beside
+# this one; this crate is the Zephyr image half (staticlib + boot glue).
+zephyr_talker_node = { path = "node" }
 
 [build-dependencies]
 zephyr-build = "0.1.0"

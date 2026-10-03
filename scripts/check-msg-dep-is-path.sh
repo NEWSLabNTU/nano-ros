@@ -31,6 +31,8 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=scripts/lib/git-hook-env.sh
 source scripts/lib/git-hook-env.sh
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
 nros_clear_inherited_git_env   # the self-test `git init`s (issues 0986/0988)
 
 # phase-472 W7 — the message crates are HARVESTED, not listed. The list was 16
@@ -217,6 +219,14 @@ while IFS= read -r manifest; do
     # whether this particular leaf is an ament package.
     if [ "$(basename "$parent")" = "src" ] && compgen -G "$parent/*/package.xml" >/dev/null; then
         want='\.\./\.\./generated/'; role="workspace member (shared root tree)"
+    elif [ -f "$dir/package.xml" ] && [ -f "$parent/package.xml" ] && [ -f "$parent/Cargo.toml" ] \
+        && nros_grep_q -E "path = \"$(basename "$dir")\"" "$parent/Cargo.toml"; then
+        # Issue 1603 -- a NODE package of a single-package leaf, reached by the
+        # leaf's own path dependency (the Zephyr Rust leaves' `node/`). `nros
+        # sync` stays in single-package mode for the leaf, so `generated/` is
+        # the LEAF's tree, one level up: the rule `Workspace::discover`'s
+        # `root_path_dep_packages` follows for the same edge.
+        want='\.\./generated/'; role="node package of a single-package leaf (the leaf's tree)"
     else
         want='generated/'; role="standalone leaf (own tree)"
     fi
