@@ -54,6 +54,8 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import check_skip  # noqa: E402  the NOT VERIFIED ledger (issue 1345)
 
 PROBE = "packages/api/nros-cpp/tests/compile/freestanding_mechanisms.cpp"
 OVERBUDGET = "packages/api/nros-cpp/tests/compile/freestanding_mechanisms_overbudget_probe.cpp"
@@ -119,6 +121,7 @@ def selftest(arm_label, argv):
 
 
 def main():
+    skipped = 0
     for rel in (PROBE, OVERBUDGET):
         if not os.path.exists(os.path.join(ROOT, rel)):
             print("check-cpp-freestanding-mechanisms: %s is MISSING -- this gate would pass "
@@ -130,10 +133,11 @@ def main():
     for label, argv, _required in arms():
         if argv is None:
             print("check-cpp-freestanding-mechanisms: %s SKIPPED -- toolchain absent" % label)
-            ledger = os.environ.get("NROS_CHECK_SKIP_LEDGER")
-            if ledger:
-                with open(ledger, "a", encoding="utf8") as fh:
-                    fh.write("check-cpp-freestanding-mechanisms: %s: toolchain absent\n" % label)
+            # issue 1345 — this wrote to `NROS_CHECK_SKIP_LEDGER`, which no lane
+            # ever set, so the skip reached no summary. `check_skip` writes the
+            # ledger `check fast` actually reports from.
+            skipped |= check_skip.unverified(
+                "cpp-freestanding-mechanisms", "%s: toolchain absent" % label)
             continue
 
         rc, out = compile_tu(argv, PROBE)
@@ -156,7 +160,7 @@ def main():
           "inplace callable compile "
           "on %d toolchain configuration(s), and an over-budget capture fails on each with a "
           "diagnostic naming %s" % (ran, KNOB))
-    return 0
+    return skipped
 
 
 if __name__ == "__main__":

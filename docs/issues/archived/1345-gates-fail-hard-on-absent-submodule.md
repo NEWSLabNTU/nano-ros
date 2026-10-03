@@ -3,12 +3,13 @@ id: 1345
 title: "Two gates report a hard FAIL for \"I have no tree to look at\", which is
   the DEFAULT state in an agent worktree — so `ci gate` stops at step 2 and four
   later steps are withdrawn, having examined nothing"
-status: open
+status: resolved
 type: bug
 area: ci, tooling
 severity: medium
 found: 2026-09-12
 related: [issue-0952, issue-1043, issue-1280, phase-454]
+resolved_in: "branch fix/fast-gates-skip-without-submodules"
 ---
 
 ## Measured
@@ -289,3 +290,42 @@ change, and leaves the gates fully load-bearing on the three events that
 provision. Adding `push` to the step's event list would also turn the lane
 green, but it buys a provisioning run on every push for two gates, and it
 leaves every agent worktree exactly where this issue found it.
+
+## Resolution (2026-10-03)
+
+Both gates now report issue 1043's middle outcome through the ONE ledger
+(`scripts/lib/check_skip.py`, which since phase-472 F2 calls the shell
+`nros_check_unverified`, so the 2026-09-22 "Python ledger is inert" finding no
+longer applies). An absent tree is NOT VERIFIED, named in `check fast`'s closing
+`[SKIPPED]` block, and FAILS under `NROS_CHECK_SKIP_STRICT=1`.
+
+Each gate now does every part of its job that doesn't need the absent tree:
+
+| gate | still checked without the tree | NOT VERIFIED without it |
+| --- | --- | --- |
+| `capability-conditionals` | rules 1, 2, 3, 5, 6 (manifests + `policy.rs`) | rules 4, 7, 8 (they read the socket type out of the header a define selects) |
+| `xrce-vendored-versions` | checks (3)-(6): no version literals, a derivation block in each lane, wiring per tree | (1), (2), (7) for each MISSING tree, by name |
+
+The second row also fixes a case the issue did not name: with ONE of the two
+trees checked out, the gate printed a `SKIP` note and returned 0, so the missing
+tree reached no summary. Every missing tree now goes to the ledger.
+
+**The sweep, measured rather than grepped.** `check fast` in a fresh `git
+worktree add` with only `play_launch` initialised (exactly the push lane's
+shape): rc=0, and the only gates reporting an absent vendored tree
+are these two plus `leaf-lockfiles`, which already reported a skip. No
+other fast-tier gate fails hard on a missing submodule. The compile tier was NOT
+swept — it legitimately needs sources, and every lane that runs it provisions
+them.
+
+The two `NROS_CHECK_SKIP_LEDGER` readers this issue named
+(`check-cpp-freestanding-mechanisms.py`, `check-cxx-compat-shim-facilities.py`)
+moved to `check_skip.unverified` in the same change. No reader of that variable
+is left.
+
+What makes the NEXT one visible is not a gate: running `check fast` twice per
+merge batch (with and without sources) costs ~7 min a batch. The push lane IS
+that check once it can go green, and `scripts/ci/lane-health.py` (in
+`nightly-report.yml`'s daily summary, and `just lane-health`) now flags a lane
+on `main` that is red on its last 3 verdicts — which `gate.yml`'s push lane was
+for 100 runs.

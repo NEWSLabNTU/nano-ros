@@ -60,6 +60,8 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import check_skip  # noqa: E402  the NOT VERIFIED ledger (issue 1345)
 
 THREADX_SHIM = "packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat"
 ZEPHYR_SHIM = "zephyr/cxx-compat"
@@ -231,6 +233,7 @@ def selftest(cc, workdir):
 
 
 def main():
+    skipped = 0
     failures = []
     notes = []
 
@@ -277,11 +280,12 @@ def main():
         else:
             notes.append("Zephyr arm SKIPPED: %s absent (west workspace not checked out)"
                          % ZEPHYR_MINIMAL)
-            skip_ledger = os.environ.get("NROS_CHECK_SKIP_LEDGER")
-            if skip_ledger:
-                with open(skip_ledger, "a", encoding="utf8") as fh:
-                    fh.write("check-cxx-compat-shim-facilities: zephyr arm: %s absent\n"
-                             % ZEPHYR_MINIMAL)
+            # issue 1345 — this wrote to `NROS_CHECK_SKIP_LEDGER`, which no lane
+            # ever set, so the skip reached no summary. `check_skip` writes the
+            # ledger `check fast` actually reports from.
+            skipped |= check_skip.unverified(
+                "cxx-compat-shim-facilities",
+                "zephyr arm: %s absent (west workspace not checked out)" % ZEPHYR_MINIMAL)
 
         # --- the negative controls, on the normal path -----------------------
         failures.extend(selftest(threadx_cc, workdir))
@@ -301,7 +305,7 @@ def main():
     print("check-cxx-compat-shim-facilities: OK -- freestanding <new> placement forms and the "
           "trait set both shims must carry, measured by compiling a probe, with 2 negative "
           "control(s) that ran and failed as required")
-    return 0
+    return skipped
 
 
 if __name__ == "__main__":

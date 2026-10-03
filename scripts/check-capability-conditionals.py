@@ -68,6 +68,9 @@ import pathlib
 import re
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+import check_skip  # noqa: E402  issue 1043's middle outcome, NOT VERIFIED
+
 try:
     import tomllib
 except ModuleNotFoundError:  # 3.10 backport, as the sibling gates spell it
@@ -761,6 +764,7 @@ def main() -> int:
         )
         return 2
 
+    skipped = 0
     if PLATFORM_DISPATCH.is_file():
         dispatch = dispatch_map(PLATFORM_DISPATCH.read_text(encoding="utf-8"))
 
@@ -770,23 +774,34 @@ def main() -> int:
             return p.read_text(encoding="utf-8") if p.is_file() else None
 
     else:
-        # zenoh-pico is a submodule; without it rule 4 has no source of truth.
-        # Say so rather than passing over it (issue 0702).
+        # zenoh-pico is a submodule; without it rules 4, 7 and 8 have no source
+        # of truth — they all read the socket type out of the header a define
+        # selects. Rules 1, 2, 3, 5 and 6 read only the manifests and
+        # `policy.rs`, so they still run.
         #
-        # issue 1373 - the message names `just setup-worktree` first. `git
+        # Issue 0702 asked this gate to SAY SO rather than pass over a missing
+        # header, and it did — by failing, rc=2. That made `check fast` red on
+        # every post-merge push to main (0 of 100 green), because the push lane
+        # provisions no sources on purpose: its contract is "buildless +
+        # source-free". Issue 1043's middle outcome is the way to say so:
+        # NOT VERIFIED through the skip ledger, named in the lane's closing
+        # line, and a FAIL under `NROS_CHECK_SKIP_STRICT=1` for a lane that
+        # really provides every source.
+        #
+        # issue 1373 - the remedy names `just setup-worktree` first: `git
         # worktree add` populates no submodules, so this is the normal state of
-        # a brand-new worktree, and the fast tier runs on every push: the reader
-        # is someone who wants ONE command, not the path to type it with.
-        print(
-            f"check-capability-conditionals: {PLATFORM_DISPATCH.relative_to(ROOT)} "
-            f"is missing. The socket-ABI rule cannot be checked without it.\n"
-            f"  Fresh worktree or non-recursive clone? Provision it:\n"
-            f"      just setup-worktree\n"
-            f"  Or check out this one submodule by hand:\n"
-            f"      git submodule update --init {ZENOH_PICO.relative_to(ROOT)}",
-            file=sys.stderr,
+        # a brand-new worktree.
+        dispatch = {}
+
+        def header_text(rel: str) -> str | None:
+            return None
+
+        skipped = check_skip.unverified(
+            "capability-conditionals",
+            f"rules 4/7/8 (socket ABI) need {PLATFORM_DISPATCH.relative_to(ROOT)} — "
+            f"`just setup-worktree`, or `git submodule update --init "
+            f"{ZENOH_PICO.relative_to(ROOT)}`",
         )
-        return 2
 
     problems = check_rust_binding(manifests) + check_selector_is_reached()
     for path in manifests:
@@ -810,12 +825,13 @@ def main() -> int:
         for path in manifests
         for b in build_blocks(tomllib.loads(path.read_text(encoding="utf-8"))).values()
     )
+    scope = "rules 1-3, 5, 6 only — 4/7/8 NOT VERIFIED, " if not PLATFORM_DISPATCH.is_file() else ""
     print(
         f"check-capability-conditionals: OK "
-        f"({len(manifests)} platform manifest(s), {gated} capability-gated row(s), "
+        f"({scope}{len(manifests)} platform manifest(s), {gated} capability-gated row(s), "
         f"IP_STACK = {rust_ip_stack_name()!r})"
     )
-    return 0
+    return skipped
 
 
 if __name__ == "__main__":

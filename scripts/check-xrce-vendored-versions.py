@@ -98,6 +98,7 @@ import sys as _w3_sys  # noqa: E402
 from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
+import check_skip  # noqa: E402  issue 1043's middle outcome, NOT VERIFIED
 
 REPO = Path(__file__).resolve().parent.parent
 XRCE = REPO / "packages/rmw/xrce"
@@ -644,6 +645,7 @@ def main() -> int:
 
     bad: list[str] = []
     notes: list[str] = []
+    missing: list[str] = []
 
     for p in (BUILD_RS, CMAKE, SDK_INDEX):
         if not p.exists():
@@ -659,6 +661,7 @@ def main() -> int:
     for name, w in WIRING.items():
         cml = REPO / VENDOR_ROOT / w.dirname / "CMakeLists.txt"
         if not cml.is_file():
+            missing.append(name)
             notes.append(
                 f"SKIP `{name}` — {VENDOR_ROOT}/{w.dirname}/CMakeLists.txt not checked out "
                 "(`just setup-worktree`); its version is unverified"
@@ -758,25 +761,29 @@ def main() -> int:
             print(f"  - {m}", file=sys.stderr)
         return 1
 
-    if not versions:
-        # issue 1373 - this used to advise `nros setup --source`, which CANNOT
-        # run where this failure happens. The state that produces it is a fresh
-        # `git worktree add` (it populates no submodules), and a fresh worktree
-        # has no `target/`, so the `nros` on PATH belongs to some other checkout
-        # and `setup` is a guarded verb that refuses a foreign binary
-        # (`stale_guard.rs`). Following the advice literally got you a refusal;
-        # following it properly got you a full `just setup-cli` build to satisfy
-        # a gate that only wants two directories checked out.
-        print(
-            "check-xrce-vendored-versions: no vendored tree checked out — nothing verified.\n"
-            "  Fresh worktree or non-recursive clone? Provision it:\n"
-            "      just setup-worktree\n"
-            "  Or check out the two vendored trees by hand:\n"
-            f"      git submodule update --init {VENDOR_ROOT}/micro-cdr "
-            f"{VENDOR_ROOT}/micro-xrce-dds-client",
-            file=sys.stderr,
+    if missing:
+        # A vendored tree is not checked out, so (1), (2) and (7) — the ones
+        # that read a tree — had nothing to read for it. (3)-(6) read only the two
+        # lanes and DID run, above. This used to FAIL, which made `check fast`
+        # red on every post-merge push to main (0 of 100 green): the push lane
+        # provisions no sources on purpose. Issue 1043's middle outcome is the
+        # honest report — NOT VERIFIED in the skip ledger, named in the lane's
+        # closing line, FAIL under `NROS_CHECK_SKIP_STRICT=1`.
+        #
+        # issue 1373 - the remedy is `just setup-worktree`, never `nros setup
+        # --source`: a fresh `git worktree add` has no `target/`, so the `nros`
+        # on PATH belongs to another checkout and `setup` refuses it.
+        skipped = check_skip.unverified(
+            "xrce-vendored-versions",
+            f"{', '.join(missing)} not checked out, so that version is unread "
+            "(lane wiring checked) — `just setup-worktree`, or `git submodule update "
+            f"--init {VENDOR_ROOT}/micro-cdr {VENDOR_ROOT}/micro-xrce-dds-client`",
         )
-        return 1
+        print(
+            f"check-xrce-vendored-versions: OK ({', '.join(missing)} NOT VERIFIED; "
+            "both lanes derive from `project(<name> VERSION …)`, each tree wired to its own template)"
+        )
+        return skipped
 
     print(
         "check-xrce-vendored-versions: OK — "
