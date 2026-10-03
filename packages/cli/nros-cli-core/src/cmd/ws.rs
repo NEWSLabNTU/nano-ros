@@ -3274,6 +3274,23 @@ fn refresh_source_metadata(
     // above it would make the report visible only when something else was
     // stale.
     report_census_freshness(ws_root);
+    // Issue 1639 — before the early return, for the same reason as the census:
+    // a rename whose new sidecar is already current is exactly when the old
+    // one is removed, and the removal is worth a line.
+    for path in &report.pruned {
+        println!(
+            "sync: source metadata — removed {} (its component is no longer declared)",
+            path.display()
+        );
+    }
+    for path in &report.undeclared_kept {
+        println!(
+            "sync: source metadata — {} names no declared component and was not \
+             written by the probe, so it was kept; every reader of the directory \
+             still counts it",
+            path.display()
+        );
+    }
     if report.total() == 0 && report.unsupported.is_empty() {
         return Ok(());
     }
