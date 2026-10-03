@@ -296,7 +296,16 @@ function(nros_feature_set out_var)
     #    a host the CLI can run. phase-463 W5's
     #    `rtos-feature-set-excludes-analysis` is the gate that holds this to
     #    the native tier; keeping the condition narrow is what makes it pass.
-    if(_FS_CRATE STREQUAL "cpp" AND _FS_PLATFORM STREQUAL "posix" AND NOT _cross)
+    #
+    # Issue 1556 items 2-3 -- and the NATIVE C umbrella too. `nros-c` has its
+    # own `metadata-mode` now (the C census switch: support init selects the
+    # recorder, the first spin writes the census), so a C application that
+    # owns its own `main` -- an rclc-style standalone leaf -- is a census
+    # producer in the host build the same way a C++ entry is. Issue 0304/0542's
+    # objection (the feature reaching a crate that lacked it) no longer holds:
+    # the crate has it. Still `posix` + `NOT _cross`, for the same reasons.
+    if((_FS_CRATE STREQUAL "cpp" OR _FS_CRATE STREQUAL "c")
+       AND _FS_PLATFORM STREQUAL "posix" AND NOT _cross)
         list(APPEND _feats metadata-mode)
     endif()
 

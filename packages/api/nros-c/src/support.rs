@@ -207,6 +207,13 @@ pub unsafe extern "C" fn nros_support_init_rmw(
         return NROS_RET_BAD_SEQUENCE;
     }
 
+    // Issue 1556 item 2 — census mode is decided BEFORE the session opens,
+    // because it decides which backend opens it (the recorder, selected
+    // through `$NROS_RMW`, which `resolve_boot` below reads).
+    if let Err(ret) = crate::census::arm() {
+        return ret;
+    }
+
     // RFC-0045 / issue #206 — route locator + domain through the ONE
     // boot-config resolver (precedence model A: hosted env > baked >
     // default). This gives the C API the same NROS_LOCATOR/ROS_DOMAIN_ID

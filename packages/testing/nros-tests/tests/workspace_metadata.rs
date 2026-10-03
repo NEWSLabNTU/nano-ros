@@ -333,6 +333,48 @@ fn cargo_rust_workspace_entry_writes_a_census_without_a_router() {
     assert_entry_writes_a_complete_census(entry, "Rust");
 }
 
+/// Issue 1556 item 2 -- an rclc-style C APPLICATION that owns its own `main`
+/// and its own spin loop is a census producer: `nros_support_init` selects the
+/// recording backend, the application creates its node, publisher and timer
+/// through `nros-c` (each crossing `nros::census_hooks` or the recorder), and
+/// its first `rclc_executor_spin_period` writes the census and exits 0 -- no
+/// router, no spin.
+///
+/// Before: the C API had no switch and its node / timer entry points no hooks,
+/// so this binary ignored `$NROS_CENSUS_OUT`, dialled zenoh and exited on
+/// `ConnectionFailed` with no file.
+#[test]
+fn an_rclc_c_application_writes_a_census_without_a_router() {
+    let bin = nros_tests::fixtures::build_native_c_talker_rmw(nros_tests::fixtures::Rmw::Zenoh)
+        .require("native C talker (zenoh)");
+    let dir = tempfile::tempdir().expect("tempdir");
+    let out = dir.path().join("census.json");
+    let status = Command::new(bin)
+        .env("NROS_CENSUS_OUT", &out)
+        .env_remove("NROS_ENTRY_SPIN_MS")
+        .status()
+        .expect("run the C talker");
+    let raw = fs::read_to_string(&out)
+        .unwrap_or_else(|e| panic!("exited {status} and wrote no census: {e}"));
+    assert!(status.success(), "a census run exits 0: {status}");
+    let census: serde_json::Value = serde_json::from_str(&raw).expect("census is JSON");
+    let talker = census["nodes"]
+        .as_array()
+        .and_then(|n| n.iter().find(|n| n["id"].as_str() == Some("talker")))
+        .unwrap_or_else(|| panic!("no `talker` node: {raw}"));
+    assert!(
+        talker["publishers"].as_array().is_some_and(|p| p
+            .iter()
+            .any(|r| r["unresolved_topic"]["value"] == "/chatter")),
+        "the publisher, on its node: {raw}"
+    );
+    assert_eq!(
+        talker["timers"].as_array().map(Vec::len),
+        Some(1),
+        "the wall timer, on its node: {raw}"
+    );
+}
+
 fn parse_counter(output: &str, key: &str) -> Option<usize> {
     let start = output.rfind(key)? + key.len();
     let value = output[start..]

@@ -233,7 +233,16 @@ BASELINE = {
     #
     # issue 0687 — path 1 -> 0. Its only `std::` was a third reading of
     # `$NROS_RMW`; it consumes `nros_node::rmw_selector` now.
-    "nros-c": {"cfg": 2, "path": 0},
+    #
+    # Issue 1556 item 2 — 2 -> 7 cfg, 0 -> 1 path, DELIBERATELY. The C census
+    # switch is a CAPABILITY, not a convenience over the platform layer: it reads
+    # an environment variable (`$NROS_CENSUS_OUT`), writes a file and exits the
+    # process, which is what `std` is for and which `nros-cpp`'s funnel spends
+    # its own `std` sites on. One `use std::{env, fs, process}` (path 1); the
+    # cfg sites are `census.rs`'s hosted/no-std arms (4) plus the
+    # `metadata-mode`-requires-`std` `compile_error!` (1) — the call sites are
+    # unconditional, so no executor or support code gained a `std` arm.
+    "nros-c": {"cfg": 7, "path": 1},
     #
     # phase-359 W10 (backend tier): 3 -> 5. Two arms select the WALL CLOCK —
     # the platform's `time_since_epoch_*` when a port is linked, the steady
