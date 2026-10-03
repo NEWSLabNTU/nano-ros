@@ -216,6 +216,8 @@ pub struct ModelHorizon {
     road: String,
     from: &'static str,
     unobserved: &'static str,
+    /// Issue 1655 — the standalone-leaf declaration road.
+    leaf_declaration: bool,
 }
 
 /// What a model-only producer reads, in the words its refusals use.
@@ -258,6 +260,7 @@ impl ModelHorizon {
             road: road.into(),
             from: FROM_MODEL,
             unobserved: MODEL_ROWS_ARE_NOT_JOINED_TO_THE_PROBE,
+            leaf_declaration: false,
         }
     }
 
@@ -272,7 +275,13 @@ impl ModelHorizon {
             road: road.into(),
             from: FROM_LEAF_DECLARATION,
             unobserved: A_DECLARATION_IS_NOT_A_CALL_SITE,
+            leaf_declaration: true,
         }
+    }
+
+    /// Is this the standalone-leaf DECLARATION road (`--from-leaf`)?
+    pub fn is_leaf_declaration(&self) -> bool {
+        self.leaf_declaration
     }
 
     /// The `bounds_error` a producer supplies when its caller handed it NO
@@ -1254,6 +1263,53 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
         Some(Derivation::Derived(k)) => {
             img.set_node_count(Some(k.max_nodes))
                 .set_subscriber_count(Some(k.max_subscribers));
+            // Issue 1655 — the image-wide counts the `NROS_DECLARED_*` carriers
+            // deliver, stated from the SAME `derive` (RFC-0100 Amendment 1's
+            // `[image]` rule: a field is a `DerivedEntityKnobs` fact, never a
+            // reduction a consumer would redo over rows). On a shared runtime
+            // the inventory is D12's fold, so no per-field reduction exists.
+            //
+            // NOT on the standalone-leaf DECLARATION road. No `NROS_DECLARED_*`
+            // carrier ever delivered these there (`nros ws entity-facts --leaf`
+            // carries the queryable inputs only), so the builtins sized those
+            // images, and a declaration that was checked against its runtime
+            // for its QUERYABLES alone (issue 1378) would SHRINK every table
+            // it does not mention. The rule this issue made: `[image]` takes
+            // over a fact a carrier already DELIVERS; it never introduces one.
+            if inputs
+                .horizon
+                .as_ref()
+                .is_some_and(ModelHorizon::is_leaf_declaration)
+            {
+                for field in IMAGE_KNOB_FIELDS {
+                    img.refuse(
+                        field,
+                        "a standalone leaf's declaration never sized this on its road (no \
+                         carrier reaches it, so the builtin does), and stating it here would \
+                         shrink a table from a declaration checked only for its queryables \
+                         (issue 1378) -- issue 1655: `[image]` takes over a delivered fact, \
+                         never introduces one",
+                    );
+                }
+            } else {
+                img.set_callback_slots(Some(k.max_cbs))
+                    .set_action_client_slots(Some(k.heavy_slots))
+                    .set_publisher_count(Some(k.max_publishers))
+                    .set_sched_context_count(Some(k.max_sc))
+                    .set_cell_entities(Some(k.max_cell_entities));
+                match (k.max_monitors, k.max_age_monitors) {
+                    (Some(m), Some(a)) => {
+                        img.set_monitor_rows(Some(m)).set_age_monitor_rows(Some(a));
+                    }
+                    _ => {
+                        let why = "the contract-monitor rows are counted from a contract model, \
+                                   and this inventory has none whose monitor tables could be \
+                                   counted (no model, or a contracted endpoint no topic owns)";
+                        img.refuse("monitor_rows", why)
+                            .refuse("age_monitor_rows", why);
+                    }
+                }
+            }
             // Issue 1577 — the per-kind counts the executor arena's model sums,
             // from the SAME `per_kind` the cmake road emits as
             // `NROS_ENTITY_COUNT_*`. `derive` seeds every kind at zero, so a
@@ -1277,7 +1333,11 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
         Some(Derivation::Refused { reason }) => {
             img.refuse("node_count", reason.clone())
                 .refuse("subscriber_count", reason.clone());
-            for (field, _) in ENTITY_COUNT_FIELDS {
+            for field in ENTITY_COUNT_FIELDS
+                .iter()
+                .map(|(f, _)| *f)
+                .chain(IMAGE_KNOB_FIELDS)
+            {
                 img.refuse(field, reason.clone());
             }
         }
@@ -1286,13 +1346,29 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
                        node, subscriber and entity counts are not known -- absence is not zero";
             img.refuse("node_count", why)
                 .refuse("subscriber_count", why);
-            for (field, _) in ENTITY_COUNT_FIELDS {
+            for field in ENTITY_COUNT_FIELDS
+                .iter()
+                .map(|(f, _)| *f)
+                .chain(IMAGE_KNOB_FIELDS)
+            {
                 img.refuse(field, why);
             }
         }
     }
     img
 }
+
+/// Issue 1655 — the `[image]` fields stated from `DerivedEntityKnobs`, refused
+/// together with the derivation.
+const IMAGE_KNOB_FIELDS: [&str; 7] = [
+    "callback_slots",
+    "action_client_slots",
+    "publisher_count",
+    "sched_context_count",
+    "monitor_rows",
+    "age_monitor_rows",
+    "cell_entities",
+];
 
 /// `[image] *_entities` ↔ the entity kind each counts — issue 1577. The seven
 /// kinds `nros-node`'s arena model sums (issue 0810 added service clients and
@@ -2472,6 +2548,36 @@ pub fn to_cmake(desc: &SizingDescriptor) -> String {
         "NROS_SIZING_IMAGE_NODE_COUNT",
         &desc.image.node_count(),
     );
+    // Issue 1655 -- the image-wide derived counts.
+    for (var, f) in [
+        (
+            "NROS_SIZING_IMAGE_CALLBACK_SLOTS",
+            desc.image.callback_slots(),
+        ),
+        (
+            "NROS_SIZING_IMAGE_ACTION_CLIENT_SLOTS",
+            desc.image.action_client_slots(),
+        ),
+        (
+            "NROS_SIZING_IMAGE_PUBLISHER_COUNT",
+            desc.image.publisher_count(),
+        ),
+        (
+            "NROS_SIZING_IMAGE_SCHED_CONTEXT_COUNT",
+            desc.image.sched_context_count(),
+        ),
+        ("NROS_SIZING_IMAGE_MONITOR_ROWS", desc.image.monitor_rows()),
+        (
+            "NROS_SIZING_IMAGE_AGE_MONITOR_ROWS",
+            desc.image.age_monitor_rows(),
+        ),
+        (
+            "NROS_SIZING_IMAGE_CELL_ENTITIES",
+            desc.image.cell_entities(),
+        ),
+    ] {
+        emit_cmake_fact(&mut out, var, &f);
+    }
     emit_cmake_fact(
         &mut out,
         "NROS_SIZING_IMAGE_BACKEND_COUNT",
@@ -4634,5 +4740,52 @@ mod tests {
                 .contains("std_msgs/nros_message_bounds.json"),
             "{f:?}"
         );
+    }
+
+    // ---- issue 1655 — the image-wide derived counts -------------------
+
+    /// Each new `[image]` field is the `derive` fact the carrier of the same
+    /// name delivers — never a second count over rows.
+    #[test]
+    fn the_image_wide_counts_are_the_derivation_the_carriers_deliver() {
+        let mut timer = EntityDecl::bare(EntityKind::Timer, None, None);
+        timer.name = Some("tick".into());
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(1)), timer]);
+        let crate::entity_inventory::Derivation::Derived(k) = inv.derive() else {
+            panic!("a fully declared inventory derives");
+        };
+        let desc = build(&model_only(&inv));
+        let img = &desc.image;
+        assert_eq!(img.callback_slots().stated(), Some(&k.max_cbs));
+        assert_eq!(img.action_client_slots().stated(), Some(&k.heavy_slots));
+        assert_eq!(img.publisher_count().stated(), Some(&k.max_publishers));
+        assert_eq!(img.sched_context_count().stated(), Some(&k.max_sc));
+        assert_eq!(img.cell_entities().stated(), Some(&k.max_cell_entities));
+        // The timer has no row, and still counts: the reason it is a field.
+        assert_eq!(desc.endpoints.len(), 1);
+        assert_eq!(k.max_cbs, 2, "a subscription and a timer each take a slot");
+    }
+
+    /// The standalone-leaf DECLARATION road REFUSES them: no carrier ever
+    /// delivered them there, so stating them would shrink builtin-sized tables
+    /// from a declaration checked only for its queryables (issue 1378).
+    #[test]
+    fn the_leaf_declaration_road_does_not_introduce_image_counts() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(1))]);
+        let mut inputs = model_only(&inv);
+        inputs.horizon = Some(ModelHorizon::for_leaf_declaration(
+            "a standalone cmake leaf",
+        ));
+        let desc = build(&inputs);
+        for f in [
+            desc.image.callback_slots(),
+            desc.image.publisher_count(),
+            desc.image.sched_context_count(),
+            desc.image.cell_entities(),
+        ] {
+            assert!(f.refusal().unwrap().contains("1655"), "{f:?}");
+        }
+        // ...while the counts that road already stated stay stated.
+        assert!(desc.image.node_count().is_stated());
     }
 }

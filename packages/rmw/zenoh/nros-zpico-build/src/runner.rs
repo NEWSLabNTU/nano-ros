@@ -1057,13 +1057,21 @@ fn shim_config_from_env() -> ShimConfig {
         // 1033). The derivation publishes DEMAND; the floor belongs to the
         // consumer that names the knob, and on this road that is here. A named
         // `ZPICO_MAX_*` still outranks both.
+        //
+        // Issue 1655 -- the descriptor's `[image] publisher_count` /
+        // `subscriber_count` rank above the carriers: the same `derive`, on
+        // every road that names a descriptor. Floored the same way.
         max_publishers: env_usize(
             "ZPICO_MAX_PUBLISHERS",
-            declared_floored("NROS_DECLARED_MAX_PUBLISHERS").unwrap_or(8),
+            described_floored(nros_sizing_descriptor::Image::publisher_count)
+                .or_else(|| declared_floored("NROS_DECLARED_MAX_PUBLISHERS"))
+                .unwrap_or(8),
         ),
         max_subscribers: env_usize(
             "ZPICO_MAX_SUBSCRIBERS",
-            declared_floored("NROS_DECLARED_MAX_SUBSCRIBERS").unwrap_or(8),
+            described_floored(nros_sizing_descriptor::Image::subscriber_count)
+                .or_else(|| declared_floored("NROS_DECLARED_MAX_SUBSCRIBERS"))
+                .unwrap_or(8),
         ),
         max_queryables,
         queryable_table_declared: sizing.declared,
@@ -1152,6 +1160,17 @@ fn kconfig_fallback_str(name: &str) -> Option<String> {
 /// road (`leaf_entity_env.rs`), stated rather than shared because the two roads
 /// floor at different boundaries: the sidecar writes the knob name itself and
 /// must floor before writing, while this one is handed a demand to interpret.
+/// Issue 1655 -- a STATED `[image]` count off the descriptor this build was
+/// named, floored at 1 like [`declared_floored`] (the C arrays these size
+/// `#error` at zero, issue 1015). `None` when no descriptor is named or the fact
+/// is not stated, so the carrier decides.
+fn described_floored(
+    fact: fn(&nros_sizing_descriptor::Image) -> nros_sizing_descriptor::Fact<usize>,
+) -> Option<usize> {
+    let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"))?;
+    fact(&desc.image).stated().map(|v| (*v).max(1))
+}
+
 fn declared_floored(name: &str) -> Option<usize> {
     println!("cargo:rerun-if-env-changed={name}");
     env::var(name)

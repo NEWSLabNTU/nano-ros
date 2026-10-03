@@ -442,7 +442,16 @@ fn main() {
     // --- Primary user-facing knobs ---
     // issue 1199 — the executor callback budget cmake derived for this image,
     // on the DECLARED road. Mirrors `DERIVED_ENV_KEYS` on the cargo-leaf road.
-    let max_cbs = env_usize_declared("NROS_EXECUTOR_MAX_CBS", "NROS_DECLARED_EXECUTOR_MAX_CBS", 4);
+    let max_cbs = env_usize_declared_or(
+        "NROS_EXECUTOR_MAX_CBS",
+        "NROS_DECLARED_EXECUTOR_MAX_CBS",
+        described_image_count(
+            sizing.as_ref(),
+            "callback_slots",
+            nros_sizing_descriptor::Image::callback_slots,
+        ),
+        4,
+    );
     // issue 1198 -- scheduling-context slots. Slot 0 is the reserved default
     // Fifo context; the schedule creates the rest, and the image's own
     // inventory derives how many (1 + the larger of its authored tier count and
@@ -450,7 +459,16 @@ fn main() {
     // it was every image's answer until phase-448 W6. Too small is a
     // `NodeError::NoSchedContextSlot` at `create_sched_context`, which names
     // this knob, not a link error.
-    let max_sc = env_usize_declared("NROS_EXECUTOR_MAX_SC", "NROS_DECLARED_EXECUTOR_MAX_SC", 8);
+    let max_sc = env_usize_declared_or(
+        "NROS_EXECUTOR_MAX_SC",
+        "NROS_DECLARED_EXECUTOR_MAX_SC",
+        described_image_count(
+            sizing.as_ref(),
+            "sched_context_count",
+            nros_sizing_descriptor::Image::sched_context_count,
+        ),
+        8,
+    );
     // phase-467 W1 / issue 1471 -- the contract-monitor tables, TWO knobs
     // because they are two tables: rate/latency rows (one per contracted
     // publisher, `monitor_rows`) and age rows (one per contracted subscriber,
@@ -461,14 +479,24 @@ fn main() {
     // Too small is a REFUSAL at install that names the knob
     // (`monitor::MonitorTableFull`, and a compile-time assert in the generated
     // Rust entry), never a truncation: the spin loop inspects only the first N.
-    let max_monitors = env_usize_declared(
+    let max_monitors = env_usize_declared_or(
         "NROS_EXECUTOR_MAX_MONITORS",
         "NROS_DECLARED_EXECUTOR_MAX_MONITORS",
+        described_image_count(
+            sizing.as_ref(),
+            "monitor_rows",
+            nros_sizing_descriptor::Image::monitor_rows,
+        ),
         8,
     );
-    let max_age_monitors = env_usize_declared(
+    let max_age_monitors = env_usize_declared_or(
         "NROS_EXECUTOR_MAX_AGE_MONITORS",
         "NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS",
+        described_image_count(
+            sizing.as_ref(),
+            "age_monitor_rows",
+            nros_sizing_descriptor::Image::age_monitor_rows,
+        ),
         8,
     );
     // Phase 214.C.3 — default coordinated with
@@ -591,9 +619,14 @@ fn main() {
     // Measured (issue 1198): 1,224 B a slot on thumbv7m-none-eabi, because it
     // multiplies SEVEN tables, so a single-node talker was paying 3,672 B for
     // three node slots it can never fill.
-    let max_nodes = env_usize_declared(
+    let max_nodes = env_usize_declared_or(
         "NROS_EXECUTOR_MAX_NODES",
         "NROS_DECLARED_EXECUTOR_MAX_NODES",
+        described_image_count(
+            sizing.as_ref(),
+            "node_count",
+            nros_sizing_descriptor::Image::node_count,
+        ),
         4,
     );
     // issue 0790 — shutdown-hook slots, PER PHASE: the executor keeps one table
@@ -633,9 +666,14 @@ fn main() {
     // issue 1199 — same road. Zero is the point here rather than a hazard: a
     // pub/sub-only image takes 74,240 bytes of arena down to 16,384, and the
     // `.min(max_cbs)` ceiling below is unchanged.
-    let action_clients = env_usize_declared(
+    let action_clients = env_usize_declared_or(
         "NROS_EXECUTOR_ACTION_CLIENTS",
         "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS",
+        described_image_count(
+            sizing.as_ref(),
+            "action_client_slots",
+            nros_sizing_descriptor::Image::action_client_slots,
+        ),
         max_cbs,
     )
     .min(max_cbs);
@@ -1599,6 +1637,27 @@ fn described_closure_bound(
         );
     }
     fact.stated().copied()
+}
+
+/// Issue 1655 — an `[image]` count off the descriptor, for the rung
+/// [`env_usize_declared_or`] puts between the stated rungs and the carrier.
+///
+/// `Some` only for a STATED fact; a refusal is printed and answers `None`, so
+/// the `NROS_DECLARED_*` carrier (the same `derive`, delivered by cmake) and
+/// then the builtin decide.
+fn described_image_count(
+    desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
+    field: &str,
+    fact: fn(&nros_sizing_descriptor::Image) -> nros_sizing_descriptor::Fact<usize>,
+) -> Option<usize> {
+    let f = fact(&desc?.image);
+    if let Some(why) = f.refusal() {
+        println!(
+            "cargo::warning=nros-node: the sizing descriptor refuses `[image] {field}`: {why}; \
+             the declared carrier (or the builtin) decides it instead"
+        );
+    }
+    f.stated().copied()
 }
 
 /// [`env_usize_declared`] with a DESCRIPTOR rung between the stated rungs and

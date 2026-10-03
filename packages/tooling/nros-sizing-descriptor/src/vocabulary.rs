@@ -102,7 +102,11 @@ vocabulary! {
     /// worked."* So the basis is STATED beside the rows and a consumer that
     /// wanted one and got the other refuses rather than reading on.
     Basis {
-        /// The rows describe what this image's contract says it creates.
+        /// The rows describe THIS IMAGE's own endpoint set — what its contract
+        /// says it creates, or what its probe observed it creating — and not
+        /// the link closure. A cargo leaf with no contract writes this basis
+        /// from its probe; `undeclared_endpoints` then says how many rows
+        /// carry no QoS (RFC-0100 ruling of 2026-10-03, issue 1655).
         Contract => "contract",
         /// The rows describe the whole link closure — every type reachable,
         /// not the subscribed set. The worst case, and honest about it.

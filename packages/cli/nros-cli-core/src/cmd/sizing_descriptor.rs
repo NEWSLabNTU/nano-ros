@@ -705,6 +705,14 @@ fn summary(desc: &nros_sizing_descriptor::SizingDescriptor) -> String {
             "guard_condition_entities",
             desc.image.guard_condition_entities(),
         ),
+        // Issue 1655 — the image-wide derived counts.
+        ("callback_slots", desc.image.callback_slots()),
+        ("action_client_slots", desc.image.action_client_slots()),
+        ("publisher_count", desc.image.publisher_count()),
+        ("sched_context_count", desc.image.sched_context_count()),
+        ("monitor_rows", desc.image.monitor_rows()),
+        ("age_monitor_rows", desc.image.age_monitor_rows()),
+        ("cell_entities", desc.image.cell_entities()),
     ] {
         let _ = writeln!(s, "    {name:<23} {f}");
     }
