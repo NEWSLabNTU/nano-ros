@@ -1905,6 +1905,11 @@ pub struct Executor<'s> {
     /// reasoning issue 0563 used for `remap_table`: the capability is unchanged,
     /// so it needs no new `ExecutorSizing` knob).
     pub(crate) monitor_violations: super::storage::CarvedVec<'s, super::monitor::Violation>,
+    /// Issue 1635 — where `spin_once` hands the ring when the image asked for
+    /// it. `None` (the default) leaves the ring for `drain_violations`, which
+    /// is every fixture that reports by hand. The context is a `usize` so the
+    /// executor keeps its auto traits; it is the installer's pointer.
+    pub(crate) violation_sink: Option<(super::monitor::ViolationSink, usize)>,
     /// Issue 0790 — hooks that run BEFORE the session is closed, while every
     /// entity still works. The load-bearing half: a device releasing a bus or
     /// parking an actuator has to publish its final state / answer its last
@@ -2105,6 +2110,7 @@ impl<'s> Executor<'s> {
             total_wakes: 0,
             report_violations: true,
             monitor_violations,
+            violation_sink: None,
             alive_slots,
             // Issue 0790 — both phase tables start empty. An image that
             // registers nothing pays these `None`s and a two-slot scan at
@@ -3305,6 +3311,43 @@ impl<'s> Executor<'s> {
     pub fn drain_violations(&mut self, mut f: impl FnMut(&super::monitor::Violation)) {
         for v in self.monitor_violations.iter() {
             f(v);
+        }
+        self.monitor_violations.clear();
+    }
+
+    /// Issue 1635 — have `spin_once` drain the violation ring into `sink`
+    /// itself, once per spin, between dispatches.
+    ///
+    /// Before this nothing in a generated image drained the ring: the
+    /// detection-time log line (issue 0514's floor) was the only output, and
+    /// `/diagnostics` stayed silent on every C and C++ road. A drain point the
+    /// RUNTIME owns reaches every road at once — every board's spin loop goes
+    /// through `spin_once` — where one per entry template would have to be
+    /// rebuilt for each board runner. `None` removes the sink.
+    ///
+    /// # Safety
+    /// `ctx` must stay valid for every call of the sink until it is replaced
+    /// or this executor is dropped (see [`super::monitor::ViolationSink`]).
+    pub unsafe fn set_violation_sink(
+        &mut self,
+        sink: Option<(super::monitor::ViolationSink, *mut core::ffi::c_void)>,
+    ) {
+        self.violation_sink = sink.map(|(f, ctx)| (f, ctx as usize));
+    }
+
+    /// Issue 1635 — hand the ring to the installed sink and clear it. A single
+    /// branch when no sink is installed or nothing is pending.
+    fn flush_violations_to_sink(&mut self) {
+        let Some((sink, ctx)) = self.violation_sink else {
+            return;
+        };
+        if self.monitor_violations.is_empty() {
+            return;
+        }
+        for v in self.monitor_violations.iter() {
+            // SAFETY: `set_violation_sink`'s contract — `ctx` is valid for
+            // every call until the sink is replaced or the executor dropped.
+            unsafe { sink(ctx as *mut core::ffi::c_void, v) };
         }
         self.monitor_violations.clear();
     }
@@ -8530,6 +8573,10 @@ impl<'s> Executor<'s> {
         // RFC-0052 W3b.4 — contract monitors tick once per spin (window
         // logic inside; single branch when the baked table is empty).
         self.run_contract_monitors();
+        // Issue 1635 — and the image's reporter (if it installed one) gets
+        // everything pending: this tick's rule verdicts and whatever the
+        // previous dispatch recorded (deadline misses, overruns).
+        self.flush_violations_to_sink();
 
         // Phase 104.C.6 — shared executor wake. Swap-and-clear the
         // wake flag; if it was set before this `spin_once` entered,

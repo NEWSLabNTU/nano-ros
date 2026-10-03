@@ -313,6 +313,21 @@ pub struct Violation {
     pub declared: u32,
 }
 
+/// Issue 1635 — where an executor hands its drained violations when the image
+/// asked it to (`Executor::set_violation_sink`).
+///
+/// A function and an opaque context rather than a closure, because the
+/// executor is not generic and the reporter it reaches lives in a crate above
+/// this one (`nros-cpp` publishes on `/diagnostics` through
+/// `nros-diagnostics`). Called from `spin_once`, between dispatches, never from
+/// inside a callback — so the sink may publish.
+///
+/// # Safety
+/// The sink is called with the `ctx` it was installed with; whoever installs it
+/// guarantees `ctx` is valid for every call until the sink is replaced or the
+/// executor is dropped.
+pub type ViolationSink = unsafe fn(ctx: *mut core::ffi::c_void, v: &Violation);
+
 /// Per-spec accounting state (parallel to the spec table).
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct MonitorState {

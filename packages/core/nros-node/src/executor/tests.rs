@@ -11527,3 +11527,53 @@ fn retargeting_a_raw_action_client_moves_its_context() {
     );
     let _ = new_home;
 }
+
+/// Issue 1635 — with a sink installed, `spin_once` itself drains the ring into
+/// it: an image whose entry never calls `drain_violations` still reports.
+/// Without one (every test above), the ring is left for `drain_violations`.
+#[cfg(feature = "alloc")]
+#[test]
+#[cfg(feature = "std")]
+fn an_installed_violation_sink_is_drained_by_spin_once() {
+    static SEEN: std::sync::Mutex<alloc::vec::Vec<(&'static str, u32)>> =
+        std::sync::Mutex::new(alloc::vec::Vec::new());
+    unsafe fn sink(ctx: *mut core::ffi::c_void, v: &super::monitor::Violation) {
+        assert_eq!(
+            ctx as usize, 0x1635,
+            "the sink gets the context it was installed with"
+        );
+        SEEN.lock().unwrap().push((v.rule, v.measured));
+    }
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let id = executor
+        .register_timer(TimerDuration::from_millis(10), || {})
+        .unwrap();
+    unsafe { executor.set_violation_sink(Some((sink, 0x1635usize as *mut core::ffi::c_void))) };
+
+    // A stall worth ~12 periods, then one ordinary spin: the overrun verdict
+    // recorded by the first reaches the sink on the second at the latest.
+    let _ = elapse_then_spin_once(&mut executor, 120);
+    let _ = elapse_then_spin_once(&mut executor, 10);
+    let overruns = executor.timer_overruns(id).unwrap();
+    let seen = SEEN.lock().unwrap().clone();
+    assert!(
+        seen.iter()
+            .any(|&(r, m)| r == "timer-overrun-runtime" && m == overruns),
+        "the sink received the overrun verdict: {seen:?}"
+    );
+    let mut left = alloc::vec::Vec::new();
+    executor.drain_violations(|v| left.push(v.rule));
+    assert!(left.is_empty(), "the sink drained the ring: {left:?}");
+
+    // Removing the sink hands the ring back to `drain_violations`.
+    unsafe { executor.set_violation_sink(None) };
+    let _ = elapse_then_spin_once(&mut executor, 120);
+    let _ = elapse_then_spin_once(&mut executor, 10);
+    let mut kept = alloc::vec::Vec::new();
+    executor.drain_violations(|v| kept.push(v.rule));
+    assert!(
+        kept.contains(&"timer-overrun-runtime"),
+        "with no sink the ring keeps the verdict: {kept:?}"
+    );
+}
