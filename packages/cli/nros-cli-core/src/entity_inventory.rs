@@ -487,6 +487,40 @@ pub struct EntityDecl {
     /// other one: an endpoint credited with in-place dispatch is priced at no
     /// receive region at all.
     pub in_place_capable: Option<bool>,
+    /// Issue 1648 -- which BUFFERED registration row this subscription's
+    /// registration claimed, as the metadata probe OBSERVED it (sidecar schema
+    /// v4, `buffered`).
+    ///
+    /// The buffered counterpart of [`Self::in_place_capable`], set by the same
+    /// observation and `None` under the same rule: NOBODY OBSERVED IT, which is
+    /// a refusal and never a default. It is what lets a reader of the row stop
+    /// inferring the buffered row from the component's LANGUAGE, which issue
+    /// 1319's table shows is a proxy (a C/C++ site with no hint takes `RX_BUF`
+    /// exactly like a Rust generic one).
+    pub observed_buffered_row: Option<ObservedBufferedRow>,
+}
+
+/// Issue 1648 -- the buffered registration row a probe observed: the receive
+/// slot is a bound the call site stated (`typed_bound`), or the closure buffer
+/// `RX_BUF` (`unbounded`). Spelled as the sizing descriptor spells the same two
+/// rows, so a reader maps one onto the other without a second vocabulary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ObservedBufferedRow {
+    TypedBound,
+    Unbounded,
+}
+
+impl ObservedBufferedRow {
+    /// Parse the sidecar spelling. An unknown spelling is `None` -- an
+    /// observation this reader cannot read is no observation, and `None` is
+    /// the refusal every consumer already honours.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "typed_bound" => Some(Self::TypedBound),
+            "unbounded" => Some(Self::Unbounded),
+            _ => None,
+        }
+    }
 }
 
 impl EntityDecl {
@@ -533,6 +567,8 @@ impl EntityDecl {
             // phase-457 W3 -- "nobody observed this". Only the probe road sets
             // it, and only for a subscription.
             in_place_capable: None,
+            // Issue 1648 -- same rule, same producer.
+            observed_buffered_row: None,
         }
     }
 

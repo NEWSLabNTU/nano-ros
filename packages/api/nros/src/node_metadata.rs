@@ -44,9 +44,43 @@ use alloc::{format, string::String as StdString, vec::Vec as StdVec};
 ///   behind, and a consumer that read it as `false` would state a registration
 ///   path nobody observed.
 ///
+/// Version 4 (issue 1648) is additive again:
+///
+/// * a `subscribers[]` row may carry `buffered` -- `"typed_bound"` or
+///   `"unbounded"`, the BUFFERED row that registration claimed
+///   ([`EntityMetadata::buffered_row`]): whether its receive slot is a bound
+///   the call site stated or the closure buffer (`RX_BUF`). Written beside
+///   `in_place` by the same observation, and absent exactly when it is.
+///
 /// Serialised in exactly one place (this module), as phase-308's layer rule
 /// requires: the adapters that feed the recorder contain no JSON.
-pub const SOURCE_METADATA_SCHEMA_VERSION: u32 = 3;
+pub const SOURCE_METADATA_SCHEMA_VERSION: u32 = 4;
+
+/// Issue 1648 -- the BUFFERED registration row a subscription claimed, as the
+/// registration funnel observed it.
+///
+/// The two buffered rows of the sizing descriptor's `registration_path`
+/// (the third, `in_place`, is [`EntityMetadata::in_place_capable`]'s).
+/// Observed, never inferred from the entry's language: issue 1319's table has
+/// a C/C++ registration with no type hint that takes the closure buffer exactly
+/// like a Rust generic one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BufferedRow {
+    /// The receive slot is a bound the call site stated (its type's).
+    TypedBound,
+    /// The receive slot is the closure buffer, `RX_BUF`.
+    Unbounded,
+}
+
+impl BufferedRow {
+    /// The schema spelling, which is also the sizing descriptor's.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::TypedBound => "typed_bound",
+            Self::Unbounded => "unbounded",
+        }
+    }
+}
 
 /// Maximum nodes recorded by the built-in metadata recorder.
 pub const DEFAULT_MAX_METADATA_NODES: usize = 8;
@@ -461,6 +495,10 @@ pub struct EntityMetadata {
     /// against a recording `NodeContext` and opens no executor — and of every
     /// non-subscription row, which claims no receive slot at all.
     pub in_place_capable: Option<bool>,
+    /// Issue 1648 -- the BUFFERED row the registration claimed. Set by the
+    /// same observation as [`Self::in_place_capable`], so the two are present
+    /// together or not at all; `None` is "nobody observed this".
+    pub buffered_row: Option<BufferedRow>,
     pub source: SourceLocationMetadata,
 }
 
@@ -689,6 +727,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         source_name: &str,
         type_name: &str,
         in_place_capable: bool,
+        buffered_row: BufferedRow,
     ) -> bool {
         for entity in self.entities.iter_mut() {
             if entity.kind == EntityKind::Subscription
@@ -697,6 +736,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                 && entity.type_name == type_name
             {
                 entity.in_place_capable = Some(in_place_capable);
+                entity.buffered_row = Some(buffered_row);
                 return true;
             }
         }
@@ -1293,6 +1333,7 @@ pub fn entity_metadata(spec: EntityMetadataSpec<'_>) -> Result<EntityMetadata, N
         // phase-457 W3 -- "nobody observed this". Set later, and only for a
         // subscription, by `metadata_mode::record_subscription_registration`.
         in_place_capable: None,
+        buffered_row: None,
         source: SourceLocationMetadata::empty(),
     })
 }
@@ -1353,6 +1394,11 @@ fn write_subscriber_json(
     // as a refusal rather than as `false` (see `in_place_capable`).
     if let Some(in_place) = entity.in_place_capable {
         write!(out, ",\"in_place\":{in_place}")?;
+    }
+    // Issue 1648 (schema v4) -- the buffered row the same registration
+    // claimed; absent exactly when `in_place` is.
+    if let Some(row) = entity.buffered_row {
+        write!(out, ",\"buffered\":\"{}\"", row.as_str())?;
     }
     write!(out, "}}")
 }

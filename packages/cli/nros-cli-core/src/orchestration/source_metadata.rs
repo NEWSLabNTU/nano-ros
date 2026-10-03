@@ -114,6 +114,12 @@ pub struct SourceSubscriber {
     /// `nros build` of `examples/native/rust/listener`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub in_place: Option<bool>,
+    /// Issue 1648 (schema v4) -- the BUFFERED row the same registration
+    /// claimed. Declared here for the `deny_unknown_fields` reason `in_place`
+    /// is (issue 0518): a key the emitter writes and this struct does not name
+    /// makes every source-metadata parse fail outright.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub buffered: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

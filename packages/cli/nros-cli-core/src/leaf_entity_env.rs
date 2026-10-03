@@ -129,6 +129,11 @@ struct ProbeEntity {
     /// buffering shape.
     #[serde(default)]
     in_place: Option<bool>,
+    /// Issue 1648 (sidecar schema v4) -- the BUFFERED row the same
+    /// registration claimed (`typed_bound` / `unbounded`). Absent under the
+    /// same rule as `in_place`: nobody observed it.
+    #[serde(default)]
+    buffered: Option<String>,
 }
 
 impl ProbeEntity {
@@ -213,9 +218,15 @@ pub fn declaration_from_probe(doc_json: &str) -> Result<(String, String, Declara
                 // differently, and two components of one image can differ
                 // (issue 1340).
                 let in_place_capable = ent.in_place;
+                // Issue 1648 -- and which buffered row it claimed.
+                let observed_buffered_row = ent
+                    .buffered
+                    .as_deref()
+                    .and_then(crate::entity_inventory::ObservedBufferedRow::parse);
                 decls.push(EntityDecl {
                     source_topic,
                     in_place_capable,
+                    observed_buffered_row,
                     ..EntityDecl::bare(
                         *kind,
                         ent.interface.as_ref().and_then(qualified_type),
@@ -1054,6 +1065,42 @@ mod tests {
         assert_eq!(ents[0].type_name.as_deref(), Some("std_msgs/msg/String"));
         assert_eq!(ents[0].name.as_deref(), Some("/chatter"));
         assert_eq!(ents[1].kind, EntityKind::Timer);
+    }
+
+    /// Issue 1648 -- a sidecar row carrying the registration observation
+    /// lands BOTH halves on its decl: `in_place` and the buffered row the same
+    /// registration claimed. A row with neither carries neither.
+    #[test]
+    fn an_observed_subscription_carries_its_buffered_row() {
+        let doc = r#"{
+          "version": 4, "package": "p", "component": "c",
+          "nodes": [{ "id": "n",
+            "subscribers": [
+              {"id": "on_a", "unresolved_topic": {"value": "/a", "kind": "absolute"},
+               "interface": {"package": "std_msgs", "name": "msg/String", "kind": "message"},
+               "in_place": false, "buffered": "unbounded"},
+              {"id": "on_b", "unresolved_topic": {"value": "/b", "kind": "absolute"},
+               "interface": {"package": "std_msgs", "name": "msg/String", "kind": "message"},
+               "in_place": false, "buffered": "typed_bound"},
+              {"id": "on_c", "unresolved_topic": {"value": "/c", "kind": "absolute"},
+               "interface": {"package": "std_msgs", "name": "msg/String", "kind": "message"}}
+            ] }]
+        }"#;
+        let (_, _, d) = declaration_from_probe(doc).unwrap();
+        let rows: Vec<_> = d
+            .entities()
+            .iter()
+            .map(|e| (e.in_place_capable, e.observed_buffered_row))
+            .collect();
+        use crate::entity_inventory::ObservedBufferedRow::*;
+        assert_eq!(
+            rows,
+            vec![
+                (Some(false), Some(Unbounded)),
+                (Some(false), Some(TypedBound)),
+                (None, None)
+            ]
+        );
     }
 
     // ---- phase-445 W1: the facts on the cargo-leaf road -------------------

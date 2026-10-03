@@ -79,6 +79,19 @@ pub struct ObservedRegistration<'a> {
     /// is an implementation detail of this crate, and the FACT is what crosses).
     /// NOT conjoined with the backend's answer — see the module docs.
     pub in_place_capable: bool,
+    /// Issue 1648 -- did this registration claim the CLOSURE buffer (`RX_BUF`)
+    /// for its receive slot, rather than a bound it stated?
+    ///
+    /// The buffered half of the registration path, observed the way
+    /// [`Self::in_place_capable`] is: the funnel holds the slot size it is
+    /// about to claim (`SubscriptionRequest::slot_bytes`), so it knows which
+    /// buffered row it took -- `unbounded` (the closure buffer; a Rust generic
+    /// or a type-erased registration, a C/C++ site that stated no hint) or
+    /// `typed_bound` (a size the call site derived from its type). The
+    /// sizing descriptor used to infer this from the entry's LANGUAGE, which
+    /// issue 1319's table shows is a proxy: a C/C++ site with no hint takes
+    /// `RX_BUF` exactly like the Rust generic one.
+    pub claims_closure_buffer: bool,
 }
 
 /// A sink a metadata probe installs to hear every subscription registration.
@@ -131,6 +144,7 @@ mod tests {
             topic: "/chatter",
             type_name: "std_msgs/msg/String",
             in_place_capable: true,
+            claims_closure_buffer: false,
         });
     }
 }
