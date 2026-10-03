@@ -92,7 +92,7 @@ cut the tail if it grew too long. Per backend:
 backends' C code is the same TUs the host lanes compile, but no RTOS image
 printed the new line. The Rust arena's drop log (`nros-node` `arena.rs`, issue
 0757) and the service `take_request`/`take_response` paths still do not name
-the size: filed as [issue 1632](../1632-arena-drop-log-and-service-takes-do-not-name-the-refused-size.md).
+the size: filed as [issue 1632](1632-arena-drop-log-and-service-takes-do-not-name-the-refused-size.md).
 The topic is still not on the line (unchanged).
 
 Sweep:
