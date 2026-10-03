@@ -1044,6 +1044,10 @@ producer of the bound tables,
 [issue 1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md)'s
 direction — closes both at once. Acceptance for either includes the
 descriptor's bytes, not only the binary's.
+*(Issue 1647 resolved the same day: the generator runs codegen at CONFIGURE
+time when a fragment is missing or stale, and the JSON table is written beside
+the fragment by the same command, so the first configure already registers
+tables that exist.)*
 
 ### The census is the evidence, and it is per MODEL
 
