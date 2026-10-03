@@ -54,6 +54,19 @@ static EVENT_CALLBACK_HITS: AtomicU32 = AtomicU32::new(0);
 static REFUSE_NEXT_TAKE_WITH: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 static LAST_REFUSED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// Issue 1632 — the same, for the service server's `take_request` and the
+/// client's `take_response`. Only the service-slot cell sets them.
+static REFUSE_NEXT_REQUEST_WITH: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static REFUSE_NEXT_REPLY_WITH: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static LAST_REFUSED_REQUEST: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static LAST_REFUSED_REPLY: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+fn known(n: usize) -> Option<usize> {
+    (n != 0).then_some(n)
+}
 
 fn reset() {
     for c in [
@@ -381,6 +394,11 @@ impl ServiceTrait for NoopServer {
         buf: &'a mut [u8],
     ) -> Result<Option<ServiceRequest<'a>>, Self::Error> {
         TRY_RECV_REQUEST_HITS.fetch_add(1, Ordering::SeqCst);
+        let refuse = REFUSE_NEXT_REQUEST_WITH.swap(0, Ordering::SeqCst);
+        if refuse != 0 {
+            LAST_REFUSED_REQUEST.store(refuse, Ordering::SeqCst);
+            return Err(TransportError::BufferTooSmall);
+        }
         // Synthetic request: 4 bytes of payload at offset 0, seq=42.
         let payload = [0xde, 0xad, 0xbe, 0xef];
         let n = payload.len().min(buf.len());
@@ -389,6 +407,9 @@ impl ServiceTrait for NoopServer {
             sequence_number: 42,
             data: &buf[..n],
         }))
+    }
+    fn refused_request_len(&self) -> Option<usize> {
+        known(LAST_REFUSED_REQUEST.load(Ordering::SeqCst))
     }
     fn send_response(&mut self, _sequence_number: i64, _data: &[u8]) -> Result<(), Self::Error> {
         SEND_REPLY_HITS.fetch_add(1, Ordering::SeqCst);
@@ -405,7 +426,15 @@ impl ClientTrait for NoopClient {
     }
     fn take_response_raw(&mut self, _buf: &mut [u8]) -> Result<Option<(usize, i64)>, Self::Error> {
         TRY_RECV_REPLY_HITS.fetch_add(1, Ordering::SeqCst);
+        let refuse = REFUSE_NEXT_REPLY_WITH.swap(0, Ordering::SeqCst);
+        if refuse != 0 {
+            LAST_REFUSED_REPLY.store(refuse, Ordering::SeqCst);
+            return Err(TransportError::BufferTooSmall);
+        }
         Ok(None)
+    }
+    fn refused_response_len(&self) -> Option<usize> {
+        known(LAST_REFUSED_REPLY.load(Ordering::SeqCst))
     }
 }
 
@@ -904,6 +933,28 @@ fn rust_backend_adapter_routes_events_and_services() {
         NROS_RMW_RET_OK
     );
     assert_eq!(SEND_REPLY_HITS.load(Ordering::SeqCst), 1);
+
+    // Issue 1632 — a refused REQUEST crosses the C ABI with its size, as a
+    // refused sample does (1612).
+    REFUSE_NEXT_REQUEST_WITH.store(900, Ordering::SeqCst);
+    let mut refused_req = nros_rmw_cffi::generated::rmw_mut_byte_span_t {
+        data: rbuf.as_mut_ptr(),
+        capacity: rbuf.len(),
+        len: nros_rmw_cffi::generated::NROS_RMW_TAKE_LEN_UNKNOWN as usize,
+    };
+    let rc = unsafe {
+        (vt.take_request.expect("vtable slot"))(
+            &mut srv,
+            &mut refused_req,
+            &mut seq,
+            &mut req_taken,
+        )
+    };
+    assert_eq!(rc, nros_rmw_cffi::NROS_RMW_RET_BUFFER_TOO_SMALL);
+    assert_eq!(
+        refused_req.len, 900,
+        "the Rust backend knew the request's size; the adapter dropped it"
+    );
     unsafe { (vt.destroy_service.expect("vtable slot"))(&mut srv) };
 
     // -- Service client flow --
@@ -930,6 +981,30 @@ fn rust_backend_adapter_routes_events_and_services() {
         NROS_RMW_RET_OK
     );
     assert_eq!(CREATE_SRV_CLIENT_HITS.load(Ordering::SeqCst), 1);
+
+    // Issue 1632 — and a refused REPLY.
+    REFUSE_NEXT_REPLY_WITH.store(1100, Ordering::SeqCst);
+    let mut reply_buf = [0u8; 64];
+    let mut refused_reply = nros_rmw_cffi::generated::rmw_mut_byte_span_t {
+        data: reply_buf.as_mut_ptr(),
+        capacity: reply_buf.len(),
+        len: nros_rmw_cffi::generated::NROS_RMW_TAKE_LEN_UNKNOWN as usize,
+    };
+    let mut reply_seq: i64 = 0;
+    let mut reply_taken = true;
+    let rc = unsafe {
+        (vt.take_response.expect("vtable slot"))(
+            &mut cli,
+            &mut refused_reply,
+            &mut reply_seq,
+            &mut reply_taken,
+        )
+    };
+    assert_eq!(rc, nros_rmw_cffi::NROS_RMW_RET_BUFFER_TOO_SMALL);
+    assert_eq!(
+        refused_reply.len, 1100,
+        "the Rust backend knew the reply's size; the adapter dropped it"
+    );
     unsafe { (vt.destroy_client.expect("vtable slot"))(&mut cli) };
 
     // -- Event slots --

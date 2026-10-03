@@ -2928,6 +2928,7 @@ impl Session for CffiSession {
             // entity exists. An absence until then, never the request.
             request_qos: qos_unknown_c(),
             response_qos: qos_unknown_c(),
+            refused_len: None,
         };
         let svc_ptr = to_c_str(service.name, &mut srv_state.service_name_buf);
         let type_ptr = to_c_str(service.type_name, &mut srv_state.type_name_buf);
@@ -3020,6 +3021,7 @@ impl Session for CffiSession {
             // entity exists. An absence until then, never the request.
             request_qos: qos_unknown_c(),
             response_qos: qos_unknown_c(),
+            refused_len: None,
         };
         let svc_ptr = to_c_str(service.name, &mut cli_state.service_name_buf);
         let type_ptr = to_c_str(service.type_name, &mut cli_state.type_name_buf);
@@ -5090,6 +5092,9 @@ pub struct CffiService {
     request_qos: NrosRmwQos,
     /// See [`Self::request_qos`].
     response_qos: NrosRmwQos,
+    /// Issue 1632 — what the last refused `take_request` said the request
+    /// needed, as [`ServiceTrait::refused_request_len`] reports it.
+    refused_len: Option<usize>,
 }
 
 impl CffiService {
@@ -5136,10 +5141,12 @@ impl ServiceTrait for CffiService {
         // `taken` in out-parameters. The `rc == 0` arm is gone with the same
         // fix `take` got: a zero-length REQUEST is a legitimate message and
         // used to be indistinguishable from an empty queue.
+        // Issue 1632 — `len` starts at `NROS_RMW_TAKE_LEN_UNKNOWN`, so a
+        // backend that never writes it on a refusal reports "unknown".
         let mut request_span = generated::rmw_mut_byte_span_t {
             data: buf.as_mut_ptr(),
             capacity: buf.len(),
-            len: 0,
+            len: generated::NROS_RMW_TAKE_LEN_UNKNOWN as usize,
         };
         let mut taken = false;
         let rc = unsafe {
@@ -5151,16 +5158,25 @@ impl ServiceTrait for CffiService {
             )
         };
         if rc != NROS_RMW_RET_OK {
+            if rc == NROS_RMW_RET_BUFFER_TOO_SMALL {
+                self.refused_len = refused_len_from_span(request_span.len, buf.len());
+            }
             return Err(error_from_ret(rc));
         }
         if !taken {
             return Ok(None);
         }
-        let len = checked_take_len(request_span.len, buf.len())?;
+        let out_len = request_span.len;
+        let len = checked_take_len(out_len, buf.len())
+            .inspect_err(|_| self.refused_len = Some(out_len))?;
         Ok(Some(ServiceRequest {
             data: &buf[..len],
             sequence_number: seq,
         }))
+    }
+
+    fn refused_request_len(&self) -> Option<usize> {
+        self.refused_len
     }
 
     fn send_response(&mut self, sequence_number: i64, data: &[u8]) -> Result<(), TransportError> {
@@ -5245,6 +5261,9 @@ pub struct CffiClient {
     request_qos: NrosRmwQos,
     /// See [`Self::request_qos`].
     response_qos: NrosRmwQos,
+    /// Issue 1632 — what the last refused `take_response` said the reply
+    /// needed, as [`ClientTrait::refused_response_len`] reports it.
+    refused_len: Option<usize>,
 }
 
 impl CffiClient {
@@ -5310,24 +5329,32 @@ impl ClientTrait for CffiClient {
         };
         let view = self.make_view();
         // Phase 376 W3.b/W3.d step A — see `take_request`.
+        // Issue 1632 — pre-set to UNKNOWN, as in `take_request`.
         let mut reply_span = generated::rmw_mut_byte_span_t {
             data: reply_buf.as_mut_ptr(),
             capacity: reply_buf.len(),
-            len: 0,
+            len: generated::NROS_RMW_TAKE_LEN_UNKNOWN as usize,
         };
         let mut taken = false;
         let mut seq: i64 = 0;
         let rc = unsafe { f(&view, &mut reply_span, &mut seq, &mut taken) };
         if rc != NROS_RMW_RET_OK {
+            if rc == NROS_RMW_RET_BUFFER_TOO_SMALL {
+                self.refused_len = refused_len_from_span(reply_span.len, reply_buf.len());
+            }
             return Err(error_from_ret(rc));
         }
         if !taken {
             return Ok(None);
         }
-        Ok(Some((
-            checked_take_len(reply_span.len, reply_buf.len())?,
-            seq,
-        )))
+        let out_len = reply_span.len;
+        let len = checked_take_len(out_len, reply_buf.len())
+            .inspect_err(|_| self.refused_len = Some(out_len))?;
+        Ok(Some((len, seq)))
+    }
+
+    fn refused_response_len(&self) -> Option<usize> {
+        self.refused_len
     }
 
     fn service_is_ready(&self) -> Result<bool, TransportError> {
@@ -6151,6 +6178,7 @@ mod tests {
             backend_data: core::ptr::dangling_mut::<c_void>(),
             request_qos: qos_unknown_c(),
             response_qos: qos_unknown_c(),
+            refused_len: None,
         };
         let mut buf = [0u8; 16];
 
