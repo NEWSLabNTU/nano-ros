@@ -943,6 +943,16 @@ int32_t zpico_get_check(struct zpico_session_t *_session,
                         size_t _reply_buf_size);
 
 /**
+ * Issue 1632 — the length of the reply a pending get received.
+ *
+ * For the caller `zpico_get_check` refused with `ZPICO_ERR_FULL`: that
+ * says the reply did not fit; this says how big it was. Returns
+ * `ZPICO_ERR_INVALID` when the handle is out of range or nothing was
+ * received. Read-only.
+ */
+int32_t zpico_get_reply_len(struct zpico_session_t *_session, int32_t _handle);
+
+/**
  * Start a non-blocking liveliness query (for wait_for_service).
  */
 int32_t zpico_liveliness_get_start(struct zpico_session_t *_session,

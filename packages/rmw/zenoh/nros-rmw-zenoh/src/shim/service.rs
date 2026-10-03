@@ -787,6 +787,10 @@ pub struct ZenohServiceServer {
     /// `QOS_PROFILE_UNKNOWN` until `set_granted_qos`, which `create_*` calls
     /// with `admit`'s output.
     granted_qos: nros_rmw::QoSProfile,
+    /// Issue 1632 — the size of the request the last `take_request` refused
+    /// as too big for the caller's buffer, for
+    /// [`ServiceTrait::refused_request_len`].
+    refused_len: Option<usize>,
     /// Phantom to indicate ownership
     _phantom: PhantomData<()>,
 }
@@ -995,6 +999,7 @@ impl ZenohServiceServer {
             context: context as *const Context,
             _phantom: PhantomData,
             granted_qos: nros_rmw::QoSProfile::QOS_PROFILE_UNKNOWN,
+            refused_len: None,
         })
     }
 
@@ -1033,6 +1038,10 @@ impl ServiceTrait for ZenohServiceServer {
         self.buf.get().waker.register(waker);
     }
 
+    fn refused_request_len(&self) -> Option<usize> {
+        self.refused_len
+    }
+
     fn take_request<'a>(
         &mut self,
         buf: &'a mut [u8],
@@ -1065,7 +1074,10 @@ impl ServiceTrait for ZenohServiceServer {
         let len = slot.len.load(Ordering::Acquire);
         if len > buf.len() {
             // Oversized request dropped; the service recovers on the next one.
+            // Issue 1632 — the ring holds the request's whole length, so the
+            // caller can name what it dropped.
             pop();
+            self.refused_len = Some(len);
             return Err(TransportError::BufferTooSmall);
         }
 
@@ -1314,6 +1326,9 @@ pub struct ZenohServiceClient {
     /// directions; see `ZenohServiceServer::granted_qos` for why that is the
     /// honest answer on this backend and not a shortcut.
     granted_qos: nros_rmw::QoSProfile,
+    /// Issue 1632 — the size of the reply the last `take_response_raw`
+    /// refused as too big, for [`ClientTrait::refused_response_len`].
+    refused_len: Option<usize>,
     /// Phantom to indicate ownership
     _phantom: PhantomData<()>,
 }
@@ -1390,6 +1405,7 @@ impl ZenohServiceClient {
             rmw_gid: [0u8; RMW_GID_SIZE],
             request_seq: AtomicSeqCounter::new(0),
             granted_qos: nros_rmw::QoSProfile::QOS_PROFILE_UNKNOWN,
+            refused_len: None,
             _phantom: PhantomData,
         })
     }
@@ -1568,6 +1584,10 @@ impl ClientTrait for ZenohServiceClient {
         Err(TransportError::from(last_err.unwrap()))
     }
 
+    fn refused_response_len(&self) -> Option<usize> {
+        self.refused_len
+    }
+
     fn take_response_raw(
         &mut self,
         reply_buf: &mut [u8],
@@ -1602,6 +1622,8 @@ impl ClientTrait for ZenohServiceClient {
         let mut hit_len: usize = 0;
         let mut hit_seq: i64 = 0;
         let mut hard_err: Option<Self::Error> = None;
+        // Issue 1632 — a reply that ARRIVED and did not fit `reply_buf`.
+        let mut refused: Option<(usize, Option<usize>)> = None;
         for (idx, &(handle, seq)) in self.pending_handles.iter().enumerate().rev() {
             match context.get_check(handle, reply_buf) {
                 Ok(Some(len)) => {
@@ -1611,6 +1633,16 @@ impl ClientTrait for ZenohServiceClient {
                     break;
                 }
                 Ok(None) => continue,
+                // Issue 1632 — `ZPICO_ERR_FULL` from `get_check` is THIS: the
+                // reply is in hand and bigger than the caller's buffer. It
+                // used to fall to the arm below and surface as
+                // `InvalidConfig` (the pool-exhaustion meaning of FULL,
+                // issue 0465), so a too-small reply buffer read as a
+                // configuration error, and the size was lost.
+                Err(super::super::zpico::ZpicoError::Full) => {
+                    refused = Some((idx, context.get_reply_len(handle)));
+                    break;
+                }
                 Err(e) => {
                     // Note the error but keep checking the others —
                     // one slot's dropper-only timeout shouldn't lose
@@ -1619,6 +1651,16 @@ impl ClientTrait for ZenohServiceClient {
                     hard_err = Some(TransportError::from(e));
                 }
             }
+        }
+
+        if let Some((idx, needed)) = refused {
+            // The request WAS answered — by a reply this buffer cannot hold.
+            // Retire it like an answered one, so the next poll does not meet
+            // the same refusal forever, and report the size it needed.
+            let answered = self.pending_handles[idx].1;
+            self.pending_handles.retain(|&(_, seq)| seq != answered);
+            self.refused_len = needed;
+            return Err(TransportError::BufferTooSmall);
         }
 
         if let Some(idx) = hit_idx {

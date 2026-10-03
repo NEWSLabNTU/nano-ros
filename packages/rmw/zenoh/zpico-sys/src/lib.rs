@@ -442,6 +442,8 @@ unsafe extern "C" {
         reply_buf: *mut u8,
         reply_buf_size: usize,
     ) -> i32;
+    // Issue 1632 — the size of a reply `zpico_get_check` refused as too big.
+    pub fn zpico_get_reply_len(session: *mut zpico_session_t, handle: i32) -> i32;
 
     // Non-blocking liveliness query (for wait_for_service / wait_for_action_server).
     pub fn zpico_liveliness_get_start(
