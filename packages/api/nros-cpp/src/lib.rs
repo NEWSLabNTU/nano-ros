@@ -169,6 +169,11 @@ mod publisher;
 mod service;
 #[cfg(feature = "rmw-cffi")]
 mod subscription;
+// Issue 1635 — the `/diagnostics` reporter contract monitors publish through.
+#[cfg(feature = "rmw-cffi")]
+mod diag;
+#[cfg(feature = "rmw-cffi")]
+pub(crate) use diag::DiagSink;
 #[cfg(feature = "rmw-cffi")]
 mod timer;
 
@@ -642,7 +647,39 @@ pub(crate) struct CppContext {
     /// once: `Future::wait` / `Client::call` (via `nros_cpp_spin_once`) and
     /// the action helpers, which spin `ctx.executor` directly.
     pub(crate) in_dispatch: bool,
+    /// Issue 1635 — the `/diagnostics` reporter this executor's contract
+    /// monitors publish through, armed by `nros_cpp_install_monitors` when the
+    /// image installs a non-empty table. `None` for an uncontracted image.
+    #[cfg(feature = "rmw-cffi")]
+    pub(crate) diag: Option<DiagSink>,
     pub(crate) backing: [core::mem::MaybeUninit<u64>; CPP_EXECUTOR_BACKING_U64S],
+}
+
+/// Issue 1635 — write every field of a freshly opened [`CppContext`] but the
+/// backing (which the executor already borrows), stamping the tag LAST.
+///
+/// THE one constructor body. There were three, and the comment beside the
+/// third recorded what that cost: `tag` (issue 0436) and `in_dispatch` (issue
+/// 0290 -> 0387) were each added at two of the three sites and missed at the
+/// one that built every borrowed-tier executor. A new field goes here.
+///
+/// # Safety
+/// `ctx_ptr` points at writable `CppContext` storage whose `backing` the
+/// `executor` borrows; nothing else may read the struct until this returns.
+#[cfg(feature = "rmw-cffi")]
+pub(crate) unsafe fn write_context(
+    ctx_ptr: *mut CppContext,
+    executor: CppExecutor,
+    domain_id: u32,
+) {
+    unsafe {
+        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).executor), executor);
+        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).domain_id), domain_id);
+        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).in_dispatch), false);
+        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).diag), None);
+        // LAST: the tag means "fully initialised" (issue 0436).
+        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).tag), CPP_CONTEXT_TAG);
+    }
 }
 
 /// RAII guard: marks the context as dispatching for the duration of a spin and
@@ -927,17 +964,8 @@ pub unsafe extern "C" fn nros_cpp_init_rmw(
     match unsafe { CppExecutor::open_in(&config, backing, sizing) } {
         Ok(executor) => {
             // Write directly into caller-provided storage — no heap allocation.
-            unsafe {
-                core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).executor), executor);
-                core::ptr::write(
-                    core::ptr::addr_of_mut!((*ctx_ptr).domain_id),
-                    domain_id as u32,
-                );
-                core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).in_dispatch), false);
-                // Stamp LAST: the tag means "fully initialised", so a half-built
-                // buffer never validates (issue 0436).
-                core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).tag), CPP_CONTEXT_TAG);
-            }
+            // Issue 1635 — the one constructor body (tag stamped last).
+            unsafe { write_context(ctx_ptr, executor, domain_id as u32) };
             NROS_CPP_RET_OK
         }
         // Phase 155.C — surface the inner `NodeError` variant as a
@@ -1393,14 +1421,12 @@ pub unsafe extern "C" fn nros_cpp_init_multi(
     {
         Ok(executor) => {
             unsafe {
-                core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).executor), executor);
-                core::ptr::write(
-                    core::ptr::addr_of_mut!((*ctx_ptr).domain_id),
+                write_context(
+                    ctx_ptr,
+                    executor,
                     owned.first().map(|s| s.domain_id).unwrap_or(0),
-                );
-                core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).in_dispatch), false);
-                core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).tag), CPP_CONTEXT_TAG);
-            }
+                )
+            };
             NROS_CPP_RET_OK
         }
         Err(e) => node_error_to_cpp_ret(e),
@@ -1555,6 +1581,10 @@ pub unsafe extern "C" fn nros_cpp_fini(storage: *mut c_void) -> nros_cpp_ret_t {
 
     unsafe {
         let ctx = storage as *mut CppContext;
+        // Issue 1635 — unhook the sink and drop the `/diagnostics` publisher
+        // while the session it lives on is still open.
+        (*ctx).executor.set_violation_sink(None);
+        (*ctx).diag = None;
         let _ = (*ctx).executor.close();
         core::ptr::drop_in_place(ctx);
         // AFTER the drop: the storage is now uninitialised memory the caller
@@ -4301,6 +4331,36 @@ pub unsafe extern "C" fn nros_cpp_install_monitors(
     handle: *mut c_void,
     tables: *const nros_cpp_monitor_tables_t,
 ) -> nros_cpp_ret_t {
+    let rc = unsafe { install_monitor_tables(handle, tables) };
+    if rc != NROS_CPP_RET_OK {
+        return rc;
+    }
+    // Issue 1635 — a contracted image REPORTS. Before this the ring was
+    // drained by nothing a generated entry contained, so a violation reached
+    // the log (issue 0514's floor) and never `/diagnostics`. Arming here
+    // rather than in the templates covers both packs and every board's spin
+    // loop at once: the executor drains into the sink from `spin_once`.
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(t) = (unsafe { tables.as_ref() }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if t.n_rows == 0 && t.n_ages == 0 {
+        return NROS_CPP_RET_OK;
+    }
+    diag::arm(ctx)
+}
+
+/// The table half of [`nros_cpp_install_monitors`], unchanged.
+///
+/// # Safety
+/// As [`nros_cpp_install_monitors`].
+#[cfg(feature = "rmw-cffi")]
+unsafe fn install_monitor_tables(
+    handle: *mut c_void,
+    tables: *const nros_cpp_monitor_tables_t,
+) -> nros_cpp_ret_t {
     use nros::monitor::{AgeMonitorSpec, MonitorSpec, PubMonitorCell, SubMonitorCell};
     let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -4608,39 +4668,12 @@ pub unsafe extern "C" fn nros_cpp_executor_open_over_session(
     // executor's slices already point into `(*ctx_ptr).backing` (its final,
     // pinned location), so moving the `Executor` struct itself is sound.
     unsafe {
-        // Issue 0458 — stamp the handle tag. `CppContext` is `MaybeUninit`, and
-        // `cpp_ctx_checked` reads `tag` BEFORE trusting the struct, so leaving it
-        // uninitialized makes every entry point that takes this handle read
-        // garbage and reject it with `INVALID_ARGUMENT` (-3). That is exactly
-        // what killed the C/C++ multi-tier low tier: `nros_cpp_node_create`
-        // returned -3, so `tier 'low' setup FAILED (rc=-3) — tier will not run`
-        // and `/telem` never published.
-        //
-        // This is the SAME defect as the `in_dispatch` note below, one field
-        // over: a new `CppContext` field gets stamped in `nros_cpp_init` +
-        // `_init_multi` and this THIRD constructor is missed. `tag` came from
-        // #0436, `in_dispatch` from #0290 (fixed as #0387). If you add a field
-        // here, initialize it in all three.
-        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).tag), CPP_CONTEXT_TAG);
-        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).executor), executor);
-        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).domain_id), domain_id);
-        // Issue 0387 — the CppContext is `MaybeUninit`; the reentrancy guard
-        // `in_dispatch` (added by #0290) MUST be initialized here or `spin_once`
-        // reads uninitialized garbage as "already dispatching" and returns
-        // REENTRANT on the first call. That silently killed every borrowed-tier
-        // executor (C/C++ multi-tier entries: `nros_board_native_run_tiers`),
-        // e.g. a low-tier `/telem` publisher that never ran. Mirror
-        // `nros_cpp_init`'s init.
-        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).in_dispatch), false);
-        // Issue 0436 — stamp the handle tag LAST, exactly as `nros_cpp_init` and
-        // `nros_cpp_init_multi` do: the tag means "fully initialised", so no
-        // partially-built context can ever pass `cpp_ctx_checked`. This is the
-        // THIRD construction site; missing it here made every borrowed-tier
-        // context (C/C++ multi-tier entries) fail validation at the checked
-        // accessors — the same blast radius as the 0387 `in_dispatch` bug above,
-        // and for the same reason: a field this struct's readers require was
-        // initialised at two of the three places that build one.
-        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).tag), CPP_CONTEXT_TAG);
+        // Issues 0458 / 0387 / 0436 / 1635 — this was the THIRD of three
+        // hand-written constructor bodies, and twice the one a new field was
+        // missed at (`tag`, then `in_dispatch`), each time killing every
+        // borrowed-tier executor. All three call `write_context` now, which
+        // writes every field and stamps the tag last.
+        write_context(ctx_ptr, executor, domain_id);
     }
     NROS_CPP_RET_OK
 }

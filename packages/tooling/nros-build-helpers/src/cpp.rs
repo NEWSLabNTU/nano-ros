@@ -102,7 +102,14 @@ fn generate_config(
     // `domain_id` + `in_dispatch` (+ padding); issue 0436 added the 8-byte handle
     // `tag` that makes a mixed-up executor handle a clean error instead of memory
     // corruption, so the overhead is 16.
-    const CPP_CONTEXT_OVERHEAD: usize = 16;
+    //
+    // Issue 1635 — plus the `/diagnostics` reporter (`Option<DiagSink>`): one
+    // `RmwPublisher` (PROBED, `PUBLISHER_SIZE`, so a backend whose handle grows
+    // moves this with it) and two `u32` counters, with a word for the
+    // `Option` discriminant. Generous by design; the `lib.rs` const-assert
+    // refuses an under-estimate at compile time.
+    let probe_publisher_for_diag = probed.get("PUBLISHER_SIZE").copied().unwrap_or(0) as usize;
+    let cpp_context_overhead: usize = 16 + probe_publisher_for_diag.next_multiple_of(8) + 16;
     let probe_executor_pre = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
     // issue 0961 — the bare `Executor` value, which is what a caller's stack
     // pays. Deliberately NOT `EXECUTOR_SIZE`: that one includes the carved
@@ -118,7 +125,7 @@ fn generate_config(
              resulting rlib."
         );
     }
-    let storage_bytes = probe_executor_pre.max(8) + CPP_CONTEXT_OVERHEAD;
+    let storage_bytes = probe_executor_pre.max(8) + cpp_context_overhead;
     let opaque_u64s = storage_bytes.div_ceil(8);
 
     // Phase 87.11: action server/client storage sizes are now sourced

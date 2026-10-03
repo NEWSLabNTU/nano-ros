@@ -10,10 +10,7 @@
 use std::{sync::OnceLock, time::Instant};
 
 use nros::{Executor, monitor::Violation};
-use nros_diagnostics::{
-    ContractKind, DiagnosticArray, DiagnosticReporter, RULE_MAX_AGE, RULE_MAX_LATENCY,
-    RULE_RATE_HIERARCHY, Severity,
-};
+use nros_diagnostics::{DiagnosticArray, DiagnosticReporter};
 
 /// The parity topic the pub publishes and the sub subscribes. A leading
 /// `std_msgs/Header` so the sub-side age monitor can peek `header.stamp`.
@@ -34,50 +31,17 @@ pub fn now_us() -> u64 {
     BASE.get_or_init(Instant::now).elapsed().as_micros() as u64
 }
 
-/// Classify a rule id into the contract side it belongs to (drives the
-/// diagnosis quadrant): rate/latency are publisher/path GUARANTEES, age is
-/// a subscriber ASSUMPTION.
-fn kind_for(rule: &str) -> ContractKind {
-    match rule {
-        RULE_MAX_AGE => ContractKind::Assumption,
-        _ => ContractKind::Guarantee,
-    }
-}
-
 /// Map a drained [`Violation`] to a `DiagnosticArray`, or `None` while the
-/// reporter is rate-limited.
+/// reporter is rate-limited. Issue 1635 — this is `nros-diagnostics`' own
+/// mapping now, the one the generated C/C++ entries publish through, so the
+/// fixture and the images report a violation in the same words. (The local
+/// copy it replaced folded any rule it did not know into
+/// `deadline-miss-runtime`.)
 pub fn violation_to_report(
     reporter: &mut DiagnosticReporter,
     v: &Violation,
 ) -> Option<DiagnosticArray> {
-    let mut message = heapless::String::<64>::new();
-    // `measured`/`declared` units differ per rule; the diagsink keys only on
-    // the rule id + hardware_id, so a compact human message is enough here.
-    use core::fmt::Write as _;
-    let _ = write!(
-        message,
-        "measured {} vs declared {}",
-        v.measured, v.declared
-    );
-    reporter.report(
-        now_us(),
-        rule_const(v.rule),
-        Severity::Error,
-        kind_for(v.rule),
-        v.fqn,
-        &message,
-    )
-}
-
-/// Normalize the executor's rule string to the reporter's `&'static` const
-/// (identity for the three W3b rules; keeps the vocabulary pinned).
-fn rule_const(rule: &str) -> &'static str {
-    match rule {
-        RULE_RATE_HIERARCHY => RULE_RATE_HIERARCHY,
-        RULE_MAX_AGE => RULE_MAX_AGE,
-        RULE_MAX_LATENCY => RULE_MAX_LATENCY,
-        _ => "deadline-miss-runtime",
-    }
+    reporter.report_violation(now_us(), v.rule, v.fqn, v.measured, v.declared)
 }
 
 /// Drain every pending violation from the executor and hand each report to
