@@ -1,6 +1,6 @@
 # Phase 472 — gate reach sweep
 
-**Status (2026-10-03). W1–W9 DONE; issues 1614–1618 and 1636 CLOSED; ACCEPTANCE — NOT MET on 4 new-audit holes (issue 1660).** Previously (2026-10-01): **ACCEPTANCE RE-RUN — NOT MET.** The re-run ([audit-findings-2026-10-01-rerun](../development/audit-findings-2026-10-01-rerun.md)) found 75 holes still standing: 70 of the 156 recorded findings, plus 5 in new audits and spot-checks. They are filed by class as issues 1614–1617, with live defect 1618. See "Acceptance" below. An audit of every tracked
+**Status (2026-10-03): COMPLETE.** W1–W9 done; issues 1614–1618, 1636 and 1660 closed; the acceptance re-run finds no confirmed hole (see "Acceptance — MET"). Previously (2026-10-01): **ACCEPTANCE RE-RUN — NOT MET.** The re-run ([audit-findings-2026-10-01-rerun](../../development/audit-findings-2026-10-01-rerun.md)) found 75 holes still standing: 70 of the 156 recorded findings, plus 5 in new audits and spot-checks. They are filed by class as issues 1614–1617, with live defect 1618. See "Acceptance" below. An audit of every tracked
 `scripts/check-*` gate against one question, the codebase-audit checklist's **I6
 second-order** rule: *a gate must be able to fail on the case it names.*
 
@@ -759,7 +759,7 @@ phase came to be necessary.
 
 ### Acceptance re-run (2026-10-01): NOT MET
 
-[audit-findings-2026-10-01-rerun](../development/audit-findings-2026-10-01-rerun.md)
+[audit-findings-2026-10-01-rerun](../../development/audit-findings-2026-10-01-rerun.md)
 re-applied every recorded mutation against `origin/main`. Each was confirmed
 applied by `git status`, and the tree was restored and verified clean before
 the next. Every surviving hole also has a positive control that fails.
@@ -793,3 +793,18 @@ pass; 4 N/A), and so do all 14 spot-checks. Four holes from the first
 re-run's NEW audits were never filed under a class issue. They still stand and
 are now **issue 1660** (W5/W6/W7). Details are in the findings doc, "Final re-run".
 The phase stays open until 1660 closes.
+
+### Acceptance — MET (2026-10-03)
+
+Issue 1660 moved each of the four onto its class helper:
+`board-vocabulary` onto `file_kinds` (every `system.toml`, with the board
+catalog as a sixth namespace), `build-type-spelling` onto `harvest` (board
+packages by kind, not by the authored provider marker),
+`cmake-generated-source-owners` onto `per_item` (every raw
+`add_custom_command` OUTPUT item) and `xrce-config-manifest` onto `harvest`
+(the template's `UXR_CONFIG_*` spelling included). Each recorded mutation
+passes the gate as it was on `main` (rc 0) and fails the fixed gate (rc 1),
+and each gate gained the normal-path selftest row that would have caught it.
+Evidence: the findings doc, "Issue 1660 closure". With that table empty, every
+recorded finding, spot-check and new-audit row fails on its mutation, so the
+phase is complete and archived.

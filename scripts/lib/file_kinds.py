@@ -71,6 +71,10 @@ KINDS = {
     # A board descriptor, wherever the board lives — `packages/boards/*/` and
     # the nested `nros-board-zephyr/boards/<b>/` alike.
     "board-descriptor": ((), ("nros-board.toml",)),
+    # A leaf or bringup's deploy statement (RFC-0098 D3/D5), whatever language
+    # the leaf is written in. Issue 1660: `check-board-vocabulary` read only the
+    # C/C++ leaves' copies, so a Rust leaf could name a board that exists nowhere.
+    "system-toml": ((), ("system.toml",)),
 }
 # Kinds whose population is a GRAPH, owned by another helper.
 DERIVED = ("just", "ci")
@@ -163,7 +167,8 @@ def self_test() -> None:
                     "packages/x/src/lib.rs", "third-party/v/CMakeLists.txt",
                     "packages/i/generated/g.rs", "packages/api/nros-cpp/include/nros/x.hpp",
                     "justfile", "just/m.just", "packages/cli/p/t.c.jinja",
-                    "integrations/n/Make.defs", "integrations/s/makefile.defs"):
+                    "integrations/n/Make.defs", "integrations/s/makefile.defs",
+                    "examples/p/c/t/system.toml", "examples/p/rust/t/system.toml"):
             w(rel)
         w("justfile", "mod m 'just/m.just'\n")
         # A git hook can reach this (via a gate); never let an inherited GIT_DIR
@@ -181,6 +186,9 @@ def self_test() -> None:
         assert "packages/i/generated/g.rs" in files_of_kind("rust", repo=tmp, include_generated=True)
         assert files_of_kind("cpp", repo=tmp) == ["packages/api/nros-cpp/include/nros/x.hpp"]
         assert files_of_kind("jinja", repo=tmp) == ["packages/cli/p/t.c.jinja"]
+        # Every leaf's deploy statement, not one language's (issue 1660).
+        assert files_of_kind("system-toml", repo=tmp) == [
+            "examples/p/c/t/system.toml", "examples/p/rust/t/system.toml"]
         w("scripts/bin/tool", "#!/usr/bin/env bash\nset -e\n")
         w("scripts/bin/py", "#!/usr/bin/env python3\n")
         subprocess.run(["git", "-C", tmp, "add", "-A"], check=True, env=env)

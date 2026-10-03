@@ -52,10 +52,17 @@ Run:  python3 scripts/check-board-vocabulary.py [--self-test]
 
 import os
 import re
-import subprocess
 import sys
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # 3.10 backport, as the sibling gates spell it
+    import tomli as tomllib
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from file_kinds import files_of_kind  # noqa: E402  (phase-472 W5)
+from population import require_population  # noqa: E402  (phase-472 W4)
 
 
 def exports(text):
@@ -82,28 +89,72 @@ def exports(text):
     return out
 
 
-def cxx_leaf_system_tomls(root):
-    """Tracked `system.toml` of the C/C++ single-package leaves.
+def system_tomls(root):
+    """EVERY tracked `system.toml` — the file KIND, not one language's leaves.
 
-    The population this gate has always covered: until phase-445 W3b those
-    leaves carried the package.xml tuple. A leaf is a dir with `package.xml` +
-    `CMakeLists.txt` beside the file and no `Cargo.toml` (the Rust leaves' boards
-    are the proc-macro's vocabulary, which `check-deploy-board-resolves`
-    covers).
+    Issue 1660 (phase-472 W5). This read only the C/C++ single-package leaves,
+    on the stated ground that a Rust leaf's board was covered by
+    `check-deploy-board-resolves`. It was not: that gate reads `[deploy.*]`
+    tables, and a leaf states its board in `[image.*]`. So
+    `board = "rerun-nonexistent-board"` in `examples/rv-virt-threadx/rust/talker`
+    passed both gates while the same edit in the `c/talker` beside it failed
+    this one. The population is now every `system.toml` (196, against 91).
     """
-    files = subprocess.run(
-        ["git", "ls-files", "*system.toml"], cwd=root, capture_output=True, text=True
-    ).stdout.split()
-    out = []
-    for f in files:
-        d = os.path.join(root, os.path.dirname(f))
-        if (
-            os.path.isfile(os.path.join(d, "package.xml"))
-            and os.path.isfile(os.path.join(d, "CMakeLists.txt"))
-            and not os.path.isfile(os.path.join(d, "Cargo.toml"))
-        ):
-            out.append(f)
+    return files_of_kind("system-toml", repo=root)
+
+
+def is_cxx_leaf(root, f):
+    """A C/C++ single-package leaf: `package.xml` + `CMakeLists.txt`, no `Cargo.toml`.
+
+    No longer the POPULATION — it now narrows only the STRICT assertion below
+    (the board must be an index `[board.*]` key, the namespace `nros setup
+    <board>` reads). That assertion is the C/C++ lane's contract; a Rust leaf's
+    or a bringup's board is resolved through the board CATALOG (`nros sync`,
+    `BoardCatalog::resolve`), so its contract is the resolution assertion, which
+    every leaf now gets.
+    """
+    d = os.path.join(root, os.path.dirname(f))
+    return (
+        os.path.isfile(os.path.join(d, "package.xml"))
+        and os.path.isfile(os.path.join(d, "CMakeLists.txt"))
+        and not os.path.isfile(os.path.join(d, "Cargo.toml"))
+    )
+
+
+def catalog_boards(root):
+    """Every name a board descriptor (`nros-board.toml`, at any depth) answers to.
+
+    The board CATALOG — what `nros sync` and the proc-macro resolve a leaf's
+    board against. The sixth namespace, added with the Rust leaves: their
+    spellings (`qemu-mps2-an385`, `rtic-mps2-an385`, `freertos`, `nuttx`) live
+    here and nowhere else.
+    """
+    out = set()
+    for rel in files_of_kind("board-descriptor", repo=root):
+        try:
+            with open(os.path.join(root, rel), "rb") as fh:
+                doc = tomllib.load(fh)
+        except (OSError, tomllib.TOMLDecodeError):
+            continue
+        tables = [doc] + [b for b in doc.get("board", []) if isinstance(b, dict)]
+        for t in tables:
+            out |= {n for n in t.get("names", []) if isinstance(n, str)}
     return out
+
+
+def judge(board, cxx, ns):
+    """'family' | 'none' | 'not-index' | 'ok' for one `[image.*].board`.
+
+    `ns` maps namespace name -> set. Every leaf's board must resolve in SOME
+    namespace; a C/C++ leaf's must also be an index key.
+    """
+    if board in FAMILY_BOARDS:
+        return "family"
+    if not any(board in ns[k] for k in ("cmake", "index", "crate", "fixture", "catalog")):
+        return "none"
+    if cxx and board not in ns["index"]:
+        return "not-index"
+    return "ok"
 
 
 def index_boards(root):
@@ -238,9 +289,19 @@ def self_test():
         "native",
         "zephyr",
     ]
-    # The population is really read from the tree, so a rename of the files
-    # cannot make this gate pass vacuously.
-    assert cxx_leaf_system_tomls(ROOT), "no C/C++ leaf system.toml found"
+    # Issue 1660: the population is every leaf, Rust included — the hole was a
+    # Rust leaf's board that resolved nowhere and was never read.
+    pop = system_tomls(ROOT)
+    assert "examples/rv-virt-threadx/rust/talker/system.toml" in pop, "Rust leaf not read"
+    assert any(is_cxx_leaf(ROOT, f) for f in pop), "no C/C++ leaf system.toml found"
+    ns = {"cmake": {"c1"}, "index": {"c1", "i1"}, "crate": set(), "fixture": set(),
+          "catalog": {"cat1"}}
+    assert judge("nope", False, ns) == "none", "a Rust leaf's unknown board must fail"
+    assert judge("nope", True, ns) == "none"
+    assert judge("cat1", False, ns) == "ok", "a catalog name resolves a Rust leaf"
+    assert judge("cat1", True, ns) == "not-index", "a C/C++ leaf still needs an index key"
+    assert judge("c1", True, ns) == "ok"
+    assert judge("native", False, ns) == "family"
     sys.stdout.write("check-board-vocabulary self-test: OK\n")
 
 
@@ -257,15 +318,20 @@ def main():
         return 0
     self_test()
 
-    files = cxx_leaf_system_tomls(ROOT)
-    idx, crates, fixtures, scope_set, cmakeb = (
+    files = system_tomls(ROOT)
+    if not require_population(files, "system.toml file(s)", gate="check-board-vocabulary"):
+        return 1
+    idx, crates, fixtures, scope_set, cmakeb, catalog = (
         index_boards(ROOT),
         board_crates(ROOT),
         fixture_boards(ROOT),
         scopes(ROOT),
         cmake_boards(ROOT),
+        catalog_boards(ROOT),
     )
-    if not scope_set or not idx:
+    ns = {"cmake": cmakeb, "index": idx, "crate": crates, "fixture": fixtures,
+          "catalog": catalog}
+    if not scope_set or not idx or not catalog:
         sys.stderr.write(
             "error: could not read the scope list or the index boards.\n"
             "This gate would then accept anything and pass vacuously.\n"
@@ -306,8 +372,10 @@ def main():
                 text = fh.read()
         except OSError:
             continue
+        cxx = is_cxx_leaf(ROOT, f)
         for board in exports(text):
-            if board in FAMILY_BOARDS:
+            verdict = judge(board, cxx, ns)
+            if verdict == "family":
                 # The deploy family IS a scope; keep asserting that much, since
                 # `nros setup --workspace` still prints a command from it.
                 seen_deploy.setdefault(board, f)
@@ -317,12 +385,7 @@ def main():
                     bad_deploy.setdefault(board, f)
                 continue
             seen_board.setdefault(board, f)
-            if (
-                board not in cmakeb
-                and board not in idx
-                and board not in crates
-                and board not in fixtures
-            ):
+            if verdict == "none":
                 bad_board.setdefault(board, f)
             # SECOND, STRICTER assertion (phase-422 W7). The check above is an OR
             # over five namespaces, and `cmake/board/*.cmake` alone satisfies
@@ -334,7 +397,7 @@ def main():
             # exact-key lookup and no fallback. A board that resolves only in the
             # cmake namespace is one an out-of-tree user cannot provision — which
             # was true of four of five.
-            elif board not in idx:
+            elif verdict == "not-index":
                 not_index.setdefault(board, f)
 
     if mismatched:
@@ -374,17 +437,18 @@ def main():
             )
         for b, f in sorted(bad_board.items()):
             sys.stderr.write(
-                "  - board=%r (%s) resolves in NONE of the five namespaces:\n"
+                "  - board=%r (%s) resolves in NONE of the six namespaces:\n"
                 "      cmake/board/nano-ros-board-*.cmake | [board.*] index key |\n"
-                "      packages/boards/nros-board-* | fixtures.toml NANO_ROS_BOARD\n"
+                "      packages/boards/nros-board-* | fixtures.toml NANO_ROS_BOARD |\n"
+                "      a board descriptor's `names` (nros-board.toml)\n"
                 "      Name one that exists, or add the board where it belongs.\n\n" % (b, f)
             )
         return 1
 
     sys.stdout.write(
         "check-board-vocabulary: OK — %d deploy value(s), %d board value(s); "
-        "each resolves AND is an index key; %d mirrored pair(s) identical "
-        "(cmake %d / index %d / crate %d / fixture %d).\n"
+        "each resolves (a C/C++ leaf's is also an index key); %d mirrored pair(s) identical "
+        "(cmake %d / index %d / crate %d / fixture %d / catalog %d).\n"
         % (
             len(seen_deploy),
             len(seen_board),
@@ -393,6 +457,7 @@ def main():
             len(idx),
             len(crates),
             len(fixtures),
+            len(catalog),
         )
     )
     return 0

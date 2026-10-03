@@ -1,6 +1,6 @@
 # Audit findings — 2026-10-01 — re-run of the 2026-09-28 gate-reach audit
 
-The phase-472 acceptance run. [phase-472](../roadmap/phase-472-gate-reach-sweep.md)
+The phase-472 acceptance run. [phase-472](../roadmap/archived/phase-472-gate-reach-sweep.md)
 landed W1–W9 and asked for this audit to be re-run over the same gates;
 [audit-findings-2026-09-28](audit-findings-2026-09-28.md) is the per-gate record
 it diffs against.
@@ -357,3 +357,35 @@ using the same harness. Three things changed in the method:
 known-vacuous controls (`default-gates-run-somewhere/removed`,
 `cmake-generated-source-owners/cmake-dir`) cannot fail by construction and are
 not counted as holes.
+
+## Issue 1660 closure (2026-10-03) — the last four holes
+
+Each gate moved onto its class's existing helper, and each recorded mutation
+was re-applied on the fix branch: confirmed applied (`git diff --numstat`,
+`git status` for the new file), run against the gate as it is on `main`
+(`git show origin/main:<gate>`) and against the fixed gate, then restored and
+verified clean.
+
+| class | gate · facet | helper | `main` rc | fixed rc | normal-path selftest row |
+| --- | --- | --- | ---: | ---: | --- |
+| W5 | `check-board-vocabulary` · system-toml-board | `file_kinds` (new `system-toml` kind) + `population` | 0 | **1** | the Rust leaf is in the population; `judge("nope", rust)` is `none` |
+| W7 | `check-build-type-spelling` · new-board-ament_cargo | `harvest` (board packages by KIND: under `packages/boards/` or beside `nros-board.toml`) | 0 | **1** | an unmarked board package and a package beside a descriptor both fire `owned-declares-ament` |
+| W6 | `check-cmake-generated-source-owners` · two-targets (both `cmake/` and `zephyr/cmake/`) | `per_item` (new `cmake_calls` / `cmake_keyword_items`: every OUTPUT item) + `file_kinds` + `population` | 0 | **1** | `RAW_BAD`, `RAW_VIA_VAR` (one `set()` hop) and `RAW_ONE` (a custom target is not a second owner) |
+| W6/W7 | `check-xrce-config-manifest` · hand-value | `harvest` (the symbol vocabulary is every manifest token + every template macro) | 0 | **1** | the template spelling `UXR_CONFIG_*` is in the harvest, and the bare prefix regex is shown NOT to know it |
+
+What each fix newly saw in the tree, all clean: `board-vocabulary` reads 196
+`system.toml` (was 91) against a sixth namespace, the board catalog's `names`,
+which is where the Rust leaves' spellings (`qemu-mps2-an385`, `freertos`, …)
+resolve; the strict index-key assertion stays on the C/C++ leaves, by stated
+reason. `build-type-spelling` harvests 14 board packages. `cmake-generated-
+source-owners` examines 44 generated source sets (was the helper sites only).
+`xrce-config-manifest` checks the lanes against 64 harvested symbols.
+
+Stated, not hidden: `xrce-config-manifest` harvests the `UXR_CONFIG_*` names
+from the upstream templates, so where `micro-xrce-dds-client` is not checked
+out the harvest is the manifest's 41 tokens and the gate already prints a SKIP
+for template coverage. The CMake gate follows one level of `set()` /
+`list(APPEND)`; deeper variable flow is still out of reach.
+
+**The New-audits table has no holes left. Phase-472's acceptance is met.**
+

@@ -56,6 +56,7 @@ import sys as _w3_sys  # noqa: E402
 from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
+from harvest import reconcile  # noqa: E402  phase-472 W7
 
 REPO = Path(__file__).resolve().parent.parent
 XRCE = REPO / "packages/rmw/xrce"
@@ -261,9 +262,37 @@ def strip_comments(text: str, marker: str, lang: str | None = None) -> str:
     return comments.strip_comments(text, lang or {"//": "rust", "#": "cmake"}[marker])
 
 
-def lane_values(text: str, marker: str, allow: set[str]) -> list[str]:
+# A macro a template DEFINES — `#define UXR_CONFIG_SERIAL_TRANSPORT_MTU @…@`.
+_TEMPLATE_DEFINE = re.compile(r"^#\s*(?:define|cmakedefine)\s+([A-Za-z_][A-Za-z0-9_]*)", re.M)
+
+
+def harvested_symbols(values, knobs, flags, defines, templates: dict[str, str]) -> set[str]:
+    """EVERY configuration symbol the shared statement covers — harvested.
+
+    Issue 1660 (phase-472 W7). Check 3 knew the symbols by SPELLING — the
+    `_LANE_SYMBOL` prefixes `UCLIENT_*` / `XRCE_MAX_*`… — so
+    `set(UXR_CONFIG_SERIAL_TRANSPORT_MTU 512)` in the CMake lane passed while
+    `set(UCLIENT_SERIAL_TRANSPORT_MTU 512)` failed: the same value, stated under
+    the name the TEMPLATE gives it rather than the name the manifest binds. The
+    vocabulary is now read from the sources of truth: every token the manifest
+    binds, every `define` it states, and every macro each upstream template
+    defines (when it is checked out). The prefix regex stays as a floor.
+    """
+    out = {t for _t, t, _v in values} | {k[1] for k in knobs} | {f[1] for f in flags}
+    out |= {d[0] for d in defines}
+    for text in templates.values():
+        out |= set(_TEMPLATE_DEFINE.findall(text))
+    out |= set(_AT_TOKEN.findall("".join(templates.values())))
+    # Version macros are DERIVED from the vendored tree (issue 1069), never a
+    # lane value; the include guards are not configuration.
+    return {s for s in out if s not in DERIVED_TOKENS and not s.startswith("_")}
+
+
+def lane_values(text: str, marker: str, allow: set[str], vocabulary=frozenset()) -> list[str]:
     """Configuration symbols a lane names in code, minus the allowlist."""
-    hits = _LANE_SYMBOL.findall(strip_comments(text, marker))
+    code = strip_comments(text, marker)
+    hits = set(_LANE_SYMBOL.findall(code))
+    hits |= {w for w in re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", code) if w in vocabulary}
     return sorted({h for h in hits if h not in allow})
 
 
@@ -360,6 +389,18 @@ def self_test() -> None:
     assert lane_values("# UCLIENT_PROFILE_UDP is set by the manifest\n", "#", set()) == []
     assert lane_values('r.rungs.stream_history // XRCE_STREAM_HISTORY\n', "//", set()) == []
     assert lane_values('m("XRCE_STREAM_HISTORY")', "//", {"XRCE_STREAM_HISTORY"}) == []
+    # Issue 1660: the TEMPLATE's spelling of a value is the same value.
+    voc = harvested_symbols(
+        [("uxr", "UCLIENT_SERIAL_TRANSPORT_MTU", "512")], [], [], [],
+        {"uxr": "#define _G_\n#define UXR_CONFIG_SERIAL_TRANSPORT_MTU @UCLIENT_SERIAL_TRANSPORT_MTU@\n"
+                "#define V @PROJECT_VERSION@\n"})
+    assert "UXR_CONFIG_SERIAL_TRANSPORT_MTU" in voc and "_G_" not in voc, voc
+    assert "PROJECT_VERSION" not in voc, voc
+    assert lane_values("set(UXR_CONFIG_SERIAL_TRANSPORT_MTU 512)", "#", set(), voc) == [
+        "UXR_CONFIG_SERIAL_TRANSPORT_MTU"
+    ]
+    assert lane_values("set(UXR_CONFIG_SERIAL_TRANSPORT_MTU 512)", "#", set()) == [], \
+        "control: the prefix regex alone does not know the template spelling"
 
     # THE WIRING. Shape stays valid; the knob points at the wrong token.
     kcfg = (
@@ -426,6 +467,7 @@ def main() -> int:
     bad += manifest_problems(values, knobs, flags, defines)
 
     # (2) template coverage, both directions.
+    template_texts: dict[str, str] = {}
     for template, rel in sorted(TEMPLATES.items()):
         path = REPO / rel
         if not path.is_file():
@@ -434,14 +476,17 @@ def main() -> int:
                 "(`nros setup --source …`); its coverage is unverified"
             )
             continue
-        bad += template_problems(
-            template, path.read_text(encoding="utf-8"), values, knobs, flags
-        )
+        template_texts[template] = path.read_text(encoding="utf-8")
+        bad += template_problems(template, template_texts[template], values, knobs, flags)
 
-    # (3) neither lane states a value of its own.
+    # (3) neither lane states a value of its own — by the HARVESTED vocabulary.
+    config_symbols, problems = reconcile(
+        harvested_symbols(values, knobs, flags, defines, template_texts),
+        what="XRCE configuration symbol")
+    bad += problems
     for path, marker in ((BUILD_RS, "//"), (CMAKE, "#")):
         text = path.read_text(encoding="utf-8")
-        for hit in lane_values(text, marker, LANE_VALUE_ALLOWLIST[path]):
+        for hit in lane_values(text, marker, LANE_VALUE_ALLOWLIST[path], set(config_symbols)):
             bad.append(
                 f"{path.relative_to(REPO)} states `{hit}` — phase-420 W9: the lanes hold no "
                 "configuration values, they read packages/rmw/xrce/xrce-config.txt. Put it "
@@ -517,7 +562,8 @@ def main() -> int:
     print(
         "check-xrce-config-manifest: OK — "
         f"{len(values)} values, {len(knobs)} knobs, {len(flags)} flags, "
-        f"{len(defines)} defines; {len(forwarded)} Kconfig knobs reach both lanes"
+        f"{len(defines)} defines; {len(config_symbols)} harvested symbols no lane states; "
+        f"{len(forwarded)} Kconfig knobs reach both lanes"
     )
     return 0
 

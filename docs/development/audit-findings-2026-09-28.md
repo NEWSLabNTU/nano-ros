@@ -3,7 +3,7 @@
 Checklist category **I6, second-order** — *a gate must be able to fail on the
 case it names* — applied to every tracked `scripts/check-*` gate on `origin/main`
 at `5d9fc529ec`. The class view, the fixes and the work items are
-[phase-472](../roadmap/phase-472-gate-reach-sweep.md); this file is the per-gate
+[phase-472](../roadmap/archived/phase-472-gate-reach-sweep.md); this file is the per-gate
 record, so the next run of the same method diffs against it.
 
 **Standard:** a finding is CONFIRMED only if a mutation constructing the case the
