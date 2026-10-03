@@ -418,22 +418,26 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
         self.handle.topic_name()
     }
 
-    /// How many subscriptions are on this publisher's topic, RIGHT NOW —
+    /// How many subscriptions this publisher reaches, RIGHT NOW —
     /// rclcpp's `Publisher::get_subscription_count`, rcl's
-    /// `rcl_publisher_get_subscription_count`. phase-444.
+    /// `rcl_publisher_get_subscription_count`. phase-444, issue 1643.
     ///
-    /// **A WEAKER QUESTION THAN UPSTREAM'S, and the difference belongs here
-    /// rather than in a surprise.** Upstream counts the subscriptions MATCHED
-    /// to THIS publisher — peers whose QoS is compatible with it. This counts
+    /// **Upstream's question where the backend can answer it, a weaker one
+    /// where it cannot — and the difference belongs here rather than in a
+    /// surprise.** Upstream counts the subscriptions MATCHED to THIS
+    /// publisher — peers whose QoS is compatible with it — through
+    /// `rmw_publisher_count_matched_subscriptions`. A backend that fills that
+    /// slot (Cyclone) is asked first and its answer is upstream's exactly.
+    /// Only when it answers `Unsupported` does this fall back to the graph:
     /// every subscription DISCOVERED on the topic, matched or not, because
     /// that is what the graph can answer and a backend with no QoS
     /// negotiation cannot tell the two apart at all.
     ///
-    /// Non-inverting, and in the safe direction: a topic nobody subscribes to
-    /// still reads `0`, so the use this exists for — skip the work when
-    /// nobody is listening — is answered exactly. An INCOMPATIBLE peer makes
-    /// it read `1` where upstream reads `0`, i.e. you do work nobody
-    /// receives. Never the reverse.
+    /// The fallback is non-inverting, and in the safe direction: a topic
+    /// nobody subscribes to still reads `0`, so the use this exists for —
+    /// skip the work when nobody is listening — is answered exactly. An
+    /// INCOMPATIBLE peer makes it read `1` where upstream reads `0`, i.e. you
+    /// do work nobody receives. Never the reverse.
     ///
     /// **Takes the executor**, which upstream does not, and that is forced: we
     /// open ONE transport session per image and the [`Executor`] owns it, so
@@ -451,7 +455,12 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
         &self,
         executor: &mut super::spin::Executor<'_>,
     ) -> Result<usize, NodeError> {
-        executor.count_subscribers(self.handle.topic_name())
+        match nros_rmw::Publisher::count_matched_subscriptions(&self.handle) {
+            Err(nros_rmw::TransportError::Unsupported) => {
+                executor.count_subscribers(self.handle.topic_name())
+            }
+            other => other.map_err(NodeError::Transport),
+        }
     }
 }
 
@@ -1530,13 +1539,20 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     ///
     /// The subscription half of
     /// [`EmbeddedPublisher::get_subscription_count`], which states the
-    /// weakening (topic-wide, not matched-to-this-entity), why the executor
-    /// is an argument, and why `Unsupported` is not `0`.
+    /// order (the matched count — upstream's
+    /// `rmw_subscription_count_matched_publishers` — where the backend fills
+    /// it, else the topic-wide graph count), why the executor is an argument,
+    /// and why `Unsupported` is not `0`.
     pub fn get_publisher_count(
         &self,
         executor: &mut super::spin::Executor<'_>,
     ) -> Result<usize, NodeError> {
-        executor.count_publishers(self.handle.topic_name())
+        match nros_rmw::Subscription::count_matched_publishers(&self.handle) {
+            Err(nros_rmw::TransportError::Unsupported) => {
+                executor.count_publishers(self.handle.topic_name())
+            }
+            other => other.map_err(NodeError::Transport),
+        }
     }
 }
 

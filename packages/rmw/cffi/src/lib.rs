@@ -4320,6 +4320,25 @@ impl Publisher for CffiPublisher {
         }
         Ok(gid.data)
     }
+
+    /// Upstream `rmw_publisher_count_matched_subscriptions`, through the
+    /// vtable slot. Issue 1643 — the slot's first RUNTIME reader (the node
+    /// API's `get_subscription_count`); until then only an interop probe and
+    /// the backend's own tests asked. A NULL slot answers `Unsupported`.
+    fn count_matched_subscriptions(&self) -> Result<usize, TransportError> {
+        let Some(count) = self.vtable.publisher_count_matched_subscriptions else {
+            return Err(TransportError::Unsupported);
+        };
+        let view = self.view_shared();
+        let mut n: usize = 0;
+        // SAFETY: the slot is the backend's, called with a live view of this
+        // entity and an out-pointer to a local, per the vtable contract.
+        let ret = unsafe { count(&view, &mut n) };
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
+        }
+        Ok(n)
+    }
 }
 
 impl Drop for CffiPublisher {
@@ -5002,6 +5021,24 @@ impl nros_rmw::Subscription for CffiSubscription {
     /// [`CffiPublisher::actual_qos`](Publisher::actual_qos).
     fn actual_qos(&self) -> QoSProfile {
         qos_from_c(&self.actual_qos)
+    }
+
+    /// Upstream `rmw_subscription_count_matched_publishers`, through the
+    /// vtable slot. See [`CffiPublisher::count_matched_subscriptions`]
+    /// (`Publisher::count_matched_subscriptions`).
+    fn count_matched_publishers(&self) -> Result<usize, TransportError> {
+        let Some(count) = self.vtable.subscription_count_matched_publishers else {
+            return Err(TransportError::Unsupported);
+        };
+        let view = self.view_shared();
+        let mut n: usize = 0;
+        // SAFETY: the slot is the backend's, called with a live view of this
+        // entity and an out-pointer to a local, per the vtable contract.
+        let ret = unsafe { count(&view, &mut n) };
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
+        }
+        Ok(n)
     }
 }
 

@@ -177,27 +177,12 @@ INERT_FAMILIES = {
     # executor primitive a backend never hands out, which is exactly why the
     # entry point is upstream's NAME over `nros_node_create_guard_condition`'s
     # SHAPE rather than upstream's returned handle.
-    # The family below is a slot a backend FILLS. It became visible when
-    # phase-428 W8 made consumption the first question; under the old ordering
-    # a body was enough to read as covered.
-    #
-    # Its former family-mate `granted-qos-service-side` — the four
-    # `{client,service}_{request,response}_*_get_actual_qos` — is GONE, and
-    # deliberately not replaced by a narrower reason: issue 1327 gave the four
-    # a consumer at `create_client` / `create_service` in `cffi/src/lib.rs`,
-    # so they classify `produced` and a family entry for them would be the
-    # stale-claim shape this table checks for.
-    "matched-counts": Family(
-        ("publisher_count_matched_subscriptions", "subscription_count_matched_publishers"),
-        "upstream `rmw_*_count_matched_*` parity (phase-393 W2). Cyclone fills "
-        "both, and their only readers are the advertised-state interop probe and "
-        "the backend's own `tests/graph_counts.cpp`, which measure them against a "
-        "peer. No nros node API exposes a matched count, so no RUNTIME path reads "
-        "them: issue 1617 stopped counting test readers as consumers, which is "
-        "what moved these two here. A test reader proves the slot answers, not "
-        "that anything that ships asks",
-        defer=1643,
-    ),
+    # The `matched-counts` family stood here and is DELETED, not reworded:
+    # issue 1643 gave `publisher_count_matched_subscriptions` and
+    # `subscription_count_matched_publishers` a runtime reader — the node API's
+    # `get_subscription_count` / `get_publisher_count` ask the slot first
+    # (through `CffiPublisher::count_matched_subscriptions`) and fall back to
+    # the graph only on `Unsupported` — so both classify `produced`.
     "rx-sizing": Family(
         ("required_rx_bytes",),
         "zenoh-pico fills it (phase-403 W4) and no dispatch site exists: the "

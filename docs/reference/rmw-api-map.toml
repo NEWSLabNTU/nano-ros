@@ -288,9 +288,6 @@ nano = "publisher_assert_liveliness"
 [rmw_publisher_count_matched_subscriptions]
 where = "vtable"
 nano = "publisher_count_matched_subscriptions"
-status = "not-implemented"
-issue = 1643
-reason = "Cyclone fills the slot; no runtime path reads it — only the interop probe and backend tests do"
 
 [rmw_publisher_event_init]
 where = "vtable"
@@ -368,9 +365,6 @@ reason = "destroy_session — grouped"
 [rmw_subscription_count_matched_publishers]
 where = "vtable"
 nano = "subscription_count_matched_publishers"
-status = "not-implemented"
-issue = 1643
-reason = "Cyclone fills the slot; no runtime path reads it — only the interop probe and backend tests do"
 
 [rmw_subscription_event_init]
 where = "vtable"

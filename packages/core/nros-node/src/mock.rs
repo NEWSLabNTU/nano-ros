@@ -80,6 +80,11 @@ pub struct MockSubscriber {
     /// exactly one registration path, and the unit suite had no way to reach
     /// the other arm at all.
     in_place: Cell<bool>,
+    /// Issue 1643 — what `count_matched_publishers` answers. `None` (the
+    /// default) is the trait default, `Unsupported`, which is what every
+    /// backend without the slot reports; a test sets `Some(n)` to stand for
+    /// one that fills it (Cyclone).
+    pub matched: Cell<Option<usize>>,
 }
 
 impl MockSubscriber {
@@ -94,6 +99,7 @@ impl MockSubscriber {
             queue: RefCell::new(heapless::Deque::new()),
             topic_name: MockName::new(topic_name),
             in_place: Cell::new(false),
+            matched: Cell::new(None),
         }
     }
 
@@ -124,6 +130,10 @@ impl MockSubscriber {
 
 impl Subscription for MockSubscriber {
     type Error = TransportError;
+
+    fn count_matched_publishers(&self) -> Result<usize, TransportError> {
+        self.matched.get().ok_or(TransportError::Unsupported)
+    }
 
     fn has_data(&self) -> bool {
         !self.queue.borrow().is_empty()
@@ -274,6 +284,9 @@ pub struct MockPublisher {
     count: Cell<usize>,
     /// phase-444 — the topic this publisher was created on.
     topic_name: MockName,
+    /// Issue 1643 — what `count_matched_subscriptions` answers. See
+    /// [`MockSubscriber::matched`].
+    pub matched: Cell<Option<usize>>,
 }
 
 impl MockPublisher {
@@ -288,6 +301,7 @@ impl MockPublisher {
             published: RefCell::new(heapless::Deque::new()),
             count: Cell::new(0),
             topic_name: MockName::new(topic_name),
+            matched: Cell::new(None),
         }
     }
 
@@ -343,6 +357,10 @@ impl Publisher for MockPublisher {
 
     fn serialization_error(&self) -> TransportError {
         TransportError::SerializationError
+    }
+
+    fn count_matched_subscriptions(&self) -> Result<usize, TransportError> {
+        self.matched.get().ok_or(TransportError::Unsupported)
     }
 }
 
