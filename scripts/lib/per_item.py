@@ -29,6 +29,9 @@ API
     c_defines(text)                  [Define] — EVERY `#define`, with its conditional depth
     duplicate_defines(defines)       {name: [Define, …]} for names defined twice unconditionally
     rust_cfg_test_blank(code)        `code` with every `#[cfg(test)]` ITEM blanked
+    cmake_calls(code)                [(command, args, line)] — EVERY invocation, nested too
+    cmake_args(args)                 the argument tokens of one invocation, quotes dropped
+    cmake_keyword_items(args, kw, keywords)  EVERY item under keyword `kw` (e.g. OUTPUT)
 
 CLI (for shell gates)
     python3 scripts/lib/per_item.py call-args NAME FILE   one first-argument per line
@@ -225,7 +228,67 @@ def rust_use_paths(code: str) -> list:
     return out
 
 
+_CMAKE_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def cmake_calls(code: str) -> list:
+    """[(command, argument-text, line)] for EVERY CMake command invocation.
+
+    Pass COMMENT-STRIPPED code. Scanning continues INSIDE an argument list, so a
+    command nested in an `if(...)`/`foreach(...)` body is seen as well.
+    """
+    out, n, i = [], len(code), 0
+    while True:
+        m = _CMAKE_IDENT.search(code, i)
+        if not m:
+            return out
+        k = m.end()
+        while k < n and code[k] in " \t\n":
+            k += 1
+        if k < n and code[k] == "(":
+            depth, p = 0, k
+            while p < n:
+                if code[p] == "(":
+                    depth += 1
+                elif code[p] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                p += 1
+            if depth != 0:
+                return out
+            out.append((m.group(0), code[k + 1: p], code.count("\n", 0, m.start()) + 1))
+            i = k + 1
+        else:
+            i = m.end()
+
+
+def cmake_args(args: str) -> list:
+    """The argument tokens of one invocation: whitespace-split, a quoted
+    argument kept whole and unquoted."""
+    return [a if a else b for a, b in re.findall(r'"([^"]*)"|(\S+)', args) if (a or b)]
+
+
+def cmake_keyword_items(args: str, kw: str, keywords) -> list:
+    """EVERY item following keyword `kw` up to the next keyword — never only the
+    first. `add_custom_command(OUTPUT a.c b.c COMMAND …)` has two outputs."""
+    toks, out, on = cmake_args(args), [], False
+    for t in toks:
+        if t == kw:
+            on = True
+        elif t in keywords:
+            on = False
+        elif on:
+            out.append(t)
+    return out
+
+
 def self_test() -> None:
+    calls = cmake_calls("if(X)\n  add_library(a ${s})\nendif()\n")
+    assert [(c, ln) for c, _a, ln in calls] == [("if", 1), ("add_library", 2), ("endif", 3)], calls
+    assert cmake_args('a "b c" ${d}') == ["a", "b c", "${d}"]
+    assert cmake_keyword_items("OUTPUT x.c y.h COMMAND gen x.c DEPENDS z", "OUTPUT",
+                               {"OUTPUT", "COMMAND", "DEPENDS"}) == ["x.c", "y.h"]
     paths = [p for p, _ in rust_use_paths(
         "use eyre::{\n    Context,\n    Result as R,\n};\nuse a::{b::{c, d as e}, self};\n")]
     assert paths == ["eyre::Context", "eyre::Result", "a::b::c", "a::b::d", "a"], paths

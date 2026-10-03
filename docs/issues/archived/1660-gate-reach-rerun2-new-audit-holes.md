@@ -1,7 +1,8 @@
 ---
 id: 1660
 title: "Gate re-run 2026-10-03: the four holes the first re-run's NEW audits found were never assigned to a class issue, and still stand"
-status: open
+status: resolved
+resolved_in: 2026-10-03
 type: tech-debt
 area: testing, build
 severity: low
@@ -11,7 +12,7 @@ related: [phase-472, 1614, 1615, 1616, 1617, 1618, 1636]
 
 ## What
 
-The 2026-10-01 re-run ([findings](../development/audit-findings-2026-10-01-rerun.md),
+The 2026-10-01 re-run ([findings](../../development/audit-findings-2026-10-01-rerun.md),
 "New audits") recorded four holes in gates the 2026-09-28 audit had only
 triaged. Issues 1614–1617 took the RE-RUN holes by class. These four were
 listed in the doc but filed under no issue, so no PR reached them. The
@@ -46,3 +47,28 @@ Two re-run rows are CONTROLS that cannot fail, and they are not holes:
 Move each gate onto its class helper (`file_kinds` / `harvest` / `per_item`),
 then re-run the four mutations. Phase-472's acceptance is unmet until this
 table is empty.
+
+## Resolution (2026-10-03)
+
+Each gate moved onto its class helper and each mutation was re-run: rc 0 on
+`main`, rc 1 on the fix, with the mutation confirmed applied and the tree
+restored after.
+
+- **board-vocabulary** → `file_kinds` (new `system-toml` kind) + `population`.
+  Every `system.toml` is read (196, was 91). A Rust leaf's board resolves
+  against the board catalog's `names`, a sixth namespace; the strict
+  index-key assertion stays on C/C++ leaves, by stated reason.
+- **build-type-spelling** → `harvest`. A board package is one under
+  `packages/boards/` or beside an `nros-board.toml`, whatever it authors, so it
+  is `owned` and platform-committed.
+- **cmake-generated-source-owners** → `per_item` (new `cmake_calls`,
+  `cmake_args` and `cmake_keyword_items`) + `file_kinds` + `population`. Every
+  raw `add_custom_command(OUTPUT …)` item is a producer. A consumer names it
+  directly, or through one `set()` / `list(APPEND)` hop.
+- **xrce-config-manifest** → `harvest`. The lanes are checked against every
+  token the manifest binds and every macro the upstream templates define, so
+  `UXR_CONFIG_*` is known.
+
+Evidence table: [findings, "Issue 1660 closure"](../../development/audit-findings-2026-10-01-rerun.md#issue-1660-closure-2026-10-03--the-last-four-holes).
+Phase-472 is complete and archived.
+

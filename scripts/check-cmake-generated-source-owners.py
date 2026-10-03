@@ -48,9 +48,13 @@ variables of the two nano-ros codegen helpers
     nros_rmw_cyclonedds_generate_from_msg(<var> …)
 
 because those are the sites where a source list is produced by a custom command
-and then handed around by name. A bare `add_custom_command(OUTPUT x)` whose `x`
-is typed into two targets is NOT caught — that needs real variable-flow
-analysis of CMake, which this is not. If you add another helper that returns
+and then handed around by name, AND every raw `add_custom_command(OUTPUT …)`,
+item by item (issue 1660, phase-472 W6). The raw form was out of reach until
+2026-10-03 — a bare `OUTPUT x.c` typed into two `add_library` calls passed
+while the same shape through the helper failed — so each OUTPUT item is now a
+producer, and a consumer is any target-source command naming it directly or
+through ONE level of `set(V …)` / `list(APPEND V …)`. Deeper variable flow is
+still out of reach and stated so. If you add another helper that returns
 generated sources, add it to `PRODUCERS`.
 
 Usage::
@@ -60,13 +64,13 @@ Usage::
 """
 
 import re
-import subprocess
 import sys
 from pathlib import Path
-import sys as _w3_sys  # noqa: E402
-from pathlib import Path as _W3Path  # noqa: E402
-_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
+from per_item import cmake_args, cmake_calls, cmake_keyword_items  # noqa: E402  W6
+from file_kinds import files_of_kind  # noqa: E402  phase-472 W5
+from population import require_population  # noqa: E402  phase-472 W4
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -89,7 +93,13 @@ CONSUMERS = (
     "zephyr_library_sources",
 )
 
-IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# `add_custom_command(OUTPUT …)`'s keywords: an OUTPUT list ends at the next.
+CUSTOM_COMMAND_KEYWORDS = {
+    "OUTPUT", "COMMAND", "MAIN_DEPENDENCY", "DEPENDS", "BYPRODUCTS", "IMPLICIT_DEPENDS",
+    "WORKING_DIRECTORY", "COMMENT", "DEPFILE", "JOB_POOL", "JOB_SERVER_AWARE",
+    "VERBATIM", "APPEND", "USES_TERMINAL", "COMMAND_EXPAND_LISTS", "DEPENDS_EXPLICIT_ONLY",
+    "CODEGEN", "TARGET", "PRE_BUILD", "PRE_LINK", "POST_BUILD",
+}
 
 
 def strip_comments(text: str) -> str:
@@ -98,52 +108,25 @@ def strip_comments(text: str) -> str:
     return comments.strip_comments(text, "cmake")
 
 
-def iter_calls(text: str):
-    """Yield (command, argument-text, line) for every command invocation.
-
-    Scanning continues INSIDE an argument list, so a command nested in an
-    `if(...)`/`foreach(...)` body is seen as well.
-    """
-    n = len(text)
-    i = 0
-    while True:
-        m = IDENT.search(text, i)
-        if not m:
-            return
-        k = m.end()
-        while k < n and text[k] in " \t\n":
-            k += 1
-        if k < n and text[k] == "(":
-            depth = 0
-            p = k
-            while p < n:
-                if text[p] == "(":
-                    depth += 1
-                elif text[p] == ")":
-                    depth -= 1
-                    if depth == 0:
-                        break
-                p += 1
-            if depth != 0:
-                return
-            yield m.group(0), text[k + 1 : p], text.count("\n", 0, m.start()) + 1
-            i = k + 1
-        else:
-            i = m.end()
-
-
 def first_arg(args: str) -> str:
     toks = args.split()
     return toks[0] if toks else ""
 
 
 def analyse(text: str):
-    """Return {producer_var: [(consumer_command, line), ...]} for one file's text."""
+    """Return (produced, hits) for one file's text.
+
+    `produced` maps a producer KEY to its line: a helper's output variable
+    (`_gen`), or — per item — each raw `add_custom_command` OUTPUT (`x.c`).
+    `hits` maps the same key to [(consumer_command, line), …].
+    """
     text = strip_comments(text)
-    calls = list(iter_calls(text))
+    calls = cmake_calls(text)
 
     produced: dict[str, int] = {}
+    raw: set[str] = set()
     owned: set[str] = set()
+    assigned: dict[str, set] = {}  # one level of `set(V …)` / `list(APPEND V …)`
     for name, args, line in calls:
         if name in PRODUCERS:
             var = first_arg(args)
@@ -153,25 +136,37 @@ def analyse(text: str):
             var = first_arg(args)
             if var:
                 owned.add(var)
+        elif name == "add_custom_command" and "TARGET" not in cmake_args(args)[:1]:
+            for item in cmake_keyword_items(args, "OUTPUT", CUSTOM_COMMAND_KEYWORDS):
+                produced.setdefault(item, line)
+                raw.add(item)
+        elif name == "set":
+            toks = cmake_args(args)
+            if toks:
+                assigned.setdefault(toks[0], set()).update(toks[1:])
+        elif name == "list":
+            toks = cmake_args(args)
+            if len(toks) > 2 and toks[0] == "APPEND":
+                assigned.setdefault(toks[1], set()).update(toks[2:])
 
     hits: dict[str, list] = {v: [] for v in produced}
     for name, args, line in calls:
         if name not in CONSUMERS:
             continue
-        for var in produced:
-            if f"${{{var}}}" in args and var not in owned:
-                hits[var].append((name, line))
+        toks = cmake_args(args)
+        for key in produced:
+            if key in raw:
+                via = {f"${{{v}}}" for v, vals in assigned.items() if key in vals}
+                if key in toks or via.intersection(toks):
+                    hits[key].append((name, line))
+            elif f"${{{key}}}" in args and key not in owned:
+                hits[key].append((name, line))
     return produced, hits
 
 
 def tracked_cmake_files() -> list[Path]:
-    out = subprocess.run(
-        ["git", "-C", str(REPO), "ls-files", "-z", "*.cmake", "CMakeLists.txt",
-         "*/CMakeLists.txt"],
-        capture_output=True, text=True, check=True,
-    ).stdout
-    files = [REPO / p for p in out.split("\0") if p]
-    return [f for f in files if "third-party/" not in str(f.relative_to(REPO))]
+    # The KIND, not a pathspec (phase-472 W5): vendored `third-party/` is out.
+    return [REPO / p for p in files_of_kind("cmake", repo=REPO)]
 
 
 GOOD = """
@@ -186,6 +181,26 @@ BAD = """
 nros_rmw_cyclonedds_generate_from_msg(_gen PKG_NAME p)
 add_executable(a a.cpp ${_gen})
 add_executable(b b.cpp ${_gen})
+"""
+
+# Issue 1660 — the raw shape, which the helper-only reach never saw.
+RAW_BAD = """
+add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/x.c COMMAND gen VERBATIM)
+add_library(a STATIC ${CMAKE_CURRENT_BINARY_DIR}/x.c)
+add_library(b STATIC ${CMAKE_CURRENT_BINARY_DIR}/x.c)
+"""
+
+RAW_VIA_VAR = """
+add_custom_command(OUTPUT gen/y.c gen/y.h COMMAND gen)
+set(_srcs gen/y.c)
+add_library(a STATIC ${_srcs})
+target_sources(b PRIVATE ${_srcs})
+"""
+
+RAW_ONE = """
+add_custom_command(OUTPUT x.c COMMAND gen)
+add_library(a STATIC x.c)
+add_custom_target(t DEPENDS x.c)
 """
 
 SINGLE = """
@@ -207,6 +222,14 @@ def selftest() -> None:
     _, hits = analyse(SINGLE)
     assert len(hits["_gen"]) == 1, f"selftest: a single consumer miscounted: {hits}"
 
+    # Raw `add_custom_command(OUTPUT …)`, per item (issue 1660).
+    _, hits = analyse(RAW_BAD)
+    assert len(hits["${CMAKE_CURRENT_BINARY_DIR}/x.c"]) == 2, f"selftest: raw output: {hits}"
+    _, hits = analyse(RAW_VIA_VAR)
+    assert len(hits["gen/y.c"]) == 2 and hits["gen/y.h"] == [], f"selftest: via var: {hits}"
+    _, hits = analyse(RAW_ONE)
+    assert len(hits["x.c"]) == 1, f"selftest: one owner + a custom target: {hits}"
+
 
 def main(argv: list[str]) -> int:
     selftest()
@@ -221,29 +244,36 @@ def main(argv: list[str]) -> int:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        if not any(p in text for p in PRODUCERS):
+        if not any(p in text for p in PRODUCERS + ("add_custom_command",)):
             continue
         produced, hits = analyse(text)
         rel = path.relative_to(REPO)
         for var, decl_line in produced.items():
             seen += 1
             consumers = hits[var]
+            # A helper key is a variable name; a raw OUTPUT item is the path itself.
+            shown = var if var.startswith("$") or "/" in var or "." in var else f"${{{var}}}"
             if listing:
                 where = ", ".join(f"{c}@{ln}" for c, ln in consumers) or "-"
-                print(f"{rel}:{decl_line}: ${{{var}}} -> {len(consumers)} target(s) [{where}]")
+                print(f"{rel}:{decl_line}: {shown} -> {len(consumers)} target(s) [{where}]")
             if len(consumers) > 1:
                 where = "\n".join(f"      {c}() at line {ln}" for c, ln in consumers)
                 errs.append(
-                    f"  {rel}:{decl_line}: `${{{var}}}` is a source of "
+                    f"  {rel}:{decl_line}: `{shown}` is a source of "
                     f"{len(consumers)} targets:\n{where}\n"
                     f"      Under the Makefile generators each of those targets gets its\n"
                     f"      OWN copy of the generation rule and runs it in parallel into\n"
-                    f"      the same files (issue 1311). Give the set one owner:\n"
+                    f"      the same files (issue 1311). Give the set ONE owner — an OBJECT\n"
+                    f"      library the others consume as `$<TARGET_OBJECTS:…>`; for the\n"
+                    f"      cyclone codegen helpers that is\n"
                     f"        {OWNER_WRAPPER}(<var> <owner_target>\n"
-                    f"            SOURCES ${{{var}}} [INCLUDE_DIRS …])\n"
-                    f"      and list `<var>` where `${{{var}}}` was listed."
+                    f"            SOURCES {shown} [INCLUDE_DIRS …])\n"
+                    f"      listing `<var>` where `{shown}` was listed."
                 )
 
+    if not require_population(seen, "generated source set(s)",
+                              gate="check-cmake-generated-source-owners"):
+        return 1
     if errs:
         print(
             f"check-cmake-generated-source-owners: {len(errs)} generated source "

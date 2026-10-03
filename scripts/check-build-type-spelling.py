@@ -68,6 +68,21 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from harvest import reconcile  # noqa: E402  (phase-472 W7)
+
+# Where a board package lives, by KIND rather than by what it chose to author.
+# Issue 1660: the gate judged a board only when its package.xml carried
+# `<nano_ros_provides kind="board">`, so a new board package that omitted the
+# marker and declared `ament_cargo` passed as "unclassified" — the population
+# was the authored marker. Board packages are now HARVESTED: everything under
+# the board tree, and anything beside a board descriptor wherever it lives.
+BOARD_TREE = "packages/boards/"
+BOARD_DESCRIPTOR = "nros-board.toml"
+
+
+def is_board_package(rel_path, pkg_dir):
+    return rel_path.startswith(BOARD_TREE) or (Path(pkg_dir) / BOARD_DESCRIPTOR).is_file()
 BASELINE = ROOT / "scripts/build-type-spelling-baseline.json"
 RUST_TABLE = ROOT / "packages/cli/nros-cli-core/src/build_type.rs"
 CMAKE_TABLE = ROOT / "cmake/NanoRosPackageXml.cmake"
@@ -193,6 +208,8 @@ def read_evidence(pkg_xml, pkg_dir, rel_path):
     ev = set()
     if "nano_ros_provides" in body:
         ev.add("provides")
+    if is_board_package(rel_path, pkg_dir):
+        ev.add("board-kind")
     if (pkg_dir / "system.toml").is_file():
         ev.add("system.toml")
     if nano_ros or "<nano_ros_uses" in body:
@@ -224,7 +241,7 @@ def read_evidence(pkg_xml, pkg_dir, rel_path):
         # A package pinned to a platform, a provider, or a bringup: nothing
         # else can build it, whatever else it also ships.
         "platform_committed": bool(
-            {"provides", "system.toml"} & ev or deploy not in ("", "native")
+            {"provides", "board-kind", "system.toml"} & ev or deploy not in ("", "native")
         ),
     }
 
@@ -459,8 +476,19 @@ def self_test(quiet=False):
             "<build_type>cmake</build_type>",
             "<build_type>cmake</build_type><build_type>ament_cmake</build_type>"))
 
+        # Issue 1660: a board package WITHOUT the provider marker. Its kind is
+        # where it lives, so `ament_cargo` here is the firmware lie all the same.
+        unmarked_board = _pkg(tmp, "packages/boards/nros-board-x", "ament_cargo")
+        beside_desc = _pkg(tmp, "vendor/b", "ament_cmake",
+                           files=(("nros-board.toml", ""),))
+
         rows = scan(tmp, walk_package_xmls(tmp), allowed)
         by_path = {r[0]: r for r in rows}
+        assert by_path[unmarked_board][1] == "owned", by_path[unmarked_board]
+        assert {r for r, _ in by_path[unmarked_board][2]} == {"owned-declares-ament"}, \
+            "an unmarked board package must still bind (issue 1660)"
+        assert {r for r, _ in by_path[beside_desc][2]} == {"owned-declares-ament"}, \
+            "a package beside a board descriptor is a board package"
 
         def fired(path):
             return {rule for rule, _ in by_path[path][2]}
@@ -607,6 +635,14 @@ def main():
     root = scan_root or ROOT
     paths = walk_package_xmls(root) if scan_root else tracked_package_xmls()
     rows = scan(root, paths, allowed)
+
+    if not scan_root:
+        boards, problems = reconcile(
+            [p for p in paths if is_board_package(p, (Path(root) / p).parent)],
+            what="board package")
+        errors += problems
+        print(f"{len(boards)} board package(s) harvested by kind (under {BOARD_TREE} "
+              f"or beside {BOARD_DESCRIPTOR})")
 
     if "--list" in argv:
         return print_listing(rows)
