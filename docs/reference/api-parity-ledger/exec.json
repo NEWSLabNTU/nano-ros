@@ -785,7 +785,7 @@
   },
   "rust:Executor::declare_remap": {
     "verdict": "extension",
-    "why": "installs one `from -> to` name remap in the executor's fixed remap table. rclrs remaps through `__ns:=` / `topic:=` arguments on the command line, which no image has (RFC-0045); launch resolves the mapping and it is baked or declared here instead. See `cpp:remove_ros_arguments`.",
+    "why": "installs one launch `from -> to` name remap for one `(name, namespace)` in the executor's fixed remap table (`MAX_REMAPS`). It is the AUTHORITATIVE tier: the generated entry projects the launch file's `<remap>` rules through it. rclrs has no such call -- its remaps arrive only as `--ros-args -r from:=to` on the command line, parsed inside `Context::new`. See `cpp:remove_ros_arguments`.\n\nphase-467 Row 11 follow-through (2026-10-03) -- CORRECTED. This row said rclrs's command-line remaps were something \"no image has\", so launch was the only channel. Since #1591 a hosted build parses `--ros-args -r` too (`nros::init_with_args` / `nros::Context::new`, through `nros_node::ros_args`), and `Context::create_executor{,_in}` installs those rules in this SAME table tagged `RemapTier::Argv`. They are the FALLBACK: resolution reads the two tiers through `nros_node::names::resolve_name_layered`, so an argv rule loses to a launch rule declared here whatever order the two were installed in -- the local-over-global arrangement rcl has (`rcl_remap_topic_name`, Humble `rcl/remap.h`). Still `extension`: the authoritative tier is launch's, and upstream exposes no call to declare one.",
     "bucket": "ours-only"
   },
   "rust:Executor::declared_params": {
@@ -902,7 +902,7 @@
   },
   "rust:Executor::resolve_entity_name*": {
     "verdict": "extension",
-    "why": "applies the remap table plus the node namespace to a source name and hands back the resolved topic/service. It is public because generated entry points and the C surface both resolve names through this one path rather than each concatenating strings. See `rust:Executor::declare_remap`.",
+    "why": "resolves a source name for a node: ROS 2 expansion (`~`/relative to FQN) plus the node's remap rules, handing back the resolved topic/service. It is public because generated entry points and the C surface both resolve names through this one path rather than each concatenating strings. See `rust:Executor::declare_remap`.\n\nphase-467 Row 11 follow-through (2026-10-03) -- CORRECTED. This row said it applies \"the remap table\", one lookup. Since #1591 the table holds TWO tiers and this reads them through `nros_node::names::resolve_name_layered`: the launch rules `declare_remap` recorded for this node first, and only on no match the `--ros-args -r` rules (`RemapTier::Argv`, every node or the nodes of one name). Every road shares the split (`executor::spin::tier_rules`): this method for C and C++, `nros_node::ros_args::argv_fallback` for `nros::node!` components, and `NodeHandle`, which consulted no remap at all before that PR.",
     "bucket": "ours-only"
   },
   "rust:Executor::session*": {
@@ -936,7 +936,7 @@
   },
   "rust:Executor::set_node_identity": {
     "verdict": "divergence",
-    "why": "sets node name and namespace after open, because RFC-0046 makes LAUNCH the authority on node identity and an image is told its name at boot rather than parsing argv (there is none). rclrs fixes identity at `create_node`. See `c:support_init_named`.",
+    "why": "sets node name and namespace after open, because RFC-0046 makes LAUNCH the authority on node identity and an image is told its name at boot. rclrs fixes identity at `create_node`. See `c:support_init_named`.\n\nphase-467 Row 11 follow-through (2026-10-03) -- CORRECTED. The reason read \"rather than parsing argv (there is none)\". A hosted build does parse argv now (#1591), and the identity remaps rcl reads from it -- `__node` / `__name` / `__ns` -- are REFUSED by that parse, loudly and by name (`nros_node::ros_args`), because RFC-0046 has not ruled on an argv identity rung. So launch stays the one source on every target, and this setter is where it lands. The verdict does not move.",
     "bucket": "ours-only"
   },
   "rust:Executor::set_park_primitive": {
@@ -1015,7 +1015,7 @@
   },
   "rust:ExecutorConfig": {
     "verdict": "extension",
-    "why": "the session-identity builder an embedded image opens its executor with: locator, session mode, domain id, node name, namespace, monotonic clock, epoch clock, RMW selection. rclrs has no counterpart because its `Context` reads argv and the environment (`Context::from_env`, `default_from_env`) -- neither exists on a device (RFC-0045). The builder is `const fn` throughout so an image can bake the whole thing into a static. Covers the chaining setters (`new`, `default_const`, `domain_id`, `node_name`, `namespace`, `mode`, `rmw`, `epoch_us`) and the resolvers below."
+    "why": "the session-identity builder an embedded image opens its executor with: locator, session mode, domain id, node name, namespace, monotonic clock, epoch clock, RMW selection. rclrs has no counterpart because its `Context` reads argv and the environment (`Context::from_env`, `default_from_env`) -- neither exists on a device (RFC-0045). The builder is `const fn` throughout so an image can bake the whole thing into a static. Covers the chaining setters (`new`, `default_const`, `domain_id`, `node_name`, `namespace`, `mode`, `rmw`, `epoch_us`) and the resolvers below.\n\nphase-467 Row 11 follow-through (2026-10-03) -- CORRECTED. \"neither exists on a device\" still holds, but on a hosted build `nros::Context::new` reads argv as rclrs's does (#1591) and the `--ros-args -r` rules it parses ride the `Context`, not this builder. An `ExecutorConfig` has no field for them, so `Context::config()` REFUSES a context that carries any and names `create_executor` / `create_executor_in`, which install them (see `rust:Context::config`). An executor opened from this builder alone has launch remaps only."
   },
   "rust:ExecutorConfig::resolve": {
     "verdict": "extension",
