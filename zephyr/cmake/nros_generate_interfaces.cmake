@@ -399,220 +399,35 @@ function(nros_generate_interfaces target)
 
     # Build Rust FFI glue for generated message types
     if(_generated_rs_files)
-      # Phase 140 — resolve templates/serdes directly from the
-      # in-tree nano-ros checkout (the legacy install-local prefix is
-      # gone). The Zephyr module ships under <repo>/zephyr/cmake/, so
-      # walk up two dirs to reach the repo root.
-      set(_nros_repo_dir "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../..")
-      get_filename_component(_nros_repo_dir "${_nros_repo_dir}" ABSOLUTE)
-
-      set(_serdes_standalone_toml
-          "${_nros_repo_dir}/packages/api/nros-cpp/cmake/nros-serdes-standalone-Cargo.toml")
-      set(_template_dir
-          "${_nros_repo_dir}/cmake")
-
-      if(NOT EXISTS "${_serdes_standalone_toml}")
-        message(FATAL_ERROR
-          "nros-serdes standalone Cargo.toml not found at "
-          "${_serdes_standalone_toml}. The nano-ros checkout looks incomplete.")
-      endif()
-
-      # Stage a proper crate directory for the per-FFI Cargo.toml's
-      # `path = ` dependency. The upstream layout ships the
-      # standalone Cargo.toml beside other cmake helpers under
-      # `packages/api/nros-cpp/cmake/`, but Cargo needs the file
-      # named `Cargo.toml` and the `src/` tree alongside it. Stage
-      # both under the build dir on first configure (idempotent).
-      set(_serdes_dir "${CMAKE_BINARY_DIR}/nros-rust/staged-nros-serdes")
-      file(MAKE_DIRECTORY "${_serdes_dir}")
-      configure_file(
-        "${_serdes_standalone_toml}"
-        "${_serdes_dir}/Cargo.toml"
-        COPYONLY
-      )
-      # Stage the serdes crate source. Use a symlink so build.rs
-      # reads always-fresh content without re-staging on every
-      # configure; fall back to a directory copy if symlinks fail
-      # (Windows + non-admin, etc.).
-      if(NOT EXISTS "${_serdes_dir}/src")
-        execute_process(
-          COMMAND ${CMAKE_COMMAND} -E create_symlink
-            "${_nros_repo_dir}/packages/core/nros-serdes/src"
-            "${_serdes_dir}/src"
-          RESULT_VARIABLE _serdes_link_rc
-        )
-        if(NOT _serdes_link_rc EQUAL 0)
-          file(COPY "${_nros_repo_dir}/packages/core/nros-serdes/src"
-            DESTINATION "${_serdes_dir}")
-        endif()
-      endif()
-
-      # Set up temp Cargo project
-      set(_ffi_crate_dir "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_cpp_ffi_${target}")
-      set(_ffi_crate_src "${_ffi_crate_dir}/src")
-      set(_ffi_target_dir "${_ffi_crate_dir}/target")
-
-      file(MAKE_DIRECTORY "${_ffi_crate_src}")
-
-      # Detect Rust target for cross-compilation
-      nros_detect_rust_target()
-
-      # phase-336 — the C++ FFI glue uses the `cpp-ffi-glue` CARVE-OUT, not the
-      # ambient profile: it is a second Rust staticlib in a link that already
-      # contains the nros-cpp archive, and at `lto = "off"` both carry std's
-      # panicking codegen unit → `multiple definition of
-      # __rustc::rust_begin_unwind`. Fat LTO internalizes it.
-      nros_resolve_carve_out_profile(cpp-ffi-glue _NROS_FFI)
-      set(_nros_cargo_profile "${_NROS_FFI_PROFILE}")
-      set(_nros_cargo_profile_dir "${_NROS_FFI_DIR}")
-
-      # phase-340 W3 — the triple is always named (host included), so the
-      # artifact always sits under it. `_nros_ffi_cargo_args` rejects an empty
-      # RUST_TARGET, so a missing `nros_detect_rust_target()` fails loudly
-      # rather than writing to a path this line would not have predicted.
-      set(_ffi_lib "${_ffi_target_dir}/${NROS_RUST_TARGET}/${_nros_cargo_profile_dir}/libnano_ros_cpp_ffi_${target}.a")
-      # issue 0820 — cargo writes its dep-info beside the artifact, same
-      # basename, `.d`. Derived from `_ffi_lib` so the two cannot drift.
-      string(REGEX REPLACE "\\.a$" ".d" _ffi_dep_file "${_ffi_lib}")
-
-      # Generate Cargo.toml from template
-      set(FFI_TARGET "${target}")
-      set(SERDES_DIR "${_serdes_dir}")
-
-      configure_file(
-        "${_template_dir}/cpp_ffi_Cargo.toml.in"
-        "${_ffi_crate_dir}/Cargo.toml"
-        @ONLY
-      )
-      # phase-336 — no appended `[profile.*]` mirror. The preset's definition
-      # reaches this generated crate as `CARGO_PROFILE_*` environment variables
-      # (NROS_CARGO_PROFILE_ENV, set on the cargo command below), which works
-      # for EVERY nros-* profile rather than the one name this branch knew.
-
-      # Generate lib.rs: the de-duplicated dep closure + own files, each
-      # include!()d into one flat module scope. De-dup + emission live in the
-      # shared core (Phase 246). The Zephyr path uses ABSOLUTE include paths
-      # (its crate dir + generated outputs co-resolve in one binary tree).
-      _nros_collect_rs_closure(_ffi_rs_all
+      # Issue 1645 — ONE message-FFI staticlib per IMAGE, not one per package.
+      #
+      # Each package used to build its own `libnano_ros_cpp_ffi_<pkg>.a` and
+      # whole-archive it into `app`. A Rust staticlib bundles its whole closure
+      # (`compiler_builtins`, and `core` / `anon.*` constants on the host
+      # triple), and whole-archiving forces every member in, so two packages
+      # meant two copies of every intrinsic: `examples/zephyr/cpp/talker`
+      # (std_msgs + builtin_interfaces) measured 392 duplicate symbols on
+      # native_sim/native/64 and 571 on mps2/an385 with the flag removed, all
+      # FFI-vs-FFI — which is why this file carried the image's
+      # `--allow-multiple-definition`.
+      #
+      # So a package now only CONTRIBUTES its closure (dependency TYPES + its
+      # own EXPORTS, phase-306 W1's split), and one deferred call at the end of
+      # the app directory builds a single crate over the de-duplicated union
+      # and whole-archives it once. The split is what makes the union safe:
+      # an exports file belongs to exactly one package, so no `nros_cpp_*`
+      # symbol can appear twice, and a types file shared by two closures is
+      # included once.
+      _nros_collect_rs_closure(_ffi_rs_pkg
         DEPS ${_ARG_DEPENDENCIES}
         OWN ${_generated_rs_files})
-      _nros_write_ffi_lib_rs(
-        CRATE_SRC "${_ffi_crate_src}"
-        TEMPLATE "${_template_dir}/ffi_lib_rs.in"
-        RS_FILES ${_ffi_rs_all}
-        PATH_MODE absolute)
-
-      # Tier-2/3 embedded targets (e.g. armv7a-none-eabi for cortex_a9)
-      # need rustup to know which toolchain + target combo to use. The
-      # example tree's rust-toolchain.toml isn't visible from this
-      # build dir, so drop a copy alongside the FFI Cargo.toml. For
-      # the host targets (x86_64 / i686), no override is needed.
-      if(NROS_RUST_TARGET MATCHES "^(armv7a|thumbv|riscv32)")
-        file(WRITE "${_ffi_crate_dir}/rust-toolchain.toml"
-"# Auto-generated by nros_generate_interfaces.cmake — pinned to the
-# same nightly the Rust API path uses (see examples/zephyr/rust-toolchain.toml).
-[toolchain]
-channel = \"nightly-2026-04-11\"
-components = [\"rust-src\", \"rustfmt\"]
-targets = [\"${NROS_RUST_TARGET}\"]
-")
+      set_property(GLOBAL APPEND PROPERTY NROS_ZEPHYR_CPP_FFI_RS ${_ffi_rs_pkg})
+      get_property(_ffi_armed GLOBAL PROPERTY NROS_ZEPHYR_CPP_FFI_ARMED)
+      if(NOT _ffi_armed)
+        set_property(GLOBAL PROPERTY NROS_ZEPHYR_CPP_FFI_ARMED TRUE)
+        cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+          CALL _nros_zephyr_cpp_ffi_image)
       endif()
-
-      # Build the FFI staticlib
-      # Assemble cargo args via the shared core (Phase 246.3). Tier-2/3 embedded
-      # triples ship no precompiled std → build core+alloc from rust-src (inline
-      # -Z, not a .cargo/config.toml). Toolchain pin lives in rust-toolchain.toml
-      # written above. A host board still names its triple (phase-340 W3); only
-      # `-Z build-std` is conditional, on the embedded triples that ship no std.
-      set(_zephyr_build_std "")
-      if(NROS_RUST_TARGET MATCHES "^(armv7a|thumbv|riscv32)")
-        set(_zephyr_build_std "core,alloc,compiler_builtins")
-      endif()
-      _nros_ffi_cargo_args(_cargo_ffi_args
-        MANIFEST "${_ffi_crate_dir}/Cargo.toml"
-        TARGET_DIR "${_ffi_target_dir}"
-        PROFILE "${_nros_cargo_profile}"
-        RUST_TARGET "${NROS_RUST_TARGET}"
-        BUILD_STD "${_zephyr_build_std}")
-
-      # phase-336 — carry the preset definition; this generated crate is its own
-      # workspace root and no longer appends a `[profile.*]` block.
-      # phase-351 W5 — the message FFI glue is TARGET code, so its cargo
-      # invocation carries the board facts like every other one. Cheap and
-      # unconditional on purpose: deciding per crate whether it "needs" the
-      # board rung is the judgment call that leaves one lane silently without
-      # it, which is how the Zephyr arm shipped inert.
-      nros_resolve_board_facts()
-      set(_ffi_env "")
-      if(NOT _NROS_FFI_ENV STREQUAL "")
-        set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV} ${NROS_BOARD_FACTS_ENV})
-      endif()
-      # issue 0820 — the sibling of the generic generator's block, and the
-      # narrower of the two: DEPENDS here names only the crate's manifest and
-      # `lib.rs`, so neither the GENERATED message sources nor any nano-ros
-      # Rust crate had an edge on this archive. The DEPFILE covers both, from
-      # the graph cargo already computes.
-      # Issue 1304 — see cmake/NanoRosRustTool.cmake (via NanoRosCodegenCore).
-      nros_rust_tool(_ffi_cargo cargo)
-      add_custom_command(
-        OUTPUT "${_ffi_lib}"
-        COMMAND ${_ffi_env} "${_ffi_cargo}" ${_cargo_ffi_args}
-        DEPENDS "${_ffi_crate_dir}/Cargo.toml" "${_ffi_crate_src}/lib.rs"
-        DEPFILE "${_ffi_dep_file}"
-        WORKING_DIRECTORY "${_ffi_crate_dir}"
-        COMMENT "Building Rust FFI glue for ${target} C++ bindings"
-        VERBATIM
-      )
-
-      # Custom target carrying the .a build edge for `app`.
-      add_custom_target(${target}_cpp_ffi_build DEPENDS "${_ffi_lib}")
-
-      # Link FFI staticlib to app, WHOLE-ARCHIVED. The generated message C++
-      # headers call these `nros_cpp_{serialize,deserialize,publish}_*` FFI
-      # symbols from inline functions compiled into the app objects AND into
-      # any component library (nano_ros_node_register) — all of which may sit
-      # AFTER this `.a` on the final link line. GNU ld processes left→right and
-      # discards `.a` members whose symbols aren't yet referenced, so a plain
-      # link drops them → "undefined reference to nros_cpp_deserialize_*". The
-      # FFI glue is small (per-message ser/de/publish), so whole-archiving is
-      # the order-independent fix (issue 0056). CMake 3.24's
-      # $<LINK_LIBRARY:WHOLE_ARCHIVE> isn't available on the Zephyr-pinned CMake
-      # (3.22) — use raw flags and an explicit build-order dependency on `app`.
-      #
-      # #192 (the #193 class) — the flags MUST be ONE comma-joined `-Wl,` item,
-      # not three separate items: CMake < 3.24 de-duplicates repeated identical
-      # flag items across the aggregated link line, so with two generated
-      # packages (std_msgs + builtin_interfaces) the second triple's
-      # `-Wl,--whole-archive` / `-Wl,--no-whole-archive` collide with the
-      # first's AND with Zephyr's own whole-archive bracket — the surviving
-      # tokens leave an UNCLOSED bracket that swallows everything to the end of
-      # the link line, including picolibc's `-lc` (every `libc_ssp_*` member
-      # force-included → `__stack_chk_init` → undefined `getentropy` on targets
-      # with no entropy driver, e.g. FVP AEMv8-R). The comma-joined form is a
-      # single unique-per-lib token the de-dup cannot split.
-      #
-      # Phase 246.4 — the link wiring is intentionally NOT shared with the
-      # canonical generator: it solves the OPPOSITE ld-order problem (there, the
-      # nros-cpp runtime must follow the ffi lib; here, the ffi lib must follow
-      # the app/component objects) for a different target model (Zephyr `app` vs
-      # a per-package INTERFACE library). The IMPORTED-target dance the canonical
-      # path needs is dead weight here, so the FFI lib is linked by raw path.
-      target_link_libraries(app PRIVATE
-        "-Wl,--whole-archive,${_ffi_lib},--no-whole-archive")
-      add_dependencies(app ${target}_cpp_ffi_build)
-
-      # Issue 1636 / 1645 — each FFI archive is its own Rust staticlib and
-      # bundles its whole closure, and the line above whole-archives it, so
-      # every member is forced in. Measured with the flag removed,
-      # `examples/zephyr/cpp/talker` (zenoh; std_msgs + builtin_interfaces):
-      # 392 duplicate symbols on native_sim/native/64, 571 on mps2/an385, every
-      # one `compiler_builtins` (plus `__*` intrinsics, `anon.*` and 2 `core`
-      # fns on the host triple) BETWEEN the two FFI archives — no `nros_*`
-      # C-ABI symbol, no `REGISTRY`, no zenoh-pico state. Scoped HERE, to the
-      # images that link one, so every other Zephyr image links without it.
-      # Removing it is issue 1645 (fold the message FFI into the one runtime
-      # staticlib).
-      zephyr_ld_options(-Wl,--allow-multiple-definition)
     endif()
 
   else()
@@ -757,4 +572,214 @@ targets = [\"${NROS_RUST_TARGET}\"]
       endif()
     endif()
   endif()
+endfunction()
+
+# _nros_zephyr_cpp_ffi_image()
+#
+# Issue 1645 — build and link the image's ONE message-FFI staticlib over the
+# union every `nros_generate_interfaces(... LANGUAGE CPP)` call contributed
+# (global property NROS_ZEPHYR_CPP_FFI_RS). Deferred to the end of the app
+# directory by the first contributor, so it sees every package.
+function(_nros_zephyr_cpp_ffi_image)
+  set(_ffi_name "image")
+  # Phase 140 — resolve templates/serdes directly from the
+  # in-tree nano-ros checkout (the legacy install-local prefix is
+  # gone). The Zephyr module ships under <repo>/zephyr/cmake/, so
+  # walk up two dirs to reach the repo root.
+  set(_nros_repo_dir "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../..")
+  get_filename_component(_nros_repo_dir "${_nros_repo_dir}" ABSOLUTE)
+
+  set(_serdes_standalone_toml
+      "${_nros_repo_dir}/packages/api/nros-cpp/cmake/nros-serdes-standalone-Cargo.toml")
+  set(_template_dir
+      "${_nros_repo_dir}/cmake")
+
+  if(NOT EXISTS "${_serdes_standalone_toml}")
+    message(FATAL_ERROR
+      "nros-serdes standalone Cargo.toml not found at "
+      "${_serdes_standalone_toml}. The nano-ros checkout looks incomplete.")
+  endif()
+
+  # Stage a proper crate directory for the per-FFI Cargo.toml's
+  # `path = ` dependency. The upstream layout ships the
+  # standalone Cargo.toml beside other cmake helpers under
+  # `packages/api/nros-cpp/cmake/`, but Cargo needs the file
+  # named `Cargo.toml` and the `src/` tree alongside it. Stage
+  # both under the build dir on first configure (idempotent).
+  set(_serdes_dir "${CMAKE_BINARY_DIR}/nros-rust/staged-nros-serdes")
+  file(MAKE_DIRECTORY "${_serdes_dir}")
+  configure_file(
+    "${_serdes_standalone_toml}"
+    "${_serdes_dir}/Cargo.toml"
+    COPYONLY
+  )
+  # Stage the serdes crate source. Use a symlink so build.rs
+  # reads always-fresh content without re-staging on every
+  # configure; fall back to a directory copy if symlinks fail
+  # (Windows + non-admin, etc.).
+  if(NOT EXISTS "${_serdes_dir}/src")
+    execute_process(
+      COMMAND ${CMAKE_COMMAND} -E create_symlink
+        "${_nros_repo_dir}/packages/core/nros-serdes/src"
+        "${_serdes_dir}/src"
+      RESULT_VARIABLE _serdes_link_rc
+    )
+    if(NOT _serdes_link_rc EQUAL 0)
+      file(COPY "${_nros_repo_dir}/packages/core/nros-serdes/src"
+        DESTINATION "${_serdes_dir}")
+    endif()
+  endif()
+
+  # Set up temp Cargo project
+  set(_ffi_crate_dir "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_cpp_ffi_${_ffi_name}")
+  set(_ffi_crate_src "${_ffi_crate_dir}/src")
+  set(_ffi_target_dir "${_ffi_crate_dir}/target")
+
+  file(MAKE_DIRECTORY "${_ffi_crate_src}")
+
+  # Detect Rust target for cross-compilation
+  nros_detect_rust_target()
+
+  # phase-336 — the C++ FFI glue uses the `cpp-ffi-glue` CARVE-OUT, not the
+  # ambient profile: it is a second Rust staticlib in a link that already
+  # contains the nros-cpp archive, and at `lto = "off"` both carry std's
+  # panicking codegen unit → `multiple definition of
+  # __rustc::rust_begin_unwind`. Fat LTO internalizes it.
+  nros_resolve_carve_out_profile(cpp-ffi-glue _NROS_FFI)
+  set(_nros_cargo_profile "${_NROS_FFI_PROFILE}")
+  set(_nros_cargo_profile_dir "${_NROS_FFI_DIR}")
+
+  # phase-340 W3 — the triple is always named (host included), so the
+  # artifact always sits under it. `_nros_ffi_cargo_args` rejects an empty
+  # RUST_TARGET, so a missing `nros_detect_rust_target()` fails loudly
+  # rather than writing to a path this line would not have predicted.
+  set(_ffi_lib "${_ffi_target_dir}/${NROS_RUST_TARGET}/${_nros_cargo_profile_dir}/libnano_ros_cpp_ffi_${_ffi_name}.a")
+  # issue 0820 — cargo writes its dep-info beside the artifact, same
+  # basename, `.d`. Derived from `_ffi_lib` so the two cannot drift.
+  string(REGEX REPLACE "\\.a$" ".d" _ffi_dep_file "${_ffi_lib}")
+
+  # Generate Cargo.toml from template
+  set(FFI_TARGET "${_ffi_name}")
+  set(SERDES_DIR "${_serdes_dir}")
+
+  configure_file(
+    "${_template_dir}/cpp_ffi_Cargo.toml.in"
+    "${_ffi_crate_dir}/Cargo.toml"
+    @ONLY
+  )
+  # phase-336 — no appended `[profile.*]` mirror. The preset's definition
+  # reaches this generated crate as `CARGO_PROFILE_*` environment variables
+  # (NROS_CARGO_PROFILE_ENV, set on the cargo command below), which works
+  # for EVERY nros-* profile rather than the one name this branch knew.
+
+  # Generate lib.rs: the de-duplicated dep closure + own files, each
+  # include!()d into one flat module scope. De-dup + emission live in the
+  # shared core (Phase 246). The Zephyr path uses ABSOLUTE include paths
+  # (its crate dir + generated outputs co-resolve in one binary tree).
+  get_property(_ffi_rs_all GLOBAL PROPERTY NROS_ZEPHYR_CPP_FFI_RS)
+  list(REMOVE_DUPLICATES _ffi_rs_all)
+  _nros_write_ffi_lib_rs(
+    CRATE_SRC "${_ffi_crate_src}"
+    TEMPLATE "${_template_dir}/ffi_lib_rs.in"
+    RS_FILES ${_ffi_rs_all}
+    PATH_MODE absolute)
+
+  # Tier-2/3 embedded targets (e.g. armv7a-none-eabi for cortex_a9)
+  # need rustup to know which toolchain + target combo to use. The
+  # example tree's rust-toolchain.toml isn't visible from this
+  # build dir, so drop a copy alongside the FFI Cargo.toml. For
+  # the host targets (x86_64 / i686), no override is needed.
+  if(NROS_RUST_TARGET MATCHES "^(armv7a|thumbv|riscv32)")
+    file(WRITE "${_ffi_crate_dir}/rust-toolchain.toml"
+"# Auto-generated by nros_generate_interfaces.cmake — pinned to the
+# same nightly the Rust API path uses (see examples/zephyr/rust-toolchain.toml).
+[toolchain]
+channel = \"nightly-2026-04-11\"
+components = [\"rust-src\", \"rustfmt\"]
+targets = [\"${NROS_RUST_TARGET}\"]
+")
+  endif()
+
+  # Build the FFI staticlib
+  # Assemble cargo args via the shared core (Phase 246.3). Tier-2/3 embedded
+  # triples ship no precompiled std → build core+alloc from rust-src (inline
+  # -Z, not a .cargo/config.toml). Toolchain pin lives in rust-toolchain.toml
+  # written above. A host board still names its triple (phase-340 W3); only
+  # `-Z build-std` is conditional, on the embedded triples that ship no std.
+  set(_zephyr_build_std "")
+  if(NROS_RUST_TARGET MATCHES "^(armv7a|thumbv|riscv32)")
+    set(_zephyr_build_std "core,alloc,compiler_builtins")
+  endif()
+  _nros_ffi_cargo_args(_cargo_ffi_args
+    MANIFEST "${_ffi_crate_dir}/Cargo.toml"
+    TARGET_DIR "${_ffi_target_dir}"
+    PROFILE "${_nros_cargo_profile}"
+    RUST_TARGET "${NROS_RUST_TARGET}"
+    BUILD_STD "${_zephyr_build_std}")
+
+  # phase-336 — carry the preset definition; this generated crate is its own
+  # workspace root and no longer appends a `[profile.*]` block.
+  # phase-351 W5 — the message FFI glue is TARGET code, so its cargo
+  # invocation carries the board facts like every other one. Cheap and
+  # unconditional on purpose: deciding per crate whether it "needs" the
+  # board rung is the judgment call that leaves one lane silently without
+  # it, which is how the Zephyr arm shipped inert.
+  nros_resolve_board_facts()
+  set(_ffi_env "")
+  if(NOT _NROS_FFI_ENV STREQUAL "")
+    set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV} ${NROS_BOARD_FACTS_ENV})
+  endif()
+  # issue 0820 — the sibling of the generic generator's block, and the
+  # narrower of the two: DEPENDS here names only the crate's manifest and
+  # `lib.rs`, so neither the GENERATED message sources nor any nano-ros
+  # Rust crate had an edge on this archive. The DEPFILE covers both, from
+  # the graph cargo already computes.
+  # Issue 1304 — see cmake/NanoRosRustTool.cmake (via NanoRosCodegenCore).
+  nros_rust_tool(_ffi_cargo cargo)
+  add_custom_command(
+    OUTPUT "${_ffi_lib}"
+    COMMAND ${_ffi_env} "${_ffi_cargo}" ${_cargo_ffi_args}
+    DEPENDS "${_ffi_crate_dir}/Cargo.toml" "${_ffi_crate_src}/lib.rs"
+    DEPFILE "${_ffi_dep_file}"
+    WORKING_DIRECTORY "${_ffi_crate_dir}"
+    COMMENT "Building Rust FFI glue for ${_ffi_name} C++ bindings"
+    VERBATIM
+  )
+
+  # Custom target carrying the .a build edge for `app`.
+  add_custom_target(nros_cpp_ffi_${_ffi_name}_build DEPENDS "${_ffi_lib}")
+
+  # Link FFI staticlib to app, WHOLE-ARCHIVED. The generated message C++
+  # headers call these `nros_cpp_{serialize,deserialize,publish}_*` FFI
+  # symbols from inline functions compiled into the app objects AND into
+  # any component library (nano_ros_node_register) — all of which may sit
+  # AFTER this `.a` on the final link line. GNU ld processes left→right and
+  # discards `.a` members whose symbols aren't yet referenced, so a plain
+  # link drops them → "undefined reference to nros_cpp_deserialize_*". The
+  # FFI glue is small (per-message ser/de/publish), so whole-archiving is
+  # the order-independent fix (issue 0056). CMake 3.24's
+  # $<LINK_LIBRARY:WHOLE_ARCHIVE> isn't available on the Zephyr-pinned CMake
+  # (3.22) — use raw flags and an explicit build-order dependency on `app`.
+  #
+  # #192 (the #193 class) — the flags MUST be ONE comma-joined `-Wl,` item,
+  # not three separate items: CMake < 3.24 de-duplicates repeated identical
+  # flag items across the aggregated link line, so with two generated
+  # packages (std_msgs + builtin_interfaces) the second triple's
+  # `-Wl,--whole-archive` / `-Wl,--no-whole-archive` collide with the
+  # first's AND with Zephyr's own whole-archive bracket — the surviving
+  # tokens leave an UNCLOSED bracket that swallows everything to the end of
+  # the link line, including picolibc's `-lc` (every `libc_ssp_*` member
+  # force-included → `__stack_chk_init` → undefined `getentropy` on targets
+  # with no entropy driver, e.g. FVP AEMv8-R). The comma-joined form is a
+  # single unique-per-lib token the de-dup cannot split.
+  #
+  # Phase 246.4 — the link wiring is intentionally NOT shared with the
+  # canonical generator: it solves the OPPOSITE ld-order problem (there, the
+  # nros-cpp runtime must follow the ffi lib; here, the ffi lib must follow
+  # the app/component objects) for a different target model (Zephyr `app` vs
+  # a per-package INTERFACE library). The IMPORTED-target dance the canonical
+  # path needs is dead weight here, so the FFI lib is linked by raw path.
+  target_link_libraries(app PRIVATE
+    "-Wl,--whole-archive,${_ffi_lib},--no-whole-archive")
+  add_dependencies(app nros_cpp_ffi_${_ffi_name}_build)
 endfunction()

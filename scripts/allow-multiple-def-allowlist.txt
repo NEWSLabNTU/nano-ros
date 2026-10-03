@@ -22,6 +22,10 @@
 #   * NuttX Make.defs: libnros_c.a + libnros_cpp.a — 392 duplicates, 297 of them
 #     `nros_*` plus REGISTRY. A C++ image now links libnros_cpp.a ONLY (it holds
 #     299/299 of nros-c's C-ABI symbols); the use is gone.
-# What stays is measured (or says why it cannot be), owned by issue 1645:
-zephyr/cmake/nros_generate_interfaces.cmake 1  # C++ message FFI: per-package staticlibs, each whole-archived — cpp/talker (std_msgs + builtin_interfaces) 392 dups on native_sim/native/64 (340 compiler_builtins, 35 `__*` intrinsics, 15 anon.*, 2 core), 571 on mps2/an385 (all compiler_builtins), FFI vs FFI; no nros_*, no REGISTRY. Scoped to images that link one; c/talker links without it (issue 1645)
-integrations/s32ds/makefile.defs 1  # UNVERIFIED: S32DS 3.6.10 is installed but no S32DS project (.cproject + RTD + FreeRTOS + lwIP) exists on the host, and the CDT link is the project's. Its nros-libs.mk links `corrosion/*.a`, which can hold libnros_c.a AND libnros_cpp.a — the shape NuttX measured at 392 dups incl. REGISTRY (issue 1645)
+# Issue 1645 removed the Zephyr C++ use: the message FFI is now ONE staticlib per
+# image (`libnano_ros_cpp_ffi_image.a`, the union of every package's closure)
+# instead of one whole-archived staticlib per package, so `compiler_builtins`
+# reaches the link once. examples/zephyr/cpp/talker (zenoh, native_sim/native/64)
+# links with no flag, where the per-package layout measured 392 duplicates.
+# What stays cannot be measured on the host, owned by issue 1664:
+integrations/s32ds/makefile.defs 1  # UNVERIFIED: S32DS 3.6.10 is installed but no S32DS project (.cproject + RTD + FreeRTOS + lwIP) exists on the host, and the CDT link is the project's. Its nros-libs.mk links `corrosion/*.a`, which can hold libnros_c.a AND libnros_cpp.a — the shape NuttX measured at 392 dups incl. REGISTRY (issue 1664)
