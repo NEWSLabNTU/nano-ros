@@ -1020,7 +1020,7 @@ stands. What the build path does change is where an input COULD come from:
 
 ### D4 extended — the closure field `RX_BUF` needs
 
-[Issue 1595](../issues/1595-subscriber-payload-carriers-have-no-descriptor-reader.md)
+[Issue 1595](../issues/archived/1595-subscriber-payload-carriers-have-no-descriptor-reader.md)
 found the one payload carrier no `[[endpoint]]` row can replace: `RX_BUF` is a
 CLOSURE fact (every type the image could receive or publish, because
 `DEFAULT_TX_BUF` aliases it), and an undeclared endpoint's type is in the

@@ -5,12 +5,13 @@ title: "No consumer reads the subscriber payload classes off the sizing
   `NROS_DECLARED_*` (cmake) or plain knob rows (cargo leaf), so the four payload
   carriers cannot retire even though the descriptor now states the bounds on every
   producer road"
-status: open
+status: resolved
+resolved_in: 2026-10-03
 type: tech-debt
 area: [build, core]
 severity: low
 found: 2026-10-01
-related: [1393, 1407, 1199, 1233, 1122]
+related: [1393, 1407, 1199, 1233, 1122, 1649, 1655]
 ---
 
 ## What is open
@@ -148,5 +149,32 @@ naming 38 unbounded types (`example_interfaces/msg/String`, the `*MultiArray`
 family, ...) — the same answer the cmake take-buffer derivation gives there
 (`NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` is not emitted for that configure).
 
-**Still open:** the `nros-node` reader, and the retirement question for the
-carrier.
+## Resolved, 2026-10-03 — the reader ranks the descriptor first
+
+`nros-node/build.rs` sizes `RX_BUF` (`DEFAULT_RX_BUF_SIZE`) from a stated
+`[types] max_wire_bound_bytes` FIRST (`described_closure_bound`, through
+`env_usize_declared_or`: env / dotconfig / board rungs, then the descriptor,
+then `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE`, then 1024). A refused field is
+printed as a `cargo::warning` and falls to the carrier.
+
+Measured with the `examples/workspaces/cpp` native configure's own `nros_cpp`
+cargo command (the multi-entry runtime descriptor edited to state 777, or kept
+refusing), `DEFAULT_RX_BUF_SIZE` in `nros-node`'s generated config:
+
+| inputs | `DEFAULT_RX_BUF_SIZE` |
+| --- | --- |
+| neither (control) | 1024 |
+| carrier `=777` only | 777 |
+| descriptor stating 777 only | 777 |
+| both | 777 |
+| a REFUSING descriptor + carrier `=999` | 999 |
+| descriptor stating 777 + `NROS_SUBSCRIPTION_BUFFER_SIZE=2048` | 2048 |
+
+So the knob diff of retiring the carrier is ZERO on a road that names a
+descriptor. **The carrier still does not retire, and the reason is neither a
+field nor a reader:** cmake emits it whenever the message-bound closure
+derived (`_nros_take_buffer_env` guards on `NROS_MESSAGE_BOUNDS_STATUS` alone),
+contract or not, and a contract-less image writes no descriptor (RFC-0100 D4,
+"no contract ⇒ no file"). That is the FILE ruling issue 1655 owns, and the
+ledger row points there. The three subscriber-class rows point at issue 1649's
+retirement step.

@@ -628,6 +628,8 @@ READ_CALLEES = {
     # parameter, so the census sees the literal at the call site rather than
     # inside the helper.
     "env_usize_declared",
+    # issue 1595 -- `env_usize_declared` with a descriptor rung before the carrier.
+    "env_usize_declared_or",
     "declared_usize",
     "declared_floored",
     # issue 1227 -- the declared QoS depth TABLE is a string, not a usize, and
