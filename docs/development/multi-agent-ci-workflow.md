@@ -113,9 +113,9 @@ escapes people add to make CI work. Mounting the host Docker socket, or
 saying "containers are insufficient" is describing jobs that build images or
 start containers.
 
-Ours do neither, and that was **measured**, not assumed. Across all four
-self-hosted lanes (`build-wide`, `run-matrix`, the `queue` L3 job, and the
-`nightly` matrix): zero references to Docker, zero to KVM, zero device mounts.
+Ours do neither, and that was **measured**, not assumed. Across all the
+self-hosted lanes (`run-matrix`, the `queue` L3 job, and the `nightly` matrix;
+`build-wide` was a fourth until it was deleted): zero references to Docker, zero to KVM, zero device mounts.
 QEMU runs in pure emulation under `-icount shift=auto`, which is deterministic
 and *incompatible* with KVM, so not even `/dev/kvm` is wanted.
 

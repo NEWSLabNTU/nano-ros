@@ -455,7 +455,7 @@ lane=tier2`, after merge. Everything pre-merge is fixture-free by construction,
 which is why `ci-l1`'s "NO FIXTURES" claim has to hold and why
 `check-lane-contracts` enforces it — a CI job may resolve an artifact only if
 that job builds it.
-| push to `main` | `host-tests` (L2) | ~15 min | no |
+| schedule (03:00) | `host-tests` (L2) — schedule-only since 2026-10-03: on push, 26 of 29 runs were cancelled | ~15 min | no |
 | schedule | `nightly` (L3/L4 matrix) | hours | no |
 
 Measured on the hosted runner: of an 878 s gate, `check-fast` is 131 s and

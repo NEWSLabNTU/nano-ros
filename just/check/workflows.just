@@ -630,6 +630,16 @@ workflow-just-provisioning:
 next-stable-advisory:
     @python3 scripts/ci/next-stable-delta.py --selftest
 
+# `just lane-health`'s classifier and its lane HARVEST, offline. The report
+# itself needs `gh` and the network, so it is a verb and never a gate; what CAN
+# be held still is that the harvest reads `.github/workflows/` (and keeps a
+# merge_group-only or workflow_run-only workflow out) and that NO SIGNAL /
+# NEVER FINISHES / RARELY FINISHES are told apart from a lane that is merely red.
+# A broken classifier would print a false all-clear every night.
+[private]
+lane-health-selftest:
+    @python3 scripts/ci/lane-health.py --selftest >/dev/null
+
 # issue 1158 — `run-matrix.yml`'s stage report must still describe the steps that
 # exist. The step->stage map is AUTHORED (the workflow hands `lane-stage.py` a
 # copy of its own `- name:` lines), and an authored map drifts the moment a step

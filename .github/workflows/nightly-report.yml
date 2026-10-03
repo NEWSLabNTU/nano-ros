@@ -63,6 +63,32 @@ jobs:
             echo 'Locally: `just nightly-triage`.'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # The same question one level up: not "did THIS nightly report" but
+      # "which lanes on main have stopped reporting at all". gate.yml's push
+      # lane was red for 100 consecutive runs and host-tests finished 3 of 29,
+      # and nothing said so, because nothing that reads a pull request's
+      # checks reads these. Daily, because this workflow already is.
+      - name: Which lanes on main produce no signal?
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NROS_QUEUE_REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          python3 scripts/ci/lane-health.py --markdown | tee /tmp/lanes.md || true
+          {
+            echo
+            echo '## Which lanes on main produce no signal?'
+            echo
+            cat /tmp/lanes.md
+            echo
+            echo 'Locally: `just lane-health`.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          n="$(sed -n 's/^lane-health: \([0-9][0-9]*\) of .*/\1/p' /tmp/lanes.md | head -1)"
+          if [ "${n:-0}" -gt 0 ]; then
+            echo "::warning title=$n lane(s) on main produce no signal::$(sed -n 's/^lane-health: [0-9]* of [0-9]* lane(s) on main produce no signal: //p' /tmp/lanes.md)"
+          fi
+
       - name: Annotate when the lane produced no verdict
         if: ${{ always() }}
         run: |

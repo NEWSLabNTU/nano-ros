@@ -73,7 +73,7 @@ concurrency:
   #
   # `cancel-in-progress: true` stays right where a run is SHORT relative to the
   # merge interval, or where an operator asked for the newest answer on demand
-  # (`build-wide.yml`, dispatch-only since W1).
+  # (the retired `build-wide.yml` was that case).
   cancel-in-progress: false
 
 permissions:

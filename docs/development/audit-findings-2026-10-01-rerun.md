@@ -389,3 +389,8 @@ for template coverage. The CMake gate follows one level of `set()` /
 
 **The New-audits table has no holes left. Phase-472's acceptance is met.**
 
+### Historical workflow names
+
+| Historical | Replaced by |
+|------------|-------------|
+| `build-wide.yml` | `queue.yml`'s self-hosted L3 job — deleted 2026-10-03, after this audit used it as a mutation target |

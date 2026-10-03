@@ -2950,6 +2950,18 @@ tier-health *args:
 nightly-triage runs="3":
     @python3 scripts/ci/nightly-triage.py --runs {{runs}}
 
+# Which lanes on `main` have stopped producing a signal? Every workflow that
+# runs on push or schedule (HARVESTED from .github/workflows, never listed):
+# NO SIGNAL = red on its last N verdicts, NEVER/RARELY FINISHES = cancelled
+# before it could say anything. gate.yml's push lane sat red for 100 runs and
+# host-tests finished 3 of 29 with nothing saying so. Never gates; nightly-report
+# writes the same table to its job summary every day.
+#
+#   just lane-health           just lane-health --runs 20 --threshold 5
+[group("ci")]
+lane-health *args:
+    @python3 scripts/ci/lane-health.py {{args}}
+
 # How far did the tier-2 lane get? (issue 1158) Never gates.
 #
 # `nightly-triage` asks "was this failure a verdict?"; the tier-2 lane needs one
