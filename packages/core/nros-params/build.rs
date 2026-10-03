@@ -36,8 +36,6 @@ fn main() {
     // Spelled literally so the wire is greppable (`check-declared-fact-carriers`).
     // The Zephyr road delivers the same numbers as the knob itself
     // (`_nros_resolve_derivable_knob`), and only the NEEDS facts by these names.
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_PARAMETERS");
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_PARAM_NAME_LEN");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_STRING_VALUE_LEN");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_ARRAY_LEN");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_BYTE_ARRAY_LEN");
@@ -56,19 +54,15 @@ fn main() {
     let max_parameters = knob(
         "NROS_MAX_PARAMETERS",
         rungs.max_parameters,
-        contract(
-            params.map(|p| p.max_parameters()),
-            declared("NROS_DECLARED_MAX_PARAMETERS"),
-        ),
+        // Issue 1649 -- the descriptor's `[params]` alone; the
+        // `NROS_DECLARED_MAX_PARAMETERS` carrier retired onto it.
+        contract(params.map(|p| p.max_parameters()), None),
         32,
     );
     let max_param_name_len = knob(
         "NROS_MAX_PARAM_NAME_LEN",
         rungs.max_param_name_len,
-        contract(
-            params.map(|p| p.max_param_name_len()),
-            declared("NROS_DECLARED_MAX_PARAM_NAME_LEN"),
-        ),
+        contract(params.map(|p| p.max_param_name_len()), None),
         64,
     );
     // The three CAPACITIES are BOARD facts (RFC-0100 D1 *target*), owned by

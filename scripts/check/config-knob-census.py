@@ -263,21 +263,9 @@ KNOB_CLASS = {
     # user tunes. `ZPICO_MAX_QUERYABLES` / `CONFIG_NROS_MAX_QUERYABLES` is the
     # knob and still outranks it, bounded from below by this term.
     "NROS_DECLARED_TL_PUBLISHERS": ("infra", "a COUNT the resolver passes down, not a knob"),
-    # issue 1498 -- the retention SLOT beside that count, derived from the types
-    # the image publishes transient-local. `ZPICO_TL_RETAIN_BYTES` is the knob
-    # and still outranks it.
-    "NROS_DECLARED_TL_RETAIN_BYTES": ("infra", "a SIZE the resolver passes down, not a knob"),
-    # issue 1122 — the same shape one pool over: cmake DERIVES the large-payload
-    # class count and this carries it to the build script as a DEFAULT on lanes
-    # with no Kconfig. Not a knob: `ZPICO_MAX_LARGE_SUBSCRIBERS` is the knob and
-    # still outranks it.
-    "NROS_DECLARED_LARGE_SUBSCRIBERS": ("infra", "a COUNT the resolver passes down, not a knob"),
-    # issue 1199 — the rest of the DECLARED road, same category as the two
-    # above: each is a number cmake DERIVED for this image and hands to a build
-    # script as a DEFAULT. The knob is the `ZPICO_*` / `NROS_*` name beside it,
-    # which still outranks the declared value.
-    "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": ("infra", "a SIZE the resolver passes down, not a knob"),
-    "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": ("infra", "a SIZE the resolver passes down, not a knob"),
+    # issue 1649 -- the retention slot, the payload trio and two parameter
+    # counts (issues 1498 / 1122 / 1199 / phase-446) retired from the DECLARED
+    # road onto the sizing descriptor, so they are no longer read here.
     # phase-467 W1 (issue 1471) -- the contract-monitor tables. DERIVED, and
     # deliberately not ladder candidates: the row count is a property of the
     # CONTRACT the image bakes, never of the board it runs on (phase-467's rule:
@@ -297,8 +285,6 @@ KNOB_CLASS = {
     # `NROS_MAX_*` rung outranks. The NEEDS facts are not numbers at all: they
     # name the declared parameter whose type needs a capacity the board must
     # state, so the build script can refuse naming it.
-    "NROS_DECLARED_MAX_PARAMETERS": ("infra", "a COUNT the resolver passes down, not a knob"),
-    "NROS_DECLARED_MAX_PARAM_NAME_LEN": ("infra", "a SIZE the resolver passes down, not a knob"),
     "NROS_DECLARED_MAX_STRING_VALUE_LEN": ("infra", "a SIZE the resolver passes down, not a knob"),
     "NROS_DECLARED_MAX_ARRAY_LEN": ("infra", "a SIZE the resolver passes down, not a knob"),
     "NROS_DECLARED_MAX_BYTE_ARRAY_LEN": ("infra", "a SIZE the resolver passes down, not a knob"),

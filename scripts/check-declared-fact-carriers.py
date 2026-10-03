@@ -224,6 +224,20 @@ _RETIRED_CELLS = NotCarried(
     "retired onto the sizing descriptor's `[image] cell_entities` (issue "
     "1655); `nros/build.rs` reads it first")
 
+# Issue 1649 -- the payload trio and the transient-local retention slot left
+# the declared road with `_nros_payload_facts_env`; and two parameter-store
+# counts left `_nros_param_store_env`'s list. Quoted from the producer.
+_RETIRED_PAYLOAD = NotCarried(
+    _FACTS,
+    "It carried the payload trio",
+    "retired onto the sizing descriptor (issue 1649): `nros-rmw-zenoh` reads "
+    "`subscriber_payload_classes` / `transient_local_retain_bytes` first")
+_RETIRED_PARAM_COUNTS = NotCarried(
+    _FACTS,
+    "MAX_PARAMETERS and MAX_PARAM_NAME_LEN left this list",
+    "retired onto the sizing descriptor's `[params]` (issue 1649); "
+    "`nros-params` reads it first")
+
 FACT_DISPOSITION = {
     # ---- the entity inventory's counts -----------------------------------
     "NROS_DERIVED_EXECUTOR_MAX_CBS": {
@@ -338,17 +352,17 @@ FACT_DISPOSITION = {
     "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE": {
         "resolver": ("NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE",),
         "sidecar": ("NROS_SUBSCRIBER_BUFFER_SIZE",),
-        "declared": ("NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE",),
+        "declared": _RETIRED_PAYLOAD,
     },
     "NROS_DERIVED_SUBSCRIBER_LARGE_SIZE": {
         "resolver": ("NROS_RESOLVED_ZPICO_SUBSCRIBER_LARGE_SIZE",),
         "sidecar": ("ZPICO_SUBSCRIBER_LARGE_SIZE",),
-        "declared": ("NROS_DECLARED_SUBSCRIBER_LARGE_SIZE",),
+        "declared": _RETIRED_PAYLOAD,
     },
     "NROS_DERIVED_MAX_LARGE_SUBSCRIBERS": {
         "resolver": ("NROS_RESOLVED_ZPICO_MAX_LARGE_SUBSCRIBERS",),
         "sidecar": ("ZPICO_MAX_LARGE_SUBSCRIBERS",),
-        "declared": ("NROS_DECLARED_LARGE_SUBSCRIBERS",),
+        "declared": _RETIRED_PAYLOAD,
     },
     "NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE": {
         "resolver": ("NROS_RESOLVED_NROS_SUBSCRIPTION_BUFFER_SIZE",),
@@ -436,7 +450,7 @@ FACT_DISPOSITION = {
             "`transient_local_retain_demand` prices the slot from its "
             "transient-local publisher rows' `wire_bound_bytes` -- the same "
             "refusals as `_nros_bounds_tl_retain` (issue 1498)"),
-        "declared": ("NROS_DECLARED_TL_RETAIN_BYTES",),
+        "declared": _RETIRED_PAYLOAD,
     },
     # issue 1549 -- zenoh-pico's same-session query path, a 0/1 derived from
     # whether the image holds a service client AND a service server. Only the
@@ -511,7 +525,11 @@ for _fact, _knob in (
             "The cargo-LEAF road carries none of this",
             "the leaf sidecar comes from a metadata probe that sees no "
             "SystemModel, so it has no parameter declaration to forward"),
-        "declared": ("NROS_DECLARED_" + _knob[len("NROS_"):],),
+        "declared": (
+            _RETIRED_PARAM_COUNTS
+            if _knob in ("NROS_MAX_PARAMETERS", "NROS_MAX_PARAM_NAME_LEN")
+            else ("NROS_DECLARED_" + _knob[len("NROS_"):],)
+        ),
     }
 
 # Derived, not authored twice (issue 1199's map). The leaf-road <-> CMake-road
@@ -530,7 +548,10 @@ DESCRIPTOR_TWINS = {
     _carried(e, "sidecar")[0]
     for e in FACT_DISPOSITION.values()
     if len(_carried(e, "sidecar")) == 1
-    and any(e["declared"] is r for r in (_RETIRED_ONTO_DESCRIPTOR, _RETIRED_CELLS))
+    and any(
+        e["declared"] is r
+        for r in (_RETIRED_ONTO_DESCRIPTOR, _RETIRED_CELLS, _RETIRED_PAYLOAD)
+    )
 }
 
 # Facts with no leaf-road twin, each for a stated reason.
