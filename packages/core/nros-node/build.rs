@@ -442,9 +442,8 @@ fn main() {
     // --- Primary user-facing knobs ---
     // issue 1199 — the executor callback budget cmake derived for this image,
     // on the DECLARED road. Mirrors `DERIVED_ENV_KEYS` on the cargo-leaf road.
-    let max_cbs = env_usize_declared_or(
+    let max_cbs = env_usize_described(
         "NROS_EXECUTOR_MAX_CBS",
-        "NROS_DECLARED_EXECUTOR_MAX_CBS",
         described_image_count(
             sizing.as_ref(),
             "callback_slots",
@@ -459,9 +458,8 @@ fn main() {
     // it was every image's answer until phase-448 W6. Too small is a
     // `NodeError::NoSchedContextSlot` at `create_sched_context`, which names
     // this knob, not a link error.
-    let max_sc = env_usize_declared_or(
+    let max_sc = env_usize_described(
         "NROS_EXECUTOR_MAX_SC",
-        "NROS_DECLARED_EXECUTOR_MAX_SC",
         described_image_count(
             sizing.as_ref(),
             "sched_context_count",
@@ -479,9 +477,8 @@ fn main() {
     // Too small is a REFUSAL at install that names the knob
     // (`monitor::MonitorTableFull`, and a compile-time assert in the generated
     // Rust entry), never a truncation: the spin loop inspects only the first N.
-    let max_monitors = env_usize_declared_or(
+    let max_monitors = env_usize_described(
         "NROS_EXECUTOR_MAX_MONITORS",
-        "NROS_DECLARED_EXECUTOR_MAX_MONITORS",
         described_image_count(
             sizing.as_ref(),
             "monitor_rows",
@@ -489,9 +486,8 @@ fn main() {
         ),
         8,
     );
-    let max_age_monitors = env_usize_declared_or(
+    let max_age_monitors = env_usize_described(
         "NROS_EXECUTOR_MAX_AGE_MONITORS",
-        "NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS",
         described_image_count(
             sizing.as_ref(),
             "age_monitor_rows",
@@ -619,9 +615,8 @@ fn main() {
     // Measured (issue 1198): 1,224 B a slot on thumbv7m-none-eabi, because it
     // multiplies SEVEN tables, so a single-node talker was paying 3,672 B for
     // three node slots it can never fill.
-    let max_nodes = env_usize_declared_or(
+    let max_nodes = env_usize_described(
         "NROS_EXECUTOR_MAX_NODES",
-        "NROS_DECLARED_EXECUTOR_MAX_NODES",
         described_image_count(
             sizing.as_ref(),
             "node_count",
@@ -666,9 +661,8 @@ fn main() {
     // issue 1199 — same road. Zero is the point here rather than a hazard: a
     // pub/sub-only image takes 74,240 bytes of arena down to 16,384, and the
     // `.min(max_cbs)` ceiling below is unchanged.
-    let action_clients = env_usize_declared_or(
+    let action_clients = env_usize_described(
         "NROS_EXECUTOR_ACTION_CLIENTS",
-        "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS",
         described_image_count(
             sizing.as_ref(),
             "action_client_slots",
@@ -1605,17 +1599,12 @@ fn descriptor_rung(name: &str) -> Option<usize> {
 // issue 1199 — spelled literally so the wire is greppable; `env_usize_declared`
 // emits the same lines for whatever it is handed.
 fn watch_declared_facts() {
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_CBS");
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_ACTION_CLIENTS");
-    // issue 1233 — the node table and the take buffer, the two facts the
-    // declared road was still not carrying after 1199.
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_NODES");
+    // issue 1233 — the take buffer. The six executor-table carriers that were
+    // watched here (MAX_CBS, ACTION_CLIENTS, MAX_NODES, MAX_SC and the two
+    // monitor tables) RETIRED onto the sizing descriptor's `[image]` fields
+    // (issue 1649); the descriptor file's own content edge
+    // (`load_for_build_script`) is what re-runs this script now.
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE");
-    // issue 1198 -- and the SCHEDULING table, which was on no road at all.
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_SC");
-    // phase-467 W1 -- the two contract-monitor tables, which had no rung.
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_MONITORS");
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS");
 }
 
 /// issue 1595 -- the closure bound `RX_BUF` is sized from, off the descriptor.
@@ -1658,6 +1647,18 @@ fn described_image_count(
         );
     }
     f.stated().copied()
+}
+
+/// Issue 1649 — a knob whose DECLARED carrier retired onto the descriptor:
+/// env / dotconfig / board rungs, then the descriptor's stated fact, then
+/// `default`. Probed through [`env_usize`] with a sentinel no rung produces,
+/// so the ladder keeps ONE implementation.
+fn env_usize_described(name: &str, described: Option<usize>, default: usize) -> usize {
+    let probe = usize::MAX;
+    match env_usize(name, probe) {
+        v if v == probe => described.unwrap_or(default),
+        v => v,
+    }
 }
 
 /// [`env_usize_declared`] with a DESCRIPTOR rung between the stated rungs and

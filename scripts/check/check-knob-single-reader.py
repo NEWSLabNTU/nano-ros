@@ -298,6 +298,31 @@ RETIRED = {
     # The field SURVIVES as `Option<IgnoredAny>` so a document still carrying
     # the key is refused instead of silently dropped -- so the rule forbids a
     # field that could hold the strings, not the name.
+    # Issue 1649 (RFC-0100 D12) + issue 1655 -- NINE entity-count carriers.
+    # Every road `_nros_entity_budget_env` reached names a sizing descriptor
+    # now (a multi-entry configure its shared runtime's); the descriptor states
+    # each as an `[image]` field from the same `derive`; each consumer reads it
+    # first; and the W14 knob diff with all nine dropped moved ZERO generated
+    # files on `examples/workspaces/cpp` native (7 entries) and
+    # `freertos_posix` (1 entry, Cyclone). A second reader spelling one of
+    # these names is the 0460/0491 shape coming back.
+    "the nine entity-count `NROS_DECLARED_*` carriers": Retired(
+        what="the declared road for MAX_CBS, MAX_SC, ACTION_CLIENTS, MAX_NODES, "
+        "both MONITORS tables, MAX_PUBLISHERS, MAX_SUBSCRIBERS, RMW_SUBSCRIBER_SLOTS",
+        resolves_now=(
+            "the sizing descriptor's `[image]` fields (`callback_slots`, "
+            "`sched_context_count`, `action_client_slots`, `node_count`, "
+            "`monitor_rows`, `age_monitor_rows`, `publisher_count`, "
+            "`subscriber_count`), read first by nros-node / nros-rmw-zenoh / "
+            "nros-zpico-build / nros-rmw-cffi"
+        ),
+        wave="issue 1649",
+        forbid=[
+            (":(glob)cmake/**/*.cmake", r"NROS_DECLARED_(EXECUTOR_MAX_CBS|EXECUTOR_MAX_SC|EXECUTOR_ACTION_CLIENTS|EXECUTOR_MAX_NODES|EXECUTOR_MAX_MONITORS|EXECUTOR_MAX_AGE_MONITORS|MAX_PUBLISHERS|MAX_SUBSCRIBERS|RMW_SUBSCRIBER_SLOTS)[;=]"),
+            (":(glob)zephyr/**/*.cmake", r"NROS_DECLARED_(EXECUTOR_MAX_CBS|EXECUTOR_MAX_SC|EXECUTOR_ACTION_CLIENTS|EXECUTOR_MAX_NODES|EXECUTOR_MAX_MONITORS|EXECUTOR_MAX_AGE_MONITORS|MAX_PUBLISHERS|MAX_SUBSCRIBERS|RMW_SUBSCRIBER_SLOTS)[;=]"),
+            (":(glob)packages/**/*.rs", r'"NROS_DECLARED_(EXECUTOR_MAX_CBS|EXECUTOR_MAX_SC|EXECUTOR_ACTION_CLIENTS|EXECUTOR_MAX_NODES|EXECUTOR_MAX_MONITORS|EXECUTOR_MAX_AGE_MONITORS|MAX_PUBLISHERS|MAX_SUBSCRIBERS|RMW_SUBSCRIBER_SLOTS)"'),
+        ],
+    ),
     "the `nros-metadata.json` `entities` reader": Retired(
         what="the Rust reader of a component's declared entities in nros-metadata.json",
         resolves_now=(
@@ -418,11 +443,12 @@ def rfc_text(number):
 #                 EXECUTOR_MAX_CBS / _MAX_SC / _ACTION_CLIENTS / _MAX_NODES /
 #                 _MAX_MONITORS / _MAX_AGE_MONITORS, MAX_PUBLISHERS,
 #                 MAX_SUBSCRIBERS.
-#   differs    -- every other carrier this image delivers, each for a reason
-#                 issue 1655 owns: no `[image]` field (MAX_CBS, MAX_SC,
-#                 ACTION_CLIENTS, MAX_PUBLISHERS, both MONITORS, INFRA,
-#                 MAX_CELL_ENTITIES) or a field nobody reads first
-#                 (EXECUTOR_MAX_NODES, MAX_SUBSCRIBERS, MAX_QOS_DEPTH).
+#   RETIRED    -- those eight plus RMW_SUBSCRIBER_SLOTS (see RETIRED above),
+#                 after the same diff on `freertos_posix` too and a rebuild with
+#                 the producers deleted (0 generated files differ). The rest of
+#                 the zero-diff set stays, each row saying why.
+#   differs    -- the carriers still on issue 1655: INFRA, MAX_CELL_ENTITIES,
+#                 MAX_QOS_DEPTH, SERVICE_SERVERS.
 #   unmeasured -- carriers this image does not deliver at all (the parameter
 #                 rows, TL_RETAIN_BYTES, SERVICE_SERVERS, SUBSCRIBER_LARGE_SIZE,
 #                 and NODES, which is zero-diff only because this image has no
@@ -466,7 +492,15 @@ _BOARD_CAPACITY = (
 
 KEPT = {
     # ---- payload class (1595 wired the reader; 1393 closed; D12 the road) --
-    "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": Kept(1649, _D12_ZERO_DIFF),
+    "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": Kept(
+        1649,
+        _D12_ZERO_DIFF + "; NOT retired with the nine entity counts: it is "
+        "one of a trio `_nros_payload_facts_env` produces as one payload "
+        "(`tests/cmake-message-bounds-tests.sh` Q asserts the trio), and the "
+        "third, SUBSCRIBER_LARGE_SIZE, was not delivered by either measured "
+        "image -- retire the three together after an image with a non-empty "
+        "large class is measured"
+    ),
     # Issue 1595 (resolved): `[types] max_wire_bound_bytes` states the closure
     # bound and `nros-node` reads it FIRST, measured equal to this carrier.
     # What keeps the carrier is not a field or a reader but the FILE: cmake
@@ -474,7 +508,15 @@ KEPT = {
     # and a contract-less image writes no descriptor -- ruled by design
     # (RFC-0100 D4, 2026-10-03, issue 1655).
     "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": ByDesign(100, "D4", _CONTRACTLESS),
-    "NROS_DECLARED_LARGE_SUBSCRIBERS": Kept(1649, _D12_ZERO_DIFF),
+    "NROS_DECLARED_LARGE_SUBSCRIBERS": Kept(
+        1649,
+        _D12_ZERO_DIFF + "; NOT retired with the nine entity counts: it is "
+        "one of a trio `_nros_payload_facts_env` produces as one payload "
+        "(`tests/cmake-message-bounds-tests.sh` Q asserts the trio), and the "
+        "third, SUBSCRIBER_LARGE_SIZE, was not delivered by either measured "
+        "image -- retire the three together after an image with a non-empty "
+        "large class is measured"
+    ),
     # Same consumer function as the two above, but the measured image's large
     # class is EMPTY, so the carrier was not delivered and nothing was diffed.
     "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": Kept(1649, _D12_UNMEASURED),
@@ -482,8 +524,6 @@ KEPT = {
     # Issue 1655 gave each its `[image]` field (or a reader of an existing
     # one) and every one re-measured zero-diff; `MAX_CELL_ENTITIES` alone
     # still lacks its reader.
-    "NROS_DECLARED_EXECUTOR_MAX_CBS": Kept(1649, _D12_ZERO_DIFF),
-    "NROS_DECLARED_EXECUTOR_MAX_SC": Kept(1649, _D12_ZERO_DIFF),
     "NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES": Kept(
         1655,
         "`[image] cell_entities` states it since issue 1655's ruling, and "
@@ -492,16 +532,9 @@ KEPT = {
         "leaf lockfile that resolves `nros`; measured under D12 dropping it "
         "moves MAX_CELL_ENTITIES 1 -> 8"
     ),
-    "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS": Kept(1649, _D12_ZERO_DIFF),
-    "NROS_DECLARED_MAX_PUBLISHERS": Kept(1649, _D12_ZERO_DIFF),
-    "NROS_DECLARED_EXECUTOR_MAX_NODES": Kept(1649, _D12_ZERO_DIFF),
     # phase-467 W1 (issue 1471) -- the contract-monitor row counts: counts of
     # CONTRACT rows, not of endpoints, so they are `[image] monitor_rows` /
     # `age_monitor_rows` (issue 1655), never an `[[endpoint]]` column.
-    "NROS_DECLARED_EXECUTOR_MAX_MONITORS": Kept(1649, _D12_ZERO_DIFF),
-    "NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS": Kept(1649, _D12_ZERO_DIFF),
-    "NROS_DECLARED_MAX_SUBSCRIBERS": Kept(1649, _D12_ZERO_DIFF),
-    "NROS_DECLARED_RMW_SUBSCRIBER_SLOTS": Kept(1649, _D12_ZERO_DIFF),
     # ---- the queryable raw inputs ----------------------------------------
     "NROS_DECLARED_SERVICE_SERVERS": Kept(
         1655,
@@ -510,7 +543,14 @@ KEPT = {
         "alone, so the descriptor stating it buys nothing until a consumer "
         "ranks it first the way `transient_local_publishers` does",
     ),
-    "NROS_DECLARED_TL_PUBLISHERS": Kept(1649, _D12_ZERO_DIFF),
+    "NROS_DECLARED_TL_PUBLISHERS": Kept(
+        1649,
+        _D12_ZERO_DIFF + "; NOT retired: it is one of the four raw inputs the "
+        "zenoh queryable floor completes (with SERVICE_SERVERS, "
+        "INFRA_QUERYABLES and NODES, which stay -- issue 1655 / RFC-0100 D4), "
+        "the standalone-leaf road carries it beside them, and the west "
+        "resolver forwards it"
+    ),
     # issue 1498 -- the retention slot beside that count; the leaf road reads
     # it off the descriptor (`transient_local_retain_demand`) already.
     "NROS_DECLARED_TL_RETAIN_BYTES": Kept(1649, _D12_UNMEASURED),
@@ -536,8 +576,22 @@ KEPT = {
     # `declared_service_request_bytes` reads it; the carrier is ranked FIRST
     # in `nros-rmw-zenoh/build.rs` today, so zero-diff here means the two
     # agree, which is the precondition for flipping the rank and retiring.
-    "NROS_DECLARED_SERVICE_INBOX_BYTES": Kept(1649, _D12_ZERO_DIFF),
-    "NROS_DECLARED_ACTION_INBOX_BYTES": Kept(1649, _D12_ZERO_DIFF),
+    "NROS_DECLARED_SERVICE_INBOX_BYTES": Kept(
+        1649,
+        _D12_ZERO_DIFF + " on `examples/workspaces/cpp` native; NOT retired: "
+        "`nros-rmw-zenoh` ranks this carrier FIRST (the descriptor is its "
+        "fallback), and the Zephyr west road forwards it through the module "
+        "resolver (`zephyr/cmake/nros_cargo_build.cmake`) -- flip the rank and "
+        "measure a west image first"
+    ),
+    "NROS_DECLARED_ACTION_INBOX_BYTES": Kept(
+        1649,
+        _D12_ZERO_DIFF + " on `examples/workspaces/cpp` native; NOT retired: "
+        "`nros-rmw-zenoh` ranks this carrier FIRST (the descriptor is its "
+        "fallback), and the Zephyr west road forwards it through the module "
+        "resolver (`zephyr/cmake/nros_cargo_build.cmake`) -- flip the rank and "
+        "measure a west image first"
+    ),
     # ---- QoS depth ---------------------------------------------------------
     # Its sibling `NROS_ENTITY_DECLARED_DEPTHS` is deliberately UNIONED with
     # the descriptor rather than ranked (phase-454 W10/W13).

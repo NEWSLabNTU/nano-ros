@@ -114,40 +114,6 @@ mod hosted_tests {
     }
 }
 
-/// The queryable-table default, from the declaration when there is one.
-///
-/// phase-392 W5.d — `SERVICE_BUFFERS` is `ZPICO_MAX_SESSIONS *
-/// ZPICO_MAX_QUERYABLES` service buffers, so this number is 4,504 bytes of
-/// static RAM per slot. It used to be `if hosted { 32 } else { 8 }`: a literal
-/// picked for headroom because nothing here knew the answer, costing a native
-/// talker 144,128 bytes for services it does not have.
-///
-/// `NROS_DECLARED_SERVICE_SERVERS` is the application's own count, resolved
-/// from the SystemModel and delivered by the same path phase-351 W5 uses for
-/// board facts (`corrosion_set_env_vars`, which reaches cargo where
-/// `set(ENV{...})` does not — issue 0460). The infrastructure counts are added
-/// HERE rather than by whoever computes that figure, because codegen sees the
-/// user's entities and never the runtime's: deriving the total from the app's
-/// service count alone is issue 0460's defect exactly.
-///
-/// `NROS_DECLARED_INFRA_QUERYABLES` carries whether those runtime services are
-/// compiled in. Absent, both are assumed present — the safe direction, since
-/// over-reserving wastes RAM while under-reserving fails at boot.
-///
-/// With no declaration at all this returns the historical embedded budget and
-/// says nothing; W5.e turns that case into a build-time failure, which needs
-/// the hand-written-`main` question settled first (phase-392 W5, Open).
-// issue 1199 — declared LITERALLY as well as inside `declared_floored`, which
-// emits the same line for whatever name it is handed. The duplicate is
-// deliberate: `cargo:rerun-if-env-changed` is idempotent, and a wire spelled
-// only through a parameter is invisible to `check-declared-fact-carriers`,
-// which reads these files as text. Same redundancy `NROS_RMW_MAX_NODES`
-// already carries one crate over.
-fn watch_declared_facts() {
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_PUBLISHERS");
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_SUBSCRIBERS");
-}
-
 /// Issue 1429 — the ONE reader every `NROS_DECLARED_*` carrier is read through.
 ///
 /// A carrier here is three-valued on purpose: ABSENT (this road states
@@ -204,6 +170,29 @@ fn stated(v: Option<&str>) -> Option<&str> {
     v.filter(|s| !s.trim().is_empty())
 }
 
+/// The queryable-table default, from the declaration when there is one.
+///
+/// phase-392 W5.d — `SERVICE_BUFFERS` is `ZPICO_MAX_SESSIONS *
+/// ZPICO_MAX_QUERYABLES` service buffers, so this number is 4,504 bytes of
+/// static RAM per slot. It used to be `if hosted { 32 } else { 8 }`: a literal
+/// picked for headroom because nothing here knew the answer, costing a native
+/// talker 144,128 bytes for services it does not have.
+///
+/// `NROS_DECLARED_SERVICE_SERVERS` is the application's own count, resolved
+/// from the SystemModel and delivered by the same path phase-351 W5 uses for
+/// board facts (`corrosion_set_env_vars`, which reaches cargo where
+/// `set(ENV{...})` does not — issue 0460). The infrastructure counts are added
+/// HERE rather than by whoever computes that figure, because codegen sees the
+/// user's entities and never the runtime's: deriving the total from the app's
+/// service count alone is issue 0460's defect exactly.
+///
+/// `NROS_DECLARED_INFRA_QUERYABLES` carries whether those runtime services are
+/// compiled in. Absent, both are assumed present — the safe direction, since
+/// over-reserving wastes RAM while under-reserving fails at boot.
+///
+/// With no declaration at all this returns the historical embedded budget and
+/// says nothing; W5.e turns that case into a build-time failure, which needs
+/// the hand-written-`main` question settled first (phase-392 W5, Open).
 fn resolve_queryable_default() -> QueryableSizing {
     // WATCH what we READ. Both were consumed here and neither was declared, so
     // cargo had no reason to re-run this script when a declaration changed: an
@@ -1044,7 +1033,6 @@ fn shim_config_from_env() -> ShimConfig {
     // costs a hosted image 144,128 bytes of service buffers whether or not it
     // has a single service. Replacing the guess needs the declaration to reach
     // here from the resolved model; see issue 0827.
-    watch_declared_facts();
     let sizing = resolve_queryable_default();
     let max_queryables = env_usize("ZPICO_MAX_QUERYABLES", sizing.default);
     check_queryable_override(max_queryables, &sizing);
@@ -1059,19 +1047,16 @@ fn shim_config_from_env() -> ShimConfig {
         // `ZPICO_MAX_*` still outranks both.
         //
         // Issue 1655 -- the descriptor's `[image] publisher_count` /
-        // `subscriber_count` rank above the carriers: the same `derive`, on
-        // every road that names a descriptor. Floored the same way.
+        // `subscriber_count`: the same `derive`, on every road that names a
+        // descriptor. Their `NROS_DECLARED_*` carriers RETIRED onto these
+        // fields (issue 1649). Floored as the carriers were.
         max_publishers: env_usize(
             "ZPICO_MAX_PUBLISHERS",
-            described_floored(nros_sizing_descriptor::Image::publisher_count)
-                .or_else(|| declared_floored("NROS_DECLARED_MAX_PUBLISHERS"))
-                .unwrap_or(8),
+            described_floored(nros_sizing_descriptor::Image::publisher_count).unwrap_or(8),
         ),
         max_subscribers: env_usize(
             "ZPICO_MAX_SUBSCRIBERS",
-            described_floored(nros_sizing_descriptor::Image::subscriber_count)
-                .or_else(|| declared_floored("NROS_DECLARED_MAX_SUBSCRIBERS"))
-                .unwrap_or(8),
+            described_floored(nros_sizing_descriptor::Image::subscriber_count).unwrap_or(8),
         ),
         max_queryables,
         queryable_table_declared: sizing.declared,
@@ -1149,34 +1134,24 @@ fn kconfig_fallback_str(name: &str) -> Option<String> {
     nros_zephyr_build::knob(name).stated_str()
 }
 
-/// issue 1199 — a `NROS_DECLARED_*` count from cmake, floored for a C array.
+/// Issue 1655 / 1649 — a STATED `[image]` count off the descriptor this build
+/// was named, floored for a C array.
 ///
-/// `None` when cmake made no claim: the carrier is written only when the entity
-/// inventory's status is `derived`, so an absent variable is "no answer" and
+/// `None` when no descriptor is named or the fact is not stated: "no answer",
 /// never "zero". The distinction matters because zero is a legal derived DEMAND
-/// -- it is the floor that makes it illegal as a SIZE here, and only here.
+/// -- it is the floor that makes it illegal as a SIZE here (the C arrays these
+/// size `#error` at zero, issue 1015), and only here. The `NROS_DECLARED_*`
+/// carriers this used to fall back to RETIRED onto the descriptor (issue 1649).
 ///
 /// The floor is 1, the same constant `c_array_pool_floor` applies on the leaf
 /// road (`leaf_entity_env.rs`), stated rather than shared because the two roads
 /// floor at different boundaries: the sidecar writes the knob name itself and
 /// must floor before writing, while this one is handed a demand to interpret.
-/// Issue 1655 -- a STATED `[image]` count off the descriptor this build was
-/// named, floored at 1 like [`declared_floored`] (the C arrays these size
-/// `#error` at zero, issue 1015). `None` when no descriptor is named or the fact
-/// is not stated, so the carrier decides.
 fn described_floored(
     fact: fn(&nros_sizing_descriptor::Image) -> nros_sizing_descriptor::Fact<usize>,
 ) -> Option<usize> {
     let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"))?;
     fact(&desc.image).stated().map(|v| (*v).max(1))
-}
-
-fn declared_floored(name: &str) -> Option<usize> {
-    println!("cargo:rerun-if-env-changed={name}");
-    env::var(name)
-        .ok()
-        .and_then(|v| v.trim().parse::<usize>().ok())
-        .map(|v| v.max(1))
 }
 
 /// Bytes one cached liveliness keyexpr costs: the keyexpr plus its separator.

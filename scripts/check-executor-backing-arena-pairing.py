@@ -286,14 +286,10 @@ THREADX_KNOB_TOKEN = "NROS_EXECUTOR_BACKING_U64S"
 # spelling is `CONFIG_<name>`, read from `$DOTCONFIG` (issue 0460).
 SIZING_KNOBS = {
     "NROS_EXECUTOR_MAX_CBS": "`cbs`, and every per-slot arena term",
-    "NROS_DECLARED_EXECUTOR_MAX_CBS": "the declared rung of `cbs` (issue 1199)",
     "NROS_EXECUTOR_MAX_SC": "`sc`",
-    "NROS_DECLARED_EXECUTOR_MAX_SC": "the declared rung of `sc` (issue 1198)",
     "NROS_EXECUTOR_MAX_NODES": "`nodes`",
-    "NROS_DECLARED_EXECUTOR_MAX_NODES": "the declared rung of `nodes` (issue 1233)",
     "NROS_EXECUTOR_ARENA_SIZE": "`arena`, directly",
     "NROS_EXECUTOR_ACTION_CLIENTS": "the arena's action-client term",
-    "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS": "the declared rung of the same",
     "NROS_SUBSCRIPTION_BUFFER_SIZE": "the arena's rx-buffer terms",
     "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": "the declared rung of the same (issue 1233)",
     "NROS_SUBSCRIBER_BUFFER_SIZE": "the arena's pub/sub region",
@@ -315,9 +311,7 @@ NOT_SIZING = {
     # `Executor` value (the spin loop indexes them beside a `&'static` spec
     # table), not carved from the backing, so they move no backing word.
     "NROS_EXECUTOR_MAX_MONITORS": "inline in the Executor value, not the backing",
-    "NROS_DECLARED_EXECUTOR_MAX_MONITORS": "the declared rung of the same",
     "NROS_EXECUTOR_MAX_AGE_MONITORS": "inline in the Executor value, not the backing",
-    "NROS_DECLARED_EXECUTOR_MAX_AGE_MONITORS": "the declared rung of the same",
     "NROS_EXECUTOR_BACKING_U64S": "the claim itself",
     "NROS_EXECUTOR_BACKING_SECTION": "placement only, not size",
     "NROS_BOOT_REPORT": "a cfg, no size",

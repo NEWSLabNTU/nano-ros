@@ -225,7 +225,7 @@ pub const RATE_CHECK_INTERVAL_US: u64 = 5_000_000;
 ///
 /// phase-467 W1 (issue 1471) -- generated, not a literal: the
 /// `NROS_EXECUTOR_MAX_MONITORS` knob, whose derived rung is the image's own
-/// `monitor_rows` count (`NROS_DECLARED_EXECUTOR_MAX_MONITORS`), 8 when nothing
+/// `monitor_rows` count (the sizing descriptor's `[image] monitor_rows`), 8 when nothing
 /// states or derives it. A table longer than this is REFUSED at install
 /// ([`check_table_capacity`]), never truncated: the spin loop inspects only the
 /// first `MAX_MONITORS` specs, so a truncating install would boot with the rest

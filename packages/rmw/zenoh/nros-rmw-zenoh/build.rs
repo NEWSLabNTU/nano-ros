@@ -54,7 +54,6 @@ fn main() {
     // else forces a rebuild, and the sizing then reads as applied while being
     // stale.
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_LARGE_SUBSCRIBERS");
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_NODES");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_SUBSCRIBER_LARGE_SIZE");
     println!("cargo:rerun-if-env-changed=NROS_EXECUTOR_MAX_NODES");
@@ -306,7 +305,6 @@ fn main() {
         sizing
             .as_ref()
             .and_then(|d| d.image.node_count().stated().copied())
-            .or_else(|| declared_usize("NROS_DECLARED_EXECUTOR_MAX_NODES"))
             .unwrap_or(4),
         1,
     );

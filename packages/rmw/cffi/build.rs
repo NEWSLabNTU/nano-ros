@@ -45,7 +45,6 @@ use nros_board_common::platform_config::{BuildRungs, RmwKnobs};
 use nros_sizing_descriptor::{Fact, SizingDescriptor};
 
 fn main() {
-    watch_declared_facts();
     // phase-400 W6 — the platform/board rungs for `[knobs.rmw]`, resolved once.
     // `None` when no lane named a platform, which is every out-of-tree consumer
     // and every plain `cargo build` here; the builtins then stand.
@@ -131,25 +130,8 @@ fn derived_rung(fact: &Fact<usize>, what: &str, builtin: usize) -> Option<usize>
 /// it sits between the Kconfig rung and the crate builtin. `Knob::rung` is what
 /// places it there: env and `$DOTCONFIG` still win above it, and the builtin
 /// only applies when no descriptor said anything.
-// issue 1199 — see the note in `nros-zpico-build`'s `watch_declared_facts`:
-// spelled literally so the wire is greppable, alongside the dynamic emission.
-fn watch_declared_facts() {
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_RMW_SUBSCRIBER_SLOTS");
-}
-
 fn knob(name: &str, rung: Option<usize>, default: usize) -> usize {
     nros_zephyr_build::knob(name).rung(rung).resolve(default)
-}
-
-/// issue 1199 — a `NROS_DECLARED_*` count cmake derived for THIS image.
-///
-/// `None` when cmake made no claim: the carrier is written only when the entity
-/// inventory's status is `derived`, so absent means "no answer" and never
-/// "zero". Zero is a legal answer for this knob, which is exactly why the two
-/// cannot share a spelling.
-fn declared_usize(name: &str) -> Option<usize> {
-    println!("cargo:rerun-if-env-changed={name}");
-    std::env::var(name).ok().and_then(|v| v.trim().parse().ok())
 }
 
 /// phase-454 W6.e — `MAX_BACKENDS` and `MAX_NODES`, both derived.
@@ -239,12 +221,12 @@ fn emit_subscriber_slots(sizing: Option<&SizingDescriptor>) {
     // there), and a third mirror of it, in a build script no gate scans, is how
     // an image with an action gets sized short.
     //
-    // The carrier stays because it is the road the C/C++ CMake lane takes and
-    // that lane has no descriptor yet; removing the read would take those images
-    // from a derived count back to the builtin 8. W9 is where it retires.
-    let declared = sizing
-        .and_then(|d| derived_rung(&d.image.subscriber_count(), "subscriber_count", 8))
-        .or_else(|| declared_usize("NROS_DECLARED_RMW_SUBSCRIBER_SLOTS"));
+    // Its `NROS_DECLARED_RMW_SUBSCRIBER_SLOTS` carrier RETIRED (issue 1649):
+    // every C/C++ CMake road names a descriptor now -- a multi-entry configure
+    // its shared runtime's (RFC-0100 D12) -- and the knob diff with the carrier
+    // dropped was zero.
+    let declared =
+        sizing.and_then(|d| derived_rung(&d.image.subscriber_count(), "subscriber_count", 8));
     let parsed = knob("NROS_RMW_SUBSCRIBER_SLOTS", declared, 8);
 
     // issue 1033 — ZERO is in range. A pub-only image derives 0 subscriptions
