@@ -138,7 +138,16 @@ fn survey() -> Vec<(String, DemoRole, Lang, bool)> {
         if src_at == 0 {
             continue;
         }
-        let dir_parts = &parts[..src_at];
+        let mut dir_parts = &parts[..src_at];
+        // Issue 1603 — a leaf's `node/` package holds its component, so its
+        // sources print the LEAF's marker. Same predicate as the other example
+        // walkers (`treewalk::is_leaf_node_package`); without it the Zephyr
+        // Rust leaves read as printing nothing.
+        if dir_parts.len() > 1
+            && nros_tests::treewalk::is_leaf_node_package(&root.join(dir_parts.join("/")))
+        {
+            dir_parts = &dir_parts[..dir_parts.len() - 1];
+        }
         let Some(role) = role_of(dir_parts[dir_parts.len() - 1]) else {
             continue;
         };

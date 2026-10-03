@@ -83,3 +83,16 @@ reaches the test) and would make a gated `test-all` fail on a stamp nothing in
 that lane produces. It keeps its own existence probe, counted in
 `.config/fixture-existence-skip-baseline.txt`. The fix is a `[[compile_check_fixture]]`
 row for it, so the stamp has a lane.
+
+## 2026-10-03 — the verdict targets left the gate lane
+
+Measured by the phase-475 census after #1610 landed: the four converted targets
+(`cmake_node_register_misuse`, `cmake_platform_matrix`, `diagnostic_verbatim`,
+`native_main_macro_misuse`) now resolve a compile-check verdict stamp, which
+the census does not stage, so they classify FIXTURE and are no longer admitted
+to `test-lane-contracts`. Before #1610 they ran there (compiling at test time).
+The coverage is not lost — the verdict rows build in `check-source-gates`' stamp
+build and the tests run wherever stamps exist — but no merge-gating lane runs
+the TESTS now. Remedy: have `test-lane-contracts` build the stamps for the
+verdict rows its admitted targets read (a compile-stage stamp is allowed there
+by `check-lane-contracts`), and have the census stage the same set.

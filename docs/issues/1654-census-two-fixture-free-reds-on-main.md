@@ -55,3 +55,10 @@ the proc-macro side as a build-stage fixture. Not decided here.
 
 Both targets PASS in the census, and `lane-census-diff.py` reports them NEWLY
 ADMISSIBLE.
+
+## 2026-10-03 — item 1 fixed on `main`; item 2 open
+
+A census of `main` after #1610 measured `fixture_source_coverage` PASS in all
+three runs — `in-place-subscriptions` got its row there — and it is admitted
+whole again. `multihost_partition_bake` still FAILs on the retired
+`codegen entry --lang rust`.

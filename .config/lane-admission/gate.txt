@@ -12,12 +12,9 @@
 # admitted test that resolves a fixture its job does not build is refused.
 board_link_archives
 bringup_scaffold
-cmake_node_register_misuse
-cmake_platform_matrix
 contract_derived_chain_parity
 cross_libc_precedence_gate
 cyclonedds_descriptors
-diagnostic_verbatim
 example_output_conformance
 example_portability
 example_shape
@@ -25,6 +22,7 @@ examples_fixture_coverage
 exec_depend_drift_check
 exec_model_matrix
 fixture_group_resolution
+fixture_source_coverage
 init_api
 integration_nuttx
 lane_build_covers_run
@@ -36,8 +34,6 @@ lib
 loc_budgets
 logging
 matrix_fixture_coverage
-native_main_macro_misuse
-native_orchestration_misuse
 negative_diagnostic_registry
 no_local_axis_tables
 non_goals_grep
@@ -69,7 +65,6 @@ cpp_api_drift::examples_cpp_have_no_retired_symbols
 cpp_multi_node_entry::cases_bound_to_interop_cells
 declarative_bridge_zenoh_to_cyclonedds::cases_bound_to_interop_cells
 declarative_bridge_zenoh_to_xrce::cases_bound_to_interop_cells
-fixture_source_coverage::declared_non_manifest_build_roots_still_exist
 generated_message_code_compiles::every_covered_message_shape_is_still_an_input
 interop_e2e::cases_bound_to_interop_cells
 multihost_partition_bake::per_host_resolves_partition_and_carry_their_binding
