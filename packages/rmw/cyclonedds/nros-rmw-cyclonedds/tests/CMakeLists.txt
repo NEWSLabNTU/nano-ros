@@ -394,6 +394,26 @@ if(_addtwoints_sources)
         COMMAND nros_rmw_cyclonedds_service_roundtrip
     )
 
+    # Issue 1632 — a too-small take_request / take_response leaves the size
+    # the payload needed in the span's `len` (the `take` rule, issue 1612).
+    add_executable(nros_rmw_cyclonedds_service_refused_len
+        service_refused_len.cpp
+        ${_addtwoints_sources}
+    )
+    target_link_libraries(nros_rmw_cyclonedds_service_refused_len
+        PRIVATE
+            nros_rmw_cyclonedds
+            pthread
+    )
+    target_include_directories(nros_rmw_cyclonedds_service_refused_len
+        PRIVATE
+            ${NROS_RMW_CFFI_DIR}
+    )
+    add_test(
+        NAME nros_rmw_cyclonedds_service_refused_len
+        COMMAND nros_rmw_cyclonedds_service_refused_len
+    )
+
     # Issue 0778 — two requests from ONE client in flight at once. Runs by
     # default (unlike `service_concurrent`, whose flake is cross-PARTICIPANT
     # SEDP jitter): this is a single client and a single server on one
@@ -751,6 +771,7 @@ if(_addtwoints_sources)
     set_tests_properties(
         nros_rmw_cyclonedds_service_smoke
         nros_rmw_cyclonedds_service_roundtrip
+        nros_rmw_cyclonedds_service_refused_len
         nros_rmw_cyclonedds_service_server_available
         PROPERTIES
             ENVIRONMENT "${_nros_rmw_test_env}"
