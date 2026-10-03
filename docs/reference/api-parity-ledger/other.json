@@ -144,7 +144,7 @@
   },
   "cpp:Owned::reset": {
     "verdict": "extension",
-    "why": "`shared_ptr::reset`'s shape, and unlike `cpp:SubscriptionHandle::reset` it does the same THING: it destroys the entity now. Ported code writes `pub_.reset()` meaning 'drop my reference'; here there is exactly one reference, so dropping it destroys — which is what upstream does when it was the last one.\n\nThis verb is the measured reason a publisher is NOT an arena entity (phase-456 W4). The arena is a bump allocator with no removal path, so an arena publisher would make this a no-op over a live RMW publisher for the executor's lifetime."
+    "why": "`shared_ptr::reset`'s shape, and unlike `cpp:SubscriptionHandle::reset` it does the same THING: it destroys the entity now. Ported code writes `pub_.reset()` meaning 'drop my reference'; here there is exactly one reference, so dropping it destroys — which is what upstream does when it was the last one.\n\nThis verb was the first reason given for a publisher NOT being an arena entity (phase-456 W4): with no removal path, an arena publisher would have made it a no-op over a live RMW publisher. That reason EXPIRED when `9768795b1d` gave the arena a release path (issue 1496). The decision stands on W4's other ground: an arena slot would make the C++ publisher's lifetime diverge from Rust's caller-owned `EmbeddedPublisher<M>`, which has a `Drop`."
   },
   "cpp:RCLCPP_DEBUG_THROTTLE": {
     "verdict": "declined",

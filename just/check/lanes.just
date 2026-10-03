@@ -1436,9 +1436,10 @@ cpp: cpp-fmt
     # phase-456 W4 — `nros::Owned<Publisher<M>>` supports the ported publisher
     # member pattern, and a publisher carries nothing sized from the message
     # type. W4 decided that a publisher does NOT get an executor-arena slot (the
-    # arena holds only what the executor dispatches to, and it has no removal
-    # path, so `~Publisher()` and `reset()` would become no-ops over a live RMW
-    # publisher). This TU is the consequence for W5: the alias it will flip to
+    # arena holds only what the executor dispatches to, and a slot would make the
+    # C++ publisher's lifetime diverge from Rust's caller-owned
+    # `EmbeddedPublisher<M>`; W4's other argument, that the arena had no removal
+    # path, expired with `9768795b1d`). This TU is the consequence for W5: the alias it will flip to
     # already compiles. The size assertion inside is the tripwire for the reason
     # — if a transmit buffer ever appears in `Publisher<M>`, the arena question
     # is worth re-opening and this fails first.

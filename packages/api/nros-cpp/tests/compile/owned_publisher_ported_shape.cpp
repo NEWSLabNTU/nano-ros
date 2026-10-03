@@ -3,10 +3,11 @@
 //
 // W4 decided the open question the phase doc raised: a publisher does NOT get
 // an executor-arena slot. The arena holds only what the executor dispatches to
-// (`EntryKind` has no publisher) and it has no removal path, so an arena
-// publisher could never be destroyed before its executor -- `~Publisher()` and
-// `reset()` would become no-ops over a live RMW publisher. The Rust API agrees
-// by construction: `Node::create_publisher_with_qos` returns an
+// (`EntryKind` has no publisher), and a slot would make the C++ publisher's
+// lifetime diverge from the Rust one. (W4 also argued that the arena had no
+// removal path, so `~Publisher()` and `reset()` would become no-ops; that
+// argument expired with `9768795b1d`.) The Rust API settles it by
+// construction: `Node::create_publisher_with_qos` returns an
 // `EmbeddedPublisher<M>` BY VALUE, and `Owned<T>` mirrors that.
 //
 // What this TU asserts is the consequence for W5. Every operation a ported node
@@ -108,8 +109,8 @@ class PortedTalker {
 
     /// `pub_.reset()` in a ported body means "I am done with this". For a
     /// publisher that DESTROYS, because there is exactly one reference -- which
-    /// is the behaviour an arena slot could not have provided, since the arena
-    /// has no removal path.
+    /// is the behaviour upstream has, and the one Rust's `EmbeddedPublisher<M>`
+    /// `Drop` has.
     void release() { publisher_.reset(); }
 
     bool held() const { return static_cast<bool>(publisher_); }

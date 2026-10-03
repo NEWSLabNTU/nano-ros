@@ -52,10 +52,14 @@ namespace nros {
 /// Measured (phase-456 W2): the ported corpus calls NOTHING on it. It is
 /// stored and dropped, which is exactly what a keep-alive is for.
 ///
-/// No unregister, no `cancel()`. The executor arena has no removal path — the
-/// registration lives as long as the executor does. Offering a verb that
-/// cannot be implemented is the defect this type exists to remove, so it is not
-/// offered.
+/// No unregister, no `cancel()` — yet. The executor arena gained a release path
+/// in `9768795b1d` (issue 1496), but only action entities use it, so a
+/// subscription's registration still lives as long as the executor does. Wiring it
+/// here is issue 1667, and it is not a one-liner: this handle is two copyable
+/// words, a released slot goes to the very next registration, and a
+/// `cancel()` therefore needs a way for a stale copy to tell its slot from the
+/// one that replaced it. Offering a verb that cannot be implemented SAFELY is
+/// the defect this type exists to remove, so it is not offered.
 ///
 /// WHAT IT COSTS
 ///
@@ -98,8 +102,9 @@ template <typename M> class SubscriptionHandle {
     /// is nothing to do with it through this API today.
     constexpr size_t handle_id() const { return handle_id_; }
 
-    /// Stop referring to the registration. Does NOT unregister it — the arena
-    /// has no removal path, and the callback goes on firing. Present because
+    /// Stop referring to the registration. Does NOT unregister it — subscriptions
+    /// are not wired to the arena's release path (issue 1667), so the callback
+    /// goes on firing. Present because
     /// ported code writes `sub_.reset()` meaning "I am done with this handle",
     /// and that is exactly what this does.
     void reset() {

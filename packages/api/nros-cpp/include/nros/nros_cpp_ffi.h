@@ -2119,9 +2119,10 @@ nros_cpp_ret_t nros_cpp_guard_condition_clear(void *storage);
  * `nros_node::GuardCondition` is `{ &'static AtomicBool, Option<fn>, *mut
  * c_void }` — no field has drop glue, so the `drop_in_place` below **runs no
  * destructor**. The flag it points at lives in the executor arena and the
- * registered wake closure is an arena ENTRY, and the arena is a bump allocator
- * with no removal path: the entry keeps its slot and its callback for the
- * executor's lifetime, so `spin_once` still polls this guard condition after
+ * registered wake closure is an arena ENTRY, and guard conditions are not wired
+ * to the arena's release path (only action entities are, since `9768795b1d`;
+ * issue 1667): the entry keeps its slot and its callback for the executor's
+ * lifetime, so `spin_once` still polls this guard condition after
  * the C++ object is gone. Creating and dropping guard conditions in a loop
  * exhausts `NROS_EXECUTOR_MAX_CBS`.
  *

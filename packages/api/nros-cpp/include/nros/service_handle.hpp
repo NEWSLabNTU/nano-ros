@@ -54,10 +54,14 @@ namespace nros {
 /// calls a method on its service handle gets a compile error naming the handle,
 /// which is the mechanical edit RFC-0089 asks for.
 ///
-/// No unregister, no `cancel()`. The executor arena has no removal path — the
-/// registration lives as long as the executor does. Offering a verb that cannot
-/// be implemented is the defect this type exists to remove, so it is not
-/// offered.
+/// No unregister, no `cancel()` — yet. The executor arena gained a release path
+/// in `9768795b1d` (issue 1496), but only action entities use it, so a
+/// service's registration still lives as long as the executor does. Wiring it
+/// here is issue 1667, and it is not a one-liner: this handle is two copyable
+/// words, a released slot goes to the very next registration, and a
+/// `cancel()` therefore needs a way for a stale copy to tell its slot from the
+/// one that replaced it. Offering a verb that cannot be implemented SAFELY is
+/// the defect this type exists to remove, so it is not offered.
 template <typename S> class ServiceHandle {
   public:
     /// The service type, for the same reason `std::shared_ptr` exposes one.
@@ -82,8 +86,9 @@ template <typename S> class ServiceHandle {
     /// is nothing to do with it through this API today.
     constexpr size_t handle_id() const { return handle_id_; }
 
-    /// Stop referring to the registration. Does NOT unregister it — the arena
-    /// has no removal path, and the handler goes on being dispatched. Present
+    /// Stop referring to the registration. Does NOT unregister it — services are
+    /// not wired to the arena's release path (issue 1667), so the handler goes on
+    /// being dispatched. Present
     /// because ported code writes `srv_.reset()` meaning "I am done with this
     /// handle", and that is exactly what this does.
     void reset() {

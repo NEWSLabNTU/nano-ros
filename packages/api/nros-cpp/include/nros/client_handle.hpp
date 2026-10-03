@@ -187,8 +187,9 @@ template <typename S> class ClientHandle {
     /// also half of what @ref async_send_request sends on.
     constexpr size_t handle_id() const { return handle_id_; }
 
-    /// Stop referring to the registration. Does NOT unregister it — the arena
-    /// has no removal path, and the handler goes on being dispatched. Present
+    /// Stop referring to the registration. Does NOT unregister it — service clients
+    /// are not wired to the arena's release path (issue 1667), so the handler goes
+    /// on being dispatched. Present
     /// because ported code writes `cli_.reset()` meaning "I am done with this
     /// handle", and that is exactly what this does. After it,
     /// @ref async_send_request answers `NotInitialized`.
