@@ -1066,11 +1066,20 @@ fn refused_take_ret<S: Subscription<Error = TransportError>>(
     e: &TransportError,
     out_len: *mut usize,
 ) -> NrosRmwRet {
-    if matches!(e, TransportError::BufferTooSmall) {
-        if let Some(needed) = s.refused_sample_len() {
-            // SAFETY: the caller checked `out_len` non-null before the take.
-            unsafe { *out_len = needed };
-        }
+    refused_ret(e, s.refused_sample_len(), out_len)
+}
+
+/// Issues 1612 / 1632 — the ONE place a Rust backend's refused size crosses
+/// the C ABI, for all three take slots: on `BufferTooSmall` the span's `len`
+/// gets the size the backend reported; unknown leaves the caller's
+/// `NROS_RMW_TAKE_LEN_UNKNOWN`.
+fn refused_ret(e: &TransportError, needed: Option<usize>, out_len: *mut usize) -> NrosRmwRet {
+    if matches!(e, TransportError::BufferTooSmall)
+        && let Some(needed) = needed
+    {
+        // SAFETY: every caller checked the span (and so `out_len`) non-null
+        // before the take.
+        unsafe { *out_len = needed };
     }
     ret_from_error(e)
 }
@@ -1277,7 +1286,7 @@ unsafe extern "C" fn take_request_trampoline<R: RustBackend>(
             unsafe { *taken = false };
             NROS_RMW_RET_OK
         }
-        Err(e) => ret_from_error(&e),
+        Err(e) => refused_ret(&e, ServiceTrait::refused_request_len(s), out_len),
     }
 }
 
@@ -1454,7 +1463,7 @@ unsafe extern "C" fn take_response_trampoline<R: RustBackend>(
             unsafe { *taken = false };
             NROS_RMW_RET_OK
         }
-        Err(e) => ret_from_error(&e),
+        Err(e) => refused_ret(&e, ClientTrait::refused_response_len(c), out_len),
     }
 }
 
