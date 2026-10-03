@@ -10,7 +10,15 @@ set dotenv-load
 # `nros-core` / `heapless` / etc. crates over and over. When sccache
 # is absent the variable is empty, which cargo treats as unset
 # (verified on cargo 1.95).
-export RUSTC_WRAPPER := `command -v sccache 2>/dev/null || true`
+#
+# Issue 1646 — the wrapper is the sccache SHIM, never sccache itself:
+# sccache keys a rustc call on its direct `--extern`s, so a `staticlib`
+# (which bundles its transitive closure, native objects included) was
+# served stale after a build-script C edit. The shim runs staticlib calls
+# uncached and hands everything else to the real sccache named here.
+# Gate: `just check rustc-wrapper-staticlib`.
+export NROS_SCCACHE_REAL := `command -v sccache 2>/dev/null || true`
+export RUSTC_WRAPPER := if NROS_SCCACHE_REAL == "" { "" } else { justfile_directory() / "scripts/bin/rustc-wrapper/sccache" }
 
 # Phase 165.perf — size the sccache disk cache for a full `build-all`
 # sweep. The default 10 GiB evicts mid-sweep once the ~150 standalone

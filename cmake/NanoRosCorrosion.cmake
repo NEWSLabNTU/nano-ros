@@ -528,8 +528,12 @@ endfunction()
 # `threadx_riscv64`: 21 fresh `libnros_c.a` and 14 `libnros_cpp.a` in ONE stage
 # run, five concurrent cargos with byte-identical arguments, ~1.2 GB per leaf.
 #
-# sccache cannot absorb it — it does not cache `--crate-type=staticlib`
-# (`Non-cacheable reasons: crate-type`), which is exactly the artifact.
+# sccache cannot absorb it — and it MUST not: the `RUSTC_WRAPPER` shim
+# (`scripts/bin/rustc-wrapper/sccache`) runs every `--crate-type=staticlib`
+# call uncached, because sccache's key omits a staticlib's transitive closure
+# and served a stale `libnros_cpp.a` after a build-script C edit (issue 1646).
+# This comment used to say sccache refuses staticlibs on its own; sccache 0.8
+# refuses only bin / dylib / cdylib / proc-macro, and cached them.
 #
 # Corrosion 0.6.1 exposes no knob for the directory (it is a plain local), and
 # its `CARGO_FLAGS` hook is not a substitute: a second `--target-dir` would move

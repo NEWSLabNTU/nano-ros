@@ -477,6 +477,14 @@ nested-workspace-excludes:
 workspace-exclude-list:
     @python3 scripts/check-workspace-exclude-list.py
 
+# Issue 1646 — a Rust `staticlib` never comes out of the sccache cache (its key
+# omits the transitive closure, so a build-script C edit served a stale
+# `libnros_cpp.a`). Drives the `scripts/bin/rustc-wrapper/sccache` shim with
+# fakes, and requires every RUSTC_WRAPPER producer to name it. Buildless.
+[private]
+rustc-wrapper-staticlib:
+    @python3 scripts/check-rustc-wrapper-staticlib.py
+
 # Phase 251 — forbid `--allow-multiple-definition` in the build system (it lets
 # two same-named-but-different functions coexist → wrong-copy hazard). Fails on
 # any non-allowlisted real use; allowlist (scripts/allow-multiple-def-allowlist.txt)

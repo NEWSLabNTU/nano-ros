@@ -1465,7 +1465,10 @@ jobs:
               echo "SCCACHE_CACHE_SIZE=1G"
               # The half the `check` job does not need. Without it the builds
               # below are plain rustc and this job is decorative.
-              echo "RUSTC_WRAPPER=sccache"
+              # Issue 1646 — the SHIM, which runs a `staticlib` uncached
+              # (sccache cannot key its transitive closure) and hands
+              # every other call to the sccache on PATH.
+              echo "RUSTC_WRAPPER=$GITHUB_WORKSPACE/scripts/bin/rustc-wrapper/sccache"
             } >> "$GITHUB_ENV"
           else
             echo "::warning::sccache unavailable — this job warms NOTHING (issue 0874)."
