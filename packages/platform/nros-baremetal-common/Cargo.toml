@@ -3,7 +3,7 @@ name = "nros-baremetal-common"
 version = "0.4.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Shared bare-metal helpers (PRNG, sleep, libc stubs) for nros-platform-* crates"
+description = "Shared bare-metal helpers (PRNG, sleep, libc stubs, heap-refusal report) for nros-platform-* crates"
 publish = false
 
 [lib]
@@ -18,3 +18,7 @@ default = []
 libc-stubs = []
 
 [dependencies]
+# Issue 1640 — the shared heap-refusal report (`src/heap.rs`): the arena type,
+# its verdict, and the port's log + fatal hook.
+zpico-alloc = { path = "../../rmw/zenoh/zpico-alloc" }
+nros-platform-api = { path = "../nros-platform-api" }
