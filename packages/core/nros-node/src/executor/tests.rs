@@ -11083,6 +11083,39 @@ fn the_matched_counts_reach_their_own_graph_counter() {
     );
 }
 
+/// Issue 1643 — a backend that fills the matched-count slots is ASKED, and
+/// its answer wins over the topic-wide graph count.
+///
+/// The graph says 7 subscribers and 3 publishers; the backend says 2 and 5
+/// MATCHED. Upstream's `get_subscription_count` is the matched count, so a
+/// forwarder that still reads the graph first fails here. The matched counts
+/// are also distinct from each other and from the graph's, so a publisher
+/// wired to the subscription's slot fails too.
+#[test]
+fn a_backend_matched_count_wins_over_the_graph_count() {
+    let mut executor: Executor = executor_with_clock(MockSession::with_graph());
+    let (publisher, subscription) = {
+        let mut node = executor.create_node("counts").expect("node");
+        let publisher = node
+            .create_publisher::<TestMsg>("/counted")
+            .expect("publisher");
+        let subscription = node
+            .create_subscription::<TestMsg>("/counted")
+            .expect("subscription");
+        (publisher, subscription)
+    };
+    publisher.handle.matched.set(Some(2));
+    subscription.handle.matched.set(Some(5));
+
+    assert_eq!(publisher.get_subscription_count(&mut executor).unwrap(), 2);
+    assert_eq!(subscription.get_publisher_count(&mut executor).unwrap(), 5);
+
+    // A matched count of ZERO is an answer, not an absence: it must not fall
+    // through to the graph's 7 (an incompatible peer is on the topic).
+    publisher.handle.matched.set(Some(0));
+    assert_eq!(publisher.get_subscription_count(&mut executor).unwrap(), 0);
+}
+
 /// phase-444 — a backend with no graph answers `Unsupported`, and that is a
 /// DIFFERENT answer from `0`.
 ///

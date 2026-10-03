@@ -2791,6 +2791,26 @@ pub trait Publisher {
         Err(TransportError::Unsupported.into())
     }
 
+    /// How many subscriptions are MATCHED to this publisher — upstream
+    /// `rmw_publisher_count_matched_subscriptions`, the vtable's
+    /// `publisher_count_matched_subscriptions`. Issue 1643.
+    ///
+    /// Matched means QoS-compatible with THIS publisher, which is upstream's
+    /// question and a stronger one than "how many subscriptions are on the
+    /// topic" (the graph's `count_subscribers`): an incompatible peer is on
+    /// the topic and not matched.
+    ///
+    /// The default is `Err(Unsupported)`, never `Ok(0)` — `0` means "nobody
+    /// is listening", and a backend that cannot tell must not say that. A
+    /// caller with a weaker fallback (the node API's topic-wide graph count)
+    /// takes it on `Unsupported`.
+    fn count_matched_subscriptions(&self) -> Result<usize, Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        Err(TransportError::Unsupported.into())
+    }
+
     /// The profile this entity is ACTUALLY running — what the backend GRANTED,
     /// not what the call site requested.
     ///
@@ -3162,6 +3182,21 @@ pub trait Subscription {
     /// the request, and it is NOT `QOS_PROFILE_DEFAULT`.
     fn actual_qos(&self) -> QoSProfile {
         QoSProfile::QOS_PROFILE_UNKNOWN
+    }
+
+    /// How many publishers are MATCHED to this subscription — upstream
+    /// `rmw_subscription_count_matched_publishers`, the vtable's
+    /// `subscription_count_matched_publishers`. Issue 1643.
+    ///
+    /// The subscription half of
+    /// [`Publisher::count_matched_subscriptions`], which states the contract:
+    /// matched, not merely discovered; `Err(Unsupported)` by default, never a
+    /// fabricated `0`.
+    fn count_matched_publishers(&self) -> Result<usize, Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        Err(TransportError::Unsupported.into())
     }
 }
 

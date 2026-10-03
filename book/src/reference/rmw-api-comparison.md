@@ -90,11 +90,10 @@ rmw must provide" than any reading of the headers.
 
 | | vtable | global | executor | platform | build time | serdes | runtime | none | **total** |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| same | 10 | 1 |  |  |  |  |  |  | **11** |
+| same | 12 | 1 |  |  |  |  |  |  | **13** |
 | re-shaped | 34 | 1 |  |  |  |  |  |  | **35** |
 | re-mapped | 16 |  | 4 | 1 | 3 | 3 | 1 |  | **28** |
 | not supported — *by decision* |  |  |  |  |  |  |  | 12 | **12** |
-| not implemented — *tracked* | 2 |  |  |  |  |  |  |  | **2** |
 | **total** | **62** | **2** | **4** | **1** | **3** | **3** | **1** | **12** | **88** |
 
 Read a row for what we did, a column for where it lives. Only
@@ -842,7 +841,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
 <span class=pu>(*</span><span class='fn'>publisher_assert_liveliness</span><span class=pu>)</span><span class=pu>(</span><span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>)</span></pre></td>
 <td class=why><div class='st s-same'>● same</div></td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_publisher_count_matched_subscriptions</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t * publisher</span><span class=pu>,</span>
@@ -853,7 +852,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
   <span class='ty'>size_t *subscription_count</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1643</div><b>inert</b> — declared and READ BY NOTHING, though a backend fills it.</td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1057,7 +1056,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
 <span class=pu>(*</span><span class='fn ren'>destroy_session</span><span class=pu>)</span><span class=pu>(</span><span class='ty add'>rmw_session_t *session</span><span class=pu>)</span></pre></td>
 <td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><b>renamed</b> — the slot is <code>destroy_session</code>.<br><br><b>the SESSION is the seam</b> — As `rmw_node_t`: upstream&#x27;s context is the process-wide init state, and ours is the session the slot is being called on.</td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_subscription_count_matched_publishers</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t * subscription</span><span class=pu>,</span>
@@ -1068,7 +1067,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty'>size_t *publisher_count</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1643</div><b>inert</b> — declared and READ BY NOTHING, though a backend fills it.</td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>

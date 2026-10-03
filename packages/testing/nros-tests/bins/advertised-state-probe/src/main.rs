@@ -12,7 +12,14 @@
 //!
 //! ## Why this drives the C ABI directly, and what that costs
 //!
-//! There is no higher layer to drive. `publisher_count_matched_subscriptions`,
+//! (Written when there was no higher layer. Since then `get_gid_for_publisher`
+//! gained `Publisher::get_gid` (phase-467) and the two matched counts gained
+//! the node API's `get_subscription_count` / `get_publisher_count`, which ask
+//! the slot first (issue 1643). The probe still drives the vtable so it
+//! measures the SLOT, not the fallback the node API takes when a slot is NULL.
+//! The original rationale follows.)
+//!
+//! There was no higher layer to drive. `publisher_count_matched_subscriptions`,
 //! `subscription_count_matched_publishers` and `get_gid_for_publisher` have NO
 //! consumer anywhere in the tree outside `tests/graph_counts.cpp` — no Rust
 //! `Publisher` method, no `nros_publisher_*` C entry, no dispatcher in
