@@ -20,7 +20,7 @@ logging-smoke-nuttx-qemu-arm         1   0     0       1      0
 logging-smoke-threadx-riscv64        1   0     0       1      0
 mps2-an385-pac                       0   1     1       2      0
 nros                                58  13     2      25      0
-nros-baremetal-common               23   0     0      20      0
+nros-baremetal-common               24   0     0      21      0
 nros-board-cffi                      3   0     0       6      0
 nros-board-esp32-qemu               11   1     1       0      0
 nros-board-freertos                 55   1     0      17      0
@@ -53,7 +53,7 @@ nros-platform-cffi                  97   0     4     112      0
 nros-platform-critical-section       2   2     1       1      0
 nros-platform-esp32-qemu            17   0     2      16      0
 nros-platform-mps2-an385            19   6     3       7      0
-nros-platform-stm32f4               13   6     3       2      0
+nros-platform-stm32f4               15   6     3       2      0
 nros-port-metric-bench               3   0     0       3      0
 nros-rmw                            13   7    11      13      0
 nros-rmw-cffi                      363  39     5     194      0

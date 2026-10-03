@@ -27,6 +27,7 @@ APP_COMPILE_DEFS  not a path — `;`-separated `NAME[=VALUE]` preprocessor defin
 FREERTOS_CFLAGS  not a path — extra compiler flags (RFC-0049 extension point)
 NROS_ARENA_EXHAUSTION_IS_FATAL  not a path — a boolean flag
 NROS_BOOT_REPORT  not a path — a boolean flag
+NROS_HEAP_EXHAUSTION_IS_FATAL  not a path — a boolean flag
 NROS_DECLARED_MAX_QOS_DEPTH  not a path — a count
 NROS_EXECUTOR_BACKING_SECTION  not a path — a linker section NAME (RFC-0002 4.4b)
 NROS_FREERTOS_APP_STACK_KB  not a path — a size in KiB (issue 1146)
