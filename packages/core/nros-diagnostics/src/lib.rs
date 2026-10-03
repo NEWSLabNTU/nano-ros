@@ -130,9 +130,74 @@ impl DiagnosticReporter {
     }
 }
 
+/// Issue 1635 — which side of the contract a runtime rule judges.
+///
+/// The two rules about what ARRIVES (`max-age-runtime`, `silence-runtime`) are
+/// subscriber ASSUMPTIONS; every other rule judges what this image itself does
+/// (its publish rate, its path latency, its deadlines, its own stack) and is a
+/// GUARANTEE. One table, so the fixture, the C/C++ entries and a Rust entry
+/// cannot classify the same rule two ways.
+pub fn kind_for_rule(rule: &str) -> ContractKind {
+    match rule {
+        RULE_MAX_AGE | RULE_SILENCE => ContractKind::Assumption,
+        _ => ContractKind::Guarantee,
+    }
+}
+
+impl DiagnosticReporter {
+    /// Issue 1635 — one drained executor violation, as a `DiagnosticArray`
+    /// (or `None` while rate-limited). The ONE mapping from the executor's
+    /// `Violation` fields to a report; `nros-node`'s type is not named here so
+    /// this crate stays below it.
+    ///
+    /// `rule` keeps the executor's own spelling — it is already the
+    /// play_launch vocabulary — and the message carries both numbers, whose
+    /// unit is the rule's (milli-Hz for rate, ms for age/latency, us for a
+    /// deadline miss).
+    pub fn report_violation(
+        &mut self,
+        now_us: u64,
+        rule: &str,
+        fqn: &str,
+        measured: u32,
+        declared: u32,
+    ) -> Option<DiagnosticArray> {
+        use core::fmt::Write as _;
+        let mut message = heapless::String::<64>::new();
+        let _ = write!(message, "measured {measured} vs declared {declared}");
+        self.report(
+            now_us,
+            rule,
+            Severity::Error,
+            kind_for_rule(rule),
+            fqn,
+            &message,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_violation_report_keeps_the_rule_and_classifies_its_side() {
+        let mut r = DiagnosticReporter::new(0);
+        let arr = r
+            .report_violation(1, RULE_SILENCE, "/n/in", 0, 200)
+            .expect("first report always emits");
+        let st = &arr.status[0];
+        assert_eq!(st.name.as_str(), RULE_SILENCE);
+        assert_eq!(st.hardware_id.as_str(), "/n/in");
+        assert_eq!(st.message.as_str(), "measured 0 vs declared 200");
+        assert_eq!(st.values[0].value.as_str(), "assumption");
+        assert_eq!(kind_for_rule(RULE_RATE_HIERARCHY), ContractKind::Guarantee);
+        assert_eq!(
+            kind_for_rule("deadline-miss-runtime"),
+            ContractKind::Guarantee
+        );
+        assert_eq!(kind_for_rule(RULE_MAX_AGE), ContractKind::Assumption);
+    }
 
     #[test]
     fn report_carries_rule_vocabulary_and_kind() {

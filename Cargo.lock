@@ -1823,6 +1823,7 @@ dependencies = [
  "nros-bridge",
  "nros-build-helpers",
  "nros-c",
+ "nros-diagnostics",
  "nros-log",
  "nros-node",
  "nros-platform",

@@ -246,6 +246,15 @@ name = "nros-build-paths"
 version = "0.5.0"
 
 [[package]]
+name = "nros-builtin-interfaces"
+version = "0.0.0"
+dependencies = [
+ "heapless",
+ "nros-core",
+ "nros-serdes",
+]
+
+[[package]]
 name = "nros-c"
 version = "0.5.0"
 dependencies = [
@@ -289,11 +298,30 @@ dependencies = [
  "nros",
  "nros-build-helpers",
  "nros-c",
+ "nros-diagnostics",
  "nros-log",
  "nros-node",
  "nros-platform",
  "nros-rmw",
  "nros-rmw-zenoh",
+]
+
+[[package]]
+name = "nros-diagnostic-msgs"
+version = "0.0.0"
+dependencies = [
+ "heapless",
+ "nros-core",
+ "nros-serdes",
+ "nros-std-msgs",
+]
+
+[[package]]
+name = "nros-diagnostics"
+version = "0.5.0"
+dependencies = [
+ "heapless",
+ "nros-diagnostic-msgs",
 ]
 
 [[package]]
@@ -506,6 +534,16 @@ dependencies = [
  "nros-platform-config",
  "portable-atomic",
  "smoltcp",
+]
+
+[[package]]
+name = "nros-std-msgs"
+version = "0.0.0"
+dependencies = [
+ "heapless",
+ "nros-builtin-interfaces",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]
