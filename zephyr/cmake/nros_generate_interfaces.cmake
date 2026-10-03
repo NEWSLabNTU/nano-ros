@@ -642,7 +642,40 @@ targets = [\"${NROS_RUST_TARGET}\"]
   # target model: descriptors compile into a per-package static lib linked
   # whole-archive into `app` (comma-joined single -Wl token — the #192 CMake
   # de-dup hazard applies here identically).
-  if(CONFIG_NROS_RMW_CYCLONEDDS AND COMMAND nros_rmw_cyclonedds_generate_from_msg)
+  # issue 1673 — this road ARMS ITSELF. It was guarded on
+  # `COMMAND nros_rmw_cyclonedds_generate_from_msg`, which exists only once
+  # `NrosRmwCycloneddsTypeSupport` has been included — and the only thing that
+  # included it was the EXAMPLE's own hand-written descriptor block, run before
+  # its `find_package(<pkg>)`. So this road fired only in images that ALSO
+  # generated the same descriptors by hand, and compiled every one of them a
+  # second time. That duplication was hidden by a global
+  # `--allow-multiple-definition` until issue 1636 scoped the flag to C++ FFI
+  # images, after which every Zephyr C + Cyclone DDS image failed to link on a
+  # duplicate `*__desc` / `register_*`.
+  #
+  # And the guard failed OPEN in the other direction: an image that
+  # find_package'd an interface package without hand-including the module got
+  # NO descriptors and no error, i.e. `find_descriptor()` failing at runtime.
+  # Arming here makes the two cases one: the module is included by full path
+  # (its dir is a cache var the cyclone backend exports, so no
+  # CMAKE_MODULE_PATH scoping is involved), and an absent module is a
+  # configure error rather than a silent skip.
+  if(CONFIG_NROS_RMW_CYCLONEDDS AND NOT COMMAND nros_rmw_cyclonedds_generate_from_msg)
+    if(NOT NROS_CYCLONE_CMAKE_DIR
+       OR NOT EXISTS "${NROS_CYCLONE_CMAKE_DIR}/NrosRmwCycloneddsTypeSupport.cmake")
+      message(FATAL_ERROR
+        "nros_generate_interfaces: CONFIG_NROS_RMW_CYCLONEDDS is set but the "
+        "Cyclone DDS type-support module was not found "
+        "(NROS_CYCLONE_CMAKE_DIR='${NROS_CYCLONE_CMAKE_DIR}'). Without it this "
+        "image would get no topic descriptors and fail at runtime in "
+        "find_descriptor() — issue 1673.")
+    endif()
+    set(IDLC_EXECUTABLE "${NROS_CYCLONE_IDLC}"
+        CACHE FILEPATH "Host Cyclone DDS idlc for descriptor generation" FORCE)
+    set(ENV{NROS_RMW_CYCLONEDDS_SCRIPTS_DIR} "${NROS_CYCLONE_SCRIPTS_DIR}")
+    include("${NROS_CYCLONE_CMAKE_DIR}/NrosRmwCycloneddsTypeSupport.cmake")
+  endif()
+  if(CONFIG_NROS_RMW_CYCLONEDDS)
     set(_cyc_ifaces "")
     foreach(_if ${_interface_files})
       if(_if MATCHES "\\.(msg|srv|action)$")

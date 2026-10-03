@@ -21,22 +21,12 @@ project(zephyr_cpp_talker LANGUAGES CXX)
 find_package(nano_ros REQUIRED)
 find_package(std_msgs REQUIRED)
 
-# Phase 11W.12 — Cyclone DDS needs a C `dds_topic_descriptor_t` for
-# each message type (the backend's `find_descriptor` looks it up by
-# mangled name). The C++ codegen only emits C++ types, so generate the
-# Cyclone C descriptor here from std_msgs/String and compile it into the
-# app. Uses the host-built idlc + the msg→IDL converter.
-if(CONFIG_NROS_RMW_CYCLONEDDS)
-    list(APPEND CMAKE_MODULE_PATH "${NROS_CYCLONE_CMAKE_DIR}")
-    set(IDLC_EXECUTABLE "${NROS_CYCLONE_IDLC}" CACHE FILEPATH "" FORCE)
-    set(ENV{NROS_RMW_CYCLONEDDS_SCRIPTS_DIR} "${NROS_CYCLONE_SCRIPTS_DIR}")
-    include(NrosRmwCycloneddsTypeSupport)
-    nros_rmw_cyclonedds_generate_from_msg(_nros_cyc_types
-        PKG_NAME   std_msgs
-        PKG_DIR    "$ENV{NROS_STD_MSGS_DIR}"
-        INTERFACES msg/String.msg)
-    target_sources(app PRIVATE ${_nros_cyc_types})
-endif()
+# Cyclone DDS topic descriptors for this image's interface packages are generated
+# by the shared interface pipeline (`zephyr/cmake/nros_generate_interfaces.cmake`)
+# when `find_package(<pkg>)` runs below. A hand-written descriptor block here
+# used to generate the same descriptors a second time; with the global
+# `--allow-multiple-definition` gone (issue 1636) that was a duplicate-symbol
+# link error, so it is gone too (issue 1673).
 
 # The Zephyr typed carrier branch keys on NANO_ROS_PLATFORM=zephyr + DEPLOY
 # zephyr + TARGET app + TYPED, and target_sources/target_link_libraries the

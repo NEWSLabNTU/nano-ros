@@ -10,11 +10,12 @@ project(nros_zephyr_zenoh_action_client_c)
 # closure declared in package.xml (<depend>example_interfaces</depend>) into
 # `app` — resolve-deps pulls action_msgs / unique_identifier_msgs too.
 
-if(CONFIG_NROS_RMW_CYCLONEDDS)
-    list(APPEND CMAKE_MODULE_PATH "${NROS_CYCLONE_CMAKE_DIR}")
-    include(NrosZephyrCycloneddsActionTypes)
-    nros_zephyr_add_cyclonedds_action_descriptors(app)
-endif()
+# Cyclone DDS topic descriptors for this image's interface packages are generated
+# by the shared interface pipeline (`zephyr/cmake/nros_generate_interfaces.cmake`)
+# when `find_package(<pkg>)` runs below. A hand-written descriptor block here
+# used to generate the same descriptors a second time; with the global
+# `--allow-multiple-definition` gone (issue 1636) that was a duplicate-symbol
+# link error, so it is gone too (issue 1673).
 
 # TYPED component (RFC-0043 / phase-244.C2). The Zephyr typed carrier branch
 # (LANGUAGE C) generates the entry TU through the shared pack (a C++ entry
