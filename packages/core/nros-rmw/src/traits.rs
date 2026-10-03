@@ -3272,6 +3272,38 @@ pub trait SlotBorrowing: Subscription {
     fn try_borrow(&mut self) -> Result<Option<Self::View<'_>>, Self::Error>;
 }
 
+/// Issues 1612 / 1632 — the size a refused take needed, as a drop log prints
+/// it: the number, or `?` when unknown. No allocator.
+///
+/// [`RefusedLen::for_error`] is the one rule for WHICH refusal may carry a
+/// size: only `BufferTooSmall`, the caller's-buffer refusal a take measures.
+/// `MessageTooLarge` is the backend's own staging buffer refusing before any
+/// take saw a length, so a size recorded by an earlier `BufferTooSmall` must
+/// not be printed beside it. The C++ subscription drop log and `nros-node`'s
+/// arena drop log both read it from here, so the two cannot disagree.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RefusedLen(pub Option<usize>);
+
+impl RefusedLen {
+    /// The size `recorded` (a `refused_*_len()` reading) for `err`, or
+    /// unknown when `err` is not a refusal a take measured.
+    pub fn for_error(err: &TransportError, recorded: Option<usize>) -> Self {
+        Self(match err {
+            TransportError::BufferTooSmall => recorded,
+            _ => None,
+        })
+    }
+}
+
+impl core::fmt::Display for RefusedLen {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self.0 {
+            Some(n) => write!(f, "{n}"),
+            None => f.write_str("?"),
+        }
+    }
+}
+
 /// Service server trait for handling requests.
 ///
 /// # Threading
