@@ -1379,6 +1379,12 @@ pub struct Executor<'s> {
     /// allocator for everything else; this is what lets a create/destroy loop
     /// of the same entity run forever instead of exhausting the arena.
     pub(crate) arena_freed: heapless::Vec<FreedRegion, ARENA_FREED_REGIONS>,
+    /// Issue 1631 — the region the most recent ENTRY allocation handed out,
+    /// waiting for `emplace_entry` to record it in the entry's
+    /// `CallbackMeta::arena_len`. Every registration allocates its entry and
+    /// then emplaces it, so the pair is adjacent; a registration that fails
+    /// between them leaves a stale value that the next allocation overwrites.
+    pub(crate) pending_region: Option<FreedRegion>,
     pub(crate) entries: &'s mut [Option<CallbackMeta>],
     /// Phase 110.B — registered scheduling contexts. Slot 0 is
     /// auto-populated with a `Fifo` SC at construction; every entry
@@ -1979,6 +1985,7 @@ impl<'s> Executor<'s> {
             arena,
             arena_used: 0,
             arena_freed: heapless::Vec::new(),
+            pending_region: None,
             entries,
             sched_contexts,
             sched_context_bindings,
@@ -5503,6 +5510,7 @@ impl<'s> Executor<'s> {
         let size = core::mem::size_of::<T>();
         if let Some(offset) = self.arena_take_freed(size, align) {
             crate::boot_report::note_alloc(size, self.arena_used);
+            self.note_entry_region(offset, size);
             return Ok(offset);
         }
         let aligned_offset = (self.arena_used + align - 1) & !(align - 1);
@@ -5519,7 +5527,16 @@ impl<'s> Executor<'s> {
         }
         self.arena_used = new_used;
         crate::boot_report::note_alloc(size, new_used);
+        self.note_entry_region(aligned_offset, size);
         Ok(aligned_offset)
+    }
+
+    /// Issue 1631 — remember the region an ENTRY allocation handed out, for
+    /// `emplace_entry` to record. Only the two entry allocators call this;
+    /// `arena_alloc_bytes` (a callback capture) does not, and runs before the
+    /// entry's allocation in every registration that uses it.
+    fn note_entry_region(&mut self, offset: usize, len: usize) {
+        self.pending_region = Some(FreedRegion { offset, len });
     }
 
     /// Bump-allocate `size` bytes at `align` — phase-456 W8.
@@ -5628,6 +5645,7 @@ impl<'s> Executor<'s> {
         if let Some(entry_offset) = self.arena_take_freed(whole, align.max(u64_align)) {
             let trailing_offset = (entry_offset + entry_size).next_multiple_of(u64_align);
             crate::boot_report::note_alloc(whole, self.arena_used);
+            self.note_entry_region(entry_offset, whole);
             return Ok((entry_offset, trailing_offset));
         }
         let entry_offset = self.arena_used.next_multiple_of(align);
@@ -5649,6 +5667,7 @@ impl<'s> Executor<'s> {
         }
         self.arena_used = new_used;
         crate::boot_report::note_alloc(new_used - entry_offset, new_used);
+        self.note_entry_region(entry_offset, new_used - entry_offset);
         Ok((entry_offset, trailing_offset))
     }
 
@@ -5737,21 +5756,21 @@ impl<'s> Executor<'s> {
 
     /// Issue 1496 — RELEASE one callback entry: drop the entry in place (its
     /// RMW handles' `Drop`s destroy the backend entities, so nothing stays
-    /// advertised), free its callback slot, and give its `size` arena bytes
-    /// back for reuse. `false`, touching nothing, when `index` is not a live
-    /// entry of `kind`.
+    /// advertised), free its callback slot, and give its arena bytes back for
+    /// reuse. `false`, touching nothing, when `index` is not a live entry of
+    /// `kind`.
+    ///
+    /// Issue 1631 — the bytes released are the ones `emplace_entry` RECORDED
+    /// from the allocator (`CallbackMeta::arena_len`), entry and trailing
+    /// region together. 1496's form took the size from the caller, which had
+    /// to restate the concrete entry type — impossible for a buffered
+    /// subscription (its trailing region is sized at runtime) or a timer (its
+    /// closure type is the registering crate's).
     ///
     /// # Safety
-    /// `size` must be the size the entry at `index` was allocated with (the
-    /// `size_of` of the concrete entry type its registration wrote, with no
-    /// trailing region), and no handle naming `index` may be used afterwards:
-    /// the slot and its bytes go to the next registration.
-    pub(crate) unsafe fn release_entry(
-        &mut self,
-        index: usize,
-        kind: EntryKind,
-        size: usize,
-    ) -> bool {
+    /// No handle naming `index` may be used afterwards: the slot and its bytes
+    /// go to the next registration.
+    pub(crate) unsafe fn release_entry(&mut self, index: usize, kind: EntryKind) -> bool {
         let live = self
             .entries
             .get(index)
@@ -5773,8 +5792,53 @@ impl<'s> Executor<'s> {
         if let Some(st) = self.sporadic_states.get_mut(index) {
             *st = None;
         }
-        self.arena_release(meta.offset, size);
+        if let Some(len) = meta.arena_len.get() {
+            self.arena_release(meta.offset, len);
+        }
         true
+    }
+
+    /// Issue 1631 — release a SUBSCRIPTION entry, whatever registration shape
+    /// made it (typed, raw, in-place, buffered, with-info). See
+    /// [`release_entry`](Self::release_entry): the entry is dropped, so its
+    /// subscriber leaves the graph; its slot and arena bytes are reused by the
+    /// next registration. `false`, touching nothing, when `handle` is not a
+    /// live subscription.
+    ///
+    /// # Safety
+    /// No copy of `handle` may be used afterwards — the slot is handed to the
+    /// next registration, which may be of any kind.
+    pub unsafe fn release_subscription(&mut self, handle: HandleId) -> bool {
+        unsafe { self.release_entry(handle.0, EntryKind::Subscription) }
+    }
+
+    /// Issue 1631 — release a TIMER entry; the timer's callback (and anything
+    /// its closure captured) is dropped and never fires again. As
+    /// [`release_subscription`](Self::release_subscription).
+    ///
+    /// # Safety
+    /// As [`release_subscription`](Self::release_subscription).
+    pub unsafe fn release_timer(&mut self, handle: HandleId) -> bool {
+        unsafe { self.release_entry(handle.0, EntryKind::Timer) }
+    }
+
+    /// Issue 1631 — release a SERVICE SERVER entry; the server leaves the
+    /// graph. As [`release_subscription`](Self::release_subscription).
+    ///
+    /// # Safety
+    /// As [`release_subscription`](Self::release_subscription).
+    pub unsafe fn release_service(&mut self, handle: HandleId) -> bool {
+        unsafe { self.release_entry(handle.0, EntryKind::Service) }
+    }
+
+    /// Issue 1631 — release a SERVICE CLIENT entry; the client leaves the
+    /// graph and any reply it was waiting for is abandoned with it. As
+    /// [`release_subscription`](Self::release_subscription).
+    ///
+    /// # Safety
+    /// As [`release_subscription`](Self::release_subscription).
+    pub unsafe fn release_service_client(&mut self, handle: HandleId) -> bool {
+        unsafe { self.release_entry(handle.0, EntryKind::ServiceClient) }
     }
 
     /// Find the next free entry slot index.
@@ -5806,7 +5870,20 @@ impl<'s> Executor<'s> {
     /// arena allocation, handle creation) that can still return `Err`.
     /// Emitting at slot-claim time would announce callbacks that do not
     /// exist.
-    pub(crate) fn emplace_entry(&mut self, slot: usize, meta: CallbackMeta, name: TraceName<'_>) {
+    pub(crate) fn emplace_entry(
+        &mut self,
+        slot: usize,
+        mut meta: CallbackMeta,
+        name: TraceName<'_>,
+    ) {
+        // Issue 1631 — record the region the entry's allocation handed out,
+        // so `release_entry` gives back exactly that. Matched on the OFFSET so
+        // a stale region (a registration that failed after allocating) is
+        // never attributed to a different entry.
+        meta.arena_len = match self.pending_region.take() {
+            Some(r) if r.offset == meta.offset => super::arena::ArenaLen::new(r.len),
+            _ => super::arena::ArenaLen::UNRECORDED,
+        };
         trace_register(slot, meta.kind, name);
         self.entries[slot] = Some(meta);
     }
@@ -6037,6 +6114,7 @@ impl<'s> Executor<'s> {
             let meta = CallbackMeta {
                 offset: entry_offset,
                 kind: EntryKind::Subscription,
+                arena_len: super::arena::ArenaLen::UNRECORDED,
                 try_process: sub_inplace_try_process::<M, F>,
                 has_data: sub_inplace_has_data::<M, F>,
                 pre_sample: no_pre_sample,
@@ -6079,6 +6157,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset: entry_offset,
             kind: EntryKind::Subscription,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: sub_buffered_try_process::<M, F>,
             has_data: sub_buffered_has_data::<M, F>,
             pre_sample: no_pre_sample,
@@ -6192,6 +6271,7 @@ impl<'s> Executor<'s> {
             let meta = CallbackMeta {
                 offset: entry_offset,
                 kind: EntryKind::Subscription,
+                arena_len: super::arena::ArenaLen::UNRECORDED,
                 try_process: super::arena::sub_inplace_raw_try_process::<F>,
                 has_data: super::arena::sub_inplace_raw_has_data::<F>,
                 pre_sample: no_pre_sample,
@@ -6286,6 +6366,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset: entry_offset,
             kind: EntryKind::Subscription,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: sub_buffered_view_try_process::<B, F>,
             has_data: sub_buffered_view_has_data::<B, F>,
             pre_sample: no_pre_sample,
@@ -6353,6 +6434,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: sub_buffered_raw_info_try_process::<F, RX_BUF>,
             has_data: sub_buffered_raw_info_has_data::<F, RX_BUF>,
             pre_sample: no_pre_sample,
@@ -6428,6 +6510,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: sub_buffered_raw_safety_try_process::<F, RX_BUF>,
             has_data: sub_buffered_raw_safety_has_data::<F, RX_BUF>,
             pre_sample: no_pre_sample,
@@ -6528,6 +6611,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset: entry_offset,
             kind: EntryKind::Subscription,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: sub_buffered_raw_try_process::<F>,
             has_data: sub_buffered_raw_has_data::<F>,
             pre_sample: no_pre_sample,
@@ -6589,6 +6673,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: sub_info_try_process::<M, F, RX_BUF>,
             has_data: sub_info_has_data::<M, F, RX_BUF>,
             pre_sample: sub_info_pre_sample::<M, F, RX_BUF>,
@@ -6651,6 +6736,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: sub_safety_try_process::<M, F, RX_BUF>,
             has_data: sub_safety_has_data::<M, F, RX_BUF>,
             pre_sample: sub_safety_pre_sample::<M, F, RX_BUF>,
@@ -6734,6 +6820,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::Service,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: srv_try_process::<Svc, F, REQ_BUF, REPLY_BUF>,
             has_data: srv_has_data::<Svc, F, REQ_BUF, REPLY_BUF>,
             pre_sample: no_pre_sample,
@@ -6815,6 +6902,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::Service,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: srv_try_process::<Svc, F, REQ_BUF, REPLY_BUF>,
             has_data: srv_has_data::<Svc, F, REQ_BUF, REPLY_BUF>,
             pre_sample: no_pre_sample,
@@ -6910,6 +6998,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::Timer,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: timer_try_process::<F>,
             has_data: always_ready,
             pre_sample: no_pre_sample,
@@ -7156,6 +7245,7 @@ impl<'s> Executor<'s> {
             let meta = CallbackMeta {
                 offset: entry_offset,
                 kind: EntryKind::Subscription,
+                arena_len: super::arena::ArenaLen::UNRECORDED,
                 try_process: super::arena::sub_inplace_raw_c_try_process,
                 has_data: super::arena::sub_inplace_raw_c_has_data,
                 pre_sample: no_pre_sample,
@@ -7197,6 +7287,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset: entry_offset,
             kind: EntryKind::Subscription,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: sub_buffered_raw_c_try_process,
             has_data: sub_buffered_raw_c_has_data,
             pre_sample: no_pre_sample,
@@ -7321,6 +7412,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset: entry_offset,
             kind: EntryKind::Subscription,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: sub_buffered_typed_c_try_process,
             has_data: sub_buffered_typed_c_has_data,
             pre_sample: no_pre_sample,
@@ -7405,6 +7497,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: sub_buffered_raw_info_c_try_process,
             has_data: sub_buffered_raw_info_c_has_data,
             pre_sample: no_pre_sample,
@@ -7495,6 +7588,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: sub_buffered_raw_safety_c_try_process,
             has_data: sub_buffered_raw_safety_c_has_data,
             pre_sample: no_pre_sample,
@@ -7646,6 +7740,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::Service,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: srv_raw_try_process::<REQ_BUF, REPLY_BUF>,
             has_data: srv_raw_has_data::<REQ_BUF, REPLY_BUF>,
             pre_sample: no_pre_sample,
@@ -7802,6 +7897,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::ServiceClient,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: service_client_raw_try_process::<REPLY_BUF>,
             has_data: always_ready,
             pre_sample: no_pre_sample,
@@ -7888,6 +7984,7 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::ServiceClient,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
             try_process: service_client_callback_try_process::<Svc, F, REPLY_BUF>,
             has_data: always_ready,
             pre_sample: no_pre_sample,
@@ -7972,6 +8069,7 @@ impl<'s> Executor<'s> {
             let meta = CallbackMeta {
                 offset,
                 kind: EntryKind::GuardCondition,
+                arena_len: super::arena::ArenaLen::UNRECORDED,
                 try_process: guard_try_process::<F>,
                 has_data: guard_has_data::<F>,
                 pre_sample: no_pre_sample,

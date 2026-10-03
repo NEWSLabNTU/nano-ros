@@ -151,8 +151,63 @@ pub(crate) struct CallbackMeta {
     pub(crate) pre_sample: unsafe fn(*mut u8),
     /// Per-callback invocation mode.
     pub(crate) invocation: InvocationMode,
+    /// Issue 1631 — the arena bytes this entry's registration claimed,
+    /// starting at `offset` (the entry plus any trailing receive region).
+    ///
+    /// Registration sites write [`ArenaLen::UNRECORDED`]; the ONE choke point
+    /// `Executor::emplace_entry` overwrites it with the region the allocator
+    /// actually handed out, so no site can state a length that disagrees with
+    /// the allocation. `release_entry` gives exactly this back. Before 1631
+    /// the releasing CALLER had to restate the size from the concrete type,
+    /// which only works for an entry with no trailing region and a type the
+    /// caller can name — neither holds for a buffered subscription or for a
+    /// timer whose closure type lives in another crate.
+    pub(crate) arena_len: ArenaLen,
     /// Monomorphized drop: runs destructors on the concrete entry.
     pub(crate) drop_fn: unsafe fn(*mut u8),
+}
+
+// Issue 1631 — the no-growth claim, on EVERY target this crate compiles for
+// (the host test `callback_meta_len_rides_in_padding` only sees the host).
+const _: () = assert!(
+    core::mem::size_of::<Option<CallbackMeta>>() == 6 * core::mem::size_of::<usize>(),
+    "CallbackMeta grew: `arena_len` must ride in the tail padding (issue 1631)"
+);
+
+/// Issue 1631 — the recorded length of one entry's arena region.
+///
+/// Sized to ride in `CallbackMeta`'s existing tail padding, so the entry
+/// table (and every stated executor backing size) does not grow: the two
+/// one-byte enums leave six spare bytes on a 64-bit target and two on a
+/// 32-bit one. A 32-bit region of 64 KiB or more does not fit and is stored
+/// as [`UNRECORDED`](Self::UNRECORDED): its release still drops the entry and
+/// frees the slot, and keeps the bytes — a leak of one region, never a reuse
+/// of bytes that are still in use. `callback_meta_len_rides_in_padding` pins
+/// the no-growth claim.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct ArenaLen(ArenaLenRepr);
+
+#[cfg(target_pointer_width = "64")]
+type ArenaLenRepr = u32;
+#[cfg(not(target_pointer_width = "64"))]
+type ArenaLenRepr = u16;
+
+impl ArenaLen {
+    /// No length known: a release frees the slot and keeps the bytes.
+    pub(crate) const UNRECORDED: Self = Self(ArenaLenRepr::MAX);
+
+    /// The length, or [`UNRECORDED`](Self::UNRECORDED) when it does not fit.
+    pub(crate) fn new(len: usize) -> Self {
+        match ArenaLenRepr::try_from(len) {
+            Ok(v) if v != ArenaLenRepr::MAX => Self(v),
+            _ => Self::UNRECORDED,
+        }
+    }
+
+    /// `None` when unrecorded.
+    pub(crate) fn get(self) -> Option<usize> {
+        (self != Self::UNRECORDED).then_some(self.0 as usize)
+    }
 }
 
 // ============================================================================
