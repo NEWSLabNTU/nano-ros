@@ -293,7 +293,10 @@ build-c-port:
     if [ ! -x "$make_bin" ]; then
         make_bin="$(command -v make)"
     fi
-    export PATH="$(nros sdk-path make)/bin:$(nros sdk-path ninja)/bin:$PATH"
+    # issue 1638 — existing store dirs only; a missing pin is reported.
+    source scripts/lib/sdk-tool-path.sh
+    sdk_tool_prefix="$(nros_sdk_tool_path_prefix make ninja)"
+    export PATH="${sdk_tool_prefix:+$sdk_tool_prefix:}$PATH"
     source "$WORKSPACE/env.sh"
     # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
     source scripts/build/zephyr-python.sh

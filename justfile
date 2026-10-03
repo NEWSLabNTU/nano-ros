@@ -47,7 +47,14 @@ export NROS_CARGO_PROFILE := env_var_or_default("NROS_CARGO_PROFILE", "")
 
 # User-local tools installed by setup modules (for example PlatformIO via
 # pipx/pip --user) should be visible to all just-driven tests.
-export PATH := env("HOME") / ".local/bin" + ":" + env_var_or_default("PATH", "")
+#
+# Issue 1638 — and the inherited entries go through issue 1280's rule, PER
+# ENTRY: one inside ANOTHER nano-ros checkout is re-rooted onto this one, or
+# dropped when this checkout has no such directory. A tool resolved by NAME
+# (`ninja`, `make`, `cmake`) otherwise came from the parent shell's checkout:
+# a worktree's Zephyr leaf cached `CMAKE_MAKE_PROGRAM=<main>/third-party/
+# ninja/ninja`. `_NROS_HERE` is `just/sdk-env.just`'s, imported below.
+export PATH := shell('"$2"/scripts/lib/reroot-checkout-pathlist.sh "$1" "$2"', env("HOME") / ".local/bin" + ":" + env_var_or_default("PATH", ""), _NROS_HERE)
 
 LOG_DIR := "test-logs"
 

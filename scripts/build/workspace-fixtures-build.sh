@@ -746,6 +746,23 @@ if [ "$use_pool" != "1" ]; then
     exit 0
 fi
 
+# Issue 1638 — the pool's CHILDREN must find the same make by NAME. A cmake
+# "Unix Makefiles" leaf caches whatever `gmake`/`make` PATH resolves at its
+# first configure as `CMAKE_MAKE_PROGRAM`, and the build tool it then runs is
+# a CLIENT of this pool's fifo jobserver. The system make 4.3 cannot parse
+# `--jobserver-auth=fifo:` and every group dies with `gmake[1]: *** internal
+# error: invalid --jobserver-auth string`. It worked only while an inherited
+# PATH happened to put a make 4.4 first — on this host, the MAIN checkout's
+# `third-party/make`, which the re-rooting rule now drops from a worktree's
+# PATH. `fixture-make-driver.sh` and `build-all-jobserver.sh` already prepend
+# the pinned tools; this is the third driver of the same pool, and it did not.
+pinned_tool_path="$(dirname "$pinned_make")"
+pinned_ninja_dir="$(nros sdk-path ninja)/bin"
+if [ -x "$pinned_ninja_dir/ninja" ]; then
+    pinned_tool_path="$pinned_tool_path:$pinned_ninja_dir"
+fi
+export PATH="$pinned_tool_path:$PATH"
+
 # Parallel fan-out — one make target per WORKSPACE DIR (rows within a dir stay
 # serial inside their group worker), scheduled by pinned make 4.4's fifo
 # jobserver with the full NROS_BUILD_JOBS budget as the token pool. The

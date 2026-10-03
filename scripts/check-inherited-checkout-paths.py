@@ -362,6 +362,33 @@ def probe_just(tmp: Path) -> list[str]:
     )
     if got != vendor:
         problems.append(f"just: an out-of-tree NUTTX_DIR was rewritten — got {got!r}")
+
+    # Issue 1638 — the same rule PER ENTRY of PATH, which no named variable
+    # reaches: a tool resolved by NAME (`ninja`) came from the parent shell's
+    # checkout and was cached as a Zephyr leaf's CMAKE_MAKE_PROGRAM. Three rows:
+    # a foreign entry with a counterpart here is re-rooted, one with NO
+    # counterpart here is DROPPED (a missing PATH dir is skipped silently, so
+    # keeping it either way would be the crossing), and an out-of-tree entry is
+    # kept as it is.
+    gone = f"{other}/third-party/no-such-tool-1638"
+    rerooted_from = f"{other}/scripts/bin"
+    path_vendor = str(tmp / "opt/vendor/bin")
+    inherited = ":".join(
+        [rerooted_from, gone, path_vendor, os.environ.get("PATH", "/usr/bin:/bin")]
+    )
+    got = evaluate("PATH", {"PATH": inherited})
+    entries = got.split(":")
+    if f"{ROOT}/scripts/bin" not in entries or rerooted_from in entries:
+        problems.append(
+            f"just: a PATH entry naming another checkout was not re-rooted — got {got[:300]!r}"
+        )
+    if gone in entries or f"{ROOT}/third-party/no-such-tool-1638" in entries:
+        problems.append(
+            "just: a PATH entry naming another checkout, with no counterpart here, "
+            f"was not dropped — got {got[:300]!r} (issue 1638)"
+        )
+    if path_vendor not in entries:
+        problems.append(f"just: an out-of-tree PATH entry was dropped — got {got[:300]!r}")
     return problems
 
 
