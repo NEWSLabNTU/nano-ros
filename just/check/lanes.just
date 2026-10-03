@@ -365,6 +365,26 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/action_remove_cycles
     ./tmp/action_remove_cycles
+    echo "  - issue 1631: a C subscription/timer/service/client is REMOVED from its"
+    echo "    executor, and a create/remove loop of each runs past the arena twice"
+    # The other four kinds, in 1609's shape: arena used pinned at cycle 0 over
+    # enough cycles to claim the arena twice, live entities back to baseline,
+    # a second remove NOT_FOUND, a remove on another executor NOT_FOUND, and the
+    # fini-only negative control exhausting at the handle table, per kind.
+    test -f packages/api/nros-c/tests/run/entity_remove_cycles.c || { \
+        echo "ERROR: entity_remove_cycles.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$gen/nros-c-generated" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/entity_remove_cycles.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/entity_remove_cycles
+    ./tmp/entity_remove_cycles
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
     # `run_tiers.c` call `extern`. Its weak default used to live in

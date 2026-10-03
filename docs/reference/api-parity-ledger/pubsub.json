@@ -2020,5 +2020,10 @@
   "rust:TierExecutorBacking::take": {
     "verdict": "divergence",
     "why": "See `rust:TierExecutorBacking`. The once-only handout that makes the `&'static mut` sound; a second call returns an empty slice, which `check_tier_executor_backing` refuses by name."
+  },
+  "rust:Executor::release_subscription": {
+    "verdict": "extension",
+    "why": "issue 1631 -- in ROS 2 the DESTRUCTOR (rclcpp) or `rcl_*_fini` (rcl) is the counterpart. Ours registers the entity as an entry in the executor's statically sized arena, so freeing it is an executor call: the entry is dropped in place (its RMW handle's Drop destroys the backend entity, so it leaves the graph), its callback slot is freed, and the arena bytes its registration RECORDED -- entry and runtime-sized receive region together -- go on the released-region list for the next registration that fits. The C removers `nros_executor_remove_{subscription,timer,service,client}` call it. Unlike 1496's action releases it needs no const generics: the length is recorded at registration, so a buffered subscription and a timer (whose closure type is the caller's) are releasable too.",
+    "bucket": "ours-only"
   }
 }

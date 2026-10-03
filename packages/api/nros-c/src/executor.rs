@@ -2539,6 +2539,9 @@ pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
                 }
 
                 executor.handle_count += 1;
+                // Issue 1631 — every other subscription add counts here, and
+                // `nros_executor_remove_subscription` uncounts.
+                executor.subscription_count += 1;
                 NROS_RET_OK
             }
             Err(_) => NROS_RET_ERROR,
@@ -3311,12 +3314,7 @@ pub unsafe extern "C" fn nros_executor_remove_action_server(
     // handle would let a later remove release whatever registered into that
     // slot since.
     server._internal = ActionServerInternal::invalid_default();
-    if !released {
-        return NROS_RET_NOT_FOUND;
-    }
-    record_trigger_entity(&mut executor._handle_entities, handle_id, ptr::null_mut());
-    executor.handle_count = executor.handle_count.saturating_sub(1);
-    NROS_RET_OK
+    forget_removed_handle(executor, handle_id, released)
 }
 
 /// Remove an action client from the executor — issue 1609.
@@ -3374,16 +3372,265 @@ pub unsafe extern "C" fn nros_executor_remove_action_client(
     // so no copy of it is used after the slot is handed back.
     let released = rust_exec.release_action_client_raw(entry_index);
     client._internal = crate::action::ActionClientInternal::new();
+    forget_removed_handle(
+        executor,
+        nros_node::executor::HandleId(entry_index),
+        released,
+    )
+}
+
+/// The executor-side tail every `nros_executor_remove_*` shares — issues 1609,
+/// 1631. ONE spelling, so no remover can clear the trigger table and forget
+/// `handle_count`, or the reverse.
+///
+/// `released` is what the arena said. `false` means the slot was not a live
+/// entry of the remover's kind; the entity has already forgotten its handle
+/// (a stale handle kept would release whatever registers into the slot next),
+/// and the executor's tables are left alone because they never counted it.
+fn forget_removed_handle(
+    executor: &mut nros_executor_t,
+    handle_id: nros_node::executor::HandleId,
+    released: bool,
+) -> nros_ret_t {
     if !released {
         return NROS_RET_NOT_FOUND;
     }
-    record_trigger_entity(
-        &mut executor._handle_entities,
-        nros_node::executor::HandleId(entry_index),
-        ptr::null_mut(),
-    );
+    record_trigger_entity(&mut executor._handle_entities, handle_id, ptr::null_mut());
     executor.handle_count = executor.handle_count.saturating_sub(1);
     NROS_RET_OK
+}
+
+/// Remove a subscription from the executor — issue 1631, rclc's
+/// `rclc_executor_remove_subscription`.
+///
+/// Every `nros_executor_add_subscription*` that takes a
+/// `nros_subscription_t` registers an arena entry and records it in the
+/// subscription; `nros_subscription_fini` is handed only the subscription, so
+/// it cannot undo the executor's side. This does, the way
+/// [`nros_executor_remove_action_server`] does for an action: the arena entry
+/// is DROPPED (the subscriber leaves the graph, its callback slot and its
+/// arena bytes — receive ring included — are reused by the next
+/// registration), `handle_count` and `subscription_count` come back down, and
+/// the trigger table forgets the subscription.
+///
+/// The subscription stays INITIALIZED: it can be re-added, or finalised with
+/// `nros_subscription_fini`. Call this BEFORE `fini`. Typed message storage
+/// handed to `nros_executor_add_subscription_typed*` is not written again
+/// after this returns.
+///
+/// # Returns
+/// * `NROS_RET_OK` — removed.
+/// * `NROS_RET_INVALID_ARGUMENT` — a NULL pointer.
+/// * `NROS_RET_NOT_INIT` — the executor or the subscription is not initialised.
+/// * `NROS_RET_NOT_FOUND` — the subscription is not registered on THIS executor.
+/// * `NROS_RET_REENTRANT` — called from inside a callback this executor is
+///   dispatching; the entry may be the one running.
+///
+/// # Safety
+/// `executor` and `subscription` must be valid pointers to initialised objects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_remove_subscription(
+    executor: *mut nros_executor_t,
+    subscription: *mut nros_subscription_t,
+) -> nros_ret_t {
+    validate_not_null!(executor, subscription);
+
+    let executor_ptr = executor as *mut core::ffi::c_void;
+    let executor = &mut *executor;
+    let subscription = &mut *subscription;
+
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    validate_state!(
+        subscription,
+        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+    );
+    if executor.in_dispatch {
+        return NROS_RET_REENTRANT;
+    }
+    if subscription.handle_id == usize::MAX || subscription._executor != executor_ptr {
+        return NROS_RET_NOT_FOUND;
+    }
+
+    let handle_id = nros_node::executor::HandleId(subscription.handle_id);
+    let rust_exec = get_executor(&mut executor._opaque);
+    // SAFETY: the subscription's (handle, executor) pair is its only record of
+    // the slot and is cleared below, so nothing names the slot afterwards.
+    let released = rust_exec.release_subscription(handle_id);
+    subscription.handle_id = usize::MAX;
+    subscription._executor = ptr::null_mut();
+    if released {
+        executor.subscription_count = executor.subscription_count.saturating_sub(1);
+    }
+    forget_removed_handle(executor, handle_id, released)
+}
+
+/// Remove a timer from the executor — issue 1631, rclc's
+/// `rclc_executor_remove_timer`.
+///
+/// The arena entry `rclc_executor_add_timer` / `nros_executor_add_timer_in_group`
+/// registered wraps the timer's C callback in a closure that captured the
+/// `nros_timer_t *` itself, so after `rcl_timer_fini` alone it kept firing
+/// with a pointer to the finalised (or freed) struct. This drops the entry —
+/// the closure with it — and undoes `handle_count`, `timer_count` and the
+/// trigger table, as [`nros_executor_remove_subscription`] does.
+///
+/// The timer keeps its state (RUNNING or CANCELED) and can be re-added, or
+/// finalised with `rcl_timer_fini`. Call this BEFORE `fini`.
+///
+/// # Returns
+/// As [`nros_executor_remove_subscription`].
+///
+/// # Safety
+/// `executor` and `timer` must be valid pointers to initialised objects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_remove_timer(
+    executor: *mut nros_executor_t,
+    timer: *mut nros_timer_t,
+) -> nros_ret_t {
+    validate_not_null!(executor, timer);
+
+    let executor = &mut *executor;
+    let timer = &mut *timer;
+
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    if timer.state == crate::timer::nros_timer_state_t::NROS_TIMER_STATE_UNINITIALIZED
+        || timer.state == crate::timer::nros_timer_state_t::NROS_TIMER_STATE_SHUTDOWN
+    {
+        return NROS_RET_NOT_INIT;
+    }
+    if executor.in_dispatch {
+        return NROS_RET_REENTRANT;
+    }
+    // The timer records the executor's OPAQUE pointer (its cancel/reset reach
+    // the Rust executor through it), not the `nros_executor_t`.
+    let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
+    if timer.handle_id == usize::MAX || timer._executor != opaque_ptr {
+        return NROS_RET_NOT_FOUND;
+    }
+
+    let handle_id = nros_node::executor::HandleId(timer.handle_id);
+    let rust_exec = get_executor_from_ptr(opaque_ptr);
+    // SAFETY: as in `nros_executor_remove_subscription`.
+    let released = rust_exec.release_timer(handle_id);
+    timer.handle_id = usize::MAX;
+    timer._executor = ptr::null_mut();
+    if released {
+        executor.timer_count = executor.timer_count.saturating_sub(1);
+    }
+    forget_removed_handle(executor, handle_id, released)
+}
+
+/// Remove a service server from the executor — issue 1631, rclc's
+/// `rclc_executor_remove_service`.
+///
+/// Drops the arena entry `nros_executor_add_service{,_raw}` registered (the
+/// server leaves the graph; its slot and bytes are reused) and undoes
+/// `handle_count`, `service_count` and the trigger table, as
+/// [`nros_executor_remove_subscription`] does. The service stays INITIALIZED.
+///
+/// # Returns
+/// As [`nros_executor_remove_subscription`].
+///
+/// # Safety
+/// `executor` and `service` must be valid pointers to initialised objects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_remove_service(
+    executor: *mut nros_executor_t,
+    service: *mut nros_service_t,
+) -> nros_ret_t {
+    validate_not_null!(executor, service);
+
+    let executor_ptr = executor as *mut core::ffi::c_void;
+    let executor = &mut *executor;
+    let service = &mut *service;
+
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    validate_state!(
+        service,
+        nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
+    );
+    if executor.in_dispatch {
+        return NROS_RET_REENTRANT;
+    }
+    if service._internal.arena_entry_index < 0 || service._internal.executor_ptr != executor_ptr {
+        return NROS_RET_NOT_FOUND;
+    }
+
+    let handle_id = nros_node::executor::HandleId(service._internal.arena_entry_index as usize);
+    let rust_exec = get_executor(&mut executor._opaque);
+    // SAFETY: as in `nros_executor_remove_subscription`.
+    let released = rust_exec.release_service(handle_id);
+    service._internal.arena_entry_index = -1;
+    service._internal.executor_ptr = ptr::null_mut();
+    if released {
+        executor.service_count = executor.service_count.saturating_sub(1);
+    }
+    forget_removed_handle(executor, handle_id, released)
+}
+
+/// Remove a service client from the executor — issue 1631, rclc's
+/// `rclc_executor_remove_client`.
+///
+/// The arena entry `nros_executor_add_client` registered dispatches replies
+/// through `client_response_trampoline`, which READS the `nros_client_t`, so
+/// after `nros_client_fini` alone a late reply was a use-after-free of a stack
+/// or freed client. This drops the entry (the client leaves the graph, and a
+/// reply it was still waiting for is abandoned), undoes `handle_count` and the
+/// trigger table, and returns the client from REGISTERED to INITIALIZED — so
+/// it can be re-added, or finalised with `nros_client_fini`. Its timeout
+/// setting is kept.
+///
+/// # Returns
+/// As [`nros_executor_remove_subscription`].
+///
+/// # Safety
+/// `executor` and `client` must be valid pointers to initialised objects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_remove_client(
+    executor: *mut nros_executor_t,
+    client: *mut nros_client_t,
+) -> nros_ret_t {
+    validate_not_null!(executor, client);
+
+    let executor_ptr = executor as *mut core::ffi::c_void;
+    let executor = &mut *executor;
+    let client = &mut *client;
+
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    // `add_client` moves the client to REGISTERED; INITIALIZED is accepted so
+    // that a client never added answers NOT_FOUND, not NOT_INIT.
+    if client.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED
+        && client.state != nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED
+    {
+        return NROS_RET_NOT_INIT;
+    }
+    if executor.in_dispatch {
+        return NROS_RET_REENTRANT;
+    }
+    if client._internal.arena_entry_index < 0 || client._internal.executor_ptr != executor_ptr {
+        return NROS_RET_NOT_FOUND;
+    }
+
+    let handle_id = nros_node::executor::HandleId(client._internal.arena_entry_index as usize);
+    let rust_exec = get_executor(&mut executor._opaque);
+    // SAFETY: as in `nros_executor_remove_subscription`.
+    let released = rust_exec.release_service_client(handle_id);
+    client._internal.arena_entry_index = -1;
+    client._internal.executor_ptr = ptr::null_mut();
+    client.state = nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED;
+    forget_removed_handle(executor, handle_id, released)
 }
 
 /// Goal response trampoline — adapts nros-node callback to C API callback.
