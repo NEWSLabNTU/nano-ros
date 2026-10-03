@@ -2099,3 +2099,37 @@ the fixtures those rows resolve`, `Process completed with exit code 1`, and
 and completed every later step. So 1627's four-fatal-errors-counted-as-one
 measurement is an accounting defect observed on a job with ample disk, not a disk
 artifact.
+
+## The scheduled `gate` arm, third night in a row (2026-10-03)
+
+Same lane, same step, same annotation as the two pairs above.
+
+Run **37088429392** (schedule, head `56d0d04c2`), job **111103429494**. Step 27
+`just check build` ran 02:48:13 → 03:35:15 (47 min) and failed. The step log is
+`BlobNotFound`, and the job's annotation is the runner's own diagnostic-log
+write:
+
+```
+Unhandled exception. System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20261003-020340-utc.log'
+```
+
+| | 2026-10-03 run **37088429392** |
+| --- | --- |
+| before | 84 % used, 25 G free (146 G volume) |
+| `packages/cli/target` | 24 G |
+| `target/` | 1.1 G |
+| `build/` | 4.3 G |
+| `examples/` | 20 G |
+
+**A new datum: the after-transcript is missing.** Steps 28 and 29 report
+success, but the artifact `disk-transcript-after-check-build` contains only the
+BEFORE section, byte for byte the same as `disk-transcript-before-check-build`.
+The after report appends to that same transcript file and wrote nothing, which
+fits a full disk. So this run has no `after:` row to set beside the two pairs
+above. "Full at the end" is inferred from the annotation and the empty append,
+not measured. The after-report step reads green here even though it recorded
+nothing, so a missing after-row is evidence for this issue, not against it.
+
+Nothing else here is new: the starting headroom (25 G) matches the 10-02 pair
+(25 G), and the outcome is the same.
