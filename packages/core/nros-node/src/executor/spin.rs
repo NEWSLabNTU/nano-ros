@@ -1905,10 +1905,10 @@ pub struct Executor<'s> {
     /// reasoning issue 0563 used for `remap_table`: the capability is unchanged,
     /// so it needs no new `ExecutorSizing` knob).
     pub(crate) monitor_violations: super::storage::CarvedVec<'s, super::monitor::Violation>,
-    /// Issue 1635 — where `spin_once` hands the ring when the image asked for
-    /// it. `None` (the default) leaves the ring for `drain_violations`, which
-    /// is every fixture that reports by hand. The context is a `usize` so the
-    /// executor keeps its auto traits; it is the installer's pointer.
+    /// Issue 1635 — the image's reporter, fed every violation at detection
+    /// (`monitor::record_violation`). `None` (the default) for an image that
+    /// installed none. The context is a `usize` so the executor keeps its
+    /// auto traits; it is the installer's pointer.
     pub(crate) violation_sink: Option<(super::monitor::ViolationSink, usize)>,
     /// Issue 0790 — hooks that run BEFORE the session is closed, while every
     /// entity still works. The load-bearing half: a device releasing a bus or
@@ -3315,15 +3315,17 @@ impl<'s> Executor<'s> {
         self.monitor_violations.clear();
     }
 
-    /// Issue 1635 — have `spin_once` drain the violation ring into `sink`
-    /// itself, once per spin, between dispatches.
+    /// Issue 1635 — hand every violation to `sink` as it is DETECTED, beside
+    /// the log line (issue 0514's floor) and the ring push.
     ///
-    /// Before this nothing in a generated image drained the ring: the
-    /// detection-time log line (issue 0514's floor) was the only output, and
-    /// `/diagnostics` stayed silent on every C and C++ road. A drain point the
-    /// RUNTIME owns reaches every road at once — every board's spin loop goes
-    /// through `spin_once` — where one per entry template would have to be
-    /// rebuilt for each board runner. `None` removes the sink.
+    /// Before this nothing in a generated image drained the ring, so the log
+    /// line was the only output and `/diagnostics` stayed silent on every C
+    /// and C++ road. A report point the RUNTIME owns reaches every road at
+    /// once — every board's spin loop goes through the executor — where one
+    /// per entry template would have to be rebuilt for each board runner. The
+    /// ring is still filled, so an application (or a fixture) that drains it
+    /// with [`Self::drain_violations`] sees exactly what it did before.
+    /// `None` removes the sink.
     ///
     /// # Safety
     /// `ctx` must stay valid for every call of the sink until it is replaced
@@ -3333,23 +3335,6 @@ impl<'s> Executor<'s> {
         sink: Option<(super::monitor::ViolationSink, *mut core::ffi::c_void)>,
     ) {
         self.violation_sink = sink.map(|(f, ctx)| (f, ctx as usize));
-    }
-
-    /// Issue 1635 — hand the ring to the installed sink and clear it. A single
-    /// branch when no sink is installed or nothing is pending.
-    fn flush_violations_to_sink(&mut self) {
-        let Some((sink, ctx)) = self.violation_sink else {
-            return;
-        };
-        if self.monitor_violations.is_empty() {
-            return;
-        }
-        for v in self.monitor_violations.iter() {
-            // SAFETY: `set_violation_sink`'s contract — `ctx` is valid for
-            // every call until the sink is replaced or the executor dropped.
-            unsafe { sink(ctx as *mut core::ffi::c_void, v) };
-        }
-        self.monitor_violations.clear();
     }
 
     /// THE monotonic-µs read. phase-359 W4 — every consumer goes through here.
@@ -3382,24 +3367,24 @@ impl<'s> Executor<'s> {
                     if let Some(v) =
                         super::monitor::check_rate(spec, &mut self.monitor_states[i], now_us)
                     {
-                        if self.report_violations {
-                            super::monitor::log_violation(&v);
-                        }
-                        if self.monitor_violations.push(v).is_err() {
-                            self.monitor_violations_dropped =
-                                self.monitor_violations_dropped.saturating_add(1);
-                        }
+                        super::monitor::record_violation(
+                            v,
+                            self.report_violations,
+                            self.violation_sink,
+                            &mut self.monitor_violations,
+                            &mut self.monitor_violations_dropped,
+                        );
                     }
                     if let Some(v) =
                         super::monitor::check_latency(spec, &mut self.monitor_states[i])
                     {
-                        if self.report_violations {
-                            super::monitor::log_violation(&v);
-                        }
-                        if self.monitor_violations.push(v).is_err() {
-                            self.monitor_violations_dropped =
-                                self.monitor_violations_dropped.saturating_add(1);
-                        }
+                        super::monitor::record_violation(
+                            v,
+                            self.report_violations,
+                            self.violation_sink,
+                            &mut self.monitor_violations,
+                            &mut self.monitor_violations_dropped,
+                        );
                     }
                 }
             }
@@ -3418,13 +3403,13 @@ impl<'s> Executor<'s> {
                 .enumerate()
             {
                 if let Some(v) = super::monitor::check_age(spec, &mut self.age_states[i], now_us) {
-                    if self.report_violations {
-                        super::monitor::log_violation(&v);
-                    }
-                    if self.monitor_violations.push(v).is_err() {
-                        self.monitor_violations_dropped =
-                            self.monitor_violations_dropped.saturating_add(1);
-                    }
+                    super::monitor::record_violation(
+                        v,
+                        self.report_violations,
+                        self.violation_sink,
+                        &mut self.monitor_violations,
+                        &mut self.monitor_violations_dropped,
+                    );
                 }
             }
         }
@@ -3529,12 +3514,13 @@ impl<'s> Executor<'s> {
             self.min_stack_headroom_bytes,
             &mut self.stack_headroom_reported,
         ) {
-            if self.report_violations {
-                super::monitor::log_violation(&v);
-            }
-            if self.monitor_violations.push(v).is_err() {
-                self.monitor_violations_dropped = self.monitor_violations_dropped.saturating_add(1);
-            }
+            super::monitor::record_violation(
+                v,
+                self.report_violations,
+                self.violation_sink,
+                &mut self.monitor_violations,
+                &mut self.monitor_violations_dropped,
+            );
         }
     }
 
@@ -3562,13 +3548,13 @@ impl<'s> Executor<'s> {
             if let Some(v) =
                 super::monitor::check_alive(period_us, slot.dispatches, &mut slot.state, now_us)
             {
-                if self.report_violations {
-                    super::monitor::log_violation(&v);
-                }
-                if self.monitor_violations.push(v).is_err() {
-                    self.monitor_violations_dropped =
-                        self.monitor_violations_dropped.saturating_add(1);
-                }
+                super::monitor::record_violation(
+                    v,
+                    self.report_violations,
+                    self.violation_sink,
+                    &mut self.monitor_violations,
+                    &mut self.monitor_violations_dropped,
+                );
             }
         }
     }
@@ -3585,12 +3571,13 @@ impl<'s> Executor<'s> {
         if let Some(v) =
             super::monitor::check_release_jitter(max_us, &mut self.jitter_reported_us, period_us)
         {
-            if self.report_violations {
-                super::monitor::log_violation(&v);
-            }
-            if self.monitor_violations.push(v).is_err() {
-                self.monitor_violations_dropped = self.monitor_violations_dropped.saturating_add(1);
-            }
+            super::monitor::record_violation(
+                v,
+                self.report_violations,
+                self.violation_sink,
+                &mut self.monitor_violations,
+                &mut self.monitor_violations_dropped,
+            );
         }
     }
 
@@ -3614,13 +3601,13 @@ impl<'s> Executor<'s> {
                 &mut header.overruns_reported,
                 0,
             ) {
-                if self.report_violations {
-                    super::monitor::log_violation(&v);
-                }
-                if self.monitor_violations.push(v).is_err() {
-                    self.monitor_violations_dropped =
-                        self.monitor_violations_dropped.saturating_add(1);
-                }
+                super::monitor::record_violation(
+                    v,
+                    self.report_violations,
+                    self.violation_sink,
+                    &mut self.monitor_violations,
+                    &mut self.monitor_violations_dropped,
+                );
             }
         }
     }
@@ -8573,10 +8560,6 @@ impl<'s> Executor<'s> {
         // RFC-0052 W3b.4 — contract monitors tick once per spin (window
         // logic inside; single branch when the baked table is empty).
         self.run_contract_monitors();
-        // Issue 1635 — and the image's reporter (if it installed one) gets
-        // everything pending: this tick's rule verdicts and whatever the
-        // previous dispatch recorded (deadline misses, overruns).
-        self.flush_violations_to_sink();
 
         // Phase 104.C.6 — shared executor wake. Swap-and-clear the
         // wake flag; if it was set before this `spin_once` entered,
@@ -9488,12 +9471,13 @@ impl<'s> Executor<'s> {
 
         // W3b.5 — feed deferred deadline misses into the violation ring.
         for v in deadline_misses {
-            if self.report_violations {
-                super::monitor::log_violation(&v);
-            }
-            if self.monitor_violations.push(v).is_err() {
-                self.monitor_violations_dropped = self.monitor_violations_dropped.saturating_add(1);
-            }
+            super::monitor::record_violation(
+                v,
+                self.report_violations,
+                self.violation_sink,
+                &mut self.monitor_violations,
+                &mut self.monitor_violations_dropped,
+            );
         }
 
         // Issue #505 — same ring, same cycle. This runs AFTER dispatch,
