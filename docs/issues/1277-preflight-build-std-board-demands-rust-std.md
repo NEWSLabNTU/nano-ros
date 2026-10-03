@@ -46,3 +46,34 @@ When the descriptor's `cargo_config` declares `[unstable] build-std` (now
 rendered into the image's `build/<coord>/<entry>/nros-cargo.toml`, phase-445
 W4), preflight should require `rust-src` on the build's toolchain and stop
 asking for the target's `rust-std`.
+
+## Seen on CI: it stops tier 2's fixture build (2026-10-03)
+
+The first sighting outside a dev host. Scheduled `run-matrix` run
+**37103213105** (head `16e307742`), job **111146651304** `tier 2 (1-wise matrix)`,
+first failing step `just build tier2`. The `esp32` family fails at the
+workspace image, and the error is the one this issue quotes, verbatim:
+
+```text
+nros build demo_bringup:esp32 --workspace . --offline -- --profile nros-relwithdebinfo --target-dir target-fixtures/esp32
+Error: missing prerequisites for this build:
+  - Rust target `riscv32imc-unknown-none-elf` (board `esp32-qemu`)
+      run: rustup target add riscv32imc-unknown-none-elf
+nothing was built.
+```
+
+Earlier in the same `esp32.log`, two images for the same triple had already
+built: `esp32-qemu-listener.bin`, and
+`logging-smoke-esp32-qemu` (157,872 B, flash image written). Both use the
+`cargo` road, which builds `core` from source. So the runner can build
+`riscv32imc-unknown-none-elf`. Only the `nros build` preflight says it cannot,
+which is this issue's "the requirement it states is one the build does not
+have".
+
+The other families in that run reported `OK`: native, freertos, nuttx, qemu,
+threadx_linux, threadx_riscv64. Not the cause: `provision-zenohd`
+exited 78 earlier in the same job. That is a reported lane skip (`lane
+skipped: not root: ros-humble-rmw-zenoh-cpp not installed`), not this failure.
+
+Severity: `low` may undersell it now. In this run it took the tier-2 lane's
+whole fixture build red with one false refusal (one run observed so far).
