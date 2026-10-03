@@ -1706,44 +1706,11 @@ fn census_select_backend() {
 }
 
 /// Issue 1419 -- the census executor's sizing, independent of the contract it
-/// checks.
-///
-/// A native image's callback table, node table and arena are DERIVED from the
-/// contract (`nros ws entity-inventory`, phase-412), with no headroom on
-/// purpose. The census producer is that same image. So a contract one entity
-/// short sized its own census run one slot short: setup stopped at
-/// `ExecutorFull`, and because the executor refuses a registration before the
-/// backend is reached, the entity that did not fit was the one the recorder
-/// never saw. The census came out INCOMPLETE rather than naming the row -- the
-/// instrument measured with the ruler it was meant to check.
-///
-/// A census opens its executor at the executor's own ceilings instead: 64
-/// callback slots (the `u64` ready-set bitmask caps it, so 64 is the most any
-/// image can hold, not a guess), 64 nodes, and an arena large enough for 64 of
-/// the largest entries at any depth a real component asks for. Every one of
-/// those is CENSUS-ONLY: the backing is leaked from the heap of a host process
-/// that writes one file and exits, it is never touched by a normal boot (the
-/// flag below is only set by `census_select_backend`), and none of it exists
-/// on the RTOS road, where neither `env` nor `metadata-mode` is compiled.
-/// `boot_report` still states the BUILD's `MAX_CBS`, which is the number the
-/// shipped image has; the census is what checks it.
+/// checks. Stated once in `nros::census_hooks` (shared with the Rust entry's
+/// hosted funnel in `nros-board-linux`); see it there for why it is the
+/// executor's own ceilings and not the contract's.
 #[cfg(all(feature = "rmw-cffi", feature = "env", feature = "metadata-mode"))]
-pub(crate) const CENSUS_SIZING: nros_node::ExecutorSizing = {
-    let d = nros_node::ExecutorSizing::DEFAULT;
-    nros_node::ExecutorSizing {
-        cbs: 64,
-        sc: d.sc,
-        nodes: if d.nodes > 64 { d.nodes } else { 64 },
-        // 16 MiB of address space, never written beyond what registrations
-        // carve (the slice is `MaybeUninit`), so a census run's resident size is
-        // what its entities use, not this number.
-        arena: if d.arena > (16 << 20) {
-            d.arena
-        } else {
-            16 << 20
-        },
-    }
-};
+pub(crate) use nros::census_hooks::CENSUS_SIZING;
 
 /// Issue 1419 -- set by `census_select_backend`, CONSUMED by the next executor
 /// open (`executor_backing_for_open`). Consumed rather than sticky, so the one

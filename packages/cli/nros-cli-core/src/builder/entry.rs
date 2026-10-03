@@ -100,6 +100,10 @@ pub struct EntrySpec {
     pub west: Option<super::west_app::WestApp>,
 }
 
+/// Issue 1419 — the host board crate, whose generated entry turns on its
+/// `census` feature (the Rust census producer).
+const HOST_BOARD_CRATE: &str = "nros-board-linux";
+
 /// Board facts the emitter needs, lifted out of [`BoardDescriptor`] so callers
 /// can construct one in a test without a catalog.
 #[derive(Debug, Clone)]
@@ -420,13 +424,21 @@ pub fn render_manifest(
             .clone()
             .unwrap_or_else(|| format!("packages/boards/{krate}"));
         let rel = relative_or_err(entry_dir, &spec.nano_ros_root.join(&rel_path))?;
-        let feats = if board.board_features.is_empty() {
+        // Issue 1419 — the HOST board's generated entry is a census producer,
+        // exactly as the native C/C++ umbrella is (`NanoRosFeatureSet.cmake`
+        // turns `metadata-mode` on for cpp + posix + native). Keyed on the
+        // CRATE, which is host-only by construction, so no RTOS entry can reach
+        // it; the recorder is registered only when `$NROS_CENSUS_OUT` asks.
+        let mut features = board.board_features.clone();
+        if krate == HOST_BOARD_CRATE && !features.iter().any(|f| f == "census") {
+            features.push("census".to_string());
+        }
+        let feats = if features.is_empty() {
             String::new()
         } else {
             format!(
                 ", features = [{}]",
-                board
-                    .board_features
+                features
                     .iter()
                     .map(|f| format!("\"{f}\""))
                     .collect::<Vec<_>>()
@@ -723,6 +735,22 @@ mod tests {
         let s = render_source(&spec(), &hosted());
         assert!(!s.contains("no_std"), "a hosted main is std: {s}");
         assert!(s.contains("nros::main!("), "{s}");
+    }
+
+    /// Issue 1419 -- the host entry is the census PRODUCER, so its board crate
+    /// carries the recorder; an RTOS entry never does.
+    #[test]
+    fn only_the_host_entry_links_the_census_recorder() {
+        let m = render_manifest(&spec(), &hosted(), Path::new(DIR)).expect("renders");
+        assert!(
+            m.contains("nros-board-linux = { path = ") && m.contains("features = [\"census\"]"),
+            "the host entry turns on `nros-board-linux/census`: {m}"
+        );
+        let m = render_manifest(&spec(), &freertos(), Path::new(DIR)).expect("renders");
+        assert!(
+            !m.contains("census"),
+            "an RTOS entry never links the recorder: {m}"
+        );
     }
 
     #[test]

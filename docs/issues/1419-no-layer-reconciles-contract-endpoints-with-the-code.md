@@ -396,3 +396,67 @@ that opens its own node through `nros-c` -- the "A C node that opens its own
 node through `nros-c`" item above is closed by it (measured, issue 1556's
 section of the same date). Still open here: `boot_hosted` still refuses
 `$NROS_CENSUS_OUT` for a Rust entry, and the cargo road still checks no census.
+
+### 2026-10-03 -- a Rust entry produces a census, and the cargo road checks one
+
+Fixed in the PR that carries this section (*a Rust entry is a census producer;
+the cargo road checks it at stage 4*), on top of the hook move above.
+
+**The producer.** `nros-board-linux` gains a `census` feature
+(`nros/metadata-mode` + the recording backend). With it, both hosted funnels
+answer `$NROS_CENSUS_OUT` the way the C++ funnel does: before the session opens
+they register the recorder and select it by name (`$NROS_RMW=metadata`), open
+the executor at `nros::census_hooks::CENSUS_SIZING` (the executor's own
+ceilings -- now ONE constant shared with `nros-cpp`, which used to state it),
+run `setup`, and write what the recorder saw instead of spinning, even when
+`setup` failed (exit status kept, so the CLI marks the census incomplete). A
+TIERED entry (`run_tiers`) takes ONE registration pass on the boot executor with
+no group filter, so every tier's entities are recorded once and no tier thread
+is spawned. Built WITHOUT the feature it refuses by name. The generated host
+entry turns the feature on (keyed on the host board crate, so no RTOS entry can
+reach it); the recorder is registered only when a census is asked for, so a
+normal boot's backend selection is unchanged (issue 1530's rule). `take` and
+`run` now find a cargo image's binary (`<build>/<coord>/<entry>/target/[<triple>/]<profile>/<entry>`).
+
+**The consumer.** `nros build` stage 4 runs the configure's check for every
+CROSS image on the cargo driver, before anything is generated or compiled
+(`entity_census::check_cargo_image`: the same `check --require-fresh` with the
+model, the workspace root, the bringup's `system.toml` and the entry, so the
+`[census]` policy, the waivers and the `take --image` remedy are the
+configure's). A host image is the producer and checks nothing. Not a build
+script: stage 4 is the one cargo-road point that holds the model and the image
+before any compile. `scripts/build/fixtures-manifest.py census-images` now
+lists pure-Rust cross rows too, so `census-prepass.sh` takes their census first
+(every in-tree one answers "no contract").
+
+Measured on a copy of `examples/workspaces/realtime-rust` with
+`derived_bringup`'s contract placed beside `demo_bringup`'s launch (same two
+nodes), no router:
+
+| step | result |
+| --- | --- |
+| `nros ws entity-census take --image demo_bringup:threadx` | builds `demo_bringup:native` (a TIERED Rust entry) and runs it: `2 node(s), 0 sub / 2 pub / ... / 2 timer slot(s)` |
+| `nros build demo_bringup:threadx` | stage 4: `census check: 4 confirmed, 0 error(s)`; the build proceeds |
+| contract edited to drop `telem_node`'s `pub` + its `/telem` topic, `nros sync`, build again | REFUSED before any compile: `error missing-in-contract telem_node pub /telem`, remedy names the two contract lines |
+| census file removed, build again | REFUSED: `census missing`, remedy `nros ws entity-census take --image demo_bringup:threadx` |
+
+(The threadx compile itself then stopped on an unprovisioned ThreadX kernel in
+that worktree -- after the check, which is the subject.) Tests:
+`workspace_metadata::cargo_rust_workspace_entry_writes_a_census_without_a_router`
+runs the prebuilt `examples/workspaces/rust` native fixture in census mode --
+measured red with the feature withheld from the generated entry (exit 1, no
+file) and green with it; `builder::entry::tests::only_the_host_entry_links_the_census_recorder`;
+`entity_census::tests::a_cargo_image_root_binary_is_found`.
+
+### What is left (updated 2026-10-03)
+
+* **phase-463 W6** -- unchanged (not started).
+* **A Rust ZEPHYR image is still unchecked.** It takes the west road through
+  `rust_cargo_application()`, which calls no `nano_ros_entry()`, so neither the
+  configure check nor this stage-4 check reaches it. In-tree that is
+  `realtime-rust`'s `derived_bringup:zephyr_derived` -- the one contracted Rust
+  image -- and it has no host sibling to take a census with, so turning the
+  check on for it needs a host image in that bringup first (and an id that does
+  not collide with `demo_bringup:native`, issue 1582).
+* **phase-463 W5 I1, I3(b), I3(c)** -- unchanged (not gated).
+* **What still stops a census run** -- unchanged.

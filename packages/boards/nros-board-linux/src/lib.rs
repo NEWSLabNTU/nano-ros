@@ -201,15 +201,108 @@ pub fn register_linked_rmw() {
 /// two places in the tree that resolve through the `env` capability (issue
 /// 0687), and no RTOS board has it, so census mode does not exist on the RTOS
 /// road rather than being compiled out of it. `nros-cpp`'s
-/// `nros_board_native_run_components_named` is the one that PRODUCES a census
-/// (the C++ ABI is where the recorder's hooks are); this one, the Rust entry's
-/// funnel, reads the same variable so that a census asked of a Rust entry gets
-/// an answer instead of a successful run with no file.
+/// `nros_board_native_run_components_named` produces the C/C++ census; this
+/// one, the Rust entry's funnel, produces the Rust one (issue 1419) through the
+/// same hooks (`nros::census_hooks`) when built with the `census` feature, and
+/// refuses by name when built without it.
 ///
 /// Empty is unset -- the same reading the C++ funnel gives it.
 fn census_requested() -> Option<std::ffi::OsString> {
     let raw = std::env::var_os("NROS_CENSUS_OUT")?;
     if raw.is_empty() { None } else { Some(raw) }
+}
+
+/// Issue 1419 -- arm census mode, BEFORE the session opens: register the
+/// recording backend and select it by name, the C++ funnel's
+/// `census_select_backend` for the Rust entry. `$NROS_RMW` is FORCED rather
+/// than required of the caller, so `$NROS_CENSUS_OUT` is a switch and not half
+/// of one (a census against a transporting backend would need a router and
+/// record nothing).
+///
+/// Returns the executor sizing a census opens at (`nros::census_hooks::
+/// CENSUS_SIZING`, the executor's own ceilings -- never the contract's), or
+/// `None` in an image built without the `census` feature, which then refuses
+/// in [`census_finish`] rather than booting normally with no file.
+#[cfg(feature = "census")]
+fn census_arm() -> Option<::nros::ExecutorSizing> {
+    let ret = nros_rmw_metadata::nros_rmw_metadata_register();
+    if ret != 0 {
+        std::eprintln!(
+            "nros census: registering the recording backend failed (rc={ret}); the RMW \
+             registry holds {} slot(s) -- is the recorder's slot (`recorder-slot`) missing?",
+            nros_rmw_metadata::REGISTRY_SLOTS
+        );
+    }
+    // SAFETY: the boot funnel, before the executor opens and before any tier
+    // thread is spawned -- the process is single-threaded here.
+    unsafe { std::env::set_var("NROS_RMW", "metadata") };
+    Some(::nros::census_hooks::CENSUS_SIZING)
+}
+
+#[cfg(not(feature = "census"))]
+fn census_arm() -> Option<::nros::ExecutorSizing> {
+    None
+}
+
+/// Issue 1419 -- write the census where `$NROS_CENSUS_OUT` names, INSTEAD of
+/// the spin, and exit. Written EVEN WHEN `setup` failed, with the failure still
+/// the exit status: the CLI marks such a census incomplete and every check
+/// against it refuses (the C++ funnel's rule), which beats discarding what the
+/// recorder saw.
+///
+/// Serialization is `nros::metadata_mode::to_json` -- the ONE emitter the C++
+/// funnel and the probe use, so a check reads one schema.
+#[cfg(feature = "census")]
+fn census_finish(path: &std::ffi::OsStr, session: &str, setup_ok: bool) -> ! {
+    let exe = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_default();
+    let export = ::nros::node_metadata::SourceMetadataExport::new(session, session)
+        .executable(&exe)
+        .language("rust");
+    let written = if ::nros::metadata_mode::entity_count() == 0 {
+        std::eprintln!(
+            "nros census: the setup path created no entity at all -- refusing to write a census \
+             a check would read as \"this image declares nothing\""
+        );
+        false
+    } else {
+        match ::nros::metadata_mode::to_json(&export) {
+            Ok(json) => match std::fs::write(path, json) {
+                Ok(()) => true,
+                Err(e) => {
+                    std::eprintln!(
+                        "nros census: cannot write `{}`: {e}",
+                        path.to_string_lossy()
+                    );
+                    false
+                }
+            },
+            Err(_) => {
+                std::eprintln!("nros census: serializing the recorder failed");
+                false
+            }
+        }
+    };
+    if written && setup_ok {
+        <LinuxBoard as BoardExit>::exit_success();
+    }
+    <LinuxBoard as BoardExit>::exit_failure();
+}
+
+/// The census switch in a Rust entry built WITHOUT the `census` feature: no
+/// recorder, so no census. A refusal rather than a silent normal boot -- the
+/// caller asked for a file by naming it.
+#[cfg(not(feature = "census"))]
+fn census_finish(path: &std::ffi::OsStr, _session: &str, _setup_ok: bool) -> ! {
+    std::eprintln!(
+        "nros census: $NROS_CENSUS_OUT=`{}` but this Rust entry was built without \
+         `nros-board-linux/census` -- the generated host entry enables it; a hand-written one \
+         must name it",
+        path.to_string_lossy()
+    );
+    <LinuxBoard as BoardExit>::exit_failure();
 }
 
 impl BoardEntry for LinuxBoard {
@@ -393,11 +486,19 @@ impl LinuxBoard {
         // patcher rewrites — a second overlay field would be a second answer
         // to "what namespace is this image deployed under", and the two would
         // disagree the first time anyone patched one.
+        //
+        // Issue 1419 — census mode is decided BEFORE the session opens, because
+        // it decides which backend opens it (`census_arm` selects the recorder
+        // through `$NROS_RMW`, which `resolve_hosted` reads) and at what sizing.
+        let census = census_requested();
+        let census_sizing = census.as_ref().and_then(|_| census_arm());
         let exec_cfg = ::nros::env::resolve_hosted(hosted_baked_rung(deploy));
         // phase-271 — open at the entry's declared sizing when supplied.
-        let opened = match sizing {
-            None => ::nros::Executor::open(&exec_cfg),
-            Some((cbs, sc)) => {
+        let opened = match (census_sizing, sizing) {
+            // Issue 1419 — a census is not sized by the contract it checks.
+            (Some(census_sizing), _) => ::nros::Executor::open_sized(&exec_cfg, census_sizing),
+            (None, None) => ::nros::Executor::open(&exec_cfg),
+            (None, Some((cbs, sc))) => {
                 let sc = if sc == 0 {
                     ::nros::ExecutorSizing::DEFAULT.sc
                 } else {
@@ -438,34 +539,18 @@ impl LinuxBoard {
                 setup(&mut runtime)
             }
         };
+        // phase-463 W2 / issue 1419 -- census mode reaches its answer where the
+        // spin ends, which on this funnel is here: the generated Rust entry
+        // registers and then would spin INSIDE `setup`, and its spin helpers
+        // return at once under `$NROS_CENSUS_OUT`, so this is the first point at
+        // which every declaration is complete. Written whether or not `setup`
+        // succeeded; see `census_finish`.
+        if let Some(path) = census {
+            let session = deploy.node_name.unwrap_or("node");
+            census_finish(&path, session, result.is_ok());
+        }
         match result {
             Ok(()) => {
-                // phase-463 W2 -- census mode reaches its answer where the
-                // spin ends, which on this funnel is here: the generated Rust
-                // entry registers and then spins INSIDE `setup`
-                // (`__nros_hosted_spin_if_requested`), so there is no earlier
-                // point at which the declarations are complete.
-                //
-                // What it answers with today is a REFUSAL, and the refusal is
-                // the honest result rather than a placeholder. A census is the
-                // recorder's document, the recorder is filled by the C++ ABI's
-                // hooks and by the recording backend, and a Rust entry links
-                // neither: `register_linked_rmw` above registers the shipping
-                // backend, and `nros/metadata-mode` has no node cursor on this
-                // road (phase-463 W1 put the four hooks on `nros-cpp`). Left
-                // to fall through, this run would exit 0, write nothing, and
-                // leave `nros ws entity-census run` reporting a missing file
-                // with no cause. Naming the cause is what this costs.
-                if let Some(path) = census_requested() {
-                    <Self as BoardPrint>::println(format_args!(
-                        "nros census: $NROS_CENSUS_OUT=`{}` -- a RUST entry has no recorder \
-                         to dump (phase-463 W1's hooks are on the C++ ABI). The census \
-                         producer is the C++ entry funnel; a Rust component's declarations \
-                         come from phase-307's own producer.",
-                        path.to_string_lossy()
-                    ));
-                    <Self as BoardExit>::exit_failure();
-                }
                 <Self as BoardPrint>::println(format_args!("nros: application complete"));
                 <Self as BoardExit>::exit_success();
             }
@@ -641,8 +726,16 @@ impl LinuxBoard {
         // NOT `blob.node_name`: on hosted the macro puts the launch-declared
         // name in the overlay field, and reading the blob instead would be a
         // second answer to one question.
+        // Issue 1419 — census mode, decided before the session opens (see
+        // `boot_hosted`).
+        let census = census_requested();
+        let census_sizing = census.as_ref().and_then(|_| census_arm());
         let exec_cfg = ::nros::env::resolve_hosted(hosted_baked_rung(deploy));
-        let boot_exec = match ::nros::Executor::open(&exec_cfg) {
+        let opened = match census_sizing {
+            Some(census_sizing) => ::nros::Executor::open_sized(&exec_cfg, census_sizing),
+            None => ::nros::Executor::open(&exec_cfg),
+        };
+        let boot_exec = match opened {
             Ok(e) => e,
             Err(err) => {
                 <Self as BoardPrint>::println(format_args!(
@@ -653,6 +746,23 @@ impl LinuxBoard {
             }
         };
         let mut boot_crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(boot_exec);
+
+        // Issue 1419 — a census of a TIERED entry is ONE registration pass on the
+        // boot executor with no group filter (`active_groups` unset admits every
+        // entity), so every tier's entities are recorded exactly once and no
+        // tier thread is spawned. A census describes what the code CREATES; the
+        // tier split is placement, which the contract states separately.
+        if let Some(path) = census {
+            let result = {
+                let mut runtime = RuntimeCtx::with_runtime(&mut boot_crt);
+                setup(&mut runtime)
+            };
+            if let Err(e) = &result {
+                <Self as BoardPrint>::println(format_args!("nros: application error: {e:?}"));
+            }
+            census_finish(&path, deploy.node_name.unwrap_or("node"), result.is_ok());
+        }
+
         let shared = SharedSession(boot_crt.executor_mut().session_ptr());
 
         // phase-302 W2 (issue 0262) — posix tier priorities/pins are ADVISORY
