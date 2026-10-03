@@ -69,12 +69,24 @@ const fn parse_usize(s: &str) -> usize {
 // it reaches exactly this arena.
 static HEAP: FreeListHeap<HEAP_SIZE> = FreeListHeap::new();
 
+// Issue 1640 — a refusal is REPORTED (verdict, boot record, fatal hook) through
+// the one bare-metal path, `nros_baremetal_common::heap`, in the Zephyr
+// report's vocabulary. It used to return the arena's NULL and nothing else.
 pub fn alloc(size: usize) -> *mut core::ffi::c_void {
-    HEAP.alloc(size)
+    nros_baremetal_common::heap::alloc_or_report::<crate::Mps2An385Platform, HEAP_SIZE>(
+        &HEAP,
+        size,
+        "NROS_HEAP_SIZE",
+    )
 }
 
 pub fn realloc(ptr: *mut core::ffi::c_void, size: usize) -> *mut core::ffi::c_void {
-    HEAP.realloc(ptr, size)
+    nros_baremetal_common::heap::realloc_or_report::<crate::Mps2An385Platform, HEAP_SIZE>(
+        &HEAP,
+        ptr,
+        size,
+        "NROS_HEAP_SIZE",
+    )
 }
 
 pub fn dealloc(ptr: *mut core::ffi::c_void) {

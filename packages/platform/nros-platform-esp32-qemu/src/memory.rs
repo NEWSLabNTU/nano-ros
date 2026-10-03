@@ -15,15 +15,27 @@ use zpico_alloc::FreeListHeap;
 // the smoltcp + esp-hal fixed allocations + stack while still
 // fitting DDS's `DcpsDomainParticipant` builtin entities.
 #[cfg(feature = "dds-heap")]
-static HEAP: FreeListHeap<{ 192 * 1024 }> = FreeListHeap::new();
+const HEAP_SIZE: usize = 192 * 1024;
 #[cfg(not(feature = "dds-heap"))]
-static HEAP: FreeListHeap<{ 32 * 1024 }> = FreeListHeap::new();
+const HEAP_SIZE: usize = 32 * 1024;
+static HEAP: FreeListHeap<HEAP_SIZE> = FreeListHeap::new();
 
+/// What a TOO SMALL refusal names: this port's arena has no env knob, only the
+/// `dds-heap` feature and the two sizes above.
+const HEAP_KNOB: &str = "the HEAP size in nros-platform-esp32-qemu (`dds-heap`)";
+
+// Issue 1640 — a refusal is REPORTED (verdict, boot record, fatal hook) through
+// the one bare-metal path, `nros_baremetal_common::heap`, in the Zephyr
+// report's vocabulary. It used to return the arena's NULL and nothing else.
 pub fn alloc(size: usize) -> *mut core::ffi::c_void {
-    HEAP.alloc(size)
+    nros_baremetal_common::heap::alloc_or_report::<crate::Esp32QemuPlatform, HEAP_SIZE>(
+        &HEAP, size, HEAP_KNOB,
+    )
 }
 pub fn realloc(ptr: *mut core::ffi::c_void, size: usize) -> *mut core::ffi::c_void {
-    HEAP.realloc(ptr, size)
+    nros_baremetal_common::heap::realloc_or_report::<crate::Esp32QemuPlatform, HEAP_SIZE>(
+        &HEAP, ptr, size, HEAP_KNOB,
+    )
 }
 pub fn dealloc(ptr: *mut core::ffi::c_void) {
     HEAP.free(ptr)
