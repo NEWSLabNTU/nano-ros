@@ -94,7 +94,7 @@ the 3072 fallback that DID contain them.
 The zenoh cmake default was NOT re-derived: on this host every zenoh C/C++
 FreeRTOS image opens its session and never ticks — on pristine `origin/main`
 too — so no peak past session open could be read. Filed as
-[issue 1657](../1657-freertos-zenoh-cmake-images-open-a-session-and-never-tick.md);
+[issue 1657](1657-freertos-zenoh-cmake-images-open-a-session-and-never-tick.md);
 cutting a budget nobody could measure was not done here.
 
 **`ucHeap`, before (origin/main + this branch's header untouched) → after**, by
