@@ -1004,11 +1004,42 @@ pub struct InfraServices {
     pub model_nodes: usize,
 }
 
+/// Issue 1688 -- does any node of `model` carry the typed `[lifecycle]`
+/// block's `lifecycle_autostart`? That field is what the entry REGISTERS from,
+/// whatever its value: `none` still registers the five services and only skips
+/// the boot transitions (`SystemToml::capability_enabled("lifecycle")` is
+/// "the block is present", for the same reason).
+pub fn model_declares_lifecycle_block(model: &ros_launch_manifest_model::SystemModel) -> bool {
+    model
+        .structure
+        .nodes
+        .values()
+        .any(|n| n.lifecycle_autostart.is_some())
+}
+
 impl InfraServices {
     /// What a resolved model declares. An unrecognised feature is not one of
     /// these and is ignored, as `entity_facts` has always done.
+    ///
+    /// Issue 1688 -- the lifecycle family has TWO spellings in a model, and
+    /// this read one of them. `features = ["lifecycle"]` reaches
+    /// `execution.features`; the typed `[lifecycle] autostart = …` block --
+    /// the only spelling that can say WHICH boot transition, and the one
+    /// `examples/workspaces/features` uses -- reaches every node as
+    /// `structure.nodes.*.lifecycle_autostart` and never touches `features`.
+    /// The REGISTRATION reads the second (`nros::main!`'s `lifecycle_code`,
+    /// `codegen::entry`'s `Plan::lifecycle`), so an image whose bringup used
+    /// the block registered five lifecycle servers and a `transition_event`
+    /// publisher into pools derived without them: `native_rust_remap` was
+    /// sized `ZPICO_MAX_PUBLISHERS=1`, its own `/remapped_out` took the slot,
+    /// and the entry died at boot with `Capability { name: "lifecycle",
+    /// reason: "Transport::InvalidConfig" }` before it published once. Either
+    /// spelling now turns the family on here, so the pool covers what the
+    /// registration will create.
     pub fn from_model(model: &ros_launch_manifest_model::SystemModel) -> Self {
-        Self::from_features(&model.execution.features, model.structure.nodes.len())
+        let mut infra = Self::from_features(&model.execution.features, model.structure.nodes.len());
+        infra.lifecycle |= model_declares_lifecycle_block(model);
+        infra
     }
 
     /// Issue 1142 -- the same two names, read from a feature LIST.
@@ -7073,6 +7104,57 @@ execution:
 
         // `safety` is a real feature and not a queryable question.
         assert_eq!(knobs("safety").max_queryables, 1 + tl);
+    }
+
+    /// Issue 1688 -- the typed `[lifecycle]` block reaches the model as a
+    /// per-node `lifecycle_autostart`, NOT as `execution.features`, and the
+    /// entry registers the family from that field. So the block alone must
+    /// size the pools exactly as `features = ["lifecycle"]` does: five
+    /// queryables and the `transition_event` publisher. Before the fix this
+    /// derived `features = []`'s numbers, and `native_rust_remap` (one
+    /// publisher of its own) was built with `ZPICO_MAX_PUBLISHERS=1` and died
+    /// at boot registering lifecycle.
+    #[test]
+    fn the_typed_lifecycle_block_sizes_the_pools_like_the_feature() {
+        let derive = |m: &ros_launch_manifest_model::SystemModel| {
+            EntityInventory::from_model("t", m)
+                .expect("model describes wiring")
+                .derive()
+                .knobs()
+                .expect("derived")
+                .clone()
+        };
+        let feature = derive(&infra_model("lifecycle"));
+        let none = derive(&infra_model(""));
+
+        for autostart in [
+            ros_launch_manifest_model::Autostart::Active,
+            ros_launch_manifest_model::Autostart::Configure,
+            // `none` skips the boot transitions and still registers the five
+            // services, so it costs the same.
+            ros_launch_manifest_model::Autostart::None,
+        ] {
+            let mut block = infra_model("");
+            block
+                .structure
+                .nodes
+                .values_mut()
+                .for_each(|n| n.lifecycle_autostart = Some(autostart));
+            assert!(model_declares_lifecycle_block(&block));
+            assert_eq!(InfraServices::from_model(&block).token(), "lifecycle");
+            let k = derive(&block);
+            assert_eq!(k.max_queryables, feature.max_queryables, "{autostart:?}");
+            assert_eq!(k.max_publishers, feature.max_publishers, "{autostart:?}");
+            assert_eq!(
+                k.max_publishers,
+                none.max_publishers + LIFECYCLE_SERVICE_PUBLISHERS,
+                "{autostart:?}: the block must pay for `transition_event`"
+            );
+        }
+
+        // Negative control: no block and no feature is still no family.
+        assert!(!model_declares_lifecycle_block(&infra_model("")));
+        assert_eq!(InfraServices::from_model(&infra_model("")).token(), "none");
     }
 
     /// Issue 1378 -- **an action server costs FOUR queryables, not three.**
