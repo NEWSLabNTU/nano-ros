@@ -1,6 +1,13 @@
 /* issue 1631 — a C subscription, timer, service or client can be REMOVED from
  * its executor, and a create / remove loop of each runs forever.
  *
+ * issue 1668 — and so can a subscription whose callback also receives the
+ * sample's attachment: `nros_executor_add_subscription_with_info` registers it
+ * into a `nros_subscription_t` the caller keeps. Its direct-arg predecessor,
+ * `nros_executor_add_subscription_raw_with_info`, hands back nothing to remove
+ * by; it is exercised here as a second NEGATIVE CONTROL, measuring that its
+ * entries outlive every teardown the caller can reach.
+ *
  * `action_remove_cycles.c` (issue 1609) is the action half; this is the other
  * four kinds, in the same shape and with the same three owners read:
  *
@@ -83,6 +90,15 @@ static void on_message(const uint8_t* data, size_t len, void* ctx) {
     (void)ctx;
 }
 
+static void on_message_info(const uint8_t* data, size_t len, const uint8_t* attachment,
+                            size_t attachment_len, void* ctx) {
+    (void)data;
+    (void)len;
+    (void)attachment;
+    (void)attachment_len;
+    (void)ctx;
+}
+
 static void on_timer(struct nros_timer_t* timer, void* ctx) {
     (void)timer;
     (void)ctx;
@@ -142,6 +158,13 @@ static nros_ret_t sub_fini(entity_t* e) {
     return nros_subscription_fini(&e->sub);
 }
 
+/* ---- subscription with message info (issue 1668) ------------------------ */
+
+static nros_ret_t sub_info_add(rig_t* rig, entity_t* e) {
+    return nros_executor_add_subscription_with_info(&rig->executor, &e->sub, on_message_info, NULL,
+                                                    NROS_EXECUTOR_ON_NEW_DATA);
+}
+
 /* ---- timer -------------------------------------------------------------- */
 
 static nros_ret_t timer_init(entity_t* e, rig_t* rig) {
@@ -192,6 +215,7 @@ static nros_ret_t client_fini(entity_t* e) {
 
 static const kind_t KINDS[] = {
     {"subscription", 1, sub_init, sub_add, sub_remove, sub_fini},
+    {"sub+info", 1, sub_init, sub_info_add, sub_remove, sub_fini},
     {"timer", 0, timer_init, timer_add, timer_remove, timer_fini},
     {"service", 1, service_init, service_add, service_remove, service_fini},
     {"client", 1, client_init, client_add, client_remove, client_fini},
@@ -339,6 +363,36 @@ static void wrong_executor_is_not_found(const kind_t* k, struct nros_support_t* 
     rig_close(&a);
 }
 
+/* ---- issue 1668: the direct-arg form hands back nothing to remove by ----- */
+
+/* Each registration claims a handle the caller has no name for: the executor
+ * runs out at its handle table, and every subscriber stays on the graph until
+ * `rclc_executor_fini`. This is the debt the removable form retires, measured
+ * so the comparison above is against something. */
+static void raw_with_info_is_unremovable(struct nros_support_t* support) {
+    rig_t rig;
+    rig_open(&rig, support, "raw_with_info");
+    const int32_t base_live = nros_stub_rmw_live_entities();
+    int failed_at = -1;
+    for (int i = 0; i < CONTROL_SLOTS; i++) {
+        nros_ret_t r = nros_executor_add_subscription_raw_with_info(
+            &rig.executor, &rig.node, "/remove_cycles", MSG_TYPE.type_name, MSG_TYPE.type_hash,
+            NULL, on_message_info, NULL);
+        if (r != NROS_RET_OK) {
+            failed_at = i;
+            break;
+        }
+    }
+    CHECK(failed_at == MAX_HANDLES, "the direct-arg form exhausts the handle table");
+    CHECK(nros_stub_rmw_live_entities() - base_live == MAX_HANDLES,
+          "and every one of its subscribers is still on the graph");
+    printf("  %-12s control: direct-arg form failed add #%d; %d entities still live\n", "raw+info",
+           failed_at, nros_stub_rmw_live_entities() - base_live);
+    rig_close(&rig);
+    CHECK(nros_stub_rmw_live_entities() == base_live,
+          "rclc_executor_fini is the only teardown that reaches them");
+}
+
 int main(void) {
     setenv("NROS_RMW", NROS_STUB_RMW_NAME, 1);
     nros_stub_rmw_set_accept_entities(true);
@@ -356,6 +410,8 @@ int main(void) {
         fini_alone_exhausts(&KINDS[i], &support);
         wrong_executor_is_not_found(&KINDS[i], &support);
     }
+
+    raw_with_info_is_unremovable(&support);
 
     (void)rclc_support_fini(&support);
 

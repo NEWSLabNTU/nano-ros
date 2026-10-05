@@ -1775,19 +1775,30 @@ pub unsafe extern "C" fn nros_executor_trigger_index(
 // Handle registration — delegated to nros-node Executor
 // ============================================================================
 
-/// Add a subscription to the executor.
+/// The registration road every `nros_executor_add_subscription*` that takes a
+/// `nros_subscription_t` shares — issue 1668.
 ///
-/// Extracts metadata from the subscription struct and registers a raw-bytes
-/// callback with the internal nros-node executor. The RMW subscriber handle
-/// is created here (moved from subscription init).
-///
-/// # Safety
-/// * All pointers must be valid and point to initialized objects
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_subscription(
+/// Validates both objects, reads the subscription's topic / type / hash / QoS
+/// and node, resolves the name, and hands those to `register` — the one part
+/// that differs per verb (raw bytes, typed, raw + message info). On success it
+/// records the entry the way [`nros_executor_remove_subscription`] reads it
+/// back: the `(handle, executor)` pair in the subscription, the trigger-entity
+/// row, the invocation mode, the requested scheduling context, and both
+/// counts. ONE spelling, so a new subscription verb cannot register an entry
+/// the remover cannot find (the 1668 shape was a copy of this body that
+/// recorded none of it).
+unsafe fn register_subscription_entry(
     executor: *mut nros_executor_t,
     subscription: *mut nros_subscription_t,
     invocation: nros_executor_handle_invocation_t,
+    register: impl FnOnce(
+        &mut CExecutor,
+        Option<nros_node::executor::NodeId>,
+        &str,
+        &str,
+        &str,
+        nros_node::QoSProfile,
+    ) -> Result<nros_node::executor::HandleId, nros_ret_t>,
 ) -> nros_ret_t {
     validate_not_null!(executor, subscription);
 
@@ -1803,118 +1814,125 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
         nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
     );
 
-    // Check capacity
     if executor.handle_count >= executor.max_handles {
         return NROS_RET_FULL;
     }
 
-    {
-        // issue 1437 — taken BEFORE `get_executor` borrows `executor`
-        // mutably, because the subscription records the arena it was
-        // registered into and the borrow checker will not hand out a second
-        // `&mut` inside the same block.
-        let executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
-        let rust_exec = get_executor(&mut executor._opaque);
+    // issue 1437 — taken BEFORE `get_executor` borrows `executor` mutably,
+    // because the subscription records the arena it was registered into and
+    // the borrow checker will not hand out a second `&mut` inside one block.
+    let executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
+    let rust_exec = get_executor(&mut executor._opaque);
 
-        // Extract metadata from subscription struct
-        let topic_str = core::str::from_utf8_unchecked(
-            &subscription_ref.topic_name[..subscription_ref.topic_name_len],
-        );
-        let type_str = core::str::from_utf8_unchecked(
-            &subscription_ref.type_name[..subscription_ref.type_name_len],
-        );
-        let type_hash_str = core::str::from_utf8_unchecked(
-            &subscription_ref.type_hash[..subscription_ref.type_hash_len],
-        );
+    let topic_str = core::str::from_utf8_unchecked(
+        &subscription_ref.topic_name[..subscription_ref.topic_name_len],
+    );
+    let type_str = core::str::from_utf8_unchecked(
+        &subscription_ref.type_name[..subscription_ref.type_name_len],
+    );
+    let type_hash_str = core::str::from_utf8_unchecked(
+        &subscription_ref.type_hash[..subscription_ref.type_hash_len],
+    );
+    let qos = subscription_ref.get_qos_settings();
 
-        // Get QoS settings from the subscription
-        let qos = subscription_ref.get_qos_settings();
+    // Propagate node identity into the executor so the underlying
+    // create_subscription call gets liveliness keyexpr metadata.
+    set_executor_node_identity(rust_exec, subscription_ref.node);
+    // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
+    // against the identity just set (executor-side remap table).
+    let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
+        Ok(r) => r,
+        Err(()) => return NROS_RET_INVALID_ARGUMENT,
+    };
+    let topic_str = __resolved_name.as_str();
 
-        // Get callback and context
-        let callback = match subscription_ref.get_callback() {
-            Some(cb) => cb,
-            None => return NROS_RET_INVALID_ARGUMENT,
-        };
-        let context = subscription_ref.get_context();
+    // Phase 104.C.8.b — a Node created via `nros_executor_node_init` routes
+    // through `_on(NodeId, ...)` so multi-RMW bridges land on the right
+    // session; a legacy Node carries `node_id == 0` and takes the single-Node
+    // entry point.
+    let node_raw_id = if !subscription_ref.node.is_bound() {
+        0
+    } else {
+        subscription_ref.node.node_id
+    };
+    let node_id = (node_raw_id != 0).then(|| nros_node::executor::NodeId::from_raw(node_raw_id));
 
-        // Propagate node identity into the executor so the underlying
-        // create_subscription call gets liveliness keyexpr metadata.
-        set_executor_node_identity(rust_exec, subscription_ref.node);
-        // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
-        // against the identity just set (executor-side remap table).
-        let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
-            Ok(r) => r,
-            Err(()) => return NROS_RET_INVALID_ARGUMENT,
-        };
-        let topic_str = __resolved_name.as_str();
+    let handle_id = match register(rust_exec, node_id, topic_str, type_str, type_hash_str, qos) {
+        Ok(handle_id) => handle_id,
+        Err(ret) => return ret,
+    };
 
-        // Phase 104.C.8.b — when the Node was created via
-        // `nros_executor_node_init`, route through `_on(NodeId, ...)`
-        // so multi-RMW bridges land on the right session. Legacy
-        // `rclc_node_init_default`-style Nodes carry `node_id == 0` and fall
-        // through to the single-Node entry point.
-        let node_raw_id = if !subscription_ref.node.is_bound() {
-            0
-        } else {
-            subscription_ref.node.node_id
-        };
-        // Phase 189.M2.b — the single kept C-FFI subscription core.
-        let node_id =
-            (node_raw_id != 0).then(|| nros_node::executor::NodeId::from_raw(node_raw_id));
-        let result = rust_exec.add_arena_subscription_c_callback::<MESSAGE_BUFFER_SIZE>(
-            node_id,
-            topic_str,
-            type_str,
-            type_hash_str,
-            qos,
-            callback,
-            context,
-            None, // Phase 273 W3: group threading is via nros_executor_add_subscription_in_group
-            // phase-402 W2 — this path states no hint; 0 = no opinion.
-            0,
-        );
+    let sub_mut = &mut *subscription;
+    sub_mut.set_arena_entry(handle_id, executor_ptr);
+    record_trigger_entity(
+        &mut executor._handle_entities,
+        handle_id,
+        subscription as *mut core::ffi::c_void,
+    );
 
-        match result {
-            Ok(handle_id) => {
-                // Store the handle ID in the subscription for later reference
-                let sub_mut = &mut *subscription;
-                sub_mut.set_arena_entry(handle_id, executor_ptr);
-                record_trigger_entity(
-                    &mut executor._handle_entities,
-                    handle_id,
-                    subscription as *mut core::ffi::c_void,
-                );
+    if invocation == nros_executor_handle_invocation_t::NROS_EXECUTOR_ALWAYS {
+        rust_exec.set_invocation(handle_id, nros_node::InvocationMode::Always);
+    }
 
-                // Set invocation mode
-                if invocation == nros_executor_handle_invocation_t::NROS_EXECUTOR_ALWAYS {
-                    rust_exec.set_invocation(handle_id, nros_node::InvocationMode::Always);
-                }
-
-                // Phase 189.M3 — apply a scheduling-context binding
-                // requested via `nros_subscription_init_with_options`.
-                // `0` = inherit the default (no-op). A non-zero slot
-                // must be a valid id from
-                // `nros_executor_create_sched_context`; an unknown id
-                // fails the registration so the caller learns the
-                // binding was rejected rather than silently dropped.
-                let requested_sc = sub_mut.sched_context_id;
-                if requested_sc != 0 {
-                    let sc_id = nros_node::executor::sched_context::SchedContextId(requested_sc);
-                    if rust_exec
-                        .bind_handle_to_sched_context(handle_id, sc_id)
-                        .is_err()
-                    {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    }
-                }
-
-                executor.handle_count += 1;
-                executor.subscription_count += 1;
-                NROS_RET_OK
-            }
-            Err(_) => NROS_RET_ERROR,
+    // Phase 189.M3 — apply a scheduling-context binding requested via
+    // `nros_subscription_init_with_options`. `0` = inherit the default (no-op).
+    // A non-zero slot must be a valid id from
+    // `nros_executor_create_sched_context`; an unknown id fails the
+    // registration so the caller learns the binding was rejected rather than
+    // silently dropped.
+    let requested_sc = sub_mut.sched_context_id;
+    if requested_sc != 0 {
+        let sc_id = nros_node::executor::sched_context::SchedContextId(requested_sc);
+        if rust_exec
+            .bind_handle_to_sched_context(handle_id, sc_id)
+            .is_err()
+        {
+            return NROS_RET_INVALID_ARGUMENT;
         }
     }
+
+    executor.handle_count += 1;
+    executor.subscription_count += 1;
+    NROS_RET_OK
+}
+
+/// Add a subscription to the executor.
+///
+/// Extracts metadata from the subscription struct and registers a raw-bytes
+/// callback with the internal nros-node executor. The RMW subscriber handle
+/// is created here (moved from subscription init).
+///
+/// # Safety
+/// * All pointers must be valid and point to initialized objects
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_add_subscription(
+    executor: *mut nros_executor_t,
+    subscription: *mut nros_subscription_t,
+    invocation: nros_executor_handle_invocation_t,
+) -> nros_ret_t {
+    validate_not_null!(executor, subscription);
+    register_subscription_entry(
+        executor,
+        subscription,
+        invocation,
+        |rust_exec, node_id, topic, type_name, type_hash, qos| {
+            // Read here, after the state checks, so an uninitialised
+            // subscription still answers NOT_INIT rather than "no callback".
+            let Some(callback) = (*subscription).get_callback() else {
+                return Err(NROS_RET_INVALID_ARGUMENT);
+            };
+            let context = (*subscription).get_context();
+            // Phase 189.M2.b — the single kept C-FFI subscription core.
+            rust_exec
+                .add_arena_subscription_c_callback::<MESSAGE_BUFFER_SIZE>(
+                    node_id, topic, type_name, type_hash, qos, callback, context,
+                    None, // Phase 273 W3: group threading is via nros_executor_add_subscription_in_group
+                    // phase-402 W2 — this path states no hint; 0 = no opinion.
+                    0,
+                )
+                .map_err(|_| NROS_RET_ERROR)
+        },
+    )
 }
 
 /// phase-417 W5.a — the deserialiser handed to
@@ -2073,107 +2091,31 @@ pub unsafe extern "C" fn nros_executor_add_subscription_typed_sized(
         return NROS_RET_INVALID_ARGUMENT;
     };
 
-    let executor = &mut *executor;
-    let subscription_ref = &*subscription;
-
-    validate_state!(
+    // The name resolution, node routing and bookkeeping are the raw path's —
+    // one helper — so the two registrations cannot become two different
+    // name-resolution answers (Phase 305 W3, issue 0255).
+    register_subscription_entry(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
-    );
-    validate_state!(
-        subscription_ref,
-        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
-    );
-
-    if executor.handle_count >= executor.max_handles {
-        return NROS_RET_FULL;
-    }
-
-    {
-        // issue 1437 — taken BEFORE `get_executor` borrows `executor`
-        // mutably, because the subscription records the arena it was
-        // registered into and the borrow checker will not hand out a second
-        // `&mut` inside the same block.
-        let executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
-        let rust_exec = get_executor(&mut executor._opaque);
-
-        let topic_str = core::str::from_utf8_unchecked(
-            &subscription_ref.topic_name[..subscription_ref.topic_name_len],
-        );
-        let type_str = core::str::from_utf8_unchecked(
-            &subscription_ref.type_name[..subscription_ref.type_name_len],
-        );
-        let type_hash_str = core::str::from_utf8_unchecked(
-            &subscription_ref.type_hash[..subscription_ref.type_hash_len],
-        );
-
-        let qos = subscription_ref.get_qos_settings();
-
-        set_executor_node_identity(rust_exec, subscription_ref.node);
-        // Phase 305 W3 (issue 0255) — `~`/relative names + launch remaps, the
-        // same resolution the raw path does. Doing it here rather than letting
-        // the typed path skip it is what keeps the two registrations from being
-        // two different name-resolution answers.
-        let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
-            Ok(r) => r,
-            Err(()) => return NROS_RET_INVALID_ARGUMENT,
-        };
-        let topic_str = __resolved_name.as_str();
-
-        let node_raw_id = if !subscription_ref.node.is_bound() {
-            0
-        } else {
-            subscription_ref.node.node_id
-        };
-        let node_id =
-            (node_raw_id != 0).then(|| nros_node::executor::NodeId::from_raw(node_raw_id));
-
-        let result = rust_exec.add_arena_subscription_c_typed_callback::<MESSAGE_BUFFER_SIZE>(
-            node_id,
-            topic_str,
-            type_str,
-            type_hash_str,
-            qos,
-            msg_nn,
-            deserialize_fn,
-            callback_fn,
-            context,
-            None,
-            rx_bytes as usize,
-        );
-
-        match result {
-            Ok(handle_id) => {
-                let sub_mut = &mut *subscription;
-                sub_mut.set_arena_entry(handle_id, executor_ptr);
-                record_trigger_entity(
-                    &mut executor._handle_entities,
-                    handle_id,
-                    subscription as *mut core::ffi::c_void,
-                );
-
-                if invocation == nros_executor_handle_invocation_t::NROS_EXECUTOR_ALWAYS {
-                    rust_exec.set_invocation(handle_id, nros_node::InvocationMode::Always);
-                }
-
-                let requested_sc = sub_mut.sched_context_id;
-                if requested_sc != 0 {
-                    let sc_id = nros_node::executor::sched_context::SchedContextId(requested_sc);
-                    if rust_exec
-                        .bind_handle_to_sched_context(handle_id, sc_id)
-                        .is_err()
-                    {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    }
-                }
-
-                executor.handle_count += 1;
-                executor.subscription_count += 1;
-                NROS_RET_OK
-            }
-            Err(_) => NROS_RET_ERROR,
-        }
-    }
+        subscription,
+        invocation,
+        |rust_exec, node_id, topic, type_name, type_hash, qos| {
+            rust_exec
+                .add_arena_subscription_c_typed_callback::<MESSAGE_BUFFER_SIZE>(
+                    node_id,
+                    topic,
+                    type_name,
+                    type_hash,
+                    qos,
+                    msg_nn,
+                    deserialize_fn,
+                    callback_fn,
+                    context,
+                    None,
+                    rx_bytes as usize,
+                )
+                .map_err(|_| NROS_RET_ERROR)
+        },
+    )
 }
 
 /// phase-417 stage 6 — register a BYTE-oriented subscription, supplying its
@@ -2217,6 +2159,13 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw(
 /// struct): the callback signature differs from the plain
 /// `nros_subscription_callback_t`, so this is its own entry point rather than
 /// a flag on `nros_executor_add_subscription`.
+///
+/// **Not removable** (issue 1668): it takes no subscription object and hands
+/// back nothing, so its entry — slot, arena bytes and subscriber — lives
+/// until `rclc_executor_fini`. Kept for ABI compatibility (RFC-0054 is
+/// additive). Prefer [`nros_executor_add_subscription_with_info`], which
+/// registers the same entry into a `nros_subscription_t` that
+/// `nros_executor_remove_subscription` takes back out.
 ///
 /// `node` may be NULL (legacy single-Node path) or a Node created via
 /// `nros_executor_node_init` (routes to that Node's session). `qos` may be NULL
@@ -2302,6 +2251,67 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw_with_info(
             Err(_) => NROS_RET_ERROR,
         }
     }
+}
+
+/// Issue 1668 — register a raw subscription whose callback also receives the
+/// sample's wire **attachment**, into a `nros_subscription_t` the caller keeps,
+/// so it can be REMOVED.
+///
+/// The removable sibling of [`nros_executor_add_subscription_raw_with_info`],
+/// in the rclc shape every other subscription add has — the info-callback twin
+/// of [`nros_executor_add_subscription_raw`]:
+///
+/// ```c
+/// rclc_subscription_init_default(&sub, &node, &type, "/topic");
+/// nros_executor_add_subscription_with_info(&exec, &sub, on_sample, ctx,
+///                                          NROS_EXECUTOR_ON_NEW_DATA);
+/// ...
+/// nros_executor_remove_subscription(&exec, &sub);
+/// nros_subscription_fini(&sub);
+/// ```
+///
+/// Topic, type, hash, QoS and node come from the subscription (a caller that
+/// holds only type-name strings builds a `nros_message_type_t` from them — its
+/// fields are the same two strings the direct-arg form takes). The entry is
+/// the one the direct-arg form registers; what differs is that the
+/// subscription records `(handle, executor)` and the trigger table names it,
+/// so `nros_executor_remove_subscription` releases it and
+/// `rclc_executor_trigger_one` can name it. The subscription's own plain
+/// `callback` field is left untouched; `callback` here is the one dispatched.
+///
+/// # Returns
+/// As [`nros_executor_add_subscription`]; `NROS_RET_INVALID_ARGUMENT` for a
+/// NULL `callback`.
+///
+/// # Safety
+/// * `executor` and `subscription` must be valid, initialised objects.
+/// * `context` is passed through untouched and may be NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_add_subscription_with_info(
+    executor: *mut nros_executor_t,
+    subscription: *mut nros_subscription_t,
+    callback: crate::subscription::nros_subscription_info_callback_t,
+    context: *mut core::ffi::c_void,
+    invocation: nros_executor_handle_invocation_t,
+) -> nros_ret_t {
+    validate_not_null!(executor, subscription);
+    let Some(cb) = callback else {
+        return NROS_RET_INVALID_ARGUMENT;
+    };
+    register_subscription_entry(
+        executor,
+        subscription,
+        invocation,
+        |rust_exec, node_id, topic, type_name, type_hash, qos| {
+            rust_exec
+                .add_arena_subscription_c_info_callback::<MESSAGE_BUFFER_SIZE>(
+                    node_id, topic, type_name, type_hash, qos, cb, context,
+                    // As the direct-arg form: no hint, the small payload class.
+                    0,
+                )
+                .map_err(|_| NROS_RET_ERROR)
+        },
+    )
 }
 
 /// Add a timer to the executor.

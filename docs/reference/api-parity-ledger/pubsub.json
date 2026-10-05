@@ -21,7 +21,7 @@
   },
   "c:executor_add_subscription_raw_with_info": {
     "verdict": "extension",
-    "why": "the raw + message-info form; see `c:publish_raw` and `rust:RawMessageInfo`."
+    "why": "the raw + message-info form; see `c:publish_raw` and `rust:RawMessageInfo`.\n\nIssue 1668 — this direct-arg form takes no `nros_subscription_t` and hands back nothing, so its entry cannot be removed before `rclc_executor_fini`. It is kept for ABI (RFC-0054 is additive); `c:executor_add_subscription_with_info` registers the same entry removably, and `check-c-executor-remove-coverage` records this verb as SUPERSEDED by it."
   },
   "c:executor_add_subscription_typed": {
     "verdict": "divergence",
@@ -30,6 +30,10 @@
   "c:executor_add_subscription_typed_sized": {
     "verdict": "divergence",
     "why": "phase-417 W5.a — typed subscription delivery. rclc hands its callback a DESERIALISED message on a path with no allocator, by making the CALLER own the storage:\n\n    rclc_executor_add_subscription(exec, sub, void *msg, callback, invocation)\n    typedef void (*rclc_subscription_callback_t)(const void *);\n\nOurs had no `msg` slot and delivered CDR bytes, so every ported rclc callback body had to be rewritten -- the largest porting cost this campaign measured. Many C rows justified the byte orientation with \"no allocator\"; rclc has no allocator on that path either, so the stated reason was refuted by the compared surface, which is worse than an unexplained divergence because it forecloses the fix.\n\nONE argument differs from rclc's, and it is forced: `nros_message_type_t` carries a type name, hash and max size but NO deserialiser slot, unlike rosidl's type support. So the function that writes this type into `msg` has to arrive from somewhere, and it sits immediately before `callback`, leaving every other argument in rclc's position. Codegen collapses it away -- `<Msg>_executor_add_subscription(exec, sub, &msg, cb, ctx, invocation)` is rclc's six in rclc's order -- so a ported line is unchanged.\n\nA deserialise failure does NOT invoke the callback: dispatching would hand it `msg` still holding the PREVIOUS message dressed as the new one, which is exactly the compile-and-differ RFC-0089 forbids. The sample is dropped, `subscription_errors` increments, and a `#[cold]` reporter logs the sample length and return code through `nros_log` (never stdio -- issue 0589).\n\nThe `_sized` form carries the phase-403 W5 / issue-0896 rx hint; a typed caller normally has the number (`<Msg>_RX_MAX_SERIALIZED_SIZE`) and the plain form passes 0, meaning \"stated nothing\"."
+  },
+  "c:executor_add_subscription_with_info": {
+    "verdict": "extension",
+    "why": "issue 1668 — the removable form of `c:executor_add_subscription_raw_with_info`: the same raw + message-info entry, registered into a `nros_subscription_t` the caller keeps, in the shape of `c:executor_add_subscription_raw` (executor, subscription, callback, context, invocation). `nros_executor_remove_subscription` takes it back out. No rclc counterpart — rclc has no byte-plus-attachment subscription; see `c:publish_raw` and `rust:RawMessageInfo`."
   },
   "c:executor_get_publishers_info_by_topic": {
     "verdict": "divergence",

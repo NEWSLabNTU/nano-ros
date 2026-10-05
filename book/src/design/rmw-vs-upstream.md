@@ -819,9 +819,11 @@ fields — but through a different seam:
           }
       })?;
   ```
-  C mirrors this with `nros_executor_register_subscription_raw_with_info`
+  C mirrors this with `nros_executor_add_subscription_with_info`
   (the callback receives the payload plus the attachment/metadata
-  arguments directly — there is no info struct on the C side).
+  arguments directly — there is no info struct on the C side), which
+  registers into a `nros_subscription_t` that
+  `nros_executor_remove_subscription` takes back out (issue 1668).
 - **Two backend channels.** The hot `take` vtable slot returns bytes
   only. A backend that fills the optional `take_with_info` slot reports
   `rmw_message_info_t` in caller-owned storage, and the runtime dispatches
