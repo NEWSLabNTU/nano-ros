@@ -489,6 +489,7 @@ LANES = (
     LaneSpec("live-peer.yml", "regression", "stage", {
         "Build the nros CLI": BUILD,
         "Report what the ledger claims, before running anything": PROVISIONING,
+        "Reclaim disk before the fixtures": PROVISIONING,
         "Check out the submodules the fixtures vendor": PROVISIONING,
         "Provision the declared system closure (phase-413 W3)": PROVISIONING,
         "Build the XRCE Agent against the sourced ROS (issue 0741)": BUILD,
@@ -510,6 +511,7 @@ LANES = (
         "just setup the scopes those rows need": PROVISIONING,
         "Install clang + libclang for bindgen": PROVISIONING,
         "Build the fixtures those rows resolve": BUILD,
+        "Provision cargo-nextest": PROVISIONING,
         "Run the board cells with a recorded PASS": CELLS,
     }),
 )
