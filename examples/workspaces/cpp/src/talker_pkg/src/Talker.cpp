@@ -25,7 +25,15 @@ void Talker::on_tick() {
     // `::setvbuf` (C global), not `std::setvbuf` — Zephyr's picolibc <cstdio> does not put
     // setvbuf in namespace std; the C global is available on every platform.
     ::setvbuf(stdout, nullptr, _IONBF, 0);
-    ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
+    // The QoS this publisher registers with. demo_bringup's
+    // `system.contract.yaml` DECLARES the same (`pub: chatter: { qos: { depth: 1 } }`),
+    // and if the two ever disagree -- depth, reliability or durability -- the
+    // assertion below fails to COMPILE, naming the topic and both values
+    // (issue 1608; the listener holds its subscription the same way, 1564).
+    constexpr ::nros::QoS kChatterQos = ::nros::QoS(1);
+    NROS_ASSERT_DECLARED_PUB_QOS(::std_msgs::msg::Int32::TYPE_NAME, "/chatter", kChatterQos,
+                                 "\"/chatter\"");
+    ::rclcpp::Result r = node.create_publisher(pub_, "/chatter", kChatterQos);
     if (!r.ok()) return r;
     // Member-fn-pointer-as-template-param → no-alloc trampoline; `this` is ctx.
     return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 1000, this);

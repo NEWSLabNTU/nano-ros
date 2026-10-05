@@ -174,6 +174,24 @@ constexpr Entry TABLE[] = {{nullptr, nullptr, ::nros::DECLARED_DEPTH_UNDECLARED,
 constexpr size_t COUNT = 0;
 #endif
 
+// Issue 1608 -- the PUBLISHER rows, a table of their own: the generated header
+// keys rows on `(type, topic)`, and a publisher and a subscription on one pair
+// are two endpoints with one key. Same `Entry`, same sentinel, same COUNT rule.
+#if defined(NROS_DECLARED_PUB_QOS_ROWS)
+#define NROS_DECLARED_PUB_QOS_ROW(nros_type, nros_topic, nros_depth, nros_rel, nros_dur)           \
+    {(nros_type), (nros_topic), (nros_depth), _NROS_DQ_CPP_##nros_rel, _NROS_DQ_CPP_##nros_dur},
+constexpr Entry PUB_TABLE[] = {NROS_DECLARED_PUB_QOS_ROWS{
+    nullptr, nullptr, ::nros::DECLARED_DEPTH_UNDECLARED, ::nros::DECLARED_POLICY_UNDECLARED,
+    ::nros::DECLARED_POLICY_UNDECLARED}};
+#undef NROS_DECLARED_PUB_QOS_ROW
+constexpr size_t PUB_COUNT = NROS_DECLARED_PUB_QOS_ROW_COUNT;
+#else
+constexpr Entry PUB_TABLE[] = {{nullptr, nullptr, ::nros::DECLARED_DEPTH_UNDECLARED,
+                                ::nros::DECLARED_POLICY_UNDECLARED,
+                                ::nros::DECLARED_POLICY_UNDECLARED}};
+constexpr size_t PUB_COUNT = 0;
+#endif
+
 } // namespace declared_qos
 
 namespace detail {
@@ -277,6 +295,42 @@ constexpr int declared_policy_or(int declared, int passed) {
     return (declared == ::nros::DECLARED_POLICY_UNDECLARED) ? passed : declared;
 }
 
+/// Issue 1608 -- the PUBLISHER verdicts, shaped like the three above so the
+/// two values reach the diagnostic as template arguments; only the subject and
+/// the contract key in the message differ.
+template <int Declared, int Passed> struct declared_pub_depth_agrees {
+    static_assert(Declared == Passed,
+                  "nros: this PUBLISHER's QoS depth disagrees with the depth its system "
+                  "DECLARED for that topic in the contract sidecar "
+                  "(<bringup>/launch/<stem>.contract.yaml, contracts.pub_endpoints.<ep>.qos). "
+                  "The two numbers are the template arguments of "
+                  "nros::detail::declared_pub_depth_agrees<declared, passed> named just above "
+                  "-- declared first, passed second. Fix the contract row or the QoS at the "
+                  "call site.");
+    static constexpr bool value = (Declared == Passed);
+};
+template <int Declared, int Passed> struct declared_pub_reliability_agrees {
+    static_assert(Declared == Passed,
+                  "nros: this PUBLISHER's QoS RELIABILITY disagrees with the reliability its "
+                  "system DECLARED for that topic in the contract sidecar "
+                  "(contracts.pub_endpoints.<ep>.qos). The two values are the template "
+                  "arguments of nros::detail::declared_pub_reliability_agrees<declared, passed> "
+                  "named just above -- declared first, passed second; 0 is reliable, 1 is "
+                  "best_effort (nros::ReliabilityPolicy).");
+    static constexpr bool value = (Declared == Passed);
+};
+template <int Declared, int Passed> struct declared_pub_durability_agrees {
+    static_assert(Declared == Passed,
+                  "nros: this PUBLISHER's QoS DURABILITY disagrees with the durability its "
+                  "system DECLARED for that topic in the contract sidecar "
+                  "(contracts.pub_endpoints.<ep>.qos). The two values are the template "
+                  "arguments of nros::detail::declared_pub_durability_agrees<declared, passed> "
+                  "named just above -- declared first, passed second; 0 is volatile, 1 is "
+                  "transient_local (nros::DurabilityPolicy). A transient-local publisher is a "
+                  "zenoh cache queryable the build counts, so this is a sizing error too.");
+    static constexpr bool value = (Declared == Passed);
+};
+
 } // namespace detail
 
 /// The declared depth for `(type, topic)`, or @ref DECLARED_DEPTH_UNDECLARED.
@@ -308,6 +362,32 @@ constexpr int declared_durability(const char* type, const char* topic) {
             nullptr)
                ? DECLARED_POLICY_UNDECLARED
                : detail::declared_qos_row(declared_qos::TABLE, declared_qos::COUNT, type, topic)
+                     ->durability;
+}
+
+/// Issue 1608 -- the declared depth of the PUBLISHER on `(type, topic)`, or
+/// @ref DECLARED_DEPTH_UNDECLARED. `constexpr` on the terms of @ref declared_depth.
+constexpr int declared_pub_depth(const char* type, const char* topic) {
+    return detail::declared_qos_find(declared_qos::PUB_TABLE, declared_qos::PUB_COUNT, type, topic);
+}
+
+/// Issue 1608 -- the PUBLISHER's declared RELIABILITY ordinal.
+constexpr int declared_pub_reliability(const char* type, const char* topic) {
+    return (detail::declared_qos_row(declared_qos::PUB_TABLE, declared_qos::PUB_COUNT, type,
+                                     topic) == nullptr)
+               ? DECLARED_POLICY_UNDECLARED
+               : detail::declared_qos_row(declared_qos::PUB_TABLE, declared_qos::PUB_COUNT, type,
+                                          topic)
+                     ->reliability;
+}
+
+/// Issue 1608 -- the PUBLISHER's declared DURABILITY ordinal.
+constexpr int declared_pub_durability(const char* type, const char* topic) {
+    return (detail::declared_qos_row(declared_qos::PUB_TABLE, declared_qos::PUB_COUNT, type,
+                                     topic) == nullptr)
+               ? DECLARED_POLICY_UNDECLARED
+               : detail::declared_qos_row(declared_qos::PUB_TABLE, declared_qos::PUB_COUNT, type,
+                                          topic)
                      ->durability;
 }
 
@@ -399,5 +479,66 @@ constexpr int declared_durability(const char* type, const char* topic) {
     NROS_ASSERT_DECLARED_DEPTH(type_name, topic_expr, qos_expr, topic_text);                       \
     NROS_ASSERT_DECLARED_RELIABILITY(type_name, topic_expr, qos_expr, topic_text);                 \
     NROS_ASSERT_DECLARED_DURABILITY(type_name, topic_expr, qos_expr, topic_text)
+
+/// Issue 1608 -- @ref NROS_ASSERT_DECLARED_DEPTH for a PUBLISHER: the same four
+/// arguments and the same two-statement expansion, against the publisher rows
+/// (`contracts.pub_endpoints.<ep>.qos`). There is no `NROS_PUBLISH` macro form
+/// -- `create_publisher_in` is a plain call -- so this is written BESIDE that
+/// call, exactly as @ref NROS_ASSERT_DECLARED_QOS is written beside a
+/// `bind_subscription`. A non-constant call site is held to the same rows at
+/// registration (`nros_node::declared_qos::honour_publisher`).
+#define NROS_ASSERT_DECLARED_PUB_DEPTH(type_name, topic_expr, qos_expr, topic_text)                \
+    static_assert(::nros::declared_pub_depth((type_name), (topic_expr)) ==                         \
+                          ::nros::DECLARED_DEPTH_UNDECLARED ||                                     \
+                      ::nros::declared_pub_depth((type_name), (topic_expr)) == (qos_expr).depth(), \
+                  "nros: the QoS depth passed for the publisher on topic " topic_text              \
+                  " disagrees with the depth declared for that publisher in the contract "         \
+                  "sidecar (<stem>.contract.yaml). Both numbers are in the "                       \
+                  "declared_pub_depth_agrees<declared, passed> diagnostic beside this one.");      \
+    (void)sizeof(::nros::detail::declared_pub_depth_agrees<                                        \
+                 ::nros::detail::declared_depth_or(                                                \
+                     ::nros::declared_pub_depth((type_name), (topic_expr)), (qos_expr).depth()),   \
+                 (qos_expr).depth()>)
+
+/// Issue 1608 -- @ref NROS_ASSERT_DECLARED_RELIABILITY for a PUBLISHER.
+#define NROS_ASSERT_DECLARED_PUB_RELIABILITY(type_name, topic_expr, qos_expr, topic_text)          \
+    static_assert(                                                                                 \
+        ::nros::declared_pub_reliability((type_name), (topic_expr)) ==                             \
+                ::nros::DECLARED_POLICY_UNDECLARED ||                                              \
+            ::nros::declared_pub_reliability((type_name), (topic_expr)) ==                         \
+                static_cast<int>((qos_expr).reliability()),                                        \
+        "nros: the QoS reliability passed for the publisher on topic " topic_text                  \
+        " disagrees with the reliability declared for that publisher in the contract "             \
+        "sidecar (<stem>.contract.yaml). Both values are in the "                                  \
+        "declared_pub_reliability_agrees<declared, passed> diagnostic beside this one.");          \
+    (void)sizeof(::nros::detail::declared_pub_reliability_agrees<                                  \
+                 ::nros::detail::declared_policy_or(                                               \
+                     ::nros::declared_pub_reliability((type_name), (topic_expr)),                  \
+                     static_cast<int>((qos_expr).reliability())),                                  \
+                 static_cast<int>((qos_expr).reliability())>)
+
+/// Issue 1608 -- @ref NROS_ASSERT_DECLARED_DURABILITY for a PUBLISHER.
+#define NROS_ASSERT_DECLARED_PUB_DURABILITY(type_name, topic_expr, qos_expr, topic_text)           \
+    static_assert(::nros::declared_pub_durability((type_name), (topic_expr)) ==                    \
+                          ::nros::DECLARED_POLICY_UNDECLARED ||                                    \
+                      ::nros::declared_pub_durability((type_name), (topic_expr)) ==                \
+                          static_cast<int>((qos_expr).durability()),                               \
+                  "nros: the QoS durability passed for the publisher on topic " topic_text         \
+                  " disagrees with the durability declared for that publisher in the contract "    \
+                  "sidecar (<stem>.contract.yaml). Both values are in the "                        \
+                  "declared_pub_durability_agrees<declared, passed> diagnostic beside this one."); \
+    (void)sizeof(::nros::detail::declared_pub_durability_agrees<                                   \
+                 ::nros::detail::declared_policy_or(                                               \
+                     ::nros::declared_pub_durability((type_name), (topic_expr)),                   \
+                     static_cast<int>((qos_expr).durability())),                                   \
+                 static_cast<int>((qos_expr).durability())>)
+
+/// Issue 1608 -- every declared column of a PUBLISHER at once: the exact
+/// mirror of @ref NROS_ASSERT_DECLARED_QOS (same four arguments, same three
+/// assertions), over the publisher rows.
+#define NROS_ASSERT_DECLARED_PUB_QOS(type_name, topic_expr, qos_expr, topic_text)                  \
+    NROS_ASSERT_DECLARED_PUB_DEPTH(type_name, topic_expr, qos_expr, topic_text);                   \
+    NROS_ASSERT_DECLARED_PUB_RELIABILITY(type_name, topic_expr, qos_expr, topic_text);             \
+    NROS_ASSERT_DECLARED_PUB_DURABILITY(type_name, topic_expr, qos_expr, topic_text)
 
 #endif // NROS_CPP_DECLARED_QOS_HPP

@@ -50,6 +50,10 @@
 #      a table this configure rendered from a contract that states them. A
 #      code/contract disagreement there is an interop failure (an incompatible
 #      match never delivers), and until 1256 it was not compared at all;
+#   F5/F6. issue 1608 -- the same negative controls for a PUBLISHER, in C++
+#      (`NROS_ASSERT_DECLARED_PUB_QOS`) and C (`NROS_ASSERT_DECLARED_PUB_*`),
+#      with a subscription on the same (type, topic) declared differently, so
+#      a table that mixed the two kinds cannot pass;
 #   H. issue 1564 -- SEVERAL models. A configure with several entries compiles
 #      each component once for all of them, and used to ABSTAIN -- on the native
 #      road that is every workspace, so no C++ image could adopt the check. It
@@ -566,6 +570,152 @@ NROS_DECLARED_QOS_ROWS_Q's policy column is not reaching the C check."
                 case "$C_P_OUT" in
                     *"$_w"*) ;;
                     *) fail "F4: the C $_what diagnostic does not contain: $_w -- $C_P_OUT" ;;
+                esac
+            done
+        fi
+    done
+fi
+
+# ---------------------------------------------------------------------------
+# F5/F6. issue 1608 -- the same negative controls for a PUBLISHER, in C++ and C.
+#
+# The contract declares /chatter's SUBSCRIPTION at depth 1 and a PUBLISHER on
+# the SAME (type, topic) at depth 7, best_effort, transient_local -- one key,
+# two endpoints, which is why publisher rows are a list of their own. The
+# agreeing publisher call site (7, best_effort, transient_local) and the
+# agreeing subscription call site (depth 1) must BOTH compile against the one
+# rendered header, so a table that mixed the two kinds fails here; then each
+# disagreeing publisher column must be OUR rejection, naming the topic and both
+# values.
+# ---------------------------------------------------------------------------
+log_info "F5/F6. a PUBLISHER whose QoS disagrees with its contract fails to compile"
+PUB_MODEL="$TEST_TMPDIR/pub_model.yaml"
+cat > "$PUB_MODEL" <<'EOF'
+meta: { version: 1 }
+structure:
+  nodes:
+    /listener:
+      { scope: s.launch.xml, pkg: demo, exec: listener, node_name: listener }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      sub: [/listener/chatter]
+      pub: [/listener/chatter_out]
+contracts:
+  sub_endpoints:
+    /listener/chatter:
+      qos: { depth: 1 }
+  pub_endpoints:
+    /listener/chatter_out:
+      qos: { depth: 7, reliability: best_effort, durability: transient_local }
+EOF
+OUT="$(configure pubdeclared "$PUB_MODEL")"
+PUB_GEN_DIR="$TEST_TMPDIR/pubdeclared/build/nros-declared-qos/listener"
+PUB_HDR="$PUB_GEN_DIR/nros/nros_declared_qos_generated.h"
+check
+if [ ! -f "$PUB_HDR" ] || ! nros_grep_q 'NROS_DECLARED_PUB_QOS_ROW("std_msgs::msg::dds_::Int32_", "/chatter", 7, NROS_DQ_BEST_EFFORT, NROS_DQ_TRANSIENT_LOCAL)' "$PUB_HDR"; then
+    fail "F5: the publisher's declared QoS did not reach the rendered header --
+$( [ -f "$PUB_HDR" ] && cat "$PUB_HDR" ) -- configure said: $OUT"
+fi
+pub_probe_compile() {
+    "$CXX" -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+        -I"$PUB_GEN_DIR" \
+        -I"$PROJECT_ROOT/packages/api/nros-cpp/include" \
+        -x c++ "$1" 2>&1
+}
+pub_probe_src() {
+    cat <<EOF
+#include <nros/declared_qos.hpp>
+namespace {
+struct Q {
+    int d;
+    int r;
+    int u;
+    constexpr Q(int depth, int rel, int dur) : d(depth), r(rel), u(dur) {}
+    constexpr int depth() const { return d; }
+    constexpr int reliability() const { return r; }
+    constexpr int durability() const { return u; }
+};
+struct Int32 {
+    static constexpr const char* TYPE_NAME = "std_msgs::msg::dds_::Int32_";
+};
+} // namespace
+void nros_dq_case_f5() {
+    NROS_ASSERT_DECLARED_PUB_QOS(Int32::TYPE_NAME, "/chatter", Q($1, $2, $3), "\"/chatter\"");
+    NROS_ASSERT_DECLARED_DEPTH(Int32::TYPE_NAME, "/chatter", Q(1, 0, 0), "\"/chatter\"");
+}
+EOF
+}
+pub_probe_src 7 1 1 > "$TEST_TMPDIR/pub_agree.cpp"
+pub_probe_src 1 1 1 > "$TEST_TMPDIR/pub_depth.cpp"
+pub_probe_src 7 0 1 > "$TEST_TMPDIR/pub_rel.cpp"
+pub_probe_src 7 1 0 > "$TEST_TMPDIR/pub_dur.cpp"
+check
+if ! PUB_AGREE_OUT="$(pub_probe_compile "$TEST_TMPDIR/pub_agree.cpp")"; then
+    fail "F5: the AGREEING publisher + subscription call sites failed to compile -- the
+two kinds' rows are mixed, or the probe is wrong, and the expected failures
+below would pass for the wrong reason -- $PUB_AGREE_OUT"
+else
+    for _case in "pub_depth.cpp|declared_pub_depth_agrees<7, 1>|depth" \
+                 "pub_rel.cpp|declared_pub_reliability_agrees<1, 0>|reliability" \
+                 "pub_dur.cpp|declared_pub_durability_agrees<1, 0>|durability"; do
+        IFS='|' read -r _src _want _what <<<"$_case"
+        check
+        if PUB_OUT="$(pub_probe_compile "$TEST_TMPDIR/$_src")"; then
+            fail "F5: a publisher whose $_what DISAGREES with its contract COMPILED -- the
+publisher rows are not reaching the C++ check."
+        else
+            for _w in '"/chatter"' "$_want"; do
+                check
+                case "$PUB_OUT" in
+                    *"$_w"*) ;;
+                    *) fail "F5: the publisher $_what diagnostic does not contain: $_w -- $PUB_OUT" ;;
+                esac
+            done
+        fi
+    done
+fi
+
+# C: `nros_qos_t` values (best_effort 0, reliable 1; volatile 0, transient_local 1).
+c_pub_probe_src() {
+    cat <<EOF
+#include <nros/declared_qos.h>
+void nros_dq_case_f6(void) {
+    NROS_ASSERT_DECLARED_PUB_DEPTH("std_msgs::msg::dds_::Int32_", "/chatter", $1, "\"/chatter\"");
+    NROS_ASSERT_DECLARED_PUB_RELIABILITY("std_msgs::msg::dds_::Int32_", "/chatter", $2, "\"/chatter\"");
+    NROS_ASSERT_DECLARED_PUB_DURABILITY("std_msgs::msg::dds_::Int32_", "/chatter", $3, "\"/chatter\"");
+    NROS_ASSERT_DECLARED_DEPTH("std_msgs::msg::dds_::Int32_", "/chatter", 1, "\"/chatter\"");
+}
+EOF
+}
+c_pub_probe_compile() {
+    "$CC" -fsyntax-only -std=c11 -Wall -Wextra \
+        -I"$PUB_GEN_DIR" \
+        -I"$PROJECT_ROOT/packages/api/nros-c/include" \
+        -x c "$1" 2>&1
+}
+c_pub_probe_src 7 0 1 > "$TEST_TMPDIR/c_pub_agree.c"
+c_pub_probe_src 1 0 1 > "$TEST_TMPDIR/c_pub_depth.c"
+c_pub_probe_src 7 1 1 > "$TEST_TMPDIR/c_pub_rel.c"
+c_pub_probe_src 7 0 0 > "$TEST_TMPDIR/c_pub_dur.c"
+check
+if ! C_PUB_AGREE_OUT="$(c_pub_probe_compile "$TEST_TMPDIR/c_pub_agree.c")"; then
+    fail "F6: the AGREEING C publisher + subscription call sites failed to compile -- $C_PUB_AGREE_OUT"
+else
+    for _case in "c_pub_depth.c|nros_declared_pub_depth_vs_passed|char[7]|char[1]|depth" \
+                 "c_pub_rel.c|nros_declared_pub_reliability_vs_passed|char[1]|char[2]|reliability" \
+                 "c_pub_dur.c|nros_declared_pub_durability_vs_passed|char[2]|char[1]|durability"; do
+        IFS='|' read -r _src _want _a _b _what <<<"$_case"
+        check
+        if C_PUB_OUT="$(c_pub_probe_compile "$TEST_TMPDIR/$_src")"; then
+            fail "F6: a C publisher whose $_what DISAGREES with its contract COMPILED --
+NROS_DECLARED_PUB_QOS_ROWS_Q is not reaching the C check."
+        else
+            for _w in '"/chatter"' "$_want" "$_a" "$_b"; do
+                check
+                case "$C_PUB_OUT" in
+                    *"$_w"*) ;;
+                    *) fail "F6: the C publisher $_what diagnostic does not contain: $_w -- $C_PUB_OUT" ;;
                 esac
             done
         fi

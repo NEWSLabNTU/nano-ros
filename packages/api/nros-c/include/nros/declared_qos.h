@@ -340,6 +340,122 @@
         "nros_declared_durability_vs_passed_* diagnostic beside this one -- declared first, "      \
         "passed second.")
 
+/* ------------------------------------------------------------------------- */
+/* Issue 1608 -- the same check for a PUBLISHER.                              */
+/* ------------------------------------------------------------------------- */
+
+/* The generated header carries publisher rows in lists of their OWN
+ * (`NROS_DECLARED_PUB_QOS_ROWS` / `_Q`): the table is keyed `(type, topic)`, and
+ * a publisher and a subscription on one pair are two endpoints with one key. The
+ * columns, the tokens and the row search are the subscription's, so the
+ * `_NROS_DQ_FIND_*` row macros above serve both lists. */
+#if defined(NROS_DECLARED_PUB_QOS_ROWS_Q) && (defined(__GNUC__) || defined(__clang__))
+#define NROS_DECLARED_PUB_QOS_COMPILE_TIME 1
+#else
+#define NROS_DECLARED_PUB_QOS_COMPILE_TIME 0
+#endif
+
+#if NROS_DECLARED_PUB_QOS_COMPILE_TIME
+
+/** Issue 1608 -- the declared depth of the PUBLISHER on `(type, topic)`, or
+ *  @ref NROS_DECLARED_DEPTH_UNDECLARED. A constant expression on the terms of
+ *  @ref NROS_DECLARED_DEPTH. */
+#define NROS_DECLARED_PUB_DEPTH(nros_type_lit, nros_topic_lit)                                     \
+    (NROS_DECLARED_PUB_QOS_ROWS_Q(_NROS_DQ_FIND_ROW, (nros_type_lit), (nros_topic_lit))            \
+         NROS_DECLARED_DEPTH_UNDECLARED)
+/** Issue 1608 -- the publisher's declared RELIABILITY (`nros_qos_reliability_t`). */
+#define NROS_DECLARED_PUB_RELIABILITY(nros_type_lit, nros_topic_lit)                               \
+    (NROS_DECLARED_PUB_QOS_ROWS_Q(_NROS_DQ_FIND_REL_ROW, (nros_type_lit), (nros_topic_lit))        \
+         NROS_DECLARED_POLICY_UNDECLARED)
+/** Issue 1608 -- the publisher's declared DURABILITY (`nros_qos_durability_t`). */
+#define NROS_DECLARED_PUB_DURABILITY(nros_type_lit, nros_topic_lit)                                \
+    (NROS_DECLARED_PUB_QOS_ROWS_Q(_NROS_DQ_FIND_DUR_ROW, (nros_type_lit), (nros_topic_lit))        \
+         NROS_DECLARED_POLICY_UNDECLARED)
+
+#else /* no publisher rows, or a compiler that does not fold __builtin_strcmp */
+
+#define NROS_DECLARED_PUB_DEPTH(nros_type_lit, nros_topic_lit) (NROS_DECLARED_DEPTH_UNDECLARED)
+#define NROS_DECLARED_PUB_RELIABILITY(nros_type_lit, nros_topic_lit)                               \
+    (NROS_DECLARED_POLICY_UNDECLARED)
+#define NROS_DECLARED_PUB_DURABILITY(nros_type_lit, nros_topic_lit)                                \
+    (NROS_DECLARED_POLICY_UNDECLARED)
+
+#endif /* NROS_DECLARED_PUB_QOS_COMPILE_TIME */
+
+/**
+ * Issue 1608 -- fail the BUILD when a PUBLISHER's passed QoS depth disagrees
+ * with the depth its contract declares (`contracts.pub_endpoints.<ep>.qos`).
+ *
+ * The four arguments and the three-declaration expansion of
+ * @ref NROS_ASSERT_DECLARED_DEPTH, against the publisher rows. Write it beside
+ * the call that creates the publisher (`nros_publisher_init_with_qos`), whose
+ * QoS is a constant expression at every call site this half serves; a
+ * non-constant one is held to the same rows at REGISTRATION instead
+ * (`nros_node::declared_qos::honour_publisher`).
+ *
+ * Equality, as for a subscription: the build states one number, and a
+ * publisher asking LESS than its declaration is what registration would
+ * quietly raise -- which the build is the place to make the code say.
+ */
+#define NROS_ASSERT_DECLARED_PUB_DEPTH(nros_type_lit, nros_topic_lit, nros_depth_expr,             \
+                                       nros_topic_text)                                            \
+    _Static_assert(                                                                                \
+        NROS_DECLARED_PUB_DEPTH((nros_type_lit), (nros_topic_lit)) ==                              \
+                NROS_DECLARED_DEPTH_UNDECLARED ||                                                  \
+            NROS_DECLARED_PUB_DEPTH((nros_type_lit), (nros_topic_lit)) == (nros_depth_expr),       \
+        "nros: the QoS depth passed for the publisher on topic " nros_topic_text                   \
+        " disagrees with the depth declared for that publisher in the contract sidecar "           \
+        "(<stem>.contract.yaml, contracts.pub_endpoints.<ep>.qos). Both numbers are in the "       \
+        "nros_declared_pub_depth_vs_passed_at_line_* diagnostic beside this one -- declared "      \
+        "first, passed second.");                                                                  \
+    extern char _NROS_DQ_CAT(nros_declared_pub_depth_vs_passed_at_line_, __LINE__)                 \
+        [NROS_DECLARED_DEPTH_OR(NROS_DECLARED_PUB_DEPTH((nros_type_lit), (nros_topic_lit)),        \
+                                (nros_depth_expr)) == (nros_depth_expr)                            \
+             ? 1                                                                                   \
+             : NROS_DECLARED_DEPTH_OR(NROS_DECLARED_PUB_DEPTH((nros_type_lit), (nros_topic_lit)),  \
+                                      (nros_depth_expr))];                                         \
+    extern char _NROS_DQ_CAT(                                                                      \
+        nros_declared_pub_depth_vs_passed_at_line_,                                                \
+        __LINE__)[NROS_DECLARED_DEPTH_OR(                                                          \
+                      NROS_DECLARED_PUB_DEPTH((nros_type_lit), (nros_topic_lit)),                  \
+                      (nros_depth_expr)) == (nros_depth_expr)                                      \
+                      ? 1                                                                          \
+                      : (nros_depth_expr)];                                                        \
+    (void)sizeof(_NROS_DQ_CAT(nros_declared_pub_depth_vs_passed_at_line_, __LINE__))
+
+/**
+ * Issue 1608 -- the PUBLISHER's RELIABILITY, on @ref
+ * NROS_ASSERT_DECLARED_RELIABILITY's terms. An incompatible-QoS match never
+ * delivers, and a BEST_EFFORT writer is matched by no RELIABLE reader.
+ */
+#define NROS_ASSERT_DECLARED_PUB_RELIABILITY(nros_type_lit, nros_topic_lit, nros_rel_expr,         \
+                                             nros_topic_text)                                      \
+    _NROS_DQ_ASSERT_POLICY(                                                                        \
+        NROS_DECLARED_PUB_RELIABILITY((nros_type_lit), (nros_topic_lit)), (nros_rel_expr),         \
+        nros_declared_pub_reliability_vs_passed__1_best_effort_2_reliable__at_line_,               \
+        "nros: the QoS reliability passed for the publisher on topic " nros_topic_text             \
+        " disagrees with the reliability declared for that publisher in the contract "             \
+        "sidecar (<stem>.contract.yaml). Both values are in the "                                  \
+        "nros_declared_pub_reliability_vs_passed_* diagnostic beside this one -- "                 \
+        "declared first, passed second.")
+
+/**
+ * Issue 1608 -- the PUBLISHER's DURABILITY. A transient-local publisher is what
+ * a zenoh image spends a cache queryable slot on, so this is the column whose
+ * disagreement is also a SIZING error: the build counted (or did not count) a
+ * slot the code does not (or does) declare.
+ */
+#define NROS_ASSERT_DECLARED_PUB_DURABILITY(nros_type_lit, nros_topic_lit, nros_dur_expr,          \
+                                            nros_topic_text)                                       \
+    _NROS_DQ_ASSERT_POLICY(                                                                        \
+        NROS_DECLARED_PUB_DURABILITY((nros_type_lit), (nros_topic_lit)), (nros_dur_expr),          \
+        nros_declared_pub_durability_vs_passed__1_volatile_2_transient_local__at_line_,            \
+        "nros: the QoS durability passed for the publisher on topic " nros_topic_text              \
+        " disagrees with the durability declared for that publisher in the contract sidecar "      \
+        "(<stem>.contract.yaml). Both values are in the "                                          \
+        "nros_declared_pub_durability_vs_passed_* diagnostic beside this one -- declared "         \
+        "first, passed second.")
+
 /** `strcmp(a, b) == 0`, spelled here so this header needs no `<string.h>` --
  *  which a freestanding C implementation is not required to provide. */
 static inline int nros_declared_qos_streq(const char* nros_a, const char* nros_b) {

@@ -1682,8 +1682,15 @@ pub enum DeclaredQosHeaderTable {
     /// state different values for one endpoint of this component.
     Refused { reason: String },
     Resolved {
-        /// Sorted by `(type_name, topic)`, so the artifact is byte-stable.
+        /// SUBSCRIPTION rows. Sorted by `(type_name, topic)`, so the artifact
+        /// is byte-stable.
         rows: Vec<DeclaredQosHeaderRow>,
+        /// Issue 1608 -- PUBLISHER rows, in a list of their own. The table is
+        /// keyed `(type, topic)`, and a publisher and a subscription on one
+        /// pair are two endpoints with one key, so the kind is the LIST rather
+        /// than a column: the subscription rows keep their arity and every
+        /// consumer of them reads exactly what it read before.
+        pub_rows: Vec<DeclaredQosHeaderRow>,
         /// Depth-carrying endpoints that stated no depth -- informational in
         /// the header (`NROS_DECLARED_QOS_UNDECLARED_COUNT`).
         undeclared: usize,
@@ -1723,8 +1730,10 @@ impl DeclaredQosHeaderTable {
         /// A merged row and, per column (depth, reliability, durability), the
         /// source that stated it -- what a conflict message names.
         type Merged = (DeclaredQosHeaderRow, [Option<String>; 3]);
-        // `(type, topic)` -> the merged row.
+        // `(type, topic)` -> the merged row, per endpoint KIND (issue 1608):
+        // a publisher row folds with publisher rows only, by the same rule.
         let mut merged: BTreeMap<(String, String), Merged> = BTreeMap::new();
+        let mut merged_pub: BTreeMap<(String, String), Merged> = BTreeMap::new();
         let mut undeclared = 0usize;
         let mut depth_refused: Option<String> = None;
         let mut conflicts: Vec<String> = Vec::new();
@@ -1765,6 +1774,7 @@ impl DeclaredQosHeaderTable {
                 }
                 DeclaredQosHeaderTable::Resolved {
                     rows,
+                    pub_rows,
                     undeclared: u,
                     depth_refused: d,
                 } => {
@@ -1774,49 +1784,54 @@ impl DeclaredQosHeaderTable {
                     if depth_refused.is_none() {
                         depth_refused = d.as_ref().map(|r| format!("{src}: {r}"));
                     }
-                    for r in rows {
-                        let key = (r.type_name.clone(), r.topic.clone());
-                        let entry = merged.entry(key.clone()).or_insert_with(|| {
-                            (
-                                DeclaredQosHeaderRow {
-                                    type_name: r.type_name.clone(),
-                                    topic: r.topic.clone(),
-                                    depth: None,
-                                    reliability: None,
-                                    durability: None,
-                                },
-                                [None, None, None],
-                            )
-                        });
-                        let (row, srcs) = entry;
-                        let [d_src, r_src, u_src] = srcs;
-                        take(
-                            "depth",
-                            &key,
-                            &mut row.depth,
-                            d_src,
-                            r.depth,
-                            src,
-                            &mut conflicts,
-                        );
-                        take(
-                            "reliability",
-                            &key,
-                            &mut row.reliability,
-                            r_src,
-                            r.reliability,
-                            src,
-                            &mut conflicts,
-                        );
-                        take(
-                            "durability",
-                            &key,
-                            &mut row.durability,
-                            u_src,
-                            r.durability,
-                            src,
-                            &mut conflicts,
-                        );
+                    for (list, into, kind) in [
+                        (rows, &mut merged, ""),
+                        (pub_rows, &mut merged_pub, "publisher "),
+                    ] {
+                        for r in list {
+                            let key = (r.type_name.clone(), r.topic.clone());
+                            let entry = into.entry(key.clone()).or_insert_with(|| {
+                                (
+                                    DeclaredQosHeaderRow {
+                                        type_name: r.type_name.clone(),
+                                        topic: r.topic.clone(),
+                                        depth: None,
+                                        reliability: None,
+                                        durability: None,
+                                    },
+                                    [None, None, None],
+                                )
+                            });
+                            let (row, srcs) = entry;
+                            let [d_src, r_src, u_src] = srcs;
+                            take(
+                                &format!("{kind}depth"),
+                                &key,
+                                &mut row.depth,
+                                d_src,
+                                r.depth,
+                                src,
+                                &mut conflicts,
+                            );
+                            take(
+                                &format!("{kind}reliability"),
+                                &key,
+                                &mut row.reliability,
+                                r_src,
+                                r.reliability,
+                                src,
+                                &mut conflicts,
+                            );
+                            take(
+                                &format!("{kind}durability"),
+                                &key,
+                                &mut row.durability,
+                                u_src,
+                                r.durability,
+                                src,
+                                &mut conflicts,
+                            );
+                        }
                     }
                 }
             }
@@ -1833,17 +1848,22 @@ impl DeclaredQosHeaderTable {
             };
         }
         let mut rows: Vec<DeclaredQosHeaderRow> = merged.into_values().map(|(r, _)| r).collect();
+        let mut pub_rows: Vec<DeclaredQosHeaderRow> =
+            merged_pub.into_values().map(|(r, _)| r).collect();
         // A depth column refused in ANY input is refused in the union: that
         // input's depths are unknown, so a depth another model states may be
         // the one it disagrees with.
         if depth_refused.is_some() {
-            for r in &mut rows {
-                r.depth = None;
+            for list in [&mut rows, &mut pub_rows] {
+                for r in list.iter_mut() {
+                    r.depth = None;
+                }
+                list.retain(|r| r.reliability.is_some() || r.durability.is_some());
             }
-            rows.retain(|r| r.reliability.is_some() || r.durability.is_some());
         }
         DeclaredQosHeaderTable::Resolved {
             rows,
+            pub_rows,
             undeclared,
             depth_refused,
         }
@@ -3811,7 +3831,6 @@ impl EntityInventory {
         };
 
         use std::collections::BTreeMap;
-        let mut merged: BTreeMap<(String, String), DeclaredQosHeaderRow> = BTreeMap::new();
         let blank = |t: &str, tp: &str| DeclaredQosHeaderRow {
             type_name: t.to_string(),
             topic: tp.to_string(),
@@ -3825,49 +3844,50 @@ impl EntityInventory {
         // `NROS_SUBSCRIBE` or fail to compile, and moving the margin by one slot
         // would break every such image. See [`DepthSource`].
         //
-        // SUBSCRIPTIONS only, and that is the scope of the consumer rather than
-        // a shortcut: the table is keyed `(type, topic)`, so a publisher and a
-        // subscription on one pair would be two rows with one key. When the
-        // publish side grows a check the row gains a kind column.
-        for r in depth_rows
-            .iter()
-            .filter(|r| r.kind == EntityKind::Subscription)
-            .filter(|r| r.source == DepthSource::Stated)
-        {
-            merged
-                .entry((r.type_name.clone(), r.topic.clone()))
-                .or_insert_with(|| blank(&r.type_name, &r.topic))
-                .depth = Some(r.depth);
-        }
-        for p in policies
-            .iter()
-            .filter(|p| p.kind == EntityKind::Subscription)
-        {
-            // `system_default` says "the middleware chooses", which no call
-            // site can disagree with -- it is not a column value.
-            let reliability = p.reliability.filter(|r| {
-                matches!(
-                    r,
-                    QoSReliabilityPolicy::Reliable | QoSReliabilityPolicy::BestEffort
-                )
-            });
-            let durability = p.durability.filter(|d| {
-                matches!(
-                    d,
-                    QoSDurabilityPolicy::Volatile | QoSDurabilityPolicy::TransientLocal
-                )
-            });
-            if reliability.is_none() && durability.is_none() {
-                continue;
+        // One table PER KIND (issue 1608): the table is keyed `(type, topic)`,
+        // and a publisher and a subscription on one pair are two endpoints with
+        // one key, so each kind is folded into its own list by the same rule.
+        let table_for = |kind: EntityKind| {
+            let mut merged: BTreeMap<(String, String), DeclaredQosHeaderRow> = BTreeMap::new();
+            for r in depth_rows
+                .iter()
+                .filter(|r| r.kind == kind)
+                .filter(|r| r.source == DepthSource::Stated)
+            {
+                merged
+                    .entry((r.type_name.clone(), r.topic.clone()))
+                    .or_insert_with(|| blank(&r.type_name, &r.topic))
+                    .depth = Some(r.depth);
             }
-            let row = merged
-                .entry((p.type_name.clone(), p.topic.clone()))
-                .or_insert_with(|| blank(&p.type_name, &p.topic));
-            row.reliability = reliability;
-            row.durability = durability;
-        }
+            for p in policies.iter().filter(|p| p.kind == kind) {
+                // `system_default` says "the middleware chooses", which no call
+                // site can disagree with -- it is not a column value.
+                let reliability = p.reliability.filter(|r| {
+                    matches!(
+                        r,
+                        QoSReliabilityPolicy::Reliable | QoSReliabilityPolicy::BestEffort
+                    )
+                });
+                let durability = p.durability.filter(|d| {
+                    matches!(
+                        d,
+                        QoSDurabilityPolicy::Volatile | QoSDurabilityPolicy::TransientLocal
+                    )
+                });
+                if reliability.is_none() && durability.is_none() {
+                    continue;
+                }
+                let row = merged
+                    .entry((p.type_name.clone(), p.topic.clone()))
+                    .or_insert_with(|| blank(&p.type_name, &p.topic));
+                row.reliability = reliability;
+                row.durability = durability;
+            }
+            merged.into_values().collect::<Vec<_>>()
+        };
         DeclaredQosHeaderTable::Resolved {
-            rows: merged.into_values().collect(),
+            rows: table_for(EntityKind::Subscription),
+            pub_rows: table_for(EntityKind::Publisher),
             undeclared,
             depth_refused,
         }
@@ -4954,6 +4974,62 @@ fn c_escape(s: &str) -> String {
 /// A free function over a [`DeclaredQosHeaderTable`] rather than a method on the
 /// inventory, because a configure with several SystemModels renders the UNION
 /// of one table per model (issue 1564), which no single inventory holds.
+/// Issue 1608 -- the PUBLISHER rows: the same two X-macro forms as the
+/// subscription rows (`NROS_DECLARED_PUB_QOS_ROWS` for C++,
+/// `NROS_DECLARED_PUB_QOS_ROWS_Q` for C), with the same columns, written by one
+/// loop each so the two forms cannot say different things. Nothing at all when
+/// no publisher declared a QoS, so a header for an image without one is
+/// byte-identical to what it was.
+fn render_declared_pub_qos_rows(s: &mut String, pub_rows: &[DeclaredQosHeaderRow]) {
+    if pub_rows.is_empty() {
+        return;
+    }
+    s.push_str(
+        "\n/* Issue 1608 -- the PUBLISHER rows, in lists of their own: the table is\n \
+         * keyed (type, topic), and a publisher and a subscription on one pair are\n \
+         * two endpoints with one key. Same columns and the same two forms as the\n \
+         * subscription lists above: `nros/declared_qos.hpp` expands\n \
+         * NROS_DECLARED_PUB_QOS_ROWS, `nros/declared_qos.h` the _Q form. */\n",
+    );
+    s.push_str("#define NROS_DECLARED_PUB_QOS_ROWS \\\n");
+    for r in pub_rows {
+        for ty in row_type_spellings(&r.type_name) {
+            s.push_str(&format!(
+                "    NROS_DECLARED_PUB_QOS_ROW(\"{}\", \"{}\", {}, {}, {}) \\\n",
+                c_escape(&ty),
+                c_escape(&r.topic),
+                r.depth_literal(),
+                r.reliability_token(),
+                r.durability_token()
+            ));
+        }
+    }
+    s.push_str("    /* end */\n");
+    s.push_str(
+        "#define NROS_DECLARED_PUB_QOS_ROWS_Q(NROS_DECLARED_PUB_QOS_ROW_Q, \\\n        \
+         nros_q_type, nros_q_topic) \\\n",
+    );
+    let mut n_rows = 0usize;
+    for r in pub_rows {
+        for ty in row_type_spellings(&r.type_name) {
+            n_rows += 1;
+            s.push_str(&format!(
+                "    NROS_DECLARED_PUB_QOS_ROW_Q(\"{}\", \"{}\", {}, {}, {}, nros_q_type, \
+                 nros_q_topic) \\\n",
+                c_escape(&ty),
+                c_escape(&r.topic),
+                r.depth_literal(),
+                r.reliability_token(),
+                r.durability_token()
+            ));
+        }
+    }
+    s.push_str("    /* end */\n");
+    s.push_str(&format!(
+        "#define NROS_DECLARED_PUB_QOS_ROW_COUNT {n_rows}\n"
+    ));
+}
+
 pub fn render_declared_qos_header(source: &str, table: &DeclaredQosHeaderTable) -> String {
     let mut s = String::new();
     // Written line by line, NOT as one `\`-continued literal: Rust strips the
@@ -5000,6 +5076,7 @@ pub fn render_declared_qos_header(source: &str, table: &DeclaredQosHeaderTable) 
         }
         DeclaredQosHeaderTable::Resolved {
             rows,
+            pub_rows,
             undeclared,
             depth_refused,
         } => {
@@ -5093,6 +5170,7 @@ pub fn render_declared_qos_header(source: &str, table: &DeclaredQosHeaderTable) 
                 s.push_str("    /* end */\n");
                 s.push_str(&format!("#define NROS_DECLARED_QOS_ROW_COUNT {n_rows}\n"));
             }
+            render_declared_pub_qos_rows(&mut s, pub_rows);
         }
     }
     s.push_str("\n#endif /* NROS_DECLARED_QOS_GENERATED_H */\n");
@@ -8436,6 +8514,113 @@ contracts:
         EntityInventory::from_model("m", &one_sub_model(qos))
             .expect("model describes wiring")
             .declared_qos_header_table()
+    }
+
+    /// A model with one publisher and one subscription on the SAME
+    /// `(type, topic)`, each with a contract `qos` of its own -- the shape
+    /// issue 1608 is about: one key, two endpoints.
+    fn pub_and_sub_model(pub_qos: &str, sub_qos: &str) -> SystemModel {
+        model_from_yaml(&format!(
+            r#"
+meta: {{ version: 1 }}
+structure:
+  nodes:
+    /talker: {{ scope: s.launch.xml, pkg: demo, exec: talker, node_name: talker }}
+    /listener: {{ scope: s.launch.xml, pkg: demo, exec: listener, node_name: listener }}
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+      sub: [/listener/chatter]
+contracts:
+  pub_endpoints:
+    /talker/chatter:
+      qos: {pub_qos}
+  sub_endpoints:
+    /listener/chatter:
+      qos: {sub_qos}
+"#
+        ))
+    }
+
+    /// Issue 1608 -- a PUBLISHER's declared QoS reaches the compile-time
+    /// table, in lists of its own, beside the subscription's row for the same
+    /// `(type, topic)` -- which keeps its own values and its arity.
+    #[test]
+    fn a_publisher_s_declared_qos_reaches_its_own_header_lists() {
+        let inv = EntityInventory::from_model(
+            "m",
+            &pub_and_sub_model(
+                "{ depth: 1, durability: transient_local }",
+                "{ depth: 5, reliability: best_effort }",
+            ),
+        )
+        .expect("model describes wiring");
+        let h = inv.to_declared_qos_header();
+        for want in [
+            "NROS_DECLARED_PUB_QOS_ROW(\"std_msgs::msg::dds_::Int32_\", \"/chatter\", 1, \
+             NROS_DQ_UNDECLARED, NROS_DQ_TRANSIENT_LOCAL)",
+            "NROS_DECLARED_PUB_QOS_ROW(\"std_msgs/msg/Int32\", \"/chatter\", 1, \
+             NROS_DQ_UNDECLARED, NROS_DQ_TRANSIENT_LOCAL)",
+            "NROS_DECLARED_PUB_QOS_ROW_Q(\"std_msgs/msg/Int32\", \"/chatter\", 1, \
+             NROS_DQ_UNDECLARED, NROS_DQ_TRANSIENT_LOCAL, nros_q_type, nros_q_topic)",
+            "#define NROS_DECLARED_PUB_QOS_ROW_COUNT 2",
+            // The subscription keeps ITS values: one key, two endpoints.
+            "NROS_DECLARED_QOS_ROW(\"std_msgs/msg/Int32\", \"/chatter\", 5, \
+             NROS_DQ_BEST_EFFORT, NROS_DQ_UNDECLARED)",
+            "#define NROS_DECLARED_QOS_ROW_COUNT 2",
+        ] {
+            assert!(h.contains(want), "missing `{want}`:\n{h}");
+        }
+    }
+
+    /// Issue 1608 -- a header for an image whose publishers declare nothing
+    /// carries no publisher list at all, so it is byte-identical to before.
+    #[test]
+    fn no_declared_publisher_qos_renders_no_publisher_list() {
+        let h = EntityInventory::from_model("m", &one_sub_model("{ depth: 1 }"))
+            .expect("model describes wiring")
+            .to_declared_qos_header();
+        assert!(!h.contains("NROS_DECLARED_PUB_QOS"), "{h}");
+    }
+
+    /// Issue 1608 / RFC-0100 D12 rule 1 -- a PUBLISHER row two models state
+    /// differently refuses the per-component union, naming both, exactly as a
+    /// subscription row does; one model's silence takes the other's value.
+    #[test]
+    fn the_union_folds_publisher_rows_by_the_subscription_rule() {
+        let t = |pub_qos: &str| {
+            EntityInventory::from_model("m", &pub_and_sub_model(pub_qos, "{ depth: 5 }"))
+                .expect("wired")
+                .declared_qos_header_table()
+        };
+        let u = DeclaredQosHeaderTable::union(&[
+            ("a.yaml".into(), t("{ depth: 1 }")),
+            ("b.yaml".into(), t("{ durability: transient_local }")),
+        ]);
+        let DeclaredQosHeaderTable::Resolved { pub_rows, .. } = &u else {
+            panic!("{u:?}");
+        };
+        assert_eq!(pub_rows.len(), 1, "{u:?}");
+        assert_eq!(pub_rows[0].depth, Some(1));
+        assert_eq!(
+            pub_rows[0].durability,
+            Some(QoSDurabilityPolicy::TransientLocal)
+        );
+
+        let c = DeclaredQosHeaderTable::union(&[
+            ("a.yaml".into(), t("{ depth: 1 }")),
+            ("b.yaml".into(), t("{ depth: 2 }")),
+        ]);
+        let DeclaredQosHeaderTable::Refused { reason } = &c else {
+            panic!("two models declaring different publisher depths must refuse: {c:?}");
+        };
+        assert!(
+            reason.contains("publisher depth")
+                && reason.contains("a.yaml")
+                && reason.contains("b.yaml"),
+            "{reason}"
+        );
     }
 
     /// issue 1256 -- the two POLICIES reach the compile-time table, as tokens,
