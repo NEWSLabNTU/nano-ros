@@ -1,7 +1,7 @@
 // QosTalker — typed component (RFC-0043), the C++ projection of ws-qos-c's
 // QosTalker. The nano-ros QoS differentiator in C++: instead of the default
 // profile the committed cpp_lifecycle_talker_pkg uses, `configure` builds a NON-DEFAULT
-// `rclcpp::QoS` via the fluent builder (`.reliable().transient_local().keep_last(10)`)
+// `rclcpp::QoS` via the fluent builder (`.reliable().transient_local().keep_last(1)`)
 // and passes it to `Node::create_publisher`. The matching QosListener declares
 // the byte-identical profile so the QoS-matched endpoints connect.
 
@@ -24,9 +24,11 @@ void QosTalker::on_tick() {
     // immediately when piped (the test reads the output live).
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     // Non-default QoS contract both endpoints declare: RELIABLE delivery,
-    // TRANSIENT_LOCAL durability, KEEP_LAST(10) history depth.
+    // TRANSIENT_LOCAL durability, KEEP_LAST(1) history depth. Depth 1 is what
+    // the zenoh backend SERVES for a transient-local publisher (it retains one
+    // sample), and `ros2 topic info -v` reads the served profile (issue 1687).
     const ::rclcpp::QoS qos =
-        ::rclcpp::QoS::default_profile().reliable().transient_local().keep_last(10);
+        ::rclcpp::QoS::default_profile().reliable().transient_local().keep_last(1);
     ::rclcpp::Result r = node.create_publisher(pub_, "/chatter", qos);
     if (!r.ok()) return r;
     // Member-fn-pointer-as-template-param → no-alloc trampoline; `this` is ctx.

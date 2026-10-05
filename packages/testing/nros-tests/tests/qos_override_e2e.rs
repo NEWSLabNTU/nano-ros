@@ -13,21 +13,24 @@
 //!
 //! ## What is observable, and what is not
 //!
-//! The zenoh backend does not implement QoS SEMANTICS: `to_qos_string`
-//! (`nros-rmw-zenoh/src/keyexpr.rs`) encodes the profile into the liveliness
-//! token and nothing else — no history cache, no depth-driven drop. So there is
-//! no delivery difference to observe: transient_local does not replay to a late
-//! joiner here, and a depth override does not change what arrives. A test that
-//! claimed otherwise would be asserting a behaviour the stack does not have.
-//!
-//! What IS on the wire is the ADVERTISED profile, and a stock `rmw_zenoh_cpp`
+//! What is on the wire is the ADVERTISED profile, and a stock `rmw_zenoh_cpp`
 //! peer reads it: `ros2 topic info --verbose` reports the discovered
 //! publisher's QoS. That is the honest end of this chain, so that is what the
 //! runtime half asserts.
 //!
+//! Since phase-428 W9 the advertised profile is the backend's GRANT, not the
+//! request (`nros-rmw-zenoh/src/shim/qos.rs`): a depth the backend cannot keep
+//! is advertised as the depth it does keep. So the oracle has to be a profile
+//! the backend SERVES, or the wire cannot show it. Issue 1687 — this test read
+//! `RELIABLE` + `KEEP_LAST (1)` for a declared `best_effort` + depth 10,
+//! because the shim granted every BEST_EFFORT as RELIABLE (on a premise about
+//! zenoh-pico congestion control that was measured false) and a transient-local
+//! publisher retains one sample. The first is fixed in the shim; the second is
+//! the backend's real capacity, so the talker now declares depth 1.
+//!
 //! ## The oracle
 //!
-//! `reliable_talker_pkg` declares `reliable + transient_local + depth(10)` in
+//! `reliable_talker_pkg` declares `reliable + transient_local + depth(1)` in
 //! CODE. The committed model overrides RELIABILITY to `best_effort` — a value
 //! the code never asks for. So on the wire:
 //!
@@ -207,14 +210,15 @@ fn a_ros2_peer_sees_the_overridden_publisher_profile(zenohd_unique: ZenohRouter)
          live entity; the publisher advertises the code's own profile:\n{publisher}"
     );
     // Issue 0306 — the node's OWN declared QoS must survive alongside the
-    // override: `transient_local` and depth 10 come from the code, not the plan.
+    // override: `transient_local` and depth 1 come from the code, not the plan,
+    // and neither is the default (VOLATILE, KEEP_LAST(10)).
     assert!(
         publisher.contains("Durability: TRANSIENT_LOCAL"),
         "the node's code-declared durability was dropped (issue 0306 regression): the plan \
          override applied but the declared profile did not:\n{publisher}"
     );
     assert!(
-        publisher.contains("KEEP_LAST (10)"),
+        publisher.contains("KEEP_LAST (1)\n"),
         "the node's code-declared depth was dropped (issue 0306 regression):\n{publisher}"
     );
 
