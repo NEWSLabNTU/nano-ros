@@ -121,7 +121,7 @@ mode answers NONE, exactly as the NULL slot did.
 such an entry keeps those bytes. No C remover reaches one (C passes no
 capture). `nros_executor_add_subscription_raw_with_info` takes no subscription
 object and discards its handle, so nothing can remove what it registers, and
-the gate cannot see it — filed as [issue 1668](../1668-c-sub-raw-with-info-unremovable.md).
+the gate cannot see it — filed as [issue 1668](1668-c-sub-raw-with-info-unremovable.md).
 The guard condition stays as the issue described it.
 
 Sweep: `git grep -n 'pub unsafe extern "C" fn \(nros\|rclc\)_executor_add_' packages/api/nros-c/src`
