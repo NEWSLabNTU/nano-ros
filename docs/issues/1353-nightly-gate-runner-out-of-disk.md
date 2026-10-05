@@ -2133,3 +2133,39 @@ nothing, so a missing after-row is evidence for this issue, not against it.
 
 Nothing else here is new: the starting headroom (25 G) matches the 10-02 pair
 (25 G), and the outcome is the same.
+
+## The scheduled `gate` arm, fourth and fifth nights (2026-10-04, 2026-10-05)
+
+Same lane, same step, same runner-log annotation. Both runs now carry an
+`after:` row: the after-report wrote this time, unlike 10-03's.
+
+| | 2026-10-04 run **37171554781** (job 111345372702) | 2026-10-05 run **37254591965** (job 111588893565) |
+| --- | --- | --- |
+| `just check build` | 03:19 → ~04:00 | 02:52:14 → 03:24:26 (32 min) |
+| before | 91 % used, **15 G free** | 91 % used, **15 G free** |
+| after | 100 %, 248 K free | 100 %, 256 K free |
+| `packages/cli/target` | 35 G → 36 G | 35 G → 36 G |
+| `build/` | — | 3.1 G → 7.4 G |
+| `examples/` | 20 G → 20 G | 20 G → 20 G |
+
+Annotation, 10-05 (10-04 is identical apart from the `_diag` start stamp
+`20261004-023617`):
+
+```
+Unhandled exception. System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20261005-021423-utc.log'
+```
+
+**The arrival headroom dropped again, 25 G (10-02, 10-03) → 15 G (10-04,
+10-05).** `packages/cli/target` arrives at 35 G against 24 G on 10-03, so the
+10 G that went missing between 10-03 and 10-04 is that directory's growth
+across nights — the persistent-workspace accumulation the 2026-09-28 point
+measured — not anything the step itself writes. Within the step the named
+directories account for only ~5.3 G of the 15 G consumed (`build/` +4.3 G,
+`packages/cli/target` +1 G); the remainder is outside the `du` list the
+transcript reports, so which writer fills the last ~10 G is still not
+measured here.
+
+Not new: the outcome, the step, the annotation. New: the starting headroom
+is 10 G lower, and two consecutive nights now have a measured full-at-end
+row (100 %, ≤ 256 K free).
