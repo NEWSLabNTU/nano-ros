@@ -5324,6 +5324,40 @@ mod tests {
     /// 14 rate rows and 0 age rows, counted by the functions the entry
     /// emitters bake the tables with, and carried to cmake. A probe-only
     /// inventory states neither, so the crate default stands.
+    /// Issue 1676 -- a contracted image's runtime creates a `/diagnostics`
+    /// publisher (`nros::contract::DiagSink`) on the session's own node before
+    /// any component exists. Both are counted, against the same model with the
+    /// contract taken away; measured short by exactly these two on a native
+    /// Rust talker, which then failed to create its own publisher.
+    #[test]
+    fn a_contracted_image_counts_its_diagnostics_reporter() {
+        use ros_launch_manifest_model::{PubContract, SystemModel, TopicWiring};
+        let mut plain = SystemModel::default();
+        plain.structure.topics.insert(
+            "/chatter".to_string(),
+            TopicWiring {
+                msg_type: "std_msgs/msg/Int32".to_string(),
+                publishers: vec!["/talker/chatter".to_string()],
+                subscribers: vec![],
+            },
+        );
+        let mut contracted = plain.clone();
+        contracted.contracts.pub_endpoints.insert(
+            "/talker/chatter".to_string(),
+            PubContract {
+                min_rate_hz: Some(5.0),
+                ..Default::default()
+            },
+        );
+        let p = EntityInventory::from_model("img", &plain).expect("wiring described");
+        let c = EntityInventory::from_model("img", &contracted).expect("wiring described");
+        assert_eq!((p.contract_reporters(), c.contract_reporters()), (0, 1));
+        let (pd, cd) = (p.derive(), c.derive());
+        let (pk, ck) = (pd.knobs().expect("derived"), cd.knobs().expect("derived"));
+        assert_eq!(ck.max_publishers, pk.max_publishers + 1, "the reporter");
+        assert_eq!(ck.max_nodes, pk.max_nodes + 1, "the node it is created on");
+    }
+
     #[test]
     fn the_monitor_tables_follow_the_contract() {
         use ros_launch_manifest_model::{PubContract, SystemModel, TopicWiring};

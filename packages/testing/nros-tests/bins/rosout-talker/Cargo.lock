@@ -371,6 +371,7 @@ version = "0.5.0"
 dependencies = [
  "log",
  "nros-core",
+ "nros-diagnostics",
  "nros-log",
  "nros-macros",
  "nros-node",
@@ -439,6 +440,24 @@ dependencies = [
  "heapless",
  "log",
  "nros-serdes",
+]
+
+[[package]]
+name = "nros-diagnostic-msgs"
+version = "0.0.0"
+dependencies = [
+ "heapless",
+ "nros-core",
+ "nros-serdes",
+ "nros-std-msgs",
+]
+
+[[package]]
+name = "nros-diagnostics"
+version = "0.5.0"
+dependencies = [
+ "heapless",
+ "nros-diagnostic-msgs",
 ]
 
 [[package]]
@@ -646,6 +665,16 @@ dependencies = [
  "nros-platform-config",
  "portable-atomic",
  "smoltcp",
+]
+
+[[package]]
+name = "nros-std-msgs"
+version = "0.0.0"
+dependencies = [
+ "heapless",
+ "nros-builtin-interfaces",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]
