@@ -1417,5 +1417,20 @@
     "verdict": "extension",
     "why": "issue 1496 -- arena bytes RELEASED by an entry that was given back and not yet reused, the third reading beside `arena_capacity` / `arena_used`. Upstream has no arena and so no question to ask; here a released region is reused first-fit, so the number says how much of `arena_used` is holes, and an exhaustion report uses it to tell a SHAPE failure (bytes free, no hole fits) from a SIZE one.",
     "bucket": "ours-only"
+  },
+  "rust:Executor::resolve_handle": {
+    "verdict": "extension",
+    "why": "phase-476 W0 / issue 1667 -- a `HandleId` carries the generation of the slot it was issued for, and this answers the slot only while that registration is still its occupant. ROS 2 has no counterpart: rclcpp holds an entity by `shared_ptr`, so a stale reference keeps the entity alive instead of naming a slot that was reused. Ours registers into a fixed slot table whose released slots go to the next registration, so a stale copy has to be detected rather than prevented.",
+    "bucket": "ours-only"
+  },
+  "rust:Executor::set_entry_owner": {
+    "verdict": "extension",
+    "why": "phase-476 W0 -- records which node registered an executor entry, so `release_node` can find it. rclcpp ties an entity's lifetime to its node through the `shared_ptr` ownership graph; ours registers into the executor's arena, so the node-to-entry relation is a recorded tag rather than an ownership edge.",
+    "bucket": "ours-only"
+  },
+  "rust:Executor::release_node": {
+    "verdict": "extension",
+    "why": "phase-476 W0 -- releases every entry a node registered, which is what destroying a C++ node does (`nros_cpp_node_destroy`). In rclcpp, destroying the node drops the last owners of its entities. Ours has to release them explicitly: a C++ callback's capture is copied into the arena and usually holds the node's `this`, so an entry that outlived its node would dispatch into freed memory.",
+    "bucket": "ours-only"
   }
 }

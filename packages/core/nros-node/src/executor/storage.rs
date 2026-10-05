@@ -28,6 +28,7 @@ use super::{
     node_record::NodeRecord,
     sched_context::{SchedContext, SchedContextId, SporadicState},
     spin::{ComponentSlot, DispatchSlot, MAX_REMAPS, RemapRule},
+    types::SlotTag,
 };
 use crate::session::ConcreteSession;
 
@@ -242,6 +243,7 @@ pub(crate) struct ExecutorStorage<
     group_sched_table: [MaybeUninit<GroupSchedEntry>; CBS],
     monitor_violations: [MaybeUninit<Violation>; MAX_VIOLATIONS],
     alive_slots: [AliveSlot; SC],
+    slot_tags: [SlotTag; CBS],
 }
 
 /// The typed, mutable sub-slices an [`Executor`](super::spin::Executor) borrows
@@ -283,6 +285,10 @@ pub(crate) struct ExecutorSlices<'s> {
     /// Alive supervision, one record per SC. Initialised by [`carve`] like the
     /// SC tables above it: a zeroed record is the correct starting state.
     pub(crate) alive_slots: &'s mut [AliveSlot],
+    /// phase-476 W0 — one lifetime tag per callback slot, parallel to
+    /// `entries`. Initialised by [`carve`] to the default (generation 0, no
+    /// owner), which is what a never-used slot is.
+    pub(crate) slot_tags: &'s mut [SlotTag],
 }
 
 /// Byte offsets of each field within the backing + total size/align. Computed
@@ -307,6 +313,7 @@ struct FieldOffsets {
     group_sched_table: usize,
     monitor_violations: usize,
     alive_slots: usize,
+    slot_tags: usize,
     size: usize,
     align: usize,
 }
@@ -342,6 +349,7 @@ pub const NATIVE_UNITS: RegionUnits = RegionUnits {
     group_sched_entry: unit_of::<GroupSchedEntry>(),
     violation: unit_of::<Violation>(),
     alive_slot: unit_of::<AliveSlot>(),
+    slot_tag: unit_of::<SlotTag>(),
 };
 
 /// issue 1197 — publish the backing's TOTAL size as a symbol whose storage size
@@ -393,14 +401,17 @@ const fn counts_for(sizing: ExecutorSizing) -> RegionCounts {
 }
 
 const fn compute_offsets(sizing: ExecutorSizing) -> FieldOffsets {
-    compute_offsets_with(sizing, NATIVE_UNITS)
+    compute_offsets_with(sizing, &NATIVE_UNITS)
 }
 
 /// Adapter over the shared arithmetic: same numbers, named the way `carve`
 /// wants them. The placement itself is `nros_executor_layout::offsets` — one
 /// implementation, so an external evaluation cannot drift from this one.
-const fn compute_offsets_with(sizing: ExecutorSizing, units: RegionUnits) -> FieldOffsets {
-    let o = nros_executor_layout::offsets(counts_for(sizing), units);
+///
+/// By reference: the unit table crossed clippy's 256-byte pass-by-value line
+/// when phase-476 W0 added `slot_tag`.
+const fn compute_offsets_with(sizing: ExecutorSizing, units: &RegionUnits) -> FieldOffsets {
+    let o = nros_executor_layout::offsets(counts_for(sizing), *units);
     FieldOffsets {
         arena: o.arena,
         entries: o.entries,
@@ -420,6 +431,7 @@ const fn compute_offsets_with(sizing: ExecutorSizing, units: RegionUnits) -> Fie
         group_sched_table: o.group_sched_table,
         monitor_violations: o.monitor_violations,
         alive_slots: o.alive_slots,
+        slot_tags: o.slot_tags,
         size: o.size,
         align: o.align,
     }
@@ -436,7 +448,7 @@ const fn compute_offsets_with(sizing: ExecutorSizing, units: RegionUnits) -> Fie
 /// The OFFSETS stay private: only `carve` needs them, and it runs in the crate
 /// that owns the types. A consumer sizing a reservation needs the total.
 pub const fn executor_storage_layout_with(sizing: ExecutorSizing, units: RegionUnits) -> Layout {
-    let o = compute_offsets_with(sizing, units);
+    let o = compute_offsets_with(sizing, &units);
     // SAFETY: as `executor_storage_layout` — `align` is a max of alignments and
     // `size` is rounded up to it.
     unsafe { Layout::from_size_align_unchecked(o.size, o.align) }
@@ -664,6 +676,14 @@ pub(crate) unsafe fn carve<'s>(
         }
         let alive_s = core::slice::from_raw_parts_mut(alive_p, sc);
 
+        let tags_p = base.add(o.slot_tags) as *mut SlotTag;
+        let mut i = 0;
+        while i < cbs {
+            tags_p.add(i).write(SlotTag::default());
+            i += 1;
+        }
+        let tags_s = core::slice::from_raw_parts_mut(tags_p, cbs);
+
         ExecutorSlices {
             arena: arena_s,
             entries: entries_s,
@@ -683,6 +703,7 @@ pub(crate) unsafe fn carve<'s>(
             group_sched_table: carved!(o.group_sched_table, cbs, GroupSchedEntry),
             monitor_violations: carved!(o.monitor_violations, MAX_VIOLATIONS, Violation),
             alive_slots: alive_s,
+            slot_tags: tags_s,
         }
     }
 }
@@ -745,6 +766,7 @@ mod tests {
             group_sched_entry: RegionUnit { size: 0, align: 1 },
             violation: RegionUnit { size: 0, align: 1 },
             alive_slot: RegionUnit { size: 0, align: 1 },
+            slot_tag: RegionUnit { size: 0, align: 1 },
         };
         let arena_only = executor_storage_layout_with(
             ExecutorSizing {
@@ -815,6 +837,7 @@ mod tests {
         same!(group_sched_table);
         same!(monitor_violations);
         same!(alive_slots);
+        same!(slot_tags);
     }
 
     #[test]
@@ -949,9 +972,13 @@ mod tests {
         //     the same reason: it is what lets a released action entry's arena
         //     bytes be reused, and it should be visible here rather than eat
         //     another field's headroom.
+        //   * phase-476 W0's `slot_tags`: the TABLE is carved (it scales with
+        //     `MAX_CBS` and lives in the backing); what sits in this value is
+        //     one slice reference, which scales with nothing.
         #[allow(unused_mut)]
         let mut ceiling =
             1280 + size_of::<super::super::spin::SessionStore>()
+                + size_of::<&mut [super::super::types::SlotTag]>()
                 + size_of::<
                     heapless::Vec<
                         super::super::spin::FreedRegion,

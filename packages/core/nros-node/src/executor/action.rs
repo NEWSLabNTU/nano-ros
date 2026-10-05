@@ -479,7 +479,7 @@ impl<A: RosAction> ActionServerHandle<A> {
     ///
     /// Used with `Trigger::One` or `HandleSet` for trigger configuration.
     pub fn handle_id(&self) -> HandleId {
-        HandleId(self.entry_index)
+        HandleId::for_owned_slot(self.entry_index)
     }
 
     /// Publish feedback for an active goal.
@@ -1374,7 +1374,7 @@ impl Default for ActionServerRawHandle {
 impl ActionServerRawHandle {
     /// Get the [`HandleId`] for this action server.
     pub fn handle_id(&self) -> HandleId {
-        HandleId(self.entry_index)
+        HandleId::for_owned_slot(self.entry_index)
     }
 
     /// Publish feedback with raw CDR bytes (untyped variant).
@@ -1959,7 +1959,7 @@ impl<'s> Executor<'s> {
         };
         self.emplace_entry(slot, meta, TraceName::Text(action_name));
         self.apply_node_default_sched(slot, node_id, None);
-        Ok((HandleId(slot), core_ptr))
+        Ok((self.handle_for(slot), core_ptr))
     }
 }
 

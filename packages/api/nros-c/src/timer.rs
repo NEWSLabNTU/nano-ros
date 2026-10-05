@@ -91,7 +91,7 @@ impl nros_timer_t {
 
     /// Set the handle ID from executor registration
     pub(crate) fn set_handle_id(&mut self, id: nros_node::HandleId) {
-        self.handle_id = id.0;
+        self.handle_id = id.to_raw();
     }
 
     /// Set the executor pointer (called by rclc_executor_add_timer)
@@ -284,7 +284,7 @@ pub unsafe extern "C" fn rcl_timer_cancel(timer: *mut nros_timer_t) -> nros_ret_
             // Forward to executor if registered
             if !timer._executor.is_null() && timer.handle_id != usize::MAX {
                 let exec = &mut *(timer._executor as *mut crate::executor::CExecutor);
-                let _ = exec.cancel_timer(nros_node::HandleId(timer.handle_id));
+                let _ = exec.cancel_timer(nros_node::HandleId::from_raw(timer.handle_id));
             }
 
             timer.state = nros_timer_state_t::NROS_TIMER_STATE_CANCELED;
@@ -323,7 +323,7 @@ pub unsafe extern "C" fn rcl_timer_reset(timer: *mut nros_timer_t) -> nros_ret_t
             // Forward to executor if registered
             if !timer._executor.is_null() && timer.handle_id != usize::MAX {
                 let exec = &mut *(timer._executor as *mut crate::executor::CExecutor);
-                let _ = exec.reset_timer(nros_node::HandleId(timer.handle_id));
+                let _ = exec.reset_timer(nros_node::HandleId::from_raw(timer.handle_id));
             }
 
             timer.last_call_time_ns = 0;
@@ -548,7 +548,7 @@ unsafe fn registered_handle(
         return None;
     }
     let exec = unsafe { crate::executor::get_executor_from_ptr(timer._executor) };
-    Some((exec, nros_node::HandleId(timer.handle_id)))
+    Some((exec, nros_node::HandleId::from_raw(timer.handle_id)))
 }
 
 /// Has this timer been cancelled?

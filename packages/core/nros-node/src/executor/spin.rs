@@ -1790,6 +1790,9 @@ pub struct Executor<'s> {
     /// header grew with it and `the_executor_value_does_not_scale_with_the_knobs`
     /// caught it (issue 0961).
     pub(crate) alive_slots: &'s mut [super::monitor::AliveSlot],
+    /// phase-476 W0 — per-callback-slot lifetime tags, parallel to
+    /// `entries`: the generation a handle must match, and the owning node.
+    pub(crate) slot_tags: &'s mut [super::types::SlotTag],
     /// W3b.5 — baked subscriber age-contract table (empty = none).
     pub(crate) age_table: &'static [super::monitor::AgeMonitorSpec],
     pub(crate) age_states: [super::monitor::AgeState; super::monitor::MAX_AGE_MONITORS],
@@ -1961,6 +1964,7 @@ impl<'s> Executor<'s> {
             group_sched_table,
             monitor_violations,
             alive_slots,
+            slot_tags,
         } = slices;
         // Slot 0 = the auto-created default Fifo SC (see field doc). carve
         // initialised the whole table to `None`; populate the reserved slot.
@@ -2119,6 +2123,7 @@ impl<'s> Executor<'s> {
             monitor_violations,
             violation_sink: None,
             alive_slots,
+            slot_tags,
             // Issue 0790 — both phase tables start empty. An image that
             // registers nothing pays these `None`s and a two-slot scan at
             // teardown, and nothing else.
@@ -3663,7 +3668,7 @@ impl<'s> Executor<'s> {
         handle: HandleId,
         sc_id: super::sched_context::SchedContextId,
     ) -> Result<(), NodeError> {
-        let i = handle.0;
+        let i = self.live_slot(handle);
         if i >= self.entries.len() {
             return Err(NodeError::InvalidSchedContextBinding);
         }
@@ -5491,7 +5496,8 @@ impl<'s> Executor<'s> {
     /// ([`Always`](InvocationMode::Always)) or only when new data
     /// arrives ([`OnNewData`](InvocationMode::OnNewData), the default).
     pub fn set_invocation(&mut self, id: HandleId, mode: InvocationMode) {
-        if let Some(Some(meta)) = self.entries.get_mut(id.0) {
+        let slot = self.live_slot(id);
+        if let Some(Some(meta)) = self.entries.get_mut(slot) {
             meta.invocation = mode;
         }
     }
@@ -5550,98 +5556,65 @@ impl<'s> Executor<'s> {
     }
 
     /// Issue 1631 — remember the region an ENTRY allocation handed out, for
-    /// `emplace_entry` to record. Only the two entry allocators call this;
-    /// `arena_alloc_bytes` (a callback capture) does not, and runs before the
-    /// entry's allocation in every registration that uses it.
+    /// `emplace_entry` to record. Only the two entry allocators call this; a
+    /// callback capture rides inside the entry's trailing region (phase-476
+    /// W0), so it is part of what they record.
     fn note_entry_region(&mut self, offset: usize, len: usize) {
         self.pending_region = Some(FreedRegion { offset, len });
     }
 
-    /// Bump-allocate `size` bytes at `align` — phase-456 W8.
+    /// Bytes a callback CAPTURE takes in an entry's trailing region: its length
+    /// rounded up to the arena's `u64` grain. 0 for no capture.
     ///
-    /// The byte-shaped sibling of [`Self::arena_alloc`], for a region whose
-    /// length is a RUNTIME value rather than a type's size. Exactly one caller
-    /// today, [`Self::stow_capture`], and that is the point: a C++ callback's
-    /// capture is as long as that callback is, and pricing it as a constant is
-    /// what made the constant an ABI agreement between two languages.
-    pub(crate) fn arena_alloc_bytes(
-        &mut self,
-        size: usize,
-        align: usize,
-    ) -> Result<usize, NodeError> {
-        debug_assert!(
-            align.is_power_of_two(),
-            "arena alignment must be a power of two"
-        );
-        if let Some(offset) = self.arena_take_freed(size, align) {
-            crate::boot_report::note_alloc(size, self.arena_used);
-            return Ok(offset);
+    /// phase-476 W0 — a capture used to be a SEPARATE arena allocation
+    /// (`stow_capture` over `arena_alloc_bytes`), which `release_entry` never
+    /// gave back: it frees exactly the region `emplace_entry` recorded, and that
+    /// was the entry's. Placing the capture at the END of the entry's own
+    /// trailing region puts it inside the recorded region, so releasing the
+    /// entry releases its capture.
+    pub(crate) fn capture_trailing_len(capture: Option<&[u8]>) -> usize {
+        match capture {
+            Some(b) if !b.is_empty() => b.len().next_multiple_of(core::mem::align_of::<u64>()),
+            _ => 0,
         }
-        let aligned_offset = self.arena_used.next_multiple_of(align);
-        let new_used = aligned_offset + size;
-        if new_used > self.arena.len() {
-            return Err(self.arena_exhausted(
-                "callback capture",
-                size,
-                new_used - self.arena.len(),
-            ));
-        }
-        self.arena_used = new_used;
-        crate::boot_report::note_alloc(size, new_used);
-        Ok(aligned_offset)
     }
 
-    /// Copy a caller's callback CAPTURE into the arena and return the context
-    /// pointer the entry should dispatch with — phase-456 W1, made a runtime
-    /// length by W8.
+    /// Copy a caller's callback CAPTURE to arena offset `at` and return the
+    /// context pointer the entry should dispatch with — phase-456 W1, made a
+    /// runtime length by W8, made part of the entry's region by phase-476 W0.
     ///
     /// `context` is one pointer. That carries a C++ `[this]` capture and not a
     /// `[this, state]` (two) or a `[obj, method]` (three, because a
     /// pointer-to-member-function is two words on the Itanium ABI) — the
     /// distribution phase-442 W0 measured over this tree and the porting corpus.
-    /// A caller that cannot fit its capture in a pointer had to put it
-    /// somewhere, and every answer on the C++ side was an allocation or an
-    /// object the arena would then hold by address.
-    ///
-    /// So the capture lives HERE, beside the registration that uses it: arena
-    /// bytes never move once allocated, and the returned pointer is into them
-    /// rather than into anything of the caller's, so the C++ side keeps
+    /// So the capture lives in the arena beside the registration that uses it:
+    /// arena bytes never move once allocated, and the returned pointer is into
+    /// them rather than into anything of the caller's, so the C++ side keeps
     /// nothing.
     ///
-    /// **W8 removed the fixed budget.** W1 held the capture in a
-    /// `[u8; CALLBACK_CAPTURE_BYTES]` inside the entry and refused anything
-    /// longer, where `CALLBACK_CAPTURE_BYTES` had to equal the C++
-    /// `NROS_CPP_CALLBACK_CAPACITY` macro by construction — a number two
-    /// languages had to agree on, whose disagreement was the only way to reach
-    /// the refusal. The length now travels with the bytes, the only bound is
-    /// the arena every other entry already shares, and a non-capturing
-    /// registration stops paying 32 bytes for a field it does not use.
-    ///
-    /// `None` and an empty slice both mean "no capture", and both give the
-    /// caller's own `context` straight back, which is every pre-W1 caller.
-    fn stow_capture(
+    /// `at` must start [`capture_trailing_len`](Self::capture_trailing_len)
+    /// bytes the caller's entry allocation reserved for it. `None` and an empty
+    /// slice both mean "no capture", and both give the caller's own `context`
+    /// straight back, which is every pre-W1 caller.
+    pub(crate) fn place_capture(
         &mut self,
+        at: usize,
         capture: Option<&[u8]>,
         context: *mut core::ffi::c_void,
-    ) -> Result<*mut core::ffi::c_void, NodeError> {
+    ) -> *mut core::ffi::c_void {
         let bytes = match capture {
             Some(b) if !b.is_empty() => b,
-            _ => return Ok(context),
+            _ => return context,
         };
-        // A capture is pointers and scalars — a lambda's closure object, never
-        // an over-aligned type — so the arena's own `u64` grain covers it, and
-        // it is the same grain `arena_alloc_with_trailing` gives every trailing
-        // region.
-        let align = core::mem::align_of::<u64>();
-        let offset = self.arena_alloc_bytes(bytes.len(), align)?;
-        // SAFETY: `arena_alloc_bytes` returned an offset whose `bytes.len()`
-        // following bytes are inside the arena and claimed by nothing else, and
+        debug_assert!(at + bytes.len() <= self.arena.len());
+        // SAFETY: the caller's entry allocation reserved
+        // `capture_trailing_len(capture)` bytes at `at` for exactly this, and
         // `bytes` is a caller slice that cannot alias the arena (the arena is
         // borrowed mutably by `self` for the whole call).
         unsafe {
-            let dst = (self.arena.as_mut_ptr() as *mut u8).add(offset);
+            let dst = (self.arena.as_mut_ptr() as *mut u8).add(at);
             core::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
-            Ok(dst as *mut core::ffi::c_void)
+            dst as *mut core::ffi::c_void
         }
     }
 
@@ -5813,6 +5786,9 @@ impl<'s> Executor<'s> {
         if let Some(len) = meta.arena_len.get() {
             self.arena_release(meta.offset, len);
         }
+        if let Some(tag) = self.slot_tags.get_mut(index) {
+            tag.owner = 0;
+        }
         true
     }
 
@@ -5827,7 +5803,10 @@ impl<'s> Executor<'s> {
     /// No copy of `handle` may be used afterwards — the slot is handed to the
     /// next registration, which may be of any kind.
     pub unsafe fn release_subscription(&mut self, handle: HandleId) -> bool {
-        unsafe { self.release_entry(handle.0, EntryKind::Subscription) }
+        match self.resolve_handle(handle) {
+            Some(slot) => unsafe { self.release_entry(slot, EntryKind::Subscription) },
+            None => false,
+        }
     }
 
     /// Issue 1631 — release a TIMER entry; the timer's callback (and anything
@@ -5837,7 +5816,10 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// As [`release_subscription`](Self::release_subscription).
     pub unsafe fn release_timer(&mut self, handle: HandleId) -> bool {
-        unsafe { self.release_entry(handle.0, EntryKind::Timer) }
+        match self.resolve_handle(handle) {
+            Some(slot) => unsafe { self.release_entry(slot, EntryKind::Timer) },
+            None => false,
+        }
     }
 
     /// Issue 1631 — release a SERVICE SERVER entry; the server leaves the
@@ -5846,7 +5828,10 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// As [`release_subscription`](Self::release_subscription).
     pub unsafe fn release_service(&mut self, handle: HandleId) -> bool {
-        unsafe { self.release_entry(handle.0, EntryKind::Service) }
+        match self.resolve_handle(handle) {
+            Some(slot) => unsafe { self.release_entry(slot, EntryKind::Service) },
+            None => false,
+        }
     }
 
     /// Issue 1631 — release a SERVICE CLIENT entry; the client leaves the
@@ -5856,7 +5841,10 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// As [`release_subscription`](Self::release_subscription).
     pub unsafe fn release_service_client(&mut self, handle: HandleId) -> bool {
-        unsafe { self.release_entry(handle.0, EntryKind::ServiceClient) }
+        match self.resolve_handle(handle) {
+            Some(slot) => unsafe { self.release_entry(slot, EntryKind::ServiceClient) },
+            None => false,
+        }
     }
 
     /// Find the next free entry slot index.
@@ -5904,6 +5892,90 @@ impl<'s> Executor<'s> {
         };
         trace_register(slot, meta.kind, name);
         self.entries[slot] = Some(meta);
+        // phase-476 W0 — a new occupant gets a new generation, so every handle
+        // issued for the slot's previous occupant stops resolving. Owner is
+        // cleared; a registration made for a node sets it after this
+        // (`set_entry_owner`).
+        if let Some(tag) = self.slot_tags.get_mut(slot) {
+            tag.generation = tag.next_generation();
+            tag.owner = 0;
+        }
+    }
+
+    /// phase-476 W0 — the handle for the CURRENT occupant of `slot`. Every
+    /// registration returns this, after `emplace_entry` has stamped the slot.
+    pub(crate) fn handle_for(&self, slot: usize) -> HandleId {
+        let generation = self.slot_tags.get(slot).map_or(0, |t| t.generation);
+        HandleId::new(slot, generation)
+    }
+
+    /// phase-476 W0 (issue 1667) — the slot `id` names, if and only if `id` was
+    /// issued for the entry that occupies it NOW. A handle whose entry was
+    /// released, or whose slot has since been taken by another registration of
+    /// any kind, answers `None`, never the next occupant.
+    pub fn resolve_handle(&self, id: HandleId) -> Option<usize> {
+        let slot = id.slot();
+        let live = self.entries.get(slot).is_some_and(|e| e.is_some());
+        // Generation 0 is `HandleId::for_owned_slot`: a uniquely-owned holder
+        // naming its own live slot. Every ISSUED handle carries >= 1.
+        let current = id.generation() == 0
+            || self
+                .slot_tags
+                .get(slot)
+                .is_some_and(|t| t.generation == id.generation());
+        (live && current).then_some(slot)
+    }
+
+    /// phase-476 W0 — [`resolve_handle`](Self::resolve_handle) as an index that
+    /// is OUT OF RANGE for a stale handle, so an existing `entries.get(..)`
+    /// chain answers `None` for it with no further change.
+    pub(crate) fn live_slot(&self, id: HandleId) -> usize {
+        self.resolve_handle(id).unwrap_or(usize::MAX)
+    }
+
+    /// phase-476 W0 — record that `node` registered the entry `id` names, so
+    /// [`release_node`](Self::release_node) can find it. `false` when `id` is
+    /// stale.
+    pub fn set_entry_owner(&mut self, id: HandleId, node: crate::executor::NodeId) -> bool {
+        let Some(slot) = self.resolve_handle(id) else {
+            return false;
+        };
+        let Ok(biased) = u8::try_from(node.index() + 1) else {
+            return false;
+        };
+        self.slot_tags[slot].owner = biased;
+        true
+    }
+
+    /// phase-476 W0 — release every entry `node` registered, whatever its kind.
+    /// Returns how many were released.
+    ///
+    /// This is what a node's destruction calls. A C++ callback's capture is
+    /// copied into the arena and commonly holds the node's `this`, so an entry
+    /// that outlived its node would dispatch into freed memory.
+    ///
+    /// # Safety
+    /// No handle to any of those entries may be used afterwards except through
+    /// a lookup that checks the generation ([`resolve_handle`](Self::resolve_handle)),
+    /// which every public lookup on this type does.
+    pub unsafe fn release_node(&mut self, node: crate::executor::NodeId) -> usize {
+        let Ok(biased) = u8::try_from(node.index() + 1) else {
+            return 0;
+        };
+        let mut released = 0;
+        for slot in 0..self.entries.len() {
+            if self.slot_tags.get(slot).is_some_and(|t| t.owner == biased) {
+                let kind = match self.entries[slot].as_ref() {
+                    Some(m) => m.kind,
+                    None => continue,
+                };
+                // SAFETY: forwarded from this function's contract.
+                if unsafe { self.release_entry(slot, kind) } {
+                    released += 1;
+                }
+            }
+        }
+        released
     }
 
     /// Open a subscription: claim a slot, resolve the node's identity, create
@@ -6141,7 +6213,7 @@ impl<'s> Executor<'s> {
             };
             self.emplace_entry(slot, meta, TraceName::Text(topic_name));
             self.apply_node_default_sched(slot, Some(node_id), group);
-            return Ok(HandleId(slot));
+            return Ok(self.handle_for(slot));
         }
 
         let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, slot_bytes);
@@ -6185,7 +6257,7 @@ impl<'s> Executor<'s> {
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         // Phase 104.C.4 — apply Node's default SchedContext.
         self.apply_node_default_sched(slot, Some(node_id), group);
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     /// Generic (type-erased) buffered subscription core (the
@@ -6304,7 +6376,7 @@ impl<'s> Executor<'s> {
         }
         // Phase 104.C.4 — apply Node's default SchedContext.
         self.apply_node_default_sched(slot, Some(node_id), None);
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     /// Register a borrowed (zero-copy) buffered subscription (Phase 229.6,
@@ -6393,7 +6465,7 @@ impl<'s> Executor<'s> {
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, Some(node_id), None);
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     /// Register a raw (type-erased) buffered subscription whose callback
@@ -6461,7 +6533,7 @@ impl<'s> Executor<'s> {
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, Some(node_id), None);
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     /// Phase 250 (Wave 2) — register a generic (type-erased) raw subscription
@@ -6537,7 +6609,7 @@ impl<'s> Executor<'s> {
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, Some(node_id), None);
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     /// Register a raw byte-shaped callback against a pre-built
@@ -6573,7 +6645,7 @@ impl<'s> Executor<'s> {
     {
         let slot = self.next_entry_slot()?;
         self.emplace_raw_buffered_subscription(slot, handle, qos, RX_BUF, callback)?;
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     /// Write a raw buffered subscription entry into an already-claimed slot —
@@ -6700,7 +6772,7 @@ impl<'s> Executor<'s> {
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, node_id, None);
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     #[cfg(feature = "safety-e2e")]
@@ -6763,7 +6835,7 @@ impl<'s> Executor<'s> {
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, node_id, None);
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     /// Register a service callback with the default buffer size.
@@ -6846,7 +6918,7 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(service_name));
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     /// Phase 104.C.3.3.a — Node-aware variant of
@@ -6929,7 +7001,7 @@ impl<'s> Executor<'s> {
         };
         self.emplace_entry(slot, meta, TraceName::Text(service_name));
         self.apply_node_default_sched(slot, Some(node_id), None);
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     /// Phase 104.C.3.3.a — Node-aware variant of
@@ -7026,7 +7098,7 @@ impl<'s> Executor<'s> {
         self.emplace_entry(slot, meta, TraceName::TimerPeriod(period.as_micros()));
         // Phase 273 — apply group sched binding (group > node default > SC 0).
         self.apply_node_default_sched(slot, node_id, group);
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     /// Register a repeating timer callback.
@@ -7173,7 +7245,7 @@ impl<'s> Executor<'s> {
     /// rather than a second implementation.
     ///
     /// **phase-456 W8 changed two things here.** The capture is a RUNTIME
-    /// length — see `Self::stow_capture` — so there is no constant the C++
+    /// length — see `Self::place_capture` — so there is no constant the C++
     /// side has to match and no `BufferTooSmall` reachable only by drifting
     /// from it. And this path now reaches the in-place dispatch that the Rust
     /// typed path has had since phase-231: `RawSubscriptionCallback` is
@@ -7240,13 +7312,17 @@ impl<'s> Executor<'s> {
             in_place_capable: true,
         })?;
 
-        // The capture is stowed AFTER the backend call and BEFORE either entry
+        // The capture is placed AFTER the backend call and BEFORE either entry
         // is written, so both dispatch shapes get the same context and a failed
-        // `create_subscription` costs no arena bytes.
-        let context = self.stow_capture(capture, context)?;
+        // `create_subscription` costs no arena bytes. phase-476 W0 — it rides
+        // at the end of the entry's own trailing region, so releasing the entry
+        // gives it back.
+        let capture_len = Self::capture_trailing_len(capture);
 
         if in_place {
-            let entry_offset = self.arena_alloc::<super::arena::SubInplaceRawCEntry>()?;
+            let (entry_offset, capture_at) =
+                self.arena_alloc_with_trailing::<super::arena::SubInplaceRawCEntry>(capture_len)?;
+            let context = self.place_capture(capture_at, capture, context);
             unsafe {
                 let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
                 let entry_ptr =
@@ -7272,13 +7348,16 @@ impl<'s> Executor<'s> {
             };
             self.emplace_entry(slot, meta, TraceName::Text(topic_name));
             self.apply_node_default_sched(slot, node_id, group);
-            return Ok(HandleId(slot));
+            return Ok(self.handle_for(slot));
         }
 
         let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, slot_bytes);
 
+        // The ring first, then the capture on the next `u64` boundary after it.
+        let ring_len = trailing_bytes.next_multiple_of(core::mem::align_of::<u64>());
         let (entry_offset, trailing_offset) =
-            self.arena_alloc_with_trailing::<SubBufferedRawCEntry>(trailing_bytes)?;
+            self.arena_alloc_with_trailing::<SubBufferedRawCEntry>(ring_len + capture_len)?;
+        let context = self.place_capture(trailing_offset + ring_len, capture, context);
 
         let buf_ptr = unsafe { (self.arena.as_mut_ptr() as *mut u8).add(trailing_offset) };
 
@@ -7314,7 +7393,7 @@ impl<'s> Executor<'s> {
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, node_id, group);
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     /// phase-417 W5.a (RFC-0089 stage 5) — the TYPED C-FFI subscription core:
@@ -7439,7 +7518,7 @@ impl<'s> Executor<'s> {
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, node_id, group);
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     /// Phase 189.M3.4 — register a raw C-fn-ptr subscription whose callback
@@ -7524,7 +7603,7 @@ impl<'s> Executor<'s> {
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, node_id, None);
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     /// Phase 269 W3 — register a raw C-fn-ptr subscription whose callback
@@ -7615,7 +7694,7 @@ impl<'s> Executor<'s> {
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, node_id, None);
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     /// Register a raw (untyped) service callback.
@@ -7767,7 +7846,7 @@ impl<'s> Executor<'s> {
         };
         self.emplace_entry(slot, meta, TraceName::Text(service_name));
         self.apply_node_default_sched(slot, node_id, None);
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     // ========================================================================
@@ -7924,7 +8003,7 @@ impl<'s> Executor<'s> {
         };
         self.emplace_entry(slot, meta, TraceName::Text(service_name));
         self.apply_node_default_sched(slot, node_id, None);
-        Ok(HandleId(slot))
+        Ok(self.handle_for(slot))
     }
 
     /// RFC-0041 / Phase 239.1 — register a **typed callback** service client.
@@ -8011,7 +8090,7 @@ impl<'s> Executor<'s> {
         };
         self.emplace_entry(slot, meta, TraceName::Text(service_name));
         self.apply_node_default_sched(slot, node_id, None);
-        Ok((HandleId(slot), hdr_ptr))
+        Ok((self.handle_for(slot), hdr_ptr))
     }
 
     // ========================================================================
@@ -8097,7 +8176,7 @@ impl<'s> Executor<'s> {
             self.emplace_entry(slot, meta, TraceName::Slot("guard", slot));
             self.apply_node_default_sched(slot, node_id, None);
 
-            Ok((HandleId(slot), guard_handle))
+            Ok((self.handle_for(slot), guard_handle))
         }
     }
 
@@ -8207,7 +8286,7 @@ impl<'s> Executor<'s> {
     pub fn cancel_timer(&mut self, id: HandleId) -> Result<(), NodeError> {
         let meta = self
             .entries
-            .get(id.0)
+            .get(self.live_slot(id))
             .and_then(|e| e.as_ref())
             .ok_or(NodeError::BufferTooSmall)?;
         if !matches!(meta.kind, EntryKind::Timer) {
@@ -8226,7 +8305,7 @@ impl<'s> Executor<'s> {
     pub fn reset_timer(&mut self, id: HandleId) -> Result<(), NodeError> {
         let meta = self
             .entries
-            .get(id.0)
+            .get(self.live_slot(id))
             .and_then(|e| e.as_ref())
             .ok_or(NodeError::BufferTooSmall)?;
         if !matches!(meta.kind, EntryKind::Timer) {
@@ -8241,7 +8320,11 @@ impl<'s> Executor<'s> {
 
     /// Check if a timer is cancelled.
     pub fn timer_is_canceled(&self, id: HandleId) -> bool {
-        let meta = match self.entries.get(id.0).and_then(|e| e.as_ref()) {
+        let meta = match self
+            .entries
+            .get(self.live_slot(id))
+            .and_then(|e| e.as_ref())
+        {
             Some(m) if matches!(m.kind, EntryKind::Timer) => m,
             _ => return false,
         };
@@ -8256,7 +8339,7 @@ impl<'s> Executor<'s> {
     pub fn timer_period_ms(&self, id: HandleId) -> Option<u64> {
         let meta = self
             .entries
-            .get(id.0)
+            .get(self.live_slot(id))
             .and_then(|e| e.as_ref())
             .filter(|m| matches!(m.kind, EntryKind::Timer))?;
         let arena_ptr = self.arena.as_ptr() as *const u8;
@@ -8269,7 +8352,7 @@ impl<'s> Executor<'s> {
     pub fn timer_period_us(&self, id: HandleId) -> Option<u64> {
         let meta = self
             .entries
-            .get(id.0)
+            .get(self.live_slot(id))
             .and_then(|e| e.as_ref())
             .filter(|m| matches!(m.kind, EntryKind::Timer))?;
         let arena_ptr = self.arena.as_ptr() as *const u8;
@@ -8302,7 +8385,7 @@ impl<'s> Executor<'s> {
     pub fn exchange_timer_period_us(&mut self, id: HandleId, new_period_us: u64) -> Option<u64> {
         let offset = self
             .entries
-            .get(id.0)
+            .get(self.live_slot(id))
             .and_then(|e| e.as_ref())
             .filter(|m| matches!(m.kind, EntryKind::Timer))?
             .offset;
@@ -8325,7 +8408,7 @@ impl<'s> Executor<'s> {
     ) -> Result<(), NodeError> {
         let meta = self
             .entries
-            .get(id.0)
+            .get(self.live_slot(id))
             .and_then(|e| e.as_ref())
             .ok_or(NodeError::BufferTooSmall)?;
         if !matches!(meta.kind, EntryKind::Timer) {
@@ -8349,7 +8432,7 @@ impl<'s> Executor<'s> {
     pub fn timer_overruns(&self, id: HandleId) -> Option<u32> {
         let meta = self
             .entries
-            .get(id.0)
+            .get(self.live_slot(id))
             .and_then(|e| e.as_ref())
             .filter(|m| matches!(m.kind, EntryKind::Timer))?;
         let arena_ptr = self.arena.as_ptr() as *const u8;
@@ -8376,7 +8459,7 @@ impl<'s> Executor<'s> {
     pub fn timer_elapsed_us(&self, id: HandleId) -> Option<u64> {
         let meta = self
             .entries
-            .get(id.0)
+            .get(self.live_slot(id))
             .and_then(|e| e.as_ref())
             .filter(|m| matches!(m.kind, EntryKind::Timer))?;
         let arena_ptr = self.arena.as_ptr() as *const u8;
@@ -8396,7 +8479,7 @@ impl<'s> Executor<'s> {
     pub fn timer_is_ready(&self, id: HandleId) -> Option<bool> {
         let meta = self
             .entries
-            .get(id.0)
+            .get(self.live_slot(id))
             .and_then(|e| e.as_ref())
             .filter(|m| matches!(m.kind, EntryKind::Timer))?;
         let arena_ptr = self.arena.as_ptr() as *const u8;

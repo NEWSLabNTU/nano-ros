@@ -66,6 +66,9 @@ pub struct RegionUnits {
     pub violation: RegionUnit,
     /// Alive supervision's per-SchedContext record, one per `sc`.
     pub alive_slot: RegionUnit,
+    /// phase-476 W0 — the per-callback-slot lifetime tag (generation + owning
+    /// node), one per `cbs`. Placed LAST so every older region keeps its offset.
+    pub slot_tag: RegionUnit,
 }
 
 /// How many of each region the image needs.
@@ -105,6 +108,7 @@ pub struct Offsets {
     pub group_sched_table: usize,
     pub monitor_violations: usize,
     pub alive_slots: usize,
+    pub slot_tags: usize,
     pub size: usize,
     pub align: usize,
 }
@@ -175,6 +179,7 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
     let group_sched_table = place!(cbs, units.group_sched_entry);
     let monitor_violations = place!(violation_slots, units.violation);
     let alive_slots = place!(sc, units.alive_slot);
+    let slot_tags = place!(cbs, units.slot_tag);
 
     Offsets {
         arena: arena_off,
@@ -194,6 +199,7 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
         group_sched_table,
         monitor_violations,
         alive_slots,
+        slot_tags,
         size: align_up(off, max_align),
         align: max_align,
     }

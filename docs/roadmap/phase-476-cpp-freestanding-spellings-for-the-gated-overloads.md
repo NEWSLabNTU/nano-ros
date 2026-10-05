@@ -72,6 +72,91 @@ item — it is the last step of the timer item.
 
 ## Work items
 
+* **W0 [core, abi] — entry lifetime: a generation per slot, an owner per entry,
+  and node-scoped release.** Added 2026-10-05, ahead of W2, because W2 cannot
+  be done safely without it. Measured on `main` at that date:
+
+  - Today a C++ timer is safe only because `rclcpp::Node` keeps a
+    `detail::WallTimer` cell in `owned_entities`, and `~nros::Timer` cancels
+    the slot when the node goes. W2 deletes that cell. Nothing else stops a
+    callback whose capture holds `this` from firing after its node is gone:
+    `nros_cpp_node_destroy` is a no-op (`nros-cpp/src/lib.rs`), and an arena
+    entry does not record which node registered it.
+  - Subscriptions already have that defect. phase-456 W1 moved their capture
+    into the arena, and nothing has cancelled them on node destruction since.
+  - Releasing a slot is unsafe while handles are copyable (issue 1667). A
+    released slot goes to the very next registration (`next_entry_slot`), and
+    `HandleId` is a bare index, so a stale copy reaches whatever took the slot.
+  - A capture is a separate arena region (`stow_capture`), and
+    `release_entry` gives back only the entry's recorded region
+    (`CallbackMeta::arena_len`). Releasing a capturing entry therefore leaks its
+    capture.
+  - `CallbackMeta` has no spare tail padding on a 32-bit target (24 of 24
+    bytes), so neither a generation nor an owner can ride inside it the way
+    issue 1631 put `arena_len` there.
+
+  The shape:
+  1. A new per-slot region, `slot_tags: [SlotTag; cbs]`, carved like
+     `sched_context_bindings` and placed by `nros-executor-layout`. A `SlotTag`
+     holds a `generation: u16`, bumped on every release, and an `owner: u8`
+     (node index + 1, 0 = none).
+  2. `HandleId` carries the generation it was issued with, encoded in the same
+     `usize` (slot in the low 16 bits, generation above), so no C/C++ ABI type
+     changes. Every lookup validates the generation. A stale handle answers
+     "not found", never the slot's next occupant. Generations start at 1, so a
+     site that still reads `HandleId.0` as an index fails on its first use
+     rather than on the first slot reuse.
+  3. A registration made for a node records that node. `Executor::release_node`
+     releases every entry the node owns, and `nros_cpp_node_destroy` calls it.
+  4. A capture is released with its entry: it becomes part of the region the
+     entry records, or is recorded beside it, so a release leaks nothing.
+
+  *Acceptance:* issue 1667's stale-handle test (release, register a DIFFERENT
+  kind into the reused slot, call through the stale copy) fails loudly and
+  never dispatches. Destroying a C++ node stops its subscriptions and timers.
+  A create/release loop of capturing entries holds `arena_used` flat. The
+  backing growth is stated in bytes per callback slot, and every stated
+  executor backing size still builds.
+
+  **Landed 2026-10-05.** What it took, beyond the shape above:
+
+  - `HandleId`'s field is private now. The compiler then listed every site
+    that read the packed value as an index: 15 in `nros-node`, 3 in `nros`,
+    13 in `nros-c`, 12 in `nros-cpp`, and the unit tests. Each now asks for
+    `slot()` (an index), `to_raw()`/`from_raw()` (an FFI value), or goes
+    through `Executor::resolve_handle`.
+  - Generation 0 is `HandleId::for_owned_slot`: a slot named by its UNIQUE
+    holder, accepted while it is live. Action servers and clients and nros-c's
+    `nros_service_t`/`nros_client_t` use it. Their owning object is destroyed
+    on release, so no copy outlives it; this is the "sound by contract" case
+    issue 1667 described for actions. Every handle a registration issues
+    carries a generation of at least 1, so a copyable handle can never take
+    this path.
+  - `issue_owned_handle` (nros-cpp) records a node as owner only for entries
+    whose C++ handle is copyable: dispatch subscriptions, service servers and
+    clients. Never actions: they release their own entry by slot, and a
+    node-scoped release first would let that later self-release reach the
+    slot's next occupant.
+  - Growth: `SlotTag` is 4 bytes, so 4 slots × 4 B = 16 B on the default
+    sizing. The two boards that state a backing (`threadx-linux`,
+    `threadx-qemu-riscv64`) moved from 11,069 to 11,071 words. `node-std-tests`
+    found that, and its own `cargo check` probe gives the number: 11,070 is
+    refused, 11,071 accepted.
+  - `check-cpp-destroy-shape` gained a third shape, `EXECUTOR`, for a destroy
+    that drops no storage and releases through the executor
+    (`nros_cpp_node_destroy`). It has two new self-test cases.
+
+  Evidence: 7 unit tests in `executor/tests.rs`, including the 1667 case for
+  both a different kind and the same kind reusing the slot. The capture case
+  runs a 200-cycle loop at depth 1 and depth 4 with `arena_used` pinned.
+  `node_destroy_releases_entries_runtime` in `just check cpp` destroys node A,
+  sees A's two subscriptions leave the stub backend and B's stay, and fails
+  3/3 with the release disabled. `just ci gate` is green.
+
+  NOT done here, and still issue 1667's: `SubscriptionHandle<M>::cancel()` and
+  the service twins, and the guard-condition release. The generation they
+  needed exists now.
+
 * **W1 [cpp] — string spellings.** `get_logger(const std::string&)` and the
   `FixedString`/`HeapString` interop. `nros::FixedString` exists
   (`fixed_string.hpp:39`); the work is making it, or a `const char*`, the primary

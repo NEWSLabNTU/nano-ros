@@ -1208,7 +1208,7 @@ impl nros_subscription_t {
     /// have had to remember the second assignment, which is how a mirror
     /// drifts. A single setter cannot be half-called.
     pub(crate) fn set_arena_entry(&mut self, id: nros_node::HandleId, executor: *mut c_void) {
-        self.handle_id = id.0;
+        self.handle_id = id.to_raw();
         self._executor = executor;
     }
 }

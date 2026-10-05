@@ -77,6 +77,14 @@ NO_OP_PHRASES = (
 )
 ISSUE = "1496"
 
+# phase-476 W0 — the third shape. A destroy that drops NO storage and instead
+# releases arena entries through the executor (`nros_cpp_node_destroy`, which
+# releases what the node registered). It has no `drop_in_place` for the two
+# shapes above to classify, and its doc must say where the release happens,
+# because "destroy" on a handle that owns nothing inline is exactly what issue
+# 1496 says a reader will misread.
+EXECUTOR_PHRASES = ("executor",)
+
 
 def doc_comment_above(text: str, index: int) -> str:
     """The `///` block immediately above the item starting at `index`.
@@ -146,6 +154,20 @@ def problems(sources: dict[str, str], table: str) -> list[str]:
     for fn in sorted(set(found) & set(declared)):
         want_ty, shape = declared[fn]
         got_ty = found[fn]["type"]
+        if shape == "EXECUTOR":
+            doc = found[fn]["doc"].lower()
+            if got_ty:
+                out.append(
+                    f"  {found[fn]['file']}: `{fn}` is classified EXECUTOR but drops\n"
+                    f"      `{got_ty}`. EXECUTOR is for a destroy that releases through\n"
+                    f"      the executor and drops no storage; use NO_OP or RELEASES."
+                )
+            elif "release" not in doc or not any(p in doc for p in EXECUTOR_PHRASES):
+                out.append(
+                    f"  {found[fn]['file']}: `{fn}` is classified EXECUTOR and its doc\n"
+                    f"      comment does not say what it releases through the executor."
+                )
+            continue
         if not got_ty:
             out.append(
                 f"  {found[fn]['file']}: `{fn}` has a row but no\n"
@@ -190,10 +212,19 @@ pub unsafe extern "C" fn nros_cpp_widget_destroy(storage: *mut c_void) -> nros_c
 }
 '''
 
+GOOD_SRC += '''
+/// Destroy a hub: release the entries it registered through the executor.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_hub_destroy(hub: *mut Hub) -> nros_cpp_ret_t {
+    NROS_CPP_RET_OK
+}
+'''
+
 GOOD_TABLE = """
 destroy_shapes! {
     nros_cpp_thing_destroy drops CppThing => NO_OP;
     nros_cpp_widget_destroy drops crate::w::CppWidget => RELEASES;
+    nros_cpp_hub_destroy drops Hub => EXECUTOR;
 }
 """
 
@@ -246,6 +277,27 @@ def self_test() -> None:
     )
     assert any("names no FFI function" in p for p in stale), (
         f"{GATE} selftest: a row for a deleted function must fail, got {stale}"
+    )
+
+    # 5. An EXECUTOR destroy whose doc does not say what it releases.
+    quiet = problems(
+        {"good.rs": GOOD_SRC.replace(
+            "/// Destroy a hub: release the entries it registered through the executor.",
+            "/// Destroy a hub.",
+        )},
+        GOOD_TABLE,
+    )
+    assert any("does not say what it releases" in p for p in quiet), (
+        f"{GATE} selftest: an undocumented EXECUTOR destroy must fail, got {quiet}"
+    )
+
+    # 6. EXECUTOR on a destroy that DOES drop storage — the wrong shape.
+    dropping = problems(
+        {"good.rs": GOOD_SRC},
+        GOOD_TABLE.replace("drops CppThing => NO_OP;", "drops CppThing => EXECUTOR;"),
+    )
+    assert any("drops no storage" in p for p in dropping), (
+        f"{GATE} selftest: EXECUTOR on a dropping destroy must fail, got {dropping}"
     )
 
 

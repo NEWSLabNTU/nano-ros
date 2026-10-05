@@ -409,9 +409,7 @@ unsafe fn subscription_register_impl(
                     return NROS_CPP_RET_INVALID_ARGUMENT;
                 }
             }
-            unsafe {
-                *out_handle_id = handle_id.0;
-            }
+            crate::issue_owned_handle(&mut ctx.executor, node_ref, handle_id, out_handle_id);
             NROS_CPP_RET_OK
         }
         Err(e) => crate::node_error_to_cpp_ret(e),
@@ -617,9 +615,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_with_info(
                     return NROS_CPP_RET_INVALID_ARGUMENT;
                 }
             }
-            unsafe {
-                *out_handle_id = handle_id.0;
-            }
+            crate::issue_owned_handle(&mut ctx.executor, node_ref, handle_id, out_handle_id);
             NROS_CPP_RET_OK
         }
         Err(e) => crate::node_error_to_cpp_ret(e),
@@ -739,9 +735,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_validated(
                     return NROS_CPP_RET_INVALID_ARGUMENT;
                 }
             }
-            unsafe {
-                *out_handle_id = handle_id.0;
-            }
+            crate::issue_owned_handle(&mut ctx.executor, node_ref, handle_id, out_handle_id);
             NROS_CPP_RET_OK
         }
         Err(e) => crate::node_error_to_cpp_ret(e),

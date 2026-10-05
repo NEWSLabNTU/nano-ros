@@ -4816,7 +4816,7 @@ fn timer_readiness_and_elapsed_agree_with_the_dispatcher() {
     assert!(executor.timer_is_canceled(id));
 
     // A handle that is not a timer has no answer, which is not `false`.
-    let not_a_timer = HandleId(id.0 + 1);
+    let not_a_timer = HandleId::new(id.slot() + 1, id.generation());
     assert_eq!(executor.timer_elapsed_us(not_a_timer), None);
     assert_eq!(executor.timer_is_ready(not_a_timer), None);
 }
@@ -4912,7 +4912,8 @@ fn time_until_next_call_goes_negative_once_a_timer_is_overdue() {
     // A handle that is not a timer has no answer — not a remaining time of 0,
     // which is also what "fires now" reads as.
     assert_eq!(
-        executor.timer_time_until_next_call_ns(HandleId(oneshot.0 + 1)),
+        executor
+            .timer_time_until_next_call_ns(HandleId::new(oneshot.slot() + 1, oneshot.generation())),
         None
     );
 }
@@ -4985,7 +4986,7 @@ fn exchanging_a_timers_period_changes_the_cadence_without_rewinding_it() {
 
     // A handle that is not a timer has no period to exchange, and reports that
     // rather than silently doing nothing.
-    let not_a_timer = HandleId(id.0 + 1);
+    let not_a_timer = HandleId::new(id.slot() + 1, id.generation());
     assert_eq!(executor.exchange_timer_period_us(not_a_timer, 1_000), None);
 }
 
@@ -5795,20 +5796,20 @@ fn test_handle_id_from_add_subscription() {
         .node_mut(nid)
         .create_subscription::<TestMsg, _>("/a", |_msg: &TestMsg| {})
         .unwrap();
-    assert_eq!(id, HandleId(0));
+    assert_eq!(id.slot(), 0);
 
     let id2 = executor
         .node_mut(nid)
         .create_subscription::<TestMsg, _>("/b", |_msg: &TestMsg| {})
         .unwrap();
-    assert_eq!(id2, HandleId(1));
+    assert_eq!(id2.slot(), 1);
 }
 
 #[test]
 fn test_handle_set_operations() {
-    let a = HandleId(0);
-    let b = HandleId(1);
-    let c = HandleId(5);
+    let a = HandleId::for_owned_slot(0);
+    let b = HandleId::for_owned_slot(1);
+    let c = HandleId::for_owned_slot(5);
 
     let set = a | b;
     assert!(set.contains(a));
@@ -5827,12 +5828,16 @@ fn test_handle_set_operations() {
 
 #[test]
 fn test_handle_set_union() {
-    let set1 = HandleSet::EMPTY.insert(HandleId(0)).insert(HandleId(2));
-    let set2 = HandleSet::EMPTY.insert(HandleId(1)).insert(HandleId(2));
+    let set1 = HandleSet::EMPTY
+        .insert(HandleId::for_owned_slot(0))
+        .insert(HandleId::for_owned_slot(2));
+    let set2 = HandleSet::EMPTY
+        .insert(HandleId::for_owned_slot(1))
+        .insert(HandleId::for_owned_slot(2));
     let union = set1 | set2;
-    assert!(union.contains(HandleId(0)));
-    assert!(union.contains(HandleId(1)));
-    assert!(union.contains(HandleId(2)));
+    assert!(union.contains(HandleId::for_owned_slot(0)));
+    assert!(union.contains(HandleId::for_owned_slot(1)));
+    assert!(union.contains(HandleId::for_owned_slot(2)));
     assert_eq!(union.len(), 3);
 }
 
@@ -5842,17 +5847,17 @@ fn test_readiness_snapshot() {
         bits: 0b101,
         count: 3,
     };
-    assert!(snap.is_ready(HandleId(0)));
-    assert!(!snap.is_ready(HandleId(1)));
-    assert!(snap.is_ready(HandleId(2)));
+    assert!(snap.is_ready(HandleId::for_owned_slot(0)));
+    assert!(!snap.is_ready(HandleId::for_owned_slot(1)));
+    assert!(snap.is_ready(HandleId::for_owned_slot(2)));
     assert_eq!(snap.ready_count(), 2);
     assert_eq!(snap.total(), 3);
 
-    let set = HandleId(0) | HandleId(2);
+    let set = HandleId::for_owned_slot(0) | HandleId::for_owned_slot(2);
     assert!(snap.all_ready(set));
     assert!(snap.any_ready(set));
 
-    let set2 = HandleId(0) | HandleId(1);
+    let set2 = HandleId::for_owned_slot(0) | HandleId::for_owned_slot(1);
     assert!(!snap.all_ready(set2));
     assert!(snap.any_ready(set2));
 }
@@ -6356,8 +6361,9 @@ fn a_c_subscription_on_an_in_place_backend_claims_no_receive_region() {
 /// languages had drifted apart about a number — a failure mode nobody could
 /// test against on purpose, and a bound the C++ side had to know.
 ///
-/// W8 made the capture a runtime length: `stow_capture` bump-allocates exactly
-/// `capture.len()` bytes and points `context` at them. The only bound left is
+/// W8 made the capture a runtime length: exactly `capture.len()` bytes of arena
+/// (since phase-476 W0, inside the entry's trailing region) with `context`
+/// pointing at them. The only bound left is
 /// the arena, which every other entry already shares. So the assertion inverts,
 /// and the number this test uses (`4 * size_of::<*const ()>() + 1`, W1's budget
 /// plus one) is deliberately the one that used to fail.
@@ -6821,14 +6827,14 @@ fn test_set_invocation_mode() {
 
     // Default is OnNewData
     assert_eq!(
-        executor.entries[id.0].as_ref().unwrap().invocation,
+        executor.entries[id.slot()].as_ref().unwrap().invocation,
         InvocationMode::OnNewData
     );
 
     // Change to Always
     executor.set_invocation(id, InvocationMode::Always);
     assert_eq!(
-        executor.entries[id.0].as_ref().unwrap().invocation,
+        executor.entries[id.slot()].as_ref().unwrap().invocation,
         InvocationMode::Always
     );
 }
@@ -11553,12 +11559,15 @@ fn every_entry_kind_created_and_released_in_a_loop_never_exhausts() {
         let high_water = executor.arena_used();
         assert!(high_water > 0, "{name}: the registration claimed bytes");
         assert_eq!(
-            executor.entries[first.0].unwrap().arena_len.get(),
+            executor.entries[first.slot()].unwrap().arena_len.get(),
             Some(high_water),
             "{name}: the only entry's recorded region is the whole used arena"
         );
         assert!(unsafe { release(&mut executor, first) }, "{name}: release");
-        assert!(executor.entries[first.0].is_none(), "{name}: slot freed");
+        assert!(
+            executor.entries[first.slot()].is_none(),
+            "{name}: slot freed"
+        );
         assert!(
             executor.arena_released() > 0,
             "{name}: bytes on the free list"
@@ -11592,7 +11601,7 @@ fn every_entry_kind_created_and_released_in_a_loop_never_exhausts() {
 fn a_buffered_subscription_releases_its_trailing_region_too() {
     let mut executor: Executor = executor_with_clock(MockSession::new());
     let h = register_buffered_sub(&mut executor).expect("sub");
-    let recorded = executor.entries[h.0]
+    let recorded = executor.entries[h.slot()]
         .unwrap()
         .arena_len
         .get()
@@ -11616,8 +11625,184 @@ fn a_kind_release_of_another_kind_is_refused() {
     assert!(!unsafe { executor.release_timer(h) });
     assert!(!unsafe { executor.release_service(h) });
     assert!(!unsafe { executor.release_service_client(h) });
-    assert!(executor.entries[h.0].is_some());
+    assert!(executor.entries[h.slot()].is_some());
     assert_eq!(executor.arena_released(), 0);
+}
+
+// ============================================================================
+// phase-476 W0 (issue 1667) — handles carry a generation
+// ============================================================================
+
+/// The case issue 1667 named: release an entry, let a DIFFERENT kind take the
+/// very slot it held, then use the stale handle. Every lookup through it must
+/// fail, and none may touch the new occupant.
+#[test]
+fn a_stale_handle_never_reaches_the_slots_next_occupant() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let timer = executor
+        .register_timer(TimerDuration::from_millis(1000), || {})
+        .expect("timer");
+    assert!(unsafe { executor.release_timer(timer) });
+
+    // `next_entry_slot` hands out the first free index, so the subscription
+    // lands exactly where the timer was.
+    let sub = register_buffered_sub(&mut executor).expect("sub");
+    assert_eq!(
+        sub.slot(),
+        timer.slot(),
+        "precondition: the slot was reused"
+    );
+    assert_ne!(sub, timer, "the new occupant has a different generation");
+
+    assert_eq!(executor.resolve_handle(timer), None);
+    assert!(executor.cancel_timer(timer).is_err());
+    assert!(!executor.timer_is_canceled(timer));
+    assert_eq!(executor.timer_period_ms(timer), None);
+    // A release through the stale handle — even of the RIGHT kind for the new
+    // occupant — finds nothing.
+    assert!(!unsafe { executor.release_subscription(timer) });
+    assert!(
+        executor.entries[sub.slot()].is_some(),
+        "the new occupant is untouched"
+    );
+    assert_eq!(executor.resolve_handle(sub), Some(sub.slot()));
+}
+
+/// The same slot reused by the SAME kind: the stale handle is still refused,
+/// because a timer handle that outlived its timer must not cancel someone
+/// else's.
+#[test]
+fn a_stale_handle_is_refused_even_when_the_same_kind_reuses_the_slot() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let old = executor
+        .register_timer(TimerDuration::from_millis(1000), || {})
+        .expect("timer");
+    assert!(unsafe { executor.release_timer(old) });
+    let new = executor
+        .register_timer(TimerDuration::from_millis(1000), || {})
+        .expect("timer");
+    assert_eq!(new.slot(), old.slot());
+    assert!(executor.cancel_timer(old).is_err());
+    assert!(
+        !executor.timer_is_canceled(new),
+        "the new timer is not cancelled"
+    );
+    assert!(executor.cancel_timer(new).is_ok());
+}
+
+/// A handle's generation is never 0, so the first registration of a slot is
+/// already distinguishable from a bare index — a reader of the packed value
+/// as an index fails on first use, not on the first reuse.
+#[test]
+fn an_issued_handle_is_never_a_bare_index() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let h = executor
+        .register_timer(TimerDuration::from_millis(1000), || {})
+        .expect("timer");
+    assert!(h.generation() >= 1);
+    assert_ne!(h.to_raw(), h.slot());
+    assert_eq!(HandleId::from_raw(h.to_raw()), h);
+}
+
+/// Generations wrap within 15 bits and skip 0, so the packed value always fits
+/// the `i32` nros-c stores some handles in, and 0 stays reserved for
+/// `HandleId::for_owned_slot`.
+#[test]
+fn the_generation_wraps_to_one_inside_fifteen_bits() {
+    let tag = super::types::SlotTag {
+        generation: super::types::HANDLE_GENERATION_MAX,
+        owner: 0,
+    };
+    assert_eq!(tag.next_generation(), 1);
+    let h = HandleId::new(63, super::types::HANDLE_GENERATION_MAX);
+    assert!(i32::try_from(h.to_raw()).is_ok());
+}
+
+/// `release_node` releases what the node registered and nothing else.
+#[test]
+fn releasing_a_node_releases_only_its_own_entries() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let a = executor.node_builder("a").build().unwrap();
+    let b = executor.node_builder("b").build().unwrap();
+    let a_timer = executor
+        .register_timer(TimerDuration::from_millis(1000), || {})
+        .unwrap();
+    let a_sub = register_buffered_sub(&mut executor).unwrap();
+    let b_timer = executor
+        .register_timer(TimerDuration::from_millis(1000), || {})
+        .unwrap();
+    let unowned = executor
+        .register_timer(TimerDuration::from_millis(1000), || {})
+        .unwrap();
+    assert!(executor.set_entry_owner(a_timer, a));
+    assert!(executor.set_entry_owner(a_sub, a));
+    assert!(executor.set_entry_owner(b_timer, b));
+
+    assert_eq!(unsafe { executor.release_node(a) }, 2);
+    assert_eq!(executor.resolve_handle(a_timer), None);
+    assert_eq!(executor.resolve_handle(a_sub), None);
+    assert!(executor.resolve_handle(b_timer).is_some());
+    assert!(executor.resolve_handle(unowned).is_some());
+    // Idempotent: nothing of `a` is left.
+    assert_eq!(unsafe { executor.release_node(a) }, 0);
+}
+
+/// A slot's owner belongs to its OCCUPANT: once released and reused by an
+/// entry nobody claimed, a later `release_node` of the old owner leaves it be.
+#[test]
+fn a_reused_slot_does_not_inherit_its_previous_owner() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let a = executor.node_builder("a").build().unwrap();
+    let t = executor
+        .register_timer(TimerDuration::from_millis(1000), || {})
+        .unwrap();
+    assert!(executor.set_entry_owner(t, a));
+    assert!(unsafe { executor.release_timer(t) });
+    let other = executor
+        .register_timer(TimerDuration::from_millis(1000), || {})
+        .unwrap();
+    assert_eq!(other.slot(), t.slot());
+    assert_eq!(unsafe { executor.release_node(a) }, 0);
+    assert!(executor.resolve_handle(other).is_some());
+}
+
+/// A CAPTURE is released with its entry (phase-476 W0). It used to be a
+/// separate arena allocation the release never gave back, so a capturing
+/// registration in a create/release loop grew the arena by the capture every
+/// cycle.
+#[test]
+fn a_capturing_subscription_releases_its_capture_too() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let capture = [0xA5u8; 40];
+    let register = |e: &mut Executor<'_>, depth: u32| {
+        e.add_arena_subscription_c_callback_with_capture::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+            None,
+            "/capture_release",
+            "test/msg/TestMsg",
+            "test_hash",
+            QoSProfile::default().keep_last(depth),
+            release_probe_sub,
+            core::ptr::null_mut(),
+            None,
+            96,
+            Some(&capture),
+        )
+    };
+    // Both dispatch shapes: depth 1 and depth 4 take different entry types.
+    for depth in [1u32, 4] {
+        let first = register(&mut executor, depth).expect("first");
+        let high_water = executor.arena_used();
+        assert!(unsafe { executor.release_subscription(first) });
+        for i in 0..200 {
+            let h = register(&mut executor, depth).expect("re-register");
+            assert_eq!(
+                executor.arena_used(),
+                high_water,
+                "depth {depth} iteration {i}: the arena grew; the capture was not released"
+            );
+            assert!(unsafe { executor.release_subscription(h) });
+        }
+    }
 }
 
 /// The recorded length rides in `CallbackMeta`'s tail padding: the entry

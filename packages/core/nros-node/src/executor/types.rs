@@ -971,9 +971,106 @@ pub(crate) enum DrainMode {
 /// Opaque handle identifier returned by registration methods.
 ///
 /// Used with [`Trigger::One`] and [`HandleSet`] for type-safe trigger
-/// configuration. The inner value is the entry slot index.
+/// configuration.
+///
+/// phase-476 W0 (issue 1667) — a handle names a SLOT and the GENERATION of
+/// that slot it was issued for. A released slot goes to the very next
+/// registration, so a bare index let a stale copy reach whatever took the slot,
+/// possibly an entity of another kind. Every executor lookup compares the
+/// generation, so a stale handle now answers "not found" instead.
+///
+/// The two are packed into one `usize` (slot in the low [`HANDLE_SLOT_BITS`]
+/// bits, generation above), so the C and C++ APIs, which carry a handle as
+/// `size_t`, change no type. The generation is 15 bits and never 0: 15 bits
+/// keeps the packed value inside an `i32`, which nros-c stores some handles
+/// in, and starting at 1 means a site that still treats the packed value as
+/// an index fails on its FIRST use rather than on the first slot reuse.
+///
+/// The field is private so that every reader goes through [`slot`](Self::slot)
+/// or [`to_raw`](Self::to_raw), never through a raw `.0` that would mean an
+/// index in one place and a packed value in another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct HandleId(pub usize);
+pub struct HandleId(usize);
+
+/// Bits of a packed [`HandleId`] that hold the slot index.
+pub const HANDLE_SLOT_BITS: u32 = 16;
+const HANDLE_SLOT_MASK: usize = (1 << HANDLE_SLOT_BITS) - 1;
+/// The largest slot generation; it wraps back to 1, never to 0.
+#[cfg(any(has_rmw, test))]
+pub(crate) const HANDLE_GENERATION_MAX: u16 = 0x7FFF;
+
+impl HandleId {
+    /// Pack a slot and the generation it is being issued for.
+    pub(crate) const fn new(slot: usize, generation: u16) -> Self {
+        Self(((generation as usize) << HANDLE_SLOT_BITS) | (slot & HANDLE_SLOT_MASK))
+    }
+
+    /// A handle for `slot` that carries NO generation, for an entity whose
+    /// holder is UNIQUE — an action server or client, whose owning object is
+    /// destroyed when the entry is released, so no copy can outlive it (the
+    /// soundness issue 1667 found for action releases). It resolves to whatever
+    /// is live in the slot.
+    ///
+    /// Never use it for a handle that can be copied: a copy that outlives a
+    /// release would reach the slot's next occupant, which is exactly what the
+    /// generation exists to stop. Every handle a registration ISSUES carries a
+    /// generation of at least 1, so this spelling cannot be produced by
+    /// accident.
+    pub const fn for_owned_slot(slot: usize) -> Self {
+        Self::new(slot, 0)
+    }
+
+    /// The entry slot this handle names.
+    pub const fn slot(self) -> usize {
+        self.0 & HANDLE_SLOT_MASK
+    }
+
+    /// The slot generation this handle was issued for.
+    pub const fn generation(self) -> u16 {
+        (self.0 >> HANDLE_SLOT_BITS) as u16
+    }
+
+    /// The packed value, for an FFI that carries a handle as `size_t`.
+    pub const fn to_raw(self) -> usize {
+        self.0
+    }
+
+    /// Rebuild a handle from [`to_raw`](Self::to_raw)'s value. Any value is
+    /// accepted: a value no registration issued fails every lookup.
+    pub const fn from_raw(raw: usize) -> Self {
+        Self(raw)
+    }
+}
+
+/// phase-476 W0 — the lifetime tag of one callback slot, parallel to
+/// `Executor::entries`.
+///
+/// It outlives the entry: `entries[i]` goes back to `None` on release, while
+/// the tag keeps the generation so the slot's next registration gets a new one.
+/// That is why it cannot ride in `CallbackMeta` (which, on a 32-bit target, has
+/// no spare padding left anyway — issue 1631 used it for `arena_len`).
+#[cfg(any(has_rmw, test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct SlotTag {
+    /// The generation of the slot's current (or most recent) occupant. 0 only
+    /// before the slot's first registration.
+    pub(crate) generation: u16,
+    /// The node that registered the current occupant, biased by one: 0 = none,
+    /// `n` = node table index `n - 1`.
+    pub(crate) owner: u8,
+}
+
+#[cfg(any(has_rmw, test))]
+impl SlotTag {
+    /// The generation the slot's NEXT occupant gets: one more, wrapping to 1.
+    pub(crate) const fn next_generation(self) -> u16 {
+        if self.generation >= HANDLE_GENERATION_MAX {
+            1
+        } else {
+            self.generation + 1
+        }
+    }
+}
 
 // ============================================================================
 // HandleSet
@@ -994,12 +1091,12 @@ impl HandleSet {
 
     /// Insert a handle into the set.
     pub const fn insert(self, id: HandleId) -> Self {
-        Self(self.0 | (1u64 << id.0))
+        Self(self.0 | (1u64 << id.slot()))
     }
 
     /// Check if the set contains a handle.
     pub const fn contains(self, id: HandleId) -> bool {
-        self.0 & (1u64 << id.0) != 0
+        self.0 & (1u64 << id.slot()) != 0
     }
 
     /// Union of two sets.
@@ -1054,7 +1151,7 @@ pub struct ReadinessSnapshot {
 impl ReadinessSnapshot {
     /// Check if a specific handle has data.
     pub const fn is_ready(&self, id: HandleId) -> bool {
-        self.bits & (1u64 << id.0) != 0
+        self.bits & (1u64 << id.slot()) != 0
     }
 
     /// Check if all handles in the set have data.

@@ -60,7 +60,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create(
     {
         Ok(handle_id) => {
             unsafe {
-                *out_handle_id = handle_id.0;
+                *out_handle_id = handle_id.to_raw();
             }
             // phase-308 — timers never reach the RMW, so the recording backend
             // cannot see them; this hook is how they enter the sidecar. No-op
@@ -149,7 +149,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_on_clock(
     ) {
         Ok(handle_id) => {
             unsafe {
-                *out_handle_id = handle_id.0;
+                *out_handle_id = handle_id.to_raw();
             }
             nros::census_hooks::on_timer_create(nros::node_metadata::TimerKind::Clock, period_ms);
             NROS_CPP_RET_OK
@@ -203,7 +203,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_oneshot(
     {
         Ok(handle_id) => {
             unsafe {
-                *out_handle_id = handle_id.0;
+                *out_handle_id = handle_id.to_raw();
             }
             // phase-308 — timers never reach the RMW, so the recording backend
             // cannot see them; this hook is how they enter the sidecar. No-op
@@ -290,7 +290,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_in_group(
     ) {
         Ok(handle_id) => {
             unsafe {
-                *out_handle_id = handle_id.0;
+                *out_handle_id = handle_id.to_raw();
             }
             // phase-308 — timers never reach the RMW, so the recording backend
             // cannot see them; this hook is how they enter the sidecar. No-op
@@ -318,7 +318,7 @@ pub unsafe extern "C" fn nros_cpp_timer_cancel(
     let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let id = nros_node::HandleId(handle_id);
+    let id = nros_node::HandleId::from_raw(handle_id);
 
     match ctx.executor.cancel_timer(id) {
         Ok(()) => NROS_CPP_RET_OK,
@@ -340,7 +340,7 @@ pub unsafe extern "C" fn nros_cpp_timer_reset(
     let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let id = nros_node::HandleId(handle_id);
+    let id = nros_node::HandleId::from_raw(handle_id);
 
     match ctx.executor.reset_timer(id) {
         Ok(()) => NROS_CPP_RET_OK,
@@ -378,7 +378,7 @@ pub unsafe extern "C" fn nros_cpp_timer_is_ready(
     };
     let ctx = &*ctx;
     ctx.executor
-        .timer_is_ready(nros_node::HandleId(handle_id))
+        .timer_is_ready(nros_node::HandleId::from_raw(handle_id))
         .unwrap_or(false)
 }
 
@@ -419,7 +419,7 @@ pub unsafe extern "C" fn nros_cpp_timer_time_until_next_call_ns(
     let ctx = &*ctx;
     match ctx
         .executor
-        .timer_time_until_next_call_ns(nros_node::HandleId(handle_id))
+        .timer_time_until_next_call_ns(nros_node::HandleId::from_raw(handle_id))
     {
         Some(ns) => {
             unsafe {
@@ -444,6 +444,6 @@ pub unsafe extern "C" fn nros_cpp_timer_is_canceled(
         return true;
     };
     let ctx = &*ctx;
-    let id = nros_node::HandleId(handle_id);
+    let id = nros_node::HandleId::from_raw(handle_id);
     ctx.executor.timer_is_canceled(id)
 }

@@ -2170,8 +2170,9 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
         let hid = self.service(service_entity)?;
         {
             let executor = unsafe { &mut *self.executor };
-            let entry = unsafe { executor.service_client_entry_mut(hid.0) }
-                .ok_or(NodeDeclError::Runtime)?;
+            let slot = executor.resolve_handle(hid).ok_or(NodeDeclError::Runtime)?;
+            let entry =
+                unsafe { executor.service_client_entry_mut(slot) }.ok_or(NodeDeclError::Runtime)?;
             entry
                 .handle
                 .send_request_raw(request_cdr)
@@ -2181,8 +2182,9 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
         for _ in 0..200 {
             let executor = unsafe { &mut *self.executor };
             executor.spin_once(core::time::Duration::from_millis(10));
-            let entry = unsafe { executor.service_client_entry_mut(hid.0) }
-                .ok_or(NodeDeclError::Runtime)?;
+            let slot = executor.resolve_handle(hid).ok_or(NodeDeclError::Runtime)?;
+            let entry =
+                unsafe { executor.service_client_entry_mut(slot) }.ok_or(NodeDeclError::Runtime)?;
             match entry.handle.take_response_raw(response_buf) {
                 // Issue 0778 — one call in flight on this blocking path, so
                 // the sequence id is dropped deliberately.
@@ -2198,8 +2200,9 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
         use crate::ClientTrait;
         let hid = self.service(service_entity)?;
         let executor = unsafe { &mut *self.executor };
+        let slot = executor.resolve_handle(hid).ok_or(NodeDeclError::Runtime)?;
         let entry =
-            unsafe { executor.service_client_entry_mut(hid.0) }.ok_or(NodeDeclError::Runtime)?;
+            unsafe { executor.service_client_entry_mut(slot) }.ok_or(NodeDeclError::Runtime)?;
         // `Err` here is the backend's "cannot say" (XRCE has no discovery
         // channel); it is folded into the same `Runtime` the trait default
         // returns, so a caller has ONE branch for "did not get an answer".
