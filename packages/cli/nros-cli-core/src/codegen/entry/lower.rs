@@ -549,13 +549,9 @@ fn plan_node_fqn(n: &PlanNode) -> String {
     }
 }
 
-/// The node half of an endpoint ref (`/ns/node/endpoint` -> `/ns/node`).
-fn row_node_fqn(endpoint_ref: &str) -> &str {
-    endpoint_ref
-        .rsplit_once('/')
-        .map(|(node, _)| node)
-        .unwrap_or("")
-}
+// The node half of an endpoint ref — issue 1676 made it ONE spelling, shared
+// with the `nros::main!` tier slice.
+use nros_orchestration_ir::contract_monitors::row_node_fqn;
 
 /// The monitor rows whose node `keep` admits, in row order; `None` when there
 /// are none. phase-462 W1 — the model's rows cover every node of the SYSTEM,

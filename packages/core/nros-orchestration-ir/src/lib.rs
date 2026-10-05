@@ -36,6 +36,9 @@ use thiserror::Error;
 // layer, not just resolve authored tiers. No behavior change vs the old
 // `nros_cli_core::orchestration::{mapper_input, rtos_realizer}` location.
 pub mod cyclonedds_type_sizing;
+// issue 1676 — the contract-monitor rows, shared by the CLI's C/C++ emitters
+// and the `nros::main!` proc-macro (which cannot dep `nros-cli-core`).
+pub mod contract_monitors;
 // phase-446 W6 -- the parameters each node's contract declares, in the one
 // shape the C++ header renderer and the `nros::main!` expansion both read.
 pub mod declared_params;

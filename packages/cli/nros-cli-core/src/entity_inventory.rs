@@ -2342,6 +2342,20 @@ impl EntityInventory {
         self.monitor_rows
     }
 
+    /// Issue 1676 -- the `/diagnostics` publishers a contracted image's
+    /// runtime creates: one per executor that installs a non-empty monitor
+    /// table. Each tier's executor installs its own nodes' rows, so a tiered
+    /// image may arm one per tier; this counts the WORST CASE (every tier) --
+    /// the safe direction for a pool that fails `Full` at boot when short.
+    /// Zero for an uncontracted image (no rows, or rows that could not be
+    /// counted, which the emitters refuse loudly at codegen).
+    pub fn contract_reporters(&self) -> usize {
+        match self.monitor_rows {
+            Some((rows, ages)) if rows + ages > 0 => self.tiers.max(1),
+            _ => 0,
+        }
+    }
+
     /// phase-412 -- build the inventory from a resolved SystemModel's wiring
     /// instead of from `ENTITIES`.
     ///
@@ -3194,9 +3208,19 @@ impl EntityInventory {
         // VOLATILE (measured against upstream), so it lands here and in the
         // liveliness pool below, and NOT in `tl_queryables`.
         let infra_publishers = self.infra.publishers();
+        // Issue 1676 -- and a CONTRACTED image's `/diagnostics` reporter: one
+        // publisher per executor that installs a non-empty monitor table
+        // (`nros::contract::DiagSink`, armed by `install_contract_monitors` and
+        // `nros_cpp_install_monitors`). Measured: a native Rust talker with one
+        // `min_rate_hz` row derived ONE publisher slot, the reporter took it
+        // at install, and the talker's own `/chatter` then failed
+        // `PublisherCreationFailed`. VOLATILE (`QoSProfile::default()`), so it
+        // lands here and in the liveliness pool, not in `tl_queryables`.
+        let contract_reporters = self.contract_reporters();
         let max_publishers = n(EntityKind::Publisher.tag())
             + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_PUBLISHERS
-            + infra_publishers;
+            + infra_publishers
+            + contract_reporters;
         let param_service_nodes = self.infra.param_nodes(components);
         // Issue 1378 -- plus one cache queryable per TRANSIENT_LOCAL publisher.
         // Such a publisher retains its last sample and declares a queryable on
@@ -3224,7 +3248,15 @@ impl EntityInventory {
             + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_QUERYABLES
             + tl_queryables
             + infra_queryables;
-        let max_nodes = self.components().len();
+        // Issue 1676 -- plus the node the `/diagnostics` reporter is created
+        // on. It is created BEFORE any component node, with no node identity,
+        // so the RMW shim files it under the session's own name: in a
+        // multi-node image that name ("node") is none of the components', and
+        // the reporter claimed the last `NROS_RMW_MAX_NODES` slot -- measured,
+        // the listener's registration then failed `ConnectionFailed` from
+        // `claim_node_slot`. One slot, worst case: a single-node image's
+        // session carries that node's name and reuses its slot.
+        let max_nodes = self.components().len() + usize::from(contract_reporters > 0);
         // Issue 1198 -- slot 0 is RESERVED for the default Fifo context
         // (`create_sched_context` searches `1..MAX_SC`), so the demand is one
         // plus whatever the schedule creates. See `DerivedEntityKnobs::max_sc`

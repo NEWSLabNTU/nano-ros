@@ -2862,6 +2862,18 @@ impl<'s> Executor<'s> {
         self.monitor_table
     }
 
+    /// Issue 1676 — the counter cell a publisher on `topic_name` bumps, by
+    /// exact topic match against the installed table (`None` = uncontracted).
+    pub(crate) fn publisher_monitor_cell(
+        &self,
+        topic_name: &str,
+    ) -> Option<&'static super::monitor::PubMonitorCell> {
+        self.monitor_table
+            .iter()
+            .find(|m| m.topic == topic_name)
+            .map(|m| m.cell)
+    }
+
     /// W3b.5 — install the baked subscriber age-contract table. Call
     /// BEFORE entity creation so `create_subscription` can attach each
     /// contracted endpoint's age cell (needs an epoch source — see
@@ -3971,6 +3983,12 @@ impl<'s> Executor<'s> {
             handle,
             arena: crate::executor::handles::TxArena::new(),
             event_regs: crate::executor::handles::empty_event_regs(),
+            // Issue 1676 — attach the contracted endpoint's counter cell by
+            // exact topic match against the installed table, the rule
+            // `NodeHandle::create_publisher` applies. This is the publisher
+            // the Rust component road creates, so without it no contracted
+            // Rust publisher was ever counted.
+            monitor: self.publisher_monitor_cell(topic_name),
         })
     }
 

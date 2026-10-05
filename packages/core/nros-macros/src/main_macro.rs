@@ -637,6 +637,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // filter names a node exactly as the node is created.
     let mut node_namespaces: BTreeMap<String, String> = BTreeMap::new();
     let mut node_instances: Vec<String> = Vec::new();
+    // issue 1676 — the contract-monitor rows of the nodes this entry deploys
+    // (empty for an uncontracted model and for the self-bringup arm).
+    let mut contract_rows: (
+        Vec<nros_orchestration_ir::contract_monitors::MonitorRow>,
+        Vec<nros_orchestration_ir::contract_monitors::AgeRow>,
+    ) = (Vec::new(), Vec::new());
     let mut resolved_tiers: Option<ResolvedTierTable> = None;
     // issue 0438 — the tier names the SYSTEM declared, as opposed to the ones
     // that survived membership resolution. Empty when the schedule is derived.
@@ -998,6 +1004,38 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
             node_namespaces.insert(bare.clone(), namespace.clone());
             node_instances.push(bare);
+        }
+
+        // issue 1676 — the contract's monitor rows, from the SAME derivation
+        // the CLI's C/C++ emitters bake (`nros_orchestration_ir::
+        // contract_monitors`), sliced to the nodes this entry keeps: the
+        // model's rows cover every node of the SYSTEM, and a row whose node is
+        // on another board would watch a publisher this image never creates.
+        {
+            use nros_orchestration_ir::contract_monitors::{age_rows, monitor_rows, row_node_fqn};
+            let kept: BTreeSet<&str> = model
+                .structure
+                .nodes
+                .keys()
+                .filter(|f| keep(f))
+                .map(String::as_str)
+                .collect();
+            let to_err = |e: nros_orchestration_ir::contract_monitors::ContractRowError| {
+                syn::Error::new(
+                    model_lit.span(),
+                    format!("nros::main!: model `{}`: {e}", model_path.display()),
+                )
+            };
+            contract_rows.0 = monitor_rows(&model)
+                .map_err(to_err)?
+                .into_iter()
+                .filter(|r| kept.contains(row_node_fqn(&r.fqn)))
+                .collect();
+            contract_rows.1 = age_rows(&model)
+                .map_err(to_err)?
+                .into_iter()
+                .filter(|r| kept.contains(row_node_fqn(&r.fqn)))
+                .collect();
         }
         // Issue 0257 — count the callback slots the SLICED node set needs. Same
         // `keep` predicate as the walk above, so a per-board/per-host entry
@@ -1607,6 +1645,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         ));
     }
     let multi_tier = resolved_tiers.as_ref().filter(|t| !t.is_single_tier());
+    // issue 1676 — install the contract's monitor tables (and arm the
+    // `/diagnostics` reporter) on every executor this entry builds, BEFORE any
+    // node exists: a publisher attaches its counter cell at create time.
+    let (contract_items_ts, contract_monitors_call) =
+        contract_monitor_tokens(&contract_rows, multi_tier, &node_namespaces);
     // phase-302 W4 (issue 0265) — reject multi-tier systems on targets with
     // no `run_tiers` EARLY with a real diagnostic. Previously the deploy fell
     // back to the posix tier rules and died later with a misleading
@@ -1665,7 +1708,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // `active_groups` filter and owns the spin loop.
                         // W4c — param services BEFORE the node registers, so the store
                         // exists when each cell captures it (cell → `ctx.parameter`).
-                        #declared_params_call #param_services_call
+                        #contract_monitors_call #declared_params_call #param_services_call
                         #( #register_calls )*
                         #lifecycle_call
                         ::core::result::Result::Ok(())
@@ -1685,7 +1728,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 {
                     // W4c — param services BEFORE the node registers, so the store
                     // exists when each cell captures it (cell → `ctx.parameter`).
-                    #declared_params_call #param_services_call
+                    #contract_monitors_call #declared_params_call #param_services_call
                     #( #register_calls )*
                     #lifecycle_call
                     #hosted_spin_call
@@ -1857,7 +1900,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // registers (the store must exist when each cell
                         // captures it), lifecycle AFTER; the board sets each
                         // tier's `active_groups` filter and owns the spin.
-                        #declared_params_call #param_services_call
+                        #contract_monitors_call #declared_params_call #param_services_call
                         #( #register_calls )*
                         #lifecycle_call
                         ::core::result::Result::Ok(())
@@ -1887,7 +1930,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // when system.toml doesn't declare them, and no-ops without the
             // `nros/param-services` / `nros/lifecycle-services` features, so
             // plain pub/sub Zephyr entries are byte-identical to pre-#128.
-            #declared_params_call #param_services_call
+            #contract_monitors_call #declared_params_call #param_services_call
             #( #register_calls )*
             #lifecycle_call
             ::log::info!(
@@ -2178,7 +2221,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // Issue #128 — OwnedSpin parity: param services before
                         // the registers, lifecycle after. Inert without the
                         // system.toml declarations / cargo features.
-                        #declared_params_call #param_services_call
+                        #contract_monitors_call #declared_params_call #param_services_call
                         #( #register_calls )*
                         #lifecycle_call
                         ::core::result::Result::Ok(())
@@ -2765,6 +2808,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // W4b — baked boot-config static; emitted before the framework
         // body so `&NROS_BOOT_CONFIG` is in scope at every overlay use site.
         #boot_config_static_ts
+
+        // issue 1676 — the baked contract-monitor tables (empty stream for an
+        // uncontracted image, which therefore carries none of it).
+        #contract_items_ts
 
         #panic_ts
 
@@ -3843,6 +3890,155 @@ fn tier_task_memory_tokens(
 /// Emit a `&[TierSpec]` literal from the resolved tier table (Phase 228.G,
 /// RFC-0032 §5). `priority` is the raw per-RTOS value; `groups` is the tier's
 /// distinct callback-group ids (the executor's `active_groups` filter).
+/// Issue 1676 — the contract-monitor tables a Rust entry bakes, and the call
+/// that installs them on the executor a register body runs against.
+///
+/// One table per executor, sliced the way the C/C++ packs slice theirs
+/// (`lower.rs::monitor_table`): the single executor gets every row of the
+/// nodes the entry deploys; a tiered entry gets one table per tier holding the
+/// rows of THAT tier's nodes, so a rate rule is checked on the executor whose
+/// publisher bumps the cell and nowhere else. The rendering is
+/// `contract_monitors::render_monitor_rs_at` — the text the CLI bakes into
+/// `system_monitors.rs`, rooted at `::nros` — wrapped in a module per table.
+///
+/// The tiered closure is ONE closure the board runs once per tier executor,
+/// so the call picks its table at run time: a tier executor admits exactly its
+/// own `(node, namespace, group)` members (`Executor::group_active`), and the
+/// first member of each tier's table names it.
+///
+/// Both streams are empty when there are no rows, so an uncontracted image is
+/// byte-identical to before.
+fn contract_monitor_tokens(
+    rows: &(
+        Vec<nros_orchestration_ir::contract_monitors::MonitorRow>,
+        Vec<nros_orchestration_ir::contract_monitors::AgeRow>,
+    ),
+    multi_tier: Option<&ResolvedTierTable>,
+    node_namespaces: &BTreeMap<String, String>,
+) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
+    use nros_orchestration_ir::contract_monitors::{
+        RenderPaths, render_monitor_rs_at, row_node_fqn,
+    };
+    let (mons, ages) = rows;
+    if mons.is_empty() && ages.is_empty() {
+        return (quote! {}, quote! {});
+    }
+    // (selector member, rows, ages) per executor table.
+    type Member = Option<(String, String, String)>;
+    let mut tables: Vec<(Member, Vec<_>, Vec<_>)> = Vec::new();
+    match multi_tier {
+        None => tables.push((None, mons.clone(), ages.clone())),
+        Some(table) => {
+            for t in &table.tiers {
+                let mut members: Vec<(String, String, String)> = t
+                    .members
+                    .iter()
+                    .map(|(node, g)| {
+                        let ns = node_namespaces
+                            .get(node.as_str())
+                            .cloned()
+                            .unwrap_or_else(|| "/".to_string());
+                        (node.clone(), ns, g.clone())
+                    })
+                    .collect();
+                members.sort();
+                members.dedup();
+                let fqns: BTreeSet<String> = members
+                    .iter()
+                    .map(|(n, ns, _)| match ns.as_str() {
+                        "/" => format!("/{n}"),
+                        ns => format!("{}/{n}", ns.trim_end_matches('/')),
+                    })
+                    .collect();
+                let t_mons: Vec<_> = mons
+                    .iter()
+                    .filter(|r| fqns.contains(row_node_fqn(&r.fqn)))
+                    .cloned()
+                    .collect();
+                let t_ages: Vec<_> = ages
+                    .iter()
+                    .filter(|r| fqns.contains(row_node_fqn(&r.fqn)))
+                    .cloned()
+                    .collect();
+                if t_mons.is_empty() && t_ages.is_empty() {
+                    continue;
+                }
+                // A tier with no members admits every group (the wildcard), so
+                // it cannot be told apart by asking; it has no nodes, so no
+                // rows either, and was skipped above.
+                tables.push((members.into_iter().next(), t_mons, t_ages));
+            }
+        }
+    }
+    let mut items = Vec::new();
+    let mut installs = Vec::new();
+    for (k, (member, t_mons, t_ages)) in tables.iter().enumerate() {
+        let module = Ident::new(&format!("__nros_contract_monitors_{k}"), Span::call_site());
+        let rendered = render_monitor_rs_at(t_mons, t_ages, RenderPaths::NROS);
+        let body: proc_macro2::TokenStream = match rendered.parse() {
+            Ok(ts) => ts,
+            Err(e) => {
+                let msg = format!("nros::main!: internal error rendering the monitor table: {e}");
+                return (quote! { ::core::compile_error!(#msg); }, quote! {});
+            }
+        };
+        items.push(quote! {
+            #[doc(hidden)]
+            #[allow(dead_code, non_upper_case_globals)]
+            mod #module {
+                #body
+                /// This executor's `/diagnostics` reporter (issue 1676).
+                pub static NROS_CONTRACT_REPORTER: ::nros::contract::ContractReporter =
+                    ::nros::contract::ContractReporter::new();
+            }
+        });
+        let install = quote! {
+            unsafe {
+                ::nros::contract::install_contract_monitors(
+                    __nros_exec,
+                    #module::NROS_MONITORS,
+                    #module::NROS_AGE_MONITORS,
+                    &#module::NROS_CONTRACT_REPORTER,
+                )
+            }
+        };
+        installs.push((member.clone(), install));
+    }
+    let dispatch = match multi_tier {
+        None => {
+            let (_, install) = &installs[0];
+            quote! { #install }
+        }
+        Some(_) => {
+            let arms = installs.iter().map(|(member, install)| {
+                let (n, ns, g) = member.clone().unwrap_or_default();
+                quote! {
+                    if unsafe { &*(__nros_exec as *const ::nros::Executor<'static>) }
+                        .group_active(#n, #ns, #g)
+                    {
+                        #install
+                    } else
+                }
+            });
+            // A tier whose nodes carry no contract installs nothing.
+            quote! { #( #arms )* { ::core::result::Result::Ok(()) } }
+        }
+    };
+    let call = quote! {
+        {
+            let __nros_exec = runtime.runtime.executor_handle();
+            let __nros_installed: ::core::result::Result<(), &'static str> = #dispatch;
+            __nros_installed.map_err(|reason| {
+                ::nros::__macro_support::nros_platform::RuntimeError::Capability {
+                    name: "contract_monitors",
+                    reason,
+                }
+            })?;
+        }
+    };
+    (quote! { #( #items )* }, call)
+}
+
 fn tier_specs_tokens(
     table: &ResolvedTierTable,
     node_namespaces: &BTreeMap<String, String>,
@@ -4900,5 +5096,126 @@ mod framework_ssot_tests {
                 .to_string()
                 .contains("std")
         );
+    }
+}
+
+#[cfg(test)]
+mod contract_monitor_tests {
+    use super::*;
+    use nros_orchestration_ir::{
+        ResolvedTier,
+        contract_monitors::{AgeRow, MonitorRow},
+    };
+
+    fn row(fqn: &str, topic: &str) -> MonitorRow {
+        MonitorRow {
+            topic: topic.into(),
+            fqn: fqn.into(),
+            min_rate_hz_milli: 5_000,
+            max_latency_ms: 0,
+        }
+    }
+
+    fn tier(name: &str, members: &[(&str, &str)]) -> ResolvedTier {
+        ResolvedTier {
+            name: name.into(),
+            priority: 1,
+            stack_bytes: None,
+            spin_period_us: None,
+            preempt_threshold: None,
+            time_slice_us: None,
+            sched_class: None,
+            class: None,
+            period_us: None,
+            budget_us: None,
+            deadline_us: None,
+            deadline_policy: None,
+            core: None,
+            members: members
+                .iter()
+                .map(|(n, g)| (n.to_string(), g.to_string()))
+                .collect(),
+        }
+    }
+
+    /// Issue 1676 — an uncontracted image carries none of it: both streams
+    /// empty, so its expansion is byte-identical to before.
+    #[test]
+    fn an_uncontracted_entry_emits_nothing() {
+        let (items, call) =
+            contract_monitor_tokens(&(Vec::new(), Vec::<AgeRow>::new()), None, &BTreeMap::new());
+        assert!(items.is_empty() && call.is_empty());
+    }
+
+    /// Issue 1676 — a contracted single-executor entry bakes ONE table, rooted
+    /// at `::nros`, and installs it through `install_contract_monitors` on the
+    /// runtime's executor, mapping a refusal to a named capability error.
+    #[test]
+    fn a_contracted_entry_bakes_and_installs_its_table() {
+        let rows = (
+            vec![row("/talker/chatter", "/chatter")],
+            Vec::<AgeRow>::new(),
+        );
+        let (items, call) = contract_monitor_tokens(&rows, None, &BTreeMap::new());
+        let items = items.to_string();
+        let call = call.to_string();
+        assert!(items.contains("mod __nros_contract_monitors_0"), "{items}");
+        assert!(items.contains(":: nros :: monitor"), "{items}");
+        assert!(
+            !items.contains("nros_node"),
+            "the expansion reaches only `nros`: {items}"
+        );
+        assert!(items.contains("NROS_CONTRACT_REPORTER"), "{items}");
+        assert!(call.contains("install_contract_monitors"), "{call}");
+        assert!(call.contains("executor_handle"), "{call}");
+        assert!(call.contains("\"contract_monitors\""), "{call}");
+        assert!(
+            !call.contains("group_active"),
+            "single executor: no selection: {call}"
+        );
+    }
+
+    /// Issue 1676 — a tiered entry slices the rows per tier (the C/C++ packs'
+    /// rule) and picks its table at run time by a member only that tier's
+    /// executor admits; a tier whose nodes carry no contract gets no table.
+    #[test]
+    fn a_tiered_entry_installs_each_tiers_own_rows() {
+        let rows = (
+            vec![
+                row("/ctrl/cmd", "/cmd"),
+                row("/telem/telemetry", "/telemetry"),
+            ],
+            Vec::<AgeRow>::new(),
+        );
+        let table = ResolvedTierTable {
+            tiers: vec![
+                tier("fast", &[("ctrl", "g")]),
+                tier("slow", &[("telem", "g")]),
+                tier("idle", &[("logger", "g")]),
+            ],
+        };
+        let ns: BTreeMap<String, String> = ["ctrl", "telem", "logger"]
+            .iter()
+            .map(|n| (n.to_string(), "/".to_string()))
+            .collect();
+        let (items, call) = contract_monitor_tokens(&rows, Some(&table), &ns);
+        let items = items.to_string();
+        let call = call.to_string();
+        assert!(items.contains("__nros_contract_monitors_0"), "{items}");
+        assert!(items.contains("__nros_contract_monitors_1"), "{items}");
+        assert!(!items.contains("__nros_contract_monitors_2"), "{items}");
+        let t0 = items.find("__nros_contract_monitors_0").unwrap();
+        let t1 = items.find("__nros_contract_monitors_1").unwrap();
+        assert!(items[t0..t1].contains("/cmd") && !items[t0..t1].contains("/telemetry"));
+        assert!(items[t1..].contains("/telemetry") && !items[t1..].contains("\"/cmd\""));
+        assert!(
+            call.contains("group_active (\"ctrl\" , \"/\" , \"g\")"),
+            "{call}"
+        );
+        assert!(
+            call.contains("group_active (\"telem\" , \"/\" , \"g\")"),
+            "{call}"
+        );
+        assert!(!call.contains("logger"), "{call}");
     }
 }

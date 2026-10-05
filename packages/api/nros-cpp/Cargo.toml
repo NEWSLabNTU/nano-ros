@@ -290,10 +290,9 @@ nros-bridge = { version = "0.5.0", path = "../../rmw/bridge", default-features =
 nros-log = { workspace = true }
 nros-platform = { workspace = true, default-features = false }
 nros-rmw = { version = "0.5.0", path = "../../core/nros-rmw", default-features = false }
-# Issue 1635 — builds the `DiagnosticArray` a contracted image publishes on
-# `/diagnostics` (`src/diag.rs`). `no_std`, heapless; dead unless an entry
-# installs a contract monitor table.
-nros-diagnostics = { path = "../../core/nros-diagnostics", default-features = false }
+# Issue 1635 / 1676 — the `/diagnostics` reporter (`src/diag.rs`) is
+# `nros::contract::DiagSink`, shared with the Rust entry; `nros-diagnostics`
+# arrives through `nros`'s `rmw-cffi`, not as a dep of this crate.
 # Backend deps for nros-cpp's own root-crate force-link (`src/rmw_backend.rs`);
 # shared with nros-c's copy by cargo (one backend rlib).
 # phase-308 — the recording RMW backend. Optional and pulled in ONLY by

@@ -106,7 +106,10 @@ alloc = [
 
 # RMW vtable runtime registry. Every backend ships as a cffi shim
 # that installs a C vtable here.
-rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
+# Issue 1676 — `nros-diagnostics` rides with the vtable runtime: the contract
+# reporter (`contract::DiagSink`) maps a monitor violation to a
+# `DiagnosticArray` through it, for the Rust entry and for nros-cpp alike.
+rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi", "dep:nros-diagnostics"]
 # Phase 128.C.3 — `rmw-{zenoh,xrce,dds,cyclonedds}-cffi` features
 # deleted. Selection lives entirely in the manifest: depend on
 # `nros-rmw-<name>` directly and the `RMW_INIT_ENTRIES` walker
@@ -263,6 +266,7 @@ nros-bridge = { version = "0.5.0", path = "../../rmw/bridge", default-features =
 nros-params = { version = "0.5.0", path = "../../core/nros-params", default-features = false }
 nros-platform = { version = "0.5.0", path = "../../platform/nros-platform", default-features = false }
 nros-serdes = { version = "0.5.0", path = "../../core/nros-serdes", default-features = false }
+nros-diagnostics = { version = "0.5.0", path = "../../core/nros-diagnostics", default-features = false, optional = true }
 # Phase 212.M.7 — Arc that works on targets lacking ptr atomics
 # (riscv32imc / esp32c3 under ESP-IDF). `alloc::sync::Arc` is gated
 # behind `target_has_atomic = "ptr"`; `portable_atomic_util::Arc`
