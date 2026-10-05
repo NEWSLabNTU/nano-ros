@@ -38,6 +38,13 @@ namespace {
 // count because it is the same set: `TypeRegistry::get_or_build` calls
 // `nros_rmw_cyclonedds_register_descriptor` for every type it inserts.
 //
+// On the CMAKE roads (this TU compiled into `nros_rmw_cyclonedds`, or the
+// Zephyr module's `nros`) the writer is different and so is the count, issue
+// 1663: such an image registers every descriptor whose register TU it LINKS,
+// which is not the model's set, so `NrosRmwCycloneddsDescriptorCap.cmake`
+// raises this from the distinct registry keys the configure GENERATED (an
+// upper bound on what links).
+//
 // The 256 below is now a FALLBACK, not the size. It applies to an image
 // nobody has run codegen-system for, which keeps compiling exactly as it did
 // (RFC-0100 D6: a consumer with no declaration keeps its own default).
