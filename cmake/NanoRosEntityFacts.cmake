@@ -176,6 +176,47 @@ endfunction()
 # mapper resolved nothing and `corrosion_set_env_vars` was invoked with one
 # argument ("incorrect arguments for function named"). A global carries the
 # value across the scope boundary intact.
+# Issue 1700 — the shared Corrosion cargo dir is keyed at `nros-c`'s configure
+# (features, rmw, board, caps, profile, target, knobs), but the entity facts
+# this flush hands cargo are inputs to the SAME build scripts: the sizes probe
+# keys on `NROS_SIZING_DESCRIPTOR` and `NROS_DECLARED_*`, and measured the
+# executor at 20664 bytes with a leaf's descriptor and 90648 without. Two leaves
+# equal on the configure-time key and different here shared one directory, so
+# whichever built last owned `nros-c-generated/`, and the other leaf's
+# `nros-cpp` refused the build ("written by another crate with DIFFERENT probed
+# sizes") — or, had the values agreed by luck, linked the other leaf's archive.
+#
+# The facts exist only now, so the key is completed now: re-point the build
+# dir's `cargo` link at the directory keyed on base + facts. Re-pointing is the
+# supported move (`nros_share_corrosion_cargo_dir` keeps the old directory for
+# whoever still uses it), and the issue-0945 witness reads the directory from
+# a target property at generate time, so it follows. No facts => no change.
+function(_nros_entity_facts_rekey_shared_cargo_dir)
+    get_property(_base GLOBAL PROPERTY NROS_SHARED_CARGO_BASE_KEY)
+    if(NOT _base OR NOT COMMAND nros_share_corrosion_cargo_dir)
+        return()
+    endif()
+    nros_entity_facts_env("" ENV_OUT _facts)
+    if(NOT _facts)
+        return()
+    endif()
+    # The knob half is environment- or cache-derived (never directory-scoped),
+    # so this is the same text `nros-c` keyed on.
+    nros_knob_key_fields(_knob_fields)
+    nros_share_corrosion_cargo_dir(KEY ${_base} ${_knob_fields} ${_facts})
+    if(NROS_SHARED_CARGO_DIR)
+        foreach(_t IN ITEMS nros_c-static nros_cpp-static)
+            if(TARGET ${_t})
+                get_target_property(_had ${_t} NROS_SHARED_CARGO_DIR)
+                if(_had)
+                    set_property(TARGET ${_t} PROPERTY NROS_SHARED_CARGO_DIR
+                        "${NROS_SHARED_CARGO_DIR}")
+                endif()
+            endif()
+        endforeach()
+    endif()
+endfunction()
+
 function(nros_entity_facts_env_deferred _target)
     get_property(_queued GLOBAL PROPERTY NROS_ENTITY_FACTS_TARGETS)
     if("${_target}" IN_LIST _queued)
@@ -192,6 +233,7 @@ function(nros_entity_facts_env_deferred _target)
 endfunction()
 
 function(_nros_entity_facts_flush)
+    _nros_entity_facts_rekey_shared_cargo_dir()
     get_property(_targets GLOBAL PROPERTY NROS_ENTITY_FACTS_TARGETS)
     foreach(_t IN LISTS _targets)
         if(TARGET "${_t}")

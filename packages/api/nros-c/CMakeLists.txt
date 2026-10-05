@@ -141,14 +141,26 @@ if(COMMAND nros_share_corrosion_cargo_dir)
     list(SORT _features_key)
     string(REPLACE ";" "," _features_flat "${_features_key}")
     nros_knob_key_fields(_knob_fields)
-    nros_share_corrosion_cargo_dir(KEY
+    set(_nros_c_shared_key
         "features=${_features_flat}"
         "rmw=${NANO_ROS_RMW}"
         "board=${NANO_ROS_BOARD}"
         "caps=${_caps_flat}"
         "profile=${NROS_CARGO_PROFILE}"
         "target=${Rust_CARGO_TARGET}"
-        ${_knob_fields})
+        )
+    nros_share_corrosion_cargo_dir(KEY ${_nros_c_shared_key} ${_knob_fields})
+    # Issue 1700 — the key is not complete yet. The entity facts
+    # (`NROS_SIZING_DESCRIPTOR`, `NROS_DECLARED_*`, …) reach this crate's cargo
+    # command through `nros_entity_facts_env_deferred` below, i.e. only at the
+    # END of the configure, after every entry has registered — and they change
+    # what the build scripts probe (executor size 20664 with a leaf's
+    # descriptor, 90648 without). Keyed without them, a C leaf and a C++ leaf
+    # shared one directory, one leaf's header was the other's, and `nros-cpp`
+    # refused the build. The deferred flush re-keys on them; it needs this half.
+    if(NROS_SHARED_CARGO_DIR)
+        set_property(GLOBAL PROPERTY NROS_SHARED_CARGO_BASE_KEY "${_nros_c_shared_key}")
+    endif()
 endif()
 
 corrosion_import_crate(
