@@ -1,7 +1,8 @@
 ---
 id: 1649
 title: "A multi-entry cmake configure names no sizing descriptor to cargo — phase-457 W0.c kept that refusal because 'the condition does not occur', and it now occurs in a fixture the tier lanes build"
-status: open
+status: resolved
+resolved_in: 2026-10-05
 type: tech-debt
 area: [build, cli]
 severity: low
@@ -65,7 +66,7 @@ different: each image's generated entry is its own cargo root with its own
 target directory. So N:1 is the cmake road's normal shape, and the answer is a
 rule for it rather than an exception.
 
-[RFC-0100 D12](../design/0100-rmw-agnostic-sizing-model.md#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model):
+[RFC-0100 D12](../../design/0100-rmw-agnostic-sizing-model.md#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model):
 **the unit a descriptor sizes is the RUNTIME build.** Every runtime build is
 named exactly one descriptor, and "exactly one or none" becomes "exactly one".
 Of the three shapes this issue's title question allowed, D12 picks the first:
@@ -293,3 +294,57 @@ union is the larger by construction.
 parameter rows the west resolver forwards. What closes them is a west image
 that declares a service and a parameter in its CODE (so the census agrees),
 and a cargo leaf with a service server.
+
+## Resolution, 2026-10-05 — the last eight rows retired; no `Kept(1649)` remains
+
+The seven rows above (counting the four parameter rows as four, eight
+carriers) were measured on the roads they were kept for, each with a negative
+control that moved, then deleted.
+
+**How each road was measured** (the W14 method: every build-script `out/`
+file and generated header snapshotted with the carriers on (A), dropped with
+the descriptor named (B), and dropped with NO descriptor (C); A vs B must be
+empty and A vs C must not be):
+
+| road | image (temporary edits, all reverted) | carriers dropped | A vs B | A vs C (negative control) |
+| --- | --- | --- | --- | --- |
+| Zephyr west | `examples/workspaces/cpp` `zephyr_svc` (native_sim, zenoh): the service server's node, a contract with a service and `params:` (integer, string, integer array), the code declaring the same (census agrees), `features = ["param_services"]` | `PARAM_NEEDS_*` x3, `PARAM_SERVICE_SHAPE`, `SERVICE_INBOX_BYTES`, `ACTION_INBOX_BYTES`, `TL_PUBLISHERS` | 0 of 41 files | 6 files (`nros_runtime_config.rs` x2, `nros_node_config.rs` x2, `buffer_config.rs` x2) |
+| cargo leaf | `examples/native/rust/service-server` | `SERVICE_SERVERS` (=1) | 0 of 16 | 3 (`nros_node_config.rs`, `buffer_config.rs`, `shim_constants.rs`) |
+| cargo WORKSPACE image | `examples/workspaces/rust` `native_action_server`, with a contract naming its action server | `SERVICE_SERVERS` (=3), `TL_PUBLISHERS` (=1) | 0 of 16 | the same 3 |
+| standalone cmake leaf | the six `examples/qemu-armv7a-nuttx/c/*` leaves | `SERVICE_SERVERS`, `TL_PUBLISHERS` | every loadable image identical | service-server and action-server images differ |
+
+(The west image fails to LINK on all three runs — `nros_cpp_register_parameter_services`
+undefined, issue 1681 — after every build script has run; the diff is of
+their outputs.) With the producers deleted, the west image and the native
+configure were rebuilt against the pre-retirement builds: 0 files differ on
+either.
+
+**Deleted:**
+
+* the parameter-need / service-shape / service-inbox carriers — the
+  `_nros_param_store_env` rows and `_nros_entity_budget_env`'s inbox rows in
+  `cmake/NanoRosEntityFacts.cmake`, the west resolver's forwards, and the
+  carrier rungs in `nros-params`, `nros-node` and `nros-rmw-zenoh` (each now
+  reads the descriptor's `[params]` / `declared_service_request_bytes` only);
+* `NROS_DECLARED_SERVICE_SERVERS` and `NROS_DECLARED_TL_PUBLISHERS` — the four
+  producers (`entity_facts::facts_from_model`, `facts_from_leaf`,
+  `leaf_entity_env::leaf_facts`, the cmake fold and emission), the west
+  resolver's `NROS_DECLARED_TL_PUBLISHERS` forward, both zenoh build scripts'
+  carrier rungs (`app_count_from` and `declared_app_queryables` take the
+  descriptor's `[image] service_server_queryables`;
+  `transient_local_publisher_demand` its `[[endpoint]]` durability rows), and
+  the `refused:<n>` token path (`parse_declared_tl`, `DeclaredTl`, issue 1572).
+
+`check-knob-single-reader` has two RETIRED entries (wave "issue 1649") with
+the forbidden spellings in cmake, zephyr and Rust; `check-declared-fact-carriers`,
+`check-knob-delivery` and `config-knob-census` lost the rows. The ledger now
+holds no `Kept(1649)` — the six rows still KEPT are RFC-0100 D1/D4 rulings.
+`tests/sizing_descriptor_leaf_road.rs` no longer compares the descriptor with
+the carrier (there is one derivation left); it asserts the descriptor states
+the action server's one cache queryable and three service queryables, and that
+the carrier verb states neither.
+
+**Found while measuring, filed:** 1678 (C++ `declare_parameter<long long>`
+does not compile on LP64), 1679 (the C++ parameter census hook is compiled
+only under `param-store`), 1680 (census freshness ignores `[system]
+features`), 1681 (the Zephyr C++ `param_services` link failure above).

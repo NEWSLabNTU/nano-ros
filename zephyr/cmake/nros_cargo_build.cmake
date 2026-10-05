@@ -674,33 +674,21 @@ function(nros_resolve_knobs)
     # function resolves from NROS_DERIVED_MAX_QUERYABLES above. nros-rmw-zenoh
     # gives the rest of the table to the runtime's parameter and lifecycle
     # services at their own ring geometry, and it can only do that subtraction
-    # when it knows this number. The CMake road carries the same answer as
-    # NROS_DECLARED_SERVICE_SERVERS (`nros_entity_facts_env`), which a west
-    # build never runs; without this line the builtin inbox of every Zephyr
-    # image was sized and then allocated zero times.
+    # when it knows this number. The CMake road reads the same answer off the
+    # sizing descriptor (`[image] service_server_queryables`); this line is the
+    # resolver's own, and without it the builtin inbox of every Zephyr image
+    # was sized and then allocated zero times.
     if(DEFINED NROS_ENTITY_APP_QUERYABLES AND
        NOT "${NROS_ENTITY_APP_QUERYABLES}" STREQUAL "")
         _nros_resolve_knob(NROS_ENTITY_APP_QUERYABLES
             "${NROS_ENTITY_APP_QUERYABLES}")
     endif()
-    # The transient-local retention pool's DEMAND, the other half of the
-    # cache queryables NROS_DERIVED_MAX_QUERYABLES already counts. The CMake
-    # road carries it as NROS_DECLARED_TL_PUBLISHERS (`nros_entity_facts_env`)
-    # beside the sizing descriptor; a west build runs neither, so without this
-    # line nros-rmw-zenoh's pool fell to its builtin of 2 on an image whose
-    # queryable table had derived 5 -- the Autoware Safety Island's third
-    # latched publisher then failed create_publisher (-100) at boot, on QEMU
-    # and on Renode. Forwarded under the CMake road's name, so one reader
-    # serves both roads. On the derivable ladder with the sentinel passed
-    # literally (there is no Kconfig row; a count of declared endpoints is not
-    # a number a person states), so an environment value still wins and
-    # `check-knob-delivery` sees the call. When the inventory could not COUNT
-    # (a publisher states no durability) it publishes the WORST CASE here,
-    # every such publisher counted as transient-local (issue 1572), so the
-    # pool cannot come up short of the table; the fragment says why.
-    _nros_resolve_derivable_knob(NROS_DECLARED_TL_PUBLISHERS
-        "${NROS_KNOB_DERIVE_SENTINEL}" NROS_DERIVED_TL_PUBLISHERS
-        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+    # The transient-local retention pool's DEMAND -- the other half of the
+    # cache queryables NROS_DERIVED_MAX_QUERYABLES already counts -- reaches
+    # nros-rmw-zenoh through the sizing descriptor this entry names (issue
+    # 1407). Issue 1649 retired the `NROS_DECLARED_TL_PUBLISHERS` forward that
+    # used to sit here (the Autoware Safety Island's latched publishers were
+    # the reason it existed): zero-diff with it dropped on a west image.
 
     # issue 1227 / phase-403 step 2 -- the DEPTHS, forwarded to the lane that
     # was emitted for them. `NanoRosEntityInventory.cmake` has published these
@@ -1467,23 +1455,13 @@ function(nros_resolve_knobs)
         "${CONFIG_NROS_MAX_BYTE_ARRAY_LEN}" NROS_DERIVED_MAX_BYTE_ARRAY_LEN
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
     # A capacity a declared type DOES use gets no derived number -- it is a
-    # board fact -- so the inventory names the parameter instead, and that
-    # name travels to nros-params' build script. The script is where the
-    # environment, Kconfig and the `[knobs.params]` board rung all meet, so
-    # it is the one place "declared a string, and nothing states a length"
-    # can refuse correctly; refusing here would miss the board rung.
-    if(DEFINED NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN)
-        _nros_resolve_knob(NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN
-            "${NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN}")
-    endif()
-    if(DEFINED NROS_PARAM_NEEDS_MAX_ARRAY_LEN)
-        _nros_resolve_knob(NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN
-            "${NROS_PARAM_NEEDS_MAX_ARRAY_LEN}")
-    endif()
-    if(DEFINED NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN)
-        _nros_resolve_knob(NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN
-            "${NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN}")
-    endif()
+    # board fact -- so the inventory names the parameter instead. That NEED
+    # reaches nros-params' build script through the sizing descriptor's
+    # `[params]` (issue 1649 retired the three `NROS_DECLARED_PARAM_NEEDS_*`
+    # forwards that used to sit here: zero-diff with them dropped on a
+    # parameter-declaring west image). The script is where the environment,
+    # Kconfig and the `[knobs.params]` board rung all meet, so it is the one
+    # place "declared a string, and nothing states a length" can refuse.
     # phase-446 F2 -- a description's capacity. NOT derivable (the contract
     # declares no descriptions), so it rides the plain ladder like
     # NROS_PARAM_SERVICE_BUFFER_SIZE: Kconfig states it, the environment wins.
@@ -1494,12 +1472,10 @@ function(nros_resolve_knobs)
     # description's knob.
     _nros_resolve_knob(NROS_MAX_PARAM_CONSTRAINTS_LEN
         "${CONFIG_NROS_MAX_PARAM_CONSTRAINTS_LEN}")
-    # phase-446 F3 -- the parameter services' declaration shape, for
-    # nros-node's build script (see NROS_PARAM_SERVICE_BUFFER_SIZE above).
-    if(DEFINED NROS_PARAM_SERVICE_SHAPE)
-        _nros_resolve_knob(NROS_DECLARED_PARAM_SERVICE_SHAPE
-            "${NROS_PARAM_SERVICE_SHAPE}")
-    endif()
+    # phase-446 F3 -- the parameter services' declaration shape reaches
+    # nros-node's and nros-rmw-zenoh's build scripts through the sizing
+    # descriptor's `[params]` (issue 1649 retired this road's forward of
+    # `NROS_DECLARED_PARAM_SERVICE_SHAPE`).
     # phase-461 W1 -- the per-family service inboxes (issue 1352), on the
     # plain ladder under their RMW-agnostic names: Kconfig states them, the
     # environment wins, nros-rmw-zenoh's build script reads them. The parameter
@@ -1563,14 +1539,12 @@ function(nros_resolve_knobs)
     # stated in Kconfig or the environment still wins and the derivation only
     # fills in what nobody stated. That is the same shape as the parameter
     # shape above and it needs no new Kconfig symbol.
-    if(DEFINED NROS_DERIVED_SERVICE_INBOX_BYTES)
-        _nros_resolve_knob(NROS_DECLARED_SERVICE_INBOX_BYTES
-            "${NROS_DERIVED_SERVICE_INBOX_BYTES}")
-    endif()
-    if(DEFINED NROS_DERIVED_ACTION_INBOX_BYTES)
-        _nros_resolve_knob(NROS_DECLARED_ACTION_INBOX_BYTES
-            "${NROS_DERIVED_ACTION_INBOX_BYTES}")
-    endif()
+    #
+    # Issue 1649 -- and since then it rides the sizing DESCRIPTOR instead: the
+    # per-family request bound (`declared_service_request_bytes`) is read
+    # first by nros-rmw-zenoh, so the `NROS_DECLARED_{SERVICE,ACTION}_INBOX_BYTES`
+    # forwards that sat here were retired -- zero-diff with them dropped on a
+    # service-serving west image, and on the cmake road.
 endfunction()
 
 # =============================================================================

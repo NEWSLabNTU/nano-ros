@@ -810,7 +810,8 @@ impl Image {
     /// Issue 1655 — the APPLICATION's queryables a service server claims:
     /// declared service servers plus three per action server (its
     /// `send_goal` / `cancel_goal` / `get_result` channels) — `local_query_servers` in the entity derivation, the
-    /// number `NROS_DECLARED_SERVICE_SERVERS` carries.
+    /// number `NROS_DECLARED_SERVICE_SERVERS` carried until issue 1649 retired
+    /// it onto this field.
     ///
     /// A field, not a sum a consumer computes from `service_server_entities`
     /// and `action_server_entities`: the action expansion is the producer's

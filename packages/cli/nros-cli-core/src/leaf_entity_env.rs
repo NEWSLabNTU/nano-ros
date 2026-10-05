@@ -648,8 +648,8 @@ pub const DERIVED_CLOSURE_ENV_KEYS: &[&str] = &["NROS_SUBSCRIPTION_BUFFER_SIZE"]
 /// `ZPICO_MAX_QUERYABLES` is never stated here as a COUNT: the consumer
 /// derives it from the FACTS this road carries (RFC-0098 D7, phase-445 W1).
 ///
-/// `nros-zpico-build` sizes the queryable table from
-/// `NROS_DECLARED_SERVICE_SERVERS` + `NROS_DECLARED_INFRA_QUERYABLES` +
+/// `nros-zpico-build` sizes the queryable table from the sizing descriptor's
+/// `[image] service_server_queryables` + `NROS_DECLARED_INFRA_QUERYABLES` +
 /// `NROS_DECLARED_NODES`, adding the parameter and lifecycle costs defined
 /// beside the code that registers them. Carrying the facts rather than the
 /// count is issue 0460's rule: a count computed here would have to restate
@@ -924,34 +924,28 @@ pub fn manifest_infra(leaf: &Path) -> (bool, bool) {
 }
 
 /// RFC-0098 D7 / phase-445 W1 — the `NROS_DECLARED_*` facts a cargo LEAF's
-/// image carries, from three sources, each for the half it can answer:
+/// image carries, from two sources, each for the half it can answer:
 ///
 /// * `model_facts` — [`crate::cmd::entity_facts::facts_from_model`] over the
-///   leaf's resolved model: the node count, the infrastructure families its
-///   `[system] features` declare, and the application's service servers when
-///   the model describes wiring (an authored contract).
+///   leaf's resolved model: the node count and the infrastructure families its
+///   `[system] features` declare.
 /// * `manifest` — [`manifest_infra`], UNIONED into the infrastructure fact,
 ///   because a leaf picks those families with cargo features. Same union rule
 ///   as `InfraServices`: either source declaring a family declares it.
-/// * `app_service_servers` — the application's service servers counted by the
-///   leaf's OWN inventory (probe, or the `[[component]] entities` declaration),
-///   used only where the model abstains. The same inventory already sizes
-///   every other derived knob of this road, and it is a complete statement of
-///   what the leaf's components create; `None` when it is not (nothing probed
-///   and nothing declared, or an un-probeable component skipped).
+///
+/// The application's service-server count used to be a third source here
+/// (`NROS_DECLARED_SERVICE_SERVERS`, from the leaf's own inventory). Issue 1649
+/// retired it: the leaf's sizing descriptor states `[image]
+/// service_server_queryables` from the same inventory and both readers take
+/// it first; dropping the carrier on `examples/native/rust/service-server` was
+/// zero-diff (0 of 16 build-script outputs).
 ///
 /// No count is formed here — the consumer does that.
 pub fn leaf_facts(
     model_facts: &BTreeMap<String, String>,
     manifest: (bool, bool),
-    app_service_servers: Option<usize>,
 ) -> BTreeMap<String, String> {
     let mut out = model_facts.clone();
-    if !out.contains_key("NROS_DECLARED_SERVICE_SERVERS")
-        && let Some(n) = app_service_servers
-    {
-        out.insert("NROS_DECLARED_SERVICE_SERVERS".into(), n.to_string());
-    }
     // The infrastructure fact exists only where a model stated one. With no
     // model it stays ABSENT, which the consumer reads as "both families
     // present" — the large direction.
@@ -1051,7 +1045,7 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
 
     let model_facts = leaf_model_facts(leaf).unwrap_or_default();
     let manifest = manifest_infra(leaf);
-    let bare_facts = || leaf_facts(&model_facts, manifest, None);
+    let bare_facts = || leaf_facts(&model_facts, manifest);
 
     let (mut inv, unprobeable) = match inventory_for_leaf(leaf) {
         Ok(v) => v,
@@ -1084,7 +1078,6 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
             env: bare_facts(),
         };
     }
-    let declared = matches!(declared_entities(leaf), Ok(Some(_)));
     // phase-467 W1 -- the probe sees no contract, so the monitor-table counts
     // come from the leaf's resolved model, and only when that model describes
     // wiring (the same predicate the cmake road's `from_model` applies): a
@@ -1098,12 +1091,7 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
     }
     match inv.derive() {
         Derivation::Derived(knobs) => {
-            // The application's servers, as the inventory counts them. Only when
-            // the inventory is the WHOLE image: a skipped un-probeable component
-            // with no declaration standing in would make this a count of half.
-            let app = (unprobeable.is_empty() || declared)
-                .then(|| knobs.max_queryables.saturating_sub(knobs.infra_queryables));
-            let facts = leaf_facts(&model_facts, manifest, app);
+            let facts = leaf_facts(&model_facts, manifest);
             // Issue 1125 — the payload classes need a SECOND inventory (the
             // per-type bounds `nros sync` has already written into
             // `generated/`), so they are computed here and refuse
@@ -1245,33 +1233,6 @@ mod tests {
             .collect()
     }
 
-    /// The esp32 talker's case: the model abstains on the application count
-    /// (no contract), the inventory knows it is zero, and nothing enables a
-    /// service family. The consumer then sizes `max(0 + 0, 1)` = 1 slot.
-    #[test]
-    fn the_inventory_answers_the_application_count_the_model_abstains_on() {
-        let model = facts(&[
-            ("NROS_DECLARED_INFRA_QUERYABLES", "none"),
-            ("NROS_DECLARED_NODES", "1"),
-        ]);
-        let out = leaf_facts(&model, (false, false), Some(0));
-        assert_eq!(out["NROS_DECLARED_SERVICE_SERVERS"], "0");
-        assert_eq!(out["NROS_DECLARED_INFRA_QUERYABLES"], "none");
-        assert_eq!(out["NROS_DECLARED_NODES"], "1");
-    }
-
-    /// A contract's count is the model's to state; the inventory never
-    /// overrides a stated fact.
-    #[test]
-    fn a_model_stated_application_count_wins() {
-        let model = facts(&[
-            ("NROS_DECLARED_SERVICE_SERVERS", "3"),
-            ("NROS_DECLARED_INFRA_QUERYABLES", "none"),
-        ]);
-        let out = leaf_facts(&model, (false, false), Some(0));
-        assert_eq!(out["NROS_DECLARED_SERVICE_SERVERS"], "3");
-    }
-
     /// The safety property. A leaf picks the service families with CARGO
     /// features, so a model saying `none` about an image whose manifest enables
     /// `lifecycle-services` would size a table five short — a registration
@@ -1280,16 +1241,16 @@ mod tests {
     fn a_manifest_enabled_service_family_is_unioned_into_the_model_fact() {
         let model = facts(&[("NROS_DECLARED_INFRA_QUERYABLES", "none")]);
         assert_eq!(
-            leaf_facts(&model, (false, true), Some(0))["NROS_DECLARED_INFRA_QUERYABLES"],
+            leaf_facts(&model, (false, true))["NROS_DECLARED_INFRA_QUERYABLES"],
             "lifecycle"
         );
         assert_eq!(
-            leaf_facts(&model, (true, true), Some(0))["NROS_DECLARED_INFRA_QUERYABLES"],
+            leaf_facts(&model, (true, true))["NROS_DECLARED_INFRA_QUERYABLES"],
             "param+lifecycle"
         );
         let model = facts(&[("NROS_DECLARED_INFRA_QUERYABLES", "param")]);
         assert_eq!(
-            leaf_facts(&model, (false, true), None)["NROS_DECLARED_INFRA_QUERYABLES"],
+            leaf_facts(&model, (false, true))["NROS_DECLARED_INFRA_QUERYABLES"],
             "param+lifecycle"
         );
     }
@@ -1299,12 +1260,11 @@ mod tests {
     /// would be the short one.
     #[test]
     fn no_model_states_no_infrastructure_fact() {
-        let out = leaf_facts(&BTreeMap::new(), (false, false), Some(2));
+        let out = leaf_facts(&BTreeMap::new(), (false, false));
         assert!(
             !out.contains_key("NROS_DECLARED_INFRA_QUERYABLES"),
             "{out:?}"
         );
-        assert_eq!(out["NROS_DECLARED_SERVICE_SERVERS"], "2");
     }
 
     #[test]
@@ -1350,11 +1310,10 @@ nros = { version = "*", features = ["std", "param-services"] }
         let f = facts(&[
             ("NROS_DECLARED_INFRA_QUERYABLES", "none"),
             ("NROS_DECLARED_NODES", "1"),
-            ("NROS_DECLARED_SERVICE_SERVERS", "0"),
         ]);
         let out = render_env_sidecar_with_facts(&k, &payload, &refused_take(), "t", &f);
         let rows = env_rows(&out);
-        assert_eq!(rows["NROS_DECLARED_SERVICE_SERVERS"], "0");
+        assert_eq!(rows["NROS_DECLARED_NODES"], "1");
         assert_eq!(rows["NROS_DECLARED_INFRA_QUERYABLES"], "none");
         assert!(!rows.contains_key("ZPICO_MAX_QUERYABLES"), "{out}");
     }

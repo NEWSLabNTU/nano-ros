@@ -20,27 +20,22 @@ fn main() {
     println!("cargo:rerun-if-env-changed=NROS_SERVICE_INBOX_DEPTH");
     println!("cargo:rerun-if-env-changed=NROS_ACTION_INBOX_BYTES");
     println!("cargo:rerun-if-env-changed=NROS_ACTION_INBOX_DEPTH");
-    // phase-461 W3 -- the declared road's carriers for the two families' slot
-    // sizes. WATCHED and not merely read: `check-declared-fact-carriers` rule 3
-    // exists because `resolve_queryable_default` read two of these without
-    // watching either, and an entry that gained a service server kept its
-    // previously-sized tables until something else forced a rebuild.
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_SERVICE_INBOX_BYTES");
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_ACTION_INBOX_BYTES");
+    // phase-461 W3 -- the two families' slot sizes come from the sizing
+    // descriptor (`declared_service_request_bytes`); issue 1649 retired the
+    // `NROS_DECLARED_{SERVICE,ACTION}_INBOX_BYTES` carriers that used to be
+    // watched here.
     // phase-461 W2b - the BUILTIN family (the ROS parameter services and the
     // REP-2002 lifecycle services). The pair is spelled as phase-461 W2
     // forwards it, so one Kconfig symbol feeds both readers rather than the
     // two families acquiring two names for one geometry.
     println!("cargo:rerun-if-env-changed=NROS_PARAM_SERVICE_INBOX_BYTES");
     println!("cargo:rerun-if-env-changed=NROS_PARAM_SERVICE_INBOX_DEPTH");
-    // WATCH what we READ -- the two carriers the builtin partition is drawn
-    // from. An entry that gains a service server changes how many of its
-    // queryables are the runtime's, and a fact nothing watches reads as
-    // applied while being stale (issue 1122).
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_SERVICE_SERVERS");
+    // The builtin partition is drawn from the sizing descriptor (whose content
+    // edge `load_for_build_script` places) or, on the Zephyr resolver road,
+    // from the carrier below. Issue 1649 retired the
+    // `NROS_DECLARED_SERVICE_SERVERS` carrier that used to be watched here.
     // issue 1485 -- the Zephyr resolver road's answer to the same question.
     println!("cargo:rerun-if-env-changed=NROS_ENTITY_APP_QUERYABLES");
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_PARAM_SERVICE_SHAPE");
     println!("cargo:rerun-if-env-changed=NROS_SERVICE_TIMEOUT_MS");
     println!("cargo:rerun-if-env-changed=NROS_KEYEXPR_STRING_SIZE");
     println!("cargo:rerun-if-env-changed=ZPICO_SUBSCRIBER_RING_DEPTH");
@@ -57,9 +52,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed=ZPICO_PUBLISHER_TX_BUFFER_SIZE");
     // phase-455 W5 / issue 1341 — the TRANSIENT_LOCAL retention pool.
     println!("cargo:rerun-if-env-changed=ZPICO_MAX_TL_PUBLISHERS");
-    // The retention pool's DECLARED demand, for a road with no descriptor
-    // (`transient_local_publisher_demand`).
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_TL_PUBLISHERS");
+    // (The retention pool's DECLARED demand used to arrive as the
+    // `NROS_DECLARED_TL_PUBLISHERS` carrier on a road with no descriptor;
+    // issue 1649 retired it -- every road names one.)
     println!("cargo:rerun-if-env-changed=ZPICO_TL_RETAIN_BYTES");
     // issue 1498 -- the retention SLOT's declared size, for the CMake road
     // (`_nros_payload_facts_env`); the leaf road reads it off the descriptor.
@@ -132,20 +127,19 @@ fn main() {
     // join over the same rows and bound tables -- the carrier is the entity
     // inventory's, the descriptor's rows are that inventory's -- so where both
     // answer they agree (measured zero-diff), and where the descriptor refuses
-    // a row the carrier is absent too. The carrier stays the fallback until
-    // its own retirement.
+    // a row the carrier is absent too. And then the carrier was retired (still
+    // issue 1649): zero-diff with it dropped on the cmake road and the Zephyr
+    // west road, the descriptor named -- so the descriptor is the one source.
     let service_inbox_bytes: usize = env_usize_rung(
         "NROS_SERVICE_INBOX_BYTES",
-        declared_service_request_bytes(sizing.as_ref(), SERVICE_FAMILY)
-            .or_else(|| declared_usize("NROS_DECLARED_SERVICE_INBOX_BYTES")),
+        declared_service_request_bytes(sizing.as_ref(), SERVICE_FAMILY),
         svc_size,
     );
     let service_inbox_depth: usize =
         env_usize_min("NROS_SERVICE_INBOX_DEPTH", SERVICE_INBOX_DEPTH_DEFAULT, 1);
     let action_inbox_bytes: usize = env_usize_rung(
         "NROS_ACTION_INBOX_BYTES",
-        declared_service_request_bytes(sizing.as_ref(), ACTION_FAMILY)
-            .or_else(|| declared_usize("NROS_DECLARED_ACTION_INBOX_BYTES")),
+        declared_service_request_bytes(sizing.as_ref(), ACTION_FAMILY),
         svc_size,
     );
     let action_inbox_depth: usize =
@@ -523,14 +517,12 @@ fn declared_action_queryables(desc: Option<&SizingDescriptor>) -> usize {
 /// service_server_queryables`, the derivation the carrier delivers), in the
 /// same order `nros-zpico-build` reads it, for the subtraction rule above.
 fn declared_app_queryables(desc: Option<&SizingDescriptor>, tl: Option<usize>) -> Option<usize> {
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_TL_PUBLISHERS");
+    // Issue 1649 -- the descriptor is the cmake / cargo roads' one source; the
+    // `NROS_DECLARED_{SERVICE_SERVERS,TL_PUBLISHERS}` carriers it used to fall
+    // back on were retired (zero-diff with them dropped on every road).
     let described = desc.and_then(|d| d.image.service_server_queryables().stated().copied());
-    match described.or_else(|| declared_usize("NROS_DECLARED_SERVICE_SERVERS")) {
-        Some(app) => Some(
-            app + tl
-                .or_else(|| declared_usize("NROS_DECLARED_TL_PUBLISHERS"))
-                .unwrap_or(0),
-        ),
+    match described {
+        Some(app) => Some(app + tl.unwrap_or(0)),
         None => declared_usize("NROS_ENTITY_APP_QUERYABLES"),
     }
 }
@@ -582,10 +574,8 @@ fn declared_app_queryables(desc: Option<&SizingDescriptor>, tl: Option<usize>) -
 /// A MALFORMED token is not this crate's to refuse: `nros-node`'s build script
 /// owns the grammar and panics naming it. Here it reads as "cannot answer".
 fn declared_param_request_max(desc: Option<&SizingDescriptor>) -> Option<usize> {
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_PARAM_SERVICE_SHAPE");
-    let raw = desc
-        .and_then(|d| d.params.service_shape().into_stated())
-        .or_else(|| declared_fact("NROS_DECLARED_PARAM_SERVICE_SHAPE"))?;
+    // Issue 1649 -- the descriptor is the one road (the carrier is retired).
+    let raw = desc.and_then(|d| d.params.service_shape().into_stated())?;
     param_request_max_from(raw.trim())
 }
 
@@ -797,9 +787,9 @@ fn declared_ring_depth(desc: Option<&SizingDescriptor>) -> Option<usize> {
 /// `nros-zpico-build` already reads it for the table. The descriptor still
 /// wins when both are present, as it does there.
 fn transient_local_publisher_demand(desc: Option<&SizingDescriptor>) -> Option<usize> {
-    let Some(desc) = desc else {
-        return declared_transient_local_publishers(declared_fact("NROS_DECLARED_TL_PUBLISHERS"));
-    };
+    // Issue 1649 -- no descriptor, no declared demand: the
+    // `NROS_DECLARED_TL_PUBLISHERS` carrier that answered here is retired.
+    let desc = desc?;
     match nros_sizing_descriptor::transient_local_publishers(desc) {
         Fact::Stated(n) => Some(n),
         Fact::Absent => None,
@@ -852,32 +842,6 @@ fn warn_tl_worst_case(reason: &str, bound: usize) {
          sized for the WORST CASE of {bound} slot(s): every publisher that states no \
          durability is counted as transient-local. Stating it gives the slots back"
     ));
-}
-
-/// The DECLARED road's transient-local count, or `None` for "nobody said".
-///
-/// Read through `nros_sizing_descriptor::parse_declared_tl`, the ONE parser
-/// `nros-zpico-build`'s reader of this carrier uses too: absent (or empty,
-/// issue 1429) is undeclared; a count is the demand; `refused:<n>` is a
-/// composer that looked and could not count, and `n` is its WORST CASE, which
-/// the pool is sized for and says so (issue 1572 -- it used to keep the builtin
-/// of 2). The bare word `refused` carries no worst case and a malformed value
-/// is not a count; both panic, for the reason given there -- a value that
-/// reads as applied and is not is worse than no value.
-fn declared_transient_local_publishers(v: Option<String>) -> Option<usize> {
-    let v = v?;
-    match nros_sizing_descriptor::parse_declared_tl(&v) {
-        Ok(nros_sizing_descriptor::DeclaredTl::Count(n)) => Some(n),
-        Ok(nros_sizing_descriptor::DeclaredTl::WorstCase(n)) => {
-            warn_tl_worst_case(
-                "NROS_DECLARED_TL_PUBLISHERS: the entry declares a publisher whose \
-                 `durability` nothing states",
-                n,
-            );
-            Some(n)
-        }
-        Err(e) => panic!("{e}"),
-    }
 }
 
 /// `ZPICO_MAX_TL_PUBLISHERS` as a CHECKED override, shaped after
@@ -1114,21 +1078,4 @@ fn env_usize_rung(name: &str, rung: Option<usize>, default: usize) -> usize {
 /// share a spelling with "nobody told me".
 fn declared_usize(name: &str) -> Option<usize> {
     std::env::var(name).ok().and_then(|v| v.trim().parse().ok())
-}
-
-/// issue 1122 / 0460 - the string twin of [`declared_usize`], for a carrier
-/// that is a TOKEN rather than a count. Named as the readers of the same
-/// road in `nros-node` and `nros-zpico-build` are named, and for the same
-/// reason: one idiom for the DECLARED carriers, which is what keeps them in
-/// the config census (issue 1199).
-///
-/// The name is an ARGUMENT and not a literal at the `env::var` call, which is
-/// what `check-kconfig-knob-forwarding` requires of every forwarded knob: a
-/// literal `env::var("<forwarded knob>")` in a build script yields the crate
-/// default on a Zephyr Rust image whatever Kconfig says, which is issue 0460's
-/// shape. This fact has no `CONFIG_` symbol to miss -- cmake forwards it
-/// through the environment and nowhere else -- so the environment is the right
-/// and only rung, exactly as `nros-node/build.rs` reads the same carrier.
-fn declared_fact(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|v| !v.trim().is_empty())
 }

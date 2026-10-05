@@ -4,18 +4,18 @@
 //! The unit tests in `cmd/sizing_descriptor.rs` feed this producer synthetic
 //! leaves. This one runs it over the two REAL leaves issue 1378 was filed
 //! against — `examples/qemu-armv7a-nuttx/{c,cpp}/action-server`, measured
-//! 2026-09-20 exhausting `ZPICO_MAX_QUERYABLES` at boot — and holds the new road
-//! to the carrier that already works there.
+//! 2026-09-20 exhausting `ZPICO_MAX_QUERYABLES` at boot — and holds the
+//! descriptor to the numbers that boot needs.
 //!
 //! **What this asserts, and why it is the acceptance rather than "a file was
-//! written".** `NROS_DECLARED_TL_PUBLISHERS` is the carrier that fixed 1378; the
-//! descriptor is what is meant to replace it. Those two are only
-//! interchangeable if they AGREE, and the way this campaign's defects have
-//! repeatedly survived is a second derivation of one number that agrees until
-//! the day it does not (issue 1025). So the test computes the fact BOTH ways —
-//! through `cmd::entity_facts::facts_from_leaf` (the carrier) and through
-//! `nros_sizing_descriptor::transient_local_publishers` over the descriptor this
-//! road now writes — and requires the same answer. One rule, two roads.
+//! written".** `NROS_DECLARED_TL_PUBLISHERS` was the carrier that fixed 1378,
+//! and until issue 1649 this test required the descriptor to AGREE with it,
+//! because a second derivation of one number agrees until the day it does not
+//! (issue 1025). Issue 1649 measured the two interchangeable on every road and
+//! deleted the carrier, so there is one derivation left: the descriptor must
+//! state the one cache queryable an action server owes for `/status` and the
+//! three service queryables it serves, and the carrier verb must no longer
+//! state either.
 //!
 //! Run with:
 //! `cargo test --manifest-path packages/cli/Cargo.toml --test sizing_descriptor_leaf_road`
@@ -96,25 +96,32 @@ fn args() -> SizingDescriptorArgs {
 }
 
 /// THE ACCEPTANCE: the two leaves issue 1378 measured failing get a descriptor,
-/// and it states the cache-queryable count their carrier states.
+/// and it states the counts their boot needs.
 ///
 /// Both are `[[component]] entities` declarations with no bringup and no
 /// SystemModel, so `write_for_model` cannot reach either — which is exactly the
 /// mechanism issue 1407 records as keeping the carrier alive.
 #[test]
-fn the_leaves_issue_1378_measured_get_a_descriptor_that_agrees_with_the_carrier() {
+fn the_leaves_issue_1378_measured_get_a_descriptor_that_states_their_queryables() {
     let dir = tempfile::tempdir().expect("scratch");
     let mut checked = 0;
     for lang in ["c", "cpp"] {
         let leaf = leaf_copy(lang, dir.path(), &format!("[\"{ACTION_SERVER}\"]"));
 
-        // The CARRIER's answer, from the verb the cmake leaf road already calls.
+        // The verb the cmake leaf road calls states the infrastructure and
+        // node facts, and no longer the application's counts (issue 1649).
         let facts = entity_facts::facts_from_leaf(&leaf)
             .expect("the leaf reads")
             .expect("it declares entities, so the verb does not abstain");
-        let carrier = facts
-            .get(entity_facts::TL_PUBLISHERS)
-            .expect("the carrier states the cache-queryable count for this leaf");
+        for retired in [
+            "NROS_DECLARED_TL_PUBLISHERS",
+            "NROS_DECLARED_SERVICE_SERVERS",
+        ] {
+            assert!(
+                !facts.contains_key(retired),
+                "{lang}: `{retired}` was retired onto the descriptor (issue 1649): {facts:?}"
+            );
+        }
 
         // The DESCRIPTOR's answer, from the road this wave adds.
         let build_dir = dir.path().join(lang);
@@ -136,18 +143,19 @@ fn the_leaves_issue_1378_measured_get_a_descriptor_that_agrees_with_the_carrier(
         let desc = nros_sizing_descriptor::read(&path).expect("it reads back through the schema");
 
         let from_desc = nros_sizing_descriptor::transient_local_publishers(&desc);
-        assert_eq!(
-            from_desc.stated().map(|n| n.to_string()).as_deref(),
-            Some(carrier.as_str()),
-            "{lang}: the descriptor and the carrier must derive ONE number — \
-             descriptor {from_desc:?}, carrier {carrier}"
-        );
-        // And it is the fact 1378 is about: an action server owes a cache
-        // queryable for the `/status` publisher no contract mentions.
+        // The fact 1378 is about: an action server owes a cache queryable for
+        // the `/status` publisher no contract mentions.
         assert_eq!(
             from_desc.stated(),
             Some(&1),
             "{lang}: one action server, one TRANSIENT_LOCAL `/status` publisher"
+        );
+        // And the other half of the application's queryables: an action server
+        // is three services on the wire.
+        assert_eq!(
+            desc.image.service_server_queryables().stated(),
+            Some(&3),
+            "{lang}: one action server, three service queryables"
         );
 
         // The endpoint table is the declaration, not a summary of it.

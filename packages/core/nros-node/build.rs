@@ -1726,20 +1726,13 @@ fn env_usize_declared(name: &str, declared: &str, default: usize) -> usize {
 fn declared_param_service_shapes(
     desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
 ) -> String {
-    // Both spellings are literal, and each is a gate's evidence: the watch is
-    // what `check-declared-fact-carriers` looks for, and the name being an
-    // ARGUMENT rather than written at the `env::var` call is what
-    // `check-kconfig-knob-forwarding` requires. A literal
-    // `env::var("<forwarded knob>")` is issue 0460's shape -- on a Zephyr Rust
-    // image it yields the crate default whatever Kconfig says. This fact has
-    // no `CONFIG_` symbol to miss (cmake forwards it through the environment
-    // and nowhere else), so the environment is the right and only rung. Same
-    // shape as nros-params' build script, which reads W4's
-    // `NROS_DECLARED_PARAM_NEEDS_*` facts off the same road.
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_PARAM_SERVICE_SHAPE");
+    // Issue 1649 -- the descriptor's `[params] service_shape` is the ONE road.
+    // The `NROS_DECLARED_PARAM_SERVICE_SHAPE` carrier the cmake configure and
+    // the Zephyr resolver used to forward was retired: zero-diff with it
+    // dropped on both, the descriptor named. With no descriptor the shape is
+    // undeclared (`None`), exactly as an image that declares no `params:`.
     let raw = desc
         .and_then(|d| d.params.service_shape().into_stated())
-        .or_else(|| declared_fact("NROS_DECLARED_PARAM_SERVICE_SHAPE"))
         .unwrap_or_default();
     let raw = raw.trim();
     if raw.is_empty() {
@@ -1759,10 +1752,11 @@ fn declared_param_service_shapes(
                         .join(", ")
                 ),
                 _ => panic!(
-                    "\n\nnros-node: NROS_DECLARED_PARAM_SERVICE_SHAPE=`{raw}` is malformed at \
-                     `{node}`: each node must be nine `:`-separated counts. It is written by \
-                     the entity inventory (phase-446 F3); a stale or hand-set value would size \
-                     the parameter-service buffer wrongly, so the build stops here.\n"
+                    "\n\nnros-node: the sizing descriptor's `[params] service_shape` = \
+                     `{raw}` is malformed at `{node}`: each node must be nine `:`-separated \
+                     counts. It is written by the entity inventory (phase-446 F3); a stale or \
+                     hand-edited value would size the parameter-service buffer wrongly, so the \
+                     build stops here.\n"
                 ),
             }
         })

@@ -178,10 +178,9 @@ fn stated(v: Option<&str>) -> Option<&str> {
 /// picked for headroom because nothing here knew the answer, costing a native
 /// talker 144,128 bytes for services it does not have.
 ///
-/// `NROS_DECLARED_SERVICE_SERVERS` is the application's own count, resolved
-/// from the SystemModel and delivered by the same path phase-351 W5 uses for
-/// board facts (`corrosion_set_env_vars`, which reaches cargo where
-/// `set(ENV{...})` does not — issue 0460). The infrastructure counts are added
+/// The application's own count is the sizing descriptor's `[image]
+/// service_server_queryables` (issue 1655); it used to arrive as the
+/// `NROS_DECLARED_SERVICE_SERVERS` carrier, retired by issue 1649. The infrastructure counts are added
 /// HERE rather than by whoever computes that figure, because codegen sees the
 /// user's entities and never the runtime's: deriving the total from the app's
 /// service count alone is issue 0460's defect exactly.
@@ -204,18 +203,16 @@ fn resolve_queryable_default() -> QueryableSizing {
     // It also makes the knob untestable by hand: setting either variable and
     // rebuilding produces a byte-identical image, which is exactly how this was
     // found.
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_SERVICE_SERVERS");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_INFRA_QUERYABLES");
     // phase-426 W3 — the parameter services are PER NODE now, so the image's
     // node count is a term in this pool. Same watch discipline as its two
     // siblings: an entry that gains a node changes the number this script
     // must produce.
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_NODES");
-    // Issue 1378 — the transient-local cache queryables, on the DECLARED road.
-    // Watched for the same reason as its three siblings: an entry that gains an
-    // action server changes this number, and a fact nothing watches reads as
-    // applied while being stale.
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_TL_PUBLISHERS");
+    // Issue 1649 -- the application's service-server count and the
+    // transient-local count come from the sizing DESCRIPTOR only; the two
+    // `NROS_DECLARED_*` carriers that used to be watched here were retired
+    // (zero-diff with them dropped on every road that carried them).
     // Issue 1429 — every one of these goes through `declared_fact`, not
     // `env::var(..).ok()`. Three of the four were tolerant of an empty value by
     // accident (they parse and fall back) and two PANIC on one; routing them
@@ -238,11 +235,7 @@ fn resolve_queryable_default() -> QueryableSizing {
     // zephyr). Where no infra fact arrived, the app count stays the carrier's
     // -- i.e. none on that road, exactly as before.
     let infra = declared_fact("NROS_DECLARED_INFRA_QUERYABLES");
-    let declared = app_count_from(
-        infra.as_deref(),
-        described_service_server_queryables,
-        declared_fact("NROS_DECLARED_SERVICE_SERVERS"),
-    );
+    let declared = app_count_from(infra.as_deref(), described_service_server_queryables);
     let nodes = declared_fact("NROS_DECLARED_NODES");
     let tl = transient_local_publishers();
     QueryableSizing {
@@ -309,23 +302,23 @@ fn resolve_queryable_default() -> QueryableSizing {
 /// eight, and boots on the headroom — so the images that described themselves
 /// were the ones that failed.
 ///
-/// `NROS_DECLARED_TL_PUBLISHERS` is that road's carrier, composed by
-/// `cmake/NanoRosEntityFacts.cmake` from the same rule (`nros ws entity-facts`
-/// ->`transient_local_publishers_from_decls` -> the descriptor crate's own
-/// `transient_local_publishers_over`). The descriptor still WINS when both are
-/// present: it is derived from the richer input, and a road that has one has
-/// no need of the other.
+/// That road's carrier was `NROS_DECLARED_TL_PUBLISHERS`, composed from the
+/// same rule. Issue 1649 retired it: every road names a descriptor now, and
+/// dropping the carrier was zero-diff on each (cmake, the Zephyr west road,
+/// the standalone NuttX leaves, the cargo workspace image). With no descriptor
+/// the term is zero, as for an image that declares no transient-local
+/// publisher.
 fn transient_local_publishers() -> usize {
     // A named descriptor that cannot be read is the producer's bug, and the
     // zenoh crate one layer over panics on the same condition. Matching it
     // here keeps one failure for one cause.
     let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"));
     let Some(desc) = desc else {
-        return declared_transient_local_publishers();
+        return 0;
     };
     match nros_sizing_descriptor::transient_local_publishers(&desc) {
         nros_sizing_descriptor::Fact::Stated(n) => n,
-        nros_sizing_descriptor::Fact::Absent => declared_transient_local_publishers(),
+        nros_sizing_descriptor::Fact::Absent => 0,
         nros_sizing_descriptor::Fact::Refused(reason) => {
             // Issue 1572 -- the worst case over the SAME rows, never zero.
             let bound =
@@ -337,18 +330,20 @@ fn transient_local_publishers() -> usize {
 }
 
 /// Issue 1655 -- which answer the application's queryable count takes: the
-/// descriptor's, ONLY beside a stated infrastructure term, else the carrier's.
-/// A rule over values so the west-road case is testable in-process (see the
-/// comment at the call site for why the pairing matters).
+/// descriptor's, ONLY beside a stated infrastructure term, else none. A rule
+/// over values so the west-road case is testable in-process (see the comment
+/// at the call site for why the pairing matters). Issue 1649 retired the
+/// `NROS_DECLARED_SERVICE_SERVERS` carrier that answered where the descriptor
+/// did not: every road that carried it names a descriptor, and the drop was
+/// zero-diff on each.
 fn app_count_from(
     infra: Option<&str>,
     described: impl FnOnce() -> Option<usize>,
-    carrier: Option<String>,
 ) -> Option<String> {
     if stated(infra).is_some() {
-        described().map(|n| n.to_string()).or(carrier)
+        described().map(|n| n.to_string())
     } else {
-        carrier
+        None
     }
 }
 
@@ -359,55 +354,6 @@ fn app_count_from(
 fn described_service_server_queryables() -> Option<usize> {
     let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"))?;
     desc.image.service_server_queryables().stated().copied()
-}
-
-/// Issue 1378 — the DECLARED road's transient-local count, for an image with no
-/// sizing descriptor.
-///
-/// Parsed rather than derived: `cmake/NanoRosEntityFacts.cmake` composes the
-/// number from `nros ws entity-facts`, which runs the descriptor crate's own
-/// rule over the entry's declared entities. This side only reads it, the same
-/// division of labour `NROS_DECLARED_NODES` keeps — the declarer states the
-/// fact, the consumer states what it costs.
-///
-/// A refusal is `refused:<worst case>`: the composing side LOOKED and could
-/// not count, so it sends the bound and the word together (issue 1572). The
-/// word keeps the warning; the number keeps the table from sizing zero, which
-/// is the under-count this whole term exists to remove. Absent is the
-/// undeclared road and contributes nothing without comment, because there is
-/// nothing to comment on.
-///
-/// A malformed value PANICS rather than falling back, for the reason
-/// [`declared_nodes`] gives: a value that reads as applied and is not is worse
-/// than no value. An EMPTY value is not malformed — it is absent, and
-/// [`stated`] says why (issue 1429).
-fn declared_transient_local_publishers() -> usize {
-    // The RULE takes a string, for the reason `queryable_default_from` gives:
-    // a build script reading env directly is untestable in-process, which is
-    // how a sizing rule ends up verified by reading.
-    declared_transient_local_publishers_from(declared_fact("NROS_DECLARED_TL_PUBLISHERS"))
-}
-
-fn declared_transient_local_publishers_from(v: Option<String>) -> usize {
-    // Issue 1429 — `stated` first: unset and set-but-empty are ONE answer here,
-    // and only a value that says something reaches the parser.
-    let Some(v) = stated(v.as_deref()) else {
-        return 0;
-    };
-    // Issue 1572 -- the carrier's ONE parser, shared with `nros-rmw-zenoh`. A
-    // refusal arrives as `refused:<worst case>` and is sized for; the bare
-    // word (an older CLI, no number) and anything malformed fail the build.
-    match nros_sizing_descriptor::parse_declared_tl(v) {
-        Ok(nros_sizing_descriptor::DeclaredTl::Count(n)) => n,
-        Ok(nros_sizing_descriptor::DeclaredTl::WorstCase(n)) => {
-            warn_worst_case(
-                "the entry declares a publisher whose `durability` nothing states",
-                n,
-            );
-            n
-        }
-        Err(e) => panic!("{e}"),
-    }
 }
 
 /// RFC-0100 D6's LOUD half, for the one term here that can be a worst case.
@@ -620,9 +566,9 @@ fn queryable_default_from(
             // that is the `.max(1)` shape issue 0827 measured, where a value
             // reads as applied and is not.
             Err(_) => panic!(
-                "NROS_DECLARED_SERVICE_SERVERS={v:?} is not a count. It is the \
-                 number of service servers the entry declares, resolved from the \
-                 SystemModel (phase-392 W5)."
+                "the declared service-server count {v:?} is not a count. It is the \
+                 number of service servers the entry declares, from the sizing \
+                 descriptor's `[image] service_server_queryables` (phase-392 W5)."
             ),
         },
         // phase-392 W5.b1 — the model answered the INFRASTRUCTURE half and not
@@ -690,19 +636,17 @@ mod queryable_default_tests {
     /// talker at 1 slot against 12. Measured red before the pairing rule.
     #[test]
     fn the_descriptor_app_count_needs_the_infra_term_beside_it() {
-        // cmake / leaf road: infra stated -> the descriptor answers first.
+        // cmake / leaf road: infra stated -> the descriptor answers.
         assert_eq!(
-            app_count_from(Some("none"), || Some(4), Some("3".into())).as_deref(),
+            app_count_from(Some("none"), || Some(4)).as_deref(),
             Some("4")
         );
-        // ...and the carrier where the descriptor has nothing.
-        assert_eq!(
-            app_count_from(Some("none"), || None, Some("3".into())).as_deref(),
-            Some("3")
-        );
-        // West road: no infra fact, no carrier -> NO app count, so the floor
-        // stays the undeclared 0 it always was there.
-        let app = app_count_from(None, || Some(0), None);
+        // ...and nothing where the descriptor has nothing (issue 1649: no
+        // carrier is left to fall back on).
+        assert_eq!(app_count_from(Some("none"), || None).as_deref(), None);
+        // West road: no infra fact -> NO app count, so the floor stays the
+        // undeclared 0 it always was there.
+        let app = app_count_from(None, || Some(0));
         assert_eq!(app, None);
         assert_eq!(queryable_floor_from(app.as_deref(), None, None, 1), 0);
         // The value that refused the image, for the record: the descriptor's
@@ -770,54 +714,6 @@ mod queryable_default_tests {
         );
     }
 
-    /// Issue 1378 — **the SECOND road to that term.** The rule above was right
-    /// and only one kind of image could reach it: a descriptor was written for a
-    /// single-package cargo leaf and for nothing else, so every cmake / Zephyr /
-    /// NuttX entry supplied `0` here however many action servers it declared.
-    /// (A multi-entry cmake configure names its shared RUNTIME's descriptor since
-    /// RFC-0100 D12 — issue 1649; a Zephyr west entry names its own since issue 1407.)
-    #[test]
-    fn the_declared_road_supplies_the_same_term_when_there_is_no_descriptor() {
-        assert_eq!(
-            declared_transient_local_publishers_from(Some("1".into())),
-            1,
-            "the NuttX C action-server leaf: one action server, one /status cache"
-        );
-        assert_eq!(
-            declared_transient_local_publishers_from(Some("0".into())),
-            0
-        );
-        // Undeclared is the road that carries nothing, and it contributes
-        // nothing WITHOUT comment: there is no event to report.
-        assert_eq!(declared_transient_local_publishers_from(None), 0);
-        // Issue 1572 -- a composer that LOOKED and could not count sends its
-        // WORST CASE with the word, and the table is sized for it. It used to
-        // send the bare word and this read it as ZERO -- the unsafe
-        // direction: the latched publisher the refusal was about found the
-        // table full at boot.
-        assert_eq!(
-            declared_transient_local_publishers_from(Some("refused:2".into())),
-            2
-        );
-    }
-
-    /// Issue 1572 -- the bare word carries no worst case, so no table can be
-    /// sized from it safely. It FAILS the build naming the fix, rather than
-    /// sizing zero.
-    #[test]
-    #[should_panic(expected = "carries no worst case")]
-    fn a_bare_refusal_with_no_worst_case_is_a_build_failure() {
-        declared_transient_local_publishers_from(Some("refused".into()));
-    }
-
-    /// A value that reads as applied and is not is worse than no value —
-    /// `declared_nodes`'s rule, one carrier over.
-    #[test]
-    #[should_panic(expected = "NROS_DECLARED_TL_PUBLISHERS")]
-    fn a_malformed_transient_local_count_is_a_build_failure() {
-        declared_transient_local_publishers_from(Some("yes".into()));
-    }
-
     /// Issue 1429 — an EMPTY carrier is ABSENT, on every declared-fact reader.
     ///
     /// The carrier is three-valued and an empty string is none of the three, so
@@ -839,23 +735,8 @@ mod queryable_default_tests {
     /// value is still nothing.
     #[test]
     fn an_empty_declared_carrier_states_nothing_and_is_not_a_build_failure() {
-        assert_eq!(
-            declared_transient_local_publishers_from(Some(String::new())),
-            declared_transient_local_publishers_from(None),
-            "an empty transient-local carrier must read exactly as an absent one"
-        );
-        assert_eq!(
-            declared_transient_local_publishers_from(Some("   ".into())),
-            0,
-            "whitespace states nothing either"
-        );
-        // ... and `0` still means zero, which is the distinction that makes
-        // reading empty as absent safe rather than a silent default.
-        assert_eq!(
-            declared_transient_local_publishers_from(Some("0".into())),
-            0
-        );
-        // The node carrier is the SIBLING with the same panic on the same road:
+        // (The transient-local carrier this test opened on retired with issue
+        // 1649.) The node carrier has the same panic on the same road:
         // `NROS_ENTITY_NODES_MAX` is emitted through the identical cmake idiom.
         assert_eq!(
             declared_nodes(Some("")),

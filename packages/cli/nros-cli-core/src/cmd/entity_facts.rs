@@ -11,12 +11,13 @@
 //! queryable table. Its default was `if hosted { 32 } else { 8 }` — a literal
 //! picked for headroom in `nros-zpico-build`, because nothing at that point
 //! knows the answer. It cost a native talker 144,128 B of service buffers for
-//! services it does not have. Two halves decide the real number and this verb
-//! carries both:
+//! services it does not have. Two halves decide the real number:
 //!
-//! * `NROS_DECLARED_SERVICE_SERVERS` — the APPLICATION's own count, from the
-//!   model's `structure.services` / `structure.actions` wiring. An action
-//!   server is three services on the wire, so actions multiply.
+//! * the APPLICATION's own count -- the sizing descriptor's `[image]
+//!   service_server_queryables` and its transient-local rows (RFC-0100 D4).
+//!   This verb carried it too, as `NROS_DECLARED_SERVICE_SERVERS` and
+//!   `NROS_DECLARED_TL_PUBLISHERS`, until issue 1649 retired both: every road
+//!   names a descriptor, and dropping them was zero-diff on each.
 //! * `NROS_DECLARED_INFRA_QUERYABLES` — whether the ROS parameter services and
 //!   the REP-2002 lifecycle services are in the image, from
 //!   `execution.features`. This is the half a build script cannot see any other
@@ -37,17 +38,6 @@ use std::{collections::BTreeMap, path::PathBuf};
 use clap::Args as ClapArgs;
 use eyre::{Result, WrapErr, bail};
 use ros_launch_manifest_model::SystemModel;
-
-/// One action server is three zenoh queryables (`send_goal`, `cancel_goal`,
-/// `get_result`; feedback and status are topics).
-///
-/// MIRROR of `nros_node::executor::action::ACTION_SERVER_QUERYABLES`, held to
-/// its definition by `check-infra-queryable-counts`. The CLI cannot depend on
-/// `nros-node` — that crate is `no_std`, platform-gated and built for the
-/// target, not the host — so the number is restated here and gated, which is
-/// the whole difference between this and the seven prose spellings issue 0827
-/// found.
-const ACTION_SERVER_QUERYABLES: usize = 3;
 
 #[derive(Debug, ClapArgs)]
 pub struct EntityFactsArgs {
@@ -95,9 +85,6 @@ pub struct EntityFactsArgs {
 /// survived (phase-392 W5.d).
 pub fn facts_from_model(model: &SystemModel) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
-    if let Some(n) = declared_service_servers(model) {
-        out.insert("NROS_DECLARED_SERVICE_SERVERS".to_string(), n.to_string());
-    }
     out.insert(
         "NROS_DECLARED_INFRA_QUERYABLES".to_string(),
         declared_infra(model).to_string(),
@@ -117,141 +104,7 @@ pub fn facts_from_model(model: &SystemModel) -> BTreeMap<String, String> {
         "NROS_DECLARED_NODES".to_string(),
         model.structure.nodes.len().to_string(),
     );
-    // Issue 1378 — the transient-local cache queryables, on the MODEL road.
-    //
-    // Emitted only when the model describes wiring at all, on the same
-    // abstention `declared_service_servers` makes and for the same reason: a
-    // zero from a model that says nothing about endpoints is not a measurement.
-    //
-    // **The action-server half is all this road can state, and that is
-    // structural, not an omission.** `ros_launch_manifest_model::TopicWiring`
-    // carries `type` / `pub` / `sub` and NO QoS at all, so "is this publisher
-    // transient-local?" has no field to read here — it reaches the CLI through
-    // a contract sidecar, as an `EntityDecl::durability`, which is what
-    // `transient_local_publishers_from_decls` reads one road over. An action
-    // server needs no such field: its `/status` publisher is created by
-    // `nros-node` with `rcl_action_qos_profile_status_default` (TRANSIENT_LOCAL)
-    // whatever anything declares, which is why the descriptor counts an
-    // `action_server` row unconditionally too.
-    //
-    // So this number is exact for every image whose transient-local publishers
-    // are action servers — which is every one in the tree today — and a lower
-    // bound for a model that also declares a hand-written TRANSIENT_LOCAL
-    // topic publisher. The model-road descriptor (phase-454 W14) counts every
-    // transient-local row and consumers rank it FIRST wherever it reaches
-    // cargo; where it does not (a Zephyr west entry, a multi-entry configure —
-    // issue 1407), stating the half that IS provable is what the failing
-    // images need, and stating nothing is what they had.
-    if let Some(n) = declared_action_servers(model) {
-        out.insert(TL_PUBLISHERS.to_string(), n.to_string());
-    }
     out
-}
-
-/// Action servers the model declares, one cache queryable each — issue 1378.
-///
-/// Separate from [`declared_service_servers`] because that function returns a
-/// number already multiplied by [`ACTION_SERVER_QUERYABLES`], and a consumer
-/// holding `3` cannot tell one action server from three service servers. Only
-/// the first of those owes a `/status` cache slot.
-fn declared_action_servers(model: &SystemModel) -> Option<usize> {
-    if !describes_wiring(model) {
-        return None;
-    }
-    Some(
-        model
-            .structure
-            .actions
-            .values()
-            .map(|a| a.server.len())
-            .sum(),
-    )
-}
-
-/// Whether this model DESCRIBES the graph's wiring at all.
-///
-/// **Abstaining here is the DESIGNED outcome, not a symptom (issue 0973).**
-/// Endpoint wiring is AUTHORED, never derived. A plain `<node>` launch file
-/// names a node; it does not say what that node publishes or serves, and
-/// nothing else in the resolver's inputs does either. `model_builder` fills
-/// `structure.{topics,services,actions}` from a `ManifestIndex`, and
-/// `manifest_loader` builds that index from a CONTRACT — the provider sidecar
-///
-/// ```text
-/// <bringup>/launch/<stem>.contract.yaml     beside <stem>.launch.xml
-/// ```
-///
-/// or an overlay root passed as `--contracts <dir>`. That file is the ONE input
-/// a user authors to make this function true, and naming it is the difference
-/// between "the model does not say" being actionable and being merely true.
-///
-/// So an absent `services` map does NOT mean "this system has no service
-/// servers" — it means nobody stated the answer. Reporting 0 there would size
-/// the queryable table to the infrastructure alone and exhaust it the moment a
-/// node registers: a confident wrong number, sized exactly, which is the
-/// failure shape this campaign keeps finding rather than a new one. The
-/// discriminator is whether ANY wiring was described. If it was, an empty
-/// `services` map is a real zero. If nothing was, the question is unanswered
-/// and this verb says nothing rather than guessing.
-///
-/// A caller must therefore not read the abstain as "the resolver lost
-/// something". Nothing is lost; the input does not exist. (There WAS one real
-/// instance of loss — the loader silently dropped `actions:` — and R1-P2 fixed
-/// it. Check for a contract file before searching the resolver again.)
-///
-/// **Re-measured 2026-09-06, and the count moves — the correspondence does
-/// not.** Resolving every launch file in the tree: 122 `*.launch.xml`, 5
-/// `*.contract.yaml`, and of the 114 that resolve standalone exactly 5 describe
-/// wiring — the same 5, in `examples/workspaces/cpp/src/demo_bringup/launch/`.
-/// It read `0 of 119` when issue 0973 was answered on 2026-09-03 and changed
-/// the day phase-412 landed the first contracts. Quote the invariant (wiring
-/// <=> an authored contract), never the number.
-///
-/// A consumer wanting per-image entity counts writes a contract; there is no
-/// second source. The per-component `nano_ros_node_register(... ENTITIES ...)`
-/// route issue 0900 took is RETIRED (phase-412) — it is now a `FATAL_ERROR`
-/// naming this same file, because a list hand-maintained beside the code
-/// drifted from it on the safety island and every derived pool came out short.
-///
-/// Sibling predicate, and it is NOT identical: `EntityInventory::from_model`
-/// also accepts a non-empty `contracts.node_paths`, which is where a contract's
-/// timer paths land. A timer-only contract is therefore wiring to that
-/// consumer and silence to this one — issue 1140.
-fn describes_wiring(model: &SystemModel) -> bool {
-    !model.structure.topics.is_empty()
-        || !model.structure.services.is_empty()
-        || !model.structure.actions.is_empty()
-}
-
-/// Every service server the model declares, counted as QUERYABLES.
-///
-/// `ServiceWiring::server` lists the endpoint refs serving a service
-/// (`"<node FQN>/<endpoint>"`), so the count is the number of refs, not the
-/// number of services: two nodes serving the same name are two queryables.
-///
-/// Actions are the same wiring type in a separate map and cost
-/// [`ACTION_SERVER_QUERYABLES`] each.
-///
-/// The whole model is counted rather than one node's share: an entry image
-/// realizes its model, and the queryable table is per SESSION, which the image
-/// has one of.
-fn declared_service_servers(model: &SystemModel) -> Option<usize> {
-    if !describes_wiring(model) {
-        return None;
-    }
-    let services: usize = model
-        .structure
-        .services
-        .values()
-        .map(|s| s.server.len())
-        .sum();
-    let actions: usize = model
-        .structure
-        .actions
-        .values()
-        .map(|a| a.server.len())
-        .sum();
-    Some(services + actions * ACTION_SERVER_QUERYABLES)
 }
 
 /// Which infrastructure service families the image carries.
@@ -270,7 +123,7 @@ fn declared_infra(model: &SystemModel) -> &'static str {
     crate::entity_inventory::InfraServices::from_model(model).token()
 }
 
-/// Issue 1142 — the same three facts, for a STANDALONE leaf that has no model.
+/// Issue 1142 — the same facts, for a STANDALONE leaf that has no model.
 ///
 /// A copy-out CMake project (`find_package(nano_ros)` +
 /// `nano_ros_add_executable`) has no bringup and no resolved SystemModel, so
@@ -280,11 +133,10 @@ fn declared_infra(model: &SystemModel) -> &'static str {
 /// on its `system.toml` `[[component]]` rows, in the `EntityDecl::parse`
 /// grammar, read by the same reader every other road uses.
 ///
-/// **The counting rule is the model road's, not a second one.** A service
-/// server is one queryable and an action server is [`ACTION_SERVER_QUERYABLES`]
-/// of them — the same constant `declared_service_servers` applies to a model's
-/// `structure.services` / `structure.actions`. A client of either costs no
-/// queryable, here as there.
+/// The application's own counts (service servers, transient-local
+/// publishers) reach the backend through the leaf's sizing descriptor
+/// (`sizing-descriptor --from-leaf`, over the same declaration); issue 1649
+/// retired the two carriers this function used to emit for them.
 ///
 /// **`Ok(None)` is the leaf that declares nothing**, and it is not an error:
 /// the caller carries no facts and the fallback decides, which is exactly where
@@ -309,73 +161,20 @@ pub fn facts_from_leaf(dir: &std::path::Path) -> Result<Option<BTreeMap<String, 
     // infrastructure answer ("none") about a hand-written `main` nobody
     // described, and a queryable table short of what an image registers is a
     // boot failure rather than a smaller pool (issue 0460).
-    let Some(decls) = crate::leaf_entity_env::declared_entities(dir)? else {
+    if crate::leaf_entity_env::declared_entities(dir)?.is_none() {
         return Ok(None);
-    };
+    }
 
-    let servers: usize = decls
-        .iter()
-        .map(|d| match d.kind {
-            crate::entity_inventory::EntityKind::ServiceServer => 1,
-            crate::entity_inventory::EntityKind::ActionServer => ACTION_SERVER_QUERYABLES,
-            _ => 0,
-        })
-        .sum();
     let nodes = leaf.components.len();
     let infra = crate::entity_inventory::InfraServices::from_features(&leaf.features, nodes);
 
     let mut out = BTreeMap::new();
     out.insert(
-        "NROS_DECLARED_SERVICE_SERVERS".to_string(),
-        servers.to_string(),
-    );
-    out.insert(
         "NROS_DECLARED_INFRA_QUERYABLES".to_string(),
         infra.token().to_string(),
     );
     out.insert("NROS_DECLARED_NODES".to_string(), nodes.to_string());
-    // Issue 1378 — the FOURTH fact, and the one whose absence was a boot
-    // failure. A TRANSIENT_LOCAL publisher is a queryable too: it retains its
-    // last sample and declares a cache queryable on
-    // `<keyexpr>/@adv/pub/<zid>/<eid>/_` so a late joiner's history query can
-    // reach it. `servers` above cannot carry it — that number is already
-    // multiplied, so a consumer holding `3` cannot tell one action server from
-    // three service servers, and only the first of those owes a cache slot.
-    out.insert(
-        TL_PUBLISHERS.to_string(),
-        tl_token(
-            &crate::sizing_descriptor::transient_local_publishers_from_decls(&decls),
-            crate::sizing_descriptor::transient_local_publishers_bound_from_decls(&decls),
-        ),
-    );
     Ok(Some(out))
-}
-
-/// The carrier for "how many cache queryables this image's transient-local
-/// publishers declare" — issue 1378.
-///
-/// Named for the FACT and not for its cost, like `NROS_DECLARED_NODES` and
-/// unlike `NROS_DECLARED_SERVICE_SERVERS`: the consumer
-/// (`nros-zpico-build::resolve_queryable_default`) owns what a slot costs, and
-/// its refusal message already explains this term to whoever set the knob.
-pub const TL_PUBLISHERS: &str = "NROS_DECLARED_TL_PUBLISHERS";
-
-/// The value word for [`TL_PUBLISHERS`], preserving all three answers.
-///
-/// A `Fact` has three arms and an env variable is a string, so the mapping has
-/// to be written down somewhere. Issue 1572: a refusal travels as
-/// `refused:<worst case>`, the spelling `nros_sizing_descriptor` owns
-/// ([`nros_sizing_descriptor::declared_tl_token`] / `parse_declared_tl`). It
-/// used to be the bare word `refused`, which carried no number, so both readers
-/// sized ZERO for it -- the unsafe direction, and a boot failure for the
-/// latched publisher the refusal was about. The word still travels, so the
-/// reader can say out loud that it is paying for a count nobody stated.
-///
-/// This producer only ever reaches here with declarations in hand, so the
-/// answer is never `Absent`; if it were, the bare word would make the reader
-/// fail the build rather than size from nothing.
-fn tl_token(f: &nros_sizing_descriptor::Fact<usize>, bound: Option<usize>) -> String {
-    nros_sizing_descriptor::declared_tl_token(f, bound).unwrap_or_else(|| "refused".to_string())
 }
 
 pub fn run(args: EntityFactsArgs) -> Result<()> {
@@ -437,116 +236,23 @@ mod tests {
     const EMPTY: &str = "meta:\n  version: 1\nstructure: {}\n";
 
     #[test]
-    fn a_model_that_describes_no_wiring_abstains_on_the_app_count() {
+    fn the_retired_app_count_is_never_emitted() {
         // NOT zero. 109 of the tree's 114 resolvable models are this shape
         // (measured 2026-09-06), including `examples/workspaces/c`'s, whose
         // node is literally called `add_server` and whose model says nothing
         // about services because that workspace authors no contract.
         let m = model(EMPTY);
-        assert_eq!(declared_service_servers(&m), None);
         assert_eq!(declared_infra(&m), "none");
         let f = facts_from_model(&m);
-        assert!(!f.contains_key("NROS_DECLARED_SERVICE_SERVERS"));
+        // Issue 1649 -- only the two facts with no descriptor field travel.
+        assert!(
+            f.keys()
+                .all(|k| k == "NROS_DECLARED_INFRA_QUERYABLES" || k == "NROS_DECLARED_NODES"),
+            "{f:?}"
+        );
         // The infrastructure half is still answered — that is W5.b1, and it is
         // the half a build script cannot see any other way.
         assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "none");
-    }
-
-    #[test]
-    fn wiring_described_with_no_service_server_is_a_real_zero() {
-        // A model that describes topics has been through a resolver that
-        // describes wiring, so an empty `services` map means what it says.
-        let m = model(
-            "meta:\n  version: 1\nstructure:\n  topics:\n    /chatter:\n      type: std_msgs/msg/String\n\
-             \n      pub: [\"/a/chatter\"]\n",
-        );
-        assert_eq!(declared_service_servers(&m), Some(0));
-        assert_eq!(facts_from_model(&m)["NROS_DECLARED_SERVICE_SERVERS"], "0");
-    }
-
-    #[test]
-    fn service_servers_are_counted_per_endpoint_not_per_service() {
-        // Two nodes serving the same service name are two queryables. Counting
-        // the map's keys would say one and under-size the table.
-        let m = model(
-            "meta:\n  version: 1\nstructure:\n  services:\n    /add:\n      type: example/srv/Add\n\
-             \n      server: [\"/a/add\", \"/b/add\"]\n",
-        );
-        assert_eq!(declared_service_servers(&m), Some(2));
-    }
-
-    #[test]
-    fn a_client_only_service_costs_no_queryable() {
-        let m = model(
-            "meta:\n  version: 1\nstructure:\n  services:\n    /add:\n      type: example/srv/Add\n\
-             \n      client: [\"/a/add\"]\n",
-        );
-        assert_eq!(declared_service_servers(&m), Some(0));
-    }
-
-    #[test]
-    fn an_action_server_costs_three() {
-        let m = model(
-            "meta:\n  version: 1\nstructure:\n  actions:\n    /fib:\n      type: example/action/Fib\n\
-             \n      server: [\"/a/fib\"]\n",
-        );
-        assert_eq!(declared_service_servers(&m), Some(ACTION_SERVER_QUERYABLES));
-    }
-
-    /// Issue 1378 — **an action server costs a FOURTH queryable**, and it is
-    /// not one of the three.
-    ///
-    /// `nros-node` creates the action's `<action>/_action/status` publisher
-    /// with `rcl_action_qos_profile_status_default`, which is TRANSIENT_LOCAL,
-    /// and on zenoh a transient-local publisher declares a cache queryable. No
-    /// contract mentions that topic, so nothing but the action-server row can
-    /// pay for it. Counting only `ACTION_SERVER_QUERYABLES` is what left
-    /// `ZPICO_MAX_QUERYABLES = 3` on an image that declares four.
-    #[test]
-    fn an_action_server_also_costs_one_transient_local_cache_queryable() {
-        let m = model(
-            "meta:\n  version: 1\nstructure:\n  actions:\n    /fib:\n      type: example/action/Fib\n\
-             \n      server: [\"/a/fib\"]\n",
-        );
-        assert_eq!(declared_action_servers(&m), Some(1));
-        assert_eq!(facts_from_model(&m)[TL_PUBLISHERS], "1");
-    }
-
-    /// The two numbers are carried SEPARATELY because the first is already
-    /// multiplied: a consumer holding `NROS_DECLARED_SERVICE_SERVERS=3` cannot
-    /// tell one action server from three service servers, and only the first
-    /// owes a cache slot.
-    #[test]
-    fn a_service_server_owes_no_cache_queryable() {
-        let m = model(
-            "meta:\n  version: 1\nstructure:\n  services:\n    /add:\n      type: example/srv/Add\n\
-             \n      server: [\"/a/add\", \"/b/add\", \"/c/add\"]\n",
-        );
-        assert_eq!(declared_service_servers(&m), Some(3));
-        assert_eq!(facts_from_model(&m)[TL_PUBLISHERS], "0");
-    }
-
-    /// A model that describes no wiring abstains here too, on the same argument
-    /// `declared_service_servers` makes: a zero nobody measured would size the
-    /// table to the infrastructure alone.
-    #[test]
-    fn an_undescribed_model_states_no_transient_local_count() {
-        let m = model(EMPTY);
-        assert_eq!(declared_action_servers(&m), None);
-        assert!(!facts_from_model(&m).contains_key(TL_PUBLISHERS));
-    }
-
-    #[test]
-    fn services_and_actions_add() {
-        let m = model(
-            "meta:\n  version: 1\nstructure:\n  services:\n    /add:\n      type: example/srv/Add\n\
-             \n      server: [\"/a/add\"]\n  actions:\n    /fib:\n      type: example/action/Fib\n\
-             \n      server: [\"/a/fib\"]\n",
-        );
-        assert_eq!(
-            declared_service_servers(&m),
-            Some(1 + ACTION_SERVER_QUERYABLES)
-        );
     }
 
     #[test]
@@ -584,16 +290,14 @@ mod tests {
              \n      server: [\"/a/add\"]\nexecution:\n  features:\n  - lifecycle\n",
         );
         let f = facts_from_model(&m);
-        assert_eq!(f["NROS_DECLARED_SERVICE_SERVERS"], "1");
         assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "lifecycle");
-        // phase-426 W3 — a third name in the contract; the consumer watches
-        // and parses all three. Issue 1378 added a FOURTH: a TRANSIENT_LOCAL
-        // publisher costs a cache queryable of its own, so the pool has to
-        // count it. The `len` assertion is the contract — a fifth name that
-        // arrives without a consumer must fail here.
+        // phase-426 W3 — the node count, the second name. Issue 1649 retired
+        // the application's service-server and transient-local counts onto the
+        // sizing descriptor, so even a model that declares a service server
+        // emits only these two. The `len` assertion is the contract — a third
+        // name that arrives without a consumer must fail here.
         assert_eq!(f["NROS_DECLARED_NODES"], "0");
-        assert_eq!(f["NROS_DECLARED_TL_PUBLISHERS"], "0");
-        assert_eq!(f.len(), 4);
+        assert_eq!(f.len(), 2);
     }
 
     /// phase-426 W3 — the node count reaches the queryable pool, because the
@@ -626,58 +330,18 @@ mod tests {
     /// opens no queryable, so the application count is zero — which is an
     /// ANSWER, and the whole difference from the guessed budget.
     #[test]
-    fn an_action_client_leaf_declares_zero_service_servers() {
+    fn an_action_client_leaf_states_the_infrastructure_and_node_facts() {
         let td = leaf_dir(&format!(
             "{LEAF_HEAD}\n[[component]]\npkg = \"p\"\nname = \"fibonacci_action_client\"\n\
              entities = [\"action_client:example_interfaces/action/Fibonacci:/fibonacci\"]\n\
              {LEAF_IMAGE}"
         ));
         let f = facts_from_leaf(td.path()).unwrap().expect("declared");
-        assert_eq!(f["NROS_DECLARED_SERVICE_SERVERS"], "0");
         assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "none");
         assert_eq!(f["NROS_DECLARED_NODES"], "1");
-        // A client declares no TRANSIENT_LOCAL publisher either, and a
-        // declared ZERO is the point of this road (issue 1142): the leaf that
-        // describes itself gets an exact pool, so every term must be stated.
-        assert_eq!(f["NROS_DECLARED_TL_PUBLISHERS"], "0");
-        assert_eq!(f.len(), 4, "the leaf road emits the model road's four");
-    }
-
-    /// Issue 1572 -- a publisher that states no durability REFUSES the
-    /// transient-local count, and the carrier then sends the WORST CASE with
-    /// the word: the silent publisher counted as transient-local, plus the
-    /// action server's `/status`. It used to send the bare word `refused`,
-    /// which both readers sized as ZERO cache queryables -- the unsafe
-    /// direction, and `Full` at boot for a latched publisher.
-    #[test]
-    fn a_silent_publisher_sends_the_worst_case_with_the_refusal() {
-        let td = leaf_dir(&format!(
-            "{LEAF_HEAD}\n[[component]]\npkg = \"p\"\nname = \"n\"\n\
-             entities = [\"action_server\", \"publisher\", \"service_server\"]\n{LEAF_IMAGE}"
-        ));
-        let f = facts_from_leaf(td.path()).unwrap().expect("declared");
-        assert_eq!(f["NROS_DECLARED_TL_PUBLISHERS"], "refused:2");
-        assert_eq!(
-            nros_sizing_descriptor::parse_declared_tl(&f["NROS_DECLARED_TL_PUBLISHERS"]),
-            Ok(nros_sizing_descriptor::DeclaredTl::WorstCase(2)),
-            "the carrier's one parser reads what this producer wrote"
-        );
-    }
-
-    /// The counting rule is the model road's: a service server is one
-    /// queryable, an action server is three, and both clients are zero.
-    #[test]
-    fn the_leaf_road_counts_servers_exactly_as_the_model_road_does() {
-        let td = leaf_dir(&format!(
-            "{LEAF_HEAD}\n[[component]]\npkg = \"p\"\nname = \"n\"\n\
-             entities = [\"service_server\", \"action_server\", \"service_client\", \
-             \"action_client\", \"publisher\", \"sub\", \"timer\"]\n{LEAF_IMAGE}"
-        ));
-        let f = facts_from_leaf(td.path()).unwrap().expect("declared");
-        assert_eq!(
-            f["NROS_DECLARED_SERVICE_SERVERS"],
-            (1 + ACTION_SERVER_QUERYABLES).to_string()
-        );
+        // Issue 1649 -- the application's counts ride the leaf's sizing
+        // descriptor; this road emits the model road's two.
+        assert_eq!(f.len(), 2, "the leaf road emits the model road's two");
     }
 
     /// `[system] features` is the infrastructure half, the same key and the

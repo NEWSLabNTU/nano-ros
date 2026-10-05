@@ -369,6 +369,64 @@ RETIRED = {
             (":(glob)packages/**/*.rs", r'"NROS_DECLARED_(SUBSCRIBER_BUFFER_SIZE|LARGE_SUBSCRIBERS|SUBSCRIBER_LARGE_SIZE|TL_RETAIN_BYTES|MAX_PARAMETERS|MAX_PARAM_NAME_LEN)"'),
         ],
     ),
+    # Issue 1649 -- the four parameter rows and the two inbox families, the
+    # rows the Zephyr WEST resolver forwarded. Measured on the road that was
+    # missing: a temporary `[image.zephyr_svc]` of `examples/workspaces/cpp`
+    # (native_sim, zenoh) whose code declares a service server and two
+    # parameters (`offset`, integer; `weights`, integer_array) and whose
+    # contract says so -- census `3 confirmed, 0 error(s)` -- built three times
+    # in one west build dir: carriers on; the seven forwards dropped with the
+    # descriptor named (0 of 41 build-script outputs differ); and dropped with
+    # NO descriptor (the declared shape -> `None`, SERVICE_INBOX_BYTES 24 ->
+    # 1024). The cmake road was measured zero-diff in the previous wave.
+    # Each consumer (nros-params, nros-node, nros-rmw-zenoh) reads the
+    # descriptor's `[params]` / per-family request bound, and only that.
+    "the parameter-need, service-shape and service-inbox `NROS_DECLARED_*` carriers": Retired(
+        what="NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN, _ARRAY_LEN, _BYTE_ARRAY_LEN, "
+        "NROS_DECLARED_PARAM_SERVICE_SHAPE, NROS_DECLARED_SERVICE_INBOX_BYTES, "
+        "NROS_DECLARED_ACTION_INBOX_BYTES",
+        resolves_now=(
+            "the sizing descriptor: `[params]` needs and service shape "
+            "(nros-params, nros-node, nros-rmw-zenoh), "
+            "`declared_service_request_bytes` (nros-rmw-zenoh)"
+        ),
+        wave="issue 1649",
+        forbid=[
+            (":(glob)cmake/**/*.cmake", r"NROS_DECLARED_(PARAM_NEEDS_MAX_STRING_VALUE_LEN|PARAM_NEEDS_MAX_ARRAY_LEN|PARAM_NEEDS_MAX_BYTE_ARRAY_LEN|PARAM_SERVICE_SHAPE|SERVICE_INBOX_BYTES|ACTION_INBOX_BYTES)[;=]"),
+            (":(glob)zephyr/**/*.cmake", r"_nros_resolve_knob\(NROS_DECLARED_(PARAM_NEEDS_MAX_STRING_VALUE_LEN|PARAM_NEEDS_MAX_ARRAY_LEN|PARAM_NEEDS_MAX_BYTE_ARRAY_LEN|PARAM_SERVICE_SHAPE|SERVICE_INBOX_BYTES|ACTION_INBOX_BYTES)\b"),
+            (":(glob)packages/**/*.rs", r'"NROS_DECLARED_(PARAM_NEEDS_MAX_STRING_VALUE_LEN|PARAM_NEEDS_MAX_ARRAY_LEN|PARAM_NEEDS_MAX_BYTE_ARRAY_LEN|PARAM_SERVICE_SHAPE|SERVICE_INBOX_BYTES|ACTION_INBOX_BYTES)"'),
+        ],
+    ),
+    # Issue 1649 -- the application's own queryable inputs. `[image]
+    # service_server_queryables` and the `[[endpoint]]` durability rows state
+    # both, and both consumers (`nros-zpico-build`, `nros-rmw-zenoh`) read them
+    # FIRST. Dropping the carriers with the descriptor named was zero-diff on
+    # every road that carried them: cmake native (five entries) and freertos
+    # (mps2-an385, zenoh); the Zephyr west road (TL); the CARGO LEAF
+    # (`examples/native/rust/service-server`, 0 of 16 build-script outputs);
+    # the cargo WORKSPACE image (`examples/workspaces/rust`
+    # native_action_server with a contracted action server: SERVICE_SERVERS=3
+    # and TL_PUBLISHERS=1 dropped, 0 of 16 outputs differ); and the standalone
+    # cmake leaf (the six NuttX C leaves, every loadable image identical).
+    # Each negative control -- the same drop with NO descriptor -- moved 3 of
+    # 16 outputs (or the server images), so every measurement could have
+    # failed.
+    "the application service-server and transient-local `NROS_DECLARED_*` carriers": Retired(
+        what="NROS_DECLARED_SERVICE_SERVERS, NROS_DECLARED_TL_PUBLISHERS (and "
+        "the `refused:<n>` token parser `parse_declared_tl`, issue 1572)",
+        resolves_now=(
+            "the sizing descriptor: `[image] service_server_queryables` and the "
+            "`[[endpoint]]` durability rows (nros-zpico-build, nros-rmw-zenoh)"
+        ),
+        wave="issue 1649",
+        forbid=[
+            (":(glob)cmake/**/*.cmake", r"NROS_DECLARED_(SERVICE_SERVERS|TL_PUBLISHERS)[;=]"),
+            (":(glob)zephyr/**/*.cmake", r"_nros_resolve_(derivable_)?knob\(NROS_DECLARED_(SERVICE_SERVERS|TL_PUBLISHERS)\b"),
+            (":(glob)packages/**/*.rs", r'"NROS_DECLARED_(SERVICE_SERVERS|TL_PUBLISHERS)'),
+        ],
+        # The leaf-road acceptance test names both to assert they are ABSENT.
+        cite=("packages/cli/nros-cli-core/tests/sizing_descriptor_leaf_road.rs",),
+    ),
     "the `nros-metadata.json` `entities` reader": Retired(
         what="the Rust reader of a component's declared entities in nros-metadata.json",
         resolves_now=(
@@ -539,25 +597,6 @@ _CONTRACTLESS_FEATURE = (
     "on none"
 )
 
-# Issue 1649 -- the two reasons the remaining zero-diff rows wait on. Each was
-# measured zero-diff on the cmake road with a configure that DELIVERS it (a
-# temporarily parameter-declaring, latched, service-carrying native configure
-# of `examples/workspaces/cpp`, five entries); what is unmeasured is the Zephyr
-# WEST road, whose module resolver forwards these by name.
-_PARAM_WEST = (
-    "zero-diff with it dropped on a parameter-declaring cmake configure "
-    "(issue 1649), but the Zephyr west resolver forwards it by this name and "
-    "no west image can declare parameters for the measurement: the census "
-    "refuses a contract `params:` entry the code does not declare "
-    "(`param-phantom`), so it needs a component that really declares one"
-)
-_INBOX_WEST = (
-    "read descriptor-first since issue 1649 and zero-diff with it dropped on "
-    "a five-entry native configure with service and action servers, but the "
-    "Zephyr west resolver forwards it by this name and no in-tree west image "
-    "declares a service, so the west half of the drop is unmeasured"
-)
-
 _BOARD_CAPACITY = (
     "a BOARD capacity (RFC-0100 D1 target fact), deliberately absent from the "
     "descriptor -- the contract states the NEED, never the size"
@@ -572,37 +611,6 @@ KEPT = {
     # (RFC-0100 D4, 2026-10-03, issue 1655).
     "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": ByDesign(100, "D4", _CONTRACTLESS),
     # ---- the queryable raw inputs ----------------------------------------
-    # Issue 1655 -- `[image] service_server_queryables` states it and both
-    # consumers (`nros-zpico-build`, `nros-rmw-zenoh`) read it FIRST; knob diff
-    # with the carrier dropped ZERO on freertos (mps2-an385, zenoh),
-    # freertos_posix, and a five-entry native configure. What keeps it is the
-    # ROAD, not a field.
-    "NROS_DECLARED_SERVICE_SERVERS": Kept(
-        1649,
-        "the descriptor field and its descriptor-first readers landed (issue "
-        "1655) and the cmake knob diff is ZERO, but the CARGO-LEAF road also "
-        "carries this fact (`leaf_entity_env::leaf_facts` writes it into the "
-        "leaf's `nros-cargo.toml`), and that road was not measured with it "
-        "dropped; and `nros-zpico-build` takes the descriptor's count only "
-        "beside a stated INFRA term (`app_count_from` -- a west image refused "
-        "at 1 slot against a floor of 12 without that pairing) -- retire both "
-        "producers together after a cargo leaf with a service server is diffed",
-    ),
-    # Measured zero-diff on all three roads it reaches as a carrier: cmake
-    # native (five entries) and freertos (mps2-an385, zenoh), and the Zephyr
-    # WEST road (`examples/workspaces/cpp` zephyr, a temporarily latched
-    # `/chatter`; no descriptor -> the same drop moves MAX_TL_PUBLISHERS).
-    "NROS_DECLARED_TL_PUBLISHERS": Kept(
-        1649,
-        "zero-diff with it dropped on the cmake road (native, freertos) AND the "
-        "Zephyr west road (issue 1649's measurement), so it can retire -- but "
-        "its retirement is three deletions that must land together: the "
-        "`nros_entity_facts_env` producer (which also feeds the standalone-leaf "
-        "road), the west resolver's `_nros_resolve_derivable_knob` forward, and "
-        "the `refused:<n>` token path both zenoh build scripts parse (issue "
-        "1572); the standalone-leaf half rests on `sizing_descriptor_leaf_road` "
-        "rather than a diff"
-    ),
     "NROS_DECLARED_NODES": ByDesign(100, "D4", _CONTRACTLESS),
     # Issue 1655 ruling: the feature token is a MODEL-only fact. It exists
     # for a model with no wiring at all (`declared_infra` is always emitted,
@@ -617,17 +625,6 @@ KEPT = {
     "NROS_DECLARED_MAX_STRING_VALUE_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
     "NROS_DECLARED_MAX_ARRAY_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
     "NROS_DECLARED_MAX_BYTE_ARRAY_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN": Kept(1649, _PARAM_WEST),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": Kept(1649, _PARAM_WEST),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": Kept(1649, _PARAM_WEST),
-    "NROS_DECLARED_PARAM_SERVICE_SHAPE": Kept(1649, _PARAM_WEST),
-    # ---- the two inbox families (issue 1352, phase-461 W3) --------------
-    # Issue 1649 FLIPPED the rank: `nros-rmw-zenoh` reads the descriptor's
-    # per-family request bound (`declared_service_request_bytes`) FIRST now,
-    # the carrier second. Both are one join over one set of rows and bound
-    # tables, so where both answer they agree.
-    "NROS_DECLARED_SERVICE_INBOX_BYTES": Kept(1649, _INBOX_WEST),
-    "NROS_DECLARED_ACTION_INBOX_BYTES": Kept(1649, _INBOX_WEST),
     # ---- QoS depth ---------------------------------------------------------
     # `NROS_DECLARED_MAX_QOS_DEPTH` is RETIRED above (issue 1655). Its sibling
     # `NROS_ENTITY_DECLARED_DEPTHS` is deliberately UNIONED with the descriptor

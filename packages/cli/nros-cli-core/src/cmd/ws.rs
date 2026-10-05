@@ -115,8 +115,8 @@ pub enum Sub {
     BoardFacts(crate::cmd::board_facts::BoardFactsArgs),
 
     /// phase-392 W5.b/W5.c — print the ENTITY figures a backend sizes its
-    /// tables from (`NROS_DECLARED_SERVICE_SERVERS`,
-    /// `NROS_DECLARED_INFRA_QUERYABLES`), as `KEY=VALUE` lines, for whoever is
+    /// tables from (`NROS_DECLARED_INFRA_QUERYABLES`,
+    /// `NROS_DECLARED_NODES`), as `KEY=VALUE` lines, for whoever is
     /// about to invoke cargo.
     ///
     /// Same delivery seam and same reason as `board-facts`: the process

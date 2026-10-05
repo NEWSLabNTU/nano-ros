@@ -815,8 +815,8 @@ pub struct EntityInventory {
 /// MIRRORS of the action multipliers in
 /// `nros_node::executor::action`. The CLI cannot depend on `nros-node`, so
 /// these are copies, and `check-infra-queryable-counts` holds each to the
-/// creation calls that decide it -- the same arrangement
-/// `ACTION_SERVER_QUERYABLES` already has in `cmd::entity_facts`.
+/// creation calls that decide it. (`cmd::entity_facts` held a second copy of
+/// `ACTION_SERVER_QUERYABLES` until issue 1649 retired the carrier it fed.)
 ///
 /// They exist because a declared action is ONE entity that costs SEVERAL
 /// session slots. An author writing `ENTITIES action_server:...` declares one
@@ -4358,9 +4358,9 @@ impl EntityInventory {
                 // partitions the table into the runtime's builtin inbox and the
                 // application's, and on the Zephyr resolver road this is the
                 // only carrier of the application's half: the CMake road's
-                // `NROS_DECLARED_SERVICE_SERVERS` never reaches a west build,
-                // so the builtin inbox was sized for a family and allocated
-                // zero times.
+                // `NROS_DECLARED_SERVICE_SERVERS` (retired by issue 1649 onto
+                // the descriptor) never reached a west build, so the builtin
+                // inbox was sized for a family and allocated zero times.
                 s.push_str(&format!(
                     "set(NROS_ENTITY_APP_QUERYABLES {})\n",
                     k.max_queryables - k.infra_queryables
