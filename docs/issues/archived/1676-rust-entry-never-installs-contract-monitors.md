@@ -123,7 +123,7 @@ single executor bakes and installs one `::nros`-rooted table; tiered slices per
 tier and selects by member). `cargo test -p nros-cli-core` (all green, with a
 debug `nros` built for the scaffold tests), `cargo test -p nros-macros`.
 
-Filed: [issue 1694](../1694-partial-contract-undersizes-rust-image.md) — a
+Filed: [issue 1694](1694-partial-contract-undersizes-rust-image.md) — a
 contract that describes only the talker sizes the image from the contract
 alone (`NROS_EXECUTOR_MAX_CBS = 0`) and it dies `ExecutorFull`; the
 measurement above therefore describes every endpoint.
