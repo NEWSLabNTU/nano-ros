@@ -51,7 +51,20 @@ pub fn check(board: &BoardDescriptor, root: &Path, nano_ros_root: Option<&Path>)
     // The rustc target triple. A cross board that pins one needs it installed,
     // and `cargo build --target` fails deep in the build otherwise.
     if let Some(target) = board.target.as_deref() {
-        match target_provisioning(nano_ros_root, target) {
+        // The BOARD can say it builds std itself, and then no prebuilt
+        // `rust-std` is consulted whatever the list says. The esp32 board's
+        // `cargo_config` carries `[unstable] build-std`, and its workspace row
+        // builds under the pinned nightly (`RUSTUP_TOOLCHAIN`), which has no
+        // `riscv32imc-unknown-none-elf` added — nor needs one. Asking only
+        // `config/rust-targets.txt` (`rustup` for that triple, true of the
+        // stable leaves) refused the tier-2 esp32 workspace image with a
+        // `rustup target add` it did not need, before anything compiled.
+        let provisioning = if board_builds_std(board) {
+            Provisioning::BuildStd
+        } else {
+            target_provisioning(nano_ros_root, target)
+        };
+        match provisioning {
             // A prebuilt `rust-std` exists, so "is it installed" is the right
             // question and `rustup target add` is the answer.
             Provisioning::Rustup => {
@@ -107,6 +120,19 @@ pub fn check(board: &BoardDescriptor, root: &Path, nano_ros_root: Option<&Path>)
     }
 
     out
+}
+
+/// Whether the board's own cargo config builds `core`/`alloc` from source
+/// (`[unstable] build-std`), so its target needs `rust-src` and no prebuilt
+/// `rust-std`. An unparseable config answers `false`: the list then decides,
+/// which is the behaviour before this existed.
+fn board_builds_std(board: &BoardDescriptor) -> bool {
+    board
+        .cargo_config
+        .as_deref()
+        .and_then(|c| c.parse::<toml::Table>().ok())
+        .and_then(|t| t.get("unstable")?.get("build-std").cloned())
+        .is_some_and(|v| v.as_array().is_some_and(|a| !a.is_empty()))
 }
 
 /// How `config/rust-targets.txt` says a triple is provided.
@@ -256,6 +282,29 @@ mod tests {
             .first()
             .cloned()
             .expect("one board")
+    }
+
+    /// A board whose cargo config builds std is a build-std target whatever
+    /// `config/rust-targets.txt` says about its triple — the esp32 workspace
+    /// image, built under a nightly with no `riscv32imc` installed.
+    #[test]
+    fn a_board_that_builds_std_needs_no_prebuilt_target() {
+        let b = board(
+            "target = \"riscv32imc-unknown-none-elf\"\n\
+             cargo_config = \"\"\"\n[unstable]\nbuild-std = [\"core\", \"alloc\"]\n\"\"\"\n",
+        );
+        assert!(board_builds_std(&b));
+        let tmp = tempfile::tempdir().unwrap();
+        let m = check(&b, tmp.path(), None);
+        assert!(
+            !m.iter().any(|m| m.remedy.starts_with("rustup target add")),
+            "{m:?}"
+        );
+        // and a board without it is not mistaken for one
+        assert!(!board_builds_std(&board(
+            "cargo_config = \"\"\"\n[build]\ntarget = \"x\"\n\"\"\"\n"
+        )));
+        assert!(!board_builds_std(&board("")));
     }
 
     #[test]
