@@ -238,9 +238,10 @@ where
             match stream.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
-                    let chunk = String::from_utf8_lossy(&buf[..n]);
+                    // Issue 1697 — bounded: a guest that floods its console
+                    // (issue 1696) grew this to 91 GB.
                     if let Ok(mut guard) = output.lock() {
-                        guard.push_str(&chunk);
+                        crate::capture::append(&mut guard, &buf[..n]);
                     }
                 }
                 Err(_) => break,

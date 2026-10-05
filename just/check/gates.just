@@ -146,6 +146,14 @@ lane-skip-protocol:
 named-lane-fails:
     @python3 scripts/check-named-lane-fails.py
 
+# Issue 1697 — a test read loop accumulates a child's output through
+# `nros_tests::capture::append`, which bounds it. The raw
+# `push_str(&String::from_utf8_lossy(&buf[..n]))` grew a test process to 91 GB
+# when a Zephyr guest flooded its console (issue 1696).
+[group("ci")]
+test-capture-bounded:
+    @python3 scripts/check-test-capture-bounded.py
+
 # A test whose body only PRINTS cannot fail, so it reports PASS on exactly the
 # host it was supposed to warn about. The 2026-08-21 cleanup removed 17 of these
 # (10 files, 2 of them literal cross-file duplicates); this keeps the shape from
