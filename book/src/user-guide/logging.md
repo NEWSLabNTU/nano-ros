@@ -179,11 +179,44 @@ value, exactly as `rcutils_logging_set_logger_level(name,
 RCUTILS_LOG_SEVERITY_UNSET)` does. C++ spells the last one
 `logger.set_level(nros::Logger::Level::Unset)`.
 
-**One bound worth knowing if you are porting.** rcutils resolves an unset
-logger by walking the dotted ancestry its name spells (`x.y.z` → `x.y` → `x`)
-before falling to the default. `nros_log` has no hierarchy: logger lookup is
-exact string equality over a fixed slot table, so a dotted name is just a name
-and the walk has exactly one step — the process default.
+### Child loggers, and what an unset level inherits
+
+As upstream, an unset logger takes the level of its nearest dotted ancestor
+(`x.y.z` → `x.y` → `x`) before the process default (RFC-0102). Make children
+with the upstream spelling:
+
+```rust
+let node_log = node.logger();                       // "my_node"
+let planner = node_log.create_child("planner")?;    // "my_node.planner"
+node_log.set_level(nros_log::Severity::Debug);      // reaches `planner` too
+nros_log::nros_debug!(planner, "replanning");       // emitted
+```
+
+```cpp
+auto planner = node->get_logger().get_child("planner");   // C++
+```
+
+```c
+nros_logger_t planner = nros_logger_get_child(node_log, "planner");   /* C */
+```
+
+A child with its own level keeps it; `unset_level()` hands it back to the
+parent. The same name always answers the same logger. The catch-all's children
+are top-level names: `planner`, not `nros.planner`.
+
+**Bounds, if you are porting.** Upstream keys a level by NAME, so an ancestor
+can hold one without being a logger; here an ancestor holds one by existing,
+and setting a level by name creates it, so in practice the behaviour matches.
+Logger names are capped at **48 bytes**, and runtime-created loggers come from
+a bounded arena. When a child cannot be made:
+
+- Rust's `create_child` returns `Err(ChildError::{NameTooLong, EmptyName,
+  ArenaFull})`, as rclrs's is fallible too;
+- C's `nros_logger_get_child` returns `NULL` and warns once;
+- C++'s `get_child`, whose upstream shape cannot fail, **emits through the
+  parent** (records carry the parent's name and level) and **refuses
+  `set_level`**, so it can never move the parent's threshold. `get_name()`
+  still answers the name you asked for.
 
 ## Buffer size
 
@@ -264,7 +297,17 @@ loop {
 }
 ```
 
-Four things to know before you rely on it.
+Five things to know before you rely on it.
+
+**Which loggers reach it depends on the ROS release** (RFC-0102 D4), because
+upstream's does. On Humble, rcl publishes only a NODE's logger: a child or a
+free `get_logger("x")` never reaches `/rosout`. Iron and Jazzy also publish a
+node's `get_child` descendants. `nros::rosout::enable()` scopes the queue to
+the release the image is built for (`ros-humble` / `ros-iron` / `ros-jazzy`;
+an image naming none gets Humble's rule). So log through `node.logger()` or
+its children, not a free logger, if you want the record on the wire. One
+bound: upstream stops publishing a child when its last copy is destroyed;
+here it stays published, because runtime loggers are never freed.
 
 **It is not automatic.** Upstream republishes from every rcl node with no user
 action. Here you create the publisher yourself, because a publisher is an

@@ -348,7 +348,7 @@ namespace rclcpp {
 // `<nros/log.h>` a named lookup and the three threshold accessors -- and the
 // correction is recorded rather than merely made, because a stale "we cannot
 // do this" comment is how a capability stays unused for two phases after it
-// ships. `get_child` is still a divergence and says so on its own row.
+// ships. `get_child` arrived with RFC-0102 and states its own bounds.
 
 /// `rclcpp::Logger` — the name plus the `nros_log` handle records dispatch on.
 ///
@@ -361,19 +361,22 @@ namespace rclcpp {
 ///   `NROS_CPP_LOGGER_NAME_CAPACITY` bytes (default 128, the longest resolved
 ///   name the stack produces) is truncated in `get_name()`. Records dispatch on
 ///   the interned `nros_log` handle, which is unaffected.
-/// - There is no `get_child`: minting `parent.child` needs an allocator to build
-///   the name in, and there is none (RFC-0022).
+/// - `get_child` exists (RFC-0102) with two bounds of its own, stated on it: a
+///   child over 48 bytes, or past the runtime-logger arena, emits through its
+///   parent and refuses `set_level`.
 /// `get_name()`, `set_level()` and passing it to an `RCLCPP_*` macro behave as
 /// upstream's do.
 class Logger {
   public:
-    explicit Logger(const char* name = "") : handle_(nullptr) { name_ = name; }
+    explicit Logger(const char* name = "") : handle_(nullptr), owns_level_(true) { name_ = name; }
 
     /// phase-427 W5 — the name PLUS the opaque `nros_log::Logger` handle the
     /// `NROS_LOG_*` macros dispatch through. `rclcpp::Node::get_logger()` builds
     /// one of these; `rclcpp::get_logger("free")` leaves the handle null,
     /// because a free-standing name has no node behind it.
-    Logger(const char* name, const void* handle) : handle_(handle) { name_ = name; }
+    Logger(const char* name, const void* handle) : handle_(handle), owns_level_(true) {
+        name_ = name;
+    }
 
     const char* get_name() const { return name_.c_str(); }
 
@@ -432,8 +435,12 @@ class Logger {
     /// (`Logger("planner")`, the one-argument constructor) or from an
     /// uninitialised node; `rclcpp::get_logger("planner")` resolves the name
     /// and does not.
+    ///
+    /// Also refused on a child `get_child` could not create (RFC-0102 D3):
+    /// that child emits through its parent's handle, and writing a threshold
+    /// through it would move the PARENT's level.
     ::nros::Result set_level(Level level) {
-        if (handle_ == nullptr) {
+        if (handle_ == nullptr || !owns_level_) {
             return ::nros::Result(::nros::ErrorCode::InvalidArgument);
         }
         return nros_logger_set_level(handle_, static_cast<nros_log_severity_t>(level))
@@ -442,7 +449,8 @@ class Logger {
     }
 
     /// This logger's EFFECTIVE runtime threshold -- its own level if it has
-    /// one, the process default if it does not, so it is never `Level::Unset`.
+    /// one, else its nearest ancestor's (RFC-0102), else the process default,
+    /// so it is never `Level::Unset`.
     /// OURS-ONLY, phase-417 W4.d.
     ///
     /// rclcpp has no getter. C (`nros_logger_get_level`) and Rust
@@ -483,9 +491,61 @@ class Logger {
     /// uninitialized node.
     operator const void*() const { return handle_; }
 
+    /// `rclcpp::Logger::get_child` -- ADOPT-BOUNDED (RFC-0102).
+    ///
+    /// A logger named `<this>.<suffix>` whose level, while it has none of its
+    /// own, is its nearest ancestor's -- so `parent.set_level(Debug)` reaches
+    /// it, as upstream. The catch-all's children are top-level names
+    /// (`suffix`), as rclrs does for its empty-named default logger. Upstream
+    /// Humble's child is naming plus that inheritance; Iron and later also
+    /// register it for `/rosout`, which nano-ros decides per ROS release in
+    /// its `/rosout` sink rather than here.
+    ///
+    /// Bounded where upstream is not: a child whose full name is over 48 bytes,
+    /// or made when the runtime-logger arena is full, is not created. It then
+    /// EMITS THROUGH ITS PARENT (records carry the parent's name and filter at
+    /// the parent's level) and REFUSES `set_level`, which would otherwise move
+    /// the parent's threshold; `get_name()` still answers the requested name.
+    /// One warning per process says which name did not fit.
+    Logger get_child(const char* suffix) const {
+        const void* parent = handle_ != nullptr ? handle_ : nros_log_get_logger(name_.c_str());
+        const bool top = parent == nros_log_default_logger();
+        char full[NROS_CPP_LOGGER_NAME_CAPACITY + 1];
+        ::size_t at = 0;
+        if (!top) {
+            for (const char* c = name_.c_str(); *c != '\0' && at < NROS_CPP_LOGGER_NAME_CAPACITY;
+                 ++c) {
+                full[at++] = *c;
+            }
+            if (at < NROS_CPP_LOGGER_NAME_CAPACITY) {
+                full[at++] = '.';
+            }
+        }
+        for (const char* c = suffix != nullptr ? suffix : "";
+             *c != '\0' && at < NROS_CPP_LOGGER_NAME_CAPACITY; ++c) {
+            full[at++] = *c;
+        }
+        full[at] = '\0';
+        const void* child = nros_logger_get_child(parent, suffix);
+        if (child != nullptr) {
+            return Logger(full, child);
+        }
+        Logger fallback(full, parent);
+        fallback.owns_level_ = false;
+        return fallback;
+    }
+
+#ifdef NROS_CPP_HAS_STD_STRING
+    /// `get_child` with upstream's exact parameter type.
+    Logger get_child(const std::string& suffix) const { return get_child(suffix.c_str()); }
+#endif
+
   private:
     ::nros::FixedString<NROS_CPP_LOGGER_NAME_CAPACITY + 1> name_;
     const void* handle_;
+    /// False only for a child `get_child` could not create: `handle_` is then
+    /// the PARENT's, good for emitting and reading, not for `set_level`.
+    bool owns_level_;
 };
 
 /// `rclcpp::get_logger(name)` — issue 1019, phase-417 W3.a.

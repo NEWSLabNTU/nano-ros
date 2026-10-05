@@ -53,7 +53,7 @@ extern crate alloc;
 // crate enables `unsafe-assume-single-core` / `critical-section` on
 // its own `portable-atomic` dep; native CAS targets get the
 // passthrough.
-use portable_atomic::{AtomicPtr, AtomicU8, AtomicUsize, Ordering};
+use portable_atomic::{AtomicBool, AtomicPtr, AtomicU8, AtomicUsize, Ordering};
 
 pub mod early;
 #[cfg(feature = "log-compat")]
@@ -263,12 +263,12 @@ const LEVEL_UNSET: u8 = u8::MAX;
 /// has no allocator here to concatenate `parent.child` with. A resolver for a
 /// hierarchy nothing can construct is not a missing feature.
 ///
-/// RFC-0102 (2026-10-05) reverses that, by decision -- phase-479 builds it.
-/// The premises went stale: [`get_or_create_logger`] copies runtime names into
-/// a static arena, `parent.child` fits a 48-byte stack buffer, and the
-/// ancestors a `get_child` produces are loggers already. The hierarchy becomes
-/// a parent pointer on [`Logger`], linked at creation, so this byte stays the
-/// LAST step of the walk rather than the only one.
+/// RFC-0102 reversed that and phase-479 built it: the premises went stale
+/// ([`get_or_create_logger`] copies runtime names into a static arena,
+/// `parent.child` fits a 48-byte stack buffer, and the ancestors a `get_child`
+/// produces are loggers already). The hierarchy is now a parent pointer on
+/// [`Logger`], linked at creation, and this byte is the LAST step of the walk
+/// rather than the only one.
 static DEFAULT_LEVEL: AtomicU8 = AtomicU8::new(Severity::Info as u8);
 
 /// A named logger with a runtime severity threshold.
@@ -283,6 +283,19 @@ pub struct Logger {
     name: &'static str,
     /// Either a [`Severity`] discriminant or the private `LEVEL_UNSET`.
     level: AtomicU8,
+    /// RFC-0102 D2 — the nearest EXISTING ancestor by dotted name (`a.b` for
+    /// `a.b.c`, else `a`), or null. A logger with no level of its own resolves
+    /// through this chain before falling to [`Logger::default_level`], which is
+    /// rcutils's effective-level rule. Set when a logger is published to the
+    /// intern table ([`register_logger`], [`get_or_create_logger`]), never on
+    /// the log path. Only ever points at a logger whose name is a STRICT
+    /// dotted prefix of this one's, so the chain is acyclic and shorter than
+    /// [`MAX_LOGGERS`].
+    parent: AtomicPtr<Logger>,
+    /// RFC-0102 D4 — set when a NODE's accessor resolves this logger
+    /// ([`resolve_node_logger`]). The `/rosout` sink publishes by it: upstream
+    /// rcl publishes only through a publisher correlated with a node's logger.
+    node: AtomicBool,
 }
 
 impl Logger {
@@ -301,6 +314,8 @@ impl Logger {
         Self {
             name,
             level: AtomicU8::new(LEVEL_UNSET),
+            parent: AtomicPtr::new(core::ptr::null_mut()),
+            node: AtomicBool::new(false),
         }
     }
 
@@ -310,6 +325,8 @@ impl Logger {
         Self {
             name,
             level: AtomicU8::new(level as u8),
+            parent: AtomicPtr::new(core::ptr::null_mut()),
+            node: AtomicBool::new(false),
         }
     }
 
@@ -320,7 +337,8 @@ impl Logger {
     }
 
     /// The threshold this logger actually filters on — its own level if it has
-    /// one, otherwise [`Logger::default_level`].
+    /// one, otherwise its nearest ancestor's (RFC-0102 D2), otherwise
+    /// [`Logger::default_level`].
     ///
     /// This is `rcutils_logging_get_logger_effective_level`'s answer, not
     /// `rcutils_logging_get_logger_level`'s: it is the number that decides
@@ -330,11 +348,53 @@ impl Logger {
     /// accessor per language is three more names for one fact.
     #[must_use]
     pub fn level(&self) -> Severity {
-        let own = self.level.load(Ordering::Relaxed);
-        if own == LEVEL_UNSET {
-            return Self::default_level();
+        severity_from_u8(self.effective_level_byte()).unwrap_or(Severity::Info)
+    }
+
+    /// The nearest ancestor this logger resolves an unset level through, if
+    /// any (RFC-0102 D2). `None` for a root, and for every logger not yet
+    /// published to the intern table.
+    #[must_use]
+    pub fn parent(&self) -> Option<&'static Logger> {
+        let p = self.parent.load(Ordering::Acquire);
+        // SAFETY: `parent` is only ever stored from a `&'static Logger` (see
+        // `link_published`), and loggers are never freed.
+        if p.is_null() {
+            None
+        } else {
+            Some(unsafe { &*p })
         }
-        severity_from_u8(own).unwrap_or(Severity::Info)
+    }
+
+    /// Whether a node's accessor resolved this logger (RFC-0102 D4).
+    #[must_use]
+    pub fn is_node_logger(&self) -> bool {
+        self.node.load(Ordering::Relaxed)
+    }
+
+    /// Own level byte if set; else the first set level up the parent chain;
+    /// else the process default. The walk is bounded by [`MAX_LOGGERS`] even
+    /// though the chain is acyclic by construction, so a defect elsewhere can
+    /// cost a wrong answer but never a hang on the log path.
+    #[inline]
+    fn effective_level_byte(&self) -> u8 {
+        let own = self.level.load(Ordering::Relaxed);
+        if own != LEVEL_UNSET {
+            return own;
+        }
+        let mut p = self.parent.load(Ordering::Acquire);
+        let mut hops = 0;
+        while !p.is_null() && hops < MAX_LOGGERS {
+            // SAFETY: as in `parent()`.
+            let ancestor: &Logger = unsafe { &*p };
+            let level = ancestor.level.load(Ordering::Relaxed);
+            if level != LEVEL_UNSET {
+                return level;
+            }
+            p = ancestor.parent.load(Ordering::Acquire);
+            hops += 1;
+        }
+        DEFAULT_LEVEL.load(Ordering::Relaxed)
     }
 
     /// Give this logger a level of its own. It stops following
@@ -391,7 +451,8 @@ impl Logger {
     /// logger AT RUNTIME.
     ///
     /// THE HOT PATH of every log macro, on every target, so the shape here is
-    /// measured rather than chosen (phase-467). Resolving the unset level
+    /// measured rather than chosen (phase-467; the figures below are for the
+    /// two-level own-or-default form that preceded RFC-0102's ancestor walk). Resolving the unset level
     /// SELECTS the byte to compare against and compares once, instead of
     /// comparing twice and short-circuiting: measured at an inlined call site
     /// with `rustc -O`, the select form is 13 instructions on
@@ -407,15 +468,15 @@ impl Logger {
     /// u8::MAX` is false for every `Severity`, so an unresolved sentinel can
     /// only ever suppress a record, never emit one at the most verbose level —
     /// which is the failure `0` had.
+    ///
+    /// RFC-0102 D2 changed the unset arm: it now walks the parent chain before
+    /// the process default. A logger WITH its own level still costs one load
+    /// and one compare; an unset root pays one extra pointer load; each
+    /// ancestor without a level of its own costs one more. No string work, on
+    /// any arm.
     #[must_use]
     pub fn is_enabled(&self, severity: Severity) -> bool {
-        let own = self.level.load(Ordering::Relaxed);
-        let effective = if own == LEVEL_UNSET {
-            DEFAULT_LEVEL.load(Ordering::Relaxed)
-        } else {
-            own
-        };
-        (severity as u8) >= effective
+        (severity as u8) >= self.effective_level_byte()
     }
 
     /// Whether a record at `severity` would be emitted, given both this
@@ -480,6 +541,19 @@ mod intern {
     }
 
     impl InternTable {
+        /// Every published logger, in slot order.
+        pub(super) fn iter(&self) -> impl Iterator<Item = &'static Logger> + '_ {
+            self.slots.iter().map_while(|slot| {
+                let ptr = slot.load(Ordering::Acquire);
+                // SAFETY: same publication invariant as `lookup`.
+                if ptr.is_null() {
+                    None
+                } else {
+                    Some(unsafe { &*ptr })
+                }
+            })
+        }
+
         pub(super) const fn new() -> Self {
             // `AtomicPtr::new` is `const` on both `core::sync::atomic`
             // and `portable_atomic`, so we can initialise the array
@@ -542,6 +616,64 @@ mod intern {
 
 static INTERN: intern::InternTable = intern::InternTable::new();
 
+/// The dotted ancestors of `name`, nearest first: `a.b.c` yields `a.b`, `a`.
+fn dotted_ancestors(name: &str) -> impl Iterator<Item = &str> {
+    let mut rest = name;
+    core::iter::from_fn(move || {
+        let cut = rest.rfind('.')?;
+        rest = &rest[..cut];
+        Some(rest)
+    })
+}
+
+/// RFC-0102 D2 — wire a logger that was JUST published into the hierarchy.
+///
+/// 1. Its parent is its nearest EXISTING dotted ancestor.
+/// 2. Every published logger whose current parent is a FARTHER ancestor than
+///    `new` (or which has none) and whose name has `new`'s as a dotted prefix
+///    is re-pointed at `new`. So the result does not depend on creation order:
+///    `a.b.c` created before `a.b` still resolves through `a.b` once it exists.
+///
+/// Runs on publication only — one pass over at most [`MAX_LOGGERS`] slots.
+/// Creation is expected at initialisation; two loggers created at the same
+/// instant from different threads can leave a link one level FARTHER than
+/// ideal, never one pointing at a non-ancestor, because every store here is of
+/// a logger whose name is a strict dotted prefix of the target's.
+fn link_published(new: &'static Logger) {
+    let ptr = new as *const Logger as *mut Logger;
+    if let Some(parent) = dotted_ancestors(new.name()).find_map(|a| INTERN.lookup(a)) {
+        new.parent
+            .store(parent as *const Logger as *mut Logger, Ordering::Release);
+    }
+    let n = new.name();
+    for other in INTERN.iter() {
+        let on = other.name();
+        let is_descendant =
+            on.len() > n.len() && on.starts_with(n) && on.as_bytes()[n.len()] == b'.';
+        if !is_descendant {
+            continue;
+        }
+        let closer = match other.parent() {
+            None => true,
+            Some(current) => current.name().len() < n.len(),
+        };
+        if closer {
+            other.parent.store(ptr, Ordering::Release);
+        }
+    }
+}
+
+/// Publish through the intern table and, when THIS call did the inserting,
+/// link the logger into the hierarchy. The one spelling both publication
+/// paths use.
+fn publish(logger: &'static Logger) -> Option<&'static Logger> {
+    let published = INTERN.insert(logger)?;
+    if core::ptr::eq(published, logger) {
+        link_published(published);
+    }
+    Some(published)
+}
+
 /// Publish `logger` under its name so subsequent `get_logger`
 /// calls with that name return THIS reference.
 ///
@@ -549,7 +681,7 @@ static INTERN: intern::InternTable = intern::InternTable::new();
 /// `logger` is NOT inserted). On a full table returns
 /// [`DEFAULT_LOGGER`].
 pub fn register_logger(logger: &'static Logger) -> &'static Logger {
-    INTERN.insert(logger).unwrap_or(&DEFAULT_LOGGER)
+    publish(logger).unwrap_or(&DEFAULT_LOGGER)
 }
 
 /// Look up a registered logger by name. Returns [`DEFAULT_LOGGER`]
@@ -598,7 +730,130 @@ pub fn get_or_create_logger(name: &str) -> Option<&'static Logger> {
     // this function exists to avoid. On a lost race `insert` returns the
     // winner and our slot is spent, which `pool::dynamic_loggers_in_use`
     // reports.
-    INTERN.insert(placed)
+    publish(placed)
+}
+
+/// Why [`Logger::create_child`] made no child — RFC-0102 D1.
+///
+/// rclrs's `create_child` is fallible too (`Result<Logger, RclrsError>`), so a
+/// Rust caller chooses its own fallback (`parent.create_child("x").unwrap_or(parent)`).
+/// The C and C++ surfaces, whose upstream shapes cannot report failure, fall
+/// back to the parent automatically (RFC-0102 D3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChildError {
+    /// The child's full name is longer than [`MAX_LOGGER_NAME_LEN`] bytes.
+    NameTooLong {
+        /// Bytes the full name would have.
+        len: usize,
+        /// [`MAX_LOGGER_NAME_LEN`].
+        max: usize,
+    },
+    /// The full name would be empty: an empty `child_name` under the
+    /// catch-all, whose children are top-level names.
+    EmptyName,
+    /// The runtime-logger arena, its name bytes, or the intern table is full.
+    ArenaFull,
+}
+
+impl core::fmt::Display for ChildError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::NameTooLong { len, max } => {
+                write!(
+                    f,
+                    "child logger name is {len} bytes, over the {max}-byte limit"
+                )
+            }
+            Self::EmptyName => f.write_str("child logger name is empty"),
+            Self::ArenaFull => f.write_str(
+                "no runtime logger slot left (arena, name bytes, or intern table is full)",
+            ),
+        }
+    }
+}
+
+impl Logger {
+    /// A logger that is a descendant of this one — rclrs's `create_child`,
+    /// rclcpp's `get_child` (RFC-0102 D1).
+    ///
+    /// Named `"{self}.{child_name}"`, except that the catch-all
+    /// ([`DEFAULT_LOGGER`]) has top-level children: its child is named
+    /// `child_name`, as rclrs does for its empty-named default logger.
+    ///
+    /// A child with no level of its own filters at its nearest ancestor's
+    /// (rcutils's rule, RFC-0102 D2), so `parent.set_level(Debug)` reaches it.
+    /// Idempotent: the same name returns the same logger, so a call inside a
+    /// log statement costs one intern-table lookup.
+    ///
+    /// Takes `&'static self` because the child links to its parent by
+    /// reference. `self` is published to the intern table first if it was
+    /// not, so a `static` parent nobody registered still passes its level on.
+    ///
+    /// # Errors
+    /// [`ChildError`] when the full name is over [`MAX_LOGGER_NAME_LEN`] or
+    /// empty, or no slot is left. The name is built in a stack buffer; nothing
+    /// is allocated.
+    pub fn create_child(
+        &'static self,
+        child_name: impl core::borrow::Borrow<str>,
+    ) -> Result<&'static Logger, ChildError> {
+        let child = child_name.borrow();
+        let top = core::ptr::eq(self, &DEFAULT_LOGGER);
+        let len = if top {
+            child.len()
+        } else {
+            self.name.len() + 1 + child.len()
+        };
+        if len == 0 {
+            return Err(ChildError::EmptyName);
+        }
+        if len > MAX_LOGGER_NAME_LEN {
+            return Err(ChildError::NameTooLong {
+                len,
+                max: MAX_LOGGER_NAME_LEN,
+            });
+        }
+        if !top && INTERN.lookup(self.name).is_none() {
+            // A full table leaves the child unlinked: it then filters at the
+            // process default, which is what an unregistered parent meant
+            // before RFC-0102 too.
+            let _ = publish(self);
+        }
+        let mut buf = [0u8; MAX_LOGGER_NAME_LEN];
+        let mut at = 0;
+        if !top {
+            buf[..self.name.len()].copy_from_slice(self.name.as_bytes());
+            at = self.name.len();
+            buf[at] = b'.';
+            at += 1;
+        }
+        buf[at..len].copy_from_slice(child.as_bytes());
+        // SAFETY: two `&str`s joined by an ASCII `.` are valid UTF-8, and the
+        // cut is at their end.
+        let name = unsafe { core::str::from_utf8_unchecked(&buf[..len]) };
+        get_or_create_logger(name).ok_or(ChildError::ArenaFull)
+    }
+}
+
+/// The published logger called `name`, if any — the lookup the `/rosout`
+/// sink filters by (RFC-0102 D4), which sees a record's name, not its logger.
+#[cfg(feature = "rosout")]
+pub(crate) fn find_published(name: &str) -> Option<&'static Logger> {
+    INTERN.lookup(name)
+}
+
+/// [`resolve_logger`] for a NODE's own logger, marking it as one — the one
+/// spelling the node-shaped accessors use (`Node::logger`,
+/// `nros_node_get_logger`, the C++ node's), so the `/rosout` sink can publish
+/// what upstream publishes (RFC-0102 D4). The catch-all is never marked: a node
+/// whose name fell back to it would otherwise publish every unnamed logger.
+#[must_use]
+pub fn resolve_node_logger(name: &str) -> &'static Logger {
+    let logger = resolve_logger(name);
+    if !core::ptr::eq(logger, &DEFAULT_LOGGER) {
+        logger.node.store(true, Ordering::Relaxed);
+    }
+    logger
 }
 
 /// Resolve `name` to a logger — the TOTAL form of [`get_or_create_logger`],
@@ -967,7 +1222,6 @@ pub fn flush() {
 // `no_std` targets (`thread_local!` requires `std`).
 // -----------------------------------------------------------------------------
 
-use portable_atomic::AtomicBool;
 static RECURSION_GUARD: AtomicBool = AtomicBool::new(false);
 
 fn recursion_guard_check_and_set() -> bool {

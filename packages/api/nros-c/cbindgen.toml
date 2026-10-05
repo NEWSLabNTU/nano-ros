@@ -107,6 +107,7 @@ exclude = [
     "nros_log_get_logger",
     "nros_logger_get_name",
     "nros_logger_set_level",
+    "nros_logger_get_child",
     "nros_logger_get_level",
     "nros_logger_is_enabled",
     # phase-467 — the process-wide default threshold, hand-authored in

@@ -146,8 +146,10 @@ fn a_nano_ros_log_call_reaches_ros2_topic_echo_rosout() {
 
     // The record is not just PRESENT, it is the right SHAPE. Each of these
     // has its own way of being silently wrong on the wire.
+    // The NODE's logger: RFC-0102 D4 scoped `/rosout` to what rcl publishes,
+    // which is a node's logger (and on Iron+, its children), never a free one.
     assert!(
-        out.contains("name: rosout_probe"),
+        out.contains("name: rosout_talker"),
         "the logger NAME did not survive: `rqt_console` filters on it and a \
          blank one attributes every line to nothing.\nROS 2 side:\n{out}"
     );

@@ -66,7 +66,28 @@ use nros_rmw::{QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliability
 
 use crate::executor::{EmbeddedPublisher, NodeError};
 
-pub use nros_log::rosout::{dropped, enable, enabled, suppressed};
+pub use nros_log::rosout::{RosoutScope, dropped, enabled, scope, suppressed};
+
+/// The [`RosoutScope`] this image's ROS release implies (RFC-0102 D4).
+///
+/// `ros-iron` / `ros-jazzy`: node loggers and their `get_child` descendants,
+/// as `rcl_logging_rosout_add_sublogger` makes it upstream. `ros-humble`, and
+/// an image that names no release: node loggers only — Humble's rcl publishes
+/// only through a publisher correlated with a node's logger, and Humble is the
+/// release this tree's interop tests run against.
+pub const RELEASE_SCOPE: RosoutScope = if cfg!(any(feature = "ros-iron", feature = "ros-jazzy")) {
+    RosoutScope::NodeLoggersAndDescendants
+} else {
+    RosoutScope::NodeLoggers
+};
+
+/// Start queueing records for `/rosout`, scoped to what this image's ROS
+/// release publishes ([`RELEASE_SCOPE`]). `nros_log::rosout::enable` with the
+/// scope set first; returns its answer.
+pub fn enable() -> bool {
+    nros_log::rosout::set_scope(RELEASE_SCOPE);
+    nros_log::rosout::enable()
+}
 
 /// The topic. Absolute and un-namespaced, as upstream's is.
 pub const TOPIC: &str = "/rosout";

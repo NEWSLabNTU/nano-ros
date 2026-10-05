@@ -3022,7 +3022,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_logger(
     // `DEFAULT_LOGGER` for every node name nobody registered, so two nodes in
     // one image emitted under one name and the accessor could not say which
     // node wrote a record. That is the sentinel W5 replaced, by another route.
-    let logger: &'static nros_log::Logger = nros_log::resolve_logger(name);
+    let logger: &'static nros_log::Logger = nros_log::resolve_node_logger(name);
     (logger as *const nros_log::Logger).cast()
 }
 
