@@ -2080,6 +2080,16 @@ config NROS_CODEGEN_TOOL
 # The numbers below are the historical snippet values, unchanged on purpose:
 # this commit moves WHERE they are decided, not WHAT they are, so an existing
 # native_sim or QEMU build resolves exactly as before.
+#
+# Editing one of these DOES reach an existing build dir (issue 1699). Zephyr
+# re-reads an old `.config` as user choices unless a conf fragment changed, so
+# a new default here used to reach fresh build dirs only.
+# `zephyr/CMakeLists.txt` now drops a comment-only `nros-module-kconfig.conf`,
+# carrying this file's digest, into the build dir. Zephyr's fragment checksum
+# covers it, and the module re-runs the configure once on the build after an
+# edit. Measured: an edit to the `NET_TCP_WORKQ_STACK_SIZE` default reached an
+# incremental `ninja` in one build (two configures); without this it kept the
+# old value.
 
 if NROS_RMW_CYCLONEDDS
 
