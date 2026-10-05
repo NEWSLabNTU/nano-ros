@@ -20,11 +20,10 @@
 // the same dependency). `duration.hpp` includes nothing of ours.
 #include "nros/duration.hpp"
 
-// phase-417 W1.a — `<memory>` for the nested pointer aliases below.
-// `NROS_CPP_HAS_SHARED_PTR` and the other five capability macros have ONE
-// definition site, and the measured reason the predicate needs both probes
-// (issues 0112, 1187, 1240) is stated there.
-#include "nros/std_detect.hpp"
+// phase-476 W2 — nothing in this header is hosted-only any more: the pointer
+// aliases name `TimerHandle` rather than `std::shared_ptr`, and the callable
+// lives in the executor arena rather than a `std::function` cell. So it
+// includes no capability probe.
 
 #include "nros_cpp_ffi.h"
 
@@ -38,6 +37,138 @@ class Node;
 }
 
 namespace nros {
+
+class Timer;
+
+/// What `timer_->...` reaches on a [`TimerHandle`]: the operations a timer
+/// registration supports, over the same two words — phase-476 W2.
+///
+/// A separate type from the handle because ported code says BOTH
+/// `timer_->reset()` (restart the timer) and `timer_.reset()` (drop it), and
+/// upstream gives them different meanings. Behind one class, `operator->`
+/// returning `this` would make the two spellings the same call.
+class TimerOps {
+  public:
+    /// Stop the timer firing. It stays registered; `reset()` restarts it.
+    Result cancel() { return Result(nros_cpp_timer_cancel(executor_, handle_id_)); }
+
+    /// Restart the timer from zero elapsed time; un-cancels a cancelled one.
+    Result reset() { return Result(nros_cpp_timer_reset(executor_, handle_id_)); }
+
+    /// Whether the timer is cancelled. A released or empty handle answers true:
+    /// nothing will fire it.
+    bool is_canceled() const {
+        return executor_ == nullptr || nros_cpp_timer_is_canceled(executor_, handle_id_);
+    }
+
+    /// Would the timer fire on the next `spin_once()`? — `TimerBase::is_ready()`.
+    /// See `nros::Timer::is_ready`.
+    bool is_ready() const {
+        return executor_ != nullptr && nros_cpp_timer_is_ready(executor_, handle_id_);
+    }
+
+    /// Time until the timer next fires, NEGATIVE when overdue —
+    /// `TimerBase::time_until_trigger()`. See `nros::Timer::time_until_trigger`
+    /// for the two recorded differences from rclcpp. `Duration()` for an empty,
+    /// released or stale handle.
+    Duration time_until_trigger() const {
+        int64_t ns = 0;
+        if (executor_ == nullptr ||
+            nros_cpp_timer_time_until_next_call_ns(executor_, handle_id_, &ns) != NROS_CPP_RET_OK) {
+            return Duration();
+        }
+        return Duration::from_nanoseconds(ns);
+    }
+
+  protected:
+    constexpr TimerOps(void* executor, size_t handle_id)
+        : executor_(executor), handle_id_(handle_id) {}
+
+    void* executor_;
+    size_t handle_id_;
+};
+
+/// The handle `create_wall_timer` / `rclcpp::create_timer` return, and what
+/// `Timer::SharedPtr` names — phase-476 W2.
+///
+/// Two words, trivially copyable, no allocation, and present on every target:
+/// the timer's callable lives in the executor arena (phase-476 W2), so there is
+/// nothing on the C++ side for a `std::shared_ptr` to own. That is what freed
+/// `timer.hpp` from `<memory>` and `<functional>`.
+///
+/// `timer_->cancel()`, `timer_->reset()`, `timer_->is_ready()` and
+/// `timer_->time_until_trigger()` keep their rclcpp spelling through
+/// `operator->`, which reaches a [`TimerOps`].
+///
+/// WHAT DIFFERS FROM A `shared_ptr`, stated because a ported file cannot see it:
+///
+///  * The handle does not OWN the timer. Dropping or overwriting it leaves the
+///    timer firing, where upstream destroys a timer when its last `shared_ptr`
+///    goes. The node owns its timers: destroying the node releases them
+///    (phase-476 W0). That matches what this API did before W2, when the node
+///    co-owned a heap cell for every timer.
+///  * `timer_.reset()` RELEASES the timer, for every copy at once: the closest
+///    thing to upstream's "drop my reference" that a non-counting handle can
+///    offer, and the spelling ported code uses to stop a timer for good.
+///  * A copy that outlives a release is SAFE. The handle carries the generation
+///    of the slot it was issued for (phase-476 W0), so every operation through a
+///    stale copy fails instead of reaching whatever registration took the slot.
+class TimerHandle : private TimerOps {
+  public:
+    /// What this handle refers to, for generic code that spells a pointee type
+    /// the way `std::shared_ptr` exposes one. A NAME only: `operator->` reaches
+    /// a [`TimerOps`], not a `Timer` object.
+    using element_type = ::nros::Timer;
+
+    constexpr TimerHandle() : TimerOps(nullptr, 0) {}
+    /// Null, spelled the way a ported file spells it
+    /// (`Timer::SharedPtr timer_ = nullptr;`).
+    constexpr TimerHandle(decltype(nullptr)) : TimerOps(nullptr, 0) {}
+    constexpr TimerHandle(void* executor, size_t handle_id) : TimerOps(executor, handle_id) {}
+
+    /// `if (timer_)`. A default-constructed or `reset()` handle is empty; one
+    /// from a successful registration is not (even once released elsewhere —
+    /// the operations are what report that).
+    explicit constexpr operator bool() const { return executor_ != nullptr; }
+
+    /// `timer_->cancel()` and friends.
+    TimerOps* operator->() { return this; }
+    /// Const overload of `operator->`.
+    const TimerOps* operator->() const { return this; }
+
+    /// `timer_.reset()` — release the timer: it stops for good, its arena entry
+    /// and captured callable are freed, and this handle becomes empty. Other
+    /// copies become stale and fail safely. A no-op on an empty handle.
+    void reset() {
+        if (executor_ != nullptr) {
+            (void)nros_cpp_timer_release(executor_, handle_id_);
+        }
+        executor_ = nullptr;
+        handle_id_ = 0;
+    }
+
+    /// The packed executor handle this refers to. For introspection and tests.
+    constexpr size_t handle_id() const { return handle_id_; }
+
+    friend constexpr bool operator==(const TimerHandle& a, const TimerHandle& b) {
+        return a.executor_ == b.executor_ && a.handle_id_ == b.handle_id_;
+    }
+    friend constexpr bool operator!=(const TimerHandle& a, const TimerHandle& b) {
+        return !(a == b);
+    }
+    friend constexpr bool operator==(const TimerHandle& a, decltype(nullptr)) {
+        return a.executor_ == nullptr;
+    }
+    friend constexpr bool operator!=(const TimerHandle& a, decltype(nullptr)) {
+        return a.executor_ != nullptr;
+    }
+    friend constexpr bool operator==(decltype(nullptr), const TimerHandle& a) {
+        return a.executor_ == nullptr;
+    }
+    friend constexpr bool operator!=(decltype(nullptr), const TimerHandle& a) {
+        return a.executor_ != nullptr;
+    }
+};
 
 /// Repeating or one-shot timer registered with the executor.
 ///
@@ -56,27 +187,21 @@ namespace nros {
 /// ```
 class Timer {
   public:
-#ifdef NROS_CPP_HAS_SHARED_PTR
     /// `Timer::SharedPtr` — how a timer member is declared:
-    /// `rclcpp::Timer::SharedPtr timer_;`.
+    /// `rclcpp::Timer::SharedPtr timer_;` (or `rclcpp::TimerBase::SharedPtr`,
+    /// the alias below).
     ///
-    /// Upstream spells that `rclcpp::TimerBase::SharedPtr`. We do not have a
-    /// `TimerBase`, deliberately — phase-430 W7 deleted the one-leaf hierarchy
-    /// phase-417 W1.a had added, because the executor dispatches through a raw
-    /// function pointer and a base class would be a vtable no dispatch uses.
-    /// The rename is the mechanical edit the compile-or-conform rule wants.
-    ///
-    /// Ergonomics only (RFC-0089 §"Who implements an adopted name"): a
-    /// spelling for `std::shared_ptr<Timer>`, no second code path.
-    ///
-    /// Present only where `<memory>` is — a freestanding target has no
-    /// `std::shared_ptr` to alias.
-    using SharedPtr = std::shared_ptr<Timer>;
-    /// `Timer::ConstSharedPtr` — see `SharedPtr`.
-    using ConstSharedPtr = std::shared_ptr<const Timer>;
-    /// `Timer::UniquePtr` — see `SharedPtr`.
-    using UniquePtr = std::unique_ptr<Timer>;
-#endif
+    /// phase-476 W2 — a [`TimerHandle`], not a `std::shared_ptr<Timer>`, and
+    /// UNCONDITIONAL: the timer's callable lives in the executor arena, so the
+    /// C++ side owns nothing a smart pointer could hold, and a freestanding
+    /// target gets the ported spelling too. See `TimerHandle` for what differs
+    /// from a `shared_ptr` (it does not own the timer; `.reset()` releases it).
+    using SharedPtr = ::nros::TimerHandle;
+    /// `Timer::ConstSharedPtr` — the same handle; see `SharedPtr`.
+    using ConstSharedPtr = ::nros::TimerHandle;
+    /// `Timer::UniquePtr` — the same handle; see `SharedPtr`. Upstream's is a
+    /// sole owner. This one owns nothing, like the other two spellings.
+    using UniquePtr = ::nros::TimerHandle;
 
     /// Cancel the timer. It stops firing but remains in the executor.
     /// Use `reset()` to restart it.
@@ -264,11 +389,10 @@ class Timer {
 //      shape. A base whose one leaf is `detail::`-private advertises a taxonomy
 //      the header itself refuses two paragraphs later.
 //
-//   3. THE FLAT SHAPE IS A STRICTLY BETTER KEEP-ALIVE. `create_wall_timer` now
-//      returns `std::shared_ptr<::nros::Timer>` aliased onto the private cell,
-//      which is what `create_subscription` has always done. The returned type
-//      is the type that actually exists, and the cell stays an implementation
-//      detail instead of being half-exposed as a base class.
+//   3. THE FLAT SHAPE IS A STRICTLY BETTER KEEP-ALIVE. `create_wall_timer`
+//      returned `std::shared_ptr<::nros::Timer>` aliased onto a private cell,
+//      as `create_subscription` did. Since phase-476 W2 both return a two-word
+//      handle and there is no cell: the callable is in the executor arena.
 //
 // The migration cost is one mechanical rename the compiler demands:
 // `rclcpp::TimerBase::SharedPtr timer_;` becomes `rclcpp::Timer::SharedPtr
@@ -304,9 +428,6 @@ class Timer {
 // `rclcpp::spin` / `spin_some` ONLY. Scheduling in the wrapper is
 // RFC-0019/RFC-0020 violation class 2. Do not reintroduce a second dispatch
 // loop.
-
-// The type-erased callback cell needs `<functional>`, which arrives with
-// `NROS_CPP_HAS_STD_FUNCTION` from the detection site included at the top.
 
 namespace rclcpp {
 
@@ -347,9 +468,9 @@ using Timer = ::nros::Timer;
 /// `class TimerBase` had a virtual destructor and `detail::WallTimer` derived
 /// from it. The executor dispatches through a raw `void(*)(void*)` recovered by
 /// a STATIC trampoline, so no virtual call through a `TimerBase*` existed or
-/// can — a vtable with no caller, which clause 1 refuses. `detail::WallTimer`
-/// now derives from nothing and `create_wall_timer` returns
-/// `std::shared_ptr<Timer>`.
+/// can — a vtable with no caller, which clause 1 refuses. phase-476 W2 then
+/// deleted `detail::WallTimer` itself; `create_wall_timer` returns a
+/// `TimerHandle`.
 ///
 /// WHAT THE NAME STILL DOES NOT PROMISE: `WallTimer` and `GenericTimer` stay
 /// absent, so `rclcpp::WallTimer<...>` does not compile; and a file that
@@ -358,46 +479,11 @@ using Timer = ::nros::Timer;
 /// rows rather than silent ones.
 using TimerBase = ::nros::Timer;
 
-#ifdef NROS_CPP_HAS_STD_FUNCTION
-namespace detail {
-
-/// An executor-registered timer plus the heap cell holding the user's callable.
-///
-/// TYPE ERASURE IS THE ONLY THING THIS ADDS. The executor's callback slot is
-/// `nros_cpp_timer_callback_t` — `void(*)(void* ctx)` — and a ported rclcpp
-/// timer callback is a capturing lambda or a `std::bind` result, which cannot
-/// convert to a function pointer. `trampoline` recovers the cell from `ctx` and
-/// calls it. That is a spelling, not a second code path (RFC-0089 §"Who
-/// implements an adopted name"); no schedule, no clock read, no ordering.
-///
-/// NOT A CLASS HIERARCHY. It derived from `rclcpp::TimerBase` until phase-430
-/// W7 deleted that base; it is a private implementation cell, and
-/// `create_wall_timer` hands back a `std::shared_ptr<::nros::Timer>` aliased
-/// onto its `timer` member rather than a pointer to the cell itself.
-///
-/// LIFETIME: the arena stores `this` as the dispatch context and nothing
-/// unregisters it, so the cell has to outlive the registration.
-/// `rclcpp::Node`'s `owned_entities_` holds a `shared_ptr` for the node's
-/// lifetime, and the MEMBER ORDER below is load-bearing — members destruct in
-/// reverse declaration order, so `timer` goes first and `~nros::Timer` cancels
-/// the arena slot before `callback` is destroyed. Declared the other way round,
-/// a tick landing between the two destructions would run a destroyed
-/// `std::function`.
-class WallTimer {
-  public:
-    static void trampoline(void* ctx) {
-        auto* self = static_cast<WallTimer*>(ctx);
-        if (self != nullptr && self->callback) {
-            self->callback();
-        }
-    }
-
-    std::function<void()> callback; // destroyed LAST
-    ::nros::Timer timer;            // destroyed FIRST — cancels the arena slot
-};
-
-} // namespace detail
-#endif // NROS_CPP_HAS_STD_FUNCTION
+// phase-476 W2 deleted `detail::WallTimer`, the heap cell (a `std::function`
+// plus an `nros::Timer`) that gave a capturing timer callback a stable address
+// and that the node kept alive through `owned_entities`. The callable now lives
+// in the executor arena (`nros_cpp_timer_create_capturing`), destroyed when the
+// timer is released, and the returned handle is two words.
 
 } // namespace rclcpp
 

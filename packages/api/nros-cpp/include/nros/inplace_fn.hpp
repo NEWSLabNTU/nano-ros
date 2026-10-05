@@ -148,6 +148,16 @@ template <typename R, typename... A, tr::size_type Cap> class InplaceFn<R(A...),
         release();
     }
 
+    /// Forget the callable WITHOUT destroying it, because its bytes were moved
+    /// elsewhere by copy and the copy owns it now — phase-476 W2.
+    ///
+    /// This is the move constructor's own second half (`copy_storage` then
+    /// `release` on the source), offered to a caller that did the copy itself:
+    /// a registration that hands this object's bytes to the executor arena,
+    /// which destroys its copy when the entry is released. Calling it on an
+    /// object whose bytes were NOT moved leaks whatever the callable owns.
+    void relinquish() { release(); }
+
   private:
     /// The widest fundamental alignment a small capture can need. `long long`
     /// and `double` rather than `max_align_t`, which lives in `<cstddef>` and

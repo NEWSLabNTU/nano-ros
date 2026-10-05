@@ -354,12 +354,17 @@ static_assert(has_service_is_ready<::nros::ClientHandle<StubService>>::value,
 static_assert(sizeof(::nros::Client<StubService>::SharedPtr) == 2 * sizeof(void*),
               "2026-09-28: and the handle is STILL two words -- the verbs were affordable "
               "precisely because an arena index is their whole argument list");
-static_assert(std::is_same<::nros::Timer::SharedPtr, std::shared_ptr<::nros::Timer>>::value,
-              "Timer::SharedPtr must be std::shared_ptr<Timer>");
-static_assert(std::is_same<rclcpp::Timer::SharedPtr, std::shared_ptr<rclcpp::Timer>>::value,
-              "Timer::SharedPtr must be std::shared_ptr<Timer>");
-static_assert(std::is_same<rclcpp::Timer::UniquePtr, std::unique_ptr<rclcpp::Timer>>::value,
-              "Timer::UniquePtr must be std::unique_ptr<Timer>");
+// phase-476 W2 — all three pointer spellings name the two-word handle: the
+// callable lives in the executor arena, so there is nothing for a smart pointer
+// to own, and the aliases are present on a freestanding target too.
+static_assert(std::is_same<::nros::Timer::SharedPtr, ::nros::TimerHandle>::value,
+              "Timer::SharedPtr must be nros::TimerHandle");
+static_assert(std::is_same<rclcpp::Timer::SharedPtr, ::nros::TimerHandle>::value,
+              "rclcpp::Timer::SharedPtr must be nros::TimerHandle");
+static_assert(std::is_same<rclcpp::Timer::UniquePtr, ::nros::TimerHandle>::value,
+              "Timer::UniquePtr must be nros::TimerHandle");
+static_assert(std::is_same<rclcpp::Timer::SharedPtr::element_type, rclcpp::Timer>::value,
+              "the handle names its referent the way std::shared_ptr does");
 
 // The rclcpp alias templates hand the SAME nested names through.
 static_assert(std::is_same<rclcpp::Publisher<StringMsg>::SharedPtr,

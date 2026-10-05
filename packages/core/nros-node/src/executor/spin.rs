@@ -7056,8 +7056,54 @@ impl<'s> Executor<'s> {
     where
         F: FnMut() + 'static,
     {
+        self.register_timer_entry_with(
+            node_id,
+            period,
+            source,
+            oneshot,
+            group,
+            None,
+            core::ptr::null_mut(),
+            move |_| callback,
+        )
+    }
+
+    /// [`register_timer_entry`](Self::register_timer_entry), with a CAPTURE
+    /// the arena holds — phase-476 W2.
+    ///
+    /// The callback is BUILT after the allocation, by `make`, from the context
+    /// pointer the entry should dispatch with: `place_capture`'s copy of
+    /// `capture` when there is one, otherwise `context` unchanged. That is what
+    /// lets the capture ride in the timer entry's own trailing region (so a
+    /// release frees it) while the closure that reads it is still a plain
+    /// `TimerEntry<F>`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn register_timer_entry_with<F, M>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        period: TimerDuration,
+        source: TimerClockSource,
+        oneshot: bool,
+        group: Option<&str>,
+        capture: Option<&[u8]>,
+        context: *mut core::ffi::c_void,
+        make: M,
+    ) -> Result<HandleId, NodeError>
+    where
+        F: FnMut() + 'static,
+        M: FnOnce(*mut core::ffi::c_void) -> F,
+    {
         let slot = self.next_entry_slot()?;
-        let offset = self.arena_alloc::<TimerEntry<F>>()?;
+        let capture_len = Self::capture_trailing_len(capture);
+        // No capture keeps the exact pre-W2 allocation, so a timer that captures
+        // nothing costs what it always did.
+        let (offset, context) = if capture_len == 0 {
+            (self.arena_alloc::<TimerEntry<F>>()?, context)
+        } else {
+            let (offset, at) = self.arena_alloc_with_trailing::<TimerEntry<F>>(capture_len)?;
+            (offset, self.place_capture(at, capture, context))
+        };
+        let callback = make(context);
 
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
@@ -7168,6 +7214,55 @@ impl<'s> Executor<'s> {
         self.register_timer_entry(None, delay, TimerClockSource::Steady, true, None, callback)
     }
 
+    /// phase-476 W2 — register a timer whose callback is a C function pointer
+    /// and whose CAPTURE the arena holds: the `nros-cpp` road for a C++
+    /// lambda, the timer twin of
+    /// [`add_arena_subscription_c_callback_with_capture`](Self::add_arena_subscription_c_callback_with_capture).
+    ///
+    /// `capture`'s bytes are copied into the timer entry's trailing region and
+    /// `callback` is called with a pointer to that copy, so the caller keeps
+    /// nothing — which is what lets the C++ side hand back a two-word handle
+    /// instead of a heap cell the node had to keep alive. Releasing the timer
+    /// releases the capture with it.
+    ///
+    /// `source` picks the clock: [`TimerClockSource::Steady`] is the wall timer
+    /// that advances with the spin delta.
+    ///
+    /// `capture_drop`, when given, is called with the same pointer when the
+    /// entry is dropped (released, or the executor torn down), BEFORE its bytes
+    /// go back to the arena. A C++ capture is a callable that may own something
+    /// (a `std::shared_ptr`, a `std::string`), and its bytes were MOVED here by
+    /// copy, so this is the only place its destructor can run.
+    pub fn register_timer_c_capturing(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        period: TimerDuration,
+        source: TimerClockSource,
+        callback: unsafe extern "C" fn(*mut core::ffi::c_void),
+        capture: Option<&[u8]>,
+        capture_drop: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+    ) -> Result<HandleId, NodeError> {
+        self.register_timer_entry_with(
+            node_id,
+            period,
+            source,
+            false,
+            None,
+            capture,
+            core::ptr::null_mut(),
+            move |ctx| {
+                let held = super::arena::CapturedCallback {
+                    callback,
+                    guard: super::arena::CaptureGuard {
+                        ctx,
+                        drop: capture_drop,
+                    },
+                };
+                move || held.call()
+            },
+        )
+    }
+
     /// Phase 273 (RFC-0047) — register a repeating timer callback bound to a
     /// specific node and optional callback group. The group name is threaded to
     /// `apply_node_default_sched` so the seeded `group_sched_table` assigns
@@ -7230,6 +7325,7 @@ impl<'s> Executor<'s> {
             group,
             rx_buffer_hint,
             None,
+            None,
         )
     }
 
@@ -7270,6 +7366,9 @@ impl<'s> Executor<'s> {
         // struct existed.
         rx_buffer_hint: usize,
         capture: Option<&[u8]>,
+        // phase-476 W2 — called on the arena's copy of `capture` when the entry
+        // is dropped; see `CaptureGuard`. `None` when the capture owns nothing.
+        capture_drop: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
     ) -> Result<HandleId, NodeError> {
         // phase-403 W3/W5 -- size the arena slot from the TYPE, not from the
         // image-wide default. `rx_buffer_hint` already arrives here (phase-402
@@ -7333,6 +7432,10 @@ impl<'s> Executor<'s> {
                         handle,
                         callback,
                         context,
+                        capture: super::arena::CaptureGuard {
+                            ctx: context,
+                            drop: capture_drop,
+                        },
                     },
                 );
             }
@@ -7377,6 +7480,10 @@ impl<'s> Executor<'s> {
                     buffer,
                     callback,
                     context,
+                    capture: super::arena::CaptureGuard {
+                        ctx: context,
+                        drop: capture_drop,
+                    },
                 },
             );
         }

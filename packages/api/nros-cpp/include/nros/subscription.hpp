@@ -91,7 +91,8 @@ nros_cpp_ret_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const
 nros_cpp_ret_t nros_cpp_subscription_register_capturing(
     const nros_cpp_node_t* node, const char* topic, const char* type_name, const char* type_hash,
     nros_cpp_qos_t qos, nros_cpp_subscription_message_callback_t callback, const uint8_t* capture,
-    size_t capture_len, size_t* out_handle_id, const nros_cpp_subscription_options_t* options);
+    size_t capture_len, void (*capture_drop)(void* capture), size_t* out_handle_id,
+    const nros_cpp_subscription_options_t* options);
 
 // Phase 189.M3.4 — callback-style register that also delivers the sample's wire
 // attachment (5-arg trampoline). Same cbindgen-exclusion reason as above.
@@ -717,12 +718,17 @@ inline Result register_subscription_capturing(::rclcpp::Node& node, const char* 
         (*self)(msg);
     };
 
+    // phase-476 W2 — the arena's copy is destroyed when the subscription is
+    // released. `Fn` is an `nros::InplaceFn` (the one caller passes one), so
+    // `clear()` runs the stored callable's own destructor.
+    void (*destroy)(void*) = [](void* ctx) { static_cast<Fn*>(ctx)->clear(); };
+
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     nros_cpp_subscription_options_t opts = {};
     opts.rx_buffer_hint = static_cast<uint32_t>(::nros::rx_buffer_capacity<M>::value);
     return Result(nros_cpp_subscription_register_capturing(
         h, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, invoke,
-        reinterpret_cast<const uint8_t*>(&fn), sizeof(Fn), out_handle_id, &opts));
+        reinterpret_cast<const uint8_t*>(&fn), sizeof(Fn), destroy, out_handle_id, &opts));
 }
 
 } // namespace detail

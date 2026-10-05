@@ -111,6 +111,23 @@ inline ::nros::Result instantiate() {
     ::nros::Timer timer;
     (void)node.create_wall_timer(timer, 100, &on_tick, nullptr);
 
+    // phase-476 W2 — the VALUE-returning timer verbs, freestanding: a
+    // capturing lambda (held in the executor arena, not a `std::function`)
+    // and a `TimerHandle` (not a `std::shared_ptr`). Both spellings of reset
+    // are distinct here too: `->reset()` restarts, `.reset()` releases.
+    int ticks = 0;
+    rclcpp::Timer::SharedPtr wall = node.create_wall_timer(
+        ::nros::Duration::from_nanoseconds(100000000), [&ticks]() { ++ticks; });
+    (void)wall->cancel();
+    (void)wall->reset();
+    (void)wall->is_ready();
+    (void)wall->time_until_trigger();
+    rclcpp::TimerBase::SharedPtr on_clock =
+        rclcpp::create_timer(node, node.get_clock(), ::nros::Duration::from_nanoseconds(100000000),
+                             [&ticks]() { ++ticks; });
+    on_clock.reset();
+    wall.reset();
+
     // phase-456 W5 — the poll server is `nros::PollService<S>`, a different
     // type from the dispatch one below. One class used to be both.
     ::nros::PollService<AddTwoInts> poll_service;

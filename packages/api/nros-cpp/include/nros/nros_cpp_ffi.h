@@ -2921,6 +2921,43 @@ nros_cpp_ret_t nros_cpp_timer_create_on_clock(void *executor_handle,
                                               size_t *out_handle_id);
 
 /**
+ * Create a repeating timer whose CAPTURE the arena holds — phase-476 W2.
+ *
+ * The timer twin of `nros_cpp_subscription_register_capturing`, and what the
+ * value-returning C++ `create_wall_timer` / `rclcpp::create_timer` call. The
+ * first `capture_len` bytes at `capture` are COPIED into the timer's arena
+ * entry, and `callback` is called with a pointer to that copy. Nothing of the
+ * caller's is referenced after this returns, so the C++ side keeps a two-word
+ * handle and no heap cell.
+ *
+ * The timer is registered for `node`, which becomes its owner:
+ * `nros_cpp_node_destroy` releases it (phase-476 W0), and the capture with it.
+ *
+ * `capture_drop`, when non-NULL, is called with the capture's arena copy when
+ * the timer is released (or the executor finalised): the capture's bytes were
+ * moved here by copy, so that is where its destructor runs.
+ *
+ * `clock_type` is a `nros_clock_type_t` discriminant: `NROS_CLOCK_STEADY_TIME`
+ * is the wall timer that advances with the spin delta, `NROS_CLOCK_ROS_TIME`
+ * follows `/clock`. `capture_len == 0` (or a NULL `capture`) passes NULL to
+ * `callback`.
+ *
+ * # Safety
+ * `node` must be a handle `nros_cpp_node_create*` filled; `out_handle_id` must
+ * be valid; `capture` must point to `capture_len` readable bytes for the
+ * duration of THIS CALL only; `callback` must read its capture through the
+ * pointer it is given.
+ */
+nros_cpp_ret_t nros_cpp_timer_create_capturing(const struct nros_cpp_node_t *node,
+                                               uint8_t clock_type,
+                                               uint64_t period_ms,
+                                               nros_cpp_timer_callback_t callback,
+                                               const uint8_t *capture,
+                                               size_t capture_len,
+                                               nros_cpp_timer_callback_t capture_drop,
+                                               size_t *out_handle_id);
+
+/**
  * Create a one-shot timer and register it with the executor.
  *
  * The timer fires once after `delay_ms` milliseconds during `spin_once()`.
@@ -2981,6 +3018,21 @@ nros_cpp_ret_t nros_cpp_timer_create_in_group(void *executor_handle,
  * `executor_handle` must be a valid executor handle.
  */
 nros_cpp_ret_t nros_cpp_timer_cancel(void *executor_handle, size_t handle_id);
+
+/**
+ * Release a timer — phase-476 W2: the timer stops for good, its arena entry
+ * and capture are freed, and the slot goes to the next registration.
+ *
+ * What `TimerHandle::reset()` (upstream `timer_.reset()`) calls. Safe on a
+ * stale or copied handle: the handle carries the generation of the slot it was
+ * issued for (phase-476 W0), so once released every copy of it answers
+ * `NROS_CPP_RET_ERROR` here and nothing reaches the slot's next occupant.
+ *
+ * # Safety
+ * `executor_handle` must be a valid executor handle (or one `nros_cpp_fini`
+ * already finalised, which is refused).
+ */
+nros_cpp_ret_t nros_cpp_timer_release(void *executor_handle, size_t handle_id);
 
 /**
  * Reset a timer (restart from zero elapsed time).

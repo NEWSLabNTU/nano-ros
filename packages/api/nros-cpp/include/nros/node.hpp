@@ -482,12 +482,10 @@ struct NodeHosted : HostedBlockBase {
     /// hand back what the constructor was given.
     ::rclcpp::NodeOptions options;
 
-    /// Co-ownership of arena-registered services / clients / subscription
-    /// callback cells / wall-timer cells. The executor arena holds a raw
-    /// pointer as its dispatch context and has no unregister path, so the
-    /// entity must outlive the node even if the caller drops the `shared_ptr`
-    /// we handed back.
-    ::std::vector<::std::shared_ptr<void>> owned_entities;
+    // `owned_entities` was here: the node's co-ownership of the heap cells
+    // that gave arena-registered callables a stable address. Its last users
+    // were the wall-timer cells, which phase-476 W2 replaced with an arena
+    // capture the executor destroys on release, so it went with them.
 
     static void destroy_fn(void* p) {
         delete static_cast<NodeHosted*>(static_cast<HostedBlockBase*>(p));
@@ -914,12 +912,6 @@ class Node {
     typename ::rclcpp::Subscription<M>::SharedPtr create_subscription(const ::std::string& topic,
                                                                       ::size_t depth, Cb cb);
 
-#ifdef NROS_CPP_HAS_STD_CHRONO
-    /// `create_wall_timer(period, callback)` — upstream's shape.
-    template <typename Rep, typename Period, typename Cb>
-    ::std::shared_ptr<Timer> create_wall_timer(::std::chrono::duration<Rep, Period> period, Cb cb);
-#endif
-
     /// Poll-style service server (`create_service<S>(name, qos)`). Not an
     /// upstream signature — upstream requires a callback — so it claims
     /// nothing. Drain with `service->take_request(...)`.
@@ -989,18 +981,6 @@ class Node {
               typename = void>
     typename ::rclcpp::Client<S>::SharedPtr
     create_client(const ::std::string&, F, const ::nros::QoS& = ::nros::QoS::services());
-
-    /// @internal Hand the node co-ownership of an arena-registered cell.
-    ///
-    /// The executor arena stores a raw pointer as its dispatch context and has
-    /// no unregister path, so the cell must outlive the registration whatever
-    /// the caller does with the `shared_ptr` we hand back. The `create_*`
-    /// members do this through the hosted block directly; this is the same
-    /// thing for a FREE function that registers on a node
-    /// (`rclcpp::create_timer`), which cannot reach a private member.
-    void own_entity(const ::std::shared_ptr<void>& cell) {
-        this->hosted().owned_entities.push_back(cell);
-    }
 
 #endif // NROS_CPP_NODE_HOSTED
 
@@ -1907,6 +1887,27 @@ class Node {
         }
         return Result(ret);
     }
+
+    /// `create_wall_timer(period, callback)` — upstream's shape, FREESTANDING.
+    ///
+    /// phase-476 W2. Takes any callable (a capturing lambda, a `std::bind`
+    /// result) and returns a two-word [`::nros::TimerHandle`]; the callable is
+    /// copied into the executor arena, which destroys it when the timer is
+    /// released, so nothing here allocates and nothing needs `<memory>` or
+    /// `<functional>`. The node owns the timer: destroying the node releases it.
+    /// Body in `nros.hpp`.
+    ///
+    /// ADOPT-BOUNDED as before: the period is truncated to whole milliseconds,
+    /// and a missed deadline catches up where rcl drops (see `rclcpp::Timer`).
+    template <typename Cb>::nros::TimerHandle create_wall_timer(::nros::Duration period, Cb cb);
+
+#ifdef NROS_CPP_HAS_STD_CHRONO
+    /// `create_wall_timer(500ms, callback)` — the `std::chrono` spelling a
+    /// ported file writes. Conversion sugar over the `nros::Duration` overload,
+    /// which is the one that exists on every target.
+    template <typename Rep, typename Period, typename Cb>
+    ::nros::TimerHandle create_wall_timer(::std::chrono::duration<Rep, Period> period, Cb cb);
+#endif
 
     /// Create a repeating WALL timer — `rclcpp::Node::create_wall_timer`.
     ///
