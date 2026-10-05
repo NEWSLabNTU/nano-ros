@@ -256,6 +256,46 @@ item — it is the last step of the timer item.
   it is sequenced after W1 and W2. *Acceptance:* `NROS_CPP_NODE_HOSTED` is
   derived from nothing, and is deleted.
 
+  **Landed 2026-10-06.** `NROS_CPP_NODE_HOSTED` occurs 0 times in
+  `packages/api/nros-cpp/include` (21 at the phase's start). After W1 and W2,
+  measured, nothing behind it needed `std::vector` or `std::function`. What it
+  gated was three things:
+  - the `std::string`-keyed forwarders, now behind `NROS_CPP_HAS_STD_STRING`;
+  - `Node::SharedPtr` / `shared_from_this` and the `SharedPtr`-taking
+    `spin` / `spin_some` / `spin_until_future_complete`, now behind
+    `NROS_CPP_HAS_SHARED_PTR`;
+  - members that need no capability at all: `get_node_options`,
+    `initialized`, `nros_node`, and the `(name, options)` /
+    `(name, ns, options)` constructors. These are now unconditional, with
+    `const char*` forms.
+
+  `detail::NodeHosted` and `Node::hosted_` are deleted. Their one remaining
+  member was `rclcpp::NodeOptions`, a type with no data members (every
+  accessor is a REFUSE-LOUD template), so `get_node_options()` returns a
+  constant. `sizeof(Node)` drops by one pointer on every target, and
+  `check-cpp-capability-layout` stays OK.
+
+  `NROS_CPP_HAS_STD_VECTOR` and `NROS_CPP_HAS_STD_FUNCTION` gated nothing
+  afterwards and are deleted. Their headers stay included under
+  `NROS_CPP_STD` for ported files that use `std::bind` / `std::vector`
+  without including them. RFC-0096's nine-gate table carries a dated update.
+
+  Counts now (word-bounded, `packages/api/nros-cpp/include`):
+
+  | macro | count |
+  | --- | --- |
+  | `NROS_CPP_HAS_SHARED_PTR` | 10 |
+  | `NROS_CPP_HAS_STD_STRING` | 21 |
+  | `NROS_CPP_HAS_STD_CHRONO` | 8 |
+  | `NROS_CPP_HAS_STD_FUNCTION` | 0 |
+  | `NROS_CPP_HAS_STD_VECTOR` | 1 (prose in `options.hpp`) |
+  | `NROS_CPP_HAS_STD_SSTREAM` | 4 |
+  | `NROS_CPP_NODE_HOSTED` | 0 |
+
+  `SHARED_PTR` and `STD_STRING` went UP: one conjunction became a gate per
+  region, and every region it now guards is interop over a freestanding form.
+  That is the "hosted-only family" W5 has to enumerate rather than count.
+
 * **W4 [cpp] — the `RCLCPP_*_STREAM` family.** Stream logging needs a
   formatter. Decide between a freestanding minimal formatter and declaring the
   family hosted-only by design — and if the latter, the decision is written

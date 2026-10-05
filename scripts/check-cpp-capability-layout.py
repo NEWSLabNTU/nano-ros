@@ -144,7 +144,7 @@ slot for one.
 
 WHAT IS STILL PERMITTED, so the constant is not read as more than it says: a
 capability macro may gate a METHOD, and does -- `Rate`'s `std::chrono`
-constructor, the whole `NROS_CPP_NODE_HOSTED` block on `rclcpp::Node`. Adding
+constructor, the `std::string` / `shared_ptr` overloads on `rclcpp::Node`. Adding
 a method changes no layout, selftest case 2 proves the gate lets it through,
 and nothing here asks for those to go away. What is refused is a capability
 macro reaching a MEMBER, a base class, or the existence of a public type.
@@ -187,12 +187,12 @@ KINDS = ("diverges", "hosted-only", "std-only")
 # decides whether a node has a parameter store at all. It became worth
 # measuring when the C++ parameter MEMBERS went away and the facade started
 # depending on the store's existence.
+# phase-476 W3 deleted `NROS_CPP_HAS_STD_VECTOR` and `NROS_CPP_HAS_STD_FUNCTION`:
+# no signature used them, so forcing either measured nothing.
 CAPS = (
     "NROS_CPP_STD",
     "NROS_CPP_HAS_SHARED_PTR",
     "NROS_CPP_HAS_STD_STRING",
-    "NROS_CPP_HAS_STD_VECTOR",
-    "NROS_CPP_HAS_STD_FUNCTION",
     "NROS_CPP_HAS_STD_CHRONO",
     "NROS_CPP_HAS_STD_SSTREAM",
     "NROS_SYSTEM_PARAM_SERVICES",

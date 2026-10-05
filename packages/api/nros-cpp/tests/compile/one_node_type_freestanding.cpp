@@ -11,7 +11,7 @@
 // `rclcpp::Node` into the one type puts `std::shared_ptr` signatures, a
 // `std::vector` of owned cells and a `NodeOptions` on the same class a
 // freestanding image instantiates; if any of that leaks out of
-// `NROS_CPP_NODE_HOSTED` — or worse, becomes a MEMBER rather than a method —
+// its capability gate — or worse, becomes a MEMBER rather than a method —
 // this TU is where it shows up, and `check-cpp-capability-layout` is where the
 // member case shows up as a number.
 //

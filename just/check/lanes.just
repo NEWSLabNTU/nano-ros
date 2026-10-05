@@ -1710,7 +1710,8 @@ cpp: cpp-fmt
     source scripts/lib/grep-q.sh
     # `-DNROS_CPP_STD=1` since phase-438 W2: this probe is ABOUT the hosted
     # shape (the `shared_ptr` and `std::string` families, and the parameter
-    # facade behind `NROS_CPP_NODE_HOSTED`), and W2 made that shape a REQUEST
+    # facade's `std::string` keys, behind `NROS_CPP_HAS_STD_STRING` since
+    # phase-476 W3), and W2 made that shape a REQUEST
     # rather than something a hosted compiler is handed. Without the flag the TU
     # stops compiling at `declare_parameter`, which is W2 working, not a
     # regression. The freestanding half has its own probe below and correctly
@@ -1851,7 +1852,7 @@ cpp: cpp-fmt
     # `-DNROS_CPP_STD` is REQUIRED, not decoration. The assertions ask which
     # overload the compiler picks between ours and UPSTREAM's, and upstream's
     # `create_publisher(const std::string&, …)` lives behind
-    # `NROS_CPP_NODE_HOSTED`, which `std_detect.hpp` now grants on
+    # `NROS_CPP_HAS_STD_STRING`, which `std_detect.hpp` now grants on
     # `NROS_CPP_STD` and on nothing else (phase-438 W2 deleted the
     # `__has_include` discovery arm). Without the flag the hosted half of the
     # overload set is ABSENT, so the `decltype` calls do not resolve at all and

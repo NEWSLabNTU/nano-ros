@@ -91,14 +91,17 @@
 #define NROS_CPP_HAS_STD_STRING 1
 #endif
 
-#if defined(NROS_CPP_STD)
-#include <vector>
-#define NROS_CPP_HAS_STD_VECTOR 1
-#endif
-
+// phase-476 W3 — `<vector>` and `<functional>` stay included on the porting
+// surface, and their capability macros are GONE. After W2 (timer callables in
+// the arena) and W3 (the hosted-node conjunction split per capability) nothing
+// in this API is spelled in `std::vector` or `std::function` outside an
+// `NROS_CPP_STD` region of its own, so a macro answering "is it there?" had no
+// signature left to gate. The headers stay because a ported file reaches
+// `std::bind` / `std::vector` through `rclcpp.hpp` upstream and through this
+// file here, and taking them away would break source that never named them.
 #if defined(NROS_CPP_STD)
 #include <functional>
-#define NROS_CPP_HAS_STD_FUNCTION 1
+#include <vector>
 #endif
 
 // `<sstream>` is the `RCLCPP_*_STREAM` family only. It is worth noting that
