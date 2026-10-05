@@ -24,8 +24,7 @@
 # None of the three `../makefile.*` files exist in a stock project, and
 # `USER_OBJS` is declared empty. Because `makefile.defs` is included before the
 # rules, appending here reaches both the prerequisite list and the link line.
-# `.a` archives and `-Wl,` options are both accepted there — gcc passes them
-# straight through.
+# Only FILES belong there: an option would be read as a prerequisite too.
 #
 # Regenerating the project from S32DS does NOT overwrite these files; that is
 # the point of the hook.
@@ -34,18 +33,16 @@
 # Relative to Debug_FLASH/, which is where make runs.
 -include ../nros-libs.mk
 
-# Overlapping symbols across nano-ros staticlibs.
+# No duplicate-symbol relaxation, by design (issue 1664). `nros-libs.mk` puts
+# exactly ONE Rust runtime archive on the line — `libnros_cpp.a` for a C++-API
+# image (it bundles nros-c), `libnros_c.a` otherwise — so a duplicate symbol
+# here is a real defect: two copies of the runtime, each with its own statics
+# (the backend `REGISTRY` among them), and ld must refuse it. Do not append a
+# second runtime archive or a per-package Rust FFI staticlib to USER_OBJS.
 #
-# `libnros_c.a` and `libnros_cpp.a` each carry their own `nros-rmw-cffi`
-# monomorphisation, and per-package FFI archives whose `include!()` chains
-# overlap define the same `nros_cpp_*` serialisers. Codegen output is
-# deterministic, so the duplicate definitions are byte-identical and first-wins
-# is safe. `integrations/nuttx/Make.defs` carries the same flag for the same
-# reason (Phase 157.C.17).
-#
-# Comment this out if your link is clean without it — it is a real relaxation
-# of a real check, so keep it only as long as it is needed.
-USER_OBJS += -Wl,--allow-multiple-definition
+# (Also: USER_OBJS is a PREREQUISITE of the CDT `.elf` rule, so a `-Wl,` option
+# appended to it is "No rule to make target" — put linker flags in the
+# project's own settings, never here.)
 
 # ---------------------------------------------------------------------------
 # YOUR APPLICATION ENTRY
