@@ -324,6 +324,67 @@ def check_index(known):
     return 1
 
 
+def toml_channel(path):
+    """`channel = "..."` of a rust-toolchain.toml, or None if absent."""
+    if not path.is_file():
+        return None
+    m = re.search(r'^channel\s*=\s*"([^"]+)"', path.read_text(encoding="utf-8"), re.M)
+    return m.group(1) if m else None
+
+
+def index_toolchain_channels():
+    """({alias: channel} of `[rust.toolchain.*]`, `[rust.rustup] toolchain`)."""
+    channels, rustup_alias, block = {}, None, None
+    for raw in INDEX.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line.startswith("["):
+            block = line.strip("[]")
+            continue
+        m = re.match(r'(channel|toolchain)\s*=\s*"([^"]+)"', line)
+        if not m or block is None:
+            continue
+        if block.startswith("rust.toolchain.") and m.group(1) == "channel":
+            channels[block[len("rust.toolchain."):]] = m.group(2)
+        elif block == "rust.rustup" and m.group(1) == "toolchain":
+            rustup_alias = m.group(2)
+    return channels, rustup_alias
+
+
+def check_channels(channels, rustup_alias, pins):
+    """The index's toolchain channels follow the toolchain files. Issue 1672.
+
+    `[rust.target.*]` rows with no `toolchain` are checked by `nros setup
+    --check` on the alias `[rust.rustup]` names, so that alias's channel must
+    be the root pin — while it said `stable` the doctor verified targets on a
+    toolchain no build used, and a triple missing from the pin stayed green.
+    `pins` maps alias -> (file, channel); the build alias is keyed `None` and
+    resolved through `rustup_alias`.
+    """
+    bad = []
+    for alias, (path, want) in pins.items():
+        alias = rustup_alias if alias is None else alias
+        if want is None:
+            continue
+        have = channels.get(alias)
+        if have != want:
+            bad.append((alias, have, path, want))
+    for alias, have, path, want in bad:
+        print(f"nros-sdk-index.toml [rust.toolchain.{alias}] channel = {have!r}, "
+              f"but {path} pins {want!r}", file=sys.stderr)
+        print("      `nros setup --check` would verify targets on a toolchain "
+              "no build uses (issue 1672).\n      Move both in the same commit.",
+              file=sys.stderr)
+    return 1 if bad else 0
+
+
+def pinned_channels():
+    return {
+        None: ("rust-toolchain.toml", toml_channel(ROOT / "rust-toolchain.toml")),
+        "nightly-pinned": ("tools/rust-toolchain.toml",
+                           toml_channel(ROOT / "tools" / "rust-toolchain.toml")),
+    }
+
+
 def self_test():
     """The tree exercises at most one of `check_index`'s three verdicts at a
     time, so the other two would ship unproven. Issue 0942's lesson: a gate that
@@ -359,6 +420,21 @@ def self_test():
     case("build-std listed in index", ["a", "n"], both, 1)
     case("stray index entry", ["a", "zzz"], {"a": "rustup"}, 1)
     case("build-std absent is fine", ["a"], both, 0)
+
+    # issue 1672 — the channel check, both verdicts.
+    import io, contextlib
+    pins = {None: ("rust-toolchain.toml", "1.99.0"),
+            "nightly-pinned": ("tools/rust-toolchain.toml", "nightly-x")}
+    for name, channels, want_rc in [
+        ("channels follow pins", {"stable": "1.99.0", "nightly-pinned": "nightly-x"}, 0),
+        ("build alias on moving stable", {"stable": "stable", "nightly-pinned": "nightly-x"}, 1),
+        ("nightly drifted", {"stable": "1.99.0", "nightly-pinned": "nightly-y"}, 1),
+    ]:
+        with contextlib.redirect_stderr(io.StringIO()):
+            rc = check_channels(channels, "stable", pins)
+        if rc != want_rc:
+            ok = False
+            print(f"  self-test FAIL {name}: rc={rc} want {want_rc}")
 
     # A spec PATH names its file stem — the directory is not part of the triple
     # (phase-445: `../riscv32imac-unknown-nuttx-elf.json` read as a target named
@@ -411,6 +487,8 @@ def main():
     if check_index(known) != 0:
         return 1
     if check_toolchain_file(known) != 0:
+        return 1
+    if check_channels(*index_toolchain_channels(), pinned_channels()) != 0:
         return 1
 
     rustup = sum(1 for k in known.values() if k == "rustup")

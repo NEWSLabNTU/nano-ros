@@ -3104,9 +3104,14 @@ fn run_check_all(index: &SdkIndex, workspace: &Path) -> Result<()> {
 
     // [rust.target.*] — installed-target listing per toolchain.
     for (alias, target) in &index.rust.target {
+        // A row naming no toolchain belongs to the BUILD toolchain — the one
+        // `[rust.rustup]` installs — and is checked there by name. Leaving
+        // `--toolchain` off asked rustup's cwd-dependent resolution instead,
+        // which is not the toolchain a build uses (issue 1672).
         let channel = target
             .toolchain
             .as_ref()
+            .or(index.rust.rustup.as_ref().map(|r| &r.toolchain))
             .and_then(|a| index.rust.toolchain.get(a))
             .map(|tc| tc.channel.as_str());
         let mut rustup_args = vec!["target", "list", "--installed"];

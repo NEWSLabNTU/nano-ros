@@ -15,6 +15,10 @@
 # into a hard error — those last were not even our code, but eyre 0.6.12's
 # `bail!`, fixed by taking 0.6.14.
 #
+# A bump moves `nros-sdk-index.toml` `[rust.toolchain.stable] channel` in the
+# same commit — that is the toolchain `nros setup` installs and checks targets
+# on, and `check-rust-targets-covered` refuses the two disagreeing (issue 1672).
+#
 # BUMPING IS NOW A COMMIT SOMEBODY MAKES. The work is the same; it moves to a
 # moment someone chose, runs every lane before it lands, and is reviewable.
 # The cost this buys is a recurring chore, and the risk it creates is drift —
