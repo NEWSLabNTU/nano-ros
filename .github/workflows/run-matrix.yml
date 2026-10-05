@@ -219,6 +219,100 @@ jobs:
              {"name": "just ci matrix", "conclusion": "${{ steps.cells.outcome }}"}]
         run: python3 scripts/ci/lane-stage.py --report --lane "tier 2 (1-wise matrix)"
 
+  # TIER 1's cells — issues 1684/1685.
+  #
+  # `host-tests.yml` ran this as its `integration` job and could not hold it:
+  # it built a fixture SUBSET for disk and ran `test-all` over the whole tier
+  # with `NROS_SKIP_FIXTURE_CHECK=1` (199 of 214 real failures were "fixture
+  # binary MISSING for an in-lane coordinate"), and its runner has neither a
+  # Zephyr workspace nor the ThreadX kernel the tier's own cover selects (81
+  # undeclared capability skips). Building what the lane asserts measured +37
+  # to +39 G against ~16 G free there. This runner has both the disk and the
+  # SDKs. Tier 1's `just check` half stays in host-tests' `gates` job.
+  #
+  # Same transcript as tier 2 above: `setup <scope>`, `build <scope>` (codegen,
+  # then `build-test-fixtures lane=tier1`), then the tier's run half (`just ci
+  # tier1 run` = preconditions + rust-rtos-link-check + test-all, narrowed to
+  # the tier-1 coordinates). NO `NROS_SKIP_FIXTURE_CHECK`: the build and the
+  # run are one lane, so the preflight must hold.
+  #
+  # `needs: [matrix]` + `always()` — the runner is single-occupancy (`nros-big`)
+  # and has one Zephyr workspace, so the two tiers must not run at once, and a
+  # red tier 2 must not cost tier 1 its verdict.
+  tier1:
+    name: tier 1 (cells)
+    needs: [matrix]
+    if: ${{ always() && vars.NROS_SELF_HOSTED_READY == 'true' }}
+    runs-on: [self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      stage_label: ${{ steps.stage.outputs.label }}
+      reached_cells: ${{ steps.stage.outputs.reached_cells }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: just setup tier1
+        id: setup
+        run: |
+          source ./activate.sh
+          just setup tier1
+      # AFTER `setup` — phase-413 W2, same reason as the tier-2 job.
+      - name: Verify this runner's labels are true
+        id: doctor
+        run: ./scripts/ci/runner-doctor.sh nros-qemu,nros-sdk-zephyr,nros-big
+      - name: The Zephyr workspace belongs to this checkout
+        run: ./scripts/check-zephyr-workspace-checkout.sh
+      - name: just build tier1
+        id: build
+        run: |
+          source ./activate.sh
+          just build tier1
+      - name: just ci tier1 run
+        id: cells
+        run: |
+          source ./activate.sh
+          just ci tier1 run
+      - name: Upload junit and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier1-junit
+          path: |
+            target/nextest/**/junit*.xml
+            build/**/*.log
+            tmp/build-test-fixtures-*/*.log
+            tmp/build-test-fixtures-*/**/*.log
+            tmp/build-test-fixtures-*/*.joblog
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Sweep orphans and disk
+        if: always()
+        run: ./scripts/ci/runner-sweep.sh || true
+      # issue 1158 item 3 — VERDICT / NO VERDICT / DID NOT START, per stage.
+      - name: Which stage did this lane reach?
+        id: stage
+        if: always()
+        env:
+          NROS_LANE_STEPS: >-
+            [{"name": "just setup tier1", "conclusion": "${{ steps.setup.outcome }}"},
+             {"name": "Verify this runner's labels are true", "conclusion": "${{ steps.doctor.outcome }}"},
+             {"name": "just build tier1", "conclusion": "${{ steps.build.outcome }}"},
+             {"name": "just ci tier1 run", "conclusion": "${{ steps.cells.outcome }}"}]
+        run: python3 scripts/ci/lane-stage.py --report --lane "tier 1 (cells)"
+
+  coverage-tier1:
+    name: "tier 1 — ${{ needs.tier1.outputs.stage_label || 'DID NOT START' }}"
+    needs: [tier1]
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report whether the interlocked lane ran
+        run: ./scripts/ci/report-interlock-coverage.sh "tier 1 (cells)" "${{ needs.tier1.result }}" "${{ vars.NROS_SELF_HOSTED_READY }}" "${{ needs.tier1.outputs.stage_label }}"
+
   # phase-405 — make the interlocked job's SKIP visible in the run that skipped
   # it. See scripts/ci/report-interlock-coverage.sh for why this warns rather
   # than fails when no runner is registered, and fails when one supposedly is.

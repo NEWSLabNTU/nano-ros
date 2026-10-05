@@ -185,11 +185,17 @@ PER_MERGE_RUNTIME_LANES = []
 # The `unit` job is NOT here. It is `just test-unit`: no fixtures, no runtime
 # cells. `integration` is the one that spawns prebuilt example binaries, so it
 # is the only host-tests job that is runtime evidence for the Linux board.
+#
+# Issues 1684/1685 — that job is now `run-matrix.yml`'s `tier1`, on the
+# self-hosted runner: host-tests' runner had neither the disk for the tier's
+# fixtures nor its Zephyr/ThreadX provisioning, so it ran a subset under a
+# preflight bypass. The name stays `HOST_TESTS_LANE` for its importers; what
+# it names is the tier-1 runtime lane, wherever that runs.
 HOST_TESTS_LANE = Lane(
     "daily",
-    "host-tests.yml",
-    "nros-tests integration (host)",
-    "host-tests.yml — cron 0 3, just test-integration",
+    "run-matrix.yml",
+    "tier 1 (cells)",
+    "run-matrix.yml — cron 0 6, just ci tier1 run",
 )
 
 # `nightly_token = "zephyr"` does not name a job in the platform matrix: the
@@ -583,9 +589,9 @@ def selftest(quiet=False):
 
     lanes, notes = resolve_lanes(
         {"tier": 1, "matrix_platform": "Linux"}, toks)
-    check([lane.workflow for lane in lanes] == ["host-tests.yml"] and not [
+    check([lane.workflow for lane in lanes] == ["run-matrix.yml"] and not [
         txt for _, txt in notes if "nightly_token" in txt],
-        "the native host resolves to host-tests.yml, not to a missing nightly token")
+        "the native host resolves to the tier-1 lane, not to a missing nightly token")
 
     lanes, notes = resolve_lanes(
         {"tier": 2, "matrix_platform": "FreertosPosix", "nightly_token": "freertos_posix"},

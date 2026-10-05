@@ -110,6 +110,11 @@ l1: gate
 #   gates — `just check`. Needs no fixture build.
 #   run   — preconditions + `rust-rtos-link-check` + `test-all`.
 #
+# Where they run (issues 1684/1685): `gates` in host-tests.yml's `gates` job,
+# `run` in run-matrix.yml's `tier1` job on the self-hosted runner, after
+# `just build tier1` — the hosted runner has neither the disk for the tier's
+# fixtures (+37..39 G) nor the Zephyr/ThreadX provisioning its cover selects.
+#
 # Positional, like `ci matrix <depth>`: `just` does not parse `name=value` for
 # a module recipe.
 [group("ci")]

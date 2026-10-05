@@ -127,3 +127,11 @@ on a faster host and the whole job has not yet been priced on the hosted
 runner — the first complete run sets the real number. Unmeasured here: whether
 the 146 G disk holds the full lane (the reclaim adds ~32 G of headroom ahead of
 it).
+
+**Superseded the same day (2026-10-07): the integration job is deleted.** The
+paragraph above was host-tests' first try at building `lane=tier1` on the
+hosted runner. Its first run (workflow_dispatch 37547660332) failed in `just
+setup tier1` after four minutes — the image has no `west`/`pyelftools`/
+`pykwalify` — so the disk fit was never measured. Tier 1's run moved to
+`run-matrix.yml`'s `tier1` job on the self-hosted runner instead (issues
+1684/1685, PR #1708); host-tests keeps `unit` and `gates`.

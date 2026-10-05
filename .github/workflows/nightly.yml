@@ -592,7 +592,7 @@ jobs:
           # actually runs it, so a stale entry is legible rather than a bare
           # allow-list. `native` also gates tier 1 on every commit.
           declare -A elsewhere=(
-            [native]="host-tests.yml — cron 0 3, just test-unit + test-integration"
+            [native]="run-matrix.yml tier1 — cron 0 6, just ci tier1 run (+ host-tests.yml test-unit)"
             [zephyr]="nightly.yml zephyr-* jobs — cron 0 5"
           )
           ran="$(jq -r '.[]' <<<"$RAN" | tr '\n' ' ')"

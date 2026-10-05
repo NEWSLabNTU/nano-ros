@@ -5,11 +5,25 @@
 #   - unit        : `just test-unit` — workspace unit tests
 #                   (`cargo nextest --workspace --exclude nros-tests`).
 #   - gates       : `just ci tier1 gates` — tier 1's `just check` half.
-#   - integration : `just ci tier1 run` — fixtures + preconditions +
-#                   rust-rtos-link-check + `test-all` over the tier-1 cover.
-#                   The two were one `just ci tier1` step until issue 1651:
-#                   in series they overran the job's ceiling, a timeout reads
-#                   `cancelled`, and `test-all` never ran.
+#
+# Tier 1's OTHER half — `just build-test-fixtures lane=tier1` + `just ci tier1
+# run` (preconditions + rust-rtos-link-check + `test-all`) — is NOT here. It
+# was the `integration` job until issues 1684/1685, and it lives in
+# `run-matrix.yml`'s `tier1` job on the self-hosted runner now, because this
+# runner cannot hold it:
+#
+#   * DISK. The job built a hand-picked fixture SUBSET (rust core + workspace
+#     fixtures, the ~52 G of extras left out for this 146 G disk) and then ran
+#     `test-all` over the whole tier-1 lane with `NROS_SKIP_FIXTURE_CHECK=1`:
+#     199 of 214 real failures were "fixture binary MISSING for an in-lane
+#     coordinate" (run 37252649866). Building what the lane asserts was
+#     measured at +37 G for the linux half ALONE (unfinished, 32 cores), +39 G
+#     for the whole tier, against ~16 G free here.
+#   * PROVISIONING. Tier 1 covers Zephyr native_sim and ThreadX-Linux, which
+#     `just setup native` does not provision: 81 undeclared capability skips.
+#
+# The self-hosted runner already carries the Zephyr SDK and the disk for
+# tier 2; tier 1 runs there after it.
 #
 # Nightly (03:00 UTC) + on-demand ONLY — never per push (a per-push run was
 # cancelled by the next push and never completed: #57, and again 26 of 29 push
@@ -62,7 +76,8 @@ jobs:
   unit:
     name: workspace unit tests
     runs-on: ubuntu-22.04
-    # Issue 1492 — the same ceiling argument as the integration job below, with
+    # Issue 1492 — the ceiling argument (it was made first for the retired
+    # tier-1 `integration` job, issues 1684/1685), with
     # a real margin, because here the healthy duration IS measured. This job
     # succeeds: 8 m 21 s, 10 m 23 s and 11 m 13 s on the three most recent runs
     # that were not superseded (2026-09-25). 45 is four times the worst of
@@ -140,7 +155,7 @@ jobs:
           path: packages/cli/target
           key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
 
-      # phase-413 W5 — the scope verb, same as the integration job below.
+      # phase-413 W5 — the scope verb.
       # `just setup native` expands to `nros setup --build-sources` and
       # `just ci provision-zenohd`, which is exactly what this job spelled out,
       # plus the CLI/resolver and the host facts every tier asserts.
@@ -196,7 +211,7 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      # Same mounts as the integration job (issue 1353): `check build` is the
+      # Host-tool mounts (issue 1353): `check build` is the
       # step that has exhausted this disk on gate.yml's nightly.
       volumes:
         - /usr/local/lib/android:/__host-reclaim/android
@@ -208,7 +223,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    # Issue 1500, same value and reason as the integration job: `check
+    # Issue 1500 — line tables, not full debuginfo: `check
     # test-targets` and `check cli-tests` are the dev-profile builds it sized.
     env:
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
@@ -228,7 +243,7 @@ jobs:
             "+refs/heads/$base:refs/remotes/origin/$base"
           echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
 
-      # Restore only — the integration job owns the SAVE for this key, and two
+      # Restore only — the `unit` job owns the SAVE for this key, and two
       # jobs saving one key race for nothing.
       - name: Restore CLI build cache (Phase 218)
         uses: actions/cache/restore@v4
@@ -334,411 +349,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: host-tier1-gates-ci-logs
-          path: build/ci-logs/
-          if-no-files-found: ignore
-          retention-days: 7
-
-  # ----- nros-tests integration (heavy; always completes) -----
-  integration:
-    name: nros-tests integration (host)
-    runs-on: ubuntu-22.04
-    # Issue 1492 — a CEILING this repository owns, not a bound on anything
-    # observed. Measured over the eight consecutive wedges 1492 records: five
-    # ended on the disk between 57 m and 1 h 44 m, and the two that lost the
-    # runner ended at 2 h 30 m 11 s and 2 h 30 m 03 s — eight seconds apart, a
-    # day and a half apart in wall time, and a number nothing in this
-    # repository chose. Without this the next one has GitHub's six-hour default
-    # to run to, and the group is held for all of it.
-    #
-    # 210, from a COMPLETE run (issue 1500). The number this used to be, 150,
-    # was priced before any run had finished tier 1 — its own comment said so,
-    # and said to re-price once one did. One has: run 37257988244
-    # (workflow_dispatch, 2026-10-05) reached a verdict, `just ci tier1` =>
-    # failure, in 96.5 min:
-    #
-    #   setup (container, CLI, `just setup native`)     5 min
-    #   Build rust core fixtures                         8.2
-    #   Build workspace fixtures                        31.4
-    #   disk report + reclaim                            2.0
-    #   just ci tier1                                   49.1
-    #     check::default  38.5 (fast 7.1, build 31.3)
-    #     rust-rtos-link-check 2.6, test-all 8.0
-    #
-    # The SAME job on 2026-10-04 (run 37176625915) took 13.3 / 52.8 min for the
-    # two fixture steps and 13.1 / 49.0 for check fast / build: GitHub's hosted
-    # runners differ by ~1.6-1.8x step for step, and that run was killed at
-    # 150. Priced on the slow runner, the job is ~82 min to the tier plus
-    # 49.1 x 1.7 = ~84 in it: ~165 min. 210 is that plus ~25 %, so a slow
-    # runner still yields a verdict. It still bounds the wedge 1492 is about
-    # (2 h 30 m on a dead runner) at 3 h 30 m rather than GitHub's six hours.
-    #
-    # It was 150 during the 2026-10-04 run and it fired: 75.5 min into the
-    # tier, inside `test-all`, with nothing uploaded. If the job shrinks (the
-    # tier's `just check` is ~2/3 of the tier and gate.yml's nightly runs the
-    # same gates — see issue 1500), this should come down with it.
-    #
-    # 300 since issue 1651's full tier-1 fixture build: `just setup tier1`
-    # now provisions the Zephyr SDK and west workspace (the tier's
-    # `zephyr,rust,zenoh` coordinate), and `just build tier1` was measured at
-    # +51 min over the two hand-picked fixture steps it replaces, on 4 pinned
-    # cores of a host faster than this runner. Nothing here has priced the
-    # whole job on the hosted runner yet, so this is a ceiling with headroom,
-    # not a measurement: the first complete run is the number to bring it down
-    # to, plus a margin. GitHub's own limit is 360.
-    timeout-minutes: 300
-    concurrency:
-      group: host-tests-integration-${{ github.ref }}-${{ github.event_name }}
-      cancel-in-progress: false
-    permissions:
-      contents: read
-      packages: read
-    container:
-      image: ghcr.io/newslabntu/nano-ros-ci:humble
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-      # Issue 1353 — the preinstalled toolchains this job never opens, mounted
-      # so `scripts/ci/reclaim-disk.sh` can actually remove them.
-      #
-      # The issue's standing reading is that this road is closed: "both are
-      # `container:` jobs, so a container cannot delete the host's preinstalled
-      # tooling, and the runner's 146 G is the ceiling." That is true of the
-      # image's own filesystem and false of anything the job MOUNTS — a bind
-      # mount is not an overlay layer, so unlinking through one frees space on
-      # the same `/dev/root` that `/__w` lives on. The proof is already in this
-      # lane: `/__t` is the runner's `/opt/hostedtoolcache`, mounted by the
-      # runner rather than by us, and deleting through it has freed a measured
-      # 5.2 G every run since phase-466 W4.
-      #
-      # The choice of trees is the same argument `reclaim-disk.sh` makes for
-      # `/__t`: this job's compilers, Python and Node come from the
-      # `nano-ros-ci` image, the JavaScript actions run on the runner's bundled
-      # node under `/__e`, and no step in this workflow is a `setup-*` action.
-      # Nothing here reads Android, .NET, GHC, Swift or PowerShell.
-      #
-      # What this is NOT: a measurement. The sizes these carry on the published
-      # `ubuntu-22.04` image sum to roughly 20 G, but this runner reports a
-      # 146 G disk rather than that image's 75 G, so it may not be that image,
-      # and no run has priced them here. The reclaim prints its own delta into
-      # the transcript artifact, which is the one channel that survives a dead
-      # runner (issue 1353), so the next run answers it. A path that is absent
-      # is created empty by docker and costs nothing.
-      volumes:
-        - /usr/local/lib/android:/__host-reclaim/android
-        - /usr/share/dotnet:/__host-reclaim/dotnet
-        - /usr/local/.ghcup:/__host-reclaim/ghcup
-        - /opt/ghc:/__host-reclaim/ghc
-        - /usr/share/swift:/__host-reclaim/swift
-        - /usr/local/share/powershell:/__host-reclaim/powershell
-    defaults:
-      run:
-        shell: bash
-    # Issue 1500 — the dev/test profile keeps LINE TABLES, not full debuginfo.
-    #
-    # With the fixtures finally building (issue 1468), this job fills its 146 G
-    # disk inside `just ci tier1`: 130 G used before the tier, ~33 G handed back
-    # by the reclaim, and the tier still ran out. The tier's two biggest terms
-    # are DEV-PROFILE builds carrying cargo's default `debug = true` — the root
-    # `target/debug` (12 G) and the CLI's test build in `packages/cli/target`
-    # (15 G). Measured on that CLI test graph (`cargo test --workspace
-    # --no-run`): 13 G with full debuginfo, 4.8 G with `line-tables-only` — 63 %
-    # less, nearly all of it in `debug/deps`. Projected across both dirs, ~17 G
-    # off the tier.
-    #
-    # `line-tables-only`, not `0`: a failing test's backtrace keeps file:line.
-    # No step here reads DWARF (searched: the two in-tree mentions are a prose
-    # citation and an `addr2line` hint for humans), and the output DIRECTORY is
-    # still `debug/`, so every `target/debug/…` path in the lane is unchanged.
-    #
-    # JOB level, never per step — the rule the two `RUSTFLAGS: "-C debuginfo=0"`
-    # removals below were written for. A profile setting is a fingerprint input,
-    # so setting it on one step and not the next would make the later step
-    # rebuild what the earlier one built. Here every step sees one value. It
-    # reaches the dev and test profiles only; the fixture steps build
-    # `nros-relwithdebinfo`, which keeps its own `debug = 1`.
-    env:
-      CARGO_PROFILE_DEV_DEBUG: line-tables-only
-    steps:
-      - name: Checkout nano-ros
-        uses: actions/checkout@v4
-
-      # RESTORE here, SAVE right after the build below — deliberately split.
-      #
-      # `actions/cache` saves in a POST step, at job end. By then this job has
-      # run `just setup native`, built fixtures and run `just ci tier1`, and all
-      # of them write into `packages/cli/target` too. So the entry stored is not
-      # "the CLI build" but "whatever the whole job left behind".
-      #
-      # Measured on the live cache: eight `nros-cli-*` entries at 138 MB and ONE
-      # at 5 571 MB, the big one on `refs/heads/main` — the branch where the job
-      # runs to completion instead of being cancelled early. That single entry
-      # was 56 % of the repository's 10 GB Actions cache limit, which is why
-      # `gate.yml`'s sccache (1 GB, and the required PR check depends on it) had
-      # no headroom.
-      #
-      # Splitting restore from save bounds the entry to what the CLI build
-      # actually produces, which is the 138 MB the cancelled jobs already show.
-      - name: Restore CLI build cache (Phase 218)
-        id: cli-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: packages/cli/target
-          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
-          restore-keys: |
-            nros-cli-${{ runner.os }}-
-
-      - name: Build nros CLI from packages/cli/ (Phase 218)
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          # phase-429 W5 — ASSERT the binary matches the checkout, do not hope.
-          # The CLI cache key is narrower than `source_stamp.rs`'s watch set
-          # (it misses `.jinja`, `cli-source-dirs.txt`, the out-of-tree crate
-          # dirs and the `play_launch` pin), so an exact-key hit exists for a
-          # tree whose stamp has moved. Fresh-checkout mtimes usually make
-          # cargo rebuild; usually is not a guarantee, and a binary emitting
-          # code the runtime did not expect is what RFC-0090 exists to stop.
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
-
-      # SAVE NOW, before anything else writes into this directory. See the
-      # restore step above for the measurement. `if: always()` is deliberately
-      # NOT set: a failed CLI build leaves a target dir that should not become
-      # the entry every later run restores from.
-      - name: Save CLI build cache (Phase 218)
-        if: steps.cli-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: packages/cli/target
-          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
-
-      # phase-437 — the fixture builders' rustc fan-out, DERIVED.
-      #
-      # Every consumer below used the literal "2". That number was measured on
-      # the 2-vCPU / 7 GB runner of issue #57 and this job no longer runs on
-      # one: `just ci tier1` in this same job sets no cap and its own summary
-      # reports `249 gate(s) ran at -P4`, because `run-gates-parallel.sh` asks
-      # `nproc`. So the cap was halving exactly the two steps that are most of
-      # this job's wall clock, to respect a machine that is gone.
-      #
-      # The bound is MEMORY, not CPU, and that is why this is not simply
-      # `nproc`. What issue #57 saw was the OOM killer taking rustc mid-compile;
-      # cores were never the scarce thing. ~2 GB per concurrent rustc is the
-      # rule of thumb this uses, so the runner is free to grow in either
-      # dimension and the cap follows whichever runs out first.
-      #
-      # Written to $GITHUB_ENV rather than repeated per step: the fixture builds
-      # and `just ci tier1` must agree, and three literals that must match is
-      # how they stop matching.
-      - name: Derive the build parallelism
-        run: |
-          cpus="$(nproc)"
-          mem_gb="$(awk '/MemTotal/ {print int($2 / 1024 / 1024)}' /proc/meminfo)"
-          by_mem=$(( mem_gb / 2 ))
-          [ "$by_mem" -lt 1 ] && by_mem=1
-          jobs=$(( cpus < by_mem ? cpus : by_mem ))
-          echo "NROS_CI_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
-          echo "runner: ${cpus} cpu, ${mem_gb} GiB -> NROS_CI_BUILD_JOBS=${jobs}"
-
-      # phase-413 W5 — provision with the SCOPE VERB, not four hand-rolled
-      # steps. `just setup native` is what a user runs, and it expands to the
-      # same sequence this lane spelled out: `nros setup --build-sources` (the
-      # union of vendored sources), `just ci provision-zenohd`, and the qemu /
-      # xrce-agent / play_launch_parser tools.
-      #
-      # It also runs `_setup-common`, which builds the CLI and
-      # `nros-launch-resolve` AND provisions the two host facts every tier
-      # asserts — cross Rust targets and pinned corrosion. That is what this
-      # lane was missing: `just ci tier1` failed on three unmet preconditions
-      # that no step here provisioned, so the tier never started.
-      #
-      # `tier1`, not `native` (issue 1651): this job now builds the WHOLE
-      # tier-1 fixture lane, and that lane's modules are `native`,
-      # `threadx_linux` and `zephyr`. The preset provisions all three, the
-      # Zephyr SDK included — this image (`nano-ros-ci`) carries Zephyr's host
-      # tools but not the ~1 GB SDK the sibling `nano-ros-zephyr-ci` bakes.
-      - name: just setup tier1
-        run: |
-          source ./activate.sh
-          just setup tier1
-
-      # CI-only: export the provisioned play_launch_parser for later steps.
-      # `just setup native` installs it into the store; a container job still
-      # has to put it on PATH, and it stays best-effort (workspace-entry
-      # fixtures SKIP without it, every other fixture builds).
-      - name: Export play_launch_parser on PATH
-        run: |
-          plp_bin="$(dirname "$(find "$HOME/.nros/sdk/play_launch_parser" -type f -name play_launch_parser -path '*/bin/*' 2>/dev/null | head -1)")"
-          [ -n "$plp_bin" ] && echo "$plp_bin" >> "$GITHUB_PATH" || true
-
-      # Issue 1651 — build the tier's OWN fixture lane, not a hand-picked
-      # subset of it. This job built `build-fixture-rust-core` +
-      # `build-workspace-fixtures` and then ran every tier-1 test with the
-      # fixture pre-flight switched off, so 196 of `test-all`'s 211 real
-      # failures (run 37257988244; 211 of 211 on 2026-10-05, run 37259370567)
-      # were "Test fixture binary MISSING for an in-lane coordinate" — native
-      # C/C++ examples, compile-check and cmake fixtures, threadx-linux, the
-      # Zephyr workspace leaves. `just build tier1` is the preset tier 2
-      # already uses (`just build tier2`): `build-test-fixtures lane=tier1`,
-      # every module the tier names, and it writes the stamp the tier's
-      # pre-flight checks, so `NROS_SKIP_FIXTURE_CHECK` is gone from the run.
-      #
-      # Disk: measured +41 G over the two old steps. The reclaim moves AHEAD
-      # of the build, where it now has something to protect — it frees ~32 G
-      # here (the six `/__host-reclaim` mounts, run 37259370567) — and the one
-      # after the build stays for what the build leaves behind.
-      #
-      # Issue #57 Cause-1 still applies: cap the builder's rustc fan-out by
-      # MEMORY (see "Derive the build parallelism").
-      - name: Reclaim disk before the fixture build — issue 1353
-        if: ${{ !cancelled() }}
-        run: scripts/ci/reclaim-disk.sh "before just build tier1"
-
-      - name: just build tier1
-        env:
-          NROS_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
-          CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
-        run: |
-          source ./activate.sh
-          mkdir -p build/ci-logs
-          echo "before:"; df -h / | tail -1
-          # FAIL, do not swallow (see the history in git: a swallowed fixture
-          # build once reported SUCCESS ten runs in a row).
-          just build tier1 > build/ci-logs/build-tier1.log 2>&1 \
-            || { echo "::group::build tier1 FAILED tail"; tail -150 build/ci-logs/build-tier1.log; echo "::endgroup::"; \
-                 bash scripts/ci/row-times.sh build/ci-logs/build-tier1.log; exit 1; }
-          echo "after build tier1 ($(wc -l < build/ci-logs/build-tier1.log) lines suppressed):"; df -h / | tail -1
-          bash scripts/ci/row-times.sh build/ci-logs/build-tier1.log
-
-      # phase-411 — run the TIER, not a hand-rolled approximation of it.
-      #
-      # This lane built `native build-fixture-rust-core` + `build-workspace-
-      # fixtures` and then `just test-integration`, which is roughly tier 1 —
-      # and "roughly" is the problem: `check-tier-has-ci-owner` found Tier1
-      # declared in the RFC-0061 ladder and invoked by NO workflow, so the
-      # tier's definition and this lane's behaviour could drift with nothing
-      # to notice. `just ci tier1` is preconditions + check +
-      # rust-rtos-link-check + test-all, narrowed to the tier-1 coordinates.
-      #
-      # The fixture builds above stay: the tier ASSERTS its preconditions, it
-      # does not provision them.
-      # Issue 1353 — this lane fills the SAME disk without ever entering the
-      # compile tier (measured 2026-09-12 and again 2026-09-17: the write that
-      # fails is into the host workspace's `target/debug` during
-      # `check test-targets`), so the report the issue asks for belongs here
-      # too, not only around gate.yml's compile-tier steps.
-      - name: Disk report (before ci tier1) — issue 1353
-        if: ${{ !cancelled() }}
-        run: scripts/ci/disk-report.sh "before just ci tier1"
-
-      # Issue 1353 step 3, phase-466 W4 — the tier arrives with 22 G free and
-      # wants more than that (measured: `packages/cli/target` 404 M -> 13 G, a
-      # fresh `target/` at 4.1 G, `build/` +3 G), so it dies on a write. This
-      # frees the two things on this disk that nothing downstream reads: the
-      # mounted hosted tool cache, which a `container:` job never opens, and the
-      # metadata-probe cargo scratch, whose product is a JSON sidecar written
-      # elsewhere. It runs BETWEEN the two brackets on purpose, so the
-      # "before" report above still shows what the fixture build spent and the
-      # reclaim's own notice says what it gave back.
-      #
-      # It never fails the job, so it is `!cancelled()` rather than guarded on
-      # the fixture builds having succeeded — a lane that is already failing is
-      # the one most likely to be out of room.
-      - name: Reclaim disk before the tier — issue 1353
-        if: ${{ !cancelled() }}
-        run: scripts/ci/reclaim-disk.sh "before just ci tier1"
-
-      # Issue 1353 — the same surviving channel gate.yml gets, for the same
-      # reason and not because this lane has needed it yet. This job's runner
-      # has so far stayed alive long enough to upload its log, which is why the
-      # 42 G / 22 G split is known at all; `live-peer` and `gate` on the same
-      # machine did not, and there is nothing about this lane that makes it the
-      # exception rather than the lucky one. The upload is its own step so that
-      # it COMPLETES before the tier starts — see the long note in gate.yml.
-      - name: Upload the disk transcript (before the tier) — issue 1353
-        if: ${{ !cancelled() && env.NROS_DISK_TRANSCRIPT != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: disk-transcript-before-tier1
-          path: ${{ env.NROS_DISK_TRANSCRIPT }}
-          if-no-files-found: ignore
-          retention-days: 7
-
-      # Issue 1651 — `run`, not the whole tier: `just check` is the `gates`
-      # job above, on its own runner. Same work, and this job now fits its
-      # ceiling with `test-all` in it.
-      - name: just ci tier1 run
-        env:
-          CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
-          # No `NROS_SKIP_FIXTURE_CHECK` (issue 1651): `just build tier1`
-          # above builds the lane this run claims and writes its stamp, so the
-          # pre-flight is satisfiable and runs — an in-lane fixture missing now
-          # stops the run before `test-all` instead of becoming 211 reds in it.
-        run: |
-          source ./activate.sh
-          mkdir -p build/ci-logs
-          # Issue 1500 — the full output goes to the file, and the tier's own
-          # step markers (`scripts/ci/run-lane-steps.sh`) STREAM to the job log.
-          # A run the ceiling kills uploads nothing (09-30, 10-04), so the job
-          # log is the only record that survives it, and until now it held
-          # nothing at all from inside the tier.
-          set +e
-          just ci tier1 run 2>&1 | tee build/ci-logs/ci-tier1.log \
-            | { grep --line-buffered -E '^(==>|<==|  (ok|FAILED|NOT RUN|total) )|gate\(s\) (ran|OK)|busy [0-9]+s over wall' || true; }
-          rc=${PIPESTATUS[0]}
-          set -e
-          echo "::group::ci tier1 output (tail)"; tail -200 build/ci-logs/ci-tier1.log; echo "::endgroup::"
-          exit $rc
-
-      # `always()`: the failing run is the one whose numbers matter.
-      - name: Disk report (after ci tier1) — issue 1353
-        if: ${{ always() }}
-        run: scripts/ci/disk-report.sh "after just ci tier1"
-
-      - name: Upload the disk transcript (after the tier) — issue 1353
-        if: ${{ always() && env.NROS_DISK_TRANSCRIPT != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: disk-transcript-after-tier1
-          path: ${{ env.NROS_DISK_TRANSCRIPT }}
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Report skipped fixtures (post-run)
-        if: always()
-        run: |
-          if [ -f target/nextest/default/junit.xml ]; then
-            echo "::group::skipped fixtures"
-            grep -E '<skipped|\[SKIPPED\]' target/nextest/default/junit.xml \
-              | head -100 || echo "(no skips recorded)"
-            echo "::endgroup::"
-          else
-            echo "(no junit.xml — test-integration may have failed before any test ran)"
-          fi
-
-      - name: Upload nextest JUnit artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: host-integration-tests-junit
-          path: target/nextest/default/junit.xml
-          if-no-files-found: ignore
-          retention-days: 7
-
-      # The fixture and tier logs. Every build step above sends its output to
-      # `build/ci-logs/<step>.log` and echoes a 120-line tail only on FAILURE,
-      # which keeps the job log readable — and left this lane's largest step
-      # with no record at all. "Build workspace fixtures" is 54 of the job's
-      # ~102 minutes (run 34432822434) and wrote 42,882 lines that existed only
-      # on a runner that is then reclaimed: no per-workspace timing, and no way
-      # to tell one slow group serialising the jobserver from fifteen evenly
-      # loaded ones, which call for different fixes. `always()` because these
-      # are most wanted when a LATER step is the one that failed.
-      - name: Upload fixture and tier logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: host-integration-ci-logs
           path: build/ci-logs/
           if-no-files-found: ignore
           retention-days: 7

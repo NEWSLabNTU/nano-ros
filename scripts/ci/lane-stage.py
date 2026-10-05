@@ -482,6 +482,13 @@ LANES = (
         "just build tier2": BUILD,
         "just ci matrix": CELLS,
     }),
+    # issues 1684/1685 — tier 1's cells, moved off host-tests to this runner.
+    LaneSpec("run-matrix.yml", "tier1", "coverage-tier1", {
+        "just setup tier1": PROVISIONING,
+        "Verify this runner's labels are true": PROVISIONING,
+        "just build tier1": BUILD,
+        "just ci tier1 run": CELLS,
+    }),
     # phase-433 W5. This lane already told "the run did not happen" from "a cell
     # regressed" — but only INSIDE the cell loop, by exit code. Everything above
     # the loop was a flat `failure`, which is the same ambiguity one step

@@ -63,3 +63,21 @@ accident — which was never a contract either, since no `test-all` ran.
 
 `check-skip-budget` passes on the `host-tests` integration job without new
 baseline lines that no other lane retires.
+
+## 2026-10-06 — fixes landed; the lane now runs where its capabilities are
+
+- #1699: a lane deselects (`[SKIPPED:lane]`) before a capability probe for a
+  platform it selects no coordinate of (`require_platform_in_lane`), across
+  the Zephyr/emulator/riscv/PX4/FreeRTOS/ThreadX-rv64/rtos_e2e/ROS-peer sites;
+  the two host build-stage proofs are built by `build-test-fixtures`;
+  `zpico_drift_gate` reads the real descriptor path and passes; ci-base
+  installs the action-server peer.
+- #1707: the Rust test resolver reads THE Zephyr workspace ladder (it had no
+  store arm, so a host provisioned by `just zephyr setup` skipped 56 Zephyr
+  tests), and the FVP tests deselect before their probes.
+- This PR: tier 1's run leaves the hosted runner, which provisions none of
+  Zephyr / ThreadX, for the self-hosted one that does.
+
+Measured locally on a provisioned host, full `lane=tier1`: capability skips
+**64 -> 3** (1 baselined, 2 FVP — fixed in #1707). STILL OPEN until the first
+`run-matrix` `tier1` run's `check-skip-budget` passes.
