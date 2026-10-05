@@ -563,11 +563,20 @@ pub(crate) fn fold_models_for_shared_runtime(
             )
         })
         .collect();
-    let (inv, unwired) = metadata_inv.shared_runtime_over(&images);
+    // Issue 1701 -- every model's frame (what its launch tree starts), so an
+    // image whose model describes no wiring still bounds its OWN need rather
+    // than taking the union's.
+    let frames: Vec<_> = models
+        .iter()
+        .map(|(_, model)| Some(crate::entity_inventory::ImageFrame::from_model(model)))
+        .collect();
+    let (inv, unwired) = metadata_inv.shared_runtime_over_framed(&images, &frames);
     if !unwired.is_empty() {
         eprintln!(
             "nros: entity inventory: {} of {} models in this configure describe no wiring ({}); \
-             the components they run cannot be ruled out of the shared runtime (issue 1600)",
+             their launch trees say which components they start, and those are sized from \
+             the statements other images' contracts make of the same components \
+             (issues 1600, 1701)",
             unwired.len(),
             models.len(),
             unwired.join(", ")

@@ -820,6 +820,76 @@ pub struct EntityInventory {
     /// contract that describes only the talker made a launched listener read
     /// as not launched, and its entities counted zero.
     launched: Option<std::collections::BTreeSet<String>>,
+    /// Issue 1701 -- for the inventory of a SHARED runtime (a multi-entry
+    /// configure, [`Self::shared_runtime_over`]), each image's OWN view:
+    /// `(source, inventory)`. Empty for an inventory that describes one image.
+    ///
+    /// [`Self::derive`] reduces over these rather than deriving over the
+    /// union: each process runs exactly one entry, so the runtime's need is the
+    /// LARGEST single image, knob by knob ([`DerivedEntityKnobs::max_over`]).
+    /// Everything that is not a count -- the type lists, the declared-QoS
+    /// tables, the parameter declarations -- is still read off the union rows.
+    image_views: Vec<(String, EntityInventory)>,
+}
+
+/// Issue 1701 -- what an image's MODEL says about the image, apart from the
+/// entity rows its contract describes: which components the launch tree
+/// starts, the runtime's own service families, the authored tier count and
+/// the contract-monitor tables.
+///
+/// [`EntityInventory::from_model`] answers `None` for a model that describes no
+/// wiring, which loses all of this with the rows. A shared runtime still needs
+/// it for such an image -- `examples/workspaces/cpp`'s `native_robot1`/`2` run
+/// `multihost.launch.xml`, which has no contract -- because "which components
+/// does this image start" is what bounds that image's own need.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ImageFrame {
+    infra: InfraServices,
+    tiers: usize,
+    monitor_rows: Option<(usize, usize)>,
+    launched: std::collections::BTreeSet<String>,
+}
+
+impl ImageFrame {
+    /// The frame of a resolved model -- the same four facts
+    /// [`EntityInventory::from_model`] attaches, by the same code.
+    pub fn from_model(model: &ros_launch_manifest_model::SystemModel) -> Self {
+        Self {
+            // Issue 1270 -- the families the bringup declares ride along, so
+            // the session pools count the servers the runtime creates for them.
+            infra: InfraServices::from_model(model),
+            // Issue 1198 -- the SCHEDULING declaration. Not an entity fact: the
+            // service families are what the runtime creates FOR the image,
+            // while this is what the integrator authored about how it runs
+            // (RFC-0016 tiers, `[tiers.*]` in `system.toml`).
+            tiers: model.execution.tiers.len(),
+            // phase-467 W1 -- the contract-monitor tables, counted by the
+            // functions the entry emitters bake them with. An inconsistent
+            // model is the emitters' refusal to make, loudly, at codegen; here
+            // it only means "no count".
+            monitor_rows: match (
+                crate::orchestration::model_ingest::monitor_rows(model),
+                crate::orchestration::model_ingest::age_rows(model),
+            ) {
+                (Ok(rows), Ok(ages)) => Some((rows.len(), ages.len())),
+                _ => None,
+            },
+            // Issue 1694 -- what the launch tree STARTS, described or not. Both
+            // spellings of a node, because the two declaration-side producers
+            // key differently: `from_model` and the probe road key by node
+            // NAME, and `nano_ros_node_register(NAME ...)` by the launch `exec`
+            // (RFC-0057).
+            launched: model
+                .structure
+                .nodes
+                .iter()
+                .flat_map(|(fqn, n)| {
+                    std::iter::once(fqn.rsplit('/').next().unwrap_or(fqn).to_string())
+                        .chain(n.exec.clone())
+                })
+                .collect(),
+        }
+    }
 }
 
 /// Issue 1694 -- ONE kind of ONE component, from the contract's rows (`model`)
@@ -1285,6 +1355,93 @@ pub struct DerivedEntityKnobs {
     /// Per-component `(pkg, component, entities, slots)`, so the output records
     /// which declaration contributed what.
     pub per_component: Vec<(String, String, usize, usize)>,
+}
+
+impl DerivedEntityKnobs {
+    /// Issue 1701 -- the knobs ONE runtime needs to serve every image in
+    /// `per_image`, when each process runs exactly one of them: the
+    /// field-by-field reduction for a shared runtime (RFC-0100 D12, as amended
+    /// 2026-10-06).
+    ///
+    /// * every count is a CAPACITY, so the max over images (a pool sized for
+    ///   the largest image holds every smaller one);
+    /// * `local_queryable` is "some image has both a same-session client and a
+    ///   server", so an OR -- never `max(clients) > 0 && max(servers) > 0`,
+    ///   which is true of two images that each have only one of them;
+    /// * the two monitor tables are `None` ("no model saw it, the crate default
+    ///   stands") if ANY image's is, else the max;
+    /// * the transient-local fact keeps the first refusal (RFC-0100 D6: a
+    ///   refusal is the worst case, with the image's own reason), else the max
+    ///   of what was stated;
+    /// * `per_kind` is the max per kind and `per_component` the union of rows,
+    ///   the larger kept per component.
+    pub fn max_over(per_image: &[DerivedEntityKnobs]) -> DerivedEntityKnobs {
+        use nros_sizing_descriptor::Fact;
+        let m = |f: fn(&DerivedEntityKnobs) -> usize| per_image.iter().map(f).max().unwrap_or(0);
+        let opt_max = |f: fn(&DerivedEntityKnobs) -> Option<usize>| {
+            if per_image.is_empty() {
+                return None;
+            }
+            per_image
+                .iter()
+                .map(f)
+                .try_fold(0usize, |acc, v| v.map(|v| acc.max(v)))
+        };
+        let mut tl: Fact<usize> = Fact::Absent;
+        for k in per_image {
+            tl = match (tl, &k.tl_publishers) {
+                (Fact::Refused(r), _) => Fact::Refused(r),
+                (_, Fact::Refused(r)) => Fact::Refused(r.clone()),
+                (Fact::Stated(a), Fact::Stated(b)) => Fact::Stated(a.max(*b)),
+                (Fact::Absent, Fact::Stated(b)) => Fact::Stated(*b),
+                (other, Fact::Absent) => other,
+            };
+        }
+        let mut per_kind: BTreeMap<&'static str, usize> = BTreeMap::new();
+        let mut per_component: Vec<(String, String, usize, usize)> = Vec::new();
+        for k in per_image {
+            for (kind, n) in &k.per_kind {
+                let e = per_kind.entry(kind).or_insert(0);
+                *e = (*e).max(*n);
+            }
+            for row in &k.per_component {
+                match per_component
+                    .iter_mut()
+                    .find(|r| r.0 == row.0 && r.1 == row.1)
+                {
+                    Some(r) => {
+                        r.2 = r.2.max(row.2);
+                        r.3 = r.3.max(row.3);
+                    }
+                    None => per_component.push(row.clone()),
+                }
+            }
+        }
+        per_component.sort();
+        DerivedEntityKnobs {
+            max_cbs: m(|k| k.max_cbs),
+            heavy_slots: m(|k| k.heavy_slots),
+            entity_total: m(|k| k.entity_total),
+            max_subscribers: m(|k| k.max_subscribers),
+            max_publishers: m(|k| k.max_publishers),
+            max_queryables: m(|k| k.max_queryables),
+            infra_queryables: m(|k| k.infra_queryables),
+            param_service_nodes: m(|k| k.param_service_nodes),
+            max_nodes: m(|k| k.max_nodes),
+            max_liveliness: m(|k| k.max_liveliness),
+            local_query_clients: m(|k| k.local_query_clients),
+            local_query_servers: m(|k| k.local_query_servers),
+            local_queryable: per_image.iter().any(|k| k.local_queryable),
+            max_cell_entities: m(|k| k.max_cell_entities),
+            max_sc: m(|k| k.max_sc),
+            max_monitors: opt_max(|k| k.max_monitors),
+            max_age_monitors: opt_max(|k| k.max_age_monitors),
+            tl_publishers: tl,
+            tl_slots: m(|k| k.tl_slots),
+            per_kind,
+            per_component,
+        }
+    }
 }
 
 /// The result of composing an image's declarations.
@@ -2324,6 +2481,7 @@ impl EntityInventory {
             tiers: 0,
             monitor_rows: None,
             launched: None,
+            image_views: Vec::new(),
         }
     }
 
@@ -2849,41 +3007,9 @@ impl EntityInventory {
         }
 
         let mut inv = Self::new(source);
-        // Issue 1270 -- the families the bringup declares ride along, so the
-        // session pools count the servers the runtime creates for them.
-        inv.infra = InfraServices::from_model(model);
-        // Issue 1198 -- the SCHEDULING declaration rides along too. It is not
-        // an entity fact and is deliberately kept apart from `infra`: the
-        // service families are what the runtime creates FOR the image, while
-        // this is what the integrator authored about how it runs (RFC-0016
-        // tiers, `[tiers.*]` in `system.toml`).
-        inv.tiers = model.execution.tiers.len();
-        // phase-467 W1 -- and the contract-monitor tables, counted by the
-        // functions the entry emitters bake them with. An inconsistent model
-        // (a contracted endpoint no topic owns) is the emitters' refusal to
-        // make, loudly, at codegen; here it only means "no count".
-        inv.monitor_rows = match (
-            crate::orchestration::model_ingest::monitor_rows(model),
-            crate::orchestration::model_ingest::age_rows(model),
-        ) {
-            (Ok(rows), Ok(ages)) => Some((rows.len(), ages.len())),
-            _ => None,
-        };
-        // Issue 1694 -- what the launch tree STARTS, described or not. Both
-        // spellings of a node, because the two declaration-side producers key
-        // differently: `from_model` and the probe road key by node NAME, and
-        // `nano_ros_node_register(NAME ...)` by the launch `exec` (RFC-0057).
-        inv.launched = Some(
-            model
-                .structure
-                .nodes
-                .iter()
-                .flat_map(|(fqn, n)| {
-                    std::iter::once(fqn.rsplit('/').next().unwrap_or(fqn).to_string())
-                        .chain(n.exec.clone())
-                })
-                .collect(),
-        );
+        // Issue 1701 -- the model's facts apart from the rows, ONE spelling for
+        // this and for a shared runtime's unwired images.
+        inv.apply_frame(&ImageFrame::from_model(model));
         for (node_fqn, entities) in per_node {
             let component = node_fqn.rsplit('/').next().unwrap_or(&node_fqn).to_string();
             inv.insert(ComponentEntities {
@@ -2951,22 +3077,56 @@ impl EntityInventory {
     ///
     /// `images` is `(source, wiring, params)` per image, `wiring` being what
     /// [`Self::from_model`] made of its model (`None` = describes no wiring).
-    /// Each wired image folds in through [`Self::merged_per_kind_max`], the
-    /// rule one model already uses, so a component keeps the larger declaration
-    /// per kind and a component ANY image launches is launched. The result is
-    /// the UNION of the images, which SUMS where the true need is the largest
-    /// single image: an over-size, the only direction a reduction over images
-    /// may err in. (The composition this replaces wrote one fragment per entry,
-    /// last writer winning -- the other direction.)
-    ///
-    /// An image with no wiring states nothing, and does not say which
-    /// components it runs, so when there is one, every row another image
-    /// marked `NotLaunched` goes back to `Absent` and [`Self::derive`] refuses,
-    /// naming them. Returns the unwired sources so the caller can say so.
-    /// Parameters reduce by [`ParamDeclarations::union_over_images`].
+    /// See [`Self::shared_runtime_over_framed`]; this spelling knows no frame
+    /// for an unwired image, so such an image is treated as able to run
+    /// anything (the union, reopened).
     pub fn shared_runtime_over(
         &self,
         images: &[(String, Option<EntityInventory>, ParamDeclarations)],
+    ) -> (EntityInventory, Vec<String>) {
+        self.shared_runtime_over_framed(images, &vec![None; images.len()])
+    }
+
+    /// Issue 1600 / 1701 -- the shared runtime's inventory, with each image's
+    /// own view attached.
+    ///
+    /// **The ROWS are the union.** Each wired image folds in through
+    /// [`Self::merged_per_kind_max`], the rule one model already uses, so a
+    /// component keeps the larger declaration per kind and a component ANY
+    /// image launches is launched. Every view that is not a count reads them:
+    /// the subscribed/received type lists (a union, which is what a type list
+    /// over several images means), the declared-QoS tables (reconciled per
+    /// endpoint by RFC-0100 D12 rule 2, refused on disagreement), and the
+    /// parameter declarations ([`ParamDeclarations::union_over_images`]: the
+    /// same list feeds the per-component declared-params TABLE, which must hold
+    /// every node of every image, so a max over images is not representable
+    /// there).
+    ///
+    /// **The COUNTS are the largest single image** (issue 1701). Each process
+    /// runs exactly one entry, so the union -- which SUMS where the need is a
+    /// max -- over-sizes every pool: `examples/workspaces/cpp`'s native
+    /// configure derived `MAX_CBS` 16 where its largest entry needs 6. So every
+    /// image also gets its OWN view, `image_views`, and [`Self::derive`]
+    /// reduces knob by knob over those ([`DerivedEntityKnobs::max_over`]). An
+    /// image's view is the single-image composition a configure of that one
+    /// entry would make -- the metadata folded with its own model -- with one
+    /// addition: a component it LAUNCHES that its own model leaves undescribed
+    /// takes the statement another image's contract made of that component, if
+    /// any, because what a component creates is a property of its code and not
+    /// of the launch file that starts it (the rule `merged_per_kind_max` already
+    /// states for `Stated` rows). Without that, an image with no contract of its
+    /// own would refuse, and a refusal leaves every pool at its crate default.
+    ///
+    /// `frames[i]` is image `i`'s [`ImageFrame`], used only when its `wiring` is
+    /// `None`: it says which components that image starts. An unwired image
+    /// with NO frame does not say which components it runs, so every row
+    /// another image marked `NotLaunched` goes back to `Absent`, both in the
+    /// union and in that image's view, and the derivation refuses, naming them.
+    /// Returns the unwired sources so the caller can say so.
+    pub fn shared_runtime_over_framed(
+        &self,
+        images: &[(String, Option<EntityInventory>, ParamDeclarations)],
+        frames: &[Option<ImageFrame>],
     ) -> (EntityInventory, Vec<String>) {
         let mut inv = self.clone();
         let mut unwired = Vec::new();
@@ -2976,15 +3136,108 @@ impl EntityInventory {
                 None => unwired.push(src.clone()),
             }
         }
-        if !unwired.is_empty() {
+        let frame_of = |i: usize| frames.get(i).and_then(Option::as_ref);
+        let unframed = images
+            .iter()
+            .enumerate()
+            .any(|(i, (_, w, _))| w.is_none() && frame_of(i).is_none());
+        if unframed {
             inv.reopen_not_launched();
+        } else {
+            // An unwired image that SAYS what it starts reopens only that.
+            for (i, (_, w, _)) in images.iter().enumerate() {
+                if let (None, Some(f)) = (w, frame_of(i)) {
+                    inv.reopen_launched_by(&f.launched);
+                    inv.infra = inv.infra.union(f.infra);
+                    inv.tiers = inv.tiers.max(f.tiers);
+                }
+            }
         }
         let params: Vec<(String, ParamDeclarations)> = images
             .iter()
             .map(|(src, _, p)| (src.clone(), p.clone()))
             .collect();
         inv.set_param_declarations(ParamDeclarations::union_over_images(&params));
+
+        let mut views = Vec::with_capacity(images.len());
+        for (i, (src, wiring, _)) in images.iter().enumerate() {
+            let view = match (wiring, frame_of(i)) {
+                (Some(model_inv), _) => self.merged_per_kind_max(model_inv),
+                (None, Some(f)) => {
+                    let mut v = self.clone();
+                    v.apply_frame(f);
+                    v.mark_unlaunched_absent_rows();
+                    v
+                }
+                // Says nothing about what it runs: the union, reopened.
+                (None, None) => {
+                    let mut v = inv.clone();
+                    v.reopen_not_launched();
+                    v
+                }
+            };
+            views.push((src.clone(), view.filled_from(&inv)));
+        }
+        inv.image_views = views;
         (inv, unwired)
+    }
+
+    /// Issue 1701 -- adopt a model's [`ImageFrame`]: its families, tiers,
+    /// monitor tables and launch set.
+    fn apply_frame(&mut self, f: &ImageFrame) {
+        self.infra = f.infra;
+        self.tiers = f.tiers;
+        self.monitor_rows = f.monitor_rows;
+        self.launched = Some(f.launched.clone());
+    }
+
+    /// Issue 1402's reclassification for a view built without a fold: an
+    /// `Absent` row the launch tree does not start is `NotLaunched`.
+    fn mark_unlaunched_absent_rows(&mut self) {
+        let Some(launched) = self.launched.clone() else {
+            return;
+        };
+        for c in &mut self.components {
+            if matches!(c.declaration, Declaration::Absent) && !launched.contains(&c.component) {
+                c.declaration = Declaration::NotLaunched;
+            }
+        }
+    }
+
+    /// Issue 1701 -- `reopen_not_launched`, narrowed to the components an
+    /// unwired image is KNOWN to start.
+    fn reopen_launched_by(&mut self, launched: &std::collections::BTreeSet<String>) {
+        for c in &mut self.components {
+            if matches!(c.declaration, Declaration::NotLaunched) && launched.contains(&c.component)
+            {
+                c.declaration = Declaration::Absent;
+            }
+        }
+    }
+
+    /// Issue 1701 -- a view's undescribed rows for components it LAUNCHES take
+    /// the statement the union holds for that component, when the union has
+    /// one. See [`Self::shared_runtime_over_framed`] for why that is sound.
+    fn filled_from(mut self, union: &EntityInventory) -> EntityInventory {
+        let launched = self.launched.clone();
+        for c in &mut self.components {
+            let runs = launched.as_ref().is_none_or(|l| l.contains(&c.component));
+            if !runs || !matches!(c.declaration, Declaration::Absent) {
+                continue;
+            }
+            if let Some(stated) = union.components.iter().find(|u| {
+                u.component == c.component && matches!(u.declaration, Declaration::Stated(_))
+            }) {
+                c.declaration = stated.declaration.clone();
+            }
+        }
+        self
+    }
+
+    /// Issue 1701 -- the per-image views of a shared runtime's inventory,
+    /// `(source, view)`. Empty for a single image's.
+    pub fn image_views(&self) -> &[(String, EntityInventory)] {
+        &self.image_views
     }
 
     /// phase-412 -- combine a declaration-derived inventory with a
@@ -3197,6 +3450,43 @@ impl EntityInventory {
     /// nodes' worth short, and a short `MAX_CBS` is a failed entity creation on
     /// a board.
     pub fn derive(&self) -> Derivation {
+        if self.image_views.is_empty() {
+            return self.derive_single();
+        }
+        // Issue 1701 -- a SHARED runtime: the largest single image, knob by
+        // knob. The union must still compose (its refusal names what no image
+        // describes), and so must every image's own view.
+        let union_refusal = {
+            let mut union = self.clone();
+            union.image_views.clear();
+            match union.derive_single() {
+                Derivation::Refused { reason } => Some(reason),
+                Derivation::Derived(_) => None,
+            }
+        };
+        if let Some(reason) = union_refusal {
+            return Derivation::Refused { reason };
+        }
+        let mut per_image = Vec::with_capacity(self.image_views.len());
+        for (src, view) in &self.image_views {
+            match view.derive_single() {
+                Derivation::Derived(k) => per_image.push(*k),
+                Derivation::Refused { reason } => {
+                    return Derivation::Refused {
+                        reason: format!(
+                            "image `{}` of this shared runtime: {reason}",
+                            image_label(src)
+                        ),
+                    };
+                }
+            }
+        }
+        Derivation::Derived(Box::new(DerivedEntityKnobs::max_over(&per_image)))
+    }
+
+    /// Compose ONE image's declarations into the knobs, or REFUSE -- the
+    /// derivation [`Self::derive`] runs per image of a shared runtime.
+    fn derive_single(&self) -> Derivation {
         if self.components.is_empty() {
             return Derivation::Refused {
                 reason: "no components were registered in this image, so there is nothing to \
@@ -9754,6 +10044,232 @@ mod shared_runtime_tests {
         let (one, _) =
             meta.shared_runtime_over(&[("wired".into(), Some(wired), ParamDeclarations::Absent)]);
         assert!(matches!(one.derive(), Derivation::Derived(_)));
+    }
+
+    /// Issue 1701 -- the frame of an image whose model describes no wiring:
+    /// only which components its launch tree starts.
+    fn frame(launched: &[&str]) -> ImageFrame {
+        ImageFrame {
+            launched: launched.iter().map(|s| s.to_string()).collect(),
+            ..ImageFrame::default()
+        }
+    }
+
+    /// Issue 1701 -- THE gate: on a configure whose entries differ, every
+    /// count the shared runtime gets is the max over the entries' OWN
+    /// derivations, and strictly below the union's where the union sums.
+    ///
+    /// Negative control, in the test: the union (`derive_single` over the
+    /// folded rows, which is what the shared runtime was sized from before)
+    /// exceeds that max on `max_cbs`, so a reducer that fell back to the union
+    /// fails the equality.
+    #[test]
+    fn a_shared_runtime_is_sized_for_its_largest_image_not_for_the_union() {
+        let meta = registered(&["talker", "listener", "server", "client"]);
+        let pubsub = image(vec![
+            stated(
+                "talker",
+                &["timer", "publisher:std_msgs/msg/String:/chatter"],
+            ),
+            stated("listener", &["subscription:std_msgs/msg/String:/chatter"]),
+        ]);
+        let service = image(vec![
+            stated("server", &["service_server:example/srv/Add:/add"]),
+            stated("client", &["service_client:example/srv/Add:/add", "timer"]),
+        ]);
+        let none = ParamDeclarations::Absent;
+        let (shared, _) = meta.shared_runtime_over(&[
+            ("pubsub".into(), Some(pubsub.clone()), none.clone()),
+            ("service".into(), Some(service.clone()), none.clone()),
+        ]);
+        let own: Vec<DerivedEntityKnobs> = [&pubsub, &service]
+            .iter()
+            .map(|m| {
+                meta.merged_per_kind_max(m)
+                    .derive()
+                    .knobs()
+                    .expect("derived")
+                    .clone()
+            })
+            .collect();
+        let got = shared.derive().knobs().expect("derived").clone();
+        let max = |f: fn(&DerivedEntityKnobs) -> usize| own.iter().map(f).max().unwrap();
+        assert_eq!(got.max_cbs, max(|k| k.max_cbs));
+        assert_eq!(got.max_subscribers, max(|k| k.max_subscribers));
+        assert_eq!(got.max_publishers, max(|k| k.max_publishers));
+        assert_eq!(got.max_queryables, max(|k| k.max_queryables));
+        assert_eq!(got.max_liveliness, max(|k| k.max_liveliness));
+        assert_eq!(got.max_cell_entities, max(|k| k.max_cell_entities));
+        assert_eq!(got.entity_total, max(|k| k.entity_total));
+
+        let mut union = shared.clone();
+        union.image_views.clear();
+        let union_cbs = union.derive().knobs().expect("derived").max_cbs;
+        assert!(
+            union_cbs > got.max_cbs,
+            "the fixture must make the union SUM ({union_cbs}) where the need is a max ({})",
+            got.max_cbs
+        );
+    }
+
+    /// Issue 1701 -- one image: the per-image reduction and the union are the
+    /// same composition, so they must agree knob for knob.
+    #[test]
+    fn with_one_image_the_reduction_is_the_union() {
+        let meta = registered(&["talker", "listener", "idle"]);
+        let pubsub = image(vec![
+            stated(
+                "talker",
+                &["timer", "publisher:std_msgs/msg/String:/chatter"],
+            ),
+            stated("listener", &["subscription:std_msgs/msg/String:/chatter"]),
+        ]);
+        let (shared, _) =
+            meta.shared_runtime_over(&[("pubsub".into(), Some(pubsub), ParamDeclarations::Absent)]);
+        let mut union = shared.clone();
+        union.image_views.clear();
+        assert_eq!(shared.derive(), union.derive());
+    }
+
+    /// Issue 1701 -- `examples/workspaces/cpp`'s `native_robot1`: an image
+    /// whose launch file has no contract, starting components another image's
+    /// contract describes. Its own need is those components, taken from that
+    /// statement -- not a refusal (every pool at its crate default) and not
+    /// the union.
+    #[test]
+    fn an_unwired_image_with_a_launch_tree_is_sized_from_what_it_starts() {
+        let meta = registered(&["talker", "listener", "server"]);
+        let system = image(vec![
+            stated(
+                "talker",
+                &["timer", "publisher:std_msgs/msg/String:/chatter"],
+            ),
+            stated("listener", &["subscription:std_msgs/msg/String:/chatter"]),
+        ]);
+        let service = image(vec![stated(
+            "server",
+            &[
+                "service_server:example/srv/Add:/add",
+                "service_server:example/srv/Add:/add2",
+                "service_server:example/srv/Add:/add3",
+                "timer",
+            ],
+        )]);
+        let none = ParamDeclarations::Absent;
+        let images = [
+            ("system".to_string(), Some(system.clone()), none.clone()),
+            ("service".to_string(), Some(service.clone()), none.clone()),
+            ("robot".to_string(), None, none.clone()),
+        ];
+        let frames = [None, None, Some(frame(&["talker", "listener"]))];
+        let (shared, unwired) = meta.shared_runtime_over_framed(&images, &frames);
+        assert_eq!(unwired, vec!["robot".to_string()]);
+        let (_, robot_view) = &shared.image_views()[2];
+        let robot = robot_view
+            .derive()
+            .knobs()
+            .expect("the robot derives")
+            .clone();
+        let alone_system = meta
+            .merged_per_kind_max(&system)
+            .derive()
+            .knobs()
+            .unwrap()
+            .clone();
+        assert_eq!(
+            robot.max_cbs, alone_system.max_cbs,
+            "it runs what `system` runs"
+        );
+        let got = shared.derive().knobs().expect("derived").clone();
+        let alone_service = meta
+            .merged_per_kind_max(&service)
+            .derive()
+            .knobs()
+            .unwrap()
+            .clone();
+        assert_eq!(got.max_cbs, alone_system.max_cbs.max(alone_service.max_cbs));
+
+        // Negative control: with no frame the robot says nothing about what it
+        // runs, so it is sized as able to run everything -- the union, which
+        // is larger here than any one image.
+        let (blind, _) = meta.shared_runtime_over(&images);
+        let blind_cbs = blind.derive().knobs().expect("derived").max_cbs;
+        assert!(
+            blind_cbs > got.max_cbs,
+            "an unframed robot must not be sized smaller than the union ({blind_cbs} vs {})",
+            got.max_cbs
+        );
+    }
+
+    /// Issue 1701 -- an unwired image that STARTS a component nobody describes
+    /// still refuses, naming it: filling from the union never invents a row.
+    #[test]
+    fn an_unwired_image_starting_an_undescribed_component_refuses() {
+        let meta = registered(&["talker", "mystery"]);
+        let system = image(vec![stated("talker", &["timer"])]);
+        let none = ParamDeclarations::Absent;
+        let (shared, _) = meta.shared_runtime_over_framed(
+            &[
+                ("system".into(), Some(system), none.clone()),
+                ("robot".into(), None, none),
+            ],
+            &[None, Some(frame(&["talker", "mystery"]))],
+        );
+        match shared.derive() {
+            Derivation::Refused { reason } => assert!(reason.contains("mystery"), "{reason}"),
+            Derivation::Derived(k) => panic!(
+                "derived MAX_CBS {} over an undescribed component",
+                k.max_cbs
+            ),
+        }
+    }
+
+    /// Issue 1701 -- the non-count fields reduce by their own rule.
+    #[test]
+    fn the_reducer_ors_local_queryable_and_keeps_an_unknown_monitor_table_unknown() {
+        let base = |clients, servers, local, monitors| DerivedEntityKnobs {
+            max_cbs: 0,
+            heavy_slots: 0,
+            entity_total: 0,
+            max_subscribers: 0,
+            max_publishers: 0,
+            max_queryables: 0,
+            infra_queryables: 0,
+            param_service_nodes: 0,
+            max_nodes: 0,
+            max_liveliness: 0,
+            local_query_clients: clients,
+            local_query_servers: servers,
+            local_queryable: local,
+            max_cell_entities: 0,
+            max_sc: 0,
+            max_monitors: monitors,
+            max_age_monitors: monitors,
+            tl_publishers: nros_sizing_descriptor::Fact::Stated(1),
+            tl_slots: 1,
+            per_kind: BTreeMap::new(),
+            per_component: Vec::new(),
+        };
+        // A client-only image and a server-only image: no image queries its
+        // own session, so the feature stays off.
+        let k =
+            DerivedEntityKnobs::max_over(&[base(1, 0, false, Some(3)), base(0, 1, false, Some(5))]);
+        assert!(!k.local_queryable);
+        assert_eq!((k.local_query_clients, k.local_query_servers), (1, 1));
+        assert_eq!(k.max_monitors, Some(5));
+        let k = DerivedEntityKnobs::max_over(&[base(1, 1, true, Some(3)), base(0, 0, false, None)]);
+        assert!(k.local_queryable);
+        assert_eq!(
+            k.max_monitors, None,
+            "one image no model saw keeps the crate default"
+        );
+        let mut refused = base(0, 0, false, Some(0));
+        refused.tl_publishers = nros_sizing_descriptor::Fact::Refused("unstated".into());
+        let k = DerivedEntityKnobs::max_over(&[base(0, 0, false, Some(0)), refused]);
+        assert!(matches!(
+            k.tl_publishers,
+            nros_sizing_descriptor::Fact::Refused(_)
+        ));
     }
 
     fn declared(node: &str, name: &str) -> ParamDeclarations {
