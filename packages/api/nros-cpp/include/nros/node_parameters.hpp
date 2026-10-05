@@ -63,6 +63,7 @@
 #include "nros/declared_params.hpp" // phase-446 W6 -- `nros::param_type`
 #include "nros/parameter.hpp"       // phase-426 W4 -- `nros::Seq<T, N>`
 #include "nros/result.hpp"
+#include "nros/traits.hpp" // issue 1678 -- `enable_if` without <type_traits>
 #include "nros_cpp_ffi.h"
 
 #ifdef NROS_CPP_STD
@@ -99,17 +100,139 @@
 namespace nros {
 namespace detail {
 
+// --- the ONE type table -----------------------------------------------------
+//
+// phase-446 W6 -- the contract type a `declare_parameter<T>` declares, as the
+// rcl_interfaces code the declared-parameter table carries: `bool`, any other
+// integer, a floating-point type, and a string. `Node::declare_parameter`
+// passes it to `Node::check_declared_param`.
+//
+// Issue 1678: it is ALSO what selects the store call below. The table used to
+// sit after a separate overload set (`bool`, `int`, `int64_t`, `double`,
+// `const char*`) and claim more than that set took -- `long long`, `unsigned`,
+// `short`, `float` were INTEGER / DOUBLE here and bound to no call, and which
+// integers did bind depended on the data model (`int64_t` is `long` on LP64,
+// `long long` on ILP32), so `declare_parameter<long long>` compiled on a
+// Cortex-M and was ambiguous on the host. Keying the calls on this table makes
+// "the contract accepts T" and "the store takes T" one fact.
+//
+// Spelled as explicit specializations, not `std::is_integral` & co.: this
+// header is parsed under `-nostdinc++` (the ThreadX shim probe in
+// `check-cpp`), where `<type_traits>` is not available. Anything not listed
+// is a string, which is also what the `const char*` overload stores.
+template <typename T> struct node_param_type {
+    static constexpr int value = ::nros::param_type::STRING;
+};
+#define NROS_NODE_PARAM_TYPE_(T, CODE)                                                             \
+    template <> struct node_param_type<T> {                                                        \
+        static constexpr int value = ::nros::param_type::CODE;                                     \
+    }
+NROS_NODE_PARAM_TYPE_(bool, BOOL);
+NROS_NODE_PARAM_TYPE_(char, INTEGER);
+NROS_NODE_PARAM_TYPE_(signed char, INTEGER);
+NROS_NODE_PARAM_TYPE_(unsigned char, INTEGER);
+NROS_NODE_PARAM_TYPE_(short, INTEGER);
+NROS_NODE_PARAM_TYPE_(unsigned short, INTEGER);
+NROS_NODE_PARAM_TYPE_(int, INTEGER);
+NROS_NODE_PARAM_TYPE_(unsigned int, INTEGER);
+NROS_NODE_PARAM_TYPE_(long, INTEGER);
+NROS_NODE_PARAM_TYPE_(unsigned long, INTEGER);
+NROS_NODE_PARAM_TYPE_(long long, INTEGER);
+NROS_NODE_PARAM_TYPE_(unsigned long long, INTEGER);
+NROS_NODE_PARAM_TYPE_(float, DOUBLE);
+NROS_NODE_PARAM_TYPE_(double, DOUBLE);
+NROS_NODE_PARAM_TYPE_(long double, DOUBLE);
+#undef NROS_NODE_PARAM_TYPE_
+
+// --- conversions between a caller's scalar and the store's slot -------------
+//
+// The store has three numeric slots: `bool`, `int64_t`, `double`. Every other
+// type the table classifies converts at this boundary, and the conversion is
+// CHECKED where it can lose a value: an integer read back into a narrower `T`
+// must fit, and an unsigned value above INT64_MAX is refused rather than
+// wrapped to a negative number. Refusal is `NROS_CPP_RET_INVALID_ARGUMENT`,
+// with the caller's `out` left untouched -- a wrapped integer is a plausible
+// wrong answer, which is worse than a visible failure. Floating point narrows
+// by `static_cast` (an out-of-range `double` becomes an infinity, which IS
+// visible), as rclcpp's own `get_value<float>` does.
+
+template <typename T> struct node_param_is_unsigned {
+    static constexpr bool value = false;
+};
+#define NROS_NODE_PARAM_UNSIGNED_(T)                                                               \
+    template <> struct node_param_is_unsigned<T> {                                                 \
+        static constexpr bool value = true;                                                        \
+    }
+NROS_NODE_PARAM_UNSIGNED_(unsigned char);
+NROS_NODE_PARAM_UNSIGNED_(unsigned short);
+NROS_NODE_PARAM_UNSIGNED_(unsigned int);
+NROS_NODE_PARAM_UNSIGNED_(unsigned long);
+NROS_NODE_PARAM_UNSIGNED_(unsigned long long);
+#undef NROS_NODE_PARAM_UNSIGNED_
+
+/// Does the stored `v` read back into `T` without changing value? The round
+/// trip catches every narrowing except same-width sign reinterpretation
+/// (`-1` -> `uint64_t` -> `-1`), which the sign test catches.
+template <typename T> constexpr bool node_param_fits(int64_t v) {
+    return static_cast<int64_t>(static_cast<T>(v)) == v &&
+           !(node_param_is_unsigned<T>::value && v < 0);
+}
+/// Does a caller's `v` reach the `int64_t` slot without changing value? Only
+/// an unsigned 64-bit value above INT64_MAX does not.
+template <typename T> constexpr bool node_param_widens(T v) {
+    return !(node_param_is_unsigned<T>::value && static_cast<int64_t>(v) < 0);
+}
+
+/// The store's slot type for a scalar `T` -- what an ARRAY of `T` crosses the
+/// FFI as. A string has no array slot, so `Seq<const char*, N>` names no type
+/// and does not compile, as it did not before.
+template <int Code> struct node_param_slot_of {};
+template <> struct node_param_slot_of<::nros::param_type::BOOL> {
+    using type = bool;
+};
+template <> struct node_param_slot_of<::nros::param_type::INTEGER> {
+    using type = int64_t;
+};
+template <> struct node_param_slot_of<::nros::param_type::DOUBLE> {
+    using type = double;
+};
+template <typename T>
+using node_param_slot = typename node_param_slot_of<node_param_type<T>::value>::type;
+
+/// One stored slot value into a caller's `T`, refusing a narrowing that would
+/// change the value. Overloaded on the slot type, which every caller passes
+/// exactly (an element of a slot-typed buffer), so the set cannot be ambiguous.
+template <typename T> inline bool node_param_narrow(int64_t v, T& out) {
+    if (!node_param_fits<T>(v)) {
+        return false;
+    }
+    out = static_cast<T>(v);
+    return true;
+}
+template <typename T> inline bool node_param_narrow(double v, T& out) {
+    out = static_cast<T>(v);
+    return true;
+}
+template <typename T> inline bool node_param_narrow(bool v, T& out) {
+    out = v;
+    return true;
+}
+
+/// `Result`, for a `T` the table classifies as `Code`; no overload otherwise.
+template <typename T, int Code>
+using node_param_if_kind =
+    typename ::nros::tr::enable_if<node_param_type<T>::value == Code, Result>::type;
+
 // --- declare ----------------------------------------------------------------
 //
-// Overload sets, not a template chain with `if constexpr`: this header must
-// parse at C++14 (`just check cpp` compiles ~15 probes at `-std=c++14`, and
-// PX4 modules build `-std=gnu++14 -Werror`). Tag dispatch is what
-// `component_node.hpp:582` said to reach for if the C++17 branch ever had to
-// come back down, and deleting `adopt_launch_seed_` is what brought it down.
-//
-// The set mirrors `nros::ParameterServer`'s `declare_impl` / `get_impl` /
-// `set_impl` exactly, INCLUDING the `int` overloads — a ported node writes
-// `declare_parameter<int>("depth", 10)` and `int` is not `int64_t`.
+// Overloads on the SLOT types, then ONE template per numeric kind for every
+// other type the table names. Not a template chain with `if constexpr`: this
+// header must parse at C++14 (`just check cpp` compiles ~15 probes at
+// `-std=c++14`, and PX4 modules build `-std=gnu++14 -Werror`). A slot overload
+// is an exact non-template match, so it wins over the template for its own
+// type; any other type reaches the template, where it is an exact match too —
+// so no call is left to a conversion ranking, and none can be ambiguous on
+// either data model (issue 1678).
 
 inline Result node_param_declare(const nros_cpp_node_t* node, const char* name, bool v) {
     return Result(nros_cpp_node_declare_param_bool(node, name, v));
@@ -117,14 +240,28 @@ inline Result node_param_declare(const nros_cpp_node_t* node, const char* name, 
 inline Result node_param_declare(const nros_cpp_node_t* node, const char* name, int64_t v) {
     return Result(nros_cpp_node_declare_param_integer(node, name, v));
 }
-inline Result node_param_declare(const nros_cpp_node_t* node, const char* name, int v) {
-    return Result(nros_cpp_node_declare_param_integer(node, name, static_cast<int64_t>(v)));
-}
 inline Result node_param_declare(const nros_cpp_node_t* node, const char* name, double v) {
     return Result(nros_cpp_node_declare_param_double(node, name, v));
 }
 inline Result node_param_declare(const nros_cpp_node_t* node, const char* name, const char* v) {
     return Result(nros_cpp_node_declare_param_string(node, name, v));
+}
+/// Any other integer -- `int` (what a ported node writes), `long long` on
+/// LP64, `long` on ILP32, `short`, the unsigned types -- widens to the
+/// `int64_t` slot.
+template <typename T>
+inline node_param_if_kind<T, ::nros::param_type::INTEGER>
+node_param_declare(const nros_cpp_node_t* node, const char* name, T v) {
+    if (!node_param_widens<T>(v)) {
+        return Result(NROS_CPP_RET_INVALID_ARGUMENT);
+    }
+    return Result(nros_cpp_node_declare_param_integer(node, name, static_cast<int64_t>(v)));
+}
+/// `float` / `long double` go through the `double` slot.
+template <typename T>
+inline node_param_if_kind<T, ::nros::param_type::DOUBLE>
+node_param_declare(const nros_cpp_node_t* node, const char* name, T v) {
+    return Result(nros_cpp_node_declare_param_double(node, name, static_cast<double>(v)));
 }
 
 // --- get --------------------------------------------------------------------
@@ -135,18 +272,34 @@ inline Result node_param_get(const nros_cpp_node_t* node, const char* name, bool
 inline Result node_param_get(const nros_cpp_node_t* node, const char* name, int64_t& out) {
     return Result(nros_cpp_node_get_param_integer(node, name, &out));
 }
-/// `int` reads go through the `int64_t` slot, then narrow — symmetric with the
-/// `int` declare above, and the same shape `ParameterServer::get_impl` had.
-inline Result node_param_get(const nros_cpp_node_t* node, const char* name, int& out) {
-    int64_t v = 0;
-    Result r(nros_cpp_node_get_param_integer(node, name, &v));
-    if (r.ok()) {
-        out = static_cast<int>(v);
-    }
-    return r;
-}
 inline Result node_param_get(const nros_cpp_node_t* node, const char* name, double& out) {
     return Result(nros_cpp_node_get_param_double(node, name, &out));
+}
+/// Any other integer reads the `int64_t` slot, then narrows -- refused, with
+/// `out` untouched, when the stored value does not fit `T`.
+template <typename T>
+inline node_param_if_kind<T, ::nros::param_type::INTEGER>
+node_param_get(const nros_cpp_node_t* node, const char* name, T& out) {
+    int64_t v = 0;
+    Result r(nros_cpp_node_get_param_integer(node, name, &v));
+    if (!r.ok()) {
+        return r;
+    }
+    if (!node_param_fits<T>(v)) {
+        return Result(NROS_CPP_RET_INVALID_ARGUMENT);
+    }
+    out = static_cast<T>(v);
+    return r;
+}
+template <typename T>
+inline node_param_if_kind<T, ::nros::param_type::DOUBLE> node_param_get(const nros_cpp_node_t* node,
+                                                                        const char* name, T& out) {
+    double v = 0.0;
+    Result r(nros_cpp_node_get_param_double(node, name, &v));
+    if (r.ok()) {
+        out = static_cast<T>(v);
+    }
+    return r;
 }
 /// Read a string parameter into a caller buffer, null-terminated.
 inline Result node_param_get(const nros_cpp_node_t* node, const char* name, char* out,
@@ -167,14 +320,24 @@ inline Result node_param_set(const nros_cpp_node_t* node, const char* name, bool
 inline Result node_param_set(const nros_cpp_node_t* node, const char* name, int64_t v) {
     return Result(nros_cpp_node_set_param_integer(node, name, v));
 }
-inline Result node_param_set(const nros_cpp_node_t* node, const char* name, int v) {
-    return Result(nros_cpp_node_set_param_integer(node, name, static_cast<int64_t>(v)));
-}
 inline Result node_param_set(const nros_cpp_node_t* node, const char* name, double v) {
     return Result(nros_cpp_node_set_param_double(node, name, v));
 }
 inline Result node_param_set(const nros_cpp_node_t* node, const char* name, const char* v) {
     return Result(nros_cpp_node_set_param_string(node, name, v));
+}
+template <typename T>
+inline node_param_if_kind<T, ::nros::param_type::INTEGER>
+node_param_set(const nros_cpp_node_t* node, const char* name, T v) {
+    if (!node_param_widens<T>(v)) {
+        return Result(NROS_CPP_RET_INVALID_ARGUMENT);
+    }
+    return Result(nros_cpp_node_set_param_integer(node, name, static_cast<int64_t>(v)));
+}
+template <typename T>
+inline node_param_if_kind<T, ::nros::param_type::DOUBLE> node_param_set(const nros_cpp_node_t* node,
+                                                                        const char* name, T v) {
+    return Result(nros_cpp_node_set_param_double(node, name, static_cast<double>(v)));
 }
 
 // --- has --------------------------------------------------------------------
@@ -245,22 +408,69 @@ inline nros_cpp_ret_t node_param_set_array_ffi(const nros_cpp_node_t* node, cons
     return nros_cpp_node_set_param_bool_array(node, name, d, len);
 }
 
+// --- element conversion for the array calls (issue 1678) ---------------------
+//
+// The FFI carries an array as its SLOT type (`bool`, `int64_t`, `double`), and
+// `node_param_type` calls `Seq<int, N>` / `std::vector<float>` INTEGER_ARRAY /
+// DOUBLE_ARRAY just as it calls their scalars INTEGER / DOUBLE. So an element
+// type that is not its slot type converts here, element by element and with
+// the scalar rules: a value that would change is refused
+// (`NROS_CPP_RET_INVALID_ARGUMENT`), never wrapped. An element type that IS
+// its slot type crosses as it is, with no copy.
+
+template <typename S>
+using node_param_array_in_fn = nros_cpp_ret_t (*)(const nros_cpp_node_t*, const char*, const S*,
+                                                  ::size_t);
+
+/// The elements ARE the slot type: pass them through; `scratch` is unused.
+template <typename S>
+inline Result node_param_array_in(const nros_cpp_node_t* node, const char* name, const S* d,
+                                  ::size_t len, S* /*scratch*/, node_param_array_in_fn<S> fn) {
+    return Result(fn(node, name, d, len));
+}
+/// Any other element type widens into `scratch[len]` first.
+template <typename T, typename S>
+inline Result node_param_array_in(const nros_cpp_node_t* node, const char* name, const T* d,
+                                  ::size_t len, S* scratch, node_param_array_in_fn<S> fn) {
+    for (::size_t i = 0; i < len; ++i) {
+        if (!node_param_widens<T>(d[i])) {
+            return Result(NROS_CPP_RET_INVALID_ARGUMENT);
+        }
+        scratch[i] = static_cast<S>(d[i]);
+    }
+    return Result(fn(node, name, scratch, len));
+}
+
 // --- Seq<T, N> values --------------------------------------------------------
 //
 // Freestanding, so no `#ifdef`: this is the array surface a `-nostdinc++`
 // node has. `Seq` is a VALUE - the store copies the elements in on declare
 // and out on get, and the caller's `Seq` need not outlive either call.
 
+/// Scratch capacity a `Seq<T, N>` needs to cross as its slot type: none when
+/// `T` already is it (one element, never touched), `N` otherwise.
+template <typename T, ::size_t N> struct node_param_seq_scratch {
+    static constexpr ::size_t value =
+        ::nros::tr::is_same<T, node_param_slot<T>>::value ? ::size_t(1) : N;
+};
+
 template <typename T, ::size_t N>
 inline Result node_param_declare(const nros_cpp_node_t* node, const char* name,
                                  const ::nros::Seq<T, N>& v) {
-    return Result(node_param_declare_array_ffi(node, name, v.data(), v.size()));
+    using S = node_param_slot<T>;
+    S scratch[node_param_seq_scratch<T, N>::value];
+    return node_param_array_in(
+        node, name, v.data(), v.size(), scratch,
+        static_cast<node_param_array_in_fn<S>>(&node_param_declare_array_ffi));
 }
 
 template <typename T, ::size_t N>
 inline Result node_param_set(const nros_cpp_node_t* node, const char* name,
                              const ::nros::Seq<T, N>& v) {
-    return Result(node_param_set_array_ffi(node, name, v.data(), v.size()));
+    using S = node_param_slot<T>;
+    S scratch[node_param_seq_scratch<T, N>::value];
+    return node_param_array_in(node, name, v.data(), v.size(), scratch,
+                               static_cast<node_param_array_in_fn<S>>(&node_param_set_array_ffi));
 }
 
 /// Read an array parameter into a `Seq<T, N>`.
@@ -268,11 +478,12 @@ inline Result node_param_set(const nros_cpp_node_t* node, const char* name,
 /// A stored array LONGER than `N` is refused (`ErrorCode::Full`) and `out` is
 /// left cleared, never truncated: a short weight matrix is a plausible wrong
 /// answer rather than a visible failure, which is the same reason the
-/// `std::vector` read below asks for the length first.
+/// `std::vector` read below asks for the length first. An element that does
+/// not fit `T` is refused the same way (`InvalidArgument`, `out` cleared).
 template <typename T, ::size_t N>
 inline Result node_param_get(const nros_cpp_node_t* node, const char* name,
                              ::nros::Seq<T, N>& out) {
-    T buf[N];
+    node_param_slot<T> buf[N];
     ::size_t len = 0;
     Result r(node_param_get_array_ffi(node, name, buf, N, &len));
     out.clear();
@@ -280,7 +491,12 @@ inline Result node_param_get(const nros_cpp_node_t* node, const char* name,
         return r;
     }
     for (::size_t i = 0; i < len; ++i) {
-        (void)out.push_back(buf[i]);
+        T e = T();
+        if (!node_param_narrow(buf[i], e)) {
+            out.clear();
+            return Result(NROS_CPP_RET_INVALID_ARGUMENT);
+        }
+        (void)out.push_back(e);
     }
     return r;
 }
@@ -310,7 +526,11 @@ inline Result node_param_get(const nros_cpp_node_t* node, const char* name, ::st
 template <typename T>
 inline Result node_param_declare(const nros_cpp_node_t* node, const char* name,
                                  const ::std::vector<T>& v) {
-    return Result(node_param_declare_array_ffi(node, name, v.data(), v.size()));
+    using S = node_param_slot<T>;
+    ::std::vector<S> scratch(::nros::tr::is_same<T, S>::value ? 0 : v.size());
+    return node_param_array_in(
+        node, name, v.data(), v.size(), scratch.data(),
+        static_cast<node_param_array_in_fn<S>>(&node_param_declare_array_ffi));
 }
 
 /// Set a declared array parameter from a `std::vector<T>`.
@@ -322,7 +542,10 @@ inline Result node_param_declare(const nros_cpp_node_t* node, const char* name,
 template <typename T>
 inline Result node_param_set(const nros_cpp_node_t* node, const char* name,
                              const ::std::vector<T>& v) {
-    return Result(node_param_set_array_ffi(node, name, v.data(), v.size()));
+    using S = node_param_slot<T>;
+    ::std::vector<S> scratch(::nros::tr::is_same<T, S>::value ? 0 : v.size());
+    return node_param_array_in(node, name, v.data(), v.size(), scratch.data(),
+                               static_cast<node_param_array_in_fn<S>>(&node_param_set_array_ffi));
 }
 
 /// Read an array parameter into a `std::vector<T>`.
@@ -332,18 +555,46 @@ inline Result node_param_set(const nros_cpp_node_t* node, const char* name,
 /// alternative — a fixed guess at the capacity — is how a longer-than-expected
 /// array comes back truncated, and a truncated weight matrix is a plausible
 /// wrong answer rather than a visible failure.
-template <typename T>
-inline Result node_param_get(const nros_cpp_node_t* node, const char* name, ::std::vector<T>& out) {
+///
+/// An element type that is not its slot type (`std::vector<int>`) reads into a
+/// slot-typed vector and narrows each element, refusing one that does not fit
+/// (`InvalidArgument`, `out` untouched).
+template <typename S>
+inline Result node_param_get_vector(const nros_cpp_node_t* node, const char* name,
+                                    ::std::vector<S>& out, ::nros::tr::true_type /*T is S*/) {
     ::size_t len = 0;
-    nros_cpp_ret_t probe = node_param_get_array_ffi(node, name, static_cast<T*>(nullptr), 0, &len);
+    nros_cpp_ret_t probe = node_param_get_array_ffi(node, name, static_cast<S*>(nullptr), 0, &len);
     if (probe != NROS_CPP_RET_OK && probe != NROS_CPP_RET_FULL) {
         return Result(probe);
     }
-    out.assign(len, T());
+    out.assign(len, S());
     if (len == 0) {
         return Result(NROS_CPP_RET_OK);
     }
     return Result(node_param_get_array_ffi(node, name, out.data(), out.size(), &len));
+}
+template <typename T>
+inline Result node_param_get_vector(const nros_cpp_node_t* node, const char* name,
+                                    ::std::vector<T>& out, ::nros::tr::false_type /*T is S*/) {
+    ::std::vector<node_param_slot<T>> slots;
+    Result r = node_param_get_vector(node, name, slots, ::nros::tr::true_type());
+    if (!r.ok()) {
+        return r;
+    }
+    ::std::vector<T> converted(slots.size(), T());
+    for (::size_t i = 0; i < slots.size(); ++i) {
+        if (!node_param_narrow(slots[i], converted[i])) {
+            return Result(NROS_CPP_RET_INVALID_ARGUMENT);
+        }
+    }
+    out.swap(converted);
+    return r;
+}
+template <typename T>
+inline Result node_param_get(const nros_cpp_node_t* node, const char* name, ::std::vector<T>& out) {
+    return node_param_get_vector(
+        node, name, out,
+        ::nros::tr::integral_constant<bool, ::nros::tr::is_same<T, node_param_slot<T>>::value>());
 }
 
 #endif // NROS_CPP_STD
@@ -560,41 +811,6 @@ inline Result node_param_apply_descriptor(const nros_cpp_node_t* node, const cha
     }
     return r;
 }
-
-// phase-446 W6 -- the contract type a `declare_parameter<T>` declares, as the
-// rcl_interfaces code the declared-parameter table carries. Mirrors the store
-// overloads above: `bool`, any other integer (`int` and `int64_t` both reach
-// the integer slot), a floating-point type, and a string. Lives beside those
-// overloads so the two cannot drift apart; `Node::declare_parameter` passes it
-// to `Node::check_declared_param`.
-//
-// Spelled as explicit specializations, not `std::is_integral` & co.: this
-// header is parsed under `-nostdinc++` (the ThreadX shim probe in
-// `check-cpp`), where `<type_traits>` is not available. Anything not listed
-// is a string, which is also what the `const char*` overload stores.
-template <typename T> struct node_param_type {
-    static constexpr int value = ::nros::param_type::STRING;
-};
-#define NROS_NODE_PARAM_TYPE_(T, CODE)                                                             \
-    template <> struct node_param_type<T> {                                                        \
-        static constexpr int value = ::nros::param_type::CODE;                                     \
-    }
-NROS_NODE_PARAM_TYPE_(bool, BOOL);
-NROS_NODE_PARAM_TYPE_(char, INTEGER);
-NROS_NODE_PARAM_TYPE_(signed char, INTEGER);
-NROS_NODE_PARAM_TYPE_(unsigned char, INTEGER);
-NROS_NODE_PARAM_TYPE_(short, INTEGER);
-NROS_NODE_PARAM_TYPE_(unsigned short, INTEGER);
-NROS_NODE_PARAM_TYPE_(int, INTEGER);
-NROS_NODE_PARAM_TYPE_(unsigned int, INTEGER);
-NROS_NODE_PARAM_TYPE_(long, INTEGER);
-NROS_NODE_PARAM_TYPE_(unsigned long, INTEGER);
-NROS_NODE_PARAM_TYPE_(long long, INTEGER);
-NROS_NODE_PARAM_TYPE_(unsigned long long, INTEGER);
-NROS_NODE_PARAM_TYPE_(float, DOUBLE);
-NROS_NODE_PARAM_TYPE_(double, DOUBLE);
-NROS_NODE_PARAM_TYPE_(long double, DOUBLE);
-#undef NROS_NODE_PARAM_TYPE_
 
 /// The array code for a scalar code: `std::vector<T>` declares the array of
 /// whatever `T` declares.
