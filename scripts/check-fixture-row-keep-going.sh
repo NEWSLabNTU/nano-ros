@@ -29,7 +29,12 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/nros-row-ledger.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 
 lib="$PWD/scripts/build/fixture-row-ledger.sh"
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
 
+# A-D are the negative controls, run on every invocation (the normal path).
+self_test() {
+local out rc ledger owner
 # A — unset: the failure propagates and -e stops the script.
 out="$(bash -c "set -e; source '$lib'; r(){ return 3; }; nros_fixture_row a r; echo AFTER" 2>&1)" && rc=0 || rc=$?
 [ "$rc" = 3 ] || bad "A: unset ledger returned rc=$rc, want 3 (the row's own status)"
@@ -42,7 +47,7 @@ r(){ return 4; }; ok(){ echo NEXT_RAN; }
 nros_fixture_row 'row one' r; nros_fixture_row 'row two' ok; echo DONE" 2>&1)" && rc=0 || rc=$?
 [ "$rc" = 0 ] || bad "B: keep-going returned rc=$rc, want 0"
 case "$out" in *NEXT_RAN*DONE*) ;; *) bad "B: the next row did not run: $out" ;; esac
-grep -qx $'row one\trc=4' "$ledger" 2>/dev/null || bad "B: ledger lacks the failed row: $(cat "$ledger" 2>/dev/null)"
+nros_grep_q -x $'row one\trc=4' "$ledger" || bad "B: ledger lacks the failed row: $(cat "$ledger" 2>/dev/null)"
 [ "$(grep -c . "$ledger")" = 1 ] || bad "B: ledger records more than the one failed row"
 
 # C — set -e inside a kept-going row.
@@ -51,7 +56,7 @@ out="$(NROS_FIXTURE_FAILED_ROWS="$ledger" bash -c "set -e; source '$lib'
 r(){ false; echo SWALLOWED; }
 nros_fixture_row 'row c' r" 2>&1)" || true
 case "$out" in *SWALLOWED*) bad "C: set -e was suspended inside the row — its failure ran on" ;; esac
-grep -q '^row c' "$ledger" 2>/dev/null || bad "C: a row failing mid-body was not recorded"
+nros_grep_q '^row c' "$ledger" || bad "C: a row failing mid-body was not recorded"
 
 # D — the owner.
 owner="scripts/ci/fixture-rows-keep-going.sh"
@@ -63,13 +68,16 @@ rc=0; bash "$owner" "$tmp/d3.tsv" -- bash -c 'exit 7' >/dev/null 2>&1 || rc=$?
 printf 'stale\trc=1\n' > "$tmp/d4.tsv"
 bash "$owner" "$tmp/d4.tsv" -- true >/dev/null 2>&1 || bad "D: a stale ledger from a previous run failed a green step"
 
+}
+self_test
+
 # E — reach.
 fb=scripts/build/fixtures-build.sh
 ws=scripts/build/workspace-fixtures-build.sh
 grep -nE '^[[:space:]]*"\$fn" "\$line"' "$fb" && bad "E: $fb calls a row directly, not through nros_fixture_row"
-grep -q 'nros_fixture_row "$(nros_fixture_row_label "$line")" "$fn" "$line"' "$fb" \
+nros_grep_q -F 'nros_fixture_row "$(nros_fixture_row_label "$line")" "$fn" "$line"' "$fb" \
     || bad "E: $fb's serial loop does not go through nros_fixture_row"
-grep -q '+@nros_fixture_row ' "$fb" || bad "E: $fb's make rows do not go through nros_fixture_row"
+nros_grep_q -F '+@nros_fixture_row ' "$fb" || bad "E: $fb's make rows do not go through nros_fixture_row"
 direct="$(grep -nE '^[[:space:]]*build_workspace "\$record"' "$ws" || true)"
 [ -z "$direct" ] || bad "E: $ws calls build_workspace directly: $direct"
 [ "$(grep -c 'nros_ws_row "$record"' "$ws")" -ge 2 ] \
