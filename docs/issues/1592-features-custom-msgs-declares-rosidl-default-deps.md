@@ -77,3 +77,35 @@ be checked against the other (the 0196 rule).
 3. Acceptance is the `native` module of a tier-2 build reaching a verdict with no
    `NROS_ALLOW_UNRESOLVED_DEPS` anywhere in the path, and a check that would catch
    a new in-tree `package.xml` declaring an unresolvable name.
+
+## A second site: `workspace-shadowing` declares `rclcpp` (2026-10-05)
+
+Scheduled `nightly` run **37267865689** (head `40fb98d8b`), job **111628381118**
+"tier 2 nightly (pairwise cover)", step `just build tier2-nightly`. For the
+first time in this episode every fixture module built (`== zephyr == OK` …
+`== native == OK`, `All test fixtures built.`), and the lane reached the
+compile-check stage (`compile-check: 51 unit(s), jobserver pool=20`). One unit
+failed, and the jobserver stopped the rest:
+
+```
+== cmake-fixture: shadowing ==
+Error: 1 <depend> name(s) resolve to nothing:
+  rclcpp — declared by .../build/cmake-fixtures/shadowing/src/consumer/package.xml
+make: *** [.../build/jobserver-pool/compile-check-2228265.mk:83: u25] Error 1
+error: recipe `build-compile-check-fixtures` failed on line 1826 with exit code 2
+```
+
+The row is `[[compile_check_fixture]] id = "shadowing"` (`builder =
+"cmake-configure"`, `dir = "examples/templates/workspace-shadowing"`), and
+`src/consumer/package.xml` declares `<depend>rclcpp</depend>`. That is this
+issue's class at a second site: a template's ROS-only `<depend>` resolves to
+nothing on a ROS-less runner, so `nros build` refuses it. It was latent until
+now because no earlier night got past the module stage.
+
+**Reading note for this lane:** the job log does not name the failing unit.
+The unit's `Error:` text is interleaved with 25 other units' output, and only
+`make: *** [...] u25] Error 1` marks it; there is no per-unit status line. The
+`fixtures built (...)` summary is printed once per finished unit (25 times
+here), so a reader of the tail sees 25 successes followed by `exit code 2`.
+
+Not issue 1665 (the Zephyr module built), not 1277 (esp32 built), not disk.
