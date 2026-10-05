@@ -152,6 +152,80 @@ fn the_symbol_counter_reads_local_and_global_text_symbols() {
     assert_eq!(none["xrce"], 0);
 }
 
+/// Issue 1690 — map `f` over `items` on a bounded pool of threads, results in
+/// input order.
+///
+/// Both tests here visit EVERY `workspace_fixture` row, and they did it one row
+/// after another, so their wall time was the SUM over rows: the runtime test was
+/// killed at nextest's 60 s terminate with no message (solo too, so not load),
+/// and the `nm` test sat at 54.8 s. A sum grows with every row anybody adds; a
+/// pool's wall time is bounded by the slowest row times the row count over the
+/// pool width. Rows are independent by construction — each run gets its own
+/// `ROS_DOMAIN_ID` and its own process group — so nothing is shared to order.
+///
+/// Width is the host's parallelism capped at [`POOL_CAP`]: the rows open RMW
+/// sessions, and a 64-way box gains nothing from 64 concurrent discoveries.
+fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R> {
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
+    let width = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .clamp(1, POOL_CAP)
+        .min(items.len().max(1));
+    let next = AtomicUsize::new(0);
+    let out: Mutex<Vec<Option<R>>> = Mutex::new((0..items.len()).map(|_| None).collect());
+    std::thread::scope(|s| {
+        for _ in 0..width {
+            s.spawn(|| {
+                loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(item) = items.get(i) else { break };
+                    let r = f(item);
+                    out.lock().unwrap_or_else(|e| e.into_inner())[i] = Some(r);
+                }
+            });
+        }
+    });
+    out.into_inner()
+        .unwrap_or_else(|e| e.into_inner())
+        .into_iter()
+        .map(|r| r.expect("every index was visited"))
+        .collect()
+}
+
+/// [`par_map`]'s width ceiling.
+const POOL_CAP: usize = 8;
+
+/// [`par_map`]'s negative control, on the normal path: results come back in
+/// INPUT order, every item is visited exactly once, and the items run
+/// concurrently. The last is the property issue 1690 needed — a serial map of
+/// these eight 300 ms items takes 2.4 s, which this refuses.
+#[test]
+fn the_row_pool_runs_rows_concurrently_and_keeps_their_order() {
+    let items: Vec<usize> = (0..8).collect();
+    let t0 = std::time::Instant::now();
+    let out = par_map(&items, |i| {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        i * 10
+    });
+    let took = t0.elapsed();
+    assert_eq!(out, (0..8).map(|i| i * 10).collect::<Vec<_>>());
+    let width = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .min(POOL_CAP);
+    if width >= 2 {
+        assert!(
+            took < std::time::Duration::from_millis(300 * 8 - 300),
+            "8 x 300 ms on a pool of {width} took {took:?} -- the rows ran serially"
+        );
+    }
+    assert!(par_map(&[] as &[usize], |i| *i).is_empty());
+}
+
 /// The binary this row declares, if it is built.
 ///
 /// Named from the manifest rather than found by walking: a walk cannot tell a
@@ -263,6 +337,10 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
     let mut wrong: Vec<String> = Vec::new();
     let mut promised = 0usize;
 
+    // Locate serially (cheap, and it counts `promised`), then run `nm` over the
+    // located binaries on a pool (issue 1690): `nm` on an 8 MB binary is the
+    // cost, and summed over every row it reached 54.8 s of a 60 s budget.
+    let mut located: Vec<(&nros_tests::fixtures::lane::Row, PathBuf)> = Vec::new();
     for row in nros_tests::fixtures::lane::manifest_rows() {
         if row.kind != "workspace_fixture" {
             continue;
@@ -274,14 +352,18 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
         if !BACKENDS.iter().any(|(n, _)| *n == declared) {
             continue;
         }
+        // Not located: `built_row_binary` says why that alone fails nothing,
+        // and `none_located` when it does.
+        if let Some(bin) = built_row_binary(row, &mut promised) {
+            located.push((row, bin));
+        }
+    }
+    let symbols = par_map(&located, |(_, bin)| backend_symbols(bin));
 
+    for ((row, bin), counts) in located.iter().zip(symbols) {
+        let declared = row.coord.2.as_str();
         {
-            // Not located: `built_row_binary` says why that alone fails
-            // nothing, and `none_located` when it does.
-            let Some(bin) = built_row_binary(row, &mut promised) else {
-                continue;
-            };
-            let Some(counts) = backend_symbols(&bin) else {
+            let Some(counts) = counts else {
                 unreadable += 1;
                 continue;
             };
@@ -351,7 +433,13 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
 /// nodes, spins once, and returns. Generous because a Cyclone entry does discovery first, and a
 /// loaded CI box is slow — but bounded, because a HANG is a finding too and
 /// must not become a hung suite.
-const RUN_BUDGET: std::time::Duration = std::time::Duration::from_secs(45);
+///
+/// Issue 1690 — 20 s, measured: solo on this host the slowest of 73 rows took
+/// 3.8 s (`workspace-cpp-native-xrce`, failing its Agent lookup), so 20 s is
+/// five times the worst legitimate row. It was 45 s, which a single hung row
+/// spent out of nextest's 60 s terminate on its own; with the rows on
+/// [`par_map`] the worst case is now one budget plus the rest of the pool.
+const RUN_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
 
 /// Run one entry to completion, or kill it at [`RUN_BUDGET`].
 ///
@@ -420,18 +508,52 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
     let mut no_peer: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
     let mut promised = 0usize;
-    let mut located = 0usize;
-
+    let mut targets: Vec<(&nros_tests::fixtures::lane::Row, PathBuf)> = Vec::new();
     for row in nros_tests::fixtures::lane::manifest_rows() {
         if row.kind != "workspace_fixture" {
             continue;
         }
-        let Some(bin) = built_row_binary(row, &mut promised) else {
-            continue;
-        };
-        located += 1;
+        if let Some(bin) = built_row_binary(row, &mut promised) {
+            targets.push((row, bin));
+        }
+    }
+    let located = targets.len();
 
-        let (status, text) = run_entry(&bin);
+    // Issue 1690 — each row on the pool, each bounded by RUN_BUDGET, each
+    // timed. Run one after another, the rows' SUM outlived nextest's 60 s
+    // terminate, so a slow or hung row killed the whole test with no message
+    // naming it. Now the slowest row bounds the wall time and a hang is a
+    // per-row verdict below.
+    let started = std::time::Instant::now();
+    let runs = par_map(&targets, |(_, bin)| {
+        let t0 = std::time::Instant::now();
+        let (status, text) = run_entry(bin);
+        (status, text, t0.elapsed())
+    });
+    let wall = started.elapsed();
+    let mut slowest: Vec<(std::time::Duration, &str)> = targets
+        .iter()
+        .zip(&runs)
+        .map(|((row, _), (_, _, took))| (*took, row.id.as_str()))
+        .collect();
+    slowest.sort_by_key(|a| std::cmp::Reverse(a.0));
+    eprintln!(
+        "rmw-coordinate-truth: ran {located} entr{} in {wall:.1?} on a pool of {}; slowest: {}",
+        if located == 1 { "y" } else { "ies" },
+        POOL_CAP.min(
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1)
+        ),
+        slowest
+            .iter()
+            .take(5)
+            .map(|(d, id)| format!("{id} {d:.1?}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
+    for ((row, bin), (status, text, took)) in targets.iter().zip(runs) {
         let registered_ok = status.map(|s| s.success()).unwrap_or(false)
             && text.contains(nros_tests::output::ENTRY_COMPLETE_MARKER);
         if registered_ok {
@@ -463,18 +585,19 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
         // The session never came up (no router, no Agent), or the entry
         // stopped somewhere else entirely: this host owes it a peer. Reported
         // per row with the reason, never counted as coverage.
-        no_peer.push(format!(
-            "  {} ({}) — {}",
-            row.id,
-            row.coord.2,
-            if status.is_none() {
-                "no exit within the budget"
-            } else if text.contains(nros_tests::output::SESSION_OPEN_FAILED_MARKER) {
-                "the backend refused the session (this host runs no peer for it)"
-            } else {
-                "did not reach node registration"
-            }
-        ));
+        let why = if status.is_none() {
+            // Issue 1690 — a hang names itself: the row, the binary and the
+            // budget it outlived, instead of a suite-level TIMEOUT.
+            format!(
+                "HUNG: no exit within the {RUN_BUDGET:?} budget (killed after {took:.1?}): {}",
+                bin.display()
+            )
+        } else if text.contains(nros_tests::output::SESSION_OPEN_FAILED_MARKER) {
+            "the backend refused the session (this host runs no peer for it)".to_string()
+        } else {
+            "did not reach node registration".to_string()
+        };
+        no_peer.push(format!("  {} ({}) — {why}", row.id, row.coord.2));
     }
 
     if located == 0 {
