@@ -3413,6 +3413,25 @@ test-lane-contracts:
         echo "  green over an empty run (a gate that checks nothing reads as OK)." >&2
         exit 1
     fi
+    # An admitted target that no longer EXISTS (deleted or renamed since the
+    # census) makes nextest refuse the whole filterset with "operator didn't
+    # match any binary IDs" — which is what the merge queue saw when #1610
+    # deleted `native_orchestration_misuse`. Name it, from cargo's own target
+    # list, before running anything.
+    stale="$(cargo metadata --no-deps --format-version 1 2>/dev/null | python3 -c '
+    import json, sys
+    known = {"lib"} | {t["name"] for p in json.load(sys.stdin)["packages"]
+                       if p["name"] == "nros-tests" for t in p["targets"]}
+    for row in sys.argv[1:]:
+        if row.split("::", 1)[0] not in known:
+            print(row)' "${admitted[@]}")"
+    if [ -n "$stale" ]; then
+        echo "test-lane-contracts: $admission admits target(s) nros-tests no longer has:" >&2
+        printf '      %s\n' $stale >&2
+        echo "  Regenerate it on a tree containing the change that removed them:" >&2
+        echo "      scripts/test/lane-census.sh <gate-image> --runs 2 --admit $admission" >&2
+        exit 1
+    fi
     # A bare name admits a target WHOLE; `<target>::<test>` admits ONE test of a
     # target a sibling keeps from being admitted whole. Every named target is
     # BUILT (`--test`/`--lib`, so the lane never compiles the 120 it does not
@@ -3446,10 +3465,14 @@ test-lane-contracts:
     # say so, because a `[SKIPPED]` line reads like an expected skip — hence the
     # explanation below, printed only on the failure path.
     rc=0
+    # The junit the explanation below reads must be THIS run's: a filterset or
+    # build failure writes none, and an earlier run's file then made this lane
+    # report "an ADMITTED target SKIPPED" over a parse error.
+    started="$(mktemp)"
     cargo nextest run "${cargo_nextest_args[@]}" -p nros-tests "${args[@]}" || rc=$?
     if [ "$rc" -ne 0 ]; then
         junit=target/nextest/default/junit.xml
-        if [ -f "$junit" ] && nros_grep_q '\[SKIPPED' "$junit"; then
+        if [ "$junit" -nt "$started" ] && nros_grep_q '\[SKIPPED' "$junit"; then
             echo "" >&2
             echo "test-lane-contracts: an ADMITTED target SKIPPED (phase-475 W4)." >&2
             echo "  The census admitted it because it reached a verdict in the gate" >&2
@@ -3460,8 +3483,10 @@ test-lane-contracts:
             python3 scripts/test/lane-census-classify.py --out /dev/null --show SKIP \
                 "$junit" 2>/dev/null | sed -n '/^== SKIP ==/,$p' >&2 || true
         fi
+        rm -f "$started"
         exit "$rc"
     fi
+    rm -f "$started"
 
 [group("ci")]
 ci-l1:

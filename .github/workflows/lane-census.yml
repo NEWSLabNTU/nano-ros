@@ -60,6 +60,10 @@ jobs:
 
       - name: Census (2 runs, in this image)
         run: |
+          # `tee` opens its file when the pipeline STARTS, before the script
+          # creates its out dir — the first scheduled run (37182733460) measured
+          # a clean census (0 FAIL, 0 TIMEOUT) and a red step from exactly that.
+          mkdir -p census-out
           scripts/test/lane-census.sh --here census-out --runs 2 \
             --admit census-out/gate.txt | tee census-out/summary.txt
 
