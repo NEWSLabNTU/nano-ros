@@ -98,7 +98,7 @@ zenoh` green, with `NROS_CMAKE_EXTRA_DEFS` carrying
 
 ## Update 2026-09-08 — this is phase-438, and the measurement is in
 
-`docs/roadmap/phase-438-cpp-std-is-an-opt-in-porting-surface.md` is the class fix
+`docs/roadmap/archived/phase-438-cpp-std-is-an-opt-in-porting-surface.md` is the class fix
 this section asks for, and the option it takes is the first one: delete the
 `#elif __has_include` arm outright, so the std surface is reachable only through
 `NROS_CPP_STD`. Measured, per-header, on this issue's own toolchain

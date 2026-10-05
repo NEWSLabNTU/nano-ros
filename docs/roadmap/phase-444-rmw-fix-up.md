@@ -455,4 +455,4 @@ a phase's header against its own ticked boxes, not against a table's claim about
 another phase's headings; `check-markdown-links` only wanted the #1269 link
 repointed to `archived/`, which it got. A cross-document claim of absence has no
 gate, and on this evidence wants one — that is the shape
-[phase-450](phase-450-gate-reach-narrower-than-its-rule.md) collects.
+[phase-450](archived/phase-450-gate-reach-narrower-than-its-rule.md) collects.

@@ -81,7 +81,7 @@ only thing that would have said it earlier runs later.
 
 This is issue 1226's shape (a gate that works and does not run where its rule
 applies) crossed with issue 1040's (a placement that cannot report in time), and
-it is the class [phase-450](../roadmap/phase-450-gate-reach-narrower-than-its-rule.md)
+it is the class [phase-450](../../roadmap/archived/phase-450-gate-reach-narrower-than-its-rule.md)
 collects: **a gate that is green while the defect it exists for is present**, because
 it was not asked.
 

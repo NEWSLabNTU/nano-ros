@@ -43,11 +43,11 @@ stays in the table as the worked example:
 
 | issue | the rule | what the instrument actually reaches |
 | --- | --- | --- |
-| [#1153](../issues/archived/1153-rust-targets-covered-blind-to-zephyr-and-docker.md) | every declared Rust target has a row | three declaration globs of five — a target the tree builds for had no row at all |
-| [#1129](../issues/archived/1129-fixture-err-laundered-into-skip-wider-class.md) | a fixture `Err` may not become a `skip!` | one spelling — 54 of 58 remaining sites say `not built`, which `check-skip-budget` cannot see |
-| [#1161](../issues/archived/1161-required-features-tests-counts-skips-as-failures.md) (RESOLVED 2026-09-08) | a lane's pass means its tests ran | a missing FIXTURE is forbidden, a missing CAPABILITY is not — the lane reported pass having run 7 of 20. Closed by PR #734 before this phase was written; W2 records it |
-| [#1051](../issues/archived/1051-pinned-locks-gate-suggests-a-destructive-fix.md) + [#1294](../issues/archived/1294-submodule-pinned-locks-remedy-points-at-a-rewind.md) | a red names its cause | one of two causes asserted as the only one, with a remedy that would rewrite a CORRECT lock to match a drifted checkout — and following it records a submodule REWIND |
-| [#1236](../issues/archived/1236-unsafe-census-ratchet-for-crates-that-cannot-forbid.md) | `unsafe` does not grow unnoticed | `forbid(unsafe_code)` on the ten crates at literal zero; the 62 crates holding all 5,047 occurrences have no instrument at all |
+| [#1153](../../issues/archived/1153-rust-targets-covered-blind-to-zephyr-and-docker.md) | every declared Rust target has a row | three declaration globs of five — a target the tree builds for had no row at all |
+| [#1129](../../issues/archived/1129-fixture-err-laundered-into-skip-wider-class.md) | a fixture `Err` may not become a `skip!` | one spelling — 54 of 58 remaining sites say `not built`, which `check-skip-budget` cannot see |
+| [#1161](../../issues/archived/1161-required-features-tests-counts-skips-as-failures.md) (RESOLVED 2026-09-08) | a lane's pass means its tests ran | a missing FIXTURE is forbidden, a missing CAPABILITY is not — the lane reported pass having run 7 of 20. Closed by PR #734 before this phase was written; W2 records it |
+| [#1051](../../issues/archived/1051-pinned-locks-gate-suggests-a-destructive-fix.md) + [#1294](../../issues/archived/1294-submodule-pinned-locks-remedy-points-at-a-rewind.md) | a red names its cause | one of two causes asserted as the only one, with a remedy that would rewrite a CORRECT lock to match a drifted checkout — and following it records a submodule REWIND |
+| [#1236](../../issues/archived/1236-unsafe-census-ratchet-for-crates-that-cannot-forbid.md) | `unsafe` does not grow unnoticed | `forbid(unsafe_code)` on the ten crates at literal zero; the 62 crates holding all 5,047 occurrences have no instrument at all |
 
 #1051 is in this set deliberately. It is not a coverage gap — the gate fires
 correctly — but it is the same failure of fidelity one step later: the verdict
@@ -75,7 +75,7 @@ one that reports a false cause, then the census that does not exist yet.
 
 ### W1 — the fixture-skip rule reaches the defect, not one spelling
 
-[Issue 1129](../issues/archived/1129-fixture-err-laundered-into-skip-wider-class.md).
+[Issue 1129](../../issues/archived/1129-fixture-err-laundered-into-skip-wider-class.md).
 Issue 1124 converted the twelve sites matching its grep; the sweep afterwards
 found the scope had been the SPELLING. 4 more sites say `not prebuilt` in files
 1124's table did not list, and **54 say `not built`, across 43 files**.
@@ -145,7 +145,7 @@ Three reasons also named the wrong binary ("native listener" while resolving
 
 ### W2 — a capability skip is budgeted like a fixture skip — LANDED
 
-[Issue 1161](../issues/archived/1161-required-features-tests-counts-skips-as-failures.md)
+[Issue 1161](../../issues/archived/1161-required-features-tests-counts-skips-as-failures.md)
 (RESOLVED 2026-09-08, archived). Read its correction header: the filed premise
 was wrong and the issue marks it so. What survived was that
 `check-required-features-tests` reported pass having run **7 of its 20** tests,
@@ -163,7 +163,7 @@ was already being worked, and it is the shape the other four should follow.
 
 ### W3 — every Rust-target declaration site is reached
 
-[Issue 1153](../issues/archived/1153-rust-targets-covered-blind-to-zephyr-and-docker.md).
+[Issue 1153](../../issues/archived/1153-rust-targets-covered-blind-to-zephyr-and-docker.md).
 `check-rust-targets-covered.py` collects "every declaration" from three
 `git ls-files` globs; two further sites declare a target, including
 `zephyr/cmake/nros_cargo_build.cmake`'s `set(NROS_RUST_TARGET …)`.
@@ -185,8 +185,8 @@ was already being worked, and it is the shape the other four should follow.
 
 ### W4 — `check-submodule-pinned-locks` measures which cause it has
 
-[Issue 1051](../issues/archived/1051-pinned-locks-gate-suggests-a-destructive-fix.md) and
-[issue 1294](../issues/archived/1294-submodule-pinned-locks-remedy-points-at-a-rewind.md).
+[Issue 1051](../../issues/archived/1051-pinned-locks-gate-suggests-a-destructive-fix.md) and
+[issue 1294](../../issues/archived/1294-submodule-pinned-locks-remedy-points-at-a-rewind.md).
 Two causes produce one message: the pointer moved and the lock did not follow,
 or the pointer did not move and the WORKTREE drifted from it. The printed
 remedy is correct for the first and destructive for the second.
@@ -218,7 +218,7 @@ is about, caught while checking the commit that files it.
 
 ### W5 — the 62 crates that cannot `forbid` get a direction of travel
 
-[Issue 1236](../issues/archived/1236-unsafe-census-ratchet-for-crates-that-cannot-forbid.md).
+[Issue 1236](../../issues/archived/1236-unsafe-census-ratchet-for-crates-that-cannot-forbid.md).
 Issue 1221 put `#![forbid(unsafe_code)]` on the ten shipped crates measured at
 literal zero. `forbid` is a property, not a budget, so it says nothing about the
 62 crates carrying all 5,047 occurrences.
@@ -252,10 +252,10 @@ make the statement.
 ## Non-goals
 
 * Auditing every gate in the tree. That is the periodic audit
-  ([docs/development/codebase-audit-checklist.md](../development/codebase-audit-checklist.md)),
+  ([docs/development/codebase-audit-checklist.md](../../development/codebase-audit-checklist.md)),
   and this phase is the five issues already filed.
 * Making a gate merge-gating. Whether a lane runs at all is
-  [phase-413](phase-413-ci-workflow-user-parity.md)'s question; this phase is
+  [phase-413](../phase-413-ci-workflow-user-parity.md)'s question; this phase is
   about what a lane can see once it runs. The two meet in
-  [phase-449](phase-449-state-keyed-by-name-not-by-tree.md) W7, whose
+  [phase-449](../phase-449-state-keyed-by-name-not-by-tree.md) W7, whose
   verification printed `[OK]` on a configuration it should have refused.
