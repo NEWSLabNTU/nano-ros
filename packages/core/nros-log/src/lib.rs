@@ -73,10 +73,14 @@ pub use pool::{
 };
 pub use throttle::{ThrottleState, interval_ms_to_ns, throttle_decide};
 
-/// REP-2012 severity levels, mirroring `rcutils_log_severity_t`.
+/// REP-2012 severity levels: rcutils's five, in rcutils's order, plus `Trace`.
 ///
-/// The integer representation is stable and part of the ABI for
-/// `nros_platform_log_write`. Lower value = more verbose.
+/// NOT `rcutils_log_severity_t`'s numbering (`UNSET=0, DEBUG=10 ... FATAL=50`),
+/// and no `Unset` variant. The integer representation is stable and part of the
+/// ABI for `nros_platform_log_write`, so every value must be a level a sink can
+/// render; "no level of its own" is the verb [`Logger::unset_level`] instead.
+/// (The C surface's `nros_log_severity_t` does carry rcutils's numbers and
+/// `UNSET`.) Lower value = more verbose.
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum Severity {
@@ -338,6 +342,9 @@ impl Logger {
     /// `rcutils_logging_set_logger_level(name, RCUTILS_LOG_SEVERITY_UNSET)`'s
     /// effect, and what `nros_logger_set_level(logger, NROS_LOG_SEVERITY_UNSET)`
     /// reaches. phase-467.
+    ///
+    /// rclrs spells this `logger.set_level(LogSeverity::Unset)`. Here it is a verb,
+    /// because [`Severity`] has no `Unset`: its values are the sink ABI.
     pub fn unset_level(&self) {
         self.level.store(LEVEL_UNSET, Ordering::Relaxed);
     }
@@ -365,6 +372,10 @@ impl Logger {
     ///
     /// It does NOT override a logger that states its own level: after
     /// `with_level(.., Warn)` or `set_level(Warn)`, `Warn` wins.
+    ///
+    /// Takes [`Severity`], not rclrs's `LogSeverity`: it has a `Trace` level rclrs
+    /// lacks and no `Unset`. Where rclrs passes `Unset` to restore the default
+    /// default, pass `Severity::Info`, which is what `Unset` restores upstream.
     pub fn set_default_level(level: Severity) {
         DEFAULT_LEVEL.store(level as u8, Ordering::Relaxed);
     }

@@ -1264,6 +1264,12 @@ impl<'a, const TX_BUF: usize> Drop for PublishLoan<'a, TX_BUF> {
 
 /// Typed subscription handle with internal receive buffer.
 ///
+/// ADOPT-BOUNDED against rclrs's `Subscription`, whose callback is set on it
+/// AFTER construction (`set_callback`, `set_async_callback`, ...). This handle is
+/// POLL-style and has no callback; a callback subscription takes its closure at
+/// DECLARATION (`create_subscription(topic, callback)`), because with no allocator
+/// the entity set is fixed when `register` runs. There is no setter to call later.
+///
 /// Two methods, both byte-oriented at the wire:
 ///
 /// - [`take`](Self::take) / [`recv`](Self::recv) — pull bytes
@@ -2261,6 +2267,11 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     /// C++'s `Service::get_service_name`. See
     /// [`EmbeddedPublisher::topic_name`] for the contract and for why the
     /// accessor is here rather than on the RMW trait. phase-444.
+    ///
+    /// Bounded against rclrs: the name is a `&str` BORROWED from this handle where
+    /// rclrs returns an owned `String` (no allocator), and the receiver is this live
+    /// handle — no type here is called `Service` (the declared entity is
+    /// `ServiceServer`, the RMW seam `ServiceTrait`).
     pub fn service_name(&self) -> &str {
         self.handle.service_name()
     }
@@ -2561,6 +2572,11 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     /// C++'s `Client::get_service_name`. See
     /// [`EmbeddedPublisher::topic_name`] for the contract and for why the
     /// accessor is here rather than on the RMW trait. phase-444.
+    ///
+    /// Bounded against rclrs: the name is a `&str` BORROWED from this handle where
+    /// rclrs returns an owned `String` (no allocator), and the receiver is this live
+    /// handle — no type here is called `Client` (the declared entity is
+    /// `ServiceClient`, the RMW seam `ClientTrait`).
     pub fn service_name(&self) -> &str {
         self.handle.service_name()
     }

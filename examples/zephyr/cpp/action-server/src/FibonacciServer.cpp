@@ -22,21 +22,22 @@ static void write_u32_le(uint8_t* p, uint32_t v) {
 }
 
 // Goal callback: decode `int32 order`, stash the goal, accept-and-execute.
-int32_t FibonacciServer::on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len) {
+::nros::GoalResponse FibonacciServer::on_goal(const uint8_t goal_id[16], const uint8_t* data,
+                                              size_t len) {
     // Goal CDR: 4-byte encapsulation header, then int32 order (offset 4).
     if (len < 8 || pending_) {
-        return static_cast<int32_t>(::nros::GoalResponse::Reject);
+        return ::nros::GoalResponse::REJECT;
     }
     std::memcpy(goal_id_, goal_id, 16);
     order_ = read_i32_le(data + 4);
     pending_ = true;
     std::printf("Received goal request with order %d\n", static_cast<int>(order_));
-    return static_cast<int32_t>(::nros::GoalResponse::AcceptAndExecute);
+    return ::nros::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
 // Cancel callback: this server does not support cancellation.
-int32_t FibonacciServer::on_cancel(const uint8_t /*goal_id*/[16]) {
-    return static_cast<int32_t>(::nros::CancelResponse::Reject);
+::nros::CancelResponse FibonacciServer::on_cancel(const uint8_t /*goal_id*/[16]) {
+    return ::nros::CancelResponse::REJECT;
 }
 
 // Timer: execute one pending goal (compute the sequence + complete the goal).

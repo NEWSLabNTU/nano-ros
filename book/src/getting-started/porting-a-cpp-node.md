@@ -149,9 +149,39 @@ The compat surface covers the patterns a typical ROS 2 C++ node uses:
 | `executor.spin_once() / client->wait_for_service() / action_client->wait_for_action_server()` | **the budget is required** | Upstream defaults all three to "block forever", which nano-ros has no form of; the no-argument call is a compile error naming the alternative rather than a silently substituted 10 ms / 5 s budget. Write `spin_once(10)`, `wait_for_service(10000)`. |
 | `rclcpp::QoS / KeepLast(n) / SystemDefaultsQoS()` | subclass of `nros::QoS` with the `(depth)` ctor | Chainable setters inherited. |
 | `diagnostic_updater::Updater` + `DiagnosticStatusWrapper` | `nros-diagnostic-updater` shim | Publishes `/diagnostics`. |
-| `rclcpp_action::Server<A> / Client<A>` | aliases for `nros::ActionServer/Client<A>` | The action call shapes (send_goal_async etc.) match. |
+| `rclcpp_action::Server<A> / Client<A>` | ours, under upstream's names (`nros::ActionServer/Client<A>` are aliases for them) | Same entities, smaller shapes: no goal handles and no futures. See [Actions](#actions-no-goal-handles-no-futures) below. |
 | `RCLCPP_COMPONENTS_REGISTER_NODE(class)` | no-op macro + cmake-side `rclcpp_components_register_node()` emits a thin `int main()` per registration | Single-binary embedded. |
 | `find_package(ament_cmake_auto / rclcpp / rclcpp_components / diagnostic_updater / std_msgs / …)` | Find-stubs at `cmake/compat/stubs/` | ~24 of the most-cited ROS 2 packages stubbed; add your own under `cmake/compat/stubs/Find<pkg>.cmake` for more. |
+
+## Actions: no goal handles, no futures
+
+The action types keep upstream's names and concepts, and `GoalResponse` /
+`CancelResponse` keep upstream's enumerators and values. The SHAPES around
+them are smaller, because there is no allocator to hand out a goal handle and
+no async runtime to complete a future (RFC-0021). Every difference below is a
+compile error in a ported file, so the list is what to rewrite, not what to
+debug:
+
+- **Server: no `ServerGoalHandle`.** The goal and accepted callbacks receive the
+  16-byte goal id. Feedback and termination are calls on the SERVER keyed by that
+  id — `server.publish_feedback(id, fb)`, `server.succeed(id, result)`,
+  `abort`, `canceled` — taking the message by const reference, not a `shared_ptr`.
+- **Server: created in place.** There is no `rclcpp_action::create_server`
+  returning a `SharedPtr`; declare the `Server<A>` and initialise it with
+  `node.create_action_server(srv, name)`. It is not a `Waitable` (no
+  `execute` / `is_ready` / `set_on_ready_callback`): the executor drives it
+  directly.
+- **Callbacks are stateless function pointers** (empty-capture lambdas), or the
+  `_with_ctx` setters with a `void*` context.
+- **Client: `send_goal` blocks and fills an out-param goal id**, returning
+  `Result`, where upstream's `async_send_goal` returns a `shared_future` of a
+  goal handle. `send_goal_future` is the future-shaped spelling.
+- **Client: callbacks bind to the CLIENT.** Upstream passes `SendGoalOptions`
+  to each `async_send_goal`; here `client.set_callbacks(opts)` installs them
+  once for every goal the client sends. They are read when a reply is
+  dispatched, so install them before the spin that delivers it.
+- **`wait_for_action_server` takes milliseconds and returns `Result`** — and
+  the budget is required (see the table above).
 
 ## Two things the compiler will not tell you
 

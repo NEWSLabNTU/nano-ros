@@ -26,9 +26,9 @@ class FibonacciServer {
     int32_t order_ = 0;
 
     // Goal callback (by identity): stash the goal + accept-and-execute.
-    int32_t on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len);
+    ::nros::GoalResponse on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len);
     // Cancel callback (by identity): this server does not support cancel.
-    int32_t on_cancel(const uint8_t goal_id[16]);
+    ::nros::CancelResponse on_cancel(const uint8_t goal_id[16]);
     // Timer: execute a pending goal (compute + complete).
     void on_tick();
 

@@ -55,9 +55,9 @@ inline ::nros::Result instantiate_server(::rclcpp::Node& node) {
     // Deferring is exactly the case that needs the accepted hook: the goal
     // callback must return promptly, so the work starts in the hook.
     (void)server.set_goal_callback(
-        [](const uint8_t[16], const Fib::Goal&) { return ::nros::GoalResponse::AcceptAndDefer; });
+        [](const uint8_t[16], const Fib::Goal&) { return ::nros::GoalResponse::ACCEPT_AND_DEFER; });
     (void)server.set_cancel_callback(
-        [](const uint8_t[16]) { return ::nros::CancelResponse::Accept; });
+        [](const uint8_t[16]) { return ::nros::CancelResponse::ACCEPT; });
     (void)server.set_accepted_callback([](const uint8_t[16]) {});
 
     static UserState state;
@@ -102,9 +102,37 @@ inline ::nros::Result instantiate_client(::rclcpp::Node& node) {
 static_assert(!std::is_same<::nros::CancelResponse, ::nros::CancelReturnCode>::value,
               "the per-goal cancel decision and the CancelGoal RPC return code must stay "
               "distinct types");
-static_assert(static_cast<int>(::nros::CancelResponse::Reject) ==
+static_assert(::nros::to_ffi(::nros::CancelResponse::REJECT) ==
                   static_cast<int>(::nros::CancelReturnCode::Ok),
-              "same byte, opposite verdicts — the reason they cannot share a type");
+              "same FFI byte, opposite verdicts — the reason they cannot share a type");
+
+// Issue 1637 — the per-goal decisions carry rclcpp_action's values
+// (`server.hpp`: `GoalResponse : int8_t { REJECT = 1, ACCEPT_AND_EXECUTE = 2,
+// ACCEPT_AND_DEFER = 3 }`, `CancelResponse : int8_t { REJECT = 1, ACCEPT = 2 }`),
+// reachable under upstream's namespace, and the 0-based FFI discriminant is
+// reached ONLY through `to_ffi` (a zero-initialised FFI slot means reject):
+// 0/1/2 are `NROS_C_GOAL_{REJECT,ACCEPT_AND_EXECUTE,ACCEPT_AND_DEFER}` and 0/1
+// `NROS_C_CANCEL_{REJECT,ACCEPT}` in nros-c's `component.h`.
+static_assert(std::is_same<std::underlying_type<::nros::GoalResponse>::type, int8_t>::value,
+              "GoalResponse is int8_t, as upstream's is");
+static_assert(std::is_same<std::underlying_type<::nros::CancelResponse>::type, int8_t>::value,
+              "CancelResponse is int8_t, as upstream's is");
+static_assert(static_cast<int>(::rclcpp_action::GoalResponse::REJECT) == 1 &&
+                  static_cast<int>(::rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE) == 2 &&
+                  static_cast<int>(::rclcpp_action::GoalResponse::ACCEPT_AND_DEFER) == 3,
+              "GoalResponse values are rclcpp_action's");
+static_assert(static_cast<int>(::rclcpp_action::CancelResponse::REJECT) == 1 &&
+                  static_cast<int>(::rclcpp_action::CancelResponse::ACCEPT) == 2,
+              "CancelResponse values are rclcpp_action's");
+static_assert(::nros::to_ffi(::nros::GoalResponse::REJECT) == 0 &&
+                  ::nros::to_ffi(::nros::GoalResponse::ACCEPT_AND_EXECUTE) == 1 &&
+                  ::nros::to_ffi(::nros::GoalResponse::ACCEPT_AND_DEFER) == 2 &&
+                  ::nros::to_ffi(static_cast<::nros::GoalResponse>(0)) == 0,
+              "to_ffi maps upstream's goal values onto the 0-based FFI; 0 is reject");
+static_assert(::nros::to_ffi(::nros::CancelResponse::REJECT) == 0 &&
+                  ::nros::to_ffi(::nros::CancelResponse::ACCEPT) == 1 &&
+                  ::nros::to_ffi(static_cast<::nros::CancelResponse>(0)) == 0,
+              "to_ffi maps upstream's cancel values onto the 0-based FFI; 0 is reject");
 
 // API-shape assertions: a regression in these signatures stops compiling here.
 static_assert(

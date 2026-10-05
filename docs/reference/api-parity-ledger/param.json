@@ -450,7 +450,11 @@
   "cpp:LifecycleNode::declare_parameters": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
-    "why": "phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::declare_parameters` (both return a `Result` where upstream returns `void`). UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters."
+    "why": "phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::declare_parameters` (both return a `Result` where upstream returns `void`). UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the forwarder's doc comment states the `Result` return and the UNBOUND `InvalidArgument` answer.",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/lifecycle.hpp",
+      "text": "upstream's `std::vector<T>` (see `rclcpp::Node::declare_parameters`); on an"
+    }
   },
   "cpp:LifecycleNode::describe_parameter": {
     "verdict": "divergence",
@@ -479,7 +483,11 @@
   "cpp:LifecycleNode::undeclare_parameter": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
-    "why": "phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::undeclare_parameter` (both return a `Result` where upstream returns `void`). UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters."
+    "why": "phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::undeclare_parameter` (both return a `Result` where upstream returns `void`). UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the forwarder's doc comment (previously the bare \"`undeclare_parameter(name)`.\") states the `Result` return and the UNBOUND `InvalidArgument` answer.",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/lifecycle.hpp",
+      "text": "`undeclare_parameter(name)`. Returns `Result` where upstream returns `void`"
+    }
   },
   "cpp:Node::add_on_set_parameters_callback": {
     "verdict": "divergence",
@@ -489,7 +497,11 @@
   "cpp:Node::declare_parameters": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
-    "why": "SHIPPED phase-417 W4.a. The map-taking bulk form, hosted only, because upstream's argument IS a `std::map<std::string, T>`. `prefix` is joined with `.` exactly as upstream does. The envelope: upstream returns `std::vector<T>`, the values IN EFFECT after each declaration, and ours returns `nros::Result`. They differ only where a launch seed already declared a name — the case rclcpp's return exists for — and a caller who needs it reads back with `get_parameter<T>`. A ported file that ignores the return compiles and behaves identically; one that binds it does not compile, which is the loud half. The row previously said `ComponentNode` 'would not have it either'; that type is gone (phase-427 W4) and the reason it gave (the map needs an allocator) is what the `NROS_CPP_STD` gate is for, not a reason to decline."
+    "why": "SHIPPED phase-417 W4.a. The map-taking bulk form, hosted only, because upstream's argument IS a `std::map<std::string, T>`. `prefix` is joined with `.` exactly as upstream does. The envelope: upstream returns `std::vector<T>`, the values IN EFFECT after each declaration, and ours returns `nros::Result`. They differ only where a launch seed already declared a name — the case rclcpp's return exists for — and a caller who needs it reads back with `get_parameter<T>`. A ported file that ignores the return compiles and behaves identically; one that binds it does not compile, which is the loud half. The row previously said `ComponentNode` 'would not have it either'; that type is gone (phase-427 W4) and the reason it gave (the map needs an allocator) is what the `NROS_CPP_STD` gate is for, not a reason to decline.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the method's doc comment states the `Result`-vs-`std::vector<T>` bound and the `get_parameter<T>` read-back. `book/src/concepts/ros2-comparison.md` listed `declare_parameters` as \"not exposed\", contradicting this shipped API; it now names the C++ hosted bulk form and its bound.",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/node.hpp",
+      "text": "Returns `Result`, NOT upstream's `std::vector<T>` of the values in effect."
+    }
   },
   "cpp:Node::describe_parameter": {
     "verdict": "divergence",
@@ -853,12 +865,20 @@
   "rust:ParameterBuilder::default_from_iter": {
     "verdict": "declined",
     "disposition": "adopt-bounded",
-    "why": "builds an array default from any `IntoIterator<Item = T>`. Ours takes the value directly, and an array value is a `heapless::Vec` bounded by `MAX_ARRAY_LEN`; collecting an unbounded iterator into a fixed capacity has to fail somewhere, which is what `ParameterVariant::try_to_parameter_value` reports (issue 0323). No allocator."
+    "why": "builds an array default from any `IntoIterator<Item = T>`. Ours takes the value directly, and an array value is a `heapless::Vec` bounded by `MAX_ARRAY_LEN`; collecting an unbounded iterator into a fixed capacity has to fail somewhere, which is what `ParameterVariant::try_to_parameter_value` reports (issue 0323). No allocator.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: rclrs's convenience setter has no counterpart to hang a comment on, so the envelope is on the one setter there is, `ParameterBuilder::default`, whose rustdoc now names both absent setters, the `heapless` bounds, and the refusal (not truncation) of an over-capacity value.",
+    "envelope": {
+      "file": "packages/core/nros-params/src/typed.rs",
+      "text": "and `default_string_array(&[&str])`; neither exists here, so pass the array"
+    }
   },
   "rust:ParameterBuilder::default_string_array": {
     "verdict": "declined",
     "disposition": "adopt-bounded",
-    "why": "the `&[&str]` convenience for the same thing; see `rust:ParameterBuilder::default_from_iter`. A string array here is `Vec<String<MAX_STRING_VALUE_LEN>, MAX_ARRAY_LEN>` -- two compile-time bounds, not a borrowed slice of unbounded strs."
+    "why": "the `&[&str]` convenience for the same thing; see `rust:ParameterBuilder::default_from_iter`. A string array here is `Vec<String<MAX_STRING_VALUE_LEN>, MAX_ARRAY_LEN>` -- two compile-time bounds, not a borrowed slice of unbounded strs.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: rclrs's convenience setter has no counterpart to hang a comment on, so the envelope is on the one setter there is, `ParameterBuilder::default`, whose rustdoc now names both absent setters, the `heapless` bounds, and the refusal (not truncation) of an over-capacity value.",
+    "envelope": {
+      "file": "packages/core/nros-params/src/typed.rs",
+      "text": "and `default_string_array(&[&str])`; neither exists here, so pass the array"
+    }
   },
   "rust:ParameterBuilder::discard_mismatching_prior_value": {
     "verdict": "declined",
@@ -1023,7 +1043,11 @@
       "nros::UndeclaredParameters",
       "nros::Executor::use_undeclared_parameters"
     ],
-    "why": "RE-VERDICTED phase-417 W4.a. was `gap`, and two of its three complaints are closed: the type IS exported from the `nros` facade now, and it reads AND WRITES (`set_bool` / `set_integer` / `set_double` / `set_string`, through `ParameterServer::set_or_declare` — not `apply`, because `allow_undeclared_parameters` governs what a REMOTE set may create and a caller who reached for this type has opted in by naming it, which is rclrs's split too). What remains is the NAME: rclrs calls it `Parameters`, ours is `UndeclaredParameters`. `rename` and not `divergence` because no platform constraint picks either spelling. The envelope: a ported rclrs file rarely NAMES the type — it binds what `use_undeclared_parameters()` returns — so the drop-in cost is a `use` line. Renaming it inside `nros::`, where `Parameter` is already the store's value type, is a stage-6 decision rather than this item's."
+    "why": "RE-VERDICTED phase-417 W4.a. was `gap`, and two of its three complaints are closed: the type IS exported from the `nros` facade now, and it reads AND WRITES (`set_bool` / `set_integer` / `set_double` / `set_string`, through `ParameterServer::set_or_declare` — not `apply`, because `allow_undeclared_parameters` governs what a REMOTE set may create and a caller who reached for this type has opted in by naming it, which is rclrs's split too). What remains is the NAME: rclrs calls it `Parameters`, ours is `UndeclaredParameters`. `rename` and not `divergence` because no platform constraint picks either spelling. The envelope: a ported rclrs file rarely NAMES the type — it binds what `use_undeclared_parameters()` returns — so the drop-in cost is a `use` line. Renaming it inside `nros::`, where `Parameter` is already the store's value type, is a stage-6 decision rather than this item's.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the rename was stated only in plain `//` facade comments in `packages/api/nros/src/lib.rs`, which rustdoc does not render. `UndeclaredParameters`'s own rustdoc (`nros-params`, re-exported as `nros::UndeclaredParameters`) now names rclrs's spelling and the `use`-line cost.",
+    "envelope": {
+      "file": "packages/core/nros-params/src/typed.rs",
+      "text": "rclrs calls this type `Parameters`; the capability is the same (read AND write,"
+    }
   },
   "rust:RmwParameterConversionError": {
     "verdict": "rename",
@@ -1031,7 +1055,11 @@
     "provides": [
       "nros::ValueConversionError"
     ],
-    "why": "RE-VERDICTED phase-417 W4.a. was `gap`, and the complaint it was filed under is closed: the `nros` facade exports the type now, so a user can match on WHY a wire value was rejected rather than reading the sentence `reason()` put in the `SetParametersResult`. What remains is the NAME — rclrs's `RmwParameterConversionError` against our `ValueConversionError`, which is where the conversion actually happens (`nros-node`'s `parameter_services`, between an `rcl_interfaces` value and the store's). `rename` because no platform constraint picks either spelling; the export is what a porting user needed."
+    "why": "RE-VERDICTED phase-417 W4.a. was `gap`, and the complaint it was filed under is closed: the `nros` facade exports the type now, so a user can match on WHY a wire value was rejected rather than reading the sentence `reason()` put in the `SetParametersResult`. What remains is the NAME — rclrs's `RmwParameterConversionError` against our `ValueConversionError`, which is where the conversion actually happens (`nros-node`'s `parameter_services`, between an `rcl_interfaces` value and the store's). `rename` because no platform constraint picks either spelling; the export is what a porting user needed.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the rename was stated only in plain `//` facade comments; `ValueConversionError`'s own rustdoc now names rclrs's spelling.",
+    "envelope": {
+      "file": "packages/core/nros-node/src/parameter_services.rs",
+      "text": "rclrs names this `RmwParameterConversionError`; the role is the same (why a"
+    }
   },
   "rust:SetParameterResult": {
     "verdict": "rename",

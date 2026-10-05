@@ -2384,7 +2384,14 @@ impl<'e, 's> NodeCtx<'e, 's> {
     /// `visit(info)` per discovered endpoint; every `&str` on the
     /// [`GraphEndpointInfo`](nros_rmw::GraphEndpointInfo) is BORROWED for the
     /// duration of that call, so copy anything you keep, and returning `false`
-    /// stops the walk. The module note above states the rest of the envelope.
+    /// stops the walk.
+    ///
+    /// ADOPT-BOUNDED: rclrs returns an owned `Vec<TopicEndpointInfo>`; here the
+    /// answer is STREAMED to `visit`, because the graph has no bound a caller could
+    /// size a buffer to and there is no allocator for a `Vec`. It reports what has
+    /// been DISCOVERED and never blocks, so an empty walk means "nobody seen yet";
+    /// a backend with no graph answers `Err(Transport(Unsupported))`, never an
+    /// empty `Ok`.
     ///
     /// It carries NO QoS, and that absence is the point: the GRANTED profile is
     /// what answers "why is nothing arriving", no backend can read a remote's
@@ -2402,6 +2409,10 @@ impl<'e, 's> NodeCtx<'e, 's> {
     /// The SUBSCRIPTIONS on `topic_name`, one visit each — rclrs's
     /// `Node::get_subscriptions_info_by_topic`. See
     /// [`get_publishers_info_by_topic`](Self::get_publishers_info_by_topic).
+    ///
+    /// Same envelope: STREAMED to `visit` rather than returned as a `Vec`, every
+    /// `&str` borrowed for the visit, discovered-only and non-blocking, and
+    /// `Err(Transport(Unsupported))` from a backend with no graph.
     pub fn get_subscriptions_info_by_topic(
         &mut self,
         topic_name: &str,

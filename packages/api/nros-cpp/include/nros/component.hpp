@@ -272,10 +272,12 @@ struct ActionServerStorage {
 
 /// Register a **raw** action server on the executor that owns `node`: create →
 /// register → set goal/cancel callbacks. `storage` is the component-owned buffer
-/// (`ActionServerStorage::bytes`). The goal callback returns a `GoalResponse`
+/// (`ActionServerStorage::bytes`). The goal callback returns the FFI
 /// discriminant (`int32_t`; 0 reject / 1 accept-and-execute / 2 accept-defer),
-/// the cancel callback a `CancelResponse`. `ctx` is carried through. After a
-/// goal is accepted, complete it with `nros_cpp_action_server_complete_goal(
+/// the cancel callback 0 reject / 1 accept. These are 0-based and the C++
+/// `GoalResponse` / `CancelResponse` are upstream's 1-based values, so convert
+/// with `nros::to_ffi(...)` — a `static_cast<int32_t>` of the C++ enum is wrong. `ctx` is carried
+/// through. After a goal is accepted, complete it with `nros_cpp_action_server_complete_goal(
 /// storage, node.executor_handle(), goal_id, result_cdr, len)` (and feedback via
 /// `nros_cpp_action_server_publish_feedback`).
 inline Result create_action_server_raw(::rclcpp::Node& node, void* storage, const char* action_name,
@@ -296,22 +298,27 @@ inline Result create_action_server_raw(::rclcpp::Node& node, void* storage, cons
 }
 
 /// Bind component **members**
-/// `int32_t C::on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len)`
-/// and `int32_t C::on_cancel(const uint8_t goal_id[16])` as the action server's
+/// `nros::GoalResponse C::on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len)`
+/// and `nros::CancelResponse C::on_cancel(const uint8_t goal_id[16])` as the action server's
 /// goal/cancel callbacks (by identity, `self` as ctx, no-alloc trampolines).
+/// The members return the TYPED decision and the binder converts it with
+/// `nros::to_ffi`; a member returning a raw `int32_t` no longer binds (issue
+/// 1637), because the typed enums now carry upstream's 1-based values and a
+/// cast of one into the 0-based FFI would read reject as accept.
 template <class C,
-          int32_t (C::*GoalMethod)(const uint8_t goal_id[16], const uint8_t* data, size_t len),
-          int32_t (C::*CancelMethod)(const uint8_t goal_id[16])>
+          ::nros::GoalResponse (C::*GoalMethod)(const uint8_t goal_id[16], const uint8_t* data,
+                                                size_t len),
+          ::nros::CancelResponse (C::*CancelMethod)(const uint8_t goal_id[16])>
 inline Result bind_action_server_raw(::rclcpp::Node& node, void* storage, const char* action_name,
                                      const char* type_name, C* self,
                                      const QoS& qos = QoS::services()) {
     return create_action_server_raw(
         node, storage, action_name, type_name,
         [](const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx) -> int32_t {
-            return (static_cast<C*>(ctx)->*GoalMethod)(goal_id, data, len);
+            return ::nros::to_ffi((static_cast<C*>(ctx)->*GoalMethod)(goal_id, data, len));
         },
         [](const uint8_t goal_id[16], void* ctx) -> int32_t {
-            return (static_cast<C*>(ctx)->*CancelMethod)(goal_id);
+            return ::nros::to_ffi((static_cast<C*>(ctx)->*CancelMethod)(goal_id));
         },
         self, qos);
 }

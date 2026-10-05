@@ -148,24 +148,59 @@ static_assert(alignof(GoalUUID) == alignof(uint8_t),
 static const size_t ACTION_NAME_MAX = 256;
 
 /// Goal acceptance response returned from the user's goal callback.
-enum class GoalResponse : int32_t {
-    Reject = 0,
-    AcceptAndExecute = 1,
-    AcceptAndDefer = 2,
+///
+/// Upstream's enum, value for value: `rclcpp_action::GoalResponse` is
+/// `int8_t` with `REJECT = 1, ACCEPT_AND_EXECUTE = 2, ACCEPT_AND_DEFER = 3`,
+/// and so is this one, enumerator for enumerator, so a ported `switch` or a
+/// stored integer means the same thing on both. (Until issue 1637 these were
+/// 0-based and CamelCase: `Reject = 0`, `AcceptAndExecute = 1`, ...)
+///
+/// The FFI below is 0-based (`NROS_C_GOAL_REJECT = 0` in `component.h`),
+/// because a zero-initialised decision slot must mean reject. That integer
+/// is not this enum: convert with `nros::to_ffi(GoalResponse)`, NEVER with a
+/// `static_cast<int32_t>` — the cast yields upstream's value, and the FFI
+/// reads `REJECT` (1) as accept-and-execute.
+enum class GoalResponse : int8_t {
+    REJECT = 1,
+    ACCEPT_AND_EXECUTE = 2,
+    ACCEPT_AND_DEFER = 3,
 };
 
 /// Per-goal cancel decision returned from the user's cancel callback.
 ///
 /// Issue 0796 — this is NOT the `action_msgs/srv/CancelGoal` RPC status; that
 /// is `CancelReturnCode` below. The two carry different meanings on
-/// overlapping values (`Reject` and `Ok` are both 0), so never cast between
+/// overlapping FFI values (reject and `Ok` are both 0 there), so never cast between
 /// them. C names them apart too (`nros_cancel_response_t` vs
 /// `nros_cancel_return_code_t`), and Rust now does (`nros_core::CancelResponse`
 /// vs `nros_core::CancelReturnCode`).
-enum class CancelResponse : int32_t {
-    Reject = 0,
-    Accept = 1,
+///
+/// Upstream's enum, value for value: `rclcpp_action::CancelResponse` is
+/// `int8_t` with `REJECT = 1, ACCEPT = 2`, and so is this one (0-based and
+/// CamelCase until issue 1637). The FFI is
+/// 0-based (`NROS_C_CANCEL_REJECT = 0`): convert with
+/// `nros::to_ffi(CancelResponse)`, never with a `static_cast<int32_t>`.
+enum class CancelResponse : int8_t {
+    REJECT = 1,
+    ACCEPT = 2,
 };
+
+/// The FFI discriminant of a goal decision — `NROS_C_GOAL_REJECT` (0),
+/// `NROS_C_GOAL_ACCEPT_AND_EXECUTE` (1), `NROS_C_GOAL_ACCEPT_AND_DEFER` (2).
+/// This is the value a raw component callback (`create_action_server_raw`)
+/// returns. Anything outside upstream's three values maps to reject, the
+/// FFI's own answer for "nobody decided".
+constexpr int32_t to_ffi(GoalResponse r) {
+    return (r == GoalResponse::ACCEPT_AND_EXECUTE) ? 1
+           : (r == GoalResponse::ACCEPT_AND_DEFER) ? 2
+                                                   : 0;
+}
+
+/// The FFI discriminant of a cancel decision — `NROS_C_CANCEL_REJECT` (0),
+/// `NROS_C_CANCEL_ACCEPT` (1). Anything but `ACCEPT` maps to reject.
+constexpr int32_t to_ffi(CancelResponse r) {
+    return (r == CancelResponse::ACCEPT) ? 1 : 0;
+}
 
 /// `action_msgs/srv/CancelGoal` RPC return code — the WHOLE-REQUEST outcome
 /// (issue 0796).
@@ -222,7 +257,16 @@ class Node;
 // reached qualified: RFC-0089's flip is about the nine TYPES it enumerates, and
 // widening it silently to every name in the header is how a sweep stops being
 // reviewable.
+//
+// Two of them are widened DELIBERATELY (issue 1637): `GoalResponse` and
+// `CancelResponse` carry upstream's values since then, so a ported
+// `rclcpp_action::GoalResponse::REJECT` compiles AND means what it meant
+// upstream. Before that it was 0-based, and exposing it here would have turned
+// a compile error into a silent renumbering.
 namespace rclcpp_action {
+
+using ::nros::CancelResponse;
+using ::nros::GoalResponse;
 
 /// Typed action server for a ROS 2 action.
 ///
@@ -239,14 +283,27 @@ namespace rclcpp_action {
 ///
 /// srv.set_goal_callback(
 ///     [](const uint8_t[16], const Fib::Goal& g) {
-///         if (g.order > 46) return nros::GoalResponse::Reject;
-///         return nros::GoalResponse::AcceptAndExecute;
+///         if (g.order > 46) return nros::GoalResponse::REJECT;
+///         return nros::GoalResponse::ACCEPT_AND_EXECUTE;
 ///     });
 /// ```
 ///
 /// Callbacks must be stateless (empty-capture lambdas or plain function
 /// pointers). This is a freestanding C++14 library without `std::function`,
 /// so per-instance closure storage is not available.
+///
+/// What upstream's `Server<A>` has and this one does not (ADOPT-BOUNDED):
+/// - Not a `Waitable`: no `execute` / `is_ready` / `set_on_ready_callback` /
+///   `clear_on_ready_callback`. RFC-0002's executor drives the server
+///   directly through the RMW vtable; there is no wait set to join.
+/// - Not created as a `SharedPtr`: there is no `rclcpp_action::create_server`.
+///   The caller owns the object and `node.create_action_server(srv, name)`
+///   initialises it in place (no allocator).
+/// - No `ServerGoalHandle`: the accepted callback receives the goal id, and
+///   feedback and termination are calls on THIS server keyed by that id
+///   (`publish_feedback`, `succeed`, `abort`, `canceled`). Goals live in a
+///   static arena the server owns, not in a handle handed to the application.
+/// Each missing member is a compile error (`no member named ...`).
 template <typename A> class Server {
   public:
     using GoalType = typename A::Goal;
@@ -326,10 +383,15 @@ template <typename A> class Server {
     /// Register a callback invoked once per ACCEPTED goal (issue 0796).
     ///
     /// Fires after the accept reply has reached the client, for
-    /// `GoalResponse::AcceptAndExecute` and `GoalResponse::AcceptAndDefer`
+    /// `GoalResponse::ACCEPT_AND_EXECUTE` and `GoalResponse::ACCEPT_AND_DEFER`
     /// alike. This is where a deferred goal starts executing: the goal
     /// callback answers accept/reject and must return promptly, so it is the
     /// wrong place to begin work.
+    ///
+    /// Upstream's `handle_accepted` receives an owning
+    /// `std::shared_ptr<ServerGoalHandle>`; this callback receives the 16-byte goal id
+    /// instead, and the goal is driven through this server (`publish_feedback`,
+    /// `succeed`, ...) because goals live in the server's static arena.
     ///
     /// Mirrors C's `nros_accepted_callback_t` (passed at
     /// `nros_action_server_init`) and Rust's third argument to
@@ -360,6 +422,10 @@ template <typename A> class Server {
 
     /// Publish feedback for an active goal.
     ///
+    /// Upstream spells it `goal_handle->publish_feedback(std::shared_ptr<Feedback>)`.
+    /// There is no goal handle here: the call is on the SERVER, keyed by goal id,
+    /// and takes the feedback by const reference (no `shared_ptr`, no allocator).
+    ///
     /// @param goal_id  16-byte goal UUID from the goal callback.
     /// @param feedback Feedback to publish.
     /// @return Result indicating success or failure.
@@ -383,6 +449,11 @@ template <typename A> class Server {
     /// API's `nros_action_server_complete_goal_raw`, so the three surfaces
     /// agree; `Succeeded` is defaulted because it is the common case and
     /// because that keeps existing two-argument calls compiling.
+    ///
+    /// rclcpp_action has no `complete_goal`: a goal ends through its
+    /// `ServerGoalHandle` (`succeed` / `abort` / `canceled`). Here the terminal
+    /// status is an argument and the goal is named by its id, because there is no
+    /// goal handle; `succeed` / `abort` / `canceled` below are forwarders onto this.
     ::nros::Result complete_goal(const uint8_t goal_id[16], ::nros::GoalStatus status,
                                  const ResultType& result) {
         if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
@@ -431,11 +502,18 @@ template <typename A> class Server {
     ///
     /// `complete_goal` remains the general form for a status computed at
     /// runtime.
+    ///
+    /// Upstream's is `goal_handle->succeed(std::shared_ptr<Result>)`. Ours is on
+    /// the server, keyed by goal id, result by const reference: there is no goal
+    /// handle and no `shared_ptr` (goals live in the server's static arena).
     ::nros::Result succeed(const uint8_t goal_id[16], const ResultType& result) {
         return complete_goal(goal_id, ::nros::GoalStatus::Succeeded, result);
     }
 
     /// Terminate `goal_id` as ABORTED. See @ref succeed.
+    ///
+    /// Upstream's is `goal_handle->abort(std::shared_ptr<Result>)`; this is on the
+    /// server, keyed by goal id, result by const reference — no goal handle.
     ::nros::Result abort(const uint8_t goal_id[16], const ResultType& result) {
         return complete_goal(goal_id, ::nros::GoalStatus::Aborted, result);
     }
@@ -445,6 +523,9 @@ template <typename A> class Server {
     /// Spelled `canceled` — rclcpp_action's and C's spelling — not `cancel`.
     /// Rust used to disagree here and was renamed to match in the same work
     /// item.
+    ///
+    /// Upstream's is `goal_handle->canceled(std::shared_ptr<Result>)`; this is on the
+    /// server, keyed by goal id, result by const reference — no goal handle.
     ::nros::Result canceled(const uint8_t goal_id[16], const ResultType& result) {
         return complete_goal(goal_id, ::nros::GoalStatus::Canceled, result);
     }
@@ -639,30 +720,30 @@ template <typename A> class Server {
     static int32_t goal_trampoline(const uint8_t goal_id[16], const uint8_t* data, size_t len,
                                    void* ctx) {
         auto* self = static_cast<Server*>(ctx);
-        if (!self) return static_cast<int32_t>(::nros::GoalResponse::Reject);
+        if (!self) return ::nros::to_ffi(::nros::GoalResponse::REJECT);
         GoalType g;
         if (GoalType::ffi_deserialize(data, len, &g) != 0) {
-            return static_cast<int32_t>(::nros::GoalResponse::Reject);
+            return ::nros::to_ffi(::nros::GoalResponse::REJECT);
         }
         if (self->user_goal_fn_ctx_ != nullptr) {
-            return static_cast<int32_t>(self->user_goal_fn_ctx_(goal_id, g, self->user_goal_ctx_));
+            return ::nros::to_ffi(self->user_goal_fn_ctx_(goal_id, g, self->user_goal_ctx_));
         }
         if (self->user_goal_fn_ != nullptr) {
-            return static_cast<int32_t>(self->user_goal_fn_(goal_id, g));
+            return ::nros::to_ffi(self->user_goal_fn_(goal_id, g));
         }
-        return static_cast<int32_t>(::nros::GoalResponse::Reject);
+        return ::nros::to_ffi(::nros::GoalResponse::REJECT);
     }
 
     static int32_t cancel_trampoline(const uint8_t goal_id[16], void* ctx) {
         auto* self = static_cast<Server*>(ctx);
-        if (!self) return static_cast<int32_t>(::nros::CancelResponse::Accept);
+        if (!self) return ::nros::to_ffi(::nros::CancelResponse::ACCEPT);
         if (self->user_cancel_fn_ctx_ != nullptr) {
-            return static_cast<int32_t>(self->user_cancel_fn_ctx_(goal_id, self->user_cancel_ctx_));
+            return ::nros::to_ffi(self->user_cancel_fn_ctx_(goal_id, self->user_cancel_ctx_));
         }
         if (self->user_cancel_fn_ != nullptr) {
-            return static_cast<int32_t>(self->user_cancel_fn_(goal_id));
+            return ::nros::to_ffi(self->user_cancel_fn_(goal_id));
         }
-        return static_cast<int32_t>(::nros::CancelResponse::Accept);
+        return ::nros::to_ffi(::nros::CancelResponse::ACCEPT);
     }
 
     static void accepted_trampoline(const uint8_t goal_id[16], void* ctx) {

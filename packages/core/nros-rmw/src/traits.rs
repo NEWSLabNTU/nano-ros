@@ -2536,6 +2536,13 @@ impl QoSProfile {
 
 /// Publisher trait for sending messages.
 ///
+/// The name is rclrs's, the role is the backend seam: rclrs's `Publisher<T>` is a
+/// typed, shared handle (`Arc<PublisherState<T>>`); this trait is what an RMW
+/// backend implements, raw bytes in. The typed handle a node hands an application
+/// is one type with no `Arc` (`nros::EmbeddedPublisher<M>`). Loaning exists:
+/// `EmbeddedRawPublisher::try_loan` / `loan`, zero-copy through `SlotLending`
+/// when the `lending` feature is on and the backend supports it.
+///
 /// # Threading
 ///
 /// `&self` on `publish_raw` — implementors must allow concurrent

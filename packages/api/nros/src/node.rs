@@ -304,6 +304,11 @@ pub trait Node {
 }
 
 /// Runtime-neutral node construction options.
+///
+/// ADOPT-BOUNDED against rclrs's `NodeOptions` / `IntoNodeOptions` builder: three
+/// public fields (`name`, `namespace`, `domain_id`) and nothing else. There are no
+/// node ARGUMENTS and no rosout toggle — both are fixed at build time here
+/// (RFC-0045), so an rclrs builder call for either is a compile error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NodeOptions<'a> {
     /// Source node name. Launch planning may remap/namespace later.

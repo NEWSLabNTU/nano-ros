@@ -416,8 +416,12 @@
   "rust:NodeOptions": {
     "bucket": "theirs-only",
     "verdict": "divergence",
-    "why": "rclrs's `IntoNodeOptions` builds arguments, namespace and the rosout toggle for a node being constructed. Ours names the two things a device varies (`domain_id`, `namespace`); the rest are build-time (RFC-0045).\n\nphase-428 W6 (2026-09-06) — disposition, required because this row's SHAPE CORRESPONDS: the name exists on the ported surface and the correlator files it `same`, so nothing in a build says the contract differs. That is the class RFC-0089 exists for.\n\nUPSTREAM'S CONTRACT: rclrs's `NodeOptions` / `IntoNodeOptions` builds arguments, namespace and the rosout toggle for a node under construction; the recorded surface carries `NodeOptions::new`.\n\nOURS: `packages/api/nros/src/node.rs:264` — `pub struct NodeOptions<'a> { name, namespace, domain_id }`, `Copy`, three public fields and nothing else. Arguments and rosout are build-time here (RFC-0045).\n\nHOW A USER FINDS OUT: COMPILE ERROR throughout — a builder method we do not have is `no method named`, a field we do not have is `no field named`. ADOPT-BOUNDED: the name and the two things a device varies are upstream's, and everything dropped is dropped loudly.",
-    "disposition": "adopt-bounded"
+    "why": "rclrs's `IntoNodeOptions` builds arguments, namespace and the rosout toggle for a node being constructed. Ours names the two things a device varies (`domain_id`, `namespace`); the rest are build-time (RFC-0045).\n\nphase-428 W6 (2026-09-06) — disposition, required because this row's SHAPE CORRESPONDS: the name exists on the ported surface and the correlator files it `same`, so nothing in a build says the contract differs. That is the class RFC-0089 exists for.\n\nUPSTREAM'S CONTRACT: rclrs's `NodeOptions` / `IntoNodeOptions` builds arguments, namespace and the rosout toggle for a node under construction; the recorded surface carries `NodeOptions::new`.\n\nOURS: `packages/api/nros/src/node.rs` (by name) — `pub struct NodeOptions<'a> { name, namespace, domain_id }`, `Copy`, three public fields and nothing else. Arguments and rosout are build-time here (RFC-0045).\n\nHOW A USER FINDS OUT: COMPILE ERROR throughout — a builder method we do not have is `no method named`, a field we do not have is `no field named`. ADOPT-BOUNDED: the name and the two things a device varies are upstream's, and everything dropped is dropped loudly.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the struct's rustdoc said only \"Runtime-neutral node construction options\"; it now states the three fields and the absent arguments / rosout toggle (build-time, RFC-0045).",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros/src/node.rs",
+      "text": "node ARGUMENTS and no rosout toggle — both are fixed at build time here"
+    }
   },
   "rust:NodeOptions::domain_id": {
     "verdict": "divergence",

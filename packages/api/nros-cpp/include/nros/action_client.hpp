@@ -127,14 +127,6 @@ template <typename A> class Client {
         }
     };
 
-    /// Send a goal and receive the generated goal UUID (blocking).
-    ///
-    /// Internally spins the executor until the server accepts or rejects
-    /// the goal (Phase 82 compliant -- drives the executor).
-    ///
-    /// @param goal     Goal to send.
-    /// @param goal_id  Output 16-byte goal UUID (filled on success).
-    /// @return Result indicating success or failure.
     /// phase-338 W8 — block until the action server is discoverable.
     ///
     /// Mirrors `rclcpp_action::Client::wait_for_action_server`. Probes the
@@ -152,6 +144,9 @@ template <typename A> class Client {
     /// forever; this used to substitute 5000 ms for an argument-free call,
     /// silently. RFC-0021 is why the unbounded form does not exist here, and
     /// `NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT` is what a ported caller now reads.
+    ///
+    /// Takes `uint32_t` MILLISECONDS, not a `std::chrono::duration`, and returns
+    /// `Result` (timeout vs. not-initialised by code), not `bool`.
     ::nros::Result wait_for_action_server(uint32_t timeout_ms) {
         if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
         return ::nros::Result(nros_cpp_action_client_wait_for_action_server(storage_, timeout_ms));
@@ -190,6 +185,19 @@ template <typename A> class Client {
     /// where it is. Returns `""` (never NULL) on an uninitialised client.
     const char* get_action_name() const { return initialized_ ? action_name_ : ""; }
 
+    /// Send a goal and receive the generated goal UUID (blocking).
+    ///
+    /// Internally spins the executor until the server accepts or rejects
+    /// the goal (Phase 82 compliant -- drives the executor).
+    ///
+    /// Upstream's `async_send_goal` returns a `std::shared_future` of a goal handle.
+    /// This one blocks and reports through `Result` plus an out-param goal id: no
+    /// future and no goal handle (RFC-0021: no async runtime, no allocator). The
+    /// future-shaped spelling is `send_goal_future`, over `nros::Future`.
+    ///
+    /// @param goal     Goal to send.
+    /// @param goal_id  Output 16-byte goal UUID (filled on success).
+    /// @return Result indicating success or failure.
     ::nros::Result send_goal(const GoalType& goal, uint8_t goal_id[16]) {
         if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
 
@@ -393,8 +401,9 @@ template <typename A> class Client {
 
     /// Options for async goal sending (mirrors rclcpp SendGoalOptions).
     ///
-    /// Set callback pointers before calling send_goal_async(). Callbacks are
-    /// invoked during spin_once() when the corresponding response arrives.
+    /// Installed on the CLIENT with set_callbacks(), not passed per goal.
+    /// Callbacks are invoked during spin_once() when the corresponding
+    /// response arrives.
     /// All callbacks receive the context pointer for user state.
     struct SendGoalOptions {
         /// Called when the server accepts or rejects the goal.
@@ -495,6 +504,13 @@ template <typename A> class Client {
     }
 
     /// Register async callbacks for goal response, feedback, and result.
+    ///
+    /// Binds the callbacks to the CLIENT, not to one goal: rclcpp passes a
+    /// `SendGoalOptions` to each `async_send_goal`, while here they are installed
+    /// once and serve every goal this client sends (RFC-0041: callbacks bind to
+    /// the entity). The pointers are read when a reply is DISPATCHED, so install
+    /// them before the spin that delivers the reply — before or after
+    /// `send_goal_async` both work.
     ///
     /// @param options  Callback pointers and context.
     /// @return Result::success() on success, ErrorCode::NotInitialized

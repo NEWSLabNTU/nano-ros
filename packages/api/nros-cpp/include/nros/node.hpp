@@ -1204,6 +1204,11 @@ class Node {
     /// an allocator. `prefix` is joined with `.` exactly as upstream does; an
     /// empty prefix declares the bare names. The first failure stops the run
     /// and is returned, so a half-applied map is visible rather than silent.
+    ///
+    /// Returns `Result`, NOT upstream's `std::vector<T>` of the values in effect.
+    /// The two differ only where a launch seed already declared a name (the case
+    /// that return exists for); read the value back with `get_parameter<T>`. A port
+    /// that binds the vector does not compile; one that ignores it is unchanged.
     template <typename T>
     Result declare_parameters(const ::std::string& prefix, const ::std::map<::std::string, T>& m) {
         for (typename ::std::map<::std::string, T>::const_iterator it = m.begin(); it != m.end();
@@ -1323,6 +1328,10 @@ class Node {
     ///
     /// The handle is `'static` and must NOT be freed; it is null on an
     /// uninitialized node.
+    ///
+    /// The returned logger is `rclcpp::Logger`'s bounded form: `get_name()`,
+    /// `set_level()` and the `RCLCPP_*` macros work, `get_child()` does not compile
+    /// (no allocator to build a child name), and the name is borrowed from the node.
     ::rclcpp::Logger get_logger() const {
         if (!initialized_) return ::rclcpp::Logger("", nullptr);
         return ::rclcpp::Logger(nros_cpp_node_get_name(&handle_),
@@ -1682,6 +1691,12 @@ class Node {
     /// @param qos       QoS profile. MANDATORY, as upstream's is.
     /// @param callback  Handler invoked as `callback(const M&)` per sample.
     /// @param options   Named subscription options (e.g. sched_context).
+    ///
+    /// CALLER-PLACED: fills `out` and returns `Result`, where upstream returns a
+    /// `Subscription<M>::SharedPtr` and throws on failure (RFC-0018/0019: no
+    /// exceptions, no heap). On a hosted build the ported spelling
+    /// `create_subscription<M>(topic, qos, cb)` returns a `SharedPtr` and aborts,
+    /// naming the topic, if the create fails.
     template <
         typename M, typename F,
         typename = typename std::enable_if<std::is_convertible<F, void (*)(const M&)>::value>::type>

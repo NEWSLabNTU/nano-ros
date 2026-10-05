@@ -30,8 +30,8 @@ class FibServer {
     bool has_pending_ = false; // a goal is accepted + awaiting its tick-driven result
     int goal_count_ = 0;
 
-    int32_t on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len);
-    int32_t on_cancel(const uint8_t goal_id[16]);
+    ::nros::GoalResponse on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len);
+    ::nros::CancelResponse on_cancel(const uint8_t goal_id[16]);
     void on_tick();
 
   public:

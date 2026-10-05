@@ -7868,7 +7868,15 @@ NROS_PUBLIC struct nros_client_t rcl_get_zero_initialized_client(void);
  * Stores the service name/type metadata and a `ServiceClientInternal`
  * blob; the actual transport handle (`RmwServiceClient`) is created
  * later by `nros_executor_add_client`. This deferred lifecycle matches
- * `nros_service_init` (server side) and the action client.
+ * `rclc_service_init_default` (server side) and the action client.
+ *
+ * rclc's `rclc_client_init_default`, at rclc's arity. The typesupport
+ * argument keeps OUR type: `const nros_service_type_t*` where rclc takes a
+ * `const rosidl_service_type_support_t*`, so passing a rosidl typesupport is
+ * an incompatible-pointer diagnostic at the call (same reason as
+ * `rclc_service_init_default`: a typesupport's members are its contract). The
+ * response callback is supplied at registration (`nros_executor_add_client*`),
+ * as rclc's is at `rclc_executor_add_client`.
  *
  * # Parameters
  * * `client` - Pointer to a zero-initialized client
