@@ -1098,6 +1098,24 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 if overlays.sysbuild {
                     a.push("--sysbuild".to_string());
                 }
+                // Issue 1669 -- each image configures into its OWN build dir,
+                // `build/<coordinate>/<image>_west`, unless the caller names
+                // one (`-- -d <dir>`, which the fixture lanes do: theirs wins).
+                // West's default is `build/` under the cwd, which is the
+                // workspace root here -- nros's own `build/` -- so the first
+                // Zephyr image's tree landed beside the coordinate directories
+                // and a second image of the same workspace was refused ("is
+                // for application …, but source directory … was specified").
+                // In the FIRST zone and before the positional: `-d` takes one
+                // value, so it cannot swallow the application path.
+                if !names_west_build_dir(&west_extra) {
+                    a.push("-d".to_string());
+                    a.push(
+                        west_build_dir(&root, &platform, &image, &bringup, &image_id)
+                            .display()
+                            .to_string(),
+                    );
+                }
                 a.push(app.display().to_string());
                 // AFTER the application path, which looks unusual and is the
                 // point. `-p`/`--pristine` takes an OPTIONAL value
@@ -3111,6 +3129,38 @@ fn generated_entry_dir(
     root.join("build")
         .join(coordinate(platform, image))
         .join(crate::builder::entry::package_name(image_id))
+}
+
+/// Issue 1669 -- where `nros build` points `west build -d` for an image:
+/// `build/<coordinate>/<bringup>__<image_id>_west`, beside the generated
+/// application. Keyed on the BRINGUP as well as the id, because two bringups
+/// may declare one image id over one hand-written application (`realtime-c`,
+/// legal -- [`generated_outputs`] claims nothing for it): the application is
+/// shared, the build tree must not be. The `<bringup>__<image>` spelling is
+/// the one `build/<bringup>__<image>/resolved.toml` already uses. So no two
+/// images share a Zephyr build tree and none lands in `build/` itself. ONE
+/// spelling.
+pub(crate) fn west_build_dir(
+    root: &Path,
+    platform: &str,
+    image: &crate::orchestration::image::ImageBlock,
+    bringup: &str,
+    image_id: &str,
+) -> PathBuf {
+    root.join("build")
+        .join(coordinate(platform, image))
+        .join(format!("{bringup}__{image_id}_west"))
+}
+
+/// Does the passthrough already name west's build dir (`-d <dir>`,
+/// `--build-dir <dir>`, `-d<dir>`, `--build-dir=<dir>`)? Then it wins.
+fn names_west_build_dir(west_extra: &[String]) -> bool {
+    west_extra.iter().any(|a| {
+        a == "-d"
+            || a == "--build-dir"
+            || a.starts_with("--build-dir=")
+            || (a.starts_with("-d") && a.len() > 2 && !a.starts_with("--"))
+    })
 }
 
 /// The directory the build's missing-facade HEAL writes selection facades
