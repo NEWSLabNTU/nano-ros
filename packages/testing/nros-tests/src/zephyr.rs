@@ -873,42 +873,45 @@ fn sdk_qemu_xilinx_aarch64() -> Option<String> {
     newest_sdk_root_under(&crate::project_root().join("scripts/zephyr/sdk"))
 }
 
-/// Get the path to the Zephyr workspace
+/// The Zephyr workspace, from THE ladder — `scripts/lib/zephyr-workspace.sh
+/// resolve` (RFC-0095 D4): `$NROS_ZEPHYR_WORKSPACE`, then the store
+/// (`$NROS_STORE/workspaces/zephyr/<line>`, where `just zephyr setup` installs
+/// since phase-440 W4), then the checkout-relative trees.
 ///
-/// Checks in order:
-/// 1. `ZEPHYR_NANO_ROS` environment variable
-/// 2. `zephyr-workspace` symlink in project root
-/// 3. Sibling workspace `../nano-ros-workspace/`
+/// This was a third rung set of its own (`ZEPHYR_NANO_ROS`, an in-tree
+/// `zephyr-workspace`, the `../nano-ros-workspace` sibling) with NO store arm,
+/// so on a host provisioned the way setup provisions today every Zephyr test
+/// skipped `Zephyr not available` while the fixture build, which reads the
+/// shell ladder, found and used the workspace: 54 undeclared capability skips
+/// in one `just ci tier1 run` (measured 2026-10-06, issues 1685/1700). Calling
+/// the helper rather than restating it is what keeps a fourth spelling out.
 ///
-/// # Returns
-/// Path to the workspace, or None if not found
+/// `ZEPHYR_NANO_ROS` stays as the first rung for anyone still exporting it.
+/// `None` when nothing resolves or the resolved tree has no `zephyr/`.
 pub fn zephyr_workspace_path() -> Option<PathBuf> {
-    // 1. Environment variable
     if let Ok(path) = std::env::var("ZEPHYR_NANO_ROS") {
         let path = PathBuf::from(path);
         if path.exists() {
             return Some(path);
         }
     }
-
     let root = project_root();
-
-    // 2. zephyr-workspace symlink
-    let symlink = root.join("zephyr-workspace");
-    if (symlink.is_symlink() || symlink.is_dir())
-        && let Ok(resolved) = std::fs::canonicalize(&symlink)
-        && resolved.exists()
-    {
-        return Some(resolved);
+    let out = Command::new("bash")
+        .arg(root.join("scripts/lib/zephyr-workspace.sh"))
+        .args(["--absolute", "resolve"])
+        .current_dir(&root)
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
     }
-
-    // 3. Sibling workspace
-    let sibling = root.parent()?.join("nano-ros-workspace");
-    if sibling.exists() {
-        return Some(sibling);
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if s.is_empty() {
+        return None;
     }
-
-    None
+    let path = std::fs::canonicalize(PathBuf::from(s)).ok()?;
+    path.join("zephyr").is_dir().then_some(path)
 }
 
 /// Where THIS checkout's west build dirs live — issue 1596. The Rust twin of
