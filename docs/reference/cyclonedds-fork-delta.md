@@ -30,8 +30,8 @@ when upstream releases.
 
 ## What the fork adds
 
-21 commits, 52 files, +2493/−137 against the 0.10.x boundary `5041f356`.
-Seven groups.
+26 commits, 56 files, +2604/−141 against the 0.10.x boundary `5041f356`.
+Eight groups.
 
 Re-measured 2026-08-29 and it had drifted BOTH ways: the headline said 15
 while the tables below listed 17, and `ae14b312` appeared in neither. A
@@ -54,7 +54,7 @@ Almost entirely **additive** — new `ddsrt/{sync,threads,sockets,time,heap,
 ifaddrs,process}/threadx/` trees plus the `DDSRT_WITH_THREADX` selection arms.
 Retired only if upstream accepts a ThreadX port, which nobody has offered.
 
-### 2. Zephyr platform gaps (4 commits)
+### 2. Zephyr platform gaps (6 commits)
 
 | commit | subject |
 | --- | --- |
@@ -62,6 +62,8 @@ Retired only if upstream accepts a ThreadX port, which nobody has offered.
 | `1d794c0a` | ddsi_udp: Zephyr multicast join via `struct ip_mreqn` (issue 0231) |
 | `4aa337b0` | q_sockwaitset: AF_UNIX socketpair self-pipe on native-IP-stack Zephyr |
 | `ae14b312` | ddsrt: initialise the atomics mutexes at runtime on the Zephyr backend |
+| `79bd9cb9` | ddsrt: name threads on Zephyr, instead of leaving every one anonymous |
+| `f241020d` | ddsrt: on Zephyr, destroy a thread's attr after pthread_join, not after create (issue 1698) |
 
 Upstream *does* have a Zephyr port (`ports/zephyr`, `WITH_ZEPHYR`); these are
 places where it does not survive contact with Zephyr's native IP stack / NSOS.
@@ -239,6 +241,19 @@ with glibc, all 64 stripes at sizeof 40/64/96/128 but **16 of 64 at 48**.
 `sizeof (struct addrset)` is 40 today, one added field from the bad case, and the
 allocator that matters is picolibc's on Zephyr, which nobody measured.
 
+### 8. Protocol and receive-path robustness (3 commits)
+
+| commit | subject |
+| --- | --- |
+| `7f064c11` | ddsi: re-arm a suppressed-NACK acknack no earlier than now, instead of from a stale timestamp |
+| `67ff7518` | ddsi: assert that an acknack event still needing a NACK is still scheduled |
+| `2314625c` | ddsi: rate-limit and back off a persistently failing select in the waitset (issue 1696) |
+
+The first two are backports of upstream 11.x behaviour onto 0.10.5. The third
+is ours: the select-mode receive loop retried a persistent `select()` failure
+with no back-off and logged every attempt. That is how one Zephyr image's
+console reached 91 GB (issues 1674, 1696, 1697).
+
 ## Re-deriving the delta
 
 Three separate mechanisms have made this fork *look* like it carries commits
@@ -254,10 +269,11 @@ Then, two recipes that cross-check each other:
 
 ```sh
 # by boundary: 5041f356 is the newest upstream 0.10.x commit the stack sits on
-git log --oneline 5041f356..origin/nano-ros          # -> 21
+git log --oneline 5041f356..origin/nano-ros          # -> 26
 
 # by authorship, as an independent check
-git log --oneline --author=jerry73204 origin/master..origin/nano-ros   # -> 21
+git log --oneline --author=jerry73204 origin/master..origin/nano-ros   # -> 24
+# (the other 2, 7f064c11 and 67ff7518, carry a second author address)
 ```
 
 Do not count `origin/master..origin/nano-ros` alone: it sweeps in upstream 0.10.x
