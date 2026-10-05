@@ -18,6 +18,8 @@
 //! ```
 
 pub mod alloc;
+// Issue 1692 — run a prebuilt entry as a census producer (`$NROS_CENSUS_OUT`).
+pub mod census;
 pub mod checker;
 pub mod dds_isolation;
 pub mod esp32;

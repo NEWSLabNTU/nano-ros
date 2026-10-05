@@ -17,9 +17,9 @@
 //!    (`committed_per_host_models_carry_their_binding`) — `nros sync`
 //!    replays `meta.args` on refresh, so a model whose binding went missing
 //!    would silently re-resolve as the default (`all`) configuration;
-//! 3. `nros codegen entry --model <per-host model>` emits an entry
-//!    registering only that host's node
-//!    (`multihost_bake_emits_only_the_hosts_node`).
+//! 3. each language's BUILT per-host entry registers only that host's nodes,
+//!    read back from the image through a census run
+//!    (`multihost_bake_emits_only_the_hosts_node`, issue 1692).
 //!
 //! Cross-process *delivery* between hosts is proven by `multihost_e2e`; this
 //! file seals the source-level story.
@@ -187,74 +187,115 @@ fn per_host_resolves_partition_and_carry_their_binding() {
     }
 }
 
-fn codegen_entry_model(model: &std::path::Path, out: &std::path::Path) -> String {
-    let nros = nros_tests::nros_cli_bin_path().expect("require_nros_cli gated this");
-    let workspace = nros_tests::project_root().join("examples/workspaces/rust");
-    let status = Command::new(&nros)
-        .args(["codegen", "entry", "--lang", "rust"])
-        .arg("--workspace")
-        .arg(&workspace)
-        .arg("--model")
-        .arg(model)
-        .arg("--out")
-        .arg(out)
-        .output()
-        .expect("spawn nros codegen entry");
-    assert!(
-        status.status.success(),
-        "`nros codegen entry --model {}` failed:\nstdout:\n{}\nstderr:\n{}",
-        model.display(),
-        String::from_utf8_lossy(&status.stdout),
-        String::from_utf8_lossy(&status.stderr),
-    );
-    std::fs::read_to_string(out).expect("read generated entry source")
-}
-
+/// Each language's per-host entry, as the BUILD baked it, registers only its
+/// host's nodes — read from the image itself, through a census run.
+///
+/// Issue 1692. This used to bake a Rust entry with `nros codegen entry --lang
+/// rust --model <per-host model>` and grep the emitted `main.rs` for
+/// `talker_pkg::register`. That verb was retired in phase-432 W2.4 (a Rust
+/// entry is the `nros::main!()` expansion, at compile time, with no source
+/// artifact), and since phase-460 W1 the verb's model door also refused a
+/// model the bare resolver had stamped with its own crate version instead of
+/// the `play_launch` pin `nros sync` writes. Nothing ran the test between the
+/// retirement and 2026-10-05 (issue 1651), so it asserted a surface that no
+/// longer existed.
+///
+/// The surface that exists for EVERY language is the built image, and the
+/// cheapest question to ask it is a census (`$NROS_CENSUS_OUT`, phase-463):
+/// the entry constructs every component its bake registered, writes the nodes
+/// the recorder saw and exits — no router, no spin. So this asserts the bake's
+/// OUTPUT on the multihost fixtures `multihost_e2e` boots, which were baked
+/// from `nros sync`'s per-host models (`[[model]] args = { host = … }`) through
+/// each language's real road: `nros::main!` for Rust, `nano_ros_entry` →
+/// `nros codegen entry --typed` for C, C++ and mixed. `multihost_e2e` proves
+/// robot1 reaches robot2; only this proves robot1 carries no listener.
 #[test]
 fn multihost_bake_emits_only_the_hosts_node() {
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found");
+    use nros_tests::fixtures::{
+        RequireFixture, build_native_workspace_c_entry_robot1,
+        build_native_workspace_c_entry_robot2, build_native_workspace_cpp_entry_robot1,
+        build_native_workspace_cpp_entry_robot2, build_native_workspace_mixed_entry_robot1,
+        build_native_workspace_mixed_entry_robot2, build_native_workspace_rust_entry_robot1,
+        build_native_workspace_rust_entry_robot2,
+    };
+    type Resolver = fn() -> nros_tests::TestResult<&'static std::path::Path>;
+    // (entry, resolver, nodes it must register, nodes it must NOT register)
+    let cells: &[(&str, Resolver, &[&str], &[&str])] = &[
+        (
+            "rust robot1",
+            build_native_workspace_rust_entry_robot1,
+            &["talker"],
+            &["listener"],
+        ),
+        (
+            "rust robot2",
+            build_native_workspace_rust_entry_robot2,
+            &["listener"],
+            &["talker"],
+        ),
+        (
+            "c robot1",
+            build_native_workspace_c_entry_robot1,
+            &["talker"],
+            &["listener"],
+        ),
+        (
+            "c robot2",
+            build_native_workspace_c_entry_robot2,
+            &["listener"],
+            &["talker"],
+        ),
+        (
+            "cpp robot1",
+            build_native_workspace_cpp_entry_robot1,
+            &["talker"],
+            &["listener"],
+        ),
+        (
+            "cpp robot2",
+            build_native_workspace_cpp_entry_robot2,
+            &["listener"],
+            &["talker"],
+        ),
+        (
+            "mixed robot1",
+            build_native_workspace_mixed_entry_robot1,
+            &["talker", "heartbeat"],
+            &["listener"],
+        ),
+        (
+            "mixed robot2",
+            build_native_workspace_mixed_entry_robot2,
+            &["listener"],
+            &["talker", "heartbeat"],
+        ),
+    ];
+    for (what, resolve, registers, absent) in cells {
+        let entry = resolve().require(&format!("native {what} multihost entry"));
+        let census = nros_tests::census::take(entry, std::time::Duration::from_secs(20));
+        assert!(
+            census.status.success(),
+            "[{what}] census run of {} exited {}: {}",
+            entry.display(),
+            census.status,
+            census.raw
+        );
+        let nodes = census.node_ids();
+        for node in *registers {
+            assert!(
+                nodes.iter().any(|n| n == node),
+                "[{what}] {} does not register its own host's node `{node}` (census \
+                 nodes: {nodes:?})",
+                entry.display()
+            );
+        }
+        for node in *absent {
+            assert!(
+                !nodes.iter().any(|n| n == node),
+                "[{what}] {} registers the OTHER host's node `{node}` -- the per-host \
+                 partition did not reach the bake (census nodes: {nodes:?})",
+                entry.display()
+            );
+        }
     }
-    if launch_resolver().is_none() {
-        nros_tests::skip!("nros-launch-resolve not built (run `just setup-launch-resolve`)");
-    }
-    if !nros_tests::host_python_available() {
-        // Issue 0914's residue: `$(eval …)` needs an interpreter, and without
-        // one this failed rather than skipping — "no Python here" and "the
-        // shipped pair is broken" produce the same parse error.
-        nros_tests::skip!("no usable python3 on this host");
-    }
-    let tmp = tempfile::tempdir().expect("tempdir");
-
-    // Resolve both host models first. They used to be read from
-    // `config/multihost_robot<N>_model.yaml`; phase-330 W4 deleted the committed
-    // models (issue 0414), and the bake's input is a model the BUILD produces —
-    // so produce one, then bake from it. What is under test is the bake, not the
-    // provenance of the yaml.
-    let robot1_model = tmp.path().join("robot1_model.yaml");
-    resolve_ws_with_host("rust", "robot1", &robot1_model);
-    let robot2_model = tmp.path().join("robot2_model.yaml");
-    resolve_ws_with_host("rust", "robot2", &robot2_model);
-
-    // robot1 model → talker only.
-    let robot1 = codegen_entry_model(&robot1_model, &tmp.path().join("robot1_main.rs"));
-    assert!(
-        robot1.contains("talker_pkg::register"),
-        "robot1 entry missing talker:\n{robot1}"
-    );
-    assert!(
-        !robot1.contains("listener_pkg::register"),
-        "robot1 entry wrongly includes listener:\n{robot1}"
-    );
-
-    // robot2 model → listener only.
-    let robot2 = codegen_entry_model(&robot2_model, &tmp.path().join("robot2_main.rs"));
-    assert!(
-        robot2.contains("listener_pkg::register"),
-        "robot2 entry missing listener:\n{robot2}"
-    );
-    assert!(
-        !robot2.contains("talker_pkg::register"),
-        "robot2 entry wrongly includes talker:\n{robot2}"
-    );
 }
