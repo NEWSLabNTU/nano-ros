@@ -178,6 +178,11 @@ launch = "freertos_system.launch.xml"
 # whose `[board.zephyr] west_board` carries the Zephyr id `west -b` receives.
 [image.fvp]
 board = "fvp-aemv8r-smp"
+# The overlay below and `fvp_entry`'s `EXTRA_CONF_FILE` both select Cyclone,
+# so the image says so: without this it inherited `[system] rmw = "zenoh"`
+# and NanoRosImageAgreement refused the configure (phase-477; unseen since
+# 2026-08-30 because the FVP lanes skipped as "license-gated").
+rmw = "cyclonedds"
 # NOT derivable, and not for the reason this comment used to give. It claimed
 # two entry packages target this board and the choice was therefore ambiguous —
 # an ambiguity MANUFACTURED by the wrong `board` above: with both spellings

@@ -1395,6 +1395,12 @@ upstream = "FM-11.31"
 # would bury the binary one level down and every resolver would miss it.
 # Verified by listing the archive, not assumed from the name.
 dist.linux-x86_64 = { url = "https://developer.arm.com/-/cdn-downloads/permalink/FVPs-Architecture/FM-11.31/FVP_Base_AEMv8R_11.31_28_Linux_x86.tar.gz", sha256 = "627500afdb115701b412b85520e5c0e370b7f7e3f425f7ae4b1e8b14cbd4441a", install = "tar -xzf {archive} -C {prefix} --strip-components=1", floor = { glibc = "2.17", glibcxx = "3.4.26" } }
+# phase-477 — `--version` RUNS the model and prints `Fast Models [11.31.28 …]`
+# (measured on the installed 11.31.28), so a broken unpack or a missing
+# runtime library fails here instead of at the first `west build -t run`.
+smoke = [
+    { run = "bin/FVP_BaseR_AEMv8R --version", expect = "Fast Models" },
+]
 
 # --- RMW host packages (Phase 191.6.a): the RMW axis, orthogonal to the board.
 # `nros setup <board> --rmw <name>` resolves `board.packages ∪ rmw.packages`

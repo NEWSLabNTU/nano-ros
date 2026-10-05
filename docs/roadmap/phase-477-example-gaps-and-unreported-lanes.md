@@ -49,8 +49,17 @@ three hand-written entries remain, none a generator gap.
   (the generated dir is keyed on `(platform, rmw)`, so two bringups would collide
   silently) and correct that row's board (declares `native_sim`, builds
   `qemu_cortex_a53`).
-- **`realtime-cpp/src/fvp_entry`** — needs a host that can build the Arm FVP
-  image. Record it as a deliberate exception if none will exist.
+- **`realtime-cpp/src/fvp_entry`** — **builds and RUNS on this host** (2026-10-05).
+  "Needs a host that can build it" was never true: the model is a pinned public
+  download (`nros setup --tool arm-fvp`, 68 MB, x86_64 Linux, no licence, no
+  root) and the `aarch64-zephyr-elf` toolchain was already in the Zephyr SDK.
+  With it installed, `just zephyr verify-fvp-runtime` →
+  `fvp_ws_entry_two_tier_publishes` **PASS**. Getting there surfaced two LIVE
+  defects the skipped lane had hidden — `[image.fvp]` inherited `rmw = zenoh`
+  while using the Cyclone overlay (refused by the image-agreement check since
+  2026-08-30), and a `std::nothrow` double definition against full libstdc++.
+  Both fixed (see W3). Remaining: migrate it to a generated west application
+  (it needs the `nano_ros_use_board` + `EXTRA_CONF_FILE` axis W5.b3 did not do).
 
 Also in this theme: [1289](../issues/1289-workspace-node-tables-still-in-manifests.md)
 (45 node packages still declare their class in `[package.metadata.nros.node]`),
@@ -90,6 +99,14 @@ the census (not a path list) keeps the class closed.
 - Issue [1627](../issues/1627-west-configure-fixture-passes-on-failed-configure.md)
   — a `west-configure` fixture counts a failed configure as built when its
   declared output is written before the generate step.
+- **The FVP lanes were exempt on a false premise** (2026-10-05). Five recipes
+  (`build-/run-fvp-ws-entry`, `build-/run-fvp-board-import`,
+  `verify-fvp-runtime`) were excluded from "a NAMED lane must work" as
+  "licence-gated and user-supplied" — false since 2026-09-06, when the model
+  became `[tool.arm-fvp]`; the BUILD recipes never needed the model at all. The
+  skip hid two live defects (W1). Exemptions removed; the recipes declare
+  `nros_lane_platform zephyr`, so a named run without the model now fails naming
+  `nros setup --tool arm-fvp`, while a fan-out still skips and reports.
 - **A decision 1627 records and nobody has taken:** since PR #1561, a narrowed
   Zephyr lane honours `NROS_ZEPHYR_FIXTURE_FILTER` for the five west compile
   checks, so `just zephyr build-rust-examples` and its siblings no longer build

@@ -40,7 +40,6 @@ corrosion: installs CMake package files and no executable — measured, the 0.6.
 
 # --- debt: a probe is possible and nobody has measured one -------------------
 
-arm-fvp: `bin/FVP_BaseR_AEMv8R` exists after the `--strip-components=1` unpack, and no probe has been run against it. x86_64 Linux only, and no host here has provisioned it, so its banner and its exit behaviour are both unmeasured — writing an `expect` from the documentation is how a probe passes on nothing.
 cyclonedds: `bin/idlc` is the candidate. Unmeasured: the dist bundles its own `libddsc`, so what a bare probe resolves depends on RUNPATH and on whether a ROS cyclonedds is on the loader path — exactly issue 0774's confound, which is worth measuring before asserting on.
 esp32-qemu: source-built only, so the binary is produced by the host that will run it. A probe is still worth having (a build can succeed and produce something that will not start) and none has been measured.
 genromfs: source-built only. Unmeasured — its `-h` output is the only surface and nothing has been run to see what it prints or on which stream.

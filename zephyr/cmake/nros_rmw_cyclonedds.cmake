@@ -136,12 +136,7 @@ set(_cdds_zephyr_overrides
     # iox_sub_context_*() / shm_{lock,unlock}_iox_sub(). Stub bodies
     # satisfy the linker; never called at runtime.
     ${NROS_ZEPHYR_DIR}/cyclonedds-zephyr/shm_stubs.c
-    # Phase 171.0.c — Zephyr's current minimal C++ runtime now
-    # defines the nothrow new/delete overloads itself, but leaves
-    # the `std::nothrow` tag object unresolved on AArch64 FVP.
-    # Keep a tag-only TU instead of the old Phase 11W.3 operator
-    # override, which now collides with Zephyr's cpp_new.cpp.
-    ${NROS_ZEPHYR_DIR}/cyclonedds-zephyr/nothrow_tag.cpp
+    # (nothrow_tag.cpp is appended below, conditionally.)
     # Phase 11W.4 — link-time stubs for the residual unreferenced
     # symbols (ddsi_vnet_init / ddsrt_getifaddrs / IN_MULTICAST
     # macro define). Most of the original 88 undef-references
@@ -149,6 +144,20 @@ set(_cdds_zephyr_overrides
     # leave-undefined; only these three needed explicit stubs.
     ${NROS_ZEPHYR_DIR}/cyclonedds-zephyr/link_stubs.c
 )
+# Phase 171.0.c — Zephyr's MINIMAL C++ runtime defines the nothrow
+# new/delete overloads itself but leaves the `std::nothrow` tag object
+# unresolved on AArch64 FVP, so a tag-only TU supplies it (not the old Phase
+# 11W.3 operator override, which collides with Zephyr's cpp_new.cpp).
+#
+# Only when the C++ library does not already define it. An image that selects
+# the FULL libstdc++ (`CONFIG_GLIBCXX_LIBCPP=y`) gets the tag from
+# `libstdc++.a(new_handler.o)`, and supplying a second one fails the link with
+# `multiple definition of 'std::nothrow'` — which is what the realtime-cpp FVP
+# image (`fvp_entry`) did, unseen, because the FVP lanes skipped (phase-477).
+if(NOT CONFIG_GLIBCXX_LIBCPP)
+    list(APPEND _cdds_zephyr_overrides
+        ${NROS_ZEPHYR_DIR}/cyclonedds-zephyr/nothrow_tag.cpp)
+endif()
 
 # ddsi: protocol engine. ddsc: public C API. `.part.c` files
 # are partials meant to be #include'd from sibling TUs, not

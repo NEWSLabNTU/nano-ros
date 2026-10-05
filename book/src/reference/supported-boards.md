@@ -20,8 +20,7 @@ nano-ros on them. Per-crate tier truth is the generated
 > a crate in this tree (Nordic, NXP, TI…), which the registry cannot express.
 >
 > It has drifted before — the ARM FVP row
-> claimed **Tested** while its model is license-walled and runs in no CI lane at
-> all.
+> claimed **Tested** while it runs in no CI lane at all.
 
 | Vendor       | Board                | MCU / SoC          | Arch       | Default RTOS  | Status   | Example / board crate                                            |
 |--------------|----------------------|--------------------|------------|---------------|----------|-------------------------------------------------------------------|
@@ -45,7 +44,7 @@ nano-ros on them. Per-crate tier truth is the generated
 | QEMU         | arm `virt`           | Cortex-A7          | Armv7-A    | NuttX         | Tested   | `examples/qemu-armv7a-nuttx/`                                         |
 | QEMU         | `rv-virt` RISC-V32   | rv32imac           | RISC-V     | NuttX         | Tested   | `just nuttx build-riscv-c` / `build-riscv-rust` (`nros setup rv-virt-nuttx`) |
 | NVIDIA       | Jetson Orin SPE      | Cortex-R5          | Armv7-R    | FreeRTOS      | Not supported (no board crate) | Board crate removed (phase-337); FreeRTOS starter + vendor BSP is the path back |
-| Arm FVP      | `Base_RevC AEMv8R` (SMP) | AEMv8-R, AArch64 profile | Armv8-R | Zephyr 3.7 | Build-only | See [ARM FVP getting-started chapter](../getting-started/arm-fvp.md); `just zephyr build-fvp-ws-entry` / `build-fvp-board-import` + their `run-` siblings. Runtime is **maintainer-run** (`just zephyr verify-fvp-runtime`) — the model is license-gated, so no CI lane can boot it |
+| Arm FVP      | `Base_RevC AEMv8R` (SMP) | AEMv8-R, AArch64 profile | Armv8-R | Zephyr 3.7 | Build-only | See [ARM FVP getting-started chapter](../getting-started/arm-fvp.md); `just zephyr build-fvp-ws-entry` / `build-fvp-board-import` + their `run-` siblings. Runtime is **maintainer-run** (`just zephyr verify-fvp-runtime`). The model is NOT license-gated — `nros setup --tool arm-fvp` fetches it from a pinned Arm CDN permalink, x86_64 Linux only; what keeps it out of CI is cost, not permission |
 | Linux host   | (sim)                | x86-64 / aarch64    | x86 / Arm  | ThreadX sim   | Tested   | `examples/threadx-linux/`                                          |
 | Linux host   | (native)             | x86-64 / aarch64    | x86 / Arm  | POSIX         | Tested   | `examples/native/`                                                  |
 
