@@ -108,6 +108,6 @@ So the lane, as it now runs, fails on the pre-#1624 behaviour and passes after.
 
 - [issue 1670](../1670-tier2-runner-has-no-zenoh-router.md) — tier 2's runner
   has no `rmw_zenohd`, the other lane holding the coordinate.
-- [issue 1671](../1671-nightly-platform-build-red-withholds-every-cell.md) —
+- [issue 1671](1671-nightly-platform-build-red-withholds-every-cell.md) —
   one row's link failure withholds every cell verdict on the platform, the
   mechanism that hid 1657.
