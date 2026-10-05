@@ -5,7 +5,7 @@
 
 use nros_board_threadx_linux::ThreadxLinux;
 use nros_log::{
-    Logger, Severity, init, log_debug, log_error, log_fatal, log_info, nros_trace, log_warn,
+    Logger, Severity, init, log_debug, log_error, log_fatal, log_info, log_warn, nros_trace,
     register_logger, sinks,
 };
 
@@ -36,6 +36,13 @@ fn main() {
         nros_trace!(&LOGGER, "trace payload");
         log_debug!(&LOGGER, "debug payload");
         log_info!(&LOGGER, "info payload");
+        // phase-479 W6 (RFC-0102) — one CHILD of this logger. Its record must reach
+        // the platform writer under the dotted name `smoke.child`; emitted before the
+        // FATAL line some harnesses stop reading at.
+        match LOGGER.create_child("child") {
+            Ok(child) => log_info!(child, "child payload"),
+            Err(e) => log_error!(&LOGGER, "create_child failed: {}", e),
+        }
         log_warn!(&LOGGER, "warn payload");
         log_error!(&LOGGER, "error payload");
         log_fatal!(&LOGGER, "fatal payload");

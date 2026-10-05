@@ -409,6 +409,14 @@ pub const WS_C_LOGGING_MARKER: &str = "c_talker logging";
 /// (`"cpp_talker logging seq=N"`).
 pub const WS_CPP_LOGGING_MARKER: &str = "cpp_talker logging";
 
+/// phase-479 W6 (RFC-0102) — the record every `logging-smoke-*` fixture emits
+/// through a CHILD of its `smoke` logger, as `<name>: <message>`. The dotted
+/// name is the point: it proves `create_child` / `nros_logger_get_child` named
+/// the child `<parent>.<suffix>` and that the name reached the platform writer.
+/// Deliberately without the `[INFO] ` prefix — Zephyr's writer hands the same
+/// `<name>: <message>` text to `LOG_INF`, which prints its own `<inf>` tag.
+pub const LOGGING_SMOKE_CHILD_RECORD: &str = "smoke.child: child payload";
+
 // ---------------------------------------------------------------------------
 // Service (AddTwoInts) demo wording — phase-277 W5.
 //

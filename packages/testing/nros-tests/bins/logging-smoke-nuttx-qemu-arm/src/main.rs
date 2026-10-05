@@ -60,7 +60,10 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 // `CONFIG_INIT_ENTRYPOINT`) and its build.rs's propagating image-link
 // directives are the whole point of the dependency.
 use nros_board_nuttx_qemu as _;
-use nros_log::{Logger, Severity, log_debug, log_error, log_fatal, log_info, nros_trace, log_warn, register_logger};
+use nros_log::{
+    Logger, Severity, log_debug, log_error, log_fatal, log_info, log_warn, nros_trace,
+    register_logger,
+};
 
 static LOGGER: Logger = Logger::new("smoke");
 
@@ -77,6 +80,13 @@ pub extern "C" fn main(_argc: i32, _argv: *const *const core::ffi::c_char) -> i3
     nros_trace!(&LOGGER, "trace payload");
     log_debug!(&LOGGER, "debug payload");
     log_info!(&LOGGER, "info payload");
+    // phase-479 W6 (RFC-0102) — one CHILD of this logger. Its record must reach
+    // the platform writer under the dotted name `smoke.child`; emitted before the
+    // FATAL line some harnesses stop reading at.
+    match LOGGER.create_child("child") {
+        Ok(child) => log_info!(child, "child payload"),
+        Err(e) => log_error!(&LOGGER, "create_child failed: {}", e),
+    }
     log_warn!(&LOGGER, "warn payload");
     log_error!(&LOGGER, "error payload");
     log_fatal!(&LOGGER, "fatal payload");
