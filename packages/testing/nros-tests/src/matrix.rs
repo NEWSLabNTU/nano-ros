@@ -964,6 +964,9 @@ pub const CELLS: &[Cell] = &[
     // emitter-unit-tested (W3); a runtime C/C++ cell is residual.
     cell(Linux, Rust,  Zenoh, Remap,     Workspace, Runtime),
     cell(ZephyrNativeSim, Rust, Zenoh, Params,    Workspace, Runtime),
+    // Issue 1681 -- the C++ params entry: the one Zephyr C/C++ image that
+    // declares `param_services` (+ `lifecycle`), which did not link before.
+    cell(ZephyrNativeSim, Cpp,  Zenoh, Params,    Workspace, Runtime),
     cell(ZephyrNativeSim, Rust, Zenoh, Lifecycle, Workspace, Runtime),
     cell(ZephyrNativeSim, Rust, Zenoh, Qos,       Workspace, Runtime),
     cell(ZephyrNativeSim, Rust, Zenoh, Safety,    Workspace, Runtime),
@@ -1104,6 +1107,8 @@ pub fn w1_consumer_of(cell: &Cell) -> Option<W1Consumer> {
             Workload::Params | Workload::Qos | Workload::Lifecycle | Workload::Safety,
             Kind::Workspace,
         ) => Some(Entry),
+        // entry_e2e — issue 1681's zephyr C++ params entry.
+        (PlatformId::ZephyrNativeSim, Lang::Cpp, Workload::Params, Kind::Workspace) => Some(Entry),
         // workspace_features_e2e — native feature workspaces (Params is a
         // separate W4 file, deliberately excluded).
         (

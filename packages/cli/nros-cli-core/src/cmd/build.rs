@@ -1672,7 +1672,7 @@ fn run_configure(cfg: &Handoff) -> Result<()> {
 /// to ESCALATE a warning into a hard error, and a system that cannot be read is
 /// not evidence that a capability is declared. Whatever is wrong with it will be
 /// reported by the code whose job that is, with better words than this has.
-fn declared_capabilities(bringup_dir: &std::path::Path) -> Vec<&'static str> {
+pub(crate) fn declared_capabilities(bringup_dir: &std::path::Path) -> Vec<&'static str> {
     let Ok(raw) = std::fs::read_to_string(bringup_dir.join("system.toml")) else {
         return Vec::new();
     };

@@ -356,6 +356,38 @@ if(CONFIG_NROS_CPP_API)
     set(_nros_c_param_suffix ",alloc,param-services")
 endif()
 
+# Issue 1681 -- the OTHER two capability axes, by the same rule.
+#
+# The generated entry calls what each declared axis registers --
+# `nros_cpp_lifecycle_autostart` for `lifecycle`, the integrity path for
+# `safety` -- and each symbol exists only in an nros-cpp built with the axis's
+# cargo feature. The cmake road maps every axis through `nros_feature_set`
+# (`cmake/NanoRosFeatureSet.cmake`); this road mapped `param_services` alone, so
+# a Zephyr C/C++ image declaring `lifecycle` failed to link
+# (`undefined reference to nros_cpp_lifecycle_autostart`, measured on
+# `features`'s `[image.zephyr_cpp_params]`, whose bringup declares both).
+#
+# One suffix, appended to the nros-cpp string AND to both nros-c strings:
+# nros-cpp forwards `nros-c/lifecycle-services` / `nros-c/safety-e2e`, and a
+# feature that reached one nros-c unit and not the other is issue 1100's split.
+# `safety` follows the cmake road's condition: the umbrella feature is only
+# meaningful when the backend carries the CRC path, which on this road is zenoh.
+set(_nros_cap_suffix "")
+if(CONFIG_NROS_CPP_API)
+    if("lifecycle" IN_LIST NANO_ROS_FEATURES)
+        string(APPEND _nros_cap_suffix ",lifecycle-services")
+    endif()
+    if("safety" IN_LIST NANO_ROS_FEATURES)
+        if(CONFIG_NROS_RMW_ZENOH)
+            string(APPEND _nros_cap_suffix ",safety-e2e")
+        else()
+            message(WARNING
+                "nano-ros: capability 'safety' ignored -- only the zenoh RMW carries the "
+                "E2E integrity path on the Zephyr C/C++ road")
+        endif()
+    endif()
+endif()
+
 # Issue 1547 — the ROS edition cargo feature, resolved ONCE through the one
 # edition resolver (`cmake/NanoRosRosEdition.cmake`, pulled in by
 # NanoRosFeatureSet above). Every feature string below spelled the default
@@ -465,6 +497,8 @@ if(CONFIG_NROS_C_API)
     # it: the C++ half always carries the parameter store, which nros-cpp
     # builds from `nros-c/param-services` (see `_nros_c_param_suffix`).
     string(APPEND _nros_features "${_nros_c_param_suffix}")
+    # issue 1681 -- and the lifecycle / safety axes, for the same reason.
+    string(APPEND _nros_features "${_nros_cap_suffix}")
 
     # Build nros-c static library via Cargo
     nros_cargo_build(
@@ -727,6 +761,8 @@ if(CONFIG_NROS_CPP_API)
     # when declared; `_nros_cpp_param_suffix` (above) carries which. The define
     # still names only the declared capability.
     string(APPEND _nros_cpp_features "${_nros_cpp_param_suffix}")
+    # issue 1681 -- the lifecycle / safety axes (see `_nros_cap_suffix`).
+    string(APPEND _nros_cpp_features "${_nros_cap_suffix}")
     if("param_services" IN_LIST NANO_ROS_FEATURES)
         add_compile_definitions(NROS_SYSTEM_PARAM_SERVICES)
     endif()
@@ -808,6 +844,8 @@ if(CONFIG_NROS_CPP_API)
         if(_nros_cpp_features MATCHES "(^|,)param-(services|store)(,|$)")
             string(APPEND _nros_c_for_cpp_features ",param-services")
         endif()
+        # issue 1681 -- nros-cpp forwards both of these to nros-c too.
+        string(APPEND _nros_c_for_cpp_features "${_nros_cap_suffix}")
         nros_cargo_build(
             PACKAGE nros-c
             FEATURES "${_nros_c_for_cpp_features}${_nros_panic_suffix}"
