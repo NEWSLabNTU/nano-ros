@@ -159,11 +159,45 @@ nros_zenohd_warn_if_unpaired() {
     printf '         configuration (RFC-0075).\n' >&2
 }
 
+# Issue 1695 — exec `$1` (a resolved router) in its OWN prefix's environment.
+#
+# A router that RESOLVES is not a router that RUNS (issue 0774), and pairing
+# the zenoh is only part of it. Measured in the self-hosted runner image, where
+# ROS_DISTRO names the install and nothing sourced it: `rmw_zenohd` has no
+# RUNPATH, so it needs `librmw`, `librcutils` and `libament_index_cpp` from
+# `<prefix>/lib` as well as `libzenohc` — and once those load it ABORTS on
+# `Environment variable 'AMENT_PREFIX_PATH' is not set or empty`, because it
+# finds its own default config through the ament index. Resolution step 3
+# (`$ROS_DISTRO`) exists for exactly that unsourced host, so every router it
+# finds was one that could not start.
+#
+# So: when the caller has not sourced the router's prefix, source it here, for
+# this process only — ROS's own `setup.bash`, never a hand-written list of its
+# variables (issue 0866's rule), and never the caller's environment: a build
+# that sees AMENT_PREFIX_PATH finds ament MESSAGE packages, which is a different
+# decision from "may run the router". A prefix the caller already sourced is
+# left alone, as is a router that does not have the ROS layout (the
+# NROS_RMW_ZENOHD escape hatch, which `nros_zenohd_warn_if_unpaired` reports).
+# The test harness does the same (`nros_tests::fixtures::zenohd_router`).
+nros_router_env_exec() {
+    local bin="${1:?nros_router_env_exec: a router path is required}" dir prefix
+    dir="$(dirname "$bin")"
+    prefix="$(dirname "$(dirname "$dir")")"
+    if [ "$(basename "$dir")" = "rmw_zenoh_cpp" ] && [ -f "$prefix/setup.bash" ] \
+       && [[ ":${AMENT_PREFIX_PATH:-}:" != *":$prefix:"* ]]; then
+        # setup.bash reads unset variables, so it cannot run under `set -u`.
+        set +u
+        # shellcheck disable=SC1091
+        . "$prefix/setup.bash"
+    fi
+    exec "$bin"
+}
+
 nros_router_exec() {
     local locator="${1:?nros_router_exec: a locator is required}"
     local bin
     bin="$(nros_zenohd_bin)" || return 1
     nros_zenohd_warn_if_unpaired "$bin"
     ZENOH_CONFIG_OVERRIDE="listen/endpoints=[\"${locator}\"];scouting/multicast/enabled=false" \
-        exec "$bin"
+        nros_router_env_exec "$bin"
 }

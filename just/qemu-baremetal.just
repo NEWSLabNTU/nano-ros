@@ -344,9 +344,10 @@ test-rtic-main-e2e verbose="": _require-profile-dir build-rtic-main-e2e
     zenoh_log={{LOG_DIR}}/latest/qemu-rtic-main-e2e-zenohd.log
     # phase-362 — `rmw_zenohd` is configured by env, not argv. Backgrounded with
     # a log here, so it uses the binary + override directly rather than
-    # `nros_router_exec` (which execs).
-    ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:10200"];scouting/multicast/enabled=false' \
-        "$zenohd_bin" > "$zenoh_log" 2>&1 &
+    # `nros_router_exec` (which execs) — through `nros_router_env_exec` in a
+    # subshell, so it runs in its prefix's environment (issue 1695).
+    ( ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:10200"];scouting/multicast/enabled=false' \
+        nros_router_env_exec "$zenohd_bin" ) > "$zenoh_log" 2>&1 &
     zenoh_pid=$!
     trap 'kill "$zenoh_pid" 2>/dev/null || true; wait "$zenoh_pid" 2>/dev/null || true' EXIT
     sleep 0.5
