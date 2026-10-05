@@ -479,15 +479,12 @@ inline typename Publisher<M>::SharedPtr Node::create_publisher(const char* topic
 }
 } // namespace rclcpp
 
-// The node call-shape adapter and the verbs that take one. `std::string` /
-// `std::vector` / `std::function` are in these signatures — `std::make_shared
-// <rclcpp::Node>(…)` is how a ported file constructs the node, the graph
-// queries answer in `std::vector`, and the parameter facade is keyed on
-// `std::string` — so where those headers are absent the overloads are absent
-// with them. `create_publisher` no longer needs the gate and has left it
-// (above); the rest have not, and phase-456 W6 records exactly which and why.
-#if defined(NROS_CPP_HAS_SHARED_PTR) && defined(NROS_CPP_HAS_STD_STRING) &&                        \
-    defined(NROS_CPP_HAS_STD_VECTOR) && defined(NROS_CPP_HAS_STD_FUNCTION)
+// The `std::string`-keyed forwarders, then the `Node::SharedPtr`-taking
+// verbs. phase-476 W3 split what was one block behind all four capability
+// probes: each half now names the one capability its signatures use. Every
+// verb here forwards to (or refuses in place of) a freestanding form defined
+// after these blocks.
+#if defined(NROS_CPP_HAS_STD_STRING)
 
 namespace rclcpp {
 
@@ -557,9 +554,7 @@ namespace nros {
 // that owns each entity.
 //
 // The declarations — with the default arguments — are in `node.hpp` under
-// `NROS_CPP_NODE_HOSTED`, the one predicate both files share.
-
-#ifdef NROS_CPP_NODE_HOSTED
+// `NROS_CPP_HAS_STD_STRING`, the one predicate both files share.
 
 // -- publishers ---------------------------------------------------------------
 
@@ -741,12 +736,11 @@ inline typename Client<S>::SharedPtr Node::create_client(const ::std::string&, F
 }
 } // namespace rclcpp
 
-namespace nros {
+namespace nros {} // namespace nros
 
-#endif // NROS_CPP_NODE_HOSTED
+#endif // NROS_CPP_HAS_STD_STRING
 
-} // namespace nros
-
+#if defined(NROS_CPP_HAS_SHARED_PTR)
 namespace rclcpp {
 
 // `rclcpp::Node` is declared at the bottom of `node.hpp`, UNCONDITIONALLY —
@@ -888,7 +882,7 @@ inline FutureReturnCode spin_until_future_complete(const Node::SharedPtr& node,
 
 } // namespace rclcpp
 
-#endif // NROS_CPP_HAS_SHARED_PTR && ...
+#endif // NROS_CPP_HAS_SHARED_PTR
 
 // -- dispatch verbs, freestanding (phase-476 W1) -------------------------------
 //

@@ -28,8 +28,8 @@
 // file stops compiling, which is the direction that matters.
 //
 // WHERE THE LINE ACTUALLY FALLS, measured against `node.hpp` rather than
-// assumed. `NROS_CPP_NODE_HOSTED` gates more than the `shared_ptr` factories:
-// `initialized()`, `get_node_options()`, `parameters()` and the WHOLE
+// assumed (before phase-476 W3, which split it). The hosted-node conjunction gated more than the
+// `shared_ptr` factories: `initialized()`, `get_node_options()`, `parameters()` and the WHOLE
 // parameter facade — the `const char*`-keyed forms included — are hosted-only,
 // because the store they read (`hosted().params`) and the options object
 // (`hosted().options`) both live in the lazily-allocated hosted box. So this

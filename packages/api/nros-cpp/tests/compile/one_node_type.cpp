@@ -10,9 +10,8 @@
 //
 // The lane compiles this one with `-DNROS_CPP_STD=1`, and it has to since
 // phase-438 W2: the hosted shape is a REQUEST now, not a property of the
-// toolchain. Everything below `NROS_CPP_NODE_HOSTED` — the `shared_ptr` and
-// `std::string` families AND the whole parameter facade, `const char*`-keyed
-// forms included — is absent without it. A `rclcpp::Node` still EXISTS with no
+// toolchain. The `shared_ptr` and `std::string` families (each behind its own
+// capability macro since phase-476 W3) are absent without it. A `rclcpp::Node` still EXISTS with no
 // flag, which is phase-427's point and what
 // `rclcpp_node_freestanding_surface.cpp` instantiates; it is a smaller surface,
 // which is phase-438's.

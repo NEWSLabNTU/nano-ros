@@ -33,9 +33,10 @@
 // `node.hpp` for `rclcpp::Node` ITSELF, which the parameter forwarders call and
 // `bind(Node&)` takes. A forward declaration would have been enough to DECLARE
 // them and is not enough to write them: the hosted `std::string` overloads are
-// guarded on `NROS_CPP_NODE_HOSTED`, which `node.hpp` is the file that defines,
-// and a guard that answered differently in this header than in `node.hpp` would
-// give a lifecycle node a different parameter surface per translation unit.
+// guarded on `NROS_CPP_HAS_STD_STRING` (phase-476 W3), and `node.hpp`'s includes
+// are what define it here exactly as they do there. A guard that answered
+// differently in this header than in `node.hpp` would give a lifecycle node a
+// different parameter surface per translation unit.
 //
 // No cycle: `node.hpp` does not include this file and never has. The include is
 // one-way and `nros.hpp` already pulls both, in this order.
@@ -763,7 +764,7 @@ class LifecycleNode {
                                 : node_->remove_on_set_parameters_callback(handle);
     }
 
-#ifdef NROS_CPP_NODE_HOSTED
+#ifdef NROS_CPP_HAS_STD_STRING
     /// `std::string`-keyed overloads, and the bulk `declare_parameters`. The
     /// SAME set `rclcpp::Node` carries behind the SAME guard, because a ported
     /// call site keys on `std::string` — which does not convert to
@@ -808,7 +809,7 @@ class LifecycleNode {
         return node_ == nullptr ? Result(::nros::ErrorCode::InvalidArgument)
                                 : node_->template declare_parameters<T>(prefix, m);
     }
-#endif // NROS_CPP_NODE_HOSTED
+#endif // NROS_CPP_HAS_STD_STRING
 
     // ---- Graph queries — phase-417 stage 2b (RFC-0089) --------------------
     //

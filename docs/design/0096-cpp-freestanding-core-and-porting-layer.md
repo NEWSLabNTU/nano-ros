@@ -90,6 +90,16 @@ The census found nine distinct gates, not the six that get discussed:
 
 A design that rationalises only the six leaves the other three standing, and the
 worst live defect is behind the **7th** (below). phase-438 W2 addressed the six.
+
+> **Update, 2026-10-06 (phase-476 W3).** The 9th is gone. Once W1 gave the
+> dispatch verbs `const char*` keys and W2 moved timer callables into the arena,
+> no signature needed `std::vector` or `std::function`. So the composite
+> `NROS_CPP_NODE_HOSTED` was split so that each member names the one capability
+> its signature uses: `std::string` forwarders take `NROS_CPP_HAS_STD_STRING`,
+> and `Node::SharedPtr` and its spin overloads take `NROS_CPP_HAS_SHARED_PTR`.
+> `NROS_CPP_HAS_STD_VECTOR` and `NROS_CPP_HAS_STD_FUNCTION` were deleted
+> outright. The heap block behind `Node::hosted_` went too: its last member was
+> an empty `NodeOptions`.
 That is why it was the right instinct at the wrong layer.
 
 ### The layout hazard is not theoretical — it is shipping
