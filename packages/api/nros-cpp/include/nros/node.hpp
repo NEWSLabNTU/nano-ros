@@ -2865,6 +2865,11 @@ inline Result shutdown() {
     return Result(nros_cpp_fini(::rclcpp::Node::global_storage()));
 }
 
+inline void* global_handle() {
+    if (!::rclcpp::Node::global_initialized()) return nullptr;
+    return ::rclcpp::Node::global_storage();
+}
+
 namespace detail {
 /// Honour `--ros-args` through `nros_cpp_install_argv_remaps` — the ONE C++
 /// spelling, used by `rclcpp::init(argc, argv)` and both `init_with_launch*`.

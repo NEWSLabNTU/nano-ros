@@ -135,5 +135,45 @@
   "cpp:ResultOf": {
     "verdict": "divergence",
     "why": "phase-427 W8, RFC-0089 'The error channel, settled'. The value-carrying half of the error channel -- what a fallible call returns when it also produces a value -- and since 2026-09-07 the ONE template both halves are: `Result` is `ResultOf<void>`. Same no-exceptions constraint as `cpp:Result`; rclcpp returns the value and throws, and -fno-exceptions (RFC-0018) removes that channel. Was `cpp:Expected`, which remains for one release as a deprecated spelling. The RFC asked for the template to be called `Result`, with `Result` also naming the void case; C++ cannot do that -- an identifier is a class, a class template or an alias, never two -- and all three routes were measured ill-formed on gcc 12.3 and clang 14 (see the comment on the template in `nros/result.hpp`). `Result` kept the bare spelling because it is the one 1100+ call sites and the whole public API already write. Carries `NROS_NODISCARD`."
+  },
+  "cpp:FixedString": {
+    "verdict": "extension",
+    "why": "`nros::FixedString<N>` (`<nros/fixed_string.hpp>`): a fixed-capacity NUL-terminated string, layout-identical to `char[N]`. Codegen emits a message's bounded/unbounded string field as one where rosidl emits `std::string`, because the field crosses the C ABI by value and a freestanding target has no `std::string` (RFC-0022, RFC-0096). rclcpp has no counterpart type -- it IS `std::string` there -- so this is ours. On the extracted surface since issue 1682, when `rclcpp::Logger` began owning its name in one (`<nros/log.hpp>` now includes this header).",
+    "bucket": "ours-only"
+  },
+  "cpp:FixedString::FixedString<N>": {
+    "verdict": "extension",
+    "why": "default constructor: an empty string. Assignment from `const char*` (and, where `<string>` exists, `std::string`) copies and truncates at `N - 1`. See `cpp:FixedString`.",
+    "bucket": "ours-only"
+  },
+  "cpp:FixedString::c_str": {
+    "verdict": "extension",
+    "why": "the NUL-terminated contents, `std::string::c_str`'s spelling. See `cpp:FixedString`.",
+    "bucket": "ours-only"
+  },
+  "cpp:FixedString::capacity": {
+    "verdict": "extension",
+    "why": "`N - 1`, the most characters it holds -- a compile-time constant, unlike `std::string::capacity`. See `cpp:FixedString`.",
+    "bucket": "ours-only"
+  },
+  "cpp:FixedString::empty": {
+    "verdict": "extension",
+    "why": "`std::string::empty`'s spelling, so ported code reading a message string field compiles. See `cpp:FixedString`.",
+    "bucket": "ours-only"
+  },
+  "cpp:FixedString::length": {
+    "verdict": "extension",
+    "why": "characters before the terminator. See `cpp:FixedString`.",
+    "bucket": "ours-only"
+  },
+  "cpp:FixedString::size": {
+    "verdict": "extension",
+    "why": "`length()` under `std::string`'s name, so ported code compiles. See `cpp:FixedString`.",
+    "bucket": "ours-only"
+  },
+  "cpp:FixedString::to_string": {
+    "verdict": "extension",
+    "why": "copy out as a `std::string`, present only where `<string>` is (`NROS_CPP_HAS_STD_STRING`). See `cpp:FixedString`.",
+    "bucket": "ours-only"
   }
 }

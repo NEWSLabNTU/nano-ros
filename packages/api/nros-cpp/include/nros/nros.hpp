@@ -79,10 +79,12 @@ namespace nros {
 /// free functions. Use with `Future::wait(nros::global_handle(), ...)`.
 ///
 /// @return Executor handle, or nullptr if not initialized.
-inline void* global_handle() {
-    if (!::rclcpp::Node::global_initialized()) return nullptr;
-    return ::rclcpp::Node::global_storage();
-}
+///
+/// DEFINED in `<nros/node.hpp>`, beside the free functions `Node` befriends:
+/// `nros::init_with_launch*` (node.hpp) call it, and an inline function used
+/// in a TU that never sees its definition is a link error waiting for the
+/// first caller (issue 1682's branch, found by `-Wall`).
+inline void* global_handle();
 
 /// Drive transport I/O and dispatch callbacks.
 ///
