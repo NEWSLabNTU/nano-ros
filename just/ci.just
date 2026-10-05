@@ -313,10 +313,64 @@ matrix depth="run":
            exit 2 ;;
     esac
 
+# Issue 1670 — a lane that RUNS zenoh cells must have the router, or it fails
+# here, loudly, before it builds or runs anything.
+#
+# Without one, every zenoh runtime cell resolves no `rmw_zenohd` and reports
+# `[SKIPPED] zenohd not found`: the lane reaches its cells and verifies none of
+# them, which is the "verified nothing" shape `_check-skip-budget` names — only
+# twenty minutes later and phrased as a coverage hole. Tier 2's self-hosted
+# runner was that host (no `/opt/ros`, no router).
+#
+# Whether the lane NEEDS a router is read from its own coordinate file — the
+# same `nros_lane_coords_file` the build and the run narrow by — so a lane
+# whose cover holds no zenoh coordinate asks nothing. The router is resolved by
+# `nros_zenohd_bin` (scripts/dev/zenohd.sh), the ONE resolver the harness
+# (`ros_zenohd_path`), `just doctor` and `runner-doctor.sh nros-ros2` share.
+# The remedy is the runner IMAGE (issues 1457/1482), never a host install.
+[private]
+_require-lane-router lane:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/build/fixture-lane.sh
+    coords="$(nros_lane_coords_file {{ lane }})"
+    if [ -z "$coords" ] || [ ! -s "$coords" ]; then
+        echo "ERROR: lane {{ lane }} has no coordinate file to read its RMWs from (issue 1670)." >&2
+        exit 1
+    fi
+    zenoh="$(awk -F, '$3 == "zenoh"' "$coords")"
+    if [ -z "$zenoh" ]; then
+        echo "lane {{ lane }}: no zenoh coordinate — no router needed."
+        exit 0
+    fi
+    n="$(printf '%s\n' "$zenoh" | wc -l | tr -d ' ')"
+    # shellcheck source=scripts/dev/zenohd.sh
+    source scripts/dev/zenohd.sh
+    rc=0
+    router="$(nros_zenohd_bin)" || rc=$?
+    if [ "$rc" -eq 0 ] && [ -n "$router" ]; then
+        echo "lane {{ lane }}: ${n} zenoh coordinate(s); router: ${router}"
+        exit 0
+    fi
+    echo "" >&2
+    echo "ERROR: lane {{ lane }} runs ${n} zenoh coordinate(s) and this host resolves no" >&2
+    echo "       rmw_zenohd (issue 1670). Every one of those cells would SKIP, so the lane" >&2
+    echo "       would verify nothing for them while reporting no failure:" >&2
+    printf '%s\n' "$zenoh" | sed 's/^/         /' >&2
+    echo "       On a self-hosted runner the router comes from the IMAGE — its" >&2
+    echo "       [prereq.ros-rmw-zenoh-cpp] — with ROS_DISTRO (or AMENT_PREFIX_PATH) in the" >&2
+    echo "       runner's environment; never a host install (issues 1457, 1482)." >&2
+    echo "       Check a host with: scripts/ci/runner-doctor.sh nros-ros2" >&2
+    exit 1
+
 [private]
 _matrix-run:
     #!/usr/bin/env bash
     set -euo pipefail
+    # Issue 1670 — a zenoh cell with no router skips, and a lane whose zenoh
+    # cells all skip verified nothing while reading green. Refuse FIRST, before
+    # the freshness gate: the cheapest question with the most specific answer.
+    just ci::_require-lane-router tier2
     just _lane-gate tier2
     # issue 1253 / phase-449 W2 — WHICH CHECKOUT'S WORKSPACE IS THIS.
     #
@@ -387,6 +441,8 @@ _matrix-build: l3
 matrix-nightly:
     #!/usr/bin/env bash
     set -euo pipefail
+    # Issue 1670 — as `_matrix-run`.
+    just ci::_require-lane-router tier2-nightly
     just _lane-gate tier2-nightly
     # issue 1253 / phase-449 W2 — WHICH CHECKOUT'S WORKSPACE IS THIS.
     #
