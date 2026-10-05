@@ -137,7 +137,7 @@ fn paired_zenoh_library_dir(router: &std::path::Path) -> Option<std::path::PathB
 /// start.
 ///
 /// The router is then started through ROS's own `setup.bash`, for that process
-/// only -- never a hand-written copy of its variables (issue 0866), and never
+/// only -- never a hand-written copy of its variables (ci-base's rule), and never
 /// this process's environment: a build that sees `AMENT_PREFIX_PATH` finds ament
 /// MESSAGE packages, which is a different decision from "may run the router".
 /// `scripts/dev/zenohd.sh`'s `nros_router_env_exec` is the shell twin.

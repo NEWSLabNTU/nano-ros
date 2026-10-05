@@ -173,7 +173,7 @@ nros_zenohd_warn_if_unpaired() {
 #
 # So: when the caller has not sourced the router's prefix, source it here, for
 # this process only — ROS's own `setup.bash`, never a hand-written list of its
-# variables (issue 0866's rule), and never the caller's environment: a build
+# variables (ci-base's rule: "captured, not hand-written"), and never the caller's environment: a build
 # that sees AMENT_PREFIX_PATH finds ament MESSAGE packages, which is a different
 # decision from "may run the router". A prefix the caller already sourced is
 # left alone, as is a router that does not have the ROS layout (the
