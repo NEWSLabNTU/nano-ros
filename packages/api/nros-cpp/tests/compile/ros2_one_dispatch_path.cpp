@@ -99,24 +99,22 @@ static_assert(!has_pump<rclcpp::Node>::value,
 
 // --- (3) a wall timer is an EXECUTOR timer ----------------------------------
 //
-// `nros::Timer` holds an executor handle + arena `HandleId`, so a shim wall
-// timer owning one is the structural evidence that `create_wall_timer`
-// registers rather than schedules. The old shape held a
-// `std::chrono::steady_clock::time_point next_fire` instead.
+// The old shape held a `std::chrono::steady_clock::time_point next_fire`; the
+// schedule is the executor's, and nothing on the C++ side keeps a deadline.
+// phase-476 W2
+// took that to its end: there is no C++ cell at all any more (the callable is in
+// the arena), and the handle is two words — the executor pointer and the packed
+// slot handle — so there is no room for a deadline to move back into.
+static_assert(sizeof(::nros::TimerHandle) == 2 * sizeof(void*),
+              "nros::TimerHandle grew -- something other than the executor and the slot "
+              "handle moved into the wrapper");
 
-static_assert(
-    std::is_same<decltype(std::declval<rclcpp::detail::WallTimer&>().timer), ::nros::Timer>::value,
-    "rclcpp::detail::WallTimer no longer owns an nros::Timer -- the wall-timer "
-    "schedule has moved back into the wrapper");
-
-// phase-430 W7 — `rclcpp::TimerBase` IS DELETED. The timer is FLAT: the cell
-// derives from nothing, and `create_wall_timer` returns a `shared_ptr` ALIASED
-// onto the cell's `nros::Timer` member. Pin both halves, because the flatness
-// is the ruling and the aliasing is what made it affordable.
-static_assert(!std::is_polymorphic<rclcpp::detail::WallTimer>::value,
-              "rclcpp::detail::WallTimer has regained a vtable -- phase-430 W7 deleted "
-              "the one-leaf TimerBase hierarchy because the executor dispatches through "
-              "a raw function pointer and no virtual call exists");
+// phase-430 W7 — `rclcpp::TimerBase` IS DELETED as a hierarchy, and the timer is
+// FLAT. phase-476 W2 deleted the cell, so the flatness is now pinned on the
+// handle: no vtable, nothing to dispatch virtually.
+static_assert(!std::is_polymorphic<::nros::TimerHandle>::value,
+              "nros::TimerHandle has a vtable -- the executor dispatches through a raw "
+              "function pointer and no virtual call exists");
 // A named functor, not a lambda: a lambda-expression in an unevaluated context
 // is C++20 and these probes are compiled at C++14.
 struct TickFn {
@@ -124,7 +122,7 @@ struct TickFn {
 };
 static_assert(std::is_same<decltype(std::declval<rclcpp::Node&>().create_wall_timer(
                                std::declval<std::chrono::milliseconds>(), std::declval<TickFn>())),
-                           std::shared_ptr<::nros::Timer>>::value,
+                           rclcpp::Timer::SharedPtr>::value,
               "create_wall_timer's return type must stay rclcpp::Timer::SharedPtr");
 
 // --- (1) + (4) the mixed shape, driven by the NATIVE spin verbs --------------

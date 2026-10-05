@@ -210,6 +210,48 @@ impl ArenaLen {
     }
 }
 
+/// phase-476 W2 — the hook that destroys a capture the arena holds.
+///
+/// A capture's bytes are copied into its entry's trailing region, which MOVES
+/// ownership of whatever the capture owns (a C++ `std::shared_ptr`, a
+/// `std::string`): the C++ side relinquishes its own copy without destroying
+/// it. So the arena copy has to be destroyed exactly once, when its entry is,
+/// and this `Drop` is that once — every entry that holds a capture carries one
+/// of these, so it runs inside `release_entry`'s `drop_fn` (or the executor's
+/// teardown), before the region is handed back.
+///
+/// `drop: None` is a capture with nothing to destroy, or no capture at all.
+pub(crate) struct CaptureGuard {
+    pub(crate) ctx: *mut core::ffi::c_void,
+    pub(crate) drop: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+}
+
+impl Drop for CaptureGuard {
+    fn drop(&mut self) {
+        if let Some(drop) = self.drop {
+            // SAFETY: `ctx` is the arena's copy of the capture the registration
+            // supplied `drop` for, still inside the entry's region; this runs
+            // once because the entry is dropped once.
+            unsafe { drop(self.ctx) }
+        }
+    }
+}
+
+/// phase-476 W2 — a C timer callback over a capture the arena holds.
+pub(crate) struct CapturedCallback {
+    pub(crate) callback: unsafe extern "C" fn(*mut core::ffi::c_void),
+    pub(crate) guard: CaptureGuard,
+}
+
+impl CapturedCallback {
+    pub(crate) fn call(&self) {
+        // SAFETY: `ctx` is the arena's copy of the caller's capture (or null
+        // when there is none), alive as long as this entry; the registration's
+        // contract is that `callback` reads its capture through it.
+        unsafe { (self.callback)(self.guard.ctx) }
+    }
+}
+
 // ============================================================================
 // Concrete entry types
 // ============================================================================
@@ -2044,6 +2086,9 @@ pub(crate) struct SubBufferedRawCEntry {
     /// was supplied — a pointer into the arena's own copy of it, so nothing the
     /// caller owns is referenced after registration returns.
     pub(crate) context: *mut core::ffi::c_void,
+    /// phase-476 W2 — destroys that copy when the entry is dropped. Declared
+    /// after `handle`, so the subscriber is gone before its capture is.
+    pub(crate) capture: CaptureGuard,
 }
 
 // ============================================================================
@@ -2069,6 +2114,8 @@ pub(crate) struct SubInplaceRawCEntry {
     pub(crate) callback: RawSubscriptionCallback,
     /// Same contract as [`SubBufferedRawCEntry::context`].
     pub(crate) context: *mut core::ffi::c_void,
+    /// Same contract as [`SubBufferedRawCEntry::capture`].
+    pub(crate) capture: CaptureGuard,
 }
 
 /// Dispatch for in-place C-style raw subscriptions.
@@ -2089,6 +2136,7 @@ pub(crate) unsafe fn sub_inplace_raw_c_try_process(
         handle,
         callback,
         context,
+        ..
     } = entry;
     let context = *context;
     let callback = *callback;

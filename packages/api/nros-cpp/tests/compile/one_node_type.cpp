@@ -185,8 +185,12 @@ inline void clock_driven_timer_is_humbles_free_verb() {
     // phase-430 W7 deleted the `TimerBase` the two used to be typed as.
     static_assert(std::is_same<decltype(ros_time), decltype(wall)>::value,
                   "create_timer and create_wall_timer must return the same handle type");
-    static_assert(std::is_same<decltype(wall), std::shared_ptr<::nros::Timer>>::value,
+    // phase-476 W2 — the handle is `nros::TimerHandle`, and the ported
+    // spelling `rclcpp::Timer::SharedPtr` names exactly it.
+    static_assert(std::is_same<decltype(wall), rclcpp::Timer::SharedPtr>::value,
                   "the timer handle must be rclcpp::Timer::SharedPtr");
+    static_assert(std::is_same<decltype(wall), ::nros::TimerHandle>::value,
+                  "rclcpp::Timer::SharedPtr is the two-word nros::TimerHandle");
 
     // The nros::Duration spelling of the same call.
     auto by_duration =

@@ -52,7 +52,7 @@ size_t subscribe(const nros_cpp_node_t* node, const char* topic) {
     size_t handle = 0;
     nros_cpp_ret_t rc = nros_cpp_subscription_register_capturing(
         node, topic, "std_msgs::msg::dds_::Int32_", "", qos, on_message,
-        reinterpret_cast<const uint8_t*>(&capture), sizeof(capture), &handle, nullptr);
+        reinterpret_cast<const uint8_t*>(&capture), sizeof(capture), nullptr, &handle, nullptr);
     check_int(rc, NROS_CPP_RET_OK, topic);
     return handle;
 }

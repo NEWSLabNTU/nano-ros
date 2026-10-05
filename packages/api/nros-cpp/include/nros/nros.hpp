@@ -637,9 +637,14 @@ Node::create_subscription(const ::std::string& topic, const ::nros::QoS& qos, Cb
     using Capture = ::nros::InplaceFn<void(const M&)>;
     Capture captured(::nros::tr::forward_rvalue(cb));
     ::size_t handle_id = 0;
-    ::rclcpp::detail::require_created(::nros::detail::register_subscription_capturing<M>(
-                                          *this, topic.c_str(), qos, captured, &handle_id),
-                                      "create_subscription", topic.c_str());
+    const ::nros::Result r = ::nros::detail::register_subscription_capturing<M>(
+        *this, topic.c_str(), qos, captured, &handle_id);
+    // phase-476 W2 — the arena's copy owns the callable now and destroys it on
+    // release; ours must not destroy it too.
+    if (r.ok()) {
+        captured.relinquish();
+    }
+    ::rclcpp::detail::require_created(r, "create_subscription", topic.c_str());
     return typename Subscription<M>::SharedPtr(this->executor_handle(), handle_id);
 }
 } // namespace rclcpp
@@ -659,50 +664,9 @@ namespace nros {
 
 // -- wall timer ---------------------------------------------------------------
 
-#ifdef NROS_CPP_HAS_STD_CHRONO
-/// `create_wall_timer(period, callback)` — fires `callback()` every `period`,
-/// dispatched by the EXECUTOR during `spin_once`, i.e. under whichever spin
-/// verb the caller drives.
-///
-/// The `std::chrono::duration` -> milliseconds conversion is the only work this
-/// function does beyond delegating; that is ergonomics and permitted, the
-/// schedule is not. See the envelope on `rclcpp::Timer` (`timer.hpp`) for the
-/// two things it costs (millisecond resolution, and catch-up rather than rcl's
-/// drop-the-backlog on a missed deadline).
-///
-/// RETURNS `Timer::SharedPtr`, not the deleted `TimerBase::SharedPtr`
-/// (phase-430 W7). The pointer is an ALIASING co-owner of the private
-/// `detail::WallTimer` cell, pointing at its `timer` member — the same shape
-/// `create_subscription` returns, which is why the cell needs no base class to
-/// be handed out.
-} // namespace nros
-
-namespace rclcpp {
-template <typename Rep, typename Period, typename Cb>
-inline ::std::shared_ptr<::nros::Timer>
-Node::create_wall_timer(::std::chrono::duration<Rep, Period> period, Cb cb) {
-    auto t = ::std::make_shared<::rclcpp::detail::WallTimer>();
-    t->callback = ::nros::tr::forward_rvalue(cb);
-    const auto ms = ::std::chrono::duration_cast<::std::chrono::milliseconds>(period).count();
-    // A null return would be silent HERE above all: a ported node stores the
-    // timer handle and never dereferences it, so a dead timer would simply
-    // never fire.
-    ::rclcpp::detail::require_created(
-        this->create_wall_timer(t->timer, ms > 0 ? static_cast<uint64_t>(ms) : uint64_t(0),
-                                &::rclcpp::detail::WallTimer::trampoline, t.get()),
-        "create_wall_timer", "");
-    // The arena holds `t.get()`; the node keeps the cell alive, and
-    // `~nros::Timer` cancels the slot when it finally drops. `owned_entities`,
-    // NOT a typed `timers_` member — the typed vector existed so the deleted
-    // `pump()` could iterate it, and it was the member that broke the
-    // capability-layout rule.
-    this->hosted().owned_entities.push_back(t);
-    return ::std::shared_ptr<::nros::Timer>(t, &t->timer);
-}
-} // namespace rclcpp
-
-namespace nros {
-#endif // NROS_CPP_HAS_STD_CHRONO
+// phase-476 W2 — `create_wall_timer` is defined after the hosted block now
+// (`-- timers --`): it returns a `TimerHandle` and allocates nothing, so it is
+// not a hosted capability.
 
 // -- parameters ---------------------------------------------------------------
 //
@@ -879,70 +843,16 @@ namespace rclcpp {
 
 namespace detail {
 
-/// `NodeT` in upstream's signature is anything node-shaped — `this`, a
-/// `shared_ptr`, a reference. One overload set, so the free function does not
-/// need three copies.
-inline ::rclcpp::Node& as_node_ref(::rclcpp::Node& n) {
-    return n;
-}
-inline ::rclcpp::Node& as_node_ref(::rclcpp::Node* n) {
-    return *n;
-}
+/// The `shared_ptr` member of `as_node_ref`'s overload set; the reference and
+/// pointer ones are freestanding and live with `rclcpp::create_timer`, after
+/// this block (phase-476 W2). This one needs `<memory>`.
 inline ::rclcpp::Node& as_node_ref(const ::std::shared_ptr<::rclcpp::Node>& n) {
     return *n;
 }
 
 } // namespace detail
 
-#ifdef NROS_CPP_NODE_HOSTED
-
-/// `rclcpp::create_timer(node, clock, period, callback)` — humble's only
-/// clock-taking timer verb.
-///
-/// ADOPT-BOUNDED: the clock is `nros::Clock*` (what `node->get_clock()` returns),
-/// not `rclcpp::Clock::SharedPtr`; the period is truncated to whole MILLISECONDS;
-/// Humble's optional trailing `group` argument is not taken; and the result is
-/// `std::shared_ptr<nros::Timer>` (`rclcpp::TimerBase::SharedPtr` names the same type).
-template <typename NodeT, typename CallbackT>
-inline ::std::shared_ptr<::nros::Timer>
-create_timer(NodeT&& node, ::nros::Clock* clock, ::nros::Duration period, CallbackT&& callback) {
-    ::rclcpp::Node& n = detail::as_node_ref(node);
-    auto t = ::std::make_shared<detail::WallTimer>();
-    t->callback = ::nros::tr::relay<CallbackT>(callback);
-    const int64_t ns = period.nanoseconds();
-    const uint64_t ms = ns > 0 ? static_cast<uint64_t>(ns / 1000000) : uint64_t(0);
-    // Same refusal as the seven `create_*` verbs: `rclcpp::create_timer` is a
-    // free function main added after this branch's sweep, and it had the same
-    // discarded `Result`. A dead timer never fires and is never dereferenced,
-    // so nothing downstream would say so.
-    detail::require_created(n.create_timer(t->timer, clock != nullptr ? *clock : *n.get_clock(), ms,
-                                           &detail::WallTimer::trampoline, t.get()),
-                            "create_timer", "");
-    // Same ownership rule as `create_wall_timer`: the arena holds `t.get()` and
-    // has no unregister, so the node keeps the cell alive and the returned
-    // pointer is an ALIASING co-owner of its `nros::Timer` member.
-    n.own_entity(t);
-    return ::std::shared_ptr<::nros::Timer>(t, &t->timer);
-}
-
-#ifdef NROS_CPP_HAS_STD_CHRONO
-/// `rclcpp::create_timer(node, clock, 100ms, callback)` — the `std::chrono`
-/// spelling, which is what a ported file actually writes. `rclcpp::Duration` is
-/// implicitly constructible from a chrono duration upstream; `nros::Duration`
-/// is not (it reaches freestanding targets where `<chrono>` does not exist), so
-/// the conversion is an overload rather than a constructor.
-template <typename NodeT, typename Rep, typename Period, typename CallbackT>
-inline ::std::shared_ptr<::nros::Timer> create_timer(NodeT&& node, ::nros::Clock* clock,
-                                                     ::std::chrono::duration<Rep, Period> period,
-                                                     CallbackT&& callback) {
-    const auto ns = ::std::chrono::duration_cast<::std::chrono::nanoseconds>(period).count();
-    return create_timer(::nros::tr::relay<NodeT>(node), clock,
-                        ::nros::Duration::from_nanoseconds(static_cast<int64_t>(ns)),
-                        ::nros::tr::relay<CallbackT>(callback));
-}
-#endif // NROS_CPP_HAS_STD_CHRONO
-
-#endif // NROS_CPP_NODE_HOSTED
+// phase-476 W2 — `rclcpp::create_timer` moved after this block (`-- timers --`).
 
 // --- spin / spin_some --------------------------------------------------------
 //
@@ -1030,6 +940,124 @@ inline FutureReturnCode spin_until_future_complete(const Node::SharedPtr& node,
 } // namespace rclcpp
 
 #endif // NROS_CPP_HAS_SHARED_PTR && ...
+
+// -- timers -------------------------------------------------------------------
+//
+// phase-476 W2 — FREESTANDING. The callable is copied into the executor arena
+// (`nros_cpp_timer_create_capturing`), which destroys it when the timer is
+// released, so these allocate nothing and return a two-word `TimerHandle`.
+// Defined after the hosted block so that, on a hosted target, the
+// `shared_ptr` member of `as_node_ref`'s overload set is already declared when
+// `rclcpp::create_timer`'s body names it.
+
+namespace nros {
+namespace detail {
+
+/// Register `cb` as a timer on `clock_type`, its callable held by the arena.
+///
+/// The bridge between `nros::InplaceFn` and `nros_cpp_timer_create_capturing`,
+/// the timer twin of `register_subscription_capturing`. The `InplaceFn`'s bytes
+/// are COPIED into the arena; on success this object relinquishes them without
+/// destroying, because the arena's copy now owns the callable and its
+/// `destroy` hook runs `clear()` on that copy when the timer is released. A
+/// capture that owns something (a `std::string`, a `shared_ptr`) is destroyed
+/// exactly once, there.
+template <typename Cb>
+inline TimerHandle register_timer_capturing(::rclcpp::Node& node, nros_clock_type_t clock_type,
+                                            Duration period, Cb&& cb, const char* verb) {
+    using Capture = InplaceFn<void()>;
+    Capture captured(tr::relay<Cb>(cb));
+    // Non-capturing lambdas, so each decays to the plain function pointer the
+    // arena stores. `ctx` is the ARENA's copy of `captured`, never ours.
+    nros_cpp_timer_callback_t invoke = [](void* ctx) { (*static_cast<Capture*>(ctx))(); };
+    nros_cpp_timer_callback_t destroy = [](void* ctx) { static_cast<Capture*>(ctx)->clear(); };
+    const int64_t ns = period.nanoseconds();
+    const uint64_t ms = ns > 0 ? static_cast<uint64_t>(ns / 1000000) : uint64_t(0);
+    size_t handle_id = 0;
+    const nros_cpp_node_t* h = node.ffi_handle();
+    Result r = h == nullptr ? Result(ErrorCode::NotInitialized)
+                            : Result(nros_cpp_timer_create_capturing(
+                                  h, static_cast<uint8_t>(clock_type), ms, invoke,
+                                  reinterpret_cast<const uint8_t*>(&captured), sizeof(Capture),
+                                  destroy, &handle_id));
+    if (r.ok()) {
+        captured.relinquish();
+    }
+    // A null return would be silent HERE above all: a ported node stores the
+    // timer handle and never dereferences it, so a dead timer would simply
+    // never fire.
+    ::rclcpp::detail::require_created(r, verb, "");
+    return TimerHandle(node.executor_handle(), handle_id);
+}
+
+} // namespace detail
+} // namespace nros
+
+namespace rclcpp {
+
+template <typename Cb>
+inline ::nros::TimerHandle Node::create_wall_timer(::nros::Duration period, Cb cb) {
+    return ::nros::detail::register_timer_capturing(
+        *this, NROS_CLOCK_STEADY_TIME, period, ::nros::tr::forward_rvalue(cb), "create_wall_timer");
+}
+
+#ifdef NROS_CPP_HAS_STD_CHRONO
+template <typename Rep, typename Period, typename Cb>
+inline ::nros::TimerHandle Node::create_wall_timer(::std::chrono::duration<Rep, Period> period,
+                                                   Cb cb) {
+    const auto ns = ::std::chrono::duration_cast<::std::chrono::nanoseconds>(period).count();
+    return this->create_wall_timer(::nros::Duration::from_nanoseconds(static_cast<int64_t>(ns)),
+                                   ::nros::tr::forward_rvalue(cb));
+}
+#endif // NROS_CPP_HAS_STD_CHRONO
+
+namespace detail {
+/// `NodeT` in upstream's signature is anything node-shaped — `this`, a
+/// reference, or (hosted) a `shared_ptr`, whose overload is in the hosted block
+/// above. One overload set, so the free function does not need three copies.
+inline ::rclcpp::Node& as_node_ref(::rclcpp::Node& n) {
+    return n;
+}
+inline ::rclcpp::Node& as_node_ref(::rclcpp::Node* n) {
+    return *n;
+}
+} // namespace detail
+
+/// `rclcpp::create_timer(node, clock, period, callback)` — humble's only
+/// clock-taking timer verb. FREESTANDING since phase-476 W2.
+///
+/// ADOPT-BOUNDED: the clock is `nros::Clock*` (what `node->get_clock()` returns),
+/// not `rclcpp::Clock::SharedPtr`; the period is truncated to whole MILLISECONDS;
+/// Humble's optional trailing `group` argument is not taken; and the result is
+/// a `nros::TimerHandle` (`rclcpp::TimerBase::SharedPtr` names the same type).
+template <typename NodeT, typename CallbackT>
+inline ::nros::TimerHandle create_timer(NodeT&& node, ::nros::Clock* clock, ::nros::Duration period,
+                                        CallbackT&& callback) {
+    ::rclcpp::Node& n = detail::as_node_ref(node);
+    const nros_clock_type_t type =
+        clock != nullptr ? clock->get_clock_type() : n.get_clock()->get_clock_type();
+    return ::nros::detail::register_timer_capturing(
+        n, type, period, ::nros::tr::relay<CallbackT>(callback), "create_timer");
+}
+
+#ifdef NROS_CPP_HAS_STD_CHRONO
+/// `rclcpp::create_timer(node, clock, 100ms, callback)` — the `std::chrono`
+/// spelling, which is what a ported file actually writes. `rclcpp::Duration` is
+/// implicitly constructible from a chrono duration upstream; `nros::Duration`
+/// is not (it reaches freestanding targets where `<chrono>` does not exist), so
+/// the conversion is an overload rather than a constructor.
+template <typename NodeT, typename Rep, typename Period, typename CallbackT>
+inline ::nros::TimerHandle create_timer(NodeT&& node, ::nros::Clock* clock,
+                                        ::std::chrono::duration<Rep, Period> period,
+                                        CallbackT&& callback) {
+    const auto ns = ::std::chrono::duration_cast<::std::chrono::nanoseconds>(period).count();
+    return create_timer(::nros::tr::relay<NodeT>(node), clock,
+                        ::nros::Duration::from_nanoseconds(static_cast<int64_t>(ns)),
+                        ::nros::tr::relay<CallbackT>(callback));
+}
+#endif // NROS_CPP_HAS_STD_CHRONO
+
+} // namespace rclcpp
 
 // --- node parameters ---------------------------------------------------------
 //

@@ -243,8 +243,15 @@ Timer>::value` is true and neither spelling carries a vtable. The executor
 dispatches through a raw function pointer, so a polymorphic base would be cost
 with no caller.
 
-Two consequences worth knowing:
+Consequences worth knowing:
 
+* `Timer::SharedPtr` is a small handle, not a `std::shared_ptr`. Its
+  callback lives in the executor, so the handle does not own the timer.
+  Dropping or overwriting `timer_` leaves the timer firing; destroying the node
+  stops it. `timer_.reset()` releases the timer for good. `timer_->reset()`
+  restarts it, as upstream. A member declared as
+  `std::shared_ptr<rclcpp::TimerBase>` does not compile: spell it
+  `rclcpp::TimerBase::SharedPtr`.
 * `rclcpp::WallTimer<...>` and `rclcpp::GenericTimer<...>` do not exist. The
   clock axis is the second verb `rclcpp::create_timer(node, clock, period, cb)`
   plus a runtime field, not a type parameter.

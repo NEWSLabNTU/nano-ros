@@ -316,6 +316,7 @@ unsafe fn subscription_register_impl(
     out_handle_id: *mut usize,
     options: *const nros_cpp_subscription_options_t,
     capture: Option<&[u8]>,
+    capture_drop: Option<unsafe extern "C" fn(*mut c_void)>,
 ) -> nros_cpp_ret_t {
     // phase-402 — ONE reader for all three variants; see
     // `read_subscription_options`.
@@ -393,6 +394,7 @@ unsafe fn subscription_register_impl(
             // routes the payload size class on it. 0 = no opinion, same as before.
             rx_buffer_hint as usize,
             capture,
+            capture_drop,
         );
 
     match result {
@@ -446,6 +448,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
             out_handle_id,
             options,
             None,
+            None,
         )
     }
 }
@@ -478,6 +481,14 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
 /// `capture_len == 0` (or a NULL `capture`) is exactly
 /// `nros_cpp_subscription_register`.
 ///
+/// **phase-476 W2 — `capture_drop`.** Copying the capture's bytes MOVES whatever
+/// the capture owns, so the caller relinquishes its own copy without destroying
+/// it, and `capture_drop` (when non-NULL) is called on the arena's copy when the
+/// subscription is released. Before W2 the caller destroyed its copy right
+/// after this returned while the arena kept dispatching through the bytes, so a
+/// capture that owned anything (a `std::shared_ptr`, a `std::string`) was
+/// destroyed while still in use.
+///
 /// # Safety
 /// All non-NULL pointers must be valid; `callback` must be a valid trampoline
 /// whose context is the captured bytes; `capture` must point to `capture_len`
@@ -493,6 +504,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_capturing(
     callback: nros_node::RawSubscriptionCallback,
     capture: *const u8,
     capture_len: usize,
+    capture_drop: Option<unsafe extern "C" fn(*mut c_void)>,
     out_handle_id: *mut usize,
     options: *const nros_cpp_subscription_options_t,
 ) -> nros_cpp_ret_t {
@@ -513,6 +525,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_capturing(
             out_handle_id,
             options,
             bytes,
+            capture_drop,
         )
     }
 }

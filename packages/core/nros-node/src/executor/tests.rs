@@ -6236,6 +6236,7 @@ fn test_arena_subscription_capture_outlives_the_caller() {
                 None,
                 0,
                 Some(&capture),
+                None,
             )
             .unwrap();
     }
@@ -6413,6 +6414,7 @@ fn test_arena_subscription_capture_longer_than_the_old_budget_dispatches() {
                 None,
                 0,
                 Some(bytes),
+                None,
             )
             .expect("a capture longer than the old constant must register, not be refused");
     }
@@ -11786,6 +11788,7 @@ fn a_capturing_subscription_releases_its_capture_too() {
             None,
             96,
             Some(&capture),
+            None,
         )
     };
     // Both dispatch shapes: depth 1 and depth 4 take different entry types.
@@ -11802,6 +11805,130 @@ fn a_capturing_subscription_releases_its_capture_too() {
             );
             assert!(unsafe { executor.release_subscription(h) });
         }
+    }
+}
+
+// ============================================================================
+// phase-476 W2 — a C timer whose capture the arena holds
+// ============================================================================
+
+static CAPTURED_TIMER_SEEN: portable_atomic::AtomicUsize = portable_atomic::AtomicUsize::new(0);
+
+unsafe extern "C" fn captured_timer_cb(ctx: *mut core::ffi::c_void) {
+    // The capture's LAST word is the one a truncating copy would lose.
+    let words = ctx as *const usize;
+    CAPTURED_TIMER_SEEN.store(unsafe { *words.add(2) }, portable_atomic::Ordering::SeqCst);
+}
+
+/// The capture is the ARENA's copy: the caller's bytes are gone before the
+/// timer first fires, and the callback still reads them.
+#[test]
+#[cfg(feature = "std")] // fires on real elapsed time
+fn a_capturing_timer_dispatches_with_the_arenas_copy() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    {
+        let capture: [usize; 3] = [1, 2, 0xBEEF];
+        let bytes = unsafe {
+            core::slice::from_raw_parts(
+                capture.as_ptr() as *const u8,
+                core::mem::size_of_val(&capture),
+            )
+        };
+        executor
+            .register_timer_c_capturing(
+                None,
+                TimerDuration::from_millis(10),
+                TimerClockSource::Steady,
+                captured_timer_cb,
+                Some(bytes),
+                None,
+            )
+            .expect("register");
+    }
+    CAPTURED_TIMER_SEEN.store(0, portable_atomic::Ordering::SeqCst);
+    let fired = elapse_then_spin_once(&mut executor, 20).timers_fired;
+    assert_eq!(fired, 1);
+    assert_eq!(
+        CAPTURED_TIMER_SEEN.load(portable_atomic::Ordering::SeqCst),
+        0xBEEF
+    );
+}
+
+static CAPTURED_TIMER_DROPS: portable_atomic::AtomicUsize = portable_atomic::AtomicUsize::new(0);
+
+unsafe extern "C" fn captured_timer_drop(ctx: *mut core::ffi::c_void) {
+    let words = ctx as *const usize;
+    if unsafe { *words.add(2) } == 0xD509 {
+        CAPTURED_TIMER_DROPS.fetch_add(1, portable_atomic::Ordering::SeqCst);
+    }
+}
+
+/// The capture's destructor hook runs once when the timer is released, reading
+/// the capture's bytes while they are still the capture's.
+#[test]
+fn a_released_capturing_timer_destroys_its_capture_exactly_once() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let capture: [usize; 3] = [0, 0, 0xD509];
+    let bytes = unsafe {
+        core::slice::from_raw_parts(
+            capture.as_ptr() as *const u8,
+            core::mem::size_of_val(&capture),
+        )
+    };
+    let before = CAPTURED_TIMER_DROPS.load(portable_atomic::Ordering::SeqCst);
+    let h = executor
+        .register_timer_c_capturing(
+            None,
+            TimerDuration::from_millis(1000),
+            TimerClockSource::Steady,
+            captured_timer_cb,
+            Some(bytes),
+            Some(captured_timer_drop),
+        )
+        .expect("register");
+    assert_eq!(
+        CAPTURED_TIMER_DROPS.load(portable_atomic::Ordering::SeqCst),
+        before
+    );
+    assert!(unsafe { executor.release_timer(h) });
+    assert_eq!(
+        CAPTURED_TIMER_DROPS.load(portable_atomic::Ordering::SeqCst),
+        before + 1
+    );
+    assert!(!unsafe { executor.release_timer(h) });
+    assert_eq!(
+        CAPTURED_TIMER_DROPS.load(portable_atomic::Ordering::SeqCst),
+        before + 1
+    );
+}
+
+/// Releasing a capturing timer gives its capture back: a create/release loop
+/// holds the arena at the first registration's high-water mark.
+#[test]
+fn a_capturing_timer_releases_its_capture_too() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let capture = [0x5Au8; 24];
+    let register = |e: &mut Executor<'_>| {
+        e.register_timer_c_capturing(
+            None,
+            TimerDuration::from_millis(1000),
+            TimerClockSource::Steady,
+            captured_timer_cb,
+            Some(&capture),
+            None,
+        )
+    };
+    let first = register(&mut executor).expect("first");
+    let high_water = executor.arena_used();
+    assert!(unsafe { executor.release_timer(first) });
+    for i in 0..200 {
+        let h = register(&mut executor).expect("re-register");
+        assert_eq!(
+            executor.arena_used(),
+            high_water,
+            "iteration {i}: the arena grew; the capture was not released"
+        );
+        assert!(unsafe { executor.release_timer(h) });
     }
 }
 

@@ -19,7 +19,7 @@
 // break that property on purpose.
 //
 // WHAT MUST NOT COME BACK is the hierarchy. `ros2_one_dispatch_path.cpp` holds
-// that end — `!is_polymorphic<detail::WallTimer>` plus `create_wall_timer`'s
+// that end — `!is_polymorphic<nros::TimerHandle>` plus `create_wall_timer`'s
 // return type. This file holds the other: the two spellings are ONE FLAT TYPE,
 // so the name cannot quietly regrow a base underneath it.
 //
@@ -54,23 +54,29 @@ static_assert(!std::is_polymorphic<rclcpp::TimerBase>::value,
 // spellings, and they must name the same thing.
 static_assert(std::is_same<rclcpp::TimerBase::SharedPtr, rclcpp::Timer::SharedPtr>::value,
               "TimerBase::SharedPtr and Timer::SharedPtr must be the same type");
-static_assert(std::is_same<rclcpp::TimerBase::SharedPtr, std::shared_ptr<::nros::Timer>>::value,
-              "TimerBase::SharedPtr must be std::shared_ptr<nros::Timer>");
+static_assert(std::is_same<rclcpp::TimerBase::SharedPtr, ::nros::TimerHandle>::value,
+              "TimerBase::SharedPtr must be nros::TimerHandle (phase-476 W2)");
 
-/// The two member declarations the dual-compile templates actually contain.
-/// Both must bind, and `create_wall_timer`'s return value must assign to both,
-/// or those templates stop compiling under nano-ros while still compiling under
-/// real ROS 2 — which is the half of the property a nano-ros-only lane cannot
-/// see.
+/// The member declaration the dual-compile templates contain
+/// (`local-msg-package`, `workspace-shadowing`, `cpp-port-minimal-publisher`
+/// all spell it this way). It must bind, and `create_wall_timer`'s return value
+/// must assign to it, or those templates stop compiling under nano-ros while
+/// still compiling under real ROS 2 — which is the half of the property a
+/// nano-ros-only lane cannot see.
+///
+/// phase-476 W2 — the EXPLICIT spelling `std::shared_ptr<rclcpp::TimerBase>`
+/// no longer binds: the handle is not a `shared_ptr`, because there is no C++
+/// object for one to own. No template in the tree writes it; a ported file that
+/// does takes the mechanical edit to `rclcpp::TimerBase::SharedPtr`, the same
+/// one phase-456 W2 recorded for `Subscription<M>::SharedPtr`. Ledgered at
+/// `cpp:Timer::SharedPtr`.
 struct PortedMemberDeclarations {
-    std::shared_ptr<rclcpp::TimerBase> upstream_spelling; // local-msg-package
-    rclcpp::TimerBase::SharedPtr nested_spelling;         // cpp-port-minimal-publisher
+    rclcpp::TimerBase::SharedPtr nested_spelling;
 };
 
 #ifdef NROS_CPP_HAS_STD_CHRONO
-inline void the_returned_handle_assigns_to_both_spellings(rclcpp::Node& node) {
+inline void the_returned_handle_assigns_to_the_ported_spelling(rclcpp::Node& node) {
     PortedMemberDeclarations m;
-    m.upstream_spelling = node.create_wall_timer(std::chrono::milliseconds(100), []() {});
     m.nested_spelling = node.create_wall_timer(std::chrono::milliseconds(100), []() {});
     (void)m;
 }

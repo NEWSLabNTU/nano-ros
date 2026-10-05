@@ -158,6 +158,83 @@ pub unsafe extern "C" fn nros_cpp_timer_create_on_clock(
     }
 }
 
+/// Create a repeating timer whose CAPTURE the arena holds — phase-476 W2.
+///
+/// The timer twin of `nros_cpp_subscription_register_capturing`, and what the
+/// value-returning C++ `create_wall_timer` / `rclcpp::create_timer` call. The
+/// first `capture_len` bytes at `capture` are COPIED into the timer's arena
+/// entry, and `callback` is called with a pointer to that copy. Nothing of the
+/// caller's is referenced after this returns, so the C++ side keeps a two-word
+/// handle and no heap cell.
+///
+/// The timer is registered for `node`, which becomes its owner:
+/// `nros_cpp_node_destroy` releases it (phase-476 W0), and the capture with it.
+///
+/// `capture_drop`, when non-NULL, is called with the capture's arena copy when
+/// the timer is released (or the executor finalised): the capture's bytes were
+/// moved here by copy, so that is where its destructor runs.
+///
+/// `clock_type` is a `nros_clock_type_t` discriminant: `NROS_CLOCK_STEADY_TIME`
+/// is the wall timer that advances with the spin delta, `NROS_CLOCK_ROS_TIME`
+/// follows `/clock`. `capture_len == 0` (or a NULL `capture`) passes NULL to
+/// `callback`.
+///
+/// # Safety
+/// `node` must be a handle `nros_cpp_node_create*` filled; `out_handle_id` must
+/// be valid; `capture` must point to `capture_len` readable bytes for the
+/// duration of THIS CALL only; `callback` must read its capture through the
+/// pointer it is given.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_timer_create_capturing(
+    node: *const nros_cpp_node_t,
+    clock_type: u8,
+    period_ms: u64,
+    callback: nros_cpp_timer_callback_t,
+    capture: *const u8,
+    capture_len: usize,
+    capture_drop: nros_cpp_timer_callback_t,
+    out_handle_id: *mut usize,
+) -> nros_cpp_ret_t {
+    if node.is_null() || out_handle_id.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let Some(source) = nros_c::nros_timer_clock_source(clock_type) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(cb) = callback else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let node_ref = unsafe { &*node };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(node_ref.executor) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let bytes = if capture.is_null() || capture_len == 0 {
+        None
+    } else {
+        Some(unsafe { core::slice::from_raw_parts(capture, capture_len) })
+    };
+    match ctx.executor.register_timer_c_capturing(
+        crate::node_id_opt(node_ref),
+        TimerDuration::from_millis(period_ms),
+        source,
+        cb,
+        bytes,
+        capture_drop,
+    ) {
+        Ok(handle_id) => {
+            crate::issue_owned_handle(&mut ctx.executor, node_ref, handle_id, out_handle_id);
+            let kind = if matches!(source, nros_node::executor::TimerClockSource::Steady) {
+                nros::node_metadata::TimerKind::Wall
+            } else {
+                nros::node_metadata::TimerKind::Clock
+            };
+            nros::census_hooks::on_timer_create(kind, period_ms);
+            NROS_CPP_RET_OK
+        }
+        Err(_) => NROS_CPP_RET_FULL,
+    }
+}
+
 /// Create a one-shot timer and register it with the executor.
 ///
 /// The timer fires once after `delay_ms` milliseconds during `spin_once()`.
@@ -323,6 +400,35 @@ pub unsafe extern "C" fn nros_cpp_timer_cancel(
     match ctx.executor.cancel_timer(id) {
         Ok(()) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Release a timer — phase-476 W2: the timer stops for good, its arena entry
+/// and capture are freed, and the slot goes to the next registration.
+///
+/// What `TimerHandle::reset()` (upstream `timer_.reset()`) calls. Safe on a
+/// stale or copied handle: the handle carries the generation of the slot it was
+/// issued for (phase-476 W0), so once released every copy of it answers
+/// `NROS_CPP_RET_ERROR` here and nothing reaches the slot's next occupant.
+///
+/// # Safety
+/// `executor_handle` must be a valid executor handle (or one `nros_cpp_fini`
+/// already finalised, which is refused).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_timer_release(
+    executor_handle: *mut c_void,
+    handle_id: usize,
+) -> nros_cpp_ret_t {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let id = nros_node::HandleId::from_raw(handle_id);
+    // SAFETY: every C++ path to this slot goes through a generation-checked
+    // handle, so none reaches its next occupant.
+    if unsafe { ctx.executor.release_timer(id) } {
+        NROS_CPP_RET_OK
+    } else {
+        NROS_CPP_RET_ERROR
     }
 }
 

@@ -1160,7 +1160,7 @@ cpp: cpp-fmt
     # to `c++`: the driver picks the language by EXTENSION, and `c++ foo.c`
     # compiles C as C++, which mangles `nros_stub_rmw_register` and fails to
     # link against the `extern "C"` declaration in the header.
-    for _tu in executor_cancel_runtime logger_names_and_levels_runtime node_launch_identity_runtime node_unset_namespace_runtime node_destroy_releases_entries_runtime; do \
+    for _tu in executor_cancel_runtime logger_names_and_levels_runtime node_launch_identity_runtime node_unset_namespace_runtime node_destroy_releases_entries_runtime arena_capture_lifetime_runtime; do \
         test -f "packages/api/nros-cpp/tests/compile/$_tu.cpp" || { \
             echo "ERROR: $_tu.cpp is MISSING -- this check would pass on absence." >&2; \
             exit 1; \
@@ -1279,6 +1279,25 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/node_destroy_releases_entries_runtime
+    # phase-476 W2 — a C++ timer's callable lives in the executor arena: it
+    # fires from the arena's copy, a capture that owns something is destroyed
+    # exactly once (on `timer_.reset()` or node destruction), `timer_->reset()`
+    # and `timer_.reset()` stay distinct, and a stale copy of a released handle
+    # cannot reach the timer that took its slot.
+    echo "  - a C++ timer's capture lives in the arena and is destroyed exactly once; stale handles are safe (runtime, phase-476 W2)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/arena_capture_lifetime_runtime \
+        packages/api/nros-cpp/tests/compile/arena_capture_lifetime_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/arena_capture_lifetime_runtime
     # issue 0730 — the (zephyr-embedded × C++ × cyclonedds) coordinate is a
     # pairwise-class gap no runtime tier covers (cyclone fixtures run on
     # native_sim, which appends `,std`), and it failed E0599 at COMPILE time:

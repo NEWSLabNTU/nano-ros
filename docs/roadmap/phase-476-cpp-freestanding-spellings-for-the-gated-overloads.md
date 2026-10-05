@@ -181,6 +181,58 @@ item — it is the last step of the timer item.
   a timer that moves into the arena can be destroyed for real. Wire it; do not
   repeat 456's "no removal path" reasoning, which that commit retired.
 
+  **Landed 2026-10-05**, on W0. Acceptance as measured:
+
+  - `timer.hpp` names `NROS_CPP_HAS_SHARED_PTR`, `NROS_CPP_HAS_STD_FUNCTION`
+    and `NROS_CPP_HAS_STD_CHRONO` zero times, and no longer includes
+    `std_detect.hpp`.
+  - `NROS_CPP_HAS_STD_CHRONO` gates exactly the three conversion overloads:
+    `Node::create_wall_timer(chrono)`, `rclcpp::create_timer(chrono)` and
+    `Rate(chrono)`.
+  - Counts (word-bounded, over `packages/api/nros-cpp/include`):
+    `NROS_CPP_HAS_SHARED_PTR` 10 -> 8, `NROS_CPP_HAS_STD_FUNCTION` 6 -> 3,
+    `NROS_CPP_NODE_HOSTED` 21 -> 19; the rest unchanged.
+
+  Shape:
+  - Executor: `register_timer_c_capturing`, whose capture rides in the timer
+    entry's trailing region.
+  - FFI: `nros_cpp_timer_create_capturing` (node-owned, clock-typed) and
+    `nros_cpp_timer_release`.
+  - C++ handle: `nros::TimerHandle`, two words, which
+    `Timer::SharedPtr`/`ConstSharedPtr`/`UniquePtr` all name. Its
+    `operator->` reaches a separate `nros::TimerOps`, so `timer_->reset()`
+    (restart) and `timer_.reset()` (release) stay distinct.
+  - C++ verbs: `create_wall_timer(nros::Duration, cb)` and
+    `rclcpp::create_timer` are freestanding. `detail::WallTimer`,
+    `NodeHosted::owned_entities` and `Node::own_entity` are deleted.
+
+  Found and fixed on the way: a callable byte-copied into the arena was never
+  destroyed, while the registering call destroyed ITS copy right after the
+  copy. So a capture that owned anything (a `std::shared_ptr`, a
+  `std::string`) was destroyed while the arena still dispatched through it.
+  This was live for SUBSCRIPTIONS since phase-456 W1. The fix:
+  - `CaptureGuard` destroys the arena's copy when its entry is dropped.
+  - `InplaceFn::relinquish` lets the caller forget its byte-moved copy.
+  - Both the timer and the subscription registrations pass a destroy hook
+    (`capture_drop`).
+
+  Evidence:
+  - 3 nros-node unit tests: dispatch from the arena's copy, capture release
+    over 200 cycles, drop hook exactly once.
+  - `arena_capture_lifetime_runtime` in `just check cpp`. It covers the
+    capture-alive count, `->cancel`/`->reset`, `.reset()` destroying the
+    capture once, a stale copy failing without touching the timer that took its
+    slot, node destruction releasing timers and a subscription's capture.
+    Disabling the destroy hook fails 3 checks; dropping the subscription's
+    `relinquish` fails 2.
+  - `rclcpp_node_freestanding_surface.cpp` now instantiates the value-returning
+    timer verbs on its `-nostdinc++` arm.
+
+  Cost, stated: an explicit `std::shared_ptr<rclcpp::TimerBase>` member no
+  longer binds, which is the same edit phase-456 W2 recorded for
+  subscriptions. No template in the tree spells it; ledgered at
+  `cpp:TimerHandle`.
+
 * **W3 [cpp] — `Node::SharedPtr` and the `NROS_CPP_NODE_HOSTED` block.** The
   whole block is spelled in `std::string` / `std::vector` / `std::function`, so
   it is sequenced after W1 and W2. *Acceptance:* `NROS_CPP_NODE_HOSTED` is
