@@ -61,29 +61,11 @@ fn resolve_fvp_dir(root: &Path) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
-/// Resolve the Zephyr workspace path the same way `just/zephyr.just`
-/// does: `$NROS_ZEPHYR_WORKSPACE` → in-tree `zephyr-workspace/` →
-/// sibling `../nano-ros-workspace/`. `Some(canonical)` only when the
-/// candidate carries a `zephyr/` subdir.
-fn resolve_zephyr_workspace(root: &Path) -> Option<PathBuf> {
-    let candidates: Vec<PathBuf> = if let Ok(env) = std::env::var("NROS_ZEPHYR_WORKSPACE") {
-        vec![PathBuf::from(env)]
-    } else {
-        vec![
-            root.join("zephyr-workspace"),
-            root.parent()
-                .map(|p| p.join("nano-ros-workspace"))
-                .unwrap_or_default(),
-        ]
-    };
-    for cand in candidates {
-        if let Ok(canon) = cand.canonicalize()
-            && canon.join("zephyr").is_dir()
-        {
-            return Some(canon);
-        }
-    }
-    None
+/// THE ladder (`nros_tests::zephyr::zephyr_workspace_path`), not a local copy —
+/// the copy had no store arm (issue 1700's measurement). `Some(canonical)` only
+/// when the resolved tree carries a `zephyr/` subdir.
+fn resolve_zephyr_workspace(_root: &Path) -> Option<PathBuf> {
+    nros_tests::zephyr::zephyr_workspace_path()
 }
 
 #[test]
