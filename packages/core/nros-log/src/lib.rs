@@ -262,6 +262,13 @@ const LEVEL_UNSET: u8 = u8::MAX;
 /// hold one. And the producer of dotted names upstream, `Logger::get_child`,
 /// has no allocator here to concatenate `parent.child` with. A resolver for a
 /// hierarchy nothing can construct is not a missing feature.
+///
+/// RFC-0102 (2026-10-05) reverses that, by decision -- phase-479 builds it.
+/// The premises went stale: [`get_or_create_logger`] copies runtime names into
+/// a static arena, `parent.child` fits a 48-byte stack buffer, and the
+/// ancestors a `get_child` produces are loggers already. The hierarchy becomes
+/// a parent pointer on [`Logger`], linked at creation, so this byte stays the
+/// LAST step of the walk rather than the only one.
 static DEFAULT_LEVEL: AtomicU8 = AtomicU8::new(Severity::Info as u8);
 
 /// A named logger with a runtime severity threshold.
