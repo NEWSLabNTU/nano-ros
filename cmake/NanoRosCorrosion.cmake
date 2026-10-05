@@ -712,10 +712,16 @@ function(nros_assert_shared_cargo_dir_used shared_dir target)
     # A real OUTPUT with a file-level DEPENDS on the artifact, not a POST_BUILD:
     # issue 0268's rule. The check must re-run whenever cargo produces a new
     # archive, and only then — a cached build has nothing new to witness.
+    #
+    # Issue 1700 — the directory travels through a target PROPERTY evaluated at
+    # generate time: the entity-facts flush may RE-KEY it after this call (the
+    # key needs facts only the end of the configure knows), and a value baked
+    # in here would then name a directory the build no longer uses.
+    set_property(TARGET ${target} PROPERTY NROS_SHARED_CARGO_DIR "${shared_dir}")
     add_custom_command(
         OUTPUT "${_stamp}"
         COMMAND bash "${_NROS_SHARED_CARGO_CHECK_SH}"
-            --shared-dir "${shared_dir}"
+            --shared-dir "$<TARGET_PROPERTY:${target},NROS_SHARED_CARGO_DIR>"
             --link "${CMAKE_BINARY_DIR}/cargo"
             --artifact "$<TARGET_FILE:${target}>"
             --label "${target}"

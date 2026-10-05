@@ -333,6 +333,15 @@ function(nros_nuttx_build_example)
     # shape `examples/fixtures.toml` rows state: `env = { ZPICO_MAX_QUERYABLES =
     # "2" }`). Two leaves at the same triple/profile/ffi differing only there
     # hashed identically, which is issue 0616's shape one lane over.
+    #
+    # Issue 1700 — and the ENTITY FACTS this lane hands cargo below
+    # (`NROS_SIZING_DESCRIPTOR`, `NROS_DECLARED_*`): the sizes probe keys on
+    # them, so two leaves differing only there would share build-script output
+    # sized for the other. Composed here, once, and reused by the carrier.
+    set(_nnbe_entity_env "")
+    if(COMMAND nros_entity_facts_env)
+        nros_entity_facts_env("" ENV_OUT _nnbe_entity_env)
+    endif()
     set(_shared_cargo_dir "")
     if(COMMAND nros_shared_cargo_dir)
         nros_knob_key_fields(_nnbe_knob_fields)
@@ -342,7 +351,8 @@ function(nros_nuttx_build_example)
             "ffi=${_NNBE_FFI_CRATE_DIR}"
             "nuttx=${NUTTX_DIR}"
             "defconfig=${NROS_NUTTX_DEFCONFIG}"
-            ${_nnbe_knob_fields})
+            ${_nnbe_knob_fields}
+            ${_nnbe_entity_env})
     endif()
     if(_shared_cargo_dir)
         set(_cargo_target_dir "${_shared_cargo_dir}")
@@ -457,10 +467,7 @@ function(nros_nuttx_build_example)
     # `nano_ros_add_entry`, so on that road this may read an empty accumulator
     # and deliver nothing — which is what this lane delivered before, never
     # less.
-    set(_nnbe_entity_env "")
-    if(COMMAND nros_entity_facts_env)
-        nros_entity_facts_env("" ENV_OUT _nnbe_entity_env)
-    endif()
+    # (Composed above, before the shared-dir key — issue 1700.)
 
     # Issue 1541 — the BOARD facts, on the same carrier and for the same reason:
     # this lane is not Corrosion, so `nros_board_facts_env(<target>)` has

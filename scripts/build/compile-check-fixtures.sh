@@ -1284,6 +1284,17 @@ if _lane_on px4 && [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null
                     -I "$repo_root/packages/api/nros-cpp/include"
                     -I "$repo_root/packages/platform/nros-platform-api/include"
                 )
+                # The per-build config headers, as `cxx_syntax_check` takes
+                # them: every generated message header includes
+                # `<nros/nros_config_generated.h>` for the RFC-0090 version
+                # check (phase-429 W1), and without a real one this failed
+                # `fatal error: nros/nros_config_generated.h: No such file`
+                # on every host that HAS PX4 — measured 2026-10-06 while
+                # proving issue 1700's fix on `lane=tier1`.
+                [ -f "$repo_root/target/nros-cpp-generated/nros/nros_cpp_config_generated.h" ] \
+                    && bridge_incs+=(-I "$repo_root/target/nros-cpp-generated")
+                [ -f "$repo_root/target/nros-c-generated/nros/nros_config_generated.h" ] \
+                    && bridge_incs+=(-I "$repo_root/target/nros-c-generated")
                 for hpp in "$bridge_gen"/px4_msgs/msg/*.hpp; do
                     [ -f "$hpp" ] || continue
                     case "$(basename "$hpp")" in px4_msgs_msg_*) continue ;; esac
