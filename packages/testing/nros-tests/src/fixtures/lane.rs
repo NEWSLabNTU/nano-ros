@@ -623,6 +623,67 @@ fn out_of_lane(row: &Row) -> String {
     )
 }
 
+/// Skip as `lane` when this run selects NO coordinate of any of `platforms` —
+/// issue 1685.
+///
+/// For a test whose first act is a CAPABILITY probe (a west workspace, a
+/// `qemu-system-riscv64`, a PX4 checkout) before it resolves any fixture. The
+/// resolver's lane skip never gets a chance there: on a runner without the
+/// thing, the probe fires first and reports `capability` — a provisioning gap —
+/// for a platform the lane never asked this runner to run. The hosted tier-1
+/// job took 81 such skips (54 of them `Zephyr not available`), every one a
+/// platform outside what its lane could build, and `check-skip-budget` rightly
+/// refused them as undeclared. Asking the lane FIRST turns each into what it
+/// is: deselection. A platform the lane DOES select still reaches the probe, so
+/// a runner that claims it and lacks it still reports the gap.
+///
+/// Unnarrowed run (no `NROS_TEST_COORDS`) ⇒ never skips.
+pub fn require_platform_in_lane(platforms: &[crate::matrix::PlatformId], what: &str) {
+    let Some(coords) = run_coords() else {
+        return;
+    };
+    if let Some(reason) = skip_reason_for_platforms(platforms, what, coords) {
+        crate::skip_class!(lane, "{reason}");
+    }
+}
+
+/// [`require_platform_in_lane`] for every platform `just setup <scope>`
+/// provisions (`zephyr` owns native_sim, FVP and the Cortex-M QEMU board) — for
+/// a probe that is about the SCOPE rather than one board, like a west workspace.
+pub fn require_setup_scope_in_lane(scope: &str, what: &str) {
+    let platforms: Vec<crate::matrix::PlatformId> = crate::matrix::PlatformId::ALL
+        .iter()
+        .copied()
+        .filter(|p| p.just_module() == scope)
+        .collect();
+    assert!(
+        !platforms.is_empty(),
+        "require_setup_scope_in_lane: no platform is provisioned by `just setup {scope}`"
+    );
+    require_platform_in_lane(&platforms, what);
+}
+
+/// The decision behind [`require_platform_in_lane`], minus the environment.
+pub fn skip_reason_for_platforms(
+    platforms: &[crate::matrix::PlatformId],
+    what: &str,
+    coords: &BTreeSet<Coord>,
+) -> Option<String> {
+    let selected = coords.iter().any(|(p, _, _)| {
+        crate::matrix::PlatformId::from_fixture_token(p).is_some_and(|id| platforms.contains(&id))
+    });
+    (!selected).then(|| {
+        let names: Vec<String> = platforms.iter().map(|p| format!("{p:?}")).collect();
+        format!(
+            "out of lane: {what} runs on {}, and this run's lane selects no \
+             coordinate on that platform, so its capability probe is not asked \
+             here.\n  Run the full ladder (`just ci-full`) or unset \
+             {RUN_COORDS_ENV} to execute it.",
+            names.join(" / ")
+        )
+    })
+}
+
 /// Skip when `binary_path` belongs to a manifest row outside this run's lane.
 ///
 /// Called at the fixture-resolution chokepoint, BEFORE the existence check, so
@@ -772,6 +833,38 @@ fn coord_of_artifact(binary_path: &Path) -> Option<Coord> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1685 — the platform-level lane question, both directions. A run
+    /// holding only `linux` coordinates deselects a Zephyr test; a run holding a
+    /// `zephyr` coordinate must NOT, or a runner that lacks Zephyr while its
+    /// lane claims it would launder the provisioning gap into a lane skip.
+    #[test]
+    fn a_platform_the_lane_does_not_select_is_deselected_and_one_it_does_is_not() {
+        use crate::matrix::PlatformId;
+        let c = |p: &str| (p.to_string(), "rust".to_string(), "zenoh".to_string());
+        let host: BTreeSet<Coord> = [c("linux")].into_iter().collect();
+        let rest: BTreeSet<Coord> = [c("zephyr"), c("threadx-linux")].into_iter().collect();
+        let zephyr = [PlatformId::ZephyrNativeSim];
+
+        let why = skip_reason_for_platforms(&zephyr, "a Zephyr image", &host)
+            .expect("a linux-only lane must deselect a Zephyr test");
+        assert!(why.starts_with("out of lane:"), "{why}");
+        // Never phrased as a fixture absence (check-skip-budget's FIXTURE_RE)
+        // nor as a coordinate the lane selected (its COORD_RE).
+        assert!(
+            !why.contains("not built") && !why.contains("is at coordinate"),
+            "{why}"
+        );
+
+        assert_eq!(
+            skip_reason_for_platforms(&zephyr, "a Zephyr image", &rest),
+            None
+        );
+        assert_eq!(
+            skip_reason_for_platforms(&[PlatformId::Linux], "a host test", &host),
+            None
+        );
+    }
 
     #[test]
     fn a_sole_row_leaf_attributes_to_itself() {

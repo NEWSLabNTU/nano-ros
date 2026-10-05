@@ -37,6 +37,12 @@ const C_RISCV_NUTTX_TALKER_PORT: u16 = port_of(PlatformId::NuttxRiscv, Lang::C, 
 
 #[test]
 fn c_riscv_nuttx_talker_delivers_cross_process() {
+    // Issue 1685 — deselect before the host probes when the lane holds no
+    // riscv NuttX coordinate.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[PlatformId::NuttxRiscv],
+        "the riscv NuttX C talker",
+    );
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }

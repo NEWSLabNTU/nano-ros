@@ -398,6 +398,10 @@ COMPILE_RESOLVERS = ("require_compile_check", "require_compile_check_bin", "requ
 RESOLVER_SOURCES = ("packages/testing/nros-tests/src/fixtures",)
 NOT_A_RESOLVER = {
     "require_coord_in_lane": "asks whether a coordinate is IN the run's lane; resolves no artifact",
+    # issue 1685 — the platform-level twin: deselects a test whose platform the
+    # run's lane selects no coordinate of, BEFORE its capability probe.
+    "require_platform_in_lane": "asks whether a PLATFORM has a coordinate in the run's lane; resolves no artifact",
+    "require_setup_scope_in_lane": "require_platform_in_lane over a `just setup` scope's platforms; resolves no artifact",
     # phase-475 W3 — found by the census disagreeing with this harvest:
     # `fixture_group_resolution` reached a verdict in the gate image with
     # nothing staged, twice, while this file called it a runtime-fixture user.

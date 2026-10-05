@@ -23,6 +23,13 @@ use std::{path::PathBuf, process::Command};
 fn proof_bin(name: &str) -> TestResult<PathBuf> {
     // Bespoke recipe (like link-determinism), so the fixture lives at a fixed path
     // rather than under build/compile-check-fixtures/<id>/. Gate on its stamp.
+    // Issue 1685 — a host (linux) build-stage proof: `build-test-fixtures`
+    // produces it for any lane that builds a linux coordinate, and a lane that
+    // selects none deselects here rather than reporting the absent stamp.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::Linux],
+        "the borrowed-view proof",
+    );
     let dir = nros_tests::project_root().join("build/borrowed-e2e");
     if !dir.join(".compile-ok").is_file() {
         nros_tests::skip!(

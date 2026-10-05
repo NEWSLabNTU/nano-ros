@@ -241,6 +241,12 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server() {
 /// Interop cell: `native-action-rust-cyclone-n2r`.
 #[test]
 fn the_nano_ros_action_client_drives_a_stock_ros2_server() {
+    // Issue 1685 — a lane with no linux coordinate deselects before the
+    // ROS / peer-package probes.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::Linux],
+        "the native action client",
+    );
     if !require_ros2_cyclonedds() {
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
     }
@@ -544,6 +550,11 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh() {
 /// Interop cell: `native-action-rust-zenoh-n2r`.
 #[test]
 fn the_nano_ros_action_client_drives_a_stock_ros2_server_over_zenoh() {
+    // Issue 1685 — as above.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::Linux],
+        "the native action client",
+    );
     if !require_ros2() {
         nros_tests::skip!("ROS 2 + rmw_zenoh_cpp not available");
     }

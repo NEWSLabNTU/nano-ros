@@ -49,6 +49,13 @@ fn px4_integration_template_smoke() {
         "PX4 module CMakeLists must call px4_add_module",
     );
 
+    // Issue 1685 — the source assertions above hold everywhere; the SITL half
+    // below needs a PX4 checkout, which only a lane selecting PX4 provisions.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::Px4],
+        "the PX4 SITL build",
+    );
+
     // Heavy gate: the SITL build itself.
     let px4_dir = match std::env::var("PX4_AUTOPILOT_DIR") {
         Ok(d) => PathBuf::from(d),

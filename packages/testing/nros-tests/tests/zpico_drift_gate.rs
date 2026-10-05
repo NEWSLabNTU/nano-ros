@@ -8,7 +8,7 @@
 //! `system/<plat>/` dirs.
 //!
 //! This test guards the gate itself: it copies the per-platform config
-//! tree (`config/*/nros-platform.toml`, RFC-0049) to a
+//! tree (`packages/platform/*/nros-platform.toml`, RFC-0049) to a
 //! sandbox, corrupts the posix file's `include` entry, drives
 //! `cargo build -p zpico-sys` against the sandboxed tree via
 //! `NROS_PLATFORMS_DIR`, and asserts the build-script panic surfaces
@@ -35,9 +35,19 @@ use std::{
     process::{Command, Stdio},
 };
 
+/// Where the posix descriptor lives. phase-400 W1 moved the platform
+/// descriptors beside their crates (`packages/platform/<crate>/`), and this
+/// still read the retired `config/posix/` — so for every run since, the test
+/// SKIPPED on its own precondition and guarded nothing (issues 1644, 1685).
+/// `NROS_PLATFORMS_DIR` is still the FIRST search-path root
+/// (`PlatformsTree::default_search_path`) and a descriptor is keyed by its
+/// directory name, so a sandbox copy of this root shadows the in-tree one.
 fn canonical_platforms_root() -> PathBuf {
-    nros_tests::project_root().join("config")
+    nros_tests::project_root().join("packages/platform")
 }
+
+/// The posix descriptor's directory under [`canonical_platforms_root`].
+const POSIX_DIR: &str = "nros-platform-posix";
 
 /// Copy every `<root>/*/nros-platform.toml` into `dst` preserving the
 /// per-directory layout the loader expects.
@@ -97,7 +107,7 @@ fn run_build(platforms_dir: &Path) -> (String, std::process::ExitStatus) {
 fn zpico_drift_gate_fires_on_corrupted_include() {
     let root = nros_tests::project_root();
     let canonical_root = canonical_platforms_root();
-    let posix_toml = canonical_root.join("posix/nros-platform.toml");
+    let posix_toml = canonical_root.join(POSIX_DIR).join("nros-platform.toml");
     if !posix_toml.exists() {
         panic!(
             "[SKIPPED] {} not present — the phase-290 per-platform config \
@@ -133,8 +143,11 @@ fn zpico_drift_gate_fires_on_corrupted_include() {
         // logic actually traverses to it and fails.
         "system/_zpico_drift_gate_sentinel_does_not_exist",
     );
-    fs::write(corrupted.join("posix/nros-platform.toml"), corrupted_body)
-        .expect("write corrupted platform toml");
+    fs::write(
+        corrupted.join(POSIX_DIR).join("nros-platform.toml"),
+        corrupted_body,
+    )
+    .expect("write corrupted platform toml");
 
     let (out, status) = run_build(&corrupted);
     assert!(

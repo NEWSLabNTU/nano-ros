@@ -69,6 +69,12 @@ fn link_proof_exe(root: &std::path::Path) -> Option<PathBuf> {
 #[test]
 fn single_archive_links_via_u_force_without_allow_multiple_definition() {
     let root = nros_tests::project_root();
+    // Issue 1685 — a host (linux) build-stage proof, produced by
+    // `build-test-fixtures` for any lane that builds a linux coordinate.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::Linux],
+        "the single-runtime link proof",
+    );
     let Some(exe) = link_proof_exe(&root) else {
         nros_tests::skip!(
             "no single-runtime link proof (build/link-determinism/lkproof) — run \

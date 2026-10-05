@@ -55,6 +55,12 @@ fn require_qemu() {
 
 /// Skip test if ARM toolchain is not available
 fn require_arm_toolchain() {
+    // Issue 1685 — every test here is a bare-metal QEMU image; a lane that
+    // selects no such coordinate deselects before the toolchain probes.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::QemuBaremetal],
+        "a bare-metal QEMU image",
+    );
     if !is_arm_toolchain_available() {
         nros_tests::skip!("thumbv7m-none-eabi target not installed");
     }
