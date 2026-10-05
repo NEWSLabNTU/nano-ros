@@ -8,6 +8,10 @@ have. This phase finishes the Zephyr dual-line bring-up, audits the other
 workflows for the same class of gaps, and codifies the provisioning conventions
 so a new workflow works on its first push.
 
+**ARCHIVED (2026-10-06).** The one open acceptance criterion names a workflow
+phase-253 deleted, so nothing can satisfy or fail it; every work item below is
+done. The current CI topology is `gate.yml` and its siblings (phase-396/399/413).
+
 **Status (2026-09-04). Every work item is DONE (196.1-196.9, 33 of 34 boxes
 checked); the phase is held open by ONE acceptance criterion that names a
 workflow deleted fifteen months of commits ago.** The 2026-05-28 line below said
@@ -30,7 +34,7 @@ the live set is `gate.yml`, `queue.yml`, `nightly.yml`, `post-submit.yml`,
 consolidation as the zephyr matrix inside `nightly.yml`, on its own `0 5` cron —
 but every zephyr job in the last EIGHT consecutive scheduled runs is `skipped`,
 so the lane reports neither green nor red. Filed as
-[issue 1029](../issues/archived/1029-zephyr-nightly-never-produces-a-verdict.md),
+[issue 1029](../../issues/archived/1029-zephyr-nightly-never-produces-a-verdict.md),
 now RESOLVED: the cron gate was open all along and the `needs: changes` edge —
 whose own `lane` dependency is skipped on the 05:00 cron — was skipping the
 jobs. The three zephyr jobs no longer carry that edge.
@@ -358,7 +362,7 @@ emits `generated/` and `cargo tree` resolves `nros-core 0.5.0` from the path
 deps. The underlying stale-lockfile cleanup stays tracked in known-issue #12.
 
 ### 196.7 — [P2] Fix the dep convention for the source-release model
-**Design home:** [RFC-0040](../design/0040-distribution-and-scaffolding-deps.md)
+**Design home:** [RFC-0040](../../design/0040-distribution-and-scaffolding-deps.md)
 (no-crates.io distribution model + the `nros new` dependency convention). The
 out-of-tree dep shape is RFC-0040 open question D-Q1 — resolve it there before
 implementing the scaffold change below.

@@ -32,7 +32,7 @@ package — *an image is a ROW, not a directory* — and retired it across
 `examples/workspaces/**`, gated by `check-no-tracked-workspace-roots`. The
 templates and the book were outside that gate's reach by construction, so they
 still teach the shape `nros build` refuses. That is the
-[phase-450](phase-450-gate-reach-narrower-than-its-rule.md) class arriving in
+[phase-450](archived/phase-450-gate-reach-narrower-than-its-rule.md) class arriving in
 the one place where the output is copied by a stranger.
 
 ## The shape, stated once

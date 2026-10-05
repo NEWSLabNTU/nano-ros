@@ -153,7 +153,7 @@ states: no cross-only dependency, no pinned target, because the kernel build
 glue is not a cargo fact. They are DECLARED in
 `.config/workspace-exclude-reasons.txt`, a shrink-only ratchet, rather than
 given an invented derivation. A gate that asserts a reason it did not measure is
-the defect [phase-450](phase-450-gate-reach-narrower-than-its-rule.md) exists
+the defect [phase-450](archived/phase-450-gate-reach-narrower-than-its-rule.md) exists
 for, and this phase is not the place to add a sixteenth instance of it.
 
 ### W4 — an excluded crate is a crate no lane builds (issue 1309)

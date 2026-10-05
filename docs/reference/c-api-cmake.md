@@ -277,7 +277,7 @@ exits 0 with six ARM ELF binaries where none built before.
 Rationale and the full measurement:
 `packages/api/nros-cpp/include/nros/std_detect.hpp`,
 [RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md),
-and `docs/roadmap/phase-438-cpp-std-is-an-opt-in-porting-surface.md`.
+and `docs/roadmap/archived/phase-438-cpp-std-is-an-opt-in-porting-surface.md`.
 
 ## Board capabilities & deterministic build (RFC-0042)
 

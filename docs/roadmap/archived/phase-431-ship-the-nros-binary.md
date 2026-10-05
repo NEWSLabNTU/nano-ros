@@ -2,7 +2,7 @@
 
 **Status (2026-09-06). Every work item is landed.** No release has been cut:
 W5 is manual dispatch, and cutting one is a decision, not a consequence — the distribution
-mechanics proper. [Phase-429](../phase-429-the-codegen-version-is-enforced-everywhere.md)
+mechanics proper. [Phase-429](phase-429-the-codegen-version-is-enforced-everywhere.md)
 removed the correctness blocker; what remains is distribution mechanics plus one
 hazard that shipping CREATES and that is worth fixing before the first release
 rather than after.
