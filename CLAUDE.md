@@ -1298,7 +1298,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   safe per-leaf (cargo reads it back from the STORED output, never re-resolved). The rule has
   TWO producers — Rust literals AND the `rerun_if_env_changed` lists in
   `config/*/nros-platform.toml` — and fixing one leaves the other running. Gate:
-  `check-path-env-fingerprints` (both producers, self-testing).
+  `check-path-env-fingerprints` (both producers, self-testing; reads const-/`format!`-built and `cargo::` watches, fails closed on the rest — issue 1708).
 - **cmake `include()` inside a FUNCTION drops the file's normal vars when the frame pops** —
   capture module dirs `CACHE INTERNAL` (the `_NROS_ENTRY_DIR` pattern); a plain
   `set(_X_DIR ${CMAKE_CURRENT_LIST_DIR})` broke every freertos ws member's `configure_file`
