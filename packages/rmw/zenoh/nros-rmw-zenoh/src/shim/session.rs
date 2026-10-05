@@ -1697,9 +1697,12 @@ impl Session for ZenohSession {
     /// What the comment here used to say, and what W9 measured:
     ///
     /// * *"Reliability maps to zenoh congestion-control"* — it did not.
-    ///   `zpico.c` sets `Z_CONGESTION_CONTROL_BLOCK` unconditionally and the
-    ///   field reached no publisher option. `shim/qos.rs` reads it now and
-    ///   GRANTS reliable, reporting the over-delivery.
+    ///   the field reached no publisher option. `shim/qos.rs` reads it now
+    ///   and, since issue 1687, grants it as asked: BEST_EFFORT is served by
+    ///   any delivery, and `zpico.c` uses zenoh-pico's default DROP unless
+    ///   `ZPICO_TX_BATCH` asks for BLOCK. (W9 recorded BLOCK as
+    ///   unconditional and granted RELIABLE for every request, which put a
+    ///   profile nobody declared into the graph token.)
     /// * *"Durability VOLATILE / History / Depth honoured at the subscriber
     ///   buffer level"* — none of the three were read outside the discovery
     ///   keyexpr. The ring is KEEP_LAST at a build-time depth whatever was

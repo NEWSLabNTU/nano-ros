@@ -29,12 +29,16 @@
 //!   clamp is REPORTED: the granted value goes into the graph token, and the
 //!   first entity to lose depth says so once per session.
 //!
-//! The fourth, **reliability**, is granted RELIABLE whatever was asked,
-//! because zenoh-pico's publisher path sets `Z_CONGESTION_CONTROL_BLOCK`
-//! unconditionally. That is an OVER-delivery — a BEST_EFFORT reader is
-//! RxO-compatible with a RELIABLE writer, so it costs a peer nothing — and it
-//! is reported at INFO where the depth clamp is reported at WARN. The severity
-//! IS the direction: over-delivery is safe, under-delivery loses samples.
+//! The fourth, **reliability**, is granted AS ASKED — issue 1687. Until then
+//! it was granted RELIABLE whatever was asked, on the premise that zenoh-pico's
+//! publisher path "sets `Z_CONGESTION_CONTROL_BLOCK` unconditionally". It does
+//! not: `zpico.c` sets BLOCK only under the opt-in `ZPICO_TX_BATCH`, and every
+//! other build publishes with zenoh-pico's default, DROP. Either way BEST_EFFORT
+//! promises nothing about delivery, so ANY delivery serves it — exactly, not
+//! over-served — and the token carries what the caller declared. Rewriting it
+//! to RELIABLE told a stock peer the entity was something it was not: `ros2
+//! topic info -v` showed RELIABLE for a publisher whose `qos_overrides` said
+//! `best_effort`, and a peer's RxO check ran against a profile nobody declared.
 //!
 //! # Why granting is not clamping
 //!
@@ -139,11 +143,6 @@ impl EntityKind {
 /// it resolves a CAS-less target through the `critical-section` /
 /// `unsafe-assume-single-core` feature the consuming board enables.
 static DEPTH_CLAMP_REPORTED: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
-
-/// Reported once per process, same reasoning: `QOS_PROFILE_SENSOR_DATA` and
-/// `QOS_PROFILE_BEST_EFFORT` are common, and the answer is the same every time.
-static RELIABILITY_GRANT_REPORTED: portable_atomic::AtomicBool =
-    portable_atomic::AtomicBool::new(false);
 
 /// phase-455 W5 — the transient-local publisher's depth clamp, latched
 /// SEPARATELY from the receive ring's. See the clamp site for why sharing one
@@ -269,22 +268,15 @@ pub(super) fn admit(
         }
     }
 
-    // nros-qos-honours: RELIABILITY — read, granted RELIABLE, and the
-    // divergence reported. zenoh-pico publishes with
-    // `Z_CONGESTION_CONTROL_BLOCK`, so a BEST_EFFORT request is OVER-served,
-    // never under-served. Reported at INFO once: a BEST_EFFORT reader is
-    // RxO-compatible with a RELIABLE writer, so this costs a peer nothing.
-    if requested.reliability != QoSReliabilityPolicy::Reliable {
-        granted.reliability = QoSReliabilityPolicy::Reliable;
-        if first_time(&RELIABILITY_GRANT_REPORTED) {
-            nros_log::log_info!(
-                nros_log::get_logger("nros_rmw_zenoh"),
-                "qos: {} '{}' asked for BEST_EFFORT; zenoh-pico delivers reliably \
-                 (congestion control BLOCK), so RELIABLE is granted. Over-delivery, \
-                 not loss.",
-                kind.label(),
-                name
-            );
+    // nros-qos-honours: RELIABILITY — read, and granted as asked (issue
+    // 1687). BEST_EFFORT is served by any delivery — DROP congestion control
+    // (zenoh-pico's default, and this shim's unless `ZPICO_TX_BATCH`) and BLOCK
+    // alike — so the request IS the grant, and the token advertises it. Only an
+    // unstated policy is resolved here, to RELIABLE, as it always was.
+    match requested.reliability {
+        QoSReliabilityPolicy::Reliable | QoSReliabilityPolicy::BestEffort => {}
+        QoSReliabilityPolicy::SystemDefault | QoSReliabilityPolicy::Unknown => {
+            granted.reliability = QoSReliabilityPolicy::Reliable;
         }
     }
 
@@ -564,12 +556,27 @@ mod tests {
         assert!(admit(EntityKind::Publisher, "/t", &qos).is_ok());
     }
 
+    /// Issue 1687 — the token carries the GRANT, so a grant that rewrites
+    /// BEST_EFFORT to RELIABLE is a graph entry advertising a profile nobody
+    /// declared; `qos_override_e2e` read exactly that from a stock `ros2 topic
+    /// info -v`. BEST_EFFORT is served by any delivery, so it is granted as
+    /// asked, on every entity kind.
     #[test]
-    fn best_effort_is_granted_reliable_rather_than_refused() {
-        let mut qos = base();
-        qos.reliability = QoSReliabilityPolicy::BestEffort;
-        let granted = admit(EntityKind::Publisher, "/t", &qos).expect("admissible");
-        assert_eq!(granted.reliability, QoSReliabilityPolicy::Reliable);
+    fn best_effort_is_granted_as_asked_on_every_kind() {
+        for kind in [
+            EntityKind::Publisher,
+            EntityKind::Subscription,
+            EntityKind::Service,
+            EntityKind::Client,
+        ] {
+            let mut qos = base();
+            qos.reliability = QoSReliabilityPolicy::BestEffort;
+            let granted = admit(kind, "/t", &qos).expect("admissible");
+            assert_eq!(granted.reliability, QoSReliabilityPolicy::BestEffort, "{kind:?}");
+            qos.reliability = QoSReliabilityPolicy::Reliable;
+            let granted = admit(kind, "/t", &qos).expect("admissible");
+            assert_eq!(granted.reliability, QoSReliabilityPolicy::Reliable, "{kind:?}");
+        }
     }
 
     /// Every stock preset a default caller reaches must survive admission —

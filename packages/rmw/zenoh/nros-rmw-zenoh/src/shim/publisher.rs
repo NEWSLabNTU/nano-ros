@@ -368,8 +368,8 @@ pub struct ZenohPublisher {
     /// what [`nros_rmw::Publisher::actual_qos`] answers.
     ///
     /// The shim grants rather than echoes: the depth is clamped to the ring it
-    /// actually enforces, reliability is granted RELIABLE whatever was asked
-    /// (zenoh-pico blocks on congestion unconditionally), and a transient-local
+    /// actually enforces, reliability is granted as asked (issue 1687 —
+    /// BEST_EFFORT is served by any delivery), and a transient-local
     /// publisher advertises the retention depth it really serves. The same
     /// profile goes into the liveliness token a `rmw_zenoh_cpp` peer parses,
     /// so what a caller reads back here and what the graph carries are one
