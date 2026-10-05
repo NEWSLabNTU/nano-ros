@@ -761,8 +761,10 @@ impl ZephyrProcess {
 /// `ptrace_scope=1` grants to an ANCESTOR — and the test spawned this image, so
 /// it is one. native_sim/native/64 links a non-PIE executable, so the ELF's
 /// symbol address IS the runtime address; a PIE image would read the wrong
-/// bytes, which the decoder's MAGIC check refuses rather than misreads.
-fn read_process_memory(pid: u32, addr: u64, len: usize) -> Result<Vec<u8>, String> {
+/// bytes, which the decoder's MAGIC check refuses rather than misreads. A
+/// caller reading a PIE host binary adds the load base from
+/// `/proc/<pid>/maps` first (`tests/log_arena_knob.rs`).
+pub fn read_process_memory(pid: u32, addr: u64, len: usize) -> Result<Vec<u8>, String> {
     use std::io::{Read, Seek, SeekFrom};
     let path = format!("/proc/{pid}/mem");
     let mut f = std::fs::File::open(&path).map_err(|e| format!("heap gate: open {path}: {e}"))?;

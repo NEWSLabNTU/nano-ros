@@ -138,3 +138,4 @@ All optional — platform-appropriate defaults apply if unset.
 | `NROS_MAX_BYTE_ARRAY_LEN`   | Max byte array parameter length               | `256`   | nros-params |
 | `NROS_MAX_PARAM_DESCRIPTION_LEN` | Max parameter description length (0 = none, max 256) | `256` | nros-params |
 | `NROS_MAX_PARAM_CONSTRAINTS_LEN` | Max parameter `additional_constraints` length (0 = none, max 256) | `0` | nros-params |
+| `NROS_LOG_DYNAMIC_LOGGERS` | Loggers `get_or_create_logger` may create at run time (0 = lookup only). Board rung `[board.knobs.log] dynamic_loggers` (Linux host boards: 32); Zephyr `CONFIG_NROS_LOG_DYNAMIC_LOGGERS` | `16` | nros-log |

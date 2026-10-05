@@ -58,13 +58,13 @@
 //! same rule issue 0900's arena knob and phase-403's `rx_buffer_from_type()`
 //! both keep.
 //!
-//! Enabled, it costs `BootReport::struct_size` bytes of `.bss` -- 120, the
+//! Enabled, it costs `BootReport::struct_size` bytes of `.bss` -- 128, the
 //! same on every target because every field is a `u32` -- and a handful of
 //! relaxed atomic stores on paths that run once per entity at registration.
 //!
-//! The 120 is not a detail: it is the LENGTH an operator types into `savemem`,
+//! The 128 is not a detail: it is the LENGTH an operator types into `savemem`,
 //! and this sentence said 60 for as long as the record had fifteen fields. A
-//! short dump decodes -- `read-boot-report.py` needs `30 * 4` bytes and a
+//! short dump decodes -- `read-boot-report.py` needs `32 * 4` bytes and a
 //! 100-byte one is refused, but a reader who trusts the prose over the tool
 //! spends the refusal looking at the wrong thing. Ask the tool instead:
 //! `read-boot-report.py --addr-only <elf>` prints the address AND the length,
@@ -83,7 +83,7 @@
 //!    reading the new word as one it knows;
 //! 3. `FIELDS` in `scripts/read-boot-report.py`, same name, same position, and
 //!    `KNOWN_VERSION` to match;
-//! 4. the field count in `the_record_is_thirty_packed_u32s` below.
+//! 4. the field count in `the_record_is_thirty_two_packed_u32s` below.
 //!
 //! `check-boot-report-layout` fails on 1 without 3, and the Rust test fails if
 //! the compiler laid the record out with padding. Appending is what keeps a
@@ -104,8 +104,10 @@ pub const MAGIC: u32 = 0x4e52_5352;
 /// 6 since issue 1549 appended `rmw_local_queryable`;
 /// 7 since issue 1550 appended `domain_id`;
 /// 8 since issue 1573 appended `failed_alloc_arena`;
-/// 9 since issue 1036 appended the four `error_log_*` words.
-pub const VERSION: u32 = 9;
+/// 9 since issue 1036 appended the four `error_log_*` words;
+/// 10 since phase-479 W5 appended `log_dynamic_capacity` and
+/// `log_dynamic_in_use`.
+pub const VERSION: u32 = 10;
 
 /// Which allocator refused the allocation `BootReport::failed_alloc_size`
 /// names.
@@ -455,6 +457,23 @@ mod enabled {
         /// [`Self::failed_alloc_size`]: the first error is the one that
         /// explains the boot, later ones are often its consequences.
         error_log_line: AtomicU32,
+
+        // phase-479 W5 (RFC-0102 D5), appended on the same rule: the runtime
+        // logger arena, so `NROS_LOG_DYNAMIC_LOGGERS` is set from a
+        // measurement rather than a guess. `get_child` is a runtime call no
+        // declaration names, so the arena cannot be derived -- it can only be
+        // measured, and a console-less board needs the measurement HERE.
+        /// `nros_log::dynamic_logger_capacity()` as compiled: the
+        /// `NROS_LOG_DYNAMIC_LOGGERS` the image was built with. 0 means the
+        /// arena was declined (lookup only).
+        log_dynamic_capacity: AtomicU32,
+        /// `nros_log::dynamic_loggers_in_use()`: slots CLAIMED so far.
+        ///
+        /// Sampled at `init`, at every [`checkpoint`] and on every record the
+        /// image logs (the error-log sink sees each one), and MONOTONIC like
+        /// its source -- the arena has no free list. Equal to the capacity
+        /// means a creation has already fallen back, or the next one will.
+        log_dynamic_in_use: AtomicU32,
     }
 
     impl BootReport {
@@ -490,6 +509,8 @@ mod enabled {
                 error_log_file_ptr: AtomicU32::new(0),
                 error_log_file_len: AtomicU32::new(0),
                 error_log_line: AtomicU32::new(0),
+                log_dynamic_capacity: AtomicU32::new(0),
+                log_dynamic_in_use: AtomicU32::new(0),
             }
         }
 
@@ -546,6 +567,8 @@ mod enabled {
         pub error_log_file_ptr: u32,
         pub error_log_file_len: u32,
         pub error_log_line: u32,
+        pub log_dynamic_capacity: u32,
+        pub log_dynamic_in_use: u32,
     }
 
     /// Read the record.
@@ -590,6 +613,8 @@ mod enabled {
             error_log_file_ptr: g(&r.error_log_file_ptr),
             error_log_file_len: g(&r.error_log_file_len),
             error_log_line: g(&r.error_log_line),
+            log_dynamic_capacity: g(&r.log_dynamic_capacity),
+            log_dynamic_in_use: g(&r.log_dynamic_in_use),
         }
     }
 
@@ -626,6 +651,11 @@ mod enabled {
         );
         r.rmw_local_queryable
             .store(crate::config::BOOT_RMW_LOCAL_QUERYABLE, Ordering::Relaxed);
+        r.log_dynamic_capacity.store(
+            saturate(nros_log::dynamic_logger_capacity()),
+            Ordering::Relaxed,
+        );
+        note_log_loggers(r);
         install_error_log_sink();
         r.magic.store(MAGIC, Ordering::Relaxed);
         checkpoint(Stage::ReportReady);
@@ -637,6 +667,11 @@ mod enabled {
 
     impl nros_log::LogSink for ErrorLogRecorder {
         fn log(&self, record: &nros_log::Record<'_>) {
+            // phase-479 W5 -- every record, not only errors: a logger is most
+            // often created just before its first record, so this is where
+            // the arena's use is current without `nros_log` having to know
+            // the record exists.
+            note_log_loggers(&NROS_BOOT_REPORT);
             if record.severity >= nros_log::Severity::Error {
                 record_error_log(&NROS_BOOT_REPORT, record.file, record.line);
             }
@@ -662,6 +697,17 @@ mod enabled {
         if !INSTALLED.swap(true, Ordering::Relaxed) {
             let _ = nros_log::add_sink(&ERROR_LOG_RECORDER);
         }
+    }
+
+    /// phase-479 W5 -- sample the runtime-logger arena's use into the record.
+    ///
+    /// `fetch_max`, so the word never moves backwards even if a sample from an
+    /// earlier instant lands late; the source is monotonic anyway.
+    pub(crate) fn note_log_loggers(r: &BootReport) {
+        r.log_dynamic_in_use.fetch_max(
+            saturate(nros_log::dynamic_loggers_in_use()),
+            Ordering::Relaxed,
+        );
     }
 
     /// Count one ERROR-level log record, keeping the FIRST one's location.
@@ -699,6 +745,7 @@ mod enabled {
     pub fn checkpoint(stage: Stage) {
         let want = stage as u32;
         let r = &NROS_BOOT_REPORT;
+        note_log_loggers(r);
         let mut cur = r.stage.load(Ordering::Relaxed);
         while want > cur {
             match r
@@ -1032,18 +1079,18 @@ mod disabled {
 mod tests {
     use super::*;
 
-    /// The reader decodes thirty u32s positionally, so the record must
+    /// The reader decodes thirty-two u32s positionally, so the record must
     /// be exactly that and nothing else -- no padding, no reordering.
     ///
     /// `size_of` on the TARGET, which is the half `check-boot-report-layout.py`
     /// cannot see: that gate compares two source files, and this compares the
     /// source against what the compiler actually laid out.
     #[test]
-    fn the_record_is_thirty_packed_u32s() {
-        assert_eq!(BootReport::struct_size(), 30 * 4);
+    fn the_record_is_thirty_two_packed_u32s() {
+        assert_eq!(BootReport::struct_size(), 32 * 4);
         assert_eq!(
             core::mem::size_of::<BootReport>(),
-            30 * core::mem::size_of::<u32>(),
+            32 * core::mem::size_of::<u32>(),
             "the record grew padding; the reader decodes positionally"
         );
         assert_eq!(core::mem::align_of::<BootReport>(), 4);
@@ -1176,6 +1223,32 @@ mod tests {
             crate::config::BOOT_RMW_LOCAL_QUERYABLE
         );
         assert!(s.stage >= Stage::ReportReady as u32);
+        // phase-479 W5 -- the runtime-logger arena, as compiled and as used.
+        assert_eq!(
+            s.log_dynamic_capacity,
+            nros_log::dynamic_logger_capacity() as u32
+        );
+        assert!(s.log_dynamic_in_use as usize <= nros_log::dynamic_logger_capacity());
+    }
+
+    /// phase-479 W5 -- a logger created at run time is counted by the next
+    /// sample, and the count never goes backwards.
+    #[test]
+    fn the_runtime_logger_arena_use_is_sampled() {
+        let r = BootReport::new();
+        note_log_loggers(&r);
+        let before = snapshot_of(&r).log_dynamic_in_use;
+        if nros_log::dynamic_logger_capacity() > before as usize {
+            let _ = nros_log::get_or_create_logger("boot_report_arena_sample");
+            note_log_loggers(&r);
+            assert!(snapshot_of(&r).log_dynamic_in_use > before);
+        }
+        let now = snapshot_of(&r).log_dynamic_in_use;
+        note_log_loggers(&r);
+        assert!(
+            snapshot_of(&r).log_dynamic_in_use >= now,
+            "the count went backwards"
+        );
     }
 
     /// A late call on a re-entered path must not make the record claim LESS

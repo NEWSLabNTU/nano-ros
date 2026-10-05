@@ -107,6 +107,7 @@ RESOLVER=packages/tooling/nros-zephyr-build/src/lib.rs
 # and both are gone.
 READERS=(
     packages/api/nros/build.rs
+    packages/core/nros-log/build.rs
     packages/core/nros-node/build.rs
     packages/core/nros-params/build.rs
     packages/platform/nros-platform/build.rs

@@ -117,6 +117,10 @@ OWNERS: dict[str, str] = {
     # phase-417 W4.a -- the descriptor's OTHER free text. Its own capacity,
     # default 0, so no image pays for a field it never sets.
     "NROS_MAX_PARAM_CONSTRAINTS_LEN": "packages/core/nros-params/build.rs",
+    # phase-479 W5 (RFC-0102 D5) -- the logging tenant. The deprecated
+    # `dynamic-loggers-<N>` features are read in the SAME script, never a
+    # second one, so a feature can disagree with the knob only as a build error.
+    "NROS_LOG_DYNAMIC_LOGGERS": "packages/core/nros-log/build.rs",
     # The RMW static-pool tenant (phase-400 W6). `NROS_RMW_SUBSCRIBER_SLOTS`
     # is NOT here: it lives in the same build script and looks identical, but
     # phase-412 W1 derives it from the entity inventory, so the census classes

@@ -45,7 +45,7 @@ SYMBOL = "NROS_BOOT_REPORT"
 # "NRSR". Must match boot_report.rs MAGIC.
 MAGIC = 0x4E525352
 # Layout this script knows how to decode. Must match boot_report.rs VERSION.
-KNOWN_VERSION = 9
+KNOWN_VERSION = 10
 
 # The headroom `CONFIG_NROS_ZEPHYR_HEAP_SIZE` must keep above the measured
 # peak, in bytes.
@@ -107,6 +107,10 @@ FIELDS = (
     "error_log_file_ptr",
     "error_log_file_len",
     "error_log_line",
+    # phase-479 W5 (RFC-0102 D5), appended on the same rule: the runtime-logger
+    # arena -- `NROS_LOG_DYNAMIC_LOGGERS` as compiled, and the slots claimed.
+    "log_dynamic_capacity",
+    "log_dynamic_in_use",
 )
 
 # `boot_report::AllocArena`. Append only; `the_alloc_arena_codes_match_the_record`
@@ -550,6 +554,14 @@ def report(rec: dict[str, int], elf: Path | None = None) -> int:
     # lived with is the thing a console-less board could not otherwise show,
     # and it is not by itself a failed boot.
     print(error_log_line(rec, elf))
+    # phase-479 W5 -- informational, never scored: the arena falls back to the
+    # parent logger when full, so a full arena is a sizing fact, not a failure.
+    lcap, lused = rec["log_dynamic_capacity"], rec["log_dynamic_in_use"]
+    full = "   FULL -- raise NROS_LOG_DYNAMIC_LOGGERS" if lcap and lused >= lcap else ""
+    print(
+        f"  runtime loggers               {lused} of {lcap} slots"
+        f"   (NROS_LOG_DYNAMIC_LOGGERS){full}"
+    )
     # PRINTED here, SCORED only under `--heap-headroom`. This function's exit
     # code means "the boot failed", and a thin heap on a board that booted is
     # not that -- it is a sizing verdict, and folding it in would turn every

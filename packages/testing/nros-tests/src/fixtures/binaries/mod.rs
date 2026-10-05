@@ -66,6 +66,7 @@ static NATIVE_DECLARATIVE_SAFETY_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::
 static NATIVE_ROS2_STRING_INTEROP_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-467 Q4 — the `/rosout` bridge probe.
 static NATIVE_ROSOUT_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_LOG_ARENA_PROBE_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the native-rs-lifecycle-node binary
 static NATIVE_LIFECYCLE_NODE_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -5319,6 +5320,26 @@ pub fn build_rosout_talker() -> TestResult<&'static Path> {
             )?;
             let profile = cargo_target_profile_dir();
             let rel = PathBuf::from(format!("{profile}/rosout-talker"));
+            require_prebuilt_row_binary_fresh(row, &rel)
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-479 W5 (RFC-0102 D5) — resolve the prebuilt `log-arena-probe`
+/// fixture binary (`packages/testing/nros-tests/bins/log-arena-probe`). Built
+/// for the `native` board (which states `[board.knobs.log] dynamic_loggers`)
+/// with an `[image.native] env` that states `NROS_LOG_DYNAMIC_LOGGERS`, so the
+/// capacity it reports says which rung won. Consumed by
+/// `tests/log_arena_knob.rs`. Own Cargo workspace, built through its leaf's
+/// generated `build/native/nros-cargo.toml`.
+pub fn build_log_arena_probe() -> TestResult<&'static Path> {
+    NATIVE_LOG_ARENA_PROBE_BINARY
+        .get_or_try_init(|| {
+            let row = crate::fixtures::groups::select_sole_row(
+                "packages/testing/nros-tests/bins/log-arena-probe",
+            )?;
+            let profile = cargo_target_profile_dir();
+            let rel = PathBuf::from(format!("{profile}/log-arena-probe"));
             require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())

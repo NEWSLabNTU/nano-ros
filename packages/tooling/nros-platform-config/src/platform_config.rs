@@ -192,6 +192,9 @@ pub struct Knobs {
     /// phase-400 W6 — the component-runtime tenant. See [`RuntimeKnobs`].
     #[serde(default)]
     pub runtime: RuntimeKnobs,
+    /// phase-479 W5 (RFC-0102 D5) — the logging tenant. See [`LogKnobs`].
+    #[serde(default)]
+    pub log: LogKnobs,
     /// phase-400 W6 — the XRCE transport tenant. See [`XrceKnobs`].
     #[serde(default)]
     pub xrce: XrceKnobs,
@@ -702,6 +705,22 @@ impl BuildRungs {
         }
     }
 
+    /// The `[knobs.log]` RUNGS for this build — platform merged with board,
+    /// board winning, no env rung. See [`Self::rmw_rungs`]: `nros-log`'s build
+    /// script composes env -> Kconfig -> these -> its own builtin.
+    pub fn log_rungs(&self) -> LogKnobs {
+        let plat = self.tree.platform_log_rungs(&self.platform);
+        let plat = self.require_rungs("log", plat);
+        let b = self
+            .board
+            .as_ref()
+            .map(|f| f.knobs.log.clone())
+            .unwrap_or_default();
+        LogKnobs {
+            dynamic_loggers: b.dynamic_loggers.or(plat.dynamic_loggers),
+        }
+    }
+
     /// The `[knobs.net]` RUNGS for this build — platform merged with board,
     /// board winning. See [`Self::rmw_rungs`].
     pub fn net_rungs(&self) -> NetKnobs {
@@ -1015,6 +1034,37 @@ pub fn runtime_env_key(knob: &str) -> &'static str {
         "max_cell_entities" => "NROS_RUNTIME_MAX_CELL_ENTITIES",
         "let_buffer_size" => "NROS_LET_BUFFER_SIZE",
         other => panic!("unknown runtime knob `{other}`"),
+    }
+}
+
+/// phase-479 W5 (RFC-0102 D5) — the logging tenant.
+///
+/// `dynamic_loggers` is how many loggers `nros_log::get_or_create_logger` may
+/// CREATE at run time (a node's own logger, every distinct `get_logger("x")`,
+/// every distinct child name). Two static arenas are carved from it in
+/// `nros-log`, so it is a BOARD fact: a Linux host states 32, an MCU keeps the
+/// builtin 16. It cannot be derived from declarations (RFC-0100) -- `get_child`
+/// is a runtime call no contract names. `0` is a legitimate statement: no
+/// runtime loggers, lookup only.
+///
+/// It replaces the `dynamic-loggers-<N>` cargo features, which UNIFY across a
+/// build with no precedence, so two crates picking different sizes silently
+/// got the smallest. A rung has exactly one value per build.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LogKnobs {
+    #[serde(default)]
+    pub dynamic_loggers: Option<usize>,
+}
+
+/// Every log knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
+pub const LOG_KNOBS: &[&str] = &["dynamic_loggers"];
+
+/// The env front-end for a log knob.
+pub fn log_env_key(knob: &str) -> &'static str {
+    match knob {
+        "dynamic_loggers" => "NROS_LOG_DYNAMIC_LOGGERS",
+        other => panic!("unknown log knob `{other}`"),
     }
 }
 
@@ -2162,6 +2212,17 @@ impl PlatformsTree {
         Ok(out)
     }
 
+    fn platform_log_knobs(&self, name: &str) -> Result<LogKnobs, ConfigError> {
+        let chain = self.chain(name)?;
+        let mut out = LogKnobs::default();
+        for file in chain.iter().rev() {
+            if file.knobs.log.dynamic_loggers.is_some() {
+                out.dynamic_loggers = file.knobs.log.dynamic_loggers;
+            }
+        }
+        Ok(out)
+    }
+
     fn platform_wire_knobs(&self, name: &str) -> Result<WireKnobs, ConfigError> {
         let chain = self.chain(name)?;
         let mut out = WireKnobs::default();
@@ -2315,6 +2376,51 @@ impl PlatformsTree {
                     (None, None) => (*builtin, KnobSource::Builtin),
                 };
             let env_key = runtime_env_key(name);
+            if let Some(raw) = env(env_key)
+                && let Ok(n) = raw.trim().parse::<usize>()
+            {
+                value = n;
+                source = KnobSource::Env;
+            }
+            out.push((
+                *name,
+                ResolvedUsize {
+                    value,
+                    source,
+                    env_key,
+                },
+            ));
+        }
+        Ok(out)
+    }
+
+    /// The `[knobs.log]` rungs for a platform, inherits chain applied.
+    pub fn platform_log_rungs(&self, platform: &str) -> Result<LogKnobs, ConfigError> {
+        self.platform_log_knobs(platform)
+    }
+
+    /// phase-479 W5 — resolve the log tenant over the RFC-0049 ladder.
+    pub fn resolve_log(
+        &self,
+        platform: &str,
+        board: Option<&LogKnobs>,
+        env: &dyn Fn(&str) -> Option<String>,
+        defaults: &[(&'static str, usize)],
+    ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
+        let plat = self.platform_log_knobs(platform)?;
+        let pick = |k: &LogKnobs, name: &str| match name {
+            "dynamic_loggers" => k.dynamic_loggers,
+            _ => None,
+        };
+        let mut out = Vec::new();
+        for (name, builtin) in defaults {
+            let (mut value, mut source) =
+                match (board.and_then(|b| pick(b, name)), pick(&plat, name)) {
+                    (Some(v), _) => (v, KnobSource::Board),
+                    (None, Some(v)) => (v, KnobSource::Platform),
+                    (None, None) => (*builtin, KnobSource::Builtin),
+                };
+            let env_key = log_env_key(name);
             if let Some(raw) = env(env_key)
                 && let Ok(n) = raw.trim().parse::<usize>()
             {

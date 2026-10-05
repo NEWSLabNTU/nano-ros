@@ -302,6 +302,26 @@ fn explain(args: ExplainArgs) -> Result<()> {
         );
     }
 
+    // phase-479 W5 (RFC-0102 D5) — the logging tenant. The default mirrors
+    // `packages/core/nros-log/build.rs`, which stays the authority on it.
+    for (name, r) in tree
+        .resolve_log(
+            &args.platform,
+            board.as_ref().map(|b| &b.knobs.log),
+            &env_get,
+            &[("dynamic_loggers", 16)],
+        )
+        .map_err(|e| eyre!("{e}"))?
+    {
+        println!(
+            "{:<34} {:<10} {}  [{}]",
+            format!("log.{name}"),
+            r.value,
+            r.source.as_str(),
+            r.env_key
+        );
+    }
+
     // phase-400 W6 — the smoltcp net tenant. Defaults mirror
     // `packages/drivers/net/nros-smoltcp/build.rs`, which stays the authority.
     // `max_udp_sockets` shows 1 here: its builtin is FEATURE-derived (4 with

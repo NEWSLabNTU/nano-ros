@@ -62,6 +62,7 @@ ZPICO_BATCH_UNICAST_SIZE | heap | | zenoh-pico allocates its unicast TX/RX batch
 ZPICO_BATCH_MULTICAST_SIZE | heap | | the multicast twin of the unicast batch buffers — heap at session open, no symbol
 ZPICO_FRAG_MAX_SIZE | heap | | zenoh-pico's defragmentation buffer, `_z_wbuf_make(Z_FRAG_MAX_SIZE)` on first fragment — heap, no symbol
 ZPICO_GET_REPLY_BUF_SIZE | stack | | the blocking `z_get` reply context is stack-allocated per call (`zpico.c`), so it costs stack in the caller, never static RAM
+NROS_LOG_DYNAMIC_LOGGERS | pool | nros_log::pool::POOL,nros_log::pool::NAMES | runtime-logger slots (phase-479 W5): `POOL` holds a `Logger` per slot, a struct whose size moves with its fields; `NAMES` is exactly 24 bytes per slot, so `mem-report` reads the image's CAPACITY back out of its size
 NROS_MAX_PARAMETERS | heap | | slots of `ParameterStorage`, which `ensure_parameter_store` boxes on the heap once per executor (issue 0756) — no static symbol, so `mem-report` cannot see it
 NROS_MAX_PARAM_NAME_LEN | element | | bounds a parameter NAME inside every `ParameterStorage` slot (heap, see `NROS_MAX_PARAMETERS`)
 NROS_MAX_PARAM_DESCRIPTION_LEN | element | | bounds a parameter descriptor's description inside every `ParameterStorage` slot

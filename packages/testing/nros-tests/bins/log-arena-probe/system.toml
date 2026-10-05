@@ -1,0 +1,16 @@
+# phase-479 W5 (RFC-0102 D5) — the acceptance fixture for NROS_LOG_DYNAMIC_LOGGERS.
+#
+# The `native` board states `[board.knobs.log] dynamic_loggers = 32`
+# (packages/boards/linux/nros-board.toml). This image states 24 through the
+# RFC-0049 APP rung, which must win, and `tests/log_arena_knob.rs` asserts the
+# capacity the built binary reports. 24 is deliberately neither the board's
+# number nor the builtin 16, so a result of either names the rung that leaked.
+
+[system]
+name = "log_arena_probe"
+rmw = "zenoh"
+domain_id = 0
+
+[image.native]
+board = "native"
+env = { NROS_LOG_DYNAMIC_LOGGERS = "24", NROS_BOOT_REPORT = "1" }

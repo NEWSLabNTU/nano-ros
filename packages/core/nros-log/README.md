@@ -80,7 +80,11 @@ has one, on the logger that forwards to the `log` crate rather than to
   `Logger` was `register_logger`ed under.
 - `get_or_create_logger(name)` — `rclcpp::get_logger`'s shape, and what the C
   and C++ wrappers need. Creates from a bounded static arena sized by the
-  `dynamic-loggers-<N>` feature (default 16, `dynamic-loggers-0` declines it).
+  `NROS_LOG_DYNAMIC_LOGGERS` knob (phase-479 W5): image env > Kconfig / the
+  board's `[board.knobs.log] dynamic_loggers` > 16. Linux host boards state
+  32; `0` declines the arena. The `dynamic-loggers-<N>` features are
+  deprecated for one release: honoured with a warning when no knob is stated,
+  a build error when they disagree with one (see `build.rs`).
   Returns `None` rather than a logger under the wrong name: aliasing onto
   `DEFAULT_LOGGER` would make `set_level` on the result move the threshold of
   every other unregistered name in the image.
