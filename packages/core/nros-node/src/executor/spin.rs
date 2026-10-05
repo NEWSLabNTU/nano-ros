@@ -5800,7 +5800,7 @@ impl<'s> Executor<'s> {
 
     /// Issue 1631 — release a SUBSCRIPTION entry, whatever registration shape
     /// made it (typed, raw, in-place, buffered, with-info). See
-    /// [`release_entry`](Self::release_entry): the entry is dropped, so its
+    /// `release_entry` (crate-private): the entry is dropped, so its
     /// subscriber leaves the graph; its slot and arena bytes are reused by the
     /// next registration. `false`, touching nothing, when `handle` is not a
     /// live subscription.
