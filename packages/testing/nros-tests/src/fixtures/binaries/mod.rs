@@ -1029,10 +1029,23 @@ pub(crate) fn require_prebuilt_row_binary_fresh(
 }
 
 pub(crate) fn require_prebuilt_binary_fresh(binary_path: &Path) -> TestResult<PathBuf> {
-    let resolved = require_prebuilt_binary(binary_path)?;
     if std::env::var_os("NROS_SKIP_FIXTURE_CHECK").is_some() {
-        return Ok(resolved);
+        return require_prebuilt_binary(binary_path);
     }
+    probe_prebuilt_binary_fresh(binary_path)
+}
+
+/// [`require_prebuilt_binary_fresh`] without the `NROS_SKIP_FIXTURE_CHECK`
+/// bypass — the probe itself.
+///
+/// Split so the probe's own self-test is HERMETIC (issue 1651): it called the
+/// bypassable entry point, so under a lane that exports the bypass — the
+/// `host-tests` integration job does, for its whole `test-all` step —
+/// `a_stale_verdict_reports_its_own_reasoning_and_its_age` got `Ok` for a
+/// fixture it had just made stale, and went red for a reason about the
+/// environment rather than the probe.
+fn probe_prebuilt_binary_fresh(binary_path: &Path) -> TestResult<PathBuf> {
+    let resolved = require_prebuilt_binary(binary_path)?;
     staleness::begin_probe();
     // phase-340 B2 — probe the RESOLVED path, not the authored one.
     // `require_prebuilt_binary` may have redirected a leaf-local path onto its
@@ -7528,7 +7541,7 @@ mod tests {
         .unwrap();
 
         staleness::record_fresh(&bin).expect("self-test probe is not degraded");
-        let first = require_prebuilt_binary_fresh(&bin).unwrap_err().to_string();
+        let first = probe_prebuilt_binary_fresh(&bin).unwrap_err().to_string();
         assert!(
             first.contains("probe:") && first.contains("examined 2"),
             "the verdict must account for what it compared: {first}"
@@ -7543,8 +7556,8 @@ mod tests {
             "one stale verdict is the normal case: {first}"
         );
 
-        let _ = require_prebuilt_binary_fresh(&bin);
-        let third = require_prebuilt_binary_fresh(&bin).unwrap_err().to_string();
+        let _ = probe_prebuilt_binary_fresh(&bin);
+        let third = probe_prebuilt_binary_fresh(&bin).unwrap_err().to_string();
         assert!(
             third.contains("NOT RUN") && third.contains("3th consecutive"),
             "a coordinate stale run after run has produced no runtime result and \
@@ -7553,13 +7566,13 @@ mod tests {
 
         // Resolving fresh ends the non-running run.
         fs::remove_file(bin.with_extension("d")).unwrap();
-        require_prebuilt_binary_fresh(&bin).unwrap();
+        probe_prebuilt_binary_fresh(&bin).unwrap();
         fs::write(
             bin.with_extension("d"),
             format!("{}: {}\n", bin.display(), src.display()),
         )
         .unwrap();
-        let after = require_prebuilt_binary_fresh(&bin).unwrap_err().to_string();
+        let after = probe_prebuilt_binary_fresh(&bin).unwrap_err().to_string();
         assert!(
             !after.contains("NOT RUN"),
             "the count measures non-running, not age — a cell that ran must reset: {after}"
