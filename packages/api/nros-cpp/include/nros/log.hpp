@@ -536,7 +536,7 @@ class Logger {
         return fallback;
     }
 
-#ifdef NROS_CPP_HAS_STD_STRING
+#ifdef NROS_CPP_HAS_STD_STRING // hosted-family: string-interop
     /// `get_child` with upstream's exact parameter type.
     Logger get_child(const std::string& suffix) const { return get_child(suffix.c_str()); }
 #endif
