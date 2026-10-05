@@ -5430,7 +5430,7 @@ impl<'s> Executor<'s> {
         &mut self,
         entry_index: usize,
     ) -> Option<&mut super::action_core::ActionClientCore> {
-        let meta = self.entries.get(entry_index)?.as_ref()?;
+        let meta = self.entries.get(self.slot_of_raw(entry_index)?)?.as_ref()?;
         if !matches!(meta.kind, EntryKind::ActionClient) {
             return None;
         }
@@ -5460,7 +5460,7 @@ impl<'s> Executor<'s> {
         entry_index: usize,
     ) -> Option<&mut super::arena::ServiceClientRawArenaEntry<{ crate::config::DEFAULT_RX_BUF_SIZE }>>
     {
-        let meta = self.entries.get(entry_index)?.as_ref()?;
+        let meta = self.entries.get(self.slot_of_raw(entry_index)?)?.as_ref()?;
         if !matches!(meta.kind, EntryKind::ServiceClient) {
             return None;
         }
@@ -5508,7 +5508,7 @@ impl<'s> Executor<'s> {
         &self,
         entry_index: usize,
     ) -> Option<&session::RmwSubscriber> {
-        let meta = self.entries.get(entry_index)?.as_ref()?;
+        let meta = self.entries.get(self.slot_of_raw(entry_index)?)?.as_ref()?;
         if !matches!(meta.kind, EntryKind::Subscription) {
             return None;
         }
@@ -5526,7 +5526,7 @@ impl<'s> Executor<'s> {
         &self,
         entry_index: usize,
     ) -> Option<&session::RmwServiceServer> {
-        let meta = self.entries.get(entry_index)?.as_ref()?;
+        let meta = self.entries.get(self.slot_of_raw(entry_index)?)?.as_ref()?;
         if !matches!(meta.kind, EntryKind::Service) {
             return None;
         }
@@ -5544,7 +5544,7 @@ impl<'s> Executor<'s> {
         &self,
         entry_index: usize,
     ) -> Option<&session::RmwServiceClient> {
-        let meta = self.entries.get(entry_index)?.as_ref()?;
+        let meta = self.entries.get(self.slot_of_raw(entry_index)?)?.as_ref()?;
         if !matches!(meta.kind, EntryKind::ServiceClient) {
             return None;
         }
@@ -6005,6 +6005,25 @@ impl<'s> Executor<'s> {
                 .get(slot)
                 .is_some_and(|t| t.generation == id.generation());
         (live && current).then_some(slot)
+    }
+
+    /// Issue 1703 — the slot behind a by-index accessor's `entry_index`
+    /// argument, which callers hand in in TWO spellings: a bare slot (nros-c's
+    /// stored `arena_entry_index`, `node_runtime`'s resolved slot, an action's
+    /// owned slot) or the PACKED handle an FFI issued (`HandleId::to_raw`,
+    /// what nros-cpp's `handle_id_` and nros-c's `subscription.handle_id`
+    /// hold since phase-476 W0). A bare slot has generation 0, so both decode
+    /// through [`HandleId::from_raw`] and resolve here: the slot for a live
+    /// entry, generation-checked when one was issued, `None` for a stale or
+    /// foreign handle.
+    ///
+    /// The five accessors indexed `entries` with the argument as given. W0 made
+    /// the FFI value a packed `(generation << 16) | slot`, so every packed
+    /// caller read past the table and got `None` — `async_send_request` on a
+    /// C++ callback client returned `INVALID_ARGUMENT` on every call, and the
+    /// granted-QoS read-backs answered for no entity.
+    fn slot_of_raw(&self, entry_index: usize) -> Option<usize> {
+        self.resolve_handle(HandleId::from_raw(entry_index))
     }
 
     /// phase-476 W0 — [`resolve_handle`](Self::resolve_handle) as an index that

@@ -11706,6 +11706,60 @@ fn an_issued_handle_is_never_a_bare_index() {
     assert_eq!(HandleId::from_raw(h.to_raw()), h);
 }
 
+/// Issue 1703 — the by-index accessors take what an FFI holds: the PACKED
+/// handle (`to_raw`, nros-cpp's `handle_id_`, nros-c's `subscription.handle_id`)
+/// as well as a bare slot (nros-c's `arena_entry_index`, a resolved slot). W0
+/// packed the generation into the FFI value and these five went on indexing
+/// `entries` with it, so a C++ callback client's `async_send_request` was
+/// `INVALID_ARGUMENT` on every call. Both spellings must reach the entry; a
+/// stale packed handle must not.
+#[test]
+fn by_index_accessors_resolve_a_packed_handle_and_a_bare_slot() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let client = executor
+        .register_service_client_raw(
+            "/accessor_probe",
+            "test/srv/T",
+            "h",
+            Some(release_probe_reply),
+            core::ptr::null_mut(),
+        )
+        .expect("client");
+    assert_ne!(client.to_raw(), client.slot(), "precondition: packed");
+    unsafe {
+        assert!(executor.service_client_entry_mut(client.to_raw()).is_some());
+        assert!(executor.service_client_entry_mut(client.slot()).is_some());
+        assert!(executor.service_client_handle(client.to_raw()).is_some());
+        assert!(executor.service_client_handle(client.slot()).is_some());
+    }
+    let sub = register_buffered_sub(&mut executor).expect("sub");
+    unsafe {
+        assert!(executor.subscription_handle(sub.to_raw()).is_some());
+        assert!(executor.subscription_handle(sub.slot()).is_some());
+        // A kind mismatch is still refused through either spelling.
+        assert!(executor.service_client_entry_mut(sub.to_raw()).is_none());
+        assert!(executor.subscription_handle(client.to_raw()).is_none());
+    }
+
+    // Stale: release, reuse the slot with the same kind, and the OLD packed
+    // handle must find nothing.
+    assert!(unsafe { executor.release_service_client(client) });
+    let again = executor
+        .register_service_client_raw(
+            "/accessor_probe",
+            "test/srv/T",
+            "h",
+            Some(release_probe_reply),
+            core::ptr::null_mut(),
+        )
+        .expect("client again");
+    assert_eq!(again.slot(), client.slot(), "precondition: slot reused");
+    unsafe {
+        assert!(executor.service_client_entry_mut(client.to_raw()).is_none());
+        assert!(executor.service_client_entry_mut(again.to_raw()).is_some());
+    }
+}
+
 /// Generations wrap within 15 bits and skip 0, so the packed value always fits
 /// the `i32` nros-c stores some handles in, and 0 stays reserved for
 /// `HandleId::for_owned_slot`.
