@@ -764,7 +764,7 @@ class LifecycleNode {
                                 : node_->remove_on_set_parameters_callback(handle);
     }
 
-#ifdef NROS_CPP_HAS_STD_STRING
+#ifdef NROS_CPP_HAS_STD_STRING // hosted-family: string-interop
     /// `std::string`-keyed overloads, and the bulk `declare_parameters`. The
     /// SAME set `rclcpp::Node` carries behind the SAME guard, because a ported
     /// call site keys on `std::string` — which does not convert to

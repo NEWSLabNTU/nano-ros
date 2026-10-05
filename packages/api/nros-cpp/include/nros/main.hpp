@@ -42,7 +42,7 @@
  * (C ABI board runner for multi-tier native entries). */
 #include "nros/main.h"
 
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
 #include <cstdio>  // printf — Phase 238.B listener readiness / received-sample lines
 #include <cstdlib> // getenv — Phase 235.A bounded-spin ($NROS_ENTRY_SPIN_MS)
 #endif
@@ -102,7 +102,7 @@ inline void entry_tick_yield() {
 /// Returns the first non-zero `spin_once` code, else 0.
 inline int32_t component_spin_loop() {
     uint32_t bound_ms = 0;
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
     const char* env = ::std::getenv("NROS_ENTRY_SPIN_MS");
     if (env != nullptr && env[0] != '\0') {
         bound_ms = entry_parse_u32(env);

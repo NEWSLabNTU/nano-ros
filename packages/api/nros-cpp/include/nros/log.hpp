@@ -32,7 +32,7 @@
 #define NROS_CPP_LOG_HPP
 
 #ifndef NROS_LOG_SINK
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
 #include <cstdio>
 // <stdio.h> + unqualified `::fprintf` (issue 0942 / phase-472 W5): `<cstdio>` need not put
 // the C names in `std` on a freestanding libstdc++, and `std::fprintf` then fails.
@@ -562,7 +562,7 @@ inline Logger get_logger(const char* name) {
     return Logger(name, name != nullptr ? nros_log_get_logger(name) : nros_log_default_logger());
 }
 
-#ifdef NROS_CPP_HAS_STD_STRING
+#ifdef NROS_CPP_HAS_STD_STRING // hosted-family: string-interop
 /// `std::string`-keyed overload. Present only where `<string>` is — a
 /// freestanding target has no `std::string` to take.
 inline Logger get_logger(const std::string& name) {
@@ -743,15 +743,138 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
 #define NROS_RCLCPP_SAY_REFUSED(msg)                                                               \
     ::rclcpp::detail::say_refused((msg), __FILE__, (uint32_t)__LINE__)
 
-// The stream family, carrying its message. `NROS_RCLCPP_STREAM_` builds the
-// text once and forwards it as a single `%s` argument, so a `%` inside the
-// user's text can never be read as a conversion.
-#if defined(NROS_CPP_HAS_STD_SSTREAM) && !defined(RCLCPP_INFO_STREAM)
+// The stream family, carrying its message — on EVERY target since phase-476
+// W4. `NROS_RCLCPP_STREAM_` builds the text once in a fixed-size
+// `nros::detail::LogStream` and forwards it as a single `%s` argument, so a `%`
+// inside the user's text can never be read as a conversion.
+//
+// THE DECISION (phase-476 W4, 2026-10-06): a minimal freestanding formatter,
+// ONE implementation, rather than declaring the family hosted-only. It was
+// `std::ostringstream` behind `NROS_CPP_HAS_STD_SSTREAM`, so on a
+// freestanding target `RCLCPP_INFO_STREAM` did not exist and every ported line
+// using it had to be rewritten.
+//
+// What it formats, and how, is chosen so a BUILTIN renders the same on every
+// target, and the same as `std::ostream`'s defaults: integers in decimal,
+// `bool` as `1`/`0` (no `boolalpha`), `double`/`float` as `%g` (six
+// significant digits, `std::ostream`'s default precision), a pointer as `%p`,
+// and `const char*` / `FixedString<N>` verbatim. `snprintf` is no new
+// dependency: `<nros/log.h>`, which this header already includes on every
+// target, formats with `vsnprintf` in a `static inline`.
+//
+// Two bounds, stated: the text is capped at `NROS_LOG_FMT_BUFFER_SIZE` (256)
+// bytes and a longer one ends in `...`, the convention `nros_log_emit_fmt_at`
+// uses; and stream MANIPULATORS (`std::hex`, `std::setprecision`, `std::endl`)
+// are not supported. A type with its own `operator<<(std::ostream&, T)` (a
+// user struct, `std::string`) is formatted through `std::ostringstream` where
+// `<sstream>` exists, which is the one hosted-only piece and is INTEROP: it
+// only converts into the same buffer.
+namespace nros {
+namespace detail {
+
+class LogStream {
+  public:
+    LogStream() : len_(0), truncated_(false) { buf_[0] = '\0'; }
+
+    LogStream& operator<<(const char* s) {
+        append(s != nullptr ? s : "(null)");
+        return *this;
+    }
+    LogStream& operator<<(char c) {
+        const char one[2] = {c, '\0'};
+        append(one);
+        return *this;
+    }
+    LogStream& operator<<(bool b) { return format("%d", b ? 1 : 0); }
+    LogStream& operator<<(signed char v) { return format("%d", static_cast<int>(v)); }
+    LogStream& operator<<(unsigned char v) { return format("%u", static_cast<unsigned>(v)); }
+    LogStream& operator<<(short v) { return format("%d", static_cast<int>(v)); }
+    LogStream& operator<<(unsigned short v) { return format("%u", static_cast<unsigned>(v)); }
+    LogStream& operator<<(int v) { return format("%d", v); }
+    LogStream& operator<<(unsigned v) { return format("%u", v); }
+    LogStream& operator<<(long v) { return format("%ld", v); }
+    LogStream& operator<<(unsigned long v) { return format("%lu", v); }
+    LogStream& operator<<(long long v) { return format("%lld", v); }
+    LogStream& operator<<(unsigned long long v) { return format("%llu", v); }
+    LogStream& operator<<(float v) { return format("%g", static_cast<double>(v)); }
+    LogStream& operator<<(double v) { return format("%g", v); }
+    LogStream& operator<<(long double v) { return format("%Lg", v); }
+    LogStream& operator<<(const void* p) { return format("%p", p); }
+    LogStream& operator<<(decltype(nullptr)) {
+        append("nullptr");
+        return *this;
+    }
+    template <size_t N> LogStream& operator<<(const ::nros::FixedString<N>& s) {
+        append(s.c_str());
+        return *this;
+    }
+
+    /// The text so far, NUL-terminated, ending in `...` if it was cut.
+    const char* c_str() const { return buf_; }
+
+    /// Append already-formatted text. Public for the hosted interop overload.
+    void append(const char* s) {
+        while (*s != '\0') {
+            if (len_ + 1 >= kCapacity) {
+                mark_truncated();
+                return;
+            }
+            buf_[len_++] = *s++;
+        }
+        buf_[len_] = '\0';
+    }
+
+  private:
+    static const size_t kCapacity = NROS_LOG_FMT_BUFFER_SIZE;
+
+    template <typename V> LogStream& format(const char* fmt, V v) {
+        char tmp[64];
+        const int n = ::snprintf(tmp, sizeof(tmp), fmt, v);
+        if (n > 0) {
+            append(tmp);
+        }
+        return *this;
+    }
+
+    void mark_truncated() {
+        if (truncated_) {
+            return;
+        }
+        truncated_ = true;
+        len_ = kCapacity - 1;
+        buf_[len_ - 3] = '.';
+        buf_[len_ - 2] = '.';
+        buf_[len_ - 1] = '.';
+        buf_[len_] = '\0';
+    }
+
+    char buf_[kCapacity];
+    size_t len_;
+    bool truncated_;
+};
+
+#if defined(NROS_CPP_HAS_STD_SSTREAM) // hosted-family: stream-interop
+/// Hosted INTEROP: a type the builtin overloads do not cover (a user struct
+/// with its own `operator<<(std::ostream&, T)`, a `std::string`) is formatted
+/// by `std::ostringstream` and appended. A builtin never reaches this — a
+/// non-template overload above is preferred whenever one matches as well.
+template <typename T> inline LogStream& operator<<(LogStream& out, const T& value) {
+    ::std::ostringstream text;
+    text << value;
+    out.append(text.str().c_str());
+    return out;
+}
+#endif // NROS_CPP_HAS_STD_SSTREAM
+
+} // namespace detail
+} // namespace nros
+
+#if !defined(RCLCPP_INFO_STREAM)
 #define NROS_RCLCPP_STREAM_(macro, logger, ...)                                                    \
     do {                                                                                           \
-        ::std::ostringstream nros_rclcpp_stream_;                                                  \
+        ::nros::detail::LogStream nros_rclcpp_stream_;                                             \
         nros_rclcpp_stream_ << __VA_ARGS__;                                                        \
-        macro(logger, "%s", nros_rclcpp_stream_.str().c_str());                                    \
+        macro(logger, "%s", nros_rclcpp_stream_.c_str());                                          \
     } while (0)
 
 #define RCLCPP_DEBUG_STREAM(logger, ...) NROS_RCLCPP_STREAM_(RCLCPP_DEBUG, logger, __VA_ARGS__)
@@ -759,6 +882,6 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
 #define RCLCPP_WARN_STREAM(logger, ...) NROS_RCLCPP_STREAM_(RCLCPP_WARN, logger, __VA_ARGS__)
 #define RCLCPP_ERROR_STREAM(logger, ...) NROS_RCLCPP_STREAM_(RCLCPP_ERROR, logger, __VA_ARGS__)
 #define RCLCPP_FATAL_STREAM(logger, ...) NROS_RCLCPP_STREAM_(RCLCPP_FATAL, logger, __VA_ARGS__)
-#endif // NROS_CPP_HAS_STD_SSTREAM && !RCLCPP_INFO_STREAM
+#endif // !RCLCPP_INFO_STREAM
 
 #endif // NROS_CPP_LOG_HPP

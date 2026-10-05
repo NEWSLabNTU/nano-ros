@@ -485,7 +485,7 @@ inline typename Publisher<M>::SharedPtr Node::create_publisher(const char* topic
 // probes: each half now names the one capability its signatures use. Every
 // verb here forwards to (or refuses in place of) a freestanding form defined
 // after these blocks.
-#if defined(NROS_CPP_HAS_STD_STRING)
+#if defined(NROS_CPP_HAS_STD_STRING) // hosted-family: string-interop
 
 namespace rclcpp {
 
@@ -741,7 +741,7 @@ namespace nros {} // namespace nros
 
 #endif // NROS_CPP_HAS_STD_STRING
 
-#if defined(NROS_CPP_HAS_SHARED_PTR)
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
 namespace rclcpp {
 
 // `rclcpp::Node` is declared at the bottom of `node.hpp`, UNCONDITIONALLY —
@@ -1058,7 +1058,7 @@ inline ::nros::TimerHandle Node::create_wall_timer(::nros::Duration period, Cb c
         *this, NROS_CLOCK_STEADY_TIME, period, ::nros::tr::forward_rvalue(cb), "create_wall_timer");
 }
 
-#ifdef NROS_CPP_HAS_STD_CHRONO
+#ifdef NROS_CPP_HAS_STD_CHRONO // hosted-family: chrono-interop
 template <typename Rep, typename Period, typename Cb>
 inline ::nros::TimerHandle Node::create_wall_timer(::std::chrono::duration<Rep, Period> period,
                                                    Cb cb) {
@@ -1097,7 +1097,7 @@ inline ::nros::TimerHandle create_timer(NodeT&& node, ::nros::Clock* clock, ::nr
         n, type, period, ::nros::tr::relay<CallbackT>(callback), "create_timer");
 }
 
-#ifdef NROS_CPP_HAS_STD_CHRONO
+#ifdef NROS_CPP_HAS_STD_CHRONO // hosted-family: chrono-interop
 /// `rclcpp::create_timer(node, clock, 100ms, callback)` — the `std::chrono`
 /// spelling, which is what a ported file actually writes. `rclcpp::Duration` is
 /// implicitly constructible from a chrono duration upstream; `nros::Duration`
@@ -1421,7 +1421,7 @@ class Rate {
         reset();
     }
 
-#ifdef NROS_CPP_HAS_STD_CHRONO
+#ifdef NROS_CPP_HAS_STD_CHRONO // hosted-family: chrono-interop
     /// Construct from a period — `rclcpp::Rate(std::chrono::milliseconds(100))`.
     ///
     /// A gated METHOD, not a gated type: `sizeof(Rate)` is the same in every

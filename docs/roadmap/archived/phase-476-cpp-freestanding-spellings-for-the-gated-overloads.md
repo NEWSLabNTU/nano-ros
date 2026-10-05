@@ -1,10 +1,12 @@
 # Phase 476 — freestanding spellings for the gated C++ overloads
 
-**Status (2026-10-02). Opened.** Carries the half of
-[phase-456](archived/phase-456-cpp-api-is-a-handle-over-the-rust-arena.md) W6
+**Status (2026-10-06). COMPLETE — W0-W5 landed; archived.** W0 (entry
+lifetime) was added ahead of W2 because W2 could not be done safely without it.
+See each work item's "Landed" note for what was measured. Carries the half of
+[phase-456](phase-456-cpp-api-is-a-handle-over-the-rust-arena.md) W6
 that was measured unreachable when that phase closed. Same design as 456 —
-[RFC-0096 D9 revision 3](../design/0096-cpp-freestanding-core-and-porting-layer.md)
-— plus [RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)'s ported-source
+[RFC-0096 D9 revision 3](../../design/0096-cpp-freestanding-core-and-porting-layer.md)
+— plus [RFC-0089](../../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)'s ported-source
 ergonomics, which is the surface these overloads exist to serve.
 
 ## The goal, and why it was blocked
@@ -302,12 +304,68 @@ item — it is the last step of the timer item.
   here and the gate's refusal message names it, because "hosted-only on
   purpose" and "not yet ported" read the same in a count.
 
+  **Decided 2026-10-06: a minimal freestanding formatter, one
+  implementation.** The decision was put to the maintainer, who chose it over
+  "hosted-only by design".
+  - `nros::detail::LogStream` (`log.hpp`) is a fixed
+    `NROS_LOG_FMT_BUFFER_SIZE` (256 B) buffer with `operator<<` for every
+    builtin. A longer text ends in `...`, the convention
+    `nros_log_emit_fmt_at` uses. The `RCLCPP_*_STREAM` macros use it on every
+    target.
+  - Builtins render as `std::ostream`'s defaults: decimal integers, `bool` as
+    `1`/`0`, floating point as `%g` (six significant digits). That makes a
+    builtin's text the same with or without the standard library. `snprintf`
+    is no new dependency: `<nros/log.h>` already formats with `vsnprintf` on
+    every target.
+  - The one hosted-only piece is INTEROP: where `<sstream>` exists, a type
+    the builtins do not cover (a user struct with its own `operator<<`,
+    `std::string`) goes through `std::ostringstream` into the same buffer.
+  - Not supported: stream manipulators (`std::hex`, `std::setprecision`,
+    `std::endl`).
+
+  Evidence:
+  - `log_stream_runtime` in `just check cpp` runs both with and without
+    `NROS_CPP_STD`, asserting identical builtin text through a real
+    `nros_log_add_sink`. The hosted run also checks the doubles against
+    `std::ostringstream` and checks a user type and `std::string` through the
+    interop.
+  - `rclcpp_node_freestanding_surface.cpp` compiles an `RCLCPP_INFO_STREAM` on
+    its `-nostdinc++` arm.
+
 * **W5 [ci] — the gates assert zero.** Only after W1–W4: both gates assert the
   constant phase-456 W6 could not, with the mutation that reintroduces a `std`
   type in a public signature still in their selftests. `NROS_CPP_STD` stays as
   the consumer opt-in if any surface remains hosted by design (W4); the
   acceptance then reads "zero outside the documented hosted-only family", with
   that family enumerated rather than counted.
+
+  **Landed 2026-10-06.** The family is a gate, `check-cpp-hosted-family` (fast
+  lane, source-only).
+  - Every preprocessor conditional in `packages/api/nros-cpp/include` that
+    names a capability macro carries `// hosted-family: <id>`. The ids live
+    in the script, each with its reason and the macros it may name.
+  - It fails on an untagged conditional, an unknown id, a macro foreign to
+    its member, and an unused member. It has 6 self-test cases and runs them
+    on every invocation.
+
+  The family as enumerated, 40 conditionals in all:
+
+  | member | conditionals | why hosted-only |
+  | --- | --- | --- |
+  | `capability-definition` | 5 | the one definition site (`std_detect.hpp`) |
+  | `hosted-console` | 13 | `stderr`/`getenv`/`fopen`: services, not API |
+  | `string-interop` | 8 | `std::string` forwarders over `const char*` forms |
+  | `shared-ptr-interop` | 2 | `Node::SharedPtr` and its spin overloads over `Node&` |
+  | `chrono-interop` | 4 | `std::chrono` overloads over `nros::Duration` |
+  | `stream-interop` | 1 | user types in `RCLCPP_*_STREAM` over the freestanding `LogStream` |
+  | `container-interop` | 6 | `std::vector`/`std::string` parameter values and `<map>` over `Seq`/`const char*` |
+  | `bridge-hosted` | 1 | `MultiExecutor` takes `std::vector<SessionSpec>`; hosted-only by design |
+
+  Every member except `bridge-hosted` and the two service/definition rows is
+  INTEROP over a freestanding form, so no ported call is hosted-only any more.
+  The one exception is a bridge, which is a hosted program by nature.
+  `check-cpp-freestanding-includes` and `check-cpp-capability-layout` keep
+  their std-in-a-public-signature mutations in their self-tests, unchanged.
 
 ## What this phase must not do
 

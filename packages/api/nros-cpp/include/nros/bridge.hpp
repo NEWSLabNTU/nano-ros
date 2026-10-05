@@ -17,7 +17,7 @@
 // `__STDC_HOSTED__`: a hosted compiler run `-nostdinc++` against Zephyr's
 // minimal libcpp has no `<string>`/`<vector>` (issue 0112 class). A no-op
 // without NROS_CPP_STD, so freestanding syntax checks pass.
-#ifdef NROS_CPP_STD
+#ifdef NROS_CPP_STD // hosted-family: bridge-hosted
 
 #include <cstddef>
 #include <cstdint>

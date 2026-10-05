@@ -66,7 +66,7 @@
 #include "nros/traits.hpp" // issue 1678 -- `enable_if` without <type_traits>
 #include "nros_cpp_ffi.h"
 
-#ifdef NROS_CPP_STD
+#ifdef NROS_CPP_STD // hosted-family: container-interop
 #include <string>
 #include <vector>
 #endif
@@ -501,7 +501,7 @@ inline Result node_param_get(const nros_cpp_node_t* node, const char* name,
     return r;
 }
 
-#ifdef NROS_CPP_STD
+#ifdef NROS_CPP_STD // hosted-family: container-interop
 
 // --- std::string values -----------------------------------------------------
 
@@ -823,7 +823,7 @@ constexpr int node_param_array_type(int scalar) {
 template <typename T, ::size_t N> struct node_param_type<::nros::Seq<T, N>> {
     static constexpr int value = node_param_array_type(node_param_type<T>::value);
 };
-#ifdef NROS_CPP_STD
+#ifdef NROS_CPP_STD // hosted-family: container-interop
 template <typename T, typename A> struct node_param_type<::std::vector<T, A>> {
     static constexpr int value = node_param_array_type(node_param_type<T>::value);
 };

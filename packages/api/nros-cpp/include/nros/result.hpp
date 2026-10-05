@@ -15,7 +15,7 @@
 #include <cstdint>
 
 #include "nros/traits.hpp"
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
 #include <cstdio>
 // <stdio.h> + unqualified `::fprintf` (issue 0942 / phase-472 W5): `<cstdio>` need not put
 // the C names in `std` on a freestanding libstdc++, and `std::fprintf` then fails.
@@ -276,7 +276,7 @@ using Result = ResultOf<void>;
 /// semihosting, defmt, etc.). Opt out entirely with
 /// `#define NROS_TRY_LOG(file, line, expr, ret) ((void)0)`.
 #ifndef NROS_TRY_LOG
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
 #define NROS_TRY_LOG(file, line, expr, ret)                                                        \
     ::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 #else

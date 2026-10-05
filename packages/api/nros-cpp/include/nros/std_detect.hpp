@@ -81,12 +81,12 @@
 // probes, the `cpp_compat_snippets` compile-check arm, and this gate's own
 // hosted arm.
 
-#if defined(NROS_CPP_STD)
+#if defined(NROS_CPP_STD) // hosted-family: capability-definition
 #include <memory>
 #define NROS_CPP_HAS_SHARED_PTR 1
 #endif
 
-#if defined(NROS_CPP_STD)
+#if defined(NROS_CPP_STD) // hosted-family: capability-definition
 #include <string>
 #define NROS_CPP_HAS_STD_STRING 1
 #endif
@@ -99,7 +99,7 @@
 // signature left to gate. The headers stay because a ported file reaches
 // `std::bind` / `std::vector` through `rclcpp.hpp` upstream and through this
 // file here, and taking them away would break source that never named them.
-#if defined(NROS_CPP_STD)
+#if defined(NROS_CPP_STD) // hosted-family: capability-definition
 #include <functional>
 #include <vector>
 #endif
@@ -109,7 +109,7 @@
 // includes `qos.hpp` — so a stream-formatting convenience sits on the
 // transitive include path of every freestanding TU. That is a separate leak
 // from how it is gated (phase-438, "which failures are real", cause (c)).
-#if defined(NROS_CPP_STD)
+#if defined(NROS_CPP_STD) // hosted-family: capability-definition
 #include <sstream>
 #define NROS_CPP_HAS_STD_SSTREAM 1
 #endif
@@ -205,7 +205,7 @@
 // build, which is the same over-tightening the note above records.
 // `_GLIBCXX_CHRONO` also separates the two but is libstdc++'s private spelling;
 // `__has_include` is the portable question.
-#if defined(NROS_CPP_STD)
+#if defined(NROS_CPP_STD) // hosted-family: capability-definition
 #include <chrono>
 #define NROS_CPP_HAS_STD_CHRONO 1
 #endif

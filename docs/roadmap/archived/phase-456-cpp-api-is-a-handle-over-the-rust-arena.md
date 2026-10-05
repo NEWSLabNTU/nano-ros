@@ -4,7 +4,7 @@
 W1, W2, W2b, W3, W3b-i, W4, W5, W7, W8 and W9 landed; W3b-ii is REFUSED; W6
 landed its structural half, and its unreachable half — driving the capability
 macros to zero — is handed to
-[phase-476](../phase-476-cpp-freestanding-spellings-for-the-gated-overloads.md)
+[phase-476](phase-476-cpp-freestanding-spellings-for-the-gated-overloads.md)
 with its count re-measured. **Two arguments in this doc were retired after it
 was written**, by `9768795b1d` (2026-10-02, issue 1496 resolution 2), which gave
 the arena a removal path. Each is amended in place rather than deleted — read
@@ -1059,7 +1059,7 @@ Four things follow, and each is a simplification rather than a trade:
   here until those items land.
 
   **[Handed off 2026-10-02.]** The unreachable half is now
-  [phase-476](../phase-476-cpp-freestanding-spellings-for-the-gated-overloads.md),
+  [phase-476](phase-476-cpp-freestanding-spellings-for-the-gated-overloads.md),
   which re-measured the table above (unchanged except `NROS_CPP_STD`, +1 from a
   legitimate `<cstdio>` gate in `log.hpp`) and found the chrono row smaller than
   this doc implies: `Rate` and `create_timer` already take `::nros::Duration`

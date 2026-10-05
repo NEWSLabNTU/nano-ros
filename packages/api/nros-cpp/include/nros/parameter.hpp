@@ -66,7 +66,7 @@
 // below instead of `std::size_t`) is always resolvable.
 #include <stddef.h>
 
-#ifdef NROS_CPP_STD
+#ifdef NROS_CPP_STD // hosted-family: container-interop
 #include <vector>
 #endif
 
@@ -105,7 +105,7 @@ template <typename T, ::size_t N> class Seq {
         }
     }
 
-#ifdef NROS_CPP_STD
+#ifdef NROS_CPP_STD // hosted-family: container-interop
     /// Build from a `std::vector<T>` (hosted convenience). The *value* is
     /// copied into the inline storage; the vector is not retained. Length
     /// past `N` is dropped and `overflowed()` returns true.
