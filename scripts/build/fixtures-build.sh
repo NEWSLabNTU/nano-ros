@@ -85,6 +85,12 @@ done
 # Issue 0406 — reject a typo'd platform before sweeping zero rows successfully.
 # shellcheck source=scripts/build/fixture-id-guard.sh
 source scripts/build/fixture-id-guard.sh
+# Issue 1671 — every row goes through `nros_fixture_row`, so a lane that sets
+# NROS_FIXTURE_FAILED_ROWS builds the rest past a failed one. Exported because
+# `run_with_make` runs rows in fresh make-leaf bashes.
+# shellcheck source=scripts/build/fixture-row-ledger.sh
+source scripts/build/fixture-row-ledger.sh
+export -f nros_fixture_row
 
 # issue 0522 — a BUILD LANE does not want the metadata probe's cmake cache.
 # Measured on `examples/workspaces/c` (sidecars deleted before each run): the
@@ -175,6 +181,12 @@ manifest_unnarrowed() {
         ${fixture_id:+--id "$fixture_id"} ${core_only:+--core-only}
 }
 
+# Issue 1671 — what a failed row is called in the ledger: the platform, the
+# language and the row's first manifest field (its directory).
+nros_fixture_row_label() {
+    printf 'fixtures-build %s %s%s: %s' "$platform" "$lang" "${rmw:+ $rmw}" "${1%%$'\x1f'*}"
+}
+
 run_with_make() {
     local fn="$1"
     local work_root makefile target quoted make_quoted line idx jobs make_bin
@@ -206,8 +218,10 @@ run_with_make() {
             printf -v target 'fixture-%04d' "$idx"
             printf -v quoted '%q' "$line"
             make_quoted="${quoted//\$/\$\$}"
+            printf -v label_quoted '%q' "$(nros_fixture_row_label "$line")"
+            label_quoted="${label_quoted//\$/\$\$}"
             printf '%s:\n' "$target"
-            printf '\t+@%s %s\n\n' "$fn" "$make_quoted"
+            printf '\t+@nros_fixture_row %s %s %s\n\n' "$label_quoted" "$fn" "$make_quoted"
             idx=$((idx + 1))
         done
     } >"$makefile"
@@ -232,7 +246,9 @@ run() {
     local fn="$1"
     local line
     if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${#fixture_records[@]}" -le 1 ]; then
-        for line in "${fixture_records[@]}"; do "$fn" "$line"; done
+        for line in "${fixture_records[@]}"; do
+            nros_fixture_row "$(nros_fixture_row_label "$line")" "$fn" "$line"
+        done
     else
         run_with_make "$fn"
     fi

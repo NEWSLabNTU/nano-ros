@@ -461,7 +461,14 @@ jobs:
           rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale 2>/dev/null || true
           echo "after:";  df -h / | tail -1
 
+      # Issue 1671 — rows build INDEPENDENTLY. `fixture-rows-keep-going.sh`
+      # sets NROS_FIXTURE_FAILED_ROWS, so a row that fails to build is recorded
+      # and the rest are still built; the step then fails, naming every failed
+      # row. Before this the first red row ended the job and withheld every
+      # cell verdict on the platform (run 36977810939: one `realtime-cpp` link
+      # failure hid issue 1657's six red FreeRTOS cells).
       - name: Build (${{ matrix.plat }})
+        id: build
         run: |
           source ./setup.bash
           source /opt/ros/humble/setup.bash
@@ -492,13 +499,20 @@ jobs:
           # tool, which is exactly what phase-411's acceptance rules out.
           if [ "${{ github.event_name }}" = "schedule" ] || \
              { [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.run_e2e }}" = "true" ]; }; then
-            just ${{ matrix.plat }} build-all
+            bash scripts/ci/fixture-rows-keep-going.sh "$RUNNER_TEMP/failed-rows-build.tsv" -- \
+              just ${{ matrix.plat }} build-all
           else
-            just ${{ matrix.plat }} build-examples
+            bash scripts/ci/fixture-rows-keep-going.sh "$RUNNER_TEMP/failed-rows-build.tsv" -- \
+              just ${{ matrix.plat }} build-examples
           fi
 
+      # Issue 1671 — runs after a FAILED build too (never after a cancellation,
+      # or when the build never started), so every cell whose fixture exists
+      # reports. A failed row's own cell fails on its missing fixture and names
+      # it. `test` depends on `build-fixtures`, which re-visits the failed row;
+      # the same wrapper keeps that rebuild from ending the step before nextest.
       - name: Test / e2e (${{ matrix.plat }})
-        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_e2e) }}
+        if: ${{ !cancelled() && steps.build.outcome != 'skipped' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_e2e)) }}
         run: |
           source ./setup.bash
           source /opt/ros/humble/setup.bash
@@ -506,7 +520,8 @@ jobs:
           # workspace → the px4-sitl-tests path dep must exist; nuttx-libc backs
           # the workspace Entry build. Provision both (same as host-tests).
           nros setup --source px4-rs --source nuttx-libc
-          just ${{ matrix.plat }} test
+          bash scripts/ci/fixture-rows-keep-going.sh "$RUNNER_TEMP/failed-rows-test.tsv" -- \
+            just ${{ matrix.plat }} test
 
       # Keep the junit, because a red cell is otherwise unreadable after the
       # fact. `check-skip-budget` names WHICH preconditions were unmet, but the

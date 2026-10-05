@@ -467,3 +467,12 @@ test-scripts-have-callers:
 # Pure `git ls-files` + line scan, no build, no ROS — fast line.
 dds-isolation-symmetry:
     python3 scripts/check-dds-isolation-symmetry.py
+
+# Issue 1671 -- a lane that sets NROS_FIXTURE_FAILED_ROWS builds every fixture
+# row past a failed one and records it; `set -e` still holds inside each row; the
+# owner (`scripts/ci/fixture-rows-keep-going.sh`) fails on any recorded row; and
+# both shared builders route every row through `nros_fixture_row`. Negative
+# controls run on the normal path.
+[private]
+fixture-row-keep-going:
+    @bash scripts/check-fixture-row-keep-going.sh
