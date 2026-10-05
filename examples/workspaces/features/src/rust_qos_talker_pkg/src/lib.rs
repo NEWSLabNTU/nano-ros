@@ -5,8 +5,8 @@
 //! `create_publisher_for_topic` (which takes `QoSProfile::default()` =
 //! reliable + volatile + keep-last), this declares the publisher via
 //! `create_publisher_for_topic_with_qos` with `reliable() + transient_local() +
-//! depth(10)`. TRANSIENT_LOCAL durability is the visible behaviour: a
-//! late-joining subscriber with matching QoS still receives the last 10 samples
+//! depth(1)`. TRANSIENT_LOCAL durability is the visible behaviour: a
+//! late-joining subscriber with matching QoS still receives the last sample
 //! published before it joined. The matching `rust_qos_listener_pkg` subscribes with
 //! the same profile (QoS must match for the endpoints to connect).
 
@@ -20,9 +20,15 @@ use std_msgs::msg::Int32;
 
 /// The shared QoS contract both endpoints declare. RELIABLE delivery,
 /// TRANSIENT_LOCAL durability (the broker holds history for late joiners),
-/// KEEP_LAST(10) history depth.
+/// KEEP_LAST(1) history depth.
+///
+/// Depth 1 because it is what the zenoh backend SERVES, and a stock peer reads
+/// the served profile (issue 1687): a transient-local publisher retains one
+/// sample (`TL_RETAIN_DEPTH`), so KEEP_LAST(10) was granted down to 1 and
+/// `ros2 topic info -v` showed 1 — a declaration the image did not keep. It is
+/// still distinct from the default (KEEP_LAST(10), VOLATILE) in two policies.
 pub fn qos_profile() -> QoSProfile {
-    QoSProfile::default().reliable().transient_local().depth(10)
+    QoSProfile::default().reliable().transient_local().depth(1)
 }
 
 /// Reliable talker — monotonic counter published on `/qos_chatter` at 1 Hz.

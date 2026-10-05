@@ -4,7 +4,7 @@
 ///        projection of ws-qos-rust).
 ///
 /// `qos_listener_configure` builds the SAME non-default `nros_cpp_qos_t`
-/// (RELIABLE + TRANSIENT_LOCAL + KEEP_LAST(10)) the talker declares and passes it
+/// (RELIABLE + TRANSIENT_LOCAL + KEEP_LAST(1)) the talker declares and passes it
 /// by value to `nros_cpp_subscription_register` — instead of `nros_c_qos_default()`.
 /// QoS is a per-entity contract set in code; matching the profile is what lets the
 /// QoS-tagged endpoints connect. The callback decodes the CDR Int32 and prints
@@ -23,13 +23,13 @@ typedef struct {
 } qos_listener_t;
 
 /// Byte-identical to the talker's `qos_profile()` — both endpoints must declare
-/// the same RELIABLE + TRANSIENT_LOCAL + KEEP_LAST(10) contract to connect.
+/// the same RELIABLE + TRANSIENT_LOCAL + KEEP_LAST(1) contract to connect.
 static nros_cpp_qos_t qos_profile(void) {
     nros_cpp_qos_t q = nros_c_qos_default();
     q.reliability = NROS_C_QOS_RELIABLE;
     q.durability = NROS_C_QOS_TRANSIENT_LOCAL;
     q.history = NROS_C_QOS_KEEP_LAST;
-    q.depth = 10;
+    q.depth = 1;
     return q;
 }
 

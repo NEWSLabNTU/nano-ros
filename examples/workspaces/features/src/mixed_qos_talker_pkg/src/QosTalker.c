@@ -5,7 +5,7 @@
 /// The nano-ros QoS differentiator, in C: instead of `nros_c_qos_default()`
 /// (reliable + VOLATILE + keep-last-10) the committed `c_talker_pkg` passes, this
 /// builds a `nros_cpp_qos_t` with reliability=RELIABLE, durability=TRANSIENT_LOCAL,
-/// history=KEEP_LAST, depth=10 and passes it BY VALUE to
+/// history=KEEP_LAST, depth=1 and passes it BY VALUE to
 /// `nros_cpp_publisher_create`. QoS is a per-entity contract set in code (no
 /// launch `qos_overrides`); the matching `qos_listener_pkg` declares the SAME
 /// profile via `qos_profile()` so the two endpoints connect.
@@ -29,14 +29,18 @@ typedef struct {
 } qos_talker_t;
 
 /// The shared QoS contract both endpoints declare: RELIABLE delivery,
-/// TRANSIENT_LOCAL durability, KEEP_LAST(10) history depth. The listener builds
+/// TRANSIENT_LOCAL durability, KEEP_LAST(1) history depth. The listener builds
 /// the byte-identical profile so the QoS-matched endpoints connect.
+///
+/// Depth 1 is what the zenoh backend SERVES for a transient-local publisher (it
+/// retains one sample), and a stock `ros2 topic info -v` reads the served
+/// profile — KEEP_LAST(10) was advertised as 1 (issue 1687).
 static nros_cpp_qos_t qos_profile(void) {
     nros_cpp_qos_t q = nros_c_qos_default();
     q.reliability = NROS_C_QOS_RELIABLE;
     q.durability = NROS_C_QOS_TRANSIENT_LOCAL;
     q.history = NROS_C_QOS_KEEP_LAST;
-    q.depth = 10;
+    q.depth = 1;
     return q;
 }
 

@@ -3,7 +3,7 @@
 //!
 //! Declared via `create_subscription_for_topic_with_qos` (the declarative
 //! QoS-override surface) with the same `reliable() + transient_local() +
-//! depth(10)` contract. QoS must match for the endpoints to connect: a default
+//! depth(1)` contract. QoS must match for the endpoints to connect: a default
 //! (volatile) subscriber would still connect to a reliable+transient_local
 //! publisher, but would NOT replay the pre-join history — matching the profile
 //! is what makes TRANSIENT_LOCAL observable. Republishes the running receive

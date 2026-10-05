@@ -24,7 +24,7 @@
 //!   does not apply to logging). Per-lang markers differ (the mixed ws
 //!   reuses the C talker).
 //! - **Qos** (phase-263 B4): a NON-DEFAULT per-entity profile (reliable +
-//!   transient_local + keep_last(10), set IN CODE on both endpoints)
+//!   transient_local + keep_last(1), set IN CODE on both endpoints)
 //!   connects + delivers cross-process; the talker boots FIRST so the
 //!   listener joins late. No transient-local *replay* assertion (zenoh
 //!   provides none out of the box) — a QoS mismatch delivers nothing.
@@ -246,7 +246,7 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
             peer: Some(|| build_native_workspace_cpp_qos_listener_entry().map(|p| p.to_path_buf())),
             proof: Proof::QosMatchedProfile { topic: "/chatter" },
             note: "phase-263 B4 C++ projection: fluent nros::QoS builder \
-                   (.reliable().transient_local().keep_last(10)) into Node::create_publisher",
+                   (.reliable().transient_local().keep_last(1)) into Node::create_publisher",
         },
         (ML::Mixed, MW::Qos) => Exec {
             entry: || build_native_workspace_mixed_qos_talker_entry().map(|p| p.to_path_buf()),
@@ -776,14 +776,23 @@ fn run_cell(pcell: &MCell) {
                             )
                         });
                     // The workspaces declare `reliable + transient_local +
-                    // keep_last(10)` per entity, in code.
-                    // Every one of these differs from `QoSProfile::default()`
-                    // except reliability, so together they cannot be satisfied
-                    // by a defaulted entity.
+                    // keep_last(1)` per entity, in code.
+                    // Durability and depth both differ from
+                    // `QoSProfile::default()` (VOLATILE, KEEP_LAST(10)), so
+                    // together they cannot be satisfied by a defaulted entity.
+                    //
+                    // Issue 1687 — this asserted KEEP_LAST(10), which is the
+                    // DEFAULT depth (so it never told a declared entity from a
+                    // defaulted one) and which the zenoh backend does not serve
+                    // on a transient-local publisher: it retains one sample and
+                    // advertises the depth it keeps, so every cell read
+                    // KEEP_LAST(1) and went red. The examples now declare the
+                    // profile the backend serves, and this asserts all of it.
                     for expect in [
                         "Reliability: RELIABLE",
                         "Durability: TRANSIENT_LOCAL",
-                        "History (Depth): KEEP_LAST (10)",
+                        // The newline keeps `KEEP_LAST (10)` from matching.
+                        "History (Depth): KEEP_LAST (1)\n",
                     ] {
                         if !block.contains(expect) {
                             lis.kill();
