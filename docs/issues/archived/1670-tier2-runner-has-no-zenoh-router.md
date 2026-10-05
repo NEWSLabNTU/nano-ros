@@ -38,7 +38,7 @@ so the image's static `LD_LIBRARY_PATH` does not need to name it.
 Fixed 2026-10-05 on `fix/1670-tier2-runner-router`, by the second of the two
 roads: the lane now RESOLVES the router itself and refuses, loudly, to run its
 zenoh cells without one. The image half is
-[issue 1695](../1695-tier2-runner-image-lacks-ros-router.md).
+[issue 1695](1695-tier2-runner-image-lacks-ros-router.md).
 
 **Why not "the same step the nightly lanes use".** Those jobs run `nros setup
 --system --sudo` inside `nano-ros-ci:humble` (a ROS base image, root). Tier 2
