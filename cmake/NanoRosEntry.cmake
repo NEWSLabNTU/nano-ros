@@ -1391,8 +1391,19 @@ function(_nros_entry_invoke_codegen)
     # (`EntityInventory::from_model` returns None), so passing this for an image
     # with no contract changes nothing -- which is still most of the tree
     # (issue 0973; measured 2026-09-06, 109 of 114 resolvable models).
+    # Issue 1694 -- the COLCON workspace whose probe sidecars floor the
+    # contract, and the one issue 1594's registration observation reads below.
+    # Not `_ws_root`: that is the entry package's grandparent, and for a
+    # GENERATED entry (RFC-0065 D8) it lands in `build/<coord>/`, which has no
+    # `src/`, so both consumers silently skipped the workspace -- issue 0949's
+    # class, whose fix published the right root as `NROS_WORKSPACE_DIR`.
+    if(DEFINED NROS_WORKSPACE_DIR AND IS_DIRECTORY "${NROS_WORKSPACE_DIR}/src")
+        set(_nrx_colcon_ws "${NROS_WORKSPACE_DIR}")
+    else()
+        set(_nrx_colcon_ws "${_ws_root}")
+    endif()
     nros_derive_entity_inventory_knobs(CLI "${_nros_bin}" MODEL "${_NRX_MODEL}"
-        WORKSPACE "${_ws_root}")
+        WORKSPACE "${_nrx_colcon_ws}")
     nros_reconfigure_on_change("${_entity_knobs_path}" "${_entity_knobs_before}"
         LABEL "this image's entity inventory")
     # issue 1084 -- the same model, for the COMPILER rather than the pools. Each
@@ -1437,7 +1448,7 @@ function(_nros_entry_invoke_codegen)
         ENTRY     "${_NRX_NAME}"
         BUILD_DIR "${CMAKE_BINARY_DIR}"
         METADATA  "${_nrx_metadata}"
-        WORKSPACE "${_ws_root}"
+        WORKSPACE "${_nrx_colcon_ws}"
         RMW       "${_nrx_rmw}")
     nros_sizing_descriptor_path(_nrx_sizing_path "${CMAKE_BINARY_DIR}" "${_NRX_NAME}")
     nros_sizing_descriptor_read("${_nrx_sizing_path}")
