@@ -64,6 +64,11 @@ fn resolve_zephyr_workspace(_root: &Path) -> Option<PathBuf> {
 
 #[test]
 fn fvp_ws_entry_two_tier_publishes() {
+    // Issue 1685's ordering — see fvp_smoke.rs.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::Fvp],
+        "the FVP workspace-entry image",
+    );
     let root = project_root();
 
     // 1. FVP installed?
