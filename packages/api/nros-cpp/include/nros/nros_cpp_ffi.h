@@ -1340,12 +1340,15 @@ nros_cpp_ret_t nros_cpp_node_create_ex(void *executor_handle,
                                        struct nros_cpp_node_t *out_node);
 
 /**
- * Destroy a node.
+ * Destroy a node: release the arena entries it registered through a copyable
+ * handle. The node record itself stays in the executor's node table.
  *
- * Currently a no-op since the node is just metadata referencing the executor.
- * The executor owns all resources.
+ * # Safety
+ * `node` must be NULL or a handle `nros_cpp_node_create*` filled. Its
+ * `executor` may point at storage `nros_cpp_fini` has already finalised; only
+ * that storage's tag is read in that case.
  */
-nros_cpp_ret_t nros_cpp_node_destroy(struct nros_cpp_node_t *_node);
+nros_cpp_ret_t nros_cpp_node_destroy(struct nros_cpp_node_t *node);
 
 /**
  * Get the node name.

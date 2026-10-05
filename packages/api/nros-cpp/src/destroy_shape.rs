@@ -53,6 +53,12 @@ const RELEASES: bool = true;
 /// 1667).
 const NO_OP: bool = false;
 
+/// phase-476 W0 — the destroy drops NO storage: its argument is a plain handle
+/// (no drop glue, which the assert holds), and what it releases are arena
+/// entries, through the executor. `check-cpp-destroy-shape` requires such a
+/// function to have no `drop_in_place` and to say so in its doc.
+const EXECUTOR: bool = false;
+
 macro_rules! destroy_shapes {
     ($($func:ident drops $ty:ty => $shape:ident;)+) => {
         $(
@@ -100,4 +106,8 @@ destroy_shapes! {
     // difference is WHERE the state was put.
     nros_cpp_action_server_destroy_polling drops PollingActionServerCore => RELEASES;
     nros_cpp_action_client_destroy_polling drops PollingActionClientCore => RELEASES;
+
+    // phase-476 W0 — a node's handle is plain data; destroying it releases the
+    // arena entries the node registered through a copyable handle.
+    nros_cpp_node_destroy drops crate::nros_cpp_node_t => EXECUTOR;
 }

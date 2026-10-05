@@ -78,7 +78,7 @@ impl nros_guard_condition_t {
 
     /// Set the handle ID from executor registration.
     pub(crate) fn set_handle_id(&mut self, id: nros_node::HandleId) {
-        self.handle_id = id.0;
+        self.handle_id = id.to_raw();
     }
 
     /// Set the guard handle for external triggering.

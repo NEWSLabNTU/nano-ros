@@ -2662,6 +2662,30 @@ pub(crate) fn store_node_id(out: &mut nros_cpp_node_t, id: nros_node::executor::
     out.node_id = encode_node_id(id.raw());
 }
 
+/// phase-476 W0 — hand a freshly registered entry's handle to the C++ caller,
+/// recording `node` as its owner first, so `nros_cpp_node_destroy` releases it.
+///
+/// Used by every registration whose C++ handle is a COPYABLE two-word value
+/// (dispatch subscriptions, service servers and clients, timers). Not by the
+/// action paths: their C++ object is the unique holder and releases its own
+/// entry by slot, so a node-scoped release there would let that later
+/// self-release reach the slot's next occupant.
+#[cfg(feature = "rmw-cffi")]
+pub(crate) fn issue_owned_handle(
+    executor: &mut nros_node::Executor,
+    node: &nros_cpp_node_t,
+    handle_id: nros_node::executor::HandleId,
+    out_handle_id: *mut usize,
+) {
+    if let Some(node_id) = node_id_opt(node) {
+        executor.set_entry_owner(handle_id, node_id);
+    }
+    // SAFETY: every caller checked `out_handle_id` for null on entry.
+    unsafe {
+        *out_handle_id = handle_id.to_raw();
+    }
+}
+
 /// Issue 0312 — decode [`nros_cpp_node_t::node_id`]. `None` when the handle
 /// carries no registered node (zero-initialised by a caller that never called
 /// `nros_cpp_node_create*`).
@@ -2803,13 +2827,35 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
     NROS_CPP_RET_OK
 }
 
-/// Destroy a node.
+/// Destroy a node: release the arena entries it registered through a copyable
+/// handle. The node record itself stays in the executor's node table.
 ///
-/// Currently a no-op since the node is just metadata referencing the executor.
-/// The executor owns all resources.
+/// # Safety
+/// `node` must be NULL or a handle `nros_cpp_node_create*` filled. Its
+/// `executor` may point at storage `nros_cpp_fini` has already finalised; only
+/// that storage's tag is read in that case.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_cpp_node_destroy(_node: *mut nros_cpp_node_t) -> nros_cpp_ret_t {
-    // Node is a lightweight view — nothing to free.
+pub unsafe extern "C" fn nros_cpp_node_destroy(node: *mut nros_cpp_node_t) -> nros_cpp_ret_t {
+    // phase-476 W0 — release every arena entry this node registered through a
+    // copyable handle (`issue_owned_handle`). A C++ callback's capture is
+    // copied into the arena and usually holds the node's `this`, so an entry
+    // that outlived the node would dispatch into freed memory. A node whose
+    // executor was already finalised has nothing to release:
+    // `cpp_ctx_checked` reads the tag `nros_cpp_fini` clears.
+    #[cfg(feature = "rmw-cffi")]
+    if !node.is_null() {
+        // SAFETY: a non-null `node` is a handle `nros_cpp_node_create*` filled.
+        let node_ref = unsafe { &*node };
+        if let (Some(node_id), Some(ctx)) = (node_id_opt(node_ref), unsafe {
+            cpp_ctx_checked(node_ref.executor)
+        }) {
+            // SAFETY: every handle the C++ side holds for these entries is
+            // checked by generation on use, so none reaches a later occupant.
+            unsafe { ctx.executor.release_node(node_id) };
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    let _ = node;
     NROS_CPP_RET_OK
 }
 
@@ -4075,7 +4121,7 @@ pub unsafe extern "C" fn nros_cpp_bind_handle_to_sched_context(
     let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let h = nros_node::executor::HandleId(callback_handle);
+    let h = nros_node::executor::HandleId::from_raw(callback_handle);
     let id = nros_node::executor::sched_context::SchedContextId(sc_id);
     match ctx.executor.bind_handle_to_sched_context(h, id) {
         Ok(()) => NROS_CPP_RET_OK,

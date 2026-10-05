@@ -2028,8 +2028,10 @@ pub(crate) unsafe fn sub_buffered_raw_safety_c_has_data(ptr: *const u8) -> bool 
 /// ONLY when the two sides drifted, which is to say a failure mode nobody could
 /// test against.
 ///
-/// W8 made the capture a RUNTIME LENGTH: `Executor::stow_capture` bump-allocates
-/// exactly `capture.len()` bytes from the arena and points `context` at them.
+/// W8 made the capture a RUNTIME LENGTH: exactly `capture.len()` bytes of arena,
+/// with `context` pointing at them. Since phase-476 W0 those bytes sit at the end
+/// of the entry's own trailing region (`Executor::place_capture`), so releasing
+/// the entry releases them.
 /// The bound is now the arena, which every other allocation here already shares,
 /// and the constant is gone from both sides of the seam. The entry also stops
 /// carrying 32 bytes that every non-capturing C registration paid for.

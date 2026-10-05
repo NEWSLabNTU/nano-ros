@@ -63,8 +63,13 @@ threads = true
 # words. With it stated, `byte_pool_storage` = 4 MiB - 88,552 and
 # `EXECUTOR_BACKING + byte_pool_storage == BYTE_POOL_BASE_SIZE` (checked with
 # `nm -S` on the rebuilt image).
+#
+# 11,071 since phase-476 W0 (2026-10-05): one 4-byte lifetime tag per callback
+# slot joined the backing, 4 slots x 4 B = 16 B = 2 words. `node-std-tests`
+# refused 11,069 on this target; its own `cargo check` accepts 11,071 and
+# refuses 11,070. Not re-measured with `nm` on a rebuilt image.
 [board.knobs.executor]
-backing_u64s = 11069
+backing_u64s = 11071
 
 # RFC-0048 §6 / phase-287 W5 — CMake toolchain file for `nros setup`'s preset.
 [board.cmake]

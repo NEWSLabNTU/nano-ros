@@ -89,11 +89,15 @@ pool.app = [15, 31]
 #
 # `nros-node`'s const assertion is `stated >= default` in EVERY unit it
 # compiles, so the statement has to cover the LARGEST of those, not the
-# heaviest role. Hence 11,069.
+# heaviest role. Hence 11,069 — and 11,071 since phase-476 W0 (2026-10-05),
+# which added one 4-byte lifetime tag per callback slot to the backing: 4 slots
+# x 4 B = 16 B = 2 words on the unnarrowed default. Found by `node-std-tests`
+# refusing 11,069 on the riscv64 sibling board; probed there with that gate's own
+# `cargo check` (11,070 refused, 11,071 accepted), not re-measured with `nm`.
 #
 # The cost is real and is the price of one statement per board: a talker
-# reserves 11,069 words where its own executor needs 2,917, and gives back the
-# same 11,069 from the pool. The image's total is unchanged either way — this
+# reserves 11,071 words where its own executor needs ~2,917, and gives back the
+# same 11,071 from the pool. The image's total is unchanged either way — this
 # rung MOVES bytes between `.bss` and the pool, it does not save them — so
 # over-stating costs `mem-report` accuracy, not memory.
 #
@@ -103,4 +107,4 @@ pool.app = [15, 31]
 # default. Before issue 1388 that check read Zephyr confs only, so this claim
 # was the one spelling nothing vouched for.
 [board.knobs.executor]
-backing_u64s = 11069
+backing_u64s = 11071

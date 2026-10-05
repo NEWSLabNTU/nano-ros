@@ -95,6 +95,26 @@ So the prerequisite is a generation (or equivalent) that a stale handle can be
 checked against: either in `HandleId`, which widens a public type, or in the
 entry metadata with the handle carrying the generation it was issued with.
 
+## Progress — phase-476 W0 (2026-10-05)
+
+The prerequisite is in place. A `HandleId` now carries the generation of the
+slot it was issued for, packed into the same `usize` (slot in the low 16 bits,
+a 15-bit generation above, never 0). `Executor::resolve_handle` answers the slot
+only while that registration still occupies it, and every public lookup goes
+through it. A test releases a timer, lets a subscription take the same slot,
+and checks that every call through the stale timer handle fails without
+touching the subscription. A second test does the same with a timer reusing the
+slot.
+
+Also from W0: subscriptions, services and clients registered through nros-cpp
+record their node as owner, and `nros_cpp_node_destroy` releases them. A
+capture is part of its entry's recorded region, so releasing a capturing entry
+no longer leaks the capture.
+
+Still open here: `SubscriptionHandle<M>::cancel()` and the service twins, and
+the guard-condition release. The stale-copy bullet below now holds in the
+executor. It has not yet been exposed through those C++ handles.
+
 ## Acceptance
 
 * Subscriptions, service servers and service clients registered through the

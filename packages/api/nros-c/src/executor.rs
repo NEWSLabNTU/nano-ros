@@ -1514,7 +1514,7 @@ pub(crate) fn record_trigger_entity(
     handle_id: nros_node::HandleId,
     entity: *mut core::ffi::c_void,
 ) {
-    if let Some(slot) = table.get_mut(handle_id.0) {
+    if let Some(slot) = table.get_mut(handle_id.slot()) {
         *slot = entity;
     }
 }
@@ -2769,7 +2769,7 @@ pub unsafe extern "C" fn nros_executor_add_service(
                 }
 
                 let service_mut = &mut *service;
-                service_mut._internal.arena_entry_index = handle_id.0 as i32;
+                service_mut._internal.arena_entry_index = handle_id.slot() as i32;
                 service_mut._internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
 
                 executor.handle_count += 1;
@@ -2930,7 +2930,7 @@ pub unsafe extern "C" fn nros_executor_add_client(
                 }
 
                 let client_mut = &mut *client;
-                client_mut._internal.arena_entry_index = handle_id.0 as i32;
+                client_mut._internal.arena_entry_index = handle_id.slot() as i32;
                 client_mut._internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
                 client_mut.state = nros_client_state_t::NROS_CLIENT_STATE_REGISTERED;
 
@@ -3215,7 +3215,7 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
             Ok(handle) => {
                 record_trigger_entity(
                     &mut executor._handle_entities,
-                    nros_node::executor::HandleId(handle.entry_index()),
+                    nros_node::executor::HandleId::for_owned_slot(handle.entry_index()),
                     client as *mut core::ffi::c_void,
                 );
                 let client_mut = &mut *client;
@@ -3227,7 +3227,8 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
                 // entries[] slot). `0` = inherit (no-op); unknown slot fails.
                 if requested_sc != 0 {
                     let sc_id = nros_node::executor::sched_context::SchedContextId(requested_sc);
-                    let handle_id = nros_node::executor::HandleId(handle.entry_index());
+                    let handle_id =
+                        nros_node::executor::HandleId::for_owned_slot(handle.entry_index());
                     if rust_exec
                         .bind_handle_to_sched_context(handle_id, sc_id)
                         .is_err()
@@ -3318,7 +3319,7 @@ pub unsafe extern "C" fn nros_executor_remove_action_server(
         MESSAGE_BUFFER_SIZE,
         MESSAGE_BUFFER_SIZE,
         NROS_MAX_CONCURRENT_GOALS,
-    >(handle_id.0);
+    >(handle_id.slot());
     // Whatever the arena said, the server no longer owns an entry here: a
     // `false` means the slot was not a live action server, and keeping the
     // handle would let a later remove release whatever registered into that
@@ -3384,7 +3385,7 @@ pub unsafe extern "C" fn nros_executor_remove_action_client(
     client._internal = crate::action::ActionClientInternal::new();
     forget_removed_handle(
         executor,
-        nros_node::executor::HandleId(entry_index),
+        nros_node::executor::HandleId::for_owned_slot(entry_index),
         released,
     )
 }
@@ -3464,7 +3465,7 @@ pub unsafe extern "C" fn nros_executor_remove_subscription(
         return NROS_RET_NOT_FOUND;
     }
 
-    let handle_id = nros_node::executor::HandleId(subscription.handle_id);
+    let handle_id = nros_node::executor::HandleId::from_raw(subscription.handle_id);
     let rust_exec = get_executor(&mut executor._opaque);
     // SAFETY: the subscription's (handle, executor) pair is its only record of
     // the slot and is cleared below, so nothing names the slot afterwards.
@@ -3524,7 +3525,7 @@ pub unsafe extern "C" fn nros_executor_remove_timer(
         return NROS_RET_NOT_FOUND;
     }
 
-    let handle_id = nros_node::executor::HandleId(timer.handle_id);
+    let handle_id = nros_node::executor::HandleId::from_raw(timer.handle_id);
     let rust_exec = get_executor_from_ptr(opaque_ptr);
     // SAFETY: as in `nros_executor_remove_subscription`.
     let released = rust_exec.release_timer(handle_id);
@@ -3575,7 +3576,8 @@ pub unsafe extern "C" fn nros_executor_remove_service(
         return NROS_RET_NOT_FOUND;
     }
 
-    let handle_id = nros_node::executor::HandleId(service._internal.arena_entry_index as usize);
+    let handle_id =
+        nros_node::executor::HandleId::for_owned_slot(service._internal.arena_entry_index as usize);
     let rust_exec = get_executor(&mut executor._opaque);
     // SAFETY: as in `nros_executor_remove_subscription`.
     let released = rust_exec.release_service(handle_id);
@@ -3633,7 +3635,8 @@ pub unsafe extern "C" fn nros_executor_remove_client(
         return NROS_RET_NOT_FOUND;
     }
 
-    let handle_id = nros_node::executor::HandleId(client._internal.arena_entry_index as usize);
+    let handle_id =
+        nros_node::executor::HandleId::for_owned_slot(client._internal.arena_entry_index as usize);
     let rust_exec = get_executor(&mut executor._opaque);
     // SAFETY: as in `nros_executor_remove_subscription`.
     let released = rust_exec.release_service_client(handle_id);
@@ -4529,7 +4532,7 @@ pub unsafe extern "C" fn nros_executor_bind_handle_to_sched_context(
         nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
     );
     let rust_exec = get_executor(&mut executor._opaque);
-    let h = nros_node::executor::HandleId(handle);
+    let h = nros_node::executor::HandleId::from_raw(handle);
     let id = nros_node::executor::sched_context::SchedContextId(sc_id);
     match rust_exec.bind_handle_to_sched_context(h, id) {
         Ok(()) => NROS_RET_OK,
