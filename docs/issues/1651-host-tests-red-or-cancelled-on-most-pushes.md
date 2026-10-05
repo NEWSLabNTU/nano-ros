@@ -100,13 +100,15 @@ the integration job COMPLETED (96 min) as a `failure` — 214 real failures and
 | `multihost_bake` tests a retired `--lang rust` verb | 1 | 1692 |
 | probe self-test read the ambient `NROS_SKIP_FIXTURE_CHECK` | 1 | fixed here |
 
-**Cancellation fix: not zero-cost, so not merged.** Splitting `just check`
-into its own job (branch `fix/1651-host-tests-verdict`) lets the integration
-job finish in ~96 min instead of timing out, but the new job re-provisions
-~26–29 min (`just generate-bindings` alone ~17–20 min, the workspace syncs) —
-about +25 runner-minutes a night over the 160 the timed-out pair used. Left
-for the CI-budget owner, with the alternatives: raise the integration
-`timeout-minutes` (~+30 min/night, same signal); or drop `just check` from
-host-tests since gate.yml's nightly runs the same gates (saves ~62 min, but
-gate.yml's `check build` is itself red/dying on disk, so this lane is its
+**Cancellation fix: merged (PR #1672, 2026-10-05).** `just check` now runs
+in its own `gates` job beside `integration` (`just ci tier1 [gates|run]`), so
+the integration job finishes in ~96 min as a real verdict instead of timing
+out at 150 min (run 37252649866; the split itself passed on run 37255826286).
+Cost, re-measured: the `gates` job re-provisions ~26–29 min (`just
+generate-bindings` alone ~17–20 min) on top of its ~60 min check — about
+**+30–40 runner-minutes a night** and one more concurrent runner. (An earlier
+"+25" undercounted; #1672's description carried it.) Chosen over the
+alternatives: raising integration `timeout-minutes` (~+30, but `just check`
+still delays `test-all`), and dropping `just check` from host-tests (saves ~62
+min, but gate.yml's nightly `check build` is itself red, so this lane is its
 only green).
