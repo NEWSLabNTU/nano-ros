@@ -186,6 +186,9 @@ manifest_unnarrowed() {
 nros_fixture_row_label() {
     printf 'fixtures-build %s %s%s: %s' "$platform" "$lang" "${rmw:+ $rmw}" "${1%%$'\x1f'*}"
 }
+# Exported with the wrapper: the export-f closure gate holds every helper a
+# make leaf could reach to the export list.
+export -f nros_fixture_row_label
 
 run_with_make() {
     local fn="$1"
