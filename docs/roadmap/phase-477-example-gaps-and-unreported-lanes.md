@@ -99,6 +99,13 @@ the census (not a path list) keeps the class closed.
 **Acceptance:** `host-tests.yml` reports a `success` on `main` and a regression
 as a `failure`; 1627 closed; the filter decision recorded.
 
+**Status 2026-10-05 (issue 1651, W3's host-tests item):** first `test-all`
+verdict since 2026-06-17, from a branch dispatch that moves `just check` off
+the integration job (run 37252649866): the job completes as a `failure`, not a
+timeout-`cancelled`. Reds grouped and filed as issues 1684–1692 (1689 fixed;
+the probe self-test fixed). The split itself costs ~+25 runner-min/night, so
+it waits on the CI-budget decision; 1651 stays open.
+
 ### W4 — invariance gates
 
 - Issue [1509](../issues/1509-node-packages-name-no-platform-or-rmw.md) — the

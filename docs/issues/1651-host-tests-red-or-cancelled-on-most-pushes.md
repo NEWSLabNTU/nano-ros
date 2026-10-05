@@ -66,3 +66,47 @@ because nothing here was being read.
 A `host-tests.yml` run on `main` completes and reports `success`, and the lane's
 configuration makes a later regression produce a `failure` someone sees rather
 than a `cancelled`.
+
+## Verdict, 2026-10-05 (still OPEN)
+
+**Cancellation, re-measured.** `push` left the triggers on 2026-10-03 (commit
+a287e940074f5653082b8795a733da405a3a77aa), so supersession is gone. The
+cancellations since are the integration job's own 150-minute TIMEOUT, which
+GitHub reports as `cancelled`: runs 37115523816 and 37176625915 (the
+2026-10-04 schedule) reached `just ci tier1` ~82 min in, spent ~62 min in
+`just check` (check-fast 788 s + check-build 2942 s at -P4) and were killed
+before `test-all`. The two `failure`s of 2026-10-03 (37104028050,
+37108493890) were `nros_rmw_cyclonedds_config_compose` running as root, fixed
+by commit 462c2b75d95d77b4602b2127c864d8945397c621 and green in the 2026-10-04
+run. `test-all` itself had not executed on any run since 2026-06-17.
+
+**First `test-all` verdict** (dispatch 37252649866 on branch
+`fix/1651-host-tests-verdict`, which runs `just check` in a sibling job):
+the integration job COMPLETED (96 min) as a `failure` — 214 real failures and
+81 undeclared capability skips. Grouped by root cause, each retested SOLO
+(`-j1`) on fixtures built from the same tree by
+`just build-test-fixtures lane=tier1`:
+
+| cause | tests | issue |
+| --- | --- | --- |
+| job builds a fixture subset, runs the whole tier-1 lane | 199 + ~8 | 1684 |
+| runner lacks Zephyr / riscv QEMU / PX4 / ROS peer | 81 skips | 1685 |
+| XRCE C/C++ action + service round-trip | 4 | 1686 |
+| declared / overridden QoS not advertised | 4 | 1687 |
+| Rust workspace remap not on the wire | 1 | 1688 |
+| C++ contract-monitor test asserted a spelling the line never had | 1 | 1689 (fixed) |
+| `rmw_coordinate_truth` entry loop outlives 60 s | 1 | 1690 |
+| `ros2_action_e2e` over zenoh: stock server not discovered (local only) | 1 | 1691 |
+| `multihost_bake` tests a retired `--lang rust` verb | 1 | 1692 |
+| probe self-test read the ambient `NROS_SKIP_FIXTURE_CHECK` | 1 | fixed here |
+
+**Cancellation fix: not zero-cost, so not merged.** Splitting `just check`
+into its own job (branch `fix/1651-host-tests-verdict`) lets the integration
+job finish in ~96 min instead of timing out, but the new job re-provisions
+~26–29 min (`just generate-bindings` alone ~17–20 min, the workspace syncs) —
+about +25 runner-minutes a night over the 160 the timed-out pair used. Left
+for the CI-budget owner, with the alternatives: raise the integration
+`timeout-minutes` (~+30 min/night, same signal); or drop `just check` from
+host-tests since gate.yml's nightly runs the same gates (saves ~62 min, but
+gate.yml's `check build` is itself red/dying on disk, so this lane is its
+only green).

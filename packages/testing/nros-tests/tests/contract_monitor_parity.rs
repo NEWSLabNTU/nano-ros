@@ -275,10 +275,15 @@ fn contract_monitor_cpp_twin_reports_rate_violation(zenohd_unique: ZenohRouter) 
         "expected rate-hierarchy-runtime on the C++ twin's drain (2 Hz < 10 Hz declared), got:\n{out}{}",
         why.unwrap_or_default()
     );
+    // `log_violation` prints `contract violation: <rule> <fqn> measured=…
+    // declared=…` — the fqn bare, after the rule. This asserted `fqn=<fqn>`,
+    // a spelling the violation line has never had (only the twin's own ROW
+    // line uses `fqn=`), so it could not pass; no lane ran it until host-tests
+    // reached `test-all` again (issue 1651).
+    let named = format!("{RULE_RATE_HIERARCHY_RUNTIME} /cm/pub/cm_header measured=");
     assert!(
-        out.contains("fqn=/cm/pub/cm_header declared=10000")
-            || out.contains("fqn=/cm/pub/cm_header measured="),
-        "the violation must name the installed row's fqn, got:\n{out}"
+        out.contains(&named),
+        "the violation must name the installed row's fqn (`{named}`), got:\n{out}"
     );
 }
 
