@@ -3,12 +3,13 @@ id: 1672
 title: "Pinning the root toolchain to 1.99.0 dropped `x86_64-unknown-none`, so
   every Zephyr native_sim WORKSPACE Rust leaf fails with `can't find crate for
   core` — the triple was never declared anywhere the coverage gate reads"
-status: open
+status: resolved
 type: bug
 area: [build, zephyr, toolchain]
 severity: high
 found: 2026-10-03
 related: [1447, 1153, 0833, 0944, 0196]
+resolved_in: PR #1636 (the triple) + this change (the index channel)
 ---
 
 ## Symptom
@@ -79,21 +80,33 @@ rule, green while the build it guards is red.
   rc=0; 129 crates compiled for `x86_64-unknown-none`, and `librustapp.a`,
   `zephyr.elf` and `zephyr.exe` all freshly written by that run.
 
-## NOT fixed here — why `just doctor` stayed green
+## Why `just doctor` stayed green — fixed second
 
-The SDK index still declares `[rust.toolchain.stable] channel = "stable"`, and
-its `[rust.target.*]` rows name no toolchain, so they default to that alias. So
-`nros setup` installs targets onto `stable` and `nros setup --check` verifies
-them there — while the root build toolchain is `1.99.0`. `187376c906` changed
-`rust-toolchain.toml` and `tools/rust-toolchain.toml` only; nothing holds the
-index's channel to the pin.
+The SDK index declared `[rust.toolchain.stable] channel = "stable"`, and its
+`[rust.target.*]` rows name no toolchain. `nros setup --check` then listed
+targets with no `--toolchain` at all, which asks rustup's cwd-dependent
+resolution rather than the toolchain a build uses, and `[rust.rustup]` installed
+the moving `stable` channel as a fresh host's default. `187376c906` changed
+`rust-toolchain.toml` and `tools/rust-toolchain.toml` only; nothing held the
+index to the pin, so this regression was invisible to the doctor and the next
+target gap would have been too.
 
-That is why this regression was invisible to the doctor, and it will hide the
-next target gap the same way. It is left open here because the index is SHIPPED:
-it drives `nros setup` for released toolchains, the channel string is asserted in
-`nros-cli-core` tests (`rust_toolchain.rs`, `board_descriptor.rs`, `image.rs`),
-and whether an installed toolchain should pin `1.99.0` too is issue 1447's call
-to extend, not a side effect of fixing a missing triple.
+Fix:
+
+* `nros-sdk-index.toml` `[rust.toolchain.stable] channel = "1.99.0"`. The alias
+  keeps its name because every board descriptor's `toolchain = "stable"` names
+  it; it means "the build toolchain", and its channel is now the pin. A host
+  bootstrapped by `[rust.rustup]` therefore gets the toolchain the runtime is
+  linted and tested with — issue 1447's reason for pinning, extended to the
+  installed path rather than left floating there.
+* `nros setup --check` checks a row with no `toolchain` on the alias
+  `[rust.rustup]` names, by `--toolchain <channel>`, not on whatever rustup
+  resolves from the current directory.
+* `check-rust-targets-covered` holds the build alias's channel to the root
+  `rust-toolchain.toml`, and `nightly-pinned` to `tools/rust-toolchain.toml`
+  (that one carried only a "keep in lockstep" comment). Self-tested both ways;
+  mutating the index back to `stable` makes the gate fail naming both files.
+  `rust-toolchain.toml`'s bump note now says the index moves in the same commit.
 
 ## Acceptance
 
@@ -101,6 +114,6 @@ to extend, not a side effect of fixing a missing triple.
 * [x] The gate reads the producer that declared it, and fails without the row.
 * [x] A native_sim workspace Rust leaf builds on a host whose pinned toolchain
   was provisioned only from the toolchain file.
-* [ ] The SDK index's toolchain alias follows the root pin, so `nros setup
+* [x] The SDK index's toolchain alias follows the root pin, so `nros setup
   --check` verifies targets on the toolchain that builds — and a gate holds the
   two together.

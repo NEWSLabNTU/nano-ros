@@ -2233,12 +2233,23 @@ dist.linux-x86_64 = { url = "https://static.rust-lang.org/rustup/archive/1.29.1/
 dist.linux-arm64 = { url = "https://static.rust-lang.org/rustup/archive/1.29.1/aarch64-unknown-linux-gnu/rustup-init", sha256 = "15f6e4ce9f583b929c996c91562bad6d4454f3281de858b02cdfdef615fac433" }
 dist.macos-arm64 = { url = "https://static.rust-lang.org/rustup/archive/1.29.1/aarch64-apple-darwin/rustup-init", sha256 = "ec1b9233e7f72990ecd8e62063fa7f6c3dfc2bec8e97f88bff165f9100ac696a" }
 
+# The BUILD toolchain. The alias keeps its historical name because every board
+# descriptor's `toolchain = "stable"` names it, but the channel is the root
+# `rust-toolchain.toml` pin, not the moving `stable` channel (issue 1672).
+# While this said `stable`, `nros setup --check` verified every
+# `[rust.target.*]` row on a toolchain no build used, so a triple missing from
+# the pin (x86_64-unknown-none) left the doctor green while Zephyr native_sim
+# workspace leaves failed to build. It also means a host bootstrapped by
+# `[rust.rustup]` gets the toolchain the runtime is linted and tested with
+# (issue 1447's reason for pinning), not whatever `stable` is that day.
+# `check-rust-targets-covered` holds this to the root pin, and `nightly-pinned`
+# below to `tools/rust-toolchain.toml`.
 [rust.toolchain.stable]
-channel = "stable"
+channel = "1.99.0"
 components = ["rustfmt", "clippy", "rust-src", "llvm-tools"]
 
 [rust.toolchain.nightly-pinned]
-# Keep in lockstep with tools/rust-toolchain.toml (the awk-read SSOT).
+# Gated to tools/rust-toolchain.toml (the awk-read SSOT) by check-rust-targets-covered.
 channel = "nightly-2026-04-11"
 components = ["rustfmt", "miri", "rust-src", "llvm-tools"]
 
