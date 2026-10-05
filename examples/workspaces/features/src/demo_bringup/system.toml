@@ -366,3 +366,19 @@ board = "zephyr"
 conf = ["prj-zenoh.conf"]
 launch = "rust_qos.launch.xml"
 locator = "tcp/10.0.2.2:7465"
+
+# Issue 1681 -- the only Zephyr C++ image that declares `param_services`, and
+# the reason it exists: before the fix, the generated west application never set
+# `NANO_ROS_FEATURES` ahead of `find_package(Zephyr)`, so nros-cpp was built
+# without `param-services` while the generated entry called
+# `nros_cpp_register_parameter_services` -- an undefined reference at link.
+# Nothing caught it because no in-tree Zephyr C++ image declared the axis. The
+# `workspace-zephyr-cpp-params` fixture row builds it; `entry_e2e` boots it and
+# reads the live parameter back (the C++ native cell's 250). Same shared
+# `prj-zenoh.conf` as the Rust rows, whose 512 KiB `NROS_ZEPHYR_HEAP_SIZE` is
+# what the parameter store needs (issue 1677), then `prj-cpp.conf`, which turns
+# the shared Rust `prj.conf` into a C/C++ image.
+[image.zephyr_cpp_params]
+board = "zephyr"
+conf = ["prj-zenoh.conf", "prj-cpp.conf"]
+launch = "cpp_params.launch.xml"

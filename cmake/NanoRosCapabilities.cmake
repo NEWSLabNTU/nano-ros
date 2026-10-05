@@ -86,9 +86,13 @@ function(nros_lower_system_features features)
             # `check-cpp-capability-layout`, whose CAPS list it joined in W4.
             add_compile_definitions(NROS_SYSTEM_PARAM_SERVICES)
         elseif(_feat STREQUAL "lifecycle")
-            # Phase 269 W2 — Known axis, no CMake knob. lifecycle-services is always
-            # compiled into nros-cpp/nros-c (CMakeLists.txt always-on features); the only
-            # C/C++ lowering is the `#define NROS_SYSTEM_LIFECYCLE` in system_config.h.
+            # Phase 269 W2 — Known axis, no CMake knob. The CARGO feature
+            # (`lifecycle-services`) is chosen per image from the same list:
+            # `nros_feature_set` on the cmake road, `_nros_cap_suffix` in
+            # `zephyr/CMakeLists.txt` on the west road (issue 1681 — that road
+            # mapped no lifecycle axis, and the entry's
+            # `nros_cpp_lifecycle_autostart` did not link). The C/C++ lowering
+            # here is only the `#define NROS_SYSTEM_LIFECYCLE` in system_config.h.
         else()
             message(FATAL_ERROR
                 "nros_lower_system_features: unknown capability '${_feat}' in "

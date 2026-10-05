@@ -5088,6 +5088,29 @@ west_id = "zephyr/native_sim/native/64/workspace-params-entry"
 west_zenoh_locator = "tcp/127.0.0.1:7470"
 skip_probe = true
 
+# Issue 1681 -- the C++ sibling of the row above, and the only Zephyr C/C++
+# image anywhere in the tree that declares `param_services` (and `lifecycle`,
+# which the bringup also declares). Both failed to LINK before the fix: the
+# generated west application set no `NANO_ROS_FEATURES` ahead of
+# `find_package(Zephyr)`, so nros-cpp was built without `param-services`, and
+# the Zephyr module mapped no `lifecycle` axis at all. Nothing caught either,
+# because no image here exercised the combination. The port is the allocator's
+# `port_of(ZephyrNativeSim, Cpp, Params)`. Consumed by tests/entry_e2e.rs
+# (zephyr cpp params cell): the live-read 250 the C++ native cell asserts.
+[[workspace_fixture]]
+id = "workspace-zephyr-cpp-params"
+platform = "zephyr"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+image = "zephyr_cpp_params"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-params-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-params-entry"
+west_zenoh_locator = "tcp/127.0.0.1:7670"
+skip_probe = true
+
 # phase-276 W3 (#128) — the MANAGED (lifecycle) Rust workspace Entry
 # (examples/workspaces/features, [image.zephyr_rust_lifecycle]): the
 # lifecycle-on-embedded coverage cell. `system.toml [lifecycle] autostart =

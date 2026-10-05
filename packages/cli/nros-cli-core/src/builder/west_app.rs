@@ -148,6 +148,16 @@ pub struct CmakeApp {
     /// (nros-cpp + the node) in place of plain nros-cpp — the single-runtime
     /// invariant, one Rust staticlib and one `nros-rmw-cffi` registry.
     pub rust_node_dirs: Vec<String>,
+    /// `NANO_ROS_FEATURES` -- the bringup's capability axes (`[system]
+    /// features` and the deprecated typed blocks), set BEFORE
+    /// `find_package(Zephyr)` for the same reason as `rust_node_dirs`: the
+    /// nano-ros Zephyr module reads it DURING find_package, to add
+    /// `param-services` to the nros-cpp cargo build and to define
+    /// `NROS_SYSTEM_PARAM_SERVICES`. Issue 1681 -- nothing on this road set it,
+    /// so an image whose generated entry calls
+    /// `nros_cpp_register_parameter_services` linked an nros-cpp built without
+    /// it.
+    pub features: Vec<String>,
 }
 
 /// Where a backend crate lives, given its name.
@@ -346,6 +356,10 @@ pub fn resolve_cmake(
             deploy: platform.to_string(),
             panic: panic.map(str::to_string),
             rust_node_dirs,
+            features: crate::cmd::build::declared_capabilities(bringup_dir)
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
         }),
         ..Default::default()
     })
@@ -443,6 +457,19 @@ fn render_cmake_app(project: &str, c: &CmakeApp) -> String {
         out.push_str(&format!(
             "set(NROS_WS_RUST_NODE_DIRS \"{}\")\n\n",
             refs.join(";")
+        ));
+    }
+    if !c.features.is_empty() {
+        out.push_str(
+            "# The bringup's capability axes. MUST be set before\n\
+             # `find_package(Zephyr)`: the nano-ros Zephyr module reads it DURING\n\
+             # find_package to pick the nros-cpp cargo features (`param-services`)\n\
+             # and the `NROS_SYSTEM_*` defines the generated entry relies on\n\
+             # (issue 1681).\n",
+        );
+        out.push_str(&format!(
+            "set(NANO_ROS_FEATURES \"{}\")\n\n",
+            c.features.join(";")
         ));
     }
     out.push_str(&format!(
@@ -754,6 +781,67 @@ mod tests {
 
         let with = render_cmakelists(&cmake_app(td.path(), &nodes, Some("platform")));
         assert!(with.contains("PANIC   platform"), "{with}");
+    }
+
+    /// Issue 1681 -- the bringup's capability axes reach the Zephyr module,
+    /// BEFORE `find_package(Zephyr)`, which is where it reads them.
+    ///
+    /// The generated entry calls `nros_cpp_register_parameter_services` for a
+    /// bringup that declares `param_services`, and the symbol exists only in an
+    /// nros-cpp built with that feature -- which `zephyr/CMakeLists.txt` adds
+    /// only when `param_services IN_LIST NANO_ROS_FEATURES`. This road never set
+    /// the variable, so the image failed to link. Both spellings of the axis
+    /// count; a bringup that declares none gets no line at all.
+    #[test]
+    fn the_capability_axes_are_set_before_find_package_zephyr() {
+        let td = tempfile::tempdir().unwrap();
+        let nodes = cmake_workspace(td.path(), &[("srv_pkg", true, false)]);
+        let bringup = td.path().join("src/demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        let base = "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n";
+        let code = |app: &WestApp| -> String {
+            render_cmakelists(app)
+                .lines()
+                .filter(|l| !l.trim_start().starts_with('#'))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
+        std::fs::write(bringup.join("system.toml"), base).unwrap();
+        let none = code(&cmake_app(td.path(), &nodes, None));
+        assert!(!none.contains("NANO_ROS_FEATURES"), "{none}");
+
+        std::fs::write(
+            bringup.join("system.toml"),
+            base.replace(
+                "domain_id = 0\n",
+                "domain_id = 0\nfeatures = [\"param_services\", \"lifecycle\"]\n",
+            ),
+        )
+        .unwrap();
+        let app = cmake_app(td.path(), &nodes, None);
+        let with = code(&app);
+        let at = |needle: &str| {
+            with.find(needle)
+                .unwrap_or_else(|| panic!("missing {needle}:\n{with}"))
+        };
+        assert!(
+            with.contains("set(NANO_ROS_FEATURES \"param_services;lifecycle\")"),
+            "a cmake LIST, which `IN_LIST` reads: {with}"
+        );
+        assert!(at("set(NANO_ROS_FEATURES") < at("find_package(Zephyr"));
+
+        // The deprecated typed block is the same axis.
+        std::fs::write(
+            bringup.join("system.toml"),
+            format!("{base}\n[param_services]\nenabled = true\n"),
+        )
+        .unwrap();
+        let typed = code(&cmake_app(td.path(), &nodes, None));
+        assert!(
+            typed.contains("set(NANO_ROS_FEATURES \"param_services\")"),
+            "{typed}"
+        );
     }
 
     /// The two lines `mixed` needs, in the order that makes them work.

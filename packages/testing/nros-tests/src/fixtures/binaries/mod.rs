@@ -4903,6 +4903,22 @@ pub fn build_zephyr_workspace_rust_params_entry() -> TestResult<PathBuf> {
     )
 }
 
+/// Issue 1681 — the Zephyr (native_sim) C++ PARAMETERISED workspace Entry
+/// (`features`'s `[image.zephyr_cpp_params]`, a generated west application): the
+/// C++ param talker with the six ROS 2 parameter services, which did not LINK
+/// before the generated application set `NANO_ROS_FEATURES`. Built by the west
+/// lane into `<zephyr-build-root>/build-ws-cpp-params-entry-zenoh/zephyr/zephyr.exe`;
+/// consumed by `tests/entry_e2e.rs` (zephyr cpp params cell).
+pub fn build_zephyr_workspace_cpp_params_entry() -> TestResult<PathBuf> {
+    let binary_path = zephyr_build_root().join("build-ws-cpp-params-entry-zenoh/zephyr/zephyr.exe");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        // The WORKSPACE, not `src/<id>_entry` — see
+        // `build_zephyr_workspace_rust_params_entry` above (phase-470 W5.b1).
+        ZephyrLeafSource::zenoh("examples/workspaces/features", "cpp"),
+    )
+}
+
 /// phase-276 W3 (#128) — the Zephyr (native_sim) MANAGED (lifecycle) Rust workspace Entry
 /// (`features`'s `[image.zephyr_rust_lifecycle]`, a GENERATED west application since
 /// phase-470 W5.b1): the talker node + the five REP-2002 lifecycle

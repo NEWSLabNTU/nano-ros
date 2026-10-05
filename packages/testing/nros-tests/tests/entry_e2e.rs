@@ -60,10 +60,10 @@ use nros_tests::{
         build_threadx_linux_workspace_c_entry, build_threadx_linux_workspace_cpp_entry,
         build_threadx_linux_workspace_mixed_entry, build_threadx_riscv64_workspace_c_entry,
         build_zephyr_workspace_c_entry, build_zephyr_workspace_cpp_entry,
-        build_zephyr_workspace_mixed_entry, build_zephyr_workspace_rust_lifecycle_entry,
-        build_zephyr_workspace_rust_params_entry, build_zephyr_workspace_rust_qos_entry,
-        build_zephyr_workspace_rust_safety_entry, freertos, is_qemu_available,
-        is_qemu_riscv64_available, nuttx, require_zenohd,
+        build_zephyr_workspace_cpp_params_entry, build_zephyr_workspace_mixed_entry,
+        build_zephyr_workspace_rust_lifecycle_entry, build_zephyr_workspace_rust_params_entry,
+        build_zephyr_workspace_rust_qos_entry, build_zephyr_workspace_rust_safety_entry, freertos,
+        is_qemu_available, is_qemu_riscv64_available, nuttx, require_zenohd,
         threadx_linux::{is_nsos_netx_available, is_threadx_available},
         threadx_riscv64,
     },
@@ -298,6 +298,18 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
                    so this value proves the whole chain at once — file projection, specificity \
                    ranking, in-image seeding and the live re-read. The launch-inline path is what \
                    the C and C++ params cells assert (they carry no overlay, and still see 250)",
+        },
+        (MP::ZephyrNativeSim, ML::Cpp, MW::Params) => Exec {
+            resolver: build_zephyr_workspace_cpp_params_entry,
+            port: port_of(MP::ZephyrNativeSim, ML::Cpp, MW::Params),
+            boot: Boot::ZephyrNativeSim,
+            proof: Proof::SinkValueLine { value: 250 },
+            note: "issue 1681: the generated west application sets NANO_ROS_FEATURES before \
+                   find_package(Zephyr), so nros-cpp is built with param-services (and \
+                   lifecycle-services); before it the entry's \
+                   nros_cpp_register_parameter_services was an undefined reference. 250 is the \
+                   launch-inline <param>, seeded into the in-image store and live-read — the \
+                   value the C++ native params cell asserts",
         },
         (MP::ZephyrNativeSim, ML::Rust, MW::Qos) => Exec {
             resolver: build_zephyr_workspace_rust_qos_entry,
