@@ -163,6 +163,15 @@ jobs:
       # a shallow clone is what makes `git merge-base --is-ancestor` unable to
       # answer, which is the shape that cost a false data-loss alarm on
       # 2026-08-31.
+      # The hosted runner ran out of disk mid-fixture-build on 2026-10-04 (run
+      # 37180326202): the job died with no failing step, and the only record
+      # was the runner's own `No space left on device` writing its `_diag`
+      # log. The board job below has reclaimed disk since issue 1353; this
+      # job builds more fixtures and had nothing. Same script, same reason.
+      - name: Reclaim disk before the fixtures
+        id: disk
+        run: scripts/ci/reclaim-disk.sh "before the fixture build"
+
       - name: Check out the submodules the fixtures vendor
         id: submodules
         run: |
@@ -306,6 +315,7 @@ jobs:
           NROS_LANE_STEPS: >-
             [{"name": "Build the nros CLI", "conclusion": "${{ steps.cli.outcome }}"},
              {"name": "Report what the ledger claims, before running anything", "conclusion": "${{ steps.ledger.outcome }}"},
+             {"name": "Reclaim disk before the fixtures", "conclusion": "${{ steps.disk.outcome }}"},
              {"name": "Check out the submodules the fixtures vendor", "conclusion": "${{ steps.submodules.outcome }}"},
              {"name": "Provision the declared system closure (phase-413 W3)", "conclusion": "${{ steps.system.outcome }}"},
              {"name": "Build the XRCE Agent against the sourced ROS (issue 0741)", "conclusion": "${{ steps.agent.outcome }}"},
@@ -510,6 +520,19 @@ jobs:
               just build "$s"
           done
 
+      # The cells run under `cargo nextest`, which `just setup native` installs
+      # and this job never runs: its scopes are `zephyr`/`qemu`, and the Zephyr
+      # image ships no nextest. Run 37180326202 built every board fixture and
+      # then stopped at `error: no such command: nextest`. The index pins the
+      # tool (`[tool.cargo-nextest]`) and the store's bin dir is on PATH via
+      # `scripts/sdk-path-tools.txt`; idempotent when it is already there.
+      - name: Provision cargo-nextest
+        id: nextest
+        run: |
+          source ./activate.sh
+          nros setup --tool cargo-nextest
+          cargo nextest --version
+
       - name: Run the board cells with a recorded PASS
         id: cells
         run: |
@@ -555,6 +578,7 @@ jobs:
              {"name": "just setup the scopes those rows need", "conclusion": "${{ steps.setup.outcome }}"},
              {"name": "Install clang + libclang for bindgen", "conclusion": "${{ steps.clang.outcome }}"},
              {"name": "Build the fixtures those rows resolve", "conclusion": "${{ steps.fixtures.outcome }}"},
+             {"name": "Provision cargo-nextest", "conclusion": "${{ steps.nextest.outcome }}"},
              {"name": "Run the board cells with a recorded PASS", "conclusion": "${{ steps.cells.outcome }}"}]
           NROS_LANE_CELLS_RAN: ${{ steps.cells.outputs.cells_ran }}
         run: python3 scripts/ci/lane-stage.py --report --lane "live-peer regression (board)"
