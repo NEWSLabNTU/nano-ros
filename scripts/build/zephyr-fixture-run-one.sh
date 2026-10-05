@@ -232,6 +232,49 @@ toolchain_env=(ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant "$board
 # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
 source "$nros_root/scripts/build/zephyr-python.sh"
 nros_zephyr_activate
+# A RETARGETED row (phase-383 W9.b): `nros build <bringup>:<image>` owns the
+# application. Resolved once here because BOTH paths below need it.
+nros_bin=""
+if [ -n "$nros_image" ]; then
+    [ -n "$ws_dir" ] || die "record has nros_image but no ws_dir: $id"
+    [ -d "$ws_dir" ] || die "record ws_dir does not exist: $ws_dir ($id)"
+    # THE nros CLI this lane already chose — the emitter resolved it once and
+    # published it as the codegen tool. Re-resolving here (PATH, or a second
+    # search) is how a lane ends up building with a different binary than the
+    # one its signature names.
+    for _arg in "${extra_args[@]}"; do
+        case "$_arg" in
+            -D_NANO_ROS_CODEGEN_TOOL=*) nros_bin="${_arg#-D_NANO_ROS_CODEGEN_TOOL=}" ;;
+        esac
+    done
+    [ -n "$nros_bin" ] && [ -x "$nros_bin" ] \
+        || die "no usable nros CLI in the record's -D_NANO_ROS_CODEGEN_TOOL: $id"
+fi
+
+# issue 1707 — on the ninja path, bring the GENERATED west application up to
+# date with the declaration BEFORE ninja reads it.
+#
+# The application (`build/<coord>/<image>_entry/CMakeLists.txt`) is the carrier
+# of the image's capability Kconfig and `NANO_ROS_FEATURES`, and only stage 4 of
+# a `plan_builds` writes it. The west path below runs one; the ninja path did
+# not, and the signature above does not cover `system.toml`. So a declaration
+# change reached the image only when SOMETHING ELSE regenerated the file — and
+# the something else was the `nros image-facts` query a sibling's (or this
+# leaf's own) configure runs, mid-configure, after cmake had read the old one.
+# The build system is written after that, newer than its input, so no ninja ever
+# reconfigured: museum Kconfig and features until the signature next moved.
+#
+# `--dry-run` runs stages 1-4 and stops: it writes the application and execs
+# nothing. Every write is write-if-changed, so an unchanged declaration leaves
+# the file's mtime alone and ninja does NOT reconfigure (the negative control
+# in `zephyr_fixture_app_regen.sh`); a changed one makes it newer than
+# `build.ninja`, and ninja's RERUN_CMAKE edge re-runs cmake from the new file,
+# whose `CONFIG_*` assignments Zephyr merges into a fresh `.config`.
+regen_argv=()
+if [ "$needs_west" = "0" ] && [ -n "$nros_image" ]; then
+    regen_argv=("$nros_bin" build "$nros_image" --workspace "$ws_dir" --offline --dry-run)
+fi
+
 use_west=0
 if [ "$needs_west" = "0" ]; then
     if [ "$jobserver" = "1" ]; then
@@ -258,20 +301,6 @@ else
         #
         # `--offline`: this lane must not reach the network mid-sweep, matching
         # `workspace-fixtures-build.sh`'s migrated arms.
-        [ -n "$ws_dir" ] || die "record has nros_image but no ws_dir: $id"
-        [ -d "$ws_dir" ] || die "record ws_dir does not exist: $ws_dir ($id)"
-        # THE nros CLI this lane already chose — the emitter resolved it once and
-        # published it as the codegen tool. Re-resolving here (PATH, or a second
-        # search) is how a lane ends up building with a different binary than the
-        # one its signature names.
-        nros_bin=""
-        for _arg in "${extra_args[@]}"; do
-            case "$_arg" in
-                -D_NANO_ROS_CODEGEN_TOOL=*) nros_bin="${_arg#-D_NANO_ROS_CODEGEN_TOOL=}" ;;
-            esac
-        done
-        [ -n "$nros_bin" ] && [ -x "$nros_bin" ] \
-            || die "no usable nros CLI in the record's -D_NANO_ROS_CODEGEN_TOOL: $id"
         build_argv=("$nros_bin" build "$nros_image" --workspace "$ws_dir" --offline \
             -- -d "$build_dir" -p "$actual_pristine" "${extra_args[@]}")
     else
@@ -284,6 +313,9 @@ mkdir -p "$(dirname "$log")" "$(dirname "$sig_file")" "$ccache_dir" "$ccache_tmp
 set +e
 (
     cd "$workspace"
+    if [ "${#regen_argv[@]}" -gt 0 ]; then
+        env PATH="$tool_path" "${regen_argv[@]}" || exit $?
+    fi
     env PATH="$tool_path" SCCACHE_DISABLE="$sccache_disable" \
         CCACHE_DIR="$ccache_dir" CCACHE_TEMPDIR="$ccache_tmpdir" \
         "${toolchain_env[@]}" \

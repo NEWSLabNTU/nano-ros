@@ -181,6 +181,12 @@ fixture-groups:
     @python3 scripts/check-fixture-groups.py
     @bash packages/testing/nros-tests/tests/fixture_group_collision_gate.sh
 
+# Issue 1707 — the Zephyr fixture lane's ninja path regenerates a retargeted
+# row's west application BEFORE ninja, and a configure that read an application
+# rewritten under it is refused. Buildless: stub `nros`/`ninja` plus `cmake -P`.
+zephyr-app-regen:
+    @bash packages/testing/nros-tests/tests/zephyr_fixture_app_regen.sh
+
 # Issue 0406 — a fixture builder narrowed to an id it cannot match must FAIL,
 # not exit 0 having built nothing. Buildless: exercises the shared guard and
 # one real builder invocation that stops before any compilation.
