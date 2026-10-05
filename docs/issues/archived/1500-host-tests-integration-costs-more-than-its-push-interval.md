@@ -3,12 +3,12 @@ id: 1500
 title: "The `host-tests` integration job costs two to three times the interval
   between the pushes that trigger it, so with `cancel-in-progress: false` about
   half of its runs are cancelled before they start a single step"
-status: open
+status: resolved
 type: bug
 area: ci
 severity: medium
 found: 2026-09-25
-related: [1492, 1353, 1158, 1040]
+related: [1492, 1353, 1158, 1040, 1651]
 ---
 
 ## What this is, and what it is not
@@ -423,3 +423,128 @@ It also queued for 2 h 10 m before starting (run created 11:09:53, job started
 13:19:18), which is the oversubscription half of this issue on the same run. The
 cost of the ceiling, measured here: a run that waited over two hours, spent 2 h 31
 m on a runner, and produced no verdict.
+
+## 2026-10-05 — B and A both landed; the job reaches a verdict inside its budget
+
+**What B changed** (a287e9400, 2026-10-03): `push` left the triggers. The job
+runs on `schedule` (03:00 UTC) and `workflow_dispatch` only, so nothing
+supersedes it and the zero-step-cancellation half of this issue — the original
+subject — is gone by construction: a group with no second trigger has no
+pending run to displace.
+
+**What A changed** (this section's PR, `ci/1500-host-tests-cheaper`):
+
+1. *Attribution.* Every lane in `just/ci.just` that sequences steps (`gate`,
+   `tier1`, both tier-2 runs, `full`) now goes through one runner,
+   `scripts/ci/run-lane-steps.sh`, which prints a start and an end line per
+   step with its wall clock, as each finishes, plus a table at the end. The
+   workflow STREAMS those lines into the job log (the full output still goes
+   to `ci-tier1.log`), so a ceiling that kills the job no longer takes the
+   timing with it. The two fixture builders print one `row-time:` line per
+   row, and `scripts/ci/row-times.sh` puts the slowest rows into the job log.
+2. *Two duplicate builds cut*, both measured:
+   - `api-parity` ran **twice** per `just check` / `ci gate` / tier: once in
+     the fast fan-out (issue 1066 moved it there) and again as `check
+     default`'s trailing dependency (and a `ci gate` step). The gate runner
+     starts each gate as its own `just` process, so just's once-per-invocation
+     rule never applied. 163 s on the 2026-10-04 runner, plus ~4 000 lines of
+     repeated diff — 73 % of that run's tier log. Dropped from both, and
+     `check-lane-step-duplicates` (fast lane) refuses the shape; it fails on
+     the pre-fix files.
+   - `check-nextest-test-filters` ran `cargo nextest list --workspace` with
+     **no profile**, so it compiled every workspace test binary in `test`,
+     and `test-all` then compiled the same set again in `nros-relwithdebinfo`.
+     Measured cold in the CI image on 4 pinned cores: 144 s and 5.5 G for the
+     list build nothing else used. It now asks the run's own helper
+     (`nros_cargo_nextest_profile_args`, the profile half of
+     `nros_cargo_nextest_args`), so the list builds what the run then reuses.
+3. *A latent dispatch failure.* `check::fast`'s `submodule-pins` fails without
+   `origin/main` ("baseline does not resolve, in CI"), and this job never
+   fetched it: it worked only because a scheduled run checks out `main`. A
+   `workflow_dispatch` on any other ref — the use the `on:` comment names —
+   died eight minutes into the tier (reproduced in the CI image). The job now
+   fetches the baseline the way `gate.yml` does.
+4. *The ceiling, re-priced from a complete run* — 150 → **210**; see below.
+
+### Where the time goes (minutes)
+
+| step | run 37176625915, 2026-10-04 (main, before) | run 37257988244, 2026-10-05 (this branch) |
+| --- | --- | --- |
+| setup (container, CLI, `just setup native`) | ~6 | ~5 |
+| Build rust core fixtures | 13.3 | 8.2 |
+| Build workspace fixtures | 52.8 | 31.4 |
+| disk report + reclaim | 2.1 | 2.0 |
+| `just ci tier1` | **75.5 → cancelled by the ceiling** | **49.1 → failure (a verdict)** |
+| &nbsp;&nbsp;check fast | 13.1 | 7.1 |
+| &nbsp;&nbsp;check build | 49.0 | 31.3 |
+| &nbsp;&nbsp;api-parity, 2nd run | ~2.7 | — (cut) |
+| &nbsp;&nbsp;rust-rtos-link-check | n/a (no timing) | 2.6 |
+| &nbsp;&nbsp;test-all | killed in its main compile | 8.0 |
+| **job** | **150, cancelled** | **96.5, failure** |
+
+Read it honestly: **most of the difference is the runner, not the change.**
+Steps this PR does not touch moved by the same factor — workspace fixtures
+52.8 → 31.4, rust core 13.3 → 8.2, check build 49.0 → 31.3 — so GitHub's hosted
+`ubuntu-22.04` runners differ by ~1.6-1.8x step for step. The cuts above are a
+few minutes of runner time and ~5.5 G of disk a run, not the 54 minutes the
+table shows. What the table does establish is the shape: **the tier is 49
+minutes on a fast runner, and two thirds of it is `just check`** (38.5 of
+49.1); `test-all` itself is 8.
+
+Priced on the slow runner: ~82 min to the tier + 49.1 × 1.7 ≈ 84 in it ≈
+**165 min**, which is why 150 fired on 2026-10-04. `timeout-minutes: 210` is
+that plus ~25 %; it still bounds 1492's wedge at 3 h 30 m rather than GitHub's
+six hours.
+
+Local reproduction (the CI image `nros-ci-local:humble`, `--cpuset-cpus` 4
+cores, 16 G, on a shared 24-core host — faster than the runner and noisily
+loaded): rust core 7.6, workspace 28.8 (of which ~10.5 is the cold `_codegen`
+pre-pass and 18.2 the 73 rows, slowest `workspace-rust-native` 96 s), check
+default 27.5, rust-rtos-link-check 3.1, test-all 7.0 — same failure counts.
+
+### What was looked at and NOT cut, with the reason
+
+- **The fixture builds do not over-build.** All 73 Linux workspace rows are
+  tier-1 coordinates (the 2026-10-01 section), and every row has a
+  `matrix::CELLS` cell. The opposite is true: the job builds a SUBSET —
+  **196 of `test-all`'s 211 real failures are "Test fixture binary MISSING for
+  an in-lane coordinate"**, identical on the runner and locally. Building the
+  full lane (`just build-test-fixtures lane=tier1`) on top of the two steps
+  was measured locally at **+51 min and +41 G** (97 G → 138 G), which neither
+  the budget nor the 146 G disk holds today. That is issue 1684.
+- **`just check` in this job duplicates `gate.yml`'s nightly** (`just check
+  fast` + `just check build` on the same image, an hour earlier, same SHA on
+  2026-10-04). It is ~38-62 of the tier's minutes. It is not dropped here
+  because that copy dies on the disk (issue 1353; its `check build` was cut off
+  by `No space left on device` on 2026-10-04) while this one — with
+  `CARGO_PROFILE_DEV_DEBUG=line-tables-only` — completes: today this job is the
+  only place `check build` reaches a verdict. Once 1353 lets `gate.yml`
+  answer, this is the largest single cut available. PR #1672 (issue 1651)
+  prices the other shape, a second runner for `just check`.
+- **The cold `_codegen` in `build-workspace-fixtures`** (~10.5 min locally) is
+  the first `nros sync` of every workspace, metadata probe included; the
+  workspace rows need it and the tier's `rust-rtos-link-check` reuses it warm.
+  Moving it would move the cost, not remove it.
+
+### The verdict, and the reds in it
+
+`just ci tier1` → failure: 2657 tests, 2316 passed, 211 real failures. 196 are
+the missing fixtures above (+3 more "fixture not built": the POSIX zenoh
+staticlib / Phase 150.E fixtures that `build-test-fixtures` produces). The rest
+are named, not fixed here — they are PR #1671's filings: QoS not advertised on
+the wire, `workspace_features` cases 08/13/17 and `qos_override_e2e` (1687);
+`rmw_coordinate_truth::a_rows_entry_registers_its_nodes_at_runtime` (1690);
+`multihost_partition_bake` (1692, also 1644/1654); and the staleness-probe
+self-test that `NROS_SKIP_FIXTURE_CHECK` leaked into (fixed in #1671). The
+matrix aggregates (`entry_matrix`, `multihost`, `realtime_tiers`,
+`roundtrip_xprocess`, `sched_dims`) are red through their missing cells.
+
+### Acceptance
+
+This issue's acceptance was "the fraction of runs whose integration job records
+zero steps is small, and the lane answers about a named majority of the commits
+that trigger it". With B the job has one trigger a night and no superseding,
+so a zero-step cancellation cannot happen; with A a run reaches a verdict
+inside the ceiling (96.5 of 210 min on run 37257988244; ~165 projected on the
+slowest runner seen). **Resolved.** What the verdict SAYS — red, mostly on
+fixtures this job does not build — is issues 1684 and 1651, not this one.
