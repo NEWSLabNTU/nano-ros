@@ -1073,8 +1073,23 @@ pub(crate) fn census_freshness(path: &Path, ws: &Path) -> Freshness {
 /// The model is not going unchecked. It is verified on its own terms at every
 /// door by the phase-460 W1 gate, which `check` calls FIRST, before anything
 /// here is read. That is the right place for it, and it is not this one.
+///
+/// `capabilities` (issue 1680) IS a freshness input, and the argument above
+/// does not reach it: the bringup's `[system] features` (and the deprecated
+/// typed blocks) are a BUILD input of the census binary, not a statement about
+/// the code. `param_services` / `lifecycle` register their service families
+/// through the RMW, the recorder records them and `census_callback_slots`
+/// counts them, so a census taken under one axis set does not describe an
+/// image built under another -- measured on `examples/workspaces/cpp`, where a
+/// census taken before `features = ["param_services"]` read FRESH afterwards
+/// because nothing had rebuilt the binary its `binary` digest names. The
+/// digest is the axis list alone, so the waivers and `[census]` policy that
+/// live in the same file stay outside it.
 fn is_freshness_input(role: &str) -> bool {
-    matches!(role, "binary" | "source_tree" | "entry_tu" | "build_file")
+    matches!(
+        role,
+        "binary" | "source_tree" | "entry_tu" | "build_file" | "capabilities"
+    )
 }
 
 /// The command that makes a missing or stale census fresh, as one line a
@@ -1557,6 +1572,22 @@ fn collect_inputs(ws: &Path, binary: &Path, model: Option<&Path>) -> Result<Vec<
         path: rel(model_path),
         digest: file_digest(model_path)?,
     });
+
+    // Issue 1680 -- the bringup's capability axes, which decide what the
+    // census binary was BUILT with (and so whether it registers the parameter
+    // and lifecycle service families the recorder counts). Only the axes, never
+    // the file: see `metadata_refresh::capabilities_digest`.
+    if let Some(bringup) = crate::model_gate::infer_bringup_dir(model_path) {
+        let system_toml = bringup.join(nros_orchestration_ir::leaf_system::SYSTEM_TOML);
+        if system_toml.is_file() {
+            inputs.push(Input {
+                role: "capabilities",
+                path: rel(&system_toml),
+                digest: crate::orchestration::metadata_refresh::capabilities_digest(&system_toml)
+                    .map_err(|e| eyre::eyre!("{e}"))?,
+            });
+        }
+    }
 
     let raw = std::fs::read_to_string(model_path)
         .wrap_err_with(|| format!("cannot read `{}`", model_path.display()))?;
