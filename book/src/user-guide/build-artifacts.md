@@ -35,7 +35,7 @@ workspace crosses languages:
 | Rust single package, any non-Zephyr board (ESP32 included — see below) | `cargo` | `<leaf>/build/<image-id>/target/[<triple>/]<profile>/<bin>` |
 | Rust-only workspace, the same boards | `cargo` | `<ws>/build/<coordinate>/<image>_entry/target/[<triple>/]<profile>/<image>_entry` |
 | any workspace containing C or C++ | `cmake` | `<ws>/build/<coordinate>/cmake/<image>_entry` |
-| a `zephyr` board | `west` | `<ws>/build/zephyr/zephyr.{elf,bin,exe}` |
+| a `zephyr` board | `west` | `<ws>/build/<coordinate>/<bringup>__<image>_west/zephyr/zephyr.{elf,bin,exe}` |
 | an `esp32` board, image crossing languages | `idf.py` | ESP-IDF's own `build/` in the project directory — an OUT-OF-TREE project; nano-ros ships no ESP-IDF component |
 
 The **coordinate** is the platform and the RMW — `posix-zenoh`,
@@ -143,14 +143,17 @@ linked`.
 ## Zephyr (west)
 
 `nros build` resolves your application and its overlays and runs `west build`
-from the workspace root, passing no `-d`, so west's default build directory
-applies. Zephyr writes its image under `zephyr/` inside it:
+from the workspace root with each image's OWN build directory,
+`<ws>/build/<coordinate>/<bringup>__<image>_west` (issue 1669 — west's default,
+`build/` under the cwd, put every image of a workspace in one tree and refused
+the second). Pass `-- -d <dir>` to choose another. Zephyr writes its image under
+`zephyr/` inside it; for `demo_bringup:zephyr` on zenoh:
 
 ```text
-<ws>/build/zephyr/zephyr.elf      # always
-<ws>/build/zephyr/zephyr.exe      # native_sim — a host executable
-<ws>/build/zephyr/zephyr.bin      # cross targets — the raw image
-<ws>/build/zephyr/zephyr.map      # the link map
+<ws>/build/zephyr-zenoh/demo_bringup__zephyr_west/zephyr/zephyr.elf   # always
+<ws>/build/zephyr-zenoh/demo_bringup__zephyr_west/zephyr/zephyr.exe   # native_sim — a host executable
+<ws>/build/zephyr-zenoh/demo_bringup__zephyr_west/zephyr/zephyr.bin   # cross targets — the raw image
+<ws>/build/zephyr-zenoh/demo_bringup__zephyr_west/zephyr/zephyr.map   # the link map
 ```
 
 Which of `.exe` and `.bin` appears is Zephyr's choice, not nano-ros's: a

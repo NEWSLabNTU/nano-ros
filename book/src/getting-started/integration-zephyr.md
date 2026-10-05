@@ -391,8 +391,8 @@ nros build demo_bringup:zephyr
 #    keeps running. Listens on tcp/127.0.0.1:7447.
 ros2 run rmw_zenoh_cpp rmw_zenohd
 
-# 4. run the image.
-./build/zephyr/zephyr.exe
+# 4. run the image (its own build dir: build/<coordinate>/<bringup>__<image>_west).
+./build/zephyr-zenoh/demo_bringup__zephyr_west/zephyr/zephyr.exe
 ```
 
 ```text

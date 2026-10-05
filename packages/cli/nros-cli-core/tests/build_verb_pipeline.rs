@@ -151,6 +151,43 @@ fn a_zephyr_image_resolves_to_west_and_needs_no_generated_root() {
     );
 }
 
+/// Issue 1669 — every west image gets its OWN build dir,
+/// `build/<coordinate>/<bringup>__<image>_west`, in west's first argument zone.
+/// West's default is `build/` under the cwd, which is the workspace root here:
+/// the first Zephyr image configured into nros's own `build/` and the second
+/// image of the workspace was refused. A caller's `-- -d <dir>` (the fixture
+/// lanes pass one) still wins, and then no second `-d` is added.
+#[test]
+fn a_west_image_builds_in_its_own_dir_unless_the_caller_names_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let plans = plan_builds(&args(tmp.path(), &["zephyr"])).expect("resolves");
+    let hand = plans[0].handoff.as_ref().expect("handoff");
+    let line = hand.display();
+    let want = tmp
+        .path()
+        .join("build/zephyr-zenoh/demo_bringup__zephyr_west");
+    assert!(
+        line.contains(&format!("-d {} ", want.display())),
+        "the image's own build dir, before the application: {line}"
+    );
+    assert!(
+        !line.contains(&format!("-d {} ", tmp.path().join("build").display())),
+        "never the workspace's own build/: {line}"
+    );
+
+    let mut a = args(tmp.path(), &["zephyr"]);
+    a.native_args = vec!["-d".into(), "/elsewhere/bld".into()];
+    let plans = plan_builds(&a).expect("resolves");
+    let line = plans[0].handoff.as_ref().expect("handoff").display();
+    assert!(line.contains("-d /elsewhere/bld"), "{line}");
+    assert_eq!(
+        line.matches(" -d ").count(),
+        1,
+        "the caller's -d wins and is the only one: {line}"
+    );
+}
+
 /// Issue 1519 — the image authors the NANO-ROS id (`zephyr`, above) and `-b`
 /// is the descriptor's `[board.zephyr] west_board`. Authoring that framework
 /// string instead used to work only because the descriptor also listed it as
