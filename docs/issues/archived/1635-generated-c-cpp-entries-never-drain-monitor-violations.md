@@ -58,7 +58,7 @@ hook in the board runner that the Rust side already links.
 
 Fixed 2026-10-03 on `fix/1635-drain-monitor-violations`, for the C and C++
 roads. The Rust road has a larger gap underneath this one and is filed as
-[issue 1676](../1676-rust-entry-never-installs-contract-monitors.md).
+[issue 1676](1676-rust-entry-never-installs-contract-monitors.md).
 
 **Where the drain lives.** Not in the templates: the spin loop belongs to each
 board's runner (native, FreeRTOS, Zephyr, ThreadX, NuttX), so an entry-side
