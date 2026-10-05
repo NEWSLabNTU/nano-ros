@@ -425,6 +425,43 @@ macro_rules! node_param_prologue {
     }};
 }
 
+/// The name a census hook records a declaration under, or `None` when nothing
+/// is recording.
+///
+/// Issue 1679 -- every `nros_cpp_node_declare_param_*` calls
+/// `census_hooks::on_param_declare` BEFORE its `param-store` cfg split, so a
+/// C++ image whose bringup does not declare `param_services` (and so has no
+/// store: every declare answers `UNSUPPORTED`) still records the declarations
+/// its code makes. The census describes the code, not the build's feature set
+/// -- the rule `nros::node_runtime` already states for a Rust node. Before
+/// this the call sat inside the store arm, and such an image's census listed
+/// no parameters at all.
+///
+/// Without `metadata-mode` this answers `None` and the hook calls are dead
+/// code, so a firmware build reads neither the name nor the value.
+///
+/// # Safety
+/// `name` must be null or a valid null-terminated string.
+#[inline]
+unsafe fn census_name<'a>(
+    node: *const crate::nros_cpp_node_t,
+    name: *const c_char,
+) -> Option<&'a str> {
+    #[cfg(feature = "metadata-mode")]
+    {
+        // A null node is refused by every arm below; it is not a declaration.
+        if node.is_null() {
+            return None;
+        }
+        unsafe { crate::cstr_to_str(name) }
+    }
+    #[cfg(not(feature = "metadata-mode"))]
+    {
+        let _ = (node, name);
+        None
+    }
+}
+
 /// Declare a `bool` parameter on this node, in the executor's store.
 ///
 /// # Safety
@@ -436,14 +473,14 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_bool(
     name: *const c_char,
     value: bool,
 ) -> nros_cpp_ret_t {
+    // issue 1679 -- the census hook, BEFORE the store's cfg split: a
+    // declaration is recorded whatever this build compiled the store for.
+    if let Some(n) = unsafe { census_name(node, name) } {
+        nros::census_hooks::on_param_declare(n, &nros::ParameterValue::from_bool(value));
+    }
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
-        // phase-463 W1 -- the census hook. Unconditional call, `#[cfg]` body:
-        // a no-op unless `metadata-mode` is on. Sits BEFORE the store so a
-        // declaration the code makes is recorded whatever the store answers
-        // (an adopted launch seed is still a declaration).
-        nros::census_hooks::on_param_declare(name, &ParameterValue::from_bool(value));
         declare_on_node(ctx, id, name, ParameterValue::from_bool(value))
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
@@ -464,14 +501,14 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_integer(
     name: *const c_char,
     value: i64,
 ) -> nros_cpp_ret_t {
+    // issue 1679 -- the census hook, BEFORE the store's cfg split: a
+    // declaration is recorded whatever this build compiled the store for.
+    if let Some(n) = unsafe { census_name(node, name) } {
+        nros::census_hooks::on_param_declare(n, &nros::ParameterValue::from_integer(value));
+    }
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
-        // phase-463 W1 -- the census hook. Unconditional call, `#[cfg]` body:
-        // a no-op unless `metadata-mode` is on. Sits BEFORE the store so a
-        // declaration the code makes is recorded whatever the store answers
-        // (an adopted launch seed is still a declaration).
-        nros::census_hooks::on_param_declare(name, &ParameterValue::from_integer(value));
         declare_on_node(ctx, id, name, ParameterValue::from_integer(value))
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
@@ -492,14 +529,14 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_double(
     name: *const c_char,
     value: f64,
 ) -> nros_cpp_ret_t {
+    // issue 1679 -- the census hook, BEFORE the store's cfg split: a
+    // declaration is recorded whatever this build compiled the store for.
+    if let Some(n) = unsafe { census_name(node, name) } {
+        nros::census_hooks::on_param_declare(n, &nros::ParameterValue::from_double(value));
+    }
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
-        // phase-463 W1 -- the census hook. Unconditional call, `#[cfg]` body:
-        // a no-op unless `metadata-mode` is on. Sits BEFORE the store so a
-        // declaration the code makes is recorded whatever the store answers
-        // (an adopted launch seed is still a declaration).
-        nros::census_hooks::on_param_declare(name, &ParameterValue::from_double(value));
         declare_on_node(ctx, id, name, ParameterValue::from_double(value))
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
@@ -522,6 +559,14 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_string(
     name: *const c_char,
     value: *const c_char,
 ) -> nros_cpp_ret_t {
+    // issue 1679 -- the census hook, BEFORE the store's cfg split: a
+    // declaration is recorded whatever this build compiled the store for.
+    if let Some(n) = unsafe { census_name(node, name) }
+        && let Some(v) =
+            unsafe { crate::cstr_to_str(value) }.and_then(nros::ParameterValue::from_string)
+    {
+        nros::census_hooks::on_param_declare(n, &v);
+    }
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
@@ -531,8 +576,6 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_string(
         let Some(pv) = ParameterValue::from_string(value) else {
             return NROS_CPP_RET_FULL;
         };
-        // phase-463 W1 -- the census hook; see `nros_cpp_node_declare_param_bool`.
-        nros::census_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
@@ -873,6 +916,14 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_double_array(
     data: *const f64,
     len: usize,
 ) -> nros_cpp_ret_t {
+    // issue 1679 -- the census hook, BEFORE the store's cfg split: a
+    // declaration is recorded whatever this build compiled the store for.
+    if let Some(n) = unsafe { census_name(node, name) }
+        && let Some(v) =
+            unsafe { slice_or_empty(data, len) }.and_then(nros::ParameterValue::from_double_array)
+    {
+        nros::census_hooks::on_param_declare(n, &v);
+    }
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
@@ -882,8 +933,6 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_double_array(
         let Some(pv) = ParameterValue::from_double_array(slice) else {
             return NROS_CPP_RET_FULL;
         };
-        // phase-463 W1 -- the census hook; see `nros_cpp_node_declare_param_bool`.
-        nros::census_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
@@ -905,6 +954,14 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_integer_array(
     data: *const i64,
     len: usize,
 ) -> nros_cpp_ret_t {
+    // issue 1679 -- the census hook, BEFORE the store's cfg split: a
+    // declaration is recorded whatever this build compiled the store for.
+    if let Some(n) = unsafe { census_name(node, name) }
+        && let Some(v) =
+            unsafe { slice_or_empty(data, len) }.and_then(nros::ParameterValue::from_integer_array)
+    {
+        nros::census_hooks::on_param_declare(n, &v);
+    }
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
@@ -914,8 +971,6 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_integer_array(
         let Some(pv) = ParameterValue::from_integer_array(slice) else {
             return NROS_CPP_RET_FULL;
         };
-        // phase-463 W1 -- the census hook; see `nros_cpp_node_declare_param_bool`.
-        nros::census_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
@@ -937,6 +992,14 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_bool_array(
     data: *const bool,
     len: usize,
 ) -> nros_cpp_ret_t {
+    // issue 1679 -- the census hook, BEFORE the store's cfg split: a
+    // declaration is recorded whatever this build compiled the store for.
+    if let Some(n) = unsafe { census_name(node, name) }
+        && let Some(v) =
+            unsafe { slice_or_empty(data, len) }.and_then(nros::ParameterValue::from_bool_array)
+    {
+        nros::census_hooks::on_param_declare(n, &v);
+    }
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (ctx, id, name) = node_param_prologue!(node, name);
@@ -946,8 +1009,6 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_bool_array(
         let Some(pv) = ParameterValue::from_bool_array(slice) else {
             return NROS_CPP_RET_FULL;
         };
-        // phase-463 W1 -- the census hook; see `nros_cpp_node_declare_param_bool`.
-        nros::census_hooks::on_param_declare(name, &pv);
         declare_on_node(ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
@@ -1180,7 +1241,10 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_bool_array(
 ///
 /// # Safety
 /// `data` must be valid for `len` elements when `len != 0`.
-#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
+///
+/// Issue 1679 -- ungated: the census hook ahead of every array declare's cfg
+/// split names it in every build (and, without `metadata-mode`, never reaches
+/// it).
 unsafe fn slice_or_empty<'a, T>(data: *const T, len: usize) -> Option<&'a [T]> {
     if len == 0 {
         return Some(&[]);

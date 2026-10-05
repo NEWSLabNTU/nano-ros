@@ -285,6 +285,10 @@ census-hooks-complete:
     # lane's: NROS_EXECUTOR_SIZE 90408 against 90448. Sharing the path made the
     # writer's divergence guard fire and fail whichever gate lost the race.
     gen="$(nros_scoped_target_dir check-census-hooks)"
+    # issue 1679 -- captured BEFORE the export below, which would compound the
+    # prefix (issue 1354). Its own dir for the reason above: a different feature
+    # set writes a different generated header.
+    gen_no_store="$(nros_scoped_target_dir check-census-hooks-no-store)"
     export CARGO_TARGET_DIR="$gen"
     python3 scripts/check-census-hooks-complete.py
     cargo test -p nros --lib --features std,metadata-mode --quiet -- metadata_mode
@@ -303,6 +307,14 @@ census-hooks-complete:
     cargo test -p nros-cpp --lib --no-default-features \
         --features std,rmw-cffi,metadata-mode,param-services --quiet \
         -- census --test-threads=1
+    # issue 1679 -- and WITHOUT the store: the census of a C++ image whose
+    # bringup declares no `param_services`. Every declare answers UNSUPPORTED
+    # there, and the census must still record each parameter the code declares.
+    # The hook used to sit inside the `param-store` cfg arm, so this
+    # configuration recorded none -- and no lane built it, so nothing said so.
+    CARGO_TARGET_DIR="$gen_no_store" cargo test -p nros-cpp --lib --no-default-features \
+        --features std,rmw-cffi,metadata-mode --quiet \
+        -- census_without_store --test-threads=1
 
 # phase-463 W4 (issue 1419) -- the census RUNS where it can still refuse, and
 # it goes stale BY CONTENT.
