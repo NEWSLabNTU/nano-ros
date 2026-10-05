@@ -441,6 +441,12 @@ impl<'a> NodeHandle<'a> {
             handle,
             arena: crate::executor::handles::TxArena::new(),
             event_regs: crate::executor::handles::empty_event_regs(),
+            // Issue 1676 — the typed path's rule, verbatim.
+            monitor: self
+                .monitors
+                .iter()
+                .find(|m| m.topic == topic_name)
+                .map(|m| m.cell),
         })
     }
 

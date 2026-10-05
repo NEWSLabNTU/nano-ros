@@ -1362,6 +1362,13 @@ pub mod monitor {
     };
 }
 
+// Issues 1635 / 1676 — the contract-monitor install and the `/diagnostics`
+// reporter, ONE implementation: `nros::main!` calls `install_contract_monitors`
+// on every executor it builds, and `nros-cpp`'s `nros_cpp_install_monitors`
+// arms the same `DiagSink`.
+#[cfg(feature = "rmw-cffi")]
+pub mod contract;
+
 // Re-export RMW-dependent types (require an active transport backend)
 #[cfg(feature = "rmw-cffi")]
 pub use nros_node::{

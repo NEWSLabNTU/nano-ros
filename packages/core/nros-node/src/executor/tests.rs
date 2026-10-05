@@ -11744,3 +11744,55 @@ fn an_installed_violation_sink_sees_every_violation_at_detection() {
     executor.drain_violations(|v| kept.push(v.rule));
     assert!(kept.contains(&"timer-overrun-runtime"), "{kept:?}");
 }
+
+/// Issue 1676 — the RAW publisher the Rust component road creates
+/// (`create_generic_publisher` -> `create_publisher_raw_on`) attaches its
+/// contracted endpoint's cell and bumps it on every publish, as the typed
+/// `EmbeddedPublisher` always did. Before this a contracted Rust talker
+/// publishing at 1 Hz was measured at 0.
+#[cfg(feature = "alloc")]
+#[test]
+fn a_raw_publisher_on_a_contracted_topic_bumps_its_cell() {
+    use super::monitor::{MonitorSpec, PubMonitorCell};
+    use core::sync::atomic::Ordering;
+    static CELL: PubMonitorCell = PubMonitorCell::new();
+    static TABLE: [MonitorSpec; 1] = [MonitorSpec {
+        topic: "/chatter",
+        fqn: "/talker/chatter",
+        min_rate_hz_milli: 1_000,
+        max_latency_ms: 0,
+        cell: &CELL,
+    }];
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_monitor_table(&TABLE);
+    let nid = executor.node_builder("talker").build().expect("node");
+    let contracted = executor
+        .node_mut(nid)
+        .create_generic_publisher("/chatter", "std_msgs::msg::dds_::Int32_", "")
+        .expect("contracted publisher");
+    let free = executor
+        .node_mut(nid)
+        .create_generic_publisher("/other", "std_msgs::msg::dds_::Int32_", "")
+        .expect("uncontracted publisher");
+
+    let before = CELL.count.load(Ordering::Relaxed);
+    contracted
+        .publish_raw(&[0, 1, 0, 0, 7, 0, 0, 0])
+        .expect("publish");
+    contracted
+        .publish_raw_with_attachment(&[0, 1, 0, 0, 7, 0, 0, 0], &[])
+        .expect("publish with attachment");
+    assert_eq!(
+        CELL.count.load(Ordering::Relaxed) - before,
+        2,
+        "every publish route bumps the contracted cell"
+    );
+    free.publish_raw(&[0, 1, 0, 0, 7, 0, 0, 0])
+        .expect("publish");
+    assert_eq!(
+        CELL.count.load(Ordering::Relaxed) - before,
+        2,
+        "a publisher on another topic carries no cell"
+    );
+}

@@ -774,6 +774,12 @@ pub struct EmbeddedRawPublisher<const TX_BUF: usize = DEFAULT_LOAN_BUF> {
     pub(crate) arena: TxArena<TX_BUF>,
     /// Phase 108 — registered event closures.
     pub(crate) event_regs: EventRegs,
+    /// Issue 1676 — the contracted endpoint's publish counter, as
+    /// [`EmbeddedPublisher::monitor`] carries it. The Rust component road
+    /// (`nros::main!`, `create_publisher_for_topic`) publishes through THIS
+    /// type, so without it a contracted Rust publisher was measured at 0 Hz
+    /// while publishing at 1 Hz. `None` for an uncontracted publisher.
+    pub(crate) monitor: Option<&'static crate::executor::monitor::PubMonitorCell>,
 }
 
 impl<const TX_BUF: usize> Drop for EmbeddedRawPublisher<TX_BUF> {
@@ -867,6 +873,18 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
             handle,
             arena: TxArena::new(),
             event_regs: empty_event_regs(),
+            monitor: None,
+        }
+    }
+
+    /// Issue 1676 — one relaxed bump per publish on a contracted endpoint;
+    /// a predictable no-op otherwise. Every publish route below calls it,
+    /// the loans' commits included.
+    #[inline]
+    fn bump_monitor(&self) {
+        if let Some(cell) = self.monitor {
+            cell.count
+                .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         }
     }
 
@@ -886,6 +904,7 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
     /// - **uORB**: raw POD struct bytes (no header). Length must equal
     ///   `size_of::<T::Msg>()` for the registered topic.
     pub fn publish_raw(&self, data: &[u8]) -> Result<(), NodeError> {
+        self.bump_monitor();
         self.handle
             .publish_raw(data)
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
@@ -908,6 +927,7 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
         data: &[u8],
         attachment: &[u8],
     ) -> Result<(), NodeError> {
+        self.bump_monitor();
         self.handle
             .publish_raw_with_attachment(data, attachment)
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
@@ -1185,6 +1205,7 @@ impl<'a, const TX_BUF: usize> PublishLoan<'a, TX_BUF> {
     /// then release the arena slot. Returns the backend's publish error
     /// if any (slot is released regardless).
     pub fn commit(mut self) -> Result<(), LoanError> {
+        self.publisher.bump_monitor();
         let res = self
             .publisher
             .handle
@@ -1230,6 +1251,7 @@ impl<'a, const TX_BUF: usize> PublishLoan<'a, TX_BUF> {
             .take()
             .expect("PublishLoan slot already consumed");
         self.committed = true;
+        self.publisher.bump_monitor();
         self.publisher
             .handle
             .commit_slot(slot)
