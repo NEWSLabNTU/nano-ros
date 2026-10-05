@@ -300,12 +300,12 @@ fn logging_smoke_zephyr_native_sim_emits_every_severity() {
         if let Ok(n) = stdout.read(&mut buf)
             && n > 0
         {
-            output.push_str(&String::from_utf8_lossy(&buf[..n]));
+            nros_tests::capture::append(&mut output, &buf[..n]);
         }
         if let Ok(n) = stderr.read(&mut buf)
             && n > 0
         {
-            output.push_str(&String::from_utf8_lossy(&buf[..n]));
+            nros_tests::capture::append(&mut output, &buf[..n]);
         }
         std::thread::sleep(Duration::from_millis(20));
     }

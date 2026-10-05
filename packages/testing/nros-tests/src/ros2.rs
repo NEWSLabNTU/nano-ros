@@ -616,7 +616,7 @@ NROS_PYEOF"
                         );
                     }
                     Ok(n) => {
-                        output.push_str(&String::from_utf8_lossy(&buffer[..n]));
+                        crate::capture::append(&mut output, &buffer[..n]);
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         Self::wait_for_data(
@@ -815,7 +815,7 @@ fn collect_child_inner(
                     fd,
                     timeout.saturating_sub(start.elapsed()),
                 ),
-                Ok(n) => output.push_str(&String::from_utf8_lossy(&buffer[..n])),
+                Ok(n) => crate::capture::append(&mut output, &buffer[..n]),
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => wait_child_data(
                     #[cfg(unix)]
                     fd,
@@ -2068,7 +2068,7 @@ rclpy.spin(node)
                         );
                     }
                     Ok(n) => {
-                        output.push_str(&String::from_utf8_lossy(&buffer[..n]));
+                        crate::capture::append(&mut output, &buffer[..n]);
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         Self::wait_for_data(

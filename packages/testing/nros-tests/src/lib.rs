@@ -47,6 +47,7 @@ use nros_platform_cffi as _;
 pub mod fixtures;
 // RFC-0061 / phase-318 W3 — CI lane selection computed from `matrix`.
 pub mod buckets;
+pub mod capture;
 pub mod ci_lane;
 pub mod interop;
 pub mod lane_scope;
@@ -697,7 +698,7 @@ pub fn collect_output(mut child: Child, timeout: Duration) -> TestResult<String>
             match stdout.read(&mut buffer) {
                 Ok(0) => break, // EOF
                 Ok(n) => {
-                    output.push_str(&String::from_utf8_lossy(&buffer[..n]));
+                    crate::capture::append(&mut output, &buffer[..n]);
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     let remaining = timeout.saturating_sub(start.elapsed());

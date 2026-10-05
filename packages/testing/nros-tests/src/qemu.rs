@@ -103,7 +103,7 @@ fn drain_into<R: Read>(src: &mut R, buffer: &mut [u8], dst: &mut String) -> bool
     match src.read(buffer) {
         Ok(0) => false,
         Ok(n) => {
-            dst.push_str(&String::from_utf8_lossy(&buffer[..n]));
+            crate::capture::append(dst, &buffer[..n]);
             true
         }
         Err(_) => false,

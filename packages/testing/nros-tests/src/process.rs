@@ -699,7 +699,7 @@ impl ManagedProcess {
                         poll_or_sleep(fd, timeout.saturating_sub(start.elapsed()));
                     }
                     Ok(n) => {
-                        output.push_str(&String::from_utf8_lossy(&buffer[..n]));
+                        crate::capture::append(&mut output, &buffer[..n]);
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         poll_or_sleep(fd, timeout.saturating_sub(start.elapsed()));
@@ -844,14 +844,14 @@ impl ManagedProcess {
                 && let Ok(n) = out.read(&mut buf)
                 && n > 0
             {
-                output.push_str(&String::from_utf8_lossy(&buf[..n]));
+                crate::capture::append(&mut output, &buf[..n]);
                 got_data = true;
             }
             if let Some(ref mut err) = stderr
                 && let Ok(n) = err.read(&mut buf)
                 && n > 0
             {
-                output.push_str(&String::from_utf8_lossy(&buf[..n]));
+                crate::capture::append(&mut output, &buf[..n]);
                 got_data = true;
             }
 
@@ -1073,14 +1073,14 @@ impl ManagedProcess {
                 && let Ok(n) = out.read(&mut buf)
                 && n > 0
             {
-                output.push_str(&String::from_utf8_lossy(&buf[..n]));
+                crate::capture::append(&mut output, &buf[..n]);
                 got_data = true;
             }
             if let Some(ref mut err) = stderr
                 && let Ok(n) = err.read(&mut buf)
                 && n > 0
             {
-                output.push_str(&String::from_utf8_lossy(&buf[..n]));
+                crate::capture::append(&mut output, &buf[..n]);
                 got_data = true;
             }
 
@@ -1185,7 +1185,7 @@ impl ManagedProcess {
                         match out.read(&mut stdout_buf) {
                             Ok(0) => {}
                             Ok(n) => {
-                                output.push_str(&String::from_utf8_lossy(&stdout_buf[..n]));
+                                crate::capture::append(&mut output, &stdout_buf[..n]);
                             }
                             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                             Err(_) => {}
@@ -1196,7 +1196,7 @@ impl ManagedProcess {
                         match err.read(&mut stderr_buf) {
                             Ok(0) => {}
                             Ok(n) => {
-                                output.push_str(&String::from_utf8_lossy(&stderr_buf[..n]));
+                                crate::capture::append(&mut output, &stderr_buf[..n]);
                             }
                             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                             Err(_) => {}
@@ -1732,6 +1732,31 @@ mod tests {
         assert!(
             r.is_err(),
             "a process that exited without printing the pattern did not match it"
+        );
+    }
+
+    /// Issue 1697 — a child that writes without limit, read by a real reader:
+    /// the capture stays bounded, keeps the child's FIRST line, and says it was
+    /// truncated. `yes` writes far past the cap in the few seconds allowed.
+    #[test]
+    fn a_flooding_child_leaves_the_capture_bounded() {
+        let mut cmd = std::process::Command::new("sh");
+        cmd.arg("-c")
+            .arg("printf 'first error here\\n'; exec yes os_sockWaitsetWait");
+        let mut p = ManagedProcess::spawn_command(cmd, "1697-flood").expect("spawn sh");
+        let out = p
+            .wait_for_output(Duration::from_secs(4))
+            .expect("drained until the timeout");
+        p.kill();
+        assert!(
+            out.len() <= crate::capture::CAP_BYTES + crate::capture::SLACK_BYTES,
+            "capture reached {} B",
+            out.len()
+        );
+        assert!(out.starts_with("first error here\n"), "the head is kept");
+        assert!(
+            crate::capture::dropped_bytes(&out) > 0,
+            "precondition: the child wrote past the cap (raise the timeout if not)"
         );
     }
 
