@@ -281,6 +281,17 @@ manifest_unnarrowed() {
 profile_dir="$(nros_cargo_target_profile_dir)"
 mapfile -t cargo_profile_args < <(nros_cargo_profile_args)
 
+# Issue 1671 — one row through `nros_fixture_row`, so a lane that sets
+# NROS_FIXTURE_FAILED_ROWS goes on to the next workspace row past a failed one.
+# shellcheck source=scripts/build/fixture-row-ledger.sh
+source "$repo_root/scripts/build/fixture-row-ledger.sh"
+# The ledger name of a workspace row: its manifest id, language and directory.
+nros_ws_row() {
+    local record="$1" id lang dir
+    IFS=$'\x1f' read -r id lang dir _ <<< "$record"
+    nros_fixture_row "workspace-fixtures-build $platform $lang: $id ($dir)" build_workspace "$record"
+}
+
 build_workspace() {
     local record="$1"
     local id lang dir bringup entry build_subdir target_dir codegen_out defs envstr cargo_extra board conf_files image
@@ -657,7 +668,7 @@ build_workspace() {
 if [ -n "${NROS_WS_RECORDS_FILE:-}" ]; then
     while IFS= read -r record; do
         [ -n "$record" ] || continue
-        build_workspace "$record"
+        nros_ws_row "$record"
     done < "$NROS_WS_RECORDS_FILE"
     exit 0
 fi
@@ -746,7 +757,7 @@ if [ "$use_pool" != "1" ]; then
     # tools already share the outer token pool; without pinned make 4.4 the
     # exported CMAKE_BUILD_PARALLEL_LEVEL gives each build its width.
     for record in "${live_records[@]}"; do
-        build_workspace "$record"
+        nros_ws_row "$record"
     done
     exit 0
 fi
