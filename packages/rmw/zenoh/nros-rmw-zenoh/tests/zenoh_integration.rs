@@ -236,10 +236,21 @@ fn test_pubsub_loopback() {
 /// succeeds, exactly as two separate processes do (verified 11/11 with the
 /// stock talker/listener).
 ///
-/// Requires the shim built with `ZPICO_MAX_SESSIONS >= 2`. When it is 1 (the
-/// default), the second open returns `Err` (pool exhausted) and the test skips
-/// rather than failing — rebuild with `ZPICO_MAX_SESSIONS=2` to exercise it.
+/// Requires the shim built with `ZPICO_MAX_SESSIONS >= 2`, which is a BUILD
+/// input: `just test-zpico-multisession` builds it that way, every other lane
+/// builds the shipped default of 1. Issue 1704 — so the requirement is a
+/// compile-time `ignore`, not a runtime `skip!`. A `skip!` panic is a FAILURE
+/// in nextest's own summary, and in a single-session build the test could do
+/// nothing but skip, so `just ci gate` and the merge-queue `test-unit` printed
+/// `1 failed` on EVERY run — a lane whose one red is permanent cannot show a
+/// second one. Ignored, it is a native skip there; in the multi-session lane
+/// it is selected and must pass, and a pool that silently stayed at 1 selects
+/// no test, which nextest refuses (`no tests to run`).
 #[test]
+#[cfg_attr(
+    not(zpico_multi_session),
+    ignore = "needs a shim built with ZPICO_MAX_SESSIONS>=2 — `just test-zpico-multisession` (issue 1704)"
+)]
 fn two_sessions_deliver_cross_session_through_router() {
     let _router = router();
     let router_locator = _router.locator();
@@ -255,18 +266,16 @@ fn two_sessions_deliver_cross_session_through_router() {
     // Session A — opened first, owns the subscriber.
     let mut session_a = ZenohTransport::open(&config).expect("first session should open");
 
-    // Session B — opened SECOND. Under ZPICO_MAX_SESSIONS=1 this is refused
-    // (the 0347 contract); skip rather than fail so the default single-session
-    // build stays green.
-    let mut session_b = match ZenohTransport::open(&config) {
-        Ok(s) => s,
-        Err(_) => {
-            nros_tests::skip!(
-                "second session refused — shim built with ZPICO_MAX_SESSIONS=1; \
-                 rebuild with ZPICO_MAX_SESSIONS=2 to exercise multi-session"
-            );
-        }
-    };
+    // Session B — opened SECOND. The test is un-ignored only in a build whose
+    // pool holds two sessions (`zpico_multi_session`), so a refusal here is the
+    // defect this test exists to catch, not a precondition (issue 1704).
+    let mut session_b = ZenohTransport::open(&config).unwrap_or_else(|e| {
+        panic!(
+            "second session refused ({e:?}) in a build compiled with \
+             ZPICO_MAX_SESSIONS={} — the pool should hold two",
+            nros_rmw_zenoh::zpico::ZPICO_MAX_SESSIONS
+        )
+    });
 
     let topic = TopicInfo::new("test/cross_session", "Int32", "hash348");
 
