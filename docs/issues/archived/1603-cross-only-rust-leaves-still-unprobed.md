@@ -250,7 +250,7 @@ talker -> listener 5/5 (`I heard: [Hello World: N]`); service client gets
 and nothing on the west road (`rust_cargo_application()` + the module's Kconfig
 knob resolver) reads it -- the listener's `.bss` is 857,144 bytes before and
 after. Filed as
-[issue 1662](../1662-zephyr-standalone-rust-leaf-reads-no-probe-sidecar.md).
+[issue 1662](1662-zephyr-standalone-rust-leaf-reads-no-probe-sidecar.md).
 
 ## Resolution
 

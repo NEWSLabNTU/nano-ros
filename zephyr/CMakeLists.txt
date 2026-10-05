@@ -182,6 +182,27 @@ set(NROS_ZEPHYR_DIR ${CMAKE_CURRENT_LIST_DIR})
 # resolution, both consumers (issue 0316).
 nros_resolve_knobs()
 
+# Issue 1662 -- the RUST lane's carrier, published where that lane can READ it.
+#
+# zephyr-lang-rust's `rust_cargo_application()` runs in the APPLICATION's
+# scope, and this file is a module added beneath it: the normal variable
+# `nros_resolve_board_facts()` sets above dies with this directory scope, so
+# the `${NROS_BOARD_FACTS_ENV}` the cargo-features patch injects there expanded
+# to NOTHING -- measured on `examples/zephyr/rust/listener`: "3 value(s)
+# delivered to cargo" at configure, zero `NROS_BOARD=` in its `build.ninja`.
+# A CACHE entry is what an unset name falls back to in every scope, so the
+# composition is published as one, rebuilt on every configure: the board facts,
+# plus -- for a standalone Rust leaf -- the descriptor `_nros_west_leaf_sizing()`
+# wrote, which every descriptor-first build script in the image's crates reads.
+# Same values the C lane carries (the facts on its command, the descriptor as a
+# resolved knob), so the two lanes size from one derivation.
+set(_nros_rust_lane_env ${NROS_BOARD_FACTS_ENV})
+if(NOT NROS_WEST_LEAF_DESCRIPTOR STREQUAL "" AND EXISTS "${NROS_WEST_LEAF_DESCRIPTOR}")
+    list(APPEND _nros_rust_lane_env "NROS_SIZING_DESCRIPTOR=${NROS_WEST_LEAF_DESCRIPTOR}")
+endif()
+set(NROS_BOARD_FACTS_ENV "${_nros_rust_lane_env}" CACHE INTERNAL
+    "issue 1662: the Zephyr Rust lane's cargo env (board facts + a leaf's descriptor)")
+
 # phase-400 W5.a — and resolve the cargo target dir on the same terms, for the
 # same reason: `nros_cargo_build()` writes the per-build config headers under it
 # and seven consumers include from it, so it must have ONE value per configure

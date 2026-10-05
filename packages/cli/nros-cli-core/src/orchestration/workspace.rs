@@ -602,7 +602,7 @@ impl ComponentDeclaration {
 /// own `package.xml`. Inside the root only, so a leaf's path deps into the
 /// nano-ros checkout (`../../../packages/...`) are never mistaken for its own
 /// packages; the root itself is excluded. Sorted, so discovery is stable.
-fn root_path_dep_packages(root: &Path) -> Vec<PathBuf> {
+pub(crate) fn root_path_dep_packages(root: &Path) -> Vec<PathBuf> {
     let Ok(body) = fs::read_to_string(root.join("Cargo.toml")) else {
         return Vec::new();
     };
