@@ -42,6 +42,16 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(cyclonedds, LOG_LEVEL_INF);
+// Issue 1674 — a build error, not a silent busy loop. Cyclone's receive thread
+// select()s over its socket waitset, and Zephyr's `zsock_select` refuses any set
+// larger than CONFIG_NET_SOCKETS_POLL_MAX with -1/ENOMEM before asking a single
+// socket. Cyclone retries at once, so an image under the floor delivers nothing
+// and floods its console. The waitset was MEASURED at four fds on native_sim with
+// multicast off and one participant; the module's Kconfig defaults the cap to 8
+// for Cyclone images, and this catches a board or prj.conf that lowers it.
+#if defined(CONFIG_NET_SOCKETS_POLL_MAX) && CONFIG_NET_SOCKETS_POLL_MAX < 4
+#error "CONFIG_NET_SOCKETS_POLL_MAX < 4: Cyclone needs 4 select() entries (issue 1674)"
+#endif
 #define NROS_CYC_TRACE(...) LOG_INF(__VA_ARGS__)
 #else
 #define NROS_CYC_TRACE(...) ((void)0)
