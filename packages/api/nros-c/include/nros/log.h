@@ -58,32 +58,25 @@ extern "C" {
  * **`UNSET` MEANS INHERIT, NOT "THE FLOOR"** (phase-467; it meant the floor
  * until then, and that was ledger row `c:log_severity_t`'s whole debt).
  * `nros_logger_set_level(logger, NROS_LOG_SEVERITY_UNSET)` takes away that
- * logger's own level, after which it filters on the PROCESS DEFAULT —
- * `nros_log_get_default_level()`, `NROS_LOG_SEVERITY_INFO` until
+ * logger's own level, after which it filters on its nearest ancestor's level
+ * (below), else the PROCESS DEFAULT — `nros_log_get_default_level()`,
+ * `NROS_LOG_SEVERITY_INFO` until
  * `nros_log_set_default_level()` moves it, which is the value and the starting
  * point `RCUTILS_DEFAULT_LOGGER_DEFAULT_LEVEL` has upstream. A logger you
  * never set a level on is already in that state.
  *
- * **ENVELOPE — one process default, no dotted ancestry, PERMANENTLY.** Upstream
- * resolves an unset logger by walking the ancestry its name spells with dots
- * (`x.y.z` → `x.y` → `x`) and only then falls to
- * `g_rcutils_logging_default_logger_level`. `nros_log` has no hierarchy at all
- * — `nros_log_get_logger` is exact string equality over a fixed slot table —
- * so that walk has exactly one step here and this is that step. A dotted name
- * is ACCEPTED and is simply a name: setting `nav`'s level does not move
- * `nav.costmap`'s, because `nav` here is a different logger, not an ancestor.
- *
- * The walk is not owed work, and phase-467 re-verdicted ledger row
- * `c:log_severity_t` to say so. Upstream keys a level by NAME —
- * `rcutils_logging_set_logger_level(const char *name, int)` writes an
- * allocator-backed severity map, which is how an ANCESTOR carries a level
- * without being a logger — while here a level lives inside the `Logger`
- * object, so an ancestor would have to be MATERIALISED into one of the fixed
- * slots to hold one. And the only thing that produces a dotted name upstream,
- * `Logger::get_child`, is absent here for the same no-allocator reason (its
- * own ledger rows carry it). An ancestry resolver would resolve a hierarchy
- * nothing can construct. (RFC-0089: the envelope is part of the API, not a
- * footnote.)
+ * **ENVELOPE — dotted ancestry resolves through loggers that exist.** As
+ * upstream, an unset logger takes the level of its nearest dotted ancestor
+ * (`x.y.z` → `x.y` → `x`) and only then the process default (RFC-0102 D2).
+ * Setting `nav`'s level moves `nav.costmap`'s too, unless `nav.costmap` has its
+ * own. The bound: upstream keys a level by NAME in an allocator-backed map, so
+ * an ancestor can carry a level without being a logger; here a level lives in
+ * a logger, so an ancestor carries one by EXISTING — and setting a level by
+ * name (`nros_log_get_logger("nav")` then `nros_logger_set_level`) creates it,
+ * which is the case that matters. The links are made when a logger is created,
+ * in either order, so the log path never parses a name. Names are capped at 48
+ * bytes and the runtime-logger arena is bounded; see `nros_logger_get_child`.
+ * (RFC-0089: the envelope is part of the API, not a footnote.)
  *
  * `UNSET` is only special where a LEVEL IS STORED. Passed as a record's
  * severity (`nros_log_emit`) or as a threshold question
@@ -341,6 +334,26 @@ size_t nros_logger_get_name(nros_logger_t logger, char* buf, size_t buf_len);
  * @return false for a NULL handle, true otherwise.
  */
 bool nros_logger_set_level(nros_logger_t logger, nros_log_severity_t severity);
+
+/**
+ * A logger that is a descendant of `logger` — `rclcpp::Logger::get_child`'s C
+ * half (RFC-0102). Named `<parent>.<suffix>`; the catch-all's
+ * (`nros_log_default_logger()`) children are top-level names (`suffix`).
+ *
+ * A child with no level of its own filters at its nearest ancestor's, so
+ * `nros_logger_set_level(parent, NROS_LOG_SEVERITY_DEBUG)` reaches it. The same
+ * name answers the same handle, `'static`, never freed.
+ *
+ * @return the child, or NULL — warned once per process — when the full name is
+ *         over 48 bytes or empty, or the runtime-logger arena is full. NULL,
+ *         not the parent: the substitute is the caller's choice, and handing
+ *         back the parent would make `nros_logger_set_level(child, ..)` move
+ *         the parent's threshold. `rclcpp::Logger::get_child` emits through the
+ *         parent and refuses `set_level` in that case.
+ *
+ * @param suffix  NUL-terminated UTF-8. Copied; need not outlive the call.
+ */
+nros_logger_t nros_logger_get_child(nros_logger_t logger, const char* suffix);
 
 /**
  * `logger`'s EFFECTIVE runtime severity threshold — its own level if it has

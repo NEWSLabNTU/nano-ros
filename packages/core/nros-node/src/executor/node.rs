@@ -208,7 +208,7 @@ impl<'a> NodeHandle<'a> {
     /// ```
     #[must_use]
     pub fn logger(&self) -> &'static nros_log::Logger {
-        nros_log::resolve_logger(self.name())
+        nros_log::resolve_node_logger(self.name())
     }
 
     /// Get the domain ID.

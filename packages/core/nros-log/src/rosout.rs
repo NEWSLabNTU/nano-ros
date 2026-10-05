@@ -68,7 +68,7 @@
 
 use core::cell::UnsafeCell;
 
-use portable_atomic::{AtomicBool, AtomicUsize, Ordering};
+use portable_atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 
 use crate::{LogSink, Record, Severity, buffer::format_buffer_capacity};
 
@@ -169,8 +169,80 @@ pub struct RosoutSink;
 
 impl LogSink for RosoutSink {
     fn log(&self, record: &Record<'_>) {
-        enqueue(record);
+        if admitted(record.logger_name) {
+            enqueue(record);
+        }
     }
+}
+
+/// Which loggers' records reach `/rosout` — RFC-0102 D4. Upstream differs by
+/// ROS release here and nowhere else in logging, so `nros-node` sets it from
+/// its `ros-*` edition when it enables the queue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum RosoutScope {
+    /// Every record. What this module did before RFC-0102, and still the
+    /// default for an image that uses `nros-log` without `nros-node`.
+    Everything = 0,
+    /// Records of NODE loggers only — Humble: `rcl_logging_rosout_output_handler`
+    /// publishes only through "a rosout publisher correlated with the logger
+    /// name", and only a node's logger has one, so a child or a free
+    /// `get_logger("x")` never reaches `/rosout`.
+    NodeLoggers = 1,
+    /// Node loggers and their descendants through the parent chain — Iron and
+    /// Jazzy, where `get_child` registers the child with
+    /// `rcl_logging_rosout_add_sublogger`. Free loggers still do not reach it.
+    /// Bound: upstream unregisters a child when its last copy is destroyed;
+    /// here a child stays published, because runtime loggers are never freed.
+    NodeLoggersAndDescendants = 2,
+}
+
+static SCOPE: AtomicU8 = AtomicU8::new(RosoutScope::Everything as u8);
+
+/// Set which loggers' records the queue admits (RFC-0102 D4).
+pub fn set_scope(scope: RosoutScope) {
+    SCOPE.store(scope as u8, Ordering::Relaxed);
+}
+
+/// The scope in force.
+#[must_use]
+pub fn scope() -> RosoutScope {
+    match SCOPE.load(Ordering::Relaxed) {
+        1 => RosoutScope::NodeLoggers,
+        2 => RosoutScope::NodeLoggersAndDescendants,
+        _ => RosoutScope::Everything,
+    }
+}
+
+/// Whether a record from the logger called `name` belongs on `/rosout` under
+/// [`scope`]. A record carries its logger's NAME, so this is one intern-table
+/// lookup — paid only here, by the one sink that needs it.
+fn admitted(name: &str) -> bool {
+    let scope = scope();
+    if scope == RosoutScope::Everything {
+        return true;
+    }
+    let Some(mut logger) = crate::find_published(name) else {
+        return false;
+    };
+    if logger.is_node_logger() {
+        return true;
+    }
+    if scope == RosoutScope::NodeLoggers {
+        return false;
+    }
+    let mut hops = 0;
+    while let Some(parent) = logger.parent() {
+        if parent.is_node_logger() {
+            return true;
+        }
+        logger = parent;
+        hops += 1;
+        if hops >= crate::MAX_LOGGERS {
+            break;
+        }
+    }
+    false
 }
 
 /// The one instance. `add_sink` takes `&'static dyn LogSink`, and a ZST has
@@ -387,6 +459,7 @@ pub fn reset_for_test() {
     let _ = drain(&mut |_| {});
     DROPPED.store(0, Ordering::Relaxed);
     SUPPRESSED.store(0, Ordering::Relaxed);
+    set_scope(RosoutScope::Everything);
 }
 
 #[cfg(test)]
@@ -431,6 +504,61 @@ mod tests {
             line: 7,
             timestamp_ns: 42,
         }
+    }
+
+    /// RFC-0102 D4 — which loggers reach `/rosout`, per ROS release. Each
+    /// scope against a node logger, its child, and a free logger.
+    #[test]
+    fn the_scope_follows_the_ros_release() {
+        let _guard = Serialised::acquire();
+        let node = crate::resolve_node_logger("rs_scope_node");
+        let child = node.create_child("planner").unwrap();
+        let _free = crate::get_or_create_logger("rs_scope_free").unwrap();
+        assert!(node.is_node_logger() && !child.is_node_logger());
+
+        let admitted_names = |scope: RosoutScope| {
+            set_scope(scope);
+            for name in [
+                "rs_scope_node",
+                "rs_scope_node.planner",
+                "rs_scope_free",
+                "rs_unknown",
+            ] {
+                RosoutSink.log(&record("m", name));
+            }
+            let mut got = [false; 4];
+            let _ = drain(&mut |r| match r.logger_name {
+                "rs_scope_node" => got[0] = true,
+                "rs_scope_node.planner" => got[1] = true,
+                "rs_scope_free" => got[2] = true,
+                _ => got[3] = true,
+            });
+            got
+        };
+        assert_eq!(
+            admitted_names(RosoutScope::Everything),
+            [true, true, true, true]
+        );
+        assert_eq!(
+            admitted_names(RosoutScope::NodeLoggers),
+            [true, false, false, false],
+            "Humble: node loggers only"
+        );
+        assert_eq!(
+            admitted_names(RosoutScope::NodeLoggersAndDescendants),
+            [true, true, false, false],
+            "Iron/Jazzy: node loggers and their children, never a free logger"
+        );
+    }
+
+    /// The catch-all is never marked as a node logger, so a node whose name
+    /// fell back to it cannot publish every unnamed logger.
+    #[test]
+    fn the_catch_all_is_never_a_node_logger() {
+        let bytes = [b'n'; crate::MAX_LOGGER_NAME_LEN + 1];
+        let fallback = crate::resolve_node_logger(core::str::from_utf8(&bytes).unwrap());
+        assert!(core::ptr::eq(fallback, &crate::DEFAULT_LOGGER));
+        assert!(!crate::DEFAULT_LOGGER.is_node_logger());
     }
 
     /// The whole point: a record raised goes in, and a pump gets it back in

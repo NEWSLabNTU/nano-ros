@@ -26,10 +26,8 @@
 use std::io::Write as _;
 
 use nros::prelude::*;
-use nros_log::{Logger, log_info, log_warn};
+use nros_log::{log_info, log_warn};
 use nros_rcl_interfaces::msg::Log;
-
-static PROBE: Logger = Logger::new("rosout_probe");
 
 fn env_usize(key: &str, default: usize) -> usize {
     std::env::var(key)
@@ -46,7 +44,6 @@ fn say(line: &str) {
 fn main() {
     env_logger::init();
     nros_board_linux::register_linked_rmw();
-    nros_log::register_logger(&PROBE);
     nros_log::init(nros_platform_cffi::log::default_sinks());
 
     let records = env_usize("ROSOUT_PROBE_RECORDS", 60);
@@ -62,12 +59,19 @@ fn main() {
     } else {
         nros::rosout::qos_bounded()
     };
-    let rosout = {
+    // RFC-0102 D4 — records come from the NODE's logger, as a real node's do.
+    // A free logger (this fixture used one, `rosout_probe`) is published by no
+    // ROS release: rcl publishes only through a publisher correlated with a
+    // node's logger, and the `/rosout` queue is now scoped to match.
+    let (rosout, probe) = {
         let mut node = executor
             .create_node("rosout_talker")
             .expect("Failed to create node");
-        node.create_publisher_with_qos::<Log>(nros::rosout::TOPIC, qos)
-            .expect("Failed to create the /rosout publisher")
+        let probe = node.logger();
+        let publisher = node
+            .create_publisher_with_qos::<Log>(nros::rosout::TOPIC, qos)
+            .expect("Failed to create the /rosout publisher");
+        (publisher, probe)
     };
 
     // AFTER the publisher: `enable` starts the queue filling, and a queue
@@ -81,7 +85,7 @@ fn main() {
 
     let mut total = 0usize;
     for i in 0..records {
-        log_info!(&PROBE, "nros rosout probe record {i}");
+        log_info!(probe, "nros rosout probe record {i}");
         // Every other record, not every tenth. The test's wait is a CONDITION
         // on the count of `record` lines, so it returns as soon as a handful
         // land; a WARN at `i % 10 == 9` was never inside that window and the
@@ -89,7 +93,7 @@ fn main() {
         // everything it was asked for. The cadence and the wait are one
         // decision.
         if i % 2 == 1 {
-            log_warn!(&PROBE, "nros rosout probe warning at {i}");
+            log_warn!(probe, "nros rosout probe warning at {i}");
         }
         let _ = executor.spin_once(core::time::Duration::from_millis(period_ms));
         match nros::rosout::pump(&rosout) {

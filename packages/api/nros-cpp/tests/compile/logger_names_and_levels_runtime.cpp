@@ -212,6 +212,45 @@ int main() {
           "a refused set_level must not have moved the CATCH-ALL's level — that redirect is "
           "the silent failure this refusal exists to prevent");
 
+    // --- 7. get_child (RFC-0102 / phase-479) --------------------------------
+    {
+        // Inheritance, measured at the sink: an unset child follows its parent.
+        rclcpp::Logger child = beta_log.get_child("planner");
+        check(std::strcmp(child.get_name(), "w4d_cpp_beta.planner") == 0, "child name");
+        check(static_cast<const void*>(child) != static_cast<const void*>(beta_log),
+              "a created child has its OWN handle");
+        check(beta_log.set_level(rclcpp::Logger::Level::Debug).ok(), "parent to DEBUG");
+        RCLCPP_DEBUG(child, "w4d_cpp_marker_child_debug");
+        check(records_from("w4d_cpp_beta.planner", "w4d_cpp_marker_child_debug") == 1,
+              "parent DEBUG must reach an UNSET child, under the CHILD's name (RFC-0102 D2)");
+        check(child.set_level(rclcpp::Logger::Level::Warn).ok(), "child takes its own level");
+        check(!child.is_enabled(rclcpp::Logger::Level::Info) &&
+                  beta_log.is_enabled(rclcpp::Logger::Level::Debug),
+              "a child's own level overrides its parent and leaves the parent alone");
+        check(static_cast<const void*>(beta_log.get_child("planner")) ==
+                  static_cast<const void*>(child),
+              "get_child is idempotent");
+
+        // The catch-all's children are top-level names.
+        rclcpp::Logger top = rclcpp::Logger("").get_child("w4d_cpp_top");
+        check(std::strcmp(top.get_name(), "w4d_cpp_top") == 0,
+              "the catch-all's child is a top-level name, not `nros.w4d_cpp_top`");
+
+        // RFC-0102 D3: a name over the limit emits through the PARENT and
+        // refuses set_level, so it cannot move the parent's threshold.
+        rclcpp::Logger overflow =
+            beta_log.get_child("this_suffix_is_long_enough_to_exceed_the_48_byte_cap");
+        check(static_cast<const void*>(overflow) == static_cast<const void*>(beta_log),
+              "an uncreatable child emits through its parent's handle");
+        check(!overflow.set_level(rclcpp::Logger::Level::Fatal).ok(),
+              "set_level on an uncreatable child must REFUSE");
+        check(beta_log.get_level() == rclcpp::Logger::Level::Debug,
+              "the refused write must not have moved the parent");
+        RCLCPP_INFO(overflow, "w4d_cpp_marker_overflow");
+        check(records_from("w4d_cpp_beta", "w4d_cpp_marker_overflow") == 1,
+              "an uncreatable child's records arrive under the PARENT's name");
+    }
+
     // Issue 1682 — the name is OWNED. Build a logger from a buffer, then
     // overwrite the buffer: a borrowed name (what this was) now reads the
     // scribble, which is the temporary-`std::string` case

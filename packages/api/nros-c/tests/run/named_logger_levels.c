@@ -215,6 +215,27 @@ int main(void) {
     CHECK(nros_logger_is_enabled(beta_log, NROS_LOG_SEVERITY_INFO),
           "is_enabled(INFO) must be true on a logger still at INFO");
 
+    /* --- 6. nros_logger_get_child (RFC-0102 / phase-479) ------------------ */
+    {
+        nros_logger_t child = nros_logger_get_child(beta_log, "costmap");
+        char cname[64];
+        CHECK(child != NULL && child != beta_log, "get_child must create a distinct logger");
+        (void)nros_logger_get_name(child, cname, sizeof cname);
+        CHECK(strcmp(cname, "w4d_beta.costmap") == 0, "child names \"%s\"", cname);
+        CHECK(nros_logger_set_level(beta_log, NROS_LOG_SEVERITY_DEBUG), "parent to DEBUG");
+        CHECK(nros_logger_get_level(child) == NROS_LOG_SEVERITY_DEBUG,
+              "an UNSET child reads its parent's level (RFC-0102 D2)");
+        CHECK(nros_logger_get_child(beta_log, "costmap") == child, "get_child is idempotent");
+        CHECK(nros_logger_get_child(beta_log,
+                                    "this_suffix_is_long_enough_to_exceed_the_48_byte_cap") ==
+                  NULL,
+              "an over-long child is NULL, never a substitute handle");
+        nros_logger_t top = nros_logger_get_child(nros_log_default_logger(), "w4d_c_top");
+        (void)nros_logger_get_name(top, cname, sizeof cname);
+        CHECK(strcmp(cname, "w4d_c_top") == 0, "the catch-all's child is top-level: \"%s\"",
+              cname);
+    }
+
     (void)rclc_executor_fini(&executor);
     (void)rclc_support_fini(&support);
 

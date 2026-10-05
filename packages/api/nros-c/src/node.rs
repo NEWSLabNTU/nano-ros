@@ -864,7 +864,7 @@ pub unsafe extern "C" fn nros_node_get_logger(
     // answered `DEFAULT_LOGGER` for any name nobody registered a `'static`
     // Logger under, so every node in an image emitted under `"nros"` and no
     // record said which node wrote it.
-    let logger: &'static nros_log::Logger = nros_log::resolve_logger(name);
+    let logger: &'static nros_log::Logger = nros_log::resolve_node_logger(name);
     (logger as *const nros_log::Logger).cast()
 }
 

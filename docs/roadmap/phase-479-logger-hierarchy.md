@@ -1,6 +1,8 @@
 # Phase 479 -- logger hierarchy: `get_child`, level inheritance, release-aware `/rosout`
 
-**Status (2026-10-05). PROPOSED -- nothing implemented.** Implements
+**Status (2026-10-05). IN PROGRESS -- W1-W4 landed; W5 in flight; W6 partly
+done (ledger rows, `<nros/log.h>`, `log.hpp` and the logging book page updated;
+the per-RTOS logging smoke fixtures still to extend).** Implements
 [RFC-0102](../design/0102-logger-hierarchy.md). The design, the upstream
 measurements and the three bounds (D3 overflow, D4 `/rosout`, D5 arena size) live
 there; this doc is the work breakdown and the acceptance list.

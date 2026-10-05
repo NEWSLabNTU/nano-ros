@@ -344,6 +344,51 @@ pub unsafe extern "C" fn nros_logger_get_name(
     name.len()
 }
 
+/// A logger that is a descendant of `logger` — `rclcpp::Logger::get_child`'s
+/// C half (RFC-0102 D1). Named `<parent>.<suffix>`, except that the
+/// catch-all's (`nros_log_default_logger()`) children are top-level names.
+///
+/// A child with no level of its own filters at its nearest ancestor's, so
+/// `nros_logger_set_level(parent, DEBUG)` reaches it. Idempotent: the same
+/// name answers the same handle, which is `'static` — never free it.
+///
+/// Returns NULL, and warns ONCE per process, when no child can be made: the
+/// full name is over `nros_log::MAX_LOGGER_NAME_LEN` bytes, empty, or the
+/// runtime-logger arena is full. NULL rather than a substitute, because the
+/// right substitute is the caller's: `rclcpp::Logger::get_child` emits through
+/// the parent and refuses `set_level` (RFC-0102 D3), and handing back the
+/// parent here would make a C caller's `nros_logger_set_level(child, ..)` move
+/// the parent's threshold silently.
+///
+/// # Safety
+/// `logger` is NULL or a handle from this module; `suffix` is NULL or a
+/// NUL-terminated UTF-8 string valid for this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_logger_get_child(
+    logger: *const c_void,
+    suffix: *const c_char,
+) -> *const c_void {
+    let (Some(parent), Some(suffix)) = (logger_ref(logger), borrowed_str(suffix)) else {
+        return core::ptr::null();
+    };
+    match parent.create_child(suffix) {
+        Ok(child) => (child as *const nros_log::Logger).cast(),
+        Err(why) => {
+            static REPORTED: AtomicBool = AtomicBool::new(false);
+            if !REPORTED.swap(true, Ordering::Relaxed) {
+                nros_log::log_warn!(
+                    &nros_log::DEFAULT_LOGGER,
+                    "get_child(\"{}\", \"{suffix}\"): {why}. Records go out under the \
+                     parent; set_level on that child is refused (RFC-0102 D3). Reported \
+                     once per process.",
+                    parent.name()
+                );
+            }
+            core::ptr::null()
+        }
+    }
+}
+
 /// Set this logger's runtime severity threshold. Records below it are dropped
 /// before any sink sees them.
 ///
@@ -385,7 +430,8 @@ pub unsafe extern "C" fn nros_logger_set_level(
 }
 
 /// This logger's EFFECTIVE runtime severity threshold — its own level if it
-/// has one, the process default if it does not.
+/// has one, else its nearest ancestor's (RFC-0102 D2), else the process
+/// default.
 ///
 /// `rcutils_logging_get_logger_effective_level`'s answer rather than
 /// `rcutils_logging_get_logger_level`'s, so it is never
