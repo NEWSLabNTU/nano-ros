@@ -147,6 +147,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         `# ^ the stock add_two_ints_server ros2_srv_e2e's B.2 sub-case calls` \
         `# (nros client -> stock server). Without it B.2 printed "SKIP" and` \
         `# the cell still passed, so that direction had never run in CI.` \
+        ros-humble-examples-rclcpp-minimal-action-server \
+        `# ^ the stock Fibonacci action server ros2_action_e2e's two n2r` \
+        `# cells drive (issue 1685): a separate package from the distro and` \
+        `# the RMW, so without it both cells were capability skips on every` \
+        `# host-tests run and check-skip-budget refused them as undeclared.` \
         ros-humble-rmw-zenoh-cpp \
         `# ^ the ROUTER (rmw_zenohd) and the stock zenoh RMW. We ship no` \
         `# router (RFC-0075): nros_zenohd_bin resolves rmw_zenohd under` \

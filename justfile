@@ -1881,6 +1881,28 @@ build-test-fixtures lane="all": _require-owned-provisioned-roots check::fast _re
     # in a job that builds no fixtures (issue 0871). Calling the recipe rather
     # than re-invoking the script keeps the two callers from drifting.
     just build-compile-check-fixtures
+    # Issue 1685 — the two host build-stage proofs `test-all` runs
+    # (`borrowed_e2e`, `staticlib_duplicate_symbols`). Their gates in
+    # `check::build` build them too, and in `just ci tier1` (all) the gates ran
+    # first in the same tree, so `test-all` inherited them by accident — never a
+    # contract, and gone once tier 1's gates and run split across two jobs
+    # (issue 1651). They belong to the linux platform, so any lane that builds
+    # the `native` module builds them here; the tests deselect themselves in a
+    # lane that selects no linux coordinate.
+    # shellcheck source=scripts/lib/grep-q.sh
+    source scripts/lib/grep-q.sh
+    lane="$(nros_lane_arg "{{lane}}")"
+    want_host_proofs=0
+    if [ "$lane" = "all" ]; then
+        want_host_proofs=1
+    else
+        lane_mods="$(nros_lane_modules "$lane")"
+        if nros_grep_q -x native <<<"$lane_mods"; then want_host_proofs=1; fi
+    fi
+    if [ "$want_host_proofs" = 1 ]; then
+        bash scripts/build/borrowed-e2e-fixture.sh
+        bash scripts/build/link-determinism-fixture.sh
+    fi
     # Drop a stamp so `_require-fixtures` (the test-all/test preflight) can
     # fast-fail with a build hint instead of letting the suite run and
     # surface dozens of "Binary not found" failures. The body only runs

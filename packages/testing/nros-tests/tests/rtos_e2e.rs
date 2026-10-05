@@ -608,6 +608,16 @@ fn require_cell_runnable(platform: Platform, lang: Lang, variant: Variant) {
             reason
         );
     }
+    // Issue 1685 — a lane holding no coordinate on this platform deselects
+    // BEFORE `require_e2e`'s host probes, which would otherwise report a
+    // missing emulator as a capability gap on a runner the lane never asked.
+    let id = match platform {
+        Platform::Freertos => nros_tests::matrix::PlatformId::FreertosMps2,
+        Platform::Nuttx => nros_tests::matrix::PlatformId::NuttxArm,
+        Platform::ThreadxLinux => nros_tests::matrix::PlatformId::ThreadxLinux,
+        Platform::ThreadxRiscv64 => nros_tests::matrix::PlatformId::ThreadxRiscv64,
+    };
+    nros_tests::fixtures::lane::require_platform_in_lane(&[id], &format!("the {platform} cell"));
     if let Err(why) = platform.require_e2e() {
         // The site's OWN text, unchanged — those messages already name the
         // remedy, and rewording here would put the remedy in two places.

@@ -147,6 +147,11 @@ fn logging_smoke_nuttx_qemu_arm_emits_every_severity() {
 /// through the QEMU `test-finisher` MMIO device.
 #[test]
 fn logging_smoke_threadx_riscv64_emits_every_severity() {
+    // Issue 1685 — deselect before the emulator probe.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::ThreadxRiscv64],
+        "the ThreadX riscv64 logging image",
+    );
     if !is_qemu_riscv64_available() {
         panic!("[SKIPPED] qemu-system-riscv64 not available");
     }
@@ -220,6 +225,11 @@ fn logging_smoke_threadx_linux_captures_stderr() {
 /// expected severity lines.
 #[test]
 fn logging_smoke_esp32_qemu_emits_every_severity() {
+    // Issue 1685 — deselect before the emulator probe.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::Esp32Qemu],
+        "the ESP32 logging image",
+    );
     // issue 0488's resolver + machine probe — a bare `--version` existence
     // check passes on the STOCK qemu-system-riscv32, which has no `esp32c3`
     // machine and dies at launch with "unsupported machine type".

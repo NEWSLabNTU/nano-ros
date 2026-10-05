@@ -969,6 +969,10 @@ pub fn is_zephyr_available() -> bool {
 /// Returns `false` if Zephyr prerequisites are not met, printing a skip message.
 /// Returns `true` if Zephyr is available and the test should proceed.
 pub fn require_zephyr() -> bool {
+    // Issue 1685 — a run whose lane selects no Zephyr coordinate deselects
+    // here, BEFORE the workspace probe; otherwise a runner the lane never asked
+    // to run Zephyr reports its absence as a provisioning gap.
+    crate::fixtures::lane::require_setup_scope_in_lane("zephyr", "a Zephyr image");
     if !is_west_available() {
         eprintln!("Skipping test: west not found");
         return false;

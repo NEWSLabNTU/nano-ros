@@ -49,6 +49,12 @@ use nros_tests::fixtures::{
 /// that skips where it KNOWS the reason names the reason, and cannot be
 /// misused by a caller who writes a bare `return` instead.
 fn require_threadx_riscv64() {
+    // Issue 1685 — a lane holding no ThreadX riscv64 coordinate deselects here,
+    // before the SDK and emulator probes.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::ThreadxRiscv64],
+        "a ThreadX riscv64 QEMU image",
+    );
     if !is_threadx_available() {
         nros_tests::skip!(
             "THREADX_DIR not set or invalid — run `just setup-threadx` + `source .envrc`"

@@ -127,6 +127,12 @@ fn multi_tier_freertos_firmware_builds_and_boots_run_tiers() -> nros_tests::Test
 
 #[test]
 fn multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers() -> nros_tests::TestResult<()> {
+    // Issue 1685 — deselect before the host probes when the lane holds no
+    // FreeRTOS MPS2 coordinate (the sibling above deselects at `firmware()`).
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::FreertosMps2],
+        "the multi-tier FreeRTOS firmware",
+    );
     if !tool_on_path("qemu-system-arm") {
         nros_tests::skip!("qemu-system-arm not on PATH");
     }
