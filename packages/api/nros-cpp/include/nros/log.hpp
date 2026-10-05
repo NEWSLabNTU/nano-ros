@@ -149,6 +149,7 @@ constexpr nros_log_severity_t sink_severity(const char* level) {
 // (which includes nothing) and a `NROS_CPP_STD`-gated `<cstdio>`, and neither
 // reaches back here.
 #include "nros/result.hpp"
+#include "nros/fixed_string.hpp"
 
 namespace rclcpp {
 
@@ -324,13 +325,20 @@ template <typename T> struct refuse {
     "overload create_service<S>(name, qos) / create_client<S>(name, qos) and drain it from your "  \
     "spin loop."
 
+/// Bytes of name an `rclcpp::Logger` keeps (issue 1682). 128 is
+/// `nros_node::names::MAX_RESOLVED_NAME_LEN`, the longest name the stack
+/// resolves; override with `-DNROS_CPP_LOGGER_NAME_CAPACITY=<n>`.
+#ifndef NROS_CPP_LOGGER_NAME_CAPACITY
+#define NROS_CPP_LOGGER_NAME_CAPACITY 128
+#endif
+
 namespace rclcpp {
 
 // --- Logger surface ----------------------------------------------------------
 //
 // `rclcpp::Logger` upstream is a pull-through to the rcl logger, holding a
-// `std::string` name it copies into every macro call. Here it is a
-// `const char*` name PLUS the opaque `nros_log::Logger` handle the
+// `std::string` name it copies into every macro call. Here it is an OWNED
+// fixed-capacity copy of the name PLUS the opaque `nros_log::Logger` handle the
 // `NROS_LOG_*` macros dispatch through, so a record carries the name of the
 // logger it was emitted on and a THRESHOLD can be moved per logger.
 //
@@ -345,24 +353,29 @@ namespace rclcpp {
 /// `rclcpp::Logger` — the name plus the `nros_log` handle records dispatch on.
 ///
 /// ADOPT-BOUNDED against upstream's value type, which owns a `std::string`:
-/// - The name is a BORROWED `const char*`, not an owned string: whatever it
-///   points at must outlive this Logger and every copy of it. That includes the
-///   `std::string` overload of `rclcpp::get_logger`, which borrows `c_str()`.
+/// - The name is OWNED, as upstream's is, so `get_name()` stays valid however
+///   short-lived the string it was built from (issue 1682: this used to borrow,
+///   and `rclcpp::get_logger(node_name + ".planner").get_name()` read freed
+///   memory). It is a `FixedString`, not a `std::string`, so it needs no heap
+///   and exists on freestanding targets too: a name longer than
+///   `NROS_CPP_LOGGER_NAME_CAPACITY` bytes (default 128, the longest resolved
+///   name the stack produces) is truncated in `get_name()`. Records dispatch on
+///   the interned `nros_log` handle, which is unaffected.
 /// - There is no `get_child`: minting `parent.child` needs an allocator to build
 ///   the name in, and there is none (RFC-0022).
 /// `get_name()`, `set_level()` and passing it to an `RCLCPP_*` macro behave as
 /// upstream's do.
 class Logger {
   public:
-    explicit Logger(const char* name = "") : name_(name), handle_(nullptr) {}
+    explicit Logger(const char* name = "") : handle_(nullptr) { name_ = name; }
 
     /// phase-427 W5 — the name PLUS the opaque `nros_log::Logger` handle the
     /// `NROS_LOG_*` macros dispatch through. `rclcpp::Node::get_logger()` builds
     /// one of these; `rclcpp::get_logger("free")` leaves the handle null,
     /// because a free-standing name has no node behind it.
-    Logger(const char* name, const void* handle) : name_(name), handle_(handle) {}
+    Logger(const char* name, const void* handle) : handle_(handle) { name_ = name; }
 
-    const char* get_name() const { return name_; }
+    const char* get_name() const { return name_.c_str(); }
 
     /// `rclcpp::Logger::Level` -- upstream's nested severity enum, phase-417
     /// W4.d.
@@ -471,7 +484,7 @@ class Logger {
     operator const void*() const { return handle_; }
 
   private:
-    const char* name_;
+    ::nros::FixedString<NROS_CPP_LOGGER_NAME_CAPACITY + 1> name_;
     const void* handle_;
 };
 

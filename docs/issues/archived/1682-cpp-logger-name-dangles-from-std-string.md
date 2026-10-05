@@ -2,12 +2,13 @@
 id: 1682
 title: "`rclcpp::get_logger(const std::string&)` stores a pointer into its
   argument, so `get_name()` on a logger built from a temporary string dangles"
-status: open
+status: resolved
 type: bug
 area: [api, cpp]
 severity: low
 found: 2026-10-05
 related: [1637, 1019]
+resolved_in: "branch fix/1682-logger-name-dangles"
 ---
 
 ## Symptom
@@ -50,3 +51,33 @@ store a pointer whose lifetime is the image's, and the borrowed-name bound
 would disappear. Freestanding builds have no `std::string` overload, so the
 `const char*` overload with a string literal, the common case, was never at
 risk.
+
+## Resolution (2026-10-05)
+
+`rclcpp::Logger` now OWNS its name: `nros::FixedString<NROS_CPP_LOGGER_NAME_CAPACITY + 1>`,
+default 128 bytes (`nros_node::names::MAX_RESOLVED_NAME_LEN`, the longest name
+the stack resolves), overridable with `-DNROS_CPP_LOGGER_NAME_CAPACITY=<n>`.
+Both constructors copy, so every `get_logger` overload and every copy of a
+Logger is safe however short-lived its source.
+
+**Not the fix this issue sketched**, for three reasons measured in the code:
+the interned name in `nros_log` is a Rust `&'static str`, length-delimited
+and NOT NUL-terminated (`pool::intern_name` copies exactly `len` bytes); a
+logger `register_logger`ed from Rust carries a plain literal, with no
+terminator either; and a name over `MAX_LOGGER_NAME_LEN` (48) never reaches
+the arena — it resolves to the catch-all, whose name is not the one the
+caller passed. A borrowing accessor would have had to answer all three. An
+owned copy answers the question upstream's API asks — "the name I gave it" —
+and needs no C-ABI change. `FixedString` rather than `std::string` keeps it
+heap-free and present on freestanding targets; the residual bound is
+truncation past the capacity, stated on the class.
+
+Regression: `tests/compile/logger_names_and_levels_runtime.cpp` builds a
+Logger from a buffer, overwrites the buffer, and checks `get_name()` — for
+`get_logger(name)`, the one-argument constructor, and a copy (`just check cpp`).
+
+Found on the way: #1675 made `nros::init_with_launch*` (node.hpp) call
+`nros::global_handle()`, which was DEFINED only in `nros.hpp`, so `-Wall`
+reported "inline function used but never defined" in any TU that included
+`node.hpp` alone — a link error for the first such TU to call
+`init_with_launch_auto`. The definition moved to `node.hpp`.

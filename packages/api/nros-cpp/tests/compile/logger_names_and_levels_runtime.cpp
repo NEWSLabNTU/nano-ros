@@ -212,6 +212,27 @@ int main() {
           "a refused set_level must not have moved the CATCH-ALL's level — that redirect is "
           "the silent failure this refusal exists to prevent");
 
+    // Issue 1682 — the name is OWNED. Build a logger from a buffer, then
+    // overwrite the buffer: a borrowed name (what this was) now reads the
+    // scribble, which is the temporary-`std::string` case
+    // (`get_logger(node_name + ".planner")`) with the free made visible.
+    {
+        char scratch[32];
+        std::snprintf(scratch, sizeof scratch, "%s", "w4d_cpp_owned");
+        rclcpp::Logger from_buffer = rclcpp::get_logger(scratch);
+        rclcpp::Logger one_arg(scratch);
+        std::memset(scratch, 'X', sizeof scratch - 1);
+        scratch[sizeof scratch - 1] = '\0';
+        check(std::strcmp(from_buffer.get_name(), "w4d_cpp_owned") == 0,
+              "get_logger(name).get_name() must survive the caller's buffer (issue 1682)");
+        check(std::strcmp(one_arg.get_name(), "w4d_cpp_owned") == 0,
+              "Logger(name).get_name() must survive the caller's buffer (issue 1682)");
+        rclcpp::Logger copy = from_buffer;
+        check(std::strcmp(copy.get_name(), "w4d_cpp_owned") == 0 &&
+                  copy.get_name() != from_buffer.get_name(),
+              "a copied Logger owns its own name");
+    }
+
     check(exec.shutdown().ok(), "shutdown");
 
     if (g_failures != 0) {
