@@ -382,6 +382,10 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
         IFS=$'\x1f' read -r dir envstr args <<< "$1"
         [ -n "$dir" ] || return 0
         echo "  → $dir ${args}"
+        # issue 1500 — per-row wall clock, so a fixture log says which rows
+        # cost what (the `host-tests` rust-core stage was 13 minutes of
+        # `--quiet` cargo with no time anywhere in it).
+        local row_t0=$SECONDS
         # Phase 210.E.3.d.native — pre-cargo `nros sync` writes the
         # auto-managed [patch.crates-io] block + materialises generated
         # msg crates under <dir>/build/. Replaces the legacy
@@ -474,6 +478,7 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
                 nros_fixture_check_stack_floor "$platform" "$args" "$envstr"
                 ;;
         esac
+        echo "     row-time: $dir $((SECONDS - row_t0))s"
     }
     # Locate every ELF the row just produced and put it through the floor
     # check. A row that resolves no artifact directory, or whose directory

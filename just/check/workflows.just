@@ -543,6 +543,15 @@ sysdep-remedies:
 tier-has-ci-owner:
     @python3 scripts/check-tier-has-ci-owner.py
 
+# Issue 1500 — a lane that names a gate one of its own steps already runs pays
+# for it twice: the gate runner starts each gate as its own `just` process, so
+# just's once-per-invocation dependency rule does not reach inside `fast`/
+# `build`. `api-parity` ran twice per `just check` / `ci gate` / tier for a
+# phase that way, 163 s a run on the 4-vCPU `host-tests` runner.
+[private]
+lane-step-duplicates:
+    @python3 scripts/check-lane-step-duplicates.py
+
 # RFC-0087 D5 / phase-420 W8 — a fetch without a digest is the same defect as an
 # unpinned submodule, one mechanism over. `check-submodule-pins` can go and ask
 # the submodule because a gitlink IS a full commit id; a `GIT_TAG v0.6.1` names
