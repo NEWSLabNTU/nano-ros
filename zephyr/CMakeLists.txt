@@ -1076,6 +1076,11 @@ endif()
 include("${NROS_REPO_DIR}/cmake/NanoRosCodegenCore.cmake")
 include("${NROS_REPO_DIR}/cmake/NanoRosImageAgreement.cmake")
 nros_check_image_agreement(KCONFIG_RMW "${_nros_kconfig_rmw}")
+# Issue 1707 -- the query above plans the whole workspace and so rewrites a
+# generated application whose declaration moved, AFTER this configure read it.
+# Refuse such a configure at the end of the top-level directory (the module is
+# processed inside `find_package(Zephyr)`, so the top level is still open).
+nros_defer_generated_app_check()
 
 # Issue 1653 (west half) -- the Cyclone facts the image's sizing descriptor
 # states (`[target] heap_budget_bytes`, `[types]`) reach the C++ TUs this

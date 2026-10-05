@@ -139,3 +139,66 @@ Either name the matching overlay on the image —
 Declared in ${NROS_IMAGE_WORKSPACE}.")
     endif()
 endfunction()
+
+# nros_check_generated_app_current()
+#
+# Issue 1707 -- refuse a configure that EXECUTED a generated west application
+# which has since been rewritten.
+#
+# `nros build` writes the application (`build/<coord>/<image>_entry/
+# CMakeLists.txt`) before it configures, and that file is the only carrier of
+# the image's capability Kconfig and `NANO_ROS_FEATURES` (issues 1681, 1702).
+# But the application is ALSO rewritten by every other `plan_builds` over the
+# workspace -- including `nros image-facts` above, which runs INSIDE this
+# configure. So a configure that started from a stale file (its declaration
+# changed since the last `nros build`) read the old values, and the file was
+# brought current while it ran. The build system is written after that, so it
+# is NEWER than its input and no later `ninja` reconfigures: the image keeps the
+# previous declaration's Kconfig and features for good. Measured (ninja 1.10):
+# `.config` kept `CONFIG_NROS_CAPABILITY_PARAM_SERVICES=y` through `cmake` +
+# `ninja` while the application said `n`.
+#
+# The generated file sets `NROS_GENERATED_APP_DIGEST` to a fingerprint of its
+# own body. The variable is what this configure executed; the line on disk is
+# what the file says now. They differ exactly when the file changed after cmake
+# read it. Refusing leaves the old build system in place, OLDER than the new
+# file, so the next build reconfigures from it -- which is the whole remedy.
+#
+# Deferred to the end of the TOP-LEVEL directory, so a rewrite anywhere in the
+# configure is seen, not only one that happened before this module ran.
+function(nros_check_generated_app_current)
+    if(NOT DEFINED NROS_GENERATED_APP_DIGEST OR NOT APPLICATION_SOURCE_DIR)
+        # Not a generated application (a hand-written or plain Zephyr app).
+        return()
+    endif()
+    set(_app "${APPLICATION_SOURCE_DIR}/CMakeLists.txt")
+    if(NOT EXISTS "${_app}")
+        return()
+    endif()
+    file(STRINGS "${_app}" _line
+        REGEX "^set\\(NROS_GENERATED_APP_DIGEST [0-9a-f]+\\)$" LIMIT_COUNT 1)
+    if(_line STREQUAL "")
+        # Materialised and edited by its owner: no generated line to compare.
+        return()
+    endif()
+    string(REGEX REPLACE "^set\\(NROS_GENERATED_APP_DIGEST ([0-9a-f]+)\\)$" "\\1"
+        _on_disk "${_line}")
+    if(_on_disk STREQUAL NROS_GENERATED_APP_DIGEST)
+        return()
+    endif()
+    message(FATAL_ERROR
+"nano-ros: the generated west application was rewritten while this configure ran (issue 1707).
+    ${_app}
+This configure read the PREVIOUS file, so its Kconfig and NANO_ROS_FEATURES describe a declaration that no longer holds. Nothing was generated from it.
+Re-run the build: it reconfigures from the current file. `nros build <image>` regenerates the application BEFORE configuring and never meets this.
+If it repeats on every build, two different nros CLIs render this file differently -- the one that ran `nros build` and the one this configure resolved.")
+endfunction()
+
+# The module schedules the check itself: every Zephyr build that loads it gets
+# it, and the TOP-LEVEL directory is still being processed when the module is.
+macro(nros_defer_generated_app_check)
+    if(DEFINED NROS_GENERATED_APP_DIGEST)
+        cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+            CALL nros_check_generated_app_current)
+    endif()
+endmacro()
