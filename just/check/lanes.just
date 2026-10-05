@@ -2042,6 +2042,53 @@ cpp: cpp-fmt
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/param_hosted_overloads.cpp
 
+    # Issue 1678 — every scalar type `node_param_type` classifies must bind to
+    # a store call, on BOTH data models. `int64_t` is `long` on LP64 and
+    # `long long` on ILP32, so an overload set keyed on `int64_t` compiles
+    # `declare_parameter<long long>` on a Cortex-M and not on the host, and
+    # `declare_parameter<long>` the other way round — a host-only arm cannot
+    # see half of that. Hosted (with and without `NROS_CPP_STD`, for the
+    # `std::vector<T>` forms), `-nostdinc++` against the ThreadX shim, and
+    # ILP32 through the newlib cross, which is the one compiler here with a
+    # 32-bit `long` AND a libc for `nros/log.h`'s `<stdio.h>`.
+    _w1678_probe=packages/api/nros-cpp/tests/compile/param_integer_widths.cpp
+    test -f "$_w1678_probe" || { echo "ERROR: $_w1678_probe is MISSING -- this check would pass on absence." >&2; exit 1; }
+    echo "  - issue 1678: every integer / floating parameter type binds (LP64 hosted + -nostdinc++, ILP32)"
+    for _w1678_arm in "" "-DNROS_CPP_STD=1" "-ffreestanding -nostdinc++ -isystem $_threadx_shim"; do
+        # shellcheck disable=SC2086
+        c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti $_w1678_arm \
+            -I"$gen/nros-cpp-generated" \
+            -I"$gen/nros-c-generated" \
+            -Ipackages/api/nros-cpp/include \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            "$_w1678_probe" || {
+            echo "check-cpp: a parameter type the table classifies does not bind (arm: ${_w1678_arm:-hosted})" >&2
+            exit 1
+        }
+    done
+    if command -v arm-none-eabi-g++ >/dev/null 2>&1; then
+        for _w1678_arm in "" "-DNROS_CPP_STD=1"; do
+            # shellcheck disable=SC2086
+            arm-none-eabi-g++ -mcpu=cortex-m3 -mthumb -fsyntax-only -std=c++14 -fno-exceptions \
+                -fno-rtti $_w1678_arm \
+                -I"$gen/nros-cpp-generated" \
+                -I"$gen/nros-c-generated" \
+                -Ipackages/api/nros-cpp/include \
+                -Ipackages/api/nros-c/include \
+                -Ipackages/platform/nros-platform-api/include \
+                "$_w1678_probe" || {
+                echo "check-cpp: a parameter type does not bind on ILP32 (arm: ${_w1678_arm:-hosted})" >&2
+                exit 1
+            }
+        done
+    else
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip cpp-param-integer-widths-ilp32 \
+            "arm-none-eabi-g++ not on PATH (nros setup arm-none-eabi-gcc) -- the ILP32 half of issue 1678's probe did not run"
+    fi
+
     # `nros_grep_q`, not `grep -q`: grep exits 1 for "no match" and >=2 for a
     # tool ERROR, and a bare `grep -q ... || finding` reports the second as the
     # first (issue 0726 — a forked grep that failed to start under a 32-way

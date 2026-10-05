@@ -34,26 +34,20 @@
 
 namespace nros_cpp_ros2_param_launch_seed_test {
 
-// Every parameter type this path can carry end-to-end. The list is short, and
-// the reason is the forwarder overload set, not this probe: `node_param_declare`
-// / `node_param_get` / `node_param_set` (`nros/node_parameters.hpp`, phase-426
-// W4) cover `bool`, `int`, `int64_t`, `double` and (for declare/set only)
-// `const char*`, plus `std::string` and `std::vector<T>` behind `NROS_CPP_STD`.
-// W4 moved that set out of `nros::ParameterServer` and did not widen it, so both
-// gaps below are unchanged and still measured:
+// A representative set of parameter types. Since issue 1678 the forwarders
+// (`nros/node_parameters.hpp`) take every scalar `node_param_type` classifies
+// -- any integer width, `float` and `long double` included -- on both data
+// models; `param_integer_widths.cpp` is the probe that pins that. One gap is
+// unchanged and still measured:
 //
-//   * `declare_parameter<float>` does NOT compile -- there is no
-//     `node_param_get(..., float&)`, so the read-back has nothing to bind.
-//     `float` is the type a ported control node most often uses for a gain.
 //   * `declare_parameter<std::string>` compiles only where `NROS_CPP_STD` is
 //     defined. This probe is hosted-STL by construction and still does not
 //     define that macro, because doing so would change what every other
 //     nano-ros header does in the same TU -- the flag-gated-struct-field hazard
 //     of issue 0135 -- which is not a decision this file can make on its own.
 //
-// Both are compile ERRORS, so they are loud rather than silent and the
-// compile-or-conform rule is satisfied. They are still porting friction, and
-// they now live in `node_parameters.hpp`.
+// It is a compile ERROR, so it is loud rather than silent and the
+// compile-or-conform rule is satisfied.
 inline void declare_every_seedable_type(rclcpp::Node& node) {
     const bool verbose = node.declare_parameter<bool>("verbose", false);
     const int64_t depth = node.declare_parameter<int64_t>("queue_depth", 10);
