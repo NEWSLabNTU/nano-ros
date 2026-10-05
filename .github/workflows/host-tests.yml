@@ -350,20 +350,33 @@ jobs:
     # repository chose. Without this the next one has GitHub's six-hour default
     # to run to, and the group is held for all of it.
     #
-    # 150 rather than something smaller, and that is a CORRECTION to 1492's
-    # own "any `timeout-minutes` below 150 makes the outage a number this
-    # repository owns". That sentence prices the two terminal modes and not the
-    # HEALTHY duration, which is the one a timeout can destroy. Measured on job
-    # 107808557432: this job reaches `just ci tier1` at about **82 minutes**
-    # (`Build rust core fixtures` 14.2 m + `Build workspace fixtures` 60.1 m is
-    # 74 of them), and the tier then ran 22.5 m before dying on the disk — so
-    # 105 m of work with the tier only a fifth of the way in. The lane has not
-    # produced a green run since 2026-06-17, so what a COMPLETE tier 1 costs on
-    # top of those 82 minutes is unknown, and a timeout under 150 would be a
-    # guess against an unmeasured number that turns a verdict into a timeout.
-    # Once this lane answers again, that number is measurable and this should
-    # come down to it plus a margin.
-    timeout-minutes: 150
+    # 210, from a COMPLETE run (issue 1500). The number this used to be, 150,
+    # was priced before any run had finished tier 1 — its own comment said so,
+    # and said to re-price once one did. One has: run 37257988244
+    # (workflow_dispatch, 2026-10-05) reached a verdict, `just ci tier1` =>
+    # failure, in 96.5 min:
+    #
+    #   setup (container, CLI, `just setup native`)     5 min
+    #   Build rust core fixtures                         8.2
+    #   Build workspace fixtures                        31.4
+    #   disk report + reclaim                            2.0
+    #   just ci tier1                                   49.1
+    #     check::default  38.5 (fast 7.1, build 31.3)
+    #     rust-rtos-link-check 2.6, test-all 8.0
+    #
+    # The SAME job on 2026-10-04 (run 37176625915) took 13.3 / 52.8 min for the
+    # two fixture steps and 13.1 / 49.0 for check fast / build: GitHub's hosted
+    # runners differ by ~1.6-1.8x step for step, and that run was killed at
+    # 150. Priced on the slow runner, the job is ~82 min to the tier plus
+    # 49.1 x 1.7 = ~84 in it: ~165 min. 210 is that plus ~25 %, so a slow
+    # runner still yields a verdict. It still bounds the wedge 1492 is about
+    # (2 h 30 m on a dead runner) at 3 h 30 m rather than GitHub's six hours.
+    #
+    # It was 150 during the 2026-10-04 run and it fired: 75.5 min into the
+    # tier, inside `test-all`, with nothing uploaded. If the job shrinks (the
+    # tier's `just check` is ~2/3 of the tier and gate.yml's nightly runs the
+    # same gates — see issue 1500), this should come down with it.
+    timeout-minutes: 210
     concurrency:
       group: host-tests-integration-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
@@ -607,8 +620,10 @@ jobs:
           # missing in-lane fixture is a hard failure — so the swallow could only
           # ever produce a red whose stated reason was wrong.
           just native build-fixture-rust-core > build/ci-logs/rust-core.log 2>&1 \
-            || { echo "::group::rust-core FAILED tail"; tail -120 build/ci-logs/rust-core.log; echo "::endgroup::"; exit 1; }
+            || { echo "::group::rust-core FAILED tail"; tail -120 build/ci-logs/rust-core.log; echo "::endgroup::"; \
+                 bash scripts/ci/row-times.sh build/ci-logs/rust-core.log; exit 1; }
           echo "after rust-core ($(wc -l < build/ci-logs/rust-core.log) lines suppressed):"; df -h / | tail -1
+          bash scripts/ci/row-times.sh build/ci-logs/rust-core.log
 
       - name: Build workspace fixtures
         env:
@@ -626,6 +641,7 @@ jobs:
           source ./activate.sh
           just native build-workspace-fixtures > build/ci-logs/workspace.log 2>&1 \
             || { echo "::group::workspace FAILED tail"; tail -120 build/ci-logs/workspace.log; echo "::endgroup::"; \
+                 bash scripts/ci/row-times.sh build/ci-logs/workspace.log; \
                  echo "::group::issue 0919 — feature resolution for zpico-sys"; \
                  for ws in bridge-cyclonedds rust; do \
                    echo "--- examples/workspaces/$ws"; \
@@ -639,6 +655,7 @@ jobs:
                  echo "::endgroup::"; \
                  exit 1; }
           echo "after workspace ($(wc -l < build/ci-logs/workspace.log) lines suppressed):"; df -h / | tail -1
+          bash scripts/ci/row-times.sh build/ci-logs/workspace.log
 
       # phase-411 — run the TIER, not a hand-rolled approximation of it.
       #
@@ -711,13 +728,29 @@ jobs:
           # way?"). It only skips the PRE-FLIGHT: a missing in-lane fixture is
           # still a hard failure at test time via `check-skip-budget` (issue
           # 0584), so nothing is laundered into a skip.
+          #
+          # MEASURED, issue 1500 (run 37257988244, and the same count locally):
+          # 196 of `test-all`'s 211 real failures are exactly that — "Test
+          # fixture binary MISSING for an in-lane coordinate" — so this lane's
+          # verdict is red by construction until it builds the tier's fixtures
+          # (issue 1651, and PR #1671's filing for it). The price, measured in
+          # a local copy of the CI image on 4 pinned cores of a faster host:
+          # `just build-test-fixtures lane=tier1` on top of the two steps above
+          # is +51 min (more on the hosted runner) and +41 G, which neither
+          # this job's budget nor its 146 G disk has today.
           NROS_SKIP_FIXTURE_CHECK: "1"
         run: |
           source ./activate.sh
           mkdir -p build/ci-logs
+          # Issue 1500 — the full output goes to the file, and the tier's own
+          # step markers (`scripts/ci/run-lane-steps.sh`) STREAM to the job log.
+          # A run the ceiling kills uploads nothing (09-30, 10-04), so the job
+          # log is the only record that survives it, and until now it held
+          # nothing at all from inside the tier.
           set +e
-          just ci tier1 run > build/ci-logs/ci-tier1.log 2>&1
-          rc=$?
+          just ci tier1 run 2>&1 | tee build/ci-logs/ci-tier1.log \
+            | { grep --line-buffered -E '^(==>|<==|  (ok|FAILED|NOT RUN|total) )|gate\(s\) (ran|OK)|busy [0-9]+s over wall' || true; }
+          rc=${PIPESTATUS[0]}
           set -e
           echo "::group::ci tier1 output (tail)"; tail -200 build/ci-logs/ci-tier1.log; echo "::endgroup::"
           exit $rc
