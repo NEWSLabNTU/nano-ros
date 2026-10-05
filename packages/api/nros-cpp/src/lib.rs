@@ -743,6 +743,38 @@ pub(crate) unsafe fn cpp_ctx_checked<'a>(handle: *mut c_void) -> Option<&'a mut 
     Some(unsafe { &mut *ctx })
 }
 
+/// Issue 1667 — the ONE body behind every `nros_cpp_*_release` that takes a
+/// dispatch handle: resolve the executor, rebuild the generation-carrying
+/// handle, and release through `release`, which names the entry KIND (a handle
+/// of the wrong kind is refused, touching nothing).
+///
+/// Safe on a stale or copied handle: once the entry is released every copy
+/// answers `NROS_CPP_RET_ERROR`, and none reaches the slot's next occupant. Safe
+/// from inside the entry's own callback: the executor defers the release until
+/// the callback returns.
+///
+/// # Safety
+/// `executor_handle` must be null or a valid executor handle (one
+/// `nros_cpp_fini` already finalised is refused).
+#[cfg(feature = "rmw-cffi")]
+pub(crate) unsafe fn release_dispatch_entry(
+    executor_handle: *mut c_void,
+    handle_id: usize,
+    release: unsafe fn(&mut CppExecutor, nros_node::HandleId) -> bool,
+) -> nros_cpp_ret_t {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let id = nros_node::HandleId::from_raw(handle_id);
+    // SAFETY: every C++ path to this slot goes through a generation-checked
+    // handle, so none reaches its next occupant.
+    if unsafe { release(&mut ctx.executor, id) } {
+        NROS_CPP_RET_OK
+    } else {
+        NROS_CPP_RET_ERROR
+    }
+}
+
 // Compile-time assertion: inline storage must fit CppContext (executor + domain
 // + carved backing).
 #[cfg(feature = "rmw-cffi")]
@@ -6229,6 +6261,7 @@ mod census_funnel_tests {
                 Some(noop),
                 core::ptr::null_mut(),
                 guard.as_mut_ptr().cast::<c_void>(),
+                core::ptr::null_mut(),
             )
         };
         if rc != NROS_CPP_RET_OK {

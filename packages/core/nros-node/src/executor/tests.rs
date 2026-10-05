@@ -897,11 +897,15 @@ fn a_bounded_type_shrinks_its_own_receive_buffer() {
         super::arena::buffered_region_size(depth, crate::config::DEFAULT_RX_BUF_SIZE);
     let (_s2, bound_region) = super::arena::buffered_region_size(depth, bound);
 
-    assert_eq!(
-        default_delta - bound_delta,
-        default_region - bound_region,
-        "opting in must recover exactly the region difference: \
-         default {default_delta} bytes vs bound-sized {bound_delta}"
+    // Exact up to the arena's grain: every region is rounded up to it (issue
+    // 1667), so the two deltas each carry up to `ARENA_GRAIN - 1` bytes of
+    // rounding the raw region sizes do not.
+    assert!(
+        (default_delta - bound_delta).abs_diff(default_region - bound_region)
+            < super::spin::ARENA_GRAIN,
+        "opting in must recover the region difference: \
+         default {default_delta} bytes vs bound-sized {bound_delta}, \
+         regions {default_region} vs {bound_region}"
     );
     assert!(
         bound_delta < default_delta,
@@ -11365,9 +11369,10 @@ fn an_action_server_created_and_released_in_a_loop_never_exhausts() {
         executor.entries[first.entry_index].is_none(),
         "the slot is free"
     );
-    assert!(
-        executor.arena_released() > 0,
-        "and its bytes are on the free list"
+    assert_eq!(
+        executor.arena_used(),
+        0,
+        "and its bytes went back to the bump pointer (it was the top region)"
     );
 
     const N: usize = 200;
@@ -11443,7 +11448,12 @@ fn a_release_of_the_wrong_kind_or_an_empty_slot_is_refused() {
         !unsafe { executor.release_action_client_raw(idx) },
         "twice is refused"
     );
-    assert_eq!(executor.arena_used(), used);
+    assert!(used > 0);
+    assert_eq!(
+        executor.arena_used(),
+        0,
+        "the only entry's bytes are all back"
+    );
 }
 
 /// A released hole is reused by a SMALLER entry too, and two adjacent
@@ -11453,15 +11463,15 @@ fn released_regions_split_and_coalesce() {
     let mut executor: Executor = executor_with_clock(MockSession::new());
     let a = register_raw_client(&mut executor).expect("a");
     let b = register_raw_client(&mut executor).expect("b");
+    // Issue 1667 — a hole at the TOP goes back to the bump pointer, so pin the
+    // top with a third entry to keep the two holes interior.
+    executor
+        .register_timer(TimerDuration::from_millis(1000), || {})
+        .expect("pin");
     let high_water = executor.arena_used();
     assert!(unsafe { executor.release_action_client_raw(a) });
     assert!(unsafe { executor.release_action_client_raw(b) });
-    assert_eq!(
-        executor.arena_freed.len(),
-        1,
-        "adjacent holes coalesce: {:?}",
-        executor.arena_freed
-    );
+    assert_eq!(executor.arena_holes(), 1, "adjacent holes coalesce");
     // A timer is far smaller than a client; it takes the front of the hole.
     executor
         .register_timer(TimerDuration::from_millis(1000), || {})
@@ -11570,9 +11580,10 @@ fn every_entry_kind_created_and_released_in_a_loop_never_exhausts() {
             executor.entries[first.slot()].is_none(),
             "{name}: slot freed"
         );
-        assert!(
-            executor.arena_released() > 0,
-            "{name}: bytes on the free list"
+        assert_eq!(
+            executor.arena_used(),
+            0,
+            "{name}: the only entry's bytes went back to the bump pointer"
         );
         assert!(
             !unsafe { release(&mut executor, first) },
@@ -11609,13 +11620,13 @@ fn a_buffered_subscription_releases_its_trailing_region_too() {
         .get()
         .expect("recorded");
     let used = executor.arena_used();
+    assert_eq!(recorded, used, "the only entry spans the whole used arena");
     assert!(unsafe { executor.release_subscription(h) });
     assert_eq!(
-        executor.arena_released(),
-        recorded,
-        "every recorded byte went back to the free list"
+        executor.arena_used(),
+        0,
+        "every recorded byte went back (to the bump pointer: it was the top region)"
     );
-    assert_eq!(recorded, used, "the only entry spans the whole used arena");
 }
 
 /// A release names its kind, so a timer handle never releases a subscription
@@ -11768,6 +11779,7 @@ fn the_generation_wraps_to_one_inside_fifteen_bits() {
     let tag = super::types::SlotTag {
         generation: super::types::HANDLE_GENERATION_MAX,
         owner: 0,
+        flags: 0,
     };
     assert_eq!(tag.next_generation(), 1);
     let h = HandleId::new(63, super::types::HANDLE_GENERATION_MAX);
@@ -11954,6 +11966,103 @@ fn a_released_capturing_timer_destroys_its_capture_exactly_once() {
         CAPTURED_TIMER_DROPS.load(portable_atomic::Ordering::SeqCst),
         before + 1
     );
+}
+
+// Issue 1667 — a callback that releases its OWN entry (`timer_.reset()` inside
+// the timer's callback, the upstream one-shot idiom). The release must wait for
+// the callback to return: dropping the entry under it destroys the capture the
+// running callback is still reading.
+static SELF_RELEASE_EXEC: portable_atomic::AtomicPtr<Executor<'static>> =
+    portable_atomic::AtomicPtr::new(core::ptr::null_mut());
+static SELF_RELEASE_HANDLE: portable_atomic::AtomicUsize = portable_atomic::AtomicUsize::new(0);
+static SELF_RELEASE_DROPS: portable_atomic::AtomicUsize = portable_atomic::AtomicUsize::new(0);
+static SELF_RELEASE_CALLS: portable_atomic::AtomicUsize = portable_atomic::AtomicUsize::new(0);
+static SELF_RELEASE_SAW_AFTER: portable_atomic::AtomicUsize = portable_atomic::AtomicUsize::new(0);
+static SELF_RELEASE_DROPS_DURING: portable_atomic::AtomicUsize =
+    portable_atomic::AtomicUsize::new(usize::MAX);
+
+const SELF_RELEASE_MARK: usize = 0x5E1F;
+
+unsafe extern "C" fn self_releasing_timer_cb(ctx: *mut core::ffi::c_void) {
+    use portable_atomic::Ordering::SeqCst;
+    SELF_RELEASE_CALLS.fetch_add(1, SeqCst);
+    let exec = SELF_RELEASE_EXEC.load(SeqCst);
+    let h = HandleId::from_raw(SELF_RELEASE_HANDLE.load(SeqCst));
+    // SAFETY: the test's executor, reached the way a C++ callback reaches it
+    // (through the raw handle its capture holds).
+    let released = unsafe { (*exec).release_timer(h) };
+    assert!(
+        released,
+        "the first release from inside the callback is accepted"
+    );
+    // A second request — another copy of the handle — is refused: the handle
+    // stopped resolving at the first.
+    assert!(!unsafe { (*exec).release_timer(h) });
+    assert_eq!(unsafe { (*exec).resolve_handle(h) }, None);
+    SELF_RELEASE_DROPS_DURING.store(SELF_RELEASE_DROPS.load(SeqCst), SeqCst);
+    // The capture is still the capture.
+    SELF_RELEASE_SAW_AFTER.store(unsafe { *(ctx as *const usize).add(2) }, SeqCst);
+}
+
+unsafe extern "C" fn self_releasing_timer_drop(ctx: *mut core::ffi::c_void) {
+    if unsafe { *(ctx as *const usize).add(2) } == SELF_RELEASE_MARK {
+        SELF_RELEASE_DROPS.fetch_add(1, portable_atomic::Ordering::SeqCst);
+    }
+}
+
+#[test]
+fn a_callback_releasing_its_own_entry_is_deferred_until_it_returns() {
+    use portable_atomic::Ordering::SeqCst;
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let capture: [usize; 3] = [0, 0, SELF_RELEASE_MARK];
+    let bytes = unsafe {
+        core::slice::from_raw_parts(
+            capture.as_ptr() as *const u8,
+            core::mem::size_of_val(&capture),
+        )
+    };
+    let h = executor
+        .register_timer_c_capturing(
+            None,
+            TimerDuration::from_millis(1),
+            TimerClockSource::Steady,
+            self_releasing_timer_cb,
+            Some(bytes),
+            Some(self_releasing_timer_drop),
+        )
+        .expect("register");
+    let high_water = executor.arena_used();
+    SELF_RELEASE_HANDLE.store(h.to_raw(), SeqCst);
+    SELF_RELEASE_EXEC.store(&mut executor as *mut Executor<'static>, SeqCst);
+
+    for _ in 0..3 {
+        elapse_then_spin_once(&mut executor, 5);
+    }
+    SELF_RELEASE_EXEC.store(core::ptr::null_mut(), SeqCst);
+
+    assert_eq!(
+        SELF_RELEASE_CALLS.load(SeqCst),
+        1,
+        "a released timer never fires again"
+    );
+    assert_eq!(
+        SELF_RELEASE_DROPS_DURING.load(SeqCst),
+        0,
+        "the capture was destroyed while its callback was still running"
+    );
+    assert_eq!(SELF_RELEASE_SAW_AFTER.load(SeqCst), SELF_RELEASE_MARK);
+    assert_eq!(
+        SELF_RELEASE_DROPS.load(SeqCst),
+        1,
+        "destroyed exactly once, after the callback"
+    );
+    assert_eq!(executor.resolve_handle(h), None);
+    // The deferred release gave the bytes back: the next registration reuses them.
+    let again = executor
+        .register_timer(TimerDuration::from_millis(1000), || {})
+        .unwrap();
+    assert_eq!(again.slot(), h.slot());
+    assert!(executor.arena_used() <= high_water);
 }
 
 /// Releasing a capturing timer gives its capture back: a create/release loop
@@ -12204,4 +12313,106 @@ fn a_heap_too_small_for_the_parameter_store_refuses_the_declaration() {
     // declares, so the refusal above is the cap and not the call.
     let mut ok: Executor = executor_with_clock(MockSession::new());
     assert!(ok.declare_parameter("rate", ParameterValue::Integer(10)));
+}
+
+/// Issue 1667 — the workload issue 1496's 8-region table was never measured
+/// against: entries of FOUR sizes (40 B to 4.6 KiB) created and released in a
+/// pseudo-random order, at most three live at once, for 100 000 rounds.
+///
+/// Measured on the table: the arena filled (73 248 of 74 240 B) with at most
+/// ~14 KiB live and only 5 424 B listed as released — the rest was dropped by
+/// the table (a full table discarded a region; a split tail under 64 B was
+/// discarded too), and after that every registration failed. The free list
+/// drops nothing, so the arena stays near what is live.
+#[test]
+fn a_churning_mixed_workload_never_exhausts_the_arena() {
+    type Reg = fn(&mut Executor<'_>) -> Result<HandleId, NodeError>;
+    type Rel = unsafe fn(&mut Executor<'_>, HandleId) -> bool;
+    let kinds: [(Reg, Rel); 4] = [
+        (register_buffered_sub, |e, h| unsafe {
+            e.release_subscription(h)
+        }),
+        (
+            |e| e.register_timer(TimerDuration::from_millis(1000), || {}),
+            |e, h| unsafe { e.release_timer(h) },
+        ),
+        (
+            |e| {
+                e.register_service_raw(
+                    "/churn",
+                    "test/srv/T",
+                    "h",
+                    release_probe_srv,
+                    core::ptr::null_mut(),
+                )
+            },
+            |e, h| unsafe { e.release_service(h) },
+        ),
+        (
+            |e| {
+                e.register_service_client_raw(
+                    "/churn",
+                    "test/srv/T",
+                    "h",
+                    Some(release_probe_reply),
+                    core::ptr::null_mut(),
+                )
+            },
+            |e, h| unsafe { e.release_service_client(h) },
+        ),
+    ];
+    // The largest single entry, so the bound below is stated in its terms.
+    let largest = kinds
+        .iter()
+        .map(|(reg, _)| {
+            let mut e: Executor = executor_with_clock(MockSession::new());
+            reg(&mut e).expect("register alone");
+            e.arena_used()
+        })
+        .max()
+        .unwrap();
+
+    const LIVE: usize = 3;
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let mut live: std::vec::Vec<(usize, HandleId)> = std::vec::Vec::new();
+    let mut seed: u64 = 0x1667;
+    let mut next = || {
+        seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (seed >> 33) as usize
+    };
+    let mut peak = 0;
+    for round in 0..100_000 {
+        if live.len() < LIVE && (live.is_empty() || next() % 2 == 0) {
+            let k = next() % kinds.len();
+            let h = kinds[k].0(&mut executor).unwrap_or_else(|e| {
+                panic!(
+                    "round {round}: registration failed with {e:?} — {} B used, {} B in {} holes, \
+                     {} live",
+                    executor.arena_used(),
+                    executor.arena_released(),
+                    executor.arena_holes(),
+                    live.len()
+                )
+            });
+            live.push((k, h));
+        } else {
+            let (k, h) = live.swap_remove(next() % live.len());
+            assert!(unsafe { kinds[k].1(&mut executor, h) }, "round {round}");
+        }
+        peak = peak.max(executor.arena_used());
+    }
+    assert!(
+        peak <= 2 * LIVE * largest,
+        "the arena reached {peak} B for at most {LIVE} live entries of at most {largest} B"
+    );
+    for (k, h) in live.drain(..) {
+        assert!(unsafe { kinds[k].1(&mut executor, h) });
+    }
+    assert_eq!(
+        (executor.arena_used(), executor.arena_holes()),
+        (0, 0),
+        "with nothing live, every byte coalesced back into the bump pointer"
+    );
 }

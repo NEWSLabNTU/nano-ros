@@ -12,8 +12,9 @@
 //! `nros_cpp_action_client_destroy` before its `drop_in_place`, the server's in
 //! `nros_cpp_action_server_detach`, which `~Server` calls before
 //! `nros_cpp_action_server_destroy`. So for the action rows `NO_OP` describes
-//! the DROP, not the entity's fate. The guard-condition row is still a no-op
-//! destroy (issue 1667).
+//! the DROP, not the entity's fate. The guard-condition row is the same shape:
+//! its entry is released by `nros_cpp_guard_condition_release`, which the C++
+//! destructor calls first (issue 1667).
 //!
 //! WHY A TABLE, AND WHY THE COMPILER ANSWERS IT
 //!
@@ -83,14 +84,9 @@ destroy_shapes! {
     nros_cpp_action_server_destroy drops CppActionServer => NO_OP;
     nros_cpp_action_client_destroy drops CppActionClient => NO_OP;
     // `nros_node::GuardCondition` is `{ &'static AtomicBool, Option<fn>, *mut
-    // c_void }` — the flag lives in the arena and the registered closure entry
-    // stays there for the executor's lifetime. Unlike the two above, the arena
-    // entry does NOT hold the destroyed object's address: the context it keeps
-    // is the caller's own (`nros_cpp_guard_condition_create` takes a C callback
-    // plus a user context), so there is no dangling-context arm to fix here
-    // today. `GuardCondition::closure_` in the C++ header would create one —
-    // it is freed by the destructor and nothing in the tree attaches a block
-    // to a guard condition yet.
+    // c_void }` — no drop glue. The arena entry the flag lives in is released
+    // by `nros_cpp_guard_condition_release` (issue 1667), which the C++
+    // destructor calls BEFORE this; the drop itself stays a no-op.
     nros_cpp_guard_condition_destroy drops nros_node::GuardCondition => NO_OP;
 
     // The entities that own their state INLINE in the caller's storage. These

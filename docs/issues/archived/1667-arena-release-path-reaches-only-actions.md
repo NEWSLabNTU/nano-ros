@@ -4,12 +4,12 @@ title: "The arena can release an entry now, but only action entities use it —
   subscriptions, services, service clients and guard conditions still live for
   the executor's lifetime, and a `cancel()` on a copyable two-word handle needs
   a generation check the handle does not carry"
-status: open
+status: resolved
 type: enhancement
 area: [core, api]
 severity: medium
 found: 2026-10-03
-related: [1496, 1036, phase-456, phase-476, rfc-0096]
+related: [1496, 1036, 1705, phase-456, phase-476, rfc-0096]
 ---
 
 ## What changed, and what it did not reach
@@ -130,3 +130,86 @@ executor. It has not yet been exposed through those C++ handles.
 * The 8-region bound is revisited with a workload that churns: `9768795b1d`'s
   "arena FRAGMENTED" diagnostic names the failure, and this is where it would
   first fire.
+
+## Resolution (2026-10-06)
+
+Every acceptance item is met. One finding outside them was fixed on the way,
+and one gap is filed as issue 1705.
+
+**`reset()` releases, for subscriptions, services and clients.**
+`SubscriptionHandle<M>::reset()`, `ServiceHandle<S>::reset()` and
+`ClientHandle<S>::reset()` now release their registration through
+`nros_cpp_subscription_unregister`, `nros_cpp_service_server_release` and
+`nros_cpp_service_client_release`. The callback stops, the entity leaves the
+backend, and the entry and its capture are freed. This is the contract
+`TimerHandle::reset()` got in phase-476 W2, and the verb is upstream's
+(`sub_.reset()`); there is no separate `cancel()`.
+
+- A stale copy reaches nothing. Every copy carries its slot's generation, so
+  once one copy is reset the others resolve to nothing.
+- The three FFIs, and the timer's, share one body, `release_dispatch_entry`
+  in `nros-cpp/src/lib.rs`.
+- The subscription verb is `_unregister` because `nros_cpp_subscription_release`
+  is the loan-release verb.
+- `arena_capture_lifetime_runtime` covers this. It checks that the stub
+  backend's live-entity count drops on each reset, that a subscription's
+  capture is destroyed exactly once, and that resetting a stale subscription
+  copy leaves the timer that took its slot running.
+
+**Release from inside the entry's own callback is deferred.** This was found
+while wiring the above, and it already affected `timer_.reset()` from W2. The
+upstream one-shot idiom calls `timer_.reset()` inside the timer's callback.
+That dropped the entry while its callback was still running: the C++ capture
+was destroyed under the running lambda, and `spin_once` then read the
+`CallbackMeta` the release had just taken.
+
+- The spin thread now marks a slot `IN_DISPATCH` around each `try_process`.
+  A release in that window sets `RELEASE_PENDING`, which stops the handle
+  resolving at once, and the entry is released when the callback returns
+  (`begin_dispatch` / `finish_dispatch`).
+- The flags ride in `SlotTag`'s padding byte, so no backing size moves.
+- Tests: `a_callback_releasing_its_own_entry_is_deferred_until_it_returns` in
+  Rust and probe step (8) in C++. The Rust test fails when the marking is
+  removed.
+- Not covered: the `scheduler-os-priority` worker thread, which dispatches
+  outside that bracket. Filed as issue 1705.
+
+**Guard conditions: released by the C++ destructor. The Rust verb is `unsafe`,
+and here is why.** `Executor::release_guard_condition` exists. Unlike the other
+release verbs, a generation cannot make it safe: the `GuardCondition` trigger
+handle points at the flag inside the entry, and it is `Clone` + `Send`. A clone
+on an ISR or another thread would write into whatever reuses those bytes, so
+the Rust contract is "no trigger handle is used afterwards".
+
+The C++ `nros::GuardCondition` is non-copyable and the only holder of its
+trigger handle, so its destructor can keep that contract. It calls
+`nros_cpp_guard_condition_release` before dropping the handle, and before
+freeing its hosted closure block, which the entry could otherwise call into.
+`nros_cpp_guard_condition_create` gained an `out_handle_id`. Probe step (9)
+runs 100 create/destroy cycles, far past `NROS_EXECUTOR_MAX_CBS`; without the
+release it fails.
+
+**The 8-region bound, revisited with a churning workload: replaced.**
+`a_churning_mixed_workload_never_exhausts_the_arena` runs four entry sizes
+(40 B to 4.6 KiB), at most three live, released in pseudo-random order.
+
+- On the old table, 200 000 rounds filled the 74 240 B arena (73 248 B used)
+  with at most ~14 KiB live and only 5 424 B listed as released. After that,
+  103 128 registrations failed.
+- The bytes were lost, not fragmented. A full table discarded a region, and
+  `arena_take_freed` discarded any split tail under 64 B. Neither could ever
+  coalesce again.
+- The table is now an INTRUSIVE, address-ordered free list. Each free region
+  holds its node (`next`, `len`) in its own first bytes.
+  - It has no capacity limit, coalesces with both neighbours, and hands a hole
+    that ends at `arena_used` back to the bump pointer.
+  - Every arena region is now a multiple of the 8-byte grain and at least one
+    node long (`ARENA_GRAIN`, `ARENA_MIN_REGION`), so every released region can
+    be listed. A split tail too short to list stays with the allocation, and
+    is freed with it.
+- On the same workload: 0 failures, a peak of 19 568 B, and an arena that
+  coalesces back to `arena_used == 0` with no holes once nothing is live.
+- The `Executor` value lost the 136 B table and gained an 8 B head.
+
+Tier run: `just check cpp` (green, including the three new probe steps) and the
+nros-node unit tests (`node-std-tests` features, 593 passing).

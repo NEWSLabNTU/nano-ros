@@ -1321,13 +1321,20 @@ unsafe impl Sync for ComponentSlot {}
 /// correctly. `EdfReadySet`'s presence bitmap independently asserts `N <= 64`.
 pub(crate) const MAX_CALLBACK_SLOTS: usize = 64;
 
-/// Issue 1496 — how many released arena regions the executor remembers. A
-/// release beyond this many outstanding holes is still a correct release (the
-/// RMW entities are destroyed and the callback slot freed); only its bytes are
-/// not reusable until a held hole is consumed.
-pub(crate) const ARENA_FREED_REGIONS: usize = 8;
+/// Issue 1667 — the arena's allocation grain. Every region the arena hands out
+/// starts on it and is a multiple of it, so a released region is always big
+/// enough, and aligned enough, to hold its own free-list node.
+pub(crate) const ARENA_GRAIN: usize = core::mem::align_of::<u64>();
 
-/// Issue 1496 — one released arena region.
+/// Issue 1667 — the smallest region the arena hands out: one free-list node
+/// (`next`, `len`), rounded to the grain.
+pub(crate) const ARENA_MIN_REGION: usize =
+    (2 * core::mem::size_of::<usize>()).next_multiple_of(ARENA_GRAIN);
+
+/// Issue 1667 — the end of the free list.
+const ARENA_FREE_NONE: usize = usize::MAX;
+
+/// Issue 1496 — one arena region, as an allocation hands it out.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct FreedRegion {
     pub(crate) offset: usize,
@@ -1447,11 +1454,19 @@ pub struct Executor<'s> {
     /// (lifetime only) so the C/C++ FFI keeps wrapping one concrete type.
     pub(crate) arena: &'s mut [MaybeUninit<u8>],
     pub(crate) arena_used: usize,
-    /// Issue 1496 — arena regions given back by a RELEASED entry, reused
-    /// first-fit by the next allocation that fits. The arena is still a bump
-    /// allocator for everything else; this is what lets a create/destroy loop
-    /// of the same entity run forever instead of exhausting the arena.
-    pub(crate) arena_freed: heapless::Vec<FreedRegion, ARENA_FREED_REGIONS>,
+    /// Issue 1496 / 1667 — the head of the FREE LIST: arena regions given back
+    /// by a released entry, reused first-fit by the next allocation that fits.
+    ///
+    /// The list is INTRUSIVE — each free region holds its own node
+    /// (`next`, `len`) in its first bytes — and kept in address order, so a
+    /// release coalesces with both neighbours and nothing bounds how many holes
+    /// there are. 1496's form was a fixed table of 8 that dropped a region when
+    /// full and dropped any split tail under 64 B, and those bytes were gone
+    /// for good: measured under a churning workload (issue 1667), three live
+    /// entries leaked the whole 74 KiB arena inside 20 000 create/release
+    /// rounds. A hole that ends at `arena_used` is given back to the bump
+    /// pointer instead of being listed.
+    pub(crate) arena_free_head: usize,
     /// Issue 1631 — the region the most recent ENTRY allocation handed out,
     /// waiting for `emplace_entry` to record it in the entry's
     /// `CallbackMeta::arena_len`. Every registration allocates its entry and
@@ -2067,7 +2082,7 @@ impl<'s> Executor<'s> {
             session,
             arena,
             arena_used: 0,
-            arena_freed: heapless::Vec::new(),
+            arena_free_head: ARENA_FREE_NONE,
             pending_region: None,
             entries,
             sched_contexts,
@@ -5611,11 +5626,13 @@ impl<'s> Executor<'s> {
 
     /// Bump-allocate space for `T` in the arena. Returns the byte offset.
     pub(crate) fn arena_alloc<T>(&mut self) -> Result<usize, NodeError> {
-        let align = core::mem::align_of::<T>();
-        let size = core::mem::size_of::<T>();
-        if let Some(offset) = self.arena_take_freed(size, align) {
+        // Issue 1667 — every region is grain-aligned and at least one free-list
+        // node long, so it can be listed when it is released.
+        let align = core::mem::align_of::<T>().max(ARENA_GRAIN);
+        let size = Self::arena_region_len(core::mem::size_of::<T>());
+        if let Some((offset, granted)) = self.arena_take_freed(size, align) {
             crate::boot_report::note_alloc(size, self.arena_used);
-            self.note_entry_region(offset, size);
+            self.note_entry_region(offset, granted);
             return Ok(offset);
         }
         let aligned_offset = (self.arena_used + align - 1) & !(align - 1);
@@ -5642,6 +5659,17 @@ impl<'s> Executor<'s> {
     /// W0), so it is part of what they record.
     fn note_entry_region(&mut self, offset: usize, len: usize) {
         self.pending_region = Some(FreedRegion { offset, len });
+    }
+
+    /// Issue 1667 — the length a region of `len` requested bytes occupies:
+    /// rounded up to the grain, and never shorter than a free-list node.
+    const fn arena_region_len(len: usize) -> usize {
+        let len = len.next_multiple_of(ARENA_GRAIN);
+        if len < ARENA_MIN_REGION {
+            ARENA_MIN_REGION
+        } else {
+            len
+        }
     }
 
     /// Bytes a callback CAPTURE takes in an entry's trailing region: its length
@@ -5707,24 +5735,26 @@ impl<'s> Executor<'s> {
         &mut self,
         trailing_bytes: usize,
     ) -> Result<(usize, usize), NodeError> {
-        let align = core::mem::align_of::<T>();
+        let align = core::mem::align_of::<T>().max(ARENA_GRAIN);
         let entry_size = core::mem::size_of::<T>();
         // Issue 1496 — a released region that holds the entry AND its trailing
         // region is reused whole. The trailing region keeps its rule: it starts
         // on a `u64` boundary after the entry, so the request is sized by that.
         let u64_align = core::mem::align_of::<u64>();
-        let whole = entry_size.next_multiple_of(u64_align) + trailing_bytes;
-        if let Some(entry_offset) = self.arena_take_freed(whole, align.max(u64_align)) {
+        let whole = Self::arena_region_len(entry_size.next_multiple_of(u64_align) + trailing_bytes);
+        if let Some((entry_offset, granted)) = self.arena_take_freed(whole, align) {
             let trailing_offset = (entry_offset + entry_size).next_multiple_of(u64_align);
             crate::boot_report::note_alloc(whole, self.arena_used);
-            self.note_entry_region(entry_offset, whole);
+            self.note_entry_region(entry_offset, granted);
             return Ok((entry_offset, trailing_offset));
         }
         let entry_offset = self.arena_used.next_multiple_of(align);
         // Trailing region starts on an 8-byte (u64) boundary after the entry.
         let trailing_offset =
             (entry_offset + entry_size).next_multiple_of(core::mem::align_of::<u64>());
-        let new_used = trailing_offset + trailing_bytes;
+        // Issue 1667 — the region ends on the grain and is at least a node.
+        let new_used = entry_offset + whole;
+        debug_assert!(new_used >= trailing_offset + trailing_bytes);
         if new_used > self.arena.len() {
             // This path reported NOTHING until phase-412's self-report went in,
             // while its sibling `arena_alloc` has named the knob since issue
@@ -5768,62 +5798,142 @@ impl<'s> Executor<'s> {
         NodeError::BufferTooSmall
     }
 
-    /// Issue 1496 — first-fit over the released regions. A region larger than
-    /// the request is split and its tail kept, if the tail is worth keeping.
-    fn arena_take_freed(&mut self, size: usize, align: usize) -> Option<usize> {
-        let i = self.arena_freed.iter().position(|r| {
-            let start = r.offset.next_multiple_of(align);
-            start + size <= r.offset + r.len
-        })?;
-        let r = self.arena_freed.swap_remove(i);
-        let start = r.offset.next_multiple_of(align);
-        let end = start + size;
-        let tail = r.offset + r.len - end;
-        // A tail smaller than the smallest entry anything registers is not
-        // worth a slot in the table; it is reclaimed when its neighbour is.
-        if tail >= 64 {
-            let _ = self.arena_freed.push(FreedRegion {
-                offset: end,
-                len: tail,
-            });
+    /// Issue 1667 — read the free-list node at `offset`: `(next, len)`.
+    fn arena_hole(&self, offset: usize) -> (usize, usize) {
+        // SAFETY: `offset` is a listed free region: in bounds, grain-aligned and
+        // at least `ARENA_MIN_REGION` long, written by `arena_set_hole`.
+        unsafe {
+            let p = (self.arena.as_ptr() as *const u8).add(offset) as *const usize;
+            (p.read_unaligned(), p.add(1).read_unaligned())
         }
-        Some(start)
     }
 
-    /// Issue 1496 — give a region back. Adjacent holes coalesce, so a loop
-    /// that frees what it allocated returns the arena to the shape it had.
-    pub(crate) fn arena_release(&mut self, offset: usize, len: usize) {
-        let mut r = FreedRegion { offset, len };
-        while let Some(i) = self
-            .arena_freed
-            .iter()
-            .position(|h| h.offset + h.len == r.offset || r.offset + r.len == h.offset)
-        {
-            let h = self.arena_freed.swap_remove(i);
-            r = FreedRegion {
-                offset: h.offset.min(r.offset),
-                len: h.len + r.len,
-            };
+    /// Issue 1667 — write the free-list node at `offset`.
+    fn arena_set_hole(&mut self, offset: usize, next: usize, len: usize) {
+        debug_assert!(len >= ARENA_MIN_REGION && offset + len <= self.arena.len());
+        // SAFETY: as `arena_hole`; the region is free, so nothing else reads it.
+        unsafe {
+            let p = (self.arena.as_mut_ptr() as *mut u8).add(offset) as *mut usize;
+            p.write_unaligned(next);
+            p.add(1).write_unaligned(len);
         }
-        if self.arena_freed.push(r).is_err() {
-            // Full: keep the LARGER holes, which serve more requests.
-            let smallest = self
-                .arena_freed
-                .iter()
-                .enumerate()
-                .min_by_key(|(_, h)| h.len)
-                .map(|(i, h)| (i, h.len));
-            if let Some((i, len)) = smallest
-                && len < r.len
-            {
-                self.arena_freed[i] = r;
+    }
+
+    /// Point `prev`'s node (or the head, for `ARENA_FREE_NONE`) at `next`.
+    fn arena_link(&mut self, prev: usize, next: usize) {
+        if prev == ARENA_FREE_NONE {
+            self.arena_free_head = next;
+        } else {
+            let (_, len) = self.arena_hole(prev);
+            self.arena_set_hole(prev, next, len);
+        }
+    }
+
+    /// Issue 1496 / 1667 — first-fit over the free list. Returns the offset and
+    /// the length GRANTED, which is the request plus any tail too short to list
+    /// on its own: that tail belongs to the allocation, so its release gives it
+    /// back. A hole whose alignment slack would be too short to list is skipped
+    /// rather than split, for the same reason — no byte is ever orphaned.
+    fn arena_take_freed(&mut self, size: usize, align: usize) -> Option<(usize, usize)> {
+        let mut prev = ARENA_FREE_NONE;
+        let mut cur = self.arena_free_head;
+        while cur != ARENA_FREE_NONE {
+            let (next, len) = self.arena_hole(cur);
+            let start = cur.next_multiple_of(align);
+            let head = start - cur;
+            let fits = start + size <= cur + len;
+            if fits && (head == 0 || head >= ARENA_MIN_REGION) {
+                let tail = cur + len - (start + size);
+                let granted = if tail < ARENA_MIN_REGION {
+                    size + tail
+                } else {
+                    size
+                };
+                // What stays listed: the head slack, the tail, both, or neither.
+                let mut after = next;
+                if tail >= ARENA_MIN_REGION {
+                    let t = start + size;
+                    self.arena_set_hole(t, after, tail);
+                    after = t;
+                }
+                if head > 0 {
+                    self.arena_set_hole(cur, after, head);
+                } else {
+                    self.arena_link(prev, after);
+                }
+                return Some((start, granted));
+            }
+            prev = cur;
+            cur = next;
+        }
+        None
+    }
+
+    /// Issue 1496 / 1667 — give a region back. It is inserted in address order
+    /// and coalesced with both neighbours, so a loop that frees what it
+    /// allocated returns the arena to the shape it had; a hole that then ends
+    /// at `arena_used` is handed back to the bump pointer.
+    pub(crate) fn arena_release(&mut self, offset: usize, len: usize) {
+        debug_assert!(len >= ARENA_MIN_REGION && len.is_multiple_of(ARENA_GRAIN));
+        // `pprev` -> `prev` -> [offset] -> `cur`, in address order.
+        let mut pprev = ARENA_FREE_NONE;
+        let mut prev = ARENA_FREE_NONE;
+        let mut cur = self.arena_free_head;
+        while cur != ARENA_FREE_NONE && cur < offset {
+            pprev = prev;
+            prev = cur;
+            cur = self.arena_hole(cur).0;
+        }
+        let (mut start, mut size) = (offset, len);
+        let mut next = cur;
+        if next != ARENA_FREE_NONE && start + size == next {
+            let (after, next_len) = self.arena_hole(next);
+            size += next_len;
+            next = after;
+        }
+        if prev != ARENA_FREE_NONE {
+            let (_, prev_len) = self.arena_hole(prev);
+            if prev + prev_len == start {
+                start = prev;
+                size += prev_len;
+                // `prev` is absorbed: link from ITS predecessor.
+                prev = pprev;
             }
         }
+        if start + size == self.arena_used {
+            // The top of the arena: give it back to the bump pointer.
+            self.arena_used = start;
+            self.arena_link(prev, next);
+            return;
+        }
+        self.arena_set_hole(start, next, size);
+        self.arena_link(prev, start);
     }
 
     /// Issue 1496 — bytes released back to the arena and not yet reused.
+    /// Bytes handed back to the bump pointer are not counted: `arena_used`
+    /// already went down by them.
     pub fn arena_released(&self) -> usize {
-        self.arena_freed.iter().map(|r| r.len).sum()
+        let mut total = 0;
+        let mut cur = self.arena_free_head;
+        while cur != ARENA_FREE_NONE {
+            let (next, len) = self.arena_hole(cur);
+            total += len;
+            cur = next;
+        }
+        total
+    }
+
+    /// Issue 1667 — how many separate holes the free list holds. For tests and
+    /// diagnostics.
+    pub fn arena_holes(&self) -> usize {
+        let mut count = 0;
+        let mut cur = self.arena_free_head;
+        while cur != ARENA_FREE_NONE {
+            count += 1;
+            cur = self.arena_hole(cur).0;
+        }
+        count
     }
 
     /// Issue 1496 — RELEASE one callback entry: drop the entry in place (its
@@ -5851,6 +5961,19 @@ impl<'s> Executor<'s> {
         if !live {
             return false;
         }
+        // Issue 1667 — the entry's own callback is running (it, or something it
+        // called, asked for this release). Mark it and let `finish_dispatch` do
+        // the release when the callback returns. The handle stops resolving
+        // now, so a second request answers `false` and nothing dispatches it.
+        if let Some(tag) = self.slot_tags.get_mut(index)
+            && tag.flags & super::types::SlotTag::IN_DISPATCH != 0
+        {
+            if tag.flags & super::types::SlotTag::RELEASE_PENDING != 0 {
+                return false;
+            }
+            tag.flags |= super::types::SlotTag::RELEASE_PENDING;
+            return true;
+        }
         let Some(meta) = self.entries[index].take() else {
             return false;
         };
@@ -5869,8 +5992,42 @@ impl<'s> Executor<'s> {
         }
         if let Some(tag) = self.slot_tags.get_mut(index) {
             tag.owner = 0;
+            tag.flags = 0;
         }
         true
+    }
+
+    /// Issue 1667 — mark `slot`'s callback as running, so a release it requests
+    /// is deferred rather than dropping the entry under it.
+    #[inline]
+    fn begin_dispatch(slot_tags: &mut [super::types::SlotTag], slot: usize) {
+        if let Some(tag) = slot_tags.get_mut(slot) {
+            tag.flags |= super::types::SlotTag::IN_DISPATCH;
+        }
+    }
+
+    /// Issue 1667 — `slot`'s callback has returned. Complete a release it
+    /// requested while running.
+    fn finish_dispatch(&mut self, slot: usize) {
+        let Some(tag) = self.slot_tags.get_mut(slot) else {
+            return;
+        };
+        let pending = tag.flags & super::types::SlotTag::RELEASE_PENDING != 0;
+        tag.flags &= !(super::types::SlotTag::IN_DISPATCH | super::types::SlotTag::RELEASE_PENDING);
+        if !pending {
+            return;
+        }
+        if let Some(kind) = self
+            .entries
+            .get(slot)
+            .and_then(|e| e.as_ref())
+            .map(|m| m.kind)
+        {
+            // SAFETY: the release was requested through a generation-checked
+            // handle, and `resolve_handle` has refused the slot since; the
+            // callback that held the entry has returned.
+            let _ = unsafe { self.release_entry(slot, kind) };
+        }
     }
 
     /// Issue 1631 — release a SUBSCRIPTION entry, whatever registration shape
@@ -5928,6 +6085,27 @@ impl<'s> Executor<'s> {
         }
     }
 
+    /// Issue 1667 — release a GUARD CONDITION entry: its callback is dropped and
+    /// `spin_once` stops polling it; the slot and its arena bytes go to the next
+    /// registration.
+    ///
+    /// Unlike the other release verbs this one has a contract a generation
+    /// cannot discharge. The [`GuardCondition`] trigger handle holds a pointer
+    /// to the flag INSIDE the entry, and it is `Clone` + `Send`, so a clone on
+    /// another thread (an ISR, a worker) would write into whatever reuses those
+    /// bytes. The C++ `GuardCondition` is non-copyable and the one holder of its
+    /// trigger handle, which is why its destructor can call this.
+    ///
+    /// # Safety
+    /// No [`GuardCondition`] trigger handle for this entry — the one
+    /// registration returned, or any clone of it — may be used afterwards.
+    pub unsafe fn release_guard_condition(&mut self, handle: HandleId) -> bool {
+        match self.resolve_handle(handle) {
+            Some(slot) => unsafe { self.release_entry(slot, EntryKind::GuardCondition) },
+            None => false,
+        }
+    }
+
     /// Find the next free entry slot index.
     pub(crate) fn next_entry_slot(&self) -> Result<usize, NodeError> {
         self.entries
@@ -5980,6 +6158,7 @@ impl<'s> Executor<'s> {
         if let Some(tag) = self.slot_tags.get_mut(slot) {
             tag.generation = tag.next_generation();
             tag.owner = 0;
+            tag.flags = 0;
         }
     }
 
@@ -5996,7 +6175,11 @@ impl<'s> Executor<'s> {
     /// any kind, answers `None`, never the next occupant.
     pub fn resolve_handle(&self, id: HandleId) -> Option<usize> {
         let slot = id.slot();
-        let live = self.entries.get(slot).is_some_and(|e| e.is_some());
+        let live = self.entries.get(slot).is_some_and(|e| e.is_some())
+            && self
+                .slot_tags
+                .get(slot)
+                .is_none_or(|t| t.flags & super::types::SlotTag::RELEASE_PENDING == 0);
         // Generation 0 is `HandleId::for_owned_slot`: a uniquely-owned holder
         // naming its own live slot. Every ISSUED handle carries >= 1.
         let current = id.generation() == 0
@@ -9237,15 +9420,16 @@ impl<'s> Executor<'s> {
             // `try_process` now carries the entry's slot index for the callback
             // trace hooks. This sweep FIRES timer callbacks, so it is a real
             // dispatch path and must attribute them like the drain below does.
-            for (i, meta) in self
-                .entries
-                .iter()
-                .enumerate()
-                .filter_map(|(i, e)| e.as_ref().map(|m| (i, m)))
-            {
+            for i in 0..self.entries.len() {
+                let Some(meta) = self.entries[i].as_ref() else {
+                    continue;
+                };
                 if matches!(meta.kind, EntryKind::Timer) {
                     let data_ptr = unsafe { arena_ptr.add(meta.offset) };
-                    let _ = unsafe { (meta.try_process)(data_ptr, delta_us, i as u8) };
+                    let try_process = meta.try_process;
+                    Self::begin_dispatch(self.slot_tags, i);
+                    let _ = unsafe { try_process(data_ptr, delta_us, i as u8) };
+                    self.finish_dispatch(i);
                 }
             }
 
@@ -9803,6 +9987,7 @@ impl<'s> Executor<'s> {
                     // no_std arm this replaces — the std arm used to measure
                     // unconditionally.
                     let start_us = measure_us.then(read_us);
+                    Self::begin_dispatch(self.slot_tags, i);
                     dispatch_one(meta, i, arena_ptr, delta_us, &mut result);
                     let elapsed_us: Option<u32> = start_us
                         .map(|t0| read_us().saturating_sub(t0))
@@ -9830,6 +10015,7 @@ impl<'s> Executor<'s> {
                             self.fault_fn,
                         );
                     }
+                    self.finish_dispatch(i);
                 }
             }
             while let Some(job) = fifo.pop_from(bucket) {
@@ -9844,6 +10030,7 @@ impl<'s> Executor<'s> {
                     // no_std arm this replaces — the std arm used to measure
                     // unconditionally.
                     let start_us = measure_us.then(read_us);
+                    Self::begin_dispatch(self.slot_tags, i);
                     dispatch_one(meta, i, arena_ptr, delta_us, &mut result);
                     let elapsed_us: Option<u32> = start_us
                         .map(|t0| read_us().saturating_sub(t0))
@@ -9871,6 +10058,7 @@ impl<'s> Executor<'s> {
                             self.fault_fn,
                         );
                     }
+                    self.finish_dispatch(i);
                 }
             }
         }

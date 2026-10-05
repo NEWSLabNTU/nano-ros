@@ -2133,10 +2133,13 @@ class Node {
     Result create_guard_condition(::nros::GuardCondition& out, nros_cpp_guard_callback_t callback,
                                   void* context = nullptr) {
         if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-        nros_cpp_ret_t ret =
-            nros_cpp_guard_condition_create(executor_handle_, callback, context, out.storage_);
+        size_t handle_id = 0;
+        nros_cpp_ret_t ret = nros_cpp_guard_condition_create(executor_handle_, callback, context,
+                                                             out.storage_, &handle_id);
         if (ret == 0) {
             out.initialized_ = true;
+            out.executor_ = executor_handle_;
+            out.handle_id_ = handle_id;
         }
         return Result(ret);
     }

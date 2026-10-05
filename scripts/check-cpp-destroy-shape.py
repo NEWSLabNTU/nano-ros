@@ -9,9 +9,9 @@ result slab; a guard condition's flag and closure entry — lives in an entry in
 executor arena, which until `9768795b1d` was a BUMP ALLOCATOR with no removal
 path. Issue 1496 is what that cost: a destructor shaped like a release that
 released nothing, and whose arena entry kept dispatching goals through the
-destroyed object's storage. Both ACTION entries are now released through the
-executor; the guard condition's entry still is not (issue 1667), so a `NO_OP`
-row describes the DROP, which is what `needs_drop` can answer.
+destroyed object's storage. Both ACTION entries and the guard condition's are
+now released through the executor (issues 1496, 1667), so a `NO_OP` row
+describes the DROP, which is what `needs_drop` can answer.
 
 WHY THE CLASSIFICATION IS NOT IN THIS FILE
 

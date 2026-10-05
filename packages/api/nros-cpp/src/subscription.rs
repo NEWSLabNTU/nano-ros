@@ -1081,6 +1081,33 @@ pub unsafe extern "C" fn nros_cpp_subscription_take_sequence(
     }
 }
 
+/// Release a dispatch subscription — issue 1667: the callback stops, the
+/// subscriber leaves the graph, and the arena entry and its capture are freed
+/// for the next registration.
+///
+/// What `SubscriptionHandle<M>::reset()` (upstream `sub_.reset()`) calls. Safe
+/// on a stale or copied handle and from inside the subscription's own callback;
+/// see `release_dispatch_entry`. Not `_release` like its timer and service
+/// twins: `nros_cpp_subscription_release` is the loan-release verb (phase-124).
+///
+/// # Safety
+/// `executor_handle` must be a valid executor handle (one `nros_cpp_fini`
+/// already finalised is refused).
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_subscription_unregister(
+    executor_handle: *mut c_void,
+    handle_id: usize,
+) -> nros_cpp_ret_t {
+    unsafe {
+        crate::release_dispatch_entry(
+            executor_handle,
+            handle_id,
+            crate::CppExecutor::release_subscription,
+        )
+    }
+}
+
 /// Destroy a subscription (drop in place, no free).
 ///
 /// # Safety

@@ -12,6 +12,8 @@
 
 #include <cstddef>
 
+#include "nros_cpp_ffi.h"
+
 /// `rclcpp::Service<S>` is what this handle REFERS to, and `element_type` below
 /// names it. Declared rather than included: `nros/service.hpp` includes THIS
 /// header (the nested `SharedPtr` alias needs the type), and an alias member is
@@ -54,14 +56,17 @@ namespace nros {
 /// calls a method on its service handle gets a compile error naming the handle,
 /// which is the mechanical edit RFC-0089 asks for.
 ///
-/// No unregister, no `cancel()` — yet. The executor arena gained a release path
-/// in `9768795b1d` (issue 1496), but only action entities use it, so a
-/// service's registration still lives as long as the executor does. Wiring it
-/// here is issue 1667, and it is not a one-liner: this handle is two copyable
-/// words, a released slot goes to the very next registration, and a
-/// `cancel()` therefore needs a way for a stale copy to tell its slot from the
-/// one that replaced it. Offering a verb that cannot be implemented SAFELY is
-/// the defect this type exists to remove, so it is not offered.
+/// HOW IT ENDS (issue 1667)
+///
+/// `srv_.reset()` RELEASES the service, as `timer_.reset()` releases a timer:
+/// the handler stops, the server leaves the graph, and the arena entry and the
+/// handler's capture are freed for the next registration. Destroying the node
+/// that created it does the same. Dropping or overwriting a handle does NOT.
+///
+/// What a stale COPY does: it carries the generation of the registration it was
+/// issued for (phase-476 W0), so once one copy is reset the others resolve to
+/// nothing and can never reach the slot's next occupant. From inside the
+/// handler the release takes effect when the handler returns.
 template <typename S> class ServiceHandle {
   public:
     /// The service type, for the same reason `std::shared_ptr` exposes one.
@@ -86,12 +91,13 @@ template <typename S> class ServiceHandle {
     /// is nothing to do with it through this API today.
     constexpr size_t handle_id() const { return handle_id_; }
 
-    /// Stop referring to the registration. Does NOT unregister it — services are
-    /// not wired to the arena's release path (issue 1667), so the handler goes on
-    /// being dispatched. Present
-    /// because ported code writes `srv_.reset()` meaning "I am done with this
-    /// handle", and that is exactly what this does.
+    /// `srv_.reset()` — release the service (issue 1667): the handler stops,
+    /// the server leaves the graph, and this handle becomes empty. Other copies
+    /// become stale and fail safely. A no-op on an empty handle.
     void reset() {
+        if (executor_ != nullptr) {
+            (void)nros_cpp_service_server_release(executor_, handle_id_);
+        }
         executor_ = nullptr;
         handle_id_ = 0;
     }

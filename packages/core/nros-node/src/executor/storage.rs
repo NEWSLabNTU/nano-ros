@@ -967,11 +967,10 @@ mod tests {
         //     rate table by its rows past the 8 the base already absorbed. A
         //     contract with 14 rate rows grows this value by exactly those six
         //     rows and nothing else can hide inside that allowance.
-        //   * issue 1496's released-region table, a FIXED
-        //     `ARENA_FREED_REGIONS` (8) entries scaling with no knob, named for
-        //     the same reason: it is what lets a released action entry's arena
-        //     bytes be reused, and it should be visible here rather than eat
-        //     another field's headroom.
+        //   * issue 1496's released-region table was a FIXED 8-entry
+        //     `heapless::Vec` named here; issue 1667 replaced it with an
+        //     intrusive free list whose nodes live in the freed arena bytes, so
+        //     what remains in this value is one `usize` head, named below.
         //   * phase-476 W0's `slot_tags`: the TABLE is carved (it scales with
         //     `MAX_CBS` and lives in the backing); what sits in this value is
         //     one slice reference, which scales with nothing.
@@ -979,12 +978,7 @@ mod tests {
         let mut ceiling =
             1280 + size_of::<super::super::spin::SessionStore>()
                 + size_of::<&mut [super::super::types::SlotTag]>()
-                + size_of::<
-                    heapless::Vec<
-                        super::super::spin::FreedRegion,
-                        { super::super::spin::ARENA_FREED_REGIONS },
-                    >,
-                >()
+                + size_of::<usize>()
                 + size_of::<
                     [Option<super::super::spin::WakeSourceSlot>;
                         super::super::spin::MAX_WAKE_SOURCES],

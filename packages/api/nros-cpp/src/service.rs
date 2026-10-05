@@ -908,6 +908,58 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
     }
 }
 
+/// Release a dispatch service server — issue 1667: the handler stops, the
+/// server leaves the graph, and the arena entry and its capture are freed for
+/// the next registration.
+///
+/// What `ServiceHandle<S>::reset()` (upstream `srv_.reset()`) calls. Safe on a
+/// stale or copied handle and from inside the handler; see
+/// `release_dispatch_entry`.
+///
+/// # Safety
+/// `executor_handle` must be a valid executor handle (one `nros_cpp_fini`
+/// already finalised is refused).
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_server_release(
+    executor_handle: *mut c_void,
+    handle_id: usize,
+) -> nros_cpp_ret_t {
+    unsafe {
+        crate::release_dispatch_entry(
+            executor_handle,
+            handle_id,
+            crate::CppExecutor::release_service,
+        )
+    }
+}
+
+/// Release a dispatch service client — issue 1667: the client leaves the
+/// graph, a reply it was waiting for is abandoned, and the arena entry and its
+/// response handler are freed for the next registration.
+///
+/// What `ClientHandle<S>::reset()` (upstream `cli_.reset()`) calls. Safe on a
+/// stale or copied handle and from inside the response handler; see
+/// `release_dispatch_entry`.
+///
+/// # Safety
+/// `executor_handle` must be a valid executor handle (one `nros_cpp_fini`
+/// already finalised is refused).
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_client_release(
+    executor_handle: *mut c_void,
+    handle_id: usize,
+) -> nros_cpp_ret_t {
+    unsafe {
+        crate::release_dispatch_entry(
+            executor_handle,
+            handle_id,
+            crate::CppExecutor::release_service_client,
+        )
+    }
+}
+
 /// Destroy a service client (drop in place, no free).
 ///
 /// # Safety
