@@ -25,7 +25,7 @@ today with nothing reporting them:
 | --- | --- |
 | `no_local_axis_tables::no_matrix_axis_table_outside_matrix_and_interop` | FAIL: `tests/qos_event_interop.rs:72  const QOS_EVENT_CELLS` — a coordinate table outside `matrix.rs`/`interop.rs`, which the RFC-0051 single-matrix rule forbids |
 | `multihost_partition_bake` (2 of 4) | FAIL: `nros codegen entry --model …/robot1_model.yaml` refuses `SystemModel … is stale: resolver pin changed (model 0.9.0 != ours bbf9c04496d0)`. Not diagnosed — may be environmental (which resolver the test's `resolve_ws_with_host` reached) rather than a tree defect |
-| `zpico_drift_gate` (2) | `[SKIPPED] config/posix/nros-platform.toml not present — the phase-290 per-platform config layout drifted`. The posix config now lives at `packages/platform/nros-platform-posix/nros-platform.toml`; the gate's own skip text says it has lost its subject, so it currently guards nothing |
+| `zpico_drift_gate` (2) | **Fixed by PR #1699 (2026-10-06):** pointed at `packages/platform/nros-platform-posix/`, where the phase-290 per-platform config moved; it now runs and passes (16.6 s) instead of skipping on the retired `config/posix/nros-platform.toml`. Still spawns processes, so it still needs the lane decision below |
 
 The other non-passing targets in the 71 failed for fixture/peer reasons
 (`rtos_e2e`, `services`, `ros_editions_*`, …) and are not this issue.
