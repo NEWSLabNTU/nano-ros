@@ -371,14 +371,16 @@ by `just check board-tiers`.)*
 - **`nros-board-fvp-aemv8r-smp` — tier 3, build-only.** The board exists and
   Cyclone runs on it: phase-298 booted the two-tier workspace Entry on
   `FVP_BaseR_AEMv8R`, brought up ethernet and published `/ctrl` + `/telem`. But
-  the model is license-gated, so no CI lane can boot it; the runtime gate is
-  maintainer-run via `just zephyr verify-fvp-runtime`.
+  no CI lane boots it (cost and x86_64-only hosting, not a licence — the model
+  is a pinned public download, `nros setup --tool arm-fvp`); the runtime gate is
+  maintainer-run via `just zephyr verify-fvp-runtime`, re-verified passing
+  2026-10-05 (phase-477).
 - **`nros-board-s32z270dc2-r52` — scaffold.** Config and skeleton only, zero
   cargo consumers, and its one build recipe has no caller. Do not plan against
   it without reading issue tracking first.
 - Zephyr Cortex-A / Cortex-R targets still need the `aarch64-zephyr-elf`
-  toolchain in the Zephyr SDK install, and hardware or the license-gated model
-  for any runtime claim.
+  toolchain in the Zephyr SDK install, and hardware or the Arm FVP
+  (`nros setup --tool arm-fvp`) for any runtime claim.
 
 See `docs/roadmap/phase-117-cyclonedds-rmw.md` for the per-item
 breakdown.

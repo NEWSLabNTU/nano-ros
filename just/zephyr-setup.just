@@ -250,6 +250,9 @@ build-fvp-ws-entry:
     #!/usr/bin/env bash
     # shellcheck source=scripts/build/lane-skip.sh
     source scripts/build/lane-skip.sh
+    # phase-477 — NAMED, this lane must work: the model is a pinned public download
+    # (`nros setup --tool arm-fvp`), not licence-gated, so a missing one has a remedy.
+    nros_lane_platform zephyr
     set -e
     # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
     source scripts/build/zephyr-python.sh
@@ -336,10 +339,15 @@ run-fvp-ws-entry:
     #!/usr/bin/env bash
     # shellcheck source=scripts/build/lane-skip.sh
     source scripts/build/lane-skip.sh
+    # phase-477 — NAMED, this lane must work: the model is a pinned public download
+    # (`nros setup --tool arm-fvp`), not licence-gated, so a missing one has a remedy.
+    nros_lane_platform zephyr
     set -e
-    # phase-320 W1.d/W1.f — the model itself is license-walled and USER-SUPPLIED,
-    # so its absence is a skip, not a failure, and the book promises these
-    # recipes "skip with a clear hint".
+    # phase-477 — the model is NOT licence-walled: it is a pinned public Arm CDN
+    # download, `[tool.arm-fvp]` in nros-sdk-index.toml (`nros setup --tool
+    # arm-fvp`). phase-320 W1.d/W1.f believed otherwise and made its absence a
+    # skip. Named, this recipe now FAILS with that remedy; reached through a
+    # fan-out it still skips and is still reported.
     #
     # RFC-0064 R5 D4 / phase-215.K.4 — the resolver's output is now EXPORTED and
     # the launch is stock `west build -t run`. It used to be `west fvp run`, a
@@ -348,7 +356,7 @@ run-fvp-ws-entry:
     # `os.execvpe('west', ['west','build','-t','run'])`. Two of those four steps
     # are below; the other two were the verb's whole reason to exist.
     if ! _fvp_bin="$(bash scripts/zephyr/resolve-fvp-bin.sh 2>/dev/null)"; then
-        nros_lane_skip "ARM FVP model not resolvable (set ARM_FVP_DIR / ARMFVP_BIN_PATH; license-gated, user-supplied)"
+        nros_lane_skip "ARM FVP model not resolvable — run \`nros setup --tool arm-fvp\` (or set ARMFVP_BIN_PATH / ARM_FVP_DIR)"
     fi
     # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
     source scripts/build/zephyr-python.sh
@@ -396,7 +404,7 @@ run-fvp-ws-entry:
 
 # phase-298 W3.3 (issue 0232) — the maintainer pre-release gate: build the
 # ws-entry image, then run the `fvp_runtime_ws` assertion test. One command
-# a maintainer (with the license-gated FVP installed) runs before an ASI pin
+# a maintainer (with the FVP installed via `nros setup --tool arm-fvp`) runs before an ASI pin
 # bump or release. Skips cleanly (never false-fails) when the model is absent.
 [group("examples")]
 verify-fvp-runtime:
@@ -410,6 +418,9 @@ verify-fvp-runtime:
     # merge queue from `native.just`'s `setup`. 78 is interpreted here; any
     # other non-zero is a real error and still fails.
     source scripts/build/lane-skip.sh
+    # phase-477 — NAMED, this lane must work: the model is a pinned public download
+    # (`nros setup --tool arm-fvp`), not licence-gated, so a missing one has a remedy.
+    nros_lane_platform zephyr
     rc=0
     just zephyr build-fvp-ws-entry || rc=$?
     if [ "$rc" -eq 78 ]; then
@@ -439,6 +450,9 @@ build-fvp-board-import:
     #!/usr/bin/env bash
     # shellcheck source=scripts/build/lane-skip.sh
     source scripts/build/lane-skip.sh
+    # phase-477 — NAMED, this lane must work: the model is a pinned public download
+    # (`nros setup --tool arm-fvp`), not licence-gated, so a missing one has a remedy.
+    nros_lane_platform zephyr
     set -e
     # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
     source scripts/build/zephyr-python.sh
@@ -524,10 +538,15 @@ run-fvp-board-import:
     #!/usr/bin/env bash
     # shellcheck source=scripts/build/lane-skip.sh
     source scripts/build/lane-skip.sh
+    # phase-477 — NAMED, this lane must work: the model is a pinned public download
+    # (`nros setup --tool arm-fvp`), not licence-gated, so a missing one has a remedy.
+    nros_lane_platform zephyr
     set -e
-    # phase-320 W1.d/W1.f — the model itself is license-walled and USER-SUPPLIED,
-    # so its absence is a skip, not a failure, and the book promises these
-    # recipes "skip with a clear hint".
+    # phase-477 — the model is NOT licence-walled: it is a pinned public Arm CDN
+    # download, `[tool.arm-fvp]` in nros-sdk-index.toml (`nros setup --tool
+    # arm-fvp`). phase-320 W1.d/W1.f believed otherwise and made its absence a
+    # skip. Named, this recipe now FAILS with that remedy; reached through a
+    # fan-out it still skips and is still reported.
     #
     # RFC-0064 R5 D4 / phase-215.K.4 — the resolver's output is now EXPORTED and
     # the launch is stock `west build -t run`. It used to be `west fvp run`, a
@@ -536,7 +555,7 @@ run-fvp-board-import:
     # `os.execvpe('west', ['west','build','-t','run'])`. Two of those four steps
     # are below; the other two were the verb's whole reason to exist.
     if ! _fvp_bin="$(bash scripts/zephyr/resolve-fvp-bin.sh 2>/dev/null)"; then
-        nros_lane_skip "ARM FVP model not resolvable (set ARM_FVP_DIR / ARMFVP_BIN_PATH; license-gated, user-supplied)"
+        nros_lane_skip "ARM FVP model not resolvable — run \`nros setup --tool arm-fvp\` (or set ARMFVP_BIN_PATH / ARM_FVP_DIR)"
     fi
     # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
     source scripts/build/zephyr-python.sh

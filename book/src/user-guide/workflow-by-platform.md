@@ -234,7 +234,7 @@ commands there.
 | Zephyr | `zephyr`, `zephyr-cortex-m` | `zephyr` | `examples/zephyr/` | `just zephyr …` | [Zephyr](../getting-started/integration-zephyr.md) |
 | ESP32 | `esp32` | `esp32-c3-baremetal` | `examples/esp32-c3-baremetal/` | `just esp32 …` | [ESP32](../getting-started/esp32.md) |
 | Bare-metal Cortex-M3 | `baremetal` | `mps2-an385-baremetal` | `examples/mps2-an385-baremetal/` | `just qemu …` | [Bare-metal](../getting-started/bare-metal.md) |
-| Arm FVP (Cortex-A SMP) | — | `zephyr` + a license-gated FVP binary | — | — | [ARM FVP](../getting-started/arm-fvp.md) |
+| Arm FVP (Cortex-A SMP) | — | `zephyr` + the Arm FVP (`nros setup --tool arm-fvp`, x86_64 only) | — | — | [ARM FVP](../getting-started/arm-fvp.md) |
 
 Multi-node workspace examples do not follow that directory rule: they
 all live under `examples/workspaces/`, selected by fixture row rather

@@ -49,29 +49,30 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 
 ### ARM FVP (`FVP_BaseR_AEMv8R`)
 
-License-gated — nano-ros does not download the binary. Set one of
-the discovery vars after accepting the Arm EULA and installing
-locally. See the [ARM FVP getting-started chapter](../getting-started/arm-fvp.md)
-for the end-to-end build+run walk-through.
+Not license-gated: `nros setup --tool arm-fvp` fetches the model from a pinned
+Arm CDN permalink (`[tool.arm-fvp]` in `nros-sdk-index.toml`, digest-checked) into
+the SDK store. Arm publishes it for **x86_64 Linux only**. You need none of the
+variables below unless you installed a model yourself. See the
+[ARM FVP getting-started chapter](../getting-started/arm-fvp.md) for the
+end-to-end build+run walk-through.
 
 | Variable          | Description                                                                          | Default |
 |-------------------|--------------------------------------------------------------------------------------|---------|
 | `ARMFVP_BIN_PATH` | Directory containing `FVP_BaseR_AEMv8R` (Zephyr-canonical, highest priority).        | (unset) |
-| `ARM_FVP_DIR`     | Install root; resolver scans `models/Linux64_GCC-*/` underneath. Matches sdk-index.  | (unset) |
+| `ARM_FVP_DIR`     | Install root; resolver scans `models/Linux64_GCC-*/` underneath.                     | (unset) |
 
-If neither is set, `scripts/zephyr/resolve-fvp-bin.sh` falls back
-to `dirname $(command -v FVP_BaseR_AEMv8R)`. Phase 217.A —
-`just zephyr run-fvp-ws-entry` / `run-fvp-board-import` skip gracefully when
-the binary can't be resolved.
+`scripts/zephyr/resolve-fvp-bin.sh` resolves, in order: `ARMFVP_BIN_PATH`,
+`ARM_FVP_DIR`, `FVP_BaseR_AEMv8R` on `PATH`, then the store copy
+(`nros sdk-path arm-fvp`). The `just zephyr run-fvp-*` / `verify-fvp-runtime`
+recipes export the result as `ARMFVP_BIN_PATH` at BUILD time as well as run time,
+because Zephyr's `armfvp.cmake` caches the location at configure. When nothing
+resolves, a recipe you NAMED fails with the remedy (`nros setup --tool arm-fvp`);
+reached through a fixture fan-out it skips and is reported.
 
-After extracting the Arm-provided tarball, run
-`scripts/installers/arm-fvp-installer.sh` with `ARM_FVP_DIR` set
-to the extraction root — it locates `FVP_BaseR_AEMv8R`, symlinks
-the directory to `~/.nros/sdks/arm-fvp/current/`, and prints the
-`export ARMFVP_BIN_PATH=…` line for your shell rc. Verify with
-`nros doctor --board fvp-aemv8r-smp`, which cross-checks the
-`[gated.arm-fvp]` entry in `nros-sdk-index.toml` and warns (never
-hard-fails — license-gated) when the binary is missing.
+For a model you downloaded by hand, `scripts/installers/arm-fvp-installer.sh`
+(with `ARM_FVP_DIR` set to the extraction root) symlinks it to
+`~/.nros/sdks/arm-fvp/current/` and prints the `export ARMFVP_BIN_PATH=…` line.
+`nros doctor --board fvp-aemv8r-smp` reports whether the model resolves.
 
 ### FreeRTOS / NuttX / ThreadX SDK Paths
 
