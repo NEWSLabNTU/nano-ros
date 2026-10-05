@@ -85,7 +85,7 @@ template <size_t N> struct FixedString {
 
     bool operator!=(const char* s) const { return !(*this == s); }
 
-#ifdef NROS_CPP_HAS_STD_STRING
+#ifdef NROS_CPP_HAS_STD_STRING // hosted-family: string-interop
     // phase-417 W1.c — `std::string` interop.
     //
     // Codegen emits a message's string field as `FixedString<N>` where

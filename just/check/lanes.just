@@ -1151,6 +1151,29 @@ cpp: cpp-fmt
         packages/api/nros-cpp/tests/compile/ros2_loudness_runtime.cpp \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/ros2_loudness_runtime
+    # phase-476 W4 — the `RCLCPP_*_STREAM` family on EVERY target: a fixed-size
+    # formatter, one implementation. Built WITH and WITHOUT `NROS_CPP_STD` and
+    # both runs assert the same builtin text; the hosted run also checks it
+    # matches `std::ostringstream` and that user types still stream through the
+    # hosted interop overload.
+    test -f packages/api/nros-cpp/tests/compile/log_stream_runtime.cpp || { \
+        echo "ERROR: log_stream_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - RCLCPP_*_STREAM formats builtins identically with and without NROS_CPP_STD (runtime, phase-476 W4)"
+    for _std_arm in "-DNROS_CPP_STD=1" ""; do
+        # shellcheck disable=SC2086
+        c++ -std=c++17 $_std_arm -fno-exceptions -fno-rtti \
+            -I"$gen/nros-cpp-generated" \
+            -I"$gen/nros-c-generated" \
+            -Ipackages/api/nros-cpp/include \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            -o "$gen/nros-cpp-tests"/log_stream_runtime \
+            packages/api/nros-cpp/tests/compile/log_stream_runtime.cpp \
+            "$nros_cpp_lib" -lpthread -ldl -lm
+        "$gen/nros-cpp-tests"/log_stream_runtime
+    done
     # phase-417 W4.c/W4.d — the two behaviours a C++ `static_assert` cannot
     # reach. Both link `libnros_cpp.a` AND the shared C stub RMW backend
     # (`nros-c/tests/run/stub_rmw_backend.c`), because both need a real

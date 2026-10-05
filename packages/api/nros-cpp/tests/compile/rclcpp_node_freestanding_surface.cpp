@@ -149,6 +149,9 @@ inline ::nros::Result instantiate() {
     (void)vpoll_srv;
     (void)vpoll_cli;
 
+    // phase-476 W4 — the stream logging family on a freestanding target.
+    RCLCPP_INFO_STREAM(node.get_logger(), "ticks=" << ticks << " ratio=" << 0.5 << " ok=" << true);
+
     // phase-456 W5 — the poll server is `nros::PollService<S>`, a different
     // type from the dispatch one below. One class used to be both.
     ::nros::PollService<AddTwoInts> poll_service;

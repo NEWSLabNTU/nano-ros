@@ -269,6 +269,17 @@ cpp-subscription-bound-supplied:
 cpp-capability-layout:
     @python3 scripts/check-cpp-capability-layout.py
 
+# phase-476 W5 — the C++ API's hosted-only surface is an ENUMERATED family.
+# Every `#if` in `packages/api/nros-cpp/include` that names a capability macro
+# carries `// hosted-family: <id>`, and the ids, each with its reason and the
+# macros it may name, live in the script. An untagged one, an unknown id, a
+# foreign macro and an unused member all fail. That is phase-476's acceptance,
+# "zero outside the documented hosted-only family", as a gate. Source-only,
+# well under a second.
+[private]
+cpp-hosted-family:
+    @python3 scripts/check-cpp-hosted-family.py
+
 # RFC-0088 D5 / phase-421 W6 — `NROS_SERIALIZATION_FORMAT{,_ID}` names the
 # format of THE image's single backend. A bridge image links two and has no
 # single answer, so a bridge-linked TU referencing the macro is a wrong answer

@@ -13,9 +13,9 @@
 #include <cstdint>
 #include <cstddef>
 #include <type_traits> // Phase 189.M3.3.e — SFINAE on the callback-style create_service
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
-#include <cstdlib> // getenv — Phase 123.B.3 env-aware init
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
+#include <cstdlib>                                 // getenv — Phase 123.B.3 env-aware init
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
 #include <cstdio> // fopen — Phase 212.L.5 init_with_launch path-exists check
 // <stdio.h> + unqualified `::fprintf` (issue 0942 / phase-472 W5): `<cstdio>` need not put
 // the C names in `std` on a freestanding libstdc++, and `std::fprintf` then fails.
@@ -48,8 +48,8 @@
 // the block below states as the rule: a hosted STL include lives inside an
 // `NROS_CPP_STD` region, never one an `||` arm can reach from a freestanding
 // board (issue 0332).
-#if defined(NROS_CPP_STD)
-#include <map> // phase-417 W4.a — rclcpp::Node::declare_parameters<T>'s argument
+#if defined(NROS_CPP_STD) // hosted-family: container-interop
+#include <map>            // phase-417 W4.a — rclcpp::Node::declare_parameters<T>'s argument
 #endif
 
 // Phase 118.D: ffi.h MUST come before qos.hpp so qos.hpp's
@@ -314,7 +314,7 @@ inline void report_component_failure(const char* node_name, const char* what, in
     // C++ side still had it.
     NROS_ERROR("node \"%s\": FAILED at %s (code=%d)", (node_name != nullptr) ? node_name : "?",
                (what != nullptr) ? what : "?", static_cast<int>(code));
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
     ::fprintf(stderr, "[nros] FATAL: node \"%s\" failed to construct at %s (code=%d)\n",
               (node_name != nullptr) ? node_name : "?", (what != nullptr) ? what : "?",
               static_cast<int>(code));
@@ -339,7 +339,7 @@ inline void report_declared_depth_mismatch(const char* node_name, const char* to
                "passed states %d. Depth multiplies the executor arena, so they must agree.",
                (node_name != nullptr) ? node_name : "?", (topic != nullptr) ? topic : "?", declared,
                passed);
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
     ::fprintf(stderr,
               "[nros] FATAL: node \"%s\": topic \"%s\" was DECLARED depth %d in "
               "the contract sidecar (<stem>.contract.yaml) but the QoS passed to "
@@ -373,7 +373,7 @@ inline void report_declared_policy_mismatch(const char* node_name, const char* t
                "incompatible-QoS match never delivers, so they must agree.",
                (node_name != nullptr) ? node_name : "?", (topic != nullptr) ? topic : "?", policy,
                declared, passed);
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
     ::fprintf(stderr,
               "[nros] FATAL: node \"%s\": topic \"%s\" was DECLARED %s %s in the contract "
               "sidecar (<stem>.contract.yaml) but the QoS passed to create_subscription_in "
@@ -424,7 +424,7 @@ inline void report_declared_param_mismatch(const char* fqn, const char* param, c
                    f, p, ::nros::declared_param_type_name(declared), c,
                    ::nros::declared_param_type_name(passed));
     }
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
     if (declared == ::nros::DECLARED_PARAM_UNDECLARED) {
         ::fprintf(stderr,
                   "[nros] FATAL: node \"%s\": parameter \"%s\" is not declared in its "
@@ -804,7 +804,7 @@ class Node {
         return kOptions;
     }
 
-#ifdef NROS_CPP_HAS_STD_STRING
+#ifdef NROS_CPP_HAS_STD_STRING // hosted-family: string-interop
     /// `std::make_shared<rclcpp::Node>("talker")` — upstream's constructor.
     explicit Node(const ::std::string& name) : Node(name.c_str(), nullptr) {}
 
@@ -818,7 +818,7 @@ class Node {
         : Node(name.c_str(), ns.c_str(), options) {}
 #endif // NROS_CPP_HAS_STD_STRING
 
-#ifdef NROS_CPP_HAS_SHARED_PTR
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: shared-ptr-interop
     using SharedPtr = ::std::shared_ptr<Node>;
 
     /// `rclcpp::Node::shared_from_this()`.
@@ -859,7 +859,7 @@ class Node {
     /// Const overload of [`nros_node`].
     const Node& nros_node() const { return *this; }
 
-#ifdef NROS_CPP_HAS_STD_STRING
+#ifdef NROS_CPP_HAS_STD_STRING // hosted-family: string-interop
     // -- entity creation, upstream's signatures (bodies in `nros.hpp`) -------
 
     /// `create_publisher<M>(topic, qos)` — upstream's shape, `std::string` key.
@@ -1182,7 +1182,7 @@ class Node {
     /// `rclcpp::Node::remove_on_set_parameters_callback(handle)`.
     Result remove_on_set_parameters_callback(ParameterCallbackHandle handle);
 
-#ifdef NROS_CPP_HAS_STD_STRING
+#ifdef NROS_CPP_HAS_STD_STRING // hosted-family: string-interop
     /// `std::string`-keyed overloads. rclcpp keys on `std::string`, which does
     /// not implicitly convert to `const char*`, so a ported call site needs
     /// these to bind at all.
@@ -1940,7 +1940,7 @@ class Node {
     /// and a missed deadline catches up where rcl drops (see `rclcpp::Timer`).
     template <typename Cb>::nros::TimerHandle create_wall_timer(::nros::Duration period, Cb cb);
 
-#ifdef NROS_CPP_HAS_STD_CHRONO
+#ifdef NROS_CPP_HAS_STD_CHRONO // hosted-family: chrono-interop
     /// `create_wall_timer(500ms, callback)` — the `std::chrono` spelling a
     /// ported file writes. Conversion sugar over the `nros::Duration` overload,
     /// which is the one that exists on every target.
@@ -2738,7 +2738,7 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
     if (session_name == nullptr) {
         return Result(-3);
     }
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
     // Issue #39 — apply the same `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` env
     // fallback as the 2-arg `init()` when `locator` is null / `domain_id` is
     // 0. This makes `init_with_launch_auto()` (which delegates here with a
@@ -2960,7 +2960,7 @@ inline Result init_with_launch(const char* path, int argc, char** argv, const ch
     if (path == nullptr) {
         return Result(-3);
     }
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
     // Verify the file exists so misspelled paths fail fast at init time
     // instead of surfacing as a silently-empty overlay later.
     if (FILE* f = ::fopen(path, "rb")) {

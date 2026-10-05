@@ -116,7 +116,7 @@ struct HeapString {
     }
     bool operator!=(const char* s) const { return !(*this == s); }
 
-#ifdef NROS_CPP_HAS_STD_STRING
+#ifdef NROS_CPP_HAS_STD_STRING // hosted-family: string-interop
     // phase-417 W1.c — `std::string` interop, the same conversions
     // `FixedString<N>` carries, so a ported assignment reads identically
     // whichever string mode (RFC-0033) codegen picked for the field.
