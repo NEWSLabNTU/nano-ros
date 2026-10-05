@@ -1079,6 +1079,28 @@ cpp: cpp-fmt
         -o "$gen/nros-cpp-tests"/publisher_publish_guards_initialized \
         packages/api/nros-cpp/tests/compile/publisher_publish_guards_initialized.cpp
     "$gen/nros-cpp-tests"/publisher_publish_guards_initialized
+    # phase-467 Row 11, C++ half — `rclcpp::init(argc, argv)` and
+    # `nros::init_with_launch*(argc, argv)` honour `--ros-args`. RUNTIME, and
+    # with the five FFI entry points stubbed in the TU (same reason as the probe
+    # above): what is under test is ORDER — validate before a session opens,
+    # install after it, close it again on a rule that does not fit — and that a
+    # refusal ABORTS `rclcpp::init` but is RETURNED by `init_with_launch_auto`.
+    test -f packages/api/nros-cpp/tests/compile/init_honours_ros_args.cpp || { \
+        echo "ERROR: init_honours_ros_args.cpp is MISSING -- this check" >&2; \
+        echo "       would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - init(argc, argv) honours --ros-args (runtime, c++14)"
+    c++ -std=c++14 -fno-exceptions -fno-rtti \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Wl,--unresolved-symbols=ignore-all \
+        -o "$gen/nros-cpp-tests"/init_honours_ros_args \
+        packages/api/nros-cpp/tests/compile/init_honours_ros_args.cpp
+    "$gen/nros-cpp-tests"/init_honours_ros_args
     # phase-417 stage 3 — the loudness a RUN is the only witness for: issue 1019
     # (the `RCLCPP_*` family reaching `nros_log` at the RIGHT SEVERITY, carrying
     # its message and its logger name) and the VALUE half of
@@ -3455,3 +3477,21 @@ zenoh-archive:
 [private]
 excluded-crate-tests:
     @bash scripts/run-excluded-crate-tests.sh
+
+# phase-467 Row 11, C++ half — the `rmw-cffi`-gated unit tests of nros-cpp's
+# FFI edge (`nros_cpp_install_argv_remaps`: the NULL-handle validate path, the
+# reason buffer, a bad argv). `test-unit` builds nros-cpp with its DEFAULT
+# features, which carry no `rmw-cffi`, so without this recipe these tests are
+# compiled by nothing and pass by not existing (issue 1226's shape).
+#
+# Its own target dir for issue 1354's reason: nros-cpp's build script writes a
+# generated config header into a path with no feature in it, and the `cpp`
+# lane's probes compile against that header under a DIFFERENT feature set.
+[private]
+cpp-ffi-tests:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/build/cargo.sh
+    export CARGO_TARGET_DIR="$(nros_scoped_target_dir check-cpp-ffi-tests)"
+    cargo test -p nros-cpp --lib --no-default-features --features std,rmw-cffi --quiet \
+        -- install_argv_remaps_tests

@@ -255,6 +255,7 @@ build-serial: \
     census-hooks-complete \
     cli-tests \
     cpp \
+    cpp-ffi-tests \
     embedded-feature-unification \
     excluded-crate-tests \
     launch-resolve-builds \

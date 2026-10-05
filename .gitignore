@@ -112,6 +112,7 @@ tools/*
 # sites by `check-scoped-target-dirs-ignored`, not remembered.
 /target-check-c/
 /target-check-census-hooks/
+/target-check-cpp-ffi-tests/
 /target-check-cpp/
 /target-check-cpp-clippy-zenoh/
 /target-check-cpp-cyclone-embedded/

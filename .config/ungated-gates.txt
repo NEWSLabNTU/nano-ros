@@ -46,6 +46,11 @@ c
 census-hooks-complete
 cpp
 node-std-tests
+# cpp-ffi-tests is a cargo lib-test build of nros-cpp under `std,rmw-cffi`
+# (no cargo in a pristine PATH, same as excluded-crate-tests). gate.yml DOES run
+# it on merge_group, in its own step — this gate reads LANE membership only,
+# which is also why node-std-tests above is listed despite its PR step.
+cpp-ffi-tests
 nros-log-riscv32
 staticlib-symbols
 test-targets

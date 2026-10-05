@@ -218,19 +218,15 @@ template <typename T> struct refuse {
     "compiling."
 
 #define NROS_RCLCPP_REFUSE_INIT_ARGV                                                               \
-    "rclcpp::init(argc, argv) was given --ros-args, which nano-ros cannot honour "                 \
-    "(RFC-0089, phase-417 W3.b). Proceeding would DISCARD it, so `-r chatter:=/other` would "      \
-    "silently become a wrong-topic bug at runtime -- the 'compiles and differs' the rule "         \
-    "forbids. Nothing in this process parses --ros-args yet: nros::init_with_launch_auto(argc, "   \
-    "argv) discards them too -- `(void)argc; (void)argv;` is its whole treatment of them -- and "  \
-    "honouring them is remap resolution -- RFC-0020 violation class 4 -- so the parser belongs "   \
-    "beside nros::resolve_name, not in this "                                                      \
-    "header. Today remaps and parameter overrides reach a node from `nros sync`, which projects "  \
-    "the launch file's rules into the GENERATED ENTRY at BUILD time as nros_cpp_declare_remap / "  \
-    "nros_cpp_declare_param calls; they do NOT travel in the process environment, which carries "  \
-    "the domain, locator, session mode and RMW hint and nothing else. Call the zero-argument "     \
-    "rclcpp::init(); nros::init_with_launch_auto(0, nullptr, \"my_session\") reads that same "     \
-    "environment and parses no launch file yet."
+    "rclcpp::init(argc, argv) / nros::init_with_launch*(argc, argv) was given a --ros-args "       \
+    "argument nano-ros cannot honour (RFC-0089). Proceeding would DISCARD it -- the 'compiles "    \
+    "and differs' the rule forbids. HONOURED inside --ros-args ... --: -r / --remap "              \
+    "[node:]from:=to, applied as the FALLBACK beneath any remap the launch file projected for "    \
+    "the same name (RFC-0046; rcl's local-before-global). REFUSED: -p / --param / "                \
+    "--params-file (runtime parameters belong to RFC-0015 section 9's channel), node-identity "    \
+    "remaps (__node, __name, __ns), -e / --enclave, the log flags, and any token that is not a "   \
+    "ROS flag. A nros sync image does not need argv: its launch remaps and parameters are "        \
+    "projected into the GENERATED ENTRY at BUILD time."
 
 // phase-428 W5 finding 9. Runtime, like `NROS_RCLCPP_REFUSE_INIT_ARGV` above
 // and for the same reason: only the VALUE carries the defect, so the earliest

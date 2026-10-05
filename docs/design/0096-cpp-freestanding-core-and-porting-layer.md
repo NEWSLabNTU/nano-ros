@@ -341,8 +341,9 @@ an edit, and every one is a compile error naming the exact site:
    spelling cannot. This is the edit our own templates need, and it is why
    examples and fixtures are in scope later rather than now.
 2. **`std::make_shared<MyNode>()` in `main`.** `main` is already not drop-in —
-   RFC-0089 refuses `rclcpp::init(argc, argv)`'s two-argument form loudly today,
-   so a ported `main` already requires attention. The node *class body*, which is
+   RFC-0089 refused `rclcpp::init(argc, argv)`'s `--ros-args` loudly; since
+   2026-10-05 it honours `-r` and refuses only parameter, identity and log
+   arguments, so a ported `main` needs attention only if it passes those. The node *class body*, which is
    the bulk of any port, is what must be drop-in and is.
 3. **A lambda capture larger than the declared budget**, which is a
    `static_assert` naming the knob.

@@ -695,8 +695,8 @@ pub fn init() -> Result<Context, InitError> {
 /// The refusal [`init_with_args`] and [`Context::new`] emit for a ROS
 /// argument nano-ros does not honour. Panics carry this text followed by the
 /// refused argument. `NROS_RCLCPP_REFUSE_INIT_ARGV` is the C++ twin
-/// (`packages/api/nros-cpp/include/nros/log.hpp`), which still refuses
-/// `--ros-args` outright.
+/// (`packages/api/nros-cpp/include/nros/log.hpp`), and since phase-467 Row 11's
+/// C++ half it states the same honoured and refused sets, from the same parser.
 #[cfg(feature = "env")]
 pub const REFUSE_INIT_ARGS: &str = "nros::init_with_args / nros::Context::new was given a --ros-args \
 argument nano-ros cannot honour (RFC-0089, phase-417 W3.b). Proceeding would DISCARD it -- the \
