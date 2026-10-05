@@ -114,18 +114,12 @@ endfunction()
 #
 # The caller decides whether there is anything to fold. A producer that
 # ABSTAINS must not reach here — an empty fold would still assert
-# `NROS_ENTITY_FACTS_SEEN` and `NROS_ENTITY_SERVERS_UNKNOWN`, which is the
+# `NROS_ENTITY_FACTS_SEEN`, which is the
 # "nobody described this image" state said in a way that reads as an answer.
 function(nros_fold_entity_facts _out)
     set_property(GLOBAL PROPERTY NROS_ENTITY_FACTS_SEEN TRUE)
 
     string(REPLACE "\n" ";" _lines "${_out}")
-    # An entry whose model describes no wiring says NOTHING about the
-    # application count (the verb abstains rather than reporting a zero it
-    # cannot support). One such entry makes the whole configure's application
-    # count unknown: the shared staticlib has to hold the largest, and an
-    # unknown is not smaller than anything.
-    set(_saw_servers FALSE)
     foreach(_line IN LISTS _lines)
         if(_line MATCHES "^NROS_DECLARED_INFRA_QUERYABLES=(.*)$")
             set(_infra "${CMAKE_MATCH_1}")
@@ -135,53 +129,17 @@ function(nros_fold_entity_facts _out)
             if(_infra MATCHES "lifecycle")
                 set_property(GLOBAL PROPERTY NROS_ENTITY_INFRA_LIFECYCLE TRUE)
             endif()
-        elseif(_line MATCHES "^NROS_DECLARED_SERVICE_SERVERS=([0-9]+)$")
-            set(_saw_servers TRUE)
-            get_property(_have GLOBAL PROPERTY NROS_ENTITY_SERVERS_MAX)
-            if(NOT _have OR CMAKE_MATCH_1 GREATER _have)
-                set_property(GLOBAL PROPERTY NROS_ENTITY_SERVERS_MAX "${CMAKE_MATCH_1}")
-            endif()
         elseif(_line MATCHES "^NROS_DECLARED_NODES=([0-9]+)$")
             # phase-426 W3 -- the ROS parameter services are registered once
             # PER NODE, so this is a term in the queryable pool. MAX across the
-            # configure's models for the same reason the server count is: the
-            # shared staticlib holds the largest, and the pool is sized once.
+            # configure's models: the shared staticlib holds the largest, and
+            # the pool is sized once.
             get_property(_have GLOBAL PROPERTY NROS_ENTITY_NODES_MAX)
             if(NOT _have OR CMAKE_MATCH_1 GREATER _have)
                 set_property(GLOBAL PROPERTY NROS_ENTITY_NODES_MAX "${CMAKE_MATCH_1}")
             endif()
-        elseif(_line MATCHES "^NROS_DECLARED_TL_PUBLISHERS=([0-9]+)$")
-            # Issue 1378 -- a TRANSIENT_LOCAL publisher declares a cache
-            # queryable, so this is a term in the same pool. MAX across the
-            # configure's models for the reason the two above are: the shared
-            # staticlib holds the largest and the pool is sized once.
-            get_property(_have GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_MAX)
-            if(NOT _have OR CMAKE_MATCH_1 GREATER _have)
-                set_property(GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_MAX "${CMAKE_MATCH_1}")
-            endif()
-        elseif(_line MATCHES "^NROS_DECLARED_TL_PUBLISHERS=refused:([0-9]+)$")
-            # Issue 1572 -- an entry that LOOKED and could not count sends its
-            # WORST CASE (every publisher that states no durability counted as
-            # transient-local). The pool is sized once for the shared
-            # staticlib, so the worst case joins the same MAX the exact counts
-            # do, and the configure's answer is marked as a worst case so the
-            # word travels on to the reader.
-            set_property(GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_WORST_CASE TRUE)
-            get_property(_have GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_MAX)
-            if(NOT _have OR CMAKE_MATCH_1 GREATER _have)
-                set_property(GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_MAX "${CMAKE_MATCH_1}")
-            endif()
-        elseif(_line MATCHES "^NROS_DECLARED_TL_PUBLISHERS=refused$")
-            # A bare `refused` is an `nros` CLI older than issue 1572: no worst
-            # case came with it, so the whole configure's count is unknown and
-            # the word is forwarded as-is -- the readers fail the build on it
-            # and say to rebuild the CLI, rather than sizing zero.
-            set_property(GLOBAL PROPERTY NROS_ENTITY_TL_PUBLISHERS_UNKNOWN TRUE)
         endif()
     endforeach()
-    if(NOT _saw_servers)
-        set_property(GLOBAL PROPERTY NROS_ENTITY_SERVERS_UNKNOWN TRUE)
-    endif()
 endfunction()
 
 # nros_entity_facts_env_deferred(<target>)
@@ -424,27 +382,16 @@ function(_nros_entity_budget_env _out_var)
     # first by `nros/build.rs`, zero-diff with this carrier dropped on
     # `examples/workspaces/cpp` native, freertos_posix and freertos (mps2,
     # zenoh).
-    foreach(_pair
-            # phase-461 W3 (issue 1352) -- the two service-inbox families' slot
-            # sizes, joined in `NanoRosEntityInventory.cmake` from this image's
-            # declared service and action REQUEST types. Absent unless every
-            # request type in the family is priced, so a reader either takes a
-            # derived number or keeps its own default; the zenoh build script
-            # reads both as a rung BELOW any stated NROS_*_INBOX_BYTES.
-            #
-            # This road and not the resolver's: `NROS_SERVICE_INBOX_BYTES` has a
-            # Kconfig row whose default is the one-release alias
-            # `NROS_SERVICE_BUFFER_SIZE`, so it states a number on every Zephyr
-            # image and a DERIVE sentinel there would break the alias. A
-            # declared fact sits below both rungs and needs no sentinel.
-            "NROS_DECLARED_SERVICE_INBOX_BYTES;NROS_DERIVED_SERVICE_INBOX_BYTES"
-            "NROS_DECLARED_ACTION_INBOX_BYTES;NROS_DERIVED_ACTION_INBOX_BYTES")
-        list(GET _pair 0 _name)
-        list(GET _pair 1 _src)
-        if(DEFINED ${_src})
-            list(APPEND _out "${_name}=${${_src}}")
-        endif()
-    endforeach()
+    #
+    # Issue 1649 -- and the last two, the service-inbox families' slot sizes
+    # (SERVICE_INBOX_BYTES, ACTION_INBOX_BYTES): `nros-rmw-zenoh` reads the
+    # descriptor's per-family request bound first, and the drop was zero-diff
+    # on the cmake road (native, five entries with service and action servers)
+    # and on the Zephyr WEST road (a service-serving `native_sim` image), while
+    # with no descriptor named the same drop moves SERVICE_INBOX_BYTES 24 ->
+    # 1024. So this list is EMPTY: every entity count this function carried is
+    # a descriptor field now. The function stays as the one place a future
+    # carrier would be produced, and returns nothing.
     set(${_out_var} "${_out}" PARENT_SCOPE)
 endfunction()
 
@@ -578,19 +525,19 @@ function(_nros_param_store_env _out_var)
     # descriptor's `[params]` states both, `nros-params` reads it first, the
     # knob diff with them dropped was zero on a parameter-declaring
     # `examples/workspaces/cpp` native configure, and no other road carries
-    # them under these names. The NEEDS rows and the service shape stay: the
-    # Zephyr resolver forwards them, and no west image declares parameters.
+    # them under these names. Then the three NEEDS rows and the service shape
+    # followed: the descriptor's `[params]` states each need and the
+    # per-node shapes, `nros-params` / `nros-node` / `nros-rmw-zenoh` read
+    # them first, and the drop was zero-diff on the cmake road AND the Zephyr
+    # WEST road (a parameter-declaring, service-serving `native_sim` image),
+    # while with no descriptor the same drop turns the declared shape to
+    # `None`. What stays are the three CAPACITIES: a board fact, never in the
+    # descriptor (RFC-0100 D1).
     set(_out "")
     foreach(_pair
             "NROS_DECLARED_MAX_STRING_VALUE_LEN;NROS_DERIVED_MAX_STRING_VALUE_LEN"
             "NROS_DECLARED_MAX_ARRAY_LEN;NROS_DERIVED_MAX_ARRAY_LEN"
-            "NROS_DECLARED_MAX_BYTE_ARRAY_LEN;NROS_DERIVED_MAX_BYTE_ARRAY_LEN"
-            "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN;NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN"
-            "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN;NROS_PARAM_NEEDS_MAX_ARRAY_LEN"
-            "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN;NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN"
-            # phase-446 F3 -- the parameter services' shape; nros-node's
-            # build script bounds the service buffer from it.
-            "NROS_DECLARED_PARAM_SERVICE_SHAPE;NROS_PARAM_SERVICE_SHAPE")
+            "NROS_DECLARED_MAX_BYTE_ARRAY_LEN;NROS_DERIVED_MAX_BYTE_ARRAY_LEN")
         list(GET _pair 0 _name)
         list(GET _pair 1 _src)
         if(DEFINED ${_src})
@@ -719,46 +666,15 @@ function(nros_entity_facts_env _target)
         list(APPEND _env "NROS_DECLARED_NODES=${_nodes}")
     endif()
 
-    _nros_entity_fact(_unknown NROS_ENTITY_SERVERS_UNKNOWN)
-    _nros_entity_fact(_max NROS_ENTITY_SERVERS_MAX)
-    if(NOT _unknown AND NOT _max STREQUAL "")
-        list(APPEND _env "NROS_DECLARED_SERVICE_SERVERS=${_max}")
-        set(_app "${_max} declared service server(s)")
-    else()
-        # issue 0973 — say what a reader can DO about it. "No model here
-        # describes wiring" is true and unactionable: it reads as a resolver
-        # fault, and three consumers were written against it on that reading.
-        # Endpoint wiring is AUTHORED, so the line names the file that would
-        # answer the question. One spelling: this is the existing status line
-        # extended, not a second diagnostic beside it.
-        set(_app "application count undeclared — no model here describes wiring")
-        string(APPEND _app "; to declare it, author")
-        string(APPEND _app " <bringup>/launch/<stem>.contract.yaml beside")
-        string(APPEND _app " <stem>.launch.xml (RFC-0060)")
-    endif()
-
-    # Issue 1378 — the transient-local cache queryables. Carried beside the
-    # server count and NOT folded into it: that number is already multiplied by
-    # ACTION_SERVER_QUERYABLES, so a consumer holding `3` cannot tell one action
-    # server from three service servers, and only the first owes a cache slot.
-    #
-    # `refused` travels as a WORD rather than being dropped, so the consumer can
-    # say out loud that it is paying for a term nobody counted -- and since
-    # issue 1572 it travels WITH the worst case, `refused:<n>`, so the consumer
-    # sizes for it instead of for zero. (The bare word, from an older CLI,
-    # carries no number; the consumer refuses it.)
-    _nros_entity_fact(_tl_unknown NROS_ENTITY_TL_PUBLISHERS_UNKNOWN)
-    _nros_entity_fact(_tl_worst NROS_ENTITY_TL_PUBLISHERS_WORST_CASE)
-    _nros_entity_fact(_tl NROS_ENTITY_TL_PUBLISHERS_MAX)
-    if(_tl_unknown)
-        list(APPEND _env "NROS_DECLARED_TL_PUBLISHERS=refused")
-    elseif(_tl_worst AND NOT _tl STREQUAL "")
-        list(APPEND _env "NROS_DECLARED_TL_PUBLISHERS=refused:${_tl}")
-        string(APPEND _app ", up to ${_tl} transient-local publisher(s) (worst case: a publisher states no durability)")
-    elseif(NOT _tl STREQUAL "")
-        list(APPEND _env "NROS_DECLARED_TL_PUBLISHERS=${_tl}")
-        string(APPEND _app ", ${_tl} transient-local publisher(s)")
-    endif()
+    # Issue 1649 -- the application's own counts (service servers, three per
+    # action server, and the transient-local cache queryables) are NOT carried
+    # here any more: `NROS_DECLARED_SERVICE_SERVERS` and
+    # `NROS_DECLARED_TL_PUBLISHERS` were retired onto the sizing descriptor
+    # (`[image] service_server_queryables`, the transient-local rows), which
+    # every configure names and both zenoh build scripts read first. Dropping
+    # them was zero-diff on every road that carried them; with no descriptor
+    # the same drop moves ZPICO_MAX_QUERYABLES.
+    set(_app "application counts from the sizing descriptor")
 
     if(_payload_env)
         list(APPEND _env "${_payload_env}")

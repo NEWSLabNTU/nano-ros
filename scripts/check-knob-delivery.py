@@ -167,14 +167,12 @@ DERIVED_PAIRS = {
     "NROS_DERIVED_MAX_STRING_VALUE_LEN": ("NROS_RESOLVED_NROS_MAX_STRING_VALUE_LEN",),
     "NROS_DERIVED_MAX_ARRAY_LEN": ("NROS_RESOLVED_NROS_MAX_ARRAY_LEN",),
     "NROS_DERIVED_MAX_BYTE_ARRAY_LEN": ("NROS_RESOLVED_NROS_MAX_BYTE_ARRAY_LEN",),
-    # The transient-local retention pool: its SLOT COUNT from the entity
-    # inventory, forwarded under the CMake road's carrier name (one reader,
-    # `nros-rmw-zenoh/build.rs`, serves both roads), and its SLOT SIZE from
-    # the message-bound inventory. Undelivered, the count falls to a builtin
-    # of 2 while the queryable table counts every such publisher -- measured
-    # as a boot failure on the Autoware Safety Island -- and the size to a
-    # flat 1024 B.
-    "NROS_DERIVED_TL_PUBLISHERS": ("NROS_RESOLVED_NROS_DECLARED_TL_PUBLISHERS",),
+    # The transient-local retention pool's SLOT SIZE from the message-bound
+    # inventory; undelivered, it falls to a flat 1024 B. Its SLOT COUNT
+    # (NROS_DERIVED_TL_PUBLISHERS) used to be forwarded here too, under the
+    # `NROS_DECLARED_TL_PUBLISHERS` carrier name; issue 1649 retired that
+    # forward -- the west entry names its sizing descriptor, whose durability
+    # rows `nros-rmw-zenoh` reads first, and the drop was zero-diff.
     "NROS_DERIVED_TL_RETAIN_BYTES": ("NROS_RESOLVED_ZPICO_TL_RETAIN_BYTES",),
     # Issue 1549 -- zenoh-pico's same-session query path, a 0/1 derived from
     # whether the image holds a service client AND a service server. Dropped,

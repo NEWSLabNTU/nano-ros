@@ -157,7 +157,9 @@ KNOB_CLASS = {
     # of names for one geometry, read by two build scripts on purpose: W2's
     # `nros-node` sizes the caller-owned `PARAM_INBOX` from it, and W2b's zenoh
     # shim sizes `BUILTIN_INBOX` from it, and the two derive the same number
-    # from the same NROS_DECLARED_PARAM_SERVICE_SHAPE token. The slot is
+    # from the same declared parameter shape (the sizing descriptor's
+    # `[params]` since issue 1649 retired the NROS_DECLARED_PARAM_SERVICE_SHAPE
+    # carrier). The slot is
     # DERIVED -- `request_max()` over the contract's declared parameters, the
     # three REQUEST fields only -- and a stated size that is short fails the
     # build. The depth is a policy default like its two siblings above.
@@ -247,7 +249,6 @@ KNOB_CLASS = {
     "ZPICO_LEASE_TASK_PRIORITY": ("sizing", "transport-band priority (issue 0623)"),
     # --- infra ---
     "NROS_DECLARED_INFRA_QUERYABLES": ("infra", "a COUNT the resolver passes down, not a knob"),
-    "NROS_DECLARED_SERVICE_SERVERS": ("infra", "a COUNT the resolver passes down, not a knob"),
     # phase-426 W3 — the same shape a third time: the ROS parameter services are
     # registered once PER NODE, so the model's node count is a term in the
     # queryable pool. A COUNT the resolver passes down, never something a user
@@ -262,7 +263,6 @@ KNOB_CLASS = {
     # carries it on the roads that name none to cargo (issue 1407) — never something a
     # user tunes. `ZPICO_MAX_QUERYABLES` / `CONFIG_NROS_MAX_QUERYABLES` is the
     # knob and still outranks it, bounded from below by this term.
-    "NROS_DECLARED_TL_PUBLISHERS": ("infra", "a COUNT the resolver passes down, not a knob"),
     # issue 1649 -- the retention slot, the payload trio and two parameter
     # counts (issues 1498 / 1122 / 1199 / phase-446) retired from the DECLARED
     # road onto the sizing descriptor, so they are no longer read here.
@@ -288,21 +288,9 @@ KNOB_CLASS = {
     "NROS_DECLARED_MAX_STRING_VALUE_LEN": ("infra", "a SIZE the resolver passes down, not a knob"),
     "NROS_DECLARED_MAX_ARRAY_LEN": ("infra", "a SIZE the resolver passes down, not a knob"),
     "NROS_DECLARED_MAX_BYTE_ARRAY_LEN": ("infra", "a SIZE the resolver passes down, not a knob"),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN": ("infra", "names a declared parameter, not a knob"),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": ("infra", "names a declared parameter, not a knob"),
-    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": ("infra", "names a declared parameter, not a knob"),
-    # phase-446 F3 -- the parameter services' half of the declaration: per
-    # node, counts the contract decides. nros-node bounds its service buffer
-    # from it and the store's resolved capacities.
-    "NROS_DECLARED_PARAM_SERVICE_SHAPE": ("infra", "a SHAPE the resolver passes down, not a knob"),
-    # phase-461 W3 (issue 1352) -- the two service-inbox families' slot sizes,
-    # derived from the request types this image's declared service and action
-    # endpoints carry. Same category as every DECLARED fact beside it: nobody
-    # tunes these, they are what the image DECLARED, and the real knobs
-    # (NROS_SERVICE_INBOX_BYTES / NROS_ACTION_INBOX_BYTES, phase-461 W1) outrank
-    # them on every rung.
-    "NROS_DECLARED_SERVICE_INBOX_BYTES": ("infra", "a SIZE the resolver passes down, not a knob"),
-    "NROS_DECLARED_ACTION_INBOX_BYTES": ("infra", "a SIZE the resolver passes down, not a knob"),
+    # Issue 1649 retired the three PARAM_NEEDS rows, the service shape and the
+    # two service-inbox slot sizes the resolver used to pass down: the sizing
+    # descriptor carries them now, so the resolver forwards none of them.
     # phase-460 W2 (issue 1421) -- the inventory's VERDICT on the declaration,
     # not a number: `refused` stops nros-params' build script on a road that
     # forwards the status by environment (the CMake road stops in cmake).

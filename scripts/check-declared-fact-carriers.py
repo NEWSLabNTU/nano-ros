@@ -238,6 +238,16 @@ _RETIRED_PARAM_COUNTS = NotCarried(
     "retired onto the sizing descriptor's `[params]` (issue 1649); "
     "`nros-params` reads it first")
 
+# Issue 1649 -- the two service-inbox slot sizes followed (their consumer,
+# `nros-rmw-zenoh`, reads the descriptor's per-family request bound first, and
+# the drop was zero-diff on the cmake road and the Zephyr west road). Quoted
+# from the producer.
+_RETIRED_INBOX = NotCarried(
+    _FACTS,
+    "the service-inbox families' slot sizes",
+    "retired onto the sizing descriptor (issue 1649): `nros-rmw-zenoh` reads "
+    "`declared_service_request_bytes` first, and only")
+
 FACT_DISPOSITION = {
     # ---- the entity inventory's counts -----------------------------------
     "NROS_DERIVED_EXECUTOR_MAX_CBS": {
@@ -312,12 +322,12 @@ FACT_DISPOSITION = {
             "registration failure at boot rather than a smaller pool"),
         "declared": NotCarried(
             _LEAF, _QUERYABLES_COMPLETED,
-            "the declared road carries the four RAW inputs "
-            "(NROS_DECLARED_SERVICE_SERVERS + NROS_DECLARED_INFRA_QUERYABLES "
-            "+ NROS_DECLARED_NODES, the third since phase-426 W3, "
-            "+ NROS_DECLARED_TL_PUBLISHERS, the fourth since issue 1378) and "
-            "the consumer completes the sum, so the derived count itself has "
-            "nothing to carry"),
+            "the declared road carries the RAW infrastructure inputs "
+            "(NROS_DECLARED_INFRA_QUERYABLES + NROS_DECLARED_NODES, the "
+            "second since phase-426 W3), the application's counts come from "
+            "the sizing descriptor (issue 1649 retired their two carriers), "
+            "and the consumer completes the sum, so the derived count itself "
+            "has nothing to carry"),
     },
     "NROS_DERIVED_EXECUTOR_MAX_NODES": {
         "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_NODES",),
@@ -410,7 +420,7 @@ FACT_DISPOSITION = {
             "`declared_service_request_bytes` prices this family from its "
             "`[[endpoint]] wire_bound_bytes` rows directly -- a second "
             "carrier would be two derivations of one number (issue 1025)"),
-        "declared": ("NROS_DECLARED_SERVICE_INBOX_BYTES",),
+        "declared": _RETIRED_INBOX,
     },
     "NROS_DERIVED_ACTION_INBOX_BYTES": {
         "resolver": NotCarried(
@@ -422,25 +432,33 @@ FACT_DISPOSITION = {
             "same descriptor, same family split -- the action rows are priced "
             "from `pkg/action/Name_SendGoal_Request`, which is the largest of "
             "the three requests an action server's queryables receive"),
-        "declared": ("NROS_DECLARED_ACTION_INBOX_BYTES",),
+        "declared": _RETIRED_INBOX,
     },
     # issue 1498 -- the transient-local retention pool: its slot COUNT from
     # the entity inventory (the same rule that adds one cache queryable per
     # such publisher to NROS_DERIVED_MAX_QUERYABLES) and its slot SIZE from
-    # the message-bound inventory. The resolver forwards the count under the
-    # CMake road's carrier name, so `nros-rmw-zenoh/build.rs` has one reader.
+    # the message-bound inventory. The resolver USED to forward the count under
+    # the CMake road's carrier name; issue 1649 retired it, because the west
+    # entry names its sizing descriptor and dropping the forward was zero-diff.
+    # The inventory still publishes it: NanoRosMessageBounds.cmake checks the
+    # durability table against it.
     "NROS_DERIVED_TL_PUBLISHERS": {
-        "resolver": ("NROS_RESOLVED_NROS_DECLARED_TL_PUBLISHERS",),
+        "resolver": NotCarried(
+            _RESOLVER,
+            "Issue 1649 retired the `NROS_DECLARED_TL_PUBLISHERS` forward",
+            "the west entry names its sizing descriptor to cargo, and "
+            "`transient_local_publisher_demand` reads its durability rows; "
+            "dropping the forward was zero-diff on a west image"),
         "sidecar": NotCarried(
             _LEAF, _INBOX_DESCRIPTOR_ANSWERS,
             "a cargo leaf names its sizing descriptor to cargo, and "
             "`transient_local_publisher_demand` reads the count from its "
             "`[[endpoint]]` durability rows first -- the same rule"),
         "declared": NotCarried(
-            _FACTS, "server count and NOT folded into it: that number is already multiplied by",
-            "the declared road composes the same count itself, from `nros ws "
-            "entity-facts` over the same rule, under the carrier name the "
-            "resolver forwards this fact as -- so the fact has nothing to add"),
+            _FACTS, "application counts from the sizing descriptor",
+            "the declared road's `NROS_DECLARED_TL_PUBLISHERS` carrier was "
+            "retired onto the descriptor's `[[endpoint]]` durability rows "
+            "(issue 1649), which every cmake configure names"),
     },
     "NROS_DERIVED_TL_RETAIN_BYTES": {
         "resolver": ("NROS_RESOLVED_ZPICO_TL_RETAIN_BYTES",),
@@ -561,9 +579,6 @@ ROAD_UNPAIRED = {
         "the consumer derives it from the facts (issue 0460). Since phase-445 "
         "W1 the cargo-leaf road carries this FACT itself "
         "(`leaf_entity_env::leaf_facts`), so there is no knob to pair.",
-    "NROS_DECLARED_SERVICE_SERVERS":
-        "the raw declared count behind the same queryable sizing (phase-392 W5); "
-        "carried as-is on both roads since phase-445 W1.",
     "NROS_DECLARED_NODES":
         "a third raw input to the same queryable sizing (phase-426 W3): the "
         "parameter services register once PER NODE, so the node count is a "
@@ -572,44 +587,17 @@ ROAD_UNPAIRED = {
         "travelled the declared road as NROS_DECLARED_EXECUTOR_MAX_NODES "
         "(issue 1233) until it retired onto the descriptor's `[image] "
         "node_count` (issue 1649) -- and only the zpico build script reads this.",
-    "NROS_DECLARED_TL_PUBLISHERS":
-        "a FOURTH raw input to the same queryable sizing (issue 1378): a "
-        "TRANSIENT_LOCAL publisher declares a CACHE QUERYABLE, and an action "
-        "server has one for a `/status` topic nothing declares, so an action "
-        "server costs four slots and not three. It cannot ride on "
-        "NROS_DECLARED_SERVICE_SERVERS -- that number is already multiplied by "
-        "ACTION_SERVER_QUERYABLES, so a consumer holding `3` cannot tell one "
-        "action server from three service servers, and only the first owes a "
-        "cache slot. No leaf twin: the entity inventory publishes it as "
-        "NROS_DERIVED_TL_PUBLISHERS for the Zephyr resolver road only (issue "
-        "1498), and the cargo-leaf road answers this "
-        "question from its SIZING DESCRIPTOR instead (phase-455 W5). This "
-        "carrier exists for the roads that name no descriptor to cargo -- "
-        "every cmake / Zephyr west / NuttX entry when 1378 measured the gap, "
-        "and since phase-454 W14 / phase-457 W0.b a Zephyr west entry and a "
-        "multi-entry cmake configure (issue 1407).",
     "NROS_DECLARED_QOS_MODELS": "QoS wiring, not a pool size.",
     "NROS_DECLARED_QOS_PENDING": "QoS wiring, not a pool size.",
     "NROS_DECLARED_QOS_SCHEDULED": "QoS wiring, not a pool size.",
 }
 
 # phase-446 W4 -- the parameter-store facts come from the SystemModel's
-# `contracts.node_params`. The five capacities are PUBLISHED `NROS_DERIVED_*`
-# facts, so they live in FACT_DISPOSITION above (declared-carried, sidecar
-# NotCarried). The three `PARAM_NEEDS_*` are raw inputs no inventory publishes
-# as a derived fact, so they have no leaf twin and are recorded here.
-_PARAM_STORE_REASON = (
-    "the parameter store, from the contract's `params:` (phase-446 W4). The "
-    "leaf road reads no SystemModel, so it has no declaration to carry."
-)
-for _fact in (
-    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN",
-    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN",
-    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN",
-    # phase-446 F3 -- the parameter services' shape, same source, same road.
-    "NROS_DECLARED_PARAM_SERVICE_SHAPE",
-):
-    ROAD_UNPAIRED[_fact] = _PARAM_STORE_REASON
+# `contracts.node_params`. The capacities are PUBLISHED `NROS_DERIVED_*` facts,
+# so they live in FACT_DISPOSITION above. The three `PARAM_NEEDS_*` and the
+# service shape used to be listed here as declared-road carriers with no leaf
+# twin; issue 1649 retired all four onto the descriptor's `[params]`, so no
+# road carries them and there is nothing to pair.
 
 LEAF_ENV = "packages/cli/nros-cli-core/src/leaf_entity_env.rs"
 

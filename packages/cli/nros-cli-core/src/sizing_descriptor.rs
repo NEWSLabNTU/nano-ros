@@ -1337,10 +1337,10 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
             }
             // Issue 1655 — the application's service-server queryables, on
             // EVERY road `derive` answers, the leaf declaration's included:
-            // unlike the counts above, a carrier already delivers this one
-            // there (`nros ws entity-facts --leaf` -> NROS_DECLARED_SERVICE_SERVERS,
-            // issue 1378), so stating it takes a fact over rather than
-            // introducing one.
+            // unlike the counts above, a carrier delivered this one there
+            // (`nros ws entity-facts --leaf` -> NROS_DECLARED_SERVICE_SERVERS,
+            // issue 1378), so stating it took a fact over rather than
+            // introducing one -- and issue 1649 then retired that carrier.
             img.set_service_server_queryables(Some(k.local_query_servers));
             // Issue 1577 — the per-kind counts the executor arena's model sums,
             // from the SAME `per_kind` the cmake road emits as

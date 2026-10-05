@@ -156,7 +156,9 @@ entity-facts` already answers that from the SystemModel's `execution.features`
 (`NROS_DECLARED_INFRA_QUERYABLES`), and the consumer
 (`nros-zpico-build/src/runner.rs`) already computes the count from
 `NROS_DECLARED_SERVICE_SERVERS` + `NROS_DECLARED_INFRA_QUERYABLES` +
-`NROS_DECLARED_NODES`. So the facts are CARRIED, never the count (issue 0460),
+`NROS_DECLARED_NODES`. (Issue 1649 later retired the application half,
+`NROS_DECLARED_SERVICE_SERVERS`, onto the sizing descriptor's `[image]
+service_server_queryables`; the infrastructure and node facts remain.) So the facts are CARRIED, never the count (issue 0460),
 and they go in that image's own `build/<coord>/<entry>/nros-cargo.toml` `[env]`. This
 closes the question the first revision left open: today a workspace member's
 sidecar is the workspace root's, shared by every image, and cargo reads

@@ -39,9 +39,6 @@ fn main() {
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_STRING_VALUE_LEN");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_ARRAY_LEN");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_BYTE_ARRAY_LEN");
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN");
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN");
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN");
 
     // phase-460 W2 (issue 1421) -- and the inventory's VERDICT, when a road
     // carries it. Before any number is read: a refused declaration has no
@@ -77,10 +74,7 @@ fn main() {
         "max_string_value_len",
         rungs.max_string_value_len,
         declared("NROS_DECLARED_MAX_STRING_VALUE_LEN"),
-        need(
-            params.map(|p| p.needs_max_string_value_len()),
-            "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN",
-        ),
+        need(params.map(|p| p.needs_max_string_value_len())),
         256,
     );
     let max_array_len = capacity(
@@ -88,10 +82,7 @@ fn main() {
         "max_array_len",
         rungs.max_array_len,
         declared("NROS_DECLARED_MAX_ARRAY_LEN"),
-        need(
-            params.map(|p| p.needs_max_array_len()),
-            "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN",
-        ),
+        need(params.map(|p| p.needs_max_array_len())),
         32,
     );
     let max_byte_array_len = capacity(
@@ -99,10 +90,7 @@ fn main() {
         "max_byte_array_len",
         rungs.max_byte_array_len,
         declared("NROS_DECLARED_MAX_BYTE_ARRAY_LEN"),
-        need(
-            params.map(|p| p.needs_max_byte_array_len()),
-            "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN",
-        ),
+        need(params.map(|p| p.needs_max_byte_array_len())),
         256,
     );
     // phase-446 F2 -- a DESCRIPTION's capacity, its own knob. The contract
@@ -277,31 +265,23 @@ struct Need {
 /// refusal still fires and still names the knob.
 fn need(
     fact: Option<nros_sizing_descriptor::Fact<nros_sizing_descriptor::CapacityNeed>>,
-    key: &str,
 ) -> Option<Need> {
-    // The `rerun-if-env-changed` for `key` is printed with its siblings at the
-    // head of `main`, literally, because `check-declared-fact-carriers` greps
-    // for the spelling and a name assembled here would be invisible to it.
-    if let Some(f) = fact {
-        // STATED, including `unused` -- which is an ANSWER ("no declared type
-        // uses this capacity") and not an absence, so it must stop the fallback
-        // rather than fall through to a carrier that might say otherwise.
-        if let Some(c) = f.stated() {
-            return c.needed_by().map(|(node, name)| Need {
-                node: node.to_string(),
-                name: name.to_string(),
-                // The descriptor states the node and the parameter, never the
-                // type. See `Need`.
-                ty: None,
-            });
-        }
-    }
-    let raw = env::var(key).ok().filter(|v| !v.trim().is_empty())?;
-    let mut parts = raw.rsplitn(3, ':');
-    let ty = parts.next().map(str::to_string);
-    let name = parts.next().unwrap_or(&raw).to_string();
-    let node = parts.next().unwrap_or("?").to_string();
-    Some(Need { node, name, ty })
+    // Issue 1649 -- the descriptor is the ONE road. The
+    // `NROS_DECLARED_PARAM_NEEDS_*` carriers (cmake configure, Zephyr resolver)
+    // were retired: zero-diff with them dropped on both, the descriptor named.
+    // A `Refused` or `Absent` need reads as "no need", as for an image that
+    // declares no `params:`.
+    //
+    // STATED includes `unused` -- an ANSWER ("no declared type uses this
+    // capacity"), so it yields no need.
+    let c = fact?.into_stated()?;
+    c.needed_by().map(|(node, name)| Need {
+        node: node.to_string(),
+        name: name.to_string(),
+        // The descriptor states the node and the parameter, never the type.
+        // See `Need`.
+        ty: None,
+    })
 }
 
 /// phase-446 W4 -- a per-slot CAPACITY: a string, array or byte-array length.

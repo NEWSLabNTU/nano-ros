@@ -439,88 +439,6 @@ pub fn subscriber_payload_classes(desc: &SizingDescriptor, ceiling: usize) -> Fa
     Fact::Stated(classes)
 }
 
-/// The prefix of the `NROS_DECLARED_TL_PUBLISHERS` value that carries a
-/// REFUSED count's worst case: `refused:<bound>`.
-///
-/// Issue 1572. The carrier used to say the bare word `refused`, which carried
-/// no number, so both readers (`nros-zpico-build`, `nros-rmw-zenoh`) sized
-/// zero for it. The bound travels WITH the word, so a reader sizes safely and
-/// can still say out loud that it is paying for a count nobody stated.
-pub const DECLARED_TL_REFUSED_PREFIX: &str = "refused:";
-
-/// One reading of the `NROS_DECLARED_TL_PUBLISHERS` carrier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeclaredTl {
-    /// The composer counted them exactly.
-    Count(usize),
-    /// The composer could not count them (a publisher states no durability)
-    /// and sends the worst case, [`transient_local_publishers_bound_over`].
-    WorstCase(usize),
-}
-
-impl DeclaredTl {
-    /// The number a pool sizes from, whichever arm this is.
-    pub fn slots(self) -> usize {
-        match self {
-            DeclaredTl::Count(n) | DeclaredTl::WorstCase(n) => n,
-        }
-    }
-}
-
-/// Parse one non-empty `NROS_DECLARED_TL_PUBLISHERS` value -- the ONE parser
-/// both of its readers use, so the spelling cannot mean two things.
-///
-/// `Err` carries prose for the reader's panic. The bare word `refused` is an
-/// error on purpose: it is what a composer older than issue 1572 sends, it
-/// carries no bound, and sizing zero for it is the boot failure this parser
-/// exists to end.
-pub fn parse_declared_tl(v: &str) -> Result<DeclaredTl, String> {
-    let v = v.trim();
-    if let Some(bound) = v.strip_prefix(DECLARED_TL_REFUSED_PREFIX) {
-        return bound
-            .trim()
-            .parse::<usize>()
-            .map(DeclaredTl::WorstCase)
-            .map_err(|_| {
-                format!(
-                    "NROS_DECLARED_TL_PUBLISHERS={v:?}: `{DECLARED_TL_REFUSED_PREFIX}` must be \
-                     followed by the worst-case count"
-                )
-            });
-    }
-    if v == "refused" {
-        return Err(
-            "NROS_DECLARED_TL_PUBLISHERS=refused carries no worst case, so no pool can be \
-             sized from it safely (issue 1572). The `nros` CLI that composed it predates \
-             `refused:<bound>`: rebuild it (`just setup-cli`, or `./scripts/bootstrap.sh`) \
-             and reconfigure."
-                .to_string(),
-        );
-    }
-    v.parse::<usize>().map(DeclaredTl::Count).map_err(|_| {
-        format!(
-            "NROS_DECLARED_TL_PUBLISHERS={v:?} is neither a count nor \
-             `{DECLARED_TL_REFUSED_PREFIX}<bound>`. It is how many TRANSIENT_LOCAL publishers \
-             the entry declares, each of which costs a cache queryable and a retention slot \
-             (issues 1378/1572)."
-        )
-    })
-}
-
-/// The carrier value for a rule answer and its bound -- the inverse of
-/// [`parse_declared_tl`]. `None` for [`Fact::Absent`]: the carrier is then
-/// not emitted at all, and its absence means "nobody said".
-pub fn declared_tl_token(fact: &Fact<usize>, bound: Option<usize>) -> Option<String> {
-    match fact {
-        Fact::Stated(n) => Some(n.to_string()),
-        Fact::Refused(_) => Some(format!(
-            "{DECLARED_TL_REFUSED_PREFIX}{}",
-            bound.expect("a refused count has rows, so it has a bound")
-        )),
-        Fact::Absent => None,
-    }
-}
-
 /// [`transient_local_publishers`] for a build script, straight off
 /// [`DESCRIPTOR_ENV`].
 ///
@@ -1052,26 +970,6 @@ mod tests {
             None,
             "no rows is still Absent, not a bound of zero"
         );
-    }
-
-    /// Issue 1572 -- the carrier round-trips, and the bound travels with the
-    /// word so no reader can size zero for a refusal.
-    #[test]
-    fn the_declared_carrier_carries_the_worst_case_with_the_refusal() {
-        let refused = Fact::Refused("publisher /x states no durability".into());
-        let token = declared_tl_token(&refused, Some(3)).expect("emitted");
-        assert_eq!(token, "refused:3");
-        assert_eq!(parse_declared_tl(&token), Ok(DeclaredTl::WorstCase(3)));
-        assert_eq!(parse_declared_tl(&token).unwrap().slots(), 3);
-
-        let stated = declared_tl_token(&Fact::Stated(2), Some(2)).expect("emitted");
-        assert_eq!(parse_declared_tl(&stated), Ok(DeclaredTl::Count(2)));
-        assert_eq!(declared_tl_token(&Fact::Absent, None), None);
-
-        let bare = parse_declared_tl("refused").expect_err("a bare refusal has no bound");
-        assert!(bare.contains("issue 1572"), "{bare}");
-        assert!(parse_declared_tl("refused:").is_err());
-        assert!(parse_declared_tl("three").is_err());
     }
 
     /// An EMPTY descriptor is `Absent`, never `Stated(0)`. A consumer must be
