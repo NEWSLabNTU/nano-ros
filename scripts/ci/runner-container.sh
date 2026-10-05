@@ -154,11 +154,12 @@ fi
 # provisions — imports `rosidl_adapter.cli`, and `cli` imports catkin_pkg, yaml
 # and em (issues 1457, 1482).
 #
-# THE RUNNER IS NOT MISSING ROS. A ROS-less runner is the design: the tier-2
-# job's labels carry no `nros-ros2`, `runner-provision.sh` deliberately does not
-# provision that label, and issue 0368 / phase-327 created the `[python.*]`
-# layer precisely so the cyclone msg->IDL road works without a ROS install.
-# What was missing is the layer itself.
+# THE RUNNER DOES NOT NEED A ROS INSTALL FOR THIS. Issue 0368 / phase-327
+# created the `[python.*]` layer precisely so the cyclone msg->IDL road works
+# without one, and the runner keeps it that way: AMENT_PREFIX_PATH is never set
+# here, so no ament package becomes discoverable to a build. The ONE ROS package
+# the image does carry is the zenoh router (the ROS layer below, issue 1695) --
+# a binary, not a message source.
 #
 # WHY THE IMAGE AND NOT THE HOST. The container runs `--cap-drop ALL
 # --security-opt no-new-privileges` as a non-root user, so nothing inside it can
@@ -204,6 +205,53 @@ if ! PYTHON_KEYS="$(python3 "$REPO_ROOT/scripts/sdk/python-packages.py" --emit k
     echo "runner-container: could not derive the [python.*] key set." >&2
     exit 1
 fi
+# --- the ROS layer: the zenoh router, and nothing else of ROS ----------------
+#
+# Issue 1695. Tier 2 holds zenoh cells, and since issue 1670 a lane that runs
+# them refuses to start without a router (`ci::_require-lane-router`), because
+# without one every zenoh cell SKIPS and the lane verifies nothing while
+# reading green. The router is ROS's own `rmw_zenohd` (RFC-0075): it ships in
+# `rmw_zenoh_cpp` and links the same `libzenohc.so` a ROS node does, so it
+# cannot drift from the RMW the way a vendored router did (issue 0609). There
+# is no other place it may come from -- never a vendored copy, never a host
+# install (issues 1457/1482: nothing inside this container can install a
+# system package, and nothing outside it is reproducible).
+#
+# THE PACKAGE comes from the index, `[prereq.ros-rmw-zenoh-cpp]`, through the
+# same resolver as the prereq layer; its apt name is DERIVED from the distro
+# (`ros-<distro>-rmw-zenoh-cpp`), so the distro is the one input and it is
+# named once, below. THE REPOSITORY is `scripts/sdk/ros2-apt-source.sh`, the
+# one spelling of packages.ros.org the distrobox setup also uses.
+#
+# ROS_DISTRO goes into the image ENV and is the whole of the environment this
+# layer adds: it is the third step of `nros_zenohd_bin` (scripts/dev/zenohd.sh),
+# the resolver the lane gate, the harness and `runner-doctor.sh nros-ros2`
+# share. AMENT_PREFIX_PATH is deliberately NOT set -- that would make the ROS
+# prefix's message packages discoverable to every build on this runner, which
+# is a different decision from "has a router".
+#
+# THE REPOSITORY GOES IN BEFORE THE PYTHON LAYER, the package after it -- and
+# that order was MEASURED, not chosen. The python layer measures the apt
+# candidates of the image it runs in (issue 1481); with only jammy universe
+# behind it, it installs `python3-catkin-pkg` 0.4.24-2, and the router's own
+# dependency chain then pulls packages.ros.org's `python3-catkin-pkg-modules`
+# 1.1.1, which ships the same `catkin_pkg/__init__.py`: dpkg refuses the
+# overwrite and the image does not build. With the repository already present,
+# the layer resolves catkin_pkg from packages.ros.org -- which is the image's
+# own apt answering, exactly as 1481 designed it -- and the two agree.
+ROS_DISTRO_IMAGE="${NROS_RUNNER_ROS_DISTRO:-humble}"
+ROS_PREREQ_KEYS=(ros-rmw-zenoh-cpp)
+if ! ROS_PACKAGES="$(ROS_DISTRO="$ROS_DISTRO_IMAGE" python3 \
+        "$REPO_ROOT/scripts/sdk/prereq-packages.py" --manager apt "${ROS_PREREQ_KEYS[@]}")" \
+        || [ -z "$ROS_PACKAGES" ]; then
+    echo "runner-container: could not resolve ${ROS_PREREQ_KEYS[*]} from the index for" >&2
+    echo "  ROS_DISTRO=$ROS_DISTRO_IMAGE. Without it every tier-2 run stops at" >&2
+    echo "  ci::_require-lane-router (issue 1695) -- fix the index, not this list." >&2
+    exit 1
+fi
+cp "$REPO_ROOT/scripts/sdk/ros2-apt-source.sh" "$CONTEXT/ros2-apt-source.sh"
+cp "$REPO_ROOT/scripts/dev/zenohd.sh" "$CONTEXT/zenohd.sh"
+
 printf '%s\n' "$PYTHON_LAYER" > "$CONTEXT/nros-python-layer.json"
 cp "$REPO_ROOT/scripts/sdk/python-packages.py" "$CONTEXT/python-packages.py"
 cp "$REPO_ROOT/scripts/lib/index_packages.py" "$CONTEXT/index_packages.py"
@@ -232,6 +280,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         @PREREQ_PACKAGES@ \
     && rm -rf /var/lib/apt/lists/*
 
+# The ROS 2 apt repository, BEFORE the python layer so that layer measures the
+# apt this image will actually have (issue 1695 -- see the ROS layer below).
+COPY ros2-apt-source.sh /opt/nros-ros/ros2-apt-source.sh
+RUN bash /opt/nros-ros/ros2-apt-source.sh && rm -rf /var/lib/apt/lists/*
+
 # The `[python.*]` layer — the modules the ambient interpreter must be able to
 # import, RESOLVED HERE rather than on the machine that generated this file.
 #
@@ -257,6 +310,28 @@ RUN apt-get update \
          --resolve /opt/nros-python/nros-python-layer.json --verify \
     && rm -rf /var/lib/apt/lists/*
 
+# The ROS layer -- the zenoh router and nothing else of ROS (issue 1695).
+# Resolved from nros-sdk-index.toml by scripts/sdk/prereq-packages.py --manager apt
+# Keys: @ROS_KEYS@ (ROS_DISTRO=@ROS_DISTRO@)
+#
+# The second RUN is the acceptance this layer exists for, checked at build time
+# with the repo's OWN resolver and launcher (scripts/dev/zenohd.sh, copied in):
+# `nros_zenohd_bin` must resolve the router from ROS_DISTRO alone, and
+# `nros_router_exec` must still be running it 3 s later (`timeout`'s 124) --
+# resolving is not running (issue 0774). A package that put its router
+# elsewhere, or a router that cannot start here, fails the BUILD, not a lane
+# that stops at its first step on the runner.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        @ROS_PACKAGES@ \
+    && rm -rf /var/lib/apt/lists/*
+ENV ROS_DISTRO=@ROS_DISTRO@
+COPY zenohd.sh /opt/nros-ros/zenohd.sh
+RUN bash -c '. /opt/nros-ros/zenohd.sh && nros_zenohd_bin \
+      && rc=0 \
+      && { timeout 3 bash -c ". /opt/nros-ros/zenohd.sh && nros_router_exec tcp/127.0.0.1:17447" \
+           || rc=$?; } \
+      && echo "router after 3 s: timeout rc=$rc (124 = still running)" && test "$rc" -eq 124'
+
 RUN useradd -m -u ${RUNNER_UID} -s /bin/bash runner
 WORKDIR /home/runner
 
@@ -277,15 +352,21 @@ DOCKEREOF
 
 # The Dockerfile heredoc is QUOTED so its own $VAR references survive verbatim;
 # the two generated values are substituted here instead.
-python3 - "$CONTEXT/Dockerfile" "$PREREQ_PACKAGES" "${PREREQ_KEYS[*]}" "$PYTHON_KEYS" <<'SUBEOF'
+python3 - "$CONTEXT/Dockerfile" "$PREREQ_PACKAGES" "${PREREQ_KEYS[*]}" "$PYTHON_KEYS" \
+    "$ROS_PACKAGES" "${ROS_PREREQ_KEYS[*]}" "$ROS_DISTRO_IMAGE" <<'SUBEOF'
 import sys
-path, packages, keys, python_keys = sys.argv[1:5]
+path, packages, keys, python_keys, ros_packages, ros_keys, ros_distro = sys.argv[1:8]
 text = open(path).read()
 text = text.replace("@PREREQ_PACKAGES@", " \\\n        ".join(packages.split()))
 text = text.replace("@PREREQ_KEYS@", keys)
 # The python layer substitutes only its KEY NAMES — the packages are resolved
 # inside the image, which is the whole point of that layer.
 text = text.replace("@PYTHON_KEYS@", python_keys)
+# Issue 1695 -- the ROS layer: its packages, its keys, and the ONE distro both
+# the derived apt name and the image's ROS_DISTRO come from.
+text = text.replace("@ROS_PACKAGES@", " \\\n        ".join(ros_packages.split()))
+text = text.replace("@ROS_KEYS@", ros_keys)
+text = text.replace("@ROS_DISTRO@", ros_distro)
 open(path, "w").write(text)
 SUBEOF
 

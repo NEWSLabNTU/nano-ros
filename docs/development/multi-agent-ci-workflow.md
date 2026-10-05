@@ -229,6 +229,23 @@ labels carry no `nros-ros2`, and the `[python.*]` layer exists precisely so the
 cyclone msg→IDL road works without a ROS install — and what was actually missing
 was four modules the image never carried.
 
+The second worked example is the zenoh ROUTER (issue 1695). Once tier 2 held
+zenoh cells, `ci::_require-lane-router` (issue 1670) refused every run on a
+runner that resolved no `rmw_zenohd`. The image now carries exactly ONE ROS
+package — `[prereq.ros-rmw-zenoh-cpp]`, resolved by `prereq-packages.py` for the
+image's distro, from the repository `scripts/sdk/ros2-apt-source.sh` adds — and
+`ENV ROS_DISTRO`, which is how `nros_zenohd_bin` finds it. It does NOT set
+`AMENT_PREFIX_PATH`: that would make the prefix's message packages discoverable
+to every build, which is a different decision from "has a router". The router
+gets its prefix's environment for its own process only (`nros_router_env_exec`
+and the harness's twin source `<prefix>/setup.bash` when the caller has not),
+because measured in this image it cannot start without it: no RUNPATH, three ROS
+libraries beside `libzenohc`, and an abort on an unset `AMENT_PREFIX_PATH`. The
+layer order was measured rather than chosen: the repository is added BEFORE the
+`[python.*]` layer, because that layer measures the image's own apt and, behind
+universe alone, installs a `python3-catkin-pkg` that the router's dependencies
+then collide with in dpkg.
+
 ## Scripts to own the procedure
 
 Registration should be one command, not a wiki page.

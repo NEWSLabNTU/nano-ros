@@ -60,13 +60,10 @@ sudo apt-get install -y --no-install-recommends \
     python3-tomli libz3-dev clang libclang-dev libmbedtls-dev
 
 echo "=== [2/4] ROS 2 apt repository"
-sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
-    | sudo gpg --dearmor -o /usr/share/keyrings/ros-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
-http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo "$UBUNTU_CODENAME") main" \
-    | sudo tee /etc/apt/sources.list.d/ros2.list >/dev/null
-sudo apt-get update -qq
+# The ONE spelling of packages.ros.org, shared with the self-hosted runner image
+# (issue 1695) -- two hand-written key URLs and `deb` lines are two things to
+# rotate when ROS rotates its key.
+sudo bash "$(dirname "${BASH_SOURCE[0]}")/../sdk/ros2-apt-source.sh"
 
 echo "=== [3/4] ROS 2 Humble + what the nano-ros lanes actually use"
 # desktop = ros2 CLI, rclcpp/rclpy, the interface packages, rviz. The middlewares
