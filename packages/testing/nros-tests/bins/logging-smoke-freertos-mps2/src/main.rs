@@ -12,7 +12,10 @@
 #![no_main]
 
 use nros_board_mps2_an385_freertos::{Config, Mps2An385};
-use nros_log::{Logger, Severity, log_debug, log_error, log_fatal, log_info, nros_trace, log_warn, register_logger};
+use nros_log::{
+    Logger, Severity, log_debug, log_error, log_fatal, log_info, log_warn, nros_trace,
+    register_logger,
+};
 use panic_semihosting as _;
 
 // Link `nros-platform` so its FreeRTOS C symbols + `global-allocator`
@@ -51,6 +54,13 @@ extern "C" fn main() -> ! {
         nros_trace!(logger, "trace payload");
         log_debug!(logger, "debug payload");
         log_info!(logger, "info payload");
+        // phase-479 W6 (RFC-0102) — one CHILD of this logger. Its record must reach
+        // the platform writer under the dotted name `smoke.child`; emitted before the
+        // FATAL line some harnesses stop reading at.
+        match logger.create_child("child") {
+            Ok(child) => log_info!(child, "child payload"),
+            Err(e) => log_error!(logger, "create_child failed: {}", e),
+        }
         log_warn!(logger, "warn payload");
         log_error!(logger, "error payload");
         log_fatal!(logger, "fatal payload");

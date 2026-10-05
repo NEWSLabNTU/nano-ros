@@ -85,3 +85,4 @@ board's value in a built image; the count visible in a native boot report and in
   `book/src/user-guide/logging.md`.
 - Per-RTOS logging smoke fixtures (`logging-smoke-*`) print a child record, and
   `logging_smoke.rs` asserts the dotted name reaches each platform's output.
+  **Done (2026-10-06)**: all seven print `smoke.child: child payload`; measured passing on freertos-mps2, mps2-baremetal, nuttx-qemu-arm, threadx-linux, threadx-riscv64 and zephyr native_sim (esp32 image builds; no esp32c3 QEMU on the measuring host).

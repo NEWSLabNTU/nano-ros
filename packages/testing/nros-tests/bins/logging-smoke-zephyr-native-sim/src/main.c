@@ -4,7 +4,8 @@
  * Boots Zephyr `native_sim`, installs the nros-log dispatcher
  * (`nros_log_init`), grabs the catch-all logger handle
  * (`nros_log_default_logger`), drives every Severity through
- * `NROS_LOG_*`, then exits via `posix_exit`. The harness drains
+ * `NROS_LOG_*` plus one record through a child logger (`smoke.child`),
+ * then exits via `posix_exit`. The harness drains
  * the native_sim process's stdout + stderr and asserts every
  * `[<LEVEL>] nros: <payload>` line appears.
  */
@@ -35,6 +36,17 @@ int main(void) {
     NROS_LOG_TRACE(logger, "trace payload");
     NROS_LOG_DEBUG(logger, "debug payload");
     NROS_LOG_INFO(logger,  "info payload");
+
+    /* phase-479 W6 (RFC-0102) — one CHILD logger. A child of the catch-all is
+     * a TOP-LEVEL name, so take a named parent first: the record must reach
+     * Zephyr's LOG under the dotted name `smoke.child`. */
+    nros_logger_t child = nros_logger_get_child(nros_log_get_logger("smoke"), "child");
+    if (child != NULL) {
+        NROS_LOG_INFO(child, "child payload");
+    } else {
+        NROS_LOG_ERROR(logger, "nros_logger_get_child failed");
+    }
+
     NROS_LOG_WARN(logger,  "warn payload");
     NROS_LOG_ERROR(logger, "error payload");
     NROS_LOG_FATAL(logger, "fatal payload");

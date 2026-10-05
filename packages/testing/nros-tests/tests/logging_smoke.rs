@@ -3,7 +3,9 @@
 //! Each test boots a minimal `logging-smoke-<platform>` fixture binary
 //! under QEMU and asserts the rendered `[TRACE]`/`[DEBUG]`/`[INFO]`/
 //! `[WARN]`/`[ERROR]`/`[FATAL]` lines reach the captured UART or
-//! semihosting output. The chain under test is:
+//! semihosting output, plus one record through a CHILD logger whose dotted
+//! name (`smoke.child`, phase-479 W6 / RFC-0102) must reach the same output.
+//! The chain under test is:
 //!
 //! `nros-log` macro → `Logger::dispatch` → `PlatformSink` →
 //! `nros_platform_log_write` (cffi) → per-platform writer.
@@ -30,6 +32,7 @@ use nros_tests::{
         build_native_logging, is_arm_toolchain_available, is_qemu_available,
         is_qemu_riscv64_available, nuttx, threadx_linux,
     },
+    output::LOGGING_SMOKE_CHILD_RECORD,
 };
 
 /// Lines the fixture must produce, in order. The mps2-an385
@@ -74,6 +77,7 @@ fn logging_smoke_qemu_baremetal_mps2_emits_every_severity() {
         .expect("QEMU timed out waiting for log output");
 
     assert_output_contains(&output, EXPECTED_LINES);
+    assert_output_contains(&output, &[LOGGING_SMOKE_CHILD_RECORD]);
 }
 
 /// Phase 88.15.b — MPS2-AN385 + FreeRTOS + lwIP over QEMU
@@ -100,6 +104,7 @@ fn logging_smoke_freertos_mps2_emits_every_severity() {
         .expect("QEMU timed out waiting for log output");
 
     assert_output_contains(&output, EXPECTED_LINES);
+    assert_output_contains(&output, &[LOGGING_SMOKE_CHILD_RECORD]);
 }
 
 /// Phase 88.15.c — NuttX QEMU ARM virt. NuttX uses the POSIX C
@@ -138,6 +143,7 @@ fn logging_smoke_nuttx_qemu_arm_emits_every_severity() {
         .expect("QEMU timed out waiting for log output");
 
     assert_output_contains(&output, EXPECTED_LINES);
+    assert_output_contains(&output, &[LOGGING_SMOKE_CHILD_RECORD]);
 }
 
 /// Phase 88.15.d — ThreadX + NetX Duo on QEMU RISC-V `virt`. The
@@ -166,6 +172,7 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
         .expect("QEMU timed out waiting for log output");
 
     assert_output_contains(&output, EXPECTED_LINES);
+    assert_output_contains(&output, &[LOGGING_SMOKE_CHILD_RECORD]);
 }
 
 /// ThreadX Linux runs as a host process but uses the ThreadX platform
@@ -211,6 +218,7 @@ fn logging_smoke_threadx_linux_captures_stderr() {
         .expect("ThreadX Linux logging smoke timed out waiting for output");
 
     assert_output_contains(&output, EXPECTED_LINES);
+    assert_output_contains(&output, &[LOGGING_SMOKE_CHILD_RECORD]);
     assert_output_contains(&output, &["Application completed successfully."]);
 }
 
@@ -253,6 +261,7 @@ fn logging_smoke_esp32_qemu_emits_every_severity() {
     qemu.kill();
 
     assert_output_contains(&output, EXPECTED_LINES);
+    assert_output_contains(&output, &[LOGGING_SMOKE_CHILD_RECORD]);
 }
 
 /// Phase 88.15.e — Zephyr `native_sim/native/64` running as a Linux
@@ -315,6 +324,7 @@ fn logging_smoke_zephyr_native_sim_emits_every_severity() {
             "warn payload",
             "error payload",
             "fatal payload",
+            LOGGING_SMOKE_CHILD_RECORD,
         ],
     );
 }
