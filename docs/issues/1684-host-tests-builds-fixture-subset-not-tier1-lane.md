@@ -76,3 +76,39 @@ the lane does not by itself make the preconditions pass — see issue 1685.
 The integration job's fixture producer and its `test-all` scope are the same
 set, with no `NROS_SKIP_FIXTURE_CHECK`, and the `MISSING for an in-lane
 coordinate` class reads zero.
+
+## 2026-10-06 — the `MISSING for an in-lane coordinate` class reads ZERO locally
+
+A complete local `lane=tier1` build (`build-test-fixtures` exits 0, after
+issue 1700's fix), then `just ci tier1 run`: 2688 tests, **0 MISSING-in-lane**
+(was 7, and 199 on the hosted subset), **0 capability skips** (was 64 on
+this host, 81 on the hosted runner), 127 lane deselections, 17 real failures.
+What closed the last seven:
+
+- **Five baremetal images** (`build/cargo-fixtures/baremetal/…`): a shared
+  group dir attributes to no single ROW, so the row-level lane skip could
+  never fire, and `require_shared_fixture_binary` reported "MISSING" in a
+  lane that selects no baremetal coordinate. The resolver knows the group's
+  PLATFORM and now asks the platform-level lane question first
+  (`fixtures::lane::platforms_selected`, the one spelling #1699 introduced):
+  out of lane is `[SKIPPED:lane]`, in lane but absent still fails hard.
+  `attribute_path`'s None-never-skips contract is unchanged.
+- **`lane_scope::admits`** keyed on `NROS_TEST_SCOPE=native`, which no recipe
+  has set since phase-395 W19, so under tier 1 it admitted everything and
+  `baremetal_board_run_executes_run_plan` booted QEMU for 11 s before failing.
+  It now asks the same coordinate question (`fixtures::lane::platform_admitted`);
+  its five consumers and `every_cell_iterating_test_is_classified` are unchanged.
+- **`subscription_with_info`** was NOT a lane-build omission (the tier-1 build
+  runs every compile-check row): the snippet stopped COMPILING when phase-456
+  W7 made every C++ subscription state its receive bound, and its stand-in
+  message had no `SERIALIZED_SIZE_MAX`. Fixed in the snippet; the stamp is
+  produced again.
+- **`test_esp32_workspace_entry_e2e`** (not in the MISSING class, but the same
+  ordering): its probes pass on a host with an ESP32 toolchain, so it
+  `.expect()`ed an ELF the lane never built. Deselects first now.
+
+Remaining reds are the known residue (1686, 1687, 1688, 1690, 1691, 1692),
+1703 (#1720, queued), and `sched_dims_applied`'s nested skip marker.
+
+STILL OPEN: the acceptance names the CI job, and the first `run-matrix` tier-1
+run (#1708, draft) is that proof.

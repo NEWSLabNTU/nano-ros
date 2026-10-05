@@ -138,6 +138,14 @@ fn build_esp32_flash_images() -> (std::path::PathBuf, std::path::PathBuf) {
 /// that skips where it KNOWS the reason names the reason, and cannot be
 /// misused by a caller who writes a bare `return` instead.
 fn require_esp32_networked() {
+    // Issue 1684/1685 — a lane holding no ESP32 coordinate deselects first. On
+    // a host that HAS the toolchain and emulator every probe below passes, and
+    // the test then `.expect()`s a workspace-Entry ELF that lane never built
+    // (measured: a tier-1 run failed here instead of skipping).
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::Esp32Qemu],
+        "an ESP32 QEMU image",
+    );
     if !require_riscv32_target() {
         nros_tests::skip!("riscv32imc-unknown-none-elf target not installed");
     }

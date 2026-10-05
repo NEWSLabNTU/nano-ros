@@ -418,6 +418,12 @@ pub fn run_coords() -> Option<&'static BTreeSet<Coord>> {
 /// `build/cargo-fixtures/<platform>` dirs (phase-226.D), the Zephyr west build
 /// roots, the compile-check lane. Callers must treat `None` as "do not skip".
 ///
+/// The shared group dirs are not therefore unskippable: their resolver knows
+/// the group's PLATFORM and asks the platform-level question
+/// ([`platforms_selected`], issue 1684) before its presence check. That is a
+/// different, coarser decision made by the caller that holds the platform —
+/// this function still never guesses a row for a path it cannot attribute.
+///
 /// Also `None` when the longest match is AMBIGUOUS — see [`attribute_path_in`].
 pub fn attribute_path(path: &Path) -> Option<&'static Row> {
     let root = project_root();
@@ -663,20 +669,37 @@ pub fn require_setup_scope_in_lane(scope: &str, what: &str) {
     require_platform_in_lane(&platforms, what);
 }
 
+/// Does `coords` hold ANY coordinate on one of `platforms`? THE platform-level
+/// lane predicate — [`require_platform_in_lane`], [`platform_admitted`] (the
+/// cell-list filter `lane_scope::admits` answers with) and the shared-group
+/// fixture resolver all ask it, so there is one spelling of the question.
+pub fn platforms_selected(
+    platforms: &[crate::matrix::PlatformId],
+    coords: &BTreeSet<Coord>,
+) -> bool {
+    coords.iter().any(|(p, _, _)| {
+        crate::matrix::PlatformId::from_fixture_token(p).is_some_and(|id| platforms.contains(&id))
+    })
+}
+
+/// Is `platform` in THIS run's lane? `true` for an un-narrowed run (no
+/// `NROS_TEST_COORDS`) — the same "absent means everything" reading every other
+/// lane predicate here gives.
+pub fn platform_admitted(platform: crate::matrix::PlatformId) -> bool {
+    run_coords().is_none_or(|c| platforms_selected(&[platform], c))
+}
+
 /// The decision behind [`require_platform_in_lane`], minus the environment.
 pub fn skip_reason_for_platforms(
     platforms: &[crate::matrix::PlatformId],
     what: &str,
     coords: &BTreeSet<Coord>,
 ) -> Option<String> {
-    let selected = coords.iter().any(|(p, _, _)| {
-        crate::matrix::PlatformId::from_fixture_token(p).is_some_and(|id| platforms.contains(&id))
-    });
-    (!selected).then(|| {
+    (!platforms_selected(platforms, coords)).then(|| {
         let names: Vec<String> = platforms.iter().map(|p| format!("{p:?}")).collect();
         format!(
             "out of lane: {what} runs on {}, and this run's lane selects no \
-             coordinate on that platform, so its capability probe is not asked \
+             coordinate on that platform, so it is not run (or probed for) \
              here.\n  Run the full ladder (`just ci-full`) or unset \
              {RUN_COORDS_ENV} to execute it.",
             names.join(" / ")
