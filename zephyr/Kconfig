@@ -2070,6 +2070,24 @@ configdefault MAX_PTHREAD_COND_COUNT
 configdefault POSIX_THREAD_THREADS_MAX
     default 16
 
+# Issue 1674. Cyclone's receive thread select()s over its whole socket waitset,
+# and Zephyr's `zsock_select` copies the set into a stack array of
+# NET_SOCKETS_POLL_MAX entries -- one more fd and it returns -1/ENOMEM before any
+# socket is asked anything. Zephyr's default is 3. Cyclone's receive loop treats
+# that as transient and retries at once, so the image delivers NOTHING and logs
+# `os_sockWaitsetWait: select failed` in a busy loop: one six-cell e2e run wrote
+# 566 million of those lines and OOM-killed the test runner at 91 GB.
+#
+# MEASURED on native_sim (c-talker, multicast already off, one participant):
+# the waitset registers FOUR fds -- the self-pipe's read end plus three UDP
+# sockets (discovery unicast, data unicast, and one bound to the enumerated
+# interface address). 3 fails, 4 works. 8 leaves room for what this config does
+# not do yet and others do: multicast SPDP/data adds sockets, and so does a
+# second participant. The cost is the array itself, 8 x sizeof(zsock_pollfd) on
+# the select caller's stack.
+configdefault NET_SOCKETS_POLL_MAX
+    default 8
+
 endif # NROS_RMW_CYCLONEDDS
 
 if NROS_RMW_ZENOH
