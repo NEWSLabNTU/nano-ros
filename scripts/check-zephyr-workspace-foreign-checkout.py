@@ -95,6 +95,8 @@ Run::
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import os
 import re
 import shutil
@@ -527,6 +529,14 @@ def self_test(verbose: bool = False) -> bool:
     ok = True
     marker = checkout_marker()
 
+    def quiet():
+        """The repair PRINTS what it removes. Inside the self-test that is
+        about a temp dir, and on the normal path it used to land in the gate's
+        stdout — which the recipe hands to the skip ledger as the reason, so a
+        bare `check fast` listed nine bogus `[SKIPPED]` lines about
+        `/tmp/tmp…/here/build-crossed`."""
+        return contextlib.nullcontext() if verbose else contextlib.redirect_stdout(io.StringIO())
+
     def chk(control: str, cond: bool, detail: str = "") -> None:
         """`control` states what MUST hold, positively — it is printed either
         way, so a reader of a green run sees the controls that ran rather than
@@ -739,14 +749,16 @@ def self_test(verbose: bool = False) -> bool:
             f"it named {[d for d, _, _ in foreign_build_dirs(broot, here, marker)]}",
         )
 
-        rc = retire_foreign_build_dirs(broot, here, marker, dry_run=True)
+        with quiet():
+            rc = retire_foreign_build_dirs(broot, here, marker, dry_run=True)
         chk(
             "a dry run removes nothing",
             rc == 0 and crossed.is_dir() and clean.is_dir(),
             "it removed something",
         )
 
-        rc = retire_foreign_build_dirs(broot, here, marker, dry_run=False)
+        with quiet():
+            rc = retire_foreign_build_dirs(broot, here, marker, dry_run=False)
         chk(
             "the repair removes the crossed dir and leaves the clean one",
             rc == 0 and not crossed.exists() and clean.is_dir(),
@@ -757,7 +769,8 @@ def self_test(verbose: bool = False) -> bool:
         again = Path(broot) / "build-crossed2"
         again.mkdir(parents=True, exist_ok=True)
         (again / "CMakeCache.txt").write_text(f"NROS_REPO_DIR:PATH={foreign}\n")
-        rc = retire_foreign_build_dirs(broot, here, marker, dry_run=False)
+        with quiet():
+            rc = retire_foreign_build_dirs(broot, here, marker, dry_run=False)
         chk(
             "the opt-out hatch stops the repair acting on a stated decision",
             rc == 0 and again.is_dir(),

@@ -52,6 +52,12 @@ nros_check_skip() {
     local name="${1:?nros_check_skip: name}"
     shift
     local reason="$*"
+    # The ledger is ONE RECORD PER LINE (`name<TAB>reason`), read back by
+    # `nros_check_skip_report`. A caller that hands over a multi-line message
+    # used to write one real record plus a bogus `[SKIPPED] <line>:` per extra
+    # line. Flatten here, once, so no caller can corrupt it.
+    reason="${reason//$'\t'/ }"
+    reason="${reason//$'\n'/ / }"
     local f
     f="$(_nros_check_skip_file)"
     mkdir -p "$(dirname "$f")"
@@ -125,5 +131,12 @@ nros_check_unverified_self_test() (
     if NROS_CHECK_SKIP_STRICT=1 nros_check_unverified selftest-gate "probe" 2>/dev/null; then
         rm -rf "$scratch"; echo "nros_check_unverified SELFTEST FAILED: strict mode passed a missing precondition" >&2; exit 1
     fi
+    # A multi-line reason is ONE record — the ledger is line-per-record.
+    : > "$scratch/checks.skipped"
+    nros_check_skip multi-gate "$(printf 'first\nsecond\tthird')" >/dev/null
+    case "$(cat "$scratch/checks.skipped")" in
+        "multi-gate"$'\t'"first / second third") ;;
+        *) rm -rf "$scratch"; echo "nros_check_skip SELFTEST FAILED: a multi-line reason wrote more than one record" >&2; exit 1 ;;
+    esac
     rm -rf "$scratch"
 )
