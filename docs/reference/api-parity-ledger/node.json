@@ -236,11 +236,11 @@
   },
   "cpp:init_with_launch": {
     "verdict": "extension",
-    "why": "initialises from a resolved launch SystemModel rather than from arguments (RFC-0046: launch is authoritative for node identity). rclcpp reads the same information from argv, which a device does not have."
+    "why": "initialises from a resolved launch SystemModel rather than from arguments (RFC-0046: launch is authoritative for node identity). rclcpp reads the same information from argv, which a device does not have.\n\nphase-467 Row 11, C++ half (2026-10-05) -- its `argc`/`argv`, documented since phase-212 as \"accepted and ignored for forward-compat\" and discarded with `(void)argc; (void)argv;`, are now honoured like `rclcpp::init(argc, argv)`'s: `-r` installed as the fallback remap tier, anything else refused BEFORE a session opens -- returned as `ErrorCode::InvalidArgument` here, since this form has a `Result`. A rule that does not fit the remap table closes the session it opened."
   },
   "cpp:init_with_launch_auto": {
     "verdict": "extension",
-    "why": "as `init_with_launch`, resolving the bringup the entry point was generated for instead of taking it as a parameter."
+    "why": "as `init_with_launch`, resolving the bringup the entry point was generated for instead of taking it as a parameter.\n\nphase-467 Row 11, C++ half (2026-10-05) -- its `argc`/`argv`, documented since phase-212 as \"accepted and ignored for forward-compat\" and discarded with `(void)argc; (void)argv;`, are now honoured like `rclcpp::init(argc, argv)`'s: `-r` installed as the fallback remap tier, anything else refused BEFORE a session opens -- returned as `ErrorCode::InvalidArgument` here, since this form has a `Result`. A rule that does not fit the remap table closes the session it opened."
   },
   "cpp:init_with_rmw": {
     "verdict": "extension",

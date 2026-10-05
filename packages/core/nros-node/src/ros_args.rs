@@ -264,6 +264,75 @@ where
 }
 
 #[cfg(any(has_rmw, test))]
+/// Why [`apply_ros_args`] refused an argument vector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApplyError<'a> {
+    /// The parse refused a token ([`parse_ros_args`]).
+    Refused(RosArgsError<'a>),
+    /// The rule did not fit: the remap table is full (its slots are shared
+    /// with launch rules), or a name is longer than its slot.
+    DoesNotFit(RemapArg<'a>),
+}
+
+#[cfg(any(has_rmw, test))]
+impl core::fmt::Display for ApplyError<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Refused(e) => e.fmt(f),
+            Self::DoesNotFit(r) => write!(
+                f,
+                "remap `{}:={}` does not fit: the executor's remap table holds {} rules, \
+                 shared with the launch file's; `from`/`to` hold {} bytes, a `node:` \
+                 prefix 64",
+                r.from,
+                r.to,
+                crate::executor::spin::MAX_REMAPS,
+                crate::names::MAX_RESOLVED_NAME_LEN,
+            ),
+        }
+    }
+}
+
+#[cfg(any(has_rmw, test))]
+/// Parse `args` and, given an executor, install its `-r` rules as the
+/// FALLBACK tier — the whole of "honour `--ros-args`" for a caller with no
+/// allocator (the C++ ABI, `nros_cpp_install_argv_remaps`).
+///
+/// With `executor = None` it only VALIDATES, so a caller can refuse a bad
+/// vector before opening a session at all. All or nothing either way: on any
+/// error nothing is installed. Returns the number of rules installed (or that
+/// would be).
+pub fn apply_ros_args<'a, I>(
+    executor: Option<&mut crate::executor::Executor<'_>>,
+    args: I,
+) -> Result<usize, ApplyError<'a>>
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    const N: usize = crate::executor::spin::MAX_REMAPS;
+    let mut rules: [Option<RemapArg<'a>>; N] = [None; N];
+    let mut n = 0usize;
+    let mut overflow = None;
+    parse_ros_args(args, |r| {
+        if n < N {
+            rules[n] = Some(r);
+            n += 1;
+        } else if overflow.is_none() {
+            overflow = Some(r);
+        }
+    })
+    .map_err(ApplyError::Refused)?;
+    if let Some(r) = overflow {
+        return Err(ApplyError::DoesNotFit(r));
+    }
+    if let Some(executor) = executor {
+        install_argv_remaps(executor, rules[..n].iter().flatten().copied())
+            .map_err(ApplyError::DoesNotFit)?;
+    }
+    Ok(n)
+}
+
+#[cfg(any(has_rmw, test))]
 /// The installed argv rules that apply to the node named `node_name` (in
 /// `namespace`), as a fallback tier for [`crate::names::resolve_name_layered`].
 ///
@@ -560,5 +629,49 @@ mod tests {
             rules(&["--ros-args", "-r", r]),
             Err(RosArgsError::Unsupported { flag: r })
         );
+    }
+
+    #[test]
+    fn apply_validates_without_an_executor_and_installs_nothing() {
+        let ok = [
+            "prog",
+            "--ros-args",
+            "-r",
+            "a:=b",
+            "-r",
+            "n:c:=d",
+            "--",
+            "x",
+        ];
+        assert_eq!(apply_ros_args(None, ok.iter().copied()), Ok(2));
+        assert_eq!(
+            apply_ros_args(None, ["prog", "plain"].iter().copied()),
+            Ok(0)
+        );
+    }
+
+    #[test]
+    fn apply_refuses_by_name_what_the_parse_refuses() {
+        let bad = ["prog", "--ros-args", "-r", "a:=b", "-p", "x:=1"];
+        assert_eq!(
+            apply_ros_args(None, bad.iter().copied()),
+            Err(ApplyError::Refused(RosArgsError::Unsupported {
+                flag: "-p"
+            }))
+        );
+    }
+
+    #[test]
+    fn apply_refuses_more_rules_than_the_table_can_ever_hold() {
+        const N: usize = crate::executor::spin::MAX_REMAPS;
+        let mut args: heapless::Vec<&str, { 2 + 2 * (N + 1) }> = heapless::Vec::new();
+        args.extend_from_slice(&["prog", "--ros-args"]).unwrap();
+        for _ in 0..=N {
+            args.extend_from_slice(&["-r", "a:=b"]).unwrap();
+        }
+        assert!(matches!(
+            apply_ros_args(None, args.iter().copied()),
+            Err(ApplyError::DoesNotFit(_))
+        ));
     }
 }

@@ -334,44 +334,44 @@ inline void require_created(::nros::Result r, const char* verb, const char* name
 }
 } // namespace detail
 
-/// `rclcpp::init(argc, argv)` — ADOPT-BOUNDED, refused at RUNTIME when it must be.
+/// `rclcpp::init(argc, argv)` — ADOPT-BOUNDED: `--ros-args -r` is honoured,
+/// every other ROS argument ABORTS the process naming it.
 ///
-/// **Why this is not a `static_assert`.** Whether the process was given
-/// `--ros-args` is a value, not a type: the compiler cannot see it. A compile-time
-/// refusal would reject every caller — including the overwhelmingly common
-/// embedded one that passes `argc`/`argv` straight through from `main` and has no
-/// ROS arguments at all — to catch a case that may never occur, and it would make
-/// upstream's own tutorial `main` unportable for a reason unrelated to what the
-/// program does.
+/// `argv` is parsed with rcl's grammar by the same code as Rust's
+/// `nros::Context::new` (`nros_node::ros_args`, reached through
+/// `nros_cpp_install_argv_remaps`):
 ///
-/// So the refusal fires where the information is. RFC-0089's rule is that a
-/// contract must never silently drop configuration; it is satisfied by being
-/// LOUD, and compile time is simply the earliest point loudness is available. When
-/// only the value carries the defect, the earliest point is the call.
+/// * `-r` / `--remap` `[node:]from:=to` inside `--ros-args ... --` — HONOURED,
+///   as the FALLBACK beneath any remap the launch file projected for the same
+///   name (the generated entry's `nros_cpp_declare_remap` calls). That is rcl's
+///   own local-before-global order (`rcl_remap_topic_name`).
+/// * `-p` / `--param` / `--params-file`, `__node` / `__name` / `__ns`,
+///   `-e` / `--enclave`, the log flags, any unknown token — REFUSED. Runtime
+///   parameters belong to RFC-0015 section 9's channel; node identity is
+///   launch-authoritative (RFC-0046). rclcpp throws `UnknownROSArgsError` for
+///   what rcl leaves unparsed, so refusing is the upstream behaviour too.
+/// * no `--ros-args` → identical to `rclcpp::init()`.
 ///
-/// * no `--ros-args` in `argv` → identical to `rclcpp::init()`. Nothing is
-///   dropped, because nothing was passed.
-/// * `--ros-args` present → the process ABORTS with a diagnostic naming the flag,
-///   rather than proceeding with a remap it did not apply. A wrong-topic bug that
-///   surfaces three hours into a run is the outcome this exists to prevent.
-///
-/// Remaps and parameter overrides reach a nano-ros node from `nros sync`, which
-/// projects the launch file's rules into the GENERATED ENTRY at build time —
-/// `nros_cpp_declare_remap` / `nros_cpp_declare_param` calls emitted before the
-/// component configure. They do NOT travel in the process environment, which
-/// carries the domain, locator, session mode and RMW hint and nothing else.
-/// Honouring them from `argv` is remap resolution — RFC-0020 violation class 4 —
-/// so the parser belongs beside `nros::resolve_name`, and phase-417 W3.b tracks
-/// it. Until it lands this call is honest about what it cannot do.
+/// **Why a refusal ABORTS rather than returns.** Upstream's `init` returns
+/// `void` and a ported `main` does not check it, so this call site has nowhere
+/// to put a failure, and continuing is the one outcome RFC-0089 forbids: a
+/// `-p` that compiles and is silently dropped. The vector is validated BEFORE
+/// the session opens. `nros::init_with_launch_auto(argc, argv)` honours the
+/// same arguments and RETURNS the refusal as a `Result`, for a caller that
+/// wants to handle it.
 inline void init(int argc, char const* const* argv) {
-    if (detail::argv_has_ros_args(argc, argv)) {
-        // `std::abort`, not a return code: this call site has nowhere to put a
-        // failure -- upstream's `init` returns void, and the ported `main` does
-        // not check it. Continuing is the one outcome the rule forbids.
-        NROS_ERROR("%s", NROS_RCLCPP_REFUSE_INIT_ARGV);
+    if (detail::argv_has_ros_args(argc, argv) &&
+        ::nros::detail::apply_ros_args(nullptr, argc, argv) != 0) {
         ::std::abort();
     }
     (void)::nros::init();
+    // An init that failed leaves no executor to install into; nothing here is
+    // dropped that the failed init did not already drop with the session.
+    void* const executor = ::nros::global_handle();
+    if (detail::argv_has_ros_args(argc, argv) && executor != nullptr &&
+        ::nros::detail::apply_ros_args(executor, argc, argv) != 0) {
+        ::std::abort();
+    }
 }
 
 /// `rclcpp::init()` — the zero-argument form. ADOPT.

@@ -4699,6 +4699,105 @@ pub unsafe extern "C" fn nros_cpp_declare_remap(
     }
 }
 
+/// Honour `--ros-args` from a C++ `argc`/`argv`: parse it with rcl's grammar
+/// and install the `-r`/`--remap` rules as the executor's FALLBACK remap tier,
+/// beneath the launch rules `nros_cpp_declare_remap` records.
+///
+/// This is the C++ face of `nros_node::ros_args::apply_ros_args`, the same
+/// parse and the same refusals as Rust's `nros::Context::new`: parameter
+/// overrides (`-p`, `--params-file`), identity remaps (`__node`, `__ns`),
+/// enclaves, log flags and unknown tokens are REFUSED by name, never skipped.
+///
+/// * `handle` NULL — VALIDATE only: nothing is installed, so a caller can
+///   refuse a bad vector before it opens a session.
+/// * `handle` an open executor — install, all or nothing.
+///
+/// On a refusal the reason is written into `why` (NUL-terminated, truncated
+/// to `why_len`) when `why` is non-NULL. Returns `NROS_CPP_RET_OK`,
+/// `NROS_CPP_RET_INVALID_ARGUMENT` (refused argument, or a bad handle/argv),
+/// or `NROS_CPP_RET_FULL` (the rules do not fit the remap table).
+///
+/// An argument that is not UTF-8 is read as a placeholder token, so outside a
+/// `--ros-args` scope it is ignored like any program argument and inside one
+/// it is refused as unknown.
+///
+/// # Safety
+/// `handle` must be NULL or a live executor handle from this ABI. `argv` must
+/// point at `argc` NUL-terminated C strings (it may be NULL when `argc` is 0).
+/// `why` must be NULL or point at `why_len` writable bytes.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_install_argv_remaps(
+    handle: *mut c_void,
+    argc: c_int,
+    argv: *const *const c_char,
+    why: *mut c_char,
+    why_len: usize,
+) -> nros_cpp_ret_t {
+    use nros_node::ros_args::{ApplyError, apply_ros_args};
+
+    let report = |e: &ApplyError<'_>| {
+        if why.is_null() || why_len == 0 {
+            return;
+        }
+        let out = unsafe { core::slice::from_raw_parts_mut(why.cast::<u8>(), why_len) };
+        let mut w = TruncatingWriter { buf: out, len: 0 };
+        let _ = core::fmt::write(&mut w, format_args!("{e}"));
+        let end = w.len.min(why_len - 1);
+        out[end] = 0;
+    };
+
+    if argc < 0 || (argc > 0 && argv.is_null()) {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let args = (0..argc as usize).map(|i| {
+        let p = unsafe { *argv.add(i) };
+        if p.is_null() {
+            "<null argument>"
+        } else {
+            unsafe { cstr_to_str(p) }.unwrap_or("<non-UTF-8 argument>")
+        }
+    });
+    let result = if handle.is_null() {
+        apply_ros_args(None, args)
+    } else {
+        let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        apply_ros_args(Some(&mut ctx.executor), args)
+    };
+    match result {
+        Ok(_) => NROS_CPP_RET_OK,
+        Err(e) => {
+            report(&e);
+            match e {
+                ApplyError::Refused(_) => NROS_CPP_RET_INVALID_ARGUMENT,
+                ApplyError::DoesNotFit(_) => NROS_CPP_RET_FULL,
+            }
+        }
+    }
+}
+
+/// `core::fmt::Write` into a fixed byte buffer, silently truncating — the
+/// caller NUL-terminates. Truncation is on a byte boundary, so a multi-byte
+/// character at the cut may be split; the reader is a C `printf`.
+#[cfg(feature = "rmw-cffi")]
+struct TruncatingWriter<'b> {
+    buf: &'b mut [u8],
+    len: usize,
+}
+
+#[cfg(feature = "rmw-cffi")]
+impl core::fmt::Write for TruncatingWriter<'_> {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        let room = self.buf.len().saturating_sub(1).saturating_sub(self.len);
+        let n = room.min(s.len());
+        self.buf[self.len..self.len + n].copy_from_slice(&s.as_bytes()[..n]);
+        self.len += n;
+        Ok(())
+    }
+}
+
 // ============================================================================
 // Phase 274.W1 — RFC-0015 Model 1 primitives (session ⊥ executor + gating FFI)
 // ============================================================================
@@ -6736,5 +6835,104 @@ mod executor_storage_check_tests {
                 "a refused runner ran setup"
             );
         }
+    }
+}
+
+/// `nros_cpp_install_argv_remaps`'s ABI edge: the parse and the install are
+/// `nros_node::ros_args`'s own tests; these hold what the FFI adds — the
+/// validate-only NULL handle, the reason buffer, and refusing a bad argv.
+#[cfg(all(test, feature = "rmw-cffi"))]
+mod install_argv_remaps_tests {
+    use super::*;
+
+    fn call(args: &[&core::ffi::CStr], why: &mut [u8]) -> nros_cpp_ret_t {
+        let ptrs: alloc::vec::Vec<*const c_char> = args.iter().map(|a| a.as_ptr()).collect();
+        unsafe {
+            nros_cpp_install_argv_remaps(
+                core::ptr::null_mut(),
+                ptrs.len() as c_int,
+                ptrs.as_ptr(),
+                why.as_mut_ptr().cast(),
+                why.len(),
+            )
+        }
+    }
+
+    fn text(why: &[u8]) -> &str {
+        let end = why.iter().position(|&b| b == 0).expect("NUL-terminated");
+        core::str::from_utf8(&why[..end]).unwrap()
+    }
+
+    #[test]
+    fn a_remap_validates_and_writes_no_reason() {
+        let mut why = [0xAAu8; 64];
+        assert_eq!(
+            call(&[c"prog", c"--ros-args", c"-r", c"a:=b"], &mut why),
+            NROS_CPP_RET_OK
+        );
+        assert_eq!(
+            why[0], 0xAA,
+            "an accepted vector must not touch the reason buffer"
+        );
+    }
+
+    #[test]
+    fn a_parameter_override_is_refused_by_name() {
+        let mut why = [0u8; 256];
+        let rc = call(&[c"prog", c"--ros-args", c"-p", c"x:=1"], &mut why);
+        assert_eq!(rc, NROS_CPP_RET_INVALID_ARGUMENT);
+        assert!(
+            text(&why).contains("`-p`"),
+            "reason names the flag: {}",
+            text(&why)
+        );
+    }
+
+    #[test]
+    fn the_reason_is_truncated_and_still_terminated() {
+        let mut why = [0xAAu8; 8];
+        let rc = call(
+            &[c"prog", c"--ros-args", c"--params-file", c"p.yaml"],
+            &mut why,
+        );
+        assert_eq!(rc, NROS_CPP_RET_INVALID_ARGUMENT);
+        assert_eq!(text(&why).len(), 7);
+    }
+
+    #[test]
+    fn a_negative_argc_or_null_argv_is_an_invalid_argument() {
+        let rc = unsafe {
+            nros_cpp_install_argv_remaps(
+                core::ptr::null_mut(),
+                -1,
+                core::ptr::null(),
+                core::ptr::null_mut(),
+                0,
+            )
+        };
+        assert_eq!(rc, NROS_CPP_RET_INVALID_ARGUMENT);
+        let rc = unsafe {
+            nros_cpp_install_argv_remaps(
+                core::ptr::null_mut(),
+                2,
+                core::ptr::null(),
+                core::ptr::null_mut(),
+                0,
+            )
+        };
+        assert_eq!(rc, NROS_CPP_RET_INVALID_ARGUMENT);
+        let rc = unsafe {
+            nros_cpp_install_argv_remaps(
+                core::ptr::null_mut(),
+                0,
+                core::ptr::null(),
+                core::ptr::null_mut(),
+                0,
+            )
+        };
+        assert_eq!(
+            rc, NROS_CPP_RET_OK,
+            "(0, NULL) is what every RTOS board passes"
+        );
     }
 }

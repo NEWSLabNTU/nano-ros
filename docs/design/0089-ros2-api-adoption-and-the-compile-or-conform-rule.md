@@ -553,6 +553,14 @@ flag if it is present. A program with no ROS arguments is unaffected, because
 nothing was dropped; a program that passes them dies immediately instead of
 running for three hours on a remap that was never applied.
 
+*Amended 2026-10-05 (phase-467 Row 11, C++ half):* the refusal narrowed to what
+cannot be honoured. `init(argc, argv)` now parses `--ros-args` with the Rust
+parser (`nros_node::ros_args`, beside `nros::resolve_name` as the paragraph on
+remap resolution below requires) and installs `-r` rules as the fallback remap
+tier; only the refused set (`-p`, `--params-file`, `__node`/`__ns`, enclaves,
+log flags, unknown tokens) still aborts. The value-carries-the-defect argument
+is unchanged — it now governs a smaller set.
+
 **The predicate must be separately checkable, or this becomes a check nothing
 runs.** An abort inlined into `init` can only be observed by a process that then
 dies, which is the shape of a gate that quietly stops working. Ours is

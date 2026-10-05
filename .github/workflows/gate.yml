@@ -911,6 +911,16 @@ jobs:
           source ./activate.sh
           just check node-std-tests
 
+      # phase-467 Row 11, C++ half — nros-cpp's `rmw-cffi`-gated FFI unit tests
+      # (`nros_cpp_install_argv_remaps`). `test-unit` builds nros-cpp with its
+      # default features, which carry no `rmw-cffi`, so nothing else compiles
+      # them. Merge group only: one nros-cpp lib-test build, once per batch.
+      - name: just check cpp-ffi-tests
+        if: ${{ github.event_name == 'merge_group' && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check cpp-ffi-tests
+
       # `check-api-parity` has NO step of its own here, and that is now the
       # finished answer rather than a deferral — issue 1066, closed.
       #

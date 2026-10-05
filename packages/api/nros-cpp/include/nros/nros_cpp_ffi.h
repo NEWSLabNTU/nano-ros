@@ -1865,6 +1865,40 @@ nros_cpp_ret_t nros_cpp_declare_remap(void *handle,
                                       const char *to);
 
 /**
+ * Honour `--ros-args` from a C++ `argc`/`argv`: parse it with rcl's grammar
+ * and install the `-r`/`--remap` rules as the executor's FALLBACK remap tier,
+ * beneath the launch rules `nros_cpp_declare_remap` records.
+ *
+ * This is the C++ face of `nros_node::ros_args::apply_ros_args`, the same
+ * parse and the same refusals as Rust's `nros::Context::new`: parameter
+ * overrides (`-p`, `--params-file`), identity remaps (`__node`, `__ns`),
+ * enclaves, log flags and unknown tokens are REFUSED by name, never skipped.
+ *
+ * * `handle` NULL — VALIDATE only: nothing is installed, so a caller can
+ *   refuse a bad vector before it opens a session.
+ * * `handle` an open executor — install, all or nothing.
+ *
+ * On a refusal the reason is written into `why` (NUL-terminated, truncated
+ * to `why_len`) when `why` is non-NULL. Returns `NROS_CPP_RET_OK`,
+ * `NROS_CPP_RET_INVALID_ARGUMENT` (refused argument, or a bad handle/argv),
+ * or `NROS_CPP_RET_FULL` (the rules do not fit the remap table).
+ *
+ * An argument that is not UTF-8 is read as a placeholder token, so outside a
+ * `--ros-args` scope it is ignored like any program argument and inside one
+ * it is refused as unknown.
+ *
+ * # Safety
+ * `handle` must be NULL or a live executor handle from this ABI. `argv` must
+ * point at `argc` NUL-terminated C strings (it may be NULL when `argc` is 0).
+ * `why` must be NULL or point at `why_len` writable bytes.
+ */
+nros_cpp_ret_t nros_cpp_install_argv_remaps(void *handle,
+                                            int argc,
+                                            const char *const *argv,
+                                            char *why,
+                                            size_t why_len);
+
+/**
  * Phase 274.W1 (RFC-0015 Model 1) — get the session handle from an opened executor.
  *
  * Returns an opaque pointer to the underlying RMW session. Pass this to

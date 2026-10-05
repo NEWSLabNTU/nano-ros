@@ -584,9 +584,13 @@ inline Result init_with_rmw(const char* rmw, const char* locator = nullptr, uint
 /// 3. Env vars: `ROS_DOMAIN_ID`, `NROS_LOCATOR`, `RMW_IMPLEMENTATION` /
 ///    `NROS_RMW`. This is the active overlay channel today.
 ///
-/// `argc` / `argv` are reserved for the structured `--ros-args` parse
-/// that lands with the runtime-overlay wave. They are accepted and
-/// ignored for forward-compat.
+/// `argc` / `argv` are parsed as `--ros-args` with rcl's grammar, exactly as
+/// Rust's `nros::Context::new` does: `-r`/`--remap` rules are installed as the
+/// FALLBACK beneath the launch rules the generated entry declares, and any
+/// other ROS argument (`-p`, `--params-file`, `__node`, `--log-level`, an
+/// unknown token) makes this return `ErrorCode::InvalidArgument` BEFORE a
+/// session opens, naming the token. `(0, nullptr)` — what every RTOS board
+/// passes — is a no-op.
 ///
 /// `session_name` falls back to `"nros_cpp"` when null (matches the
 /// 2-arg `init` overload).
@@ -597,8 +601,8 @@ inline Result init_with_launch_auto(int argc = 0, char** argv = nullptr,
 /// [`init_with_launch_auto`].
 ///
 /// Verifies `path` exists (so misspelled paths fail fast) but does NOT
-/// yet parse the XML — the env overlay is the active source today. See
-/// the auto variant's notes for the follow-up plan.
+/// yet parse the XML — the env overlay is the active source today.
+/// `argc` / `argv` are honoured exactly as in the auto variant.
 inline Result init_with_launch(const char* path, int argc = 0, char** argv = nullptr,
                                const char* session_name = nullptr);
 
@@ -2846,6 +2850,57 @@ inline Result shutdown() {
     return Result(nros_cpp_fini(::rclcpp::Node::global_storage()));
 }
 
+namespace detail {
+/// Honour `--ros-args` through `nros_cpp_install_argv_remaps` — the ONE C++
+/// spelling, used by `rclcpp::init(argc, argv)` and both `init_with_launch*`.
+/// `executor == nullptr` validates only. Logs the refusal, naming the token,
+/// and returns the FFI's code (0 on success).
+inline int32_t apply_ros_args(void* executor, int argc, char const* const* argv) {
+    // No `--ros-args` scope means nothing for the parser to read; skipping the
+    // call keeps a plain `main(argc, argv)` off the FFI entirely.
+    bool scoped = false;
+    for (int i = 0; argv != nullptr && i < argc && !scoped; ++i) {
+        const char* a = argv[i];
+        const char* want = "--ros-args";
+        while (a != nullptr && *a != '\0' && *a == *want) {
+            ++a;
+            ++want;
+        }
+        scoped = a != nullptr && *a == '\0' && *want == '\0';
+    }
+    if (!scoped) {
+        return 0;
+    }
+    char why[256] = {0};
+    const int32_t rc = nros_cpp_install_argv_remaps(executor, argc, argv, why, sizeof(why));
+    if (rc != 0) {
+        NROS_ERROR("%s\n  refused: %s", NROS_RCLCPP_REFUSE_INIT_ARGV,
+                   why[0] != '\0' ? why : "invalid executor handle or argv");
+    }
+    return rc;
+}
+
+/// Validate, open, install — so a refused vector never opens a session, and a
+/// rule that does not fit closes the one it opened rather than leaving it
+/// running without the remap.
+inline Result init_honouring_ros_args(int argc, char const* const* argv, const char* name) {
+    const int32_t checked = apply_ros_args(nullptr, argc, argv);
+    if (checked != 0) {
+        return Result(checked);
+    }
+    Result r = init(nullptr, 0, name);
+    if (!r.ok()) {
+        return r;
+    }
+    const int32_t installed = apply_ros_args(::nros::global_handle(), argc, argv);
+    if (installed != 0) {
+        (void)shutdown();
+        return Result(installed);
+    }
+    return r;
+}
+} // namespace detail
+
 // -- Phase 212.L.5 launch-aware init --
 //
 // Both `init_with_launch_auto` and `init_with_launch(path)` delegate to
@@ -2854,8 +2909,6 @@ inline Result shutdown() {
 // name falls back to `"nros_cpp"` so existing callsites keep working.
 
 inline Result init_with_launch_auto(int argc, char** argv, const char* session_name) {
-    (void)argc;
-    (void)argv;
     // TODO (Phase 212.L.5 follow-up):
     //   1. If $NROS_RUNTIME_OVERLAY is set, read the JSON sidecar and
     //      fold its params/remaps/env into the init call.
@@ -2864,12 +2917,10 @@ inline Result init_with_launch_auto(int argc, char** argv, const char* session_n
     // For now the env overlay (NROS_LOCATOR / ROS_DOMAIN_ID consumed by
     // the 2-arg `init`) is the only channel.
     const char* name = (session_name != nullptr) ? session_name : "nros_cpp";
-    return init(nullptr, 0, name);
+    return detail::init_honouring_ros_args(argc, argv, name);
 }
 
 inline Result init_with_launch(const char* path, int argc, char** argv, const char* session_name) {
-    (void)argc;
-    (void)argv;
     // NROS_CPP_RET_INVALID_ARGUMENT = -3 (mirrors the 3-arg init guard).
     if (path == nullptr) {
         return Result(-3);
@@ -2887,7 +2938,7 @@ inline Result init_with_launch(const char* path, int argc, char** argv, const ch
     // fold params/remaps/env into the init call. Today the env overlay
     // is the only channel.
     const char* name = (session_name != nullptr) ? session_name : "nros_cpp";
-    return init(nullptr, 0, name);
+    return detail::init_honouring_ros_args(argc, argv, name);
 }
 
 /// Check if the nros session is initialized.
