@@ -179,8 +179,10 @@ CONFIG_NET_SOCKETS=y
 
 Brokerless RTPS, wire-compatible with stock ROS 2 (`rmw_cyclonedds_cpp`).
 Cyclone's source is C++, so `CONFIG_CPP=y` is required even for Rust
-callers. Cyclone is resource-heavy — it needs a large heap, libc malloc
-arena, and pthread pools. The bool prerequisites (thread-local storage,
+callers. Cyclone is resource-heavy — it needs a large heap and pthread
+pools. Its `ddsrt_malloc` goes through the nano-ros platform heap
+(`CONFIG_NROS_ZEPHYR_HEAP_SIZE`, 1 MiB by default when Cyclone is selected),
+not picolibc's malloc arena, which keeps a 256 KiB Cyclone default. The bool prerequisites (thread-local storage,
 dynamic threads, `NET_TCP`, …) are `select`ed automatically by
 `CONFIG_NROS_RMW_CYCLONEDDS` in `zephyr/Kconfig`; the size knobs stay in
 `prj.conf`:
@@ -193,7 +195,7 @@ CONFIG_POSIX_API=y
 CONFIG_NET_IPV4_IGMP=y                  # RTPS SPDP uses UDP multicast
 CONFIG_MAIN_STACK_SIZE=524288
 CONFIG_HEAP_MEM_POOL_SIZE=4194304
-CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE=16777216
+CONFIG_NROS_ZEPHYR_HEAP_SIZE=1048576     # ddsrt's heap (the default; raise for big graphs)
 CONFIG_DYNAMIC_THREAD_STACK_SIZE=32768
 ```
 

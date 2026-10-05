@@ -184,9 +184,30 @@ list(FILTER _cdds_ddsi EXCLUDE REGEX "ddsi_shm_transport\\.c$")
 # iceoryx storage / event / result types. Drop under DDS_HAS_SHM=0.
 list(FILTER _cdds_ddsc EXCLUDE REGEX "shm_monitor\\.c$")
 
+# Issue 1633 — the ddsrt heap is the nano-ros platform FUNNEL here too, as it
+# is on the cmake road (`ProvideCycloneDDS.cmake`, issue 0832). The glob above
+# picks up `heap/posix/heap.c` (libc malloc); without the switch that file was
+# live and every ddsrt allocation went to picolibc's arena
+# (`CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE`) while Rust and zenoh-pico in the
+# same image used the nros heap (`CONFIG_NROS_ZEPHYR_HEAP_SIZE`): two heaps,
+# two budgets, only one in the boot record. With the switch the posix TU
+# compiles out and `heap/nros/heap.c` routes ddsrt_{malloc,calloc,realloc,
+# free} onto `nros_platform_{alloc,realloc,dealloc}` (`platform.c`'s
+# funnel — its exhaustion report, boot record and fatal hook included).
+# The define is read by the heap TUs only, so it is scoped to them rather
+# than put on the whole `nros` library. Both producers of the switch are
+# held to it by `check-ddsrt-funnel-producers`.
+set(_cdds_ddsrt_heap_funnel
+    ${CYCLONEDDS_DIR}/src/ddsrt/src/heap/nros/heap.c
+    ${CYCLONEDDS_DIR}/src/ddsrt/src/heap/posix/heap.c
+)
+set_source_files_properties(${_cdds_ddsrt_heap_funnel}
+    PROPERTIES COMPILE_DEFINITIONS NROS_DDSRT_PLATFORM_FUNNEL)
+
 zephyr_library_sources(
     ${_cdds_ddsrt_top}
     ${_cdds_ddsrt_posix}
+    ${CYCLONEDDS_DIR}/src/ddsrt/src/heap/nros/heap.c
     ${_cdds_zephyr_overrides}
     ${_cdds_ddsi}
     ${_cdds_ddsc}

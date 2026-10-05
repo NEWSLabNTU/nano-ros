@@ -82,6 +82,15 @@ cpp-destroy-shape:
 c-executor-remove-coverage:
     @python3 scripts/check-c-executor-remove-coverage.py
 
+# Issue 1633 — both roads that compile Cyclone from source (cmake's
+# ProvideCycloneDDS, Zephyr's nros_rmw_cyclonedds.cmake) define
+# NROS_DDSRT_PLATFORM_FUNNEL, so ddsrt's heap is the nros platform funnel and
+# never a port's libc malloc. Only the cmake road did; a Zephyr Cyclone image
+# allocated from picolibc's arena.
+[private]
+ddsrt-funnel-producers:
+    @python3 scripts/check-ddsrt-funnel-producers.py
+
 # Issue 0586 — the C++ FFI must not discard a backend error in favour of
 # `-100 TRANSPORT_ERROR`, the code its own source documents as the catch-all for
 # UNMAPPED variants. Also holds the two mappers exhaustive, so a NEW variant

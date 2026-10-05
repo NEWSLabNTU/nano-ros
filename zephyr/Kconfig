@@ -1754,9 +1754,18 @@ config NROS_EXECUTOR_ACTION_CLIENTS
 
 config NROS_ZEPHYR_HEAP_SIZE
     int "Application heap arena size (bytes)"
+    default 1048576 if NROS_RMW_CYCLONEDDS
     default 131072 if RUST
     default 65536
     help
+      A CYCLONE image gets 1 MiB (issue 1633): ddsrt's whole heap lands here
+      since the Zephyr road compiles the platform funnel (heap/nros/heap.c),
+      where it used to be picolibc's 16 MiB arena. MEASURED on
+      native_sim/native/64, c/talker cyclonedds: 840 nros_platform_alloc calls
+      and a 153,072-byte peak by the first dds_write (gdb); 1 MiB is ~6.8x
+      that, for discovery and samples in flight a peerless run does not reach.
+      A Rust Cyclone image's Rust allocations share it.
+
       A RUST application gets twice the default (issue 1324): its Rust
       `alloc` goes through this arena too -- it used to land in a second,
       unpriced heap (zephyr-lang-rust's CONFIG_RUST_ALLOC over libc malloc).
@@ -2021,8 +2030,13 @@ configdefault MAIN_STACK_SIZE
 configdefault HEAP_MEM_POOL_SIZE
     default 4194304
 
+# Issue 1633 -- 256 KiB, not 16 MiB: ddsrt no longer allocates from picolibc's
+# arena (the Zephyr road compiles the platform funnel; ddsrt's heap is
+# NROS_ZEPHYR_HEAP_SIZE). What still reaches libc malloc is the C++ backend's
+# `new` and picolibc itself -- measured 7 calls / 15,200 bytes on c/talker
+# cyclonedds by the first dds_write, against 805 / 299,191 before the funnel.
 configdefault COMMON_LIBC_MALLOC_ARENA_SIZE
-    default 16777216
+    default 262144
 
 configdefault SYSTEM_WORKQUEUE_STACK_SIZE
     default 8192
