@@ -70,6 +70,13 @@ fn resolve_zephyr_workspace(_root: &Path) -> Option<PathBuf> {
 
 #[test]
 fn fvp_board_import_fixture_boots() {
+    // Issue 1685's ordering — a lane holding no FVP coordinate deselects
+    // before the FVP/ELF probes (measured: a tier-1 run on a host WITH an FVP
+    // reported the absent ELF as an undeclared capability skip).
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::Fvp],
+        "the FVP board-import image",
+    );
     let root = project_root();
 
     // 1. FVP installed?
