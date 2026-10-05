@@ -1752,12 +1752,48 @@ config NROS_EXECUTOR_ACTION_CLIENTS
       executor reports what it actually used on its first spin, so build once,
       read the advisory, then set this. Issue 0900.
 
+config NROS_CAPABILITY_PARAM_SERVICES
+    bool "The image's bringup declares the param_services capability"
+    help
+      Set by `nros build` from the bringup's `[system] features` (issue 1702),
+      as `-DCONFIG_NROS_CAPABILITY_PARAM_SERVICES=y|n` on the west configure.
+      Do not set it in a conf fragment: the declaration is the source, and
+      the command-line assignment overrides any fragment anyway. It exists so
+      Kconfig defaults that depend on what the image DECLARES -- today only
+      NROS_ZEPHYR_HEAP_SIZE -- can say so.
+
+config NROS_CAPABILITY_LIFECYCLE
+    bool "The image's bringup declares the lifecycle capability"
+    help
+      Set by `nros build` from the bringup's `[system] features` or its
+      `[lifecycle]` block (issue 1702). See NROS_CAPABILITY_PARAM_SERVICES.
+
 config NROS_ZEPHYR_HEAP_SIZE
     int "Application heap arena size (bytes)"
     default 1048576 if NROS_RMW_CYCLONEDDS
+    default 524288 if NROS_CAPABILITY_PARAM_SERVICES
+    default 196608 if NROS_CAPABILITY_LIFECYCLE
     default 131072 if RUST
     default 65536
     help
+      A PARAM_SERVICES image gets 512 KiB, and a LIFECYCLE one 192 KiB
+      (issue 1702): both capabilities allocate from this arena and nothing
+      sized it from the declaration, so such an image LINKED and then halted
+      at boot (`HEAP EXHAUSTED (TOO SMALL): request 285696 bytes`). The
+      parameter store is ONE allocation of ~8.5 KiB a slot, 285,696 bytes at
+      the default 32 slots, made the first time anything declares a
+      parameter. MEASURED on native_sim/native/64 (boot record, live router,
+      `read-boot-report.py --heap-headroom`), on features' images that
+      declare BOTH axes: zephyr_cpp_params peaks at 111,360 without the store
+      (46,848 with param_services alone, so lifecycle costs ~64.5 KiB --
+      five services, each owning a 2 x 4,096-byte buffer pair); the Rust
+      params image at 114,144 without it, and issue 1677's lifecycle and qos
+      peaks less the store at 113,904 and 120,896.
+      Store + worst + the 24,576-byte floor is 431,168, hence 512 KiB; worst
+      + floor is 145,472, hence 192 KiB for lifecycle without the store.
+      A bringup whose contracts declare `params:` derives a far smaller store
+      (phase-446 W4) and may state a lower value.
+
       A CYCLONE image gets 1 MiB (issue 1633): ddsrt's whole heap lands here
       since the Zephyr road compiles the platform funnel (heap/nros/heap.c),
       where it used to be picolibc's 16 MiB arena. MEASURED on
