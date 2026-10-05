@@ -26,15 +26,20 @@ child's own level overrides the parent; an ancestor created AFTER its descendant
 is linked to it; a middle ancestor created later re-points the grandchild; the
 chain walk stops at a set level and never loops.
 
-### W2 -- `child` / `get_child` on every surface
+### W2 -- `create_child` / `get_child` on every surface
 
-- Rust `Logger::child` (spelling per RFC-0102 open question 1).
+- Rust `Logger::create_child(&'static self, child_name: impl Borrow<str>) ->
+  Result<&'static Logger, ChildError>` (RFC-0102 D1), `ChildError` =
+  `NameTooLong { len, max }` | `ArenaFull`.
 - C `nros_logger_get_child`; header regenerated (`just regen-c-headers`).
 - C++ `rclcpp::Logger::get_child(const std::string&)` + `(const char*)`, separate
   emit and level handles (RFC-0102 D3).
+- On every surface, a child of the catch-all is a top-level name (`x`, not
+  `nros.x`), as rclrs does for its empty-named default logger.
 
-**Acceptance:** a C++ runtime probe in `just check cpp` (child name, inherited
-level, own level, idempotence); a C test beside `named_logger_levels.c`.
+**Acceptance:** Rust unit tests for both `ChildError` arms and the catch-all
+rule; a C++ runtime probe in `just check cpp` (child name, inherited level, own
+level, idempotence); a C test beside `named_logger_levels.c`.
 
 ### W3 -- overflow takes the parent, and `set_level` refuses (RFC-0102 D3)
 
@@ -56,13 +61,18 @@ from a real `ros2 topic echo`.
 
 ### W5 -- arena size per board, with one owner, reported (RFC-0102 D5)
 
-- Linux host boards 32, MCU boards 16, overridable per image.
-- Conflicting `dynamic-loggers-<N>` selections in one graph fail the build instead
-  of silently picking the smallest.
+- `NROS_LOG_DYNAMIC_LOGGERS` knob, read by a new `nros-log/build.rs` on the
+  RFC-0049 ladder (image env > Kconfig / `[board.knobs.*]` > 16), delivered on
+  the cargo, cmake and west roads; `CONFIG_NROS_LOG_DYNAMIC_LOGGERS` paired on
+  Zephyr.
+- Linux host boards state 32, MCU boards keep 16.
+- The `dynamic-loggers-<N>` features deprecated (one release), then removed.
 - `dynamic_loggers_in_use()` / capacity in the boot report and `just mem-report`.
 
-**Acceptance:** a gate for the single-owner rule; the count visible in a native
-boot report and in `mem-report` output.
+**Acceptance:** the knob gates (`check-kconfig-knob-forwarding`,
+`check-knob-single-reader`) cover the new knob; an image `env` override beats the
+board's value in a built image; the count visible in a native boot report and in
+`mem-report` output.
 
 ### W6 -- docs and ledger
 
