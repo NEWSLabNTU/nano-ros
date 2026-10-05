@@ -23,47 +23,4 @@
 # Do not regenerate this file from the ledger: that would turn the ratchet
 # into an allowlist of whatever exists today.
 
-c:client_init_default
-cpp:CancelResponse
-cpp:Client::send_goal
-cpp:Client::set_callbacks
-cpp:Client::wait_for_action_server
-cpp:GoalResponse
-cpp:LifecycleNode::declare_parameters
-cpp:LifecycleNode::undeclare_parameter
-cpp:Logger
-cpp:Node::create_subscription
-cpp:Node::declare_parameters
-cpp:Node::get_logger
-cpp:Publisher::publish
-cpp:Server
-cpp:Server::abort
-cpp:Server::canceled
-cpp:Server::complete_goal
-cpp:Server::publish_feedback
-cpp:Server::set_accepted_callback
-cpp:Server::succeed
-cpp:create_publisher
-cpp:create_timer
-cpp:spin_until_future_complete
-rust:Client::service_name
-rust:Clock::new
-rust:Context
-rust:Context::from_env
-rust:Executor::spin
-rust:Executor::spin_async
-rust:Logger::set_default_level
-rust:Logger::unset_level
-rust:MessageInfo
-rust:Node::get_publishers_info_by_topic
-rust:Node::get_subscriptions_info_by_topic
-rust:NodeOptions
-rust:ParameterBuilder::default_from_iter
-rust:ParameterBuilder::default_string_array
-rust:Parameters
-rust:Publisher
-rust:RmwParameterConversionError
-rust:Service::service_name
-rust:Subscription
-rust:Timer
 rust:init_with_args

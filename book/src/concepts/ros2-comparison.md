@@ -71,8 +71,10 @@ have to bound by hand. Offering both means the application picks.
 `rclcpp` has no real `async/await`. `rclrs` 0.7+ added async but it
 sits next to the synchronous executor, not in it. `rclc` has none.
 
-nano-ros has it as a first-class path: `Executor::spin_async()` wakes
-on RMW I/O, `Subscription::recv().await`, `Client::call().await`,
+nano-ros has it as a first-class path: `Executor::spin_async()` drives
+the executor from inside a `Future` (it does not park on RMW I/O: each
+cycle is a 1 ms `spin_once` and an immediate self-wake, so it keeps a core
+busy — see its rustdoc), `Subscription::recv().await`, `Client::call().await`,
 `ActionClient::send_goal().await`, etc. Runs on tokio (POSIX),
 Embassy (FreeRTOS / RTIC), or any external `Future`-driver.
 
@@ -293,7 +295,7 @@ and `NodeCtx::parameter`.
 | `add_pre_set_parameters_callback` / `add_on_set_parameters_callback` / `add_post_set_parameters_callback` | one combined `nros_parameter_callback_t` (server-wide, fires after set) | three callbacks → three indirection slots × N subscribers; one callback covers the safety-island validation use case (`reject if out of range`) |
 | `set_parameter` returning `SetParametersResult` (`successful: bool`, `reason: string`) | returns `nros_ret_t` | string `reason` would force heap or fixed-buffer; ret code captures the binary outcome |
 | `set_parameters_atomically` | not exposed | atomic multi-set requires transaction log; not justified by current embedded use |
-| `declare_parameters` (multi-declare with namespace) | not exposed | one-by-one declare is fine for compile-time-known parameter sets |
+| `declare_parameters` (multi-declare with namespace) | C++ only, hosted only: `rclcpp::Node::declare_parameters<T>(prefix, map)` | upstream's argument is a `std::map`, so it needs an allocator; returns `Result`, not the `std::vector<T>` of values in effect (read back with `get_parameter<T>`). Rust and C declare one at a time |
 | Parameter overrides from CLI / launch / yaml | not exposed | embedded apps configure via Kconfig / `Config` struct; runtime overrides come over the wire via `~/set_parameters` (when `param-services` is on) |
 | Storage allocation policy | one executor-owned table, `NROS_MAX_PARAMETERS` slots, keyed by node | no per-node heap; capacity is a build knob, sized once like the executor arena rather than multiplied by the node count |
 

@@ -200,6 +200,10 @@ template <typename M> class Publisher {
     /// warning level. That is reachable straight from `create_publisher`, which
     /// returns a `Result` a ported node may not read and leaves `out` untouched
     /// on failure.
+    ///
+    /// Returns `Result`, where upstream returns `void` and throws: no exceptions
+    /// here (RFC-0018). `Result` is `[[nodiscard]]`, so a ported `pub->publish(msg);`
+    /// warns; an uninitialised publisher answers `NotInitialized` and sends nothing.
     Result publish(const M& msg) {
         if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
         return Result(M::ffi_publish(storage_, &msg));
@@ -577,6 +581,10 @@ namespace nros {
 /// so users can write
 /// `auto pub = nros::create_publisher<Int32>(node, "/chatter");`
 /// in the rclcpp-style.
+///
+/// Returns `ResultOf<Publisher<M>>`, not upstream's `std::shared_ptr<Publisher<M>>`:
+/// a freestanding target has no `shared_ptr` and nothing here throws, so the
+/// value carries the error. Check it — a discarded result loses the failure.
 template <typename M>
 inline ResultOf<Publisher<M>> create_publisher(::rclcpp::Node& node, const char* topic,
                                                const QoS& qos = QoS::default_profile()) {

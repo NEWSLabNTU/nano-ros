@@ -715,7 +715,8 @@ class LifecycleNode {
     bool has_parameter(const char* name) const {
         return node_ != nullptr && node_->has_parameter(name);
     }
-    /// `undeclare_parameter(name)`.
+    /// `undeclare_parameter(name)`. Returns `Result` where upstream returns `void`
+    /// and throws; on an UNBOUND lifecycle node it answers `InvalidArgument`.
     Result undeclare_parameter(const char* name) {
         return node_ == nullptr ? Result(::nros::ErrorCode::InvalidArgument)
                                 : node_->undeclare_parameter(name);
@@ -799,7 +800,9 @@ class LifecycleNode {
         return this->get_parameter_type(name.c_str());
     }
     /// `declare_parameters<T>(prefix, map)` — the bulk form, hosted-only
-    /// because upstream's argument IS a `std::map`.
+    /// because upstream's argument IS a `std::map`. Returns `Result`, not
+    /// upstream's `std::vector<T>` (see `rclcpp::Node::declare_parameters`); on an
+    /// UNBOUND lifecycle node it answers `InvalidArgument`.
     template <typename T>
     Result declare_parameters(const ::std::string& prefix, const ::std::map<::std::string, T>& m) {
         return node_ == nullptr ? Result(::nros::ErrorCode::InvalidArgument)

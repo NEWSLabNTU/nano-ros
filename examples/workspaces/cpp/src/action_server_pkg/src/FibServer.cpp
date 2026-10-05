@@ -9,31 +9,33 @@
 namespace action_server_pkg {
 
 /// Goal callback — receives the goal UUID + the goal's CDR bytes. Parses the order, ACCEPTS, and
-/// stashes the goal for the timer to complete. Returns a `GoalResponse` discriminant.
-int32_t FibServer::on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len) {
+/// stashes the goal for the timer to complete. Returns the typed `GoalResponse`; the binder
+/// converts it to the FFI discriminant (`nros::to_ffi`).
+::nros::GoalResponse FibServer::on_goal(const uint8_t goal_id[16], const uint8_t* data,
+                                        size_t len) {
     Action::Goal goal;
     if (Action::Goal::ffi_deserialize(data, len, &goal) != 0) {
         /* issue 0737 — say why. A silent reject is indistinguishable from
          * a request that never arrived. */
         std::fprintf(stderr,
                      "[action_server_pkg] goal REJECTED — deserialize failed, %zu byte(s)\n", len);
-        return static_cast<int32_t>(::nros::GoalResponse::Reject);
+        return ::nros::GoalResponse::REJECT;
     }
     if (goal.order < 0 || goal.order >= 64) {
         std::printf("[action_server_pkg] goal order=%d REJECTED (out of range)\n", goal.order);
-        return static_cast<int32_t>(::nros::GoalResponse::Reject);
+        return ::nros::GoalResponse::REJECT;
     }
 
     std::memcpy(goal_id_, goal_id, 16);
     order_ = goal.order;
     has_pending_ = true;
     std::printf("[action_server_pkg] goal order=%d\n", goal.order);
-    return static_cast<int32_t>(::nros::GoalResponse::AcceptAndExecute);
+    return ::nros::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
-int32_t FibServer::on_cancel(const uint8_t goal_id[16]) {
+::nros::CancelResponse FibServer::on_cancel(const uint8_t goal_id[16]) {
     (void)goal_id;
-    return static_cast<int32_t>(::nros::CancelResponse::Accept);
+    return ::nros::CancelResponse::ACCEPT;
 }
 
 /// Timer tick — the only place the executor is free for action ops. Computes the Fibonacci

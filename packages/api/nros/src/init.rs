@@ -175,6 +175,15 @@ impl core::error::Error for InitError {}
 /// Fields are owned (`String`) so the `Context` can outlive transient parents
 /// (env caches, parsed launch files, a harness-supplied locator). That is why
 /// the type's feature floor is `alloc`.
+///
+/// ADOPT-BOUNDED against `rclrs::Context`, which OWNS the rcl context. This is
+/// the resolved identity as a plain value, so:
+/// - There is no `ok()`: the value has no shutdown state; liveness is the
+///   executor's.
+/// - `domain_id` is a public field, not a `domain_id()` method.
+/// - Executors are opened FROM it: [`create_executor`](Self::create_executor)
+///   leaks an executor-lifetime backing (needs `alloc`), and
+///   [`create_executor_in`](Self::create_executor_in) takes caller storage.
 #[cfg(feature = "alloc")]
 #[derive(Debug, Clone)]
 pub struct Context {
@@ -399,6 +408,12 @@ impl Context {
     /// `rclrs::Context::from_env(options)` — [`default_from_env`](Self::default_from_env)
     /// with the [`InitOptions`] applied on top: a
     /// `Some` domain replaces the resolved one, `None` keeps it.
+    ///
+    /// Bounded: [`InitOptions`] carries rclrs's one option, `domain_id`, and no
+    /// other, so an option rclrs adds later is a compile error here. A domain above
+    /// `DOMAIN_ID_MAX` is [`InitError::DomainIdOutOfRange`]. Freestanding, the base
+    /// the options override is the BAKED context ([`Context::baked`]), not a
+    /// process environment.
     pub fn from_env(options: InitOptions) -> Result<Context, InitError> {
         let mut ctx = Self::default_from_env()?;
         if let Some(domain_id) = options.domain_id {

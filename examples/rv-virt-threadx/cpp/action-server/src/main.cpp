@@ -53,7 +53,7 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
     printf("Received goal request with order %d\n", goal.order);
     if (goal.order < 0 || goal.order >= 64) {
         printf("Goal rejected: order out of range\n");
-        return nros::GoalResponse::Reject;
+        return nros::GoalResponse::REJECT;
     }
 
     state->goal_count++;
@@ -90,7 +90,7 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
     if (state->srv->complete_goal(uuid, result).ok()) {
         printf("Goal succeeded\n");
     }
-    return nros::GoalResponse::AcceptAndExecute;
+    return nros::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
 // ----------------------------------------------------------------------------

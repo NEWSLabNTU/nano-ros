@@ -282,6 +282,13 @@ pub type TimerCallbackFn = fn();
 /// Internal timer state
 ///
 /// Stored in the node's timer collection.
+///
+/// ADOPT-BOUNDED against rclrs's `Timer` (`Arc<TimerState>`), which is created per
+/// use and dropped when done. Here a timer is an entry in the executor's STATIC
+/// table: declared once (in `register`) and re-armed in place with
+/// [`set_repeating`](Self::set_repeating) / [`set_oneshot`](Self::set_oneshot) /
+/// [`set_inert`](Self::set_inert), because a static table cannot grow a timer at
+/// runtime. The mode vocabulary is rclrs's; the lifetime is not.
 pub struct TimerState {
     /// Timer period in milliseconds
     period_ms: u64,

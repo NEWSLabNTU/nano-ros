@@ -9,7 +9,12 @@ with the same `Logger` + severity surface as `rclcpp::Logger` /
 
 ## Severity ladder
 
-REP-2012 style, matching `rcutils_log_severity_t`:
+REP-2012 style: rcutils's five levels in rcutils's order, plus `Trace`. The
+numbers are NOT `rcutils_log_severity_t`'s (`UNSET=0, DEBUG=10 … FATAL=50`)
+and there is no `Unset` level — in Rust a logger's "no level of its own" state
+is `Logger::unset_level()`, and `Logger::set_default_level` takes a `Severity`
+(pass `Info` where rclrs passes `Unset`). The C surface's `nros_log_severity_t`
+does use rcutils's numbers, `UNSET` included.
 
 | Severity | u8 | When to use |
 |----------|----|-------------|

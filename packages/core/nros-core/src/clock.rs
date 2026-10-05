@@ -256,6 +256,13 @@ fn platform_steady_clock() -> Option<Time> {
 
 impl Clock {
     /// Create a new clock of the specified type
+    ///
+    /// ADOPT-BOUNDED: rclrs's `Clock::new` returns `(Self, Option<ClockSource>)`,
+    /// handing back the source that drives a ROS-time clock. This returns the clock
+    /// alone. Simulated time is ONE process-wide override, set with the associated
+    /// [`Clock::set_ros_time_override`], not a per-clock source: a per-clock source
+    /// is a shared owner (`Arc`) the `core` targets do not have, and `const fn` is
+    /// what lets a `Clock` be a `static`.
     pub const fn new(clock_type: ClockType) -> Self {
         Self { clock_type }
     }

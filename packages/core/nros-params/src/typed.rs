@@ -134,6 +134,13 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
     }
 
     /// Set a default value for the parameter
+    ///
+    /// The ONE default setter. rclrs also has `default_from_iter(impl IntoIterator)`
+    /// and `default_string_array(&[&str])`; neither exists here, so pass the array
+    /// value itself. An array is a `heapless::Vec` bounded by `MAX_ARRAY_LEN` (a
+    /// string array is `Vec<String<MAX_STRING_VALUE_LEN>, MAX_ARRAY_LEN>`, two
+    /// compile-time bounds), and an over-capacity value is refused by
+    /// [`ParameterVariant::try_to_parameter_value`], never truncated. No allocator.
     pub fn default(mut self, value: T) -> Self {
         self.default = Some(value);
         self
@@ -409,6 +416,10 @@ impl<'a, 's, T: ParameterVariant> ReadOnlyParameter<'a, 's, T> {
 ///
 /// This struct is returned by `Node::use_undeclared_parameters()` and allows
 /// for dynamic retrieval of parameter values by name without explicit declaration.
+///
+/// rclrs calls this type `Parameters`; the capability is the same (read AND write,
+/// by name), only the name differs. A ported file rarely names the type — it binds
+/// what `use_undeclared_parameters()` returns — so the edit is a `use` line.
 pub struct UndeclaredParameters<'a, 's> {
     server: &'a mut ParameterServer<'s>,
     /// phase-426 W1 — whose undeclared parameters. Without this the accessor

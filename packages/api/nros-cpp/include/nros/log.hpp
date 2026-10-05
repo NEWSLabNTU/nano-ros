@@ -346,6 +346,16 @@ namespace rclcpp {
 // do this" comment is how a capability stays unused for two phases after it
 // ships. `get_child` is still a divergence and says so on its own row.
 
+/// `rclcpp::Logger` — the name plus the `nros_log` handle records dispatch on.
+///
+/// ADOPT-BOUNDED against upstream's value type, which owns a `std::string`:
+/// - The name is a BORROWED `const char*`, not an owned string: whatever it
+///   points at must outlive this Logger and every copy of it. That includes the
+///   `std::string` overload of `rclcpp::get_logger`, which borrows `c_str()`.
+/// - There is no `get_child`: minting `parent.child` needs an allocator to build
+///   the name in, and there is none (RFC-0022).
+/// `get_name()`, `set_level()` and passing it to an `RCLCPP_*` macro behave as
+/// upstream's do.
 class Logger {
   public:
     explicit Logger(const char* name = "") : name_(name), handle_(nullptr) {}

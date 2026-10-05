@@ -112,7 +112,8 @@ inline ::nros::Result callback_tier_server(::rclcpp::Node& node) {
     // trampoline; lifting it to a value is one token.
     (void)server.set_goal_callback([](const uint8_t uuid[16], const Fib::Goal&) {
         ::nros::GoalUUID id(uuid);
-        return id.is_zero() ? ::nros::GoalResponse::Reject : ::nros::GoalResponse::AcceptAndExecute;
+        return id.is_zero() ? ::nros::GoalResponse::REJECT
+                            : ::nros::GoalResponse::ACCEPT_AND_EXECUTE;
     });
 
     ::nros::GoalUUID id;

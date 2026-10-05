@@ -76,6 +76,10 @@ pub const MAX_PARAMS_PER_REQUEST: usize = 64;
 /// the node held a prefix. An unrecognised `type_` became `NotSet`. Same class
 /// as issues 0223/0224 — a swallowed capacity error turning malformed input
 /// into a plausible business value.
+///
+/// rclrs names this `RmwParameterConversionError`; the role is the same (why a
+/// wire value was rejected), the name is ours, after where the conversion
+/// happens. Re-exported as `nros::ValueConversionError`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueConversionError {
     /// The value exceeds this node's compile-time capacity

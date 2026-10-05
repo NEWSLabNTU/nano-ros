@@ -896,6 +896,11 @@ inline ::rclcpp::Node& as_node_ref(const ::std::shared_ptr<::rclcpp::Node>& n) {
 
 /// `rclcpp::create_timer(node, clock, period, callback)` — humble's only
 /// clock-taking timer verb.
+///
+/// ADOPT-BOUNDED: the clock is `nros::Clock*` (what `node->get_clock()` returns),
+/// not `rclcpp::Clock::SharedPtr`; the period is truncated to whole MILLISECONDS;
+/// Humble's optional trailing `group` argument is not taken; and the result is
+/// `std::shared_ptr<nros::Timer>` (`rclcpp::TimerBase::SharedPtr` names the same type).
 template <typename NodeT, typename CallbackT>
 inline ::std::shared_ptr<::nros::Timer>
 create_timer(NodeT&& node, ::nros::Clock* clock, ::nros::Duration period, CallbackT&& callback) {
@@ -983,6 +988,13 @@ inline void spin_some(const Node::SharedPtr& node) {
 // sequence ported from rclcpp paid the full timeout on every SUCCESSFUL call.
 // The unbounded branch directly below already had the right shape; both now
 // share it, differing only in whether a deadline exists.
+/// `rclcpp::spin_until_future_complete(node, future[, timeout])`.
+///
+/// ADOPT-BOUNDED: the timeout is `int32_t` MILLISECONDS (`-1` = unbounded, the
+/// default), not a `std::chrono::duration`, so a ported `1s` argument does not
+/// compile. It spins the PROCESS executor in 10 ms `spin_once` slices — there is
+/// one executor per task (RFC-0002) and no executor argument — so the deadline
+/// is quantised to 10 ms. Returns upstream's `FutureReturnCode`.
 template <typename Future>
 inline FutureReturnCode spin_until_future_complete(const Node::SharedPtr& node,
                                                    const Future& future, int32_t timeout_ms = -1) {

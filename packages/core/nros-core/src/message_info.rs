@@ -59,7 +59,14 @@ pub const fn pad_publisher_gid<const N: usize>(narrow: &[u8; N]) -> [u8; PUBLISH
 /// Metadata about a received message
 ///
 /// Contains information about the source and timing of a message.
-/// This matches the rclrs `MessageInfo` type.
+///
+/// ADOPT-BOUNDED against rclrs's `MessageInfo`, which exposes the whole
+/// `rmw_message_info_t`. This is a flat struct of what an embedded backend can
+/// fill: both timestamps, both sequence numbers and a 24-byte publisher gid.
+/// Whether a message carries it at all is a BACKEND property — zenoh fills it
+/// from the attachment, Cyclone from `take_with_info`, and a backend that reports
+/// no metadata hands the callback `None` rather than a zeroed value. How many gid
+/// bytes mean anything is backend-specific too: see [`publisher_gid`](Self::publisher_gid).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct MessageInfo {
     /// Timestamp when the message was published (from the publisher's clock)

@@ -9617,6 +9617,17 @@ impl<'s> Executor<'s> {
     ///
     /// Uses only `core::future` — no external async runtime dependency.
     ///
+    /// ADOPT-BOUNDED against rclrs's
+    /// `spin_async(SpinOptions) -> impl Future<Output = Vec<RclrsError>>`:
+    ///
+    /// * **It never returns and reports no errors** — the output is `!`, and it
+    ///   takes no `SpinOptions`. To stop, `select` it against the thing you are
+    ///   waiting for (pattern 1 below).
+    /// * **It does not sleep on RMW I/O.** Each cycle is `spin_once(1 ms)` and then
+    ///   a yield that wakes itself before returning `Pending`, so any runtime that
+    ///   honours wakes polls it again at once. It is CPU-bound by construction;
+    ///   the 1 ms `spin_once` budget is its only wait. Do not read `async` as idle.
+    ///
     /// # Usage patterns
     ///
     /// ```ignore
