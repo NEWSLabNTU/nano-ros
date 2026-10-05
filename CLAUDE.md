@@ -1004,7 +1004,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
 - **The cyclonedds fork is pinned to the cyclonedds ROS SHIPS (0.10.5), not upstream** — an image
   must speak the same Cyclone as the host's `rmw_cyclonedds_cpp`, so upstream `master` (11.x) is not
   a rebase target and an upstream PR cannot retire the delta before a distro migration (issue 0507,
-  same drift class as 0609). The 15 carried commits are enumerated in
+  same drift class as 0609). The carried commits (no count here: it drifted) are enumerated in
   [docs/reference/cyclonedds-fork-delta.md](docs/reference/cyclonedds-fork-delta.md) — add a row
   there when the fork gains one. Before believing ANY claim about what the fork carries, run
   `git remote prune origin && git fetch --unshallow origin`: stale remote-tracking refs and the
