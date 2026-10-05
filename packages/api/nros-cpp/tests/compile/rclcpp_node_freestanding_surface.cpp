@@ -128,6 +128,27 @@ inline ::nros::Result instantiate() {
     on_clock.reset();
     wall.reset();
 
+    // phase-476 W1 — the value-returning DISPATCH verbs with a `const char*`
+    // key, freestanding: a capturing lambda for the subscription, plain
+    // function pointers for the service and client (the callable those two
+    // take), and the poll forms by value.
+    rclcpp::Subscription<Int32>::SharedPtr vsub = node.create_subscription<Int32>(
+        "/count", ::nros::QoS(10), [&ticks](const Int32&) { ++ticks; });
+    rclcpp::Subscription<Int32>::SharedPtr vsub_depth =
+        node.create_subscription<Int32>("/count", 10, [&ticks](const Int32&) { ++ticks; });
+    rclcpp::Service<AddTwoInts>::SharedPtr vsrv =
+        node.create_service<AddTwoInts>("/add_v", &on_request);
+    rclcpp::Client<AddTwoInts>::SharedPtr vcli =
+        node.create_client<AddTwoInts>("/add_v", &on_response);
+    auto vpoll_srv = node.create_service<AddTwoInts>("/add_poll");
+    auto vpoll_cli = node.create_client<AddTwoInts>("/add_poll");
+    (void)vsub;
+    (void)vsub_depth;
+    (void)vsrv;
+    (void)vcli;
+    (void)vpoll_srv;
+    (void)vpoll_cli;
+
     // phase-456 W5 — the poll server is `nros::PollService<S>`, a different
     // type from the dispatch one below. One class used to be both.
     ::nros::PollService<AddTwoInts> poll_service;
