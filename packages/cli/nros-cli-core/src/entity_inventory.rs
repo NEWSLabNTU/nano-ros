@@ -9908,10 +9908,13 @@ contracts:
         let d = alone.derive();
         let k = d.knobs().expect("the contract derives");
         assert_eq!(
-            (k.max_cbs, k.max_subscribers, k.max_nodes),
-            (0, 0, 1),
+            (k.max_cbs, k.max_subscribers),
+            (0, 0),
             "the contract alone counts only what it names -- the issue-1694 shape"
         );
+        // The talker's node, plus the `/diagnostics` reporter's (issue 1676);
+        // the listener is not in it.
+        let alone_nodes = k.max_nodes;
 
         // AFTER: one endpoint of two named, and every registered count stands.
         let inv = compose(&m, &stock_sidecars());
@@ -9923,7 +9926,10 @@ contracts:
         );
         assert!(k.max_subscribers >= 1, "the listener's subscription: {k:?}");
         assert!(k.max_publishers >= 1, "the talker's publisher: {k:?}");
-        assert!(k.max_nodes >= 2, "both launched nodes: {k:?}");
+        assert!(
+            k.max_nodes > alone_nodes,
+            "the listener's node joins the talker's (and the reporter's): {k:?}"
+        );
     }
 
     #[test]
