@@ -113,7 +113,16 @@ def required_producers(recipes, reached):
     """
     out = {}
     for r in reached:
-        body = "\n".join(recipes.get(r, {}).get("body", []))
+        # Comment lines OUT before either test: the docstring has always said
+        # a comment does not count, and the body was matched whole. It held by
+        # luck while every recipe naming a producer in a COMMENT happened to
+        # have no `exit`; `ci::tier1` explains `just build-test-fixtures` in
+        # one, and gaining a usage-error `exit 2` made the gate report it
+        # as a recipe that hard-requires that producer.
+        body = "\n".join(
+            line for line in recipes.get(r, {}).get("body", [])
+            if not line.lstrip().startswith("#")
+        )
         if "exit 1" not in body and "exit 2" not in body:
             continue
         for m in PRODUCER_CALL.finditer(body):

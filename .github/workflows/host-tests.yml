@@ -516,6 +516,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # `tests` scope: the link check and the tier-1 cells, not `just check`.
+      # The gates belong to gate.yml (`check fast` on every pull request,
+      # `check build` on its daily schedule); running them here too cost 62 of
+      # this step's 75 minutes on 2026-10-04 and took the job past its timeout
+      # before `test-all` compiled — the cells this lane exists for never ran.
       - name: just ci tier1
         env:
           CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
@@ -535,7 +540,7 @@ jobs:
           source ./activate.sh
           mkdir -p build/ci-logs
           set +e
-          just ci tier1 > build/ci-logs/ci-tier1.log 2>&1
+          just ci tier1 tests > build/ci-logs/ci-tier1.log 2>&1
           rc=$?
           set -e
           echo "::group::ci tier1 output (tail)"; tail -200 build/ci-logs/ci-tier1.log; echo "::endgroup::"

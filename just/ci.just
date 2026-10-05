@@ -109,9 +109,26 @@ l1: gate
 
 
 [group("ci")]
-tier1:
+tier1 scope="all":
     #!/usr/bin/env bash
     set -euo pipefail
+    # `scope` (a positional, like `just ci matrix build`): `all` is the whole
+    # tier — the gates, then the cells. `tests` skips `just check` and runs only
+    # what this tier alone owns: the link check and the coordinate-scoped cells.
+    #
+    # `tests` exists for host-tests.yml. Its run of 2026-10-04 (37176625915)
+    # spent 13 min in `check fast` and 49 min in `check build` — gates
+    # `gate.yml` already owns (fast on every pull request, build on its daily
+    # schedule) — and hit its 150-minute timeout before `test-all` had compiled,
+    # so the cells this lane exists for never ran. Locally, `just ci tier1`
+    # still means the whole tier.
+    case "{{ scope }}" in
+        all|tests) ;;
+        *) echo "just ci tier1: unknown scope '{{ scope }}' — expected 'all' or 'tests'." >&2
+           echo "  all   = just check, then the link check and the tier-1 cells" >&2
+           echo "  tests = the link check and the tier-1 cells only (gate.yml owns the gates)" >&2
+           exit 2 ;;
+    esac
     # phase-395 W19 — COORDINATE-scoped, like tier 2, and no longer
     # `NROS_TEST_SCOPE=native`.
     #
@@ -142,7 +159,11 @@ tier1:
     # parses as "recipe rust-rtos-link-check IN module check" and dies with
     # "justfile does not contain recipe `check rust-rtos-link-check`". It used to
     # mean three recipes. Split, so the module default runs as itself.
-    NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" just check
+    if [ "{{ scope }}" = "all" ]; then
+        NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" just check
+    else
+        echo "just ci tier1 tests: skipping \`just check\` (gate.yml runs it)"
+    fi
     NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" \
         just rust-rtos-link-check test-all
     echo "CI passed (tier 1 — host-executable platforms; cross coverage needs \`just ci-matrix\`)!"
