@@ -1557,6 +1557,11 @@ function(nros_resolve_knobs)
     # description's knob.
     _nros_resolve_knob(NROS_MAX_PARAM_CONSTRAINTS_LEN
         "${CONFIG_NROS_MAX_PARAM_CONSTRAINTS_LEN}")
+    # phase-479 W5 (RFC-0102 D5) -- the runtime-logger arenas, on the plain
+    # ladder: Kconfig states it, the environment wins, nros-log's build script
+    # reads it (and, on the Rust lane, reads the same symbol from $DOTCONFIG).
+    _nros_resolve_knob(NROS_LOG_DYNAMIC_LOGGERS
+        "${CONFIG_NROS_LOG_DYNAMIC_LOGGERS}")
     # phase-446 F3 -- the parameter services' declaration shape reaches
     # nros-node's and nros-rmw-zenoh's build scripts through the sizing
     # descriptor's `[params]` (issue 1649 retired this road's forward of

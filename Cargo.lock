@@ -1888,6 +1888,8 @@ dependencies = [
  "heapless",
  "log",
  "nros-platform-cffi",
+ "nros-platform-config",
+ "nros-zephyr-build",
  "portable-atomic",
 ]
 

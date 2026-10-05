@@ -672,6 +672,47 @@ def aggregate_ram(syms):
     return agg
 
 
+# phase-479 W5 (RFC-0102 D5) — the runtime-logger arenas `nros_log::pool` carves
+# from `NROS_LOG_DYNAMIC_LOGGERS`. The name arena is a static of its own that is
+# EXACTLY this many bytes per slot (`NAME_ARENA_BYTES_PER_LOGGER` in pool.rs),
+# so its measured size states the image's capacity — a COUNT, which no other
+# static says. The logger arena beside it (`POOL`) is a struct whose size moves
+# with `Logger`'s fields, so it is reported in bytes only.
+LOG_NAME_ARENA = "nros_log::pool::NAMES"
+LOG_LOGGER_ARENA = "nros_log::pool::POOL"
+LOG_NAME_BYTES_PER_LOGGER = 24
+
+
+def runtime_logger_arena(agg):
+    """{capacity, names_bytes, pool_bytes} for the runtime-logger arenas, or None.
+
+    `None` when neither static is linked — an image that never calls
+    `get_or_create_logger` has no arena, which is a fact, not a gap. A name
+    arena that is not a whole number of slots is REFUSED rather than rounded:
+    it would mean the per-slot constant moved without this reader.
+    """
+    names = agg.get(LOG_NAME_ARENA, {}).get("bytes")
+    pool = agg.get(LOG_LOGGER_ARENA, {}).get("bytes")
+    if names is None and pool is None:
+        return None
+    out = {"names_bytes": names, "pool_bytes": pool, "capacity": None, "problem": None}
+    if names is None:
+        # A zero-capacity build has a zero-size name arena, which `nm` does not
+        # list as a sized symbol; the logger arena still carries its counters.
+        out["problem"] = (
+            f"no {LOG_NAME_ARENA} symbol: NROS_LOG_DYNAMIC_LOGGERS=0 (a zero-size "
+            "arena), or the linker kept the logger arena alone"
+        )
+    elif names % LOG_NAME_BYTES_PER_LOGGER:
+        out["problem"] = (
+            f"MISMATCH: {names:,} bytes is not a whole number of "
+            f"{LOG_NAME_BYTES_PER_LOGGER}-byte slots — pool.rs's per-slot constant moved"
+        )
+    else:
+        out["capacity"] = names // LOG_NAME_BYTES_PER_LOGGER
+    return out
+
+
 def analyse_symbols(elf, syms, sections, pools_by_name, measured_pools=None, sizes=None):
     """Everything `analyse` reports, over an already-read symbol table.
 
@@ -725,6 +766,8 @@ def analyse_symbols(elf, syms, sections, pools_by_name, measured_pools=None, siz
             knob_pools.append(
                 {"symbol": sym, "kind": kind, "measured": agg[sym]["bytes"], "knobs": knob_list}
             )
+
+    runtime_loggers = runtime_logger_arena(agg)
 
     storage = []
     for key, a in sorted(agg.items(), key=lambda kv: -kv[1]["bytes"]):
@@ -780,6 +823,7 @@ def analyse_symbols(elf, syms, sections, pools_by_name, measured_pools=None, siz
         ],
         "pools": matched,
         "knob_pools": knob_pools,
+        "runtime_loggers": runtime_loggers,
         "storage": storage,
         "sizes_headers": sizes_used,
         "sizes_problem": sizes_problem,
@@ -970,6 +1014,25 @@ def report(res, top, baseline=None):
     for p in res.get("knob_pools", []):
         add(f"  {fmt(p['measured']):>12}  {p['symbol']}")
         add(f"  {'':>12}  {p['kind']} sized by {', '.join(p['knobs'])}")
+
+    add("")
+    add("## runtime loggers (NROS_LOG_DYNAMIC_LOGGERS)")
+    add("")
+    rl = res.get("runtime_loggers")
+    if not rl:
+        add("  (no runtime-logger arena is linked: the image never calls get_or_create_logger)")
+    else:
+        if rl["capacity"] is not None:
+            add(f"  capacity       {rl['capacity']} loggers   (from {LOG_NAME_ARENA}, "
+                f"{LOG_NAME_BYTES_PER_LOGGER} bytes per slot)")
+        else:
+            add(f"  capacity       not stated: {rl['problem']}")
+        if rl["names_bytes"] is not None:
+            add(f"  name arena     {fmt(rl['names_bytes'])} bytes")
+        if rl["pool_bytes"] is not None:
+            add(f"  logger arena   {fmt(rl['pool_bytes'])} bytes")
+        add("  slots IN USE are a run-time figure: read `runtime loggers` in the boot")
+        add("  report (scripts/read-boot-report.py) and size the knob from it.")
 
     if cmp:
         add("")
@@ -1187,6 +1250,7 @@ def selftest():
     )
     selftest_keys()
     selftest_attribution()
+    selftest_runtime_loggers()
     selftest_baseline()
     selftest_sections()
     check_storage_roles()
@@ -1210,6 +1274,17 @@ def selftest_keys():
         assert symbol_key(a) == symbol_key(b), f"{a!r} and {b!r} must join: {symbol_key(a)!r}"
     for a, b in [("SLOTS", "SLOTS_2"), ("buf_0", "buf_1"), ("x::h12", "x::h13")]:
         assert symbol_key(a) != symbol_key(b), f"{a!r} and {b!r} are different statics"
+
+
+def selftest_runtime_loggers():
+    """phase-479 W5 — the capacity is read back out of the name arena's size."""
+    assert runtime_logger_arena({}) is None, "no arena linked must say so, not 0"
+    got = runtime_logger_arena({LOG_NAME_ARENA: {"bytes": 32 * 24}, LOG_LOGGER_ARENA: {"bytes": 999}})
+    assert got["capacity"] == 32 and got["problem"] is None, got
+    bad = runtime_logger_arena({LOG_NAME_ARENA: {"bytes": 32 * 24 + 1}})
+    assert bad["capacity"] is None and "MISMATCH" in bad["problem"], bad
+    zero = runtime_logger_arena({LOG_LOGGER_ARENA: {"bytes": 16}})
+    assert zero["capacity"] is None and "NROS_LOG_DYNAMIC_LOGGERS=0" in zero["problem"], zero
 
 
 def selftest_attribution():

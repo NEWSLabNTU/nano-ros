@@ -539,6 +539,7 @@ def ladder_knobs():
         "RmwKnobs",
         "NetKnobs",
         "RuntimeKnobs",
+        "LogKnobs",
         "WireKnobs",
         "XrceKnobs",
         "ZenohLimitKnobs",

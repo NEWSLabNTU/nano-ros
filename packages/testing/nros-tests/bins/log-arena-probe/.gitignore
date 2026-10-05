@@ -1,0 +1,5 @@
+# Per-image build output (`nros sync` writes `build/<image>/nros-cargo.toml`)
+# and per-RMW build dirs — build output, never committed (plain target/ is
+# covered by the repo-root `**/target/` rule).
+/build/
+/target-*/

@@ -1580,6 +1580,18 @@ lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/rosout-talker"
 
+# phase-479 W5 (RFC-0102 D5) — the runtime-logger arena knob. The leaf's
+# `system.toml` names the `native` board (which states
+# `[board.knobs.log] dynamic_loggers = 32`) and an `[image.native] env` that
+# states NROS_LOG_DYNAMIC_LOGGERS=24, so the capacity the binary reports says
+# which rung won; `tests/log_arena_knob.rs` asserts it, reads the boot record
+# out of the live process, and asks `mem-report` for the capacity too.
+[[fixture]]
+id = "log-arena-probe"
+platform = "linux"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/log-arena-probe"
+
 # phase-433 W6 — the advertised-state probe. Holds a Cyclone publisher and
 # subscription open and prints what the matched-count, GID, actual-QoS and
 # serialization-format slots say about them, so `advertised_state_interop.rs`

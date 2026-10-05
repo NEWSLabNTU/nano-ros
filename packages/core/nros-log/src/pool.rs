@@ -21,7 +21,8 @@
 //!
 //! ## Bounded, because `no_std`
 //!
-//! Two static arenas, both sized by the `dynamic-loggers-<N>` feature family:
+//! Two static arenas, both sized by the `NROS_LOG_DYNAMIC_LOGGERS` knob
+//! (phase-479 W5, RFC-0102 D5 — see `build.rs` for its ladder):
 //! one for the [`crate::Logger`] values, one for their names (a `&'static str`
 //! is what `Logger` holds, and a `const char *` from C is not one). Exhaustion
 //! is REPORTED, never silently aliased onto the default logger — see
@@ -35,21 +36,30 @@ use crate::Logger;
 
 /// How many loggers [`crate::get_or_create_logger`] may create.
 ///
-/// Picked by the `dynamic-loggers-<N>` feature family; `dynamic-loggers-0`
-/// declines the arena entirely (creation always fails, lookup still works),
-/// which is the right build for an image whose loggers are all `static`.
+/// The `NROS_LOG_DYNAMIC_LOGGERS` knob, resolved once by `build.rs` on the
+/// RFC-0049 ladder: the environment (which is where an image's
+/// `[image.<id>] env` lands) > Kconfig `CONFIG_NROS_LOG_DYNAMIC_LOGGERS` /
+/// the board's `[board.knobs.log] dynamic_loggers` > 16. Linux host boards
+/// state 32; MCU boards keep 16. `0` declines the arena entirely (creation
+/// always fails, lookup still works), which is the right build for an image
+/// whose loggers are all `static`.
+///
+/// The `dynamic-loggers-<N>` features are deprecated (one release): honoured
+/// with a warning when no knob is stated, and a build error when they disagree
+/// with one.
 #[must_use]
 pub const fn dynamic_logger_capacity() -> usize {
-    if cfg!(feature = "dynamic-loggers-0") {
-        0
-    } else if cfg!(feature = "dynamic-loggers-8") {
-        8
-    } else if cfg!(feature = "dynamic-loggers-32") {
-        32
-    } else {
-        16
-    }
+    DYNAMIC_LOGGER_CAPACITY
 }
+
+// `DYNAMIC_LOGGER_CAPACITY`, written by `build.rs`.
+include!(concat!(env!("OUT_DIR"), "/nros_log_config.rs"));
+
+/// Name-arena bytes reserved per runtime logger.
+///
+/// An AVERAGE, not a per-name cap ([`MAX_LOGGER_NAME_LEN`] is that): the
+/// arena is one bump region of `capacity * 24` bytes shared by every name.
+const NAME_ARENA_BYTES_PER_LOGGER: usize = 24;
 
 /// Longest logger name the arena will accept, in bytes.
 ///
@@ -58,14 +68,22 @@ pub const fn dynamic_logger_capacity() -> usize {
 pub const MAX_LOGGER_NAME_LEN: usize = 48;
 
 const CAPACITY: usize = dynamic_logger_capacity();
-const NAME_ARENA_BYTES: usize = CAPACITY * 24;
+const NAME_ARENA_BYTES: usize = CAPACITY * NAME_ARENA_BYTES_PER_LOGGER;
 
 struct Pool {
     loggers: UnsafeCell<[MaybeUninit<Logger>; CAPACITY]>,
     loggers_used: AtomicUsize,
-    names: UnsafeCell<[u8; NAME_ARENA_BYTES]>,
     names_used: AtomicUsize,
 }
+
+/// The name arena, a static of its OWN rather than a field of [`POOL`].
+///
+/// phase-479 W5 — so its symbol is exactly `capacity * 24` bytes, with no
+/// struct padding and no `Logger` (whose size moves with its fields) beside
+/// it. `just mem-report` reads the image's capacity back out of that size
+/// (`nros_log::pool::NAMES`), which is the only way a STATIC report can state
+/// a count rather than a byte figure.
+struct NameArena(UnsafeCell<[u8; NAME_ARENA_BYTES]>);
 
 // SAFETY: every mutation reserves its region first with a `compare_exchange`
 // on the matching `*_used` counter, so no two writers ever touch the same
@@ -76,12 +94,17 @@ struct Pool {
 // reach one of these references.
 unsafe impl Sync for Pool {}
 
+// SAFETY: as for `Pool` — every region is reserved by a CAS on
+// `POOL.names_used` before it is written, and never written again.
+unsafe impl Sync for NameArena {}
+
 static POOL: Pool = Pool {
     loggers: UnsafeCell::new([const { MaybeUninit::uninit() }; CAPACITY]),
     loggers_used: AtomicUsize::new(0),
-    names: UnsafeCell::new([0_u8; NAME_ARENA_BYTES]),
     names_used: AtomicUsize::new(0),
 };
+
+static NAMES: NameArena = NameArena(UnsafeCell::new([0_u8; NAME_ARENA_BYTES]));
 
 /// Copy `name` into the static name arena and return a `&'static str` over the
 /// copy. `None` if the name is too long or the arena is exhausted.
@@ -107,7 +130,7 @@ pub(crate) fn intern_name(name: &str) -> Option<&'static str> {
         // is never written again. The arena is a `'static`, so the slice we
         // build over it lives for the program.
         let interned: &'static str = unsafe {
-            let base = POOL.names.get().cast::<u8>();
+            let base = NAMES.0.get().cast::<u8>();
             core::ptr::copy_nonoverlapping(name.as_ptr(), base.add(used), len);
             core::str::from_utf8_unchecked(core::slice::from_raw_parts(base.add(used), len))
         };

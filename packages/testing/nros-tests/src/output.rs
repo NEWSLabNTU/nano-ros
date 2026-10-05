@@ -1252,6 +1252,23 @@ pub const MESSAGE_INFO_PEER_READY: &str = "PEER_READY";
 pub const MESSAGE_INFO_PEER_TAKE_GID: &str = "PEER_TAKE_GID ";
 
 // ---------------------------------------------------------------------------
+// phase-479 W5 (RFC-0102 D5) — the runtime-logger arena knob
+// (`log-arena-probe`, `tests/log_arena_knob.rs`).
+// ---------------------------------------------------------------------------
+
+/// A PREFIX: `capacity=<n> in_use=<m>` follows, the probe's own reading of
+/// `nros_log::dynamic_logger_capacity()` / `dynamic_loggers_in_use()`.
+pub const LOG_ARENA_PROBE_LINE: &str = "log-arena-probe: ";
+
+/// A PREFIX of `read-boot-report.py`'s line for the runtime-logger arena:
+/// `<in use> of <capacity> slots` follows.
+pub const BOOT_REPORT_RUNTIME_LOGGERS: &str = "runtime loggers";
+
+/// A PREFIX of `nros-mem-report.py`'s capacity line under
+/// `## runtime loggers`: `<n> loggers` follows.
+pub const MEM_REPORT_RUNTIME_LOGGER_CAPACITY: &str = "capacity       ";
+
+// ---------------------------------------------------------------------------
 // phase-467 Q4 — the `/rosout` bridge (`rosout-talker`), ledger row
 // `c:logging_rosout_enabled`.
 //
