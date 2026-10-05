@@ -6762,11 +6762,15 @@ mod executor_storage_check_tests {
         /// reach the runners, which reach `nros_cpp_init`, so the test binary
         /// must define it; it is never CALLED — the refusal returns first,
         /// which is what the tests assert. `metadata_hooks`' census tests
-        /// supply a real one when their features are on.
+        /// supply a real one when their features are on (the fixture with
+        /// `param-services`, issue 1679's no-store test without `param-store`).
         /// cbindgen:ignore
         // cbindgen reads every `#[no_mangle] extern "C"` in the crate, `cfg(test)`
         // or not, and would write a test-only symbol into `nros_cpp_ffi.h`.
-        #[cfg(not(all(feature = "metadata-mode", feature = "param-services")))]
+        #[cfg(not(all(
+            feature = "metadata-mode",
+            any(feature = "param-services", not(feature = "param-store"))
+        )))]
         #[unsafe(no_mangle)]
         extern "C" fn nros_app_register_backends() {}
 

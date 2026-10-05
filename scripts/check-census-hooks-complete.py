@@ -264,6 +264,37 @@ def function_bodies(code: str) -> dict[str, str]:
     return bodies
 
 
+def top_level_cfg_before(body: str, needle: str) -> bool:
+    """Is there a `#[cfg(...)]` at the body's OWN nesting level ahead of `needle`?
+
+    Issue 1679 -- a hook call that exists only inside a feature-gated ARM is a
+    hook the census sees only in builds that pick that arm. `nros-cpp`'s seven
+    `nros_cpp_node_declare_param_*` called `on_param_declare` inside
+    `#[cfg(all(feature = "param-store", ...))]`, so a C++ image whose bringup
+    did not declare `param_services` declared its parameters into the other arm
+    and its census recorded none. The rule 1 test (`hook in body`) passed
+    throughout: it reads the concatenated text of every arm. A call that sits
+    BEFORE the body's first top-level `#[cfg(` runs in every build; a nested
+    `cfg` (inside a `match` arm, a block) is the code's own business and is not
+    what this asks about.
+    """
+    idx = body.find(needle)
+    depth = 0
+    i = 0
+    while i < len(body):
+        c = body[i]
+        if i == idx:
+            return False
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+        elif depth == 1 and body.startswith("#[cfg(", i):
+            return True
+        i += 1
+    return False
+
+
 def line_of(code: str, needle: str) -> int:
     idx = code.find(needle)
     return code.count("\n", 0, idx) + 1 if idx >= 0 else 0
@@ -301,6 +332,12 @@ def check(files: dict[str, str]) -> tuple[list[str], dict[str, int]]:
                 errs.append(
                     f"{rel}:{line_of(stripped[rel], f'fn {name}')}: `{name}` creates an "
                     f"entity and never calls `{hook})` -- the census would not see it"
+                )
+            elif top_level_cfg_before(bodies[rel][name], hook):
+                errs.append(
+                    f"{rel}:{line_of(stripped[rel], f'fn {name}')}: `{name}` calls `{hook})` "
+                    "only inside a feature-gated arm -- a build that picks the other arm "
+                    "records nothing (issue 1679); call it before the body's first `#[cfg(`"
                 )
 
     # 2. The RMW seams record, with the QoS they were handed.
@@ -402,6 +439,20 @@ def self_test(files: dict[str, str]) -> None:
     call_end = m[PARAMS].find(";", call) + 1
     m[PARAMS] = m[PARAMS][:call] + m[PARAMS][call_end:]
     red("one declare variant unhooked", m, "nros_cpp_node_declare_param_double")
+
+    # 2b. Issue 1679 -- a declare variant's hook moves back INSIDE the store's
+    #     cfg arm: present in the body, absent from the other arm.
+    m = dict(files)
+    body_start = m[PARAMS].find("fn nros_cpp_node_declare_param_integer(")
+    call = m[PARAMS].find("nros::census_hooks::on_param_declare(", body_start)
+    stmt_start = m[PARAMS].rfind("\n    if let Some(n)", body_start, call)
+    stmt_end = m[PARAMS].find("\n    }\n", call) + len("\n    }\n")
+    stmt = m[PARAMS][stmt_start + 1 : stmt_end]
+    m[PARAMS] = m[PARAMS][: stmt_start + 1] + m[PARAMS][stmt_end:]
+    arm = m[PARAMS].find('#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]\n    {\n', body_start)
+    arm_body = m[PARAMS].find("{\n", arm) + 2
+    m[PARAMS] = m[PARAMS][:arm_body] + stmt + m[PARAMS][arm_body:]
+    red("declare hook gated on the store", m, "only inside a feature-gated arm")
 
     # 3. The one-shot timer entry stops calling its hook -- commented out, to
     #    prove a comment is not a call.

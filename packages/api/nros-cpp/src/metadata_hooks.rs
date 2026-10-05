@@ -430,6 +430,137 @@ mod census_fixture_tests {
     }
 }
 
+/// Issue 1679 -- a C++ image built WITHOUT the parameter store still records
+/// every parameter its code declares.
+///
+/// The configuration the census of a bringup without `param_services` runs in:
+/// `metadata-mode` on, `param-store` off, so every `nros_cpp_node_declare_param_*`
+/// answers `UNSUPPORTED`. The hook used to sit inside the store's cfg arm, and
+/// a census of such an image listed no parameters while its code declared
+/// them. Compiled only in that feature set, by `just check
+/// census-hooks-complete`'s second cargo invocation.
+#[cfg(all(
+    test,
+    feature = "metadata-mode",
+    feature = "rmw-cffi",
+    not(feature = "param-store")
+))]
+mod census_without_store_tests {
+    use alloc::format;
+    use core::{ffi::c_void, mem::MaybeUninit};
+
+    use crate::{
+        NROS_CPP_RET_OK, NROS_CPP_RET_UNSUPPORTED, nros_cpp_fini, nros_cpp_init_rmw,
+        nros_cpp_node_create_ex, nros_cpp_node_options_t, nros_cpp_node_t,
+        params_shim::{
+            nros_cpp_node_declare_param_bool, nros_cpp_node_declare_param_bool_array,
+            nros_cpp_node_declare_param_double, nros_cpp_node_declare_param_double_array,
+            nros_cpp_node_declare_param_integer, nros_cpp_node_declare_param_integer_array,
+            nros_cpp_node_declare_param_string,
+        },
+    };
+
+    #[repr(C, align(16))]
+    struct ExecutorStorage([u64; crate::CPP_EXECUTOR_OPAQUE_U64S]);
+
+    /// See `census_fixture_tests::nros_app_register_backends`; `lib.rs`'s
+    /// `native_runners` no-op stands down in this feature set.
+    /// cbindgen:ignore
+    // cbindgen reads every `#[no_mangle] extern "C"` in the crate, `cfg(test)`
+    // or not, and would write a test-only symbol into `nros_cpp_ffi.h`.
+    #[unsafe(no_mangle)]
+    extern "C" fn nros_app_register_backends() {
+        let _ = nros_rmw_metadata::nros_rmw_metadata_register();
+    }
+
+    #[test]
+    fn census_records_parameters_an_image_without_a_store_declares() {
+        nros::metadata_mode::reset();
+
+        let mut storage = MaybeUninit::<ExecutorStorage>::uninit();
+        let exec = storage.as_mut_ptr().cast::<c_void>();
+        let rc = unsafe {
+            nros_cpp_init_rmw(
+                c"metadata".as_ptr(),
+                core::ptr::null(),
+                0,
+                c"census_no_store".as_ptr(),
+                c"/".as_ptr(),
+                exec,
+            )
+        };
+        assert_eq!(rc, NROS_CPP_RET_OK, "the metadata backend must open");
+        let opts = nros_cpp_node_options_t::default();
+        let mut node = MaybeUninit::<nros_cpp_node_t>::uninit();
+        let rc = unsafe {
+            nros_cpp_node_create_ex(exec, c"census_no_store".as_ptr(), &opts, node.as_mut_ptr())
+        };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+        let node = node.as_mut_ptr().cast_const();
+
+        // Every declare variant. Each answers UNSUPPORTED -- there is no store
+        // -- which is what makes this the case the hook must not depend on.
+        let d = [1.0f64, 2.0];
+        let i = [3i64, 4];
+        let b = [true, false];
+        let rcs = unsafe {
+            [
+                nros_cpp_node_declare_param_bool(node, c"p_bool".as_ptr(), true),
+                nros_cpp_node_declare_param_integer(node, c"p_int".as_ptr(), 7),
+                nros_cpp_node_declare_param_double(node, c"p_double".as_ptr(), 0.5),
+                nros_cpp_node_declare_param_string(node, c"p_string".as_ptr(), c"base".as_ptr()),
+                nros_cpp_node_declare_param_double_array(
+                    node,
+                    c"p_double_array".as_ptr(),
+                    d.as_ptr(),
+                    d.len(),
+                ),
+                nros_cpp_node_declare_param_integer_array(
+                    node,
+                    c"p_integer_array".as_ptr(),
+                    i.as_ptr(),
+                    i.len(),
+                ),
+                nros_cpp_node_declare_param_bool_array(
+                    node,
+                    c"p_bool_array".as_ptr(),
+                    b.as_ptr(),
+                    b.len(),
+                ),
+            ]
+        };
+        assert!(
+            rcs.iter().all(|&rc| rc == NROS_CPP_RET_UNSUPPORTED),
+            "this feature set has no store, so every declare must say so: {rcs:?}"
+        );
+
+        let export =
+            nros::node_metadata::SourceMetadataExport::new("fixture_pkg", "census_no_store")
+                .executable("census_no_store")
+                .language("cpp");
+        let json = nros::metadata_mode::to_json(&export).expect("serialize");
+        let rc = unsafe { nros_cpp_fini(exec) };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+
+        let params = &json[json.find("\"parameters\":").expect("parameters array")..];
+        for name in [
+            "p_bool",
+            "p_int",
+            "p_double",
+            "p_string",
+            "p_double_array",
+            "p_integer_array",
+            "p_bool_array",
+        ] {
+            assert!(
+                params.contains(&format!("\"name\":\"{name}\"")),
+                "the census must record `{name}` although no store exists: {params}"
+            );
+        }
+        nros::metadata_mode::reset();
+    }
+}
+
 /// Issue 1419 / issue 1556 item 1 -- the census hooks moved to `nros`, so they
 /// reach the two node APIs that are NOT this crate's ABI.
 ///
