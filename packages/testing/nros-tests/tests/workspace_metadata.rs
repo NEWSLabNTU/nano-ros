@@ -197,42 +197,16 @@ fn cmake_cpp_workspace_entry_starts_prebuilt_runtime() {
 /// the listener's subscription only when the run exited 0, because 1600 made
 /// it exit 250 at `ExecutorFull`.
 fn assert_entry_writes_a_complete_census(entry: &std::path::Path, lang: &str) {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let out = dir.path().join("census.json");
-
-    let mut child = Command::new(entry)
-        .env("NROS_CENSUS_OUT", &out)
-        .env_remove("NROS_ENTRY_SPIN_MS")
-        .spawn()
-        .unwrap_or_else(|e| panic!("spawn {lang} workspace Entry fixture: {e}"));
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
-    let status = loop {
-        if let Some(status) = child.try_wait().expect("wait on the entry") {
-            break status;
-        }
-        if std::time::Instant::now() >= deadline {
-            let _ = child.kill();
-            panic!(
-                "census run of {} did not exit within 20 s -- it booted normally instead of \
-                 writing a census (the runner ignored $NROS_CENSUS_OUT)",
-                entry.display()
-            );
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    };
-
-    let raw = fs::read_to_string(&out).unwrap_or_else(|e| {
-        panic!(
-            "{lang} census run exited {status} and wrote no census at {}: {e}",
-            out.display()
-        )
-    });
+    let nros_tests::census::Census {
+        status,
+        raw,
+        json: census,
+    } = nros_tests::census::take(entry, Duration::from_secs(20));
     assert!(
         status.success(),
         "a {lang} census run of the talker/listener pair must exit 0 -- nothing about its \
          sizing can stop it short any more -- got {status}: {raw}"
     );
-    let census: serde_json::Value = serde_json::from_str(&raw).expect("census is JSON");
     let nodes = census["nodes"].as_array().expect("census has nodes");
     let node = |name: &str| {
         nodes
