@@ -186,6 +186,16 @@ pub enum Sub {
     #[command(name = "sizing-descriptor")]
     SizingDescriptor(crate::cmd::sizing_descriptor::SizingDescriptorArgs),
 
+    /// Issue 1662 — a standalone Zephyr RUST leaf's derived sizes, for the
+    /// west configure that builds it: the entity-inventory fragment the
+    /// module's knob resolver loads (C lane) and the sizing descriptor named to
+    /// cargo (Rust lane), both from ONE inventory over the leaf's probe
+    /// sidecars. Prints `NROS_SIZING_DESCRIPTOR=<path>` and one `input <path>`
+    /// line per file read; prints nothing for a directory that is not such a
+    /// leaf.
+    #[command(name = "west-leaf-sizing")]
+    WestLeafSizing(crate::cmd::west_leaf_sizing::WestLeafSizingArgs),
+
     /// phase-348 W1 — list packages that announce a provision
     /// (`<export><nano_ros_provides kind="rmw" name="zenoh"/></export>`),
     /// across the search path.
@@ -514,6 +524,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::EntityInventory(a) => crate::cmd::entity_inventory::run(a),
         Sub::EntityCensus(a) => crate::cmd::entity_census::run(a),
         Sub::SizingDescriptor(a) => crate::cmd::sizing_descriptor::run(a),
+        Sub::WestLeafSizing(a) => crate::cmd::west_leaf_sizing::run(a),
         Sub::Providers(a) => run_providers(a),
         Sub::Order(a) => run_order(a),
         Sub::RmwDispatch(a) => run_rmw_dispatch(a),

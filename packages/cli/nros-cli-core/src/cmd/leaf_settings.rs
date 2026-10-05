@@ -143,6 +143,20 @@ fn package_name(leaf: &Path) -> Option<String> {
 /// phase-445 W5 made `leaf_system::read` refuse it instead, so it never
 /// reaches this function.)
 pub fn resolve(leaf: &Path, nano_ros_root: &Path) -> Result<Option<LeafImage>> {
+    resolve_for(leaf, nano_ros_root, Driver::Cargo)
+}
+
+/// Issue 1662 -- the same resolution for a leaf whose board's road is WEST: a
+/// standalone Zephyr Rust leaf (`examples/zephyr/rust/*`), a `[package]`
+/// manifest with a `system.toml` naming a Zephyr board. Its image is built by
+/// west, not by this module's settings file, but it sizes from the same
+/// inventory and the same descriptor writer, so the leaf is resolved once,
+/// here. `None` for anything else, exactly as [`resolve`].
+pub fn resolve_west(leaf: &Path, nano_ros_root: &Path) -> Result<Option<LeafImage>> {
+    resolve_for(leaf, nano_ros_root, Driver::West)
+}
+
+fn resolve_for(leaf: &Path, nano_ros_root: &Path, want: Driver) -> Result<Option<LeafImage>> {
     if !leaf.join(leaf_system::SYSTEM_TOML).is_file() {
         return Ok(None);
     }
@@ -170,7 +184,7 @@ pub fn resolve(leaf: &Path, nano_ros_root: &Path) -> Result<Option<LeafImage>> {
     let platform = d.platform.kebab().to_string();
     // A board with no road is not a leaf image either, and the workspace road
     // is where its refusal gets reported with the image named.
-    if plan::driver_for_board(&platform, d.entry_kind, false) != Ok(Driver::Cargo) {
+    if plan::driver_for_board(&platform, d.entry_kind, false) != Ok(want) {
         return Ok(None);
     }
     let image_id = decl.image.clone().unwrap_or_else(|| board.clone());
@@ -295,8 +309,9 @@ pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<Leaf
     // The variable below names a PATH and nothing watches the VARIABLE — issue
     // 0491. The rebuild edge is on the file's CONTENT, in
     // `nros_sizing_descriptor::load_for_build_script`.
-    let descriptor = crate::sizing_descriptor::write_for_leaf(&img, &path_env, who)
-        .map_err(|e| eyre!("{}: sizing descriptor: {e}", leaf.display()))?;
+    let descriptor =
+        crate::sizing_descriptor::write_for_leaf(&img, &path_env, &leaf.join("build"), who)
+            .map_err(|e| eyre!("{}: sizing descriptor: {e}", leaf.display()))?;
     // phase-454 W6.c — the four CycloneDDS facts that cannot be read from the
     // file where they are needed. A `cc::Build` compiling `descriptors.cpp` has
     // only a compile line, so the STATED ones ride the `[env]` table as well; a

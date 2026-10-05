@@ -176,6 +176,7 @@ fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
         | cmd::ws::Sub::EntityInventory(_)
         | cmd::ws::Sub::LeafSystem(_)
         | cmd::ws::Sub::SizingDescriptor(_)
+        | cmd::ws::Sub::WestLeafSizing(_)
         | cmd::ws::Sub::RmwDispatch(_)
         | cmd::ws::Sub::EntityCensus(_) => "ws-build",
         _ => "ws",

@@ -1765,9 +1765,16 @@ pub fn descriptor_path_for_leaf(leaf: &std::path::Path, image_id: &str) -> std::
 /// Write-if-changed, and that is load-bearing rather than tidy: the cmake
 /// consumer registers this file with `CMAKE_CONFIGURE_DEPENDS` (issue 1018), so
 /// rewriting identical bytes on every sync would re-arm a reconfigure forever.
+///
+/// `descriptor_root` is the directory the file is written under, by
+/// [`nros_sizing_descriptor::descriptor_path`]: `<leaf>/build` for the cargo
+/// road ([`descriptor_path_for_leaf`]), the west BUILD DIR for a Zephyr Rust
+/// leaf (issue 1662), whose configure owns that directory and names the file
+/// to both cargo lanes.
 pub fn write_for_leaf(
     img: &crate::cmd::leaf_settings::LeafImage,
     path_env: &std::collections::BTreeMap<String, std::path::PathBuf>,
+    descriptor_root: &std::path::Path,
     who: &str,
 ) -> eyre::Result<WrittenDescriptor> {
     let leaf = img.leaf.as_path();
@@ -1852,13 +1859,14 @@ pub fn write_for_leaf(
     // separate a leak from `/localization/kinematic_state`; the leaf and the
     // nano-ros checkout are what a `Path::display()` in a refusal reason would
     // have begun at.
-    if let Some(why) =
-        nros_sizing_descriptor::portability_violation(&body, &[leaf, img.config_path.as_path()])
-    {
+    if let Some(why) = nros_sizing_descriptor::portability_violation(
+        &body,
+        &[leaf, img.config_path.as_path(), descriptor_root],
+    ) {
         return Err(eyre::eyre!("{why}"));
     }
 
-    let path = descriptor_path_for_leaf(leaf, &img.image_id);
+    let path = nros_sizing_descriptor::descriptor_path(descriptor_root, &img.image_id);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| eyre::eyre!("create `{}`: {e}", dir.display()))?;
     }

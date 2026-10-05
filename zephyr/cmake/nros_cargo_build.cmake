@@ -375,6 +375,81 @@ function(_nros_load_derived_entity_inventory)
     endforeach()
 endfunction()
 
+# _nros_west_leaf_sizing()
+#
+# Issue 1662 -- a standalone Zephyr RUST leaf (`examples/zephyr/rust/*`) calls
+# no `nano_ros_entry()`, so the two producers an ENTRY image has on this road
+# -- the entity-inventory fragment `_nros_load_derived_entity_inventory()`
+# reads, and the sizing descriptor `_nros_load_west_sizing_descriptor()` names
+# to cargo -- never ran for it, and its pools stayed at Kconfig / crate
+# defaults although the metadata probe answers for its node package.
+#
+# `nros ws west-leaf-sizing` is the ONE derivation for both lanes: it writes
+# the fragment at the path rung 3 already loads (so the resolver gains a
+# SOURCE, not a second ladder) and the descriptor under this build dir, both
+# from one inventory over the leaf's probe sidecars. It prints nothing for an
+# application that is not such a leaf (an entry image, a C/C++ leaf), and then
+# this function changes nothing.
+#
+# Runs BEFORE the fragment loader, synchronously: the sidecars exist before
+# west runs (`nros sync` wrote them), so unlike an entry's producer there is no
+# later-in-this-configure lag to settle. Every file it read is a configure
+# dependency, so a probe that changes re-runs this.
+function(_nros_west_leaf_sizing)
+    set(NROS_WEST_LEAF_DESCRIPTOR "" CACHE INTERNAL
+        "issue 1662: a standalone Zephyr Rust leaf's sizing descriptor")
+    if(NOT EXISTS "${APPLICATION_SOURCE_DIR}/system.toml"
+       OR NOT EXISTS "${APPLICATION_SOURCE_DIR}/Cargo.toml")
+        return()
+    endif()
+    nros_resolve_cli(_nros OPTIONAL CONTEXT "_nros_west_leaf_sizing")
+    if(NOT _nros OR NOT EXISTS "${_nros}")
+        message(STATUS
+            "nros: standalone Rust leaf sizes NOT derived -- no nros CLI "
+            "(build it with `./scripts/bootstrap.sh`; contributors: `just setup-cli`); "
+            "pools stay at Kconfig / crate defaults (issue 1662)")
+        return()
+    endif()
+    nros_detect_rust_target()
+    nros_entity_inventory_knobs_file(_knobs)
+    set(_args ws west-leaf-sizing
+        --leaf "${APPLICATION_SOURCE_DIR}"
+        --build-dir "${CMAKE_BINARY_DIR}"
+        --output-cmake "${_knobs}"
+        --nano-ros-path "${NROS_REPO_DIR}")
+    if(NROS_RUST_TARGET)
+        list(APPEND _args --target-triple "${NROS_RUST_TARGET}")
+    endif()
+    execute_process(
+        COMMAND "${_nros}" ${_args}
+        OUTPUT_VARIABLE _out
+        ERROR_VARIABLE _err
+        RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR
+            "nros: `nros ws west-leaf-sizing` failed for ${APPLICATION_SOURCE_DIR} "
+            "(issue 1662):\n${_err}")
+    endif()
+    if(NOT _err STREQUAL "")
+        message(STATUS "nros: west-leaf-sizing: ${_err}")
+    endif()
+    string(REPLACE "\n" ";" _lines "${_out}")
+    foreach(_line IN LISTS _lines)
+        if(_line MATCHES "^input (.+)$")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
+        elseif(_line MATCHES "^NROS_SIZING_DESCRIPTOR=(.+)$")
+            set(NROS_WEST_LEAF_DESCRIPTOR "${CMAKE_MATCH_1}" CACHE INTERNAL
+                "issue 1662: a standalone Zephyr Rust leaf's sizing descriptor")
+        endif()
+    endforeach()
+    if(EXISTS "${_knobs}")
+        message(STATUS
+            "nros: standalone Rust leaf -- entity inventory from its probe "
+            "sidecars (issue 1662)")
+    endif()
+endfunction()
+
 # _nros_load_west_sizing_descriptor()
 #
 # Issue 1407 -- read the fragment `nros_sizing_descriptor_record_for_west()`
@@ -403,6 +478,14 @@ function(_nros_load_west_sizing_descriptor)
         message(STATUS
             "nros: sizing descriptor named to cargo -- ${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
         _nros_resolve_knob(NROS_SIZING_DESCRIPTOR "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}" derived)
+    elseif(NOT NROS_WEST_LEAF_DESCRIPTOR STREQUAL ""
+           AND EXISTS "${NROS_WEST_LEAF_DESCRIPTOR}")
+        # Issue 1662 -- no entry named one, and this is a standalone Rust leaf
+        # whose descriptor `_nros_west_leaf_sizing()` just wrote.
+        message(STATUS
+            "nros: sizing descriptor named to cargo -- ${NROS_WEST_LEAF_DESCRIPTOR} "
+            "(standalone Rust leaf, issue 1662)")
+        _nros_resolve_knob(NROS_SIZING_DESCRIPTOR "${NROS_WEST_LEAF_DESCRIPTOR}" derived)
     endif()
 endfunction()
 
@@ -513,7 +596,9 @@ function(nros_resolve_knobs)
     endif()
 
     # phase-403 W9 (issue 0965) -- the COUNT knobs' rung-3 value, from the
-    # entity inventory. Same shape, same lag, different question.
+    # entity inventory. Same shape, same lag, different question. Issue 1662 --
+    # a standalone Rust leaf writes that fragment (and its descriptor) first.
+    _nros_west_leaf_sizing()
     _nros_load_derived_entity_inventory()
     if(NROS_ENTITY_INVENTORY_STATUS STREQUAL "derived")
         message(STATUS

@@ -55,6 +55,8 @@ pub mod store;
 /// phase-440 W6 — `nros toolchain uninstall` (RFC-0095 D11).
 pub mod toolchain;
 pub mod version;
+/// Issue 1662 — `nros ws west-leaf-sizing`.
+pub mod west_leaf_sizing;
 pub mod ws;
 
 #[cfg(feature = "release")]

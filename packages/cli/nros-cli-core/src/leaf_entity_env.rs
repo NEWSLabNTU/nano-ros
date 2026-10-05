@@ -464,6 +464,18 @@ pub fn reconcile(component: &str, declared: &[EntityDecl], probed: &[EntityDecl]
 pub fn inventory_for_leaf(leaf: &Path) -> Result<(EntityInventory, Vec<String>)> {
     let dir = leaf.join("metadata");
     let mut inv = EntityInventory::new(dir.display().to_string());
+    // Issue 1662 -- and the `metadata/` of every NODE package the leaf reaches
+    // by a cargo path dependency inside itself (issue 1603's split: a Zephyr
+    // leaf's component host-builds in `<leaf>/node/`, so the probe writes
+    // `<leaf>/node/metadata/<component>.json`). The same edge
+    // `Workspace::discover` follows to make that package a probe candidate, so
+    // the probe's writer and this reader name one set of directories.
+    let mut dirs = vec![dir.clone()];
+    dirs.extend(
+        crate::orchestration::workspace::root_path_dep_packages(leaf)
+            .into_iter()
+            .map(|p| p.join("metadata")),
+    );
     let mut unprobeable = Vec::new();
     // Kept beside the inventory so the reconcile below can read what was probed
     // without `EntityInventory` growing an accessor for one caller.
@@ -473,7 +485,11 @@ pub fn inventory_for_leaf(leaf: &Path) -> Result<(EntityInventory, Vec<String>)>
     // and the cross-check where something was.
     let declared = declared_entities(leaf)?;
 
-    let Ok(rd) = std::fs::read_dir(&dir) else {
+    let listings: Vec<std::fs::ReadDir> = dirs
+        .iter()
+        .filter_map(|d| std::fs::read_dir(d).ok())
+        .collect();
+    if listings.is_empty() {
         // No `metadata/` at all. A declaration still answers — that is the whole
         // point for a leaf the probe cannot reach.
         if let Some(d) = declared {
@@ -489,8 +505,11 @@ pub fn inventory_for_leaf(leaf: &Path) -> Result<(EntityInventory, Vec<String>)>
             });
         }
         return Ok((inv, unprobeable));
-    };
-    let mut entries: Vec<_> = rd.filter_map(|e| e.ok()).map(|e| e.path()).collect();
+    }
+    let mut entries: Vec<_> = listings
+        .into_iter()
+        .flat_map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.path()))
+        .collect();
     entries.sort();
     for path in entries {
         let name = path
@@ -1078,17 +1097,7 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
             env: bare_facts(),
         };
     }
-    // phase-467 W1 -- the probe sees no contract, so the monitor-table counts
-    // come from the leaf's resolved model, and only when that model describes
-    // wiring (the same predicate the cmake road's `from_model` applies): a
-    // model with no contract says nothing about monitors, and a hand-built
-    // table in such a leaf keeps the crate default rather than a derived zero.
-    if let Some(model) = leaf_model(leaf)
-        && let Some((rows, ages)) =
-            EntityInventory::from_model("leaf model", &model).and_then(|m| m.monitor_rows())
-    {
-        inv.set_monitor_rows(rows, ages);
-    }
+    with_leaf_monitor_rows(leaf, &mut inv);
     match inv.derive() {
         Derivation::Derived(knobs) => {
             let facts = leaf_facts(&model_facts, manifest);
@@ -1135,6 +1144,24 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
                 env: bare_facts(),
             }
         }
+    }
+}
+
+/// phase-467 W1 -- the probe sees no contract, so the monitor-table counts
+/// come from the leaf's resolved model, and only when that model describes
+/// wiring (the same predicate the cmake road's `from_model` applies): a model
+/// with no contract says nothing about monitors, and a hand-built table in
+/// such a leaf keeps the crate default rather than a derived zero.
+///
+/// Lifted out of [`leaf_env`] for issue 1662: the Zephyr west road's fragment
+/// (`nros ws west-leaf-sizing`) must derive over the SAME inventory the cargo
+/// road's `[env]` does, monitor rows included.
+pub fn with_leaf_monitor_rows(leaf: &Path, inv: &mut EntityInventory) {
+    if let Some(model) = leaf_model(leaf)
+        && let Some((rows, ages)) =
+            EntityInventory::from_model("leaf model", &model).and_then(|m| m.monitor_rows())
+    {
+        inv.set_monitor_rows(rows, ages);
     }
 }
 
@@ -1186,6 +1213,51 @@ mod tests {
         assert_eq!(ents[0].type_name.as_deref(), Some("std_msgs/msg/String"));
         assert_eq!(ents[0].name.as_deref(), Some("/chatter"));
         assert_eq!(ents[1].kind, EntityKind::Timer);
+    }
+
+    /// Issue 1662 -- a leaf whose component lives in a NODE package it
+    /// path-depends on (issue 1603's Zephyr split) is probed at
+    /// `<leaf>/node/metadata/`, and the leaf's inventory must read it there.
+    /// Before 1662 this read only `<leaf>/metadata/` and the inventory was
+    /// empty, so neither west lane had anything to size from.
+    #[test]
+    fn a_node_package_s_probe_is_the_leaf_s_inventory() {
+        let td = tempfile::tempdir().unwrap();
+        let leaf = td.path();
+        std::fs::write(
+            leaf.join("Cargo.toml"),
+            "[package]\nname = \"img\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nimg_node = { path = \"node\" }\n\
+             outside = { path = \"../elsewhere\" }\n",
+        )
+        .unwrap();
+        let node = leaf.join("node");
+        std::fs::create_dir_all(node.join("metadata")).unwrap();
+        std::fs::write(node.join("package.xml"), "<package/>").unwrap();
+        std::fs::write(node.join("metadata/talker.json"), TALKER).unwrap();
+
+        let (inv, unprobeable) = inventory_for_leaf(leaf).unwrap();
+        assert!(unprobeable.is_empty());
+        assert!(!inv.is_empty(), "the node package's sidecar was not read");
+        let Derivation::Derived(k) = inv.derive() else {
+            panic!("derives: {:?}", inv.derive().tag());
+        };
+        assert_eq!(k.max_publishers, 1, "{k:?}");
+
+        // Negative control: the same sidecar in a directory the leaf does NOT
+        // path-depend on is not the leaf's.
+        let td2 = tempfile::tempdir().unwrap();
+        let leaf2 = td2.path();
+        std::fs::write(
+            leaf2.join("Cargo.toml"),
+            "[package]\nname = \"img\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(leaf2.join("node/metadata")).unwrap();
+        std::fs::write(leaf2.join("node/package.xml"), "<package/>").unwrap();
+        std::fs::write(leaf2.join("node/metadata/talker.json"), TALKER).unwrap();
+        let (inv2, _) = inventory_for_leaf(leaf2).unwrap();
+        assert!(inv2.is_empty(), "an unreferenced package was read");
     }
 
     /// Issue 1648 -- a sidecar row carrying the registration observation
