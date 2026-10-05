@@ -249,6 +249,7 @@ mod census_fixture_tests {
                 Some(noop),
                 core::ptr::null_mut(),
                 guard.as_mut_ptr().cast::<c_void>(),
+                core::ptr::null_mut(),
             )
         };
         assert_eq!(rc, NROS_CPP_RET_OK);

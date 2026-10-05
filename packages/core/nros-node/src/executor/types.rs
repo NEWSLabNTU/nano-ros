@@ -1058,10 +1058,23 @@ pub(crate) struct SlotTag {
     /// The node that registered the current occupant, biased by one: 0 = none,
     /// `n` = node table index `n - 1`.
     pub(crate) owner: u8,
+    /// Issue 1667 — [`SlotTag::IN_DISPATCH`] / [`SlotTag::RELEASE_PENDING`].
+    /// Rides in what was the struct's padding byte, so the tag is still 4 bytes
+    /// and no image's executor backing moves.
+    pub(crate) flags: u8,
 }
 
 #[cfg(any(has_rmw, test))]
 impl SlotTag {
+    /// The occupant's callback is running now. A release requested while this
+    /// is set (by the callback itself, or by anything it calls) is DEFERRED to
+    /// the moment the callback returns: dropping the entry earlier would destroy
+    /// the closure and the state the running callback is still using.
+    pub(crate) const IN_DISPATCH: u8 = 1;
+    /// A deferred release is waiting for the running callback to return. The
+    /// handle already stops resolving, so nothing else reaches the entry.
+    pub(crate) const RELEASE_PENDING: u8 = 2;
+
     /// The generation the slot's NEXT occupant gets: one more, wrapping to 1.
     pub(crate) const fn next_generation(self) -> u16 {
         if self.generation >= HANDLE_GENERATION_MAX {

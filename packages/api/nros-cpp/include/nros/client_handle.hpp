@@ -98,8 +98,15 @@ namespace nros {
 /// which is the gap W9 ledgered at `cpp:Client::wait_for_service` rather than
 /// papering over with an invented `Executor&` parameter.
 ///
-/// No unregister, no `reset()`-that-unregisters. The executor arena has no
-/// removal path — the registration lives as long as the executor does.
+/// HOW IT ENDS (issue 1667)
+///
+/// `cli_.reset()` RELEASES the client, as `timer_.reset()` releases a timer:
+/// the client leaves the graph, a reply it was still waiting for is abandoned,
+/// and the arena entry and the response handler's capture are freed for the
+/// next registration. Destroying the node that created it does the same.
+/// Dropping or overwriting a handle does NOT. A stale copy carries the
+/// generation of the registration it was issued for (phase-476 W0), so after a
+/// reset it answers `Error` and never reaches the slot's next occupant.
 template <typename S> class ClientHandle {
   public:
     /// The service type, for the same reason `std::shared_ptr` exposes one.
@@ -187,13 +194,14 @@ template <typename S> class ClientHandle {
     /// also half of what @ref async_send_request sends on.
     constexpr size_t handle_id() const { return handle_id_; }
 
-    /// Stop referring to the registration. Does NOT unregister it — service clients
-    /// are not wired to the arena's release path (issue 1667), so the handler goes
-    /// on being dispatched. Present
-    /// because ported code writes `cli_.reset()` meaning "I am done with this
-    /// handle", and that is exactly what this does. After it,
-    /// @ref async_send_request answers `NotInitialized`.
+    /// `cli_.reset()` — release the client (issue 1667): it leaves the graph,
+    /// a pending reply is abandoned, and this handle becomes empty. After it,
+    /// @ref async_send_request answers `NotInitialized` on this handle and
+    /// `Error` on any other copy. A no-op on an empty handle.
     void reset() {
+        if (executor_ != nullptr) {
+            (void)nros_cpp_service_client_release(executor_, handle_id_);
+        }
         executor_ = nullptr;
         handle_id_ = 0;
     }

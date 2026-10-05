@@ -1149,7 +1149,7 @@
   },
   "cpp:SubscriptionHandle::reset": {
     "verdict": "extension",
-    "why": "`shared_ptr::reset`'s shape, with a deliberately different contract, stated on the method. It drops the handle's reference and does NOT unregister the subscription -- subscriptions are not wired to the arena's release path (only action entities are, since `9768795b1d`; issue 1667), so the callback goes on firing. Upstream's `reset()` on the last `shared_ptr` destroys the subscription. Ported code writes `sub_.reset()` meaning 'I am done with this handle', and that is what this does; a caller who meant 'stop delivering' has no verb here, and that absence is honest rather than hidden behind one that no-ops."
+    "why": "`shared_ptr::reset`'s shape, and the spelling ported code uses to get rid of a subscription: it RELEASES the subscription (the callback stops, the subscriber leaves the graph, its arena entry and captured callable are freed) and empties the handle. Upstream's drops one reference and destroys the subscription only with the last; ours has no count, so it releases for every copy at once (issue 1667, the same contract as `cpp:TimerHandle::reset`). A copy that outlives the release is stale and safe: the handle carries its slot's generation (phase-476 W0), so it reaches nothing, not even a registration of a different kind that took the slot. From inside the subscription's own callback the release takes effect when it returns. Dropping or overwriting the handle does NOT release; destroying the node does."
   },
   "cpp:create_publisher": {
     "verdict": "divergence",

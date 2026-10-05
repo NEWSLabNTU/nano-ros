@@ -82,38 +82,44 @@ class GuardCondition {
         return Result(nros_cpp_guard_condition_clear(storage_));
     }
 
-    /// Destructor — releases guard condition resources.
+    /// Destructor — releases the guard condition (issue 1667): its executor
+    /// entry is freed, so `spin_once` stops polling it and the callback slot
+    /// goes back to `NROS_EXECUTOR_MAX_CBS`. Sound because this object is
+    /// non-copyable and the only holder of the trigger handle; trigger it from
+    /// another thread only while it is alive.
     ~GuardCondition() {
-        if (initialized_) {
-            nros_cpp_guard_condition_destroy(storage_);
-            initialized_ = false;
-        }
-        // The closure block (if any) is freed here.
+        release();
+        // The closure block (if any) is freed here, after the entry that could
+        // call into it.
         detail::destroy_hosted_block(closure_);
     }
 
     // Move semantics (non-copyable). Relocation goes through the
     // `nros_cpp_guard_condition_relocate` runtime call (Phase 84.C1).
     GuardCondition(GuardCondition&& other)
-        : initialized_(other.initialized_), closure_(other.closure_) {
+        : initialized_(other.initialized_), closure_(other.closure_), executor_(other.executor_),
+          handle_id_(other.handle_id_) {
         if (other.initialized_) {
             nros_cpp_guard_condition_relocate(other.storage_, storage_);
             other.initialized_ = false;
         }
         other.closure_ = nullptr;
+        other.executor_ = nullptr;
+        other.handle_id_ = 0;
     }
 
     GuardCondition& operator=(GuardCondition&& other) {
         if (this != &other) {
-            if (initialized_) {
-                nros_cpp_guard_condition_destroy(storage_);
-                initialized_ = false;
-            }
+            release();
             if (other.initialized_) {
                 nros_cpp_guard_condition_relocate(other.storage_, storage_);
                 initialized_ = true;
                 other.initialized_ = false;
             }
+            executor_ = other.executor_;
+            handle_id_ = other.handle_id_;
+            other.executor_ = nullptr;
+            other.handle_id_ = 0;
             detail::destroy_hosted_block(closure_);
             closure_ = other.closure_;
             other.closure_ = nullptr;
@@ -123,7 +129,8 @@ class GuardCondition {
 
     /// Default constructor — creates an uninitialized guard condition.
     /// Use `Node::create_guard_condition()` to initialize.
-    GuardCondition() : storage_(), initialized_(false), closure_(nullptr) {}
+    GuardCondition()
+        : storage_(), initialized_(false), closure_(nullptr), executor_(nullptr), handle_id_(0) {}
 
     /// @internal Take ownership of a closure block. See
     /// `Timer::attach_closure_block` for rationale. Not intended for user
@@ -134,6 +141,19 @@ class GuardCondition {
     }
 
   private:
+    /// Free the executor entry, then drop the local handle. Idempotent.
+    void release() {
+        if (initialized_) {
+            if (executor_ != nullptr) {
+                (void)nros_cpp_guard_condition_release(executor_, handle_id_);
+            }
+            nros_cpp_guard_condition_destroy(storage_);
+            initialized_ = false;
+        }
+        executor_ = nullptr;
+        handle_id_ = 0;
+    }
+
     GuardCondition(const GuardCondition&) = delete;
     GuardCondition& operator=(const GuardCondition&) = delete;
 
@@ -145,6 +165,10 @@ class GuardCondition {
     /// Owns the closure block (if any) — `detail::HostedBlockBase*`, erased.
     /// UNCONDITIONAL: see `Timer::closure_` and issue 1225.
     void* closure_;
+
+    /// The executor and the generation-carrying entry handle, for the release.
+    void* executor_;
+    size_t handle_id_;
 };
 
 } // namespace nros

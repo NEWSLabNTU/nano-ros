@@ -322,11 +322,11 @@ template <typename S> class Client {
 
     /// Destructor — there is nothing to release.
     ///
-    /// The executor arena owns the client, the reply buffer and the handler, and
-    /// frees them when the executor drops. No unregister FFI exists, so this
-    /// cannot remove the registration and does not pretend to: it clears this
-    /// object's own bookkeeping. Until phase-456 W9 the same destructor also
-    /// freed a FUTURE-style client, behind an `if (initialized_ &&
+    /// The executor arena owns the client, the reply buffer and the handler.
+    /// This destructor deliberately does not release them: it clears this
+    /// object's own bookkeeping, and the registration lives until its node is
+    /// destroyed or a `ClientHandle` releases it (`cli_.reset()`, issue 1667). Until phase-456 W9
+    /// the same destructor also freed a FUTURE-style client, behind an `if (initialized_ &&
     /// !callback_mode_)`; that half moved to `nros::PollClient<S>`, where the
     /// condition is unconditional.
     ~Client() { initialized_ = false; }

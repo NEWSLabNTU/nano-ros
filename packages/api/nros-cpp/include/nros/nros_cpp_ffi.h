@@ -2111,13 +2111,18 @@ uint64_t nros_cpp_time_ns(void);
  * `NROS_GUARD_CONDITION_SIZE`). The guard condition handle is written
  * directly into this buffer.
  *
+ * `out_handle_id`, when non-null, receives the entry's handle — what
+ * `nros_cpp_guard_condition_release` takes (issue 1667).
+ *
  * # Safety
- * `executor_handle` and `storage` must be valid pointers.
+ * `executor_handle` and `storage` must be valid pointers; `out_handle_id` must
+ * be null or writable.
  */
 nros_cpp_ret_t nros_cpp_guard_condition_create(void *executor_handle,
                                                nros_cpp_guard_callback_t callback,
                                                void *context,
-                                               void *storage);
+                                               void *storage,
+                                               size_t *out_handle_id);
 
 /**
  * Trigger a guard condition (thread-safe).
@@ -2151,25 +2156,31 @@ bool nros_cpp_guard_condition_is_triggered(const void *storage);
 nros_cpp_ret_t nros_cpp_guard_condition_clear(void *storage);
 
 /**
- * ABANDON a guard condition's local storage — a no-op drop (issue 1496).
+ * Release a guard condition's arena entry — issue 1667: `spin_once` stops
+ * polling it, its callback is dropped, and the slot and bytes go to the next
+ * registration.
+ *
+ * What the C++ `GuardCondition` destructor calls, BEFORE
+ * `nros_cpp_guard_condition_destroy`. Sound there because that object is
+ * non-copyable and the only holder of the trigger handle, whose flag lives in
+ * the entry this frees: no other copy can trigger into the reused bytes. A
+ * stale `handle_id` answers `NROS_CPP_RET_ERROR`; from inside the guard's own
+ * callback the release waits for the callback to return.
+ *
+ * # Safety
+ * `executor_handle` must be a valid executor handle, and the guard condition's
+ * storage must not be triggered afterwards.
+ */
+nros_cpp_ret_t nros_cpp_guard_condition_release(void *executor_handle, size_t handle_id);
+
+/**
+ * Drop a guard condition's local storage — a no-op drop (issue 1496).
  *
  * `nros_node::GuardCondition` is `{ &'static AtomicBool, Option<fn>, *mut
  * c_void }` — no field has drop glue, so the `drop_in_place` below **runs no
- * destructor**. The flag it points at lives in the executor arena and the
- * registered wake closure is an arena ENTRY, and guard conditions are not wired
- * to the arena's release path (only action entities are, since `9768795b1d`;
- * issue 1667): the entry keeps its slot and its callback for the executor's
- * lifetime, so `spin_once` still polls this guard condition after
- * the C++ object is gone. Creating and dropping guard conditions in a loop
- * exhausts `NROS_EXECUTOR_MAX_CBS`.
- *
- * Found by issue 1496's survey of the class rather than by a failure, and it is
- * the MILDER shape of the two: unlike the action server, the arena entry here
- * does not hold the destroyed object's address. `nros_cpp_guard_condition_create`
- * captures the caller's own callback and context, so a post-destruction trigger
- * calls user code the user still owns — there is nothing to detach. (The
- * `closure_` block in the C++ `GuardCondition` WOULD be such an address; it is
- * freed by that destructor and nothing in the tree attaches one yet.)
+ * destructor**. The arena entry the flag lives in is freed separately, by
+ * `nros_cpp_guard_condition_release` (issue 1667), which the C++ destructor
+ * calls first.
  *
  * # Safety
  * `storage` must be a valid initialized guard condition storage, or NULL (no-op).
@@ -2659,6 +2670,36 @@ nros_cpp_ret_t nros_cpp_service_client_wait_for_service(void *storage,
                                                         uint32_t timeout_ms);
 
 /**
+ * Release a dispatch service server — issue 1667: the handler stops, the
+ * server leaves the graph, and the arena entry and its capture are freed for
+ * the next registration.
+ *
+ * What `ServiceHandle<S>::reset()` (upstream `srv_.reset()`) calls. Safe on a
+ * stale or copied handle and from inside the handler; see
+ * `release_dispatch_entry`.
+ *
+ * # Safety
+ * `executor_handle` must be a valid executor handle (one `nros_cpp_fini`
+ * already finalised is refused).
+ */
+nros_cpp_ret_t nros_cpp_service_server_release(void *executor_handle, size_t handle_id);
+
+/**
+ * Release a dispatch service client — issue 1667: the client leaves the
+ * graph, a reply it was waiting for is abandoned, and the arena entry and its
+ * response handler are freed for the next registration.
+ *
+ * What `ClientHandle<S>::reset()` (upstream `cli_.reset()`) calls. Safe on a
+ * stale or copied handle and from inside the response handler; see
+ * `release_dispatch_entry`.
+ *
+ * # Safety
+ * `executor_handle` must be a valid executor handle (one `nros_cpp_fini`
+ * already finalised is refused).
+ */
+nros_cpp_ret_t nros_cpp_service_client_release(void *executor_handle, size_t handle_id);
+
+/**
  * Destroy a service client (drop in place, no free).
  *
  * # Safety
@@ -2847,6 +2888,22 @@ nros_cpp_ret_t nros_cpp_subscription_take_sequence(void *storage,
                                                    size_t max_msgs,
                                                    size_t *out_lens,
                                                    size_t *out_count);
+
+/**
+ * Release a dispatch subscription — issue 1667: the callback stops, the
+ * subscriber leaves the graph, and the arena entry and its capture are freed
+ * for the next registration.
+ *
+ * What `SubscriptionHandle<M>::reset()` (upstream `sub_.reset()`) calls. Safe
+ * on a stale or copied handle and from inside the subscription's own callback;
+ * see `release_dispatch_entry`. Not `_release` like its timer and service
+ * twins: `nros_cpp_subscription_release` is the loan-release verb (phase-124).
+ *
+ * # Safety
+ * `executor_handle` must be a valid executor handle (one `nros_cpp_fini`
+ * already finalised is refused).
+ */
+nros_cpp_ret_t nros_cpp_subscription_unregister(void *executor_handle, size_t handle_id);
 
 /**
  * Destroy a subscription (drop in place, no free).
@@ -3057,7 +3114,9 @@ nros_cpp_ret_t nros_cpp_timer_cancel(void *executor_handle, size_t handle_id);
 
 /**
  * Release a timer — phase-476 W2: the timer stops for good, its arena entry
- * and capture are freed, and the slot goes to the next registration.
+ * and capture are freed, and the slot goes to the next registration. From
+ * inside the timer's own callback the release takes effect when the callback
+ * returns (issue 1667).
  *
  * What `TimerHandle::reset()` (upstream `timer_.reset()`) calls. Safe on a
  * stale or copied handle: the handle carries the generation of the slot it was

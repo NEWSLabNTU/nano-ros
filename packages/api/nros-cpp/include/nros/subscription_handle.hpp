@@ -12,6 +12,8 @@
 
 #include <cstddef>
 
+#include "nros_cpp_ffi.h"
+
 /// `rclcpp::Subscription<M>` is what this handle REFERS to, and `element_type`
 /// below names it. Declared rather than included: `nros/subscription.hpp`
 /// includes THIS header (the nested `SharedPtr` alias needs the type), and an
@@ -52,14 +54,20 @@ namespace nros {
 /// Measured (phase-456 W2): the ported corpus calls NOTHING on it. It is
 /// stored and dropped, which is exactly what a keep-alive is for.
 ///
-/// No unregister, no `cancel()` — yet. The executor arena gained a release path
-/// in `9768795b1d` (issue 1496), but only action entities use it, so a
-/// subscription's registration still lives as long as the executor does. Wiring it
-/// here is issue 1667, and it is not a one-liner: this handle is two copyable
-/// words, a released slot goes to the very next registration, and a
-/// `cancel()` therefore needs a way for a stale copy to tell its slot from the
-/// one that replaced it. Offering a verb that cannot be implemented SAFELY is
-/// the defect this type exists to remove, so it is not offered.
+/// HOW IT ENDS (issue 1667)
+///
+/// `sub_.reset()` RELEASES the subscription, as `timer_.reset()` releases a
+/// timer: the callback stops, the subscriber leaves the graph, and the arena
+/// entry and the callback's capture are freed for the next registration.
+/// Destroying the node that created it does the same. Dropping or overwriting a
+/// handle does NOT — the handle is two copyable words, not an owner.
+///
+/// What a stale COPY does: every copy names the registration it was issued for,
+/// with that slot's generation (phase-476 W0), so once one copy is reset the
+/// others resolve to nothing. Resetting one is a harmless no-op; none of them
+/// can reach whatever registration takes the slot next. From inside the
+/// subscription's own callback the release takes effect when the callback
+/// returns, so the callback finishes on intact state.
 ///
 /// WHAT IT COSTS
 ///
@@ -102,12 +110,13 @@ template <typename M> class SubscriptionHandle {
     /// is nothing to do with it through this API today.
     constexpr size_t handle_id() const { return handle_id_; }
 
-    /// Stop referring to the registration. Does NOT unregister it — subscriptions
-    /// are not wired to the arena's release path (issue 1667), so the callback
-    /// goes on firing. Present because
-    /// ported code writes `sub_.reset()` meaning "I am done with this handle",
-    /// and that is exactly what this does.
+    /// `sub_.reset()` — release the subscription (issue 1667): the callback
+    /// stops, the subscriber leaves the graph, and this handle becomes empty.
+    /// Other copies become stale and fail safely. A no-op on an empty handle.
     void reset() {
+        if (executor_ != nullptr) {
+            (void)nros_cpp_subscription_unregister(executor_, handle_id_);
+        }
         executor_ = nullptr;
         handle_id_ = 0;
     }

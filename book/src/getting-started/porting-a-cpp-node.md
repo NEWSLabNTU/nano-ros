@@ -253,6 +253,11 @@ Consequences worth knowing:
   restarts it, as upstream. A member declared as
   `std::shared_ptr<rclcpp::TimerBase>` does not compile: spell it
   `rclcpp::TimerBase::SharedPtr`.
+* The same holds for `Subscription<M>::SharedPtr`, `Service<S>::SharedPtr` and
+  `Client<S>::SharedPtr`: dropping the handle leaves the entity running, and
+  `sub_.reset()` / `srv_.reset()` / `cli_.reset()` releases it for every copy
+  at once. A one-shot timer or subscription that resets ITSELF from its own
+  callback works: the release takes effect when the callback returns.
 * `rclcpp::WallTimer<...>` and `rclcpp::GenericTimer<...>` do not exist. The
   clock axis is the second verb `rclcpp::create_timer(node, clock, period, cb)`
   plus a runtime field, not a type parameter.

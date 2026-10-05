@@ -879,6 +879,11 @@
     "why": "creates the guard condition ON THE EXECUTOR and returns `(HandleId, GuardCondition)`. rclrs constructs a `GuardCondition` from a `Context` and adds it to a wait set; rclrs's wait-set machinery; the reason is stated in full at `cpp:WaitSet`. so the executor has to own the flag -- it lives in the arena, which is what makes the handle `Send + Sync` with no allocation. SINCE phase-417 W4.e this is the ours-only PRIMITIVE, not the verb a Rust user reaches for: `NodeCtx::create_guard_condition` is the node-level spelling (see `rust:NodeCtx::create_guard_condition`) and it calls `register_guard_condition_on(Some(node_id), ..)`, so a node-created guard inherits that node's `SchedContext` like every other handle the node makes. The executor form stays because an image with no node -- a bare `Executor::open` plus a wake source -- still has to be able to make one. See `c:guard_condition_set_callback` for the three-owner state this ended.",
     "bucket": "ours-only"
   },
+  "rust:Executor::release_guard_condition": {
+    "verdict": "extension",
+    "why": "issue 1667 -- in ROS 2 the guard condition's destructor (rclcpp) or `rcl_guard_condition_fini` is the counterpart. Ours frees the guard's executor entry: its callback is dropped, `spin_once` stops polling it, and the slot and arena bytes go to the next registration. `unsafe`, unlike `release_timer` and its siblings, because a generation cannot discharge the contract: the `GuardCondition` trigger handle points at the flag INSIDE the entry and is `Clone` + `Send`, so a clone on another thread would write into whatever reuses those bytes. The caller promises no trigger handle is used afterwards. The C++ `nros::GuardCondition` is non-copyable and the one holder of its handle, so its destructor keeps that promise and calls this (through `nros_cpp_guard_condition_release`).",
+    "bucket": "ours-only"
+  },
   "rust:Executor::register_guard_condition_on": {
     "verdict": "extension",
     "why": "phase-417 W4.e -- the node-bound form of `rust:Executor::register_guard_condition`, and the one place the binding is done, so `NodeCtx::create_guard_condition` is a forwarder rather than a second implementation. `node_id == None` is exactly the old behaviour, which is why the nodeless spelling survives as a call to this one. rclrs has neither: its guard condition comes from a `Context` and goes into a wait set (`cpp:WaitSet`). The `_on` suffix is this tree's existing spelling for \"the same registrar, bound to a node\" -- `register_timer_on`, `create_publisher_raw_on`, `declare_parameter_on`.",
@@ -1416,6 +1421,11 @@
   "rust:Executor::arena_released": {
     "verdict": "extension",
     "why": "issue 1496 -- arena bytes RELEASED by an entry that was given back and not yet reused, the third reading beside `arena_capacity` / `arena_used`. Upstream has no arena and so no question to ask; here a released region is reused first-fit, so the number says how much of `arena_used` is holes, and an exhaustion report uses it to tell a SHAPE failure (bytes free, no hole fits) from a SIZE one.",
+    "bucket": "ours-only"
+  },
+  "rust:Executor::arena_holes": {
+    "verdict": "extension",
+    "why": "issue 1667 -- how many separate holes the arena's free list holds, beside `arena_released` (their total size). Upstream has no arena. The free list is intrusive and unbounded since 1667 (1496's fixed 8-region table lost bytes under a churning workload), so the count is a diagnostic for fragmentation rather than a capacity: a churn test asserts it returns to 0 once nothing is live.",
     "bucket": "ours-only"
   },
   "rust:Executor::resolve_handle": {

@@ -26,14 +26,19 @@ pub type nros_cpp_guard_callback_t = Option<unsafe extern "C" fn(context: *mut c
 /// `NROS_GUARD_CONDITION_SIZE`). The guard condition handle is written
 /// directly into this buffer.
 ///
+/// `out_handle_id`, when non-null, receives the entry's handle — what
+/// `nros_cpp_guard_condition_release` takes (issue 1667).
+///
 /// # Safety
-/// `executor_handle` and `storage` must be valid pointers.
+/// `executor_handle` and `storage` must be valid pointers; `out_handle_id` must
+/// be null or writable.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_guard_condition_create(
     executor_handle: *mut c_void,
     callback: nros_cpp_guard_callback_t,
     context: *mut c_void,
     storage: *mut c_void,
+    out_handle_id: *mut usize,
 ) -> nros_cpp_ret_t {
     if storage.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -54,10 +59,13 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_create(
     };
 
     match ctx.executor.register_guard_condition(wrapper) {
-        Ok((_handle_id, guard_handle)) => {
+        Ok((handle_id, guard_handle)) => {
             // Write directly into caller-provided storage (no heap allocation)
             unsafe {
                 core::ptr::write(storage as *mut GuardCondition, guard_handle);
+            }
+            if !out_handle_id.is_null() {
+                unsafe { *out_handle_id = handle_id.to_raw() };
             }
             // phase-308 — guard conditions never reach the RMW either; one
             // callback slot, same as a timer. No-op unless `metadata-mode`.
@@ -120,25 +128,41 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_clear(storage: *mut c_void) ->
     NROS_CPP_RET_OK
 }
 
-/// ABANDON a guard condition's local storage — a no-op drop (issue 1496).
+/// Release a guard condition's arena entry — issue 1667: `spin_once` stops
+/// polling it, its callback is dropped, and the slot and bytes go to the next
+/// registration.
+///
+/// What the C++ `GuardCondition` destructor calls, BEFORE
+/// `nros_cpp_guard_condition_destroy`. Sound there because that object is
+/// non-copyable and the only holder of the trigger handle, whose flag lives in
+/// the entry this frees: no other copy can trigger into the reused bytes. A
+/// stale `handle_id` answers `NROS_CPP_RET_ERROR`; from inside the guard's own
+/// callback the release waits for the callback to return.
+///
+/// # Safety
+/// `executor_handle` must be a valid executor handle, and the guard condition's
+/// storage must not be triggered afterwards.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_guard_condition_release(
+    executor_handle: *mut c_void,
+    handle_id: usize,
+) -> nros_cpp_ret_t {
+    unsafe {
+        crate::release_dispatch_entry(
+            executor_handle,
+            handle_id,
+            crate::CppExecutor::release_guard_condition,
+        )
+    }
+}
+
+/// Drop a guard condition's local storage — a no-op drop (issue 1496).
 ///
 /// `nros_node::GuardCondition` is `{ &'static AtomicBool, Option<fn>, *mut
 /// c_void }` — no field has drop glue, so the `drop_in_place` below **runs no
-/// destructor**. The flag it points at lives in the executor arena and the
-/// registered wake closure is an arena ENTRY, and guard conditions are not wired
-/// to the arena's release path (only action entities are, since `9768795b1d`;
-/// issue 1667): the entry keeps its slot and its callback for the executor's
-/// lifetime, so `spin_once` still polls this guard condition after
-/// the C++ object is gone. Creating and dropping guard conditions in a loop
-/// exhausts `NROS_EXECUTOR_MAX_CBS`.
-///
-/// Found by issue 1496's survey of the class rather than by a failure, and it is
-/// the MILDER shape of the two: unlike the action server, the arena entry here
-/// does not hold the destroyed object's address. `nros_cpp_guard_condition_create`
-/// captures the caller's own callback and context, so a post-destruction trigger
-/// calls user code the user still owns — there is nothing to detach. (The
-/// `closure_` block in the C++ `GuardCondition` WOULD be such an address; it is
-/// freed by that destructor and nothing in the tree attaches one yet.)
+/// destructor**. The arena entry the flag lives in is freed separately, by
+/// `nros_cpp_guard_condition_release` (issue 1667), which the C++ destructor
+/// calls first.
 ///
 /// # Safety
 /// `storage` must be a valid initialized guard condition storage, or NULL (no-op).

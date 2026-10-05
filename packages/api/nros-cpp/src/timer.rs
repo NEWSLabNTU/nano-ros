@@ -8,8 +8,8 @@ use core::ffi::{c_char, c_void};
 use nros_node::timer::TimerDuration;
 
 use crate::{
-    NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
-    cpp_ctx_checked, cstr_to_str, nros_cpp_node_t, nros_cpp_ret_t,
+    CppExecutor, NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT,
+    NROS_CPP_RET_OK, cpp_ctx_checked, cstr_to_str, nros_cpp_node_t, nros_cpp_ret_t,
 };
 
 /// C callback type for timers: `void callback(void* context)`.
@@ -404,7 +404,9 @@ pub unsafe extern "C" fn nros_cpp_timer_cancel(
 }
 
 /// Release a timer — phase-476 W2: the timer stops for good, its arena entry
-/// and capture are freed, and the slot goes to the next registration.
+/// and capture are freed, and the slot goes to the next registration. From
+/// inside the timer's own callback the release takes effect when the callback
+/// returns (issue 1667).
 ///
 /// What `TimerHandle::reset()` (upstream `timer_.reset()`) calls. Safe on a
 /// stale or copied handle: the handle carries the generation of the slot it was
@@ -419,17 +421,7 @@ pub unsafe extern "C" fn nros_cpp_timer_release(
     executor_handle: *mut c_void,
     handle_id: usize,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
-        return NROS_CPP_RET_INVALID_ARGUMENT;
-    };
-    let id = nros_node::HandleId::from_raw(handle_id);
-    // SAFETY: every C++ path to this slot goes through a generation-checked
-    // handle, so none reaches its next occupant.
-    if unsafe { ctx.executor.release_timer(id) } {
-        NROS_CPP_RET_OK
-    } else {
-        NROS_CPP_RET_ERROR
-    }
+    unsafe { crate::release_dispatch_entry(executor_handle, handle_id, CppExecutor::release_timer) }
 }
 
 /// Reset a timer (restart from zero elapsed time).
