@@ -473,12 +473,121 @@ pub fn fresh_probe_inventory(
     Vec<PathBuf>,
     Vec<String>,
 )> {
-    use crate::entity_inventory::{ComponentEntities, EntityInventory};
+    use crate::entity_inventory::EntityInventory;
+
+    let (rows, read, mut notes) = fresh_probe_rows(ws_root, nano_ros)?;
+    let mut inv = EntityInventory::new("source-metadata");
+    for row in &rows {
+        if rows
+            .iter()
+            .filter(|r| r.entities.component == row.entities.component)
+            .count()
+            > 1
+        {
+            notes.push(format!(
+                "component `{}` has more than one probe sidecar in this workspace, so neither's \
+                 observations are attributed",
+                row.entities.component
+            ));
+            continue;
+        }
+        inv.insert(row.entities.clone());
+    }
+    notes.dedup();
+    Ok((inv, read, notes))
+}
+
+/// Issue 1694 -- compose a model-road inventory with what the CODE of every
+/// launched node was recorded to create, so a contract can refine the counts
+/// of the endpoints it names and never shrink one below the code's.
+///
+/// `contract` is [`crate::entity_inventory::EntityInventory::from_model`]'s
+/// answer for `model`. The result is
+/// `recorded_for_launch(model, sidecars).merged_per_kind_max(contract)` --
+/// the declaration on the left and the contract on the right, the direction
+/// and the function the cmake road composes `nros-metadata.json` with -- so
+/// every road that feeds a count from a contract applies ONE rule.
+///
+/// Never fatal: a workspace that does not discover leaves every launched node
+/// `Absent`, which lets a contract that describes the node stand and refuses a
+/// derivation for one it does not (the crate defaults, never a zero).
+///
+/// Returns the composed inventory, the sidecars READ (configure inputs, issue
+/// 1018), and notes for the caller to print.
+pub fn floor_by_recorded(
+    ws_root: &Path,
+    model: &ros_launch_manifest_model::SystemModel,
+    contract: &crate::entity_inventory::EntityInventory,
+) -> (
+    crate::entity_inventory::EntityInventory,
+    Vec<PathBuf>,
+    Vec<String>,
+) {
+    let nano_ros = crate::orchestration::nano_ros_root::resolve(None, ws_root);
+    let (rows, read, mut notes) = match fresh_probe_rows(ws_root, nano_ros.as_deref()) {
+        Ok(v) => v,
+        Err(e) => (
+            Vec::new(),
+            Vec::new(),
+            vec![format!(
+                "no probe sidecar read ({e}); every launched node the contract does not \
+                 describe refuses the derivation"
+            )],
+        ),
+    };
+    let recorded = crate::entity_inventory::EntityInventory::recorded_for_launch(model, &rows);
+    notes.dedup();
+    (recorded.merged_per_kind_max(contract), read, notes)
+}
+
+/// Issue 1694 -- THE contract inventory every model road composes: what
+/// [`crate::entity_inventory::EntityInventory::from_model`] makes of `model`,
+/// floored by [`floor_by_recorded`] when the road knows its workspace.
+///
+/// `None` exactly when `from_model` is `None` (no contract authored), so the
+/// "no contract, no change" control every caller guards on is untouched.
+/// `who` prefixes the notes this prints.
+pub fn contract_inventory(
+    source: impl Into<String>,
+    model: &ros_launch_manifest_model::SystemModel,
+    workspace: Option<&Path>,
+    who: &str,
+) -> Option<crate::entity_inventory::EntityInventory> {
+    let contract = crate::entity_inventory::EntityInventory::from_model(source, model)?;
+    let Some(ws) = workspace else {
+        return Some(contract);
+    };
+    let (floored, _read, notes) = floor_by_recorded(ws, model, &contract);
+    for n in notes {
+        eprintln!("{who}: {n}");
+    }
+    Some(floored)
+}
+
+/// One FRESH probe sidecar, as [`fresh_probe_rows`] read it.
+#[derive(Debug, Clone)]
+pub struct ProbeRow {
+    /// The sidecar's `executable` -- with `entities.pkg`, the
+    /// `(package, executable)` key a launch-tree node (`pkg` + `exec`) names
+    /// it by, which is the key `sidecar_slots::slots_of_component` counts on.
+    pub executable: Option<String>,
+    pub entities: crate::entity_inventory::ComponentEntities,
+}
+
+/// The workspace's FRESH probe sidecars, one row each, under the freshness rule
+/// [`fresh_probe_inventory`] documents -- that function and issue 1694's
+/// count floor ([`crate::entity_inventory::EntityInventory::recorded_for_launch`])
+/// read ONE set of sidecars through this.
+pub fn fresh_probe_rows(
+    ws_root: &Path,
+    nano_ros: Option<&Path>,
+) -> Result<(Vec<ProbeRow>, Vec<PathBuf>, Vec<String>)> {
+    use crate::entity_inventory::ComponentEntities;
 
     let workspace = Workspace::discover(ws_root)?;
     let mut notes = Vec::new();
     let mut read: Vec<PathBuf> = Vec::new();
-    let mut rows: Vec<ComponentEntities> = Vec::new();
+    let mut rows: Vec<ProbeRow> = Vec::new();
     for decl in workspace.component_declarations()? {
         let sidecar = decl.source_metadata_path();
         if !sidecar.is_file() {
@@ -488,8 +597,8 @@ pub fn fresh_probe_inventory(
             .is_some_and(|k| sidecar_is_fresh(&sidecar, &k));
         if !fresh {
             notes.push(format!(
-                "{}: stale against its sources (re-run `nros sync`), so its registration \
-                 observations are not used",
+                "{}: stale against its sources (re-run `nros sync`), so neither its counts nor \
+                 its registration observations are used",
                 sidecar.display()
             ));
             continue;
@@ -498,31 +607,24 @@ pub fn fresh_probe_inventory(
             .wrap_err_with(|| format!("read {}", sidecar.display()))?;
         match crate::leaf_entity_env::declaration_from_probe(&raw) {
             Ok((pkg, component, declaration)) => {
+                let executable = serde_json::from_str::<serde_json::Value>(&raw)
+                    .ok()
+                    .and_then(|v| v.get("executable")?.as_str().map(str::to_string));
                 read.push(sidecar);
-                rows.push(ComponentEntities {
-                    pkg,
-                    class: component.clone(),
-                    component,
-                    declaration,
+                rows.push(ProbeRow {
+                    executable,
+                    entities: ComponentEntities {
+                        pkg,
+                        class: component.clone(),
+                        component,
+                        declaration,
+                    },
                 });
             }
             Err(e) => notes.push(format!("{}: {e}", sidecar.display())),
         }
     }
-    let mut inv = EntityInventory::new("source-metadata");
-    for row in &rows {
-        if rows.iter().filter(|r| r.component == row.component).count() > 1 {
-            notes.push(format!(
-                "component `{}` has more than one probe sidecar in this workspace, so neither's \
-                 observations are attributed",
-                row.component
-            ));
-            continue;
-        }
-        inv.insert(row.clone());
-    }
-    notes.dedup();
-    Ok((inv, read, notes))
+    Ok((rows, read, notes))
 }
 
 /// Issue 1639 — remove the sidecars of components no declaration names.

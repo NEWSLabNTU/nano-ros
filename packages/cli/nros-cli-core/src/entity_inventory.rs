@@ -810,6 +810,56 @@ pub struct EntityInventory {
     /// that saw no model (a probe): no model means no count, never zero, and
     /// the crate default then stands.
     monitor_rows: Option<(usize, usize)>,
+    /// Issue 1694 -- the components the model's LAUNCH TREE starts
+    /// (`structure.nodes`, by node name and by `exec`), whether or not its
+    /// contract describes them. `None` for an inventory that saw no model.
+    ///
+    /// [`Self::merged_per_kind_max`] reclassified a declaration-side row as
+    /// [`Declaration::NotLaunched`] whenever the CONTRACT had no row for it,
+    /// which is a different question from "does the launch tree start it": a
+    /// contract that describes only the talker made a launched listener read
+    /// as not launched, and its entities counted zero.
+    launched: Option<std::collections::BTreeSet<String>>,
+}
+
+/// Issue 1694 -- ONE kind of ONE component, from the contract's rows (`model`)
+/// and the rows the code was recorded or declared to create (`declared`).
+///
+/// **A contract is a statement about the endpoints it names.** It refines
+/// them -- its rows carry the resolved topic and the authored QoS, so they are
+/// kept whole and win a tie -- and it never shrinks the count below what the
+/// component creates. When the declaration has MORE rows of this kind, the
+/// ones the contract does not account for are appended, so the count is
+/// `max(contract, declared)` and every contract row survives.
+///
+/// "Accounts for" is the `(type, topic)` pair, the topic being the probe's
+/// written name where it carries one (a probe row's `name` is its callback id).
+/// Rows the contract names are passed over first; when that leaves too few --
+/// a relative spelling, a remap -- the remainder is taken in declaration order,
+/// because the count is the fact this function exists to keep and an
+/// attribution is only a refinement.
+///
+/// This used to be "the LONGER list wins whole", which kept the count but
+/// dropped every contract row (and its authored QoS) whenever the code created
+/// one more endpoint of a kind than the contract described, and handed a TIE
+/// to the declaration -- rows that carry no QoS at all.
+fn floor_by_declaration(model: &[EntityDecl], declared: &[EntityDecl]) -> Vec<EntityDecl> {
+    let mut out: Vec<EntityDecl> = model.to_vec();
+    if declared.len() <= model.len() {
+        return out;
+    }
+    let need = declared.len() - model.len();
+    let named = |r: &EntityDecl| {
+        let topic = r.source_topic.as_deref().or(r.name.as_deref());
+        topic.is_some()
+            && model
+                .iter()
+                .any(|c| c.type_name == r.type_name && c.name.as_deref() == topic)
+    };
+    let (unnamed, named_rows): (Vec<&EntityDecl>, Vec<&EntityDecl>) =
+        declared.iter().partition(|r| !named(r));
+    out.extend(unnamed.into_iter().chain(named_rows).take(need).cloned());
+    out
 }
 
 /// MIRRORS of the action multipliers in
@@ -2273,6 +2323,7 @@ impl EntityInventory {
             params: ParamDeclarations::Absent,
             tiers: 0,
             monitor_rows: None,
+            launched: None,
         }
     }
 
@@ -2818,6 +2869,21 @@ impl EntityInventory {
             (Ok(rows), Ok(ages)) => Some((rows.len(), ages.len())),
             _ => None,
         };
+        // Issue 1694 -- what the launch tree STARTS, described or not. Both
+        // spellings of a node, because the two declaration-side producers key
+        // differently: `from_model` and the probe road key by node NAME, and
+        // `nano_ros_node_register(NAME ...)` by the launch `exec` (RFC-0057).
+        inv.launched = Some(
+            model
+                .structure
+                .nodes
+                .iter()
+                .flat_map(|(fqn, n)| {
+                    std::iter::once(fqn.rsplit('/').next().unwrap_or(fqn).to_string())
+                        .chain(n.exec.clone())
+                })
+                .collect(),
+        );
         for (node_fqn, entities) in per_node {
             let component = node_fqn.rsplit('/').next().unwrap_or(&node_fqn).to_string();
             inv.insert(ComponentEntities {
@@ -2832,6 +2898,52 @@ impl EntityInventory {
             });
         }
         Some(inv)
+    }
+
+    /// Issue 1694 -- what the CODE of every node this model's launch tree
+    /// starts was recorded to create, from the workspace's probe sidecars: the
+    /// declaration side a workspace image composes its contract with, through
+    /// [`Self::merged_per_kind_max`] -- the rule the cmake road already applies
+    /// to `nros-metadata.json`.
+    ///
+    /// One row per `structure.nodes` entry, keyed exactly as
+    /// [`Self::from_model`] keys its rows (component = the node name, `pkg` =
+    /// the node FQN), so the merge pairs a node's recorded rows with its
+    /// contract rows. The sidecar is found by `(package, executable)`, the key
+    /// the launch tree names a node by and the one
+    /// `nros_orchestration_ir::sidecar_slots` counts on.
+    ///
+    /// A node with no sidecar, or with more than one, is `Absent`: nothing
+    /// recorded what it creates. That is not a zero -- the merge then lets a
+    /// contract that DESCRIBES the node stand, and a node the contract does not
+    /// describe refuses the derivation, so the image keeps the crate defaults.
+    pub fn recorded_for_launch(
+        model: &ros_launch_manifest_model::SystemModel,
+        probe: &[crate::orchestration::metadata_refresh::ProbeRow],
+    ) -> Self {
+        let mut inv = Self::new("source-metadata");
+        for (fqn, node) in &model.structure.nodes {
+            let component = fqn.rsplit('/').next().unwrap_or(fqn).to_string();
+            let found: Vec<&crate::orchestration::metadata_refresh::ProbeRow> = probe
+                .iter()
+                .filter(|r| {
+                    node.pkg.as_deref() == Some(r.entities.pkg.as_str())
+                        && node.exec.is_some()
+                        && node.exec == r.executable
+                })
+                .collect();
+            let (class, declaration) = match found.as_slice() {
+                [one] => (one.entities.class.clone(), one.entities.declaration.clone()),
+                _ => (String::new(), Declaration::Absent),
+            };
+            inv.insert(ComponentEntities {
+                pkg: fqn.clone(),
+                component,
+                class,
+                declaration,
+            });
+        }
+        inv
     }
 
     /// Issue 1600 -- the inventory ONE runtime must satisfy when several images
@@ -2934,10 +3046,31 @@ impl EntityInventory {
             (Some((r0, a0)), Some((r1, a1))) => Some((r0.max(r1), a0.max(a1))),
             (one, other) => one.or(other),
         };
+        // Issue 1694 -- the launch tree's own answer, from whichever side saw a
+        // model (both, in a several-image fold).
+        let launched: Option<std::collections::BTreeSet<String>> =
+            match (&self.launched, &model.launched) {
+                (Some(a), Some(b)) => Some(a.union(b).cloned().collect()),
+                (one, other) => one.clone().or_else(|| other.clone()),
+            };
+        out.launched = launched.clone();
         let mut seen: Vec<&str> = Vec::new();
 
         for decl_row in &self.components {
             let Some(model_row) = model_rows.get(decl_row.component.as_str()) else {
+                // Issue 1694 -- a component the launch tree STARTS and the
+                // contract does not describe is NOT "not launched": it runs,
+                // and the contract says nothing about what it creates. Its
+                // declaration stands as it is -- a recorded row counts, and
+                // `Absent` stays `Absent`, so [`Self::derive`] refuses and every
+                // pool keeps the crate default (the worst case), never a zero.
+                if launched
+                    .as_ref()
+                    .is_some_and(|l| l.contains(decl_row.component.as_str()))
+                {
+                    out.insert(decl_row.clone());
+                    continue;
+                }
                 // Issue 1402 -- no model row means this image's LAUNCH TREE does
                 // not instantiate the component. It is registered (it is in
                 // `nros-metadata.json`, so it compiles in), but nothing starts
@@ -2980,9 +3113,7 @@ impl EntityInventory {
             for k in kinds {
                 let d = decl_kinds.get(&k).map(Vec::as_slice).unwrap_or(&[]);
                 let m = model_kinds.get(&k).map(Vec::as_slice).unwrap_or(&[]);
-                // The LONGER list wins whole, so the winning source's types and
-                // topic names survive intact rather than being spliced.
-                merged.extend_from_slice(if m.len() > d.len() { m } else { d });
+                merged.extend(floor_by_declaration(m, d));
             }
 
             out.insert(ComponentEntities {
@@ -9687,5 +9818,198 @@ mod shared_runtime_tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+}
+
+/// Issue 1694 -- a contract that describes SOME of an image's endpoints refines
+/// their sizing and never shrinks a count below what the launched nodes' code
+/// creates.
+#[cfg(test)]
+mod partial_contract_tests {
+    use super::*;
+    use crate::orchestration::metadata_refresh::ProbeRow;
+    use ros_launch_manifest_model::SystemModel;
+
+    /// The stock `examples/workspaces/rust` launch -- talker + listener on
+    /// `/chatter` -- with a contract that states ONLY the talker's publisher
+    /// rate. `extra_contract` continues the publisher's contract entry.
+    fn partial_model(extra_contract: &str) -> SystemModel {
+        let y = format!(
+            r#"
+meta: {{ version: 1 }}
+structure:
+  nodes:
+    /talker:
+      {{ scope: system.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }}
+    /listener:
+      {{ scope: system.launch.xml, pkg: listener_pkg, exec: listener, node_name: listener }}
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+contracts:
+  pub_endpoints:
+    /talker/chatter:
+      min_rate_hz: 0.5
+{extra_contract}"#
+        );
+        serde_yaml_ng::from_str(&y).expect("model fixture parses")
+    }
+
+    fn probe(pkg: &str, exec: &str, rows: Vec<EntityDecl>) -> ProbeRow {
+        ProbeRow {
+            executable: Some(exec.into()),
+            entities: ComponentEntities {
+                pkg: pkg.into(),
+                component: exec.into(),
+                class: exec.into(),
+                declaration: Declaration::Stated(rows),
+            },
+        }
+    }
+
+    /// What the probe sidecars of the stock workspace record: the talker's
+    /// publisher and 1 Hz timer, the listener's subscription. A probe row's
+    /// `name` is its CALLBACK id; the written topic rides in `source_topic`.
+    fn stock_sidecars() -> Vec<ProbeRow> {
+        let topic = |kind, id: &str| EntityDecl {
+            source_topic: Some("/chatter".into()),
+            ..EntityDecl::bare(kind, Some("std_msgs/msg/Int32".into()), Some(id.into()))
+        };
+        vec![
+            probe(
+                "talker_pkg",
+                "talker",
+                vec![
+                    topic(EntityKind::Publisher, "/chatter"),
+                    EntityDecl::bare(EntityKind::Timer, None, Some("on_tick".into())),
+                ],
+            ),
+            probe(
+                "listener_pkg",
+                "listener",
+                vec![topic(EntityKind::Subscription, "on_message")],
+            ),
+        ]
+    }
+
+    fn compose(model: &SystemModel, sidecars: &[ProbeRow]) -> EntityInventory {
+        let contract = EntityInventory::from_model("contract", model).expect("a contract");
+        EntityInventory::recorded_for_launch(model, sidecars).merged_per_kind_max(&contract)
+    }
+
+    #[test]
+    fn a_partial_contract_sizes_at_least_what_the_code_registers() {
+        let m = partial_model("");
+
+        // BEFORE (the negative control): the contract alone is what the image
+        // was sized from, and it sees one publisher and nothing else.
+        let alone = EntityInventory::from_model("contract", &m).expect("a contract");
+        let d = alone.derive();
+        let k = d.knobs().expect("the contract derives");
+        assert_eq!(
+            (k.max_cbs, k.max_subscribers, k.max_nodes),
+            (0, 0, 1),
+            "the contract alone counts only what it names -- the issue-1694 shape"
+        );
+
+        // AFTER: one endpoint of two named, and every registered count stands.
+        let inv = compose(&m, &stock_sidecars());
+        let d = inv.derive();
+        let k = d.knobs().expect("the composed image derives");
+        assert!(
+            k.max_cbs >= 2,
+            "the talker's timer and the listener's subscription each claim a slot: {k:?}"
+        );
+        assert!(k.max_subscribers >= 1, "the listener's subscription: {k:?}");
+        assert!(k.max_publishers >= 1, "the talker's publisher: {k:?}");
+        assert!(k.max_nodes >= 2, "both launched nodes: {k:?}");
+    }
+
+    #[test]
+    fn the_contract_rows_survive_and_win_a_tie() {
+        // The contract describes the talker's publisher with a depth; the
+        // probe records one publisher too. The count is one, and the row the
+        // composition keeps is the contract's -- the one that carries QoS.
+        let m = partial_model("      qos: { depth: 3 }\n");
+        let inv = compose(&m, &stock_sidecars());
+        let talker = inv
+            .components()
+            .into_iter()
+            .find(|c| c.component == "talker")
+            .expect("talker row");
+        let pubs: Vec<&EntityDecl> = talker
+            .declaration
+            .entities()
+            .iter()
+            .filter(|e| e.kind == EntityKind::Publisher)
+            .collect();
+        assert_eq!(pubs.len(), 1, "a tie is one endpoint, not two");
+        assert_eq!(
+            pubs[0].depth,
+            Some(3),
+            "the contract's authored depth survives"
+        );
+        assert!(
+            talker
+                .declaration
+                .entities()
+                .iter()
+                .any(|e| e.kind == EntityKind::Timer),
+            "the timer the contract never named is appended from the code"
+        );
+    }
+
+    #[test]
+    fn a_launched_node_nobody_describes_refuses_rather_than_counting_zero() {
+        // The cmake road's shape since phase-412 retired `ENTITIES`:
+        // `nros-metadata.json` names the components and states nothing they
+        // create. The contract describes only the talker, and the listener --
+        // which the launch tree STARTS -- used to be reclassified
+        // `NotLaunched` and count zero.
+        let m = partial_model("");
+        let contract = EntityInventory::from_model("contract", &m).expect("a contract");
+        let mut metadata = EntityInventory::new("nros-metadata.json");
+        for c in ["talker", "listener"] {
+            metadata.insert(ComponentEntities {
+                pkg: format!("{c}_pkg"),
+                component: c.into(),
+                class: c.into(),
+                declaration: Declaration::Absent,
+            });
+        }
+        let merged = metadata.merged_per_kind_max(&contract);
+        assert!(
+            matches!(merged.derive(), Derivation::Refused { .. }),
+            "nothing knows what the listener creates, so the pools keep the crate \
+             defaults: {:?}",
+            merged.derive()
+        );
+
+        // And a component the launch tree does NOT start is still not counted.
+        let mut metadata = EntityInventory::new("nros-metadata.json");
+        metadata.insert(ComponentEntities {
+            pkg: "add_server_pkg".into(),
+            component: "add_server".into(),
+            class: "add_server".into(),
+            declaration: Declaration::Absent,
+        });
+        let merged = metadata.merged_per_kind_max(&contract);
+        assert!(
+            merged.derive().knobs().is_some(),
+            "an unlaunched component stays NotLaunched: {:?}",
+            merged.derive()
+        );
+    }
+
+    #[test]
+    fn a_launched_node_with_no_sidecar_refuses_unless_the_contract_describes_it() {
+        // No sidecar for either node: the talker the contract describes would
+        // stand on the contract, and the listener nobody describes refuses.
+        let m = partial_model("");
+        assert!(matches!(
+            compose(&m, &[]).derive(),
+            Derivation::Refused { .. }
+        ));
     }
 }

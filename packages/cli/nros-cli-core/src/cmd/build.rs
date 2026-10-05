@@ -3006,28 +3006,40 @@ fn resolve_image(
         // implication, so narrowing the predicate again fails loudly here
         // instead of silently dropping the facts a second time.
         let params = crate::entity_inventory::ParamDeclarations::from_model(&model);
-        EntityInventory::from_model(model_path.display().to_string(), &model)
-            .map(|mut inv| {
-                inv.set_param_declarations(params.clone());
-                (inv, model.clone())
-            })
-            .ok_or_else(|| {
-                debug_assert!(
-                    matches!(params, crate::entity_inventory::ParamDeclarations::Absent),
-                    "issue 1436: no entity inventory, but the contract declares parameters \
+        //
+        // Issue 1694 -- a contract states what it names, and a count is never
+        // smaller than what the launched nodes' code creates: floored by the
+        // workspace's probe sidecars, the same composition the cmake road's
+        // configure performs. A contract describing only the talker used to
+        // size this image from the talker's publisher alone (`MAX_CBS = 0`,
+        // `ExecutorFull` at boot).
+        crate::orchestration::metadata_refresh::contract_inventory(
+            model_path.display().to_string(),
+            &model,
+            Some(root),
+            "nros build:  ",
+        )
+        .map(|mut inv| {
+            inv.set_param_declarations(params.clone());
+            (inv, model.clone())
+        })
+        .ok_or_else(|| {
+            debug_assert!(
+                matches!(params, crate::entity_inventory::ParamDeclarations::Absent),
+                "issue 1436: no entity inventory, but the contract declares parameters \
                      (`{}`) -- `EntityInventory::from_model` no longer covers `node_params` \
                      and this road is discarding them again",
-                    params.tag()
-                );
-                format!(
-                    "the launch tree resolved, and it declares neither wiring nor \
+                params.tag()
+            );
+            format!(
+                "the launch tree resolved, and it declares neither wiring nor \
                  parameters. Nothing here can derive a count. State what each node \
                  creates -- or what parameters it declares -- in the contract sidecar \
                  beside the launch file ({}/launch/<stem>.contract.yaml); until then this \
                  image keeps its configured pool knobs.",
-                    bringup_dir.display()
-                )
-            })
+                bringup_dir.display()
+            )
+        })
     })();
 
     // Cloned BEFORE `write_resolved` consumes the reference, so the second

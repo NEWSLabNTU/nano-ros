@@ -108,6 +108,18 @@ pub struct EntityInventoryArgs {
     #[arg(long, value_name = "PATH")]
     pub model: Vec<PathBuf>,
 
+    /// Issue 1694 -- the colcon workspace whose metadata-probe sidecars record
+    /// what each launched node's CODE creates.
+    ///
+    /// When given, the contract's inventory is floored by them before it meets
+    /// the metadata (`metadata_refresh::contract_inventory`): a contract states
+    /// the endpoints it names and may refine their sizing, and never shrinks a
+    /// count below what the code registers. Absent, the contract stands as
+    /// authored -- the pre-1694 composition. `nros build`'s stage-3.5 seed
+    /// always floors, so a configure that passes this agrees with its seed.
+    #[arg(long, value_name = "DIR")]
+    pub workspace: Option<PathBuf>,
+
     /// Write the canonical JSON artifact here.
     #[arg(long = "output-json", value_name = "PATH")]
     pub output_json: Option<PathBuf>,
@@ -260,12 +272,18 @@ fn with_model(
     metadata_inv: &EntityInventory,
     model_source: &str,
     model: &ros_launch_manifest_model::SystemModel,
+    workspace: Option<&std::path::Path>,
 ) -> (EntityInventory, bool) {
     let mut inv = metadata_inv.clone();
     // `from_model` returning None means NO WIRING DESCRIBED. Not an error and
     // not a zero: nobody authored a contract for this image, so the
     // declaration is the only source there is and it stands alone.
-    let wired = match EntityInventory::from_model(model_source, model) {
+    let wired = match crate::orchestration::metadata_refresh::contract_inventory(
+        model_source,
+        model,
+        workspace,
+        "nros: entity inventory",
+    ) {
         Some(model_inv) => {
             inv = inv.merged_per_kind_max(&model_inv);
             true
@@ -318,7 +336,7 @@ fn run_several_models(args: &EntityInventoryArgs, metadata_inv: &EntityInventory
         let mut tables: Vec<(String, DeclaredQosHeaderTable)> = Vec::new();
         let mut first_unwired: Option<(String, DeclaredQosHeaderTable)> = None;
         for (src, model) in &models {
-            let (inv, wired) = with_model(metadata_inv, src, model);
+            let (inv, wired) = with_model(metadata_inv, src, model, args.workspace.as_deref());
             let inv = narrow_to_component(
                 &inv,
                 args.component
@@ -412,7 +430,7 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
         for p in &args.model {
             models.push((p.display().to_string(), load_model(p)?));
         }
-        inv = fold_models_for_shared_runtime(&inv, &models);
+        inv = fold_models_for_shared_runtime(&inv, &models, args.workspace.as_deref());
     } else if let Some(model_path) = args.model.first() {
         let model = load_model(model_path)?;
         if args.output_params_header.is_some() {
@@ -421,7 +439,12 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
                 &model_path.display().to_string(),
             ));
         }
-        inv = fold_model(inv, &model_path.display().to_string(), &model);
+        inv = fold_model(
+            inv,
+            &model_path.display().to_string(),
+            &model,
+            args.workspace.as_deref(),
+        );
     }
 
     if let Some(want) = &args.component {
@@ -523,13 +546,19 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
 pub(crate) fn fold_models_for_shared_runtime(
     metadata_inv: &EntityInventory,
     models: &[(String, ros_launch_manifest_model::SystemModel)],
+    workspace: Option<&std::path::Path>,
 ) -> EntityInventory {
     let images: Vec<_> = models
         .iter()
         .map(|(src, model)| {
             (
                 src.clone(),
-                EntityInventory::from_model(src.clone(), model),
+                crate::orchestration::metadata_refresh::contract_inventory(
+                    src.clone(),
+                    model,
+                    workspace,
+                    "nros: entity inventory",
+                ),
                 crate::entity_inventory::ParamDeclarations::from_model(model),
             )
         })
@@ -551,11 +580,12 @@ fn fold_model(
     inv: EntityInventory,
     model_source: &str,
     model: &ros_launch_manifest_model::SystemModel,
+    workspace: Option<&std::path::Path>,
 ) -> EntityInventory {
     // One fold, two callers: the single-model `run` and the fixture test want
     // only the inventory; the multi-model union also needs to know whether the
     // model described any wiring, which is `with_model`'s second value.
-    with_model(&inv, model_source, model).0
+    with_model(&inv, model_source, model, workspace).0
 }
 
 /// A contract may not state `depth: 0` (issue 1084).
@@ -787,7 +817,7 @@ mod tests {
     fn compose(meta: &str, model_yaml: &str) -> EntityInventory {
         let model: ros_launch_manifest_model::SystemModel =
             serde_yaml_ng::from_str(model_yaml).expect("model fixture parses");
-        fold_model(parse(meta), "model", &model)
+        fold_model(parse(meta), "model", &model, None)
     }
 
     /// Issue 1555 -- the metadata says WHICH components an image registers and
@@ -1151,6 +1181,7 @@ contracts:
             output_params_header: None,
             component: None,
             require_derived: false,
+            workspace: None,
         };
         // The whole CHAIN: the verb wraps the check's message in "model
         // `<path>`", so the outermost `to_string()` alone would pass on any
@@ -1269,7 +1300,7 @@ contracts:
         // generated from the repo-relative paths and regenerated the same way.
         let inv = inventory_from_metadata(&format!("{REL}/nros-metadata.json"), &doc)
             .expect("fixture inventory builds");
-        let inv = fold_model(inv, &format!("{REL}/declared_qos.yaml"), &model);
+        let inv = fold_model(inv, &format!("{REL}/declared_qos.yaml"), &model, None);
         let narrowed = narrow_to_component(&inv, "demo::listener").expect("narrows");
         let want = std::fs::read_to_string(dir.join("nros/nros_declared_qos_generated.h"))
             .expect("the committed fixture header exists");

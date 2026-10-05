@@ -1391,7 +1391,8 @@ function(_nros_entry_invoke_codegen)
     # (`EntityInventory::from_model` returns None), so passing this for an image
     # with no contract changes nothing -- which is still most of the tree
     # (issue 0973; measured 2026-09-06, 109 of 114 resolvable models).
-    nros_derive_entity_inventory_knobs(CLI "${_nros_bin}" MODEL "${_NRX_MODEL}")
+    nros_derive_entity_inventory_knobs(CLI "${_nros_bin}" MODEL "${_NRX_MODEL}"
+        WORKSPACE "${_ws_root}")
     nros_reconfigure_on_change("${_entity_knobs_path}" "${_entity_knobs_before}"
         LABEL "this image's entity inventory")
     # issue 1084 -- the same model, for the COMPILER rather than the pools. Each

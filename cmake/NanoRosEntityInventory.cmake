@@ -135,6 +135,7 @@
 #       CLI <path to nros>                  # required
 #       [METADATA <nros-metadata.json>]     # default ${CMAKE_BINARY_DIR}/...
 #       [MODEL <system_model.yaml>]         # resolved SystemModel, if any
+#       [WORKSPACE <colcon ws root>]        # probe sidecars floor the contract
 #       [OUTPUT_FILE <path>]                # default the knobs file below
 #       [QUIET])
 #
@@ -144,6 +145,15 @@
 # knows the wiring an `ENTITIES` list can be silently short of. It is ignored
 # when the path is empty or missing, and the verb abstains on a model that
 # describes no wiring, so an image with no contract sees no change.
+#
+# WORKSPACE (issue 1694) is the colcon workspace whose metadata-probe sidecars
+# record what each launched node's CODE creates. The contract's inventory is
+# floored by them before it meets the metadata, so a contract that describes
+# only some endpoints refines their sizing and never shrinks a count below what
+# the code registers. Remembered configure-wide like MODEL; `nros build`'s
+# stage-3.5 seed always floors, so passing it keeps this configure's answer
+# equal to the seed's. The sidecars are configure inputs through the sizing
+# descriptor, which reads the same fresh set and prints each as `input <path>`.
 #
 # MODEL ACCUMULATES across calls in one configure (issue 1600): each call
 # composes over every model passed so far, because a multi-entry configure
@@ -438,7 +448,7 @@ endmacro()
 
 # nros_derive_entity_inventory_knobs(...)  -- see the header comment.
 function(nros_derive_entity_inventory_knobs)
-    cmake_parse_arguments(_E "QUIET" "CLI;METADATA;MODEL;OUTPUT_FILE" "" ${ARGN})
+    cmake_parse_arguments(_E "QUIET" "CLI;METADATA;MODEL;WORKSPACE;OUTPUT_FILE" "" ${ARGN})
 
     set(_metadata "${_E_METADATA}")
     if(NOT _metadata)
@@ -516,6 +526,11 @@ function(nros_derive_entity_inventory_knobs)
     if(_E_MODEL AND EXISTS "${_E_MODEL}")
         set_property(GLOBAL APPEND PROPERTY NROS_ENTITY_INVENTORY_MODELS "${_E_MODEL}")
     endif()
+    # Issue 1694 -- the workspace, configure-wide for the same reason: a later
+    # call (the standalone node-register flush) composes the same image.
+    if(_E_WORKSPACE AND IS_DIRECTORY "${_E_WORKSPACE}/src")
+        set_property(GLOBAL PROPERTY NROS_ENTITY_INVENTORY_WORKSPACE "${_E_WORKSPACE}")
+    endif()
 
     if(NOT _E_CLI OR NOT EXISTS "${_E_CLI}")
         set(_why "the `nros` CLI was not available to this configure")
@@ -566,10 +581,16 @@ function(nros_derive_entity_inventory_knobs)
             list(APPEND _model_arg --model "${_m}")
         endif()
     endforeach()
+    set(_ws_arg "")
+    get_property(_ws GLOBAL PROPERTY NROS_ENTITY_INVENTORY_WORKSPACE)
+    if(_ws AND _model_arg)
+        set(_ws_arg --workspace "${_ws}")
+    endif()
     execute_process(
         COMMAND "${_E_CLI}" ws entity-inventory
                 --metadata "${_metadata}"
                 ${_model_arg}
+                ${_ws_arg}
                 --output-cmake "${_output}"
                 --output-json "${CMAKE_BINARY_DIR}/nros/entity_inventory.json"
         OUTPUT_VARIABLE _out
