@@ -106,8 +106,17 @@ import 'check/workflows.just'
 # invocation, so this only moves it earlier — it does not run twice. `just ci`
 # also probes via `tier-preconditions`; that duplicate is 0.21 s and buys
 # the property that ANY future lane gaining a CLI-using recipe stays covered.
+#
+# That "once per invocation" does NOT reach inside `fast`/`build`: the gate
+# runner starts each gate as its own `just check <gate>` process, so a recipe
+# named here AND derived into a lane runs twice. `cli-fresh` (0.02 s) is worth
+# it for the position. `api-parity` was not — it sat here after issue 1066
+# moved it onto the fast lane, and ran its three-language extraction a second
+# time on every `just check`: 163 s on the 4-vCPU `host-tests` runner and
+# 4 000 lines of repeated diff in its log (issue 1500). Gate:
+# `check-lane-step-duplicates`.
 [group("main")]
-default: cli-fresh fast build api-parity
+default: cli-fresh fast build
     #!/usr/bin/env bash
     set -e
     # issue 0650 — same reason as `fast`'s closing line: "All checks

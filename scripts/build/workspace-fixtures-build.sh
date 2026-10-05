@@ -356,6 +356,10 @@ build_workspace() {
     # time, so it has no codegen_out — skip the codegen-system step for those.
 
     echo "  -> $id ($lang) $dir"
+    # issue 1500 — per-row wall clock. This build is ~53 of `host-tests`'s
+    # minutes and wrote 47 000 lines with no time in any of them, so which
+    # rows cost what was unanswerable from the log it already uploads.
+    local row_t0=$SECONDS
     (
         cd "$repo_root/$dir"
         if [ "$lang" != "rust" ] && [ -n "$build_subdir" ] && \
@@ -643,6 +647,7 @@ build_workspace() {
         bash "$repo_root/scripts/build/workspace-fixture-signature.sh" "$record" \
             > "$stamp_dir/.nros-workspace-fixture.$id.inputsig"
     )
+    echo "     row-time: $id $((SECONDS - row_t0))s"
 }
 
 # Group-worker re-entry (parallel fan-out below): when NROS_WS_RECORDS_FILE is

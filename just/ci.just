@@ -75,31 +75,20 @@ gate:
         echo "ci gate: NOT RUN — provisioning first (issue 1513)." >&2
         exit 1
     fi
-    steps=(check::cli-fresh check::launch-resolve-fresh check::fast check::build check::api-parity test-unit test-lane-contracts)
-    declare -a verdict=()
-    failed_at=-1
-    for i in "${!steps[@]}"; do
-        if [ "$failed_at" -ge 0 ]; then verdict[$i]="NOT RUN"; continue; fi
-        if just "${steps[$i]}"; then verdict[$i]="ok"; else verdict[$i]="FAILED"; failed_at=$i; fi
-    done
-    if [ "$failed_at" -lt 0 ]; then
+    # `check::api-parity` LEFT this list (issue 1500): it joined the FAST lane
+    # (issue 1066), so `check::fast` already runs it and naming it again here
+    # ran the whole three-language extraction twice per lane — 163 s on the
+    # 4-vCPU runner, and 4 000 lines of identical diff output in the log.
+    # `check::cli-fresh` stays although fast also derives it: it is 0.02 s, and
+    # its POSITION is the point (issue 1320) — a stale CLI fails here, first,
+    # instead of as a confusing CMake error inside the fast fan-out.
+    steps=(check::cli-fresh check::launch-resolve-fresh check::fast check::build test-unit test-lane-contracts)
+    if bash scripts/ci/run-lane-steps.sh gate "${steps[@]}"; then
         echo "CI gate passed (compile + unit; no fixtures were built or needed)."
         exit 0
     fi
-    skipped=$(( ${#steps[@]} - failed_at - 1 ))
-    printf '\n'
-    printf 'CI GATE FAILED at step %d of %d.\n\n' "$(( failed_at + 1 ))" "${#steps[@]}"
-    for i in "${!steps[@]}"; do
-        printf '  %-8s %s\n' "${verdict[$i]}" "${steps[$i]}"
-    done
-    if [ "$skipped" -gt 0 ]; then
-        printf '\n'
-        printf '  %d step(s) did NOT run. This lane stops at the first failure, so a\n' "$skipped"
-        printf '  red step WITHDRAWS every step after it — `check::build` among them,\n'
-        printf '  which is the only place the C/C++ backends compile. A red count is\n'
-        printf '  not a coverage report: fix the failure and re-run before reading\n'
-        printf '  this lane as a verdict on anything below it (issue 0952).\n'
-    fi
+    printf '  `check::build` is the only place the C/C++ backends compile, so a red\n'
+    printf '  step before it means they were not built at all (issue 0952).\n'
     exit 1
 
 # Deprecated spelling of `just ci gate`. Kept because it is what CLAUDE.md,
@@ -175,17 +164,24 @@ _tier1-step step:
     source scripts/build/fixture-lane.sh
     coords="$(nros_lane_coords_file tier1)"
     coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
+    # issue 0482 — the preflight needs the SAME coordinate file the run gets.
+    # Exported rather than prefixed per command: every step below needs both,
+    # and the step runner (issue 1500) invokes them as `just <step>`.
+    export NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords"
+    # issue 1500 — each part runs through the step runner so the log says WHERE
+    # the time went: each step prints its wall clock as it finishes, which a
+    # lane killed by a CI ceiling keeps (run 37176625915 spent 75 minutes here
+    # and left no timestamp anywhere). `check::default` is `just check` spelled
+    # as one step (`check` is a MODULE and cannot share an invocation with root
+    # recipes), and `rust-rtos-link-check` / `test-all` are separate steps so
+    # each is priced. The parts are issue 1651's split across two runners.
     case "{{ step }}" in
-        preconditions)
-            NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" \
-                bash scripts/check-tier-preconditions.sh ;;
-        gates)
-            NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" just check ;;
-        tests)
-            NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" \
-                just rust-rtos-link-check test-all ;;
+        preconditions) steps=(check::tier-preconditions) ;;
+        gates)         steps=(check::default) ;;
+        tests)         steps=(rust-rtos-link-check test-all) ;;
         *) echo "just ci::_tier1-step: unknown step '{{ step }}'" >&2; exit 2 ;;
     esac
+    bash scripts/ci/run-lane-steps.sh "tier1-{{ step }}" "${steps[@]}"
 
 # L3 — cross build + link + SYMBOL checks. No QEMU.
 #
@@ -356,11 +352,10 @@ _matrix-run:
     source scripts/build/fixture-lane.sh
     coords="$(nros_lane_coords_file tier2)"
     coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
-    # Split for the reason the tier1 lane above gives: `check` is a MODULE and
-    # cannot share an invocation with root recipes.
-    NROS_FIXTURE_LANE=tier2 NROS_TEST_COORDS="$coords" just check
-    NROS_FIXTURE_LANE=tier2 NROS_TEST_COORDS="$coords" \
-        just rust-rtos-link-check test-all
+    # Steps and timing through the shared runner — see the tier1 lane.
+    export NROS_FIXTURE_LANE=tier2 NROS_TEST_COORDS="$coords"
+    steps=(check::default rust-rtos-link-check test-all)
+    bash scripts/ci/run-lane-steps.sh tier2 "${steps[@]}"
     echo "CI passed (tier 2 — 1-wise cover; pairwise interactions need \`just ci-matrix-nightly\`)!"
 
 # Tier 2 nightly — the pairwise cover over platform x lang x rmw x kind (37 of 50
@@ -423,10 +418,10 @@ matrix-nightly:
     source scripts/build/fixture-lane.sh
     coords="$(nros_lane_coords_file tier2-nightly)"
     coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
-    # Split — see the tier1 lane.
-    NROS_FIXTURE_LANE=tier2-nightly NROS_TEST_COORDS="$coords" just check
-    NROS_FIXTURE_LANE=tier2-nightly NROS_TEST_COORDS="$coords" \
-        just rust-rtos-link-check test-all test-ignored
+    # Steps and timing through the shared runner — see the tier1 lane.
+    export NROS_FIXTURE_LANE=tier2-nightly NROS_TEST_COORDS="$coords"
+    steps=(check::default rust-rtos-link-check test-all test-ignored)
+    bash scripts/ci/run-lane-steps.sh tier2-nightly "${steps[@]}"
     echo "CI passed (tier 2 nightly — pairwise cover)!"
 
 # Tier 3 — everything. The former `ci`.
@@ -456,27 +451,10 @@ full:
     # longest lane in the ladder that is the most expensive place to misread a
     # result (issue 0952).
     set -uo pipefail
-    steps=(check rust-rtos-link-check check::zephyr-kconfig-symbols test-all test-ignored zephyr::tier3-cell)
-    declare -a verdict=()
-    failed_at=-1
-    for i in "${!steps[@]}"; do
-        if [ "$failed_at" -ge 0 ]; then verdict[$i]="NOT RUN"; continue; fi
-        if just "${steps[$i]}"; then verdict[$i]="ok"; else verdict[$i]="FAILED"; failed_at=$i; fi
-    done
-    if [ "$failed_at" -lt 0 ]; then
+    steps=(check::default rust-rtos-link-check check::zephyr-kconfig-symbols test-all test-ignored zephyr::tier3-cell)
+    if bash scripts/ci/run-lane-steps.sh full "${steps[@]}"; then
         echo "CI passed (tier 3 — full matrix, both Zephyr lines)!"
         exit 0
-    fi
-    skipped=$(( ${#steps[@]} - failed_at - 1 ))
-    printf '\n'
-    printf 'CI FULL FAILED at step %d of %d.\n\n' "$(( failed_at + 1 ))" "${#steps[@]}"
-    for i in "${!steps[@]}"; do
-        printf '  %-8s %s\n' "${verdict[$i]}" "${steps[$i]}"
-    done
-    if [ "$skipped" -gt 0 ]; then
-        printf '\n'
-        printf '  %d step(s) did NOT run — this lane stops at the first failure, so\n' "$skipped"
-        printf '  nothing below the red step was measured (issue 0952).\n'
     fi
     exit 1
 
