@@ -185,6 +185,8 @@ not encoded anywhere.
 `just test-unit` in the box: **817 tests, 816 passed, 2 skipped**, plus one
 `[SKIPPED] second session refused — shim built with ZPICO_MAX_SESSIONS=1`
 reported as a failure by the bare-nextest quirk above. No box-specific failures.
+(Since issue 1704 that test is compiled `#[ignore]` in a single-session build,
+so it counts among the skipped rather than the failed.)
 
 Arch host (glibc 2.44) + Ubuntu 22.04.5 box (glibc 2.35), 2026-08-01:
 `nros setup` for zenoh and cyclonedds, `nros sync`, a cyclone-backed

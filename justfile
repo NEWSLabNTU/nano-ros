@@ -1619,6 +1619,11 @@ test-zpico-multisession verbose="":
     # bare run turned its `[SKIPPED]` panic into a hard red no fix can clear.
     # The tolerant helper rewrites the junit (which lands under this lane's
     # scoped CARGO_TARGET_DIR, exported above) and fails only on real failures.
+    # Issue 1704 — the test is `#[ignore]`d in a single-session build (the
+    # `zpico_multi_session` cfg, from zpico-sys's resolved pool), so if the env
+    # above ever failed to reach the shim this filter would select NO test and
+    # nextest exits 4 (`no tests to run`), which `_nextest-tolerant` reports as
+    # an ERROR — never a pass, never a skip.
     # The `two_sessions` filter is POSITIONAL (name substring), equivalent to
     # the old `-E 'test(~two_sessions)'`: `_nextest-tolerant` splices its args
     # into a bash array literal, where the `(`…`)` would not survive.

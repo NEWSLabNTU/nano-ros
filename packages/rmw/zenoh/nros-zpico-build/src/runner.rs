@@ -1700,6 +1700,13 @@ pub fn run() {
 
     // Read shim slot counts from ZPICO_MAX_* env vars and generate Rust consts
     let mut shim_config = shim_config_from_env();
+    // Issue 1704 — publish the session-pool size on the `links = "zpico"`
+    // channel (`DEP_ZPICO_MAX_SESSIONS` in a direct dependent's build script).
+    // `nros-rmw-zenoh` turns it into the `zpico_multi_session` cfg, so a test
+    // that needs two sessions in one process is COMPILED as ignored where the
+    // pool is 1 rather than running and skipping — the value is a build input,
+    // and only this script knows the resolved one (default included).
+    println!("cargo:max_sessions={}", shim_config.max_sessions);
     // phase-290 — the env reads inside shim_config_from_env are the raw
     // top-rung values; overwrite the tx pair with the ladder-resolved ones.
     shim_config.tx_batch = tx_knobs.batch.value;

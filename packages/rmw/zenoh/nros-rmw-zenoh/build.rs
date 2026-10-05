@@ -9,6 +9,24 @@ fn main() {
     // one of the two that paid for it.
     let sizing = sizing_descriptor();
 
+    // Issue 1704 — `zpico_multi_session` is set iff the C shim this crate links
+    // was built with a session pool of 2 or more. The NUMBER comes from
+    // `zpico-sys`'s own resolution (`DEP_ZPICO_MAX_SESSIONS`, its `links`
+    // metadata), never from a second read of `ZPICO_MAX_SESSIONS` here with a
+    // second copy of its default. A test that opens two sessions in one process
+    // is `#[cfg_attr(not(zpico_multi_session), ignore)]`: in a single-session
+    // build it is a native skip rather than a `skip!` panic every lane's nextest
+    // summary printed as a FAILURE, and in `just test-zpico-multisession` it
+    // must run — a pool that is 1 there selects no test, which nextest refuses.
+    println!("cargo::rustc-check-cfg=cfg(zpico_multi_session)");
+    let max_sessions: usize = std::env::var("DEP_ZPICO_MAX_SESSIONS")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .expect("zpico-sys publishes `max_sessions` on its `links` channel (issue 1704)");
+    if max_sessions >= 2 {
+        println!("cargo:rustc-cfg=zpico_multi_session");
+    }
+
     // issue 0682 — the peer-mode build input (`just test-zpico-peer`).
     println!("cargo:rerun-if-env-changed=ZPICO_MULTICAST_TRANSPORT");
     println!("cargo:rerun-if-env-changed=NROS_SUBSCRIBER_BUFFER_SIZE");
