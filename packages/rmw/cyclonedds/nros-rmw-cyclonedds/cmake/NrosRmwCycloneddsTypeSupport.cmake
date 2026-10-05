@@ -42,6 +42,9 @@
 # the Cyclone DDS sources directly into the app and have no imported
 # target — they only need idlc to generate descriptors, which they
 # supply via a pre-set `IDLC_EXECUTABLE`. Accept either.
+# Issue 1663 -- the cmake road's single writer of the descriptor-table cap.
+include("${CMAKE_CURRENT_LIST_DIR}/NrosRmwCycloneddsDescriptorCap.cmake")
+
 if(NOT TARGET CycloneDDS::ddsc AND NOT IDLC_EXECUTABLE)
     message(FATAL_ERROR
         "NrosRmwCycloneddsTypeSupport.cmake requires CycloneDDS::ddsc "
@@ -569,6 +572,9 @@ function(nros_rmw_cyclonedds_idlc_compile output_var)
     if(_arg_TYPE_NAMES)
         list(APPEND _all_types ${_arg_TYPE_NAMES})
     endif()
+    # Issue 1663 -- every registry key a register TU is generated for, so the
+    # cmake road can size `descriptors.cpp`'s table from what it generates.
+    nros_cyclonedds_record_descriptor_types(${_all_types})
 
     set(_idx 0)
     foreach(_tn IN LISTS _all_types)

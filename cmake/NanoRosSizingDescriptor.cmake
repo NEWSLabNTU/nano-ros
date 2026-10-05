@@ -731,10 +731,12 @@ endfunction()
 # same file cargo is handed -- one entry's own descriptor, the D12 runtime
 # descriptor for several, a standalone leaf's when there is no entry, or none.
 #
-# NOT here: `NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES`. Its single writer is
-# `model_ingest::resolve_cyclonedds_max_descriptor_types`, which only ever RAISES
-# the header's 256 and is not a descriptor fact; issue 1663 records why the
-# cmake road does not carry it.
+# NOT here: `NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES`. It is not a descriptor fact:
+# a cmake image registers every descriptor whose register TU it LINKS, not the
+# model's types, so on this road its single writer is the register-TU generator
+# (`NrosRmwCycloneddsDescriptorCap.cmake`, issue 1663) and on the cargo road
+# `model_ingest::resolve_cyclonedds_max_descriptor_types`. Both only ever RAISE
+# the header's 256.
 #
 # Only a non-imported target is reached. On the cmake road that is
 # `nros_rmw_cyclonedds`, where `session.cpp` compiles. The Zephyr WEST road

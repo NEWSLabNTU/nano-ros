@@ -374,6 +374,23 @@ sizing-descriptor-reader:
     fi
     ./tests/cmake-sizing-descriptor-tests.sh
 
+# Issue 1663 -- Cyclone's `descriptors.cpp` table on the CMAKE road. Its single
+# writer there is the register-TU generator, which records every registry key
+# it generates; a deferred call sizes the table from the distinct keys (only
+# ever above the header's 256), and a pin smaller than that is refused. Each
+# case configures AND builds a one-TU stand-in that `static_assert`s the value
+# it was compiled with, so this asks the compiler, not the cache. cmake only.
+cyclonedds-descriptor-cap:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip cyclonedds-descriptor-cap "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/cmake-cyclonedds-descriptor-cap-tests.sh
+
 # issue 1436 — the parameter inventory is a PEER of the entity inventory, not a
 # passenger on it.
 #
