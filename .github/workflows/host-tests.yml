@@ -216,6 +216,18 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
+      # `check-submodule-pins` (in `check fast`) diffs against `origin/main`
+      # and is network-free by contract, so the workflow provides the ref —
+      # gate.yml's step, verbatim. On a `main` run the checkout already has
+      # it; a dispatch on any other branch does not, and failed here
+      # (run 37252649866).
+      - name: Fetch the pin baseline for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git fetch --no-tags --quiet --depth=1 origin \
+            "+refs/heads/$base:refs/remotes/origin/$base"
+          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+
       # Restore only — the integration job owns the SAVE for this key, and two
       # jobs saving one key race for nothing.
       - name: Restore CLI build cache (Phase 218)
