@@ -20,7 +20,10 @@ nodes:
         trigger: { timer: { rate_hz: 1 } }
         output: [chatter]
     pub:
-      chatter: {}
+      # issue 1608 -- the QoS `Talker::configure` publishes with, held to this
+      # row at compile time (`NROS_ASSERT_DECLARED_PUB_QOS`), as the listener's
+      # subscription is held to its own below.
+      chatter: { qos: { depth: 1 } }
 
   listener:
     sub:

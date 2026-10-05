@@ -1,7 +1,8 @@
 ---
 id: 1608
 title: "A PUBLISHER's declared QoS is delivered to the build and compared with nothing — the declared-QoS check covers subscriptions only"
-status: open
+status: resolved
+resolved_in: 2026-10-05
 type: enhancement
 area: [build, core]
 severity: low
@@ -128,3 +129,62 @@ images share one runtime):
 
 (Another agent holds this issue's code; this note changes no direction it is
 following, only where the acceptance can be measured.)
+
+## Resolution, 2026-10-05 -- the compile-time half (C and C++)
+
+**The table.** `DeclaredQosHeaderTable::Resolved` gains `pub_rows`, folded per
+KIND by the same rules as the subscription rows (STATED depths only; a policy
+`system_default` is not a value), and the per-component union (issue 1564,
+RFC-0100 D12 rule 1) folds them by the subscription rule: silence takes a
+stated value, and two models stating different values for one publisher
+refuse the table naming both ("publisher depth ... in a.yaml but ... in
+b.yaml"). The generated header carries them in lists of their OWN --
+`NROS_DECLARED_PUB_QOS_ROWS` (C++) and `NROS_DECLARED_PUB_QOS_ROWS_Q` (C), plus
+`NROS_DECLARED_PUB_QOS_ROW_COUNT` -- because the table is keyed `(type, topic)`
+and a publisher and a subscription on one pair are two endpoints with one key.
+The subscription lists keep their arity, and a header for an image whose
+publishers declare nothing is byte-identical (the committed compile fixture
+test still passes unchanged).
+
+**C** (`nros/declared_qos.h`): `NROS_DECLARED_PUB_{DEPTH,RELIABILITY,DURABILITY}`
+and `NROS_ASSERT_DECLARED_PUB_{DEPTH,RELIABILITY,DURABILITY}`, the same four
+arguments and expansions as the subscription macros (the `_NROS_DQ_FIND_*` row
+macros serve both lists).
+
+**C++** (`nros/declared_qos.hpp`) -- the shape proposed and built, because it
+mirrors the subscription macro exactly: `NROS_ASSERT_DECLARED_PUB_QOS(type_name,
+topic_expr, qos_expr, topic_text)` (and the three per-column macros), the same
+four arguments and the same static_assert-plus-template expansion as
+`NROS_ASSERT_DECLARED_QOS`, over a `PUB_TABLE` built from the publisher list,
+with `declared_pub_{depth,reliability,durability}_agrees<declared, passed>`
+naming both values. No API change: there is no `NROS_PUBLISH` macro form, so it
+is written BESIDE `create_publisher`, exactly as `NROS_ASSERT_DECLARED_QOS` is
+written beside a `bind_subscription`. The rule is EQUALITY, as for a
+subscription: registration still raises a publisher that asks less, and the
+build is where the code is made to say the declared value.
+
+**Measured, a real image.** `examples/workspaces/cpp` adopts it: the talker's
+contract row declares `pub: chatter: { qos: { depth: 1 } }` and
+`Talker::configure` asserts its `nros::QoS(1)` with
+`NROS_ASSERT_DECLARED_PUB_QOS` before `create_publisher(pub_, "/chatter",
+kChatterQos)`. The native configure renders the talker's header with the two
+`NROS_DECLARED_PUB_QOS_ROW(... "/chatter", 1, ...)` rows; the image builds and,
+against `rmw_zenohd`, published 7 / received 7 in 8 s. With the call site
+changed to `QoS(2)` the build FAILS: `static assertion failed: nros: the QoS
+depth passed for the publisher on topic "/chatter" disagrees ...` and
+`In instantiation of 'struct nros::detail::declared_pub_depth_agrees<1, 2>'`.
+
+**Tests.**
+* `entity_inventory` unit tests: `a_publisher_s_declared_qos_reaches_its_own_header_lists`
+  (a publisher and a subscription on one key keep their own values),
+  `no_declared_publisher_qos_renders_no_publisher_list`,
+  `the_union_folds_publisher_rows_by_the_subscription_rule`.
+* `just check declared-qos-header` cases F5 (C++) and F6 (C): an agreeing
+  publisher AND an agreeing subscription on the same `(type, topic)`, declared
+  differently, both compile against the header the real CLI rendered; each
+  disagreeing publisher column is rejected naming the topic and both values.
+  Negative control: with the renderer's publisher lists removed, 7 assertions
+  fail (the header row and all six disagreements compile).
+
+Every acceptance clause is now met -- the runtime half (2026-10-03) and this
+compile-time half -- so the issue is resolved.
