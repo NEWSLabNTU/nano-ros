@@ -164,19 +164,19 @@ re-ran (`lane=all` had never reached these cells on this host).
 
 ## Still open, recorded rather than fixed
 
-* **The busy loop itself** is in Cyclone's receive thread, which retries a failed
+* (issue 1696) **The busy loop itself** is in Cyclone's receive thread, which retries a failed
   `select` immediately and logs each time. A back-off there would keep the next
   cause of a failing `select` from flooding a console. That is a change to the
   Cyclone fork, which the agent does not push; left for the maintainer.
-* **The harness capture bound.** `cargo-nextest` buffered 91 GB of one cell's
+* (issue 1697) **The harness capture bound.** `cargo-nextest` buffered 91 GB of one cell's
   console before the kernel killed it. Bounding what the e2e harness captures
   from a guest console is a separate fix.
-* **`<err> os: tid 0x… is in use!` ×5 at every Cyclone boot** —
+* (issue 1698) **`<err> os: tid 0x… is in use!` ×5 at every Cyclone boot** —
   `k_thread_stack_free` refusing to free the stacks of Cyclone's running threads.
   Present with the fix and the cells pass, so it is not this defect; it reads as
   a stack-handling mismatch between Zephyr's dynamic threads and ddsrt's thread
   teardown, and leaks rather than corrupts.
-* **The module's other `configdefault` values are unproven on existing dirs.**
+* (issue 1699) **The module's other `configdefault` values are unproven on existing dirs.**
   Every one visible in a Cyclone `.config` is ALSO hard-set by the per-example
   `prj-cyclonedds.conf`, so nothing shows them reaching an incremental build —
   by step 2's mechanism, they would not.
