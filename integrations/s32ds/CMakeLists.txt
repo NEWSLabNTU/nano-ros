@@ -184,11 +184,50 @@ set(NANO_ROS_ROOT "${_nros_root}" CACHE PATH "nano-ros repo root" FORCE)
 add_subdirectory("${_nros_root}" nano_ros_root)
 
 # ---------------------------------------------------------------------------
+# The image's ending (issue 0719). This shell builds the nros-c/nros-cpp
+# staticlibs without a `nano_ros_entry()`, so it applies the policy itself —
+# without it the `no_std` staticlib has no `#[panic_handler]` and does not
+# compile (issue 1664 measured that; the shell had never been built through).
+# `platform` routes a panic to `nros_platform_panic`, the FreeRTOS shim's.
+# ---------------------------------------------------------------------------
+nros_apply_panic_policy(platform "integrations/s32ds")
+
+# ---------------------------------------------------------------------------
+# Which ONE runtime archive the image links (issue 1664, the NuttX fix of
+# issue 1636).
+#
+# `libnros_cpp.a` bundles nros-c (nros-cpp's `rmw-<x>-cffi` features forward
+# `nros-c/rmw-<x>`), so it defines every `nros_*` C-ABI symbol `libnros_c.a`
+# does. Linking BOTH puts two different nros-c builds in one image — every
+# `nros_*`, the QoS constants and `REGISTRY`, the backend registry, twice, each
+# copy with its own statics. NuttX measured 392 such duplicates. So the image
+# takes exactly one: `libnros_cpp.a` for a C++-API image, `libnros_c.a`
+# otherwise. Never both, and never a glob that could catch both.
+# ---------------------------------------------------------------------------
+set(NROS_S32DS_API "C" CACHE STRING
+    "nano-ros API the S32DS image calls: C (libnros_c.a) or CPP (libnros_cpp.a)")
+set_property(CACHE NROS_S32DS_API PROPERTY STRINGS C CPP)
+string(TOUPPER "${NROS_S32DS_API}" _nros_api)
+if(_nros_api STREQUAL "CPP")
+    set(_nros_runtime_target nros_cpp-static)
+elseif(_nros_api STREQUAL "C")
+    set(_nros_runtime_target nros_c-static)
+else()
+    message(FATAL_ERROR
+        "nros-s32ds: NROS_S32DS_API='${NROS_S32DS_API}' — expected C or CPP.")
+endif()
+if(NOT TARGET ${_nros_runtime_target})
+    message(FATAL_ERROR
+        "nros-s32ds: NROS_S32DS_API=${_nros_api} needs the Rust target "
+        "${_nros_runtime_target}, which this configure did not import.")
+endif()
+
+# ---------------------------------------------------------------------------
 # Emit `nros-libs.mk` — the CDT link fragment.
 #
-# Mirrors integrations/nuttx's generated `extra_libs.mk`. `makefile.defs`
-# (dropped into the S32DS project root) includes this and appends to USER_OBJS,
-# which the CDT link rule already passes to gcc verbatim.
+# Mirrors integrations/nuttx's `Make.defs`. `makefile.defs` (dropped into the
+# S32DS project root) includes this and appends to USER_OBJS, which the CDT
+# link rule already passes to gcc verbatim.
 # ---------------------------------------------------------------------------
 set(_libs_mk "${CMAKE_BINARY_DIR}/nros-libs.mk")
 file(GENERATE OUTPUT "${_libs_mk}" CONTENT
@@ -196,22 +235,19 @@ file(GENERATE OUTPUT "${_libs_mk}" CONTENT
 # Source project: ${NXP_S32DS_PROJECT} (${NROS_S32DS_CONFIG})
 NROS_BUILD_DIR := ${CMAKE_BINARY_DIR}
 
-# The C platform shim — a concrete path, known at generate time.
+# The C platform shim.
 USER_OBJS += $<TARGET_FILE:nros_platform_freertos>
 
-# Cargo staticlibs (nros-c / nros-cpp and friends). Corrosion collects them in
-# `<build>/corrosion/`. Resolved with a make-time 'wildcard' rather than a
-# configure-time TARGET_FILE generator expression: Corrosion's imported targets
-# do not reliably support that, and deferring to make time also means the
-# fragment is correct whether or not the cargo targets have been built yet.
-# (Careful: any literal generator-expression text written here would be
-# evaluated by file(GENERATE) rather than emitted.)
-NROS_CARGO_LIB_DIR := ${CMAKE_BINARY_DIR}/corrosion
-USER_OBJS += \$(wildcard \$(NROS_CARGO_LIB_DIR)/*.a)
+# The ONE Rust runtime archive (NROS_S32DS_API=${_nros_api}). See the comment
+# above NROS_S32DS_API in integrations/s32ds/CMakeLists.txt: nros-cpp bundles
+# nros-c, so the two are alternatives, never a pair (issue 1664).
+USER_OBJS += $<TARGET_FILE:${_nros_runtime_target}>
 
-# Per-package interface FFI archives, if your workspace generates any, land
-# outside the corrosion dir. Append them here or in your own fragment.
+# User hook for further archives. A Rust staticlib added here (e.g. a
+# per-package message FFI archive) carries a second copy of the Rust runtime
+# and is a duplicate-symbol link error — the build has no
+# duplicate-symbol relaxation to hide it (issues 1645, 1664).
 -include \$(NROS_BUILD_DIR)/nros-extra-libs.mk
 ")
 
-message(STATUS "nros-s32ds: will emit ${_libs_mk}")
+message(STATUS "nros-s32ds: will emit ${_libs_mk} (runtime: ${_nros_runtime_target})")

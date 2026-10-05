@@ -7,11 +7,11 @@ dependent) — the #48-class wrong-copy hazard. The safe default is "duplicate
 defined symbol => link error". `-z muldefs` is the SAME flag under ld's other
 spelling (issue 0425 reached for it), so both spellings are one rule.
 
-A use fails unless its file is in the audited allowlist
-(`scripts/allow-multiple-def-allowlist.txt`) with the EXACT number of uses the
-file carries and a reason + owning issue. Exact, both ways: one more use in an
-allowlisted file is a new, unaudited use; one fewer is progress the list must
-record (phase-472 W9 — a count that may only fall is forced down).
+ABSOLUTE (issue 1664): every use fails. There is no allowlist any more —
+issues 1636, 1645 and 1664 removed the last four uses by fixing what each one
+masked (each was measured as a real duplicate set, `REGISTRY` among them), so
+the audited list reached its target of zero and was deleted. A use that seems
+unavoidable is a duplicate symbol to fix at the source, not a row to add.
 
 POPULATION (issue 1618). The rule is about BUILD FILES, wherever they live, so
 the population is the file KINDS a link line can be written in —
@@ -40,7 +40,6 @@ import file_kinds  # noqa: E402
 import population  # noqa: E402
 
 GATE = "no-allow-multiple-def"
-ALLOWLIST = "scripts/allow-multiple-def-allowlist.txt"
 KINDS = ("cmake", "shell", "just", "make", "ci", "jinja")
 FLAG_RE = re.compile(r"allow[-_]multiple[-_]definition|\bmuldefs\b")
 
@@ -68,42 +67,10 @@ def uses_in(text: str, lang: str | None) -> list[int]:
     return [i for i, ln in enumerate(code.splitlines(), 1) if FLAG_RE.search(ln)]
 
 
-def parse_allowlist(text: str) -> tuple[dict, list[str]]:
-    """`<path> <count>  # reason (issue)` rows -> {path: count}; malformed rows."""
-    table, bad = {}, []
-    for raw in text.splitlines():
-        body, _, reason = raw.partition("#")
-        body = body.strip()
-        if not body:
-            continue
-        parts = body.split()
-        if len(parts) != 2 or not parts[1].isdigit() or int(parts[1]) < 1:
-            bad.append(f"{raw!r}: want `<path> <count>  # reason (issue NNNN)`")
-        elif not re.search(r"\b(issue|#)\s*\d{3,4}\b", reason):
-            bad.append(f"{raw!r}: the reason must name an owning issue")
-        elif parts[0] in table:
-            bad.append(f"{raw!r}: duplicate row")
-        else:
-            table[parts[0]] = int(parts[1])
-    return table, bad
-
-
-def judge(found: dict, allowed: dict) -> list[str]:
+def judge(found: dict) -> list[str]:
     """`found` = {path: [lines]}; returns the failure lines (empty = clean)."""
-    errs = []
-    for path, lines in sorted(found.items()):
-        want = allowed.get(path, 0)
-        if len(lines) > want:
-            where = ", ".join(f"{path}:{n}" for n in lines)
-            errs.append(
-                f"{path}: {len(lines)} use(s), allowlist permits {want} — {where}")
-    for path, want in sorted(allowed.items()):
-        have = len(found.get(path, []))
-        if have < want:
-            errs.append(
-                f"{path}: allowlist permits {want} use(s) but the file has {have} — "
-                f"lower (or drop) the row in {ALLOWLIST}; the count may only fall")
-    return errs
+    return [f"{path}: {len(lines)} use(s) — " + ", ".join(f"{path}:{n}" for n in lines)
+            for path, lines in sorted(found.items())]
 
 
 def self_test() -> None:
@@ -118,15 +85,9 @@ def self_test() -> None:
     assert lang_of("integrations/s32ds/makefile.defs") == "sh"
     assert lang_of("integrations/nuttx/Make.defs") == "sh"
     assert lang_of("zephyr/CMakeLists.txt") == "cmake"
-    # Exact counts, both directions.
-    assert judge({"a": [1, 2]}, {"a": 2}) == []
-    assert judge({"a": [1, 2, 9]}, {"a": 2}), "a THIRD use in an allowlisted file must fail"
-    assert judge({"a": [1]}, {"a": 2}), "a fallen count must force the row down"
-    assert judge({"b": [4]}, {}), "an unlisted use must fail"
-    assert judge({}, {"a": 1}), "a stale row must fail"
-    table, bad = parse_allowlist(
-        "x/y 2  # reason (issue 1636)\nx/z 1  # no owner\nx/w  # no count (issue 1636)\n")
-    assert table == {"x/y": 2} and len(bad) == 2, (table, bad)
+    # Absolute: any use, in any file, fails; none passes.
+    assert judge({}) == []
+    assert judge({"integrations/s32ds/makefile.defs": [48]}), "a single use must fail"
 
 
 def main() -> int:
@@ -135,7 +96,6 @@ def main() -> int:
     files = file_kinds.files_of_kind(*KINDS)
     if not population.require_population(files, "build file(s)", gate=GATE):
         return 1
-    allowed, bad = parse_allowlist(Path(ALLOWLIST).read_text())
     found = {}
     for f in files:
         if not os.path.isfile(f):
@@ -143,18 +103,17 @@ def main() -> int:
         lines = uses_in(Path(f).read_text(errors="replace"), lang_of(f))
         if lines:
             found[f] = lines
-    errs = [f"malformed allowlist row {b}" for b in bad] + judge(found, allowed)
+    errs = judge(found)
     if errs:
-        print(f"✗ {GATE}: `--allow-multiple-definition` / `-z muldefs` outside the audit:",
+        print(f"✗ {GATE}: `--allow-multiple-definition` / `-z muldefs` is forbidden:",
               file=sys.stderr)
         for e in errs:
             print(f"   {e}", file=sys.stderr)
-        print("   Remove the flag (a duplicate defined symbol must be a link error), or —\n"
-              f"   if genuinely unavoidable — record `<path> <count>` in {ALLOWLIST}\n"
-              "   with a reason and an owning issue.", file=sys.stderr)
+        print("   Remove the flag. A duplicate defined symbol must be a link error: fix\n"
+              "   the duplicate at its source (one runtime archive per image — issues\n"
+              "   1636, 1645, 1664). There is no allowlist.", file=sys.stderr)
         return 1
-    n = sum(allowed.values())
-    print(f"✓ {GATE}: {n} audited use(s) in {len(allowed)} file(s), all allowlisted (target: 0).")
+    print(f"✓ {GATE}: 0 uses in {len(files)} build file(s).")
     return 0
 
 

@@ -487,8 +487,8 @@ rustc-wrapper-staticlib:
 
 # Phase 251 — forbid `--allow-multiple-definition` in the build system (it lets
 # two same-named-but-different functions coexist → wrong-copy hazard). Fails on
-# any non-allowlisted real use; allowlist (scripts/allow-multiple-def-allowlist.txt)
-# carries the audited exceptions, target empty. Buildless.
+# ANY real use — absolute since issue 1664 removed the last one; no allowlist.
+# Buildless.
 [private]
 no-allow-multiple-def:
     @python3 scripts/check-no-allow-multiple-def.py

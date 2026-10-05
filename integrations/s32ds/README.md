@@ -28,7 +28,8 @@ cmake -S <nano-ros>/integrations/s32ds -B build-s32ds \
       -DNXP_S32DS_PROJECT=~/MR_CANHUBK3_IEEE1722 \
       -DNROS_WORKSPACE_DIR=~/my_ws \
       -DNROS_BRINGUP=safety_island_bringup \
-      -DLWIP_DIR=<lwip source>
+      -DLWIP_DIR=<lwip source> \
+      -DNROS_S32DS_API=C        # or CPP for a C++-API image
 cmake --build build-s32ds
 
 cp build-s32ds/nros-libs.mk                       ~/MR_CANHUBK3_IEEE1722/
@@ -108,15 +109,21 @@ None of these is a nano-ros change; the shell fails loudly with this list if
 
 ## Known gaps
 
-- **Not validated end to end.** Probe: yes. Build and link: not yet.
+- **Not validated end to end.** Probe: yes. Build and link: against a
+  synthesized project only (issue 1664) — never a wizard-made one, never on
+  hardware.
 - **Windows-absolute linker-script prerequisite.** The reference project's
   `.elf` rule depends on `C:/Users/…/linker_flash_s32k344.ld`, so `make` fails
   with "no rule to make target" on Linux unless the project is regenerated
   locally. A future `makefile.init` may patch this; for now, regenerate.
-- **Cargo staticlib staging.** `nros-libs.mk` includes a
-  `nros-cargo-libs.mk` that nothing generates yet — the `nros-c` / `nros-cpp` /
-  per-package FFI archives must currently be appended by hand. NuttX solves the
-  same problem with `scripts/nuttx/stage-external-apps.sh`; the equivalent is
-  not written.
+- **One runtime archive, never two.** `nros-libs.mk` names exactly one Rust
+  staticlib: `libnros_cpp.a` when `NROS_S32DS_API=CPP` (it bundles nros-c, so
+  it serves the C API too), `libnros_c.a` otherwise. Do not append the other
+  one, or a per-package Rust message-FFI staticlib, through
+  `nros-extra-libs.mk`: each carries a second copy of the runtime (the backend
+  `REGISTRY` among it), and the link has no duplicate-symbol relaxation, so ld
+  refuses it (issue 1664). Measured on a synthesized CDT-shaped project with
+  S32DS 3.6.10's gcc 11.4: both archives give 138 duplicates including
+  `REGISTRY`; either one alone links clean.
 - **Cyclone DDS is unexercised on FreeRTOS C/C++** (every FreeRTOS fixture in
   `examples/fixtures.toml` is `rmw = "zenoh"`), so the shell defaults to zenoh.
