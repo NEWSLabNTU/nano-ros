@@ -36,31 +36,37 @@
 //! cannot be expressed as a name filter must be applied at the point where the
 //! test binds to a platform.
 //!
-//! **`NROS_TEST_SCOPE` unset means ALL.** Tier 2/3 and a bare `cargo nextest`
-//! run everything, exactly as today — this module only ever narrows a run that
-//! explicitly asked to be narrowed.
+//! **An un-narrowed run means ALL.** A bare `cargo nextest` runs everything —
+//! this module only ever narrows a run that explicitly asked to be narrowed.
+//!
+//! # Issue 1684 — keyed on the run's COORDINATES now, not `NROS_TEST_SCOPE`
+//!
+//! This read `NROS_TEST_SCOPE=native` (host board only), which no recipe has
+//! set since phase-395 W19 moved tier 1 to coordinate scoping
+//! (`NROS_TEST_COORDS`). So under every lane `admits` answered "yes" for
+//! everything, and the five consumers below booted whatever image happened to
+//! exist — `baremetal_board_run_executes_run_plan` ran QEMU for 11 s and failed
+//! on a MISSING fixture in a tier-1 run that selects no baremetal coordinate.
+//! The question is now the one every other lane predicate asks:
+//! [`crate::fixtures::lane::platform_admitted`] — does the run select ANY
+//! coordinate on this platform? (Per-row precision stays with the resolver.)
 
 use crate::matrix::PlatformId;
 
-/// The env var `just ci` sets for a host-only run (`justfile`'s tier-1 recipe).
-pub const SCOPE_ENV: &str = "NROS_TEST_SCOPE";
-
-/// Whether this run's lane admits `platform`.
-///
-/// `NROS_TEST_SCOPE=native` ⇒ only the host board. Anything else — including
-/// unset, empty, and `all` — admits everything.
+/// Whether this run's lane admits `platform`: `true` when the run selects at
+/// least one coordinate on it, or is not narrowed at all.
 pub fn admits(platform: PlatformId) -> bool {
-    scope_admits(std::env::var(SCOPE_ENV).ok().as_deref(), platform)
+    crate::fixtures::lane::platform_admitted(platform)
 }
 
-/// [`admits`] without the environment, so both arms are testable in one process
-/// (the mistake `fixtures::lane` documents: a `OnceLock`-latched env read can
-/// only ever be exercised in one direction per test binary).
-pub fn scope_admits(scope: Option<&str>, platform: PlatformId) -> bool {
-    match scope.map(str::trim) {
-        Some("native") => matches!(platform, PlatformId::Linux),
-        _ => true,
-    }
+/// [`admits`] with the run's coordinates supplied, so both arms are testable in
+/// one process (a `OnceLock`-latched env read can only ever be exercised in one
+/// direction per test binary). `None` = un-narrowed = admit.
+pub fn coords_admit(
+    coords: Option<&std::collections::BTreeSet<crate::fixtures::lane::Coord>>,
+    platform: PlatformId,
+) -> bool {
+    coords.is_none_or(|c| crate::fixtures::lane::platforms_selected(&[platform], c))
 }
 
 /// Test files that iterate platform-varying cells in ONE test and must
@@ -113,8 +119,9 @@ pub const EXEMPT: &[(&str, &str)] = &[
 /// half of 0571 that made a red cell invisible for months).
 pub fn skip_note(platform: PlatformId, lang: &str) -> String {
     format!(
-        "{}/{lang}: out of lane ({SCOPE_ENV}=native admits the host board only)",
-        platform.just_module()
+        "{}/{lang}: out of lane (this run's {} selects no {platform:?} coordinate)",
+        platform.just_module(),
+        crate::fixtures::lane::RUN_COORDS_ENV,
     )
 }
 
@@ -187,7 +194,7 @@ mod tests {
              `lane_scope::CONSUMERS` nor `EXEMPT`: {unclassified:?}\n\
              \n\
              A test like this cannot be narrowed by a name filter (issue 0357), \
-             so under `NROS_TEST_SCOPE=native` it reaches every platform's \
+             so under a coordinate-scoped lane it reaches every platform's \
              cells. A missing non-host fixture then PANICS rather than skips \
              (issue 0584 — the scope var means a gate already promised the \
              fixtures), so tier 1 cannot go green on a host without that \
@@ -225,42 +232,46 @@ mod tests {
         }
     }
 
+    fn coords(platforms: &[&str]) -> std::collections::BTreeSet<crate::fixtures::lane::Coord> {
+        platforms
+            .iter()
+            .map(|p| (p.to_string(), "rust".to_string(), "zenoh".to_string()))
+            .collect()
+    }
+
+    /// Issue 1684 — tier 1's own shape: linux + zephyr + threadx-linux
+    /// coordinates. The platforms it selects are admitted; baremetal (the
+    /// measured false boot), NuttX and the rest are not.
     #[test]
-    fn native_scope_admits_only_the_host_board() {
-        assert!(scope_admits(Some("native"), PlatformId::Linux));
+    fn a_coordinate_lane_admits_exactly_its_platforms() {
+        let tier1 = coords(&["linux", "zephyr", "threadx-linux"]);
         for p in [
+            PlatformId::Linux,
+            PlatformId::ZephyrNativeSim,
+            PlatformId::ThreadxLinux,
+        ] {
+            assert!(coords_admit(Some(&tier1), p), "{p:?} is in tier 1");
+        }
+        for p in [
+            PlatformId::QemuBaremetal,
             PlatformId::NuttxArm,
             PlatformId::NuttxRiscv,
             PlatformId::FreertosMps2,
-            PlatformId::ZephyrNativeSim,
             PlatformId::ThreadxRiscv64,
             PlatformId::Esp32Qemu,
+            PlatformId::Px4,
         ] {
-            assert!(
-                !scope_admits(Some("native"), p),
-                "{p:?} must not run in a host-only lane"
-            );
+            assert!(!coords_admit(Some(&tier1), p), "{p:?} is not in tier 1");
         }
     }
 
-    /// ThreadX-Linux is a HOSTED simulation, but it is still its own board with
-    /// its own fixture, and `lane-filter.sh` excludes it from the native lane by
-    /// its `threadx` token. Agreeing with that filter is the point — two
-    /// spellings of "what tier 1 runs" is the drift this exists to remove.
     #[test]
-    fn hosted_threadx_is_not_the_host_board() {
-        assert!(!scope_admits(Some("native"), PlatformId::ThreadxLinux));
-    }
-
-    #[test]
-    fn unscoped_and_all_admit_everything() {
-        for scope in [None, Some(""), Some("all")] {
-            for p in [PlatformId::Linux, PlatformId::NuttxArm, PlatformId::Px4] {
-                assert!(
-                    scope_admits(scope, p),
-                    "scope {scope:?} must not narrow {p:?}"
-                );
-            }
+    fn an_unnarrowed_run_admits_everything() {
+        for p in [PlatformId::Linux, PlatformId::NuttxArm, PlatformId::Px4] {
+            assert!(
+                coords_admit(None, p),
+                "an un-narrowed run must not narrow {p:?}"
+            );
         }
     }
 }

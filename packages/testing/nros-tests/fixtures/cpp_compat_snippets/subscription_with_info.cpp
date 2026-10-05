@@ -9,7 +9,13 @@
 //
 // The message type is a minimal stand-in with the same static surface the
 // generated C++ bindings expose (`TYPE_NAME` / `TYPE_HASH` /
-// `ffi_deserialize`) so the snippet needs no generated headers.
+// `ffi_deserialize` / `SERIALIZED_SIZE_MAX`) so the snippet needs no generated
+// headers. `SERIALIZED_SIZE_MAX` became part of that surface when phase-456 W7
+// made every C++ subscription registration state its receive bound
+// (`rx_buffer_capacity<M>`): an unmarked stand-in is the `legacy` arm of
+// `nros/size_bound.hpp`, which reads it. Without it this snippet stopped
+// compiling and its consuming test reported a MISSING in-lane fixture
+// (issue 1684's tier-1 run, measured 2026-10-06).
 
 #include <nros/nros.hpp>
 
@@ -21,6 +27,7 @@ namespace {
 struct FakeString {
     static constexpr const char* TYPE_NAME = "test_msgs::msg::dds_::Fake_";
     static constexpr const char* TYPE_HASH = "TypeHashNotSupported";
+    static constexpr size_t SERIALIZED_SIZE_MAX = 64;
     static int ffi_deserialize(const uint8_t* data, size_t len, void* out) {
         (void)data;
         (void)len;

@@ -3899,6 +3899,17 @@ fn require_shared_fixture_binary(
     triple: &str,
     binary_name: &str,
 ) -> TestResult<PathBuf> {
+    // Issue 1684 — a shared group dir (`build/cargo-fixtures/<platform>`)
+    // attributes to no single ROW (`lane::attribute_path` answers `None` for
+    // it, and must keep doing so — an ambiguous match never skips), so the
+    // row-level lane skip in `require_prebuilt_binary_fresh` cannot fire here.
+    // But the group's PLATFORM is known: a run whose lane selects no
+    // coordinate on it never built the group, and that is deselection, not a
+    // missing fixture. A lane that DOES select the platform falls through to
+    // the presence/freshness check, so an absent in-lane binary still fails
+    // hard (issue 0584). Measured: five baremetal images read "MISSING for an
+    // in-lane coordinate" in a tier-1 run that selects no baremetal coordinate.
+    shared_group_lane_check(platform, binary_name, crate::fixtures::lane::run_coords())?;
     let target_dir = crate::fixtures::groups::sole_group_dir(platform)?;
     let binary_path = target_dir.join(format!(
         "{triple}/{}/{}",
@@ -3906,6 +3917,36 @@ fn require_shared_fixture_binary(
         binary_name
     ));
     require_prebuilt_binary_fresh(&binary_path)
+}
+
+/// The lane half of [`require_shared_fixture_binary`], with the run's
+/// coordinates supplied rather than read, so both arms are testable in one
+/// binary (issue 1313's shape). `None` = un-narrowed run = no skip.
+///
+/// Panics as a `[SKIPPED:lane]` when the lane selects no coordinate on the
+/// group's platform. An unknown token is an error, never a silent pass: a
+/// typo'd platform would otherwise skip every test that reaches it.
+fn shared_group_lane_check(
+    platform: &str,
+    binary_name: &str,
+    coords: Option<&std::collections::BTreeSet<crate::fixtures::lane::Coord>>,
+) -> TestResult<()> {
+    let Some(coords) = coords else {
+        return Ok(());
+    };
+    let Some(id) = crate::matrix::PlatformId::from_fixture_token(platform) else {
+        return Err(crate::TestError::BuildFailed(format!(
+            "shared fixture group `{platform}` names no matrix platform token"
+        )));
+    };
+    if let Some(reason) = crate::fixtures::lane::skip_reason_for_platforms(
+        &[id],
+        &format!("the shared `{platform}` fixture `{binary_name}`"),
+        coords,
+    ) {
+        crate::skip_class!(lane, "{reason}");
+    }
+    Ok(())
 }
 
 /// Phase 226.D — `baremetal` (`thumbv7m-none-eabi`) shared-fixture
@@ -7262,6 +7303,50 @@ pub fn build_qemu_rtic_mixed_listener() -> TestResult<&'static Path> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1684 — the shared-group lane check, both arms, with synthetic
+    /// coordinates (no env, no `OnceLock`). A lane with no coordinate on the
+    /// group's platform DESELECTS (`[SKIPPED:lane]`); a lane that selects it
+    /// returns `Ok` so the presence/freshness check that follows still fails
+    /// hard on an absent binary — the negative control, without which "skip
+    /// everything" would pass the first arm.
+    #[test]
+    fn a_shared_group_skips_only_when_its_platform_is_out_of_lane() {
+        use std::collections::BTreeSet;
+        let c = |p: &str| (p.to_string(), "rust".to_string(), "zenoh".to_string());
+        let linux_only: BTreeSet<_> = [c("linux"), c("zephyr")].into_iter().collect();
+        let with_baremetal: BTreeSet<_> = [c("linux"), c("baremetal")].into_iter().collect();
+
+        let out = std::panic::catch_unwind(|| {
+            shared_group_lane_check("baremetal", "qemu-rs-lan9118", Some(&linux_only))
+        });
+        let msg = match out {
+            Err(p) => p
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_default(),
+            Ok(r) => panic!("an out-of-lane platform must skip, got {r:?}"),
+        };
+        assert_eq!(crate::skip_marker::class_in(&msg), Some("lane"), "{msg}");
+        assert!(
+            !msg.contains("MISSING") && !msg.contains("not built"),
+            "a deselection must never read as a missing fixture: {msg}"
+        );
+
+        assert!(
+            shared_group_lane_check("baremetal", "qemu-rs-lan9118", Some(&with_baremetal)).is_ok(),
+            "an IN-lane platform must fall through to the hard presence check"
+        );
+        assert!(
+            shared_group_lane_check("baremetal", "qemu-rs-lan9118", None).is_ok(),
+            "an un-narrowed run never skips"
+        );
+        assert!(
+            shared_group_lane_check("no-such-platform", "x", Some(&linux_only)).is_err(),
+            "an unknown group token is an error, not a silent skip"
+        );
+    }
 
     /// Issue 0608 — a group-built row must be looked up at its PLATFORM's
     /// profile, not the ambient one. The NuttX carve-out is the case that
