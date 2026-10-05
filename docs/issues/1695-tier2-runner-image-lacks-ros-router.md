@@ -13,7 +13,7 @@ related: [issue-1670, issue-1457, issue-1482, issue-1158]
 ## What
 
 Issue 1670 made tier 2 refuse to run its zenoh cells without a router
-(`just ci::_require-lane-router`, first step of `just ci matrix` and `just ci
+(the private `_require-lane-router` recipe in `just/ci.just`, first step of `just ci matrix` and `just ci
 matrix-nightly`) instead of letting all 8 of them skip. That turns the lane's
 silent coverage hole into a loud, named failure — and on the current
 self-hosted runner it will fire on every run, because the runner cannot
@@ -44,6 +44,6 @@ uses (or add the ROS apt source in the generated Dockerfile, from the index
 rather than a hand-written line), add `ros-rmw-zenoh-cpp` to `PREREQ_KEYS`,
 and set `ROS_DISTRO` in the image; or give tier 2 a runner labelled
 `nros-ros2` (`runner-doctor.sh nros-ros2` already checks the router and its
-paired `libzenohc`, issue 0774). Acceptance: `just ci::_require-lane-router
-tier2` prints the router on the runner, and a tier-2 run reaches its zenoh
+paired `libzenohc`, issue 0774). Acceptance: the first line of `just ci matrix`
+(`lane tier2: … router: …`) prints the router on the runner, and a tier-2 run reaches its zenoh
 cells.
