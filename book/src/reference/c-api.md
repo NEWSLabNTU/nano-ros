@@ -83,8 +83,11 @@ goals, requesting results, and cancelling:
   is `fini`'d without it is still dispatched into. A removed client returns to
   INITIALIZED and can be re-added. All return `NROS_RET_NOT_FOUND` for an
   entity not registered on that executor and `NROS_RET_REENTRANT` from inside
-  a callback. `nros_executor_add_subscription_raw_with_info()` takes no
-  subscription object and so has nothing to remove it by (issue 1668).
+  a callback. A subscription whose callback also receives the sample's
+  attachment is registered with `nros_executor_add_subscription_with_info()`
+  into a `nros_subscription_t` and removed the same way (issue 1668); the
+  older direct-arg `nros_executor_add_subscription_raw_with_info()` takes no
+  subscription object, so its entry lives until `rclc_executor_fini()`.
 
 The equivalent service client helper `nros_client_call()` does **not**
 take an explicit executor — the client stashes the executor pointer

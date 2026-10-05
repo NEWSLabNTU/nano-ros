@@ -5620,6 +5620,13 @@ nros_ret_t nros_executor_add_subscription_raw(struct nros_executor_t *executor,
  * `nros_subscription_callback_t`, so this is its own entry point rather than
  * a flag on `nros_executor_add_subscription`.
  *
+ * **Not removable** (issue 1668): it takes no subscription object and hands
+ * back nothing, so its entry — slot, arena bytes and subscriber — lives
+ * until `rclc_executor_fini`. Kept for ABI compatibility (RFC-0054 is
+ * additive). Prefer [`nros_executor_add_subscription_with_info`], which
+ * registers the same entry into a `nros_subscription_t` that
+ * `nros_executor_remove_subscription` takes back out.
+ *
  * `node` may be NULL (legacy single-Node path) or a Node created via
  * `nros_executor_node_init` (routes to that Node's session). `qos` may be NULL
  * (defaults). Cross-RMW bridges read the `bridge_origin` tag from the
@@ -5638,6 +5645,48 @@ nros_ret_t nros_executor_add_subscription_raw_with_info(struct nros_executor_t *
                                                         const struct nros_qos_t *qos,
                                                         nros_subscription_info_callback_t callback,
                                                         void *context);
+
+/**
+ * Issue 1668 — register a raw subscription whose callback also receives the
+ * sample's wire **attachment**, into a `nros_subscription_t` the caller keeps,
+ * so it can be REMOVED.
+ *
+ * The removable sibling of [`nros_executor_add_subscription_raw_with_info`],
+ * in the rclc shape every other subscription add has — the info-callback twin
+ * of [`nros_executor_add_subscription_raw`]:
+ *
+ * ```c
+ * rclc_subscription_init_default(&sub, &node, &type, "/topic");
+ * nros_executor_add_subscription_with_info(&exec, &sub, on_sample, ctx,
+ *                                          NROS_EXECUTOR_ON_NEW_DATA);
+ * ...
+ * nros_executor_remove_subscription(&exec, &sub);
+ * nros_subscription_fini(&sub);
+ * ```
+ *
+ * Topic, type, hash, QoS and node come from the subscription (a caller that
+ * holds only type-name strings builds a `nros_message_type_t` from them — its
+ * fields are the same two strings the direct-arg form takes). The entry is
+ * the one the direct-arg form registers; what differs is that the
+ * subscription records `(handle, executor)` and the trigger table names it,
+ * so `nros_executor_remove_subscription` releases it and
+ * `rclc_executor_trigger_one` can name it. The subscription's own plain
+ * `callback` field is left untouched; `callback` here is the one dispatched.
+ *
+ * # Returns
+ * As [`nros_executor_add_subscription`]; `NROS_RET_INVALID_ARGUMENT` for a
+ * NULL `callback`.
+ *
+ * # Safety
+ * * `executor` and `subscription` must be valid, initialised objects.
+ * * `context` is passed through untouched and may be NULL.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_add_subscription_with_info(struct nros_executor_t *executor,
+                                                    struct nros_subscription_t *subscription,
+                                                    nros_subscription_info_callback_t callback,
+                                                    void *context,
+                                                    enum nros_executor_handle_invocation_t invocation);
 
 /**
  * Add a timer to the executor.
