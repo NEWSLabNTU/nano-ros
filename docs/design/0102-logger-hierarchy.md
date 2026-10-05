@@ -78,11 +78,25 @@ extra slot.
 
 Per RFC-0019, Rust implements and C/C++ delegate.
 
-- **Rust:** `Logger::child(&'static self, suffix: &str) -> Option<&'static Logger>`
-  (the rclrs `create_child` counterpart; spelling settled in phase-479). Builds
-  `"{parent}.{suffix}"` in a stack buffer, then `get_or_create_logger`. Idempotent:
-  the same name returns the same logger, so a `get_child` inside a log call costs
-  one intern-table lookup.
+- **Rust:** `Logger::create_child(&'static self, child_name: impl Borrow<str>)
+  -> Result<&'static Logger, ChildError>` — rclrs 0.7's name and parameter
+  shape (`create_child(&self, child_name: impl Borrow<str>) -> Result<Logger,
+  RclrsError>`, read from the copy vendored under `play_launch`), per RFC-0089's
+  same-name-same-shape rule. `Borrow` is in `core`, so the parameter costs
+  nothing on `no_std`. Builds `"{parent}.{child_name}"` in a stack buffer, then
+  `get_or_create_logger`. Idempotent: the same name returns the same logger, so a
+  call inside a log statement costs one intern-table lookup.
+  - **Fallible, as upstream is.** `ChildError` is `NameTooLong { len, max }` or
+    `ArenaFull`. A Rust caller chooses its own fallback
+    (`parent.create_child("x").unwrap_or(parent)`); D3's automatic fallback is
+    the C/C++ behaviour, because rclcpp's `get_child` has no error channel.
+  - **`&'static Logger`, not a value.** Runtime loggers live in the static arena
+    and are never freed; this is the one shape difference, and it makes the row
+    adopt-bounded rather than adopt.
+  - **The catch-all's children are top-level names.** rclrs names the child of
+    its default logger plain `child_name`, because that logger's name is empty.
+    Ours is `"nros"`, and it plays the same role, so `DEFAULT_LOGGER.create_child("x")`
+    is named `x`, not `nros.x`. The same rule holds in C and C++.
 - **C:** `nros_logger_get_child(const void* logger, const char* suffix)`. Returns the
   child's handle, or NULL when no child logger could be created (D3).
 - **C++:** `rclcpp::Logger::get_child(const std::string&)` (hosted) and
@@ -182,10 +196,19 @@ Decision:
 - The default follows the BOARD: Linux host boards 32, MCU boards 16, overridable
   per image. Sizing from declarations (RFC-0100) is not possible here — `get_child`
   is a runtime call no declaration names.
-- **Feature unification hazard, to fix in the same work:** `dynamic_logger_capacity`
-  tests `dynamic-loggers-0`, then `-8`, then `-32`, so if two crates in one graph
-  select different sizes the SMALLEST wins silently. Selection must have one
-  owner, or conflicting selections must fail the build.
+- **Mechanism: a knob, not a feature.** The count becomes
+  `NROS_LOG_DYNAMIC_LOGGERS`, resolved on the ladder every other pool count uses
+  (RFC-0049; `knob()` in `nros-params/build.rs`): image env (`[image.<id>] env`) >
+  Kconfig / board knob (`[board.knobs.*]`) > built-in 16. It reaches all three
+  roads the way existing knobs do, with a `CONFIG_NROS_LOG_DYNAMIC_LOGGERS` pairing
+  on Zephyr, and passes the knob-forwarding gates.
+- **Why not the feature.** Today's `dynamic-loggers-{0,8,32}` features are
+  unified across the graph, and `dynamic_logger_capacity` tests `-0`, then `-8`,
+  then `-32`, so two crates selecting different sizes silently get the SMALLEST.
+  A `compile_error!` on conflict would make that loud but still cannot say "the
+  image overrides the board": features have union, not precedence. An env value
+  has exactly one value per build, so the single-owner rule holds by
+  construction. The features retire after one release with a deprecation note.
 - `dynamic_loggers_in_use()` / capacity are reported by the boot report and by
   `just mem-report`, so the size is set from a measurement.
 
@@ -204,6 +227,10 @@ Exhaustion takes D3's fallback.
   attribution and aliases a shared threshold (D3).
 - **Parent on overflow, `set_level` forwarded to the parent.** Narrower aliasing,
   same defect.
+- **`Logger::child` returning `Option`.** A new name for an upstream method, and
+  a channel that cannot say WHY creation failed. Replaced by rclrs's spelling.
+- **Keep the size a cargo feature, with `compile_error!` on conflict.** Loud,
+  but cannot express an image overriding its board (D5).
 - **Raise the 48-byte cap.** Moves the edge; every image pays the arena bytes. Not
   excluded later, as a knob, alongside `rosout::NAME_CAP`.
 - **Always publish children on `/rosout`** (today's sink). Simpler and closer to
@@ -214,12 +241,14 @@ Exhaustion takes D3's fallback.
 
 ## Open questions
 
-1. Rust spelling: `Logger::child` vs rclrs's `create_child` name and its
-   `Result` return. Settled by the api-parity ledger in phase-479.
-2. The board-default mechanism for D5: a feature the board crate turns on, or a
-   board knob — either way with one owner per graph (D5's hazard).
+None. The Rust spelling (D1) and the D5 mechanism were settled 2026-10-05.
 
 ## Changelog
 
 - 2026-10 — created. Decisions D3 (parent + refuse), D4 (follow the release), D5
   (per-board default + reporting) agreed 2026-10-05.
+- 2026-10 — open questions closed: D1's Rust surface is rclrs's
+  `create_child(impl Borrow<str>) -> Result<&'static Logger, ChildError>`, with the
+  catch-all's children as top-level names; D5's size is the
+  `NROS_LOG_DYNAMIC_LOGGERS` knob on the RFC-0049 ladder, retiring the
+  `dynamic-loggers-<N>` features.
