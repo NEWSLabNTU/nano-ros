@@ -65,6 +65,34 @@ def predicates(text):
     return out
 
 
+def run_profile_args():
+    """The cargo-profile flags `test-all`'s nextest RUN builds with.
+
+    Issue 1500 — listing is BUILDING. `cargo nextest list` compiles every test
+    binary it lists, and with no profile it compiled them in `test`, while the
+    run this gate sits in front of builds `nros-relwithdebinfo`. The profile is
+    a `-C metadata` input, so the two shared nothing: one lane, two cold
+    workspace builds. Asked of the one helper the run itself uses, never
+    re-derived here, so the list cannot drift from the run again.
+    """
+    proc = subprocess.run(
+        ["bash", "-c", ". scripts/build/cargo.sh && nros_cargo_nextest_profile_args"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        print(
+            "check-nextest-test-filters: could not resolve the nextest cargo profile "
+            "(`nros_cargo_nextest_profile_args` failed — is the in-tree CLI built? "
+            "`just setup-cli`)",
+            file=sys.stderr,
+        )
+        print(proc.stderr[-2000:], file=sys.stderr)
+        sys.exit(2)
+    return proc.stdout.split()
+
+
 def test_index():
     """(binary_ids, (binary_id, test_name)) from `cargo nextest list`.
 
@@ -79,7 +107,8 @@ def test_index():
         # (`c-stub-test` vs `posix-c-port` both define the canonical
         # `nros_platform_*` symbols, and the build script `compile_error!`s on
         # the pair). Plain `--workspace` is also what `test-all` lists.
-        ["cargo", "nextest", "list", "--workspace", "--message-format", "json"],
+        ["cargo", "nextest", "list", *run_profile_args(), "--workspace",
+         "--message-format", "json"],
         cwd=ROOT,
         capture_output=True,
         text=True,

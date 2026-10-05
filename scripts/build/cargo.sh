@@ -115,10 +115,24 @@ nros_nextest_cpu_budget_args() {
     printf '%s\n' "--test-threads=$share"
 }
 
-nros_cargo_nextest_args() {
+# The cargo-PROFILE half of `nros_cargo_nextest_args`: the flags that decide
+# WHICH test binaries get built, without the run-only `--test-threads`.
+#
+# For anything that must BUILD what a `cargo nextest run` will then run —
+# `cargo nextest list` above all. Issue 1500: `check-nextest-test-filters`
+# listed with no profile, so on `host-tests` it compiled all 587 workspace test
+# binaries in the `test` profile, and `test-all` then compiled the same 587
+# again in `nros-relwithdebinfo` a minute later: two cold workspace builds in
+# one lane, the profile being a `-C metadata` input that shares nothing.
+nros_cargo_nextest_profile_args() {
     local flags
     flags="$(_nros_profile_query args --nextest "$(nros_cargo_profile_name)")" || return 1
     [ -n "$flags" ] && printf '%s\n' $flags
+    return 0
+}
+
+nros_cargo_nextest_args() {
+    nros_cargo_nextest_profile_args || return 1
     nros_nextest_cpu_budget_args
     return 0
 }
