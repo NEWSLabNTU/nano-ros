@@ -122,6 +122,43 @@ fn paired_zenoh_library_dir(router: &std::path::Path) -> Option<std::path::PathB
     dir.join("libzenohc.so").exists().then_some(dir)
 }
 
+/// Issue 1695 -- the `setup.bash` of the router's own prefix, when the caller
+/// has NOT sourced that prefix; `None` when it has, or when the router does not
+/// have the ROS layout.
+///
+/// Pairing the zenoh ([`paired_zenoh_library_dir`]) is only part of running the
+/// router. Measured in the self-hosted runner image, where `ROS_DISTRO` names
+/// the install and nothing sourced it: `rmw_zenohd` has no RUNPATH, so it also
+/// needs `librmw`, `librcutils` and `libament_index_cpp` from `<prefix>/lib`,
+/// and with those it ABORTS on `Environment variable 'AMENT_PREFIX_PATH' is not
+/// set or empty` -- it finds its default config through the ament index. The
+/// `ROS_DISTRO` step of [`crate::process::ros_zenohd_path`] exists for exactly
+/// that unsourced host, so every router it found there was one that could not
+/// start.
+///
+/// The router is then started through ROS's own `setup.bash`, for that process
+/// only -- never a hand-written copy of its variables (issue 0866), and never
+/// this process's environment: a build that sees `AMENT_PREFIX_PATH` finds ament
+/// MESSAGE packages, which is a different decision from "may run the router".
+/// `scripts/dev/zenohd.sh`'s `nros_router_env_exec` is the shell twin.
+fn unsourced_prefix_setup(
+    router: &std::path::Path,
+    ament_prefix_path: Option<&std::ffi::OsStr>,
+) -> Option<std::path::PathBuf> {
+    let dir = router.parent()?;
+    if dir.file_name()? != "rmw_zenoh_cpp" {
+        return None;
+    }
+    // <prefix>/lib/rmw_zenoh_cpp/rmw_zenohd -> <prefix>
+    let prefix = dir.parent()?.parent()?;
+    let setup = prefix.join("setup.bash");
+    if !setup.is_file() {
+        return None;
+    }
+    let sourced = ament_prefix_path.is_some_and(|v| std::env::split_paths(v).any(|p| p == prefix));
+    (!sourced).then_some(setup)
+}
+
 fn router_command(overrides: &[String]) -> TestResult<std::process::Command> {
     let path = crate::process::ros_zenohd_path().ok_or_else(|| {
         TestError::RouterUnavailable(format!(
@@ -158,7 +195,21 @@ fn router_command(overrides: &[String]) -> TestResult<std::process::Command> {
         );
     }
 
-    let mut cmd = std::process::Command::new(&path);
+    let ament = std::env::var_os("AMENT_PREFIX_PATH");
+    let mut cmd = match unsourced_prefix_setup(&path, ament.as_deref()) {
+        // `exec`, so the child IS the router: the pid the fixture waits on and
+        // kills is the router's, exactly as with the direct spawn below.
+        Some(setup) => {
+            let mut c = std::process::Command::new("bash");
+            c.arg("-c")
+                .arg(r#". "$1" >/dev/null 2>&1; exec "$2""#)
+                .arg("nros-router")
+                .arg(&setup)
+                .arg(&path);
+            c
+        }
+        None => std::process::Command::new(&path),
+    };
     // Put the paired zenoh ahead of whatever the inherited environment would
     // resolve; see `paired_zenoh_library_dir`.
     if let Some(dir) = paired_zenoh_library_dir(&path) {
@@ -188,10 +239,19 @@ fn describe_router(cmd: &std::process::Command) -> String {
         .and_then(|(_, v)| v)
         .map(|v| v.to_string_lossy().into_owned())
         .unwrap_or_default();
+    // The arguments too: a router started through its prefix's `setup.bash`
+    // (issue 1695) is `bash -c ... <setup> <router>`, and the program alone
+    // would name `bash`.
+    let args: Vec<String> = cmd
+        .get_args()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
     format!(
-        "ZENOH_CONFIG_OVERRIDE='{}' {}",
+        "ZENOH_CONFIG_OVERRIDE='{}' {}{}{}",
         overrides,
-        cmd.get_program().to_string_lossy()
+        cmd.get_program().to_string_lossy(),
+        if args.is_empty() { "" } else { " " },
+        args.join(" ")
     )
 }
 
@@ -647,6 +707,48 @@ mod tests {
             paired_zenoh_library_dir(&router).as_deref(),
             Some(libdir.as_path()),
             "must pair the router with the zenoh shipped beside it"
+        );
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// Issue 1695 -- an unsourced ROS-layout router is started through its own
+    /// prefix's `setup.bash`; a sourced one, or a router without the layout, is
+    /// not. Over a synthetic prefix, so it asserts the DERIVATION rather than
+    /// this host's install.
+    #[test]
+    fn an_unsourced_router_runs_in_its_prefix_environment() {
+        let tmp = std::env::temp_dir().join(format!("nros-router-env-{}", std::process::id()));
+        let router = tmp.join("lib/rmw_zenoh_cpp/rmw_zenohd");
+        std::fs::create_dir_all(router.parent().unwrap()).unwrap();
+
+        assert_eq!(
+            unsourced_prefix_setup(&router, None),
+            None,
+            "no setup.bash in the prefix: nothing to source"
+        );
+        std::fs::write(tmp.join("setup.bash"), b"").unwrap();
+        assert_eq!(
+            unsourced_prefix_setup(&router, None).as_deref(),
+            Some(tmp.join("setup.bash").as_path()),
+            "unsourced: the router's own prefix is sourced for it"
+        );
+        let sourced = std::env::join_paths([std::path::Path::new("/elsewhere"), &tmp]).unwrap();
+        assert_eq!(
+            unsourced_prefix_setup(&router, Some(&sourced)),
+            None,
+            "a prefix the caller already sourced is left alone"
+        );
+        let other = std::env::join_paths([std::path::Path::new("/elsewhere")]).unwrap();
+        assert!(
+            unsourced_prefix_setup(&router, Some(&other)).is_some(),
+            "sourcing a DIFFERENT prefix does not source this one"
+        );
+        let foreign = tmp.join("bin/zenohd");
+        assert_eq!(
+            unsourced_prefix_setup(&foreign, None),
+            None,
+            "a router without the ROS layout (NROS_RMW_ZENOHD) is not ours to wrap"
         );
 
         std::fs::remove_dir_all(&tmp).ok();
