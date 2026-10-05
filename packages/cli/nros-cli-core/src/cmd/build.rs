@@ -2255,6 +2255,15 @@ fn generate_entry(
                     // these rows go into has not been written yet.
                     &registry_patches_from(root, nros_root, &spec_nodes_dirs),
                 )
+                .map(|mut app| {
+                    // Issue 1702 -- the declared axes reach Kconfig from the
+                    // generated CMakeLists (see `capability_kconfig_cmake`).
+                    app.capabilities = declared_capabilities(bringup_dir)
+                        .into_iter()
+                        .map(str::to_string)
+                        .collect();
+                    app
+                })
                 .map_err(|e| eyre::eyre!("{e}"))?,
             ),
             _ => None,
