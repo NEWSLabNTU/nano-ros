@@ -1015,6 +1015,70 @@ class Node {
     template <typename M>
     typename ::rclcpp::Publisher<M>::SharedPtr create_publisher(const char* topic, ::size_t depth);
 
+    // phase-476 W1 — the DISPATCH verbs join it, for the same reason. Their
+    // results have been freestanding handles since phase-456 (the arena holds
+    // the subscription, the server, the client and the callable), so the
+    // `std::string` key was the only thing still keeping them hosted. The
+    // `std::string` overloads in the hosted block forward here.
+
+    /// `create_subscription<M>(topic, qos, callback)` — any callable; the
+    /// executor dispatches it. Available on every target.
+    template <typename M, typename Cb>
+    typename ::rclcpp::Subscription<M>::SharedPtr
+    create_subscription(const char* topic, const ::nros::QoS& qos, Cb cb);
+
+    /// `create_subscription<M>(topic, depth, callback)`.
+    template <typename M, typename Cb>
+    typename ::rclcpp::Subscription<M>::SharedPtr create_subscription(const char* topic,
+                                                                      ::size_t depth, Cb cb);
+
+    /// Poll-style service server (`create_service<S>(name, qos)`). Not an
+    /// upstream signature; see the `std::string` overload's note.
+    template <typename S>
+    ::nros::Owned<::nros::PollService<S>>
+    create_service(const char* name, const ::nros::QoS& qos = ::nros::QoS::services());
+
+    /// Callback-style service server (`void(const S::Request&, S::Response&)`).
+    template <typename S, typename F,
+              typename = typename ::nros::tr::enable_if<::nros::tr::is_convertible<
+                  F, void (*)(const typename S::Request&, typename S::Response&)>::value>::type>
+    typename ::rclcpp::Service<S>::SharedPtr
+    create_service(const char* name, F callback, const ::nros::QoS& qos = ::nros::QoS::services());
+
+    /// **REFUSED** — upstream's `shared_ptr` handler shape. See
+    /// `NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK`.
+    template <typename S, typename F,
+              typename = typename ::nros::tr::enable_if<
+                  !::rclcpp::detail::is_qos_arg<F>::value &&
+                  !::nros::tr::is_convertible<F, void (*)(const typename S::Request&,
+                                                          typename S::Response&)>::value>::type,
+              typename = void>
+    typename ::rclcpp::Service<S>::SharedPtr
+    create_service(const char*, F, const ::nros::QoS& = ::nros::QoS::services());
+
+    /// Future-style service client (`create_client<S>(name, qos)`); see the
+    /// `std::string` overload's note on the divergence.
+    template <typename S>
+    ::nros::Owned<::nros::PollClient<S>>
+    create_client(const char* name, const ::nros::QoS& qos = ::nros::QoS::services());
+
+    /// Callback-style service client (`void(const S::Response&)`).
+    template <typename S, typename F,
+              typename = typename ::nros::tr::enable_if<::nros::tr::is_convertible<
+                  F, void (*)(const typename S::Response&)>::value>::type>
+    typename ::rclcpp::Client<S>::SharedPtr
+    create_client(const char* name, F callback, const ::nros::QoS& qos = ::nros::QoS::services());
+
+    /// **REFUSED** — upstream's `shared_ptr` handler shape.
+    template <
+        typename S, typename F,
+        typename = typename ::nros::tr::enable_if<
+            !::rclcpp::detail::is_qos_arg<F>::value &&
+            !::nros::tr::is_convertible<F, void (*)(const typename S::Response&)>::value>::type,
+        typename = void>
+    typename ::rclcpp::Client<S>::SharedPtr
+    create_client(const char*, F, const ::nros::QoS& = ::nros::QoS::services());
+
     // -- parameters (bodies in `nros.hpp`) ----------------------------------
     //
     // Forwarders onto THE parameter store - the `nros_params::ParameterServer`

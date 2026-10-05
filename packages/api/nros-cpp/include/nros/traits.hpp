@@ -112,6 +112,24 @@ template <typename T> struct is_function : false_type {};
 template <typename R, typename... A> struct is_function<R(A...)> : true_type {};
 template <typename R, typename... A> struct is_function<R(A..., ...)> : true_type {};
 
+/// `std::is_convertible<From, To>`, from the core language alone — phase-476 W1.
+///
+/// Overload resolution against a `To` parameter answers it: `probe(To)` is
+/// viable exactly when a `From` converts implicitly to `To`. Both calls live
+/// in `sizeof`, which does not evaluate its operand, so nothing is defined. The
+/// same shape `qos.hpp`'s `is_qos_arg` uses, for the same reason: the board
+/// shims' `<type_traits>` cannot be assumed.
+template <typename From, typename To> class is_convertible {
+    typedef char yes_t[1];
+    typedef char no_t[2];
+    static yes_t& probe(To);
+    static no_t& probe(...);
+    static From make();
+
+  public:
+    static const bool value = sizeof(probe(make())) == sizeof(yes_t);
+};
+
 /// What a by-value parameter does to a type.
 ///
 /// Written out rather than approximated as `remove_cv<remove_reference<T>>`,

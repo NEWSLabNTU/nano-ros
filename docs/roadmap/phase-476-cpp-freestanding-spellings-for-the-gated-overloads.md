@@ -164,6 +164,24 @@ item — it is the last step of the timer item.
   gates only interop conversions, never a signature that is the only way to call
   something.
 
+  **Landed 2026-10-06.** Measured first: `get_logger(const char*)` was already
+  the primary spelling, and the `FixedString`/`HeapString` `std::string` members
+  were already interop (copy-and-delegate). What was NOT freestanding was the
+  value-returning dispatch verbs. `create_subscription`, `create_service` and
+  `create_client` took only a `std::string` key, although their results have
+  been freestanding handles since phase-456. Each now has a `const char*`
+  overload outside the hosted block, carrying the body the `std::string`
+  overload used to have, and the `std::string` overloads forward to it. The
+  service and client constraints use a new STL-free
+  `nros::tr::is_convertible` instead of `std::is_convertible`. A string literal
+  binds the `const char*` overload exactly, so a ported call reaches the
+  freestanding form on a hosted target too. `rclcpp_node_freestanding_surface.cpp`
+  instantiates all six on its `-nostdinc++` arm.
+
+  What still keeps `std::string` in the hosted conjunction is W3's: the
+  `NodeOptions` constructors and storage, and the `std::string`-keyed forwarders
+  themselves.
+
 * **W2 [core, cpp] — timers: callback captured in the arena, a freestanding
   handle, and the duration overload.** phase-456 W1 put a subscription's capture
   in the arena; timers never got that treatment, so `Timer` still needs
