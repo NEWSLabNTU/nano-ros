@@ -977,6 +977,47 @@ naming the descriptor at all moves ten generated files against the carriers-only
 build, every move a descriptor-first consumer answering from the union where the
 multi-entry road had fallen to a builtin (issue 1649 has the table).
 
+**Amended 2026-10-06 (issue 1701): the COUNTS reduce per image, and the rows
+stay the union.** Rule 1's reduction folds the rows as before. The derived
+counts of the fragment and of this descriptor are no longer read off that
+union. Each process runs exactly ONE entry, so the runtime's need is the
+LARGEST single entry, knob by knob. The union SUMS where that need is a max.
+Measured on `examples/workspaces/cpp` native, seven entries:
+
+| knob | union | largest entry |
+| --- | --- | --- |
+| `MAX_CBS` | 16 | 6 |
+| subscribers | 3 | 2 |
+| publishers | 5 | 4 |
+| queryables | 11 | 9 |
+| liveliness | 33 | 20 |
+| local queryable | on | off |
+
+There is one reducer, `DerivedEntityKnobs::max_over`, inside
+`EntityInventory::derive`. Both outputs call it, so they still cannot disagree.
+It applies one rule per field:
+
+- **Counts** take the max, because every count is a capacity.
+- **Same-session queryable** is an OR over images, never
+  `max(clients) && max(servers)`.
+- **Monitor tables** reduce to "unknown" when any image's table is unknown.
+- **Transient-local fact** keeps its refusal (D6).
+
+**What stays the union, and why.** The type lists stay the union, because the
+pool they size is shared by every image's types. The declared-QoS rows stay
+under rule 2's refuse-on-disagree. The parameter declarations stay the union,
+because the same list renders the per-component declared-params table, which
+must hold every node of every image.
+
+**How each entry's view is built.** Each entry's view is the single-entry
+composition, with one addition: a component the entry starts that its own model
+leaves undescribed takes the statement another entry's contract made of that
+component. What a component creates is a property of its code, not of the launch
+file. Without that addition, `native_robot1`/`2` (`multihost.launch.xml`, no
+contract) refuse alone, and a refusal leaves every pool at its crate default.
+An entry whose model says nothing about which components it starts is sized as
+the union.
+
 ### D4 revised — producers are named by INPUT; the road is where they are CALLED
 
 D4 says "THREE producers, one composer" in CLAUDE.md and "TWO producers" in the
