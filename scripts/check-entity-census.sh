@@ -15,6 +15,9 @@
 #   3. ADD ROW       declare it. The check passes.
 #   4. TOUCH ONLY    rewrite a source file with identical bytes. NOTHING is
 #                    stale.
+#  4c. CAPABILITIES  turn on `param_services` in `system.toml`: STALE, because
+#                    the axes decide what the census binary is built with
+#                    (issue 1680); restore them and it is fresh with no re-run.
 #
 # Move 4 is the point of the whole wave and the reason staleness is
 # content-addressed rather than mtime-keyed. A `git pull`, a rebase or a
@@ -471,6 +474,42 @@ $(cat "$ws/check.log")"
 echo "check-entity-census: move 4b ok -- an incomplete census is written and refused"
 
 # ---------------------------------------------------------------------------
+# Move 4c -- the CAPABILITY AXES are a build input (issue 1680). Turning on
+# `param_services` changes what the census binary is built with -- it
+# registers the parameter service family, which the recorder records and
+# `census_callback_slots` counts -- so a census taken before the edit no longer
+# describes the image. Before 1680 nothing recorded the axes, and a census
+# taken without `param_services` read FRESH afterwards because the binary its
+# `binary` digest names had not been rebuilt yet. Only the axes are digested:
+# restoring the file's axes makes the same census fresh again, with no re-run,
+# and move 5 rewrites the `[census]` policy in the same file and must stay
+# fresh.
+# ---------------------------------------------------------------------------
+system_before="$(cat "$bringup/system.toml")"
+cat > "$bringup/system.toml" <<'TOML'
+[system]
+name = "census_fixture"
+rmw = "zenoh"
+domain_id = 0
+features = ["param_services"]
+
+[census]
+on_missing = "refuse"
+on_stale = "refuse"
+TOML
+if check --require-fresh; then
+    fail "move 4c: a census taken without param_services must be stale once it is declared:
+$(cat "$ws/check.log")"
+fi
+want "census stale" "move 4c"
+want "capabilities:param_services" "move 4c names the axis that moved"
+want_not "missing-in-contract" "move 4c: a stale census must not be compared"
+printf '%s\n' "$system_before" > "$bringup/system.toml"
+check --require-fresh || fail "move 4c: the axes are back, so the census is fresh again:
+$(cat "$ws/check.log")"
+echo "check-entity-census: move 4c ok -- a capability edit stales the census, and reverting it does not need a re-run"
+
+# ---------------------------------------------------------------------------
 # Move 5 -- the OTHER policy arm. `warn` says the same thing and continues.
 # ---------------------------------------------------------------------------
 # Both arms matter. Issue 1419 made `refuse` the DEFAULT, so a bringup that
@@ -613,4 +652,4 @@ $(cat "$ws/run.log")"
 
 self_test
 
-echo "check-entity-census: PASS -- 8 moves (missing, fresh, stale, re-run, add-row, touch-only, incomplete, no-contract) + self-test, producer and consumer naming the census only by its model"
+echo "check-entity-census: PASS -- 9 moves (missing, fresh, stale, re-run, add-row, touch-only, incomplete, capabilities, no-contract) + self-test, producer and consumer naming the census only by its model"

@@ -1039,9 +1039,47 @@ pub fn recompute_digest(path: &Path, recorded: &str) -> Result<String, String> {
             std::fs::read(path).map_err(|e| format!("cannot read `{}`: {e}", path.display()))?;
         return Ok(format!("sha256:{:x}", sha2::Sha256::digest(&bytes)));
     }
+    if recorded.starts_with(CAPABILITIES_DIGEST_PREFIX) {
+        return capabilities_digest(path);
+    }
     Err(format!(
         "unknown digest algorithm in `{recorded}` -- the census was written by a producer this          tree cannot verify"
     ))
+}
+
+/// The digest algorithm of a census's `capabilities` input (issue 1680).
+pub const CAPABILITIES_DIGEST_PREFIX: &str = "capabilities:";
+
+/// The capability axes a bringup's `system.toml` turns on, as a census
+/// freshness digest: `capabilities:<axis>,<axis>` in registry order, or
+/// `capabilities:` for none.
+///
+/// Issue 1680 -- the axes are a BUILD input of the census binary, not a
+/// statement about the contract: `param_services` and `lifecycle` register
+/// their service families through the RMW, which the recorder sees and
+/// `census_callback_slots` counts, so a census taken under one set is not a
+/// statement about an image built under another. Only the AXES are digested,
+/// never the whole file: `system.toml` also holds `[census.waive]` and the
+/// `[census]` policy, and editing either must not stale the evidence they are
+/// applied to (the rule `is_freshness_input` states for the contract).
+///
+/// Readable rather than hashed, so a stale verdict says which axis moved.
+/// Axes are read the one way the build reads them,
+/// `SystemToml::capability_enabled` over the registry (the `[system]
+/// features` list and the deprecated typed blocks), so this cannot disagree
+/// with the build about what is on. A file that does not parse is an error,
+/// which the caller reports as STALE rather than as "unchanged".
+pub fn capabilities_digest(system_toml: &Path) -> Result<String, String> {
+    let raw = std::fs::read_to_string(system_toml)
+        .map_err(|e| format!("cannot read `{}`: {e}", system_toml.display()))?;
+    let sys: super::cargo_metadata_schema::SystemToml = toml::from_str(&raw)
+        .map_err(|e| format!("cannot parse `{}`: {e}", system_toml.display()))?;
+    let axes: Vec<&str> = cargo_nano_ros::capability_resolver::CAPABILITIES
+        .iter()
+        .filter(|c| sys.capability_enabled(c.declared))
+        .map(|c| c.declared)
+        .collect();
+    Ok(format!("{CAPABILITIES_DIGEST_PREFIX}{}", axes.join(",")))
 }
 
 /// Every recorded input that is no longer current, in the order recorded.
@@ -1079,6 +1117,76 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("src")).unwrap();
         dir
+    }
+
+    /// Issue 1680 -- the census's `capabilities` digest moves with the axes
+    /// and with nothing else in the file.
+    #[test]
+    fn capabilities_digest_moves_with_the_axes_and_nothing_else() {
+        let dir = tmp("capabilities-digest");
+        let st = dir.join("system.toml");
+        let base = "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n";
+        std::fs::write(&st, base).unwrap();
+        let none = capabilities_digest(&st).unwrap();
+        assert_eq!(none, "capabilities:");
+
+        // The `[census]` policy and waivers live in the same file and are
+        // applied TO the census; editing them must not stale it.
+        std::fs::write(
+            &st,
+            format!("{base}\n[census]\non_missing = \"warn\"\non_stale = \"warn\"\n"),
+        )
+        .unwrap();
+        assert_eq!(capabilities_digest(&st).unwrap(), none);
+
+        // Both spellings of an axis read the same way the build reads them.
+        std::fs::write(
+            &st,
+            base.replace(
+                "domain_id = 0\n",
+                "domain_id = 0\nfeatures = [\"lifecycle\", \"param_services\"]\n",
+            ),
+        )
+        .unwrap();
+        let listed = capabilities_digest(&st).unwrap();
+        assert_eq!(listed, "capabilities:param_services,lifecycle");
+        std::fs::write(&st, format!("{base}\n[param_services]\nenabled = true\n")).unwrap();
+        assert_eq!(
+            capabilities_digest(&st).unwrap(),
+            "capabilities:param_services"
+        );
+
+        // And through the freshness path: recorded under none, read after the
+        // edit, it is STALE and the line names both axis sets.
+        let stale = stale_recorded_inputs(
+            &dir,
+            &[RecordedInput {
+                role: "capabilities".into(),
+                path: "system.toml".into(),
+                digest: none.clone(),
+            }],
+        );
+        assert_eq!(stale.len(), 1, "{stale:?}");
+        assert!(
+            stale[0].line().contains("now capabilities:param_services"),
+            "{}",
+            stale[0].line()
+        );
+
+        // A file that no longer parses is STALE, never "unchanged".
+        std::fs::write(&st, "not = [toml").unwrap();
+        assert_eq!(
+            stale_recorded_inputs(
+                &dir,
+                &[RecordedInput {
+                    role: "capabilities".into(),
+                    path: "system.toml".into(),
+                    digest: none,
+                }],
+            )
+            .len(),
+            1
+        );
     }
 
     /// A probe-ready declaration in `dir`, carrying `language`.
