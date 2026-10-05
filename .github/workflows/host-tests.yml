@@ -4,8 +4,12 @@
 # concurrency, and neither cancels — both must complete):
 #   - unit        : `just test-unit` — workspace unit tests
 #                   (`cargo nextest --workspace --exclude nros-tests`).
-#   - integration : `just test-integration` — the nros-tests crate (QEMU/Zephyr/
-#                   ROS-interop groups excluded), the scaffold/launch/codegen net.
+#   - gates       : `just ci tier1 gates` — tier 1's `just check` half.
+#   - integration : `just ci tier1 run` — fixtures + preconditions +
+#                   rust-rtos-link-check + `test-all` over the tier-1 cover.
+#                   The two were one `just ci tier1` step until issue 1651:
+#                   in series they overran the job's ceiling, a timeout reads
+#                   `cancelled`, and `test-all` never ran.
 #
 # Nightly (03:00 UTC) + on-demand ONLY — never per push (a per-push run was
 # cancelled by the next push and never completed: #57, and again 26 of 29 push
@@ -154,6 +158,173 @@ jobs:
         run: |
           source ./activate.sh
           just test-unit
+
+  # ----- tier-1 gates: `just ci tier1 gates` (= `just check`) -----
+  #
+  # Issue 1651 — the half of `just ci tier1` that needs NO fixture build, moved
+  # off the integration job's critical path onto its own runner. The same work,
+  # once a night, as before; only WHERE it runs changed.
+  #
+  # Why: the integration job reached `just ci tier1` ~82 minutes in (fixtures
+  # 14 + 53 min), and the tier ran `just check` first — fast 13 min + build
+  # 49 min at -P4 — so the two runs whose `just check` went green (37115523816,
+  # 37176625915) both hit the job's 150-minute ceiling inside the next step. A
+  # job TIMEOUT concludes `cancelled`, not `failure`, and `test-all` — the
+  # suite this lane is the only runner of — had not executed on any run since
+  # 2026-06-17. Split, each job fits its ceiling with room, and each one's
+  # verdict is its own.
+  #
+  # It needs what `gate.yml`'s nightly compile tier needs and nothing more: the
+  # CLI, `just setup native` (which also builds `nros-launch-resolve`), the
+  # `cxx-syntax` compile-check fixtures and the example message bindings.
+  gates:
+    name: tier-1 gates (just check)
+    runs-on: ubuntu-22.04
+    # The work moved here measured 62 minutes inside the integration job
+    # (check-fast 788 s + check-build 2942 s wall, run 37176625915), plus ~8
+    # minutes of provisioning. 120 is a ceiling with ~70 % headroom over that,
+    # the issue-1492 argument: a number this repository owns.
+    timeout-minutes: 120
+    concurrency:
+      group: host-tests-gates-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      # Same mounts as the integration job (issue 1353): `check build` is the
+      # step that has exhausted this disk on gate.yml's nightly.
+      volumes:
+        - /usr/local/lib/android:/__host-reclaim/android
+        - /usr/share/dotnet:/__host-reclaim/dotnet
+        - /usr/local/.ghcup:/__host-reclaim/ghcup
+        - /opt/ghc:/__host-reclaim/ghc
+        - /usr/share/swift:/__host-reclaim/swift
+        - /usr/local/share/powershell:/__host-reclaim/powershell
+    defaults:
+      run:
+        shell: bash
+    # Issue 1500, same value and reason as the integration job: `check
+    # test-targets` and `check cli-tests` are the dev-profile builds it sized.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # Restore only — the integration job owns the SAVE for this key, and two
+      # jobs saving one key race for nothing.
+      - name: Restore CLI build cache (Phase 218)
+        uses: actions/cache/restore@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/ (Phase 218)
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      - name: Derive the build parallelism
+        run: |
+          cpus="$(nproc)"
+          mem_gb="$(awk '/MemTotal/ {print int($2 / 1024 / 1024)}' /proc/meminfo)"
+          by_mem=$(( mem_gb / 2 ))
+          [ "$by_mem" -lt 1 ] && by_mem=1
+          jobs=$(( cpus < by_mem ? cpus : by_mem ))
+          echo "NROS_CI_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
+          echo "runner: ${cpus} cpu, ${mem_gb} GiB -> NROS_CI_BUILD_JOBS=${jobs}"
+
+      - name: just setup native
+        run: |
+          source ./activate.sh
+          just setup native
+
+      - name: Export play_launch_parser on PATH
+        run: |
+          plp_bin="$(dirname "$(find "$HOME/.nros/sdk/play_launch_parser" -type f -name play_launch_parser -path '*/bin/*' 2>/dev/null | head -1)")"
+          [ -n "$plp_bin" ] && echo "$plp_bin" >> "$GITHUB_PATH" || true
+
+      # The two artifacts `check build` asserts and does not produce — see the
+      # same two steps in gate.yml (issue 0898) for the measurement.
+      - name: build compile-check fixtures (check-source-gates asserts them)
+        run: |
+          source ./activate.sh
+          just build-compile-check-fixtures cxx-syntax
+
+      # `just setup native` already builds it; named here because
+      # `check-lane-contracts` asks for the producer `generate-bindings` is
+      # ordered after, and a no-op rebuild costs seconds.
+      - name: Build nros-launch-resolve (generate-bindings shells out to it)
+        run: |
+          source ./activate.sh
+          just setup-launch-resolve
+
+      - name: generate message bindings (native::check asserts them)
+        run: |
+          source ./activate.sh
+          just generate-bindings
+
+      - name: Disk report (before tier-1 gates) — issue 1353
+        if: ${{ !cancelled() }}
+        run: scripts/ci/disk-report.sh "before just ci tier1 gates"
+
+      - name: Reclaim disk before the gates — issue 1353
+        if: ${{ !cancelled() }}
+        run: scripts/ci/reclaim-disk.sh "before just ci tier1 gates"
+
+      - name: Upload the disk transcript (before the gates) — issue 1353
+        if: ${{ !cancelled() && env.NROS_DISK_TRANSCRIPT != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: disk-transcript-before-tier1-gates
+          path: ${{ env.NROS_DISK_TRANSCRIPT }}
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: just ci tier1 gates
+        if: ${{ !cancelled() }}
+        env:
+          CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
+        run: |
+          source ./activate.sh
+          mkdir -p build/ci-logs
+          set +e
+          just ci tier1 gates > build/ci-logs/ci-tier1-gates.log 2>&1
+          rc=$?
+          set -e
+          echo "::group::ci tier1 gates output (tail)"; tail -200 build/ci-logs/ci-tier1-gates.log; echo "::endgroup::"
+          exit $rc
+
+      - name: Disk report (after tier-1 gates) — issue 1353
+        if: ${{ always() }}
+        run: scripts/ci/disk-report.sh "after just ci tier1 gates"
+
+      - name: Upload the disk transcript (after the gates) — issue 1353
+        if: ${{ always() && env.NROS_DISK_TRANSCRIPT != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: disk-transcript-after-tier1-gates
+          path: ${{ env.NROS_DISK_TRANSCRIPT }}
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload tier-1 gates log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-tier1-gates-ci-logs
+          path: build/ci-logs/
+          if-no-files-found: ignore
+          retention-days: 7
 
   # ----- nros-tests integration (heavy; always completes) -----
   integration:
@@ -511,7 +682,10 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: just ci tier1
+      # Issue 1651 — `run`, not the whole tier: `just check` is the `gates`
+      # job above, on its own runner. Same work, and this job now fits its
+      # ceiling with `test-all` in it.
+      - name: just ci tier1 run
         env:
           CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
           # This lane builds a DELIBERATE SUBSET of the native fixtures --
@@ -530,7 +704,7 @@ jobs:
           source ./activate.sh
           mkdir -p build/ci-logs
           set +e
-          just ci tier1 > build/ci-logs/ci-tier1.log 2>&1
+          just ci tier1 run > build/ci-logs/ci-tier1.log 2>&1
           rc=$?
           set -e
           echo "::group::ci tier1 output (tail)"; tail -200 build/ci-logs/ci-tier1.log; echo "::endgroup::"

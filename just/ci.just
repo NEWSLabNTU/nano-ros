@@ -108,44 +108,84 @@ gate:
 l1: gate
 
 
+# `just ci tier1 [part]` — `all` (the default) is the tier as it has always
+# run: preconditions, `just check`, then `rust-rtos-link-check` + `test-all`.
+#
+# Issue 1651 — the PARTS exist so CI can run them on two runners at once. The
+# `host-tests` integration job reached this recipe ~82 minutes in, and `just
+# check` alone (fast + build) then took ~62 of its remaining 68, so every run
+# from 2026-10-03 on hit the job's 150-minute ceiling inside `just check` —
+# a job timeout reads `cancelled`, and `test-all` (the suite the lane exists
+# for) was never reached once. `gates` and `run` are the same work, split:
+#
+#   gates — `just check`. Needs no fixture build.
+#   run   — preconditions + `rust-rtos-link-check` + `test-all`.
+#
+# Positional, like `ci matrix <depth>`: `just` does not parse `name=value` for
+# a module recipe.
 [group("ci")]
-tier1:
+tier1 part="all":
     #!/usr/bin/env bash
     set -euo pipefail
-    # phase-395 W19 — COORDINATE-scoped, like tier 2, and no longer
-    # `NROS_TEST_SCOPE=native`.
-    #
-    # The name filter excluded `zephyr` and `threadx` outright — the very
-    # platforms `board-support.toml` grants tier 1 — so the lane covered one of
-    # the three it promised. No token spelling fixes that: `zephyr` also matches
-    # `zephyr_cortex_m_qemu`, which is tier 2. Coordinates select exactly the
-    # cover and nothing else, which is the same move phase-340 W3 made for tier
-    # 2 and the same reason.
-    #
-    # One computation reaching the build, the staleness gate and the run — the
-    # tier-2 recipe below spells it identically on purpose.
+    case "{{ part }}" in
+        all)   just ci::_tier1-step preconditions
+               just ci::_tier1-step gates
+               just ci::_tier1-step tests
+               echo "CI passed (tier 1 — host-executable platforms; cross coverage needs \`just ci-matrix\`)!" ;;
+        gates) just ci::_tier1-step gates ;;
+        run)   just ci::_tier1-step preconditions
+               just ci::_tier1-step tests ;;
+        *) echo "just ci tier1: unknown part '{{ part }}' — expected 'all', 'gates' or 'run'." >&2
+           echo "  all   = preconditions + just check + rust-rtos-link-check + test-all" >&2
+           echo "  gates = just check" >&2
+           echo "  run   = preconditions + rust-rtos-link-check + test-all" >&2
+           exit 2 ;;
+    esac
+
+# phase-395 W19 — COORDINATE-scoped, like tier 2, and no longer
+# `NROS_TEST_SCOPE=native`.
+#
+# The name filter excluded `zephyr` and `threadx` outright — the very
+# platforms `board-support.toml` grants tier 1 — so the lane covered one of
+# the three it promised. No token spelling fixes that: `zephyr` also matches
+# `zephyr_cortex_m_qemu`, which is tier 2. Coordinates select exactly the
+# cover and nothing else, which is the same move phase-340 W3 made for tier
+# 2 and the same reason.
+#
+# One computation reaching the build, the staleness gate and the run — the
+# tier-2 recipe below spells it identically on purpose.
+#
+# issue 0482 — the preflight needs the SAME coordinate file the run gets.
+# Without it the check refuses ("lane 'tier1' is coordinate-scoped, but
+# NROS_TEST_COORDS is unset"), which made `just ci` unable to satisfy its own
+# precondition: it failed identically before and after a successful
+# `just build-test-fixtures lane=tier1`, so the message pointed at fixtures
+# that were already there. The variable was passed to the RUN but not to the CHECK — the two halves of one fact, and
+# only one of them had it — every step below gets it from one computation.
+#
+# `check` is a MODULE since the import->mod conversion, so it cannot share an
+# invocation with root recipes: `just check rust-rtos-link-check test-all`
+# parses as "recipe rust-rtos-link-check IN module check" and dies with
+# "justfile does not contain recipe `check rust-rtos-link-check`". It used to
+# mean three recipes. Split, so the module default runs as itself.
+[private]
+_tier1-step step:
+    #!/usr/bin/env bash
+    set -euo pipefail
     source scripts/build/fixture-lane.sh
     coords="$(nros_lane_coords_file tier1)"
     coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
-    # issue 0482 — the preflight needs the SAME coordinate file the run gets.
-    # Without it the check refuses ("lane 'tier1' is coordinate-scoped, but
-    # NROS_TEST_COORDS is unset"), which made `just ci` unable to satisfy its own
-    # precondition: it failed identically before and after a successful
-    # `just build-test-fixtures lane=tier1`, so the message pointed at fixtures
-    # that were already there. The variable is computed two lines above and was
-    # passed to the RUN but not to the CHECK — the two halves of one fact, and
-    # only one of them had it.
-    NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" \
-        bash scripts/check-tier-preconditions.sh
-    # `check` is a MODULE since the import->mod conversion, so it cannot share an
-    # invocation with root recipes: `just check rust-rtos-link-check test-all`
-    # parses as "recipe rust-rtos-link-check IN module check" and dies with
-    # "justfile does not contain recipe `check rust-rtos-link-check`". It used to
-    # mean three recipes. Split, so the module default runs as itself.
-    NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" just check
-    NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" \
-        just rust-rtos-link-check test-all
-    echo "CI passed (tier 1 — host-executable platforms; cross coverage needs \`just ci-matrix\`)!"
+    case "{{ step }}" in
+        preconditions)
+            NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" \
+                bash scripts/check-tier-preconditions.sh ;;
+        gates)
+            NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" just check ;;
+        tests)
+            NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" \
+                just rust-rtos-link-check test-all ;;
+        *) echo "just ci::_tier1-step: unknown step '{{ step }}'" >&2; exit 2 ;;
+    esac
 
 # L3 — cross build + link + SYMBOL checks. No QEMU.
 #
