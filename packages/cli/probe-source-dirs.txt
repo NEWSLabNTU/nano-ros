@@ -13,7 +13,6 @@ packages/boards/nros-board-common
 packages/cli/nros-entry-lower
 packages/cli/nros-pkg-index
 packages/core/nros-core
-packages/core/nros-diagnostics
 packages/core/nros-executor-layout
 packages/core/nros-log
 packages/core/nros-macros
@@ -22,9 +21,6 @@ packages/core/nros-orchestration-ir
 packages/core/nros-params
 packages/core/nros-rmw
 packages/core/nros-serdes
-packages/interfaces/generated/humble/nros-builtin-interfaces
-packages/interfaces/generated/humble/nros-diagnostic-msgs
-packages/interfaces/generated/humble/nros-std-msgs
 packages/platform/nros-platform
 packages/platform/nros-platform-api
 packages/platform/nros-platform-cffi

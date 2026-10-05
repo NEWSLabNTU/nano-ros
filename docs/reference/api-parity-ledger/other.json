@@ -1317,6 +1317,34 @@
     "verdict": "extension",
     "why": "phase-467 W1 -- the one capacity check every monitor installer makes (the Rust `try_set_monitor_tables` and the C ABI's `nros_cpp_install_monitors`). See `rust:MonitorTableFull`."
   },
+  "rust:install_contract_monitors": {
+    "verdict": "extension",
+    "why": "Install one executor's monitor tables (refusing, never truncating) and arm its `/diagnostics` reporter, before the first node. issue 1676 -- `nros::contract`, the on-target half of RFC-0052's contract monitors that a Rust entry reaches: `nros::main!` installs the baked tables through it, and nros-cpp's `nros_cpp_install_monitors` arms the same reporter. No rclrs counterpart -- ROS 2 has no contract monitors; the observer reads the reports on `/diagnostics` in play_launch's RFC-0050 rule vocabulary. See `rust:MonitorSpec`."
+  },
+  "rust:ContractReporter": {
+    "verdict": "extension",
+    "why": "`static` storage for one executor's reporter, which a Rust entry owns where the C++ context holds a field. issue 1676 -- `nros::contract`, the on-target half of RFC-0052's contract monitors that a Rust entry reaches: `nros::main!` installs the baked tables through it, and nros-cpp's `nros_cpp_install_monitors` arms the same reporter. No rclrs counterpart -- ROS 2 has no contract monitors; the observer reads the reports on `/diagnostics` in play_launch's RFC-0050 rule vocabulary. See `rust:MonitorSpec`."
+  },
+  "rust:ContractReporter::new": {
+    "verdict": "extension",
+    "why": "See `rust:ContractReporter`."
+  },
+  "rust:DiagSink": {
+    "verdict": "extension",
+    "why": "One executor's `/diagnostics` publisher and its sent/failed counters; the violation sink maps each violation through `nros-diagnostics`' `report_violation`. issue 1676 -- `nros::contract`, the on-target half of RFC-0052's contract monitors that a Rust entry reaches: `nros::main!` installs the baked tables through it, and nros-cpp's `nros_cpp_install_monitors` arms the same reporter. No rclrs counterpart -- ROS 2 has no contract monitors; the observer reads the reports on `/diagnostics` in play_launch's RFC-0050 rule vocabulary. See `rust:MonitorSpec`."
+  },
+  "rust:DiagSink::create": {
+    "verdict": "extension",
+    "why": "See `rust:DiagSink`."
+  },
+  "rust:DiagSink::hook": {
+    "verdict": "extension",
+    "why": "See `rust:DiagSink`."
+  },
+  "rust:DIAG_TOPIC": {
+    "verdict": "extension",
+    "why": "The topic ROS 2's diagnostics tooling reads. See `rust:DiagSink`."
+  },
   "rust:crc32": {
     "verdict": "extension",
     "why": "CRC-32/ISO-HDLC over a byte slice -- the same polynomial AUTOSAR E2E and EN 50159 name, with a `const`-built table so a `no_std` image pays no init. Public because a user who bakes their own attachment has to compute the same value. See `rust:SafetyValidator`."

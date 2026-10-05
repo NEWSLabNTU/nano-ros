@@ -19,7 +19,7 @@ lan9118-smoltcp                      3   1     0       0      0
 logging-smoke-nuttx-qemu-arm         1   0     0       1      0
 logging-smoke-threadx-riscv64        1   0     0       1      0
 mps2-an385-pac                       0   1     1       2      0
-nros                                58  13     2      25      0
+nros                                63  16     3      25      0
 nros-baremetal-common               24   0     0      21      0
 nros-board-cffi                      3   0     0       6      0
 nros-board-esp32-qemu               11   1     1       0      0
@@ -39,9 +39,9 @@ nros-build-helpers                   2   0     0       2      0
 nros-c                             386  69     5     436      0
 nros-cli-core                       22   0     0       0      0
 nros-core                            2   0     2       2      0
-nros-cpp                           767  24     0     320      0
+nros-cpp                           766  23     0     320      0
 nros-log                            19   0     6       1      0
-nros-macros                         11   0     1       2      0
+nros-macros                         13   0     1       2      0
 nros-node                          466  161    25      93      0
 nros-nuttx-ffi                       1   0     0       1      0
 nros-nuttx-riscv-ffi                 1   0     0       1      0
