@@ -176,9 +176,103 @@ impl DiagnosticReporter {
     }
 }
 
+/// phase-474 I7 -- one violation report, streamed as CDR straight into `w`,
+/// byte-identical to serializing what [`DiagnosticReporter::report_violation`]
+/// returns (with no rate limit).
+///
+/// The reporter runs on the spin thread, at detection. The value form puts a
+/// whole `DiagnosticArray` on that stack -- 5,176 B on a 64-bit host: a
+/// four-slot vector of 1,224 B statuses, each with eight key/value slots,
+/// plus the status built before it -- to send one status with one key/value.
+/// On the safety island that frame ran a 16 KiB main stack into the idle
+/// thread's on the first stored violation. This writes the same bytes from the
+/// borrowed strings; the largest locals are the 64 B message and an empty
+/// `Header` (frame id capacity 256).
+///
+/// Field limits follow the value form exactly: a string longer than its
+/// field's capacity (name 64, message 128, hardware id 96) is sent EMPTY,
+/// because that is what `heapless::String::push_str` leaves.
+pub fn write_violation_report(
+    w: &mut nros_serdes::CdrWriter<'_>,
+    rule: &str,
+    fqn: &str,
+    measured: u32,
+    declared: u32,
+) -> Result<(), nros_serdes::SerError> {
+    use core::fmt::Write as _;
+    use nros_serdes::Serialize as _;
+    fn fit(s: &str, cap: usize) -> &str {
+        if s.len() <= cap {
+            s
+        } else {
+            ""
+        }
+    }
+    let mut message = heapless::String::<64>::new();
+    let _ = write!(message, "measured {measured} vs declared {declared}");
+    // DiagnosticArray { header, status: [one] }
+    let array = w.begin_dheader()?;
+    nros_std_msgs::msg::Header::default().serialize(w)?;
+    w.write_u32(1)?;
+    // DiagnosticStatus { level, name, message, hardware_id, values: [one] }
+    let status = w.begin_dheader()?;
+    w.write_u8(Severity::Error.level())?;
+    w.write_string(fit(rule, 64))?;
+    w.write_string(fit(&message, 128))?;
+    w.write_string(fit(fqn, 96))?;
+    w.write_u32(1)?;
+    // KeyValue { "kind", assumption | guarantee }
+    let kv = w.begin_dheader()?;
+    w.write_string("kind")?;
+    w.write_string(kind_for_rule(rule).as_str())?;
+    w.end_dheader(kv)?;
+    w.end_dheader(status)?;
+    w.end_dheader(array)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// phase-474 I7 -- the streamed report is the value form's bytes, under
+    /// XCDR1 and XCDR2, including a string past its field's capacity.
+    #[test]
+    fn the_streamed_report_is_the_value_reports_bytes() {
+        use nros_serdes::{CdrWriter, Serialize as _};
+        let long = "/a/very/long/node/name/that/does/not/fit/in/ninety/six/bytes/of/hardware/id/at/all/really/truly/not/even/close";
+        assert!(long.len() > 96);
+        let cases = [
+            (RULE_SILENCE, "/n/in", 0u32, 200u32),
+            (RULE_MAX_LATENCY, "/mrm_handler/mrm_state", 250, 206),
+            (RULE_RATE_HIERARCHY, long, 9_984, 10_000),
+        ];
+        for xcdr2 in [false, true] {
+            for (rule, fqn, m, d) in cases {
+                let mut a = [0u8; 512];
+                let mut b = [0u8; 512];
+                let mut wa = if xcdr2 {
+                    CdrWriter::new_with_header_xcdr2(&mut a).unwrap()
+                } else {
+                    CdrWriter::new_with_header(&mut a).unwrap()
+                };
+                DiagnosticReporter::new(0)
+                    .report_violation(0, rule, fqn, m, d)
+                    .unwrap()
+                    .serialize(&mut wa)
+                    .unwrap();
+                let la = wa.position();
+                let mut wb = if xcdr2 {
+                    CdrWriter::new_with_header_xcdr2(&mut b).unwrap()
+                } else {
+                    CdrWriter::new_with_header(&mut b).unwrap()
+                };
+                write_violation_report(&mut wb, rule, fqn, m, d).unwrap();
+                let lb = wb.position();
+                assert_eq!(a[..la], b[..lb], "xcdr2={xcdr2} {rule} {fqn}");
+            }
+        }
+    }
 
     #[test]
     fn a_violation_report_keeps_the_rule_and_classifies_its_side() {
