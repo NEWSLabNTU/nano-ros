@@ -155,6 +155,30 @@ Cost discipline: every monitor is compile-time-gated by the presence of
 its contract field in the model — an uncontracted image bakes zero
 monitor code (`const` table empty → dead-code elimination).
 
+**Where a verdict goes, and when monitors start judging (phase-474 I1/I2).**
+For a consumer of the model: the monitor TABLES are derived from the
+resolved model's contract layer, as above, and nothing else about the
+monitors is. In particular WHEN they arm is not a contract fact and is read
+from the build only -- Kconfig `CONFIG_NROS_MONITOR_ARM_ON_CALL` (default
+off: armed at the executor's first spin, the behaviour before phase-474) and
+`CONFIG_NROS_MONITOR_ARM_GRACE_MS` (default 0), or the
+`NROS_MONITOR_ARM_ON_CALL` / `NROS_MONITOR_ARM_GRACE_MS` build variables on
+the cargo and cmake roads. rlm has no key for it and the contract does not
+carry one. With ON_CALL the application arms the monitors where it enters its
+running state (`nros_monitors_arm()`, `nros::arm_monitors()`,
+`nros::monitor::request_monitor_arming()`); a verdict before that is counted
+(`suppressed_before_arm`) and not stored.
+
+A stored verdict goes to: the log line at detection (issue 0514), or the
+drain-and-report line at the end of its spin with
+`CONFIG_NROS_VIOLATION_DRAIN_REPORT`; the image's `/diagnostics` sink where
+one is installed (issue 1635); trace markers 21-24 (rule code, endpoint
+FNV-1a, measured, declared) with `CONFIG_NROS_TRACE_CALLBACKS`; the SWD
+record `NROS_VIOLATION_RECORD` with `CONFIG_NROS_BOOT_REPORT`
+(`scripts/read-violation-record.py`); and the executor's ring, which keeps the
+LATEST `CONFIG_NROS_EXECUTOR_MAX_VIOLATIONS` (default 8) for
+`drain_violations` and counts what it evicted.
+
 ## CMake surface
 
 `nano_ros_add_executable(... MODEL path/to/system_model.yaml)` as the

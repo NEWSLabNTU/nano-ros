@@ -1,7 +1,9 @@
 # Phase 474 -- what the safety island found on the S32K344: violations nobody can see, monitors armed too early
 
-**Status (2026-10-01). PROPOSED -- nothing implemented.** D5 had already
-landed before this phase was written (issue 1567, see D5); every other item is
+**Status (2026-10-06). IN PROGRESS.** D5 had already landed before this
+phase was written (issue 1567, see D5). D1, D2, I1 and I2 landed on branch
+`feat/violation-ring-and-arming` (issues 1714, 1715); T4 landed as a host
+executor test, its native_sim / QEMU / board runs are open. Every other item is
 open. Records the open work the Autoware safety island's RTSS@Work 2026 demo
 (simple-autoware-safety-island, phase 8) found in nano-ros while running its
 three acts on an NXP S32K344 (MR-CANHUBK344) behind a 921,600-baud UART and an
@@ -83,6 +85,18 @@ violations and knows how many it missed. Decide whether the entry glue drains
 the ring every spin (and into which channel) or whether the ring is the
 channel.
 
+**Decided (2026-10-06, I1).** Options 1 and 2 both land; option 3 is
+already issue 1635's `/diagnostics` sink and is unchanged. The ring keeps the
+latest N with a dropped and a total count. Every stored verdict goes, at
+detection, to the SWD record `NROS_VIOLATION_RECORD` (option 1; versioned,
+all-`u32`, present with `CONFIG_NROS_BOOT_REPORT`, never drained) and to four
+trace markers (option 2; with `CONFIG_NROS_TRACE_CALLBACKS`). The ring stays
+for a drain; an opt-in drain-and-report hook
+(`CONFIG_NROS_VIOLATION_DRAIN_REPORT`) drains it every spin into the log. The
+hook is a build-time executor default rather than template code, for the
+reason issue 1635 gave for its sink: the runtime owns every board's spin loop,
+so one default reaches the C, C++ and Rust entries.
+
 ### D2 -- arm the monitors only after start-up
 
 The 8 entries the W31 bring-up found, all before any act:
@@ -114,6 +128,14 @@ established, not merely heard (phase8-W28). Options:
 
 Violations before arming are counted separately, not discarded, so start-up
 trouble stays visible.
+
+**Decided (2026-10-06, I2).** Option 3, from Kconfig and not the contract
+(rlm has no key, and inventing one is the play_launch phase's business): the
+default stays "armed at the first spin"; `CONFIG_NROS_MONITOR_ARM_ON_CALL`
+waits for the application's call, and `CONFIG_NROS_MONITOR_ARM_GRACE_MS` arms
+anyway that long after the first spin (0 = no deadline). Arming is per
+executor, triggered image-wide by the application's call. Pre-arm verdicts
+are counted in `suppressed_before_arm` (executor and SWD record).
 
 ### D3 -- the route, not the callback
 
@@ -178,11 +200,47 @@ dropped counter is reported with it, and the generated Zephyr entry drains
 the ring into the chosen channel (SWD record, trace marker, topic). Whatever
 the channel, `violations_dropped()` stops being a number nothing reads.
 
+**Result (2026-10-06).** Landed as decided under D1. The ring
+(`monitor::ViolationChannel`, `executor/monitor.rs`) evicts its oldest entry
+when full, numbers entries per executor and counts evictions. Knobs:
+`NROS_EXECUTOR_MAX_VIOLATIONS` (default 8: 24 B a ring slot, 28 B a record
+slot on a 32-bit target, so 192 B per executor plus 40 + 224 B for the record)
+and `NROS_VIOLATION_DRAIN_REPORT` (default off). SWD layout, version 1, all
+little-endian `u32`: header `magic "NRVR" (0x4e525652), version, capacity,
+slot_words (7), total, head, dropped, suppressed_before_arm, armed, reserved`,
+then `capacity` slots of `seq (1-based, 0 = empty, written last), rule code,
+fqn FNV-1a, measured, declared, fqn_addr, fqn_len`; newest entry in slot
+`(head + capacity - 1) % capacity`. Rule codes are `monitor::RULE_IDS` index +
+1 (append only). Trace markers: 21 `seq << 8 | rule code`, 22 fqn hash, 23
+measured, 24 declared. C++ FFI: `nros_cpp_executor_set_violation_drain_report`,
+`nros_cpp_executor_violation_counts`.
+
+For the island's `w31-logs/tools/vscan.py`: its heuristic still finds ring
+entries (a `Violation` is unchanged: rule `&str`, fqn `&str`, measured,
+declared, 24 B), but the ring is now a rolling window and can be drained, and
+the "FULL: later violations are dropped" note no longer holds. Read
+`NROS_VIOLATION_RECORD` by symbol instead
+(`read-violation-record.py --addr-only`, then decode the dump): it needs no
+scan. The island's marker ids 1-31 overlap nano-ros's 16-24 if it installs
+`nros_set_trace_sink` into its own tracer; it must offset one block.
+
 ### I2 -- arming
 
 Implement D2's decision in the executor (an armed flag per monitor table, or
 per node) and in the generated entry (where the grace deadline is baked).
 Pre-arm violations go to a separate counter.
+
+**Result (2026-10-06).** Landed as decided under D2. API:
+`nros_monitors_arm()` (C), `nros::arm_monitors()` / `nros_cpp_monitors_arm()`
+(C++), `nros::monitor::request_monitor_arming()`, `Executor::arm_monitors`,
+`set_monitor_arming`, `monitors_armed`, `violations_suppressed_before_arm`,
+`nros_cpp_executor_set_monitor_arming`. Arming reopens every rate/age/silence
+window, discards latency/age measured before it, clears the release-jitter
+statistics, and re-reports a stack low-water mark already past its minimum
+(stack depth reached at start-up is a real fault). The generated C/C++
+entries' monitor-install comment states the knobs. For the island: set
+`CONFIG_NROS_MONITOR_ARM_ON_CALL=y` (and a grace backstop) and call
+`nros::arm_monitors()` where the handler logs `INIT_DONE`.
 
 ### I3 -- trace hooks the island's measurements need (F4)
 
@@ -317,6 +375,22 @@ the right rule, endpoint and measured value, and no start-up entries ahead
 of it. The same test on QEMU or native_sim guards it in CI; the board run is
 the acceptance.
 
+**Result (2026-10-06).** Host half landed:
+`t4_an_overrun_after_arming_is_the_one_stored_violation` (`nros-node`
+executor tests, run by `node-std-tests` and `test-unit`) drives the real
+`max-latency-runtime` rule on the MockSession executor with an INIT/RUN node
+that arms on entering RUN, then overruns once: nothing stored and the
+suppressed count advancing before arming, exactly one violation after it
+(rule, endpoint, measured >= declared), the drain hook's line, the four
+markers, and the ring keeping the latest when overfilled. NOT done: the
+native_sim / QEMU fixture. It needs a new contracted Zephyr workspace image
+(bringup, contract, `nros sync`, west build, router, `nros-tests` case) --
+estimated past half a day in this environment, so stopped here. The cheapest
+route is a variant of `workspace-zephyr-cpp-derived-tiers` with
+`CONFIG_NROS_MONITOR_ARM_ON_CALL=y` and `CONFIG_NROS_VIOLATION_DRAIN_REPORT=y`,
+asserting `contract violation #1: max-latency-runtime` on the console. The
+board run stays the island's.
+
 ## Cross-repo
 
 - **play_launch** has a parallel phase on the same findings: F1 (charge
@@ -344,10 +418,15 @@ independent of each other.
 ## Acceptance
 
 - [ ] D1, D2, D3, D4 each decided and written into this document.
-- [ ] I1: the generated Zephyr entry drains violations into the chosen
+      (D1 and D2 decided 2026-10-06; D3 and D4 open.)
+- [x] I1: the generated Zephyr entry drains violations into the chosen
       channel; the ring keeps the latest entries and reports the dropped count.
-- [ ] I2: no start-up violation is recorded as a running one on the island
-      image.
+      (Ring keeps the latest N with total/dropped; SWD record, markers 21-24,
+      opt-in drain hook; issue 1714.)
+- [x] I2: no start-up violation is recorded as a running one on the island
+      image. (Mechanism landed, default unchanged; the island image opts in
+      with `CONFIG_NROS_MONITOR_ARM_ON_CALL=y` and `nros::arm_monitors()` at
+      `INIT_DONE`; issue 1715.)
 - [ ] I3: a take hook and a per-timer sampling rate exist and the island
       traces its F4 hops with them.
 - [ ] I4: the host metadata probe produces metadata for all four island
@@ -360,4 +439,5 @@ independent of each other.
 - [ ] T3: issue 1533 resolved and archived; issue 1534 closed with a derived
       main-thread priority and a measured RX-ring default.
 - [ ] T4: a deliberate overrun on the S32K344 is reported through D1's
-      channel.
+      channel. (Host executor e2e landed; native_sim / QEMU fixture and the
+      board run open.)
