@@ -73,6 +73,10 @@ from a real `ros2 topic echo`.
 - Linux host boards state 32, MCU boards keep 16.
 - The `dynamic-loggers-<N>` features deprecated (one release), then removed.
 - `dynamic_loggers_in_use()` / capacity in the boot report and `just mem-report`.
+- Follow-up, issue 1037: the other four `nros-log` feature families
+  (`max-level-*`, `buffer-size-<N>`, `early-records-<N>`, `rosout-records-<N>`)
+  moved onto the same `[knobs.log]` tenant with the same deprecation rule, and
+  the clock became the platform's `[capabilities] clock` fact.
 
 **Acceptance:** the knob gates (`check-kconfig-knob-forwarding`,
 `check-knob-single-reader`) cover the new knob; an image `env` override beats the

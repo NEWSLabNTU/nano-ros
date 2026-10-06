@@ -280,8 +280,8 @@ fn pump_with(
 /// `n` times.
 fn fill(msg: &mut Log, record: &nros_log::Record<'_>) {
     // The record's clock is the platform MONOTONIC one
-    // (`nros_platform_clock_ns`, and `0` in a build without the
-    // `platform-clock` feature), NOT a ROS system clock: an RTOS image has no
+    // (`nros_platform_clock_ns`, and `0` in a build without nros-log's
+    // platform clock — `cfg(nros_log_clock)`, issue 1037), NOT a ROS system clock: an RTOS image has no
     // wall time to offer. `rqt_console` sorts by this and displays it as a
     // time of day, which will read as an offset from the epoch. Stated here
     // and in the ledger row rather than silently zeroed, because a zero stamp

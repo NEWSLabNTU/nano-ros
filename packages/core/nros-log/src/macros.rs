@@ -231,8 +231,8 @@ macro_rules! log_fatal {
 //   `rclcpp`'s shape (`RCLCPP_INFO_THROTTLE(logger, clock, ...)` names the
 //   clock) and the only form available with no platform port.
 //
-// The clock-reading form REFUSES TO COMPILE without the `platform-clock`
-// feature, rather than compiling into a throttle with no time base. Without a
+// The clock-reading form REFUSES TO COMPILE without the platform clock
+// (`cfg(nros_log_clock)`, issue 1037), rather than compiling into a throttle with no time base. Without a
 // clock `__timestamp_ns()` is a constant `0`, and a window measured against a
 // constant never elapses — the site emits its first record and then nothing,
 // forever (issue 1152; before it, the same constant admitted EVERY record),
@@ -270,10 +270,11 @@ macro_rules! log_fatal {
 
 /// Resolves the timestamp the `nros_*_throttle!` family measures against.
 ///
-/// `platform-clock` on: the platform's monotonic clock. Off: a compile error
-/// naming the feature — see the family's module note for why this is not a
-/// silent degradation.
-#[cfg(feature = "platform-clock")]
+/// With the platform clock (`cfg(nros_log_clock)` — the platform's `clock`
+/// capability or the `platform-clock` feature, issue 1037): the platform's
+/// monotonic clock. Without: a compile error — see the family's module note
+/// for why this is not a silent degradation.
+#[cfg(nros_log_clock)]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __nros_throttle_now {
@@ -282,15 +283,17 @@ macro_rules! __nros_throttle_now {
     };
 }
 
-/// See the `platform-clock` arm above.
-#[cfg(not(feature = "platform-clock"))]
+/// See the `nros_log_clock` arm above.
+#[cfg(not(nros_log_clock))]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __nros_throttle_now {
     () => {
         ::core::compile_error!(
-            "nros_*_throttle! needs a monotonic clock: enable the `platform-clock` feature on \
-             nros-log, or use nros_*_throttle_at!(logger, now_ns, interval_ms, ...) and pass the \
+            "nros_*_throttle! needs a monotonic clock: build for a platform whose \
+             nros-platform.toml declares `[capabilities] clock = true` (the lane names it through \
+             NROS_PLATFORM_NAME), enable nros-log's `platform-clock` feature where a port is linked, \
+             or use nros_*_throttle_at!(logger, now_ns, interval_ms, ...) and pass the \
              time yourself. Without a clock `__timestamp_ns()` is a constant 0, so the window \
              would admit every record while looking exactly like a working throttle."
         )
@@ -347,7 +350,7 @@ macro_rules! __nros_throttle_site {
 /// Emit at [`crate::Severity::Trace`], at most once per `interval_ms` at this
 /// call site.
 ///
-/// Reads the platform clock; needs the `platform-clock` feature (see
+/// Reads the platform clock; needs `cfg(nros_log_clock)` (see
 /// [`nros_trace_throttle_at!`](crate::nros_trace_throttle_at) for the form that takes the time).
 #[macro_export]
 macro_rules! nros_trace_throttle {
@@ -383,7 +386,7 @@ macro_rules! nros_trace_throttle_at {
 /// Emit at [`crate::Severity::Debug`], at most once per `interval_ms` at this
 /// call site.
 ///
-/// Reads the platform clock; needs the `platform-clock` feature (see
+/// Reads the platform clock; needs `cfg(nros_log_clock)` (see
 /// [`nros_debug_throttle_at!`](crate::nros_debug_throttle_at) for the form that takes the time).
 #[macro_export]
 macro_rules! nros_debug_throttle {
@@ -419,7 +422,7 @@ macro_rules! nros_debug_throttle_at {
 /// Emit at [`crate::Severity::Info`], at most once per `interval_ms` at this
 /// call site.
 ///
-/// Reads the platform clock; needs the `platform-clock` feature (see
+/// Reads the platform clock; needs `cfg(nros_log_clock)` (see
 /// [`nros_info_throttle_at!`](crate::nros_info_throttle_at) for the form that takes the time).
 #[macro_export]
 macro_rules! nros_info_throttle {
@@ -455,7 +458,7 @@ macro_rules! nros_info_throttle_at {
 /// Emit at [`crate::Severity::Warn`], at most once per `interval_ms` at this
 /// call site.
 ///
-/// Reads the platform clock; needs the `platform-clock` feature (see
+/// Reads the platform clock; needs `cfg(nros_log_clock)` (see
 /// [`nros_warn_throttle_at!`](crate::nros_warn_throttle_at) for the form that takes the time).
 #[macro_export]
 macro_rules! nros_warn_throttle {
@@ -491,7 +494,7 @@ macro_rules! nros_warn_throttle_at {
 /// Emit at [`crate::Severity::Error`], at most once per `interval_ms` at this
 /// call site.
 ///
-/// Reads the platform clock; needs the `platform-clock` feature (see
+/// Reads the platform clock; needs `cfg(nros_log_clock)` (see
 /// [`nros_error_throttle_at!`](crate::nros_error_throttle_at) for the form that takes the time).
 #[macro_export]
 macro_rules! nros_error_throttle {
@@ -527,7 +530,7 @@ macro_rules! nros_error_throttle_at {
 /// Emit at [`crate::Severity::Fatal`], at most once per `interval_ms` at this
 /// call site.
 ///
-/// Reads the platform clock; needs the `platform-clock` feature (see
+/// Reads the platform clock; needs `cfg(nros_log_clock)` (see
 /// [`nros_fatal_throttle_at!`](crate::nros_fatal_throttle_at) for the form that takes the time).
 #[macro_export]
 macro_rules! nros_fatal_throttle {

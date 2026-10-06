@@ -67,6 +67,17 @@ pub mod throttle;
 
 mod buffer;
 
+/// The resolved `[knobs.log]` tenant, written by `build.rs` (phase-479 W5,
+/// issue 1037). One file, one place each value enters the crate.
+mod config {
+    include!(concat!(env!("OUT_DIR"), "/nros_log_config.rs"));
+
+    // `build.rs` range-checks the knob; this keeps a hand-edited or stale
+    // file from compiling into a ceiling above `off`.
+    #[allow(clippy::absurd_extreme_comparisons)]
+    const _: () = assert!(MAX_LEVEL <= 6, "NROS_LOG_MAX_LEVEL is 0..=6");
+}
+
 pub use buffer::{FormatBuffer, format_buffer_capacity};
 pub use pool::{
     MAX_LOGGER_NAME_LEN, dynamic_logger_capacity, dynamic_logger_name_arena, dynamic_loggers_in_use,
@@ -169,32 +180,24 @@ pub const fn severity_from_u8(value: u8) -> Option<Severity> {
 
 /// Compile-time ceiling check used by the `nros_*!` macros.
 ///
-/// Returns `true` iff `severity` is allowed under the configured
-/// `max-level-*` feature.
+/// Returns `true` iff `severity` is at or above the image's
+/// `NROS_LOG_MAX_LEVEL` (issue 1037; builtin `trace`, so everything). A
+/// `const fn` over a build-script constant, so a macro call below the ceiling
+/// folds to `if false { .. }` and its formatting is dead code — the elimination
+/// the old `max-level-*` features gave, without a feature.
+///
+/// The ceiling is a BOUND, not a threshold: [`Logger::set_level`] still moves
+/// each logger's runtime level, and a level below the ceiling is simply
+/// unreachable ([`Logger::is_enabled`] answers `false` there). rcutils keeps
+/// the same pair (`RCUTILS_LOG_MIN_SEVERITY_*` + `set_logger_level`).
 #[must_use]
 pub const fn severity_enabled_at_compile_time(severity: Severity) -> bool {
-    if cfg!(feature = "max-level-off") {
-        return false;
-    }
-    let ceiling = compile_time_ceiling();
-    (severity as u8) >= (ceiling as u8)
-}
-
-const fn compile_time_ceiling() -> Severity {
-    if cfg!(feature = "max-level-trace") {
-        Severity::Trace
-    } else if cfg!(feature = "max-level-debug") {
-        Severity::Debug
-    } else if cfg!(feature = "max-level-info") {
-        Severity::Info
-    } else if cfg!(feature = "max-level-warn") {
-        Severity::Warn
-    } else if cfg!(feature = "max-level-error") {
-        Severity::Error
-    } else {
-        // No ceiling feature = treat as `max-level-trace`.
-        Severity::Trace
-    }
+    // `config::MAX_LEVEL` is 6 for `off`, above `Fatal` (5): nothing passes.
+    // The value is a build-script constant, and at its builtin (0 = trace) the
+    // comparison is always true — that is the point, not a slip.
+    #[allow(clippy::absurd_extreme_comparisons)]
+    let enabled = (severity as u8) >= config::MAX_LEVEL;
+    enabled
 }
 
 /// One log entry, handed to each [`LogSink`].
@@ -475,8 +478,16 @@ impl Logger {
     /// ancestor without a level of its own costs one more. No string work, on
     /// any arm.
     #[must_use]
+    ///
+    /// The image's compile-time CEILING (`NROS_LOG_MAX_LEVEL`, issue 1037) is
+    /// applied here too, first: a runtime level below it is unreachable. That
+    /// is what brings the C and C++ surfaces under the same bound — their
+    /// macros format on the C side and reach the facade through this check
+    /// (`nros_log_emit_at`, `nros_log_is_enabled`), so the ceiling the Rust
+    /// macros fold away at compile time filters theirs at the FFI boundary.
     pub fn is_enabled(&self, severity: Severity) -> bool {
-        (severity as u8) >= self.effective_level_byte()
+        severity_enabled_at_compile_time(severity)
+            && (severity as u8) >= self.effective_level_byte()
     }
 
     /// Whether a record at `severity` would be emitted, given both this
@@ -1118,23 +1129,24 @@ fn deliver_to_added(record: &Record<'_>) -> usize {
 /// permanently shut.
 #[must_use]
 pub const fn timestamp_available() -> bool {
-    cfg!(feature = "platform-clock")
+    cfg!(nros_log_clock)
 }
 
 /// Current monotonic time for `Record::timestamp_ns` (issue #503).
 ///
-/// With the `platform-clock` feature this reads
+/// With the platform clock (`cfg(nros_log_clock)`: the lane's platform
+/// declares `[capabilities] clock = true`, or the `platform-clock` feature
+/// pulled a port in — issue 1037, see `build.rs`) this reads
 /// `nros_platform_clock_ns` — the universal per-platform export the
-/// executor's timer accounting already links — scaled to nanoseconds.
-/// Without the feature it returns `0` ("unavailable"), the historical
-/// behavior, and imposes no link-time requirement.
+/// executor's timer accounting already links. Without it it returns `0`
+/// ("unavailable") and imposes no link-time requirement.
 ///
 /// Public because the emission macros expand it in user crates; not
 /// part of the supported API surface.
 #[doc(hidden)]
 #[must_use]
 pub fn __timestamp_ns() -> u64 {
-    #[cfg(feature = "platform-clock")]
+    #[cfg(nros_log_clock)]
     {
         unsafe extern "C" {
             fn nros_platform_clock_ns() -> u64;
@@ -1145,7 +1157,7 @@ pub fn __timestamp_ns() -> u64 {
         // nros_platform_log_write` already relies on).
         unsafe { nros_platform_clock_ns() }
     }
-    #[cfg(not(feature = "platform-clock"))]
+    #[cfg(not(nros_log_clock))]
     {
         0
     }
@@ -1337,24 +1349,10 @@ mod tests {
     }
 
     #[test]
-    fn compile_time_ceiling_matches_enabled_feature() {
-        let expected = if cfg!(feature = "max-level-off") {
-            None
-        } else if cfg!(feature = "max-level-trace") {
-            Some(Severity::Trace)
-        } else if cfg!(feature = "max-level-debug") {
-            Some(Severity::Debug)
-        } else if cfg!(feature = "max-level-info") {
-            Some(Severity::Info)
-        } else if cfg!(feature = "max-level-warn") {
-            Some(Severity::Warn)
-        } else if cfg!(feature = "max-level-error") {
-            Some(Severity::Error)
-        } else {
-            // No ceiling feature = treat as `max-level-trace`.
-            Some(Severity::Trace)
-        };
-
+    fn compile_time_ceiling_matches_the_resolved_knob() {
+        // `config::MAX_LEVEL` is `NROS_LOG_MAX_LEVEL` as `build.rs` resolved
+        // it (builtin 0 = trace; 6 = off).
+        let ceiling = severity_from_u8(config::MAX_LEVEL);
         for severity in [
             Severity::Trace,
             Severity::Debug,
@@ -1363,8 +1361,12 @@ mod tests {
             Severity::Error,
             Severity::Fatal,
         ] {
-            let enabled = expected.is_some_and(|ceiling| severity >= ceiling);
+            let enabled = ceiling.is_some_and(|c| severity >= c);
             assert_eq!(severity_enabled_at_compile_time(severity), enabled);
+            // The ceiling bounds the runtime level: below it, no logger level
+            // can switch a severity back on.
+            static PROBE: Logger = Logger::with_level("ceiling_probe", Severity::Trace);
+            assert_eq!(PROBE.is_enabled(severity), enabled);
         }
     }
 }

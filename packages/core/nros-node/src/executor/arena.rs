@@ -688,7 +688,7 @@ fn report_arena_headroom(used: usize, capacity: usize) {
     // in everywhere else in the tree.
     let suggest = used.next_multiple_of(1024).max(1024);
     // BUDGET: `nros_log`'s call-site format buffer is 256 bytes by default
-    // (`buffer-size-256`), and overflow truncates with a `…` rather than
+    // (`NROS_LOG_BUFFER_SIZE`), and overflow truncates with a `…` rather than
     // dropping the record. The first draft of this line ran ~450 bytes and was
     // cut mid-number, so the sink received "executor arena is 74240 bytes and
     // 32…" — every word of the explanation and NONE of the value to set. A

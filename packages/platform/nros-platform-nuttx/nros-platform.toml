@@ -17,6 +17,7 @@ names = ["nuttx"]
 # described this platform yet", not "impossible".
 [capabilities]
 ip_stack = true    # posix sockets, named in [build]
+clock = true       # issue 1037 — exports nros_platform_clock_ns (src/platform.c)
 
 [build.zenoh]
 defines = ["ZENOH_GENERIC", "ZENOH_NUTTX", "ZENOH_HAS_GETRANDOM"]

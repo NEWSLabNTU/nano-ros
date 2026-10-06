@@ -13,7 +13,10 @@ name = "log-arena-probe"
 path = "src/main.rs"
 
 [dependencies]
-nros-log = { path = "../../../../core/nros-log" }
+# `rosout` compiles the queue whose depth (`NROS_LOG_ROSOUT_RECORDS`) the probe
+# reads back (issue 1037). No `platform-clock`: the clock must come from the
+# platform's capability.
+nros-log = { path = "../../../../core/nros-log", features = ["rosout"] }
 # The boot record (`nros_node::boot_report`), enabled by the image's
 # `NROS_BOOT_REPORT=1`. Nothing else of the node layer is used.
 nros-node = { path = "../../../../core/nros-node", default-features = false, features = ["std"] }

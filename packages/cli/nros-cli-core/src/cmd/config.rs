@@ -302,21 +302,35 @@ fn explain(args: ExplainArgs) -> Result<()> {
         );
     }
 
-    // phase-479 W5 (RFC-0102 D5) — the logging tenant. The default mirrors
-    // `packages/core/nros-log/build.rs`, which stays the authority on it.
+    // phase-479 W5 (RFC-0102 D5) + issue 1037 — the logging tenant. The
+    // defaults mirror `packages/core/nros-log/build.rs`, which stays the
+    // authority on them. `max_level` is carried as an index and shown by name.
     for (name, r) in tree
         .resolve_log(
             &args.platform,
             board.as_ref().map(|b| &b.knobs.log),
             &env_get,
-            &[("dynamic_loggers", 16)],
+            &[
+                ("dynamic_loggers", 16),
+                ("max_level", 0),
+                ("buffer_size", 256),
+                ("early_records", 4),
+                ("rosout_records", 16),
+            ],
         )
         .map_err(|e| eyre!("{e}"))?
     {
+        let value = if name == "max_level" {
+            nros_board_common::platform_config::LOG_LEVELS
+                .get(r.value)
+                .map_or_else(|| r.value.to_string(), |l| (*l).to_string())
+        } else {
+            r.value.to_string()
+        };
         println!(
             "{:<34} {:<10} {}  [{}]",
             format!("log.{name}"),
-            r.value,
+            value,
             r.source.as_str(),
             r.env_key
         );

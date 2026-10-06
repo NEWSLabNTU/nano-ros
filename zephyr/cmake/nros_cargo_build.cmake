@@ -1562,6 +1562,12 @@ function(nros_resolve_knobs)
     # reads it (and, on the Rust lane, reads the same symbol from $DOTCONFIG).
     _nros_resolve_knob(NROS_LOG_DYNAMIC_LOGGERS
         "${CONFIG_NROS_LOG_DYNAMIC_LOGGERS}")
+    # issue 1037 -- the rest of the logging tenant, on the same plain ladder.
+    _nros_resolve_knob(NROS_LOG_MAX_LEVEL "${CONFIG_NROS_LOG_MAX_LEVEL}")
+    _nros_resolve_knob(NROS_LOG_BUFFER_SIZE "${CONFIG_NROS_LOG_BUFFER_SIZE}")
+    _nros_resolve_knob(NROS_LOG_EARLY_RECORDS "${CONFIG_NROS_LOG_EARLY_RECORDS}")
+    _nros_resolve_knob(NROS_LOG_ROSOUT_RECORDS
+        "${CONFIG_NROS_LOG_ROSOUT_RECORDS}")
     # phase-446 F3 -- the parameter services' declaration shape reaches
     # nros-node's and nros-rmw-zenoh's build scripts through the sizing
     # descriptor's `[params]` (issue 1649 retired this road's forward of

@@ -443,6 +443,9 @@ pub struct BuildRungs {
     pub platform: String,
     pub tree: PlatformsTree,
     pub board: Option<BoardKnobsFile>,
+    /// `NROS_BOARD` — WHICH `[[board]]` of `board` this build is, for its
+    /// `[board.capabilities]` (issue 1037; [`Self::capability`]).
+    pub board_name: Option<String>,
     /// Every root [`build_search_path`] offered, in order.
     ///
     /// phase-468 W1 — kept rather than re-derived, because it is what the
@@ -513,6 +516,7 @@ impl BuildRungs {
             platform,
             tree,
             board,
+            board_name,
             search,
         })
     }
@@ -716,9 +720,21 @@ impl BuildRungs {
             .as_ref()
             .map(|f| f.knobs.log.clone())
             .unwrap_or_default();
-        LogKnobs {
-            dynamic_loggers: b.dynamic_loggers.or(plat.dynamic_loggers),
-        }
+        b.or(plat)
+    }
+
+    /// issue 1037 — one software-stack FACT for this build, board rung over
+    /// platform rung (RFC-0086, [`PlatformsTree::capabilities_with_board`]).
+    ///
+    /// `None` when NEITHER declares it, which is not `false`: absent means
+    /// "nobody has described this", and a caller decides what that costs.
+    pub fn capability(&self, name: &str) -> Option<bool> {
+        let caps = self.tree.capabilities_with_board(
+            &self.platform,
+            self.board.as_ref(),
+            self.board_name.as_deref(),
+        );
+        self.require_rungs("capabilities", caps).get(name).copied()
     }
 
     /// The `[knobs.net]` RUNGS for this build — platform merged with board,
@@ -1037,33 +1053,138 @@ pub fn runtime_env_key(knob: &str) -> &'static str {
     }
 }
 
-/// phase-479 W5 (RFC-0102 D5) — the logging tenant.
+/// phase-479 W5 (RFC-0102 D5) + issue 1037 — the logging tenant.
 ///
-/// `dynamic_loggers` is how many loggers `nros_log::get_or_create_logger` may
-/// CREATE at run time (a node's own logger, every distinct `get_logger("x")`,
-/// every distinct child name). Two static arenas are carved from it in
-/// `nros-log`, so it is a BOARD fact: a Linux host states 32, an MCU keeps the
-/// builtin 16. It cannot be derived from declarations (RFC-0100) -- `get_child`
-/// is a runtime call no contract names. `0` is a legitimate statement: no
-/// runtime loggers, lookup only.
+/// Every number `nros-log` sizes or gates on, one rung each, resolved by
+/// `nros-log/build.rs` (env / `[image.<id>] env` > Kconfig > these > builtin).
+/// They replace five pick-one cargo-feature families, which UNIFY across a
+/// build with no precedence, so two crates picking different members silently
+/// got whichever the crate tested first — and three of the families spelled
+/// "off" as a feature, which RFC-0086 D5 forbids. A rung has exactly one value
+/// per build.
 ///
-/// It replaces the `dynamic-loggers-<N>` cargo features, which UNIFY across a
-/// build with no precedence, so two crates picking different sizes silently
-/// got the smallest. A rung has exactly one value per build.
+/// * `dynamic_loggers` — how many loggers `nros_log::get_or_create_logger` may
+///   CREATE at run time (a node's own logger, every distinct `get_logger("x")`,
+///   every distinct child name). A BOARD fact: a Linux host states 32, an MCU
+///   keeps the builtin 16. It cannot be derived from declarations (RFC-0100) —
+///   `get_child` is a runtime call no contract names. `0` = lookup only.
+/// * `max_level` — the compile-time CEILING: the least severe record an image
+///   can emit at all. `"trace"`..`"fatal"`, or `"off"` (0..=6 as a number,
+///   which is how Kconfig states it). A BOUND, not the runtime threshold:
+///   `set_level` still moves each logger's VALUE beneath it (rcutils has the
+///   same pair — `RCUTILS_LOG_MIN_SEVERITY` and `set_logger_level`).
+/// * `buffer_size` — bytes of the per-call Rust formatting buffer, and of the
+///   message each early-record / `/rosout` slot holds. (The C printf front-end
+///   keeps its own 256-byte frame — see `nros-log/build.rs`.)
+/// * `early_records` — records held before `init` installs the sinks. `0`
+///   declines the ring (drops, with the count kept).
+/// * `rosout_records` — the `/rosout` queue depth between pumps.
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LogKnobs {
     #[serde(default)]
     pub dynamic_loggers: Option<usize>,
+    #[serde(default, deserialize_with = "de_log_level")]
+    pub max_level: Option<usize>,
+    #[serde(default)]
+    pub buffer_size: Option<usize>,
+    #[serde(default)]
+    pub early_records: Option<usize>,
+    #[serde(default)]
+    pub rosout_records: Option<usize>,
+}
+
+impl LogKnobs {
+    /// Field-wise: `self` where it states a value, `lower` elsewhere.
+    #[must_use]
+    pub fn or(self, lower: Self) -> Self {
+        Self {
+            dynamic_loggers: self.dynamic_loggers.or(lower.dynamic_loggers),
+            max_level: self.max_level.or(lower.max_level),
+            buffer_size: self.buffer_size.or(lower.buffer_size),
+            early_records: self.early_records.or(lower.early_records),
+            rosout_records: self.rosout_records.or(lower.rosout_records),
+        }
+    }
+
+    /// One knob by its [`LOG_KNOBS`] name.
+    #[must_use]
+    pub fn get(&self, knob: &str) -> Option<usize> {
+        match knob {
+            "dynamic_loggers" => self.dynamic_loggers,
+            "max_level" => self.max_level,
+            "buffer_size" => self.buffer_size,
+            "early_records" => self.early_records,
+            "rosout_records" => self.rosout_records,
+            _ => None,
+        }
+    }
+}
+
+/// issue 1037 — the `max_level` vocabulary, least severe first. The index IS
+/// the value every rung carries, and matches `nros_log::Severity` for the six
+/// levels; `off` (6) is the ceiling above `fatal`.
+pub const LOG_LEVELS: &[&str] = &["trace", "debug", "info", "warn", "error", "fatal", "off"];
+
+/// Parse a `max_level` statement — a [`LOG_LEVELS`] name (any case) or its
+/// index. The ONE parser: the TOML rungs, the env front-end and the Kconfig
+/// rung (an `int`, as Zephyr's own `LOG_MAX_LEVEL` is) all come through here.
+#[must_use]
+pub fn parse_log_level(raw: &str) -> Option<usize> {
+    let t = raw.trim();
+    if let Ok(n) = t.parse::<usize>() {
+        return (n < LOG_LEVELS.len()).then_some(n);
+    }
+    LOG_LEVELS.iter().position(|l| l.eq_ignore_ascii_case(t))
+}
+
+fn de_log_level<'de, D>(d: D) -> Result<Option<usize>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        Name(String),
+        Index(i64),
+    }
+    let bad = |what: String| {
+        serde::de::Error::custom(format!(
+            "max_level = {what}: expected one of {} (or 0..={})",
+            LOG_LEVELS.join("/"),
+            LOG_LEVELS.len() - 1
+        ))
+    };
+    match Option::<Raw>::deserialize(d)? {
+        None => Ok(None),
+        Some(Raw::Name(s)) => parse_log_level(&s)
+            .map(Some)
+            .ok_or_else(|| bad(format!("{s:?}"))),
+        Some(Raw::Index(n)) => usize::try_from(n)
+            .ok()
+            .and_then(|n| parse_log_level(&n.to_string()))
+            .map(Some)
+            .ok_or_else(|| bad(n.to_string())),
+    }
 }
 
 /// Every log knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
-pub const LOG_KNOBS: &[&str] = &["dynamic_loggers"];
+pub const LOG_KNOBS: &[&str] = &[
+    "dynamic_loggers",
+    "max_level",
+    "buffer_size",
+    "early_records",
+    "rosout_records",
+];
 
 /// The env front-end for a log knob.
 pub fn log_env_key(knob: &str) -> &'static str {
     match knob {
         "dynamic_loggers" => "NROS_LOG_DYNAMIC_LOGGERS",
+        "max_level" => "NROS_LOG_MAX_LEVEL",
+        "buffer_size" => "NROS_LOG_BUFFER_SIZE",
+        "early_records" => "NROS_LOG_EARLY_RECORDS",
+        "rosout_records" => "NROS_LOG_ROSOUT_RECORDS",
         other => panic!("unknown log knob `{other}`"),
     }
 }
@@ -2216,9 +2337,7 @@ impl PlatformsTree {
         let chain = self.chain(name)?;
         let mut out = LogKnobs::default();
         for file in chain.iter().rev() {
-            if file.knobs.log.dynamic_loggers.is_some() {
-                out.dynamic_loggers = file.knobs.log.dynamic_loggers;
-            }
+            out = file.knobs.log.clone().or(out);
         }
         Ok(out)
     }
@@ -2408,10 +2527,7 @@ impl PlatformsTree {
         defaults: &[(&'static str, usize)],
     ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
         let plat = self.platform_log_knobs(platform)?;
-        let pick = |k: &LogKnobs, name: &str| match name {
-            "dynamic_loggers" => k.dynamic_loggers,
-            _ => None,
-        };
+        let pick = |k: &LogKnobs, name: &str| k.get(name);
         let mut out = Vec::new();
         for (name, builtin) in defaults {
             let (mut value, mut source) =
@@ -2421,9 +2537,14 @@ impl PlatformsTree {
                     (None, None) => (*builtin, KnobSource::Builtin),
                 };
             let env_key = log_env_key(name);
-            if let Some(raw) = env(env_key)
-                && let Ok(n) = raw.trim().parse::<usize>()
-            {
+            let parsed = |raw: &str| {
+                if *name == "max_level" {
+                    parse_log_level(raw)
+                } else {
+                    raw.trim().parse::<usize>().ok()
+                }
+            };
+            if let Some(n) = env(env_key).as_deref().and_then(parsed) {
                 value = n;
                 source = KnobSource::Env;
             }

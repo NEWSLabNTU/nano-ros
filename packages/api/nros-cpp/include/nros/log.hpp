@@ -100,9 +100,11 @@ constexpr nros_log_severity_t sink_severity(const char* level) {
  * ```
  *
  * Below-threshold filtering happens runtime-side via the
- * `nros_log::Logger`'s `set_level`; compile-time filtering is via
- * `nros-log/max-level-*` Cargo features (compiled into the nros-c
- * staticlib that ships `nros_log_emit_fmt`). */
+ * `nros_log::Logger`'s `set_level`, under the image's compile-time ceiling,
+ * the `NROS_LOG_MAX_LEVEL` knob (issue 1037; it replaced the
+ * `nros-log/max-level-*` Cargo features). Both are applied in the Rust facade
+ * this header's macros reach, so a C++ record below the ceiling is refused
+ * there rather than compiled out. */
 
 /* `<nros/log.h>` already defines the six Phase-88 macros
  * (`NROS_LOG_TRACE` … `NROS_LOG_FATAL`) — include it here so C++
@@ -596,7 +598,7 @@ inline nros_logger_t log_handle(const Logger& logger) {
 /// The longest a RUNTIME refusal may be — phase-417 stage 3, MEASURED.
 ///
 /// `nros_log`'s formatting buffer is 256 bytes by default
-/// (`nros_log::format_buffer_capacity`, and `buffer-size-128` makes it 128),
+/// (`nros_log::format_buffer_capacity`; `NROS_LOG_BUFFER_SIZE` can make it 128),
 /// and `heapless::String::push_str` is ALL-OR-NOTHING: a body that does not fit
 /// is not truncated, it is DROPPED, and the console shows the header plus a
 /// lone `…`. So a long runtime refusal is not a shortened refusal, it is an

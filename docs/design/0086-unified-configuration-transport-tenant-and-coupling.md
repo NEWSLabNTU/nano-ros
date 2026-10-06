@@ -245,8 +245,19 @@ side learning the other's name.
   it is not yet a tenant.**
 * "Enforced at review, not a backlog item" did not hold either: phase-417 W4.d
   added `dynamic-loggers-{0,8,32}` — a NEW pick-one family with an "off" member,
-  in core — after this rule was written, and it passed review. A migration is
-  outstanding; issue 1037 carries the shape.
+  in core — after this rule was written, and it passed review. ~~A migration is
+  outstanding; issue 1037 carries the shape.~~ **The migration landed (issue
+  1037, 2026-10; `dynamic-loggers-<N>` first, in phase-479 W5).** `nros-log` is
+  now the `[knobs.log]` tenant: `NROS_LOG_{MAX_LEVEL,BUFFER_SIZE,EARLY_RECORDS,
+  ROSOUT_RECORDS,DYNAMIC_LOGGERS}`, one reader (`nros-log/build.rs`), env >
+  Kconfig > board/platform > builtin, printed by `nros config explain`. The
+  sweep found a FIFTH family the original audit and the issue both missed —
+  `rosout-records-<N>`, added by phase-467 after the issue was filed — which is
+  the same lesson a third time: a review-enforced rule does not stop the next
+  instance. The old features are deprecated for one release (a disagreement
+  with a stated knob is a build error), and left `default`. The clock is a
+  platform FACT (`[capabilities] clock = true`); `platform-clock` survives as
+  a feature only because it pulls code in.
 * The rule's boundary, which the same issue clarified: a build script MAY derive
   a `cfg` from the resolved ladder. That is internal logic reading a public
   declaration. What D5 forbids is a HUMAN writing `features = [...]` in a

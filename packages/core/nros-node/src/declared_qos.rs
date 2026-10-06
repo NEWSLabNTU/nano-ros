@@ -241,7 +241,7 @@ fn durability_rank(d: QoSDurabilityPolicy) -> Option<u8> {
 ///
 /// # Keep the message inside ONE log line
 ///
-/// `nros_log`'s formatting buffer is 256 bytes by default (`buffer-size-256`)
+/// `nros_log`'s formatting buffer is 256 bytes by default (`NROS_LOG_BUFFER_SIZE`)
 /// and OVERFLOW TRUNCATES with a single `…`. This message used to run past 450
 /// characters, so on a real image the half a reader needs — which file to edit —
 /// was the half that got cut, and the diagnostic ended mid-sentence. The

@@ -220,6 +220,10 @@ creation timeouts because slots cannot be recycled between separate
 | `NROS_MAX_PARAM_DESCRIPTION_LEN` | 256 | Max parameter description length (bytes, per slot); 0 = no descriptions |
 | `NROS_MAX_PARAM_CONSTRAINTS_LEN` | 0 | Max `additional_constraints` length (bytes, per slot); 0 = no constraint text |
 | `NROS_LOG_DYNAMIC_LOGGERS` | 16 (Linux host boards: 32) | Runtime-logger slots (`get_or_create_logger`); each is a `Logger` + 24 bytes of name arena. 0 = lookup only. Size it from the boot report's `log_dynamic_in_use` |
+| `NROS_LOG_MAX_LEVEL` | `trace` | Compile-time severity ceiling (`trace`..`fatal`, `off`, or 0–6). Rust call sites below it compile out; C/C++ records below it are refused in the facade |
+| `NROS_LOG_BUFFER_SIZE` | 256 | Per-call formatting buffer (stack) and the message size of every early/`/rosout` slot (128–4096) |
+| `NROS_LOG_EARLY_RECORDS` | 4 | Records held before `nros_log::init` (0 = drop, counted). Each slot is a message buffer + 48-byte name in `.bss` |
+| `NROS_LOG_ROSOUT_RECORDS` | 16 | `/rosout` queue depth, only with `nros-node/rosout`; 16 × 360 B = 5.6 KB on the defaults |
 | `NROS_LET_BUFFER_SIZE` | 512 | LET semantics buffer per handle (bytes) |
 | `NROS_MAX_CONCURRENT_GOALS` | 4 | Max concurrent goals per action server |
 

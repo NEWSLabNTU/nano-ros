@@ -74,7 +74,7 @@ const ELAPSED_MASK: u64 = u64::MAX >> 1;
 ///   `last + interval` (which overflows to a tiny number and admits everything
 ///   for the rest of the program).
 /// * A STUCK clock (a port whose clock is broken and reports a constant —
-///   including `0`, which is what a build without `platform-clock` reports)
+///   including `0`, which is what a build without the platform clock reports)
 ///   must admit ONCE and then never, because a stuck clock is exactly when a
 ///   log flood is most likely. That needs `now == last` to read as zero
 ///   elapsed, which a sentinel living in the timestamp domain cannot deliver:

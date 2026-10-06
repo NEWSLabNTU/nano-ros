@@ -44,10 +44,11 @@
 //!
 //! [`ring_bytes`] of `.bss` plus 26 bytes of counters, and **nothing at all**
 //! in an image that does not enable the `rosout` feature — the module is
-//! `cfg`'d out whole. The cost moves with TWO feature families, so here it is
+//! `cfg`'d out whole. The cost moves with TWO knobs (`NROS_LOG_ROSOUT_RECORDS`,
+//! `NROS_LOG_BUFFER_SIZE` — feature families until issue 1037), so here it is
 //! MEASURED rather than described — one build per row, 2026-09-29:
 //!
-//! | `rosout-records-` | `buffer-size-` | per slot | ring |
+//! | `NROS_LOG_ROSOUT_RECORDS` | `NROS_LOG_BUFFER_SIZE` | per slot | ring |
 //! | --- | --- | --- | --- |
 //! | 8 | 128 | 232 B | 1 856 B |
 //! | 8 | 256 | 360 B | 2 880 B |
@@ -60,11 +61,11 @@
 //! build runs it) and the bold row's figure — so a reader can re-derive any
 //! row without running five builds, and the table cannot rot silently.
 //!
-//! Depth comes from the `rosout-records-<N>` family, the same shape and for
-//! the same reason as `early-records-<N>`: a 64 KB MCU and a Linux host do not
-//! want the same number. Note the right-hand column against a Zephyr image's
-//! 16 KB picolibc arena — the default is a third of it, and
-//! `rosout-records-8` + `buffer-size-128` is the build that fits.
+//! Depth is the `NROS_LOG_ROSOUT_RECORDS` knob, for the same reason as
+//! `NROS_LOG_EARLY_RECORDS`: a 64 KB MCU and a Linux host do not want the same
+//! number. Note the right-hand column against a Zephyr image's 16 KB picolibc
+//! arena — the default is a third of it, and `NROS_LOG_ROSOUT_RECORDS=8` +
+//! `NROS_LOG_BUFFER_SIZE=128` is the build that fits.
 
 use core::cell::UnsafeCell;
 
@@ -78,16 +79,12 @@ use crate::{LogSink, Record, Severity, buffer::format_buffer_capacity};
 /// quietly loses records is worse than one that says how many it lost, because
 /// an operator reads the absence as "nothing happened".
 #[must_use]
+///
+/// The `NROS_LOG_ROSOUT_RECORDS` knob (issue 1037; builtin 16, resolved by
+/// `build.rs` on the RFC-0049 ladder — it replaced the `rosout-records-<N>`
+/// features).
 pub const fn rosout_depth() -> usize {
-    if cfg!(feature = "rosout-records-64") {
-        64
-    } else if cfg!(feature = "rosout-records-32") {
-        32
-    } else if cfg!(feature = "rosout-records-8") {
-        8
-    } else {
-        16
-    }
+    crate::config::ROSOUT_RECORDS
 }
 
 const DEPTH: usize = rosout_depth();
@@ -301,10 +298,10 @@ pub fn suppressed() -> usize {
 /// The `.bss` this module costs, in bytes: the ring, and nothing else that
 /// scales.
 ///
-/// Derived rather than documented, because it moves with TWO feature families
-/// — `rosout-records-<N>` picks the depth and `buffer-size-<N>` the per-record
+/// Derived rather than documented, because it moves with TWO knobs
+/// — `NROS_LOG_ROSOUT_RECORDS` picks the depth and `NROS_LOG_BUFFER_SIZE` the per-record
 /// message capacity — so any figure written in prose is right for one build.
-/// Measured on the shipped defaults (depth 16, `buffer-size-256`): **5 760
+/// Measured on the shipped defaults (depth 16, buffer 256): **5 760
 /// bytes** (360 B per slot), plus 26 bytes of counters and flags.
 ///
 /// An image that does not enable the `rosout` feature pays ZERO: this module

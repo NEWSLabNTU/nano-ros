@@ -48,6 +48,7 @@ pool.app = [1, 3]
 # described this platform yet", not "impossible".
 [capabilities]
 ip_stack = true    # lwIP / FreeRTOS-Plus-TCP, both named in [build]
+clock = true       # issue 1037 — exports nros_platform_clock_ns (src/platform.c)
 
 [build.zenoh]
 defines = ["ZENOH_GENERIC"]

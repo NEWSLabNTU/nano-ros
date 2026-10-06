@@ -18,6 +18,7 @@ names = ["posix"]
 [capabilities]
 ip_stack = true    # host sockets
 serial   = true    # tty
+clock = true       # issue 1037 — exports nros_platform_clock_ns (src/platform.c)
 
 [build.zenoh]
 defines = ["ZENOH_GENERIC", "ZENOH_LINUX"]

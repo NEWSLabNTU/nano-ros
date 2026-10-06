@@ -314,7 +314,7 @@ fn the_severity_taking_macro_obeys_the_same_threshold_as_the_level_macros() {
 
     // The expectation is WRITTEN as the contract rather than as a constant, so
     // this test is still correct — and still discriminating — when the crate
-    // is built with a lower `max-level-*` ceiling, which is the one gate the
+    // is built with a lower `NROS_LOG_MAX_LEVEL` ceiling, which is the one gate the
     // two spellings could answer differently.
     let reaches =
         |sev: Severity| nros_log::severity_enabled_at_compile_time(sev) && logger.is_enabled(sev);

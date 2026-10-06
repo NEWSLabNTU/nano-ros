@@ -24,6 +24,10 @@
 # "freertos-lwip"]`); this is the same shape. names[0] stays canonical.
 names = ["threadx", "threadx-linux", "threadx-riscv64"]
 
+# phase-400 W3 / RFC-0086 — software-stack FACTS (open vocabulary).
+[capabilities]
+clock = true       # issue 1037 — exports nros_platform_clock_ns (src/platform.c)
+
 [build.zenoh]
 # `NROS_PLATFORM_ALIASES` selects the 32-byte opaque socket / endpoint
 # / task layouts from `nros_zenoh_generic_platform.h`. Must match the

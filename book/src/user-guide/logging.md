@@ -132,20 +132,35 @@ fn register_log_writer() {
 
 ### Compile-time ceiling
 
-Cargo features on `nros-log` (pick at most one; default
-`max-level-trace`):
+The `NROS_LOG_MAX_LEVEL` knob: `trace` (the default), `debug`, `info`, `warn`,
+`error`, `fatal` or `off` — or `0`–`6`, which is how Zephyr's
+`CONFIG_NROS_LOG_MAX_LEVEL` states it, as Zephyr's own `LOG_MAX_LEVEL` does.
+State it per image or per board, like every other knob:
 
-| Feature | Macros above ceiling that emit |
-|---------|--------------------------------|
-| `max-level-trace` | trace / debug / info / warn / error / fatal |
-| `max-level-debug` | debug / info / warn / error / fatal |
-| `max-level-info` | info / warn / error / fatal |
-| `max-level-warn` | warn / error / fatal |
-| `max-level-error` | error / fatal |
-| `max-level-off` | (none) |
+```toml
+# system.toml — this image only
+[image.native]
+env = { NROS_LOG_MAX_LEVEL = "info" }
 
-Below-ceiling macros expand to `()`; the format call is
-dead-code-eliminated.
+# nros-board.toml — every image on the board
+[board.knobs.log]
+max_level = "info"
+```
+
+Environment / `[image.<id>] env` beats Kconfig beats the board; `nros config
+explain` prints which rung decided it. A Rust `nros_*!` call below the ceiling
+folds to a constant-false branch and its format call is dead-code-eliminated.
+C and C++ records — formatted on the C side — are refused by the same check
+in the facade (`nros_logger_is_enabled` answers `false` below the ceiling).
+
+The ceiling is a BOUND, not the runtime level: the per-logger threshold below
+still moves freely above it, and a threshold below it is unreachable. rcutils
+has the same pair (`RCUTILS_LOG_MIN_SEVERITY_*` at compile time,
+`rcutils_logging_set_logger_level` at run time).
+
+The `max-level-*` Cargo features this replaced are deprecated for one release
+(issue 1037): honoured with a build warning when no knob is stated, a build
+error when they disagree with one.
 
 ### Runtime per-logger threshold
 
@@ -218,19 +233,26 @@ a bounded arena. When a child cannot be made:
   `set_level`**, so it can never move the parent's threshold. `get_name()`
   still answers the name you asked for.
 
-## Buffer size
+## Sizes
 
-`nros-log` formats each record into a stack-resident
-`heapless::String<N>`. `N` is picked at compile time by the
-`buffer-size-<N>` feature family (default 256). Overflow truncates
-and appends `…`; the macro never panics on a long format string.
+`nros-log` formats each record into a stack-resident `heapless::String<N>`.
+Overflow truncates and appends `…`; the macro never panics on a long format
+string. That `N`, and the two static rings, are knobs on the same ladder as
+the ceiling (`[board.knobs.log] <key>`, `[image.<id>] env`, Kconfig
+`CONFIG_<knob>`):
 
-| Feature | Per-call-site stack frame |
-|---------|---------------------------|
-| `buffer-size-128` | 128 B |
-| `buffer-size-256` | 256 B (default) |
-| `buffer-size-512` | 512 B |
-| `buffer-size-1024` | 1024 B |
+| Knob | Key | Default | What it sizes |
+|------|-----|---------|---------------|
+| `NROS_LOG_BUFFER_SIZE` | `buffer_size` | 256 (128–4096) | the per-call formatting buffer, and the message in each early/`/rosout` slot |
+| `NROS_LOG_EARLY_RECORDS` | `early_records` | 4 (0 = drop, counted) | records held before `init` installs the sinks |
+| `NROS_LOG_ROSOUT_RECORDS` | `rosout_records` | 16 | the `/rosout` queue (below) |
+| `NROS_LOG_DYNAMIC_LOGGERS` | `dynamic_loggers` | 16, Linux hosts 32 (0 = lookup only) | loggers created at run time |
+
+The C/C++ `NROS_LOG_*` macros format into their own 256-byte frame in the
+calling translation unit, so a C record is bounded by the smaller of that and
+`NROS_LOG_BUFFER_SIZE`. The `buffer-size-<N>`, `early-records-<N>`,
+`rosout-records-<N>` and `dynamic-loggers-<N>` features are deprecated, like
+`max-level-*`.
 
 ## Interop with the `log` crate
 
@@ -362,11 +384,13 @@ VOLATILE and downgrades across a mixed publisher set.
 
 **The stamp is the platform monotonic clock**, not wall time, because an RTOS
 image has none to offer: `rqt_console` will display an uptime as a time of day.
-Without `nros-log/platform-clock` it is a constant zero.
+Without the platform clock it is a constant zero — the clock is compiled in when
+the image's platform declares `[capabilities] clock = true` (every in-tree port
+does) or `nros-log`'s `platform-clock` feature pulls a port in.
 
 **It costs `.bss`.** 5 760 bytes on the defaults (16 queued records x 360 B),
-down to 1 856 B with `rosout-records-8` + `buffer-size-128` and up to 72 192 B
-with `rosout-records-64` + `buffer-size-1024`. An image that does not enable
+down to 1 856 B with `NROS_LOG_ROSOUT_RECORDS=8` + `NROS_LOG_BUFFER_SIZE=128`
+and up to 72 192 B with `=64` + `=1024`. An image that does not enable
 the feature pays nothing — the module is compiled out whole.
 
 ### The sink does not publish, and that is the point

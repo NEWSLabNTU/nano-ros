@@ -726,4 +726,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1037](../issues/1037-nros-log-cargo-features-violate-d5.md) | `nros-log` carries four pick-one Cargo-feature families in `packages/core/`. RFC-0086 D5 is this phase's design, which makes nros-log a W6 tenant and not a separate campaign |
+| [#1037](../issues/archived/1037-nros-log-cargo-features-violate-d5.md) | RESOLVED 2026-10-06: `nros-log` carried four (in fact five) pick-one Cargo-feature families in `packages/core/`; they are the `[knobs.log]` tenant now. RFC-0086 D5 is this phase's design, which makes nros-log a W6 tenant and not a separate campaign |
