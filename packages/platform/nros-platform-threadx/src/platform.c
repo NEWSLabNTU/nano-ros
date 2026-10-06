@@ -291,11 +291,43 @@ __attribute__((weak)) int pipe(int fds[2]) {
 }
 #endif /* !__linux__ */
 
-/*
- * tx_byte_allocate has no "remaining size" query; mirror the Rust
- * impl's strategy of malloc + memcpy + free with a best-effort copy
- * up to the new size.
- */
+/* Issue 1719 -- how many bytes the block at `ptr` OWNS, read from the byte
+ * pool's own bookkeeping, or 0 when the header is not one this pool wrote.
+ *
+ * ThreadX has no per-block size query, but it does not need one: every block
+ * is preceded by the header `_tx_byte_allocate` writes and `_tx_byte_release`
+ * reads back -- `[UCHAR *next_block][ALIGN_TYPE owner]`, the owner slot
+ * holding the pool pointer while the block is allocated (`TX_BYTE_BLOCK_FREE`
+ * when it is not). The next-block pointer is the block's END: `tx_byte_release`
+ * merges by it, so it is exact, and it stays put while the block is allocated
+ * (only a FREE block's link moves when a search merges its free neighbours).
+ * The span can exceed what was requested -- the pool rounds up and does not
+ * split a remainder too small to hold a header -- and every byte of it belongs
+ * to the block, so copying it never leaves the allocation.
+ *
+ * The offsets are the kernel's own (`sizeof(UCHAR *) + sizeof(ALIGN_TYPE)`,
+ * spelled exactly as `_tx_byte_release` spells them), not a size header this
+ * port prepends: a second header would cost every allocation a word to
+ * answer a question the pool already answers. */
+static size_t nros_threadx_block_bytes(void *ptr) {
+    UCHAR *user = (UCHAR *) ptr;
+    UCHAR *header = user - (sizeof(UCHAR *) + sizeof(ALIGN_TYPE));
+    TX_BYTE_POOL *owner = *(TX_BYTE_POOL **) (void *) (header + sizeof(UCHAR *));
+    UCHAR *next_block = *(UCHAR **) (void *) header;
+    if (owner != s_byte_pool || next_block <= user) {
+        return 0u;
+    }
+    return (size_t) (next_block - user);
+}
+
+/* libc `realloc` over a byte pool: allocate, copy `min(old, new)`, release.
+ *
+ * Issue 1719 -- the copy length used to be `size`, the REQUEST: on a grow it
+ * read past the old block's end into the next block's header and contents.
+ * The length now comes from the allocator (`nros_threadx_block_bytes`); a
+ * pointer whose header this pool did not write is REFUSED with NULL (the old
+ * block untouched, as a failed `realloc` leaves it) rather than copied by a
+ * guess. */
 void *nros_platform_realloc(void *ptr, size_t size) {
     if (size == 0) {
         nros_platform_dealloc(ptr);
@@ -304,11 +336,15 @@ void *nros_platform_realloc(void *ptr, size_t size) {
     if (ptr == NULL) {
         return nros_platform_alloc(size);
     }
+    const size_t old_bytes = nros_threadx_block_bytes(ptr);
+    if (old_bytes == 0u) {
+        return NULL;
+    }
     void *out = nros_platform_alloc(size);
     if (out == NULL) {
         return NULL;
     }
-    memcpy(out, ptr, size);
+    memcpy(out, ptr, old_bytes < size ? old_bytes : size);
     nros_platform_dealloc(ptr);
     return out;
 }
