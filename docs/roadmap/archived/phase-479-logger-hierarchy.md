@@ -1,9 +1,12 @@
 # Phase 479 -- logger hierarchy: `get_child`, level inheritance, release-aware `/rosout`
 
-**Status (2026-10-05). IN PROGRESS -- W1-W4 landed; W5 in flight; W6 partly
-done (ledger rows, `<nros/log.h>`, `log.hpp` and the logging book page updated;
-the per-RTOS logging smoke fixtures still to extend).** Implements
-[RFC-0102](../design/0102-logger-hierarchy.md). The design, the upstream
+**Status (2026-10-06). COMPLETE -- W1-W6 landed and the phase is archived.**
+W1-W4 as #1706, W5 as #1704, W6 as #1722 (smoke fixtures) plus the closing docs
+change (the C++ porting-guide row, the last `dynamic-loggers-<N>` mentions,
+RFC-0102 marked Stable). Follow-on outside this phase: issue 1589 put the
+`/rosout` bridge, and with it D4's release scope, on C and C++; issue 1037 moves
+the remaining `nros-log` Cargo-feature families onto the ladder W5 used. Implements
+[RFC-0102](../../design/0102-logger-hierarchy.md). The design, the upstream
 measurements and the three bounds (D3 overflow, D4 `/rosout`, D5 arena size) live
 there; this doc is the work breakdown and the acceptance list.
 
