@@ -136,6 +136,8 @@ template <typename A> class Client {
     /// after the wait starts is still seen.
     ///
     /// Spins the executor while probing — not for use inside a callback.
+    /// Returns `Unsupported` at once when the backend cannot know whether a
+    /// server is up (XRCE — issue 1686); a caller that may send blind proceeds.
     ///
     /// **The budget is REQUIRED** — phase-417 stage 3, the same defect and the
     /// same fix as `Client::wait_for_service`; they were found together and are

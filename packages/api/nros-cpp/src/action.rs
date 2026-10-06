@@ -18,8 +18,8 @@ use nros_node::config::DEFAULT_RX_BUF_SIZE;
 use crate::{
     CppContext, DispatchGuard, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
     NROS_CPP_RET_REENTRANT, NROS_CPP_RET_REJECTED, NROS_CPP_RET_TIMEOUT,
-    NROS_CPP_RET_TRANSPORT_ERROR, NROS_CPP_RET_TRY_AGAIN, cpp_ctx_checked, cstr_to_str,
-    nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
+    NROS_CPP_RET_TRANSPORT_ERROR, NROS_CPP_RET_TRY_AGAIN, NROS_CPP_RET_UNSUPPORTED,
+    cpp_ctx_checked, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
 /// Scratch buffer for re-framing an incoming goal payload before handing
@@ -1086,6 +1086,10 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
 /// `ActionClient::wait_for_action_server` in
 /// `nros-node/src/executor/handles.rs` (phase-428 W13).
 ///
+/// Returns `NROS_CPP_RET_UNSUPPORTED` at once when the backend cannot know
+/// whether a server is up (XRCE) — issue 1686; it used to wait out the budget
+/// and report TIMEOUT, which every C++ client read as "no server".
+///
 /// # Safety
 /// `handle` must be a valid initialized `CppActionClient`.
 #[unsafe(no_mangle)]
@@ -1117,8 +1121,13 @@ pub unsafe extern "C" fn nros_cpp_action_client_wait_for_action_server(
             else {
                 return NROS_CPP_RET_INVALID_ARGUMENT;
             };
-            if core.is_server_ready() {
-                return NROS_CPP_RET_OK;
+            // issue 1686 — one classification for every wait loop.
+            match nros_node::executor::ServerVisibility::of(core.server_readiness()) {
+                nros_node::executor::ServerVisibility::Visible => return NROS_CPP_RET_OK,
+                nros_node::executor::ServerVisibility::Unknowable => {
+                    return NROS_CPP_RET_UNSUPPORTED;
+                }
+                nros_node::executor::ServerVisibility::NotYet => {}
             }
         }
         if crate::nros_cpp_time_ns() >= deadline_ns {

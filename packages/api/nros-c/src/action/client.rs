@@ -304,6 +304,10 @@ pub unsafe extern "C" fn nros_action_client_set_result_callback(
 /// # Returns
 /// * `NROS_RET_OK` — server visible.
 /// * `NROS_RET_TIMEOUT` — `timeout_ms` elapsed without seeing a token.
+/// * `NROS_RET_UNSUPPORTED` — the backend cannot know whether a server is up
+///   (XRCE: the Agent owns the DDS graph), returned at once rather than after
+///   the budget, because no answer can arrive (issue 1686). A caller that may
+///   send blind proceeds; the goal request's own timeout is then the probe.
 /// * `NROS_RET_NOT_INIT` — client not registered with an executor.
 /// * `NROS_RET_ERROR` — transport-level failure.
 #[unsafe(no_mangle)]
@@ -346,8 +350,13 @@ pub unsafe extern "C" fn nros_action_client_wait_for_action_server(
                     Some(c) => c,
                     None => return NROS_RET_NOT_INIT,
                 };
-                if core.is_server_ready() {
-                    return NROS_RET_OK;
+                // issue 1686 — one classification for every wait loop.
+                match nros_node::executor::ServerVisibility::of(core.server_readiness()) {
+                    nros_node::executor::ServerVisibility::Visible => return NROS_RET_OK,
+                    nros_node::executor::ServerVisibility::Unknowable => {
+                        return NROS_RET_UNSUPPORTED;
+                    }
+                    nros_node::executor::ServerVisibility::NotYet => {}
                 }
             }
             let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);

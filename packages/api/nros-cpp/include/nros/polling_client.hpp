@@ -319,7 +319,8 @@ template <typename S> class PollClient {
     /// inside a callback — use the non-blocking `service_is_ready()` there.
     ///
     /// Returns ok when the server is visible, `Timeout` when the budget
-    /// elapses.
+    /// elapses, `Unsupported` at once when the backend cannot know (XRCE —
+    /// issue 1686; a caller that may send blind proceeds).
     ///
     /// **The budget is REQUIRED** — phase-417 stage 3. Upstream's default is
     /// `-1`, WAIT FOREVER; this call cannot (RFC-0021: it drives the executor
