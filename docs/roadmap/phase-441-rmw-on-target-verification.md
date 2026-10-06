@@ -665,5 +665,5 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1139](../issues/1139-cyclone-ros2-pubsub-e2e-flakes-under-the-parallel-gate.md) | `nros_rmw_cyclonedds_ros2_pubsub_e2e` fails under the 21-way parallel run. Today it is a row in phase-444's verdict table reading 'open | Acceptance, still unmet' — a status, not an owner; its acceptance needs a live peer, which is this phase |
+| [#1139](../issues/archived/1139-cyclone-ros2-pubsub-e2e-flakes-under-the-parallel-gate.md) | `nros_rmw_cyclonedds_ros2_pubsub_e2e` fails under the 21-way parallel run. Today it is a row in phase-444's verdict table reading 'open | Acceptance, still unmet' — a status, not an owner; its acceptance needs a live peer, which is this phase |
 | [#1251](../issues/1251-cyclone-slirp-needs-nat-profile.md) | a Cyclone peer for a QEMU guest cannot be loopback-pinned. It is W2's own residue and appears only as prerequisite #3 of a prose list |
