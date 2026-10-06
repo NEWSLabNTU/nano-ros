@@ -1573,5 +1573,15 @@
     "verdict": "extension",
     "why": "phase-479 (RFC-0102 D1) -- why `Logger::create_child` made no child: `NameTooLong { len, max }`, `EmptyName`, `ArenaFull`. rclrs reports the same failures as `RclrsError`; ours names the cause, because each has a different remedy (a shorter name; a non-empty one; a larger `NROS_LOG_DYNAMIC_LOGGERS`).",
     "bucket": "ours-only"
+  },
+  "c:rosout_enable": {
+    "verdict": "extension",
+    "why": "starts queueing log records for `/rosout`, scoped by the image's ROS release (RFC-0102 D4); `NROS_RET_ERROR` if the queueing sink could not be registered. Upstream's equivalent runs inside `rcl_init`. Part of the `/rosout` bridge from C (issue 1589, `<nros/rosout.h>`); the Rust twin is `nros::rosout`. Links in every image and answers `NROS_RET_UNSUPPORTED` without the `rosout` capability.",
+    "bucket": "ours-only"
+  },
+  "c:rosout_pump": {
+    "verdict": "extension",
+    "why": "drains the record queue onto the `/rosout` publisher from the application's spin loop, through the one encoder all three languages share (`nros_node::rosout::pump_raw`); never blocks on the queue, never allocates. Upstream publishes inside the logging call; here the SINK only copies into a `.bss` slot, so no logging call ever enters the RMW stack (issue 0589's re-entry hazard). Part of the `/rosout` bridge from C (issue 1589, `<nros/rosout.h>`); the Rust twin is `nros::rosout`. Links in every image and answers `NROS_RET_UNSUPPORTED` without the `rosout` capability.",
+    "bucket": "ours-only"
   }
 }

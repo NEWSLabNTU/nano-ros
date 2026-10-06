@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>rosout_talker_c</name>
+  <version>0.1.0</version>
+  <description>issue 1589 -- the C twin of the rosout-talker probe: logs through its node's logger and pumps the records onto /rosout through nros_rosout_*, so rosout_interop.rs can ask a stock `ros2 topic echo /rosout` whether a C program's log reaches it.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

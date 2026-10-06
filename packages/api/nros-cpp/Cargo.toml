@@ -147,6 +147,8 @@ trace-callbacks = ["nros/trace-callbacks", "nros-c/trace-callbacks"]
 param-store = ["rmw-cffi", "nros/param-services", "nros-c/param-services"]
 param-services = ["param-store"]
 lifecycle-services = ["rmw-cffi", "nros-c/lifecycle-services"]
+# issue 1589 — `/rosout` from C++ (`<nros/rosout.hpp>`); forwards the C bridge.
+rosout = ["rmw-cffi", "nros-c/rosout"]
 
 # Zenoh transport refinements (require rmw-zenoh-cffi)
 # Phase 128.E.1 — `link-tcp` / `link-udp-unicast` retired.

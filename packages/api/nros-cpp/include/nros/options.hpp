@@ -175,9 +175,10 @@ struct ClientOptions {
 //
 // It is not fixable by implementing them, either: nano-ros has no runtime
 // ComponentManager, no intra-process transport and no topic-statistics
-// collector; `/rosout` now EXISTS but is not reachable from C++ (phase-467 Q4
-// landed `nros::rosout` on the Rust side only — issue 1589), and it is not
-// automatic even there, so `enable_rosout(true)` still has nothing to switch.
+// collector; `/rosout` EXISTS in all three languages (issue 1589 — C++'s is
+// `nros::rosout::Publisher`, `<nros/rosout.hpp>`) but is never automatic: the
+// publisher is a declared entity the program creates, so `enable_rosout(true)`
+// still has nothing to switch.
 // Their parameters and remaps are resolved from the
 // LAUNCH FILE at BUILD time — `nros sync` projects them into the generated
 // entry as `nros_cpp_declare_remap` / `nros_cpp_declare_param` calls, not into

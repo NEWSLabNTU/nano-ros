@@ -99,6 +99,18 @@ pub const CAPABILITIES: &[Capability] = &[
         c_define: Some("NROS_SYSTEM_LIFECYCLE"),
         cmake_token: None,
     },
+    // Issue 1589 — the `/rosout` log bridge (`nros::rosout`, `<nros/rosout.h>`,
+    // `<nros/rosout.hpp>`). Entry-umbrella-only: it publishes through whatever
+    // backend the image has, so there is no backend wire feature. It only PULLS
+    // CODE IN — without it the C/C++ entry points still link and answer
+    // UNSUPPORTED — so the cargo feature is the whole lowering (no cmake knob).
+    Capability {
+        declared: "rosout",
+        nros_feature: "rosout",
+        backend_feature: None,
+        c_define: Some("NROS_SYSTEM_ROSOUT"),
+        cmake_token: None,
+    },
 ];
 
 /// Look up a declared capability axis. `None` for an unknown axis.
@@ -122,6 +134,16 @@ mod tests {
         // Phase 261 W1 — C/C++ lowering slots.
         assert_eq!(c.c_define, Some("NROS_SYSTEM_SAFETY_E2E"));
         assert_eq!(c.cmake_token, Some("NANO_ROS_SAFETY_E2E"));
+    }
+
+    #[test]
+    fn rosout_is_entry_umbrella_only() {
+        let c = capability("rosout").expect("rosout axis");
+        assert_eq!(c.nros_feature, "rosout");
+        assert_eq!(c.backend_feature, None);
+        assert!(!c.backend_supports("zenoh"));
+        assert_eq!(c.c_define, Some("NROS_SYSTEM_ROSOUT"));
+        assert_eq!(c.cmake_token, None);
     }
 
     #[test]

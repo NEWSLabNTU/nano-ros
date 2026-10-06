@@ -282,7 +282,10 @@ today" until 2026-09-29). Records can be republished as
 `rcl_interfaces/msg/Log` on `/rosout`, so `ros2 topic echo /rosout`,
 `rqt_console` and launch-side log aggregators see a nano-ros node.
 
-Turn on the `rosout` feature and wire three lines:
+Declare the `rosout` capability — `[system].features = ["rosout"]` in
+`system.toml`, or `set(NANO_ROS_FEATURES "rosout")` before
+`find_package(nano_ros)` in a bare CMake project (a Rust leaf can also name the
+`nros/rosout` feature) — and wire three lines. Rust:
 
 ```rust
 use nros_rcl_interfaces::msg::Log;
@@ -296,6 +299,36 @@ loop {
     let _ = nros::rosout::pump(&rosout); // and reach the wire here
 }
 ```
+
+C (`<nros/rosout.h>`):
+
+```c
+nros_publisher_t rosout = rcl_get_zero_initialized_publisher();
+nros_rosout_publisher_init(&rosout, &node, NULL);   /* NULL = bounded QoS */
+nros_rosout_enable();
+for (;;) {
+    rclc_executor_spin_some(&executor, 10000000);
+    nros_rosout_pump(&rosout, NULL);
+}
+```
+
+C++ (`<nros/rosout.hpp>`):
+
+```cpp
+nros::rosout::Publisher rosout;
+NROS_TRY(rosout.create(node));          // or create(node, nros::RosoutQoS())
+NROS_TRY(nros::rosout::enable());
+for (;;) {
+    nros::spin_once(10);
+    rosout.pump();
+}
+```
+
+All three share one encoder, so the records are identical. Without the
+capability the C and C++ entry points still link: `nros_logging_rosout_enabled()`
+/ `nros::rosout::enabled()` answer `false` and the rest answer UNSUPPORTED.
+`rclcpp::NodeOptions::enable_rosout(true)` still refuses to compile; "It is
+not automatic" below says why the publisher is yours to create.
 
 Five things to know before you rely on it.
 

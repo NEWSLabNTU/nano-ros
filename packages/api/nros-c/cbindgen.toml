@@ -108,6 +108,12 @@ exclude = [
     "nros_logger_get_name",
     "nros_logger_set_level",
     "nros_logger_get_child",
+    # issue 1589 — the `/rosout` bridge, hand-authored in the same header.
+    "nros_logging_rosout_enabled",
+    "nros_rosout_publisher_init",
+    "nros_rosout_qos_default",
+    "nros_rosout_enable",
+    "nros_rosout_pump",
     "nros_logger_get_level",
     "nros_logger_is_enabled",
     # phase-467 — the process-wide default threshold, hand-authored in

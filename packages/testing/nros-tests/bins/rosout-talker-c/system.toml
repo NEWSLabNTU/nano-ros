@@ -1,0 +1,17 @@
+# issue 1589 — the C `/rosout` probe. `features = ["rosout"]` is stated here
+# for `nros config explain`; the CMake road reads `NANO_ROS_FEATURES` in
+# CMakeLists.txt, as `examples/native/c/safety-listener` does.
+
+[system]
+name = "rosout_talker_c"
+rmw = "zenoh"
+domain_id = 0
+features = ["rosout"]
+
+[[component]]
+pkg = "rosout_talker_c"
+class = "rosout_talker_c::Talker"
+name = "rosout_talker"
+
+[image.native]
+board = "native"

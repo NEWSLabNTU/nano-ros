@@ -166,6 +166,8 @@ mod metadata_hooks;
 #[cfg(feature = "rmw-cffi")]
 mod publisher;
 #[cfg(feature = "rmw-cffi")]
+mod rosout;
+#[cfg(feature = "rmw-cffi")]
 mod service;
 #[cfg(feature = "rmw-cffi")]
 mod subscription;

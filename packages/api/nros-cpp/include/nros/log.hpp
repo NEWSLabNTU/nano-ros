@@ -211,8 +211,9 @@ template <typename T> struct refuse {
     "at BUILD time -- `nros sync` projects them into the generated entry as "                      \
     "nros_cpp_declare_remap / nros_cpp_declare_param calls, not into the process environment "     \
     "(RFC-0046, RFC-0060); it has no runtime ComponentManager, no intra-process transport and "    \
-    "no topic statistics collector, and its /rosout bridge is Rust-only and not automatic "        \
-    "(issue 1589), so there is nothing for these knobs to switch. "                                \
+    "no topic statistics collector, and its /rosout bridge is explicit, not automatic "            \
+    "(nros::rosout::Publisher in <nros/rosout.hpp>), so there is nothing for these knobs to "      \
+    "switch. "                                                                                     \
     "Use: node->declare_parameter<T>(name, default) for parameter overrides; the launch file "     \
     "for remaps; and drop the option chain. `rclcpp::NodeOptions{}` itself still constructs, so "  \
     "the `::rclcpp::Node(name, options)` constructor shape a composable node needs keeps "         \
