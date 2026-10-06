@@ -2,11 +2,11 @@
 id: 1352
 title: "A set_parameters request for a node's declared parameters does not fit
   the service buffer, and is dropped with no build-time warning"
-status: open
+status: resolved
 type: bug
 area: rmw, zenoh, params, sizing
 severity: high
-related: [issue-1270, issue-1271]
+related: [issue-1270, issue-1271, issue-1722, phase-461, phase-480]
 ---
 
 ## What happens
@@ -110,7 +110,7 @@ the depth is the half that makes it pay; doing either alone misses.
 
 ## Where the fix is planned
 
-[phase-461](../roadmap/phase-461-service-inbox-per-family.md) owns this issue:
+[phase-461](../../roadmap/phase-461-service-inbox-per-family.md) owns this issue:
 per-family inboxes (W1), the parameter family sized by phase-446 F3's request
 bound at depth 1 in nros-node (W2), a build-time assert that the slot holds
 the largest declared `set_parameters` (W2), and a counted, once-logged inbox
@@ -129,3 +129,85 @@ for any target, and call `set_parameters` with the full set. The request is
 dropped. Raising `CONFIG_NROS_SERVICE_BUFFER_SIZE` to 2408 fixes the drop and
 costs every OTHER queryable in the image the same increase, which is the
 trade this issue exists to remove.
+
+## Resolution
+
+Resolved 2026-10-06 (phase-480 W5), on top of phase-461 W1-W3, which gave the
+parameter family its own zenoh inbox, derived from the contract's declared
+parameters.
+
+**Measured on main before this change.** The image was the `features`
+workspace's `native_rust_params` (native, zenoh). The client was a stock humble
+`ros2 service call /param_talker/set_parameters` naming 25 parameters with
+35-byte names, about 2,411 B. "Lands" means a reply came back with 25
+`SetParametersResult`s. "Dropped" means no reply at all, and the CLI had to be
+`SIGKILL`ed because it ignores `SIGTERM` while it waits.
+
+| what the contract declares | builtin slot | result |
+| --- | ---: | --- |
+| 25 integers in `params:` | 2,444 B | lands |
+| 25, one of them a string | 1,024 B | dropped |
+| no `params:` (no descriptor) | user ring, 1,024 B | dropped |
+
+Every drop logged "larger than the 4096-byte (or 9176-byte) request buffer.
+Raise NROS_PARAM_SERVICE_BUFFER_SIZE". That buffer is the executor's, and it was
+never the limit, so raising that knob did nothing.
+
+**The fix, as one class:** the parameter family's request against every buffer
+it crosses on its way in.
+
+1. **Declared parameters it cannot price.** With a string or array parameter,
+   `nros-rmw-zenoh` cannot price the request: the store's caps belong to
+   nros-params. It used to fall back to the user-service slot, which phase-461
+   W3 had unfloored to the user services' own demand. It now REFUSES the build
+   and names `NROS_PARAM_SERVICE_INBOX_BYTES`. nros-node's existing const assert
+   then checks that statement against the request nros-node prices. Measured:
+   a statement of 1,024 is refused by nros-node, 4,096 builds, and the 25-name
+   call lands.
+2. **Nothing declared.** The builtin fallback is now `max(user slot, 1024)`,
+   the floor the single table always had. It is never the unfloored user demand
+   (one declared `AddTwoInts` server put that at about 20 B).
+3. **A priced slot with no builtin table.** The table exists only when the
+   application's queryable count is known. Without it, the parameter services
+   draw user-service rings, so a priced or stated builtin slot now raises those
+   rings, with a warning that names the remedy. Measured before:
+   `BUILTIN_INBOX_BYTES` 4096 was stated and a 1,024 B user ring still dropped
+   the request.
+
+The rule is `nros-rmw-zenoh/build_param_slot.rs`. It is included by `build.rs`
+and by `tests/builtin_inbox_slot.rs` (6 tests), because a build script's own
+tests never run. Negative control: putting back the pre-fix rule (unfloored
+user slot, and abstaining to it) fails 2 of the 6 tests.
+
+**The diagnostic.** In nros-node, `MessageTooLarge` (the transport's inbox
+dropped the request on arrival) is now its own kind, `InboxOverflow`, separate
+from `BufferTooSmall` (the executor's buffer). Its line names the transport
+knobs first, because nros-log truncates a line at its buffer, and the first
+draft was cut off before reaching them. Live, on the undeclared image:
+
+```
+param service /param_talker/set_parameters: request dropped by the TRANSPORT
+inbox (not the 4096 B executor buffer). zenoh: NROS_PARAM_SERVICE_INBOX_BYTES,
+or NROS_SERVICE_INBOX_BYTES with no declared endpoints; or declare `params:`
+(issue 1352)
+```
+
+With `NROS_SERVICE_INBOX_BYTES=4096` set, the same call lands. Unit test:
+`an_inbox_drop_and_a_buffer_overflow_are_reported_as_different_kinds`. It fails
+if `MessageTooLarge` is classified as `RequestTooLarge` again.
+
+Gates: `just check fast`, `just check test-targets` on Rust 1.99.0, and tier 2
+`just ci matrix build` (which ended with "L3 passed — 3 cross ELF(s) checked").
+
+**Not covered, and not measured:**
+
+- XRCE. Its `XRCE_SERVICE_REQUEST_BUFFER_SIZE` is not derived from the
+  parameter shape at all. Filed as
+  [1722-xrce-param-request-buffer-not-derived.md](../1722-xrce-param-request-buffer-not-derived.md).
+- A builtin table that is too SMALL. When the application declares more
+  queryables than `ZPICO_MAX_QUERYABLES` leaves room for, some builtin services
+  take a spare user ring at the user-service size. zenoh does not know how many
+  builtin services nros-node will create, so this case is not handled here.
+- The phase-461 W4 drop counter, and the RAM half of the issue (the island
+  link). Both stay with phase-461.
+- A Zephyr or other embedded image. Every live measurement above is native.

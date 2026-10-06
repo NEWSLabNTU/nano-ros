@@ -2,7 +2,7 @@
 
 **Status (2026-09-21). PLANNED, nothing landed.** Numbered highest + 6 because
 five other phases were being opened concurrently (456-460 are theirs). Owns
-[issue 1352](../issues/1352-param-set-request-exceeds-service-buffer.md), which
+[issue 1352](../issues/archived/1352-param-set-request-exceeds-service-buffer.md), which
 PR #1043 FILED (merged 2026-09-13) and did not fix. Completes the half of
 phase-454 W6.a that its own text left open ("lowering it is a separate question
 that needs the built-in service surface to become a declared one"), and is the
