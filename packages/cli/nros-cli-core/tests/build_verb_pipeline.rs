@@ -1217,3 +1217,122 @@ fn a_distinct_image_id_in_the_second_bringup_builds() {
     assert_eq!(plans.len(), 1);
     assert_eq!(plans[0].driver, Driver::West);
 }
+
+/// Every file under `dir`: its bytes and its mtime. A rewrite with identical
+/// bytes still moves the mtime, and the mtime is what ninja reads (issue 1707).
+type Snapshot = std::collections::BTreeMap<std::path::PathBuf, (Vec<u8>, std::time::SystemTime)>;
+
+fn tree_snapshot(dir: &Path) -> Snapshot {
+    let mut out = Snapshot::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).unwrap().flatten() {
+            let p = e.path();
+            let ft = e.file_type().unwrap();
+            if ft.is_dir() {
+                stack.push(p);
+            } else if ft.is_file() {
+                let modified = e.metadata().unwrap().modified().unwrap();
+                out.insert(p.clone(), (std::fs::read(&p).unwrap(), modified));
+            }
+        }
+    }
+    out
+}
+
+/// Issue 1716 — `nros image-facts` is a QUERY and writes nothing.
+///
+/// It planned through `plan_builds`, whose stage 4 regenerates every image's
+/// generated files — measured as the 1707 defect, where the query, running
+/// inside a Zephyr configure, rewrote the west application that configure had
+/// just read. The workspace here is PLANNED first (so every generated file
+/// exists), then one generated file is made stale the way a declaration edit
+/// makes it stale: the query must leave it stale, and leave every other file's
+/// bytes and mtime alone, across two runs. Against the old query the stale
+/// `main.rs` came back regenerated.
+#[test]
+fn image_facts_writes_nothing() {
+    assert!(
+        nros_cli_core::orchestration::model_location::launch_resolver_bin().is_some(),
+        "nros-launch-resolve not found — run `just setup-launch-resolve`, or point \
+         $NROS_LAUNCH_RESOLVE at one. Without it no entry is generated, so a query \
+         that regenerated entries would pass this test vacuously."
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path();
+    fixture(ws);
+    write(
+        &ws.join("src/demo_bringup/launch/system.launch.xml"),
+        "<launch>\n  <node pkg=\"talker_pkg\" exec=\"talker\" name=\"talker\"/>\n</launch>\n",
+    );
+    let mut every = args(ws, &[]);
+    every.all = true;
+    let planned = plan_builds(&every).expect("the workspace plans");
+
+    let main_rs = ws.join("build/posix-zenoh/native_entry/src/main.rs");
+    assert!(
+        main_rs.is_file(),
+        "planning generated no entry at {} — the precondition this test needs",
+        main_rs.display()
+    );
+    std::fs::write(
+        &main_rs,
+        "// stale: the declaration moved since the last build\n",
+    )
+    .unwrap();
+    let before = tree_snapshot(ws);
+
+    for _ in 0..2 {
+        nros_cli_core::cmd::image_facts::run(nros_cli_core::cmd::image_facts::Args {
+            image: None,
+            workspace: Some(ws.join("src/demo_bringup")),
+            nano_ros_path: Some(repo_root()),
+            cmake: true,
+            for_entry: Some("native_entry".to_string()),
+            if_present: false,
+        })
+        .expect("the query answers");
+    }
+
+    let after = tree_snapshot(ws);
+    let changed: Vec<String> = before
+        .keys()
+        .chain(after.keys())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .filter(|p| before.get(*p) != after.get(*p))
+        .map(|p| p.strip_prefix(ws).unwrap_or(p).display().to_string())
+        .collect();
+    assert!(
+        changed.is_empty(),
+        "`nros image-facts` wrote to the workspace it was asked about (issue 1716): {changed:?}"
+    );
+
+    // The query still answers what the build plans: same images, same facts.
+    let queried = nros_cli_core::cmd::build::plan_query(&every).expect("the query plans");
+    let facts = |p: &nros_cli_core::cmd::build::ResolvedBuild| {
+        (
+            p.qualified.clone(),
+            p.board.clone(),
+            p.platform.clone(),
+            p.driver,
+            p.rmw.clone(),
+            p.entry_package.clone(),
+            p.target.clone(),
+            p.profile.clone(),
+        )
+    };
+    assert_eq!(
+        queried.iter().map(facts).collect::<Vec<_>>(),
+        planned.iter().map(facts).collect::<Vec<_>>()
+    );
+    assert!(
+        queried
+            .iter()
+            .all(|p| p.handoff.is_none() && p.configure.is_none())
+    );
+    assert!(
+        tree_snapshot(ws) == after,
+        "plan_query wrote to the workspace"
+    );
+}

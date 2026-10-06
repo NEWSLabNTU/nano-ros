@@ -149,10 +149,13 @@ endfunction()
 # CMakeLists.txt`) before it configures, and that file is the only carrier of
 # the image's capability Kconfig and `NANO_ROS_FEATURES` (issues 1681, 1702).
 # But the application is ALSO rewritten by every other `plan_builds` over the
-# workspace -- including `nros image-facts` above, which runs INSIDE this
-# configure. So a configure that started from a stale file (its declaration
-# changed since the last `nros build`) read the old values, and the file was
-# brought current while it ran. The build system is written after that, so it
+# workspace -- and until issue 1716 that included `nros image-facts` above,
+# which runs INSIDE this configure. So a configure that started from a stale
+# file (its declaration changed since the last `nros build`) read the old
+# values, and the file was brought current while it ran. The query now plans
+# with `plan_query` and writes nothing; this check stays, because any other
+# planner of the workspace (an `nros build` of a sibling image, in another
+# terminal) can still rewrite the file mid-configure. The build system is written after that, so it
 # is NEWER than its input and no later `ninja` reconfigures: the image keeps the
 # previous declaration's Kconfig and features for good. Measured (ninja 1.10):
 # `.config` kept `CONFIG_NROS_CAPABILITY_PARAM_SERVICES=y` through `cmake` +
