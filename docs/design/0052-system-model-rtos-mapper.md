@@ -193,6 +193,13 @@ callback, is inside the window. The figure is not the timer's release jitter
 tick or crossing a link before the callback starts is outside it (phase-474
 D3).
 
+**The rate rule's first window (phase-474 I8).** `rate-hierarchy-runtime`
+counts publishes over windows of `RATE_CHECK_INTERVAL_US` (5 s) that roll at
+monitor ticks. The first window, opened at the first spin or reopened by
+arming, starts at the first tick that sees a new sample rather than where it
+opened, so it has the phase the later windows have; a stream that stays
+silent is judged at the end of the window as opened.
+
 ## CMake surface
 
 `nano_ros_add_executable(... MODEL path/to/system_model.yaml)` as the

@@ -832,6 +832,9 @@ pub(crate) struct MonitorState {
     pub(crate) violated_last_window: bool,
     /// W3b.5 — separate dedup for the latency rule on the same spec row.
     pub(crate) latency_violated_last_window: bool,
+    /// phase-474 I8 -- the open window has been moved onto the stream's
+    /// phase (or judged as opened). See [`check_rate`].
+    pub(crate) aligned: bool,
 }
 
 /// Pure rate check over one window boundary. Returns `Some(violation)`
@@ -852,11 +855,32 @@ pub(crate) fn check_rate(
     if !state.opened {
         // First observation: open the window, no verdict yet.
         state.opened = true;
+        state.aligned = false;
         state.window_start_us = now_us;
         state.count_at_window_start = count;
         return None;
     }
     let window_us = now_us.saturating_sub(state.window_start_us);
+    if !state.aligned && window_us < RATE_CHECK_INTERVAL_US {
+        // phase-474 I8 -- the first window starts at the first tick that sees
+        // a new sample, not where it was opened. The tick runs before the
+        // spin's dispatch, so in steady state every boundary sits one tick
+        // after a publish and the count matches the span. The window opened
+        // at boot or by arming sits wherever that spin fell: off the
+        // stream's phase it spans N samples over N periods plus the offset,
+        // and a stream at exactly its declared rate read short (the island:
+        // 9984 of 10000 mHz, once, after arming). Re-anchoring here puts the
+        // first window on the same phase the later ones have. A stream that
+        // stays silent is not held open: once a whole window passes with no
+        // sample it is judged as opened (below), at 0.
+        if count != state.count_at_window_start {
+            state.aligned = true;
+            state.window_start_us = now_us;
+            state.count_at_window_start = count;
+        }
+        return None;
+    }
+    state.aligned = true;
     if window_us < RATE_CHECK_INTERVAL_US {
         return None;
     }
@@ -1098,6 +1122,70 @@ mod tests {
         // Degrades again — fires again.
         CELL.count.store(511, Ordering::Relaxed);
         assert!(check_rate(&s, &mut st, 4 * RATE_CHECK_INTERVAL_US).is_some());
+    }
+
+    /// phase-474 I8 -- the island's first window after arming read 10 Hz
+    /// publishers at 9984 mHz and never again. The monitor tick runs at the
+    /// top of a spin, before that spin's dispatch publishes, so in steady
+    /// state every window boundary sits one spin after a publish and the
+    /// count matches the span. The window arming opens sits wherever the
+    /// arming spin fell: off the publisher's phase, it spans 50 publishes
+    /// over 5007 ms and reads short. A stream at exactly its declared rate,
+    /// armed mid-period, must not be judged slow.
+    #[test]
+    fn a_stream_at_its_rate_armed_mid_period_is_not_judged_slow() {
+        static C8: PubMonitorCell = PubMonitorCell::new();
+        let s = MonitorSpec {
+            topic: "/i8",
+            fqn: "/n/i8",
+            min_rate_hz_milli: 10_000, // 10 Hz declared
+            max_latency_ms: 0,
+            cell: &C8,
+        };
+        // Published at 0, 100 ms, ..., 50 s: 501 samples before arming.
+        C8.count.store(501, Ordering::Relaxed);
+        let mut st = MonitorState::default();
+        // Arming spin, off the 10 ms grid (a wake for another entry).
+        assert!(check_rate(&s, &mut st, 50_003_000).is_none());
+        let mut t = 50_010_000u64;
+        while t <= 80_000_000 {
+            // The tick, then the spin's dispatch: the 10 Hz timer publishes.
+            let v = check_rate(&s, &mut st, t);
+            assert!(v.is_none(), "judged slow at {t} us: {v:?}");
+            if t.is_multiple_of(100_000) {
+                C8.count.fetch_add(1, Ordering::Relaxed);
+            }
+            t += 10_000;
+        }
+        // And a stream that IS slow is still judged in the first window:
+        // half its rate from arming on.
+        static C9: PubMonitorCell = PubMonitorCell::new();
+        let slow = MonitorSpec { cell: &C9, ..s };
+        let mut st = MonitorState::default();
+        assert!(check_rate(&slow, &mut st, 50_003_000).is_none());
+        let mut t = 50_010_000u64;
+        let mut fired = None;
+        while t <= 60_000_000 && fired.is_none() {
+            fired = check_rate(&slow, &mut st, t).map(|v| (t, v.measured));
+            if t.is_multiple_of(200_000) {
+                C9.count.fetch_add(1, Ordering::Relaxed);
+            }
+            t += 10_000;
+        }
+        let (at, measured) = fired.expect("a 5 Hz stream against 10 Hz is judged");
+        assert!(measured <= 5_100, "{measured}");
+        // Judged one window after its first sample: at most one of its
+        // periods (200 ms) plus a tick later than the window arming opened.
+        assert!(at <= 50_003_000 + RATE_CHECK_INTERVAL_US + 210_000, "{at}");
+        // A stream silent from arming on is judged at the first window's end,
+        // not held open waiting for a sample that never comes.
+        static C10: PubMonitorCell = PubMonitorCell::new();
+        let dead = MonitorSpec { cell: &C10, ..s };
+        let mut st = MonitorState::default();
+        assert!(check_rate(&dead, &mut st, 50_003_000).is_none());
+        let v = check_rate(&dead, &mut st, 50_003_000 + RATE_CHECK_INTERVAL_US)
+            .expect("silent stream judged");
+        assert_eq!(v.measured, 0);
     }
 
     #[test]
