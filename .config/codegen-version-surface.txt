@@ -12,7 +12,7 @@
 #
 # Regenerate after a DELIBERATE surface move (bump the constant first):
 #     python3 scripts/check-codegen-version-surface.py --write-baseline
-version 8
+version 9
 9a40c1a1fadbae06 cpp|fn|component.hpp|bind_subscription_sized
 4e2616f1497bc854 cpp|struct|fixed_sequence.hpp|FixedSequence
 05b2ecfd67796b30 cpp|struct|fixed_string.hpp|FixedString
@@ -134,6 +134,7 @@ ef2d34463c53305d c|type|subscription.h|nros_message_type_t
 5bb13590faea8e7f c|type|view.h|nros_le_slice_view_
 54616a685e37b195 c|type|view.h|nros_view_bytes_t
 88d59d0ac993b29b c|type|view.h|nros_view_str_t
+45a40bb9816e4bc5 rust|const|nros_serdes::EMPTY_STRUCT_MEMBER
 00560764c4419753 rust|enum|nros_serdes::DeserError
 f2f63bb6d001fbee rust|enum|nros_serdes::FieldType
 e298fca3b6a8d063 rust|enum|nros_serdes::SerError
@@ -202,6 +203,7 @@ b4dc8fc82c92846e rust|method|nros_serdes::LeSliceView::as_bytes
 fed09a2950a65865 rust|method|nros_serdes::LeSliceView::len
 8b36cc004d0dfa85 rust|method|nros_serdes::LeSliceView::new
 1610deb04f1f8e70 rust|mod|nros_core::heap
+d899ee2cab66f2f5 rust|mod|nros_serdes::schema
 a0e5a2d88fbf1d3d rust|mod|nros_serdes::size
 b8d6b91fcebdd992 rust|reexport|nros_core|action::
 64b5234e4523e037 rust|reexport|nros_core|alloc::

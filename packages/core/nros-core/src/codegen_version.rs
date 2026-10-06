@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 8;
+pub const NROS_CODEGEN_VERSION: u32 = 9;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -145,6 +145,18 @@ pub const NROS_CODEGEN_VERSION: u32 = 8;
 /// `t.to_ros_msg()` into one of ITS types will not resolve until it is
 /// regenerated, which is a compile error at the call site on the day someone
 /// writes the call, not a silent mismatch. So the floor stays where it is.
+///
+/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 9 (issue 1293, phase-480
+/// W4). ADDITIVE: `nros_serdes::schema::EMPTY_STRUCT_MEMBER`, the name of
+/// rosidl's `uint8 structure_needs_at_least_one_member`, which a version-9
+/// tree names as the schema of every empty message and whose byte it writes.
+/// A version-8 tree still compiles and runs against this runtime: it names
+/// nothing that was withdrawn. What it keeps is the defect 1293 fixes for a
+/// regenerated tree, and only for ITS OWN empty messages: they still go out
+/// with no byte (which every stock RMW refuses) and still have no Cyclone
+/// descriptor (`BuildError::EmptySchema`, which says to regenerate). That is
+/// the behaviour the tree already had, not a new mismatch the runtime
+/// introduces, so the floor stays where it is.
 ///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see

@@ -125,7 +125,7 @@
  * carried it twice. Identical redefinitions are legal C and GCC keeps the LAST,
  * while both gates read the FIRST — a bump that edited one copy would pass them
  * and compile against the other. Both gates now refuse a second definition. */
-#define NROS_CODEGEN_VERSION 8
+#define NROS_CODEGEN_VERSION 9
 #define NROS_CODEGEN_VERSION_MIN 2
 
 /* Issue 0464 — this file is a hand-maintained SNAPSHOT, so the pairs below can
