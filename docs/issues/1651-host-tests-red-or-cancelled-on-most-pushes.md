@@ -112,3 +112,18 @@ alternatives: raising integration `timeout-minutes` (~+30, but `just check`
 still delays `test-all`), and dropping `just check` from host-tests (saves ~62
 min, but gate.yml's nightly `check build` is itself red, so this lane is its
 only green).
+
+**Missing-fixture reds: the lane builds its own fixtures (2026-10-07).** The
+integration job now provisions with `just setup tier1` and builds with
+`just build tier1` (= `build-test-fixtures lane=tier1`), the presets tier 2
+already uses, in place of `build-fixture-rust-core` + `build-workspace-fixtures`.
+`NROS_SKIP_FIXTURE_CHECK` is gone, so a missing in-lane fixture stops the run at
+the pre-flight instead of reaching `test-all`. The tier's modules are `native`,
+`threadx_linux` and `zephyr` (12 coordinates, including `zephyr,rust,zenoh` and
+`threadx-linux,c,zenoh`), so `setup tier1` also fetches the Zephyr SDK this
+image does not bake. The disk reclaim now runs before the build as well as
+after it. `timeout-minutes` 210 → 300: the +51 min / +41 G above was measured
+on a faster host and the whole job has not yet been priced on the hosted
+runner — the first complete run sets the real number. Unmeasured here: whether
+the 146 G disk holds the full lane (the reclaim adds ~32 G of headroom ahead of
+it).
