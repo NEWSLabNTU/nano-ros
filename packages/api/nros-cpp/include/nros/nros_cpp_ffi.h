@@ -580,6 +580,30 @@ typedef struct nros_cpp_violation_t {
 typedef void (*nros_cpp_violation_cb_t)(void *ctx, const struct nros_cpp_violation_t *v);
 
 /**
+ * The violation counters of one executor (phase-474 I1 / I2).
+ */
+typedef struct nros_cpp_violation_counts_t {
+  /**
+   * Violations stored since boot; the newest pending entry has this
+   * sequence number.
+   */
+  uint32_t total;
+  /**
+   * Entries evicted from the full ring before a drain took them (the ring
+   * keeps the LATEST `NROS_EXECUTOR_MAX_VIOLATIONS`).
+   */
+  uint32_t dropped;
+  /**
+   * Verdicts reached before the monitors armed: counted, never stored.
+   */
+  uint32_t suppressed_before_arm;
+  /**
+   * Whether this executor's monitors are armed.
+   */
+  bool armed;
+} nros_cpp_violation_counts_t;
+
+/**
  * C callback type for guard conditions: `void callback(void* context)`.
  */
 typedef void (*nros_cpp_guard_callback_t)(void *context);
@@ -1847,6 +1871,29 @@ nros_cpp_ret_t nros_cpp_install_monitors(void *handle,
 nros_cpp_ret_t nros_cpp_executor_drain_violations(void *handle,
                                                   nros_cpp_violation_cb_t cb,
                                                   void *ctx);
+
+/**
+ * phase-474 I1 -- turn the executor's drain-and-report hook on or off
+ * (`Executor::set_violation_drain_report`): at the end of every spin the ring
+ * is drained and each entry logged with its sequence number and the
+ * `total` / `dropped` counters. The generated C/C++ entries call this when the
+ * image sets `CONFIG_NROS_VIOLATION_DRAIN_REPORT`. Call from setup, never from
+ * a callback.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL.
+ */
+nros_cpp_ret_t nros_cpp_executor_set_violation_drain_report(void *handle, bool enabled);
+
+/**
+ * phase-474 I1 / I2 -- read one executor's violation counters.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL; `out` must
+ * be NULL or point at writable storage for one `nros_cpp_violation_counts_t`.
+ */
+nros_cpp_ret_t nros_cpp_executor_violation_counts(void *handle,
+                                                  struct nros_cpp_violation_counts_t *out);
 
 /**
  * Declare one `from -> to` remap for a node, from the C++ side of the ABI.

@@ -636,6 +636,31 @@ fn main() {
     // `NROS_EXECUTOR_MAX_SHUTDOWN_CBS` (or `CONFIG_NROS_EXECUTOR_MAX_SHUTDOWN_CBS`
     // on Zephyr) when an image genuinely has more things to park.
     let max_shutdown_cbs = env_usize("NROS_EXECUTOR_MAX_SHUTDOWN_CBS", 2);
+    // phase-474 I1 -- depth of the contract-violation ring, PER EXECUTOR, and of
+    // the image-wide SWD record (`monitor::NROS_VIOLATION_RECORD`) beside it.
+    // The ring keeps the LATEST this-many verdicts (it used to keep the first),
+    // so the depth only bounds how much recent history a reader sees, never
+    // whether a late violation is stored at all. Default 8: a slot is 24 B in
+    // the ring and 28 B in the record on a 32-bit target, so 8 costs 192 B per
+    // executor plus 264 B for the record, and the island's whole bring-up
+    // (8 start-up verdicts, phase-474 D2) fitted it -- which arming now keeps
+    // out of the ring altogether. Raise it with `NROS_EXECUTOR_MAX_VIOLATIONS`
+    // (`CONFIG_NROS_EXECUTOR_MAX_VIOLATIONS`) when a burst must be kept whole.
+    let max_violations = env_usize("NROS_EXECUTOR_MAX_VIOLATIONS", 8);
+    assert!(
+        (1..=256).contains(&max_violations),
+        "NROS_EXECUTOR_MAX_VIOLATIONS={max_violations}: must be 1..=256 (phase-474 I1)"
+    );
+    // phase-474 I1 -- the drain-and-report hook's DEFAULT (an executor can still
+    // flip it, `Executor::set_violation_drain_report`). A build-time default
+    // rather than a call in the generated entry for the reason issue 1635 gave
+    // for the diagnostics sink: the runtime owns every board's spin loop, so
+    // one default reaches the C, C++ and Rust entries at once. Off unless
+    // stated (`NROS_VIOLATION_DRAIN_REPORT=1`, Zephyr
+    // `CONFIG_NROS_VIOLATION_DRAIN_REPORT=y`), so no image's log changes.
+    let violation_drain_report = nros_zephyr_build::knob("NROS_VIOLATION_DRAIN_REPORT")
+        .stated()
+        .is_some_and(|v| v != 0);
     // issue 0900 — how many of the MAX_CBS slots may hold an ACTION CLIENT,
     // the entity the arena derivation below budgets every slot at.
     //
@@ -1179,6 +1204,15 @@ fn main() {
          pre-shutdown hooks and a second for on-shutdown hooks \
          (set via NROS_EXECUTOR_MAX_SHUTDOWN_CBS, default 2). Issue 0790.\n\
          pub const MAX_SHUTDOWN_CBS: usize = {max_shutdown_cbs};\n\
+         \n\
+         /// Contract-violation ring depth per executor, and the SWD record's \
+         slot count (set via NROS_EXECUTOR_MAX_VIOLATIONS, default 8). The ring \
+         keeps the LATEST entries. phase-474 I1.\n\
+         pub const MAX_VIOLATIONS: usize = {max_violations};\n\
+         \n\
+         /// Whether a new executor starts with the drain-and-report hook on \
+         (set via NROS_VIOLATION_DRAIN_REPORT, default off). phase-474 I1.\n\
+         pub const VIOLATION_DRAIN_REPORT: bool = {violation_drain_report};\n\
          \n\
          /// Issue 1190 -- the arena derivation's MODEL, as the consts it \
          summed.\n\

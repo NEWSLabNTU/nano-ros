@@ -12313,6 +12313,108 @@ fn a_heap_too_small_for_the_parameter_store_refuses_the_declaration() {
     // declares, so the refusal above is the cap and not the call.
     let mut ok: Executor = executor_with_clock(MockSession::new());
     assert!(ok.declare_parameter("rate", ParameterValue::Integer(10)));
+/// phase-474 I1 — the ring keeps the LATEST `MAX_VIOLATIONS` verdicts, counts
+/// what it evicted, and numbers each one, so a late violation is never lost to
+/// start-up noise (the Autoware Safety Island's ring held its first 8 since
+/// boot, all start-up).
+#[cfg(feature = "alloc")]
+#[test]
+fn the_violation_ring_keeps_the_latest_and_numbers_them() {
+    use super::monitor::{MAX_VIOLATIONS, Violation};
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_report_violations(false);
+    let cap = MAX_VIOLATIONS as u32;
+    for m in 1..=cap + 3 {
+        executor.violations.record(Violation {
+            rule: "timer-overrun-runtime",
+            fqn: "timer",
+            measured: m,
+            declared: 0,
+        });
+    }
+    assert_eq!(executor.violations_total(), cap + 3);
+    assert_eq!(executor.violations_dropped(), 3, "the three OLDEST evicted");
+    let mut got = alloc::vec::Vec::new();
+    executor.drain_violations_numbered(|seq, v| got.push((seq, v.measured)));
+    let want: alloc::vec::Vec<(u32, u32)> = (4..=cap + 3).map(|m| (m, m)).collect();
+    assert_eq!(got, want, "oldest first, the newest kept, numbered");
+
+    // A drain empties the ring and keeps the counters; numbering continues.
+    let mut again = 0;
+    executor.drain_violations(|_| again += 1);
+    assert_eq!(again, 0);
+    executor.violations.record(Violation {
+        rule: "silence-runtime",
+        fqn: "/n/in",
+        measured: 0,
+        declared: 500,
+    });
+    let mut last = alloc::vec::Vec::new();
+    executor.drain_violations_numbered(|seq, v| last.push((seq, v.rule)));
+    assert_eq!(last, [(cap + 4, "silence-runtime")]);
+    assert_eq!(executor.violations_dropped(), 3);
+}
+
+/// phase-474 I1 — the drain-and-report hook drains the ring at the end of the
+/// spin that detected the verdict; with it off the ring keeps the verdict for
+/// a hand drain.
+#[cfg(feature = "alloc")]
+#[test]
+fn the_drain_report_hook_drains_at_the_end_of_the_spin() {
+    use super::monitor::Violation;
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let one = || Violation {
+        rule: "max-latency-runtime",
+        fqn: "/n/out",
+        measured: 25,
+        declared: 10,
+    };
+    executor.violations.record(one());
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    let mut kept = 0;
+    executor.drain_violations(|_| kept += 1);
+    assert_eq!(kept, 1, "hook off: the ring keeps it");
+
+    executor.set_violation_drain_report(true);
+    executor.violations.record(one());
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    let mut left = 0;
+    executor.drain_violations(|_| left += 1);
+    assert_eq!(left, 0, "hook on: the spin drained and reported it");
+    assert_eq!(executor.violations_total(), 2);
+    assert_eq!(executor.violations_dropped(), 0);
+}
+
+/// phase-474 I1 — with callback tracing compiled in, a stored violation is
+/// four marker events on the installed sink.
+#[cfg(all(feature = "alloc", feature = "trace-callbacks"))]
+#[test]
+fn a_stored_violation_emits_its_trace_markers() {
+    use super::monitor::{Violation, violation_marker_words};
+    use std::sync::Mutex;
+    static EVENTS: Mutex<alloc::vec::Vec<(u32, u32)>> = Mutex::new(alloc::vec::Vec::new());
+    unsafe extern "C" fn sink(id: u32, arg: u32) {
+        if (21..=24).contains(&id) {
+            EVENTS.lock().unwrap().push((id, arg));
+        }
+    }
+    super::callback_trace::set_trace_sink(Some(sink));
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_report_violations(false);
+    let v = Violation {
+        rule: "max-latency-runtime",
+        fqn: "/trace/out",
+        measured: 30,
+        declared: 10,
+    };
+    executor.violations.record(v.clone());
+    super::callback_trace::set_trace_sink(None);
+    let seen = EVENTS.lock().unwrap().clone();
+    let want = violation_marker_words(1, &v);
+    assert!(
+        seen.windows(4).any(|w| w == want),
+        "the four violation events, in order: {seen:?}"
+    );
 }
 
 /// Issue 1667 — the workload issue 1496's 8-region table was never measured

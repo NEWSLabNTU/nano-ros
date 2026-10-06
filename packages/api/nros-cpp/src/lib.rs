@@ -4724,6 +4724,71 @@ pub unsafe extern "C" fn nros_cpp_executor_drain_violations(
     NROS_CPP_RET_OK
 }
 
+/// phase-474 I1 -- turn the executor's drain-and-report hook on or off
+/// (`Executor::set_violation_drain_report`): at the end of every spin the ring
+/// is drained and each entry logged with its sequence number and the
+/// `total` / `dropped` counters. The generated C/C++ entries call this when the
+/// image sets `CONFIG_NROS_VIOLATION_DRAIN_REPORT`. Call from setup, never from
+/// a callback.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_set_violation_drain_report(
+    handle: *mut c_void,
+    enabled: bool,
+) -> nros_cpp_ret_t {
+    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    cpp.executor.set_violation_drain_report(enabled);
+    NROS_CPP_RET_OK
+}
+
+/// The violation counters of one executor (phase-474 I1 / I2).
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct nros_cpp_violation_counts_t {
+    /// Violations stored since boot; the newest pending entry has this
+    /// sequence number.
+    pub total: u32,
+    /// Entries evicted from the full ring before a drain took them (the ring
+    /// keeps the LATEST `NROS_EXECUTOR_MAX_VIOLATIONS`).
+    pub dropped: u32,
+    /// Verdicts reached before the monitors armed: counted, never stored.
+    pub suppressed_before_arm: u32,
+    /// Whether this executor's monitors are armed.
+    pub armed: bool,
+}
+
+/// phase-474 I1 / I2 -- read one executor's violation counters.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL; `out` must
+/// be NULL or point at writable storage for one `nros_cpp_violation_counts_t`.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_violation_counts(
+    handle: *mut c_void,
+    out: *mut nros_cpp_violation_counts_t,
+) -> nros_cpp_ret_t {
+    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(out) = (unsafe { out.as_mut() }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    *out = nros_cpp_violation_counts_t {
+        total: cpp.executor.violations_total(),
+        dropped: cpp.executor.violations_dropped(),
+        suppressed_before_arm: 0,
+        armed: true,
+    };
+    NROS_CPP_RET_OK
+}
+
 /// Declare one `from -> to` remap for a node, from the C++ side of the ABI.
 ///
 /// `node_namespace` may be NULL, which means `/`; every other pointer is

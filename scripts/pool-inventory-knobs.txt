@@ -35,6 +35,7 @@
 NROS_ACTION_INBOX_BYTES | pool | nros_rmw_zenoh::shim::service::ACTION_INBOX | slot bytes of each action-family inbox ring; the element is an `InboxStorage` struct (ring header + slots), so only the compiler knows the product
 NROS_ACTION_INBOX_DEPTH | pool | nros_rmw_zenoh::shim::service::ACTION_INBOX | ring depth of each action-family inbox; same `InboxStorage` element
 NROS_BOOT_REPORT | pool | nros_node::boot_report::NROS_BOOT_REPORT | a switch, not a count: on (the native_sim default since issue 1424, and wherever CONFIG_NROS_BOOT_REPORT=y) it links the one boot-record static, measured per image by `mem-report`; off, it links nothing
+NROS_VIOLATION_DRAIN_REPORT | not-a-size | | a switch: whether a new executor drains its violation ring every spin and logs each entry (phase-474 I1)
 NROS_SERVICE_INBOX_BYTES | pool | nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX | slot bytes of each user-service inbox ring (`InboxStorage` element); its default is DERIVED from the declared request types, so no static figure exists either
 NROS_SERVICE_INBOX_DEPTH | pool | nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX | ring depth of each user-service inbox (`InboxStorage` element)
 ZPICO_SERVICE_BUFFER_SIZE | pool | nros_rmw_zenoh::shim::service::SERVICE_BUFFERS | payload bytes inside each `ServiceBuffer` struct; also the default for the two inbox slot sizes above
@@ -81,6 +82,7 @@ NROS_EXECUTOR_MAX_SC | executor | | sched-context slots inside the executor
 NROS_EXECUTOR_ACTION_CLIENTS | executor | | action-client entries the executor arena is sized for
 NROS_EXECUTOR_MAX_NODES | executor | | node slots inside the executor; the zenoh backend also sizes its per-node liveliness cap from it
 NROS_EXECUTOR_MAX_SHUTDOWN_CBS | executor | | shutdown-callback slots inside the executor
+NROS_EXECUTOR_MAX_VIOLATIONS | executor | | violation-ring slots carved from the executor backing (24 B each on a 32-bit target); with the boot report it also sizes the `NROS_VIOLATION_RECORD` static (40 B + 28 B a slot), measured per image by `mem-report` (phase-474 I1)
 NROS_PUBSUB_QOS_DEPTH | executor | | the per-subscription receive queue depth the arena budgets for; derived from the declared QoS where an image states one
 NROS_SUBSCRIPTION_BUFFER_SIZE | executor | | each subscription's receive buffer inside the executor arena (`DEFAULT_RX_BUF_SIZE`)
 NROS_SUBSCRIBER_BUFFER_SIZE | pool | nros_rmw_zenoh::shim::subscriber::SMALL_PAYLOADS | the small payload class (formula-priced); read by two crates with two defaults — the page flags that

@@ -157,6 +157,23 @@ impl<'s, T> CarvedVec<'s, T> {
         Ok(())
     }
 
+    /// Remove and return the OLDEST element (index 0), shifting the rest down
+    /// one so push order is kept. O(len); phase-474 I1's violation ring is its
+    /// one caller, at `MAX_VIOLATIONS` (default 8) slots.
+    pub(crate) fn pop_front(&mut self) -> Option<T> {
+        if self.len == 0 {
+            return None;
+        }
+        // SAFETY: `[0, len)` is initialised; slot 0 is read out exactly once
+        // and then overwritten by the shift (or left outside `[0, len - 1)`).
+        let first = unsafe { self.slots[0].assume_init_read() };
+        let base = self.slots.as_mut_ptr();
+        // SAFETY: both ranges lie inside `slots`; `copy` handles the overlap.
+        unsafe { core::ptr::copy(base.add(1), base, self.len - 1) };
+        self.len -= 1;
+        Some(first)
+    }
+
     /// Drop every element and reset the cursor.
     pub(crate) fn clear(&mut self) {
         let len = core::mem::replace(&mut self.len, 0);
@@ -1066,6 +1083,25 @@ mod tests {
         assert!(v.is_empty());
         assert!(v.push(50).is_ok());
         assert_eq!(v.as_slice(), &[50]);
+    }
+
+    /// phase-474 I1 -- `pop_front` takes the OLDEST and keeps push order, which
+    /// is what lets the violation ring evict its oldest entry when full.
+    #[test]
+    fn carved_vec_pop_front_keeps_order() {
+        let mut slots = [const { MaybeUninit::<u32>::uninit() }; 3];
+        let mut v = CarvedVec::new(&mut slots);
+        assert_eq!(v.pop_front(), None);
+        for x in [1, 2, 3] {
+            assert!(v.push(x).is_ok());
+        }
+        assert_eq!(v.pop_front(), Some(1));
+        assert!(v.push(4).is_ok());
+        assert_eq!(v.as_slice(), &[2, 3, 4]);
+        assert_eq!(v.pop_front(), Some(2));
+        assert_eq!(v.pop_front(), Some(3));
+        assert_eq!(v.pop_front(), Some(4));
+        assert!(v.is_empty());
     }
 
     /// The elements live in the CALLER's backing, so nothing drops them unless

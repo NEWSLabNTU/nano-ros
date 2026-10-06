@@ -193,6 +193,16 @@ KNOB_CLASS = {
     # judgements, and a user silencing one would silence the other.
     "NROS_ALLOW_INFRA_DEPS": ("infra", "policy flag"),
     "NROS_BOOT_REPORT": ("infra", "diagnostic toggle; a bool, so it has no rung"),
+    "NROS_VIOLATION_DRAIN_REPORT": (
+        "infra",
+        "phase-474 I1 drain-and-report toggle; a bool, so it has no rung",
+    ),
+    "NROS_EXECUTOR_MAX_VIOLATIONS": (
+        "sizing",
+        "phase-474 I1 violation ring depth per executor (carved from the "
+        "backing) and the SWD record's slot count; not yet an ExecutorKnobs "
+        "tenant",
+    ),
     "NROS_ARENA_EXHAUSTION_IS_FATAL": ("infra", "fault-hook toggle (issue 1036); a bool, so it has no rung"),
     "NROS_HEAP_EXHAUSTION_IS_FATAL": ("infra", "fault-hook toggle for the bare-metal heap (issue 1640); a bool, so it has no rung"),
     "NROS_BUILD_ROOT": ("infra", "path"),

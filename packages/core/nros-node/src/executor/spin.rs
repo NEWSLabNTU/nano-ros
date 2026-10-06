@@ -1902,10 +1902,6 @@ pub struct Executor<'s> {
     /// capping the park by the timer deadline is exactly such a regression
     /// waiting to happen.
     pub(crate) spin_quantization_us: u64,
-    /// Issue #514 — violations discarded because the ring was full.
-    /// Saturating. Without this a never-drained (or slowly-drained)
-    /// image silently reports a stale prefix of its faults.
-    pub(crate) monitor_violations_dropped: u32,
     /// Release jitter: worst observed lateness of a `spin_period` wake
     /// against its own nominal schedule, in microseconds.
     ///
@@ -1996,23 +1992,11 @@ pub struct Executor<'s> {
     /// a glitch, the second means the period cannot be met at all.
     pub(crate) late_wakes: u32,
     pub(crate) total_wakes: u32,
-    /// Issue #514 — log every violation as it is detected. On by
-    /// default: each rule pushed verdicts into a ring that nothing
-    /// consumed in a real image, so a violated contract and a met one
-    /// produced identical target-side output (none). Logging at
-    /// DETECTION rather than draining the ring keeps
-    /// [`Executor::drain_violations`] working unchanged for
-    /// applications that report violations themselves.
-    pub(crate) report_violations: bool,
-    /// phase-409 — CARVED, at the fixed `MAX_VIOLATIONS` count (the same
-    /// reasoning issue 0563 used for `remap_table`: the capability is unchanged,
-    /// so it needs no new `ExecutorSizing` knob).
-    pub(crate) monitor_violations: super::storage::CarvedVec<'s, super::monitor::Violation>,
-    /// Issue 1635 — the image's reporter, fed every violation at detection
-    /// (`monitor::record_violation`). `None` (the default) for an image that
-    /// installed none. The context is a `usize` so the executor keeps its
-    /// auto traits; it is the installer's pointer.
-    pub(crate) violation_sink: Option<(super::monitor::ViolationSink, usize)>,
+    /// Issue 0514 / 1635 / phase-474 I1 — what happens to a detected contract
+    /// violation: the log switch, the drain-and-report hook, the image's sink,
+    /// and the ring (CARVED, phase-409) with its total and dropped counters.
+    /// See [`super::monitor::ViolationChannel`].
+    pub(crate) violations: super::monitor::ViolationChannel<'s>,
     /// Issue 0790 — hooks that run BEFORE the session is closed, while every
     /// entity still works. The load-bearing half: a device releasing a bus or
     /// parking an actuator has to publish its final state / answer its last
@@ -2194,7 +2178,6 @@ impl<'s> Executor<'s> {
             fault_fn: None,
             spin_quantization_checked: false,
             spin_quantization_us: 0,
-            monitor_violations_dropped: 0,
             max_release_jitter_us: 0,
             last_spin_entry_us: None,
             jitter_reported_us: 0,
@@ -2215,9 +2198,7 @@ impl<'s> Executor<'s> {
             park_granularity_declared_us: 0,
             late_wakes: 0,
             total_wakes: 0,
-            report_violations: true,
-            monitor_violations,
-            violation_sink: None,
+            violations: super::monitor::ViolationChannel::new(monitor_violations),
             alive_slots,
             slot_tags,
             // Issue 0790 — both phase tables start empty. An image that
@@ -3413,26 +3394,53 @@ impl<'s> Executor<'s> {
     /// way via [`Self::drain_violations`]; the ring is unaffected
     /// either way.
     pub fn set_report_violations(&mut self, enabled: bool) {
-        self.report_violations = enabled;
+        self.violations.report = enabled;
     }
 
-    /// Issue #514 — violations discarded because the ring was full.
+    /// phase-474 I1 — the drain-and-report hook: at the end of every spin,
+    /// drain the ring and log each entry with its sequence number and the
+    /// `total` / `dropped` counters (`contract violation #N: <rule> <fqn>
+    /// measured=.. declared=.. (total=.. dropped=..)`).
     ///
-    /// Non-zero means the image produced faults faster than they were
-    /// reported, so the reported set is a prefix, not the whole story.
-    pub fn violations_dropped(&self) -> u32 {
-        self.monitor_violations_dropped
+    /// While on it REPLACES the log line at detection, so one verdict is one
+    /// line, and an application that wanted to drain the ring itself sees an
+    /// empty one. The generated C/C++ entries turn it on when the image sets
+    /// `CONFIG_NROS_VIOLATION_DRAIN_REPORT` (off by default). The trace marker
+    /// (`callback_trace::MARKER_VIOLATION`) and the SWD record do not depend
+    /// on it: both are written at detection.
+    pub fn set_violation_drain_report(&mut self, enabled: bool) {
+        self.violations.drain_report = enabled;
     }
 
-    /// RFC-0052 W3b.4 — drain pending contract violations (rate rule for
-    /// now; age/latency land with W3b.5). The entry glue calls this after
-    /// `spin_once` and feeds each entry to the `nros-diagnostics`
-    /// reporter. Draining clears the ring.
+    /// Issue #514 / phase-474 I1 — violations evicted from the full ring
+    /// before any drain took them.
+    ///
+    /// The ring keeps the LATEST `MAX_VIOLATIONS`, so non-zero means the
+    /// OLDEST verdicts were lost, never the newest. (Before phase-474 a full
+    /// ring refused the push, which kept the first verdicts since boot and
+    /// lost every later one.)
+    pub fn violations_dropped(&self) -> u32 {
+        self.violations.dropped
+    }
+
+    /// phase-474 I1 — contract violations this executor stored since boot
+    /// (wrapping). The newest entry in the ring is number `violations_total()`;
+    /// `total - dropped - pending` is how many drains have taken.
+    pub fn violations_total(&self) -> u32 {
+        self.violations.total
+    }
+
+    /// RFC-0052 W3b.4 — drain pending contract violations, OLDEST first.
+    /// Draining clears the ring. Call between spins, never from a callback.
     pub fn drain_violations(&mut self, mut f: impl FnMut(&super::monitor::Violation)) {
-        for v in self.monitor_violations.iter() {
-            f(v);
-        }
-        self.monitor_violations.clear();
+        self.violations.drain(|_, v| f(v));
+    }
+
+    /// [`Self::drain_violations`] with each entry's sequence number (1-based,
+    /// per executor; the same number the drain-and-report line and the trace
+    /// marker carry), so a reader can tell a gap from a quiet interval.
+    pub fn drain_violations_numbered(&mut self, f: impl FnMut(u32, &super::monitor::Violation)) {
+        self.violations.drain(f);
     }
 
     /// Issue 1635 — hand every violation to `sink` as it is DETECTED, beside
@@ -3454,7 +3462,7 @@ impl<'s> Executor<'s> {
         &mut self,
         sink: Option<(super::monitor::ViolationSink, *mut core::ffi::c_void)>,
     ) {
-        self.violation_sink = sink.map(|(f, ctx)| (f, ctx as usize));
+        self.violations.sink = sink.map(|(f, ctx)| (f, ctx as usize));
     }
 
     /// THE monotonic-µs read. phase-359 W4 — every consumer goes through here.
@@ -3487,24 +3495,12 @@ impl<'s> Executor<'s> {
                     if let Some(v) =
                         super::monitor::check_rate(spec, &mut self.monitor_states[i], now_us)
                     {
-                        super::monitor::record_violation(
-                            v,
-                            self.report_violations,
-                            self.violation_sink,
-                            &mut self.monitor_violations,
-                            &mut self.monitor_violations_dropped,
-                        );
+                        self.violations.record(v);
                     }
                     if let Some(v) =
                         super::monitor::check_latency(spec, &mut self.monitor_states[i])
                     {
-                        super::monitor::record_violation(
-                            v,
-                            self.report_violations,
-                            self.violation_sink,
-                            &mut self.monitor_violations,
-                            &mut self.monitor_violations_dropped,
-                        );
+                        self.violations.record(v);
                     }
                 }
             }
@@ -3523,13 +3519,7 @@ impl<'s> Executor<'s> {
                 .enumerate()
             {
                 if let Some(v) = super::monitor::check_age(spec, &mut self.age_states[i], now_us) {
-                    super::monitor::record_violation(
-                        v,
-                        self.report_violations,
-                        self.violation_sink,
-                        &mut self.monitor_violations,
-                        &mut self.monitor_violations_dropped,
-                    );
+                    self.violations.record(v);
                 }
             }
         }
@@ -3634,13 +3624,7 @@ impl<'s> Executor<'s> {
             self.min_stack_headroom_bytes,
             &mut self.stack_headroom_reported,
         ) {
-            super::monitor::record_violation(
-                v,
-                self.report_violations,
-                self.violation_sink,
-                &mut self.monitor_violations,
-                &mut self.monitor_violations_dropped,
-            );
+            self.violations.record(v);
         }
     }
 
@@ -3668,13 +3652,7 @@ impl<'s> Executor<'s> {
             if let Some(v) =
                 super::monitor::check_alive(period_us, slot.dispatches, &mut slot.state, now_us)
             {
-                super::monitor::record_violation(
-                    v,
-                    self.report_violations,
-                    self.violation_sink,
-                    &mut self.monitor_violations,
-                    &mut self.monitor_violations_dropped,
-                );
+                self.violations.record(v);
             }
         }
     }
@@ -3691,13 +3669,7 @@ impl<'s> Executor<'s> {
         if let Some(v) =
             super::monitor::check_release_jitter(max_us, &mut self.jitter_reported_us, period_us)
         {
-            super::monitor::record_violation(
-                v,
-                self.report_violations,
-                self.violation_sink,
-                &mut self.monitor_violations,
-                &mut self.monitor_violations_dropped,
-            );
+            self.violations.record(v);
         }
     }
 
@@ -3721,13 +3693,7 @@ impl<'s> Executor<'s> {
                 &mut header.overruns_reported,
                 0,
             ) {
-                super::monitor::record_violation(
-                    v,
-                    self.report_violations,
-                    self.violation_sink,
-                    &mut self.monitor_violations,
-                    &mut self.monitor_violations_dropped,
-                );
+                self.violations.record(v);
             }
         }
     }
@@ -10065,13 +10031,7 @@ impl<'s> Executor<'s> {
 
         // W3b.5 — feed deferred deadline misses into the violation ring.
         for v in deadline_misses {
-            super::monitor::record_violation(
-                v,
-                self.report_violations,
-                self.violation_sink,
-                &mut self.monitor_violations,
-                &mut self.monitor_violations_dropped,
-            );
+            self.violations.record(v);
         }
 
         // Issue #505 — same ring, same cycle. This runs AFTER dispatch,
@@ -10083,6 +10043,9 @@ impl<'s> Executor<'s> {
         self.check_release_jitter_rule();
         self.check_stack_headroom_rule();
         self.check_alive_supervision();
+        // phase-474 I1 — the opt-in drain-and-report hook, after every rule of
+        // this spin has had its say.
+        self.violations.drain_and_report();
 
         // Process parameter services (outside the arena)
         #[cfg(feature = "param-services")]

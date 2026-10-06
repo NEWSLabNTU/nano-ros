@@ -291,8 +291,14 @@ pub fn check_capacity_against(
     }
     Ok(())
 }
-/// Violation ring depth.
-pub const MAX_VIOLATIONS: usize = 8;
+/// Violation ring depth, per executor, and the slot count of the image-wide
+/// SWD record ([`ViolationRecord`]).
+///
+/// phase-474 I1 -- `NROS_EXECUTOR_MAX_VIOLATIONS` (Zephyr:
+/// `CONFIG_NROS_EXECUTOR_MAX_VIOLATIONS`), default 8. The ring keeps the
+/// LATEST this-many verdicts, so the depth bounds how much recent history a
+/// reader sees and never whether a late violation is kept at all.
+pub const MAX_VIOLATIONS: usize = crate::config::MAX_VIOLATIONS;
 
 /// A detected contract violation, in the play_launch rule-id vocabulary.
 #[derive(Debug, Clone)]
@@ -313,6 +319,271 @@ pub struct Violation {
     pub declared: u32,
 }
 
+/// phase-474 I1 -- every rule id the executor reports, in WIRE ORDER: a rule's
+/// numeric code is its index here plus one, and 0 means "not a rule this table
+/// knows".
+///
+/// The code is what a trace marker and the SWD record carry, because neither
+/// can carry a string. Append only: a capture or a RAM dump taken before a
+/// reorder would silently decode as the wrong rule, which is the class the
+/// callback-trace marker ids are frozen against (`callback_trace.rs`).
+pub const RULE_IDS: [&str; 9] = [
+    "rate-hierarchy-runtime",
+    "max-age-runtime",
+    "max-latency-runtime",
+    "deadline-miss-runtime",
+    "stack-headroom-runtime",
+    "alive-supervision-runtime",
+    "silence-runtime",
+    "timer-overrun-runtime",
+    "release-jitter-runtime",
+];
+
+/// The wire code of `rule` ([`RULE_IDS`] index + 1), or 0 for a rule the
+/// table does not know.
+pub fn rule_code(rule: &str) -> u32 {
+    RULE_IDS
+        .iter()
+        .position(|r| *r == rule)
+        .map(|i| i as u32 + 1)
+        .unwrap_or(0)
+}
+
+/// The rule a wire code names, or `None` for 0 / an unknown code.
+pub fn rule_name(code: u32) -> Option<&'static str> {
+    RULE_IDS.get((code as usize).checked_sub(1)?).copied()
+}
+
+/// 32-bit FNV-1a of an endpoint ref -- the identity a trace marker and the SWD
+/// record carry for `Violation::fqn` (a string neither can hold).
+///
+/// FNV-1a because a decoder can recompute it in one line from the model's
+/// endpoint list (`scripts/read-violation-record.py` does), with no table
+/// baked into the image.
+pub const fn fqn_hash(fqn: &str) -> u32 {
+    let b = fqn.as_bytes();
+    let mut h: u32 = 0x811c_9dc5;
+    let mut i = 0;
+    while i < b.len() {
+        h ^= b[i] as u32;
+        h = h.wrapping_mul(0x0100_0193);
+        i += 1;
+    }
+    h
+}
+
+/// phase-474 I1 -- trace marker: a stored violation, `seq << 8 | rule code`.
+/// The id block continues `callback_trace`'s 16-20; ids 1-7 are the
+/// application's and are never used here.
+pub const MARKER_VIOLATION: u32 = 21;
+/// phase-474 I1 -- trace marker: the endpoint ref's [`fqn_hash`].
+pub const MARKER_VIOLATION_FQN: u32 = 22;
+/// phase-474 I1 -- trace marker: `measured`.
+pub const MARKER_VIOLATION_MEASURED: u32 = 23;
+/// phase-474 I1 -- trace marker: `declared`.
+pub const MARKER_VIOLATION_DECLARED: u32 = 24;
+
+/// phase-474 I1 -- the four `(marker_id, arg)` events one stored violation
+/// becomes in a trace (`callback_trace` emits them, in this order, when the
+/// `trace-callbacks` feature is on and a sink is installed). `seq` is the
+/// executor's sequence number; its low 24 bits ride in the first event.
+pub fn violation_marker_words(seq: u32, v: &Violation) -> [(u32, u32); 4] {
+    [
+        (
+            MARKER_VIOLATION,
+            ((seq & 0x00ff_ffff) << 8) | (rule_code(v.rule) & 0xff),
+        ),
+        (MARKER_VIOLATION_FQN, fqn_hash(v.fqn)),
+        (MARKER_VIOLATION_MEASURED, v.measured),
+        (MARKER_VIOLATION_DECLARED, v.declared),
+    ]
+}
+
+/// `"NRVR"` -- nano-ros violation record.
+pub const RECORD_MAGIC: u32 = 0x4e52_5652;
+/// [`ViolationRecord`] layout version. Bump on any field change; a reader
+/// refuses a version it does not know (`scripts/read-violation-record.py`).
+pub const RECORD_VERSION: u32 = 1;
+/// `u32` words in one [`ViolationSlot`].
+pub const RECORD_SLOT_WORDS: u32 = 7;
+/// `u32` words in the [`ViolationRecord`] header, before the first slot.
+pub const RECORD_HEADER_WORDS: u32 = 10;
+
+/// One slot of the SWD record. Every field is a `u32` on every target, so the
+/// layout is the same on a 32-bit board and a 64-bit host.
+#[repr(C)]
+#[derive(Debug)]
+pub struct ViolationSlot {
+    /// 1-based sequence number of the violation in this slot, 0 = empty.
+    /// Written LAST (zeroed first), so a reader that sees a non-zero `seq`
+    /// twice around a read of the other words has a whole entry.
+    pub seq: AtomicU32,
+    /// [`rule_code`].
+    pub rule: AtomicU32,
+    /// [`fqn_hash`] of the endpoint ref.
+    pub fqn_hash: AtomicU32,
+    pub measured: AtomicU32,
+    pub declared: AtomicU32,
+    /// Address of the endpoint ref's bytes (exact on a 32-bit target, the low
+    /// half of it on a 64-bit host) and its length: the text is in the
+    /// image's rodata, so a reader with the ELF can print the name.
+    pub fqn_addr: AtomicU32,
+    pub fqn_len: AtomicU32,
+}
+
+impl ViolationSlot {
+    pub const fn new() -> Self {
+        Self {
+            seq: AtomicU32::new(0),
+            rule: AtomicU32::new(0),
+            fqn_hash: AtomicU32::new(0),
+            measured: AtomicU32::new(0),
+            declared: AtomicU32::new(0),
+            fqn_addr: AtomicU32::new(0),
+            fqn_len: AtomicU32::new(0),
+        }
+    }
+}
+
+impl Default for ViolationSlot {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// phase-474 I1 -- the image-wide violation record a debugger reads by NAME,
+/// for a board whose console reaches nobody.
+///
+/// The executor's ring is carved out of executor storage (no symbol, and a
+/// drain empties it), so on the Autoware Safety Island it could only be found
+/// by scanning RAM for rule-id string pointers, and it held the FIRST eight
+/// verdicts since boot. This record is the black box beside it: a `#[repr(C)]`
+/// static, every word a `u32`, never drained, keeping the LATEST
+/// [`MAX_VIOLATIONS`] stored violations of every executor in the image, with
+/// the running total.
+///
+/// Layout (version [`RECORD_VERSION`], little-endian `u32` words):
+///
+/// | word | field | meaning |
+/// | --- | --- | --- |
+/// | 0 | `magic` | [`RECORD_MAGIC`] (`"NRVR"`) |
+/// | 1 | `version` | [`RECORD_VERSION`] |
+/// | 2 | `capacity` | slots (`NROS_EXECUTOR_MAX_VIOLATIONS`) |
+/// | 3 | `slot_words` | [`RECORD_SLOT_WORDS`] |
+/// | 4 | `total` | violations stored since boot (the last `seq`) |
+/// | 5 | `head` | slot the NEXT violation takes (`total % capacity`) |
+/// | 6 | `dropped` | entries overwritten (`total - capacity`, saturating) |
+/// | 7 | `suppressed_before_arm` | verdicts before the monitors armed (phase-474 I2) |
+/// | 8 | `armed` | executors whose monitors are armed (phase-474 I2) |
+/// | 9 | `reserved` | 0 |
+/// | 10.. | `slots` | `capacity` x [`ViolationSlot`] |
+///
+/// The newest entry is in slot `(head + capacity - 1) % capacity`; reading
+/// `capacity` slots backwards from there gives newest to oldest, and a slot
+/// whose `seq` is 0 was never written.
+///
+/// Present only when the image asked for the boot report
+/// (`NROS_BOOT_REPORT=1`, Zephyr `CONFIG_NROS_BOOT_REPORT=y`) -- the same
+/// opt-in as the SWD boot record it sits beside, so an image that does not
+/// opt in is unchanged. Read it with `scripts/read-violation-record.py`.
+#[repr(C)]
+#[derive(Debug)]
+pub struct ViolationRecord<const N: usize> {
+    pub magic: AtomicU32,
+    pub version: AtomicU32,
+    pub capacity: AtomicU32,
+    pub slot_words: AtomicU32,
+    pub total: AtomicU32,
+    pub head: AtomicU32,
+    pub dropped: AtomicU32,
+    pub suppressed_before_arm: AtomicU32,
+    pub armed: AtomicU32,
+    pub reserved: AtomicU32,
+    pub slots: [ViolationSlot; N],
+}
+
+impl<const N: usize> ViolationRecord<N> {
+    /// A valid, empty record: the header is written at compile time, so a
+    /// record with `total == 0` reads as "no violation since boot" rather than
+    /// as uninitialised RAM.
+    pub const fn new() -> Self {
+        Self {
+            magic: AtomicU32::new(RECORD_MAGIC),
+            version: AtomicU32::new(RECORD_VERSION),
+            capacity: AtomicU32::new(N as u32),
+            slot_words: AtomicU32::new(RECORD_SLOT_WORDS),
+            total: AtomicU32::new(0),
+            head: AtomicU32::new(0),
+            dropped: AtomicU32::new(0),
+            suppressed_before_arm: AtomicU32::new(0),
+            armed: AtomicU32::new(0),
+            reserved: AtomicU32::new(0),
+            slots: [const { ViolationSlot::new() }; N],
+        }
+    }
+
+    /// Store one violation, overwriting the oldest when full. Returns its
+    /// 1-based sequence number.
+    ///
+    /// Lock-free and callable from any executor thread: the slot is claimed by
+    /// a `fetch_add` on `total`, so two executors never write one slot unless
+    /// `N` more violations land during one write.
+    pub fn store(&self, v: &Violation) -> u32 {
+        let seq = self.total.fetch_add(1, Ordering::AcqRel).wrapping_add(1);
+        if N == 0 {
+            return seq;
+        }
+        let slot = &self.slots[(seq as usize - 1) % N];
+        slot.seq.store(0, Ordering::Release);
+        slot.rule.store(rule_code(v.rule), Ordering::Relaxed);
+        slot.fqn_hash.store(fqn_hash(v.fqn), Ordering::Relaxed);
+        slot.measured.store(v.measured, Ordering::Relaxed);
+        slot.declared.store(v.declared, Ordering::Relaxed);
+        slot.fqn_addr
+            .store(v.fqn.as_ptr() as usize as u32, Ordering::Relaxed);
+        slot.fqn_len.store(v.fqn.len() as u32, Ordering::Relaxed);
+        slot.seq.store(seq, Ordering::Release);
+        self.head.store(seq % N as u32, Ordering::Relaxed);
+        self.dropped
+            .store(seq.saturating_sub(N as u32), Ordering::Relaxed);
+        seq
+    }
+
+    /// The stored entries, newest first, as `(seq, rule code, fqn hash,
+    /// measured, declared)`. For tests and on-target self-checks; a debugger
+    /// reads the words directly.
+    pub fn newest_first(&self, mut f: impl FnMut(u32, u32, u32, u32, u32)) {
+        let total = self.total.load(Ordering::Acquire);
+        let n = (total as usize).min(N);
+        for k in 0..n {
+            let seq = total - k as u32;
+            let slot = &self.slots[(seq as usize - 1) % N];
+            if slot.seq.load(Ordering::Acquire) != seq {
+                continue; // overwritten or mid-write
+            }
+            f(
+                seq,
+                slot.rule.load(Ordering::Relaxed),
+                slot.fqn_hash.load(Ordering::Relaxed),
+                slot.measured.load(Ordering::Relaxed),
+                slot.declared.load(Ordering::Relaxed),
+            );
+        }
+    }
+}
+
+impl<const N: usize> Default for ViolationRecord<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// phase-474 I1 -- THE record, by name: `nm zephyr.elf | grep
+/// NROS_VIOLATION_RECORD`. See [`ViolationRecord`] for the layout.
+#[cfg(nros_boot_report)]
+#[unsafe(no_mangle)]
+pub static NROS_VIOLATION_RECORD: ViolationRecord<MAX_VIOLATIONS> = ViolationRecord::new();
+
 /// Issue 1635 — where an executor hands its drained violations when the image
 /// asked it to (`Executor::set_violation_sink`).
 ///
@@ -328,30 +599,110 @@ pub struct Violation {
 /// executor is dropped.
 pub type ViolationSink = unsafe fn(ctx: *mut core::ffi::c_void, v: &Violation);
 
-/// Issue 1635 — THE one place a detected violation goes: the log floor (issue
-/// 0514) when enabled, the image's sink when one is installed, and the ring
-/// [`drain_violations`] reads (a full ring counts the drop). Eight sites
-/// spelled the first and last of these by hand; the sink would have been a
-/// ninth copy.
+/// phase-474 I1 -- everything an executor does with a detected violation, in
+/// one place: the switches, the sink, the ring and its counters.
 ///
-/// [`drain_violations`]: super::Executor::drain_violations
-pub(crate) fn record_violation(
-    v: Violation,
-    report: bool,
-    sink: Option<(ViolationSink, usize)>,
-    ring: &mut super::storage::CarvedVec<'_, Violation>,
-    dropped: &mut u32,
-) {
-    if report {
-        log_violation(&v);
+/// The ring keeps the LATEST [`MAX_VIOLATIONS`] verdicts: a push into a full
+/// ring evicts the oldest and counts it in `dropped`. It used to refuse the
+/// push instead, so a board whose start-up filled the ring stored nothing
+/// after it (the Autoware Safety Island's W31 bring-up: 8 of 8 slots, all
+/// start-up). `total` counts every verdict stored since boot, so
+/// `total - dropped - ring.len()` is how many a drain has already taken.
+pub(crate) struct ViolationChannel<'s> {
+    /// Issue 0514 -- log each violation at detection.
+    pub(crate) report: bool,
+    /// phase-474 I1 -- drain the ring at the end of every spin and report each
+    /// entry with its sequence number and the counters
+    /// ([`Executor::set_violation_drain_report`]). Replaces the log at
+    /// detection while on, so one verdict is one line.
+    ///
+    /// [`Executor::set_violation_drain_report`]: super::Executor::set_violation_drain_report
+    pub(crate) drain_report: bool,
+    /// Issue 1635 -- the image's reporter, fed at detection. The context is a
+    /// `usize` so the executor keeps its auto traits; it is the installer's
+    /// pointer.
+    pub(crate) sink: Option<(ViolationSink, usize)>,
+    /// phase-409 -- CARVED, at `MAX_VIOLATIONS` (no `ExecutorSizing` knob:
+    /// the build-time depth is the capability).
+    pub(crate) ring: super::storage::CarvedVec<'s, Violation>,
+    /// Violations this executor stored since boot (wrapping). It is also the
+    /// sequence number of the newest entry in `ring`: every stored verdict is
+    /// pushed, so the ring holds `total - len + 1 ..= total`.
+    pub(crate) total: u32,
+    /// Issue 0514 / phase-474 I1 -- entries evicted from the full ring before
+    /// any drain took them (saturating).
+    pub(crate) dropped: u32,
+}
+
+impl<'s> ViolationChannel<'s> {
+    pub(crate) fn new(ring: super::storage::CarvedVec<'s, Violation>) -> Self {
+        Self {
+            report: true,
+            drain_report: crate::config::VIOLATION_DRAIN_REPORT,
+            sink: None,
+            ring,
+            total: 0,
+            dropped: 0,
+        }
     }
-    if let Some((f, ctx)) = sink {
-        // SAFETY: `Executor::set_violation_sink`'s contract — `ctx` is valid
-        // for every call until the sink is replaced or the executor dropped.
-        unsafe { f(ctx as *mut core::ffi::c_void, &v) };
+
+    /// Issue 1635 / phase-474 I1 -- THE one place a detected violation goes:
+    /// the log floor (issue 0514) unless the drain hook reports instead, the
+    /// image's sink when one is installed, the trace marker when callback
+    /// tracing is compiled in, the SWD record when the image keeps one, and
+    /// the ring [`drain_violations`] reads.
+    ///
+    /// [`drain_violations`]: super::Executor::drain_violations
+    pub(crate) fn record(&mut self, v: Violation) {
+        if self.report && !self.drain_report {
+            log_violation(&v);
+        }
+        if let Some((f, ctx)) = self.sink {
+            // SAFETY: `Executor::set_violation_sink`'s contract — `ctx` is valid
+            // for every call until the sink is replaced or the executor dropped.
+            unsafe { f(ctx as *mut core::ffi::c_void, &v) };
+        }
+        // `total` is this executor's sequence number for the verdict: the log
+        // line and the trace marker carry it, so the two name one verdict by
+        // one number. The SWD record numbers across every executor in the
+        // image; on a single-executor image the two coincide.
+        self.total = self.total.wrapping_add(1);
+        #[cfg(nros_boot_report)]
+        NROS_VIOLATION_RECORD.store(&v);
+        #[cfg(feature = "trace-callbacks")]
+        super::callback_trace::violation(self.total, &v);
+        if self.ring.capacity() == 0 {
+            self.dropped = self.dropped.saturating_add(1);
+            return;
+        }
+        if self.ring.len() == self.ring.capacity() {
+            self.ring.pop_front();
+            self.dropped = self.dropped.saturating_add(1);
+        }
+        // Cannot fail: a slot was just made if the ring was full.
+        let _ = self.ring.push(v);
     }
-    if ring.push(v).is_err() {
-        *dropped = dropped.saturating_add(1);
+
+    /// Hand every entry still in the ring to `f`, oldest first, with its
+    /// sequence number, and empty the ring.
+    pub(crate) fn drain(&mut self, mut f: impl FnMut(u32, &Violation)) {
+        let n = self.ring.len() as u32;
+        let first = self.total.wrapping_sub(n).wrapping_add(1);
+        for (k, v) in self.ring.iter().enumerate() {
+            f(first.wrapping_add(k as u32), v);
+        }
+        self.ring.clear();
+    }
+
+    /// phase-474 I1 -- the drain-and-report hook: one log line per entry with
+    /// its sequence number and the counters, so a reader of the log knows how
+    /// many it missed. Called at the end of a spin when `drain_report` is on.
+    pub(crate) fn drain_and_report(&mut self) {
+        if !self.drain_report || self.ring.is_empty() {
+            return;
+        }
+        let (total, dropped) = (self.total, self.dropped);
+        self.drain(|seq, v| log_drained_violation(seq, total, dropped, v));
     }
 }
 
@@ -828,6 +1179,24 @@ pub(crate) fn log_violation(v: &Violation) {
         v.fqn,
         v.measured,
         v.declared
+    );
+}
+
+/// phase-474 I1 -- the drain-and-report hook's line: the issue-0514 line plus
+/// the verdict's sequence number and the counters, so a reader who sees line
+/// `#12` after `#9` knows two were missed, and `dropped` says whether the ring
+/// lost any before this drain.
+fn log_drained_violation(seq: u32, total: u32, dropped: u32, v: &Violation) {
+    nros_log::log_warn!(
+        nros_log::get_logger("nros"),
+        "contract violation #{}: {} {} measured={} declared={} (total={} dropped={})",
+        seq,
+        v.rule,
+        v.fqn,
+        v.measured,
+        v.declared,
+        total,
+        dropped
     );
 }
 
@@ -1326,5 +1695,98 @@ mod stack_headroom_throttle_tests {
         let s = STACK_HEADROOM_CHECK_SPIN_STRIDE;
         assert!(!stack_headroom_check_due(None, Some(0), s - 1));
         assert!(stack_headroom_check_due(None, Some(0), s));
+    }
+}
+
+/// phase-474 I1 -- the wire vocabulary and the SWD record.
+#[cfg(test)]
+mod ring_record_tests {
+    use super::*;
+
+    fn v(rule: &'static str, fqn: &'static str, measured: u32) -> Violation {
+        Violation {
+            rule,
+            fqn,
+            measured,
+            declared: 10,
+        }
+    }
+
+    #[test]
+    fn every_rule_the_executor_reports_has_a_stable_code() {
+        // The order is the wire format: a capture or a RAM dump decodes by it.
+        assert_eq!(rule_code("rate-hierarchy-runtime"), 1);
+        assert_eq!(rule_code("max-latency-runtime"), 3);
+        assert_eq!(rule_code("release-jitter-runtime"), 9);
+        assert_eq!(rule_code("no-such-rule"), 0);
+        for (i, r) in RULE_IDS.iter().enumerate() {
+            assert_eq!(rule_name(rule_code(r)), Some(*r), "code {}", i + 1);
+        }
+        assert_eq!(rule_name(0), None);
+        assert_eq!(rule_name(RULE_IDS.len() as u32 + 1), None);
+    }
+
+    #[test]
+    fn fqn_hash_is_fnv1a_32() {
+        // Reference values of 32-bit FNV-1a, so a Python decoder can match.
+        assert_eq!(fqn_hash(""), 0x811c_9dc5);
+        assert_eq!(fqn_hash("a"), 0xe40c_292c);
+        assert_eq!(fqn_hash("foobar"), 0xbf9c_f968);
+    }
+
+    #[test]
+    fn a_violation_is_four_marker_events() {
+        let w = violation_marker_words(5, &v("max-latency-runtime", "/n/out", 25));
+        assert_eq!(w[0], (MARKER_VIOLATION, (5 << 8) | 3));
+        assert_eq!(w[1], (MARKER_VIOLATION_FQN, fqn_hash("/n/out")));
+        assert_eq!(w[2], (MARKER_VIOLATION_MEASURED, 25));
+        assert_eq!(w[3], (MARKER_VIOLATION_DECLARED, 10));
+        // The sequence number keeps its low 24 bits; the rule its low 8.
+        let w = violation_marker_words(0x0100_0007, &v("silence-runtime", "/x", 0));
+        assert_eq!(w[0].1, (7 << 8) | 7);
+    }
+
+    #[test]
+    fn the_record_keeps_the_latest_and_counts_what_it_overwrote() {
+        let r: ViolationRecord<3> = ViolationRecord::new();
+        assert_eq!(r.magic.load(Ordering::Relaxed), RECORD_MAGIC);
+        assert_eq!(r.capacity.load(Ordering::Relaxed), 3);
+        for m in 1..=5 {
+            assert_eq!(r.store(&v("timer-overrun-runtime", "timer", m)), m);
+        }
+        assert_eq!(r.total.load(Ordering::Relaxed), 5);
+        assert_eq!(r.dropped.load(Ordering::Relaxed), 2);
+        assert_eq!(r.head.load(Ordering::Relaxed), 5 % 3);
+        let mut seen = std::vec::Vec::new();
+        r.newest_first(|seq, rule, fqn, measured, declared| {
+            assert_eq!(rule, rule_code("timer-overrun-runtime"));
+            assert_eq!(fqn, fqn_hash("timer"));
+            assert_eq!(declared, 10);
+            seen.push((seq, measured));
+        });
+        assert_eq!(seen, [(5, 5), (4, 4), (3, 3)], "newest first, oldest gone");
+    }
+
+    /// The layout a debugger decodes: `u32` words only, header then slots, the
+    /// same size on every target. `scripts/read-violation-record.py` reads it
+    /// by these numbers.
+    #[test]
+    fn the_record_is_packed_u32_words() {
+        use core::mem::{offset_of, size_of};
+        assert_eq!(size_of::<ViolationSlot>(), RECORD_SLOT_WORDS as usize * 4);
+        assert_eq!(
+            offset_of!(ViolationRecord<4>, slots),
+            RECORD_HEADER_WORDS as usize * 4
+        );
+        assert_eq!(
+            size_of::<ViolationRecord<4>>(),
+            (RECORD_HEADER_WORDS + 4 * RECORD_SLOT_WORDS) as usize * 4
+        );
+        assert_eq!(offset_of!(ViolationRecord<4>, total), 16);
+        assert_eq!(offset_of!(ViolationRecord<4>, head), 20);
+        assert_eq!(offset_of!(ViolationRecord<4>, dropped), 24);
+        assert_eq!(offset_of!(ViolationRecord<4>, suppressed_before_arm), 28);
+        assert_eq!(offset_of!(ViolationRecord<4>, armed), 32);
+        assert_eq!(offset_of!(ViolationSlot, fqn_addr), 20);
     }
 }

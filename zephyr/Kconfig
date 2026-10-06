@@ -1677,6 +1677,40 @@ config NROS_EXECUTOR_MAX_SHUTDOWN_CBS
       things to park on the way down. Overflow is reported at registration
       (NROS_RET_FULL), not silently dropped.
 
+config NROS_EXECUTOR_MAX_VIOLATIONS
+    int "Contract-violation ring depth per executor"
+    default 8
+    range 1 256
+    help
+      phase-474 I1 -- how many contract violations one executor's ring
+      keeps for a drain (nros-node build.rs MAX_VIOLATIONS), and the slot
+      count of the image-wide SWD record NROS_VIOLATION_RECORD (present
+      with CONFIG_NROS_BOOT_REPORT).
+
+      The ring keeps the LATEST entries: a violation into a full ring
+      evicts the oldest and counts it (Executor::violations_dropped). It
+      used to keep the FIRST entries, so a board whose start-up filled it
+      stored nothing after. A slot costs 24 bytes in the ring and 28 in the
+      record on a 32-bit target; 8 is 192 B per executor plus 264 B for
+      the record. Raise it only when a burst must be kept whole.
+
+config NROS_VIOLATION_DRAIN_REPORT
+    bool "Drain the violation ring every spin and log each entry"
+    help
+      phase-474 I1 -- the drain-and-report hook. At the end of every spin
+      the executor drains its violation ring and logs each entry as
+      "contract violation #N: <rule> <fqn> measured=.. declared=..
+      (total=.. dropped=..)", replacing the plain line logged at detection.
+      The sequence number and counters say how many a reader missed.
+
+      Independent of it, and always on: with CONFIG_NROS_TRACE_CALLBACKS
+      each stored violation is also four trace markers (ids 21-24, rule
+      code, endpoint hash, measured, declared), and with
+      CONFIG_NROS_BOOT_REPORT it is written into the SWD record
+      NROS_VIOLATION_RECORD. On a board whose console is not wired those
+      two are the channels that reach anyone; this one is for a board
+      whose log does.
+
 config NROS_EXECUTOR_MAX_NODES
     int "Maximum nodes per executor (-1 = derive)"
     default -1

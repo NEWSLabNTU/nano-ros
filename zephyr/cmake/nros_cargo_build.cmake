@@ -1497,6 +1497,9 @@ function(nros_resolve_knobs)
     # through the derived CONFIG_<name> lookup, like its five siblings above.
     _nros_resolve_knob(NROS_EXECUTOR_MAX_SHUTDOWN_CBS
         "${CONFIG_NROS_EXECUTOR_MAX_SHUTDOWN_CBS}")
+    # phase-474 I1 -- violation ring depth (and the SWD record's slot count).
+    _nros_resolve_knob(NROS_EXECUTOR_MAX_VIOLATIONS
+        "${CONFIG_NROS_EXECUTOR_MAX_VIOLATIONS}")
     # phase-446 F3 -- the parameter-service buffer is DERIVABLE, but not to a
     # number here: the bound needs the store's capacities, and those are
     # resolved by nros-params' build script (where the `[knobs.params]` board
@@ -2120,6 +2123,11 @@ function(nros_cargo_build)
         list(APPEND _nros_knob_env "NROS_ARENA_EXHAUSTION_IS_FATAL=1")
     else()
         list(APPEND _nros_knob_env "NROS_ARENA_EXHAUSTION_IS_FATAL=0")
+    endif()
+    # phase-474 I1 -- the drain-and-report hook's default, on this list for the
+    # boot report's reason above (a Rust-lane image reads it from DOTCONFIG).
+    if(CONFIG_NROS_VIOLATION_DRAIN_REPORT)
+        list(APPEND _nros_knob_env "NROS_VIOLATION_DRAIN_REPORT=1")
     endif()
 
     # Issue 1550 -- the domain's rung, for the boot record. The VALUE reaches
