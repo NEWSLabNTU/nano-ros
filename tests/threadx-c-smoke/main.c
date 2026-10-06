@@ -90,6 +90,39 @@ static void smoke_entry(ULONG arg) {
     printf("  timer fires over 200ms: %d\n", s_timer_fires);
     CHECK(s_timer_fires >= 4, "periodic timer fired too few times");
 
+    /* Issue 1717 — an EXHAUSTED pool must answer NULL, never park the caller.
+     *
+     * Chunks smaller than the pool, so ThreadX's error-checking layer cannot
+     * short-circuit the request with TX_SIZE_ERROR (it does that only for a
+     * request larger than the WHOLE pool): the request that fails is one the
+     * pool could satisfy if another thread released memory, which is exactly
+     * the request a TX_WAIT_FOREVER allocator suspends on. Nothing else here
+     * frees, so before the fix this loop never returns and the recipe's
+     * `timeout` reports it. */
+    {
+        enum { CHUNK = 16 * 1024, MAX_CHUNKS = HEAP_BYTES / CHUNK + 1 };
+        static void *chunks[MAX_CHUNKS];
+        int n = 0;
+        printf("  exhausting the pool in %d-byte chunks...\n", CHUNK);
+        while (n < MAX_CHUNKS) {
+            void *c = nros_platform_alloc(CHUNK);
+            if (c == NULL) {
+                break;
+            }
+            chunks[n++] = c;
+        }
+        CHECK(n > 0, "no chunk fitted a fresh pool");
+        CHECK(n < MAX_CHUNKS, "pool larger than its storage never ran out");
+        printf("  exhausted pool: alloc returned NULL after %d chunk(s)\n", n);
+        while (n > 0) {
+            nros_platform_dealloc(chunks[--n]);
+        }
+        void *again = nros_platform_alloc(CHUNK);
+        CHECK(again != NULL, "alloc after releasing the pool");
+        nros_platform_dealloc(again);
+        printf("  pool usable again after release\n");
+    }
+
     printf("nros-platform-threadx-c smoke PASS\n");
     fflush(NULL);
     /* _exit avoids running atexit hooks; ThreadX's signal-driven timer
