@@ -49,12 +49,13 @@ evidence = "1 case(s) produced a result in ros2_action_e2e.xml"
 
 [[verdict]]
 cell = "native-action-rust-zenoh-n2r"
-date = "2026-09-12"
+date = "2026-10-06"
 verdict = "pass"
 tests = ["the_nano_ros_action_client_drives_a_stock_ros2_server_over_zenoh"]
 run = "cargo nextest run -p nros-tests --test ros2_action_e2e"
-where = "ros2 distrobox (Ubuntu 22.04, Humble) on the maintainer host, box tree at d4025ceba; `ros2 daemon stop` first — a stale ros2cli daemon makes the `ros2 action list` discovery gate unmeetable"
-evidence = "the nano-ros zenoh action CLIENT drives examples_rclcpp_minimal_action_server to Fibonacci(10) over rmw_zenoh_cpp; passed twice, 62 s each"
+where = "Ubuntu 22.04 host, Humble, rmw_zenoh_cpp; branch fix/1691-action-gate-without-daemon, run SOLO with a STALE domain-0 zenoh ros2cli daemon deliberately left running (no `ros2 daemon stop`) — issues 1691/1342 moved the discovery gate to `service list --no-daemon`"
+evidence = "the nano-ros zenoh action CLIENT drives examples_rclcpp_minimal_action_server to Fibonacci(10) over rmw_zenoh_cpp; 61.7 s. The origin/main test file, same host and same stale daemon, fails at the gate in 21.6 s (empty `ros2 action list`)"
+issue = "1691"
 
 [[verdict]]
 cell = "native-action-rust-zenoh-r2n"
