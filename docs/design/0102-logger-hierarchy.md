@@ -201,7 +201,9 @@ Decision:
   (RFC-0049; `knob()` in `nros-params/build.rs`): image env (`[image.<id>] env`) >
   Kconfig / board knob (`[board.knobs.*]`) > built-in 16. It reaches all three
   roads the way existing knobs do, with a `CONFIG_NROS_LOG_DYNAMIC_LOGGERS` pairing
-  on Zephyr, and passes the knob-forwarding gates.
+  on Zephyr, and passes the knob-forwarding gates. (The image-env rung did not:
+  the cmake road dropped it until issue 1712, and the west road still does —
+  issue 1721.)
 - **Why not the feature.** Today's `dynamic-loggers-{0,8,32}` features are
   unified across the graph, and `dynamic_logger_capacity` tests `-0`, then `-8`,
   then `-32`, so two crates selecting different sizes silently get the SMALLEST.

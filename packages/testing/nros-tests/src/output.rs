@@ -1270,6 +1270,16 @@ pub const MESSAGE_INFO_PEER_TAKE_GID: &str = "PEER_TAKE_GID ";
 /// clock=<0|1>` — the rest of the `[knobs.log]` tenant as the image reads it.
 pub const LOG_ARENA_PROBE_LINE: &str = "log-arena-probe: ";
 
+// ---------------------------------------------------------------------------
+// issue 1712 — the cmake road's APP rung (`image-env-probe-c`,
+// `tests/image_env_cmake_knob.rs`).
+// ---------------------------------------------------------------------------
+
+/// A PREFIX: `max_handles=<n> info_enabled=<0|1> warn_enabled=<0|1>` follows —
+/// the C header's `NROS_EXECUTOR_MAX_HANDLES` and whether nros-log's
+/// compile-time ceiling admits INFO / WARN on a logger set to DEBUG.
+pub const IMAGE_ENV_PROBE_LINE: &str = "image-env-probe-c: ";
+
 /// A PREFIX of `read-boot-report.py`'s line for the runtime-logger arena:
 /// `<in use> of <capacity> slots` follows.
 pub const BOOT_REPORT_RUNTIME_LOGGERS: &str = "runtime loggers";

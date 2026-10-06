@@ -677,6 +677,12 @@ function(nros_generate_interfaces target)
       if(NOT _NROS_FFI_ENV STREQUAL "")
         set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV} ${NROS_BOARD_FACTS_ENV})
       endif()
+      # Issue 1712 — the image's own `[image.<id>] env`, as a `--config` flag
+      # (below an exported variable, unlike a `cmake -E env` row) plus a
+      # DEPENDS, since this is a real OUTPUT edge rather than an always-run
+      # Corrosion target. Empty for an image that states nothing.
+      nros_image_env_cargo_flags(_ffi_image_env_flags)
+      nros_image_env_config(_ffi_image_env_file)
       # issue 0820 — DEPENDS names the crate's OWN files and nothing else, so
       # this archive had no edge on the nano-ros Rust it compiles in. Cargo's
       # dep-info lists `packages/core/nros-serdes/src/{cdr,lib,...}.rs` for
@@ -692,7 +698,9 @@ function(nros_generate_interfaces target)
       add_custom_command(
         OUTPUT "${_ffi_lib}"
         COMMAND ${_ffi_env} "${_ffi_cargo}" ${_ffi_cargo_prefix} ${_ffi_cargo_args}
+                ${_ffi_image_env_flags}
         DEPENDS ${_generated_rs_files} "${_ffi_crate_dir}/Cargo.toml" "${_ffi_crate_src}/lib.rs"
+                ${_ffi_image_env_file}
         DEPFILE "${_ffi_dep_file}"
         WORKING_DIRECTORY "${_ffi_crate_dir}"
         COMMENT "Building Rust FFI glue for ${target} C++ bindings"

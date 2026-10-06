@@ -39,6 +39,17 @@ nros-c's, nros-cpp's and the zenoh staticlib's `CMakeLists.txt` delivered
 nothing, and the gate reported OK over a tree where they did not — the same
 narrower-than-the-rule shape as the Zephyr arm above, one directory over.
 
+The IMAGE rung (issue 1712)
+---------------------------
+A C/C++ image's own `[image.<id>] env` (RFC-0049's APP rung) reaches cargo on
+the same commands, by a different carrier: a `--config` file (cargo `[env]`, no
+`force`), because a `cmake -E env` row overwrites an exported variable and the
+image rung sits BELOW it. A Corrosion target gets it inside
+`nros_board_facts_env`, so the rule above already covers it. An own-command
+lane must ALSO call `nros_image_env_cargo_flags()` and put the result on its
+command — or be listed in `IMAGE_ENV_EXEMPT` with the reason it cannot. Before
+1712 every cmake road parsed the rows and dropped them, with no diagnostic.
+
 Full-line `#` comments are stripped before either question is asked, in both
 directions: a comment NAMING the lane's shape is not a spawn, and a comment
 naming the helper is not a delivery.
@@ -79,6 +90,18 @@ EXEMPT = {
         "host-only test-fixture template; declares no deploy/board",
 }
 
+# Own-command lanes that cannot carry the image rung, each with the reason.
+IMAGE_ENV_EXEMPT = {
+    # The Zephyr west road builds this command while Zephyr loads its modules,
+    # before the application's find_package(nano_ros) reads its system.toml,
+    # and resolves knobs through its own Kconfig ladder.
+    "zephyr/cmake/nros_cargo_build.cmake": "west road -- issue 1721",
+    "zephyr/cmake/nros_generate_interfaces.cmake": "west road -- issue 1721",
+}
+
+# `nros_image_env_cargo_flags(<var>)` at statement position.
+DELIVERS_IMAGE_ENV = re.compile(r"^\s*nros_image_env_cargo_flags\s*\(", re.M)
+
 # The helper's own definition is not a call site.
 DEFINITION = "cmake/NanoRosBoardFacts.cmake"
 
@@ -117,6 +140,12 @@ def strip_comments(src):
     return comments.strip_comments(src, "cmake")
 
 
+def image_env_missing(src):
+    """True when an own-command lane does not carry the image rung (issue 1712)."""
+    code = strip_comments(src)
+    return OWN_CARGO.search(code) is not None and DELIVERS_IMAGE_ENV.search(code) is None
+
+
 def classify(src):
     """(spawns_cargo, delivers) for one file's source text."""
     code = strip_comments(src)
@@ -131,6 +160,10 @@ def classify(src):
         "nros_resolve_board_facts(" in code and USES_FACTS.search(code) is not None
     )
     return (spawns_corrosion or spawns_own), delivers
+
+
+def pop_all():
+    return population()
 
 
 def scan(repo=ROOT):
@@ -148,6 +181,8 @@ def scan(repo=ROOT):
         checked += 1
         if not delivers:
             offenders.append(rel)
+        elif rel not in IMAGE_ENV_EXEMPT and image_env_missing(src):
+            offenders.append(f"{rel} (no image rung: nros_image_env_cargo_flags, issue 1712)")
     return offenders, checked, exempt, len(files)
 
 
@@ -172,6 +207,19 @@ def self_test():
     resolved_not_used = 'nros_resolve_board_facts()\nset(NROS_BOARD_FACTS_ENV "")\n' + nuttx_before
     assert classify(resolved_not_used) == (True, False), \
         "resolving the facts without putting them on the command must fire"
+
+    # Issue 1712 -- an own-command lane that carries the board but not the
+    # image rung must fire; one that also asks for the flags passes; a
+    # Corrosion-only file needs nothing more (the board helper attaches it).
+    assert image_env_missing(nuttx_after), "own-command lane without the image rung must fire"
+    assert not image_env_missing(
+        "nros_image_env_cargo_flags(_f)\n" + nuttx_after.replace("build --profile p", "build ${_f}")
+    ), "own-command lane with the image rung must pass"
+    assert image_env_missing("# nros_image_env_cargo_flags(_f)\n" + nuttx_after), \
+        "a commented-out image rung must not count"
+    assert not image_env_missing("corrosion_import_crate(MANIFEST_PATH x)\nnros_board_facts_env(y)\n")
+    for rel in IMAGE_ENV_EXEMPT:
+        assert rel in pop_all(), f"IMAGE_ENV_EXEMPT names a file that is not tracked: {rel}"
 
     corrosion_before = "corrosion_import_crate(MANIFEST_PATH x CRATES y)\n"
     assert classify(corrosion_before) == (True, False), "Corrosion import, no facts, must fire"
@@ -227,7 +275,11 @@ def main():
             "  root (phase-349 W2.0). The build script then DEFAULTS every knob,\n"
             "  silently, which is issue 0529's shape.\n\n"
             "  Deliver them, or list the file in this gate's EXEMPT map with the\n"
-            "  reason it carries no board.\n"
+            "  reason it carries no board.\n\n"
+            "  A line marked `no image rung` delivers the board but not the image's\n"
+            "  own `[image.<id>] env` (issue 1712): call `nros_image_env_cargo_flags()`\n"
+            "  and put the flag on the cargo command (and the file in DEPENDS), or list\n"
+            "  the file in IMAGE_ENV_EXEMPT with the reason.\n"
         )
         return 1
 

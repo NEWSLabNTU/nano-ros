@@ -57,7 +57,7 @@ holds this table and the enum to each other in both directions.
 | road | exec | emits a root | carries a knob by | the defect it produced |
 | --- | --- | --- | --- | --- |
 | **cargo** | `cargo build` | yes | `[env]` rows in the generated `nros-cargo.toml`, read via `--config` | **0491** — a PATH-valued row has three spellings, so a `rerun-if-env-changed` on it rebuilds forever; watch the CONTENT |
-| **cmake** | `cmake --build` | yes | `corrosion_set_env_vars()` on the target's own cargo command | **0460** — `set(ENV{})` touches only the configure process and carries nothing to a cargo lane |
+| **cmake** | `cmake --build` | yes | `corrosion_set_env_vars()` on the target's own cargo command; the APP rung as a `--config` `[env]` file on the same command (`NanoRosImageEnv.cmake`) | **0460** — `set(ENV{})` touches only the configure process and carries nothing to a cargo lane; **1712** — the image's `[image.<id>] env` had no carrier at all, and `cmake -E env` overwrites an exported variable, so it cannot carry a rung that sits below `env` |
 | **west** | `west build -b <board>` | no | `$DOTCONFIG`, read per build script through `nros_zephyr_build` | **0460** — zephyr-lang-rust builds its own cargo command and inherits no environment at all |
 
 One road emits no root on purpose: a Zephyr app is already a complete cmake
@@ -104,6 +104,14 @@ that states a value wins; a rung that is silent is not a zero.
 | board | `nros-board.toml` | RFC-0064 R5 D4 |
 | app | `[image.<id>] env` in the leaf's `system.toml` | RFC-0049 / RFC-0098 |
 | env | the process environment | RFC-0049 |
+
+**The app rung's carrier, per road** (issue 1712). Cargo: the generated
+`nros-cargo.toml` `[env]`. CMake: `--config <build>/nros/nros-image-env.toml`
+on every cargo command the configure spawns (written by `nros ws leaf-system
+--image-env-out`), the same unforced `[env]`, so an exported variable still
+wins and a changed row re-runs the build scripts that read it. West: **not
+delivered** (issue 1721) — state the knob in the application's Kconfig; the
+configure warns rather than dropping the rows silently.
 
 Beside the ladder sit two things that are **facts, not rungs**, and the
 distinction matters because a fact has no `$DOTCONFIG` counterpart:

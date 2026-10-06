@@ -16,6 +16,9 @@
 
 include_guard(GLOBAL)
 
+# issue 1712 — `nros_image_env_key_fields`, the third road below.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosImageEnv.cmake")
+
 # =============================================================================
 # The KNOB half of every cargo-directory key — RFC-0094 D4, phase-439 W1.
 #
@@ -148,6 +151,11 @@ function(nros_knob_key_fields out_var)
             list(APPEND _fields "${_k}=$ENV{${_k}}")
         endif()
     endforeach()
+    # Road 3 (issue 1712) — the image's own `[image.<id>] env`, which reaches
+    # every cargo command as `--config` and changes what the same build scripts
+    # compile. Empty for an image that states none, so no existing key moves.
+    nros_image_env_key_fields(_image_fields)
+    list(APPEND _fields ${_image_fields})
     set(${out_var} "${_fields}" PARENT_SCOPE)
 endfunction()
 

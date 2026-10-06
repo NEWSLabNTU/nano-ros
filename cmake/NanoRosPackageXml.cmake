@@ -292,6 +292,9 @@ endfunction()
 #   NANO_ROS_LEAF_DOMAIN_ID   — `[image] domain_id` > `[system] domain_id`, or ""
 #   NANO_ROS_LEAF_LOCATOR     — `[image] locator` > `[system] locator`, or ""
 #   NANO_ROS_EXPORT_{DEPLOY,BOARD,RMW,FOUND,USES_*} — overridden, as above
+# and the GLOBAL property NROS_IMAGE_ENV_CONFIG — the image's `[image.<id>] env`
+#   as a cargo config, for the top-level leaf of a non-Zephyr configure (issue
+#   1712, NanoRosImageEnv.cmake), or "".
 # ---------------------------------------------------------------------------
 function(nano_ros_read_leaf_system)
     cmake_parse_arguments(_NRL "" "DIR" "" ${ARGN})
@@ -301,6 +304,11 @@ function(nano_ros_read_leaf_system)
     set(NANO_ROS_LEAF_SYSTEM FALSE PARENT_SCOPE)
     set(NANO_ROS_LEAF_DOMAIN_ID "" PARENT_SCOPE)
     set(NANO_ROS_LEAF_LOCATOR "" PARENT_SCOPE)
+    # Issue 1712 — cleared by the top-level leaf's read, so a configure cannot
+    # inherit an image env nobody stated this time.
+    if(_NRL_DIR STREQUAL CMAKE_SOURCE_DIR)
+        set_property(GLOBAL PROPERTY NROS_IMAGE_ENV_CONFIG "")
+    endif()
     if(NOT EXISTS "${_NRL_DIR}/system.toml")
         return()
     endif()
@@ -315,9 +323,15 @@ function(nano_ros_read_leaf_system)
     if(DEFINED NANO_ROS_LEAF_BOARD AND NOT NANO_ROS_LEAF_BOARD STREQUAL "")
         set(_nrl_board_arg --board "${NANO_ROS_LEAF_BOARD}")
     endif()
+    # Issue 1712 — and the image's OWN layers (`transport` implications, then
+    # `[image.<id>] env`, RFC-0049's APP rung), written as a cargo config that
+    # every cargo command this configure spawns passes as `--config`
+    # (NanoRosImageEnv.cmake). Per build dir: two configures of one leaf for
+    # two RMWs must not share it.
+    set(_nrl_image_env_out "${CMAKE_CURRENT_BINARY_DIR}/nros/nros-image-env.toml")
     execute_process(
         COMMAND "${_nros}" ws leaf-system "${_NRL_DIR}" --nano-ros-path "${NANO_ROS_ROOT}"
-                ${_nrl_board_arg}
+                ${_nrl_board_arg} --image-env-out "${_nrl_image_env_out}"
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc
@@ -341,6 +355,30 @@ function(nano_ros_read_leaf_system)
             set(_${CMAKE_MATCH_1} "${CMAKE_MATCH_2}")
         endif()
     endforeach()
+    if(NOT "${_NROS_LEAF_IMAGE_ENV}" STREQUAL "")
+        if(DEFINED ZEPHYR_BASE)
+            # The west road builds its cargo commands while Zephyr loads its
+            # modules — before this leaf's find_package(nano_ros) — and resolves
+            # knobs through its own Kconfig ladder. Said, never dropped silently.
+            message(WARNING
+                "nano-ros: ${_NRL_DIR}/system.toml states `[image.<id>] env`, which the "
+                "Zephyr west road does not deliver (issue 1721); state the knob in "
+                "the application's Kconfig instead.")
+        elseif(NOT _NRL_DIR STREQUAL CMAKE_SOURCE_DIR)
+            # A package inside a larger configure (a workspace member): the
+            # cargo builds this configure drives serve every image it holds,
+            # so one member's image cannot claim them.
+            message(WARNING
+                "nano-ros: ${_NRL_DIR}/system.toml states `[image.<id>] env`, but this "
+                "package is not the top-level project of its configure, whose cargo "
+                "builds it cannot claim for one image (issue 1721).")
+        else()
+            set_property(GLOBAL PROPERTY NROS_IMAGE_ENV_CONFIG "${_NROS_LEAF_IMAGE_ENV}")
+            message(STATUS
+                "nano-ros: image env from ${_NRL_DIR}/system.toml — every cargo "
+                "command gets --config ${_NROS_LEAF_IMAGE_ENV} (issue 1712)")
+        endif()
+    endif()
     if("${_NROS_LEAF_DEPLOY}" STREQUAL "")
         message(FATAL_ERROR
             "nano-ros: `nros ws leaf-system ${_NRL_DIR}` printed no deploy token:\n${_out}")

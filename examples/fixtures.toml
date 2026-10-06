@@ -1599,6 +1599,18 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/rosout-talker-cpp"
 
+# issue 1712 — the CMAKE road's APP rung. A C leaf whose `system.toml` states
+# `[image.native] env` knobs for two crates' build scripts; the cmake road hands
+# the rows to every cargo build as a `--config` file (below an exported
+# variable). `tests/image_env_cmake_knob.rs` asserts the built binary reports
+# them. One RMW: the knobs are not backend-specific.
+[[fixture]]
+id = "image-env-probe-c"
+platform = "linux"
+lang = "c"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/image-env-probe-c"
+
 # phase-479 W5 (RFC-0102 D5) — the runtime-logger arena knob. The leaf's
 # `system.toml` names the `native` board (which states
 # `[board.knobs.log] dynamic_loggers = 32`) and an `[image.native] env` that
