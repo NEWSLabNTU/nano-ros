@@ -2,11 +2,11 @@
 id: 1139
 title: "`nros_rmw_cyclonedds_ros2_pubsub_e2e` fails under the 21-way parallel
   gate and passes solo, every time -- 6 failures, 4 solo passes, one session"
-status: open
+status: resolved
 type: bug
 area: testing, rmw-cyclonedds
 severity: medium
-related: [issue-1009, issue-0741, phase-441]
+related: [issue-1009, issue-0741, phase-441, phase-480]
 ---
 
 ## What happens
@@ -222,3 +222,49 @@ instead of six identical timeouts.
 `just ci gate` green with `nros_rmw_cyclonedds_ros2_pubsub_e2e` passing across
 enough consecutive runs to beat the tabled ~1-in-3 failure rate. That needs the
 real gate, which this work did not run.
+
+## Resolution
+
+Resolved 2026-10-06 (phase-480 W6). The real gate was run, and the acceptance
+above holds.
+
+**The runs.** `just check build` is the step of `just ci gate` that runs the
+`rmw-cyclonedds` lane, and it ran the whole Cyclone ctest suite here at `-P32`
+on a 32-core host. Six runs on origin/main, back to back, with each run's
+`LastTest.log` copied aside:
+
+| run | gate wall | pubsub_e2e | attempts (A.1 / A.2) | test time |
+| ---: | ---: | --- | --- | ---: |
+| 1 | 2318 s | Passed | 1 / 1 | 3.81 s |
+| 2 | 1638 s | Passed | 1 / 1 | **199.66 s** |
+| 3 | 686 s | Passed | 1 / 1 | 19.03 s |
+| 4 | 673 s | Passed | 1 / 1 | 13.78 s |
+| 5 | 679 s | Passed | 1 / 1 | 3.31 s (stamped) |
+| 6 | 704 s | Passed | 1 / 1 | 3.27 s (stamped) |
+
+**N = 6, 6 passes, and every sub-case passed on its first attempt.** At the
+tabled pass rate (3 of 8), six straight passes would happen by chance about
+0.3 % of the time. So the two measured mechanisms the 2026-09-07 section
+removed are the credible cause: the cell's bus was on the LAN, and its timing
+constants assumed the Python CLI starts fast. That is the most this can say:
+the flake was never caught in the act, before or after.
+
+**What is still there, and what now names it.** The wall-clock variance the
+issue tabled (35 s to 316 s) did not go away. Run 2 passed on the first
+attempt of both sub-cases and took 199.7 s, and its log could not say where
+196 s went. So `ros2_e2e_common.sh` grew one helper, `nros_e2e_stage`, and
+both shell cells stamp every stage boundary with `[t+Ns]`: the daemon stop, the
+rmw load check, the start of each sub-case, its verdict, the reaping of each
+peer, and `exiting` last. If ctest's `Test time` is far above the `exiting`
+stamp, the time went after the script, in a child still holding ctest's output
+pipe. The two stamped in-gate runs took 3 s each, and the outlier did not
+recur. When it does, the log will name the stage.
+
+**Not measured:**
+
+- The gate at the issue's original width (`-P20`) or on a 4-vCPU CI runner.
+  These runs were `-P32` on a 32-core host shared with other agents (load
+  average between 17 and 55 during the runs).
+- The cause of run 2's 196 s. It was not reproduced with the stamps in place.
+- A test that fails without this change. The stamps are diagnostic and change
+  no verdict; the evidence here is the six-run table.
