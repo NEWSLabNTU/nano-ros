@@ -11589,10 +11589,16 @@ fn every_entry_kind_created_and_released_in_a_loop_never_exhausts() {
             );
             assert!(unsafe { release(&mut executor, h) }, "{name} iteration {i}");
         }
-        assert!(
-            N > crate::config::MAX_CBS,
-            "precondition: the loop out-runs the slot table"
-        );
+        // A compile-time fact, so a compile-time check: as a runtime
+        // `assert!` clippy's `assertions_on_constants` refuses it under
+        // `-D warnings` whenever `MAX_CBS` is a plain constant (the `std`
+        // feature set).
+        const {
+            assert!(
+                N > crate::config::MAX_CBS,
+                "precondition: the loop out-runs the slot table"
+            )
+        };
     }
 }
 

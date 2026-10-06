@@ -2692,6 +2692,14 @@ node-std-tests:
     # tests need the store — and `Executor::declare_parameter`, the seam W3b
     # hooks, lives in a `#[cfg(feature = "param-services")]` impl block.
     cargo test -p nros-node --lib --features std,sim-time,param-services --quiet
+    # Lint the build this lane just compiled. `test-targets` clippies nros-node
+    # with NO features (workspace) and its own DEFAULT features (per crate) —
+    # both without `std` — so a test that only compiles under `std` was linted
+    # by nothing: a constant `assert!` in `executor/tests.rs` sat red under
+    # `cargo clippy -p nros-node --features std --tests -D warnings` on main
+    # while every merge-gating lane stayed green. Same feature set as the line
+    # above, so the two cannot drift apart.
+    cargo clippy -p nros-node --lib --tests --features std,sim-time,param-services --quiet -- -D warnings
     # Issue 1036 — the boot self-report, third entry and the same defect class.
     # `boot_report` is behind a BUILD-TIME cfg set from an env var
     # (`NROS_BOOT_REPORT=1`, Zephyr `CONFIG_NROS_BOOT_REPORT=y`), and nothing in
