@@ -138,6 +138,17 @@ ALLOWLIST = {
         "Pinning the XRCE client would export a variable it cannot read, which "
         "is the `ROS_LOCALHOST_ONLY` mistake one layer over."
     ),
+    TESTS
+    + "tests/cyclone_slirp_pair.rs": (
+        "Issue 1251. Neither half is on the LOOPBACK profile, by design: the "
+        "nano side is a guest behind slirp, which that profile cannot reach. "
+        "Both halves come from one `dds_isolation::CycloneSlirpPair` (the "
+        "peer through `ros2_env_setup_cyclonedds_with_profile`, the guest "
+        "through `guest_config_uri`), so they are pinned SYMMETRICALLY, by "
+        "tag rather than by interface. `apply_to_command` here would put the "
+        "guest on the loopback profile and recreate the collision the test "
+        "measures."
+    ),
 }
 
 REMEDY = (

@@ -1642,10 +1642,30 @@ pub fn ros2_env_setup_rmw_with_domain(distro: &str, rmw: &str, domain_id: u8) ->
     // it isolates the ROS side and the XRCE Agent ignores it, so the pair stops
     // discovering each other. See `crate::dds_isolation`.
     let isolation = crate::dds_isolation::env_exports_for_rmw(rmw);
+    ros2_env_setup_rmw_isolated(distro, rmw, u32::from(domain_id), &isolation)
+}
+
+/// The ONE spelling of a DDS peer's env string; `isolation` is the export
+/// clause that picks its bus.
+fn ros2_env_setup_rmw_isolated(distro: &str, rmw: &str, domain_id: u32, isolation: &str) -> String {
     format!(
         "source /opt/ros/{distro}/setup.bash && \
          export RMW_IMPLEMENTATION={rmw} && \
          export ROS_DOMAIN_ID={domain_id}{isolation}"
+    )
+}
+
+/// Issue 1251 — a `rmw_cyclonedds_cpp` peer on a profile the CALLER chose,
+/// not the loopback one: the host half of a
+/// [`crate::dds_isolation::CycloneSlirpPair`], whose nano side the loopback
+/// profile cannot reach. Choosing the profile is the point, so an operator's
+/// `CYCLONEDDS_URI` does not override it here.
+pub fn ros2_env_setup_cyclonedds_with_profile(distro: &str, domain_id: u32, uri: &str) -> String {
+    ros2_env_setup_rmw_isolated(
+        distro,
+        "rmw_cyclonedds_cpp",
+        domain_id,
+        &format!(" && export CYCLONEDDS_URI={uri}"),
     )
 }
 
