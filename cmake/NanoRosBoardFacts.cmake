@@ -26,6 +26,8 @@ include_guard(GLOBAL)
 
 # issue 0657 — `nros_corrosion_env_target`.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosionEnv.cmake")
+# issue 1712 — the image's own `[image.<id>] env`, on the same targets.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosImageEnv.cmake")
 # issue 1263 -- `nros_resolve_cli`, the one lookup for the CLI. The Zephyr lane
 # calls `nros_resolve_board_facts()` before anything else has loaded it
 # (zephyr/CMakeLists.txt, right after nros_cargo_build.cmake), so a
@@ -192,6 +194,12 @@ endfunction()
 # `nros_cargo_profile_env`, and called from the same places for the same reason:
 # the crate cannot read them from anywhere else.
 function(nros_board_facts_env _target)
+    # Issue 1712 — the image rung rides the board rung's call sites: this is
+    # the one helper every Corrosion import must call
+    # (`check-board-facts-delivery`), so a cargo target that gets the board
+    # gets the image too. Before the early return, because an image may state
+    # rows on a board with no facts to carry.
+    nros_image_env_attach("${_target}")
     nros_resolve_board_facts()
     if(NROS_BOARD_FACTS_ENV STREQUAL "")
         return()

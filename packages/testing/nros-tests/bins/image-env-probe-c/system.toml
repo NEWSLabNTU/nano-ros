@@ -1,0 +1,29 @@
+# issue 1712 — the cmake road's APP rung, observed.
+#
+# Two knobs from two different crates' build scripts, each at a value that is
+# neither its builtin nor anything the `native` board or a derivation states:
+#
+#   NROS_EXECUTOR_MAX_CBS  nros-node's executor slot count, which nros-c's
+#                          build script prints into the C header as
+#                          NROS_EXECUTOR_MAX_HANDLES (builtin 4);
+#   NROS_LOG_MAX_LEVEL     nros-log's compile-time ceiling (builtin `trace`):
+#                          at `warn`, an INFO record is filtered even on a
+#                          logger whose runtime level admits DEBUG.
+#
+# `tests/image_env_cmake_knob.rs` reads both from this file and asserts the
+# BUILT binary reports them. Before issue 1712 a C leaf's `env` was parsed and
+# dropped, and the binary reported the builtins.
+
+[system]
+name = "image_env_probe_c"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "image_env_probe_c"
+class = "image_env_probe_c::Probe"
+name = "image_env_probe"
+
+[image.native]
+board = "native"
+env = { NROS_EXECUTOR_MAX_CBS = "13", NROS_LOG_MAX_LEVEL = "warn" }

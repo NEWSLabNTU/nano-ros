@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>image_env_probe_c</name>
+  <version>0.1.0</version>
+  <description>issue 1712 -- a C leaf whose system.toml states knobs through [image.native] env; prints what its build actually compiled against so image_env_cmake_knob.rs can assert the cmake road delivered the image's APP rung.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

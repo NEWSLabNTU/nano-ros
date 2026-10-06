@@ -118,7 +118,9 @@ W6). The key is the knob's ENV FRONT-END — the spelling `executor_env_key` /
 rung needs no second name for anything, and a knob with no ladder tenant yet
 (`NROS_XRCE_BUFFER_SIZE`) is reachable the same way as one that has one. It
 lands in the generated file's `[env]` WITHOUT `force`, which is what keeps it
-BELOW the lane front-end.
+BELOW the lane front-end. A C/C++ leaf's rows ride the same unforced `[env]` as
+a `--config` file on every cargo command its cmake configure spawns (issue
+1712); the Zephyr west road does not deliver them (issue 1721).
 
 Reach for `[board.knobs]` first. The test is not "is it a number" but **does it
 differ between two images of the same board**: the esp32 executor arena is the

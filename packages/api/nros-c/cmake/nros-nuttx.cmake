@@ -485,6 +485,20 @@ function(nros_nuttx_build_example)
             "NanoRosBoardFacts.cmake is not beside this module (issue 1541)")
     endif()
 
+    # Issue 1712 — and the image's OWN `[image.<id>] env` (RFC-0049's APP
+    # rung), as the `--config` file the Corrosion lanes get through
+    # `nros_board_facts_env`. A flag, not one more `cmake -E env` row: that
+    # carrier overwrites an exported variable, and the image rung sits BELOW
+    # it. This command is a real OUTPUT edge (not an always-run Corrosion
+    # target), so the file is a DEPENDS too: an edited row re-runs cargo, and
+    # cargo re-runs the build scripts that read it.
+    set(_nnbe_image_env_flags "")
+    set(_nnbe_image_env_file "")
+    if(COMMAND nros_image_env_cargo_flags)
+        nros_image_env_cargo_flags(_nnbe_image_env_flags)
+        nros_image_env_config(_nnbe_image_env_file)
+    endif()
+
     # Issue 1304 — see NanoRosRustTool.cmake (arrives via nros-rtos-helpers).
     nros_rust_tool(_nnbe_cargo cargo)
     add_custom_command(
@@ -504,6 +518,7 @@ function(nros_nuttx_build_example)
             "NUTTX_APPS_DIR=${NUTTX_APPS_DIR}"
             "CARGO_TARGET_DIR=${_cargo_target_dir}"
             "${_nnbe_cargo}" build --profile ${_NROS_NUTTX_PROFILE} ${_artifact_dir_arg}
+                ${_nnbe_image_env_flags}
         ${_depfile_retarget_cmd}
         # Issue 0159 — make `cmake --build` itself honest: an exit-0 build with
         # no kernel ELF (up-to-date skip edge / a sub-step whose failure isn't
@@ -515,6 +530,7 @@ function(nros_nuttx_build_example)
                 "${_includes_file}" "${_ffi_libs_file}"
                 "${_NNBE_FFI_CRATE_DIR}/build.rs"
                 "${_NNBE_FFI_CRATE_DIR}/Cargo.toml"
+                ${_nnbe_image_env_file}
         # issue 0820 — the DEPENDS list above names the app's C sources and this
         # crate's manifest, and NOTHING from the nano-ros Rust world. An edit to
         # nros-node or a backend left this command up to date, so cargo never

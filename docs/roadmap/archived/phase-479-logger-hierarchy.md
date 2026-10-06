@@ -69,7 +69,9 @@ from a real `ros2 topic echo`.
 - `NROS_LOG_DYNAMIC_LOGGERS` knob, read by a new `nros-log/build.rs` on the
   RFC-0049 ladder (image env > Kconfig / `[board.knobs.*]` > 16), delivered on
   the cargo, cmake and west roads; `CONFIG_NROS_LOG_DYNAMIC_LOGGERS` paired on
-  Zephyr.
+  Zephyr. *(Correction: the IMAGE-env rung reached only the cargo road — the
+  cmake road dropped it until issue 1712, and the west road still does, issue
+  1721.)*
 - Linux host boards state 32, MCU boards keep 16.
 - The `dynamic-loggers-<N>` features deprecated (one release), then removed.
 - `dynamic_loggers_in_use()` / capacity in the boot report and `just mem-report`.

@@ -259,12 +259,29 @@ fn is_path_value(value: &str) -> bool {
 /// so a lane that exports `NROS_LINK_IP=1` still wins (RFC-0086 D2's `imply`
 /// strength, and the reason an image may still name either knob explicitly in
 /// its `[image.<id>] env`, which is applied AFTER this).
-fn transport_implications(decl: &LeafSystem, env: &mut BTreeMap<String, String>) {
+pub(crate) fn transport_implications(decl: &LeafSystem, env: &mut BTreeMap<String, String>) {
     if decl.network.transport.as_deref() != Some("serial") {
         return;
     }
     env.insert("ZPICO_NO_SMOLTCP".to_string(), "1".to_string());
     env.insert("NROS_LINK_IP".to_string(), "0".to_string());
+}
+
+/// Issue 1712 — the two layers an IMAGE states about itself, in ladder order:
+/// what its declared transport implies, then its `[image.<id>] env` (the
+/// RFC-0049 APP rung), which outranks the implication key by key.
+///
+/// [`write`] applies the same two layers to this road's settings file, with
+/// the sizing descriptor's rows between them; `nros ws leaf-system
+/// --image-env-out` hands exactly these rows to the CMAKE road, which has no
+/// settings file of its own. One composition, so a C leaf and a Rust leaf
+/// cannot read one `system.toml` two ways.
+#[must_use]
+pub fn image_layers(decl: &LeafSystem) -> BTreeMap<String, String> {
+    let mut env = BTreeMap::new();
+    transport_implications(decl, &mut env);
+    env.extend(decl.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+    env
 }
 
 /// Write `<leaf>/build/<image>/nros-cargo.toml`, or return `None` when `leaf`
