@@ -12881,3 +12881,111 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
     #[cfg(feature = "trace-callbacks")]
     super::callback_trace::set_trace_sink(None);
 }
+
+/// phase-474 I6 -- T4's overrun again, on the shape the safety island actually
+/// has: the timer's node ALSO subscribes. With a subscription registered and
+/// idle (no sample this spin), the default `Trigger::Any` does not pass, and
+/// due timers fire in the trigger-miss sweep of `spin_once` instead of the
+/// measured drains. That sweep used to time nothing, so `attribute_latency`
+/// never saw the dispatch and `max-latency-runtime` never judged a timer path
+/// on the island (250 ms overrun of a 206 ms path, no verdict). T4 above
+/// passed because its node has no subscription, so its trigger always passes.
+///
+/// Asserted: the timer's 20 ms overrun of a 5 ms path, after arming, is ONE
+/// stored `max-latency-runtime` verdict on the publisher the timer outputs,
+/// with `measured >= declared`, and the timer really fired from the sweep
+/// (the subscription never had data).
+#[cfg(all(feature = "std", feature = "alloc"))]
+#[test]
+fn t4_a_timer_overrun_beside_an_idle_subscription_is_judged() {
+    use super::monitor::{MonitorSpec, PubMonitorCell};
+    use core::sync::atomic::{AtomicU32, Ordering};
+    let _g = arming_lock();
+
+    static CELL: PubMonitorCell = PubMonitorCell::new();
+    static TABLE: [MonitorSpec; 1] = [MonitorSpec {
+        topic: "/t4i6/mrm_state",
+        fqn: "/t4i6/handler/mrm_state",
+        min_rate_hz_milli: 0,
+        max_latency_ms: 5,
+        cell: &CELL,
+    }];
+    static BUSY_MS: AtomicU32 = AtomicU32::new(0);
+    static TICKS: AtomicU32 = AtomicU32::new(0);
+    static TAKES: AtomicU32 = AtomicU32::new(0);
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_monitor_table(&TABLE);
+    executor.set_report_violations(false);
+    let nid = executor.node_builder("handler").build().expect("node");
+    // The island's handler subscribes to its inputs; none arrives here.
+    executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/t4i6/availability", move |_m: &TestMsg| {
+            TAKES.fetch_add(1, Ordering::SeqCst);
+        })
+        .expect("idle subscription");
+    let state = executor
+        .node_mut(nid)
+        .create_generic_publisher("/t4i6/mrm_state", "std_msgs::msg::dds_::Int32_", "")
+        .expect("contracted publisher");
+    TICKS.store(0, Ordering::SeqCst);
+    BUSY_MS.store(0, Ordering::SeqCst);
+    executor
+        .register_timer(TimerDuration::from_millis(100), move || {
+            let tick = TICKS.fetch_add(1, Ordering::SeqCst) + 1;
+            let _ = state.publish_raw(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
+            // The island's debug overrun busy-waits AFTER its publishes.
+            let busy = BUSY_MS.swap(0, Ordering::SeqCst);
+            if busy > 0 {
+                let until =
+                    std::time::Instant::now() + std::time::Duration::from_millis(busy as u64);
+                while std::time::Instant::now() < until {
+                    core::hint::spin_loop();
+                }
+            }
+        })
+        .expect("timer");
+
+    // Armed at the first spin (the default); two quiet ticks first.
+    let mut spins = 0;
+    while TICKS.load(Ordering::SeqCst) < 2 && spins < 40 {
+        let _ = elapse_then_spin_once(&mut executor, 102);
+        spins += 1;
+    }
+    assert!(executor.monitors_armed());
+    assert_eq!(executor.violations_total(), 0, "quiet ticks are clean");
+
+    // One deliberate overrun, then quiet ticks until it is judged.
+    BUSY_MS.store(20, Ordering::SeqCst);
+    let fired_before = TICKS.load(Ordering::SeqCst);
+    for _ in 0..4 {
+        let _ = elapse_then_spin_once(&mut executor, 102);
+    }
+    assert!(
+        TICKS.load(Ordering::SeqCst) > fired_before,
+        "the timer kept firing"
+    );
+    assert_eq!(
+        TAKES.load(Ordering::SeqCst),
+        0,
+        "the subscription stayed idle"
+    );
+    let mut kept = alloc::vec::Vec::new();
+    executor.drain_violations_numbered(|seq, v| {
+        kept.push((seq, v.rule, v.fqn, v.measured, v.declared));
+    });
+    let latency: alloc::vec::Vec<_> = kept
+        .iter()
+        .filter(|k| k.1 == "max-latency-runtime")
+        .collect();
+    assert_eq!(
+        latency.len(),
+        1,
+        "one max-latency-runtime verdict for the timer's overrun: {kept:?}"
+    );
+    let (_, _, fqn, measured, declared) = *latency[0];
+    assert_eq!(fqn, "/t4i6/handler/mrm_state");
+    assert_eq!(declared, 5);
+    assert!(measured >= declared, "measured {measured} >= declared 5");
+}

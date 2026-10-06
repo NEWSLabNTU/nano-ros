@@ -18,7 +18,12 @@
 //! - `max-latency-runtime` — node-path (take → publish) latency: the
 //!   dispatch elapsed time is attributed to every monitored publisher
 //!   whose counter advanced during that dispatch (an upper bound on
-//!   take → publish, measured on the executor's monotonic clock).
+//!   take → publish, measured on the executor's monotonic clock). The span
+//!   is callback entry to exit, for every dispatch kind: a timer callback
+//!   is timed whether it fires in the drains or in the trigger-miss sweep
+//!   (phase-474 I6), and a service call it makes is inside the span. The
+//!   timer's release jitter (a late start) is not part of it; that is
+//!   `release-jitter-runtime`.
 //! - `deadline-miss-runtime` — a dispatched callback ran past its bound
 //!   SchedContext's `deadline_us`; what ELSE happens is the tier's
 //!   [`DeadlineAction`](super::sched_context::DeadlineAction).
