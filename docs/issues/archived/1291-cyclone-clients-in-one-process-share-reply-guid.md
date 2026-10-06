@@ -2,11 +2,11 @@
 id: 1291
 title: "Two Cyclone clients of one service in one process share a reply id, so
   each accepts the other's replies as its own"
-status: open
+status: resolved
 type: bug
 area: rmw
 severity: high
-related: [issue-1088, issue-0778]
+related: [issue-1088, issue-0778, phase-480]
 ---
 
 ## Symptom
@@ -70,3 +70,36 @@ all 35 replies reach the client that asked.
 - Interop with a stock ROS 2 server was not re-run. The server echoes the
   field it received, and the value is only ever compared by the client that
   wrote it, so the wire contract is unchanged.
+
+## Resolution
+
+Resolved 2026-10-06 (phase-480 W4). The fix itself landed with issue 1088
+([1088-cyclone-take-request-destroys-and-reports-empty.md](1088-cyclone-take-request-destroys-and-reports-empty.md)):
+`writer_request_id64` puts the request writer's instance handle in the request
+header. This closes the second "Not covered" item above, the stock-server run.
+
+**The test.** `ros2_srv_client` gained a pair mode (`NROS_SRV_CLIENT_PAIR=1`):
+two clients of `/add_two_ints` on one node of one process. Each round sends both
+requests before either client takes, so both are outstanding at once with equal
+sequence numbers. The payloads differ per client (`b = 100` and `b = 1000`), so
+a reply crossed between clients is a wrong sum, not a lucky match.
+`ros2_srv_e2e.sh` runs it as the third sub-case of
+`nros_rmw_cyclonedds_ros2_srv_e2e`, against the same stock
+`demo_nodes_cpp add_two_ints_server` (humble `rmw_cyclonedds_cpp`, bus pinned
+to loopback) that sub-case B.2 starts.
+
+**Measured:**
+
+| tree | result |
+| --- | --- |
+| with the fix | `PAIR_OK rounds=5`, 3 of 3 runs |
+| `writer_request_id64` put back to the GUID prefix (`memcpy` of the first 8 GUID bytes) | `PAIR_MISMATCH client=1 round=0 sum=100 want=1000` |
+
+So the stock server echoes the instance handle unchanged, and the client-side
+filter separates the two clients. The wire contract held, as the issue argued.
+
+**Not measured:**
+
+- Two participants in one process. That is still covered by construction (the
+  instance handle is unique per process), not by a run.
+- A stock `rclpy` server, and Jazzy. Only humble `rclcpp` was run.
