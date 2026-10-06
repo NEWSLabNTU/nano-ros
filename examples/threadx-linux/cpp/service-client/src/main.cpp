@@ -83,7 +83,10 @@ int nros_app_main(int argc, char** argv) {
     // so a server appearing mid-wait is still seen. Mirrors
     // `rclcpp::ClientBase::wait_for_service`.
     ret = client.wait_for_service(10000);
-    if (!ret.ok()) {
+    // issue 1686 — Unsupported: this backend cannot see servers at all
+    // (XRCE: the Agent owns the DDS graph), so the wait answered at once.
+    // Send anyway; the request's own timeout is then the probe.
+    if (!ret.ok() && ret.code() != nros::ErrorCode::Unsupported) {
         fprintf(stderr, "Service did not appear within 10s (ret=%d)\n", ret.raw());
         rclcpp::shutdown();
         return 1;

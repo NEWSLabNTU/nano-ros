@@ -2641,7 +2641,7 @@ nros_cpp_ret_t nros_cpp_service_client_server_available(void *storage,
  * `service_is_ready`, the same shape as `Client::wait_for_service`
  * (`nros-node/src/executor/handles.rs`) — each check is a synchronous read
  * of the discovery state the backend maintains, nothing is latched, and a
- * backend that cannot answer waits out the budget (phase-428 W13, issue 1087).
+ * backend that cannot answer returns `NROS_CPP_RET_UNSUPPORTED` at once (issue 1686).
  *
  * **Two roads, one entry point** — phase-456 W9 follow-up (2026-09-28), the
  * same split `nros_cpp_service_client_server_available` above takes. `storage`
@@ -2657,6 +2657,9 @@ nros_cpp_ret_t nros_cpp_service_client_server_available(void *storage,
  * # Returns
  * * `NROS_CPP_RET_OK` — server visible.
  * * `NROS_CPP_RET_TIMEOUT` — budget elapsed without seeing a token.
+ * * `NROS_CPP_RET_UNSUPPORTED` — the backend cannot know (XRCE), returned at
+ *   once rather than after the budget (issue 1686); a caller that may send
+ *   blind proceeds.
  * * `NROS_CPP_RET_INVALID_ARGUMENT` — null executor, or neither road resolves.
  * * `NROS_CPP_RET_TRANSPORT_ERROR` — transport-level failure.
  *
@@ -3434,6 +3437,10 @@ nros_cpp_ret_t nros_cpp_action_client_create(const struct nros_cpp_node_t *node,
  * load-bearing entity for the first `send_goal`; the same shape as
  * `ActionClient::wait_for_action_server` in
  * `nros-node/src/executor/handles.rs` (phase-428 W13).
+ *
+ * Returns `NROS_CPP_RET_UNSUPPORTED` at once when the backend cannot know
+ * whether a server is up (XRCE) — issue 1686; it used to wait out the budget
+ * and report TIMEOUT, which every C++ client read as "no server".
  *
  * # Safety
  * `handle` must be a valid initialized `CppActionClient`.

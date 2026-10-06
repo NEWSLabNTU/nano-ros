@@ -2437,6 +2437,89 @@ pub struct EmbeddedServiceClient<
     pub(crate) _phantom: PhantomData<Svc>,
 }
 
+/// Issue 1686 — what a server-readiness probe answered, read the way a WAIT
+/// loop must read it.
+///
+/// `ClientTrait::service_is_ready` has three answers (issue 1008), and every
+/// wait loop in the tree — Rust's `wait_for_service` /
+/// `wait_for_action_server` and the four C / C++ bindings — classifies the
+/// probe through [`Self::of`], so the six loops cannot come to disagree.
+///
+/// The third answer is the one the loops used to drop. A backend that has no
+/// discovery (XRCE: the Agent owns the DDS participant, `vtable.c` keeps the
+/// slot NULL) answers `Err(Unsupported)` on EVERY probe, so waiting can never
+/// change it. Issue 1087 folded it into "keep waiting", which spent the whole
+/// budget and then reported TIMEOUT — and every C / C++ client example treats
+/// TIMEOUT as "no server" and exits. So the C and C++ XRCE action and service
+/// clients could not complete a single round-trip against a server that was
+/// up and serving (measured: `Action server did not appear within 10s: -2`
+/// with the server running beside it). rcl reports this case as an ERROR from
+/// `rcl_service_server_is_available`, not as "no"; the loops now return it
+/// at once as `Unsupported`, and the caller — which knows whether it may send
+/// blind — decides. The Rust service-client examples already did exactly
+/// that with the raw probe (`Err` ⇒ send anyway).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServerVisibility {
+    /// A matching server is visible now.
+    Visible,
+    /// The backend can answer, and has not seen one yet — keep waiting.
+    NotYet,
+    /// The backend cannot answer this question at all; waiting will not
+    /// change that.
+    Unknowable,
+}
+
+impl ServerVisibility {
+    /// Classify one readiness probe.
+    ///
+    /// Only `Unsupported` is [`Self::Unknowable`]. Any other `Err` is a probe
+    /// that failed THIS time, so the loop keeps waiting rather than giving up
+    /// on a backend that does answer.
+    pub fn of(probe: Result<bool, TransportError>) -> Self {
+        match probe {
+            Ok(true) => Self::Visible,
+            Ok(false) => Self::NotYet,
+            Err(TransportError::Unsupported) => Self::Unknowable,
+            Err(_) => Self::NotYet,
+        }
+    }
+}
+
+/// The shared body of the two Rust wait loops. `probe` is re-run after every
+/// `spin_once`; see [`ServerVisibility`].
+pub(crate) fn wait_for_server_visible(
+    executor: &mut super::Executor,
+    timeout: core::time::Duration,
+    mut probe: impl FnMut() -> Result<bool, TransportError>,
+) -> Result<bool, NodeError> {
+    match ServerVisibility::of(probe()) {
+        ServerVisibility::Visible => return Ok(true),
+        ServerVisibility::Unknowable => {
+            return Err(NodeError::Transport(TransportError::Unsupported));
+        }
+        ServerVisibility::NotYet => {}
+    }
+    let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
+    let max_spins = (timeout.as_millis() as u64 / DEFAULT_SPIN_INTERVAL_MS).max(1);
+    let mut budget = WaitBudget::new(max_spins, timeout);
+    // phase-428 W13 — spin, then ask again. The liveliness subscriber that
+    // feeds the zenoh set runs on the executor's read path, so each
+    // `spin_once` is what lets a freshly declared token land in the set.
+    loop {
+        executor.spin_once(budget.next_spin_interval(spin_interval));
+        match ServerVisibility::of(probe()) {
+            ServerVisibility::Visible => return Ok(true),
+            ServerVisibility::Unknowable => {
+                return Err(NodeError::Transport(TransportError::Unsupported));
+            }
+            ServerVisibility::NotYet => {}
+        }
+        if !budget.tick() {
+            return Ok(false);
+        }
+    }
+}
+
 impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     EmbeddedServiceClient<Svc, REQ_BUF, REPLY_BUF>
 {
@@ -2518,9 +2601,14 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     ///
     /// issue 1087 — a backend that cannot answer (`Err`, e.g. XRCE) is
     /// "cannot say", NOT "yes". It used to be yes, so this returned
-    /// immediately on cyclone, XRCE and uORB without probing anything. Such a
-    /// backend now waits out the budget and reports `Ok(false)`: slower, and
-    /// the direction that does not send a request into the void.
+    /// immediately on cyclone, XRCE and uORB without probing anything.
+    ///
+    /// issue 1686 — and "cannot say" is not "no" either: such a backend
+    /// returns `Err(NodeError::Transport(TransportError::Unsupported))` at
+    /// once, rather than waiting out a budget no answer can arrive in and
+    /// reporting `Ok(false)`. See [`ServerVisibility`]. A caller that may send
+    /// blind (the request's own timeout is then the probe) matches that
+    /// error and proceeds.
     ///
     /// Recommended usage — gate the first `call()` on this:
     ///
@@ -2542,26 +2630,10 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
         executor: &mut super::Executor,
         timeout: core::time::Duration,
     ) -> Result<bool, NodeError> {
-        // `Ok(true)` ONLY (issue 1008): `Err` (the backend cannot answer) and
-        // `Ok(false)` both keep waiting.
-        if matches!(self.handle.service_is_ready(), Ok(true)) {
-            return Ok(true);
-        }
-        let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
-        let max_spins = (timeout.as_millis() as u64 / DEFAULT_SPIN_INTERVAL_MS).max(1);
-        let mut budget = WaitBudget::new(max_spins, timeout);
-        // phase-428 W13 — spin, then ask again. The liveliness subscriber that
-        // feeds the set runs on the executor's read path, so each `spin_once`
-        // is what lets a freshly declared token land in the set.
-        loop {
-            executor.spin_once(budget.next_spin_interval(spin_interval));
-            if matches!(self.handle.service_is_ready(), Ok(true)) {
-                return Ok(true);
-            }
-            if !budget.tick() {
-                return Ok(false);
-            }
-        }
+        // `Ok(true)` only means visible (issue 1008); `Unsupported` returns at
+        // once (issue 1686) — see `ServerVisibility`.
+        let handle = &self.handle;
+        wait_for_server_visible(executor, timeout, || handle.service_is_ready())
     }
 
     // phase-379 W6 decision 2 — the bool-returning `service_is_ready` was
@@ -3215,28 +3287,17 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     /// remaining four action entities (cancel queryable + feedback /
     /// status / result publishers) are also reachable in practice — they
     /// were declared by the same server in one batch.
+    ///
+    /// A backend that cannot answer returns
+    /// `Err(NodeError::Transport(TransportError::Unsupported))` at once
+    /// (issue 1686) — see [`ServerVisibility`].
     pub fn wait_for_action_server(
         &mut self,
         executor: &mut super::Executor,
         timeout: core::time::Duration,
     ) -> Result<bool, NodeError> {
-        // issue 1008 — `Ok(true)` only; see `wait_for_service` above.
-        if matches!(self.core.send_goal_client.service_is_ready(), Ok(true)) {
-            return Ok(true);
-        }
-        let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
-        let max_spins = (timeout.as_millis() as u64 / DEFAULT_SPIN_INTERVAL_MS).max(1);
-        let mut budget = WaitBudget::new(max_spins, timeout);
-        // phase-428 W13 — spin, then ask again; see `wait_for_service`.
-        loop {
-            executor.spin_once(budget.next_spin_interval(spin_interval));
-            if matches!(self.core.send_goal_client.service_is_ready(), Ok(true)) {
-                return Ok(true);
-            }
-            if !budget.tick() {
-                return Ok(false);
-            }
-        }
+        let core = &self.core;
+        wait_for_server_visible(executor, timeout, || core.server_readiness())
     }
 
     /// Snapshot whether the action server is currently visible.

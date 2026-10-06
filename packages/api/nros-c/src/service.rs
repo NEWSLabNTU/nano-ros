@@ -1713,12 +1713,15 @@ pub unsafe extern "C" fn nros_client_server_available(
 /// query: the executor is spun cooperatively between checks, and each check
 /// is a synchronous read of the discovery state the backend maintains (on
 /// zenoh, the matched-server set fed by liveliness PUT/DELETE — phase-428
-/// W13). Nothing is latched; a backend that cannot answer waits out the
-/// budget and reports `NROS_RET_TIMEOUT` (issue 1087).
+/// W13). Nothing is latched.
 ///
 /// # Returns
 /// * `NROS_RET_OK` — server is visible (proceed with `nros_client_call`).
 /// * `NROS_RET_TIMEOUT` — `timeout_ms` elapsed without seeing a token.
+/// * `NROS_RET_UNSUPPORTED` — the backend cannot know (XRCE), returned at
+///   once: issue 1087 made such a backend wait out the budget and report
+///   TIMEOUT, which every client read as "no server" (issue 1686). A caller
+///   that may send blind proceeds; the call's own timeout is the probe.
 /// * `NROS_RET_NOT_INIT` — client not registered with an executor.
 /// * `NROS_RET_ERROR` — transport-level failure.
 #[unsafe(no_mangle)]
@@ -1747,8 +1750,9 @@ pub unsafe extern "C" fn nros_client_wait_for_service(
         }
         let executor = exec_t as *mut nros_executor_t;
 
-        // phase-428 W13 — spin, then ask again. `Ok(true)` ONLY (issue 1008):
-        // `Err` (the backend cannot answer) and `Ok(false)` both keep waiting.
+        // phase-428 W13 — spin, then ask again. `Ok(true)` only means visible
+        // (issue 1008); a backend that cannot answer returns at once (issue
+        // 1686) — `ServerVisibility` is the one classification.
         let start_ns = crate::platform::get_time_ns();
         let timeout_ns: u64 = (timeout_ms as u64).saturating_mul(1_000_000);
         loop {
@@ -1759,8 +1763,12 @@ pub unsafe extern "C" fn nros_client_wait_for_service(
                     Some(e) => e,
                     None => return NROS_RET_NOT_INIT,
                 };
-                if matches!(entry.handle.service_is_ready(), Ok(true)) {
-                    return NROS_RET_OK;
+                match nros_node::executor::ServerVisibility::of(entry.handle.service_is_ready()) {
+                    nros_node::executor::ServerVisibility::Visible => return NROS_RET_OK,
+                    nros_node::executor::ServerVisibility::Unknowable => {
+                        return NROS_RET_UNSUPPORTED;
+                    }
+                    nros_node::executor::ServerVisibility::NotYet => {}
                 }
             }
             let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);

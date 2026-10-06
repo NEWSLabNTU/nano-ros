@@ -64,7 +64,10 @@ int nros_app_main(int argc, char** argv) {
     // RE-probes until the budget expires, so a server appearing mid-wait is
     // still seen. Mirrors `rclcpp_action::Client::wait_for_action_server`.
     ret = client.wait_for_action_server(10000);
-    if (!ret.ok()) {
+    // issue 1686 — Unsupported: this backend cannot see servers at all
+    // (XRCE: the Agent owns the DDS graph), so the wait answered at once.
+    // Send anyway; the request's own timeout is then the probe.
+    if (!ret.ok() && ret.code() != nros::ErrorCode::Unsupported) {
         fprintf(stderr, "Action server did not appear within 10s (ret=%d)\n", ret.raw());
         rclcpp::shutdown();
         return 2;

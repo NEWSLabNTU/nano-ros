@@ -1271,8 +1271,15 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// Answering `false` makes a caller wait; answering `true` makes it send
     /// into the void.
     pub fn is_server_ready(&self) -> bool {
+        matches!(self.server_readiness(), Ok(true))
+    }
+
+    /// The raw three-answer probe behind [`Self::is_server_ready`] — what a
+    /// WAIT loop reads, through `ServerVisibility::of`, so that "the backend
+    /// cannot know" ends the wait instead of being waited out (issue 1686).
+    pub fn server_readiness(&self) -> Result<bool, nros_rmw::TransportError> {
         use nros_rmw::ClientTrait;
-        matches!(self.send_goal_client.service_is_ready(), Ok(true))
+        self.send_goal_client.service_is_ready()
     }
 
     /// Create a new action client core from the raw transport handles.

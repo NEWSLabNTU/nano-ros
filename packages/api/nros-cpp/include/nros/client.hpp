@@ -290,7 +290,9 @@ template <typename S> class Client {
     ///
     /// Spins the executor cooperatively while probing, so do NOT call it from
     /// inside a callback; use @ref service_is_ready there. Returns ok when the
-    /// server is visible, `Timeout` when the budget elapses.
+    /// server is visible, `Timeout` when the budget elapses, `Unsupported` at
+    /// once when the backend cannot know (XRCE — issue 1686; a caller that may
+    /// send blind proceeds).
     ///
     /// **The budget is REQUIRED** — phase-417 stage 3, and the reason is
     /// RFC-0021 rather than convenience: this call drives a single-threaded

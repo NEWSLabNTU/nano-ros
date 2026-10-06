@@ -1704,10 +1704,10 @@ impl ClientTrait for ZenohServiceClient {
     ///   * `Ok(false)` — none is, and the set is complete.
     ///   * `Err(Unsupported)` — the cache is not running (the platform stubs
     ///     the subscriber, the session could not declare it, or the image was
-    ///     built with graph discovery OFF, `ZPICO_GRAPH_DISCOVERY=0`), OR it has
-    ///     DROPPED tokens for lack of room, so an absence proves nothing.
-    ///     Every caller reads this through `matches!(.., Ok(true))` (issue
-    ///     1008) and keeps waiting.
+    ///     built with graph discovery OFF, `ZPICO_GRAPH_DISCOVERY=0`). No later
+    ///     probe can answer, so a wait loop ends at once (issue 1686).
+    ///   * `Err(WouldBlock)` — the cache has DROPPED tokens for lack of room,
+    ///     so an absence proves nothing yet; a wait loop keeps waiting.
     ///
     /// The match is on `(service name, type)`, the pair `rmw_zenoh_cpp` keys a
     /// service on (`liveliness_utils.cpp`, `Entity::Entity`); zid, node,
@@ -1733,8 +1733,13 @@ impl ClientTrait for ZenohServiceClient {
             Ok(false)
         } else {
             // The token we want may be among the ones that did not fit.
-            // "Cannot say" is the honest answer, and the caller waits on it.
-            Err(TransportError::Unsupported)
+            // "Cannot say RIGHT NOW" is the honest answer, and the caller waits
+            // on it. Issue 1686 — `WouldBlock`, not `Unsupported`: the wait
+            // loops (`ServerVisibility::of`) end a wait at once on
+            // `Unsupported`, because there it means the backend can NEVER
+            // answer (XRCE, or this cache not running), while a set with
+            // dropped tokens may still receive the one we want.
+            Err(TransportError::WouldBlock)
         }
     }
 

@@ -4102,6 +4102,10 @@ nros_ret_t nros_action_client_set_result_callback(struct nros_action_client_t *c
  * # Returns
  * * `NROS_RET_OK` — server visible.
  * * `NROS_RET_TIMEOUT` — `timeout_ms` elapsed without seeing a token.
+ * * `NROS_RET_UNSUPPORTED` — the backend cannot know whether a server is up
+ *   (XRCE: the Agent owns the DDS graph), returned at once rather than after
+ *   the budget, because no answer can arrive (issue 1686). A caller that may
+ *   send blind proceeds; the goal request's own timeout is then the probe.
  * * `NROS_RET_NOT_INIT` — client not registered with an executor.
  * * `NROS_RET_ERROR` — transport-level failure.
  */
@@ -8107,12 +8111,15 @@ NROS_PUBLIC nros_ret_t nros_client_server_available(struct nros_client_t *client
  * query: the executor is spun cooperatively between checks, and each check
  * is a synchronous read of the discovery state the backend maintains (on
  * zenoh, the matched-server set fed by liveliness PUT/DELETE — phase-428
- * W13). Nothing is latched; a backend that cannot answer waits out the
- * budget and reports `NROS_RET_TIMEOUT` (issue 1087).
+ * W13). Nothing is latched.
  *
  * # Returns
  * * `NROS_RET_OK` — server is visible (proceed with `nros_client_call`).
  * * `NROS_RET_TIMEOUT` — `timeout_ms` elapsed without seeing a token.
+ * * `NROS_RET_UNSUPPORTED` — the backend cannot know (XRCE), returned at
+ *   once: issue 1087 made such a backend wait out the budget and report
+ *   TIMEOUT, which every client read as "no server" (issue 1686). A caller
+ *   that may send blind proceeds; the call's own timeout is the probe.
  * * `NROS_RET_NOT_INIT` — client not registered with an executor.
  * * `NROS_RET_ERROR` — transport-level failure.
  */

@@ -16,8 +16,8 @@ use nros_rmw::{ClientTrait, ServiceInfo, ServiceTrait, Session};
 
 use crate::{
     CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
-    NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRY_AGAIN, cpp_ctx_checked, cstr_to_str, nros_cpp_node_t,
-    nros_cpp_qos_t, nros_cpp_ret_t,
+    NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRY_AGAIN, NROS_CPP_RET_UNSUPPORTED, cpp_ctx_checked,
+    cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
 use core::{
@@ -842,7 +842,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_server_available(
 /// `service_is_ready`, the same shape as `Client::wait_for_service`
 /// (`nros-node/src/executor/handles.rs`) — each check is a synchronous read
 /// of the discovery state the backend maintains, nothing is latched, and a
-/// backend that cannot answer waits out the budget (phase-428 W13, issue 1087).
+/// backend that cannot answer returns `NROS_CPP_RET_UNSUPPORTED` at once (issue 1686).
 ///
 /// **Two roads, one entry point** — phase-456 W9 follow-up (2026-09-28), the
 /// same split `nros_cpp_service_client_server_available` above takes. `storage`
@@ -858,6 +858,9 @@ pub unsafe extern "C" fn nros_cpp_service_client_server_available(
 /// # Returns
 /// * `NROS_CPP_RET_OK` — server visible.
 /// * `NROS_CPP_RET_TIMEOUT` — budget elapsed without seeing a token.
+/// * `NROS_CPP_RET_UNSUPPORTED` — the backend cannot know (XRCE), returned at
+///   once rather than after the budget (issue 1686); a caller that may send
+///   blind proceeds.
 /// * `NROS_CPP_RET_INVALID_ARGUMENT` — null executor, or neither road resolves.
 /// * `NROS_CPP_RET_TRANSPORT_ERROR` — transport-level failure.
 ///
@@ -880,12 +883,14 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
 
-    // phase-428 W13 — spin, then ask again. `Ok(true)` ONLY (issue 1008):
-    // `Err` (the backend cannot answer) and `Ok(false)` both keep waiting.
+    // phase-428 W13 — spin, then ask again. `Ok(true)` only means visible
+    // (issue 1008); a backend that cannot answer returns at once (issue 1686)
+    // — `ServerVisibility` is the one classification.
+    use nros_node::executor::ServerVisibility;
     const SPIN_MS: u64 = 10;
     let deadline_ns = crate::nros_cpp_time_ns() + (timeout_ms as u64) * 1_000_000;
     loop {
-        let ready = {
+        let visibility = {
             let client = if !storage.is_null() {
                 unsafe { &*(storage as *const nros::internals::RmwServiceClient) }
             } else {
@@ -894,10 +899,12 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
                     None => return NROS_CPP_RET_INVALID_ARGUMENT,
                 }
             };
-            matches!(client.service_is_ready(), Ok(true))
+            ServerVisibility::of(client.service_is_ready())
         };
-        if ready {
-            return NROS_CPP_RET_OK;
+        match visibility {
+            ServerVisibility::Visible => return NROS_CPP_RET_OK,
+            ServerVisibility::Unknowable => return NROS_CPP_RET_UNSUPPORTED,
+            ServerVisibility::NotYet => {}
         }
         if crate::nros_cpp_time_ns() >= deadline_ns {
             return NROS_CPP_RET_TIMEOUT;
