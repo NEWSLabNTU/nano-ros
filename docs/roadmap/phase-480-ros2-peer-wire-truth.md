@@ -1,7 +1,8 @@
 # Phase 480 -- what an image declares is what a stock ROS 2 peer sees
 
-**Status (2026-10-06). IN PROGRESS -- W1-W3 being worked (issues 1686, 1687,
-1688, 1691 claimed); W4-W6 queued.** This is the home for wiring and interop
+**Status (2026-10-06). ACTIVE -- W1-W6 LANDED; W7 open.** Ten of the eleven
+founding issues are resolved (#1735-#1738, #1744-#1748). Issue 1292 stays open
+as a feature, measured, and is W3's remainder. W7 holds what the fixes found. This is the home for wiring and interop
 defects: an entity, a QoS profile, a remap, a node or a service that nano-ros
 DECLARES, but a stock ROS 2 peer (`ros2` CLI, `rclcpp`, `rmw_zenoh_cpp`,
 `rmw_cyclonedds_cpp`, `rmw_fastrtps_cpp` through the XRCE Agent) does not see,
@@ -127,10 +128,34 @@ diagnosis joins them.
   half and is reachable from the guest, or the harness refuses that pair by
   name.
 
-## Ownership
+### W7 -- what W1-W6 found
 
-Claims live on origin (`just claim-list`). As of 2026-10-06:
+Filed while fixing W1-W6, each measured or reasoned in its issue:
 
-- 1686, 1687, 1688 and 1691 are claimed and in progress.
-- 1291, 1292, 1293, 1342, 1352, 1139 and 1251 are claimed by the same
-  coordinator and queued behind them.
+- **Issue 1709** (from 1687): a zenoh transient-local publisher keeps exactly
+  one sample, because `TL_RETAIN_DEPTH` is a constant. So a declared
+  `KEEP_LAST(N)` with N > 1 is granted 1.
+- **Issue 1713** (from 1688): the default `ZPICO_MAX_LIVELINESS` (16) is short
+  for a param + lifecycle image (24 tokens). Eight parameter services fail
+  `declare failed (Full)` and are invisible to ROS 2.
+- **Issue 1722** (from 1352): XRCE's service request buffer is not derived from
+  the declared parameter shape.
+- **Issue 1723** (from 1139): `timeout N ros2 ...` does not bound a waiting
+  ros2 CLI, so an interop cell's peer can outlive its test.
+
+**Acceptance:** each issue's own.
+
+## Status of the founding issues
+
+| item | issue | PR |
+| --- | --- | --- |
+| W1 | 1687 declared QoS on the wire | #1735 |
+| W1 | 1688 typed `[lifecycle]` block sizes the pools | #1736 |
+| W2 | 1686 XRCE wait-for-server returns UNSUPPORTED | #1737 |
+| W3 | 1691 + 1342 action gate skips the ros2cli daemon | #1738 |
+| W3 | 1292 XRCE `ros_discovery_info` | open -- feature, plan in the issue |
+| W4 | 1293 empty-struct padding byte, every RMW and language | #1744 |
+| W4 | 1291 two clients vs a stock server | #1745 |
+| W5 | 1352 parameter inbox never overflows silently | #1746 |
+| W6 | 1139 Cyclone pubsub holds in-gate | #1747 |
+| W6 | 1251 tag-isolated slirp profile | #1748 |
