@@ -56,12 +56,14 @@ absent.
 The one verb that CANNOT comply
 -------------------------------
 `ros2 action list` answers `error: unrecognized arguments: --no-daemon` on
-Humble (measured; its `-h` never mentions the flag). It is allowlisted, and the
-defence for it is one layer down: `nros_tests::unique_ros_domain_id` refuses a
-domain whose daemon port is already bound, so the daemon such a call consults is
-one no other test primed. That probe is ALSO issue 1333 — its predecessor read
-only the SPDP port `7400+250*d`, which a zenoh daemon never binds, so under this
-project's default RMW a lingering daemon was invisible to it.
+Humble (measured; its `-h` never mentions the flag). It is NOT allowlisted any
+more, so in practice it cannot be used at all: issues 1342/1691 measured that
+the old defence (`nros_tests::unique_ros_domain_id` refusing a domain whose
+daemon port is bound) never reached the zenoh action cells, which run on a
+FIXED domain 0 — a daemon a previous cell started, connected to that cell's dead
+router, answered an empty `ros2 action list` for a live server. Ask
+`ros2 service list --include-hidden-services --no-daemon` for the action's
+`<name>/_action/send_goal` instead (`ros2_action_e2e::await_fibonacci_action`).
 
 Dependency-free Python 3.10, house style per `scripts/check-ros-env-spelling.py`.
 """
@@ -128,14 +130,6 @@ CONSEQUENCE = (
 # that rejects the flag) also excused a `ros2 node list` without it in the same
 # file. `"*"` is for a file whose every match is a SPECIMEN, never a command.
 ALLOWLIST = {
-    ("packages/testing/nros-tests/tests/ros2_action_e2e.rs", "action list"):
-        "`ros2 action list` REJECTS `--no-daemon` on Humble "
-        "(`error: unrecognized arguments`), so this site cannot comply and is "
-        "defended by `unique_ros_domain_id` refusing a domain whose daemon "
-        "port is bound. Passing the flag here is not a stricter choice, it is "
-        "a usage error that polls for 20 s and then reports a DISCOVERY "
-        "timeout — which once cost a full box run reading as an actions defect",
-
     ("scripts/check-ros-env-spelling.py", "*"):
         "the sibling gate's self-test SPECIMENS: a fixture string that quotes "
         "a `ros2 topic list` command, not a command anything runs",

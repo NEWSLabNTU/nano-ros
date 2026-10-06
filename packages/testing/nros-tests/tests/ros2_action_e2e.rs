@@ -78,27 +78,37 @@ fn shell_escape(s: &str) -> String {
 /// (see the `strip_goal_id_len_at` note below). When discovery is fast the
 /// sleep is six seconds of nothing.
 ///
-/// **NO `--no-daemon` here, and it is the one verb that cannot take it.**
-/// Every other query helper in `nros_tests::ros2` passes it, for a real reason
-/// — the ros2cli daemon is a singleton keyed on `ROS_DOMAIN_ID` alone and
-/// serves a stale `RMW_IMPLEMENTATION` snapshot to whoever asks second — and
-/// this helper copied the habit without checking. Measured on Humble:
-/// `topic info`, `topic list`, `service list`, `param {list,get,set,describe}`,
-/// `node {list,info}` all accept it; `ros2 action list` answers
-/// `error: unrecognized arguments: --no-daemon` and its `-h` never mentions it.
+/// **Asks a verb that takes `--no-daemon`, because `ros2 action list` cannot**
+/// (issues 1691 and 1342). The ros2cli daemon is a singleton keyed on
+/// `ROS_DOMAIN_ID` alone and answers from the discovery config of whoever
+/// started it. `ros2 action list` rejects `--no-daemon` on Humble
+/// (`error: unrecognized arguments`), so it always asks that daemon — and the
+/// zenoh cells run on a FIXED domain 0 (`ZENOH_CELL_DOMAIN`), where
+/// `unique_ros_domain_id`'s refusal of a busy daemon port does not reach.
+/// Every zenoh cell has its own short-lived router, so a daemon a previous
+/// cell started is connected to a router that no longer exists.
 ///
-/// Dropping it is safe HERE, which is not the same as safe: the hazard is two
-/// RMWs sharing one domain, and every case in this file runs on its own
-/// `unique_ros_domain_id()`, so the daemon it talks to is keyed to a domain
-/// nobody else is using.
+/// Measured 2026-10-06 (`rmw_zenohd` Humble, client-mode session config as
+/// `write_zenoh_session_config` writes it): with a daemon started under router
+/// A, a stock `/fibonacci` server on router B gives an EMPTY `ros2 action
+/// list` while `ros2 service list --no-daemon --include-hidden-services` lists
+/// `/fibonacci/_action/send_goal`. On a fresh daemon both see it.
+///
+/// So the gate is the action's `send_goal` service — the entity a client's
+/// first request needs — read daemon-free through `ros2_query_cmd`, the one
+/// place the flag is decided. It means the same thing on Cyclone, where every
+/// case also takes a unique domain.
 fn await_fibonacci_action(env: &HostRosEnv, whose: &str) {
+    const SEND_GOAL: &str = "/fibonacci/_action/send_goal";
+    let query =
+        nros_tests::ros2::ros2_query_cmd("true", 10, "service list --include-hidden-services");
     let deadline = Instant::now() + Duration::from_secs(20);
     let mut last;
     loop {
         last = env
-            .run_text("timeout --foreground 10 ros2 action list 2>&1")
-            .unwrap_or_else(|e| format!("<`ros2 action list` failed: {e}>"));
-        if last.lines().any(|l| l.trim() == "/fibonacci") {
+            .run_text(&query)
+            .unwrap_or_else(|e| format!("<`ros2 service list` failed: {e}>"));
+        if last.lines().any(|l| l.trim() == SEND_GOAL) {
             return;
         }
         // Fail FAST when the command itself could not run. Polling a usage
@@ -107,9 +117,9 @@ fn await_fibonacci_action(env: &HostRosEnv, whose: &str) {
         // box run looking like an actions defect.
         if last.contains("unrecognized arguments")
             || last.contains("ros2: error:")
-            || last.starts_with("<`ros2 action list` failed:")
+            || last.starts_with("<`ros2 service list` failed:")
         {
-            panic!("`ros2 action list` could not run, so discovery was never measured:\n{last}");
+            panic!("`ros2 service list` could not run, so discovery was never measured:\n{last}");
         }
         if Instant::now() >= deadline {
             break;
@@ -117,9 +127,10 @@ fn await_fibonacci_action(env: &HostRosEnv, whose: &str) {
         std::thread::sleep(Duration::from_millis(500));
     }
     panic!(
-        "the {whose} `/fibonacci` action never appeared in `ros2 action list` \
-         within 20 s, so the goal below could only have failed for a discovery \
-         reason wearing a wire-format costume. Last listing:\n{last}"
+        "the {whose} `/fibonacci` action's `{SEND_GOAL}` service never appeared in \
+         `ros2 service list --no-daemon --include-hidden-services` within 20 s, so the \
+         goal below could only have failed for a discovery reason wearing a \
+         wire-format costume. Last listing:\n{last}"
     );
 }
 
