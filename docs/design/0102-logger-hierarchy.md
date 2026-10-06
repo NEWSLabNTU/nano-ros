@@ -1,7 +1,7 @@
 ---
 rfc: 0102
 title: "Logger hierarchy: get_child, level inheritance, and what each backend sees"
-status: Draft
+status: Stable
 since: 2026-10
 last-reviewed: 2026-10
 implements-tracked-by: [phase-479]
@@ -11,8 +11,8 @@ superseded-by: null
 
 # RFC-0102 — Logger hierarchy: `get_child`, level inheritance, and what each backend sees
 
-**Status:** Draft. Decided 2026-10-05, not yet built; [phase-479](../roadmap/phase-479-logger-hierarchy.md)
-carries the work.
+**Status:** Stable. Decided 2026-10-05, built 2026-10-06 by
+[phase-479](../roadmap/archived/phase-479-logger-hierarchy.md) (W1-W6).
 
 ## Summary
 
@@ -252,3 +252,11 @@ None. The Rust spelling (D1) and the D5 mechanism were settled 2026-10-05.
   catch-all's children as top-level names; D5's size is the
   `NROS_LOG_DYNAMIC_LOGGERS` knob on the RFC-0049 ladder, retiring the
   `dynamic-loggers-<N>` features.
+- 2026-10 — built (phase-479, now archived) and marked Stable. W1-W4 (#1706):
+  parent pointer, effective level, `create_child` on Rust/C/C++, D3's overflow
+  rule, D4's release scope. W5 (#1704): `NROS_LOG_DYNAMIC_LOGGERS`, per-board
+  defaults, boot-report and mem-report lines; the `dynamic-loggers-<N>` features
+  are deprecated for one release. W6 (#1722): every per-RTOS logging smoke
+  fixture prints a child record and asserts the dotted name (esp32 built, not
+  run: no runnable QEMU in the measuring box). Since issue 1589 the C and C++
+  `/rosout` bridges apply D4 too.

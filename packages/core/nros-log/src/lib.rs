@@ -706,7 +706,7 @@ pub fn get_logger(name: &str) -> &'static Logger {
 /// the compile-and-differ RFC-0089 forbids.
 ///
 /// Storage is the bounded static arena in [`pool`], sized by the
-/// `dynamic-loggers-<N>` feature. Returns `None` — never a logger under the
+/// `NROS_LOG_DYNAMIC_LOGGERS` knob (RFC-0102 D5: env > board > 16). Returns `None` — never a logger under the
 /// wrong name — when:
 ///
 /// * `name` is empty or longer than [`MAX_LOGGER_NAME_LEN`],
@@ -897,7 +897,7 @@ pub fn resolve_logger(name: &str) -> &'static Logger {
         &DEFAULT_LOGGER,
         "resolve_logger(\"{name}\"): no logger created — {} of {} slots and {used} of {total} \
          name bytes are spent, or the name is over {} bytes. Returning the catch-all logger, \
-         whose threshold is SHARED: raise `dynamic-loggers-<N>` on nros-log rather than calling \
+         whose threshold is SHARED: raise NROS_LOG_DYNAMIC_LOGGERS rather than calling \
          set_level on this handle. Reported once per process.",
         dynamic_loggers_in_use(),
         dynamic_logger_capacity(),

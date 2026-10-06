@@ -105,7 +105,7 @@ Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`
 | 0036 | [ros2-api-divergences](0036-ros2-api-divergences.md) | Draft | authoritative catalog of nano-ros vs rclrs/rclcpp/rclc divergences + rationale |
 | 0037 | [rust-c-user-api-surface](0037-rust-c-user-api-surface.md) | Draft | records the Rust (`nros-node`) + C (`nros-c`) user surfaces; C++ is 0018 |
 | 0089 | [ros2-api-adoption-and-the-compile-or-conform-rule](0089-ros2-api-adoption-and-the-compile-or-conform-rule.md) | Draft | when our API may take ROS 2's NAMES: adopt / adopt-bounded / refuse-loud / absent, never compile-and-differ |
-| 0102 | [logger-hierarchy](0102-logger-hierarchy.md) | Draft | `get_child` / `create_child` adopted: a child inherits its nearest ancestor's level through a PARENT POINTER set at creation (no name parsing on the log path); over-long names emit through the parent and refuse `set_level`; `/rosout` follows the ROS release (Humble: node loggers only; Iron+: plus their children); runtime-logger arena sized per board and reported. Reverses phase-467's "permanent" no-ancestry bound |
+| 0102 | [logger-hierarchy](0102-logger-hierarchy.md) | Stable | `get_child` / `create_child` adopted: a child inherits its nearest ancestor's level through a PARENT POINTER set at creation (no name parsing on the log path); over-long names emit through the parent and refuse `set_level`; `/rosout` follows the ROS release (Humble: node loggers only; Iron+: plus their children); runtime-logger arena sized per board and reported. Reverses phase-467's "permanent" no-ancestry bound |
 
 ### Codegen, workspace & user workflow
 
