@@ -10644,6 +10644,7 @@ fn a_node_level_ros_time_timer_follows_the_simulated_clock() {
 #[test]
 fn two_nodes_on_one_executor_emit_under_their_own_names() {
     use alloc::{string::String, vec::Vec};
+    let _sinks = log_sinks_lock();
 
     /// One captured record, owned. `(logger name, message)` is the pair the
     /// claim is about: a name with no message cannot be attributed to a node.
@@ -12523,6 +12524,15 @@ fn a_churning_mixed_workload_never_exhausts_the_arena() {
         (0, 0),
         "with nothing live, every byte coalesced back into the bump pointer"
     );
+/// Tests that install `nros_log`'s process-global sink list (`nros_log::init`
+/// swaps it) and assert on what reached THEIR sink. Serialised so one cannot
+/// swap the other's sink out mid-assertion (phase-474 T4).
+#[cfg(feature = "std")]
+fn log_sinks_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// phase-474 I2 -- tests that put an executor in "armed on call" mode, which
 /// the process-global arm request reaches. Serialised so one test's request
 /// cannot arm another's executor mid-assertion.
@@ -12638,4 +12648,228 @@ fn a_grace_period_arms_after_the_first_spin() {
     assert!(executor.monitors_armed(), "200 ms after the first spin");
     assert_eq!(executor.violations_suppressed_before_arm(), 1);
     assert_eq!(executor.violations_total(), 0);
+}
+
+/// phase-474 T4 -- the end-to-end violation test, on the host executor (the
+/// `MockSession` harness every rule test here uses), driving the REAL rules
+/// rather than injecting verdicts.
+///
+/// A node with an INIT/RUN lifecycle, as the safety island's `mrm_handler`
+/// has: a 100 ms timer publishes a contracted topic whose node-path budget
+/// is 5 ms (`max-latency-runtime`). The overruns stay well inside the period,
+/// so `timer-overrun-runtime` has nothing to say and the one verdict is the
+/// latency rule's. In INIT its first tick overruns (start-up
+/// work), and its third tick enters RUN and calls
+/// `monitor::request_monitor_arming()` -- the island's `INIT_DONE` point. In
+/// RUN one tick overruns deliberately, by busy-waiting past the budget.
+///
+/// Asserted: before arming nothing is stored and the suppressed count
+/// advances; after arming exactly ONE violation is stored, with the right
+/// rule, endpoint and `measured >= declared`; the drain-and-report hook
+/// prints it with its number; the trace markers carry it. Then a burst of
+/// overruns overfills the ring and the ring keeps the LATEST.
+#[cfg(all(feature = "std", feature = "alloc"))]
+#[test]
+fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
+    use super::monitor::{MAX_VIOLATIONS, MonitorSpec, PubMonitorCell};
+    use core::{
+        cell::RefCell,
+        sync::atomic::{AtomicU32, Ordering},
+    };
+    let _g = arming_lock();
+    let _sinks = log_sinks_lock();
+
+    static CELL: PubMonitorCell = PubMonitorCell::new();
+    static TABLE: [MonitorSpec; 1] = [MonitorSpec {
+        topic: "/t4/status",
+        fqn: "/t4/handler/status",
+        min_rate_hz_milli: 0,
+        max_latency_ms: 5,
+        cell: &CELL,
+    }];
+    // The lifecycle's knobs, set by the test, read by the callback.
+    static BUSY_MS: AtomicU32 = AtomicU32::new(0);
+    static TICKS: AtomicU32 = AtomicU32::new(0);
+    const RUN_AT_TICK: u32 = 3;
+
+    // Capture what this thread's executor logs and traces. Thread-local: the
+    // log and trace sinks are process-global and other tests run beside this
+    // one.
+    std::thread_local! {
+        static LINES: RefCell<alloc::vec::Vec<alloc::string::String>> =
+            const { RefCell::new(alloc::vec::Vec::new()) };
+        static MARKS: RefCell<alloc::vec::Vec<(u32, u32)>> =
+            const { RefCell::new(alloc::vec::Vec::new()) };
+    }
+    struct Capture;
+    impl nros_log::LogSink for Capture {
+        fn log(&self, r: &nros_log::Record<'_>) {
+            if r.message.starts_with("contract violation") {
+                LINES.with(|l| l.borrow_mut().push(alloc::string::String::from(r.message)));
+            }
+        }
+    }
+    static CAPTURE: Capture = Capture;
+    static SINKS: &[&dyn nros_log::LogSink] = &[&CAPTURE];
+    nros_log::init(SINKS);
+    #[cfg(feature = "trace-callbacks")]
+    {
+        unsafe extern "C" fn mark(id: u32, arg: u32) {
+            if (21..=24).contains(&id) {
+                MARKS.with(|m| m.borrow_mut().push((id, arg)));
+            }
+        }
+        super::callback_trace::set_trace_sink(Some(mark));
+    }
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_monitor_table(&TABLE);
+    executor.set_monitor_arming(true, 0);
+    executor.set_violation_drain_report(true);
+    let nid = executor.node_builder("handler").build().expect("node");
+    let status = executor
+        .node_mut(nid)
+        .create_generic_publisher("/t4/status", "std_msgs::msg::dds_::Int32_", "")
+        .expect("contracted publisher");
+    BUSY_MS.store(20, Ordering::SeqCst); // INIT's first tick: start-up work
+    TICKS.store(0, Ordering::SeqCst);
+    executor
+        .register_timer(TimerDuration::from_millis(100), move || {
+            let tick = TICKS.fetch_add(1, Ordering::SeqCst) + 1;
+            let busy = BUSY_MS.swap(0, Ordering::SeqCst);
+            if busy > 0 {
+                let until =
+                    std::time::Instant::now() + std::time::Duration::from_millis(busy as u64);
+                while std::time::Instant::now() < until {
+                    core::hint::spin_loop();
+                }
+            }
+            let _ = status.publish_raw(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
+            if tick == RUN_AT_TICK {
+                // INIT -> RUN: every input established. The island's handler
+                // writes INIT_DONE here.
+                super::monitor::request_monitor_arming();
+            }
+        })
+        .expect("timer");
+
+    // INIT: three ticks, the first one overrunning, and the spin after the
+    // third arms.
+    let mut spins = 0;
+    while TICKS.load(Ordering::SeqCst) < RUN_AT_TICK && spins < 40 {
+        let _ = elapse_then_spin_once(&mut executor, 102);
+        spins += 1;
+    }
+    assert!(
+        !executor.monitors_armed(),
+        "the request is seen at the NEXT spin"
+    );
+    let suppressed = executor.violations_suppressed_before_arm();
+    assert!(
+        suppressed >= 1,
+        "INIT's overrun was judged and suppressed: {suppressed}"
+    );
+    assert_eq!(
+        executor.violations_total(),
+        0,
+        "nothing stored before arming"
+    );
+    assert!(LINES.with(|l| l.borrow().is_empty()), "nothing reported");
+
+    let _ = elapse_then_spin_once(&mut executor, 102);
+    assert!(executor.monitors_armed(), "RUN armed the monitors");
+    assert_eq!(executor.violations_total(), 0);
+
+    // RUN: one deliberate overrun, then quiet ticks until it is judged.
+    BUSY_MS.store(20, Ordering::SeqCst);
+    for _ in 0..4 {
+        let _ = elapse_then_spin_once(&mut executor, 102);
+    }
+    assert_eq!(
+        executor.violations_total(),
+        1,
+        "exactly one violation stored after arming: {:?}",
+        LINES.with(|l| l.borrow().clone())
+    );
+    assert_eq!(executor.violations_dropped(), 0);
+    assert_eq!(
+        executor.violations_suppressed_before_arm(),
+        suppressed,
+        "nothing more suppressed once armed"
+    );
+    let lines = LINES.with(|l| l.borrow().clone());
+    assert_eq!(lines.len(), 1, "the drain hook printed it once: {lines:?}");
+    let line = &lines[0];
+    assert!(
+        line.starts_with("contract violation #1: max-latency-runtime /t4/handler/status measured="),
+        "{line}"
+    );
+    let measured: u32 = line
+        .split("measured=")
+        .nth(1)
+        .and_then(|t| t.split(' ').next())
+        .and_then(|n| n.parse().ok())
+        .expect("measured in the line");
+    assert!(measured >= 5, "measured {measured} >= declared 5: {line}");
+    assert!(line.contains("declared=5 (total=1 dropped=0)"), "{line}");
+    #[cfg(feature = "trace-callbacks")]
+    {
+        let marks = MARKS.with(|m| m.borrow().clone());
+        assert_eq!(
+            marks,
+            [
+                (
+                    21,
+                    (1 << 8) | super::monitor::rule_code("max-latency-runtime")
+                ),
+                (22, super::monitor::fqn_hash("/t4/handler/status")),
+                (23, measured),
+                (24, 5),
+            ],
+            "one violation, four markers"
+        );
+    }
+
+    // Overfill: overruns on alternate ticks (a quiet tick between is the
+    // rule's recovery), with the drain hook off so the ring holds them.
+    executor.set_violation_drain_report(false);
+    let burst = MAX_VIOLATIONS as u32 + 2;
+    for _ in 0..burst {
+        BUSY_MS.store(8, Ordering::SeqCst);
+        let _ = elapse_then_spin_once(&mut executor, 102);
+        let _ = elapse_then_spin_once(&mut executor, 102);
+    }
+    let _ = elapse_then_spin_once(&mut executor, 102);
+    let total = executor.violations_total();
+    // Every overrun is stored. The host timer can also drop an activation over
+    // a long run (each spin lands a little past the period, and the drift
+    // adds up), which `timer-overrun-runtime` then reports as well; that is a
+    // real verdict, so the count is a floor and the ring's arithmetic is
+    // checked against the total.
+    assert!(total > burst, "every overrun stored: total={total}");
+    let dropped = executor.violations_dropped();
+    assert_eq!(
+        dropped,
+        total - 1 - MAX_VIOLATIONS as u32,
+        "the ring held all but #1 (drained by the hook) and evicted the OLDEST"
+    );
+    let mut kept = alloc::vec::Vec::new();
+    let mut latency = 0;
+    executor.drain_violations_numbered(|seq, v| {
+        assert!(
+            v.rule == "max-latency-runtime" || v.rule == "timer-overrun-runtime",
+            "{seq}: {}",
+            v.rule
+        );
+        assert!(v.measured > v.declared || v.rule == "max-latency-runtime");
+        assert!(v.measured >= v.declared);
+        latency += (v.rule == "max-latency-runtime") as u32;
+        kept.push(seq);
+    });
+    let want: alloc::vec::Vec<u32> = (total + 1 - MAX_VIOLATIONS as u32..=total).collect();
+    assert_eq!(kept, want, "the ring keeps the latest");
+    assert!(latency >= MAX_VIOLATIONS as u32 - 2, "{latency}");
+
+    #[cfg(feature = "trace-callbacks")]
+    super::callback_trace::set_trace_sink(None);
 }
