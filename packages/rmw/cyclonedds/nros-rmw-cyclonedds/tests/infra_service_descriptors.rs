@@ -24,7 +24,7 @@
 #[cfg(not(feature = "bridge-stub"))]
 use core::ffi::{c_char, c_int, c_void};
 
-use nros_rmw_cyclonedds::dynamic_type::{BuildError, DescriptorBuilder};
+use nros_rmw_cyclonedds::dynamic_type::DescriptorBuilder;
 use nros_serdes::schema::Message;
 
 #[cfg(not(feature = "bridge-stub"))]
@@ -90,42 +90,65 @@ fn every_parameter_service_type_builds_a_descriptor() {
     builds::<GetParameterTypesResponse>();
 }
 
-/// Issue 1293 — why the LIFECYCLE services are not fixed by the same change.
+/// Issue 1293 — the LIFECYCLE services' types build too.
 ///
-/// Three of their request types are empty (`FIELDS = &[]`), and the builder
-/// refuses an empty schema. ROS pads an empty struct with
-/// `uint8 structure_needs_at_least_one_member`, so on the wire it is one byte;
-/// our IDL path does that too, and the Rust schema path does not — in EITHER
-/// the descriptor or the serializer. Fixing only the descriptor would describe
-/// a byte the writer never sends.
-///
-/// This test states the boundary rather than leaving it to be rediscovered: if
-/// someone makes empty schemas build, this fails and points at 1293, which is
-/// where the serializer half is written down.
+/// Three of their request types are empty in `.srv`. ROS pads an empty struct
+/// with `uint8 structure_needs_at_least_one_member`, so on the wire it is one
+/// byte; codegen now emits that member in `FIELDS` and writes it in the
+/// serializer, so the descriptor and the wire agree. Before, `FIELDS` was
+/// `&[]` and the builder refused it with `EmptySchema`, so `create_lc_srv`
+/// could not create a single lifecycle service on Cyclone.
 #[test]
-fn empty_request_types_have_no_descriptor_yet() {
-    use nros_lifecycle_msgs::srv::{
-        GetAvailableStatesRequest, GetAvailableTransitionsRequest, GetStateRequest,
+fn every_lifecycle_service_type_builds_a_descriptor() {
+    use nros_lifecycle_msgs::{
+        msg::TransitionEvent,
+        srv::{
+            ChangeStateRequest, ChangeStateResponse, GetAvailableStatesRequest,
+            GetAvailableStatesResponse, GetAvailableTransitionsRequest,
+            GetAvailableTransitionsResponse, GetStateRequest, GetStateResponse,
+        },
     };
 
-    for (name, result) in [
-        (
-            GetStateRequest::TYPE_NAME,
-            DescriptorBuilder::build::<GetStateRequest>(),
-        ),
-        (
-            GetAvailableStatesRequest::TYPE_NAME,
-            DescriptorBuilder::build::<GetAvailableStatesRequest>(),
-        ),
-        (
-            GetAvailableTransitionsRequest::TYPE_NAME,
-            DescriptorBuilder::build::<GetAvailableTransitionsRequest>(),
-        ),
-    ] {
-        assert!(
-            matches!(result, Err(BuildError::EmptySchema)),
-            "{name} is empty, so the builder must still refuse it with EmptySchema \
-             (issue 1293 carries the descriptor + serializer pair that makes it work); got {result:?}"
-        );
-    }
+    builds::<ChangeStateRequest>();
+    builds::<ChangeStateResponse>();
+    builds::<GetStateRequest>();
+    builds::<GetStateResponse>();
+    builds::<GetAvailableStatesRequest>();
+    builds::<GetAvailableStatesResponse>();
+    builds::<GetAvailableTransitionsRequest>();
+    builds::<GetAvailableTransitionsResponse>();
+    builds::<TransitionEvent>();
+}
+
+/// The schema of an empty request IS rosidl's padding member — one spelling,
+/// `nros_serdes::schema::EMPTY_STRUCT_FIELDS` — and its serializer writes
+/// exactly that one byte, so the descriptor describes what the writer sends.
+#[test]
+fn an_empty_request_schema_is_the_padding_member_and_the_wire_carries_it() {
+    use nros_lifecycle_msgs::srv::GetStateRequest;
+    use nros_serdes::{CdrReader, CdrWriter, Deserialize, Serialize, schema};
+
+    assert_eq!(
+        <GetStateRequest as Message>::FIELDS,
+        schema::EMPTY_STRUCT_FIELDS,
+        "an empty struct's schema must be rosidl's padding member"
+    );
+    let mut buf = [0u8; 16];
+    let mut w = CdrWriter::new_with_header(&mut buf).unwrap();
+    GetStateRequest {}.serialize(&mut w).unwrap();
+    let n = w.position();
+    assert_eq!(
+        &buf[..n],
+        &[0, 1, 0, 0, 0],
+        "encapsulation + the one padding byte, as every stock RMW writes it"
+    );
+    // The encapsulation alone is what every stock RMW refuses; so do we.
+    let header_only = [0u8, 1, 0, 0];
+    let mut r = CdrReader::new_with_header(&header_only).unwrap();
+    assert!(GetStateRequest::deserialize(&mut r).is_err());
+    let mut r = CdrReader::new_with_header(&buf[..n]).unwrap();
+    assert_eq!(
+        GetStateRequest::deserialize(&mut r).unwrap(),
+        GetStateRequest {}
+    );
 }

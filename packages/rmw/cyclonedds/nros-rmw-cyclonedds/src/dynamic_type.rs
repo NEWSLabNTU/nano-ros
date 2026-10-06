@@ -135,6 +135,15 @@ pub enum BuildError {
     /// `type_name` was empty (Cyclone rejects empty type names).
     EmptyTypeName,
     /// `M::FIELDS` was empty.
+    ///
+    /// Issue 1293 — codegen gives a struct with no fields rosidl's
+    /// `structure_needs_at_least_one_member: uint8`
+    /// (`nros_serdes::schema::EMPTY_STRUCT_FIELDS`) in its schema AND writes
+    /// that byte in its serializer, so no current generated type reaches this.
+    /// An empty slice therefore means a crate generated before that fix, whose
+    /// serializer writes NO byte: padding the descriptor here would describe a
+    /// member the writer never sends, so it stays a refusal and the remedy is
+    /// to regenerate (`nros sync`).
     EmptySchema,
     /// `M::TYPE_NAME` contained an embedded NUL — can't pass through
     /// a C string boundary.

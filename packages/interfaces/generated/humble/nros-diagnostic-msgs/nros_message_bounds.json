@@ -68,13 +68,13 @@
     },
     {
       "cyclone_schema_shape": {
-        "fields": 2,
-        "kinds": 2,
+        "fields": 3,
+        "kinds": 3,
         "nested_depth": 1
       },
-      "rx_max_serialized_size": 8,
+      "rx_max_serialized_size": 12,
       "state": "bounded",
-      "tx_max_serialized_size": 4,
+      "tx_max_serialized_size": 5,
       "type_name": "diagnostic_msgs/srv/SelfTest_Request"
     },
     {

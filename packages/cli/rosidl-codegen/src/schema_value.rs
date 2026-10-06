@@ -201,6 +201,13 @@ fn build_fields(
             offset: 0,
         });
     }
+    // Issue 1293 — a struct that declares no fields is one byte on the wire
+    // (rosidl's padding member), so its bound is that byte, not zero. The
+    // emitted `Message::FIELDS` carries the same slice, so this bound and the
+    // runtime `MAX_SERIALIZED_SIZE_*` stay one rule.
+    if out.is_empty() {
+        return Ok(nros_serdes::schema::EMPTY_STRUCT_FIELDS);
+    }
     Ok(Box::leak(out.into_boxed_slice()))
 }
 

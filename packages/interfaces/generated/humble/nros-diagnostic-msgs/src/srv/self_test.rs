@@ -13,6 +13,9 @@ impl Serialize for SelfTestRequest {
     // Empty request - no fields to serialize
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
         let __dh = writer.begin_dheader()?;
+        // Issue 1293 — rosidl's `structure_needs_at_least_one_member`: every
+        // stock typesupport writes it and refuses a payload without it.
+        writer.write_u8(0)?;
         writer.end_dheader(__dh)?;
         Ok(())
     }
@@ -22,6 +25,8 @@ impl Deserialize for SelfTestRequest {
     // Empty request - no fields to deserialize
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
         let __dh = reader.begin_dheader()?;
+        // Issue 1293 — the padding byte every stock peer sends.
+        let _ = reader.read_u8()?;
         reader.end_dheader(__dh)?;
         Ok(Self {})
     }
@@ -38,7 +43,11 @@ impl RosMessage for SelfTestRequest {
 
 impl ::nros_serdes::Message for SelfTestRequest {
     const TYPE_NAME: &'static str = "diagnostic_msgs/srv/SelfTest_Request";
-    const FIELDS: &'static [::nros_serdes::Field] = &[];
+    const FIELDS: &'static [::nros_serdes::Field] = &[::nros_serdes::Field {
+        name: ::nros_serdes::schema::EMPTY_STRUCT_MEMBER,
+        ty: ::nros_serdes::FieldType::Uint8,
+        offset: 0,
+    }];
 }
 
 /// SelfTest response message

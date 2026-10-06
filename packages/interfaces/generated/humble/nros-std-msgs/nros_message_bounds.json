@@ -60,13 +60,13 @@
     },
     {
       "cyclone_schema_shape": {
-        "fields": 0,
-        "kinds": 0,
-        "nested_depth": 0
+        "fields": 1,
+        "kinds": 1,
+        "nested_depth": 1
       },
-      "rx_max_serialized_size": 8,
+      "rx_max_serialized_size": 12,
       "state": "bounded",
-      "tx_max_serialized_size": 4,
+      "tx_max_serialized_size": 5,
       "type_name": "std_msgs/msg/Empty"
     },
     {
