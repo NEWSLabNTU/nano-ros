@@ -101,7 +101,13 @@ void *nros_platform_alloc(size_t size) {
         return NULL;
     }
     void *p = NULL;
-    if (tx_byte_allocate(s_byte_pool, &p, (ULONG) size, TX_WAIT_FOREVER) != TX_SUCCESS) {
+    /* TX_NO_WAIT, never a wait option (issue 1717). An allocator is not a
+     * place to wait for another thread's `free`: TX_WAIT_FOREVER SUSPENDED a
+     * thread whose request exceeded the pool's free space, so an exhausted
+     * pool parked the executor silently and every fallible-allocation path
+     * (`try_box`, the parameter store's named refusal) was unreachable here.
+     * The caller gets NULL and decides. `check-allocator-never-waits`. */
+    if (tx_byte_allocate(s_byte_pool, &p, (ULONG) size, TX_NO_WAIT) != TX_SUCCESS) {
         return NULL;
     }
     nros_platform_threadx_note_pool_usage();

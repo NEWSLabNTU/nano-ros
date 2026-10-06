@@ -736,6 +736,23 @@ px4-archive-header-pairing:
 retired-platform-clock-symbols:
     @python3 scripts/check-retired-platform-clock-symbols.py
 
+# Issue 1717 — an allocator never waits. ThreadX's `nros_platform_alloc` passed
+# `TX_WAIT_FOREVER` to `tx_byte_allocate`, so an exhausted pool SUSPENDED the
+# executor instead of returning NULL and every fallible-allocation path
+# (`try_box`, the parameter store's refusal) was unreachable there — a silent
+# hang. Every call of an allocation primitive that takes a wait option
+# (ThreadX/NetX/Zephyr) must pass the kernel's no-wait token. Buildless,
+# self-testing (planted violations in its own self-test, run every time).
+allocator-never-waits:
+    @python3 scripts/check-allocator-never-waits.py
+
+# Issue 1196 / phase-436 W5 — the unbounded `nros_platform_condvar_wait` stays
+# confined to its sanctioned bridges. The script existed and self-tested, but
+# no recipe ran it, so no lane did (found while doing issue 1717, the same
+# "no unbounded wait" class one primitive over).
+no-unbounded-condvar-wait:
+    @bash scripts/check-no-unbounded-condvar-wait.sh
+
 # Issue 1028 — "is this hosted?" and "does `target_os` have a value?" are
 # different questions. NuttX answers the second (`target_os = "nuttx"`,
 # `target_family = "unix"`) while being an RTOS on a fixed-RAM part, so
