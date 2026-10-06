@@ -572,10 +572,18 @@ mod tests {
             let mut qos = base();
             qos.reliability = QoSReliabilityPolicy::BestEffort;
             let granted = admit(kind, "/t", &qos).expect("admissible");
-            assert_eq!(granted.reliability, QoSReliabilityPolicy::BestEffort, "{kind:?}");
+            assert_eq!(
+                granted.reliability,
+                QoSReliabilityPolicy::BestEffort,
+                "{kind:?}"
+            );
             qos.reliability = QoSReliabilityPolicy::Reliable;
             let granted = admit(kind, "/t", &qos).expect("admissible");
-            assert_eq!(granted.reliability, QoSReliabilityPolicy::Reliable, "{kind:?}");
+            assert_eq!(
+                granted.reliability,
+                QoSReliabilityPolicy::Reliable,
+                "{kind:?}"
+            );
         }
     }
 
