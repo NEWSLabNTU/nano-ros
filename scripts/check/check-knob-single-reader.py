@@ -121,6 +121,12 @@ OWNERS: dict[str, str] = {
     # `dynamic-loggers-<N>` features are read in the SAME script, never a
     # second one, so a feature can disagree with the knob only as a build error.
     "NROS_LOG_DYNAMIC_LOGGERS": "packages/core/nros-log/build.rs",
+    # issue 1037 -- the rest of the logging tenant, same script, same rule for
+    # their deprecated feature families.
+    "NROS_LOG_MAX_LEVEL": "packages/core/nros-log/build.rs",
+    "NROS_LOG_BUFFER_SIZE": "packages/core/nros-log/build.rs",
+    "NROS_LOG_EARLY_RECORDS": "packages/core/nros-log/build.rs",
+    "NROS_LOG_ROSOUT_RECORDS": "packages/core/nros-log/build.rs",
     # The RMW static-pool tenant (phase-400 W6). `NROS_RMW_SUBSCRIBER_SLOTS`
     # is NOT here: it lives in the same build script and looks identical, but
     # phase-412 W1 derives it from the entity inventory, so the census classes

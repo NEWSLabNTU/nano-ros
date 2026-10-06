@@ -1265,7 +1265,9 @@ pub const MESSAGE_INFO_PEER_TAKE_GID: &str = "PEER_TAKE_GID ";
 // ---------------------------------------------------------------------------
 
 /// A PREFIX: `capacity=<n> in_use=<m>` follows, the probe's own reading of
-/// `nros_log::dynamic_logger_capacity()` / `dynamic_loggers_in_use()`.
+/// `nros_log::dynamic_logger_capacity()` / `dynamic_loggers_in_use()`, then
+/// (issue 1037) `max_level=<0..6> buffer=<n> early=<n> rosout=<n>
+/// clock=<0|1>` — the rest of the `[knobs.log]` tenant as the image reads it.
 pub const LOG_ARENA_PROBE_LINE: &str = "log-arena-probe: ";
 
 /// A PREFIX of `read-boot-report.py`'s line for the runtime-logger arena:

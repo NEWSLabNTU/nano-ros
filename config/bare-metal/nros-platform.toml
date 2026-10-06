@@ -40,6 +40,14 @@
 # (phase-445 W2/W6). The platform rung has nothing left to add for it.
 names = ["bare-metal", "esp32"]
 
+# issue 1037 — a software-stack FACT, and the first `[capabilities]` entry here.
+# Every bare-metal port exports `nros_platform_clock_ns` (its Rust `PlatformClock`
+# impl, emitted through `nros-platform`'s shims); `nros-c`'s bare-metal arms
+# already pull `nros-log/platform-clock` on exactly that premise
+# (`check-baremetal-platform-arms`). Knob rungs are unaffected.
+[capabilities]
+clock = true
+
 [build.zenoh]
 # `ZPICO_SMOLTCP` activates the smoltcp branches inside `zpico.c`
 # (clock via `smoltcp_clock_now_ms`, RX via `zp_read` single-read drain,

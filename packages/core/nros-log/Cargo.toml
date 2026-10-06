@@ -18,85 +18,78 @@ categories = ["embedded", "no-std", "development-tools::debugging"]
 # `nros_platform_log_write` / `nros_platform_log_flush` ABI; the
 # `PlatformSink` here is the only sink that calls the ABI.
 #
-# The `max-level-*` / `buffer-size-*` half of `default` keeps the
-# library-only case zero-cost: pull the crate in, get types +
-# macros, no sink wired until the app calls `nros_log::init(...)`.
-#
-# Compile-time level ceiling: pick at most one `max-level-*`.
-# Macros below the ceiling expand to `()` so the format call is
-# dead-code-eliminated.
-#
-# Buffer-size family controls the `heapless::String<N>` used for
-# call-site formatting. Bigger N = larger stack frame per call;
-# smaller N = more truncation. Pick at most one.
+# CONFIGURATION IS NOT HERE (issue 1037, RFC-0086 D5). The compile-time level
+# ceiling, the formatting-buffer size, the early-record ring, the `/rosout`
+# queue depth and the runtime-logger arena are the `[knobs.log]` tenant —
+# `NROS_LOG_{MAX_LEVEL,BUFFER_SIZE,EARLY_RECORDS,ROSOUT_RECORDS,DYNAMIC_LOGGERS}`,
+# resolved by `build.rs` on the RFC-0049 ladder (`[image.<id>] env` /
+# environment > Kconfig > the board's `[board.knobs.log]` > builtin) and
+# printed by `nros config explain`. The features below that used to carry them
+# are DEPRECATED — see the block at the end of `[features]`.
 
 [features]
-default = ["max-level-trace", "buffer-size-256"]
+default = []
 std = ["alloc"]
 alloc = []
 
-# Issue #503 — populate `Record::timestamp_ns` from the platform's
-# monotonic clock (`nros_platform_clock_us`, the same universal export
-# the executor's timer accounting links), and have `PlatformSink`
-# prefix rendered lines with `[sssss.uuuuuu]`. Opt-in: the extern is a
-# link-time requirement on the final binary — every real image
-# satisfies it via its `nros-platform-<rtos>` port, but host tools
-# composing custom sinks without a platform port would not, hence not
-# a default. Resolution is whatever the platform delivers (issue #502
-# covers the FreeRTOS/ThreadX coarseness).
-platform-clock = []
-
-
-max-level-trace = []
-max-level-debug = []
-max-level-info  = []
-max-level-warn  = []
-max-level-error = []
-max-level-off   = []
-
-# Issue 0710 follow-up — how many records `nros_log::early` holds before
-# `init` installs the sinks. Same shape as `buffer-size-<N>` below and for the
-# same reason: a 64 KB MCU and a Linux host do not want the same number. The
-# else-branch default is 4; `early-records-0` declines the ring and restores
-# the pre-0708 behaviour of dropping, with the overflow COUNT still kept so the
-# loss stays reportable.
-early-records-0  = []
-early-records-8  = []
-early-records-16 = []
-
-# phase-417 W4.d — how many loggers `get_or_create_logger` may CREATE for names
-# nobody registered at compile time (`rclcpp::get_logger("x")`'s shape, and what
-# `nros_log_get_logger` in the C API needs).
+# Issue #503 — populate `Record::timestamp_ns` from the platform's monotonic
+# clock (`nros_platform_clock_ns`) and have `PlatformSink` prefix rendered lines
+# with `[sssss.uuuuuu]`.
 #
-# DEPRECATED (phase-479 W5, RFC-0102 D5) — removed after one release. The size
-# is the `NROS_LOG_DYNAMIC_LOGGERS` knob now, resolved by `build.rs` on the
-# RFC-0049 ladder: `[image.<id>] env` / environment > Kconfig
-# (`CONFIG_NROS_LOG_DYNAMIC_LOGGERS`) / the board's `[board.knobs.log]
-# dynamic_loggers` > 16. Features UNION across a build with no precedence, so
-# two crates picking different sizes used to get the smallest, silently.
-# While they last: a feature with no stated knob is honoured with a
-# `cargo:warning`; a feature that agrees with a stated knob is reported as
-# redundant; one that DISAGREES with it, or with another selected feature,
-# fails the build.
-dynamic-loggers-0  = []
-dynamic-loggers-8  = []
-dynamic-loggers-32 = []
+# issue 1037 — this is now ONE of two ways the clock turns on, and not the one
+# an image normally uses: `build.rs` sets `cfg(nros_log_clock)` when the lane's
+# platform declares `[capabilities] clock = true` (every in-tree port does), OR
+# when this feature is on. The feature survives because it only PULLS CODE IN —
+# a link-time requirement on the final binary, which RFC-0086 D5 permits —
+# and `nros-c`'s `platform-*` arms set it, since a linked port is exactly the
+# condition under which the symbol resolves. A bare `cargo test -p nros-log`
+# has neither, so its test binaries link without a port.
+platform-clock = []
 
 # phase-467 Q4 / ledger row `c:logging_rosout_enabled` — the `/rosout` QUEUE.
 #
 # OFF by default: it is `rosout_depth() * size_of::<Slot>()` of `.bss` and a
 # `LogSink` in the dispatch walk, and an image with no ROS operator on the far
 # end pays neither. `nros-node/rosout` turns it on together with the publisher
-# half; nothing else should.
+# half; nothing else should. (Pulls code in, which D5 permits; its DEPTH is the
+# `NROS_LOG_ROSOUT_RECORDS` knob.)
 rosout = []
 
-# How many records the `/rosout` queue holds between pumps. Same family shape
-# and same reason as `early-records-<N>`: static arenas, and a 64 KB MCU and a
-# Linux host do not want the same number. Else-branch default is 16.
+# ---- DEPRECATED (issue 1037; phase-479 W5 for `dynamic-loggers-*`) ----------
+#
+# Five pick-one families that encoded configuration as features — three of
+# them with a member meaning "off", which RFC-0086 D5 forbids. Features UNION
+# across a build with no precedence: each old `const fn` tested its members in
+# a fixed order, so two crates picking different members silently got
+# whichever came first (`max-level-info` beside the old default
+# `max-level-trace` did NOTHING). Removed after one release. Use the knob:
+#
+#   max-level-*          -> NROS_LOG_MAX_LEVEL       (trace..fatal, off; builtin trace)
+#   buffer-size-<N>      -> NROS_LOG_BUFFER_SIZE     (128..=4096; builtin 256)
+#   early-records-<N>    -> NROS_LOG_EARLY_RECORDS   (0..=256; builtin 4)
+#   rosout-records-<N>   -> NROS_LOG_ROSOUT_RECORDS  (1..=1024; builtin 16)
+#   dynamic-loggers-<N>  -> NROS_LOG_DYNAMIC_LOGGERS (0..=1024; builtin 16)
+#
+# While they last (`build.rs`): a feature with no stated knob is honoured with a
+# `cargo:warning`; one agreeing with a stated knob is reported as redundant; one
+# DISAGREEING with it, or with another member of its family, fails the build.
+# They left `default` in the same change — a default member would have
+# disagreed with every stated knob.
+max-level-trace = []
+max-level-debug = []
+max-level-info  = []
+max-level-warn  = []
+max-level-error = []
+max-level-off   = []
+early-records-0  = []
+early-records-8  = []
+early-records-16 = []
+dynamic-loggers-0  = []
+dynamic-loggers-8  = []
+dynamic-loggers-32 = []
 rosout-records-8  = []
 rosout-records-32 = []
 rosout-records-64 = []
-
 buffer-size-128  = []
 buffer-size-256  = []
 buffer-size-512  = []
@@ -106,8 +99,8 @@ buffer-size-1024 = []
 # that target `log::info!` etc. feed through the same dispatcher.
 log-compat = ["dep:log"]
 
-# phase-479 W5 — `build.rs` resolves `NROS_LOG_DYNAMIC_LOGGERS` on the RFC-0049
-# ladder. Both are host-only, build-only leaves: `nros-zephyr-build` has no
+# phase-479 W5 / issue 1037 — `build.rs` resolves the `[knobs.log]` tenant on
+# the RFC-0049 ladder. Both are host-only, build-only leaves: `nros-zephyr-build` has no
 # dependencies at all, and `nros-platform-config` exists precisely so a crate
 # the platform layer reaches can read the ladder without the
 # `nros-board-common -> nros-platform -> ... -> nros-log` cycle. This crate

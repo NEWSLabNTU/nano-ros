@@ -14,6 +14,7 @@ names = ["zephyr"]
 [capabilities]
 ip_stack = true    # Zephyr NET_SOCKETS; demonstrated by the CANHUBK344 TCP image
 serial   = true    # LPUART; demonstrated by the CANHUBK344 serial image
+clock = true       # issue 1037 — exports nros_platform_clock_ns (src/platform.c)
 # Zephyr's zsock serializes send/recv on a per-fd mutex, so total tx
 # throughput without batching is capped at ~one send per recv window —
 # the fact that justifies the batch/split defaults below (phase-279/282).

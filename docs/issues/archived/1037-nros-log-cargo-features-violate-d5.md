@@ -2,10 +2,10 @@
 id: 1037
 title: "`nros-log` carries FOUR pick-one Cargo-feature families in `packages/core/`,
   three of which encode \"off\" — RFC-0086 D5 forbids both and its audit missed them"
-status: open
+status: resolved
 type: bug
 area: config, api
-related: [rfc-0086, rfc-0049, phase-400, phase-417, issue-0503, issue-0710]
+related: [rfc-0086, rfc-0049, rfc-0102, phase-400, phase-417, phase-479, issue-0503, issue-0710, issue-1712]
 ---
 
 ## The rule, and the claim that is wrong
@@ -191,3 +191,129 @@ throttle functions. It is debt with a stated shape, not a broken build.
 **D5's third bullet should be corrected**: a migration IS outstanding, and the
 "enforced at review" claim did not hold — a new violating family landed after
 the rule was written.
+
+## Resolution (2026-10-06)
+
+All five families are knobs, the clock is a platform fact, and RFC-0086 D5's
+third bullet now says the migration landed. `dynamic-loggers-<N>` went first
+(phase-479 W5, PR #1704); this change moved the rest onto the SAME tenant and
+the SAME deprecation rule.
+
+### What changed
+
+- **One tenant, `[knobs.log]`** (`LogKnobs` in `platform_config.rs`, which W5
+  had created for `dynamic_loggers`): `max_level`, `buffer_size`,
+  `early_records`, `rosout_records` join it, with `LOG_KNOBS` /
+  `log_env_key` / `resolve_log` extended and `nros config explain` printing
+  all five (`max_level` by name).
+- **One reader, `nros-log/build.rs`**, each knob read through
+  `nros_zephyr_build::knob` — env / `[image.<id>] env` > Kconfig
+  `CONFIG_NROS_LOG_*` > board / platform rung > builtin — into
+  `$OUT_DIR/nros_log_config.rs`. Range-checked (buffer 128–4096 — the C++
+  runtime-refusal budget needs 128; early 0–256; rosout 1–1024, since
+  `KEEP_LAST(0)` is not a QoS). `max_level` accepts a name or `0`–`6` through
+  ONE parser (`parse_log_level`), because Kconfig states it as an int, as
+  Zephyr's own `LOG_MAX_LEVEL` does.
+- **Zephyr**: four Kconfig symbols + `_nros_resolve_knob` rows. Cargo and cmake
+  need no new carrier — the same `nros-cargo.toml` `[env]` (cargo road) and
+  board facts (cmake road) that carry W5's knob; see Measured for the cmake
+  road's missing image-env rung (issue 1712).
+- **The clock**: `[capabilities] clock = true` in the posix, zephyr, freertos,
+  nuttx, threadx and bare-metal descriptors. `build.rs` sets
+  `cfg(nros_log_clock)` when the lane's platform (board rung included, through
+  a new `BuildRungs::capability`) declares it, OR when the `platform-clock`
+  feature is on; a feature on a platform that declares `clock = false` is a
+  build error.
+- **The fifth family.** The sweep found `rosout-records-<N>` (phase-467),
+  added after this issue was filed and absent from its table — the same
+  pick-one shape, same file. It moved too (`NROS_LOG_ROSOUT_RECORDS`).
+- **Deprecation, one batch** (`changelog.d/1037.breaking.md`): each family is
+  honoured with a `cargo:warning` when no knob is stated, reported redundant
+  when it agrees with one, and a BUILD ERROR when it disagrees with a stated
+  knob or with a sibling. They left `default` — a default member would have
+  disagreed with every stated knob.
+
+### Where this deviates from the fix method above
+
+- **`max_level` is a generated `const`, not a `cargo::rustc-cfg`.** The method
+  said cfg "because it gates macro EXPANSION". The code shows it does not: the
+  `nros_*!` macros expand to `if severity_enabled_at_compile_time(..)`, a
+  `const fn` defined in `nros-log`, so a const folds the branch exactly as the
+  feature did. The one place that genuinely needs a cfg is the clock — it
+  selects between two `macro_rules!` definitions of `__nros_throttle_now`
+  (one a `compile_error!`) — and that is the cfg this change emits.
+- **The ceiling also reaches C and C++, at the facade.** `Logger::is_enabled`
+  now refuses below the ceiling. Before, the `max-level-*` features filtered
+  Rust call sites only — `<nros/log.hpp>` claimed "compile-time filtering is
+  via `max-level-*` (compiled into the nros-c staticlib)", which was false:
+  `nros_log_emit_at` never consulted it.
+- **`platform-clock` is NOT retired as a feature.** It only pulls code in (D5's
+  allowed clause), and it is the one carrier on a road that names no platform
+  to the build script: a plain-cmake C build, or the Zephyr Rust lane (whose
+  `rust_cargo_application` passes no `NROS_PLATFORM_NAME`). `nros-c`'s
+  `platform-*` arms keep setting it. What changed is that its ABSENCE no
+  longer silently costs a lane build its timestamps.
+- **`buffer_size` does not resize the C printf frame.** `<nros/log.h>`'s
+  `nros_log_emit_fmt_at` is `static inline`, compiled in the CALLER's
+  translation unit from a header that has no per-build value to read (the
+  per-build config header is not included by `log.h`, and `c-stubs/log_fmt.c`
+  includes it alone). So a C record is bounded by `min(255,
+  NROS_LOG_BUFFER_SIZE)`; documented in the header, the README and the book.
+
+### Measured
+
+Every rung, from BUILT binaries (a scratch crate linking `nros-log[rosout]` +
+the POSIX port, one target dir per row, reading the values back at run time):
+
+| build | max_level | buffer | early | rosout | dynamic | clock |
+| --- | --- | --- | --- | --- | --- | --- |
+| no lane (builtin) | 0 (trace) | 256 | 4 | 16 | 16 | 0 |
+| `NROS_PLATFORM_NAME=posix` only | 0 | 256 | 4 | 16 | 16 | **1** (capability) |
+| + board `[board.knobs.log]` warn/512/8/32/20 | 3 | 512 | 8 | 32 | 20 | 1 |
+| + `DOTCONFIG` (Kconfig) 1/640/10/40/28 | 1 | 640 | 10 | 40 | 28 | 1 |
+| + env error/768/12/48/36 | 4 | 768 | 12 | 48 | 36 | 1 |
+
+With the clock on, `__timestamp_ns()` read non-zero at run time; with no lane
+it is 0 and the binary links with no clock symbol referenced.
+
+- **The APP rung on the cargo road**: `bins/log-arena-probe`'s `[image.native]
+  env` now states all five; `tests/log_arena_knob.rs`
+  (`every_log_knob_is_read_back_from_the_image_env`) asserts `max_level=2
+  buffer=384 early=6 rosout=12` and `clock=1` from the built fixture — the
+  clock with NO `platform-clock` feature anywhere in that leaf's graph.
+- **The cmake road** (`examples/native/c/talker` copied out, fixture-lane
+  configure arguments): the board rung arrives — `nros-log` resolved the
+  `posix` platform (its descriptors are watched) and the `native` board's
+  `dynamic_loggers = 32`, and the clock cfg is on — and a `NROS_LOG_MAX_LEVEL=warn`
+  exported in the shell running `cmake --build` lands (`MAX_LEVEL = 3`). The
+  leaf's `[image.native] env` does NOT: both `nros-log` builds kept the
+  builtins. That is a pre-existing gap of the cmake road, not of this knob —
+  W5's `dynamic_loggers` has it too — filed as issue 1712.
+- **C**: `libnros_c.a` (`std,rmw-cffi,platform-posix,ros-humble`) linked into a
+  C program with a capture sink. Builtin: `nros_logger_is_enabled`
+  debug/info/warn = 1/1/1, and all three `NROS_LOG_*` records delivered.
+  Built with `NROS_LOG_MAX_LEVEL=warn`: 0/0/1, and only the WARN record
+  delivered — with the logger's runtime level at DEBUG.
+- **Deprecation**: `features = ["nros-log/max-level-warn"]` alone → value 3
+  and the warning; with `NROS_LOG_MAX_LEVEL=warn` → redundant warning; with
+  `NROS_LOG_MAX_LEVEL=info` → build error naming both. `NROS_LOG_MAX_LEVEL=loud`
+  and `NROS_LOG_BUFFER_SIZE=64` → build errors.
+- **The original bug**: `cargo test -p nros-log` with no lane passes (all
+  targets), the clock off. The same command with `NROS_PLATFORM_NAME=posix`
+  exported turns the clock on and its integration-test binaries, which link no
+  port, fail on `undefined symbol: nros_platform_clock_ns` — the expected
+  trade, and the reason the capability is read only from a lane's own
+  pointer, which no test recipe exports.
+
+### Sweep
+
+```sh
+git grep -n -E 'max-level-|early-records-|buffer-size-[0-9]|rosout-records-|dynamic-loggers-|platform-clock' \
+  -- ':!docs/issues/archived' ':!docs/roadmap/archived' ':!*.lock'
+```
+
+Every remaining hit is the deprecated feature list and its rule in
+`nros-log`'s manifest/`build.rs`, the docs describing the deprecation, the
+legitimate `platform-clock` pull-in (`nros-c` arms, `rosout-talker`,
+`check-baremetal-platform-arms`), `nros-core`'s unrelated `platform-clock`
+feature, and historical prose in other issues/ledger rows.

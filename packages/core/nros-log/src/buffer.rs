@@ -1,7 +1,8 @@
 //! Call-site formatting buffer for the `nros_*!` macros.
 //!
-//! Wraps a `heapless::String<N>` where `N` is picked at compile time
-//! by the `buffer-size-<N>` Cargo feature family. Overflow truncates
+//! Wraps a `heapless::String<N>` where `N` is the `NROS_LOG_BUFFER_SIZE`
+//! knob (issue 1037; builtin 256, resolved by `build.rs` on the RFC-0049
+//! ladder — it replaced the `buffer-size-<N>` features). Overflow truncates
 //! and appends `…` rather than dropping the record.
 
 use core::fmt::{self, Write};
@@ -9,15 +10,7 @@ use core::fmt::{self, Write};
 /// Returns the configured capacity in bytes.
 #[must_use]
 pub const fn format_buffer_capacity() -> usize {
-    if cfg!(feature = "buffer-size-1024") {
-        1024
-    } else if cfg!(feature = "buffer-size-512") {
-        512
-    } else if cfg!(feature = "buffer-size-128") {
-        128
-    } else {
-        256
-    }
+    crate::config::BUFFER_SIZE
 }
 
 const CAPACITY: usize = format_buffer_capacity();

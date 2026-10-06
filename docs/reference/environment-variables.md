@@ -139,3 +139,7 @@ All optional — platform-appropriate defaults apply if unset.
 | `NROS_MAX_PARAM_DESCRIPTION_LEN` | Max parameter description length (0 = none, max 256) | `256` | nros-params |
 | `NROS_MAX_PARAM_CONSTRAINTS_LEN` | Max parameter `additional_constraints` length (0 = none, max 256) | `0` | nros-params |
 | `NROS_LOG_DYNAMIC_LOGGERS` | Loggers `get_or_create_logger` may create at run time (0 = lookup only). Board rung `[board.knobs.log] dynamic_loggers` (Linux host boards: 32); Zephyr `CONFIG_NROS_LOG_DYNAMIC_LOGGERS` | `16` | nros-log |
+| `NROS_LOG_MAX_LEVEL` | Compile-time severity CEILING: `trace`/`debug`/`info`/`warn`/`error`/`fatal`/`off` or `0`–`6`. A bound under the runtime `set_level`. Board rung `[board.knobs.log] max_level`; Zephyr `CONFIG_NROS_LOG_MAX_LEVEL` (int) | `trace` | nros-log |
+| `NROS_LOG_BUFFER_SIZE` | Per-call Rust formatting buffer and early/`/rosout` slot message size (128–4096). Board rung `buffer_size`; Zephyr `CONFIG_NROS_LOG_BUFFER_SIZE` | `256` | nros-log |
+| `NROS_LOG_EARLY_RECORDS` | Records held before `init` installs the sinks (0 = drop, counted). Board rung `early_records`; Zephyr `CONFIG_NROS_LOG_EARLY_RECORDS` | `4` | nros-log |
+| `NROS_LOG_ROSOUT_RECORDS` | `/rosout` queue depth (1–1024; only with `nros-node/rosout`). Board rung `rosout_records`; Zephyr `CONFIG_NROS_LOG_ROSOUT_RECORDS` | `16` | nros-log |

@@ -220,3 +220,98 @@ fn an_image_env_outranks_the_board_for_the_runtime_logger_arena() {
     drop(child.stdin.take());
     let _ = child.wait();
 }
+
+/// issue 1037 — the rest of the logging tenant rides the same ladder, and the
+/// platform clock comes from the platform's CAPABILITY.
+///
+/// The probe's image env states every `NROS_LOG_*` knob at a non-builtin
+/// value; its line reads each one back from the BUILT binary. `clock=1`
+/// with no `platform-clock` feature anywhere in the leaf's graph is the
+/// capability path: the `native` board's platform is `posix`, whose
+/// `nros-platform.toml` declares `[capabilities] clock = true`.
+#[test]
+fn every_log_knob_is_read_back_from_the_image_env() {
+    let v = read_toml("packages/testing/nros-tests/bins/log-arena-probe/system.toml");
+    let env = &v["image"]["native"]["env"];
+    let stated = |k: &str| -> String {
+        env[k]
+            .as_str()
+            .unwrap_or_else(|| panic!("the probe image states {k}"))
+            .to_string()
+    };
+    // Builtins (packages/core/nros-log/build.rs), which no statement may equal.
+    let want: [(&str, &str, usize, usize); 4] = [
+        (
+            "max_level",
+            "NROS_LOG_MAX_LEVEL",
+            ["trace", "debug", "info", "warn", "error", "fatal", "off"]
+                .iter()
+                .position(|l| *l == stated("NROS_LOG_MAX_LEVEL"))
+                .expect("a level name"),
+            0,
+        ),
+        (
+            "buffer",
+            "NROS_LOG_BUFFER_SIZE",
+            stated("NROS_LOG_BUFFER_SIZE").parse().expect("a count"),
+            256,
+        ),
+        (
+            "early",
+            "NROS_LOG_EARLY_RECORDS",
+            stated("NROS_LOG_EARLY_RECORDS").parse().expect("a count"),
+            4,
+        ),
+        (
+            "rosout",
+            "NROS_LOG_ROSOUT_RECORDS",
+            stated("NROS_LOG_ROSOUT_RECORDS").parse().expect("a count"),
+            16,
+        ),
+    ];
+
+    let bin = fixtures::build_log_arena_probe().require("prebuilt log-arena-probe");
+    let mut child = Command::new(bin)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .unwrap_or_else(|e| panic!("spawn {}: {e}", bin.display()));
+    let mut line = String::new();
+    BufReader::new(child.stdout.take().expect("piped stdout"))
+        .read_line(&mut line)
+        .expect("read the probe's line");
+    drop(child.stdin.take());
+    let _ = child.wait();
+
+    let rest = line
+        .trim()
+        .strip_prefix(output::LOG_ARENA_PROBE_LINE)
+        .unwrap_or_else(|| panic!("unexpected probe output: {line:?}"));
+    let field = |k: &str| -> usize {
+        rest.split_whitespace()
+            .find_map(|kv| kv.strip_prefix(&format!("{k}=")))
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_else(|| panic!("no `{k}=` in {line:?}"))
+    };
+    for (key, knob, value, builtin) in want {
+        assert_ne!(
+            value, builtin,
+            "the probe states {knob} at its builtin, which hides a dropped rung"
+        );
+        assert_eq!(
+            field(key),
+            value,
+            "{knob}: the image's `[image.native] env` states {value}, the binary reads back \
+             {} ({builtin} is the builtin, i.e. the APP rung was dropped)",
+            field(key)
+        );
+    }
+    assert_eq!(
+        field("clock"),
+        1,
+        "the posix platform declares `[capabilities] clock = true` and the probe links its \
+         port, so the platform clock must be compiled in WITHOUT the `platform-clock` feature \
+         (issue 1037)"
+    );
+}

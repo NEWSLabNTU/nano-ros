@@ -49,11 +49,8 @@ use crate::Logger;
 /// with one.
 #[must_use]
 pub const fn dynamic_logger_capacity() -> usize {
-    DYNAMIC_LOGGER_CAPACITY
+    crate::config::DYNAMIC_LOGGER_CAPACITY
 }
-
-// `DYNAMIC_LOGGER_CAPACITY`, written by `build.rs`.
-include!(concat!(env!("OUT_DIR"), "/nros_log_config.rs"));
 
 /// Name-arena bytes reserved per runtime logger.
 ///

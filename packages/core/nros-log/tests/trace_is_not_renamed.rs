@@ -19,7 +19,7 @@ use std::sync::Mutex;
 use nros_log::{LogSink, Logger, Record, Severity};
 
 /// What a sink can see. `timestamp_ns` is excluded deliberately: without the
-/// `platform-clock` feature it is a constant `0`.
+/// platform clock (`cfg(nros_log_clock)`) it is a constant `0`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Seen {
     logger_name: String,
@@ -87,7 +87,7 @@ fn trace_keeps_our_prefix_because_rclrs_has_no_trace() {
     nros_log::nros_trace!(logger, "t");
     let seen = drain_for("fwd_trace");
 
-    // `max-level-trace` is the default ceiling; if a narrower one is selected
+    // `trace` is the builtin ceiling; if a narrower `NROS_LOG_MAX_LEVEL` is stated
     // the record is compiled out, and the point of the test is the NAME, so
     // only assert delivery when the ceiling admits it.
     if nros_log::severity_enabled_at_compile_time(Severity::Trace) {

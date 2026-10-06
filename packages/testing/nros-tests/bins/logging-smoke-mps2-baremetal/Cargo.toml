@@ -15,8 +15,9 @@ bench = false
 
 [dependencies]
 # `nros-log` facade — `default-features = false` strips std/alloc so the
-# binary stays `no_std`. The `max-level-trace` ceiling stays on by
-# default; we want every severity to flow through.
+# binary stays `no_std`. The compile-time ceiling is the
+# `NROS_LOG_MAX_LEVEL` knob, builtin `trace` (issue 1037); we want every
+# severity to flow through, so nothing states it.
 nros-log = { path = "../../../../core/nros-log", default-features = false }
 # Pulls in the `PlatformSink` → `nros_platform_log_write` ABI shim.
 nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", default-features = false }

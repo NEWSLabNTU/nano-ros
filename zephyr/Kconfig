@@ -2033,6 +2033,56 @@ config NROS_LOG_DYNAMIC_LOGGERS
       A board states its own default in [board.knobs.log] dynamic_loggers;
       this Kconfig value outranks it, and the environment outranks both.
 
+config NROS_LOG_MAX_LEVEL
+    int "nros-log compile-time severity ceiling"
+    default 0
+    range 0 6
+    help
+      The least severe record the image can emit at all (nros-log build.rs,
+      as NROS_LOG_MAX_LEVEL; issue 1037): 0 trace, 1 debug, 2 info, 3 warn,
+      4 error, 5 fatal, 6 off. A number, as Zephyr's own LOG_MAX_LEVEL is.
+
+      Rust nros_*! call sites below the ceiling compile to nothing; C and
+      C++ records below it are refused at the facade (the same check
+      nros_log_is_enabled answers). It is a BOUND, not the runtime level:
+      nros_logger_set_level / set_level still move each logger's threshold
+      beneath it. Replaces the deprecated max-level-* cargo features.
+
+config NROS_LOG_BUFFER_SIZE
+    int "nros-log per-call formatting buffer (bytes)"
+    default 256
+    range 128 4096
+    help
+      Bytes of the buffer one Rust log call formats into, and of the message
+      held in each early-record and /rosout slot (nros-log build.rs, as
+      NROS_LOG_BUFFER_SIZE; issue 1037). Longer messages are truncated with
+      an ellipsis. The C/C++ NROS_LOG_* printf front-end keeps its own
+      256-byte frame (<nros/log.h>), so a C record is bounded by the smaller
+      of the two. Bigger costs stack on every logging task. Replaces the
+      deprecated buffer-size-<N> cargo features.
+
+config NROS_LOG_EARLY_RECORDS
+    int "nros-log records held before init"
+    default 4
+    range 0 256
+    help
+      How many records nros_log::early holds before init installs the
+      sinks (nros-log build.rs, as NROS_LOG_EARLY_RECORDS; issue 1037).
+      0 declines the ring: early records are dropped and only counted.
+      Each slot is a formatting buffer plus a logger name in .bss.
+      Replaces the deprecated early-records-<N> cargo features.
+
+config NROS_LOG_ROSOUT_RECORDS
+    int "nros-log /rosout queue depth"
+    default 16
+    range 1 1024
+    help
+      Records the /rosout queue holds between pumps, and the KEEP_LAST
+      depth of the /rosout publisher (nros-log build.rs, as
+      NROS_LOG_ROSOUT_RECORDS; issue 1037). Only paid when nros-node's
+      rosout feature is on. Replaces the deprecated rosout-records-<N>
+      cargo features.
+
 # =============================================================================
 # Common Platform Configuration
 # =============================================================================

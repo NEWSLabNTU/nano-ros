@@ -67,12 +67,12 @@
 //! ## Cost, and how to decline it
 //!
 //! `EARLY_DEPTH * (format buffer + name + header)` of static RAM, all of it in
-//! `.bss`. The depth is chosen by the `early-records-<N>` feature family the
-//! same way `buffer-size-<N>` picks the format buffer, and for the same
-//! reason — a 64 KB MCU and a Linux host do not want the same number. `0`
-//! declines the buffer entirely and restores the pre-0708 behaviour of
-//! dropping, with the count below still kept so the loss is at least
-//! reportable.
+//! `.bss`. The depth is the `NROS_LOG_EARLY_RECORDS` knob (issue 1037; builtin
+//! 4, resolved by `build.rs` on the RFC-0049 ladder — it replaced the
+//! `early-records-<N>` features), because a 64 KB MCU and a Linux host do not
+//! want the same number. `0` declines the buffer entirely and restores the
+//! pre-0708 behaviour of dropping, with the count below still kept so the loss
+//! is at least reportable.
 //!
 //! Overflow is counted, never silently absorbed: [`overflowed`] returns how
 //! many records did not fit, and `init` reports it through the freshly
@@ -87,15 +87,7 @@ use crate::{LogSink, Record, Severity, buffer::format_buffer_capacity};
 /// Records held before `init`. See the module docs for the trade.
 #[must_use]
 pub const fn early_depth() -> usize {
-    if cfg!(feature = "early-records-0") {
-        0
-    } else if cfg!(feature = "early-records-16") {
-        16
-    } else if cfg!(feature = "early-records-8") {
-        8
-    } else {
-        4
-    }
+    crate::config::EARLY_RECORDS
 }
 
 const DEPTH: usize = early_depth();

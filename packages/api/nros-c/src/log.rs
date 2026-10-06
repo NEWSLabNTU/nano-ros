@@ -142,7 +142,7 @@ pub unsafe extern "C" fn nros_log_emit(
 ///
 /// `timestamp_ns` is not a parameter: it comes from `nros_log`'s own
 /// `__timestamp_ns()`, so C records are stamped by the same clock, at the same
-/// resolution, under the same `platform-clock` feature as Rust ones. A second
+/// resolution, under the same `cfg(nros_log_clock)` as Rust ones. A second
 /// C-side clock read would be a second answer to "when".
 ///
 /// # Safety
@@ -709,7 +709,9 @@ static NO_CLOCK_REPORTED: AtomicBool = AtomicBool::new(false);
 
 /// Say it once, out loud, rather than degrading quietly.
 ///
-/// Without `nros-log/platform-clock` every timestamp is a constant `0`, so
+/// Without the platform clock (`cfg(nros_log_clock)` in nros-log: the
+/// platform's `clock` capability or the `platform-clock` feature, issue 1037)
+/// every timestamp is a constant `0`, so
 /// `throttle_decide` sees an elapsed time that never grows: each throttled
 /// site emits its FIRST record and then nothing (issue 1152 — a clock that
 /// does not move must read as a window that never elapses, because a broken
@@ -725,10 +727,11 @@ fn warn_once_if_no_clock() {
     {
         nros_log::log_warn!(
             &nros_log::DEFAULT_LOGGER,
-            "NROS_LOG_*_THROTTLE has no monotonic clock (nros-log's `platform-clock` feature is \
-             off), so every timestamp is 0 and the window can never elapse: each throttled site \
-             will emit its FIRST record and then NOTHING. Enable `nros-log/platform-clock` on \
-             the nros-c dependency."
+            "NROS_LOG_*_THROTTLE has no monotonic clock (nros-log was built with neither the \
+             platform's `clock` capability nor its `platform-clock` feature), so every timestamp \
+             is 0 and the window can never elapse: each throttled site will emit its FIRST record \
+             and then NOTHING. Build nros-c with its `platform-*` feature (which links a port), \
+             or for a platform whose nros-platform.toml declares `[capabilities] clock = true`."
         );
     }
 }

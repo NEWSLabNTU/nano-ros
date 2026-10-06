@@ -1,8 +1,8 @@
 //! Phase 88.14 — broader integration coverage for the `nros-log` facade.
 //!
 //! Verifies:
-//! - Compile-time ceiling helper agrees with the active `max-level-*`
-//!   feature set (default = trace).
+//! - Compile-time ceiling helper agrees with the `NROS_LOG_MAX_LEVEL` knob
+//!   (builtin = trace; issue 1037).
 //! - Per-`Logger` runtime threshold suppresses records below the bar
 //!   without affecting other loggers in the same process.
 //! - Sink fan-out: every sink installed via [`nros_log::init`] receives
@@ -79,8 +79,9 @@ fn drain(buf: &Mutex<Vec<CapturedRecord>>) -> Vec<CapturedRecord> {
 // Compile-time ceiling
 // ---------------------------------------------------------------------------
 
-/// Sanity check on the const ceiling helper. Default features include
-/// `max-level-trace`, so every severity must pass — otherwise the
+/// Sanity check on the const ceiling helper. Nothing states
+/// `NROS_LOG_MAX_LEVEL` for this build, so the builtin `trace` applies and
+/// every severity must pass — otherwise the
 /// `nros_*!` macros would dead-code-eliminate themselves before
 /// reaching the runtime check.
 #[test]

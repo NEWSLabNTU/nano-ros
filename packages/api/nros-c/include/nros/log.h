@@ -184,7 +184,13 @@ void nros_log_emit_fmt(nros_logger_t logger, nros_log_severity_t severity, const
 void nros_log_emit_at(nros_logger_t logger, nros_log_severity_t severity, const char* message,
                       size_t message_len, const char* file, uint32_t line);
 
-/** Stack buffer the located printf-style entry point below renders into. */
+/** Stack buffer the located printf-style entry point below renders into.
+ *
+ * NOT the `NROS_LOG_BUFFER_SIZE` knob (issue 1037): this function is compiled
+ * in the CALLER's translation unit, from a header with no per-build value to
+ * read, so its frame stays 256. The knob sizes nros-log's Rust formatter and
+ * the slots that store records, so a C record is bounded by the smaller of
+ * the two. */
 #define NROS_LOG_FMT_BUFFER_SIZE 256
 
 /**
@@ -233,9 +239,11 @@ static inline void nros_log_emit_fmt_at(nros_logger_t logger, nros_log_severity_
 /* ---- Convenience macros ---- */
 /* The macros stage the printf args into a stack buffer inside
  * `nros_log_emit_fmt_at`, which attaches `__FILE__` / `__LINE__`.
- * Below-ceiling filtering happens on the Rust side via the per-logger
- * threshold (`nros_logger_set_level`); no compile-time gating on the C surface
- * (use `if (...)` guards if you need it). */
+ * Filtering happens on the Rust side: the image's compile-time CEILING
+ * (`NROS_LOG_MAX_LEVEL`, issue 1037 — `trace` unless stated) and then the
+ * per-logger threshold (`nros_logger_set_level`), both inside the same check
+ * `nros_logger_is_enabled` answers. The call site still formats; guard it with
+ * `nros_logger_is_enabled` if the arguments are expensive. */
 
 #define NROS_LOG_TRACE(logger, ...)                                                                \
     nros_log_emit_fmt_at((logger), NROS_LOG_SEVERITY_TRACE, __FILE__, (uint32_t)__LINE__,          \
@@ -304,7 +312,8 @@ nros_logger_t nros_log_default_logger(void);
  * before calling `nros_logger_set_level` on a handle you did not verify: the
  * catch-all's threshold is shared with every other unnamed logger.
  *
- * Arena size is `nros-log`'s `dynamic-loggers-<N>` feature (default 16).
+ * Arena size is the `NROS_LOG_DYNAMIC_LOGGERS` knob (default 16; Linux host
+ * boards 32).
  *
  * @param name  NUL-terminated UTF-8. Copied; need not outlive the call.
  */
@@ -447,7 +456,9 @@ bool nros_log_add_sink(nros_log_sink_fn sink, void* user_data);
 /**
  * Whether records carry a real `timestamp_ns` rather than a constant 0.
  *
- * False means `nros-log` was built without its `platform-clock` feature, so
+ * False means `nros-log` was built without the platform clock — neither the
+ * platform's `[capabilities] clock` nor its `platform-clock` feature (issue
+ * 1037) — so
  * nothing derived from the timestamp — the throttle windows above all — has a
  * time base. See `nros_log_throttle_admit`.
  */

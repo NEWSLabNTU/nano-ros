@@ -43,13 +43,13 @@ re-entrant by construction.
 - `nros_trace!` — kept under OUR prefix: rclrs stops at `debug`, so TRACE has
   no upstream twin and must not borrow a name that implies one.
 - All take `(logger, fmt, args…)`.
-- Below-ceiling macros expand to `()` (the format call is
-  dead-code-eliminated).
+- Below-ceiling macros (`NROS_LOG_MAX_LEVEL`) expand to a constant-false
+  branch (the format call is dead-code-eliminated).
 
 ### Throttled variants (phase-417 W4.d)
 
 - `nros_info_throttle!(logger, interval_ms, fmt, args…)` — reads the platform
-  clock. **Needs the `platform-clock` feature**, and says so with a
+  clock. **Needs the platform clock** (see "The platform clock" below), and says so with a
   `compile_error!` rather than compiling into a window with no time base:
   without a clock every timestamp is a constant `0`, so the window can never
   elapse and the site would emit its first record and then nothing, while
@@ -83,8 +83,7 @@ has one, on the logger that forwards to the `log` crate rather than to
   `NROS_LOG_DYNAMIC_LOGGERS` knob (phase-479 W5): image env > Kconfig / the
   board's `[board.knobs.log] dynamic_loggers` > 16. Linux host boards state
   32; `0` declines the arena. The `dynamic-loggers-<N>` features are
-  deprecated for one release: honoured with a warning when no knob is stated,
-  a build error when they disagree with one (see `build.rs`).
+  deprecated (see "Deprecated features" below).
   Returns `None` rather than a logger under the wrong name: aliasing onto
   `DEFAULT_LOGGER` would make `set_level` on the result move the threshold of
   every other unregistered name in the image.
@@ -110,31 +109,51 @@ has one, on the logger that forwards to the `log` crate rather than to
 Records raised before any sink existed are replayed into whichever of the two
 calls installs the first one (see the `early` module).
 
-## Compile-time level ceiling
+## Configuration — the `[knobs.log]` tenant (issue 1037)
 
-Pick at most one Cargo feature:
+Every size and the ceiling are KNOBS, resolved by `build.rs` on the RFC-0049
+ladder — environment / `[image.<id>] env` > Kconfig `CONFIG_<knob>` > the
+board's `[board.knobs.log] <key>` (or a platform's `[knobs.log]`) > builtin —
+and printed by `nros config explain`:
 
-| Feature           | Macros above ceiling that emit                  |
-|-------------------|-------------------------------------------------|
-| `max-level-trace` | trace, debug, info, warn, error, fatal (default)|
-| `max-level-debug` | debug, info, warn, error, fatal                 |
-| `max-level-info`  | info, warn, error, fatal                        |
-| `max-level-warn`  | warn, error, fatal                              |
-| `max-level-error` | error, fatal                                    |
-| `max-level-off`   | (none)                                          |
+| Knob                       | Key               | Builtin | Range       | What |
+|----------------------------|-------------------|---------|-------------|------|
+| `NROS_LOG_MAX_LEVEL`       | `max_level`       | `trace` | trace…fatal, off (0–6) | compile-time ceiling |
+| `NROS_LOG_BUFFER_SIZE`     | `buffer_size`     | 256     | 128–4096    | per-call formatting buffer (stack) |
+| `NROS_LOG_EARLY_RECORDS`   | `early_records`   | 4       | 0–256       | records held before `init` (0 = drop, counted) |
+| `NROS_LOG_ROSOUT_RECORDS`  | `rosout_records`  | 16      | 1–1024      | `/rosout` queue depth (`rosout` feature) |
+| `NROS_LOG_DYNAMIC_LOGGERS` | `dynamic_loggers` | 16 (Linux hosts 32) | 0–1024 | runtime-logger arena (0 = lookup only) |
 
-## Buffer size
+The CEILING is a bound, not the runtime level: a Rust macro below it folds to
+nothing (`severity_enabled_at_compile_time` is a `const fn`), and
+`Logger::is_enabled` refuses below it too, which is how C and C++ records —
+formatted on the C side — fall under the same bound. `set_level` still moves
+each logger's threshold above it. rcutils keeps the same pair
+(`RCUTILS_LOG_MIN_SEVERITY_*` and `rcutils_logging_set_logger_level`).
 
-Pick at most one Cargo feature. Default 256.
-
-| Feature              | Per-call-site stack frame for formatting |
-|----------------------|------------------------------------------|
-| `buffer-size-128`    | 128 B                                    |
-| `buffer-size-256`    | 256 B (default)                          |
-| `buffer-size-512`    | 512 B                                    |
-| `buffer-size-1024`   | 1024 B                                   |
+The C/C++ `NROS_LOG_*` printf front-end formats into its own 256-byte frame
+(`NROS_LOG_FMT_BUFFER_SIZE` in `<nros/log.h>`, compiled in the caller's
+translation unit), so a C record is bounded by the smaller of the two.
 
 Overflow truncates + appends `…`; `log()` never fails.
+
+### Deprecated features (one release)
+
+`max-level-*`, `buffer-size-<N>`, `early-records-<N>`, `rosout-records-<N>`
+and `dynamic-loggers-<N>` encoded those values as pick-one Cargo features,
+which unify across a build with no precedence (RFC-0086 D5). They still work
+for one release: honoured with a `cargo:warning` when no knob is stated, a
+redundancy warning when they agree with one, a BUILD ERROR when they disagree
+with a stated knob or with each other. They left `default` in the same change.
+
+### The platform clock
+
+`Record::timestamp_ns` and the clock-reading `nros_*_throttle!` family need
+`nros_platform_clock_ns`. It is compiled in (`cfg(nros_log_clock)`) when the
+lane's platform declares `[capabilities] clock = true` — every in-tree port
+does — or when the `platform-clock` feature pulls a port in (`nros-c`'s
+`platform-*` arms set it). A bare `cargo test -p nros-log` has neither, and
+its test binaries link without a port.
 
 ## Backend delivery (per platform)
 
