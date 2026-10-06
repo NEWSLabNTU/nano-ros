@@ -181,6 +181,15 @@ if [ -n "${NROS_RMW_CYCLONEDDS_SRV_CLIENT_BIN:-}" ] &&
         "$NROS_RMW_CYCLONEDDS_SRV_CLIENT_BIN" > "$CLIENT_OUT" 2>&1
     CLI_RC=$?
 
+    # Issue 1291 — the same binary, TWO clients of /add_two_ints in one
+    # process, against the same stock server. Both requests of a round are
+    # outstanding at once with equal sequence numbers, and each payload
+    # differs per client, so a reply crossed between clients is a wrong sum.
+    PAIR_OUT=$(mktemp)
+    timeout 40 env LD_LIBRARY_PATH="$NROS_LD_LIBRARY_PATH" NROS_SRV_CLIENT_PAIR=1 \
+        "$NROS_RMW_CYCLONEDDS_SRV_CLIENT_BIN" > "$PAIR_OUT" 2>&1
+    PAIR_RC=$?
+
     # Group kill: the launcher's whole session, not just the launcher.
     kill -TERM -"$DN_PID" 2>/dev/null || true
     wait $DN_PID 2>/dev/null || true
@@ -197,6 +206,17 @@ if [ -n "${NROS_RMW_CYCLONEDDS_SRV_CLIENT_BIN:-}" ] &&
     else
         echo "  PASS: nros client got SUM=42 from stock server"
     fi
+
+    echo "=== issue 1291: two nros clients of one service, one process → stock server ==="
+    # The binary exits 0 only after printing PAIR_OK.
+    if [ "$PAIR_RC" -ne 0 ]; then
+        echo "  FAIL: client pair exited rc=$PAIR_RC"
+        sed 's/^/    /' "$PAIR_OUT"
+        failed=$((failed + 1))
+    else
+        echo "  PASS: $(grep '^PAIR_OK ' "$PAIR_OUT") — each client took only its own replies"
+    fi
+    rm -f "$PAIR_OUT"
 else
     echo "  SKIP: 117.12.B.2 (demo_nodes_cpp or nros client binary missing)"
 fi
