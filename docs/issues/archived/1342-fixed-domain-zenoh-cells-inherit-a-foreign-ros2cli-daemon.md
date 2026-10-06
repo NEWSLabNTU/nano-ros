@@ -3,11 +3,11 @@ id: 1342
 title: "issue 1333's remedy 2 defends only cells with a UNIQUE domain, and the
   zenoh action cells are on a FIXED domain 0 — so they inherit whatever daemon
   domain 0 already has"
-status: open
+status: resolved
 type: bug
 area: testing
 severity: medium
-related: [issue-1333, issue-0763, issue-0707, issue-1127, phase-455]
+related: [issue-1333, issue-0763, issue-0707, issue-1127, phase-455, issue-1691, phase-480]
 ---
 
 ## What was measured
@@ -111,3 +111,30 @@ Any live-peer lane run that reaches a zenoh cell before `ros2_action_e2e` makes
 `native-action-rust-zenoh-*` fail for a reason that is not about nano-ros — and
 the failure text says "discovery", which is exactly the misattribution the gate
 was written to prevent.
+
+## Resolution — 2026-10-06 (phase-480 W3, with issue 1691)
+
+The first candidate above, taken: ask a verb that can take `--no-daemon`.
+Issue 1691 ([archived](1691-ros2-action-e2e-stock-server-not-discovered.md)) is
+the same failure seen from a solo run, and both are fixed by one change on
+`fix/1691-action-gate-without-daemon`:
+
+- `ros2_action_e2e::await_fibonacci_action` waits for
+  `/fibonacci/_action/send_goal` in
+  `ros2 service list --include-hidden-services --no-daemon`, built by
+  `nros_tests::ros2::ros2_query_cmd`.
+- `check-ros2-daemon-queries` no longer exempts `ros2 action list` in that
+  file, so the verb cannot come back without the gate going red.
+
+Measured 2026-10-06: with a stale zenoh daemon left on domain 0 (no
+`ros2 daemon stop`), origin/main's test file fails the n2r zenoh case at the
+gate in 21.6 s; this branch passes all five `ros2_action_e2e` cases solo,
+n2r zenoh in 61.7 s. `.config/interop-verdicts.toml`'s
+`native-action-rust-zenoh-n2r` verdict is re-recorded without the
+`ros2 daemon stop` workaround.
+
+**Not done:** the second and third candidates (a runtime domain for the nano
+side; a precondition probe for a foreign daemon). Neither is needed by the
+gate any more. Other fixed-domain zenoh cells were not audited for
+daemon-backed verbs beyond `check-ros2-daemon-queries`, which already holds
+every other verb to `--no-daemon`.
