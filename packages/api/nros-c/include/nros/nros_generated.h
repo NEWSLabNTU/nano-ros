@@ -4000,6 +4000,20 @@ NROS_PUBLIC const char *nros_qos_policy_kind_to_cstr(uint32_t policy);
 NROS_PUBLIC void nros_set_trace_sink(void (*sink)(uint32_t, uint32_t));
 
 /**
+ * phase-474 I2 -- the application's start-up is over: arm the contract
+ * monitors of every executor that waits for this
+ * (`CONFIG_NROS_MONITOR_ARM_ON_CALL`). Call it where the application enters
+ * its running state, for example an INIT/RUN state machine's RUN transition.
+ *
+ * Safe from any thread and from inside a callback: it bumps one atomic, and
+ * each executor arms at its next spin. Before arming, a monitor verdict is
+ * counted (`suppressed_before_arm`) but not stored, logged or traced. On an
+ * image whose monitors arm at the first spin (the default) it does nothing.
+ * No-op in a build without an RMW, which has no monitors.
+ */
+NROS_PUBLIC void nros_monitors_arm(void);
+
+/**
  * Phase 115.C — register a custom transport vtable.
  *
  * Must be called BEFORE `nros_support_init`. Subsequent calls

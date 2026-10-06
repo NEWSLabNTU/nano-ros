@@ -55,7 +55,15 @@ static uint64_t __nros_age_storage_t1[(1u * NROS_CPP_AGE_ROW_STORAGE + 7u) / 8u]
 static int32_t __nros_entry_setup_tier_0(void* executor) {
     if (executor == NULL) return (int32_t)NROS_CPP_RET_NOT_INIT;
     /* phase-462 W1 -- contract monitor table (tier[0] high): installed BEFORE any node
-     * exists, because a publisher attaches its counter cell at create time. */
+     * exists, because a publisher attaches its counter cell at create time.
+     * phase-474: the monitors judge from the first spin unless the image sets
+     * CONFIG_NROS_MONITOR_ARM_ON_CALL; then the application calls
+     * nros_monitors_arm() when it enters RUN, and CONFIG_NROS_MONITOR_ARM_GRACE_MS
+     * is the backstop. A verdict before arming is counted, not stored. The
+     * ring keeps the latest CONFIG_NROS_EXECUTOR_MAX_VIOLATIONS verdicts;
+     * CONFIG_NROS_VIOLATION_DRAIN_REPORT logs each one at the end of its spin,
+     * CONFIG_NROS_TRACE_CALLBACKS traces it (markers 21-24) and
+     * CONFIG_NROS_BOOT_REPORT keeps it in NROS_VIOLATION_RECORD for SWD. */
     {
         nros_cpp_monitor_tables_t mtables = {
             .rows = __nros_mon_rows_t0,
@@ -84,7 +92,15 @@ static int32_t __nros_entry_setup_tier_0(void* executor) {
 static int32_t __nros_entry_setup_tier_1(void* executor) {
     if (executor == NULL) return (int32_t)NROS_CPP_RET_NOT_INIT;
     /* phase-462 W1 -- contract monitor table (tier[1] low): installed BEFORE any node
-     * exists, because a publisher attaches its counter cell at create time. */
+     * exists, because a publisher attaches its counter cell at create time.
+     * phase-474: the monitors judge from the first spin unless the image sets
+     * CONFIG_NROS_MONITOR_ARM_ON_CALL; then the application calls
+     * nros_monitors_arm() when it enters RUN, and CONFIG_NROS_MONITOR_ARM_GRACE_MS
+     * is the backstop. A verdict before arming is counted, not stored. The
+     * ring keeps the latest CONFIG_NROS_EXECUTOR_MAX_VIOLATIONS verdicts;
+     * CONFIG_NROS_VIOLATION_DRAIN_REPORT logs each one at the end of its spin,
+     * CONFIG_NROS_TRACE_CALLBACKS traces it (markers 21-24) and
+     * CONFIG_NROS_BOOT_REPORT keeps it in NROS_VIOLATION_RECORD for SWD. */
     {
         nros_cpp_monitor_tables_t mtables = {
             .rows = __nros_mon_rows_t1,

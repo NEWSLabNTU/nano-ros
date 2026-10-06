@@ -1896,6 +1896,27 @@ nros_cpp_ret_t nros_cpp_executor_violation_counts(void *handle,
                                                   struct nros_cpp_violation_counts_t *out);
 
 /**
+ * phase-474 I2 -- choose when this executor's contract monitors arm,
+ * overriding the build default (`CONFIG_NROS_MONITOR_ARM_ON_CALL`,
+ * `CONFIG_NROS_MONITOR_ARM_GRACE_MS`). `on_call`: wait for
+ * `nros_cpp_monitors_arm()`; `grace_ms`: arm anyway that long after the first
+ * spin (0 = no deadline). Call before the first spin.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL.
+ */
+nros_cpp_ret_t nros_cpp_executor_set_monitor_arming(void *handle, bool on_call, uint32_t grace_ms);
+
+/**
+ * phase-474 I2 -- the application's start-up is over: arm the contract
+ * monitors of every executor in the image that waits for it. Safe from any
+ * thread and from a callback (it bumps an atomic; each executor arms at its
+ * next spin). The C spelling is `nros_monitors_arm()`; this is the same call
+ * on the C++ ABI, wrapped by `nros::arm_monitors()`.
+ */
+void nros_cpp_monitors_arm(void);
+
+/**
  * Declare one `from -> to` remap for a node, from the C++ side of the ABI.
  *
  * `node_namespace` may be NULL, which means `/`; every other pointer is

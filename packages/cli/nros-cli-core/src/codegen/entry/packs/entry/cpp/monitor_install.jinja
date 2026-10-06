@@ -14,7 +14,15 @@
   the renderer, so the caller's next line follows the closing brace directly.
 #}
     /* phase-462 W1 -- contract monitor table{% if m.tier is not none %} (tier[{{ m.tier }}] {{ m.tier_name }}){% endif %}: installed BEFORE any node
-     * exists, because a publisher attaches its counter cell at create time. */
+     * exists, because a publisher attaches its counter cell at create time.
+     * phase-474: the monitors judge from the first spin unless the image sets
+     * CONFIG_NROS_MONITOR_ARM_ON_CALL; then the application calls
+     * nros::arm_monitors() when it enters RUN, and CONFIG_NROS_MONITOR_ARM_GRACE_MS
+     * is the backstop. A verdict before arming is counted, not stored. The
+     * ring keeps the latest CONFIG_NROS_EXECUTOR_MAX_VIOLATIONS verdicts;
+     * CONFIG_NROS_VIOLATION_DRAIN_REPORT logs each one at the end of its spin,
+     * CONFIG_NROS_TRACE_CALLBACKS traces it (markers 21-24) and
+     * CONFIG_NROS_BOOT_REPORT keeps it in NROS_VIOLATION_RECORD for SWD. */
     {
         void* __mexec = {{ mexec }};
         if (__mexec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);

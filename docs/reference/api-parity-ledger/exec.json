@@ -1442,5 +1442,17 @@
     "verdict": "extension",
     "why": "phase-476 W0 -- releases every entry a node registered, which is what destroying a C++ node does (`nros_cpp_node_destroy`). In rclcpp, destroying the node drops the last owners of its entities. Ours has to release them explicitly: a C++ callback's capture is copied into the arena and usually holds the node's `this`, so an entry that outlived its node would dispatch into freed memory.",
     "bucket": "ours-only"
+  },
+  "rust:Executor::arm_monitors": {
+    "verdict": "extension",
+    "why": "phase-474 I2 -- the application says its start-up is over, so this executor's contract monitors start judging. Before arming a verdict is counted (`violations_suppressed_before_arm`) but not stored: registration, the first join and inputs that have not started yet look like overruns, jitter and silence on a board, and judging them as steady state filled the safety island's violation ring before any act ran. rclrs has no on-target contract monitor. See `rust:Executor::*violation*`."
+  },
+  "rust:Executor::monitors_armed": {
+    "verdict": "extension",
+    "why": "phase-474 I2 -- whether this executor's contract monitors are armed. See `rust:Executor::arm_monitors`."
+  },
+  "rust:Executor::set_monitor_arming": {
+    "verdict": "extension",
+    "why": "phase-474 I2 -- choose when this executor's monitors arm (wait for the application's call, and/or a grace deadline after the first spin), overriding the build default `NROS_MONITOR_ARM_ON_CALL` / `NROS_MONITOR_ARM_GRACE_MS`. See `rust:Executor::arm_monitors`."
   }
 }

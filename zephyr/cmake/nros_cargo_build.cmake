@@ -1500,6 +1500,9 @@ function(nros_resolve_knobs)
     # phase-474 I1 -- violation ring depth (and the SWD record's slot count).
     _nros_resolve_knob(NROS_EXECUTOR_MAX_VIOLATIONS
         "${CONFIG_NROS_EXECUTOR_MAX_VIOLATIONS}")
+    # phase-474 I2 -- the arming deadline after the first spin.
+    _nros_resolve_knob(NROS_MONITOR_ARM_GRACE_MS
+        "${CONFIG_NROS_MONITOR_ARM_GRACE_MS}")
     # phase-446 F3 -- the parameter-service buffer is DERIVABLE, but not to a
     # number here: the bound needs the store's capacities, and those are
     # resolved by nros-params' build script (where the `[knobs.params]` board
@@ -2128,6 +2131,10 @@ function(nros_cargo_build)
     # boot report's reason above (a Rust-lane image reads it from DOTCONFIG).
     if(CONFIG_NROS_VIOLATION_DRAIN_REPORT)
         list(APPEND _nros_knob_env "NROS_VIOLATION_DRAIN_REPORT=1")
+    endif()
+    # phase-474 I2 -- when the contract monitors arm.
+    if(CONFIG_NROS_MONITOR_ARM_ON_CALL)
+        list(APPEND _nros_knob_env "NROS_MONITOR_ARM_ON_CALL=1")
     endif()
 
     # Issue 1550 -- the domain's rung, for the boot record. The VALUE reaches

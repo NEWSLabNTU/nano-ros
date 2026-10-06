@@ -661,6 +661,20 @@ fn main() {
     let violation_drain_report = nros_zephyr_build::knob("NROS_VIOLATION_DRAIN_REPORT")
         .stated()
         .is_some_and(|v| v != 0);
+    // phase-474 I2 -- when the contract monitors ARM, by default. Read from the
+    // build environment / Kconfig only: the contract has no key for it.
+    // `NROS_MONITOR_ARM_ON_CALL=1` (`CONFIG_NROS_MONITOR_ARM_ON_CALL=y`) waits
+    // for the application's `nros_monitors_arm()`; `NROS_MONITOR_ARM_GRACE_MS`
+    // arms anyway that long after the first spin (0 = no deadline). Neither
+    // stated = armed at the first spin, which is what every image did before.
+    let monitor_arm_on_call = nros_zephyr_build::knob("NROS_MONITOR_ARM_ON_CALL")
+        .stated()
+        .is_some_and(|v| v != 0);
+    let monitor_arm_grace_ms = env_usize("NROS_MONITOR_ARM_GRACE_MS", 0);
+    assert!(
+        monitor_arm_grace_ms <= u32::MAX as usize,
+        "NROS_MONITOR_ARM_GRACE_MS={monitor_arm_grace_ms}: must fit a u32"
+    );
     // issue 0900 — how many of the MAX_CBS slots may hold an ACTION CLIENT,
     // the entity the arena derivation below budgets every slot at.
     //
@@ -1213,6 +1227,16 @@ fn main() {
          /// Whether a new executor starts with the drain-and-report hook on \
          (set via NROS_VIOLATION_DRAIN_REPORT, default off). phase-474 I1.\n\
          pub const VIOLATION_DRAIN_REPORT: bool = {violation_drain_report};\n\
+         \n\
+         /// Whether contract monitors wait for the application's arm call \
+         (set via NROS_MONITOR_ARM_ON_CALL, default off = armed at the first \
+         spin). phase-474 I2.\n\
+         pub const MONITOR_ARM_ON_CALL: bool = {monitor_arm_on_call};\n\
+         \n\
+         /// Arm the contract monitors anyway this many ms after the first \
+         spin, 0 = no deadline (set via NROS_MONITOR_ARM_GRACE_MS, default 0). \
+         phase-474 I2.\n\
+         pub const MONITOR_ARM_GRACE_MS: u32 = {monitor_arm_grace_ms};\n\
          \n\
          /// Issue 1190 -- the arena derivation's MODEL, as the consts it \
          summed.\n\

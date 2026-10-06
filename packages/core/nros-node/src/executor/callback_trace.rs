@@ -109,7 +109,7 @@ pub const MARKER_START: u32 = 18;
 /// `callback_end(handle)` — immediately after it returns.
 pub const MARKER_END: u32 = 19;
 
-// phase-474 I1 — the violation markers. Defined beside the rule table in
+// phase-474 I1 -- the violation markers. Defined beside the rule table in
 // `monitor` (which builds without this feature, so the encoding is tested in
 // every lane) and re-exported here with their siblings.
 pub use super::monitor::{
@@ -303,7 +303,7 @@ pub(crate) fn end(handle: u8) {
     }
 }
 
-/// phase-474 I1 — one stored contract violation, as four events (see the
+/// phase-474 I1 -- one stored contract violation, as four events (see the
 /// module table). Pre-arm verdicts (phase-474 I2) are not stored and emit
 /// nothing.
 pub(crate) fn violation(seq: u32, v: &super::monitor::Violation) {

@@ -101,6 +101,19 @@ inline Result spin_once(int32_t timeout_ms = 10) {
     return Result(nros_cpp_spin_once(::rclcpp::Node::global_storage(), timeout_ms));
 }
 
+/// phase-474 I2 -- the application's start-up is over: arm the contract
+/// monitors of every executor that waits for this
+/// (`CONFIG_NROS_MONITOR_ARM_ON_CALL`). Call it where the application enters
+/// its running state, e.g. an INIT/RUN state machine's RUN transition.
+///
+/// Safe from any thread and from inside a callback (it bumps one atomic; each
+/// executor arms at its next spin). Before arming a verdict is counted
+/// (`suppressed_before_arm`) but not stored, logged or traced. Does nothing on
+/// an image whose monitors arm at the first spin, which is the default.
+inline void arm_monitors() {
+    nros_cpp_monitors_arm();
+}
+
 /// Register a callback to run BEFORE the global session's entities are torn
 /// down — issue 0790.
 ///

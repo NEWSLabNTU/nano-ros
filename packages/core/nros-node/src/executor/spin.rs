@@ -1992,7 +1992,7 @@ pub struct Executor<'s> {
     /// a glitch, the second means the period cannot be met at all.
     pub(crate) late_wakes: u32,
     pub(crate) total_wakes: u32,
-    /// Issue 0514 / 1635 / phase-474 I1 — what happens to a detected contract
+    /// Issue 0514 / 1635 / phase-474 I1 -- what happens to a detected contract
     /// violation: the log switch, the drain-and-report hook, the image's sink,
     /// and the ring (CARVED, phase-409) with its total and dropped counters.
     /// See [`super::monitor::ViolationChannel`].
@@ -3397,7 +3397,7 @@ impl<'s> Executor<'s> {
         self.violations.report = enabled;
     }
 
-    /// phase-474 I1 — the drain-and-report hook: at the end of every spin,
+    /// phase-474 I1 -- the drain-and-report hook: at the end of every spin,
     /// drain the ring and log each entry with its sequence number and the
     /// `total` / `dropped` counters (`contract violation #N: <rule> <fqn>
     /// measured=.. declared=.. (total=.. dropped=..)`).
@@ -3412,7 +3412,7 @@ impl<'s> Executor<'s> {
         self.violations.drain_report = enabled;
     }
 
-    /// Issue #514 / phase-474 I1 — violations evicted from the full ring
+    /// Issue #514 / phase-474 I1 -- violations evicted from the full ring
     /// before any drain took them.
     ///
     /// The ring keeps the LATEST `MAX_VIOLATIONS`, so non-zero means the
@@ -3420,17 +3420,17 @@ impl<'s> Executor<'s> {
     /// ring refused the push, which kept the first verdicts since boot and
     /// lost every later one.)
     pub fn violations_dropped(&self) -> u32 {
-        self.violations.dropped
+        self.violations.counts.dropped
     }
 
-    /// phase-474 I1 — contract violations this executor stored since boot
+    /// phase-474 I1 -- contract violations this executor stored since boot
     /// (wrapping). The newest entry in the ring is number `violations_total()`;
     /// `total - dropped - pending` is how many drains have taken.
     pub fn violations_total(&self) -> u32 {
-        self.violations.total
+        self.violations.counts.total
     }
 
-    /// RFC-0052 W3b.4 — drain pending contract violations, OLDEST first.
+    /// RFC-0052 W3b.4 -- drain pending contract violations, OLDEST first.
     /// Draining clears the ring. Call between spins, never from a callback.
     pub fn drain_violations(&mut self, mut f: impl FnMut(&super::monitor::Violation)) {
         self.violations.drain(|_, v| f(v));
@@ -3441,6 +3441,149 @@ impl<'s> Executor<'s> {
     /// marker carry), so a reader can tell a gap from a quiet interval.
     pub fn drain_violations_numbered(&mut self, f: impl FnMut(u32, &super::monitor::Violation)) {
         self.violations.drain(f);
+    }
+
+    /// phase-474 I2 -- choose when this executor's contract monitors arm,
+    /// overriding the build default (`NROS_MONITOR_ARM_ON_CALL`,
+    /// `NROS_MONITOR_ARM_GRACE_MS`). Call before the first spin (an
+    /// `arm_monitors` made before it is undone by this); after the first spin
+    /// an executor that already armed stays armed.
+    ///
+    /// `on_call`: wait for [`Self::arm_monitors`] or
+    /// [`super::monitor::request_monitor_arming`] (`nros_monitors_arm()`).
+    /// `grace_ms`: arm anyway that long after the first spin (0 = never by
+    /// deadline; with `on_call == false`, 0 means "at the first spin").
+    pub fn set_monitor_arming(&mut self, on_call: bool, grace_ms: u32) {
+        let v = &mut self.violations.counts;
+        v.arm_on_call = on_call;
+        v.arm_grace_ms = grace_ms;
+        if !v.spun {
+            // Before the first spin, "armed" is just the policy's answer (no
+            // rule has run yet); the first spin counts the arming once.
+            v.armed = super::monitor::MonitorArming { on_call, grace_ms }.armed_at_first_spin();
+        }
+    }
+
+    /// phase-474 I2 -- the application says its start-up is over: this
+    /// executor's monitors start judging now. Idempotent.
+    ///
+    /// Judgement restarts at arming: every rate/age/silence window reopens,
+    /// a latency or age measured before arming is discarded, the release-
+    /// jitter statistics are cleared (so the figure after RUN is RUN's), and a
+    /// stack low-water mark already past the declared minimum is reported
+    /// again, because stack depth reached at start-up is a real fault, not
+    /// start-up noise.
+    pub fn arm_monitors(&mut self) {
+        self.arm_now("the application armed them");
+    }
+
+    /// phase-474 I2 -- whether this executor's monitors are armed.
+    pub fn monitors_armed(&self) -> bool {
+        self.violations.counts.armed
+    }
+
+    /// phase-474 I2 -- verdicts reached before the monitors armed: counted,
+    /// never stored, logged, sunk or traced.
+    pub fn violations_suppressed_before_arm(&self) -> u32 {
+        self.violations.counts.suppressed_before_arm
+    }
+
+    fn arm_now(&mut self, why: &str) {
+        if self.violations.counts.armed {
+            return;
+        }
+        self.violations.counts.armed = true;
+        for st in self.monitor_states.iter_mut() {
+            *st = super::monitor::MonitorState::default();
+        }
+        for st in self.age_states.iter_mut() {
+            *st = super::monitor::AgeState::default();
+        }
+        for spec in self.monitor_table.iter() {
+            spec.cell
+                .max_latency_us
+                .store(0, core::sync::atomic::Ordering::Relaxed);
+        }
+        for spec in self.age_table.iter() {
+            spec.cell
+                .max_age_ms
+                .store(0, core::sync::atomic::Ordering::Relaxed);
+            spec.cell
+                .takes
+                .store(0, core::sync::atomic::Ordering::Relaxed);
+        }
+        self.clear_release_jitter_stats();
+        self.stack_headroom_reported = usize::MAX;
+        self.stack_headroom_last_check_us = None;
+        // Counted once per executor: here once it has spun, else by the first
+        // spin (which counts an executor that is armed by then either way).
+        #[cfg(nros_boot_report)]
+        if self.violations.counts.spun {
+            super::monitor::NROS_VIOLATION_RECORD
+                .armed
+                .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        }
+        nros_log::log_info!(
+            nros_log::get_logger("nros"),
+            "contract monitors armed ({}); {} verdict(s) before arming suppressed",
+            why,
+            self.violations.counts.suppressed_before_arm
+        );
+    }
+
+    /// phase-474 I2 -- once per spin, before any rule runs: note the first
+    /// spin, and arm when the policy says so.
+    fn update_monitor_arming(&mut self, now_us: Option<u64>) {
+        // Milliseconds in a wrapping `u32`, like the silence rule's lease
+        // (`AgeState::last_take_ms`): this state is inline in the `Executor`
+        // value, whose size is budgeted (issue 0961).
+        let now_ms = now_us.map(|us| (us / 1_000) as u32);
+        let v = &mut self.violations.counts;
+        if !v.spun {
+            v.spun = true;
+            v.first_spin_ms = now_ms.unwrap_or(0);
+            if v.armed {
+                // Armed from the start (the default), or by a call made before
+                // the first spin: count it in the record so a reader sees how
+                // many executors are judging.
+                #[cfg(nros_boot_report)]
+                super::monitor::NROS_VIOLATION_RECORD
+                    .armed
+                    .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+                return;
+            }
+            if (super::monitor::MonitorArming {
+                on_call: v.arm_on_call,
+                grace_ms: v.arm_grace_ms,
+            })
+            .armed_at_first_spin()
+            {
+                self.arm_now("at the first spin");
+                return;
+            }
+        }
+        if v.armed {
+            return;
+        }
+        if super::monitor::arm_requests() != v.arm_requests_seen {
+            self.arm_now("the application asked: nros_monitors_arm");
+            return;
+        }
+        let grace_ms = v.arm_grace_ms;
+        if grace_ms == 0 {
+            return;
+        }
+        match now_ms {
+            Some(now) if now.wrapping_sub(v.first_spin_ms) >= grace_ms => {
+                self.arm_now("the grace period after the first spin elapsed");
+            }
+            // No clock: a grace period cannot elapse, and waiting forever would
+            // leave the image unmonitored. Arm rather than guess a duration.
+            None if !v.arm_on_call => {
+                self.arm_now("no clock to time the grace period");
+            }
+            _ => {}
+        }
     }
 
     /// Issue 1635 — hand every violation to `sink` as it is DETECTED, beside
@@ -9112,6 +9255,10 @@ impl<'s> Executor<'s> {
         // entry; collapsing them would make that delta 0 on the first call only.
         let spin_start_us = self.now_us();
 
+        // phase-474 I2 -- arm the monitors when the policy says start-up is over,
+        // before any rule of this spin can judge.
+        self.update_monitor_arming(spin_start_us);
+
         // RFC-0052 W3b.4 — contract monitors tick once per spin (window
         // logic inside; single branch when the baked table is empty).
         self.run_contract_monitors();
@@ -10043,7 +10190,7 @@ impl<'s> Executor<'s> {
         self.check_release_jitter_rule();
         self.check_stack_headroom_rule();
         self.check_alive_supervision();
-        // phase-474 I1 — the opt-in drain-and-report hook, after every rule of
+        // phase-474 I1 -- the opt-in drain-and-report hook, after every rule of
         // this spin has had its say.
         self.violations.drain_and_report();
 
