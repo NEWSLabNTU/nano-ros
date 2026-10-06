@@ -12108,3 +12108,46 @@ fn a_raw_publisher_on_a_contracted_topic_bumps_its_cell() {
         "a publisher on another topic carries no cell"
     );
 }
+
+/// Issue 1706 -- a heap too small for the parameter store REFUSES the
+/// declaration instead of halting the image.
+///
+/// The store is one allocation of `PARAMETER_STORE_BYTES` (285,696 at the
+/// default sizing on x86_64). Through `Box::new_uninit` a refused request went
+/// to the OOM handler: this test process aborted, as a Zephyr image halted
+/// (`HEAP EXHAUSTED`, then issue 0589's recursion) and a FreeRTOS one hung in
+/// `MALLOC FAILED`. Every caller has a refusal to return, so it now returns it,
+/// once, without retrying.
+#[cfg(all(feature = "std", feature = "param-services"))]
+#[test]
+fn a_heap_too_small_for_the_parameter_store_refuses_the_declaration() {
+    use nros_params::ParameterValue;
+    let store = core::mem::size_of::<nros_params::ParameterStorage>();
+    assert!(
+        store > 64 * 1024,
+        "the store is the large allocation this test caps under ({store} B)"
+    );
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    {
+        // The platform heap refuses the store's request (the seam stands in
+        // for an allocator returning NULL -- a second `#[global_allocator]`
+        // is refused by `check-feature-contract` clause (e)).
+        let _refuse = super::spin::RefuseParameterStore::arm();
+        assert!(
+            !executor.declare_parameter("rate", ParameterValue::Integer(10)),
+            "a store the heap cannot supply must refuse the declaration"
+        );
+        assert!(
+            executor.register_parameter_services().is_err(),
+            "six services over no store is an error, not a silent no-op"
+        );
+    }
+    // Recorded, not retried: a heap that refused once is not asked again,
+    // even though this thread could now supply it.
+    assert!(!executor.declare_parameter("rate", ParameterValue::Integer(10)));
+
+    // Negative control: the same executor shape with an uncapped heap
+    // declares, so the refusal above is the cap and not the call.
+    let mut ok: Executor = executor_with_clock(MockSession::new());
+    assert!(ok.declare_parameter("rate", ParameterValue::Integer(10)));
+}

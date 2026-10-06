@@ -91,6 +91,12 @@ pub struct WestApp {
     pub cmake: Option<CmakeApp>,
     /// The bringup's declared capability axes (`param_services`,
     /// `lifecycle`, ...), for [`capability_kconfig_cmake`]. Issue 1702.
+    ///
+    /// Plus [`PARAM_STORE_AXIS`] when the LAUNCH seeds a parameter (issue
+    /// 1706): not an axis anyone declares, but a fact the heap default needs
+    /// beside them. Only Kconfig reads this list; `NANO_ROS_FEATURES` is
+    /// derived from the bringup separately, so the pseudo-axis never reaches a
+    /// cargo feature.
     pub capabilities: Vec<String>,
 }
 
@@ -99,7 +105,15 @@ pub struct WestApp {
 pub const CAPABILITY_KCONFIG: &[(&str, &str)] = &[
     ("param_services", "CONFIG_NROS_CAPABILITY_PARAM_SERVICES"),
     ("lifecycle", "CONFIG_NROS_CAPABILITY_LIFECYCLE"),
+    (PARAM_STORE_AXIS, "CONFIG_NROS_PARAM_STORE"),
 ];
+
+/// Issue 1706 -- a launch `<param>` seeds the parameter store through the same
+/// declare path a `param_services` image uses (`shared/declare_calls.jinja`:
+/// "seeding params is independent of whether the param-SERVICES surface is
+/// enabled"), so the image needs the store's heap whether or not it declares
+/// the axis. It implies the STORE, never the services.
+pub const PARAM_STORE_AXIS: &str = "param_store";
 
 /// Issue 1702 -- the declared capability axes as Kconfig assignments, set
 /// BEFORE `find_package(Zephyr)` in the generated application.
@@ -800,6 +814,41 @@ mod tests {
         assert!(!code.contains("nano_ros_use_board"), "{code}");
         assert!(!code.contains("prj.conf"), "names no fragment: {code}");
         assert!(!code.contains("EXTRA_CARGO_ARGS"), "{code}");
+    }
+
+    /// Issue 1706 -- a launch `<param>` seeds the store, so the heap default
+    /// must see it on both roads even when no axis is declared; and it is
+    /// written `n` otherwise, because a cache entry outlives its line.
+    #[test]
+    fn a_launch_param_seed_reaches_kconfig_without_the_axis() {
+        let td = tempfile::tempdir().unwrap();
+        let seeded = vec![PARAM_STORE_AXIS.to_string()];
+        let rust = WestApp {
+            project: "p".to_string(),
+            capabilities: seeded.clone(),
+            ..Default::default()
+        };
+        let mut cpp = cmake_app(td.path(), &[], None);
+        cpp.capabilities = seeded;
+        for s in [render_cmakelists(&rust), render_cmakelists(&cpp)] {
+            let at = s
+                .find("set(CONFIG_NROS_PARAM_STORE y CACHE STRING")
+                .unwrap_or_else(|| panic!("seed not carried:\n{s}"));
+            assert!(at < s.find("find_package(Zephyr REQUIRED").unwrap(), "{s}");
+            // The SERVICES axis is untouched: a seed implies the store only.
+            assert!(
+                s.contains("set(CONFIG_NROS_CAPABILITY_PARAM_SERVICES n CACHE STRING"),
+                "{s}"
+            );
+        }
+        let bare = render_cmakelists(&WestApp {
+            project: "p".to_string(),
+            ..Default::default()
+        });
+        assert!(
+            bare.contains("set(CONFIG_NROS_PARAM_STORE n CACHE STRING"),
+            "{bare}"
+        );
     }
 
     #[test]

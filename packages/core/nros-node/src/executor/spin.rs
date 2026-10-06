@@ -728,6 +728,79 @@ pub(crate) fn group_filter_accepts(
     }
 }
 
+/// Bytes the parameter store asks the platform heap for, in ONE allocation.
+///
+/// Issue 1706 -- the size of THIS build's store, which folds every knob that
+/// shapes it (`MAX_PARAMETERS`, which a contract's `params:` derives, and the
+/// board's string/array capacities). No formula and no measured constant: the
+/// compiler's own answer, so the number reported below cannot drift from the
+/// allocation it describes.
+#[cfg(feature = "param-services")]
+pub const PARAMETER_STORE_BYTES: usize = core::mem::size_of::<nros_params::ParameterStorage>();
+
+/// Issue 1706 -- a TEST seam standing in for a platform heap that returns NULL
+/// for the store's request, on the current thread only (tests run in
+/// parallel). Not a test `#[global_allocator]`: `check-feature-contract`
+/// clause (e) allows exactly one, `nros-platform`'s.
+#[cfg(all(test, feature = "std", feature = "param-services"))]
+pub(crate) struct RefuseParameterStore;
+
+#[cfg(all(test, feature = "std", feature = "param-services"))]
+std::thread_local! {
+    static REFUSE_PARAMETER_STORE: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+}
+
+#[cfg(all(test, feature = "std", feature = "param-services"))]
+impl RefuseParameterStore {
+    pub(crate) fn arm() -> Self {
+        REFUSE_PARAMETER_STORE.with(|c| c.set(true));
+        Self
+    }
+
+    fn armed() -> bool {
+        REFUSE_PARAMETER_STORE.with(core::cell::Cell::get)
+    }
+}
+
+#[cfg(all(test, feature = "std", feature = "param-services"))]
+impl Drop for RefuseParameterStore {
+    fn drop(&mut self) {
+        REFUSE_PARAMETER_STORE.with(|c| c.set(false));
+    }
+}
+
+/// Issue 1706 -- say, once, that the parameter store did not fit.
+///
+/// The RFC-0100 D11 shape, one layer up from Cyclone's boot check: the
+/// failure is named where it is decided, with the number a reader needs to
+/// size the heap, instead of surfacing as an anonymous halt in the allocator.
+/// What it can name is the REQUEST; the heap's own report (Zephyr's `HEAP
+/// EXHAUSTED` line, the board's `nros: heap peak` line) carries the capacity.
+#[cfg(feature = "param-services")]
+#[cold]
+fn report_parameter_store_refused() {
+    let slots = nros_params::MAX_PARAMETERS;
+    // THREE short lines, not one sentence: a log backend truncates a long
+    // line (Zephyr's cut the first draft at its slot count), and the number
+    // is the one part that must survive.
+    let logger = nros_log::get_logger("nros");
+    nros_log::log_error!(
+        logger,
+        "parameter store refused: needs {} bytes in one allocation ({} slots x {})",
+        PARAMETER_STORE_BYTES,
+        slots,
+        PARAMETER_STORE_BYTES / if slots == 0 { 1 } else { slots }
+    );
+    nros_log::log_error!(
+        logger,
+        "every parameter declaration on this executor is refused (issue 1706)"
+    );
+    nros_log::log_error!(
+        logger,
+        "raise the image heap, or declare the parameters in the contract (params:)"
+    );
+}
+
 #[cfg(test)]
 mod group_filter_tests {
     use super::group_filter_accepts;
@@ -1701,6 +1774,12 @@ pub struct Executor<'s> {
     pub(crate) signal_fd: Option<WakeSignalFd>,
     #[cfg(feature = "param-services")]
     pub(crate) params: Option<alloc::boxed::Box<crate::parameter_services::ParamState<'s>>>,
+    /// Issue 1706 -- the parameter store's one allocation was refused by the
+    /// platform heap. Recorded so the refusal is REPORTED once and not retried
+    /// on every declaration: a retry cannot succeed on a heap that only shrinks
+    /// from here, and on Zephyr each attempt prints its own `HEAP EXHAUSTED`.
+    #[cfg(feature = "param-services")]
+    pub(crate) param_store_refused: bool,
     /// phase-446 W6 -- the parameters each node's contract DECLARES, baked by
     /// the entry from the SystemModel. Empty (nothing checked) until an entry
     /// hands one over with [`Self::set_declared_params`].
@@ -2056,6 +2135,8 @@ impl<'s> Executor<'s> {
             signal_fd: None,
             #[cfg(feature = "param-services")]
             params: None,
+            #[cfg(feature = "param-services")]
+            param_store_refused: false,
             #[cfg(feature = "param-services")]
             declared_params: nros_params::DeclaredParams::EMPTY,
             #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
@@ -10092,7 +10173,12 @@ impl<'s> Executor<'s> {
     /// executor.declare_parameter("start_value", ParameterValue::Integer(0));
     /// ```
     pub fn register_parameter_services(&mut self) -> Result<(), NodeError> {
-        self.ensure_parameter_store();
+        // Issue 1706 -- six services over a store that does not exist would
+        // answer every request with "not declared"; say what went wrong
+        // instead (`report_parameter_store_refused` has named the size).
+        if !self.ensure_parameter_store() {
+            return Err(NodeError::Transport(TransportError::BadAlloc));
+        }
         if let Some(params) = &mut self.params {
             params.requested = true;
         }
@@ -10299,7 +10385,16 @@ impl<'s> Executor<'s> {
                 None => {
                     // Issue 0756 — see new_param_state: never build a ParamState
                     // by value, it does not fit an embedded thread stack.
-                    let mut state = Self::new_param_state();
+                    // Issue 1706 -- the store is fallible; the refusal is
+                    // reported once by `ensure_parameter_store`'s spelling.
+                    if self.param_store_refused {
+                        return Err(NodeError::Transport(TransportError::BadAlloc));
+                    }
+                    let Some(mut state) = Self::new_param_state() else {
+                        self.param_store_refused = true;
+                        report_parameter_store_refused();
+                        return Err(NodeError::Transport(TransportError::BadAlloc));
+                    };
                     state.requested = true;
                     let _ = state.services.push(services_box);
                     self.params = Some(state);
@@ -10823,9 +10918,20 @@ impl<'s> Executor<'s> {
     /// Launch-param seeding runs before any node is constructed; the six
     /// service servers attach later in `register_parameter_services`,
     /// which preserves this store.
-    fn ensure_parameter_store(&mut self) {
+    /// `true` when the store exists afterwards. `false` only when the platform
+    /// heap refused its allocation (issue 1706), which is reported once, here,
+    /// with the size it asked for.
+    fn ensure_parameter_store(&mut self) -> bool {
         if self.params.is_none() {
-            self.params = Some(Self::new_param_state());
+            if self.param_store_refused {
+                return false;
+            }
+            let Some(state) = Self::new_param_state() else {
+                self.param_store_refused = true;
+                report_parameter_store_refused();
+                return false;
+            };
+            self.params = Some(state);
             // phase-430 W2 — the executor's implicit PRIMARY node exists the
             // moment the store does, whether or not a node record has been
             // built yet, so it is seeded here. The other node keys are seeded
@@ -10833,6 +10939,7 @@ impl<'s> Executor<'s> {
             // up.
             self.seed_use_sim_time_default(super::node_record::NodeId::PRIMARY);
         }
+        true
     }
 
     /// phase-430 W2 — declare `use_sim_time = false`, as rclcpp does on EVERY
@@ -10938,14 +11045,27 @@ impl<'s> Executor<'s> {
     /// — runs clean. Initialising through the allocation bounds the largest
     /// stack temporary at one slot, so the knob no longer decides whether boot
     /// survives.
-    fn leak_parameter_storage() -> nros_params::ParameterTable<'static> {
-        let mut uninit = alloc::boxed::Box::<nros_params::ParameterStorage>::new_uninit();
-        // Safety: `new_uninit` gives a correctly-sized, correctly-aligned
+    ///
+    /// Issue 1706 -- FALLIBLE. This is the one allocation every parameter
+    /// declaration reaches, in every language and on every RTOS, and it is the
+    /// largest single request most images make. `Box::new_uninit` sent a
+    /// failure to the OOM handler: Zephyr printed `HEAP EXHAUSTED` and died in
+    /// issue 0589's recursion, FreeRTOS heap_4 hung in `MALLOC FAILED`. Every
+    /// caller already has a refusal to return (`declare_parameter` is a
+    /// `bool`), so the failure is now one, named by
+    /// [`report_parameter_store_refused`] with the size it asked for.
+    fn leak_parameter_storage() -> Option<nros_params::ParameterTable<'static>> {
+        #[cfg(all(test, feature = "std"))]
+        if RefuseParameterStore::armed() {
+            return None;
+        }
+        let mut uninit = nros_rmw::fallible::try_box_uninit::<nros_params::ParameterStorage>()?;
+        // Safety: `try_box_uninit` gives a correctly-sized, correctly-aligned
         // allocation for exactly this type, and `init_in_place` writes every
         // slot exactly once before `assume_init` observes it.
         unsafe {
             nros_params::ParameterStorage::init_in_place(uninit.as_mut_ptr());
-            alloc::boxed::Box::leak(uninit.assume_init()).as_table()
+            Some(alloc::boxed::Box::leak(uninit.assume_init()).as_table())
         }
     }
 
@@ -10956,22 +11076,25 @@ impl<'s> Executor<'s> {
     /// nothing about constructing one depends on `MAX_PARAMETERS`. The bulk
     /// (and issue 0756's placement requirement with it) lives in
     /// [`leak_parameter_storage`](Self::leak_parameter_storage).
-    fn new_param_state() -> alloc::boxed::Box<crate::parameter_services::ParamState<'s>> {
-        alloc::boxed::Box::new(crate::parameter_services::ParamState {
-            server: nros_params::ParameterServer::new_in(Self::leak_parameter_storage()),
-            // phase-426 W3 — the sets attach in `reconcile_parameter_services`,
-            // one per node, once the node table is populated.
-            services: heapless::Vec::new(),
-            requested: false,
-            // Issue 1270 -- allocated with the first set of services, not here.
-            buffers: None,
-            reconcile_failure_reported: false,
-            reconcile_failure: None,
-            // phase-430 W2 — no node has been auto-declared yet; the caller
-            // (`ensure_parameter_store`) seeds PRIMARY immediately after.
-            #[cfg(feature = "sim-time")]
-            sim_time_seeded: [false; crate::param_sizing::MAX_SERVICE_SETS],
-        })
+    fn new_param_state() -> Option<alloc::boxed::Box<crate::parameter_services::ParamState<'s>>> {
+        let table = Self::leak_parameter_storage()?;
+        Some(alloc::boxed::Box::new(
+            crate::parameter_services::ParamState {
+                server: nros_params::ParameterServer::new_in(table),
+                // phase-426 W3 — the sets attach in `reconcile_parameter_services`,
+                // one per node, once the node table is populated.
+                services: heapless::Vec::new(),
+                requested: false,
+                // Issue 1270 -- allocated with the first set of services, not here.
+                buffers: None,
+                reconcile_failure_reported: false,
+                reconcile_failure: None,
+                // phase-430 W2 — no node has been auto-declared yet; the caller
+                // (`ensure_parameter_store`) seeds PRIMARY immediately after.
+                #[cfg(feature = "sim-time")]
+                sim_time_seeded: [false; crate::param_sizing::MAX_SERVICE_SETS],
+            },
+        ))
     }
 
     /// Declare a parameter with a value on the executor's PRIMARY node.

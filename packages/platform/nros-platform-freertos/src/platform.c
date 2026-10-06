@@ -168,10 +168,39 @@ uint64_t nros_platform_epoch_us(void) {
 
 /* ---- Allocation ---- */
 
+#if !defined(NROS_FREERTOS_HEAP_3)
+static void nros_freertos_report_exhaustion(size_t request, size_t free_bytes);
+#endif
+
 void *nros_platform_alloc(size_t size) {
     if (size == 0) {
         return NULL;
     }
+#if !defined(NROS_FREERTOS_HEAP_3)
+    /* Issue 1706 -- say how much was asked for BEFORE heap_4 calls
+     * `vApplicationMallocFailedHook`, which takes no arguments and halts
+     * (`*** MALLOC FAILED ***`), so the request size never reached anyone.
+     * The parameter store is the case that made this matter: ONE request of
+     * ~285 KiB that an image with parameters makes at boot, whose failure read
+     * exactly like any other. Zephyr's funnel names the request the same way
+     * (`HEAP EXHAUSTED`, issue 1370).
+     *
+     * Only the CERTAIN failure is reported: more than the whole free total.
+     * A request below it can still fail on fragmentation (and heap_4 adds a
+     * block header), and then the hook's line is all there is -- a report
+     * here that guessed would be sized from. Not on heap_3, which keeps no
+     * free total to compare against.
+     *
+     * `free_bytes == 0` is skipped: heap_4 initialises on its FIRST
+     * `pvPortMalloc`, and until then reports 0 free. Measured: the first
+     * allocation of every boot (56 bytes, from lwIP) read as an exhaustion
+     * of a 409,600-byte heap. A heap that is genuinely at 0 fails anyway,
+     * and the hook says so. */
+    const size_t free_bytes = xPortGetFreeHeapSize();
+    if (free_bytes != 0u && size > free_bytes) {
+        nros_freertos_report_exhaustion(size, free_bytes);
+    }
+#endif
     return pvPortMalloc(size);
 }
 
@@ -934,6 +963,52 @@ void nros_platform_log_flush(void) {
         flusher();
     }
 }
+
+#if !defined(NROS_FREERTOS_HEAP_3)
+/* Issue 1706 -- see `nros_platform_alloc`. Through the registered writer, as
+ * `nros_platform_panic` does, and without a libc formatter: the line is
+ * written on the way into a halt, from whichever task asked. */
+static size_t nros_freertos_append(uint8_t *buf, size_t at, size_t cap, const char *s) {
+    while (*s != '\0' && at < cap) {
+        buf[at++] = (uint8_t) *s++;
+    }
+    return at;
+}
+
+static size_t nros_freertos_append_dec(uint8_t *buf, size_t at, size_t cap, size_t v) {
+    char digits[24];
+    size_t n = 0;
+    do {
+        digits[n++] = (char) ('0' + (v % 10u));
+        v /= 10u;
+    } while (v != 0u && n < sizeof(digits));
+    while (n > 0u && at < cap) {
+        buf[at++] = (uint8_t) digits[--n];
+    }
+    return at;
+}
+
+static void nros_freertos_report_exhaustion(size_t request, size_t free_bytes) {
+    nros_platform_log_writer_fn writer = nros_platform_freertos_log_writer;
+    if (writer == NULL) {
+        return;
+    }
+    static const uint8_t kName[] = "nros";
+    uint8_t msg[200];
+    const size_t cap = sizeof(msg);
+    size_t at = 0;
+    at = nros_freertos_append(msg, at, cap, "HEAP EXHAUSTED: request ");
+    at = nros_freertos_append_dec(msg, at, cap, request);
+    at = nros_freertos_append(msg, at, cap, " bytes, free ");
+    at = nros_freertos_append_dec(msg, at, cap, free_bytes);
+    at = nros_freertos_append(msg, at, cap, " of ");
+    at = nros_freertos_append_dec(msg, at, cap, (size_t) configTOTAL_HEAP_SIZE);
+    at = nros_freertos_append(msg, at, cap,
+                              " bytes -- raise NROS_FREERTOS_HEAP_KB (issue 1706)");
+    /* Severity 4 = error, the level `nros_log` gives its own error lines. */
+    writer(4, kName, sizeof(kName) - 1, msg, at);
+}
+#endif
 
 /* ---- Fatal error (phase-366 / RFC-0077) ----
  *

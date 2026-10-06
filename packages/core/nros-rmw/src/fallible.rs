@@ -69,6 +69,37 @@ pub fn try_box<T>(value: T) -> Result<Box<T>, T> {
     }
 }
 
+/// An UNINITIALISED heap allocation for one `T`, or `None` if the global
+/// allocator is exhausted.
+///
+/// The fallible form of `Box::<T>::new_uninit()`, for a value too large to
+/// build on the stack and move in (issue 0756 -- the parameter store is
+/// 285,696 bytes at the default sizing, and [`try_box`] takes its value BY
+/// VALUE, which materialises all of it in the caller's frame first). The
+/// caller initialises through the pointer and then `assume_init`s, exactly as
+/// with `new_uninit`.
+///
+/// Issue 1706 -- that store is the one allocation every parameter
+/// declaration reaches, on every RTOS, and `new_uninit` sent its failure to
+/// the OOM handler: a halt (Zephyr's `HEAP EXHAUSTED` then issue 0589's
+/// recursion) or a `MALLOC FAILED` hang (FreeRTOS heap_4), never a refusal the
+/// declaration could return.
+pub fn try_box_uninit<T>() -> Option<Box<core::mem::MaybeUninit<T>>> {
+    let layout = Layout::new::<T>();
+    if layout.size() == 0 {
+        return Some(Box::new_uninit());
+    }
+    // SAFETY: `layout` has non-zero size (checked above).
+    let ptr = unsafe { alloc::alloc::alloc(layout) }.cast::<core::mem::MaybeUninit<T>>();
+    if ptr.is_null() {
+        return None;
+    }
+    // SAFETY: a fresh, non-null allocation from the global allocator with
+    // `Layout::new::<T>()`, which is `MaybeUninit<T>`'s layout too; a
+    // `MaybeUninit` needs no initialisation to be owned by a `Box`.
+    Some(unsafe { Box::from_raw(ptr) })
+}
+
 /// A zeroed `len`-byte heap buffer, or `None` if the allocator is exhausted.
 ///
 /// The fallible form of `vec![0u8; len].into_boxed_slice()`, which aborts
@@ -104,6 +135,18 @@ mod tests {
     fn boxes_a_sized_value() {
         let b = try_box([7u64; 4]).expect("host heap is not exhausted");
         assert_eq!(*b, [7u64; 4]);
+    }
+
+    #[test]
+    fn an_impossible_uninit_box_is_none_not_an_abort() {
+        // Issue 1706 -- the parameter store's allocation, at a size no heap
+        // has: `Box::new_uninit` would reach the OOM handler.
+        #[cfg(target_pointer_width = "64")]
+        assert!(super::try_box_uninit::<[u8; 1usize << 60]>().is_none());
+        let mut b = super::try_box_uninit::<[u64; 4]>().expect("host heap is not exhausted");
+        b.write([3u64; 4]);
+        // SAFETY: written just above.
+        assert_eq!(*unsafe { b.assume_init() }, [3u64; 4]);
     }
 
     #[test]
