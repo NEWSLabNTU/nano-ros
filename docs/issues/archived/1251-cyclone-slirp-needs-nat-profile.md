@@ -3,19 +3,19 @@ id: 1251
 title: "A Cyclone peer for a QEMU guest cannot be loopback-pinned: the
   isolation profile `dds_isolation` writes and the NAT rewrite the guest
   needs are mutually exclusive"
-status: open
+status: resolved
 type: tech-debt
 area: testing, rmw
 severity: medium
 found: 2026-09-10
-related: [issue-1009, issue-1137, phase-441]
+related: [issue-1009, issue-1137, phase-441, phase-480]
 ---
 
 ## What this is
 
 Phase-441 W2 measured whether CycloneDDS 0.10.5 can discover across QEMU's
 user-mode (slirp) networking. **It can** — the recipe and the evidence are in
-[phase-441](../roadmap/phase-441-rmw-on-target-verification.md) §W2. This issue
+[phase-441](../../roadmap/phase-441-rmw-on-target-verification.md) §W2. This issue
 records the one part of that answer that is a limitation of THIS tree rather
 than of Cyclone: the host-side profile our test harness writes cannot be the
 host side of such a pair, and nothing today says so.
@@ -98,3 +98,56 @@ Not a Cyclone bug. Every behaviour above is documented or deliberate in the
 pinned 0.10.5, and the pin does not move (issue 0507). Not `ROS_LOCALHOST_ONLY`
 either — that reaches ROS processes only and was already measured useless here
 (1009).
+
+## Resolution
+
+Resolved 2026-10-06 (phase-480 W6). Both halves of the ask landed: the profile,
+and a refusal by name for a pair that does not use it.
+
+**The third profile**, `nros_tests::dds_isolation::CycloneSlirpPair` — the
+shape "What to do" above describes. Both halves carry one `<Discovery><Tag>`,
+are unicast only (`AllowMulticast=false` plus `Peers`), and use fixed
+participant indices (guest 0, host 1), so each side knows the other's DDSI
+ports (`ddsi_unicast_ports`). The host selects ONE non-loopback interface
+(`default_route_interface`, from `/proc/net/route`) and advertises the slirp
+alias `10.0.2.2`. The guest advertises `127.0.0.1`, which is where its forwarded
+ports land on the host. `qemu_hostfwd(guest_ip)` emits the two `hostfwd=udp:`
+clauses. Isolation is by tag, not by interface: a participant without the tag
+never matches.
+
+**The refusal.** `cyclone_peer_config_uri(platform)` hands out the loopback
+profile only when the nano side shares the host's network stack
+(`shares_host_network_stack`: Linux, Zephyr native_sim, FreeRTOS POSIX, ThreadX
+Linux, PX4 SITL). It refuses every QEMU guest and the FVP with a message naming
+this issue and `CycloneSlirpPair`. The unit test
+`no_runnable_cyclone_interop_cell_puts_its_nano_side_behind_slirp` holds
+`interop::CELLS` to that rule. A runnable Cyclone cell on a slirp guest must
+build the pair and be listed in `interop::SLIRP_PAIR_CELLS`, which is empty
+today.
+
+**Measured through libslirp itself.** `tests/cyclone_slirp_pair.rs` puts our
+Cyclone backend's `ros2_pub` in a user and network namespace whose only way out
+is `slirp4netns`, the same libslirp that QEMU's `-netdev user` uses: the
+`10.0.2.2` host-loopback alias, and inbound traffic only through `hostfwd`. The
+host side is a stock humble `ros2 topic echo` on `rmw_cyclonedds_cpp`.
+
+| host profile | samples received |
+| --- | --- |
+| `CycloneSlirpPair`, same tag | delivered, 3 of 3 runs (about 36 s per run, all three cases) |
+| `CycloneSlirpPair`, a different tag | 0: the isolation |
+| the issue-1009 loopback profile | 0: the collision this issue names, now reproduced on libslirp rather than pasta |
+
+Mutation: giving every pair the same tag makes the test fail with "a host
+participant with a DIFFERENT tag received the guest's samples".
+
+**Not measured:**
+
+- A real QEMU guest. The RTOS IP stacks (lwIP, NetX Duo, Zephyr's native stack)
+  and the embedded Cyclone build are still the open items phase-441 W2 lists.
+  The guest here ran Linux's stack and the hosted backend. The NAT is the real
+  libslirp, though, not an emulation of it.
+- A genuinely foreign participant on another host. The isolation is measured
+  against a same-host participant with a different tag. No cross-host LAN peer
+  was run.
+- No interop cell uses the pair yet. Prerequisites 1, 2 and 4 of phase-441 W2's
+  "What this makes affordable" are still open.
