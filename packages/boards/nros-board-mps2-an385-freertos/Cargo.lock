@@ -345,6 +345,8 @@ version = "0.5.0"
 dependencies = [
  "heapless",
  "nros-diagnostic-msgs",
+ "nros-serdes",
+ "nros-std-msgs",
 ]
 
 [[package]]

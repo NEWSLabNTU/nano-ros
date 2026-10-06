@@ -16,13 +16,14 @@
 //! `nros_cpp_install_monitors` and by [`install_contract_monitors`], which the
 //! `nros::main!` expansion calls before the first node is created. The mapping
 //! from a violation to a report is `nros-diagnostics`'
-//! (`DiagnosticReporter::report_violation`), so a violation reads the same
-//! from every road.
+//! (`DiagnosticReporter::report_violation`, streamed by
+//! `write_violation_report` so the report never sits on the spin thread's
+//! stack as a value), so a violation reads the same from every road.
 
 use core::{cell::UnsafeCell, ffi::c_void};
 
-use nros_core::{RosMessage, Serialize};
-use nros_diagnostics::{DiagnosticArray, DiagnosticReporter};
+use nros_core::RosMessage;
+use nros_diagnostics::DiagnosticArray;
 use nros_node::executor::{
     Executor,
     monitor::{AgeMonitorSpec, MonitorSpec, Violation},
@@ -93,19 +94,21 @@ impl DiagSink {
 /// `ctx` is the [`DiagSink`] [`DiagSink::hook`] installed.
 unsafe fn publish_violation(ctx: *mut c_void, v: &Violation) {
     let sink = unsafe { &mut *(ctx as *mut DiagSink) };
-    // `now_us` 0 with a 0 interval: the rules themselves are windowed and fire
-    // on transitions, so the reporter adds no second rate limit.
-    let Some(report) =
-        DiagnosticReporter::new(0).report_violation(0, v.rule, v.fqn, v.measured, v.declared)
-    else {
-        return;
-    };
+    // No rate limit: the rules themselves are windowed and fire on
+    // transitions. phase-474 I7 -- the report is STREAMED into the buffer
+    // (`write_violation_report`, byte-identical to serializing
+    // `DiagnosticReporter::report_violation`'s value). The value is a 5 KB
+    // `DiagnosticArray`, and building it here, on the spin thread, ran the
+    // safety island's 16 KiB main stack into the idle thread's on its first
+    // stored violation. What stays on this frame is the 512 B buffer.
     let mut buf = [0u8; REPORT_BUF];
     let Ok(mut w) = nros_core::CdrWriter::new_with_header(&mut buf) else {
         sink.failed = sink.failed.saturating_add(1);
         return;
     };
-    if report.serialize(&mut w).is_err() {
+    if nros_diagnostics::write_violation_report(&mut w, v.rule, v.fqn, v.measured, v.declared)
+        .is_err()
+    {
         sink.failed = sink.failed.saturating_add(1);
         return;
     }

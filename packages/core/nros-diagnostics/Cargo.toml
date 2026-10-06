@@ -27,3 +27,9 @@ default = []
 # version cannot be wrong in either direction.
 nros-diagnostic-msgs = { path = "../../interfaces/generated/humble/nros-diagnostic-msgs", default-features = false }
 heapless = "0.8"
+# phase-474 I7 -- `write_violation_report` streams a report's CDR without
+# building the 5 KB `DiagnosticArray` value; it needs the writer and the
+# header type the generated crate serializes with. Path-only, as above; both
+# are already in every graph this crate is in, through nros-diagnostic-msgs.
+nros-serdes = { path = "../nros-serdes", default-features = false }
+nros-std-msgs = { path = "../../interfaces/generated/humble/nros-std-msgs", default-features = false }
