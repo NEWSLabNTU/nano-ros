@@ -194,6 +194,9 @@ pub struct MockServiceServer {
     pub sent: core::cell::RefCell<heapless::Vec<(i64, [u8; 256], usize), 8>>,
     /// phase-444 — the service this server was created on.
     service_name: MockName,
+    /// Issue 1352 — an error the next `take_request` returns instead of a
+    /// request (a backend that dropped one, e.g. an inbox overflow).
+    pending_error: core::cell::RefCell<Option<TransportError>>,
 }
 
 impl MockServiceServer {
@@ -209,7 +212,13 @@ impl MockServiceServer {
             next_seq: Cell::new(0),
             sent: core::cell::RefCell::new(heapless::Vec::new()),
             service_name: MockName::new(service_name),
+            pending_error: core::cell::RefCell::new(None),
         }
+    }
+
+    /// Issue 1352 — make the next `take_request` fail with `err`, once.
+    pub fn load_error(&self, err: TransportError) {
+        *self.pending_error.borrow_mut() = Some(err);
     }
 
     /// The service this server was created on.
@@ -226,13 +235,16 @@ impl ServiceTrait for MockServiceServer {
     type Error = TransportError;
 
     fn has_request(&self) -> bool {
-        self.pending.get().is_some()
+        self.pending.get().is_some() || self.pending_error.borrow().is_some()
     }
 
     fn take_request<'a>(
         &mut self,
         buf: &'a mut [u8],
     ) -> Result<Option<ServiceRequest<'a>>, TransportError> {
+        if let Some(err) = self.pending_error.borrow_mut().take() {
+            return Err(err);
+        }
         match self.pending.get() {
             Some((data, len)) => {
                 buf[..len].copy_from_slice(&data[..len]);

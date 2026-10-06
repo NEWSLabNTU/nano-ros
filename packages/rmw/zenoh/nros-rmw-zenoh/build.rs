@@ -187,10 +187,49 @@ fn main() {
     // words there. It used to be read with the derivation as the DEFAULT, so
     // the literal 0 the Kconfig row forwarded (its old derive sentinel) won
     // over the derivation and became the slot size.
-    let builtin_inbox_bytes: usize = match env_usize("NROS_PARAM_SERVICE_INBOX_BYTES", usize::MAX) {
-        usize::MAX => declared_param_request_max(sizing.as_ref()).unwrap_or(svc_size),
+    //
+    // Issue 1352 -- the two fallbacks are NOT one. W2b fell back to `svc_size`
+    // whenever the declaration could not price the family, and W3 had just
+    // UNFLOORED `svc_size` to the user-service demand: an image declaring one
+    // `AddTwoInts` server got a ~20 B parameter slot. And where the contract
+    // DID declare the parameters but one is a string or an array, this crate
+    // cannot price them (the store's caps are nros-params'), so it fell back
+    // the same way while nros-node priced the very same requests correctly --
+    // measured: 25 declared parameters, one of them a string, and a 25-name
+    // `set_parameters` was dropped by a 1,024 B slot with no reply.
+    // `builtin_slot` holds the rule: declared-and-unpriceable REFUSES, naming
+    // the knob nros-node checks; undeclared keeps the pre-W3 floor.
+    let stated_param_inbox = match env_usize("NROS_PARAM_SERVICE_INBOX_BYTES", usize::MAX) {
+        usize::MAX => None,
         0 => panic!("{PARAM_INBOX_ZERO_REFUSAL}"),
-        n => n,
+        n => Some(n),
+    };
+    let param_shape = sizing
+        .as_ref()
+        .and_then(|d| d.params.service_shape().into_stated());
+    let builtin_slot_verdict = builtin_slot(
+        stated_param_inbox,
+        param_shape.as_deref(),
+        svc_size,
+        SERVICE_BUFFER_SIZE_DEFAULT,
+    );
+    let builtin_priced = builtin_slot_verdict.is_priced();
+    let builtin_inbox_bytes: usize = match builtin_slot_verdict {
+        BuiltinSlot::Stated(n) | BuiltinSlot::Derived(n) => n,
+        BuiltinSlot::Unpriced(n) => {
+            // Only an image with a descriptor has a builtin table to warn about;
+            // with none, the family shares the user-service rings as before.
+            if sizing.is_some() {
+                warn(&format!(
+                    "the parameter family's requests are not priced: the image declares no \
+                     `params:`. Its inbox slot keeps {n} B; a larger `set_parameters` is dropped \
+                     with no reply. Declaring the parameters in the contract derives it \
+                     (issue 1352)"
+                ));
+            }
+            n
+        }
+        BuiltinSlot::Refused(why) => panic!("\n\n{why}\n"),
     };
     let builtin_inbox_depth: usize = env_usize_min("NROS_PARAM_SERVICE_INBOX_DEPTH", 1, 1);
     // Phase 160.C.2 — bumped 10_000 → 30_000. The original 10 s default
@@ -347,7 +386,39 @@ fn main() {
     // resolver road carried no application count at all, so an image whose
     // contract declares the parameter family built its builtin table empty
     // and every parameter service fell through to a user-service ring.
-    let declared_app_queryables = match declared_app_queryables(sizing.as_ref(), tl_demand) {
+    let app_queryables = declared_app_queryables(sizing.as_ref(), tl_demand);
+    // Issue 1352 -- a priced or stated builtin slot is only honoured if the
+    // builtin TABLE exists, and it exists only when the application's own
+    // queryable count is known (`BUILTIN_INBOX_PER_SESSION`, which abstains to
+    // zero otherwise). Measured: a contract declaring 25 parameters, the
+    // components declaring no entities, `NROS_PARAM_SERVICE_INBOX_BYTES=4096`
+    // stated -- `BUILTIN_INBOX_BYTES` was 4096 and the parameter services
+    // still landed in 1,024 B user-service rings and dropped the request.
+    // With no builtin table the user-service rings ARE the parameter family's
+    // rings, so they must hold its priced request. The safe direction, and
+    // said: declaring the components' entities builds the table and gives the
+    // user rings their own size back.
+    let shared_user_slot = user_slot_without_builtin_table(
+        app_queryables.is_some(),
+        builtin_priced,
+        builtin_inbox_bytes,
+        service_inbox_bytes,
+    );
+    let service_inbox_bytes = if shared_user_slot != service_inbox_bytes {
+        warn(&format!(
+            "the parameter family's request slot is {builtin_inbox_bytes} B, but this image \
+             does not say how many queryables its own components create, so there is no \
+             builtin table and the parameter services share the user-service rings. Those \
+             rings are raised from {service_inbox_bytes} B to {builtin_inbox_bytes} B so a \
+             declared `set_parameters` still lands (issue 1352). Declaring each component's \
+             entities in its contract builds the builtin table and gives the user rings \
+             their own size back"
+        ));
+        shared_user_slot
+    } else {
+        service_inbox_bytes
+    };
+    let declared_app_queryables = match app_queryables {
         Some(n) => format!("Some({n})"),
         None => "None".to_string(),
     };
@@ -550,8 +621,12 @@ fn declared_app_queryables(desc: Option<&SizingDescriptor>, tl: Option<usize>) -
 /// word-aligned on every target the tree builds for.
 ///
 /// `None` when this crate cannot answer, which is both an absent declaration
-/// and a declaration it is not entitled to price -- see below. The caller then
-/// keeps the user-service slot, which is today's size.
+/// and a declaration it is not entitled to price -- see below. Issue 1352 made
+/// those two different VERDICTS (`param_slot::builtin_slot`): an absent
+/// declaration keeps the floor the single table always had, and a declaration
+/// this crate cannot price REFUSES the build, because the fallback it used to
+/// take (the unfloored user-service slot) dropped a well-formed, declared
+/// request while nros-node had priced it.
 ///
 /// # The authority is `nros-node`, and this is the half that needs no board
 ///
@@ -591,57 +666,12 @@ fn declared_app_queryables(desc: Option<&SizingDescriptor>, tl: Option<usize>) -
 ///
 /// A MALFORMED token is not this crate's to refuse: `nros-node`'s build script
 /// owns the grammar and panics naming it. Here it reads as "cannot answer".
-fn declared_param_request_max(desc: Option<&SizingDescriptor>) -> Option<usize> {
-    // Issue 1649 -- the descriptor is the one road (the carrier is retired).
-    let raw = desc.and_then(|d| d.params.service_shape().into_stated())?;
-    param_request_max_from(raw.trim())
-}
-
-/// The rule, with the environment lifted out of it: the caller reads the two
-/// roads, this takes the token. A build script cannot carry a `#[cfg(test)]`
-/// module that anything runs -- cargo compiles build.rs as a host binary and
-/// `cargo test` never touches it -- so the evidence for this one is the
-/// negative control in the commit message, run over the emitted constant.
-fn param_request_max_from(raw: &str) -> Option<usize> {
-    /// The 4-byte encapsulation header both halves begin with.
-    const CDR_HEADER: usize = 4;
-    /// A sequence length: up to 3 bytes of padding to 4, then a `u32`.
-    const CDR_SEQ: usize = 3 + 4;
-    /// A string beyond its bytes: padding, the `u32` length (which counts the
-    /// NUL), and the NUL.
-    const CDR_STR: usize = 3 + 4 + 1;
-    /// An 8-byte field after anything: up to 7 bytes of padding, then 8.
-    const CDR_WORD: usize = 7 + 8;
-    /// One `ParameterValue` with no data in it. The worst over all eight start
-    /// alignments; `nros-node` states why it is 53 and not the 68 the per-field
-    /// worsts sum to.
-    const CDR_VALUE_BASE: usize = 53;
-
-    if raw.is_empty() {
-        return None;
-    }
-    let mut worst = 0usize;
-    for node in raw.split(',') {
-        let f: Option<Vec<usize>> = node.split(':').map(|v| v.trim().parse().ok()).collect();
-        let f = f.filter(|f| f.len() == 9)?;
-        // Fields 4..9 are the counts whose bound needs the store's
-        // capacities. One of them and this crate abstains, for the whole
-        // image: a bound that is right for three nodes and guessed for the
-        // fourth is not a bound.
-        if f[4..9].iter().any(|&n| n != 0) {
-            return None;
-        }
-        let head = CDR_HEADER + CDR_SEQ;
-        let names = f[1] + f[0] * CDR_STR;
-        let prefixes = f[3] + f[2] * CDR_STR;
-        let values = f[0] * CDR_VALUE_BASE;
-        worst = worst
-            .max(head + names)
-            .max(head + prefixes + CDR_WORD)
-            .max(head + names + values);
-    }
-    Some(worst.next_multiple_of(4))
-}
+///
+/// The rule lives in `build_param_slot.rs` so a test can include it: a build
+/// script carries no `#[cfg(test)]` that anything runs (issue 1352).
+#[path = "build_param_slot.rs"]
+mod param_slot;
+use param_slot::{BuiltinSlot, builtin_slot, user_slot_without_builtin_table};
 
 /// The descriptor this build was pointed at, or `None`.
 ///
