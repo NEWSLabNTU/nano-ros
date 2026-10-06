@@ -377,22 +377,25 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
             return ptr::null_mut();
         }
 
-        let new_ptr = self.alloc(size);
-        if new_ptr.is_null() {
-            return ptr::null_mut();
-        }
-
         // #190 — foreign old pointer (not from this heap): there is no header
-        // to read a size from, and `free` would corrupt live memory. Copy the
-        // requested size from the foreign block (its true length is unknown
-        // but ≥ what the caller is reallocating around) and leak it.
+        // to read a size from, and `free` would corrupt live memory.
+        //
+        // Issue 1719 — so it is REFUSED: NULL, the foreign block untouched and
+        // still the caller's, exactly as a failed `realloc` leaves it. This
+        // used to copy `size` bytes out of it on the theory that its "true
+        // length is unknown but ≥ what the caller is reallocating around" —
+        // which is backwards on a GROW, the one case realloc exists for: the
+        // copy read past the foreign block's end. The copy length must come
+        // from the allocator that owns the block, and this one does not.
         if !self.is_in_slab(old_ptr as *mut u8) && !self.is_in_heap(old_ptr as *mut u8) {
             let n = self.foreign_frees.load(Ordering::Relaxed);
             self.foreign_frees.store(n + 1, Ordering::Relaxed);
-            unsafe {
-                ptr::copy_nonoverlapping(old_ptr as *const u8, new_ptr as *mut u8, size);
-            }
-            return new_ptr;
+            return ptr::null_mut();
+        }
+
+        let new_ptr = self.alloc(size);
+        if new_ptr.is_null() {
+            return ptr::null_mut();
         }
 
         // phase-391 W2 follow-up — the heap branch used to read the OLD
@@ -1165,6 +1168,32 @@ mod tests {
         assert_ne!(q, r);
         H.free(q);
         H.free(r);
+    }
+
+    /// Issue 1719 — a foreign pointer has no header this heap can size, so a
+    /// realloc of it must REFUSE rather than copy the requested size out of
+    /// it. The foreign block is 16 bytes followed by a guard pattern; the old
+    /// branch copied 256 bytes, guard included, into the new block.
+    #[test]
+    fn foreign_realloc_is_refused_and_never_reads_past_the_block() {
+        static H: FreeListHeap<{ 32 * 1024 }> = FreeListHeap::new();
+        let mut outside = [0xA5u8; 256];
+        outside[..16].fill(0x11);
+        let before = H.foreign_free_count();
+        let q = H.realloc(outside.as_mut_ptr() as *mut core::ffi::c_void, 256);
+        if !q.is_null() {
+            let tail = unsafe { core::slice::from_raw_parts(q as *const u8, 256) };
+            let copied_guard = tail[16..].iter().filter(|b| **b == 0xA5).count();
+            panic!(
+                "a foreign realloc returned a block ({copied_guard} guard bytes copied from past \
+                 the foreign block's end)"
+            );
+        }
+        assert_eq!(H.foreign_free_count(), before + 1, "the refusal is counted");
+        assert!(
+            outside[..16].iter().all(|b| *b == 0x11),
+            "the foreign block is untouched"
+        );
     }
 
     #[test]

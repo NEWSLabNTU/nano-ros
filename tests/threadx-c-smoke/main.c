@@ -20,6 +20,8 @@
 
 #include <tx_api.h>
 
+#include "../c-port-smoke-common/realloc_probe.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>     /* _exit */
@@ -89,6 +91,12 @@ static void smoke_entry(ULONG arg) {
     nros_platform_timer_destroy(th);
     printf("  timer fires over 200ms: %d\n", s_timer_fires);
     CHECK(s_timer_fires >= 4, "periodic timer fired too few times");
+
+    /* Issue 1719 -- a growing realloc copies the OLD block, not the new size. */
+    {
+        const char *why = nros_smoke_realloc_probe();
+        CHECK(why == NULL, why);
+    }
 
     /* Issue 1717 — an EXHAUSTED pool must answer NULL, never park the caller.
      *

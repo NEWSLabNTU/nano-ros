@@ -424,17 +424,24 @@ build-c-port:
     #!/usr/bin/env bash
     set -e
     cd tests/freertos-c-smoke
-    # nros-cmake-prefix-exempt: pure-C FreeRTOS port smoke test, no Rust.
-    cmake -B build >/dev/null
-    cmake --build build
+    # Once per heap scheme: the port's allocator differs between heap_4 (every
+    # in-tree board) and heap_3 (the freertos-posix board), issue 1719.
+    for heap in 4 3; do
+        # nros-cmake-prefix-exempt: pure-C FreeRTOS port smoke test, no Rust.
+        cmake -B "build/heap$heap" -DNROS_SMOKE_FREERTOS_HEAP="$heap" >/dev/null
+        cmake --build "build/heap$heap"
+    done
 
-# Phase 121.6 — run the FreeRTOS Posix-port smoke test on the host.
-# Boots FreeRTOS, runs the smoke task, exits with status 0 on PASS.
+# Phase 121.6 — run the FreeRTOS Posix-port smoke test on the host, once per
+# heap scheme. Boots FreeRTOS, runs the smoke task, exits 0 on PASS.
 [group("debug")]
 test-c-port: build-c-port
     #!/usr/bin/env bash
     set -e
-    timeout 15 ./tests/freertos-c-smoke/build/nros_freertos_c_smoke
+    for heap in 4 3; do
+        echo "== FreeRTOS C-port smoke, heap_$heap =="
+        timeout 15 "./tests/freertos-c-smoke/build/heap$heap/nros_freertos_c_smoke"
+    done
 
 # CI: check prerequisites + test
 [group("full-matrix")]

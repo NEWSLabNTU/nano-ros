@@ -17,6 +17,8 @@
 #include <task.h>
 #include <semphr.h>
 
+#include "../c-port-smoke-common/realloc_probe.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -51,6 +53,12 @@ static void smoke_task(void *arg) {
     CHECK(p != NULL, "alloc");
     memset(p, 0xCC, 64);
     nros_platform_dealloc(p);
+
+    /* Issue 1719 -- a growing realloc copies the OLD block, not the new size. */
+    {
+        const char *why = nros_smoke_realloc_probe();
+        CHECK(why == NULL, why);
+    }
 
     /* Yield */
     nros_platform_yield_now();

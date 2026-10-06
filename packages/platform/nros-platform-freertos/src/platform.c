@@ -8,7 +8,8 @@
  *                    configTICK_RATE_HZ.
  *   - Allocation   — pvPortMalloc / vPortFree. realloc is emulated
  *                    via malloc + memcpy + free since FreeRTOS has
- *                    no `pvPortRealloc`.
+ *                    no `pvPortRealloc`; the copy length is the old
+ *                    block's, read from the heap (issue 1719).
  *   - Sleep        — vTaskDelay(ms_to_ticks).
  *   - Yield        — vTaskDelay(1). taskYIELD() is a tick-quantum
  *                    busy-spin on cooperative scheduling; one tick
@@ -258,13 +259,32 @@ size_t nros_platform_heap_total_bytes(void) {
 }
 #endif
 
-/*
- * FreeRTOS has no `pvPortRealloc` in stock builds. Emulate it with
- * malloc + memcpy + free. The caller must keep the original `size`
- * available out-of-band if it needs to preserve more than the
- * minimum of (old, new); we have no way to query the old size from
- * the heap_4 free-list, so we conservatively copy up to `size`.
- */
+/* ---- Realloc (issue 1719) ----
+ *
+ * FreeRTOS has no `pvPortRealloc`, so this is alloc + copy + free -- and the
+ * copy length must come from the ALLOCATOR, never from the request. It used
+ * to be `size`: on a grow that read past the old block's end, into the next
+ * block's header and contents. The old size comes from whichever heap
+ * `pvPortMalloc` is:
+ *
+ *   - heap_3 (`NROS_FREERTOS_HEAP_3`, the POSIX simulator board): a wrapper
+ *     over the C library's `malloc`, so the C library's `realloc` IS the
+ *     answer, under the same scheduler suspension heap_3 takes around its own
+ *     `malloc`/`free`.
+ *   - ESP-IDF (`ESP_PLATFORM`): `pvPortMalloc` is `heap_caps_malloc`, and the
+ *     C library's `realloc` is `heap_caps_realloc` over the same heaps.
+ *     UNMEASURED here -- no IDF build exists in-tree (RFC-0065 D3).
+ *   - otherwise heap_4 (every in-tree board) or heap_5, whose block layout is
+ *     identical: a `BlockLink_t { next; xBlockSize }` padded to
+ *     `xHeapStructSize` sits immediately before the returned pointer, and
+ *     `xBlockSize` -- header included -- carries the allocated flag in its top
+ *     bit while the block is in use. Mirrored below from the pinned kernel
+ *     (`portable/MemMang/heap_4.c`, V11.2.0); a header without the flag is
+ *     not one heap_4 wrote, and is REFUSED with NULL (the old block untouched,
+ *     as a failed `realloc` leaves it) rather than copied by a guess. */
+#if defined(NROS_FREERTOS_HEAP_3) || defined(ESP_PLATFORM)
+#include <stdlib.h>
+
 void *nros_platform_realloc(void *ptr, size_t size) {
     if (size == 0) {
         nros_platform_dealloc(ptr);
@@ -273,17 +293,65 @@ void *nros_platform_realloc(void *ptr, size_t size) {
     if (ptr == NULL) {
         return nros_platform_alloc(size);
     }
-    void *out = pvPortMalloc(size);
+    void *out;
+#if defined(NROS_FREERTOS_HEAP_3)
+    vTaskSuspendAll();
+    out = realloc(ptr, size);
+    (void) xTaskResumeAll();
+#else
+    out = realloc(ptr, size);
+#endif
+    return out;
+}
+#else
+typedef struct nros_freertos_block_link {
+    struct nros_freertos_block_link *next;
+    size_t block_size;
+} nros_freertos_block_link_t;
+
+#define NROS_FREERTOS_HEAP_STRUCT_SIZE                                                             \
+    ((sizeof(nros_freertos_block_link_t) + ((size_t) (portBYTE_ALIGNMENT - 1))) &                  \
+     ~((size_t) portBYTE_ALIGNMENT_MASK))
+#define NROS_FREERTOS_BLOCK_ALLOCATED_BIT ((size_t) 1 << ((sizeof(size_t) * 8u) - 1u))
+
+/* How many bytes the block at `ptr` owns past its header, or 0 when the header
+ * is not an allocated heap_4/heap_5 block. */
+static size_t nros_freertos_block_bytes(void *ptr) {
+    const nros_freertos_block_link_t *link =
+        (const nros_freertos_block_link_t *) (void *) ((uint8_t *) ptr -
+                                                        NROS_FREERTOS_HEAP_STRUCT_SIZE);
+    const size_t raw = link->block_size;
+    if ((raw & NROS_FREERTOS_BLOCK_ALLOCATED_BIT) == 0u) {
+        return 0u;
+    }
+    const size_t whole = raw & ~NROS_FREERTOS_BLOCK_ALLOCATED_BIT;
+    if (whole <= NROS_FREERTOS_HEAP_STRUCT_SIZE) {
+        return 0u;
+    }
+    return whole - NROS_FREERTOS_HEAP_STRUCT_SIZE;
+}
+
+void *nros_platform_realloc(void *ptr, size_t size) {
+    if (size == 0) {
+        nros_platform_dealloc(ptr);
+        return NULL;
+    }
+    if (ptr == NULL) {
+        return nros_platform_alloc(size);
+    }
+    const size_t old_bytes = nros_freertos_block_bytes(ptr);
+    if (old_bytes == 0u) {
+        return NULL;
+    }
+    void *out = nros_platform_alloc(size);
     if (out == NULL) {
         return NULL;
     }
-    /* Best-effort copy. FreeRTOS heap_4 doesn't expose the original
-     * block size; the caller is expected to track that out-of-band
-     * if a precise copy is required. */
-    memcpy(out, ptr, size);
+    memcpy(out, ptr, old_bytes < size ? old_bytes : size);
     vPortFree(ptr);
     return out;
 }
+#endif
 
 /* ---- Sleep ---- */
 
