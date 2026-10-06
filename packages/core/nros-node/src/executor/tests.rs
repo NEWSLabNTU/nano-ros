@@ -12320,7 +12320,109 @@ fn a_heap_too_small_for_the_parameter_store_refuses_the_declaration() {
     // declares, so the refusal above is the cap and not the call.
     let mut ok: Executor = executor_with_clock(MockSession::new());
     assert!(ok.declare_parameter("rate", ParameterValue::Integer(10)));
-/// phase-474 I1 — the ring keeps the LATEST `MAX_VIOLATIONS` verdicts, counts
+}
+
+/// Issue 1667 — the workload issue 1496's 8-region table was never measured
+/// against: entries of FOUR sizes (40 B to 4.6 KiB) created and released in a
+/// pseudo-random order, at most three live at once, for 100 000 rounds.
+///
+/// Measured on the table: the arena filled (73 248 of 74 240 B) with at most
+/// ~14 KiB live and only 5 424 B listed as released — the rest was dropped by
+/// the table (a full table discarded a region; a split tail under 64 B was
+/// discarded too), and after that every registration failed. The free list
+/// drops nothing, so the arena stays near what is live.
+#[test]
+fn a_churning_mixed_workload_never_exhausts_the_arena() {
+    type Reg = fn(&mut Executor<'_>) -> Result<HandleId, NodeError>;
+    type Rel = unsafe fn(&mut Executor<'_>, HandleId) -> bool;
+    let kinds: [(Reg, Rel); 4] = [
+        (register_buffered_sub, |e, h| unsafe {
+            e.release_subscription(h)
+        }),
+        (
+            |e| e.register_timer(TimerDuration::from_millis(1000), || {}),
+            |e, h| unsafe { e.release_timer(h) },
+        ),
+        (
+            |e| {
+                e.register_service_raw(
+                    "/churn",
+                    "test/srv/T",
+                    "h",
+                    release_probe_srv,
+                    core::ptr::null_mut(),
+                )
+            },
+            |e, h| unsafe { e.release_service(h) },
+        ),
+        (
+            |e| {
+                e.register_service_client_raw(
+                    "/churn",
+                    "test/srv/T",
+                    "h",
+                    Some(release_probe_reply),
+                    core::ptr::null_mut(),
+                )
+            },
+            |e, h| unsafe { e.release_service_client(h) },
+        ),
+    ];
+    // The largest single entry, so the bound below is stated in its terms.
+    let largest = kinds
+        .iter()
+        .map(|(reg, _)| {
+            let mut e: Executor = executor_with_clock(MockSession::new());
+            reg(&mut e).expect("register alone");
+            e.arena_used()
+        })
+        .max()
+        .unwrap();
+
+    const LIVE: usize = 3;
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let mut live: std::vec::Vec<(usize, HandleId)> = std::vec::Vec::new();
+    let mut seed: u64 = 0x1667;
+    let mut next = || {
+        seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (seed >> 33) as usize
+    };
+    let mut peak = 0;
+    for round in 0..100_000 {
+        if live.len() < LIVE && (live.is_empty() || next() % 2 == 0) {
+            let k = next() % kinds.len();
+            let h = kinds[k].0(&mut executor).unwrap_or_else(|e| {
+                panic!(
+                    "round {round}: registration failed with {e:?} — {} B used, {} B in {} holes, \
+                     {} live",
+                    executor.arena_used(),
+                    executor.arena_released(),
+                    executor.arena_holes(),
+                    live.len()
+                )
+            });
+            live.push((k, h));
+        } else {
+            let (k, h) = live.swap_remove(next() % live.len());
+            assert!(unsafe { kinds[k].1(&mut executor, h) }, "round {round}");
+        }
+        peak = peak.max(executor.arena_used());
+    }
+    assert!(
+        peak <= 2 * LIVE * largest,
+        "the arena reached {peak} B for at most {LIVE} live entries of at most {largest} B"
+    );
+    for (k, h) in live.drain(..) {
+        assert!(unsafe { kinds[k].1(&mut executor, h) });
+    }
+    assert_eq!(
+        (executor.arena_used(), executor.arena_holes()),
+        (0, 0),
+        "with nothing live, every byte coalesced back into the bump pointer"
+    );
+}
 /// phase-474 I1 -- the ring keeps the LATEST `MAX_VIOLATIONS` verdicts, counts
 /// what it evicted, and numbers each one, so a late violation is never lost to
 /// start-up noise (the Autoware Safety Island's ring held its first 8 since
@@ -12430,106 +12532,6 @@ fn a_stored_violation_emits_its_trace_markers() {
     );
 }
 
-/// Issue 1667 — the workload issue 1496's 8-region table was never measured
-/// against: entries of FOUR sizes (40 B to 4.6 KiB) created and released in a
-/// pseudo-random order, at most three live at once, for 100 000 rounds.
-///
-/// Measured on the table: the arena filled (73 248 of 74 240 B) with at most
-/// ~14 KiB live and only 5 424 B listed as released — the rest was dropped by
-/// the table (a full table discarded a region; a split tail under 64 B was
-/// discarded too), and after that every registration failed. The free list
-/// drops nothing, so the arena stays near what is live.
-#[test]
-fn a_churning_mixed_workload_never_exhausts_the_arena() {
-    type Reg = fn(&mut Executor<'_>) -> Result<HandleId, NodeError>;
-    type Rel = unsafe fn(&mut Executor<'_>, HandleId) -> bool;
-    let kinds: [(Reg, Rel); 4] = [
-        (register_buffered_sub, |e, h| unsafe {
-            e.release_subscription(h)
-        }),
-        (
-            |e| e.register_timer(TimerDuration::from_millis(1000), || {}),
-            |e, h| unsafe { e.release_timer(h) },
-        ),
-        (
-            |e| {
-                e.register_service_raw(
-                    "/churn",
-                    "test/srv/T",
-                    "h",
-                    release_probe_srv,
-                    core::ptr::null_mut(),
-                )
-            },
-            |e, h| unsafe { e.release_service(h) },
-        ),
-        (
-            |e| {
-                e.register_service_client_raw(
-                    "/churn",
-                    "test/srv/T",
-                    "h",
-                    Some(release_probe_reply),
-                    core::ptr::null_mut(),
-                )
-            },
-            |e, h| unsafe { e.release_service_client(h) },
-        ),
-    ];
-    // The largest single entry, so the bound below is stated in its terms.
-    let largest = kinds
-        .iter()
-        .map(|(reg, _)| {
-            let mut e: Executor = executor_with_clock(MockSession::new());
-            reg(&mut e).expect("register alone");
-            e.arena_used()
-        })
-        .max()
-        .unwrap();
-
-    const LIVE: usize = 3;
-    let mut executor: Executor = executor_with_clock(MockSession::new());
-    let mut live: std::vec::Vec<(usize, HandleId)> = std::vec::Vec::new();
-    let mut seed: u64 = 0x1667;
-    let mut next = || {
-        seed = seed
-            .wrapping_mul(6_364_136_223_846_793_005)
-            .wrapping_add(1_442_695_040_888_963_407);
-        (seed >> 33) as usize
-    };
-    let mut peak = 0;
-    for round in 0..100_000 {
-        if live.len() < LIVE && (live.is_empty() || next() % 2 == 0) {
-            let k = next() % kinds.len();
-            let h = kinds[k].0(&mut executor).unwrap_or_else(|e| {
-                panic!(
-                    "round {round}: registration failed with {e:?} — {} B used, {} B in {} holes, \
-                     {} live",
-                    executor.arena_used(),
-                    executor.arena_released(),
-                    executor.arena_holes(),
-                    live.len()
-                )
-            });
-            live.push((k, h));
-        } else {
-            let (k, h) = live.swap_remove(next() % live.len());
-            assert!(unsafe { kinds[k].1(&mut executor, h) }, "round {round}");
-        }
-        peak = peak.max(executor.arena_used());
-    }
-    assert!(
-        peak <= 2 * LIVE * largest,
-        "the arena reached {peak} B for at most {LIVE} live entries of at most {largest} B"
-    );
-    for (k, h) in live.drain(..) {
-        assert!(unsafe { kinds[k].1(&mut executor, h) });
-    }
-    assert_eq!(
-        (executor.arena_used(), executor.arena_holes()),
-        (0, 0),
-        "with nothing live, every byte coalesced back into the bump pointer"
-    );
 /// Tests that install `nros_log`'s process-global sink list (`nros_log::init`
 /// swaps it) and assert on what reached THEIR sink. Serialised so one cannot
 /// swap the other's sink out mid-assertion (phase-474 T4).
