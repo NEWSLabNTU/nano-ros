@@ -62,6 +62,7 @@ echo "  domain=$ROS_DOMAIN_ID"
 # Drop the ros2 daemon so successive test runs don't reuse stale
 # discovery state.
 ros2 daemon stop >/dev/null 2>&1 || true
+nros_e2e_stage "ros2 daemon stop returned"
 
 NROS_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 ROS_LD_LIBRARY_PATH="${LD_LIBRARY_PATH#*build/install/lib:}"
@@ -73,6 +74,7 @@ nros_require_ros2_rmw_loadable "$RMW_IMPLEMENTATION" "$ROS_LD_LIBRARY_PATH" || e
 failed=0
 
 echo "=== 117.12.B.1: ros2 service call → nros server ==="
+nros_e2e_stage "B.1 start"
 
 # Start the nano-ros server first.
 env LD_LIBRARY_PATH="$NROS_LD_LIBRARY_PATH" \
@@ -111,6 +113,7 @@ if kill -0 "$SRV_PID" 2>/dev/null; then
 fi
 wait "$SRV_PID"
 SRV_RC=$?
+nros_e2e_stage "B.1 server reaped (rc=$SRV_RC)"
 
 if [ "$SRV_RC" -ne 0 ]; then
     if [ "$srv_abandoned" -eq 1 ]; then
@@ -148,6 +151,7 @@ if [ -n "${NROS_RMW_CYCLONEDDS_SRV_CLIENT_BIN:-}" ] &&
    [ -x "$NROS_RMW_CYCLONEDDS_SRV_CLIENT_BIN" ] &&
    ros2 pkg list 2>/dev/null | grep -qx demo_nodes_cpp; then
     echo "=== 117.12.B.2: nros client → ros2 stock server ==="
+    nros_e2e_stage "B.2 start"
     CLIENT_OUT=$(mktemp)
     SERVER_LOG=$(mktemp)
     # `ros2 run` is a PYTHON launcher that spawns the C++ node as a child, so
@@ -180,6 +184,7 @@ if [ -n "${NROS_RMW_CYCLONEDDS_SRV_CLIENT_BIN:-}" ] &&
     # Group kill: the launcher's whole session, not just the launcher.
     kill -TERM -"$DN_PID" 2>/dev/null || true
     wait $DN_PID 2>/dev/null || true
+    nros_e2e_stage "B.2 stock server reaped"
 
     if [ "$CLI_RC" -ne 0 ]; then
         echo "  FAIL: nros client exited rc=$CLI_RC"
@@ -200,5 +205,6 @@ if [ "$failed" -gt 0 ]; then
     echo "FAIL: $failed sub-case(s) failed"
     exit 1
 fi
+nros_e2e_stage "exiting"
 echo "OK"
 exit 0

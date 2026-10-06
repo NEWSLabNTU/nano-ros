@@ -82,6 +82,7 @@ trap cleanup EXIT
 nros_export_cyclone_config "$CYCLONE_XML" || exit 0
 echo "  domain=$ROS_DOMAIN_ID"
 
+
 # issue 1139 — a DEADLINE, not a window.
 #
 # Every timing constant this script used to carry was a bet that a fixed
@@ -102,6 +103,7 @@ NROS_E2E_DEADLINE_S="${NROS_E2E_DEADLINE_S:-60}"
 # topic-discovery state. Failing here is fine — daemon may not be
 # running yet.
 ros2 daemon stop >/dev/null 2>&1 || true
+nros_e2e_stage "ros2 daemon stop returned"
 
 # Save the test harness's LD_LIBRARY_PATH (which puts the in-tree
 # `build/install/lib` first so our test binaries pick up the
@@ -116,6 +118,7 @@ nros_run() { LD_LIBRARY_PATH="$NROS_LD_LIBRARY_PATH" "$@"; }
 # Asked BEFORE either deadline starts, through the path the CLI will actually
 # get. See the helper for the host-tests measurement that put it here.
 nros_require_ros2_rmw_loadable "$RMW_IMPLEMENTATION" "$ROS_LD_LIBRARY_PATH" || exit 1
+nros_e2e_stage "ros2 peer rmw load check returned"
 
 failed=0
 
@@ -145,6 +148,7 @@ a1_captured() {
 # Case 1: nano-ros publisher → ros2 topic echo
 # ---------------------------------------------------------------
 echo "=== 117.12.A.1: nros pub → ros2 echo ==="
+nros_e2e_stage "A.1 start"
 
 # `ros2 topic echo` first and for the whole deadline. The old order (publisher
 # first, +1 s, then an 8 s echo) was there so the writer was announced before
@@ -209,9 +213,11 @@ while [ "$SECONDS" -lt "$a1_deadline" ]; do
         sleep 0.5
     fi
 done
+nros_e2e_stage "A.1 verdict reached (captured=$captured); stopping the echo"
 kill "$ECHO_PID" 2>/dev/null || true
 wait "$ECHO_PID" 2>/dev/null || true
 ECHO_PID=""
+nros_e2e_stage "A.1 echo reaped"
 
 if [ "$captured" -eq 1 ]; then
     echo "  PASS: ros2 echo captured 'hello-from-nros' (publisher attempt $attempts)"
@@ -228,6 +234,7 @@ fi
 # Case 2: ros2 topic pub → nano-ros subscriber
 # ---------------------------------------------------------------
 echo "=== 117.12.A.2: ros2 pub → nros sub ==="
+nros_e2e_stage "A.2 start"
 
 # `ros2 topic pub` first and left running: it repeats at 5 Hz, so a subscriber
 # that joins late still gets a sample, and the old `sleep 1` before it bought
@@ -298,13 +305,18 @@ else
     dump_evidence "$SUB_ERR" "$ROS_PUB_ERR"
     failed=$((failed + 1))
 fi
+nros_e2e_stage "A.2 verdict reached; stopping ros2 topic pub"
 kill "$ROS_PUB_PID" 2>/dev/null || true
 wait "$ROS_PUB_PID" 2>/dev/null || true
 ROS_PUB_PID=""
+nros_e2e_stage "A.2 publisher reaped"
 
 if [ "$failed" -gt 0 ]; then
     echo "FAIL: $failed sub-case(s) failed"
     exit 1
 fi
+# If ctest's `Test time` is much larger than this stamp, the time went AFTER the
+# script: something it started still holds ctest's output pipe open.
+nros_e2e_stage "exiting"
 echo "OK"
 exit 0

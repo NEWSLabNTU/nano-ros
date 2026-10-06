@@ -65,6 +65,18 @@ nros_domain_busy() {
     return 1
 }
 
+# issue 1139 -- stamp a stage boundary with the time since the script started.
+#
+# Four in-gate runs on 2026-10-06 passed `ros2_pubsub_e2e.sh`'s two sub-cases on
+# the FIRST attempt in 3.8 s, 199.7 s, 19.0 s and 13.8 s. The verdicts were
+# identical and nothing in the log said where 196 s went -- the same blindness
+# the issue's own table of wall-clocks (35 s to 316 s) had. So every stage
+# boundary in the shell cells prints one of these. `SECONDS` is bash's own
+# counter, so a stamp costs no process. If ctest's `Test time` is far above the
+# LAST stamp, the time went after the script: something it started still held
+# ctest's output pipe.
+nros_e2e_stage() { echo "  [t+${SECONDS}s] $*"; }
+
 nros_unique_ros_domain_id() {
     local first
     if [ -n "${NEXTEST_TEST_GLOBAL_SLOT:-}" ]; then
