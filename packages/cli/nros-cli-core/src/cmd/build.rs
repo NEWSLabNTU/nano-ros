@@ -3730,7 +3730,14 @@ fn check_declared_depends(
     // Off-ROS safety: a package's own buildtool is satisfied by the builder that
     // is building it. Without this, adding the `<buildtool_depend>` that rosdep
     // expects would hard-fail every host with no `AMENT_PREFIX_PATH`.
-    let self_buildtools = pr::self_satisfied_buildtools(root);
+    let mut self_buildtools = pr::self_satisfied_buildtools(root);
+    // ...and so is a ROS package nano-ros's own compat layer supplies
+    // (`rclcpp`, `rclcpp_components`, `ament_cmake_auto`, …). A workspace's
+    // C++ includes `<rclcpp/rclcpp.hpp>` and gets nano-ros's (phase-417), so
+    // its `<depend>rclcpp</depend>` is satisfied by this builder exactly as
+    // `ament_cmake` is — and asking an ambient ROS refused it on the ROS-less
+    // tier-2 runner (the `shadowing` compile-check fixture).
+    self_buildtools.extend(pr::compat_provided_packages(nano_ros_root));
 
     let mut unresolved: Vec<pr::Unresolved> = Vec::new();
     // phase-422 W8 — a dep that RESOLVES but names infrastructure. `role` says
