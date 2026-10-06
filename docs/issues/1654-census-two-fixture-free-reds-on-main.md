@@ -62,3 +62,15 @@ A census of `main` after #1610 measured `fixture_source_coverage` PASS in all
 three runs — `in-place-subscriptions` got its row there — and it is admitted
 whole again. `multihost_partition_bake` still FAILs on the retired
 `codegen entry --lang rust`.
+
+## 2026-10-06 — item 2 fixed by issue 1692; its target is no longer fixture-free
+
+[Issue 1692](archived/1692-multihost-bake-test-uses-retired-rust-entry-verb.md)
+rewrote `multihost_bake_emits_only_the_hosts_node` to ask the BUILT per-host
+entries (rust/c/cpp/mixed x robot1/robot2) which nodes they register, through a
+census run. That surface exists in every language, but it needs the multihost
+fixtures, so the test now belongs to a fixture lane, not to the gate lane: the
+TARGET cannot be admitted whole, and this issue's acceptance ("both targets
+PASS in the census ... NEWLY ADMISSIBLE") no longer fits item 2. Its two
+fixture-free siblings were already in `.config/lane-admission/gate.txt`. Left
+open for whoever owns the census to restate item 2's acceptance or close it.
