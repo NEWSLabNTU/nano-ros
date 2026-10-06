@@ -323,7 +323,7 @@ setcover: all_addrs udp/10.0.2.2:17912@2
 
 **V4 — the loopback pin and the NAT rewrite are mutually exclusive**, which is
 the one finding that lands on this tree rather than on Cyclone, and is filed as
-[issue 1251](../issues/1251-cyclone-slirp-needs-nat-profile.md).
+[issue 1251](../issues/archived/1251-cyclone-slirp-needs-nat-profile.md).
 `ExternalNetworkAddress` is refused outright when the only selected interface is
 loopback (`q_init.c:398`, *"external network address specification only
 supported if there is a unique non-loopback interface"*), so a host pinned the
@@ -397,7 +397,9 @@ than an open question. What it still needs, in order:
 2. **`hostfwd` in the launch path.** `scripts/qemu/launch-mps2-an385.sh` has no
    way to express it today (`--slirp` emits a bare `-nic user,model=lan9118`),
    and the port numbers follow from the image's domain id.
-3. **A NAT-shaped isolation profile** on the host side — issue 1251.
+3. **A NAT-shaped isolation profile** on the host side — issue 1251, LANDED
+   2026-10-06 as `nros_tests::dds_isolation::CycloneSlirpPair` (tag-isolated,
+   measured through libslirp by `tests/cyclone_slirp_pair.rs`).
 4. **One host port block per concurrent cell.** slirp binds the forwarded ports
    on the HOST, so two cells on one machine collide unless their domain ids
    differ. The tree already bakes distinct Cyclone domains (50–58) for parallel
@@ -666,4 +668,4 @@ evidence, the item is *close it*.
 | issue | why it belongs here |
 | --- | --- |
 | [#1139](../issues/archived/1139-cyclone-ros2-pubsub-e2e-flakes-under-the-parallel-gate.md) | `nros_rmw_cyclonedds_ros2_pubsub_e2e` fails under the 21-way parallel run. Today it is a row in phase-444's verdict table reading 'open | Acceptance, still unmet' — a status, not an owner; its acceptance needs a live peer, which is this phase |
-| [#1251](../issues/1251-cyclone-slirp-needs-nat-profile.md) | a Cyclone peer for a QEMU guest cannot be loopback-pinned. It is W2's own residue and appears only as prerequisite #3 of a prose list |
+| [#1251](../issues/archived/1251-cyclone-slirp-needs-nat-profile.md) | a Cyclone peer for a QEMU guest cannot be loopback-pinned. It is W2's own residue and appears only as prerequisite #3 of a prose list |
