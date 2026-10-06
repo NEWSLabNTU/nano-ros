@@ -107,6 +107,19 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+      # The host's preinstalled toolchains, mounted so `reclaim-disk.sh` can
+      # delete them — the same six trees host-tests.yml mounts, for the reason
+      # it gives. A container job cannot reach them otherwise: on 2026-10-05
+      # (run 37263280002) this job's reclaim found only `/__t` (5.2 G), had
+      # 84.7 G free, and the fixture build still died on `No space left on
+      # device`. A path the host lacks is created empty and costs nothing.
+      volumes:
+        - /usr/local/lib/android:/__host-reclaim/android
+        - /usr/share/dotnet:/__host-reclaim/dotnet
+        - /usr/local/.ghcup:/__host-reclaim/ghcup
+        - /opt/ghc:/__host-reclaim/ghc
+        - /usr/share/swift:/__host-reclaim/swift
+        - /usr/local/share/powershell:/__host-reclaim/powershell
     defaults:
       run:
         shell: bash
@@ -362,6 +375,19 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+      # The host's preinstalled toolchains, mounted so `reclaim-disk.sh` can
+      # delete them — the same six trees host-tests.yml mounts, for the reason
+      # it gives. A container job cannot reach them otherwise: on 2026-10-05
+      # (run 37263280002) this job's reclaim found only `/__t` (5.2 G), had
+      # 84.7 G free, and the fixture build still died on `No space left on
+      # device`. A path the host lacks is created empty and costs nothing.
+      volumes:
+        - /usr/local/lib/android:/__host-reclaim/android
+        - /usr/share/dotnet:/__host-reclaim/dotnet
+        - /usr/local/.ghcup:/__host-reclaim/ghcup
+        - /opt/ghc:/__host-reclaim/ghc
+        - /usr/share/swift:/__host-reclaim/swift
+        - /usr/local/share/powershell:/__host-reclaim/powershell
     defaults:
       run:
         shell: bash
