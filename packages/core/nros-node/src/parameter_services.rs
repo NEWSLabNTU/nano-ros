@@ -1342,8 +1342,17 @@ enum ParamServiceFailure {
     /// The request did not deserialize: malformed, or past a fixed wire cap
     /// ([`WIRE_SEQ_CAP`] elements, [`WIRE_STRING_CAP`]-byte strings).
     Malformed,
-    /// The request is larger than the request buffer.
+    /// The request is larger than the EXECUTOR's request buffer: the backend
+    /// held it and said how much room it needed (`BufferTooSmall`).
     RequestTooLarge,
+    /// Issue 1352 -- the request never reached the executor: the TRANSPORT's
+    /// inbox slot was too small and the backend dropped it on arrival
+    /// (`MessageTooLarge`). The executor's buffer was not the limit, so the
+    /// knob that line used to name (`NROS_PARAM_SERVICE_BUFFER_SIZE`) could
+    /// not help. Measured on zenoh: a 2,411-byte `set_parameters` dropped by a
+    /// 1,024 B inbox slot was reported as "larger than the 4096-byte request
+    /// buffer".
+    InboxOverflow,
     /// The reply did not fit the reply buffer. The handlers stream the reply
     /// into it, so a write past its end is a serialization error.
     ReplyTooLarge,
@@ -1355,9 +1364,8 @@ impl ParamServiceFailure {
     fn of(e: &TransportError) -> Self {
         match e {
             TransportError::DeserializationError => Self::Malformed,
-            TransportError::BufferTooSmall
-            | TransportError::MessageTooLarge
-            | TransportError::TooLarge => Self::RequestTooLarge,
+            TransportError::BufferTooSmall | TransportError::TooLarge => Self::RequestTooLarge,
+            TransportError::MessageTooLarge => Self::InboxOverflow,
             TransportError::SerializationError => Self::ReplyTooLarge,
             _ => Self::Transport,
         }
@@ -1366,7 +1374,7 @@ impl ParamServiceFailure {
 
 /// Bits per service in [`ParameterServiceServers::reported`]: one per
 /// [`ParamServiceFailure`] kind.
-const FAILURE_KINDS: u32 = 4;
+const FAILURE_KINDS: u32 = 5;
 
 /// Holds the 6 ROS 2 parameter service servers for a node.
 ///
@@ -1551,6 +1559,18 @@ impl ParameterServiceServers {
                 svc,
                 cap,
                 param_service_buffer_origin()
+            ),
+            // nros-log truncates a line at its buffer, so the knobs come FIRST:
+            // the first version of this line was cut before naming them.
+            ParamServiceFailure::InboxOverflow => nros_log::log_error!(
+                nros_log::get_logger("nros"),
+                "param service {}/{}: request dropped by the TRANSPORT inbox (not the {} B \
+                 executor buffer). zenoh: NROS_PARAM_SERVICE_INBOX_BYTES, or \
+                 NROS_SERVICE_INBOX_BYTES with no declared endpoints; or declare `params:` \
+                 (issue 1352)",
+                fqn,
+                svc,
+                cap
             ),
             ParamServiceFailure::ReplyTooLarge => nros_log::log_error!(
                 nros_log::get_logger("nros"),
@@ -1792,6 +1812,44 @@ mod tests {
     /// Issue 1271 -- a reply past the shared buffer is refused, reported ONCE
     /// for that service as a reply overflow, and does not wedge the set: the
     /// same request is answered once the buffer fits it.
+    /// Issue 1352 -- a request the TRANSPORT dropped (`MessageTooLarge`: its
+    /// inbox slot could not hold it) is a different failure from one the
+    /// executor's buffer could not hold (`BufferTooSmall`), and the log line
+    /// for each names a different knob. They were one kind, so a 2,411-byte
+    /// `set_parameters` dropped by zenoh's 1,024 B slot was reported as
+    /// "larger than the 4096-byte request buffer. Raise
+    /// NROS_PARAM_SERVICE_BUFFER_SIZE" -- a knob that could not help.
+    #[cfg(not(feature = "rmw-cffi"))]
+    #[test]
+    fn an_inbox_drop_and_a_buffer_overflow_are_reported_as_different_kinds() {
+        let mut server = leaked_server();
+        let mut set = one_set_of_six();
+        let mut buffers = ParamServiceBuffers::try_with_capacity(param_service_buffer_bytes())
+            .expect("host heap");
+
+        set.set_parameters
+            .handle
+            .load_error(TransportError::MessageTooLarge);
+        set.get_parameters
+            .handle
+            .load_error(TransportError::BufferTooSmall);
+        assert_eq!(set.process(&mut server, &mut buffers), 0);
+
+        let inbox = 1u32
+            << (ParamService::Set as u32 * FAILURE_KINDS
+                + ParamServiceFailure::InboxOverflow as u32);
+        let buffer = 1u32
+            << (ParamService::Get as u32 * FAILURE_KINDS
+                + ParamServiceFailure::RequestTooLarge as u32);
+        assert_eq!(
+            set.reported,
+            inbox | buffer,
+            "MessageTooLarge is the transport's inbox (the line naming \
+             NROS_PARAM_SERVICE_INBOX_BYTES), BufferTooSmall is the executor's \
+             buffer (the line naming NROS_PARAM_SERVICE_BUFFER_SIZE)"
+        );
+    }
+
     #[cfg(not(feature = "rmw-cffi"))]
     #[test]
     fn a_reply_past_the_shared_buffer_is_reported_once_and_answered_once_it_fits() {
