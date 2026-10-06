@@ -376,7 +376,16 @@ jobs:
     # tier, inside `test-all`, with nothing uploaded. If the job shrinks (the
     # tier's `just check` is ~2/3 of the tier and gate.yml's nightly runs the
     # same gates — see issue 1500), this should come down with it.
-    timeout-minutes: 210
+    #
+    # 300 since issue 1651's full tier-1 fixture build: `just setup tier1`
+    # now provisions the Zephyr SDK and west workspace (the tier's
+    # `zephyr,rust,zenoh` coordinate), and `just build tier1` was measured at
+    # +51 min over the two hand-picked fixture steps it replaces, on 4 pinned
+    # cores of a host faster than this runner. Nothing here has priced the
+    # whole job on the hosted runner yet, so this is a ceiling with headroom,
+    # not a measurement: the first complete run is the number to bring it down
+    # to, plus a margin. GitHub's own limit is 360.
+    timeout-minutes: 300
     concurrency:
       group: host-tests-integration-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
@@ -542,10 +551,16 @@ jobs:
       # asserts — cross Rust targets and pinned corrosion. That is what this
       # lane was missing: `just ci tier1` failed on three unmet preconditions
       # that no step here provisioned, so the tier never started.
-      - name: just setup native
+      #
+      # `tier1`, not `native` (issue 1651): this job now builds the WHOLE
+      # tier-1 fixture lane, and that lane's modules are `native`,
+      # `threadx_linux` and `zephyr`. The preset provisions all three, the
+      # Zephyr SDK included — this image (`nano-ros-ci`) carries Zephyr's host
+      # tools but not the ~1 GB SDK the sibling `nano-ros-zephyr-ci` bakes.
+      - name: just setup tier1
         run: |
           source ./activate.sh
-          just setup native
+          just setup tier1
 
       # CI-only: export the provisioned play_launch_parser for later steps.
       # `just setup native` installs it into the store; a container job still
@@ -556,106 +571,44 @@ jobs:
           plp_bin="$(dirname "$(find "$HOME/.nros/sdk/play_launch_parser" -type f -name play_launch_parser -path '*/bin/*' 2>/dev/null | head -1)")"
           [ -n "$plp_bin" ] && echo "$plp_bin" >> "$GITHUB_PATH" || true
 
-      # The native integration tests spawn PREBUILT example binaries via
-      # `require_prebuilt_binary`. Stage them by building the fixtures the way a
-      # user does. Issue #29 — split into per-stage steps with `df` checkpoints
-      # (a build that fills the shared ~146 GB disk kills the agent + discards the
-      # step's log); `build-fixture-rust-core` only (+17 GB), extras (~52 GB) NOT
-      # run (would starve test-integration → ENOSPC). CI-build env scoped to the
-      # fixture steps only (never the job — test-integration asserts on symbols).
-      - name: Build rust core fixtures
+      # Issue 1651 — build the tier's OWN fixture lane, not a hand-picked
+      # subset of it. This job built `build-fixture-rust-core` +
+      # `build-workspace-fixtures` and then ran every tier-1 test with the
+      # fixture pre-flight switched off, so 196 of `test-all`'s 211 real
+      # failures (run 37257988244; 211 of 211 on 2026-10-05, run 37259370567)
+      # were "Test fixture binary MISSING for an in-lane coordinate" — native
+      # C/C++ examples, compile-check and cmake fixtures, threadx-linux, the
+      # Zephyr workspace leaves. `just build tier1` is the preset tier 2
+      # already uses (`just build tier2`): `build-test-fixtures lane=tier1`,
+      # every module the tier names, and it writes the stamp the tier's
+      # pre-flight checks, so `NROS_SKIP_FIXTURE_CHECK` is gone from the run.
+      #
+      # Disk: measured +41 G over the two old steps. The reclaim moves AHEAD
+      # of the build, where it now has something to protect — it frees ~32 G
+      # here (the six `/__host-reclaim` mounts, run 37259370567) — and the one
+      # after the build stays for what the build leaves behind.
+      #
+      # Issue #57 Cause-1 still applies: cap the builder's rustc fan-out by
+      # MEMORY (see "Derive the build parallelism").
+      - name: Reclaim disk before the fixture build — issue 1353
+        if: ${{ !cancelled() }}
+        run: scripts/ci/reclaim-disk.sh "before just build tier1"
+
+      - name: just build tier1
         env:
-          # `CARGO_PROFILE_RELEASE_LTO: "off"` USED TO BE HERE. It was the only
-          # thing that differed between this step and "Build workspace fixtures"
-          # below, and it is what made the two share NOTHING: cargo hashes the
-          # profile into `-C metadata`, so every crate they have in common was
-          # compiled twice — across the two steps that are ~53 of this job's ~91
-          # minutes.
-          #
-          # It was also an in-place MUTATION of `profile.release` through the
-          # environment, which is worse than a slow build: the artifacts landed
-          # in `target/release/` while not being release builds, so nothing
-          # downstream could tell this tree from a real one. The repo has a
-          # named profile for exactly this shape (`nros-iterate` = release with
-          # `lto = "off"`), reached through `NROS_CARGO_PROFILE` / `nros
-          # profile`, and an env override reaches around it.
-          #
-          # Dropping it rather than naming a profile, because naming one keeps
-          # the two steps in different profile directories and the duplication
-          # with them. Plain `release` for both is the only spelling that lets
-          # the workspace step start warm. The trade is real and one-directional:
-          # THIS step gets slower (it now pays fat LTO), and the step below
-          # should save more than that by reusing it. If CI says otherwise,
-          # the answer is a shared named profile for both steps — never this
-          # env var back on one of them.
-          #
-          # `RUSTFLAGS: "-C debuginfo=0"` is gone for a different reason: it is
-          # redundant. Cargo's `release` default is already `debug = false`, and
-          # `[profile.release]` in `Cargo.toml` does not override it.
-          #
-          # Issue #71 is UNAFFECTED: it forbids `lto = "off"` on the workspace
-          # step (two Rust staticlibs each bundle `std`, and without LTO's DCE
-          # both keep `rust_begin_unwind` -> `multiple definition`). This change
-          # removes an `lto = "off"`; it does not add one.
-          #
-          # Issue #57 Cause-1: cap the fixture builder's rustc fan-out — a rustc
-          # OOM-killed mid-compile is what this prevents. DERIVED, not "2":
-          # the literal was measured on the 2-vCPU / 7 GB runner this job no
-          # longer gets (it runs 4 vCPU / ~16 GB today — `just ci tier1` in the
-          # step below sets no cap and its own summary line reports `-P4`), so
-          # the cap was halving the two steps that are most of this job's wall
-          # clock. See "Derive the build parallelism" above for how it is
-          # computed and why the bound is MEMORY rather than CPU.
           NROS_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
           CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
         run: |
           source ./activate.sh
           mkdir -p build/ci-logs
           echo "before:"; df -h / | tail -1
-          # FAIL, do not swallow. This used to end `|| { tail; echo "partial —
-          # [SKIPPED]"; }`, so a build that died at line one reported the step as
-          # SUCCESS; the tests then skipped for absent fixtures and the run blamed
-          # a skip budget. Ten runs of a green step over a failed build.
-          # `check-skip-budget` (issue 0584) rejects exactly this laundering — a
-          # missing in-lane fixture is a hard failure — so the swallow could only
-          # ever produce a red whose stated reason was wrong.
-          just native build-fixture-rust-core > build/ci-logs/rust-core.log 2>&1 \
-            || { echo "::group::rust-core FAILED tail"; tail -120 build/ci-logs/rust-core.log; echo "::endgroup::"; \
-                 bash scripts/ci/row-times.sh build/ci-logs/rust-core.log; exit 1; }
-          echo "after rust-core ($(wc -l < build/ci-logs/rust-core.log) lines suppressed):"; df -h / | tail -1
-          bash scripts/ci/row-times.sh build/ci-logs/rust-core.log
-
-      - name: Build workspace fixtures
-        env:
-          # NB (issue #71): do NOT add `CARGO_PROFILE_RELEASE_LTO: "off"` here. The
-          # native C++/mixed workspace Entry links two Rust staticlibs that each
-          # bundle `std`; the FFI crate's `lto = true` DCE-strips the redundant
-          # `rust_begin_unwind`. Forcing LTO off keeps it → `multiple definition`.
-          # `RUSTFLAGS: "-C debuginfo=0"` dropped: redundant. Cargo's `release`
-          # default is `debug = false` and `[profile.release]` does not override
-          # it, so this set a flag that changed nothing while making RUSTFLAGS a
-          # fingerprint input the step above had to match exactly.
-          NROS_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
-          CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
-        run: |
-          source ./activate.sh
-          just native build-workspace-fixtures > build/ci-logs/workspace.log 2>&1 \
-            || { echo "::group::workspace FAILED tail"; tail -120 build/ci-logs/workspace.log; echo "::endgroup::"; \
-                 bash scripts/ci/row-times.sh build/ci-logs/workspace.log; \
-                 echo "::group::issue 0919 — feature resolution for zpico-sys"; \
-                 for ws in bridge-cyclonedds rust; do \
-                   echo "--- examples/workspaces/$ws"; \
-                   ( cd "examples/workspaces/$ws" 2>/dev/null \
-                     && cargo tree -e features -i zpico-sys --offline 2>&1 | head -40 ) || true; \
-                   echo "--- $ws generated selection crate"; \
-                   cat "examples/workspaces/$ws/generated/nros-selection/native_entry/Cargo.toml" 2>/dev/null | grep -v '^#' | grep . || true; \
-                   echo "--- $ws generated entry root"; \
-                   cat "examples/workspaces/$ws/build/posix-zenoh/native_entry/Cargo.toml" 2>/dev/null | grep -v '^#' | grep . || true; \
-                 done; \
-                 echo "::endgroup::"; \
-                 exit 1; }
-          echo "after workspace ($(wc -l < build/ci-logs/workspace.log) lines suppressed):"; df -h / | tail -1
-          bash scripts/ci/row-times.sh build/ci-logs/workspace.log
+          # FAIL, do not swallow (see the history in git: a swallowed fixture
+          # build once reported SUCCESS ten runs in a row).
+          just build tier1 > build/ci-logs/build-tier1.log 2>&1 \
+            || { echo "::group::build tier1 FAILED tail"; tail -150 build/ci-logs/build-tier1.log; echo "::endgroup::"; \
+                 bash scripts/ci/row-times.sh build/ci-logs/build-tier1.log; exit 1; }
+          echo "after build tier1 ($(wc -l < build/ci-logs/build-tier1.log) lines suppressed):"; df -h / | tail -1
+          bash scripts/ci/row-times.sh build/ci-logs/build-tier1.log
 
       # phase-411 — run the TIER, not a hand-rolled approximation of it.
       #
@@ -717,28 +670,10 @@ jobs:
       - name: just ci tier1 run
         env:
           CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
-          # This lane builds a DELIBERATE SUBSET of the native fixtures --
-          # `build-fixture-rust-core` + `build-workspace-fixtures`, with the
-          # ~52 GB extras omitted so test-integration does not hit ENOSPC (see
-          # the steps above). So it cannot honestly claim the `lane=native`
-          # coverage that `_require-fixtures` checks for, and writing that
-          # stamp would be a lie rather than a fix.
-          #
-          # The documented bypass is exactly this case ("built them another
-          # way?"). It only skips the PRE-FLIGHT: a missing in-lane fixture is
-          # still a hard failure at test time via `check-skip-budget` (issue
-          # 0584), so nothing is laundered into a skip.
-          #
-          # MEASURED, issue 1500 (run 37257988244, and the same count locally):
-          # 196 of `test-all`'s 211 real failures are exactly that — "Test
-          # fixture binary MISSING for an in-lane coordinate" — so this lane's
-          # verdict is red by construction until it builds the tier's fixtures
-          # (issue 1651, and PR #1671's filing for it). The price, measured in
-          # a local copy of the CI image on 4 pinned cores of a faster host:
-          # `just build-test-fixtures lane=tier1` on top of the two steps above
-          # is +51 min (more on the hosted runner) and +41 G, which neither
-          # this job's budget nor its 146 G disk has today.
-          NROS_SKIP_FIXTURE_CHECK: "1"
+          # No `NROS_SKIP_FIXTURE_CHECK` (issue 1651): `just build tier1`
+          # above builds the lane this run claims and writes its stamp, so the
+          # pre-flight is satisfiable and runs — an in-lane fixture missing now
+          # stops the run before `test-all` instead of becoming 211 reds in it.
         run: |
           source ./activate.sh
           mkdir -p build/ci-logs
