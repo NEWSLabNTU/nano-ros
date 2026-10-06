@@ -145,6 +145,15 @@ pub struct InteropCell {
     pub test: &'static str,
 }
 
+/// Interop cells (by `InteropCell::id`) that pair a slirp-guest nano side with a
+/// Cyclone peer and build BOTH halves from a [`crate::dds_isolation::CycloneSlirpPair`]. Empty: no
+/// such cell exists yet (phase-441 W2 lists what one still needs). A cell may
+/// join only by actually using the pair, which is what
+/// `dds_isolation`'s
+/// `no_runnable_cyclone_interop_cell_puts_its_nano_side_behind_slirp` holds
+/// (issue 1251).
+pub const SLIRP_PAIR_CELLS: &[&str] = &[];
+
 /// `test` sentinel for a carved-out cell no test runs.
 pub const NO_TEST: &str = "(carved-out — no runtime lane)";
 
