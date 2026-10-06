@@ -1955,6 +1955,17 @@ fn generate_entry(
         eprintln!("nros build: warning: cannot resolve tiers for `{image_id}`: {e}");
     }
 
+    // Issue 1706 -- a launch `<param>` seeds the parameter store through the
+    // same declare path a `param_services` image uses, so the image needs the
+    // store's heap whether or not it declares the axis. The decision (an
+    // implied STORE, never implied services): a node that declares parameters
+    // locally is legitimate ROS without the six services, so refusing it or
+    // switching services on would both be wrong; what it cannot do without is
+    // the allocation. A store reached only from APP code is invisible here and
+    // is caught at run time instead, where the declaration is refused with the
+    // number (`report_parameter_store_refused`).
+    let launch_seeds_params = plan.nodes.iter().any(|n| !n.params.is_empty());
+
     // A launch file may name one package several times; cargo needs it once.
     let mut seen = std::collections::BTreeSet::new();
     let mut nodes = Vec::new();
@@ -1995,7 +2006,7 @@ fn generate_entry(
     // that routes a NATIVE image to the cmake driver. One predicate, so the
     // language a workspace is built in cannot differ by platform.
     if has_non_rust {
-        let app = crate::builder::west_app::resolve_cmake(
+        let mut app = crate::builder::west_app::resolve_cmake(
             root,
             &entry_dir_for_deps,
             bringup_dir,
@@ -2007,6 +2018,10 @@ fn generate_entry(
             &nodes,
         )
         .map_err(|e| eyre::eyre!("generating the west application for `{image_id}`: {e}"))?;
+        if launch_seeds_params {
+            app.capabilities
+                .push(crate::builder::west_app::PARAM_STORE_AXIS.to_string());
+        }
         crate::builder::west_app::write(&app, &entry_dir_for_deps)
             .map_err(|e| eyre::eyre!("generating the west application for `{image_id}`: {e}"))?;
         return Ok(GeneratedEntry {
@@ -2262,6 +2277,10 @@ fn generate_entry(
                         .into_iter()
                         .map(str::to_string)
                         .collect();
+                    if launch_seeds_params {
+                        app.capabilities
+                            .push(crate::builder::west_app::PARAM_STORE_AXIS.to_string());
+                    }
                     app
                 })
                 .map_err(|e| eyre::eyre!("{e}"))?,

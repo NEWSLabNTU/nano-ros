@@ -1768,15 +1768,27 @@ config NROS_CAPABILITY_LIFECYCLE
       Set by `nros build` from the bringup's `[system] features` or its
       `[lifecycle]` block (issue 1702). See NROS_CAPABILITY_PARAM_SERVICES.
 
+config NROS_PARAM_STORE
+    bool "The image's launch file seeds a parameter"
+    help
+      Set by `nros build` when a node in the image's launch file carries a
+      <param> (issue 1706). A seed builds the parameter store through the same
+      declare path a param_services image uses, so the store's heap is needed
+      whether or not the bringup declares the axis. It implies the STORE, not
+      the six services: declaring parameters locally is legitimate without
+      them. A store reached only from application code is invisible to the
+      build and is refused at run time, with the size it asked for.
+
 config NROS_ZEPHYR_HEAP_SIZE
     int "Application heap arena size (bytes)"
     default 1048576 if NROS_RMW_CYCLONEDDS
-    default 524288 if NROS_CAPABILITY_PARAM_SERVICES
+    default 524288 if NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAM_STORE
     default 196608 if NROS_CAPABILITY_LIFECYCLE
     default 131072 if RUST
     default 65536
     help
-      A PARAM_SERVICES image gets 512 KiB, and a LIFECYCLE one 192 KiB
+      A PARAM_SERVICES image, or one whose launch seeds a parameter
+      (NROS_PARAM_STORE, issue 1706), gets 512 KiB, and a LIFECYCLE one 192 KiB
       (issue 1702): both capabilities allocate from this arena and nothing
       sized it from the declaration, so such an image LINKED and then halted
       at boot (`HEAP EXHAUSTED (TOO SMALL): request 285696 bytes`). The
