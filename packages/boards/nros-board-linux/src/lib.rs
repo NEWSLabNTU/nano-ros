@@ -235,7 +235,7 @@ fn census_arm() -> Option<::nros::ExecutorSizing> {
     }
     // SAFETY: the boot funnel, before the executor opens and before any tier
     // thread is spawned -- the process is single-threaded here.
-    unsafe { std::env::set_var("NROS_RMW", "metadata") };
+    unsafe { std::env::set_var("NROS_RMW", nros::census_hooks::RECORDER_RMW) };
     Some(::nros::census_hooks::CENSUS_SIZING)
 }
 

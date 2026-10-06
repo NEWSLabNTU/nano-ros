@@ -89,6 +89,39 @@ pub const CENSUS_SIZING: nros_node::ExecutorSizing = {
 /// and the call is still there for `check-census-hooks-complete` to see.
 pub const ACTIVE: bool = cfg!(feature = "metadata-mode");
 
+/// The name the recording backend (`nros-rmw-metadata`) registers under, and
+/// the `$NROS_RMW` value every census funnel selects it with — `nros-cpp`'s,
+/// `nros-c`'s and `nros-board-linux`'s. One spelling, because
+/// [`recording_run`] keys on it.
+pub const RECORDER_RMW: &str = "metadata";
+
+/// Issue 1693 — is THIS process a census run, i.e. is the recording backend
+/// the RMW it selected?
+///
+/// A census run constructs components, writes what the recorder saw and exits
+/// where a boot would spin, so anything the RUNTIME creates for itself rather
+/// than for a component has no business there. The `/diagnostics` reporter is
+/// the case that forced the question: it is created before the first node, so
+/// the recorder had no node to attribute it to, refused it, and a C/C++ entry's
+/// monitor install turned that refusal into a failed setup — the census of every
+/// contracted C++ entry recorded nothing. It is runtime infrastructure the
+/// inventory already counts (`EntityInventory::contract_reporters`), and a run
+/// that never spins can never publish a violation through it.
+///
+/// Keyed on the selector because that is how every census funnel picks the
+/// recorder (they set `$NROS_RMW` to [`RECORDER_RMW`] before the executor
+/// opens), so the answer is the same on every road. `false` in any build
+/// without `metadata-mode` (no recorder is linked, so no run can be one) or
+/// without `env` (no census funnel exists there).
+#[inline]
+pub fn recording_run() -> bool {
+    #[cfg(all(feature = "metadata-mode", feature = "env"))]
+    if crate::env::rmw_selector().is_some_and(|s| s.as_str() == RECORDER_RMW) {
+        return true;
+    }
+    false
+}
+
 #[inline]
 pub fn on_node_create(_name: &str, _namespace: &str, _domain_id: u32) {
     #[cfg(feature = "metadata-mode")]
