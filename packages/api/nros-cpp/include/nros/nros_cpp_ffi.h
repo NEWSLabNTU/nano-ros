@@ -2431,6 +2431,42 @@ nros_cpp_ret_t nros_cpp_publisher_get_actual_qos(const void *storage,
                                                  struct nros_cpp_qos_t *out_qos);
 
 /**
+ * `rcl_logging_rosout_enabled()`: true iff this image was built with the
+ * `rosout` capability.
+ */
+bool nros_cpp_rosout_enabled(void);
+
+/**
+ * Create the `/rosout` publisher into `storage` (a C++ publisher slot).
+ * `qos` NULL takes the bounded profile (`nros_node::rosout::qos_bounded`).
+ *
+ * # Safety
+ * `node` is an initialised node handle, `storage` a publisher slot of
+ * `NROS_PUBLISHER_SIZE` bytes, `qos` NULL or valid.
+ */
+nros_cpp_ret_t nros_cpp_rosout_publisher_create(const struct nros_cpp_node_t *node,
+                                                const struct nros_cpp_qos_t *qos,
+                                                void *storage);
+
+/**
+ * Start queueing records for `/rosout`, scoped by the image's ROS release
+ * (RFC-0102 D4). `NROS_CPP_RET_ERROR` if the queueing sink could not be
+ * registered.
+ */
+nros_cpp_ret_t nros_cpp_rosout_enable(void);
+
+/**
+ * Publish every queued record on the publisher in `storage`. `out_sent`, if
+ * non-NULL, receives how many reached the transport (on failure: before the
+ * first refusal).
+ *
+ * # Safety
+ * `storage` was filled by [`nros_cpp_rosout_publisher_create`]; `out_sent`
+ * is NULL or writable.
+ */
+nros_cpp_ret_t nros_cpp_rosout_pump(void *storage, size_t *out_sent);
+
+/**
  * Create a service server on a node.
  *
  * The caller provides `storage` — a pointer to a buffer of at least

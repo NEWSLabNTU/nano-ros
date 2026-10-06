@@ -93,10 +93,19 @@ function(nros_lower_system_features features)
             # mapped no lifecycle axis, and the entry's
             # `nros_cpp_lifecycle_autostart` did not link). The C/C++ lowering
             # here is only the `#define NROS_SYSTEM_LIFECYCLE` in system_config.h.
+        elseif(_feat STREQUAL "rosout")
+            # Issue 1589 — Known axis, no CMake knob. The CARGO feature
+            # (`rosout`) is chosen per image by `nros_feature_set` on the cmake
+            # road and `_nros_cap_suffix` on the west road; it only pulls the
+            # bridge in (without it the C/C++ entry points link and answer
+            # UNSUPPORTED). The define is directory-wide for the reason 0745
+            # gives `param_services`: a component TU never includes the entry's
+            # system_config.h.
+            add_compile_definitions(NROS_SYSTEM_ROSOUT)
         else()
             message(FATAL_ERROR
                 "nros_lower_system_features: unknown capability '${_feat}' in "
-                "NANO_ROS_FEATURES (known axes: safety, param_services, lifecycle)")
+                "NANO_ROS_FEATURES (known axes: safety, param_services, lifecycle, rosout)")
         endif()
     endforeach()
 endfunction()

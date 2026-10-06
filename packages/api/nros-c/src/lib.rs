@@ -340,6 +340,8 @@ mod node;
 #[cfg(cbindgen)]
 mod publisher;
 #[cfg(cbindgen)]
+mod rosout;
+#[cfg(cbindgen)]
 mod service;
 #[cfg(cbindgen)]
 mod subscription;
@@ -370,6 +372,7 @@ rmw_modules! {
     mod lifecycle;
     mod node;
     mod publisher;
+    mod rosout;
     mod service;
     mod subscription;
     mod support;

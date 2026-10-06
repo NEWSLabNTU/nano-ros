@@ -60,6 +60,7 @@
 #include "nros/node_parameters.hpp"
 #include "nros/tick_ctx.hpp"
 #include "nros/lifecycle.hpp"
+#include "nros/rosout.hpp" // issue 1589 — `/rosout` from C++
 // phase-427 W4 — `nros/component_node.hpp` IS GONE. `nros::ComponentNode` was a
 // type that WRAPPED a node (RFC-0044 Q1's "wrap, not derive"), so a component
 // was not a `Node` and every verb had to be forwarded. Its members are on

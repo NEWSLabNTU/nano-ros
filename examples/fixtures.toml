@@ -1580,6 +1580,25 @@ lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/rosout-talker"
 
+# issue 1589 — the same probe through the C and C++ surfaces
+# (`nros_rosout_*`, `nros::rosout::Publisher`). Each declares the `rosout`
+# capability, so the runtime it links is built with the bridge rather than the
+# UNSUPPORTED stubs; `rosout_interop.rs` reads all three with one set of
+# assertions. One RMW for the reason above.
+[[fixture]]
+id = "rosout-talker-c"
+platform = "linux"
+lang = "c"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/rosout-talker-c"
+
+[[fixture]]
+id = "rosout-talker-cpp"
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/rosout-talker-cpp"
+
 # phase-479 W5 (RFC-0102 D5) — the runtime-logger arena knob. The leaf's
 # `system.toml` names the `native` board (which states
 # `[board.knobs.log] dynamic_loggers = 32`) and an `[image.native] env` that

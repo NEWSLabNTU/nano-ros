@@ -324,6 +324,9 @@ function(nros_feature_set out_var)
             list(APPEND _feats param-services)
         elseif(_cap STREQUAL "lifecycle")
             list(APPEND _feats lifecycle-services)
+        elseif(_cap STREQUAL "rosout")
+            # issue 1589 — the `/rosout` bridge; umbrella feature, no backend half.
+            list(APPEND _feats rosout)
         elseif(_cap STREQUAL "safety")
             # phase-439 W4 — DECLARED, not named. This read
             # `if(_FS_RMW STREQUAL "zenoh")` and warned "only the zenoh RMW
@@ -350,7 +353,7 @@ function(nros_feature_set out_var)
         else()
             message(FATAL_ERROR
                 "nros_feature_set: unknown capability '${_cap}' "
-                "(known: param_services, lifecycle, safety)")
+                "(known: param_services, lifecycle, safety, rosout)")
         endif()
     endforeach()
 

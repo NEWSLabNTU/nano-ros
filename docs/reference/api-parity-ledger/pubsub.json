@@ -2061,5 +2061,10 @@
     "verdict": "extension",
     "why": "issue 1631 -- in ROS 2 the DESTRUCTOR (rclcpp) or `rcl_*_fini` (rcl) is the counterpart. Ours registers the entity as an entry in the executor's statically sized arena, so freeing it is an executor call: the entry is dropped in place (its RMW handle's Drop destroys the backend entity, so it leaves the graph), its callback slot is freed, and the arena bytes its registration RECORDED -- entry and runtime-sized receive region together -- go on the released-region list for the next registration that fits. The C removers `nros_executor_remove_{subscription,timer,service,client}` call it. Unlike 1496's action releases it needs no const generics: the length is recorded at registration, so a buffered subscription and a timer (whose closure type is the caller's) are releasable too.",
     "bucket": "ours-only"
+  },
+  "c:rosout_publisher_init": {
+    "verdict": "extension",
+    "why": "creates the `/rosout` publisher (`rcl_interfaces/msg/Log`, absolute topic) on a node; NULL QoS takes the bounded VOLATILE profile, which needs no transient-local slot. Upstream has no such call because rcl creates that publisher itself; here the application does, since a publisher is a declared ENTITY (see `c:logging_rosout_enabled`). Part of the `/rosout` bridge from C (issue 1589, `<nros/rosout.h>`); the Rust twin is `nros::rosout`. Links in every image and answers `NROS_RET_UNSUPPORTED` without the `rosout` capability.",
+    "bucket": "ours-only"
   }
 }

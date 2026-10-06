@@ -1,7 +1,11 @@
 //! `/rosout` — does a nano-ros node's LOG reach a stock ROS 2 operator tool?
 //!
 //! phase-467 Q4, ledger row `c:logging_rosout_enabled` (log.json). Interop
-//! cell `native-logging-rust-zenoh-n2r`.
+//! cells `native-logging-{rust,c,cpp}-zenoh-n2r` — the C and C++ twins since
+//! issue 1589, which put the bridge on those surfaces. One encoder serves all
+//! three (`nros_node::rosout::pump_raw`), so the twins ask about the SURFACE:
+//! a publisher created by name, the capability declared, the pump driven
+//! through a C/C++ handle.
 //!
 //! # Why this needs a live peer and cannot be a unit test
 //!
@@ -35,19 +39,33 @@ use nros_tests::{
     skip,
 };
 
-/// The coordinate this binary covers. ONE row, and `interop::CELLS` must
-/// agree — `assert_test_bound` compares the two sets.
+/// The coordinates this binary covers, one per language; `interop::CELLS`
+/// must agree — `assert_test_bound` compares the two sets.
 const ROSOUT_COORDS: [(
     nros_tests::matrix::PlatformId,
     nros_tests::matrix::Lang,
     nros_tests::matrix::Rmw,
     nros_tests::matrix::Workload,
-); 1] = [(
-    nros_tests::matrix::PlatformId::Linux,
-    nros_tests::matrix::Lang::Rust,
-    nros_tests::matrix::Rmw::Zenoh,
-    nros_tests::matrix::Workload::Logging,
-)];
+); 3] = [
+    (
+        nros_tests::matrix::PlatformId::Linux,
+        nros_tests::matrix::Lang::Rust,
+        nros_tests::matrix::Rmw::Zenoh,
+        nros_tests::matrix::Workload::Logging,
+    ),
+    (
+        nros_tests::matrix::PlatformId::Linux,
+        nros_tests::matrix::Lang::C,
+        nros_tests::matrix::Rmw::Zenoh,
+        nros_tests::matrix::Workload::Logging,
+    ),
+    (
+        nros_tests::matrix::PlatformId::Linux,
+        nros_tests::matrix::Lang::Cpp,
+        nros_tests::matrix::Rmw::Zenoh,
+        nros_tests::matrix::Workload::Logging,
+    ),
+];
 
 const LOG_MSG: &str = "rcl_interfaces/msg/Log";
 /// `nros_node::rosout::TOPIC`, spelled out. `nros-tests` reaches `nros` with
@@ -87,12 +105,45 @@ fn spawn_probe(bin: &Path, locator: &str, records: usize) -> ManagedProcess {
 /// the sink is not installed or the pump is never called.
 #[test]
 fn a_nano_ros_log_call_reaches_ros2_topic_echo_rosout() {
+    let probe_bin = fixtures::build_rosout_talker().require("prebuilt rosout-talker");
+    run_cell(probe_bin);
+}
+
+/// issue 1589 — the C surface: `nros_rosout_publisher_init` / `_enable` /
+/// `_pump` (`bins/rosout-talker-c`, fixture row `rosout-talker-c`).
+#[test]
+fn a_c_log_call_reaches_ros2_topic_echo_rosout() {
+    let probe_bin = fixtures::build_cmake_leaf_rmw(
+        "packages/testing/nros-tests/bins/rosout-talker-c",
+        "rosout_talker_c",
+        nros_tests::fixtures::Rmw::Zenoh,
+    )
+    .require("prebuilt rosout-talker-c");
+    run_cell(&probe_bin);
+}
+
+/// issue 1589 — the C++ surface: `nros::rosout::Publisher`
+/// (`bins/rosout-talker-cpp`, fixture row `rosout-talker-cpp`).
+#[test]
+fn a_cpp_log_call_reaches_ros2_topic_echo_rosout() {
+    let probe_bin = fixtures::build_cmake_leaf_rmw(
+        "packages/testing/nros-tests/bins/rosout-talker-cpp",
+        "rosout_talker_cpp",
+        nros_tests::fixtures::Rmw::Zenoh,
+    )
+    .require("prebuilt rosout-talker-cpp");
+    run_cell(&probe_bin);
+}
+
+/// One probe, one stock `ros2 topic echo /rosout`, the same assertions for
+/// every language: each probe logs the same records through its NODE's logger
+/// and prints the same markers.
+fn run_cell(probe_bin: &Path) {
     interop::assert_test_bound("rosout_interop", &ROSOUT_COORDS);
 
     if !require_ros2() {
         skip!("ROS 2 + rmw_zenoh_cpp not available");
     }
-    let probe_bin = fixtures::build_rosout_talker().require("prebuilt rosout-talker");
     let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
     let locator = router.locator();
 

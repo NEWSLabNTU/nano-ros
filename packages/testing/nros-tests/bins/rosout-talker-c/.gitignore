@@ -1,0 +1,9 @@
+# Per-leaf build output. Same shape as the native C/C++ example leaves: the
+# fixture harness configures into `build-<rmw>/` (`Rmw::build_dir()`), and
+# `generated/` is codegen'd from the consumer's own ament install, so neither
+# exists in a fresh clone and neither is ours to commit.
+/build/
+/build-zenoh/
+/build-xrce/
+/build-cyclonedds/
+/generated/

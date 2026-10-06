@@ -763,5 +763,10 @@
   "rust:QoSLivelinessPolicy::is_manual": {
     "verdict": "extension",
     "why": "`QoSLivelinessPolicy::is_manual()` — `true` for `ManualByNode` and `ManualByTopic`, the two kinds under which the APPLICATION owns the liveliness assertion.\n\nOurs-only because rclrs exposes the policy as an `rmw` enum with no such predicate. An extension of one line, added by the phase-467 RMW gap-closure design study's Row 7 to be the ONE spelling of a test three call sites were about to write out by hand: `Publisher::assert_liveliness` owes a different answer per kind — a backend with no per-topic lease answers `Unsupported` under a manual kind and `Ok(())` under `Automatic` / `None`, because then there was nothing to assert — and two backends had that `matches!` inline while the `nros-rmw-cffi` NULL-slot arm did not have it at all, which is how the split `rmw_vtable.h` has stated since phase 108 came to be implemented nowhere.\n\n`Unknown` is deliberately NOT manual. It is what a `*_get_actual_qos` read-back writes for a policy the backend could not report, and an absence is not a request; reading it as manual would make a backend with no read-back refuse an assertion nobody asked for. Asserted in `nros-rmw`'s own unit tests, all five variants."
+  },
+  "c:rosout_qos_default": {
+    "verdict": "extension",
+    "why": "returns upstream's `rcl_qos_profile_rosout_default` (KEEP_LAST(1000), RELIABLE, TRANSIENT_LOCAL, 10 s lifespan) as an `nros_qos_t`, for a target that has budgeted the transient-local slot. rcl exposes the profile as a global struct; a function returning it by value keeps the C surface free of exported mutable data, the same choice the rest of `nros_qos_*` made. Part of the `/rosout` bridge from C (issue 1589, `<nros/rosout.h>`); the Rust twin is `nros::rosout`. Links in every image and returns `NROS_QOS_DEFAULT` without the `rosout` capability.",
+    "bucket": "ours-only"
   }
 }

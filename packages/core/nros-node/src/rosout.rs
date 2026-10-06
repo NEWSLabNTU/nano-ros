@@ -62,7 +62,9 @@
 
 use nros_log::{Severity, rosout as queue};
 use nros_rcl_interfaces::msg::Log;
-use nros_rmw::{QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy};
+use nros_rmw::{
+    QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy, TransportError,
+};
 
 use crate::executor::{EmbeddedPublisher, NodeError};
 
@@ -204,6 +206,43 @@ pub fn qos_bounded() -> QoSProfile {
 /// topic learns about the gap on the channel the gap is in rather than only
 /// from a counter nobody reads.
 pub fn pump(publisher: &EmbeddedPublisher<Log>) -> Result<usize, (usize, NodeError)> {
+    pump_with(|msg| publisher.publish_with_buffer::<TX_BUF>(msg))
+}
+
+/// [`pump`] for a surface that holds an UNTYPED publisher — the C and C++
+/// handles, which publish CDR bytes (`nros_publish_raw`,
+/// `nros_cpp_publish_raw`). Each record is encoded into [`TX_BUF`] bytes of
+/// this frame and handed to `send`; `send` answering `Err` is a transport
+/// failure, reported exactly as [`pump`] reports one.
+///
+/// One encoder for every language: the C and C++ bridges call this rather than
+/// growing their own `Log` mapping (issue 1589), so `fill`'s field rules —
+/// clipping, the empty `function`, the monotonic stamp — hold on all three.
+pub fn pump_raw(
+    mut send: impl FnMut(&[u8]) -> Result<(), ()>,
+) -> Result<usize, (usize, NodeError)> {
+    use nros_core::Serialize as _;
+    pump_with(|msg| {
+        let mut buffer = [0u8; TX_BUF];
+        let mut writer = crate::tx_writer(&mut buffer).map_err(|_| NodeError::BufferTooSmall)?;
+        msg.serialize(&mut writer)
+            .map_err(|_| NodeError::Serialization)?;
+        let len = writer.position();
+        send(&buffer[..len]).map_err(|()| NodeError::Transport(TransportError::PublishFailed))
+    })
+}
+
+/// `rcl_interfaces/msg/Log`'s wire identity, for a surface that creates the
+/// `/rosout` publisher by NAME rather than by Rust type (C, C++).
+pub const TYPE_NAME: &str = <Log as nros_core::RosMessage>::TYPE_NAME;
+/// See [`TYPE_NAME`].
+pub const TYPE_HASH: &str = <Log as nros_core::RosMessage>::TYPE_HASH;
+
+/// The drain both [`pump`] and [`pump_raw`] run; `publish` puts one message on
+/// the wire.
+fn pump_with(
+    mut publish: impl FnMut(&Log) -> Result<(), NodeError>,
+) -> Result<usize, (usize, NodeError)> {
     let mut msg = Log::default();
     let mut sent = 0usize;
     let mut failure: Option<NodeError> = None;
@@ -215,7 +254,7 @@ pub fn pump(publisher: &EmbeddedPublisher<Log>) -> Result<usize, (usize, NodeErr
             return;
         }
         fill(&mut msg, record);
-        match publisher.publish_with_buffer::<TX_BUF>(&msg) {
+        match publish(&msg) {
             Ok(()) => sent += 1,
             Err(e) => failure = Some(e),
         }
@@ -224,7 +263,7 @@ pub fn pump(publisher: &EmbeddedPublisher<Log>) -> Result<usize, (usize, NodeErr
     let (dropped, suppressed) = queue::take_losses();
     if failure.is_none() && (dropped > 0 || suppressed > 0) {
         note_losses(&mut msg, dropped, suppressed);
-        match publisher.publish_with_buffer::<TX_BUF>(&msg) {
+        match publish(&msg) {
             Ok(()) => sent += 1,
             Err(e) => failure = Some(e),
         }

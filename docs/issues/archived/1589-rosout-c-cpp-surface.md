@@ -2,12 +2,48 @@
 id: 1589
 title: "`/rosout` exists in Rust only — the C and C++ surfaces reach none of it,
   and the ledger row that used to carry that work has left the `gap` queue"
-status: open
+status: resolved
 type: gap
 area: [api, log]
 severity: medium
 found: 2026-09-29
 related: [0460, 0589, 0710, 1303, 1378]
+resolved_in: "branch issue-1589-rosout-c-cpp"
+---
+
+## Resolution (2026-10-06)
+
+All three missing pieces landed, and the acceptance was measured, not reasoned:
+
+1. **The C predicate** is `nros_logging_rosout_enabled()` — the spelling that
+   correlates with upstream's `rcl_logging_rosout_enabled` (the `nros_` prefix
+   strips; `nros_log_rosout_enabled` would not have). True iff the image was
+   built with the `rosout` capability, which is upstream's build-time answer.
+2. **C and C++ can install and pump the bridge**: `<nros/rosout.h>`
+   (`nros_rosout_publisher_init` / `_enable` / `_pump` / `_qos_default`) and
+   `<nros/rosout.hpp>` (`nros::rosout::Publisher`, `enable()`, `enabled()`).
+   Both go through `nros_node::rosout::pump_raw`, the encoder the Rust `pump`
+   now shares, so one `Log` mapping serves three languages. The image opts in
+   through a new `rosout` capability axis (`[system].features`,
+   `NANO_ROS_FEATURES`, the west road's `_nros_cap_suffix`); without it every
+   symbol still links and answers UNSUPPORTED / `false`.
+3. **`enable_rosout(true)` stays REFUSE-LOUD**, as this issue predicted: the
+   bridge is explicit in every language, so the flag still has nothing to
+   switch. Its refusal text now names `nros::rosout::Publisher`.
+
+**Acceptance.** Interop cells `native-logging-c-zenoh-n2r` and
+`native-logging-cpp-zenoh-n2r` (`rosout_interop.rs`, fixtures
+`bins/rosout-talker-{c,cpp}`). Measured by hand first against a stock
+`ros2 topic echo --no-daemon /rosout` on Humble + `rmw_zenohd`: 12 of 12
+records from each, `name: rosout_talker`, `level: 20` and `level: 30`, in two
+runs each. Two earlier runs that saw nothing were a stale `ros2` daemon
+(issue 1333's class) in the hand-rolled harness, not the bridge; the test
+harness already passes `--no-daemon`.
+
+Ledger: `c:logging_rosout_enabled` dropped its `absent` disposition (the
+function exists; the row stays a `divergence` for the not-automatic part), and
+the four new C entry points are `extension` rows.
+
 ---
 
 ## What is true now

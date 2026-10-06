@@ -38,6 +38,7 @@
  * for `printf`, and issue 0589 makes the equivalent fatal on Zephyr
  * native_sim, so the logger has to be the thing found first. */
 #include "nros/log.h"
+#include "nros/rosout.h"
 #include "nros/boot_config.h"
 
 #endif /* NROS_H */

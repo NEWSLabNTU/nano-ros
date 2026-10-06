@@ -307,6 +307,16 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-logging-rust-zenoh-n2r",
        c(Linux, Rust, Zenoh, Logging, Interop, Runtime),
        NativeFixtures, RosEdition(Zenoh), NanoToRos, "rosout_interop"),
+    // issue 1589 — the same question through the C and C++ surfaces. The
+    // bridge is one encoder (`nros_node::rosout::pump_raw`) under all three,
+    // so what these add is the SURFACE: a C/C++ program creating the publisher
+    // by name, declaring the capability, and pumping through its own handle.
+    ic("native-logging-c-zenoh-n2r",
+       c(Linux, C, Zenoh, Logging, Interop, Runtime),
+       NativeFixtures, RosEdition(Zenoh), NanoToRos, "rosout_interop"),
+    ic("native-logging-cpp-zenoh-n2r",
+       c(Linux, Cpp, Zenoh, Logging, Interop, Runtime),
+       NativeFixtures, RosEdition(Zenoh), NanoToRos, "rosout_interop"),
 
     // ── phase-433 W6 — the ACTIONS family's live peer ────────────────────
     // tests/ros2_action_e2e.rs. Until this row the family had NO interop cell
@@ -725,6 +735,14 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     co("params_per_node_interop", "ros2_param_cli_addresses_each_node_by_its_own_fqn", "native-params-per-node-rust-zenoh"),
     co("params_per_node_interop", "ros2_param_set_refuses_undeclared_and_off_step",    "native-params-per-node-rust-zenoh"),
     co("params_per_node_interop", "ros2_param_cli_addresses_each_node_on_cyclonedds",  "native-params-per-node-rust-cyclone"),
+
+    // ── rosout_interop — issue 1589 gave it two more cells ──────────────
+    // One case per language; each resolves its own probe (the Rust cargo
+    // fixture, or the C / C++ cmake leaf), so a C failure is no evidence about
+    // the Rust cell and vice versa.
+    co("rosout_interop", "a_nano_ros_log_call_reaches_ros2_topic_echo_rosout", "native-logging-rust-zenoh-n2r"),
+    co("rosout_interop", "a_c_log_call_reaches_ros2_topic_echo_rosout",        "native-logging-c-zenoh-n2r"),
+    co("rosout_interop", "a_cpp_log_call_reaches_ros2_topic_echo_rosout",      "native-logging-cpp-zenoh-n2r"),
 
     // ── graph_interop — one case per RMW, and the RMW is in the body ────
     // (`require_ros2()` vs `require_ros2_cyclonedds()`), not only in the name.
