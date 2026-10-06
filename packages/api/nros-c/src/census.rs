@@ -102,7 +102,7 @@ mod hosted {
         // executor or thread of ours; a census process is single-threaded at
         // this point, which is the condition `set_var` asks for (the C++
         // funnel's argument).
-        unsafe { env::set_var("NROS_RMW", "metadata") };
+        unsafe { env::set_var("NROS_RMW", nros::census_hooks::RECORDER_RMW) };
         ARMED.store(true, Ordering::Release);
         Ok(())
     }

@@ -1739,7 +1739,7 @@ fn census_select_backend() {
     // SAFETY: this runs in the boot funnel BEFORE the executor opens and
     // before any tier task is spawned, so the process is single-threaded at
     // this point -- the condition `set_var` asks for.
-    unsafe { std::env::set_var("NROS_RMW", "metadata") };
+    unsafe { std::env::set_var("NROS_RMW", nros::census_hooks::RECORDER_RMW) };
     // Issue 1556 (c) -- whoever selected it owns this census; the application
     // arm in `nros_cpp_init_rmw` stands down.
     CENSUS_SELECTED.store(true, core::sync::atomic::Ordering::Release);
@@ -6441,7 +6441,7 @@ mod census_funnel_tests {
         let _ = nros_rmw_metadata::nros_rmw_metadata_register();
         // SAFETY: as above.
         unsafe {
-            env::set_var("NROS_RMW", "metadata");
+            env::set_var("NROS_RMW", nros::census_hooks::RECORDER_RMW);
             env::set_var("NROS_ENTRY_SPIN_MS", "1");
         }
         let rc = unsafe {
@@ -6484,6 +6484,142 @@ mod census_funnel_tests {
             nros_rmw_metadata::DECLARED_BACKENDS + 1,
             "the recorder's slot is added to the declared backends, not carved out of them"
         );
+    }
+
+    /// Caller storage for one contract-monitor row, 8-aligned and static, as a
+    /// generated entry's `__nros_mon_storage` is.
+    #[repr(C, align(8))]
+    struct RowStorage([u8; crate::NROS_CPP_MONITOR_ROW_STORAGE]);
+    static mut CONTRACTED_ROW_STORAGE: RowStorage =
+        RowStorage([0; crate::NROS_CPP_MONITOR_ROW_STORAGE]);
+
+    /// The contracted topic: the fixture's publisher, and the monitor row's.
+    const CONTRACTED_TOPIC: &core::ffi::CStr = c"/system/emergency/control_cmd";
+
+    /// What a CONTRACTED generated entry's setup does (`monitor_install.jinja`):
+    /// install the monitor table BEFORE any node exists — a publisher attaches
+    /// its counter cell at create time — and return its rc if refused; then
+    /// create the node and its contracted publisher.
+    unsafe extern "C" fn contracted_setup(exec: *mut c_void) -> i32 {
+        let rows = [crate::nros_cpp_monitor_row_t {
+            topic: CONTRACTED_TOPIC.as_ptr(),
+            fqn: c"/census_contracted/control_cmd".as_ptr(),
+            min_rate_hz_milli: 10_000,
+            max_latency_ms: 0,
+        }];
+        let tables = crate::nros_cpp_monitor_tables_t {
+            rows: rows.as_ptr(),
+            n_rows: rows.len(),
+            row_storage: core::ptr::addr_of_mut!(CONTRACTED_ROW_STORAGE).cast::<c_void>(),
+            row_storage_len: crate::NROS_CPP_MONITOR_ROW_STORAGE,
+            ages: core::ptr::null(),
+            n_ages: 0,
+            age_storage: core::ptr::null_mut(),
+            age_storage_len: 0,
+        };
+        let rc = unsafe { crate::nros_cpp_install_monitors(exec, &tables) };
+        if rc != NROS_CPP_RET_OK {
+            return rc as i32;
+        }
+        let opts = nros_cpp_node_options_t::default();
+        let mut node = MaybeUninit::<nros_cpp_node_t>::uninit();
+        let rc = unsafe {
+            nros_cpp_node_create_ex(
+                exec,
+                c"census_contracted".as_ptr(),
+                &opts,
+                node.as_mut_ptr(),
+            )
+        };
+        if rc != NROS_CPP_RET_OK {
+            return rc as i32;
+        }
+        let mut publisher = MaybeUninit::<nros::internals::RmwPublisher>::uninit();
+        let rc = unsafe {
+            nros_cpp_publisher_create(
+                node.as_mut_ptr().cast_const(),
+                CONTRACTED_TOPIC.as_ptr(),
+                c"autoware_control_msgs::msg::dds_::Control_".as_ptr(),
+                c"".as_ptr(),
+                qos_depth(10),
+                publisher.as_mut_ptr().cast::<c_void>(),
+            )
+        };
+        if rc != NROS_CPP_RET_OK {
+            return rc as i32;
+        }
+        0
+    }
+
+    /// Issue 1693 — the census of a CONTRACTED entry records what its code
+    /// creates.
+    ///
+    /// Before: `nros_cpp_install_monitors` armed the `/diagnostics` reporter in
+    /// census mode too. It runs before the first node, the recorder had no
+    /// node to attribute the publisher to and refused it, and the install
+    /// returned that refusal — so the setup stopped before creating a single
+    /// node, the dump found nothing (`rc=-2`) and the run exited 156. Measured
+    /// on `examples/workspaces/derived-tiers-cpp`'s `native_entry`, the
+    /// live-peer lane's census prepass. After: the census run arms no reporter
+    /// (it never spins, so it could never publish one), records exactly the
+    /// node's own publisher — no `/diagnostics` row, which the inventory counts
+    /// on its own (`contract_reporters`) — and exits 0.
+    #[test]
+    fn a_contracted_entry_census_records_its_entities() {
+        nros::metadata_mode::reset();
+        let out = env::temp_dir().join("nros-census-contracted.json");
+        let _ = fs::remove_file(&out);
+        // SAFETY: single-threaded by this module's contract (see above).
+        unsafe {
+            env::set_var("NROS_CENSUS_OUT", &out);
+            env::remove_var("NROS_RMW");
+            env::remove_var("NROS_ENTRY_SPIN_MS");
+        }
+        let rc = unsafe {
+            crate::nros_board_native_run_components_named(
+                c"census_contracted".as_ptr(),
+                Some(contracted_setup),
+            )
+        };
+        unsafe {
+            env::remove_var("NROS_CENSUS_OUT");
+            env::remove_var("NROS_RMW");
+        }
+        assert_eq!(
+            rc, 0,
+            "a contracted entry's census run must exit 0 -- the monitor install \
+             stopped its setup before any node existed"
+        );
+        let json = fs::read_to_string(&out).expect("the census file");
+        let _ = fs::remove_file(&out);
+        let pubs = array_between(&json, "\"publishers\":");
+        assert_eq!(
+            pubs.matches("\"id\":").count(),
+            1,
+            "exactly the node's own publisher: {pubs}"
+        );
+        assert!(pubs.contains("/system/emergency/control_cmd"), "{pubs}");
+        assert!(
+            !json.contains(nros::contract::DIAG_TOPIC),
+            "a census run arms no /diagnostics reporter: {json}"
+        );
+        nros::metadata_mode::reset();
+    }
+
+    /// The predicate's negative control: only the recorder's selector makes a
+    /// census run. Unset, empty and a shipping backend's name are all boots.
+    #[test]
+    fn only_the_recorder_selector_is_a_census_run() {
+        // SAFETY: as above.
+        unsafe { env::remove_var("NROS_RMW") };
+        assert!(!nros::census_hooks::recording_run(), "unset");
+        unsafe { env::set_var("NROS_RMW", "zenoh") };
+        assert!(!nros::census_hooks::recording_run(), "a shipping backend");
+        unsafe { env::set_var("NROS_RMW", "") };
+        assert!(!nros::census_hooks::recording_run(), "empty is unset");
+        unsafe { env::set_var("NROS_RMW", nros::census_hooks::RECORDER_RMW) };
+        assert!(nros::census_hooks::recording_run(), "the recorder");
+        unsafe { env::remove_var("NROS_RMW") };
     }
 
     /// No switch, no mode: the funnel that was not asked for a census must not

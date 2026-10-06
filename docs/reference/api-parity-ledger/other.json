@@ -1321,6 +1321,10 @@
     "verdict": "extension",
     "why": "Install one executor's monitor tables (refusing, never truncating) and arm its `/diagnostics` reporter, before the first node. issue 1676 -- `nros::contract`, the on-target half of RFC-0052's contract monitors that a Rust entry reaches: `nros::main!` installs the baked tables through it, and nros-cpp's `nros_cpp_install_monitors` arms the same reporter. No rclrs counterpart -- ROS 2 has no contract monitors; the observer reads the reports on `/diagnostics` in play_launch's RFC-0050 rule vocabulary. See `rust:MonitorSpec`."
   },
+  "rust:arm_reporter": {
+    "verdict": "extension",
+    "why": "issue 1693 -- THE arming step of one executor's `/diagnostics` reporter, shared by `install_contract_monitors` (Rust) and nros-cpp's `nros_cpp_install_monitors` (C and C++): idempotent, arms nothing in a census run (`census_hooks::recording_run`), and never fatal when the publisher cannot be created. No rclrs counterpart -- ROS 2 has no contract monitors. See `rust:install_contract_monitors`."
+  },
   "rust:ContractReporter": {
     "verdict": "extension",
     "why": "`static` storage for one executor's reporter, which a Rust entry owns where the C++ context holds a field. issue 1676 -- `nros::contract`, the on-target half of RFC-0052's contract monitors that a Rust entry reaches: `nros::main!` installs the baked tables through it, and nros-cpp's `nros_cpp_install_monitors` arms the same reporter. No rclrs counterpart -- ROS 2 has no contract monitors; the observer reads the reports on `/diagnostics` in play_launch's RFC-0050 rule vocabulary. See `rust:MonitorSpec`."

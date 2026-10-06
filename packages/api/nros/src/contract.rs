@@ -166,7 +166,8 @@ impl Default for ContractReporter {
 ///
 /// If the `/diagnostics` publisher cannot be created the tables stay
 /// installed and violations reach the log only — reported, not fatal, which
-/// is what `nros_cpp_install_monitors` does too. Returns `Err` only for a
+/// is what `nros_cpp_install_monitors` does too (both through
+/// [`arm_reporter`]; a census run arms none). Returns `Err` only for a
 /// refused table.
 ///
 /// # Safety
@@ -197,25 +198,60 @@ pub unsafe fn install_contract_monitors(
     // SAFETY: see `ContractReporter`'s `Sync` — this is the one write, made
     // before the executor spins.
     let slot = unsafe { &mut *reporter.sink.get() };
-    if slot.is_some() {
-        return Ok(());
-    }
     let domain_id = executor.domain_id();
+    // SAFETY: `slot` lives in a `'static` reporter and never moves.
+    unsafe { arm_reporter(executor, domain_id, slot) };
+    Ok(())
+}
+
+/// Arm one executor's `/diagnostics` reporter in `slot`, and point the
+/// executor's violation sink at it — THE arming step, shared by
+/// [`install_contract_monitors`] (Rust) and `nros-cpp`'s
+/// `nros_cpp_install_monitors` (C and C++), issue 1693.
+///
+/// * Idempotent: a slot already holding a reporter keeps it.
+/// * A CENSUS run arms nothing ([`crate::census_hooks::recording_run`]): it
+///   never spins, so the reporter could never publish, and the recorder has no
+///   node open yet to attribute it to — it refused the publisher, and the
+///   C/C++ road turned that refusal into a failed setup that recorded nothing.
+/// * A publisher that cannot be created is REPORTED, never fatal: the tables
+///   stay installed and every violation still reaches the log (issue 0514's
+///   floor). Both roads say so in the one message below; before this the C/C++
+///   road logged "violations stay in the log only" and then failed the setup.
+///
+/// Returns whether a reporter is armed after the call.
+///
+/// # Safety
+/// `slot` must not move, and must outlive every spin of `executor`, until the
+/// sink is removed (`set_violation_sink(None)`) or the executor is dropped —
+/// [`DiagSink::hook`]'s contract.
+pub unsafe fn arm_reporter(
+    executor: &mut Executor<'_>,
+    domain_id: u32,
+    slot: &mut Option<DiagSink>,
+) -> bool {
+    if slot.is_some() {
+        return true;
+    }
+    if crate::census_hooks::recording_run() {
+        return false;
+    }
     match DiagSink::create(executor, domain_id) {
         Ok(sink) => {
             let sink = slot.insert(sink);
-            // SAFETY: `sink` lives in a `'static` reporter and never moves.
+            // SAFETY: forwarded from this fn's contract.
             unsafe { sink.hook(executor) };
+            true
         }
         Err(e) => {
             nros_log::log_error!(
                 nros_log::get_logger("nros.contract"),
                 "contract monitors installed, but the {} publisher could not be created \
-                 ({:?}); violations stay in the log only (issue 1676)",
+                 ({:?}); violations stay in the log only (issues 1635/1676)",
                 DIAG_TOPIC,
                 e
             );
+            false
         }
     }
-    Ok(())
 }
