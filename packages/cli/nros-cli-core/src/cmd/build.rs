@@ -61,7 +61,11 @@ pub struct Args {
 
     /// Print the stages and the command that would run, then stop.
     ///
-    /// Safe by construction: a `Handoff` performs no I/O until `exec`.
+    /// Safe by construction: a `Handoff` performs no I/O until `exec`. It
+    /// still GENERATES (stage 4 writes each image's generated files), which
+    /// the Zephyr fixture runner relies on to regenerate an application
+    /// without building it (issue 1707); a no-write answer is `nros
+    /// image-facts` (issue 1716).
     #[arg(long)]
     pub dry_run: bool,
 
@@ -140,17 +144,59 @@ pub struct ResolvedBuild {
     /// so the configure belongs to generation — which is what it is: writing
     /// the build system next to the root that was just written.
     ///
-    /// Kept on the plan rather than performed during planning so `plan_builds`
-    /// stays side-effect free and `--dry-run` can PRINT it. [`run`] performs it.
+    /// Kept on the plan rather than performed during planning so planning
+    /// never RUNS a native tool and `--dry-run` can PRINT it. [`run`] performs it.
     pub configure: Option<Handoff>,
 }
 
-/// Stages 1-4: everything up to the handoff, with NO side effects.
+/// What a plan is FOR — issue 1716.
+///
+/// Planning a build GENERATES: stage 4 writes each image's entry package, its
+/// settings file, the generated west application, the resolved model and the
+/// sizing descriptor, and retires a stale generated root. That is the point of
+/// stage 4, and `--dry-run` relies on it — "generate, then print instead of
+/// run" is how the Zephyr fixture runner regenerates an application before
+/// `ninja` (issue 1707). A QUERY must not: `nros image-facts` runs inside a
+/// Zephyr configure, after cmake has read the very application stage 4
+/// rewrites, and its answer (board, platform, driver, rmw, entry, triple,
+/// profile) is fixed by stage 3 anyway.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Planning {
+    /// Stages 1–4 — `nros build` (with or without `--dry-run`),
+    /// `nros materialize`.
+    Generate,
+    /// Stages 1–3 — identify every image and stop. Writes nothing, deletes
+    /// nothing; the plans carry no handoff and no configure.
+    Query,
+}
+
+/// Stages 1-4: everything up to the handoff, which runs NOTHING — no native
+/// tool is spawned and nothing is exec'd.
+///
+/// It is NOT free of side effects, and this comment said it was until issue
+/// 1716: stage 4 writes every planned image's generated files (and stage 3.5
+/// its resolved model) — the generation `--dry-run` deliberately keeps. For an
+/// answer with no writes at all, use [`plan_query`].
 ///
 /// Separated from [`run`] so the composition is testable without a built
 /// binary and without exec'ing anything. That separation is also why
 /// `--dry-run` is trivially correct rather than a second code path.
 pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
+    plan_for(args, Planning::Generate)
+}
+
+/// Stages 1–3 only: every image identified exactly as [`plan_builds`]
+/// identifies it, and NOTHING written, generated, resolved to disk or retired
+/// (issue 1716). Each plan's `handoff` and `configure` are `None` — a query
+/// names the image, it does not say how to build it.
+///
+/// The one caller is `nros image-facts`, which a Zephyr configure runs; see
+/// [`Planning`] for why it must not regenerate what that configure just read.
+pub fn plan_query(args: &Args) -> Result<Vec<ResolvedBuild>> {
+    plan_for(args, Planning::Query)
+}
+
+fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
     let root = match &args.workspace {
         Some(w) => w.clone(),
         None => std::env::current_dir().wrap_err("resolving cwd as the workspace root")?,
@@ -174,7 +220,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     // `build/<image>/nros-cargo.toml`. Decided before discovery, because the
     // workspace road below would treat the package's own `[workspace]` marker
     // as a root build file to retire (D9) and generate an entry it does not need.
-    if let Some(plans) = plan_single_package(args, &root)? {
+    if let Some(plans) = plan_single_package(args, &root, planning)? {
         return Ok(plans);
     }
 
@@ -284,6 +330,12 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     // the dependency and declaration preflights above, which hold for either
     // mode.
     if package_mode {
+        // Issue 1716 — a bringup-less workspace declares no image, so a query
+        // has nothing to name; `plan_packages` would WRITE each package's
+        // generated cmake root to answer a question nobody asked.
+        if planning == Planning::Query {
+            return Ok(Vec::new());
+        }
         return plan_packages(&root, &found, args, nano_ros_root.as_deref());
     }
 
@@ -414,6 +466,28 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         let missing = crate::builder::preflight::check(descriptor, &root, nano_ros_root.as_deref());
         if !missing.is_empty() {
             eyre::bail!("{}", crate::builder::preflight::report(&missing));
+        }
+
+        // Issue 1716 — a QUERY stops here. Everything it answers is fixed by
+        // now (the push below reads only the image, its board descriptor and
+        // its driver), and everything after this line WRITES: the resolved
+        // model (3.5), then the generated entry, settings file, west
+        // application and sizing descriptor, and the retirement of a stale
+        // generated root (4).
+        if planning == Planning::Query {
+            out.push(ResolvedBuild {
+                configure: None,
+                qualified: qual,
+                board,
+                platform,
+                driver,
+                handoff: None,
+                rmw: image.rmw.clone(),
+                entry_package: Some(want_entry.clone()),
+                target: descriptor.target.clone(),
+                profile: image.profile.clone(),
+            });
+            continue;
         }
 
         // ---- stage 3.5 — the RESOLVE phase (RFC-0094 D1, phase-439 W2) ---
@@ -1264,7 +1338,11 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
 /// run from the directory ABOVE the leaf — see `cmd::leaf_settings` for the
 /// measured reason (the leaf's own `.cargo/` would double the board's link
 /// flags until W6 deletes it).
-fn plan_single_package(args: &Args, root: &std::path::Path) -> Result<Option<Vec<ResolvedBuild>>> {
+fn plan_single_package(
+    args: &Args,
+    root: &std::path::Path,
+    planning: Planning,
+) -> Result<Option<Vec<ResolvedBuild>>> {
     // issue 1641 — the 1510 ladder, not a hand-spelled one: the checkout the
     // workspace sits in outranks an inherited `$NROS_REPO_DIR`, which in a
     // linked worktree names the PARENT. This was `explicit > env > walk-up`,
@@ -1331,6 +1409,22 @@ fn plan_single_package(args: &Args, root: &std::path::Path) -> Result<Option<Vec
             unsynced.join(", "),
             root.display()
         );
+    }
+
+    // Issue 1716 — a query names the leaf's image and writes no settings file.
+    if planning == Planning::Query {
+        return Ok(Some(vec![ResolvedBuild {
+            qualified: qual,
+            board: img.board.clone(),
+            platform: img.platform.clone(),
+            driver: Driver::Cargo,
+            handoff: None,
+            rmw: img.decl.rmw.clone(),
+            entry_package: Some(img.package.clone()),
+            target: img.target.clone(),
+            profile: None,
+            configure: None,
+        }]));
     }
 
     // ---- stage 4 — the one settings file ------------------------------------
@@ -1538,7 +1632,7 @@ fn perform(hand: &Handoff, mode: Handover) -> Result<()> {
 ///
 /// Split out of [`run`] for one reason — the loop is the thing that was wrong
 /// (issue 1206) and it was the one part of `nros build` no test could reach.
-/// `plan_builds` is pure and heavily tested; `run` needs a real workspace on
+/// `plan_builds` runs no tool and is heavily tested; `run` needs a real workspace on
 /// disk; this needs neither.
 ///
 /// `handover` performs one plan's command. Production passes [`perform`].
@@ -1586,9 +1680,9 @@ fn drive(
             continue;
         }
         // The configure, for drivers that need one (cmake). Runs HERE rather
-        // than during planning so `plan_builds` stays side-effect free — the
+        // than during planning so planning never spawns a native tool — the
         // property that makes `--dry-run` trivially correct instead of a second
-        // code path. It is a subprocess, not an exec: the exec below has to
+        // code path. (Planning does WRITE generated files; issue 1716.) It is a subprocess, not an exec: the exec below has to
         // survive it.
         if let Some(cfg) = &p.configure {
             run_configure(cfg)?;

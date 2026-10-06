@@ -15,9 +15,9 @@
 //! D2 sketched a "supplier" that west's configure would invoke, and worried it
 //! must not be `nros build` or west would loop: `nros build` runs `west build`,
 //! which would run `nros build`. **A query cannot loop.** This runs stages 1–4
-//! — discover, resolve, preflight — and stops before the handoff, which is
-//! exactly `plan_builds`, already exercised by `--dry-run` and already reused
-//! by `nros materialize`.
+//! — discover, resolve, preflight — and stops before generation, which is
+//! `plan_query`: the same stages `plan_builds` runs for `nros build`, ended
+//! before stage 4 so the query writes nothing (issue 1716).
 //!
 //! It also follows an idiom this repository already has four of — `nros
 //! profile`, `nros model-path`, `nros sdk-path`, `nros codegen resolve-deps` —
@@ -27,7 +27,15 @@
 //!
 //! WHAT IT DELIBERATELY DOES NOT DO
 //!
-//! It produces no artifacts. Generated message crates and the resolved
+//! It produces no artifacts, and it writes nothing at all. That second half
+//! was false until issue 1716: the query planned through `plan_builds`, whose
+//! stage 4 regenerates every image's entries — including the west application
+//! the Zephyr configure that RUNS this query had just read (issue 1707). It
+//! now plans through `plan_query`, which stops after stage 3; everything it
+//! prints is fixed by then. Pinned by `build_verb_pipeline.rs`'s
+//! `image_facts_writes_nothing`.
+//!
+//! Generated message crates and the resolved
 //! SystemModel already have a producer (`nros sync`); the entry staticlib and
 //! the per-build sizes headers already have one (cargo, driven by cmake). What
 //! was missing was never a builder — it was the ANSWERS those builders were
@@ -153,7 +161,8 @@ pub fn run(args: Args) -> Result<()> {
         native_args: Vec::new(),
     };
 
-    let plans = match crate::cmd::build::plan_builds(&build_args) {
+    // `plan_query`, never `plan_builds`: issue 1716.
+    let plans = match crate::cmd::build::plan_query(&build_args) {
         Ok(p) => p,
         Err(e) if args.if_present => {
             // The workspace exists but does not declare this image. Same
