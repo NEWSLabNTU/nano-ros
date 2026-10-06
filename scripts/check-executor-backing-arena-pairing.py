@@ -303,6 +303,7 @@ SIZING_KNOBS = {
     "NROS_ENTITY_COUNT_GUARD_CONDITION": "the per-kind arena sum (issue 0810)",
     "NROS_ENTITY_DECLARED_DEPTHS": "the per-kind subscription region sum",
     "NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION": "the same sum's guard",
+    "NROS_EXECUTOR_MAX_VIOLATIONS": "the carved violation ring (phase-474 I1)",
     "NROS_SUBSCRIBED_TYPE_BOUNDS": "each subscription's own region (issue 1255)",
 }
 NOT_SIZING = {
@@ -315,6 +316,7 @@ NOT_SIZING = {
     "NROS_EXECUTOR_BACKING_SECTION": "placement only, not size",
     "NROS_BOOT_REPORT": "a cfg, no size",
     "NROS_ARENA_EXHAUSTION_IS_FATAL": "a cfg, no size (issue 1036)",
+    "NROS_VIOLATION_DRAIN_REPORT": "a const bool, no size (phase-474 I1)",
     "NROS_PARAM_SERVICE_BUFFER_SIZE": "emitted as a const, not in the arena sum",
     "NROS_EXECUTOR_MAX_SHUTDOWN_CBS": "sizes the Executor HEADER, not the backing",
     "NROS_PARAM_SERVICE_INBOX_BYTES":

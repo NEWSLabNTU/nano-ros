@@ -47,6 +47,20 @@
 //! | 18          | start    | `handle`                                       |
 //! | 19          | end      | `handle`                                       |
 //!
+//! | 21          | violation          | `seq << 8 \| rule code` (phase-474 I1) |
+//! | 22          | violation fqn      | FNV-1a 32 of the endpoint ref           |
+//! | 23          | violation measured | `measured`                              |
+//! | 24          | violation declared | `declared`                              |
+//!
+//! (20 is the handle-tagged name chunk, see [`MARKER_NAME`].) A violation is
+//! four events in a row on one thread, emitted at DETECTION, so it sits on
+//! the same clock as the dispatches it judges. The rule code is
+//! `monitor::rule_code` (the index into `monitor::RULE_IDS` plus one), the
+//! sequence number is the executor's own count (`Executor::violations_total`
+//! at the time, low 24 bits), the same number the drain-and-report log line
+//! prints. Events 22-24 bind to the 21 they FOLLOW; a decoder that sees a
+//! 22-24 without its 21 drops it rather than guessing.
+//!
 //! Name chunks repeat until the name is spent and are NUL-padded; a chunk
 //! run binds to the register event it FOLLOWS. That is adjacency, not
 //! keying — stated plainly because it is a real weakness: a dropped or
@@ -94,6 +108,13 @@ pub const MARKER_NAME: u32 = 20;
 pub const MARKER_START: u32 = 18;
 /// `callback_end(handle)` — immediately after it returns.
 pub const MARKER_END: u32 = 19;
+
+// phase-474 I1 — the violation markers. Defined beside the rule table in
+// `monitor` (which builds without this feature, so the encoding is tested in
+// every lane) and re-exported here with their siblings.
+pub use super::monitor::{
+    MARKER_VIOLATION, MARKER_VIOLATION_DECLARED, MARKER_VIOLATION_FQN, MARKER_VIOLATION_MEASURED,
+};
 
 /// Names longer than this are truncated. Matches the decoder's `CB_NAME_MAX`;
 /// both sides must agree or the tail of a long name is read as a chunk of
@@ -279,5 +300,15 @@ pub(crate) fn start(handle: u8) {
 pub(crate) fn end(handle: u8) {
     if let Some(sink) = sink() {
         emit(sink, MARKER_END, handle as u32);
+    }
+}
+
+/// phase-474 I1 — one stored contract violation, as four events (see the
+/// module table). Pre-arm verdicts (phase-474 I2) are not stored and emit
+/// nothing.
+pub(crate) fn violation(seq: u32, v: &super::monitor::Violation) {
+    let Some(sink) = sink() else { return };
+    for (id, arg) in super::monitor::violation_marker_words(seq, v) {
+        emit(sink, id, arg);
     }
 }

@@ -64,6 +64,18 @@ heap-headroom:
         python3 scripts/read-boot-report.py --heap-headroom "$NROS_HEAP_HEADROOM_DUMP"
     fi
 
+# phase-474 I1 -- the SWD violation record (`NROS_VIOLATION_RECORD`,
+# `nros-node/src/executor/monitor.rs`) and its decoder are one wire format in
+# two languages. Hold the decoder's layout constants and rule table to the
+# Rust ones (its self-test runs on every invocation), so a field or rule added
+# on one side cannot decode wrongly on the other. The board read is the
+# island's.
+[private]
+violation-record:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 scripts/read-violation-record.py --check-layout packages/core/nros-node/src/executor/monitor.rs
+
 # Check Python code: formatting + linting with ruff
 [private]
 python:
