@@ -9533,6 +9533,22 @@ impl<'s> Executor<'s> {
             // `try_process` now carries the entry's slot index for the callback
             // trace hooks. This sweep FIRES timer callbacks, so it is a real
             // dispatch path and must attribute them like the drain below does.
+            //
+            // phase-474 I6 -- and it must TIME them like the drain does. This
+            // is the path every timer takes on a node that also subscribes
+            // (the default `Trigger::Any` fails whenever no subscription has
+            // a sample), and it measured nothing, so `max-latency-runtime`
+            // never judged a timer path: the safety island's 250 ms overrun of
+            // a 206 ms path stored no verdict. One clock read before and one
+            // after each timer's `try_process`, only when a latency contract
+            // exists and a clock is injected; the publish-count snapshot is a
+            // fixed array on the stack, nothing allocates. The measured span
+            // is callback entry to exit, as in the drains; release jitter is
+            // `release-jitter-runtime`'s.
+            let mon_table = self.monitor_table;
+            let lat_clock = self
+                .clock_us_fn
+                .filter(|_| mon_table.iter().any(|m| m.max_latency_ms > 0));
             for i in 0..self.entries.len() {
                 let Some(meta) = self.entries[i].as_ref() else {
                     continue;
@@ -9540,8 +9556,14 @@ impl<'s> Executor<'s> {
                 if matches!(meta.kind, EntryKind::Timer) {
                     let data_ptr = unsafe { arena_ptr.add(meta.offset) };
                     let try_process = meta.try_process;
+                    let counts_before = snapshot_pub_counts(mon_table, lat_clock.is_some());
+                    let start_us = lat_clock.map(|c| c());
                     Self::begin_dispatch(self.slot_tags, i);
                     let _ = unsafe { try_process(data_ptr, delta_us, i as u8) };
+                    if let (Some(clock), Some(t0)) = (lat_clock, start_us) {
+                        let elapsed_us = clock().saturating_sub(t0).min(u32::MAX as u64) as u32;
+                        attribute_latency(mon_table, true, &counts_before, elapsed_us);
+                    }
                     self.finish_dispatch(i);
                 }
             }

@@ -179,6 +179,20 @@ record `NROS_VIOLATION_RECORD` with `CONFIG_NROS_BOOT_REPORT`
 LATEST `CONFIG_NROS_EXECUTOR_MAX_VIOLATIONS` (default 8) for
 `drain_violations` and counts what it evicted.
 
+**What `max-latency-runtime` measures (phase-474 I6).** One dispatch's
+elapsed time on the executor's monotonic clock, from callback entry to
+callback exit, charged to every monitored publisher whose publish count
+advanced during that dispatch. This holds for every dispatch kind: a
+subscription or service callback in the drains, and a timer callback whether
+it fires in the drains or in the sweep that runs when the executor trigger
+does not pass (a node that also subscribes, with no sample this spin). Work a
+callback does synchronously, including a service call made from a timer
+callback, is inside the window. The figure is not the timer's release jitter
+(how late the callback started against its period), which
+`release-jitter-runtime` judges, and it is not a route: waiting for the next
+tick or crossing a link before the callback starts is outside it (phase-474
+D3).
+
 ## CMake surface
 
 `nano_ros_add_executable(... MODEL path/to/system_model.yaml)` as the
