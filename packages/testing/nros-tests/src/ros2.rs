@@ -889,9 +889,10 @@ fn wait_child_data(remaining: Duration) {
 ///
 /// The one verb that does NOT accept it is `ros2 action list`, which answers
 /// `error: unrecognized arguments: --no-daemon` — so it cannot route through
-/// here and is defended one layer down instead, by
-/// `nros_tests::unique_ros_domain_id` refusing a domain whose daemon port is
-/// already bound.
+/// here, and it is not used: the fixed-domain zenoh cells showed that a
+/// daemon-backed `ros2 action list` reads a previous cell's dead router
+/// (issues 1342/1691). Ask `service list --include-hidden-services` for
+/// `<action>/_action/send_goal` through this helper instead.
 pub fn ros2_query_cmd(env_setup: &str, timeout_s: u32, args: &str) -> String {
     debug_assert!(
         !args.contains("--no-daemon"),
