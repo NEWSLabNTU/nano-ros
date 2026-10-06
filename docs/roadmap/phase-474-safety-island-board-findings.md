@@ -391,6 +391,61 @@ route is a variant of `workspace-zephyr-cpp-derived-tiers` with
 asserting `contract violation #1: max-latency-runtime` on the console. The
 board run stays the island's.
 
+**Board result (2026-10-06, the island's phase9-W4, image at this phase's
+PR head).** The channel works on the S32K344: `armed` reads 0 before the
+inputs are established and 1 after (the handler arms when every input is
+established, not at INIT_TIMEOUT, because INIT always times out on the board
+before Autoware starts), start-up noise lands in `suppressed_before_arm`
+(5-8 entries), the record is read by symbol into every act's
+`violations.txt`, and a stored violation is four markers in the island's
+trace (written at 256 + id, 277-280, beside the island's own 1-31). A
+commanded 250 ms overrun of the handler's tick after RUN (`ISLAND_DEBUG_
+OVERRUN`, written over SWD) shows as a 250.65 ms callback in the trace
+followed by `timer-overrun-runtime` x4 and `release-jitter-runtime`
+246918 us; an HPC-loss act afterwards stored nothing during the act
+(VERDICT PASS). The gate as written ("exactly one `max-latency-runtime`
+verdict, ring empty after RUN") did NOT pass, on three counts that are this
+runtime's, now I6-I8 below. Readouts verbatim in the island's
+`docs/takeover-trace.md` section 12.
+
+### I6 -- `max-latency-runtime` never judges a timer-fired callback
+
+The 250 ms overrun produced no `max-latency-runtime` verdict at all, on a
+handler whose `on_timer` path carries a 206 ms monitor. Reading of the
+executor (unconfirmed by a unit test yet): timers fire in the spin sweep,
+and that sweep measures nothing, so `attribute_latency` never sees a timer
+dispatch. Every contracted path on the island is timer-driven or a service
+handler invoked from one, so on this image the contract's latency rows are
+never judged at run time; the host T4 test passes because its overrun is a
+subscription callback. Fix: time the timer dispatch like a take-driven one
+and charge it to the publishers whose count advanced; add the timer case to
+T4's host test (it must fail before the fix). D3 (the route) stays separate;
+this is the callback half not working for timers.
+
+### I7 -- the /diagnostics reporter runs on the spin thread
+
+The first stored violation halted the board 60 ms later (fatal 35,
+`K_ERR_ARM_USAGE_ILLEGAL_EPSR`): the reporter builds its message in a 512 B
+stack buffer on the spin thread and overflowed the 16 KiB main stack into
+the idle thread's. The island raised `CONFIG_MAIN_STACK_SIZE` to 24 KiB
+(high-water 18,780 B) to get past it. The reporter also costs 15-20 ms of
+spin per verdict over the serial link, which itself trips
+`release-jitter-runtime` and `timer-overrun-runtime`, so one verdict breeds
+more. Fix: size the main stack from the reporter's need in the derivation
+(or move the reporter's buffer to `.bss`), and report off the spin path
+(deferred to the next idle slot, or coalesced), so a verdict does not cost
+the tick that is being judged.
+
+### I8 -- the first rate window after arming reads short
+
+Four `rate-hierarchy-runtime` verdicts appear once, right after arming, at
+9984-9990 mHz against 10000 (0.03-0.16 % short) and never recur. Arming
+reopens the rate windows mid-period, so the first window counts one period
+less than a full window. Fix: start the first window at the next sample
+after arming (or allow one period of tolerance on the first window only).
+With I6-I8 in place the island's ring should read EMPTY after RUN apart
+from the silence verdict that needs an epoch clock (island phase 9 W3).
+
 ## Cross-repo
 
 - **play_launch** has a parallel phase on the same findings: F1 (charge
@@ -439,5 +494,12 @@ independent of each other.
 - [ ] T3: issue 1533 resolved and archived; issue 1534 closed with a derived
       main-thread priority and a measured RX-ring default.
 - [ ] T4: a deliberate overrun on the S32K344 is reported through D1's
-      channel. (Host executor e2e landed; native_sim / QEMU fixture and the
-      board run open.)
+      channel. (Host executor e2e landed; the board run of 2026-10-06 shows
+      the overrun as timer-overrun and jitter verdicts and markers, not as
+      `max-latency-runtime`: I6. native_sim / QEMU fixture open.)
+- [ ] I6: a timer-fired callback that overruns its `max_latency` produces a
+      `max-latency-runtime` verdict, on the host test and on the S32K344.
+- [ ] I7: the reporter neither overflows the main stack nor costs the spin
+      thread a tick per verdict; the island's 24 KiB workaround can go.
+- [ ] I8: no rate verdict in the first window after arming on a stream
+      publishing at its declared rate.
