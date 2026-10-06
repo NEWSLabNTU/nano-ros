@@ -12314,6 +12314,7 @@ fn a_heap_too_small_for_the_parameter_store_refuses_the_declaration() {
     let mut ok: Executor = executor_with_clock(MockSession::new());
     assert!(ok.declare_parameter("rate", ParameterValue::Integer(10)));
 /// phase-474 I1 — the ring keeps the LATEST `MAX_VIOLATIONS` verdicts, counts
+/// phase-474 I1 -- the ring keeps the LATEST `MAX_VIOLATIONS` verdicts, counts
 /// what it evicted, and numbers each one, so a late violation is never lost to
 /// start-up noise (the Autoware Safety Island's ring held its first 8 since
 /// boot, all start-up).
@@ -12355,7 +12356,7 @@ fn the_violation_ring_keeps_the_latest_and_numbers_them() {
     assert_eq!(executor.violations_dropped(), 3);
 }
 
-/// phase-474 I1 — the drain-and-report hook drains the ring at the end of the
+/// phase-474 I1 -- the drain-and-report hook drains the ring at the end of the
 /// spin that detected the verdict; with it off the ring keeps the verdict for
 /// a hand drain.
 #[cfg(feature = "alloc")]
@@ -12385,17 +12386,23 @@ fn the_drain_report_hook_drains_at_the_end_of_the_spin() {
     assert_eq!(executor.violations_dropped(), 0);
 }
 
-/// phase-474 I1 — with callback tracing compiled in, a stored violation is
+/// phase-474 I1 -- with callback tracing compiled in, a stored violation is
 /// four marker events on the installed sink.
 #[cfg(all(feature = "alloc", feature = "trace-callbacks"))]
 #[test]
 fn a_stored_violation_emits_its_trace_markers() {
     use super::monitor::{Violation, violation_marker_words};
-    use std::sync::Mutex;
-    static EVENTS: Mutex<alloc::vec::Vec<(u32, u32)>> = Mutex::new(alloc::vec::Vec::new());
+    use core::cell::RefCell;
+    // Thread-local: the sink is process-global, and other tests' executors on
+    // other threads emit through it too. This test's executor runs on this
+    // thread, so its events are the ones recorded here.
+    std::thread_local! {
+        static EVENTS: RefCell<alloc::vec::Vec<(u32, u32)>> =
+            const { RefCell::new(alloc::vec::Vec::new()) };
+    }
     unsafe extern "C" fn sink(id: u32, arg: u32) {
         if (21..=24).contains(&id) {
-            EVENTS.lock().unwrap().push((id, arg));
+            EVENTS.with(|e| e.borrow_mut().push((id, arg)));
         }
     }
     super::callback_trace::set_trace_sink(Some(sink));
@@ -12408,8 +12415,7 @@ fn a_stored_violation_emits_its_trace_markers() {
         declared: 10,
     };
     executor.violations.record(v.clone());
-    super::callback_trace::set_trace_sink(None);
-    let seen = EVENTS.lock().unwrap().clone();
+    let seen = EVENTS.with(|e| e.borrow().clone());
     let want = violation_marker_words(1, &v);
     assert!(
         seen.windows(4).any(|w| w == want),
@@ -12517,4 +12523,119 @@ fn a_churning_mixed_workload_never_exhausts_the_arena() {
         (0, 0),
         "with nothing live, every byte coalesced back into the bump pointer"
     );
+/// phase-474 I2 -- tests that put an executor in "armed on call" mode, which
+/// the process-global arm request reaches. Serialised so one test's request
+/// cannot arm another's executor mid-assertion.
+#[cfg(feature = "alloc")]
+fn arming_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+#[cfg(feature = "alloc")]
+fn startup_verdict(measured: u32) -> super::monitor::Violation {
+    super::monitor::Violation {
+        rule: "release-jitter-runtime",
+        fqn: "spin",
+        measured,
+        declared: 10_000,
+    }
+}
+
+/// phase-474 I2 -- the default is today's behaviour: armed from the start, so
+/// the first verdict is stored.
+#[cfg(feature = "alloc")]
+#[test]
+fn monitors_arm_at_the_first_spin_by_default() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    assert_eq!(
+        super::monitor::MonitorArming::DEFAULT,
+        super::monitor::MonitorArming {
+            on_call: false,
+            grace_ms: 0
+        },
+        "this build states no arming knob"
+    );
+    assert!(executor.monitors_armed());
+    executor.set_report_violations(false);
+    executor.violations.record(startup_verdict(57_751));
+    assert_eq!(executor.violations_total(), 1);
+    assert_eq!(executor.violations_suppressed_before_arm(), 0);
+}
+
+/// phase-474 I2 -- armed on call: a verdict before the call is counted and not
+/// stored; the call arms, and the next one is stored. The app's call is the
+/// global request (`nros_monitors_arm`), seen at the next spin.
+#[cfg(feature = "alloc")]
+#[test]
+fn monitors_armed_on_call_count_but_do_not_store_start_up() {
+    let _g = arming_lock();
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_report_violations(false);
+    executor.set_monitor_arming(true, 0);
+    assert!(!executor.monitors_armed());
+    for _ in 0..3 {
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        executor.violations.record(startup_verdict(57_751));
+    }
+    assert!(!executor.monitors_armed(), "nothing asked yet");
+    assert_eq!(executor.violations_suppressed_before_arm(), 3);
+    assert_eq!(
+        executor.violations_total(),
+        0,
+        "nothing stored before arming"
+    );
+    let mut ring = 0;
+    executor.drain_violations(|_| ring += 1);
+    assert_eq!(ring, 0);
+
+    super::monitor::request_monitor_arming();
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        executor.monitors_armed(),
+        "the request armed it at the next spin"
+    );
+    executor.violations.record(startup_verdict(20_001));
+    let mut kept = alloc::vec::Vec::new();
+    executor.drain_violations_numbered(|seq, v| kept.push((seq, v.measured)));
+    assert_eq!(kept, [(1, 20_001)]);
+    assert_eq!(
+        executor.violations_suppressed_before_arm(),
+        3,
+        "kept, not reset"
+    );
+
+    // A request made before an executor existed does not arm it.
+    let mut later: Executor = executor_with_clock(MockSession::new());
+    later.set_monitor_arming(true, 0);
+    let _ = later.spin_once(core::time::Duration::from_millis(0));
+    assert!(!later.monitors_armed());
+    later.arm_monitors();
+    assert!(later.monitors_armed(), "the executor's own call arms it");
+}
+
+private_test_clock!(arm_grace_clock);
+
+/// phase-474 I2 -- a grace period arms the monitors that long after the first
+/// spin, for an application with no lifecycle to call from.
+#[cfg(feature = "alloc")]
+#[test]
+fn a_grace_period_arms_after_the_first_spin() {
+    let _g = arming_lock();
+    arm_grace_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), arm_grace_clock::now_us);
+    executor.set_report_violations(false);
+    executor.set_monitor_arming(false, 200);
+    assert!(!executor.monitors_armed());
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    executor.violations.record(startup_verdict(1));
+    arm_grace_clock::set_us(1_150_000);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(!executor.monitors_armed(), "150 ms < 200 ms grace");
+    arm_grace_clock::set_us(1_200_000);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(executor.monitors_armed(), "200 ms after the first spin");
+    assert_eq!(executor.violations_suppressed_before_arm(), 1);
+    assert_eq!(executor.violations_total(), 0);
 }

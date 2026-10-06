@@ -317,6 +317,8 @@ NOT_SIZING = {
     "NROS_BOOT_REPORT": "a cfg, no size",
     "NROS_ARENA_EXHAUSTION_IS_FATAL": "a cfg, no size (issue 1036)",
     "NROS_VIOLATION_DRAIN_REPORT": "a const bool, no size (phase-474 I1)",
+    "NROS_MONITOR_ARM_ON_CALL": "a const bool, no size (phase-474 I2)",
+    "NROS_MONITOR_ARM_GRACE_MS": "a time, no size (phase-474 I2)",
     "NROS_PARAM_SERVICE_BUFFER_SIZE": "emitted as a const, not in the arena sum",
     "NROS_EXECUTOR_MAX_SHUTDOWN_CBS": "sizes the Executor HEADER, not the backing",
     "NROS_PARAM_SERVICE_INBOX_BYTES":

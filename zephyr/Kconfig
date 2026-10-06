@@ -1711,6 +1711,40 @@ config NROS_VIOLATION_DRAIN_REPORT
       two are the channels that reach anyone; this one is for a board
       whose log does.
 
+config NROS_MONITOR_ARM_ON_CALL
+    bool "Arm contract monitors only when the application calls nros_monitors_arm()"
+    help
+      phase-474 I2 -- with this off (the default) the executor's contract
+      monitors judge from the first spin, which is what every image did
+      before. On, they wait until the application says its start-up is
+      over: nros_monitors_arm() (C), nros::arm_monitors() (C++),
+      nros::monitor::request_monitor_arming() or Executor::arm_monitors()
+      (Rust) -- for example where a node's INIT/RUN state machine enters
+      RUN.
+
+      Verdicts before arming are COUNTED (suppressed_before_arm, in the
+      executor and in the SWD record) but not stored, logged or traced:
+      registration, the first join and inputs that have not started yet
+      look like overruns, jitter and silence, and are not faults of the
+      running system.
+
+      The default is read from Kconfig only; the contract carries no key
+      for it. Pair with NROS_MONITOR_ARM_GRACE_MS so an application that
+      never calls is still monitored.
+
+config NROS_MONITOR_ARM_GRACE_MS
+    int "Arm contract monitors anyway this many ms after the first spin (0 = no deadline)"
+    default 0
+    range 0 3600000
+    help
+      phase-474 I2 -- a deadline for arming, counted from the executor's
+      first spin. With NROS_MONITOR_ARM_ON_CALL it is the backstop for an
+      application that never calls nros_monitors_arm(); without it, it is
+      a grace period for an application with no lifecycle at all. 0 means
+      no deadline: armed at the first spin without ON_CALL, only by the
+      call with it. A build with no clock arms at the first spin instead
+      of waiting for a deadline it cannot time.
+
 config NROS_EXECUTOR_MAX_NODES
     int "Maximum nodes per executor (-1 = derive)"
     default -1

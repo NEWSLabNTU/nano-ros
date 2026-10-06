@@ -68,6 +68,8 @@ fn resolved_here(knob: &str) -> Option<usize> {
         "NROS_EXECUTOR_ACTION_CLIENTS" => Some(config::ARENA_ACTION_CLIENTS),
         "NROS_SUBSCRIPTION_BUFFER_SIZE" => Some(config::DEFAULT_RX_BUF_SIZE),
         "NROS_PUBSUB_QOS_DEPTH" => Some(config::arena_model::BUDGETED_QOS_DEPTH as usize),
+        // phase-474 I1 -- the carved violation ring's depth.
+        "NROS_EXECUTOR_MAX_VIOLATIONS" => Some(config::MAX_VIOLATIONS),
         _ => None,
     }
 }

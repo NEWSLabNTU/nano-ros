@@ -473,8 +473,8 @@ impl Default for ViolationSlot {
 /// | 4 | `total` | violations stored since boot (the last `seq`) |
 /// | 5 | `head` | slot the NEXT violation takes (`total % capacity`) |
 /// | 6 | `dropped` | entries overwritten (`total - capacity`, saturating) |
-/// | 7 | `suppressed_before_arm` | verdicts before the monitors armed (phase-474 I2) |
-/// | 8 | `armed` | executors whose monitors are armed (phase-474 I2) |
+/// | 7 | `suppressed_before_arm` | verdicts before the monitors armed, all executors (phase-474 I2) |
+/// | 8 | `armed` | executors whose monitors armed (counted as each arms; at its first spin by default) (phase-474 I2) |
 /// | 9 | `reserved` | 0 |
 /// | 10.. | `slots` | `capacity` x [`ViolationSlot`] |
 ///
@@ -584,6 +584,70 @@ impl<const N: usize> Default for ViolationRecord<N> {
 #[unsafe(no_mangle)]
 pub static NROS_VIOLATION_RECORD: ViolationRecord<MAX_VIOLATIONS> = ViolationRecord::new();
 
+/// phase-474 I2 -- application arm requests, image-wide. Each call of
+/// [`request_monitor_arming`] bumps it; an executor waiting for the
+/// application arms when it sees a value other than the one it was opened
+/// with, so a request made before an executor existed does not arm it.
+static ARM_REQUESTS: AtomicU32 = AtomicU32::new(0);
+
+/// phase-474 I2 -- the application says its start-up is over: arm the
+/// contract monitors of every executor in the image that waits for this
+/// (`NROS_MONITOR_ARM_ON_CALL`, or [`Executor::set_monitor_arming`]).
+///
+/// Callable from anywhere -- a node's callback, another thread -- because it
+/// only bumps an atomic; each executor arms at its next spin. On an executor
+/// that is already armed (the default: armed at the first spin) it does
+/// nothing. C: `nros_monitors_arm()`; C++: `nros::arm_monitors()`.
+///
+/// [`Executor::set_monitor_arming`]: super::Executor::set_monitor_arming
+pub fn request_monitor_arming() {
+    ARM_REQUESTS.fetch_add(1, Ordering::AcqRel);
+}
+
+/// The current arm-request count (for an executor to remember at open).
+pub(crate) fn arm_requests() -> u32 {
+    ARM_REQUESTS.load(Ordering::Acquire)
+}
+
+/// phase-474 I2 -- when an executor's contract monitors start judging.
+///
+/// A verdict reached before arming is COUNTED
+/// ([`Executor::violations_suppressed_before_arm`], and the SWD record's
+/// `suppressed_before_arm`) but not stored, logged, sunk or traced: start-up
+/// -- registration, the first join, inputs that have not started yet -- looks
+/// like overruns, jitter and silence, and judging it as steady state filled
+/// the island's ring with eight start-up entries before any act ran.
+///
+/// The default is read from Kconfig / the build environment only
+/// (`NROS_MONITOR_ARM_ON_CALL`, `NROS_MONITOR_ARM_GRACE_MS`); the contract
+/// carries no key for it.
+///
+/// [`Executor::violations_suppressed_before_arm`]: super::Executor::violations_suppressed_before_arm
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MonitorArming {
+    /// Wait for [`request_monitor_arming`] / `Executor::arm_monitors`.
+    /// `false` (the default) arms at the first spin, today's behaviour.
+    pub on_call: bool,
+    /// Arm anyway this many ms after the first spin; 0 = no deadline. With
+    /// `on_call` it is the backstop for an application that never calls; on
+    /// its own it is a grace period for an application with no lifecycle.
+    pub grace_ms: u32,
+}
+
+impl MonitorArming {
+    /// The build's default (`NROS_MONITOR_ARM_ON_CALL`,
+    /// `NROS_MONITOR_ARM_GRACE_MS`).
+    pub const DEFAULT: Self = Self {
+        on_call: crate::config::MONITOR_ARM_ON_CALL,
+        grace_ms: crate::config::MONITOR_ARM_GRACE_MS,
+    };
+
+    /// Armed from the start: no wait for a call and no grace period.
+    pub const fn armed_at_first_spin(self) -> bool {
+        !self.on_call && self.grace_ms == 0
+    }
+}
+
 /// Issue 1635 — where an executor hands its drained violations when the image
 /// asked it to (`Executor::set_violation_sink`).
 ///
@@ -625,6 +689,15 @@ pub(crate) struct ViolationChannel<'s> {
     /// phase-409 -- CARVED, at `MAX_VIOLATIONS` (no `ExecutorSizing` knob:
     /// the build-time depth is the capability).
     pub(crate) ring: super::storage::CarvedVec<'s, Violation>,
+    /// phase-474 I1/I2 -- the counters and the arming state.
+    pub(crate) counts: ViolationCounts,
+}
+
+/// phase-474 I1/I2 -- the scalars of a [`ViolationChannel`]: its counters and
+/// its arming state. One struct so `the_executor_value_does_not_scale_with_the_knobs`
+/// can name what they cost; none of them scales with a knob.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ViolationCounts {
     /// Violations this executor stored since boot (wrapping). It is also the
     /// sequence number of the newest entry in `ring`: every stored verdict is
     /// pushed, so the ring holds `total - len + 1 ..= total`.
@@ -632,6 +705,23 @@ pub(crate) struct ViolationChannel<'s> {
     /// Issue 0514 / phase-474 I1 -- entries evicted from the full ring before
     /// any drain took them (saturating).
     pub(crate) dropped: u32,
+    /// phase-474 I2 -- whether verdicts are stored. Until then they are only
+    /// counted in `suppressed_before_arm`.
+    pub(crate) armed: bool,
+    /// phase-474 I2 -- verdicts reached before arming (saturating).
+    pub(crate) suppressed_before_arm: u32,
+    /// phase-474 I2 -- the arming policy ([`MonitorArming`]), kept as its two
+    /// fields so the flags pack beside the ones above.
+    pub(crate) arm_on_call: bool,
+    pub(crate) arm_grace_ms: u32,
+    /// phase-474 I2 -- whether the executor has spun, and the monotonic ms
+    /// (wrapping `u32`) of its first spin, which the grace deadline counts
+    /// from.
+    pub(crate) spun: bool,
+    pub(crate) first_spin_ms: u32,
+    /// phase-474 I2 -- [`arm_requests`] when the executor opened; a different
+    /// value later is the application's call.
+    pub(crate) arm_requests_seen: u32,
 }
 
 impl<'s> ViolationChannel<'s> {
@@ -641,8 +731,17 @@ impl<'s> ViolationChannel<'s> {
             drain_report: crate::config::VIOLATION_DRAIN_REPORT,
             sink: None,
             ring,
-            total: 0,
-            dropped: 0,
+            counts: ViolationCounts {
+                total: 0,
+                dropped: 0,
+                armed: MonitorArming::DEFAULT.armed_at_first_spin(),
+                suppressed_before_arm: 0,
+                arm_on_call: MonitorArming::DEFAULT.on_call,
+                arm_grace_ms: MonitorArming::DEFAULT.grace_ms,
+                spun: false,
+                first_spin_ms: 0,
+                arm_requests_seen: arm_requests(),
+            },
         }
     }
 
@@ -654,11 +753,20 @@ impl<'s> ViolationChannel<'s> {
     ///
     /// [`drain_violations`]: super::Executor::drain_violations
     pub(crate) fn record(&mut self, v: Violation) {
+        if !self.counts.armed {
+            // phase-474 I2 -- start-up: counted, never stored.
+            self.counts.suppressed_before_arm = self.counts.suppressed_before_arm.saturating_add(1);
+            #[cfg(nros_boot_report)]
+            NROS_VIOLATION_RECORD
+                .suppressed_before_arm
+                .fetch_add(1, Ordering::Relaxed);
+            return;
+        }
         if self.report && !self.drain_report {
             log_violation(&v);
         }
         if let Some((f, ctx)) = self.sink {
-            // SAFETY: `Executor::set_violation_sink`'s contract — `ctx` is valid
+            // SAFETY: `Executor::set_violation_sink`'s contract -- `ctx` is valid
             // for every call until the sink is replaced or the executor dropped.
             unsafe { f(ctx as *mut core::ffi::c_void, &v) };
         }
@@ -666,18 +774,18 @@ impl<'s> ViolationChannel<'s> {
         // line and the trace marker carry it, so the two name one verdict by
         // one number. The SWD record numbers across every executor in the
         // image; on a single-executor image the two coincide.
-        self.total = self.total.wrapping_add(1);
+        self.counts.total = self.counts.total.wrapping_add(1);
         #[cfg(nros_boot_report)]
         NROS_VIOLATION_RECORD.store(&v);
         #[cfg(feature = "trace-callbacks")]
-        super::callback_trace::violation(self.total, &v);
+        super::callback_trace::violation(self.counts.total, &v);
         if self.ring.capacity() == 0 {
-            self.dropped = self.dropped.saturating_add(1);
+            self.counts.dropped = self.counts.dropped.saturating_add(1);
             return;
         }
         if self.ring.len() == self.ring.capacity() {
             self.ring.pop_front();
-            self.dropped = self.dropped.saturating_add(1);
+            self.counts.dropped = self.counts.dropped.saturating_add(1);
         }
         // Cannot fail: a slot was just made if the ring was full.
         let _ = self.ring.push(v);
@@ -687,7 +795,7 @@ impl<'s> ViolationChannel<'s> {
     /// sequence number, and empty the ring.
     pub(crate) fn drain(&mut self, mut f: impl FnMut(u32, &Violation)) {
         let n = self.ring.len() as u32;
-        let first = self.total.wrapping_sub(n).wrapping_add(1);
+        let first = self.counts.total.wrapping_sub(n).wrapping_add(1);
         for (k, v) in self.ring.iter().enumerate() {
             f(first.wrapping_add(k as u32), v);
         }
@@ -701,7 +809,7 @@ impl<'s> ViolationChannel<'s> {
         if !self.drain_report || self.ring.is_empty() {
             return;
         }
-        let (total, dropped) = (self.total, self.dropped);
+        let (total, dropped) = (self.counts.total, self.counts.dropped);
         self.drain(|seq, v| log_drained_violation(seq, total, dropped, v));
     }
 }

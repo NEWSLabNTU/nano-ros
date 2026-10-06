@@ -988,12 +988,17 @@ mod tests {
         //     `heapless::Vec` named here; issue 1667 replaced it with an
         //     intrusive free list whose nodes live in the freed arena bytes, so
         //     what remains in this value is one `usize` head, named below.
+        //   * phase-474 I1/I2's `ViolationCounts`: the violation ring's total,
+        //     dropped and pre-arm counters and the monitors' arming state, nine
+        //     scalars that scale with no knob. Named so the next field added to
+        //     them shows up here rather than eating another feature's headroom.
         //   * phase-476 W0's `slot_tags`: the TABLE is carved (it scales with
         //     `MAX_CBS` and lives in the backing); what sits in this value is
         //     one slice reference, which scales with nothing.
         #[allow(unused_mut)]
         let mut ceiling =
             1280 + size_of::<super::super::spin::SessionStore>()
+                + size_of::<super::super::monitor::ViolationCounts>()
                 + size_of::<&mut [super::super::types::SlotTag]>()
                 + size_of::<usize>()
                 + size_of::<

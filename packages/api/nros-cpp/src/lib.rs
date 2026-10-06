@@ -4783,10 +4783,43 @@ pub unsafe extern "C" fn nros_cpp_executor_violation_counts(
     *out = nros_cpp_violation_counts_t {
         total: cpp.executor.violations_total(),
         dropped: cpp.executor.violations_dropped(),
-        suppressed_before_arm: 0,
-        armed: true,
+        suppressed_before_arm: cpp.executor.violations_suppressed_before_arm(),
+        armed: cpp.executor.monitors_armed(),
     };
     NROS_CPP_RET_OK
+}
+
+/// phase-474 I2 -- choose when this executor's contract monitors arm,
+/// overriding the build default (`CONFIG_NROS_MONITOR_ARM_ON_CALL`,
+/// `CONFIG_NROS_MONITOR_ARM_GRACE_MS`). `on_call`: wait for
+/// `nros_cpp_monitors_arm()`; `grace_ms`: arm anyway that long after the first
+/// spin (0 = no deadline). Call before the first spin.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_set_monitor_arming(
+    handle: *mut c_void,
+    on_call: bool,
+    grace_ms: u32,
+) -> nros_cpp_ret_t {
+    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    cpp.executor.set_monitor_arming(on_call, grace_ms);
+    NROS_CPP_RET_OK
+}
+
+/// phase-474 I2 -- the application's start-up is over: arm the contract
+/// monitors of every executor in the image that waits for it. Safe from any
+/// thread and from a callback (it bumps an atomic; each executor arms at its
+/// next spin). The C spelling is `nros_monitors_arm()`; this is the same call
+/// on the C++ ABI, wrapped by `nros::arm_monitors()`.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_monitors_arm() {
+    nros::monitor::request_monitor_arming();
 }
 
 /// Declare one `from -> to` remap for a node, from the C++ side of the ABI.

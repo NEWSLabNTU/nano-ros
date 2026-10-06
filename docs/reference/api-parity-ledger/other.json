@@ -1587,5 +1587,45 @@
     "verdict": "extension",
     "why": "drains the record queue onto the `/rosout` publisher from the application's spin loop, through the one encoder all three languages share (`nros_node::rosout::pump_raw`); never blocks on the queue, never allocates. Upstream publishes inside the logging call; here the SINK only copies into a `.bss` slot, so no logging call ever enters the RMW stack (issue 0589's re-entry hazard). Part of the `/rosout` bridge from C (issue 1589, `<nros/rosout.h>`); the Rust twin is `nros::rosout`. Links in every image and answers `NROS_RET_UNSUPPORTED` without the `rosout` capability.",
     "bucket": "ours-only"
+  },
+  "rust:MAX_VIOLATIONS": {
+    "verdict": "extension",
+    "why": "phase-474 I1 -- the violation ring's depth per executor and the SWD record's slot count (`NROS_EXECUTOR_MAX_VIOLATIONS`, default 8). The ring keeps the LATEST entries. See `rust:Executor::*violation*`."
+  },
+  "rust:MonitorArming": {
+    "verdict": "extension",
+    "why": "phase-474 I2 -- when contract monitors arm: on the application's call and/or a grace deadline after the first spin; the build default comes from Kconfig (`NROS_MONITOR_ARM_ON_CALL`, `NROS_MONITOR_ARM_GRACE_MS`), never from the contract. See `rust:Executor::arm_monitors`."
+  },
+  "rust:MonitorArming::armed_at_first_spin": {
+    "verdict": "extension",
+    "why": "phase-474 I2 -- whether a policy arms at the first spin (no call awaited, no grace period), which is the default. See `rust:MonitorArming`."
+  },
+  "rust:RULE_IDS": {
+    "verdict": "extension",
+    "why": "phase-474 I1 -- the contract-monitor rule ids in WIRE ORDER: a rule's numeric code (what a trace marker and the SWD violation record carry, since neither can hold a string) is its index plus one. Append only. rclrs has no on-target contract monitor."
+  },
+  "rust:fqn_hash": {
+    "verdict": "extension",
+    "why": "phase-474 I1 -- 32-bit FNV-1a of a violating endpoint ref, the identity a trace marker and the SWD record carry for a string they cannot hold. See `rust:RULE_IDS`."
+  },
+  "rust:rule_code": {
+    "verdict": "extension",
+    "why": "phase-474 I1 -- a rule id's wire code. See `rust:RULE_IDS`."
+  },
+  "rust:rule_name": {
+    "verdict": "extension",
+    "why": "phase-474 I1 -- the rule id a wire code names. See `rust:RULE_IDS`."
+  },
+  "rust:request_monitor_arming": {
+    "verdict": "extension",
+    "why": "phase-474 I2 -- the image-wide arm request an application makes on entering its running state; callable from any thread or callback because it only bumps an atomic, and each waiting executor arms at its next spin. See `rust:Executor::arm_monitors`."
+  },
+  "c:monitors_arm": {
+    "verdict": "extension",
+    "why": "phase-474 I2 -- `nros_monitors_arm()`, the C spelling of `rust:request_monitor_arming`: a C application's INIT/RUN state machine calls it on entering RUN. rclc has no on-target contract monitor."
+  },
+  "cpp:arm_monitors": {
+    "verdict": "extension",
+    "why": "phase-474 I2 -- `nros::arm_monitors()`, the C++ spelling of `rust:request_monitor_arming`. rclcpp has no on-target contract monitor."
   }
 }

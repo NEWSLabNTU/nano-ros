@@ -197,6 +197,14 @@ KNOB_CLASS = {
         "infra",
         "phase-474 I1 drain-and-report toggle; a bool, so it has no rung",
     ),
+    "NROS_MONITOR_ARM_ON_CALL": (
+        "infra",
+        "phase-474 I2 monitor-arming toggle; a bool, so it has no rung",
+    ),
+    "NROS_MONITOR_ARM_GRACE_MS": (
+        "infra",
+        "phase-474 I2 arming deadline; a time, not a size",
+    ),
     "NROS_EXECUTOR_MAX_VIOLATIONS": (
         "sizing",
         "phase-474 I1 violation ring depth per executor (carved from the "
