@@ -414,6 +414,32 @@ pub fn self_satisfied_buildtools(ws_root: &Path) -> BTreeSet<String> {
         .collect()
 }
 
+/// The ROS packages nano-ros's cmake compat layer supplies itself.
+///
+/// READ from the layer, not listed here: one `Find<pkg>.cmake` per package in
+/// `cmake/compat/stubs/`, which is what `find_package(<pkg>)` resolves to in a
+/// nano-ros workspace (`NrosRclcppCompat.cmake`). A second, hand-written list
+/// would drift from the stubs the first time one is added. `_`-prefixed files
+/// are the layer's helpers, not packages. No nano-ros checkout ⇒ empty, and
+/// the ladder answers as it did before.
+#[must_use]
+pub fn compat_provided_packages(nano_ros_root: Option<&Path>) -> BTreeSet<String> {
+    let Some(root) = nano_ros_root else {
+        return BTreeSet::new();
+    };
+    let Ok(rd) = std::fs::read_dir(root.join("cmake/compat/stubs")) else {
+        return BTreeSet::new();
+    };
+    rd.flatten()
+        .filter_map(|e| {
+            let n = e.file_name().to_string_lossy().into_owned();
+            n.strip_prefix("Find")?
+                .strip_suffix(".cmake")
+                .map(str::to_string)
+        })
+        .collect()
+}
+
 /// Every `package.xml` under a workspace, as (path, text).
 fn package_xml_files(ws_root: &Path) -> Vec<(std::path::PathBuf, String)> {
     let mut out = Vec::new();
@@ -690,6 +716,22 @@ mod tests {
         let got = self_satisfied_buildtools(&dir);
         assert!(got.contains("rosidl_default_generators"), "{got:?}");
         assert!(!got.contains("rosidl_default_runtime"), "{got:?}");
+    }
+
+    /// The compat layer's packages are read off its stub directory: `rclcpp`
+    /// is one (phase-417's `<rclcpp/rclcpp.hpp>` is nano-ros's), a helper file
+    /// is not, and without a checkout nothing is claimed.
+    #[test]
+    fn compat_provided_packages_are_the_layers_stubs() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .find(|p| p.join("cmake/compat/stubs").is_dir())
+            .expect("the repo's compat stubs");
+        let got = compat_provided_packages(Some(root));
+        assert!(got.contains("rclcpp"), "{got:?}");
+        assert!(got.contains("rclcpp_components"), "{got:?}");
+        assert!(!got.iter().any(|n| n.starts_with('_')), "{got:?}");
+        assert!(compat_provided_packages(None).is_empty());
     }
 
     /// The mapping is per build type, and nano-ros's own builders resolve to
