@@ -10994,14 +10994,27 @@ impl<'s> Executor<'s> {
             node_fqn.push_str(nn).map_err(|_| NodeError::NameTooLong)?;
         }
 
-        fn create_lc_srv<Svc: RosService>(
+        fn create_lc_srv<Svc>(
             session: &mut session::ConcreteSession,
             domain_id: u32,
             node_fqn: &str,
             namespace: &str,
             node_name: &str,
             suffix: &str,
-        ) -> Result<session::RmwServiceServer, NodeError> {
+        ) -> Result<session::RmwServiceServer, NodeError>
+        where
+            Svc: RosService,
+            Svc::Request: crate::rmw_type_registry::MessageForRmw,
+            Svc::Reply: crate::rmw_type_registry::MessageForRmw,
+        {
+            // Issue 1293 — register both halves first, as `create_param_srv`
+            // does since issue 1268: Cyclone creates a topic only for a type it
+            // holds a descriptor for. Three of the five request types are
+            // EMPTY, and an empty schema had no descriptor until codegen gave
+            // it rosidl's `structure_needs_at_least_one_member` byte. A no-op
+            // on backends that need no descriptors (zenoh, xrce).
+            crate::rmw_type_registry::register_type::<Svc::Request>()?;
+            crate::rmw_type_registry::register_type::<Svc::Reply>()?;
             let mut name = heapless::String::<256>::new();
             name.push_str(node_fqn)
                 .map_err(|_| NodeError::NameTooLong)?;
@@ -11024,7 +11037,7 @@ impl<'s> Executor<'s> {
         /// because `check-infra-queryable-counts` counts the creation sites
         /// to hold `LIFECYCLE_SERVICE_PUBLISHERS` to them, exactly as it
         /// already holds `LIFECYCLE_SERVICE_QUERYABLES` to the five above.
-        fn create_lc_pub<Msg: nros_core::RosMessage>(
+        fn create_lc_pub<Msg: crate::rmw_type_registry::MessageForRmw>(
             session: &mut session::ConcreteSession,
             domain_id: u32,
             node_fqn: &str,
@@ -11033,14 +11046,21 @@ impl<'s> Executor<'s> {
             suffix: &str,
             qos: QoSProfile,
         ) -> Result<session::RmwPublisher, NodeError> {
+            // Issue 1293 — same rule as `create_lc_srv`: Cyclone needs the
+            // `TransitionEvent` descriptor before it can create the topic.
+            crate::rmw_type_registry::register_type::<Msg>()?;
             let mut name = heapless::String::<256>::new();
             name.push_str(node_fqn)
                 .map_err(|_| NodeError::NameTooLong)?;
             name.push_str("/").map_err(|_| NodeError::NameTooLong)?;
             name.push_str(suffix).map_err(|_| NodeError::NameTooLong)?;
-            let mut info = TopicInfo::new(&name, Msg::TYPE_NAME, Msg::TYPE_HASH)
-                .with_domain(domain_id)
-                .with_namespace(namespace);
+            let mut info = TopicInfo::new(
+                &name,
+                <Msg as nros_core::RosMessage>::TYPE_NAME,
+                Msg::TYPE_HASH,
+            )
+            .with_domain(domain_id)
+            .with_namespace(namespace);
             if !node_name.is_empty() {
                 info = info.with_node_name(node_name);
             }

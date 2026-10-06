@@ -86,24 +86,31 @@ const ACTION_MSGS_SHARED: usize = 3;
 /// they cost no registry slots and the omission could not be observed.
 pub const PARAM_SERVICE_TYPES: usize = 6 * TYPES_PER_SRV;
 
-/// The lifecycle services' types are NOT counted, and that is issue 1293: three
-/// of their request types are EMPTY, the descriptor builder refuses an empty
-/// schema, and `create_lc_srv` therefore still registers nothing. When 1293
-/// gives an empty message its `structure_needs_at_least_one_member` byte in
-/// BOTH the descriptor and the serializer, this becomes `5 * TYPES_PER_SRV`
-/// minus the shared `GetAvailableTransitions` pair — i.e. 8 — and joins
-/// [`infra_types`].
-pub const LIFECYCLE_SERVICE_TYPES_WHEN_1293_LANDS: usize = 8;
+/// Issue 1293 — distinct DDS type names the lifecycle family registers.
+///
+/// Five services over FOUR service types (`get_available_transitions` and
+/// `get_transition_graph` share `GetAvailableTransitions`), so `4 *
+/// TYPES_PER_SRV` = 8, plus the `~/transition_event` publisher's
+/// `TransitionEvent` (issue 1587): 9. Once per executor, like the servers.
+///
+/// Uncounted before 1293 because they registered nothing: three of the request
+/// types are EMPTY and had no descriptor, so `create_lc_srv` never asked. Now
+/// that an empty message carries rosidl's `structure_needs_at_least_one_member`
+/// in both its schema and its serializer, they register like any other type.
+pub const LIFECYCLE_TYPES: usize = 4 * TYPES_PER_SRV + TYPES_PER_MSG;
 
-/// Distinct DDS type names the executor's OWN services add, given what the
-/// bringup declares. `param_services` is the caller's answer to
-/// `InfraServices::from_model`, so the feature predicate has one spelling.
-pub fn infra_types(param_services: bool) -> usize {
+/// Distinct DDS type names the executor's OWN entities add, given what the
+/// bringup declares. Both flags are the caller's answer to
+/// `InfraServices::from_model`, so each feature predicate has one spelling.
+pub fn infra_types(param_services: bool, lifecycle: bool) -> usize {
+    let mut n = 0;
     if param_services {
-        PARAM_SERVICE_TYPES
-    } else {
-        0
+        n += PARAM_SERVICE_TYPES;
     }
+    if lifecycle {
+        n += LIFECYCLE_TYPES;
+    }
+    n
 }
 
 /// Node FQN owning an endpoint ref (`"/ns/node/endpoint"` → `"/ns/node"`).
@@ -404,11 +411,24 @@ mod tests {
     /// meet `RegistryFull` at runtime rather than a sized knob at bake time.
     #[test]
     fn infra_types_counts_the_parameter_services_only_when_declared() {
-        assert_eq!(infra_types(false), 0, "an image without them pays nothing");
         assert_eq!(
-            infra_types(true),
-            12,
-            "six services x (_Request + _Response); the lifecycle five are issue 1293"
+            infra_types(false, false),
+            0,
+            "an image without them pays nothing"
         );
+        assert_eq!(
+            infra_types(true, false),
+            12,
+            "six services x (_Request + _Response)"
+        );
+    }
+
+    /// Issue 1293 — the lifecycle family registers too now: four service types
+    /// (two of the five servers share `GetAvailableTransitions`) plus
+    /// `TransitionEvent`.
+    #[test]
+    fn infra_types_counts_the_lifecycle_family_only_when_declared() {
+        assert_eq!(infra_types(false, true), 9);
+        assert_eq!(infra_types(true, true), 21);
     }
 }

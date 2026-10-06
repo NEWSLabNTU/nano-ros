@@ -1477,6 +1477,21 @@ pub fn build_nros_schema_for_struct_with_path(
         ));
     }
 
+    // Issue 1293 — rosidl pads a struct that declares no fields with one
+    // `uint8 structure_needs_at_least_one_member`, and every stock typesupport
+    // serializes it. The schema names the same member (one spelling, in
+    // `nros_serdes::schema`), so the size bound and the Cyclone descriptor
+    // derived from `FIELDS` describe the byte the serializer writes. It has no
+    // host storage, hence offset 0.
+    if fields.is_empty() {
+        fields_block.push_str(
+            "        ::nros_serdes::Field {\n            \
+             name: ::nros_serdes::schema::EMPTY_STRUCT_MEMBER,\n            \
+             ty: ::nros_serdes::FieldType::Uint8,\n            \
+             offset: 0,\n        },\n",
+        );
+    }
+
     NrosMessageSchema {
         nros_type_name: nros_type_name.to_string(),
         helper_consts,
@@ -2497,8 +2512,11 @@ mod schema_tests {
     }
 
     #[test]
-    fn empty_request_schema_emits_no_fields_no_helpers() {
-        // A trigger-style service has an empty request body.
+    fn empty_request_schema_emits_only_the_rosidl_padding_member() {
+        // A trigger-style service has an empty request body. Issue 1293: rosidl
+        // pads it with `uint8 structure_needs_at_least_one_member`, every stock
+        // typesupport serializes that byte, and so must the schema, or the
+        // Cyclone descriptor and the size bound describe zero bytes.
         let schema = build_nros_schema_for_struct(
             "std_srvs",
             "TriggerRequest",
@@ -2508,7 +2526,23 @@ mod schema_tests {
             &SchemaCaps::unconfigured(),
         );
         assert_eq!(schema.helper_consts, "");
-        assert_eq!(schema.fields_block, "");
+        assert!(
+            schema
+                .fields_block
+                .contains("name: ::nros_serdes::schema::EMPTY_STRUCT_MEMBER")
+                && schema
+                    .fields_block
+                    .contains("ty: ::nros_serdes::FieldType::Uint8"),
+            "{}",
+            schema.fields_block
+        );
+        assert_eq!(
+            schema
+                .fields_block
+                .matches("::nros_serdes::Field {")
+                .count(),
+            1
+        );
         assert_eq!(schema.nros_type_name, "std_srvs/srv/Trigger_Request");
     }
 }

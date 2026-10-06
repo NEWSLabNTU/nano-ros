@@ -60,6 +60,10 @@ int32_t {{ goal_struct_name }}_serialize(const {{ goal_struct_name }}* msg, uint
 {%- for field in goal_fields %}
 {{- c.ser_field(field, "msg") }}
 {%- endfor %}
+{%- else %}
+    // Issue 1293 — rosidl's padding member (`structure_needs_at_least_one_member`):
+    // every stock typesupport writes it and refuses a payload without it.
+    if (nros_cdr_write_u8(&ptr, end, origin, 0) < 0) return -1;
 {%- endif %}
 
     if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
@@ -88,6 +92,12 @@ int32_t {{ goal_struct_name }}_deserialize({{ goal_struct_name }}* msg, const ui
 {%- for field in goal_fields %}
 {{- c.deser_field(field, "msg", goal_struct_name) }}
 {%- endfor %}
+{%- else %}
+    // Issue 1293 — the padding byte every stock peer sends.
+    {
+        uint8_t __pad;
+        if (nros_cdr_read_u8(&ptr, end, origin, &__pad) < 0) return -1;
+    }
 {%- endif %}
 
     if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
@@ -131,6 +141,10 @@ int32_t {{ result_struct_name }}_serialize(const {{ result_struct_name }}* msg, 
 {%- for field in result_fields %}
 {{- c.ser_field(field, "msg") }}
 {%- endfor %}
+{%- else %}
+    // Issue 1293 — rosidl's padding member (`structure_needs_at_least_one_member`):
+    // every stock typesupport writes it and refuses a payload without it.
+    if (nros_cdr_write_u8(&ptr, end, origin, 0) < 0) return -1;
 {%- endif %}
 
     if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
@@ -159,6 +173,12 @@ int32_t {{ result_struct_name }}_deserialize({{ result_struct_name }}* msg, cons
 {%- for field in result_fields %}
 {{- c.deser_field(field, "msg", result_struct_name) }}
 {%- endfor %}
+{%- else %}
+    // Issue 1293 — the padding byte every stock peer sends.
+    {
+        uint8_t __pad;
+        if (nros_cdr_read_u8(&ptr, end, origin, &__pad) < 0) return -1;
+    }
 {%- endif %}
 
     if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
@@ -202,6 +222,10 @@ int32_t {{ feedback_struct_name }}_serialize(const {{ feedback_struct_name }}* m
 {%- for field in feedback_fields %}
 {{- c.ser_field(field, "msg") }}
 {%- endfor %}
+{%- else %}
+    // Issue 1293 — rosidl's padding member (`structure_needs_at_least_one_member`):
+    // every stock typesupport writes it and refuses a payload without it.
+    if (nros_cdr_write_u8(&ptr, end, origin, 0) < 0) return -1;
 {%- endif %}
 
     if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
@@ -230,6 +254,12 @@ int32_t {{ feedback_struct_name }}_deserialize({{ feedback_struct_name }}* msg, 
 {%- for field in feedback_fields %}
 {{- c.deser_field(field, "msg", feedback_struct_name) }}
 {%- endfor %}
+{%- else %}
+    // Issue 1293 — the padding byte every stock peer sends.
+    {
+        uint8_t __pad;
+        if (nros_cdr_read_u8(&ptr, end, origin, &__pad) < 0) return -1;
+    }
 {%- endif %}
 
     if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;

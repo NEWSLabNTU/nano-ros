@@ -20,19 +20,24 @@ pub const PARAMETER_STRING_ARRAY: u8 = 9;
 pub struct ParameterType {}
 
 impl Serialize for ParameterType {
-    // Empty message — under XCDR2 an appendable struct still carries a DHEADER
-    // (size 0); under XCDR1 this is a no-op (byte-identical: nothing written).
+    // Empty message — rosidl's one padding member, inside the XCDR2 DHEADER
+    // (a no-op under XCDR1).
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
         let __dh = writer.begin_dheader()?;
+        // Issue 1293 — rosidl's `structure_needs_at_least_one_member`: every
+        // stock typesupport writes it and refuses a payload without it.
+        writer.write_u8(0)?;
         writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for ParameterType {
-    // Empty message — read/skip the XCDR2 DHEADER (no-op under XCDR1).
+    // Empty message — the padding member, inside the XCDR2 DHEADER.
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
         let __dh = reader.begin_dheader()?;
+        // Issue 1293 — the padding byte every stock peer sends.
+        let _ = reader.read_u8()?;
         reader.end_dheader(__dh)?;
         Ok(Self {})
     }
@@ -49,5 +54,9 @@ impl RosMessage for ParameterType {
 
 impl ::nros_serdes::Message for ParameterType {
     const TYPE_NAME: &'static str = "rcl_interfaces/msg/ParameterType";
-    const FIELDS: &'static [::nros_serdes::Field] = &[];
+    const FIELDS: &'static [::nros_serdes::Field] = &[::nros_serdes::Field {
+        name: ::nros_serdes::schema::EMPTY_STRUCT_MEMBER,
+        ty: ::nros_serdes::FieldType::Uint8,
+        offset: 0,
+    }];
 }

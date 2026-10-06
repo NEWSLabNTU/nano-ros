@@ -119,6 +119,28 @@ pub struct NestedType {
     pub fields: &'static [Field],
 }
 
+/// The member rosidl gives a struct that declares none (issue 1293).
+///
+/// `rosidl_adapter` emits `uint8 structure_needs_at_least_one_member;` for an
+/// empty `.msg` / `.srv` half, so every stock typesupport has one member to
+/// serialize and an empty message is ONE byte on the wire, not zero. Measured
+/// on humble: `rmw_zenoh_cpp`, `rmw_cyclonedds_cpp` and `rmw_fastrtps_cpp` all
+/// serialize `std_msgs/Empty` with that byte, and all three REFUSE to
+/// deserialize the encapsulation header alone ("Not enough memory in the
+/// buffer stream" / "invalid data size").
+pub const EMPTY_STRUCT_MEMBER: &str = "structure_needs_at_least_one_member";
+
+/// The schema of a struct that declares no fields: the one padding member
+/// rosidl adds ([`EMPTY_STRUCT_MEMBER`]). Codegen emits this for every empty
+/// message, so the schema describes the byte the serializer writes and a size
+/// bound, a Cyclone descriptor or a schema walk derived from `FIELDS` agrees
+/// with the wire. It has no host storage, so its offset is 0.
+pub const EMPTY_STRUCT_FIELDS: &[Field] = &[Field {
+    name: EMPTY_STRUCT_MEMBER,
+    ty: FieldType::Uint8,
+    offset: 0,
+}];
+
 /// Trait implemented by every generated ROS message type for runtime
 /// introspection.
 ///
