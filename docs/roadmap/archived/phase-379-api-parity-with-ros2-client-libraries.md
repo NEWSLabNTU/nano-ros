@@ -1,9 +1,22 @@
 # Phase 379 — the user API is rclc / rclcpp / rclrs, and something checks that
 
+**Status (2026-10-07). CLOSED — archived; open residue moved to
+[phase-482](../phase-482-rclcpp-drop-in-residue.md).** The measurement campaign
+is complete:
+
+- **W1, W2, W3, W6 and W7 steps 1-3 are DONE.** The ledger holds about 3000
+  rows and exactly **1** `gap`, against the 158 and 149 stated below.
+- **W4 is DONE** by phase-417 stage 5.
+- **Carried to phase-482:**
+  - W7 step 4, the deprecated-alias tail, as W6;
+  - issues 1042, 1323 and 0783/0784 (the facade export policy), as W7.
+
+`rclcpp_compat.hpp`, which this doc names, was deleted by phase-417 stage 6.
+
 **Superseded count (2026-09-11).** The gap numbers below are before a truth pass
 that found 20 closed gaps still in the queue: **149 `gap` rows now**, C 53,
 C++ 61, Rust 35. The pass, the stale-gap gate it added, and the grouped fix-up
-list live in [phase-444](phase-444-rmw-fix-up.md) § "The ROS 2 gap list".
+list live in [phase-444](../phase-444-rmw-fix-up.md) § "The ROS 2 gap list".
 
 **Status (2026-09-06). Re-measured, and a sixth verdict exists.** The ledger
 now carries **2514 classified rows**: `divergence` 831, `extension` 781,
@@ -968,9 +981,9 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0783](../issues/0783-rust-facade-hides-the-error-vocabulary.md) | `RclReturnCode` exists and is unreachable, and RFC-0036 documents a Rust surface we do not export |
-| [#0784](../issues/0784-nros-facade-node-surface-is-three-audiences.md) | `nros::` publishes three different audiences under one namespace — parity is unreadable until the surface is separable |
-| [#0829](../issues/archived/0829-two-system-default-qos-presets-disagree-on-depth.md) | two `SYSTEM_DEFAULT` QoS presets ship under one meaning and disagree on it |
+| [#0783](../../issues/0783-rust-facade-hides-the-error-vocabulary.md) | `RclReturnCode` exists and is unreachable, and RFC-0036 documents a Rust surface we do not export |
+| [#0784](../../issues/0784-nros-facade-node-surface-is-three-audiences.md) | `nros::` publishes three different audiences under one namespace — parity is unreadable until the surface is separable |
+| [#0829](../../issues/archived/0829-two-system-default-qos-presets-disagree-on-depth.md) | two `SYSTEM_DEFAULT` QoS presets ship under one meaning and disagree on it |
 
 
 ## Adopted issues (2026-09-04) — four parity defects with no phase
@@ -979,16 +992,16 @@ Four open issues describe the gap between what this phase claims and what a
 ported node gets. They had no home; they belong here because each is a place the
 parity CLAIM and the parity MEASUREMENT disagree.
 
-* **[#1008](../issues/archived/1008-wait-for-service-never-waits.md)** — `wait_for_service`
+* **[#1008](../../issues/archived/1008-wait-for-service-never-waits.md)** — `wait_for_service`
   returns `Ok(true)` immediately on every real backend. The API is present and
   the behaviour is not, which is the exact failure mode a parity ledger exists to
   catch and did not.
-* **[#1019](../issues/archived/1019-rclcpp-compat-log-macros-discard-output.md)** — every
+* **[#1019](../../issues/archived/1019-rclcpp-compat-log-macros-discard-output.md)** — every
   `RCLCPP_*` log call in a ported C++ node is discarded on embedded targets. A
   port that compiles and says nothing. RESOLVED 2026-09-11 (phase-417 stage 3
   W3.a): the family routes at `NROS_LOG_*` and reaches `nros_log` on every
   target.
-* **[#1020](../issues/archived/1020-parity-cpp-lane-cannot-see-the-compat-shim.md)**
+* **[#1020](../../issues/archived/1020-parity-cpp-lane-cannot-see-the-compat-shim.md)**
   (RESOLVED 2026-09-11) — the C++ parity lane measured the NATIVE API against
   rclcpp and could not see the compat shim, so the number it reported was about
   the wrong surface. Closed by a route the issue did not propose:
@@ -997,7 +1010,7 @@ parity CLAIM and the parity MEASUREMENT disagree.
   `rclcpp`/`rclcpp_action`/`rclcpp_lifecycle`, so the `std` TU already emits
   every record a fourth compat TU could. The fourth TU was landed and then
   deliberately deleted as one that can never contribute.
-* **[#1012](../issues/archived/1012-ledger-prose-cites-renamed-symbols.md)** — 15 ledger
+* **[#1012](../../issues/archived/1012-ledger-prose-cites-renamed-symbols.md)** — 15 ledger
   rows describe symbols a rename retired. The ledger is the artifact this phase
   reasons from, so prose that names dead symbols is a measurement error, not a
   typo.

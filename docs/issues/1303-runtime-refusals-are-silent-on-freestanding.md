@@ -5,7 +5,7 @@ title: "The two RUNTIME refusals emit through the legacy `NROS_ERROR` sink, whic
 status: open
 type: bug
 area: [api]
-related: [1019, 1302, phase-417, rfc-0089]
+related: [phase-482, 1019, 1302, phase-417, rfc-0089]
 ---
 
 ## What

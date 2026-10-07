@@ -12,7 +12,7 @@ the arena a removal path. Each is amended in place rather than deleted — read
 says it has none.
 
 *Originally:* **Status (2026-09-12). Opened.** Carries the remainder of
-[phase-442](../phase-442-one-freestanding-rclcpp-api.md) under the design
+[phase-442](phase-442-one-freestanding-rclcpp-api.md) under the design
 [RFC-0096 D9 revision 3](../../design/0096-cpp-freestanding-core-and-porting-layer.md)
 settled on. phase-442 keeps W0–W7, which landed; its W8 text describes a design
 that revision superseded, and the work items below replace it.
@@ -1544,7 +1544,7 @@ Two smaller ones, noted so a reader does not rediscover them:
 * [RFC-0096](../../design/0096-cpp-freestanding-core-and-porting-layer.md) — D9
   revision 3 is the design; D5's fourth entry narrows to publishers when W2
   lands.
-* [phase-442](../phase-442-one-freestanding-rclcpp-api.md) — W0–W7, landed.
+* [phase-442](phase-442-one-freestanding-rclcpp-api.md) — W0–W7, landed.
 * issue 1335 — the C++ API uses the poll path where it means the dispatch path.
 * issue 1225 — the capability-layout rule these entities kept breaking.
 

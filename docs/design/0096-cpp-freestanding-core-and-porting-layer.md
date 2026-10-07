@@ -1,6 +1,7 @@
 # RFC-0096 — One freestanding `rclcpp` API, identical on every platform
 
-**Status:** Draft (2026-09-09), revised the same day — see "Revision 2".
+**Status:** Stable (2026-10-07). Drafted 2026-09-09 and revised the same day —
+see "Revision 2".
 
 Restores RFC-0018's freestanding constraint, which the implementation has been
 violating since phase-417. Amends RFC-0089 (its clause 1 is re-armed with a
@@ -8,7 +9,9 @@ mechanism; three of its statements are corrected). Reverses one decision of
 phase-427. Supersedes the deferred phase-438 W2, which was the right instinct
 aimed one layer too low. **Deletes the compat layer rather than formalising it.**
 
-Home phase: [phase-442](../roadmap/phase-442-one-freestanding-rclcpp-api.md). Prior phases: 417 (ROS 2 API adoption), 427 (one node
+Home phase: [phase-442](../roadmap/archived/phase-442-one-freestanding-rclcpp-api.md)
+(complete); the remainder is tracked by
+[phase-482](../roadmap/phase-482-rclcpp-drop-in-residue.md). Prior phases: 417 (ROS 2 API adoption), 427 (one node
 type), 438 (the std surface as an opt-in), 426 (parameters, Rust SSoT).
 
 ## The decision
@@ -338,6 +341,13 @@ in-place construction.)
 `cmake/compat/` and the whole idea of a second surface go. There is nothing for
 them to bridge once the one API is the ROS 2 API.
 
+Confirmed 2026-10-07, when phase-442 closed with this item still undone (neither
+phase-456 nor phase-476 took it). `cmake/compat/` is DELETED, not kept as
+permanent porting tooling, and that is
+[phase-482](../roadmap/phase-482-rclcpp-drop-in-residue.md) W1. Whatever a
+ported `CMakeLists.txt` needs from it either becomes part of nano-ros's own
+CMake package or is listed in D5 as an edit.
+
 `std_compat.hpp` goes with them (D5 below) — 275 lines behind a macro nothing
 that ships defines, a third orphaned vocabulary predating the phase-427 merge.
 
@@ -365,6 +375,12 @@ an edit, and every one is a compile error naming the exact site:
    members, and the one by-value pass is a NODE handle, which is
    `nros::Handle<Node>` and copyable — so this is on the list because it is a
    difference, not because it has cost anything measured.
+
+   Status 2026-10-07: the node handle is not that yet. `Node::SharedPtr` is
+   still `std::shared_ptr<Node>`, behind `hosted-family: shared-ptr-interop`.
+   Making it the freestanding `nros::Handle<Node>` this item describes is
+   [phase-482](../roadmap/phase-482-rclcpp-drop-in-residue.md) W2. The decision
+   stands; only the implementation is owed.
 
 What this does not promise: an arbitrary third-party ROS 2 package that uses
 `std::string` internally will not become freestanding because our API is. The
@@ -791,9 +807,10 @@ To be cut into a phase. Ordered so that each step is independently green.
   would be inventing work.
 * It does not promise that an arbitrary third-party ROS 2 package becomes
   freestanding. The claim is scoped to code written against the rclcpp API.
-* It does not settle `RCLCPP_*_STREAM`. A `FixedString<N>` + `operator<<` builder
-  is plausible and does not exist; a `<<` chain over arbitrary user types is not
-  fully recoverable without a hosted `ostream`. The printf family is unaffected.
+* It did not settle `RCLCPP_*_STREAM` when written. Settled since by phase-476
+  W4: a freestanding `nros::detail::LogStream` (256 B, `snprintf`, with
+  `std::ostream`'s default formats) on every target, plus a hosted interop
+  overload for user types with their own `operator<<`.
 * It does not touch the C API or the Rust core.
 
 ## Open questions

@@ -6,7 +6,7 @@ title: "The API-parity ledger has no stale-row detection, so a row survives the
 status: open
 type: bug
 area: [ci, api, docs]
-related: [phase-379, phase-417, phase-428, phase-442, rfc-0089, rfc-0096, 0196, 1204, 1225]
+related: [phase-482, phase-379, phase-417, phase-428, phase-442, rfc-0089, rfc-0096, 0196, 1204, 1225]
 ---
 
 ## Problem

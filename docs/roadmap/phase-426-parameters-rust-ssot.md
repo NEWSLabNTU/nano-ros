@@ -154,7 +154,7 @@ scope" above.** This phase's subject is that ONE store exists, keyed by node,
 with six services per node and no second implementation in C or C++ — which is
 what W1–W6 delivered. The 27 rows are missing SURFACE on top of that one store:
 cross-language capability the wrappers never exposed. Their owner is
-[phase-417](phase-417-ros2-api-adoption.md) **stage 4 W4.a**, which names them
+[phase-417](archived/phase-417-ros2-api-adoption.md) **stage 4 W4.a**, which names them
 explicitly.
 
 [phase-444](phase-444-rmw-fix-up.md) § "The ROS 2 gap list" INDEXES them. It is
@@ -477,6 +477,6 @@ shape is there and the remaining work is here.
 work item: no acceptance here depends on it, and no other phase is waiting on
 it. Re-measured live 2026-09-13 (see the status block). When it resolves, move
 this document to `archived/` and repoint the inbound references — at the time of
-writing those are [phase-417](phase-417-ros2-api-adoption.md) § "Where the
+writing those are [phase-417](archived/phase-417-ros2-api-adoption.md) § "Where the
 remaining work lives" and [phase-444](phase-444-rmw-fix-up.md) § "The ROS 2 gap
 list".

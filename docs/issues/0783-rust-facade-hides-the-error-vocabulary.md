@@ -5,7 +5,7 @@ title: "`RclReturnCode` exists and is unreachable, and RFC-0036 documents a Rust
 status: open
 type: bug
 area: api, docs
-related: [rfc-0036, rfc-0037, phase-379]
+related: [phase-482, rfc-0036, rfc-0037, phase-379]
 ---
 
 ## Problem

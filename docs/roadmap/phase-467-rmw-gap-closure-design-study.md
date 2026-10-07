@@ -56,7 +56,7 @@ answers "what do I do Monday".
 
 Implements RFC-0089 (the compile-or-conform rule and the four dispositions) and
 RFC-0036 (a divergence must name a platform constraint, never a preference).
-Continues [phase-417](phase-417-ros2-api-adoption.md) §"Disposition before
+Continues [phase-417](archived/phase-417-ros2-api-adoption.md) §"Disposition before
 implementation" and [phase-444](phase-444-rmw-fix-up.md) §"The ROS 2 gap list".
 Neither is superseded; this phase owns the thirteen rows and nothing else.
 
@@ -1489,7 +1489,7 @@ currently false.
    them into an edge". True, but the zenoh inputs are a standing SUBSCRIBER
    with history and Cyclone's are polled reads with `nullptr` listeners, which
    is a large asymmetry in what "turning them into an edge" costs.
-6. **[phase-417](phase-417-ros2-api-adoption.md)** §"(4) Our own three
+6. **[phase-417](archived/phase-417-ros2-api-adoption.md)** §"(4) Our own three
    languages disagree" lists `cpp:Publisher::get_gid` under "Rust exposes
    `MessageInfo::publisher_gid`, C++ does not". The 2026-09-23 re-read refuted
    exactly that: no language exposes a publisher's own gid, and

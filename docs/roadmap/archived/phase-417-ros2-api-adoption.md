@@ -1,5 +1,25 @@
 # Phase 417 — ROS 2 user-API adoption
 
+**Status (2026-10-07). CLOSED — archived; open residue moved to
+[phase-482](../phase-482-rclcpp-drop-in-residue.md).**
+
+- **Stages 0, 1, 2b, 4, 5 (W5.a-e) and 6 A+B are DONE.**
+- **W3.d is DONE** (issue 1637 resolved).
+- **The gap-verdict pass is DONE**, executed by phase-467; the ledger has 1
+  gap.
+- **Carried to phase-482:**
+  - W3.b's `-p` / `--params-file`, as W5;
+  - W-R1/W-B6, the deprecated-alias retirement, as W6;
+  - W-B5, lifecycle, as W4;
+  - issues 1042, 1302, 1303 and 1335, as W7.
+- **Not carried:** W5.f (the C service type taken from the contract) belongs
+  with the C API work. W2.a / issue 0793 (one C parameter store) is
+  phase-426's.
+
+Stale below, kept as the record: "`rclcpp::Node` is hosted-only" (false since
+phase-427 and RFC-0096), "80 gap rows", and issues 1384/1385, which are
+resolved.
+
 **Status (2026-09-13). In flight. Implements RFC-0089. Re-measured against the
 tree, because the line this replaces was dated 2026-09-04 and nine days of the
 campaign had landed underneath it — including three stage-3 waves this very
@@ -137,7 +157,7 @@ Where a real node stops being a tutorial. Each item is independently useful.
   store; this is thin-wrapper COMPLIANCE work, not new capability.
 
   **What closed.** The C++ side went in
-  [phase-426](phase-426-parameters-rust-ssot.md) W4: `ComponentNode`'s private
+  [phase-426](../phase-426-parameters-rust-ssot.md) W4: `ComponentNode`'s private
   `ParameterServer` went with the type (phase-427 W4 merged the node types,
   `component_node.hpp` no longer exists), `rclcpp::Node`'s inline member is
   gone, and the standalone `nros::ParameterServer<Cap>` was DELETED rather than
@@ -214,7 +234,7 @@ of them is `cpp:Node::*`. Eight are `c:` (the four `*_names_and_types_by_node`
 forms, the two `*_info_by_topic`, and `wait_for_{publishers,subscribers}`) and
 ten are `rust:Node::*`. Those belong to stage 5 and stage 4 respectively. Most
 also need the BACKEND to answer — Cyclone fills 1 of 12 graph slots, which is
-[phase-444](phase-444-rmw-fix-up.md) W3.
+[phase-444](../phase-444-rmw-fix-up.md) W3.
 
 ## Stage 3 — the loudness pass (the safety gate)
 
@@ -400,10 +420,10 @@ What is left under this stage is not an item but a row count: 56 `cpp:` and
   **This item OWNED the 27 `param.json` `gap` rows**, and stating that was the
   point of saying so here: `param.json` is the largest single-shard queue left,
   and until 2026-09-13 three documents each implied a different owner for it.
-  It is not [phase-426](phase-426-parameters-rust-ssot.md)'s — that phase made
+  It is not [phase-426](../phase-426-parameters-rust-ssot.md)'s — that phase made
   the store SINGLE and per-node, which is done, and its "Not in scope" excludes
   callbacks explicitly. It is not
-  [phase-444](phase-444-rmw-fix-up.md)'s — that section is an index and says so.
+  [phase-444](../phase-444-rmw-fix-up.md)'s — that section is an index and says so.
   The rows are missing cross-language SURFACE on top of one store, which is
   exactly what this item is. Measured 2026-09-13 before the work, they grouped
   as follows; the OUTCOME column is what landed the same day.
@@ -1877,7 +1897,7 @@ since it was written on 2026-09-05:
 * **phase-427 — one node type. ARCHIVED 2026-09-11.** `rclcpp::Node` is the
   class, the three C++ node shapes collapsed, `ComponentNode` is deleted
   (measured: every remaining occurrence in the tree is prose about its removal).
-* **[phase-426](phase-426-parameters-rust-ssot.md) — parameters get a Rust
+* **[phase-426](../phase-426-parameters-rust-ssot.md) — parameters get a Rust
   SSoT. W1–W6 all MET**, re-audited 2026-09-12. The document is still ACTIVE and
   archives on one condition: issue 1203, the only open issue it owns. Nothing in
   this phase waits on it.

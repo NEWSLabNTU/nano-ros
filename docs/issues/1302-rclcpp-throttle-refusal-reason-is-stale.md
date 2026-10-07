@@ -5,7 +5,7 @@ title: "`NROS_RCLCPP_REFUSE_THROTTLE` and its five ledger rows say there is no C
 status: open
 type: tech-debt
 area: [api, docs]
-related: [1019, phase-417, rfc-0089, rfc-0019]
+related: [phase-482, 1019, phase-417, rfc-0089, rfc-0019]
 ---
 
 ## What

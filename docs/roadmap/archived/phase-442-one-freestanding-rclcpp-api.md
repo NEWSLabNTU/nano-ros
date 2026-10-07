@@ -1,7 +1,21 @@
 # phase-442 — one freestanding `rclcpp` API, identical on every platform
 
+**Status (2026-10-07). COMPLETE — archived.**
+
+- **W0-W7 landed here. W8-W10 landed** through
+  [phase-456](phase-456-cpp-api-is-a-handle-over-the-rust-arena.md) and
+  phase-476, both archived.
+- **Carried to [phase-482](../phase-482-rclcpp-drop-in-residue.md):**
+  - RFC-0096 D4, the deletion of `cmake/compat/`, which neither 456 nor 476
+    took, as W1;
+  - D5 item 4's freestanding `Node::SharedPtr`, as W2;
+  - issue 1323 (stale ledger rows), as W7.
+
+The "Opened" status line below was stale. The body already said W0-W7 were
+complete.
+
 **Status (2026-09-09). Opened.** Home phase for
-[RFC-0096](../design/0096-cpp-freestanding-core-and-porting-layer.md). Absorbs
+[RFC-0096](../../design/0096-cpp-freestanding-core-and-porting-layer.md). Absorbs
 what remains of phase-438 and reverses one work item of phase-427. Implements
 the constraint RFC-0018 has stated since it was written and the implementation
 has been violating since phase-417.
@@ -252,7 +266,7 @@ the rest and do not depend on each other.
   measurement.
 
 > **W8, W9 and W10 MOVED to
-> [phase-456](archived/phase-456-cpp-api-is-a-handle-over-the-rust-arena.md)
+> [phase-456](phase-456-cpp-api-is-a-handle-over-the-rust-arena.md)
 > (2026-09-12).** RFC-0096 D9 revision 3 changed what they are: the remaining
 > work is not "move the surface onto `Owned<T>`" but "the C++ API becomes a
 > handle over the arena the Rust side already owns", and W9 cannot be last
@@ -516,4 +530,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1225](../issues/archived/1225-capability-probe-changes-sizeof-timer-and-guard-condition.md) | `sizeof(nros::Timer)` follows `NROS_CPP_STD` — 24 against 32 — and so do its siblings. phase-427 filed it rather than fixing it and phase-438 is complete, so the freestanding-safe spelling is this phase's job |
+| [#1225](../../issues/archived/1225-capability-probe-changes-sizeof-timer-and-guard-condition.md) | `sizeof(nros::Timer)` follows `NROS_CPP_STD` — 24 against 32 — and so do its siblings. phase-427 filed it rather than fixing it and phase-438 is complete, so the freestanding-safe spelling is this phase's job |

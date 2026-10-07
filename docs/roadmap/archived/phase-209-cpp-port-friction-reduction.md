@@ -1,11 +1,31 @@
 # Phase 209 — C++ port friction reduction
 
+**Status (2026-10-07). CLOSED — archived; open residue moved to
+[phase-482](../phase-482-rclcpp-drop-in-residue.md).** Re-measured against the tree
+before closing:
+
+- **A and A.follow-up are SUPERSEDED.** The compat header was deleted
+  (`f35f0b878`). `rclcpp::` became the real namespace (`8461b8417`), and
+  callbacks live in the executor arena (phases 456 W1 and 476 W2), not in a
+  `std::function` pump.
+- **E is SUPERSEDED** by phase-210.
+- **F (`nros bake-params`) is OBSOLETE.** Parameter YAML is projected by the
+  launch/SystemModel path instead.
+- **B, C, D and G.1 are DONE.** B and D now sit under `cmake/compat/`, which
+  phase-482 W1 deletes per RFC-0096 D4.
+- **Carried to phase-482:**
+  - G.2, G.3 and G.4, as W3;
+  - H (lifecycle), as W4 under `rclcpp_lifecycle::`.
+
+The "embedded blocked on `<memory>`/`<string>`" premise below is false since
+RFC-0096. What remains on embedded is phase-482 W2 and W3.
+
 **Scope.** nano-ros targets **ROS 2 broadly**, not any one user (Autoware,
 PX4, …). This phase is about the **generic** rclcpp/ament-cmake friction that
 stops a typical small ROS 2 C++ node from compiling against nano-ros with just
 build-script changes. Autoware appears below only as a real-world *measurement*
 target (the survey
-[`docs/research/autoware-port-survey.md`](../research/autoware-port-survey.md)
+[`docs/research/autoware-port-survey.md`](../../research/autoware-port-survey.md)
 picked three small ROS 2 nodes from it). Project-specific helper libraries
 (autoware's `universe_utils`/`vehicle_info_utils`, PX4's uORB shims, …) are
 downstream — the porting user / their project carries them. nano-ros ships only
