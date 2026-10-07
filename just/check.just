@@ -265,6 +265,7 @@ build-serial: \
     cli-tests \
     cpp \
     cpp-ffi-tests \
+    dist-runtime-deps \
     embedded-feature-unification \
     excluded-crate-tests \
     launch-resolve-builds \

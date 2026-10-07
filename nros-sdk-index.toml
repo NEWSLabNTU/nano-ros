@@ -292,9 +292,22 @@ upstream = "v0.16.8" # sdk-ng release tag (SSOT for the URLs below)
 # the alternative is a literal that has to be edited in lockstep with the line
 # above, which is the drift `scripts/lib/zephyr-sdk.sh` was carrying by hand.
 subdir = "zephyr-sdk-{version}"
+# issue 1744 — these rows are also the RUN SET `check-dist-runtime-deps` holds
+# this UPSTREAM dist to: what nano-ros executes from it (the cross compilers,
+# the assembler and linker they drive, and the `dtc` Zephyr's devicetree step
+# runs — measured in an mps2/an385 build cache). The rest of the bundle (host
+# qemu, gdb-py, the pokysdk sysroot's own tools) is upstream's, with upstream's
+# documented host requirements, and gets one NOTE rather than a verdict.
+# `dtc` is host-shaped (`sysroots/<arch>-pokysdk-linux/`, and no host tools at
+# all on macOS), so its row names the one host it was measured on.
 smoke = [
     { run = "arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc --version", expect = "arm-zephyr-eabi-gcc" },
+    { run = "arm-zephyr-eabi/bin/arm-zephyr-eabi-as --version", expect = "GNU assembler" },
+    { run = "arm-zephyr-eabi/bin/arm-zephyr-eabi-ld --version", expect = "GNU ld" },
     { run = "x86_64-zephyr-elf/bin/x86_64-zephyr-elf-gcc --version", expect = "x86_64-zephyr-elf-gcc" },
+    { run = "x86_64-zephyr-elf/bin/x86_64-zephyr-elf-as --version", expect = "GNU assembler" },
+    { run = "x86_64-zephyr-elf/bin/x86_64-zephyr-elf-ld --version", expect = "GNU ld" },
+    { run = "sysroots/x86_64-pokysdk-linux/usr/bin/dtc --version", expect = "DTC", hosts = ["linux-x86_64"] },
 ]
 # MEASURED, and the `-t` and the `-h` do very different amounts of work here.
 # 0.16.x ships every toolchain INSIDE the 1.3 GiB bundle, and its `setup.sh -t`
@@ -368,9 +381,16 @@ subdir = "zephyr-sdk-{version}"
 # 1.0.x moved the toolchains under `gnu/` — the 0.16.8 entry's probes are at the
 # bundle root. Two layouts, two sets of probes, and `subdir` is why neither has
 # to restate the version.
+# issue 1744 — the RUN SET, as on [tool.zephyr-sdk]; the `dtc` path differs
+# too: 1.0.x unpacks the host tools under `hosttools/`.
 smoke = [
     { run = "gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc --version", expect = "arm-zephyr-eabi-gcc" },
+    { run = "gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-as --version", expect = "GNU assembler" },
+    { run = "gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-ld --version", expect = "GNU ld" },
     { run = "gnu/x86_64-zephyr-elf/bin/x86_64-zephyr-elf-gcc --version", expect = "x86_64-zephyr-elf-gcc" },
+    { run = "gnu/x86_64-zephyr-elf/bin/x86_64-zephyr-elf-as --version", expect = "GNU assembler" },
+    { run = "gnu/x86_64-zephyr-elf/bin/x86_64-zephyr-elf-ld --version", expect = "GNU ld" },
+    { run = "hosttools/sysroots/x86_64-pokysdk-linux/usr/bin/dtc --version", expect = "DTC", hosts = ["linux-x86_64"] },
 ]
 # THE fix for issue 1259: the `_minimal` bundle is designed to be completed by
 # this command, which DOWNLOADS each named toolchain (~1 GiB per pair here). It

@@ -151,8 +151,12 @@ claim-protocol:
 # when there is no store, so running it anywhere is safe — it simply cannot
 # answer without its input, and says which.
 #
-# `just doctor` is its home: doctor is where host state is examined, and this is
-# the one gate whose subject lives in `~/.nros/sdk` rather than in the tree.
+# `just doctor` examines the developer's store with it, and since issue 1744 it
+# is also on `build-serial`, which `gate.yml` runs nightly over the store that
+# job provisions (Corrosion, clang-format). It was held off every lane while
+# both Zephyr SDK dists read red; 1744 ruled that an UPSTREAM dist is held to
+# the programs nano-ros RUNS from it (its `smoke` probes), so it is green, and
+# ~1.5 s warm over a full store.
 [private]
 dist-runtime-deps:
     @python3 scripts/check-dist-runtime-deps.py

@@ -2683,7 +2683,9 @@ fn failing_smoke_at(
     // not restate the pinned version in the argv, and the smoke-or-reason
     // baseline recorded exactly that as the reason the Zephyr SDK had none.
     let root = tool.root_of(prefix);
-    for probe in &tool.smoke {
+    let host = crate::orchestration::sdk_index::host_key();
+    // issue 1744 — a probe scoped to other hosts is not this host's to run.
+    for probe in tool.smoke.iter().filter(|p| p.applies_to(&host)) {
         let mut argv = probe.run.split_whitespace();
         let Some(exe) = argv.next() else { continue };
         let mut cmd = std::process::Command::new(root.join(exe));

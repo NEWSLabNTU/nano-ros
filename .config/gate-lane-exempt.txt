@@ -44,7 +44,6 @@ cli-clippy  # called by `check-cli-fmt`'s body, not run standalone
 compile-smoke  # gate.yml runs it by name on pull_request; needs a compile
 default  # lane verb: `cli-fresh` + `fast` + `build` + `api-parity`
 dep-chain  # post-submit.yml runs it by name; needs codegen output
-dist-runtime-deps  # needs a provisioned SDK store (~10 min over two Zephyr SDKs); run by `just workspace doctor`. Held off every workflow while it is red on BOTH Zephyr SDK dists — issue 1744 needs a ruling first (issue 1739)
 fast  # lane verb: fans this lane out through run-gates-parallel.sh
 fast-parallel  # retired alias for `fast`, kept for muscle memory
 fast-serial  # lane verb: the same lane, one gate at a time, fail-fast
