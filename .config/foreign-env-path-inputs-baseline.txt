@@ -23,20 +23,10 @@
 #
 # Regenerate ONLY to record a name that is gone:
 #     python3 scripts/check-foreign-env-path-inputs.py --write-baseline
-APP_COMPILE_DEFS  not a path — `;`-separated `NAME[=VALUE]` preprocessor defines
 FREERTOS_CFLAGS  not a path — extra compiler flags (RFC-0049 extension point)
-NROS_ARENA_EXHAUSTION_IS_FATAL  not a path — a boolean flag
-NROS_BOOT_REPORT  not a path — a boolean flag
-NROS_HEAP_EXHAUSTION_IS_FATAL  not a path — a boolean flag
-NROS_DECLARED_MAX_QOS_DEPTH  not a path — a count
 NROS_EXECUTOR_BACKING_SECTION  not a path — a linker section NAME (RFC-0002 4.4b)
-NROS_FREERTOS_APP_STACK_KB  not a path — a size in KiB (issue 1146)
-NROS_FREERTOS_HEAP_KB  not a path — a size in KiB
+NROS_HEAP_EXHAUSTION_IS_FATAL  not a path — a boolean flag
 NROS_PARAM_DECLARATION_REASON  not a path — a human-readable reason string
 NROS_PARAM_DECLARATION_STATUS  not a path — a status word
-NROS_TRACE  not a path — a boolean flag
 NROS_ZPICO_DEBUG  not a path — a boolean flag
-NUTTX_ARCH_CFLAGS  not a path — compiler flags for the arch
-NUTTX_LIBGCC_FLAGS  not a path — libgcc link flags
-NUTTX_LINKER_SCRIPT  not in 1280's scope — RELATIVE to `NUTTX_DIR`, which IS routed
 PKG_CONFIG_PATH  outside any checkout — a system search path; `reroot_foreign` keeps it

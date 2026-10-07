@@ -126,8 +126,33 @@ CARGO_EXACT = {
     "OUT_DIR", "TARGET", "HOST", "PROFILE", "NUM_JOBS", "OPT_LEVEL", "DEBUG",
 }
 
-# Where this repo could set a variable. A name set here is an internal channel.
-PRODUCER_DIRS = ["just/", "cmake/", "scripts/", "zephyr/", "packages/cli/", "examples/"]
+# Where this repo could set a variable — the files that PRODUCE a build
+# script's environment. A name set there is an internal channel.
+#
+# This was an authored directory list (`just/ cmake/ scripts/ zephyr/
+# packages/cli/ examples/`), narrower than the rule (issue 0196's shape):
+# `packages/api/nros-c/cmake/nros-nuttx.cmake` sets all seven NuttX `APP_*`
+# inputs, so they read as "nothing in this repo sets it" — measured on #1608.
+# It also missed the root `justfile` and the board descriptors' knob tables.
+# Widening to EVERY tracked file is wrong the other way (issue 1452): a C
+# `build.define("NROS_TRACE", …)` and an SDK image's `export PKG_CONFIG_PATH`
+# then read as producers of a build script's input. So the scope is the
+# producer KINDS — any cmake file, any just file, the workflows, the board
+# descriptors (their knob tables become env) — plus the CLI's own source
+# closure, read from the GENERATED `packages/cli/cli-source-dirs.txt`.
+def producer_pathspec() -> list[str]:
+    spec = [
+        "just/", "justfile", "scripts/", "zephyr/", "examples/", "cmake/",
+        ".github/workflows/", "packages/cli/",
+        "*.cmake", "*CMakeLists.txt", "*.just", "packages/boards/*nros-board.toml",
+    ]
+    closure = ROOT / "packages" / "cli" / "cli-source-dirs.txt"
+    for line in closure.read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            spec.append(line.rstrip("/") + "/")
+    # This file names candidate spellings in its own prose; it produces nothing.
+    return spec + [":(exclude)third-party", f":(exclude){Path(__file__).relative_to(ROOT)}"]
 
 
 def load_census():
@@ -154,10 +179,13 @@ def repo_produces(name: str) -> str | None:
         rf"\bENV\{{{re.escape(name)}\}}",
         rf"^\s*{re.escape(name)}\s*=",
         rf'["\']{re.escape(name)}["\']\s*,',
+        # `cmake -E env "NAME=value"` / `env NAME=value cmd` — the spelling
+        # `nros-nuttx.cmake` uses for the NuttX `APP_*` inputs.
+        rf'["\']{re.escape(name)}=',
     ]
     for pat in patterns:
         r = subprocess.run(
-            ["git", "grep", "-lE", pat, "--", *PRODUCER_DIRS],
+            ["git", "grep", "-lE", pat, "--", *producer_pathspec()],
             cwd=ROOT, capture_output=True, text=True)
         if r.returncode == 0 and r.stdout.strip():
             return r.stdout.split()[0]
@@ -233,6 +261,14 @@ def self_test() -> int:
         repo_produces("THREADX_PORT") is not None)
     chk("…and one nothing here sets is foreign",
         repo_produces("NROS_DEFINITELY_NOT_A_REAL_VARIABLE_1588") is None)
+    # The producer SCOPE, both directions (the #1608 gap and its over-wide fix).
+    chk("a `cmake -E env \"NAME=…\"` under packages/ is a producer (APP_MAIN_CPP)",
+        repo_produces("APP_MAIN_CPP") is not None)
+    chk("…but a C preprocessor `build.define(\"NAME\", …)` in a board build.rs is not",
+        "nros-board-mps2-an385-freertos" not in (repo_produces("NROS_TRACE") or ""))
+    chk("…and this gate's own prose names spellings without producing them",
+        all("check-foreign-env-path-inputs" not in (repo_produces(n) or "")
+            for n in ("NROS_TRACE", "PKG_CONFIG_PATH")))
 
     # The routed-form test, both directions. Each sibling resolver must count
     # as routing (a missing alternative would report a fixed site as bare),

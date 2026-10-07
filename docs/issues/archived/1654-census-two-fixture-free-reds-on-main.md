@@ -3,7 +3,7 @@ id: 1654
 title: "Two fixture-free nros-tests targets are red on main and no gating lane runs
   them: `fixture_source_coverage` (an unrowed bin) and `multihost_partition_bake`
   (a retired verb)"
-status: open
+status: resolved
 type: bug
 area: testing
 severity: medium
@@ -74,3 +74,13 @@ TARGET cannot be admitted whole, and this issue's acceptance ("both targets
 PASS in the census ... NEWLY ADMISSIBLE") no longer fits item 2. Its two
 fixture-free siblings were already in `.config/lane-admission/gate.txt`. Left
 open for whoever owns the census to restate item 2's acceptance or close it.
+
+## 2026-10-07 — resolved
+
+Both reds are gone from `main`. Item 1: `in-place-subscriptions` got its row,
+and `fixture_source_coverage` is admitted whole. Item 2: issue 1692 rewrote
+`multihost_bake_emits_only_the_hosts_node` to assert on the BUILT entries,
+so it resolves a fixture and runs in fixture lanes (tier 1), not the gate lane.
+That is the right home for it, not a gap, so item 2's acceptance is restated as
+"green where its fixture is built". The target's two fixture-free siblings
+stay admitted per test. Nothing left here.

@@ -1,7 +1,7 @@
 ---
 id: 1644
 title: "Three fixture-free `nros-tests` targets are red on `main`, and no merge-gating lane runs them"
-status: open
+status: resolved
 type: bug
 area: testing, ci
 severity: medium
@@ -42,3 +42,20 @@ of their own, not just a fix.
 
 All three green on `main`; each either runs in a merge-gating lane or has a
 written reason it cannot.
+
+## 2026-10-07 — resolved: all three green on `main`, each placed or reasoned
+
+Measured with the phase-475 census: the scheduled CI run of 2026-10-06, plus a
+local gate-image run on `main` at `b92829321`.
+
+| target | on `main` | lane |
+| --- | --- | --- |
+| `no_local_axis_tables` | PASS both runs (the inline coordinate landed in #1569) | admitted to `test-lane-contracts` |
+| `multihost_partition_bake` | green where its fixture exists (issue 1692 asserts on the BUILT entries) | its fixture-free tests are admitted one by one; the bake test resolves a fixture, so it runs in tier 1 |
+| `zpico_drift_gate` | PASS both runs in the CI census (#1699) | **not admitted, with a reason:** it runs `cargo` at test time, and in the local image census it failed while blocked on cargo's package-cache lock. A target that contends with a parallel run fails the census's every-run rule by design. Moving its compile to the build stage is issue 1656, item 2 |
+
+The issue's rule, "builds no fixture and spawns no process", is now the
+census: a target is admitted if it reaches a verdict in the gate image on every
+run. The 2026-10-06 CI census reported `zpico_drift_gate` as NEWLY ADMISSIBLE,
+and the local census FAILs it. That disagreement is the contention, and it is
+why the target is not admitted.
