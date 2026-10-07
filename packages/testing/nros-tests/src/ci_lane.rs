@@ -37,7 +37,7 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k + pairwise l × r | 20 | 12 | 25 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k + pairwise l × r | 19 | 12 | 25 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 11 | 11 | 23 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 35 | 34 | 71 % |
 //! | tier 3 | everything | 205 | 48 | 100 % |
@@ -921,7 +921,7 @@ _tier-build:
 
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
-            (CiLane::Tier1, 20, 12),
+            (CiLane::Tier1, 19, 12),
             (CiLane::Tier2, 11, 11),
             (CiLane::Tier2Nightly, 35, 34),
         ];
