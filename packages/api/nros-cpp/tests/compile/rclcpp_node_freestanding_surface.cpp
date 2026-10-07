@@ -21,8 +21,10 @@
 // phase-438 W2 the first is what an ordinary hosted consumer gets and the
 // second is what an embedded one gets.
 //
-// It deliberately names NOTHING from the porting surface — no `std::string`,
-// no `std::shared_ptr`, no `Node::SharedPtr`, no `rclcpp::spin(node)`. If a
+// It deliberately names NOTHING from the hosted porting surface — no
+// `std::string`, no `std::shared_ptr`. (`Node::SharedPtr` and
+// `rclcpp::spin(node)` used to be on that list; phase-482 W2 made both
+// freestanding, and they are exercised below.) If a
 // later change moves one of those onto the unconditional half it will not
 // break this file; if a change moves something OFF the unconditional half, this
 // file stops compiling, which is the direction that matters.
@@ -182,6 +184,14 @@ inline ::nros::Result instantiate() {
 
     // The node is CONSTRUCTED by value above; a freestanding target has no
     // `std::make_shared` to reach for, and does not need one.
+
+    // phase-482 W2 — `Node::SharedPtr` is a freestanding handle: stored,
+    // copied, made const, and handed to the spin verbs, with no `<memory>`.
+    rclcpp::Node::SharedPtr handle = node.shared_from_this();
+    rclcpp::Node::SharedPtr copy = handle;
+    rclcpp::Node::ConstSharedPtr read_only = copy;
+    (void)read_only->get_name();
+    rclcpp::spin_some(copy);
     return r;
 }
 
@@ -197,6 +207,15 @@ class Derived : public rclcpp::Node {
   private:
     ::nros::Timer timer_;
 };
+
+/// phase-482 W2 — a DERIVED node's handle converts to `rclcpp::Node::SharedPtr`,
+/// the way `shared_ptr<Derived>` converts to `shared_ptr<Node>` upstream.
+inline void derived_node_handle(Derived& d) {
+    ::nros::Handle<Derived> mine(&d);
+    rclcpp::Node::SharedPtr as_base = mine;
+    rclcpp::Node::SharedPtr from_this = d.shared_from_this();
+    (void)(as_base == from_this);
+}
 
 static_assert(!__is_polymorphic(rclcpp::Node), "rclcpp::Node must introduce no vtable");
 static_assert(!__is_polymorphic(Derived), "deriving from rclcpp::Node must introduce no vtable");

@@ -139,7 +139,7 @@ The compat surface covers the patterns a typical ROS 2 C++ node uses:
 | rclcpp surface | nano-ros mapping | Notes |
 |---|---|---|
 | `class MyNode : public rclcpp::Node` | `rclcpp::Node` — ours, and the same name. (`nros::Node` is a deprecated alias for it; write `rclcpp::`.) | Ctor takes `(name)`, `(name, options)` or `(name, ns, options)`. |
-| `std::make_shared<MyNode>()` | works | `shared_from_this()` works too, with one caveat — see "Two things the compiler will not tell you" below. |
+| `std::make_shared<MyNode>()` | works | `auto node = std::make_shared<MyNode>()` and `rclcpp::spin(std::make_shared<MyNode>())` are unchanged. `rclcpp::Node::SharedPtr node = std::make_shared<…>(…)` does not compile — write `auto`; see "`Node::SharedPtr` observes, it does not own" below. `shared_from_this()` works too, with the same caveat. |
 | `create_publisher<M>(topic, qos)` | shared_ptr-returning wrapper | `qos` can be `rclcpp::QoS(10)` or an int. |
 | `create_subscription<M>(topic, qos, callback)` | registered on the executor arena; dispatched by **any** spin verb | **Capturing lambdas + `std::function` all work**. |
 | `create_wall_timer(period, callback)` | registered on the executor arena; dispatched by **any** spin verb | `std::chrono::duration` arg, capturing-lambda callback. Returns `rclcpp::TimerBase::SharedPtr`, which is `rclcpp::Timer::SharedPtr` — one flat type, two names. See below. |
@@ -218,19 +218,28 @@ if (!node.init("talker").ok()) return 1;
 `Result` carries `[[nodiscard]]` on C++17 and later, so *that* one the compiler
 does warn about.
 
-### `shared_from_this()` does not extend the node's lifetime
+### `Node::SharedPtr` observes, it does not own
 
-Upstream gets it from `std::enable_shared_from_this<Node>` and the returned
-pointer is a co-OWNER. nano-ros cannot derive from that base — it carries a
-`std::weak_ptr` member that exists only where `<memory>` does, which would make
-`sizeof(rclcpp::Node)` depend on a capability probe and let two translation
-units of one firmware image disagree about the object's layout.
+`rclcpp::Node::SharedPtr` is `nros::Handle<rclcpp::Node>` on every target,
+embedded included: a copyable reference that does not keep the node alive. A
+node is constructed by your `main` (or the generated entry) and outlives
+everything it is handed to, so storing and copying it works as upstream's does.
+Two consequences:
 
-So `shared_from_this()` here returns a pointer that ALIASES the node with an
-empty owner: it is safe to pass to anything that holds it for less than the
-node's lifetime (`diagnostic_updater::Updater(shared_from_this(), 1.0)` is the
-common case and is fine), and it is NOT safe to store somewhere that outlives
-the node. It also never throws where upstream would raise `bad_weak_ptr`.
+- **`shared_from_this()`** returns that handle. It is safe to pass to anything
+  that holds it for less than the node's lifetime
+  (`diagnostic_updater::Updater(shared_from_this(), 1.0)` is the common case),
+  and NOT safe to store somewhere that outlives the node. It never throws where
+  upstream would raise `bad_weak_ptr`. nano-ros cannot derive from
+  `std::enable_shared_from_this<Node>`: its `std::weak_ptr` member exists only
+  where `<memory>` does, so two translation units of one firmware image could
+  disagree about the object's layout.
+- **`rclcpp::Node::SharedPtr node = std::make_shared<MyNode>();` is a compile
+  error.** The `shared_ptr` there is a temporary, and a handle to it would
+  dangle at the end of the line; the compiler names the deleted conversion.
+  Write `auto node = std::make_shared<MyNode>();` instead. A `shared_ptr` you
+  keep converts to `Node::SharedPtr` freely, and `rclcpp::spin(…)` accepts the
+  temporary directly.
 
 ### `rclcpp::TimerBase` is a NAME here, not a hierarchy
 

@@ -1627,5 +1627,25 @@
   "cpp:arm_monitors": {
     "verdict": "extension",
     "why": "phase-474 I2 -- `nros::arm_monitors()`, the C++ spelling of `rust:request_monitor_arming`. rclcpp has no on-target contract monitor."
+  },
+  "cpp:Handle": {
+    "verdict": "extension",
+    "why": "RFC-0096 D2 -- what `X::SharedPtr` is on every target: a copyable, NON-owning reference. Upstream's `std::shared_ptr` shares ownership; measured over this tree and the porting corpus (phase-442 W0) nothing shares: no `weak_ptr`, `.lock()`, `use_count()` or custom deleter outside our headers. Since phase-482 W2 it is also `rclcpp::Node::SharedPtr`. Hosted interop: an lvalue `std::shared_ptr<U>` the caller owns converts to it; a TEMPORARY one is a deleted conversion, because the handle would dangle.",
+    "bucket": "ours-only"
+  },
+  "cpp:Handle::Handle<T>": {
+    "verdict": "extension",
+    "why": "constructors: default, `nullptr`, from a raw `T*`, from any `Handle<U>` whose `U*` converts to `T*` (a derived node's handle to `Handle<rclcpp::Node>`, as `shared_ptr<Derived>` converts upstream), and on hosted targets from an lvalue `std::shared_ptr<U>`. The rvalue `shared_ptr` form is `= delete` (phase-482 W2): `rclcpp::Node::SharedPtr n = std::make_shared<...>(...)` would leave `n` dangling, so it is a compile error naming the fix (`auto n = ...`), listed in RFC-0096 D5.",
+    "bucket": "ours-only"
+  },
+  "cpp:Handle::get": {
+    "verdict": "extension",
+    "why": "the raw pointer, as `shared_ptr::get` returns it.",
+    "bucket": "ours-only"
+  },
+  "cpp:Handle::reset": {
+    "verdict": "extension",
+    "why": "`shared_ptr::reset`'s shape with a narrower contract: it drops this handle's reference and destroys nothing, because a `Handle` owns nothing. The entity handles that DO release on `reset()` (`SubscriptionHandle`, `TimerHandle`, ...) are their own types.",
+    "bucket": "ours-only"
   }
 }

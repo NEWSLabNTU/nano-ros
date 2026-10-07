@@ -11,6 +11,7 @@
 #define NROS_CPP_HANDLE_HPP
 
 #include "nros/traits.hpp"
+#include "nros/std_detect.hpp" // phase-482 W2 — the hosted `shared_ptr` interop below
 
 namespace nros {
 
@@ -55,14 +56,30 @@ template <typename T> class Handle {
     constexpr Handle(decltype(nullptr)) : p_(nullptr) {}
     explicit constexpr Handle(T* p) : p_(p) {}
 
-    /// `Handle<T>` converts to `Handle<const T>`, the way `shared_ptr` does.
-    /// Constrained rather than open so that an unrelated `Handle<U>` is a
-    /// compile error at the call site instead of a surprise at the `static_cast`.
-    template <typename U,
-              typename tr::enable_if<tr::is_same<typename tr::remove_const<U>::type,
-                                                 typename tr::remove_const<T>::type>::value,
-                                     int>::type = 0>
+    /// `Handle<U>` converts to `Handle<T>` wherever `U*` converts to `T*`, the
+    /// way `shared_ptr` does: `Handle<T>` to `Handle<const T>`, and since
+    /// phase-482 W2 a derived node's handle to `Handle<rclcpp::Node>`.
+    /// Constrained rather than open, so an unrelated `Handle<U>` is a compile
+    /// error at the call site instead of a surprise at the `static_cast`.
+    template <typename U, typename tr::enable_if<tr::is_convertible<U*, T*>::value, int>::type = 0>
     constexpr Handle(const Handle<U>& other) : p_(other.get()) {}
+
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+    /// phase-482 W2 — a hosted `std::shared_ptr` the CALLER owns converts to a
+    /// handle that observes it. This is how `auto node =
+    /// std::make_shared<MyNode>()` reaches a `Node::SharedPtr` parameter.
+    template <typename U, typename tr::enable_if<tr::is_convertible<U*, T*>::value, int>::type = 0>
+    Handle(const ::std::shared_ptr<U>& owner) : p_(owner.get()) {}
+
+    /// REFUSED: a TEMPORARY `shared_ptr` would be destroyed at the end of the
+    /// statement, leaving the handle dangling. So
+    /// `rclcpp::Node::SharedPtr n = std::make_shared<rclcpp::Node>("x");` is
+    /// a compile error here, and the fix is `auto n = std::make_shared<…>(…);`
+    /// (RFC-0096 D5). Passing a temporary straight to `rclcpp::spin(…)` is
+    /// fine: the spin verbs take `const std::shared_ptr<N>&` too.
+    template <typename U, typename tr::enable_if<tr::is_convertible<U*, T*>::value, int>::type = 0>
+    Handle(::std::shared_ptr<U>&& temporary) = delete;
+#endif // NROS_CPP_HAS_SHARED_PTR
 
     constexpr T* get() const { return p_; }
     constexpr T* operator->() const { return p_; }

@@ -58,6 +58,7 @@
 #include "nros_cpp_ffi.h"
 
 #include "nros/traits.hpp"
+#include "nros/handle.hpp" // phase-482 W2 — `Node::SharedPtr`
 #include "nros/result.hpp"
 #include "nros/owned.hpp" // phase-456 W5 — the return type of the poll `create_service`
 #include "nros/hosted_block.hpp"
@@ -818,35 +819,37 @@ class Node {
         : Node(name.c_str(), ns.c_str(), options) {}
 #endif // NROS_CPP_HAS_STD_STRING
 
-#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: shared-ptr-interop
-    using SharedPtr = ::std::shared_ptr<Node>;
+    /// `rclcpp::Node::SharedPtr` — phase-482 W2, RFC-0096 D5 item 4.
+    ///
+    /// A copyable, non-owning `nros::Handle<Node>` on EVERY target, the model of
+    /// the entity handles (phases 456/476). It was `std::shared_ptr<Node>`
+    /// behind `NROS_CPP_HAS_SHARED_PTR`, so a freestanding port could not spell
+    /// the type its class body stores and passes. A node is constructed by a
+    /// generated entry or by `main` and outlives everything it is handed to,
+    /// which is the lifetime a handle states.
+    ///
+    /// Hosted interop is in `nros::Handle`: an lvalue `std::shared_ptr<MyNode>`
+    /// converts, a TEMPORARY one is a compile error (it would dangle), and the
+    /// spin verbs take `const std::shared_ptr<N>&` so
+    /// `rclcpp::spin(std::make_shared<MyNode>())` is unchanged.
+    using SharedPtr = ::nros::Handle<Node>;
+    /// `rclcpp::Node::ConstSharedPtr`.
+    using ConstSharedPtr = ::nros::Handle<const Node>;
 
     /// `rclcpp::Node::shared_from_this()`.
     ///
-    /// ADOPT-BOUNDED, and this is the one place the merge had to weaken a
-    /// contract rather than keep it. Upstream gets this from
+    /// ADOPT-BOUNDED. Upstream gets this from
     /// `std::enable_shared_from_this<Node>`, a BASE CLASS carrying a
-    /// `std::weak_ptr` member — 16 bytes of layout that exist only where
-    /// `<memory>` does, which is precisely what the capability-layout rule
-    /// forbids and what the deleted `timers_` member already shipped once.
-    ///
-    /// So the base is gone and the verb is a method. The returned pointer
-    /// ALIASES `this` with an EMPTY owner: it observes the node and does not
-    /// extend its lifetime, where upstream's shares ownership. In this API the
-    /// node is constructed by a generated entry (or by a `main`) and outlives
-    /// everything it is handed to, so the two behave the same — but a caller
-    /// who stores it past the node's scope gets a dangling pointer where
-    /// upstream would have kept the node alive. Upstream also THROWS
-    /// `bad_weak_ptr` when the node is not already owned by a `shared_ptr`;
-    /// this never throws, which is the RFC-0018 direction.
-    ::std::shared_ptr<Node> shared_from_this() {
-        return ::std::shared_ptr<Node>(::std::shared_ptr<void>(), this);
-    }
+    /// `std::weak_ptr`, 16 bytes of layout that exist only where `<memory>`
+    /// does. So there is no base; the verb is a method, and it returns a
+    /// handle that OBSERVES `this`. It does not extend the node's lifetime
+    /// where upstream's shares ownership, and it never throws `bad_weak_ptr`
+    /// (RFC-0018). It used to return an aliasing `std::shared_ptr` with an
+    /// EMPTY owner, which was the same observe-only contract under a hosted
+    /// type; phase-482 W2 made it freestanding.
+    SharedPtr shared_from_this() { return SharedPtr(this); }
     /// Const overload of [`shared_from_this`].
-    ::std::shared_ptr<const Node> shared_from_this() const {
-        return ::std::shared_ptr<const Node>(::std::shared_ptr<void>(), this);
-    }
-#endif // NROS_CPP_HAS_SHARED_PTR
+    ConstSharedPtr shared_from_this() const { return ConstSharedPtr(this); }
 
     /// The shim's own `initialized()` — the same answer as [`ok`] and
     /// [`is_valid`]. Kept so a file written against the pre-merge
