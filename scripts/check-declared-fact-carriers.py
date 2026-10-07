@@ -186,7 +186,7 @@ _NROS_BUILD = "packages/api/nros/build.rs"
 # phase-412 W2 / issue 1130 -- the two facts whose roads are deliberately
 # fewer than three, each quoted where that was decided.
 _LIVELINESS_NEEDS_INFRA_COUNT = (
-    "inventory cannot see those families, so the count would be SHORT for any")
+    "inventory cannot see those families, so a count from it would be SHORT for")
 _LIVELINESS_NOT_ON_DECLARED = (
     "`NROS_DERIVED_MAX_LIVELINESS` is NOT carried on this road (phase-412 W2)")
 _CELLS_NOT_ON_RESOLVER = (
@@ -289,14 +289,15 @@ FACT_DISPOSITION = {
             "a session token is declared per parameter and lifecycle service "
             "server too, and this road's inventory cannot see those families, "
             "so a sidecar count would be SHORT -- the silent graph outage "
-            "issue 0283 exists to prevent, where the crate default (16) is "
-            "larger and safe"),
+            "issue 0283 exists to prevent. `nros-zpico-build` completes the "
+            "pool from the NROS_DECLARED_* facts this road does carry "
+            "(issue 1713; the crate default of 16 was short)"),
         "declared": NotCarried(
             _FACTS_CMAKE, _LIVELINESS_NOT_ON_DECLARED,
             "the same families, one level over: the fragment knows them only "
-            "from the model it was composed with, and unlike the queryable "
-            "sizing no consumer completes a liveliness pool from per-entry "
-            "facts, so the road abstains and the zpico default stands"),
+            "from the model it was composed with, so the road abstains and "
+            "`nros-zpico-build` completes the pool from per-entry facts, as "
+            "it does the queryable table (issue 1713)"),
     },
     # issue 1130 -- the knob-capped cell registries. Per-IMAGE, composed across
     # entries by MAX; an explicit per-CLASS `ENTITY_BOUNDS` is always tighter
