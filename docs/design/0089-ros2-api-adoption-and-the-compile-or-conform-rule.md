@@ -1,6 +1,6 @@
 # RFC-0089 — ROS 2 API adoption, and the compile-or-conform rule
 
-**Status:** Draft (2026-09-04)
+**Status:** Stable (2026-10-07). Drafted 2026-09-04.
 **Amends / refines:** RFC-0036 (divergence catalog) — adds the DISPOSITION half:
 a divergence must say what a porting user gets, not only why we differ.
 RFC-0018 (C++ surface mirroring rclcpp) — states the condition under which the
@@ -8,7 +8,9 @@ mirror may take upstream's names.
 **Motivated by:** phase-379's measurement of the three user APIs against rclc /
 rclcpp / rclrs, and the intent to retire `rclcpp_compat.hpp` by making our own
 names ROS 2's.
-**Implements-tracked-by:** phase-417-ros2-api-adoption
+**Implements-tracked-by:** phase-417-ros2-api-adoption (archived 2026-10-07);
+the remainder is tracked by
+[phase-482](../roadmap/phase-482-rclcpp-drop-in-residue.md).
 **Governed by:** RFC-0019 / RFC-0020 (thin-wrapper discipline) — the Rust API
 is the implementation source of truth; C and C++ delegate. This RFC does not
 relax that, and §"Who implements an adopted name" states what it means for
@@ -709,6 +711,17 @@ not scheduled, which is the cost of stating a prerequisite in two documents and
 retiring it in neither.
 
 # Part II — Settled decisions
+
+## Settled: lifecycle is `rclcpp_lifecycle::LifecycleNode` (2026-10-07)
+
+`nros::LifecycleNode(void* executor_handle)` was the last ours-only C++ family
+still under `nros::`, with a constructor upstream does not have. Under the rule
+below ("ours-only names take `rclcpp::` too"), and because a lifecycle node is
+an upstream type, the disposition is ADOPT and not a recorded divergence. It
+becomes a `Node`-derived `rclcpp_lifecycle::LifecycleNode` with upstream's
+constructor shape and transition callbacks, and `nros::LifecycleNode` is
+deprecated for one release.
+[phase-482](../roadmap/phase-482-rclcpp-drop-in-residue.md) W4.
 
 ## Settled: `nros::` is phased out entirely; ours-only names take `rclcpp::` too (2026-09-05)
 

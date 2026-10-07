@@ -5,7 +5,7 @@ title: "Nine ledger rows went false because the rclrs pin moved 0.5.1 -> 0.7.0 a
 status: open
 type: bug
 area: docs, api
-related: [phase-417, rfc-0087, issue-1012, issue-1022]
+related: [phase-482, phase-417, rfc-0087, issue-1012, issue-1022]
 ---
 
 ## Problem

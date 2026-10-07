@@ -6,7 +6,7 @@ title: "`nros::` publishes three different audiences under one namespace — the
 status: open
 type: tech-debt
 area: api
-related: [rfc-0043, rfc-0044, phase-379, issue-0783]
+related: [phase-482, rfc-0043, rfc-0044, phase-379, issue-0783]
 ---
 
 ## Problem

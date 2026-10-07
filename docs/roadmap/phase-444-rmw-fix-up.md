@@ -233,8 +233,8 @@ quote this line.
 | --- | --- | --- |
 | RFC-0036 | the catalogue of deliberate divergences from rclc / rclcpp / rclrs | living; gated through the ledger |
 | RFC-0089 | the compile-or-conform rule and the four dispositions | settled |
-| [phase-379](phase-379-api-parity-with-ros2-client-libraries.md) | `scripts/api-parity.py`: every public item in all three languages, correlated against rclc+rcl (Humble), rclcpp and rclrs v0.7.0; one ledger row per difference in `docs/reference/api-parity-ledger/` | measurement done; its gap rows are the queue |
-| [phase-417](phase-417-ros2-api-adoption.md) | taking ROS 2's names | **in flight, and it is the only one still open.** Stages 0–3 and 6 are landed as of 2026-09-13; **stages 4 and 5 are the remaining body of user-API work in the whole campaign** |
+| [phase-379](archived/phase-379-api-parity-with-ros2-client-libraries.md) | `scripts/api-parity.py`: every public item in all three languages, correlated against rclc+rcl (Humble), rclcpp and rclrs v0.7.0; one ledger row per difference in `docs/reference/api-parity-ledger/` | measurement done; its gap rows are the queue |
+| [phase-417](archived/phase-417-ros2-api-adoption.md) | taking ROS 2's names | **in flight, and it is the only one still open.** Stages 0–3 and 6 are landed as of 2026-09-13; **stages 4 and 5 are the remaining body of user-API work in the whole campaign** |
 | [phase-426](phase-426-parameters-rust-ssot.md) | one parameter store, keyed by node, six services per node | W1–W6 MET and re-audited; active only until issue 1203 closes |
 | [phase-427](archived/phase-427-one-node-type.md) | one C++ node type | **ARCHIVED 2026-09-11** |
 | [phase-428](archived/phase-428-api-porting-principle-sweep.md) | the class the correlator cannot see: a name we share with upstream whose behaviour differs | **ARCHIVED 2026-09-12** — both sweeps ran, findings ledgered and the checkable ones gated. (This row previously said its status line "still says the user-API sweep is planned"; that was false when written — see the preamble above.) |
@@ -287,7 +287,7 @@ witness — a literal the fix would delete — and the disposition decides nothi
 
 ### What is left, measured
 
-**The live count lives in [phase-417](phase-417-ros2-api-adoption.md) §"The
+**The live count lives in [phase-417](archived/phase-417-ros2-api-adoption.md) §"The
 `gap` rows are the queue", which derives it from the ledger.** Do not plan from
 the number below; re-derive.
 
@@ -333,7 +333,7 @@ one-line script is in the truth-pass section above.
 ### Fix-up work, grouped by home
 
 1. **Behaviour: compiles and differs** — phase-428's findings, home
-   **[phase-417](phase-417-ros2-api-adoption.md) stage 3**, which is where the
+   **[phase-417](archived/phase-417-ros2-api-adoption.md) stage 3**, which is where the
    list now lives. Twelve of the fifteen bullets this section carried were FIXED
    on 2026-09-11, hours after it was written, by the three commits named in the
    preamble; each is recorded with its evidence under phase-417's W3.a, W3.g and
@@ -354,7 +354,7 @@ one-line script is in the truth-pass section above.
      today, so it is no longer a silent difference. phase-417 **W3.b**'s
      honouring half; ledger row `rust:init_with_args`.
 2. **Parameters, 27 rows — home
-   [phase-417](phase-417-ros2-api-adoption.md) stage 4 W4.a**, which enumerates
+   [phase-417](archived/phase-417-ros2-api-adoption.md) stage 4 W4.a**, which enumerates
    them by group and is the only place that should.
 
    The list previously sat here under a claim that phase-426's status line "still
@@ -405,13 +405,13 @@ one-line script is in the truth-pass section above.
    - rclc-shaped presets (W5.d).
    - A typed service path (W5.e).
 7. **C++ as one freestanding API** — home
-   [phase-442](phase-442-one-freestanding-rclcpp-api.md) W0–W10, opened. Issue
+   [phase-442](archived/phase-442-one-freestanding-rclcpp-api.md) W0–W10, opened. Issue
    **1245** belongs here and is open. Two corrections: **1020 and 1225 are both
    RESOLVED and archived**, so neither phase owes anything for them; and
    **phase-427 W4 is DONE, not "not started"** — `ComponentNode` is deleted, and
    phase-427 archived 2026-09-11.
 8. **Rust facade** — home
-   [phase-379](phase-379-api-parity-with-ros2-client-libraries.md), whose issue
+   [phase-379](archived/phase-379-api-parity-with-ros2-client-libraries.md), whose issue
    table owns both issues:
    - Issue 0783: `RclReturnCode` is not exported.
    - Issue 0784: `nros::` serves three audiences.
