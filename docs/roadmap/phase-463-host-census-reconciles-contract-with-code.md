@@ -503,6 +503,7 @@ Claim: phase-463-W7. Depends on: phase-463-W2, phase-463-W5, and the separate go
   * `examples/workspaces/cpp` native, 60 s under `rmw_zenohd`: OK, 2 census callback rows <-> 2 profile rows. `/talker` timer0: 61 invocations, max 120978 ns, published exactly `[/chatter]`, which is the contract's `on_timer.output`.
   * `examples/workspaces/derived-tiers-cpp` native, the island's shape (4 derived tiers, 4 timers), 60 s: OK, 4 <-> 4, with all four timers' observed outputs equal to their contract `output:` lists. Invocations were 1850/1850/610/610 for 30/30/10/10 Hz.
   * The same join REFUSES that image on runs where a tier is lost at boot. That happens on about 60 % of boots on `origin/main` itself, as a lost tier or a crash (24 runs: 9 ok, 11 lost a tier, 4 crashed). A lost tier is P1 or P4: the timer is never registered, or is registered and never runs. `examples/workspaces/realtime-rust` `native_derived` loses its control tier on every run, so its check reads P1 + P2. This is pre-existing, not the profiler's: it is filed as issue 1733, with the measurement on an `origin/main` build.
+  * Issue 1733, RESOLVED. The losses were a `ZPICO_MAX_PUBLISHERS` sized for one `/diagnostics` reporter when every derived tier arms its own; issue 1729 fixed that count. Issue 1733 made the native C++ and NuttX Rust runners serialize their tier setups as well. After the fix the same 60 s join accepts both images: `derived-tiers-cpp` 4 <-> 4, and `realtime-rust` `native_derived` 2 <-> 2.
 
 ## Gates added by this phase
 

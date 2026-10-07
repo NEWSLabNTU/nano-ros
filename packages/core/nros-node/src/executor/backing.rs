@@ -353,6 +353,75 @@ pub fn check_tier_executor_backing(
     Ok(())
 }
 
+/// Issue 1733 — the ONE gate a tier runner holds across each tier's
+/// open-and-`setup` so no two tiers declare entities on the shared session at
+/// once.
+///
+/// Every tier executor borrows the boot executor's ONE RMW session, and a
+/// tier's `setup` declares its nodes and entities on it. The backend's
+/// entity-creation path is not reentrant across threads: zenoh's
+/// `ZenohSession::create_*` takes `&mut self` and mutates the per-node
+/// liveliness table, and issue 0447 measured the topic-binding scramble that
+/// concurrent declares cause. The RTOS runners serialize by CHAINING the
+/// spawns (issue #144: tier N+1 starts only after tier N's setup returned);
+/// a runner that spawns every tier at once holds this instead. Setup runs once
+/// per boot and off the hot path, so a sleeping spin costs nothing that
+/// matters, and the spin loops that follow stay fully concurrent.
+///
+/// `no_std` and allocation-free (one atomic flag), so the same gate serves the
+/// native C++ runner (`nros-cpp`), the Linux Rust runner and the NuttX Rust
+/// runner. The backoff sleeps through the platform ABI, never spins hot: a
+/// waiter that outranks the holder under `SCHED_FIFO` would otherwise starve
+/// it on one CPU.
+#[derive(Debug, Default)]
+pub struct TierSetupGate {
+    held: portable_atomic::AtomicBool,
+}
+
+impl TierSetupGate {
+    /// An open gate.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            held: portable_atomic::AtomicBool::new(false),
+        }
+    }
+
+    /// Block until this caller holds the gate; it is released when the
+    /// returned guard drops (on every return path, including a failed setup).
+    pub fn enter(&self) -> TierSetupGuard<'_> {
+        while self
+            .held
+            .compare_exchange_weak(
+                false,
+                true,
+                portable_atomic::Ordering::Acquire,
+                portable_atomic::Ordering::Relaxed,
+            )
+            .is_err()
+        {
+            super::spin::platform_sleep(core::time::Duration::from_micros(200));
+        }
+        TierSetupGuard { gate: self }
+    }
+}
+
+/// Issue 1733 — proof of holding a [`TierSetupGate`]; dropping it opens the
+/// gate.
+#[derive(Debug)]
+#[must_use = "the gate is released as soon as the guard drops"]
+pub struct TierSetupGuard<'a> {
+    gate: &'a TierSetupGate,
+}
+
+impl Drop for TierSetupGuard<'_> {
+    fn drop(&mut self) {
+        self.gate
+            .held
+            .store(false, portable_atomic::Ordering::Release);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // issue 1598 — each spawned tier's TASK memory (stack + control block), the
 // same "entry declares, board uses" method one step further: the executor
@@ -475,6 +544,56 @@ impl<const N: usize> TierTaskMemorySet<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1733 — the gate admits ONE holder at a time, across threads, and
+    /// lets every waiter through once the holder drops its guard. Eight
+    /// threads released together each count themselves in and out of the
+    /// critical section; any overlap (a second holder) is recorded. A
+    /// `TierSetupGate::enter` that admitted concurrently is exactly the native
+    /// C++ runner before the issue: four tier setups declaring at once.
+    #[test]
+    fn tier_setup_gate_admits_one_holder_at_a_time() {
+        use std::sync::{
+            Arc, Barrier,
+            atomic::{AtomicUsize, Ordering},
+        };
+        const THREADS: usize = 8;
+        let gate = Arc::new(TierSetupGate::new());
+        let inside = Arc::new(AtomicUsize::new(0));
+        let overlaps = Arc::new(AtomicUsize::new(0));
+        let entered = Arc::new(AtomicUsize::new(0));
+        let start = Arc::new(Barrier::new(THREADS));
+        let handles: std::vec::Vec<_> = (0..THREADS)
+            .map(|_| {
+                let (gate, inside, overlaps, entered, start) = (
+                    gate.clone(),
+                    inside.clone(),
+                    overlaps.clone(),
+                    entered.clone(),
+                    start.clone(),
+                );
+                std::thread::spawn(move || {
+                    start.wait();
+                    let _g = gate.enter();
+                    if inside.fetch_add(1, Ordering::SeqCst) != 0 {
+                        overlaps.fetch_add(1, Ordering::SeqCst);
+                    }
+                    entered.fetch_add(1, Ordering::SeqCst);
+                    std::thread::sleep(core::time::Duration::from_millis(2));
+                    inside.fetch_sub(1, Ordering::SeqCst);
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().expect("a gate holder panicked");
+        }
+        assert_eq!(
+            entered.load(Ordering::SeqCst),
+            THREADS,
+            "every waiter got through"
+        );
+        assert_eq!(overlaps.load(Ordering::SeqCst), 0, "two holders at once");
+    }
 
     /// The POSITIVE CONTROL, and the reason it and the two `None` cases share
     /// one test: `TAKEN` is process-scoped by design, so a second test would

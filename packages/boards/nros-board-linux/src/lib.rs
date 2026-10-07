@@ -846,8 +846,10 @@ impl LinuxBoard {
         // `sched_setaffinity`, absent from libc's apple module.
         let setup = &setup;
         // Issue 0447 — held across each tier's `setup` so entity declaration on
-        // the one shared session is serialized (see `run_one_tier`).
-        let setup_lock = std::sync::Mutex::new(());
+        // the one shared session is serialized (see `run_one_tier`). Issue
+        // 1733 — the one gate every all-at-once tier runner holds (the native
+        // C++ and NuttX Rust runners too), rather than a spelling per board.
+        let setup_lock = ::nros::TierSetupGate::new();
         let setup_lock = &setup_lock;
         // issue 0636 — the boot tier is CHOSEN, not `tiers[0]`. POSIX runs
         // bigger-is-more-urgent, and `resolve_tiers` orders by raw number
@@ -1033,7 +1035,7 @@ fn run_one_tier<B, F, E>(
     exec: ::nros::Executor<'static>,
     tier: &TierSpec<'_>,
     setup: &F,
-    setup_lock: &std::sync::Mutex<()>,
+    setup_lock: &::nros::TierSetupGate,
 ) where
     B: BoardPrint,
     F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E>,
@@ -1061,7 +1063,7 @@ fn run_one_tier<B, F, E>(
         // the 10 ms tier's samples on the 100 ms tier's topic, or deliver nothing.
         // Registration happens once per boot and off the hot path, so the mutex
         // costs nothing that matters; the spin loops stay fully concurrent.
-        let _guard = setup_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = setup_lock.enter();
         let mut ctx = RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = setup(&mut ctx) {
             B::println(format_args!(
@@ -1079,7 +1081,7 @@ fn run_boot_tier<B, F, E>(
     crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
     tier: &TierSpec<'_>,
     setup: &F,
-    setup_lock: &std::sync::Mutex<()>,
+    setup_lock: &::nros::TierSetupGate,
 ) where
     B: BoardPrint,
     F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E>,
@@ -1104,7 +1106,7 @@ fn run_boot_tier<B, F, E>(
     {
         // Issue 0447 — see `run_one_tier`: the boot tier's registration races the
         // spawned tiers' on the shared session unless they take the same lock.
-        let _guard = setup_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = setup_lock.enter();
         let mut ctx = RuntimeCtx::with_runtime(crt);
         if let Err(e) = setup(&mut ctx) {
             B::println(format_args!(

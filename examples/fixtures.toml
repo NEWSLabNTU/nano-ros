@@ -238,6 +238,24 @@ bringup = "src/demo_bringup"
 image = "native"
 target_dir = "target-fixtures"
 
+# Issue 1733 — the NATIVE derived-tier Rust image (`derived_bringup`,
+# `[image.native_derived]`): the same two nodes as the row above with no
+# authored tier, so `nros::main!` derives `derived-control_node` and
+# `derived-telem_node` from the contract. Each tier arms a `/diagnostics`
+# reporter; the derived publisher pool counted one, so the control tier lost
+# `/ctrl` at setup on every boot. Consumed by tests/realtime_tiers_e2e.rs
+# (native/rust-derived): the same `/ctrl` vs `/telem` counter proof as the
+# authored row, which a lost control tier fails with `/ctrl` silent.
+[[workspace_fixture]]
+id = "workspace-rust-native-realtime-derived"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/realtime-rust"
+bringup = "src/derived_bringup"
+image = "native_derived"
+target_dir = "target-fixtures"
+
 # phase-263 B1 (Track D) — the cross-process E2E-safety demo. In-process node-to-node
 # delivery does not happen (same zenoh session; issue 0096), so the talker and
 # safe_listener run as two processes. Both entries bake `safety-e2e`, so the zenoh
@@ -868,6 +886,26 @@ platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp"
+bringup = "src/demo_bringup"
+image = "native"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build/posix-zenoh-native/cmake"
+
+# Issue 1733 — the NATIVE derived-tier C++ image: `derived-tiers-cpp`'s four
+# components, no authored `[tiers.*]`, a contract, so the C++ entry derives one
+# tier per node and `nros_board_native_run_tiers_in` spawns three of them over
+# the boot executor's session. Every tier arms its own `/diagnostics` reporter,
+# and the derived `ZPICO_MAX_PUBLISHERS` counted one for the image (4 + 1 for
+# 4 + 4 creates), so 2-3 tiers lost their publisher at setup on EVERY boot and
+# the image ran on without them. Consumed by `tests/realtime_tiers_e2e.rs`
+# (native/cpp-derived), which asserts all four nodes tick and no tier setup
+# failed. The native sibling of `workspace-zephyr-cpp-derived-tiers`.
+[[workspace_fixture]]
+id = "workspace-cpp-native-derived-tiers"
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/derived-tiers-cpp"
 bringup = "src/demo_bringup"
 image = "native"
 codegen_out = "build-workspace-codegen/demo_bringup"

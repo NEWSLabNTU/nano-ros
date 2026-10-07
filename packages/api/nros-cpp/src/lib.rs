@@ -5840,6 +5840,13 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
 
     // Shared shutdown flag — boot thread sets it; tier tasks poll it.
     let shutdown = Arc::new(AtomicBool::new(false));
+    // Issue 1733 — held across each spawned tier's open + `setup`, so no two
+    // tiers declare on the shared session at once (the boot tier's setup has
+    // already returned above). Every RTOS runner serializes by chaining its
+    // spawns (issue #144) and the Linux Rust runner by this same gate (issue
+    // 0447); this runner spawned every tier at once and let their setups
+    // race, through `&mut` aliases of ONE backend session.
+    let setup_gate = Arc::new(nros_node::executor::TierSetupGate::new());
 
     // phase-359 W10 — one PLATFORM TASK per non-boot tier, not one
     // `std::thread`.
@@ -5866,6 +5873,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
         };
         let ctx = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(NativeTierCtx {
             shutdown: Arc::clone(&shutdown),
+            setup_gate: Arc::clone(&setup_gate),
             period_us: tier.spin_period_us,
             n_groups: tier.n_groups,
             groups: tier.groups as usize,
@@ -5945,6 +5953,8 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
 struct NativeTierCtx {
     shutdown: alloc::sync::Arc<core::sync::atomic::AtomicBool>,
+    /// Issue 1733 — the runner's one setup gate, shared by every spawned tier.
+    setup_gate: alloc::sync::Arc<nros_node::executor::TierSetupGate>,
     period_us: u64,
     n_groups: usize,
     groups: usize,
@@ -5978,6 +5988,11 @@ unsafe extern "C" fn native_tier_trampoline(arg: *mut c_void) -> *mut c_void {
 
     // Issue 1597 — the caller's block, never this task's stack.
     let tptr = ctx.storage as *mut c_void;
+    // Issue 1733 — everything from the open to the end of `setup` touches the
+    // shared session's mutable state, so it is one critical section. Dropped
+    // on every exit path below (a failed open or setup included), before the
+    // spin loop, which stays concurrent.
+    let setup_guard = ctx.setup_gate.enter();
     let rc =
         unsafe { nros_cpp_executor_open_over_session(sh, core::ptr::null(), ctx.domain_id, tptr) };
     if rc != NROS_CPP_RET_OK {
@@ -6004,6 +6019,7 @@ unsafe extern "C" fn native_tier_trampoline(arg: *mut c_void) -> *mut c_void {
             return core::ptr::null_mut();
         }
     }
+    drop(setup_guard);
 
     // Spin at the tier's period until the shutdown flag is set.
     let period_us = ctx.period_us.max(1_000);
