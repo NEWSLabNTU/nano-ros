@@ -2207,3 +2207,25 @@ Not new: the outcome, the step, the annotation. New: the reclaim step is
 measured on two nights and buys ~6.8 G, which is less than the ~19.5 G the
 step consumes, so it cannot close this on its own. The nightly-to-nightly
 drift in arrival headroom (25 → 15 → 13 G) continues.
+
+### Same night, second lane: `host-tests` lost its runner during `just build tier1` (2026-10-07)
+
+`host-tests` run **37560485134** (`workflow_dispatch`, head `029ecd39a`, 02:07Z),
+job **112596377082** `nros-tests integration (host)`: step 11 `just build tier1`
+started 02:22:41 and never finished; the job closed at 05:36:07 with the
+runner-death shape. The log is `BlobNotFound`, and the only annotation is:
+
+```
+The hosted runner lost communication with the server. Anything in your workflow
+that terminates the runner process, starves it for CPU/Memory, or blocks its
+network access can cause this error.
+```
+
+That is the 2026-09-22 "lost communication, 2-line log" shape listed above. The
+scheduled `gate` arm (run 37560867029, entry above) filled its disk to 100 %
+between 02:59 and 03:27, inside this job's build window. Both jobs carry the
+`ubuntu-22.04` label but ran on different runner names (1000091043 /
+1000091053), so **a shared filesystem is NOT established here**: this is a
+timing correlation, recorded under 1353 because it matches the issue's
+runner-death shape. If a later night shows this lane dying while the gate arm
+does not, the attribution is wrong and this deserves its own issue.
