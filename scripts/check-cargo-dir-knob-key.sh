@@ -76,7 +76,8 @@ probe() {
     shift 2
     local out
     if ! out="$(env "$@" cmake -DNROS_PROBE_ROOT="$TMP/store" \
-        -DNROS_PROBE_MODE="$mode" -P "$PROBE" 2>&1)"; then
+        -DNROS_PROBE_MODE="$mode" -DNROS_PROBE_RESOLVED="${PROBE_RESOLVED:-}" \
+        -P "$PROBE" 2>&1)"; then
         echo "[FAIL] probe ($mode, $*) did not run:" >&2
         printf '%s\n' "$out" >&2
         exit 1
@@ -162,6 +163,25 @@ expect_ne "two images differing only in NROS_EXECUTOR_MAX_CBS share a cargo dire
 # a `_nros_resolve_knob()` line joins the key with no second edit. Spot-check
 # both families rather than the whole list: the point is that the harvest works,
 # not to restate 43 names here.
+# issue 1735 — ROAD 1, the resolver registry. The assertions above all drive
+# the ENV road; `nros_knob_key_fields` reads `NROS_RESOLVED_*` FIRST and a
+# break there (names appended without values) passed while this gate printed
+# "negative control collided as required". Same three questions, road 1.
+r2="$(PROBE_RESOLVED=ZPICO_MAX_QUERYABLES=2 probe with-knobs DIR)"
+r4="$(PROBE_RESOLVED=ZPICO_MAX_QUERYABLES=4 probe with-knobs DIR)"
+expect_ne "road 1 (NROS_RESOLVED_*): two images differing only in a RESOLVED ZPICO_MAX_QUERYABLES value share a cargo directory" \
+    "$r2" "$r4"
+expect_ne "road 1 (NROS_RESOLVED_*): a resolved knob does not move the key off the knob-less one" \
+    "$plain" "$r2"
+r2_key="$(PROBE_RESOLVED=ZPICO_MAX_QUERYABLES=2 probe with-knobs KEY)"
+case "$r2_key" in
+    *ZPICO_MAX_QUERYABLES=2*) ;;
+    *) echo "[FAIL] road 1: the key text does not carry ZPICO_MAX_QUERYABLES=2: $r2_key" >&2; fail=1 ;;
+esac
+# Road 1 outranks the env road: a resolved value wins over an exported one.
+r_env="$(PROBE_RESOLVED=ZPICO_MAX_QUERYABLES=2 probe with-knobs DIR ZPICO_MAX_QUERYABLES=4)"
+expect_eq "road 1 must outrank the env road (resolved 2, exported 4)" "$r2" "$r_env"
+
 inventory="$(env cmake -DNROS_PROBE_MODE=inventory -P "$PROBE" 2>&1 | sed -n 's/^KNOB=//p')"
 for want in ZPICO_MAX_QUERYABLES NROS_EXECUTOR_MAX_CBS NROS_XRCE_MAX_SUBSCRIBERS; do
     nros_grep_q -x "$want" <<<"$inventory" && continue

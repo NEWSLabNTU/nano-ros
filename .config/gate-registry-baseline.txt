@@ -147,7 +147,6 @@ hook-repo-side-effects
 host-platform-vocabulary
 host-triple-literals
 image-panic-policy
-image-paths-apply-policy
 infra-queryable-counts
 interface-glob-configure-depends
 interlock-visibility

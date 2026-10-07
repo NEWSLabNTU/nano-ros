@@ -338,7 +338,24 @@ def interface_files() -> list[str]:
     return [str(p) for p in files]
 
 
-def generate(nros: str, work: Path, arm: str, configured: bool) -> tuple[Path, Path]:
+# issue 1735 — a THIRD arm, HEAP STRINGS. The corpus config puts no `string`
+# field in `heap` mode, so the C++ pack's `nros_cpp_heap_str_t` (the heap STRING
+# container) was never measured: swapping its `size`/`capacity` passed while the
+# same swap on the heap SEQUENCE failed. Written by this gate into its own work
+# dir rather than added to the corpus, because the corpus feeds
+# `codegen_fingerprint` and moving it stales every workspace fixture.
+HEAP_STRINGS_TOML = """[fields]
+"fingerprint-corpus/Shapes.text"        = { cap = 32, mode = "heap" }
+"fingerprint-corpus/Probe_Request.note" = { cap = 32, mode = "heap" }
+"fingerprint-corpus/Probe_Goal.name"    = { cap = 16, mode = "heap" }
+"fingerprint-corpus/Shapes.seq_prim"    = { cap = 16, mode = "heap" }
+"""
+# The container each arm must actually reach, by its C++-pack type name: an
+# arm whose output holds none of it measured nothing about that container.
+ARM_MUST_REACH = {"heap-strings": "nros_cpp_heap_str_t"}
+
+
+def generate(nros: str, work: Path, arm: str, configured) -> tuple[Path, Path]:
     """Emit the C and C++ packs for one storage arm from the SAME corpus."""
     outs = {}
     for lang in ("c", "cpp"):
@@ -351,7 +368,11 @@ def generate(nros: str, work: Path, arm: str, configured: bool) -> tuple[Path, P
             "dependencies": [],
             "ros_edition": "humble",
         }
-        if configured:
+        if isinstance(configured, str):
+            cfg = work / f"{arm}-nros-codegen.toml"
+            cfg.write_text(configured)
+            args["codegen_config"] = str(cfg)
+        elif configured:
             args["codegen_config"] = str(CORPUS / "nros-codegen.toml")
         af = work / f"{arm}-{lang}-args.json"
         af.write_text(json.dumps(args))
@@ -572,9 +593,18 @@ def compare(c_vals: dict[str, int], r_vals: dict[str, int]) -> list[str]:
 
 
 def check_arm(
-    arm: str, nros: str, cc: str, nm: str, work: Path, configured: bool
+    arm: str, nros: str, cc: str, nm: str, work: Path, configured
 ) -> tuple[int, int, list[str]]:
     c_dir, cpp_dir = generate(nros, work, arm, configured)
+    must = ARM_MUST_REACH.get(arm)
+    # walk-ok: `cpp_dir` is this run's generated pack output, untracked.
+    pack_rs = sorted(cpp_dir.rglob("*_types.rs"))
+    if must and not any(must in rs.read_text(encoding="utf-8", errors="replace")
+                        for rs in pack_rs):
+        raise SystemExit(
+            f"{PROBE}: the {arm} arm generated no `{must}` field - it exists to "
+            "measure that container, and a comparison that never reached it is not a pass"
+        )
 
     c_structs: dict[str, dict] = {}
     c_fnptrs: dict[str, str] = {}
@@ -767,7 +797,8 @@ def main() -> int:
     try:
         total_pairs = total_probes = 0
         problems: list[str] = []
-        for arm, configured in (("inline", False), ("configured", True)):
+        for arm, configured in (("inline", False), ("configured", True),
+                                ("heap-strings", HEAP_STRINGS_TOML)):
             pairs, probes, probs = check_arm(
                 arm, args.nros, args.cc, args.nm, work, configured
             )
@@ -791,7 +822,7 @@ def main() -> int:
             return 1
         print(
             f"repr memory agreement OK ({total_pairs} struct pairs, "
-            f"{total_probes} probes, target {RUST_TARGET}, 2 storage arms)"
+            f"{total_probes} probes, target {RUST_TARGET}, 3 storage arms)"
         )
         return 0
     finally:

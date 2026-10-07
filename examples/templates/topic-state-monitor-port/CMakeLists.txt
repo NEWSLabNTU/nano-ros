@@ -78,4 +78,13 @@ target_link_libraries(topic_state_monitor PRIVATE
     std_msgs__nano_ros_cpp
     diagnostic_msgs__nano_ros_cpp)
 
+# Issue 0719 / 1735 — an image links the runtime (here TRANSITIVELY, through
+# the generated `<msg>__nano_ros_cpp` libraries), so it applies the image's
+# panic policy, as `rclcpp-compat-smoke` beside it does. Guarded: not every way
+# of reaching this file has pulled `NanoRosEntry.cmake` first.
+if(NOT COMMAND nros_apply_panic_policy)
+    include("${NANO_ROS_ROOT}/cmake/NanoRosFeatureSet.cmake")
+endif()
+nros_apply_panic_policy(platform "examples/templates/topic-state-monitor-port")
+
 ament_auto_package()
