@@ -1659,11 +1659,29 @@ pub(crate) struct ParamServiceReconcileFailure {
 /// Holds parameter server state for the executor.
 ///
 /// Stored outside the arena so it doesn't consume `MAX_CBS` slots.
+/// One `-p` / `--params-file` override, owned — phase-482 W5.
+///
+/// Held in [`ParamState`] (boxed, allocated with the store) rather than in the
+/// executor's inline table, so an image without parameter overrides pays
+/// nothing for them.
+#[derive(Debug, Clone)]
+pub(crate) struct ArgvParamOverride {
+    /// `Some(name)`: only the node of that NAME. `None`: every node.
+    pub(crate) node: Option<alloc::string::String>,
+    pub(crate) name: alloc::string::String,
+    /// As written; typed against the default a node declares.
+    pub(crate) value: alloc::string::String,
+}
+
 pub(crate) struct ParamState<'s> {
     /// phase-382 W2' — the server BORROWS its slot table now, so `ParamState`
     /// carries the storage's lifetime. `'s` is the executor's own borrow
     /// lifetime, which is what W3' will hand the carved table under.
     pub(crate) server: ParameterServer<'s>,
+    /// phase-482 W5 — `-p` / `--params-file` overrides, in argv order; the
+    /// LAST one matching a declaration wins. See
+    /// `Executor::install_argv_params`.
+    pub(crate) argv_overrides: alloc::vec::Vec<ArgvParamOverride>,
     /// phase-426 W3 — ONE SET OF SIX PER NODE, because upstream's parameter
     /// services are per node and `ros2 param list` enumerates nodes.
     ///

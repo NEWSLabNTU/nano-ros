@@ -23,4 +23,3 @@
 # Do not regenerate this file from the ledger: that would turn the ratchet
 # into an allowlist of whatever exists today.
 
-rust:init_with_args

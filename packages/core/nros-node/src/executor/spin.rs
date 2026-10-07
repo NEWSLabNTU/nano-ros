@@ -801,6 +801,38 @@ fn report_parameter_store_refused() {
     );
 }
 
+/// `text` typed as `declared`'s type — phase-482 W5. `None` when it does not
+/// parse as that type, or the type takes no override yet (arrays).
+///
+/// A `NotSet` declaration has no type to follow, so the text decides: `true` /
+/// `false`, then an integer, then a double, then a string — the order rcl's
+/// YAML reading gives an unquoted scalar.
+#[cfg(feature = "param-services")]
+fn typed_param_override(
+    text: &str,
+    declared: &nros_params::ParameterValue,
+) -> Option<nros_params::ParameterValue> {
+    use nros_params::ParameterValue as V;
+    let boolean = |t: &str| match t {
+        "true" | "True" | "TRUE" => Some(true),
+        "false" | "False" | "FALSE" => Some(false),
+        _ => None,
+    };
+    let string = |t: &str| heapless::String::try_from(t).ok().map(V::String);
+    match declared {
+        V::Bool(_) => boolean(text).map(V::Bool),
+        V::Integer(_) => text.parse::<i64>().ok().map(V::Integer),
+        V::Double(_) => text.parse::<f64>().ok().map(V::Double),
+        V::String(_) => string(text),
+        V::NotSet => boolean(text)
+            .map(V::Bool)
+            .or_else(|| text.parse::<i64>().ok().map(V::Integer))
+            .or_else(|| text.parse::<f64>().ok().map(V::Double))
+            .or_else(|| string(text)),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod group_filter_tests {
     use super::group_filter_accepts;
@@ -11547,6 +11579,7 @@ impl<'s> Executor<'s> {
         Some(alloc::boxed::Box::new(
             crate::parameter_services::ParamState {
                 server: nros_params::ParameterServer::new_in(table),
+                argv_overrides: alloc::vec::Vec::new(),
                 // phase-426 W3 — the sets attach in `reconcile_parameter_services`,
                 // one per node, once the node table is populated.
                 services: heapless::Vec::new(),
@@ -11561,6 +11594,95 @@ impl<'s> Executor<'s> {
                 sim_time_seeded: [false; crate::param_sizing::MAX_SERVICE_SETS],
             },
         ))
+    }
+
+    /// Install `-p` / `--params-file` parameter overrides — phase-482 W5.
+    ///
+    /// They are applied when a parameter is DECLARED: the declaration's value
+    /// is replaced by the override's, typed by it (`apply_argv_param_override`).
+    /// So an override reaches a parameter on every road that declares through
+    /// this executor — C, C++ and Rust — including the launch file's baked
+    /// values, which the generated entry declares through the same seam.
+    ///
+    /// That makes argv WIN over a launch-baked parameter, the opposite of the
+    /// remap tiers, deliberately: overriding a baked value at run time without
+    /// a rebuild is what RFC-0015 §9 asks for ("a runtime override has
+    /// identical effect to a `set_parameter` request after boot"), and upstream
+    /// agrees — a launch file's parameters reach the node as command-line
+    /// arguments themselves, where the later one wins.
+    ///
+    /// Overrides accumulate in argv order and the LAST one that matches a
+    /// declaration wins, as rcl's do. A `node:` override matches the node of
+    /// that NAME; one without matches every node.
+    ///
+    /// Fails only when the parameter store could not be allocated (issue 1706),
+    /// in which case nothing is installed.
+    pub fn install_argv_params<'p, I>(&mut self, params: I) -> Result<usize, NodeError>
+    where
+        I: IntoIterator<Item = crate::ros_args::ParamArg<'p>>,
+    {
+        if !self.ensure_parameter_store() {
+            return Err(NodeError::Transport(TransportError::BadAlloc));
+        }
+        let Some(state) = self.params.as_mut() else {
+            return Err(NodeError::Transport(TransportError::BadAlloc));
+        };
+        let mut n = 0;
+        for p in params {
+            state
+                .argv_overrides
+                .push(crate::parameter_services::ArgvParamOverride {
+                    node: p.node.map(alloc::string::String::from),
+                    name: alloc::string::String::from(p.name),
+                    value: alloc::string::String::from(p.value),
+                });
+            n += 1;
+        }
+        Ok(n)
+    }
+
+    /// The value a declaration of `name` on `node` should take — the last
+    /// matching argv override, typed by `declared`, or `declared` itself — and
+    /// whether an override was applied.
+    ///
+    /// An override whose text does not parse as the declared type is NOT
+    /// applied: it is logged at error severity, naming the parameter, the text
+    /// and the type, and the declared default stands (RFC-0015 §9.6 — "log +
+    /// ignore, never panic"). An array-typed declaration takes no override yet.
+    fn apply_argv_param_override(
+        &self,
+        node: super::node_record::NodeId,
+        name: &str,
+        declared: nros_params::ParameterValue,
+    ) -> (nros_params::ParameterValue, bool) {
+        let Some(state) = self.params.as_ref() else {
+            return (declared, false);
+        };
+        if state.argv_overrides.is_empty() {
+            return (declared, false);
+        }
+        let node_name = self.node(node).map(|r| r.name.as_str()).unwrap_or("");
+        let Some(o) = state
+            .argv_overrides
+            .iter()
+            .rev()
+            .find(|o| o.name == name && o.node.as_deref().is_none_or(|n| n == node_name))
+        else {
+            return (declared, false);
+        };
+        match typed_param_override(&o.value, &declared) {
+            Some(v) => (v, true),
+            None => {
+                nros_log::log_error!(
+                    nros_log::get_logger("nros"),
+                    "parameter override `{}:={}` is not a {:?}; the declared default stands",
+                    name,
+                    o.value,
+                    declared.param_type()
+                );
+                (declared, false)
+            }
+        }
     }
 
     /// Declare a parameter with a value on the executor's PRIMARY node.
@@ -11590,6 +11712,7 @@ impl<'s> Executor<'s> {
         value: nros_params::ParameterValue,
     ) -> bool {
         self.ensure_parameter_store();
+        let (value, _) = self.apply_argv_param_override(node, name, value);
         // phase-430 W2 — an application declaring `use_sim_time` itself wins
         // over the auto-declared default, so the placeholder leaves first.
         let yielded = self.yield_seeded_use_sim_time(node, name);
@@ -11744,14 +11867,36 @@ impl<'s> Executor<'s> {
         // phase-430 W2 — same rule as the sibling above: the app's own
         // declaration, descriptor and all, replaces the auto-declared default.
         let yielded = self.yield_seeded_use_sim_time(node, name);
-        let accepted = match &mut self.params {
-            Some(params) => {
-                params
-                    .server
-                    .declare_with_descriptor(node.into(), name, value, Some(descriptor))
-            }
+        // phase-482 W5 — an argv override that the DESCRIPTOR refuses (out of
+        // range, or read-only with a different value) must not cost the
+        // parameter its existence: log it, then declare the code's default.
+        let (overridden, differs) = self.apply_argv_param_override(node, name, value.clone());
+        let mut accepted = match &mut self.params {
+            Some(params) => params.server.declare_with_descriptor(
+                node.into(),
+                name,
+                overridden,
+                Some(descriptor.clone()),
+            ),
             None => false,
         };
+        if !accepted && differs {
+            nros_log::log_error!(
+                nros_log::get_logger("nros"),
+                "parameter override for `{}` was refused by its descriptor; the declared \
+                 default stands",
+                name
+            );
+            accepted = match &mut self.params {
+                Some(params) => params.server.declare_with_descriptor(
+                    node.into(),
+                    name,
+                    value,
+                    Some(descriptor),
+                ),
+                None => false,
+            };
+        }
         if yielded && !accepted {
             self.seed_use_sim_time_default(node);
         }

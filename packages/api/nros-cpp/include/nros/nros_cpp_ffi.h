@@ -1941,9 +1941,13 @@ nros_cpp_ret_t nros_cpp_declare_remap(void *handle,
  * beneath the launch rules `nros_cpp_declare_remap` records.
  *
  * This is the C++ face of `nros_node::ros_args::apply_ros_args`, the same
- * parse and the same refusals as Rust's `nros::Context::new`: parameter
- * overrides (`-p`, `--params-file`), identity remaps (`__node`, `__ns`),
- * enclaves, log flags and unknown tokens are REFUSED by name, never skipped.
+ * parse and the same refusals as Rust's `nros::Context::new`. With the
+ * `param-store` feature it is `apply_ros_args_with_params` (phase-482 W5):
+ * `-p` overrides and `--params-file` files (read with `std::fs`; refused on a
+ * target without `std`) are installed as parameter overrides, applied when a
+ * node declares the parameter. Without it they are REFUSED by name, as are
+ * identity remaps (`__node`, `__ns`), enclaves, log flags and unknown tokens
+ * in every build — never skipped.
  *
  * * `handle` NULL — VALIDATE only: nothing is installed, so a caller can
  *   refuse a bad vector before it opens a session.

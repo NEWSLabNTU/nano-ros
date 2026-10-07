@@ -4959,9 +4959,13 @@ pub unsafe extern "C" fn nros_cpp_declare_remap(
 /// beneath the launch rules `nros_cpp_declare_remap` records.
 ///
 /// This is the C++ face of `nros_node::ros_args::apply_ros_args`, the same
-/// parse and the same refusals as Rust's `nros::Context::new`: parameter
-/// overrides (`-p`, `--params-file`), identity remaps (`__node`, `__ns`),
-/// enclaves, log flags and unknown tokens are REFUSED by name, never skipped.
+/// parse and the same refusals as Rust's `nros::Context::new`. With the
+/// `param-store` feature it is `apply_ros_args_with_params` (phase-482 W5):
+/// `-p` overrides and `--params-file` files (read with `std::fs`; refused on a
+/// target without `std`) are installed as parameter overrides, applied when a
+/// node declares the parameter. Without it they are REFUSED by name, as are
+/// identity remaps (`__node`, `__ns`), enclaves, log flags and unknown tokens
+/// in every build — never skipped.
 ///
 /// * `handle` NULL — VALIDATE only: nothing is installed, so a caller can
 ///   refuse a bad vector before it opens a session.
@@ -4989,15 +4993,19 @@ pub unsafe extern "C" fn nros_cpp_install_argv_remaps(
     why: *mut c_char,
     why_len: usize,
 ) -> nros_cpp_ret_t {
-    use nros_node::ros_args::{ApplyError, apply_ros_args};
+    use nros_node::ros_args::ApplyError;
+    #[cfg(not(feature = "param-store"))]
+    use nros_node::ros_args::apply_ros_args;
 
-    let report = |e: &ApplyError<'_>| {
+    // ONE writer for every refusal text, so the two builds below share its
+    // single `unsafe` (the census counts sites, not branches).
+    let report = |msg: core::fmt::Arguments<'_>| {
         if why.is_null() || why_len == 0 {
             return;
         }
         let out = unsafe { core::slice::from_raw_parts_mut(why.cast::<u8>(), why_len) };
         let mut w = TruncatingWriter { buf: out, len: 0 };
-        let _ = core::fmt::write(&mut w, format_args!("{e}"));
+        let _ = core::fmt::write(&mut w, msg);
         let end = w.len.min(why_len - 1);
         out[end] = 0;
     };
@@ -5013,21 +5021,58 @@ pub unsafe extern "C" fn nros_cpp_install_argv_remaps(
             unsafe { cstr_to_str(p) }.unwrap_or("<non-UTF-8 argument>")
         }
     });
-    let result = if handle.is_null() {
-        apply_ros_args(None, args)
+    // NULL handle: VALIDATE only. Resolved once, for both builds.
+    let executor = if handle.is_null() {
+        None
     } else {
         let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
             return NROS_CPP_RET_INVALID_ARGUMENT;
         };
-        apply_ros_args(Some(&mut ctx.executor), args)
+        Some(&mut ctx.executor)
     };
-    match result {
-        Ok(_) => NROS_CPP_RET_OK,
-        Err(e) => {
-            report(&e);
-            match e {
-                ApplyError::Refused(_) => NROS_CPP_RET_INVALID_ARGUMENT,
-                ApplyError::DoesNotFit(_) => NROS_CPP_RET_FULL,
+
+    // phase-482 W5 — an image that can hold parameter overrides honours
+    // `-p` and `--params-file` too. Without the parameter store the remap-only
+    // parse refuses them by name, as before.
+    #[cfg(feature = "param-store")]
+    {
+        use nros_node::ros_args::{ApplyParamsError, apply_ros_args_with_params};
+        let read_file = |path: &str| -> Result<alloc::string::String, alloc::string::String> {
+            #[cfg(feature = "std")]
+            {
+                std::fs::read_to_string(path).map_err(|e| alloc::format!("{e}"))
+            }
+            #[cfg(not(feature = "std"))]
+            {
+                let _ = path;
+                Err(alloc::string::String::from(
+                    "this target has no file system to read a parameter file from",
+                ))
+            }
+        };
+        let args: alloc::vec::Vec<&str> = args.collect();
+        match apply_ros_args_with_params(executor, args.iter().copied(), read_file) {
+            Ok(_) => NROS_CPP_RET_OK,
+            Err(e) => {
+                report(format_args!("{e}"));
+                match e {
+                    ApplyParamsError::Remaps(ApplyError::DoesNotFit(_)) => NROS_CPP_RET_FULL,
+                    ApplyParamsError::NoStore => NROS_CPP_RET_ERROR,
+                    _ => NROS_CPP_RET_INVALID_ARGUMENT,
+                }
+            }
+        }
+    }
+    #[cfg(not(feature = "param-store"))]
+    {
+        match apply_ros_args(executor, args) {
+            Ok(_) => NROS_CPP_RET_OK,
+            Err(e) => {
+                report(format_args!("{e}"));
+                match e {
+                    ApplyError::Refused(_) => NROS_CPP_RET_INVALID_ARGUMENT,
+                    ApplyError::DoesNotFit(_) => NROS_CPP_RET_FULL,
+                }
             }
         }
     }

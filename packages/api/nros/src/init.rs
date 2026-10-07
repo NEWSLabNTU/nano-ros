@@ -217,6 +217,23 @@ pub struct Context {
     /// bypass its refusals too.
     #[cfg_attr(not(feature = "env"), allow(dead_code))]
     ros_args: alloc::vec::Vec<ArgvRemap>,
+    /// phase-482 W5 — the `-p` / `--params-file` overrides, in argv order,
+    /// installed in every executor this context creates and applied when a
+    /// node declares the parameter (`Executor::install_argv_params`). Empty
+    /// unless `nros` has `param-services`; without it the parse refuses them.
+    #[cfg_attr(not(feature = "env"), allow(dead_code))]
+    ros_params: alloc::vec::Vec<ArgvParam>,
+}
+
+/// One parameter override, owned — from `-p [node:]name:=value` or a
+/// `--params-file` entry.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(not(feature = "env"), allow(dead_code))]
+struct ArgvParam {
+    node: Option<alloc::string::String>,
+    name: alloc::string::String,
+    value: alloc::string::String,
 }
 
 /// One `-r [node:]from:=to` rule, owned so a [`Context`] can outlive the
@@ -376,7 +393,7 @@ impl Context {
     /// naming `Context::create_executor`, which installs them.
     pub fn config<'a>(&'a self, node_name: &'a str) -> ExecutorConfig<'a> {
         #[cfg(feature = "env")]
-        if !self.ros_args.is_empty() {
+        if !self.ros_args.is_empty() || !self.ros_params.is_empty() {
             refuse_ros_args(&RosArgsRefusal::UnreachableExecutor);
         }
         ExecutorConfig::new(self.locator.as_str())
@@ -440,9 +457,10 @@ impl Context {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        let ros_args = parse_ros_args_or_refuse(args);
+        let (ros_args, ros_params) = parse_ros_args_or_refuse(args);
         let mut context = Self::from_env(options)?;
         context.ros_args = ros_args;
+        context.ros_params = ros_params;
         Ok(context)
     }
 
@@ -497,6 +515,7 @@ impl Context {
             rmw: alloc::string::String::new(),
             source: ContextSource::Baked,
             ros_args: alloc::vec::Vec::new(),
+            ros_params: alloc::vec::Vec::new(),
         })
     }
 
@@ -601,6 +620,20 @@ impl Context {
                     to: rule.to,
                 });
             }
+            #[cfg(feature = "param-services")]
+            if !self.ros_params.is_empty() {
+                let params = self
+                    .ros_params
+                    .iter()
+                    .map(|p| nros_node::ros_args::ParamArg {
+                        node: p.node.as_deref(),
+                        name: p.name.as_str(),
+                        value: p.value.as_str(),
+                    });
+                if executor.install_argv_params(params).is_err() {
+                    refuse_ros_args(&RosArgsRefusal::NoParamStore);
+                }
+            }
         }
         #[cfg(not(feature = "env"))]
         let _ = executor;
@@ -688,6 +721,7 @@ fn read_env_context(source: ContextSource) -> Result<Context, InitError> {
         rmw,
         source,
         ros_args: alloc::vec::Vec::new(),
+        ros_params: alloc::vec::Vec::new(),
     })
 }
 
@@ -717,9 +751,10 @@ argument nano-ros cannot honour (RFC-0089, phase-417 W3.b). Proceeding would DIS
 'compiles and differs' the rule forbids. HONOURED inside --ros-args ... --: -r / --remap \
 [node:]from:=to, applied as the FALLBACK beneath any remap the launch file projected for the same \
 name (RFC-0046; rcl's local-before-global), through Context::create_executor / \
-create_executor_in. REFUSED: -p / --param / --params-file (runtime parameters belong to RFC-0015 \
-section 9's channel), node-identity remaps (__node, __name, __ns), -e / --enclave, the log flags, \
-and any token that is not a ROS flag. A nros sync image does not read argv at all: its launch \
+create_executor_in; and, in an image with a parameter store, -p / --param [node:]name:=value and \
+--params-file <path>, applied when a node declares the parameter (RFC-0015 section 9). REFUSED: \
+node-identity remaps (__node, __name, __ns), -e / --enclave, the log flags, any token that is not a \
+ROS flag, and -p / --params-file in an image without a parameter store. A nros sync image does not read argv at all: its launch \
 remaps and parameters are projected into the GENERATED ENTRY at BUILD time.";
 
 /// Does `args` open a `--ros-args` scope at all?
@@ -754,6 +789,15 @@ enum RosArgsRefusal<'a> {
     },
     /// [`Context::config`] was asked for a config that cannot carry the rules.
     UnreachableExecutor,
+    /// phase-482 W5 — `--params-file <path>` could not be read or parsed.
+    #[cfg(feature = "param-services")]
+    ParamsFile {
+        path: alloc::string::String,
+        why: alloc::string::String,
+    },
+    /// phase-482 W5 — the parameter store could not be allocated (issue 1706).
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    NoParamStore,
 }
 
 #[cfg(feature = "env")]
@@ -772,9 +816,16 @@ impl core::fmt::Display for RosArgsRefusal<'_> {
                 )
             }
             Self::UnreachableExecutor => f.write_str(
-                "Context::config() cannot carry this context's --ros-args remaps into the executor \
-                 Executor::open builds from it; use Context::create_executor() or \
-                 create_executor_in(), which install them",
+                "Context::config() cannot carry this context's --ros-args remaps or parameter \
+                 overrides into the executor Executor::open builds from it; use \
+                 Context::create_executor() or create_executor_in(), which install them",
+            ),
+            #[cfg(feature = "param-services")]
+            Self::ParamsFile { path, why } => write!(f, "`--params-file {path}`: {why}"),
+            #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+            Self::NoParamStore => f.write_str(
+                "the parameter store could not be allocated, so the parameter overrides have \
+                 nowhere to go",
             ),
         }
     }
@@ -799,27 +850,77 @@ fn refuse_ros_args(why: &RosArgsRefusal<'_>) -> ! {
 /// refuse. Shared by [`init_with_args`] and [`Context::new`], so the two stay
 /// one behaviour.
 #[cfg(feature = "env")]
-fn parse_ros_args_or_refuse<I, S>(args: I) -> alloc::vec::Vec<ArgvRemap>
+fn parse_ros_args_or_refuse<I, S>(
+    args: I,
+) -> (alloc::vec::Vec<ArgvRemap>, alloc::vec::Vec<ArgvParam>)
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
-    let owned: alloc::vec::Vec<alloc::string::String> = args
-        .into_iter()
-        .map(|a| alloc::string::String::from(a.as_ref()))
-        .collect();
+    use alloc::string::String;
+    let owned: alloc::vec::Vec<String> =
+        args.into_iter().map(|a| String::from(a.as_ref())).collect();
     let mut rules = alloc::vec::Vec::new();
+    #[cfg_attr(not(feature = "param-services"), allow(unused_mut))]
+    let mut params: alloc::vec::Vec<ArgvParam> = alloc::vec::Vec::new();
+    let remap = |r: nros_node::ros_args::RemapArg<'_>| ArgvRemap {
+        node: r.node.map(String::from),
+        from: String::from(r.from),
+        to: String::from(r.to),
+    };
+    // phase-482 W5 — with a parameter store, `-p` and `--params-file` are
+    // honoured, each file's entries landing where its flag stood (so a later
+    // `-p` overrides it and a later file overrides an earlier `-p`). Without
+    // one, the remap-only parse refuses them by name.
+    #[cfg(feature = "param-services")]
+    let parsed = {
+        let mut events = alloc::vec::Vec::new();
+        let r = nros_node::ros_args::parse_ros_args_events(owned.iter().map(|a| a.as_str()), |a| {
+            events.push(a)
+        });
+        if r.is_ok() {
+            for a in events {
+                match a {
+                    nros_node::ros_args::RosArg::Remap(r) => rules.push(remap(r)),
+                    nros_node::ros_args::RosArg::Param(p) => params.push(ArgvParam {
+                        node: p.node.map(String::from),
+                        name: String::from(p.name),
+                        value: String::from(p.value),
+                    }),
+                    nros_node::ros_args::RosArg::ParamsFile(path) => {
+                        let text = match std::fs::read_to_string(path) {
+                            Ok(t) => t,
+                            Err(e) => refuse_ros_args(&RosArgsRefusal::ParamsFile {
+                                path: String::from(path),
+                                why: alloc::format!("cannot be read: {e}"),
+                            }),
+                        };
+                        if let Err(e) = nros_node::ros_args::parse_params_yaml(&text, |p| {
+                            params.push(ArgvParam {
+                                node: p.node.map(String::from),
+                                name: String::from(p.name),
+                                value: String::from(p.value),
+                            })
+                        }) {
+                            refuse_ros_args(&RosArgsRefusal::ParamsFile {
+                                path: String::from(path),
+                                why: alloc::format!("{e}"),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        r
+    };
+    #[cfg(not(feature = "param-services"))]
     let parsed = nros_node::ros_args::parse_ros_args(owned.iter().map(|a| a.as_str()), |r| {
-        rules.push(ArgvRemap {
-            node: r.node.map(alloc::string::String::from),
-            from: alloc::string::String::from(r.from),
-            to: alloc::string::String::from(r.to),
-        })
+        rules.push(remap(r))
     });
     if let Err(e) = parsed {
         refuse_ros_args(&RosArgsRefusal::Parse(e));
     }
-    rules
+    (rules, params)
 }
 
 /// Pattern 3 — like [`init()`] but takes the process arguments, the way
@@ -841,9 +942,19 @@ where
 ///   process's global ones. They reach entities on every road — the handle
 ///   `Executor::create_node` returns, `nros::node!` components, and the C and
 ///   C++ APIs.
-/// * **Everything else inside a scope — refused, loudly**: parameter
-///   overrides (RFC-0015 §9 owns that channel), node-identity remaps, enclaves,
-///   log flags, unknown tokens. Logged through `nros_log`, then a panic
+/// * **`-p` / `--param [node:]name:=value` and `--params-file <path>` —
+///   honoured when `nros` has `param-services`** (phase-482 W5, RFC-0015 §9's
+///   POSIX row). They ride on the [`Context`] in argv order and are applied
+///   when a node DECLARES the parameter: the last matching override wins, its
+///   text typed by the declared default, and a `node:` override reaches only
+///   the node of that name. The envelope, stated here because it is the API:
+///   a parameter file is read with `std::fs` and holds scalars only (arrays,
+///   anchors and block scalars are refused, with their line), a node key
+///   matches by NAME not namespace, and an override that does not parse as
+///   the declared type is logged and the default kept.
+/// * **Everything else inside a scope — refused, loudly**: node-identity
+///   remaps, enclaves, log flags, unknown tokens, and `-p` / `--params-file`
+///   in an image with no parameter store. Logged through `nros_log`, then a panic
 ///   carrying [`REFUSE_INIT_ARGS`] and the argument. rclcpp refuses unknown
 ///   ROS arguments too (`UnknownROSArgsError`).
 ///
@@ -861,9 +972,10 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
-    let ros_args = parse_ros_args_or_refuse(args);
+    let (ros_args, ros_params) = parse_ros_args_or_refuse(args);
     let mut context = init()?;
     context.ros_args = ros_args;
+    context.ros_params = ros_params;
     Ok(context)
 }
 
@@ -925,11 +1037,73 @@ mod ros_args_refusal_tests {
         );
     }
 
+    /// Without a parameter store there is nowhere to put an override, so the
+    /// parse refuses it by name rather than dropping it.
+    #[cfg(not(feature = "param-services"))]
     #[test]
     #[should_panic(expected = "refused: `-p`")]
     fn parameter_overrides_are_still_refused_by_name() {
         let _env = crate::env::test_env_lock();
         let _ = init_with_args(["/usr/bin/talker", "--ros-args", "-r", "a:=b", "-p", "x:=1"]);
+    }
+
+    #[cfg(feature = "param-services")]
+    fn param(node: Option<&str>, name: &str, value: &str) -> ArgvParam {
+        ArgvParam {
+            node: node.map(alloc::string::String::from),
+            name: alloc::string::String::from(name),
+            value: alloc::string::String::from(value),
+        }
+    }
+
+    /// phase-482 W5 — `-p` and a `--params-file` ride on the context in argv
+    /// order, the file's entries where its flag stood, beside the remaps.
+    #[cfg(feature = "param-services")]
+    #[test]
+    fn parameter_overrides_ride_on_the_context_in_argv_order() {
+        let _env = crate::env::test_env_lock();
+        let path =
+            std::env::temp_dir().join(alloc::format!("nros-w5-params-{}.yaml", std::process::id()));
+        std::fs::write(
+            &path,
+            "/**:\n  ros__parameters:\n    rate: 30\n/talker:\n  ros__parameters:\n    gains:\n      kp: 1.5\n",
+        )
+        .unwrap();
+        let path_s = path.to_str().unwrap();
+        let ctx = init_with_args([
+            "/usr/bin/talker",
+            "--ros-args",
+            "-p",
+            "rate:=10",
+            "--params-file",
+            path_s,
+            "-r",
+            "chatter:=/other",
+            "-p",
+            "talker:label:=hi",
+        ])
+        .expect("init");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(
+            ctx.ros_params,
+            [
+                param(None, "rate", "10"),
+                param(None, "rate", "30"),
+                param(Some("talker"), "gains.kp", "1.5"),
+                param(Some("talker"), "label", "hi"),
+            ]
+        );
+        assert_eq!(ctx.ros_args, [remap(None, "chatter", "/other")]);
+    }
+
+    /// An unreadable parameter file is refused, naming the path — never a
+    /// silently empty set of overrides.
+    #[cfg(feature = "param-services")]
+    #[test]
+    #[should_panic(expected = "--params-file /nonexistent/nros-w5.yaml")]
+    fn an_unreadable_params_file_is_refused_by_path() {
+        let _env = crate::env::test_env_lock();
+        let _ = init_with_args(["--ros-args", "--params-file", "/nonexistent/nros-w5.yaml"]);
     }
 
     #[test]

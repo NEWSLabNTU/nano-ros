@@ -2915,6 +2915,9 @@ node-std-tests:
     # `env,std` and NOT `rmw-cffi`: the cffi flavour makes the wall clock an
     # extern the linker wants a platform port for, and this lane links none.
     cargo test -p nros --lib --features env,std --quiet
+    # phase-482 W5 — the same unit tests WITH a parameter store, so the `-p` /
+    # `--params-file` path of `init_with_args` runs (without it they refuse).
+    cargo test -p nros --lib --features env,std,param-services --quiet
     # phase-359 W10 follow-up — `std` AND `platform-clock`, the combination where
     # "which wall clock wins" is observable. `platform_port_outranks_std_for_the
     # _wall_clock` DEFINES the port symbol itself, so this lane needs no port

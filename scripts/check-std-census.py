@@ -221,7 +221,12 @@ BASELINE = {
     # process environment and the one compiled only under `env`. Spelling them
     # through a `use std::env::var` import would move this number without
     # changing what the build links, which is gaming the ratchet.
-    "nros": {"cfg": 5, "path": 16},
+    #
+    # phase-482 W5 -- path 16 -> 17, deliberately: `init_with_args` /
+    # `Context::new` read a `--params-file` with ONE `std::fs::read_to_string`
+    # (under `param-services`, inside the `env`-only parse). The YAML subset is
+    # parsed by `nros_node::ros_args::parse_params_yaml`, no std.
+    "nros": {"cfg": 5, "path": 17},
     #
     # phase-359 W10: 13 -> 2 cfg, 8 -> 1 path. `platform.rs` was three std/no_std
     # PAIRS — clock, wall clock, sleep — and every C consumer links a platform
@@ -352,7 +357,14 @@ BASELINE = {
     # concurrently-dispatching tiers, and the file sink -- through
     # `profile::install`. Compiled only with `profile-mode`, which only the
     # native umbrella resolves.
-    "nros-cpp": {"cfg": 3, "path": 8},
+    #
+    # phase-482 W5 -- cfg 3 -> 5, path 8 -> 9, deliberately: `--params-file`.
+    # `nros_cpp_install_argv_remaps` reads the parameter file the argv names,
+    # and the file system is the host's: ONE `std::fs::read_to_string` under
+    # `#[cfg(feature = "std")]`, and its `#[cfg(not(feature = "std"))]` twin
+    # that refuses the flag by name on a target with no file system. The parse
+    # of the TEXT is `nros_node::ros_args::parse_params_yaml`, no std at all.
+    "nros-cpp": {"cfg": 5, "path": 9},
     # 2026-09-06: cfg 1 -> 0. The one site was the crate attribute itself,
     # `#![cfg_attr(not(feature = "std"), no_std)]`, and it bought nothing --
     # this crate's `std` is `std = ["alloc"]` over `alloc = []`, so it enables

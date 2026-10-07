@@ -13203,3 +13203,220 @@ fn t4_a_timer_overrun_beside_an_idle_subscription_is_judged() {
     assert_eq!(declared, 5);
     assert!(measured >= declared, "measured {measured} >= declared 5");
 }
+
+// ---- phase-482 W5 — `-p` / `--params-file` overrides ----------------------
+
+/// Parse `argv` the way `nros::init_with_args` / `rclcpp::init(argc, argv)` do
+/// and install its parameter overrides, from the command line and from a file
+/// whose TEXT `file` stands in for.
+#[cfg(feature = "param-services")]
+fn install_overrides(executor: &mut Executor<'static>, argv: &[&str], file: &str) {
+    let mut params = alloc::vec::Vec::new();
+    let mut files = alloc::vec::Vec::new();
+    crate::ros_args::parse_ros_args_events(argv.iter().copied(), |a| match a {
+        crate::ros_args::RosArg::Param(p) => params.push((p.node, p.name, p.value)),
+        crate::ros_args::RosArg::ParamsFile(path) => files.push(path),
+        crate::ros_args::RosArg::Remap(_) => {}
+    })
+    .unwrap();
+    let mut owned: alloc::vec::Vec<(
+        Option<alloc::string::String>,
+        alloc::string::String,
+        alloc::string::String,
+    )> = alloc::vec::Vec::new();
+    for _ in &files {
+        crate::ros_args::parse_params_yaml(file, |p| {
+            owned.push((
+                p.node.map(alloc::string::String::from),
+                alloc::string::String::from(p.name),
+                alloc::string::String::from(p.value),
+            ))
+        })
+        .unwrap();
+    }
+    // argv order: the file's values where the flag stood are approximated by
+    // installing them first; these tests do not mix the two for one name.
+    executor
+        .install_argv_params(owned.iter().map(|(n, k, v)| crate::ros_args::ParamArg {
+            node: n.as_deref(),
+            name: k,
+            value: v,
+        }))
+        .unwrap();
+    executor
+        .install_argv_params(
+            params
+                .iter()
+                .map(|&(node, name, value)| crate::ros_args::ParamArg { node, name, value }),
+        )
+        .unwrap();
+}
+
+/// `-p rate:=25` replaces the declared default, typed by it; a later `-p` for
+/// the same name wins; a `node:` override reaches only the node of that name.
+#[cfg(feature = "param-services")]
+#[test]
+fn argv_p_overrides_the_declared_default_per_node_and_last_wins() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let talker = executor.node_builder("talker").build().unwrap();
+    let listener = executor.node_builder("listener").build().unwrap();
+    install_overrides(
+        &mut executor,
+        &[
+            "prog",
+            "--ros-args",
+            "-p",
+            "rate:=1",
+            "-p",
+            "rate:=25",
+            "-p",
+            "listener:rate:=40",
+            "-p",
+            "enabled:=false",
+        ],
+        "",
+    );
+
+    assert!(executor.declare_parameter_on(
+        talker,
+        "rate",
+        nros_params::ParameterValue::Integer(10)
+    ));
+    assert!(executor.declare_parameter_on(
+        listener,
+        "rate",
+        nros_params::ParameterValue::Integer(10)
+    ));
+    assert!(executor.declare_parameter_on(
+        talker,
+        "enabled",
+        nros_params::ParameterValue::Bool(true)
+    ));
+    assert!(executor.declare_parameter_on(
+        talker,
+        "other",
+        nros_params::ParameterValue::Integer(3)
+    ));
+
+    let get = |e: &Executor, n, k| e.get_parameter_on(n, k).cloned();
+    assert_eq!(
+        get(&executor, talker, "rate").and_then(|v| v.as_integer()),
+        Some(25),
+        "last -p wins"
+    );
+    assert_eq!(
+        get(&executor, listener, "rate").and_then(|v| v.as_integer()),
+        Some(40),
+        "`listener:` reaches the listener, and comes later"
+    );
+    assert_eq!(
+        get(&executor, talker, "enabled").and_then(|v| v.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        get(&executor, talker, "other").and_then(|v| v.as_integer()),
+        Some(3),
+        "no override, default"
+    );
+}
+
+/// An override that does not parse as the declared type is not applied: the
+/// default stands (RFC-0015 §9.6), and the declaration still succeeds.
+#[cfg(feature = "param-services")]
+#[test]
+fn argv_p_with_the_wrong_type_keeps_the_default() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let talker = executor.node_builder("talker").build().unwrap();
+    install_overrides(
+        &mut executor,
+        &["prog", "--ros-args", "-p", "rate:=fast"],
+        "",
+    );
+    assert!(executor.declare_parameter_on(
+        talker,
+        "rate",
+        nros_params::ParameterValue::Integer(10)
+    ));
+    assert_eq!(
+        executor
+            .get_parameter_on(talker, "rate")
+            .and_then(|v| v.as_integer()),
+        Some(10)
+    );
+}
+
+/// `--params-file`: `/**` reaches every node, a node key only that node, and
+/// nested keys become dotted names; strings, doubles and quoted values type by
+/// the declaration.
+#[cfg(feature = "param-services")]
+#[test]
+fn params_file_overrides_reach_their_nodes_with_dotted_names() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let talker = executor.node_builder("talker").build().unwrap();
+    let listener = executor.node_builder("listener").build().unwrap();
+    let file = "\
+# a ROS 2 parameter file
+/**:
+  ros__parameters:
+    frame: \"base_link\"   # every node
+/robot/talker:
+  ros__parameters:
+    gains:
+      kp: 1.5
+    rate: 30
+";
+    install_overrides(
+        &mut executor,
+        &["prog", "--ros-args", "--params-file", "p.yaml"],
+        file,
+    );
+
+    for n in [talker, listener] {
+        assert!(executor.declare_parameter_on(
+            n,
+            "frame",
+            nros_params::ParameterValue::String(heapless::String::try_from("map").unwrap())
+        ));
+    }
+    assert!(executor.declare_parameter_on(
+        talker,
+        "gains.kp",
+        nros_params::ParameterValue::Double(0.0)
+    ));
+    assert!(executor.declare_parameter_on(
+        talker,
+        "rate",
+        nros_params::ParameterValue::Integer(10)
+    ));
+    assert!(executor.declare_parameter_on(
+        listener,
+        "rate",
+        nros_params::ParameterValue::Integer(10)
+    ));
+
+    assert_eq!(
+        executor
+            .get_parameter_on(listener, "frame")
+            .and_then(|v| v.as_string().map(alloc::string::String::from)),
+        Some(alloc::string::String::from("base_link"))
+    );
+    assert_eq!(
+        executor
+            .get_parameter_on(talker, "gains.kp")
+            .and_then(|v| v.as_double()),
+        Some(1.5)
+    );
+    assert_eq!(
+        executor
+            .get_parameter_on(talker, "rate")
+            .and_then(|v| v.as_integer()),
+        Some(30)
+    );
+    assert_eq!(
+        executor
+            .get_parameter_on(listener, "rate")
+            .and_then(|v| v.as_integer()),
+        Some(10),
+        "`/robot/talker:` does not reach the listener"
+    );
+}
