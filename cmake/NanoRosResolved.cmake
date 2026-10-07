@@ -129,17 +129,48 @@ endfunction()
 # composer's answer would publish a number the producer did not stand behind.
 # Two roles, two behaviours -- the sites are not siblings even though they call
 # one function.
+#
+# Issue 1729 -- and RE-seed it when the resolve phase's answer has MOVED since
+# the last seed. "Only where no fragment exists" assumed a mid-configure
+# producer that recomposes the fragment on every configure. The generated Rust
+# Zephyr entry (`rust_cargo_application()`, no `nano_ros_entry()`) has none:
+# the seed IS its only producer. So the first configure's answer was the
+# image's answer forever -- `resolved.cmake` was not even a configure
+# dependency -- and `realtime-rust`'s derived-tier image kept a three-slot
+# publisher pool after `nros build` had re-resolved four, failing
+# `PublisherCreationFailed` at boot. Measured: the build dir configured at
+# 09:34, the resolve rewritten at 09:56, ninja ran no configure.
+#
+# The record `<path>.resolved-seed` holds the content hash of the projection the
+# fragment was last seeded from. A seed happens when the fragment is absent OR
+# that hash moved; an unchanged resolve never re-seeds, so a road WITH a
+# producer still converges (the producer overwrites, arms once, and the next
+# configure finds the record current). The projection is a configure
+# dependency, and `nros build` writes it write-if-changed, so an unchanged
+# resolve costs no configure.
 function(nros_resolved_seed_entity_inventory _path)
     if(ARGC GREATER 1)
         set(${ARGV1} FALSE PARENT_SCOPE)
-    endif()
-    if(EXISTS "${_path}")
-        return()
     endif()
     nros_resolved_entity_fragment(_frag)
     if("${_frag}" STREQUAL "")
         return()
     endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_frag}")
+    file(SHA256 "${_frag}" _seed_hash)
+    set(_record "${_path}.resolved-seed")
+    if(EXISTS "${_path}" AND EXISTS "${_record}")
+        file(READ "${_record}" _last_hash)
+        string(STRIP "${_last_hash}" _last_hash)
+        if(_last_hash STREQUAL _seed_hash)
+            return()
+        endif()
+    endif()
+    # Absent fragment, a moved resolve, or a fragment with no record (one this
+    # rule predates, which is exactly the build dir issue 1729 measured). On a
+    # road WITH a producer the producer still runs after this, overwrites, and
+    # arms one re-configure if it disagrees -- case C -- and the record then
+    # keeps it from being re-seeded.
     get_filename_component(_dir "${_path}" DIRECTORY)
     file(MAKE_DIRECTORY "${_dir}")
     # VERBATIM. Not a copy with a "seeded from ..." banner on top, which is what
@@ -164,6 +195,7 @@ function(nros_resolved_seed_entity_inventory _path)
     # `resolved.toml`'s `[provenance]` table beside the file this reads.
     file(READ "${_frag}" _body)
     file(WRITE "${_path}" "${_body}")
+    file(WRITE "${_record}" "${_seed_hash}\n")
     if(ARGC GREATER 1)
         set(${ARGV1} TRUE PARENT_SCOPE)
     endif()

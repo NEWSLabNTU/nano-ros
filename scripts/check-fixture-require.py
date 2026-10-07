@@ -161,32 +161,74 @@ def _rel(f):
         return f
 
 
+# Issue 1729 — the INDIRECT call, which names no `build_*` at all. The five
+# consolidated matrix consumers (`lane_scope::CONSUMERS`) hold their resolvers in
+# a cell table — `resolver: build_x` — and call them as `(cell.resolver)()`, so
+# `sites()` keyed on resolver NAMES never saw one. Three of the five turned the
+# `Err` into a local `skip!`, which laundered a STALE in-lane fixture into a
+# skip, and `sched_dims_applied` PASSED with its derived-tier cell never booted.
+# Keyed on the TYPE instead: any binding declared as a function returning
+# `TestResult` (directly, or through a `type X = fn(..) -> TestResult<..>`
+# alias in the same file) is a resolver handle, and calling it is a call site.
+FN_RESULT_TYPE = r"fn\s*\([^)]*\)\s*->\s*(?:[A-Za-z_]\w*\s*::\s*)*TestResult\b"
+ALIAS_DECL = re.compile(r"\btype\s+([A-Z]\w*)\s*=\s*" + FN_RESULT_TYPE)
+
+
+def indirect_call(text):
+    """A regex for this file's calls through a resolver HANDLE, or None."""
+    aliases = sorted(set(ALIAS_DECL.findall(text)))
+    ty = "|".join([FN_RESULT_TYPE] + [re.escape(a) + r"\b" for a in aliases])
+    binding = re.compile(r"\b([a-z_]\w*)\s*:\s*(?:Option\s*<\s*)?(?:" + ty + ")")
+    handles = sorted(set(binding.findall(text)))
+    if not handles:
+        return None
+    alt = "|".join(map(re.escape, handles))
+    # `(x.y.handle)()` — a field — or a bare `handle()` — a parameter. A
+    # resolver takes no arguments, and requiring the EMPTY call keeps prose
+    # ("the entry (spins …") from reading as one. A bare name preceded by
+    # `.`/`::` is somebody's method, not this binding.
+    return re.compile(
+        r"\(\s*[A-Za-z_][\w.]*\.(?:" + alt + r")\s*\)\s*\((?=\s*\))"
+        r"|(?<![.\w:])(?:" + alt + r")\((?=\s*\))"
+    )
+
+
 def sites(files, names):
     """Call sites of a resolver whose `Err` is handled without the helper."""
-    if not names:
-        return []
-    call = re.compile(r"\b(" + "|".join(sorted(map(re.escape, names))) + r")\s*\(")
+    call = (
+        re.compile(r"\b(" + "|".join(sorted(map(re.escape, names))) + r")\s*\(")
+        if names else None
+    )
     decl = re.compile(r"\bfn\s+$")
     found = []
     for f in files:
         text = f.read_text(errors="replace")
-        pos = 0
-        while True:
-            m = call.search(text, pos)
-            if not m:
-                break
-            # A DECLARATION is not a call site.
-            if decl.search(text[: m.start()]):
-                pos = m.end()
-                continue
-            end = statement_end(text, m.end())
-            stmt = text[m.start() : end]
-            ce = call_close(text, m.end() - 1)
-            if syntactic_bypass(text, m.start(), ce) or (
-                ".require(" not in stmt and BYPASS.search(stmt)
-            ):
-                found.append(f"{_rel(f)}:{text[: m.start()].count(chr(10)) + 1}")
-            pos = max(end, m.end())
+        for rx in (call, indirect_call(text)):
+            if rx is not None:
+                found.extend(_bypassing_calls(f, text, rx, decl))
+    return sorted(set(found))
+
+
+def _bypassing_calls(f, text, call, decl):
+    """The calls `call` finds in `text` whose `Err` is decided without the helper."""
+    found = []
+    pos = 0
+    while True:
+        m = call.search(text, pos)
+        if not m:
+            break
+        # A DECLARATION is not a call site.
+        if decl.search(text[: m.start()]):
+            pos = m.end()
+            continue
+        end = statement_end(text, m.end())
+        stmt = text[m.start() : end]
+        ce = call_close(text, m.end() - 1)
+        if syntactic_bypass(text, m.start(), ce) or (
+            ".require(" not in stmt and BYPASS.search(stmt)
+        ):
+            found.append(f"{_rel(f)}:{text[: m.start()].count(chr(10)) + 1}")
+        pos = max(end, m.end())
     return sorted(found)
 
 
@@ -295,6 +337,26 @@ def self_test():
         ("if let Some(x) = probe() {\n    let p = build_native_talker().require(\"t\");\n}", False),
         # A statement-scoped scan must not reach past its own `;`.
         ("let p = build_native_talker()?;\nCommand::new(p).output().expect(\"x\")", False),
+        # issue 1729 — a resolver called through a HANDLE names no `build_*`.
+        ("type Resolver = fn() -> TestResult<PathBuf>;\nstruct C { resolver: Resolver }\n"
+         "let e = (c.resolver)().unwrap_or_else(|e| nros_tests::skip!(\"{e}\"))", True),
+        ("type Resolver = fn() -> TestResult<PathBuf>;\nstruct C { resolver: Resolver }\n"
+         "let e = (c.resolver)().require(\"entry\")", False),
+        ("struct P { first_builder: fn() -> TestResult<&'static Path> }\n"
+         "let a = (pair.first_builder)().unwrap_or_else(|e| panic!(\"{e:?}\"))", True),
+        ("fn u(build: fn() -> nros_tests::TestResult<&'static Path>) {\n"
+         "    let b = build().unwrap_or_else(|e| panic!(\"{e}\"));\n}", True),
+        ("fn u(build: fn() -> TestResult<&'static Path>) {\n"
+         "    let b = build().require(\"x\");\n}", False),
+        ("type Resolver = fn() -> TestResult<PathBuf>;\nstruct C { peer: Option<Resolver> }\n"
+         "match (c.peer)() {\n    Ok(p) => p,\n    Err(e) => panic!(\"{e}\"),\n}", True),
+        # a handle that does not return `TestResult` is not a resolver
+        ("struct C { f: fn() -> Option<u8> }\nlet x = (c.f)().unwrap()", False),
+        # a METHOD of the same name is not the binding
+        ("fn u(build: fn() -> TestResult<PathBuf>) {}\nlet x = cmd.build().unwrap()", False),
+        # prose naming a handle is not a call of it
+        ("struct C { entry: fn() -> TestResult<PathBuf> }\n/// spawn the entry (it spins)\n"
+         "let x = y.unwrap()", False),
     ]
     names = {"build_native_talker"}
     bad = 0

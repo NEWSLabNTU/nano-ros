@@ -51,7 +51,7 @@ use nros_tests::{
     TestResult,
     alloc::port_of,
     fixtures::{
-        ManagedProcess, QemuProcess, ZenohRouter, ZephyrPlatform, ZephyrProcess,
+        ManagedProcess, QemuProcess, RequireFixture, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_freertos_workspace_c_realtime_entry, build_freertos_workspace_cpp_realtime_entry,
         build_native_workspace_rust_realtime_entry, build_nuttx_workspace_cpp_realtime_entry,
         build_nuttx_workspace_rust_realtime_entry, build_threadx_workspace_rust_realtime_entry,
@@ -646,12 +646,11 @@ fn run_cell(cell: &SchedCell) {
     let lang = cell.lang.as_str();
     let ex = exec_for(cell.dim, cell.platform, cell.lang);
 
-    let entry = (ex.resolver)().unwrap_or_else(|e| {
-        nros_tests::skip!(
-            "{platform} {lang} {:?} realtime fixture unavailable: {e}",
-            cell.dim
-        )
-    });
+    // issue 1729 — `require`, never a local `skip!`: an out-of-lane coordinate
+    // already skips INSIDE the resolver (`[SKIPPED:lane]`), so an `Err` that
+    // reaches here is about an IN-LANE fixture, and a STALE one laundered into
+    // a skip let this test pass with the derived-tier cell never booted.
+    let entry = (ex.resolver)().require(&format!("{platform} {lang} {:?} realtime", cell.dim));
 
     // Router: ephemeral (posix) or the allocator's baked RealtimeTiers port.
     let router = match ex.router {

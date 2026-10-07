@@ -239,7 +239,9 @@ required-contexts-reportable:
 # aggregators had written that literal independently, turning five tier-2 lane
 # skips into tier-2 reds. One helper per language now owns the match
 # (`nros_tests::skip_marker`, `scripts/test/skip_marker.py`). Self-tests its own
-# matcher against the actual pre-fix line on every run.
+# matcher against the actual pre-fix line on every run. Issue 1729 — and the
+# Python helper's NESTED-marker reading, which must look inside the failure's
+# own message, never at a matrix test's printed `[SKIPPED:lane]` summary.
 [private]
 skip-marker-matching:
     @python3 scripts/check-skip-marker-matching.py

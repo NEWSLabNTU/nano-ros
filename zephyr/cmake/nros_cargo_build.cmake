@@ -337,13 +337,18 @@ endfunction()
 # see the note on the loader above.
 function(_nros_load_derived_entity_inventory)
     nros_entity_inventory_knobs_file(_knobs)
+    # phase-439 W2 (RFC-0094 D1) -- the resolve phase's answer, written BEFORE
+    # this configure, if `nros build` ran one for this image. This is the
+    # EARLIEST reader in a Zephyr configure, so it is the one the placeholder
+    # costs a whole extra pass. A lane that ran no resolve phase falls through
+    # to the placeholder below, unchanged.
+    #
+    # Issue 1729 -- called on EVERY configure, not only when the fragment is
+    # absent: for a generated Rust entry the seed is the fragment's only
+    # producer, so a resolve that moved must reach it (the function re-seeds
+    # only then, and registers the projection as a configure dependency).
+    nros_resolved_seed_entity_inventory("${_knobs}")
     if(NOT EXISTS "${_knobs}")
-        # phase-439 W2 (RFC-0094 D1) -- the resolve phase's answer, written
-        # BEFORE this configure, if `nros build` ran one for this image. This is
-        # the EARLIEST reader in a Zephyr configure, so it is the one the
-        # placeholder costs a whole extra pass. A lane that ran no resolve phase
-        # falls through to the placeholder below, unchanged.
-        nros_resolved_seed_entity_inventory("${_knobs}")
         nros_entity_inventory_seed_knobs_file("${_knobs}")
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_knobs}")

@@ -48,7 +48,7 @@ use nros_tests::{
     TestResult,
     alloc::port_of,
     fixtures::{
-        ManagedProcess, QemuProcess, ZenohRouter, ZephyrPlatform, ZephyrProcess,
+        ManagedProcess, QemuProcess, RequireFixture, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_freertos_workspace_c_realtime_entry, build_freertos_workspace_cpp_realtime_entry,
         build_freertos_workspace_rust_realtime_entry, build_native_workspace_c_realtime_entry,
         build_native_workspace_cpp_rclcpp_realtime_entry,
@@ -652,13 +652,8 @@ fn run_one(pcell: &MCell, cell: &Exec) {
     let lang = cell.label;
     require_cell_env(cell.boot);
 
-    let entry = (cell.resolver)().unwrap_or_else(|e| {
-        nros_tests::skip!(
-            "{} {} realtime workspace entry fixture not built: {e}",
-            platform,
-            lang
-        )
-    });
+    // issue 1729 — see `sched_dims_applied_e2e::run_cell`.
+    let entry = (cell.resolver)().require(&format!("{platform} {lang} realtime workspace entry"));
 
     // Router: ephemeral on native; otherwise the EXACT port the fixture's
     // locator was baked with (0.0.0.0 for slirp guests, whose gateway maps
