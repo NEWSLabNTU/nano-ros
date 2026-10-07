@@ -184,47 +184,6 @@ pub(super) mod transient_local {
         (0..count).map(move |i| (head + depth - count + i) % depth)
     }
 
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        /// Issue 1709 -- a late joiner is owed the last `count` samples OLDEST
-        /// FIRST, across the ring's wrap.
-        #[test]
-        fn the_history_is_replayed_oldest_first_across_the_wrap() {
-            let v = |d, h, c| oldest_first_in(d, h, c).collect::<heapless::Vec<usize, 8>>();
-            // Not yet wrapped: three samples written into a five-deep ring.
-            assert_eq!(v(5, 3, 3), [0, 1, 2]);
-            // Full and wrapped: the oldest is the slot the next write lands on.
-            assert_eq!(v(5, 2, 5), [2, 3, 4, 0, 1]);
-            // Depth one -- the pre-1709 shape -- is the one slot, whatever head is.
-            assert_eq!(v(1, 0, 1), [0]);
-            assert_eq!(v(4, 0, 0), []);
-        }
-
-        /// Issue 1709 -- the ring keeps at most `DEPTH` and an oversize publish
-        /// drops the whole history rather than leaving a stale tail. Uses the
-        /// configured depth, whatever it is; the arithmetic above covers the
-        /// others.
-        #[test]
-        fn retain_keeps_at_most_the_depth_and_an_oversize_publish_clears_it() {
-            let Some(slot) = claim() else {
-                // A zero-slot pool is legal (see `TL_SLOTS`); nothing to test.
-                assert_eq!(MAX_TL_PUBLISHERS, 0);
-                return;
-            };
-            for n in 0..(DEPTH + 3) {
-                assert!(retain(slot, &[n as u8], &[]));
-                assert_eq!(TL_SLOTS[slot].retained(), (n + 1).min(DEPTH));
-            }
-            let too_big = [0u8; TL_RETAIN_BYTES + 1];
-            assert!(!retain(slot, &too_big, &[]));
-            assert_eq!(TL_SLOTS[slot].retained(), 0);
-            assert_eq!(TL_SLOTS[slot].oversize_drops(), 1);
-            release(slot);
-        }
-    }
-
     /// The process-wide retention pool.
     ///
     /// Length is `ZPICO_MAX_TL_PUBLISHERS`, which an image that declares its
@@ -459,6 +418,47 @@ pub(super) mod transient_local {
             if rc < 0 {
                 return;
             }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// Issue 1709 -- a late joiner is owed the last `count` samples OLDEST
+        /// FIRST, across the ring's wrap.
+        #[test]
+        fn the_history_is_replayed_oldest_first_across_the_wrap() {
+            let v = |d, h, c| oldest_first_in(d, h, c).collect::<heapless::Vec<usize, 8>>();
+            // Not yet wrapped: three samples written into a five-deep ring.
+            assert_eq!(v(5, 3, 3), [0, 1, 2]);
+            // Full and wrapped: the oldest is the slot the next write lands on.
+            assert_eq!(v(5, 2, 5), [2, 3, 4, 0, 1]);
+            // Depth one -- the pre-1709 shape -- is the one slot, whatever head is.
+            assert_eq!(v(1, 0, 1), [0]);
+            assert_eq!(v(4, 0, 0), []);
+        }
+
+        /// Issue 1709 -- the ring keeps at most `DEPTH` and an oversize publish
+        /// drops the whole history rather than leaving a stale tail. Uses the
+        /// configured depth, whatever it is; the arithmetic above covers the
+        /// others.
+        #[test]
+        fn retain_keeps_at_most_the_depth_and_an_oversize_publish_clears_it() {
+            let Some(slot) = claim() else {
+                // A zero-slot pool is legal (see `TL_SLOTS`); nothing to test.
+                assert_eq!(MAX_TL_PUBLISHERS, 0);
+                return;
+            };
+            for n in 0..(DEPTH + 3) {
+                assert!(retain(slot, &[n as u8], &[]));
+                assert_eq!(TL_SLOTS[slot].retained(), (n + 1).min(DEPTH));
+            }
+            let too_big = [0u8; TL_RETAIN_BYTES + 1];
+            assert!(!retain(slot, &too_big, &[]));
+            assert_eq!(TL_SLOTS[slot].retained(), 0);
+            assert_eq!(TL_SLOTS[slot].oversize_drops(), 1);
+            release(slot);
         }
     }
 }
