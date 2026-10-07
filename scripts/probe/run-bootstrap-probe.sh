@@ -175,7 +175,8 @@ trap 'rm -rf "$workdir"' EXIT
 # point of the track — so the helper travels inside the script, and every check
 # after it (the final verifier too, same shell) greps through `nros_grep_q`.
 if [[ "${INSTALLED_CHECK:-0}" = 1 ]]; then
-    cat "$REPO_ROOT/scripts/lib/grep-q.sh" "$SCRIPT_DIR/check-installed-sdk-root.sh" \
+    cat "$REPO_ROOT/scripts/lib/grep-q.sh" "$REPO_ROOT/scripts/lib/deadline.sh" \
+        "$SCRIPT_DIR/check-installed-sdk-root.sh" \
         >"$workdir/check-installed-sdk-root.sh"
     C_CD_SUBST=(--after-step "20=$workdir/check-installed-sdk-root.sh")
 fi

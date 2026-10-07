@@ -12,6 +12,8 @@ echo '=== probe verify: zenoh ROS-interop runtime ==='
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 source ./activate.sh
+# shellcheck source=scripts/lib/deadline.sh
+. "$repo_root/scripts/lib/deadline.sh"
 
 command -v nros >/dev/null || { echo "PROBE FAIL: nros not on PATH after bootstrap+activate"; exit 1; }
 nros version
@@ -67,7 +69,7 @@ bin=build/native/target/debug/talker
     echo "PROBE FAIL: $bin missing — step 30's \`nros build\` did not produce it"
     exit 1
 }
-RUST_LOG=info timeout 120 "./$bin" >/tmp/talker.log 2>&1 &
+RUST_LOG=info "${NROS_DEADLINE[@]}" 120 "./$bin" >/tmp/talker.log 2>&1 &
 talker_pid=$!
 
 pattern="Publishing: 'Hello World: 1'"
@@ -95,9 +97,7 @@ echo "PROBE PASS: nano-ros talker published through the documented router"
     source /opt/ros/humble/setup.bash
     export RMW_IMPLEMENTATION=rmw_zenoh_cpp
     export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/127.0.0.1:7447"]'
-    # shellcheck source=scripts/lib/ros2-deadline.sh
-    . "$repo_root/scripts/lib/ros2-deadline.sh"
-    exec "${NROS_ROS2_DEADLINE[@]}" 60 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
+    exec "${NROS_DEADLINE[@]}" 60 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ) >/tmp/echo.log 2>&1 &
 echo_pid=$!
 

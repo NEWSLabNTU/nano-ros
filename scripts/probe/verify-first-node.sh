@@ -20,6 +20,8 @@ cd "$repo_root"
 # the probe is one shell where `nros setup` ran AFTER activate. Re-source =
 # "open a new terminal".
 source ./activate.sh
+# shellcheck source=scripts/lib/deadline.sh
+. "$repo_root/scripts/lib/deadline.sh"
 
 command -v nros >/dev/null || { echo "PROBE FAIL: nros not on PATH after bootstrap+activate"; exit 1; }
 nros version
@@ -42,7 +44,7 @@ bin=build/posix-cyclonedds-native/cmake/native_entry
 # CycloneDDS: no router to start. The scaffold's talker prints `Published: N`
 # every 500 ms; require the first two so we know the timer ticks, not just
 # that main() was reached.
-timeout 60 "$bin" >/tmp/quickstart.log 2>&1 &
+"${NROS_DEADLINE[@]}" 60 "$bin" >/tmp/quickstart.log 2>&1 &
 entry_pid=$!
 deadline=$((SECONDS + 45))
 until grep -q "Published: 1" /tmp/quickstart.log; do
@@ -81,7 +83,7 @@ NROS_REPO_DIR="$repo_root" nros build
 # at the entry `nros build` wrote under build/<coord>/native_entry/src/ first.
 # The assertion stays — a probe that is green over a real bug is the thing
 # issue 0204 exists to prevent.
-timeout 60 ./build/posix-cyclonedds/native_entry/target/debug/native_entry >/tmp/quickstart_rs.log 2>&1 &
+"${NROS_DEADLINE[@]}" 60 ./build/posix-cyclonedds/native_entry/target/debug/native_entry >/tmp/quickstart_rs.log 2>&1 &
 rs_pid=$!
 deadline=$((SECONDS + 45))
 until grep -q "Publishing: 1" /tmp/quickstart_rs.log; do

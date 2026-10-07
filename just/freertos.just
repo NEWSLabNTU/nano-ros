@@ -449,9 +449,11 @@ test-c-port:
         exit 0
     fi
     "{{just_executable()}}" freertos build-c-port
+    # issue 1741 — an image is bounded by a deadline that ESCALATES.
+    . scripts/lib/deadline.sh
     for heap in 4 3; do
         echo "== FreeRTOS C-port smoke, heap_$heap =="
-        timeout 15 "./tests/freertos-c-smoke/build/heap$heap/nros_freertos_c_smoke"
+        "${NROS_DEADLINE[@]}" 15 "./tests/freertos-c-smoke/build/heap$heap/nros_freertos_c_smoke"
     done
 
 # CI: check prerequisites + test
@@ -541,6 +543,9 @@ trace example="talker":
     echo "    Trace will be dumped to $TRACE_DIR/trace.bin on exit."
     # Run QEMU — semihosting creates trace.bin in CWD
     TRACE_DIR_ABS="$(pwd)/$TRACE_DIR"
+    # issue 1741 — QEMU is bounded by a deadline that ESCALATES. Sourced
+    # before the `cd` below, while the repo root is still the cwd.
+    . scripts/lib/deadline.sh
     BINARY_ABS="$(pwd)/$BINARY_PATH"
     TBAND_CLI_ABS="$(pwd)/$TBAND_CLI"
     cd "$TRACE_DIR_ABS"
@@ -550,7 +555,7 @@ trace example="talker":
     # QEMU with semihosting ignores SIGINT — we must kill explicitly.
     QEMU_PID=""
     trap 'if [ -n "$QEMU_PID" ]; then kill $QEMU_PID 2>/dev/null; wait $QEMU_PID 2>/dev/null; fi; exit 130' INT TERM
-    timeout 60 {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} \
+    "${NROS_DEADLINE[@]}" 60 {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} \
         -cpu cortex-m3 -machine mps2-an385 -nographic \
         -icount shift=auto \
         -semihosting-config enable=on,target=native \

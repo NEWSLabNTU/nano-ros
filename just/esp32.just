@@ -302,7 +302,9 @@ test-basic: build-qemu
     esp32_qemu_dir="$(nros_build_dir "$NROS_KIND_ESP32_QEMU")"
     tmpfile=$(mktemp)
     trap 'rm -f "$tmpfile"' EXIT
-    timeout 20 qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
+    # issue 1741 — QEMU is bounded by a deadline that ESCALATES.
+    . scripts/lib/deadline.sh
+    "${NROS_DEADLINE[@]}" 20 qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
         -drive "file=$esp32_qemu_dir/esp32-qemu-talker.bin,if=mtd,format=raw" \
         -nic none \
         > "$tmpfile" 2>&1 || true

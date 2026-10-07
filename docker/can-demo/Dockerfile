@@ -138,7 +138,7 @@ COPY --from=pico-builder /build/pico/lib/libzenohpico.so /opt/can-demo/lib/
 
 COPY entrypoint.sh /opt/can-demo/entrypoint.sh
 # issue 1723 — the shared `ros2` deadline spelling, from `scripts/lib/`.
-COPY --from=nroslib ros2-deadline.sh /opt/can-demo/ros2-deadline.sh
+COPY --from=nroslib deadline.sh /opt/can-demo/deadline.sh
 RUN chmod +x /opt/can-demo/entrypoint.sh
 
 ENV RMW_IMPLEMENTATION=rmw_zenoh_cpp

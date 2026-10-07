@@ -266,7 +266,9 @@ test-c-port:
         exit 0
     fi
     "{{just_executable()}}" threadx_linux build-c-port
-    timeout 15 ./tests/threadx-c-smoke/build/nros_threadx_c_smoke
+    # issue 1741 — an image is bounded by a deadline that ESCALATES.
+    . scripts/lib/deadline.sh
+    "${NROS_DEADLINE[@]}" 15 ./tests/threadx-c-smoke/build/nros_threadx_c_smoke
 
 [group("full-matrix")]
 ci: doctor test

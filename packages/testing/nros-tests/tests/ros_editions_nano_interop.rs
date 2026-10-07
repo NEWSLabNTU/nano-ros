@@ -60,7 +60,7 @@ fn nano_ros_posestamped_survives_edition_domain_bridge() {
     }
 
     // Downstream echo on domain B.
-    let deadline = nros_tests::ros2::ros2_deadline(50);
+    let deadline = nros_tests::process::deadline(50);
     let mut echo = env_to
         .spawn(
             "echo",

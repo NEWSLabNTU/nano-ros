@@ -528,7 +528,7 @@ fn zenoh_publisher_gid_is_the_one_a_stock_peer_reads_and_reports() {
         nros_tests::ros2::ros2_env_setup_with_locator(DEFAULT_ROS_DISTRO, &locator);
     let script = nros_tests::project_root()
         .join("packages/testing/nros-tests/fixtures/ros2-message-info-peer/message_info_peer.py");
-    let deadline = nros_tests::ros2::ros2_deadline(40);
+    let deadline = nros_tests::process::deadline(40);
     let peer = Command::new("bash")
         .args([
             "-c",

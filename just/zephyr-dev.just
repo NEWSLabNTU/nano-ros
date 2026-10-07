@@ -321,7 +321,9 @@ test-c-port:
         exit 0
     fi
     "{{just_executable()}}" zephyr build-c-port
-    timeout 15 ./tests/zephyr-c-smoke/build/zephyr/zephyr.exe
+    # issue 1741 — an image is bounded by a deadline that ESCALATES.
+    . scripts/lib/deadline.sh
+    "${NROS_DEADLINE[@]}" 15 ./tests/zephyr-c-smoke/build/zephyr/zephyr.exe
 
 # Phase 180.A Task 10 — dual-line CI. Build a representative example
 # (default c/talker zenoh) on BOTH the 3.7 LTS line and the 4.4 rolling

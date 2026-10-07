@@ -3754,7 +3754,9 @@ acceptance: setup-cli
     NROS_REPO_DIR="$repo" "$nros" sync
     cargo build
     # profile-literal-ok: unprofiled: accept_app is a plain `cargo build` smoke binary
-    timeout 10 target/debug/accept_app 2>&1 | grep -q "accept_app"
+    # issue 1741 — the image is bounded by a deadline that ESCALATES.
+    . "$repo/scripts/lib/deadline.sh"
+    "${NROS_DEADLINE[@]}" 10 target/debug/accept_app 2>&1 | grep -q "accept_app"
     echo "acceptance OK."
 
 

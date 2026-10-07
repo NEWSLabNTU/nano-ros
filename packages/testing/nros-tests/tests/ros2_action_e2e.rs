@@ -185,7 +185,7 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server() {
     // action fails rather than waiting.
     await_fibonacci_action(&env, "nano-ros");
 
-    let deadline = nros_tests::ros2::ros2_deadline(60);
+    let deadline = nros_tests::process::deadline(60);
     let out = env
         .run(&format!(
             "{deadline} ros2 action send_goal /fibonacci example_interfaces/action/Fibonacci '{{order: 5}}'"
@@ -307,7 +307,8 @@ fn the_nano_ros_action_client_drives_a_stock_ros2_server() {
     // fail in bounded time is not a test.
     let out = env
         .run(&format!(
-            "timeout 60 {}",
+            "{} {}",
+            nros_tests::process::deadline(60),
             shell_escape(&client_bin.to_string_lossy())
         ))
         .expect("run the nano-ros action client");
@@ -457,7 +458,7 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh() {
     // reads as a wire-format defect.
     await_fibonacci_action(&env, "nano-ros");
 
-    let deadline = nros_tests::ros2::ros2_deadline(60);
+    let deadline = nros_tests::process::deadline(60);
     let out = env
         .run(&format!(
             "{deadline} ros2 action send_goal /fibonacci example_interfaces/action/Fibonacci '{{order: 5}}'"
@@ -474,7 +475,7 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh() {
     // No `--no-daemon`: `ros2 topic echo` builds its own node and is
     // deliberately outside `check-ros2-daemon-queries`' verb list. The message
     // type is named explicitly so a graph type lookup cannot be what fails.
-    let deadline = nros_tests::ros2::ros2_deadline(15);
+    let deadline = nros_tests::process::deadline(15);
     let late = if died.is_none() {
         std::thread::sleep(Duration::from_secs(3));
         env.run_text(&format!(
@@ -609,9 +610,7 @@ fn the_nano_ros_action_client_drives_a_stock_ros2_server_over_zenoh() {
     // `timeout` is still mandatory and for the Cyclone case's reason — the
     // client blocks on an undiscovered server and a test that cannot fail in
     // bounded time is not a test.
-    let out = Command::new("timeout")
-        .arg("60")
-        .arg(&client_bin)
+    let out = nros_tests::process::deadline_command(60, &client_bin)
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
         .output()

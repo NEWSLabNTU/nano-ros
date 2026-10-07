@@ -590,7 +590,7 @@ fn xrce_set_parameters_naming_25_declared_lands() -> nros_tests::TestResult<()> 
     let cmd = format!(
         "{env} && {} ros2 service call /param_talker/set_parameters \
          rcl_interfaces/srv/SetParameters '{request}' 2>&1",
-        nros_tests::ros2::ros2_deadline(90)
+        nros_tests::process::deadline(90)
     );
     let out = Command::new("bash")
         .args(["-c", &cmd])

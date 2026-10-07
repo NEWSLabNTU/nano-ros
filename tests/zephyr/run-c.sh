@@ -24,6 +24,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # issue 1379 — ONE spelling of the `-DZEPHYR_EXTRA_MODULES` this build needs.
 # shellcheck source=scripts/lib/zephyr-module.sh
 . "$PROJECT_ROOT/scripts/lib/zephyr-module.sh"
+# shellcheck source=scripts/lib/deadline.sh
+. "$PROJECT_ROOT/scripts/lib/deadline.sh"
 nros_module_arg="$(nros_zephyr_module_cmake_arg "$PROJECT_ROOT")"
 
 # issue 0660 — the router comes from ROS, not from a vendored build.
@@ -254,7 +256,7 @@ test_zephyr_to_native() {
     # Start Zephyr C talker
     log_info "Starting Zephyr C talker..."
     cd "$ZEPHYR_WORKSPACE"
-    timeout "$TEST_TIMEOUT" ./build-c-talker/zephyr/zephyr.exe > "$(tmpfile zephyr_talker.txt)" 2>&1 &
+    "${NROS_DEADLINE[@]}" "$TEST_TIMEOUT" ./build-c-talker/zephyr/zephyr.exe > "$(tmpfile zephyr_talker.txt)" 2>&1 &
     local zephyr_pid=$!
     register_pid $zephyr_pid
 
