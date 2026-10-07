@@ -301,6 +301,30 @@ both hold after FirstSpin; (c) say in the boot report which figure the
 headroom line judged (FirstSpin peak or running peak), and why capacity reads
 102,912 for a configured 102,400.
 
+**Result (2026-10-07), issue 1728.** The three figures were read, not
+reconciled by a new derivation, because nano-ros has none for the heap
+(issue 1424 chose "checked, not derived"): the 133,952 ask is
+`read-boot-report.py`'s `peak + floor` on the phase8-W1 QEMU image (4 nodes,
+parameter store), a measurement of a different image; the Kconfig default
+already reads the image's own declarations (`NROS_CAPABILITY_PARAM_SERVICES`,
+`NROS_PARAM_STORE`, `RUST`), which for the 3-node C++ board image without
+parameter services is 65,536. The W4 "HEAP HEADROOM REFUSED" is the fixed
+24,576-byte floor: 102,912 - 79,712 = 23,200 spare. The record's peak is a
+high-water the heap updates on every allocation, so a dump always judges
+the RUNNING peak as of the dump; capacity is the knob plus zpico-alloc's
+8 x 64 B slab (102,400 reads 102,912). Landed: the boot record (layout 11)
+keeps `heap_peak_at_first_spin` and the verdict says which peak it judged
+and how much came after the first spin; the knob it names is
+`peak + floor - 512`; and a stated value of a DERIVABLE knob below the
+image's derivation is a configure WARNING (above or equal: a STATUS line;
+phase-478 D2, which nobody had implemented). Not done: a QEMU heap read
+after the host graph joins (guest RAM, no monitor socket on the west run
+lane), and (a)/(b) above (reproducing phase8-W17's read-path exhaustion with
+graph discovery off; bounding `zpico_read`'s allocation) -- both need the
+island's QEMU image under a host Autoware. For the island: from the W4 dump,
+`CONFIG_NROS_ZEPHYR_HEAP_SIZE >= 103776`; set 104448 (102 KiB) and re-read the
+dump after an act on the new pin.
+
 ## Test / check
 
 ### T1 -- the island dropped its zenoh session when a host peer joined a plain router
@@ -505,7 +529,10 @@ independent of each other.
 - [ ] I4: the host metadata probe produces metadata for all four island
       components.
 - [ ] I5: the derived heap and the configured heap agree, and hold after
-      FirstSpin under a host graph on QEMU.
+      FirstSpin under a host graph on QEMU. (Explained, not closed: no heap
+      derivation exists; the record now splits FirstSpin and running peak,
+      names the knob without the slab, and a stated derivable knob below its
+      derivation warns; island: 104448. QEMU read-path half open; issue 1728.)
 - [ ] T1: the plain-router join reproduced on current main with the default
       lease and held; the `min()` question filed or answered.
 - [ ] T2: `island_trace_cost_max` reads the bracket's maximum in every run.

@@ -58,13 +58,13 @@
 //! same rule issue 0900's arena knob and phase-403's `rx_buffer_from_type()`
 //! both keep.
 //!
-//! Enabled, it costs `BootReport::struct_size` bytes of `.bss` -- 128, the
+//! Enabled, it costs `BootReport::struct_size` bytes of `.bss` -- 132, the
 //! same on every target because every field is a `u32` -- and a handful of
 //! relaxed atomic stores on paths that run once per entity at registration.
 //!
-//! The 128 is not a detail: it is the LENGTH an operator types into `savemem`,
+//! The 132 is not a detail: it is the LENGTH an operator types into `savemem`,
 //! and this sentence said 60 for as long as the record had fifteen fields. A
-//! short dump decodes -- `read-boot-report.py` needs `32 * 4` bytes and a
+//! short dump decodes -- `read-boot-report.py` needs `33 * 4` bytes and a
 //! 100-byte one is refused, but a reader who trusts the prose over the tool
 //! spends the refusal looking at the wrong thing. Ask the tool instead:
 //! `read-boot-report.py --addr-only <elf>` prints the address AND the length,
@@ -83,7 +83,7 @@
 //!    reading the new word as one it knows;
 //! 3. `FIELDS` in `scripts/read-boot-report.py`, same name, same position, and
 //!    `KNOWN_VERSION` to match;
-//! 4. the field count in `the_record_is_thirty_two_packed_u32s` below.
+//! 4. the field count in `the_record_is_thirty_three_packed_u32s` below.
 //!
 //! `check-boot-report-layout` fails on 1 without 3, and the Rust test fails if
 //! the compiler laid the record out with padding. Appending is what keeps a
@@ -106,8 +106,9 @@ pub const MAGIC: u32 = 0x4e52_5352;
 /// 8 since issue 1573 appended `failed_alloc_arena`;
 /// 9 since issue 1036 appended the four `error_log_*` words;
 /// 10 since phase-479 W5 appended `log_dynamic_capacity` and
-/// `log_dynamic_in_use`.
-pub const VERSION: u32 = 10;
+/// `log_dynamic_in_use`;
+/// 11 since phase-474 I5 appended `heap_peak_at_first_spin`.
+pub const VERSION: u32 = 11;
 
 /// Which allocator refused the allocation `BootReport::failed_alloc_size`
 /// names.
@@ -474,6 +475,17 @@ mod enabled {
         /// its source -- the arena has no free list. Equal to the capacity
         /// means a creation has already fallen back, or the next one will.
         log_dynamic_in_use: AtomicU32,
+
+        // phase-474 I5, appended on the same rule.
+        /// `heap_peak_bytes` as it stood when the record reached
+        /// [`Stage::FirstSpin`]: the peak of registration alone. The running
+        /// peak above keeps rising after it -- a host graph joining, samples
+        /// in flight -- and the headroom verdict judges THAT one; this word is
+        /// what lets a reader say how much of it came after the first spin.
+        /// On the safety island the two disagreed: a FirstSpin peak looked
+        /// fine on QEMU while the heap ran out 7-8 s later, when Autoware
+        /// joined. 0 = the record never reached FirstSpin (or predates it).
+        heap_peak_at_first_spin: AtomicU32,
     }
 
     impl BootReport {
@@ -511,6 +523,7 @@ mod enabled {
                 error_log_line: AtomicU32::new(0),
                 log_dynamic_capacity: AtomicU32::new(0),
                 log_dynamic_in_use: AtomicU32::new(0),
+                heap_peak_at_first_spin: AtomicU32::new(0),
             }
         }
 
@@ -569,6 +582,7 @@ mod enabled {
         pub error_log_line: u32,
         pub log_dynamic_capacity: u32,
         pub log_dynamic_in_use: u32,
+        pub heap_peak_at_first_spin: u32,
     }
 
     /// Read the record.
@@ -615,6 +629,7 @@ mod enabled {
             error_log_line: g(&r.error_log_line),
             log_dynamic_capacity: g(&r.log_dynamic_capacity),
             log_dynamic_in_use: g(&r.log_dynamic_in_use),
+            heap_peak_at_first_spin: g(&r.heap_peak_at_first_spin),
         }
     }
 
@@ -743,8 +758,12 @@ mod enabled {
     /// actually made. That matters because the field's whole purpose is to be
     /// believed about a boot that did not finish.
     pub fn checkpoint(stage: Stage) {
+        checkpoint_in(&NROS_BOOT_REPORT, stage);
+    }
+
+    /// [`checkpoint`] on any record, so a test can own one.
+    pub(crate) fn checkpoint_in(r: &BootReport, stage: Stage) {
         let want = stage as u32;
-        let r = &NROS_BOOT_REPORT;
         note_log_loggers(r);
         let mut cur = r.stage.load(Ordering::Relaxed);
         while want > cur {
@@ -752,7 +771,16 @@ mod enabled {
                 .stage
                 .compare_exchange_weak(cur, want, Ordering::Relaxed, Ordering::Relaxed)
             {
-                Ok(_) => return,
+                Ok(_) => {
+                    // phase-474 I5 -- the peak of registration, once: only the
+                    // call that moves the stage to FirstSpin (or past it from
+                    // below) writes it.
+                    if want >= Stage::FirstSpin as u32 && cur < Stage::FirstSpin as u32 {
+                        r.heap_peak_at_first_spin
+                            .store(r.heap_peak_bytes.load(Ordering::Relaxed), Ordering::Relaxed);
+                    }
+                    return;
+                }
                 Err(actual) => cur = actual,
             }
         }
@@ -915,7 +943,11 @@ mod enabled {
     /// the platform pushes it instead. See
     /// [`nros_boot_report_note_heap`] for the C entry point.
     pub fn note_heap(peak: usize, capacity: usize) {
-        let r = &NROS_BOOT_REPORT;
+        note_heap_in(&NROS_BOOT_REPORT, peak, capacity);
+    }
+
+    /// [`note_heap`] on any record, so a test can own one.
+    pub(crate) fn note_heap_in(r: &BootReport, peak: usize, capacity: usize) {
         r.heap_peak_bytes
             .fetch_max(saturate(peak), Ordering::Relaxed);
         r.heap_capacity_bytes
@@ -1086,11 +1118,11 @@ mod tests {
     /// cannot see: that gate compares two source files, and this compares the
     /// source against what the compiler actually laid out.
     #[test]
-    fn the_record_is_thirty_two_packed_u32s() {
-        assert_eq!(BootReport::struct_size(), 32 * 4);
+    fn the_record_is_thirty_three_packed_u32s() {
+        assert_eq!(BootReport::struct_size(), 33 * 4);
         assert_eq!(
             core::mem::size_of::<BootReport>(),
-            32 * core::mem::size_of::<u32>(),
+            33 * core::mem::size_of::<u32>(),
             "the record grew padding; the reader decodes positionally"
         );
         assert_eq!(core::mem::align_of::<BootReport>(), 4);
@@ -1265,6 +1297,25 @@ mod tests {
             Stage::FirstSpin as u32,
             "an earlier stage overwrote a later one"
         );
+    }
+
+    /// phase-474 I5 -- the heap peak at FirstSpin is frozen when the stage is
+    /// reached; the running peak keeps rising after it, which is what the
+    /// headroom verdict judges and what the frozen word lets a reader split.
+    #[test]
+    fn the_first_spin_heap_peak_is_frozen_when_the_stage_is_reached() {
+        let r = BootReport::new();
+        note_heap_in(&r, 40_000, 102_912);
+        checkpoint_in(&r, Stage::ExecutorReady);
+        assert_eq!(snapshot_of(&r).heap_peak_at_first_spin, 0, "not yet");
+        note_heap_in(&r, 77_160, 102_912);
+        checkpoint_in(&r, Stage::FirstSpin);
+        // The host graph joins after the first spin.
+        note_heap_in(&r, 79_712, 102_912);
+        checkpoint_in(&r, Stage::FirstSpin);
+        let s = snapshot_of(&r);
+        assert_eq!(s.heap_peak_at_first_spin, 77_160);
+        assert_eq!(s.heap_peak_bytes, 79_712);
     }
 
     /// The FIRST failure is the one that explains the boot; a later one is a

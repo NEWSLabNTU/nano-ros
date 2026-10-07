@@ -45,7 +45,7 @@ SYMBOL = "NROS_BOOT_REPORT"
 # "NRSR". Must match boot_report.rs MAGIC.
 MAGIC = 0x4E525352
 # Layout this script knows how to decode. Must match boot_report.rs VERSION.
-KNOWN_VERSION = 10
+KNOWN_VERSION = 11
 
 # The headroom `CONFIG_NROS_ZEPHYR_HEAP_SIZE` must keep above the measured
 # peak, in bytes.
@@ -59,6 +59,15 @@ KNOWN_VERSION = 10
 # from a board, and the two agreeing is what would retire the guess. If the
 # number moves, it moves in both files and the island re-measures.
 HEAP_HEADROOM_FLOOR = 24576
+
+# What the heap's CAPACITY word adds to `CONFIG_NROS_ZEPHYR_HEAP_SIZE`:
+# zpico-alloc's slab region, 8 slots of 64 B, carved beside the rlsf arena
+# (`FreeListHeap::capacity()` is `N + SLAB_REGION_SIZE`). So a configured
+# 102,400 reads 102,912 (phase-474 I5), and the knob that keeps the floor is
+# `peak + floor - 512`, not `peak + floor`. Must match
+# packages/rmw/zenoh/zpico-alloc/src/lib.rs SLAB_SLOT_SIZE * SLAB_SLOT_COUNT;
+# only the Zephyr port writes the heap words.
+ZEPHYR_HEAP_SLAB_BYTES = 512
 
 # Field order, matching `BootReport` and `Snapshot` in boot_report.rs. Every
 # field is a u32; the record is all `AtomicU32`, which is repr(transparent).
@@ -111,6 +120,10 @@ FIELDS = (
     # arena -- `NROS_LOG_DYNAMIC_LOGGERS` as compiled, and the slots claimed.
     "log_dynamic_capacity",
     "log_dynamic_in_use",
+    # phase-474 I5, appended on the same rule: `heap_peak_bytes` as it stood
+    # when the record reached FirstSpin. The running peak keeps rising after
+    # it (a host graph joining, samples in flight); this word splits the two.
+    "heap_peak_at_first_spin",
 )
 
 # `boot_report::AllocArena`. Append only; `the_alloc_arena_codes_match_the_record`
@@ -398,6 +411,30 @@ def decode(blob: bytes, fields: tuple[str, ...] = FIELDS) -> dict[str, int]:
     return dict(zip(fields, values, strict=True))
 
 
+def which_peak(rec: dict[str, int]) -> list[str]:
+    """phase-474 I5 -- which peak the headroom line judged, in words.
+
+    Always the RUNNING peak: `heap_peak_bytes` is a high-water mark the heap
+    updates on every allocation, so it is the peak as of the dump. The
+    FirstSpin word says how much of it registration alone took, so a reader
+    can see what joined later -- the case where QEMU's heap ran out 7-8 s
+    after a FirstSpin peak that looked fine.
+    """
+    peak, first = rec["heap_peak_bytes"], rec.get("heap_peak_at_first_spin", 0)
+    if not first:
+        return [
+            "  judged: the running peak at the dump (the record never reached",
+            "  FirstSpin, so there is no registration-only figure to split off).",
+        ]
+    later = peak - first
+    return [
+        f"  judged: the running peak at the dump, {peak}; at FirstSpin it was",
+        f"  {first}, so {later} bytes came after the first spin (peers joining,",
+        "  samples in flight). A dump taken before the host graph joined judges",
+        "  less than the image will need.",
+    ]
+
+
 def heap_headroom(rec: dict[str, int]) -> tuple[bool, list[str]]:
     """Verdict on `CONFIG_NROS_ZEPHYR_HEAP_SIZE` against the measured peak.
 
@@ -448,6 +485,8 @@ def heap_headroom(rec: dict[str, int]) -> tuple[bool, list[str]]:
         ]
 
     headroom = cap - peak
+    knob_min = peak + HEAP_HEADROOM_FLOOR - ZEPHYR_HEAP_SLAB_BYTES
+    which = which_peak(rec)
     if headroom < HEAP_HEADROOM_FLOOR:
         return False, [
             f"HEAP HEADROOM: REFUSED -- {headroom} bytes, floor is "
@@ -456,8 +495,10 @@ def heap_headroom(rec: dict[str, int]) -> tuple[bool, list[str]]:
             f"  peak {peak} of {cap} bytes. The image booted; what it did not",
             "  keep is the margin for the allocations this run did not make --",
             "  a larger sample, a reconnect, a service reply.",
+            *which,
             "",
-            f"  set CONFIG_NROS_ZEPHYR_HEAP_SIZE >= {peak + HEAP_HEADROOM_FLOOR}",
+            f"  set CONFIG_NROS_ZEPHYR_HEAP_SIZE >= {knob_min}",
+            f"  (the capacity word reads the knob + {ZEPHYR_HEAP_SLAB_BYTES} B of slab)",
             "",
             "  and record THIS DUMP beside it in the board `.conf`, as a",
             "  comment naming the image and the date. A knob whose comment says",
@@ -467,9 +508,10 @@ def heap_headroom(rec: dict[str, int]) -> tuple[bool, list[str]]:
     return True, [
         f"HEAP HEADROOM: ok -- {headroom} bytes spare "
         f"(peak {peak} of {cap}, floor {HEAP_HEADROOM_FLOOR}).",
+        *which,
         "",
         f"  CONFIG_NROS_ZEPHYR_HEAP_SIZE could go as low as "
-        f"{peak + HEAP_HEADROOM_FLOOR} on this",
+        f"{knob_min} on this",
         "  evidence. Lowering it is a measurement on one run of one image:",
         "  record the dump beside the knob so the next reader can see what it",
         "  was sized from.",
@@ -548,7 +590,13 @@ def report(rec: dict[str, int], elf: Path | None = None) -> int:
         print(f"   ({100.0 * peak / hcap:.1f}% of the heap)")
     else:
         print()
-    print(f"  platform heap capacity        {hcap} bytes   (NROS_ZEPHYR_HEAP_SIZE)")
+    first = rec["heap_peak_at_first_spin"]
+    if first:
+        print(f"  platform heap PEAK at FirstSpin {first} bytes   (+{peak - first} since)")
+    print(
+        f"  platform heap capacity        {hcap} bytes   (NROS_ZEPHYR_HEAP_SIZE "
+        f"+ {ZEPHYR_HEAP_SLAB_BYTES} B slab)"
+    )
     print(f"  samples dropped (too small)   {rec['samples_dropped_too_small']}")
     # Issue 1036 -- informational, never scored: an error the image logged and
     # lived with is the thing a console-less board could not otherwise show,
@@ -1052,6 +1100,26 @@ def self_test() -> int:
         (
             "real headroom",
             {"heap_peak_bytes": 18352, "heap_capacity_bytes": 94208},
+            True,
+        ),
+        # phase-474 I5 -- the safety island's W4 dump: 23,200 spare is refused.
+        (
+            "island W4 running peak",
+            {
+                "heap_peak_bytes": 79712,
+                "heap_capacity_bytes": 102912,
+                "heap_peak_at_first_spin": 77160,
+            },
+            False,
+        ),
+        # ... and the knob the refusal names (103,776 + 512 B slab) passes.
+        (
+            "island W4 at the named knob",
+            {
+                "heap_peak_bytes": 79712,
+                "heap_capacity_bytes": 103776 + ZEPHYR_HEAP_SLAB_BYTES,
+                "heap_peak_at_first_spin": 77160,
+            },
             True,
         ),
         # A peak above capacity is not a thin heap, it is a broken counter.
