@@ -192,13 +192,13 @@ if(TARGET cargo-build_nros_cpp)
             "nros_config_generated.h;nros-c-generated")
         list(GET _nros_cpp_heal 0 _nros_cpp_hdr)
         list(GET _nros_cpp_heal 1 _nros_cpp_gendir)
-        execute_process(
-            COMMAND bash "${_NROS_CPP_MIRROR_SH}"
-                "${CMAKE_CURRENT_BINARY_DIR}/${_nros_cpp_hdr}"
-                "${CMAKE_BINARY_DIR}" "${_nros_cpp_gendir}" "${_nros_cpp_hdr}"
-                "${_nros_cpp_intree_include_dir}/nros/${_nros_cpp_hdr}"
-            RESULT_VARIABLE _nros_cpp_heal_rc
-            OUTPUT_QUIET ERROR_QUIET)
+        # Issue 1746 -- QUEUED, not run here: at this scope the shared cargo
+        # link may still point at a provisional key (see
+        # `nros_config_header_heal` in NanoRosEntityFacts.cmake).
+        nros_config_header_heal("${_NROS_CPP_MIRROR_SH}"
+            "${CMAKE_CURRENT_BINARY_DIR}/${_nros_cpp_hdr}"
+            "${CMAKE_BINARY_DIR}" "${_nros_cpp_gendir}" "${_nros_cpp_hdr}"
+            "${_nros_cpp_intree_include_dir}/nros/${_nros_cpp_hdr}")
     endforeach()
     target_include_directories(nros-cpp-headers BEFORE INTERFACE
         $<BUILD_INTERFACE:${_nros_cpp_intree_include_dir}>)

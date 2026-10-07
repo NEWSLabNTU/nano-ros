@@ -234,6 +234,10 @@ endfunction()
 
 function(_nros_entity_facts_flush)
     _nros_entity_facts_rekey_shared_cargo_dir()
+    # Issue 1746 -- the shared cargo key is FINAL now; the configure-time
+    # sizes-header heals waited for exactly this (see nros_config_header_heal).
+    set_property(GLOBAL PROPERTY NROS_ENTITY_FACTS_FLUSHED TRUE)
+    _nros_config_header_heal_flush()
     get_property(_targets GLOBAL PROPERTY NROS_ENTITY_FACTS_TARGETS)
     foreach(_t IN LISTS _targets)
         if(TARGET "${_t}")
@@ -742,4 +746,67 @@ function(nros_entity_facts_env _target)
             "nano-ros: large-payload class sized from the declaration — "
             "${_payload_env} (issue 1122)")
     endif()
+endfunction()
+
+
+# nros_config_header_heal(<mirror-sh> <leaf-src> <build-dir> <gen-subdir> <name> <dest>)
+#
+# Issue 1746 -- the configure-time HEAL of a mirrored sizes header (issue 0268 /
+# 0985), run only once the shared Corrosion cargo key is FINAL.
+#
+# `<build>/cargo` is a symlink whose target is chosen by KEY, and the key is
+# completed in two steps: `nros-c`'s configure points it at base + knobs, and
+# the deferred `_nros_entity_facts_flush` re-points it at base + knobs + entity
+# facts (issue 1700). On a RE-configure that is a round trip -- away from the
+# directory that built this leaf's archive and back -- and the heal ran in the
+# middle, at `nros-cpp`'s own scope. It therefore copied the facts-LESS key's
+# header (`NROS_EXECUTOR_SIZE 90576`, no descriptor) over the right one
+# (20592), with a NEW mtime. The build-time mirror's only input is the archive,
+# now OLDER than its output, so ninja skipped the one rule that would have put
+# the right bytes back, and the leaf's first build linked
+# `undefined reference to nros_config_variant_sz_*`. A second `ninja` settled
+# it only because something else rebuilt the archive.
+#
+# So the request is QUEUED here and executed at the end of the top-level
+# configure: by `_nros_entity_facts_flush` after its re-key when one is
+# scheduled, otherwise by its own deferred call. Any configure-time reader of
+# `<build>/cargo/*` must take the same road; the mirror script is the only one
+# (`check-config-header-single-writer` holds every writer to that script).
+function(nros_config_header_heal _sh _leaf _build _gendir _name _dest)
+    string(JOIN "|" _req "${_sh}" "${_leaf}" "${_build}" "${_gendir}" "${_name}" "${_dest}")
+    set_property(GLOBAL APPEND PROPERTY NROS_CONFIG_HEADER_HEALS "${_req}")
+    get_property(_scheduled GLOBAL PROPERTY NROS_CONFIG_HEADER_HEAL_SCHEDULED)
+    if(NOT _scheduled)
+        set_property(GLOBAL PROPERTY NROS_CONFIG_HEADER_HEAL_SCHEDULED TRUE)
+        cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+            CALL _nros_config_header_heal_flush)
+    endif()
+endfunction()
+
+function(_nros_config_header_heal_flush)
+    # Every deferral is registered during the ordinary configure, so by the time
+    # any deferred call runs the facts flush is either queued or never will be.
+    # If it is queued and has not run, it calls this after its re-key.
+    get_property(_facts_scheduled GLOBAL PROPERTY NROS_ENTITY_FACTS_FLUSH_SCHEDULED)
+    get_property(_facts_flushed GLOBAL PROPERTY NROS_ENTITY_FACTS_FLUSHED)
+    if(_facts_scheduled AND NOT _facts_flushed)
+        return()
+    endif()
+    get_property(_heals GLOBAL PROPERTY NROS_CONFIG_HEADER_HEALS)
+    set_property(GLOBAL PROPERTY NROS_CONFIG_HEADER_HEALS "")
+    foreach(_req IN LISTS _heals)
+        string(REPLACE "|" ";" _a "${_req}")
+        list(GET _a 0 _sh)
+        list(GET _a 1 _leaf)
+        list(GET _a 2 _build)
+        list(GET _a 3 _gendir)
+        list(GET _a 4 _name)
+        list(GET _a 5 _dest)
+        # Best-effort, as the heal always was: a tree that never built has
+        # neither candidate, and the build-time edge is the real mechanism.
+        execute_process(
+            COMMAND bash "${_sh}" "${_leaf}" "${_build}" "${_gendir}" "${_name}" "${_dest}"
+            RESULT_VARIABLE _rc
+            OUTPUT_QUIET ERROR_QUIET)
+    endforeach()
 endfunction()
