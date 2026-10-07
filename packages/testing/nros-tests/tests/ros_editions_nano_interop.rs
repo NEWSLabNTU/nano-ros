@@ -60,10 +60,11 @@ fn nano_ros_posestamped_survives_edition_domain_bridge() {
     }
 
     // Downstream echo on domain B.
+    let deadline = nros_tests::ros2::ros2_deadline(50);
     let mut echo = env_to
         .spawn(
             "echo",
-            "timeout 50 ros2 topic echo --once /pose geometry_msgs/msg/PoseStamped 2>&1",
+            &format!("{deadline} ros2 topic echo --once /pose geometry_msgs/msg/PoseStamped 2>&1"),
         )
         .expect("spawn echo");
 

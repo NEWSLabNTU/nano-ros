@@ -162,7 +162,7 @@ nros_e2e_stage "A.1 start"
 # whose startup cost is the thing under suspicion. It also leaves that daemon
 # behind on this run's domain. Same reasoning as issue 1009 direction 2, which
 # put `--no-daemon` on `dds_bus_snapshot`'s three sub-commands.
-timeout "$NROS_E2E_DEADLINE_S" env LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" \
+"${NROS_ROS2_DEADLINE[@]}" "$NROS_E2E_DEADLINE_S" env LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" \
     ros2 topic echo --no-daemon --csv /chatter std_msgs/msg/String \
     > "$ECHO_OUT" 2>"$ECHO_ERR" &
 ECHO_PID=$!

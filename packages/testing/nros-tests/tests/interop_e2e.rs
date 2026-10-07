@@ -224,7 +224,8 @@ fn spawn_nano_cyclone(binary: &Path, name: &str, domain_id: u8) -> ManagedProces
 /// passed by the caller so the CLI uses this process' zenoh session.
 fn run_ros2(locator: &str, subcommand: &str) -> String {
     let (env, _config_guard) = ros2_env_setup_with_locator(DEFAULT_ROS_DISTRO, locator);
-    let script = format!("{env} && timeout 10 ros2 {subcommand} 2>&1");
+    let deadline = nros_tests::ros2::ros2_deadline(10);
+    let script = format!("{env} && {deadline} ros2 {subcommand} 2>&1");
     let out = Command::new("bash")
         .args(["-c", &script])
         .output()

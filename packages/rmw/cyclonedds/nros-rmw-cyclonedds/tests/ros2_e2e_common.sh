@@ -4,6 +4,12 @@
 # Sourced, never executed. `add_test` runs these scripts from
 # `CMAKE_CURRENT_SOURCE_DIR`, so a sibling file is always present.
 
+# issue 1723 — the one shell spelling of a deadline on a `ros2` process
+# (`"${NROS_ROS2_DEADLINE[@]}" N ros2 ...`): a bare `timeout` sends SIGTERM
+# and waits, and rclpy can swallow that SIGTERM.
+# shellcheck source=scripts/lib/ros2-deadline.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../../scripts/lib" && pwd)/ros2-deadline.sh"
+
 # issue 0580 — pick a ROS domain no CONCURRENT copy of this test will pick.
 #
 # These scripts used to hardcode a fallback (`${ROS_DOMAIN_ID:-117}` for pubsub,

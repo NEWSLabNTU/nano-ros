@@ -26,6 +26,8 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 # exits 2 on a tool failure so a dead grep cannot masquerade as a verdict.
 # shellcheck source=scripts/lib/grep-q.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/grep-q.sh"
+# shellcheck source=scripts/lib/ros2-deadline.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/ros2-deadline.sh"
 
 sed 's|"tcp/\[::\]:7447"|"tcp/[::]:7447", "isotp/vcan0#tx_id=0x201;rx_id=0x200"|' \
     /opt/ros/${ROS_DISTRO:-humble}/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5 \
@@ -69,11 +71,11 @@ sleep 10
 # is a hand-run diagnostic, i.e. exactly the situation where a false negative is
 # read as "the node is broken" -- which cost one investigation four consecutive
 # wrong conclusions.
-echo "=== ros2 node list ==="  ; timeout 30 ros2 node list --no-daemon 2>&1 | tee "$OUT/nodes.log" | tail -5
-echo "=== ros2 param list ===" ; timeout 30 ros2 param list /param_talker --no-daemon 2>&1 | tee "$OUT/list.log" | tail -8
-echo "=== get (initial) ==="   ; timeout 30 ros2 param get /param_talker publish_period_ms --no-daemon 2>&1 | tee "$OUT/get1.log"
-echo "=== set 250 ==="         ; timeout 30 ros2 param set /param_talker publish_period_ms 250 --no-daemon 2>&1 | tee "$OUT/set.log"
-echo "=== get (after set) ===" ; timeout 30 ros2 param get /param_talker publish_period_ms --no-daemon 2>&1 | tee "$OUT/get2.log"
+echo "=== ros2 node list ==="  ; "${NROS_ROS2_DEADLINE[@]}" 30 ros2 node list --no-daemon 2>&1 | tee "$OUT/nodes.log" | tail -5
+echo "=== ros2 param list ===" ; "${NROS_ROS2_DEADLINE[@]}" 30 ros2 param list /param_talker --no-daemon 2>&1 | tee "$OUT/list.log" | tail -8
+echo "=== get (initial) ==="   ; "${NROS_ROS2_DEADLINE[@]}" 30 ros2 param get /param_talker publish_period_ms --no-daemon 2>&1 | tee "$OUT/get1.log"
+echo "=== set 250 ==="         ; "${NROS_ROS2_DEADLINE[@]}" 30 ros2 param set /param_talker publish_period_ms 250 --no-daemon 2>&1 | tee "$OUT/set.log"
+echo "=== get (after set) ===" ; "${NROS_ROS2_DEADLINE[@]}" 30 ros2 param get /param_talker publish_period_ms --no-daemon 2>&1 | tee "$OUT/get2.log"
 
 kill -9 $NODE $RTR $CD 2>/dev/null
 # No `ros2 daemon stop` -- issue 0763. Nothing above starts a daemon now, and

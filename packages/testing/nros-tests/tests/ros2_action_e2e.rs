@@ -187,8 +187,11 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server() {
     // action fails rather than waiting.
     await_fibonacci_action(&env, "nano-ros");
 
+    let deadline = nros_tests::ros2::ros2_deadline(60);
     let out = env
-        .run("timeout 60 ros2 action send_goal /fibonacci example_interfaces/action/Fibonacci '{order: 5}'")
+        .run(&format!(
+            "{deadline} ros2 action send_goal /fibonacci example_interfaces/action/Fibonacci '{{order: 5}}'"
+        ))
         .expect("run ros2 action send_goal");
 
     // Whether the server was still ALIVE, asked before killing it. A server
@@ -460,8 +463,11 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh() {
     // reads as a wire-format defect.
     await_fibonacci_action(&env, "nano-ros");
 
+    let deadline = nros_tests::ros2::ros2_deadline(60);
     let out = env
-        .run("timeout 60 ros2 action send_goal /fibonacci example_interfaces/action/Fibonacci '{order: 5}'")
+        .run(&format!(
+            "{deadline} ros2 action send_goal /fibonacci example_interfaces/action/Fibonacci '{{order: 5}}'"
+        ))
         .expect("run ros2 action send_goal");
 
     let died = server.try_wait().ok().flatten();
@@ -474,14 +480,15 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh() {
     // No `--no-daemon`: `ros2 topic echo` builds its own node and is
     // deliberately outside `check-ros2-daemon-queries`' verb list. The message
     // type is named explicitly so a graph type lookup cannot be what fails.
+    let deadline = nros_tests::ros2::ros2_deadline(15);
     let late = if died.is_none() {
         std::thread::sleep(Duration::from_secs(3));
-        env.run_text(
-            "timeout --foreground 15 ros2 topic echo --once \
+        env.run_text(&format!(
+            "{deadline} ros2 topic echo --once \
              --qos-durability transient_local --qos-reliability reliable \
              --qos-history keep_last --qos-depth 1 \
              /fibonacci/_action/status action_msgs/msg/GoalStatusArray 2>&1",
-        )
+        ))
         .unwrap_or_else(|e| format!("<`ros2 topic echo` failed: {e}>"))
     } else {
         String::new()

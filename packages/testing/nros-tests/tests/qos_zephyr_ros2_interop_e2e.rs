@@ -67,8 +67,9 @@ fn nros_zephyr_publisher_reaches_ros2_topic_echo() {
     let mut last = String::new();
     let mut delivered = false;
     while Instant::now() < deadline {
+        let deadline = nros_tests::ros2::ros2_deadline(12);
         let script = format!(
-            "{env} && timeout 12 ros2 topic echo --once /qos_ok std_msgs/msg/Int32 \
+            "{env} && {deadline} ros2 topic echo --once /qos_ok std_msgs/msg/Int32 \
              --no-daemon --spin-time 2 2>&1"
         );
         let out = Command::new("bash")

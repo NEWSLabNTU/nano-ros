@@ -353,7 +353,8 @@ impl RosEnv for HostRosEnv {
 /// its real newlines reach python (a `python3 -c '…\n…'` one-liner is a
 /// SyntaxError). Used for the rclpy E2E servers below.
 fn pyrun(script: &str, timeout_s: u32) -> String {
-    format!("timeout {timeout_s} python3 - <<'NROS_PYEOF'\n{script}\nNROS_PYEOF")
+    let deadline = crate::ros2::ros2_deadline(timeout_s);
+    format!("{deadline} python3 - <<'NROS_PYEOF'\n{script}\nNROS_PYEOF")
 }
 
 /// rclpy `example_interfaces/AddTwoInts` server on `/add_two_ints` (verbatim from
@@ -675,8 +676,9 @@ impl DockerRosEnv {
         ros_type: &str,
         timeout_s: u32,
     ) -> TestResult<String> {
+        let deadline = crate::ros2::ros2_deadline(timeout_s);
         self.run_text(&format!(
-            "timeout {timeout_s} ros2 topic echo --once {topic} {ros_type} 2>&1"
+            "{deadline} ros2 topic echo --once {topic} {ros_type} 2>&1"
         ))
     }
 
@@ -687,8 +689,9 @@ impl DockerRosEnv {
 
     /// Run `ros2 service call /add_two_ints` and return its output.
     pub fn service_call_add_two_ints(&self, a: i64, b: i64, timeout_s: u32) -> TestResult<String> {
+        let deadline = crate::ros2::ros2_deadline(timeout_s);
         self.run_text(&format!(
-            "timeout {timeout_s} ros2 service call /add_two_ints \
+            "{deadline} ros2 service call /add_two_ints \
              example_interfaces/srv/AddTwoInts \"{{a: {a}, b: {b}}}\" 2>&1"
         ))
     }
@@ -700,8 +703,9 @@ impl DockerRosEnv {
 
     /// Run `ros2 action send_goal --feedback /fibonacci` and return its output.
     pub fn action_send_goal_fibonacci(&self, order: u32, timeout_s: u32) -> TestResult<String> {
+        let deadline = crate::ros2::ros2_deadline(timeout_s);
         self.run_text(&format!(
-            "timeout {timeout_s} ros2 action send_goal --feedback /fibonacci \
+            "{deadline} ros2 action send_goal --feedback /fibonacci \
              example_interfaces/action/Fibonacci \"{{order: {order}}}\" 2>&1"
         ))
     }
