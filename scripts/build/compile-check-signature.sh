@@ -76,7 +76,8 @@ IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$re
     # `cxx-syntax` rows carry no dir — the snippet is resolved by id under
     # fixtures/cpp_compat_snippets/, and the headers it checks are the real
     # input. Hash the snippet plus the public C/C++ include trees.
-    if [ "$builder" = "cxx-syntax" ]; then
+    # `cxx-syntax-verdict` (issue 1656) is the same snippet compile, recorded.
+    if [ "$builder" = "cxx-syntax" ] || [ "$builder" = "cxx-syntax-verdict" ]; then
         sig_paths=(
             "packages/testing/nros-tests/fixtures/cpp_compat_snippets/$id.cpp"
             "packages/api/nros-cpp/include"

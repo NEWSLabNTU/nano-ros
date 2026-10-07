@@ -1,0 +1,12 @@
+# Overlay for compile-check row `main_macro_misuse_unknown_board` (issue 1656):
+# the template's `src/demo_entry/system.toml` (from `[system]` on) with its
+# board replaced by one that does not exist. `native_main_macro_misuse.rs`
+# checks it differs from the template in exactly that line.
+
+[system]
+name = "demo_entry"
+rmw = "zenoh"
+domain_id = 0
+
+[image.native]
+board = "frobnicator"

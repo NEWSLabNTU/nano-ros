@@ -1,0 +1,7 @@
+//! Overlay for compile-check row `main_macro_rebuilds_on_model_touch` (issue 1656): `compile-check-fixtures.sh`
+//! copies `cases/<id>/` over the staged template, so this file is a row INPUT
+//! (`.inputsig` hashes the template dir) rather than text inside the script.
+//!
+//! issue 0495 — a touched build-produced model must re-check the entry.
+
+nros::main!(model = "demo_bringup");

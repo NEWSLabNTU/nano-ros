@@ -13,9 +13,11 @@
 //! `cmake-configure-verdict` rows, `nros_tests::fixtures::require_compile_verdict`).
 //! Five files moved that way (`native_main_macro_misuse`, `cmake_platform_matrix`,
 //! `cmake_node_register_misuse`, `diagnostic_verbatim`, and
-//! `native_orchestration_misuse`, deleted as a duplicate of `orch_tiers_multi`).
-//! So "it must fail" is no longer, by itself, a reason to be on this list — every
-//! row below states what ELSE keeps it at run time.
+//! `native_orchestration_misuse`, deleted as a duplicate of `orch_tiers_multi`),
+//! and issue 1656 moved the last three (`platform_header_compile`,
+//! `zpico_drift_gate`, `cross_libc_precedence_gate`) with two C++ verdict
+//! builders. So "it must fail" is no longer, by itself, a reason to be on this
+//! list — every row below states what ELSE keeps it at run time.
 //!
 //! This module is the explicit allowlist of every test file permitted to invoke a
 //! compiler/build tool (`cargo build|check` / `cmake` / `cc` / `gcc` / `g++` /
@@ -25,16 +27,16 @@
 //! compile-at-test can't slip in unsanctioned. A file that is converted to a
 //! build-stage fixture stops matching the scan and is removed from the list.
 //!
-//! (Variable-held compilers — e.g. `cross_libc_precedence_gate`'s
-//! `Command::new(&gxx)` — are not detected by the literal scan; they are listed
-//! here explicitly so they remain sanctioned and auditable.)
+//! (A variable-held compiler — `Command::new(&gxx)` — is not detected by the
+//! literal scan; such a file must be listed here explicitly. None is today:
+//! `cross_libc_precedence_gate` was the one, until issue 1656.)
 
 use std::{collections::BTreeSet, fs, path::PathBuf};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
-    /// A configure/compile/link that MUST FAIL — a passing prebuilt would defeat
-    /// the assertion.
+    /// A configure/compile/link that MUST FAIL. RETIRED (issue 1656): kept only
+    /// so `registry_well_formed` can refuse a new one by name.
     FailPath,
     /// A positive build that structurally cannot be a cached prebuilt artifact
     /// (its repetition/sandbox/dry-run IS the point, or the composite has no
@@ -95,38 +97,14 @@ const REGISTRY: &[Entry] = &[
                  cached artifact would prove the resolver ran once, not that it resolves \
                  the same way in every scope cmake presents",
     },
-    // ---- FAIL-PATH diagnostics that need MORE than a recorded verdict ----
-    // (issue 1620 moved every plain must-fail compile to a verdict row; what is
-    // left here is relative, sandboxed, or not a compile_check builder's shape.)
-    Entry {
-        file: "zpico_drift_gate.rs",
-        kind: Kind::FailPath,
-        tool: "cargo build",
-        reason: "a corrupted platform tree must PANIC the zpico-sys build script (drift \
-                 sentinel); the pristine round-trip needs the NROS_PLATFORMS_DIR sandbox \
-                 injected at configure, so neither half is a static artifact. A verdict row \
-                 could record the corrupted half (issue 1620), but the corruption is a \
-                 per-run sandbox of the CANONICAL platform tree, which a row's `dir` \
-                 staging does not model — recorded on issue 1620 as open",
-    },
-    Entry {
-        file: "cross_libc_precedence_gate.rs",
-        kind: Kind::FailPath,
-        tool: "arm-none-eabi-g++ (variable)",
-        reason: "a RELATIVE gate: the broken-precedence cross compile MUST fail with the \
-                 div_t clash and the fixed one must succeed — only meaningful run together, \
-                 and the raw cross-g++ object compile maps to no compile_check builder",
-    },
-    Entry {
-        file: "platform_header_compile.rs",
-        kind: Kind::FailPath,
-        tool: "g++",
-        reason: "the bare-metal heap-WITHOUT-malloc cell MUST fail to compile (#38 negative); \
-                 the 9 POSITIVE cells already moved to cxx-syntax fixtures (phase-329 W5). \
-                 Convertible in principle — it is a plain must-fail compile — but the \
-                 verdict builders issue 1620 added are cargo and cmake ones; a `cxx-syntax` \
-                 verdict builder is the open half (recorded on issue 1620)",
-    },
+    // ---- FAIL-PATH diagnostics ----
+    // None left (issue 1656). Issue 1620 moved every plain must-fail cargo/cmake
+    // compile to a verdict row; 1656 moved the last three — the platform-header
+    // #38 negative cell (`cxx-syntax-verdict`), the zpico drift gate (two
+    // `cargo-check-verdict` rows over a fixture that shadows the posix
+    // descriptor) and the RELATIVE two-libc cross gate (three
+    // `cxx-compile-verdict` rows; the relation is asserted by the test, which is
+    // where an assertion belongs — it never needed to be ONE verdict).
     // ---- RUNTIME BUILD EXCEPTIONS (positive, but un-prebuildable) ----
     Entry {
         file: "size_probe_verify.sh",
@@ -364,7 +342,14 @@ fn enforce_registry() {
     );
 }
 
-/// Sanity: the registry has both kinds and no duplicate file rows.
+/// Sanity: no duplicate file rows, and no FAIL-path rows at all.
+///
+/// Issue 1656 moved the last FAIL-path entry out, so a new one is a REGRESSION
+/// of the class, not a categorisation: a compile that must fail is a verdict row
+/// (`cargo-check-verdict`, `cmake-configure-verdict`, `cxx-syntax-verdict`,
+/// `cxx-compile-verdict`) whose recorded diagnostic the test asserts. This
+/// assertion used to require at least one FAIL-path row, which is the opposite
+/// of the rule.
 #[test]
 fn registry_well_formed() {
     let mut seen = BTreeSet::new();
@@ -373,9 +358,16 @@ fn registry_well_formed() {
         assert!(!e.reason.is_empty(), "empty reason for {}", e.file);
         assert!(!e.tool.is_empty(), "empty tool for {}", e.file);
     }
+    let fail_path: Vec<&str> = REGISTRY
+        .iter()
+        .filter(|e| e.kind == Kind::FailPath)
+        .map(|e| e.file)
+        .collect();
     assert!(
-        REGISTRY.iter().any(|e| e.kind == Kind::FailPath),
-        "registry has no FAIL-path entries — did the categorization break?"
+        fail_path.is_empty(),
+        "FAIL-path registry row(s) {fail_path:?}: a compile that MUST fail belongs in a \
+         verdict row whose recorded diagnostic the test asserts (issues 1620, 1656), \
+         not in a test that runs the compiler"
     );
     assert!(
         REGISTRY.iter().any(|e| e.kind == Kind::RuntimeException),

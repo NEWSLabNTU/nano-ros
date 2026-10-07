@@ -1,0 +1,7 @@
+//! Overlay for compile-check row `main_macro_misuse_custom_tasks` (issue 1656): `compile-check-fixtures.sh`
+//! copies `cases/<id>/` over the staged template, so this file is a row INPUT
+//! (`.inputsig` hashes the template dir) rather than text inside the script.
+//!
+//! issue 1620 — misuse verdict: `custom_tasks` on an owned-spin entry must FAIL.
+
+nros::main!(custom_tasks = [adc_sample, ui_redraw]);

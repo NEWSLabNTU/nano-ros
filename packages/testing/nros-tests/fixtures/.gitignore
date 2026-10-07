@@ -31,3 +31,7 @@
 # which W6 retired.
 !multi_pkg_workspace_freertos/firmware/.cargo/config.toml
 !orchestration_tiers_freertos/.cargo/config.toml
+# issue 1656 — hand-authored SOURCE too: `[env] NROS_PLATFORMS_DIR` points
+# `zpico-sys/build.rs` at the per-row descriptor overlay. The fixture has no
+# `package.xml`, so `nros sync` never runs on it.
+!zpico_drift_gate/.cargo/config.toml

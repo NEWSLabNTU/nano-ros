@@ -132,7 +132,6 @@ export NROS_KIND_COMPILE_CHECK="compile-check-fixtures"
 export NROS_KIND_CORROSION_CARGO="corrosion-cargo"
 
 # Everything else — bare `<family>`, named for what it holds.
-export NROS_KIND_BORROWED_E2E="borrowed-e2e"
 export NROS_KIND_CARGO="cargo"
 # issue 0624 — `check-examples` lint caches. ONE SUBDIRECTORY PER LEAF, not one
 # shared dir: every example leaf is its own workspace root (RFC-0026 standalone

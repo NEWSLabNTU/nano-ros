@@ -1,0 +1,7 @@
+# issue 1656 — `NROS_PLATFORMS_DIR` is the FIRST platform search root
+# (`PlatformsTree::default_search_path`), and a descriptor is keyed by its
+# directory name, so `platforms/nros-platform-posix/` (copied in from the row's
+# `cases/<id>/`) shadows the in-tree posix descriptor and nothing else.
+# `relative = true`: resolved against this file's parent dir — the staged tree.
+[env]
+NROS_PLATFORMS_DIR = { value = "platforms", relative = true }

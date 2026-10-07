@@ -466,7 +466,6 @@ echo "phase-334 W2.b step 2 — the rooted writers emit their pre-migration path
 scenario '
     unset NROS_BUILD_ROOT
     export NROS_REPO_ROOT="$repo_root"
-    check "borrowed-e2e"                "$repo_root/build/borrowed-e2e"                "$(nros_build_dir "$NROS_KIND_BORROWED_E2E")"
     check "link-determinism"            "$repo_root/build/link-determinism"            "$(nros_build_dir "$NROS_KIND_LINK_DETERMINISM")"
     check "fixture-make-driver"         "$repo_root/build/fixture-make-driver"         "$(nros_build_dir "$NROS_KIND_FIXTURE_MAKE_DRIVER")"
     check "zephyr-fixture-make-driver"  "$repo_root/build/zephyr-fixture-make-driver"  "$(nros_build_dir "$NROS_KIND_ZEPHYR_FIXTURE_MAKE_DRIVER")"
@@ -482,7 +481,7 @@ scenario '
 # the source — a check that cannot fail. That is exactly what the first version
 # of this block did, and the tripwire caught it.
 rc=0
-for f in scripts/build/borrowed-e2e-fixture.sh \
+for f in packages/testing/nros-tests/fixtures/borrowed-e2e/build.sh \
          scripts/build/link-determinism-fixture.sh \
          scripts/build/fixture-make-driver.sh \
          scripts/build/zephyr-fixture-make-driver.sh; do

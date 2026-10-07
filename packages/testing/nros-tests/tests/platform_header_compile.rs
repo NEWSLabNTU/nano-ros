@@ -26,16 +26,18 @@
 //!   undeclared malloc surface, so its intent (the canonical C header parses + the
 //!   POSIX malloc surface is present) is preserved.
 //!
-//! * **The 1 NEGATIVE cell stays runtime** — bare-metal heap WITHOUT malloc MUST
-//!   FAIL to compile, and a must-fail compile can never be a passing prebuilt
-//!   fixture. It is a sanctioned runtime FAIL-path, listed in the
-//!   negative-diagnostic registry (`tests/negative_diagnostic_registry.rs`).
+//! * **The 1 NEGATIVE cell is a VERDICT row** (issue 1656) — bare-metal heap
+//!   WITHOUT malloc MUST FAIL to compile. It stayed a runtime `g++` for as long
+//!   as "a must-fail compile cannot be a passing prebuilt" was believed; issue
+//!   1620 retired that premise for cargo and cmake, and the `cxx-syntax-verdict`
+//!   builder retires it here: the build stage runs the SAME compile over the same
+//!   include set, records its exit status and stderr, and this test asserts the
+//!   recorded verdict (`platform_hdr_baremetal_heap_no_malloc`).
 //!
 //! The two-libc-set class (#27/#36) stays cross-only (it needs the RTOS sysroot +
 //! `#include_next`, which only bites the platform `.c` TUs) — see the e2e lane.
 
 use nros_tests::TestResult;
-use std::{path::PathBuf, process::Command};
 
 /// The build-stage POSITIVE cells — one `cxx-syntax` `compile_check_fixture` each,
 /// the snippet baking the platform `-D` define. NOT a matrix axis table (phase-329
@@ -69,85 +71,30 @@ fn platform_headers_compile_per_capability() -> TestResult<()> {
     Ok(())
 }
 
-/// A C++ TU forcing the heap containers' allocator calls: `HeapString` instantiates
-/// its dtor (`nros_platform_free`), `HeapSequence<int>::reserve/push_back`
-/// references `nros_platform_malloc`. Absent the canonical malloc/free it fails to
-/// compile — the #38 mechanism.
-const HEAP_PROBE: &str = r#"
-#include <nros/heap_string.hpp>
-#include <nros/heap_sequence.hpp>
-namespace {
-void use_it() {
-    nros::HeapString s;
-    (void)s;
-    nros::HeapSequence<int> q;
-    q.reserve(4);
-    q.push_back(1);
-    (void)q;
-}
-} // namespace
-"#;
-
-/// The include set the cxx-syntax build stage uses, so the negative cell fails for
-/// the SAME reason (missing malloc) the positive cells would — not a stray missing
-/// header. The two generated dirs are prepended when present (the stub config
-/// header in nros-cpp/include `#error`s if reached first).
-fn builder_includes(root: &std::path::Path) -> Vec<PathBuf> {
-    let mut inc = Vec::new();
-    let gen_cpp = root.join("target/nros-cpp-generated");
-    if gen_cpp.join("nros/nros_cpp_config_generated.h").is_file() {
-        inc.push(gen_cpp);
-    }
-    let gen_c = root.join("target/nros-c-generated");
-    if gen_c.join("nros/nros_config_generated.h").is_file() {
-        inc.push(gen_c);
-    }
-    inc.push(root.join("packages/platform/nros-platform-api/include"));
-    inc.push(root.join("packages/api/nros-cpp/include"));
-    inc.push(root.join("packages/api/nros-c/include"));
-    inc.push(root.join("cmake/compat/include"));
-    inc
-}
-
 /// #38 negative gate — bare-metal default is `NROS_NO_DYNAMIC_MEMORY`, so the
 /// canonical malloc/free are ABSENT and the heap containers MUST NOT compile. Both
 /// directions of #38 are thus asserted (this + the `platform_hdr_baremetal_has_malloc`
 /// positive fixture), so a regression in either the gate or the fix is caught.
 ///
-/// Stays runtime (a must-fail compile can't be a passing prebuilt) — sanctioned
-/// FAIL-path, negative-diagnostic registry member.
+/// The snippet (`fixtures/cpp_compat_snippets/platform_hdr_baremetal_heap_no_malloc.cpp`)
+/// is the positive twin minus `NROS_PLATFORM_HAS_MALLOC`, compiled by the same
+/// builder over the same include set, so a failure for any OTHER reason (a stray
+/// missing header) is refused by the second assertion rather than read as the gate.
 #[test]
-fn baremetal_heap_without_malloc_must_not_compile() {
+fn baremetal_heap_without_malloc_must_not_compile() -> TestResult<()> {
+    let v = nros_tests::fixtures::require_compile_verdict("platform_hdr_baremetal_heap_no_malloc")?;
     assert!(
-        Command::new("g++").arg("--version").output().is_ok(),
-        "g++ not found — the platform-header negative gate cannot run"
-    );
-    let root = nros_tests::project_root();
-    let tmp = tempfile::tempdir().unwrap();
-    let src = tmp.path().join("probe.cpp");
-    std::fs::write(&src, HEAP_PROBE).unwrap();
-
-    let mut cmd = Command::new("g++");
-    cmd.args([
-        "-std=c++14",
-        "-fno-exceptions",
-        "-fno-rtti",
-        "-fsyntax-only",
-    ]);
-    for i in builder_includes(&root) {
-        cmd.arg("-I").arg(i);
-    }
-    cmd.arg("-DNROS_PLATFORM_BAREMETAL").arg(&src);
-
-    let ok = cmd
-        .output()
-        .expect("spawn g++ for the platform-header negative gate")
-        .status
-        .success();
-    assert!(
-        !ok,
+        !v.outcome.success(),
         "bare-metal heap containers COMPILED without NROS_PLATFORM_HAS_MALLOC — the \
          #38 capability gate regressed (nros_platform_malloc/free leaked into the \
          no-dynamic-memory default)"
     );
+    assert!(
+        v.outcome.stderr.contains("nros_platform_malloc")
+            || v.outcome.stderr.contains("nros_platform_free"),
+        "the no-malloc snippet failed, but not on the missing allocator — fix the \
+         snippet or the include set before believing the #38 gate:\n{}",
+        v.outcome.stderr
+    );
+    Ok(())
 }

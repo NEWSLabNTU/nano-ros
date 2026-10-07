@@ -1,0 +1,7 @@
+//! Overlay for compile-check row `main_macro_form3` (issue 1656): `compile-check-fixtures.sh`
+//! copies `cases/<id>/` over the staged template, so this file is a row INPUT
+//! (`.inputsig` hashes the template dir) rather than text inside the script.
+//!
+//! n9 form 3 (launch, default — the canonical multi-node form).
+
+nros::main!(launch = "demo_bringup");

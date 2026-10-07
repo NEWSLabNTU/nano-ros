@@ -1,174 +1,99 @@
 //! Phase 136 E2E.3 / phase-290 — zenoh-pico source-list drift gate.
 //!
-//! `zpico-sys/build.rs` panics at build time if any
-//! `[build.zenoh] include` root in a platform package's
-//! `nros-platform.toml` no longer resolves to a real directory under
-//! `zenoh-pico/src/`. The check is the structural firewall against
+//! `zpico-sys/build.rs` panics at build time if any `[build.zenoh]` source root
+//! in a platform package's `nros-platform.toml` no longer resolves to a real
+//! path under `zenoh-pico/src/`. The check is the structural firewall against
 //! silent stale-source bugs when upstream zenoh-pico bumps rename
 //! `system/<plat>/` dirs.
 //!
-//! This test guards the gate itself: it copies the per-platform config
-//! tree (`packages/platform/*/nros-platform.toml`, RFC-0049) to a
-//! sandbox, corrupts the posix file's `include` entry, drives
-//! `cargo build -p zpico-sys` against the sandboxed tree via
-//! `NROS_PLATFORMS_DIR`, and asserts the build-script panic surfaces
-//! with the documented diagnostic. A second run against the pristine
-//! sandbox asserts the build passes.
+//! This test guards the gate itself, and since issue 1656 it compiles nothing:
+//! the two `cargo build -p zpico-sys` runs it used to make are two
+//! `cargo-check-verdict` rows over `fixtures/zpico_drift_gate/`, which shadows
+//! the posix descriptor through `NROS_PLATFORMS_DIR` (the first platform search
+//! root; a descriptor is keyed by its directory name):
 //!
-//! Second invariant: the `NROS_PLATFORMS_DIR` override hook itself must
-//! keep working — if a future refactor drops the env read, the corrupted
-//! sandbox is silently ignored and the first assertion fails.
+//! * `zpico_drift_sentinel_include` — the canonical descriptor with every
+//!   `system/unix` replaced by a sentinel path that cannot exist. The build
+//!   script MUST fail, naming the sentinel. That also proves the override hook
+//!   is honoured: if a refactor dropped the env read, the corrupted copy would
+//!   be ignored and the row would compile.
+//! * `zpico_drift_canonical_include` — the canonical descriptor verbatim. MUST
+//!   compile, so the failure above is the corruption and not the override.
 //!
-//! SANCTIONED compile-in-test exception (issue #222 / AGENTS.md "no
-//! compilation inside tests"): this test's SUBJECT is build-script behavior
-//! — the drift gate fires (or doesn't) inside `zpico-sys/build.rs`, so the
-//! only way to observe it is to run a real `cargo build` against the
-//! sandboxed platform tree. It cannot be a prebuilt fixture: the corrupted
-//! run must FAIL to build by design, and both runs need the sandbox path
-//! injected at configure time. Cost is bounded: a dedicated
-//! `target-zpico-drift-gate/` dir keeps the two builds incremental and
-//! isolated from every other lane.
+//! The two copies are FILES in the fixture (a row's overlay is an input its
+//! signature hashes), so they could drift from the descriptor they claim to
+//! copy. The first test refuses that, reading sources only.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
-};
+use std::{fs, path::PathBuf};
 
-/// Where the posix descriptor lives. phase-400 W1 moved the platform
-/// descriptors beside their crates (`packages/platform/<crate>/`), and this
-/// still read the retired `config/posix/` — so for every run since, the test
-/// SKIPPED on its own precondition and guarded nothing (issues 1644, 1685).
-/// `NROS_PLATFORMS_DIR` is still the FIRST search-path root
-/// (`PlatformsTree::default_search_path`) and a descriptor is keyed by its
-/// directory name, so a sandbox copy of this root shadows the in-tree one.
-fn canonical_platforms_root() -> PathBuf {
-    nros_tests::project_root().join("packages/platform")
+const SENTINEL: &str = "system/_zpico_drift_gate_sentinel_does_not_exist";
+
+fn canonical_posix_descriptor() -> PathBuf {
+    nros_tests::project_root().join("packages/platform/nros-platform-posix/nros-platform.toml")
 }
 
-/// The posix descriptor's directory under [`canonical_platforms_root`].
-const POSIX_DIR: &str = "nros-platform-posix";
-
-/// Copy every `<root>/*/nros-platform.toml` into `dst` preserving the
-/// per-directory layout the loader expects.
-fn copy_tree(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).expect("create sandbox tree root");
-    for entry in fs::read_dir(src).expect("read platforms root") {
-        let entry = entry.expect("dir entry");
-        let file = entry.path().join("nros-platform.toml");
-        if !file.is_file() {
-            continue;
-        }
-        let name = entry.file_name();
-        let ddir = dst.join(&name);
-        fs::create_dir_all(&ddir).expect("create sandbox platform dir");
-        fs::copy(&file, ddir.join("nros-platform.toml")).expect("copy platform toml");
-    }
+fn fixture_copy(row: &str) -> PathBuf {
+    nros_tests::project_root()
+        .join("packages/testing/nros-tests/fixtures/zpico_drift_gate/cases")
+        .join(row)
+        .join("platforms/nros-platform-posix/nros-platform.toml.case")
 }
 
-/// Run `cargo build -p zpico-sys` with `NROS_PLATFORMS_DIR` pointed at
-/// `platforms_dir`. Returns combined stdout+stderr and the exit status.
-/// Dedicated `target-zpico-drift-gate/` dir so it doesn't poison other
-/// concurrent builds.
-fn run_build(platforms_dir: &Path) -> (String, std::process::ExitStatus) {
-    let root = nros_tests::project_root();
-    let target_dir = root.join("target-zpico-drift-gate");
-
-    let output = Command::new("cargo")
-        .args([
-            "build",
-            "-p",
-            "zpico-sys",
-            "--no-default-features",
-            "--features",
-            // `zpico-sys` exposes per-platform features as bare
-            // names (`posix`, `zephyr`, `freertos`, ...), unlike
-            // the umbrella `nros` / `nros-rmw-zenoh` crates that
-            // prefix them with `platform-`. Phase 136.7 E2E.3.
-            "posix,platform-aliases",
-            "--target-dir",
-        ])
-        .arg(&target_dir)
-        .env("NROS_PLATFORMS_DIR", platforms_dir)
-        // Phase 134: keep CARGO_TARGET_DIR / RUSTUP_TOOLCHAIN intact
-        // from the parent test process so the same toolchain that
-        // built the test binary builds the sandbox crate.
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .expect("cargo build failed to spawn");
-
-    let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
-    combined.push_str(&String::from_utf8_lossy(&output.stderr));
-    (combined, output.status)
+/// The fixture's two descriptors are the canonical one — verbatim, and with
+/// exactly the sentinel substitution. A canonical edit that is not mirrored
+/// here would leave the build-stage rows measuring a descriptor nobody ships.
+#[test]
+fn fixture_descriptors_track_the_canonical_posix_descriptor() {
+    let canonical = fs::read_to_string(canonical_posix_descriptor())
+        .expect("read the canonical posix nros-platform.toml");
+    assert!(
+        canonical.contains("system/unix"),
+        "the canonical posix descriptor no longer names `system/unix` — the \
+         corruption this gate applies no longer reaches a source path; pick a \
+         new one in fixtures/zpico_drift_gate and here"
+    );
+    let read = |row: &str| {
+        fs::read_to_string(fixture_copy(row))
+            .unwrap_or_else(|e| panic!("read {}: {e}", fixture_copy(row).display()))
+    };
+    let regenerate = "Regenerate from packages/platform/nros-platform-posix/nros-platform.toml: \
+                      the canonical row is a verbatim copy, the sentinel row replaces every \
+                      `system/unix` with the sentinel path.";
+    assert_eq!(
+        read("zpico_drift_canonical_include"),
+        canonical,
+        "fixtures/zpico_drift_gate: the canonical-include copy drifted. {regenerate}"
+    );
+    assert_eq!(
+        read("zpico_drift_sentinel_include"),
+        canonical.replace("system/unix", SENTINEL),
+        "fixtures/zpico_drift_gate: the sentinel-include copy drifted. {regenerate}"
+    );
 }
 
 #[test]
-fn zpico_drift_gate_fires_on_corrupted_include() {
-    let root = nros_tests::project_root();
-    let canonical_root = canonical_platforms_root();
-    let posix_toml = canonical_root.join(POSIX_DIR).join("nros-platform.toml");
-    if !posix_toml.exists() {
-        panic!(
-            "[SKIPPED] {} not present — the phase-290 per-platform config \
-             layout drifted",
-            posix_toml.display()
-        );
-    }
-
-    let posix_body = fs::read_to_string(&posix_toml).expect("read posix platform toml");
-    if !posix_body.contains("system/unix") {
-        panic!(
-            "[SKIPPED] posix nros-platform.toml doesn't carry the expected \
-             `system/unix` include — test fixture assumption drifted; update \
-             the corruption pattern"
-        );
-    }
-
-    // Sandbox 1 — pristine copy. Also proves the NROS_PLATFORMS_DIR
-    // override hook is honoured (a broken hook fails the corrupted run
-    // below instead).
-    let sandbox_root = root.join("target-zpico-drift-gate").join("platforms");
-    let pristine = sandbox_root.join("pristine");
-    let _ = fs::remove_dir_all(&sandbox_root);
-    copy_tree(&canonical_root, &pristine);
-
-    // Sandbox 2 — corrupted posix include.
-    let corrupted = sandbox_root.join("corrupted");
-    copy_tree(&canonical_root, &corrupted);
-    let corrupted_body = posix_body.replace(
-        "system/unix",
-        // A path that obviously doesn't exist under zenoh-pico/src/.
-        // Keep it inside `system/` so the gate's path-resolution
-        // logic actually traverses to it and fails.
-        "system/_zpico_drift_gate_sentinel_does_not_exist",
-    );
-    fs::write(
-        corrupted.join(POSIX_DIR).join("nros-platform.toml"),
-        corrupted_body,
-    )
-    .expect("write corrupted platform toml");
-
-    let (out, status) = run_build(&corrupted);
+fn zpico_drift_gate_fires_on_corrupted_include() -> nros_tests::TestResult<()> {
+    let corrupted = nros_tests::fixtures::require_compile_verdict("zpico_drift_sentinel_include")?;
+    let out = &corrupted.outcome.stderr;
     assert!(
-        !status.success(),
-        "expected cargo build to fail with the corrupted platform tree, \
-         but it succeeded. Output:\n{out}"
+        !corrupted.outcome.success(),
+        "expected the zpico-sys build script to fail with the corrupted platform \
+         descriptor, but the check succeeded — either the drift gate or the \
+         NROS_PLATFORMS_DIR override stopped working. Output:\n{out}"
     );
     assert!(
-        out.contains("_zpico_drift_gate_sentinel_does_not_exist")
-            || out.contains("zenoh-pico source list drift")
-            || out.contains("does not exist")
-            || out.contains("not found"),
-        "expected the drift diagnostic to name the corrupted path or carry the documented \
-         drift message, but neither appears. Output:\n{out}"
+        out.contains("_zpico_drift_gate_sentinel_does_not_exist"),
+        "the build failed, but its diagnostic does not name the corrupted path — \
+         it failed for some other reason. Output:\n{out}"
     );
 
-    // Round-trip: the pristine sandbox builds cleanly, so future runs of
-    // this test stay deterministic.
-    let (out, status) = run_build(&pristine);
+    // Round-trip: the canonical descriptor, through the same override, builds.
+    let pristine = nros_tests::fixtures::require_compile_verdict("zpico_drift_canonical_include")?;
     assert!(
-        status.success(),
-        "pristine platform tree should build cleanly, but it failed. Output:\n{out}"
+        pristine.outcome.success(),
+        "the canonical posix descriptor, reached through NROS_PLATFORMS_DIR, should \
+         build cleanly, but it failed. Output:\n{}",
+        pristine.outcome.stderr
     );
+    Ok(())
 }

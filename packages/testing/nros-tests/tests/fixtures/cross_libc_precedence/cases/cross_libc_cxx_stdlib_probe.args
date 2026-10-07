@@ -1,0 +1,7 @@
+# issue 1656 — `cxx-compile-verdict` arguments, one per line. A path under this
+# fixture dir is made absolute by the builder; `-MD -MF <row>/deps.d -o /dev/null`
+# is appended. Does the cross g++ ship a usable libstdc++ at all?
+-std=c++17
+-fno-exceptions
+-c
+cap.cpp

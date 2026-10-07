@@ -1238,7 +1238,10 @@ jobs:
       # stamp and build no fixture. (`loc_budgets` joined on that rule in issue
       # 1610 — it was red on `main` for three days because no lane ran it.) Keep it that way — a target added to
       # `test-lane-contracts` that needs a staged artifact breaks this step and
-      # the tier's promise with it.
+      # the tier's promise with it. The one kind of artifact it may read is a
+      # compile-check STAMP or VERDICT, which the recipe builds itself — exactly
+      # the rows its admitted tests read (issue 1656); that needs the launch
+      # resolver built above, for the rows that run `nros sync`.
       #
       # merge_group, not pull_request: same "PR cheap, batch thorough" split as
       # `test-unit` directly above, and the same consequence — an orphan row is

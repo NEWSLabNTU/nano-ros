@@ -1,0 +1,24 @@
+# issue 1656 — the build-stage home of `zpico_drift_gate.rs`'s two
+# `cargo build -p zpico-sys` runs. Two `cargo-check-verdict` rows stage this
+# crate; `cases/<id>/platforms/` (files stored `.case`) overlays the descriptor each
+# row's `zpico-sys/build.rs` reads, reached through `NROS_PLATFORMS_DIR`
+# (`.cargo/config.toml`). The build script runs under `cargo check` exactly as
+# under `cargo build`, and the drift gate lives in the build script.
+#
+# Standalone `[workspace]` keeps it out of the nano-ros workspace; the
+# `@NANO_ROS_ROOT@` placeholder is rewritten to an absolute path at staging.
+[workspace]
+
+[package]
+name = "zpico_drift_gate"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# `posix,platform-aliases` with no defaults — the feature set the runtime test
+# built with (`zpico-sys` names platforms bare, unlike the umbrella crates).
+zpico-sys = { path = "@NANO_ROS_ROOT@/packages/rmw/zenoh/zpico-sys", default-features = false, features = ["posix", "platform-aliases"] }

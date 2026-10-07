@@ -823,17 +823,120 @@ def builder_of_ids():
     }
 
 
-def lane_filters(recipes, reached):
-    """Every NROS_COMPILE_CHECK_LANES=... value the lane sets, as a set of
-    builder names. Empty set means the lane never filters (all builders)."""
-    out, filtered = set(), False
-    for r in reached:
-        for line in recipes.get(r, {}).get("body", []):
+# ---- issue 1656 — which compile-check rows a lane BUILDS, per invocation ----
+#
+# This was `lane_filters`: the union of every `NROS_COMPILE_CHECK_LANES=` in the
+# closure, which answers "which builders could run" and cannot express an
+# invocation narrowed to an id SET. `test-lane-contracts` builds exactly the stamps its
+# admitted tests read — a set DERIVED by `scripts/test/lane-compile-stamps.py`
+# from the admission list, through the functions below — so this gate derives
+# the same set and checks membership, rather than trusting the recipe.
+
+def _fixtures_manifest_module():
+    import importlib.util
+    path = os.path.join(ROOT, "scripts", "build", "fixtures-manifest.py")
+    spec = importlib.util.spec_from_file_location("nros_fixtures_manifest", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def stamp_builders():
+    """The builders whose row's whole artifact is a stamp/verdict — READ from
+    `fixtures-manifest.py`, the one place that classifies builders."""
+    return tuple(_fixtures_manifest_module().STAMP_COMPILE_CHECK_BUILDERS)
+
+
+def compile_stamp_ids(test_name, id_builder=None, builders=None):
+    """The stamp-only compile-check rows `test_name` (a target, or
+    `<target>::<test>`) reads. Empty unless it CALLS a compile-stage resolver:
+    the id scan's string-literal fallback would otherwise pick up an id a test
+    merely mentions."""
+    used, found = resolvers_used(test_name)
+    if not found or not (used & set(COMPILE_RESOLVERS)):
+        return set()
+    ib = builder_of_ids() if id_builder is None else id_builder
+    keep = stamp_builders() if builders is None else builders
+    return {i for i in stamp_ids_used(test_name) if ib.get(i) in keep}
+
+
+def admission_stamp_ids(lane_file):
+    """What `test-lane-contracts` builds: the stamp rows every test a
+    lane-admission list admits reads."""
+    ib, keep = builder_of_ids(), stamp_builders()
+    out = set()
+    for name in admission_names(lane_file):
+        out |= compile_stamp_ids(name, ib, keep)
+    return out
+
+
+def census_stamp_ids():
+    """What the lane census stages: the stamp rows read by EVERY `nros-tests`
+    target that calls a compile-stage resolver — the candidates, of which the
+    census admits the ones that pass. Same rows, so a target the census admits
+    has its stamps built by `test-lane-contracts`."""
+    ib, keep = builder_of_ids(), stamp_builders()
+    out = set()
+    for fn in sorted(os.listdir(TESTS_DIR)):
+        if fn.endswith(".rs"):
+            out |= compile_stamp_ids(fn[:-3], ib, keep)
+    return out
+
+
+_LANE_STAMPS = re.compile(r"lane-compile-stamps\.py\b[^\n]*?\.config/lane-admission/"
+                          r"([A-Za-z0-9_-]+)\.txt")
+
+
+def stamp_invocations(recipes, reached):
+    """One dict per `compile-check-fixtures.sh` invocation in the closure:
+    {recipe, lanes, builders, ids} — each `None` when the invocation does not
+    narrow on it. `ids` comes from a literal `NROS_FIXTURE_ID=`, or from
+    `lane-compile-stamps.py … .config/lane-admission/<x>.txt` on the same line,
+    which this gate re-derives with the helper's own function."""
+    out = []
+    for r in sorted(reached):
+        body = _join_continuations(recipes.get(r, {}).get("body", []))
+        recipe_lanes = None
+        # `ids="$(… lane-compile-stamps.py --admission .config/lane-admission/x.txt)"`
+        # on its own line, then `NROS_FIXTURE_IDS="$ids" bash …` — the shape
+        # that keeps a failing derivation FATAL under `set -e` (issue 1249).
+        derived = None
+        for line in body:
+            m = re.search(r"NROS_COMPILE_CHECK_LANES=([A-Za-z0-9,_-]+)", line)
+            if m and "compile-check-fixtures.sh" not in line:
+                recipe_lanes = {x for x in m.group(1).split(",") if x}
+            m = _LANE_STAMPS.search(line)
+            if m and "compile-check-fixtures.sh" not in line:
+                derived = m.group(1)
+        for line in body:
+            if "compile-check-fixtures.sh" not in line:
+                continue
+            inv = {"recipe": r, "lanes": recipe_lanes, "builders": None, "ids": None}
             m = re.search(r"NROS_COMPILE_CHECK_LANES=([A-Za-z0-9,_-]+)", line)
             if m:
-                filtered = True
-                out |= {x for x in re.split(r"[,\s]+", m.group(1)) if x}
-    return out if filtered else None
+                inv["lanes"] = {x for x in m.group(1).split(",") if x}
+            m = re.search(r"NROS_FIXTURE_BUILDER=([A-Za-z0-9,_-]+)", line)
+            if m:
+                inv["builders"] = {x for x in m.group(1).split(",") if x}
+            m = re.search(r"NROS_FIXTURE_ID=([a-z0-9_]+)", line)
+            if m:
+                inv["ids"] = {m.group(1)}
+            m = _LANE_STAMPS.search(line)
+            if m:
+                inv["ids"] = admission_stamp_ids(m.group(1))
+            elif "NROS_FIXTURE_IDS=" in line:
+                # A set from a variable is a narrowing this gate can only
+                # credit when the recipe derived it; otherwise it builds
+                # nothing the gate can name.
+                inv["ids"] = admission_stamp_ids(derived) if derived else set()
+            out.append(inv)
+    return out
+
+
+def invocation_builds(inv, fixture_id, builder):
+    return ((inv["lanes"] is None or builder in inv["lanes"])
+            and (inv["builders"] is None or builder in inv["builders"])
+            and (inv["ids"] is None or fixture_id in inv["ids"]))
 
 
 def _strip_rust_comments(text):
@@ -1170,7 +1273,7 @@ def main():
             errs.append(f"{lane}: no such recipe — this gate's lane list is stale")
             continue
         reached = closure(recipes, lane)
-        lane_builders = lane_filters(recipes, reached)
+        invocations = stamp_invocations(recipes, reached)
         id_builder = builder_of_ids()
         # Does the lane PRODUCE compile-stage stamps anywhere in its closure?
         produces_stamps = any(
@@ -1225,17 +1328,39 @@ def main():
             # stamps, produced the WRONG ones, and this check stayed green. It
             # failed only in CI, because locally the stamps already existed from
             # an earlier unfiltered build.
-            if used and lane_builders is not None:
-                want = {
-                    id_builder[i] for i in stamp_ids_used(test)
+            #
+            # issue 1656 — asked PER ROW, of each invocation: its lane filter,
+            # builder filter and id set. A union of lane filters could not see
+            # an invocation narrowed to the admitted tests' own stamps, and
+            # would have called every such stamp unbuilt.
+            if used:
+                want = sorted(
+                    (i, id_builder[i]) for i in stamp_ids_used(test)
                     if i in id_builder and id_builder[i]
-                }
-                missing = sorted(want - lane_builders)
+                    and not id_builder[i].startswith("west-")
+                )
+                # The producer must be the recipe that RUNS the test, or one it
+                # depends on: a lane runs its steps in order, so a stamp built
+                # by a LATER sibling step is absent when an earlier one runs
+                # the test on a fresh runner — which a closure-wide search
+                # reported as covered.
+                own = set(closure(recipes, via))
+                local = [inv for inv in invocations if inv["recipe"] in own]
+                missing = [(i, b) for i, b in want
+                           if not any(invocation_builds(inv, i, b) for inv in local)]
                 if missing:
+                    seen = "; ".join(
+                        f"`{inv['recipe']}`"
+                        + (f" lanes={','.join(sorted(inv['lanes']))}" if inv["lanes"] is not None else "")
+                        + (f" builders={','.join(sorted(inv['builders']))}" if inv["builders"] is not None else "")
+                        + (f" ids={len(inv['ids'])}" if inv["ids"] is not None else "")
+                        for inv in invocations)
                     errs.append(
-                        f"{lane} reaches `{test}` (via `{via}`), whose stamps are built by\n"
-                        f"      {', '.join(missing)} — but the lane filters to\n"
-                        f"      NROS_COMPILE_CHECK_LANES={','.join(sorted(lane_builders))}.\n"
+                        f"{lane} reaches `{test}` (via `{via}`), whose stamp row(s)\n"
+                        f"      {', '.join(f'{i} ({b})' for i, b in missing)}\n"
+                        f"      no `compile-check-fixtures.sh` invocation in `{via}` or the\n"
+                        f"      recipes it depends on builds\n"
+                        f"      (seen: {seen or 'none'}).\n"
                         f"      The builder RUNS and produces the wrong rows, so the test\n"
                         f"      fails on a fresh checkout with 'Test fixture binary not\n"
                         f"      prebuilt' while passing anywhere the stamps happen to\n"
@@ -1668,6 +1793,44 @@ def selftest(verbose=False):
             "require_cmake_fixture" in resolvers_used("t_mixed::nowhere")[0])
         chk("a per-test row still sees file-level consts (stamp ids)",
             "stamp_xyz" in stamp_ids_used("t_mixed::tripwire"))
+
+        # issue 1656 — which rows an invocation BUILDS, per invocation. Ids are
+        # REAL manifest rows, because the builder is read from the manifest.
+        verdict_id, cxx_id = "main_macro_misuse_custom_tasks", "platform_hdr_posix_c"
+        with open(os.path.join(td, "t_verdict.rs"), "w", encoding="utf8") as fh:
+            fh.write(f'#[test]\nfn v() {{ require_compile_verdict("{verdict_id}"); }}\n'
+                     f'#[test]\nfn c() {{ require_compile_check("{cxx_id}"); }}\n'
+                     f'#[test]\nfn m() {{ let _ = "{cxx_id}"; }}\n')
+        with open(os.path.join(adm, "gate.txt"), "w", encoding="utf8") as fh:
+            fh.write("t_verdict::v\nt_verdict::m\n")
+        chk("an admitted test's stamp rows are derived from its source",
+            admission_stamp_ids("gate") == {verdict_id})
+        chk("...and a test that only MENTIONS an id (no compile resolver) adds none",
+            compile_stamp_ids("t_verdict::m") == set())
+        with open(jf, "w", encoding="utf8") as fh:
+            fh.write(
+                "lane:\n    @just narrow\n    @just derived\n    @just loose\n\n"
+                "narrow:\n    NROS_COMPILE_CHECK_LANES=cxx-syntax bash "
+                "scripts/build/compile-check-fixtures.sh\n\n"
+                "derived:\n    ids=\"$(python3 scripts/test/lane-compile-stamps.py "
+                "--admission .config/lane-admission/gate.txt)\"\n"
+                "    NROS_FIXTURE_IDS=\"$ids\" bash scripts/build/compile-check-fixtures.sh\n\n"
+                "loose:\n    NROS_FIXTURE_IDS=\"$whatever\" bash "
+                "scripts/build/compile-check-fixtures.sh\n")
+        r = parse_justfile()
+        invs = {inv["recipe"]: inv for inv in stamp_invocations(r, closure(r, "lane"))}
+        chk("a lane filter builds its builder's rows, and not a verdict row",
+            invocation_builds(invs["narrow"], cxx_id, "cxx-syntax")
+            and not invocation_builds(invs["narrow"], verdict_id, "cargo-check-verdict"))
+        chk("an id set DERIVED from the admission list builds exactly that set",
+            invocation_builds(invs["derived"], verdict_id, "cargo-check-verdict")
+            and not invocation_builds(invs["derived"], cxx_id, "cxx-syntax"))
+        chk("an id set from a variable nothing derived builds NOTHING the gate can name",
+            not invocation_builds(invs["loose"], verdict_id, "cargo-check-verdict"))
+        with open(jf, "w", encoding="utf8") as fh:
+            fh.write("ci-l1:\n    @just gate-a\n\n"
+                     "gate-a:\n    grep -v '^#' .config/lane-admission/gate.txt\n")
+        r = parse_justfile()
         os.remove(os.path.join(adm, "gate.txt"))
         try:
             tests_invoked(r, closure(r, "ci-l1"))

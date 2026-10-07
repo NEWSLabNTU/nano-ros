@@ -49,14 +49,14 @@ api-parity:
 
 # Borrowed-view runtime E2E (RFC-0033 / #0423) — link the C + C++ proof binaries at
 # the build stage, then RUN them (they assert every borrowed view aliases the CDR
-# buffer). Bespoke recipe like `check-staticlib-symbols` because the composite
-# (cargo + codegen + a raw gcc/g++ link with a weak config-variant anchor) fits no
-# `compile_check_fixture` builder.
+# buffer). The composite (cargo + codegen + a raw gcc/g++ link with a weak
+# config-variant anchor) is the `borrowed_e2e` `fixture-script` row (issue 1656),
+# so this builds exactly that row — the same stamp every fixture lane builds.
 [private]
 borrowed-e2e:
     #!/usr/bin/env bash
     set -e
-    bash scripts/build/borrowed-e2e-fixture.sh
+    NROS_FIXTURE_ID=borrowed_e2e bash scripts/build/compile-check-fixtures.sh
     # Skip-capable: routed through the tolerant runner so an unmet
     # precondition reads as a SKIP rather than a red naming a test the
     # change never touched. Gated by `check-skippable-tests-tolerant`.
@@ -3301,7 +3301,13 @@ source-gates:
     # Building every lane instead is what this replaced: that also built
     # `freertos_firmware`, a `cargo-build` row needing the FreeRTOS KERNEL
     # SUBMODULE which CI does not provision.
-    NROS_COMPILE_CHECK_LANES=cxx-syntax bash scripts/build/compile-check-fixtures.sh
+    #
+    # issue 1656 — plus the two C++ VERDICT builders: `platform_header_compile`'s
+    # negative cell is a `cxx-syntax-verdict` row now and
+    # `cross_libc_precedence_gate`'s three cross compiles are
+    # `cxx-compile-verdict` rows. Neither needs anything `cxx-syntax` does not
+    # (a C++ compiler; the cross one is RECORDED as absent, not required).
+    NROS_COMPILE_CHECK_LANES=cxx-syntax,cxx-syntax-verdict,cxx-compile-verdict bash scripts/build/compile-check-fixtures.sh
     # Issue 0673 — through `_nextest-tolerant`, not bare `cargo test`.
     #
     # `cross_libc_precedence_gate` already does the right thing: it calls

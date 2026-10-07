@@ -75,89 +75,121 @@ nros_write_compile_ok() {
     } > "$dir/.compile-ok"
 }
 
-# id : source template dir (carries @NANO_ROS_ROOT@ placeholders)
+# Per-row OVERLAYS are FILES, never text in this script — issue 1656.
+#
+# A row that is "the template with a different X" keeps X under the template's
+# own `cases/<id>/`, laid out like the tree it overlays
+# (`cases/main_macro_form1/src/demo_entry/src/main.rs.case`). Staging copies it over
+# the template and then drops `cases/`, so the staged build never sees the
+# other rows' overlays.
+#
+# The reason is the signature, not tidiness: `.inputsig` hashes the row's `dir`
+# (`compile-check-signature.sh`) and never this script, so the `post_stage`
+# `printf`/`sed` rewrites that lived here were invisible to it — editing one
+# left its row reading FRESH. Under `cases/` the overlay is inside `dir`, so it
+# is an input like every other file there. (The cmake verdict rows already kept
+# their cases as files, `cases/<id>.cmake`; those are flat FILES the project
+# itself reads, so a `cases/` holding no subdirectory is left alone.)
+#
+# Every overlay file is stored as `<path>.case` and staged as `<path>`. The
+# suffix keeps the tree's by-NAME scanners off them: a misuse row's
+# `system.toml` names a board that does not exist ON PURPOSE, and a drift row's
+# `nros-platform.toml` names a source path that does not exist on purpose —
+# neither is a real system or descriptor, and gates that find every
+# `system.toml` / `nros-platform.toml` in the index must not read them as one.
+# A file under `cases/<id>/` WITHOUT the suffix is refused, so there is one
+# spelling, not two.
+apply_case_overlay() {
+    local id="$1" staged="$2" src rel
+    [ -d "$staged/cases" ] || return 0
+    if [ -d "$staged/cases/$id" ]; then
+        while IFS= read -r -d '' src; do
+            rel="${src#"$staged/cases/$id/"}"
+            case "$rel" in
+                *.case) ;;
+                *) echo "compile-check: $id: overlay file cases/$id/$rel lacks the .case suffix" >&2
+                   return 2 ;;
+            esac
+            mkdir -p "$(dirname "$staged/${rel%.case}")"
+            cp "$src" "$staged/${rel%.case}"
+        done < <(find "$staged/cases/$id" -type f -print0)
+    fi
+    # Any overlay subdirectory means this `cases/` is the overlay table, not a
+    # file set the project reads: drop it so no row builds a sibling's case.
+    if compgen -G "$staged/cases/*/" >/dev/null; then
+        rm -rf "$staged/cases"
+    fi
+}
 
-# Per-id staging hook: overwrite files in the staged tree before `cargo check`.
-# Used by the n9 forms — each is the same workspace with a different
-# `nros::main!(...)` invocation in the Entry pkg's main.rs.
-post_stage() {
-    local id="$1" staged="$2"
-    local main_rs="$staged/src/demo_entry/src/main.rs"
-    case "$id" in
-        main_macro_form1)
-            printf '//! n9 form 1 (no args).\n\nnros::main!();\n' > "$main_rs" ;;
-        main_macro_form2)
-            printf '//! n9 form 2 (board only).\n\nnros::main!(board = ::nros_board_linux::LinuxBoard);\n' > "$main_rs" ;;
-        main_macro_form3)
-            # phase-330 W7 — the canonical multi-node form is INPUT-addressed.
-            printf '//! n9 form 3 (launch, default — the canonical multi-node form).\n\nnros::main!(launch = "demo_bringup");\n' > "$main_rs" ;;
-        main_macro_form4)
-            # phase-330 W7.g — the ONE compile proof that the DEPRECATED
-            # `model =` arm still works during its window; resolves the BUILD
-            # artifact (the sync below materialises it) via the ladder.
-            printf '//! n9 form 4 (all explicit: board + explicit model file — DEPRECATED arm).\n\nnros::main!(\n    board = ::nros_board_linux::LinuxBoard,\n    model = "demo_bringup:config/system_model.yaml",\n);\n' > "$main_rs" ;;
-        # issue 1620 — the `nros::main!` misuse VERDICTS (`cargo-check-verdict`
-        # rows). These used to be `cargo check`s run by
-        # `native_main_macro_misuse.rs` at TEST time; the test now reads the
-        # verdict this stage records. Each must FAIL to compile, and the test
-        # asserts the diagnostic in the recorded stderr.
-        main_macro_misuse_custom_tasks)
-            printf 'nros::main!(custom_tasks = [adc_sample, ui_redraw]);\n' > "$main_rs" ;;
-        main_macro_misuse_custom_tasks_empty)
-            printf 'nros::main!(custom_tasks = []);\n' > "$main_rs" ;;
-        main_macro_misuse_unknown_board)
-            # The entry states its board in the `system.toml` beside the
-            # manifest (phase-445 W5). Refuse a no-op rewrite: a fixture edit
-            # that drops the `board = "native"` line would otherwise turn this
-            # row into a second `nros::main!()` form proof that "fails" for
-            # whatever unrelated reason it fails.
-            local sys_toml="$staged/src/demo_entry/system.toml"
-            grep -q '^board = "native"$' "$sys_toml" || {
-                echo "compile-check: $id: no \`board = \"native\"\` line in $sys_toml to rewrite" >&2
-                return 2
-            }
-            sed -i 's/^board = "native"$/board = "frobnicator"/' "$sys_toml"
-            printf 'nros::main!();\n' > "$main_rs" ;;
-        main_macro_resolves_from_inputs|main_macro_rebuilds_on_model_touch)
-            printf 'nros::main!(model = "demo_bringup");\n' > "$main_rs" ;;
-        orch_tiers_single)
-            # Strip the tier table so the macro takes the legacy single-tier
-            # BoardEntry::run path (RFC-0032 §5 gate G.4).
-            #
-            # phase-319 W2 — this used to strip `[tiers.*]` from system.toml, but
-            # the entry is `nros::main!(model = ...)` and phase-296 made the
-            # MODEL authoritative: the strip stopped doing anything, the fixture
-            # kept emitting multi-tier, and
-            # `single_tier_system_takes_the_legacy_boardentry_run_path` went red.
-            # Strip both — the model because it is what the macro reads, the
-            # system.toml because a stale copy there would be a second source of
-            # truth (issue 0351's theme one layer over).
-            local model="$staged/src/demo_bringup/config/system_model.yaml"
-            if [ -f "$model" ]; then
-                python3 - "$model" <<'PYSTRIP'
-import sys
-path = sys.argv[1]
-out, skip = [], False
-for line in open(path):
-    if line.startswith("  tiers:"):
-        skip = True
-        continue
-    if skip:
-        # The tier table ends at the next key at the same indent (e.g. bindings:).
-        if line.startswith("  ") and not line.startswith("   ") and line.strip():
-            skip = False
-        else:
-            continue
+# issue 1656 / 0501 — the staged rows of ONE template share one cargo target
+# dir, so their dependency graph (every nros crate, every registry crate) is
+# built ONCE instead of once per row (measured: five `n9_workspace` verdict rows
+# were 729 MB each, 3.6 GB for one graph).
+#
+# Issue 0501 is why sharing needs the version stamp below: cargo identifies a
+# workspace member by name + version + its path RELATIVE to the workspace root,
+# which is identical in every staged copy, so without it the first row to check
+# `demo_entry` successfully made every later row's check fresh — a misuse
+# "compiled". Each member gets `+<row>` build metadata: distinct units per row,
+# the external graph (reached through absolute `path =` deps) shared.
+#
+# Only rows whose stamp is the verdict/stamp itself share (`cargo-check`,
+# `cargo-clippy`, `cargo-check-verdict`). `cargo-build` rows keep a private
+# `target/` because the tests run the binary at `<row>/target/debug/…`.
+#
+# The stamp makes the MEMBERS distinct and nothing else, so a template whose
+# rows differ in an input of an EXTERNAL crate must not share: its overlay
+# changes what a dependency's build script reads, and a shared unit could carry
+# one row's build-script result into another's verdict (0501's shape, one crate
+# down). Such a template says so with a `.private-target-dir` file, and each of
+# its rows gets a target dir of its own (`zpico_drift_gate` does — its rows
+# differ only in the descriptor `zpico-sys/build.rs` reads).
+#
+# Both kinds live OUTSIDE the row dir, which `stage_tree` deletes on every
+# build: a target dir inside it made every rebuild a cold one.
+_cc_target_dir() {
+    local dir="$1" staged="$2"
+    local key="${dir//\//_}"
+    if [ -e "$repo_root/$dir/.private-target-dir" ]; then
+        key="$key@${staged##*/}"
+    fi
+    printf '%s/.shared-target/%s\n' "$out_root" "$key"
+}
+
+_cc_stamp_member_versions() {
+    local id="$1" staged="$2" meta manifest
+    meta="${id//_/-}"
+    while IFS= read -r -d '' manifest; do
+        python3 - "$manifest" "$meta" <<'PYSTAMP'
+import re, sys
+path, meta = sys.argv[1], sys.argv[2]
+text = open(path, encoding="utf-8").read()
+out, in_pkg, done = [], False, False
+for line in text.splitlines(keepends=True):
+    head = line.strip()
+    if head.startswith("["):
+        in_pkg = head == "[package]"
+    m = re.match(r'^(\s*version\s*=\s*")([^"+]+)(")', line) if in_pkg and not done else None
+    if m:
+        line = f"{m.group(1)}{m.group(2)}+{meta}{m.group(3)}{line[m.end():]}"
+        done = True
     out.append(line)
-open(path, "w").writelines(out)
-PYSTRIP
-            fi
-            local sys="$staged/src/demo_bringup/system.toml"
-            if [ -f "$sys" ]; then
-                sed -n '0,/^\[tiers\./{/^\[tiers\./!p}' "$sys" > "$sys.tmp" && mv "$sys.tmp" "$sys"
-            fi ;;
-        *) : ;;  # no overlay (orch_tiers_multi uses the fixture verbatim)
-    esac
+open(path, "w", encoding="utf-8").writelines(out)
+PYSTAMP
+    done < <(find "$staged" -name Cargo.toml -not -path '*/target/*' -print0)
+}
+
+# Concatenate the shared target dir's dep-info into the row's own dir, so the
+# `.inputsig` closure (`dep-closure.py` reads `*.d` under the ROW dir) still
+# sees what the build read. A UNION over every row sharing the dir — wider than
+# this row's own closure, never narrower, which is the safe direction.
+_cc_copy_shared_depinfo() {
+    local shared="$1" staged="$2" f
+    : > "$staged/shared-target.d"
+    while IFS= read -r -d '' f; do
+        cat "$f" >> "$staged/shared-target.d"
+        printf '\n' >> "$staged/shared-target.d"
+    done < <(find "$shared" -name '*.d' -print0 2>/dev/null)
 }
 
 # Build fixtures (id : src): same staging, but `cargo build -p demo_entry`
@@ -219,10 +251,10 @@ stage_tree() {
     # placeholder is a no-op, not an error.
     find "$staged" -type f -exec grep -lZ '@NANO_ROS_ROOT@' {} + 2>/dev/null \
         | xargs -0 -r sed -i "s#@NANO_ROS_ROOT@#$repo_root#g" || true
-    post_stage "$id" "$staged"
+    apply_case_overlay "$id" "$staged"
     # phase-330 W7.g — templates no longer carry committed SystemModels
     # (W4.a); resolve them into the staged workspace's build dir the same way
-    # a user build does. AFTER post_stage, so form/tier rewrites of the
+    # a user build does. AFTER the overlay, so form/tier rewrites of the
     # INPUTS (main.rs, system.toml) are what gets resolved.
     # Any staged pkg (package.xml) can be a bringup — system.toml is OPTIONAL
     # to the resolver (o4's bringup is launch/ + package.xml only).
@@ -253,7 +285,10 @@ stage_and_check() {
     echo "== compile-check: $id =="
     stage_tree "$id" "$src" "$staged"
     rm -f "$staged/.compile-ok"
-    ( cd "$staged" && cargo check --manifest-path Cargo.toml )
+    _cc_stamp_member_versions "$id" "$staged"
+    local shared; shared="$(_cc_target_dir "$src" "$staged")"
+    ( cd "$staged" && CARGO_TARGET_DIR="$shared" cargo check --manifest-path Cargo.toml )
+    _cc_copy_shared_depinfo "$shared" "$staged"
     nros_write_compile_ok "$staged" "$_cc_resolver_arg"
     echo "   stamped $staged/.compile-ok"
 }
@@ -283,7 +318,10 @@ stage_and_clippy() {
     }
     stage_tree "$id" "$src" "$staged"
     rm -f "$staged/.compile-ok"
-    ( cd "$staged" && cargo clippy --manifest-path Cargo.toml )
+    _cc_stamp_member_versions "$id" "$staged"
+    local shared; shared="$(_cc_target_dir "$src" "$staged")"
+    ( cd "$staged" && CARGO_TARGET_DIR="$shared" cargo clippy --manifest-path Cargo.toml )
+    _cc_copy_shared_depinfo "$shared" "$staged"
     nros_write_compile_ok "$staged" "$_cc_resolver_arg"
     echo "   stamped $staged/.compile-ok"
 }
@@ -381,13 +419,17 @@ stage_and_check_verdict() {
     local staged="$out_root/$id"
     echo "== compile-verdict: $id =="
     stage_tree "$id" "$src" "$staged"
-    rm -f "$staged/.verdict" "$staged"/verdict.*
+    rm -f "$staged/.verdict" "$staged"/verdict.* "$staged/shared-target.d"
+    _cc_stamp_member_versions "$id" "$staged"
+    local shared; shared="$(_cc_target_dir "$src" "$staged")"
     # Hermetic: an inherited NROS_MODEL_DIR would answer the model question for
     # the macro, which is the very question `main_macro_resolves_from_inputs`
     # asks (issue 0414) — and would point the others at someone else's model.
-    local cmd=(env -u NROS_MODEL_DIR cargo check --color never --manifest-path Cargo.toml)
+    local cmd=(env -u NROS_MODEL_DIR CARGO_TARGET_DIR="$shared"
+        cargo check --color never --manifest-path Cargo.toml)
     _cc_verdict_prelude "$id" "$staged" "${cmd[@]}"
     _cc_capture "$staged" verdict "${cmd[@]}"
+    _cc_copy_shared_depinfo "$shared" "$staged"
     _cc_write_verdict_stamp "$staged" "$_cc_last_rc"
     echo "   recorded $staged/.verdict (exit=$_cc_last_rc)"
 }
@@ -469,6 +511,10 @@ lane_skips=()
 # after it built far more than it needed. Neither is right; asking for the lane
 # you assert is.
 CC_LANES="${NROS_COMPILE_CHECK_LANES:-}"
+# Comma OR space separated. `check-lane-contracts` reads the value as a comma
+# list (`[A-Za-z0-9,_-]+`, unquoted), and this matched space-separated only, so
+# the one spelling the gate could read selected NO lane here (issue 1656).
+CC_LANES="${CC_LANES//,/ }"
 _lane_on() {
     [ -z "$CC_LANES" ] && return 0
     case " $CC_LANES " in *" $1 "*) return 0 ;; *) return 1 ;; esac
@@ -690,7 +736,7 @@ id_filter="${NROS_FIXTURE_ID:-}"
 builder_filter="${NROS_FIXTURE_BUILDER:-}"
 # The ONE spelling of this script's builder set — the id guard, the pool fan-out
 # and this validation all iterate it (they were three literal copies).
-_cc_all_builders="cargo-check cargo-clippy cargo-check-verdict cargo-build cross-build cmake-configure cmake-configure-verdict cxx-syntax"
+_cc_all_builders="cargo-check cargo-clippy cargo-check-verdict cargo-build cross-build cmake-configure cmake-configure-verdict cxx-syntax cxx-syntax-verdict cxx-compile-verdict fixture-script"
 if [ -n "$builder_filter" ]; then
     for _cc_want in ${builder_filter//,/ }; do
         case " $_cc_all_builders " in
@@ -766,12 +812,49 @@ fi
 #
 # The pool falls back to a serial walk when an outer jobserver already owns the
 # tokens (NROS_JOBSERVER=1) or pinned make 4.4 is absent.
-if [ -z "$id_filter" ] && [ "${NROS_COMPILE_CHECK_POOL:-1}" = "1" ]; then
+# issue 1656 — `NROS_FIXTURE_IDS=<id>[,<id>…]` narrows the fan-out to an id SET.
+# The id filter above selects one row; a lane that must build exactly the stamps
+# its tests read (`test-lane-contracts`, the lane census) needs several, DERIVED
+# by `scripts/test/lane-compile-stamps.py`, never authored. Every named id must
+# be a row this script builds — an unknown one is an error (issue 0406's rule),
+# and an EMPTY set builds nothing and says so rather than widening to every row.
+ids_filter=""
+if [ -n "${NROS_FIXTURE_IDS+set}" ]; then
+    [ -z "$id_filter" ] || {
+        echo "compile-check: NROS_FIXTURE_ID and NROS_FIXTURE_IDS are exclusive" >&2
+        exit 2
+    }
+    ids_filter="${NROS_FIXTURE_IDS//,/ }"
+    if [ -z "${ids_filter// /}" ]; then
+        echo "compile-check: NROS_FIXTURE_IDS is empty — nothing to build."
+        exit 0
+    fi
+    _cc_known=" "
+    for _cc_builder in $_cc_all_builders; do
+        while IFS=$'\x1f' read -r _id _rest; do
+            [ -n "$_id" ] && _cc_known="$_cc_known$_id "
+        done < <(python3 "$repo_root/scripts/build/fixtures-manifest.py" \
+                     list-compile-checks --builder "$_cc_builder")
+    done
+    for _id in $ids_filter; do
+        case "$_cc_known" in
+            *" $_id "*) ;;
+            *) echo "compile-check: NROS_FIXTURE_IDS names '$_id', which is not a row this script builds" >&2
+               exit 2 ;;
+        esac
+    done
+    unset _cc_known _cc_builder _id _rest
+fi
+
+if [ -z "$id_filter" ] && { [ "${NROS_COMPILE_CHECK_POOL:-1}" = "1" ] || [ -n "$ids_filter" ]; }; then
     _cc_ids=""
     for _cc_builder in $_cc_all_builders; do
         while IFS=$'\x1f' read -r _id _rest; do
             [ -n "$_id" ] || continue
             case " $_cc_ids " in *" $_id "*) continue ;; esac
+            if [ -n "$ids_filter" ]; then
+                case " $ids_filter " in *" $_id "*) ;; *) continue ;; esac
+            fi
             _cc_ids="$_cc_ids $_id"
         done < <(compile_check_records "$_cc_builder")
     done
@@ -780,12 +863,25 @@ if [ -z "$id_filter" ] && [ "${NROS_COMPILE_CHECK_POOL:-1}" = "1" ]; then
         # shellcheck source=scripts/build/jobserver-pool.sh
         source "$repo_root/scripts/build/jobserver-pool.sh"
         _cc_rc=0
-        nros_pool_run compile-check < <(
+        # `env -u NROS_FIXTURE_IDS`: a unit is ONE row, and the set filter it
+        # would otherwise inherit is exclusive with the id filter it is given.
+        _cc_units() {
             for _id in $_cc_ids; do
-                printf 'NROS_FIXTURE_ID=%s NROS_COMPILE_CHECK_POOL=0 bash %s/scripts/build/compile-check-fixtures.sh\n' \
+                printf 'env -u NROS_FIXTURE_IDS NROS_FIXTURE_ID=%s NROS_COMPILE_CHECK_POOL=0 bash %s/scripts/build/compile-check-fixtures.sh\n' \
                     "$_id" "$repo_root"
             done
-        ) || _cc_rc=$?
+        }
+        if [ "${NROS_COMPILE_CHECK_POOL:-1}" = "1" ]; then
+            nros_pool_run compile-check < <(_cc_units) || _cc_rc=$?
+        else
+            # Pool disabled but an id SET asked for: the same units, serially,
+            # KEEPING GOING past a failed unit (the pool's own serial fallback
+            # does the same) — the lane census stages this way, so one broken
+            # row costs that row's targets their admission and nothing else.
+            while IFS= read -r _cc_unit; do
+                bash -c "$_cc_unit" || _cc_rc=1
+            done < <(_cc_units)
+        fi
         # Each unit prints its OWN one-row summary, so the parent must print the
         # aggregate itself — otherwise the last unit's counts (check=1 …) read
         # as the whole stage's.
@@ -793,6 +889,12 @@ if [ -z "$id_filter" ] && [ "${NROS_COMPILE_CHECK_POOL:-1}" = "1" ]; then
             echo "compile-check fixtures built: $(printf '%s\n' $_cc_ids | wc -l) row(s) across $(printf '%s\n' $_cc_all_builders | wc -l) builders."
         fi
         exit $_cc_rc
+    fi
+    if [ -n "$ids_filter" ]; then
+        # Every named id was filtered out by the builder narrowing — say so;
+        # falling through would build EVERY row, the opposite of what was asked.
+        echo "compile-check: NROS_FIXTURE_IDS selected no row under NROS_FIXTURE_BUILDER='${builder_filter}' — nothing built."
+        exit 0
     fi
     unset _cc_ids
 fi
@@ -925,14 +1027,19 @@ done < <(_lane_on cross-build && compile_check_records cross-build || true)
 # (same resolver as the cargo compile-checks).
 snippet_dir="$repo_root/packages/testing/nros-tests/fixtures/cpp_compat_snippets"
 
+# `cxx_syntax_check <id> [verdict]`. With `verdict` it is the `cxx-syntax-verdict`
+# builder (issue 1656): the SAME compile over the same include set, but its exit
+# status and diagnostics are RECORDED (`.verdict`, `verdict.stderr`) and the
+# build succeeds whatever the compiler said — the shape issue 1620 gave cargo and
+# cmake, for a snippet that MUST FAIL (`platform_hdr_baremetal_heap_no_malloc`).
 cxx_syntax_check() {
-    local id="$1"
+    local id="$1" mode="${2:-stamp}"
     local src="$snippet_dir/$id.cpp"
     local staged="$out_root/$id"
     [ -f "$src" ] || { echo "cxx-syntax: snippet missing: $src" >&2; return 2; }
-    echo "== cxx-syntax: $id =="
+    echo "== cxx-syntax${mode/#stamp/}: $id =="
     mkdir -p "$staged"
-    rm -f "$staged/.compile-ok"
+    rm -f "$staged/.compile-ok" "$staged/.verdict" "$staged"/verdict.*
     local cxx="${CXX:-c++}"
     # Issue #34 — the per-build generated config headers MUST precede the
     # source include dir: `packages/api/nros-cpp/include/nros/nros_cpp_config_generated.h`
@@ -988,6 +1095,14 @@ cxx_syntax_check() {
         *) std_opt=(-DNROS_CPP_STD=1) ;;
     esac
     rm -f "$staged/deps.d"
+    if [ "$mode" = verdict ]; then
+        _cc_resolver_arg=""
+        _cc_capture "$staged" verdict "$cxx" -std=c++14 -fsyntax-only \
+            "${std_opt[@]+"${std_opt[@]}"}" -MD -MF "$staged/deps.d" "${inc[@]}" "$src"
+        _cc_write_verdict_stamp "$staged" "$_cc_last_rc"
+        echo "   recorded $staged/.verdict (exit=$_cc_last_rc)"
+        return 0
+    fi
     if "$cxx" -std=c++14 -fsyntax-only "${std_opt[@]+"${std_opt[@]}"}" -MD -MF "$staged/deps.d" "${inc[@]}" "$src"; then
         nros_write_compile_ok "$staged"
         echo "   stamped $staged/.compile-ok"
@@ -995,6 +1110,99 @@ cxx_syntax_check() {
         echo "   cxx-syntax FAILED for $id (no stamp; consuming test will report)" >&2
     fi
 }
+
+# cxx-compile-verdict (issue 1656) — ONE compile of a fixture dir's source with
+# an argument list the row states as a FILE (`<dir>/cases/<id>.args`, one
+# argument per line, `#` comments), by the compiler for the row's `target`
+# (`<target>-g++`, newest SDK-store install first, then PATH; no target: the
+# host `${CXX:-c++}`). Recorded like every verdict row, plus `verdict.tool`:
+# the compiler path, or `absent`. A missing CROSS compiler is a recorded
+# verdict, not a build failure — the consuming test decides whether that is a
+# skip, as `cross_libc_precedence_gate.rs` did when it ran the compiler itself.
+#
+# An argument naming a file or directory under the fixture dir is made
+# ABSOLUTE, so the `-MD` closure names repo paths `dep-closure.py` can keep
+# (it resolves relative entries against the repo root or the depfile's dir —
+# never against the compile's cwd).
+_cc_resolve_cxx() {
+    local target="$1" bin
+    if [ -z "$target" ]; then
+        command -v "${CXX:-c++}" 2>/dev/null || true
+        return 0
+    fi
+    while IFS= read -r bin; do
+        [ -x "$bin" ] && { printf '%s\n' "$bin"; return 0; }
+    done < <(compgen -G "$HOME/.nros/sdk/${target}-gcc/*/bin/${target}-g++" | sort -Vr)
+    if "${target}-g++" --version >/dev/null 2>&1; then
+        command -v "${target}-g++"
+    fi
+    return 0
+}
+
+cxx_compile_verdict() {
+    local id="$1" dir="$2" target="$3"
+    local src="$repo_root/$dir" staged="$out_root/$id"
+    local argfile="$src/cases/$id.args"
+    [ -f "$argfile" ] || { echo "cxx-compile-verdict: $id: no argument file $argfile" >&2; return 2; }
+    echo "== cxx-compile-verdict: $id =="
+    mkdir -p "$staged"
+    rm -f "$staged/.verdict" "$staged"/verdict.* "$staged/deps.d"
+    _cc_resolver_arg=""
+    local args=() a
+    while IFS= read -r a || [ -n "$a" ]; do
+        case "$a" in ''|'#'*) continue ;; esac
+        if [ -e "$src/$a" ]; then a="$src/$a"; fi
+        args+=("$a")
+    done < "$argfile"
+    local cxx; cxx="$(_cc_resolve_cxx "$target")"
+    if [ -z "$cxx" ]; then
+        printf 'absent\n' > "$staged/verdict.tool"
+        : > "$staged/verdict.stdout"
+        printf 'no compiler for target %s (%s-g++ not in the SDK store or on PATH)\n' \
+            "${target:-host}" "$target" > "$staged/verdict.stderr"
+        printf '127\n' > "$staged/verdict.exit"
+        _cc_last_rc=127
+    else
+        printf '%s\n' "$cxx" > "$staged/verdict.tool"
+        _cc_capture "$staged" verdict "$cxx" "${args[@]}" -MD -MF "$staged/deps.d" -o /dev/null
+    fi
+    _cc_write_verdict_stamp "$staged" "$_cc_last_rc"
+    echo "   recorded $staged/.verdict (exit=$_cc_last_rc, tool=$(cat "$staged/verdict.tool"))"
+}
+
+# fixture-script (issue 1656) — a build-stage proof whose recipe is a SCRIPT,
+# kept as `<dir>/build.sh` so the row's `.inputsig` (which hashes `dir`) covers
+# it. `build.sh <row-dir>` writes its artifacts and any `*.d` dep-info into the
+# row dir and exits non-zero on a broken build; the stamp is written here, only
+# on success, like every other builder's. `borrowed_e2e` is the one row: it
+# had a script, a stamp and a test, and no row, so no lane built it and no
+# probe could call it stale.
+stage_and_script() {
+    local id="$1" dir="$2"
+    local staged="$out_root/$id"
+    echo "== fixture-script: $id =="
+    [ -f "$repo_root/$dir/build.sh" ] || {
+        echo "fixture-script: $id: no $dir/build.sh" >&2
+        return 2
+    }
+    mkdir -p "$staged"
+    rm -f "$staged/.compile-ok"
+    bash "$repo_root/$dir/build.sh" "$staged"
+    nros_write_compile_ok "$staged"
+    echo "   stamped $staged/.compile-ok"
+}
+
+while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
+    [ -n "$id" ] || continue
+    run_fixture "$out_root/$id" "$id" "$builder" stage_and_script "$id" "$dir"
+    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+done < <(_lane_on fixture-script && compile_check_records fixture-script || true)
+
+while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
+    [ -n "$id" ] || continue
+    run_fixture "$out_root/$id" "$id" "$builder" cxx_compile_verdict "$id" "$dir" "$target"
+    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+done < <(_lane_on cxx-compile-verdict && compile_check_records cxx-compile-verdict || true)
 
 cmake_n=0
 if cmake_fixture_prereqs_ok; then
@@ -1013,7 +1221,15 @@ fi
 
 cxx_n=0
 cxx_skipped=""
-if command -v "${CXX:-c++}" >/dev/null 2>&1; then
+# Only when a snippet row is actually selected: the header build below is a
+# `cargo build -p nros-cpp -p nros-c`, and every pool unit used to run it — for
+# a cargo or cmake row too — because this branch asked only "is there a C++
+# compiler" (issue 1656).
+_cc_cxx_rows="$( { _lane_on cxx-syntax && compile_check_records cxx-syntax; } || true)"
+_cc_cxxv_rows="$( { _lane_on cxx-syntax-verdict && compile_check_records cxx-syntax-verdict; } || true)"
+if [ -z "$_cc_cxx_rows$_cc_cxxv_rows" ]; then
+    :
+elif command -v "${CXX:-c++}" >/dev/null 2>&1; then
     # Issue #34 — generate the per-build config headers the snippets need
     # (`nros_cpp_config_generated.h` / `nros_config_generated.h`). nros-cpp's /
     # nros-c's build.rs emit them under `target/nros-{cpp,c}-generated/` on a host
@@ -1061,7 +1277,13 @@ if command -v "${CXX:-c++}" >/dev/null 2>&1; then
         run_fixture "$out_root/$id" "$id" "$builder" cxx_syntax_check "$id"
         write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
         cxx_n=$((cxx_n + 1))
-    done < <(_lane_on cxx-syntax && compile_check_records cxx-syntax || true)
+    done <<< "$_cc_cxx_rows"
+    while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
+        [ -n "$id" ] || continue
+        run_fixture "$out_root/$id" "$id" "$builder" cxx_syntax_check "$id" verdict
+        write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+        cxx_n=$((cxx_n + 1))
+    done <<< "$_cc_cxxv_rows"
 else
     cxx_skipped="no C++ compiler (${CXX:-c++})"
     _note_lane_skip "cxx-syntax: $cxx_skipped"
@@ -1344,7 +1566,7 @@ fi
 
 # phase-319 W2 — counts come from the manifest now, not from array lengths.
 check_n="$(compile_check_records cargo-check | wc -l)"
-verdict_n="$(( $(compile_check_records cargo-check-verdict | wc -l) + $(compile_check_records cmake-configure-verdict | wc -l) ))"
+verdict_n="$(( $(compile_check_records cargo-check-verdict | wc -l) + $(compile_check_records cmake-configure-verdict | wc -l) + $(compile_check_records cxx-compile-verdict | wc -l) ))"
 build_n="$(compile_check_records cargo-build | wc -l)"
 # Issue 0695 — a lane that was SKIPPED says so here. `cmake=0` used to be the
 # summary for "skipped every one of them" AND for "there were none to build",

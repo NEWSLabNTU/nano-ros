@@ -23,138 +23,73 @@
 //!
 //! So the gate goes red exactly when a PR reintroduces the two-libc precedence
 //! bug, on the PR — not days later in an on-demand e2e build.
+//!
+//! ## issue 1656 — the three compiles are build-stage VERDICTS
+//!
+//! This file used to run the cross g++ itself (a capability probe and the two
+//! probe compiles). They are now `cxx-compile-verdict` rows in
+//! `examples/fixtures.toml` over `tests/fixtures/cross_libc_precedence/`, each
+//! with its argument list as a file (`cases/<id>.args`); the build stage
+//! resolves `arm-none-eabi-g++` (SDK store, then PATH), records each compile's
+//! exit status and stderr, and records `absent` when there is no cross compiler
+//! at all. The RELATIVE logic stays here, where an assertion belongs.
 
-use std::{path::PathBuf, process::Command};
-
-fn fixture_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cross_libc_precedence")
-}
-
-/// Locate the cross C++ compiler. Prefer the provisioned SDK toolchain (the one
-/// the e2e/nuttx build uses — `~/.nros/sdk/arm-none-eabi-gcc/<ver>/bin`), else
-/// fall back to `arm-none-eabi-g++` on PATH (the activate-wired SDK bin).
-fn cross_gxx() -> Option<PathBuf> {
-    if let Some(home) = std::env::var_os("HOME") {
-        let sdk = PathBuf::from(home).join(".nros/sdk/arm-none-eabi-gcc");
-        if let Ok(rd) = std::fs::read_dir(&sdk) {
-            for e in rd.flatten() {
-                let bin = e.path().join("bin/arm-none-eabi-g++");
-                if bin.is_file() {
-                    return Some(bin);
-                }
-            }
-        }
-    }
-    // PATH fallback — confirm it runs.
-    if Command::new("arm-none-eabi-g++")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
-        return Some(PathBuf::from("arm-none-eabi-g++"));
-    }
-    None
-}
-
-/// Does this cross g++ ship a usable libstdc++ (the C++ standard headers the
-/// probe pulls)? Some bare-metal `arm-none-eabi` toolchains provision only the
-/// newlib C library — no `<type_traits>`/`<cstdlib>`. That is an unsuitable
-/// toolchain for this gate (an unmet precondition), NOT the #27/#36 clash, so
-/// the caller must `skip!` rather than report a false `div_t`-gate failure.
-fn cxx_stdlib_available(gxx: &PathBuf) -> bool {
-    use std::io::Write;
-    let Ok(dir) = tempfile::tempdir() else {
-        return false;
-    };
-    let src = dir.path().join("cap.cpp");
-    let Ok(mut f) = std::fs::File::create(&src) else {
-        return false;
-    };
-    if f.write_all(b"#include <type_traits>\n#include <cstdlib>\nint main(){return 0;}\n")
-        .is_err()
-    {
-        return false;
-    }
-    Command::new(gxx)
-        .args(["-std=c++17", "-fno-exceptions", "-c"])
-        .arg(&src)
-        .arg("-o")
-        .arg("/dev/null")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-/// Compile the probe. `rtos_cxx_first` = the #27/#36 fix (RTOS `include/cxx`
-/// prepended so `<cstdlib>` resolves to the RTOS wrapper). Returns (ok, output).
-fn compile(gxx: &PathBuf, rtos_cxx_first: bool) -> (bool, String) {
-    let fix = fixture_dir();
-    let stub_inc = fix.join("rtos-stub/include");
-    let mut cmd = Command::new(gxx);
-    cmd.arg("-std=c++17").arg("-fno-exceptions");
-    if rtos_cxx_first {
-        cmd.arg("-I").arg(stub_inc.join("cxx"));
-    }
-    cmd.arg("-I").arg(&stub_inc);
-    cmd.arg("-c")
-        .arg(fix.join("probe.cpp"))
-        .arg("-o")
-        .arg("/dev/null");
-    let out = cmd.output().expect("spawn cross g++");
-    let log = String::from_utf8_lossy(&out.stderr).into_owned();
-    (out.status.success(), log)
-}
+use nros_tests::TestResult;
 
 #[test]
-fn cross_libc_two_set_precedence_holds() {
-    let Some(gxx) = cross_gxx() else {
+fn cross_libc_two_set_precedence_holds() -> TestResult<()> {
+    let cap = nros_tests::fixtures::require_compile_verdict("cross_libc_cxx_stdlib_probe")?;
+    if cap.tool_absent() {
         nros_tests::skip!(
             "cross toolchain arm-none-eabi-g++ not provisioned — run `just nuttx setup` \
-             (the #27/#36 two-libc gate needs the cross newlib)"
+             (the #27/#36 two-libc gate needs the cross newlib); rebuild the \
+             `cross_libc_*` compile-check rows after provisioning it"
         );
-    };
+    }
+    let gxx = cap.tool.clone().unwrap_or_default();
 
     // 0. Toolchain capability: the probe needs libstdc++ (`<type_traits>` /
     //    `<cstdlib>`). A C-only newlib cross can't compile it — that is an
     //    unmet precondition, not the #27/#36 clash. Skip rather than false-fail.
-    if !cxx_stdlib_available(&gxx) {
+    if !cap.outcome.success() {
         nros_tests::skip!(
-            "cross toolchain ({}) has no usable libstdc++ (`<type_traits>`/`<cstdlib>` \
-             absent) — the #27/#36 two-libc gate needs a C++-capable newlib cross",
-            gxx.display()
+            "cross toolchain ({gxx}) has no usable libstdc++ (`<type_traits>`/`<cstdlib>` \
+             absent) — the #27/#36 two-libc gate needs a C++-capable newlib cross"
         );
     }
 
     // 1. Broken precedence (RTOS sysroot reachable but not winning <cstdlib>).
-    let (broken_ok, broken_log) = compile(&gxx, false);
-    if broken_ok {
+    let broken =
+        nros_tests::fixtures::require_compile_verdict("cross_libc_rtos_sysroot_not_first")?;
+    if broken.outcome.success() {
         nros_tests::skip!(
-            "cross toolchain ({}) newlib `div_t` does not conflict with the RTOS-shape \
+            "cross toolchain ({gxx}) newlib `div_t` does not conflict with the RTOS-shape \
              decl — the #27/#36 two-libc class is not reproducible on this toolchain; \
-             nothing to gate",
-            gxx.display()
+             nothing to gate"
         );
     }
     // Sanity: the failure must be the two-libc clash we model, not an unrelated
     // error (a broken stub/probe would falsely "pass" the negative direction).
     assert!(
-        models_two_libc_clash(&broken_log),
+        models_two_libc_clash(&broken.outcome.stderr),
         "broken-precedence compile failed for a reason OTHER than the modelled \
          two-libc clash — fix the gate fixture, do not assume the precedence \
-         bug:\n{broken_log}"
+         bug:\n{}",
+        broken.outcome.stderr
     );
 
     // 2. With the RTOS `include/cxx` prepended (the #27/#36 fix), the SAME probe
     //    MUST compile — that is the invariant the platform build wiring upholds.
-    let (fixed_ok, fixed_log) = compile(&gxx, true);
+    let fixed = nros_tests::fixtures::require_compile_verdict("cross_libc_rtos_sysroot_first")?;
     assert!(
-        fixed_ok,
+        fixed.outcome.success(),
         "phase-241.A cross gate: the RTOS-cxx-first include precedence no longer clears \
          the #27/#36 two-libc `div_t` clash — the SYSTEM/`include/cxx` precedence that \
          keeps the RTOS sysroot winning has regressed (see nuttx_ffi_build.rs / the NuttX \
-         NanoRos cmake SYSTEM include):\n{fixed_log}"
+         NanoRos cmake SYSTEM include):\n{}",
+        fixed.outcome.stderr
     );
+    Ok(())
 }
 
 /// Does this compile log show the RTOS `stdlib.h` winning over the cross

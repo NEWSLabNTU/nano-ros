@@ -3665,8 +3665,9 @@ output = ".compile-ok"
 # `cmake_platform_matrix.rs`, `cmake_node_register_misuse.rs`,
 # `diagnostic_verbatim.rs`, each via `require_compile_verdict`.
 #
-# `n9_workspace` rows: the per-id `main.rs` / `system.toml` overlay is
-# `post_stage` in `compile-check-fixtures.sh`, like the `main_macro_form*` rows.
+# `n9_workspace` rows: the per-id `main.rs` / `system.toml` overlay is a FILE
+# under the template's `cases/<id>/` (issue 1656), like the `main_macro_form*`
+# rows — so it is inside `dir` and the row's `.inputsig` covers it.
 [[compile_check_fixture]]
 id = "main_macro_misuse_custom_tasks"
 builder = "cargo-check-verdict"
@@ -3705,6 +3706,26 @@ output = ".verdict"
 id = "diagnostic_rustc_verbatim"
 builder = "cargo-check-verdict"
 dir = "packages/testing/nros-tests/fixtures/diagnostic_rustc_fixture"
+output = ".verdict"
+
+# issue 1656 — the zenoh-pico source-list drift gate (`zpico_drift_gate.rs`).
+# `zpico-sys/build.rs` must PANIC when a platform descriptor's `[build.zenoh]
+# include` names a directory zenoh-pico does not have. The fixture shadows the
+# posix descriptor through `NROS_PLATFORMS_DIR` (its `.cargo/config.toml`
+# `[env]`), with `cases/<id>/platforms/` holding the descriptor each row uses:
+# the canonical one with ONE include corrupted (must fail, naming the sentinel)
+# and the canonical one verbatim (must pass — the override hook itself works).
+# The test checks both copies against `packages/platform/nros-platform-posix/`.
+[[compile_check_fixture]]
+id = "zpico_drift_sentinel_include"
+builder = "cargo-check-verdict"
+dir = "packages/testing/nros-tests/fixtures/zpico_drift_gate"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "zpico_drift_canonical_include"
+builder = "cargo-check-verdict"
+dir = "packages/testing/nros-tests/fixtures/zpico_drift_gate"
 output = ".verdict"
 
 [[compile_check_fixture]]
@@ -3777,6 +3798,19 @@ output = ".verdict"
 id = "generated_message_crate"
 builder = "cargo-clippy"
 dir = "packages/testing/nros-tests/fixtures/generated_message_crate"
+output = ".compile-ok"
+
+# --- fixture-script: a build-stage proof whose recipe is a script.
+# issue 1656 — the C / C++ borrowed-view proof binaries (RFC-0033,
+# `tests/borrowed_e2e.rs`). `<dir>/build.sh <row-dir>` builds nros-c, emits the
+# generated borrowed C/C++ and links the two drivers into the row dir; it had
+# no row before, so only its own gate recipe built it and nothing could call
+# the stamp stale. Now every fixture lane builds it and `.inputsig` hashes the
+# script, both drivers and the dep-info the build copies in.
+[[compile_check_fixture]]
+id = "borrowed_e2e"
+builder = "fixture-script"
+dir = "packages/testing/nros-tests/fixtures/borrowed-e2e"
 output = ".compile-ok"
 
 # --- cargo-build: the binary is the point; tests run it.
@@ -3960,8 +3994,8 @@ builder = "cxx-syntax"
 # the canonical <nros/platform.h> + nros-cpp heap containers MUST compile per
 # platform capability. The -D defines are baked into each snippet (the cxx-syntax
 # builder takes no per-row defines). The one NEGATIVE cell (baremetal heap WITHOUT
-# malloc MUST fail) can't be a passing prebuilt fixture, so it stays runtime in the
-# negative-diagnostic registry. Consumed by tests/platform_header_compile.rs.
+# malloc MUST fail) is the `cxx-syntax-verdict` row after them (issue 1656).
+# Consumed by tests/platform_header_compile.rs.
 [[compile_check_fixture]]
 id = "platform_hdr_posix_cpp_heap"
 builder = "cxx-syntax"
@@ -3973,6 +4007,43 @@ builder = "cxx-syntax"
 [[compile_check_fixture]]
 id = "platform_hdr_baremetal_has_malloc"
 builder = "cxx-syntax"
+
+# issue 1656 — the #38 NEGATIVE cell: bare-metal heap containers WITHOUT
+# NROS_PLATFORM_HAS_MALLOC must FAIL to compile. It was a `g++` the test ran
+# itself; the verdict builder records the same compile over the same include
+# set, and the test asserts it failed on the missing allocator.
+[[compile_check_fixture]]
+id = "platform_hdr_baremetal_heap_no_malloc"
+builder = "cxx-syntax-verdict"
+output = ".verdict"
+
+# issue 1656 — the #27/#36 two-libc precedence gate
+# (`cross_libc_precedence_gate.rs`), three recorded CROSS compiles of one
+# self-contained fixture. RELATIVE, so the test reads all three: the toolchain
+# capability probe (a cross g++ with no libstdc++ cannot answer), the probe with
+# the RTOS sysroot NOT first (must fail with the modelled clash, or the class is
+# not reproducible on this toolchain), and with it first (must compile). The
+# argument lists are files: `<dir>/cases/<id>.args`.
+[[compile_check_fixture]]
+id = "cross_libc_cxx_stdlib_probe"
+builder = "cxx-compile-verdict"
+dir = "packages/testing/nros-tests/tests/fixtures/cross_libc_precedence"
+target = "arm-none-eabi"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "cross_libc_rtos_sysroot_not_first"
+builder = "cxx-compile-verdict"
+dir = "packages/testing/nros-tests/tests/fixtures/cross_libc_precedence"
+target = "arm-none-eabi"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "cross_libc_rtos_sysroot_first"
+builder = "cxx-compile-verdict"
+dir = "packages/testing/nros-tests/tests/fixtures/cross_libc_precedence"
+target = "arm-none-eabi"
+output = ".verdict"
 
 [[compile_check_fixture]]
 id = "platform_hdr_baremetal_core"

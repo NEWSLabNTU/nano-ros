@@ -1,0 +1,8 @@
+//! Overlay for compile-check row `main_macro_misuse_unknown_board` (issue 1656): `compile-check-fixtures.sh`
+//! copies `cases/<id>/` over the staged template, so this file is a row INPUT
+//! (`.inputsig` hashes the template dir) rather than text inside the script.
+//!
+//! issue 1620 — misuse verdict: the overlaid `system.toml` names an unknown
+//! board, which the macro must refuse at expansion time.
+
+nros::main!();

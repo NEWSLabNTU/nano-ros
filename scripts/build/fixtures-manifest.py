@@ -124,6 +124,16 @@ COMPILE_CHECK_BUILDERS = (
     "cmake-configure",  # cmake configure (+ build) into build/cmake-fixtures/<id>
     "cross-build",  # `cargo build --target <target>` for one or more profiles
     "cxx-syntax",  # `c++ -fsyntax-only` over a snippet; no artifact
+    # issue 1656 — the C++ VERDICT builders. `cxx-syntax-verdict` is
+    # `cxx-syntax`'s compile with the verdict recorded (a snippet that MUST
+    # fail); `cxx-compile-verdict` compiles a fixture dir's source with an
+    # argument list kept as a FILE (`<dir>/cases/<id>.args`) by the compiler
+    # for `target` (`<target>-g++`), recording `verdict.tool` beside it.
+    "cxx-syntax-verdict",
+    "cxx-compile-verdict",
+    # issue 1656 — a build-stage proof whose recipe is a SCRIPT, kept as
+    # `<dir>/build.sh` so the signature (which hashes `dir`) covers it.
+    "fixture-script",
     # phase-350 W2 (issue 0536) — the west lane's two shapes. Both build into
     # `build/west-fixtures/<id>` via `scripts/build/west-fixtures.sh`, NOT via
     # `compile-check-fixtures.sh`: west needs a provisioned Zephyr workspace, so
@@ -136,7 +146,34 @@ COMPILE_CHECK_BUILDERS = (
 
 # The builders whose build stage never fails on the compile's own status, so a
 # row of theirs that no test reads reports NOTHING (issue 1032's shape).
-VERDICT_COMPILE_CHECK_BUILDERS = ("cargo-check-verdict", "cmake-configure-verdict")
+VERDICT_COMPILE_CHECK_BUILDERS = (
+    "cargo-check-verdict",
+    "cmake-configure-verdict",
+    "cxx-syntax-verdict",
+    "cxx-compile-verdict",
+)
+
+# issue 1656 — builders whose row's WHOLE artifact is the compile's stamp or
+# verdict: they check, lint, configure-and-record or syntax-check, and link
+# nothing. These are the rows a compile tier (`ci gate`, "compile + unit, no
+# fixtures") may build for the tests it admits; `cargo-build`, `cross-build` and
+# `cmake-configure` produce binaries and JSON a test RUNS or inspects, which is a
+# fixture build however it is reached. Read by `scripts/test/lane-compile-stamps.py`
+# (through `check-lane-contracts.py`), so the gate lane and the lane census stage
+# the same rows.
+STAMP_COMPILE_CHECK_BUILDERS = (
+    "cargo-check",
+    "cargo-clippy",
+    "cargo-check-verdict",
+    "cmake-configure-verdict",
+    "cxx-syntax",
+    "cxx-syntax-verdict",
+    "cxx-compile-verdict",
+)
+
+# Builders that probe a snippet resolved BY ID (`fixtures/cpp_compat_snippets/
+# <id>.cpp`), so a row of theirs carries no `dir`.
+SNIPPET_COMPILE_CHECK_BUILDERS = ("cxx-syntax", "cxx-syntax-verdict")
 
 # The two builders above, so the west lane and the compile-check lane can each
 # ask "is this one of mine?" without restating the pair.
@@ -194,11 +231,14 @@ def validate_compile_check_fixture(entry):
 
     # `cxx-syntax` probes a snippet resolved by id, so it carries no dir; every
     # other builder needs a source tree that exists.
-    if builder == "cxx-syntax":
+    if builder in SNIPPET_COMPILE_CHECK_BUILDERS:
         if entry.get("dir"):
             _fail(
-                entry, "cxx-syntax rows take no 'dir' (the snippet is resolved by id)"
+                entry, f"{builder} rows take no 'dir' (the snippet is resolved by id)"
             )
+        snippet = CXX_SNIPPET_DIR / f"{entry['id']}.cpp"
+        if not snippet.is_file():
+            _fail(entry, f"{builder} row has no snippet at {snippet.relative_to(SCRIPT_ROOT)}")
     else:
         if not entry.get("dir"):
             _fail(entry, f"missing required key 'dir' for builder {builder!r}")
@@ -210,6 +250,24 @@ def validate_compile_check_fixture(entry):
             f"builder {builder!r} records a VERDICT, so its output is '.verdict' "
             f"(got {entry.get('output')!r}) — the stamp the test resolves",
         )
+
+    if builder == "fixture-script" and not (SCRIPT_ROOT / entry["dir"] / "build.sh").is_file():
+        _fail(
+            entry,
+            f"builder 'fixture-script' runs {entry['dir']}/build.sh, which does not "
+            "exist — the script lives in the row's dir so its signature covers it "
+            "(issue 1656)",
+        )
+
+    if builder == "cxx-compile-verdict":
+        args = Path(entry["dir"]) / "cases" / f"{entry['id']}.args"
+        if not (SCRIPT_ROOT / args).is_file():
+            _fail(
+                entry,
+                f"builder 'cxx-compile-verdict' reads its arguments from {args}, "
+                "which does not exist — the argument list is a FILE so the "
+                "row's signature (which hashes `dir`) covers it (issue 1656)",
+            )
 
     if builder == "cross-build" and not entry.get("target"):
         _fail(entry, "missing required key 'target' for builder 'cross-build'")
@@ -234,6 +292,7 @@ def validate_compile_check_fixture(entry):
 # Where a `cxx-syntax` row's stamp is asserted. One directory, because these
 # are all `nros-tests` integration tests.
 CXX_CONSUMER_DIR = SCRIPT_ROOT / "packages/testing/nros-tests/tests"
+CXX_SNIPPET_DIR = SCRIPT_ROOT / "packages/testing/nros-tests/fixtures/cpp_compat_snippets"
 
 
 def _cxx_rows_without_a_consumer(entries):

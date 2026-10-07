@@ -1,0 +1,13 @@
+//! Overlay for compile-check row `main_macro_form4` (issue 1656): `compile-check-fixtures.sh`
+//! copies `cases/<id>/` over the staged template, so this file is a row INPUT
+//! (`.inputsig` hashes the template dir) rather than text inside the script.
+//!
+//! n9 form 4 (all explicit: board + explicit model file — DEPRECATED arm).
+//! phase-330 W7.g — the ONE compile proof that the DEPRECATED `model =` arm
+//! still works during its window; resolves the BUILD artifact (the staging
+//! sync materialises it) via the ladder.
+
+nros::main!(
+    board = ::nros_board_linux::LinuxBoard,
+    model = "demo_bringup:config/system_model.yaml",
+);
