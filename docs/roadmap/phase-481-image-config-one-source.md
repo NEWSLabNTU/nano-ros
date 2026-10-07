@@ -1,6 +1,9 @@
 # Phase 481 -- image configuration has one source: `system.toml` on every road
 
-**Status (2026-10-07). PLANNED -- nothing implemented.** Implements
+**Status (2026-10-07). W0 DONE, PAUSED before W1 -- W0 measured D11's leaf
+helper unable to locate nano-ros on a plain `west build` (the book's road); a
+revised mechanism (a Zephyr `module_ext_root` hook, measured working on both
+roads) is proposed in RFC-0098 D11 and needs a decision before W1-W2.** Implements
 [RFC-0098](../design/0098-generated-leaf-build-config.md) D10-D12 (and the
 pointer it adds to [RFC-0049](../design/0049-hierarchical-platform-board-config.md)).
 Closes issue [1721](../issues/1721-image-env-west-and-workspace-cmake-roads.md).
@@ -71,7 +74,107 @@ measure:
 doc. If the helper cannot locate nano-ros pre-`find_package(Zephyr)` on some
 road, D11's mechanism is revised in the RFC before W1 starts.
 
+#### W0 results (measured 2026-10-07, Zephyr 3.7, native_sim/native/64, distrobox `ros2`)
+
+**Verdict: the fragment works; the LOCATOR does not.** Every Kconfig bullet
+holds on all three targets, but a helper the leaf's `CMakeLists.txt` includes
+before `find_package(Zephyr)` cannot find nano-ros on the book's own road (a
+plain `west build` with nano-ros as a west project). Per this item's
+acceptance, W1 did not start; the RFC carries a proposed revision (D11, "W0
+revision") and this phase is paused on it.
+
+Setup. The probe knob is `CONFIG_NROS_EXECUTOR_MAX_CBS` (`int`, default `-1` =
+derive; the leaves state none, so a base build has `-1` and no cargo env row).
+The stub rendered `CONFIG_…=<v>` from a marker comment in `system.toml` into
+`<build>/nros/…image.conf`, appended it to `EXTRA_CONF_FILE`, and put
+`system.toml` on `CMAKE_CONFIGURE_DEPENDS`. "Cargo read" is the value nros-node's
+build script wrote to `OUT_DIR/nros_node_config.rs` (`pub const MAX_CBS`) —
+reached by `cmake -E env NROS_EXECUTOR_MAX_CBS=…` on the C/C++ lane and by
+`nros_zephyr_build::knob()`'s `$DOTCONFIG` read on the zephyr-lang-rust lane.
+Targets: `examples/zephyr/c/talker` and `examples/zephyr/rust/talker` (zenoh,
+the `just zephyr build-one` west line), and `examples/workspaces/c`
+`demo_bringup:zephyr` (`build-ws-c-entry-zenoh`, the stub hand-inserted into the
+GENERATED `build/zephyr-zenoh/zephyr_entry/CMakeLists.txt`). All edits were
+reverted afterwards; nothing here is committed.
+
+| bullet | C leaf | Rust leaf | workspace image |
+|---|---|---|---|
+| fragment `13` lands in `.config` and the cargo read | `.config` 13; `build.ninja` `NROS_EXECUTOR_MAX_CBS=13` (source `kconfig`); `MAX_CBS = 13` | `.config` 13; `MAX_CBS = 13` (`$DOTCONFIG`) | `.config` 13; env 13; `MAX_CBS = 13` |
+| leaf `prj.conf` says `9` | 13 — fragment merges after `CONF_FILE` | 13 | 13 (bringup `prj.conf` 9) |
+| `-DCONFIG_NROS_EXECUTOR_MAX_CBS=17` | 17 | 17 | 17 |
+| exported `NROS_EXECUTOR_MAX_CBS=21` | `.config` 13, env 21 (`environment wins`), `MAX_CBS = 21` | exported at `ninja` time: `MAX_CBS = 21`; unexported: back to 13 | `.config` 13, env 21 |
+| `system.toml` edited, plain `ninja`, no wipe | `Re-running CMake` once; `.config` 11; `MAX_CBS = 11`; second `ninja` a no-op | same, 13 → 11 | the bringup's model goes STALE first (`nros model-path: … input hash changed system.toml — run nros sync`) — this road's driver is `nros build`, which syncs; after `nros sync`, `ninja` re-ran cmake and gave 13 |
+| helper locates nano-ros pre-`find_package(Zephyr)` | fixture road: yes (`$ENV{NROS_REPO_DIR}`, `-DZEPHYR_EXTRA_MODULES` both set) | fixture road: yes | yes — the generated application names absolute paths, the generator knows the root |
+| … on a plain `west build`, nano-ros a west project | **NO** (below) | **NO** | n/a (always generated) |
+
+**The failing road, measured.** A scratch west topdir (`zephyr/` hard-linked
+from the 3.7 workspace, the modules symlinked) whose manifest lists nano-ros as
+a PROJECT at `modules/nano-ros`; `west list` and `zephyr_module.py` both report
+`"nros":"…/modules/nano-ros"`. With `NROS_REPO_DIR` unset and no
+`-DZEPHYR_EXTRA_MODULES` — the book's `integration-zephyr.md` flow — the C leaf
+configured with the stub fails at the include:
+
+```
+CMake Error at CMakeLists.txt:12 (include):
+  include could not find requested file:
+    /tmp/w0/stub/nros_leaf_stub.cmake
+```
+
+and the rest of the same configure succeeds, so the road itself works. What the
+leaf can see before `find_package(Zephyr)`: west's cmake line is
+`-DWEST_PYTHON=… -B… -GNinja -DBOARD=… -DCONF_FILE=… -S…` — no module path —
+and module discovery runs INSIDE `find_package(Zephyr)` (`zephyr_module.cmake`).
+The third locator does not rescue it: `nros sdk-root` falls back to "this
+toolchain's own `share/nano-ros`", which in a released `nros` is a SECOND copy of
+nano-ros, not the west project the module is built from — issue 1258/1387's
+two-checkouts class (cmake from one tree, module from another); the dev CLI in
+the box has none and errors.
+
+**Two alternatives, measured on the same road.**
+
+- **Partial load** — `find_package(Zephyr COMPONENTS zephyr_default:zephyr_module)`,
+  include from `${ZEPHYR_NROS_MODULE_DIR}`, then the full `find_package(Zephyr)`.
+  The include works (`ZEPHYR_NROS_MODULE_DIR=…/modules/nano-ros`), but the second
+  `find_package` prints "Loading Zephyr default modules (Zephyr base (cached))"
+  and loads nothing more: no Kconfig, no `.config`, and the configure dies in
+  `nros_feature_set: unknown PLATFORM 'zephyr'`. **Fails.**
+- **A Zephyr `module_ext_root` hook** — `zephyr/module.yml` `settings:
+  module_ext_root: <dir>`, whose `<dir>/modules/modules.cmake` Zephyr includes
+  from `zephyr_module.cmake` after module discovery and BEFORE
+  `configuration_files`/`kconfig`, in the application's own directory scope.
+  The stub there (keyed on `APPLICATION_SOURCE_DIR/system.toml`, no-op without
+  one) on the west-project road: C leaf `.config` 11 over `prj.conf` 9, env 11,
+  `zephyr.exe` built; `system.toml` 11 → 15 and plain `ninja`: one `Re-running
+  CMake`, 15; `-DCONFIG_…=17` → 17; exported 21 → env 21, `.config` 15. Rust leaf:
+  `.config` 11, `MAX_CBS = 11`, `zephyr.exe` built. On the fixture road (module
+  via `-DZEPHYR_EXTRA_MODULES`) the same hook gave 15 on the C leaf. The hook
+  printed its own path as `…/modules/nano-ros/…` on one road and the checkout on
+  the other: it is always the tree the module is. **Works, with no leaf edit.**
+
+**Three corrections to D11's merge-order sentence**, all from Zephyr 3.7's
+`kconfig.cmake` and the runs above:
+
+1. A `-DCONFIG_*` value is STICKY: Zephyr stores it as `CLI_CONFIG_*` in the
+   cache and re-applies it on every later configure until `-U`'d (measured: a
+   `-D…=17` from a failed configure still decided the next one).
+2. `*.conf` files dropped in the build dir's TOP level merge LAST, after
+   `-DCONFIG_*` (`file(GLOB ${APPLICATION_BINARY_DIR}/*.conf)`); the rendered
+   fragment must therefore live in a SUBDIRECTORY (`nros/`), as the stub's did.
+3. When `EXTRA_CONF_FILE` is ALSO a cache value from the command line (the
+   workspace road: `nros build` passes `-DEXTRA_CONF_FILE=<image conf>`), a
+   value appended to the local variable merges BEFORE it (`zephyr_get(… MERGE
+   REVERSE)`): measured order `prj.conf`, board conf, the fragment, then
+   `prj-zenoh.conf`. So on that road an `[image] conf` file can override the
+   rendered fragment; the generated application must place the fragment itself
+   (it already writes pre-Zephyr lines) or `nros build` must order it last.
+
 ### W1 -- render the image into each road's form
+
+> **Blocked on the D11 revision (W0).** The helper bullet below names the
+> mechanism W0 measured failing on a plain `west build`; under the proposed
+> revision the same rendering is reached from the module's `module_ext_root`
+> hook, with no line in the leaf. The renderer, the `--config` carrier and the
+> image selection are unaffected.
 
 - `nros ws leaf-system --kconfig-out <path>` writes the Zephyr fragment from
   the image: `[image.<id>] env` rows that have a Kconfig counterpart (through
