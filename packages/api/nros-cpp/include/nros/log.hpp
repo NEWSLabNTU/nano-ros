@@ -226,11 +226,12 @@ template <typename T> struct refuse {
     "argument nano-ros cannot honour (RFC-0089). Proceeding would DISCARD it -- the 'compiles "    \
     "and differs' the rule forbids. HONOURED inside --ros-args ... --: -r / --remap "              \
     "[node:]from:=to, applied as the FALLBACK beneath any remap the launch file projected for "    \
-    "the same name (RFC-0046; rcl's local-before-global). REFUSED: -p / --param / "                \
-    "--params-file (runtime parameters belong to RFC-0015 section 9's channel), node-identity "    \
-    "remaps (__node, __name, __ns), -e / --enclave, the log flags, and any token that is not a "   \
-    "ROS flag. A nros sync image does not need argv: its launch remaps and parameters are "        \
-    "projected into the GENERATED ENTRY at BUILD time."
+    "the same name (RFC-0046; rcl's local-before-global); and, in an image with a parameter "      \
+    "store, -p / --param [node:]name:=value and --params-file <path>, applied when a node "        \
+    "declares the parameter (RFC-0015 section 9). REFUSED: node-identity remaps (__node, "         \
+    "__name, __ns), -e / --enclave, the log flags, any token that is not a ROS flag, and -p / "    \
+    "--params-file in an image without a parameter store. A nros sync image does not need "        \
+    "argv: its launch remaps and parameters are projected into the GENERATED ENTRY at BUILD time."
 
 // phase-428 W5 finding 9. Runtime, like `NROS_RCLCPP_REFUSE_INIT_ARGV` above
 // and for the same reason: only the VALUE carries the defect, so the earliest

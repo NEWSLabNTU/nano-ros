@@ -183,6 +183,35 @@ This carries phase-209 G.2, G.3 and G.4.
 - **Acceptance:** zero `gap` rows in the ledger, and a test that boots with
   `-p` and with `--params-file`.
 
+**Status: done 2026-10-07.**
+
+- **Parsing.** `nros_node::ros_args` parses `-p` and `--params-file` into events
+  (`parse_ros_args_events`). `parse_params_yaml` reads a parameter file's text:
+  no `std`, no allocation, and every construct outside the subset is refused
+  with its line number.
+- **Storage.** The executor holds the overrides in its boxed parameter state
+  (`install_argv_params`), so an image without `param-services` pays nothing.
+- **Application.** Both declare seams apply the last matching override, typed
+  by the declared default. A type mismatch, or a descriptor refusal, is logged
+  and the default declared instead.
+- **Precedence.** Argv overrides a launch-baked value, which is RFC-0015 §9's
+  purpose; remaps go the other way.
+- **Hosts.**
+  - Rust's `init_with_args` and `Context::new` read files with `std::fs`, carry
+    the overrides on the `Context`, and install them in `create_executor`.
+  - C++'s `nros_cpp_install_argv_remaps` uses `apply_ros_args_with_params`
+    under `param-store`, which is all-or-nothing and refuses files on `no_std`.
+  - C has no argv entry point.
+- **Acceptance.**
+  - `rust:init_with_args` leaves `gap` (`divergence`/`adopt-bounded`, with its
+    envelope in the function's doc), and the ledger holds zero `gap` rows.
+  - Tests:
+    - `nros-node` executor tests boot named nodes with `-p` (last-wins,
+      `node:`, wrong type) and with a parameter file (`/**`, a node key,
+      dotted names);
+    - the `nros` facade tests carry both onto a `Context` from a real file;
+    - the `init` lane gains a `param-services` run so those tests run.
+
 ### W6 — retire the deprecated aliases in one batch
 
 This carries phase-379 W7 step 4 and phase-417 W-R1/W-B6, ending the circular

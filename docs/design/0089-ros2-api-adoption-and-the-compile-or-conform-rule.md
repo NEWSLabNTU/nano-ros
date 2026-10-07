@@ -559,8 +559,10 @@ running for three hours on a remap that was never applied.
 cannot be honoured. `init(argc, argv)` now parses `--ros-args` with the Rust
 parser (`nros_node::ros_args`, beside `nros::resolve_name` as the paragraph on
 remap resolution below requires) and installs `-r` rules as the fallback remap
-tier; only the refused set (`-p`, `--params-file`, `__node`/`__ns`, enclaves,
-log flags, unknown tokens) still aborts. The value-carries-the-defect argument
+tier; since phase-482 W5 it also installs `-p` / `--params-file` as parameter
+overrides wherever the image has a parameter store. Only the refused set
+(`__node`/`__ns`, enclaves, log flags, unknown tokens, and `-p` with no store)
+still aborts. The value-carries-the-defect argument
 is unchanged — it now governs a smaller set.
 
 **The predicate must be separately checkable, or this becomes a check nothing

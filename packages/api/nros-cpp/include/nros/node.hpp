@@ -541,11 +541,12 @@ inline Result init_with_rmw(const char* rmw, const char* locator = nullptr, uint
 ///
 /// `argc` / `argv` are parsed as `--ros-args` with rcl's grammar, exactly as
 /// Rust's `nros::Context::new` does: `-r`/`--remap` rules are installed as the
-/// FALLBACK beneath the launch rules the generated entry declares, and any
-/// other ROS argument (`-p`, `--params-file`, `__node`, `--log-level`, an
-/// unknown token) makes this return `ErrorCode::InvalidArgument` BEFORE a
-/// session opens, naming the token. `(0, nullptr)` — what every RTOS board
-/// passes — is a no-op.
+/// FALLBACK beneath the launch rules the generated entry declares; `-p` and
+/// `--params-file` are installed as parameter overrides when the image has a
+/// parameter store (phase-482 W5); and any other ROS argument (`__node`,
+/// `--log-level`, an unknown token, or `-p` with no store) makes this return
+/// `ErrorCode::InvalidArgument` BEFORE a session opens, naming the token. `(0, nullptr)` — what
+/// every RTOS board passes — is a no-op.
 ///
 /// `session_name` falls back to `"nros_cpp"` when null (matches the
 /// 2-arg `init` overload).
