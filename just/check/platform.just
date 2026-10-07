@@ -352,18 +352,6 @@ platform-name-answered:
 image-panic-policy:
     @python3 scripts/check-image-panic-policy.py
 
-# Issue 0719 — every path that BUILDS an image applies the image's policies.
-# `nano_ros_add_executable` delegates to `nano_ros_entry`, so ~160 call sites are
-# covered by construction; the handful that cannot call the entry (a board seam,
-# the ESP-IDF component shim) must call `nros_apply_panic_policy` instead. Two of
-# them did not, and each surfaced as a `#[panic_handler]` error four crates from
-# its cause (#0688, #0700).
-#
-# STRUCTURAL, and it self-tests the one thing that makes it so: the sweep that
-# preceded it keyed on the text `nano_ros_entry(` and excluded a file because a
-# COMMENT there mentioned the name.
-image-paths-apply-policy:
-    @bash scripts/check-image-paths-apply-policy.sh
 
 # issue 0460 — a knob Kconfig forwards must be read by the Rust lane too. The
 # cmake `set(ENV{...})` exports reach the C lane's re-baked command and NOT

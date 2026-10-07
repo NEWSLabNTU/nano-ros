@@ -43,7 +43,13 @@ SHIM_REL = "scripts/bin/rustc-wrapper/sccache"
 
 # `RUSTC_WRAPPER := …`, `RUSTC_WRAPPER=…`, `RUSTC_WRAPPER: …` (YAML env), and
 # `set(ENV{RUSTC_WRAPPER} …)`.
-ASSIGN = re.compile(r"RUSTC_WRAPPER(?:\}\s+|\s*(?::=|=|:(?!:))\s*)(.+)$")
+# issue 1735 — cargo's OWN key spells it too: `[build] rustc-wrapper =
+# "sccache"` in a tracked `.cargo/config.toml` passed (only the env spelling
+# was read). `CARGO_BUILD_RUSTC_WRAPPER` is that key's env form and is matched
+# through its `RUSTC_WRAPPER` suffix; `rustc-wrapper` (with `build.` dotted, or
+# under `[build]`) is the TOML form.
+ASSIGN = re.compile(
+    r"(?:RUSTC_WRAPPER|\b(?:build\.)?rustc-wrapper)(?:\}\s+|\s*(?::=|=|:(?!:))\s*)(.+)$")
 
 
 def _exe(path: Path, body: str) -> None:
@@ -98,6 +104,11 @@ def self_test() -> list[str]:
     assert producer_problem('echo "RUSTC_WRAPPER=sccache"')
     assert producer_problem("RUSTC_WRAPPER: sccache")
     assert producer_problem("set(ENV{RUSTC_WRAPPER} sccache)")
+    # issue 1735 — cargo's config key and its env form.
+    assert producer_problem('rustc-wrapper = "sccache"')
+    assert producer_problem('build.rustc-wrapper = "sccache"')
+    assert producer_problem("CARGO_BUILD_RUSTC_WRAPPER: sccache")
+    assert not producer_problem(f'rustc-wrapper = "{SHIM_REL}"')
     assert not ASSIGN.search('echo "sccache not found (RUSTC_WRAPPER empty)"')
     assert not producer_problem('printf "  RUSTC_WRAPPER=%s\\n" "${RUSTC_WRAPPER:-<unset>}"')
     return bad

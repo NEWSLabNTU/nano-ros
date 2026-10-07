@@ -43,11 +43,22 @@ import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Produces an image: an executable target that links the nano-ros umbrella.
-MAKES_EXE = re.compile(r"\b(add_executable|ament_auto_add_executable)\s*\(", re.I)
+# issue 1735 — and an ESP-IDF component registration, which is how the IDF shim
+# makes its image (the retired `check-image-paths-apply-policy.sh` read it; this
+# gate did not).
+MAKES_EXE = re.compile(
+    r"\b(add_executable|ament_auto_add_executable|idf_component_register)\s*\(", re.I)
 # issue 1614 (W5): an image is also one that carries the Rust runtime without
 # the umbrella target — `nros_threadx_rv64_rust_app` links its staticlib and
 # declares the carrier, and deleting its policy call passed.
-LINKS_NROS = re.compile(r"NanoRos::NanoRos(Cpp)?\b|\bnros_declare_rust_runtime_carrier\s*\(")
+# issue 1735 — and one that links the umbrella TRANSITIVELY through a
+# generated message library (`<pkg>__nano_ros_c` / `<pkg>__nano_ros_cpp`, which
+# PUBLIC-links the runtime umbrella, issue 1467): deleting the policy call from
+# `examples/templates/rclcpp-compat-smoke` passed, because image detection keyed
+# on the LITERAL `NanoRos::NanoRos(Cpp)`.
+LINKS_NROS = re.compile(
+    r"NanoRos::NanoRos(Cpp)?\b|\bnros_declare_rust_runtime_carrier\s*\("
+    r"|\b[A-Za-z0-9_${}]+__nano_ros_(?:c|cpp)\b")
 
 # Per-image seams that build an image OUTSIDE `nano_ros_entry()`, so the seam
 # itself must apply the policy. Each row states why; a row whose file stops
@@ -102,6 +113,41 @@ def cmake_files():
     return file_kinds.files_of_kind("cmake", repo=ROOT)
 
 
+SCOPE = re.compile(r"\b(function|macro)\s*\((.*?)\n(.*?)\bend\1\s*\(", re.S | re.I)
+
+
+def scopes(body):
+    """Each function()/macro() body, plus the top level with those removed.
+
+    issue 1735 — folded in from the retired `check-image-paths-apply-policy.sh`
+    (one rule, issue 0719, had two gates with two populations; issue 1614's W5
+    fix landed on one only). A file whose top level applies the policy can
+    still hold a function that builds a SECOND image without it.
+    """
+    out, top, pos = [], [], 0
+    for m in SCOPE.finditer(body):
+        top.append(body[pos:m.start()])
+        out.append(m.group(0))
+        pos = m.end()
+    top.append(body[pos:])
+    return out + ["".join(top)]
+
+
+# A scope that hands its image to a link SEAM delegates the policy to the seam;
+# whether that seam applies it is REQUIRED_SEAMS' question, not this scope's
+# (and an open one for most seams — issue 1742).
+SEAM_CALL = re.compile(r"\bnros_(?:platform|board)_link_app\s*\(")
+
+
+def flags(body):
+    """Does this (comment-stripped) cmake body build an image with no policy?"""
+    if MAKES_EXE.search(body) and LINKS_NROS.search(body) and not APPLIES.search(body):
+        return True
+    return any(MAKES_EXE.search(sc) and LINKS_NROS.search(sc)
+               and not APPLIES.search(sc) and not SEAM_CALL.search(sc)
+               for sc in scopes(body))
+
+
 def offenders():
     out = []
     for rel in cmake_files():
@@ -118,11 +164,8 @@ def offenders():
             elif not APPLIES.search(body):
                 out.append(rel)
             continue
-        if not (MAKES_EXE.search(body) and LINKS_NROS.search(body)):
-            continue
-        if APPLIES.search(body):
-            continue
-        out.append(rel)
+        if flags(body):
+            out.append(rel)
     return sorted(out)
 
 
@@ -145,14 +188,21 @@ def self_test():
          "library, not an image"),
         ('add_executable(a x.c)\ntarget_link_libraries(a other::thing)\n', False,
          "executable that does not link nano-ros"),
+        # issue 1735 — the transitive link through a generated message library.
+        ('ament_auto_add_executable(a x.cpp)\ntarget_link_libraries(a PRIVATE std_msgs__nano_ros_cpp)\n',
+         True, "links the umbrella through <msg>__nano_ros_cpp"),
+        ('ament_auto_add_executable(a x.cpp)\ntarget_link_libraries(a PRIVATE std_msgs__nano_ros_cpp)\n'
+         'nros_apply_panic_policy(platform "t")\n', False, "transitive link, policy applied"),
+        # issue 1735 — the ESP-IDF component shape.
+        ('idf_component_register(SRCS a.c)\ntarget_link_libraries(${COMPONENT_LIB} NanoRos::NanoRos)\n',
+         True, "an ESP-IDF component image with no policy"),
+        # issue 1735 — a function building a SECOND image beside a top level that applies.
+        ('function(make_img n)\n  add_executable(${n} x.c)\n  target_link_libraries(${n} NanoRos::NanoRos)\n'
+         'endfunction()\nadd_executable(b y.c)\ntarget_link_libraries(b NanoRos::NanoRos)\n'
+         'nros_apply_panic_policy(platform "b")\n', True, "an unpolicied image in a function scope"),
     ]
     for body, should_flag, label in cases:
-        stripped = strip_comments(body)
-        flagged = bool(
-            MAKES_EXE.search(stripped)
-            and LINKS_NROS.search(stripped)
-            and not APPLIES.search(stripped)
-        )
+        flagged = flags(strip_comments(body))
         if flagged != should_flag:
             bad.append(f"self-test: {label!r} -> flagged={flagged}, expected {should_flag}")
     if bad:

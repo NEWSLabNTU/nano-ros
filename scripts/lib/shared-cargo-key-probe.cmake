@@ -48,6 +48,19 @@ set(_key
     "profile=release"
     "target=x86_64-unknown-linux-gnu")
 
+# issue 1735 — ROAD 1, the resolver registry (`NROS_RESOLVED_KNOBS` +
+# `NROS_RESOLVED_<K>`), which every real configure feeds and the probe never
+# did: `-DNROS_PROBE_RESOLVED=K=V,K2=V2` populates it exactly as
+# `_nros_resolve_knob` does, so a break that appends names WITHOUT values on
+# this road is measured, not just the env road.
+if(DEFINED NROS_PROBE_RESOLVED AND NOT NROS_PROBE_RESOLVED STREQUAL "")
+    string(REPLACE "," ";" _pairs "${NROS_PROBE_RESOLVED}")
+    foreach(_p IN LISTS _pairs)
+        string(REGEX MATCH "^([A-Za-z0-9_]+)=(.*)$" _m "${_p}")
+        list(APPEND NROS_RESOLVED_KNOBS "${CMAKE_MATCH_1}")
+        set(NROS_RESOLVED_${CMAKE_MATCH_1} "${CMAKE_MATCH_2}")
+    endforeach()
+endif()
 if(NOT NROS_PROBE_MODE STREQUAL "base-only")
     nros_knob_key_fields(_knob_fields)
     list(APPEND _key ${_knob_fields})

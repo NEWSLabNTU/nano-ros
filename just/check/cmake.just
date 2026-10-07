@@ -128,6 +128,11 @@ cmake-generated-source-owners:
 # that it cannot see "the C/C++ side, where the policy is a cargo feature on the
 # staticlib". This is that side: every cmake path that links `NanoRos::NanoRos*`
 # into an executable must apply an ending, directly or through the entry verbs.
+# issue 1735 — the ONE gate for the rule: `image-paths-apply-policy` (a second
+# gate, a second population — W5's carrier fix landed on only one of them) is
+# retired into it, with its function/macro-scope reading and its
+# `idf_component_register` image shape; images reached through a generated
+# `<msg>__nano_ros_c(pp)` library count too.
 cmake-image-policy:
     @python3 scripts/check-cmake-image-policy.py
 
