@@ -3,12 +3,12 @@ id: 1711
 title: "A native multi-tier C++ entry SEGVs intermittently during tier setup —
   heap corruption, caught in `malloc` under `z_declare_publisher` on a tier
   thread (`derived-tiers-cpp` `native_entry`)"
-status: open
+status: resolved
 type: bug
 area: [runtime, cpp, zenoh, tiers]
 severity: medium
 found: 2026-10-06
-related: [1693, 1535, 1575]
+related: [1693, 1535, 1575, 1734]
 ---
 
 ## What was measured
@@ -64,3 +64,58 @@ Start `rmw_zenohd` on a private port
 (`ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:17693"]'`), then
 `NROS_LOCATOR=tcp/127.0.0.1:17693 NROS_ENTRY_SPIN_MS=2000 ./build/posix-zenoh-native/cmake/native_entry`
 in a loop; roughly one run in four to fifteen dies with 139.
+
+## Resolution (2026-10-07)
+
+The corrupting write was a race in OUR zenoh shim, not in zenoh-pico.
+
+**Found with ASan.** The native entry was rebuilt with
+`-fsanitize=address` in a scratch build dir, over the same generated
+CMakeLists. 16 of 20 boots reported a heap-use-after-free:
+
+- the memory was allocated by tier thread T5, in its
+  `z_declare_publisher` → `_z_keyexpr_declare_prefix`;
+- it was freed by tier thread T4, in ITS `z_declare_publisher`'s failure path
+  (`_z_undeclare_publisher`);
+- it was then read by T5 while registering the resource.
+
+Two threads were writing into one publisher object.
+
+**Cause.** `zpico_declare_publisher_ex` found the first slot with `!active`,
+declared into `s->publishers[idx]`, and set `active = true` only afterwards.
+The session is shared by every tier thread (RFC-0015 Model 1), and each tier's
+setup declares its entities at boot. Two concurrent declares therefore took
+the same slot. The same check-then-act shape was in all eight claim sites:
+publishers, the five subscriber variants, liveliness and queryables.
+
+**Fix.** `zpico_claim_slot` / `zpico_release_slot`
+(`zpico-sys/c/zpico/zpico.c`) find and MARK a slot under a new session
+`slot_mutex`, so the slot is the caller's before its declare starts. The
+declare itself runs outside the lock, because a callback on the read task may
+declare, and zenoh-pico takes its own session mutex inside `z_declare_*`.
+
+- Every failure return between the claim and the declare's success gives the
+  slot back.
+- The four undeclare paths release through the same lock.
+- Without `Z_FEATURE_MULTI_THREAD` there is no lock.
+
+**Measured on the issue's reproduction** (`derived-tiers-cpp`
+`native_entry`, private `rmw_zenohd`, `NROS_ENTRY_SPIN_MS=2000`):
+
+| build | before | after |
+| --- | --- | --- |
+| plain | 5 / 20 SIGSEGV | 0 / 40 |
+| ASan | 16 / 20 use-after-free | 0 / 40 |
+
+**Regression test.**
+`nros-rmw-zenoh/tests/zenoh_integration.rs::concurrent_declares_on_one_session_never_share_a_slot`
+runs four threads × two publishers on one session, released together by a
+barrier, for 20 rounds, and asserts every handle is distinct.
+
+- Against the old `zpico.c` it dies with SIGSEGV 3 of 3.
+- With the fix it passes 5 of 5, in 0.16 s.
+
+**Sibling filed.** The XRCE shim has the same unguarded check-then-act in four
+slot tables, on top of a client library with no thread-safety at all. That is
+issue 1734, a separate fix because it needs a session-level lock or a stated
+single-thread rule, not just a claim lock.
