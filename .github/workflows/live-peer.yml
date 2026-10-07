@@ -274,6 +274,22 @@ jobs:
               # `$b` is `linux <lang> <rmw>`: unquoted on purpose, three args.
               bash scripts/build/fixtures-build.sh $b
           done <<< "$builds"
+          # The `[[compile_check_fixture]]` rows the host cells' tests resolve,
+          # which no `fixtures-build.sh <triple>` builds: `cpp_multi_node_entry`
+          # consumes the `cpp_robot_entry` cmake template, and run 37413064249
+          # reported its cell as a regression for a fixture nothing here built.
+          # DERIVED from the test sources, like the triples above.
+          if ! ccs="$(python3 scripts/check-interop-verdicts.py --list-passing --runner host --host-compile-checks)"; then
+              echo "::error::could not derive the host cells' compile-check fixtures"
+              exit 1
+          fi
+          echo "host compile-check fixtures (derived from the cells' tests):"
+          printf '  %s\n' "$ccs"
+          while IFS= read -r id; do
+              [ -n "$id" ] || continue
+              echo "=== compile-check-fixtures.sh (NROS_FIXTURE_ID=$id) ==="
+              NROS_FIXTURE_ID="$id" bash scripts/build/compile-check-fixtures.sh
+          done <<< "$ccs"
 
       # `host`, not everything — phase-441 W4. A board cell's image is built by
       # an SDK this container does not carry, so running one here resolves no

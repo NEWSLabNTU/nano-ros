@@ -406,6 +406,36 @@ def host_builds_for(cells, ids) -> list[str]:
     return sorted(out)
 
 
+# Which `[[compile_check_fixture]]` rows the HOST cells' tests consume — the
+# half `host_builds_for` cannot see. `fixtures-build.sh linux <lang> <rmw>`
+# builds `[[fixture]]` rows only, so a cell whose test resolves a compile-check
+# artifact (`cpp_multi_node_entry` -> `cpp_robot_entry`, a cmake workspace
+# template) failed `FixtureNotBuilt` on every live-peer run (2026-10-06, run
+# 37413064249) and was reported as a regression of a cell with a recorded PASS.
+# DERIVED from the test source: a row id that the test file names as a quoted
+# string literal is a row it resolves. A false match costs one extra build; a
+# missed one is that red, so the reading errs toward building.
+def _compile_check_ids() -> set[str]:
+    data = tomllib.loads(FIXTURES_TOML.read_text())
+    return {r["id"] for r in data.get("compile_check_fixture", []) if "id" in r}
+
+
+def host_compile_checks_for(cells, ids, known=None, read=None) -> list[str]:
+    """Compile-check row ids the HOST cells' test binaries name."""
+    by_id = {c["id"]: c for c in cells}
+    known = _compile_check_ids() if known is None else known
+    read = (lambda t: (TESTS_DIR / f"{t}.rs").read_text()) if read is None else read
+    out: set[str] = set()
+    for test in sorted({by_id[c]["test"] for c in set(ids)
+                        if c in by_id and runner_of(by_id[c]["platform"]) == "host"}):
+        try:
+            text = read(test)
+        except OSError:
+            continue
+        out |= {i for i in known if f'"{i}"' in text}
+    return sorted(out)
+
+
 def in_runner(cells: list[dict], ids, runner: str) -> list[str]:
     """The subset of `ids` whose cell runs on `runner` (`all` keeps every id).
 
@@ -1531,6 +1561,22 @@ def _self_test_runner_split(
     else:
         raise AssertionError("selftest: an unmapped language was silently dropped")
 
+    # Compile-check rows: a quoted id in a HOST cell's test source counts, a
+    # bare mention does not, and a board cell's test is never read.
+    _cc = [
+        {"id": "h", "platform": HOST_PLATFORM, "test": "t_host"},
+        {"id": "z", "platform": "ZephyrQemuCortexM", "test": "t_board"},
+    ]
+    _src = {"t_host": 'let x = "row_a"; // row_b', "t_board": '"row_c"'}
+    assert host_compile_checks_for(
+        _cc, ["h", "z"], known={"row_a", "row_b", "row_c"}, read=_src.__getitem__
+    ) == ["row_a"], "selftest: compile-check derivation"
+    # And on the real tree: the cell that was red for this reason.
+    _real = [c for c in runtime_cells() if c["id"] == "native-multinode-cpp-zenoh"]
+    assert _real, "selftest: native-multinode-cpp-zenoh left CELLS — update this check"
+    assert "cpp_robot_entry" in host_compile_checks_for(_real, [_real[0]["id"]]), \
+        "selftest: cpp_multi_node_entry resolves cpp_robot_entry"
+
     # The narrowing map: present, and pointing at something that exists.
     assert narrowing_for(["zephyr-qos-rust-zenoh"]) == [
         "NROS_ZEPHYR_FIXTURE_FILTER=build-ws-rs-qos-entry-zenoh"
@@ -1868,6 +1914,13 @@ def main(argv: list[str]) -> int:
         "narrowed to pairs the manifest has rows for",
     )
     ap.add_argument(
+        "--host-compile-checks",
+        action="store_true",
+        help="with --list-passing --runner host, emit the `[[compile_check_fixture]]` "
+        "ids those cells' tests resolve (a quoted id in the test source), which "
+        "`--host-builds` cannot express",
+    )
+    ap.add_argument(
         "--assert-ran",
         metavar="DIR",
         help="phase-441 W4 — every junit in DIR, together: exit 3 naming the "
@@ -1945,6 +1998,13 @@ def main(argv: list[str]) -> int:
 
     if args.list_passing:
         by_id = {c["id"]: c for c in cells}
+        if args.host_compile_checks:
+            try:
+                print("\n".join(host_compile_checks_for(cells, passing)))
+            except (LedgerError, OSError, tomllib.TOMLDecodeError) as e:
+                print(f"check-interop-verdicts: {e}", file=sys.stderr)
+                return 1
+            return 0
         if args.host_builds:
             try:
                 print("\n".join(host_builds_for(cells, passing)))
