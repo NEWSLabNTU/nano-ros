@@ -345,6 +345,57 @@ pub enum TransportError {
     BackendDynamic(alloc::string::String),
 }
 
+/// One line per variant, in the defining crate, so every consumer renders the
+/// same words (issue 0783: `NodeError` used to fall back to `{:?}` because
+/// this impl did not exist, and writing the prose there would have put a
+/// backend's wording in the wrong crate). `no_std`: no allocator, only
+/// `write_str` and the payloads the variants already carry.
+impl core::fmt::Display for TransportError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let s = match self {
+            Self::ConnectionFailed => "failed to connect to the transport",
+            Self::Disconnected => "the transport connection was closed",
+            Self::PublisherCreationFailed => "failed to create a publisher",
+            Self::SubscriberCreationFailed => "failed to create a subscriber",
+            Self::ServiceServerCreationFailed => "failed to create a service server",
+            Self::ServiceClientCreationFailed => "failed to create a service client",
+            Self::PublishFailed => "failed to publish a message",
+            Self::ServiceRequestFailed => "failed to send a service request",
+            Self::ServiceReplyFailed => "failed to send a service reply",
+            Self::SerializationError => "serialization failed",
+            Self::DeserializationError => "deserialization failed",
+            Self::BufferTooSmall => "buffer too small",
+            Self::MessageTooLarge => "incoming message exceeds the static buffer",
+            Self::Timeout => "timed out",
+            Self::InvalidConfig => "invalid configuration",
+            Self::WouldBlock => "resource momentarily unavailable; retry",
+            Self::TooLarge => "requested size exceeds the backend's capacity",
+            Self::TaskStartFailed => "failed to start a background task",
+            Self::PollFailed => "failed to poll for incoming messages",
+            Self::KeepaliveFailed => "failed to send a keepalive",
+            Self::JoinFailed => "failed to send a join message",
+            Self::InvalidArgument => "invalid argument",
+            Self::Unsupported => "operation not supported by this backend",
+            Self::BadAlloc => "memory allocation failed",
+            Self::IncompatibleQos(policy) => {
+                return match policy.policy_name() {
+                    Some(name) => write!(f, "incompatible QoS: {name}"),
+                    None => f.write_str("incompatible QoS"),
+                };
+            }
+            Self::TopicNameInvalid => "invalid topic, service or action name",
+            Self::NodeNameNonExistent => "no such node in this session",
+            Self::LoanNotSupported => "message loans unavailable on this entity",
+            Self::NoData => "no data available",
+            Self::IncompatibleAbi => "incompatible ABI version",
+            Self::Backend(msg) => return write!(f, "backend error: {msg}"),
+            #[cfg(feature = "alloc")]
+            Self::BackendDynamic(msg) => return write!(f, "backend error: {msg}"),
+        };
+        f.write_str(s)
+    }
+}
+
 impl TransportError {
     /// The QoS policy this error names, or `None`.
     ///
@@ -3867,6 +3918,31 @@ pub trait Rmw {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// issue 0783 -- the variants with a payload render it; the rest render
+    /// their fixed line. `heapless`, so the check runs without `alloc`.
+    #[test]
+    fn transport_error_display_renders_payloads() {
+        use core::fmt::Write;
+        fn show(e: &TransportError) -> heapless::String<64> {
+            let mut s = heapless::String::new();
+            write!(s, "{e}").unwrap();
+            s
+        }
+        assert_eq!(show(&TransportError::Timeout).as_str(), "timed out");
+        assert_eq!(
+            show(&TransportError::IncompatibleQos(QoSPolicyMask::RELIABILITY)).as_str(),
+            "incompatible QoS: RELIABILITY"
+        );
+        assert_eq!(
+            show(&TransportError::IncompatibleQos(QoSPolicyMask::NONE)).as_str(),
+            "incompatible QoS"
+        );
+        assert_eq!(
+            show(&TransportError::Backend("z_open refused")).as_str(),
+            "backend error: z_open refused"
+        );
+    }
 
     /// Issue 0971 — the DEFAULT `take_sequence` body must report a partial
     /// count rather than discard it, which is what its own doc comment says and

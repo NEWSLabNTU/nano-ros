@@ -264,13 +264,12 @@ template <typename T> struct refuse {
     "rclcpp::SensorDataQoS(), rclcpp::ServicesQoS(), or nros::QoS().best_effort().keep_last(1)."
 
 #define NROS_RCLCPP_REFUSE_THROTTLE                                                                \
-    "RCLCPP_*_THROTTLE is REFUSED by nano-ros (RFC-0089 W3.a, issue 1019). It expanded to the "    \
-    "plain RCLCPP_* macro with `clock` and the period left UNEVALUATED, so a 1 Hz throttle "       \
-    "logged at loop rate and a side-effecting clock expression was dropped entirely. There is no " \
-    "throttle on the C or C++ logging path; nros-log has one Rust-side and re-exporting it is "    \
-    "phase-417 W4.d, so a throttle written here would be a second implementation of behaviour "    \
-    "Rust already owns (RFC-0019). Rate-limit at the call site, or use the un-throttled "          \
-    "RCLCPP_INFO / RCLCPP_WARN / RCLCPP_ERROR."
+    "RCLCPP_*_THROTTLE is REFUSED by nano-ros (RFC-0089 W3.a, issues 1019 and 1302). Upstream "    \
+    "measures the window on the `clock` argument you pass; nano-ros's throttle measures it on "    \
+    "nros_log's own clock, so forwarding this macro would drop `clock` and compile and differ -- " \
+    "the defect this family had when it expanded to the plain RCLCPP_* macro. For a throttle "     \
+    "on nros_log's clock, write NROS_LOG_INFO_THROTTLE(logger, interval_ms, ...) and its "         \
+    "siblings (<nros/log.h>) directly; otherwise rate-limit at the call site."
 
 // phase-417 stage 3 (W3.a). ONE concept: "spin until work arrives, with no
 // budget". It backs BOTH halves of `Executor::spin_once`'s loudness, because

@@ -841,13 +841,12 @@ pub enum NodeError {
 // the opposite of invisible. `InitError` already carries both (`init.rs`);
 // this is its sibling catching up.
 //
-// `Transport` renders its payload with `{:?}`: `TransportError` (nros-rmw)
-// has no `Display` of its own, and inventing a prose rendering for a
-// backend-supplied error here would put the wording in the wrong crate.
+// `Transport` renders its payload with `TransportError`'s own `Display`, which
+// lives in nros-rmw, the crate that defines the variants (issue 0783).
 impl core::fmt::Display for NodeError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            NodeError::Transport(e) => write!(f, "transport error: {e:?}"),
+            NodeError::Transport(e) => write!(f, "transport error: {e}"),
             NodeError::NameTooLong => f.write_str("node name exceeds 64 bytes"),
             NodeError::Serialization => f.write_str("CDR serialization failed"),
             NodeError::Deserialization => f.write_str("CDR deserialization failed"),

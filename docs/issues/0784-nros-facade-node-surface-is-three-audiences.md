@@ -126,3 +126,20 @@ Three separable moves, none of them decided here:
 
 Phase 379 W5 owns the facade's export policy and should settle all three at
 once rather than piecemeal.
+
+## Progress (2026-10-07, phase-482 W7)
+
+**Done:** the six names that only the `nros::node!` expansion and the generated
+metadata probe use are now `#[doc(hidden)]` in `packages/api/nros/src/lib.rs`.
+They are `DeclaredNodeRuntime`, `NodeRuntimeAdapter`, `RuntimeNodeRecord`,
+`MISSING_NODE_EXPORT_ERROR`, `record_node_metadata` and `register_node`. No
+hand-written file in `examples/` or `packages/` names any of them, so they
+leave the documented surface without leaving the crate.
+
+**Open, and each is a maintainer decision:**
+
+- Delete the zero-consumer types outright rather than hide them.
+- Decide what `nros::` leads with among its `Node`-shaped names, with
+  `NodeHandle` as the rclrs shape.
+- Export `StandaloneNodeError` beside `StandaloneNode` (moved here from issue
+  0783).

@@ -1076,14 +1076,6 @@
     "verdict": "divergence",
     "why": "an rclrs 0.7.0 timer accessor. See `rust:Node::create_timer_oneshot` for the model convergence; the timer stage's gap rows (`is_ready`, `time_until_next_call`, period change) record what we lack on either shape."
   },
-  "rust:Timer::is_canceled": {
-    "verdict": "extension",
-    "why": "see `rust:Timer::cancel`; C++ moved to this spelling on 2026-08-26 (phase-379 W5), so all three languages now agree."
-  },
-  "rust:Timer::is_ready": {
-    "verdict": "extension",
-    "why": "the ours-only half of `cpp:Timer::is_ready`."
-  },
   "rust:Timer::last_elapse": {
     "verdict": "divergence",
     "why": "an rclrs 0.7.0 timer accessor. See `rust:Node::create_timer_oneshot` for the model convergence; the timer stage's gap rows (`is_ready`, `time_until_next_call`, period change) record what we lack on either shape."
@@ -1135,14 +1127,6 @@
   "rust:Timer::set_worker_repeating": {
     "verdict": "divergence",
     "why": "an rclrs 0.7.0 timer accessor. See `rust:Node::create_timer_oneshot` for the model convergence; the timer stage's gap rows (`is_ready`, `time_until_next_call`, period change) record what we lack on either shape."
-  },
-  "rust:Timer::time_since_last_call": {
-    "verdict": "extension",
-    "why": "the ours-only half of `c:timer_get_time_since_last_call`."
-  },
-  "rust:Timer::time_until_next_call": {
-    "verdict": "extension",
-    "why": "the ours-only half of `c:timer_get_next_call_time`."
   },
   "rust:TimerCallbackFn": {
     "verdict": "divergence",

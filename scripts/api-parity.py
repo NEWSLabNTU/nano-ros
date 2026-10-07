@@ -585,6 +585,30 @@ def _cargo_version(path):
     return None
 
 
+def rows_citing_new_names(ledger, lang, old_quals, new_quals):
+    """(key, names) for each `lang` row whose `why` cites a name the refresh ADDS.
+
+    issue 1042. A row that argues from the ABSENCE of something upstream
+    ("rclrs ships NO action API") expires when the recorded surface is
+    refreshed, with no edit to our tree and nothing in the refreshing diff to
+    suggest it. `--refresh` is the one moment someone is looking, so it names
+    the rows that mention -- in backticks -- the last segment of a newly
+    recorded name. Advisory: it prints, it does not fail; the verdict-vs-bucket
+    gate in `--check` is what fails afterwards.
+    """
+    added = {q.rsplit("::", 1)[-1] for q in (new_quals - old_quals) if q}
+    added.discard("")
+    out = []
+    for lkey, entry in sorted(ledger.items()):
+        if not lkey.startswith(lang + ":"):
+            continue
+        cited = set(re.findall(r"`([A-Za-z_][A-Za-z0-9_]*)", entry.get("why", "")))
+        hit = cited & added
+        if hit:
+            out.append((lkey, hit))
+    return out
+
+
 def refresh(langs, prefix, rclc_root, rclrs_root):
     os.makedirs(SURFACE_DIR, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -603,6 +627,13 @@ def refresh(langs, prefix, rclc_root, rclrs_root):
                 "provenance": provenance(lang, prefix, rclc_root, rclrs_root),
                 "records": recs,
             }
+            old_quals = set()
+            if os.path.exists(theirs_path(lang)):
+                old_quals = {r.get("qual", "") for r in load_theirs(lang)["records"]}
+            for key, names in rows_citing_new_names(
+                    load_ledger(), lang, old_quals, {r.get("qual", "") for r in recs}):
+                print("  may be stale: %s cites %s, which the new surface adds "
+                      "(issue 1042)" % (key, ", ".join(sorted(names))))
             with open(theirs_path(lang), "w") as fh:
                 json.dump(payload, fh, indent=1, sort_keys=True)
                 fh.write("\n")
@@ -913,6 +944,23 @@ def undisposed(entries):
     )
 
 
+def kinds_never_correspond(row):
+    """True when one side is an ENUM and the other a struct-like TYPE.
+
+    The correlator files a type against a type by NAME, so `same` there means
+    "both sides declare it", not "the shapes agree". For most pairs that is
+    fine -- rclrs's `X` is an `Arc<XState>` alias and ours is one type, and a
+    ported file using either compiles the same calls. An enum against a struct
+    is different: constructing, matching or reading a field of one fails to
+    compile against the other, so the compiler is NOT silent, and
+    `same_shaped_divergences` (which exists for the silent case) has nothing to
+    ask. Found by issue 1042: rclrs 0.7.0's `GoalStatus` and `CancelResponse`
+    are structs where ours are enums.
+    """
+    kinds = {(row.get(side) or {}).get("kind") for side in ("ours", "theirs")}
+    return "enum" in kinds and "type" in kinds
+
+
 def same_shaped_divergences(ledger, lang, rows):
     """Ledger keys with verdict `divergence` whose SUBJECT correlates `same`.
 
@@ -964,6 +1012,8 @@ def same_shaped_divergences(ledger, lang, rows):
     out = set()
     for r in rows:
         if r.get("bucket") != "same":
+            continue
+        if kinds_never_correspond(r):
             continue
         entry, inherited = lookup(ledger, lang, r["key"], "same", buckets)
         if entry is None or entry.get("verdict") != "divergence":
@@ -1246,6 +1296,42 @@ def orphan_rows(ledger, known_by_lang):
         elif live and marker is not None:
             out.append((lkey, "is marked `%s`, but the extraction produces it -- drop the "
                               "marker" % marker))
+    return out
+
+
+def contradictory_verdicts(ledger, lang, rows):
+    """(key, reason) for a row whose VERDICT cannot coexist with its BUCKET.
+
+    issue 1042. A row saying "ROS 2 has none of this" is a claim about THEIR
+    side, and it expires when the recorded surface is refreshed -- with no edit
+    to our tree. Nine rows did exactly that when the rclrs pin moved 0.5.1 ->
+    0.7.0 and rclrs grew actions: each still read `extension` while its key
+    correlated `same`. `--check` asked for a row and found one; the row was
+    simply wrong about why.
+
+    The detectable shape is a verdict its bucket rules out:
+      * `extension` (we add it, ROS 2 has none) on `same` or `theirs-only`;
+      * `declined` (ROS 2 has it, we refuse it) on `ours-only`, unless the
+        disposition is `refuse-loud`: a refusal is a DECLARATION on our side
+        (RFC-0089), so it legitimately correlates ours-only.
+    Only a row's OWN entry is judged; an inherited verdict speaks for its type.
+    """
+    out = []
+    for r in rows:
+        entry = ledger.get(ledger_key(lang, r["key"]))
+        if entry is None:
+            continue
+        bucket = r.get("native_bucket") or r.get("bucket")
+        verdict = entry.get("verdict")
+        if verdict == "extension" and bucket in ("same", "theirs-only"):
+            out.append((ledger_key(lang, r["key"]),
+                        "says `extension`, but the key correlates `%s` -- upstream has it "
+                        "now; re-verdict (`divergence`, `rename`) or delete" % bucket))
+        elif (verdict == "declined" and bucket == "ours-only"
+              and entry.get("disposition") != "refuse-loud"):
+            out.append((ledger_key(lang, r["key"]),
+                        "says `declined`, but the key correlates `ours-only` -- we ship "
+                        "it; a refusal must say `refuse-loud`"))
     return out
 
 
@@ -1616,6 +1702,7 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
     misdeclared = []
     per_lang_rows = []
     known_by_lang = {}
+    contradictions = []
     with tempfile.TemporaryDirectory() as tmpdir:
         for lang in langs:
             rows, prov, removed = run_lang(lang, tmpdir, include_internal)
@@ -1644,6 +1731,7 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
             # phase-428 Q1: a refusal is a declaration, so a refuse-loud
             # subject must be on OUR side of the correlation.
             misdeclared.extend(misdeclared_refusals(ledger, lang, rows))
+            contradictions.extend(contradictory_verdicts(ledger, lang, rows))
             # phase-444 / issue 1463: a `gap` on a subject we declare is closed
             # unless it names the witness that proves it open.
             per_lang_rows.append((lang, rows))
@@ -1782,6 +1870,16 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
                 print("  %s  is in %s.json, belongs in %s.json" % (key, was, want),
                       file=sys.stderr)
             return 1
+        if contradictions:
+            print(
+                "\n%d ledger row(s) carry a verdict their bucket rules out (issue 1042). "
+                "A row about THEIR side expires when the recorded surface moves:"
+                % len(contradictions),
+                file=sys.stderr,
+            )
+            for key, reason in contradictions:
+                print("  %s  %s" % (key, reason), file=sys.stderr)
+            return 1
         orphans = orphan_rows(ledger, known_by_lang)
         if orphans:
             print(
@@ -1919,6 +2017,29 @@ def self_test():
     check("orphan: an empty marker is refused",
           [p for p in validate_ledger({"cpp:x": dict(_row, retired="  ")}) if "issue 1323" in p] != [],
           True)
+
+    # issue 1042 -- a verdict its bucket rules out.
+    def _cv(verdict, bucket, **extra):
+        led = {"rust:X": dict({"verdict": verdict, "why": "x"}, **extra)}
+        return [k for k, _ in contradictory_verdicts(
+            led, "rust", [{"key": "X", "bucket": bucket, "native_bucket": bucket}])]
+    check("contradiction: extension on same", _cv("extension", "same"), ["rust:X"])
+    check("contradiction: extension on theirs-only", _cv("extension", "theirs-only"), ["rust:X"])
+    check("contradiction: extension on ours-only is fine", _cv("extension", "ours-only"), [])
+    check("contradiction: declined on ours-only", _cv("declined", "ours-only"), ["rust:X"])
+    check("contradiction: refuse-loud declined on ours-only is fine",
+          _cv("declined", "ours-only", disposition="refuse-loud"), [])
+    check("contradiction: divergence on same is fine", _cv("divergence", "same"), [])
+    check("refresh names a row citing a newly recorded name",
+          rows_citing_new_names({"rust:ActionClient": {"why": "rclrs has no `ActionClient`"},
+                                 "rust:Other": {"why": "about `Timer`"}},
+                                "rust", {"rclrs::Timer"}, {"rclrs::Timer", "rclrs::ActionClient"}),
+          [("rust:ActionClient", {"ActionClient"})])
+    # ...and an enum against a struct is never "same-shaped" (issue 1042).
+    check("kinds: enum vs struct never correspond",
+          kinds_never_correspond({"ours": {"kind": "enum"}, "theirs": {"kind": "type"}}), True)
+    check("kinds: struct vs alias may correspond",
+          kinds_never_correspond({"ours": {"kind": "type"}, "theirs": {"kind": "alias"}}), False)
 
     check("c prefix ours", correlate.normalize("c", "ours", "nros_publisher_init", "function"), "publisher_init")
     check("c prefix theirs", correlate.normalize("c", "theirs", "rclc_publisher_init", "function"), "publisher_init")

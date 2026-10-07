@@ -2,7 +2,7 @@
 id: 1042
 title: "Nine ledger rows went false because the rclrs pin moved 0.5.1 -> 0.7.0 and
   0.7.0 ships actions — a `--refresh` invalidates rows and nothing re-reads them"
-status: open
+status: resolved
 type: bug
 area: docs, api
 related: [phase-482, phase-417, rfc-0087, issue-1012, issue-1022]
@@ -67,3 +67,36 @@ coexist with its bucket.
    mentions a symbol or family the NEW surface contains and the OLD one did not.
    That is computable from the two surface files at refresh time, which is the
    one moment someone is looking.
+
+## Resolution (2026-10-07, phase-482 W7)
+
+All three steps of the fix are done.
+
+1. **Re-verdicted against rclrs 0.7.0**, read from its `action.rs` at the
+   pinned commit:
+   - `rust:ActionClient` and `rust:ActionServer` → `divergence` /
+     `adopt-bounded`. rclrs's are `Arc<…State<A>>` aliases with async goal
+     handling, while ours are fixed-size and executor-driven. The envelope
+     sentence is now in each type's doc comment
+     (`nros-node/src/executor/handles.rs`) and the rows cite it.
+   - `rust:GoalStatus` → `rename`: our enum is their `GoalStatusCode`. Their
+     `GoalStatus` is the struct `{code, goal_id, stamp}`.
+   - `rust:CancelResponse` → `divergence`: their `CancelResponse` is the struct
+     `{code, stamp}`, ours is the per-goal decision.
+   - `rust:CancelReturnCode` now names rclrs's `CancelResponseCode`.
+   - `rust:QoSProfile::action_status_default` and the four `rust:Timer::*` rows
+     correlate `same` and needed no row, so they are deleted.
+2. **The contradiction is gated** (`contradictory_verdicts` in
+   `scripts/api-parity.py`):
+   - `extension` on `same` / `theirs-only` is red;
+   - `declined` on `ours-only` is red unless it is `refuse-loud`.
+
+   Six self-test cases. It found exactly these nine rows on main.
+
+   One side fix: `same_shaped_divergences` now skips an enum-versus-struct pair
+   (`kinds_never_correspond`). The compiler always reports that pair, so asking
+   for a disposition there was asking about a silence that cannot occur.
+3. **`--refresh` names the rows the new surface may invalidate**
+   (`rows_citing_new_names`). These are rows whose `why` cites, in backticks,
+   the last segment of a newly recorded name. It is advisory; step 2 is what
+   fails afterwards.

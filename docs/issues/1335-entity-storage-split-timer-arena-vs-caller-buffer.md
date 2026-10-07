@@ -244,3 +244,23 @@ EOF
 
 python3 scripts/check-cpp-capability-layout.py --report | grep -E 'Publisher<int>|Client<int>|::nros::Timer'
 ```
+
+## Re-scoped (2026-10-07, phase-482 W7)
+
+**The C++ half is done.**
+
+- Subscriptions lost `storage_`/`stream_`, and the heap callback cell is gone
+  (phase-456 W2/W2b).
+- Services and clients hold `{executor_, handle_id_}` and are movable
+  (phase-456 W3).
+- Actions moved under W3b-i. W3b-ii, removing the duplicated callback record,
+  was refused on design grounds (archived phase-456).
+- The C++ `Publisher` keeps caller storage on purpose. A publisher has no
+  dispatch path, and RFC-0096 D5 item 4 states the move-only publisher handle.
+
+**What remains is the C API's shape.** `nros-c` keeps publishers and timers in
+caller-declared structs, a third shape beside the arena and the C++ handle
+(phase-456 calls this "issue 1335's remaining half"). Whether C follows the
+arena-handle model of RFC-0096 D9, or records why it does not, is a
+maintainer decision. That is this issue's question 3, and the issue stays open
+for it alone.

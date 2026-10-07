@@ -2,7 +2,7 @@
 id: 1302
 title: "`NROS_RCLCPP_REFUSE_THROTTLE` and its five ledger rows say there is no C
   throttle; phase-417 W4.d shipped one"
-status: open
+status: resolved
 type: tech-debt
 area: [api, docs]
 related: [phase-482, 1019, phase-417, rfc-0089, rfc-0019]
@@ -67,3 +67,21 @@ made `NROS_LOG_*` the family's route in the first place.
 * The five `cpp:RCLCPP_*_THROTTLE` rows agree with it.
 * `ros2_refuse_log_throttle_probe.cpp` still fails with `REFUSED by nano-ros`
   (the refusal is unchanged; only its reason is).
+
+## Resolution (2026-10-07, phase-482 W7)
+
+- `NROS_RCLCPP_REFUSE_THROTTLE` now names the real constraint. Upstream
+  measures the window on the `clock` argument, nano-ros measures it on
+  `nros_log`'s own clock, and forwarding would drop `clock` and compile and
+  differ.
+- The message names `NROS_LOG_INFO_THROTTLE(logger, interval_ms, ...)` and its
+  siblings as the alternative, and no longer claims there is no throttle.
+- The probe's header comment says the same.
+- The five `cpp:RCLCPP_*_THROTTLE` rows were rewritten to match, with their
+  stale `log.hpp:<line>` citations replaced by the file path.
+- The refusal itself is unchanged, so `ros2_refuse_log_throttle_probe.cpp`
+  still fails with `REFUSED by nano-ros`.
+
+The phase-467 citations of "#1302/#1303" are GitHub PRs with the same numbers
+("an 'unset' logger level", "the /rosout family"), not these issues. Nothing
+had fixed this one before.
