@@ -306,10 +306,21 @@ build-c-port:
         -- -DMAKE="$make_bin"
 
 # Phase 121.6 — run the Zephyr native_sim smoke test on the host.
+#
+# Issue 1720 — runs in the nightly Zephyr cron (nightly.yml
+# `zephyr-dual-line-summary`, 3.7 line). A missing west workspace is a
+# REPORTED skip (`nros_check_unverified`), never a silent pass, and a lane that
+# provisions one sets NROS_CHECK_SKIP_STRICT=1.
 [group("debug")]
-test-c-port: build-c-port
+test-c-port:
     #!/usr/bin/env bash
-    set -e
+    set -euo pipefail
+    if [ ! -f "{{ZEPHYR_WORKSPACE}}/env.sh" ]; then
+        source scripts/build/check-skip.sh
+        nros_check_unverified zephyr-c-port-smoke "no Zephyr west workspace at {{ZEPHYR_WORKSPACE}} (env.sh absent) — just setup zephyr" || exit 1
+        exit 0
+    fi
+    "{{just_executable()}}" zephyr build-c-port
     timeout 15 ./tests/zephyr-c-smoke/build/zephyr/zephyr.exe
 
 # Phase 180.A Task 10 — dual-line CI. Build a representative example

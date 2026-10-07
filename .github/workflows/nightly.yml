@@ -523,6 +523,37 @@ jobs:
           bash scripts/ci/fixture-rows-keep-going.sh "$RUNNER_TEMP/failed-rows-test.tsv" -- \
             just ${{ matrix.plat }} test
 
+      # Issue 1720 — the platform C-port smokes: the REAL kernel (ThreadX linux
+      # port, FreeRTOS POSIX port) over the port's own `platform.c`. They ran in
+      # NO lane, so the only runtime proof that ThreadX's allocator answers NULL
+      # on an exhausted pool (issue 1717) and that realloc copies the OLD
+      # block (issue 1719) was reachable by hand alone — and the FreeRTOS one
+      # did not even link on main for as long as nothing ran it.
+      #
+      # This job is the cheapest that provides the precondition: `just setup
+      # <plat>` checks the kernel out (the gate tier does not). Seconds each,
+      # no QEMU. `!cancelled()` so a red build or e2e step above still lets
+      # this report its own verdict, and one step per platform with the module
+      # spelled literally, so `check-default-gates-run-somewhere` can see the
+      # placement (a `${{ matrix.plat }}` it cannot resolve credits nothing).
+      # STRICT because this lane provisions the kernel: a missing one is the
+      # defect here, not a skip.
+      - name: Platform C-port smoke (threadx_linux, issue 1720)
+        if: ${{ !cancelled() && matrix.plat == 'threadx_linux' }}
+        env:
+          NROS_CHECK_SKIP_STRICT: "1"
+        run: |
+          source ./activate.sh
+          just threadx_linux test-c-port
+
+      - name: Platform C-port smoke (freertos, issue 1720)
+        if: ${{ !cancelled() && matrix.plat == 'freertos' }}
+        env:
+          NROS_CHECK_SKIP_STRICT: "1"
+        run: |
+          source ./activate.sh
+          just freertos test-c-port
+
       # Keep the junit, because a red cell is otherwise unreadable after the
       # fact. `check-skip-budget` names WHICH preconditions were unmet, but the
       # per-test detail lives in the junit and nightly uploaded nothing at all —
@@ -940,6 +971,20 @@ jobs:
         run: |
           source ./activate.sh
           just zephyr ci-both c/talker zenoh
+
+      # Issue 1720 — the Zephyr C-port smoke (native_sim over the port's own
+      # `platform.c`), which ran in no lane. This job already provisions a 3.7
+      # workspace, which is the smoke's only precondition beyond the host cc.
+      # Own step + `!cancelled()` so the dual-line build going red does not
+      # withhold this verdict; STRICT because the workspace IS provisioned here.
+      - name: Zephyr C-port smoke (3.7, issue 1720)
+        if: ${{ !cancelled() }}
+        env:
+          NROS_CHECK_SKIP_STRICT: "1"
+          NROS_ZEPHYR_VERSION: "3.7"
+        run: |
+          source ./activate.sh
+          just zephyr test-c-port
 
   zephyr-copy-out:
     # No `needs:` — issue 1029; same gate as zephyr-example-matrix.

@@ -367,6 +367,89 @@ def placements(fast, build, default, recipes=()):
     return found
 
 
+PORT_SMOKE = "test-c-port"
+
+
+def port_smoke_recipes():
+    """Every `<module>::test-c-port` recipe, asked of `just` itself — issue 1720.
+
+    R1's third scope. The platform C-port smokes boot the REAL kernel over the
+    port's own `platform.c`; they are the only runtime test of a port's
+    allocator (issue 1717's exhausted-pool NULL, 1719's realloc), and for as
+    long as they lived in `[group("debug")]` no workflow ran them — the FreeRTOS
+    one stopped LINKING and nothing noticed. They are not `just check` names and
+    not `ci gate` steps, so neither earlier scope could see them.
+
+    The set is `just --summary`'s, never a list written here: modules `import`
+    other files (`zephyr::test-c-port` is defined in `zephyr-dev.just`), so a
+    text scan of `just/*.just` is a second derivation of the recipe graph, and a
+    new platform's smoke would join it only if someone remembered.
+    """
+    out = subprocess.run(["just", "--summary"], capture_output=True, text=True, cwd=str(ROOT))
+    if out.returncode != 0:
+        raise SystemExit(
+            "check-default-gates-run-somewhere: `just --summary` failed — the port-smoke "
+            f"scope (issue 1720) has one source and it did not answer:\n{out.stderr.strip()}"
+        )
+    return sorted(n for n in out.stdout.split() if n.endswith("::" + PORT_SMOKE))
+
+
+def _port_smoke_re(smoke):
+    """`just <module> test-c-port` or `just <module>::test-c-port`, literally."""
+    mod = smoke.split("::", 1)[0]
+    return re.compile(r"\bjust\s+%s(?:\s+|::)%s(?![\w-])" % (re.escape(mod), re.escape(PORT_SMOKE)))
+
+
+def port_smoke_placements(blocks, smokes):
+    """{smoke: [(workflow, events, shadowed_by)]}, same shape as `placements`.
+
+    A `${{ matrix.plat }}` module credits nothing — the scanner cannot resolve
+    it, and crediting a template with every module is how a placement gate
+    stops being one. Shadowing is judged against ANY earlier `just` command in
+    the block, since a smoke sequenced after a build shares its fate.
+    """
+    found = {}
+    for wf, events, cmds in blocks:
+        seen = None
+        for cmd in cmds:
+            if cmd.startswith("#"):
+                continue
+            for s in smokes:
+                if _port_smoke_re(s).search(cmd):
+                    found.setdefault(s, []).append((wf, frozenset(events), seen))
+            if re.search(r"\bjust\s+[a-z]", cmd):
+                seen = seen or cmd.split("#")[0].strip()
+    return found
+
+
+def port_smoke_errors(smokes, place):
+    """R1 (placement) and R2 (verdict) over the port smokes."""
+    errs = []
+    for s in smokes:
+        where = place.get(s, [])
+        mod = s.split("::", 1)[0]
+        if not where:
+            errs.append(
+                f"`just {mod} {PORT_SMOKE}` runs in NO workflow.\n"
+                f"      A platform C-port smoke boots the real kernel over the port's\n"
+                f"      `platform.c`; it is the only runtime test of that port's\n"
+                f"      allocator. With no event reaching it, the FreeRTOS one stopped\n"
+                f"      LINKING and nothing noticed (issue 1720). Give it its own step\n"
+                f"      in the lane that provisions its kernel (nightly.yml's platform\n"
+                f"      sweep / Zephyr cron), spelled literally — a `${{{{ matrix.plat }}}}`\n"
+                f"      template is not a placement this gate can read."
+            )
+            continue
+        shadowed = sorted({f"{wf} (behind `{sh}`)" for wf, _ev, sh in where if sh})
+        if shadowed:
+            errs.append(
+                f"`just {mod} {PORT_SMOKE}` is SEQUENCED BEHIND another `just` command in\n"
+                f"      the same `run:` block: {', '.join(shadowed)}. A red there means\n"
+                f"      this never executes (issue 1040's R2). Give it its own step."
+            )
+    return errs
+
+
 def self_test():
     """Prove both rules can fail. Runs on the NORMAL path, every invocation —
     a negative control nobody runs decays into a comment."""
@@ -457,6 +540,32 @@ def self_test():
     chk("an exclusion OR-ed with a non-event condition must not exclude",
         _events_of("if: ${{ always() && (github.event_name != 'pull_request'"
                    " || needs.changes.outputs.code == 'true') }}", allev) == allev)
+
+    # R1's third scope — issue 1720. The derivation must find the real smokes
+    # (an empty set reports OK over nothing), and the placement reader must
+    # credit a literal spelling, refuse a templated one, and REPORT a smoke no
+    # block runs — the planted negative control, on the normal path.
+    smokes = port_smoke_recipes()
+    chk("`just --summary` found fewer than 3 `test-c-port` recipes — the port-smoke "
+        "scope is vacuous", len(smokes) >= 3)
+    probe_smokes = ["threadx_linux::test-c-port", "freertos::test-c-port"]
+    synth = [
+        ("probe.yml", {"schedule"}, ["source ./activate.sh", "just threadx_linux test-c-port"]),
+        ("probe.yml", {"schedule"}, ["just ${{ matrix.plat }} test-c-port"]),
+        ("probe.yml", {"schedule"}, ["just freertos build-all", "just freertos::test-c-port"]),
+    ]
+    sp = port_smoke_placements(synth, probe_smokes)
+    chk("a literal `just <mod> test-c-port` is not credited",
+        [w for w, _e, sh in sp.get("threadx_linux::test-c-port", []) if sh is None] == ["probe.yml"])
+    chk("a `just <mod>::test-c-port` behind another `just` is not seen as shadowed",
+        [sh for _w, _e, sh in sp.get("freertos::test-c-port", [])] == ["just freertos build-all"])
+    sp_unrun = port_smoke_placements(synth[1:2], probe_smokes)
+    chk("a templated `${{ matrix.plat }}` placement is credited (it must credit nothing)",
+        sp_unrun == {})
+    chk("an unplaced smoke is not reported",
+        len(port_smoke_errors(probe_smokes, sp_unrun)) == len(probe_smokes))
+    chk("a placed smoke is reported",
+        port_smoke_errors(["threadx_linux::test-c-port"], sp) == [])
 
     if ok:
         print(
@@ -573,6 +682,10 @@ def main() -> int:
             f"      what lets a later step run after an earlier failure."
         )
 
+    # R1/R2, third scope — the platform C-port smokes (issue 1720).
+    smokes = port_smoke_recipes()
+    errs += port_smoke_errors(smokes, port_smoke_placements(run_blocks(), smokes))
+
     if errs:
         print(f"check-default-gates-run-somewhere: {len(errs)} gate(s) CI cannot hear\n",
               file=sys.stderr)
@@ -587,7 +700,8 @@ def main() -> int:
     print(
         f"check-default-gates-run-somewhere: OK — {len(scope)} gate(s) in "
         f"`just check`'s lanes plus {len(recipes)} non-`check` step(s) of "
-        f"`just ci gate`, all reached by some workflow event ({gating} gate(s) on "
+        f"`just ci gate` and {len(smokes)} platform C-port smoke(s), all reached by "
+        f"some workflow event ({gating} gate(s) on "
         f"a merge-gating one, {heard - gating} report-only); no placement anywhere "
         f"is sequenced behind another gate in its `run:` block. "
         f"`--survey` prints gate -> events."
