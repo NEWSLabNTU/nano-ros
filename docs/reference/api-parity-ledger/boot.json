@@ -49,7 +49,8 @@
       "status": "landed",
       "category": "A",
       "residue": "NONE since phase-482 W6 (2026-10-07): the deprecated forwarder is deleted, and so is the expected-failure probe that proved it warned (it would have gone on passing while asserting nothing)."
-    }
+    },
+    "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename"
   },
   "rust:BootConfig": {
     "verdict": "extension",

@@ -97,7 +97,7 @@
   },
   "c:lifecycle_get_zero_initialized": {
     "verdict": "extension",
-    "why": "see the pubsub stage's `c:publisher_get_zero_initialized` -- the caller-owned-storage pattern applied to the state machine."
+    "why": "see the pubsub stage's `c:get_zero_initialized_publisher` -- the caller-owned-storage pattern applied to the state machine."
   },
   "c:lifecycle_get_zero_initialized_state": {
     "verdict": "declined",

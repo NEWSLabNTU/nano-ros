@@ -864,6 +864,11 @@ def validate_ledger(entries):
                 "ledger %s: unknown disposition %r (one of %s)"
                 % (key, value.get("disposition"), ", ".join(DISPOSITIONS))
             )
+        for marker in ORPHAN_MARKERS:
+            if marker in value and not (isinstance(value[marker], str)
+                                        and value[marker].strip()):
+                problems.append(
+                    "ledger %s: `%s` must be a non-empty reason (issue 1323)" % (key, marker))
         problems.extend(validate_their_rename(key, value))
         problems.extend(validate_owed(key, value))
         problems.extend(validate_envelope(key, value))
@@ -1191,6 +1196,57 @@ def stale_gaps(ledger, lang, rows):
             continue
         out.add(ledger_key(lang, r["key"]))
     return sorted(out)
+
+
+# A row whose key the extraction does not produce must SAY why it is kept
+# (issue 1323). Two reasons are legitimate, and each is a string a reader can
+# check:
+#   `retired`      the name is gone and the row is the record of where it went
+#                  (a deprecated alias deleted in a batch, a renamed type);
+#   `unextracted`  the thing exists but the extractor cannot see it -- a
+#                  macro, a struct field, an enum variant, a derive-provided
+#                  method, a row about a CONCEPT rather than one symbol.
+ORPHAN_MARKERS = ("retired", "unextracted")
+
+
+def orphan_rows(ledger, known_by_lang):
+    """(key, reason) for every ledger row the extraction no longer backs.
+
+    issue 1323 -- the reverse walk. `--check` walks the DIFFERENCES and asks
+    each whether the ledger has a row; nothing walked the LEDGER and asked each
+    row whether its subject still exists, so a row survived the deletion of
+    the thing it described and kept making a written claim about it.
+
+    `known_by_lang` maps a language to EVERY key the extraction produced, in
+    every bucket and on both sides, including the theirs records the public
+    surface filter drops: a row is live if its subject exists anywhere, not if
+    a `--show` view happens to print it (the issue's own hand-check went wrong
+    exactly there). A glob row is live while it matches at least one key.
+
+    Only languages present in `known_by_lang` are judged, so a `--lang` subset
+    cannot condemn another language's rows. Both directions of the marker are
+    enforced: an unbacked row with no marker fails, and so does a marker on a
+    row whose key the extraction DOES produce -- the reason it was kept has
+    stopped being true, and a stale exemption absorbs the next real defect.
+    """
+    out = []
+    for lkey, entry in sorted(ledger.items()):
+        lang, _, name = lkey.partition(":")
+        known = known_by_lang.get(lang)
+        if known is None:
+            continue
+        if "*" in name:
+            live = any(fnmatch.fnmatchcase(k, name) for k in known)
+        else:
+            live = name in known
+        marker = next((m for m in ORPHAN_MARKERS if entry.get(m)), None)
+        if not live and marker is None:
+            out.append((lkey, "names nothing the extraction produced -- delete the row, "
+                              "or say why it is kept with `retired` or `unextracted`"))
+        elif live and marker is not None:
+            out.append((lkey, "is marked `%s`, but the extraction produces it -- drop the "
+                              "marker" % marker))
+    return out
 
 
 def closed_gap_findings(ledger, per_lang_rows, root=ROOT):
@@ -1559,9 +1615,16 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
     same_shaped = []
     misdeclared = []
     per_lang_rows = []
+    known_by_lang = {}
     with tempfile.TemporaryDirectory() as tmpdir:
         for lang in langs:
             rows, prov, removed = run_lang(lang, tmpdir, include_internal)
+            # issue 1323 -- every key the extraction knows, for the reverse walk:
+            # both sides, every bucket, and the theirs records the public-surface
+            # filter dropped (a row about one of those still names something).
+            clang_ = {"c": "c", "cpp": "c++", "rust": "rust"}[lang]
+            known_by_lang[lang] = {r["key"] for r in rows} | set(
+                correlate.flatten(load_theirs(lang)["records"], clang_, "theirs"))
             ported_counts, native_counts = surface_counts(rows)
             counts = ported_counts
             by_key = {r["key"]: r["bucket"] for r in rows}
@@ -1719,6 +1782,17 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
                 print("  %s  is in %s.json, belongs in %s.json" % (key, was, want),
                       file=sys.stderr)
             return 1
+        orphans = orphan_rows(ledger, known_by_lang)
+        if orphans:
+            print(
+                "\n%d ledger row(s) are not backed by the extraction (issue 1323). A row "
+                "is a written claim about what a porting user gets; one that outlives "
+                "its subject keeps making it:" % len(orphans),
+                file=sys.stderr,
+            )
+            for key, reason in orphans:
+                print("  %s  %s" % (key, reason), file=sys.stderr)
+            return 1
         closed = closed_gap_findings(ledger, per_lang_rows)
         if closed:
             print(
@@ -1821,6 +1895,30 @@ def self_test():
     def check(name, got, want):
         if got != want:
             failures.append("%s: got %r want %r" % (name, got, want))
+
+    # issue 1323 -- the reverse walk, both directions, plus its two exemptions.
+    _known = {"cpp": {"Node", "Node::spin", "QoS"}}
+    _row = {"verdict": "extension", "why": "x"}
+    check("orphan: a live row passes",
+          orphan_rows({"cpp:Node::spin": dict(_row)}, _known), [])
+    check("orphan: a dead row fails",
+          [k for k, _ in orphan_rows({"cpp:create_executor": dict(_row)}, _known)],
+          ["cpp:create_executor"])
+    check("orphan: a glob is live while it matches",
+          orphan_rows({"cpp:Node::*": dict(_row)}, _known), [])
+    check("orphan: a glob matching nothing fails",
+          [k for k, _ in orphan_rows({"cpp:Gone::*": dict(_row)}, _known)], ["cpp:Gone::*"])
+    check("orphan: `retired` keeps a dead row",
+          orphan_rows({"cpp:try_recv": dict(_row, retired="deleted by W6")}, _known), [])
+    check("orphan: `unextracted` keeps a dead row",
+          orphan_rows({"cpp:RCLCPP_INFO_THROTTLE": dict(_row, unextracted="a macro")}, _known), [])
+    check("orphan: a marker on a LIVE row fails",
+          [k for k, _ in orphan_rows({"cpp:QoS": dict(_row, retired="stale")}, _known)], ["cpp:QoS"])
+    check("orphan: a language not run is not judged",
+          orphan_rows({"rust:Anything": dict(_row)}, _known), [])
+    check("orphan: an empty marker is refused",
+          [p for p in validate_ledger({"cpp:x": dict(_row, retired="  ")}) if "issue 1323" in p] != [],
+          True)
 
     check("c prefix ours", correlate.normalize("c", "ours", "nros_publisher_init", "function"), "publisher_init")
     check("c prefix theirs", correlate.normalize("c", "theirs", "rclc_publisher_init", "function"), "publisher_init")

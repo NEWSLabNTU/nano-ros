@@ -73,10 +73,6 @@
     "disposition": "absent",
     "why": "reads back the options an action client was created with. `nros_action_client_options_t` ships, and so does `nros_action_client_get_default_options`; what is missing is the READBACK -- no `*_get_options` exists anywhere in our C surface, for any entity. See the service stage's `c:client_get_options`. CORRECTED 2026-09-04 (phase-417): this row said there is no runtime options struct. Seven ship and the correlator buckets all fourteen items `same` -- `nros_{node,publisher,subscription,service,client,action_client,action_server}_options_t` (`packages/api/nros-c/include/nros/nros_generated.h:1461,1729,2011,2474,2537,2556,2592`) plus a `*_get_default_options` for each, and `nros_node_options_t::domain_id_override` is a RUNTIME per-node domain. What is genuinely absent is the LIFECYCLE around one: no `*_options_copy`, no `*_options_fini`, and no `*_get_options` readback anywhere in the C surface."
   },
-  "c:action_client_get_zero_initialized": {
-    "verdict": "extension",
-    "why": "rcl's zero-init idiom under our method-style naming; see the pubsub stage's `c:publisher_get_zero_initialized`."
-  },
   "c:action_client_impl_t": {
     "verdict": "declined",
     "disposition": "absent",
@@ -269,7 +265,7 @@
   },
   "c:action_send_goal": {
     "verdict": "extension",
-    "why": "the blocking convenience: send the goal and drive the executor until the server accepts or rejects. rclcpp_action's equivalent is `async_send_goal(...).get()`, which deadlocks on a single-threaded executor -- the reason RFC-0021 makes the executor an explicit parameter. See the service stage's `cpp:Client::call`."
+    "why": "the blocking convenience: send the goal and drive the executor until the server accepts or rejects. rclcpp_action's equivalent is `async_send_goal(...).get()`, which deadlocks on a single-threaded executor -- the reason RFC-0021 makes the executor an explicit parameter. See the service stage's `cpp:PollClient::call`."
   },
   "c:action_send_goal_async": {
     "verdict": "divergence",
@@ -288,7 +284,8 @@
       "to": "nros_action_server_get_active_goal_count",
       "status": "landed",
       "category": "B"
-    }
+    },
+    "retired": "a deprecated alias, deleted after its one release; the row records the rename"
   },
   "c:action_server_get_active_goal_count": {
     "verdict": "rename",
@@ -312,10 +309,6 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "see `c:action_client_get_options`."
-  },
-  "c:action_server_get_zero_initialized": {
-    "verdict": "extension",
-    "why": "see `c:action_client_get_zero_initialized`."
   },
   "c:action_server_handle_*_callback_t": {
     "verdict": "divergence",
@@ -851,7 +844,7 @@
     "verdict": "extension",
     "why": "the L1 Rust server's eager reclaim, and the Rust half of what phase-417 W4.b shipped for `c:action_expire_goals`. rclrs 0.7.0 has no counterpart -- its typestate chain moves a terminated goal into the application's hands, so there is no server-side slab for anyone to reclaim; that is the same constraint `rust:ActionServer::active_goal_count` records. Named `expire_goals` rather than after the core's `expire_completed_results` so C (`nros_action_expire_goals`), the two arena handles and this one share ONE vocabulary. See `c:action_expire_goals` for the two halves of rcl's contract this does not carry (no `result_timeout`, no expired-goal report) and why neither survives a `no_std` core with no time source."
   },
-  "rust:ActionServer::for_each_active_goal": {
+  "rust:ActionServerHandle::for_each_active_goal": {
     "verdict": "divergence",
     "why": "phase-379 W5. rclrs hands back an iterator over goals; we take a visitor (`for_each_active_goal(&self, executor, f)`). An iterator would borrow the arena for its whole walk while the executor needs `&mut` to drive the state machine underneath it — a borrow-checker consequence of the arena owning goal storage, not a style preference. Same constraint as the identity row."
   },
@@ -861,7 +854,8 @@
   },
   "rust:ActionServer::goal-identity": {
     "verdict": "divergence",
-    "why": "phase-379 W5. A goal is named by its 16-byte UUID and lives in a fixed-capacity arena; operations take the id (`publish_feedback(exec, goal_id, ..)`, `succeed(exec, goal_id, result)`). This is the ACTION SPEC's own identity model — SendGoal/CancelGoal/GetResult and the feedback and status topics all key on goal_id — and BOTH client libraries layer language ergonomics over it. rclrs 0.7.0's typestate chain (RequestedGoal->AcceptedGoal->ExecutingGoal->TerminatedGoal) hands out an owning handle per goal, and its own `ExecutingGoal` is `Arc`-backed: the typestate is a compile-time wrapper OVER refcounting, not an alternative to it. rclcpp_action's shared_ptr<ServerGoalHandle> states the same requirement plainly. Both need an allocator; a fixed arena cannot provide an owning handle because the storage cannot follow it, and slot reclaim would rest on Drop order in no_std. Note rclrs itself falls back to the UUID once the chain ends: `succeeded_with` returns `TerminatedGoal { uuid }`. COSTS, stated: result retention is capped at MAX_GOALS (issue 0796 — it was push-only, so it held 'the first four, forever'); lookup is O(n) over the arena where a handle is O(1); size_of::<A::Goal>() * MAX_GOALS of static RAM is reserved whether goals arrive or not (issue 0827's class). And the ergonomic loss: `succeeded_with(self)` makes use-after-terminal a COMPILE error, ours can only make it a runtime one."
+    "why": "phase-379 W5. A goal is named by its 16-byte UUID and lives in a fixed-capacity arena; operations take the id (`publish_feedback(exec, goal_id, ..)`, `succeed(exec, goal_id, result)`). This is the ACTION SPEC's own identity model — SendGoal/CancelGoal/GetResult and the feedback and status topics all key on goal_id — and BOTH client libraries layer language ergonomics over it. rclrs 0.7.0's typestate chain (RequestedGoal->AcceptedGoal->ExecutingGoal->TerminatedGoal) hands out an owning handle per goal, and its own `ExecutingGoal` is `Arc`-backed: the typestate is a compile-time wrapper OVER refcounting, not an alternative to it. rclcpp_action's shared_ptr<ServerGoalHandle> states the same requirement plainly. Both need an allocator; a fixed arena cannot provide an owning handle because the storage cannot follow it, and slot reclaim would rest on Drop order in no_std. Note rclrs itself falls back to the UUID once the chain ends: `succeeded_with` returns `TerminatedGoal { uuid }`. COSTS, stated: result retention is capped at MAX_GOALS (issue 0796 — it was push-only, so it held 'the first four, forever'); lookup is O(n) over the arena where a handle is O(1); size_of::<A::Goal>() * MAX_GOALS of static RAM is reserved whether goals arrive or not (issue 0827's class). And the ergonomic loss: `succeeded_with(self)` makes use-after-terminal a COMPILE error, ours can only make it a runtime one.",
+    "unextracted": "a row about a CONCEPT (how a goal is named), not one symbol"
   },
   "rust:ActionServer::goal_exists": {
     "verdict": "extension",

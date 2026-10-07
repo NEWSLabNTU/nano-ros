@@ -279,7 +279,8 @@
       "status": "landed",
       "resolution": "`QoS::deadline(const nros::Duration&)` / `QoS::deadline()` shipped 2026-08-27 and MATCHES rclcpp; the `_ms` pair remains as [[deprecated]] forwarders pending removal. The blocking dependency (`cpp:Duration`) was satisfied 2026-08-25 by issue 0789.",
       "residue": "NONE since phase-482 W6 (2026-10-07): the deprecated forwarder is deleted, and so is the expected-failure probe that proved it warned (it would have gone on passing while asserting nothing)."
-    }
+    },
+    "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename"
   },
   "cpp:QoS::default_profile": {
     "verdict": "extension",
@@ -302,7 +303,8 @@
       "status": "landed",
       "resolution": "`QoS::durability()` returning `nros::DurabilityPolicy` shipped 2026-08-27 and MATCHES rclcpp; `QoS::durability_raw()` remains as a [[deprecated]] forwarder pending removal",
       "residue": "NONE since phase-482 W6 (2026-10-07): the deprecated forwarder is deleted, and so is the expected-failure probe that proved it warned (it would have gone on passing while asserting nothing)."
-    }
+    },
+    "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename"
   },
   "cpp:QoS::get_rmw_qos_profile": {
     "verdict": "declined",
@@ -317,7 +319,8 @@
       "status": "landed",
       "resolution": "`QoS::history()` returning `nros::HistoryPolicy` shipped 2026-08-27 and MATCHES rclcpp; `QoS::history_raw()` remains as a [[deprecated]] forwarder pending removal",
       "residue": "NONE since phase-482 W6 (2026-10-07): the deprecated forwarder is deleted, and so is the expected-failure probe that proved it warned (it would have gone on passing while asserting nothing)."
-    }
+    },
+    "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename"
   },
   "cpp:QoS::lifespan_ms": {
     "verdict": "rename",
@@ -327,7 +330,8 @@
       "status": "landed",
       "resolution": "`QoS::lifespan(const nros::Duration&)` / `QoS::lifespan()` shipped 2026-08-27 and MATCHES rclcpp; the `_ms` pair remains as [[deprecated]] forwarders pending removal. The blocking dependency (`cpp:Duration`) was satisfied 2026-08-25 by issue 0789.",
       "residue": "NONE since phase-482 W6 (2026-10-07): the deprecated forwarder is deleted, and so is the expected-failure probe that proved it warned (it would have gone on passing while asserting nothing)."
-    }
+    },
+    "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename"
   },
   "cpp:QoS::liveliness_lease_ms": {
     "verdict": "rename",
@@ -337,7 +341,8 @@
       "status": "landed",
       "resolution": "`QoS::liveliness_lease_duration(const nros::Duration&)` / `QoS::liveliness_lease_duration()` shipped 2026-08-27 and MATCHES rclcpp; the `_ms` pair remains as [[deprecated]] forwarders pending removal. The blocking dependency (`cpp:Duration`) was satisfied 2026-08-25 by issue 0789.",
       "residue": "NONE since phase-482 W6 (2026-10-07): the deprecated forwarder is deleted, and so is the expected-failure probe that proved it warned (it would have gone on passing while asserting nothing)."
-    }
+    },
+    "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename"
   },
   "cpp:QoS::liveliness_raw": {
     "verdict": "rename",
@@ -347,7 +352,8 @@
       "status": "landed",
       "resolution": "`QoS::liveliness()` returning `nros::LivelinessPolicy` shipped 2026-08-27 and MATCHES rclcpp; `QoS::liveliness_raw()` remains as a [[deprecated]] forwarder pending removal",
       "residue": "NONE since phase-482 W6 (2026-10-07): the deprecated forwarder is deleted, and so is the expected-failure probe that proved it warned (it would have gone on passing while asserting nothing)."
-    }
+    },
+    "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename"
   },
   "cpp:QoS::reliability_raw": {
     "verdict": "rename",
@@ -357,7 +363,8 @@
       "status": "landed",
       "resolution": "`QoS::reliability()` returning `nros::ReliabilityPolicy` shipped 2026-08-27 and MATCHES rclcpp; `QoS::reliability_raw()` remains as a [[deprecated]] forwarder pending removal",
       "residue": "NONE since phase-482 W6 (2026-10-07): the deprecated forwarder is deleted, and so is the expected-failure probe that proved it warned (it would have gone on passing while asserting nothing)."
-    }
+    },
+    "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename"
   },
   "cpp:QoS::sensor_data": {
     "verdict": "divergence",

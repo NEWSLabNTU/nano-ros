@@ -102,6 +102,25 @@ verdict is one of:
               `owed` is refused on any other verdict. Nothing reads the date
               a row was last re-measured; the witness is what is checked.
 
+`retired` / `unextracted` -- why a row the extraction does not back is
+              kept (issue 1323). `--check` walks the LEDGER as well as the
+              differences: every key must name something the extraction
+              produced, on either side and in any bucket (a glob: at least
+              one key it matches). A row that does not is deleted, unless it
+              carries one of these two reasons, each a non-empty string:
+
+                "retired":     "<where the name went, and by which change>"
+                "unextracted": "<why the extractor cannot see it>"
+
+              `retired` is for a name that is gone, where the row is the
+              record of the rename (a deprecated alias deleted in a batch).
+              `unextracted` is for a thing that exists but the extractor
+              does not record: a macro, a struct field, an enum variant, a
+              derive-provided method, or a row about a concept rather than
+              one symbol. Either one on a row whose key the extraction DOES
+              produce is red too: the reason it was kept has stopped being
+              true, and a stale exemption absorbs the next real defect.
+
 `envelope` -- where an `adopt-bounded` row's envelope is WRITTEN (issue 1637).
 
               RFC-0089's `adopt-bounded` says "same name and contract, weaker

@@ -32,7 +32,7 @@
   },
   "c:clock_get_zero_initialized": {
     "verdict": "extension",
-    "why": "see `c:publisher_get_zero_initialized`."
+    "why": "see `c:get_zero_initialized_publisher`."
   },
   "c:clock_is_valid": {
     "verdict": "their-rename",
@@ -233,10 +233,6 @@
   "c:timer_get_period": {
     "verdict": "divergence",
     "why": "rcl writes the period through an `int64_t*` and returns a status; ours returns it. Same inversion as `c:clock_get_now_ns`, and the same reason: reading a valid timer's own period cannot fail. This is one of the eight C rows the first report could not explain, and it is explained by the same decision as the clock read rather than by anything specific to timers."
-  },
-  "c:timer_get_zero_initialized": {
-    "verdict": "extension",
-    "why": "see `c:publisher_get_zero_initialized`."
   },
   "c:timer_impl_t": {
     "verdict": "declined",
@@ -625,7 +621,8 @@
   },
   "cpp:bind_timer": {
     "verdict": "extension",
-    "why": "RFC-0043's component seam for timers, and the most-written member of the family: every C++ example workspace and the `nros new` scaffold contains `::nros::bind_timer<Talker, &Talker::on_tick>(node, timer_, 500, this)`. It binds a component MEMBER `void C::tick()` as the timer callback by identity, with a compile-time trampoline and the component pointer as `ctx`, writing the timer into caller-owned storage. rclcpp's `create_wall_timer(period, std::bind(&Talker::on_tick, this))` allocates a `std::function`; there is no allocator here. See `cpp:bind_subscription` for the family and `cpp:ComponentNode::create_timer` for the RFC-0044 tier that wraps it.\n\nRETIRED by phase-482 W6 (2026-10-07): the deprecated item is DELETED, with every other deprecated item in the tree as one batch (changelog.d/+phase-482-w6.breaking.md). Code that still names it gets an undeclared-identifier error naming nothing; the changelog entry carries the replacement. The row is kept as the record of the rename."
+    "why": "RFC-0043's component seam for timers, and the most-written member of the family: every C++ example workspace and the `nros new` scaffold contains `::nros::bind_timer<Talker, &Talker::on_tick>(node, timer_, 500, this)`. It binds a component MEMBER `void C::tick()` as the timer callback by identity, with a compile-time trampoline and the component pointer as `ctx`, writing the timer into caller-owned storage. rclcpp's `create_wall_timer(period, std::bind(&Talker::on_tick, this))` allocates a `std::function`; there is no allocator here. See `cpp:bind_subscription` for the family and `cpp:ComponentNode::create_timer` for the RFC-0044 tier that wraps it.\n\nRETIRED by phase-482 W6 (2026-10-07): the deprecated item is DELETED, with every other deprecated item in the tree as one batch (changelog.d/+phase-482-w6.breaking.md). Code that still names it gets an undeclared-identifier error naming nothing; the changelog entry carries the replacement. The row is kept as the record of the rename.",
+    "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename"
   },
   "cpp:create_timer": {
     "verdict": "divergence",

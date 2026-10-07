@@ -199,7 +199,8 @@
   },
   "rust:ContextSource::Baked": {
     "verdict": "extension",
-    "why": "phase-427 W9 (2026-09-07) — LANDED. `ContextSource::Baked` (`packages/api/nros/src/init.rs:173`): the `source` a `Context` built by `Context::baked()` reports — and therefore what `default_from_env()` / `from_env()` report on a freestanding build, where \"the environment\" is the one this image was compiled for. Diagnostics and tests only, like its siblings `Env` and `Launch` (`rust:ContextSource`); no upstream counterpart because rclrs has nothing baked. What it lets a reader confirm is the platform constraint itself: a ported node that asserts `ctx.source == ContextSource::Env` on Zephyr is asking a question the target answers `Baked`."
+    "why": "phase-427 W9 (2026-09-07) — LANDED. `ContextSource::Baked` (`packages/api/nros/src/init.rs:173`): the `source` a `Context` built by `Context::baked()` reports — and therefore what `default_from_env()` / `from_env()` report on a freestanding build, where \"the environment\" is the one this image was compiled for. Diagnostics and tests only, like its siblings `Env` and `Launch` (`rust:ContextSource`); no upstream counterpart because rclrs has nothing baked. What it lets a reader confirm is the platform constraint itself: a ported node that asserts `ctx.source == ContextSource::Env` on Zephyr is asking a question the target answers `Baked`.",
+    "unextracted": "an enum variant; the extractor records the enum (`rust:ContextSource`), not its variants"
   },
   "rust:InitError": {
     "verdict": "extension",

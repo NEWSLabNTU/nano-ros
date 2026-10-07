@@ -179,7 +179,8 @@
       "category": "A",
       "resolution": "LANDED 2026-08-27, commit 92402ece0 (phase-379 W5), which renamed the whole C parameter family in one edit. `nros/parameter.h` declares only the `nros_parameter_*` spelling and no in-tree caller names the old one. This row is the RETAINED ALIAS, not open work.",
       "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05), which retired the four typedef aliases beside the forwarders. The type-identity assertion that stood in `param_name_aliases.c` went with it — that file was removed, trimmed to its live half and renamed `packages/api/nros-c/tests/compile/param_entry_points.c`. What this row predicted came true and the changelog has to say so (W-B6): these four vanished without ever having warned, because C cannot portably deprecate a typedef."
-    }
+    },
+    "retired": "the `nros_param_*` spelling, retired by phase-417 W-B5; the row records the rename to `nros_parameter_*`"
   },
   "c:param_callback_t": {
     "verdict": "rename",
@@ -189,7 +190,8 @@
       "category": "A",
       "resolution": "LANDED 2026-08-27, commit 92402ece0 (phase-379 W5), which renamed the whole C parameter family in one edit. `nros/parameter.h` declares only the `nros_parameter_*` spelling and no in-tree caller names the old one. This row is the RETAINED ALIAS, not open work.",
       "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05), which retired the four typedef aliases beside the forwarders. The type-identity assertion that stood in `param_name_aliases.c` went with it — that file was removed, trimmed to its live half and renamed `packages/api/nros-c/tests/compile/param_entry_points.c`. What this row predicted came true and the changelog has to say so (W-B6): these four vanished without ever having warned, because C cannot portably deprecate a typedef."
-    }
+    },
+    "retired": "the `nros_param_*` spelling, retired by phase-417 W-B5; the row records the rename to `nros_parameter_*`"
   },
   "c:param_declare_*": {
     "verdict": "rename",
@@ -200,7 +202,8 @@
       "category": "A",
       "resolution": "LANDED 2026-08-27, commit 92402ece0 (phase-379 W5), which renamed the whole C parameter family in one edit. `nros/parameter.h` declares only the `nros_parameter_*` spelling and no in-tree caller names the old one. This row is the RETAINED ALIAS, not open work.",
       "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05). The `NROS_DEPRECATED_MSG` `static inline` forwarder was retained ON PURPOSE for one release, to retire with every other deprecated alias in the tree as ONE batch on a version boundary (phase-379 W7 step 4); that batch was W-B5, and it took both probes with it. `param_deprecation_probe.c` — the expected-failure compile under `-Werror=deprecated-declarations` that proved the forwarder still WARNED — was deleted, because with the identifier gone it would have kept passing while asserting nothing. `param_name_aliases.c` was removed the same way, trimmed to its live half and renamed `packages/api/nros-c/tests/compile/param_entry_points.c`, which pins the `nros_parameter_*` signatures alone on the `just check c` lane (`just/check/lanes.just`)."
-    }
+    },
+    "retired": "the `nros_param_*` spelling, retired by phase-417 W-B5; the row records the rename to `nros_parameter_*`"
   },
   "c:param_get_*": {
     "verdict": "rename",
@@ -211,7 +214,8 @@
       "category": "A",
       "resolution": "LANDED 2026-08-27, commit 92402ece0 (phase-379 W5), which renamed the whole C parameter family in one edit. `nros/parameter.h` declares only the `nros_parameter_*` spelling and no in-tree caller names the old one. This row is the RETAINED ALIAS, not open work.",
       "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05). The `NROS_DEPRECATED_MSG` `static inline` forwarder was retained ON PURPOSE for one release, to retire with every other deprecated alias in the tree as ONE batch on a version boundary (phase-379 W7 step 4); that batch was W-B5, and it took both probes with it. `param_deprecation_probe.c` — the expected-failure compile under `-Werror=deprecated-declarations` that proved the forwarder still WARNED — was deleted, because with the identifier gone it would have kept passing while asserting nothing. `param_name_aliases.c` was removed the same way, trimmed to its live half and renamed `packages/api/nros-c/tests/compile/param_entry_points.c`, which pins the `nros_parameter_*` signatures alone on the `just check c` lane (`just/check/lanes.just`)."
-    }
+    },
+    "retired": "the `nros_param_*` spelling, retired by phase-417 W-B5; the row records the rename to `nros_parameter_*`"
   },
   "c:param_get_type": {
     "verdict": "rename",
@@ -221,7 +225,8 @@
       "category": "A",
       "resolution": "LANDED 2026-08-27, commit 92402ece0 (phase-379 W5), which renamed the whole C parameter family in one edit. `nros/parameter.h` declares only the `nros_parameter_*` spelling and no in-tree caller names the old one. This row is the RETAINED ALIAS, not open work.",
       "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05). The `NROS_DEPRECATED_MSG` `static inline` forwarder was retained ON PURPOSE for one release, to retire with every other deprecated alias in the tree as ONE batch on a version boundary (phase-379 W7 step 4); that batch was W-B5, and it took both probes with it. `param_deprecation_probe.c` — the expected-failure compile under `-Werror=deprecated-declarations` that proved the forwarder still WARNED — was deleted, because with the identifier gone it would have kept passing while asserting nothing. `param_name_aliases.c` was removed the same way, trimmed to its live half and renamed `packages/api/nros-c/tests/compile/param_entry_points.c`, which pins the `nros_parameter_*` signatures alone on the `just check c` lane (`just/check/lanes.just`)."
-    }
+    },
+    "retired": "the `nros_param_*` spelling, retired by phase-417 W-B5; the row records the rename to `nros_parameter_*`"
   },
   "c:param_has": {
     "verdict": "rename",
@@ -231,7 +236,8 @@
       "category": "A",
       "resolution": "LANDED 2026-08-27, commit 92402ece0 (phase-379 W5), which renamed the whole C parameter family in one edit. `nros/parameter.h` declares only the `nros_parameter_*` spelling and no in-tree caller names the old one. This row is the RETAINED ALIAS, not open work.",
       "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05). The `NROS_DEPRECATED_MSG` `static inline` forwarder was retained ON PURPOSE for one release, to retire with every other deprecated alias in the tree as ONE batch on a version boundary (phase-379 W7 step 4); that batch was W-B5, and it took both probes with it. `param_deprecation_probe.c` — the expected-failure compile under `-Werror=deprecated-declarations` that proved the forwarder still WARNED — was deleted, because with the identifier gone it would have kept passing while asserting nothing. `param_name_aliases.c` was removed the same way, trimmed to its live half and renamed `packages/api/nros-c/tests/compile/param_entry_points.c`, which pins the `nros_parameter_*` signatures alone on the `just check c` lane (`just/check/lanes.just`)."
-    }
+    },
+    "retired": "the `nros_param_*` spelling, retired by phase-417 W-B5; the row records the rename to `nros_parameter_*`"
   },
   "c:param_server_fini": {
     "verdict": "rename",
@@ -241,7 +247,8 @@
       "category": "A",
       "resolution": "LANDED 2026-08-27, commit 92402ece0 (phase-379 W5), which renamed the whole C parameter family in one edit. `nros/parameter.h` declares only the `nros_parameter_*` spelling and no in-tree caller names the old one. This row is the RETAINED ALIAS, not open work.",
       "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05). The `NROS_DEPRECATED_MSG` `static inline` forwarder was retained ON PURPOSE for one release, to retire with every other deprecated alias in the tree as ONE batch on a version boundary (phase-379 W7 step 4); that batch was W-B5, and it took both probes with it. `param_deprecation_probe.c` — the expected-failure compile under `-Werror=deprecated-declarations` that proved the forwarder still WARNED — was deleted, because with the identifier gone it would have kept passing while asserting nothing. `param_name_aliases.c` was removed the same way, trimmed to its live half and renamed `packages/api/nros-c/tests/compile/param_entry_points.c`, which pins the `nros_parameter_*` signatures alone on the `just check c` lane (`just/check/lanes.just`)."
-    }
+    },
+    "retired": "the `nros_param_*` spelling, retired by phase-417 W-B5; the row records the rename to `nros_parameter_*`"
   },
   "c:param_server_get_count": {
     "verdict": "rename",
@@ -251,7 +258,8 @@
       "category": "A",
       "resolution": "LANDED 2026-08-27, commit 92402ece0 (phase-379 W5), which renamed the whole C parameter family in one edit. `nros/parameter.h` declares only the `nros_parameter_*` spelling and no in-tree caller names the old one. This row is the RETAINED ALIAS, not open work.",
       "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05). The `NROS_DEPRECATED_MSG` `static inline` forwarder was retained ON PURPOSE for one release, to retire with every other deprecated alias in the tree as ONE batch on a version boundary (phase-379 W7 step 4); that batch was W-B5, and it took both probes with it. `param_deprecation_probe.c` — the expected-failure compile under `-Werror=deprecated-declarations` that proved the forwarder still WARNED — was deleted, because with the identifier gone it would have kept passing while asserting nothing. `param_name_aliases.c` was removed the same way, trimmed to its live half and renamed `packages/api/nros-c/tests/compile/param_entry_points.c`, which pins the `nros_parameter_*` signatures alone on the `just check c` lane (`just/check/lanes.just`)."
-    }
+    },
+    "retired": "the `nros_param_*` spelling, retired by phase-417 W-B5; the row records the rename to `nros_parameter_*`"
   },
   "c:param_server_get_zero_initialized": {
     "verdict": "rename",
@@ -261,7 +269,8 @@
       "category": "A",
       "resolution": "LANDED 2026-08-27, commit 92402ece0 (phase-379 W5), which renamed the whole C parameter family in one edit. `nros/parameter.h` declares only the `nros_parameter_*` spelling and no in-tree caller names the old one. This row is the RETAINED ALIAS, not open work.",
       "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05). The `NROS_DEPRECATED_MSG` `static inline` forwarder was retained ON PURPOSE for one release, to retire with every other deprecated alias in the tree as ONE batch on a version boundary (phase-379 W7 step 4); that batch was W-B5, and it took both probes with it. `param_deprecation_probe.c` — the expected-failure compile under `-Werror=deprecated-declarations` that proved the forwarder still WARNED — was deleted, because with the identifier gone it would have kept passing while asserting nothing. `param_name_aliases.c` was removed the same way, trimmed to its live half and renamed `packages/api/nros-c/tests/compile/param_entry_points.c`, which pins the `nros_parameter_*` signatures alone on the `just check c` lane (`just/check/lanes.just`)."
-    }
+    },
+    "retired": "the `nros_param_*` spelling, retired by phase-417 W-B5; the row records the rename to `nros_parameter_*`"
   },
   "c:param_server_init": {
     "verdict": "rename",
@@ -271,7 +280,8 @@
       "category": "A",
       "resolution": "LANDED 2026-08-27, commit 92402ece0 (phase-379 W5), which renamed the whole C parameter family in one edit. `nros/parameter.h` declares only the `nros_parameter_*` spelling and no in-tree caller names the old one. This row is the RETAINED ALIAS, not open work.",
       "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05). The `NROS_DEPRECATED_MSG` `static inline` forwarder was retained ON PURPOSE for one release, to retire with every other deprecated alias in the tree as ONE batch on a version boundary (phase-379 W7 step 4); that batch was W-B5, and it took both probes with it. `param_deprecation_probe.c` — the expected-failure compile under `-Werror=deprecated-declarations` that proved the forwarder still WARNED — was deleted, because with the identifier gone it would have kept passing while asserting nothing. `param_name_aliases.c` was removed the same way, trimmed to its live half and renamed `packages/api/nros-c/tests/compile/param_entry_points.c`, which pins the `nros_parameter_*` signatures alone on the `just check c` lane (`just/check/lanes.just`)."
-    }
+    },
+    "retired": "the `nros_param_*` spelling, retired by phase-417 W-B5; the row records the rename to `nros_parameter_*`"
   },
   "c:param_server_set_callback": {
     "verdict": "rename",
@@ -281,7 +291,8 @@
       "category": "A",
       "resolution": "LANDED 2026-08-27, commit 92402ece0 (phase-379 W5), which renamed the whole C parameter family in one edit. `nros/parameter.h` declares only the `nros_parameter_*` spelling and no in-tree caller names the old one. This row is the RETAINED ALIAS, not open work.",
       "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05). The `NROS_DEPRECATED_MSG` `static inline` forwarder was retained ON PURPOSE for one release, to retire with every other deprecated alias in the tree as ONE batch on a version boundary (phase-379 W7 step 4); that batch was W-B5, and it took both probes with it. `param_deprecation_probe.c` — the expected-failure compile under `-Werror=deprecated-declarations` that proved the forwarder still WARNED — was deleted, because with the identifier gone it would have kept passing while asserting nothing. `param_name_aliases.c` was removed the same way, trimmed to its live half and renamed `packages/api/nros-c/tests/compile/param_entry_points.c`, which pins the `nros_parameter_*` signatures alone on the `just check c` lane (`just/check/lanes.just`)."
-    }
+    },
+    "retired": "the `nros_param_*` spelling, retired by phase-417 W-B5; the row records the rename to `nros_parameter_*`"
   },
   "c:param_server_state_t": {
     "verdict": "rename",
@@ -291,7 +302,8 @@
       "category": "A",
       "resolution": "LANDED 2026-08-27, commit 92402ece0 (phase-379 W5), which renamed the whole C parameter family in one edit. `nros/parameter.h` declares only the `nros_parameter_*` spelling and no in-tree caller names the old one. This row is the RETAINED ALIAS, not open work.",
       "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05), which retired the four typedef aliases beside the forwarders. The type-identity assertion that stood in `param_name_aliases.c` went with it — that file was removed, trimmed to its live half and renamed `packages/api/nros-c/tests/compile/param_entry_points.c`. What this row predicted came true and the changelog has to say so (W-B6): these four vanished without ever having warned, because C cannot portably deprecate a typedef."
-    }
+    },
+    "retired": "the `nros_param_*` spelling, retired by phase-417 W-B5; the row records the rename to `nros_parameter_*`"
   },
   "c:param_server_t": {
     "verdict": "rename",
@@ -301,7 +313,8 @@
       "category": "A",
       "resolution": "LANDED 2026-08-27, commit 92402ece0 (phase-379 W5), which renamed the whole C parameter family in one edit. `nros/parameter.h` declares only the `nros_parameter_*` spelling and no in-tree caller names the old one. This row is the RETAINED ALIAS, not open work.",
       "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05), which retired the four typedef aliases beside the forwarders. The type-identity assertion that stood in `param_name_aliases.c` went with it — that file was removed, trimmed to its live half and renamed `packages/api/nros-c/tests/compile/param_entry_points.c`. What this row predicted came true and the changelog has to say so (W-B6): these four vanished without ever having warned, because C cannot portably deprecate a typedef."
-    }
+    },
+    "retired": "the `nros_param_*` spelling, retired by phase-417 W-B5; the row records the rename to `nros_parameter_*`"
   },
   "c:param_set_*": {
     "verdict": "rename",
@@ -312,7 +325,8 @@
       "category": "A",
       "resolution": "LANDED 2026-08-27, commit 92402ece0 (phase-379 W5), which renamed the whole C parameter family in one edit. `nros/parameter.h` declares only the `nros_parameter_*` spelling and no in-tree caller names the old one. This row is the RETAINED ALIAS, not open work.",
       "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05). The `NROS_DEPRECATED_MSG` `static inline` forwarder was retained ON PURPOSE for one release, to retire with every other deprecated alias in the tree as ONE batch on a version boundary (phase-379 W7 step 4); that batch was W-B5, and it took both probes with it. `param_deprecation_probe.c` — the expected-failure compile under `-Werror=deprecated-declarations` that proved the forwarder still WARNED — was deleted, because with the identifier gone it would have kept passing while asserting nothing. `param_name_aliases.c` was removed the same way, trimmed to its live half and renamed `packages/api/nros-c/tests/compile/param_entry_points.c`, which pins the `nros_parameter_*` signatures alone on the `just check c` lane (`just/check/lanes.just`)."
-    }
+    },
+    "retired": "the `nros_param_*` spelling, retired by phase-417 W-B5; the row records the rename to `nros_parameter_*`"
   },
   "c:parameter_array_t": {
     "verdict": "extension",
@@ -365,7 +379,7 @@
   },
   "c:parameter_server_get_zero_initialized": {
     "verdict": "extension",
-    "why": "LANDED 2026-08-27 (phase-379 W5): the C parameter family is now spelled `nros_parameter_*`. Renamed here from `c:param_server_get_zero_initialized`, which survives as the deprecated alias row. rcl's zero-init idiom under our naming; see the pubsub stage's `c:publisher_get_zero_initialized`. rclc has no equivalent because `rclc_parameter_server_init_default` allocates."
+    "why": "LANDED 2026-08-27 (phase-379 W5): the C parameter family is now spelled `nros_parameter_*`. Renamed here from `c:param_server_get_zero_initialized`, which survives as the deprecated alias row. rcl's zero-init idiom under our naming; see the pubsub stage's `c:get_zero_initialized_publisher`. rclc has no equivalent because `rclc_parameter_server_init_default` allocates."
   },
   "c:parameter_server_init": {
     "verdict": "divergence",
@@ -552,7 +566,8 @@
   "cpp:Node::parameters": {
     "verdict": "extension",
     "disposition": "absent",
-    "why": "REMOVED, phase-426 W4 (2026-09-07). It was an ours-only accessor on the compat shim's `rclcpp::Node` handing back a reference to the node's own `nros::ParameterServer`, documented as \"the escape hatch to the node-owned store\" for \"the C-API helpers that take an `nros_parameter_server_t*`\" -- and no such helper exists: `nros_executor_register_parameter_services` takes the EXECUTOR, which `cpp:ParameterServer` had already recorded. With the node-local store deleted there is nothing to return and nothing that took it, so the name is gone rather than returning a reference to a store the services do not read. A node's parameters are reached through `declare_parameter` / `get_parameter` / `set_parameter`, which now name the one store. rclcpp declares no `parameters()` either, so removing it moves the ported surface TOWARD upstream. The row is kept, not deleted, so the removal is legible: a reader who finds `parameters()` in a pre-W4 port learns where it went."
+    "why": "REMOVED, phase-426 W4 (2026-09-07). It was an ours-only accessor on the compat shim's `rclcpp::Node` handing back a reference to the node's own `nros::ParameterServer`, documented as \"the escape hatch to the node-owned store\" for \"the C-API helpers that take an `nros_parameter_server_t*`\" -- and no such helper exists: `nros_executor_register_parameter_services` takes the EXECUTOR, which `cpp:ParameterServer` had already recorded. With the node-local store deleted there is nothing to return and nothing that took it, so the name is gone rather than returning a reference to a store the services do not read. A node's parameters are reached through `declare_parameter` / `get_parameter` / `set_parameter`, which now name the one store. rclcpp declares no `parameters()` either, so removing it moves the ported surface TOWARD upstream. The row is kept, not deleted, so the removal is legible: a reader who finds `parameters()` in a pre-W4 port learns where it went.",
+    "retired": "removed by phase-426 W4"
   },
   "cpp:Node::remove_on_set_parameters_callback": {
     "verdict": "divergence",
@@ -663,7 +678,8 @@
   },
   "cpp:ParameterServer": {
     "verdict": "divergence",
-    "why": "RETIRED 2026-09-11 (phase-426 W4, second half): `nros::ParameterServer<Capacity, SeqSlots, SeqPoolBytes>` IS DELETED. What follows is the reasoning that produced the row and then retired it; the class no longer exists, so nothing here is a claim about today's surface. It was a fixed-capacity, node-local typed parameter store, storage inline, no heap, over the LEGACY caller-storage C `nros_parameter_server_t` -- which means its parameters were NOT what `ros2 param` sees: the six `rcl_interfaces/srv/*` servers read a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, and nothing joined them. rclcpp has no such type because rclcpp's parameters live ON the node and the node allocates. THREE FACTS DECIDED THE RETIREMENT, all measured. (1) NO CONSUMER. After the first half of W4 deleted both node-owned C++ stores, `grep -rn 'ParameterServer<' packages examples book docs` found the class constructed in exactly one place in the tree: `examples/native/cpp/parameters`, the example that documented it. A caller-owned store with no executor is a capability we had no caller for. (2) IT WAS THE DEFECT, SHIPPED. An example is COPIED OUT (RFC-0026), so the shipped answer to \"how do I use parameters in C++\" was the store `ros2 param get` cannot read -- which is the whole of what phase-426 exists to remove. (3) IT IS WRAPPER-SIDE BEHAVIOUR. RFC-0019/0020 and RFC-0089 §\"Parameters\" put storage, typing, the read-only and range rules and the node keying in Rust and leave the C++ API a call-shape adapter; a ~600-line header with a name table and a bump-allocated element pool is the second implementation that rule forbids. Disposition is ABSENT (RFC-0089's fourth), which is available here because upstream never had the name -- the alias rule only binds where rclcpp HAS a name and we lack it. The capability moved rather than went: `nros::Seq<T, N>` survives as a VALUE (see `cpp:Seq`) and now declares and reads through the node API onto the executor's store, so a freestanding sequence parameter is visible to `ros2 param get` for the first time -- measured 2026-09-11, `ros2 param get /cpp_parameters mpc_weights` -> `array('d', [4.0, 5.0, 6.0, 7.0])`. The `raw()` accessor went with the class and nothing mourned it: it was documented for \"C-API helpers (e.g. ROS 2 service registration)\" that do not exist -- `nros_executor_register_parameter_services` takes the executor, never a standalone store. The C `nros_parameter_*` family it wrapped is UNCHANGED and still shipped; what changed is that no example demonstrates it (`check-example-parameter-stores`). Phase 379 W3, retired phase-426 W4."
+    "why": "RETIRED 2026-09-11 (phase-426 W4, second half): `nros::ParameterServer<Capacity, SeqSlots, SeqPoolBytes>` IS DELETED. What follows is the reasoning that produced the row and then retired it; the class no longer exists, so nothing here is a claim about today's surface. It was a fixed-capacity, node-local typed parameter store, storage inline, no heap, over the LEGACY caller-storage C `nros_parameter_server_t` -- which means its parameters were NOT what `ros2 param` sees: the six `rcl_interfaces/srv/*` servers read a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, and nothing joined them. rclcpp has no such type because rclcpp's parameters live ON the node and the node allocates. THREE FACTS DECIDED THE RETIREMENT, all measured. (1) NO CONSUMER. After the first half of W4 deleted both node-owned C++ stores, `grep -rn 'ParameterServer<' packages examples book docs` found the class constructed in exactly one place in the tree: `examples/native/cpp/parameters`, the example that documented it. A caller-owned store with no executor is a capability we had no caller for. (2) IT WAS THE DEFECT, SHIPPED. An example is COPIED OUT (RFC-0026), so the shipped answer to \"how do I use parameters in C++\" was the store `ros2 param get` cannot read -- which is the whole of what phase-426 exists to remove. (3) IT IS WRAPPER-SIDE BEHAVIOUR. RFC-0019/0020 and RFC-0089 §\"Parameters\" put storage, typing, the read-only and range rules and the node keying in Rust and leave the C++ API a call-shape adapter; a ~600-line header with a name table and a bump-allocated element pool is the second implementation that rule forbids. Disposition is ABSENT (RFC-0089's fourth), which is available here because upstream never had the name -- the alias rule only binds where rclcpp HAS a name and we lack it. The capability moved rather than went: `nros::Seq<T, N>` survives as a VALUE (see `cpp:Seq`) and now declares and reads through the node API onto the executor's store, so a freestanding sequence parameter is visible to `ros2 param get` for the first time -- measured 2026-09-11, `ros2 param get /cpp_parameters mpc_weights` -> `array('d', [4.0, 5.0, 6.0, 7.0])`. The `raw()` accessor went with the class and nothing mourned it: it was documented for \"C-API helpers (e.g. ROS 2 service registration)\" that do not exist -- `nros_executor_register_parameter_services` takes the executor, never a standalone store. The C `nros_parameter_*` family it wrapped is UNCHANGED and still shipped; what changed is that no example demonstrates it (`check-example-parameter-stores`). Phase 379 W3, retired phase-426 W4.",
+    "retired": "deleted by phase-426 W4; the row records the reasoning that retired it"
   },
   "cpp:ParameterService": {
     "verdict": "divergence",
@@ -749,7 +765,8 @@
   "rust:DeclarationError::*": {
     "verdict": "extension",
     "bucket": "ours-only",
-    "why": "Whatever the derive gives the enum. The type itself is `rust:DeclarationError`. phase-417 W4.a."
+    "why": "Whatever the derive gives the enum. The type itself is `rust:DeclarationError`. phase-417 W4.a.",
+    "unextracted": "methods the derive provides; the extractor records the type only"
   },
   "rust:Executor::*parameter*": {
     "verdict": "divergence",
