@@ -123,7 +123,7 @@ The post-processor runs at every test recipe's tail, **before** the
 * `justfile::test-all` — full matrix
 * `justfile::test-failed` — rerun-failures workflow
 * `justfile::_nextest-platform` — shared helper for the per-platform
-  recipes (`just esp32 test`, `just freertos test`,
+  recipes (`just freertos test`,
   `just nuttx test`, `just orin-spe test`,
   `just threadx_linux test`, `just threadx_riscv64 test`)
 * `just/xrce.just::test` / `test-ros2` / `test-c`

@@ -43,7 +43,9 @@ def shared_platforms():
 def selftest() -> None:
     """The negative control, on the NORMAL path — a gate that cannot fail is a comment.
 
-    Modelled on the real defect: a packer that reads a lane-built artifact and
+    Modelled on the real defect (it was the esp32 packer; ESP32 is dormant now,
+    issue 1525, so the fixture uses a platform still on the shared list): a
+    packer that reads a lane-built artifact and
     supplies the row's args and env itself. `_flag` is the exempting sibling, so
     the pair also pins the NARROWING — without it this gate flagged five
     self-consistent run-example recipes, which is a gate wider than its rule.
@@ -51,18 +53,18 @@ def selftest() -> None:
     import tempfile
 
     bug = ('  artifact_dir="$(nros_fixture_row_artifact_dir '
-           '"examples/esp32-c3-baremetal/rust/$ex" esp32 "" "")"\n')
+           '"examples/mps2-an385-freertos/rust/$ex" freertos "" "")"\n')
     ok = ('  artifact_dir="$(nros_fixture_row_artifact_dir_by_id '
-          '"esp32-c3-baremetal-$ex" esp32)"\n')
+          '"freertos-rust-$ex" freertos)"\n')
     self_consistent_body = ('  flag="$(nros_fixture_target_dir_flag nuttx "" "")"\n'
                             '  d="$(nros_fixture_row_artifact_dir "$L" nuttx "" "")"\n')
 
     # phase-472 W8 — the exemption's NEIGHBOURS: the flag in ANOTHER recipe,
     # and the flag for ANOTHER platform, do not make this packer self-consistent.
-    other_recipe = ('  flag="$(nros_fixture_target_dir_flag esp32 "" "")"\n'
+    other_recipe = ('  flag="$(nros_fixture_target_dir_flag freertos "" "")"\n'
                     "other:\n" + bug)
     other_plat = ('  flag="$(nros_fixture_target_dir_flag nuttx "" "")"\n' + bug)
-    dep_builder = ('  flag="$(nros_fixture_target_dir_flag esp32 "" "")"\n'
+    dep_builder = ('  flag="$(nros_fixture_target_dir_flag freertos "" "")"\n'
                    "consumer: recipe\n" + bug)
     for name, body, want in (("the 1025 defect", bug, 1),
                              ("the by-id fix", ok, 0),

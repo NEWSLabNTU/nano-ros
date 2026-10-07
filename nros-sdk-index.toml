@@ -868,8 +868,9 @@ install = "cmake --build build --parallel $(nproc) --target install"
 # becoming a `[prereq.*]` this index carries forever, to remove one source
 # build. Declared on the dist-or-reason ratchet
 # (`.config/dist-or-reason-baseline.txt`) rather than silently left off it.
-[tool.esp32-qemu]
-version = "esp-develop-nros1"
+# DORMANT (issue 1525): ESP32 support is parked. Kept for future use — uncomment with the rest of the platform.
+# [tool.esp32-qemu]
+# version = "esp-develop-nros1"
 # Source-built (no dist): the first three are BUILD deps of qemu's meson
 # configure — found undeclared when the configure died on glib-2.0 (phase-327 W4
 # applied to source recipes; probed BEFORE the build so the failure names
@@ -890,22 +891,22 @@ version = "esp-develop-nros1"
 # They stay declared until one happens: `check-dist-runtime-deps` checks
 # COVERAGE, not minimality, so an over-declaration is safe, while deleting them
 # without a re-measure would be a guess.
-system = [
-    "libglib2-dev",
-    "libpixman-dev",
-    "libgcrypt-dev",
-    "libssl3",
-    "libpcre2",
-    "libselinux1",
-    "libtinfo6",
-    "libz1",
-]
-upstream = "esp-develop"
-[tool.esp32-qemu.source]
-git = "https://github.com/espressif/qemu"
+# system = [
+#     "libglib2-dev",
+#     "libpixman-dev",
+#     "libgcrypt-dev",
+#     "libssl3",
+#     "libpcre2",
+#     "libselinux1",
+#     "libtinfo6",
+#     "libz1",
+# ]
+# upstream = "esp-develop"
+# [tool.esp32-qemu.source]
+# git = "https://github.com/espressif/qemu"
 # A tag, not a bare SHA: nros's source-build clones by ref (git clone --branch),
 # which needs a branch/tag. esp-develop line provides the `esp32c3` machine.
-ref = "esp-develop-9.2.2-20260417"
+# ref = "esp-develop-9.2.2-20260417"
 # `--disable-werror` — this fork is pinned to the esp-develop 9.2.2 line, and
 # QEMU builds -Werror by default, so any compiler NEWER than the fork fails on
 # warnings in upstream's own code rather than on anything we did. Observed with
@@ -952,8 +953,8 @@ ref = "esp-develop-9.2.2-20260417"
 #
 # Left auto DELIBERATELY: fdt (the riscv boards require it), pixman, zlib
 # (`required: true`), and the slirp/gcrypt pair enabled above.
-configure = "./configure --target-list=riscv32-softmmu --prefix={prefix} --enable-gcrypt --enable-slirp --disable-werror --disable-strip --disable-user --disable-capstone --disable-docs --disable-tools --disable-guest-agent --disable-gtk --disable-vnc --disable-sdl --disable-sdl-image --disable-curses --disable-spice --disable-spice-protocol --disable-dbus-display --disable-opengl --disable-virglrenderer --disable-png --disable-vte --disable-xkbcommon --disable-alsa --disable-pa --disable-jack --disable-oss --disable-sndio --disable-pipewire --disable-libusb --disable-usb-redir --disable-smartcard --disable-u2f --disable-canokey --disable-brlapi --disable-libudev --disable-mpath --disable-curl --disable-libssh --disable-rbd --disable-glusterfs --disable-libiscsi --disable-libnfs --disable-blkio --disable-fuse --disable-gnutls --disable-seccomp --disable-cap-ng --disable-attr --disable-virtfs --disable-numa --disable-selinux --disable-libdw --disable-libcbor --disable-libkeyutils --disable-auth-pam --disable-vde --disable-af-xdp --disable-bpf --disable-linux-aio --disable-linux-io-uring --disable-libpmem --disable-libdaxctl --disable-zstd --disable-lzo --disable-snappy --disable-bzip2 --disable-lzfse"
-install = "ninja -C build -j$(nproc) && ninja -C build install"
+# configure = "./configure --target-list=riscv32-softmmu --prefix={prefix} --enable-gcrypt --enable-slirp --disable-werror --disable-strip --disable-user --disable-capstone --disable-docs --disable-tools --disable-guest-agent --disable-gtk --disable-vnc --disable-sdl --disable-sdl-image --disable-curses --disable-spice --disable-spice-protocol --disable-dbus-display --disable-opengl --disable-virglrenderer --disable-png --disable-vte --disable-xkbcommon --disable-alsa --disable-pa --disable-jack --disable-oss --disable-sndio --disable-pipewire --disable-libusb --disable-usb-redir --disable-smartcard --disable-u2f --disable-canokey --disable-brlapi --disable-libudev --disable-mpath --disable-curl --disable-libssh --disable-rbd --disable-glusterfs --disable-libiscsi --disable-libnfs --disable-blkio --disable-fuse --disable-gnutls --disable-seccomp --disable-cap-ng --disable-attr --disable-virtfs --disable-numa --disable-selinux --disable-libdw --disable-libcbor --disable-libkeyutils --disable-auth-pam --disable-vde --disable-af-xdp --disable-bpf --disable-linux-aio --disable-linux-io-uring --disable-libpmem --disable-libdaxctl --disable-zstd --disable-lzo --disable-snappy --disable-bzip2 --disable-lzfse"
+# install = "ninja -C build -j$(nproc) && ninja -C build install"
 
 # issue 0486 — espflash packs an ELF into the ESP32 flash image the QEMU runner
 # and the e2e tests actually boot (`espflash save-image --merge`). It was
@@ -988,20 +989,21 @@ install = "ninja -C build -j$(nproc) && ninja -C build install"
 # historical libudev requirement no longer applies. Probed rather than assumed,
 # because an undeclared system dep is the RFC-0062 class that `[tool.sccache]`
 # carries `--features vendored-openssl` to avoid.
-[tool.espflash]
-version = "4.5.0-nros1"
-upstream = "v4.5.0" # = source.ref (esp-rs/espflash release tag)
-smoke = [
-    { run = "bin/espflash --version", expect = "espflash 4.5.0" },
-]
-dist.linux-x86_64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-x86_64-unknown-linux-musl.zip", sha256 = "542c5cc81f0cca384cbead1cacb7ccc9f35072a989b2de0fb95333d814272c22", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash", floor = { none = "statically linked (x86_64-unknown-linux-musl): no PT_INTERP, no DT_NEEDED" } }
-dist.linux-arm64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-aarch64-unknown-linux-gnu.zip", sha256 = "2d5972b9c18fc89bf253e60fe6df6a4f8db3aee5db0166b2c97b53bd21c01f09", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash", floor = { glibc = "2.34" } }
-dist.macos-arm64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-aarch64-apple-darwin.zip", sha256 = "6614ff70e523a6bce5f4ccc6459b77275f5e7e900429004bb7eec463c95db28a", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash", floor = { macos = "11.0" } }
-system = ["unzip"]
-[tool.espflash.source]
-git = "https://github.com/esp-rs/espflash"
-ref = "v4.5.0"
-install = "cargo install --path espflash --root {prefix} --locked"
+# DORMANT (issue 1525): ESP32 support is parked. Kept for future use — uncomment with the rest of the platform.
+# [tool.espflash]
+# version = "4.5.0-nros1"
+# upstream = "v4.5.0" # = source.ref (esp-rs/espflash release tag)
+# smoke = [
+#     { run = "bin/espflash --version", expect = "espflash 4.5.0" },
+# ]
+# dist.linux-x86_64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-x86_64-unknown-linux-musl.zip", sha256 = "542c5cc81f0cca384cbead1cacb7ccc9f35072a989b2de0fb95333d814272c22", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash", floor = { none = "statically linked (x86_64-unknown-linux-musl): no PT_INTERP, no DT_NEEDED" } }
+# dist.linux-arm64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-aarch64-unknown-linux-gnu.zip", sha256 = "2d5972b9c18fc89bf253e60fe6df6a4f8db3aee5db0166b2c97b53bd21c01f09", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash", floor = { glibc = "2.34" } }
+# dist.macos-arm64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-aarch64-apple-darwin.zip", sha256 = "6614ff70e523a6bce5f4ccc6459b77275f5e7e900429004bb7eec463c95db28a", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash", floor = { macos = "11.0" } }
+# system = ["unzip"]
+# [tool.espflash.source]
+# git = "https://github.com/esp-rs/espflash"
+# ref = "v4.5.0"
+# install = "cargo install --path espflash --root {prefix} --locked"
 
 # 194.3c — genromfs: the NuttX rv-virt board's src/Makefile unconditionally bakes
 # an etc/ ROMFS (RCSRCS = etc/init.d/{rc.sysinit,rcS}) via `genromfs`, so any
@@ -1556,9 +1558,10 @@ packages = ["threadx", "threadx-netxduo"]
 # already read "board overlay for ESP32-C3 (real silicon) + ESP32-C3 QEMU" —
 # one name, both, because the name is the PART. This key was the emulator
 # spelling of the same board and collapses into it.
-[board.esp32-c3-baremetal]
-arch = "riscv32"
-platform = "bare-metal"
+# DORMANT (issue 1525): ESP32 support is parked. Kept for future use — uncomment with the rest of the platform.
+# [board.esp32-c3-baremetal]
+# arch = "riscv32"
+# platform = "bare-metal"
 # issue 0399 — the board compiles zpico C for riscv32imc and needs a riscv
 # cross gcc. `riscv-none-elf-gcc` is the xPack multilib toolchain (rv32imc /
 # ilp32 capable); declaring it here means `nros setup esp32-c3-baremetal`
@@ -1567,7 +1570,7 @@ platform = "bare-metal"
 # issue 0486 — `espflash` joins `riscv-none-elf-gcc` for the same reason 0399
 # added that one: without it a documented-provisioned host builds every ELF and
 # then produces no flash image, with the lane exiting 0.
-packages = ["riscv-none-elf-gcc", "espflash"]
+# packages = ["riscv-none-elf-gcc", "espflash"]
 
 [board.fvp-aemv8r-smp]
 arch = "aarch64"
@@ -2351,9 +2354,10 @@ check = { cmd = "cargo-nextest" }
 crate = "cargo-llvm-cov"
 check = { cmd = "cargo-llvm-cov" }
 
-[rust.cargo-tool.espflash]
-crate = "espflash"
-check = { cmd = "espflash" }
+# DORMANT (issue 1525): ESP32 support is parked. Kept for future use — uncomment with the rest of the platform.
+# [rust.cargo-tool.espflash]
+# crate = "espflash"
+# check = { cmd = "espflash" }
 
 [rust.cargo-tool.rustfilt]
 crate = "rustfilt"

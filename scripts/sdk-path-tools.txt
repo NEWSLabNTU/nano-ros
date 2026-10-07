@@ -38,6 +38,9 @@
 #            resolvers take an absolute path), so it never belonged on this list
 #            once it came from ROS.
 #
+#   espflash removed 2026-10-07 (issue 1525). ESP32 support is DORMANT; its
+#            index entry is commented out, so nothing provisions it.
+#
 # Removing a name here does NOT delete the store directory; nothing does, since
 # the store is documented to accumulate (issue 0500). `just doctor` reports a
 # retired entry that is still installed so it can be removed deliberately.
@@ -47,7 +50,6 @@
 
 genromfs
 sccache
-espflash
 idlc
 # make + ninja — the two halves of the Phase 176 unified jobserver, and both
 # invoked by BARE NAME by things we do not control: cmake generators and RTOS

@@ -9,15 +9,15 @@
 
 A `no_std` ROS 2 client library for bare-metal and RTOS targets, written in Rust. Built on [zenoh-pico](https://github.com/eclipse-zenoh/zenoh-pico) for lightweight pub/sub, services, and actions over TCP, serial, or raw Ethernet.
 
-nano-ros runs directly on microcontrollers without an OS, on RTOS kernels (Zephyr, FreeRTOS, NuttX, ThreadX), and on Linux — using the same API. It interoperates with standard ROS 2 nodes via the rmw_zenoh protocol. QEMU emulation is provided for Cortex-M3 (bare-metal + FreeRTOS MPS2-AN385), ESP32-C3, NuttX (ARM virt + RISC-V rv-virt), and ThreadX RISC-V64, plus a ThreadX Linux simulator — enabling full integration testing without hardware.
+nano-ros runs directly on microcontrollers without an OS, on RTOS kernels (Zephyr, FreeRTOS, NuttX, ThreadX), and on Linux — using the same API. It interoperates with standard ROS 2 nodes via the rmw_zenoh protocol. QEMU emulation is provided for Cortex-M3 (bare-metal + FreeRTOS MPS2-AN385), NuttX (ARM virt + RISC-V rv-virt), and ThreadX RISC-V64, plus a ThreadX Linux simulator — enabling full integration testing without hardware.
 
 The project integrates formal verification (Kani bounded model checking, CBMC for the C API) and WCET measurement (DWT cycle counters, static stack analysis) into the build pipeline, providing a foundation for schedulability analysis in safety-critical systems.
 
 ## Features
 
-- **Bare-metal and RTOS**: runs on Cortex-M3, STM32F4, ESP32-C3 bare-metal and on Zephyr, FreeRTOS, NuttX, and ThreadX kernels; no heap allocator required on bare-metal
+- **Bare-metal and RTOS**: runs on Cortex-M3 and STM32F4 bare-metal and on Zephyr, FreeRTOS, NuttX, and ThreadX kernels; no heap allocator required on bare-metal
 - **ROS 2 interoperability**: communicates with ROS 2 Humble nodes via rmw_zenoh
-- **QEMU emulation**: Cortex-M3 (MPS2-AN385, bare-metal + FreeRTOS), ESP32-C3, NuttX (ARM virt + RISC-V rv-virt), and ThreadX RISC-V64 targets — plus the ThreadX Linux simulator — with TAP networking for CI
+- **QEMU emulation**: Cortex-M3 (MPS2-AN385, bare-metal + FreeRTOS), NuttX (ARM virt + RISC-V rv-virt), and ThreadX RISC-V64 targets — plus the ThreadX Linux simulator — with TAP networking for CI
 - **Customizable platform/transport**: swap platform crates (clock, heap, RNG) and transport crates (TCP via smoltcp, serial, raw Ethernet) independently
 - **Formal verification ready**: Kani proofs for panic-freedom, CBMC harnesses for C API pointer safety, DWT cycle counting for WCET baselines
 - **Zero-copy CDR serialization**: `no_std` serializer with compile-time buffer bounds
@@ -94,7 +94,8 @@ nros setup native --rmw zenoh
 
 Installs the zenoh router (`zenohd`) into `~/.nros/sdk`. See
 [Supported Boards](book/src/reference/supported-boards.md) for cross
-targets (Zephyr, FreeRTOS, NuttX, ThreadX, ESP32, bare-metal).
+targets (Zephyr, FreeRTOS, NuttX, ThreadX, bare-metal). ESP32 support is
+dormant for now (issue 1525): its code is kept, nothing builds it.
 
 ### 4. Run the demo
 

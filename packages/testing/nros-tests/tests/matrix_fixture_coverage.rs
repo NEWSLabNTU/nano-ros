@@ -294,6 +294,10 @@ fn every_just_module_is_declared_by_the_justfile() {
         nros_tests::skip_class!(capability, "no root justfile (out-of-tree checkout)");
     };
     for &p in PlatformId::ALL {
+        // Nothing to dispatch for a platform no cell builds (PX4, dormant ESP32).
+        if !nros_tests::matrix::platform_is_built(p) {
+            continue;
+        }
         let m = p.just_module();
         assert!(
             justfile.contains(&format!("\nmod {m} ")),
@@ -447,13 +451,13 @@ fn every_fixture_token_is_producible_by_the_module_that_owns_it() {
         //     which carries its own staleness signature and no fixtures.toml row.
         //   - Px4: a CarveOut on every cell; no runner builds SITL, so no recipe
         //     can produce it and demanding one would be the inverse lie.
+        //   - any platform with no built cell (PX4, dormant ESP32 — issue
+        //     1525): `matrix::platform_is_built`, derived from `CELLS`.
         if matches!(
             p,
-            PlatformId::ZephyrNativeSim
-                | PlatformId::Fvp
-                | PlatformId::Px4
-                | PlatformId::ZephyrQemuCortexM
-        ) {
+            PlatformId::ZephyrNativeSim | PlatformId::Fvp | PlatformId::ZephyrQemuCortexM
+        ) || !nros_tests::matrix::platform_is_built(p)
+        {
             continue;
         }
         let module = p.just_module();

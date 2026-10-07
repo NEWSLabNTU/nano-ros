@@ -29,6 +29,11 @@ use std::{collections::BTreeSet, fs};
 /// is the failure mode, not a tidy-up.
 const BINS_ALLOWLIST: &[(&str, &str)] = &[
     (
+        "logging-smoke-esp32-qemu",
+        "ESP32 support is DORMANT (issue 1525): kept for future use, built by no \
+         lane, and its consumer (`logging_smoke`'s esp32 case) is `#[ignore]`d.",
+    ),
+    (
         "ros-edition-pose-pub",
         "RFC-0058 ROS-edition axis: built per distro by `just ros_editions \
          build-fixture` into build/ros-editions/<distro>-<rmw>, which is a \

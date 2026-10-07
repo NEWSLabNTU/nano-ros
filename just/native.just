@@ -151,16 +151,8 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # issue 1512 — the cargo-rooted bare-metal C/C++ leaves (`builder = "cargo"`).
     bash scripts/build/fixtures-build.sh baremetal c
     bash scripts/build/fixtures-build.sh baremetal cpp
-    # Phase 181.4.h — esp32 (ESP32-C3, riscv32imc) from the manifest. It needs
-    # the workspace nightly + rust-src/build-std (NOT xtensa/espup) +
-    # SSID/PASSWORD; inject those as platform env.
-    #
-    # phase-437 W4a — ONE invocation, not two. `esp32` and the token then
-    # spelled `qemu-esp32-baremetal` were two fixture coordinates for one
-    # platform (RFC-0093 R6); collapsing them means the second call would
-    # rebuild the first's rows.
-    RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
-        bash scripts/build/fixtures-build.sh esp32 rust
+    # ESP32 is DORMANT (issue 1525): its fixture rows are gone, so there is
+    # nothing to build here. The leaves stay under examples/esp32-c3-baremetal/.
     echo "All examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++ + workspaces).

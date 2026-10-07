@@ -101,7 +101,18 @@ const TEST_DRIVEN_BUILDERS: &[&str] = &[
 /// Empty: the px4 xrce examples that once sat here now compile-check via
 /// `scripts/build/compile-check-fixtures.sh` (its px4 leg generates `px4_msgs`
 /// from the vendored PX4-Autopilot `.msg` tree, gated on the submodule).
-const ALLOWLIST: &[(&str, &str)] = &[];
+const ALLOWLIST: &[(&str, &str)] = &[
+    (
+        "esp32-c3-baremetal/rust/listener",
+        "ESP32 support is DORMANT (issue 1525): the leaf is kept for future use and \
+         no lane builds it. Restore its fixture row with the rest of the platform.",
+    ),
+    (
+        "esp32-c3-baremetal/rust/talker",
+        "ESP32 support is DORMANT (issue 1525): the leaf is kept for future use and \
+         no lane builds it. Restore its fixture row with the rest of the platform.",
+    ),
+];
 
 /// Recursive walk collecting dirs that contain `package.xml`.
 fn collect_pkg_dirs(root: &Path) -> Vec<PathBuf> {

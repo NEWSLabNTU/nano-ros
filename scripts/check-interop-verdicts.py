@@ -233,7 +233,6 @@ BOARD_SCOPES: "dict[str, dict[str, tuple[str, ...]] | None]" = {
     "ThreadxRiscv64": {
         "setup": ("threadx_riscv64", "qemu"), "build": ("threadx_riscv64",),
     },
-    "Esp32Qemu": {"setup": ("esp32",), "build": ("esp32",)},
     "QemuBaremetal": {"setup": ("qemu",), "build": ("qemu",)},
     # Neither has a CI story in this tree (phase-441 "What this phase does NOT
     # promise"): the FVP is x86_64-only and maintainer-run, PX4-SITL is built by
@@ -241,6 +240,9 @@ BOARD_SCOPES: "dict[str, dict[str, tuple[str, ...]] | None]" = {
     # write the decision here".
     "Fvp": None,
     "Px4": None,
+    # ESP32 is DORMANT (issue 1525): its `just` module is unmounted, so it has no
+    # scope to provision or build through. Revive the two tuples with it.
+    "Esp32Qemu": None,
 }
 
 # cell id -> the (env var, value) that narrows a scope's fixture build to the

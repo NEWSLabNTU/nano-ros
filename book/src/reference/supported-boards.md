@@ -4,8 +4,7 @@ Procurement-grade compatibility matrix. Each row lists a real
 vendor + board model and reports nano-ros's status on it. Rows
 marked **Tested** boot in *a* CI lane — note this maps to the tier
 registry's tier 1 (in `just ci`) **or** tier 2 (nightly/matrix lanes
-only): MPS2-AN385, the RISC-V64 ThreadX `virt` machine, and ESP32-C3
-QEMU are tier 2, so "Tested" there means the nightly matrix, not every
+only): MPS2-AN385 and the RISC-V64 ThreadX `virt` machine are tier 2, so "Tested" there means the nightly matrix, not every
 push. **Ready** rows compile and run but have no in-CI gate yet;
 **Build-only** rows compile but cannot be booted by any CI lane
 (hardware or a license-gated model is required); **Untested** rows
@@ -31,8 +30,8 @@ nano-ros on them. Per-crate tier truth is the generated
 | STMicro      | Pixhawk 6X / 6C      | STM32H753          | Cortex-M7F | NuttX (PX4)   | Ready    | `integrations/px4/module-template/`                                |
 | Nordic       | nRF52840-DK          | Cortex-M4F         | Armv7E-M   | Zephyr        | Untested | Zephyr starter — supply `-b nrf52840dk_nrf52840`                  |
 | Nordic       | nRF5340-DK           | Cortex-M33 (dual)  | Armv8-M    | Zephyr        | Untested | Zephyr starter — supply `-b nrf5340dk_nrf5340_cpuapp`             |
-| Espressif    | ESP32-C3 (QEMU)      | RISC-V (RV32IMC)   | RISC-V     | bare (esp-hal) | Tested  | `examples/esp32-c3-baremetal/rust/`                              |
-| Espressif    | ESP32-C3-DevKit      | RISC-V (RV32IMC)   | RISC-V     | ESP-IDF        | **Retired** | The in-tree component shell (`integrations/nano-ros/`) was deleted in phase-468 W2 after being measured on 2026-09-25: no workflow built it and no fixture row named it. Bare-metal esp-hal is the supported ESP32-C3 path — see the QEMU row above |
+| Espressif    | ESP32-C3 (QEMU)      | RISC-V (RV32IMC)   | RISC-V     | bare (esp-hal) | **Dormant** | Code kept in `examples/esp32-c3-baremetal/rust/`; nothing builds or tests it (issue 1525) |
+| Espressif    | ESP32-C3-DevKit      | RISC-V (RV32IMC)   | RISC-V     | ESP-IDF        | **Retired** | The in-tree component shell (`integrations/nano-ros/`) was deleted in phase-468 W2 after being measured on 2026-09-25: no workflow built it and no fixture row named it. The bare-metal esp-hal path that replaced it is itself dormant now — see the QEMU row above |
 | Espressif    | ESP32-S3-DevKit      | Xtensa LX7         | Xtensa     | —              | Not supported (no board crate) | Xtensa is not a supported target today — see [ESP32 chapter](../getting-started/esp32.md) |
 | Espressif    | ESP32-C6-DevKit      | RISC-V             | RISC-V     | bare (esp-hal) | Untested | Same bare-metal path as the C3; no board crate ships for it        |
 | NXP          | LPC55S69-EVK         | Cortex-M33         | Armv8-M    | Zephyr        | Untested | Zephyr `-b lpcxpresso55s69_cpu0`                                  |

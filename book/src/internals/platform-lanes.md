@@ -28,42 +28,9 @@ action) against a temporary in-test zenohd.
 `just freertos build` / `just freertos test` build and exercise the
 in-tree fixtures.
 
-## ESP32
+## ESP32 (dormant)
 
-Lanes for [ESP32 (esp-hal, bare-metal Rust)](../getting-started/esp32.md).
-
-Build:
-
-```bash
-# QEMU ESP32 (qemu-system-riscv32). `just esp32 build-qemu` (which
-# `just esp32 talker` depends on) builds the QEMU-board variant; the
-# example's build.rs invokes `nros generate-rust` automatically, so
-# the `generated/` dir populates on first build (gitignored).
-just esp32 build-qemu
-```
-
-Run (the router must already be listening on the port the example
-dials — see the platform page):
-
-```bash
-# Boot the talker binary in qemu-system-riscv32 (esp32c3):
-just esp32 talker
-# Expected serial output (per src/lib.rs):
-#   Publishing: 'Hello World: 1'
-#   Publishing: 'Hello World: 2'
-#   ...
-```
-
-The `just esp32 talker` recipe re-runs `build-qemu` every invocation,
-so a first / cold run adds ~25 s of build time on top of the ~15 s
-readiness signal.
-
-The shorter deployment spelling:
-
-```bash
-just esp32 build
-just esp32 talker
-```
+ESP32 support is **dormant** (issue 1525): the board, platform crate and examples are kept in the tree for future use, but nothing builds, tests or provisions them — the `esp32` just module is not mounted, its fixture rows and CI job are gone, and `nros new --platform` no longer offers it.
 
 ## NuttX
 

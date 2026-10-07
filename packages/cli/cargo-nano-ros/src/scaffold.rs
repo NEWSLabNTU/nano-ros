@@ -120,6 +120,9 @@ fn platform_spec(platform: &str) -> Result<PlatformSpec> {
                 runtime: SelfBringupRuntime::CortexM,
             },
         },
+        // ESP32 is DORMANT (issue 1525): `nros new --platform` no longer offers
+        // it, but the spec and its self-bringup template are kept for future
+        // use (and still unit-tested below), so reviving it is one line.
         "esp32" => PlatformSpec {
             board_crate: "nros-board-esp32-qemu",
             deploy_token: "esp32-qemu",
@@ -162,7 +165,7 @@ fn platform_spec(platform: &str) -> Result<PlatformSpec> {
         },
         other => bail!(
             "nros new: unsupported --platform '{other}'. Supported: \
-             native, posix, freertos, baremetal, nuttx, threadx, zephyr, esp32."
+             native, posix, freertos, baremetal, nuttx, threadx, zephyr."
         ),
     };
     Ok(spec)
@@ -230,7 +233,7 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     {
         bail!(
             "nros new: single-package Rust scaffolding for --platform {} is not available \
-             yet — {reason}. Use native, posix, baremetal, or esp32 for a runnable Rust \
+             yet — {reason}. Use native, posix or baremetal for a runnable Rust \
              starter today.",
             cfg.platform
         );
@@ -1684,6 +1687,8 @@ mod tests {
             "nuttx",
             "threadx",
             "zephyr",
+            // `esp32` is dormant (issue 1525) and no longer advertised; its spec
+            // still resolves, which `scaffold_rust_self_bringup_*` exercises.
             "esp32",
         ] {
             platform_spec(p).unwrap_or_else(|e| panic!("{p} must resolve: {e}"));

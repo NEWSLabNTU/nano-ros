@@ -13,7 +13,6 @@
 # Regenerate: python3 scripts/sdk/check-dist-or-reason.py --write-baseline
 cargo-show-asm    # upstream (pacak/cargo-show-asm) publishes no GitHub Releases at all
 corrosion         # upstream (corrosion-rs/corrosion) ships source tarballs only, no binaries
-esp32-qemu        # upstream's matching asset is a full GUI QEMU build (~55 libs); measured and declined
 genromfs          # upstream (chexum/genromfs) publishes no GitHub Releases at all
 make              # DECIDED (RFC-0099 D4): stays [tool.*]; GNU ftp ships source tarballs only
 nros              # circular: no nros release exists yet to point a dist at (phase-431 W5)

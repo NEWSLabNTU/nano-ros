@@ -83,7 +83,8 @@ mod nuttx 'just/nuttx.just'
 mod threadx_linux 'just/threadx-linux.just'
 mod threadx_riscv64 'just/threadx-riscv64.just'
 mod zephyr 'just/zephyr.just'
-mod esp32 'just/esp32.just'
+# ESP32 is DORMANT (issue 1525): `just/esp32.just` is kept for future use and
+# deliberately not mounted, so no recipe, preset or lane builds or tests it.
 mod qemu 'just/qemu-baremetal.just'
 mod native 'just/native.just'
 mod xrce 'just/xrce.just'
@@ -170,7 +171,7 @@ default:
         "    just test   <scope>        run its tests" \
         "" \
         "    scope = a platform   native zephyr freertos nuttx threadx_linux" \
-        "                         threadx_riscv64 esp32 qemu px4 xrce" \
+        "                         threadx_riscv64 qemu px4 xrce" \
         "                         cyclonedds" \
         "         or a preset     all native tier1 tier2 tier2-nightly" \
         "" \
@@ -341,7 +342,7 @@ build-example-extras:
     list="$(mktemp)"
     rg --files examples -g Cargo.toml \
         | sed 's#/Cargo.toml$##' \
-        | grep -Ev '^examples/(zephyr|mps2-an385-freertos|qemu-armv7a-nuttx|threadx-linux|rv-virt-threadx|mps2-an385-baremetal)/' \
+        | grep -Ev '^examples/(zephyr|mps2-an385-freertos|qemu-armv7a-nuttx|threadx-linux|rv-virt-threadx|mps2-an385-baremetal|esp32-c3-baremetal)/' \
         | grep -Ev '^examples/native/rust/(talker|listener|lifecycle-node|custom-msg|service-server|service-client|action-server|action-client|talker-rtic|listener-rtic|service-server-rtic|service-client-rtic|action-server-rtic|action-client-rtic|serial-talker|serial-listener)$' \
         | sort > "$list"
 
@@ -2024,7 +2025,7 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
     # Only for a lane that configures some cross image -- the native module
     # configures none.
     census_lane=0
-    for _m in zephyr qemu freertos nuttx threadx_linux threadx_riscv64 esp32 px4; do
+    for _m in zephyr qemu freertos nuttx threadx_linux threadx_riscv64 px4; do
         if in_lane "$_m"; then census_lane=1; fi
     done
     if [ "$census_lane" = "1" ]; then
@@ -2069,7 +2070,7 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
         # in the child's environment and cannot leak to an unrelated `just` this
         # recipe might later run. Unset is NAMED — see scripts/build/lane-skip.sh.
         if in_lane zephyr; then run_stage zephyr env NROS_LANE_INCLUDED=zephyr just zephyr build-fixtures; fi
-        for platform in native qemu freertos nuttx threadx_linux threadx_riscv64 esp32 px4; do
+        for platform in native qemu freertos nuttx threadx_linux threadx_riscv64 px4; do
             in_lane "$platform" || continue
             run_stage "$platform" env "NROS_LANE_INCLUDED=$platform" just "$platform" build-fixtures
         done
@@ -2109,7 +2110,7 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
         # early made it empty, `grep -c .` returned 1, and `set -e` killed the
         # recipe before the banner even printed.
         outer=0
-        for _p in zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 esp32 px4; do
+        for _p in zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 px4; do
             if in_lane "$_p"; then outer=$((outer + 1)); fi
         done
         [ "$outer" -lt 1 ] && outer=1
@@ -2145,7 +2146,7 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
     # must agree, so they read one variable rather than three copies of the
     # literal list.
     lane_platforms=""
-    for platform in zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 esp32 px4; do
+    for platform in zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 px4; do
         if in_lane "$platform"; then lane_platforms="$lane_platforms $platform"; fi
     done
     lane_platforms="${lane_platforms# }"
@@ -4681,7 +4682,7 @@ setup target="" tier="" *extra:
           "Platform scopes:" \
           "" \
           "  native zephyr freertos nuttx threadx_linux threadx_riscv64" \
-          "  esp32 qemu px4 xrce cyclonedds" \
+          "  qemu px4 xrce cyclonedds" \
           "" \
           "Preset scopes (a named set of platforms — the fixture lanes):" \
           "" \
@@ -5357,7 +5358,6 @@ _orchestrate verb tier="everything":
             run nuttx
             run threadx_linux
             run threadx_riscv64
-            run esp32
             run zephyr
             run xrce
             # No `run rmw_zenoh` — phase-362 / RFC-0075 retired the vendored
@@ -5682,7 +5682,6 @@ clean-examples:
     just threadx_linux clean
     just threadx_riscv64 clean
     just zephyr clean
-    just esp32 clean
     just px4 clean
     @echo "All example artifacts cleaned"
 

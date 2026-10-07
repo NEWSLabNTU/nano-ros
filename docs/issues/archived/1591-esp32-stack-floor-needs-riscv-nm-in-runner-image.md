@@ -2,7 +2,7 @@
 id: 1591
 title: "`check-stack-floor` has no RISC-V `nm` on the self-hosted runner, so it
   refuses a verdict and takes the whole `esp32` module of the tier-2 build down"
-status: open
+status: wontfix
 type: bug
 area: ci, tooling, embedded
 severity: high
@@ -70,3 +70,9 @@ Related, and not fixed here: issue 1346's "Not fixed here" note says building on
 esp32 image is nightly-only and that the lane exemption is one problem with one
 fix. This failure is the tier-2 lane finding what the nightly's own esp32 job
 does not, which is evidence for that note rather than against it.
+
+## 2026-10-07 — parked (wontfix): ESP32 support is dormant
+
+ESP32 support is dormant by maintainer decision; the code is kept for future
+use and nothing builds, tests or provisions it. See issue 1525 for what was cut
+and what reviving it takes. Reopen this with the platform.

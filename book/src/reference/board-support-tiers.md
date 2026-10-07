@@ -26,7 +26,6 @@ Asserted runtime coverage and a nightly lane, but not in `just ci`. Breakage is 
 
 | Board package | Platform | Maintainers | Notes |
 |---|---|---|---|
-| `nros-board-esp32-qemu` | Esp32Qemu | *unassigned* | Real two-way QEMU e2e (esp32_emulator.rs). |
 | `nros-board-freertos-posix` | FreertosPosix | *unassigned* |  |
 | `nros-board-mps2-an385` | QemuBaremetal | *unassigned* | phase-337 W6.a folded `nros-board-rtic-mps2-an385` in as the `rtic` feature — one crate, two entry shapes (direct-exec + RTIC), one witness row. |
 | `nros-board-mps2-an385-freertos` | FreertosMps2 | *unassigned* |  |
@@ -50,6 +49,7 @@ Structurally incomplete. Distinct from tier 3: tier 3 is finished-but-unverified
 
 | Board package | Platform | Maintainers | Notes |
 |---|---|---|---|
+| `nros-board-esp32-qemu` | Esp32Qemu | *unassigned* | DORMANT (issue 1525): code kept for future use; no lane builds or tests it. Was tier 2 (two-way QEMU e2e, esp32_emulator.rs, now #[ignore]d). |
 | `nros-board-mps2-an385-zephyr` | — | *unassigned* |  |
 | `nros-board-mps3-an536-freertos` | — | *unassigned* |  |
 | `nros-board-qemu-cortex-a53` | — | *unassigned* |  |
