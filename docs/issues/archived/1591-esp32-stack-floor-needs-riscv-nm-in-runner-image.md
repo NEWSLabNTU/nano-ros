@@ -36,7 +36,7 @@ pitfall index spends a page on. So nothing about `check-stack-floor` should
 change to make this green.
 
 What is wrong is that the tool is absent from the runner at all. Per
-[multi-agent-ci-workflow.md](../development/multi-agent-ci-workflow.md), **a
+[multi-agent-ci-workflow.md](../../development/multi-agent-ci-workflow.md), **a
 self-hosted runner IS a container, so a missing dependency is an IMAGE fix, never
 a host `apt install`**: the running container is `--cap-drop ALL` non-root and
 `runner-provision.sh` never sudoes, so the Dockerfile that `runner-container.sh`
