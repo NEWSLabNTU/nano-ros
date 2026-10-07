@@ -484,6 +484,24 @@ function(nros_apply_panic_policy policy context)
     set(_app_applied FALSE)
     foreach(_app_target nros_c nros_cpp nros_c-static nros_cpp-static)
         if(TARGET ${_app_target})
+            # issue 1742 — a `std` staticlib already HAS a panic handler: std's.
+            # `panic-platform`'s handler is `cfg(not(feature = "std"))`, so it
+            # stands down and std's ends the image (measured on threadx-linux:
+            # links and runs). `panic-halt` cannot stand down — it is the
+            # `panic_halt` crate — and rustc refuses the pair as E0152
+            # "duplicate lang item `panic_impl`", inside `nros-c`, naming no
+            # policy. Say it here, at configure, where the request was made.
+            get_target_property(_app_feats ${_app_target} CORROSION_FEATURES)
+            if(_app_policy STREQUAL "halt" AND _app_feats AND "std" IN_LIST _app_feats)
+                message(FATAL_ERROR
+                    "${context}: PANIC halt cannot apply to this image — its "
+                    "nros-c/nros-cpp staticlib is built with `std` (a hosted tier: "
+                    "threadx-linux, posix, hosted FreeRTOS), and `std` already supplies "
+                    "the #[panic_handler]. `panic-halt` would be a second one "
+                    "(rustc E0152, duplicate lang item `panic_impl`). Use PANIC "
+                    "platform — on a std tier std's own handler ends the image — "
+                    "or PANIC own.")
+            endif()
             corrosion_set_features(${_app_target} FEATURES ${_app_feature})
             set(_app_applied TRUE)
         endif()

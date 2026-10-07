@@ -3,7 +3,11 @@
 # C++ cmake fn surface for the three Phase 212.L pkg shapes:
 #
 #   * `nano_ros_node_register(NAME <name> CLASS <UserClass>
-#       [LANGUAGE C|CPP|RUST] SOURCES <files...> DEPLOY <target1> [<target2> ...])`
+#       [LANGUAGE C|CPP|RUST] SOURCES <files...> DEPLOY <target1> [<target2> ...]
+#       [PANIC platform|halt|own])`
+#       — PANIC is the ending of the image a typed-entry CARRIER creates
+#         (NuttX / ThreadX / FreeRTOS / native), same vocabulary and default
+#         (`platform`) as `nano_ros_entry(PANIC …)` (issue 1742).
 #       — declares a Component pkg entity. Compiles SOURCES into a
 #         STATIC `<pkg>_<name>_component` lib linked to the C or C++
 #         nano-ros target. Rust packages import `Cargo.toml` through
@@ -492,8 +496,47 @@ function(_nros_entities_retired _call)
         "  configured NROS_EXECUTOR_MAX_CBS, exactly as it did before phase-403.")
 endfunction()
 
+# ---------------------------------------------------------------------------
+# _nros_node_register_carrier_image(<target> <pkg_sym> <panic> <sources…>)
+#
+# issue 1742 — the ONE place a typed-entry carrier (NuttX, ThreadX, FreeRTOS,
+# native) CREATES its image, and therefore the place that image's ending is
+# decided. RFC-0077's amendment puts the panic policy on whoever links the final
+# image; for a carrier that is this function, not the
+# `nros_{platform,board}_link_app` seam it hands the target to next. Seams are
+# policy-free plumbing: 14 of the 17 never applied it, so "the seam does it"
+# was true for three of them and gated for one.
+#
+# `<panic>` is `nano_ros_node_register(PANIC platform|halt|own)`, the same
+# vocabulary as `nano_ros_entry(PANIC …)`; empty means `platform`. It goes
+# through `nros_apply_panic_policy`, so a lane that applies the ending itself
+# (NuttX's committed `nros-nuttx-ffi` manifest, issue 0689) VERIFIES the
+# request against what it built rather than being asked to build it.
+# ---------------------------------------------------------------------------
+function(_nros_node_register_carrier_image _target _pkg_sym _panic)
+    add_executable(${_target} ${ARGN})
+    nros_apply_panic_policy("${_panic}"
+        "nano_ros_node_register(${_target}) carrier [${NANO_ROS_PLATFORM}]")
+    target_include_directories(${_target} PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    # NROS_PKG_NAME reaches the class TU through nros_board_link_app's
+    # COMPILE_DEFINITIONS → APP_COMPILE_DEFS forwarding (Phase 238).
+    target_compile_definitions(${_target} PRIVATE NROS_PKG_NAME=${_pkg_sym})
+    if(TARGET NanoRos::NanoRosCpp)
+        target_link_libraries(${_target} PRIVATE NanoRos::NanoRosCpp)
+    elseif(TARGET NanoRos::NanoRos)
+        target_link_libraries(${_target} PRIVATE NanoRos::NanoRos)
+    endif()
+    get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
+    if(_nros_iface_libs)
+        list(REMOVE_DUPLICATES _nros_iface_libs)
+        target_link_libraries(${_target} PRIVATE ${_nros_iface_libs})
+    endif()
+endfunction()
+
 function(nano_ros_node_register)
-    cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE;EXISTING_TARGET" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
+    cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE;EXISTING_TARGET;PANIC" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
     _nros_entities_retired("nano_ros_node_register(${_NRC_NAME})" ${ARGN})
 
     # Issue 1017 — the entry's session name is DERIVED here, once, from the
@@ -985,25 +1028,8 @@ function(nano_ros_node_register)
         # `build-zenoh/${PROJECT_NAME}`. SOURCES = entry (main.cpp, picked
         # up as MAIN_SOURCE by nros_board_link_app's `/main\.cpp$` match) +
         # the Component class source(s) (compiled as APP_EXTRA_SOURCES).
-        add_executable(${PROJECT_NAME} "${_entry_src}" ${_NRC_SOURCES})
-        target_include_directories(${PROJECT_NAME} PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/include"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src")
-        # NROS_PKG_NAME reaches the class TU through nros_board_link_app's
-        # COMPILE_DEFINITIONS → APP_COMPILE_DEFS forwarding (Phase 238).
-        target_compile_definitions(${PROJECT_NAME} PRIVATE
-            NROS_PKG_NAME=${_pkg_sym})
+        _nros_node_register_carrier_image(${PROJECT_NAME} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})
         _nros_node_register_bake_locator(${PROJECT_NAME})
-        if(TARGET NanoRos::NanoRosCpp)
-            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRosCpp)
-        elseif(TARGET NanoRos::NanoRos)
-            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRos)
-        endif()
-        get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
-        if(_nros_iface_libs)
-            list(REMOVE_DUPLICATES _nros_iface_libs)
-            target_link_libraries(${PROJECT_NAME} PRIVATE ${_nros_iface_libs})
-        endif()
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
         # that include <nros/nros_config_generated.h>); order them after the header
         # mirror targets so they never pick up the in-tree stub.
@@ -1058,23 +1084,8 @@ function(nano_ros_node_register)
             _nros_node_register_entry_tu(threadx c "${_entry_src}")
         endif()
 
-        add_executable(${PROJECT_NAME} "${_entry_src}" ${_NRC_SOURCES})
-        target_include_directories(${PROJECT_NAME} PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/include"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src")
-        target_compile_definitions(${PROJECT_NAME} PRIVATE
-            NROS_PKG_NAME=${_pkg_sym})
+        _nros_node_register_carrier_image(${PROJECT_NAME} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})
         _nros_node_register_bake_locator(${PROJECT_NAME})
-        if(TARGET NanoRos::NanoRosCpp)
-            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRosCpp)
-        elseif(TARGET NanoRos::NanoRos)
-            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRos)
-        endif()
-        get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
-        if(_nros_iface_libs)
-            list(REMOVE_DUPLICATES _nros_iface_libs)
-            target_link_libraries(${PROJECT_NAME} PRIVATE ${_nros_iface_libs})
-        endif()
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
         # that include <nros/nros_config_generated.h>); order them after the header
         # mirror targets so they never pick up the in-tree stub.
@@ -1179,23 +1190,8 @@ function(nano_ros_node_register)
             "${_NROS_NODE_REGISTER_DIR}/templates/freertos_app_config.c.in"
             "${_appcfg_src}" @ONLY)
 
-        add_executable(${PROJECT_NAME} "${_entry_src}" "${_appcfg_src}" ${_NRC_SOURCES})
-        target_include_directories(${PROJECT_NAME} PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/include"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src")
-        target_compile_definitions(${PROJECT_NAME} PRIVATE
-            NROS_PKG_NAME=${_pkg_sym})
+        _nros_node_register_carrier_image(${PROJECT_NAME} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" "${_appcfg_src}" ${_NRC_SOURCES})
         _nros_node_register_bake_locator(${PROJECT_NAME})
-        if(TARGET NanoRos::NanoRosCpp)
-            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRosCpp)
-        elseif(TARGET NanoRos::NanoRos)
-            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRos)
-        endif()
-        get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
-        if(_nros_iface_libs)
-            list(REMOVE_DUPLICATES _nros_iface_libs)
-            target_link_libraries(${PROJECT_NAME} PRIVATE ${_nros_iface_libs})
-        endif()
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
         # that include <nros/nros_config_generated.h>); order them after the header
         # mirror targets so they never pick up the in-tree stub.
@@ -1266,22 +1262,7 @@ function(nano_ros_node_register)
             _nros_node_register_entry_tu(native c "${_entry_src}")
         endif()
 
-        add_executable(${PROJECT_NAME} "${_entry_src}" ${_NRC_SOURCES})
-        target_include_directories(${PROJECT_NAME} PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/include"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src")
-        target_compile_definitions(${PROJECT_NAME} PRIVATE
-            NROS_PKG_NAME=${_pkg_sym})
-        if(TARGET NanoRos::NanoRosCpp)
-            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRosCpp)
-        elseif(TARGET NanoRos::NanoRos)
-            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRos)
-        endif()
-        get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
-        if(_nros_iface_libs)
-            list(REMOVE_DUPLICATES _nros_iface_libs)
-            target_link_libraries(${PROJECT_NAME} PRIVATE ${_nros_iface_libs})
-        endif()
+        _nros_node_register_carrier_image(${PROJECT_NAME} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
         # that include <nros/nros_config_generated.h>); order them after the header
         # mirror targets so they never pick up the in-tree stub.

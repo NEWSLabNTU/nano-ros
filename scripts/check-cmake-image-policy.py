@@ -60,15 +60,16 @@ LINKS_NROS = re.compile(
     r"NanoRos::NanoRos(Cpp)?\b|\bnros_declare_rust_runtime_carrier\s*\("
     r"|\b[A-Za-z0-9_${}]+__nano_ros_(?:c|cpp)\b")
 
-# Per-image seams that build an image OUTSIDE `nano_ros_entry()`, so the seam
-# itself must apply the policy. Each row states why; a row whose file stops
-# defining a link seam is stale and fails.
-REQUIRED_SEAMS = {
-    "cmake/platform/nano-ros-nuttx.cmake":
-        "NuttX images do not go through nano_ros_entry(): NuttX's apps build calls "
-        "nros_platform_link_app per target (issue 0719)",
-}
+# issue 1742 — link SEAMS are policy-free plumbing. The policy belongs to
+# whoever CREATES the image (RFC-0077's amendment, "who links the final image"),
+# so this gate asks it of every scope that `add_executable`s one and trusts no
+# seam to do it downstream. `REQUIRED_SEAMS` (one row, NuttX) is retired: it
+# held one of 17 seams to a duty three performed, and a seam applying a
+# hard-coded `platform` is a second voice a creator's own `PANIC` can only agree
+# with or FATAL against. So the rule now runs the other way: a seam definition
+# must NOT apply it.
 SEAM_DEF = re.compile(r"\bfunction\s*\(\s*nros_(?:platform|board)_link_app\b")
+APPLIER_CALL = re.compile(r"\bnros_apply_panic_policy\s*\(")
 
 # Applies the policy — as a CALL. `nano_ros_entry` / `nano_ros_add_executable`
 # apply it for their callers, so either satisfies the rule.
@@ -133,19 +134,30 @@ def scopes(body):
     return out + ["".join(top)]
 
 
-# A scope that hands its image to a link SEAM delegates the policy to the seam;
-# whether that seam applies it is REQUIRED_SEAMS' question, not this scope's
-# (and an open one for most seams — issue 1742).
-SEAM_CALL = re.compile(r"\bnros_(?:platform|board)_link_app\s*\(")
-
-
 def flags(body):
-    """Does this (comment-stripped) cmake body build an image with no policy?"""
+    """Does this (comment-stripped) cmake body build an image with no policy?
+
+    Per SCOPE (issue 1742): each function()/macro() body, and the top level
+    with those removed, that CREATES an image must apply the policy itself.
+    Handing the image to `nros_{platform,board}_link_app` no longer counts —
+    the seam is plumbing, and the carriers in `nano_ros_node_register` were
+    exactly the scopes that hid behind it.
+    """
     if MAKES_EXE.search(body) and LINKS_NROS.search(body) and not APPLIES.search(body):
         return True
-    return any(MAKES_EXE.search(sc) and LINKS_NROS.search(sc)
-               and not APPLIES.search(sc) and not SEAM_CALL.search(sc)
+    return any(MAKES_EXE.search(sc) and LINKS_NROS.search(sc) and not APPLIES.search(sc)
                for sc in scopes(body))
+
+
+def scope_name(sc):
+    """`function(<name>)` / `macro(<name>)` for a scope, `top level` otherwise."""
+    m = re.match(r"\s*(function|macro)\s*\(\s*([A-Za-z0-9_]+)", sc, re.I)
+    return f"{m.group(1).lower()}({m.group(2)})" if m else "top level"
+
+
+def seam_applies(body):
+    """Does a link-seam definition in this body apply the policy itself?"""
+    return any(SEAM_DEF.search(sc) and APPLIER_CALL.search(sc) for sc in scopes(body))
 
 
 def offenders():
@@ -158,14 +170,13 @@ def offenders():
             body = strip_comments(open(path, encoding="utf-8").read())
         except (OSError, UnicodeDecodeError):
             continue
-        if rel in REQUIRED_SEAMS:
-            if not SEAM_DEF.search(body):
-                out.append(f"{rel} (REQUIRED_SEAMS row is stale: no link seam defined here)")
-            elif not APPLIES.search(body):
-                out.append(rel)
-            continue
+        if seam_applies(body):
+            out.append(f"{rel} (a link seam applies the panic policy; seams are "
+                       "plumbing — apply it where the image is created, issue 1742)")
         if flags(body):
-            out.append(rel)
+            where = [scope_name(sc) for sc in scopes(body)
+                     if MAKES_EXE.search(sc) and LINKS_NROS.search(sc) and not APPLIES.search(sc)]
+            out.append(f"{rel} ({', '.join(where)})" if where else rel)
     return sorted(out)
 
 
@@ -200,7 +211,29 @@ def self_test():
         ('function(make_img n)\n  add_executable(${n} x.c)\n  target_link_libraries(${n} NanoRos::NanoRos)\n'
          'endfunction()\nadd_executable(b y.c)\ntarget_link_libraries(b NanoRos::NanoRos)\n'
          'nros_apply_panic_policy(platform "b")\n', True, "an unpolicied image in a function scope"),
+        # issue 1742 — a carrier that creates an image and hands it to a link
+        # seam has NOT applied the policy; the seam is plumbing.
+        ('function(carrier t)\n  add_executable(${t} x.c)\n'
+         '  target_link_libraries(${t} PRIVATE NanoRos::NanoRosCpp)\n'
+         '  nros_platform_link_app(${t})\nendfunction()\n', True,
+         "a carrier delegating to a link seam (issue 1742)"),
+        ('function(carrier t p)\n  add_executable(${t} x.c)\n'
+         '  nros_apply_panic_policy("${p}" "carrier")\n'
+         '  target_link_libraries(${t} PRIVATE NanoRos::NanoRosCpp)\n'
+         '  nros_platform_link_app(${t})\nendfunction()\n', False,
+         "a carrier applying its own PANIC before the seam"),
     ]
+    seam_cases = [
+        ('function(nros_platform_link_app target)\n'
+         '  nros_apply_panic_policy(platform "seam")\n  nros_board_link_app(${target})\n'
+         'endfunction()\n', True, "a link seam applying the policy"),
+        ('function(nros_board_link_app target)\n  target_link_options(${target} PRIVATE -T x.ld)\n'
+         'endfunction()\nnros_apply_panic_policy(platform "top")\n', False,
+         "a policy-free seam beside a top level that applies it"),
+    ]
+    for body, should_flag, label in seam_cases:
+        if seam_applies(strip_comments(body)) != should_flag:
+            bad.append(f"self-test: {label!r} -> expected seam_applies={should_flag}")
     for body, should_flag, label in cases:
         flagged = flags(strip_comments(body))
         if flagged != should_flag:
@@ -209,7 +242,7 @@ def self_test():
         for b in bad:
             sys.stderr.write(b + "\n")
         sys.exit(2)
-    print(f"check-cmake-image-policy --self-test: OK ({len(cases)} case(s))")
+    print(f"check-cmake-image-policy --self-test: OK ({len(cases) + len(seam_cases)} case(s))")
 
 
 def main():
