@@ -376,4 +376,44 @@ if(DEFINED CONFIG_NROS_ZENOH_LEASE_PRIORITY)
     zephyr_compile_definitions(ZPICO_LEASE_TASK_PRIORITY=${CONFIG_NROS_ZENOH_LEASE_PRIORITY})
 endif()
 
+# Issue 1534 / phase-474 T3 -- on a SERIAL link the main thread must register
+# BELOW the read task. Registration is CPU work: at Zephyr's default
+# CONFIG_MAIN_THREAD_PRIORITY 0 the main thread outranks the read task (band
+# 200 = k_thread 4 on a 15-priority image) for the whole registration burst,
+# the UART ISR fills the RX ring while the read task is READY and not running,
+# and the frames lost to that overflow carry the router's answers to the
+# publishers' write-filter interests -- measured on the safety island
+# (phase8-W10): 3 of 3 joins into a live domain failed at main 0 and passed at
+# main 5. Derived from the image's own .config with the map
+# `nros_zephyr_native_priority` uses (band -> SCHED_RR -> k_thread), so this is
+# the number the read task actually gets. A WARNING, not a refusal: an image
+# that joins an idle domain registers before any peer sends.
+if(CONFIG_NROS_ZENOH_LINK_SERIAL
+   AND CONFIG_POSIX_PRIORITY_SCHEDULING
+   AND DEFINED CONFIG_NROS_ZENOH_READ_PRIORITY
+   AND DEFINED CONFIG_NUM_PREEMPT_PRIORITIES
+   AND DEFINED CONFIG_MAIN_THREAD_PRIORITY
+   AND CONFIG_NUM_PREEMPT_PRIORITIES GREATER 1)
+    math(EXPR _nros_rr_hi "${CONFIG_NUM_PREEMPT_PRIORITIES} - 1")
+    set(_nros_band ${CONFIG_NROS_ZENOH_READ_PRIORITY})
+    if(_nros_band GREATER 255)
+        set(_nros_band 255)
+    endif()
+    math(EXPR _nros_read_k "${_nros_rr_hi} - (${_nros_band} * ${_nros_rr_hi}) / 255")
+    if(NOT CONFIG_MAIN_THREAD_PRIORITY GREATER _nros_read_k)
+        math(EXPR _nros_main_want "${_nros_read_k} + 1")
+        message(WARNING
+            "nros: CONFIG_MAIN_THREAD_PRIORITY=${CONFIG_MAIN_THREAD_PRIORITY} is not "
+            "below the zenoh-pico read task (k_thread ${_nros_read_k}, from "
+            "CONFIG_NROS_ZENOH_READ_PRIORITY=${CONFIG_NROS_ZENOH_READ_PRIORITY} on "
+            "${CONFIG_NUM_PREEMPT_PRIORITIES} preempt priorities). On a serial link "
+            "the main thread's registration then starves the RX drain, and a board "
+            "that joins while peers already send loses the router's interest "
+            "replies (issue 1534). Set CONFIG_MAIN_THREAD_PRIORITY=${_nros_main_want} "
+            "or lower in urgency (a larger number), and raise "
+            "CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES if the ring's high water "
+            "reaches its size.")
+    endif()
+endif()
+
 endfunction()

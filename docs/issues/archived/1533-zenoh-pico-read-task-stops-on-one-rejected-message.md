@@ -1,7 +1,8 @@
 ---
 id: 1533
 title: "zenoh-pico's read task stops for good when the session layer rejects one received message"
-status: open
+status: resolved
+resolved_in: "zenoh-pico 52f60b79, pinned by PR #1389 (10b2782be); closed by phase-474 T3"
 area: zenoh, zephyr, serial
 severity: high
 phases: []
@@ -61,7 +62,7 @@ else changed:
    closed the session 21.18 s after it opened (router log, board CLOSE on the
    tap). This is brief B's run shape exactly: 3 samples, then none.
 
-## Fix (prepared on the fork, not yet pinned)
+## Fix (pinned since PR #1389; this heading said "not yet pinned" until phase-474 T3)
 
 The change below is commit `52f60b79` on branch
 `fix/serial-reader-survives-declare-errors` of the zenoh-pico fork, based on the
@@ -94,3 +95,14 @@ an ACL denying `liveliness_token` on egress to `link_protocols: ["serial"]`
 keeps both the history burst and the undeclarations off the link (measured:
 zero `D_TOKEN`/`U_TOKEN` toward the board, the host still lists the board's
 nodes, and the read task survived a transient `ros2 node list`).
+
+## Resolution (phase-474 T3, 2026-10-07)
+
+The fix is on main and in the current pin. PR #1389 (`10b2782be`, "zenoh-pico
+dd071b8d -> 52f60b79, a rejected message no longer stops the read task")
+moved the pin to the fork commit described above, and every later pin carries
+it: the current pin `e28ff603` (issue 1534's interrupt-driven TX) has
+`_z_handle_network_message_in_frame` and `_z_rx_rejections` in
+`src/transport/common/rx.c`, called from the unicast frame and fragment paths
+(`src/transport/unicast/rx.c`). This file still read "not yet pinned"; the
+island has run on pins with the fix since phase8-W10. Nothing remains here.

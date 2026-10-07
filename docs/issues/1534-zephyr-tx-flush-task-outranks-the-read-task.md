@@ -128,3 +128,24 @@ close this. The RX ring default (1 KiB, 11 ms of line) was also measured at
 its edge at a join under load (high water 815-1024, one join in five
 overflowed); the island raises `CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES` to
 2048.
+
+## phase-474 T3 (2026-10-07)
+
+- **Main-thread priority: checked, not derived.** A Zephyr configure with a
+  serial zenoh link now WARNS when `CONFIG_MAIN_THREAD_PRIORITY` is not below
+  the read task, computed from the image's own `.config` with the map
+  `nros_zephyr_native_priority` uses (band 200 on 15 preempt priorities =
+  k_thread 4, so it asks for 5 or larger), `zephyr/cmake/nros_rmw_zenoh.cmake`.
+  Not a refusal and not a changed default: Zephyr owns
+  `MAIN_THREAD_PRIORITY`, and an image that joins an idle domain registers
+  before any peer sends. The safety island's 5 satisfies it.
+- **RX ring: documented, not re-defaulted.** The `NROS_ZENOH_SERIAL_RX_RING_BYTES`
+  help now states the island's measurement (high water 815-1024 at 1024, one
+  join in five overflowing, at 921600 into a live domain) and that the island
+  states 4096. No nano-ros lane measures a serial join, so the 1024 default
+  stays until one does.
+
+Still open: a measured RX-ring default (needs a board or an emulated UART
+under load). The island keeps `CONFIG_MAIN_THREAD_PRIORITY=5` and
+`CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES=4096`; both are now what the
+configure asks for rather than a workaround it does not know about.
