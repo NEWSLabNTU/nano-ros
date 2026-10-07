@@ -200,6 +200,15 @@ arming, starts at the first tick that sees a new sample rather than where it
 opened, so it has the phase the later windows have; a stream that stays
 silent is judged at the end of the window as opened.
 
+**When the `/diagnostics` report leaves (phase-474 I7).** Detection writes
+the ring, the SWD record, the trace markers and the log at once; the
+`/diagnostics` report is queued (four deep) and sent at the end of a spin,
+after its dispatches and rules, when the next timer is due no sooner than the
+last report took (or a verdict has waited 1 s). Pending verdicts are
+coalesced into one `DiagnosticArray`, as many as fit the reporter's 512 B
+buffer. The reporter's time is reported by `violation_report_cost_us` and is
+not charged to the release-jitter sample that follows it (issue 1727).
+
 ## CMake surface
 
 `nano_ros_add_executable(... MODEL path/to/system_model.yaml)` as the

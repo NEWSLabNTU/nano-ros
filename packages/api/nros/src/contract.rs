@@ -17,8 +17,10 @@
 //! `nros::main!` expansion calls before the first node is created. The mapping
 //! from a violation to a report is `nros-diagnostics`'
 //! (`DiagnosticReporter::report_violation`, streamed by
-//! `write_violation_report` so the report never sits on the spin thread's
-//! stack as a value), so a violation reads the same from every road.
+//! `write_violation_reports` so the report never sits on the spin thread's
+//! stack as a value), so a violation reads the same from every road. The
+//! executor hands the reporter its queued verdicts off the judged dispatch
+//! (phase-474 I7), and one report carries as many as fit one message.
 
 use core::{cell::UnsafeCell, ffi::c_void};
 
@@ -84,39 +86,63 @@ impl DiagSink {
     /// dropped — the executor keeps its address.
     pub unsafe fn hook(&mut self, executor: &mut Executor<'_>) {
         let ctx = self as *mut DiagSink as *mut c_void;
-        unsafe { executor.set_violation_sink(Some((publish_violation as _, ctx))) };
+        unsafe { executor.set_violation_sink(Some((publish_violations as _, ctx))) };
     }
 }
 
-/// The executor's violation sink: one violation, one `DiagnosticArray`.
+/// The executor's violation sink: the pending violations, coalesced into one
+/// `DiagnosticArray` -- as many of them, oldest first, as fit [`REPORT_BUF`].
+/// Returns how many it took (0 when even one could not be sent, which it
+/// counts in `failed`).
+///
+/// phase-474 I7 -- the executor calls this off the judged dispatch, at the end
+/// of a spin with slack, with every verdict queued since the last call. Each
+/// status is the one a single report would carry; on the safety island's
+/// 921,600-baud serial link one report cost 15-20 ms of spin, so one message
+/// for several verdicts is the difference between one tick and several.
 ///
 /// # Safety
 /// `ctx` is the [`DiagSink`] [`DiagSink::hook`] installed.
-unsafe fn publish_violation(ctx: *mut c_void, v: &Violation) {
+unsafe fn publish_violations(ctx: *mut c_void, pending: &[Violation]) -> usize {
     let sink = unsafe { &mut *(ctx as *mut DiagSink) };
     // No rate limit: the rules themselves are windowed and fire on
     // transitions. phase-474 I7 -- the report is STREAMED into the buffer
-    // (`write_violation_report`, byte-identical to serializing
-    // `DiagnosticReporter::report_violation`'s value). The value is a 5 KB
-    // `DiagnosticArray`, and building it here, on the spin thread, ran the
-    // safety island's 16 KiB main stack into the idle thread's on its first
-    // stored violation. What stays on this frame is the 512 B buffer.
+    // (`write_violation_reports`, byte-identical to serializing the value
+    // form). The value is a 5 KB `DiagnosticArray`, and building it on the
+    // spin thread ran the safety island's 16 KiB main stack into the idle
+    // thread's on its first stored violation. What stays on this frame is the
+    // 512 B buffer and four borrowed tuples.
     let mut buf = [0u8; REPORT_BUF];
-    let Ok(mut w) = nros_core::CdrWriter::new_with_header(&mut buf) else {
-        sink.failed = sink.failed.saturating_add(1);
-        return;
-    };
-    if nros_diagnostics::write_violation_report(&mut w, v.rule, v.fqn, v.measured, v.declared)
-        .is_err()
-    {
-        sink.failed = sink.failed.saturating_add(1);
-        return;
+    let mut rows: [(&str, &str, u32, u32); nros_node::executor::monitor::REPORT_QUEUE] =
+        [("", "", 0, 0); nros_node::executor::monitor::REPORT_QUEUE];
+    let n_max = pending.len().min(rows.len());
+    for (row, v) in rows.iter_mut().zip(pending.iter()) {
+        *row = (v.rule, v.fqn, v.measured, v.declared);
     }
-    let len = w.position();
-    match sink.publisher.publish_raw(&buf[..len]) {
-        Ok(()) => sink.published = sink.published.saturating_add(1),
-        Err(_) => sink.failed = sink.failed.saturating_add(1),
+    // The most that fit one buffer: a status is 100-300 B, so two or three
+    // usually do; whatever does not fit waits for the next slot.
+    let mut n = n_max;
+    while n > 0 {
+        let Ok(mut w) = nros_core::CdrWriter::new_with_header(&mut buf) else {
+            break;
+        };
+        if nros_diagnostics::write_violation_reports(&mut w, &rows[..n]).is_ok() {
+            let len = w.position();
+            return match sink.publisher.publish_raw(&buf[..len]) {
+                Ok(()) => {
+                    sink.published = sink.published.saturating_add(1);
+                    n
+                }
+                Err(_) => {
+                    sink.failed = sink.failed.saturating_add(1);
+                    0
+                }
+            };
+        }
+        n -= 1;
     }
+    sink.failed = sink.failed.saturating_add(1);
+    0
 }
 
 /// Static storage for one executor's [`DiagSink`] — what a Rust entry owns in

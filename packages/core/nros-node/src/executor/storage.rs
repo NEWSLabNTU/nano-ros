@@ -1097,6 +1097,9 @@ mod tests {
         //     dropped and pre-arm counters and the monitors' arming state, nine
         //     scalars that scale with no knob. Named so the next field added to
         //     them shows up here rather than eating another feature's headroom.
+        //   * phase-474 I7's `ReportQueue`: the verdicts waiting for the
+        //     `/diagnostics` sink (a fixed `REPORT_QUEUE` of four) and what the
+        //     hand-over cost. Scales with no knob; named for the same reason.
         //   * phase-476 W0's `slot_tags`: the TABLE is carved (it scales with
         //     `MAX_CBS` and lives in the backing); what sits in this value is
         //     one slice reference, which scales with nothing.
@@ -1104,6 +1107,7 @@ mod tests {
         let mut ceiling =
             1280 + size_of::<super::super::spin::SessionStore>()
                 + size_of::<super::super::monitor::ViolationCounts>()
+                + size_of::<super::super::monitor::ReportQueue>()
                 + size_of::<&mut [super::super::types::SlotTag]>()
                 + size_of::<usize>()
                 + size_of::<
