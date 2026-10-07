@@ -28,6 +28,14 @@ source ./activate.sh >/dev/null 2>&1 || true
 cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros >/dev/null 2>&1 \
     || { echo "census: the gate job's CLI build failed" >&2; exit 2; }
 export PATH="$PWD/packages/cli/target/release:$PATH"
+# The gate job builds the launch resolver before `test-lane-contracts`
+# ("Build nros-launch-resolve", gate.yml), so admitted tests may use it. The
+# census must provision the same, in THIS body, or the two census paths disagree:
+# the first scheduled CI census (2026-10-06) reported three admitted tests as
+# NO LONGER PASSING on `nros-launch-resolve not built`, while a local image run
+# passed them only because it copied the developer's host-built resolver in.
+just setup-launch-resolve >/dev/null 2>&1 \
+    || { echo "census: the gate job's launch-resolver build failed" >&2; exit 2; }
 NROS_CARGO_FLAGS= cargo nextest run -p nros-tests --no-run >/dev/null 2>&1 \
     || { echo "census: nros-tests does not build here" >&2; exit 2; }
 for i in $(seq 1 "$runs"); do

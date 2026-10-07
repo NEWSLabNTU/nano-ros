@@ -57,7 +57,7 @@ else
     docker run --name "$name" -e NROS_CENSUS_RUNS="$runs" \
         -v "$root":/src:ro -v "$common":"$common":ro \
         --entrypoint bash "$mode" -lc '
-            cp -a /src /work && cd /work && rm -rf target packages/cli/target build
+            cp -a /src /work && cd /work && rm -rf target packages/cli/target packages/cli/nros-launch-resolve/target build
             git config --global --add safe.directory "*"
             bash scripts/test/lane-census-run.sh /out'
     rc=$?
