@@ -130,6 +130,17 @@ fi
     exit 2
 }
 
+# The skip ledger this runner REPORTS from must work, so its own controls run
+# here, every time (2026-10-07 gate-reach re-audit). They lived only on
+# `check-dist-runtime-deps`' normal path — a gate in no lane — so removing the
+# ledger write, or the `NROS_CHECK_SKIP_STRICT=1` refusal, left every lane green
+# while a skipped gate stopped being reported at all.
+if ! bash -c '. scripts/build/check-skip.sh && nros_check_unverified_self_test' \
+        || ! python3 scripts/lib/check_skip.py >/dev/null 2>&1; then
+    echo "$0: the check-skip ledger SELF-TEST FAILED — a skip would not be reported; refusing to run" >&2
+    exit 2
+fi
+
 # The lane this run is reporting on. It used to be the literal string
 # "check-fast", which became a lie the moment `build` got a parallel runner
 # too (issue 0993) — a summary naming the wrong lane is how a green build

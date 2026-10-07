@@ -45,6 +45,18 @@ def self_test() -> None:
         cwd=REPO, env=env, capture_output=True, text=True)
     if r.returncode == 0:
         raise SystemExit("check_skip self-test FAILED: strict mode passed")
+    # The PYTHON entry point too, not only the shell function it wraps: the
+    # 2026-10-07 re-audit short-circuited `unverified()` and nothing noticed.
+    saved = os.environ.get("NROS_CHECK_SKIP_STRICT")
+    os.environ["NROS_CHECK_SKIP_STRICT"] = "1"
+    try:
+        if unverified("check-skip-selftest", "probe") != 1:
+            raise SystemExit("check_skip self-test FAILED: unverified() passed under strict mode")
+    finally:
+        if saved is None:
+            del os.environ["NROS_CHECK_SKIP_STRICT"]
+        else:
+            os.environ["NROS_CHECK_SKIP_STRICT"] = saved
 
 
 if __name__ == "__main__":

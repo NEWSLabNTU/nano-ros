@@ -165,9 +165,34 @@ fi
 #
 # Ratchet, not zero: deleting the 327 existing digests would destroy history for
 # a conflict that only future appends cause.
+#
+# A FROZEN count is forced DOWN too (phase-472 W9, `scripts/lib/ratchet.py`):
+# a digest deleted without lowering `frozen_digests` leaves a free slot, and the
+# next append regrows into it with this gate green. The 2026-10-07 gate-reach
+# re-audit measured exactly that (delete one digest: rc 0). So the verdict is
+# the class helper's `judge`, and a fall fails naming the edit to make.
 frozen_digests=327
 have_digests="$(grep -c '^Recently resolved' docs/issues/README.md || true)"
-if [ "${have_digests:-0}" -gt "$frozen_digests" ]; then
+digest_ratchet() {  # <have> <frozen> -> prints rose|fell|ok
+    python3 -c 'import sys; sys.path.insert(0, "scripts/lib"); import ratchet
+r, f = ratchet.judge({"digests": int(sys.argv[1])}, {"digests": int(sys.argv[2])})
+print("rose" if r else "fell" if f else "ok")' "$1" "$2"
+}
+# Normal-path negative controls: both directions must be seen by the verdict.
+if [ "$(digest_ratchet 328 327)" != rose ] || [ "$(digest_ratchet 326 327)" != fell ] \
+        || [ "$(digest_ratchet 327 327)" != ok ]; then
+    echo "check-issue-index: SELF-TEST FAILED — the digest ratchet no longer sees a rise and a fall" >&2
+    exit 1
+fi
+digest_verdict="$(digest_ratchet "${have_digests:-0}" "$frozen_digests")"
+if [ "$digest_verdict" = fell ]; then
+    echo "check-issue-index: docs/issues/README.md has $have_digests 'Recently" >&2
+    echo "  resolved' digests, BELOW the frozen $frozen_digests. A ratchet is forced" >&2
+    echo "  down: set frozen_digests=$have_digests in $0, or the freed slot is room" >&2
+    echo "  for the next append to land green (phase-472 W9)." >&2
+    exit 1
+fi
+if [ "$digest_verdict" = rose ]; then
     echo "check-issue-index: docs/issues/README.md has $have_digests 'Recently" >&2
     echo "  resolved' digests, above the frozen $frozen_digests." >&2
     echo "  That block is a per-PR conflict site: every entry is prepended at the" >&2
