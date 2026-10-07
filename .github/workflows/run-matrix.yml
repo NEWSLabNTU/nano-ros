@@ -152,9 +152,17 @@ jobs:
       # `rust-rtos-link-check` + `test-all`, and `just test tier2` is only the
       # last of those. Provisioning by scope + running the TIER keeps the
       # transcript shape without quietly narrowing what runs.
+      # issue 1754 — `just ci matrix` runs the `check::default` preflight
+      # BEFORE any cell, so this step's outcome alone cannot say a cell ran
+      # (run 37685900447: a `check fast` gate failed, 0 cells, and the stage
+      # read `cells ran and FAILED`). The step runner appends its per-step
+      # markers to this record; the stage reporter below reads the same file.
       - name: just ci matrix
         id: cells
+        env:
+          NROS_LANE_STEP_RECORD: ${{ runner.temp }}/lane-steps-tier2
         run: |
+          rm -f "$NROS_LANE_STEP_RECORD"
           source ./activate.sh
           just ci matrix
       # THE PER-MODULE BUILD LOGS TOO — issue 1158's reporting half.
@@ -217,6 +225,7 @@ jobs:
              {"name": "Verify this runner's labels are true", "conclusion": "${{ steps.doctor.outcome }}"},
              {"name": "just build tier2", "conclusion": "${{ steps.build.outcome }}"},
              {"name": "just ci matrix", "conclusion": "${{ steps.cells.outcome }}"}]
+          NROS_LANE_STEP_RECORD: ${{ runner.temp }}/lane-steps-tier2
         run: python3 scripts/ci/lane-stage.py --report --lane "tier 2 (1-wise matrix)"
 
   # TIER 1's cells — issues 1684/1685.
@@ -272,7 +281,10 @@ jobs:
           just build tier1
       - name: just ci tier1 run
         id: cells
+        env:
+          NROS_LANE_STEP_RECORD: ${{ runner.temp }}/lane-steps-tier1
         run: |
+          rm -f "$NROS_LANE_STEP_RECORD"
           source ./activate.sh
           just ci tier1 run
       - name: Upload junit and logs
@@ -301,6 +313,7 @@ jobs:
              {"name": "Verify this runner's labels are true", "conclusion": "${{ steps.doctor.outcome }}"},
              {"name": "just build tier1", "conclusion": "${{ steps.build.outcome }}"},
              {"name": "just ci tier1 run", "conclusion": "${{ steps.cells.outcome }}"}]
+          NROS_LANE_STEP_RECORD: ${{ runner.temp }}/lane-steps-tier1
         run: python3 scripts/ci/lane-stage.py --report --lane "tier 1 (cells)"
 
   coverage-tier1:

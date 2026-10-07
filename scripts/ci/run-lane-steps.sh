@@ -48,6 +48,20 @@ fmt_dur() {
 
 now_utc() { date -u '+%H:%M:%SZ'; }
 
+# issue 1754 — the markers are also the POSITIVE record of how far the lane got.
+# A workflow's cells step is this whole runner, so its outcome cannot tell a
+# failed `check::default` preflight from a failed `test-all`; run 37685900447
+# read `VERDICT: cells ran and FAILED` with 0 cells run. When
+# NROS_LANE_STEP_RECORD names a file, every marker line is appended to it too,
+# for `lane-stage.py --report` to read (scripts/lib/lane_step_markers.py — one
+# parser, and its selftest runs THIS script to hold the format).
+mark() {
+    printf '%s\n' "$1"
+    if [ -n "${NROS_LANE_STEP_RECORD:-}" ]; then
+        printf '%s\n' "$1" >> "$NROS_LANE_STEP_RECORD" || true
+    fi
+}
+
 declare -a verdict=() took=()
 failed_at=-1
 lane_start=$(date +%s)
@@ -57,13 +71,13 @@ for i in "${!steps[@]}"; do
         took[$i]="-"
         continue
     fi
-    printf '==> ci %s [%d/%d] %s — started %s\n' "$lane" $((i + 1)) "$n" "${steps[$i]}" "$(now_utc)"
+    mark "$(printf '==> ci %s [%d/%d] %s — started %s' "$lane" $((i + 1)) "$n" "${steps[$i]}" "$(now_utc)")"
     t0=$(date +%s)
     if just "${steps[$i]}"; then verdict[$i]="ok"; else verdict[$i]="FAILED"; failed_at=$i; fi
     dt=$(( $(date +%s) - t0 ))
     took[$i]="$(fmt_dur "$dt")"
-    printf '<== ci %s [%d/%d] %s — %s after %s (at %s)\n' \
-        "$lane" $((i + 1)) "$n" "${steps[$i]}" "${verdict[$i]}" "${took[$i]}" "$(now_utc)"
+    mark "$(printf '<== ci %s [%d/%d] %s — %s after %s (at %s)' \
+        "$lane" $((i + 1)) "$n" "${steps[$i]}" "${verdict[$i]}" "${took[$i]}" "$(now_utc)")"
 done
 total=$(( $(date +%s) - lane_start ))
 
