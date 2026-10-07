@@ -12393,7 +12393,7 @@ impl<'s> Executor<'s> {
     /// `-> !` task body, which is now [`spin_forever`](Self::spin_forever).
     ///
     /// Runs until one of:
-    /// - [`cancel()`](Self::cancel) / [`halt()`](Self::halt) is called (from
+    /// - [`cancel()`](Self::cancel) is called (from
     ///   another thread or signal handler)
     /// - `opts.timeout` expires (if set)
     /// - `opts.max_callbacks` is reached (if set)

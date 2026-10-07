@@ -551,7 +551,8 @@ impl<A: RosAction> ActionServerHandle<A> {
     /// Terminate `goal_id` as CANCELED. See [`Self::succeed`].
     ///
     /// phase-417 W4.b — this was `cancel`, and the argument for that spelling
-    /// is in [`Self::cancel`]. It loses to the drop-in claim: C spells it
+    /// lived on the `cancel` alias phase-482 W6 retired. It loses to the
+    /// drop-in claim: C spells it
     /// `nros_action_canceled`, rclcpp_action spells it
     /// `ServerGoalHandle::canceled`, and Rust was the only one of the three
     /// disagreeing — over a naming preference with no platform reason behind
