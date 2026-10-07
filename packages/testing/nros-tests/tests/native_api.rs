@@ -1471,3 +1471,152 @@ fn test_native_cyclonedds_service_callback(#[values(Language::C, Language::Cpp)]
         lang.label()
     );
 }
+
+// =============================================================================
+// Issue 1741 — a threadx-linux image ENDS on one termination signal
+// =============================================================================
+
+/// Send ONE `SIGTERM` to `child` (to its pid, not its group — what
+/// `timeout --foreground` does) and wait up to `bound` for it to end.
+/// `Some((took, status))` when it ended, `None` when it is still alive.
+///
+/// The SAME function measures the image and the negative control below, so a
+/// measurement that could not see survival would fail the control, not
+/// quietly pass the image.
+#[cfg(target_os = "linux")]
+fn one_sigterm_then_wait(
+    child: &mut std::process::Child,
+    bound: Duration,
+) -> Option<(Duration, std::process::ExitStatus)> {
+    let start = std::time::Instant::now();
+    // SAFETY: plain kill(2) on a pid we spawned and have not reaped.
+    unsafe {
+        libc::kill(child.id() as libc::pid_t, libc::SIGTERM);
+    }
+    while start.elapsed() < bound {
+        if let Some(status) = child.try_wait().expect("try_wait") {
+            return Some((start.elapsed(), status));
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    None
+}
+
+/// Is `signal` CAUGHT by `pid` — i.e. does the process have a handler for it,
+/// rather than the default action? `SigCgt` in `/proc/<pid>/status`.
+#[cfg(target_os = "linux")]
+fn catches_signal(pid: u32, signal: i32) -> bool {
+    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).expect("read /proc status");
+    let mask = status
+        .lines()
+        .find_map(|l| l.strip_prefix("SigCgt:"))
+        .map(|v| u64::from_str_radix(v.trim(), 16).expect("SigCgt is hex"))
+        .expect("no SigCgt line");
+    mask & (1u64 << (signal - 1)) != 0
+}
+
+/// Issue 1741 — a threadx-linux C image ENDS on one `SIGTERM`, within the
+/// harness's own kill grace, so a single-signal `timeout` bounds it.
+///
+/// Before the fix, the C service-server over Cyclone caught the `SIGTERM`
+/// (`SigCgt` bit 15) and was still alive 15 s later; one such image, started
+/// as `timeout 6 …`, lived 34 days. Two defects, each enough alone: the
+/// example's graceful-shutdown handler needs the ThreadX scheduler to run the
+/// app thread (the measured image had wedged before the signal arrived), and a
+/// returned C app left an idle scheduler running forever.
+///
+/// Both RMWs: Cyclone needs no router and is the image that lived 34 days (and
+/// whose scheduler wedges — issue 1750); zenoh with a live router is the path
+/// whose graceful shutdown DOES run, which now has to end the process too.
+///
+/// Precondition asserted, not assumed: the image must have INSTALLED a handler
+/// (`SigCgt` bit 15) by the time it prints its ready banner. An image on the
+/// default disposition would pass this test without exercising anything.
+#[cfg(target_os = "linux")]
+#[rstest]
+#[case::cyclonedds(Rmw::Cyclonedds)]
+#[case::zenoh(Rmw::Zenoh)]
+fn test_threadx_linux_c_image_ends_on_one_sigterm(#[case] rmw: Rmw) {
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+    let bin = nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
+        "c",
+        "service-server",
+        "c_service_server",
+        rmw,
+    )
+    .require("resolve threadx-linux c service-server");
+
+    let router = matches!(rmw, Rmw::Zenoh).then(zenohd_unique);
+    let mut cmd = Command::new(&bin);
+    if let Some(router) = &router {
+        cmd.env("NROS_LOCATOR", router.locator());
+    }
+    let mut server = ManagedProcess::spawn_command(cmd, "threadx-linux-c-service-server")
+        .expect("spawn the threadx-linux c service-server");
+    server
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_SERVER_READY_MARKER,
+            Duration::from_secs(30),
+        )
+        .unwrap_or_else(|e| panic!("the image never became ready: {e}"));
+
+    let pid = server.handle_mut().id();
+    assert!(
+        catches_signal(pid, libc::SIGTERM),
+        "the image does not CATCH SIGTERM, so this test exercises nothing: the \
+         C example's `signal(SIGTERM, handler)` is what made the image survive"
+    );
+
+    // Signal 3 s in, the way `timeout 3` would — not the instant it is ready.
+    // Measured: signalled at ~0.2 s the Cyclone image shuts down gracefully in
+    // ~120 ms, while at 3 s its scheduler has already wedged (issue 1750) and
+    // only the board's termination grace ends it. The later point covers both
+    // paths for as long as the wedge exists, and the healthy one after.
+    std::thread::sleep(Duration::from_secs(3));
+    assert!(
+        server.is_running(),
+        "the image exited on its own before it was signalled, so this test \
+         measures nothing about SIGTERM"
+    );
+    let bound = nros_tests::process::KILL_GRACE;
+    let ended = one_sigterm_then_wait(server.handle_mut(), bound);
+    let (took, status) = ended.unwrap_or_else(|| {
+        panic!(
+            "the threadx-linux C image ({rmw:?}) was still alive {bound:?} after ONE \
+             SIGTERM — a single-signal `timeout` would not bound it (issue 1741).\n\
+             command: {}",
+            server.command_line()
+        )
+    });
+    eprintln!("threadx-linux C image ({rmw:?}) ended {took:?} after one SIGTERM: {status}");
+}
+
+/// Negative control for [`test_threadx_linux_c_image_ends_on_one_sigterm`]: a
+/// process that catches `SIGTERM` and keeps running is reported as SURVIVING
+/// by the same measurement. A measurement that could not see survival would
+/// make the image test vacuous.
+#[cfg(target_os = "linux")]
+#[test]
+fn negative_control_one_sigterm_does_not_end_a_process_that_catches_it() {
+    let mut cmd = Command::new("bash");
+    // A handler that does NOTHING, the way the wedged image's flag-setting
+    // handler did nothing anyone would read. `sleep` in the background + `wait`
+    // keeps the shell itself resident and re-waits after each trapped signal.
+    cmd.args(["-c", "trap ':' TERM; while :; do sleep 60 & wait $!; done"]);
+    let mut stand_in =
+        ManagedProcess::spawn_command(cmd, "term-catching-stand-in").expect("spawn the stand-in");
+    std::thread::sleep(Duration::from_millis(300));
+    let pid = stand_in.handle_mut().id();
+    assert!(
+        catches_signal(pid, libc::SIGTERM),
+        "the stand-in does not catch SIGTERM, so it controls for nothing"
+    );
+    let ended = one_sigterm_then_wait(stand_in.handle_mut(), nros_tests::process::KILL_GRACE);
+    assert!(
+        ended.is_none(),
+        "a process that catches SIGTERM and keeps running ended after {ended:?}, \
+         so the measurement cannot see survival and the image test proves nothing"
+    );
+}
