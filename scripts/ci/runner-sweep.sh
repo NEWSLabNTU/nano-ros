@@ -616,7 +616,9 @@ _sweep_disk() {
     local zsdk="$repo_root/scripts/zephyr/sdk"
     local zdl="$repo_root/scripts/zephyr/downloads"
     if [ -d "$zsdk" ] || [ -d "$zdl" ]; then
-        local ws="${NROS_ZEPHYR_WORKSPACE:-$repo_root/zephyr-workspace}"
+        # issue 1736: the ONE resolver, not a fourth spelling of its ladder.
+        local ws
+        ws="$(bash "$repo_root/scripts/lib/zephyr-workspace.sh" --root "$repo_root" --absolute resolve-or-default)" || ws=""
         local want="" pin=""
         [ -f "$ws/zephyr/SDK_VERSION" ] && want="$(cat "$ws/zephyr/SDK_VERSION" 2>/dev/null)"
         [ -n "$want" ] && pin="$zsdk/zephyr-sdk-$want"

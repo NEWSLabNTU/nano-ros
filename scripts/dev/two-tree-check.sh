@@ -62,7 +62,8 @@ done
 
 # The Zephyr, resolved the same way `nros build` resolves it, so this script
 # cannot disagree with the thing it is checking.
-ZEPHYR_WS="${NROS_ZEPHYR_WORKSPACE:-$REPO/zephyr-workspace}"
+# issue 1736: through the ONE resolver (scripts/lib/zephyr-workspace.sh).
+ZEPHYR_WS="$(bash "$REPO/scripts/lib/zephyr-workspace.sh" --root "$REPO" --absolute resolve-or-default)"
 if [ ! -d "$ZEPHYR_WS/zephyr" ]; then
     echo "two-tree-check: no Zephyr at $ZEPHYR_WS/zephyr" >&2
     echo "  Set NROS_ZEPHYR_WORKSPACE, or run: just zephyr setup" >&2

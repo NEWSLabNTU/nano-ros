@@ -54,6 +54,9 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+import comments  # noqa: E402  phase-472 W3 — a comment is not code
+import file_kinds  # noqa: E402  phase-472 W5 — populations by kind
 
 # ---------------------------------------------------------------------------
 # The canonical list lives in the code that uses it, not here.
@@ -160,6 +163,23 @@ CLASSIFIED: dict[tuple[str, str], str] = {
         "packages/platform/nros-baremetal-common/src/libc_stubs.rs",
         'cfg(not(all(target_arch = "arm", target_os = "none")))',
     ): "The other arm of the same bare-metal split.",
+}
+
+
+# Rule 2b's classified BUILD-SCRIPT comparisons (issue 1736): the same hosted
+# question asked at run time of a build script, `CARGO_CFG_TARGET_OS` against
+# "none". Key: (path, the comparison text with whitespace collapsed).
+CLASSIFIED_CMP: dict[tuple[str, str], str] = {
+    (
+        "packages/tooling/nros-build-helpers/src/shared.rs",
+        'os != "none"',
+    ): "Bare-metal question: `apply_baremetal_libc` adds the riscv64 bare-metal "
+    "libc shim; NuttX ships its own libc and must not take it.",
+    (
+        "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+        'target_os_for_alias == "none"',
+    ): "Bare-metal question: `-ffreestanding` for the alias TU because a "
+    "bare-metal cross gcc lacks a usable newlib; NuttX has its libc headers.",
 }
 
 
@@ -282,19 +302,33 @@ def cfg_predicates(text: str) -> list[str]:
     return found
 
 
+# A build script's run-time spelling of the cfg question: an expression
+# compared against "none" with ==/!= — `os != "none"`,
+# `env::var("CARGO_CFG_TARGET_OS").unwrap() != "none"`, `"none" == os`. Read
+# only in a file that reads CARGO_CFG_TARGET_OS, so an unrelated `"none"`
+# string (a QoS name, a CLI flag) elsewhere is not the question.
+CMP_NONE = re.compile(
+    r'[\w.:]+(?:\([^()\n]*\)[\w.:]*)*\s*(?:==|!=)\s*"none"'
+    r'|"none"\s*(?:==|!=)\s*[\w.:]+(?:\([^()\n]*\)[\w.:]*)*'
+)
+
+
+def cmp_predicates(text: str) -> list[str]:
+    """Every ==/!= "none" comparison in a CARGO_CFG_TARGET_OS-reading file."""
+    code = comments.strip_comments(text, "rust")
+    if "CARGO_CFG_TARGET_OS" not in code:
+        return []
+    return [re.sub(r"\s+", " ", m.group(0)).strip() for m in CMP_NONE.finditer(code)]
+
+
 def names_every(pred: str, oses: list[str]) -> bool:
     """Does this predicate name every one of `oses` beside `"none"`?"""
     return all(f'target_os = "{os}"' in pred for os in oses)
 
 
 def rust_sources() -> list[str]:
-    """Every tracked `.rs` under `packages/` and `examples/`, repo-relative."""
-    out = []
-    for rel in git_ls(":(glob)packages/**/*.rs", ":(glob)examples/**/*.rs"):
-        if "/third-party/" in f"/{rel}":
-            continue
-        out.append(rel)
-    return sorted(out)
+    """Every tracked Rust source we author (`file_kinds`, phase-472 W5)."""
+    return sorted(file_kinds.files_of_kind("rust", repo=REPO))
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +361,19 @@ def self_test() -> None:
     assert cfg_predicates(nested) == [
         'cfg(all(target_os = "none", not(feature = "std")))'
     ], "selftest: unbalanced parse of a nested predicate"
+    # Rule 2b (issue 1736): the build-script spelling — the ORIGINAL site's
+    # shape — is read, both inline and through a binding; and a "none" in a
+    # file that never reads CARGO_CFG_TARGET_OS is not.
+    inline = 'fn main() { let hosted = env::var("CARGO_CFG_TARGET_OS").unwrap() != "none"; }'
+    assert cmp_predicates(inline) == ['env::var("CARGO_CFG_TARGET_OS").unwrap() != "none"'], (
+        f"selftest: missed the inline build-script spelling: {cmp_predicates(inline)}"
+    )
+    bound = 'let os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();\nif os != "none" {}'
+    assert cmp_predicates(bound) == ['os != "none"'], "selftest: missed the bound spelling"
+    assert cmp_predicates('let q = qos == "none";') == [], "selftest: unrelated \"none\" read"
+    assert cmp_predicates('// CARGO_CFG_TARGET_OS\nlet q = os == "none";') == [], (
+        "selftest: a comment counted as reading CARGO_CFG_TARGET_OS"
+    )
     # Rule 1's classifier must reject an OS it has never heard of.
     unknown = "vxworks"
     assert unknown not in HOST_TARGET_OS, "selftest: fixture OS is in the host set"
@@ -374,6 +421,17 @@ def main() -> int:
 
     for rel in rust_sources():
         text = (REPO / rel).read_text(encoding="utf-8", errors="replace")
+        for pred in dict.fromkeys(cmp_predicates(text)):
+            key = (rel, pred)
+            if key in CLASSIFIED_CMP:
+                seen_classified.add(key)
+                continue
+            spelling_failures.append(
+                f"  {rel}\n"
+                f"      {pred}\n"
+                f'      A build script asks "is this hosted?" as `!= "none"` '
+                f"(issue 1028's shape); call `target_os_is_hosted()` or classify it."
+            )
         if 'target_os = "none"' not in text:
             continue
         for pred in dict.fromkeys(cfg_predicates(text)):
@@ -390,7 +448,7 @@ def main() -> int:
                 f"{', '.join(reachable_sorted)}."
             )
 
-    stale = sorted(set(CLASSIFIED) - seen_classified)
+    stale = sorted((set(CLASSIFIED) | set(CLASSIFIED_CMP)) - seen_classified)
     if stale:
         print(
             "check-rtos-target-os: a classified predicate no longer exists\n\n"

@@ -65,8 +65,26 @@ CPP_INCLUDE = "packages/api/nros-cpp/include"
 PLATFORM_API = "packages/platform/nros-platform-api/include"
 THREADX_SHIM = "packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat"
 
-ARM_GXX = os.path.expanduser(
-    "~/.nros/sdk/arm-none-eabi-gcc/13.2-nros1/bin/arm-none-eabi-g++")
+def pinned_arm_gxx():
+    """The PINNED arm g++, constructed from `nros-sdk-index.toml` through the
+    one shell pin reader (`scripts/lib/sdk-pin.sh`) — issue 1736. A literal
+    `13.2-nros1` path sat here while the index pinned `13.2-nros5`, so a host
+    holding only the pin fell back to PATH or skipped, and a host still holding
+    the stale `nros1` measured the wrong compiler."""
+    try:
+        pin = subprocess.run(
+            ["bash", "-c", '. scripts/lib/sdk-pin.sh && nros_sdk_pinned_version "$1"',
+             "_", "arm-none-eabi-gcc"],
+            cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    if not pin:
+        return None
+    store = os.environ.get("NROS_SDK_STORE") or os.path.expanduser("~/.nros/sdk")
+    return os.path.join(store, "arm-none-eabi-gcc", pin, "bin", "arm-none-eabi-g++")
+
+
+ARM_GXX = pinned_arm_gxx()
 
 
 def arms():
@@ -77,7 +95,7 @@ def arms():
     out = [("hosted g++ -std=c++17",
             ["c++", "-std=c++17", "-fsyntax-only"], True)]
 
-    arm = ARM_GXX if os.path.exists(ARM_GXX) else shutil.which("arm-none-eabi-g++")
+    arm = ARM_GXX if ARM_GXX and os.path.exists(ARM_GXX) else shutil.which("arm-none-eabi-g++")
     if arm:
         out.append(("arm-none-eabi -std=c++14 -ffreestanding (32-bit)",
                     [arm, "-std=c++14", "-ffreestanding", "-fno-exceptions", "-fno-rtti",

@@ -49,8 +49,38 @@ fi
 # 1. one spelling of the rule.
 # `git grep -l`, not `grep -rln`: an index lookup, not a filesystem walk
 # (check-no-tracked-file-find enforces this — the walk costs minutes).
-stray="$(git grep -lE 'REGENERATED_INPLACE_HEADERS|is_cargo_out_dir_product|is_regenerated_inplace_header' \
-    -- "$SRC" | grep -v "^$OWNER\$" || true)"
+# issue 1736 — the predicate list was AUTHORED (three names) and lacked the
+# owner's third predicate, so a copy of `is_config_header_stamp_with_header` in
+# `binaries/mod.rs` passed. It is HARVESTED now (`harvest.reconcile`): every fn
+# or const defined in $OWNER that `exempt_probe_input` uses, plus the retired
+# `is_regenerated_inplace_header` spelling.
+exempt_names="$(python3 - "$OWNER" <<'PY'
+import re, sys
+sys.path.insert(0, "scripts/lib")
+import comments, harvest, per_item
+
+def names(text):
+    code = per_item.rust_cfg_test_blank(comments.strip_comments(text, "rust"))
+    defined = set(re.findall(r"\b(?:fn|const|static)\s+([A-Za-z_]\w*)", code))
+    body = ""
+    for _m, a, b in per_item.blocks(code, re.compile(r"\bfn\s+exempt_probe_input\b")):
+        body = code[a:b]
+    used = set(re.findall(r"\b([A-Za-z_]\w*)\b", body))
+    return sorted((used & defined) - {"exempt_probe_input"})
+
+syn = ("const T: &[&str] = &[];\nfn exempt_probe_input(p: &P) -> O { if is_a(p) { x } "
+       "if T.iter().any(|s| p.ends_with(s)) { y } None }\nfn is_a(p: &P) -> bool { true }\n"
+       "fn unrelated() {}\n")
+assert names(syn) == ["T", "is_a"], names(syn)
+pop, problems = harvest.reconcile(names(open(sys.argv[1]).read()), what="exemption predicate")
+if problems:
+    for p in problems:
+        print(f"PROBLEM {p}", file=sys.stderr)
+    sys.exit(1)
+print("|".join(pop + ["is_regenerated_inplace_header"]))
+PY
+)" || { echo "[FAIL] the exemption-predicate harvest over $OWNER failed" >&2; exit 1; }
+stray="$(git grep -lwE "$exempt_names" -- "$SRC" | grep -v "^$OWNER\$" || true)"
 if [ -n "$stray" ]; then
     echo "[FAIL] the probe exemption rule is spelled outside its owner:" >&2
     printf '  %s\n' $stray >&2

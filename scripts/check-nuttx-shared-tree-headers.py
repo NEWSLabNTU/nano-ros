@@ -75,6 +75,12 @@ RUST_BIND_PAT = re.compile(
     r'(?:env::)?var(?:_os)?\(\s*"NUTTX_DIR"'
 )
 JOIN_INCLUDE_PAT = re.compile(r'\.join\(\s*"include"')
+# issue 1736 — `.join("include")` is one spelling of "a path built onto the
+# NuttX tree". `format!("{}/include", NUTTX_DIR)` (and `"{nuttx_dir}/include"`)
+# passed. A string literal whose segment after an interpolation is `include`,
+# on a line naming a nuttx-ish binding (or a tainted one), is the same read.
+FMT_INCLUDE_PAT = re.compile(r'"[^"\n]*\}/include\b[^"\n]*"')
+NUTTX_NAME_PAT = re.compile(r'\b\w*(?:nuttx|NUTTX)\w*\b')
 TAINT_WINDOW = 6
 
 # Manifest: `config/<platform>/nros-platform.toml` interpolates `{env:VAR}`, so
@@ -146,6 +152,7 @@ def offenders(files):
                 lines = fh.readlines()
         except OSError:
             continue
+        rs = rel.endswith(".rs")
         # (name, line) bound from NUTTX_DIR in this file — issue 0551.
         binds = []
         for n, line in enumerate(lines, 1):
@@ -157,8 +164,11 @@ def offenders(files):
         for n, line in enumerate(lines, 1):
             if line.lstrip().startswith(("#", "//", "*", "!")):
                 continue          # prose about the rule is not a violation
+            # Rust only: shell/make spell this `$NUTTX_DIR/include` (SHELL_PAT),
+            # and a Python f-string is a gate's MESSAGE, not a compile input.
+            fmt_join = bool(rs and FMT_INCLUDE_PAT.search(line) and NUTTX_NAME_PAT.search(line))
             tainted_join = bool(
-                JOIN_INCLUDE_PAT.search(line)
+                (JOIN_INCLUDE_PAT.search(line) or (rs and FMT_INCLUDE_PAT.search(line)))
                 and any(
                     0 <= n - bn <= TAINT_WINDOW
                     and re.search(rf'\b{re.escape(name)}\b', line)
@@ -170,6 +180,7 @@ def offenders(files):
                 or SHELL_PAT.search(line)
                 or TOML_PAT.search(line)
                 or tainted_join
+                or fmt_join
             ):
                 continue
             if PROBE_PAT.search(line):
@@ -210,6 +221,19 @@ def self_test():
         write('cc -isystem$NUTTX_DIR/include foo.c\n')
         if not offenders([rel]):
             sys.stderr.write("self-test: the shell spelling was NOT reported\n")
+            sys.exit(2)
+        # issue 1736 — the format! spellings of the same path.
+        for body in ('fn main(){ cc.include(format!("{}/include", NUTTX_DIR)); }\n',
+                     'fn main(){ cc.flag(&format!("-I{nuttx_dir}/include")); }\n',
+                     'fn main(){ if let Ok(dir) = env::var("NUTTX_DIR") {\n'
+                     '    cc.include(format!("{}/include", dir)); } }\n'):
+            write(body)
+            if not offenders([rel]):
+                sys.stderr.write(f"self-test: a format! spelling was NOT reported: {body!r}\n")
+                sys.exit(2)
+        write('fn main(){ cc.include(format!("{}/include", zephyr_dir)); }\n')
+        if offenders([rel]):
+            sys.stderr.write("self-test: an unrelated format! include WAS reported\n")
             sys.exit(2)
         # An existence PROBE is not reported.
         write('fn main(){ if nuttx_dir.join("include").exists() { return; } }\n')

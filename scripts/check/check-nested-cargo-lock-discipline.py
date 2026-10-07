@@ -103,11 +103,17 @@ COMMAND_NEW = re.compile(r"Command::new\(\s*&?\s*([A-Za-z_][A-Za-z0-9_.:]*)\s*\)
 # the load-bearing one: `names_cargo` runs BEFORE the bypass test, so widening
 # `BYPASS_SOURCE` alone would still have found nothing.
 COMMAND_NEW_MACRO = re.compile(r"Command::new\(\s*&?\s*" + CARGO_ENV_MACRO)
+# issue 1736 — and the RUN-TIME read inline: `Command::new(std::env::var_os(
+# "CARGO").unwrap())`, the module docstring's own example. `COMMAND_NEW` needs
+# an identifier followed by `)`, so the inline call (a path then `(`) passed.
+COMMAND_NEW_ENV = re.compile(
+    r"""Command::new\(\s*&?\s*(?:[A-Za-z_][\w]*::)*var(?:_os)?\(\s*"CARGO"\s*\)"""
+)
 
 
 def names_cargo(text: str) -> bool:
     """Does any `Command::new(…)` in `text` name a cargo binary?"""
-    if COMMAND_NEW_MACRO.search(text):
+    if COMMAND_NEW_MACRO.search(text) or COMMAND_NEW_ENV.search(text):
         return True
     return any("cargo" in ident.lower() for ident in COMMAND_NEW.findall(text))
 
@@ -388,6 +394,14 @@ fn redirected() -> Result<(), ()> {
     Ok(())
 }
 
+fn inline_runtime_read() -> Result<(), ()> {
+    Command::new(std::env::var_os("CARGO").unwrap())
+        .args(["tree", "-e", "normal"])
+        .output()
+        .unwrap();
+    Ok(())
+}
+
 fn manifest_dir_is_not_a_cargo() -> Result<(), ()> {
     let exe = env!("CARGO_BIN_EXE_helper");
     let dir = env!("CARGO_MANIFEST_DIR");
@@ -475,17 +489,19 @@ def self_test() -> None:
         macro_file.write_text(SELF_TEST_MACRO, encoding="utf-8")
         found, seen = offenders([macro_file])
         names = sorted(sig for _, _, sig, _ in found)
-        if seen != 3 or len(found) != 2:
+        # issue 1736: + `inline_runtime_read` (the inline `var_os("CARGO")`).
+        if seen != 4 or len(found) != 3:
             raise SystemExit(
                 "check-nested-cargo-lock-discipline: SELF-TEST FAILED — issue "
-                "1392: expected 3 shim-bypassing sites and 2 offenders in the "
+                "1392/1736: expected 4 shim-bypassing sites and 3 offenders in the "
                 f"compile-time-macro sample, saw {seen} site(s) / {len(found)} "
                 f"({names}). `Command::new(env!(\"CARGO\"))` and "
                 "`option_env!(\"CARGO\")` bypass the PATH shim exactly as "
                 "`env::var(\"CARGO\")` does, and a `CARGO_`-prefixed variable "
                 "(`CARGO_BIN_EXE_*`, `CARGO_MANIFEST_DIR`) is not a cargo."
             )
-        if "fn optional_probe" not in names[0] or "fn probe" not in names[1]:
+        if ("fn inline_runtime_read" not in names[0] or "fn optional_probe" not in names[1]
+                or "fn probe" not in names[2]):
             raise SystemExit(
                 "check-nested-cargo-lock-discipline: SELF-TEST FAILED — issue "
                 f"1392: the two offenders are the wrong functions: {names}"

@@ -63,7 +63,17 @@ import file_kinds  # noqa: E402
 
 # The legacy sibling rung. `(?<!-)` drops `--nano-ros-workspace`, an unrelated
 # `nros metadata` flag naming the nano-ros repo.
-LADDER = re.compile(r"(?<!-)nano-ros-workspace")
+LADDER = re.compile(
+    r"(?<!-)nano-ros-workspace"
+    # issue 1736 — the OVERRIDE rung with a fallback rung after it is the
+    # ladder too, whatever the fallback names: `${NROS_ZEPHYR_WORKSPACE:-$r/
+    # zephyr-workspace}` restated the chain with no legacy token and passed.
+    # An EMPTY default (`:-}`) or the `/nonexistent` sentinel only makes an
+    # unset variable safe to read, and is not a rung.
+    r"|\$\{NROS_ZEPHYR_WORKSPACE:?-(?!\}|/nonexistent\})"
+    r"|(?:environ\.get|getenv|env_var_or_default|env)\(\s*[\"']NROS_ZEPHYR_WORKSPACE[\"']\s*,"
+    r"|var(?:_os)?\(\s*\"NROS_ZEPHYR_WORKSPACE\"\s*\)[^;\n]*\.unwrap_or"
+)
 
 # A line that is only a comment is prose about the ladder, not a spelling of it.
 # Covers `#` (sh, python, just), `//` and `///` (rust), and block-comment
@@ -193,6 +203,17 @@ def selftest(verbose=False):
     chk("a block-comment body is not a spelling",
         ladder_lines(" * then ../nano-ros-workspace\n") == [])
     chk("an unrelated file is silent", ladder_lines("echo hello\n") == [])
+    # issue 1736 — the fourth spelling: the override with a fallback rung.
+    chk("override-with-fallback is a spelling",
+        ladder_lines('ws="${NROS_ZEPHYR_WORKSPACE:-$repo_root/zephyr-workspace}"\n') == [1])
+    chk("python override-with-fallback is a spelling",
+        ladder_lines('ws = os.environ.get("NROS_ZEPHYR_WORKSPACE", ROOT / "zephyr-workspace")\n') == [1])
+    chk("rust override-with-fallback is a spelling",
+        ladder_lines('let ws = env::var("NROS_ZEPHYR_WORKSPACE").unwrap_or_else(|_| d);\n') == [1])
+    chk("an unset-safe read is not a rung",
+        ladder_lines('if [ -n "${NROS_ZEPHYR_WORKSPACE:-}" ]; then\n') == [])
+    chk("the /nonexistent sentinel is not a rung",
+        ladder_lines('[ -d "${NROS_ZEPHYR_WORKSPACE:-/nonexistent}/zephyr" ]\n') == [])
 
     # And the classifier must be reachable through the file reader, or the two
     # halves can disagree while each looks right.
