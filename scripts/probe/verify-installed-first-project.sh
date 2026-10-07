@@ -56,7 +56,9 @@ bin=./build/posix-cyclonedds-native/cmake/native_entry
 [ -x "$bin" ] || probe_fail "the entry binary first-project.md runs is missing at $PWD/${bin#./}"
 
 log=/tmp/installed-first-project.log
-timeout 60 "$bin" >"$log" 2>&1 &
+# `NROS_DEADLINE` travels in front of this script with grep-q.sh (see
+# run-bootstrap-probe.sh): the installed track has no checkout to source it from.
+"${NROS_DEADLINE[@]}" 60 "$bin" >"$log" 2>&1 &
 entry_pid=$!
 deadline=$((SECONDS + 45))
 # `nros_grep_q` comes from scripts/lib/grep-q.sh, which run-bootstrap-probe.sh

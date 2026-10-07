@@ -14,6 +14,8 @@
 # NOT the host interface -- the overlay is what maps that device onto vcan0.
 # Getting that wrong fails at session open with no frames and no clue.
 set -o pipefail
+# shellcheck source=../lib/deadline.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/deadline.sh"
 ZIMAGE=${ZEPHYR_IMAGE:?set ZEPHYR_IMAGE to a built native_sim zephyr.exe}
 # profile-literal-ok: vendored — this is UPSTREAM zenoh's own build tree, not
 # ours, so `release` there is zenoh's cargo profile and is outside nano-ros's
@@ -30,7 +32,7 @@ stdbuf -o0 -e0 "$RS/z_sub" -m peer -l 'isotp/vcan0#tx_id=0x201;rx_id=0x200' \
 sleep 3
 # --seed: native_sim's entropy is deterministic, so two instances would produce
 # the same zenoh session id. One instance here, but keep the habit.
-timeout 30 stdbuf -o0 -e0 "$ZIMAGE" --seed=4242 >"$OUT/zephyr.log" 2>&1
+"${NROS_DEADLINE[@]}" 30 stdbuf -o0 -e0 "$ZIMAGE" --seed=4242 >"$OUT/zephyr.log" 2>&1
 cleanup; sleep 1
 echo "=== zephyr native_sim ==="; tail -12 "$OUT/zephyr.log"
 echo "=== zenoh-rs subscriber ==="; grep -c "chatter" "$OUT/sub.log" 2>/dev/null || echo 0

@@ -12,8 +12,6 @@
 //! inside tests"). The boot lifecycle (no router) or the per-tier run marker
 //! (live router) is the proof the emitted code took the right branch.
 
-use std::process::Command;
-
 fn multi_tier_bin() -> nros_tests::TestResult<std::path::PathBuf> {
     nros_tests::fixtures::require_compile_check_bin("orch_tiers_multi", "target/debug/demo_entry")
 }
@@ -82,8 +80,7 @@ fn multi_tier_binary_boots_into_run_tiers() -> nros_tests::TestResult<()> {
     // branch-specific signal. Router presence is environmental (an orphaned /
     // other-user zenohd can be scouted), so wrap in `timeout` and accept both.
     let bin = multi_tier_bin()?;
-    let out = Command::new("timeout")
-        .args(["6", bin.to_str().expect("bin path utf-8")])
+    let out = nros_tests::process::deadline_command(6, &bin)
         .output()
         .expect("spawn demo_entry");
     let combined = format!(
@@ -110,8 +107,7 @@ fn multi_tier_binary_runs_both_tiers_with_router() -> nros_tests::TestResult<()>
     let router = nros_tests::fixtures::or_skip(nros_tests::fixtures::ZenohRouter::start(port));
     let locator = router.locator();
 
-    let out = Command::new("timeout")
-        .args(["6", bin.to_str().expect("bin path utf-8")])
+    let out = nros_tests::process::deadline_command(6, &bin)
         .env("NROS_LOCATOR", &locator)
         .env("ROS_DOMAIN_ID", domain.to_string())
         .output()
@@ -141,8 +137,7 @@ fn single_tier_system_takes_the_legacy_boardentry_run_path() -> nros_tests::Test
     // `proceeding with NullNodeRuntime` (no router → legacy fallback). Both are
     // router-agnostic; wrap in `timeout` so a scouted router can't hang it.
     let bin = single_tier_bin()?;
-    let out = Command::new("timeout")
-        .args(["6", bin.to_str().expect("bin path utf-8")])
+    let out = nros_tests::process::deadline_command(6, &bin)
         .output()
         .expect("spawn demo_entry");
     let combined = format!(

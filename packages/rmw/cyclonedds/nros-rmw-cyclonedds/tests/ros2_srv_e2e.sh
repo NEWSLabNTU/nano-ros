@@ -87,7 +87,7 @@ sleep 2
 
 # `ros2 service call` exits 0 once it gets a reply or its internal
 # timeout fires. Cap with `timeout` to bound runaway.
-"${NROS_ROS2_DEADLINE[@]}" 15 env LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" \
+"${NROS_DEADLINE[@]}" 15 env LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" \
     ros2 service call /add_two_ints \
         example_interfaces/srv/AddTwoInts \
         '{a: 7, b: 35}' \
@@ -177,7 +177,7 @@ if [ -n "${NROS_RMW_CYCLONEDDS_SRV_CLIENT_BIN:-}" ] &&
 
     sleep 2
 
-    timeout 15 env LD_LIBRARY_PATH="$NROS_LD_LIBRARY_PATH" \
+    "${NROS_DEADLINE[@]}" 15 env LD_LIBRARY_PATH="$NROS_LD_LIBRARY_PATH" \
         "$NROS_RMW_CYCLONEDDS_SRV_CLIENT_BIN" > "$CLIENT_OUT" 2>&1
     CLI_RC=$?
 
@@ -186,7 +186,7 @@ if [ -n "${NROS_RMW_CYCLONEDDS_SRV_CLIENT_BIN:-}" ] &&
     # outstanding at once with equal sequence numbers, and each payload
     # differs per client, so a reply crossed between clients is a wrong sum.
     PAIR_OUT=$(mktemp)
-    timeout 40 env LD_LIBRARY_PATH="$NROS_LD_LIBRARY_PATH" NROS_SRV_CLIENT_PAIR=1 \
+    "${NROS_DEADLINE[@]}" 40 env LD_LIBRARY_PATH="$NROS_LD_LIBRARY_PATH" NROS_SRV_CLIENT_PAIR=1 \
         "$NROS_RMW_CYCLONEDDS_SRV_CLIENT_BIN" > "$PAIR_OUT" 2>&1
     PAIR_RC=$?
 

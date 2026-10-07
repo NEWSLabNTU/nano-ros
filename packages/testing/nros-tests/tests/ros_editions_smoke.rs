@@ -39,7 +39,7 @@ fn docker_edition_cyclone_pub_echo_smoke() {
 
     // One-shot subscriber in a second container on the same domain. The echo's
     // own `timeout` bounds discovery; a delivered sample prints `data: 42`.
-    let deadline = nros_tests::ros2::ros2_deadline(25);
+    let deadline = nros_tests::process::deadline(25);
     let out = env
         .run_text(&format!(
             "{deadline} ros2 topic echo --once /nros_smoke std_msgs/msg/Int32 2>&1"

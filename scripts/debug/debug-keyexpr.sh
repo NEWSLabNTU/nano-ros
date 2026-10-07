@@ -5,6 +5,8 @@
 set -e
 # shellcheck source=../dev/zenohd.sh
 . "$(dirname "$0")/../dev/zenohd.sh"
+# shellcheck source=../lib/deadline.sh
+. "$(dirname "$0")/../lib/deadline.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -44,14 +46,14 @@ trap "rm -rf $TMPDIR" EXIT
 # Function to run talker
 run_talker() {
     echo "[talker] Starting nros talker..."
-    timeout 6 "$TALKER" --tcp 127.0.0.1:7447 2>&1 || true
+    "${NROS_DEADLINE[@]}" 6 "$TALKER" --tcp 127.0.0.1:7447 2>&1 || true
 }
 
 # Function to run z_sub
 run_zsub() {
     sleep 1  # Wait for talker to start
     echo "[z_sub] Subscribing to '0/**' to see all ROS 2 domain 0 keyexprs..."
-    timeout 5 "$Z_SUB" -m client -e "$LOCATOR" -k "0/**" 2>&1 || true
+    "${NROS_DEADLINE[@]}" 5 "$Z_SUB" -m client -e "$LOCATOR" -k "0/**" 2>&1 || true
 }
 
 export -f run_talker run_zsub

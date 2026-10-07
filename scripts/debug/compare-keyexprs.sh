@@ -26,8 +26,8 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $*"; }
 # default port. `nros_router_exec` resolves the binary and passes the locator by
 # environment; it `exec`s, hence the subshell.
 . "$PROJECT_ROOT/scripts/dev/zenohd.sh"
-# shellcheck source=scripts/lib/ros2-deadline.sh
-. "$REPO_ROOT/scripts/lib/ros2-deadline.sh"
+# shellcheck source=scripts/lib/deadline.sh
+. "$REPO_ROOT/scripts/lib/deadline.sh"
 
 # Cleanup kills what THIS script started, by PID. `pkill -f <pattern>` matches
 # the shell running it as readily as the target — a self-match that silently
@@ -52,13 +52,13 @@ echo "=== Part 1: nros publisher keyexpr ==="
 echo ""
 
 # Start nros talker briefly
-timeout 3 "$TALKER" --tcp 127.0.0.1:7447 > "$LOG_DIR/talker.log" 2>&1 &
+"${NROS_DEADLINE[@]}" 3 "$TALKER" --tcp 127.0.0.1:7447 > "$LOG_DIR/talker.log" 2>&1 &
 TALKER_PID=$!
 sleep 2
 
 # Subscribe to all data keys (not liveliness) to see what keyexpr is used
 log_info "Subscribing to 0/** to capture nros messages..."
-timeout 3 "$Z_SUB" -m client -e ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447} -k '0/**' 2>&1 | head -10 || true
+"${NROS_DEADLINE[@]}" 3 "$Z_SUB" -m client -e ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447} -k '0/**' 2>&1 | head -10 || true
 
 # Kill nros talker by the PID we started, not by pattern (see cleanup above).
 [ -n "$TALKER_PID" ] && kill "$TALKER_PID" 2>/dev/null
@@ -76,13 +76,13 @@ export ZENOH_ROUTER_CHECK_ATTEMPTS=0
 export ROS_DOMAIN_ID=0
 
 log_info "Starting ROS 2 talker..."
-"${NROS_ROS2_DEADLINE[@]}" 5 ros2 run demo_nodes_cpp talker &
+"${NROS_DEADLINE[@]}" 5 ros2 run demo_nodes_cpp talker &
 ROS2_PID=$!
 sleep 2
 
 # Subscribe to all keys to see what keyexpr ROS 2 uses
 log_info "Subscribing to 0/** to capture ROS 2 messages..."
-timeout 3 "$Z_SUB" -m client -e ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447} -k '0/**' 2>&1 | head -10 || true
+"${NROS_DEADLINE[@]}" 3 "$Z_SUB" -m client -e ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447} -k '0/**' 2>&1 | head -10 || true
 
 kill $ROS2_PID 2>/dev/null || true
 

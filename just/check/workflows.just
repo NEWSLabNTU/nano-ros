@@ -381,20 +381,23 @@ ros-env-spelling:
 ros2-daemon-queries:
     @python3 scripts/check-ros2-daemon-queries.py
 
-# Issue 1723 — a deadline on a ROS 2 process must escalate to SIGKILL.
+# Issues 1723 + 1741 — a deadline on a process must escalate to SIGKILL.
 #
-# rclpy installs a SIGTERM handler once `rclpy.init()` returns, and over
-# rmw_zenoh_cpp that handler leaves a waiting CLI waiting (measured: one SIGTERM
-# survived 3 of 3 on zenoh, ended 3 of 3 on Cyclone and Fast-DDS). `timeout`
-# without `--kill-after` never escalates, so `timeout 25 ros2 service call` was
-# alive 20 minutes later and four `timeout 20 ros2 topic echo` peers lived four
-# days. The fix is one spelling per language — `nros_tests::ros2::ros2_deadline`
-# and `scripts/lib/ros2-deadline.sh` — and this gate refuses a literal
-# `timeout … ros2`/`python3` beside them, and holds their grace equal.
-# Buildless: greps tracked source, self-testing.
+# `timeout` without `--kill-after` sends one SIGTERM and then waits as long as
+# its child does, so it bounds nothing for a process that handles SIGTERM. Two
+# kinds we run do: rclpy over rmw_zenoh_cpp leaves a waiting CLI waiting (four
+# `timeout 20 ros2 topic echo` peers lived four days), and a nano-ros image
+# whose RTOS wedged kept its handler and lived 34 days under `timeout 6`. One
+# spelling per language and shape — `nros_tests::process::{deadline,
+# deadline_command}` and `scripts/lib/deadline.sh` — and this gate refuses a
+# literal `timeout` on anything but a few named host tools (fail-closed: a
+# `"$bin"` is an image as far as a text scan can tell), refuses
+# `Command::new("timeout")` and the retired `ros2_deadline` spellings, holds
+# the two graces equal, and holds the threadx-linux image's own termination
+# grace below them. Buildless: greps tracked source, self-testing.
 [private]
-ros2-cli-deadline:
-    @python3 scripts/check-ros2-cli-deadline.py
+process-deadline:
+    @python3 scripts/check-process-deadline.py
 
 # Issue 0980 — `runner-doctor` answered "where is the Zephyr SDK?" from the job
 # CHECKOUT while the build answers it from the CMake user package registry.

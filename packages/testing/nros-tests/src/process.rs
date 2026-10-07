@@ -479,6 +479,189 @@ pub fn kill_process_group(handle: &mut Child) {
     group_ledger::forget(pid);
 }
 
+/// How long a bounded process gets, after its deadline's `SIGTERM`, before it
+/// is sent `SIGKILL` (issues 1723, 1741).
+///
+/// A process that honours `SIGTERM` is gone well inside this, so the grace
+/// costs nothing on the normal path. It exists for the process that does NOT:
+///
+/// * a waiting `ros2` CLI over `rmw_zenoh_cpp` — rclpy installs a `SIGTERM`
+///   handler that triggers its guard conditions and returns (issue 1723,
+///   measured 3 of 3 survived one `SIGTERM` on zenoh);
+/// * a nano-ros IMAGE whose own handler cannot finish — a threadx-linux C
+///   example catches `SIGTERM`, and when its RTOS scheduler is wedged the
+///   graceful shutdown it starts never runs (issue 1741: one such image lived
+///   34 days under `timeout 6`). The image now ends itself within its own
+///   2 s grace, which is deliberately below this one, but a deadline must not
+///   depend on the process it bounds being correct.
+pub const KILL_GRACE: Duration = Duration::from_secs(3);
+
+/// The ONE spelling of a deadline inside a SHELL COMMAND string the harness
+/// runs: `timeout --foreground --kill-after=<grace> <secs>`.
+///
+/// Write `format!("{env} && {} ros2 …", deadline(10))`, never a literal
+/// `timeout N …` — `check-process-deadline` refuses the literal.
+///
+/// **Why the kill-after is load-bearing.** `timeout` sends ONE `SIGTERM` and,
+/// without `--kill-after`, nothing else: it waits as long as its child does.
+/// `timeout --foreground 5` around a `SIGTERM`-handling process: 3 of 3 alive
+/// at 25 s. Plain `timeout N` also signals its own process group, which is why
+/// it usually works on a shell pipeline — usually is not always (4 of 10
+/// daemon-spawning `ros2` echoes alive at 25 s). With `--kill-after` the same
+/// process is gone at deadline + grace, 3 of 3.
+///
+/// **Why `--foreground`.** Without it `timeout` moves itself into a new process
+/// group, so every descendant leaves the group this harness recorded, and the
+/// orphan ledger ([`group_ledger`]) and [`kill_process_group`] can no longer
+/// see them. The harness owns the group; `timeout` owns only the deadline. (A
+/// SHELL script has no such owner, so `scripts/lib/deadline.sh` keeps
+/// `timeout`'s own group kill instead — same grace, same reason.)
+pub fn deadline(secs: impl std::fmt::Display) -> String {
+    format!("timeout {}", deadline_args(secs).join(" "))
+}
+
+/// The ONE spelling of a deadline on a program the harness spawns DIRECTLY,
+/// with no shell: `deadline_command(60, &client_bin).env(…).output()`.
+///
+/// The same `timeout` arguments as [`deadline`] — one list, two shapes —
+/// because `Command::new("timeout").args(["6", bin])` was the second way to
+/// write a single-signal deadline, and `check-process-deadline` refuses it.
+pub fn deadline_command(secs: u64, program: impl AsRef<std::ffi::OsStr>) -> Command {
+    let mut cmd = Command::new("timeout");
+    cmd.args(deadline_args(secs)).arg(program);
+    cmd
+}
+
+fn deadline_args(secs: impl std::fmt::Display) -> [String; 3] {
+    [
+        "--foreground".to_string(),
+        format!("--kill-after={}s", KILL_GRACE.as_secs()),
+        secs.to_string(),
+    ]
+}
+
+/// Issues 1723 + 1741 — both deadline spellings bound a process that ignores
+/// `SIGTERM`.
+///
+/// The stand-in is a shell that ignores `SIGTERM` (`trap '' TERM`): the
+/// property a waiting `ros2` CLI over rmw_zenoh_cpp has once rclpy owns the
+/// signal, and the one a wedged threadx-linux image had (reproducing either
+/// here would need ROS 2 or a built image, and a unit test must not). A
+/// stand-in that died on TERM would make the positive half vacuous, so the
+/// negative control runs the SAME stand-in under the spelling the harness used
+/// before — `timeout --foreground N`, no kill-after — and asserts it is still
+/// alive past the point the fixed spelling must have ended it.
+#[cfg(all(test, unix))]
+mod deadline_tests {
+    use super::*;
+    use std::time::Instant;
+
+    const DEADLINE_S: u64 = 1;
+    // The inner shell stays resident (the trailing `:` stops bash exec-ing
+    // `sleep`) and ignores TERM, the way the python CLI does.
+    const TERM_IGNORING: &str = "bash -c 'trap \"\" TERM; sleep 60; :'";
+
+    fn spawn(deadline: &str) -> Child {
+        let mut cmd = Command::new("bash");
+        cmd.args(["-c", &format!("{deadline} {TERM_IGNORING}; :")])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        set_new_process_group(&mut cmd);
+        cmd.spawn().expect("spawn bash")
+    }
+
+    /// Past the deadline AND the grace, with a margin for a loaded host.
+    fn horizon() -> Duration {
+        Duration::from_secs(DEADLINE_S) + KILL_GRACE + Duration::from_secs(2)
+    }
+
+    fn wait_until(child: &mut Child, limit: Duration) -> Option<Duration> {
+        let start = Instant::now();
+        while start.elapsed() < limit {
+            if child.try_wait().expect("try_wait").is_some() {
+                return Some(start.elapsed());
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        None
+    }
+
+    fn assert_bounded(what: &str, ended: Option<Duration>) {
+        let took = ended.unwrap_or_else(|| {
+            panic!(
+                "{what} did not end a TERM-ignoring process within {:?} — the \
+                 deadline does not escalate to SIGKILL (issues 1723, 1741)",
+                horizon()
+            )
+        });
+        // Lower bound too: a deadline that fires early is not a deadline.
+        assert!(
+            took >= Duration::from_secs(DEADLINE_S),
+            "{what} ended after {took:?}, before its own {DEADLINE_S} s deadline"
+        );
+    }
+
+    #[test]
+    fn deadline_kills_a_process_that_ignores_sigterm() {
+        let mut child = spawn(&deadline(DEADLINE_S));
+        let ended = wait_until(&mut child, horizon());
+        kill_process_group(&mut child);
+        assert_bounded(&format!("`{}`", deadline(DEADLINE_S)), ended);
+    }
+
+    #[test]
+    fn deadline_command_kills_a_process_that_ignores_sigterm() {
+        let mut cmd = deadline_command(DEADLINE_S, "bash");
+        cmd.args(["-c", "trap '' TERM; sleep 60; :"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        set_new_process_group(&mut cmd);
+        let mut child = cmd.spawn().expect("spawn timeout");
+        let ended = wait_until(&mut child, horizon());
+        kill_process_group(&mut child);
+        assert_bounded("`deadline_command`", ended);
+    }
+
+    #[test]
+    fn negative_control_bare_foreground_timeout_waits_forever() {
+        let mut child = spawn(&format!("timeout --foreground {DEADLINE_S}"));
+        let ended = wait_until(&mut child, horizon());
+        kill_process_group(&mut child);
+        assert!(
+            ended.is_none(),
+            "the TERM-ignoring stand-in ended under a bare `timeout` after \
+             {ended:?}, so it does not ignore TERM and the positive tests prove \
+             nothing"
+        );
+    }
+
+    #[test]
+    fn deadline_spelling_carries_kill_after_and_foreground() {
+        assert_eq!(
+            deadline(7),
+            format!(
+                "timeout --foreground --kill-after={}s 7",
+                KILL_GRACE.as_secs()
+            )
+        );
+        let cmd = deadline_command(7, "/bin/true");
+        assert_eq!(cmd.get_program(), "timeout");
+        let args: Vec<_> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            args,
+            [
+                "--foreground".to_string(),
+                format!("--kill-after={}s", KILL_GRACE.as_secs()),
+                "7".to_string(),
+                "/bin/true".to_string(),
+            ]
+        );
+    }
+}
+
 /// Kill a process group gracefully: SIGTERM first, then SIGKILL after timeout.
 ///
 /// Sends SIGTERM to allow graceful shutdown (TCP cleanup, etc.),

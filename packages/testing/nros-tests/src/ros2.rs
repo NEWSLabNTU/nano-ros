@@ -29,51 +29,6 @@ pub const DEFAULT_ECHO_WINDOW: Duration = Duration::from_secs(10);
 /// at its own call site; this constant is the DDS/Cyclone family's default.
 pub const DEFAULT_PUB_WINDOW: Duration = Duration::from_secs(10);
 
-/// How long a ROS 2 process gets, after its deadline's `SIGTERM`, before it is
-/// sent `SIGKILL` (issue 1723).
-///
-/// A process that honours `SIGTERM` is gone well inside this (measured: a
-/// Cyclone or Fast-DDS `ros2 topic echo` exits on the first signal), so the
-/// grace costs nothing on the normal path. It exists for the process that does
-/// NOT: see [`ros2_deadline`].
-pub const ROS2_KILL_GRACE: Duration = Duration::from_secs(3);
-
-/// The ONE spelling of a deadline on a ROS 2 process launched from a shell
-/// command (issue 1723): `timeout --foreground --kill-after=<grace> <secs>`.
-///
-/// Write `format!("{env} && {} ros2 …", ros2_deadline(10))`, never a literal
-/// `timeout N ros2 …` — `check-ros2-cli-deadline` refuses the literal.
-///
-/// **Why the kill-after is load-bearing.** rclpy installs its own `SIGTERM`
-/// handler once `rclpy.init()` returns, and that handler does not end the
-/// process: it triggers rclpy's guard conditions and returns. Over
-/// `rmw_zenoh_cpp` (Humble 0.1.9) the waiting CLI then simply keeps waiting.
-/// Measured 2026-10-07, `ros2 topic echo --no-daemon` with a live router, one
-/// `SIGTERM` at 1/3/8 s after start: survived 3 of 3 on zenoh, exited 3 of 3 on
-/// Cyclone and on Fast-DDS. A second `SIGTERM` kills it.
-///
-/// So a bare `timeout N` bounds nothing on zenoh. `timeout --foreground N`
-/// sends exactly one `SIGTERM` and then waits FOREVER (3 of 3 alive at 25 s for
-/// a 5 s deadline); plain `timeout N` sends two — one to the child, one to its
-/// own process group (strace-measured) — which is why it usually works. It does
-/// not always: 4 of 10 daemon-spawning echoes were still alive at 25 s for a 5 s
-/// deadline, each stuck in `rclpy.spin`. (Reasoned, not traced: two standard
-/// signals pending together are delivered as one.)
-/// With `--kill-after` the same echo is gone at deadline + grace, 3 of 3.
-///
-/// **Why `--foreground`.** Without it `timeout` moves itself into a new process
-/// group, so every descendant leaves the group this harness recorded, and the
-/// orphan ledger ([`crate::process::group_ledger`]) and `kill_process_group`
-/// can no longer see them. The harness owns the group; `timeout` owns only the
-/// deadline. (A SHELL script has no such owner, so `scripts/lib/ros2-deadline.sh`
-/// keeps `timeout`'s own group kill instead — same grace, same reason.)
-pub fn ros2_deadline(secs: impl std::fmt::Display) -> String {
-    format!(
-        "timeout --foreground --kill-after={}s {secs}",
-        ROS2_KILL_GRACE.as_secs()
-    )
-}
-
 /// phase-304 W4 — is a specific ROS 2 distro installed under `/opt/ros/<distro>`?
 /// Distro-parametric so an edition lane (RFC-0056) can require iron/jazzy/rolling
 /// and `skip!` when absent, instead of everything assuming humble. Returns false
@@ -464,7 +419,7 @@ impl Ros2Process {
     ) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         let secs = window.as_secs().max(1);
-        let deadline = ros2_deadline(secs);
+        let deadline = crate::process::deadline(secs);
         let cmd = format!(
             "{env_setup} && PYTHONUNBUFFERED=1 {deadline} ros2 topic echo {topic} {msg_type} --qos-reliability best_effort"
         );
@@ -488,7 +443,7 @@ impl Ros2Process {
         distro: &str,
     ) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
-        let deadline = ros2_deadline(15);
+        let deadline = crate::process::deadline(15);
         let cmd = format!(
             "{env_setup} && {deadline} ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
         );
@@ -547,7 +502,7 @@ rclpy.init()
 node = Server()
 rclpy.spin(node)
 "#;
-        let deadline = ros2_deadline(60);
+        let deadline = crate::process::deadline(60);
         let cmd = format!(
             "{env_setup} && {deadline} python3 -u - 2>&1 <<'NROS_PYEOF'
 {python_script}
@@ -563,7 +518,7 @@ NROS_PYEOF"
     /// cross-vendor interop on the ROS graph.
     pub fn demo_nodes_cpp_talker(locator: &str, distro: &str) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
-        let deadline = ros2_deadline(30);
+        let deadline = crate::process::deadline(30);
         let cmd = format!("{env_setup} && {deadline} ros2 run demo_nodes_cpp talker");
         Self::spawn_bash(&cmd, "ros2 demo_nodes_cpp talker", Some(config_dir))
     }
@@ -595,7 +550,7 @@ NROS_PYEOF"
         // best_effort sensor_data sub). `timeout 45` (was 10): rmw_zenoh's
         // publisher-side discovery of a zenoh-pico subscriber takes ~10 s, so a
         // 10 s publisher would die right as the first sample would land.
-        let deadline = ros2_deadline(45);
+        let deadline = crate::process::deadline(45);
         let cmd = format!(
             "{env_setup} && {deadline} ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\""
         );
@@ -963,7 +918,7 @@ pub fn ros2_query_cmd(env_setup: &str, timeout_s: u32, args: &str) -> String {
         !args.contains("--no-daemon"),
         "`--no-daemon` is this helper's job, not the caller's: {args}"
     );
-    let deadline = ros2_deadline(timeout_s);
+    let deadline = crate::process::deadline(timeout_s);
     format!("{env_setup} && {deadline} ros2 {args} --no-daemon 2>&1")
 }
 
@@ -1354,7 +1309,7 @@ pub fn ros2_service_list_rmw_with_domain(
     domain_id: u8,
 ) -> TestResult<String> {
     let env_setup = ros2_env_setup_rmw_with_domain(distro, rmw, domain_id);
-    let deadline = ros2_deadline(15);
+    let deadline = crate::process::deadline(15);
     run_ros2_capture(
         &format!("{env_setup} && {deadline} ros2 service list --no-daemon 2>&1"),
         "ros2 service list",
@@ -1369,7 +1324,7 @@ pub fn ros2_param_list_rmw_with_domain(
     domain_id: u8,
 ) -> TestResult<String> {
     let env_setup = ros2_env_setup_rmw_with_domain(distro, rmw, domain_id);
-    let deadline = ros2_deadline(15);
+    let deadline = crate::process::deadline(15);
     run_ros2_capture(
         &format!("{env_setup} && {deadline} ros2 param list --no-daemon {node_name} 2>&1"),
         "ros2 param list",
@@ -1385,7 +1340,7 @@ pub fn ros2_param_get_rmw_with_domain(
     domain_id: u8,
 ) -> TestResult<String> {
     let env_setup = ros2_env_setup_rmw_with_domain(distro, rmw, domain_id);
-    let deadline = ros2_deadline(15);
+    let deadline = crate::process::deadline(15);
     run_ros2_capture(
         &format!(
             "{env_setup} && {deadline} ros2 param get --no-daemon \
@@ -1405,7 +1360,7 @@ pub fn ros2_param_set_rmw_with_domain(
     domain_id: u8,
 ) -> TestResult<String> {
     let env_setup = ros2_env_setup_rmw_with_domain(distro, rmw, domain_id);
-    let deadline = ros2_deadline(15);
+    let deadline = crate::process::deadline(15);
     run_ros2_capture(
         &format!(
             "{env_setup} && {deadline} ros2 param set --no-daemon \
@@ -1526,7 +1481,7 @@ pub fn ros2_topic_hz(topic: &str, secs: u64, locator: &str, distro: &str) -> Tes
     // `timeout` SIGTERMs the process. `stdbuf -oL` line-buffers stdout so each
     // averaged line is emitted as it's produced. `--wall-time` measures
     // against wall-clock (no /clock subscription needed for rmw_zenoh).
-    let deadline = ros2_deadline(secs);
+    let deadline = crate::process::deadline(secs);
     let cmd = format!(
         "{env_setup} && {deadline} stdbuf -oL \
              ros2 topic hz --spin-time {spin} --wall-time {topic} 2>&1"
@@ -1561,7 +1516,7 @@ impl Ros2Process {
         distro: &str,
     ) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
-        let deadline = ros2_deadline(10);
+        let deadline = crate::process::deadline(10);
         let cmd = format!(
             "{env_setup} && {deadline} ros2 service call {service_name} {service_type} \"{request}\""
         );
@@ -1608,7 +1563,7 @@ rclpy.spin(node)
         // python. `python3 -c '<one line with \n literals>'` is a SyntaxError —
         // the `\n` is not a newline outside a string — so the server never
         // started and the reverse-direction interop tests timed out.
-        let deadline = ros2_deadline(60);
+        let deadline = crate::process::deadline(60);
         let cmd = format!(
             "{env_setup} && {deadline} python3 -u - 2>&1 <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
         );
@@ -1637,7 +1592,7 @@ rclpy.spin(node)
     ) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         let secs = DEFAULT_ECHO_WINDOW.as_secs().max(1);
-        let deadline = ros2_deadline(secs);
+        let deadline = crate::process::deadline(secs);
         let cmd = format!(
             "{env_setup} && {deadline} ros2 topic echo {topic} {msg_type} --qos-reliability {reliability}"
         );
@@ -1670,7 +1625,7 @@ rclpy.spin(node)
     ) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         let secs = DEFAULT_PUB_WINDOW.as_secs().max(1);
-        let deadline = ros2_deadline(secs);
+        let deadline = crate::process::deadline(secs);
         let cmd = format!(
             "{env_setup} && {deadline} ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability {reliability}"
         );
@@ -1846,7 +1801,7 @@ impl Ros2DdsProcess {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
         let secs = DEFAULT_ECHO_WINDOW.as_secs().max(1);
-        let deadline = ros2_deadline(secs);
+        let deadline = crate::process::deadline(secs);
         let cmd = format!(
             "{env_setup} && {deadline} ros2 topic echo {topic} {msg_type} --qos-reliability reliable"
         );
@@ -1882,7 +1837,7 @@ impl Ros2DdsProcess {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
         let secs = DEFAULT_PUB_WINDOW.as_secs().max(1);
-        let deadline = ros2_deadline(secs);
+        let deadline = crate::process::deadline(secs);
         let cmd = format!(
             "{env_setup} && {deadline} ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
         );
@@ -1914,7 +1869,7 @@ impl Ros2DdsProcess {
         domain_id: u8,
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
-        let deadline = ros2_deadline(10);
+        let deadline = crate::process::deadline(10);
         let cmd = format!(
             "{env_setup} && {deadline} ros2 service call {service_name} {service_type} \"{request}\""
         );
@@ -1937,7 +1892,7 @@ impl Ros2DdsProcess {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
         let secs = DEFAULT_ECHO_WINDOW.as_secs().max(1);
-        let deadline = ros2_deadline(secs);
+        let deadline = crate::process::deadline(secs);
         let cmd = format!(
             "{env_setup} && {deadline} ros2 topic echo {topic} {msg_type} --qos-reliability reliable"
         );
@@ -1955,7 +1910,7 @@ impl Ros2DdsProcess {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
         let secs = DEFAULT_PUB_WINDOW.as_secs().max(1);
-        let deadline = ros2_deadline(secs);
+        let deadline = crate::process::deadline(secs);
         let cmd = format!(
             "{env_setup} && {deadline} ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
         );
@@ -1979,7 +1934,7 @@ impl Ros2DdsProcess {
         domain_id: u8,
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
-        let deadline = ros2_deadline(40);
+        let deadline = crate::process::deadline(40);
         let cmd = format!("{env_setup} && {deadline} ros2 run demo_nodes_cpp talker");
         Self::spawn_bash(&cmd, "ros2-cyclone demo_nodes_cpp talker")
     }
@@ -1993,7 +1948,7 @@ impl Ros2DdsProcess {
         domain_id: u8,
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
-        let deadline = ros2_deadline(10);
+        let deadline = crate::process::deadline(10);
         let cmd = format!(
             "{env_setup} && {deadline} ros2 service call {service_name} {service_type} \"{request}\""
         );
@@ -2009,7 +1964,7 @@ impl Ros2DdsProcess {
         domain_id: u8,
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
-        let deadline = ros2_deadline(20);
+        let deadline = crate::process::deadline(20);
         let cmd = format!(
             "{env_setup} && {deadline} ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
         );
@@ -2046,7 +2001,7 @@ rclpy.spin(node)
         // python. `python3 -c '<one line with \n literals>'` is a SyntaxError —
         // the `\n` is not a newline outside a string — so the server never
         // started and the reverse-direction interop tests timed out.
-        let deadline = ros2_deadline(60);
+        let deadline = crate::process::deadline(60);
         let cmd = format!(
             "{env_setup} && {deadline} python3 -u - 2>&1 <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
         );
@@ -2096,7 +2051,7 @@ rclpy.spin(node)
 "#;
         // Quoted heredoc so the script's real newlines reach python —
         // `python3 -c '<\n literals>'` is a SyntaxError (see add_two_ints_server).
-        let deadline = ros2_deadline(60);
+        let deadline = crate::process::deadline(60);
         let cmd = format!(
             "{env_setup} && {deadline} python3 -u - 2>&1 <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
         );
@@ -2112,7 +2067,7 @@ rclpy.spin(node)
         domain_id: u8,
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
-        let deadline = ros2_deadline(20);
+        let deadline = crate::process::deadline(20);
         let cmd = format!(
             "{env_setup} && {deadline} ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
         );
@@ -2690,96 +2645,6 @@ mod cross_rmw_note_tests {
             super::cross_rmw_service_framing_note("[RTPS_READER_HISTORY Error] something else")
                 .is_none(),
             "the marker alone is not the signature — the refusal is"
-        );
-    }
-}
-
-/// Issue 1723 — the deadline spelling bounds a process that ignores `SIGTERM`.
-///
-/// The stand-in is a shell that ignores `SIGTERM` (`trap '' TERM`), which is
-/// the property a waiting `ros2` CLI over rmw_zenoh_cpp has once rclpy owns the
-/// signal (measured in the issue; reproducing it here would need ROS 2 and a
-/// router, and a unit test must not). A stand-in that died on TERM would make
-/// the positive half vacuous, so the negative control runs the SAME stand-in
-/// under the spelling the harness used before — `timeout --foreground N`, no
-/// kill-after — and asserts it is still alive past the point the fixed
-/// spelling must have ended it.
-#[cfg(all(test, unix))]
-mod deadline_tests {
-    use super::*;
-    use std::time::Instant;
-
-    const DEADLINE_S: u64 = 1;
-    // The inner shell stays resident (the trailing `:` stops bash exec-ing
-    // `sleep`) and ignores TERM, the way the python CLI does.
-    const TERM_IGNORING: &str = "bash -c 'trap \"\" TERM; sleep 60; :'";
-
-    fn spawn(deadline: &str) -> Child {
-        let mut cmd = Command::new("bash");
-        cmd.args(["-c", &format!("{deadline} {TERM_IGNORING}; :")])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        crate::process::set_new_process_group(&mut cmd);
-        cmd.spawn().expect("spawn bash")
-    }
-
-    /// Past the deadline AND the grace, with a margin for a loaded host.
-    fn horizon() -> Duration {
-        Duration::from_secs(DEADLINE_S) + ROS2_KILL_GRACE + Duration::from_secs(2)
-    }
-
-    fn wait_until(child: &mut Child, limit: Duration) -> Option<Duration> {
-        let start = Instant::now();
-        while start.elapsed() < limit {
-            if child.try_wait().expect("try_wait").is_some() {
-                return Some(start.elapsed());
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        None
-    }
-
-    #[test]
-    fn deadline_kills_a_process_that_ignores_sigterm() {
-        let mut child = spawn(&ros2_deadline(DEADLINE_S));
-        let ended = wait_until(&mut child, horizon());
-        kill_process_group(&mut child);
-        let took = ended.unwrap_or_else(|| {
-            panic!(
-                "`{}` did not end a TERM-ignoring process within {:?} — the \
-                 deadline does not escalate to SIGKILL (issue 1723)",
-                ros2_deadline(DEADLINE_S),
-                horizon()
-            )
-        });
-        // Lower bound too: a deadline that fires early is not a deadline.
-        assert!(
-            took >= Duration::from_secs(DEADLINE_S),
-            "ended after {took:?}, before its own {DEADLINE_S} s deadline"
-        );
-    }
-
-    #[test]
-    fn negative_control_bare_foreground_timeout_waits_forever() {
-        let mut child = spawn(&format!("timeout --foreground {DEADLINE_S}"));
-        let ended = wait_until(&mut child, horizon());
-        kill_process_group(&mut child);
-        assert!(
-            ended.is_none(),
-            "the TERM-ignoring stand-in ended under a bare `timeout` after \
-             {ended:?}, so it does not ignore TERM and the positive test proves \
-             nothing"
-        );
-    }
-
-    #[test]
-    fn deadline_spelling_carries_kill_after_and_foreground() {
-        assert_eq!(
-            ros2_deadline(7),
-            format!(
-                "timeout --foreground --kill-after={}s 7",
-                ROS2_KILL_GRACE.as_secs()
-            )
         );
     }
 }
