@@ -537,6 +537,86 @@ fn ros2_param_cli_addresses_each_node_on_cyclonedds() -> nros_tests::TestResult<
     Ok(())
 }
 
+/// Issue 1722 — a stock `set_parameters` naming all 25 declared parameters
+/// lands on XRCE.
+///
+/// The request is ~2.4 KB (25 names of 35 bytes plus a `ParameterValue`
+/// each), and XRCE's service request buffer was a flat 1,024 B whatever the
+/// contract declared: measured on main, no reply, and the image logged an
+/// inbox overflow. The buffer is now raised to the declaration's price, and a
+/// configuration whose reliable stream window cannot reassemble it does not
+/// build. The ros2 side is pinned to loopback by its env string; the Agent by
+/// `XrceAgent::start_unique` (issue 1009).
+#[test]
+fn xrce_set_parameters_naming_25_declared_lands() -> nros_tests::TestResult<()> {
+    use nros_tests::fixtures::{
+        XrceAgent, build_native_workspace_rust_params_xrce_entry, require_ros2_dds,
+        require_xrce_agent,
+    };
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+    if !require_ros2_dds() {
+        nros_tests::skip!("ROS 2 + rmw_fastrtps_cpp not available");
+    }
+    let binary = build_native_workspace_rust_params_xrce_entry()
+        .require("workspace-features-rust-params-xrce native_rust_params_xrce_entry")
+        .to_path_buf();
+    let agent = XrceAgent::start_unique().expect("failed to start the XRCE Agent");
+    let addr = agent.addr();
+    let domain = nros_tests::unique_ros_domain_id();
+
+    let mut cmd = Command::new(&binary);
+    cmd.env("NROS_LOCATOR", &addr)
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("ROS_DOMAIN_ID", domain.to_string())
+        .env("NROS_DOMAIN_ID", domain.to_string())
+        .env("NROS_RMW", "xrce")
+        .env("NROS_ENTRY_SPIN_MS", "60000")
+        .env("NROS_ENTRY_SPIN_STEP_MS", "10");
+    let mut proc = ManagedProcess::spawn_command(cmd, "params-xrce").expect("failed to start");
+
+    // The names the contract declares: `param_NN_` padded with `x` to 35 bytes.
+    let params: Vec<String> = (0..25)
+        .map(|i| {
+            let head = format!("param_{i:02}_");
+            let name = format!("{head}{}", "x".repeat(35 - head.len()));
+            format!(
+                "{{name: {name}, value: {{type: 2, integer_value: {}}}}}",
+                i + 1
+            )
+        })
+        .collect();
+    let request = format!("{{parameters: [{}]}}", params.join(", "));
+    let env = nros_tests::ros2::ros2_env_setup_rmw_with_domain(
+        nros_tests::fixtures::DEFAULT_ROS_DISTRO,
+        "rmw_fastrtps_cpp",
+        domain,
+    );
+    // `ros2 service call` waits for the service itself; the timeout bounds a
+    // dropped request, which never answers. Not `ros2_query_cmd`: `service
+    // call` takes no `--no-daemon`.
+    let cmd = format!(
+        "{env} && timeout -s KILL 90 ros2 service call /param_talker/set_parameters \
+         rcl_interfaces/srv/SetParameters '{request}' 2>&1"
+    );
+    let out = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .expect("bash");
+    let out = String::from_utf8_lossy(&out.stdout).to_string();
+    proc.kill();
+
+    let ok = out.matches("successful=True").count();
+    assert_eq!(
+        ok, 25,
+        "a stock `set_parameters` naming the 25 declared parameters must get 25 \
+         successful results (issue 1722: the request used to be dropped by XRCE's \
+         1,024-byte request buffer). Output:\n{out}"
+    );
+    Ok(())
+}
+
 #[test]
 fn cases_bound_to_interop_cells() {
     #[allow(unused_imports)]
@@ -550,6 +630,7 @@ fn cases_bound_to_interop_cells() {
         &[
             (Linux, Rust, Zenoh, Params),
             (Linux, Rust, Cyclonedds, Params),
+            (Linux, Rust, Xrce, Params),
         ],
     );
 }
