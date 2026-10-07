@@ -1,0 +1,21 @@
+# phase-481 W4 (RFC-0098 D12) — per-image configuration on the workspace
+# cmake road. Both images land on the same coordinate (native, zenoh); only
+# `warn` states configuration, so only it gets its own configure.
+
+[system]
+name = "image_config_probe"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "probe_pkg"
+class = "probe_pkg::Probe"
+name = "probe"
+
+[image.plain]
+board = "native"
+
+[image.warn]
+board = "native"
+env = { NROS_LOG_MAX_LEVEL = "warn", NROS_EXECUTOR_MAX_CBS = "13" }

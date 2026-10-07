@@ -1280,6 +1280,11 @@ pub const LOG_ARENA_PROBE_LINE: &str = "log-arena-probe: ";
 /// compile-time ceiling admits INFO / WARN on a logger set to DEBUG.
 pub const IMAGE_ENV_PROBE_LINE: &str = "image-env-probe-c: ";
 
+/// phase-481 W4 — the workspace twin of [`IMAGE_ENV_PROBE_LINE`]
+/// (`fixtures/image_config_ws`, `probe_pkg`): the same three fields, printed by
+/// a component in a GENERATED workspace entry.
+pub const IMAGE_CONFIG_PROBE_LINE: &str = "image-config-probe: ";
+
 /// A PREFIX of `read-boot-report.py`'s line for the runtime-logger arena:
 /// `<in use> of <capacity> slots` follows.
 pub const BOOT_REPORT_RUNTIME_LOGGERS: &str = "runtime loggers";

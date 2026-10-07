@@ -82,6 +82,7 @@ NOT_CMAKE = {
     "build_workspace_rust_entry": "a workspace ENTRY resolved by its own locator, not a leaf target",
     "build_workspace_cmake_entry": "a workspace ENTRY resolved by its own locator, not a leaf target",
     "build_workspace_cmake_entry_in": "a workspace ENTRY resolved by its own locator, not a leaf target",
+    "build_workspace_cmake_generated_entry": "a GENERATED workspace entry resolved from its row (phase-481 W4), not a leaf target",
     "build_test_fixture": "a `nros-tests/bins` cargo fixture, not an example leaf",
     "build_test_fixture_at_profile": "a `nros-tests/bins` cargo fixture, not an example leaf",
 }

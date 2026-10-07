@@ -135,6 +135,11 @@ pub struct ResolvedBuild {
     pub target: Option<String>,
     /// The cargo profile the image declares, if any.
     pub profile: Option<String>,
+    /// phase-481 W4 — where a CMAKE-driver workspace image builds,
+    /// `build/<coord>/cmake`, from [`cmake_coordinate`]: the one derivation,
+    /// handed to readers (`nros image-facts`, the fixture-row check) so none
+    /// restates it. `None` for every other driver.
+    pub cmake_build_dir: Option<String>,
 
     /// A configure that must run BEFORE the handoff, for drivers that need one.
     ///
@@ -477,6 +482,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         if planning == Planning::Query {
             out.push(ResolvedBuild {
                 configure: None,
+                cmake_build_dir: cmake_build_dir_for(driver, &platform, &image),
                 qualified: qual,
                 board,
                 platform,
@@ -758,18 +764,14 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // phase-445 W6 — what the image's declared TRANSPORT implies,
                 // then the APP rung. Same two layers, same order and the same
                 // reasons as the single-package road
-                // (`cmd::leaf_settings::{transport_implications, write}`): a
+                // (`cmd::leaf_settings::{image_block_layers, write}`): a
                 // schema key that is read on one of two roads is a key that
                 // silently stops being true on the other, which is the defect
                 // `leaf_system`'s own header records for the retired manifest
                 // tables. `[image] env` is LAST, so it outranks the
                 // implication and the derived pools and is outranked only by
                 // the calling environment (nothing here writes `force`).
-                if image.transport.as_deref() == Some("serial") {
-                    env.insert("ZPICO_NO_SMOLTCP".to_string(), "1".to_string());
-                    env.insert("NROS_LINK_IP".to_string(), "0".to_string());
-                }
-                env.extend(image.env.clone());
+                env.extend(crate::cmd::leaf_settings::image_block_layers(&image));
                 let config_path = image_dir.join(crate::builder::cargo_config::FILE_NAME);
                 crate::builder::cargo_config::write(
                     &crate::builder::cargo_config::CargoConfigSpec {
@@ -962,8 +964,19 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     })
                     .collect();
 
+                // phase-481 W4 — this configure's images resolve ONE configuration
+                // (the coordinate is keyed on it), so its rows are this image's.
+                // Handed to every cargo command the configure spawns by the
+                // issue-1712 carrier (`NanoRosImageEnv.cmake`); removed when the
+                // image states none.
+                let image_env = crate::cmd::leaf_system::write_image_env(
+                    &manifest_dir.join(crate::builder::cmake_root::IMAGE_ENV_FILE),
+                    &crate::cmd::leaf_settings::image_block_layers(&image),
+                )?
+                .is_some();
                 let spec = crate::builder::cmake_root::CmakeRootSpec {
                     entries: cmake_entries,
+                    image_env,
                     workspace: root.clone(),
                     system: bringup.clone(),
                     platform: platform.clone(),
@@ -1307,6 +1320,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
 
         out.push(ResolvedBuild {
             configure: cmake_configure.or(cargo_prepare),
+            cmake_build_dir: cmake_build_dir_for(driver, &platform, &image),
             qualified: qual,
             board,
             platform,
@@ -1423,6 +1437,7 @@ fn plan_single_package(
             entry_package: Some(img.package.clone()),
             target: img.target.clone(),
             profile: None,
+            cmake_build_dir: None,
             configure: None,
         }]));
     }
@@ -1451,6 +1466,7 @@ fn plan_single_package(
         entry_package: Some(img.package.clone()),
         target: img.target.clone(),
         profile: None,
+        cmake_build_dir: None,
         configure: None,
     }]))
 }
@@ -1847,6 +1863,7 @@ fn plan_packages(
                 .collect();
             let spec = crate::builder::cmake_root::CmakeRootSpec {
                 entries: Vec::new(),
+                image_env: false,
                 workspace: root.to_path_buf(),
                 system: String::new(),
                 platform: "posix".to_string(),
@@ -1914,6 +1931,7 @@ fn plan_packages(
             entry_package: None,
             target: None,
             profile: None,
+            cmake_build_dir: None,
             configure,
         });
     }
@@ -3265,12 +3283,57 @@ fn coordinate(platform: &str, image: &crate::orchestration::image::ImageBlock) -
 /// widening its coordinate would rename every generated entry directory for no
 /// gain. So this is the cmake driver's own rule, not a change to
 /// [`coordinate`].
+///
+/// phase-481 W4 (RFC-0098 D12) — and CONFIGURATIONS. The configure builds
+/// `nros-c` / `nros-cpp` once for every image on it, so an image whose
+/// `[image.<id>] env` differs cannot share it: its knobs are compiled into
+/// those builds. An image that states configuration gets a `-cfg<hash>` suffix
+/// over [`image_config_digest`]; images whose resolved configuration is
+/// identical — including the ones that state none, which keep exactly the
+/// path they had — still share one configure.
 fn cmake_coordinate(platform: &str, image: &crate::orchestration::image::ImageBlock) -> String {
     let base = coordinate(platform, image);
-    match image.board.as_deref() {
+    let base = match image.board.as_deref() {
         Some(b) if b != platform => format!("{base}-{}", b.replace(['/', '.'], "-")),
         _ => base,
+    };
+    match image_config_digest(image) {
+        Some(d) => format!("{base}-cfg{d}"),
+        None => base,
     }
+}
+
+/// [`ResolvedBuild::cmake_build_dir`] for a workspace image: its cmake binary
+/// dir when the driver is cmake, else `None`.
+fn cmake_build_dir_for(
+    driver: Driver,
+    platform: &str,
+    image: &crate::orchestration::image::ImageBlock,
+) -> Option<String> {
+    matches!(driver, Driver::CMake)
+        .then(|| format!("build/{}/cmake", cmake_coordinate(platform, image)))
+}
+
+/// A short, stable digest of an image's resolved configuration
+/// ([`crate::cmd::leaf_settings::image_block_layers`]), or `None` when it
+/// states none. Keyed on the ROWS, never on their spelling in `system.toml`,
+/// so reordering or re-quoting a table does not move the build directory.
+/// Deploy keys (`ip`, `locator`, `domain_id`) are deliberately NOT in it: they
+/// reach each image's own generated entry, never the shared runtime builds.
+fn image_config_digest(image: &crate::orchestration::image::ImageBlock) -> Option<String> {
+    use sha2::{Digest as _, Sha256};
+    let rows = crate::cmd::leaf_settings::image_block_layers(image);
+    if rows.is_empty() {
+        return None;
+    }
+    let mut h = Sha256::new();
+    for (k, v) in &rows {
+        h.update(k.as_bytes());
+        h.update([0u8]);
+        h.update(v.as_bytes());
+        h.update([0xffu8]);
+    }
+    Some(format!("{:x}", h.finalize())[..10].to_string())
 }
 
 /// Where `nros build` GENERATES an image's entry package:
@@ -4670,6 +4733,7 @@ mod multi_image_drive_tests {
             entry_package: None,
             target: None,
             profile: None,
+            cmake_build_dir: None,
             configure: None,
         }
     }
@@ -5259,5 +5323,151 @@ mod stage4_census_tests {
             PlatformKind::Posix,
             false
         ));
+    }
+}
+
+/// phase-481 W4 (RFC-0098 D12) — per-image cmake configures.
+#[cfg(test)]
+mod per_image_configure_tests {
+    use super::*;
+    use crate::orchestration::image::ImageBlock;
+
+    fn image(env: &[(&str, &str)], transport: Option<&str>) -> ImageBlock {
+        ImageBlock {
+            board: Some("native".to_string()),
+            rmw: Some("zenoh".to_string()),
+            env: env
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            transport: transport.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    /// An image that states nothing keeps EXACTLY the path it had, which is
+    /// what keeps the book's paths and every existing fixture row valid.
+    #[test]
+    fn an_image_stating_nothing_keeps_its_coordinate() {
+        assert_eq!(
+            cmake_coordinate("native", &image(&[], None)),
+            "native-zenoh"
+        );
+    }
+
+    /// Two images whose resolved configuration differs cannot share a
+    /// configure; two whose configuration is identical do — however the rows
+    /// were spelled in `system.toml` (a `BTreeMap` has no insertion order).
+    #[test]
+    fn configuration_decides_which_configure_an_image_shares() {
+        let warn = cmake_coordinate("native", &image(&[("NROS_LOG_MAX_LEVEL", "warn")], None));
+        let debug = cmake_coordinate("native", &image(&[("NROS_LOG_MAX_LEVEL", "debug")], None));
+        assert!(warn.starts_with("native-zenoh-cfg"), "{warn}");
+        assert_ne!(warn, debug);
+        let ab = cmake_coordinate("native", &image(&[("A", "1"), ("B", "2")], None));
+        let ba = cmake_coordinate("native", &image(&[("B", "2"), ("A", "1")], None));
+        assert_eq!(ab, ba);
+    }
+
+    /// A declared transport's IMPLICATION is configuration too: a serial image
+    /// turns smoltcp off in the runtime builds, so it cannot share them with an
+    /// IP image — and it reads the same rule the cargo road does.
+    #[test]
+    fn a_transport_implication_is_configuration() {
+        let serial = cmake_coordinate("native", &image(&[], Some("serial")));
+        assert_ne!(serial, cmake_coordinate("native", &image(&[], None)));
+        assert_eq!(
+            crate::cmd::leaf_settings::image_block_layers(&image(&[], Some("serial")))
+                .get("ZPICO_NO_SMOLTCP")
+                .map(String::as_str),
+            Some("1")
+        );
+    }
+
+    /// Every GENERATED workspace fixture row (`image = …`) states its cmake
+    /// build dir as a literal `build_subdir`, and the fixture build and the
+    /// test locators both read that literal. Before W4 the coordinate could not
+    /// move under it; now an image's configuration moves it (`-cfg<hash>`), so
+    /// the literal is checked against the one derivation instead of trusted.
+    #[test]
+    fn every_generated_workspace_fixture_row_names_its_cmake_build_dir() {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .unwrap();
+        let manifest: toml::Value =
+            toml::from_str(&std::fs::read_to_string(repo.join("examples/fixtures.toml")).unwrap())
+                .unwrap();
+        let catalog =
+            crate::orchestration::board_descriptor::BoardCatalog::load(&repo).expect("catalog");
+        let mut checked = 0usize;
+        let mut wrong = Vec::new();
+        for row in manifest
+            .get("workspace_fixture")
+            .and_then(|r| r.as_array())
+            .into_iter()
+            .flatten()
+        {
+            let (Some(dir), Some(bringup), Some(image_id), Some(subdir)) = (
+                row.get("dir").and_then(|v| v.as_str()),
+                row.get("bringup").and_then(|v| v.as_str()),
+                row.get("image").and_then(|v| v.as_str()),
+                row.get("build_subdir").and_then(|v| v.as_str()),
+            ) else {
+                continue;
+            };
+            let ws = repo.join(dir);
+            let found = discover::discover(&ws, &[]).expect("discover");
+            let bringups = collect_images(&found.packages).expect("images");
+            let bringup_name = std::path::Path::new(bringup)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap();
+            let Some((_, _, _, img)) = plan::all_images(&bringups)
+                .into_iter()
+                .find(|(b, _, id, _)| b == bringup_name && id == image_id)
+            else {
+                wrong.push(format!("{dir} {bringup_name}:{image_id}: no such image"));
+                continue;
+            };
+            let Ok(d) = crate::orchestration::image::resolve_image_board(&catalog, image_id, &img)
+            else {
+                continue;
+            };
+            let platform = d.platform.kebab();
+            // The row's own language answers "does the image link non-Rust
+            // code" — the planner's `image_has_non_rust` closure is local to it.
+            // A row's `lang` is also `mixed`, which is no single `Language` and
+            // does link non-Rust code — so "non-Rust unless it parses as Rust".
+            let non_rust = !matches!(
+                row.get("lang")
+                    .and_then(|v| v.as_str())
+                    .map(nros_lang::Language::parse),
+                Some(Ok(nros_lang::Language::Rust))
+            );
+            let driver = plan::driver_for_board(platform, d.entry_kind, non_rust);
+            let Some(want) = driver
+                .ok()
+                .and_then(|dr| cmake_build_dir_for(dr, platform, &img))
+            else {
+                continue;
+            };
+            checked += 1;
+            if want != subdir {
+                wrong.push(format!(
+                    "{dir} {bringup_name}:{image_id}: build_subdir = {subdir:?}, nros build uses {want:?}"
+                ));
+            }
+        }
+        assert!(
+            checked > 0,
+            "no generated cmake workspace row was checked — the walk is vacuous"
+        );
+        assert!(
+            wrong.is_empty(),
+            "examples/fixtures.toml `build_subdir` disagrees with `cmake_coordinate` \
+             (phase-481 W4 — write what nros build uses):\n  {}",
+            wrong.join("\n  ")
+        );
     }
 }

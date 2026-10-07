@@ -260,7 +260,18 @@ fn is_path_value(value: &str) -> bool {
 /// strength, and the reason an image may still name either knob explicitly in
 /// its `[image.<id>] env`, which is applied AFTER this).
 pub(crate) fn transport_implications(decl: &LeafSystem, env: &mut BTreeMap<String, String>) {
-    if decl.network.transport.as_deref() != Some("serial") {
+    transport_implications_of(decl.network.transport.as_deref(), env);
+}
+
+/// The rule [`transport_implications`] applies, keyed on the transport alone,
+/// so a WORKSPACE image (`[image.<id>]` in a bringup, which has no
+/// [`LeafSystem`]) reads it through the same spelling (phase-481 W4). The
+/// cargo workspace road carried a second hand-written copy of it until then.
+pub(crate) fn transport_implications_of(
+    transport: Option<&str>,
+    env: &mut BTreeMap<String, String>,
+) {
+    if transport != Some("serial") {
         return;
     }
     env.insert("ZPICO_NO_SMOLTCP".to_string(), "1".to_string());
@@ -281,6 +292,21 @@ pub fn image_layers(decl: &LeafSystem) -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
     transport_implications(decl, &mut env);
     env.extend(decl.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+    env
+}
+
+/// phase-481 W4 (RFC-0098 D12) — [`image_layers`] for a WORKSPACE image: what
+/// its declared transport implies, then its `[image.<id>] env`. Both workspace
+/// roads read it — the cargo road into the image's `nros-cargo.toml`, the
+/// cmake road into its configure's image-env file and, through
+/// `cmake_coordinate`, into WHICH configure it shares.
+#[must_use]
+pub fn image_block_layers(
+    image: &crate::orchestration::image::ImageBlock,
+) -> BTreeMap<String, String> {
+    let mut env = BTreeMap::new();
+    transport_implications_of(image.transport.as_deref(), &mut env);
+    env.extend(image.env.iter().map(|(k, v)| (k.clone(), v.clone())));
     env
 }
 

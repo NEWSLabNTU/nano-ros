@@ -112,7 +112,16 @@ pub struct CmakeRootSpec {
     /// is a discovered SUBDIR and a second target of that name would collide.
     /// That is what makes D13's migration incremental.
     pub entries: Vec<CmakeEntry>,
+    /// phase-481 W4 — whether [`IMAGE_ENV_FILE`] sits beside the root: the
+    /// images on this configure state `[image.<id>] env` (they all resolve the
+    /// same rows; the coordinate is keyed on them).
+    pub image_env: bool,
 }
+
+/// phase-481 W4 — the image-env cargo config `nros build` writes beside a
+/// workspace cmake root, and the root records as the configure's
+/// `NROS_IMAGE_ENV_CONFIG` (issue 1712's carrier, `NanoRosImageEnv.cmake`).
+pub const IMAGE_ENV_FILE: &str = "nros-image-env.toml";
 
 /// Render the root `CMakeLists.txt` written to `manifest_dir`.
 pub fn render(
@@ -322,6 +331,17 @@ pub fn render(
          endif()\n\n"
     ));
 
+    if spec.image_env {
+        // Before find_package: the Corrosion imports inside it attach the
+        // carrier (`nros_board_facts_env` -> `nros_image_env_attach`).
+        out.push_str(&format!(
+            "# phase-481 W4 (RFC-0098 D12) — this configure's images state\n\
+             # `[image.<id>] env`; every cargo command it spawns gets the rows,\n\
+             # below an exported variable (issue 1712's carrier).\n\
+             set_property(GLOBAL PROPERTY NROS_IMAGE_ENV_CONFIG\n\
+             \x20   \"${{CMAKE_CURRENT_LIST_DIR}}/{IMAGE_ENV_FILE}\")\n\n"
+        ));
+    }
     out.push_str("find_package(nano_ros REQUIRED COMPONENTS workspace)\n");
     out.push('\n');
 
@@ -453,6 +473,7 @@ mod tests {
 
     fn spec(root: &Path) -> CmakeRootSpec {
         CmakeRootSpec {
+            image_env: false,
             workspace: root.to_path_buf(),
             system: "demo_bringup".to_string(),
             platform: "posix".to_string(),
