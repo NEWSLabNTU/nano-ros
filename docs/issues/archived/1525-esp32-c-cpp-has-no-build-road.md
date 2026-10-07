@@ -1,7 +1,7 @@
 ---
 id: 1525
 title: "C or C++ on an ESP32 has no build road, and the road that claimed to serve it could not"
-status: open
+status: wontfix
 area: build, cli, esp32
 severity: low
 phases: [468]
@@ -96,3 +96,31 @@ Nobody has asked for it, no in-tree workspace reaches it, and the previous state
 was strictly worse: the combination reported a tool failure instead of an
 unsupported configuration. The severity is about the gap, not about the change
 that exposed it.
+
+## 2026-10-07 — parked: ESP32 support is dormant
+
+Maintainer decision: drop ESP32 support for now and keep the code for future
+use. What "dormant" means, concretely:
+
+- **Kept:** `packages/boards/nros-board-esp32-qemu/`,
+  `packages/platform/nros-platform-esp32-qemu/`, `examples/esp32-c3-baremetal/`,
+  the `[image.esp32]` workspace image, `just/esp32.just`, the CLI's scaffold and
+  build code for it, and the `esp32_emulator` / `logging_smoke` test code.
+- **Cut:** `mod esp32` is unmounted; esp32 left the scope list, the build-all and
+  `build-test-fixtures` platform loops, and `native::build-examples`; the four
+  `platform = "esp32"` fixture rows are deleted (recover them from git history);
+  every `Esp32Qemu` matrix cell is `CarveOut(ESP32_DORMANT)`; the nightly job no
+  longer filters, selects or provisions esp32; `[board.esp32-c3-baremetal]`,
+  `[tool.esp32-qemu]`, `[tool.espflash]` and `[rust.cargo-tool.espflash]` are
+  commented out of `nros-sdk-index.toml`; `espflash` left
+  `scripts/sdk-path-tools.txt`; `nros new --platform` no longer offers `esp32`;
+  the board registry row is `tier = "scaffold"`; the esp32 tests are
+  `#[ignore = "ESP32 support is dormant (issue 1525) …"]`.
+- **Exemptions are derived, not named:** the coverage gates skip a platform with
+  no built cell via `matrix::platform_is_built`, the same property that already
+  covered PX4.
+
+Reviving it means undoing that list together: rows, cells, module, index
+entries, nightly selection, the scaffold arm in `nros new`, and un-ignoring the
+tests. The ESP32-only issues (1006, 1356, 1499, 1591, and this one) are parked
+`wontfix` with this note, to reopen on revival.

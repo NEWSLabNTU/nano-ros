@@ -1,5 +1,12 @@
 # ESP32-C3 Development Setup
 
+> **Dormant (issue 1525).** ESP32 support is parked: the code below is kept in
+> the tree for future use, but nothing builds, tests or provisions it — the
+> `esp32` just module is not mounted, `nros setup` no longer carries the ESP32
+> board or tools, the CI job and fixture rows are gone, and `nros new --platform`
+> does not offer `esp32`. The rest of this page records how the path worked, for
+> whoever revives it.
+
 Guide for setting up ESP32-C3 development with nros.
 
 ## Hardware

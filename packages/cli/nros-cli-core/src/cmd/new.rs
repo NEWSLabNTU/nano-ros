@@ -68,8 +68,10 @@ pub struct Args {
     #[arg(long)]
     pub no_readme: bool,
 
-    /// Target platform (required in project mode)
-    #[arg(long, value_parser = ["native", "freertos", "nuttx", "threadx", "zephyr", "esp32", "posix", "baremetal"])]
+    /// Target platform (required in project mode). `esp32` is not offered:
+    /// ESP32 support is dormant (issue 1525) — the scaffold code is kept, the
+    /// front door is closed.
+    #[arg(long, value_parser = ["native", "freertos", "nuttx", "threadx", "zephyr", "posix", "baremetal"])]
     pub platform: Option<String>,
 
     /// RMW backend. Defaults per mode: `zenoh` for project/component

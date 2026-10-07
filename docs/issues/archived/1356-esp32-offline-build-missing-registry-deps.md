@@ -3,7 +3,7 @@ id: 1356
 title: "The esp32 nightly build runs `--offline`/`--frozen` against a cache that has
   neither `esp-backtrace` nor `allocator-api2` — the same cold-cache class as archived
   issue 0873, recurring on a different dependency set"
-status: open
+status: wontfix
 type: bug
 area: ci, esp32
 severity: medium
@@ -95,3 +95,9 @@ night read as a fix and the next datum showed it was an arrival state.
 What would settle it is the first item of this issue's own list — establish what
 warms the cargo cache for this job and why the generated esp32 entry's graph was
 outside it — which a green conclusion does not answer in either direction.
+
+## 2026-10-07 — parked (wontfix): ESP32 support is dormant
+
+ESP32 support is dormant by maintainer decision; the code is kept for future
+use and nothing builds, tests or provisions it. See issue 1525 for what was cut
+and what reviving it takes. Reopen this with the platform.

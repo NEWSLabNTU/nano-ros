@@ -98,7 +98,7 @@
 # its authored `target_dir`. Gate scope and mechanism scope agree — checked,
 # not assumed, because a rule enforced over a narrower set than it covers is
 # issue 0196's shape.
-export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-baremetal linux nuttx freertos threadx-linux threadx-riscv64 esp32}"
+export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-baremetal linux nuttx freertos threadx-linux threadx-riscv64}"
 
 # _nros_fixture_variant_sig <cargo-args> <envstr>
 # Signature of everything in the grouping key BEYOND platform+triple.

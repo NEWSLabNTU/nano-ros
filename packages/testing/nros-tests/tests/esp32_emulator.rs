@@ -1,5 +1,10 @@
 //! ESP32-C3 QEMU emulator tests
 //!
+//! **DORMANT (issue 1525).** ESP32 support is parked: the code stays for future
+//! use, no fixture row builds these images, and every test here is `#[ignore]`d
+//! with that reason. Reviving it means restoring the rows, the matrix cells and
+//! the `just esp32` module together.
+//!
 //! **Bucket (phase-329 W4): KEEP — sole ESP32-C3 coverage, heavy prereqs, not
 //! matrix-cell dups.** No cell-bound consumer runs the Espressif QEMU fork
 //! (`qemu-system-riscv32 -M esp32c3` + espflash + the RISC-V zenoh-pico), so this
@@ -54,6 +59,7 @@ use std::{process::Command, time::Duration};
 
 /// Verify ESP32-C3 boots and shows BSP banner on UART
 #[test]
+#[ignore = "ESP32 support is dormant (issue 1525): no fixture row builds this image"]
 fn test_esp32_qemu_talker_boots() {
     if !require_riscv32_target() {
         nros_tests::skip!("riscv32 target not available");
@@ -200,6 +206,7 @@ fn require_esp32_networked() {
 /// embedded-harness residual.
 
 #[test]
+#[ignore = "ESP32 support is dormant (issue 1525): no fixture row builds this image"]
 fn test_esp32_talker_listener_e2e() {
     require_esp32_networked();
 
@@ -312,6 +319,7 @@ fn build_esp32_listener_flash() -> std::path::PathBuf {
 /// native listener receives on localhost.
 
 #[test]
+#[ignore = "ESP32 support is dormant (issue 1525): no fixture row builds this image"]
 fn test_esp32_to_native() {
     require_esp32_networked();
 
@@ -392,6 +400,7 @@ fn test_esp32_to_native() {
 /// ESP32 listener receives via slirp network.
 
 #[test]
+#[ignore = "ESP32 support is dormant (issue 1525): no fixture row builds this image"]
 fn test_native_to_esp32() {
     require_esp32_networked();
 
@@ -505,6 +514,7 @@ const ESP32_WS_ENTRY_PORT: u16 = port_of(
 /// (talker + listener in one image), and its `/chatter` publications are
 /// delivered cross-process to an external native listener.
 #[test]
+#[ignore = "ESP32 support is dormant (issue 1525): no fixture row builds this image"]
 fn test_esp32_workspace_entry_e2e() {
     require_esp32_networked();
 

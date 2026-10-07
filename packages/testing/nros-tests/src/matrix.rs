@@ -567,6 +567,12 @@ use Workload::*;
 /// and stay BuildOnly until wired; the rest are firm CarveOuts.
 const CYCLONE_RUST_RTOS_CARVE: &str =
     "cyclone-on-RTOS is C/C++ only; pure-rust image has no cyclone backend symbol (#163 class)";
+/// ESP32 is DORMANT (issue 1525): the board, platform crate and examples stay
+/// in the tree for future use, but no lane, fixture row or `just` module builds
+/// or tests them.
+const ESP32_DORMANT: &str =
+    "ESP32 support is dormant (issue 1525): code kept, nothing builds or tests it";
+
 const XRCE_RTOS_CARVE: &str =
     "no XRCE agent-locator bake off Zephyr; rust-XRCE-on-bare-RTOS is not a shipped config";
 
@@ -769,19 +775,13 @@ pub const CELLS: &[Cell] = &[
     cell(NuttxRiscv, Rust, Zenoh, Pubsub, Example,
          CarveOut("no standalone rust pubsub example on rv-virt; runtime coverage rides the realtime-tiers workspace lane")),
 
-    // ESP32 — rust pubsub runtime under the Espressif QEMU fork (plus the
-    // workspace-entry lane in esp32_emulator.rs); service/action examples
-    // are NOT authored (example set is talker/listener only). C/C++
-    // build-only.
-    cell(Esp32Qemu, Rust, Zenoh, Pubsub,  Example, Runtime),
-    cell(Esp32Qemu, Rust, Zenoh, Service, Example,
-         CarveOut("service/action examples not authored on esp32-qemu (talker/listener set only)")),
-    cell(Esp32Qemu, Rust, Zenoh, Action,  Example,
-         CarveOut("service/action examples not authored on esp32-qemu (talker/listener set only)")),
-    cell(Esp32Qemu, C,    Zenoh, Pubsub,  Example,
-         BuildOnly("IDF C runtime lane pending (espressif qemu fork drives rust only today)")),
-    cell(Esp32Qemu, Cpp,  Zenoh, Pubsub,  Example,
-         BuildOnly("IDF C++ runtime lane pending")),
+    // ESP32 is DORMANT (issue 1525): its code is kept for future use, and no
+    // lane builds or runs it, so every cell is a carve-out with no fixture row.
+    cell(Esp32Qemu, Rust, Zenoh, Pubsub,  Example, CarveOut(ESP32_DORMANT)),
+    cell(Esp32Qemu, Rust, Zenoh, Service, Example, CarveOut(ESP32_DORMANT)),
+    cell(Esp32Qemu, Rust, Zenoh, Action,  Example, CarveOut(ESP32_DORMANT)),
+    cell(Esp32Qemu, C,    Zenoh, Pubsub,  Example, CarveOut(ESP32_DORMANT)),
+    cell(Esp32Qemu, Cpp,  Zenoh, Pubsub,  Example, CarveOut(ESP32_DORMANT)),
 
     // Bare-metal RTIC (QEMU MPS2) — pubsub-only demo set by design.
     cell(QemuBaremetal, Rust, Zenoh, Pubsub, Example, Runtime),
@@ -918,7 +918,7 @@ pub const CELLS: &[Cell] = &[
     cell(NuttxRiscv,   Rust,  Zenoh, EntryPubsub, Workspace,
          BuildOnly("no nuttx-riscv rust EntryPubsub workspace fixture/lane (RT-tiers \
                     only) — phase-295 W3.b finding, W6 wires it")),
-    cell(Esp32Qemu,    Rust, Zenoh, EntryPubsub, Workspace, Runtime),
+    cell(Esp32Qemu,    Rust, Zenoh, EntryPubsub, Workspace, CarveOut(ESP32_DORMANT)),
 
     // Workspace feature workloads (native + zephyr today; per-lang rows
     // mirror the ws-* families).
@@ -1037,6 +1037,18 @@ pub const CELLS: &[Cell] = &[
          CarveOut("uORB runs only inside a PX4-SITL build (just px4 …); no CI runner \
                    builds SITL. `packages/testing/nros-px4-register-check` is the source of truth.")),
 ];
+
+/// Does any cell of `p` ask for something to be BUILT (Runtime or BuildOnly)?
+///
+/// A platform whose every cell is a `CarveOut` — PX4 (no runner builds SITL)
+/// and ESP32 (dormant, issue 1525) — has nothing for a fixture row, a `just`
+/// module or a lane to produce. The coverage gates exempt it by this PROPERTY,
+/// derived from `CELLS`, rather than by naming it a second time.
+pub fn platform_is_built(p: PlatformId) -> bool {
+    CELLS
+        .iter()
+        .any(|c| c.platform == p && !matches!(c.tier, Tier::CarveOut(_)))
+}
 
 /// Runtime cells only — what the matrix consumers iterate.
 pub fn runtime_cells() -> impl Iterator<Item = &'static Cell> {

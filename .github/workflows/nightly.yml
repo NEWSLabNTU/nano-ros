@@ -199,7 +199,6 @@ jobs:
             nuttx: [ *core, 'examples/qemu-armv7a-nuttx/**', 'packages/boards/nros-board-nuttx*/**' ]
             threadx_linux: [ *core, 'examples/threadx-linux/**', 'packages/boards/nros-board-threadx-linux/**' ]
             threadx_riscv64: [ *core, 'examples/rv-virt-threadx/**', 'packages/boards/nros-board-threadx-qemu-riscv64/**' ]
-            esp32: [ *core, 'examples/esp32-c3-baremetal/**', 'packages/boards/nros-board-esp32-qemu/**', 'packages/platform/nros-platform-esp32-qemu/**' ]
             zephyr:
               - 'examples/zephyr/**'
               - 'packages/**'
@@ -215,7 +214,6 @@ jobs:
           NUTTX: ${{ steps.f.outputs.nuttx }}
           THREADX_LINUX: ${{ steps.f.outputs.threadx_linux }}
           THREADX_RISCV64: ${{ steps.f.outputs.threadx_riscv64 }}
-          ESP32: ${{ steps.f.outputs.esp32 }}
           ZEPHYR: ${{ steps.f.outputs.zephyr }}
           LANE_MODULES: ${{ needs.lane.outputs.modules }}
         run: |
@@ -223,7 +221,7 @@ jobs:
           # Modules THIS job can run. The lane also needs `native` and `zephyr`,
           # which have their own homes in the tier (host-tests / the 05:00 cron) —
           # `lane-coverage` asserts that, rather than this list quietly implying it.
-          runnable="qemu freertos nuttx threadx_linux threadx_riscv64 esp32"
+          runnable="qemu freertos nuttx threadx_linux threadx_riscv64"
           # Derived from the lane, not listed: adding a platform to `matrix::CELLS`
           # must extend the sweep with no second edit here. Empty when the `lane`
           # job did not run (the 05:00 Zephyr cron) — the `platform` job is gated
@@ -247,7 +245,6 @@ jobs:
             [ "$NUTTX" = "true" ]           && sel="$sel nuttx";           true
             [ "$THREADX_LINUX" = "true" ]   && sel="$sel threadx_linux";   true
             [ "$THREADX_RISCV64" = "true" ] && sel="$sel threadx_riscv64"; true
-            [ "$ESP32" = "true" ]           && sel="$sel esp32";           true
             zephyr="$ZEPHYR"
           fi
           json=$(printf '%s\n' $sel | jq -R . | jq -cs .)
@@ -399,37 +396,8 @@ jobs:
           source ./activate.sh
           nros setup --system --sudo
 
-      # issue 1038 — provision `[tool.esp32-qemu]`'s declared BUILD deps before
-      # the lane asks for the tool.
-      #
-      # The Espressif QEMU fork has no prebuilt for linux-x86_64, so `nros setup
-      # --tool esp32-qemu` builds it from source, and qemu's meson needs glib,
-      # pixman and gcrypt. The index declares all three — as `[prereq.*]` with
-      # apt names and probes, AND in `[tool.esp32-qemu] system = [..]` — so the
-      # tool can install them itself. That is why this is NOT an `apt-get
-      # install` line: restating what the index already declares is exactly what
-      # phase-413 W3's gate forbids, and the packages are indexed.
-      #
-      # `--sudo` because a CI container is where executing a package install is
-      # appropriate; the default still refuses and prints the command, which is
-      # the right behaviour on a developer's machine.
-      #
-      # This step stops the ESP32 e2e from SKIPPING for want of a QEMU that
-      # knows `esp32c3`, which is a coverage hole that reads as green.
-      #
-      # It could never have done that until now: `--sudo` carried
-      # `requires = "system"` in clap, so this exact line exited 2 on a usage
-      # error before installing anything, and every step after it was skipped —
-      # including `Build (esp32)`. The comment that used to sit here said the
-      # cell's red was issue 1025 and not this step; with 1025 fixed (#303) the
-      # red simply moved here, which is how the contradiction surfaced. The
-      # `--tool ... --sudo` form the help text has promised since issue 1038 is
-      # reachable as of this branch.
-      - name: Provision esp32-qemu's declared system deps (issue 1038)
-        if: matrix.plat == 'esp32'
-        run: |
-          source ./activate.sh
-          nros setup --tool esp32-qemu --sudo
+      # ESP32 is DORMANT (issue 1525): no esp32 cell is Runtime, so the lane
+      # never selects it and this job no longer provisions `esp32-qemu`.
 
       # The DISPATCHER spelling, not `just <plat> setup`. Only
       # `just setup <scope>` runs `_setup-common`, which provisions the host
@@ -1191,7 +1159,7 @@ jobs:
       # host with it needs nothing from the system") and falls back to the
       # system qemu only when that is absent. That path is inside the CHECKOUT,
       # and `just setup tier2-nightly` creates it — the lane expands to
-      # `esp32 freertos native nuttx qemu threadx_linux threadx_riscv64 zephyr`,
+      # `freertos native nuttx qemu threadx_linux threadx_riscv64 zephyr`,
       # and the `qemu` module's `setup` ends in `just qemu setup-qemu`.
       #
       # Asserting before provisioning asks the host for something the next step

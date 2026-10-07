@@ -232,6 +232,7 @@ fn logging_smoke_threadx_linux_captures_stderr() {
 /// drains for the timeout window, then kills QEMU and asserts the
 /// expected severity lines.
 #[test]
+#[ignore = "ESP32 support is dormant (issue 1525): no fixture row builds this image"]
 fn logging_smoke_esp32_qemu_emits_every_severity() {
     // Issue 1685 — deselect before the emulator probe.
     nros_tests::fixtures::lane::require_platform_in_lane(

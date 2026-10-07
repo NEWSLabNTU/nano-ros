@@ -1218,7 +1218,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   session-local-only). `build_c_shim` injects `ZENOH_GENERIC` + the OUT_DIR config. → issue 0135
   (archived). Local fixture binaries embed the shim — rebuild fixtures after zpico config changes.
 - **One FORMULA is not enough — the INPUTS are derived twice too (issue 1025).** The group key
-  is a function of (platform, cargo args, env); `just esp32 build-qemu` called the shared helper
+  is a function of (platform, cargo args, env); the esp32 flash packer (`build-qemu`, ESP32 now dormant — issue 1525) called the shared helper
   with the platform and `"" ""`, the producer passed the ROW's, and supplying two of the three
   constants a different answer. It agreed until the esp32 rows gained
   `env = { ZPICO_MAX_QUERYABLES = "2" }`, after which NO esp32 flash image could be packed. Not

@@ -200,11 +200,10 @@ notes = "C, C++ and Rust pubsub are Runtime; service/action are BuildOnly pendin
 [[board]]
 crate = "nros-board-esp32-qemu"
 matrix_platform = "Esp32Qemu"
-nightly_token = "esp32"
-tier = 2
+tier = "scaffold"
 execution_class = "cross-run"
 maintainers = []
-notes = "Real two-way QEMU e2e (esp32_emulator.rs)."
+notes = "DORMANT (issue 1525): code kept for future use; no lane builds or tests it. Was tier 2 (two-way QEMU e2e, esp32_emulator.rs, now #[ignore]d)."
 
 [[board]]
 crate = "nros-board-nuttx-qemu"

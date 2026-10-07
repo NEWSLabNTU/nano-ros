@@ -1,7 +1,7 @@
 ---
 id: 1499
 title: "ESP32 serial transport is documented as working, has no backend, and does not compile"
-status: open
+status: wontfix
 area: boards
 severity: medium
 phases: [468]
@@ -110,3 +110,9 @@ claim standing, and the claim was the part that was wrong.
       reachable rather than nominal.
 - [ ] `git grep -n 'esp32.*serial' -- examples/ book/` agrees with whichever
       was chosen.
+
+## 2026-10-07 — parked (wontfix): ESP32 support is dormant
+
+ESP32 support is dormant by maintainer decision; the code is kept for future
+use and nothing builds, tests or provisions it. See issue 1525 for what was cut
+and what reviving it takes. Reopen this with the platform.

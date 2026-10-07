@@ -17,6 +17,9 @@
 #                 an instruction.
 #   RELEASE NOTE  migration-install-local-removal.md names the
 #                 recipe it documents the REMOVAL of.
+#   DORMANT       a platform parked by decision (ESP32, issue 1525):
+#                 its module is unmounted, and the history and the
+#                 revival notes that name its recipes stay true.
 #
 # The rest are stale instructions: a reader copies them and gets
 # `Justfile does not contain recipe`. Those are worth fixing, and
@@ -32,7 +35,11 @@ book/src/release/migration-install-local-removal.md	install-local
 book/src/start-here/setup-compared-to-ros2.md	install-local
 docs/design/0058-multi-edition-ros-test-harness.md	ros-edition-image
 docs/development/test-harness.md	orin-spe
+docs/guides/esp32-setup.md	esp32
+docs/issues/0968-tier2-runtime-failures-unreproduced.md	esp32
+docs/issues/1038-nightly-job-does-not-provision-its-lane.md	esp32
 docs/issues/README.md	build-zenoh-pico-arm
+docs/issues/README.md	esp32
 docs/issues/README.md	native
 docs/release/migration-install-local-removal.md	install-local
 docs/research/autoware-safety-island-vs-sentinel.md	launch-autoware-baseline
@@ -41,6 +48,7 @@ docs/research/sdk-ux/SYNTHESIS.md	run
 docs/research/sdk-ux/micro-ros.md	flash
 docs/research/sdk-ux/micro-ros.md	install-local
 docs/research/sdk-ux/platformio-arduino-mbed.md	build-zenoh-pico-arm
+docs/research/sdk-ux/zephyr-and-esp-idf.md	esp32
 docs/research/sdk-ux/zephyr-and-esp-idf.md	install-local
 docs/research/sdk-ux/zephyr-and-esp-idf.md	menuconfig
 docs/research/sdk-ux/zephyr-and-esp-idf.md	monitor
@@ -49,6 +57,9 @@ docs/research/sdk-ux/zephyr-and-esp-idf.md	qemu
 docs/research/sdk-ux/zephyr-and-esp-idf.md	run
 docs/research/sdk-ux/zephyr-and-esp-idf.md	status
 docs/research/sdk-ux/zephyr-and-esp-idf.md	zenohd::start
+docs/research/tool-confidence-assessment.md	esp32
+docs/roadmap/book-audit/acc5/SUMMARY.md	esp32
+docs/roadmap/book-audit/acc5/esp32.md	esp32
 docs/roadmap/phase-162-rt-scheduling-harness.md	rt-test
 docs/roadmap/phase-211-proof-carrying-code.md	verify-proofs
 docs/roadmap/phase-217-arm-fvp-local-runtime.md	zephyr
@@ -56,6 +67,8 @@ docs/roadmap/phase-236-cpp-entry-embedded-runtime.md	zephyr
 docs/roadmap/phase-292-asi-reference-consumer-revisit.md	zephyr
 docs/roadmap/phase-395-dev-workflow-migration.md	ci-l2
 docs/roadmap/phase-395-dev-workflow-migration.md	ci-l4-tier1
+docs/roadmap/phase-413-ci-workflow-user-parity.md	esp32
+examples/esp32-c3-baremetal/README.md	esp32
 packages/cli/CONTRIBUTING.md	build-build-tools
 packages/cli/CONTRIBUTING.md	build-user-libs
 packages/cli/CONTRIBUTING.md	clean-build-tools

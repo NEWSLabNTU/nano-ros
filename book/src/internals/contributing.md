@@ -68,7 +68,6 @@ nano-ros has several test tiers, each with its own just recipe:
 | `just threadx_linux test` | ThreadX Linux user-space E2E | `gcc` |
 | `just threadx_riscv64 test` | ThreadX RISC-V QEMU E2E | `qemu-system-riscv64` |
 | `just zephyr test` | Zephyr E2E (native_sim + NSOS) | west |
-| `just esp32 test` | ESP32-C3 QEMU E2E | nightly + `qemu-system-riscv32` |
 | `just test-all` | Everything: `test` + heavy QEMU/Zephyr/ROS-interop + `test-doc` + `test-miri` + C codegen | All of the above |
 
 All test recipes accept a `verbose` argument for live output.

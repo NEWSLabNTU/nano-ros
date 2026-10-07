@@ -1,6 +1,10 @@
 # Phase 423 — the esp32-qemu board has no working runtime path
 
-**Status (2026-09-04).** Not started — opened as a HOME for four issues that
+**Status (2026-10-07). PARKED — ESP32 support is dormant (issue 1525).** Nothing
+here will be attempted until the platform is revived; issue 1525 lists what was
+cut and what reviving it takes.
+
+**Earlier status (2026-09-04).** Not started — opened as a HOME for four issues that
 had none. No work item here has been attempted; the sequencing below is a
 decision about ORDER, not a claim of progress.
 
@@ -23,7 +27,7 @@ each fix lands with no way to demonstrate it.
   cannot be built.** The flash packer asks for the group dir using the row's env
   string, so ESP32 flash images can never be produced. Everything below is
   unobservable until this is true.
-* **[#1006](../issues/1006-esp32-qemu-configure-nondeterministic-deps.md) —
+* **[#1006](../issues/archived/1006-esp32-qemu-configure-nondeterministic-deps.md) —
   the configure builds backends the board never uses.** Cost and blast radius,
   and it widens what a bring-up failure could be caused by.
 * **[#1052](../issues/archived/1052-esp32-talker-faults-after-network-bringup.md) — the talker
@@ -73,4 +77,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1006](../issues/1006-esp32-qemu-configure-nondeterministic-deps.md) | esp32-qemu's configure does not disable the backends it never uses. This phase already orders it as item 4; the gate landed (`137c820a6`) and the configure-flag pin still needs a rebuild to prove |
+| [#1006](../issues/archived/1006-esp32-qemu-configure-nondeterministic-deps.md) | esp32-qemu's configure does not disable the backends it never uses. This phase already orders it as item 4; the gate landed (`137c820a6`) and the configure-flag pin still needs a rebuild to prove |

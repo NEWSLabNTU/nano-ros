@@ -2,7 +2,7 @@
 id: 1006
 title: "esp32-qemu's configure does not disable the backends it never uses, so its
   runtime dependency set is a property of the machine that built it"
-status: open
+status: wontfix
 type: bug
 area: tooling, build
 related: [0926, 0500, phase-423]
@@ -131,3 +131,9 @@ runs `./configure`, and which publishes NO `dist.*`, every host-library feature
 must be pinned by name. `[tool.qemu]` is exempt because it has a dist. Negative
 control run: against this file's pre-fix revision the gate reports 55 of its 58
 host-library features unpinned and exits 1; against the new one it passes.
+
+## 2026-10-07 — parked (wontfix): ESP32 support is dormant
+
+ESP32 support is dormant by maintainer decision; the code is kept for future
+use and nothing builds, tests or provisions it. See issue 1525 for what was cut
+and what reviving it takes. Reopen this with the platform.

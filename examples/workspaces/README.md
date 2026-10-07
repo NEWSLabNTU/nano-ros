@@ -48,11 +48,9 @@ build-std` (the workspace fixture lane supplies both). Its generated entry is
 `esp-hal` / `esp-backtrace` dependencies and the app descriptor, and the image
 states the locator it dials. Build + run via:
 
-```sh
-just esp32 build-examples        # builds [image.esp32] through the workspace lane
-just esp32 zenohd &              # router on port 7454
-# flash + boot the image under the Espressif qemu fork, then observe /chatter
-```
+**Dormant (issue 1525):** ESP32 support is parked — the `[image.esp32]` image and
+its board are kept for future use, but no lane builds or runs them and the
+`esp32` just module is not mounted.
 
 ## Zephyr Entry
 
