@@ -553,23 +553,32 @@
     "why": "what a device varies per client (QoS, scheduling context); see `c:publisher_init_with_options`."
   },
   "cpp:LifecycleNode::create_client": {
-    "verdict": "declined",
-    "disposition": "absent",
-    "why": "see the lifecycle stage; a lifecycle node creates entities the same way an ordinary one does here."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "why": "phase-482 W4 (2026-10-07): `rclcpp_lifecycle::LifecycleNode` IS an `rclcpp::Node`, so this is `rclcpp::Node::create_client`, inherited, with `cpp:Node::create_client`'s contract. The extractor records only the members a class declares, so this key correlates as upstream-only even though the name resolves.\n\nBefore phase-482 W4: see the lifecycle stage; a lifecycle node creates entities the same way an ordinary one does here.",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/log.hpp",
+      "text": "void(const S::Request&, S::Response&) for a service, or void(const S::Response&) for a"
+    }
   },
   "cpp:LifecycleNode::create_service": {
-    "verdict": "declined",
-    "disposition": "absent",
-    "why": "see `cpp:LifecycleNode::create_client`."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "why": "phase-482 W4 (2026-10-07): `rclcpp_lifecycle::LifecycleNode` IS an `rclcpp::Node`, so this is `rclcpp::Node::create_service`, inherited, with `cpp:Node::create_service`'s contract. The extractor records only the members a class declares, so this key correlates as upstream-only even though the name resolves.\n\nBefore phase-482 W4: see `cpp:LifecycleNode::create_client`.",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/nros/log.hpp",
+      "text": "request and response BY REFERENCE into caller-owned storage instead"
+    }
   },
   "cpp:LifecycleNode::get_node_services_interface": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "see the node stage's `cpp:Node::get_node_base_interface`."
+    "why": "phase-482 W4 (2026-10-07): `rclcpp_lifecycle::LifecycleNode` IS an `rclcpp::Node`, so this is `rclcpp::Node::get_node_services_interface`, inherited, with `cpp:Node::get_node_services_interface`'s contract. The extractor records only the members a class declares, so this key correlates as upstream-only even though the name resolves.\n\nBefore phase-482 W4: see the node stage's `cpp:Node::get_node_base_interface`."
   },
   "cpp:LifecycleNode::register_services": {
     "verdict": "extension",
-    "why": "see `c:executor_register_lifecycle_services`."
+    "why": "see `c:executor_register_lifecycle_services`.",
+    "retired": "a method of the `nros::LifecycleNode` mixin, now `nros::detail::LifecycleEngine` (phase-482 W4). `rclcpp_lifecycle::LifecycleNode` binds, registers its services and manages its publishers itself"
   },
   "cpp:Node::create_client": {
     "verdict": "divergence",

@@ -1,4 +1,7 @@
-//! Phase 270 (#103) — runtime E2E for the C++ `nros::LifecycleNode` wrapper.
+//! Phase 270 (#103) — runtime E2E for the C++ managed node, written against
+//! `rclcpp_lifecycle::LifecycleNode` since phase-482 W4 (the `nros::LifecycleNode`
+//! wrapper before it). The node runs Configure, Activate, Deactivate and
+//! Cleanup at boot and prints the state each leaves it in.
 //!
 //! `ws-lifecycle-cpp`'s `native_managed_entry` boots `ManagedTalker`, a managed node
 //! written with the wrapper (NOT the phase-269 entry-autostart codegen — its
@@ -60,14 +63,24 @@ fn managed_node_wrapper_reaches_active_and_publishes(zenohd_unique: ZenohRouter)
         .unwrap_or_else(|_| {
             node.kill();
             panic!(
-                "managed node never published — the nros::LifecycleNode wrapper did not \
+                "managed node never published — the rclcpp_lifecycle::LifecycleNode did not \
                  drive Configure→Activate (phase-270 / issue #103)"
             )
         });
 
     node.kill();
 
-    for marker in ["LC:on_configure", "LC:on_activate", "LC:state=3"] {
+    // phase-482 W4 — `rclcpp_lifecycle::LifecycleNode` runs all four
+    // transitions at boot, each leaving the state REP-2002 says
+    // (Inactive, Active, Inactive, Unconfigured), before going Active to run.
+    for marker in [
+        "LC:on_configure",
+        "LC:on_activate",
+        "LC:on_deactivate",
+        "LC:on_cleanup",
+        "LC:cycle states=2,3,2,1",
+        "LC:state=3",
+    ] {
         assert!(
             out.contains(marker),
             "expected wrapper marker {marker:?} in the managed node's output, got:\n{out}"

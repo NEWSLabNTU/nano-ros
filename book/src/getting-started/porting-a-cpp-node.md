@@ -156,6 +156,7 @@ nano-ros covers the patterns a typical ROS 2 C++ node uses:
 | `rclcpp::QoS / KeepLast(n) / SystemDefaultsQoS()` | subclass of `nros::QoS` with the `(depth)` ctor | Chainable setters inherited. |
 | `diagnostic_updater::Updater` + `DiagnosticStatusWrapper` | `packages/api/nros-diagnostic-updater` | Publishes `/diagnostics`. |
 | `rclcpp_action::Server<A> / Client<A>` | ours, under upstream's names (`nros::ActionServer/Client<A>` are aliases for them) | Same entities, smaller shapes: no goal handles and no futures. See [Actions](#actions-no-goal-handles-no-futures) below. |
+| `class MyNode : public rclcpp_lifecycle::LifecycleNode` | ours, under upstream's name (`<rclcpp_lifecycle/lifecycle_node.hpp>`) | It IS an `rclcpp::Node`. The `on_configure(const State&)` … `on_shutdown` overrides, `CallbackReturn::SUCCESS`, `configure()` / `activate()` / … and `get_current_state()` keep upstream's signatures; the REP-2002 services are registered by the constructor. `create_publisher<M>(topic, qos)` returns a managed `LifecyclePublisher<M>::SharedPtr` that sends only while Active. One managed node per executor. `nros::LifecycleNode` is the deprecated older spelling. |
 | `RCLCPP_COMPONENTS_REGISTER_NODE(class)` | no-op macro + cmake-side `rclcpp_components_register_node()` emits a thin `int main()` per registration | Single-binary embedded. |
 | `find_package(ament_cmake_auto / rclcpp / rclcpp_components / diagnostic_updater / std_msgs / …)` | find modules at `cmake/find/` | ~28 of the most-cited ROS 2 packages; a message package not among them is found by the resolver from `NROS_INTERFACE_SEARCH_PATH` / `AMENT_PREFIX_PATH`. |
 
@@ -300,12 +301,6 @@ tracked as ROS-convention codegen work.
 
 ## What's out of scope (will need code adapt or a follow-up phase)
 
-- **`rclcpp_lifecycle::LifecycleNode`** — not mapped yet (phase-482 W4).
-  But nano-ros ships its own REP-2002 lifecycle surface (`nros/lifecycle.h`
-  in C, `lifecycle-services` feature, state machine + lifecycle services —
-  see the [C API reference](../reference/c-api.md) and
-  `examples/native/rust/lifecycle-node/`), so port to that rather than
-  hand-rolling configure/activate bookkeeping on a plain `Node`.
 - **Yaml-loaded parameters.** `declare_parameter<T>("name", default)` reads
   from a launch yaml in stock ROS 2. nano-ros has no runtime yaml loader —
   parameter *initials* are compile-baked from the launch XML's

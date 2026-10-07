@@ -149,6 +149,32 @@ This carries phase-209 G.2, G.3 and G.4.
   - The ledger's `cpp:LifecycleNode*` rows read `adopt` or `adopt-bounded`.
   - A runtime probe drives configure, activate, deactivate and cleanup.
 
+**Status: done 2026-10-07.**
+
+- `rclcpp_lifecycle::LifecycleNode` derives from `rclcpp::Node` and owns the
+  REP-2002 engine, which is now `nros::detail::LifecycleEngine`. The
+  `node_interfaces::LifecycleNodeInterface` hooks have upstream's signatures
+  and `CallbackReturn` values (97/98/99).
+- Include paths `<rclcpp_lifecycle/{lifecycle_node,lifecycle_publisher,state,transition}.hpp>`
+  are provided.
+- `create_publisher<M>` returns a managed `LifecyclePublisher`. Managed
+  entities became MOVABLE so they can live in the move-only `nros::Owned<T>`:
+  a move re-points the node's intrusive link, and a destructor unlinks.
+- `nros::LifecycleNode` is the deprecated forwarder.
+- Acceptance:
+  - `rclcpp_lifecycle_ported_node.cpp` (upstream's `lifecycle_talker` class
+    body) compiles with and without `NROS_CPP_STD`.
+  - The `managed` workspace's `ManagedTalker` runs Configure, Activate,
+    Deactivate and Cleanup at boot, and `cpp_lifecycle_node_wrapper_e2e`
+    asserts the states `2,3,2,1`.
+  - The lifecycle ledger rows were rewritten. The node's own surface reads
+    `adopt` / `adopt-bounded`.
+  - The ~40 methods it inherits from `rclcpp::Node` mirror `cpp:Node::*`'s
+    disposition. They correlate as upstream-only because the extractor records
+    declared members, not inherited ones, so a row that is `refuse-loud` on
+    `Node` stays without a disposition here. Attributing inherited members is
+    an extractor change left for later.
+
 ### W5 — `rclcpp::init(argc, argv)`: `-p` and `--params-file`
 
 - `-r` has been honoured since 2026-10-05. The parameter half is the ledger's
