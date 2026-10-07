@@ -6305,6 +6305,10 @@ impl<'s> Executor<'s> {
             _ => super::arena::ArenaLen::UNRECORDED,
         };
         trace_register(slot, meta.kind, name);
+        // phase-463 W7 — the slot's identity for the host profile, keyed on the
+        // arena base the dispatch sees (stable for the executor's life).
+        #[cfg(feature = "profile-mode")]
+        super::profile::on_register(self.arena.as_ptr() as usize, slot, meta.kind, name);
         self.entries[slot] = Some(meta);
         // phase-476 W0 — a new occupant gets a new generation, so every handle
         // issued for the slot's previous occupant stops resolving. Owner is
@@ -9611,7 +9615,25 @@ impl<'s> Executor<'s> {
                     let counts_before = snapshot_pub_counts(mon_table, lat_clock.is_some());
                     let start_us = lat_clock.map(|c| c());
                     Self::begin_dispatch(self.slot_tags, i);
+                    // phase-463 W7 -- the host profile times this sweep too:
+                    // it is the path every timer of a node that also
+                    // subscribes takes (see above), so missing it measured
+                    // the talker's timer at zero invocations.
+                    //
+                    // The OFF arm is the original `let _ =`, untouched, and
+                    // that is MEASURED rather than tidy: every binding tried
+                    // in its place (`let _p`, `let p; drop(p)`) moved
+                    // `spin_once_capturing` by 49-64 B in the Zephyr image
+                    // (phase-463 W5 I3c). Hence the second `unsafe` block,
+                    // recorded in the unsafe census.
+                    #[cfg(not(feature = "profile-mode"))]
                     let _ = unsafe { try_process(data_ptr, delta_us, i as u8) };
+                    #[cfg(feature = "profile-mode")]
+                    {
+                        super::profile::dispatch_begin(arena_ptr as usize, i);
+                        let processed = unsafe { try_process(data_ptr, delta_us, i as u8) };
+                        super::profile::dispatch_end(matches!(processed, Ok(true)));
+                    }
                     if let (Some(clock), Some(t0)) = (lat_clock, start_us) {
                         let elapsed_us = clock().saturating_sub(t0).min(u32::MAX as u64) as u32;
                         attribute_latency(mon_table, true, &counts_before, elapsed_us);
@@ -10023,7 +10045,17 @@ impl<'s> Executor<'s> {
             // the leaf hooks in `arena.rs` can name the callback they bracket.
             // `MAX_CALLBACK_SLOTS` is 64 (enforced by the `u64` ready-set
             // bitmask), so the `as u8` cannot truncate a live slot.
-            match unsafe { (meta.try_process)(data_ptr, delta_us, desc_idx as u8) } {
+            // phase-463 W7 — time the dispatch and attribute its publishes
+            // (host `profile-mode` only). ONE call site for both builds, so no
+            // second `unsafe` block; the binding is the only change an RTOS
+            // image sees, and its loadable bytes measured identical (phase-463
+            // W5 I3c, Zephyr cpp/talker).
+            #[cfg(feature = "profile-mode")]
+            super::profile::dispatch_begin(arena_ptr as usize, desc_idx);
+            let processed = unsafe { (meta.try_process)(data_ptr, delta_us, desc_idx as u8) };
+            #[cfg(feature = "profile-mode")]
+            super::profile::dispatch_end(matches!(processed, Ok(true)));
+            match processed {
                 Ok(true) => match meta.kind {
                     EntryKind::Subscription => result.subscriptions_processed += 1,
                     EntryKind::Service

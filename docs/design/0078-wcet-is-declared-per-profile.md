@@ -3,8 +3,8 @@ rfc: 0078
 title: "An execution-time BOUND is declared per measurement profile — and a measured maximum is not one"
 status: Draft
 since: 2026-08
-last-reviewed: 2026-08
-implements-tracked-by: [issue-0404, issue-0259, issue-0403]
+last-reviewed: 2026-10
+implements-tracked-by: [issue-0404, issue-0259, issue-0403, phase-463]
 amends: []
 supersedes: []
 superseded-by: null
@@ -325,3 +325,53 @@ and would halve every derived `exec_ms`. Detecting it needs the runtime to
 report its own clock — which is exactly what 0403's bench could not do, and is
 the same gap that leaves `convertible_to_time: false` in the artifact. Any
 future work that gives the platform a clock-rate query closes both at once.
+
+## Amendment 2026-10-07 — the HOST profile (phase-463 W7)
+
+phase-463 W7 adds a producer that this RFC did not have: a NATIVE image built
+with `profile-mode` (only the native C++ umbrella and the host Rust board
+resolve it) and run with `$NROS_PROFILE_OUT=<path>` times every executor
+callback on the build host. It writes `nros.wcet.measurements/1` (issue
+0403's schema), one row per callback, with the following fields:
+
+* `max_observed`, `min_observed`, `mean_observed` and `iterations`, in
+  NANOSECONDS of the host's monotonic clock, with `"unit": "ns"` in the file;
+* `coverage`: the launch (the executable), the inputs
+  (`$NROS_PROFILE_INPUTS`, free text) and the run's duration;
+* the set of topics each invocation published (`output_sets`,
+  `observed_outputs`);
+* no `bound_cycles`, anywhere. D1b stands: a host maximum is evidence and
+  converts to nothing.
+
+A host number is a fact about the HOST, not about any image's CPU (D1: a WCET
+belongs to a context). So the convention is the following.
+
+1. **A host profile is named `host-<arch>-<profile>`**, for example
+   `host-x86_64-release`, and states `clock_hz = 0`: unknown by design,
+   because a host clock is not a fact of any image. `nros-cli-core`'s
+   `is_host_wcet_profile` recognises the prefix. The `ClockRateZero`
+   validation error does not apply to such a profile, and `exec_ms` yields
+   nothing for it, which is the right answer.
+2. **Only the native image may select a host profile.** `nros build` refuses a
+   `[wcet.select] <image> = "host-…"` for any image whose board is not the
+   native `posix` board: Zephyr, FreeRTOS, NuttX, ThreadX, bare metal, and the
+   host-run RTOS simulators too (`threadx-linux`, `freertos-posix`), whose
+   kernel is the thing being modelled. The refusal is
+   `WcetSelectionError::HostProfileOnTarget` and names the image, the profile
+   and the platform. Tests:
+   `a_zephyr_image_selecting_a_host_profile_is_refused` (with a negative
+   control: the image-blind resolver accepts the same text) and
+   `the_native_image_may_select_a_host_profile_and_it_converts_to_nothing`.
+3. **The native image's feasibility check may read a host profile**, which
+   gives it a measured number where it had `None`. Issue 0259's
+   absent-is-not-zero warning then names only the RTOS profile as absent,
+   which is the truth.
+
+What transfers from a host run to the RTOS image is STRUCTURE, not time:
+
+* which callbacks exist, cross-checked one-to-one against the census;
+* which topics each timer path actually publishes, cross-checked against the
+  contract's `paths.<p>.output`.
+
+`scripts/check-profile-against-census.py` holds both, and its self-test
+plants each disagreement on every run.

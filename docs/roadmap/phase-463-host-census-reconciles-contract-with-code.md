@@ -3,8 +3,8 @@
 **Status (2026-10-03). W0-W4 landed, and W4's `[census]` default is now
 `refuse` (issue 1419: `nros ws entity-census take`, the fixture pre-pass);
 W5 half landed (I2 + I3a gated; I1 holds by construction and I3b measured by
-hand, neither gated; I3c open); W6 and W7 open. W7 (the profiling half) is deliberately last
-and is a separate decision from W1-W6.** Each wave's own Status line below is
+hand, neither gated; I3c open); W6 open. W7 (the profiling half) was a separate decision
+from W1-W6: GO, and LANDED 2026-10-07 (the island's own 60 s replay stays external).** Each wave's own Status line below is
 the current one; this line used to read "PROPOSED - nothing landed" after four
 waves had merged.
 Opened from the safety-island experiments of 2026-09-20 (E3a/E3b/E3c in the
@@ -480,7 +480,29 @@ one-to-one, whose observed `paths` outputs equal the contract's `output:`
 lists for all four timers, and whose numbers are refused by the Zephyr bake
 if anyone tries to select the host profile for it.
 
-Claim: phase-463-W7. Depends on: phase-463-W2, phase-463-W5, and the separate go/no-go decision. Owns: packages/core/nros-node/src/executor/spin.rs (the dispatch hook), profile-mode in packages/core/nros-node/Cargo.toml, packages/api/nros/Cargo.toml and packages/api/nros-cpp/Cargo.toml, the NROS_PROFILE_OUT switch in packages/api/nros-cpp/src/lib.rs, docs/design/0078-wcet-is-declared-per-profile.md. Gate: the 60 s replay on the island's native image. Status: not started.
+Claim: phase-463-W7. Depends on: phase-463-W2, phase-463-W5, and the separate go/no-go decision. Owns: packages/core/nros-node/src/executor/spin.rs (the dispatch hook), profile-mode in packages/core/nros-node/Cargo.toml, packages/api/nros/Cargo.toml and packages/api/nros-cpp/Cargo.toml, the NROS_PROFILE_OUT switch in packages/api/nros-cpp/src/lib.rs, docs/design/0078-wcet-is-declared-per-profile.md. Gate: the 60 s replay on the island's native image. Status: LANDED 2026-10-07, after the go decision. The island replay itself is still EXTERNAL; its in-tree substitute is described at the end of this list.
+
+* **Hook.** The profiler is `nros_node::executor::profile`, behind `profile-mode` (`nros-node` -> `nros` -> `nros-cpp`, plus `nros-board-linux/profile`, which the generated host entry enables beside `census`). It times every dispatch around `try_process`: `spin.rs`'s drain, the timer sweep a subscribing node's timers take, and the OS-priority worker. Each dispatch is timed on the port's monotonic clock and counted only on `Ok(true)`.
+* **Registration.** Every executor slot is recorded at registration (`emplace_entry`) and labelled through the census hooks. The node cursor and the census's own synthetic ids (`timer<n>`, one shared sequence) are kept per THREAD, because concurrent tier setups attributed a timer to the wrong node with a global cursor.
+* **Publishes.** The topics each invocation published come from the publisher handles' `bump_monitor`, which every publish path passes: Rust typed/raw/attachment and C++ raw/streamed/loan.
+* **Switch.** `$NROS_PROFILE_OUT` is read in `nros_cpp_init_rmw` and in `nros-board-linux`'s funnel, before the executor opens. `$NROS_PROFILE_INPUTS` sets `coverage.inputs`. The file is rewritten once a second, write-then-rename. Format: `nros.wcet.measurements/1`, unit `ns`, `clock_hz = 0`, `convertible_to_time = false`, no `bound_cycles`, and nulls (never 0) for a row that never ran.
+* **Bake refusal.** `nros build` refuses a host profile (`host-<arch>-<profile>`) selected by any non-native image (`WcetSelectionError::HostProfileOnTarget`; tests `a_zephyr_image_selecting_a_host_profile_is_refused`, with a negative control, and `the_native_image_may_select_a_host_profile_and_it_converts_to_nothing`). The RFC-0078 amendment of 2026-10-07 states the convention.
+* **W5 invariants, extended.**
+  * I3(a): `check-rtos-feature-set-excludes-analysis` now holds `profile-mode` iff cpp + posix + native, with two new planted negative controls, and widening the guard measured red (15 violations).
+  * I2: unchanged, since no header was touched.
+  * I3(c): MEASURED on Zephyr `cpp/talker` zenoh, native_sim/native/64. Before vs after, `.text/.data/.bss` are 1074665/35394/810681 in both, and `objcopy -O binary` is byte-identical. Two drafts were NOT identical, and both causes are recorded so the next edit does not repeat them:
+    * +441 B of `.text`, because Zephyr's native_sim C++ image has `env`, so a refusal arm for `$NROS_PROFILE_OUT` in an image without `profile-mode` was compiled into it. The arm was removed; such an image writes no file, and the checker refuses a missing file.
+    * 49-64 B of `spin_once_capturing` from REBINDING the timer sweep's `let _ = unsafe { try_process(..) }` (as `let _p` or `let p; drop(p)`). The OFF arm now keeps the original line verbatim under `#[cfg(not(feature = "profile-mode"))]`, at the cost of two `unsafe` blocks recorded in the unsafe census (`nros-node` 519 -> 521).
+  * `nros-node` stays at zero `std::` paths: the thread key and the file sink are the hosted edge's, handed in through `profile::install`. `nros-cpp` goes 7 -> 8 for one `use std::{..}` in `profile_edge`, recorded in `check-std-census`.
+* **Acceptance substitute.** The island is external, so `scripts/check-profile-against-census.py` joins measurements x census x contract on in-tree images. Its self-test plants 7 disagreements on every run. It checks four things:
+  * P1, one-to-one rows: timers by per-node ordinal, everything else by topic;
+  * P2, observed timer outputs equal the contract's `paths.*.output`;
+  * P3, evidence, never a bound;
+  * P4, every timer ran.
+* **Acceptance results.**
+  * `examples/workspaces/cpp` native, 60 s under `rmw_zenohd`: OK, 2 census callback rows <-> 2 profile rows. `/talker` timer0: 61 invocations, max 120978 ns, published exactly `[/chatter]`, which is the contract's `on_timer.output`.
+  * `examples/workspaces/derived-tiers-cpp` native, the island's shape (4 derived tiers, 4 timers), 60 s: OK, 4 <-> 4, with all four timers' observed outputs equal to their contract `output:` lists. Invocations were 1850/1850/610/610 for 30/30/10/10 Hz.
+  * The same join REFUSES that image on runs where a tier is lost at boot. That happens on about 60 % of boots on `origin/main` itself, as a lost tier or a crash (24 runs: 9 ok, 11 lost a tier, 4 crashed). A lost tier is P1 or P4: the timer is never registered, or is registered and never runs. `examples/workspaces/realtime-rust` `native_derived` loses its control tier on every run, so its check reads P1 + P2. This is pre-existing, not the profiler's: it is filed as issue 1733, with the measurement on an `origin/main` build.
 
 ## Gates added by this phase
 

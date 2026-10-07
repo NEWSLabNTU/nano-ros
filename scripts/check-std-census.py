@@ -343,7 +343,16 @@ BASELINE = {
     # so its first blocking call is where the census is written and the
     # process ends -- the same capability `nros-c`'s `census.rs` spends. The
     # armed session name rides `nros_rmw::sync::Mutex`, not `std::sync`.
-    "nros-cpp": {"cfg": 3, "path": 7},
+    #
+    # phase-463 W7 -- path 7 -> 8, deliberately: ONE `use std::{env, fs,
+    # string::String, sync::OnceLock, thread_local}` in `profile_edge`, the
+    # hosted edge of the profile (`$NROS_PROFILE_OUT`). The core profiler
+    # (`nros_node::executor::profile`) stays `core + alloc` at zero paths; the
+    # edge supplies what it cannot have -- the switch, a thread key for
+    # concurrently-dispatching tiers, and the file sink -- through
+    # `profile::install`. Compiled only with `profile-mode`, which only the
+    # native umbrella resolves.
+    "nros-cpp": {"cfg": 3, "path": 8},
     # 2026-09-06: cfg 1 -> 0. The one site was the crate attribute itself,
     # `#![cfg_attr(not(feature = "std"), no_std)]`, and it bought nothing --
     # this crate's `std` is `std = ["alloc"]` over `alloc = []`, so it enables

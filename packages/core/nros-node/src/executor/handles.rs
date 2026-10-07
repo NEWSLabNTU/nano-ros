@@ -206,6 +206,10 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
             cell.count
                 .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         }
+        // phase-463 W7 — every publish path passes here, so this is where the
+        // host profile learns which topics the dispatching callback published.
+        #[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
+        crate::executor::profile::on_publish(self.handle.topic_name());
     }
 
     /// Publish raw CDR-encoded data (must include CDR header).
@@ -886,6 +890,10 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
             cell.count
                 .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         }
+        // phase-463 W7 — every publish path passes here, so this is where the
+        // host profile learns which topics the dispatching callback published.
+        #[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
+        crate::executor::profile::on_publish(self.handle.topic_name());
     }
 
     /// Phase 108.A — `true` if the active backend can fire the named

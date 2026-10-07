@@ -70,6 +70,15 @@ ffi-size-markers = []
 # its own delivery shape. That is the only producer of the feature: a firmware
 # image never names it and never carries the global.
 metadata-mode = ["nros-rmw/sync-spin", "nros-node/registration-observer"]
+# phase-463 W7 — the PROFILING half: per-callback host `max_observed` (ns) and
+# the topics each invocation published, as `nros.wcet.measurements/1`
+# (`nros_node::executor::profile`). The census hooks below label every executor
+# slot with the census's own id, so the two files join row for row. Host only:
+# only the NATIVE C++ umbrella and the host Rust board resolve it
+# (`check-rtos-feature-set-excludes-analysis`). It needs the heap (`nros-node`
+# says so) and nothing else: the thread key and the file sink come from the
+# hosted edge that reads `$NROS_PROFILE_OUT`.
+profile-mode = ["nros-node/profile-mode"]
 # phase-359 W10 / issue 0687 — a CAPABILITY, not the `std` flavour, and it
 # lives HERE now: `src/env.rs` is the one place in the tree that reads the
 # process environment. It forwards to nothing, because there is nothing below

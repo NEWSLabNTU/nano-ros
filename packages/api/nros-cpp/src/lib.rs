@@ -952,6 +952,16 @@ pub unsafe extern "C" fn nros_cpp_init_rmw(
         }
     };
 
+    // phase-463 W7 -- the profile switch, BEFORE the executor opens, so the
+    // profile records every registration from here on. Compiled ONLY with
+    // `profile-mode`: unlike the census there is no refusal arm in an image
+    // without it, because Zephyr's native_sim C++ image has `env` and a refusal
+    // arm is ~440 B of `.text` in it -- measured, and phase-463 W5 I3c holds an
+    // RTOS image to zero bytes. Such an image writes no file, and the consumer
+    // (`check-profile-against-census.py`) refuses a missing file.
+    #[cfg(all(feature = "env", feature = "profile-mode"))]
+    profile_arm();
+
     // Issue 1556 (c) -- an application census is decided BEFORE the session
     // resolves its backend, because it decides which backend that is (the
     // recorder, through the `$NROS_RMW` that `resolve_boot` reads).
@@ -1739,6 +1749,74 @@ fn census_out_path() -> Option<alloc::string::String> {
     let raw = std::env::var(CENSUS_OUT_ENV).ok()?;
     if raw.is_empty() { None } else { Some(raw) }
 }
+
+// ---------------------------------------------------------------------------
+// phase-463 W7 -- the PROFILE switch, `$NROS_PROFILE_OUT`.
+//
+// The census's sibling and the census's shape: one environment-only switch,
+// read here (the hosted edge) and nowhere else, absent from every RTOS image
+// because `env` is. Where the census REPLACES the spin, the profile RIDES it:
+// the run transports normally and `nros::profile` times each dispatch and the
+// topics it published, writing the file once a second (a killed run loses at
+// most the last second). `$NROS_PROFILE_INPUTS` is the run's free-text
+// `coverage.inputs` -- what the run was fed -- because RFC-0078 D1b says a
+// maximum is only as good as what was exercised, and only the caller knows.
+// ---------------------------------------------------------------------------
+
+/// The hosted edge of the profile: the switch, the coverage text, the file
+/// sink and the thread key `nros::profile` needs and the core does not have
+/// (it is `core + alloc`). ONE `std` import for all of it.
+#[cfg(all(feature = "rmw-cffi", feature = "env", feature = "profile-mode"))]
+mod profile_edge {
+    use std::{env, fs, string::String, sync::OnceLock, thread_local};
+
+    /// The profile switch's variable name, stated once (see `CENSUS_OUT_ENV`
+    /// for why a name and not a literal).
+    const PROFILE_OUT_ENV: &str = "NROS_PROFILE_OUT";
+    /// The run's free-text `coverage.inputs` (what the run was fed).
+    const PROFILE_INPUTS_ENV: &str = "NROS_PROFILE_INPUTS";
+
+    static PATH: OnceLock<String> = OnceLock::new();
+
+    /// Write-then-rename, so a reader (or a SIGTERM mid-write) never sees half.
+    fn sink(doc: &str) {
+        let Some(path) = PATH.get() else { return };
+        let tmp = alloc::format!("{path}.tmp");
+        if fs::write(&tmp, doc).is_ok() {
+            let _ = fs::rename(&tmp, path);
+        }
+    }
+
+    /// Unique per live thread: the address of a thread-local.
+    fn thread_key() -> usize {
+        thread_local! { static KEY: u8 = const { 0 }; }
+        KEY.with(|k| k as *const u8 as usize)
+    }
+
+    /// Arm the host profile when `$NROS_PROFILE_OUT` names a file (empty is
+    /// unset). Idempotent: a tiered boot opens one executor per tier, and they
+    /// share the one profile.
+    pub(super) fn arm() {
+        let Some(path) = env::var(PROFILE_OUT_ENV).ok().filter(|p| !p.is_empty()) else {
+            return;
+        };
+        if nros::profile::enabled() {
+            return;
+        }
+        let _ = PATH.set(path);
+        nros::profile::install(thread_key, sink);
+        let launch = env::current_exe()
+            .ok()
+            .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
+            .unwrap_or_default();
+        let inputs = env::var(PROFILE_INPUTS_ENV)
+            .unwrap_or_else(|_| String::from("live run; no replayed input set was named"));
+        nros::profile::enable(&launch, &inputs);
+    }
+}
+
+#[cfg(all(feature = "rmw-cffi", feature = "env", feature = "profile-mode"))]
+use profile_edge::arm as profile_arm;
 
 /// Point this run at the RECORDING backend, by name.
 ///

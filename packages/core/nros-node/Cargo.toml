@@ -61,6 +61,18 @@ deprecate-node-name-setter = []
 registration-observer = ["nros-rmw/sync-spin"]
 
 std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-cffi?/std", "log"]
+
+# phase-463 W7 — the PROFILING half of the host census: per-callback
+# `max_observed` (ns, host monotonic clock) and the topics each invocation
+# published, written as `nros.wcet.measurements/1` where `$NROS_PROFILE_OUT`
+# names. `core + alloc`: the switch, the file sink and the thread key are the
+# hosted EDGE's (`nros-cpp`, `nros-board-linux`), handed in through
+# `executor::profile::install`. REQUIRES `alloc` (the `compile_error!` in
+# src/lib.rs); `sync-spin` makes its table a `Sync` global, as
+# `registration-observer` does. Only the native umbrellas resolve it
+# (`check-rtos-feature-set-excludes-analysis`), and every call site is
+# `#[cfg]`-elided, so an RTOS image carries none of it (measured identical).
+profile-mode = ["nros-rmw/sync-spin"]
 alloc = ["nros-core/alloc", "nros-rmw/alloc", "dep:portable-atomic-util", "nros-platform-api/alloc"]
 
 # Phase 110 — compile-time scheduler selection. Default ships only

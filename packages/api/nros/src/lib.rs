@@ -161,6 +161,10 @@ pub mod dispatch_tag;
 pub mod guide;
 #[cfg(feature = "metadata-mode")]
 pub mod metadata_mode;
+/// phase-463 W7 — the host profile (`nros_node::executor::profile`), for the
+/// hosted edges that read `$NROS_PROFILE_OUT` (`nros-cpp`, `nros-board-linux`).
+#[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
+pub use nros_node::executor::profile;
 pub mod node;
 pub mod node_metadata;
 /// Phase 212.M.5.a.2 — executor-backed component runtime.
