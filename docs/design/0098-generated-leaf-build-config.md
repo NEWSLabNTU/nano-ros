@@ -1,6 +1,6 @@
 # RFC-0098 — A leaf's build configuration is generated from one board choice
 
-**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6)
+**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481)
 
 Home phase: [phase-445](../roadmap/phase-445-board-choice-generates-leaf-config.md).
 
@@ -257,13 +257,89 @@ hand-written entries and the manifest fallback that served them:
   table's presence and workspace node packages declare their class in the
   manifest (issue 1289); `deploy` returns nothing.
 
+## Amendment — one source for image configuration, on every road (2026-10-07, phase-481)
+
+Issue 1712 gave a standalone C/C++ leaf's `[image.<id>] env` a carrier on the
+cmake road; issue 1721 found two roads that still drop it — Zephyr west and the
+workspace cmake configure — and framed the fix as a precedence choice between
+the image's `env` and the application's `prj.conf`. That framing was the
+defect: both are per-image statements of the same knob, and ranking two
+sources only decides which one silently loses. So the amendment removes the
+second source instead.
+
+**D10 — `system.toml` is the single source of image configuration on every
+road.** A knob an image sets, the RMW it speaks, and the endpoint it deploys
+to are stated in `system.toml` (`[image.<id>] env` / `rmw` / deploy keys) and
+rendered into each road's native form — `nros-cargo.toml` on the cargo road
+(D1), the `--config` file on the cmake road (issue 1712), a Kconfig fragment on
+Zephyr (D11). No road reads a second hand-written statement of the same fact.
+RFC-0049's ladder is unchanged — `builtin < platform < board < lane front-end`,
+with an exported variable above everything — what changes is that the APP rung
+has one author. RFC-0049's front-end table still holds: Kconfig remains
+Zephyr's front-end MECHANISM; it stops being an authored source for nano-ros
+knobs.
+
+**D11 — on Zephyr, the image's configuration is a rendered Kconfig fragment,
+and a leaf's conf files hold no nano-ros knob.**
+
+- Zephyr builds `.config` inside `find_package(Zephyr)` by merging, last value
+  wins: board defconfig, `CONF_FILE`, `EXTRA_CONF_FILE`, then `-DCONFIG_*`
+  command-line values. The rendered fragment joins at `EXTRA_CONF_FILE`: after
+  the leaf's own conf files, before the per-run `-DCONFIG_*` values a test
+  harness passes (ports, locators, domains — the env rung's role on this road).
+- It is appended by a nano-ros helper the LEAF's `CMakeLists.txt` calls before
+  `find_package(Zephyr)`, never by the caller. Four callers assemble
+  `CONF_FILE` today (`zephyr-dev.just`, `zephyr-fixture-leaves.sh`,
+  `zephyr-fixture-run-one.sh`, and a user's plain `west build`); a fourth copy
+  of the same assembly is the class issue 0460 names, and would miss the road
+  the book documents. The helper renders through the CLI (`nros ws
+  leaf-system`), as `nros_resolve_board_facts` already does for the board, and
+  registers `system.toml` as a configure dependency.
+- `_nros_resolve_knob` is unchanged: the value arrives in `.config` like any
+  other and is read as Kconfig. No new rung, no ranking question.
+- What leaves the leaf's conf files: the RMW choice (`CONFIG_NROS_RMW_*`,
+  derived from the image's `rmw`), the language API (`CONFIG_NROS_{C,CPP,RUST}_API`,
+  derived from the package), the deploy endpoint (`CONFIG_NROS_XRCE_AGENT_*`),
+  and every knob with a `[knobs.*]` counterpart. What stays: Zephyr's own
+  settings (`CONFIG_NET_*`, stack sizes, `CONFIG_HEAP_MEM_POOL_SIZE`).
+- A gate refuses a nano-ros knob symbol in a leaf or workspace conf file,
+  naming the `system.toml` line to write instead — the rule D1 applied to
+  `examples/**/.cargo/`, applied to `examples/**/*.conf`. The shared board
+  fragments under `cmake/zephyr/` are the BOARD layer and are not leaf files.
+- A knob with no Kconfig symbol reaches the Zephyr cargo commands through the
+  same unforced `--config` `[env]` file issue 1712 uses on the cmake road.
+
+**D12 — a workspace image's configuration is per image: images that resolve
+different configuration do not share a build.** A workspace cmake configure is
+keyed by coordinate (platform, RMW, board) and builds `nros-c` / `nros-cpp`
+once for every image on it, so a per-image knob — a logging ceiling, a pool
+size, a feature — had nowhere to attach. The configure key becomes the
+coordinate PLUS a hash of the image's resolved configuration when that
+configuration is non-empty:
+
+- images whose resolved configuration is identical (including two that state
+  nothing) share `build/<coord>/` and one runtime build, as today — no cost
+  where images do not differ, and the user-facing path stays as the book shows;
+- an image whose configuration differs gets `build/<coord>-<hash>/`, its own
+  configure and its own runtime build;
+- the shared cargo group key already folds knob values in (phase-400), so a
+  crate the knob does not reach is not rebuilt per image.
+
+Per-image configuration is supported because it is real: images on different
+platforms routinely want different logging and feature sets. Where a value
+must be the same for every image, it belongs on the board (`[board.knobs]`) or
+the platform — one file, not one statement per image.
+
 ## What is NOT decided here
 
 - The C/C++ leaves' CMake side. They take their board from `system.toml` under
   D3; how their CMake reads the resolved facts (the declared road,
-  `NanoRosEntityFacts.cmake`) is unchanged by this RFC.
-- Zephyr's Kconfig. It remains the Zephyr lane's front-end (RFC-0049); D4 does
-  not move a Zephyr `CONFIG_*` symbol.
+  `NanoRosEntityFacts.cmake`) is unchanged by this RFC. (Image `env` reaching
+  that road's cargo builds was issue 1712; D10 states the rule it follows.)
+- ~~Zephyr's Kconfig. It remains the Zephyr lane's front-end (RFC-0049); D4 does
+  not move a Zephyr `CONFIG_*` symbol.~~ Superseded by D11 (2026-10-07): Kconfig
+  stays the MECHANISM, but nano-ros knob symbols are rendered from
+  `system.toml`, not authored in a leaf's conf files.
 
 ## Alternatives rejected
 

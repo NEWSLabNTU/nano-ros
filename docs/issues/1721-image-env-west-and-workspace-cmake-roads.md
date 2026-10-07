@@ -6,8 +6,19 @@ type: bug
 area: [build, config, zephyr, cmake]
 severity: medium
 found: 2026-10-06
-related: [1712, rfc-0049, rfc-0098, phase-445]
+related: [1712, rfc-0049, rfc-0098, phase-445, phase-481]
 ---
+
+## Plan (2026-10-07)
+
+Owned by [phase-481](../roadmap/phase-481-image-config-one-source.md), from
+[RFC-0098](../design/0098-generated-leaf-build-config.md) D10-D12. The
+"precedence decision" below was the wrong question: on Zephyr the image's `env`
+and the leaf's `prj.conf` are two sources for one fact, so the fix removes one
+-- nano-ros knobs, the RMW choice and the deploy endpoint move to
+`system.toml` and are rendered into a Kconfig fragment (D11), with a gate on
+conf files and the Zephyr examples migrated. On the workspace road, images
+whose configuration differs get their own configure (D12).
 
 ## Summary
 

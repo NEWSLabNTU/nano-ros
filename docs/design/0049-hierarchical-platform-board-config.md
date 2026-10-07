@@ -48,6 +48,14 @@ defaults at the hardware layers.
 > `[knobs.zenoh.tx]` / `[build.zenoh]` sections are keyed on the resolved
 > backend, closing the leak RFC-0071 D8 names.
 
+> **Amended by [RFC-0098](0098-generated-leaf-build-config.md) D10–D12
+> (2026-10-07), implemented by phase-481.** The ladder is unchanged; the APP
+> rung gets ONE author. `system.toml` states an image's knobs on every road and
+> each road renders them into its front-end — on Zephyr a generated Kconfig
+> fragment, so Kconfig stays the mechanism while a leaf's conf files stop being
+> a second source for nano-ros knobs. Workspace images whose configuration
+> differs no longer share a configure.
+
 ## Design
 
 ### Ownership — one schema, one file per package, no central file
