@@ -211,7 +211,7 @@ Verdicts per row; the hole details and their class are in the issues named above
 | `interop-cell-runners` | every Runtime interop cell's test binary is invoked by a recipe/workflow | just/xrce.just binary(xrce_ros2_interop) -> binary(xrce_ros2_interopz) (only exclusions remain) | 1 | — | — | **CLEAN** |
 | `interop-verdict-ledger` | every live-peer cell has a recorded verdict | rename the bridge-zenoh-to-cyclone verdict's cell | 1 | — | — | **CLEAN** |
 | `issue-index` | README 'Recently resolved' digests are frozen (ratchet 327) | append one digest | 1 | — | — | **CLEAN** |
-| `issue-index-ratchet-down` | the frozen digest ratchet is forced down (W9) | delete one digest (count 326 < 327) | 0 | the same deletion plus one appended digest (net 327, a regrowth into the freed slot) | 1 | **HOLE** → FIXED here |
+| `issue-index-ratchet-down` | the frozen digest ratchet is forced down (W9) | delete one digest (count 326 < 327) | 0 | the same deletion plus one appended digest (net 327, a regrowth into the freed slot) | 1 | **HOLE** → the COUNT fixed here; the swap itself (net 327) still passed rc 0 until the block CONTENT was frozen by sha256 (issue 1739 follow-up) |
 | `just-recipe-paths` | a recipe's literal in-repo paths exist | bash scripts/no-such-audit.sh in just/check/docs.just | 1 | — | — | **CLEAN** |
 | `just-recipe-refs` | every just <recipe> in a recipe body exists | just zz-audit-missing in just/check/docs.just | 1 | — | — | **CLEAN** |
 | `kconfig-knob-forwarding` | each forwarded knob is read from the RIGHT Kconfig symbol | ZPICO_GET_REPLY_BUF_SIZE resolved from CONFIG_NROS_GET_POLL_INTERVAL_MS | 1 | — | — | **CLEAN** |
