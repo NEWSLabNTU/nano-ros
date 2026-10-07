@@ -37,10 +37,10 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k + pairwise l × r | 20 | 12 | 24 % |
-//! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 12 | 12 | 24 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 37 | 35 | 71 % |
-//! | tier 3 | everything | 205 | 49 | 100 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k + pairwise l × r | 20 | 12 | 25 % |
+//! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 11 | 11 | 23 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 35 | 34 | 71 % |
+//! | tier 3 | everything | 205 | 48 | 100 % |
 //!
 //! Re-measured 2026-09-10 (phase-441 W1). FOUR of the six gated numbers had
 //! drifted before that commit touched anything — tier 1's cells (17→19), tier
@@ -104,7 +104,10 @@
 //! Note the ladder is not monotone in CELLS — tier 1 picks 17 and tier 2 picks 11
 //! — because tier 1's cells are all native and a native fixture is nearly free.
 //! Cell count is the wrong unit; `the_ladder_is_monotone_in_fixture_cost` asserts
-//! the ordering in coordinates so that confusion cannot come back.
+//! the ordering in coordinates so that confusion cannot come back — except
+//! between tier 1 and tier 2, which are not nested (ESP32 going dormant, issue
+//! 1525, took tier 2 to 11 coordinates against tier 1's 12); there it asserts
+//! that tier 2 reaches platforms tier 1 does not.
 //!
 //! # Why a set cover and not a covering array
 //!
@@ -628,7 +631,13 @@ mod tests {
             .split_whitespace()
             .collect();
 
-        let needed: BTreeSet<&str> = PlatformId::ALL.iter().map(|p| p.just_module()).collect();
+        // A platform no cell builds (PX4, dormant ESP32 — issue 1525) has nothing
+        // for the fan-out to build; `matrix::platform_is_built` is the one rule.
+        let needed: BTreeSet<&str> = PlatformId::ALL
+            .iter()
+            .filter(|p| crate::matrix::platform_is_built(**p))
+            .map(|p| p.just_module())
+            .collect();
         let missing: Vec<&&str> = needed.difference(&listed).collect();
         assert!(
             missing.is_empty(),
@@ -913,8 +922,8 @@ _tier-build:
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
             (CiLane::Tier1, 20, 12),
-            (CiLane::Tier2, 12, 12),
-            (CiLane::Tier2Nightly, 37, 35),
+            (CiLane::Tier2, 11, 11),
+            (CiLane::Tier2Nightly, 35, 34),
         ];
         for (lane, want_cells, want_coords) in documented {
             assert_eq!(
@@ -933,8 +942,8 @@ _tier-build:
             );
         }
         assert_eq!(
-            total_coords, 49,
-            "the table's tier-3 denominator (49 coordinates) is stale; recomputed \
+            total_coords, 48,
+            "the table's tier-3 denominator (48 coordinates) is stale; recomputed \
              {total_coords}"
         );
     }
@@ -959,10 +968,33 @@ _tier-build:
 
         assert!(t1 > 0 && t2 > 0 && tn > 0, "empty lane: {t1}/{t2}/{tn}");
         assert!(
-            t1 <= t2 && t2 < tn && tn < all.len(),
+            t2 < tn && tn < all.len() && t1 < tn,
             "ladder must cost strictly more at each rung: \
              tier1={t1} tier2={t2} nightly={tn} all={}",
             all.len()
+        );
+        // Tier 1 and tier 2 are NOT nested, so their SIZES are not ordered:
+        // tier 1 is the host-executable coordinates in full, tier 2 is one of
+        // each value across every platform. This asserted `tier1 <= tier2` and
+        // held at exactly 12 = 12 until ESP32 went dormant (issue 1525), when
+        // tier 2's 1-wise cover needed one coordinate fewer (11). The count was
+        // never the cost — tier 1's coordinates are host builds, tier 2's are
+        // mostly cross builds. What the ladder needs from tier 2 is that it
+        // REACHES what tier 1 cannot: platforms outside the host set.
+        let platforms = |lane: CiLane| -> BTreeSet<String> {
+            coords(lane)
+                .iter()
+                .map(|c| c.split(',').next().unwrap_or_default().to_string())
+                .collect()
+        };
+        let beyond: Vec<String> = platforms(CiLane::Tier2)
+            .difference(&platforms(CiLane::Tier1))
+            .cloned()
+            .collect();
+        assert!(
+            !beyond.is_empty(),
+            "tier 2 reaches no platform tier 1 does not — it would be a smaller \
+             tier 1, not a middle rung"
         );
         // The point of splitting tier 2: the per-change gate has to be cheap
         // enough that it gets run. If it ever creeps past a third of the sweep it
