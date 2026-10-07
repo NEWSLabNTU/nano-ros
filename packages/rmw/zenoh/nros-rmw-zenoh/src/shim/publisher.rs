@@ -306,7 +306,10 @@ pub(super) mod transient_local {
             }
             s.lens[head].store(data.len(), Ordering::Relaxed);
             s.att_lens[head].store(attachment.len(), Ordering::Relaxed);
-            s.head.store((head + 1) % DEPTH, Ordering::Relaxed);
+            // Wrapped by comparison, not `% DEPTH`: at the builtin depth of one
+            // that is `% 1`, which clippy refuses (`modulo_one`).
+            let next = if head + 1 == DEPTH { 0 } else { head + 1 };
+            s.head.store(next, Ordering::Relaxed);
             let count = s.count.load(Ordering::Relaxed);
             s.count.store((count + 1).min(DEPTH), Ordering::Release);
         } else {
@@ -402,9 +405,6 @@ pub(super) mod transient_local {
         if seq < 0 {
             return;
         }
-        // SAFETY: `count` is non-zero and `writing` is clear, so the ring holds
-        // `count` complete samples and the only writer is quiescent.
-        let ke = unsafe { &*s.reply_keyexpr.get() };
         // Issue 1709 -- one reply PER retained sample, oldest first, on the
         // one stored query. Every reply but the last KEEPS the query open
         // (`zpico_query_reply_keep`); the last is a plain `zpico_query_reply`,
@@ -413,12 +413,15 @@ pub(super) mod transient_local {
         // is why a failure stops the series rather than continuing on a seq
         // that no longer names anything.
         for (i, idx) in RetainSlot::oldest_first(head, count).enumerate() {
-            let (data, att) = unsafe {
+            // SAFETY: `count` is non-zero and `writing` is clear, so the ring
+            // holds `count` complete samples and the only writer is quiescent.
+            let (data, att, ke) = unsafe {
                 let len = s.lens[idx].load(Ordering::Relaxed);
                 let att_len = s.att_lens[idx].load(Ordering::Relaxed);
                 (
                     &(&*s.data.get())[idx][..len],
                     &(&*s.att.get())[idx][..att_len],
+                    &*s.reply_keyexpr.get(),
                 )
             };
             let last = i + 1 == count;

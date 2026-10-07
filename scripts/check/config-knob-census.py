@@ -129,6 +129,11 @@ KNOB_CLASS = {
         "retention slots for TRANSIENT_LOCAL publishers; counted from the "
         "image's declared endpoints, phase-455 W5",
     ),
+    "ZPICO_TL_RETAIN_DEPTH": (
+        "derived",
+        "samples each transient-local retention slot keeps; the deepest "
+        "KEEP_LAST a transient-local publisher declares, issue 1709",
+    ),
     "ZPICO_TL_RETAIN_BYTES": (
         "derived",
         "the retained sample's slot size — the publisher-side twin of "
