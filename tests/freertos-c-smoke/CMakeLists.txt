@@ -56,3 +56,6 @@ target_link_libraries(nros_freertos_c_smoke PRIVATE
 # FreeRTOS-Kernel Posix port links pthread + librt.
 find_package(Threads REQUIRED)
 target_link_libraries(nros_freertos_c_smoke PRIVATE Threads::Threads)
+# Issue 1706 -- the probe of a request heap_4 can never serve is heap_4-only.
+target_compile_definitions(nros_freertos_c_smoke PRIVATE
+    NROS_SMOKE_FREERTOS_HEAP=${NROS_SMOKE_FREERTOS_HEAP})

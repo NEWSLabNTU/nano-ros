@@ -196,10 +196,21 @@ void *nros_platform_alloc(size_t size) {
      * `pvPortMalloc`, and until then reports 0 free. Measured: the first
      * allocation of every boot (56 bytes, from lwIP) read as an exhaustion
      * of a 409,600-byte heap. A heap that is genuinely at 0 fails anyway,
-     * and the hook says so. */
+     * and the hook says so.
+     *
+     * And the certain failure is ANSWERED here, with NULL, rather than handed
+     * to heap_4 (issue 1706 item (d)). heap_4's arena is FIXED
+     * (`configTOTAL_HEAP_SIZE`, a static `ucHeap[]`), so "more than the whole
+     * free total" cannot be served by anything -- and passing it on made
+     * heap_4 call `vApplicationMallocFailedHook`, which halts, before the
+     * caller's fallible path (the parameter store's named refusal,
+     * `try_box`) could return. The caller decides, as on ThreadX since issue
+     * 1717. A request that fails only on FRAGMENTATION still reaches heap_4
+     * and its hook: that one cannot be predicted from the free total. */
     const size_t free_bytes = xPortGetFreeHeapSize();
     if (free_bytes != 0u && size > free_bytes) {
         nros_freertos_report_exhaustion(size, free_bytes);
+        return NULL;
     }
 #endif
     return pvPortMalloc(size);

@@ -60,6 +60,25 @@ static void smoke_task(void *arg) {
         CHECK(why == NULL, why);
     }
 
+#if NROS_SMOKE_FREERTOS_HEAP == 4
+    /* Issue 1706 (d) -- a request heap_4's FIXED arena can never serve is
+     * answered with NULL by the port, not handed to heap_4, whose
+     * `vApplicationMallocFailedHook` (below: FAIL + exit) would halt before
+     * the caller's fallible path could return. The parameter store is the
+     * request this exists for: one ~280 KiB allocation with a named refusal. */
+    {
+        const size_t free_now = xPortGetFreeHeapSize();
+        CHECK(free_now > 0, "heap_4 reports no free bytes after allocating");
+        void *never = nros_platform_alloc(free_now + 1);
+        CHECK(never == NULL, "a request above heap_4's free total was served");
+        printf("  heap_4: request of %u bytes over %u free answered NULL, no hook\n",
+               (unsigned) (free_now + 1), (unsigned) free_now);
+        void *again = nros_platform_alloc(64);
+        CHECK(again != NULL, "heap_4 unusable after a refused request");
+        nros_platform_dealloc(again);
+    }
+#endif
+
     /* Yield */
     nros_platform_yield_now();
 
