@@ -88,7 +88,7 @@ RULED_PRIVATE = {
         "the four RTOS/native typed-entry CARRIER executables (nuttx, threadx, "
         "freertos, native), two lines each",
     ),
-    "cmake/compat/NrosRclcppCompat.cmake": (
+    "cmake/NanoRosAmentSurface.cmake": (
         2,
         "ament_auto_add_executable + the rclcpp_components_register_node "
         "synthesised main; both are the binary itself",

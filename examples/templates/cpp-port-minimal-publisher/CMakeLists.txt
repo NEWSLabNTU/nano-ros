@@ -1,7 +1,7 @@
 # cpp-port-minimal-publisher — Phase 209.G iter 2.
 #
 # Vendors the canonical ROS 2 "minimal publisher" tutorial node UNMODIFIED and
-# builds it against nano-ros via the 209.A-D compat surface. The CMakeLists.txt
+# builds it against nano-ros through its ament / rclcpp surface. The CMakeLists.txt
 # nano-ros glue (the three lines below `# 1)`/`# 2)`/`# 3)`) is the only
 # delta from a stock ROS 2 ament_cmake_auto package.
 
@@ -66,8 +66,8 @@ if(NOT DEFINED NANO_ROS_ROOT)
 endif()
 add_subdirectory("${NANO_ROS_ROOT}" nano_ros)
 
-# 2) rclcpp / ament_cmake_auto / rclcpp_components source-compat.
-include("${NANO_ROS_ROOT}/cmake/compat/NrosRclcppCompat.cmake")
+# 2) The ament / rclcpp surface: rclcpp / ament_cmake_auto / rclcpp_components.
+include("${NANO_ROS_ROOT}/cmake/NanoRosAmentSurface.cmake")
 
 # 3) Generate the message bindings the ported source includes. package.xml is the
 #    single source of truth for the msg deps; nros_find_interfaces() resolves the

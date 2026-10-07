@@ -17,7 +17,7 @@ existing `rclcpp`, `rclc`, or `rclrs` node toward nano-ros.
 | `RMW_IMPLEMENTATION=…` at runtime | compile-time backend, one line: `[system] rmw = "…"` in `system.toml`, then `nros sync` | [Switching RMW](../user-guide/rmw-switching.md) |
 | generated msg packages (ament index) | `nros sync` writes `generated/` crates; the cargo patch table goes in the generated settings under `build/`, not in your package | [Message Generation](../user-guide/message-generation.md) |
 | `find_package(rclcpp)` | `find_package(nano_ros)` — ament-shaped, source-backed | [Porting a C++ node](../getting-started/porting-a-cpp-node.md) |
-| `ament_target_dependencies(t std_msgs)` | kept, verbatim (compat shim + Find-stubs) | same page |
+| `ament_target_dependencies(t std_msgs)` | kept, verbatim (nano-ros's ament verbs + find modules) | same page |
 
 ## Setup
 

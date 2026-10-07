@@ -22,7 +22,7 @@ add_executable(consumer src/consumer.cpp)
 # Canonical ROS 2 ament_cmake shape — `ament_target_dependencies` wires
 # include dirs + link libraries for each named pkg (under stock ROS the
 # real macro walks each pkg's `_LIBRARIES`/`_INCLUDE_DIRS`; under nano-ros
-# the compat shim in `NrosRclcppCompat.cmake` aliases to `${pkg}::${pkg}`).
+# `cmake/NanoRosAmentSurface.cmake` links `${pkg}::${pkg}`).
 # Works verbatim under BOTH `colcon build` and the nano-ros umbrella.
 ament_target_dependencies(consumer
     rclcpp
@@ -33,10 +33,10 @@ ament_target_dependencies(consumer
     sensor_msgs
 )
 
-# nano-ros backend registration: an rclcpp-compat executable has no
+# nano-ros backend registration: an ament-built executable has no
 # generated entry TU, so nros_cpp_init's strong nros_app_register_backends
-# must come from the link_rmw stub (no-op under stock ROS — the compat
-# module defines it away). Without this the final link dies with
+# must come from the link_rmw stub (skipped under stock ROS, which has
+# no such command). Without this the final link dies with
 # `undefined reference to nros_app_register_backends`.
 if(COMMAND nano_ros_link_rmw)
     enable_language(C) # the link_rmw registration stub is a C TU
@@ -46,7 +46,7 @@ endif()
 # Stock-ROS install (so colcon merge-install layout puts the binary at
 # install/lib/consumer/consumer). The nano-ros build path doesn't need
 # this — the umbrella keeps the binary under build/. ament_cmake
-# substitutes a no-op under our compat module.
+# substitutes a no-op under nano-ros's ament surface.
 install(TARGETS consumer DESTINATION lib/${PROJECT_NAME})
 
 ament_package()

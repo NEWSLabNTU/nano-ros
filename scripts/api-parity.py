@@ -298,7 +298,8 @@ RCLC_SOURCE = (
 # never made for the compat shim, and it is the stronger case: 589 lines whose
 # entire purpose is drop-in compatibility, and what a ported file actually
 # reaches, because `#include <rclcpp/rclcpp.hpp>` resolves to it through
-# `cmake/compat/NrosRclcppCompat.cmake`. Excluded TWICE until now — the header
+# the ament surface (`cmake/NanoRosAmentSurface.cmake`, formerly
+# `cmake/compat/`). Excluded TWICE until now — the header
 # was never included, and everything it declares is in namespace `rclcpp`, which
 # the `{"nros"}` filter would have dropped anyway. So the 717 uncovered rclcpp
 # rows measured how far the NATIVE `nros::` API is from rclcpp, not how far

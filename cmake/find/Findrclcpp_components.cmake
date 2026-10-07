@@ -1,13 +1,13 @@
-# Find-stub for rclcpp_components — Phase 209.B (NrosRclcppCompat).
+# Find module for rclcpp_components — phase-209 B; part of nano-ros's CMake package (phase-482 W1).
 #
 # Defines `rclcpp_components::component` as an IMPORTED INTERFACE forwarding to
 # NanoRos::NanoRosCpp so the typical `target_link_libraries(<lib>
 # rclcpp_components::component)` on a component-style ported source resolves.
 # The `rclcpp_components_register_node()` cmake macro itself is defined by
-# `NrosRclcppCompat.cmake` (single-binary embedded; emits a thin `int main()`
+# `cmake/NanoRosAmentSurface.cmake` (single-binary embedded; emits a thin `int main()`
 # that constructs the registered class + `rclcpp::spin`s it).
 # issue 1467 — one home for the umbrella choice; see the note in Findrclcpp.cmake.
-include("${CMAKE_CURRENT_LIST_DIR}/../../NanoRosRuntimeUmbrella.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosRuntimeUmbrella.cmake")
 if(NOT TARGET rclcpp_components::component)
     add_library(rclcpp_components::component INTERFACE IMPORTED)
     nros_link_runtime_umbrella(rclcpp_components::component INTERFACE

@@ -5,9 +5,8 @@
 // `Writing a simple publisher and subscriber (C++)`.)
 //
 // Phase 209.G iter 2: proves an unmodified ROS-2-generic C++ source compiles
-// + links + runs against nano-ros through the 209.A–D compat surface, with
-// only the build-script glue prepended (one `include(NrosRclcppCompat.cmake)`
-// line). No source edits.
+// + links + runs against nano-ros, with only the build-script glue prepended
+// (one `include(NanoRosAmentSurface.cmake)` line). No source edits.
 //
 // What this exercises:
 //   * Subclass `rclcpp::Node` with the `(name)` constructor.

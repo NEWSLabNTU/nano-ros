@@ -27,8 +27,8 @@ ament_target_dependencies(consumer
 # `nano_ros_link_rmw` (phase-249 P4a removed the weak default, so its absence is
 # a link error). The workspace's hand-written umbrella used to wire this; with
 # no root build file (RFC-0098 D9, phase-445 W5) the package states it itself,
-# like `local-msg-package/src/consumer`. A no-op under stock ROS — the compat
-# module is what defines the command.
+# like `local-msg-package/src/consumer`. A no-op under stock ROS — nano-ros's
+# CMake package is what defines the command.
 if(COMMAND nano_ros_link_rmw)
     nano_ros_link_rmw(consumer)
 endif()

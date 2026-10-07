@@ -3,7 +3,7 @@
 # Pure ament_cmake_auto + rclcpp_components shape, mostly verbatim from what a
 # ROS 2 user would write. The only nano-ros-specific lines are:
 #   1) the platform / rmw selection + `add_subdirectory(<nano-ros>)`,
-#   2) the `include(<nano-ros>/cmake/compat/NrosRclcppCompat.cmake)` one-liner,
+#   2) the `include(<nano-ros>/cmake/NanoRosAmentSurface.cmake)` one-liner,
 #   3) the `nros_find_interfaces()` codegen call (package.xml drives the msg deps).
 # Everything below those is unmodified `find_package + ament_auto_*`.
 
@@ -69,9 +69,9 @@ if(NOT DEFINED NANO_ROS_ROOT)
 endif()
 add_subdirectory("${NANO_ROS_ROOT}" nano_ros)
 
-# 2) Drop-in source-compat for rclcpp / ament_cmake_auto / rclcpp_components /
+# 2) The ament / rclcpp surface: rclcpp / ament_cmake_auto / rclcpp_components /
 #    diagnostic_updater. Everything below mirrors a stock ROS 2 CMakeLists.
-include("${NANO_ROS_ROOT}/cmake/compat/NrosRclcppCompat.cmake")
+include("${NANO_ROS_ROOT}/cmake/NanoRosAmentSurface.cmake")
 
 # 3) Generate the C++ bindings for the message packages this node uses.
 #    package.xml is the single source of truth for the msg deps;

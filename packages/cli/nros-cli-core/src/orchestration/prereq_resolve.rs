@@ -414,22 +414,36 @@ pub fn self_satisfied_buildtools(ws_root: &Path) -> BTreeSet<String> {
         .collect()
 }
 
-/// The ROS packages nano-ros's cmake compat layer supplies itself.
+/// Where nano-ros's CMake package keeps its `Find<pkg>.cmake` modules,
+/// relative to the checkout root (phase-482 W1; `cmake/compat/stubs/` before).
+pub const FIND_MODULE_DIR: &str = "cmake/find";
+
+/// The ROS packages nano-ros's CMake package supplies itself.
 ///
-/// READ from the layer, not listed here: one `Find<pkg>.cmake` per package in
-/// `cmake/compat/stubs/`, which is what `find_package(<pkg>)` resolves to in a
-/// nano-ros workspace (`NrosRclcppCompat.cmake`). A second, hand-written list
-/// would drift from the stubs the first time one is added. `_`-prefixed files
-/// are the layer's helpers, not packages. No nano-ros checkout ⇒ empty, and
-/// the ladder answers as it did before.
+/// READ from the package, not listed here: one `Find<pkg>.cmake` per package in
+/// [`FIND_MODULE_DIR`], which is what `find_package(<pkg>)` resolves to in a
+/// nano-ros workspace (`cmake/NanoRosAmentSurface.cmake`). A second,
+/// hand-written list would drift from the modules the first time one is added.
+/// `_`-prefixed files are helpers, not packages. No nano-ros checkout ⇒ empty,
+/// and the ladder answers as it did before.
+///
+/// A checkout WITHOUT the directory is a different case and does not read as
+/// "supplies nothing": it panics, naming the path. Returning empty there is
+/// how a move of the directory would silently stop claiming `rclcpp`.
 #[must_use]
-pub fn compat_provided_packages(nano_ros_root: Option<&Path>) -> BTreeSet<String> {
+pub fn nano_ros_provided_packages(nano_ros_root: Option<&Path>) -> BTreeSet<String> {
     let Some(root) = nano_ros_root else {
         return BTreeSet::new();
     };
-    let Ok(rd) = std::fs::read_dir(root.join("cmake/compat/stubs")) else {
-        return BTreeSet::new();
-    };
+    let dir = root.join(FIND_MODULE_DIR);
+    let rd = std::fs::read_dir(&dir).unwrap_or_else(|e| {
+        panic!(
+            "nano-ros checkout {} has no readable {} ({e}); the CMake package's \
+             find modules live there",
+            root.display(),
+            dir.display()
+        )
+    });
     rd.flatten()
         .filter_map(|e| {
             let n = e.file_name().to_string_lossy().into_owned();
@@ -718,20 +732,29 @@ mod tests {
         assert!(!got.contains("rosidl_default_runtime"), "{got:?}");
     }
 
-    /// The compat layer's packages are read off its stub directory: `rclcpp`
-    /// is one (phase-417's `<rclcpp/rclcpp.hpp>` is nano-ros's), a helper file
-    /// is not, and without a checkout nothing is claimed.
+    /// The packages are read off the find-module directory: `rclcpp` is one
+    /// (`<rclcpp/rclcpp.hpp>` is nano-ros's), a helper file is not, and
+    /// without a checkout nothing is claimed.
     #[test]
-    fn compat_provided_packages_are_the_layers_stubs() {
+    fn nano_ros_provided_packages_are_its_find_modules() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
-            .find(|p| p.join("cmake/compat/stubs").is_dir())
-            .expect("the repo's compat stubs");
-        let got = compat_provided_packages(Some(root));
+            .find(|p| p.join("nano_rosConfig.cmake").is_file())
+            .expect("the nano-ros checkout root");
+        let got = nano_ros_provided_packages(Some(root));
         assert!(got.contains("rclcpp"), "{got:?}");
         assert!(got.contains("rclcpp_components"), "{got:?}");
         assert!(!got.iter().any(|n| n.starts_with('_')), "{got:?}");
-        assert!(compat_provided_packages(None).is_empty());
+        assert!(nano_ros_provided_packages(None).is_empty());
+    }
+
+    /// A checkout that lacks the directory is refused, never read as
+    /// "supplies nothing" — the silent answer is what a move would produce.
+    #[test]
+    #[should_panic(expected = "find modules live there")]
+    fn a_checkout_without_find_modules_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let _ = nano_ros_provided_packages(Some(dir.path()));
     }
 
     /// The mapping is per build type, and nano-ros's own builders resolve to

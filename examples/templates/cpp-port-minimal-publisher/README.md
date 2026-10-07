@@ -3,7 +3,7 @@
 The canonical ROS 2 "minimal publisher" tutorial node
 ([source pattern](https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Writing-A-Simple-Cpp-Publisher-And-Subscriber.html)
 from the upstream ROS 2 docs), **vendored unmodified**, building against
-nano-ros through the Phase 209.A–D compat surface.
+nano-ros through its own rclcpp / ament CMake surface.
 
 The acceptance for 209 lands here: a normal ROS 2 C++ node compiles + links +
 runs against nano-ros by **swapping the build glue + zero `#include` edits** —
@@ -44,8 +44,8 @@ The only delta — three lines prepended:
 set(NANO_ROS_PLATFORM posix)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../.." nano_ros)
 
-# 2) rclcpp / ament_cmake_auto / rclcpp_components source-compat.
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/compat/NrosRclcppCompat.cmake")
+# 2) The ament / rclcpp surface: rclcpp / ament_cmake_auto / rclcpp_components.
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/NanoRosAmentSurface.cmake")
 
 # 3) Generate the message bindings the source includes (folded by 209.E).
 nros_generate_interfaces(builtin_interfaces LANGUAGE CPP SKIP_INSTALL)

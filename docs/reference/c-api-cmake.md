@@ -229,9 +229,9 @@ target_compile_definitions(my_ported_node PRIVATE NROS_CPP_STD=1)
 Two build paths already set it, and between them they cover every in-tree
 consumer:
 
-- **`cmake/compat/NrosRclcppCompat.cmake`** sets `NROS_CPP_STD=1` on every
-  target it applies the compat shim to. Anything reaching
-  `<rclcpp/rclcpp.hpp>` through `find_package(rclcpp)` and the Find-stub is
+- **`cmake/NanoRosAmentSurface.cmake`** sets `NROS_CPP_STD=1` on every
+  target its `ament_*` verbs create. Anything reaching
+  `<rclcpp/rclcpp.hpp>` through `find_package(rclcpp)` and `cmake/find/Findrclcpp.cmake` is
   therefore already on the std surface with no line of its own — which is why
   the ported-package `CMakeLists.txt` in
   [book/src/getting-started/porting-a-cpp-node.md](../../book/src/getting-started/porting-a-cpp-node.md)

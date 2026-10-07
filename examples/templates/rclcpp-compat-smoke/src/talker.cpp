@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// rclcpp-compat smoke — Phase 209 MVP-quartet integration test.
+// rclcpp-compat smoke — integration test for the ported-node path.
 //
-// Verifies that A (`nros/rclcpp_compat.hpp`) + B (`NrosRclcppCompat.cmake`) +
-// C (`rclcpp_components_compat.hpp`) + D (`diagnostic_updater::Updater`) compose:
+// Verifies that A (`<rclcpp/rclcpp.hpp>`) + B (`NanoRosAmentSurface.cmake`) +
+// C (`<rclcpp_components/register_node_macro.hpp>`) + D
+// (`diagnostic_updater::Updater`) compose:
 // a ROS-2-idiom source (no `#include <nros/...>` except the codegen umbrella for
 // the message type) compiles + links + publishes through nano-ros.
 //

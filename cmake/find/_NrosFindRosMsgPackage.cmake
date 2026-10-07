@@ -32,7 +32,7 @@ set(_NROS_FIND_ROS_MSG_PACKAGE_INCLUDED TRUE)
 # rather than copied. A `function()` is global in cmake, so this survives even
 # when the include happens inside a `find_package()` frame — unlike the normal
 # variable guard above it.
-include("${CMAKE_CURRENT_LIST_DIR}/../../NanoRosPackageXml.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosPackageXml.cmake")
 
 # --- workspace-pkg Find-stub emission ----------------------------------------
 #
@@ -110,7 +110,7 @@ function(_nros_emit_workspace_find_stubs)
 endfunction()
 
 # Emit workspace-pkg stubs immediately on first include — picks up any
-# NROS_INTERFACE_SEARCH_PATH set BEFORE NrosRclcppCompat.cmake is pulled in.
+# NROS_INTERFACE_SEARCH_PATH set BEFORE NanoRosAmentSurface.cmake is pulled in.
 _nros_emit_workspace_find_stubs()
 
 # --- locate the codegen module so we can call nros_generate_interfaces ----
@@ -118,7 +118,7 @@ _nros_emit_workspace_find_stubs()
 # NanoRosGenerateInterfaces. Pull it in lazily (idempotent — guarded by the
 # module's own load-once pattern).
 get_filename_component(_nrm_stub_dir "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
-get_filename_component(_nrm_cmake_dir "${_nrm_stub_dir}/../.." ABSOLUTE)
+get_filename_component(_nrm_cmake_dir "${_nrm_stub_dir}/.." ABSOLUTE)
 if(NOT COMMAND nros_generate_interfaces AND EXISTS "${_nrm_cmake_dir}/NanoRosGenerateInterfaces.cmake")
     include("${_nrm_cmake_dir}/NanoRosGenerateInterfaces.cmake")
 endif()

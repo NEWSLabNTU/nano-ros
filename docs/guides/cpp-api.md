@@ -432,9 +432,9 @@ A per-file `#define NROS_CPP_STD` ahead of `<nros/nros.hpp>` compiles, but it
 changes the layout of `rclcpp::Node`, so mixing it within one image is an ODR
 break rather than a missing function.
 
-If you are using `cmake/compat/NrosRclcppCompat.cmake` — the drop-in
-source-compat path for ported packages — the flag is already set on every
-target the shim touches and you need nothing here.
+If you build a ported package through nano-ros's ament surface
+(`cmake/NanoRosAmentSurface.cmake`, `find_package(rclcpp)`), the flag is
+already set on every target it creates or links and you need nothing here.
 
 ### `std::string` overloads
 

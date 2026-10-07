@@ -1,10 +1,10 @@
-# nros-diagnostic-updater — Phase 209.D
+# nros-diagnostic-updater — phase-209 D; under packages/api since phase-482 W1
 #
-# Header-only `diagnostic_updater` source-compat shim for ROS 2 C++ nodes
+# Header-only `diagnostic_updater` for ROS 2 C++ nodes
 # ported to nano-ros. Sees `diagnostic_msgs/msg/{DiagnosticArray,DiagnosticStatus,
 # KeyValue}.hpp` via the consuming project's `nano_ros_generate_interfaces
 # (diagnostic_msgs ... LANGUAGE CPP)` codegen — this target itself just exports
-# the include dir + the rclcpp_compat dependency.
+# the include dir + the nros-cpp runtime link.
 
 cmake_minimum_required(VERSION 3.20)
 project(nros-diagnostic-updater LANGUAGES CXX)
@@ -16,8 +16,8 @@ target_include_directories(nros-diagnostic-updater INTERFACE
 )
 # issue 1118 — at or above the floor nros-cpp declares (`cxx_std_17`).
 target_compile_features(nros-diagnostic-updater INTERFACE cxx_std_17)
-# issue 1467 — one home for the umbrella choice; see the note in Findrclcpp.cmake.
-include("${CMAKE_CURRENT_LIST_DIR}/../../NanoRosRuntimeUmbrella.cmake")
+# issue 1467 — one home for the umbrella choice; see the note in cmake/find/Findrclcpp.cmake.
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosRuntimeUmbrella.cmake")
 nros_link_runtime_umbrella(nros-diagnostic-updater INTERFACE
     CANDIDATES NanoRos::NanoRosCpp)
 

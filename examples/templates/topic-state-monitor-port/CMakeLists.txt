@@ -59,7 +59,7 @@ if(NOT DEFINED NANO_ROS_ROOT)
 endif()
 add_subdirectory("${NANO_ROS_ROOT}" nano_ros)
 
-include("${NANO_ROS_ROOT}/cmake/compat/NrosRclcppCompat.cmake")
+include("${NANO_ROS_ROOT}/cmake/NanoRosAmentSurface.cmake")
 
 # package.xml is the single source of truth for the msg deps;
 # nros_find_interfaces() resolves the transitive closure from its <depend> entries.

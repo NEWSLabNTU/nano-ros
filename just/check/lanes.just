@@ -2063,7 +2063,7 @@ cpp: cpp-fmt
     # are. Before W2 they got the same surface without asking, because
     # `__has_include` found libstdc++ on the host; the flag makes the request
     # explicit and is what a real ported consumer now writes too
-    # (`cmake/compat/NrosRclcppCompat.cmake` sets it for exactly these files).
+    # (`cmake/NanoRosAmentSurface.cmake` sets it for exactly these files).
     for probe in ros2_api_adoption node_graph_forwarders ros2_api_adoption_stage2 ros2_one_dispatch_path \
                  ros2_init_argv_refusal action_goal_uuid executor_cancel entity_name_accessors; do \
         c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \

@@ -100,9 +100,9 @@ on one module of a larger image deliberately — so keep the definition at
 target granularity and give every TU of a target the same answer.
 
 **A ported project usually needs none of this.**
-`cmake/compat/NrosRclcppCompat.cmake` sets `NROS_CPP_STD=1` on every target it
-touches. Anything reaching `<rclcpp/rclcpp.hpp>` through the compat shim already
-has the surface it needs; see
+`cmake/NanoRosAmentSurface.cmake` sets `NROS_CPP_STD=1` on every target its
+`ament_*` verbs create, and `find_package(rclcpp)` sets it on whatever links
+`rclcpp::rclcpp`, so a ported package already has the surface it needs; see
 [Porting a ROS 2 C++ node](../getting-started/porting-a-cpp-node.md).
 
 ### Why it is not detected for you

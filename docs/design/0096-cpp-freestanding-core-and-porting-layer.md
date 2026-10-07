@@ -348,12 +348,30 @@ permanent porting tooling, and that is
 ported `CMakeLists.txt` needs from it either becomes part of nano-ros's own
 CMake package or is listed in D5 as an edit.
 
+Done 2026-10-07 (phase-482 W1). Every piece became part of the package, and
+no D5 edit was needed:
+
+* `<rclcpp/rclcpp.hpp>` and `<rclcpp_components/register_node_macro.hpp>` are
+  nros-cpp headers, so they are on the include path of every C++ target and no
+  force-include or private include directory is applied any more;
+* the `ament_*` / `rclcpp_components_*` verbs are `cmake/NanoRosAmentSurface.cmake`,
+  which `nano_rosConfig.cmake` and `nano_ros_workspace()` include;
+* the `Find<pkg>.cmake` modules are `cmake/find/`. They stay find MODULES
+  rather than `<pkg>Config.cmake` files: `find_package()` tries module mode
+  first, which is what keeps nano-ros's `rclcpp` ahead of an installed ROS 2
+  on `CMAKE_PREFIX_PATH`;
+* `diagnostic_updater` is `packages/api/nros-diagnostic-updater`.
+
+A project that wrote `include(<nano-ros>/cmake/compat/NrosRclcppCompat.cmake)`
+changes that path to `cmake/NanoRosAmentSurface.cmake`; one that uses
+`find_package(nano_ros)` changes nothing.
+
 `std_compat.hpp` goes with them (D5 below) — 275 lines behind a macro nothing
 that ships defines, a third orphaned vocabulary predating the phase-427 merge.
 
 ### D5 — What is NOT drop-in, enumerated
 
-Honesty about the boundary is what makes the claim usable. Three things require
+Honesty about the boundary is what makes the claim usable. These things require
 an edit, and every one is a compile error naming the exact site:
 
 1. **An explicit `std::shared_ptr<rclcpp::X>` spelling** where upstream house
@@ -376,11 +394,16 @@ an edit, and every one is a compile error naming the exact site:
    `nros::Handle<Node>` and copyable — so this is on the list because it is a
    difference, not because it has cost anything measured.
 
-   Status 2026-10-07: the node handle is not that yet. `Node::SharedPtr` is
-   still `std::shared_ptr<Node>`, behind `hosted-family: shared-ptr-interop`.
-   Making it the freestanding `nros::Handle<Node>` this item describes is
-   [phase-482](../roadmap/phase-482-rclcpp-drop-in-residue.md) W2. The decision
-   stands; only the implementation is owed.
+   Done 2026-10-07 ([phase-482](../roadmap/phase-482-rclcpp-drop-in-residue.md)
+   W2): `Node::SharedPtr` is `nros::Handle<Node>` on every target.
+5. **`Node::SharedPtr x = std::make_shared<MyNode>(…)`** (phase-482 W2). The
+   handle observes and does not own, so binding it to a temporary
+   `std::shared_ptr` would dangle the moment the statement ends. On a hosted
+   build a `Handle` converts from an lvalue `std::shared_ptr` but the rvalue
+   conversion is deleted, so the line is a compile error naming the deleted
+   constructor. Write `auto x = std::make_shared<MyNode>(…)`, which keeps the
+   owner. `rclcpp::spin(std::make_shared<MyNode>())` is unaffected: the hosted
+   spin verbs take the `std::shared_ptr` itself.
 
 What this does not promise: an arbitrary third-party ROS 2 package that uses
 `std::string` internally will not become freestanding because our API is. The
