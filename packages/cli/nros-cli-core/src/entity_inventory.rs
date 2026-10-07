@@ -1245,6 +1245,12 @@ pub struct DerivedEntityKnobs {
     ///   lifecycle servers of issue 1270 are already in) + the service
     ///   clients, three of them per action client.
     ///
+    /// LESS the transient-local cache queryables (issue 1713). A
+    /// transient-local publisher declares its cache queryable inside
+    /// `ZenohPublisher::new` and declares NO token for it; its one token is
+    /// the publisher's own, already counted in [`Self::max_publishers`]. This
+    /// term was in the sum until 1713, one over per latched publisher.
+    ///
     /// Timers and guard conditions declare nothing. Every term errs HIGH where
     /// the shim is ambiguous (a component sharing the executor's name reuses
     /// one token; this counts two), and exhaustion is NAMED, not silent: the
@@ -1256,6 +1262,21 @@ pub struct DerivedEntityKnobs {
     /// UNDER-counts only for a bridge (two runtime-named nodes and their
     /// entities, declared nowhere) -- the `max_nodes` exception, one pool over.
     pub max_liveliness: usize,
+    /// Issue 1713 -- the part of [`Self::max_liveliness`] that is the
+    /// APPLICATION's ENTITIES: its publishers (action expansion and contract
+    /// reporter included, the lifecycle `~/transition_event` not), its
+    /// subscribers, its service servers ([`Self::local_query_servers`]) and its
+    /// service clients ([`Self::local_query_clients`]). No node token and no
+    /// runtime server.
+    ///
+    /// The `[image] entity_liveliness_tokens` fact. It is the application half
+    /// ONLY for the reason `[image] service_server_queryables` is: the consumer
+    /// (`nros-zpico-build`) completes the pool from the `NROS_DECLARED_*` facts
+    /// -- node count and parameter/lifecycle families -- which reach it on
+    /// roads where no descriptor does, and adding them there means one place
+    /// states what they cost. `max_liveliness` = this + the node tokens + the
+    /// runtime's servers and publisher.
+    pub entity_liveliness_tokens: usize,
     /// Issue 1549 -- the QUERIERS this image's one session opens for its
     /// application: declared service clients, plus
     /// [`ACTION_CLIENT_SERVICE_CLIENTS`] per action client. One side of
@@ -1460,6 +1481,7 @@ impl DerivedEntityKnobs {
             param_service_nodes: m(|k| k.param_service_nodes),
             max_nodes: m(|k| k.max_nodes),
             max_liveliness: m(|k| k.max_liveliness),
+            entity_liveliness_tokens: m(|k| k.entity_liveliness_tokens),
             local_query_clients: m(|k| k.local_query_clients),
             local_query_servers: m(|k| k.local_query_servers),
             local_queryable: per_image.iter().any(|k| k.local_queryable),
@@ -3726,8 +3748,13 @@ impl EntityInventory {
         let node_tokens = max_nodes.max(param_service_nodes)
             + PRIMARY_NODE_LIVELINESS_TOKENS
             + usize::from(self.infra.lifecycle);
-        let max_liveliness =
-            node_tokens + max_publishers + max_subscribers + max_queryables + service_clients;
+        // Issue 1713 -- the TL cache queryables declare no token (see the
+        // field), so they are taken back out of the queryable term here.
+        let max_liveliness = node_tokens
+            + max_publishers
+            + max_subscribers
+            + (max_queryables - tl_queryables)
+            + service_clients;
 
         // Issue 1549 -- same-session queries. The queriers are exactly the
         // clients the liveliness term above counts; the queryables are the
@@ -3737,6 +3764,21 @@ impl EntityInventory {
         let local_query_servers = n(EntityKind::ServiceServer.tag())
             + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_QUERYABLES;
         let local_queryable = local_query_clients > 0 && local_query_servers > 0;
+        // Issue 1713 -- the application's entities' tokens, which is
+        // `max_liveliness` without the node tokens and the runtime's own
+        // servers and publisher. Spelled as that difference's terms, not as a
+        // subtraction, so a term added to one side cannot silently land in
+        // the other.
+        let entity_liveliness_tokens = (max_publishers - infra_publishers)
+            + max_subscribers
+            + local_query_servers
+            + local_query_clients;
+        debug_assert_eq!(
+            max_liveliness,
+            entity_liveliness_tokens + node_tokens + infra_queryables + infra_publishers,
+            "the application half plus the node tokens and the runtime's entities \
+             must be the whole pool"
+        );
 
         Derivation::Derived(Box::new(DerivedEntityKnobs {
             max_cbs,
@@ -3749,6 +3791,7 @@ impl EntityInventory {
             param_service_nodes,
             max_nodes,
             max_liveliness,
+            entity_liveliness_tokens,
             local_query_clients,
             local_query_servers,
             local_queryable,
@@ -6497,24 +6540,33 @@ mod tests {
         // transient-local count refuses and the table holds the WORST CASE:
         // that publisher and the action server's `/status`, one cache
         // queryable each. They used to count zero here.
+        //
+        // Issue 1713 -- those cache queryables take a QUERYABLE slot and NO
+        // liveliness token: `ZenohPublisher::new` declares the queryable, and
+        // the publisher's one token is the publisher's. They used to be in
+        // this sum.
         let tl_cache = 2;
         assert_eq!(k.tl_slots, tl_cache);
         assert_eq!(
             k.max_liveliness,
-            session_node + node_names + publishers + subscribers + servers + tl_cache + clients,
-            "a timer declares no token; everything else declares exactly one"
+            session_node + node_names + publishers + subscribers + servers + clients,
+            "a timer and a cache queryable declare no token; everything else declares \
+             exactly one"
         );
-        assert_eq!(k.max_liveliness, 17, "the same sum, spelled as a number");
+        assert_eq!(k.max_liveliness, 15, "the same sum, spelled as a number");
+        // Issue 1713 -- the application half is the entities alone.
+        assert_eq!(
+            k.entity_liveliness_tokens,
+            publishers + subscribers + servers + clients
+        );
 
         // Two components are two node names.
         let mut two = EntityInventory::new("test");
         two.insert(stated("a", "one", &["publisher"]));
         two.insert(stated("b", "two", &["sub"]));
-        // (+ 1: the silent publisher's worst-case cache queryable, issue 1572.)
-        assert_eq!(
-            two.derive().knobs().unwrap().max_liveliness,
-            1 + 2 + 1 + 1 + 1
-        );
+        // (The silent publisher's worst-case cache queryable, issue 1572,
+        // takes a queryable slot and no token -- issue 1713.)
+        assert_eq!(two.derive().knobs().unwrap().max_liveliness, 1 + 2 + 1 + 1);
 
         // Never below the session's own token plus the component's node, so a
         // C array fed this value is never zero-length -- the consumer floors
@@ -10181,6 +10233,10 @@ mod shared_runtime_tests {
         assert_eq!(got.max_publishers, max(|k| k.max_publishers));
         assert_eq!(got.max_queryables, max(|k| k.max_queryables));
         assert_eq!(got.max_liveliness, max(|k| k.max_liveliness));
+        assert_eq!(
+            got.entity_liveliness_tokens,
+            max(|k| k.entity_liveliness_tokens)
+        );
         assert_eq!(got.max_cell_entities, max(|k| k.max_cell_entities));
         assert_eq!(got.entity_total, max(|k| k.entity_total));
 
@@ -10320,6 +10376,7 @@ mod shared_runtime_tests {
             param_service_nodes: 0,
             max_nodes: 0,
             max_liveliness: 0,
+            entity_liveliness_tokens: 0,
             local_query_clients: clients,
             local_query_servers: servers,
             local_queryable: local,

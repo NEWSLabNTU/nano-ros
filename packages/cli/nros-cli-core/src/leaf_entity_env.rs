@@ -688,25 +688,26 @@ pub const DERIVED_CLOSURE_ENV_KEYS: &[&str] = &["NROS_SUBSCRIPTION_BUFFER_SIZE"]
 /// large, never short.
 const QUERYABLES_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_QUERYABLES";
 
-/// `ZPICO_MAX_LIVELINESS` is not stated here either — with the same cause as
-/// the knob above and WITHOUT its remedy.
+/// `ZPICO_MAX_LIVELINESS` is not stated here either -- for the same cause and,
+/// since issue 1713, with the same remedy.
 ///
 /// `DerivedEntityKnobs::max_liveliness` is one token per session entity, and
 /// every parameter or lifecycle service server is a session entity: it
 /// declares a token exactly as an application server does. This road's
-/// inventory cannot see those families, so the count would be SHORT for any
-/// image carrying them. Short is not a boot failure here -- the entity works
-/// and is invisible to `ros2 node list`, with a log line naming the knob -- but
-/// it is the silent graph outage issue 0283 exists to prevent, and the crate
-/// default (16) is larger and safe.
+/// inventory cannot see those families, so a count from it would be SHORT for
+/// any image carrying them.
 ///
-/// The difference from [`QUERYABLES_DERIVED_BY_CONSUMER`] is the whole reason
-/// these are two constants and not one. That knob is withheld as a COUNT and
-/// completed by `nros-zpico-build` from the `NROS_DECLARED_*` facts this road
-/// does carry; no consumer completes the liveliness pool from facts, so there
-/// is nothing to hand it and it keeps the zpico default outright. The Zephyr
-/// resolver road derives it, from an inventory composed with the model.
-const NOT_DERIVED_LIVELINESS_NEEDS_INFRA_COUNT: &str = "ZPICO_MAX_LIVELINESS";
+/// Until 1713 nothing completed it either, and the knob kept the zpico default
+/// of 16, which this comment called "larger and safe". It was neither:
+/// `native_rust_qos` (two nodes, `param_services` and a `[lifecycle]` block)
+/// needs 24, and eight of its parameter services failed `declare failed
+/// (Full)` -- working, and invisible to `ros2 service list`. Now
+/// `nros-zpico-build` completes the pool from the SAME `NROS_DECLARED_*`
+/// facts the queryable table uses (node count, parameter and lifecycle
+/// families), plus the descriptor's `[image] entity_liveliness_tokens` where
+/// one is named. The Zephyr resolver road states the whole count, from an
+/// inventory composed with the model.
+const LIVELINESS_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_LIVELINESS";
 
 /// Render the gitignored `[env]` sidecar for a derived budget.
 pub fn render_env_sidecar(
@@ -761,17 +762,14 @@ pub fn render_env_sidecar_with_facts(
         s.push_str("# so nothing says whether the image carries the parameter or lifecycle\n");
         s.push_str("# service families, and the consumer keeps its undeclared budget.\n\n");
     }
-    // phase-412 W2 — the liveliness pool sits one step behind its queryable
-    // sibling above and says so. Both counts need the parameter and lifecycle
-    // families this road cannot see; the difference is that the queryable
-    // count has a CONSUMER that completes it from the `NROS_DECLARED_*` facts,
-    // and the liveliness pool has none, so it keeps the zpico default outright.
+    // phase-412 W2 / issue 1713 — the liveliness pool, completed by the same
+    // consumer from the same facts: every runtime server above also declares
+    // a liveliness token, so a count from this road would be short.
     s.push_str(&format!(
-        "# `{NOT_DERIVED_LIVELINESS_NEEDS_INFRA_COUNT}` is not stated either, and has no such\n"
+        "# `{LIVELINESS_DERIVED_BY_CONSUMER}` is not stated either, for the same reason:\n"
     ));
-    s.push_str("# consumer-side completion: every one of those runtime servers also\n");
-    s.push_str("# declares a liveliness token, so a count from this road would be short\n");
-    s.push_str("# and nothing downstream could add the difference back.\n\n");
+    s.push_str("# every one of those runtime servers also declares a liveliness token,\n");
+    s.push_str("# so `nros-zpico-build` completes it from the same facts (issue 1713).\n\n");
     s.push_str(
         "# The two `ZPICO_*` rows are FLOORED AT ONE: they size fixed C arrays in\n\
          # `zpico.c`, where zero is not a smaller pool (issue 1015). The floor is\n\

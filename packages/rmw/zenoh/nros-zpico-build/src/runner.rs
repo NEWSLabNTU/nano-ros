@@ -39,6 +39,23 @@ const PARAM_SERVICE_QUERYABLES: usize = 6;
 /// `nros_node::lifecycle_services::LIFECYCLE_SERVICE_QUERYABLES`. FIVE, not six.
 const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
 
+/// Publishers the REP-2002 lifecycle family claims (`~/transition_event`),
+/// mirroring `nros_node::lifecycle_services::LIFECYCLE_SERVICE_PUBLISHERS`.
+/// Issue 1713: a publisher costs no queryable, but it does cost a liveliness
+/// token. Held to the definition by `check-infra-queryable-counts`, like the
+/// two above.
+const LIFECYCLE_SERVICE_PUBLISHERS: usize = 1;
+
+/// The session's own node token, declared once at session open whatever the
+/// image creates (`shim/session.rs`, the primary-node path). Mirrors
+/// `nros_cli_core::entity_inventory::PRIMARY_NODE_LIVELINESS_TOKENS`.
+const PRIMARY_NODE_LIVELINESS_TOKENS: usize = 1;
+
+/// Issue 1713 -- the liveliness pool's budget for application entities the
+/// image does not describe: the pre-1713 default for the WHOLE pool, so an
+/// image that describes nothing keeps at least what it always had.
+const UNDECLARED_LIVELINESS: usize = 16;
+
 /// Headroom for a build that declares nothing.
 ///
 /// This is the pre-phase-392-W5 embedded budget, kept EXACTLY so an undeclared
@@ -543,6 +560,74 @@ fn infra_queryables(infra: Option<&str>, nodes: Option<&str>) -> usize {
     }
 }
 
+/// Issue 1713 -- the liveliness pool, completed from the declared facts the
+/// way [`resolve_queryable_default`] completes the queryable table.
+///
+/// Every token this session declares (`shim/session.rs`): the session's own
+/// node, one per node NAME, and one per publisher, subscriber, service server
+/// and service client. The parameter and lifecycle families are servers and a
+/// publisher like any other, so an image carrying them on two nodes needs
+/// 6 x 2 + 5 + 1 tokens before its application declares anything -- and the
+/// pool was a flat 16 on every road but Zephyr's, which is how
+/// `native_rust_qos` lost eight of its parameter services to `Full`.
+fn resolve_liveliness_default() -> usize {
+    // The same three inputs, watched the same way, as the queryable table;
+    // `declared_fact` / `from_build_env` emit their own rerun edges.
+    let infra = declared_fact("NROS_DECLARED_INFRA_QUERYABLES");
+    let nodes = declared_fact("NROS_DECLARED_NODES");
+    let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"));
+    let entities = desc
+        .as_ref()
+        .and_then(|d| d.image.entity_liveliness_tokens().stated().copied());
+    let components = desc
+        .as_ref()
+        .and_then(|d| d.image.node_count().stated().copied());
+    liveliness_default_from(entities, components, infra.as_deref(), nodes.as_deref())
+}
+
+/// [`resolve_liveliness_default`]'s rule, with the environment lifted out.
+///
+/// * `entities` -- `[image] entity_liveliness_tokens`, the application's
+///   entities. Absent: [`UNDECLARED_LIVELINESS`], the old whole-pool default,
+///   so this can only GROW a pool nothing described.
+/// * `components` -- `[image] node_count`, one node per component.
+/// * `infra` / `nodes` -- the `NROS_DECLARED_*` facts, read by the SAME
+///   parsers the queryable table uses, so the two pools cannot disagree about
+///   which families an image carries or on how many nodes.
+///
+/// Nothing declared at all keeps [`UNDECLARED_LIVELINESS`] exactly: no fact,
+/// no claim, the historical pool.
+fn liveliness_default_from(
+    entities: Option<usize>,
+    components: Option<usize>,
+    infra: Option<&str>,
+    nodes: Option<&str>,
+) -> usize {
+    let infra = stated(infra);
+    if entities.is_none() && infra.is_none() {
+        return UNDECLARED_LIVELINESS;
+    }
+    // Undeclared infrastructure is assumed PRESENT, as for the queryable
+    // table: a short liveliness pool is a silent graph outage (issue 0283),
+    // an over-long one is a few bytes a slot.
+    let lifecycle = !matches!(infra, Some("none") | Some("param"));
+    // One token per node NAME: the larger of the components and the model's
+    // nodes (the parameter family is per node), plus the executor's when the
+    // lifecycle family registers under it. Errs high by one where the
+    // executor shares a component's name -- the inventory's rule.
+    let node_names = components.unwrap_or(1).max(declared_nodes(nodes)) + usize::from(lifecycle);
+    let runtime = infra_queryables(infra, nodes)
+        + if lifecycle {
+            LIFECYCLE_SERVICE_PUBLISHERS
+        } else {
+            0
+        };
+    PRIMARY_NODE_LIVELINESS_TOKENS
+        + node_names
+        + runtime
+        + entities.unwrap_or(UNDECLARED_LIVELINESS)
+}
+
 /// The rule, with the environment lifted out so it can be tested.
 ///
 /// A build script reading env directly is untestable in-process (env is
@@ -959,6 +1044,90 @@ mod queryable_default_tests {
     }
 }
 
+/// Issue 1713 -- the liveliness pool, completed from the declared facts.
+#[cfg(test)]
+mod liveliness_default_tests {
+    use super::*;
+
+    /// The tokens `native_rust_qos` declares, counted in the issue from the
+    /// shim's creation calls: the session's node, two node names, three
+    /// application endpoints, the parameter family on both nodes, the
+    /// lifecycle family's five servers and its `transition_event` publisher.
+    const NATIVE_RUST_QOS_TOKENS: usize = 1 + 2 + 3 + 6 * 2 + 5 + 1;
+
+    #[test]
+    fn a_param_and_lifecycle_image_on_two_nodes_is_not_short() {
+        // The facts that image's sidecar carries; it names no descriptor
+        // (its bringup has no contract), so the application half is the
+        // undeclared budget.
+        let got = liveliness_default_from(None, None, Some("param+lifecycle"), Some("2"));
+        assert!(
+            got >= NATIVE_RUST_QOS_TOKENS,
+            "derived {got} tokens for an image that declares {NATIVE_RUST_QOS_TOKENS}"
+        );
+    }
+
+    /// The negative control: the same image with NO facts is the old flat
+    /// default, and the same assertion rejects it -- which is the eight
+    /// `declare failed (Full)` lines the issue measured.
+    #[test]
+    fn negative_control_the_undeclared_default_is_short_for_that_image() {
+        let got = liveliness_default_from(None, None, None, None);
+        assert_eq!(got, UNDECLARED_LIVELINESS);
+        assert!(got < NATIVE_RUST_QOS_TOKENS);
+        assert_eq!(
+            NATIVE_RUST_QOS_TOKENS - got,
+            8,
+            "the issue's eight lost services"
+        );
+    }
+
+    /// With a descriptor the count is EXACT, not a budget: the same image
+    /// described down to its three endpoints derives its 24 tokens plus the
+    /// one the lifecycle node name errs high by when it shares a component's.
+    #[test]
+    fn a_described_image_is_counted_exactly() {
+        let got = liveliness_default_from(Some(3), Some(2), Some("param+lifecycle"), Some("2"));
+        assert_eq!(got, NATIVE_RUST_QOS_TOKENS + 1);
+    }
+
+    #[test]
+    fn each_family_costs_its_own_tokens() {
+        let base = liveliness_default_from(Some(2), Some(1), Some("none"), Some("1"));
+        assert_eq!(
+            base,
+            1 + 1 + 2,
+            "session node + one node name + two entities"
+        );
+        let param = liveliness_default_from(Some(2), Some(1), Some("param"), Some("1"));
+        assert_eq!(param - base, PARAM_SERVICE_QUERYABLES);
+        let lc = liveliness_default_from(Some(2), Some(1), Some("lifecycle"), Some("1"));
+        // five servers, the `transition_event` publisher, the executor's node.
+        assert_eq!(
+            lc - base,
+            LIFECYCLE_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_PUBLISHERS + 1
+        );
+        // The parameter family is per NODE.
+        let two = liveliness_default_from(Some(2), Some(2), Some("param"), Some("2"));
+        assert_eq!(two - param, 1 + PARAM_SERVICE_QUERYABLES);
+    }
+
+    #[test]
+    fn undeclared_infrastructure_is_assumed_present() {
+        assert_eq!(
+            liveliness_default_from(Some(2), Some(1), None, None),
+            liveliness_default_from(Some(2), Some(1), Some("param+lifecycle"), Some("1"))
+        );
+    }
+
+    #[test]
+    fn a_fact_never_shrinks_an_undescribed_pool() {
+        assert!(
+            liveliness_default_from(None, None, Some("none"), Some("1")) >= UNDECLARED_LIVELINESS
+        );
+    }
+}
+
 fn shim_config_from_env() -> ShimConfig {
     // issue 0406 — these tables are STATIC arrays in the C shim, so every slot
     // costs RAM whether or not it is used. 8 is an embedded budget, and it was
@@ -1013,7 +1182,10 @@ fn shim_config_from_env() -> ShimConfig {
         ),
         max_queryables,
         queryable_table_declared: sizing.declared,
-        max_liveliness: env_usize("ZPICO_MAX_LIVELINESS", 16),
+        // Issue 1713 -- DERIVED from the declared facts, like the queryable
+        // table above; it was a flat 16 that two nodes' parameter services
+        // alone (12) all but filled. A named knob still wins, as everywhere.
+        max_liveliness: env_usize("ZPICO_MAX_LIVELINESS", resolve_liveliness_default()),
         // phase-412 — the graph cache, which had NO cargo-lane producer at all.
         // Default matches the C `#ifndef` fallback exactly: the two must agree,
         // because a build that goes through cargo now states the number and one

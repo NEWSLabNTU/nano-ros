@@ -153,7 +153,7 @@ impl ShimConfig {
              pub const ZPICO_MAX_SUBSCRIBERS: usize = {};\n\
              /// Maximum number of concurrent queryables (set via ZPICO_MAX_QUERYABLES, default 8).\n\
              pub const ZPICO_MAX_QUERYABLES: usize = {};\n\
-             /// Maximum number of concurrent liveliness tokens (set via ZPICO_MAX_LIVELINESS, default 16).\n\
+             /// Maximum number of concurrent liveliness tokens (set via ZPICO_MAX_LIVELINESS; default derived from the declared node and entity facts, 16 when nothing is declared — issue 1713).\n\
              pub const ZPICO_MAX_LIVELINESS: usize = {};\n\
              /// Maximum number of concurrent pending get operations (set via ZPICO_MAX_PENDING_GETS, default 4).\n\
              pub const ZPICO_MAX_PENDING_GETS: usize = {};\n\

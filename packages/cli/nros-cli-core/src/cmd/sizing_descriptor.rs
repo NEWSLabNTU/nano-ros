@@ -743,6 +743,11 @@ fn summary(desc: &nros_sizing_descriptor::SizingDescriptor) -> String {
             "service_server_queryables",
             desc.image.service_server_queryables(),
         ),
+        // Issue 1713.
+        (
+            "entity_liveliness_tokens",
+            desc.image.entity_liveliness_tokens(),
+        ),
     ] {
         let _ = writeln!(s, "    {name:<23} {f}");
     }
