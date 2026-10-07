@@ -1576,3 +1576,21 @@ if [ "${#lane_skips[@]}" -gt 0 ]; then
     echo "compile-check: ${#lane_skips[@]} lane(s) SKIPPED — their fixtures are NOT built:" >&2
     printf '  - %s\n' "${lane_skips[@]}" >&2
 fi
+
+# A NAMED row that was not built is a failure, never a summary line. The skips
+# above are right for a sweep — a host without a lane's tool builds the rest —
+# but `NROS_FIXTURE_ID=<id>` asks for ONE row, so a skip of its lane means the
+# caller got nothing it asked for. Live-peer's host job (run 37570821619) asked
+# for `cpp_robot_entry`, got `cmake=SKIPPED(play_launch_parser absent)`, exited
+# 0, and the cells then failed FixtureNotBuilt a step later, blaming the code.
+# px4 is left out of the sum: it does not honour the id filter.
+if [ -n "$id_filter" ] && [ "$(( check_n + verdict_n + build_n + cmake_n + cxx_n + cargo_check_n ))" -eq 0 ]; then
+    echo "compile-check: NROS_FIXTURE_ID=$id_filter built NOTHING." >&2
+    if [ "${#lane_skips[@]}" -gt 0 ]; then
+        echo "  Its lane was skipped; provision what the skip names:" >&2
+        printf '    %s\n' "${lane_skips[@]}" >&2
+    else
+        echo "  No lane selected it — check the id against examples/fixtures.toml." >&2
+    fi
+    exit 1
+fi
