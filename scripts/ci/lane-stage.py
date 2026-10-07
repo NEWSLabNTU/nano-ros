@@ -78,6 +78,10 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))), "lib"))
+import lane_step_markers  # noqa: E402  (issue 1754 — one parser, shared)
+
 REPO = os.environ.get("NROS_QUEUE_REPO", "NEWSLabNTU/nano-ros")
 
 # The lane's pipeline, in order. A stage is reached only by finishing the one
@@ -133,6 +137,12 @@ LABELS = {
     # as "a recorded-passing cell regressed", which is the one thing the
     # live-peer lane exists to say.
     "no-verdict-cells": "NO VERDICT: the cells could not run",
+    # issue 1754. The cells STEP is `just ci <lane>`, and its first inner step
+    # is the `check::default` preflight: run 37685900447 failed there (one
+    # `check fast` gate), ran 0 cells, and read `cells ran and FAILED`. The
+    # runner's own `<== … FAILED` marker on a non-cell step, with no cell step
+    # started, is the positive evidence this label needs.
+    "no-verdict-preflight": "NO VERDICT: preflight failed before any cell",
     "no-verdict-none": "NO VERDICT: died before any stage",
     "cancelled": "NO VERDICT: cancelled",
     "running": "still running",
@@ -156,7 +166,10 @@ Result = collections.namedtuple(
     "Result", "kind stage label failing_step reached_cells")
 
 
-def classify(steps, job_conclusion=None, cells_ran=None):
+PREFLIGHT = "preflight"
+
+
+def classify(steps, job_conclusion=None, cells_ran=None, inner=None):
     """Classify one job's ordered steps.
 
     `steps` is [{"name": str, "conclusion": str}] — the shape `gh run view
@@ -171,6 +184,11 @@ def classify(steps, job_conclusion=None, cells_ran=None):
     regression — and the workflow forwards that as `NROS_LANE_CELLS_RAN`.
     `None` means nobody said, which is what `--history` has for every past run,
     so the classification there is unchanged.
+
+    `inner` is the FIFTH (issue 1754): a `lane_step_markers.Reached` read from
+    the step runner's markers INSIDE the cells step. Its `cells_ran is False`
+    means a non-cell inner step (the `check::default` preflight) reported
+    FAILED before any cell started.
 
     Returns a Result whose `kind` is one of:
         verdict-pass  verdict-fail  no-verdict  cancelled  running
@@ -194,6 +212,10 @@ def classify(steps, job_conclusion=None, cells_ran=None):
         if cells_ran is False:
             return Result("no-verdict", CELLS, LABELS["no-verdict-cells"],
                           first_failing, False)
+        if inner is not None and inner.cells_ran is False:
+            return Result("no-verdict", PREFLIGHT,
+                          LABELS["no-verdict-preflight"],
+                          f"{first_failing} -> {inner.failed_step}", False)
         return Result("verdict-fail", CELLS, LABELS["verdict-fail"],
                       first_failing, True)
 
@@ -222,6 +244,35 @@ def classify(steps, job_conclusion=None, cells_ran=None):
 # --report: the in-workflow half.
 # --------------------------------------------------------------------------
 
+def _read_step_record():
+    """The step runner's markers from `$NROS_LANE_STEP_RECORD` (issue 1754).
+
+    Unset or unreadable is `None` — nobody said, the old classification holds.
+    """
+    path = os.environ.get("NROS_LANE_STEP_RECORD", "").strip()
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return lane_step_markers.reached_cells(fh.read())
+    except OSError:
+        return None
+
+
+def _job_log_failed(job):
+    """One job's failed-step log via `gh`, or '' — for `--history`."""
+    jid = job.get("databaseId")
+    if not jid:
+        return ""
+    try:
+        out = subprocess.run(["gh", "run", "view", "--repo", REPO, "--job",
+                              str(jid), "--log-failed"], capture_output=True,
+                             text=True, timeout=180)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return out.stdout if out.returncode == 0 else ""
+
+
 def report(lane, steps_json):
     try:
         steps = json.loads(steps_json)
@@ -238,7 +289,7 @@ def report(lane, steps_json):
     # a red into a no-verdict.
     said = os.environ.get("NROS_LANE_CELLS_RAN", "").strip().lower()
     cells_ran = {"true": True, "false": False}.get(said)
-    res = classify(steps, cells_ran=cells_ran)
+    res = classify(steps, cells_ran=cells_ran, inner=_read_step_record())
 
     out = [f"{lane}: {res.label}"]
     if res.failing_step:
@@ -340,6 +391,12 @@ def history(workflow, want, lane_job=None):
         else:
             j = lane_jobs[0]
             res = classify(j.get("steps", []), j.get("conclusion"))
+            # issue 1754 — a red cells step is only a verdict if a cell RAN;
+            # the runner's markers in the log say whether one did.
+            if res.kind == "verdict-fail":
+                res = classify(j.get("steps", []), j.get("conclusion"),
+                               inner=lane_step_markers.reached_cells(
+                                   _job_log_failed(j)))
         if run.get("status") != "completed" and not res.failing_step:
             res = res._replace(kind="running", label=LABELS["running"])
         kinds[res.kind] += 1
@@ -586,6 +643,19 @@ def _one_lane_consistency(chk, lane, doc):
     for n in declared_names:
         chk(f"{w}: `{n}` still classifies as {lane.expected_map.get(n)}",
             stage_of(n) == lane.expected_map.get(n))
+    # issue 1754 — a cells step that is a `just ci <lane>` runs a preflight
+    # first, so its outcome alone cannot say a cell ran. It must hand the
+    # runner a record, and the reporter must read the same one.
+    cells_steps = [s for s in steps
+                   if lane.expected_map.get(s.get("name", "")) == CELLS]
+    for cs in cells_steps:
+        if re.search(r"\bjust ci\b", str(cs.get("run", ""))):
+            mine = (cs.get("env") or {}).get("NROS_LANE_STEP_RECORD")
+            chk(f"{w}: `{cs['name']}` sets NROS_LANE_STEP_RECORD in its env",
+                bool(mine))
+            chk(f"{w}: the `{lane.job}` reporter reads the SAME record",
+                bool(mine) and mine ==
+                (reporter[0].get("env") or {}).get("NROS_LANE_STEP_RECORD"))
     chk(f"{w}: the reporter runs `if: always()` — a stage report that is "
         "skipped when the lane dies is no report",
         "always()" in str(reporter[0].get("if", "")))
@@ -599,6 +669,84 @@ def _one_lane_consistency(chk, lane, doc):
         "on a dead run too",
         "always()" in str(doc["jobs"][lane.report_job].get("if", "")))
     return []
+
+
+# issue 1754 — the two marker lines that matter, verbatim from run
+# 37685900447's job log (GitHub's job/step/timestamp prefix included, because
+# that is what `--history` and nightly-triage parse).
+RUN_37685900447_LOG = (
+    "tier 2 (1-wise matrix)\tUNKNOWN STEP\t2026-10-07T21:51:44.2448718Z "
+    "==> ci tier2 [1/4] check::default — started 21:51:44Z\n"
+    "tier 2 (1-wise matrix)\tUNKNOWN STEP\t2026-10-07T21:53:57.0939106Z "
+    "check-zephyr-workspace-foreign-checkout: FAILED (issue 1387)\n"
+    "tier 2 (1-wise matrix)\tUNKNOWN STEP\t2026-10-07T21:53:57.1090374Z "
+    "<== ci tier2 [1/4] check::default — FAILED after 2m13s (at 21:53:57Z)\n"
+    "tier 2 (1-wise matrix)\tUNKNOWN STEP\t2026-10-07T21:53:57.1103136Z "
+    "ci tier2 FAILED at step 1 of 4 (check::default).\n")
+
+
+def _read_or_empty(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    except OSError:
+        return ""
+
+
+def _runner_marker_contract(chk):
+    """Run the REAL `run-lane-steps.sh` against a stub `just` (issue 1754).
+
+    The runner's marker format and `lane_step_markers` are one contract; a
+    reworded marker would make every lane read `None` (nobody said) and the
+    mislabel would return silently. So the producer is executed, not quoted.
+    """
+    import shutil
+    import tempfile
+    runner = os.path.join(REPO_ROOT, "scripts", "ci", "run-lane-steps.sh")
+    if not shutil.which("bash") or not os.path.exists(runner):
+        return ["[skip] lane-stage: bash or run-lane-steps.sh absent — the "
+                "runner-marker contract arm did NOT run"]
+    with tempfile.TemporaryDirectory() as tmp:
+        stub = os.path.join(tmp, "just")
+        with open(stub, "w", encoding="utf-8") as fh:
+            # The preflight fails; a cell would succeed if it were reached.
+            fh.write('#!/bin/sh\ncase "$1" in check::*) exit 1;; esac\nexit 0\n')
+        os.chmod(stub, 0o755)
+        record = os.path.join(tmp, "record")
+        env = dict(os.environ, PATH=tmp + os.pathsep + os.environ.get("PATH", ""),
+                   NROS_LANE_STEP_RECORD=record)
+        rc = subprocess.run(["bash", runner, "tier2", "check::default",
+                             "test-all"], env=env, capture_output=True,
+                            text=True).returncode
+        got = lane_step_markers.reached_cells(_read_or_empty(record))
+        chk("run-lane-steps.sh: a failed preflight exits non-zero", rc != 0)
+        chk("run-lane-steps.sh's RECORD says the preflight failed and no cell "
+            "started", got.cells_ran is False
+            and got.failed_step == "check::default")
+        if os.path.exists(record):
+            os.remove(record)
+        subprocess.run(["bash", runner, "tier2", "rust-rtos-link-check",
+                        "test-all"], env=env, capture_output=True)
+        got = lane_step_markers.reached_cells(_read_or_empty(record))
+        chk("run-lane-steps.sh's RECORD says a cell started", got.cells_ran is True)
+    return []
+
+
+def _ci_just_cell_steps(chk):
+    """`CELL_STEPS` is authored; hold it against tier 2's real step array."""
+    path = os.path.join(REPO_ROOT, "just", "ci.just")
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    m = re.search(r"^_matrix-run:.*?^\s*steps=\(([^)]*)\)", text, re.S | re.M)
+    chk("just/ci.just: `_matrix-run` has a `steps=(…)` array", m is not None)
+    if not m:
+        return
+    arr = m.group(1).split()
+    chk("tier 2's FIRST inner step is a preflight, not a cell — so a red "
+        "`just ci matrix` needs the markers to be read",
+        arr and arr[0] not in lane_step_markers.CELL_STEPS)
+    chk("tier 2's inner steps include a cell `lane_step_markers` recognises",
+        any(a in lane_step_markers.CELL_STEPS for a in arr))
 
 
 def selftest(verbose=False):
@@ -746,6 +894,43 @@ def selftest(verbose=False):
     chk("cells_ran=True changes nothing about a passing lane",
         classify(_steps(("Run the board cells with a recorded PASS", "success")),
                  "success", cells_ran=True).kind == "verdict-pass")
+
+    # 8d. issue 1754 — run 37685900447, job 113013514754, VERBATIM lines from
+    #     its job log. `just ci matrix` failed because `check::default` (the
+    #     `check fast` preflight, gate `zephyr-workspace-foreign-checkout`)
+    #     failed; 0 cells ran, 0 `PASS` lines. The reporter said
+    #     `VERDICT: cells ran and FAILED`.
+    run_37685900447 = _steps(
+        ("just setup tier2", "success"),
+        ("Verify this runner's labels are true", "success"),
+        ("just build tier2", "success"),
+        ("just ci matrix", "failure"))
+    pre = lane_step_markers.reached_cells(RUN_37685900447_LOG)
+    chk("37685900447's log: the runner says no cell started",
+        pre.cells_ran is False and pre.failed_step == "check::default")
+    chk("37685900447 without the markers is what it USED to say (the defect)",
+        classify(run_37685900447, "failure").kind == "verdict-fail")
+    got = classify(run_37685900447, "failure", inner=pre)
+    chk("37685900447 with the markers is NOT `cells ran and FAILED`",
+        got.label != LABELS["verdict-fail"] and got.kind == "no-verdict")
+    chk("...it reads as a preflight failure and names the inner step",
+        got.label == LABELS["no-verdict-preflight"]
+        and got.failing_step.endswith("check::default")
+        and got.reached_cells is False)
+    ran = lane_step_markers.reached_cells(
+        "==> ci tier2 [1/4] check::default — started 01:00:00Z\n"
+        "<== ci tier2 [1/4] check::default — ok after 2m13s (at 01:02:13Z)\n"
+        "==> ci tier2 [2/4] rust-rtos-link-check — started 01:02:13Z\n"
+        "<== ci tier2 [2/4] rust-rtos-link-check — ok after 9m00s (at 01:11:13Z)\n"
+        "==> ci tier2 [3/4] test-all — started 01:11:13Z\n"
+        "<== ci tier2 [3/4] test-all — FAILED after 40m00s (at 01:51:13Z)\n")
+    chk("a lane whose `test-all` ran and failed is still a VERDICT",
+        classify(run_37685900447, "failure", inner=ran).kind == "verdict-fail")
+    chk("no markers at all keeps the step-outcome answer (nobody said)",
+        lane_step_markers.reached_cells("").cells_ran is None)
+    for line in _runner_marker_contract(chk):
+        print(line, file=sys.stderr)
+    _ci_just_cell_steps(chk)
 
     # 9. THE MAP IS AUTHORED, SO IT DRIFTS. `--report` is handed step names by
     #    the workflow, and those names are a copy of the workflow's own `- name:`

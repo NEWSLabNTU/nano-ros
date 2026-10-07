@@ -674,9 +674,16 @@ lane-health-selftest:
 # workflow in BOTH directions and replays the eight real runs the issue
 # tabulates. Pure text + YAML, no network, no build — it passes in a pristine
 # worktree, which is the bar for this lane.
+#
+# issue 1754 — and it replays run 37685900447, whose `check fast` preflight
+# failed inside `just ci matrix` with 0 cells run and read `cells ran and
+# FAILED`. The fix reads the step runner's per-step markers, through ONE parser
+# (`scripts/lib/lane_step_markers.py`) that `nightly-triage.py` shares, so its
+# selftest runs here too: the same mislabel there was `just ci matrix-nightly`.
 [group("main")]
 lane-stage-reporting:
     @python3 scripts/ci/lane-stage.py --selftest
+    @python3 scripts/ci/nightly-triage.py --selftest
 
 # issue 0933 — a CI step that invokes `just`/`nros`/`west` must source the repo
 # environment. `activate.sh` is what exports `nano_ros_ROOT`, and that is how

@@ -42,6 +42,10 @@ import subprocess
 import re
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))), "lib"))
+import lane_step_markers  # noqa: E402  (issue 1754 — shared with lane-stage.py)
+
 REPO = os.environ.get("NROS_QUEUE_REPO", "NEWSLabNTU/nano-ros")
 
 # A step whose failure means the lane never reached the thing it tests. Matched
@@ -131,6 +135,14 @@ def reclassify_from_log(kind, why, log_text):
     for marker, label in NO_VERDICT_LOG_MARKERS:
         if marker in log_text:
             return "no-verdict", f"{label} in: {why}"
+    # issue 1754 — `just ci matrix-nightly` is one step whose first inner step
+    # is the `check::default` preflight; a red there ran no cell. The step
+    # runner's own markers say so positively (same parser as lane-stage.py).
+    inner = lane_step_markers.reached_cells(log_text)
+    if inner.cells_ran is False:
+        return ("no-verdict",
+                f"preflight `{inner.failed_step}` failed before any cell "
+                f"(issue 1754) in: {why}")
     return kind, why
 
 
@@ -325,6 +337,25 @@ def selftest(verbose=False):
         == "no-verdict")
     kinds, _nv = summarise([stalled], logs=lambda j: "NO VERDICT: jobserver stall — p")
     chk("summarise applies the log demotion", kinds["no-verdict"] == 1 and kinds["verdict"] == 0)
+
+    # issue 1754 — `just ci matrix-nightly` runs `check::default` before any
+    # cell. These are the step runner's markers as run 37685900447 printed them
+    # (tier 2's twin of this lane): the preflight FAILED, no cell started.
+    nightly = job("failure", ("just ci matrix-nightly", "failure"))
+    pre_log = ("t\tUNKNOWN STEP\t2026-10-07T21:51:44Z ==> ci tier2-nightly [1/5] "
+               "check::default — started 21:51:44Z\n"
+               "t\tUNKNOWN STEP\t2026-10-07T21:53:57Z <== ci tier2-nightly [1/5] "
+               "check::default — FAILED after 2m13s (at 21:53:57Z)\n")
+    chk("`just ci matrix-nightly` by NAME alone is a verdict (the 1754 defect)",
+        classify(nightly)[0] == "verdict")
+    got = reclassify_from_log(*classify(nightly), pre_log)
+    chk("...a preflight-only red in its log is NO VERDICT, naming the step",
+        got[0] == "no-verdict" and "check::default" in got[1])
+    cell_log = pre_log.replace("FAILED", "ok") + (
+        "==> ci tier2-nightly [3/5] test-all — started 22:00:00Z\n"
+        "<== ci tier2-nightly [3/5] test-all — FAILED after 9m00s (at 22:09:00Z)\n")
+    chk("...and a red `test-all` stays a verdict",
+        reclassify_from_log(*classify(nightly), cell_log)[0] == "verdict")
 
     if verbose:
         print(f"\n{ok} passed, {fail} failed")
