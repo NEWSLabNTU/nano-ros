@@ -12387,25 +12387,32 @@ fn retargeting_a_raw_action_client_moves_its_context() {
     let _ = new_home;
 }
 
-/// Issue 1635 — with a sink installed, every violation reaches it at
-/// DETECTION, so an image whose entry never calls `drain_violations` still
-/// reports. The ring is filled as before, so a hand-draining application or
+/// Issue 1635 -- with a sink installed, every violation reaches it (at the end
+/// of a spin since phase-474 I7, not at detection), so an image whose entry
+/// never calls `drain_violations` still reports. The ring is filled as before, so a hand-draining application or
 /// fixture sees exactly what it did; removing the sink stops the feed.
 #[cfg(feature = "alloc")]
 #[test]
 #[cfg(feature = "std")]
-fn an_installed_violation_sink_sees_every_violation_at_detection() {
+fn an_installed_violation_sink_sees_every_violation() {
     static SEEN: std::sync::Mutex<alloc::vec::Vec<(&'static str, u32)>> =
         std::sync::Mutex::new(alloc::vec::Vec::new());
-    unsafe fn sink(ctx: *mut core::ffi::c_void, v: &super::monitor::Violation) {
+    unsafe fn sink(ctx: *mut core::ffi::c_void, pending: &[super::monitor::Violation]) -> usize {
         assert_eq!(
             ctx as usize, 0x1635,
             "the sink gets the context it was installed with"
         );
-        SEEN.lock().unwrap().push((v.rule, v.measured));
+        for v in pending {
+            SEEN.lock().unwrap().push((v.rule, v.measured));
+        }
+        pending.len()
     }
 
     let mut executor: Executor = executor_with_clock(MockSession::new());
+    // The log line is not what this asserts, and the log sink is process-wide:
+    // left on, these two lines reached T4's capture when the two tests ran
+    // side by side, and T4 failed "nothing reported" (phase-474 I7).
+    executor.set_report_violations(false);
     let id = executor
         .register_timer(TimerDuration::from_millis(10), || {})
         .unwrap();
@@ -13094,7 +13101,11 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
         0,
         "nothing stored before arming"
     );
-    assert!(LINES.with(|l| l.borrow().is_empty()), "nothing reported");
+    assert!(
+        LINES.with(|l| l.borrow().is_empty()),
+        "nothing reported: {:?}",
+        LINES.with(|l| l.borrow().clone())
+    );
 
     let _ = elapse_then_spin_once(&mut executor, 102);
     assert!(executor.monitors_armed(), "RUN armed the monitors");
@@ -13518,3 +13529,147 @@ fn params_file_overrides_reach_their_nodes_with_dotted_names() {
         "`/robot/talker:` does not reach the listener"
     );
 }
+/// phase-474 I7 -- the `/diagnostics` report leaves OFF the judged tick, and
+/// what it costs is not judged as the spin's lateness.
+///
+/// The safety island's board showed the reporter at detection: each report
+/// held the spin 15-20 ms over its serial link, inside the tick being judged,
+/// and five in a row (81 ms) tripped `timer-overrun-runtime` on a 30 Hz timer
+/// and `release-jitter-runtime` on the spin -- one verdict bred more.
+///
+/// Here a handler timer (80 ms) overruns its 5 ms latency budget once, on two
+/// contracted publishers, so two verdicts are pending at once; a second timer
+/// (40 ms) is due on the same grid; the sink fakes a slow link (40 ms per
+/// message). Sent at detection, one message per verdict, that is 80 ms with
+/// the 40 ms timer waiting -- a dropped activation -- and an 80 ms spin
+/// interval against a 30 ms cadence. Asserted: both latency verdicts reach the
+/// sink in ONE coalesced call, and the ring holds no overrun or jitter verdict.
+#[cfg(all(feature = "std", feature = "alloc"))]
+#[test]
+fn i7_a_slow_report_breeds_no_overrun_or_jitter_verdict() {
+    use super::monitor::{MonitorSpec, PubMonitorCell, Violation};
+    use core::sync::atomic::{AtomicU32, Ordering};
+    let _g = arming_lock();
+
+    static CELL_A: PubMonitorCell = PubMonitorCell::new();
+    static CELL_B: PubMonitorCell = PubMonitorCell::new();
+    static TABLE: [MonitorSpec; 2] = [
+        MonitorSpec {
+            topic: "/i7/mrm_state",
+            fqn: "/i7/handler/mrm_state",
+            min_rate_hz_milli: 0,
+            max_latency_ms: 5,
+            cell: &CELL_A,
+        },
+        MonitorSpec {
+            topic: "/i7/takeover_request_state",
+            fqn: "/i7/handler/takeover_request_state",
+            min_rate_hz_milli: 0,
+            max_latency_ms: 5,
+            cell: &CELL_B,
+        },
+    ];
+    static BUSY_MS: AtomicU32 = AtomicU32::new(0);
+    static HANDLER_TICKS: AtomicU32 = AtomicU32::new(0);
+    static SINK_CALLS: AtomicU32 = AtomicU32::new(0);
+    static SINK_SEEN: AtomicU32 = AtomicU32::new(0);
+
+    fn busy_ms(ms: u64) {
+        let until = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+        while std::time::Instant::now() < until {
+            core::hint::spin_loop();
+        }
+    }
+    unsafe fn slow_sink(_ctx: *mut core::ffi::c_void, pending: &[Violation]) -> usize {
+        SINK_CALLS.fetch_add(1, Ordering::SeqCst);
+        SINK_SEEN.fetch_add(pending.len() as u32, Ordering::SeqCst);
+        // One message over a slow link, whatever it carries.
+        busy_ms(40);
+        pending.len()
+    }
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_monitor_table(&TABLE);
+    executor.set_report_violations(false);
+    // The cadence the release-jitter rule judges: 30 ms.
+    executor.set_spin_nominal_us(30_000);
+    let nid = executor.node_builder("handler").build().expect("node");
+    let state = executor
+        .node_mut(nid)
+        .create_generic_publisher("/i7/mrm_state", "std_msgs::msg::dds_::Int32_", "")
+        .expect("contracted publisher");
+    let tor = executor
+        .node_mut(nid)
+        .create_generic_publisher(
+            "/i7/takeover_request_state",
+            "std_msgs::msg::dds_::Int32_",
+            "",
+        )
+        .expect("contracted publisher");
+    HANDLER_TICKS.store(0, Ordering::SeqCst);
+    BUSY_MS.store(0, Ordering::SeqCst);
+    SINK_CALLS.store(0, Ordering::SeqCst);
+    SINK_SEEN.store(0, Ordering::SeqCst);
+    executor
+        .register_timer(TimerDuration::from_millis(80), move || {
+            let tick = HANDLER_TICKS.fetch_add(1, Ordering::SeqCst) + 1;
+            let _ = state.publish_raw(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
+            let _ = tor.publish_raw(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
+            let busy = BUSY_MS.swap(0, Ordering::SeqCst);
+            if busy > 0 {
+                busy_ms(busy as u64);
+            }
+        })
+        .expect("handler timer");
+    let operator = executor
+        .register_timer(TimerDuration::from_millis(40), || {})
+        .expect("operator timer");
+    unsafe { executor.set_violation_sink(Some((slow_sink, core::ptr::null_mut()))) };
+
+    // Two quiet handler ticks: nothing to report.
+    let mut spins = 0;
+    while HANDLER_TICKS.load(Ordering::SeqCst) < 2 && spins < 400 {
+        let _ = elapse_then_spin_once(&mut executor, 2);
+        spins += 1;
+    }
+    assert_eq!(executor.violations_total(), 0, "quiet ticks are clean");
+
+    // One overrun of the handler's tick, then ~400 ms of ordinary spins.
+    BUSY_MS.store(10, Ordering::SeqCst);
+    let t0 = std::time::Instant::now();
+    while t0.elapsed() < std::time::Duration::from_millis(400) {
+        let _ = elapse_then_spin_once(&mut executor, 2);
+    }
+
+    let mut kept = alloc::vec::Vec::new();
+    executor.drain_violations(|v| kept.push((v.rule, v.fqn, v.measured)));
+    let latency = kept.iter().filter(|k| k.0 == "max-latency-runtime").count();
+    assert_eq!(
+        latency, 2,
+        "one latency verdict per contracted publisher: {kept:?}"
+    );
+    assert!(
+        !kept
+            .iter()
+            .any(|k| k.0 == "timer-overrun-runtime" || k.0 == "release-jitter-runtime"),
+        "the report itself bred a verdict: {kept:?}"
+    );
+    assert_eq!(
+        executor.timer_overruns(operator),
+        Some(0),
+        "the 40 ms timer kept its grid"
+    );
+    assert_eq!(
+        SINK_CALLS.load(Ordering::SeqCst),
+        1,
+        "both verdicts went in one coalesced report"
+    );
+    assert_eq!(SINK_SEEN.load(Ordering::SeqCst), 2);
+    let (last_us, max_us, pending, overflowed) = executor.violation_report_cost_us();
+    assert!(
+        last_us >= 40_000 && max_us >= last_us,
+        "the cost is stated: {last_us} {max_us}"
+    );
+    assert_eq!((pending, overflowed), (0, 0));
+}
+

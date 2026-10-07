@@ -653,20 +653,69 @@ impl MonitorArming {
     }
 }
 
-/// Issue 1635 — where an executor hands its drained violations when the image
-/// asked it to (`Executor::set_violation_sink`).
+/// Issue 1635 -- where an executor hands its violations when the image asked
+/// it to (`Executor::set_violation_sink`).
 ///
 /// A function and an opaque context rather than a closure, because the
 /// executor is not generic and the reporter it reaches lives in a crate above
 /// this one (`nros-cpp` publishes on `/diagnostics` through
-/// `nros-diagnostics`). Called at DETECTION, from inside the executor's spin
-/// (never from inside a user callback) — so the sink may publish.
+/// `nros-diagnostics`). Called from inside the executor's spin (never from
+/// inside a user callback) -- so the sink may publish.
+///
+/// phase-474 I7 -- called OFF the judged dispatch, not at detection: a stored
+/// verdict is queued ([`REPORT_QUEUE`] deep) and the queue is handed over at
+/// the end of a spin whose next timer is further away than the last report
+/// cost (or once a verdict has waited [`REPORT_DEFER_MAX_US`]). The sink gets
+/// every pending verdict, oldest first, and returns how many of them it took
+/// -- a PREFIX, so it may coalesce as many as fit one message and leave the
+/// rest for the next slot. Returning 0 is a failure the sink has counted;
+/// the executor then drops the oldest pending verdict so a report that can
+/// never be sent cannot stall the queue (it stays in the ring and the record).
+///
+/// On the safety island the report at detection cost 15-20 ms of spin per
+/// verdict over a 921,600-baud serial link, inside the tick being judged, and
+/// that cost tripped `release-jitter-runtime` and `timer-overrun-runtime`:
+/// one verdict bred more.
 ///
 /// # Safety
 /// The sink is called with the `ctx` it was installed with; whoever installs it
 /// guarantees `ctx` is valid for every call until the sink is replaced or the
 /// executor is dropped.
-pub type ViolationSink = unsafe fn(ctx: *mut core::ffi::c_void, v: &Violation);
+pub type ViolationSink = unsafe fn(ctx: *mut core::ffi::c_void, pending: &[Violation]) -> usize;
+
+/// phase-474 I7 -- how many stored verdicts wait for the sink. A verdict
+/// stored while the queue is full evicts the oldest pending one, which is
+/// counted (`ReportQueue::overflowed`); both stay in the ring and the SWD
+/// record. Four is the `DiagnosticArray` status capacity of the generated
+/// type, so one coalesced report never needs more.
+pub const REPORT_QUEUE: usize = 4;
+
+/// phase-474 I7 -- the longest a pending verdict waits for a slot with slack
+/// before it is reported anyway, in microseconds. Bounds the deferral on an
+/// executor whose timers never leave a gap as long as the report costs.
+pub const REPORT_DEFER_MAX_US: u64 = 1_000_000;
+
+/// phase-474 I7 -- verdicts stored but not yet handed to the sink, and what
+/// the hand-over has cost. One struct so the executor size test can name it.
+#[derive(Debug, Default)]
+pub(crate) struct ReportQueue {
+    /// Oldest first.
+    pub(crate) pending: heapless::Vec<Violation, REPORT_QUEUE>,
+    /// Monotonic us at which the oldest pending verdict was first seen by a
+    /// flush, for [`REPORT_DEFER_MAX_US`].
+    pub(crate) since_us: Option<u64>,
+    /// What the last hand-over took, and the worst one, in us.
+    pub(crate) last_cost_us: u32,
+    pub(crate) max_cost_us: u32,
+    /// Pending verdicts evicted by a newer one before any slot came (saturating).
+    pub(crate) overflowed: u32,
+    /// Verdicts the sink was handed and could not send (saturating).
+    pub(crate) failed: u32,
+    /// The reporter's own spin time since the last release-jitter sample: it
+    /// is the monitor's cost, stated by `max_cost_us`, not lateness of the
+    /// application's release, so the jitter rule does not charge it.
+    pub(crate) debt_us: u64,
+}
 
 /// phase-474 I1 -- everything an executor does with a detected violation, in
 /// one place: the switches, the sink, the ring and its counters.
@@ -687,10 +736,12 @@ pub(crate) struct ViolationChannel<'s> {
     ///
     /// [`Executor::set_violation_drain_report`]: super::Executor::set_violation_drain_report
     pub(crate) drain_report: bool,
-    /// Issue 1635 -- the image's reporter, fed at detection. The context is a
-    /// `usize` so the executor keeps its auto traits; it is the installer's
-    /// pointer.
+    /// Issue 1635 -- the image's reporter. The context is a `usize` so the
+    /// executor keeps its auto traits; it is the installer's pointer.
+    /// phase-474 I7 -- fed from `reports`, off the judged dispatch.
     pub(crate) sink: Option<(ViolationSink, usize)>,
+    /// phase-474 I7 -- what waits for the sink.
+    pub(crate) reports: ReportQueue,
     /// phase-409 -- CARVED, at `MAX_VIOLATIONS` (no `ExecutorSizing` knob:
     /// the build-time depth is the capability).
     pub(crate) ring: super::storage::CarvedVec<'s, Violation>,
@@ -735,6 +786,7 @@ impl<'s> ViolationChannel<'s> {
             report: true,
             drain_report: crate::config::VIOLATION_DRAIN_REPORT,
             sink: None,
+            reports: ReportQueue::default(),
             ring,
             counts: ViolationCounts {
                 total: 0,
@@ -752,7 +804,8 @@ impl<'s> ViolationChannel<'s> {
 
     /// Issue 1635 / phase-474 I1 -- THE one place a detected violation goes:
     /// the log floor (issue 0514) unless the drain hook reports instead, the
-    /// image's sink when one is installed, the trace marker when callback
+    /// image's sink's queue when one is installed (sent later, phase-474 I7),
+    /// the trace marker when callback
     /// tracing is compiled in, the SWD record when the image keeps one, and
     /// the ring [`drain_violations`] reads.
     ///
@@ -770,10 +823,15 @@ impl<'s> ViolationChannel<'s> {
         if self.report && !self.drain_report {
             log_violation(&v);
         }
-        if let Some((f, ctx)) = self.sink {
-            // SAFETY: `Executor::set_violation_sink`'s contract -- `ctx` is valid
-            // for every call until the sink is replaced or the executor dropped.
-            unsafe { f(ctx as *mut core::ffi::c_void, &v) };
+        if self.sink.is_some() {
+            // phase-474 I7 -- queued, not sent: the report leaves at the end of
+            // a spin with slack (`Executor::flush_violation_reports`), so it
+            // never costs the dispatch being judged.
+            if self.reports.pending.is_full() {
+                self.reports.pending.remove(0);
+                self.reports.overflowed = self.reports.overflowed.saturating_add(1);
+            }
+            let _ = self.reports.pending.push(v.clone());
         }
         // `total` is this executor's sequence number for the verdict: the log
         // line and the trace marker carry it, so the two name one verdict by

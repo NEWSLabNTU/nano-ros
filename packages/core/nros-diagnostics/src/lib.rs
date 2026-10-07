@@ -180,7 +180,8 @@ impl DiagnosticReporter {
 /// byte-identical to serializing what [`DiagnosticReporter::report_violation`]
 /// returns (with no rate limit).
 ///
-/// The reporter runs on the spin thread, at detection. The value form puts a
+/// The reporter runs on the spin thread (at the end of a spin since phase-474
+/// I7, not at detection). The value form puts a
 /// whole `DiagnosticArray` on that stack -- 5,176 B on a 64-bit host: a
 /// four-slot vector of 1,224 B statuses, each with eight key/value slots,
 /// plus the status built before it -- to send one status with one key/value.
@@ -199,6 +200,23 @@ pub fn write_violation_report(
     measured: u32,
     declared: u32,
 ) -> Result<(), nros_serdes::SerError> {
+    write_violation_reports(w, &[(rule, fqn, measured, declared)])
+}
+
+/// phase-474 I7 -- several violation reports COALESCED into one
+/// `DiagnosticArray`: one status per `(rule, fqn, measured, declared)`, in
+/// order, each byte-identical to the status [`write_violation_report`] sends
+/// for it alone. The executor queues verdicts and hands them over off the
+/// judged dispatch; on a slow link one message for several verdicts is what
+/// keeps the report from costing a tick per verdict.
+///
+/// At most four statuses (the generated type's capacity) are meaningful to an
+/// nros subscriber; a caller passing more is refused with `BufferTooSmall`
+/// before anything is written.
+pub fn write_violation_reports(
+    w: &mut nros_serdes::CdrWriter<'_>,
+    reports: &[(&str, &str, u32, u32)],
+) -> Result<(), nros_serdes::SerError> {
     use core::fmt::Write as _;
     use nros_serdes::Serialize as _;
     fn fit(s: &str, cap: usize) -> &str {
@@ -208,25 +226,30 @@ pub fn write_violation_report(
             ""
         }
     }
-    let mut message = heapless::String::<64>::new();
-    let _ = write!(message, "measured {measured} vs declared {declared}");
-    // DiagnosticArray { header, status: [one] }
+    if reports.len() > 4 {
+        return Err(nros_serdes::SerError::BufferTooSmall);
+    }
+    // DiagnosticArray { header, status: [n] }
     let array = w.begin_dheader()?;
     nros_std_msgs::msg::Header::default().serialize(w)?;
-    w.write_u32(1)?;
-    // DiagnosticStatus { level, name, message, hardware_id, values: [one] }
-    let status = w.begin_dheader()?;
-    w.write_u8(Severity::Error.level())?;
-    w.write_string(fit(rule, 64))?;
-    w.write_string(fit(&message, 128))?;
-    w.write_string(fit(fqn, 96))?;
-    w.write_u32(1)?;
-    // KeyValue { "kind", assumption | guarantee }
-    let kv = w.begin_dheader()?;
-    w.write_string("kind")?;
-    w.write_string(kind_for_rule(rule).as_str())?;
-    w.end_dheader(kv)?;
-    w.end_dheader(status)?;
+    w.write_u32(reports.len() as u32)?;
+    for &(rule, fqn, measured, declared) in reports {
+        let mut message = heapless::String::<64>::new();
+        let _ = write!(message, "measured {measured} vs declared {declared}");
+        // DiagnosticStatus { level, name, message, hardware_id, values: [one] }
+        let status = w.begin_dheader()?;
+        w.write_u8(Severity::Error.level())?;
+        w.write_string(fit(rule, 64))?;
+        w.write_string(fit(&message, 128))?;
+        w.write_string(fit(fqn, 96))?;
+        w.write_u32(1)?;
+        // KeyValue { "kind", assumption | guarantee }
+        let kv = w.begin_dheader()?;
+        w.write_string("kind")?;
+        w.write_string(kind_for_rule(rule).as_str())?;
+        w.end_dheader(kv)?;
+        w.end_dheader(status)?;
+    }
     w.end_dheader(array)?;
     Ok(())
 }
@@ -234,6 +257,56 @@ pub fn write_violation_report(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// phase-474 I7 -- a coalesced report is the value form of one array
+    /// holding each verdict's status in order, under XCDR1 and XCDR2.
+    #[test]
+    fn a_coalesced_report_is_one_array_of_the_single_reports() {
+        use nros_serdes::{CdrWriter, Serialize as _};
+        let reports = [
+            (RULE_MAX_LATENCY, "/mrm_handler/mrm_state", 250u32, 206u32),
+            (
+                RULE_MAX_LATENCY,
+                "/mrm_handler/takeover_request_state",
+                250,
+                206,
+            ),
+            (RULE_SILENCE, "/n/in", 0, 500),
+        ];
+        let mut value = DiagnosticArray::default();
+        for (rule, fqn, m, d) in reports {
+            let one = DiagnosticReporter::new(0)
+                .report_violation(0, rule, fqn, m, d)
+                .unwrap();
+            for st in one.status.iter() {
+                value.status.push(st.clone()).unwrap();
+            }
+        }
+        for xcdr2 in [false, true] {
+            let mut a = [0u8; 1024];
+            let mut b = [0u8; 1024];
+            let mut wa = if xcdr2 {
+                CdrWriter::new_with_header_xcdr2(&mut a).unwrap()
+            } else {
+                CdrWriter::new_with_header(&mut a).unwrap()
+            };
+            value.serialize(&mut wa).unwrap();
+            let la = wa.position();
+            let mut wb = if xcdr2 {
+                CdrWriter::new_with_header_xcdr2(&mut b).unwrap()
+            } else {
+                CdrWriter::new_with_header(&mut b).unwrap()
+            };
+            write_violation_reports(&mut wb, &reports).unwrap();
+            let lb = wb.position();
+            assert_eq!(a[..la], b[..lb], "xcdr2={xcdr2}");
+        }
+        // More than the type's four statuses is refused, not truncated.
+        let mut c = [0u8; 2048];
+        let mut wc = CdrWriter::new_with_header(&mut c).unwrap();
+        let five = [reports[0]; 5];
+        assert!(write_violation_reports(&mut wc, &five).is_err());
+    }
 
     /// phase-474 I7 -- the streamed report is the value form's bytes, under
     /// XCDR1 and XCDR2, including a string past its field's capacity.

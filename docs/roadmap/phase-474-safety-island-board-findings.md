@@ -436,6 +436,24 @@ more. Fix: size the main stack from the reporter's need in the derivation
 (deferred to the next idle slot, or coalesced), so a verdict does not cost
 the tick that is being judged.
 
+**Result (2026-10-07).** Stack half: issue 1726 (PR #1750), the report is
+streamed and `publish_violation`'s frame went from about 10 KB to about 1 KB
+on the host. Scheduling half: issue 1727. A stored verdict is queued for the
+sink (four deep) and leaves from `Executor::flush_violation_reports` at the
+end of a spin, after its dispatches and rules, once the next timer is due no
+sooner than the last report took (backstop 1 s); the pending verdicts are
+coalesced into one `DiagnosticArray`, as many as fit the 512 B buffer; the
+reporter's time is stated (`violation_report_cost_us`) and not charged to the
+next release-jitter sample. The ring, the SWD record, the markers and the log
+stay at detection. Host test `i7_a_slow_report_breeds_no_overrun_or_jitter_verdict`:
+an 80 ms handler overrunning a 5 ms budget on two publishers beside a 40 ms
+timer, with a sink that costs 40 ms per message, stores the two latency
+verdicts and nothing else, in one sink call; with the report at detection it
+also stores `timer-overrun-runtime` 1 and `release-jitter-runtime` 92 ms, the
+board's shape. For the island: nothing to set; re-try
+`CONFIG_MAIN_STACK_SIZE=16384` on the new pin and read the stack paint, and
+expect `/diagnostics` messages with up to four statuses.
+
 ### I8 -- the first rate window after arming reads short
 
 Four `rate-hierarchy-runtime` verdicts appear once, right after arming, at
@@ -499,7 +517,10 @@ independent of each other.
       `max-latency-runtime`: I6. native_sim / QEMU fixture open.)
 - [ ] I6: a timer-fired callback that overruns its `max_latency` produces a
       `max-latency-runtime` verdict, on the host test and on the S32K344.
-- [ ] I7: the reporter neither overflows the main stack nor costs the spin
+- [x] I7: the reporter neither overflows the main stack nor costs the spin
       thread a tick per verdict; the island's 24 KiB workaround can go.
+      (Host: frame ~1 KB (issue 1726); reports queued, coalesced and sent off
+      the judged tick, cost not charged as jitter (issue 1727). The 16 KiB
+      re-try on the board is the island's.)
 - [ ] I8: no rate verdict in the first window after arming on a stream
       publishing at its declared rate.

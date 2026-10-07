@@ -3066,6 +3066,10 @@ impl<'s> Executor<'s> {
     /// timeout claims no cadence and is skipped entirely, which keeps
     /// `Future::wait`-style busy spins out of the statistic.
     fn record_release_jitter(&mut self, timeout: core::time::Duration) {
+        // phase-474 I7 -- the violation reporter's own time since the last
+        // sample is not a late release (see `flush_violation_reports`). Taken
+        // first, so a spin that judges nothing does not carry it forward.
+        let report_us = core::mem::take(&mut self.violations.reports.debt_us);
         // A declared cadence wins over the timeout: see
         // `spin_nominal_declared_us` for why they are different quantities.
         let nominal_us = if self.spin_nominal_declared_us != 0 {
@@ -3081,7 +3085,7 @@ impl<'s> Executor<'s> {
         };
         self.spin_nominal_us = nominal_us;
         if let Some(last) = self.last_spin_entry_us {
-            let interval = now.saturating_sub(last);
+            let interval = now.saturating_sub(last).saturating_sub(report_us);
             self.total_wakes = self.total_wakes.saturating_add(1);
             if let Some(late) = interval.checked_sub(nominal_us)
                 && late > 0
@@ -3640,8 +3644,12 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// Issue 1635 — hand every violation to `sink` as it is DETECTED, beside
-    /// the log line (issue 0514's floor) and the ring push.
+    /// Issue 1635 -- hand every stored violation to `sink`, beside the log line
+    /// (issue 0514's floor) and the ring push.
+    ///
+    /// phase-474 I7 -- not at detection any more: the verdict is queued and
+    /// leaves from `Executor::flush_violation_reports` at the end of a spin with
+    /// slack, so the report never costs the dispatch it judges.
     ///
     /// Before this nothing in a generated image drained the ring, so the log
     /// line was the only output and `/diagnostics` stayed silent on every C
@@ -3660,6 +3668,89 @@ impl<'s> Executor<'s> {
         sink: Option<(super::monitor::ViolationSink, *mut core::ffi::c_void)>,
     ) {
         self.violations.sink = sink.map(|(f, ctx)| (f, ctx as usize));
+        if self.violations.sink.is_none() {
+            // Nothing is left to send them to.
+            self.violations.reports.pending.clear();
+            self.violations.reports.since_us = None;
+        }
+    }
+
+    /// phase-474 I7 -- hand the queued verdicts to the sink, if this is a slot
+    /// for it. Called at the end of every spin, after its dispatches and its
+    /// rules, so the report never runs inside the tick being judged.
+    ///
+    /// A slot is a spin end whose next timer is due no sooner than the last
+    /// report took (`ReportQueue::last_cost_us`; 0 before the first report, so
+    /// the first goes at the first spin end with no timer already due), or
+    /// any spin end once the oldest pending verdict has waited
+    /// [`REPORT_DEFER_MAX_US`](super::monitor::REPORT_DEFER_MAX_US). Without a
+    /// clock there is nothing to measure slack with, so every spin end is a
+    /// slot. The sink takes as many as it coalesces into one message; the rest
+    /// wait for the next slot.
+    ///
+    /// The time the sink takes is the reporter's own and is stated by
+    /// [`Self::violation_report_cost_us`]; the release-jitter rule does not
+    /// charge it to the spin's cadence (it is not a late release of any
+    /// application work), which is what used to turn one verdict into a
+    /// `release-jitter-runtime` verdict of its own on the safety island.
+    pub(crate) fn flush_violation_reports(&mut self) {
+        let Some((sink, ctx)) = self.violations.sink else {
+            return;
+        };
+        if self.violations.reports.pending.is_empty() {
+            return;
+        }
+        let now = self.now_us();
+        if let Some(now) = now {
+            let since = *self.violations.reports.since_us.get_or_insert(now);
+            let overdue = now.saturating_sub(since) >= super::monitor::REPORT_DEFER_MAX_US;
+            let cost = self.violations.reports.last_cost_us as u64;
+            let slack = match self.next_timer_deadline_us() {
+                None => true,
+                Some(remaining) => remaining > 0 && remaining >= cost,
+            };
+            if !slack && !overdue {
+                return;
+            }
+        }
+        // SAFETY: `Executor::set_violation_sink`'s contract -- `ctx` is valid
+        // for every call until the sink is replaced or the executor dropped.
+        let taken = unsafe {
+            sink(
+                ctx as *mut core::ffi::c_void,
+                &self.violations.reports.pending[..],
+            )
+        };
+        let q = &mut self.violations.reports;
+        if taken == 0 {
+            // The sink counted its failure; drop the oldest so a report that
+            // can never be sent does not stall the queue. It stays in the ring
+            // and the record.
+            q.pending.remove(0);
+            q.failed = q.failed.saturating_add(1);
+        } else {
+            let n = taken.min(q.pending.len());
+            for _ in 0..n {
+                q.pending.remove(0);
+            }
+        }
+        q.since_us = None;
+        if let (Some(t0), Some(t1)) = (now, self.now_us()) {
+            let q = &mut self.violations.reports;
+            let cost = t1.saturating_sub(t0);
+            q.last_cost_us = cost.min(u32::MAX as u64) as u32;
+            q.max_cost_us = q.max_cost_us.max(q.last_cost_us);
+            q.debt_us = q.debt_us.saturating_add(cost);
+        }
+    }
+
+    /// phase-474 I7 -- what handing verdicts to the violation sink has cost
+    /// this executor: `(last_us, max_us, pending, overflowed)`. `overflowed`
+    /// counts verdicts evicted from the report queue by newer ones before a
+    /// slot came (they are still in the ring and the SWD record).
+    pub fn violation_report_cost_us(&self) -> (u32, u32, usize, u32) {
+        let q = &self.violations.reports;
+        (q.last_cost_us, q.max_cost_us, q.pending.len(), q.overflowed)
     }
 
     /// THE monotonic-µs read. phase-359 W4 — every consumer goes through here.
@@ -9741,6 +9832,10 @@ impl<'s> Executor<'s> {
                 let _ = unsafe { lc.process() };
             }
 
+            // phase-474 I7 -- an idle spin is the natural slot for the queued
+            // reports.
+            self.flush_violation_reports();
+
             return SpinOnceResult::new();
         }
 
@@ -10373,6 +10468,9 @@ impl<'s> Executor<'s> {
         self.check_release_jitter_rule();
         self.check_stack_headroom_rule();
         self.check_alive_supervision();
+        // phase-474 I7 -- the queued /diagnostics reports, after this spin's
+        // dispatches and rules, when the next timer leaves room for them.
+        self.flush_violation_reports();
         // phase-474 I1 -- the opt-in drain-and-report hook, after every rule of
         // this spin has had its say.
         self.violations.drain_and_report();
