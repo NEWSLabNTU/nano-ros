@@ -29,6 +29,13 @@ say()  { echo "[can-demo] $*"; }
 fail() { echo "[can-demo] FAIL: $*" >&2; exit 1; }
 rule() { echo "-----------------------------------------------------------"; }
 
+# issue 1723 — the one shell spelling of a deadline on a `ros2` process,
+# copied in from `scripts/lib/` by the Dockerfile (`nroslib` build context).
+# A bare `timeout` sends SIGTERM and waits, and rclpy over rmw_zenoh_cpp
+# swallows that SIGTERM, so it bounded nothing.
+# shellcheck source=scripts/lib/ros2-deadline.sh
+. /opt/can-demo/ros2-deadline.sh
+
 mkdir -p "$LOGS" && rm -f "$LOGS"/*
 
 # shellcheck disable=SC1091
@@ -131,7 +138,7 @@ MCPY
     ZENOH_SESSION_CONFIG_URI="$LOGS/mc-server.json5" "$SRV_BIN" > "$LOGS/mc-server.log" 2>&1 &
     MC_SRV=$!
     sleep 8
-    ZENOH_SESSION_CONFIG_URI="$LOGS/mc-client.json5" timeout 30 ros2 service call /add_two_ints \
+    ZENOH_SESSION_CONFIG_URI="$LOGS/mc-client.json5" "${NROS_ROS2_DEADLINE[@]}" 30 ros2 service call /add_two_ints \
         example_interfaces/srv/AddTwoInts "{a: 20, b: 22}" > "$LOGS/mc-call.log" 2>&1
     MC_RC=$?
     kill "$MC_SRV" 2>/dev/null; wait "$MC_SRV" 2>/dev/null
@@ -150,7 +157,7 @@ MCPY
     ZENOH_SESSION_CONFIG_URI="$LOGS/uc-server.json5" "$SRV_BIN" > "$LOGS/uc-server.log" 2>&1 &
     UC_SRV=$!
     sleep 8
-    ZENOH_SESSION_CONFIG_URI="$LOGS/uc-client.json5" timeout 60 ros2 service call /add_two_ints \
+    ZENOH_SESSION_CONFIG_URI="$LOGS/uc-client.json5" "${NROS_ROS2_DEADLINE[@]}" 60 ros2 service call /add_two_ints \
         example_interfaces/srv/AddTwoInts "{a: 20, b: 22}" > "$LOGS/uc-call.log" 2>&1
     UC_RC=$?
     kill "$UC_SRV" "$UC_DUMP" 2>/dev/null; wait "$UC_SRV" 2>/dev/null
@@ -254,7 +261,7 @@ say "    both are on the bus"
 rule
 say "5. publishing for ${RUN_SECONDS}s over CAN, with no router and no TCP"
 ZENOH_SESSION_CONFIG_URI="$LOGS/talker.json5" \
-    timeout "$RUN_SECONDS" ros2 run demo_nodes_cpp talker > "$LOGS/talker.log" 2>&1
+    "${NROS_ROS2_DEADLINE[@]}" "$RUN_SECONDS" ros2 run demo_nodes_cpp talker > "$LOGS/talker.log" 2>&1
 sleep 2
 kill "$LISTENER" "$PICO" "$CANDUMP" 2>/dev/null
 wait "$LISTENER" "$PICO" 2>/dev/null

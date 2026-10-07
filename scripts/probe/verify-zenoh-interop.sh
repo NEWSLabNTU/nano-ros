@@ -95,7 +95,9 @@ echo "PROBE PASS: nano-ros talker published through the documented router"
     source /opt/ros/humble/setup.bash
     export RMW_IMPLEMENTATION=rmw_zenoh_cpp
     export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/127.0.0.1:7447"]'
-    exec timeout 60 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
+    # shellcheck source=scripts/lib/ros2-deadline.sh
+    . "$repo_root/scripts/lib/ros2-deadline.sh"
+    exec "${NROS_ROS2_DEADLINE[@]}" 60 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ) >/tmp/echo.log 2>&1 &
 echo_pid=$!
 

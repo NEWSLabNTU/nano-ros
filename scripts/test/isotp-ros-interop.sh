@@ -47,6 +47,8 @@ done
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/grep-q.sh
 . "$script_dir/../lib/grep-q.sh"
+# shellcheck source=scripts/lib/ros2-deadline.sh
+. "$script_dir/../lib/ros2-deadline.sh"
 
 say() { echo "[isotp-ros] $*"; }
 die() { echo "[isotp-ros] error: $*" >&2; exit 1; }
@@ -192,7 +194,7 @@ if [ "$ROLE" = both ] || [ "$ROLE" = all ] || [ "$ROLE" = service-server ]; then
     SERVER=${NANO_ROS_SERVER:?set NANO_ROS_SERVER to the built nano-ros service-server}
     say "role SERVER: nano-ros serves /add_two_ints, ros2 calls it"
     start_candump "$OUT/dump-server.log"
-    run_bg timeout 60 ros2 service call /add_two_ints \
+    run_bg "${NROS_ROS2_DEADLINE[@]}" 60 ros2 service call /add_two_ints \
         example_interfaces/srv/AddTwoInts "{a: 20, b: 22}" >"$OUT/call.log" 2>&1
     CALL_PID=${PIDS[-1]}
     sleep 3
@@ -256,7 +258,7 @@ if [ "$ROLE" = all ] || [ "$ROLE" = action-server ]; then
     ASERVER=${NANO_ROS_ACTION_SERVER:?set NANO_ROS_ACTION_SERVER to the built nano-ros action-server}
     say "role ACTION-SERVER: nano-ros serves /fibonacci, ros2 sends a goal"
     start_candump "$OUT/dump-aserver.log"
-    run_bg timeout 90 ros2 action send_goal --feedback /fibonacci \
+    run_bg "${NROS_ROS2_DEADLINE[@]}" 90 ros2 action send_goal --feedback /fibonacci \
         example_interfaces/action/Fibonacci "{order: 5}" >"$OUT/asend.log" 2>&1
     ASEND_PID=${PIDS[-1]}
     sleep 3

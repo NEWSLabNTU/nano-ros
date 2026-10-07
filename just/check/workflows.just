@@ -377,6 +377,21 @@ ros-env-spelling:
 ros2-daemon-queries:
     @python3 scripts/check-ros2-daemon-queries.py
 
+# Issue 1723 — a deadline on a ROS 2 process must escalate to SIGKILL.
+#
+# rclpy installs a SIGTERM handler once `rclpy.init()` returns, and over
+# rmw_zenoh_cpp that handler leaves a waiting CLI waiting (measured: one SIGTERM
+# survived 3 of 3 on zenoh, ended 3 of 3 on Cyclone and Fast-DDS). `timeout`
+# without `--kill-after` never escalates, so `timeout 25 ros2 service call` was
+# alive 20 minutes later and four `timeout 20 ros2 topic echo` peers lived four
+# days. The fix is one spelling per language — `nros_tests::ros2::ros2_deadline`
+# and `scripts/lib/ros2-deadline.sh` — and this gate refuses a literal
+# `timeout … ros2`/`python3` beside them, and holds their grace equal.
+# Buildless: greps tracked source, self-testing.
+[private]
+ros2-cli-deadline:
+    @python3 scripts/check-ros2-cli-deadline.py
+
 # Issue 0980 — `runner-doctor` answered "where is the Zephyr SDK?" from the job
 # CHECKOUT while the build answers it from the CMake user package registry.
 # `scripts/zephyr/sdk/` is gitignored and `actions/checkout` runs

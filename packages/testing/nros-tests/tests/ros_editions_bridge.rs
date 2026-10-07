@@ -38,10 +38,11 @@ fn edition_domain_bridge_posestamped_survives() {
     }
 
     // Downstream echo on domain B (captures the first bridged sample).
+    let deadline = nros_tests::ros2::ros2_deadline(50);
     let mut echo = env_to
         .spawn(
             "echo",
-            "timeout 50 ros2 topic echo --once /pose geometry_msgs/msg/PoseStamped 2>&1",
+            &format!("{deadline} ros2 topic echo --once /pose geometry_msgs/msg/PoseStamped 2>&1"),
         )
         .expect("spawn echo");
 

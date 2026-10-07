@@ -87,7 +87,7 @@ sleep 2
 
 # `ros2 service call` exits 0 once it gets a reply or its internal
 # timeout fires. Cap with `timeout` to bound runaway.
-timeout 15 env LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" \
+"${NROS_ROS2_DEADLINE[@]}" 15 env LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" \
     ros2 service call /add_two_ints \
         example_interfaces/srv/AddTwoInts \
         '{a: 7, b: 35}' \

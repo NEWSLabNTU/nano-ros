@@ -99,6 +99,7 @@ echo "[can-demo] building $IMAGE"
 DOCKER_BUILDKIT=1 docker build \
     --build-context "zenoh=$ZENOH_DIR" \
     --build-context "zenohpico=$PICO_DIR" \
+    --build-context "nroslib=$NROS_ROOT/scripts/lib" \
     -t "$IMAGE" \
     "$HERE"
 

@@ -26,6 +26,8 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $*"; }
 # default port. `nros_router_exec` resolves the binary and passes the locator by
 # environment; it `exec`s, hence the subshell.
 . "$PROJECT_ROOT/scripts/dev/zenohd.sh"
+# shellcheck source=scripts/lib/ros2-deadline.sh
+. "$REPO_ROOT/scripts/lib/ros2-deadline.sh"
 
 # Cleanup kills what THIS script started, by PID. `pkill -f <pattern>` matches
 # the shell running it as readily as the target — a self-match that silently
@@ -74,7 +76,7 @@ export ZENOH_ROUTER_CHECK_ATTEMPTS=0
 export ROS_DOMAIN_ID=0
 
 log_info "Starting ROS 2 talker..."
-timeout 5 ros2 run demo_nodes_cpp talker &
+"${NROS_ROS2_DEADLINE[@]}" 5 ros2 run demo_nodes_cpp talker &
 ROS2_PID=$!
 sleep 2
 
