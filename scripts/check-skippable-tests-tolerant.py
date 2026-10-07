@@ -44,6 +44,7 @@ TESTS_DIR = os.path.join(ROOT, "packages", "testing", "nros-tests", "tests")
 # _nextest-tolerant …`.
 BARE = re.compile(r"^\s*(?!#)(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*cargo\s+(?:test|nextest\s+run)\b")
 TEST_ARG = re.compile(r"--test\s+([A-Za-z0-9_]+)")
+YAML_RUN = re.compile(r"^(\s*)(?:-\s*)?run:\s*(?:[|>]-?\s*)?")
 
 
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
@@ -59,6 +60,18 @@ def _justfile_sources(root=ROOT):
     "0 `--test` reference(s)".
     """
     return just_sources(root)
+
+
+def _ci_sources(root=ROOT):
+    """Every workflow and composite action — CI runs tests too.
+
+    2026-10-07 gate-reach re-audit (phase-472 W1's class): this read the
+    justfile graph only, so a workflow step running `cargo nextest run
+    --test <skippable>` bare passed. `workflow_commands.ci_files` is the ONE
+    CI-shell population.
+    """
+    import workflow_commands
+    return [str(p) for p in workflow_commands.ci_files(repo=root)]
 
 
 def skippable(name):
@@ -80,6 +93,8 @@ def scan(justfile_text):
     """[(line_no, recipe_line, [skippable targets])] for bare runs of skippable tests."""
     out = []
     for i, line in enumerate(justfile_text.split("\n"), 1):
+        # A YAML step spells the command after `run:` (or `- run:`).
+        line = YAML_RUN.sub(r"\1", line)
         if not BARE.match(line):
             continue
         names = TEST_ARG.findall(line)
@@ -91,7 +106,7 @@ def scan(justfile_text):
 
 def scan_tree(root):
     """(problems, `--test` references seen, files read) over the justfile graph."""
-    problems, total, paths = [], 0, _justfile_sources(root)
+    problems, total, paths = [], 0, _justfile_sources(root) + _ci_sources(root)
     for path in paths:
         with open(path, encoding="utf8") as fh:
             text = fh.read()
@@ -140,7 +155,7 @@ def main():
     # The count over EVERY file — it used to be the LAST file's `text`, which
     # is how "0 `--test` reference(s) scanned" read as a result.
     print(f"check-skippable-tests-tolerant OK — no skip-capable target is run bare "
-          f"({total} `--test` reference(s) scanned in {files} justfile(s)).")
+          f"({total} `--test` reference(s) scanned in {files} justfile(s) and CI file(s)).")
     return 0
 
 
@@ -198,6 +213,21 @@ def selftest(verbose=False):
             chk("a bare run inside a `mod` file is caught",
                 bool(probs) and probs[0][0] == os.path.join("just", "plat.just"))
             chk("the `--test` count spans every file", total == 1 and files == 2)
+
+        # 2026-10-07 re-audit — a bare run in a WORKFLOW step is read too, in
+        # both YAML spellings (`run: cmd` and a `run: |` block line).
+        with tempfile.TemporaryDirectory() as repo:
+            os.makedirs(os.path.join(repo, ".github", "workflows"))
+            with open(os.path.join(repo, "justfile"), "w", encoding="utf8") as fh:
+                fh.write("t:\n    true\n")
+            with open(os.path.join(repo, ".github", "workflows", "w.yml"), "w", encoding="utf8") as fh:
+                fh.write("jobs:\n  j:\n    steps:\n"
+                         "      - run: cargo nextest run -p nros-tests --test skippy\n"
+                         "      - name: x\n        run: |\n"
+                         "          cargo test -p nros-tests --test skippy\n")
+            probs, total, files = scan_tree(repo)
+            chk("a bare run in a workflow step is caught (both spellings)",
+                len(probs) == 2 and all(p[0].startswith(".github") for p in probs))
 
     globals()["TESTS_DIR"] = real
     if verbose:

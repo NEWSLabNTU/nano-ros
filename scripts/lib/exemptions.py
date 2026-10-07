@@ -52,7 +52,15 @@ class Exemptions:
     def check(self, neighbours=()):
         """Problems with the TABLE itself: reason-less entries, and any neighbour
         (a key one step from an entry) that the table covers. Does not mark
-        anything seen."""
+        anything seen.
+
+        Runs the helper's own `self_test()` once per process first. The
+        2026-10-07 gate-reach re-audit disarmed the neighbour test below and
+        every member stayed green: members drive `check()` over their own
+        tables, which cover no neighbour, so an empty answer looked the same
+        as a correct one. Only the helper's controls can tell them apart, and
+        no member ran them."""
+        _self_test_once()
         problems = [f"exemption {k!r} carries no reason" for k, r in self.table.items()
                     if not str(r or "").strip()]
         problems += [f"exemption table covers the NEIGHBOUR {n!r} — key it on exactly "
@@ -61,6 +69,16 @@ class Exemptions:
             problems.append(f"{self.what} exemptions ship no neighbour rows — nothing "
                             f"shows they are narrow")
         return problems
+
+
+_SELF_TESTED = False
+
+
+def _self_test_once():
+    global _SELF_TESTED
+    if not _SELF_TESTED:
+        _SELF_TESTED = True  # set first: self_test() calls check()
+        self_test()
 
 
 def self_test():
