@@ -48,8 +48,45 @@ fn main() {
     // cargo's default (rerun on any change in this package), so the list must
     // cover the whole sub-workspace — a change in `rosidl-codegen` must restamp
     // this crate even though it lives elsewhere.
-    for rel in cli_input_files(&root) {
-        println!("cargo:rerun-if-changed={}", root.join(&rel).display());
+    let tracked = cli_input_files(&root);
+    for rel in &tracked {
+        println!("cargo:rerun-if-changed={}", root.join(rel).display());
+    }
+    // Issue 1748 — and the inputs the stamp reads that the list above cannot
+    // name. `source_stamp` folds UNTRACKED CLI sources in too
+    // (`untracked_cli_files`, so a new file stales the CLI before it is added),
+    // but this script watched only tracked ones: editing an untracked source, or
+    // creating a new one, re-ran nothing, so `just setup-cli` rebuilt and
+    // reported `built:` with the OLD stamp baked in while `check cli-fresh`
+    // stayed STALE — clearable only by `touch build.rs`. Issue 1336's shape for
+    // the index, one input over.
+    //
+    // An existing untracked file is watched by name. A file that does not exist
+    // YET cannot be, so each crate's top-level input directory is watched too:
+    // cargo re-runs a build script when anything under a watched directory is
+    // newer than the last run, which is what a new file is. Never `target/` —
+    // it is rewritten by every build, so watching it would re-run this script
+    // on all of them.
+    let untracked = untracked_cli_files(&root);
+    for rel in &untracked {
+        println!("cargo:rerun-if-changed={}", root.join(rel).display());
+    }
+    let mut dirs = std::collections::BTreeSet::new();
+    for rel in tracked.iter().chain(untracked.iter()) {
+        let mut parts = rel.split('/');
+        if let (Some("packages"), Some("cli"), Some(krate), Some(top), Some(_)) = (
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+        ) && top != "target"
+        {
+            dirs.insert(format!("packages/cli/{krate}/{top}"));
+        }
+    }
+    for d in dirs {
+        println!("cargo:rerun-if-changed={}", root.join(d).display());
     }
     // …and when the index moves (commit, rebase, branch switch), since the
     // stamp reads index blob SHAs.
