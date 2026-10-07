@@ -135,8 +135,25 @@ static inline void nros_xrce_free(void* ptr) {
 #ifndef XRCE_SUBSCRIBER_BUFFER_SIZE
 #define XRCE_SUBSCRIBER_BUFFER_SIZE XRCE_BUFFER_SIZE
 #endif
+/* Issue 1722 — the parameter services are service servers like any other, so
+ * their requests land in this buffer too, and a `set_parameters` naming a
+ * node's declared parameters outgrows the 1,024-byte default (25 integers with
+ * 35-byte names is 2,411 B; measured dropped on main, with the drop logged as
+ * InboxOverflow). XRCE_PARAM_REQUEST_BYTES is that request's size: STATED as
+ * NROS_PARAM_SERVICE_INBOX_BYTES (the backend-neutral knob nros-node checks), or
+ * DERIVED by the cargo lane from the declaration. It only RAISES the default —
+ * never below the old floor, which also serves the user services. A STATED
+ * buffer below it is refused just after this block. */
 #ifndef XRCE_SERVICE_REQUEST_BUFFER_SIZE
+#if defined(XRCE_PARAM_REQUEST_BYTES) && XRCE_PARAM_REQUEST_BYTES > XRCE_BUFFER_SIZE
+#define XRCE_SERVICE_REQUEST_BUFFER_SIZE XRCE_PARAM_REQUEST_BYTES
+#else
 #define XRCE_SERVICE_REQUEST_BUFFER_SIZE XRCE_BUFFER_SIZE
+#endif
+#endif
+#if defined(XRCE_PARAM_REQUEST_BYTES) && XRCE_SERVICE_REQUEST_BUFFER_SIZE < XRCE_PARAM_REQUEST_BYTES
+#error                                                                                             \
+    "NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE is below XRCE_PARAM_REQUEST_BYTES, the largest set_parameters this image's declared parameters allow (NROS_PARAM_SERVICE_INBOX_BYTES, or derived from the contract's params:). That request would be dropped on arrival. Raise it, or leave it unset to derive (issue 1722)."
 #endif
 #ifndef XRCE_SERVICE_REPLY_BUFFER_SIZE
 #define XRCE_SERVICE_REPLY_BUFFER_SIZE XRCE_BUFFER_SIZE
@@ -191,6 +208,49 @@ static inline void nros_xrce_free(void* ptr) {
 #define XRCE_STREAM_BUFFER_SIZE (UXR_CONFIG_UDP_TRANSPORT_MTU * XRCE_STREAM_HISTORY)
 #else
 #define XRCE_STREAM_BUFFER_SIZE (UXR_CONFIG_CUSTOM_TRANSPORT_MTU * XRCE_STREAM_HISTORY)
+#endif
+
+/* Issue 1722 — a receive buffer is only as large as the stream that fills it.
+ *
+ * Every session runs over `uxrCustomTransport`, so the MTU this client reports
+ * to the Agent is UXR_CONFIG_CUSTOM_TRANSPORT_MTU, and the Agent fragments
+ * anything larger at that size. The client reassembles fragments INSIDE its
+ * input reliable stream, one fragment per slot, and only within a window of
+ * XRCE_STREAM_HISTORY slots (`uxr_receive_reliable_message` refuses a sequence
+ * number beyond it). A message needing more fragments than that can never
+ * complete, and because the stream is reliable it is retransmitted forever and
+ * nothing behind it is delivered either. Measured on a native XRCE image
+ * (custom MTU 512, history 4, request buffer stated 4096): a 25-parameter
+ * `set_parameters` (~2.4 KB, 5 fragments) got no reply, and a `get_parameters`
+ * that had answered before it got none after it. History 16, same image: 25 of
+ * 25 set, and the `get_parameters` after still answered.
+ *
+ * So each receive buffer is held to the window here, at compile time, where
+ * every producer of these numbers (env, Kconfig, the cargo lane's derivation,
+ * a board rung) arrives. Per fragment: the message header (8, with the client
+ * key) and the fragment subheader (4). Per message: the DATA subheader (4),
+ * the object/request ids (4), a request's SampleIdentity (24), alignment (3),
+ * less the 4-byte CDR header the Agent strips — 32, the worst of the three
+ * families. Conservative: it holds the buffer's CAPACITY to the window, not
+ * just the messages this image happens to receive. */
+#if defined(UCLIENT_PROFILE_UDP) && UXR_CONFIG_UDP_TRANSPORT_MTU < UXR_CONFIG_CUSTOM_TRANSPORT_MTU
+#define XRCE_INBOUND_FRAGMENT_BYTES (UXR_CONFIG_UDP_TRANSPORT_MTU - 12)
+#else
+#define XRCE_INBOUND_FRAGMENT_BYTES (UXR_CONFIG_CUSTOM_TRANSPORT_MTU - 12)
+#endif
+#define XRCE_INBOUND_FRAGMENTS(bytes)                                                              \
+    (((bytes) + 32 + XRCE_INBOUND_FRAGMENT_BYTES - 1) / XRCE_INBOUND_FRAGMENT_BYTES)
+#if XRCE_INBOUND_FRAGMENTS(XRCE_SERVICE_REQUEST_BUFFER_SIZE) > XRCE_STREAM_HISTORY
+#error                                                                                             \
+    "XRCE_SERVICE_REQUEST_BUFFER_SIZE needs more MTU-sized fragments than the reliable stream's window (XRCE_STREAM_HISTORY) can reassemble: a request that large would stall the session. Raise NROS_XRCE_STREAM_HISTORY or NROS_XRCE_CUSTOM_TRANSPORT_MTU, or lower the request buffer / declared parameters (issue 1722)."
+#endif
+#if XRCE_INBOUND_FRAGMENTS(XRCE_SUBSCRIBER_BUFFER_SIZE) > XRCE_STREAM_HISTORY
+#error                                                                                             \
+    "XRCE_SUBSCRIBER_BUFFER_SIZE needs more MTU-sized fragments than the reliable stream's window (XRCE_STREAM_HISTORY) can reassemble: a sample that large would stall the session. Raise NROS_XRCE_STREAM_HISTORY or NROS_XRCE_CUSTOM_TRANSPORT_MTU, or lower the subscriber buffer (issue 1722)."
+#endif
+#if XRCE_INBOUND_FRAGMENTS(XRCE_SERVICE_REPLY_BUFFER_SIZE) > XRCE_STREAM_HISTORY
+#error                                                                                             \
+    "XRCE_SERVICE_REPLY_BUFFER_SIZE needs more MTU-sized fragments than the reliable stream's window (XRCE_STREAM_HISTORY) can reassemble: a reply that large would stall the session. Raise NROS_XRCE_STREAM_HISTORY or NROS_XRCE_CUSTOM_TRANSPORT_MTU, or lower the reply buffer (issue 1722)."
 #endif
 #define XRCE_CDR_HEADER_LEN 4
 #define XRCE_DDS_NAME_BUF_SIZE 128

@@ -346,7 +346,11 @@ fn main() {
     // declarations imply, read from the sizing descriptor (RFC-0100 D4/D5). A
     // stated value still wins, and an image with no descriptor reaches exactly
     // the bytes it did before this wave.
-    let demand = XrceDemand::derive(sizing_descriptor().as_ref());
+    // Issue 1722 — whether a person already priced the parameter family's
+    // request. A statement clears the refusal below; the define loop then
+    // compiles the STATED number (rung 1/2 beats rung 3.5).
+    let param_inbox_stated = knobs.stated(ENV_PARAM_REQUEST, 1, &config_path).is_some();
+    let demand = XrceDemand::derive_stated(sizing_descriptor().as_ref(), param_inbox_stated);
     demand.report();
     for row in &config.defines {
         let value = knobs
@@ -943,6 +947,9 @@ const RELIABLE_STREAM_SAVING_BYTES: usize = 2 * (16 - RELIABLE_CONTROL_HISTORY) 
 const ENV_STREAM_HISTORY: &str = "NROS_XRCE_STREAM_HISTORY";
 const ENV_SUBSCRIBER_BUFFER: &str = "NROS_XRCE_SUBSCRIBER_BUFFER_SIZE";
 const ENV_SUBSCRIBER_RING_DEPTH: &str = "NROS_XRCE_SUBSCRIBER_RING_DEPTH";
+// Issue 1722 — bound to `XRCE_PARAM_REQUEST_BYTES` by `xrce-config.txt`. The
+// backend-neutral knob, not an XRCE one: nros-node checks a statement of it.
+const ENV_PARAM_REQUEST: &str = "NROS_PARAM_SERVICE_INBOX_BYTES";
 
 /// Rung 3.5 of the ladder in `packages/rmw/xrce/xrce-config.txt`.
 ///
@@ -976,6 +983,11 @@ impl XrceDemand {
     }
 
     fn derive(desc: Option<&SizingDescriptor>) -> Self {
+        Self::derive_stated(desc, false)
+    }
+
+    /// [`Self::derive`], told whether `NROS_PARAM_SERVICE_INBOX_BYTES` was stated (issue 1722).
+    fn derive_stated(desc: Option<&SizingDescriptor>, param_inbox_stated: bool) -> Self {
         let mut d = Self::default();
         // No descriptor: nobody ran `nros sync` for this image. Every number
         // below stays exactly where it was before this wave — the acceptance
@@ -983,6 +995,10 @@ impl XrceDemand {
         let Some(desc) = desc else {
             return d;
         };
+        // Issue 1722 — FIRST, and outside the endpoint-QoS gates below: the
+        // parameter family's request size is a property of the declared
+        // PARAMETERS, which `[params]` states whatever the endpoints say.
+        d.derive_param_request(desc, param_inbox_stated);
 
         // A `closure` basis describes every type the link closure can reach,
         // not the set this image creates. D6 forbids silently widening it, and
@@ -1027,6 +1043,48 @@ impl XrceDemand {
         d.derive_stream_history(desc);
         d.derive_subscriber_family(desc);
         d
+    }
+
+    /// Issue 1722 — the parameter family's largest request.
+    ///
+    /// Every service server's request lands in `XRCE_SERVICE_REQUEST_BUFFER_SIZE`,
+    /// and the parameter services are servers like any other. Measured on main
+    /// (`features` workspace, `native_rust_params_xrce`, 25 declared integers
+    /// with 35-byte names): a stock `set_parameters` naming them (~2.4 KB) was
+    /// dropped by the 1,024-byte default, though the contract had priced it.
+    ///
+    /// The price is the SHARED arithmetic
+    /// (`nros_sizing_descriptor::param_request_max_from`, also zenoh's), never
+    /// a copy (issue 1025). What this backend does with it is its own (D5): it
+    /// becomes `XRCE_PARAM_REQUEST_BYTES`, which `internal.h` takes as a
+    /// floor-respecting RAISE of the request buffer and a refusal of a stated
+    /// buffer below it.
+    ///
+    /// A declaration this crate cannot price (a string or array parameter: its
+    /// size depends on the store's caps, which only nros-params knows) REFUSES
+    /// the build unless `NROS_PARAM_SERVICE_INBOX_BYTES` states the size — the
+    /// same refusal and the same knob as zenoh's (issue 1352), because guessing
+    /// is exactly how the measured request was dropped. No declaration at all
+    /// derives nothing: the default stands, as before, and the build says so.
+    fn derive_param_request(&mut self, desc: &SizingDescriptor, stated: bool) {
+        if stated {
+            return;
+        }
+        let Some(shape) = desc
+            .params
+            .service_shape()
+            .into_stated()
+            .filter(|s| !s.trim().is_empty())
+        else {
+            // Nothing declared, nothing priced: the default stands, as before.
+            // Not a build note — most images serve no parameters, and an
+            // oversized request is still logged at runtime as an inbox
+            // overflow naming this backend's knob (nros-node).
+            return;
+        };
+        if let Some(n) = param_request_verdict(&shape) {
+            self.values.insert(ENV_PARAM_REQUEST, n);
+        }
     }
 
     /// Reliability gates the two reliable stream buffers.
@@ -1146,6 +1204,38 @@ impl XrceDemand {
         self.values
             .insert(ENV_SUBSCRIBER_BUFFER, bound + CDR_HEADER_LEN);
         self.values.insert(ENV_SUBSCRIBER_RING_DEPTH, depth);
+    }
+}
+
+/// Issue 1722 — the price of a well-formed `[params] service_shape`, or a
+/// refusal when it declares what this crate cannot price. `None` for a
+/// malformed token: nros-node owns that grammar and refuses it there.
+fn param_request_verdict(shape: &str) -> Option<usize> {
+    let well_formed = shape.split(',').all(|node| {
+        let f: Vec<_> = node.split(':').collect();
+        f.len() == 9 && f.iter().all(|v| v.trim().parse::<usize>().is_ok())
+    });
+    if !well_formed {
+        return None;
+    }
+    match nros_sizing_descriptor::param_request_max_from(shape) {
+        Some(n) => Some(n),
+        None => panic!(
+            "\n\nnros-rmw-xrce: the contract declares this image's parameters \
+             (`[params] service_shape` = `{shape}`), and at least one is a string or an \
+             array. Such a request's size depends on the parameter store's caps \
+             (NROS_MAX_STRING_VALUE_LEN and the array caps), which only nros-params \
+             resolves, so this crate cannot size the service request buffer a \
+             `set_parameters` lands in.\n\
+             Keeping the default would guess, and the guess was measured wrong: a \
+             25-parameter `set_parameters` was dropped by the 1,024-byte buffer \
+             (issues 1352, 1722).\n\
+             State NROS_PARAM_SERVICE_INBOX_BYTES (environment, Kconfig \
+             CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES, or the board's executor rung). \
+             nros-node checks the statement against the request it prices from the same \
+             declaration and the store's caps, and this backend sizes its request \
+             buffer from it.\n"
+        ),
     }
 }
 
@@ -1359,4 +1449,37 @@ fn xrce_demand_selftest() {
     )])));
     assert_eq!(d.for_knob(ENV_SUBSCRIBER_BUFFER), Some(CDR_HEADER_LEN));
     assert_eq!(d.for_knob(ENV_SUBSCRIBER_RING_DEPTH), Some(1));
+
+    // 12. Issue 1722 — declared parameters price the family's request, and
+    //     the price is derived even when the ENDPOINTS keep the image off every
+    //     other derivation (an undeclared endpoint returns early above).
+    let mut d12 = image(vec![]);
+    d12.meta.set_undeclared_endpoints(Some(1));
+    d12.params
+        .set_service_shape(Some("27:904:0:0:0:0:0:0:0".into()));
+    assert_eq!(
+        XrceDemand::derive(Some(&d12)).for_knob(ENV_PARAM_REQUEST),
+        Some(2564),
+        "the measured image: 25 named integers + 2, ~2.4 KB set_parameters"
+    );
+    // ...a statement of NROS_PARAM_SERVICE_INBOX_BYTES leaves it to the statement...
+    assert_eq!(
+        XrceDemand::derive_stated(Some(&d12), true).for_knob(ENV_PARAM_REQUEST),
+        None
+    );
+    // ...nothing declared derives nothing...
+    assert_eq!(
+        XrceDemand::derive(Some(&image(vec![]))).for_knob(ENV_PARAM_REQUEST),
+        None
+    );
+    // ...and a declaration this crate cannot price REFUSES rather than guessing.
+    let refused = std::panic::catch_unwind(|| param_request_verdict("25:875:0:0:1:0:0:0:0"));
+    let why = refused.expect_err("a string parameter must refuse, not guess");
+    let why = why.downcast_ref::<String>().cloned().unwrap_or_default();
+    assert!(why.contains("NROS_PARAM_SERVICE_INBOX_BYTES"), "{why}");
+    assert_eq!(
+        param_request_verdict("not:a:token"),
+        None,
+        "malformed is nros-node's"
+    );
 }

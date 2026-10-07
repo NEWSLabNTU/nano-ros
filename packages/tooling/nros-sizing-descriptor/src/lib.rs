@@ -56,6 +56,9 @@
 //! a ROS topic is an absolute-looking string too.
 
 pub mod fact;
+// Issue 1722 — the parameter family's request price, shared by every backend.
+pub mod param_request;
+pub use param_request::param_request_max_from;
 mod render;
 mod schema;
 pub mod vocabulary;

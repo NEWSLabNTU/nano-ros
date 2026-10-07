@@ -1,0 +1,37 @@
+# issue 1722 — the declaration that prices the parameter family's requests
+# for rust_params_xrce.launch.xml: 25 integers with 35-byte names (issue
+# 1352's measured case) plus the talker's own period. `nros sync` renders it as
+# the sizing descriptor's `[params] service_shape`, which the XRCE build reads.
+version: 1
+
+nodes:
+  param_talker:
+    pub:
+      chatter: {}
+    params:
+      publish_period_ms: { type: integer }
+      param_00_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_01_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_02_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_03_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_04_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_05_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_06_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_07_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_08_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_09_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_10_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_11_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_12_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_13_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_14_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_15_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_16_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_17_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_18_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_19_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_20_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_21_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_22_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_23_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }
+      param_24_xxxxxxxxxxxxxxxxxxxxxxxxxx: { type: integer }

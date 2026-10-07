@@ -176,6 +176,9 @@ nros-zephyr-build = { path = "../../../tooling/nros-zephyr-build" }
 nros-sizing-descriptor = { path = "../../../tooling/nros-sizing-descriptor" }
 
 [dev-dependencies]
+# issue 1722 -- `tests/builtin_inbox_slot.rs` includes `build_param_slot.rs`,
+# which now takes the shared parameter-request price from here.
+nros-sizing-descriptor = { path = "../../../tooling/nros-sizing-descriptor" }
 nros-tests = { path = "../../../testing/nros-tests" }
 nros-ghost-types = { version = "0.5.0", path = "../../../verification/nros-ghost-types" }
 # Force `ConcretePlatform` resolution for tests under `platform-posix`.
