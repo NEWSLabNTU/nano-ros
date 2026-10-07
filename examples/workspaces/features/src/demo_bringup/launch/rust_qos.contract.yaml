@@ -13,9 +13,10 @@
 # here than the code asks clamps the grant (reported once at boot); declaring
 # more reserves a deeper ring than anything uses.
 #
-# Reliability is deliberately NOT stated: `system.toml` overrides the
-# publisher's to best_effort at runtime (`qos_overrides./qos_chatter.publisher.
-# reliability`), so either value written here would be wrong for one side.
+# The publisher's reliability is `best_effort`, not the code's `reliable`:
+# `system.toml` overrides it (`qos_overrides./qos_chatter.publisher.
+# reliability`), and the contract must state the same fact the override bakes
+# into the runtime table or the build refuses the image (RFC-0100 D8).
 #
 # `nodes:` keys are LOCAL endpoint names, resolved under each node's root
 # namespace to the absolute topics below.
@@ -35,6 +36,7 @@ nodes:
           history: keep_last
           depth: 5
           durability: transient_local
+          reliability: best_effort
 
   qos_listener:
     sub:

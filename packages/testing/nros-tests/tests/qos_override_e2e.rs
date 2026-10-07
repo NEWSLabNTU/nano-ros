@@ -25,12 +25,14 @@
 //! `RELIABLE` + `KEEP_LAST (1)` for a declared `best_effort` + depth 10,
 //! because the shim granted every BEST_EFFORT as RELIABLE (on a premise about
 //! zenoh-pico congestion control that was measured false) and a transient-local
-//! publisher retains one sample. The first is fixed in the shim; the second is
-//! the backend's real capacity, so the talker now declares depth 1.
+//! publisher retained one sample. The first is fixed in the shim; the second
+//! was the backend's capacity until issue 1709 sized the retention ring from the
+//! deepest declared transient-local depth, so the talker declares depth 5 again
+//! and `rust_qos.contract.yaml` states it.
 //!
 //! ## The oracle
 //!
-//! `reliable_talker_pkg` declares `reliable + transient_local + depth(1)` in
+//! `reliable_talker_pkg` declares `reliable + transient_local + depth(5)` in
 //! CODE. The committed model overrides RELIABILITY to `best_effort` — a value
 //! the code never asks for. So on the wire:
 //!
@@ -57,6 +59,10 @@ use std::{process::Command, time::Duration};
 
 /// The topic the talker publishes on.
 const TOPIC: &str = "/qos_chatter";
+
+/// The depth `rust_qos_talker_pkg::qos_profile()` asks for and
+/// `rust_qos.contract.yaml` declares (issue 1709).
+const TALKER_DEPTH: usize = 5;
 
 /// ---------------------------------------------------------------------------
 /// Half 1 — deterministic, no ROS 2: the DECLARATION still exists in the
@@ -210,16 +216,21 @@ fn a_ros2_peer_sees_the_overridden_publisher_profile(zenohd_unique: ZenohRouter)
          live entity; the publisher advertises the code's own profile:\n{publisher}"
     );
     // Issue 0306 — the node's OWN declared QoS must survive alongside the
-    // override: `transient_local` and depth 1 come from the code, not the plan,
+    // override: `transient_local` and depth 5 come from the code, not the plan,
     // and neither is the default (VOLATILE, KEEP_LAST(10)).
     assert!(
         publisher.contains("Durability: TRANSIENT_LOCAL"),
         "the node's code-declared durability was dropped (issue 0306 regression): the plan \
          override applied but the declared profile did not:\n{publisher}"
     );
+    // Issue 1709 -- and depth 5 is ADVERTISED, which a transient-local
+    // publisher only does when it retains five: the grant is
+    // `min(asked, TL_RETAIN_DEPTH)`, and the ring was one sample deep.
     assert!(
-        publisher.contains("KEEP_LAST (1)\n"),
-        "the node's code-declared depth was dropped (issue 0306 regression):\n{publisher}"
+        publisher.contains(&format!("KEEP_LAST ({TALKER_DEPTH})\n")),
+        "the node's code-declared depth {TALKER_DEPTH} is not what the graph carries -- \
+         either it was dropped (issue 0306) or the transient-local retention ring is \
+         shallower than the declaration (issue 1709):\n{publisher}"
     );
 
     // Role targeting: the override names `publisher`, so the SUBSCRIPTION must
@@ -310,6 +321,103 @@ fn every_parameter_service_is_visible_to_a_ros2_peer(zenohd_unique: ZenohRouter)
         missing.len(),
         expected.len(),
         BUDGET.as_secs()
+    );
+}
+
+/// ---------------------------------------------------------------------------
+/// Issue 1709 — a LATE joiner receives the declared history, not one sample.
+/// ---------------------------------------------------------------------------
+///
+/// The talker publishes a counter at 1 Hz on a TRANSIENT_LOCAL KEEP_LAST(5)
+/// publisher. A stock `ros2 topic echo --qos-durability transient_local
+/// --qos-depth 5` started well after it is owed the last five samples AT ONCE
+/// (the history query's replies), then the live ones a second apart. So the
+/// oracle is timing, which the counter makes unambiguous: five CONSECUTIVE
+/// values inside one second of the first can only be history, because the live
+/// stream delivers one a second. Measured before the fix: one sample, then
+/// 1 Hz -- the retention ring was one sample deep whatever was declared.
+#[rstest]
+fn a_late_joiner_receives_the_declared_history(zenohd_unique: ZenohRouter) {
+    if !require_zenohd() {
+        skip!("zenohd not found");
+    }
+    if !require_ros2() {
+        skip!(
+            "ROS 2 / rmw_zenoh_cpp not available — install it from apt \
+             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml)."
+        );
+    }
+    let locator = zenohd_unique.locator();
+    let entry = build_native_workspace_rust_qos_entry()
+        .map(|p| p.to_path_buf())
+        .require("qos workspace entry");
+    let mut cmd = Command::new(entry);
+    cmd.env("RUST_LOG", "info")
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client")
+        .env("NROS_ENTRY_SPIN_MS", "60000")
+        .env("NROS_ENTRY_SPIN_STEP_MS", "10");
+    let mut talker = ManagedProcess::spawn_command(cmd, "qos_entry").expect("spawn qos entry");
+
+    // Late, by construction: the talker has published more than the depth
+    // before the subscriber exists.
+    std::thread::sleep(Duration::from_secs(TALKER_DEPTH as u64 + 3));
+
+    // Each received value, stamped with its arrival in ms. `--csv` prints the
+    // bare `data` field one per line; the stamp is taken as each line lands.
+    //
+    // Bounded by `wait_child_output`, which KILLS the process group at the
+    // deadline -- not by `timeout`, whose single SIGTERM a waiting rclpy CLI
+    // over rmw_zenoh survives (issue 1723).
+    let (env_setup, _config_dir) =
+        nros_tests::ros2::ros2_env_setup_with_locator(DEFAULT_ROS_DISTRO, &locator);
+    let script = format!(
+        "{env_setup} && PYTHONUNBUFFERED=1 ros2 topic echo --no-daemon \
+         --qos-durability transient_local --qos-reliability best_effort \
+         --qos-depth {TALKER_DEPTH} --csv {TOPIC} std_msgs/msg/Int32 2>/dev/null \
+         | while IFS= read -r v; do echo \"$(date +%s%3N) $v\"; done"
+    );
+    let mut echo = Command::new("bash");
+    echo.args(["-c", &script])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+    nros_tests::process::set_new_process_group(&mut echo);
+    let mut echo = echo
+        .spawn()
+        .expect("spawn the late-joining ros2 topic echo");
+    let text = nros_tests::ros2::wait_child_output(&mut echo, "late_echo", Duration::from_secs(20))
+        .unwrap_or_else(|e| format!("<echo output unreadable: {e}>"));
+    talker.kill();
+    let samples: Vec<(u64, i64)> = text
+        .lines()
+        .filter_map(|l| {
+            let (t, v) = l.split_once(' ')?;
+            Some((t.parse().ok()?, v.trim().parse().ok()?))
+        })
+        .collect();
+    assert!(
+        !samples.is_empty(),
+        "the late joiner received nothing in 20 s:\n{text}"
+    );
+    let t0 = samples[0].0;
+    let burst: Vec<i64> = samples
+        .iter()
+        .take_while(|(t, _)| t - t0 < 1000)
+        .map(|(_, v)| *v)
+        .collect();
+    assert!(
+        burst.len() >= TALKER_DEPTH,
+        "a late joiner asking for KEEP_LAST({TALKER_DEPTH}) got {} sample(s) in its first \
+         second, so the publisher replayed {} of the {TALKER_DEPTH} it declares (issue \
+         1709). Received (ms, value): {samples:?}",
+        burst.len(),
+        burst.len()
+    );
+    // Oldest first, consecutive: the LAST five, in publication order.
+    let history = &burst[..TALKER_DEPTH];
+    assert!(
+        history.windows(2).all(|w| w[1] == w[0] + 1),
+        "the replayed history is not the last {TALKER_DEPTH} samples in order: {history:?}"
     );
 }
 
