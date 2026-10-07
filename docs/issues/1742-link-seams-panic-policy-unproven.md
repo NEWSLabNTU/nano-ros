@@ -40,3 +40,17 @@ or the carriers in `nano_ros_node_register` apply it themselves before calling
 the seam. Hosted `threadx-linux` links `std` and may not need a
 `#[panic_handler]`, so whether the gap is LIVE depends on that board. Nothing
 measured it here.
+
+## Resume checkpoint (2026-10-08)
+
+Work paused for token budget. **PR #1804** (`fix/1742-carrier-panic-policy`) implements the agreed design:
+- the carriers in `cmake/NanoRosNodeRegister.cmake` take `PANIC platform|halt|own` (default `platform`) and call `nros_apply_panic_policy` after `add_executable`;
+- link seams stay policy-free;
+- `check-cmake-image-policy` requires the policy where an image is created.
+
+At pause the PR was open with auto-merge armed and CI pending. To resume:
+1. Check that #1804 merged. If it was ejected, rebase it, re-run `just setup-cli`, and re-arm.
+2. Verify by mutation: delete the carrier's `nros_apply_panic_policy` call; the gate must fail.
+3. Confirm the threadx-linux (hosted, `std`) finding recorded in the PR.
+
+Dropping `std` from threadx-linux is a separate, parked question.
