@@ -3,7 +3,8 @@ id: 1718
 title: "The live-peer host lane runs cells whose test binaries need fixtures its
   build step never builds — `cpp_robot_entry` and `rosout-talker-c` fail as
   FixtureNotBuilt"
-status: open
+status: resolved
+resolved: 2026-10-07
 type: bug
 area: [ci, testing]
 severity: medium
@@ -63,3 +64,21 @@ Either of these:
 
 The check is the next scheduled `live-peer regression`: its board job should
 report no FixtureNotBuilt.
+
+## Resolution
+
+PR #1753, by the first road. `check-interop-verdicts.py --list-passing
+--runner host --host-compile-checks` derives the `[[compile_check_fixture]]`
+ids the passing host cells' test files name as quoted literals (ids read from
+`examples/fixtures.toml`, tests from `nros-tests/tests/`), and the live-peer
+host fixture step builds each with `NROS_FIXTURE_ID=<id>
+compile-check-fixtures.sh`. On the current ledger that is `cpp_robot_entry`.
+
+Measured locally: the by-id build produces `native_entry`, and
+`cargo nextest run -p nros-tests --test cpp_multi_node_entry` passes 4/4.
+
+`rosout-talker-c` needs nothing: its case belongs to
+`native-logging-c-zenoh-n2r` (`interop::CASE_CELLS`), which has never passed,
+and the run already reports it as a skip with a reason
+(`rewrite-skipped-junit: skips by class: capability=1`), not as a regression.
+Still to confirm: the next scheduled host job reports no FixtureNotBuilt.
