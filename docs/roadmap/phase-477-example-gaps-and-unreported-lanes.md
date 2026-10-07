@@ -172,3 +172,34 @@ byte.
 
 W3's `host-tests.yml` item first: until that lane reports, regressions in
 everything else here land unseen. W1–W2 and W4–W7 are independent of each other.
+
+## Checkpoint — 2026-10-08 (session stopped here)
+
+**Landed since the phase opened:** #1666 (FVP lanes run; `[image.fvp]` rmw +
+conditional `nothrow_tag.cpp`), #1671/#1672 (host-tests `gates` job; two
+harness reds), #1699 (lane-first capability skips), #1707 (issue 1700:
+shared Corrosion cargo dir keyed on entity facts), #1708 (tier 1's run moves
+to `run-matrix.yml`'s self-hosted `tier1` job; host-tests keeps `unit` +
+`gates`; supersedes 68c2ff9d0's hosted build, whose first run failed in
+`just setup tier1`), #1720 (issue 1703: packed entry handles in five executor
+accessors), #1728 (shared fixture groups skip out-of-lane; `lane_scope`
+asks the coordinates), #1758 + #1794 (issue 1729: derived-tier `/diagnostics`
+reporter count + resolved-seed configure edge; in-lane fixture errors fail
+through `RequireFixture::require`; `name-real-failures.py` reads the
+failure message only).
+
+**In flight — resume here:**
+- **Issue 1746** — branch `fix/1746-shared-cargo-repoint`, one WIP commit,
+  NOT verified (draft PR). Next: reconfigure a native cpp leaf and build ONCE
+  (must link), `build-test-fixtures` after a reconfigure, `just format`,
+  `just ci gate`; then reword the commit and arm. Until it lands, the first
+  build after any reconfigure of a native cpp leaf can fail once with
+  undefined `nros_config_variant_sz_*` (a second `ninja` settles it).
+- **First `run-matrix` tier-1 run** — not yet dispatched (single-occupancy
+  self-hosted runner; maintainer's call). It is the CI acceptance for issues
+  1684 and 1685; dispatch after 1746 lands.
+
+**Still open in this phase:** W1 (`fvp_entry` to a generated west app; the
+`realtime-c` SMP image id + board; robot1 precedence unit test), W2 (1650),
+W3 (tier-1 residue 1686–1688, 1690–1692; 1627; the narrowing-filter
+decision), W4 (1509, 1644's lane decision), W5 (1512), W6 (1652), W7 (1535).
