@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>violation_pkg</name>
+  <version>0.1.0</version>
+  <description>phase-474 T4 - handler: a 10 Hz timer on a contracted path that arms the monitors at RUN and overruns once.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

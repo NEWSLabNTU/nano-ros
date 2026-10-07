@@ -5440,6 +5440,30 @@ west_id = "zephyr/native_sim/native/64/workspace-derived-tiers-entry-cpp"
 west_zenoh_locator = "tcp/127.0.0.1:7691"
 skip_probe = true
 
+# phase-474 T4 -- the violation-channel fixture
+# (examples/workspaces/violation-cpp): one C++ component whose 10 Hz timer
+# path carries a contracted 50 ms max_latency. Built with
+# CONFIG_NROS_MONITOR_ARM_ON_CALL and CONFIG_NROS_VIOLATION_DRAIN_REPORT; the
+# handler overruns in INIT (suppressed), arms on its third tick and overruns
+# once more on its sixth. Consumed by `tests/violation_channel_e2e.rs`, which
+# asserts `contract violation #1: max-latency-runtime /handler/state` on the
+# console and no second verdict. Own router port (7697): nothing else boots
+# beside it.
+[[workspace_fixture]]
+id = "workspace-zephyr-cpp-violation"
+platform = "zephyr"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/violation-cpp"
+bringup = "src/demo_bringup"
+image = "zephyr"
+board = "native_sim/native/64"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+west_build_name = "build-ws-cpp-violation-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-violation-entry-cpp"
+west_zenoh_locator = "tcp/127.0.0.1:7697"
+skip_probe = true
+
 # phase-281 W3c — the RT-TIERS C workspace Entry
 # (examples/workspaces/realtime-c/src/zephyr_entry): the FIRST full west
 # link + runtime proof of the W3a ZephyrBoard::run_tiers seam for a C node

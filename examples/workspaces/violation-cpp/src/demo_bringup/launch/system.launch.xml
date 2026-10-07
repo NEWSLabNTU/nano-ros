@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- phase-474 T4 (ws-violation-cpp) - one node, one timer. The node `name`
+     matches system.toml [[component]].name and the `nodes:` key of
+     system.contract.yaml beside this file. -->
+<launch>
+    <node pkg="violation_pkg" exec="handler" name="handler"/>
+</launch>
