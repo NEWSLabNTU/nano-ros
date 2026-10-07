@@ -168,6 +168,13 @@ __attribute__((weak)) uint32_t nros_board_app_priority(void) { return 4; }
 /* ---- Weak hooks the overlay implements ---- */
 __attribute__((weak)) void nros_board_log(const char *s) { (void)s; }
 __attribute__((weak)) int  nros_board_init_eth(void) { return 0; }
+/* The application entry returned (issue 1741). On a real MCU the right answer
+ * is the default: the app thread simply finishes and the kernel keeps running
+ * whatever else it has. A board that is a HOST PROCESS (threadx-linux)
+ * overrides this to end the process — otherwise a returned app leaves an idle
+ * scheduler running forever, which is how a `timeout`-bounded image outlived
+ * its deadline. */
+__attribute__((weak)) void nros_board_app_returned(void) { }
 __attribute__((weak)) void nros_board_compute_rng_seed(uint32_t *out)
 {
     /* Default = constant non-zero seed; overlay overrides with an
@@ -244,12 +251,14 @@ static void app_thread_entry(ULONG input)
         nros_board_log("[app_thread] Calling Rust entry...\n");
         rust_app_entry(rust_app_arg);
         nros_board_log("[app_thread] Rust entry returned\n");
+        nros_board_app_returned();
         return;
     }
     if (c_app_main) {
         nros_board_log("[app_thread] Calling c_app_main (FFI)...\n");
         c_app_main();
         nros_board_log("[app_thread] c_app_main returned\n");
+        nros_board_app_returned();
         return;
     }
 #if !defined(__riscv)
@@ -257,6 +266,7 @@ static void app_thread_entry(ULONG input)
         nros_board_log("[app_thread] Calling app_main (weak)...\n");
         app_main();
         nros_board_log("[app_thread] app_main returned\n");
+        nros_board_app_returned();
         return;
     }
 #endif

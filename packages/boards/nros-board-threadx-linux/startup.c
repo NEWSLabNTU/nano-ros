@@ -32,6 +32,9 @@ extern void nros_threadx_set_config(
     const uint8_t *mac,
     const char *interface_name);
 
+/* c/board_threadx_linux.c — issue 1741 */
+extern void nros_threadx_linux_install_termination_guard(void);
+
 /* Phase 241.D3-rev — `main` is WEAK so a component example that ships its own
  * entrypoint (`src/main.c::main` → `nros_system_main()`, the Phase 212.L component
  * model) overrides this board default instead of colliding with it. Examples that
@@ -44,6 +47,12 @@ __attribute__((weak)) int main(void)
      * that pipe stdout (otherwise it would be fully buffered and only
      * flushed at exit, losing all output on timeout/kill). */
     setvbuf(stdout, NULL, _IOLBF, 0);
+
+    /* Issue 1741 — a termination signal ENDS the image. Before kernel entry:
+     * only threads created after this inherit its signal mask, and the port
+     * creates its timer thread inside tx_kernel_enter(). Rationale beside the
+     * definition in c/board_threadx_linux.c. */
+    nros_threadx_linux_install_termination_guard();
 
     nros_threadx_set_config(
         NROS_APP_CONFIG.network.ip,

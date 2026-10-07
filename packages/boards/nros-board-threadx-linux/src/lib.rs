@@ -107,6 +107,22 @@ impl nros_platform::BoardExit for ThreadxLinux {
     }
 }
 
+/// The host-process setup every Rust threadx-linux entry does before
+/// `tx_kernel_enter()` — the Rust mirror of `startup.c::main` for a C/C++
+/// image, so the two languages' images are set up the same way.
+fn pre_kernel_host_setup() {
+    line_buffer_stdout();
+    // Issue 1741 — a termination signal ENDS the image. Must run before kernel
+    // entry: the ThreadX Linux port creates its timer thread inside
+    // `tx_kernel_enter`, and only threads created AFTER the mask is set inherit
+    // it. The rationale lives beside the C definition in
+    // `c/board_threadx_linux.c`.
+    unsafe extern "C" {
+        fn nros_threadx_linux_install_termination_guard();
+    }
+    unsafe { nros_threadx_linux_install_termination_guard() }
+}
+
 /// Issue #194 — line-buffer stdout before any output. The Rust Entry image's
 /// `nros::main!` `fn main` overrides the board `startup.c` weak C `main` (which
 /// carried the `setvbuf` fix), so when a test harness pipes stdout glibc
@@ -141,7 +157,7 @@ impl nros_platform::BoardEntry for ThreadxLinux {
         // bring-up resets some C static state, so `node::run` also
         // re-registers from inside the app thread; here we just seed
         // the slot for any pre-kernel logging.
-        line_buffer_stdout();
+        pre_kernel_host_setup();
         crate::node::register_log_writer_public();
         let cfg = Config::default();
         nros_board_threadx::run_entry::<ThreadxLinux, Config, F, E>(cfg, None, setup)
@@ -161,7 +177,7 @@ impl nros_platform::BoardEntry for ThreadxLinux {
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
-        line_buffer_stdout();
+        pre_kernel_host_setup();
         crate::node::register_log_writer_public();
         nros_board_threadx::run_entry::<ThreadxLinux, Config, F, E>(
             config_with_overlay(deploy),
@@ -183,7 +199,7 @@ impl ThreadxLinux {
         F: FnOnce() -> Result<(), E>,
         E: core::fmt::Debug,
     {
-        line_buffer_stdout();
+        pre_kernel_host_setup();
         crate::node::register_log_writer_public();
         nros_board_threadx::run_bare::<ThreadxLinux, Config, F, E>(Config::default(), setup)
     }
@@ -206,7 +222,7 @@ impl ThreadxLinux {
         F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E> + Copy,
         E: core::fmt::Debug,
     {
-        line_buffer_stdout();
+        pre_kernel_host_setup();
         crate::node::register_log_writer_public();
         nros_board_threadx::run_tiers_entry::<ThreadxLinux, Config, F, E>(
             config_with_overlay(deploy),
