@@ -88,7 +88,7 @@ packages/core --include='*.rs'` and `grep -rln '^\[lifecycle\]'
   (Full)` lines after this fix. Re-measured: it is NOT this under-count — the
   image's infra token is `param+lifecycle` now — but the undeclared
   `ZPICO_MAX_LIVELINESS` default (16) against the 24 tokens the image needs.
-  Filed as issue 1713 ([open](../1713-liveliness-pool-default-short-for-param-and-lifecycle-images.md)).
+  Filed as issue 1713 ([resolved](1713-liveliness-pool-default-short-for-param-and-lifecycle-images.md)).
 - No tier-2 build: the change only adds lifecycle's entities to an image whose
   model carries a typed `[lifecycle]` block, and the only such bringup is the
   native-only features workspace.
