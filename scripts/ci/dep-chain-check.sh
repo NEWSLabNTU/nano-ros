@@ -58,14 +58,16 @@ NROS="$(cd "$(dirname "$NROS")" && pwd)/$(basename "$NROS")"
 
 # --- the board × rmw matrix (rust talker; resolvable RMWs only) ---
 # Skipped on purpose: native+cyclonedds (pending 171.C.1), zephyr (the
-# west/cmake build is covered by zephyr-dual-line, not this cargo-tree lane).
+# west/cmake build is covered by zephyr-dual-line, not this cargo-tree lane),
+# and esp32-c3-baremetal, which is DORMANT since #1525: its index row is gone,
+# so `nros setup esp32-c3-baremetal` answers `unknown board` (post-submit runs
+# 37585621912 and 37586283504). Restore the cell when ESP32 leaves dormancy.
 CELLS=(
     "native:zenoh"
     "native:xrce"
     "mps2-an385-baremetal:zenoh"
     "mps2-an385-freertos:zenoh"
     "qemu-armv7a-nuttx:zenoh"
-    "esp32-c3-baremetal:zenoh"
     "rv-virt-threadx:zenoh"
     "threadx-linux:zenoh"
 )
