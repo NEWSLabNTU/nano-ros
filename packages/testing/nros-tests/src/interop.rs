@@ -535,6 +535,12 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-params-per-node-rust-cyclone",
        c(Linux, Rust, Cyclonedds, Params, Interop, Runtime),
        NativeFixtures, RosEdition(Cyclonedds), BiDir, "params_per_node_interop"),
+    // Issue 1722 — XRCE. Its service request buffer was not sized from the
+    // declared parameters: a stock 25-name `set_parameters` (~2.4 KB) was
+    // dropped by the 1,024-byte default. The fixture declares those 25.
+    ic("native-params-25-rust-xrce",
+       c(Linux, Rust, Xrce, Params, Interop, Runtime),
+       NativeFixtures, XrceAgent, RosToNano, "params_per_node_interop"),
     // tests/rust_multi_node_per_node_graph.rs — a multi-node Rust entry shows
     // one graph node per launch component in `ros2 node list` (#104/phase-268).
     ic("native-multinode-rust-zenoh",
@@ -740,6 +746,7 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     co("params_per_node_interop", "ros2_param_cli_addresses_each_node_by_its_own_fqn", "native-params-per-node-rust-zenoh"),
     co("params_per_node_interop", "ros2_param_set_refuses_undeclared_and_off_step",    "native-params-per-node-rust-zenoh"),
     co("params_per_node_interop", "ros2_param_cli_addresses_each_node_on_cyclonedds",  "native-params-per-node-rust-cyclone"),
+    co("params_per_node_interop", "xrce_set_parameters_naming_25_declared_lands",      "native-params-25-rust-xrce"),
 
     // ── rosout_interop — issue 1589 gave it two more cells ──────────────
     // One case per language; each resolves its own probe (the Rust cargo

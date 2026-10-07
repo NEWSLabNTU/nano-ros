@@ -230,6 +230,7 @@ static C_XRCE_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_CYCLONEDDS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_XRCE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_RUST_PARAMS_XRCE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Phase 264 W4c — cached path to the parameterised workspace Entry pkg binary.
 static NATIVE_WORKSPACE_RUST_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -2332,6 +2333,21 @@ pub fn build_native_workspace_rust_xrce_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_XRCE_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_rust_entry("workspace-rust-native-xrce", "rust", "native_xrce_entry")
+        })
+        .map(|p| p.as_path())
+}
+
+/// Issue 1722 — the `features` param_talker on XRCE, with 25 declared integer
+/// parameters (35-byte names): `[image.native_rust_params_xrce]`, row
+/// `workspace-features-rust-params-xrce`.
+pub fn build_native_workspace_rust_params_xrce_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_PARAMS_XRCE_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-features-rust-params-xrce",
+                "features",
+                "native_rust_params_xrce_entry",
+            )
         })
         .map(|p| p.as_path())
 }
