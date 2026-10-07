@@ -142,9 +142,128 @@ harness, and its evidence is the before/after QEMU pair above.
   - esp32-c3 bare metal: its heap cannot hold a default-sized store at all.
     There, a contract `params:` declaration, which shrinks `MAX_PARAMETERS`,
     is the only way in.
-- **On a Zephyr image with `NROS_HEAP_EXHAUSTION_IS_FATAL=y`, and on
-  FreeRTOS, the allocator halts before the fallible path can return.** The
-  number is still named, by the allocator. A pre-check would avoid the halt,
-  but it needs to know that the arena is FIXED. `nros_platform_heap_total_bytes`
-  is `mallinfo`'s current arena on POSIX and FreeRTOS heap_3, and that arena
-  grows, so a pre-check there would refuse an image that works.
+- ~~**On a Zephyr image with `NROS_HEAP_EXHAUSTION_IS_FATAL=y`, and on
+  FreeRTOS, the allocator halts before the fallible path can return.**~~
+  Closed for FreeRTOS and ruled for the rest. See the 2026-10-07 progress
+  section below.
+
+## Progress (2026-10-07): item (d) is closed, and (a), (b) and (c) are re-scoped
+
+Status stays **open**. (d) is done. (a), (b) and (c) are not, and the reason is
+given below in terms of the mechanism, so the next attempt does not start from
+the same dead end.
+
+### (d) Allocators that halt on exhaustion: closed
+
+**FreeRTOS heap_4 now answers a certain failure with NULL.** heap_4's arena is
+FIXED: `configTOTAL_HEAP_SIZE` is a static `ucHeap[]`. So a request larger
+than `xPortGetFreeHeapSize()` cannot be served by anything. That is exactly the
+fixed-arena condition item 4 of "Still missing" asked for. `nros_platform_alloc`
+already reported such a request. It now also returns NULL instead of passing
+it to `pvPortMalloc`, which called `vApplicationMallocFailedHook` and halted
+before the store's fallible path could return.
+
+Two cases keep their old behaviour:
+
+- A request that fails only on fragmentation still reaches heap_4 and its
+  hook. The free total cannot predict that failure.
+- heap_3 is untouched. Its arena grows.
+
+**Measured** on the mps2-an385 FreeRTOS rust talker with `param_services`
+and one declared parameter, under QEMU with a live `rmw_zenohd`, at
+`NROS_FREERTOS_HEAP_KB=400`:
+
+| build | console |
+| --- | --- |
+| before | `HEAP EXHAUSTED: request 280832 bytes, free 246320 of 409600 bytes`, then `*** MALLOC FAILED ***` (halted) |
+| after | the same line, then `parameter store refused: needs 280832 bytes in one allocation (32 slots x 8776)`, `node declaration failed — NodeError::Transport(BadAlloc)`, and the application's own error return |
+| after, default heap | publishes (`Hello World: 1..8` in 25 s) |
+
+**Test.** `tests/freertos-c-smoke` (heap_4 build) runs a heap_4 probe. It
+requests `free + 1` with `configUSE_MALLOC_FAILED_HOOK 1`, the setting every
+board uses, and the smoke's hook FAILs. Before the change it prints
+`FAIL: malloc failed in FreeRTOS heap`. After it prints
+`request of 1025001 bytes over 1025000 free answered NULL, no hook`. Since
+issue 1720 this smoke runs in the nightly freertos cell.
+
+**The other allocators are RULED, not changed.** None of them halts unless
+the image asks it to:
+
+- **ThreadX:** returns NULL since issue 1717 (`TX_NO_WAIT`).
+- **NuttX and POSIX:** `malloc` returns NULL.
+- **Zephyr and the bare-metal boards (esp32-c3, mps2, stm32f4):** halt only
+  under `NROS_HEAP_EXHAUSTION_IS_FATAL`. That knob is an explicit "halt
+  loudly" choice (phase-460 W7 / issue 1425), on by default only when the
+  boot report is on. An image that sets it has asked for the halt. It
+  still gets the request named first.
+
+### (a), (b) and (c): what blocks them
+
+All three need the store's size **for the target**, at the point where a heap
+default is chosen. No producer that runs at that point has it:
+
+| road | where the heap default is chosen | when |
+| --- | --- | --- |
+| Zephyr | Kconfig `NROS_ZEPHYR_HEAP_SIZE` | west configure, before any Rust compiles |
+| FreeRTOS cargo | `nros-board-freertos/build.rs` | a HOST build script |
+| FreeRTOS cmake | `NROS_FREERTOS_HEAP_DEFAULT_DDS` | configure |
+| ThreadX | `threadx_hooks.c` | C, outside the Rust build |
+| esp32 | the board crate's `HEAP_SIZE` | a const, before the store's crate |
+
+The size is `size_of::<ParameterStorage<MAX_PARAMETERS>>()`. It is 285,696 B
+on x86_64 and 280,832 B on armv7m, so it depends on the target. It folds board
+capacities (`[board.knobs.params]`) that the descriptor deliberately does not
+carry (RFC-0100 D1). Three routes were weighed and not taken:
+
+- **A descriptor fact computed by the CLI from a layout formula.** The
+  formula would be over heapless `String`/`Vec` layouts plus target pointer
+  width. A compile-time assertion in `nros-params`
+  (`size_of <= stated <= size_of + slack`) could keep it honest on every
+  target. But it needs the board capacities in the descriptor, which RFC-0100
+  D1 rules out, and it is exactly the formula the 2026-10-06 section warned
+  against.
+- **The host metadata probe's `size_of`.** It is an upper bound for every
+  32-bit target in practice, since all fields shrink. A target-side assertion
+  could verify that. But the probe does not run on every road (the model road
+  joins no probe sidecar, issue 1594), so the fact would be absent exactly
+  where it is needed.
+- **The per-build sizes header (`__NROS_SIZE_*`).** It is target-accurate.
+  But it exists only at BUILD time, after Kconfig and the board build script
+  have already decided.
+
+**The route that removes the problem rather than carrying a number is the
+store in the executor's arena** (phase-382 W3'). `nros-node` computes the
+arena model in-crate, compiled for the target, and the first executor's
+backing is the `.bss` static `EXECUTOR_BACKING`. A store term in
+`arena_model::REQUIRED`, conditional on the descriptor's `[params]` being
+STATED (declared > 0), would have these properties:
+
+- it is target-accurate by construction (`size_of` in the crate that owns
+  the type);
+- it costs nothing in an image that declares no parameters, which answers
+  the rejected `.bss` direction of issue 1702: that static was
+  unconditional;
+- it takes the store out of every RTOS heap, so (a), (b) and the FreeRTOS
+  DDS arithmetic stop being heap questions.
+
+`leak_parameter_storage` would carve the store from the arena when the arena
+was sized for it, and fall back to the heap (and its named refusal)
+otherwise. That touches the arena's every consumer: `EXECUTOR_BACKING`, the
+C/C++ `nros_executor_t` statics sized through `EXECUTOR_SIZE`, the tier
+backings (issues 1568/1571) and `ExecutorSizing`. So it is a phase's work
+item, not a patch.
+
+On **(c)**, item by item:
+
+- **esp32-c3:** it holds a declared store. phase-446 W4 measured 25 scalar
+  slots at 4,200 B, because an undeclared capability derives to 0. An
+  undeclared store gets the runtime refusal with its number. A
+  configure-time refusal needs the same target size as (a).
+- **rv-virt-threadx and NuttX:** still unmeasured on a booted image.
+  The rv-virt-threadx 4 MiB pool arithmetic above stands. The attempt on
+  2026-10-07 used a copy of `examples/rv-virt-threadx/rust/talker` with
+  `param_services` and one declared parameter. `nros sync` and `nros build`
+  both succeeded, but that leaf's cargo road now emits only the staticlib
+  (`app_main!`), and the bootable image is linked elsewhere. An ad-hoc
+  variant therefore needs a fixture row, which is out of scope here. NuttX
+  was not attempted.

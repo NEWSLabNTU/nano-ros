@@ -25,7 +25,9 @@
 #define configUSE_COUNTING_SEMAPHORES           1
 #define configQUEUE_REGISTRY_SIZE               0
 #define configCHECK_FOR_STACK_OVERFLOW          0
-#define configUSE_MALLOC_FAILED_HOOK            0
+/* Issue 1706 -- ON, as every board sets it: the smoke's hook FAILs, which is
+ * what proves the port answers an unservable request without reaching it. */
+#define configUSE_MALLOC_FAILED_HOOK            1
 #define configRECORD_STACK_HIGH_ADDRESS         1
 
 /* Co-routine related definitions. */
