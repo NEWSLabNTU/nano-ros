@@ -45,9 +45,9 @@ TARGETS = [
     # in the match arm; it is not a second reach. (CLAUDE.md "Naming".)
     ('"posix" | "native"', "Linux host"),
     ('"zephyr"', "Zephyr"),
-    ('f.contains("freertos")', "FreeRTOS"),
-    ('f.contains("threadx")', "ThreadX"),
-    ('f.contains("nuttx")', "NuttX"),
+    ('"freertos"', "FreeRTOS"),
+    ('"threadx"', "ThreadX"),
+    ('"nuttx"', "NuttX"),
     ("_", "Bare-metal (RTIC / NVIC)"),
 ]
 
