@@ -57,16 +57,4 @@ pub trait ThreadxConfig {
     fn domain_id(&self) -> u32 {
         0
     }
-
-    /// Deprecated alias for [`locator`](ThreadxConfig::locator).
-    ///
-    /// Note: an overlay that still *overrides* the old name is no longer
-    /// consulted by the family driver — rename the override to `locator`.
-    #[deprecated(
-        since = "0.6.0",
-        note = "renamed to `locator()` — the trait must not name a backend (issue 0330)"
-    )]
-    fn zenoh_locator(&self) -> &'static str {
-        self.locator()
-    }
 }

@@ -1061,11 +1061,7 @@ unsafe extern "C" {
     ) -> rmw_ret_t;
 }
 unsafe extern "C" {
-    #[doc = " Register a custom RMW backend under the implicit name \"default\".\n  Legacy single-arg form retained for source compatibility with\n  backend ctors authored before the named registry (Phase 104.B.2).\n\n  Deprecated (Phase 128.B.5): every in-tree backend now calls\n  `nros_rmw_cffi_register_named` with its canonical name. The\n  unnamed shim will be removed in a follow-up phase.\n  Returns NROS_RMW_RET_OK."]
-    pub fn nros_rmw_cffi_register(vtable: *const nros_rmw_vtable_t) -> rmw_ret_t;
-}
-unsafe extern "C" {
-    #[doc = " Phase 104.B.2 — register a backend under a stable name. Multiple\n  backends can coexist (bridge nodes); consumers select via\n  `nros_rmw_cffi_lookup` or the higher-level\n  `Executor::node_builder(...).rmw(...)` path.\n\n  Names: UTF-8, NUL-terminated, ≤ 31 bytes (excluding NUL).\n  Reserved: \"zenoh\", \"dds\", \"xrce\", \"cyclonedds\", future \"uorb\".\n  \"default\" is the implicit name used by `nros_rmw_cffi_register`.\n\n  Duplicate registration of the same name overwrites the previous\n  vtable (idempotent for ctor-fires-twice).\n\n  Returns:\n    * NROS_RMW_RET_OK on success.\n    * NROS_RMW_RET_INVALID_ARGUMENT if name or vtable is NULL,\n      the name is empty, or exceeds 31 bytes.\n    * NROS_RMW_RET_ERROR if the registry is full\n      (NROS_RMW_MAX_BACKENDS reached)."]
+    #[doc = " Phase 104.B.2 — register a backend under a stable name. Multiple\n  backends can coexist (bridge nodes); consumers select via\n  `nros_rmw_cffi_lookup` or the higher-level\n  `Executor::node_builder(...).rmw(...)` path.\n\n  Names: UTF-8, NUL-terminated, ≤ 31 bytes (excluding NUL).\n  Reserved: \"zenoh\", \"dds\", \"xrce\", \"cyclonedds\", future \"uorb\".\n  (\"default\" was the implicit name of the unnamed single-argument form,\n  deleted by phase-482 W6; name the protocol instead.)\n\n  Duplicate registration of the same name overwrites the previous\n  vtable (idempotent for ctor-fires-twice).\n\n  Returns:\n    * NROS_RMW_RET_OK on success.\n    * NROS_RMW_RET_INVALID_ARGUMENT if name or vtable is NULL,\n      the name is empty, or exceeds 31 bytes.\n    * NROS_RMW_RET_ERROR if the registry is full\n      (NROS_RMW_MAX_BACKENDS reached)."]
     pub fn nros_rmw_cffi_register_named(
         name: *const core::ffi::c_char,
         vtable: *const nros_rmw_vtable_t,

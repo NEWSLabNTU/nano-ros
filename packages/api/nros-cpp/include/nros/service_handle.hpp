@@ -42,7 +42,7 @@ namespace nros {
 /// dropped. That is a keep-alive, and a keep-alive is two words.
 ///
 /// The taking API that used to ride along on the same class — `take_request`,
-/// `send_response` and their deprecated spellings — belongs to the POLL server,
+/// `send_response` — belongs to the POLL server,
 /// which owns its own `RmwServiceServer` in caller storage. It is
 /// `nros::PollService<S>` now (`nros/polling_service.hpp`), for the reason W2b
 /// split `nros::PollSubscription<M>` out: one class serving two ownership

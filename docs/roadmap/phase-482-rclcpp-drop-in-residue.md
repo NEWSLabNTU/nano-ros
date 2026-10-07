@@ -148,6 +148,24 @@ ownership.
 - **Acceptance:** zero deprecated items, except W4's lifecycle forwarder,
   which is due for removal in the following release.
 
+**Status: done 2026-10-07.** Measured at deletion: 32 C++ `[[deprecated]]`
+plus the two `NROS_CPP_DEPRECATED_MSG` uses (`nros::Node`, `bind_timer`), 16
+Rust `#[deprecated]` items, and the two unused C macros. One changelog entry
+(`changelog.d/+phase-482-w6.breaking.md`) lists every name and its replacement.
+
+- The five C++ expected-failure deprecation probes went with them, as the C
+  ones did in phase-417 W-B5: with the identifier gone, a probe that expects a
+  compile failure passes while asserting nothing. Their positive twins keep
+  only the live spellings.
+- 23 API-parity rows for deleted names are kept, marked RETIRED. Nothing would
+  have flagged them (issue 1323, W7).
+- `nros_rmw_cffi_register` (the unnamed C ABI entry) is deleted. Its weak
+  PX4-SITL fallback in `nros-rmw-uorb/src/register_fallback.c` defined that
+  unnamed symbol while `vtable.cpp` calls `nros_rmw_cffi_register_named`, so
+  the fallback had satisfied nothing since the named registry landed. It now
+  defines the symbol that is called.
+- `NROS_CPP_DEPRECATED_MSG` stays defined, unused, for W4's forwarder.
+
 ### W7 — ledger hygiene and export policy
 
 - Issue 1323: the API-parity ledger has no stale-row detection. It was homed

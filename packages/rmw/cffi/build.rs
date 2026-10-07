@@ -141,7 +141,7 @@ fn knob(name: &str, rung: Option<usize>, default: usize) -> usize {
 /// single value, and `nros build` generates one `register()` call for it); a
 /// bridge that binds several carries no `system.toml`, so no descriptor is
 /// written for one and it keeps the builtin 8. Under-sizing this registry is a
-/// REGISTRATION FAILURE and not a truncation — `nros_rmw_cffi_register` returns
+/// REGISTRATION FAILURE and not a truncation — `nros_rmw_cffi_register_named` returns
 /// non-OK and `register()` returns `Err` — so the number is refused rather than
 /// guessed wherever the producer cannot name the backend.
 ///

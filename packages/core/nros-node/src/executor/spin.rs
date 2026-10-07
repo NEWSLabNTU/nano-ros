@@ -3960,8 +3960,8 @@ impl<'s> Executor<'s> {
         let mut ids: [super::sched_context::SchedContextId; N] =
             [super::sched_context::SchedContextId(0); N];
         for (i, window) in schedule.windows[..schedule.window_count].iter().enumerate() {
-            // Deprecation note on `SchedClass::TimeTriggered`: TT
-            // is implemented as a per-SC *window gate* on top of
+            // TT is not a scheduling class (phase-482 W6 deleted the
+            // `SchedClass::TimeTriggered` variant): it is a per-SC *window gate* on top of
             // the existing class-based dispatch (Fifo here keeps
             // the EDF / Sporadic budgets out of the picture for
             // pure cyclic schedules). The window-gate fields set
@@ -12243,20 +12243,6 @@ impl<'s> Executor<'s> {
             .store(true, core::sync::atomic::Ordering::SeqCst);
     }
 
-    /// Deprecated spelling of [`cancel()`](Self::cancel) — phase-417 W4.c.
-    ///
-    /// `cancel` is ROS 2's name for this (`rclcpp::Executor::cancel`,
-    /// `rclpy.executors.Executor.cancel`) and is now the primary. `halt` was our
-    /// own vocabulary and stays as a forwarder so out-of-tree callers keep
-    /// compiling; it holds no state of its own.
-    #[deprecated(
-        since = "0.5.0",
-        note = "renamed to `cancel()` to match `rclcpp::Executor::cancel` (phase-417 W4.c)"
-    )]
-    pub fn halt(&self) {
-        self.cancel();
-    }
-
     /// Has a [`cancel()`](Self::cancel) been REQUESTED?
     ///
     /// Not the same question as [`is_spinning()`](Self::is_spinning), and both
@@ -13702,19 +13688,6 @@ mod cancel_tests {
         assert!(
             !exec.is_spinning(),
             "cancel() must not make a non-spinning executor claim to spin"
-        );
-    }
-
-    /// The deprecated forwarder must reach the SAME bit — a second flag behind
-    /// the old name is exactly the drift RFC-0019 forbids.
-    #[test]
-    #[allow(deprecated)]
-    fn halt_forwards_onto_cancel() {
-        let exec = executor();
-        exec.halt();
-        assert!(
-            exec.is_halted(),
-            "`halt()` must set the flag `cancel()` sets, not one of its own"
         );
     }
 

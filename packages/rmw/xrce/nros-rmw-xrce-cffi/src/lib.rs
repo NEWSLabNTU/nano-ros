@@ -93,7 +93,7 @@ pub struct RegisterError(pub c_int);
 pub fn register() -> Result<(), RegisterError> {
     // SAFETY: `nros_rmw_xrce_register` is a no-arg C entry point that
     // returns an `int`. It internally hands a static, immutable
-    // vtable to `nros_rmw_cffi_register`. No invariants required from
+    // vtable to `nros_rmw_cffi_register_named`. No invariants required from
     // the caller beyond "call before opening any session" — that is
     // the runtime contract documented in
     // `book/src/internals/rmw-backends.md` (Phase 115.K.1).

@@ -54,7 +54,6 @@ with zero sites is a type, not a behavior.
 | `Fifo` | 2 | Live — the default class; bucketed FIFO ready-set. |
 | `Edf` | 1 | Live — earliest-deadline-first ready-set ordering. |
 | `Sporadic` | 5 | Live — budget/period enforcement in dispatch. |
-| `TimeTriggered` | 1 | Accepted but deprecated in favour of cooperating TT-with-other-classes (see the enum's deprecation note); dispatches as Fifo. |
 
 ## Related
 

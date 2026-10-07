@@ -116,15 +116,6 @@ impl Config {
         self
     }
 
-    /// Deprecated alias for [`with_locator`](Self::with_locator).
-    #[deprecated(
-        since = "0.6.0",
-        note = "renamed to `with_locator()` — the config API must not name a backend (issue 0330)"
-    )]
-    pub fn with_zenoh_locator(self, locator: &'static str) -> Self {
-        self.with_locator(locator)
-    }
-
     /// Builder: set ROS 2 domain ID.
     pub fn with_domain_id(mut self, domain_id: u32) -> Self {
         self.base.domain_id = domain_id;

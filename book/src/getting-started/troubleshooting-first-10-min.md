@@ -128,7 +128,7 @@ undefined reference to `dds_create_participant`
 ```
 
 `rmw-cyclonedds` cannot link from cargo alone — the Cyclone backend
-is C++ + CMake, registered via `nros_rmw_cffi_register` from a
+is C++ + CMake, registered via `nros_rmw_cffi_register_named` from a
 CMake-built target — wired through `CMakeLists.txt` +
 Corrosion. Use the cmake build path instead, and choose the backend where
 backends are chosen: `[system] rmw` in the leaf's `system.toml`.

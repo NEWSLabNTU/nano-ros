@@ -4401,14 +4401,14 @@ fn convert_sched_context(
     use nros_node::executor::sched_context::{
         DeadlinePolicy, OptUs, Priority, SchedClass, SchedContext,
     };
-    #[allow(deprecated)]
     SchedContext {
         class: match cfg.class {
             nros_sched_class_t::NROS_SCHED_CLASS_FIFO => SchedClass::Fifo,
             nros_sched_class_t::NROS_SCHED_CLASS_EDF => SchedClass::Edf,
             nros_sched_class_t::NROS_SCHED_CLASS_SPORADIC => SchedClass::Sporadic,
             nros_sched_class_t::NROS_SCHED_CLASS_BEST_EFFORT => SchedClass::BestEffort,
-            // Phase 110.G refactor: TimeTriggered class is deprecated;
+            // Phase 110.G refactor: TimeTriggered is not a class (phase-482 W6
+            // deleted the Rust variant);
             // accept the C-side enum value but route to Fifo. Callers
             // should switch to populating tt_window_offset_us /
             // tt_window_duration_us for the gate semantics.

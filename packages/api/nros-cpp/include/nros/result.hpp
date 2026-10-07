@@ -75,13 +75,12 @@
 #define NROS_NODISCARD
 #endif
 
-/// `NROS_CPP_DEPRECATED_MSG(msg)` — the C++ twin of `NROS_DEPRECATED_MSG`
-/// (`<nros/visibility.h>`, nros-c).
+/// `NROS_CPP_DEPRECATED_MSG(msg)` — a deprecation that names its replacement.
 ///
-/// Declared here rather than included from there because a C++-only consumer
-/// need not have the C API's include directory on its path, and `result.hpp`
-/// is the one header every other `nros/*.hpp` already pulls in — the same
-/// reason `NROS_NODISCARD` lives above.
+/// Kept with no current user (phase-482 W6 retired every deprecated item) for
+/// the next forwarder, so it does not get re-invented with a second spelling.
+/// Declared here because `result.hpp` is the one header every other
+/// `nros/*.hpp` already pulls in — the same reason `NROS_NODISCARD` lives above.
 ///
 /// Unlike `NROS_NODISCARD` this needs no compiler-specific carve-out: the
 /// `deprecated` attribute on a class and on a function is honoured by gcc and
@@ -360,28 +359,6 @@ template <typename T> class NROS_NODISCARD ResultOf {
     bool ok_;
     ErrorCode error_;
     T value_;
-};
-
-/// `Expected<T>` — the old spelling of `ResultOf<T>`, kept for one release.
-///
-/// A DERIVED CLASS rather than the alias template the obvious reading asks
-/// for, and the reason is measured: `[[deprecated]]` on an alias template
-/// warns on gcc 12.3 and is SILENT on clang 14 (both -std=c++14 and c++17),
-/// so half our users would be told nothing until the name vanished. The same
-/// attribute on a CLASS template warns on both. A deprecation nobody is told
-/// about is just an alias, so the shape follows the diagnostic.
-///
-/// It converts from `ResultOf<T>` in both directions a caller needs: the
-/// inherited `ok()`/`error()` factories return the base, which converts here,
-/// and an `Expected<T>` slices back to the base wherever one is expected.
-template <typename T>
-class NROS_NODISCARD [[deprecated("nros::Expected<T> is now nros::ResultOf<T>; one template "
-                                  "carries the whole error channel (phase-427 W8, RFC-0089). "
-                                  "The old spelling goes away after one release.")]] Expected
-    : public ResultOf<T> {
-  public:
-    Expected(const ResultOf<T>& r) : ResultOf<T>(r) {}
-    Expected(ResultOf<T>&& r) : ResultOf<T>(::nros::tr::forward_rvalue(r)) {}
 };
 
 } // namespace nros

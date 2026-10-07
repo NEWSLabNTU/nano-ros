@@ -123,15 +123,6 @@ impl Config {
         self
     }
 
-    /// Deprecated alias for [`with_locator`](Self::with_locator).
-    #[deprecated(
-        since = "0.6.0",
-        note = "renamed to `with_locator()` — the config API must not name a backend (issue 0330)"
-    )]
-    pub fn with_zenoh_locator(self, locator: &'static str) -> Self {
-        self.with_locator(locator)
-    }
-
     /// Builder: set MAC address
     #[cfg(feature = "ethernet")]
     pub fn with_mac(mut self, mac: [u8; 6]) -> Self {

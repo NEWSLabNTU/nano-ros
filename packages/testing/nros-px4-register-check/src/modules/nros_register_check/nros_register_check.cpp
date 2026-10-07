@@ -7,7 +7,7 @@
 // resolve every entry point the cffi adapter dispatches to. The runtime output
 // only matters when somebody pokes it from the pxh shell.
 //
-// phase-244 D5 — the SITL-only weak `nros_rmw_cffi_register` link stub moved
+// phase-244 D5 — the SITL-only weak `nros_rmw_cffi_register_named` link stub moved
 // out to the `sitl_register_stub.c` build scaffold (the registry symbol is
 // build wiring, not application logic). This TU carries only the check.
 //

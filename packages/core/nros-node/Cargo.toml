@@ -73,7 +73,7 @@ scheduler-bucketed = []
 scheduler-sporadic = []
 # Phase 110.F — opt-in PiCAS-style per-callback OS priority.
 scheduler-os-priority = []
-# Phase 110.G — opt-in ARINC-653 cyclic executive (TimeTriggered class).
+# Phase 110.G — opt-in ARINC-653 cyclic executive (time-triggered windows).
 scheduler-time-triggered = []
 
 # RMW vtable runtime registry. Every backend ships as a cffi shim

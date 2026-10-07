@@ -1,5 +1,5 @@
 // Phase 379 W5 — the C++ QoS surface under its rclcpp names, and the old
-// spellings kept alive as `[[deprecated]]` forwarders.
+// spellings, which phase-482 W6 deleted.
 //
 // Three renames landed together (ledger: `cpp:ReliabilityPolicy` and its three
 // siblings, `cpp:QoS::reliability_raw` and its three, `cpp:QoS::deadline` and
@@ -123,58 +123,11 @@ static_assert(QoS().deadline(Duration::from_nanoseconds(1)).deadline() ==
                   Duration::from_nanoseconds(1000000),
               "the sub-millisecond deadline is readable back as the 1 ms it became");
 
-// -- The old spellings still compile (deprecated, not removed) ------------
-
-static_assert(std::is_same<decltype(std::declval<const QoS&>().reliability_raw()), int>::value,
-              "reliability_raw() must survive as the deprecated int getter");
-static_assert(std::is_same<decltype(std::declval<const QoS&>().durability_raw()), int>::value,
-              "durability_raw() must survive");
-static_assert(std::is_same<decltype(std::declval<const QoS&>().history_raw()), int>::value,
-              "history_raw() must survive");
-static_assert(std::is_same<decltype(std::declval<const QoS&>().liveliness_raw()), int>::value,
-              "liveliness_raw() must survive");
-static_assert(std::is_same<decltype(std::declval<const QoS&>().deadline_ms()), uint32_t>::value,
-              "deadline_ms() must survive as the deprecated ms getter");
-static_assert(std::is_same<decltype(std::declval<const QoS&>().lifespan_ms()), uint32_t>::value,
-              "lifespan_ms() must survive");
-static_assert(
-    std::is_same<decltype(std::declval<const QoS&>().liveliness_lease_ms()), uint32_t>::value,
-    "liveliness_lease_ms() must survive");
-static_assert(std::is_same<decltype(std::declval<QoS&>().deadline_ms(1u)), QoS&>::value,
-              "deadline_ms(uint32_t) must survive as the deprecated ms setter");
-static_assert(std::is_same<decltype(std::declval<QoS&>().lifespan_ms(1u)), QoS&>::value,
-              "lifespan_ms(uint32_t) must survive");
-static_assert(std::is_same<decltype(std::declval<QoS&>().liveliness_lease_ms(1u)), QoS&>::value,
-              "liveliness_lease_ms(uint32_t) must survive");
-
-// The deprecated members agree with the live ones — a forwarder that drifted
-// from what it forwards to is the silent-mismatch failure the C half's
-// `param_name_aliases.c` was written to catch, one language over.
-static_assert(QoS().best_effort().reliability_raw() ==
-                  static_cast<int>(QoS().best_effort().reliability()),
-              "reliability_raw() and reliability() must agree");
-static_assert(QoS().deadline_ms(250u).deadline() == Duration(0, 250000000u),
-              "the deprecated ms setter and the Duration getter must agree");
-static_assert(QoS().deadline(Duration(0, 250000000u)).deadline_ms() == 250u,
-              "the Duration setter and the deprecated ms getter must agree");
-
-// The type and the four enumerators were reachable through `QoS::` while the
-// enum was a member. They still are, so no source that named one breaks.
-static_assert(std::is_same<QoS::Liveliness, nros::LivelinessPolicy>::value,
-              "QoS::Liveliness must stay an alias of nros::LivelinessPolicy");
-static_assert(QoS::LivelinessAutomatic == nros::LivelinessAutomatic,
-              "QoS::LivelinessAutomatic must stay reachable");
-static_assert(QoS::LivelinessNone == nros::LivelinessNone, "QoS::LivelinessNone");
-static_assert(QoS::LivelinessManualByTopic == nros::LivelinessManualByTopic,
-              "QoS::LivelinessManualByTopic");
-static_assert(QoS::LivelinessManualByNode == nros::LivelinessManualByNode,
-              "QoS::LivelinessManualByNode");
-
 // -- The C ABI record is unchanged ---------------------------------------
 //
 // The same token `deadline_ms` is a struct FIELD here and was a class METHOD
-// above; the METHOD moved and the FIELD must not. A textual sweep that renamed
-// both would break the by-value ABI silently (issue 0160's class).
+// until phase-482 W6 deleted it; the METHOD went and the FIELD must not. A textual sweep that
+// renamed both would break the by-value ABI silently (issue 0160's class).
 
 constexpr nros_cpp_qos_t kMarshalled =
     nros::detail::qos_to_ffi(QoS()

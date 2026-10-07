@@ -9,7 +9,7 @@
 //!
 //! 1. Include `<nros/rmw_vtable.h>`
 //! 2. Implement all function pointers in `nros_rmw_vtable_t`
-//! 3. Call `nros_rmw_cffi_register(&my_vtable)` before creating sessions
+//! 3. Call `nros_rmw_cffi_register_named("<name>", &my_vtable)` before creating sessions
 //!
 //! # Usage (Rust consumer)
 //!
@@ -234,7 +234,7 @@ pub type NrosRmwSubscription = rmw_subscription_t;
 ///
 /// Deliberately a `const` and not a `Default` impl: `Default` would make an
 /// all-NULL vtable constructible by accident, and an all-NULL vtable is exactly
-/// what `nros_rmw_cffi_register` must REFUSE (issue 0349). A const used
+/// what `nros_rmw_cffi_register_named` must REFUSE (issue 0349). A const used
 /// explicitly as a literal's base cannot be reached that way.
 pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_session: None,
@@ -1066,33 +1066,6 @@ fn clear_cffi_message_info(key: usize) {
     slot.key.store(0, Ordering::Release);
 }
 
-/// Register a custom RMW backend vtable (legacy single-arg form).
-///
-/// Phase 104.B.2 — internally forwards to
-/// [`nros_rmw_cffi_register_named`] with the literal name `"default"`.
-/// Preserved as a one-release source-compat shim so backend ctors
-/// authored before the named-registry switchover keep working.
-///
-/// **Deprecated (Phase 128.B.5).** All in-tree callers now use
-/// [`nros_rmw_cffi_register_named`] directly so the registry slot is
-/// keyed by the backend's canonical name (`"zenoh"`, `"dds"`,
-/// `"xrce"`, `"cyclonedds"`, …). New backends MUST follow the same
-/// pattern; the unnamed shim will be removed in a follow-up phase
-/// once external callers have migrated.
-///
-/// # Safety
-///
-/// The vtable pointer must remain valid for the lifetime of the program.
-/// All function pointers in the vtable must be valid.
-#[deprecated(
-    since = "0.2.0",
-    note = "use nros_rmw_cffi_register_named with the backend's canonical name; the unnamed shim will be removed"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) -> NrosRmwRet {
-    unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), vtable) }
-}
-
 /// Issue 0332 — a vtable slot the runtime `.expect()`s on the hot path is
 /// mandatory: a `None` there is a panic mid-spin, on a no_std target, the worst
 /// place to discover an incomplete backend. Returns the name of the first
@@ -1159,9 +1132,8 @@ fn first_missing_vtable_slot(v: &NrosRmwVtable) -> Option<&'static str> {
 ///
 /// Names must be UTF-8, NUL-terminated, ≤ 31 bytes (excluding NUL).
 /// Reserved names today: `"zenoh"`, `"dds"`, `"xrce"`,
-/// `"cyclonedds"`, future `"uorb"`. The string `"default"` is the
-/// implicit name used by the legacy single-arg
-/// [`nros_rmw_cffi_register`] shim.
+/// `"cyclonedds"`, future `"uorb"`. (`"default"` was the implicit name of
+/// the unnamed single-argument form, deleted by phase-482 W6.)
 ///
 /// Returns:
 /// * `NROS_RMW_RET_OK` on success.

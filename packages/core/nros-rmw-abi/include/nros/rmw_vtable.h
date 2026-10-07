@@ -35,7 +35,7 @@ extern "C" {
  * @brief C function table for plugging third-party RMW backends into nros.
  *
  * Implement the functions in nros_rmw_vtable_t and call
- * nros_rmw_cffi_register() before creating any nros sessions.
+ * nros_rmw_cffi_register_named() before creating any nros sessions.
  *
  * **Storage ownership.** The runtime owns the entity-struct storage
  * (`rmw_session_t`, `rmw_publisher_t`, `rmw_subscription_t`,
@@ -1495,16 +1495,6 @@ typedef enum nros_rmw_session_mode_t {
     NROS_RMW_SESSION_MODE_PEER = 1,
 } nros_rmw_session_mode_t;
 
-/** Register a custom RMW backend under the implicit name "default".
- *  Legacy single-arg form retained for source compatibility with
- *  backend ctors authored before the named registry (Phase 104.B.2).
- *
- *  Deprecated (Phase 128.B.5): every in-tree backend now calls
- *  `nros_rmw_cffi_register_named` with its canonical name. The
- *  unnamed shim will be removed in a follow-up phase.
- *  Returns NROS_RMW_RET_OK. */
-rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable);
-
 /** Phase 104.B.2 — register a backend under a stable name. Multiple
  *  backends can coexist (bridge nodes); consumers select via
  *  `nros_rmw_cffi_lookup` or the higher-level
@@ -1512,7 +1502,8 @@ rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable);
  *
  *  Names: UTF-8, NUL-terminated, ≤ 31 bytes (excluding NUL).
  *  Reserved: "zenoh", "dds", "xrce", "cyclonedds", future "uorb".
- *  "default" is the implicit name used by `nros_rmw_cffi_register`.
+ *  ("default" was the implicit name of the unnamed single-argument form,
+ *  deleted by phase-482 W6; name the protocol instead.)
  *
  *  Duplicate registration of the same name overwrites the previous
  *  vtable (idempotent for ctor-fires-twice).

@@ -194,10 +194,10 @@ inline ::nros::Result recv_paths(::nros::PollSubscription<M>& sub, ::nros::Strea
                                  M& msg) {
     // phase-456 W2b — the taking API is `PollSubscription<M>`'s; see
     // `nros/polling_subscription.hpp`.
-    (void)sub.try_recv(msg); // polling_subscription.hpp -- derived where one exists
+    (void)sub.take(msg); // polling_subscription.hpp -- derived where one exists
     (void)sub.template take_sized<4096>(msg); // ... and the escape hatch
     nros_cpp_integrity_status_t status{};
-    (void)sub.try_recv_validated(msg, status);
+    (void)sub.take_validated(msg, status);
     (void)sub.template take_validated_sized<4096>(msg, status);
     (void)stream.try_next(msg); // stream.hpp
     (void)stream.template try_next_sized<4096>(msg);
@@ -217,7 +217,7 @@ inline ::nros::Result client_paths(::nros::PollClient<SvcOf<M>>& client,
     (void)client.call_polling(payload, payload, 1); // polling_client.hpp resp_buf
     (void)client.template call_polling_sized<4096>(payload, payload, 1);
     int64_t seq = 0;
-    (void)service.try_recv_request(payload, seq); // polling_service.hpp -- a RECEIVE buffer
+    (void)service.take_request(payload, seq); // polling_service.hpp -- a RECEIVE buffer
     (void)service.template try_recv_request_sized<4096>(payload, seq);
     (void)tick.template call<M, M>("e", payload, payload); // tick_ctx.hpp resp_buf
     (void)tick.template call_sized<M, M, 4096>("e", payload, payload);

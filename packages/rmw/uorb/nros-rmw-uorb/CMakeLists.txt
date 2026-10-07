@@ -201,7 +201,7 @@ if(NROS_RMW_UORB_BUILD_TESTS)
         ${NROS_RMW_CFFI_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
-    # nros_rmw_cffi_register lives in the Rust-side staticlib; the
+    # nros_rmw_cffi_register_named lives in the Rust-side staticlib; the
     # smoke test stubs it locally (see tests/register_smoke.cpp) so
     # K.4.0 doesn't need a Rust toolchain on the build host.
     add_test(

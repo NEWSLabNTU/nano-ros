@@ -14,8 +14,10 @@
 //! about this board (a host NIC name), and pushing it into the shared type
 //! would make every board carry a field it ignores.
 
-use nros_board_common::BaseConfig;
-use nros_board_common::base_config::{for_each_toml_field, parse_u32};
+use nros_board_common::{
+    BaseConfig,
+    base_config::{for_each_toml_field, parse_u32},
+};
 
 /// Network and node configuration for ThreadX Linux simulation.
 ///
@@ -105,15 +107,6 @@ impl Config {
     pub fn with_locator(mut self, locator: &'static str) -> Self {
         self.base.zenoh_locator = locator;
         self
-    }
-
-    /// Deprecated alias for [`with_locator`](Self::with_locator).
-    #[deprecated(
-        since = "0.6.0",
-        note = "renamed to `with_locator()` — the config API must not name a backend (issue 0330)"
-    )]
-    pub fn with_zenoh_locator(self, locator: &'static str) -> Self {
-        self.with_locator(locator)
     }
 
     /// Builder: set ROS 2 domain ID.

@@ -2,7 +2,7 @@
 // participant, session_close tears it down. Round-trips through the
 // real vtable so we exercise the same path the runtime will use.
 //
-// Stubs `nros_rmw_cffi_register` (the runtime is not linked here) and
+// Stubs `nros_rmw_cffi_register_named` (the runtime is not linked here) and
 // drives the captured vtable directly.
 
 #include <cstdio>

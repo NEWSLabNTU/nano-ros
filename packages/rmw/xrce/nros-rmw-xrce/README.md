@@ -5,7 +5,7 @@ Phase 115.K.2 — micro-XRCE-DDS-Client RMW backend for nano-ros, in C.
 This is the C-native re-implementation of `nros-rmw-xrce` (Rust over
 `xrce-sys`). It consumes the canonical `nros_rmw_vtable_t` C ABI
 defined in `packages/core/nros-rmw-abi/include/nros/rmw_vtable.h`
-and registers itself via `nros_rmw_cffi_register()`.
+and registers itself via `nros_rmw_cffi_register_named()`.
 
 Target architecture mirrors `packages/rmw/cyclonedds/nros-rmw-cyclonedds`:
 a static library + a single public header carrying the

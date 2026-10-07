@@ -223,13 +223,14 @@ def collect(ast, roots):
 
 
 # The derivation's OWN negative control, and the reason it is a floor rather
-# than a list: these five names were the gate's authored `TYPES` before this
+# than a list: these names were the gate's authored `TYPES` before this
 # change, so a derivation that returns fewer than these has silently narrowed --
 # the exact failure the change is meant to end. It can only make the gate
-# stricter, never weaker, and it costs nothing to keep true.
+# stricter, never weaker, and it costs nothing to keep true. (`::nros::Node` was
+# a fifth; it was an alias of `::rclcpp::Node`, one layout, and phase-482 W6
+# deleted it, so the class it named is still covered by the first row.)
 FLOOR = (
     "::rclcpp::Node",
-    "::nros::Node",
     "::nros::QoS",
     "::nros::Result",
     "::nros::ResultOf<int>",

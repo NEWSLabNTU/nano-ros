@@ -551,7 +551,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
 
     /// Monomorphised vtable for backend `R`. The `const` is promoted
     /// to per-type static storage, so `&Self::VTABLE` has `'static`
-    /// lifetime — safe to hand to `nros_rmw_cffi_register`.
+    /// lifetime — safe to hand to `nros_rmw_cffi_register_named`.
     pub const VTABLE: NrosRmwVtable = NrosRmwVtable {
         create_session: Some(create_session_trampoline::<R>),
         destroy_session: Some(destroy_session_trampoline::<R>),

@@ -165,8 +165,8 @@ The negative `rmw_ret_t` space (`rmw_ret.h`) is part of the ABI: `OK=0`,
 ### Registration ABI
 
 Backends register via `nros_rmw_cffi_register_named(name, vtable)`
-(`rmw_vtable.h:389`); `nros_rmw_cffi_register(vtable)` is the deprecated
-single-arg form. Static backends use the `nros_rmw_register_backend!` macro
+(`rmw_vtable.h`); the unnamed single-arg `nros_rmw_cffi_register(vtable)`
+was deleted by phase-482 W6. Static backends use the `nros_rmw_register_backend!` macro
 (`linkme` slice in the `.nros_rmw_init` section), walked by
 `nros_rmw_cffi_walk_init_section()` from `Executor::open`. Lookup:
 `nros_rmw_cffi_lookup(name)`. Registry is a fixed `NROS_RMW_MAX_BACKENDS` array,

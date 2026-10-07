@@ -58,7 +58,8 @@ impl OptUs {
 ///
 /// Phase 110.A only exercises `Fifo`; `Edf` lands with the
 /// `EdfReadySet` plumb-up in 110.B.b; `Sporadic` is post-v1 (110.E);
-/// `TimeTriggered` is post-v1 (110.G).
+/// time-triggered windows are not a class but a per-`SchedContext` gate
+/// (`tt_window_offset_us` / `tt_window_duration_us`, 110.G).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SchedClass {
     #[default]
@@ -66,18 +67,6 @@ pub enum SchedClass {
     Edf,
     Sporadic,
     BestEffort,
-    /// Deprecated as of Phase 110.G refactor — TT is now an
-    /// orthogonal slot-membership annotation via
-    /// `SchedContext.tt_window_offset_us` /
-    /// `tt_window_duration_us`, not a class. Keeping the variant
-    /// for one release so exhaustive matches don't break; treated
-    /// as `Fifo` in dispatch.
-    #[deprecated(
-        since = "0.1.0",
-        note = "use SchedContext.tt_window_offset_us + tt_window_duration_us instead; \
-                TT now cooperates with Fifo / Edf / Sporadic / BestEffort classes"
-    )]
-    TimeTriggered,
 }
 
 /// Criticality bucket for [`SchedContext`]. Phase 110.C uses this to

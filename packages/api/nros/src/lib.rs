@@ -260,8 +260,8 @@ pub use nros_core::{
 // that used the old surface FAILS TO COMPILE against the new binding rather
 // than silently changing where its records go. That is the RFC-0089 rule
 // applied to our own rename, and it is why this is a re-binding with a named
-// escape hatch instead of a quiet swap. The escape hatch is
-// [`LogCrateLogger`], deprecated on arrival.
+// escape hatch instead of a quiet swap. The escape hatch was `LogCrateLogger`,
+// deprecated on arrival and deleted by phase-482 W6.
 pub use nros_log::{
     DEFAULT_LOGGER, LogSink, Logger, MAX_LOGGERS, Record as LogRecord, Severity, ThrottleState,
     get_logger, get_or_create_logger, register_logger,
@@ -302,31 +302,6 @@ pub use nros_log::{
 pub mod logging {
     pub use nros_log::*;
 }
-
-/// The pre-phase-417 `nros::Logger`: `nros_core::logger::Logger`, which
-/// forwards to the `log` crate.
-///
-/// Deprecated on arrival. It exists so a downstream call site pinned to the old
-/// method surface has a one-word fix and a deadline, not so anyone reaches for
-/// it: on any target without a `log` backend installed — which is every
-/// embedded one — its records are formatted and dropped before reaching
-/// `nros_platform_log_write`. Move to [`Logger`] and the `nros_*!` macros.
-#[deprecated(
-    since = "0.5.0",
-    note = "`nros::Logger` now means `nros_log::Logger`, the logger that reaches the platform \
-            sink. This alias is the `log`-crate-backed type it used to mean; its records are \
-            dropped on any target with no `log` backend. Use `nros::Logger` + the `log_info!` \
-            family."
-)]
-pub type LogCrateLogger<'a> = nros_core::Logger<'a>;
-
-/// Companion to [`LogCrateLogger`] — see its note.
-#[deprecated(
-    since = "0.5.0",
-    note = "the once-flag belongs to the deprecated `log`-crate logger; `nros_log` throttling is \
-            `nros::ThrottleState` + the `nros_*_throttle!` macros."
-)]
-pub type LogCrateOnceFlag = nros_core::OnceFlag;
 
 // Re-export heapless for generated message types and examples
 pub use nros_core::heapless;

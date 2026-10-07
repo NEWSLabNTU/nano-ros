@@ -130,18 +130,6 @@ template <typename S> class PollService {
         return Result::success();
     }
 
-    /// @deprecated Use `take_request(RequestType&, int64_t&)`.
-    ///
-    /// phase-379 W6 decision 1 (2026-09-03): `try_recv` -> `take`. rcl
-    /// (`rcl_take_request`), rclcpp (`Service::take_request`) and our own RMW
-    /// vtable (`take_request`) already said `take`; only this layer said
-    /// `try_recv`. Header-only forwarder, no ABI cost. Scheduled for removal.
-    [[deprecated(
-        "PollService::try_recv_request is deprecated; use PollService::take_request")]] Result
-    try_recv_request(RequestType& req, int64_t& seq_id) {
-        return take_request(req, seq_id);
-    }
-
     /// Send a typed reply to a previously received request.
     ///
     /// @param seq_id  Sequence number from take_request().
@@ -155,17 +143,6 @@ template <typename S> class PollService {
             return Result(::nros::ErrorCode::Error);
         }
         return Result(nros_cpp_service_server_send_response_raw(storage_, seq_id, buf, len));
-    }
-
-    /// @deprecated Use `send_response()`.
-    ///
-    /// Phase-379 W5: rcl, rclcpp and rclrs all say `send_response`, and our
-    /// own C already used that word. Kept as a forwarder so an out-of-tree
-    /// node on the old spelling still compiles and is told what to move to.
-    [[deprecated(
-        "PollService::send_reply() is deprecated; use PollService::send_response()")]] Result
-    send_reply(int64_t seq_id, const ResponseType& resp) {
-        return send_response(seq_id, resp);
     }
 
     /// Check if the service is initialized and valid.

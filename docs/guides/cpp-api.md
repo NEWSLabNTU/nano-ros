@@ -373,7 +373,7 @@ nros::spin(5000, 50);            // spin for 5s, 50ms poll interval
 
 // Explicit executor
 executor.spin_once(10);
-executor.spin(5000, 50);
+executor.spin_for(5000, 50);    // bounded; executor.spin() blocks until shutdown
 ```
 
 ## Error Handling

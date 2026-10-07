@@ -293,19 +293,6 @@ template <typename S> class PollClient {
         return ::nros::ResultOf<bool>::ok(out != 0);
     }
 
-    /// @deprecated Use `service_is_ready()`.
-    ///
-    /// phase-379 W6 — preserved exactly: `1` ready, `0` not yet, `-1` cannot
-    /// answer. It cannot distinguish a failed call from an unsupported backend,
-    /// which is why it is replaced rather than kept.
-    [[deprecated("PollClient::server_available is deprecated; use "
-                 "PollClient::service_is_ready, which returns ::nros::ResultOf<bool>")]] int
-    server_available() const {
-        auto r = service_is_ready();
-        if (!r.ok()) return -1;
-        return r.value() ? 1 : 0;
-    }
-
     /// phase-338 W8 — block until a matching service server is discoverable.
     ///
     /// Mirrors `rclcpp::ClientBase::wait_for_service`. Prefer this over

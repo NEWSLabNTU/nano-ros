@@ -175,7 +175,7 @@ unsafe extern "C" fn noop_reg_pub_event(
 }
 
 /// Every required slot filled; the format slot is what each backend below
-/// overrides. `nros_rmw_cffi_register` REFUSES an all-NULL vtable (issue 0349),
+/// overrides. `nros_rmw_cffi_register_named` REFUSES an all-NULL vtable (issue 0349),
 /// so the base has to be real even though this test never publishes.
 const BASE: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(open),

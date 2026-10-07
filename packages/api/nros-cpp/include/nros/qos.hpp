@@ -237,33 +237,10 @@ constexpr QoS qos_from_ffi(const nros_cpp_qos_t& f);
 ///
 /// Phase 379 W5 — the policy enums moved to namespace scope, the getters
 /// return them instead of `int`, and the three time windows take and return
-/// `nros::Duration` instead of carrying an `_ms` suffix. Every old spelling
-/// still compiles and is `[[deprecated]]`.
+/// `nros::Duration` instead of carrying an `_ms` suffix. The old spellings were
+/// deleted by phase-482 W6.
 class QoS {
   public:
-    /// Deprecated spelling of `nros::LivelinessPolicy`.
-    using Liveliness [[deprecated("QoS::Liveliness is deprecated; use nros::LivelinessPolicy")]] =
-        LivelinessPolicy;
-
-    // The four liveliness enumerators were reachable as `QoS::Liveliness*`
-    // while the enum was a member. They still are, deprecated, so no source
-    // that named one stops compiling. The enumerator SPELLING did not change —
-    // only its scope — so `nros::LivelinessAutomatic` is the live name.
-    [[deprecated("QoS::LivelinessNone is deprecated; use "
-                 "nros::LivelinessNone")]] static constexpr LivelinessPolicy LivelinessNone =
-        ::nros::LivelinessNone;
-    [[deprecated(
-        "QoS::LivelinessAutomatic is deprecated; use "
-        "nros::LivelinessAutomatic")]] static constexpr LivelinessPolicy LivelinessAutomatic =
-        ::nros::LivelinessAutomatic;
-    [[deprecated("QoS::LivelinessManualByTopic is deprecated; use "
-                 "nros::LivelinessManualByTopic")]] static constexpr LivelinessPolicy
-        LivelinessManualByTopic = ::nros::LivelinessManualByTopic;
-    [[deprecated(
-        "QoS::LivelinessManualByNode is deprecated; use "
-        "nros::LivelinessManualByNode")]] static constexpr LivelinessPolicy LivelinessManualByNode =
-        ::nros::LivelinessManualByNode;
-
     /// Default QoS: reliable, volatile, keep-last(10), automatic
     /// liveliness, no deadline / lifespan / lease.
     constexpr QoS()
@@ -365,32 +342,6 @@ class QoS {
         return *this;
     }
 
-    // -- Deprecated millisecond setters (phase 379 W5) --
-
-    /// @deprecated Use `deadline(nros::Duration)`.
-    [[deprecated("QoS::deadline_ms(uint32_t) is deprecated; use "
-                 "QoS::deadline(nros::Duration)")]] constexpr QoS&
-    deadline_ms(uint32_t ms) {
-        deadline_ms_ = ms;
-        return *this;
-    }
-
-    /// @deprecated Use `lifespan(nros::Duration)`.
-    [[deprecated("QoS::lifespan_ms(uint32_t) is deprecated; use "
-                 "QoS::lifespan(nros::Duration)")]] constexpr QoS&
-    lifespan_ms(uint32_t ms) {
-        lifespan_ms_ = ms;
-        return *this;
-    }
-
-    /// @deprecated Use `liveliness_lease_duration(nros::Duration)`.
-    [[deprecated("QoS::liveliness_lease_ms(uint32_t) is deprecated; use "
-                 "QoS::liveliness_lease_duration(nros::Duration)")]] constexpr QoS&
-    liveliness_lease_ms(uint32_t ms) {
-        liveliness_lease_ms_ = ms;
-        return *this;
-    }
-
     // -- Predefined profiles (match rclcpp named constructors) --
     //
     // phase-428 W10 — DECLARED here, DEFINED below from `nros::detail::qos_table`,
@@ -436,48 +387,6 @@ class QoS {
     }
     /// Whether this publisher's samples bypass transport tx batching.
     constexpr bool tx_express() const { return tx_express_ != 0; }
-
-    // -- Deprecated accessors (phase 379 W5) --
-    //
-    // The `_raw()` four existed only because their enums were private; the
-    // `_ms()` three only because C++ had no `Duration`. Both reasons are gone.
-
-    /// @deprecated Use `reliability()`, which returns `ReliabilityPolicy`.
-    [[deprecated("QoS::reliability_raw() is deprecated; use QoS::reliability()")]] constexpr int
-    reliability_raw() const {
-        return static_cast<int>(reliability_);
-    }
-    /// @deprecated Use `durability()`, which returns `DurabilityPolicy`.
-    [[deprecated("QoS::durability_raw() is deprecated; use QoS::durability()")]] constexpr int
-    durability_raw() const {
-        return static_cast<int>(durability_);
-    }
-    /// @deprecated Use `history()`, which returns `HistoryPolicy`.
-    [[deprecated("QoS::history_raw() is deprecated; use QoS::history()")]] constexpr int
-    history_raw() const {
-        return static_cast<int>(history_);
-    }
-    /// @deprecated Use `liveliness()`, which returns `LivelinessPolicy`.
-    [[deprecated("QoS::liveliness_raw() is deprecated; use QoS::liveliness()")]] constexpr int
-    liveliness_raw() const {
-        return static_cast<int>(liveliness_);
-    }
-    /// @deprecated Use `deadline()`, which returns `nros::Duration`.
-    [[deprecated("QoS::deadline_ms() is deprecated; use QoS::deadline()")]] constexpr uint32_t
-    deadline_ms() const {
-        return deadline_ms_;
-    }
-    /// @deprecated Use `lifespan()`, which returns `nros::Duration`.
-    [[deprecated("QoS::lifespan_ms() is deprecated; use QoS::lifespan()")]] constexpr uint32_t
-    lifespan_ms() const {
-        return lifespan_ms_;
-    }
-    /// @deprecated Use `liveliness_lease_duration()`, which returns `nros::Duration`.
-    [[deprecated("QoS::liveliness_lease_ms() is deprecated; use "
-                 "QoS::liveliness_lease_duration()")]] constexpr uint32_t
-    liveliness_lease_ms() const {
-        return liveliness_lease_ms_;
-    }
 
   private:
     // issue 1437 — the ONE function allowed to write these directly.
@@ -526,10 +435,9 @@ class QoS {
 // since it existed; the ledger row `cpp:operator==` recorded the asymmetry as
 // having no platform reason, and it did not.
 //
-// The three time windows are compared through `Duration::nanoseconds()` rather
-// than the deprecated `_ms()` accessors: the storage is milliseconds, the
-// conversion is exact in both directions (`detail::qos_window_duration`), and
-// naming a deprecated member here would make every comparison warn.
+// The three time windows are compared through `Duration::nanoseconds()`: the
+// storage is milliseconds and the conversion is exact in both directions
+// (`detail::qos_window_duration`).
 
 /// `true` when both profiles state the same value for every policy.
 ///
