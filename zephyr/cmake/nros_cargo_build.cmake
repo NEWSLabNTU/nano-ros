@@ -513,6 +513,44 @@ function(_nros_load_west_sizing_descriptor)
     endif()
 endfunction()
 
+# _nros_compare_stated_to_derived(<env_name> <stated> <rung> <derived_var> <source>)
+#
+# phase-478 D2 (landed with phase-474 I5): a stated value of a DERIVABLE knob
+# is compared with what this image's inventory derives, and the comparison is
+# said. Below the derivation is a WARNING naming the knob, both numbers and the
+# rung that stated it -- the image will run out of that pool where the inventory
+# says it needs more. Above is a STATUS line (the over-provision is visible and
+# reviewable); equal is a STATUS line suggesting the stated line be deleted.
+# Never a refusal: the stated value still wins (an image may know better, e.g.
+# entities created only by application code the inventory cannot see). No
+# derivation, or a non-numeric value on either side: nothing to compare, silent.
+function(_nros_compare_stated_to_derived env_name stated rung derived_var source)
+    if(NOT DEFINED ${derived_var})
+        return()
+    endif()
+    set(_derived "${${derived_var}}")
+    if(NOT "${stated}" MATCHES "^[0-9]+$" OR NOT "${_derived}" MATCHES "^[0-9]+$")
+        return()
+    endif()
+    if(stated LESS _derived)
+        message(WARNING
+            "nros: ${env_name}=${stated}, stated by ${rung}, is BELOW the "
+            "${_derived} this image's ${source} derives. The stated value wins, "
+            "so the image is sized short of what its own inventory says it "
+            "needs. Delete the stated line to take the derivation, or raise it "
+            "(phase-478 D2).")
+    elseif(stated GREATER _derived)
+        message(STATUS
+            "nros: ${env_name}=${stated}, stated by ${rung}, is above the "
+            "${_derived} this image's ${source} derives (over-provisioned by "
+            "the difference).")
+    else()
+        message(STATUS
+            "nros: ${env_name}=${stated}, stated by ${rung}, equals what this "
+            "image's ${source} derives; the stated line can be deleted.")
+    endif()
+endfunction()
+
 # _nros_resolve_derivable_knob(<env_name> <kconfig_value> <derived_var>
 #                              [<source-name> <reason-file>])
 #
@@ -538,8 +576,13 @@ function(_nros_resolve_derivable_knob env_name kconfig_value derived_var)
     endif()
     if(NOT "${kconfig_value}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}")
         # Someone stated a number. It wins over the derivation, in both
-        # directions and without comment: that is what "a derived value is a
-        # DEFAULT" means.
+        # directions: that is what "a derived value is a DEFAULT" means. But
+        # not in silence any more (phase-478 D2, landed with phase-474 I5):
+        # the island's CONFIG_NROS_MAX_LIVELINESS=32 went 26 short of the
+        # derivation the day `params:` was declared, and nothing said so.
+        _nros_compare_stated_to_derived(${env_name} "${kconfig_value}"
+            "Kconfig (CONFIG_${env_name} in a .conf fragment or -D)"
+            ${derived_var} "${_src}")
         _nros_resolve_knob(${env_name} "${kconfig_value}")
         return()
     endif()
@@ -550,6 +593,12 @@ function(_nros_resolve_derivable_knob env_name kconfig_value derived_var)
         # stating rung and prints it; give it the derived value (or the
         # sentinel) as the thing being overridden so the message names the
         # real loser.
+        if(DEFINED ENV{${env_name}} AND NOT "$ENV{${env_name}}" STREQUAL "")
+            # phase-474 I5: a stated value below its derivation warns; an
+            # `[image.<id>] env` row with no value here has nothing to compare.
+            _nros_compare_stated_to_derived(${env_name} "$ENV{${env_name}}"
+                "the environment (${env_name})" ${derived_var} "${_src}")
+        endif()
         _nros_resolve_knob(${env_name} "${${derived_var}}")
         return()
     endif()

@@ -1919,6 +1919,14 @@ config NROS_ZEPHYR_HEAP_SIZE
 
       An NROS_ZEPHYR_HEAP_SIZE environment variable overrides this value.
 
+      The boot record's capacity word reads this value + 512: zpico-alloc
+      carves an 8 x 64 B slab beside the arena (phase-474 I5), so a
+      configured 102400 reads 102912. Size from a dump with
+      `read-boot-report.py --heap-headroom`, which judges the RUNNING peak
+      (as of the dump) against a 24,576-byte floor and names the knob
+      (peak + floor - 512); take the dump after the host graph has joined,
+      not at boot.
+
 config NROS_EXECUTOR_ARENA_SIZE
     int "Executor arena size in bytes (0 = derive)"
     default 0
