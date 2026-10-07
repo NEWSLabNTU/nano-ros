@@ -61,3 +61,21 @@ There are three options:
 Until that ruling, `dist-runtime-deps` stays lane-exempt. It is reached by
 `just workspace doctor`, and putting it on a workflow now would put a
 known-red gate on the lane.
+
+## Resume checkpoint (2026-10-08)
+
+Work paused for token budget. **The ruling (2026-10-07):**
+- The Zephyr SDK is upstream's. We provision a pinned convenience copy; a user may bring their own via `ZEPHYR_SDK_INSTALL_DIR`, which `scripts/lib/zephyr-sdk.sh` honours first.
+- We do NOT declare its full `ldd` closure. `check-dist-runtime-deps` checks only what nano-ros RUNS from it: the cross gcc/binutils, plus `dtc` from `sysroots/x86_64-pokysdk-linux/usr/bin/dtc` (measured in an mps2/an385 build cache).
+- The SDK host qemu is unused; tests use our own qemu.
+- Everything else in the SDK gets one NOTE pointing at upstream's host requirements. Repacked dists stay fully strict.
+- Add a `dtc` smoke row, and put the gate back on a lane.
+
+At pause, a WIP commit `38a90860c8` "wip(#1744): scope dist-runtime-deps for upstream dists to their run set" sits UNPUSHED on branch `fix/1744-zephyr-sdk-run-set`, in worktree `/mnt/mx500/aeon/nros-worktrees/p1742`. To resume from that worktree:
+1. Finish the steps above.
+2. Prove by mutation, push, open a PR, and merge.
+
+The version assumptions stay:
+- 0.16.8 (3.7 line) and 1.0.1 (4.4 line);
+- the `gnu/` layout prefix in 1.x;
+- CI's image uses 0.17.4 for 3.7, which Zephyr's compatibility rule allows (a 1.x SDK refuses trees that ask for less than 1.0).
