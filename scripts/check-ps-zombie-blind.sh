@@ -132,6 +132,81 @@ if [ "$scanned" -eq 0 ]; then
 fi
 awk "$SCAN_AWK" "${files[@]}" || bad=1
 
+# issue 1737 — the rule has TWO halves and the awk above checks one: that the
+# state column is REQUESTED. `subtree-guard.sh` kept `stat=` and dropped
+# `$3 !~ /^Z/`, and passed. So every group scan must also EXCLUDE Z on the
+# rows it reads: a Z predicate in the consumer that follows the site (a pipe's
+# next stages, a Rust `.filter`), or — for `done < <(ps …)` — in the loop body
+# the rows feed. A capability probe whose stdout goes to /dev/null reads no
+# rows and needs none.
+zfilter_py='
+import re, sys
+sys.path.insert(0, "scripts/lib")
+import comments
+
+SITE_SH = re.compile(r"\bps\s+-eo\b[^\n]*pgid=")
+SITE_ARGV = re.compile(r"\"-eo\"")
+ZPRED = re.compile(
+    r"!~\s*/\^Z/|\bZ\*\)|starts_?with\(\s*[\x27\"]Z[\x27\"]|!=\s*[\x27\"]Z[\x27\"]"
+    r"|\[\[\s*\$\w+\s*!=\s*Z\*")
+PROBE = re.compile(r"(?:^|[^0-9])>\s*/dev/null")  # stdout gone; 2>/dev/null is not
+FWD = 12
+
+def lang(rel):
+    return comments.lang_for(rel) or "sh"
+
+def sites(text, rel):
+    """[(lineno, line)] group scans that never exclude a zombie row."""
+    lines = comments.strip_comments(text, lang(rel)).split("\n")
+    out = []
+    for i, ln in enumerate(lines):
+        argv = SITE_ARGV.search(ln) and "pgid" in " ".join(lines[i:i + 3])
+        if not (SITE_SH.search(ln) or argv):
+            continue
+        if PROBE.search(ln) and "<(" not in ln:
+            continue
+        lo = i
+        if re.search(r"\bdone\s*<\s*<\(", ln):
+            while lo > 0 and not re.search(r"\bwhile\b", lines[lo]):
+                lo -= 1
+        window = "\n".join(lines[lo:i + FWD + 1])
+        if not ZPRED.search(window):
+            out.append((i + 1, ln.strip()))
+    return out
+
+def selftest():
+    bad = "ps -eo pid=,pgid=,stat= 2>/dev/null |\n    awk -v g=1 \x27$2 == g { print $1 }\x27\n"
+    good = "ps -eo pid=,pgid=,stat= 2>/dev/null |\n    awk -v g=1 \x27$2 == g && $3 !~ /^Z/ { print $1 }\x27\n"
+    loop = ("while read -r pid pgid state; do\n    case \"$state\" in Z*) continue ;; esac\n"
+            + "\n" * 30 + "done < <(ps -eo pid=,pgid=,stat= 2>/dev/null)\n")
+    loop_bad = "while read -r pid pgid state; do\n    echo $pid\ndone < <(ps -eo pid=,pgid=,stat=)\n"
+    probe = "if ! ps -eo pid=,pgid=,stat= >/dev/null 2>&1; then exit 0; fi\n"
+    rs_good = ("Command::new(\"ps\").args([\"-eo\", \"pid=,pgid=,stat=\"]);\n"
+               "let z = !stat.starts_with(\x27Z\x27);\n")
+    rs_bad = "Command::new(\"ps\").args([\"-eo\", \"pid=,pgid=,stat=\"]);\nlet z = 1;\n"
+    commented = good.replace("&& $3 !~ /^Z/", "") + "# $3 !~ /^Z/\n"
+    for name, txt, rel, want in (("bad", bad, "a.sh", 1), ("good", good, "a.sh", 0),
+                                 ("loop", loop, "a.sh", 0), ("loop_bad", loop_bad, "a.sh", 1),
+                                 ("probe", probe, "a.sh", 0), ("rs_good", rs_good, "a.rs", 0),
+                                 ("rs_bad", rs_bad, "a.rs", 1), ("commented", commented, "a.sh", 1)):
+        got = len(sites(txt, rel))
+        if got != want:
+            sys.exit(f"check-ps-zombie-blind: Z-filter selftest FAILED on {name}: {got} != {want}")
+
+selftest()
+bad = 0
+for rel in sys.argv[1:]:
+    try:
+        text = open(rel, errors="replace").read()
+    except OSError:
+        continue
+    for n, ln in sites(text, rel):
+        print(f"{rel}:{n}: requests stat= but never drops a Z row: {ln}")
+        bad = 1
+sys.exit(bad)
+'
+python3 -c "$zfilter_py" "${files[@]}" || bad=1
+
 if [ "$bad" -ne 0 ]; then
     cat >&2 <<'MSG'
 

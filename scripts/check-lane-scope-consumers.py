@@ -80,6 +80,30 @@ def host_only(src):
     return uses > 0 and uses == len(_HOST_PRED.findall(code))
 
 
+# issue 1737 — rule (b) was "the file CALLS admits", and `entry_e2e.rs`
+# dropped its narrowing `filter(admits)` while keeping the out-of-lane REPORT
+# (`filter(|c| !admits(…))`) and passed. A call that only COLLECTS the
+# excluded cells narrows nothing. What narrows: a POSITIVE `filter(|c| admits(…))`
+# on the cell list, or `if !admits(…) { … continue | return }` in the loop.
+_ADMITS = r"(?:[\w:]*::)?admits\("
+_NARROW_FILTER = re.compile(r"\.filter\(\s*\|[^|]*\|\s*" + _ADMITS)
+_SKIP_IF = re.compile(r"\bif\s+!\s*" + _ADMITS)
+
+
+def narrows(src):
+    """Does this source NARROW its cell list by lane (not merely report)?"""
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+    import comments
+    import per_item
+    code = comments.strip_comments(src, "rust")
+    if _NARROW_FILTER.search(code):
+        return True
+    for _m, a, b in per_item.blocks(code, _SKIP_IF):
+        if re.search(r"\b(?:continue|return)\b", code[a:b]):
+            return True
+    return False
+
+
 def lane_excluded_tokens():
     """The binary-name tokens `lane-filter.sh native` ACTUALLY excludes.
 
@@ -108,6 +132,13 @@ def main():
     assert not host_only("fn f(c: &Cell) -> bool { c.platform == PlatformId::Nuttx }")
     # The neighbour the name exemption must not cover: the host lane's own
     # family is run, never excluded.
+    report_only = ("let skipped: Vec<_> = CELLS.iter().filter(|c| !lane_scope::admits(c.platform)).collect();\n"
+                   "for c in CELLS.iter() { run(c); }\n")
+    assert not narrows(report_only), "a REPORT-only admits call read as narrowing"
+    assert narrows(report_only + "let run: Vec<_> = CELLS.iter().filter(|c| lane_scope::admits(c.platform)).collect();\n")
+    assert narrows("for c in CELLS { if !nros_tests::lane_scope::admits(c.platform) { note(c); continue; } go(c); }\n")
+    assert not narrows("for c in CELLS { if !lane_scope::admits(c.platform) { note(c); } go(c); }\n")
+    assert not narrows("// .filter(|c| lane_scope::admits(c.platform))\n")
     if "native" in tokens or "linux" in tokens:
         sys.exit("check-lane-scope-consumers: the host family is in the exclusion set — "
                  "rule (a) would exempt the binaries the host lane runs")
@@ -135,7 +166,7 @@ def main():
         if any(tok in stem for tok in tokens):
             exempt += 1  # (a) the lane filter excludes this binary by name
             continue
-        if "lane_scope::admits" in src:
+        if narrows(src):
             continue
         offenders.append(name)
 

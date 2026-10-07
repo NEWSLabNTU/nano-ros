@@ -49,6 +49,7 @@ OWNERLESS = {
 
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 from exemptions import Exemptions  # noqa: E402  phase-472 W8
+from shell_statements import statements  # noqa: E402  issue 1737 — command words
 
 OWNERLESS_T = Exemptions(OWNERLESS, what="ownerless tier")
 # The tiers an "ownerless" entry must never cover (phase-472 W8).
@@ -77,16 +78,28 @@ def owners(workflow_texts, recipe):
     `workflow_texts` maps a file to its list of command lines.
     """
     flat = recipe.replace(" ", "-")          # `ci matrix` -> `ci-matrix`
-    pats = (re.compile(rf"\bjust\s+{re.escape(recipe)}(?:\s+(\S+)|\s*$)"),
-            re.compile(rf"\bjust\s+{re.escape(flat)}(?:\s+(\S+)|\s*$)"))
+    # issue 1737 — `just` must be the COMMAND WORD of a statement, not a word
+    # anywhere on the line: `disk-report.sh "before just ci tier1"` (an
+    # ARGUMENT string) owned Tier 1 after both real invocations were gone.
+    # Statements come from `shell_statements`; leading `VAR=val` assignments
+    # and the `env`/`time`/`timeout N`/`nice` wrappers are peeled.
+    pats = (re.compile(rf"^just\s+{re.escape(recipe)}(?:\s+(\S+)|\s*$|\s*[|<>])"),
+            re.compile(rf"^just\s+{re.escape(flat)}(?:\s+(\S+)|\s*$|\s*[|<>])"))
     out = set()
     for fn, cmds in workflow_texts.items():
         for line in cmds:
-            for p in pats:
-                m = p.search(line)
-                if m and (m.group(1) or "").strip("\"'") not in NON_RUNNING_DEPTHS:
-                    out.add(fn)
+            for st in statements(line):
+                word = WRAPPERS.sub("", st.text)
+                for p in pats:
+                    m = p.search(word)
+                    if m and (m.group(1) or "").strip("\"'") not in NON_RUNNING_DEPTHS:
+                        out.add(fn)
     return sorted(out)
+
+
+# Words that run their argument as the command: the owner is what they run.
+WRAPPERS = re.compile(
+    r"^(?:(?:[A-Za-z_]\w*=\S*|env|time|nice|command|timeout\s+(?:-\S+\s+)*\S+)\s+)*")
 
 
 def workflow_commands_of(root=None):
@@ -124,6 +137,15 @@ def selftest():
     assert owners({"a.yml": ["just ci matrix build"]}, "ci matrix") == [], \
         "a build-only invocation must not own the tier"
     assert owners({"a.yml": ["just ci matrix run"]}, "ci matrix") == ["a.yml"]
+    # issue 1737 — an ARGUMENT that mentions the tier is not an owner; a
+    # statement after `;`/`&&` and a wrapped/env-prefixed one are.
+    assert owners({"a.yml": ['scripts/ci/disk-report.sh "before just ci tier1 gates"']},
+                  "ci tier1") == [], "a quoted argument string owned the tier"
+    assert owners({"a.yml": ["mkdir -p l && just ci tier1 gates > l/x.log 2>&1"]},
+                  "ci tier1") == ["a.yml"], "an and-list statement must count"
+    assert owners({"a.yml": ["NROS_X=1 timeout 600 just ci tier1 run"]},
+                  "ci tier1") == ["a.yml"], "env-prefixed / wrapped must count"
+    assert owners({"a.yml": ["just ci tier1 | tee l"]}, "ci tier1") == ["a.yml"]
     sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
     import workflow_commands as wc
     doc = {"jobs": {"j": {"steps": [{"name": "just ci tier1", "run": "echo hi"}]}}}
