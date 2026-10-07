@@ -1,8 +1,8 @@
 # Phase 480 -- what an image declares is what a stock ROS 2 peer sees
 
-**Status (2026-10-06). ACTIVE -- W1-W6 LANDED; W7 open.** Ten of the eleven
-founding issues are resolved (#1735-#1738, #1744-#1748). Issue 1292 stays open
-as a feature, measured, and is W3's remainder. W7 holds what the fixes found. This is the home for wiring and interop
+**Status (2026-10-08). ACTIVE -- W1-W7 LANDED; W8 open.** All eleven founding
+issues and the five W7 issues are resolved (#1735-#1738, #1744-#1748,
+#1780-#1784). W8 holds the three issues W7's fixes filed. This is the home for wiring and interop
 defects: an entity, a QoS profile, a remap, a node or a service that nano-ros
 DECLARES, but a stock ROS 2 peer (`ros2` CLI, `rclcpp`, `rmw_zenoh_cpp`,
 `rmw_cyclonedds_cpp`, `rmw_fastrtps_cpp` through the XRCE Agent) does not see,
@@ -145,7 +145,22 @@ Filed while fixing W1-W6, each measured or reasoned in its issue:
 
 **Acceptance:** each issue's own.
 
-## Status of the founding issues
+### W8 -- what W7 found
+
+- **Issue 1732** (from 1292): a native image exits without closing its RMW
+  session, so an XRCE Agent keeps its participant -- topics, services and now
+  nodes -- after the image is gone.
+- **Issue 1743** (from 1722): on the cargo road an XRCE image's service-server
+  cap ignores the parameter and lifecycle servers, so a param + lifecycle image
+  cannot boot. The `native-params-25-rust-xrce` fixture row states
+  `NROS_XRCE_MAX_SERVICE_SERVERS=11` until it is fixed.
+- **Issue 1741** (from 1723): a threadx-linux image catches SIGTERM and keeps
+  running, so `timeout N` does not bound it. A harness defect of the same class
+  1723 fixed for the `ros2` CLI.
+
+**Acceptance:** each issue's own.
+
+## Status of the resolved issues
 
 | item | issue | PR |
 | --- | --- | --- |
@@ -153,9 +168,13 @@ Filed while fixing W1-W6, each measured or reasoned in its issue:
 | W1 | 1688 typed `[lifecycle]` block sizes the pools | #1736 |
 | W2 | 1686 XRCE wait-for-server returns UNSUPPORTED | #1737 |
 | W3 | 1691 + 1342 action gate skips the ros2cli daemon | #1738 |
-| W3 | 1292 XRCE `ros_discovery_info` | open -- feature, plan in the issue |
+| W3 | 1292 XRCE `ros_discovery_info` (GUID probe + counted keys) | #1782 |
 | W4 | 1293 empty-struct padding byte, every RMW and language | #1744 |
 | W4 | 1291 two clients vs a stock server | #1745 |
 | W5 | 1352 parameter inbox never overflows silently | #1746 |
 | W6 | 1139 Cyclone pubsub holds in-gate | #1747 |
 | W6 | 1251 tag-isolated slirp profile | #1748 |
+| W7 | 1723 every ros2 CLI deadline escalates to SIGKILL | #1780 |
+| W7 | 1713 liveliness pool completed from declared facts | #1781 |
+| W7 | 1709 + 1740 transient-local history follows the declared depth | #1783 |
+| W7 | 1722 XRCE parameter request priced against every buffer | #1784 |
