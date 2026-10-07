@@ -43,15 +43,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 from check_just_sources import just_sources  # noqa: E402 — phase-472 W2
+import shell_statements  # noqa: E402 — issue 1738
+from shell_statements import statements  # noqa: E402
 
-# A line that ANNOUNCES a skip. `echo`/`printf` only: a comment mentioning the
-# word is prose, and `nros_lane_skip*` is the protocol itself.
-# At line start, or at command position after `{`/`;`/`&&`/`||` (the group form).
-ANNOUNCES = re.compile(r"(?:^\s*|[{;&|]\s*)(echo|printf)\b[^\n]*\bskip", re.IGNORECASE)
-# `…; exit 0` and the group form `|| { echo "…skip…"; exit 0; }` — the second
-# was missed (phase-472 audit), and it is the idiom a one-line guard reaches for.
-SAME_LINE_EXIT = re.compile(r";\s*exit\s+0\s*(?:;\s*\}\s*)?$")
-BARE_EXIT_0 = re.compile(r"^\s*exit\s+0\s*$")
+# A STATEMENT that ANNOUNCES a skip. `echo`/`printf` only: a comment mentioning
+# the word is prose, and `nros_lane_skip*` is the protocol itself. Read per
+# statement (`scripts/lib/shell_statements.py`, issue 1738), so `then echo …`,
+# `{ echo …` and `&& echo …` are all at command position, and a one-line
+# `if …; then echo "…skip…"; exit 0; fi` is three statements, not one line
+# whose `; fi` hid the exit from an end-of-line anchor.
+ANNOUNCES = re.compile(r"^(echo|printf)\b.*\bskip", re.IGNORECASE)
+EXIT_0 = re.compile(r"^exit\s+0$")
 PROTOCOL = re.compile(
     r"\bnros_(lane|check)_(skip(_note|_flush|_reset|_report)?|scope|scope_note)\b"
 )
@@ -87,16 +89,24 @@ def offenders(text):
     for i, line in enumerate(lines, start=1):
         if line.lstrip().startswith("#"):
             continue
-        if not ANNOUNCES.search(line):
-            continue
         if PROTOCOL.search(line):
             continue
         if any(frag in line for frag in EXEMPT_SUBSTRINGS):
             continue
-        if SAME_LINE_EXIT.search(line):
-            out.append((i, line.strip(), "announces a skip and exits 0 on the same line"))
-        elif i < len(lines) and BARE_EXIT_0.match(lines[i]):
-            out.append((i, line.strip(), "announces a skip, then `exit 0` on the next line"))
+        # Keep keyword-only statements (`fi`, `}`): an `exit 0` AFTER the
+        # construct closes is not the skip's exit.
+        stmts = [s.text for s in statements(line)]
+        for k, st in enumerate(stmts):
+            if not ANNOUNCES.search(st):
+                continue
+            if k + 1 < len(stmts):
+                if EXIT_0.match(stmts[k + 1]):
+                    out.append((i, line.strip(), "announces a skip and exits 0 on the same line"))
+                break
+            nxt = [s.text for s in statements(lines[i])] if i < len(lines) else []
+            if nxt and EXIT_0.match(nxt[0]):
+                out.append((i, line.strip(), "announces a skip, then `exit 0` on the next line"))
+            break
     return out
 
 
@@ -121,11 +131,16 @@ def scan_files(files, root):
 
 def self_test():
     """Both directions: a classifier that stopped classifying looks like a pass."""
-    bad = []
+    bad = list(shell_statements.self_test())  # the splitter this verdict rides on
     must_flag = [
         ('    echo "FreeRTOS skip: arm-none-eabi-gcc not found"; exit 0', "same line"),
         ('    echo "Zephyr skip: toolchain missing"\n    exit 0', "next line"),
         ('    command -v gcc || { echo "skip: no gcc"; exit 0; }', "group form"),
+        # issue 1738 — the one-line compound `if`: `then echo`, and `; fi`
+        # after the exit, each defeated a line-anchored regex.
+        ('    if [ -z "${FREERTOS_DIR:-}" ]; then echo "freertos: skip: unset"; exit 0; fi',
+         "one-line if"),
+        ('    [ -n "$X" ] || echo "skip: no X" && exit 0', "and-or list"),
     ]
     must_pass = [
         ('    nros_lane_skip "arm-none-eabi-gcc not found"', "whole-recipe protocol"),
@@ -133,6 +148,8 @@ def self_test():
         ('    # echo "skip: prose in a comment"; exit 0', "a comment"),
         ('    echo "[sccache] already on PATH — skipping"\n    exit 0', "exempt site"),
         ('    echo "building"; exit 0', "no skip announced"),
+        ('    if [ -z "$X" ]; then echo "skip: x"; nros_lane_skip "x"; fi', "protocol in a one-line if"),
+        ('    if [ -z "$X" ]; then echo "skipping a step"; fi; exit 0', "exit not after the announce"),
     ]
     for body, label in must_flag:
         if not offenders(body):

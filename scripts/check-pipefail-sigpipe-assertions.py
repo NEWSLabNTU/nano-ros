@@ -66,6 +66,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import workflow_commands  # noqa: E402  phase-472 W1 — the CI shell population
+import shell_statements  # noqa: E402  issue 1738
+from shell_statements import statements  # noqa: E402
 
 # Sites that predate this gate. Same shape, different lane. Delete a line once
 # the site stops piping into its matcher.
@@ -170,17 +172,29 @@ EARLY_EXIT_PREDICATE = re.compile(
     r")"
 )
 
-# The pipeline's exit status is READ rather than discarded. A bare `||` is
-# absent on purpose: `… || true` / `… || :` is the status being defused
+# The pipeline's exit status is READ rather than discarded. Decided per
+# STATEMENT (`scripts/lib/shell_statements.py`, issue 1738): a one-line
+# `if …; then …; fi` used to hand the whole tail (`; then echo n; fi; }`) to
+# `last_pipeline_stage`, so the matcher was never the last stage. A bare `||`
+# is absent on purpose: `… || true` / `… || :` is the status being defused
 # deliberately, and `… || continue` reaches us through its own arm.
-STATUS_CONSUMED = (
-    re.compile(r"^\s*(?:if|elif|while|until)\s"),
-    re.compile(r"^\s*!\s"),
-    re.compile(r";\s*then\s*$"),
-    re.compile(r"\|\|\s*(?:continue|break|return|exit|fail\b)"),
-    re.compile(r"&&\s*\S"),
-    re.compile(r"\\\s*$"),          # continued into an && / ; then
-)
+STATUS_HEAD = re.compile(r"^(?:if|elif|while|until|!)\s")
+OR_CONSUMER = re.compile(r"^(?:continue|break|return|exit|fail)\b")
+CONTINUED = re.compile(r"\\\s*$")  # continued into an && / ; then
+
+
+def status_consumed(stmts, k: int, line: str) -> bool:
+    st = stmts[k]
+    if STATUS_HEAD.match(st.text):
+        return True
+    nxt = stmts[k + 1] if k + 1 < len(stmts) else None
+    if nxt is not None and nxt.lead.split()[:1] in (["then"], ["do"]):
+        return True  # `cond; then` — a condition continued from the line above
+    if "&&" in (st.sep_before, st.sep_after):
+        return True
+    if st.sep_after == "||" and nxt is not None and OR_CONSUMER.match(nxt.text):
+        return True
+    return nxt is None and bool(CONTINUED.search(line))
 
 
 def last_pipeline_stage(line: str) -> str:
@@ -237,14 +251,16 @@ def last_pipeline_stage(line: str) -> str:
 
 
 def flags(line: str) -> bool:
-    """Does this ONE line carry the defect?"""
+    """Does this ONE line carry the defect, in any of its statements?"""
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
         return False
-    stage = last_pipeline_stage(line)
-    if not stage or not EARLY_EXIT_PREDICATE.match(stage):
-        return False
-    return any(rx.search(line) for rx in STATUS_CONSUMED)
+    stmts = statements(line)
+    for k, st in enumerate(stmts):
+        stage = last_pipeline_stage(st.text)
+        if stage and EARLY_EXIT_PREDICATE.match(stage) and status_consumed(stmts, k, line):
+            return True
+    return False
 
 
 # The detector is a regex over one line of shell, so it can stop matching
@@ -271,11 +287,21 @@ SELF_TEST = (
      "`|| true` is the status defused on purpose"),
     ("""if ! nros_grep_q "status=refused" <<<"$_o_out"; then""", False,
      "the FIX must not trip the gate that asked for it"),
+    # issue 1738 — one-line compounds: the matcher is the last stage of its
+    # STATEMENT, not of the line.
+    ("""_f() { if ! printf '%s' "$1" | grep -q x; then echo n; fi; }""", True,
+     "a one-line `if` inside a one-line function"),
+    ("""for f in a b; do printf '%s' "$f" | grep -q x && echo hit; done""", True,
+     "`&&` after the matcher inside a one-line loop"),
+    ("""if [ -n "$x" ]; then printf '%s' "$x" | grep -q y || true; fi""", False,
+     "`|| true` still defuses it inside a one-line `if`"),
+    ("""if true; then v="$(a | grep -m1 x)"; fi""", False,
+     "value position inside a one-line `if`"),
 )
 
 
 def self_test() -> list[str]:
-    problems: list[str] = []
+    problems: list[str] = list(shell_statements.self_test())
     if not any(f.startswith(".github/actions/") for f in tracked_shell()):
         problems.append("the population does not reach .github/actions/ (phase-472 W1)")
     for line, expected, why in SELF_TEST:
