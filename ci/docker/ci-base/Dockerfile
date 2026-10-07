@@ -161,6 +161,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         `# 0774 -- so the ENV snapshot above was re-captured with it in.` \
     && rm -rf /var/lib/apt/lists/*
 
+# The Zephyr 3.7 line's Python tools, the same pinned set the sibling
+# `zephyr-ros` image installs. Issue 1651: host-tests' integration job now runs
+# `just setup tier1`, whose modules include `zephyr`, in THIS image — and the
+# first run stopped in `just zephyr setup` on `python-deps: MISSING for west,
+# zephyr-build` (run 37547660332), because only the Zephyr image carried them.
+# Same source, same gate: `scripts/check-python-deps.py`'s `west` +
+# `zephyr-build` groups, held against BOTH Dockerfiles by
+# `scripts/check-ci-image-python-deps.py`.
+RUN pip3 install --no-cache-dir \
+        west==1.2.0 \
+        pyelftools==0.31 \
+        PyYAML==6.0.2 \
+        pykwalify==1.8.0 \
+        packaging==24.2 \
+        jsonschema==4.23.0 \
+    && python3 -c 'import west, elftools, yaml, pykwalify, packaging, jsonschema' \
+    && west --version
+
 # uv (Python 3.12 venvs) + just (recipe runner) via their canonical installers.
 # PINNED, not latest. Both were `curl | sh` fetching whatever was current at
 # image-build time, so two rebuilds of the "same" image could ship different

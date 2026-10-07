@@ -45,6 +45,14 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCKERFILE = os.path.join(ROOT, "ci", "docker", "zephyr-ros", "Dockerfile")
+# Every image a lane runs `just zephyr setup` in. ci-base joined when
+# host-tests' integration job moved to `just setup tier1` (issue 1651): a
+# second image with the same requirement is a second copy of the list, and a
+# copy this gate does not read is the drift it exists to stop.
+DOCKERFILES = (
+    DOCKERFILE,
+    os.path.join(ROOT, "ci", "docker", "ci-base", "Dockerfile"),
+)
 DEPS_SCRIPT = os.path.join(ROOT, "scripts", "check-python-deps.py")
 
 # The groups the zephyr lanes enforce. `just zephyr setup` fails on exactly
@@ -125,12 +133,14 @@ def main():
 
     with open(DEPS_SCRIPT, encoding="utf8") as fh:
         deps_text = fh.read()
-    with open(DOCKERFILE, encoding="utf8") as fh:
-        docker_text = fh.read()
-
-    problems = check(deps_text, docker_text)
+    problems = []
+    for path in DOCKERFILES:
+        with open(path, encoding="utf8") as fh:
+            docker_text = fh.read()
+        rel = os.path.relpath(path, ROOT)
+        problems.extend(f"{rel}: {p}" for p in check(deps_text, docker_text))
     if problems:
-        print("check-ci-image-python-deps: the zephyr CI image and its own "
+        print("check-ci-image-python-deps: a CI image and its own "
               "checker disagree:\n", file=sys.stderr)
         for p in problems:
             print(f"  - {p}", file=sys.stderr)
@@ -151,8 +161,8 @@ def main():
         return 1
 
     n = len(wanted_from_deps_script(deps_text))
-    print(f"check-ci-image-python-deps OK — the zephyr image installs and imports "
-          f"all {n} module(s) its checker requires, pinned.")
+    print(f"check-ci-image-python-deps OK — all {len(DOCKERFILES)} images install and "
+          f"import all {n} module(s) the checker requires, pinned.")
     return 0
 
 
