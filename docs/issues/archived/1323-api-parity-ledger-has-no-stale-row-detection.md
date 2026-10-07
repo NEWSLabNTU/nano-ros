@@ -3,7 +3,7 @@ id: 1323
 title: "The API-parity ledger has no stale-row detection, so a row survives the
   entity it describes — ten did, and one was reported as a fresh unledgered
   difference the day the masking overload was deleted"
-status: open
+status: resolved
 type: bug
 area: [ci, api, docs]
 related: [phase-482, phase-379, phase-417, phase-428, phase-442, rfc-0089, rfc-0096, 0196, 1204, 1225]
@@ -115,3 +115,40 @@ for p in pathlib.Path("docs/reference/api-parity-ledger").glob("*.json"):
             print(p.name, k)   # rows for functions the tree does not define
 EOF
 ```
+
+## Resolution (2026-10-07, phase-482 W7)
+
+`scripts/api-parity.py --check` now walks the ledger as well as the
+differences (`orphan_rows`). Every key must name something the extraction
+produced, on either side and in any bucket, including the theirs records the
+public-surface filter drops. A glob row must match at least one key. Only the
+languages a run extracted are judged.
+
+A row the extraction does not back is deleted, unless it says why it is kept,
+as a non-empty string (SCHEMA.md):
+
+- `retired`: the name is gone and the row records the rename.
+- `unextracted`: the thing exists but the extractor cannot see it (a macro,
+  struct field, enum variant, derive method or concept row).
+
+A marker on a row the extraction DOES back is red too, so an exemption cannot
+go stale.
+
+On the day it landed, the walk found **97** unbacked rows on main, plus the 23
+that phase-482 W6 retires. The 97 went as follows:
+
+| action | rows | which |
+| --- | --- | --- |
+| deleted | 32 | the C zero-init rows the extractor spells the rcl way (`get_zero_initialized_*`, `same`, so never consulted), C++ methods that moved to `PollSubscription`/`PollClient` where the new rows already existed, `Node::pump`/`own_entity`, and the seven `BoardTransportConfig` setter rows |
+| `retired` | 46 | deprecated aliases deleted in W-B5 and earlier, the old `log`-crate `Logger` methods, `ParameterServer`, `BoardTransportConfig` |
+| `unextracted` | 18 | the `RCLCPP_*` and `nros_*!` macros, struct fields, an enum variant, a derive glob, a concept row, and a theirs type absent from the recorded surface |
+| re-keyed | 1 | `rust:ActionServer::for_each_active_goal` → `ActionServerHandle::` |
+
+Before deleting, the reasoning in eight of those rows that other rows pointed
+at ("substantive verdict at `cpp:Client::call`", "see
+`c:publisher_get_zero_initialized`") was carried into the surviving rows, and
+the references were rewritten.
+
+Not done: checking `` `lang:key` `` cross-references inside a `why` (this
+issue's "free third"). Measured after the cleanup, the only references to a
+deleted key sit in rows that themselves say the old row was deleted or moved.

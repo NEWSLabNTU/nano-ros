@@ -5,7 +5,7 @@
   ],
   "c:client_call": {
     "verdict": "extension",
-    "why": "see `cpp:Client::call`."
+    "why": "see `cpp:PollClient::call`."
   },
   "c:client_get_options": {
     "verdict": "declined",
@@ -16,10 +16,6 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "our RMW seam is the vtable (RFC-0035), not an entity accessor. See `c:node_get_rmw_handle`."
-  },
-  "c:client_get_zero_initialized": {
-    "verdict": "extension",
-    "why": "see `c:publisher_get_zero_initialized`."
   },
   "c:client_impl_t": {
     "verdict": "declined",
@@ -114,11 +110,13 @@
   },
   "c:client_try_recv_reply_raw": {
     "verdict": "extension",
-    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `nros_client_take_response_raw` and the forwarder is a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it adds no exported symbol and no ABI cost. Still on the surface, so still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `nros_client_take_response_raw` and the forwarder is a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it adds no exported symbol and no ABI cost. Still on the surface, so still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`.",
+    "retired": "a deprecated alias, deleted after its one release; the row records the rename"
   },
   "c:client_try_recv_response": {
     "verdict": "extension",
-    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `nros_client_take_response` and the forwarder is a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it adds no exported symbol and no ABI cost. Still on the surface, so still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `nros_client_take_response` and the forwarder is a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it adds no exported symbol and no ABI cost. Still on the surface, so still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`.",
+    "retired": "a deprecated alias, deleted after its one release; the row records the rename"
   },
   "c:client_wait_for_service": {
     "verdict": "extension",
@@ -190,10 +188,6 @@
     "disposition": "absent",
     "why": "our RMW seam is the vtable (RFC-0035), not an entity accessor. See `c:node_get_rmw_handle`."
   },
-  "c:service_get_zero_initialized": {
-    "verdict": "extension",
-    "why": "see `c:publisher_get_zero_initialized`."
-  },
   "c:service_impl_t": {
     "verdict": "declined",
     "disposition": "absent",
@@ -244,7 +238,8 @@
       "status": "landed",
       "category": "A",
       "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05). The forwarder was retained ON PURPOSE for one release and went in that batch."
-    }
+    },
+    "retired": "a deprecated alias, deleted after its one release; the row records the rename"
   },
   "c:service_send_response": {
     "verdict": "rename",
@@ -255,7 +250,8 @@
       "status": "landed",
       "category": "A",
       "residue": "`nros_service_take_request`, the stub's twin, is still an exported `NROS_RET_NOT_INIT` symbol; it belongs to `c:take_request`."
-    }
+    },
+    "retired": "a deprecated alias, deleted after its one release; the row records the rename"
   },
   "c:service_send_response_raw": {
     "verdict": "extension",
@@ -275,7 +271,8 @@
   },
   "c:service_take_request": {
     "verdict": "extension",
-    "why": "the ours-only half of `c:take_request`. Two entry points carry it: this one, a permanent `NROS_RET_NOT_INIT` stub from before the polling API existed, and `nros_service_take_request_raw`, the L1 polling drain (renamed from `nros_service_try_recv_request_raw` by phase-379 W6 decision 1, 2026-09-03). Which of the two spellings survives is still open."
+    "why": "the ours-only half of `c:take_request`. Two entry points carry it: this one, a permanent `NROS_RET_NOT_INIT` stub from before the polling API existed, and `nros_service_take_request_raw`, the L1 polling drain (renamed from `nros_service_try_recv_request_raw` by phase-379 W6 decision 1, 2026-09-03). Which of the two spellings survives is still open.",
+    "retired": "a deprecated alias, deleted after its one release; the row records the rename"
   },
   "c:service_take_request_raw": {
     "verdict": "extension",
@@ -283,7 +280,8 @@
   },
   "c:service_try_recv_request_raw": {
     "verdict": "extension",
-    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `nros_service_take_request_raw` and the forwarder is a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it adds no exported symbol and no ABI cost. Still on the surface, so still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `nros_service_take_request_raw` and the forwarder is a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it adds no exported symbol and no ABI cost. Still on the surface, so still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`.",
+    "retired": "a deprecated alias, deleted after its one release; the row records the rename"
   },
   "c:service_type_t": {
     "verdict": "divergence",
@@ -370,23 +368,7 @@
       "nros::Future::wait",
       "nros::Future::try_take"
     ],
-    "why": "rclcpp returns a `std::shared_future` a caller `get()`s, and `spin_until_future_complete` drives the executor underneath. Ours returns a `Promise` the caller drives explicitly (`promise.wait(&mut executor, timeout)`) -- RFC-0021. needs a future and a runtime to await it. RFC-0021 makes every blocking helper take the executor and drive it (`promise.wait(&mut executor, timeout)`), which is what makes a timeout reliable on a single-threaded transport. The arity matches by coincidence, which is why the correlator files it `arity-only`.\n\nphase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. RANKED-18, stated against upstream. `rclcpp::Client::async_send_request` returns a future KEYED BY THE SEQUENCE NUMBER `rcl_send_request` produced, which is what makes more than one outstanding request well-defined. Ours cannot: the sequence number is discarded at three layers and the future's slot is a hardcoded 0 — see `cpp:Client::send_request` for the measurement. A caller with two requests in flight gets whichever reply lands first, on both futures, with no error.\n\nDisposition ADOPT. Nothing platform-shaped is in the way — the sequence number EXISTS at every layer and is explicitly thrown away (`_seq`) — so this is a correlation table the arena can hold, not a capability the constraints forbid. Until it exists, the honest alternative under the rule is to refuse the second concurrent request loudly rather than to serve it wrongly."
-  },
-  "cpp:Client::call": {
-    "verdict": "extension",
-    "why": "the blocking convenience: send and drive the executor until the reply or the timeout. rclcpp's equivalent is `async_send_request(...).get()`, which deadlocks on a single-threaded executor -- the reason RFC-0021 makes the executor an explicit parameter."
-  },
-  "cpp:Client::call_polling": {
-    "verdict": "extension",
-    "why": "RFC-0022's polling tier: an entity a task drains itself instead of receiving a callback. See the pubsub stage's `cpp:PollingSubscription`."
-  },
-  "cpp:Client::call_polling_sized": {
-    "verdict": "extension",
-    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR — a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
-  },
-  "cpp:Client::call_sized": {
-    "verdict": "extension",
-    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR — a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
+    "why": "rclcpp returns a `std::shared_future` a caller `get()`s, and `spin_until_future_complete` drives the executor underneath. Ours returns a `Promise` the caller drives explicitly (`promise.wait(&mut executor, timeout)`) -- RFC-0021. needs a future and a runtime to await it. RFC-0021 makes every blocking helper take the executor and drive it (`promise.wait(&mut executor, timeout)`), which is what makes a timeout reliable on a single-threaded transport. The arity matches by coincidence, which is why the correlator files it `arity-only`.\n\nphase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. RANKED-18, stated against upstream. `rclcpp::Client::async_send_request` returns a future KEYED BY THE SEQUENCE NUMBER `rcl_send_request` produced, which is what makes more than one outstanding request well-defined. Ours cannot: the sequence number is discarded at three layers and the future's slot is a hardcoded 0 — see `cpp:PollClient::send_request` for the measurement. A caller with two requests in flight gets whichever reply lands first, on both futures, with no error.\n\nDisposition ADOPT. Nothing platform-shaped is in the way — the sequence number EXISTS at every layer and is explicitly thrown away (`_seq`) — so this is a correlation table the arena can hold, not a capability the constraints forbid. Until it exists, the honest alternative under the rule is to refuse the second concurrent request loudly rather than to serve it wrongly."
   },
   "cpp:Client::clear_on_new_response_callback": {
     "verdict": "divergence",
@@ -485,14 +467,6 @@
     "disposition": "absent",
     "why": "RE-VERDICTED 2026-09-23 (phase-444 ledger re-read), gap -> declined; see `cpp:Client::prune_pending_requests` for the measurement.\n\nTHE 2026-09-21 NOTE CALLED THIS \"the cheapest of the three: the sequence number the take path already returns IS the key\". Measured 2026-09-23, on the surfaces this row is about, it does not return one: `nros_client_take_response` (`packages/api/nros-c/include/nros/nros_generated.h:7768`) and `nros_client_take_response_raw` (`:7668`) yield bytes only, and `nros_cpp_service_client_take_response` (`packages/api/nros-cpp/src/service.rs:714`) drops the `_seq` its Rust callee hands back. It is dropped for the same reason the table does not exist — one call in flight leaves nothing to key. Removal by key and `reset_in_flight()` would be the same operation over the same single candidate."
   },
-  "cpp:Client::send_request": {
-    "verdict": "extension",
-    "why": "the ours-only half of `c:send_request`.\n\nphase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. RANKED-18. This extension has a correctness defect that outlives the extension question, so it is recorded here and the upstream-facing disposition is on `cpp:Client::async_send_request`.\n\n`send_request_sized` (`packages/api/nros-cpp/include/nros/client.hpp:119`, the body both spellings share) constructs its future with a literal slot 0 (`:132`) and discards the sequence number. THREE layers drop the key: the FFI has no sequence out-param at all (`nros_cpp_service_client_send_request(storage, req_data, req_len)`, `packages/api/nros-cpp/include/nros/nros_cpp_ffi.h`); the Rust body discards it (`Ok(_seq) => NROS_CPP_RET_OK`, `packages/api/nros-cpp/src/service.rs:697`); `take_response` discards it again (`Ok(Some((len, _seq)))`, `:723`). And `Future::slot_` is not a key — it is only a consumed sentinel and is never passed to the take function.\n\nHOW A USER FINDS OUT: SILENTLY WRONG. Two outstanding futures on one client both hold 0, both call the same `take_response` on the same storage, and whichever is polled first consumes whatever reply arrived. Nothing compile- or runtime-detects the cross-delivery. Re-verified by hand against the current worktree before this row was written.\n\nThe disposition for this finding is recorded on `cpp:Client::async_send_request`, which carries the full statement."
-  },
-  "cpp:Client::send_request_sized": {
-    "verdict": "extension",
-    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR — a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
-  },
   "cpp:Client::server_available": {
     "verdict": "extension",
     "why": "DEPRECATED ALIAS, phase-379 W6 decision 2 (2026-09-03). The live spelling is `Client::service_is_ready()`, returning `Expected<bool>`; this survives as a `[[deprecated]]` forwarder preserving the old `int` tri-state exactly (1 ready / 0 not yet / -1 cannot answer) so an out-of-tree caller keeps compiling with a diagnostic naming its replacement. It is replaced rather than kept because that `int` cannot separate a FAILED CALL from an UNSUPPORTED BACKEND -- both were `-1` -- which is the distinction rcl carries in its return code and `Expected<bool>` restores. Retired with the rest of the deprecated set in W7 step 4.\n\n2026-09-28 — NOT resurrected on the dispatch class, stated because the sibling verbs were. `service_is_ready` and `wait_for_service` came back to `rclcpp::Client<S>` when their FFI gained an arena arm; this deprecated `int` forwarder did not, and the asymmetry is the point. A `[[deprecated]]` alias exists so an out-of-tree caller who wrote the OLD spelling keeps compiling with a diagnostic; nobody ever wrote it on the post-split dispatch class, so adding it there would be inventing a new deprecated API rather than preserving one. The live alias is `cpp:PollClient::server_available`.",
@@ -500,7 +474,8 @@
       "from": "server_available",
       "to": "service_is_ready",
       "status": "landed"
-    }
+    },
+    "retired": "a deprecated alias, deleted after its one release; the row records the rename"
   },
   "cpp:Client::service_is_ready": {
     "verdict": "rename",
@@ -653,19 +628,19 @@
   },
   "cpp:PollClient::call": {
     "verdict": "extension",
-    "why": "phase-456 W9 — the blocking convenience moved here with the storage it sends through. Substantive verdict at `cpp:Client::call`: rclcpp's equivalent is `async_send_request(...).get()`, which deadlocks on a single-threaded executor, which is why RFC-0021 makes the executor an explicit parameter."
+    "why": "phase-456 W9 — the blocking convenience moved here with the storage it sends through. Substantive verdict below, carried over from the deleted `cpp:Client::call` row: rclcpp's equivalent is `async_send_request(...).get()`, which deadlocks on a single-threaded executor, which is why RFC-0021 makes the executor an explicit parameter.\n\nCarried over from the `cpp:Client::call` row, deleted by phase-482 W7 because that name no longer exists (issue 1323):\nthe blocking convenience: send and drive the executor until the reply or the timeout. rclcpp's equivalent is `async_send_request(...).get()`, which deadlocks on a single-threaded executor -- the reason RFC-0021 makes the executor an explicit parameter."
   },
   "cpp:PollClient::call_polling": {
     "verdict": "extension",
-    "why": "phase-456 W9 — RFC-0022's polling tier, moved here with the storage it sends through. Substantive verdict at `cpp:Client::call_polling`."
+    "why": "phase-456 W9 — RFC-0022's polling tier, moved here with the storage it sends through. Substantive verdict below, carried over from the deleted `cpp:Client::call_polling` row.\n\nCarried over from the `cpp:Client::call_polling` row, deleted by phase-482 W7 because that name no longer exists (issue 1323):\nRFC-0022's polling tier: an entity a task drains itself instead of receiving a callback. See the pubsub stage's `cpp:PollingSubscription`."
   },
   "cpp:PollClient::call_polling_sized": {
     "verdict": "extension",
-    "why": "issue 0964's caller-sized reply buffer on `cpp:PollClient::call_polling`."
+    "why": "issue 0964's caller-sized reply buffer on `cpp:PollClient::call_polling`.\n\nCarried over from the `cpp:Client::call_polling_sized` row, deleted by phase-482 W7 because that name no longer exists (issue 1323):\nphase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR — a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
   },
   "cpp:PollClient::call_sized": {
     "verdict": "extension",
-    "why": "issue 0964's caller-sized reply buffer on `cpp:PollClient::call`."
+    "why": "issue 0964's caller-sized reply buffer on `cpp:PollClient::call`.\n\nCarried over from the `cpp:Client::call_sized` row, deleted by phase-482 W7 because that name no longer exists (issue 1323):\nphase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR — a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
   },
   "cpp:PollClient::get_request_publisher_actual_qos": {
     "verdict": "extension",
@@ -685,11 +660,11 @@
   },
   "cpp:PollClient::send_request": {
     "verdict": "extension",
-    "why": "phase-456 W9 — the sending verb moved here with the storage it writes through. Substantive verdict at `cpp:Client::send_request`, including the slot-0 correlation defect (two outstanding futures on one client both hold slot 0); this row records the move. See `cpp:PollClient`."
+    "why": "phase-456 W9 — the sending verb moved here with the storage it writes through. Substantive verdict below, carried over from the deleted `cpp:Client::send_request` row, including the slot-0 correlation defect (two outstanding futures on one client both hold slot 0); this row records the move. See `cpp:PollClient`.\n\nCarried over from the `cpp:Client::send_request` row, deleted by phase-482 W7 because that name no longer exists (issue 1323):\nthe ours-only half of `c:send_request`.\n\nphase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. RANKED-18. This extension has a correctness defect that outlives the extension question, so it is recorded here and the upstream-facing disposition is on `cpp:Client::async_send_request`.\n\n`send_request_sized` (`packages/api/nros-cpp/include/nros/client.hpp:119`, the body both spellings share) constructs its future with a literal slot 0 (`:132`) and discards the sequence number. THREE layers drop the key: the FFI has no sequence out-param at all (`nros_cpp_service_client_send_request(storage, req_data, req_len)`, `packages/api/nros-cpp/include/nros/nros_cpp_ffi.h`); the Rust body discards it (`Ok(_seq) => NROS_CPP_RET_OK`, `packages/api/nros-cpp/src/service.rs:697`); `take_response` discards it again (`Ok(Some((len, _seq)))`, `:723`). And `Future::slot_` is not a key — it is only a consumed sentinel and is never passed to the take function.\n\nHOW A USER FINDS OUT: SILENTLY WRONG. Two outstanding futures on one client both hold 0, both call the same `take_response` on the same storage, and whichever is polled first consumes whatever reply arrived. Nothing compile- or runtime-detects the cross-delivery. Re-verified by hand against the current worktree before this row was written.\n\nThe disposition for this finding is recorded on `cpp:Client::async_send_request`, which carries the full statement."
   },
   "cpp:PollClient::send_request_sized": {
     "verdict": "extension",
-    "why": "issue 0964's caller-sized reply buffer, carried across the W9 split. Substantive verdict at `cpp:Client::send_request`."
+    "why": "issue 0964's caller-sized reply buffer, carried across the W9 split. Substantive verdict below, carried over from the deleted `cpp:Client::send_request` row.\n\nCarried over from the `cpp:Client::send_request_sized` row, deleted by phase-482 W7 because that name no longer exists (issue 1323):\nphase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR — a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
   },
   "cpp:PollClient::server_available": {
     "verdict": "extension",
@@ -699,7 +674,8 @@
       "to": "service_is_ready",
       "status": "landed",
       "residue": "NONE since phase-482 W6 (2026-10-07): the deprecated forwarder is deleted, and so is the expected-failure probe that proved it warned (it would have gone on passing while asserting nothing)."
-    }
+    },
+    "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename"
   },
   "cpp:PollClient::service_is_ready": {
     "verdict": "extension",
@@ -736,7 +712,8 @@
   },
   "cpp:PollService::send_reply": {
     "verdict": "extension",
-    "why": "the deprecated `send_reply` spelling of `cpp:PollService::send_response`, carried across the W5 split with its `[[deprecated]]` attribute intact. Substantive verdict at `cpp:Service::send_response`.\n\nRETIRED by phase-482 W6 (2026-10-07): the deprecated item is DELETED, with every other deprecated item in the tree as one batch (changelog.d/+phase-482-w6.breaking.md). Code that still names it gets an undeclared-identifier error naming nothing; the changelog entry carries the replacement. The row is kept as the record of the rename."
+    "why": "the deprecated `send_reply` spelling of `cpp:PollService::send_response`, carried across the W5 split with its `[[deprecated]]` attribute intact. Substantive verdict at `cpp:Service::send_response`.\n\nRETIRED by phase-482 W6 (2026-10-07): the deprecated item is DELETED, with every other deprecated item in the tree as one batch (changelog.d/+phase-482-w6.breaking.md). Code that still names it gets an undeclared-identifier error naming nothing; the changelog entry carries the replacement. The row is kept as the record of the rename.",
+    "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename"
   },
   "cpp:PollService::send_response": {
     "verdict": "extension",
@@ -748,7 +725,8 @@
   },
   "cpp:PollService::try_recv_request": {
     "verdict": "extension",
-    "why": "the deprecated `try_recv_request` spelling of `cpp:PollService::take_request`, carried across the W5 split with its `[[deprecated]]` attribute intact. Substantive verdict at `cpp:Service::take_request`; the retirement is the tree's deprecated-items batch.\n\nRETIRED by phase-482 W6 (2026-10-07): the deprecated item is DELETED, with every other deprecated item in the tree as one batch (changelog.d/+phase-482-w6.breaking.md). Code that still names it gets an undeclared-identifier error naming nothing; the changelog entry carries the replacement. The row is kept as the record of the rename."
+    "why": "the deprecated `try_recv_request` spelling of `cpp:PollService::take_request`, carried across the W5 split with its `[[deprecated]]` attribute intact. Substantive verdict at `cpp:Service::take_request`; the retirement is the tree's deprecated-items batch.\n\nRETIRED by phase-482 W6 (2026-10-07): the deprecated item is DELETED, with every other deprecated item in the tree as one batch (changelog.d/+phase-482-w6.breaking.md). Code that still names it gets an undeclared-identifier error naming nothing; the changelog entry carries the replacement. The row is kept as the record of the rename.",
+    "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename"
   },
   "cpp:PollService::try_recv_request_sized": {
     "verdict": "extension",
@@ -841,7 +819,8 @@
     },
     "provides": [
       "nros::PollService::send_reply"
-    ]
+    ],
+    "retired": "a deprecated alias, deleted after its one release; the row records the rename"
   },
   "cpp:Service::send_response": {
     "verdict": "divergence",
@@ -1076,7 +1055,8 @@
   "rust:ClientTrait::is_server_ready": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "DELETED 2026-09-03 (phase-379 W6 decision 2) -- this was the collapse WITHOUT the exception channel that makes it safe upstream. Its trait default was `true` and only zenoh overrode it, so every cffi-backed image (cyclonedds, XRCE, uORB) answered \"ready\" without asking: `wait_for_service` returned `Ok(true)` immediately, never waiting. Issue 1008. the ours-only half of `rust:Client::service_is_ready`."
+    "why": "DELETED 2026-09-03 (phase-379 W6 decision 2) -- this was the collapse WITHOUT the exception channel that makes it safe upstream. Its trait default was `true` and only zenoh overrode it, so every cffi-backed image (cyclonedds, XRCE, uORB) answered \"ready\" without asking: `wait_for_service` returned `Ok(true)` immediately, never waiting. Issue 1008. the ours-only half of `rust:Client::service_is_ready`.",
+    "retired": "deleted by phase-379 W6 decision 2; the row records why"
   },
   "rust:ClientTrait::register_waker": {
     "verdict": "extension",

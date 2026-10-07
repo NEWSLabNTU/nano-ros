@@ -142,17 +142,20 @@
   "rust:Logger::*_once": {
     "verdict": "divergence",
     "bucket": "ours-only",
-    "why": "our spelling of `ToLogParams::once` / `LogOccurrence::Once`; see `rust:LogOccurrence` for the shape and the constraint."
+    "why": "our spelling of `ToLogParams::once` / `LogOccurrence::Once`; see `rust:LogOccurrence` for the shape and the constraint.",
+    "retired": "the `log`-crate `Logger`'s methods; `nros::Logger` is `nros_log::Logger` since the rebinding, and its type alias was deleted by phase-482 W6"
   },
   "rust:Logger::*_skip_first": {
     "verdict": "divergence",
     "bucket": "ours-only",
-    "why": "our spelling of `ToLogParams::skip_first` / `LogOccurrence::SkipFirst`; see `rust:LogOccurrence`."
+    "why": "our spelling of `ToLogParams::skip_first` / `LogOccurrence::SkipFirst`; see `rust:LogOccurrence`.",
+    "retired": "the `log`-crate `Logger`'s methods; `nros::Logger` is `nros_log::Logger` since the rebinding, and its type alias was deleted by phase-482 W6"
   },
   "rust:Logger::*_throttle": {
     "verdict": "divergence",
     "bucket": "ours-only",
-    "why": "OUR LANGUAGES DISAGREE: our RUST throttle really throttles -- `Logger::{trace,debug,info,warn,error}_throttle(&mut last_log_ms, now_ms, interval_ms, msg)` gates on `should_log_throttled`, which is unit-tested (`packages/core/nros-core/src/logger.rs`). Our C++ does not: `RCLCPP_INFO_THROTTLE` / `_WARN_THROTTLE` / `_ERROR_THROTTLE` in `packages/api/nros-cpp/include/nros/log.hpp` expand to the un-throttled macro and DISCARD the `clock` and `period_ms` arguments, so a ported node that rate-limited a hot path at 1 Hz now logs it every iteration with no diagnostic. C has no throttle spelling at all. The shape difference from rclrs is real and constrained -- see `rust:ThrottleClock` -- but the C++ hole is not a divergence, it is unfinished work the header itself calls \"a follow-up\" (and RFC-0036's `_THROTTLE` note, which this stage was asked to verify, is accurate ONLY for C++). Phase 379 W3."
+    "why": "OUR LANGUAGES DISAGREE: our RUST throttle really throttles -- `Logger::{trace,debug,info,warn,error}_throttle(&mut last_log_ms, now_ms, interval_ms, msg)` gates on `should_log_throttled`, which is unit-tested (`packages/core/nros-core/src/logger.rs`). Our C++ does not: `RCLCPP_INFO_THROTTLE` / `_WARN_THROTTLE` / `_ERROR_THROTTLE` in `packages/api/nros-cpp/include/nros/log.hpp` expand to the un-throttled macro and DISCARD the `clock` and `period_ms` arguments, so a ported node that rate-limited a hot path at 1 Hz now logs it every iteration with no diagnostic. C has no throttle spelling at all. The shape difference from rclrs is real and constrained -- see `rust:ThrottleClock` -- but the C++ hole is not a divergence, it is unfinished work the header itself calls \"a follow-up\" (and RFC-0036's `_THROTTLE` note, which this stage was asked to verify, is accurate ONLY for C++). Phase 379 W3.",
+    "retired": "the `log`-crate `Logger`'s methods; `nros::Logger` is `nros_log::Logger` since the rebinding, and its type alias was deleted by phase-482 W6"
   },
   "rust:Logger::create_child": {
     "verdict": "divergence",
@@ -165,15 +168,18 @@
   },
   "rust:Logger::debug": {
     "verdict": "divergence",
-    "why": "see `rust:Logger::info`."
+    "why": "see `rust:Logger::info`.",
+    "retired": "the `log`-crate `Logger`'s methods; `nros::Logger` is `nros_log::Logger` since the rebinding, and its type alias was deleted by phase-482 W6"
   },
   "rust:Logger::error": {
     "verdict": "divergence",
-    "why": "see `rust:Logger::info`."
+    "why": "see `rust:Logger::info`.",
+    "retired": "the `log`-crate `Logger`'s methods; `nros::Logger` is `nros_log::Logger` since the rebinding, and its type alias was deleted by phase-482 W6"
   },
   "rust:Logger::info": {
     "verdict": "divergence",
-    "why": "OUR LANGUAGES DISAGREE: There are TWO Rust `Logger` types in this repo and the facade exports the wrong one. `nros::Logger` is `nros_core::logger::Logger<'a>`, whose severity methods forward to the `log` CRATE (`log::info!(target: self.name, ...)`). The Phase-88 facade `nros_log::Logger` -- the one `<nros/log.h>` wraps, the one `nros_node::NodeHandle::logger()` returns, and the one CLAUDE.md's issue-0589 rule names (`nros_log::nros_error!(nros_log::get_logger(\"<crate>\"), ...)`, because `std::println!` recurses to death on Zephyr native_sim) -- is a DEPENDENCY of the `nros` crate that is never `pub use`d from it. So the type a user reaches through `nros::prelude::*` is the one that does NOT go through the `nros_platform_log_write` sink chain. On the signature itself: rclrs has no severity METHODS at all -- `Logger` is a handle and emission is the `log_info!` macro family. Ours are methods taking a PRE-RENDERED `&str`, not `format_args!`, because rclrs's macro formats into a `String` and there is no allocator here; the `nros_log` macros solve the same problem by rendering into a stack `FormatBuffer` sized by the `NROS_LOG_BUFFER_SIZE` knob (issue 1037; formerly a `buffer-size-<N>` Cargo feature). Phase 379 W3 should decide which of the two loggers the facade exports; W5 should decide whether the surviving one keeps methods or macros."
+    "why": "OUR LANGUAGES DISAGREE: There are TWO Rust `Logger` types in this repo and the facade exports the wrong one. `nros::Logger` is `nros_core::logger::Logger<'a>`, whose severity methods forward to the `log` CRATE (`log::info!(target: self.name, ...)`). The Phase-88 facade `nros_log::Logger` -- the one `<nros/log.h>` wraps, the one `nros_node::NodeHandle::logger()` returns, and the one CLAUDE.md's issue-0589 rule names (`nros_log::nros_error!(nros_log::get_logger(\"<crate>\"), ...)`, because `std::println!` recurses to death on Zephyr native_sim) -- is a DEPENDENCY of the `nros` crate that is never `pub use`d from it. So the type a user reaches through `nros::prelude::*` is the one that does NOT go through the `nros_platform_log_write` sink chain. On the signature itself: rclrs has no severity METHODS at all -- `Logger` is a handle and emission is the `log_info!` macro family. Ours are methods taking a PRE-RENDERED `&str`, not `format_args!`, because rclrs's macro formats into a `String` and there is no allocator here; the `nros_log` macros solve the same problem by rendering into a stack `FormatBuffer` sized by the `NROS_LOG_BUFFER_SIZE` knob (issue 1037; formerly a `buffer-size-<N>` Cargo feature). Phase 379 W3 should decide which of the two loggers the facade exports; W5 should decide whether the surviving one keeps methods or macros.",
+    "retired": "the `log`-crate `Logger`'s methods; `nros::Logger` is `nros_log::Logger` since the rebinding, and its type alias was deleted by phase-482 W6"
   },
   "rust:Logger::new": {
     "verdict": "divergence",
@@ -190,11 +196,13 @@
   },
   "rust:Logger::trace": {
     "verdict": "divergence",
-    "why": "see `rust:Logger::info`."
+    "why": "see `rust:Logger::info`.",
+    "retired": "the `log`-crate `Logger`'s methods; `nros::Logger` is `nros_log::Logger` since the rebinding, and its type alias was deleted by phase-482 W6"
   },
   "rust:Logger::warn": {
     "verdict": "divergence",
-    "why": "see `rust:Logger::info`."
+    "why": "see `rust:Logger::info`.",
+    "retired": "the `log`-crate `Logger`'s methods; `nros::Logger` is `nros_log::Logger` since the rebinding, and its type alias was deleted by phase-482 W6"
   },
   "rust:LoggerName": {
     "verdict": "divergence",
@@ -272,7 +280,8 @@
   },
   "rust:LogCrateLogger": {
     "verdict": "extension",
-    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role.\n\nRETIRED by phase-482 W6 (2026-10-07): the deprecated item is DELETED, with every other deprecated item in the tree as one batch (changelog.d/+phase-482-w6.breaking.md). Code that still names it gets an undeclared-identifier error naming nothing; the changelog entry carries the replacement. The row is kept as the record of the rename."
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role.\n\nRETIRED by phase-482 W6 (2026-10-07): the deprecated item is DELETED, with every other deprecated item in the tree as one batch (changelog.d/+phase-482-w6.breaking.md). Code that still names it gets an undeclared-identifier error naming nothing; the changelog entry carries the replacement. The row is kept as the record of the rename.",
+    "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename"
   },
   "rust:LogSink::log": {
     "verdict": "extension",

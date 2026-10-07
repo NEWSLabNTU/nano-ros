@@ -11,7 +11,7 @@
   "c:get_zero_initialized_node": {
     "disposition": "adopt",
     "verdict": "declined",
-    "why": "rcl's free-function spelling of the above; ours is `nros_node_get_zero_initialized`, a method-style name on the type. The idiom is kept, the spelling follows our own convention."
+    "why": "rcl's free-function spelling of the above; ours is `nros_node_get_zero_initialized`, a method-style name on the type. The idiom is kept, the spelling follows our own convention.\n\nCarried over from the `c:node_get_zero_initialized` row, deleted by phase-482 W7 because that name no longer exists (issue 1323):\nrcl's `rcl_get_zero_initialized_node()` idiom on our type. Counted as an extension for the same reason as `c:support_get_zero_initialized`: rclc, the C reference, ships no equivalent for its own handles."
   },
   "c:node_get_fully_qualified_name": {
     "verdict": "divergence",
@@ -49,10 +49,6 @@
   "c:node_get_serialization_format": {
     "verdict": "extension",
     "why": "MERGED 2026-09-06 during the phase-428 W10 rebase onto main, from two independent rows that both landed -- main's phase-421 W2 classification (48911988a) and this branch's phase-428 Q1 row. JSON keeps the LAST, so one author's reasoning was being discarded silently. Both said `extension`; the prose is combined here and neither is lost.\n\nphase-421 W2 (landed 2026-09-04). Ours-only, and there is no upstream name to align to: neither the recorded rclcpp nor rclc surface contains the string \"serialization\" at all. It cannot: in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and not a question a node is asked. Here it IS a question — RFC-0088 makes the format a provider (`nros_serdes::format`, `SerializationFormatId`), a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD (`error[E0080]` from the `const {}` check). The accessor is how a program reads back which one it got. Answers from the single image constant today; the runtime path only becomes reachable when a bridge image links two backends (phase-421 W3, recorded as not yet reachable). C spelling: `nros_node_get_serialization_format()` (`nros_generated.h:5372`, cbindgen output).\n\nphase-428 Q1 (2026-09-06) -- `nros_node_get_serialization_format(node)` (`packages/api/nros-c/include/nros/nros_generated.h:5676`): the serialization format the backend behind THIS node speaks, as its cross-image identity string (`\"cdr\"`, `\"uorb\"`), RFC-0088 D4 / phase-421 W2. rcl has `rmw_get_serialization_format()`, asked of the PROCESS; ours is asked of the node because a bridge image (`Executor::open_multi`) links two backends on two sessions and has no single answer -- the case the reserved vtable slot was cut for. Returns NULL when the node is uninitialised or the backend declares no format, and NULL is not a synonym for `\"cdr\"` (the header says why). A forwarder onto `packages/core/nros-node/src/executor/node.rs:118`, RFC-0019's thin shim. `cpp:Node::serialization_format` is the C++ face."
-  },
-  "c:node_get_zero_initialized": {
-    "verdict": "extension",
-    "why": "rcl's `rcl_get_zero_initialized_node()` idiom on our type. Counted as an extension for the same reason as `c:support_get_zero_initialized`: rclc, the C reference, ships no equivalent for its own handles."
   },
   "c:node_impl_t": {
     "disposition": "absent",
@@ -177,10 +173,6 @@
   "cpp:Node::ok": {
     "verdict": "extension",
     "why": "ADOPT-BOUNDED replacement for upstream's throwing constructor: a node that failed to come up records the failure and answers `false` here. The SPELLING is upstream's own (`rclcpp::ok()` asks the same question of the process), which is why this is `ok()` and not an invented `is_healthy()`. It is weaker than a throw and the weakening is only safe if it is loud: the generated entry checks it and halts naming the node (RFC-0044 Q2), and a hand-written `main` must check it -- documented in the book, because the compiler cannot force it. `is_valid()` is the older nano-ros spelling of the same bit and stays as a forwarder.\n\nphase-427 W4 — it answers for the LATCH as well as for creation now. `ComponentNode` held a 24-byte `has_error_`/`error_what_`/`error_code_` latch that a failed `create_*` wrote after a successful open; merging it means `ok()` is `initialized_ && !has_error_`, which is what the entry's post-construct check has always MEANT. Those 24 bytes are UNCONDITIONAL on every node and deliberately not behind the hosted block: this is the error channel a `-fno-exceptions` target has instead of a throwing constructor, so a latch reachable only on a hosted target would leave the firmware case -- the one that cannot throw -- with no channel at all. Measured cost: `sizeof(nros::Node)` 200 -> 224, identical hosted and freestanding."
-  },
-  "cpp:Node::own_entity": {
-    "verdict": "extension",
-    "why": "INTERNAL, not user API: hands the node co-ownership of an arena-registered cell. The executor arena stores a raw pointer as its dispatch context and has NO unregister path, so a cell must outlive its registration whatever the caller does with the `shared_ptr` it was handed. The `create_*` members reach the hosted block directly; this exists for a FREE function that registers on a node (`rclcpp::create_timer`, phase-430 W6), which cannot reach a private member. rclcpp needs no equivalent because its entities own themselves and its executor holds weak pointers."
   },
   "cpp:Node::serialization_format": {
     "verdict": "extension",
@@ -532,10 +524,6 @@
     "why": "phase-417 stage 0 — a member of the compat shim's own `rclcpp::Node`, visible since issue 1020 admitted that header. Ours-only by construction: it is the shim's machinery (`pump` drives the shim's callbacks, `nros_node` reaches the wrapped node, `parameters` is the escape hatch to the node-owned store), not a name rclcpp declares."
   },
   "cpp:Node::nros_node": {
-    "verdict": "extension",
-    "why": "phase-417 stage 0 — a member of the compat shim's own `rclcpp::Node`, visible since issue 1020 admitted that header. Ours-only by construction: it is the shim's machinery (`pump` drives the shim's callbacks, `nros_node` reaches the wrapped node, `parameters` is the escape hatch to the node-owned store), not a name rclcpp declares."
-  },
-  "cpp:Node::pump": {
     "verdict": "extension",
     "why": "phase-417 stage 0 — a member of the compat shim's own `rclcpp::Node`, visible since issue 1020 admitted that header. Ours-only by construction: it is the shim's machinery (`pump` drives the shim's callbacks, `nros_node` reaches the wrapped node, `parameters` is the escape hatch to the node-owned store), not a name rclcpp declares."
   },
