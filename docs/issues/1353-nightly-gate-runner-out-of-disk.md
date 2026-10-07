@@ -2169,3 +2169,41 @@ measured here.
 Not new: the outcome, the step, the annotation. New: the starting headroom
 is 10 G lower, and two consecutive nights now have a measured full-at-end
 row (100 %, ≤ 256 K free).
+
+## The scheduled `gate` arm, sixth and seventh nights — the reclaim step runs and is not enough (2026-10-06, 2026-10-07)
+
+Both nights ran the new `Reclaim disk before the compile tier` step, and
+`just check build` still failed with the same runner-log annotation.
+
+| | 2026-10-06 run **37402594075** (job 112072919367) | 2026-10-07 run **37560867029** (job 112597626303) |
+| --- | --- | --- |
+| before (02:52 / 02:58) | 92 %, **13 G free** | 92 %, **13 G free** |
+| reclaim | `/__t` 5.2 G + `build/metadata-probe` 1.6 G: `freed 6857 MB; 20463984 KB free` | same two: `freed 6862 MB; 20344280 KB free` |
+| `just check build` | 02:52:44 → 03:21:03 (28 min) | 02:59:10 → 03:27:27 (28 min) |
+| after | 100 %, **224 K free** | 100 %, **128 K free** |
+| `target/` | 1.2 G → 6.3 G | 1.2 G → 7.0 G |
+| `build/` | 3.4 G (1.8 G after reclaim) → 7.9 G | 3.4 G (1.8 G after reclaim) → 8.0 G |
+| `packages/cli/target` | 35 G → 36 G | 35 G → 36 G |
+| `examples/` | 21 G → 21 G | 21 G → 21 G |
+
+Annotation, 10-07 (10-06's is the same apart from the `_diag` start stamp
+`20261006-020737`):
+
+```
+Unhandled exception. System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20261007-021246-utc.log'
+```
+
+**The arrival headroom fell again, 15 G (10-04, 10-05) → 13 G**, and the
+reclaim restores only ~6.8 G of it, so the step starts at ~19.5 G free. Within
+the step the named directories grow by ~12 G (`target/` +5.1 to 5.8 G,
+`build/` +6.1 to 6.2 G measured from its post-reclaim size, `packages/cli/target`
++1 G). The other ~7.5 G still lands outside the transcript's `du` list, as on
+10-05. Note that the after-report transcript **appends** to the before file
+(both headers are in the uploaded `after` artifact), so read its second
+`disk report — after` section, not its first.
+
+Not new: the outcome, the step, the annotation. New: the reclaim step is
+measured on two nights and buys ~6.8 G, which is less than the ~19.5 G the
+step consumes, so it cannot close this on its own. The nightly-to-nightly
+drift in arrival headroom (25 → 15 → 13 G) continues.
