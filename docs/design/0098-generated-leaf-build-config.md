@@ -1,6 +1,6 @@
 # RFC-0098 — A leaf's build configuration is generated from one board choice
 
-**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481)
+**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481; 2026-10-07 — D11's locator revision PROPOSED from phase-481 W0)
 
 Home phase: [phase-445](../roadmap/phase-445-board-choice-generates-leaf-config.md).
 
@@ -308,6 +308,50 @@ and a leaf's conf files hold no nano-ros knob.**
   fragments under `cmake/zephyr/` are the BOARD layer and are not leaf files.
 - A knob with no Kconfig symbol reaches the Zephyr cargo commands through the
   same unforced `--config` `[env]` file issue 1712 uses on the cmake road.
+
+**D11 — W0 revision (PROPOSED 2026-10-07, phase-481 W0; needs a decision before
+W1).** W0 measured the fragment and every precedence claim above as right, and
+the LOCATOR as wrong: a helper the leaf includes before `find_package(Zephyr)`
+has nothing that names nano-ros on a plain `west build` where nano-ros is a west
+project — the road `integration-zephyr.md` documents. west passes only
+`WEST_PYTHON`, `BOARD` and the user's `-D`s; module discovery runs inside
+`find_package(Zephyr)`; `NROS_REPO_DIR` is a checkout convenience; and a
+released `nros`'s own `share/nano-ros` is a different tree from the module
+(issue 1258/1387's class). Loading Zephyr in two steps
+(`COMPONENTS zephyr_default:zephyr_module`, then the full load) does not work
+either: the second `find_package` loads nothing more. Measurements:
+[phase-481 W0](../roadmap/phase-481-image-config-one-source.md), "W0 results".
+
+Proposed instead:
+
+- **The fragment is appended by the nano-ros Zephyr module itself, through
+  Zephyr's `module_ext_root` hook** — `zephyr/module.yml` `settings:
+  module_ext_root:`, whose `modules/modules.cmake` Zephyr includes after module
+  discovery and before `configuration_files`/`kconfig`, in the application's
+  directory scope. It is located by Zephyr's own module resolution, so it is
+  always the tree the module is, on every road (fixture `-DZEPHYR_EXTRA_MODULES`,
+  west project, BYO) — measured on two. It needs NO line in a leaf's
+  `CMakeLists.txt`: one caller, not a fifth.
+- It acts only when `APPLICATION_SOURCE_DIR` holds a `system.toml` (or a
+  generated application names one before `find_package(Zephyr)` — see below),
+  renders through `nros ws leaf-system --kconfig-out` into
+  `<build>/nros/<image>.conf` — a SUBDIRECTORY, because Zephyr merges the build
+  dir's top-level `*.conf` after `-DCONFIG_*` — appends it to `EXTRA_CONF_FILE`
+  and registers `system.toml` as a configure dependency. `-DNROS_IMAGE=<id>`
+  selects among several images.
+- **A generated workspace application** has no `system.toml` beside it, and
+  there `nros build` passes `-DEXTRA_CONF_FILE` on the command line, which
+  merges AFTER a locally appended value (measured). The generator, which already
+  writes pre-`find_package(Zephyr)` lines and knows the bringup and image, states
+  the bringup's `system.toml` and the image id for the hook to read, and the
+  image's `conf` files move under the same rule (D12 / W4's half).
+- Two facts the merge-order sentence above omits: a `-DCONFIG_*` value is
+  sticky (cached as `CLI_CONFIG_*` until `-U`'d), and build-dir `*.conf` files
+  merge last.
+- Cost: the hook runs for every application in a workspace that loads the
+  module, so it must be a cheap no-op without a `system.toml`; and
+  `module_ext_root` was measured on Zephyr 3.7 only — the 4.4 line must be
+  measured before W1 lands.
 
 **D12 — a workspace image's configuration is per image: images that resolve
 different configuration do not share a build.** A workspace cmake configure is
