@@ -30,7 +30,7 @@ nros-board-mps2-an385-freertos       3   0     0       1      0
 nros-board-nuttx                    18   0     1      10      0
 nros-board-nuttx-qemu                7   0     0       4      0
 nros-board-threadx                  35   0     0      11      0
-nros-board-threadx-linux             9   1     0       5      0
+nros-board-threadx-linux            10   1     0       6      0
 nros-board-threadx-qemu-riscv64     13   1     0       4      0
 nros-board-zephyr                   19   0     0       8      0
 nros-bridge                         34   1     0       8      0
