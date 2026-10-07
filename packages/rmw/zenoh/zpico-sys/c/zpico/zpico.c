@@ -2514,9 +2514,16 @@ static inline void zpico_slot_unlock(struct zpico_session* s) {
 // callback is ours. Lock order is this lock, then zenoh-pico's own mutexes;
 // nothing here takes it from inside a zenoh-pico callback, so the reverse
 // order never occurs. Without `Z_FEATURE_MULTI_THREAD` there is no second
-// thread and no lock. NOT covered: the lease task's reconnect replay
-// (`_z_reopen`) walks the same list on zenoh-pico's own thread -- issue 1749's
-// open half, which needs the lock upstream.
+// thread and no lock.
+//
+// The lease task's reconnect replay (`_z_reopen`) walks the same list on
+// zenoh-pico's own thread, which this lock cannot reach; the zenoh-pico fork
+// now guards the cache itself with the session's `_mutex_transport` and makes
+// the entity-id counter atomic (issue 1749). This lock is KEPT anyway: it is
+// one uncontended take per declare, and it still serializes the rest of
+// zenoh-pico's declare path (registration lists, write filters, interests)
+// against concurrent tier setups, which nobody has audited lock by lock.
+// Order: this lock, then `_mutex_transport` -- the replay never takes this one.
 static inline void zpico_declare_lock(struct zpico_session* s) {
 #if Z_FEATURE_MULTI_THREAD == 1
     if (s->declare_mutex_initialized) {

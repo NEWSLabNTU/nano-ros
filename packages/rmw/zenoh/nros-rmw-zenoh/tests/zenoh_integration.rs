@@ -1454,3 +1454,115 @@ fn concurrent_declares_on_one_session_never_share_a_slot() {
         );
     }
 }
+
+/// Issue 1749 — declares and undeclares keep running across a reconnect.
+///
+/// With `Z_FEATURE_AUTO_RECONNECT`, zenoh-pico's LEASE task re-opens a dropped
+/// session and replays its declaration cache (`_z_reopen`) on its own thread,
+/// while application threads keep pushing onto and pruning from that same
+/// list. The shim's declare lock (issue 1733) cannot reach the lease task, so
+/// the walk raced every declare: under ThreadSanitizer the replay encoded a
+/// cache node an undeclare had just freed. The lock now lives in zenoh-pico.
+///
+/// Four threads churn publishers and liveliness tokens (both cache entries)
+/// while the router is killed and restarted on the same port. The test needs
+/// the outage to be SEEN (a declare fails) and the session to come back (a
+/// declare succeeds after the restart), so it cannot pass without the replay
+/// having run under the churn.
+///
+/// It also pins issue 1751: the replay's re-sent interests come back as
+/// DECLARE_FINALs while their publishers are dropped, and the read task used
+/// to call the write filter back through the freed interest (SIGSEGV, 2 of 2).
+#[test]
+fn declares_keep_running_across_a_reconnect() {
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicBool, AtomicU64, Ordering},
+        },
+        time::Instant,
+    };
+
+    fn wait_for(what: &str, limit: Duration, mut done: impl FnMut() -> bool) {
+        let deadline = Instant::now() + limit;
+        while !done() {
+            assert!(
+                Instant::now() < deadline,
+                "timed out after {limit:?} waiting for {what}"
+            );
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    let router = router();
+    let port = router.port();
+    let locator = format!("{}\0", router.locator());
+    let ctx = nros_rmw_zenoh::zpico::Context::new(locator.as_bytes()).expect("open the session");
+    // Long-lived entries, so the replay walks a non-trivial list.
+    let _keep_pub = ctx
+        .declare_publisher(b"issue1749/keep/pub\0", false)
+        .expect("keep pub");
+    let _keep_tok = ctx
+        .declare_liveliness(b"issue1749/keep/token\0")
+        .expect("keep token");
+    let shared = &ctx as *const nros_rmw_zenoh::zpico::Context as usize;
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let ok = Arc::new(AtomicU64::new(0));
+    let failed = Arc::new(AtomicU64::new(0));
+    let workers: Vec<_> = (0..4)
+        .map(|t| {
+            let (stop, ok, failed) = (stop.clone(), ok.clone(), failed.clone());
+            thread::spawn(move || {
+                // The context outlives every thread: they are joined below.
+                let ctx = unsafe { &*(shared as *const nros_rmw_zenoh::zpico::Context) };
+                let mut n = 0u32;
+                while !stop.load(Ordering::Relaxed) {
+                    let key = format!("issue1749/t{t}/{}\0", n % 8);
+                    n = n.wrapping_add(1);
+                    let p = ctx.declare_publisher(key.as_bytes(), false);
+                    let l = ctx.declare_liveliness(key.as_bytes());
+                    if p.is_ok() && l.is_ok() {
+                        ok.fetch_add(1, Ordering::Relaxed);
+                    } else {
+                        failed.fetch_add(1, Ordering::Relaxed);
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                }
+            })
+        })
+        .collect();
+
+    wait_for("declares on a live link", Duration::from_secs(10), || {
+        ok.load(Ordering::Relaxed) >= 50
+    });
+    drop(router);
+    wait_for(
+        "a declare to fail with the router gone",
+        Duration::from_secs(25),
+        || failed.load(Ordering::Relaxed) > 0,
+    );
+    // The same port, so the session's configured locator reaches it again.
+    let restarted = or_skip(ZenohRouter::start(port));
+    let before = ok.load(Ordering::Relaxed);
+    let restarted_at = Instant::now();
+    // Lease expiry plus `_z_reopen`'s 1 s retry, then the replay: measured
+    // 39.8 s, 6 runs of 6, at the default 10 s lease (see the nextest
+    // override for this test).
+    wait_for(
+        "declares to resume after the restart",
+        Duration::from_secs(50),
+        || ok.load(Ordering::Relaxed) >= before + 50,
+    );
+    stop.store(true, Ordering::Relaxed);
+    for w in workers {
+        w.join().expect("a declaring thread panicked");
+    }
+    println!(
+        "issue 1749: {} declare rounds ok, {} failed across the outage, resumed {:?} after the restart",
+        ok.load(Ordering::Relaxed),
+        failed.load(Ordering::Relaxed),
+        restarted_at.elapsed()
+    );
+    drop(restarted);
+}
