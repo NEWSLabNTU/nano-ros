@@ -803,7 +803,11 @@ namespace detail {
 /// The `shared_ptr` member of `as_node_ref`'s overload set; the reference and
 /// pointer ones are freestanding and live with `rclcpp::create_timer`, after
 /// this block (phase-476 W2). This one needs `<memory>`.
-inline ::rclcpp::Node& as_node_ref(const ::std::shared_ptr<::rclcpp::Node>& n) {
+/// A template (phase-482 W2) so a `shared_ptr<MyNode>` binds here exactly, not
+/// through a conversion that would tie with the `Node::SharedPtr` overload.
+template <typename N, typename ::nros::tr::enable_if<
+                          ::nros::tr::is_convertible<N*, ::rclcpp::Node*>::value, int>::type = 0>
+inline ::rclcpp::Node& as_node_ref(const ::std::shared_ptr<N>& n) {
     return *n;
 }
 
@@ -832,6 +836,17 @@ inline ::rclcpp::Node& as_node_ref(const ::std::shared_ptr<::rclcpp::Node>& n) {
 // one session per image (issue 0465), so every `rclcpp::Node` is on the global
 // executor these verbs drive. Upstream takes the node for the same reason and
 // spins the executor it belongs to.
+
+} // namespace rclcpp
+
+#endif // NROS_CPP_HAS_SHARED_PTR
+
+// --- spin verbs, freestanding (phase-482 W2) ----------------------------------
+//
+// They take `Node::SharedPtr`, which is `nros::Handle<Node>` on every target
+// since phase-482 W2, so they left the `shared_ptr` block: a freestanding port's
+// `main` spells `rclcpp::spin(node)` exactly as a hosted one does.
+namespace rclcpp {
 
 inline void spin(const Node::SharedPtr& node) {
     if (!node || !node->initialized()) {
@@ -896,6 +911,36 @@ inline FutureReturnCode spin_until_future_complete(const Node::SharedPtr& node,
 
 } // namespace rclcpp
 
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+namespace rclcpp {
+
+// phase-482 W2 — the upstream `main` is `rclcpp::spin(std::make_shared<MyNode>())`,
+// a TEMPORARY `shared_ptr`. Binding it to a function parameter is safe (it lives
+// for the call), but converting it to a `Node::SharedPtr` handle is refused
+// because a STORED handle would dangle. These overloads take the `shared_ptr` by
+// reference instead, so that line compiles unchanged and owns the node for
+// exactly as long as the spin runs.
+template <typename N, typename ::nros::tr::enable_if<::nros::tr::is_convertible<N*, Node*>::value,
+                                                     int>::type = 0>
+inline void spin(const ::std::shared_ptr<N>& node) {
+    spin(Node::SharedPtr(node));
+}
+
+template <typename N, typename ::nros::tr::enable_if<::nros::tr::is_convertible<N*, Node*>::value,
+                                                     int>::type = 0>
+inline void spin_some(const ::std::shared_ptr<N>& node) {
+    spin_some(Node::SharedPtr(node));
+}
+
+template <
+    typename N, typename Future,
+    typename ::nros::tr::enable_if<::nros::tr::is_convertible<N*, Node*>::value, int>::type = 0>
+inline FutureReturnCode spin_until_future_complete(const ::std::shared_ptr<N>& node,
+                                                   const Future& future, int32_t timeout_ms = -1) {
+    return spin_until_future_complete(Node::SharedPtr(node), future, timeout_ms);
+}
+
+} // namespace rclcpp
 #endif // NROS_CPP_HAS_SHARED_PTR
 
 // -- dispatch verbs, freestanding (phase-476 W1) -------------------------------
@@ -1085,6 +1130,10 @@ namespace detail {
 /// `NodeT` in upstream's signature is anything node-shaped — `this`, a
 /// reference, or (hosted) a `shared_ptr`, whose overload is in the hosted block
 /// above. One overload set, so the free function does not need three copies.
+/// phase-482 W2 — `Node::SharedPtr` is a freestanding handle.
+inline ::rclcpp::Node& as_node_ref(const ::rclcpp::Node::SharedPtr& n) {
+    return *n;
+}
 inline ::rclcpp::Node& as_node_ref(::rclcpp::Node& n) {
     return n;
 }

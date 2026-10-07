@@ -96,6 +96,16 @@ inline void upstream_construction_verbatim() {
     // `shared_from_this()` is a METHOD here, not a base class. See its doc for
     // the ownership weakening that buys.
     (void)node->shared_from_this();
+
+    // phase-482 W2 — `Node::SharedPtr` is `nros::Handle<Node>`. A caller-owned
+    // `shared_ptr` converts to it, and the spin verbs take the `shared_ptr`
+    // directly, so upstream's `main` shapes are unchanged.
+    rclcpp::Node::SharedPtr observed = node;
+    (void)observed->get_name();
+    rclcpp::spin_some(node);
+    if (false) {
+        rclcpp::spin(std::make_shared<rclcpp::Node>("main_temporary"));
+    }
 }
 
 /// The freestanding shape, written on the same type. `init()` is the channel a

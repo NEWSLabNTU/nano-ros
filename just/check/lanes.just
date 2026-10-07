@@ -1761,6 +1761,30 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/one_node_type_freestanding.cpp
+    # phase-482 W2 — a `Node::SharedPtr` initialised from a TEMPORARY
+    # `shared_ptr` must be a compile error (it would dangle), and it must fail
+    # for THAT reason: a `deleted` diagnostic, not some other breakage.
+    echo "  - phase-482 W2: Node::SharedPtr from a temporary shared_ptr is refused (expected failure)"
+    _nh_out="$(c++ -fsyntax-only -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/node_handle_from_temporary_refused.cpp 2>&1)" && { \
+        echo "ERROR: node_handle_from_temporary_refused.cpp COMPILED. A Node::SharedPtr" >&2; \
+        echo "       initialised from a temporary shared_ptr dangles at the end of the" >&2; \
+        echo "       statement; the rvalue conversion in nros::Handle must stay deleted." >&2; \
+        exit 1; \
+    }
+    . scripts/lib/grep-q.sh
+    _nh_rc=0; nros_grep_q 'deleted' <<<"$_nh_out" || _nh_rc=$?
+    if [ "$_nh_rc" -ne 0 ]; then \
+        echo "ERROR: the temporary-handle probe failed, but not on the deleted conversion" >&2; \
+        echo "       (nros_grep_q rc=$_nh_rc)." >&2; \
+        echo "--- compiler said ---" >&2; echo "$_nh_out" >&2; \
+        exit 1; \
+    fi
     # phase-427 W7 — ...and the deprecated `nros::Node` spelling WARNS.
     #
     # The positive twin is `one_node_type.cpp` above: one type, two names. This
