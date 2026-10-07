@@ -143,15 +143,23 @@ static inline void nros_xrce_free(void* ptr) {
  * NROS_PARAM_SERVICE_INBOX_BYTES (the backend-neutral knob nros-node checks), or
  * DERIVED by the cargo lane from the declaration. It only RAISES the default —
  * never below the old floor, which also serves the user services. A STATED
- * buffer below it is refused just after this block. */
+ * buffer below it is refused just after this block.
+ *
+ * 0 = not priced (nothing stated, nothing declared): no raise, no refusal.
+ * The plain `XRCE_BUFFER_SIZE` arm comes FIRST on purpose — it is the default
+ * an image that prices nothing compiles, and the one `gen-pool-inventory`
+ * publishes for this knob. */
+#ifndef XRCE_PARAM_REQUEST_BYTES
+#define XRCE_PARAM_REQUEST_BYTES 0
+#endif
 #ifndef XRCE_SERVICE_REQUEST_BUFFER_SIZE
-#if defined(XRCE_PARAM_REQUEST_BYTES) && XRCE_PARAM_REQUEST_BYTES > XRCE_BUFFER_SIZE
-#define XRCE_SERVICE_REQUEST_BUFFER_SIZE XRCE_PARAM_REQUEST_BYTES
-#else
+#if XRCE_PARAM_REQUEST_BYTES <= XRCE_BUFFER_SIZE
 #define XRCE_SERVICE_REQUEST_BUFFER_SIZE XRCE_BUFFER_SIZE
+#else
+#define XRCE_SERVICE_REQUEST_BUFFER_SIZE XRCE_PARAM_REQUEST_BYTES
 #endif
 #endif
-#if defined(XRCE_PARAM_REQUEST_BYTES) && XRCE_SERVICE_REQUEST_BUFFER_SIZE < XRCE_PARAM_REQUEST_BYTES
+#if XRCE_SERVICE_REQUEST_BUFFER_SIZE < XRCE_PARAM_REQUEST_BYTES
 #error                                                                                             \
     "NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE is below XRCE_PARAM_REQUEST_BYTES, the largest set_parameters this image's declared parameters allow (NROS_PARAM_SERVICE_INBOX_BYTES, or derived from the contract's params:). That request would be dropped on arrival. Raise it, or leave it unset to derive (issue 1722)."
 #endif

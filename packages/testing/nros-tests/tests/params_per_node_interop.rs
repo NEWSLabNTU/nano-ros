@@ -574,6 +574,12 @@ fn xrce_set_parameters_naming_25_declared_lands() -> nros_tests::TestResult<()> 
         .env("NROS_RMW", "xrce")
         .env("NROS_ENTRY_SPIN_MS", "60000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
+    // The DDS half of this pair is the AGENT, pinned by `start_unique`; the
+    // image speaks XRCE and reads neither variable. Applied anyway because it
+    // is inert here (a variable for a middleware the child does not link) and
+    // `check-dds-isolation-symmetry` asks it of every spawn in a file whose
+    // other cases pair a DDS image with a pinned peer.
+    nros_tests::dds_isolation::apply_to_command(&mut cmd);
     let mut proc = ManagedProcess::spawn_command(cmd, "params-xrce").expect("failed to start");
 
     // The names the contract declares: `param_NN_` padded with `x` to 35 bytes.
