@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>demo_bringup</name>
+  <version>0.1.0</version>
+  <description>phase-474 T4 - bringup for the one-node violation fixture (ws-violation-cpp).</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

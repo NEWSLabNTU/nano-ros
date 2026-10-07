@@ -1,0 +1,26 @@
+# phase-474 T4 -- the one contracted path the fixture overruns once.
+#
+# `handler`'s 10 Hz timer publishes `/t4/state`, and its path carries a
+# 50 ms `max_latency`, which the generated entry installs as a
+# `max-latency-runtime` monitor row on that publisher. The handler arms the
+# monitors on its third tick (INIT -> RUN, like the safety island's
+# mrm_handler) and busy-waits 150 ms in its sixth, so the run must store
+# exactly one verdict, `max-latency-runtime /handler/state`, and none for the
+# 80 ms of start-up work it does in its first tick (counted as suppressed).
+version: 1
+
+nodes:
+  handler:
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 10 } }
+        output: [state]
+        max_latency: 50ms
+    pub:
+      state: { qos: { depth: 10 } }
+
+topics:
+  /t4/state:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [handler/state]

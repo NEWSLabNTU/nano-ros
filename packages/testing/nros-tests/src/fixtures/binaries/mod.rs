@@ -5204,6 +5204,23 @@ pub fn build_zephyr_workspace_cpp_derived_tiers_entry() -> TestResult<PathBuf> {
     )
 }
 
+/// phase-474 T4 -- the Zephyr (native_sim) violation-channel fixture
+/// (`examples/workspaces/violation-cpp`): one C++ handler whose contracted
+/// 10 Hz timer path overruns once after it arms the monitors. Built by the
+/// west lane into
+/// `<zephyr-build-root>/build-ws-cpp-violation-entry-zenoh/zephyr/zephyr.exe`;
+/// consumed by `tests/violation_channel_e2e.rs`.
+pub fn build_zephyr_workspace_cpp_violation_entry() -> TestResult<PathBuf> {
+    let binary_path =
+        zephyr_build_root().join("build-ws-cpp-violation-entry-zenoh/zephyr/zephyr.exe");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        // The WORKSPACE: the monitor row is derived from the bringup's
+        // contract, which lives outside the entry package.
+        ZephyrLeafSource::zenoh("examples/workspaces/violation-cpp", "cpp"),
+    )
+}
+
 /// phase-281 W3c — the Zephyr (native_sim) RT-TIERS C workspace Entry
 /// (`realtime-c/src/zephyr_entry`): the FIRST full west link + runtime proof of the
 /// W3a `ZephyrBoard::run_tiers` seam for a C node (closes the c×zephyr cell).

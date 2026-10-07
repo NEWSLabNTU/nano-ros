@@ -1,0 +1,26 @@
+[system]
+name = "violation_cpp"
+rmw = "zenoh"
+domain_id = 0
+
+# phase-474 T4 - the violation-channel fixture: one C++ component whose
+# timer path carries a contracted max_latency (launch/system.contract.yaml).
+# It arms the monitors on entering RUN and overruns once; the test reads the
+# drain-and-report line on the console.
+[[component]]
+pkg = "violation_pkg"
+class = "violation_pkg::Handler"
+name = "handler"
+
+[host.native]
+
+[image_defaults]
+rmw = "zenoh"
+
+[image.native]
+board = "native"
+
+[image.zephyr]
+board = "zephyr"
+conf = ["prj-zenoh.conf"]
+panic = "platform"

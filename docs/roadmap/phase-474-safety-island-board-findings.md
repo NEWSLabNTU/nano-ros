@@ -475,6 +475,26 @@ verdict, ring empty after RUN") did NOT pass, on three counts that are this
 runtime's, now I6-I8 below. Readouts verbatim in the island's
 `docs/takeover-trace.md` section 12.
 
+**native_sim result (2026-10-07).** The CI guard landed as a new one-node
+workspace rather than a variant of `workspace-zephyr-cpp-derived-tiers`,
+because a latency row needs a contracted `max_latency` and adding one to the
+derived-tiers contract would also give that fixture a 50 ms derived deadline
+(D4). `examples/workspaces/violation-cpp` (fixture
+`workspace-zephyr-cpp-violation`, router port 7697): a handler that overruns
+80 ms in INIT, arms on tick 3 and overruns 150 ms on tick 6, built with
+`CONFIG_NROS_MONITOR_ARM_ON_CALL=y` and `CONFIG_NROS_VIOLATION_DRAIN_REPORT=y`.
+`tests/violation_channel_e2e.rs` asserts exactly one
+`contract violation #<n>: max-latency-runtime /handler/state measured=>=150
+declared=50` line, after the RUN line, and the arming line's suppressed count;
+4 of 4 runs passed (about 3 s each). The line is `#2`, not `#1`: on
+native_sim's 1 ms spin cadence the release-jitter rule stores
+`measured=1000 declared=1000` right after arming, a wake exactly one period
+late, which `check_release_jitter` reports because its tolerance is "less than
+a full period"; the derived-tiers fixture shows the same line. That is a
+rule-at-quantization question, not a channel defect, and is left here. Found
+on the way: a `steady_clock` busy-wait never ends on native_sim (simulated time
+does not advance while the CPU spins); the fixture uses `k_busy_wait`.
+
 ### I6 -- `max-latency-runtime` never judges a timer-fired callback
 
 The 250 ms overrun produced no `max-latency-runtime` verdict at all, on a
@@ -588,7 +608,9 @@ independent of each other.
 - [ ] T4: a deliberate overrun on the S32K344 is reported through D1's
       channel. (Host executor e2e landed; the board run of 2026-10-06 shows
       the overrun as timer-overrun and jitter verdicts and markers, not as
-      `max-latency-runtime`: I6. native_sim / QEMU fixture open.)
+      `max-latency-runtime`: I6. native_sim fixture landed:
+      `violation_channel_e2e`, one latency verdict after arming; QEMU and
+      the board run stay open.)
 - [ ] I6: a timer-fired callback that overruns its `max_latency` produces a
       `max-latency-runtime` verdict, on the host test and on the S32K344.
 - [x] I7: the reporter neither overflows the main stack nor costs the spin
