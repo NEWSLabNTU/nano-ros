@@ -1389,3 +1389,68 @@ fn refused_service_takes_name_the_size_they_needed() {
     drop(server);
     session.close().expect("Failed to close session");
 }
+
+/// Issue 1711 — concurrent declares on ONE session never share a slot.
+///
+/// A multi-tier image shares one zenoh session across its tier threads
+/// (RFC-0015 Model 1), and each tier declares its entities at boot. The shim
+/// used to FIND a free slot, declare into it, and only then mark it active, so
+/// two threads declaring at once took the same slot: one's failure path freed
+/// the keyexpr the other had just allocated there, which ASan reported as a
+/// heap-use-after-free and a plain build as a SIGSEGV in `malloc`, about one
+/// boot in four on `derived-tiers-cpp`.
+///
+/// Four threads declare two publishers each, released together by a barrier,
+/// for 20 rounds. Every handle in a round must be distinct.
+#[test]
+fn concurrent_declares_on_one_session_never_share_a_slot() {
+    use std::sync::{Arc, Barrier};
+
+    let router = router();
+    let locator = format!("{}\0", router.locator());
+    let ctx = nros_rmw_zenoh::zpico::Context::new(locator.as_bytes()).expect("open the session");
+    // The tiers reach the session through a raw handle the same way; the
+    // context outlives every thread (they are joined below).
+    let shared = &ctx as *const nros_rmw_zenoh::zpico::Context as usize;
+
+    const THREADS: usize = 4;
+    const PER_THREAD: usize = 2;
+    for round in 0..20 {
+        let start = Arc::new(Barrier::new(THREADS));
+        let all_declared = Arc::new(Barrier::new(THREADS));
+        let workers: Vec<_> = (0..THREADS)
+            .map(|t| {
+                let (start, all_declared) = (start.clone(), all_declared.clone());
+                thread::spawn(move || {
+                    let ctx = unsafe { &*(shared as *const nros_rmw_zenoh::zpico::Context) };
+                    start.wait();
+                    let publishers: Vec<_> = (0..PER_THREAD)
+                        .map(|p| {
+                            let key = format!("issue1711/r{round}/t{t}/p{p}\0");
+                            ctx.declare_publisher(key.as_bytes(), false)
+                                .unwrap_or_else(|e| panic!("round {round} t{t} p{p}: {e:?}"))
+                        })
+                        .collect();
+                    let handles: Vec<i32> = publishers.iter().map(|p| p.handle()).collect();
+                    // Every thread's publishers are live together before any is
+                    // dropped, so a shared slot cannot hide behind a reuse.
+                    all_declared.wait();
+                    drop(publishers);
+                    handles
+                })
+            })
+            .collect();
+        let mut handles: Vec<i32> = workers
+            .into_iter()
+            .flat_map(|w| w.join().expect("a declaring thread panicked"))
+            .collect();
+        handles.sort_unstable();
+        let total = handles.len();
+        handles.dedup();
+        assert_eq!(
+            handles.len(),
+            total,
+            "round {round}: two concurrent declares were handed the same slot"
+        );
+    }
+}

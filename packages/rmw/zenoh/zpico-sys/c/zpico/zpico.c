@@ -582,6 +582,12 @@ typedef void (*zpico_graph_change_fn)(int32_t session_index);
 #endif
 
 struct zpico_session {
+#if Z_FEATURE_MULTI_THREAD == 1
+    /* issue 1711 -- guards CLAIMING an entity slot (publishers, subscribers,
+     * liveliness, queryables). See `zpico_claim_slot`. */
+    _z_mutex_t slot_mutex;
+    bool slot_mutex_initialized;
+#endif
     // Session handle + config + lifecycle (per handle — issue 0347's
     // single-session guard is gone; each handle is independent).
     z_owned_config_t config;
@@ -2213,6 +2219,11 @@ int32_t zpico_open(zpico_session_t* session) {
     }
 #endif
 
+#if Z_FEATURE_MULTI_THREAD == 1
+    if (!s->slot_mutex_initialized && _z_mutex_init(&s->slot_mutex) == 0) {
+        s->slot_mutex_initialized = true;
+    }
+#endif
     s->session_open = true;
     return ZPICO_OK;
 }
@@ -2416,6 +2427,12 @@ void zpico_close(zpico_session_t* session) {
 #endif
         z_close(z_session_loan_mut(&s->session), NULL);
         s->session_open = false;
+#if Z_FEATURE_MULTI_THREAD == 1
+        if (s->slot_mutex_initialized) {
+            s->slot_mutex_initialized = false;
+            _z_mutex_drop(&s->slot_mutex);
+        }
+#endif
     }
 
 #ifdef ZPICO_SMOLTCP
@@ -2425,6 +2442,74 @@ void zpico_close(zpico_session_t* session) {
 
     s->initialized = false;
 }
+
+// ============================================================================
+// Entity slot claim -- issue 1711
+// ============================================================================
+//
+// Every declare used to FIND a free slot (`!active`), declare into it, and only
+// then set `active = true`. With one zenoh session shared by several tier
+// threads (RFC-0015 Model 1), two concurrent declares found the SAME slot and
+// both wrote into it: measured under ASan on `derived-tiers-cpp`, one thread's
+// failure path (`_z_undeclare_publisher`) freed the keyexpr string the other
+// thread's declaration had just allocated in that slot, while the other was
+// still comparing against it -- a heap-use-after-free that surfaced as a
+// SIGSEGV in `malloc` roughly one boot in four.
+//
+// `zpico_claim_slot` finds and MARKS the slot under `slot_mutex`, so the slot
+// is the caller's before the declare starts; the declare itself runs outside
+// the lock (a subscriber callback on the read task may declare an entity, and
+// zenoh-pico takes its own session mutex inside `z_declare_*`). A declare that
+// then fails gives the slot back with `zpico_release_slot`. Without
+// `Z_FEATURE_MULTI_THREAD` there is no second thread and no lock.
+static inline void zpico_slot_lock(struct zpico_session* s) {
+#if Z_FEATURE_MULTI_THREAD == 1
+    if (s->slot_mutex_initialized) {
+        _z_mutex_lock(&s->slot_mutex);
+    }
+#else
+    (void)s;
+#endif
+}
+
+static inline void zpico_slot_unlock(struct zpico_session* s) {
+#if Z_FEATURE_MULTI_THREAD == 1
+    if (s->slot_mutex_initialized) {
+        _z_mutex_unlock(&s->slot_mutex);
+    }
+#else
+    (void)s;
+#endif
+}
+
+/* Claim the first slot whose `active` flag is clear and set it, atomically with
+ * respect to every other claim. `first_active` is `&table[0].active`, `stride`
+ * is `sizeof(table[0])`. Returns the index, or -1 when the table is full. */
+static int zpico_claim_slot_impl(struct zpico_session* s, bool* first_active, size_t stride,
+                                 int count) {
+    int idx = -1;
+    zpico_slot_lock(s);
+    for (int i = 0; i < count; i++) {
+        bool* active = (bool*)((uint8_t*)first_active + (size_t)i * stride);
+        if (!*active) {
+            *active = true;
+            idx = i;
+            break;
+        }
+    }
+    zpico_slot_unlock(s);
+    return idx;
+}
+
+static void zpico_release_slot_impl(struct zpico_session* s, bool* active) {
+    zpico_slot_lock(s);
+    *active = false;
+    zpico_slot_unlock(s);
+}
+
+#define zpico_claim_slot(s, table, count)                                                          \
+    zpico_claim_slot_impl((s), &(s)->table[0].active, sizeof((s)->table[0]), (count))
+#define zpico_release_slot(s, table, idx) zpico_release_slot_impl((s), &(s)->table[(idx)].active)
 
 // ============================================================================
 // Publisher Implementation
@@ -2442,13 +2527,7 @@ int32_t zpico_declare_publisher_ex(zpico_session_t* session, const char* keyexpr
     }
 
     // Find free slot
-    int idx = -1;
-    for (int i = 0; i < ZPICO_MAX_PUBLISHERS; i++) {
-        if (!s->publishers[i].active) {
-            idx = i;
-            break;
-        }
-    }
+    int idx = zpico_claim_slot(s, publishers, ZPICO_MAX_PUBLISHERS);
     if (idx < 0) {
         return ZPICO_ERR_FULL;
     }
@@ -2456,6 +2535,7 @@ int32_t zpico_declare_publisher_ex(zpico_session_t* session, const char* keyexpr
     z_view_keyexpr_t ke;
     int ke_ret = z_view_keyexpr_from_str(&ke, keyexpr);
     if (ke_ret < 0) {
+        zpico_release_slot(s, publishers, idx);
         return ZPICO_ERR_KEYEXPR;
     }
 
@@ -2478,9 +2558,11 @@ int32_t zpico_declare_publisher_ex(zpico_session_t* session, const char* keyexpr
                                       z_view_keyexpr_loan(&ke), &pub_opts);
     if (pub_ret < 0) {
         printk("zpico: z_declare_publisher failed: %d for '%s'\n", pub_ret, keyexpr);
+        zpico_release_slot(s, publishers, idx);
         return ZPICO_ERR_GENERIC;
     }
 
+    /* Claimed by zpico_claim_slot (issue 1711); set again for the reader. */
     s->publishers[idx].active = true;
     return idx;
 }
@@ -2515,7 +2597,7 @@ int32_t zpico_undeclare_publisher(zpico_session_t* session, int32_t handle) {
     }
 
     z_undeclare_publisher(z_publisher_move(&s->publishers[handle].publisher));
-    s->publishers[handle].active = false;
+    zpico_release_slot(s, publishers, handle);
     return ZPICO_OK;
 }
 
@@ -2531,13 +2613,7 @@ int32_t zpico_declare_subscriber(zpico_session_t* session, const char* keyexpr,
     }
 
     // Find free slot
-    int idx = -1;
-    for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
-        if (!s->subscribers[i].active) {
-            idx = i;
-            break;
-        }
-    }
+    int idx = zpico_claim_slot(s, subscribers, ZPICO_MAX_SUBSCRIBERS);
     if (idx < 0) {
         return ZPICO_ERR_FULL;
     }
@@ -2550,6 +2626,7 @@ int32_t zpico_declare_subscriber(zpico_session_t* session, const char* keyexpr,
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
         s->subscribers[idx].callback = NULL;
         s->subscribers[idx].ctx = NULL;
+        zpico_release_slot(s, subscribers, idx);
         return ZPICO_ERR_KEYEXPR;
     }
 
@@ -2564,9 +2641,11 @@ int32_t zpico_declare_subscriber(zpico_session_t* session, const char* keyexpr,
         printk("zpico: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
         s->subscribers[idx].callback = NULL;
         s->subscribers[idx].ctx = NULL;
+        zpico_release_slot(s, subscribers, idx);
         return ZPICO_ERR_GENERIC;
     }
 
+    /* Claimed by zpico_claim_slot (issue 1711); set again for the reader. */
     s->subscribers[idx].active = true;
     return idx;
 }
@@ -2579,13 +2658,7 @@ int32_t zpico_declare_subscriber_with_attachment(zpico_session_t* session, const
     }
 
     // Find free slot
-    int idx = -1;
-    for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
-        if (!s->subscribers[i].active) {
-            idx = i;
-            break;
-        }
-    }
+    int idx = zpico_claim_slot(s, subscribers, ZPICO_MAX_SUBSCRIBERS);
     if (idx < 0) {
         return ZPICO_ERR_FULL;
     }
@@ -2598,6 +2671,7 @@ int32_t zpico_declare_subscriber_with_attachment(zpico_session_t* session, const
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
         s->subscribers[idx].callback_ext = NULL;
         s->subscribers[idx].ctx = NULL;
+        zpico_release_slot(s, subscribers, idx);
         return ZPICO_ERR_KEYEXPR;
     }
 
@@ -2612,9 +2686,11 @@ int32_t zpico_declare_subscriber_with_attachment(zpico_session_t* session, const
         printk("zpico: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
         s->subscribers[idx].callback_ext = NULL;
         s->subscribers[idx].ctx = NULL;
+        zpico_release_slot(s, subscribers, idx);
         return ZPICO_ERR_GENERIC;
     }
 
+    /* Claimed by zpico_claim_slot (issue 1711); set again for the reader. */
     s->subscribers[idx].active = true;
     return idx;
 }
@@ -2629,13 +2705,7 @@ int32_t zpico_declare_subscriber_direct_write(zpico_session_t* session, const ch
     }
 
     // Find free slot
-    int idx = -1;
-    for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
-        if (!s->subscribers[i].active) {
-            idx = i;
-            break;
-        }
-    }
+    int idx = zpico_claim_slot(s, subscribers, ZPICO_MAX_SUBSCRIBERS);
     if (idx < 0) {
         return ZPICO_ERR_FULL;
     }
@@ -2653,6 +2723,7 @@ int32_t zpico_declare_subscriber_direct_write(zpico_session_t* session, const ch
         s->subscribers[idx].notify = NULL;
         s->subscribers[idx].ctx = NULL;
         s->subscribers[idx].direct_write = false;
+        zpico_release_slot(s, subscribers, idx);
         return ZPICO_ERR_KEYEXPR;
     }
 
@@ -2668,9 +2739,11 @@ int32_t zpico_declare_subscriber_direct_write(zpico_session_t* session, const ch
         s->subscribers[idx].notify = NULL;
         s->subscribers[idx].ctx = NULL;
         s->subscribers[idx].direct_write = false;
+        zpico_release_slot(s, subscribers, idx);
         return ZPICO_ERR_GENERIC;
     }
 
+    /* Claimed by zpico_claim_slot (issue 1711); set again for the reader. */
     s->subscribers[idx].active = true;
     return idx;
 }
@@ -2711,13 +2784,7 @@ int32_t zpico_declare_subscriber_ring(zpico_session_t* session, const char* keye
         return ZPICO_ERR_INVALID;
     }
 
-    int idx = -1;
-    for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
-        if (!s->subscribers[i].active) {
-            idx = i;
-            break;
-        }
-    }
+    int idx = zpico_claim_slot(s, subscribers, ZPICO_MAX_SUBSCRIBERS);
     if (idx < 0) {
         zpico_last_sub_declare_exit = 3;
         return ZPICO_ERR_FULL;
@@ -2741,6 +2808,7 @@ int32_t zpico_declare_subscriber_ring(zpico_session_t* session, const char* keye
         s->subscribers[idx].ring_mode = false;
         s->subscribers[idx].ring = NULL;
         zpico_last_sub_declare_exit = 4;
+        zpico_release_slot(s, subscribers, idx);
         return ZPICO_ERR_KEYEXPR;
     }
 
@@ -2758,9 +2826,11 @@ int32_t zpico_declare_subscriber_ring(zpico_session_t* session, const char* keye
         s->subscribers[idx].ring = NULL;
         zpico_last_sub_declare_exit = 5;
         zpico_last_sub_declare_ret = (int32_t)sub_ret;
+        zpico_release_slot(s, subscribers, idx);
         return ZPICO_ERR_GENERIC;
     }
 
+    /* Claimed by zpico_claim_slot (issue 1711); set again for the reader. */
     s->subscribers[idx].active = true;
         zpico_last_sub_declare_exit = 6;
     return idx;
@@ -2886,13 +2956,7 @@ int32_t zpico_subscribe_zero_copy(zpico_session_t* session, const char* keyexpr,
     }
 
     // Find free slot
-    int idx = -1;
-    for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
-        if (!s->subscribers[i].active) {
-            idx = i;
-            break;
-        }
-    }
+    int idx = zpico_claim_slot(s, subscribers, ZPICO_MAX_SUBSCRIBERS);
     if (idx < 0) {
         return ZPICO_ERR_FULL;
     }
@@ -2908,6 +2972,7 @@ int32_t zpico_subscribe_zero_copy(zpico_session_t* session, const char* keyexpr,
         s->subscribers[idx].zero_copy = false;
         s->subscribers[idx].zero_copy_cb = NULL;
         s->subscribers[idx].ctx = NULL;
+        zpico_release_slot(s, subscribers, idx);
         return ZPICO_ERR_KEYEXPR;
     }
 
@@ -2923,9 +2988,11 @@ int32_t zpico_subscribe_zero_copy(zpico_session_t* session, const char* keyexpr,
         s->subscribers[idx].zero_copy = false;
         s->subscribers[idx].zero_copy_cb = NULL;
         s->subscribers[idx].ctx = NULL;
+        zpico_release_slot(s, subscribers, idx);
         return ZPICO_ERR_GENERIC;
     }
 
+    /* Claimed by zpico_claim_slot (issue 1711); set again for the reader. */
     s->subscribers[idx].active = true;
     return idx;
 }
@@ -2948,7 +3015,7 @@ int32_t zpico_undeclare_subscriber(zpico_session_t* session, int32_t handle) {
     }
 
     z_undeclare_subscriber(z_subscriber_move(&s->subscribers[handle].subscriber));
-    s->subscribers[handle].active = false;
+    zpico_release_slot(s, subscribers, handle);
     s->subscribers[handle].callback = NULL;
     s->subscribers[handle].ctx = NULL;
     s->subscribers[handle].with_attachment = false;
@@ -3276,13 +3343,7 @@ int32_t zpico_declare_liveliness(zpico_session_t* session, const char* keyexpr) 
     }
 
     // Find free slot
-    int idx = -1;
-    for (int i = 0; i < ZPICO_MAX_LIVELINESS; i++) {
-        if (!s->liveliness[i].active) {
-            idx = i;
-            break;
-        }
-    }
+    int idx = zpico_claim_slot(s, liveliness, ZPICO_MAX_LIVELINESS);
     if (idx < 0) {
         /* phase-412 — issue 0283 gave the declare-failure arm below a printk
          * because "a failed token is a SILENT graph outage (the ROS 2 tools see
@@ -3300,6 +3361,7 @@ int32_t zpico_declare_liveliness(zpico_session_t* session, const char* keyexpr) 
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
+        zpico_release_slot(s, liveliness, idx);
         return ZPICO_ERR_KEYEXPR;
     }
 
@@ -3310,9 +3372,11 @@ int32_t zpico_declare_liveliness(zpico_session_t* session, const char* keyexpr) 
          * tools see nothing) — say so on the console like the publisher /
          * subscriber declare paths do. */
         printk("zpico: z_liveliness_declare_token failed: %d for '%s'\n", lv_ret, keyexpr);
+        zpico_release_slot(s, liveliness, idx);
         return ZPICO_ERR_GENERIC;
     }
 
+    /* Claimed by zpico_claim_slot (issue 1711); set again for the reader. */
     s->liveliness[idx].active = true;
     return idx;
 }
@@ -3324,7 +3388,7 @@ int32_t zpico_undeclare_liveliness(zpico_session_t* session, int32_t handle) {
     }
 
     z_liveliness_undeclare_token(z_liveliness_token_move(&s->liveliness[handle].token));
-    s->liveliness[handle].active = false;
+    zpico_release_slot(s, liveliness, handle);
     return ZPICO_OK;
 }
 
@@ -3419,13 +3483,7 @@ int32_t zpico_declare_queryable(zpico_session_t* session, const char* keyexpr,
     }
 
     // Find free slot
-    int idx = -1;
-    for (int i = 0; i < ZPICO_MAX_QUERYABLES; i++) {
-        if (!s->queryables[i].active) {
-            idx = i;
-            break;
-        }
-    }
+    int idx = zpico_claim_slot(s, queryables, ZPICO_MAX_QUERYABLES);
     if (idx < 0) {
         return ZPICO_ERR_FULL;
     }
@@ -3437,6 +3495,7 @@ int32_t zpico_declare_queryable(zpico_session_t* session, const char* keyexpr,
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
         s->queryables[idx].callback = NULL;
         s->queryables[idx].ctx = NULL;
+        zpico_release_slot(s, queryables, idx);
         return ZPICO_ERR_KEYEXPR;
     }
 
@@ -3457,9 +3516,11 @@ int32_t zpico_declare_queryable(zpico_session_t* session, const char* keyexpr,
         printk("zpico: z_declare_queryable failed: %d for '%s'\n", q_ret, keyexpr);
         s->queryables[idx].callback = NULL;
         s->queryables[idx].ctx = NULL;
+        zpico_release_slot(s, queryables, idx);
         return ZPICO_ERR_GENERIC;
     }
 
+    /* Claimed by zpico_claim_slot (issue 1711); set again for the reader. */
     s->queryables[idx].active = true;
     return idx;
 }
@@ -3471,7 +3532,7 @@ int32_t zpico_undeclare_queryable(zpico_session_t* session, int32_t handle) {
     }
 
     z_undeclare_queryable(z_queryable_move(&s->queryables[handle].queryable));
-    s->queryables[handle].active = false;
+    zpico_release_slot(s, queryables, handle);
     s->queryables[handle].callback = NULL;
     s->queryables[handle].ctx = NULL;
     // Phase 237 — drop any cloned queries still held in this queryable's reply

@@ -131,4 +131,4 @@ one, `realtime-rust`'s `derived_bringup`, is a Zephyr image); it is covered by
 sharing `arm_reporter`, not by a measurement. A normal (non-census) boot of the
 fixed `native_entry` against `rmw_zenohd` was run: it showed an intermittent
 SIGSEGV that `origin/main` shows too (1 of 4 runs there), filed as
-[issue 1711](../1711-native-multi-tier-cpp-boot-segv-in-malloc.md).
+[issue 1711](1711-native-multi-tier-cpp-boot-segv-in-malloc.md).
