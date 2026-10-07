@@ -82,3 +82,32 @@ Measured locally: the by-id build produces `native_entry`, and
 and the run already reports it as a skip with a reason
 (`rewrite-skipped-junit: skips by class: capability=1`), not as a regression.
 Still to confirm: the next scheduled host job reports no FixtureNotBuilt.
+
+## 2026-10-07 — the confirmation run still failed, because the lane skipped
+
+The "still to confirm" run came back red. `live-peer regression` run
+**37570821619** (schedule 04:18Z, head `edbe96f92`, which includes #1753), job
+**112628797050** `rows whose board IS this runner`: `cpp_multi_node_entry` 3 of 4
+FAIL with `FixtureNotBuilt("Test fixture binary not prebuilt: …/cpp_robot_entry/
+build/posix-zenoh-native/cmake/native_entr…")`.
+
+The derivation worked and named the right id, but the build skipped:
+
+```
+host compile-check fixtures (derived from the cells' tests):
+  cpp_robot_entry
+=== compile-check-fixtures.sh (NROS_FIXTURE_ID=cpp_robot_entry) ===
+cmake-fixtures: play_launch_parser not found (source ./activate.sh) — skipping (recorded in the summary)
+compile-check: 2 lane(s) SKIPPED — their fixtures are NOT built:
+```
+
+The live-peer host job never provisions `play_launch_parser`, and
+`compile-check-fixtures.sh` treats its absence as a host-capability SKIP that
+exits 0, so the step went green with nothing built. The local measurement in the
+Resolution passed because that host has the parser on PATH.
+
+Follow-up fix: the step runs `nros setup --tool play_launch_parser` and
+re-sources `activate.sh` before the by-id build whenever the derivation names
+an id. It also runs `command -v play_launch_parser`, so a missing parser fails
+the step instead of skipping. Confirmation is still the next scheduled host job
+reporting no FixtureNotBuilt.

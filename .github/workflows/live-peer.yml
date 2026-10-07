@@ -285,6 +285,16 @@ jobs:
           fi
           echo "host compile-check fixtures (derived from the cells' tests):"
           printf '  %s\n' "$ccs"
+          # The cmake compile-check lane needs `play_launch_parser`, and without
+          # it compile-check-fixtures.sh SKIPS the lane and exits 0, so
+          # `cpp_robot_entry` was never built and its cells failed as
+          # FixtureNotBuilt (run 37570821619, issue 1718). Provision it, then
+          # re-source so the just-installed bin dir reaches PATH.
+          if [ -n "$ccs" ]; then
+              nros setup --tool play_launch_parser
+              source ./activate.sh
+              command -v play_launch_parser
+          fi
           while IFS= read -r id; do
               [ -n "$id" ] || continue
               echo "=== compile-check-fixtures.sh (NROS_FIXTURE_ID=$id) ==="
@@ -573,6 +583,11 @@ jobs:
         run: |
           source ./activate.sh
           nros setup --tool cargo-nextest
+          # Re-source: `activate.sh` puts a store tool's bin dir on PATH only if
+          # it EXISTS when sourced, and the first source above ran before the
+          # install. Without this the check below read `no such command:
+          # nextest` right after a successful install (run 37570821619, issue 1666).
+          source ./activate.sh
           cargo nextest --version
 
       - name: Run the board cells with a recorded PASS
