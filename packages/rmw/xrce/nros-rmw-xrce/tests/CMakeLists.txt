@@ -48,3 +48,11 @@ add_executable(nros_rmw_xrce_service_refused_len service_refused_len.c)
 target_link_libraries(nros_rmw_xrce_service_refused_len PRIVATE nros_rmw_xrce)
 
 add_test(NAME nros_rmw_xrce_service_refused_len COMMAND nros_rmw_xrce_service_refused_len)
+
+# Issue 1292 — the `ros_discovery_info` sample, the endpoint-key counting rule,
+# node/endpoint lifetimes and the probe's nonce check. No agent; the live half
+# is `rust_multi_node_per_node_graph`'s XRCE case.
+add_executable(nros_rmw_xrce_graph_sample graph_sample.c)
+target_link_libraries(nros_rmw_xrce_graph_sample PRIVATE nros_rmw_xrce)
+
+add_test(NAME nros_rmw_xrce_graph_sample COMMAND nros_rmw_xrce_graph_sample)

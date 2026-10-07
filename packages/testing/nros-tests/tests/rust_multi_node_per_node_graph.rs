@@ -21,16 +21,24 @@
 //!   session-named). The self-contained half of that claim is the backend's
 //!   `graph_node_set` CTest, which reads the published sample back.
 //!
-//! XRCE publishes no node at all yet: `native-multinode-rust-xrce-CARVED`,
-//! issue 1292.
+//! * XRCE — the same `ros_discovery_info` sample, written by the CLIENT
+//!   through the Agent (issue 1292). The client cannot read the GUIDs the
+//!   Agent gives its endpoints, so it learns the participant's GUID prefix from
+//!   a self-addressed request and predicts each endpoint's key from the Agent's
+//!   numbering (`nros-rmw-xrce/src/graph.c`). That is why the XRCE case also
+//!   asks `ros2 node info`: a right node NAME with wrong GIDs still lists the
+//!   node and attributes none of its endpoints.
 
 use nros_tests::{
     fixtures::{
-        DEFAULT_ROS_DISTRO, ManagedProcess, RequireFixture, ZenohRouter,
+        DEFAULT_ROS_DISTRO, ManagedProcess, RequireFixture, XrceAgent, ZenohRouter,
         build_native_workspace_rust_cyclonedds_entry, build_native_workspace_rust_entry,
-        is_rmw_zenoh_available, is_ros2_available, require_zenohd, ros2_node_list, zenohd_unique,
+        build_native_workspace_rust_xrce_entry, is_rmw_zenoh_available, is_ros2_available,
+        require_ros2_dds, require_xrce_agent, require_zenohd, ros2_node_list, zenohd_unique,
     },
-    ros2::{require_ros2_cyclonedds, ros2_node_list_rmw_with_domain},
+    ros2::{
+        require_ros2_cyclonedds, ros2_node_info_rmw_with_domain, ros2_node_list_rmw_with_domain,
+    },
 };
 use rstest::rstest;
 use std::{
@@ -173,6 +181,105 @@ fn rust_multi_node_entry_per_node_graph_nodes_cyclonedds() -> nros_tests::TestRe
     Ok(())
 }
 
+/// What `ros2 node info` must attribute to each launch node — the talker
+/// publishes `/chatter`, the listener subscribes to it. An XRCE sample whose
+/// GIDs were wrong would still name both nodes and list neither endpoint.
+const EXPECTED_ENDPOINTS: [(&str, &str, &str); 2] = [
+    ("/talker", "Publishers:", "/chatter"),
+    ("/listener", "Subscribers:", "/chatter"),
+];
+
+/// The topics `ros2 node info` lists under `section` ("Publishers:", …), in
+/// the order printed. The section runs until the next line ending in `:`.
+fn node_info_section(info: &str, section: &str) -> Vec<String> {
+    let mut lines = info.lines().map(str::trim);
+    if !lines.any(|l| l == section) {
+        return Vec::new();
+    }
+    lines
+        .take_while(|l| !l.ends_with(':'))
+        .filter(|l| l.starts_with('/'))
+        .map(|l| l.split(':').next().unwrap_or(l).trim().to_owned())
+        .collect()
+}
+
+/// XRCE: `workspace-rust-native-xrce` `native_xrce_entry`, through its own
+/// Agent, on a domain of its own. The image speaks XRCE and the AGENT is the
+/// DDS participant, so the Agent is what gets pinned to loopback
+/// (`XrceAgent::start_unique` applies the issue-1009 profile), opposite a
+/// `rmw_fastrtps_cpp` peer pinned by its env string.
+#[test]
+fn rust_multi_node_entry_per_node_graph_nodes_xrce() -> nros_tests::TestResult<()> {
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+    if !require_ros2_dds() {
+        nros_tests::skip!("ROS 2 + rmw_fastrtps_cpp not available");
+    }
+
+    let entry = build_native_workspace_rust_xrce_entry()
+        .require("workspace-rust-native-xrce native_xrce_entry")
+        .to_path_buf();
+
+    let agent = XrceAgent::start_unique().expect("failed to start the XRCE Agent");
+    let addr = agent.addr();
+    let domain = nros_tests::unique_ros_domain_id();
+
+    let mut cmd = Command::new(&entry);
+    cmd.env("NROS_LOCATOR", &addr)
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("ROS_DOMAIN_ID", domain.to_string())
+        .env("NROS_DOMAIN_ID", domain.to_string())
+        .env("NROS_RMW", "xrce")
+        .env("NROS_ENTRY_SPIN_MS", "25000")
+        .env("NROS_ENTRY_SPIN_STEP_MS", "10");
+    let mut deploy = ManagedProcess::spawn_command(cmd, "rust-native-xrce-entry")
+        .expect("failed to start native_xrce_entry");
+
+    let node_list = poll_for_expected_set(Duration::from_secs(20), || {
+        ros2_node_list_rmw_with_domain(DEFAULT_ROS_DISTRO, "rmw_fastrtps_cpp", domain)
+            .unwrap_or_default()
+    });
+    eprintln!("Node list (xrce):\n{node_list}");
+
+    // Asked only once the names are there: before that, an empty section is
+    // discovery still running, not a wrong GID.
+    let mut infos = Vec::new();
+    if node_set(&node_list) == expected_set() {
+        for (node, section, topic) in EXPECTED_ENDPOINTS {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            let mut info = String::new();
+            while Instant::now() < deadline {
+                info = ros2_node_info_rmw_with_domain(
+                    DEFAULT_ROS_DISTRO,
+                    "rmw_fastrtps_cpp",
+                    domain,
+                    node,
+                )
+                .unwrap_or_default();
+                if node_info_section(&info, section).iter().any(|t| t == topic) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(300));
+            }
+            eprintln!("Node info {node} (xrce):\n{info}");
+            infos.push((node, section, topic, info));
+        }
+    }
+    deploy.kill();
+
+    assert_node_set("xrce", &node_list);
+    for (node, section, topic, info) in &infos {
+        assert!(
+            node_info_section(info, section).iter().any(|t| t == topic),
+            "xrce: `ros2 node info {node}` must list {topic} under {section} — the node is \
+             named by ros_discovery_info, but its endpoint is attributed to it only if the \
+             GID the client predicted is the one the Agent gave (issue 1292). Full output:\n{info}"
+        );
+    }
+    Ok(())
+}
+
 // phase-329 W3 — bind this test to `interop::CELLS` (the pattern from
 // xrce_ros2_interop). The coordinates below must equal what the list declares
 // for `rust_multi_node_per_node_graph` — one per Runtime cell; drift turns this
@@ -186,6 +293,7 @@ fn cases_bound_to_interop_cells() {
         &[
             (Linux, Rust, Zenoh, EntryPubsub),
             (Linux, Rust, Cyclonedds, EntryPubsub),
+            (Linux, Rust, Xrce, EntryPubsub),
         ],
     );
 }

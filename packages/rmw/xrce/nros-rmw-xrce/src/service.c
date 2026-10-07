@@ -36,6 +36,10 @@ void xrce_request_callback(uxrSession* session, uxrObjectId object_id, uint16_t 
     }
     xrce_session_state_t* st = (xrce_session_state_t*)args;
     size_t len = (size_t)length;
+    /* Issue 1292 — the GUID probe's replier is not a service slot. */
+    if (xrce_graph_on_request(st, object_id, sample_id, ub, len)) {
+        return;
+    }
     for (size_t i = 0; i < XRCE_MAX_SERVICE_SERVERS; ++i) {
         xrce_service_server_slot* slot = &st->service_server_slots[i];
         if (!slot->active || slot->replier_id != object_id.id) {
@@ -141,6 +145,9 @@ rmw_ret_t xrce_service_create(const rmw_node_t* node,
     ss->session_state = st;
     ss->slot = slot;
 
+    /* Issue 1292 — see publisher.c: before any CREATE is buffered. */
+    xrce_graph_ensure_counter(st);
+
     uxrObjectId replier_oid = xrce_alloc_entity_id(st, UXR_REPLIER_ID);
 
     char service_buf[XRCE_DDS_NAME_BUF_SIZE];
@@ -183,9 +190,16 @@ rmw_ret_t xrce_service_create(const rmw_node_t* node,
     uint16_t requests[1] = {req};
     uint8_t statuses[1] = {0};
     rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 1);
+    uint32_t graph_key = 0;
+    bool keyed = xrce_graph_claim(st, 2, cret == NROS_RMW_RET_OK, &graph_key);
     if (cret != NROS_RMW_RET_OK) {
         nros_xrce_free(ss);
         return cret;
+    }
+    if (keyed) {
+        /* Reply writer first, request reader second — the Agent's order. */
+        xrce_graph_track(st, &ss->graph_writer, node, graph_key, XRCE_GRAPH_WRITER);
+        xrce_graph_track(st, &ss->graph_reader, node, graph_key + 1u, XRCE_GRAPH_READER);
     }
 
     /* Activate the slot — empty request ring. */
@@ -241,6 +255,8 @@ rmw_ret_t xrce_service_destroy(rmw_service_t* server) {
         ret = req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
     }
 
+    xrce_graph_untrack(st, &ss->graph_writer);
+    xrce_graph_untrack(st, &ss->graph_reader);
     nros_xrce_free(ss);
     server->backend_data = NULL;
     /* LAST — this may free `st`. Nothing may touch it afterwards. */
@@ -611,6 +627,9 @@ rmw_ret_t xrce_client_create(const rmw_node_t* node, const rmw_service_type_supp
     cs->session_state = st;
     cs->slot = slot;
 
+    /* Issue 1292 — see publisher.c: before any CREATE is buffered. */
+    xrce_graph_ensure_counter(st);
+
     uxrObjectId requester_oid = xrce_alloc_entity_id(st, UXR_REQUESTER_ID);
 
     char service_buf[XRCE_DDS_NAME_BUF_SIZE];
@@ -646,9 +665,16 @@ rmw_ret_t xrce_client_create(const rmw_node_t* node, const rmw_service_type_supp
     uint16_t requests[1] = {req};
     uint8_t statuses[1] = {0};
     rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 1);
+    uint32_t graph_key = 0;
+    bool keyed = xrce_graph_claim(st, 2, cret == NROS_RMW_RET_OK, &graph_key);
     if (cret != NROS_RMW_RET_OK) {
         nros_xrce_free(cs);
         return cret;
+    }
+    if (keyed) {
+        /* Request writer first, reply reader second — the Agent's order. */
+        xrce_graph_track(st, &cs->graph_writer, node, graph_key, XRCE_GRAPH_WRITER);
+        xrce_graph_track(st, &cs->graph_reader, node, graph_key + 1u, XRCE_GRAPH_READER);
     }
 
     slot->requester_id = requester_oid.id;
@@ -700,6 +726,8 @@ rmw_ret_t xrce_client_destroy(rmw_client_t* client) {
         ret = req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
     }
 
+    xrce_graph_untrack(st, &cs->graph_writer);
+    xrce_graph_untrack(st, &cs->graph_reader);
     nros_xrce_free(cs);
     client->backend_data = NULL;
     /* LAST — this may free `st`. Nothing may touch it afterwards. */

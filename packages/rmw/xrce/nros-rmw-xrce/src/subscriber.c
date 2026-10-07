@@ -118,6 +118,9 @@ xrce_subscription_create(const rmw_node_t* node, const rmw_message_type_support_
     ss->session_state = st;
     ss->slot = slot;
 
+    /* Issue 1292 — see publisher.c: before any CREATE is buffered. */
+    xrce_graph_ensure_counter(st);
+
     uxrObjectId topic_oid = xrce_alloc_entity_id(st, UXR_TOPIC_ID);
     uxrObjectId sub_oid = xrce_alloc_entity_id(st, UXR_SUBSCRIBER_ID);
     uxrObjectId dr_oid = xrce_alloc_entity_id(st, UXR_DATAREADER_ID);
@@ -149,9 +152,14 @@ xrce_subscription_create(const rmw_node_t* node, const rmw_message_type_support_
     uint16_t requests[3] = {req_topic, req_sub, req_dr};
     uint8_t statuses[3] = {0, 0, 0};
     rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 3);
+    uint32_t graph_key = 0;
+    bool keyed = xrce_graph_claim(st, 1, cret == NROS_RMW_RET_OK, &graph_key);
     if (cret != NROS_RMW_RET_OK) {
         nros_xrce_free(ss);
         return cret;
+    }
+    if (keyed) {
+        xrce_graph_track(st, &ss->graph_reader, node, graph_key, XRCE_GRAPH_READER);
     }
 
     /* Register slot for callback dispatch. */
@@ -223,6 +231,7 @@ rmw_ret_t xrce_subscription_destroy(rmw_subscription_t* subscriber) {
         ret = req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
     }
 
+    xrce_graph_untrack(st, &ss->graph_reader);
     nros_xrce_free(ss);
     subscriber->backend_data = NULL;
     /* LAST — this may free `st`. Nothing may touch it afterwards. */

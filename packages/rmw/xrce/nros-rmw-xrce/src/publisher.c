@@ -57,6 +57,10 @@ rmw_ret_t xrce_publisher_create(const rmw_node_t* node,
     }
     ps->session_state = st;
 
+    /* Issue 1292 — before any CREATE is buffered: the datawriter's GID is
+     * predicted from the Agent's endpoint numbering, so that must be known. */
+    xrce_graph_ensure_counter(st);
+
     /* Allocate 3 entity ids (TOPIC, PUBLISHER, DATAWRITER). */
     uxrObjectId topic_oid = xrce_alloc_entity_id(st, UXR_TOPIC_ID);
     uxrObjectId pub_oid   = xrce_alloc_entity_id(st, UXR_PUBLISHER_ID);
@@ -95,12 +99,17 @@ rmw_ret_t xrce_publisher_create(const rmw_node_t* node,
     uint16_t requests[3] = { req_topic, req_pub, req_dw };
     uint8_t  statuses[3] = { 0, 0, 0 };
     rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 3);
+    uint32_t graph_key = 0;
+    bool keyed = xrce_graph_claim(st, 1, cret == NROS_RMW_RET_OK, &graph_key);
     if (cret != NROS_RMW_RET_OK) {
         nros_xrce_free(ps);
         return cret;
     }
 
     ps->datawriter_oid = dw_oid;
+    if (keyed) {
+        xrce_graph_track(st, &ps->graph_writer, node, graph_key, XRCE_GRAPH_WRITER);
+    }
     /* Issue 0847 — this entity now holds a pointer into the session state, so
      * the session may not free itself until this handle is gone. */
     xrce_session_entity_attach(st);
@@ -139,6 +148,7 @@ rmw_ret_t xrce_publisher_destroy(rmw_publisher_t *publisher) {
         ret = req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
     }
 
+    xrce_graph_untrack(st, &ps->graph_writer);
     nros_xrce_free(ps);
     publisher->backend_data = NULL;
     /* LAST — this may free `st`. Nothing may touch it afterwards. */
