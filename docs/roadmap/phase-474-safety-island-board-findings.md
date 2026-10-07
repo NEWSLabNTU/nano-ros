@@ -294,6 +294,29 @@ the contract or the type-bound sizing of phase-403) so it can build these
 components, and re-run on the current pin to confirm the capability half is
 gone. Related: issue 0939 (the probe links the node name, not a target).
 
+**Result (2026-10-07).** No code change: the way to bound `frame_id` for
+the probe exists on main. Issue 1470 (resolved 2026-09-27) made the CMake
+lane discover `nros-codegen.toml` field caps from the SOURCE tree, ancestor
+to descendant, so a cap at the WORKSPACE ROOT (`<ws>/nros-codegen.toml`, or
+`<ws>/src/nros-codegen.toml`) reaches every package the probe compiles. Its
+gate, `just check probe-workspace-caps`, builds a workspace type that embeds
+`std_msgs/Header` (the shape of `VelocityReport`) and a node that subscribes
+to it; re-run on this branch: 5 of 5 checks pass (uncapped: the node's TU
+refuses on `NROS_UNBOUNDED__..._field_header_frame_id`; capped at the root:
+`RX_MAX_SERIALIZED_SIZE = 104` and the TU compiles). The capability half is
+issue 0543 (resolved 2026-08-13: the probe includes `nros config show
+--format cmake` for a single-bringup workspace). Why the island still sees
+"no producer": its caps live in `src/island_interfaces/nros-codegen.toml`, a
+PACKAGE scope that is not an ancestor of the component packages, so the
+probe of `mrm_handler` / the operators never reads them. For the island:
+move the `[fields]` caps (`"std_msgs/Header.frame_id"`,
+`"nav_msgs/Odometry.child_frame_id"`) and `[defaults]` to a workspace-root
+`nros-codegen.toml` and re-run the island's sync recipe; if a probe still halts at
+`declare_parameter (code=-16)` (`Unsupported`), that is a separate gap (a
+census run without the parameter store the launch seeds) to file with the
+probe log -- it was not reproduced here, because running the island's tree
+was out of this branch's reach.
+
 ### I5 -- the heap: one derivation the board and the report agree on
 
 Three numbers, from three different images; they must not be compared as if
@@ -549,7 +572,9 @@ independent of each other.
       Kconfig take tracing and timer sampling, issue 1730; the island's trace
       run is its own.)
 - [ ] I4: the host metadata probe produces metadata for all four island
-      components.
+      components. (Mechanism on main: workspace-root caps, issue 1470;
+      capabilities, issue 0543; `probe-workspace-caps` 5/5. The island must
+      move its caps to the workspace root and re-sync.)
 - [ ] I5: the derived heap and the configured heap agree, and hold after
       FirstSpin under a host graph on QEMU. (Explained, not closed: no heap
       derivation exists; the record now splits FirstSpin and running peak,
