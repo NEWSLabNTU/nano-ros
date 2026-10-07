@@ -137,6 +137,53 @@ def shell_offenders(text: str, lang: str = "sh") -> list[tuple[int, str]]:
     return found
 
 
+# Issue 1746 -- WHEN the writer runs is half the rule. The mirror script picks
+# the header out of `<build>/cargo/*`, a symlink whose target is chosen by KEY,
+# and that key is final only after `_nros_entity_facts_flush` re-keys it at the
+# end of the configure (issue 1700). A configure-time `execute_process` of the
+# script anywhere else read a PROVISIONAL key's header, stamped the mirror's
+# output newer than the archive, and suppressed the build-time edge -- the
+# first build after every re-configure of a native C++ leaf failed to link.
+# So a configure-time run must be the one deferred flush; a caller queues it
+# with `nros_config_header_heal(...)`.
+HEAL_FLUSH = "_nros_config_header_heal_flush"
+_FUNC = re.compile(r"\b(function|macro)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)", re.I)
+_ENDFUNC = re.compile(r"\bend(function|macro)\s*\(", re.I)
+_EXEC = re.compile(r"\bexecute_process\s*\(", re.I)
+
+
+def immediate_heals(text: str) -> list[tuple[int, str]]:
+    """Configure-time runs of the mirror script outside the deferred flush."""
+    stripped = strip_comments(text)
+    # The script is usually named through a variable (`_NROS_CPP_MIRROR_SH`),
+    # which is how the pre-fix site spelled it -- the 0985 lesson again.
+    writer_vars = {m.group(1) for m in _BINDS.finditer(stripped) if WRITER in m.group(2)}
+    found = []
+    for m in _EXEC.finditer(stripped):
+        depth, i, end = 0, m.end() - 1, len(stripped)
+        while i < len(stripped):
+            if stripped[i] == "(":
+                depth += 1
+            elif stripped[i] == ")":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+            i += 1
+        span = stripped[m.start(): end + 1]
+        if WRITER not in span and not any(f"${{{v}}}" in span for v in writer_vars):
+            continue
+        before = stripped[: m.start()]
+        opens = list(_FUNC.finditer(before))
+        enclosing = None
+        if opens and len(opens) > len(_ENDFUNC.findall(before)):
+            enclosing = opens[-1].group(2)
+        if enclosing != HEAL_FLUSH:
+            line = stripped.count("\n", 0, m.start()) + 1
+            found.append((line, " ".join(span.split())[:110]))
+    return found
+
+
 def self_test() -> None:
     """Runs on the NORMAL path — `check-gate-selftests`."""
     bad = 'file(COPY_FILE "${D}/nros_config_generated.h" "${E}/nros_config_generated.h")'
@@ -180,6 +227,27 @@ def self_test() -> None:
         "a READ of the header is not a write"
     assert not shell_offenders("cat <<EOF\n  ninja -t query <…>/include/nros/nros_config_generated.h\nEOF\n"), \
         "a heredoc body that SHOWS a path is not a write"
+    # issue 1746 -- the pre-fix nros-cpp heal, verbatim in shape: an immediate
+    # configure-time run at the package's own scope.
+    pre_1746 = ('set(_NROS_CPP_MIRROR_SH "${D}/scripts/build/mirror-generated-header.sh")\n'
+                'foreach(_h "nros_cpp_config_generated.h;nros-cpp-generated")\n'
+                '  execute_process(COMMAND bash "${_NROS_CPP_MIRROR_SH}" "${B}/${_h}"\n'
+                '      "${CMAKE_BINARY_DIR}" gen "${_h}" "${I}/nros/${_h}"\n'
+                '      RESULT_VARIABLE rc OUTPUT_QUIET ERROR_QUIET)\n'
+                'endforeach()\n')
+    assert immediate_heals(pre_1746), "issue 1746's immediate heal must be caught"
+    in_flush = ('function(_nros_config_header_heal_flush)\n'
+                '  execute_process(COMMAND bash "${_sh}/mirror-generated-header.sh" a b c d e)\n'
+                'endfunction()\n')
+    assert not immediate_heals(in_flush), "the deferred flush is the allowed site"
+    in_other = ('function(heal_now)\n'
+                '  execute_process(COMMAND bash "${S}/mirror-generated-header.sh" a b c d e)\n'
+                'endfunction()\n'
+                'function(_nros_config_header_heal_flush)\nendfunction()\n')
+    assert immediate_heals(in_other), "another function is not the flush"
+    assert not immediate_heals('add_custom_command(OUTPUT h COMMAND bash '
+                               '"${S}/mirror-generated-header.sh" a b c d e)'), \
+        "the BUILD-time mirror rule is not a configure-time run"
 
 
 def main() -> int:
@@ -216,6 +284,10 @@ def main() -> int:
             continue
         for line, snippet in offenders(text):
             hits.append((f.relative_to(REPO), line, snippet))
+        for line, snippet in immediate_heals(text):
+            hits.append((f.relative_to(REPO), line,
+                         "configure-time mirror run outside the deferred heal "
+                         "(issue 1746; use nros_config_header_heal): " + snippet))
     for f, kinds in sh_files:
         rel = f.relative_to(REPO)
         if f.name == WRITER:

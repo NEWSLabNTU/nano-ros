@@ -98,12 +98,25 @@ function(_nros_emit_workspace_find_stubs)
                 continue()
             endif()
             set(_stub "${_emit_dir}/Find${_pname}.cmake")
-            if(NOT EXISTS "${_stub}")
-                file(WRITE "${_stub}"
-                    "# Auto-emitted Find-stub for ${_pname} (Phase 210.A.4 workspace pkg).\n"
-                    "include(\"${CMAKE_CURRENT_LIST_DIR}/_NrosFindRosMsgPackage.cmake\")\n"
-                    "_nros_find_ros_msg_package(${_pname})\n"
-                )
+            # Issue 1746 (found in its sweep) -- WRITE-IF-DIFFERENT, never
+            # write-once. The stub names this file by ABSOLUTE path, and an
+            # `if(NOT EXISTS)` guard kept the first configure's path forever:
+            # after phase-482 W1 moved this file out of `cmake/compat/stubs/`,
+            # every workspace build dir configured before it failed with
+            # `include could not find requested file: .../cmake/compat/stubs/
+            # _NrosFindRosMsgPackage.cmake`. Byte-identical content is not
+            # rewritten, so an unchanged stub costs nothing.
+            set(_stub_body
+                "# Auto-emitted Find-stub for ${_pname} (Phase 210.A.4 workspace pkg).\n"
+                "include(\"${CMAKE_CURRENT_FUNCTION_LIST_DIR}/_NrosFindRosMsgPackage.cmake\")\n"
+                "_nros_find_ros_msg_package(${_pname})\n")
+            string(JOIN "" _stub_body ${_stub_body})
+            set(_stub_old "")
+            if(EXISTS "${_stub}")
+                file(READ "${_stub}" _stub_old)
+            endif()
+            if(NOT _stub_old STREQUAL _stub_body)
+                file(WRITE "${_stub}" "${_stub_body}")
             endif()
         endforeach()
     endforeach()
