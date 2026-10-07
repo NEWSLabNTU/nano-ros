@@ -159,18 +159,24 @@ for cell in "${CELLS[@]}"; do
                 | python3 -c "import json,sys; sys.exit(0 if 'rmw-${rmw}' in (json.load(sys.stdin)['packages'] or [{}])[0].get('features',{}) else 1)" ); then
             feat_args=(--no-default-features --features "rmw-${rmw}")
         fi
-        if ( cd "$ex" && cargo tree "${feat_args[@]}" -e no-dev >/dev/null 2>&1 ); then
+        # ONE run, and its own stderr is the diagnostic. `cargo tree` writes the
+        # tree to stdout and its errors to stderr, so keeping stderr is exact; a
+        # grep over the merged stream is not, because crate names contain the
+        # words it looks for (`grep -iE 'error|failed'` printed three
+        # `thiserror v2.0.21` rows instead of the cause — run 36945033296,
+        # issue 1625). The repair that followed RE-RAN `cargo tree` and kept
+        # its first 10 lines, which is wrong twice: a transient failure does
+        # not recur on the re-run, and cargo prints `Updating`/`warning:`/
+        # `Locking` lines BEFORE its error, so ten lines from the top are all
+        # preamble. Run 37552262262 printed exactly that and still named no
+        # cause. Capture the failing run's stderr and print its TAIL.
+        tree_rc=0
+        tree_err="$( cd "$ex" && cargo tree "${feat_args[@]}" -e no-dev 2>&1 1>/dev/null )" || tree_rc=$?
+        if [ "$tree_rc" -eq 0 ]; then
             echo "  [ok] crate/feature dep chain resolves (${feat_args[*]:-default features})"
         else
-            echo "  [FAIL] cargo tree did not resolve (${feat_args[*]:-default features}):"
-            # The DIAGNOSTIC, not a pattern over the output. `cargo tree` writes
-            # the tree to stdout and its errors to stderr, so keeping stderr is
-            # exact; a grep over the merged stream is not, because crate names
-            # contain the words it looks for. `grep -iE 'error|failed'` matched
-            # three `thiserror v2.0.21` rows on 2026-10-02 (run 36945033296,
-            # job 110645078601) and printed them INSTEAD of the cause, so the
-            # one red this lane produced in twelve runs could not be attributed.
-            ( cd "$ex" && cargo tree "${feat_args[@]}" -e no-dev 2>&1 1>/dev/null | head -10 | sed 's/^/      /' )
+            echo "  [FAIL] cargo tree did not resolve (${feat_args[*]:-default features}), exit ${tree_rc}; last 20 lines of its stderr:"
+            printf '%s\n' "$tree_err" | tail -20 | sed 's/^/      /'
             cell_ok=0
         fi
     fi
