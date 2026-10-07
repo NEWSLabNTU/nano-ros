@@ -81,3 +81,42 @@ baseline lines that no other lane retires.
 Measured locally on a provisioned host, full `lane=tier1`: capability skips
 **64 -> 3** (1 baselined, 2 FVP — fixed in #1707). STILL OPEN until the first
 `run-matrix` `tier1` run's `check-skip-budget` passes.
+
+## 2026-10-08 — the first self-hosted tier-1 run: the skip budget still fails, now on ROS 2
+
+`run-matrix` run **37685900447** (workflow_dispatch, 2026-10-07 20:57Z), job
+**113036322535** `tier 1 (cells)` on `nano-ros-runner`. This is the run the
+"STILL OPEN until…" line above was waiting for:
+
+```
+check-skip-budget: 2563 ran, 115 deselected (out of lane), 61 skipped for an unmet precondition — capability=61  lane=115
+ERROR: 61 test(s) skipped for a capability this lane never declared it may lack:
+      14x ROS 2 / rmw_zenoh_cpp not available — install it from apt (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, …)
+      12x ROS 2 + rmw_cyclonedds_cpp not available
+      10x ROS 2 not found
+       9x ROS 2 + rmw_zenoh_cpp not available
+       7x ROS 2 DDS not available
+       …  qemu-system-arm not on PATH (1x), no AMENT layer ships std_msgs (1x)
+```
+
+The local measurement (64 -> 3) assumed a host with ROS 2 sourced. The
+self-hosted tier-1 job runs without it: every ROS-peer cell skips, and those
+skips are not declared. So the open question has moved. It is no longer
+"wrong runner"; it is that this runner's tier-1 job does not source or provide
+ROS 2 (and `qemu-system-arm`) for the rows the lane claims.
+
+The same job also has a missing in-lane fixture with the cause this issue
+names (PX4 checkout absent):
+
+```
+nros-tests::px4_bridge_compile px4_cpp_bridge_generated_messages_compile
+Test fixture binary MISSING for an in-lane coordinate: …/build/compile-check-fixtures/px4_bridge_ffi/.compile-ok
+```
+
+Its compile-check build logged `px4: PX4-Autopilot submodule absent
+(third-party/px4/PX4-Autopilot) — skipping`, so the lane claims a PX4 row that
+its own build cannot produce.
+
+The run's other failures are filed separately: `~/.cache` not writable after the
+container restart (issue 1755), and the async action client's result stall
+(issue 1756).
