@@ -277,6 +277,10 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * The history window's reply and drop counts; 1 while it is open.
  */
 /**
+ * Issue 1709 — `zpico_query_reply` that keeps the query open for another
+ * reply on the same `reply_seq`; a series ends with `zpico_query_reply`.
+ */
+/**
  * Phase 237 — reply-slot index from the most recent query callback (the
  * deferred-reply seq); call from inside the synchronous query callback.
  */
@@ -838,6 +842,28 @@ int32_t zpico_query_reply(struct zpico_session_t *_session,
                           size_t _len,
                           const uint8_t *_attachment,
                           size_t _attachment_len);
+
+/**
+ * Issue 1709 — reply to a query and KEEP it open for another reply.
+ *
+ * Same parameters and failure behaviour as `zpico_query_reply`, except
+ * that a SUCCESSFUL reply does not drop the stored query or free its reply
+ * slot, so the caller can answer again with the same `reply_seq`. A series
+ * must end with a plain `zpico_query_reply`, which releases; a failed reply
+ * releases in both forms. A transient-local publisher's history cache is
+ * the caller: it owes a late joiner every retained sample.
+ *
+ * # Returns
+ * 0 on success, negative error code on failure.
+ */
+int32_t zpico_query_reply_keep(struct zpico_session_t *_session,
+                               int32_t _queryable_handle,
+                               int64_t _reply_seq,
+                               const char *_keyexpr,
+                               const uint8_t *_data,
+                               size_t _len,
+                               const uint8_t *_attachment,
+                               size_t _attachment_len);
 
 /**
  * Phase 237 — reply-slot index from the most recent query callback (the

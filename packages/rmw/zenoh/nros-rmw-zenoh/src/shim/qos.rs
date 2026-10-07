@@ -63,7 +63,7 @@
 //!
 //! So the publisher SERVES it, by the mechanism the paragraph above already
 //! named as the missing one: query-on-match. What a transient-local publisher
-//! retains is `TL_RETAIN_DEPTH` sample, and `queue_capacity` makes that the
+//! retains is `TL_RETAIN_DEPTH` samples, and `queue_capacity` makes that the
 //! depth the graph advertises, so the advertised durability and the advertised
 //! depth are both the served ones.
 
@@ -215,7 +215,7 @@ pub(super) fn admit(
     //
     // nros-qos-honours: DURABILITY_TRANSIENT_LOCAL — served by a PUBLISHER,
     // through query-on-match (`shim/publisher.rs::transient_local`): the
-    // publisher retains its last `TL_RETAIN_DEPTH` sample and declares a
+    // publisher retains its last `TL_RETAIN_DEPTH` samples and declares a
     // queryable on `<keyexpr>/@adv/pub/<zid>/<eid>/_`, which is where a stock
     // `ze_advanced_subscriber`'s history query lands. Served by a SUBSCRIPTION
     // (phase-473 W2) through the same convention from the other side: at
@@ -291,7 +291,8 @@ pub(super) fn admit(
             granted.depth = capacity;
             // phase-455 W5 — the transient-local publisher's clamp names its
             // own bound, because `ZPICO_SUBSCRIBER_RING_DEPTH` is not the knob
-            // that would fix it and `TL_RETAIN_DEPTH` is not a knob at all. A
+            // that would fix it: `ZPICO_TL_RETAIN_DEPTH` is (issue 1709 made it
+            // one, derived from the deepest declared transient-local depth). A
             // message naming the wrong knob is worse than no message: it sends
             // the reader to change a number that changes nothing.
             //
@@ -313,8 +314,10 @@ pub(super) fn admit(
                     nros_log::log_warn!(
                         nros_log::get_logger("nros_rmw_zenoh"),
                         "qos: publisher '{}' asked for TRANSIENT_LOCAL KEEP_LAST({}); \
-                         this backend retains {} sample and replays it on a late \
-                         joiner's query. Granting {} and advertising it to the graph.",
+                         this image retains {} sample(s) per transient-local publisher \
+                         and replays them on a late joiner's query. Granting {} and \
+                         advertising it to the graph. Declare the publisher's depth, or \
+                         raise ZPICO_TL_RETAIN_DEPTH, to keep more.",
                         name,
                         requested.depth,
                         capacity,
@@ -514,6 +517,16 @@ mod tests {
         let granted = admit(EntityKind::Publisher, "/t", &qos).expect("admissible");
         assert_eq!(granted.depth, crate::config::TL_RETAIN_DEPTH);
         assert_eq!(granted.durability, QoSDurabilityPolicy::TransientLocal);
+
+        // Issue 1709 -- a request WITHIN the retained depth is granted as
+        // asked, so a derived depth reaches the graph rather than a constant.
+        qos.depth = crate::config::TL_RETAIN_DEPTH;
+        assert_eq!(
+            admit(EntityKind::Publisher, "/t", &qos)
+                .expect("admissible")
+                .depth,
+            crate::config::TL_RETAIN_DEPTH
+        );
 
         // and a VOLATILE publisher still has no queue, so its depth is granted
         // verbatim — the two arms must not converge.

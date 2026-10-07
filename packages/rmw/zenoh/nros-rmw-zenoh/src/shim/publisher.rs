@@ -62,11 +62,12 @@ use super::RMW_ATTACHMENT_SIZE_WITH_CRC;
 ///   at WARN, rather than leaving the retention silently behind the live
 ///   stream. The LOANED path (`commit_slot`) is NOT in this exception — the
 ///   arena slice is contiguous, so a transient-local publisher retains from it.
-/// * **Retain more than `TL_RETAIN_DEPTH` samples.** The depth is a constant 1,
-///   which is exactly `rcl_action_qos_profile_status_default`'s KEEP_LAST(1);
-///   `shim/qos.rs` grants a deeper request down to it and ADVERTISES the grant,
-///   so the graph never claims a history this keeps. Making it a knob is the
-///   extension point, and it would multiply the pool below by that many.
+/// * **Retain more than `TL_RETAIN_DEPTH` samples.** The depth is the knob
+///   `ZPICO_TL_RETAIN_DEPTH`, derived from the deepest `KEEP_LAST(N)` an image
+///   declares on a transient-local publisher (issue 1709), else one --
+///   `rcl_action_qos_profile_status_default`'s KEEP_LAST(1). `shim/qos.rs`
+///   grants a deeper request down to it and ADVERTISES the grant, so the graph
+///   never claims a history this does not keep.
 pub(super) mod transient_local {
     use super::*;
     use core::{cell::UnsafeCell, ffi::c_void};
@@ -83,40 +84,54 @@ pub(super) mod transient_local {
     #[cfg(feature = "safety-e2e")]
     const TL_ATTACHMENT_MAX: usize = RMW_ATTACHMENT_SIZE_WITH_CRC;
 
-    /// One publisher's retained sample plus everything its query callback needs
+    /// How many samples one slot retains: `ZPICO_TL_RETAIN_DEPTH`, which an
+    /// image that declares its transient-local publishers DERIVES from the
+    /// deepest `KEEP_LAST(N)` among them (issue 1709). Never zero: the build
+    /// floors it, because a transient-local publisher retaining nothing serves
+    /// no late joiner.
+    const DEPTH: usize = crate::config::TL_RETAIN_DEPTH as usize;
+
+    /// One publisher's retained HISTORY plus everything its query callback needs
     /// to answer without touching the `ZenohPublisher` that owns it.
     ///
     /// The callback runs on zenoh-pico's read task and is handed only a `void*`
     /// context, so it cannot borrow the publisher; it reads THIS, which is
     /// process-static and outlives any entity.
     ///
-    /// `nros-pool: MAX_TL_PUBLISHERS × (TL_RETAIN_BYTES + KEYEXPR_BUFFER_SIZE +
-    /// TL_ATTACHMENT_MAX)` — priced because, unlike `LendArena`, this one is
-    /// reached by a SHIPPED image: every zenoh action server retains its
-    /// `/status`.
+    /// The history is a ring of [`DEPTH`] samples: `head` is where the NEXT
+    /// sample goes, `count` how many of the slots before it hold one. A late
+    /// joiner is answered with all `count` of them, OLDEST FIRST, which is the
+    /// order a stock `ze_advanced_subscriber` keeps them in.
+    ///
+    /// `nros-pool: MAX_TL_PUBLISHERS × (TL_RETAIN_DEPTH × (TL_RETAIN_BYTES +
+    /// TL_ATTACHMENT_MAX) + KEYEXPR_BUFFER_SIZE)` — priced because, unlike
+    /// `LendArena`, this one is reached by a SHIPPED image: every zenoh action
+    /// server retains its `/status`.
     pub(crate) struct RetainSlot {
         /// Claimed by a live TRANSIENT_LOCAL publisher.
         claimed: AtomicBool,
         /// Held across the publisher's write so the read side can tell a
-        /// half-written sample from a complete one. The two never run on the
+        /// half-written history from a complete one. The two never run on the
         /// same thread — the writer is the application, the reader is the
-        /// zenoh-pico read task — and a reader that loses the race declines the
+        /// zenoh-pico read task — and a reader that finds it set declines the
         /// query rather than replying with a torn buffer. A declined query is
         /// the same outcome as no retention yet, which a late joiner already
         /// has to tolerate.
         writing: AtomicBool,
-        /// A complete sample is retained.
-        valid: AtomicBool,
         session: AtomicPtr<zpico_sys::zpico_session_t>,
         queryable: AtomicI32,
-        len: AtomicUsize,
-        att_len: AtomicUsize,
+        /// Where the next sample is written, `0..DEPTH`.
+        head: AtomicUsize,
+        /// How many complete samples the ring holds, `0..=DEPTH`.
+        count: AtomicUsize,
+        lens: [AtomicUsize; DEPTH],
+        att_lens: [AtomicUsize; DEPTH],
         /// How many publishes were too large to retain. Read by
         /// [`RetainSlot::oversize_drops`] so a test can assert the refusal
         /// rather than grep a log line.
         oversize: AtomicU32,
-        data: UnsafeCell<[u8; TL_RETAIN_BYTES]>,
-        att: UnsafeCell<[u8; TL_ATTACHMENT_MAX]>,
+        data: UnsafeCell<[[u8; TL_RETAIN_BYTES]; DEPTH]>,
+        att: UnsafeCell<[[u8; TL_ATTACHMENT_MAX]; DEPTH]>,
         /// The TOPIC keyexpr, null-terminated — what the reply is sent on.
         reply_keyexpr: UnsafeCell<[u8; KEYEXPR_BUFFER_SIZE]>,
     }
@@ -131,14 +146,15 @@ pub(super) mod transient_local {
             Self {
                 claimed: AtomicBool::new(false),
                 writing: AtomicBool::new(false),
-                valid: AtomicBool::new(false),
                 session: AtomicPtr::new(core::ptr::null_mut()),
                 queryable: AtomicI32::new(-1),
-                len: AtomicUsize::new(0),
-                att_len: AtomicUsize::new(0),
+                head: AtomicUsize::new(0),
+                count: AtomicUsize::new(0),
+                lens: [const { AtomicUsize::new(0) }; DEPTH],
+                att_lens: [const { AtomicUsize::new(0) }; DEPTH],
                 oversize: AtomicU32::new(0),
-                data: UnsafeCell::new([0u8; TL_RETAIN_BYTES]),
-                att: UnsafeCell::new([0u8; TL_ATTACHMENT_MAX]),
+                data: UnsafeCell::new([[0u8; TL_RETAIN_BYTES]; DEPTH]),
+                att: UnsafeCell::new([[0u8; TL_ATTACHMENT_MAX]; DEPTH]),
                 reply_keyexpr: UnsafeCell::new([0u8; KEYEXPR_BUFFER_SIZE]),
             }
         }
@@ -147,6 +163,65 @@ pub(super) mod transient_local {
         /// `ZPICO_TL_RETAIN_BYTES`.
         pub(crate) fn oversize_drops(&self) -> u32 {
             self.oversize.load(Ordering::Relaxed)
+        }
+
+        /// How many samples a late joiner would be sent now.
+        #[cfg(test)]
+        pub(crate) fn retained(&self) -> usize {
+            self.count.load(Ordering::Acquire)
+        }
+
+        /// The ring's indices, OLDEST FIRST, for `count` samples written up to
+        /// (not including) `head`.
+        fn oldest_first(head: usize, count: usize) -> impl Iterator<Item = usize> {
+            oldest_first_in(DEPTH, head, count)
+        }
+    }
+
+    /// [`RetainSlot::oldest_first`] for any ring depth, so the arithmetic is
+    /// testable at depths the unit-test build does not configure.
+    fn oldest_first_in(depth: usize, head: usize, count: usize) -> impl Iterator<Item = usize> {
+        (0..count).map(move |i| (head + depth - count + i) % depth)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// Issue 1709 -- a late joiner is owed the last `count` samples OLDEST
+        /// FIRST, across the ring's wrap.
+        #[test]
+        fn the_history_is_replayed_oldest_first_across_the_wrap() {
+            let v = |d, h, c| oldest_first_in(d, h, c).collect::<heapless::Vec<usize, 8>>();
+            // Not yet wrapped: three samples written into a five-deep ring.
+            assert_eq!(v(5, 3, 3), [0, 1, 2]);
+            // Full and wrapped: the oldest is the slot the next write lands on.
+            assert_eq!(v(5, 2, 5), [2, 3, 4, 0, 1]);
+            // Depth one -- the pre-1709 shape -- is the one slot, whatever head is.
+            assert_eq!(v(1, 0, 1), [0]);
+            assert_eq!(v(4, 0, 0), []);
+        }
+
+        /// Issue 1709 -- the ring keeps at most `DEPTH` and an oversize publish
+        /// drops the whole history rather than leaving a stale tail. Uses the
+        /// configured depth, whatever it is; the arithmetic above covers the
+        /// others.
+        #[test]
+        fn retain_keeps_at_most_the_depth_and_an_oversize_publish_clears_it() {
+            let Some(slot) = claim() else {
+                // A zero-slot pool is legal (see `TL_SLOTS`); nothing to test.
+                assert_eq!(MAX_TL_PUBLISHERS, 0);
+                return;
+            };
+            for n in 0..(DEPTH + 3) {
+                assert!(retain(slot, &[n as u8], &[]));
+                assert_eq!(TL_SLOTS[slot].retained(), (n + 1).min(DEPTH));
+            }
+            let too_big = [0u8; TL_RETAIN_BYTES + 1];
+            assert!(!retain(slot, &too_big, &[]));
+            assert_eq!(TL_SLOTS[slot].retained(), 0);
+            assert_eq!(TL_SLOTS[slot].oversize_drops(), 1);
+            release(slot);
         }
     }
 
@@ -182,9 +257,8 @@ pub(super) mod transient_local {
     /// Return a slot. The caller must have undeclared its queryable first.
     pub(crate) fn release(slot: usize) {
         let s = &TL_SLOTS[slot];
-        s.valid.store(false, Ordering::Release);
-        s.len.store(0, Ordering::Relaxed);
-        s.att_len.store(0, Ordering::Relaxed);
+        s.count.store(0, Ordering::Release);
+        s.head.store(0, Ordering::Relaxed);
         s.oversize.store(0, Ordering::Relaxed);
         s.session.store(core::ptr::null_mut(), Ordering::Release);
         s.queryable.store(-1, Ordering::Release);
@@ -212,31 +286,36 @@ pub(super) mod transient_local {
         s.queryable.store(queryable, Ordering::Release);
     }
 
-    /// Retain one sample. Returns `false` when it did not fit, in which case
-    /// the previously retained sample is DROPPED rather than left in place: a
-    /// late joiner served a stale value under a KEEP_LAST(1) promise is worse
-    /// than one served nothing, because nothing is a condition it can detect.
+    /// Retain one sample as the NEWEST of the history, evicting the oldest
+    /// when the ring is full. Returns `false` when it did not fit, in which
+    /// case the WHOLE history is dropped rather than left in place: a late
+    /// joiner served the previous samples under a KEEP_LAST(N) promise would
+    /// be told they are the last N, and they are not — while nothing is a
+    /// condition it can detect.
     pub(crate) fn retain(slot: usize, data: &[u8], attachment: &[u8]) -> bool {
         let s = &TL_SLOTS[slot];
         s.writing.store(true, Ordering::Release);
-        s.valid.store(false, Ordering::Release);
         let fits = data.len() <= TL_RETAIN_BYTES && attachment.len() <= TL_ATTACHMENT_MAX;
         if fits {
+            let head = s.head.load(Ordering::Relaxed);
             // SAFETY: `writing` is set, so the query callback declines rather
             // than reading; the only other writer is this publisher.
             unsafe {
-                (&mut *s.data.get())[..data.len()].copy_from_slice(data);
-                (&mut *s.att.get())[..attachment.len()].copy_from_slice(attachment);
+                (&mut *s.data.get())[head][..data.len()].copy_from_slice(data);
+                (&mut *s.att.get())[head][..attachment.len()].copy_from_slice(attachment);
             }
-            s.len.store(data.len(), Ordering::Relaxed);
-            s.att_len.store(attachment.len(), Ordering::Relaxed);
+            s.lens[head].store(data.len(), Ordering::Relaxed);
+            s.att_lens[head].store(attachment.len(), Ordering::Relaxed);
+            s.head.store((head + 1) % DEPTH, Ordering::Relaxed);
+            let count = s.count.load(Ordering::Relaxed);
+            s.count.store((count + 1).min(DEPTH), Ordering::Release);
         } else {
+            s.count.store(0, Ordering::Release);
             s.oversize.store(
                 s.oversize.load(Ordering::Relaxed).saturating_add(1),
                 Ordering::Relaxed,
             );
         }
-        s.valid.store(fits, Ordering::Release);
         s.writing.store(false, Ordering::Release);
         fits
     }
@@ -314,44 +393,70 @@ pub(super) mod transient_local {
         }
         // Nothing retained, or a write in flight: decline, and leave the seq
         // for `query_handler` to reclaim.
-        if !s.valid.load(Ordering::Acquire) || s.writing.load(Ordering::Acquire) {
+        let count = s.count.load(Ordering::Acquire);
+        if count == 0 || s.writing.load(Ordering::Acquire) {
             return;
         }
-        // SAFETY: `valid` is set and `writing` is clear, so the buffers hold a
-        // complete sample and the only writer is quiescent.
-        let (data, att, ke) = unsafe {
-            let len = s.len.load(Ordering::Relaxed);
-            let att_len = s.att_len.load(Ordering::Relaxed);
-            (
-                &(&*s.data.get())[..len],
-                &(&*s.att.get())[..att_len],
-                &*s.reply_keyexpr.get(),
-            )
-        };
+        let head = s.head.load(Ordering::Relaxed);
         let seq = unsafe { zpico_sys::zpico_queryable_take_reply_seq(session, queryable) };
         if seq < 0 {
             return;
         }
-        // `ke` is null-terminated by `arm`, which is the contract
-        // `zpico_query_reply`'s `const char*` takes.
-        let rc = unsafe {
-            zpico_sys::zpico_query_reply(
-                session,
-                queryable,
-                seq,
-                ke.as_ptr().cast(),
-                data.as_ptr(),
-                data.len(),
-                att.as_ptr(),
-                att.len(),
-            )
-        };
-        // A failed reply has already released the slot inside
-        // `zpico_query_reply`; there is no second chance to take and nothing a
-        // callback on the read task can usefully do about it. The late joiner
-        // sees a query that returned no sample, which is the same outcome as
-        // "nothing retained yet".
-        let _ = rc;
+        // SAFETY: `count` is non-zero and `writing` is clear, so the ring holds
+        // `count` complete samples and the only writer is quiescent.
+        let ke = unsafe { &*s.reply_keyexpr.get() };
+        // Issue 1709 -- one reply PER retained sample, oldest first, on the
+        // one stored query. Every reply but the last KEEPS the query open
+        // (`zpico_query_reply_keep`); the last is a plain `zpico_query_reply`,
+        // which releases its reply slot, so the slot is freed exactly once on
+        // every path -- a failed reply of either kind releases it too, which
+        // is why a failure stops the series rather than continuing on a seq
+        // that no longer names anything.
+        for (i, idx) in RetainSlot::oldest_first(head, count).enumerate() {
+            let (data, att) = unsafe {
+                let len = s.lens[idx].load(Ordering::Relaxed);
+                let att_len = s.att_lens[idx].load(Ordering::Relaxed);
+                (
+                    &(&*s.data.get())[idx][..len],
+                    &(&*s.att.get())[idx][..att_len],
+                )
+            };
+            let last = i + 1 == count;
+            // `ke` is null-terminated by `arm`, which is the contract both
+            // replies' `const char*` takes.
+            let rc = unsafe {
+                if last {
+                    zpico_sys::zpico_query_reply(
+                        session,
+                        queryable,
+                        seq,
+                        ke.as_ptr().cast(),
+                        data.as_ptr(),
+                        data.len(),
+                        att.as_ptr(),
+                        att.len(),
+                    )
+                } else {
+                    zpico_sys::zpico_query_reply_keep(
+                        session,
+                        queryable,
+                        seq,
+                        ke.as_ptr().cast(),
+                        data.as_ptr(),
+                        data.len(),
+                        att.as_ptr(),
+                        att.len(),
+                    )
+                }
+            };
+            // A failed reply has already released the slot inside the C
+            // reply; there is no second chance and nothing a callback on the
+            // read task can usefully do about it. The late joiner sees fewer
+            // samples, the same outcome as a shorter history.
+            if rc < 0 {
+                return;
+            }
+        }
     }
 }
 

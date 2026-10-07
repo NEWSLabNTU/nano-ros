@@ -715,6 +715,31 @@ mod cbindgen_stubs {
         0
     }
 
+    /// Issue 1709 — reply to a query and KEEP it open for another reply.
+    ///
+    /// Same parameters and failure behaviour as `zpico_query_reply`, except
+    /// that a SUCCESSFUL reply does not drop the stored query or free its reply
+    /// slot, so the caller can answer again with the same `reply_seq`. A series
+    /// must end with a plain `zpico_query_reply`, which releases; a failed reply
+    /// releases in both forms. A transient-local publisher's history cache is
+    /// the caller: it owes a late joiner every retained sample.
+    ///
+    /// # Returns
+    /// 0 on success, negative error code on failure.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_query_reply_keep(
+        _session: *mut zpico_session_t,
+        _queryable_handle: i32,
+        _reply_seq: i64,
+        _keyexpr: *const c_char,
+        _data: *const u8,
+        _len: usize,
+        _attachment: *const u8,
+        _attachment_len: usize,
+    ) -> i32 {
+        0
+    }
+
     /// Phase 237 — reply-slot index from the most recent query callback (the
     /// deferred-reply seq); call from inside the synchronous query callback.
     /// Stub returns -1 (no slot) in the pure-Rust no-op build.
