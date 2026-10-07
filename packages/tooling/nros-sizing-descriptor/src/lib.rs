@@ -346,6 +346,70 @@ pub fn transient_local_retain_bytes(desc: &SizingDescriptor) -> Fact<usize> {
     Fact::Stated(max)
 }
 
+/// Issue 1709 — how many samples ONE transient-local retention slot must hold:
+/// the largest `KEEP_LAST` depth any transient-local PUBLISHER declares.
+///
+/// `nros-rmw-zenoh` serves a late joiner from a per-publisher ring of retained
+/// samples and ADVERTISES the depth it serves (`shim/qos.rs`). The ring was a
+/// constant one sample deep, so a publisher declaring `KEEP_LAST(10)` was
+/// granted 1 and a stock late joiner got one sample. This is the
+/// `subscriber_ring_depth` derivation ([`max_subscription_depth`]) one role
+/// over: the consumer sizes every slot to the deepest declaration, and grants
+/// each publisher `min(asked, that)`.
+///
+/// * [`Fact::Stated`] — every transient-local publisher states `keep_last` and
+///   a depth; the maximum. An `action_server` row counts ONE: its `/status`
+///   publisher is `rcl_action_qos_profile_status_default`, `KEEP_LAST(1)` by
+///   protocol.
+/// * [`Fact::Refused`] — the transient-local count itself refuses (a publisher
+///   states no durability), or a transient-local publisher states `keep_all`
+///   (a bound of nothing) or no depth. The consumer keeps its builtin of one,
+///   the depth it always served; refusing here never shrinks anything.
+/// * [`Fact::Absent`] — no transient-local publisher (or no rows): nothing to
+///   retain, and the consumer keeps its builtin.
+///
+/// Not floored (D7): the consumer floors at one, since a transient-local
+/// publisher that retains nothing serves no late joiner.
+pub fn transient_local_retain_depth(desc: &SizingDescriptor) -> Fact<usize> {
+    match transient_local_publishers(desc) {
+        Fact::Stated(0) | Fact::Absent => return Fact::Absent,
+        Fact::Refused(r) => return Fact::Refused(r),
+        Fact::Stated(_) => {}
+    }
+    let mut max = 0usize;
+    for e in &desc.endpoints {
+        let tl_publisher = e.kind == EndpointKind::Publisher
+            && matches!(e.durability(), Fact::Stated(Durability::TransientLocal));
+        if e.kind == EndpointKind::ActionServer {
+            max = max.max(1);
+            continue;
+        }
+        if !tl_publisher {
+            continue;
+        }
+        if matches!(e.history(), Fact::Stated(History::KeepAll)) {
+            return Fact::Refused(format!(
+                "transient-local publisher {} ({}) states `keep_all`, which bounds its \
+                 history at nothing, so no retention depth serves it",
+                e.topic, e.type_name
+            ));
+        }
+        match e.depth() {
+            Fact::Stated(d) => max = max.max(d as usize),
+            f => {
+                return Fact::Refused(format!(
+                    "transient-local publisher {} ({}) states no depth{}, so the history \
+                     a late joiner is owed is not known",
+                    e.topic,
+                    e.type_name,
+                    f.refusal().map(|r| format!(": {r}")).unwrap_or_default()
+                ));
+            }
+        }
+    }
+    Fact::Stated(max)
+}
+
 /// The zenoh subscriber PAYLOAD CLASSES an image's subscriptions need — issue
 /// 1595, RFC-0100 D5 ("each backend's build reads the descriptor and computes
 /// its own knobs").
@@ -1610,5 +1674,84 @@ basis = \"contract\"
         let text = render(&island());
         assert!(portability_violation(&text, &[Path::new("/")]).is_none());
         assert!(portability_violation(&text, &[Path::new("relative/dir")]).is_none());
+    }
+
+    /// Issue 1709 — the retention depth is the deepest transient-local
+    /// publisher's, and refuses rather than guesses.
+    type TlRowSpec = (
+        EndpointKind,
+        Option<Durability>,
+        Option<History>,
+        Option<u32>,
+    );
+
+    fn tl_desc(rows: &[TlRowSpec]) -> SizingDescriptor {
+        let mut d = SizingDescriptor::new("e", Status::Derived, Basis::Contract);
+        for (i, (kind, dur, hist, depth)) in rows.iter().enumerate() {
+            let mut e = Endpoint::new(*kind, "std_msgs/msg/Int32", format!("/t{i}"));
+            e.set_durability(*dur).set_history(*hist).set_depth(*depth);
+            d.endpoints.push(e);
+        }
+        d
+    }
+
+    #[test]
+    fn tl_retain_depth_is_the_deepest_transient_local_publisher() {
+        use Durability::*;
+        use EndpointKind::*;
+        let d = tl_desc(&[
+            (
+                Publisher,
+                Some(TransientLocal),
+                Some(History::KeepLast),
+                Some(5),
+            ),
+            (Publisher, Some(TransientLocal), None, Some(3)),
+            // A deeper VOLATILE publisher retains nothing and must not count.
+            (Publisher, Some(Volatile), Some(History::KeepLast), Some(50)),
+            (Subscription, Some(TransientLocal), None, Some(40)),
+        ]);
+        assert_eq!(transient_local_retain_depth(&d), Fact::Stated(5));
+    }
+
+    #[test]
+    fn tl_retain_depth_counts_an_action_status_as_one() {
+        let d = tl_desc(&[(EndpointKind::ActionServer, None, None, None)]);
+        assert_eq!(transient_local_retain_depth(&d), Fact::Stated(1));
+    }
+
+    #[test]
+    fn tl_retain_depth_is_absent_without_a_transient_local_publisher() {
+        let d = tl_desc(&[(
+            EndpointKind::Publisher,
+            Some(Durability::Volatile),
+            None,
+            Some(10),
+        )]);
+        assert_eq!(transient_local_retain_depth(&d), Fact::Absent);
+        assert_eq!(transient_local_retain_depth(&tl_desc(&[])), Fact::Absent);
+    }
+
+    #[test]
+    fn tl_retain_depth_refuses_keep_all_a_missing_depth_and_a_silent_durability() {
+        use EndpointKind::Publisher;
+        let tl = Some(Durability::TransientLocal);
+        let cases: [Vec<TlRowSpec>; 3] = [
+            vec![(Publisher, tl, Some(History::KeepAll), Some(5))],
+            vec![(Publisher, tl, Some(History::KeepLast), None)],
+            vec![
+                (Publisher, tl, None, Some(5)),
+                (Publisher, None, None, Some(5)),
+            ],
+        ];
+        for rows in cases {
+            assert!(
+                matches!(
+                    transient_local_retain_depth(&tl_desc(&rows)),
+                    Fact::Refused(_)
+                ),
+                "{rows:?}"
+            );
+        }
     }
 }

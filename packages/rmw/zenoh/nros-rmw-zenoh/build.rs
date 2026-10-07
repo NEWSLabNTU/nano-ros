@@ -74,6 +74,8 @@ fn main() {
     // `NROS_DECLARED_TL_PUBLISHERS` carrier on a road with no descriptor;
     // issue 1649 retired it -- every road names one.)
     println!("cargo:rerun-if-env-changed=ZPICO_TL_RETAIN_BYTES");
+    // Issue 1709 -- the retention DEPTH, the third factor of that pool.
+    println!("cargo:rerun-if-env-changed=ZPICO_TL_RETAIN_DEPTH");
     // issue 1498 -- the retention SLOT's declared size, for the CMake road
     // (`_nros_payload_facts_env`); the leaf road reads it off the descriptor.
 
@@ -373,6 +375,19 @@ fn main() {
         transient_local_retain_demand(sizing.as_ref()),
         TL_RETAIN_BYTES_DEFAULT,
     );
+    // Issue 1709 -- how many samples each retention slot keeps. It was a
+    // constant ONE, so a publisher declaring TRANSIENT_LOCAL + KEEP_LAST(10)
+    // was granted and advertised KEEP_LAST(1). Now the deepest declared
+    // transient-local depth, by the same ladder as the subscriber ring one
+    // knob over: a stated knob wins, a declaration supplies the default, and
+    // the builtin is the one the backend always served. Floored at ONE here,
+    // the consumer (D7): a transient-local publisher retaining nothing is a
+    // ring `count % 0` cannot index and a late joiner it cannot serve.
+    let tl_retain_depth: usize = env_usize_min(
+        "ZPICO_TL_RETAIN_DEPTH",
+        declared_tl_retain_depth(sizing.as_ref()).unwrap_or(TL_RETAIN_DEPTH_DEFAULT),
+        1,
+    );
     let tl_demand = transient_local_publisher_demand(sizing.as_ref());
     let max_tl_publishers: usize = resolve_max_tl_publishers(tl_demand);
     // phase-461 W2b - resolved HERE and not beside its two siblings above,
@@ -499,15 +514,43 @@ fn main() {
              /// phase-455 W5 — bytes one retained TRANSIENT_LOCAL sample may hold\n\
              /// (set via ZPICO_TL_RETAIN_BYTES, default {TL_RETAIN_BYTES_DEFAULT}).\n\
              pub const TL_RETAIN_BYTES: usize = {tl_retain_bytes};\n\
-             /// phase-455 W5 — how many samples a TRANSIENT_LOCAL publisher\n\
-             /// retains. ONE: `rcl_action_qos_profile_status_default` is\n\
-             /// KEEP_LAST(1), and `shim/qos.rs` grants this depth and advertises\n\
-             /// it, so a deeper request is reported rather than pocketed.\n\
-             pub const TL_RETAIN_DEPTH: u32 = 1;\n",
+             /// phase-455 W5 / issue 1709 — how many samples a TRANSIENT_LOCAL\n\
+             /// publisher retains (set via ZPICO_TL_RETAIN_DEPTH; default is the\n\
+             /// deepest KEEP_LAST a transient-local publisher declares, else\n\
+             /// {TL_RETAIN_DEPTH_DEFAULT}). `shim/qos.rs` grants min(asked, this) and\n\
+             /// advertises the grant, so a deeper request is reported, not pocketed.\n\
+             pub const TL_RETAIN_DEPTH: u32 = {tl_retain_depth};\n",
             keyexpr_buf_size = keyexpr_string_size + 1,
         ),
     )
     .unwrap();
+}
+
+/// Issue 1709 -- the transient-local retention depth when nothing states or
+/// derives one: ONE, `rcl_action_qos_profile_status_default`'s KEEP_LAST(1),
+/// which is the depth this backend served before the depth was a knob.
+const TL_RETAIN_DEPTH_DEFAULT: usize = 1;
+
+/// Issue 1709 -- the deepest KEEP_LAST any transient-local publisher declares,
+/// from the descriptor's ONE spelling of that rule
+/// (`nros_sizing_descriptor::transient_local_retain_depth`).
+///
+/// `None` keeps the builtin: no descriptor, no transient-local publisher, or a
+/// refusal, which is printed -- a refused depth never shrinks a ring, it only
+/// leaves it at the one sample it always held.
+fn declared_tl_retain_depth(desc: Option<&SizingDescriptor>) -> Option<usize> {
+    match nros_sizing_descriptor::transient_local_retain_depth(desc?) {
+        Fact::Stated(0) | Fact::Absent => None,
+        Fact::Stated(n) => Some(n),
+        Fact::Refused(reason) => {
+            warn(&format!(
+                "{reason}. Each transient-local publisher retains \
+                 {TL_RETAIN_DEPTH_DEFAULT} sample (ZPICO_TL_RETAIN_DEPTH), and `shim/qos.rs` \
+                 grants and advertises that depth to anything that asks for more"
+            ));
+            None
+        }
+    }
 }
 
 /// The per-subscriber SPSC ring depth when nothing states or derives one.

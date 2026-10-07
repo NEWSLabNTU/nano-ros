@@ -1,0 +1,61 @@
+# Node interface contract for rust_qos.launch.xml (issue 1709).
+#
+# The QoS the two Rust QoS nodes create their endpoints with, stated so the
+# build can size what they KEEP. The one that matters is `/qos_chatter`'s
+# publisher: TRANSIENT_LOCAL with KEEP_LAST(5). The zenoh backend serves that
+# history from a per-publisher ring of retained samples, and the ring's depth
+# (`ZPICO_TL_RETAIN_DEPTH`) is derived from the deepest transient-local depth
+# declared here. Before issue 1709 it was a constant 1, the publisher was
+# granted and advertised KEEP_LAST(1), and a late joiner got one sample.
+#
+# The depth here must equal `rust_qos_talker_pkg::qos_profile()`: the code is
+# what the entity asks for, this is what the image reserves for. Declaring less
+# here than the code asks clamps the grant (reported once at boot); declaring
+# more reserves a deeper ring than anything uses.
+#
+# Reliability is deliberately NOT stated: `system.toml` overrides the
+# publisher's to best_effort at runtime (`qos_overrides./qos_chatter.publisher.
+# reliability`), so either value written here would be wrong for one side.
+#
+# `nodes:` keys are LOCAL endpoint names, resolved under each node's root
+# namespace to the absolute topics below.
+
+version: 1
+
+nodes:
+  reliable_talker:
+    # `ReliableTalker::on_tick` publishes one Int32 per tick at 1 Hz.
+    paths:
+      on_tick:
+        trigger: { timer: { rate_hz: 1 } }
+        output: [qos_chatter]
+    pub:
+      qos_chatter:
+        qos:
+          history: keep_last
+          depth: 5
+          durability: transient_local
+
+  qos_listener:
+    sub:
+      qos_chatter:
+        qos:
+          history: keep_last
+          depth: 5
+          durability: transient_local
+    pub:
+      qos_ok:
+        qos:
+          history: keep_last
+          depth: 10
+          durability: volatile
+
+topics:
+  /qos_chatter:
+    type: std_msgs/msg/Int32
+    pub: [reliable_talker/qos_chatter]
+    sub: [qos_listener/qos_chatter]
+  /qos_ok:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [qos_listener/qos_ok]

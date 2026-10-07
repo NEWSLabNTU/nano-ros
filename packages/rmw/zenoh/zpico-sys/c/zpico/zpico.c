@@ -4768,9 +4768,40 @@ static void _zpico_release_reply_slot(struct zpico_session* s, int32_t handle, i
     s->stored_query_valid[handle][seq] = false;
 }
 
+/* Issue 1709 -- one reply, and whether a SUCCESSFUL one ends the query.
+ *
+ * A zenoh query may be answered any number of times until it is dropped; the
+ * drop is what finalises it for the querier. `zpico_query_reply` has always
+ * dropped after one reply, which is right for a service and wrong for a
+ * transient-local publisher's history cache, which owes a late joiner every
+ * retained sample. `release_on_success = false` keeps the cloned query (and
+ * its reply slot) for the next reply; the LAST reply of a series must be a
+ * plain `zpico_query_reply`, which releases as it always did. A FAILED reply
+ * releases in both cases: there is no state worth keeping a slot for, and a
+ * caller that stopped would otherwise leak it (issue 0902). */
+static int32_t _zpico_query_reply_impl(zpico_session_t* session, int32_t queryable_handle,
+                                       int64_t reply_seq, const char* keyexpr, const uint8_t* data,
+                                       size_t len, const uint8_t* attachment, size_t attachment_len,
+                                       bool release_on_success);
+
 int32_t zpico_query_reply(zpico_session_t* session, int32_t queryable_handle, int64_t reply_seq,
                           const char* keyexpr, const uint8_t* data, size_t len,
                           const uint8_t* attachment, size_t attachment_len) {
+    return _zpico_query_reply_impl(session, queryable_handle, reply_seq, keyexpr, data, len,
+                                   attachment, attachment_len, true);
+}
+
+int32_t zpico_query_reply_keep(zpico_session_t* session, int32_t queryable_handle,
+                               int64_t reply_seq, const char* keyexpr, const uint8_t* data,
+                               size_t len, const uint8_t* attachment, size_t attachment_len) {
+    return _zpico_query_reply_impl(session, queryable_handle, reply_seq, keyexpr, data, len,
+                                   attachment, attachment_len, false);
+}
+
+static int32_t _zpico_query_reply_impl(zpico_session_t* session, int32_t queryable_handle,
+                                       int64_t reply_seq, const char* keyexpr, const uint8_t* data,
+                                       size_t len, const uint8_t* attachment, size_t attachment_len,
+                                       bool release_on_success) {
     struct zpico_session* s = (struct zpico_session*)session;
     if (queryable_handle < 0 || queryable_handle >= ZPICO_MAX_QUERYABLES) {
         return ZPICO_ERR_INVALID;
@@ -4838,8 +4869,11 @@ int32_t zpico_query_reply(zpico_session_t* session, int32_t queryable_handle, in
         return ZPICO_ERR_GENERIC;
     }
 
-    // Drop the cloned query + free the slot after reply.
-    _zpico_release_reply_slot(s, queryable_handle, reply_seq);
+    // Drop the cloned query + free the slot after reply -- unless the caller
+    // has more replies to send on it (issue 1709, `zpico_query_reply_keep`).
+    if (release_on_success) {
+        _zpico_release_reply_slot(s, queryable_handle, reply_seq);
+    }
 
     return ZPICO_OK;
 }
