@@ -395,6 +395,22 @@ What remains open:
   connection for QEMU's lifetime); a harness artifact, not a board one, but
   any QEMU lane that tests reconnect must know it.
 
+**Result (2026-10-07), issue 1731.** Reproduced on main with the default
+alone, on native_sim (not the island's QEMU image): the Zephyr `c/talker`
+(zenoh, `CONFIG_NROS_ZENOH_LEASE_MS=60000`, the default since issue 1574)
+against a stock Humble `rmw_zenohd` (`lease: 60000`, `keep_alive: 2`),
+`RUST_LOG=zenoh_transport=debug`. One client transport opened at +0 s, a
+host peer (`ros2 topic echo`) joined at +75 s and left at +115 s, and the
+image's transport stayed open until the image was stopped at +160 s: no
+CLOSE, no re-INIT, no "Closing session because it has expired" on the
+console. The `min()` is filed as issue 1731 (open, an upstream zenoh-pico
+deviation: one number expires the peer and paces our keep-alives, where zenoh
+gives each side's lease to the other); the 60 s default is the answer while
+it stands, and the rule is not to state a lease below the router's. QEMU
+`guestfwd` caveat recorded there: a QEMU lane can show the absence of a drop,
+never a reconnect. For the island: delete the explicit
+`CONFIG_NROS_ZENOH_LEASE_MS=60000` lines if wanted (the default is the same).
+
 ### T2 -- `island_trace_cost_max` read 0 in two runs
 
 phase8-W8's open note. The counter is the island's, not nano-ros's: a DWT
@@ -600,8 +616,10 @@ independent of each other.
       derivation exists; the record now splits FirstSpin and running peak,
       names the knob without the slab, and a stated derivable knob below its
       derivation warns; island: 104448. QEMU read-path half open; issue 1728.)
-- [ ] T1: the plain-router join reproduced on current main with the default
-      lease and held; the `min()` question filed or answered.
+- [x] T1: the plain-router join reproduced on current main with the default
+      lease and held; the `min()` question filed or answered. (native_sim
+      c/talker vs stock rmw_zenohd, host peer joined at +75 s, session held
+      to +160 s; `min()` filed as issue 1731, 60 s default is the answer.)
 - [ ] T2: `island_trace_cost_max` reads the bracket's maximum in every run.
 - [ ] T3: issue 1533 resolved and archived; issue 1534 closed with a derived
       main-thread priority and a measured RX-ring default.
