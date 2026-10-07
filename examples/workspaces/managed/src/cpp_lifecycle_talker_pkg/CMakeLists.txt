@@ -24,7 +24,7 @@ nano_ros_auto_add_library(cpp_managed_talker_lib STATIC src/ManagedTalker.cpp)
 nros_components_register_node(cpp_managed_talker_lib
     PLUGIN cpp_lifecycle_talker_pkg::ManagedTalker
     EXECUTABLE cpp_managed_talker
-    SHAPE configure)
+    SHAPE rclcpp)
 
 if(TARGET std_msgs__nano_ros_cpp)
     target_link_libraries(cpp_talker_lib

@@ -1,4 +1,4 @@
-// Issue 1099 — `nros::LifecycleNode::trigger_transition(uint8_t)` has rclcpp's
+// Issue 1099 — `nros::detail::LifecycleEngine::trigger_transition(uint8_t)` has rclcpp's
 // exact signature, so the id space it accepts MUST be rclcpp's too. It was not:
 // four of eight ids disagreed with `lifecycle_msgs/msg/Transition`, and a ported
 // `trigger_transition(2)` on an Inactive node ACTIVATED it and returned
@@ -128,10 +128,10 @@ static_assert(nros::shutdown_transition_for(nros::LifecycleState::ErrorProcessin
 
 // The typed overload must exist and be reachable — it is what keeps a caller
 // from writing the literal that caused this issue.
-using TypedOverload = nros::Result (nros::LifecycleNode::*)(nros::LifecycleTransition);
-using RawOverload = nros::Result (nros::LifecycleNode::*)(uint8_t);
-constexpr TypedOverload typed_ = &nros::LifecycleNode::trigger_transition;
-constexpr RawOverload raw_ = &nros::LifecycleNode::trigger_transition;
+using TypedOverload = nros::Result (nros::detail::LifecycleEngine::*)(nros::LifecycleTransition);
+using RawOverload = nros::Result (nros::detail::LifecycleEngine::*)(uint8_t);
+constexpr TypedOverload typed_ = &nros::detail::LifecycleEngine::trigger_transition;
+constexpr RawOverload raw_ = &nros::detail::LifecycleEngine::trigger_transition;
 static_assert(typed_ != nullptr, "");
 static_assert(raw_ != nullptr, "");
 

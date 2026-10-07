@@ -1,42 +1,41 @@
 #pragma once
 
-#include <nros/component.hpp>
-#include <nros/lifecycle.hpp>
 #include <nros/nros.hpp>
+#include <rclcpp_lifecycle/lifecycle_node.hpp>
 
 #include "std_msgs.hpp"
 
 namespace cpp_lifecycle_talker_pkg {
 
-/// ManagedTalker — Phase 270 (#103): a C++ managed node written with the
-/// `nros::LifecycleNode` wrapper (NOT the entry `[lifecycle] autostart` codegen).
+/// ManagedTalker — a C++ managed node written against
+/// `rclcpp_lifecycle::LifecycleNode` (phase-482 W4), NOT the entry
+/// `[lifecycle] autostart` codegen.
 ///
-/// The component install hook `configure(Node&)` wires the publisher + timer and
-/// then self-drives the REP-2002 machine via the wrapper: `bind()` the executor,
-/// `register_services()` (binds the on_* trampolines), and `autostart(Active)`
-/// (Configure→Activate, firing the overrides below). Publishing is GATED on the
-/// active state by `on_activate`/`on_deactivate` — proof the overrides run.
-class ManagedTalker : public ::nros::LifecycleNode {
-    ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
+/// It IS a node (`SHAPE rclcpp`): the generated entry constructs it from the
+/// executor-bound handle. It overrides the rclcpp-shape `on_*` hooks with
+/// upstream's signatures, creates its publisher in `on_configure` as upstream
+/// nodes do, and then self-drives the four REP-2002 transitions from its
+/// constructor: Configure, Activate, Deactivate and Cleanup (printing the state
+/// each leaves it in), then Configure and Activate again to run.
+/// The publisher is a managed entity, so it sends only while the node is
+/// Active — the `Published:` lines are the proof.
+class ManagedTalker : public ::rclcpp_lifecycle::LifecycleNode {
+    ::rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Int32>::SharedPtr pub_;
     ::nros::Timer timer_;
     int32_t counter_ = 0;
-    bool active_ = false;
-    // phase-417 W4.f — declared through the LIFECYCLE node, read back on every
-    // tick, and the value `ros2 param get` must agree with.
+    // phase-417 W4.f — declared on the node, read back on every tick, and the
+    // value `ros2 param get` must agree with.
     int64_t publish_period_ms_ = 0;
 
     void on_tick();
 
   public:
-    ManagedTalker() = default;
+    explicit ManagedTalker(::nros::NodeHandle h);
 
-    // rclcpp-shape transition hooks.
-    ::nros::CallbackReturn on_configure(::nros::LifecycleState previous) override;
-    ::nros::CallbackReturn on_activate(::nros::LifecycleState previous) override;
-    ::nros::CallbackReturn on_deactivate(::nros::LifecycleState previous) override;
-
-    // Component install hook.
-    ::rclcpp::Result configure(::rclcpp::Node& node);
+    CallbackReturn on_configure(const ::rclcpp_lifecycle::State& previous) override;
+    CallbackReturn on_activate(const ::rclcpp_lifecycle::State& previous) override;
+    CallbackReturn on_deactivate(const ::rclcpp_lifecycle::State& previous) override;
+    CallbackReturn on_cleanup(const ::rclcpp_lifecycle::State& previous) override;
 };
 
 } // namespace cpp_lifecycle_talker_pkg

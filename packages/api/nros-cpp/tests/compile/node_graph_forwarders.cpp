@@ -1,5 +1,5 @@
 // phase-417 stage 2b (RFC-0089) — the graph surface must be reachable on
-// `rclcpp::Node` and `nros::LifecycleNode`, not only on `nros::Executor`.
+// `rclcpp::Node` and `nros::detail::LifecycleEngine`, not only on `nros::Executor`.
 //
 // Why this probe exists: rclcpp puts the graph calls on the NODE, and 18
 // ledger rows were open purely because ours were only on the executor. The
@@ -185,14 +185,14 @@ template <typename N> bool graph_surface_calls(N& node) {
 
 int main() {
     graph_surface_exists<rclcpp::Node>();
-    graph_surface_exists<nros::LifecycleNode>();
+    graph_surface_exists<nros::detail::LifecycleEngine>();
 
     rclcpp::Node node;
-    nros::LifecycleNode lifecycle;
+    nros::detail::LifecycleEngine lifecycle;
 
     // `const` reachability: a ported file often holds a `const Node &`.
     const rclcpp::Node& const_node = node;
-    const nros::LifecycleNode& const_lifecycle = lifecycle;
+    const nros::detail::LifecycleEngine& const_lifecycle = lifecycle;
 
     bool ok = graph_surface_calls(const_node);
     ok = ok && graph_surface_calls(const_lifecycle);

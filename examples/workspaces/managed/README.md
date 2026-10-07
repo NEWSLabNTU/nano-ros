@@ -8,10 +8,11 @@ The `features` bringup asks the ENTRY CODEGEN to drive the machine: it emits
 is the declarative shape, and it is what `[lifecycle] autostart` in a bringup's
 `system.toml` selects.
 
-Here the node drives ITSELF. `ManagedTalker` uses the `nros::LifecycleNode`
-wrapper and calls `register_services()` + `autostart(Active)` from its own
-install hook, so its `system.toml` carries **no `[lifecycle]` block** — the entry
-just boots and spins. Wiring lifecycle on both sides would register the REP-2002
+Here the node drives ITSELF. `ManagedTalker` is an
+`rclcpp_lifecycle::LifecycleNode` (phase-482 W4), whose constructor registers the
+REP-2002 services; it then runs Configure, Activate, Deactivate and Cleanup and
+goes Active again from its own constructor, so its `system.toml` carries **no
+`[lifecycle]` block** — the entry just boots and spins. Wiring lifecycle on both sides would register the REP-2002
 services twice.
 
 ## Layout

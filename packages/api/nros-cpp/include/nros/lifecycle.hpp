@@ -299,9 +299,29 @@ class State {
 /// The cost of that choice, stated: an entity must outlive the node it is added
 /// to, and must not be added to two nodes. Both hold for the storage this API
 /// has — entities are members of the node's own class or file-scope statics.
+namespace detail {
+class LifecycleEngine;
+} // namespace detail
+
 class ManagedEntityInterface {
   public:
-    virtual ~ManagedEntityInterface() = default;
+    ManagedEntityInterface() = default;
+    /// An entity that is linked into a node's list unlinks itself when it
+    /// dies, so destroying one before its node leaves no dangling pointer.
+    virtual ~ManagedEntityInterface();
+
+    /// phase-482 W4 — MOVABLE, and a move keeps the node's list correct.
+    ///
+    /// `rclcpp_lifecycle::LifecycleNode::create_publisher` returns its
+    /// publisher in a move-only `nros::Owned<T>` (the freestanding `SharedPtr`),
+    /// so the entity changes address at least once between registration and
+    /// the member it lands in. The list is intrusive, so a move re-points the
+    /// node's link at the new object and leaves the old one unlinked. Copying
+    /// would put one entity in the list twice and stays deleted.
+    ManagedEntityInterface(ManagedEntityInterface&& other) noexcept;
+    ManagedEntityInterface& operator=(ManagedEntityInterface&& other) noexcept;
+    ManagedEntityInterface(const ManagedEntityInterface&) = delete;
+    ManagedEntityInterface& operator=(const ManagedEntityInterface&) = delete;
 
     /// The node reached `Active`. Non-pure with a default so a freestanding
     /// build needs no `__cxa_pure_virtual`.
@@ -312,15 +332,22 @@ class ManagedEntityInterface {
     virtual bool is_activated() const { return false; }
 
   private:
-    friend class LifecycleNode;
+    friend class detail::LifecycleEngine;
     /// Intrusive link; owned by the node's list, never by the entity.
     ManagedEntityInterface* next_managed_ = nullptr;
+    /// The node whose list this entity is in, or `nullptr`. What lets a move
+    /// or a destructor find the link to repair.
+    detail::LifecycleEngine* owner_ = nullptr;
 };
 
 /// The default `ManagedEntityInterface` — a flag, as upstream's
 /// `SimpleManagedEntity` is.
 class SimpleManagedEntity : public ManagedEntityInterface {
   public:
+    SimpleManagedEntity() = default;
+    SimpleManagedEntity(SimpleManagedEntity&&) noexcept = default;
+    SimpleManagedEntity& operator=(SimpleManagedEntity&&) noexcept = default;
+
     void on_activate() override { activated_ = true; }
     void on_deactivate() override { activated_ = false; }
     bool is_activated() const override { return activated_; }
@@ -329,7 +356,15 @@ class SimpleManagedEntity : public ManagedEntityInterface {
     bool activated_ = false;
 };
 
-/// rclcpp-shape managed node (REP-2002).
+namespace detail {
+
+/// The REP-2002 engine behind `rclcpp_lifecycle::LifecycleNode` (phase-482 W4).
+///
+/// It was `nros::LifecycleNode`, a mixin a component bound to its node. That name
+/// is now a deprecated forwarder; the type a user writes is
+/// `rclcpp_lifecycle::LifecycleNode`, which IS a node and owns one of these.
+///
+/// (Original description:) rclcpp-shape managed node (REP-2002).
 ///
 /// Inherit and override the `on_*` hooks, then call `register_services()` (or
 /// `autostart()`). Transitions are driven either externally (`ros2 lifecycle set`
@@ -338,23 +373,35 @@ class SimpleManagedEntity : public ManagedEntityInterface {
 ///
 /// Freestanding-safe: the virtuals are non-pure with defaults (no
 /// `__cxa_pure_virtual`), and the class uses no exceptions / RTTI / heap.
-class LifecycleNode {
+class LifecycleEngine {
   public:
     /// @param executor_handle Raw executor handle from `Executor::handle()`.
-    explicit LifecycleNode(void* executor_handle) : exec_(executor_handle) {}
+    explicit LifecycleEngine(void* executor_handle) : exec_(executor_handle) {}
 
     /// Two-phase construction for the component model: nano-ros components are
     /// constructed before the executor handle exists, so a component that inherits
-    /// `LifecycleNode` default-constructs here and calls `bind()` from its install
+    /// `LifecycleEngine` default-constructs here and calls `bind()` from its install
     /// hook (`configure(Node&)`, where `node.executor_handle()` is available) before
     /// `register_services()`. Until bound, `get_current_state()` reads `Unconfigured` and the
     /// register/transition calls return `InvalidArgument` rather than trapping.
-    LifecycleNode() : exec_(nullptr) {}
+    LifecycleEngine() : exec_(nullptr) {}
 
-    virtual ~LifecycleNode() = default;
+    /// Unlinks every managed entity still in the list, so an entity that
+    /// outlives its node is left unregistered rather than holding a pointer
+    /// into a destroyed list.
+    virtual ~LifecycleEngine() {
+        ManagedEntityInterface* e = managed_;
+        while (e != nullptr) {
+            ManagedEntityInterface* next = e->next_managed_;
+            e->next_managed_ = nullptr;
+            e->owner_ = nullptr;
+            e = next;
+        }
+        managed_ = nullptr;
+    }
 
-    LifecycleNode(const LifecycleNode&) = delete;
-    LifecycleNode& operator=(const LifecycleNode&) = delete;
+    LifecycleEngine(const LifecycleEngine&) = delete;
+    LifecycleEngine& operator=(const LifecycleEngine&) = delete;
 
     /// Bind the executor handle for a default-constructed node (two-phase init).
     /// Call once, before `register_services()` / `autostart()`.
@@ -367,16 +414,16 @@ class LifecycleNode {
     /// Bind the executor AND the node this managed node's parameters belong to
     /// — phase-417 W4.f.
     ///
-    /// `rclcpp_lifecycle::LifecycleNode` IS a node upstream and carries the
+    /// `rclcpp_lifecycle::LifecycleEngine` IS a node upstream and carries the
     /// whole `rclcpp::Node` parameter surface. Ours is a MIXIN over the
     /// executor's REP-2002 state machine and holds no node handle, which is
-    /// exactly why the `cpp:LifecycleNode::get_clock` and
-    /// `cpp:LifecycleNode::*parameter*` ledger rows stayed open: there was
+    /// exactly why the `cpp:LifecycleEngine::get_clock` and
+    /// `cpp:LifecycleEngine::*parameter*` ledger rows stayed open: there was
     /// nothing for the accessor to reach.
     ///
     /// Binding rather than OWNING is the answer, and the reason is phase-426's:
     /// a node here is a separate object with its own entity storage and its own
-    /// row in the executor's table, so a `LifecycleNode` that constructed one
+    /// row in the executor's table, so a `LifecycleEngine` that constructed one
     /// would be a second node for one logical node. The parameter methods below
     /// forward to THIS node — the same `rclcpp::Node` methods, so the store, the
     /// declared-parameter contract check and the node keying are reached through
@@ -483,12 +530,12 @@ class LifecycleNode {
         if (!r) {
             return r;
         }
-        nros_cpp_lifecycle_register_on_configure(exec_, &LifecycleNode::tramp_configure, this);
-        nros_cpp_lifecycle_register_on_activate(exec_, &LifecycleNode::tramp_activate, this);
-        nros_cpp_lifecycle_register_on_deactivate(exec_, &LifecycleNode::tramp_deactivate, this);
-        nros_cpp_lifecycle_register_on_cleanup(exec_, &LifecycleNode::tramp_cleanup, this);
-        nros_cpp_lifecycle_register_on_shutdown(exec_, &LifecycleNode::tramp_shutdown, this);
-        nros_cpp_lifecycle_register_on_error(exec_, &LifecycleNode::tramp_error, this);
+        nros_cpp_lifecycle_register_on_configure(exec_, &LifecycleEngine::tramp_configure, this);
+        nros_cpp_lifecycle_register_on_activate(exec_, &LifecycleEngine::tramp_activate, this);
+        nros_cpp_lifecycle_register_on_deactivate(exec_, &LifecycleEngine::tramp_deactivate, this);
+        nros_cpp_lifecycle_register_on_cleanup(exec_, &LifecycleEngine::tramp_cleanup, this);
+        nros_cpp_lifecycle_register_on_shutdown(exec_, &LifecycleEngine::tramp_shutdown, this);
+        nros_cpp_lifecycle_register_on_error(exec_, &LifecycleEngine::tramp_error, this);
         return Result();
     }
 
@@ -553,7 +600,7 @@ class LifecycleNode {
     }
 
     /// Drive an arbitrary REP-2002 transition by id — rclcpp's
-    /// `LifecycleNode::trigger_transition(uint8_t)`, and PUBLIC for the same
+    /// `LifecycleEngine::trigger_transition(uint8_t)`, and PUBLIC for the same
     /// reason: it is how a ported node reaches a transition that has no named
     /// helper above. The four helpers are this call with the id filled in.
     ///
@@ -572,7 +619,7 @@ class LifecycleNode {
 
     // ---- Clock — phase-417 W4.f ------------------------------------------
 
-    /// This node's clock — rclcpp's `LifecycleNode::get_clock()`.
+    /// This node's clock — rclcpp's `LifecycleEngine::get_clock()`.
     ///
     /// ROS time, as `rclcpp::Node`'s is, and a member of this class rather than
     /// a forward to a bound node: a `Clock` owns no handle and no allocation
@@ -584,13 +631,13 @@ class LifecycleNode {
     /// Const overload of [`get_clock`].
     const Clock* get_clock() const { return &clock_; }
 
-    /// Shorthand for `get_clock()->now()` — rclcpp's `LifecycleNode::now()`.
+    /// Shorthand for `get_clock()->now()` — rclcpp's `LifecycleEngine::now()`.
     Time now() const { return clock_.now(); }
 
     // ---- The transition graph, in process — phase-417 W4.f ---------------
 
     /// Every transition in this node's REP-2002 state machine — rclcpp's
-    /// `LifecycleNode::get_transition_graph()`. Return `false` from `visit` to
+    /// `LifecycleEngine::get_transition_graph()`. Return `false` from `visit` to
     /// stop.
     ///
     /// The SAME eight rows `~/get_transition_graph` serves a remote
@@ -632,7 +679,7 @@ class LifecycleNode {
     // ---- Managed entities — phase-417 W4.f -------------------------------
 
     /// Have `entity` follow this node's activation — rclcpp's
-    /// `LifecycleNode::add_managed_entity()`.
+    /// `LifecycleEngine::add_managed_entity()`.
     ///
     /// On a successful `activate` transition every registered entity's
     /// `on_activate()` runs, and on `deactivate` / `cleanup` / `shutdown` its
@@ -652,14 +699,48 @@ class LifecycleNode {
                 return Result(::nros::ErrorCode::AlreadyExists);
             }
         }
+        if (entity->owner_ != nullptr) {
+            // In ANOTHER node's list: one link per entity, so refuse.
+            return Result(::nros::ErrorCode::AlreadyExists);
+        }
         entity->next_managed_ = managed_;
+        entity->owner_ = this;
         managed_ = entity;
         return Result();
     }
 
+    /// phase-482 W4 — the moved-to entity takes the moved-from one's place in
+    /// the list. Called by `ManagedEntityInterface`'s move operations only.
+    void replace_managed_entity(ManagedEntityInterface* from, ManagedEntityInterface* to) {
+        for (ManagedEntityInterface** link = &managed_; *link != nullptr;
+             link = &(*link)->next_managed_) {
+            if (*link == from) {
+                to->next_managed_ = from->next_managed_;
+                to->owner_ = this;
+                *link = to;
+                from->next_managed_ = nullptr;
+                from->owner_ = nullptr;
+                return;
+            }
+        }
+    }
+
+    /// Unlink `entity` (its destructor's call).
+    void remove_managed_entity(ManagedEntityInterface* entity) {
+        for (ManagedEntityInterface** link = &managed_; *link != nullptr;
+             link = &(*link)->next_managed_) {
+            if (*link == entity) {
+                *link = entity->next_managed_;
+                entity->next_managed_ = nullptr;
+                entity->owner_ = nullptr;
+                return;
+            }
+        }
+    }
+
     // ---- Parameters — phase-417 W4.f -------------------------------------
     //
-    // `rclcpp_lifecycle::LifecycleNode` repeats `rclcpp::Node`'s parameter
+    // `rclcpp_lifecycle::LifecycleEngine` repeats `rclcpp::Node`'s parameter
     // surface verbatim, and a lifecycle node's parameters are not
     // lifecycle-gated upstream either. Ours repeats it by FORWARDING to the
     // node `bind(Node&)` supplied — each body is one call to the identically
@@ -677,7 +758,7 @@ class LifecycleNode {
     // the register/transition calls give an unbound node, never a silent write
     // into some other node's parameters.
 
-    /// `rclcpp_lifecycle::LifecycleNode::declare_parameter<T>(name, default)`.
+    /// `rclcpp_lifecycle::LifecycleEngine::declare_parameter<T>(name, default)`.
     template <typename T> T declare_parameter(const char* name, T default_value = T()) {
         return node_ == nullptr ? default_value
                                 : node_->template declare_parameter<T>(name, default_value);
@@ -813,7 +894,7 @@ class LifecycleNode {
 
     // ---- Graph queries — phase-417 stage 2b (RFC-0089) --------------------
     //
-    // rclcpp_lifecycle's `LifecycleNode` carries the same graph surface as
+    // rclcpp_lifecycle's `LifecycleEngine` carries the same graph surface as
     // `rclcpp::Node`, so a ported managed node reaches these on `this`. Each
     // one FORWARDS to the executor this node is bound to — the graph's
     // receiver, because there is one session per image (RFC-0002) — and does
@@ -958,8 +1039,8 @@ class LifecycleNode {
     // AFTER the user's hook and only when it succeeded — a publisher must not
     // start sending because a callback that rolled the transition back happened
     // to run first.
-    static CallbackReturn dispatch(LifecycleNode* n, TransitionCallbackType cb, void* ctx,
-                                   CallbackReturn (LifecycleNode::*fallback)(LifecycleState)) {
+    static CallbackReturn dispatch(LifecycleEngine* n, TransitionCallbackType cb, void* ctx,
+                                   CallbackReturn (LifecycleEngine::*fallback)(LifecycleState)) {
         const LifecycleState previous = n->get_current_state();
         return cb != nullptr ? cb(previous, ctx) : (n->*fallback)(previous);
     }
@@ -974,53 +1055,54 @@ class LifecycleNode {
         }
     }
     static uint8_t tramp_configure(void* self) {
-        auto* n = static_cast<LifecycleNode*>(self);
+        auto* n = static_cast<LifecycleEngine*>(self);
         return static_cast<uint8_t>(
-            dispatch(n, n->cb_configure_, n->ctx_configure_, &LifecycleNode::on_configure));
+            dispatch(n, n->cb_configure_, n->ctx_configure_, &LifecycleEngine::on_configure));
     }
     static uint8_t tramp_activate(void* self) {
-        auto* n = static_cast<LifecycleNode*>(self);
+        auto* n = static_cast<LifecycleEngine*>(self);
         CallbackReturn r =
-            dispatch(n, n->cb_activate_, n->ctx_activate_, &LifecycleNode::on_activate);
+            dispatch(n, n->cb_activate_, n->ctx_activate_, &LifecycleEngine::on_activate);
         if (r == CallbackReturn::Success) {
             n->activate_managed_entities();
         }
         return static_cast<uint8_t>(r);
     }
     static uint8_t tramp_deactivate(void* self) {
-        auto* n = static_cast<LifecycleNode*>(self);
+        auto* n = static_cast<LifecycleEngine*>(self);
         CallbackReturn r =
-            dispatch(n, n->cb_deactivate_, n->ctx_deactivate_, &LifecycleNode::on_deactivate);
+            dispatch(n, n->cb_deactivate_, n->ctx_deactivate_, &LifecycleEngine::on_deactivate);
         if (r == CallbackReturn::Success) {
             n->deactivate_managed_entities();
         }
         return static_cast<uint8_t>(r);
     }
     static uint8_t tramp_cleanup(void* self) {
-        auto* n = static_cast<LifecycleNode*>(self);
-        CallbackReturn r = dispatch(n, n->cb_cleanup_, n->ctx_cleanup_, &LifecycleNode::on_cleanup);
+        auto* n = static_cast<LifecycleEngine*>(self);
+        CallbackReturn r =
+            dispatch(n, n->cb_cleanup_, n->ctx_cleanup_, &LifecycleEngine::on_cleanup);
         if (r == CallbackReturn::Success) {
             n->deactivate_managed_entities();
         }
         return static_cast<uint8_t>(r);
     }
     static uint8_t tramp_shutdown(void* self) {
-        auto* n = static_cast<LifecycleNode*>(self);
+        auto* n = static_cast<LifecycleEngine*>(self);
         CallbackReturn r =
-            dispatch(n, n->cb_shutdown_, n->ctx_shutdown_, &LifecycleNode::on_shutdown);
+            dispatch(n, n->cb_shutdown_, n->ctx_shutdown_, &LifecycleEngine::on_shutdown);
         if (r == CallbackReturn::Success) {
             n->deactivate_managed_entities();
         }
         return static_cast<uint8_t>(r);
     }
     static uint8_t tramp_error(void* self) {
-        auto* n = static_cast<LifecycleNode*>(self);
+        auto* n = static_cast<LifecycleEngine*>(self);
         return static_cast<uint8_t>(
-            dispatch(n, n->cb_error_, n->ctx_error_, &LifecycleNode::on_error));
+            dispatch(n, n->cb_error_, n->ctx_error_, &LifecycleEngine::on_error));
     }
 
     // phase-417 W4.f state. Every member here is UNCONDITIONAL — no `#if` on a
-    // capability probe reaches a field, so `sizeof(LifecycleNode)` is the same
+    // capability probe reaches a field, so `sizeof(LifecycleEngine)` is the same
     // in every translation unit (`check-cpp-capability-layout`).
     //
     // The node this managed node's parameters belong to, or `nullptr` when only
@@ -1043,6 +1125,34 @@ class LifecycleNode {
     void* ctx_shutdown_ = nullptr;
     void* ctx_error_ = nullptr;
 };
+
+} // namespace detail
+
+// ManagedEntityInterface's link maintenance needs the complete engine type.
+inline ManagedEntityInterface::~ManagedEntityInterface() {
+    if (owner_ != nullptr) {
+        owner_->remove_managed_entity(this);
+    }
+}
+
+inline ManagedEntityInterface::ManagedEntityInterface(ManagedEntityInterface&& other) noexcept {
+    if (other.owner_ != nullptr) {
+        other.owner_->replace_managed_entity(&other, this);
+    }
+}
+
+inline ManagedEntityInterface&
+ManagedEntityInterface::operator=(ManagedEntityInterface&& other) noexcept {
+    if (this != &other) {
+        if (owner_ != nullptr) {
+            owner_->remove_managed_entity(this);
+        }
+        if (other.owner_ != nullptr) {
+            other.owner_->replace_managed_entity(&other, this);
+        }
+    }
+    return *this;
+}
 
 /// A publisher whose sends are DROPPED while its node is not Active — rclcpp's
 /// `rclcpp_lifecycle::LifecyclePublisher`.
@@ -1068,6 +1178,15 @@ class LifecycleNode {
 /// you need to know.
 template <typename M> class LifecyclePublisher : public SimpleManagedEntity {
   public:
+    /// What `rclcpp_lifecycle::LifecycleNode::create_publisher<M>` returns:
+    /// move-only, no allocator, every target (as `rclcpp::Publisher<M>::SharedPtr`
+    /// is). The managed-entity link survives the moves (phase-482 W4).
+    using SharedPtr = ::nros::Owned<LifecyclePublisher>;
+
+    LifecyclePublisher() = default;
+    LifecyclePublisher(LifecyclePublisher&&) noexcept = default;
+    LifecyclePublisher& operator=(LifecyclePublisher&&) noexcept = default;
+
     /// The wrapped publisher, to hand to `Node::create_publisher`.
     ::rclcpp::Publisher<M>& publisher() { return pub_; }
     /// Const overload of [`publisher`].
@@ -1085,6 +1204,314 @@ template <typename M> class LifecyclePublisher : public SimpleManagedEntity {
     ::rclcpp::Publisher<M> pub_;
 };
 
+/// DEPRECATED (phase-482 W4) — derive from `rclcpp_lifecycle::LifecycleNode`.
+///
+/// This was the managed-node type: a mixin a component bound to its node with
+/// `bind(Node&)`. `rclcpp_lifecycle::LifecycleNode` IS a node, takes upstream's
+/// constructor and callback signatures, and owns the same engine, so a ported
+/// lifecycle node's class body compiles against it unchanged. This forwarder
+/// keeps the old spelling compiling for one release, and the attribute names
+/// the replacement. A CLASS, not an alias: `[[deprecated]]` on an alias is
+/// silent on clang (see `nros::Expected<T>`'s note before phase-482 W6).
+/// Measured: clang warns on every use, including a base clause; GCC 12 warns
+/// on a variable or member of this type but not on `: public LifecycleNode`.
+class NROS_CPP_DEPRECATED_MSG(
+    "nros::LifecycleNode is deprecated (phase-482 W4): derive from "
+    "rclcpp_lifecycle::LifecycleNode, which IS a node and takes upstream's "
+    "constructor and on_* signatures.") LifecycleNode : public detail::LifecycleEngine {
+  public:
+    using detail::LifecycleEngine::LifecycleEngine;
+    LifecycleNode() = default;
+};
+
 } // namespace nros
+
+// ============================================================================
+// rclcpp_lifecycle:: — the ROS 2 spelling (phase-482 W4, RFC-0089)
+// ============================================================================
+
+namespace rclcpp_lifecycle {
+
+/// `rclcpp_lifecycle::State` — one `lifecycle_msgs/msg/State` id, with `id()`
+/// and a borrowed `label()`. See `nros::State` for the two differences.
+using State = ::nros::State;
+/// `rclcpp_lifecycle::Transition`. See `nros::Transition`.
+using Transition = ::nros::Transition;
+/// `rclcpp_lifecycle::LifecyclePublisher<M>` — drops sends while the node is
+/// not Active. See `nros::LifecyclePublisher`.
+template <typename M> using LifecyclePublisher = ::nros::LifecyclePublisher<M>;
+
+namespace node_interfaces {
+
+/// `rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface` — the six
+/// transition callbacks, with upstream's signatures and defaults.
+///
+/// Non-pure with defaults, so a freestanding build needs no
+/// `__cxa_pure_virtual`; `on_error` defaults to FAILURE, the rest to SUCCESS,
+/// as upstream's do.
+class LifecycleNodeInterface {
+  public:
+    /// Upstream's values: `lifecycle_msgs/msg/Transition`'s
+    /// `TRANSITION_CALLBACK_{SUCCESS,FAILURE,ERROR}` (97, 98, 99).
+    enum class CallbackReturn : uint8_t {
+        SUCCESS = 97,
+        FAILURE = 98,
+        ERROR = 99,
+    };
+
+    virtual ~LifecycleNodeInterface() = default;
+
+    virtual CallbackReturn on_configure(const State& previous_state) {
+        (void)previous_state;
+        return CallbackReturn::SUCCESS;
+    }
+    virtual CallbackReturn on_cleanup(const State& previous_state) {
+        (void)previous_state;
+        return CallbackReturn::SUCCESS;
+    }
+    virtual CallbackReturn on_shutdown(const State& previous_state) {
+        (void)previous_state;
+        return CallbackReturn::SUCCESS;
+    }
+    virtual CallbackReturn on_activate(const State& previous_state) {
+        (void)previous_state;
+        return CallbackReturn::SUCCESS;
+    }
+    virtual CallbackReturn on_deactivate(const State& previous_state) {
+        (void)previous_state;
+        return CallbackReturn::SUCCESS;
+    }
+    virtual CallbackReturn on_error(const State& previous_state) {
+        (void)previous_state;
+        return CallbackReturn::FAILURE;
+    }
+};
+
+} // namespace node_interfaces
+
+/// `rclcpp_lifecycle::LifecycleNode` — a REP-2002 managed node that IS an
+/// `rclcpp::Node`.
+///
+/// Upstream's constructor and callback signatures, so a ported lifecycle
+/// node's class body compiles unchanged: override `on_configure(const State&)`
+/// and friends, return `CallbackReturn::SUCCESS`, create publishers with
+/// `create_publisher<M>(topic, qos)`, and drive transitions with
+/// `configure()` / `activate()` / … or `ros2 lifecycle set`.
+///
+/// The five REP-2002 services are registered by the constructor, as upstream
+/// registers them. Publishers made by `create_publisher` are managed entities:
+/// they send only while the node is Active, and a successful `activate`
+/// activates them whether or not the override calls the base (upstream Iron and
+/// later; Humble code that calls `pub->on_activate()` itself still works).
+///
+/// Differences, each bounded and stated:
+///  * Construction cannot throw (RFC-0018). A failed construction leaves
+///    `ok()` false, as `rclcpp::Node`'s does.
+///  * One managed node per executor: the REP-2002 state machine lives on the
+///    executor (`nros_executor_lifecycle_*`).
+///  * Not movable: the engine's managed-entity list points into this object.
+///  * `register_on_*` takes a function pointer and a context, not a
+///    `std::function`.
+class LifecycleNode : public ::rclcpp::Node, public node_interfaces::LifecycleNodeInterface {
+  public:
+    using SharedPtr = ::nros::Handle<LifecycleNode>;
+    using ConstSharedPtr = ::nros::Handle<const LifecycleNode>;
+    using CallbackReturn = node_interfaces::LifecycleNodeInterface::CallbackReturn;
+
+    /// `LifecycleNode(node_name, options)` — upstream's shape, on the global
+    /// executor `rclcpp::init()` created.
+    explicit LifecycleNode(const char* node_name,
+                           const ::rclcpp::NodeOptions& options = ::rclcpp::NodeOptions())
+        : ::rclcpp::Node(node_name, options) {
+        start();
+    }
+
+    /// `LifecycleNode(node_name, namespace, options)`.
+    LifecycleNode(const char* node_name, const char* namespace_,
+                  const ::rclcpp::NodeOptions& options = ::rclcpp::NodeOptions())
+        : ::rclcpp::Node(node_name, namespace_, options) {
+        start();
+    }
+
+    /// The component-model constructor (`SHAPE rclcpp`): construct against the
+    /// executor-bound handle the generated entry hands in. The launch file's
+    /// name and namespace win over `node_name` / `namespace_`, as for
+    /// `rclcpp::Node(NodeHandle, …)`.
+    LifecycleNode(::nros::NodeHandle handle, const char* node_name,
+                  const char* namespace_ = nullptr)
+        : ::rclcpp::Node(handle, node_name, namespace_) {
+        start();
+    }
+
+#if defined(NROS_CPP_HAS_STD_STRING) // hosted-family: string-interop
+    explicit LifecycleNode(const ::std::string& node_name,
+                           const ::rclcpp::NodeOptions& options = ::rclcpp::NodeOptions())
+        : LifecycleNode(node_name.c_str(), options) {}
+    LifecycleNode(const ::std::string& node_name, const ::std::string& namespace_,
+                  const ::rclcpp::NodeOptions& options = ::rclcpp::NodeOptions())
+        : LifecycleNode(node_name.c_str(), namespace_.c_str(), options) {}
+#endif
+
+    LifecycleNode(const LifecycleNode&) = delete;
+    LifecycleNode& operator=(const LifecycleNode&) = delete;
+    LifecycleNode(LifecycleNode&&) = delete;
+    LifecycleNode& operator=(LifecycleNode&&) = delete;
+
+    /// The current REP-2002 state.
+    State get_current_state() const { return State(engine_.get_current_state()); }
+
+    /// The transitions, by name. Each returns the state the node is in
+    /// afterwards, as upstream's do; a refused transition leaves it unchanged.
+    const State& configure() { return settle(engine_.configure()); }
+    const State& cleanup() { return settle(engine_.cleanup()); }
+    const State& activate() { return settle(engine_.activate()); }
+    const State& deactivate() { return settle(engine_.deactivate()); }
+    const State& shutdown() { return settle(engine_.shutdown()); }
+
+    /// Drive a transition by its `lifecycle_msgs/msg/Transition` id.
+    const State& trigger_transition(uint8_t transition_id) {
+        return settle(engine_.trigger_transition(transition_id));
+    }
+    /// Drive the transition `transition` names.
+    const State& trigger_transition(const Transition& transition) {
+        return trigger_transition(transition.id());
+    }
+
+    /// A transition callback that replaces the matching `on_*` override:
+    /// `CallbackReturn (*)(const State& previous, void* context)`.
+    ///
+    /// rclcpp takes a `std::function`; this is a function pointer plus a
+    /// context, the shape every callback seam here uses, because a
+    /// `std::function` member would need an allocator and would make the class
+    /// layout depend on a capability probe. `nullptr` restores the override.
+    typedef CallbackReturn (*TransitionCallbackType)(const State& previous, void* context);
+
+    void register_on_configure(TransitionCallbackType cb, void* ctx = nullptr) { set(0, cb, ctx); }
+    void register_on_activate(TransitionCallbackType cb, void* ctx = nullptr) { set(1, cb, ctx); }
+    void register_on_deactivate(TransitionCallbackType cb, void* ctx = nullptr) { set(2, cb, ctx); }
+    void register_on_cleanup(TransitionCallbackType cb, void* ctx = nullptr) { set(3, cb, ctx); }
+    void register_on_shutdown(TransitionCallbackType cb, void* ctx = nullptr) { set(4, cb, ctx); }
+    void register_on_error(TransitionCallbackType cb, void* ctx = nullptr) { set(5, cb, ctx); }
+
+    /// The REP-2002 transition graph, one row per call to `visit`. See
+    /// `nros::Transition`.
+    ::nros::Result get_transition_graph(::nros::TransitionVisitFn visit, void* ctx) const {
+        return engine_.get_transition_graph(visit, ctx);
+    }
+
+    /// Add an entity whose sends follow this node's state. Publishers made by
+    /// `create_publisher` are added already. Upstream's is protected and takes
+    /// a `std::weak_ptr`; this takes a pointer the entity's own move and
+    /// destructor keep correct (`nros::ManagedEntityInterface`).
+    ::nros::Result add_managed_entity(::nros::ManagedEntityInterface* entity) {
+        return engine_.add_managed_entity(entity);
+    }
+
+    /// `create_publisher<M>(topic, qos)` — a managed publisher: it sends only
+    /// while this node is Active. On failure the handle is empty and `ok()` is
+    /// false, as for `rclcpp::Node::create_publisher`.
+    template <typename M>
+    typename LifecyclePublisher<M>::SharedPtr
+    create_publisher(const char* topic, const ::nros::QoS& qos = ::nros::QoS::default_profile()) {
+        typename LifecyclePublisher<M>::SharedPtr out{LifecyclePublisher<M>()};
+        if (!this->::rclcpp::Node::create_publisher(out->publisher(), topic, qos).ok()) {
+            return typename LifecyclePublisher<M>::SharedPtr();
+        }
+        (void)engine_.add_managed_entity(out.get());
+        if (engine_.get_current_state() == ::nros::LifecycleState::Active) {
+            out->on_activate();
+        }
+        return out;
+    }
+
+    /// `create_publisher<M>(topic, depth)`.
+    template <typename M>
+    typename LifecyclePublisher<M>::SharedPtr create_publisher(const char* topic, ::size_t depth) {
+        return create_publisher<M>(topic, ::nros::QoS(static_cast<uint32_t>(depth)));
+    }
+
+#if defined(NROS_CPP_HAS_STD_STRING) // hosted-family: string-interop
+    template <typename M>
+    typename LifecyclePublisher<M>::SharedPtr
+    create_publisher(const ::std::string& topic,
+                     const ::nros::QoS& qos = ::nros::QoS::default_profile()) {
+        return create_publisher<M>(topic.c_str(), qos);
+    }
+    template <typename M>
+    typename LifecyclePublisher<M>::SharedPtr create_publisher(const ::std::string& topic,
+                                                               ::size_t depth) {
+        return create_publisher<M>(topic.c_str(), depth);
+    }
+#endif
+
+  private:
+    void start() {
+        if (!this->ok()) {
+            return;
+        }
+        engine_.bind(*this);
+        engine_.register_on_configure(&LifecycleNode::cb_configure, this);
+        engine_.register_on_activate(&LifecycleNode::cb_activate, this);
+        engine_.register_on_deactivate(&LifecycleNode::cb_deactivate, this);
+        engine_.register_on_cleanup(&LifecycleNode::cb_cleanup, this);
+        engine_.register_on_shutdown(&LifecycleNode::cb_shutdown, this);
+        engine_.register_on_error(&LifecycleNode::cb_error, this);
+        (void)engine_.register_services();
+        state_ = State(engine_.get_current_state());
+    }
+
+    const State& settle(::nros::Result) {
+        state_ = State(engine_.get_current_state());
+        return state_;
+    }
+
+    void set(int i, TransitionCallbackType cb, void* ctx) {
+        user_cb_[i] = cb;
+        user_ctx_[i] = ctx;
+    }
+    CallbackReturn
+    run(int i, ::nros::LifecycleState previous,
+        CallbackReturn (node_interfaces::LifecycleNodeInterface::*hook)(const State&)) {
+        const State s(previous);
+        return user_cb_[i] != nullptr ? user_cb_[i](s, user_ctx_[i]) : (this->*hook)(s);
+    }
+
+    static ::nros::CallbackReturn to_engine(CallbackReturn r) {
+        return r == CallbackReturn::SUCCESS   ? ::nros::CallbackReturn::Success
+               : r == CallbackReturn::FAILURE ? ::nros::CallbackReturn::Failure
+                                              : ::nros::CallbackReturn::Error;
+    }
+    static ::nros::CallbackReturn cb_configure(::nros::LifecycleState previous, void* self) {
+        return to_engine(static_cast<LifecycleNode*>(self)->run(
+            0, previous, &node_interfaces::LifecycleNodeInterface::on_configure));
+    }
+    static ::nros::CallbackReturn cb_activate(::nros::LifecycleState previous, void* self) {
+        return to_engine(static_cast<LifecycleNode*>(self)->run(
+            1, previous, &node_interfaces::LifecycleNodeInterface::on_activate));
+    }
+    static ::nros::CallbackReturn cb_deactivate(::nros::LifecycleState previous, void* self) {
+        return to_engine(static_cast<LifecycleNode*>(self)->run(
+            2, previous, &node_interfaces::LifecycleNodeInterface::on_deactivate));
+    }
+    static ::nros::CallbackReturn cb_cleanup(::nros::LifecycleState previous, void* self) {
+        return to_engine(static_cast<LifecycleNode*>(self)->run(
+            3, previous, &node_interfaces::LifecycleNodeInterface::on_cleanup));
+    }
+    static ::nros::CallbackReturn cb_shutdown(::nros::LifecycleState previous, void* self) {
+        return to_engine(static_cast<LifecycleNode*>(self)->run(
+            4, previous, &node_interfaces::LifecycleNodeInterface::on_shutdown));
+    }
+    static ::nros::CallbackReturn cb_error(::nros::LifecycleState previous, void* self) {
+        return to_engine(static_cast<LifecycleNode*>(self)->run(
+            5, previous, &node_interfaces::LifecycleNodeInterface::on_error));
+    }
+
+    ::nros::detail::LifecycleEngine engine_;
+    State state_{::nros::LifecycleState::Unconfigured};
+    TransitionCallbackType user_cb_[6] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+    void* user_ctx_[6] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+};
+
+} // namespace rclcpp_lifecycle
 
 #endif // NROS_CPP_LIFECYCLE_HPP

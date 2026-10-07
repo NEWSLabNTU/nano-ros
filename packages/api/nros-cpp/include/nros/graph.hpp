@@ -3,7 +3,7 @@
 //
 // The graph QUERIES live on `nros::Executor` (`executor.hpp:205-301`) because
 // one session per image makes the executor the graph's receiver (RFC-0002);
-// `rclcpp::Node` and `nros::LifecycleNode` forward to it so a ported rclcpp file
+// `rclcpp::Node` and the lifecycle engine forward to it so a ported rclcpp file
 // reaches them where rclcpp puts them, on the node. This header holds the one
 // thing those calls need that the FFI does not already give C++ a name for: a
 // value type for a discovered endpoint.

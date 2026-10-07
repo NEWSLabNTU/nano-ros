@@ -626,8 +626,20 @@ def c_surface(wanted, prefixes):
 
 # ─────────────────────────── C++ supply ───────────────────────────
 
+# `using` counts only as an ALIAS (`using X = …;`, attributes allowed before the
+# `=`). A using-DECLARATION — `using detail::Base::Base;`, an inheriting
+# constructor — names no type, and reading its first segment as one reported a
+# surface move for `detail` the day phase-482 W4 wrote the first of them. The
+# filter is `_is_using_alias` below, applied where `using` matches are read.
 CPP_TYPE = re.compile(
     r"^[ \t]*(?:template\s*<[^>]*>\s*)?(class|struct|using)\s+([A-Za-z_][A-Za-z0-9_]*)", re.M)
+
+
+def _is_using_alias(text, match):
+    """True for `using NAME … = …;`, False for `using a::b;` / `using namespace x;`."""
+    end = text.find(";", match.start())
+    stmt = text[match.end():end if end >= 0 else len(text)]
+    return not stmt.lstrip().startswith("::") and "=" in stmt
 # A free function is searched for BY NAME, one name at a time. The obvious
 # single regex — an alternation of declaration keywords, each followed by `\s+`,
 # under a `+` — backtracks catastrophically on a real header (it did not finish
@@ -662,6 +674,8 @@ def cpp_surface(wanted):
                 continue
             end, brace = _decl_end(text, m.start()), None
             if kind == "using":
+                if not _is_using_alias(text, m):
+                    continue
                 j = text.find(";", m.start())
                 out[f"cpp|using|{hdr}|{name}"] = norm(text[m.start():j + 1])
                 continue
@@ -883,6 +897,12 @@ def self_test(quiet=False):
     moved = {"rust|trait|nros_core::Serialize": "pub trait Serialize { fn serialize2; }"}
     errors, _ = compare(moved, base, 1, 1, 1)
     assert errors and "did not" in errors[0], "a moved surface at a fixed version must FAIL"
+
+    # phase-482 W4 — an inheriting-constructor using-DECLARATION is not a type.
+    _u = "struct S : detail::B {\n    using detail::B::B;\n};\nusing Alias = int;\n"
+    _kinds = [(mm.group(2), _is_using_alias(_u, mm)) for mm in CPP_TYPE.finditer(_u)
+              if mm.group(1) == "using"]
+    assert _kinds == [("detail", False), ("Alias", True)], _kinds
     assert "~ rust|trait|nros_core::Serialize" in errors[0], \
         "the failure must NAME what moved, not merely that something did"
 

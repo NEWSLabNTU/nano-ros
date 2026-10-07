@@ -1446,6 +1446,52 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/lifecycle_surface.cpp
+    # phase-482 W4 — a ported lifecycle node's CLASS BODY compiles unchanged
+    # against `rclcpp_lifecycle::LifecycleNode`, in the ported flavour AND
+    # freestanding (no NROS_CPP_STD). `-Werror=deprecated-declarations` so the
+    # new type is proven not to lean on the deprecated `nros::LifecycleNode`.
+    for _lc_std in "-DNROS_CPP_STD=1" ""; do \
+        echo "  - phase-482 W4: a ported rclcpp_lifecycle node compiles unchanged (c++17 ${_lc_std:-freestanding})"; \
+        test -f packages/api/nros-cpp/tests/compile/rclcpp_lifecycle_ported_node.cpp || { \
+            echo "ERROR: rclcpp_lifecycle_ported_node.cpp is MISSING -- phase-482 W4 is unpinned." >&2; \
+            exit 1; \
+        }; \
+        c++ -fsyntax-only -std=c++17 $_lc_std -Werror=deprecated-declarations -fno-exceptions -fno-rtti \
+            -I"$gen/nros-cpp-generated" \
+            -I"$gen/nros-c-generated" \
+            -Ipackages/api/nros-cpp/include \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            packages/api/nros-cpp/tests/compile/rclcpp_lifecycle_ported_node.cpp; \
+    done
+    # ...and the one deprecated forwarder phase-482 keeps WARNS, naming the
+    # replacement. Expected failure, so asserted-present first: a missing file is
+    # also a non-zero c++ and would read as a pass.
+    echo "  - phase-482 W4: nros::LifecycleNode is deprecated and names rclcpp_lifecycle::LifecycleNode (expected failure)"
+    test -f packages/api/nros-cpp/tests/compile/lifecycle_node_deprecation_probe.cpp || { \
+        echo "ERROR: lifecycle_node_deprecation_probe.cpp is MISSING -- this check passes on absence." >&2; \
+        exit 1; \
+    }
+    _lcd_rc=0; _lcd_out="$(c++ -fsyntax-only -std=c++17 -Werror=deprecated-declarations -fno-exceptions -fno-rtti \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/lifecycle_node_deprecation_probe.cpp 2>&1)" || _lcd_rc=$?
+    if [ "$_lcd_rc" -eq 0 ]; then \
+        echo "ERROR: lifecycle_node_deprecation_probe.cpp compiled clean under" >&2; \
+        echo "       -Werror=deprecated-declarations: nros::LifecycleNode no longer warns." >&2; \
+        exit 1; \
+    fi
+    . scripts/lib/grep-q.sh
+    _lcd_g=0; nros_grep_q 'rclcpp_lifecycle::LifecycleNode' <<<"$_lcd_out" || _lcd_g=$?
+    if [ "$_lcd_g" -ne 0 ]; then \
+        echo "ERROR: the nros::LifecycleNode probe failed without naming its replacement" >&2; \
+        echo "       (nros_grep_q rc=$_lcd_g)." >&2; \
+        echo "--- compiler said ---" >&2; echo "$_lcd_out" >&2; \
+        exit 1; \
+    fi
     echo "  - a module can NAME the backend it means (issue 1050 defect 3)"
     # `nros::init()` opens whichever backend registered FIRST, and on a hosted
     # target that order is decided before `main` by `.init_array` ctors. A PX4
