@@ -135,3 +135,31 @@ setup tier1` after four minutes — the image has no `west`/`pyelftools`/
 `pykwalify` — so the disk fit was never measured. Tier 1's run moved to
 `run-matrix.yml`'s `tier1` job on the self-hosted runner instead (issues
 1684/1685, PR #1708); host-tests keeps `unit` and `gates`.
+
+## 2026-10-07 — the second dispatch lost the runner in `just build tier1` (a record; the job is now deleted)
+
+First dispatch after #1752 (the job builds the whole tier-1 lane) and #1754
+(the image carries the Zephyr Python tools): run **37560485134** on `main`,
+dispatched 2026-10-07 02:07 UTC, after #1754 and #1755 had landed.
+
+| job | result |
+| --- | --- |
+| workspace unit tests | success |
+| tier-1 gates (`just check`) | success |
+| nros-tests integration (host) | **failure: "The hosted runner lost communication with the server"** |
+
+The integration job got past `just setup tier1` (9 min, including the Zephyr
+SDK fetch this image does not bake) and the pre-build disk reclaim. It then
+ran `just build tier1` for **3 h 14 min** before the runner dropped. No later
+step ran, so the disk transcripts were never uploaded, and the cause is
+inferred rather than measured. It is the terminal mode issue 1353 recorded
+twice before ("lost the runner"), and the issue's own projection had warned
+of it: +41 G for the full lane on top of a 146 G disk that is already
+reclaimed to the bone.
+
+So the budget question was answered by measurement: **the hosted runner
+could not build what tier 1 asserts.** This run is the evidence behind the
+road taken the same day. #1708 moved tier 1's run half (`just build tier1` +
+`just ci tier1 run`) to the self-hosted runner and deleted this integration
+job (the paragraph above). The alternative, narrowing tier 1 to fit this
+runner, was not taken.
