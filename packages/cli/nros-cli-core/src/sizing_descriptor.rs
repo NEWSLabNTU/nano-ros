@@ -1321,7 +1321,13 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
                     .set_action_client_slots(Some(k.heavy_slots))
                     .set_publisher_count(Some(k.max_publishers))
                     .set_sched_context_count(Some(k.max_sc))
-                    .set_cell_entities(Some(k.max_cell_entities));
+                    .set_cell_entities(Some(k.max_cell_entities))
+                    // Issue 1713 -- the application half of the zenoh
+                    // liveliness pool; `nros-zpico-build` adds the node and
+                    // runtime terms from the `NROS_DECLARED_*` facts. Beside
+                    // `publisher_count` and refused with it on the leaf
+                    // declaration road: no carrier ever delivered it there.
+                    .set_entity_liveliness_tokens(Some(k.entity_liveliness_tokens));
                 match (k.max_monitors, k.max_age_monitors) {
                     (Some(m), Some(a)) => {
                         img.set_monitor_rows(Some(m)).set_age_monitor_rows(Some(a));
@@ -1394,7 +1400,7 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
 
 /// Issue 1655 — the `[image]` fields stated from `DerivedEntityKnobs`, refused
 /// together with the derivation.
-const IMAGE_KNOB_FIELDS: [&str; 7] = [
+const IMAGE_KNOB_FIELDS: [&str; 8] = [
     "callback_slots",
     "action_client_slots",
     "publisher_count",
@@ -1402,6 +1408,7 @@ const IMAGE_KNOB_FIELDS: [&str; 7] = [
     "monitor_rows",
     "age_monitor_rows",
     "cell_entities",
+    "entity_liveliness_tokens",
 ];
 
 /// `[image] *_entities` ↔ the entity kind each counts — issue 1577. The seven

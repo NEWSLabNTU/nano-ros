@@ -405,9 +405,12 @@ function(_nros_entity_budget_env _out_var)
     # `NROS_DERIVED_MAX_LIVELINESS` is NOT carried on this road (phase-412 W2).
     # It counts a token per parameter and lifecycle server, which the fragment
     # knows only from the model it was composed with -- on a multi-entry
-    # configure, ONE entry's model. The queryable sizing on this road completes
-    # that infrastructure term at the consumer from per-entry facts; the
-    # liveliness pool has no such completion, so it keeps the zpico default.
+    # configure, ONE entry's model. The consumer completes it instead, as it
+    # does the queryable table: `nros-zpico-build` adds the node and
+    # infrastructure tokens from `NROS_DECLARED_NODES` /
+    # `NROS_DECLARED_INFRA_QUERYABLES` to the descriptor's `[image]
+    # entity_liveliness_tokens` (issue 1713; it kept the zpico default of 16
+    # until then, short for a param + lifecycle image).
     set(_out "")
     # Issue 1649 (RFC-0100 D12) -- NINE entity counts were retired onto the
     # sizing descriptor: EXECUTOR_MAX_CBS, _MAX_SC, _ACTION_CLIENTS, _MAX_NODES,

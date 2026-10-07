@@ -618,6 +618,7 @@ pub struct Image {
     age_monitor_rows: Option<usize>,
     cell_entities: Option<usize>,
     service_server_queryables: Option<usize>,
+    entity_liveliness_tokens: Option<usize>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
 }
@@ -642,6 +643,7 @@ impl Image {
         "age_monitor_rows",
         "cell_entities",
         "service_server_queryables",
+        "entity_liveliness_tokens",
     ];
 
     /// Distinct `(name, namespace)` nodes the image registers — one per declared
@@ -826,6 +828,25 @@ impl Image {
         )
     }
 
+    /// Issue 1713 — the zenoh liveliness tokens the APPLICATION's entities
+    /// declare: one per publisher (action expansion and a contract's
+    /// `/diagnostics` reporter included), subscriber, service server and
+    /// service client — `entity_liveliness_tokens` in the entity derivation.
+    ///
+    /// The application half only, by the rule [`Self::service_server_queryables`]
+    /// states: the node tokens and the runtime's parameter and lifecycle
+    /// entities are NOT in it, because `nros-zpico-build` adds them from the
+    /// `NROS_DECLARED_NODES` / `NROS_DECLARED_INFRA_QUERYABLES` facts, which
+    /// reach it on roads no descriptor reaches. A transient-local cache
+    /// queryable is not in it either: it declares no token.
+    pub fn entity_liveliness_tokens(&self) -> Fact<usize> {
+        fact(
+            &self.entity_liveliness_tokens,
+            "entity_liveliness_tokens",
+            &self.refused,
+        )
+    }
+
     pub fn new(
         node_count: Option<usize>,
         backend_count: Option<usize>,
@@ -915,6 +936,10 @@ impl Image {
         self.service_server_queryables = v;
         self
     }
+    pub fn set_entity_liveliness_tokens(&mut self, v: Option<usize>) -> &mut Self {
+        self.entity_liveliness_tokens = v;
+        self
+    }
 
     pub fn refuse(&mut self, field: &str, reason: impl Into<String>) -> &mut Self {
         debug_assert!(
@@ -949,6 +974,7 @@ impl Image {
             "age_monitor_rows" => self.age_monitor_rows?.to_string(),
             "cell_entities" => self.cell_entities?.to_string(),
             "service_server_queryables" => self.service_server_queryables?.to_string(),
+            "entity_liveliness_tokens" => self.entity_liveliness_tokens?.to_string(),
             _ => return None,
         })
     }
@@ -997,6 +1023,10 @@ impl Image {
                 (
                     "service_server_queryables",
                     self.service_server_queryables.is_some(),
+                ),
+                (
+                    "entity_liveliness_tokens",
+                    self.entity_liveliness_tokens.is_some(),
                 ),
             ],
         )

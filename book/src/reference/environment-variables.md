@@ -107,7 +107,7 @@ guidance and platform guides for target-specific sizing.
 | `ZPICO_MAX_PUBLISHERS`             | Max concurrent publishers in zenoh shim                | `8`              | zpico-sys      |
 | `ZPICO_MAX_SUBSCRIBERS`            | Max concurrent subscribers in zenoh shim               | `8`              | zpico-sys      |
 | `ZPICO_MAX_QUERYABLES`             | Max concurrent queryables in zenoh shim                | `8`              | zpico-sys      |
-| `ZPICO_MAX_LIVELINESS`             | Max concurrent liveliness tokens in zenoh shim         | `16`             | zpico-sys      |
+| `ZPICO_MAX_LIVELINESS`             | Max concurrent liveliness tokens in zenoh shim. DERIVED when the image declares anything: one per node name plus the session's own, one per publisher, subscriber, service server and client, and the parameter and lifecycle families' servers and publisher (issue 1713). A stated value wins. | `16` when nothing is declared | zpico-sys      |
 | `ZPICO_MAX_PENDING_GETS`          | Max concurrent in-flight service calls                 | `4`              | zpico-sys      |
 | `ZPICO_MAX_TL_PUBLISHERS`          | Retention slots for TRANSIENT_LOCAL publishers in the zenoh shim. Each also takes one `ZPICO_MAX_QUERYABLES` slot: a transient-local publisher declares a queryable so a late joiner can query its last sample. An image whose endpoints are declared DERIVES this (an `action_server` row counts one for its `/status`), and a stated value below the declared demand fails the build naming the knob. | `2` | nros-rmw-zenoh |
 | `ZPICO_TL_RETAIN_BYTES`            | Bytes one retained TRANSIENT_LOCAL sample may hold. A larger publish is SENT but not retained, and says so once at WARN. | `1024` | nros-rmw-zenoh |

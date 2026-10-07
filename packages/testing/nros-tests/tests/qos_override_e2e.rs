@@ -236,6 +236,83 @@ fn a_ros2_peer_sees_the_overridden_publisher_profile(zenohd_unique: ZenohRouter)
     );
 }
 
+/// ---------------------------------------------------------------------------
+/// Issue 1713 — every parameter service is VISIBLE, not merely working.
+/// ---------------------------------------------------------------------------
+///
+/// This image carries the parameter family on both of its nodes and a
+/// `[lifecycle]` block: 24 liveliness tokens. The pool was a flat 16, so eight
+/// parameter services declared `liveliness: declare failed (Full)` — they
+/// answered calls and were absent from `ros2 service list`. Measured before the
+/// fix: 9 of the 17 services listed, 8 `Full` lines; after: 17 and 0.
+///
+/// A deadline, not a single shot (issue 0761's rule, as above): the graph is
+/// polled until every expected name is present or the budget runs out, so a red
+/// here means a service that never appeared, not one that was slow.
+#[rstest]
+fn every_parameter_service_is_visible_to_a_ros2_peer(zenohd_unique: ZenohRouter) {
+    if !require_zenohd() {
+        skip!("zenohd not found");
+    }
+    if !require_ros2() {
+        skip!(
+            "ROS 2 / rmw_zenoh_cpp not available — install it from apt \
+             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml)."
+        );
+    }
+    let locator = zenohd_unique.locator();
+    let entry = build_native_workspace_rust_qos_entry()
+        .map(|p| p.to_path_buf())
+        .require("qos workspace entry");
+    let mut cmd = Command::new(entry);
+    cmd.env("RUST_LOG", "info")
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client")
+        .env("NROS_ENTRY_SPIN_MS", "45000")
+        .env("NROS_ENTRY_SPIN_STEP_MS", "10");
+    let mut image = ManagedProcess::spawn_command(cmd, "qos_entry").expect("spawn qos entry");
+
+    // The six REP parameter services, on each node the launch file names.
+    const PARAM_SERVICES: [&str; 6] = [
+        "describe_parameters",
+        "get_parameter_types",
+        "get_parameters",
+        "list_parameters",
+        "set_parameters",
+        "set_parameters_atomically",
+    ];
+    let expected: Vec<String> = ["reliable_talker", "qos_listener"]
+        .iter()
+        .flat_map(|node| PARAM_SERVICES.iter().map(move |s| format!("/{node}/{s}")))
+        .collect();
+
+    const BUDGET: Duration = Duration::from_secs(25);
+    let start = std::time::Instant::now();
+    let mut listed: String;
+    let missing = loop {
+        listed = nros_tests::ros2::ros2_service_list(&locator, DEFAULT_ROS_DISTRO)
+            .unwrap_or_else(|e| format!("<ros2 service list failed: {e}>"));
+        let missing: Vec<&String> = expected
+            .iter()
+            .filter(|name| !listed.lines().any(|l| l.trim() == name.as_str()))
+            .collect();
+        if missing.is_empty() || start.elapsed() > BUDGET {
+            break missing.into_iter().cloned().collect::<Vec<_>>();
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    };
+    image.kill();
+    assert!(
+        missing.is_empty(),
+        "{} of the {} parameter services never appeared in `ros2 service list` within {}s: \
+         {missing:?}. They work and are invisible -- the liveliness pool \
+         (ZPICO_MAX_LIVELINESS) is short for this image (issue 1713).\nlisted:\n{listed}",
+        missing.len(),
+        expected.len(),
+        BUDGET.as_secs()
+    );
+}
+
 // phase-329 W3 — bind this test to `interop::CELLS` (the pattern from
 // xrce_ros2_interop). The coordinate below must equal what the list declares
 // for `qos_override_e2e`; drift turns this RED. Needs no fixtures — runs in tier 1.

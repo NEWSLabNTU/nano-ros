@@ -596,7 +596,7 @@ _nros_c_array_pool_floor(_d "${X}" ZPICO_MAX_LIVELINESS)
 
 GOOD_RUST = """
 const QUERYABLES_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_QUERYABLES";
-const NOT_DERIVED_LIVELINESS_NEEDS_INFRA_COUNT: &str = "ZPICO_MAX_LIVELINESS";
+const LIVELINESS_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_LIVELINESS";
         ("ZPICO_MAX_PUBLISHERS", floor(knobs.max_publishers)),
         ("ZPICO_MAX_SUBSCRIBERS", floor(knobs.max_subscribers)),
 """
@@ -750,7 +750,7 @@ def selftest() -> int:
         for p in check_producers(producer_texts(cmake=lvl_dropped))
     )
     lvl_silent = GOOD_RUST.replace(
-        'const NOT_DERIVED_LIVELINESS_NEEDS_INFRA_COUNT: &str = "ZPICO_MAX_LIVELINESS";', ""
+        'const LIVELINESS_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_LIVELINESS";', ""
     )
     assert any(
         "ZPICO_MAX_LIVELINESS" in p
