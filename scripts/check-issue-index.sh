@@ -204,6 +204,65 @@ if [ "$digest_verdict" = rose ]; then
     exit 1
 fi
 
+# The CONTENT is frozen, not just the count (issue 1739's audit follow-up).
+#
+# A count says nothing about WHICH digests are there: delete one and append a
+# new one and the count is still 327, so the ratchet above reads `ok` — that
+# swap was measured passing (rc 0) after W9 called the hole closed. The block
+# below the FROZEN-DIGESTS-BELOW marker is history nothing maintains, so its
+# bytes are the invariant: any edit, deletion or addition changes the hash. The
+# count arm stays because its message names the remedy for the common case.
+frozen_block_sha256=a769ca89c5a3af06f64a5e6655bbb59b01c1ead1e5b424d0ef8e6186c19ee807
+frozen_block_digest() {  # <file> -> sha256 of every line after the ONE marker; "" if none/many
+    local body
+    body="$(awk '/^<!-- FROZEN-DIGESTS-BELOW/ { n++; next } n == 1 { print }
+                 END { if (n != 1) exit 3 }' "$1")" || return 0
+    printf '%s\n' "$body" | sha256sum | cut -d' ' -f1
+}
+# Normal-path control: the SWAP (net count unchanged) and the DELETE must both
+# move the digest; prose above the marker must not; a missing marker yields "".
+frozen_block_selftest() {
+    local d base rc=0
+    d="$(mktemp -d)"
+    printf '%s\n' 'prose' '<!-- FROZEN-DIGESTS-BELOW: x -->' \
+        'Recently resolved (2026-01-01): **#0007** — a.' \
+        'Recently resolved (2026-01-02): **#0008** — b.' > "$d/base"
+    printf '%s\n' 'other prose' '<!-- FROZEN-DIGESTS-BELOW: x -->' \
+        'Recently resolved (2026-01-01): **#0007** — a.' \
+        'Recently resolved (2026-01-02): **#0008** — b.' > "$d/same"
+    printf '%s\n' '<!-- FROZEN-DIGESTS-BELOW: x -->' \
+        'Recently resolved (2026-01-01): **#0007** — a.' \
+        'Recently resolved (2026-01-03): **#0009** — swapped in.' > "$d/swap"
+    printf '%s\n' '<!-- FROZEN-DIGESTS-BELOW: x -->' \
+        'Recently resolved (2026-01-01): **#0007** — a.' > "$d/del"
+    printf '%s\n' 'Recently resolved (2026-01-01): **#0007** — a.' > "$d/nomark"
+    base="$(frozen_block_digest "$d/base")"
+    [ -n "$base" ] || rc=1
+    [ "$(frozen_block_digest "$d/same")" = "$base" ] || rc=1
+    [ "$(frozen_block_digest "$d/swap")" != "$base" ] || rc=1
+    [ "$(frozen_block_digest "$d/del")" != "$base" ] || rc=1
+    [ -z "$(frozen_block_digest "$d/nomark")" ] || rc=1
+    rm -rf "$d"
+    return "$rc"
+}
+if ! frozen_block_selftest; then
+    echo "check-issue-index: SELF-TEST FAILED — the frozen-block digest no longer sees a swap or a delete" >&2
+    exit 1
+fi
+have_block_sha256="$(frozen_block_digest docs/issues/README.md)"
+if [ "$have_block_sha256" != "$frozen_block_sha256" ]; then
+    echo "check-issue-index: the frozen 'Recently resolved' block in docs/issues/README.md" >&2
+    echo "  CHANGED (sha256 ${have_block_sha256:-<not exactly one FROZEN-DIGESTS-BELOW marker>};" >&2
+    echo "  frozen $frozen_block_sha256)." >&2
+    echo "  The CONTENT is frozen, not just the count: deleting one digest and" >&2
+    echo "  appending another keeps the count and is still the per-PR conflict" >&2
+    echo "  site (issue 0883's class). Restore everything below the marker from" >&2
+    echo "  origin/main; a new digest belongs in docs/issues/archived/<id>-*.md." >&2
+    echo "  If the edit is deliberate (a correction), record it in THIS change:" >&2
+    echo "  set frozen_block_sha256=${have_block_sha256:-?} (and frozen_digests) in $0." >&2
+    exit 1
+fi
+
 # phase-395 W1 — the open list is GENERATED (scripts/gen-issue-index.py) and its
 # rows are list items, `- **#NNNN** (area) — title`. Accept the optional bullet
 # so this convention check keeps working against the generated block; the
