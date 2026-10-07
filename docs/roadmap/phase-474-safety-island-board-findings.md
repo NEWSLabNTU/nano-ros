@@ -260,6 +260,26 @@ start / end per dispatch, `trace-callbacks` feature). The nano-ros part:
   change), per timer, so a 30 Hz tick can be traced in full when its jitter
   is the measurement.
 
+**Result (2026-10-07), issue 1730.** Marker ids appended to the block,
+16-24 unchanged: 25 take (`handle << 24 | take seq`, emitted before the
+callback's start 18), 26 take stamp sec, 27 take stamp nanosec (after a 25,
+when the stamp's place is known). Takes are emitted at all 19 subscription
+dispatch sites; opt-in per slot (`callback_trace::set_take_trace`, C
+`nros_trace_set_take(handle, on, stamp_offset)`) or image-wide
+(`CONFIG_NROS_TRACE_TAKES`). The stamp comes from the type's
+`STAMP_OFFSET` on typed Rust paths and from the slot's stated offset on C/C++
+paths (4 for a type that starts with a `Header` or a `Time stamp`). Timer
+ticks: one in N keeps its 18/19 pair, per slot (`set_timer_trace_every`, C
+`nros_trace_set_timer_every`) or image-wide (`CONFIG_NROS_TRACE_TIMER_EVERY`,
+default 1, 0 = none); other dispatches are always traced. Host tests in
+`nros-node` (`trace-callbacks`). For the island: `CONFIG_NROS_TRACE_TAKES=y`
+or, per input, `nros_trace_set_take(<slot of kinematic_state /
+operation_mode_state / control_cmd>, true, 4)` after registration (the slot is
+the handle the register event names); keep the 30 Hz operator whole and thin
+the rest with `CONFIG_NROS_TRACE_TIMER_EVERY=10` plus
+`nros_trace_set_timer_every(<operator slot>, 1)`; forward 25-27 at 256 + id
+(281-283) beside 277-280. Not run on the board.
+
 ### I4 -- a bounded `frame_id` for the host metadata probe
 
 `nros sync` prints "no producer" for the source metadata of the island's
@@ -525,7 +545,9 @@ independent of each other.
       with `CONFIG_NROS_MONITOR_ARM_ON_CALL=y` and `nros::arm_monitors()` at
       `INIT_DONE`; issue 1715.)
 - [ ] I3: a take hook and a per-timer sampling rate exist and the island
-      traces its F4 hops with them.
+      traces its F4 hops with them. (Hooks exist: markers 25-27, per-slot and
+      Kconfig take tracing and timer sampling, issue 1730; the island's trace
+      run is its own.)
 - [ ] I4: the host metadata probe produces metadata for all four island
       components.
 - [ ] I5: the derived heap and the configured heap agree, and hold after

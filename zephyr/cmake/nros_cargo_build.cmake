@@ -1579,6 +1579,11 @@ function(nros_resolve_knobs)
     # phase-474 I2 -- the arming deadline after the first spin.
     _nros_resolve_knob(NROS_MONITOR_ARM_GRACE_MS
         "${CONFIG_NROS_MONITOR_ARM_GRACE_MS}")
+    # phase-474 I3 -- one timer tick in N keeps its trace pair.
+    if(DEFINED CONFIG_NROS_TRACE_TIMER_EVERY)
+        _nros_resolve_knob(NROS_TRACE_TIMER_EVERY
+            "${CONFIG_NROS_TRACE_TIMER_EVERY}")
+    endif()
     # phase-446 F3 -- the parameter-service buffer is DERIVABLE, but not to a
     # number here: the bound needs the store's capacities, and those are
     # resolved by nros-params' build script (where the `[knobs.params]` board
@@ -2239,6 +2244,10 @@ function(nros_cargo_build)
     # phase-474 I2 -- when the contract monitors arm.
     if(CONFIG_NROS_MONITOR_ARM_ON_CALL)
         list(APPEND _nros_knob_env "NROS_MONITOR_ARM_ON_CALL=1")
+    endif()
+    # phase-474 I3 -- the callback trace's take events, image-wide.
+    if(CONFIG_NROS_TRACE_TAKES)
+        list(APPEND _nros_knob_env "NROS_TRACE_TAKES=1")
     endif()
 
     # Issue 1550 -- the domain's rung, for the boot record. The VALUE reaches

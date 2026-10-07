@@ -12833,6 +12833,8 @@ fn a_stored_violation_emits_its_trace_markers() {
             EVENTS.with(|e| e.borrow_mut().push((id, arg)));
         }
     }
+    #[cfg(feature = "std")]
+    let _g = trace_sink_lock();
     super::callback_trace::set_trace_sink(Some(sink));
     let mut executor: Executor = executor_with_clock(MockSession::new());
     executor.set_report_violations(false);
@@ -13039,6 +13041,8 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
     static CAPTURE: Capture = Capture;
     static SINKS: &[&dyn nros_log::LogSink] = &[&CAPTURE];
     nros_log::init(SINKS);
+    #[cfg(feature = "trace-callbacks")]
+    let _trace_guard = trace_sink_lock();
     #[cfg(feature = "trace-callbacks")]
     {
         unsafe extern "C" fn mark(id: u32, arg: u32) {
@@ -13673,3 +13677,153 @@ fn i7_a_slow_report_breeds_no_overrun_or_jitter_verdict() {
     assert_eq!((pending, overflowed), (0, 0));
 }
 
+/// phase-474 I3 -- tests that install the process-global trace sink or touch
+/// the per-slot trace settings. Serialised so one cannot swap the other's sink
+/// or settings out mid-assertion.
+#[cfg(all(feature = "std", feature = "trace-callbacks"))]
+fn trace_sink_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// phase-474 I3 -- a subscription opted in to take tracing emits one TAKE
+/// event per sample, before its callback's start, and the stamp pair when the
+/// slot names where the stamp is; a subscription not opted in emits none.
+#[cfg(all(feature = "std", feature = "trace-callbacks"))]
+#[test]
+fn i3_an_opted_in_subscription_traces_each_take_and_its_stamp() {
+    use super::callback_trace::{
+        MARKER_START, MARKER_TAKE, MARKER_TAKE_STAMP_NSEC, MARKER_TAKE_STAMP_SEC,
+        reset_trace_settings, set_take_trace, set_trace_sink,
+    };
+    use core::cell::RefCell;
+    let _g = trace_sink_lock();
+    std::thread_local! {
+        static EVENTS: RefCell<alloc::vec::Vec<(u32, u32)>> =
+            const { RefCell::new(alloc::vec::Vec::new()) };
+    }
+    unsafe extern "C" fn sink(id: u32, arg: u32) {
+        if (18..=19).contains(&id) || (25..=27).contains(&id) {
+            EVENTS.with(|e| e.borrow_mut().push((id, arg)));
+        }
+    }
+    set_trace_sink(Some(sink));
+    reset_trace_settings();
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let nid = executor.node_builder("i3_take").build().unwrap();
+    executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/i3/in", |_m: &TestMsg| {})
+        .unwrap();
+    let meta = executor.entries[0].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let sub_ptr = unsafe { arena_ptr.add(meta.offset) } as *const MockSubscriber;
+
+    // Not opted in (the image default is off): no take event.
+    let (data, len) = encode_test_msg(42);
+    unsafe { &*sub_ptr }.load(data, len);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    let seen = EVENTS.with(|e| core::mem::take(&mut *e.borrow_mut()));
+    assert!(
+        seen.iter().any(|&(id, a)| id == MARKER_START && a == 0),
+        "{seen:?}"
+    );
+    assert!(!seen.iter().any(|&(id, _)| id == MARKER_TAKE), "{seen:?}");
+
+    // Opted in, with the "stamp" at byte 0: the encapsulation word and the
+    // value stand in for sec and nanosec.
+    set_take_trace(0, true, Some(0));
+    unsafe { &*sub_ptr }.load(data, len);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    let seen = EVENTS.with(|e| core::mem::take(&mut *e.borrow_mut()));
+    let take = seen
+        .iter()
+        .position(|&(id, _)| id == MARKER_TAKE)
+        .expect("a take");
+    assert_eq!(seen[take].1 >> 24, 0, "the take carries the slot");
+    let sec = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+    assert_eq!(seen[take + 1], (MARKER_TAKE_STAMP_SEC, sec));
+    assert_eq!(seen[take + 2], (MARKER_TAKE_STAMP_NSEC, 42));
+    assert_eq!(
+        seen[take + 3],
+        (MARKER_START, 0),
+        "the take precedes the start"
+    );
+
+    // Off again.
+    set_take_trace(0, false, None);
+    unsafe { &*sub_ptr }.load(data, len);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    let seen = EVENTS.with(|e| core::mem::take(&mut *e.borrow_mut()));
+    assert!(!seen.iter().any(|&(id, _)| id == MARKER_TAKE), "{seen:?}");
+    reset_trace_settings();
+    set_trace_sink(None);
+}
+
+/// phase-474 I3 -- a thinned timer traces one tick in N; the default traces
+/// every tick.
+#[cfg(all(feature = "std", feature = "trace-callbacks"))]
+#[test]
+fn i3_a_thinned_timer_traces_one_tick_in_n() {
+    use super::callback_trace::{
+        MARKER_END, MARKER_START, reset_trace_settings, set_timer_trace_every, set_trace_sink,
+    };
+    use core::{
+        cell::RefCell,
+        sync::atomic::{AtomicU32, Ordering},
+    };
+    let _g = trace_sink_lock();
+    std::thread_local! {
+        static STARTS: RefCell<u32> = const { RefCell::new(0) };
+        static ENDS: RefCell<u32> = const { RefCell::new(0) };
+    }
+    unsafe extern "C" fn sink(id: u32, arg: u32) {
+        if arg == 0 && id == MARKER_START {
+            STARTS.with(|s| *s.borrow_mut() += 1);
+        }
+        if arg == 0 && id == MARKER_END {
+            ENDS.with(|s| *s.borrow_mut() += 1);
+        }
+    }
+    set_trace_sink(Some(sink));
+    reset_trace_settings();
+    static TICKS: AtomicU32 = AtomicU32::new(0);
+    TICKS.store(0, Ordering::SeqCst);
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    // A late tick is not what this asserts; keep the process-wide log quiet.
+    executor.set_report_violations(false);
+    executor
+        .register_timer(TimerDuration::from_millis(5), || {
+            TICKS.fetch_add(1, Ordering::SeqCst);
+        })
+        .unwrap();
+    let tick_until = |executor: &mut Executor, n: u32| {
+        let mut spins = 0;
+        while TICKS.load(Ordering::SeqCst) < n && spins < 400 {
+            let _ = elapse_then_spin_once(executor, 6);
+            spins += 1;
+        }
+    };
+    tick_until(&mut executor, 3);
+    assert_eq!(
+        STARTS.with(|s| *s.borrow()),
+        3,
+        "the default traces every tick"
+    );
+
+    set_timer_trace_every(0, 3);
+    STARTS.with(|s| *s.borrow_mut() = 0);
+    ENDS.with(|s| *s.borrow_mut() = 0);
+    tick_until(&mut executor, 12);
+    assert_eq!(STARTS.with(|s| *s.borrow()), 3, "one tick in three of nine");
+    assert_eq!(ENDS.with(|s| *s.borrow()), 3, "start and end stay paired");
+
+    set_timer_trace_every(0, 0);
+    STARTS.with(|s| *s.borrow_mut() = 0);
+    tick_until(&mut executor, 15);
+    assert_eq!(STARTS.with(|s| *s.borrow()), 0, "0 = none");
+    reset_trace_settings();
+    set_trace_sink(None);
+}

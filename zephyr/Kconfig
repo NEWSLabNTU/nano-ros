@@ -200,6 +200,32 @@ config NROS_TRACE_CALLBACKS
       for registration. The per-event cost has NOT been measured in isolation
       on any target, so this is opt-in and defaults off.
 
+config NROS_TRACE_TAKES
+    bool "Trace every sample a subscription takes (marker 25, stamp 26/27)"
+    depends on NROS_TRACE_CALLBACKS
+    help
+      phase-474 I3 -- emit a TAKE event (marker 25, `handle << 24 | take
+      seq`) for every sample a subscription dispatches, before its
+      callback's start (18), followed by the sample's source stamp (26 sec,
+      27 nanosec) when its place is known: the type's own leading stamp on a
+      typed Rust subscription, or the offset an application names with
+      nros_trace_set_take(handle, on, stamp_offset) on the C and C++ paths.
+      Off by default; nros_trace_set_take() opts single subscriptions in or
+      out either way. The take-to-stamp difference is the link hop of an
+      input, on the trace's own clock.
+
+config NROS_TRACE_TIMER_EVERY
+    int "Trace one timer tick in N (1 = every tick, 0 = none)"
+    depends on NROS_TRACE_CALLBACKS
+    default 1
+    range 0 65534
+    help
+      phase-474 I3 -- keep the start/end pair (18/19) of one timer tick in
+      N, image-wide; nros_trace_set_timer_every(handle, n) overrides it per
+      timer. A RAM trace window that cannot hold every tick of every timer
+      can thin the rest and keep the one whose jitter is the measurement
+      whole. Subscription, service and action dispatches are always traced.
+
 # =============================================================================
 # Cyclone DDS tuning
 # =============================================================================

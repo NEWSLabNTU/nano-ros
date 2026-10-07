@@ -40,6 +40,11 @@
 /// | 18          | start    | `handle`                                  |
 /// | 19          | end      | `handle`                                  |
 ///
+/// and, with the later blocks, 20 (handle-tagged name chunk), 21-24 (a stored
+/// contract violation, phase-474 I1) and 25-27 (a take and its source stamp,
+/// phase-474 I3, see [`nros_trace_set_take`]); the full table is in
+/// `nros_node::executor::callback_trace`.
+///
 /// Call it once at startup, BEFORE anything is registered on the executor: a
 /// sink installed later misses the registration events, and the decoder then
 /// has handles with no names.
@@ -74,4 +79,43 @@ pub unsafe extern "C" fn nros_set_trace_sink(sink: Option<unsafe extern "C" fn(u
 pub extern "C" fn nros_monitors_arm() {
     #[cfg(feature = "rmw-cffi")]
     nros_node::executor::monitor::request_monitor_arming();
+}
+
+/// phase-474 I3 -- trace each sample TAKEN by the subscription in `handle`
+/// (its slot index: the `handle` its register event carries), or stop.
+///
+/// A take is marker 25 (`handle << 24 | take seq`), emitted before the
+/// callback's start (18). With `stamp_offset >= 0` it is followed by 26/27,
+/// the sample's `stamp.sec` / `stamp.nanosec` read at that byte of the
+/// serialized sample, encapsulation header included (4 for a type that
+/// starts with a `Header` or a `builtin_interfaces/Time stamp`). A negative
+/// `stamp_offset` emits no stamp on the C/C++ paths, which carry no type.
+/// Overrides `CONFIG_NROS_TRACE_TAKES` for this slot.
+///
+/// No-op unless the crate was built with `trace-callbacks`.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_trace_set_take(handle: u8, on: bool, stamp_offset: i32) {
+    #[cfg(all(feature = "trace-callbacks", feature = "rmw-cffi"))]
+    nros_node::executor::callback_trace::set_take_trace(
+        handle,
+        on,
+        u16::try_from(stamp_offset).ok(),
+    );
+    #[cfg(not(all(feature = "trace-callbacks", feature = "rmw-cffi")))]
+    let _ = (handle, on, stamp_offset);
+}
+
+/// phase-474 I3 -- trace one tick in `every` of the timer in `handle` (its
+/// slot index): 1 = every tick, 0 = none. Overrides
+/// `CONFIG_NROS_TRACE_TIMER_EVERY` for this slot; the first tick after the
+/// call is traced. A 30 Hz tick whose jitter is the measurement can stay
+/// whole while the rest are thinned to fit a RAM trace window.
+///
+/// No-op unless the crate was built with `trace-callbacks`.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_trace_set_timer_every(handle: u8, every: u16) {
+    #[cfg(all(feature = "trace-callbacks", feature = "rmw-cffi"))]
+    nros_node::executor::callback_trace::set_timer_trace_every(handle, every);
+    #[cfg(not(all(feature = "trace-callbacks", feature = "rmw-cffi")))]
+    let _ = (handle, every);
 }
