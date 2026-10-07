@@ -82,35 +82,10 @@ const WORKER_STACK_BYTES: usize = 16384;
 /// exceeding this falls back to cooperative dispatch rather than failing.
 pub(crate) const MAX_PRIORITY_LEVELS: usize = 8;
 
-/// One dispatch handed to a worker.
-///
-/// `arena_base` + `arena_offset` rather than a pointer so the item is plainly
-/// `Send`: the executor's arena outlives every worker (see [`OsPriorityWorker`]
-/// `Drop`), and the worker reconstitutes the address on the far side.
-#[derive(Clone, Copy)]
-pub(crate) struct WorkItem {
-    pub(crate) arena_base: usize,
-    pub(crate) arena_offset: usize,
-    pub(crate) try_process: unsafe fn(*mut u8, u64, u8) -> Result<bool, nros_rmw::TransportError>,
-    pub(crate) delta_us: u64,
-    /// The entry's slot index, carried so the leaf callback hooks can name
-    /// the callback they bracket (phase 8,
-    /// `docs/design/callback_tracing.rst`). This path is the reason those
-    /// hooks had to be thread-safe from day one: it runs `try_process` on a
-    /// WORKER task, so two callbacks can legitimately be in flight at once
-    /// and their events interleave in the capture. Keying every event on the
-    /// handle — rather than holding an open span in a single slot — is what
-    /// lets the decoder pair them anyway.
-    pub(crate) desc_idx: u8,
-}
-
-// SAFETY: Phase 110.F per-DescIdx exclusive-access invariant — the activator
-// scan in `spin_once` only sends a `WorkItem` for a given `arena_offset` to one
-// worker per cycle, and won't re-send the same offset until the worker drains
-// the previous one (`os_pri` dispatch is the worker's exclusive path;
-// cooperative dispatch is skipped for SCs with non-zero `os_pri`). The fn
-// pointer is Send-clean.
-unsafe impl Send for WorkItem {}
+/// One dispatch handed to a worker — issue 1705 moved the type, and the
+/// hand-off protocol that makes it safe against a concurrent release, to
+/// `worker_item`.
+pub(crate) use super::worker_item::WorkItem;
 
 /// State shared between the spin loop and one worker task.
 ///
@@ -142,11 +117,11 @@ unsafe extern "C" fn worker_entry(arg: *mut c_void) -> *mut c_void {
         // Drain everything queued before sleeping again, so a burst costs one
         // wait rather than one per item.
         while let Some(item) = ctx.mailbox.dequeue() {
-            // SAFETY: `arena_base + arena_offset` addresses the executor's
-            // arena, which outlives this task — `Executor::drop` halts and
-            // JOINS every worker before the arena is released.
-            let data = (item.arena_base as *mut u8).wrapping_add(item.arena_offset);
-            let _ = unsafe { (item.try_process)(data, item.delta_us, item.desc_idx) };
+            // SAFETY: the item was built by the spin thread with
+            // `WORKER_QUEUED` held, and the arena and tag table it addresses
+            // outlive this task — `Executor::drop` halts and JOINS every worker
+            // before the backing is released.
+            unsafe { super::worker_item::run_work_item(&item) };
         }
         // Bounded wait: the producer signals after every enqueue, and the
         // timeout bounds how long a halt takes to observe.
