@@ -1154,6 +1154,8 @@ config NROS_PARAM_SERVICE_INBOX_BYTES
       this symbol, rather than dropping a well-formed request at run time
       (issue 1352). 0 is not a size and is refused (issue 1485): it used to
       be this symbol's derive sentinel, and the readers took it literally.
+      On XRCE the same number is XRCE_PARAM_REQUEST_BYTES, which raises
+      NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE to fit it (issue 1722).
       Maps to NROS_PARAM_SERVICE_INBOX_BYTES.
 
 config NROS_PARAM_SERVICE_INBOX_DEPTH
@@ -1375,12 +1377,17 @@ config NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE
       Size of one service-server request inbox entry (bytes).
       Maps to XRCE_SERVICE_REQUEST_BUFFER_SIZE.
 
-      Settable, and NOT derived: the parameter (6 per node) and lifecycle
-      (5) families open service servers that no `[[endpoint]]` row in the
-      sizing descriptor itemises, and an action server opens three more.
-      A size taken from the declared service rows alone would be short for
-      exactly those, in the UNDER direction. Falls back to
-      NROS_XRCE_BUFFER_SIZE.
+      Settable. Not derived from the declared service rows: the parameter
+      (6 per node) and lifecycle (5) families open service servers that no
+      `[[endpoint]]` row in the sizing descriptor itemises, and an action
+      server opens three more, so a size from those rows alone would be
+      short in the UNDER direction. Falls back to NROS_XRCE_BUFFER_SIZE,
+      RAISED to the parameter family's largest request when that is known
+      (NROS_PARAM_SERVICE_INBOX_BYTES, or derived from the contract's
+      declared `params:` — issue 1722). A stated value below that request,
+      or one too large for the reliable stream's reassembly window
+      (NROS_XRCE_STREAM_HISTORY fragments of the transport MTU), fails the
+      build.
 
 config NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE
     int "Service-client reply slot size"

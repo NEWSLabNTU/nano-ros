@@ -261,3 +261,13 @@ define  XRCE_SERVICE_REPLY_BUFFER_SIZE   NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE   1
 # default; 4 is the floor (reliable retransmission needs at least 2 unACK'd
 # messages outstanding plus headroom).
 define  XRCE_STREAM_HISTORY        NROS_XRCE_STREAM_HISTORY        4
+# Issue 1722 — the parameter family's largest REQUEST, in bytes (CDR header
+# included). Not an XRCE knob: it is the backend-neutral statement nros-node
+# already checks against the request it prices from the declaration and the
+# store's caps, so a person states it once for every backend. Unstated, the
+# cargo lane derives it from the sizing descriptor's `[params] service_shape`
+# (`XrceDemand::derive_param_request`). `internal.h` raises
+# XRCE_SERVICE_REQUEST_BUFFER_SIZE to it and refuses a STATED request buffer
+# below it, so a declared `set_parameters` can never be dropped by a buffer the
+# build already knew was short.
+define  XRCE_PARAM_REQUEST_BYTES   NROS_PARAM_SERVICE_INBOX_BYTES  1

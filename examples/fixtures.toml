@@ -4164,6 +4164,22 @@ image = "native_rust_params"
 codegen_out = "build-workspace-codegen/demo_bringup"
 target_dir = "target-fixtures"
 
+# issue 1722 — the same params entry on XRCE, 25 declared integer parameters.
+[[workspace_fixture]]
+id = "workspace-features-rust-params-xrce"
+platform = "linux"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+image = "native_rust_params_xrce"
+codegen_out = "build-workspace-codegen/demo_bringup"
+target_dir = "target-fixtures-xrce"
+# issue 1743 -- the cargo road does not count the 6 param + 5 lifecycle
+# service servers for XRCE, so the header's 4 cannot boot this image. Stated
+# here until that road derives it; delete with the fix.
+env = { NROS_XRCE_MAX_SERVICE_SERVERS = "11" }
+
 [[workspace_fixture]]
 id = "workspace-features-rust-lifecycle"
 platform = "linux"

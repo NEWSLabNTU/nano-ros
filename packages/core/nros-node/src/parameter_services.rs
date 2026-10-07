@@ -1565,9 +1565,9 @@ impl ParameterServiceServers {
             ParamServiceFailure::InboxOverflow => nros_log::log_error!(
                 nros_log::get_logger("nros"),
                 "param service {}/{}: request dropped by the TRANSPORT inbox (not the {} B \
-                 executor buffer). zenoh: NROS_PARAM_SERVICE_INBOX_BYTES, or \
-                 NROS_SERVICE_INBOX_BYTES with no declared endpoints; or declare `params:` \
-                 (issue 1352)",
+                 executor buffer). NROS_PARAM_SERVICE_INBOX_BYTES; zenoh also \
+                 NROS_SERVICE_INBOX_BYTES, xrce NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE; or \
+                 declare `params:` (issues 1352, 1722)",
                 fqn,
                 svc,
                 cap

@@ -321,6 +321,12 @@ launch = "rust_lifecycle.launch.xml"
 board = "native"
 launch = "rust_params.launch.xml"
 
+# issue 1722 — the params image on XRCE, with 25 declared parameters.
+[image.native_rust_params_xrce]
+board = "native"
+launch = "rust_params_xrce.launch.xml"
+rmw = "xrce"
+
 [image.native_rust_qos]
 board = "native"
 launch = "rust_qos.launch.xml"

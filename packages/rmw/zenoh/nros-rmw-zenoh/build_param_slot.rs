@@ -102,47 +102,8 @@ pub fn builtin_slot(
     }
 }
 
-/// The rule, with the environment lifted out of it: the caller reads the two
-/// roads, this takes the token. Tested by `tests/builtin_inbox_slot.rs`, which
-/// includes this file (a build script carries no `#[cfg(test)]` that anything
-/// runs).
-pub fn param_request_max_from(raw: &str) -> Option<usize> {
-    /// The 4-byte encapsulation header both halves begin with.
-    const CDR_HEADER: usize = 4;
-    /// A sequence length: up to 3 bytes of padding to 4, then a `u32`.
-    const CDR_SEQ: usize = 3 + 4;
-    /// A string beyond its bytes: padding, the `u32` length (which counts the
-    /// NUL), and the NUL.
-    const CDR_STR: usize = 3 + 4 + 1;
-    /// An 8-byte field after anything: up to 7 bytes of padding, then 8.
-    const CDR_WORD: usize = 7 + 8;
-    /// One `ParameterValue` with no data in it. The worst over all eight start
-    /// alignments; `nros-node` states why it is 53 and not the 68 the per-field
-    /// worsts sum to.
-    const CDR_VALUE_BASE: usize = 53;
-
-    if raw.is_empty() {
-        return None;
-    }
-    let mut worst = 0usize;
-    for node in raw.split(',') {
-        let f: Option<Vec<usize>> = node.split(':').map(|v| v.trim().parse().ok()).collect();
-        let f = f.filter(|f| f.len() == 9)?;
-        // Fields 4..9 are the counts whose bound needs the store's
-        // capacities. One of them and this crate abstains, for the whole
-        // image: a bound that is right for three nodes and guessed for the
-        // fourth is not a bound.
-        if f[4..9].iter().any(|&n| n != 0) {
-            return None;
-        }
-        let head = CDR_HEADER + CDR_SEQ;
-        let names = f[1] + f[0] * CDR_STR;
-        let prefixes = f[3] + f[2] * CDR_STR;
-        let values = f[0] * CDR_VALUE_BASE;
-        worst = worst
-            .max(head + names)
-            .max(head + prefixes + CDR_WORD)
-            .max(head + names + values);
-    }
-    Some(worst.next_multiple_of(4))
-}
+/// The price itself is SHARED (issue 1722): XRCE sizes its request buffer from
+/// the same token, and a second copy of this arithmetic in another build script
+/// is issue 1025's defect. What zenoh DOES with the price -- the floor, the
+/// refusal, the knob it names -- stays here (RFC-0100 D5).
+pub use nros_sizing_descriptor::param_request_max_from;

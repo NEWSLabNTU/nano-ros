@@ -126,6 +126,13 @@ _CMAKEDEFINE = re.compile(r"^#cmakedefine\s+([A-Za-z_][A-Za-z0-9_]*)\s*$", re.M)
 _LANE_SYMBOL = re.compile(r"\b(UCLIENT_[A-Z0-9_]+|XRCE_(?:MAX|MIN|BUFFER|STREAM|SUBSCRIBER)[A-Z0-9_]*)\b")
 # `_nros_resolve_knob(NROS_XRCE_X` / `_nros_resolve_derivable_knob(NROS_XRCE_X`
 _FORWARDED = re.compile(r"_nros_resolve(?:_derivable)?_knob\(\s*(NROS_XRCE_[A-Z0-9_]+)")
+# issue 1722 — ANY forwarded `NROS_*` knob, for the other direction only ("is
+# this binding wired?"). The manifest may bind a backend-neutral knob
+# (`NROS_PARAM_SERVICE_INBOX_BYTES`, which nros-node owns and cmake forwards),
+# and reading only `NROS_XRCE_*` reported that forwarded knob as unwired. The
+# reverse check ("is every forwarded XRCE knob bound?") stays XRCE-scoped: the
+# file forwards dozens of knobs that are none of this backend's business.
+_FORWARDED_ANY = re.compile(r"_nros_resolve(?:_derivable)?_knob\(\s*(NROS_[A-Z0-9_]+)")
 # `Maps to A, B.` inside a Kconfig help block.
 #
 # NOT anchored to the start of a line. issue 1033 added
@@ -517,7 +524,9 @@ def main() -> int:
 
     # (5) THE WIRING — Kconfig's `Maps to` line against the manifest's binding.
     bindings = manifest_bindings(knobs, defines)
-    forwarded = set(_FORWARDED.findall(KNOB_BRIDGE.read_text(encoding="utf-8")))
+    bridge_text = KNOB_BRIDGE.read_text(encoding="utf-8")
+    forwarded = set(_FORWARDED.findall(bridge_text))
+    forwarded_any = set(_FORWARDED_ANY.findall(bridge_text))
     maps_to = kconfig_maps_to(KCONFIG.read_text(encoding="utf-8"))
 
     for env in sorted(forwarded):
@@ -528,7 +537,7 @@ def main() -> int:
                 "defect phase-420 W9 fixed for all six at once; do not fix one."
             )
     for env in sorted(bindings):
-        if env in forwarded or env in NO_KCONFIG_OPTION:
+        if env in forwarded_any or env in NO_KCONFIG_OPTION:
             continue
         bad.append(
             f"xrce-config.txt binds `{env}`, which nros_cargo_build.cmake does not forward and "

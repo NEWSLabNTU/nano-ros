@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<!-- issue 1722 — the parameter family's request on XRCE. The same param_talker
+     as rust_params.launch.xml, built for XRCE (`[image.native_rust_params_xrce]`),
+     with the 25 integer parameters issue 1352 measured: 35-byte names, so a
+     stock `set_parameters` naming all of them is ~2,411 B. Their declaration is
+     rust_params_xrce.contract.yaml, which is what prices the request. -->
+<launch>
+  <node pkg="rust_param_talker_pkg" exec="param_talker" name="param_talker">
+    <param name="publish_period_ms" value="250"/>
+    <param name="param_00_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_01_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_02_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_03_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_04_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_05_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_06_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_07_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_08_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_09_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_10_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_11_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_12_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_13_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_14_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_15_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_16_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_17_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_18_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_19_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_20_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_21_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_22_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_23_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+    <param name="param_24_xxxxxxxxxxxxxxxxxxxxxxxxxx" value="0"/>
+  </node>
+</launch>
