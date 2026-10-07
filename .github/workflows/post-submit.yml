@@ -83,7 +83,7 @@ permissions:
 jobs:
   # phase-395 W12 — `check-dep-chain`, moved off the merge path.
   #
-  # 158 s measured, an 8-cell board×rmw matrix (`nros setup --dry-run` + codegen
+  # 158 s measured, a 7-cell board×rmw matrix (8 until ESP32 went dormant) (`nros setup --dry-run` + codegen
   # + `cargo tree` per cell). Its own header still claims it runs "in seconds",
   # which was true per cell and stopped being true as cells accumulated.
   #
@@ -96,7 +96,7 @@ jobs:
   # which the ci-base image has, and nothing else. Gating it on a self-hosted
   # runner that does not exist yet would have moved it from expensive to never.
   dep-chain:
-    name: dep-chain (8 board×rmw cells)
+    name: dep-chain (7 board×rmw cells)
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/newslabntu/nano-ros-ci:humble
