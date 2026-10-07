@@ -85,6 +85,11 @@ nros-cargo-profile = { path = "../../tooling/nros-cargo-profile" }
 # every consumer (the executor's build script, each backend's, cmake through the
 # verb) READS it, so the schema cannot live in either of them.
 nros-sizing-descriptor = { path = "../../tooling/nros-sizing-descriptor" }
+# phase-481 W1 (RFC-0098 D11) — the env<->Kconfig pairing (`KCONFIG_PAIRS` /
+# `kconfig_key_for`) the Zephyr fragment renderer reads. The SAME table the
+# build scripts' knob ladder reads, so the renderer cannot pair a knob with a
+# symbol the ladder does not. Zero-dependency, host-only crate.
+nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
 # phase-290 W4 — the RFC-0049 platform/board knob resolver for `nros config explain`.
 nros-board-common = { path = "../../boards/nros-board-common", features = ["build-helpers"] }
 

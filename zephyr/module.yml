@@ -34,6 +34,14 @@ build:
     # still relies on). `.` would scan `<repo-root>/snippets/`; the
     # snippets live under `zephyr/`, so `zephyr` is the correct root.
     snippet_root: zephyr
+    # phase-481 W1 (RFC-0098 D11) — the module's own pre-Kconfig hook. Zephyr
+    # includes `<module_ext_root>/modules/modules.cmake` after module discovery
+    # and BEFORE `configuration_files`/`kconfig`, in the application's scope, so
+    # `zephyr/modules/modules.cmake` can render the image's `system.toml` into a
+    # Kconfig fragment and place it last in `EXTRA_CONF_FILE` — on every road,
+    # with no line in the leaf (a leaf-side helper cannot locate nano-ros on a
+    # plain `west build`; phase-481 W0 measured it). Relative to the module root.
+    module_ext_root: zephyr
 
 # Phase 180.C — module-contributed Twister samples. Each path is relative
 # to the MODULE ROOT (the repo root; the `nano-ros` west project) and is

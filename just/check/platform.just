@@ -366,6 +366,15 @@ kconfig-knob-forwarding:
 kconfig-overridden-values:
     @python3 scripts/check-kconfig-overridden-values.py
 
+# phase-481 W2 (RFC-0098 D10/D11) — a tracked `examples/**/*.conf` may not
+# assign a nano-ros knob (the RMW choice, the language API, the deploy endpoint,
+# or any `CONFIG_NROS_*` an `[image.<id>] env` row renders to): the module's
+# `module_ext_root` hook renders them from `system.toml`, and a second statement
+# is a second source. A shrink-only RATCHET until W3 migrates the examples.
+[group("checks")]
+leaf-conf-nros-knobs:
+    @python3 scripts/check-leaf-conf-nros-knobs.py
+
 # issue 1512 — bare metal is the one platform whose `nros-platform/platform-*`
 # feature is BOARD-specific, so one platform needs THREE arms plus a CMake row
 # instead of one name in each file. Nobody was checking, and the measured state

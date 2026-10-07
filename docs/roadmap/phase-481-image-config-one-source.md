@@ -1,9 +1,11 @@
 # Phase 481 -- image configuration has one source: `system.toml` on every road
 
-**Status (2026-10-07). W0 DONE, PAUSED before W1 -- W0 measured D11's leaf
-helper unable to locate nano-ros on a plain `west build` (the book's road); a
-revised mechanism (a Zephyr `module_ext_root` hook, measured working on both
-roads) is proposed in RFC-0098 D11 and needs a decision before W1-W2.** Implements
+**Status (2026-10-07). W0, W1, W2 and W4 LANDED; W3 and W5 open.** D11's
+locator revision (the module's `module_ext_root` hook instead of a leaf helper)
+was DECIDED by the user on 2026-10-07 (option "A") and is what W1 built,
+measured on Zephyr 3.7 and 4.4, on the fixture road and on a plain `west build`
+with nano-ros as a west project. W2's gate is a shrink-only ratchet holding the
+226 lines W3 migrates. Implements
 [RFC-0098](../design/0098-generated-leaf-build-config.md) D10-D12 (and the
 pointer it adds to [RFC-0049](../design/0049-hierarchical-platform-board-config.md)).
 Closes issue [1721](../issues/1721-image-env-west-and-workspace-cmake-roads.md).
@@ -43,10 +45,11 @@ ZERO usable places on the workspace cmake road.
 
 - **D10** -- `system.toml` is the single source of an image's knobs, RMW and
   deploy endpoint; each road renders them into its native form.
-- **D11** -- on Zephyr that form is a generated Kconfig fragment appended to
-  `EXTRA_CONF_FILE` by a nano-ros helper the leaf's `CMakeLists.txt` calls
-  before `find_package(Zephyr)`; a gate keeps nano-ros knob symbols out of leaf
-  conf files; knobs with no Kconfig symbol ride the 1712 `--config` file.
+- **D11** -- on Zephyr that form is a generated Kconfig fragment placed last in
+  `EXTRA_CONF_FILE` by the nano-ros module's own `module_ext_root` hook
+  (revised from a leaf helper after W0; decided 2026-10-07); a gate keeps
+  nano-ros knob symbols out of leaf conf files; knobs with no Kconfig symbol
+  ride the 1712 `--config` file.
 - **D12** -- a workspace image whose resolved configuration differs gets its
   own configure (`build/<coord>-<hash>/`); identical configurations still share
   `build/<coord>/`.
@@ -170,11 +173,10 @@ the box has none and errors.
 
 ### W1 -- render the image into each road's form
 
-> **Blocked on the D11 revision (W0).** The helper bullet below names the
-> mechanism W0 measured failing on a plain `west build`; under the proposed
-> revision the same rendering is reached from the module's `module_ext_root`
-> hook, with no line in the leaf. The renderer, the `--config` carrier and the
-> image selection are unaffected.
+> **Unblocked 2026-10-07:** the D11 revision was DECIDED (user, option "A").
+> The helper bullet below is superseded by the module's `module_ext_root` hook
+> (no line in the leaf); the renderer, the `--config` carrier and the image
+> selection are as written. What landed is under "W1 results" below.
 
 - `nros ws leaf-system --kconfig-out <path>` writes the Zephyr fragment from
   the image: `[image.<id>] env` rows that have a Kconfig counterpart (through
@@ -193,6 +195,133 @@ the box has none and errors.
 row with no Kconfig symbol); W0's measurements repeated through the real
 helper.
 
+#### W1 results (landed and measured 2026-10-07, distrobox `ros2`)
+
+**What was built.**
+
+- `nros ws leaf-system <dir> --kconfig-out <path> [--image <id>] [--language
+  <lang>]` (`cmd/leaf_kconfig.rs`). Rows: the RMW choice from the image's
+  `rmw`; the language API of the package's ENTRY (`Cargo.toml` is Rust; a
+  `CMakeLists.txt` package's entry is the TYPED Zephyr carrier, so C++ -- every
+  C/C++ leaf and workspace image already resolves to `CPP_API`, the C ones by
+  stating `C_API` and then `CPP_API` in one choice; a "language of the sources"
+  rule would have switched the twelve C/C++ leaves to `C_API`); the deploy
+  endpoint from `locator` (`CONFIG_NROS_ZENOH_LOCATOR`, or
+  `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` for XRCE); and every `[image.<id>] env`
+  row (after its `transport` implications) whose symbol
+  `nros_zephyr_build::kconfig_key_for` names -- `KCONFIG_PAIRS`, not a second
+  table; the CLI now depends on `nros-zephyr-build` -- AND that the module's
+  `zephyr/Kconfig` defines. The symbol's Kconfig TYPE decides the spelling
+  (bool `1`/`0` -> `y`/`n`, int, hex, quoted string), and the renderer refuses,
+  naming the `system.toml` row, what Zephyr would refuse: a value the type
+  cannot hold (`NROS_LOG_MAX_LEVEL = "warn"` is a Kconfig `int`), a symbol under
+  another RMW's `if NROS_RMW_<X>`, one symbol stated twice, an unknown `rmw`.
+  Write-if-changed; deleted when the image states nothing. Seven renderer unit
+  tests (each row kind, refusals, the empty case, a row with no Kconfig symbol,
+  the real module Kconfig) plus `read_image` and `west_app` tests.
+- With `--kconfig-out`, `--image-env-out` (issue 1712's unforced `--config`
+  `[env]` file) carries only the rows NO Kconfig symbol holds, also printed as
+  `NROS_LEAF_IMAGE_ENV_ROW=K=V`.
+- The hook: `zephyr/module.yml` `module_ext_root: zephyr` ->
+  `zephyr/modules/modules.cmake` -> `zephyr/cmake/nros_image_kconfig.cmake`.
+  No-op without a `system.toml` (beyond dropping a stale rendering of its own).
+  It renders into `<build>/nros/<image>.conf` and puts it LAST in the CACHE
+  value of `EXTRA_CONF_FILE`, keeping every user entry in order, dropping an
+  earlier rendering, leaving the local variable alone. That placement is the
+  resolution of W0's correction 3: `zephyr_get(EXTRA_CONF_FILE … MERGE REVERSE)`
+  orders the scopes local, ENV, snippets, cache, so last-in-cache is last of
+  every conf FILE on every road, while `-DCONFIG_*` still merges after it.
+  `system.toml` and the CLI binary become configure dependencies.
+  `nros_resolve_cli` / `nros_codegen_tool_reconfigure` moved to
+  `cmake/NanoRosCli.cmake` so the hook can reach them before `project()`.
+- Image selection: `-DNROS_IMAGE=<id>`; the C/C++ leaf reader
+  (`nano_ros_read_leaf_system`) honours the same selection on Zephyr, so the
+  RMW its cmake reads and the fragment's are one image's.
+- The `--config` carrier on both Zephyr cargo lanes: `nros_cargo_build()`
+  appends `--config=<file>` (and keys a shared cargo dir on it, issue 0616's
+  rule); zephyr-lang-rust's `rust_cargo_application` gains
+  `${NROS_IMAGE_ENV_CARGO_FLAGS}` beside `${EXTRA_CARGO_ARGS}`
+  (`scripts/zephyr/cargo-features-patch.sh` hunk 5, self-tested on both
+  upstream layouts).
+- **One finding the W0 sketch did not price, measured:** a knob the Zephyr
+  cmake lane forwards itself through `cmake -E env` (any `_nros_resolve_knob`,
+  including a derived value) would OVERWRITE the unforced `--config` row, so a
+  no-Kconfig image row is also rung `image` inside `_nros_resolve_knob` /
+  `_nros_resolve_derivable_knob`: below an exported variable, above a derived
+  or default value. Measured with `ZPICO_TL_RETAIN_BYTES = "4096"` (no Kconfig
+  symbol): `NROS_RESOLVED_ZPICO_TL_RETAIN_BYTES=4096`, source `image`, on the
+  C lane's `cmake -E env`; and `TL_RETAIN_BYTES: usize = 4096` in
+  nros-rmw-zenoh's generated `buffer_config.rs` on the Rust lane, which reads
+  only the `--config` file. `check-knob-delivery` excuses rung `image` like
+  `environment`. Every knob the boot record carries has a Kconfig symbol, so
+  `image` never reaches `KnobSource`.
+- Generated workspace applications state `NROS_IMAGE_SYSTEM_DIR` (the bringup),
+  `NROS_IMAGE` and `NROS_IMAGE_LANGUAGE` (`cpp` for the TYPED
+  `nano_ros_add_executable` arm, `rust` for `rust_cargo_application`) before
+  `find_package(Zephyr)` (`builder/west_app.rs`).
+- Issue 1712's "Zephyr west road does not deliver" warning in
+  `NanoRosPackageXml.cmake` is removed.
+
+**The W0 bullets, re-measured through the real hook.** Probe knob
+`CONFIG_NROS_EXECUTOR_MAX_CBS` (`int`, default `-1` = derive). The leaf or
+bringup conf states `9`; the image states `env = { NROS_EXECUTOR_MAX_CBS =
+"13", ZPICO_TL_RETAIN_BYTES = "4096" }`. "Cargo" is nros-node's
+`OUT_DIR/nros_node_config.rs` `MAX_CBS` under the target dir each build.ninja
+names. Targets on 3.7: `examples/zephyr/c/talker` and `rust/talker` through
+`just zephyr build-one` (module via `-DZEPHYR_EXTRA_MODULES`);
+`examples/workspaces/c` `demo_bringup:zephyr` through the FIXTURE road
+(`NROS_ZEPHYR_FIXTURE_FILTER=build-ws-c-entry-zenoh just zephyr
+build-fixtures`, i.e. `nros build` passing `-DEXTRA_CONF_FILE=<bringup>/…/
+prj-zenoh.conf`); and a PLAIN `west build` of the C and Rust leaves in a scratch
+west topdir whose manifest lists nano-ros as a project at `modules/nano-ros`,
+with `NROS_REPO_DIR` and `ZEPHYR_BASE` unset and no `-DZEPHYR_EXTRA_MODULES`
+(the hook resolved itself at `…/w1-plainwest/modules/nano-ros`).
+
+| bullet | C leaf | Rust leaf | workspace image | plain west (C / Rust) |
+|---|---|---|---|---|
+| fragment lands in `.config` and the cargo read | `.config` 13, `cmake -E env` 13 (source `kconfig`), cargo 13 | `.config` 13, cargo 13 (`$DOTCONFIG`) | `.config` 13, env 13, cargo 13 | 11 / 11 (image stated 11) |
+| leaf/bringup conf says `9` | 13 | 13 | 13 — after the bringup's `prj-zenoh.conf`, which arrives as a command-line `-DEXTRA_CONF_FILE` (W0's correction 3, now resolved) | 11 / 11 |
+| merge order (`Merged configuration`) | `prj.conf`, `prj-zenoh.conf`, line overlay, `nros/zephyr.conf`, `nros-module-kconfig.conf` | same | `prj.conf`, `boards/…conf`, `prj-zenoh.conf`, `nros/zephyr.conf`, … | same as C/Rust leaf |
+| a user `-DEXTRA_CONF_FILE=user.conf` (`=7`) | 11 (the image's value by then) — cache `user.conf;nros/zephyr.conf`; a re-configure leaves it unchanged; `-UEXTRA_CONF_FILE` leaves only the fragment | — | (the row above) | 11, same cache value |
+| `-DCONFIG_NROS_EXECUTOR_MAX_CBS=17` | 17; still 17 on a re-configure WITHOUT the `-D` (`CLI_CONFIG_…=17` cached); back to the image after `-U` | same | same | same (C) |
+| exported `NROS_EXECUTOR_MAX_CBS=21` | `.config` 13, `environment wins`, cargo 21; unexported -> 13 | cargo 21 | `.config` 13, env 21, cargo 21; unexported -> 13 | env 21, cargo 21 (C) |
+| `system.toml` edited, plain `ninja` | one `Re-running CMake`, `.config` 11, cargo 11; next `ninja` re-runs nothing | same, 13 -> 11 | the bringup's model goes STALE first (`nros model-path: … input hash changed system.toml`), exactly as W0 measured: this road's driver is `nros build`, which syncs. After `nros sync`, `ninja` re-ran cmake once and gave 11; the next `ninja` none | C: 11 -> 15, one re-run, cargo 15 |
+| no-Kconfig row (`ZPICO_TL_RETAIN_BYTES`) | resolved 4096, source `image`; `--config=<build>/nros/zephyr-env.toml` on both cargo commands | `--config` on the build/clippy/doc commands; `TL_RETAIN_BYTES = 4096` in `buffer_config.rs` | resolved 4096, source `image` | C: same; Rust: 4096 |
+| image selection | two images, none chosen: configure refuses (`builds ONE image … -DNROS_IMAGE=<id>`); `-DNROS_IMAGE=zephyr_alt` -> `nros/zephyr_alt.conf`, `.config` 6, cache holds only that file; back to `zephyr` -> -1 (no env); `-DNROS_IMAGE=nope` refused naming the declared ids | — | `NROS_IMAGE` from the generated application | — |
+
+**Zephyr 4.4, measured.** A 4.4 workspace was provisioned in the box
+(`NROS_ZEPHYR_VERSION=4.4 just zephyr setup` into `~/.nros-box`), with two
+host gaps worked around WITHOUT sudo and nothing changed in the repo: the
+Zephyr SDK 1.0.1 host-tools installer needs `file(1)`, which the box lacks
+(supplied from `apt-get download file libmagic1 libmagic-mgc` + `dpkg -x` into a
+user directory on `PATH`); and the 4.4 line needs a Python 3.12 venv the box
+has no interpreter for (made with a standalone `uv`). On 4.4 the C and Rust
+leaves (`build-one`, `NROS_ZEPHYR_VERSION=4.4`) gave the same answers as 3.7:
+fragment 13 over `prj.conf` 9 on both lanes; `-D…=17` -> 17, sticky, -U -> back;
+exported 21 -> env and cargo 21; `system.toml` 13 -> 11 -> one re-run, 11 (C
+and Rust); a command-line `-DEXTRA_CONF_FILE` merges before the fragment;
+`TL_RETAIN_BYTES = 4096` on the Rust lane. On 4.4's inlined zephyr-lang-rust the
+`--config` flag is on the `cargo build` command only (hunk 5 follows hunk 2's
+single site, never `cargo doc`).
+
+**Fixtures and runtime, after the change (examples unmigrated).** Built through
+the fixture road (`NROS_ZEPHYR_FIXTURE_FILTER='build-(c|rust)-(talker|listener)-zenoh|build-ws-c-entry-zenoh'
+just zephyr build-fixtures`, 3.7): all five built, each fragment stating
+`CONFIG_NROS_RMW_ZENOH=y` and the entry's API, i.e. what the leaf's own conf
+files already said. Runtime on native_sim: `zephyr` `example_e2e`
+`zenoh_c_pubsub_e2e` and `zenoh_rust_pubsub_e2e` PASS; `entry_e2e`
+`entry_matrix` PASS with its `zephyr/c/entry_pubsub` cell run (the other 17
+cells skipped as unbuilt fixtures).
+
+**Not measured / not changed here.** Sysbuild: its `sysbuild_*` scopes merge
+after the cache, so a sysbuild image's own `EXTRA_CONF_FILE` would follow the
+fragment (no in-tree image uses sysbuild). A module snippet (`-S nros-<rmw>`,
+4.x) merges BEFORE the fragment by the same `zephyr_get` order; not exercised.
+An unpatched upstream zephyr-lang-rust (a BYO workspace that never ran the
+nano-ros patch set) has no `${NROS_IMAGE_ENV_CARGO_FLAGS}`, so there only the
+Kconfig rows reach the Rust lane. No example was migrated (W3): the leaves and
+the bringup used above were edited only for the measurement and restored.
+
 ### W2 -- the gate
 
 `check-leaf-conf-nros-knobs`: a tracked conf file under `examples/` (leaves,
@@ -205,6 +334,30 @@ not files, and out of scope. Negative control in its self-test.
 
 **Acceptance:** the gate fails on today's tree with the 299-line inventory
 above (so it is ratcheted or lands with W3), and passes after W3.
+
+**LANDED (2026-10-07), as a RATCHET.** `scripts/check-leaf-conf-nros-knobs.py`,
+registered on the fast line (`just check leaf-conf-nros-knobs`, so `check-fast`
+and `ci gate` run it). Scope: tracked `examples/**/*.conf`. It refuses four
+kinds, each derived rather than listed: the members of Kconfig's `choice
+NROS_RMW_BACKEND` (`rmw`) and `choice NROS_API` (`api`), the renderer's three
+endpoint symbols (`endpoint`), and every other `CONFIG_NROS_*` the module's
+`zephyr/Kconfig` defines (`knob` -- exactly what an `[image.<id>] env` row now
+renders to; its env spelling comes from `KCONFIG_PAIRS`, harvested from the
+const, when the two names differ). `CONFIG_NROS=y` and symbols the module does
+not define pass. Each refusal names the nearest `system.toml`, the image, and
+the line to write (`rmw = "xrce"`, `env = { ZPICO_MAX_QUERYABLES = "4" }`,
+`locator = "udp/<host>:2018"`, or "delete the line" for the API). Self-test on
+every run (11 cases: each kind, the paired-name spelling, the negative controls
+-- `CONFIG_NROS`, a Zephyr symbol, a comment, an undefined symbol -- a rise, a
+matching baseline, an unrecorded fall, the baseline round-trip).
+
+Baseline `.config/leaf-conf-nros-knobs-baseline.txt`: **226 lines in 104
+files** (71 rmw, 50 api, 38 endpoint, 67 knob), per-file counts judged by
+`scripts/lib/ratchet.py` in both directions, so a new line fails and a file W3
+drains must lower or delete its row in the same change. (The "299" above counted every line MENTIONING `CONFIG_NROS_*` -- 303 today,
+comments included; the table's own kinds sum to 226, which is what the gate
+counts: assignments only.) W3 empties it; the
+gate then holds the tree at zero.
 
 ### W3 -- migrate the Zephyr examples
 

@@ -363,9 +363,12 @@ def check(build_dir, road=None):
                 # (rung 1 over rung 3): the triage lever working, not a value
                 # lost on the way. Only that rung is excused; "kconfig" is
                 # also what a plain resolve of a computed value records, so a
-                # Kconfig-sourced mismatch is still reported.
+                # Kconfig-sourced mismatch is still reported. phase-481 W1 --
+                # so is rung `image`: an `[image.<id>] env` row with no Kconfig
+                # symbol, stated in system.toml, outranks a derivation the same
+                # way (RFC-0098 D11).
                 knob = resolved[len("NROS_RESOLVED_"):]
-                if cache[resolved] != want and sources.get(knob) == "environment":
+                if cache[resolved] != want and sources.get(knob) in ("environment", "image"):
                     continue
                 if cache[resolved] != want:
                     problems.append(

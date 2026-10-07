@@ -236,6 +236,46 @@ pub fn read(dir: &Path) -> Result<Option<LeafSystem>, String> {
     Ok(None)
 }
 
+/// phase-481 W1 (RFC-0098 D11) — the deployment `dir`'s `system.toml` states
+/// for the NAMED image, whether `dir` is a single-package leaf or a workspace
+/// bringup.
+///
+/// The Zephyr module hook selects an image with `-DNROS_IMAGE=<id>` when a leaf
+/// declares several (one per RMW, say), and a generated workspace application
+/// names its bringup's image the same way. [`read`]'s own rule (exactly one
+/// image, or `[system] default_images`) is what applies when nothing is named.
+/// `Ok(None)` when `dir` holds no `system.toml`; naming an image the file does
+/// not declare is an error listing the ones it does.
+pub fn read_image(dir: &Path, image: &str) -> Result<Option<LeafSystem>, String> {
+    let path = dir.join(SYSTEM_TOML);
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let package = is_package_dir(dir);
+    if package {
+        refuse_retired_manifest_keys(dir)?;
+    }
+    let doc = parse_file(&path)?;
+    let images = as_table(doc.get("image")).cloned().unwrap_or_default();
+    if !images.contains_key(image) {
+        return Err(format!(
+            "{}: names no `[image.{image}]` (declared: {})",
+            path.display(),
+            if images.is_empty() {
+                "none".to_string()
+            } else {
+                images.keys().cloned().collect::<Vec<_>>().join(", ")
+            }
+        ));
+    }
+    let origin = if package {
+        Origin::SystemToml(path.clone())
+    } else {
+        Origin::Bringup(path.clone())
+    };
+    image_system(&doc, &path, image, origin).map(Some)
+}
+
 /// The deployment of the ENTRY package at `entry_dir` (package name
 /// `entry_pkg`), as stated by the bringup at `bringup_dir`: the `[image.<id>]`
 /// that claims it.
@@ -695,6 +735,40 @@ ip = "10.0.2.50"
 gateway = "10.0.2.2"
 locator = "tcp/10.0.2.2:9800"
 "#;
+
+    /// phase-481 W1 — an image named explicitly is resolved from a leaf with
+    /// several (where [`read`] refuses to choose) and from a bringup (where
+    /// [`read`] answers nothing); an unknown id is refused naming the declared
+    /// ones.
+    #[test]
+    fn a_named_image_is_read_from_a_leaf_or_a_bringup() {
+        let two = "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n\
+                   [image.zephyr_zenoh]\nboard = \"zephyr\"\n\n\
+                   [image.zephyr_xrce]\nboard = \"zephyr\"\nrmw = \"xrce\"\n";
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", two)]);
+        assert!(read(d.path()).is_err(), "two images, nothing chosen");
+        let x = read_image(d.path(), "zephyr_xrce")
+            .unwrap()
+            .expect("declared");
+        assert!(matches!(x.origin, Origin::SystemToml(_)));
+        assert_eq!(x.image.as_deref(), Some("zephyr_xrce"));
+        assert_eq!(x.rmw.as_deref(), Some("xrce"));
+        let z = read_image(d.path(), "zephyr_zenoh").unwrap().unwrap();
+        assert_eq!(z.rmw.as_deref(), Some("zenoh"), "falls through to [system]");
+        let e = read_image(d.path(), "nope").unwrap_err();
+        assert!(
+            e.contains("zephyr_xrce") && e.contains("zephyr_zenoh"),
+            "{e}"
+        );
+
+        let bringup = leaf(&[("system.toml", two)]);
+        assert_eq!(read(bringup.path()).unwrap(), None, "a bringup is no leaf");
+        let b = read_image(bringup.path(), "zephyr_zenoh").unwrap().unwrap();
+        assert!(matches!(b.origin, Origin::Bringup(_)));
+
+        let empty = leaf(&[("Cargo.toml", CARGO)]);
+        assert_eq!(read_image(empty.path(), "x").unwrap(), None);
+    }
 
     #[test]
     fn a_single_package_leaf_resolves_from_its_system_toml() {
