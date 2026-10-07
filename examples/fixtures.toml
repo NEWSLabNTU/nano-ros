@@ -437,6 +437,34 @@ codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/threadx-linux"
 env = { NROS_DOMAIN_ID = "0" }
 
+# phase-481 W4 (RFC-0098 D12) — two native images on ONE coordinate, one of
+# them configured (`[image.warn] env`). `warn` builds into its own configure,
+# so its build_subdir carries the `-cfg<hash>` suffix `cmake_coordinate`
+# derives — a literal the CLI test
+# `every_generated_workspace_fixture_row_names_its_cmake_build_dir` checks.
+# Consumed by tests/image_config_workspace.rs.
+[[workspace_fixture]]
+id = "workspace-image-config-plain"
+platform = "linux"
+lang = "c"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/fixtures/image_config_ws"
+bringup = "src/probe_bringup"
+image = "plain"
+codegen_out = "build-workspace-codegen/probe_bringup"
+build_subdir = "build/posix-zenoh-native/cmake"
+
+[[workspace_fixture]]
+id = "workspace-image-config-warn"
+platform = "linux"
+lang = "c"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/fixtures/image_config_ws"
+bringup = "src/probe_bringup"
+image = "warn"
+codegen_out = "build-workspace-codegen/probe_bringup"
+build_subdir = "build/posix-zenoh-native-cfga50aa93c83/cmake"
+
 [[workspace_fixture]]
 id = "workspace-c-native"
 platform = "linux"

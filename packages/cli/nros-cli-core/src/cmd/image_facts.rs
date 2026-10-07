@@ -232,6 +232,11 @@ fn as_cmake(plan: &crate::cmd::build::ResolvedBuild, root: &std::path::Path) -> 
     if let Some(v) = &plan.profile {
         put("PROFILE", v);
     }
+    // phase-481 W4 — a cmake image's binary dir, which an image's own
+    // configuration can move (`-cfg<hash>`); readers ask rather than restate.
+    if let Some(v) = &plan.cmake_build_dir {
+        put("CMAKE_BUILD_DIR", v);
+    }
     out
 }
 
@@ -249,6 +254,7 @@ fn as_plain(plan: &crate::cmd::build::ResolvedBuild, root: &std::path::Path) -> 
         ("entry_package", &plan.entry_package),
         ("target", &plan.target),
         ("profile", &plan.profile),
+        ("cmake_build_dir", &plan.cmake_build_dir),
     ] {
         if let Some(v) = v {
             out.push_str(&format!("{k}={v}\n"));

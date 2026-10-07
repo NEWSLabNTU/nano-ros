@@ -2280,6 +2280,25 @@ pub fn build_workspace_cmake_entry_in(
     )
 }
 
+/// phase-481 W4 — a GENERATED workspace cmake entry resolved from its row
+/// alone, for a workspace that is not under `examples/workspaces/` (a test-only
+/// workspace under `packages/testing/nros-tests/fixtures/`). The build dir is
+/// the row's (`build_subdir`, checked against `cmake_coordinate` by the CLI's
+/// `every_generated_workspace_fixture_row_names_its_cmake_build_dir`), and a
+/// generated entry lands at its top.
+pub fn build_workspace_cmake_generated_entry(
+    fixture_id: &str,
+    binary_name: &str,
+) -> TestResult<PathBuf> {
+    assert_generated_entry_name(fixture_id, binary_name)?;
+    let build_dir = crate::fixtures::groups::workspace_artifact_dir(fixture_id)?;
+    require_prebuilt_workspace_binary(
+        fixture_id,
+        &build_dir.join(binary_name),
+        &build_dir.join(workspace_fixture_stamp_name(fixture_id)),
+    )
+}
+
 /// Native Rust workspace Entry pkg fixture.
 pub fn build_native_workspace_rust_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_ENTRY_BINARY

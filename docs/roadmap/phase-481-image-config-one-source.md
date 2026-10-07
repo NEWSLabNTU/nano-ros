@@ -234,8 +234,9 @@ symbol values as before the migration (a diff, measured).
 ### W4 -- per-image workspace configures
 
 - `cmake_coordinate` (`packages/cli/nros-cli-core/src/cmd/build.rs`) gains a
-  suffix: a short hash of the image's resolved configuration (its `env` rows
-  and deploy keys) when non-empty. Every reader of a workspace image's build
+  suffix: a short hash of the image's resolved configuration when non-empty.
+  (Deploy keys are NOT in it: they reach each image's own generated entry,
+  never the shared runtime builds -- corrected while implementing.) Every reader of a workspace image's build
   dir resolves it through that one function (issue 1582's one spelling).
 - The image's rows reach its configure: the 1712 `--config` file for the cmake
   road, the W1 fragment for a Zephyr workspace image. The warning issue 1712
@@ -247,6 +248,36 @@ symbol values as before the migration (a diff, measured).
 and each binary reports its own ceiling (a test, like
 `image_env_cmake_knob.rs`); a workspace whose images state nothing produces
 exactly today's `build/<coord>/` paths (the book's paths are unchanged).
+
+**LANDED (2026-10-07).** What was built, and measured:
+
+- `cmake_coordinate` appends `-cfg<10 hex>` over
+  `leaf_settings::image_block_layers` (transport implication, then
+  `[image.<id>] env`) -- the same function the cargo workspace road now uses,
+  which deleted that road's second hand-written copy of the transport rule.
+  An image stating nothing keeps its exact path.
+- `nros build`'s CMake arm writes `<root>/nros-image-env.toml` with
+  issue 1712's writer, and the generated root sets `NROS_IMAGE_ENV_CONFIG`
+  before `find_package(nano_ros)`, so every Corrosion import and own-command
+  lane gets `--config` (1712's carrier, unchanged).
+- `ResolvedBuild::cmake_build_dir` exposes the derivation; `nros image-facts`
+  prints it (`cmake_build_dir=` / `NROS_IMAGE_CMAKE_BUILD_DIR`).
+- The fixture manifest's `build_subdir` for every GENERATED workspace row is
+  now CHECKED against `cmake_coordinate` (CLI unit test
+  `every_generated_workspace_fixture_row_names_its_cmake_build_dir`;
+  negative control: a wrong row fails naming both paths), so a `-cfg<hash>`
+  literal is verified rather than trusted.
+- Measured on `fixtures/image_config_ws` (two native images, one coordinate),
+  built through `workspace-fixtures-build.sh`: `plain` ->
+  `build/posix-zenoh-native/`, `max_handles=4 info_enabled=1`; `warn` ->
+  `build/posix-zenoh-native-cfga50aa93c83/`, `max_handles=13 info_enabled=0
+  warn_enabled=1` (test `image_config_workspace.rs`). On a copy of
+  `examples/workspaces/c`: an exported `NROS_LOG_MAX_LEVEL=error` beats the
+  image's `warn` (nros-log `MAX_LEVEL` 4 vs 3), unsetting it returns to 3, and
+  an unchanged rebuild compiles nothing.
+- Not done here: a Zephyr workspace image (W1's fragment), and the issue-1712
+  warning for a non-top-level package's own `system.toml` stays (such a
+  package states nothing a workspace image owns).
 
 ### W5 -- docs and close
 
