@@ -722,6 +722,15 @@ config NROS_ZENOH_SERIAL_RX_RING_BYTES
       Maps to _Z_ZEPHYR_SERIAL_RX_RING_BYTES (zenoh-pico
       src/system/zephyr/network.c), whose default is the same 1024.
 
+      The 1024 default is at its edge for a board that JOINS a live domain
+      at 921600 baud (issue 1534): the safety island measured a high water
+      of 815-1024 with one join in five overflowing, and states 4096. A
+      board that joins an idle domain stays far below it. The default is
+      not raised here because no lane measures it; read `ring_high_water`
+      on the board and size from it. Pair it with
+      CONFIG_MAIN_THREAD_PRIORITY below the read task, which the configure
+      warns about on a serial link.
+
 config NROS_ZENOH_SERIAL_TX_RING_BYTES
     int "Serial link: transmit ring between the sending thread and the UART ISR (bytes)"
     depends on NROS_ZENOH_LINK_SERIAL && UART_INTERRUPT_DRIVEN

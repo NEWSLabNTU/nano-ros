@@ -428,7 +428,7 @@ Status on origin/main (2026-10-01): **both issue files read `status: open`.**
 They are tracked as files under `docs/issues/`, not as GitHub issues
 (`gh issue view 1533` resolves to nothing).
 
-- [Issue 1533](../issues/1533-zenoh-pico-read-task-stops-on-one-rejected-message.md)
+- [Issue 1533](../issues/archived/1533-zenoh-pico-read-task-stops-on-one-rejected-message.md)
   (the read task stopped for good on one rejected message): its fix is
   on main -- zenoh-pico `52f60b79`, pinned by PR #1389 (`10b2782be`), and
   carried forward in the current pin `e28ff603`. The file still says "prepared
@@ -448,6 +448,21 @@ file says 2048; the island's board conf states 4096). Before W10 the
 workaround was join order: the island joined before the inputs flowed
 (phase8-W2). Close 1534 with a derived main priority, or a priority-plan
 check that refuses main above the read band, and a measured RX-ring default.
+
+**Result (2026-10-07).** Issue 1533 resolved and archived: its fix is in the
+pin (`_z_handle_network_message_in_frame` and `_z_rx_rejections` in zenoh-pico
+`e28ff603`'s `src/transport/common/rx.c`, since PR #1389); only the file was
+stale. Issue 1534 stays open with its residue narrowed: the main-thread
+priority is now CHECKED, not derived (a Zephyr configure with a serial zenoh
+link warns when `CONFIG_MAIN_THREAD_PRIORITY` is not below the read task,
+computed from the image's `.config` the way `nros_zephyr_native_priority`
+maps the band: 200 on 15 preempt priorities is k_thread 4, so it asks for 5 or
+more); Zephyr owns that symbol's default, and an image joining an idle domain
+does not need it. The RX ring is documented (the island's 815-1024 high water
+at 1024 and its 4096) but not re-defaulted, because no lane measures a serial
+join. For the island: keep `CONFIG_MAIN_THREAD_PRIORITY=5` and
+`CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES=4096`; the configure now agrees with
+the first.
 
 ### T4 -- an end-to-end violation test on the board
 
@@ -622,7 +637,9 @@ independent of each other.
       to +160 s; `min()` filed as issue 1731, 60 s default is the answer.)
 - [ ] T2: `island_trace_cost_max` reads the bracket's maximum in every run.
 - [ ] T3: issue 1533 resolved and archived; issue 1534 closed with a derived
-      main-thread priority and a measured RX-ring default.
+      main-thread priority and a measured RX-ring default. (1533 archived;
+      1534 open: main priority checked by a configure warning, RX ring
+      documented, a measured default still needs a serial-join lane.)
 - [ ] T4: a deliberate overrun on the S32K344 is reported through D1's
       channel. (Host executor e2e landed; the board run of 2026-10-06 shows
       the overrun as timer-overrun and jitter verdicts and markers, not as
