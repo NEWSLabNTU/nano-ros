@@ -13,8 +13,9 @@
 use nros_tests::{
     TestError, TestResult, count_pattern,
     fixtures::{
-        QemuProcess, ZenohRouter, freertos, is_qemu_available, is_qemu_riscv64_available, nuttx,
-        threadx_linux, threadx_riscv64, zenohd_unavailable_reason,
+        QemuProcess, RequireFixture, ZenohRouter, freertos, is_qemu_available,
+        is_qemu_riscv64_available, nuttx, threadx_linux, threadx_riscv64,
+        zenohd_unavailable_reason,
     },
     platform,
     process::{ManagedProcess, kill_process_group},
@@ -632,18 +633,8 @@ fn require_cell_runnable(platform: Platform, lang: Lang, variant: Variant) {
 /// Build a (first, second) binary pair, panicking on build failure.
 fn build_pair(platform: Platform, lang: Lang, variant: Variant) -> (&'static Path, &'static Path) {
     let pair = binaries(platform, lang, variant);
-    let first = (pair.first_builder)().unwrap_or_else(|e| {
-        panic!(
-            "Failed to build first binary ({} {} {:?}): {:?}",
-            platform, lang, variant, e
-        )
-    });
-    let second = (pair.second_builder)().unwrap_or_else(|e| {
-        panic!(
-            "Failed to build second binary ({} {} {:?}): {:?}",
-            platform, lang, variant, e
-        )
-    });
+    let first = (pair.first_builder)().require(&format!("{platform} {lang} {variant:?} first"));
+    let second = (pair.second_builder)().require(&format!("{platform} {lang} {variant:?} second"));
     (first, second)
 }
 

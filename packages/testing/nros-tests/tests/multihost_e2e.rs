@@ -50,7 +50,7 @@ use nros_tests::{
     TestResult,
     alloc::port_of,
     fixtures::{
-        ManagedProcess, ZenohRouter, ZephyrPlatform, ZephyrProcess,
+        ManagedProcess, RequireFixture, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_native_workspace_c_entry_robot1, build_native_workspace_c_entry_robot2,
         build_native_workspace_cpp_entry_robot1, build_native_workspace_cpp_entry_robot2,
         build_native_workspace_mixed_entry_robot1, build_native_workspace_mixed_entry_robot2,
@@ -348,10 +348,8 @@ fn run_cell(pcell: &MCell) {
     if cell.boot == Boot::Native && !require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
-    let robot1 = (cell.robot1)()
-        .unwrap_or_else(|e| panic!("{} {} robot1 entry fixture not built: {e}", platform, lang));
-    let robot2 = (cell.robot2)()
-        .unwrap_or_else(|e| panic!("{} {} robot2 entry fixture not built: {e}", platform, lang));
+    let robot1 = (cell.robot1)().require(&format!("{platform} {lang} robot1 entry"));
+    let robot2 = (cell.robot2)().require(&format!("{platform} {lang} robot2 entry"));
 
     // Router: ephemeral on native; otherwise the EXACT port the west-lane
     // fixture's CONFIG_NROS_ZENOH_LOCATOR was baked with.

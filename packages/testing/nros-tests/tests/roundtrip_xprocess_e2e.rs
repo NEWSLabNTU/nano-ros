@@ -315,10 +315,8 @@ fn run_cell(pcell: &MCell) {
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
-    let server = (cell.server)()
-        .unwrap_or_else(|e| panic!("{} {} server entry not built: {e}", lang, workload));
-    let client = (cell.client)()
-        .unwrap_or_else(|e| panic!("{} {} client entry not built: {e}", lang, workload));
+    let server = (cell.server)().require(&format!("{lang} {workload} server entry"));
+    let client = (cell.client)().require(&format!("{lang} {workload} client entry"));
 
     // Native-only family: every cell gets an ephemeral router.
     let router = ZenohRouter::start_unique()

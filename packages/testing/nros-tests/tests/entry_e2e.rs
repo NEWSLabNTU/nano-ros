@@ -768,14 +768,8 @@ fn run_cell(pcell: &MCell) {
     let cell = exec_for(pcell.platform, pcell.lang, pcell.workload);
     require_cell_env(&cell);
 
-    let entry = (cell.resolver)().unwrap_or_else(|e| {
-        nros_tests::skip!(
-            "{} {} {} entry fixture not built: {e}",
-            platform,
-            lang,
-            workload
-        )
-    });
+    // issue 1729 — see `sched_dims_applied_e2e::run_cell`.
+    let entry = (cell.resolver)().require(&format!("{platform} {lang} {workload} entry"));
 
     // Router on the EXACT port the fixture's locator was baked with
     // (0.0.0.0 for slirp guests, whose gateway maps to the host; 127.0.0.1

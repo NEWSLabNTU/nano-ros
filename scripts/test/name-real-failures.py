@@ -69,10 +69,15 @@ def has_nested_marker(node: ET.Element, case: ET.Element) -> bool:
 
     So: still counted as a real failure (only the aggregator can know), but
     NAMED, so nobody has to rediscover it by hand-triaging a tier.
+
+    Issue 1729 — INSIDE the failure's message, not anywhere in the testcase.
+    A consolidated matrix test prints a `[SKIPPED:lane]` note per cell it did
+    not run, so a substring search over its streams annotated every one of its
+    REAL failures this way, and sent a triage after a skip that was not there.
     """
-    texts = [node.get("message") or "", node.text or ""]
-    texts.extend(skip_marker.testcase_streams(case))
-    return any(skip_marker.PREFIX in t for t in texts)
+    return skip_marker.marker_in_failure_message(
+        (node.get("message"), node.text), skip_marker.testcase_streams(case)
+    )
 
 
 def real_failures(path: Path) -> list[str]:

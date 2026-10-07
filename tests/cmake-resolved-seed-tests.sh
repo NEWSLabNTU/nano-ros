@@ -112,9 +112,9 @@ include("$RESOLVED_MODULE")
 set(_frag "\${CMAKE_BINARY_DIR}/frag.cmake")
 
 # ---- the READER, early in the configure -------------------------------------
-if(NOT EXISTS "\${_frag}")
-    nros_resolved_seed_entity_inventory("\${_frag}")
-endif()
+# Every configure, as `_nros_load_derived_entity_inventory` does since issue
+# 1729: the function itself decides whether the resolve moved.
+nros_resolved_seed_entity_inventory("\${_frag}")
 if(NOT EXISTS "\${_frag}")
     file(WRITE "\${_frag}" "set(ANSWER placeholder)\n")
 endif()
@@ -124,9 +124,13 @@ include("\${_frag}")
 message(STATUS "PROBE_READ=\${ANSWER}")
 
 # ---- the PRODUCER, later in the same configure -------------------------------
-nros_reconfigure_snapshot("\${_frag}" _before)
-file(WRITE "\${_frag}" "set(ANSWER real)\n")
-nros_reconfigure_on_change("\${_frag}" "\${_before}" LABEL "the probe answer")
+# Absent on the generated Rust Zephyr entry's road (issue 1729), where the seed
+# is the fragment's only producer: -DPROBE_NO_PRODUCER=ON.
+if(NOT PROBE_NO_PRODUCER)
+    nros_reconfigure_snapshot("\${_frag}" _before)
+    file(WRITE "\${_frag}" "set(ANSWER real)\n")
+    nros_reconfigure_on_change("\${_frag}" "\${_before}" LABEL "the probe answer")
+endif()
 
 add_custom_target(go ALL
     COMMAND \${CMAKE_COMMAND} -E echo "PROBE_BUILT=\${ANSWER}")
@@ -274,6 +278,81 @@ if [ "$BUILD_USED" = "real" ] && [ "$BUILD_RERUNS" -eq 1 ]; then
     log_success "and the build is byte-for-byte case A's outcome"
 else
     fail "a refused resolve changed the baseline: used='$BUILD_USED' re-runs=$BUILD_RERUNS.
+$BUILD_OUT"
+fi
+
+# ---------------------------------------------------------------------------
+log_header "E. no producer: a resolve that MOVES reaches the build (issue 1729)"
+# ---------------------------------------------------------------------------
+#
+# The generated Rust Zephyr entry runs no `nano_ros_entry()`, so the seed is the
+# fragment's ONLY producer. Before issue 1729 it seeded only an absent fragment
+# and `resolved.cmake` was no configure dependency, so the first configure's
+# answer was the image's answer forever: `nros build` re-resolved a derived-tier
+# image from three publisher slots to four, ninja ran no configure, and the
+# image failed `PublisherCreationFailed` at boot.
+
+RESOLVED_MOVING="$TEST_TMPDIR/resolved-moving"
+mkdir -p "$RESOLVED_MOVING"
+printf 'set(ANSWER first)\n' > "$RESOLVED_MOVING/resolved.cmake"
+cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/moving-build" \
+    "-DNROS_RESOLVED_DIR=$RESOLVED_MOVING" -DPROBE_NO_PRODUCER=ON >/dev/null 2>&1
+run_build "$TEST_TMPDIR/moving-build"
+check
+if [ "$BUILD_USED" = "first" ] && [ "$BUILD_RERUNS" -eq 0 ]; then
+    log_success "no producer: the first build uses the seed, with no extra configure"
+else
+    fail "case E did not set up: used='$BUILD_USED' re-runs=$BUILD_RERUNS (want first / 0).
+$BUILD_OUT"
+fi
+
+# The resolve phase re-runs and its answer moves. A later mtime than the
+# configure's outputs, as a real rewrite has.
+sleep 1
+printf 'set(ANSWER second)\n' > "$RESOLVED_MOVING/resolved.cmake"
+run_build "$TEST_TMPDIR/moving-build"
+check
+if [ "$BUILD_USED" = "second" ] && [ "$BUILD_RERUNS" -ge 1 ]; then
+    log_success "a moved resolve re-configured the build and reached it"
+else
+    fail "A MOVED RESOLVE DID NOT REACH THE BUILD: used='$BUILD_USED' re-runs=$BUILD_RERUNS (want second / >=1).
+  This is issue 1729: the image keeps the first configure's pool sizes.
+$BUILD_OUT"
+fi
+
+run_build "$TEST_TMPDIR/moving-build"
+check
+if [ "$BUILD_RERUNS" -eq 0 ]; then
+    log_success "and an unchanged resolve costs no further configure"
+else
+    fail "an unchanged resolve re-configured again (re-runs=$BUILD_RERUNS): a loop.
+$BUILD_OUT"
+fi
+
+# ---------------------------------------------------------------------------
+log_header "F. with a producer, a moved resolve still loses to it and converges"
+# ---------------------------------------------------------------------------
+#
+# Re-seeding must not break case C's safety property, nor loop: the producer
+# overwrites the re-seed and arms once, and the record keeps the next configure
+# from seeding again.
+
+sleep 1
+printf 'set(ANSWER also_stale)\n' > "$RESOLVED_BAD/resolved.cmake"
+run_build "$TEST_TMPDIR/bad-build"
+check
+if [ "$BUILD_USED" = "real" ] && [ "$BUILD_RERUNS" -le 2 ]; then
+    log_success "the producer's answer still reached the build (re-runs=$BUILD_RERUNS)"
+else
+    fail "a re-seed beat the producer or looped: used='$BUILD_USED' re-runs=$BUILD_RERUNS.
+$BUILD_OUT"
+fi
+run_build "$TEST_TMPDIR/bad-build"
+check
+if [ "$BUILD_RERUNS" -eq 0 ] && [ "$BUILD_USED" = "real" ]; then
+    log_success "and it converged: no configure on the next build"
+else
+    fail "did not converge: used='$BUILD_USED' re-runs=$BUILD_RERUNS.
 $BUILD_OUT"
 fi
 

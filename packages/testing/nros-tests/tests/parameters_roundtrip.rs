@@ -30,8 +30,8 @@
 use nros_tests::{
     TestResult,
     fixtures::{
-        ZenohRouter, build_c_parameters, build_cpp_parameters, require_cmake, require_zenohd,
-        zenohd_unique,
+        RequireFixture, ZenohRouter, build_c_parameters, build_cpp_parameters, require_cmake,
+        require_zenohd, zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -70,8 +70,7 @@ fn parameters_roundtrip(
         nros_tests::skip!("zenohd not found");
     }
 
-    let binary =
-        build().unwrap_or_else(|e| panic!("{lang}-parameters fixture not prebuilt: {e:?}"));
+    let binary = build().require(&format!("{lang}-parameters"));
 
     let output = Command::new(binary)
         .env("NROS_LOCATOR", zenohd_unique.locator())

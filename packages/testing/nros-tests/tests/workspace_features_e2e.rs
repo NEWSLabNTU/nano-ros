@@ -55,7 +55,8 @@
 use nros_tests::{
     TestResult,
     fixtures::{
-        ManagedProcess, ZenohRouter, build_native_workspace_c_custom_msg_listener_entry,
+        ManagedProcess, RequireFixture, ZenohRouter,
+        build_native_workspace_c_custom_msg_listener_entry,
         build_native_workspace_c_custom_msg_talker_entry, build_native_workspace_c_entry,
         build_native_workspace_c_lifecycle_entry, build_native_workspace_c_qos_listener_entry,
         build_native_workspace_c_qos_talker_entry, build_native_workspace_c_safety_listener_entry,
@@ -408,7 +409,7 @@ fn first_lifecycle_node(nodes_out: &str) -> Option<String> {
 
 /// Resolve a cell entry, skipping when the fixture is not built.
 fn resolve(r: Resolver, lang: &str, workload: &str, role: &str) -> PathBuf {
-    r().unwrap_or_else(|e| panic!("{lang} {workload} {role} entry not built: {e}"))
+    r().require(&format!("{lang} {workload} {role} entry"))
 }
 
 // =============================================================================

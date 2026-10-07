@@ -102,3 +102,42 @@ def testcase_streams(testcase):
         for node in testcase.iter(tag):
             out.append(node.text or "")
     return out
+
+
+# Issue 1729 — the panic MESSAGE inside a stream, bounded. A test's stream holds
+# far more than its panic: a consolidated matrix test PRINTS one note per cell
+# it did not run (issue 0571), and several of those are `[SKIPPED:lane] …`
+# lines. "Is the marker anywhere in the testcase" is therefore true of every
+# such test that FAILS, and `name-real-failures.py` annotated a real derived-
+# tier failure as "a skip marker is NESTED in this failure" on the strength of
+# its own stdout summary. The message runs from the line after a `panicked at`
+# header to the harness's own trailer (`note: …`, a backtrace) or the next
+# panic header.
+_PANIC_MESSAGE_RE = re.compile(
+    r"panicked at [^\n]*\n(.*?)(?=\nnote: |\nstack backtrace:|\nthread '|\Z)",
+    re.DOTALL,
+)
+
+
+def panic_messages(text):
+    """Every panic message in a captured stream, without the stream around it."""
+    return [m.group(1) for m in _PANIC_MESSAGE_RE.finditer(text or "")]
+
+
+def marker_in_failure_message(payloads, streams=()):
+    """True when a marker sits INSIDE the failure's own message, anywhere in it.
+
+    ``payloads`` (the `<failure>` message attribute and body) are searched whole
+    unless they carry a panic header, in which case only the panic messages
+    count — some harnesses copy the captured output into the body. ``streams``
+    count only through their panic messages.
+    """
+    texts = []
+    for t in payloads:
+        if not t:
+            continue
+        msgs = panic_messages(t)
+        texts.extend(msgs if msgs else [t])
+    for t in streams:
+        texts.extend(panic_messages(t))
+    return any(PREFIX in t for t in texts)

@@ -2611,11 +2611,36 @@ impl EntityInventory {
     /// the safe direction for a pool that fails `Full` at boot when short.
     /// Zero for an uncontracted image (no rows, or rows that could not be
     /// counted, which the emitters refuse loudly at codegen).
+    ///
+    /// Issue 1729 -- "every tier" is [`Self::executor_bound`], NOT the
+    /// AUTHORED tier count. This read `self.tiers.max(1)`, and a bringup that
+    /// authors no `[tiers.*]` still runs one executor per `derived-<node>`
+    /// tier (`derive_tiers_from_contracts`): `realtime-rust`'s `derived_bringup`
+    /// derived ONE reporter for its two derived tiers, so the boot tier's
+    /// reporter and `/telem` plus the second tier's reporter filled the three
+    /// publisher slots and `ctrl_pkg`'s `/ctrl` failed
+    /// `PublisherCreationFailed` -- tier `high` never started. Bounded above by
+    /// the row count too: a reporter is armed only by an executor that
+    /// installs at least one row.
     pub fn contract_reporters(&self) -> usize {
         match self.monitor_rows {
-            Some((rows, ages)) if rows + ages > 0 => self.tiers.max(1),
+            Some((rows, ages)) if rows + ages > 0 => self.executor_bound().min(rows + ages).max(1),
             _ => 0,
         }
+    }
+
+    /// Issue 1729 -- how many EXECUTORS the image's schedule can create, which
+    /// is what every per-executor runtime entity (the `/diagnostics` reporter,
+    /// a scheduling context) is counted against. ONE spelling: the scheduling
+    /// table ([`DerivedEntityKnobs::max_sc`]) already took the larger of the
+    /// authored tier count and the node count, because a bringup that authors
+    /// no tiers can still resolve one `derived-<node>` tier per node, while the
+    /// reporter count read the authored count alone -- the 0328 shape, one fact
+    /// spelled twice, and the second spelling was the one that was wrong.
+    /// Over-counts an untiered single-executor image, which is the safe
+    /// direction for a pool that fails at boot when short.
+    pub fn executor_bound(&self) -> usize {
+        self.tiers.max(self.components().len())
     }
 
     /// phase-412 -- build the inventory from a resolved SystemModel's wiring
@@ -3747,7 +3772,7 @@ impl EntityInventory {
         // plus whatever the schedule creates. See `DerivedEntityKnobs::max_sc`
         // for why the second term is the larger of the authored tier count and
         // the node count rather than the tier count alone.
-        let max_sc = 1 + self.tiers.max(max_nodes);
+        let max_sc = 1 + self.executor_bound().max(max_nodes);
         // phase-467 W1 -- the two monitor tables, straight from the counts.
         let max_monitors = self.monitor_rows.map(|(rows, _)| rows);
         let max_age_monitors = self.monitor_rows.map(|(_, ages)| ages);
@@ -5868,6 +5893,55 @@ mod tests {
         let (pk, ck) = (pd.knobs().expect("derived"), cd.knobs().expect("derived"));
         assert_eq!(ck.max_publishers, pk.max_publishers + 1, "the reporter");
         assert_eq!(ck.max_nodes, pk.max_nodes + 1, "the node it is created on");
+    }
+
+    /// Issue 1729 -- `realtime-rust`'s `derived_bringup`, measured: two nodes,
+    /// each with one `min_rate_hz` publisher, and NO authored `[tiers.*]`.
+    /// `nros::main!` derives a `derived-<node>` tier per node and installs a
+    /// monitor table -- and arms a `/diagnostics` reporter -- on EACH tier's
+    /// executor, so the image creates four publishers. The authored-tier count
+    /// (zero) said one reporter, the pool was sized three, and the second
+    /// tier's `/ctrl` failed `PublisherCreationFailed` at boot.
+    #[test]
+    fn an_untiered_multi_node_contract_counts_a_reporter_per_derivable_tier() {
+        use ros_launch_manifest_model::{PubContract, SystemModel, TopicWiring};
+        let mut m = SystemModel::default();
+        for (node, topic) in [("control_node", "ctrl"), ("telem_node", "telem")] {
+            let ep = format!("/{node}/{topic}");
+            m.structure.topics.insert(
+                format!("/{topic}"),
+                TopicWiring {
+                    msg_type: "std_msgs/msg/Int32".to_string(),
+                    publishers: vec![ep.clone()],
+                    subscribers: vec![],
+                },
+            );
+            m.contracts.pub_endpoints.insert(
+                ep,
+                PubContract {
+                    min_rate_hz: Some(10.0),
+                    ..Default::default()
+                },
+            );
+        }
+        let inv = EntityInventory::from_model("img", &m).expect("wiring described");
+        assert_eq!(inv.tiers(), 0, "the bringup authors no tiers");
+        assert_eq!(inv.executor_bound(), 2, "one derivable tier per node");
+        assert_eq!(
+            inv.contract_reporters(),
+            2,
+            "one reporter per tier executor"
+        );
+        let d = inv.derive();
+        let k = d.knobs().expect("derived");
+        assert_eq!(k.max_publishers, 4, "two topics plus two reporters: {k:?}");
+
+        // Bounded by the rows: an executor with no row arms no reporter, so two
+        // components and ONE contracted row is one reporter, not two.
+        let mut one_row = m.clone();
+        one_row.contracts.pub_endpoints.remove("/telem_node/telem");
+        let inv = EntityInventory::from_model("img", &one_row).expect("wiring described");
+        assert_eq!(inv.contract_reporters(), 1);
     }
 
     #[test]

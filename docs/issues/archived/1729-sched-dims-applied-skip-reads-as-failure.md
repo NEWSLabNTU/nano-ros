@@ -1,12 +1,13 @@
 ---
 id: 1729
 title: "`sched_dims_applied`'s tier-1 red is a REAL Zephyr DerivedTierBelowTransport failure (PublisherCreationFailed), not a skip — and the test launders a stale or missing in-lane fixture into a skip"
-status: open
+status: resolved
 type: bug
 area: [testing, runtime]
 severity: medium
 found: 2026-10-07
-related: [0630, 0571, 0445, 0584, 1537, 1684]
+resolved_in: 2026-10-07
+related: [0630, 0571, 0445, 0584, 1537, 1684, 1676, 1129, 0658, 0328]
 ---
 
 ## Why this was filed, and what the measurement showed instead
@@ -120,3 +121,66 @@ passed. It also hid finding 1 for exactly as long as the fixture stayed stale.
 3. Optional, tooling: `name-real-failures.py` attributes a nested marker only
    when it is inside the failure message, not anywhere in the testcase's
    streams.
+
+## Resolution
+
+### 1. The publisher failure — TWO defects, the second hiding the first's fix
+
+**Root cause: the `/diagnostics` reporter was counted per AUTHORED tier.**
+`EntityInventory::contract_reporters()` (issue 1676) counts one reporter per
+executor that installs a monitor table, as `self.tiers.max(1)` — the AUTHORED
+`[tiers.*]` count. `derived_bringup` authors none, and `nros::main!` derives a
+`derived-<node>` tier per node, each with its own executor, monitor table and
+reporter (`main_macro.rs`, one `__nros_contract_monitors_<k>` per tier). Two
+topics plus two reporters is four publishers; the inventory derived three
+(`NROS_DERIVED_MAX_PUBLISHERS 3`, `ZPICO_MAX_PUBLISHERS=3` in the measured
+cache). The boot tier took its reporter and `/telem`, the second tier its
+reporter, and `/ctrl` found the pool full: `PublisherCreationFailed`.
+
+The scheduling-context table already counted executors right —
+`max_sc = 1 + tiers.max(max_nodes)`, because an untiered bringup can still
+resolve one tier per node — so this was one fact spelled twice, with the second
+spelling wrong (the 0328 shape). Both now read
+`EntityInventory::executor_bound()` (`max(authored tiers, components)`), and the
+reporter count is additionally bounded by the monitor-row count (an executor
+with no row arms no reporter). Guard:
+`an_untiered_multi_node_contract_counts_a_reporter_per_derivable_tier`.
+
+**The edge that would have kept the fix out.** With the CLI fixed, `nros build`
+re-resolved `resolved.cmake` to four — and the image still built with three:
+the configure did not re-run. The generated Rust Zephyr entry calls
+`rust_cargo_application()` and no `nano_ros_entry()`, so the resolve phase's
+SEED is the entity-inventory fragment's only producer; it seeded only an
+ABSENT fragment, and `resolved.cmake` was no configure dependency. The first
+configure's answer was therefore the image's answer forever. Measured: the
+build dir configured 09:34, the resolve rewritten 09:56, ninja ran no
+configure. `nros_resolved_seed_entity_inventory` now registers the projection
+as a configure dependency (written write-if-changed, so an unchanged resolve
+costs nothing) and re-seeds when its content hash moved since the last seed
+(`<fragment>.resolved-seed`); the Zephyr loader calls it on every configure.
+A road with a producer still converges and still loses to the producer.
+Guard: cases E and F of `tests/cmake-resolved-seed-tests.sh` (case E fails
+against the pre-fix module — measured).
+
+### 2. The laundering
+
+The five `lane_scope::CONSUMERS` (and `rtos_e2e`, `parameters_roundtrip`,
+`workspace_features_e2e`, the same shape) decided a resolver `Err` themselves.
+They now go through the one helper, `RequireFixture::require`: an out-of-lane
+coordinate still skips inside the resolver (`[SKIPPED:lane]`), an ungated
+not-built fixture still skips, and a STALE in-lane fixture now FAILS.
+`check-fixture-require` could not see these sites because they call the
+resolver through a HANDLE — `(cell.resolver)()` names no `build_*` — so it now
+also keys on bindings TYPED as a `TestResult`-returning fn (field or parameter,
+directly or through a `type X = fn() -> TestResult<..>` alias); against the
+pre-fix tree it reports exactly the 11 sites converted here. Unit guards:
+`fixtures::require::tests` (STALE is a failure, an ungated unbuilt fixture a
+skip).
+
+### 3. The false annotation
+
+`name-real-failures.py`'s "a skip marker is NESTED in this failure" now asks
+`skip_marker.marker_in_failure_message`: inside the `<failure>` payload, or
+inside a PANIC MESSAGE in the streams — never the test's own printed
+`[SKIPPED:lane]` summary. Self-tested on the normal path of
+`check-skip-marker-matching`.

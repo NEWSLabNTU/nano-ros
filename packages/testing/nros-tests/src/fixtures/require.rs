@@ -78,3 +78,46 @@ impl<T> RequireFixture<T> for TestResult<T> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The verdict `require` reaches for `r`, as a cell loop sees it: the
+    /// panic payload, sorted by `skip_marker::is_skip` exactly as the five
+    /// `lane_scope::CONSUMERS` sort a caught cell.
+    fn verdict(r: TestResult<()>) -> (bool, String) {
+        let got = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| r.require("probe")));
+        let payload = got.expect_err("an Err must never yield a value");
+        let msg = payload
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default();
+        (crate::skip_marker::is_skip(&msg), msg)
+    }
+
+    /// Issue 1729 — a STALE in-lane fixture is a FAILURE. The consolidated
+    /// matrix consumers used to turn every resolver `Err` into a local
+    /// `skip!`, so `sched_dims_applied` PASSED with three in-lane Zephyr cells
+    /// reading "realtime fixture unavailable: … is STALE" and its derived-tier
+    /// cell — the one that was actually broken — never booted.
+    #[test]
+    fn a_stale_fixture_is_a_failure_not_a_skip() {
+        let (skip, msg) = verdict(Err(TestError::BuildFailed(
+            "Zephyr fixture is STALE — a source is newer than the built binary".into(),
+        )));
+        assert!(!skip, "a STALE fixture was classified as a skip: {msg}");
+        assert!(msg.contains("STALE"), "the reason is lost: {msg}");
+    }
+
+    /// The other arm, so the test above cannot pass by `require` panicking
+    /// for everything: an UNGATED not-built fixture stays a skip (issue 0584
+    /// part 2 — a gated run never gets here, its resolver panics first).
+    #[test]
+    fn an_ungated_unbuilt_fixture_is_a_skip() {
+        let (skip, msg) = verdict(Err(TestError::FixtureNotBuilt("not prebuilt".into())));
+        assert!(skip, "an ungated unbuilt fixture was not a skip: {msg}");
+        assert!(msg.contains(FIXTURE_NOT_BUILT_MARKER), "{msg}");
+    }
+}

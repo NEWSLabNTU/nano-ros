@@ -119,6 +119,52 @@ def self_test() -> None:
     assert line_offends("    return text.startswith('[SKIPPED')", "python")
     assert not line_offends('    # was: "[SKIPPED]" in msg', "python")
     assert not line_offends('    return skip_marker.is_skip(msg)', "python")
+    nested_marker_self_test()
+
+
+def nested_marker_self_test() -> None:
+    """Issue 1729 — the Python helper's NESTED-marker reading, both directions.
+
+    Through `name-real-failures.py`'s own `has_nested_marker` on a real junit
+    `<testcase>`, so the annotation that run prints is the one under test. A
+    consolidated matrix test PRINTS a `[SKIPPED:lane]` note per cell it did not
+    run; the annotation must look inside the failure's own panic message, never
+    at that summary, or every real failure of such a test reads as a laundered
+    skip (it sent issue 1729's triage after a skip that was not there).
+    """
+    import importlib.util
+    import xml.etree.ElementTree as ET
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.join(here, "test"))
+    spec = importlib.util.spec_from_file_location(
+        "name_real_failures", os.path.join(here, "test", "name-real-failures.py")
+    )
+    nrf = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(nrf)
+
+    summary = (
+        "sched_dims: 10 cell(s) ran, 6 skipped, 7 out of lane\n"
+        "  - nuttx/rust: [SKIPPED:lane] out of lane: no NuttxArm coordinate\n"
+    )
+    trailer = "\nnote: run with `RUST_BACKTRACE=1`"
+    real = ("thread 't' panicked at t.rs:1:5:\nsched_dims: 1 of 10 cell(s) FAILED:\n"
+            "  x: tier never dispatched" + trailer)
+    nested = ("thread 't' panicked at t.rs:1:5:\nmulti: 1 of 2 cell(s) FAILED:\n"
+              "  y: [SKIPPED:lane] out of lane" + trailer)
+    for desc, out, err, want in (
+        ("summary in stdout, real panic", summary, real, False),
+        ("marker inside the panic message", "", nested, True),
+        ("summary AND a nested panic", summary, nested, True),
+    ):
+        case = ET.fromstring(
+            "<testcase classname='c' name='t'><failure/>"
+            "<system-out></system-out><system-err></system-err></testcase>"
+        )
+        case.find("system-out").text = out
+        case.find("system-err").text = err
+        got = nrf.has_nested_marker(case.find("failure"), case)
+        assert got == want, f"nested-marker self-test: {desc}: got {got}, want {want}"
 
 
 def main() -> int:
