@@ -3730,7 +3730,18 @@ impl EntityInventory {
         // the listener's registration then failed `ConnectionFailed` from
         // `claim_node_slot`. One slot, worst case: a single-node image's
         // session carries that node's name and reuses its slot.
-        let max_nodes = self.components().len() + usize::from(contract_reporters > 0);
+        //
+        // Issue 1740 -- the LIFECYCLE family lands on that same name.
+        // `register_lifecycle_services` creates its five servers and its
+        // `transition_event` publisher on the EXECUTOR's node, which is the
+        // session's own name, so in a multi-node image it claims the same
+        // extra slot the reporter does. Measured on `native_rust_qos` once a
+        // contract made the table exact (2 slots, 3 names): the image died at
+        // boot with `Capability { name: "lifecycle", reason:
+        // "Transport::ConnectionFailed" }`. Both land on ONE name, so they
+        // share ONE slot -- `||`, not a sum.
+        let max_nodes =
+            self.components().len() + usize::from(contract_reporters > 0 || self.infra.lifecycle);
         // Issue 1198 -- slot 0 is RESERVED for the default Fifo context
         // (`create_sched_context` searches `1..MAX_SC`), so the demand is one
         // plus whatever the schedule creates. See `DerivedEntityKnobs::max_sc`
@@ -3745,7 +3756,13 @@ impl EntityInventory {
         // on the field; every one is a count this derivation already made.
         let service_clients = n(EntityKind::ServiceClient.tag())
             + n(EntityKind::ActionClient.tag()) * ACTION_CLIENT_SERVICE_CLIENTS;
-        let node_tokens = max_nodes.max(param_service_nodes)
+        // Issue 1740 -- from the components and the reporter, NOT from
+        // `max_nodes`: that now holds a slot for the lifecycle family's node
+        // too, which this sum already adds as its own term below, and a node
+        // TABLE slot is not a liveliness TOKEN (the table is keyed by
+        // `claim_node_slot`, the tokens by `ensure_node_liveliness`).
+        let named_nodes = self.components().len() + usize::from(contract_reporters > 0);
+        let node_tokens = named_nodes.max(param_service_nodes)
             + PRIMARY_NODE_LIVELINESS_TOKENS
             + usize::from(self.infra.lifecycle);
         // Issue 1713 -- the TL cache queryables declare no token (see the
@@ -6678,6 +6695,41 @@ mod tests {
         assert_eq!(
             both.infra_queryables,
             2 * PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+        );
+    }
+
+    /// Issue 1740 -- the lifecycle family registers on the EXECUTOR's node
+    /// name, so a lifecycle image needs one node-table slot beyond its
+    /// components. Without it `native_rust_qos`, sized exactly by its contract
+    /// (2 slots, 3 names), died at boot: `Capability { name: "lifecycle",
+    /// reason: "Transport::ConnectionFailed" }`.
+    #[test]
+    fn a_lifecycle_image_holds_a_node_slot_for_the_executor() {
+        let knobs = |features: &str| {
+            EntityInventory::from_model("t", &infra_model(features))
+                .expect("model describes wiring")
+                .derive()
+                .knobs()
+                .expect("derived")
+                .clone()
+        };
+        let none = knobs("");
+        let lifecycle = knobs("lifecycle");
+        let params = knobs("param_services");
+        assert_eq!(
+            lifecycle.max_nodes - none.max_nodes,
+            1,
+            "the executor's own name claims one slot when lifecycle registers on it"
+        );
+        assert_eq!(
+            params.max_nodes, none.max_nodes,
+            "the parameter family registers on each COMPONENT's node: no extra slot"
+        );
+        // A node SLOT is not a liveliness TOKEN: the token count moves by the
+        // runtime's entities plus the one node name, exactly as before.
+        assert_eq!(
+            lifecycle.max_liveliness - none.max_liveliness,
+            LIFECYCLE_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_PUBLISHERS + 1
         );
     }
 
