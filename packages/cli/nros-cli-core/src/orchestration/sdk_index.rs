@@ -1183,6 +1183,23 @@ pub struct SmokeCheck {
     /// while printing nothing at all, so an exit-status probe calls it healthy.
     /// Asserting on output is what distinguishes "ran" from "started".
     pub expect: String,
+    /// issue 1744 — the host keys (`linux-x86_64`, …) this probe applies to;
+    /// empty means every host the tool has a dist for.
+    ///
+    /// A probe names a PATH, and for an upstream bundle that path can be
+    /// host-shaped: the Zephyr SDK's `dtc` lives under
+    /// `sysroots/x86_64-pokysdk-linux/` on x86_64, and macOS gets no host tools
+    /// at all. Without this a probe written for one host would fail the
+    /// install on every other.
+    #[serde(default)]
+    pub hosts: Vec<String>,
+}
+
+impl SmokeCheck {
+    /// Does this probe apply on `host` (a [`host_key`])?
+    pub fn applies_to(&self, host: &str) -> bool {
+        self.hosts.is_empty() || self.hosts.iter().any(|h| h == host)
+    }
 }
 
 /// A board's required SDK package set — the board→toolchain SSOT (Phase 191.1).
@@ -2054,6 +2071,26 @@ pub fn host_key() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// issue 1744 — a host-scoped probe applies only where it says.
+    #[test]
+    fn smoke_hosts_scope_a_probe() {
+        let any = SmokeCheck {
+            run: "bin/x --version".into(),
+            expect: "x".into(),
+            hosts: vec![],
+        };
+        assert!(any.applies_to("linux-x86_64") && any.applies_to("macos-arm64"));
+        let one = SmokeCheck {
+            hosts: vec!["linux-x86_64".into()],
+            ..any.clone()
+        };
+        assert!(one.applies_to("linux-x86_64"));
+        assert!(
+            !one.applies_to("macos-arm64"),
+            "a scoped probe must not run elsewhere"
+        );
+    }
 
     const SAMPLE: &str = r#"
 [tool.qemu]

@@ -89,3 +89,10 @@ rmw-xrce
 
 # --- need a linked image to measure ---
 mem-report
+
+# --- need a provisioned SDK STORE to measure (issue 1744) ---
+# dist-runtime-deps reads each dist's ELF dependency closure from the SDK
+# store (`~/.nros/sdk`). No pull_request / merge_group runner carries a store,
+# so there it could only record "not verified" skips; the self-hosted nightly
+# runner has one, which is why it runs on `build-serial`. Ruled 2026-10-09.
+dist-runtime-deps

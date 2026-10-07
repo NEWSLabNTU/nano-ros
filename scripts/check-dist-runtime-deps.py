@@ -24,6 +24,17 @@ runtime, minus what the dist ships itself — must be covered by
 `[tool.<name>] system = [..]`, via each prereq's `check.sharedlib` plus its
 optional `provides = [..]`.
 
+UPSTREAM DISTS ARE HELD TO WHAT WE RUN (issue 1744)
+
+A dist that is not on our mirror (`index_packages.is_upstream_dist`: today the
+two Zephyr SDK rows, `ninja`, `clang-format`) is upstream's product, shipped
+unmodified, and a user may bring their own (`ZEPHYR_SDK_INSTALL_DIR`). When
+such an entry declares `smoke` probes, those probes' programs are its RUN SET
+(`index_packages.run_programs`) and the roots of the walk below; the rest of
+the archive (the SDK's host qemu, gdb-py, its Yocto sysroot) gets ONE note
+counting the sonames left unchecked, never a finding. An upstream dist with no
+`smoke` keeps the full closure, and a REPACKED dist always does.
+
 WHAT "REACH" MEANS, AND WHY IT IS NOT "EVERY ELF" (issue 1452)
 
 The question this gate asks is *what must be present for this tool to RUN*.
@@ -136,6 +147,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 import check_skip  # noqa: E402  phase-472 F2 — the NOT VERIFIED ledger
+import index_packages  # noqa: E402  issue 1744 — the one index-field reader
 INDEX = os.path.join(ROOT, "nros-sdk-index.toml")
 DEFAULT_STORE = os.path.expanduser("~/.nros/sdk")
 
@@ -285,7 +297,7 @@ def elf_facts(path):
         return None
 
 
-def dist_scope(records):
+def dist_scope(records, roots=None):
     """Which of a dist's ELF files must have their dependencies declared.
 
     `records` maps a path to its `ElfFacts`. Returns `(scope, unreached)`, both
@@ -308,7 +320,14 @@ def dist_scope(records):
     for path in sorted(records):
         resolve.setdefault(os.path.basename(path), path)
 
-    roots = {p for p, f in records.items() if f.is_program}
+    if roots is not None:
+        # issue 1744 — an UPSTREAM dist's roots are DECLARED (its run set), not
+        # derived: everything else in the archive is upstream's to support.
+        roots = {p for p in roots if p in records}
+        if not roots:
+            return set(), set(records)
+    else:
+        roots = {p for p, f in records.items() if f.is_program}
     if not roots:
         # A LIBRARY dist: nothing here is exec'd, so the libraries ARE the
         # product and every one of them is a root. Measuring the empty set and
@@ -362,10 +381,10 @@ def coverage_problem(soname, declared, by_soname):
     return None
 
 
-Measured = collections.namedtuple("Measured", "needed unreached out_of_scope")
+Measured = collections.namedtuple("Measured", "needed unreached out_of_scope unchecked")
 
 
-def closure(dist_root, include_unreached=False):
+def closure(dist_root, include_unreached=False, roots=None):
     """External sonames a dist needs, minus base runtime and its own libs.
 
     `needed` is the verdict's closure, resolved by `ldd` over the in-scope files
@@ -398,7 +417,7 @@ def closure(dist_root, include_unreached=False):
     # is a soname with no file of that name beside it.
     own |= {f.soname for f in records.values() if f.soname}
 
-    scope, unreached = dist_scope(records)
+    scope, unreached = dist_scope(records, roots)
     if include_unreached:
         scope, unreached = set(records), set()
 
@@ -413,6 +432,13 @@ def closure(dist_root, include_unreached=False):
     for path in sorted(unreached):
         for so in external(records[path].needed):
             out_of_scope.setdefault(so, os.path.relpath(path, dist_root))
+    # issue 1744 — with a DECLARED run set, what lies outside it is not a
+    # plug-in to report one by one: it is upstream's bundle. Its external
+    # sonames are only COUNTED, for one note, and read off DT_NEEDED (no ldd
+    # over a 1.3 GiB SDK).
+    unchecked = set(out_of_scope) if roots is not None else set()
+    if roots is not None:
+        out_of_scope = {}
 
     env = {k: v for k, v in os.environ.items() if k != "LD_LIBRARY_PATH"}
     needed = set()
@@ -424,7 +450,7 @@ def closure(dist_root, include_unreached=False):
         except (OSError, subprocess.SubprocessError):
             continue
         needed |= ldd_external(out, dist_root, own)
-    return Measured(needed, len(unreached), out_of_scope)
+    return Measured(needed, len(unreached), out_of_scope, unchecked - needed)
 
 
 # One `ldd` dependency line: `<soname> => <path> (0x…)` or `<soname> => not
@@ -463,10 +489,20 @@ def ldd_external(out, dist_root, own):
 def audit(index, store, include_unreached=False):
     """What each provisioned dist needs and does not declare.
 
-    Returns `(problems, skipped, notes)`: `problems` is the verdict —
-    `[(tool, soname, reason)]` — `skipped` counts objects left out of scope, and
+    Returns `(problems, skipped, notes, upstream)`: `problems` is the verdict —
+    `[(tool, soname, reason)]` — `skipped` counts objects left out of scope,
     `notes` is `[(tool, soname, path)]` for a soname only an out-of-scope object
-    names. A note is never a failure; see `closure`.
+    names, and `upstream` is `[(tool, n_runs, n_unchecked)]` for each UPSTREAM
+    dist measured against its declared run set. Neither kind of note is ever a
+    failure; see `closure`.
+
+    issue 1744 — an upstream, un-repacked dist (`index_packages.is_upstream_dist`:
+    no dist row on our mirror; today both Zephyr SDK rows) is held to the
+    programs nano-ros RUNS from it (`index_packages.run_programs`, read off its
+    `smoke` probes), not to its whole archive. Users may bring their own SDK
+    (`ZEPHYR_SDK_INSTALL_DIR`), so what we vouch for is what we execute; the
+    rest is upstream's product, with upstream's documented host requirements.
+    A REPACKED dist keeps the full closure, unchanged.
     """
     prereqs = index.get("prereq", {})
     # soname -> the prereq keys that satisfy it. ONE mapping, derived from the
@@ -476,7 +512,7 @@ def audit(index, store, include_unreached=False):
         for so in sonames_of(dep):
             by_soname.setdefault(so, set()).add(key)
 
-    problems, notes, skipped = [], [], 0
+    problems, notes, skipped, upstream = [], [], 0, []
     for name, tool in sorted(index.get("tool", {}).items()):
         # The PINNED version, not the whole tool directory. The store
         # ACCUMULATES (issue 0500), so `<store>/<tool>/` holds every version
@@ -493,8 +529,29 @@ def audit(index, store, include_unreached=False):
         if not root or not os.path.isdir(root):
             continue
         declared = set(tool.get("system", []))
-        measured = closure(root, include_unreached)
-        skipped += measured.unreached
+        roots = None
+        # An upstream dist with NO `smoke` probe has declared no run set, so it
+        # keeps the full closure (`ninja`): narrowing is opt-in by declaration,
+        # never a default. One whose probes all belong to OTHER hosts has
+        # declared a run set and left this host none of it — a finding, since
+        # measuring the empty set would print OK.
+        if (index_packages.is_upstream_dist(tool) and tool.get("smoke")
+                and not include_unreached):
+            runs = index_packages.run_programs(tool)
+            if not runs:
+                problems.append((name, "-", "upstream dist's `smoke` run set has "
+                                 "no probe for this host, so nothing is measured"))
+                continue
+            roots = [os.path.join(root, r) for r in runs]
+            for rel, path in zip(runs, roots):
+                if not os.path.isfile(path):
+                    problems.append((name, rel, "a declared run program is not "
+                                     "in the provisioned dist"))
+        measured = closure(root, include_unreached, roots)
+        if roots is not None:
+            upstream.append((name, len(roots), len(measured.unchecked)))
+        else:
+            skipped += measured.unreached  # plug-ins; an upstream bundle is not
         for so, where in sorted(measured.out_of_scope.items()):
             if so not in measured.needed:
                 notes.append((name, so, where))
@@ -502,7 +559,7 @@ def audit(index, store, include_unreached=False):
             why = coverage_problem(so, declared, by_soname)
             if why:
                 problems.append((name, so, why))
-    return problems, skipped, notes
+    return problems, skipped, notes, upstream
 
 
 def _lib(needed, soname=None):
@@ -615,6 +672,85 @@ def _ldd_parse_checks():
     got = ldd_external(out, root, {"libown.so.1"})
     want = {"libffi.so.8", "libpython3.8.so.1.0"}
     return [] if got == want else [f"ldd reader: got {sorted(got)}, want {sorted(want)}"]
+
+
+def _store_checks():
+    """issue 1744 — `audit` end to end over a scratch store of REAL ELF files.
+
+    The table rows above test the walk; these test the decision the ruling
+    made, on bytes: an upstream dist is held to its declared run set, a
+    repacked one to everything, and a run program that is not there is a
+    finding. The subject is a host program with an external, non-base
+    dependency (this interpreter links `libz`/`libexpat` on Ubuntu); a host
+    with no such program leaves these rows out and says so.
+    """
+    import shutil
+    import tempfile
+
+    env = {k: v for k, v in os.environ.items() if k != "LD_LIBRARY_PATH"}
+    subject = None
+    for cand in (os.path.realpath(sys.executable), "/usr/bin/curl", "/usr/bin/ssh",
+                 "/usr/bin/git"):
+        try:
+            out = subprocess.run(["ldd", cand], capture_output=True, text=True,
+                                 env=env, timeout=60).stdout
+        except (OSError, subprocess.SubprocessError):
+            continue
+        ext = ldd_external(out, "/nonexistent-dist-root", set())
+        if ext:
+            subject = (cand, ext)
+            break
+    plain = "/bin/true"
+    if subject is None or not os.path.isfile(plain):
+        print("check-dist-runtime-deps self-test: note — no host program with an "
+              "external soname; the issue-1744 store rows were not run.")
+        return []
+    exe, ext = subject
+    up = "https://example.org/upstream/z.tar.xz"
+    mine = "https://" + index_packages.MIRROR + "x/z.tar.zst"
+
+    def tool(url, smoke):
+        t = {"version": "1", "dist": {index_packages.host_key(): {"url": url}}}
+        if smoke is not None:
+            t["smoke"] = [{"run": r + " --version", "expect": "x"} for r in smoke]
+        return t
+
+    with tempfile.TemporaryDirectory() as store:
+        def place(name, rel, src):
+            dst = os.path.join(store, name, "1", rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy(src, dst)
+
+        # an upstream SDK: runs a plain program, ships an unrelated host tool
+        place("up", "bin/cc", plain)
+        place("up", "hosttools/qemu", exe)
+        # the same bytes REPACKED: the full closure, unchanged
+        place("mine", "bin/cc", plain)
+        place("mine", "hosttools/qemu", exe)
+        # upstream, but the declared run program IS the one with the dependency
+        place("uprun", "bin/cc", exe)
+
+        def run(tools):
+            return audit({"tool": tools, "prereq": {}}, store)
+
+        p_up, _, _, n_up = run({"up": tool(up, ["bin/cc"])})
+        p_mine, _, _, _ = run({"mine": tool(mine, ["bin/cc"])})
+        p_uprun, _, _, _ = run({"uprun": tool(up, ["bin/cc"])})
+        p_missing, _, _, _ = run({"up": tool(up, ["bin/cc", "bin/dtc"])})
+        p_nosmoke, _, _, _ = run({"up": tool(up, None)})
+    return [
+        ("upstream: a host tool outside the run set is not a finding", p_up == []),
+        ("upstream: what lies outside the run set is COUNTED for the note",
+         bool(n_up) and n_up[0][2] >= 1),
+        ("repacked: the same undeclared library IS a finding",
+         {so for _, so, _ in p_mine} >= ext),
+        ("upstream: a run program's own undeclared library IS a finding",
+         {so for _, so, _ in p_uprun} >= ext),
+        ("upstream: a declared run program missing from the dist is a finding",
+         any(so == "bin/dtc" for _, so, _ in p_missing)),
+        ("upstream with no smoke keeps the FULL closure (narrowing is declared)",
+         {so for _, so, _ in p_nosmoke} >= ext),
+    ]
 
 
 def self_test():
@@ -734,7 +870,7 @@ def self_test():
             "a dist with no program measures its libraries",
             library_scope == set(library_dist),
         ),
-    ] + _elf_probe_checks() + _ldd_parse_checks()
+    ] + _elf_probe_checks() + _ldd_parse_checks() + _store_checks()
     bad = [name for name, ok in checks if not ok]
     if bad:
         for b in bad:
@@ -758,7 +894,7 @@ def main():
               "  `nros setup <board>` first, or pass --store.")
         return check_skip.unverified("dist-runtime-deps", f"no provisioned store at {store}")
     index = load_index()
-    problems, skipped, notes = audit(index, store, include_unreached)
+    problems, skipped, notes, upstream = audit(index, store, include_unreached)
     rc = 0
     if problems:
         print(
@@ -798,6 +934,14 @@ def main():
     # of the closure, and printing them is what keeps "out of scope" from
     # meaning "invisible". LAST, on both paths: `just doctor` renders this gate
     # by its FIRST line, so a note ahead of the verdict would displace it there.
+    for tool, n_runs, n_unchecked in upstream:
+        print(
+            f"check-dist-runtime-deps: note — [tool.{tool}] upstream dist, host "
+            f"tools not invoked by nano-ros: {n_unchecked} soname(s) not checked "
+            f"({n_runs} run program(s) checked).\n  Counted from those tools' own "
+            "DT_NEEDED; their transitive host closure is larger. Upstream's\n  "
+            "documented host requirements cover them (issue 1744)."
+        )
     for tool, so, where in notes:
         print(
             f"check-dist-runtime-deps: note — [tool.{tool}] ships {where}, which "
