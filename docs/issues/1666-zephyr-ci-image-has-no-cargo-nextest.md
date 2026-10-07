@@ -48,3 +48,24 @@ latent behind that red the whole time.
   install it in a workflow step before `Run the board cells`.
 - Acceptance: a `live-peer regression` run whose board job reports cell
   verdicts (`PASS`/`FAIL`/`[SKIPPED]`), not `no such command`.
+
+## 2026-10-07 — the provisioning step installs nextest and then cannot see it
+
+`live-peer regression` run **37570821619** (schedule 04:18Z, head `edbe96f92`),
+job **112629242791** `rows whose board is NOT this runner`. The workflow's
+`Provision cargo-nextest` step (added in `0f4839ec8`) now fails before the cells:
+
+```
+nros setup --tool cargo-nextest: prebuilt 0.9.143-nros1 (dist linux-x86_64) → /github/home/.nros/sdk/cargo-nextest/0.9.143-nros1
+error: no such command: `nextest`
+```
+
+The install succeeds; the PATH does not follow. The step sources `activate.sh`
+first and installs second, and `activate.sh` puts a store tool's `bin/` on PATH
+only if that directory exists when it is sourced. Reproduced locally against an
+empty `NROS_HOME`: after creating `sdk/cargo-nextest/0.9.143-nros1/bin/`, the
+same shell still resolves another `cargo-nextest`, and only a second `source
+./activate.sh` resolves the store copy.
+
+Fixed alongside this entry: the step re-sources `activate.sh` after the install.
+The acceptance above is unchanged: a board job that reports cell verdicts.
