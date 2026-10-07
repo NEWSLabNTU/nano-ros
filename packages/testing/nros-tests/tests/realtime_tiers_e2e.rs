@@ -51,9 +51,11 @@ use nros_tests::{
         ManagedProcess, QemuProcess, RequireFixture, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_freertos_workspace_c_realtime_entry, build_freertos_workspace_cpp_realtime_entry,
         build_freertos_workspace_rust_realtime_entry, build_native_workspace_c_realtime_entry,
+        build_native_workspace_cpp_derived_tiers_entry,
         build_native_workspace_cpp_rclcpp_realtime_entry,
-        build_native_workspace_cpp_realtime_entry, build_native_workspace_rust_realtime_entry,
-        build_nuttx_riscv_workspace_c_realtime_entry,
+        build_native_workspace_cpp_realtime_entry,
+        build_native_workspace_rust_realtime_derived_entry,
+        build_native_workspace_rust_realtime_entry, build_nuttx_riscv_workspace_c_realtime_entry,
         build_nuttx_riscv_workspace_cpp_realtime_entry,
         build_nuttx_riscv_workspace_rust_realtime_entry, build_nuttx_workspace_c_realtime_entry,
         build_nuttx_workspace_cpp_realtime_entry, build_nuttx_workspace_rust_realtime_entry,
@@ -124,10 +126,24 @@ enum Proof {
     /// (`tick=1`), under a router, so every derived tier was spawned AND keeps
     /// running. Order-independent — [`ZephyrProcess::wait_for_pattern`]
     /// returns the whole accumulated console, so no marker can be consumed.
+    ///
+    /// Issue 1733 — on [`Boot::Native`] too: the entry runs to its
+    /// `NROS_ENTRY_SPIN_MS` bound and the whole output is read, and a native
+    /// row also fails on any `setup FAILED` line, because a tier that lost its
+    /// setup is exactly what this image did on every boot.
     ConsoleTicks(&'static [&'static str]),
 }
 
 type Resolver = fn() -> TestResult<PathBuf>;
+
+/// `derived-tiers-cpp`'s four components, one derived tier each — the nodes
+/// whose `[<node>] tick=` markers both of its cells read.
+const DERIVED_TIERS_CPP_NODES: &[&str] = &[
+    "mrm_emergency_stop_operator",
+    "mrm_comfortable_stop_operator",
+    "stop_mode_operator",
+    "mrm_handler",
+];
 
 /// The per-cell EXECUTION data for one realtime-tiers matrix cell. The
 /// coordinate lives in `matrix::Cell`; this carries the boot/resolver/proof.
@@ -160,14 +176,26 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
         Some(port_of(platform, lang, MW::RealtimeTiers))
     };
     match (platform, lang) {
-        (MP::Linux, ML::Rust) => vec![Exec {
-            label: "rust",
-            resolver: native_rust_entry,
-            port,
-            boot: Boot::Native,
-            proof: Proof::CounterRatio3x,
-            note: "phase-263 B2 `nros::main!` run_tiers (RFC-0032 §5); #158 counter proof",
-        }],
+        (MP::Linux, ML::Rust) => vec![
+            Exec {
+                label: "rust",
+                resolver: native_rust_entry,
+                port,
+                boot: Boot::Native,
+                proof: Proof::CounterRatio3x,
+                note: "phase-263 B2 `nros::main!` run_tiers (RFC-0032 §5); #158 counter proof",
+            },
+            Exec {
+                label: "rust-derived",
+                resolver: native_rust_derived_entry,
+                port,
+                boot: Boot::Native,
+                proof: Proof::CounterRatio3x,
+                note: "issue 1733: derived_bringup — two tiers DERIVED from the contract, each \
+                       arming a /diagnostics reporter; a pool sized for one reporter lost the \
+                       control tier (`/ctrl` silent) on every boot",
+            },
+        ],
         (MP::Linux, ML::C) => vec![Exec {
             label: "c",
             resolver: native_c_entry,
@@ -195,6 +223,16 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
                        node_name → sched_context table at Executor::node_builder — a miss here \
                        means rclcpp-shape nodes lost their tier again",
             },
+            Exec {
+                label: "cpp-derived",
+                resolver: native_cpp_derived_entry,
+                port,
+                boot: Boot::Native,
+                proof: Proof::ConsoleTicks(DERIVED_TIERS_CPP_NODES),
+                note: "issue 1733: derived-tiers-cpp — four DERIVED tiers, three spawned at once \
+                       over one session, each arming a /diagnostics reporter: lost 2-3 tiers \
+                       per boot to ZPICO_MAX_PUBLISHERS sized for one reporter",
+            },
         ],
         (MP::ZephyrNativeSim, ML::Rust) => vec![Exec {
             label: "rust",
@@ -218,12 +256,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
                 resolver: build_zephyr_workspace_cpp_derived_tiers_entry,
                 port,
                 boot: Boot::ZephyrNativeSim,
-                proof: Proof::ConsoleTicks(&[
-                    "mrm_emergency_stop_operator",
-                    "mrm_comfortable_stop_operator",
-                    "stop_mode_operator",
-                    "mrm_handler",
-                ]),
+                proof: Proof::ConsoleTicks(DERIVED_TIERS_CPP_NODES),
                 note: "issue 1575: derived-tiers-cpp — four tiers DERIVED from the contract \
                        (no authored [tiers.*]); the image issue 1551 ran the heap dry on",
             },
@@ -364,6 +397,12 @@ fn native_cpp_entry() -> TestResult<PathBuf> {
 }
 fn native_cpp_rclcpp_entry() -> TestResult<PathBuf> {
     build_native_workspace_cpp_rclcpp_realtime_entry().map(|p| p.to_path_buf())
+}
+fn native_rust_derived_entry() -> TestResult<PathBuf> {
+    build_native_workspace_rust_realtime_derived_entry().map(|p| p.to_path_buf())
+}
+fn native_cpp_derived_entry() -> TestResult<PathBuf> {
+    build_native_workspace_cpp_derived_tiers_entry().map(|p| p.to_path_buf())
 }
 fn nuttx_rust_entry() -> TestResult<PathBuf> {
     build_nuttx_workspace_rust_realtime_entry().map(|p| p.to_path_buf())
@@ -740,10 +779,51 @@ fn run_one(pcell: &MCell, cell: &Exec) {
         return;
     }
 
+    if let (Proof::ConsoleTicks(nodes), Boot::Native) = (cell.proof, cell.boot) {
+        // Issue 1733 — a bounded run, then the WHOLE output: no marker can be
+        // consumed by an earlier wait, and a `setup FAILED` line printed before
+        // the first tick is still in what is read.
+        let mut cmd = Command::new(&entry);
+        cmd.env("NROS_LOCATOR", router.locator())
+            .env("NROS_SESSION_MODE", "client")
+            .env("NROS_ENTRY_SPIN_MS", "4000");
+        let mut guest = ManagedProcess::spawn_command(cmd, "derived-tiers-entry")
+            .unwrap_or_else(|e| panic!("spawn native derived-tiers entry: {e}"));
+        let console = guest
+            .wait_for_all_output(Duration::from_secs(20))
+            .unwrap_or_else(|e| format!("<no output: {e}>"));
+        guest.kill();
+        let lost: Vec<&str> = console
+            .lines()
+            .filter(|l| l.contains("setup FAILED") || l.contains("failed to construct"))
+            .collect();
+        assert!(
+            lost.is_empty(),
+            "[{} {}] a tier lost its setup ({})\n         {}\n         console:\n           {}",
+            platform,
+            lang,
+            cell.note,
+            lost.join("\n         "),
+            console_excerpt(&console)
+        );
+        for node in nodes {
+            let marker = format!("{}1", nros_tests::output::tier_tick_marker(node));
+            assert!(
+                console.contains(&marker),
+                "[{} {}] node `{node}` never ticked twice (`{marker}` absent) — its derived \
+                 tier did not run ({})\n         console:\n           {}",
+                platform,
+                lang,
+                cell.note,
+                console_excerpt(&console)
+            );
+        }
+        return;
+    }
     if let Proof::ConsoleTicks(nodes) = cell.proof {
         assert!(
             matches!(cell.boot, Boot::ZephyrNativeSim),
-            "[{} {}] ConsoleTicks reads a native_sim console; boot {:?} has none",
+            "[{} {}] ConsoleTicks reads a native_sim or native console; boot {:?} has none",
             platform,
             lang,
             cell.boot

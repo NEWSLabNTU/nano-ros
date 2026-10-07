@@ -1036,6 +1036,14 @@ where
 
     let shared = NuttxSharedSession(boot_crt.executor_mut().session_ptr());
     let setup = &setup;
+    // Issue 1733 — the spawned tiers' setups are serialized among THEMSELVES
+    // too. Running the boot tier's setup first (issue #144, above) kept them
+    // off the boot tier's declares, but every other tier was spawned at once,
+    // so with three tiers or more two spawned setups declared on the shared
+    // session concurrently — the race this runner's own doc calls out, and
+    // the one the C arm (`nuttx_run_tiers.c`) closes by chaining its spawns.
+    // Lives in this frame, which never returns (see `TierCtx`).
+    let setup_gate = ::nros::TierSetupGate::new();
     // issue 1571 — one `.bss` slot per spawned tier, in spawn order; checked
     // above to cover every tier but the boot one.
     let mut slots = tier_backing.iter_mut();
@@ -1108,6 +1116,7 @@ where
                 tier: tier as *const nros_platform::TierSpec<'_>
                     as *const nros_platform::TierSpec<'static>,
                 setup: setup as *const F,
+                setup_gate: &setup_gate as *const ::nros::TierSetupGate,
                 _e: core::marker::PhantomData,
             });
             // Keep the TYPED pointer as well: the `*mut c_void` the C shim wants
@@ -1246,6 +1255,9 @@ struct TierCtx<F, E> {
     tier: *const nros_platform::TierSpec<'static>,
     /// The shared `setup` closure — `Fn` + `Sync`, invoked once per tier.
     setup: *const F,
+    /// Issue 1733 — the runner's one setup gate, held across this tier's open
+    /// and `setup`.
+    setup_gate: *const ::nros::TierSetupGate,
     _e: core::marker::PhantomData<fn() -> E>,
 }
 
@@ -1264,13 +1276,19 @@ where
     // SAFETY: `arg` is the `TierCtx` leaked by the spawn site, whose contents
     // outlive this task by the never-returns invariant documented there.
     let ctx = unsafe { &*(arg as *const TierCtx<F, E>) };
-    // SAFETY: aliasing the boot executor's session is the per-tier model; the
-    // backend serializes concurrent access internally (`Z_FEATURE_MULTI_THREAD`).
+    // SAFETY: all three pointers came from live borrows at the spawn site; the
+    // gate lives in `run_tiers`' frame, which never returns.
+    let (tier, setup, gate) = unsafe { (&*ctx.tier, &*ctx.setup, &*ctx.setup_gate) };
+    // Issue 1733 — the open is part of the critical section: it touches the
+    // shared session too. `nuttx_run_one_tier` releases the guard once setup
+    // has returned, before it spins.
+    let guard = gate.enter();
+    // SAFETY: aliasing the boot executor's session is the per-tier model. The
+    // backend serializes concurrent I/O internally (`Z_FEATURE_MULTI_THREAD`),
+    // but NOT concurrent entity declaration, which the gate above serializes.
     // issue 1571 — over this tier's `.bss` slot, not a leaked `Box`.
     let exec = unsafe { ::nros::Executor::open_with_session_slot(ctx.session, &mut *ctx.slot) };
-    // SAFETY: both pointers came from live borrows at the spawn site.
-    let (tier, setup) = unsafe { (&*ctx.tier, &*ctx.setup) };
-    nuttx_run_one_tier::<F, E>(exec, tier, setup);
+    nuttx_run_one_tier::<F, E>(exec, tier, setup, guard);
     core::ptr::null_mut()
 }
 
@@ -1305,6 +1323,7 @@ fn nuttx_run_one_tier<F, E>(
     exec: ::nros::Executor<'static>,
     tier: &nros_platform::TierSpec<'_>,
     setup: &F,
+    setup_guard: ::nros::TierSetupGuard<'_>,
 ) where
     F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
     E: core::fmt::Debug,
@@ -1342,6 +1361,7 @@ fn nuttx_run_one_tier<F, E>(
             return;
         }
     }
+    drop(setup_guard);
     nuttx_spin_tier_forever(&mut crt, tier);
 }
 

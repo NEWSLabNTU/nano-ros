@@ -587,6 +587,10 @@ struct zpico_session {
      * liveliness, queryables). See `zpico_claim_slot`. */
     _z_mutex_t slot_mutex;
     bool slot_mutex_initialized;
+    /* issue 1749 -- serializes every call into zenoh-pico's declare path on
+     * this session. See `zpico_declare_lock`. */
+    _z_mutex_rec_t declare_mutex;
+    bool declare_mutex_initialized;
 #endif
     // Session handle + config + lifecycle (per handle — issue 0347's
     // single-session guard is gone; each handle is independent).
@@ -719,6 +723,10 @@ struct zpico_session {
 };
 
 static struct zpico_session g_sessions[ZPICO_MAX_SESSIONS];
+
+/* Issue 1749 -- defined beside the slot lock; see there. */
+static inline void zpico_declare_lock(struct zpico_session* s);
+static inline void zpico_declare_unlock(struct zpico_session* s);
 static bool g_session_inuse[ZPICO_MAX_SESSIONS];
 
 // Acquire a free pool slot (zeroed). NULL when the pool is exhausted.
@@ -2223,6 +2231,9 @@ int32_t zpico_open(zpico_session_t* session) {
     if (!s->slot_mutex_initialized && _z_mutex_init(&s->slot_mutex) == 0) {
         s->slot_mutex_initialized = true;
     }
+    if (!s->declare_mutex_initialized && _z_mutex_rec_init(&s->declare_mutex) == 0) {
+        s->declare_mutex_initialized = true;
+    }
 #endif
     s->session_open = true;
     return ZPICO_OK;
@@ -2357,6 +2368,7 @@ int32_t zpico_send_keep_alive(zpico_session_t* session) {
 void zpico_close(zpico_session_t* session) {
     struct zpico_session* s = (struct zpico_session*)session;
     // Clean up publishers
+    zpico_declare_lock(s);
     for (int i = 0; i < ZPICO_MAX_PUBLISHERS; i++) {
         if (s->publishers[i].active) {
             z_undeclare_publisher(z_publisher_move(&s->publishers[i].publisher));
@@ -2391,6 +2403,7 @@ void zpico_close(zpico_session_t* session) {
             s->queryables[i].ctx = NULL;
         }
     }
+    zpico_declare_unlock(s);
 
     // Close session
     if (s->session_open) {
@@ -2431,6 +2444,10 @@ void zpico_close(zpico_session_t* session) {
         if (s->slot_mutex_initialized) {
             s->slot_mutex_initialized = false;
             _z_mutex_drop(&s->slot_mutex);
+        }
+        if (s->declare_mutex_initialized) {
+            s->declare_mutex_initialized = false;
+            _z_mutex_rec_drop(&s->declare_mutex);
         }
 #endif
     }
@@ -2476,6 +2493,44 @@ static inline void zpico_slot_unlock(struct zpico_session* s) {
 #if Z_FEATURE_MULTI_THREAD == 1
     if (s->slot_mutex_initialized) {
         _z_mutex_unlock(&s->slot_mutex);
+    }
+#else
+    (void)s;
+#endif
+}
+
+// Issue 1749 -- zenoh-pico's declare path is not thread-safe on one session.
+// `_z_get_entity_id` is `zn->_entity_id++`, and `_z_cache_declaration` /
+// `_z_prune_declaration` (Z_FEATURE_AUTO_RECONNECT) push onto and filter the
+// session's `_declaration_cache` list with no lock. Two threads declaring or
+// undeclaring at once tear that list: issue 1711's own regression test
+// SIGSEGVed 3 of 100 runs inside `_z_prune_declaration`, and helgrind saw the
+// push race between two tier setups (issue 1733).
+//
+// Every call into that path from this file -- `z_declare_*`, `z_undeclare_*`,
+// the liveliness token/subscriber pair, `z_get` and `z_liveliness_get` (both
+// take an entity id) -- runs under this per-session lock. RECURSIVE, because a
+// declare can deliver synchronously to a local subscriber or queryable whose
+// callback is ours. Lock order is this lock, then zenoh-pico's own mutexes;
+// nothing here takes it from inside a zenoh-pico callback, so the reverse
+// order never occurs. Without `Z_FEATURE_MULTI_THREAD` there is no second
+// thread and no lock. NOT covered: the lease task's reconnect replay
+// (`_z_reopen`) walks the same list on zenoh-pico's own thread -- issue 1749's
+// open half, which needs the lock upstream.
+static inline void zpico_declare_lock(struct zpico_session* s) {
+#if Z_FEATURE_MULTI_THREAD == 1
+    if (s->declare_mutex_initialized) {
+        _z_mutex_rec_lock(&s->declare_mutex);
+    }
+#else
+    (void)s;
+#endif
+}
+
+static inline void zpico_declare_unlock(struct zpico_session* s) {
+#if Z_FEATURE_MULTI_THREAD == 1
+    if (s->declare_mutex_initialized) {
+        _z_mutex_rec_unlock(&s->declare_mutex);
     }
 #else
     (void)s;
@@ -2554,8 +2609,10 @@ int32_t zpico_declare_publisher_ex(zpico_session_t* session, const char* keyexpr
      * options carry no congestion control in zenoh-pico). */
     pub_opts.congestion_control = Z_CONGESTION_CONTROL_BLOCK;
 #endif
+    zpico_declare_lock(s);
     int pub_ret = z_declare_publisher(z_session_loan(&s->session), &s->publishers[idx].publisher,
                                       z_view_keyexpr_loan(&ke), &pub_opts);
+    zpico_declare_unlock(s);
     if (pub_ret < 0) {
         printk("zpico: z_declare_publisher failed: %d for '%s'\n", pub_ret, keyexpr);
         zpico_release_slot(s, publishers, idx);
@@ -2596,7 +2653,9 @@ int32_t zpico_undeclare_publisher(zpico_session_t* session, int32_t handle) {
         return ZPICO_ERR_INVALID;
     }
 
+    zpico_declare_lock(s);
     z_undeclare_publisher(z_publisher_move(&s->publishers[handle].publisher));
+    zpico_declare_unlock(s);
     zpico_release_slot(s, publishers, handle);
     return ZPICO_OK;
 }
@@ -2634,9 +2693,11 @@ int32_t zpico_declare_subscriber(zpico_session_t* session, const char* keyexpr,
     z_owned_closure_sample_t closure;
     z_closure_sample(&closure, sample_handler, NULL, _zpico_pack_ctx(s, idx));
 
+    zpico_declare_lock(s);
     int sub_ret =
         z_declare_subscriber(z_session_loan(&s->session), &s->subscribers[idx].subscriber,
                              z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
+    zpico_declare_unlock(s);
     if (sub_ret < 0) {
         printk("zpico: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
         s->subscribers[idx].callback = NULL;
@@ -2679,9 +2740,11 @@ int32_t zpico_declare_subscriber_with_attachment(zpico_session_t* session, const
     z_owned_closure_sample_t closure;
     z_closure_sample(&closure, sample_handler, NULL, _zpico_pack_ctx(s, idx));
 
+    zpico_declare_lock(s);
     int sub_ret =
         z_declare_subscriber(z_session_loan(&s->session), &s->subscribers[idx].subscriber,
                              z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
+    zpico_declare_unlock(s);
     if (sub_ret < 0) {
         printk("zpico: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
         s->subscribers[idx].callback_ext = NULL;
@@ -2731,9 +2794,11 @@ int32_t zpico_declare_subscriber_direct_write(zpico_session_t* session, const ch
     z_owned_closure_sample_t closure;
     z_closure_sample(&closure, sample_handler, NULL, _zpico_pack_ctx(s, idx));
 
+    zpico_declare_lock(s);
     int sub_ret =
         z_declare_subscriber(z_session_loan(&s->session), &s->subscribers[idx].subscriber,
                              z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
+    zpico_declare_unlock(s);
     if (sub_ret < 0) {
         printk("zpico: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
         s->subscribers[idx].notify = NULL;
@@ -2815,9 +2880,11 @@ int32_t zpico_declare_subscriber_ring(zpico_session_t* session, const char* keye
     z_owned_closure_sample_t closure;
     z_closure_sample(&closure, sample_handler, NULL, _zpico_pack_ctx(s, idx));
 
+    zpico_declare_lock(s);
     int sub_ret =
         z_declare_subscriber(z_session_loan(&s->session), &s->subscribers[idx].subscriber,
                              z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
+    zpico_declare_unlock(s);
     if (sub_ret < 0) {
         printk("zpico: z_declare_subscriber (ring) failed: %d for '%s'\n", sub_ret, keyexpr);
         s->subscribers[idx].notify = NULL;
@@ -2920,8 +2987,11 @@ int32_t zpico_subscriber_history_query(zpico_session_t* session, int32_t handle,
     entry->hist_active = true;
     z_owned_closure_reply_t callback;
     z_closure(&callback, history_reply_handler, history_reply_dropper, _zpico_pack_ctx(s, handle));
-    if (z_get(z_session_loan(&s->session), z_view_keyexpr_loan(&ke), "", z_move(callback), &opts) <
-        0) {
+    zpico_declare_lock(s);
+    z_result_t hist_ret =
+        z_get(z_session_loan(&s->session), z_view_keyexpr_loan(&ke), "", z_move(callback), &opts);
+    zpico_declare_unlock(s);
+    if (hist_ret < 0) {
         entry->hist_active = false;
         return ZPICO_ERR_GENERIC;
     }
@@ -2980,9 +3050,11 @@ int32_t zpico_subscribe_zero_copy(zpico_session_t* session, const char* keyexpr,
     z_owned_closure_sample_t closure;
     z_closure_sample(&closure, sample_handler, NULL, _zpico_pack_ctx(s, idx));
 
+    zpico_declare_lock(s);
     int sub_ret =
         z_declare_subscriber(z_session_loan(&s->session), &s->subscribers[idx].subscriber,
                              z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
+    zpico_declare_unlock(s);
     if (sub_ret < 0) {
         printk("zpico: z_declare_subscriber (zero_copy) failed: %d for '%s'\n", sub_ret, keyexpr);
         s->subscribers[idx].zero_copy = false;
@@ -3014,7 +3086,9 @@ int32_t zpico_undeclare_subscriber(zpico_session_t* session, int32_t handle) {
         return ZPICO_ERR_INVALID;
     }
 
+    zpico_declare_lock(s);
     z_undeclare_subscriber(z_subscriber_move(&s->subscribers[handle].subscriber));
+    zpico_declare_unlock(s);
     zpico_release_slot(s, subscribers, handle);
     s->subscribers[handle].callback = NULL;
     s->subscribers[handle].ctx = NULL;
@@ -3365,8 +3439,10 @@ int32_t zpico_declare_liveliness(zpico_session_t* session, const char* keyexpr) 
         return ZPICO_ERR_KEYEXPR;
     }
 
+    zpico_declare_lock(s);
     int lv_ret = z_liveliness_declare_token(z_session_loan(&s->session), &s->liveliness[idx].token,
                                             z_view_keyexpr_loan(&ke), NULL);
+    zpico_declare_unlock(s);
     if (lv_ret < 0) {
         /* issue 0283 — a failed token is a SILENT graph outage (the ROS 2
          * tools see nothing) — say so on the console like the publisher /
@@ -3387,7 +3463,9 @@ int32_t zpico_undeclare_liveliness(zpico_session_t* session, int32_t handle) {
         return ZPICO_ERR_INVALID;
     }
 
+    zpico_declare_lock(s);
     z_liveliness_undeclare_token(z_liveliness_token_move(&s->liveliness[handle].token));
+    zpico_declare_unlock(s);
     zpico_release_slot(s, liveliness, handle);
     return ZPICO_OK;
 }
@@ -3509,9 +3587,11 @@ int32_t zpico_declare_queryable(zpico_session_t* session, const char* keyexpr,
     z_queryable_options_default(&opts);
     opts.complete = true;
 
+    zpico_declare_lock(s);
     int q_ret =
         z_declare_queryable(z_session_loan(&s->session), &s->queryables[idx].queryable,
                             z_view_keyexpr_loan(&ke), z_closure_query_move(&closure), &opts);
+    zpico_declare_unlock(s);
     if (q_ret < 0) {
         printk("zpico: z_declare_queryable failed: %d for '%s'\n", q_ret, keyexpr);
         s->queryables[idx].callback = NULL;
@@ -3531,7 +3611,9 @@ int32_t zpico_undeclare_queryable(zpico_session_t* session, int32_t handle) {
         return ZPICO_ERR_INVALID;
     }
 
+    zpico_declare_lock(s);
     z_undeclare_queryable(z_queryable_move(&s->queryables[handle].queryable));
+    zpico_declare_unlock(s);
     zpico_release_slot(s, queryables, handle);
     s->queryables[handle].callback = NULL;
     s->queryables[handle].ctx = NULL;
@@ -3813,8 +3895,11 @@ int32_t zpico_get(zpico_session_t* session, const char* keyexpr, const uint8_t* 
     z_closure(&callback, get_reply_handler, get_reply_dropper, &ctx);
 
     // Send the query
-    if (z_get(z_session_loan(&s->session), z_view_keyexpr_loan(&ke), "", z_move(callback), &opts) <
-        0) {
+    zpico_declare_lock(s);
+    z_result_t get_ret =
+        z_get(z_session_loan(&s->session), z_view_keyexpr_loan(&ke), "", z_move(callback), &opts);
+    zpico_declare_unlock(s);
+    if (get_ret < 0) {
         return ZPICO_ERR_GENERIC;
     }
 
@@ -4044,8 +4129,10 @@ int32_t zpico_get_start_with_attachment(zpico_session_t* session, const char* ke
     /* Same aliasing-defeat trick. */
     g_diag_start_ctx_addr = (uint32_t)(uintptr_t)&ps->ctx;
 
+    zpico_declare_lock(s);
     z_result_t zret =
         z_get(z_session_loan(&s->session), z_view_keyexpr_loan(&ke), "", z_move(callback), &opts);
+    zpico_declare_unlock(s);
     if (zret < 0) {
         ps->in_use = false;
         return ZPICO_ERR_GENERIC;
@@ -4113,8 +4200,10 @@ int32_t zpico_liveliness_get_start(zpico_session_t* session, const char* keyexpr
     z_owned_closure_reply_t callback;
     z_closure(&callback, pending_get_reply_handler, pending_get_dropper, _zpico_pack_ctx(s, slot));
 
+    zpico_declare_lock(s);
     z_result_t zret = z_liveliness_get(z_session_loan(&s->session), z_view_keyexpr_loan(&ke),
                                        z_move(callback), &opts);
+    zpico_declare_unlock(s);
     if (zret < 0) {
         ps->in_use = false;
         return ZPICO_ERR_GENERIC;
@@ -4202,8 +4291,10 @@ int32_t zpico_liveliness_collect_start(zpico_session_t* session, const char* key
     z_owned_closure_reply_t callback;
     z_closure(&callback, pending_get_reply_handler, pending_get_dropper, _zpico_pack_ctx(s, slot));
 
+    zpico_declare_lock(s);
     z_result_t zret = z_liveliness_get(z_session_loan(&s->session), z_view_keyexpr_loan(&ke),
                                        z_move(callback), &opts);
+    zpico_declare_unlock(s);
     if (zret < 0) {
         ps->in_use = false;
         return ZPICO_ERR_GENERIC;
@@ -4415,9 +4506,11 @@ int32_t zpico_graph_cache_start(zpico_session_t* session, const char* keyexpr) {
      * history burst this call exists to collect. That ordering was defect 4 in
      * the query form (issue 0903); it is not repeated here. */
     c->active = true;
+    zpico_declare_lock(s);
     z_result_t ret = z_liveliness_declare_subscriber(z_session_loan(&s->session), &c->sub,
                                                      z_view_keyexpr_loan(&ke),
                                                      z_closure_sample_move(&closure), &opts);
+    zpico_declare_unlock(s);
     if (ret != _Z_RES_OK) {
         c->active = false;
 #if Z_FEATURE_MULTI_THREAD == 1
@@ -4438,7 +4531,9 @@ int32_t zpico_graph_cache_stop(zpico_session_t* session) {
         return 0;
     }
     s->graph_cache.active = false;
+    zpico_declare_lock(s);
     z_undeclare_subscriber(z_subscriber_move(&s->graph_cache.sub));
+    zpico_declare_unlock(s);
 #if Z_FEATURE_MULTI_THREAD == 1
     _z_mutex_drop(&s->graph_cache.mutex);
 #endif

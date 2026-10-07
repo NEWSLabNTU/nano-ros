@@ -252,6 +252,8 @@ static NATIVE_WORKSPACE_RUST_ACTION_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = Onc
 
 /// phase-263 B2 (Track D) — cached path to the real-time multi-tier workspace Entry.
 static NATIVE_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// Issue 1733 — the derived-tier sibling of the realtime entry above.
+static NATIVE_WORKSPACE_RUST_REALTIME_DERIVED_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-263 A3 (Track D) — cached path to the managed (lifecycle) workspace Entry.
 static NATIVE_WORKSPACE_RUST_LIFECYCLE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -298,6 +300,8 @@ static NATIVE_WORKSPACE_CPP_SAFETY_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = On
 /// Phase 269 W4 — cached paths to the 2-tier sched-context C/C++ realtime workspace entries.
 static NATIVE_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// Issue 1733 — the native derived-tier C++ entry (`derived-tiers-cpp`).
+static NATIVE_WORKSPACE_CPP_DERIVED_TIERS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Phase 272 W3 — cached path to the rclcpp-shape 2-tier realtime workspace entry.
 static NATIVE_WORKSPACE_CPP_RCLCPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Phase 273 W4 — cached path to the sub-node 2-group realtime workspace entry (RFC-0047 proof).
@@ -2532,6 +2536,21 @@ pub fn build_native_workspace_rust_realtime_entry() -> TestResult<&'static Path>
         .map(|p| p.as_path())
 }
 
+/// Issue 1733 — the native DERIVED-tier Rust realtime entry (cached):
+/// `realtime-rust`'s `derived_bringup`, `[image.native_derived]`, whose two
+/// tiers `nros::main!` derives from the contract rather than reads.
+pub fn build_native_workspace_rust_realtime_derived_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_REALTIME_DERIVED_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-realtime-derived",
+                "realtime-rust",
+                "native_derived_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// phase-306 W4 (issue 0255) — the remap/private-name native Rust workspace
 /// Entry pkg fixture (`features`, cached; pure-cargo
 /// `nros::main!(model = …)`). The model namespaces the node under `/island`
@@ -3684,6 +3703,21 @@ pub fn build_native_workspace_cpp_realtime_entry() -> TestResult<&'static Path> 
             build_workspace_cmake_entry(
                 "workspace-cpp-native-realtime",
                 "realtime-cpp",
+                "native_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Issue 1733 — the native DERIVED-tier C++ entry (cached): `derived-tiers-cpp`'s
+/// four components, one derived tier each, three of them spawned over the boot
+/// executor's session by `nros_board_native_run_tiers_in`.
+pub fn build_native_workspace_cpp_derived_tiers_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_DERIVED_TIERS_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-derived-tiers",
+                "derived-tiers-cpp",
                 "native_entry",
             )
         })

@@ -43,8 +43,8 @@ mod backing;
 #[cfg(all(any(has_rmw, test), feature = "alloc"))]
 pub use backing::{
     EXECUTOR_BACKING_DEFAULT_U64S, TIER_TASK_TCB_U64S, TierBackingShort, TierExecutorBacking,
-    TierExecutorBackingSlot, TierTaskMemory, TierTaskMemoryRaw, TierTaskMemorySet,
-    check_tier_executor_backing,
+    TierExecutorBackingSlot, TierSetupGate, TierSetupGuard, TierTaskMemory, TierTaskMemoryRaw,
+    TierTaskMemorySet, check_tier_executor_backing,
 };
 // Phase 8 (autoware-safety-island `docs/design/callback_tracing.rst`) —
 // callback-level dispatch tracing. Same gating shape as `wake_probe`, for the

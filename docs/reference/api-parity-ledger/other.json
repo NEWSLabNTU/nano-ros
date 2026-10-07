@@ -1188,6 +1188,22 @@
     "verdict": "extension",
     "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
   },
+  "rust:TierSetupGate": {
+    "verdict": "extension",
+    "why": "issue 1733 -- the ONE gate a tier runner holds across each tier's open + `setup`, so no two tiers declare entities on the shared session at once (zenoh-pico's declare path is unsynchronized, and the backend session is reached through `&mut` aliases). The runners that spawn every tier at once (native C++, Linux Rust, NuttX Rust) hold it; the RTOS runners chain their spawns instead (issue #144). `no_std`, allocation-free, one atomic flag, backoff through the platform sleep. rclrs has no tier model and no shared-session setup to serialize."
+  },
+  "rust:TierSetupGate::enter": {
+    "verdict": "extension",
+    "why": "See `rust:TierSetupGate`. Blocks until the caller holds the gate; the returned guard opens it on drop, on every exit path."
+  },
+  "rust:TierSetupGate::new": {
+    "verdict": "extension",
+    "why": "See `rust:TierSetupGate`. `const`, so a runner can keep it in its never-returning frame or a `static`."
+  },
+  "rust:TierSetupGuard": {
+    "verdict": "extension",
+    "why": "See `rust:TierSetupGate`: proof of holding the gate, which a runner can hand to the function that releases it once the tier's setup has returned."
+  },
   "rust:TierTaskMemory": {
     "verdict": "divergence",
     "why": "issues 1598 + 1232 -- one SPAWNED tier's task memory (control block + stack) as a named `.bss` static the ENTRY owns, sized from the tier's declared `stack_bytes`. `nros::main!` emits one per spawned tier for a board whose tier runner creates the task over it (FreeRTOS `xTaskCreateStatic`; Zephyr `k_thread_create` over the stack, TCB region 0). Same no-allocator constraint as `rust:TierExecutorBacking`: on an RTOS the task stack came out of a fixed allocator arena nothing priced at link. rclrs runs on host threads and has no tier model. Covers `TierTaskMemory::new` (const, `.bss`) and `TierTaskMemory::raw` (the row a board receives)."

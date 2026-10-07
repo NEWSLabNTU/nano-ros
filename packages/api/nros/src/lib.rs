@@ -1312,7 +1312,7 @@ pub use nros_node::executor::{MAX_WAKE_SOURCES, NextDeadlineFn, WakeSourceId};
 #[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
 pub use nros_node::executor::{
     EXECUTOR_BACKING_DEFAULT_U64S, TierBackingShort, TierExecutorBacking, TierExecutorBackingSlot,
-    check_tier_executor_backing,
+    TierSetupGate, TierSetupGuard, check_tier_executor_backing,
 };
 /// issue 1598 — each spawned tier's TASK memory (stack + control block):
 /// `nros::main!` emits one `TierTaskMemory` static per spawned tier, sized from
