@@ -84,9 +84,10 @@ RULED_PRIVATE = {
         "carrier, and the NuttX boards match this name as a string",
     ),
     "cmake/NanoRosNodeRegister.cmake": (
-        8,
+        2,
         "the four RTOS/native typed-entry CARRIER executables (nuttx, threadx, "
-        "freertos, native), two lines each",
+        "freertos, native), created by ONE helper since issue 1742 "
+        "(`_nros_node_register_carrier_image`), two lines",
     ),
     "cmake/NanoRosAmentSurface.cmake": (
         2,

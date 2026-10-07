@@ -256,7 +256,7 @@ endfunction()
 
 # ---------------------------------------------------------------------------
 # nano_ros_add_node(<name> <sources…> CLASS <ns::Class> [LANGUAGE C|CPP]
-#                   [DEPLOY <target>…])
+#                   [DEPLOY <target>…] [PANIC platform|halt|own])
 #
 # Workspace component. Registers a component library via `nano_ros_node_register`;
 # the carrier entry ELF is assembled by the workspace root / `nros plan`.
@@ -276,7 +276,7 @@ function(nano_ros_add_node name)
             "nano_ros_add_node(${name}): consider the RFC-0057 split shape "
             "(nano_ros_auto_add_library + nros_components_register_node).")
     endif()
-    cmake_parse_arguments(_NRN "TYPED" "CLASS;HEADER;SHAPE;LANGUAGE" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
+    cmake_parse_arguments(_NRN "TYPED" "CLASS;HEADER;SHAPE;LANGUAGE;PANIC" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
     set(_srcs ${_NRN_SOURCES} ${_NRN_UNPARSED_ARGUMENTS})
     if(NOT _srcs)
         message(FATAL_ERROR "nano_ros_add_node(${name}): no sources given.")
@@ -340,6 +340,11 @@ function(nano_ros_add_node name)
     endif()
     if(_NRN_CALLBACK_GROUPS)
         list(APPEND _extra_args CALLBACK_GROUPS ${_NRN_CALLBACK_GROUPS})
+    endif()
+    # issue 1742 — the ending of the image a typed-entry carrier creates for
+    # this node; forwarded verbatim, defaulted (`platform`) by the register.
+    if(_NRN_PANIC)
+        list(APPEND _extra_args PANIC ${_NRN_PANIC})
     endif()
     set(_deploy_arg "")
     if(_NRN_DEPLOY)
@@ -466,7 +471,7 @@ endfunction()
 # nros_components_register_node(<target>                     (RFC-0057 D1)
 #     PLUGIN <ns::Class> EXECUTABLE <node_name>
 #     [HEADER <hdr>] [SHAPE rclcpp|configure] [TYPED]
-#     [DEPLOY <t>…] [CALLBACK_GROUPS <g>…])
+#     [DEPLOY <t>…] [PANIC platform|halt|own] [CALLBACK_GROUPS <g>…])
 #
 # Keyword-parity analog of `rclcpp_components_register_node`: PLUGIN is the
 # component class (any qualified name — L.4 retired per RFC-0057), EXECUTABLE
@@ -476,7 +481,7 @@ endfunction()
 # have; the legacy `configure(Node&)` shape is the explicit opt-in.
 # ---------------------------------------------------------------------------
 function(nros_components_register_node target)
-    cmake_parse_arguments(_NCR "TYPED" "PLUGIN;EXECUTABLE;HEADER;SHAPE" "DEPLOY;CALLBACK_GROUPS" ${ARGN})
+    cmake_parse_arguments(_NCR "TYPED" "PLUGIN;EXECUTABLE;HEADER;SHAPE;PANIC" "DEPLOY;CALLBACK_GROUPS" ${ARGN})
     _nros_entities_retired("nros_components_register_node(${target})" ${ARGN})
     foreach(_req PLUGIN EXECUTABLE)
         if(NOT _NCR_${_req})
@@ -539,6 +544,12 @@ function(nros_components_register_node target)
     endif()
     if(_NCR_CALLBACK_GROUPS)
         list(APPEND _extra CALLBACK_GROUPS ${_NCR_CALLBACK_GROUPS})
+    endif()
+    # issue 1742 — PANIC rides beside DEPLOY: both are nano-ros extensions to
+    # the rclcpp_components shape, and both only matter when DEPLOY makes the
+    # register create a carrier image.
+    if(_NCR_PANIC)
+        list(APPEND _extra PANIC ${_NCR_PANIC})
     endif()
     nano_ros_node_register(
         NAME ${_NCR_EXECUTABLE}
