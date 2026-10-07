@@ -865,6 +865,19 @@ jobs:
           source ./activate.sh
           just setup-launch-resolve
 
+      # Issue 1739 — `check::launch-resolve-fresh` is a step of `just ci gate`
+      # and is lane-EXEMPT (it needs the resolver built), so it was in no lane
+      # and on no workflow: `check-default-gates-run-somewhere` assumed a
+      # `check::` step covered "through the lane". This job builds the resolver
+      # in the step above, so the gate has its artifact here, on the same events.
+      - name: just check launch-resolve-fresh
+        if: >-
+          ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name)
+              && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check launch-resolve-fresh
+
       - name: just check cli-tests
         if: >-
           ${{ contains(fromJSON('["pull_request","merge_group"]'), github.event_name)

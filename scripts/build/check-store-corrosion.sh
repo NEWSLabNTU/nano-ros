@@ -55,3 +55,34 @@ nros_gate_require_store_corrosion() {
     echo "${gate}: \`nros setup --check --tool corrosion\` could not say whether the store holds the pinned Corrosion (rc=${rc}; output above)" >&2
     exit 1
 }
+
+# issue 1739 — the helper's own NORMAL-PATH control. On a host whose store
+# holds the pin the MISSING branch is never reached, so making it `return 0`
+# (the gate then runs, and CLONES Corrosion — issue 1553's race) left
+# `check fast` green. This drives all three answers through a fake
+# `nros setup --check` against a scratch ledger, never the lane's:
+#   rc 0               -> return 0 (run the gate)
+#   rc 1 + [MISSING]   -> return 1 AND a recorded skip
+#   rc 1, other output -> exit non-zero (the CLI could not answer)
+nros_gate_require_store_corrosion_self_test() (
+    local scratch rc
+    scratch="$(mktemp -d)"
+    _nros_check_skip_file() { printf '%s/checks.skipped' "$scratch"; }
+    printf '#!/bin/sh\necho "[OK] tool corrosion"\n' > "$scratch/ok"
+    printf '#!/bin/sh\necho "  [MISSING] tool corrosion 0.6.1-nros1"\nexit 1\n' > "$scratch/missing"
+    printf '#!/bin/sh\necho "in-tree nros CLI is STALE" >&2\nexit 3\n' > "$scratch/stale"
+    chmod +x "$scratch/ok" "$scratch/missing" "$scratch/stale"
+    fail() { rm -rf "$scratch"; echo "check-store-corrosion SELFTEST FAILED: $*" >&2; exit 1; }
+    nros_gate_require_store_corrosion selftest-gate "$scratch/ok" >/dev/null 2>&1 \
+        || fail "a provisioned store did not let the gate run"
+    rc=0; nros_gate_require_store_corrosion selftest-gate "$scratch/missing" >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 1 ] || fail "a [MISSING] Corrosion returned $rc, not 1 (skip) — the gate would CLONE it"
+    case "$(cat "$scratch/checks.skipped" 2>/dev/null)" in
+        selftest-gate$'\t'*) ;;
+        *) fail "a [MISSING] Corrosion was not RECORDED as a skip" ;;
+    esac
+    rc=0; ( nros_gate_require_store_corrosion selftest-gate "$scratch/stale" ) >/dev/null 2>&1 || rc=$?
+    [ "$rc" -ne 0 ] || fail "a CLI that could not answer read as a provisioned store"
+    rm -rf "$scratch"
+)
+

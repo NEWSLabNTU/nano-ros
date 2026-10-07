@@ -384,18 +384,6 @@ rmw-force-link-anchor:
 rmw-required-slots:
     @bash scripts/check-rmw-required-slots.sh
 
-# Issue 0934 R1 / phase-405 W2 — `nano_ros_workspace(BACKEND … SYSTEM …)` names
-# the RMW on one line and, on the next, a bringup whose `system.toml` names it
-# again. `NanoRosWorkspace.cmake` builds the path to that file (`:351`) and
-# never parses it, so the two authored copies can contradict each other with no
-# diagnostic: the C/C++ lane links BACKEND, the CLI resolves `[system].rmw`.
-# This fails on a disagreement and NAMES the one-sided declarations that can
-# become one. It does not decide which side is the SSoT — that is W2's
-# follow-up. Buildless.
-[private]
-workspace-rmw-agreement:
-    @python3 scripts/check-workspace-rmw-agreement.py
-
 # phase-348 W4 — build order derived from package.xml `<depend>`, not from the
 # order a SUBDIRS list happens to be written in. Every workspace CMakeLists
 # carries "Node pkgs BEFORE entries so the entry codegen sees their metadata";

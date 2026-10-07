@@ -413,7 +413,10 @@ _matrix-run:
     coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
     # Steps and timing through the shared runner — see the tier1 lane.
     export NROS_FIXTURE_LANE=tier2 NROS_TEST_COORDS="$coords"
-    steps=(check::default rust-rtos-link-check test-all)
+    # issue 1739 — `weak-symbols-image` nm's the prebuilt cross images, so it
+    # needs the fixture build this lane just did and belongs AFTER it; it ran
+    # nowhere before. A row it cannot find is a reported `nros_check_skip`.
+    steps=(check::default rust-rtos-link-check test-all check::weak-symbols-image)
     bash scripts/ci/run-lane-steps.sh tier2 "${steps[@]}"
     echo "CI passed (tier 2 — 1-wise cover; pairwise interactions need \`just ci-matrix-nightly\`)!"
 

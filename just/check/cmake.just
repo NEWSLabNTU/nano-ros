@@ -333,6 +333,7 @@ probe-shared-types:
     # issue 1553 -- a gate never clones Corrosion (see the helper's header).
     # shellcheck source=scripts/build/check-store-corrosion.sh
     source scripts/build/check-store-corrosion.sh
+    nros_gate_require_store_corrosion_self_test || exit 1  # issue 1739
     nros_gate_require_store_corrosion probe-shared-types packages/cli/target/release/nros || exit 0
     ./tests/cmake-probe-shared-types-tests.sh
 
@@ -386,6 +387,7 @@ probe-workspace-caps:
     # issue 1553 -- a gate never clones Corrosion (see the helper's header).
     # shellcheck source=scripts/build/check-store-corrosion.sh
     source scripts/build/check-store-corrosion.sh
+    nros_gate_require_store_corrosion_self_test || exit 1  # issue 1739
     nros_gate_require_store_corrosion probe-workspace-caps packages/cli/target/release/nros || exit 0
     ./tests/cmake-probe-workspace-caps-tests.sh
 

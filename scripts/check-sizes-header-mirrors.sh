@@ -97,7 +97,17 @@ fi
 if [ "$FIX" -eq 1 ] && [ "$fixed" -gt 0 ]; then
     echo "re-mirrored $fixed stale pair(s) from their build-dir source"
 fi
-echo "sizes-header mirrors OK — $compared mirror/source pair(s) across $scanned build tree(s)"
-if [ "$scanned" -eq 0 ]; then
-    echo "  (no local build trees — this gate proved NOTHING here; it needs built fixtures)"
+# issue 1739 — a run that compared NOTHING is NOT VERIFIED, through the ledger
+# (`check_skip`), never an `OK — 0 pair(s)` that reads as a pass. A missing
+# build tree is a missing precondition (a fresh clone, a CI runner), so this
+# records the skip rather than failing; `NROS_CHECK_SKIP_STRICT=1` makes it a
+# failure on a lane that built the trees.
+if [ "$compared" -eq 0 ]; then
+    # shellcheck source=scripts/build/check-skip.sh
+    source scripts/build/check-skip.sh
+    nros_check_unverified sizes-header-mirrors \
+        "0 mirror/source pair(s) across $scanned build tree(s) — no built nros-c/nros-cpp mirror here" \
+        || exit 1
+    exit 0
 fi
+echo "sizes-header mirrors OK — $compared mirror/source pair(s) across $scanned build tree(s)"

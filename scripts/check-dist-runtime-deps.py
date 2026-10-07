@@ -423,15 +423,41 @@ def closure(dist_root, include_unreached=False):
             ).stdout
         except (OSError, subprocess.SubprocessError):
             continue
-        for line in out.splitlines():
-            line = line.strip()
-            if "=>" not in line and "not found" not in line:
-                continue
-            so = line.split()[0]
-            if BASE.match(so) or RUSTC.match(so) or so in own:
-                continue
-            needed.add(so)
+        needed |= ldd_external(out, dist_root, own)
     return Measured(needed, len(unreached), out_of_scope)
+
+
+# One `ldd` dependency line: `<soname> => <path> (0x…)` or `<soname> => not
+# found`. Issue 1739 — the old reader took the first word of ANY line holding
+# `=>` or `not found`, so a loader diagnostic (`<path>: version `GLIBC_PRIVATE'
+# not found (required by …)`) became a "soname" ending in `:`, and the dist's
+# OWN relocated loader (an absolute path, as ldd prints a PT_INTERP) read as an
+# undeclared host library. Both were the bulk of `zephyr-sdk`'s red on a clean
+# tree.
+LDD_DEP = re.compile(r"^(\S+)\s+=>\s+(not found|\S+)")
+
+
+def ldd_external(out, dist_root, own):
+    """The sonames `ldd` output names that the HOST must provide."""
+    root = os.path.realpath(dist_root) + os.sep
+    found = set()
+    for line in out.splitlines():
+        m = LDD_DEP.match(line.strip())
+        if not m:
+            continue
+        so, target = m.group(1), m.group(2)
+        if so.startswith("/"):
+            # an absolute dependency (a PT_INTERP): inside the dist it is the
+            # dist's own; outside it is the base loader, which BASE names.
+            if os.path.realpath(so).startswith(root):
+                continue
+            so = os.path.basename(so)
+        if target != "not found" and os.path.realpath(target).startswith(root):
+            continue  # resolved INTO the dist: shipped, whatever its name
+        if BASE.match(so) or RUSTC.match(so) or so in own:
+            continue
+        found.add(so)
+    return found
 
 
 def audit(index, store, include_unreached=False):
@@ -574,6 +600,23 @@ def _elf_probe_checks():
     ]
 
 
+def _ldd_parse_checks():
+    """issue 1739 — the `ldd` reader on the exact lines that misparsed."""
+    root = "/opt/sdk/z"
+    out = "\n".join([
+        "\tlinux-vdso.so.1 (0x00007ffd)",
+        "\tlibffi.so.8 => /lib/x86_64-linux-gnu/libffi.so.8 (0x0000)",
+        "\tlibpython3.8.so.1.0 => not found",
+        "\t/opt/sdk/z/sysroots/x/lib/ld-linux-x86-64.so.2 => /lib64/ld-linux-x86-64.so.2 (0x0)",
+        "/opt/sdk/z/sysroots/x/lib/librt-2.27.so: version `GLIBC_PRIVATE' not found (required by x)",
+        "\tlibglib-2.0.so.0 => /opt/sdk/z/sysroots/x/usr/lib/libglib-2.0.so.0 (0x0)",
+        "\tlibown.so.1 => not found",
+    ])
+    got = ldd_external(out, root, {"libown.so.1"})
+    want = {"libffi.so.8", "libpython3.8.so.1.0"}
+    return [] if got == want else [f"ldd reader: got {sorted(got)}, want {sorted(want)}"]
+
+
 def self_test():
     check_skip.self_test()  # phase-472 F2 — the ledger helper's own controls
     """Prove the check can fail — a negative control nobody runs is a comment."""
@@ -691,7 +734,7 @@ def self_test():
             "a dist with no program measures its libraries",
             library_scope == set(library_dist),
         ),
-    ] + _elf_probe_checks()
+    ] + _elf_probe_checks() + _ldd_parse_checks()
     bad = [name for name, ok in checks if not ok]
     if bad:
         for b in bad:
