@@ -15,6 +15,8 @@
 
 #include <zephyr/kernel.h>
 
+#include "../../c-port-smoke-common/realloc_probe.h"
+
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,6 +50,12 @@ int main(void) {
     CHECK(p != NULL, "alloc");
     memset(p, 0xCC, 64);
     nros_platform_dealloc(p);
+
+    /* Issue 1719 -- a growing realloc copies the OLD block, not the new size. */
+    {
+        const char *why = nros_smoke_realloc_probe();
+        CHECK(why == NULL, why);
+    }
 
     /* Yield */
     nros_platform_yield_now();

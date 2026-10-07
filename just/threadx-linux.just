@@ -242,11 +242,24 @@ build-c-port:
     cmake -B build >/dev/null
     cmake --build build
 
-# Phase 121.6 — run the ThreadX-linux smoke test on the host.
+# Phase 121.6 — run the ThreadX-linux smoke test on the host: the REAL kernel
+# over the port's platform.c (clock, alloc incl. the exhausted-pool NULL of
+# issue 1717 and the realloc probe of 1719, mutex, timer).
+#
+# Issue 1720 — runs in the nightly per-platform sweep (nightly.yml `platform`,
+# threadx_linux cell). The kernel is a submodule the gate tier does not check
+# out, so its absence is a REPORTED skip (`nros_check_unverified`), never a
+# silent pass, and a lane that provisions it sets NROS_CHECK_SKIP_STRICT=1.
 [group("debug")]
-test-c-port: build-c-port
+test-c-port:
     #!/usr/bin/env bash
-    set -e
+    set -euo pipefail
+    if [ ! -f third-party/threadx/kernel/CMakeLists.txt ]; then
+        source scripts/build/check-skip.sh
+        nros_check_unverified threadx-c-port-smoke "the ThreadX kernel is not checked out (third-party/threadx/kernel) — nros setup --source threadx" || exit 1
+        exit 0
+    fi
+    "{{just_executable()}}" threadx_linux build-c-port
     timeout 15 ./tests/threadx-c-smoke/build/nros_threadx_c_smoke
 
 [group("full-matrix")]

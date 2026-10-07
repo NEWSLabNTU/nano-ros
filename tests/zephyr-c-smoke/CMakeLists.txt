@@ -25,6 +25,8 @@ set(NROS_PLATFORM_CFFI_INCLUDE
 
 target_sources(app PRIVATE
     src/main.c
+    # issue 1720 -- the Rust heap half this C-only build does not link.
+    src/heap_stand_in.c
     "${NROS_PLATFORM_C_SRC}/platform.c"
     "${NROS_PLATFORM_C_SRC}/timer.c")
 target_include_directories(app PRIVATE "${NROS_PLATFORM_CFFI_INCLUDE}")

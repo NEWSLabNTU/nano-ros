@@ -434,10 +434,21 @@ build-c-port:
 
 # Phase 121.6 — run the FreeRTOS Posix-port smoke test on the host, once per
 # heap scheme. Boots FreeRTOS, runs the smoke task, exits 0 on PASS.
+#
+# Issue 1720 — runs in the nightly per-platform sweep (nightly.yml `platform`,
+# freertos cell). The kernel is a submodule the gate tier does not check out,
+# so its absence is a REPORTED skip (`nros_check_unverified`), never a silent
+# pass, and a lane that provisions it sets NROS_CHECK_SKIP_STRICT=1.
 [group("debug")]
-test-c-port: build-c-port
+test-c-port:
     #!/usr/bin/env bash
-    set -e
+    set -euo pipefail
+    if [ ! -f third-party/freertos/kernel/include/FreeRTOS.h ]; then
+        source scripts/build/check-skip.sh
+        nros_check_unverified freertos-c-port-smoke "the FreeRTOS kernel is not checked out (third-party/freertos/kernel) — nros setup --source freertos-kernel" || exit 1
+        exit 0
+    fi
+    "{{just_executable()}}" freertos build-c-port
     for heap in 4 3; do
         echo "== FreeRTOS C-port smoke, heap_$heap =="
         timeout 15 "./tests/freertos-c-smoke/build/heap$heap/nros_freertos_c_smoke"
