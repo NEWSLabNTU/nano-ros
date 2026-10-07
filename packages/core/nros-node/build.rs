@@ -671,6 +671,19 @@ fn main() {
         .stated()
         .is_some_and(|v| v != 0);
     let monitor_arm_grace_ms = env_usize("NROS_MONITOR_ARM_GRACE_MS", 0);
+    // phase-474 I3 -- the callback trace's image-wide defaults (only read with
+    // `trace-callbacks`; an executor can override either per slot). Takes are
+    // off unless stated (`NROS_TRACE_TAKES=1`, `CONFIG_NROS_TRACE_TAKES=y`);
+    // timer ticks are all traced unless thinned (`NROS_TRACE_TIMER_EVERY=N`:
+    // one tick in N, 0 = none).
+    let trace_takes = nros_zephyr_build::knob("NROS_TRACE_TAKES")
+        .stated()
+        .is_some_and(|v| v != 0);
+    let trace_timer_every = env_usize("NROS_TRACE_TIMER_EVERY", 1);
+    assert!(
+        trace_timer_every < u16::MAX as usize,
+        "NROS_TRACE_TIMER_EVERY={trace_timer_every}: must be below 65535 (phase-474 I3)"
+    );
     assert!(
         monitor_arm_grace_ms <= u32::MAX as usize,
         "NROS_MONITOR_ARM_GRACE_MS={monitor_arm_grace_ms}: must fit a u32"
@@ -1237,6 +1250,16 @@ fn main() {
          spin, 0 = no deadline (set via NROS_MONITOR_ARM_GRACE_MS, default 0). \
          phase-474 I2.\n\
          pub const MONITOR_ARM_GRACE_MS: u32 = {monitor_arm_grace_ms};\n\
+         \n\
+         /// Whether the callback trace emits a TAKE event per sample of every \
+         subscription by default (set via NROS_TRACE_TAKES, default off). \
+         phase-474 I3.\n\
+         pub const TRACE_TAKES: bool = {trace_takes};\n\
+         \n\
+         /// One timer tick in this many gets its trace start/end pair by \
+         default, 0 = none (set via NROS_TRACE_TIMER_EVERY, default 1). \
+         phase-474 I3.\n\
+         pub const TRACE_TIMER_EVERY: u16 = {trace_timer_every};\n\
          \n\
          /// Issue 1190 -- the arena derivation's MODEL, as the consts it \
          summed.\n\

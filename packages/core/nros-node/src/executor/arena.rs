@@ -56,6 +56,34 @@ fn trace_cb_start(desc_idx: u8) {
 #[inline]
 fn trace_cb_start(_desc_idx: u8) {}
 
+/// phase-474 I3 -- a sample TAKEN for the subscription in `desc_idx`, emitted
+/// before its callback's start: the take event, and the sample's source stamp
+/// when `type_stamp` (the type's `STAMP_OFFSET`) or the slot's setting names
+/// one. Opt-in per slot or image-wide (`NROS_TRACE_TAKES`).
+#[cfg(feature = "trace-callbacks")]
+#[inline]
+fn trace_take(desc_idx: u8, raw: &[u8], type_stamp: Option<usize>) {
+    super::callback_trace::take(desc_idx, raw, type_stamp);
+}
+
+#[cfg(not(feature = "trace-callbacks"))]
+#[inline]
+fn trace_take(_desc_idx: u8, _raw: &[u8], _type_stamp: Option<usize>) {}
+
+/// phase-474 I3 -- whether this tick of the timer in `desc_idx` gets its
+/// start/end pair (one in N, per slot or `NROS_TRACE_TIMER_EVERY`).
+#[cfg(feature = "trace-callbacks")]
+#[inline]
+fn timer_tick_traced(desc_idx: u8) -> bool {
+    super::callback_trace::timer_tick_traced(desc_idx)
+}
+
+#[cfg(not(feature = "trace-callbacks"))]
+#[inline]
+fn timer_tick_traced(_desc_idx: u8) -> bool {
+    false
+}
+
 /// Emit `callback_end(handle)` immediately after a user callback returns.
 #[cfg(feature = "trace-callbacks")]
 #[inline]
@@ -1464,6 +1492,7 @@ where
                     .map_err(|_| TransportError::DeserializationError)?;
                 let msg = M::deserialize(&mut reader)
                     .map_err(|_| TransportError::DeserializationError)?;
+                trace_take(desc_idx, &data[..len], <M as RosMessage>::STAMP_OFFSET);
                 trace_cb_start(desc_idx);
                 (entry.callback)(&msg);
                 trace_cb_end(desc_idx);
@@ -1482,6 +1511,7 @@ where
                     .map_err(|_| TransportError::DeserializationError)?;
                 let msg = M::deserialize(&mut reader)
                     .map_err(|_| TransportError::DeserializationError)?;
+                trace_take(desc_idx, &data[..len], <M as RosMessage>::STAMP_OFFSET);
                 trace_cb_start(desc_idx);
                 (entry.callback)(&msg);
                 trace_cb_end(desc_idx);
@@ -1565,6 +1595,7 @@ where
             match CdrReader::new_with_header(raw) {
                 Ok(mut reader) => match M::deserialize(&mut reader) {
                     Ok(msg) => {
+                        trace_take(desc_idx, raw, <M as RosMessage>::STAMP_OFFSET);
                         trace_cb_start(desc_idx);
                         (callback)(&msg);
                         trace_cb_end(desc_idx);
@@ -1666,6 +1697,7 @@ where
         // `try_process` at most, none when `reader_acquire` is empty.
         BufferStrategy::Triple(tb) => match tb.reader_acquire() {
             Some((data, len)) => {
+                trace_take(desc_idx, &data[..len], None);
                 trace_cb_start(desc_idx);
                 (entry.callback)(&data[..len]);
                 trace_cb_end(desc_idx);
@@ -1678,6 +1710,7 @@ where
         BufferStrategy::Ring(ring) => {
             let mut did_work = false;
             while let Some((data, len)) = ring.try_pop() {
+                trace_take(desc_idx, &data[..len], None);
                 trace_cb_start(desc_idx);
                 (entry.callback)(&data[..len]);
                 trace_cb_end(desc_idx);
@@ -1774,6 +1807,7 @@ where
                 .map_err(|_| TransportError::DeserializationError)?;
             let msg = <B::View<'_> as DeserializeView>::deserialize_view(&mut reader)
                 .map_err(|_| TransportError::DeserializationError)?;
+            trace_take(desc_idx, &data[..len], None);
             trace_cb_start(desc_idx);
             (entry.callback)(&msg);
             trace_cb_end(desc_idx);
@@ -1840,6 +1874,7 @@ where
         // callback and stay bare.
         Ok(Some((len, att_len))) => {
             let info = RawMessageInfo::new(&entry.att[..att_len]);
+            trace_take(desc_idx, &entry.buffer[..len], None);
             trace_cb_start(desc_idx);
             (entry.callback)(&entry.buffer[..len], &info);
             trace_cb_end(desc_idx);
@@ -1898,6 +1933,11 @@ pub(crate) unsafe fn sub_buffered_raw_info_c_try_process(
         // Phase 8 — hooked. One sample per dispatch; the pair brackets the
         // whole `unsafe` FFI call, which is the user callback itself.
         Ok(Some((len, att_len))) => {
+            trace_take(
+                desc_idx,
+                unsafe { core::slice::from_raw_parts(entry.buffer.as_ptr(), len) },
+                None,
+            );
             trace_cb_start(desc_idx);
             unsafe {
                 (entry.callback)(
@@ -1961,6 +2001,7 @@ where
         // still delivers the sample WITH its status, so this arm is the only
         // callback path; `Ok(None)` / `Err(_)` fire nothing.
         Ok(Some((len, status))) => {
+            trace_take(desc_idx, &entry.buffer[..len], None);
             trace_cb_start(desc_idx);
             (entry.callback)(&entry.buffer[..len], &status);
             trace_cb_end(desc_idx);
@@ -2026,6 +2067,11 @@ pub(crate) unsafe fn sub_buffered_raw_safety_c_try_process(
                 Some(false) => 0,
                 None => -1,
             };
+            trace_take(
+                desc_idx,
+                unsafe { core::slice::from_raw_parts(entry.buffer.as_ptr(), len) },
+                None,
+            );
             trace_cb_start(desc_idx);
             unsafe {
                 (entry.callback)(
@@ -2147,6 +2193,7 @@ pub(crate) unsafe fn sub_inplace_raw_c_try_process(
         // pair is fully contained in the closure, so the `?` below can never
         // fire between a start and its end.
         let processed = handle.process_raw_in_place(|raw| {
+            trace_take(desc_idx, raw, None);
             trace_cb_start(desc_idx);
             unsafe { callback(raw.as_ptr(), raw.len(), context) };
             trace_cb_end(desc_idx);
@@ -2212,6 +2259,7 @@ pub(crate) unsafe fn sub_inplace_raw_try_process<F: FnMut(&[u8])>(
         // per pending sample, so N samples produce N spans and the `?` below
         // can never fire between a start and its end.
         let processed = handle.process_raw_in_place(|raw| {
+            trace_take(desc_idx, raw, None);
             trace_cb_start(desc_idx);
             callback(raw);
             trace_cb_end(desc_idx);
@@ -2289,6 +2337,7 @@ pub(crate) unsafe fn sub_buffered_raw_c_try_process(
         // `reader_acquire` comes back empty.
         BufferStrategy::Triple(tb) => match tb.reader_acquire() {
             Some((data, len)) => {
+                trace_take(desc_idx, &data[..len], None);
                 trace_cb_start(desc_idx);
                 unsafe { (entry.callback)(data.as_ptr(), len, entry.context) };
                 trace_cb_end(desc_idx);
@@ -2304,6 +2353,7 @@ pub(crate) unsafe fn sub_buffered_raw_c_try_process(
         BufferStrategy::Ring(ring) => {
             let mut did_work = false;
             while let Some((data, len)) = ring.try_pop() {
+                trace_take(desc_idx, &data[..len], None);
                 trace_cb_start(desc_idx);
                 unsafe { (entry.callback)(data.as_ptr(), len, entry.context) };
                 trace_cb_end(desc_idx);
@@ -2398,6 +2448,11 @@ unsafe fn typed_dispatch_one(
         report_typed_deserialize_failure(rc, len);
         return false;
     }
+    trace_take(
+        desc_idx,
+        unsafe { core::slice::from_raw_parts(data, len) },
+        None,
+    );
     trace_cb_start(desc_idx);
     unsafe { (entry.callback)(entry.msg as *const core::ffi::c_void, entry.context) };
     trace_cb_end(desc_idx);
@@ -2535,6 +2590,11 @@ where
         let mut reader = CdrReader::new_with_header(&entry.buffer[..len])
             .map_err(|_| TransportError::DeserializationError)?;
         let msg = M::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)?;
+        trace_take(
+            desc_idx,
+            &entry.buffer[..len],
+            <M as RosMessage>::STAMP_OFFSET,
+        );
         trace_cb_start(desc_idx);
         (entry.callback)(&msg, None);
         trace_cb_end(desc_idx);
@@ -2549,6 +2609,11 @@ where
                 .map_err(|_| TransportError::DeserializationError)?;
             let msg =
                 M::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)?;
+            trace_take(
+                desc_idx,
+                &entry.buffer[..len],
+                <M as RosMessage>::STAMP_OFFSET,
+            );
             trace_cb_start(desc_idx);
             (entry.callback)(&msg, info.as_ref());
             trace_cb_end(desc_idx);
@@ -2587,6 +2652,11 @@ where
         let mut reader = CdrReader::new_with_header(&entry.buffer[..len])
             .map_err(|_| TransportError::DeserializationError)?;
         let msg = M::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)?;
+        trace_take(
+            desc_idx,
+            &entry.buffer[..len],
+            <M as RosMessage>::STAMP_OFFSET,
+        );
         trace_cb_start(desc_idx);
         (entry.callback)(
             &msg,
@@ -2608,6 +2678,11 @@ where
                 .map_err(|_| TransportError::DeserializationError)?;
             let msg =
                 M::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)?;
+            trace_take(
+                desc_idx,
+                &entry.buffer[..len],
+                <M as RosMessage>::STAMP_OFFSET,
+            );
             trace_cb_start(desc_idx);
             (entry.callback)(&msg, &status);
             trace_cb_end(desc_idx);
@@ -2765,9 +2840,15 @@ where
         // spin and not yet due emits nothing: `Ok(false)` is the COMMON
         // outcome here, and it is exactly the over-reporting that a hook at
         // the `try_process` boundary would have produced.
-        trace_cb_start(desc_idx);
+        // phase-474 I3 -- one tick in N when the timer is thinned.
+        let traced = timer_tick_traced(desc_idx);
+        if traced {
+            trace_cb_start(desc_idx);
+        }
         (entry.callback)();
-        trace_cb_end(desc_idx);
+        if traced {
+            trace_cb_end(desc_idx);
+        }
         if entry.oneshot {
             entry.fired = true;
         } else if entry.period_us == 0 {

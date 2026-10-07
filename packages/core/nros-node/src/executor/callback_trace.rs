@@ -52,6 +52,10 @@
 //! | 23          | violation measured | `measured`                              |
 //! | 24          | violation declared | `declared`                              |
 //!
+//! | 25          | take               | `handle << 24 \| take seq` (phase-474 I3) |
+//! | 26          | take stamp sec     | the sample's `stamp.sec`                |
+//! | 27          | take stamp nanosec | the sample's `stamp.nanosec`            |
+//!
 //! (20 is the handle-tagged name chunk, see [`MARKER_NAME`].) A violation is
 //! four events in a row on one thread, emitted at DETECTION, so it sits on
 //! the same clock as the dispatches it judges. The rule code is
@@ -60,6 +64,28 @@
 //! at the time, low 24 bits), the same number the drain-and-report log line
 //! prints. Events 22-24 bind to the 21 they FOLLOW; a decoder that sees a
 //! 22-24 without its 21 drops it rather than guessing.
+//!
+//! phase-474 I3 -- a TAKE (25) is one sample taken for a subscription, emitted
+//! before its callback's start (18), so the hop from the publisher's stamp to
+//! the take is on the trace clock. Opt-in: per subscription with
+//! [`set_take_trace`], image-wide with `NROS_TRACE_TAKES`
+//! (`CONFIG_NROS_TRACE_TAKES`). The take sequence is image-wide, low 24 bits.
+//! 26/27 follow a 25 when the sample's source stamp is known: the type has a
+//! leading `stamp` the executor can find (`RosMessage::STAMP_OFFSET`, on the
+//! typed Rust paths), or [`set_take_trace`] named its offset (the C and C++
+//! paths, which carry no type). A decoder binds 26/27 to the 25 they FOLLOW.
+//!
+//! phase-474 I3 -- a TIMER's start/end pair can be sampled: every tick (the
+//! default), one in N, or none, per timer ([`set_timer_trace_every`]) or
+//! image-wide (`NROS_TRACE_TIMER_EVERY`, `CONFIG_NROS_TRACE_TIMER_EVERY`). A
+//! 30 Hz tick whose jitter is the measurement is traced in full while the rest
+//! are thinned to fit a RAM trace window. Every other dispatch is always
+//! traced.
+//!
+//! The per-handle settings are keyed by the slot index the events carry, in
+//! one image-wide table: on an image with several executors (tiers) a setting
+//! applies to that slot index in each of them, which is also how the events
+//! themselves name a callback.
 //!
 //! Name chunks repeat until the name is spent and are NUL-padded; a chunk
 //! run binds to the register event it FOLLOWS. That is adjacency, not
@@ -115,6 +141,15 @@ pub const MARKER_END: u32 = 19;
 pub use super::monitor::{
     MARKER_VIOLATION, MARKER_VIOLATION_DECLARED, MARKER_VIOLATION_FQN, MARKER_VIOLATION_MEASURED,
 };
+
+/// phase-474 I3 -- one sample taken for a subscription:
+/// `handle << 24 | take seq` (seq image-wide, low 24 bits).
+pub const MARKER_TAKE: u32 = 25;
+/// phase-474 I3 -- the taken sample's `stamp.sec`, after a [`MARKER_TAKE`].
+pub const MARKER_TAKE_STAMP_SEC: u32 = 26;
+/// phase-474 I3 -- the taken sample's `stamp.nanosec`, after a
+/// [`MARKER_TAKE_STAMP_SEC`].
+pub const MARKER_TAKE_STAMP_NSEC: u32 = 27;
 
 /// Names longer than this are truncated. Matches the decoder's `CB_NAME_MAX`;
 /// both sides must agree or the tail of a long name is read as a chunk of
@@ -310,5 +345,118 @@ pub(crate) fn violation(seq: u32, v: &super::monitor::Violation) {
     let Some(sink) = sink() else { return };
     for (id, arg) in super::monitor::violation_marker_words(seq, v) {
         emit(sink, id, arg);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// phase-474 I3 -- per-sample take events and per-timer sampling.
+// ---------------------------------------------------------------------------
+
+use core::sync::atomic::{AtomicU16, AtomicU32};
+
+/// Slot indices the events can carry (`handle` is a `u8`).
+const SLOTS: usize = 256;
+
+/// Per-slot take setting: 0 = the image default (`NROS_TRACE_TAKES`), 1 = off,
+/// 2 = on with the type's own stamp (if any), `3 + off` = on with the stamp at
+/// byte `off` of the serialized sample (encapsulation header included).
+static TAKE_CFG: [AtomicU16; SLOTS] = [const { AtomicU16::new(0) }; SLOTS];
+/// Per-slot timer sampling: 0 = the image default (`NROS_TRACE_TIMER_EVERY`),
+/// `1 + n` = one tick in `n` traced (`n == 0`: none).
+static TIMER_EVERY: [AtomicU16; SLOTS] = [const { AtomicU16::new(0) }; SLOTS];
+/// Per-slot tick counter for the sampling.
+static TIMER_TICKS: [AtomicU16; SLOTS] = [const { AtomicU16::new(0) }; SLOTS];
+/// Image-wide take sequence.
+static TAKE_SEQ: AtomicU32 = AtomicU32::new(0);
+
+/// phase-474 I3 -- trace the takes of the subscription in `handle` (its slot
+/// index, the `handle` its register event carries), or stop.
+///
+/// `stamp_offset`: where the sample's source `stamp` (`sec: i32`,
+/// `nanosec: u32`, little-endian) sits in the serialized sample, counting the
+/// 4-byte encapsulation header -- 4 for a type that starts with a `Header` or
+/// a `builtin_interfaces/Time stamp`. `None` keeps the type's own offset on
+/// the typed Rust paths and emits no stamp on the C and C++ paths. Overrides
+/// the image default (`NROS_TRACE_TAKES`) for this slot.
+pub fn set_take_trace(handle: u8, on: bool, stamp_offset: Option<u16>) {
+    let v = match (on, stamp_offset) {
+        (false, _) => 1,
+        (true, None) => 2,
+        (true, Some(off)) => off.saturating_add(3),
+    };
+    TAKE_CFG[handle as usize].store(v, Ordering::Relaxed);
+}
+
+/// phase-474 I3 -- trace one tick in `every` of the timer in `handle` (1 =
+/// every tick, 0 = none). Overrides the image default
+/// (`NROS_TRACE_TIMER_EVERY`) for this slot. The first tick after the call is
+/// traced.
+pub fn set_timer_trace_every(handle: u8, every: u16) {
+    TIMER_TICKS[handle as usize].store(0, Ordering::Relaxed);
+    TIMER_EVERY[handle as usize].store(every.saturating_add(1), Ordering::Relaxed);
+}
+
+/// Back to the image defaults for every slot (tests, and an image that
+/// re-registers).
+pub fn reset_trace_settings() {
+    for i in 0..SLOTS {
+        TAKE_CFG[i].store(0, Ordering::Relaxed);
+        TIMER_EVERY[i].store(0, Ordering::Relaxed);
+        TIMER_TICKS[i].store(0, Ordering::Relaxed);
+    }
+}
+
+/// Whether this tick of the timer in `handle` gets its start/end pair. Counts
+/// the tick either way.
+#[inline]
+pub(crate) fn timer_tick_traced(handle: u8) -> bool {
+    if sink().is_none() {
+        return false;
+    }
+    let every = match TIMER_EVERY[handle as usize].load(Ordering::Relaxed) {
+        0 => crate::config::TRACE_TIMER_EVERY,
+        v => v - 1,
+    };
+    match every {
+        0 => false,
+        1 => true,
+        n => {
+            let t = TIMER_TICKS[handle as usize].fetch_add(1, Ordering::Relaxed);
+            t.is_multiple_of(n)
+        }
+    }
+}
+
+/// One sample taken for the subscription in `handle`: [`MARKER_TAKE`], then
+/// the stamp pair when one is known. `type_stamp` is the type's own offset
+/// (`RosMessage::STAMP_OFFSET`) on a typed path, `None` on a raw one.
+#[inline]
+pub(crate) fn take(handle: u8, raw: &[u8], type_stamp: Option<usize>) {
+    let Some(sink) = sink() else { return };
+    let stamp = match TAKE_CFG[handle as usize].load(Ordering::Relaxed) {
+        0 if crate::config::TRACE_TAKES => type_stamp,
+        0 | 1 => return,
+        2 => type_stamp,
+        v => Some((v - 3) as usize),
+    };
+    let seq = TAKE_SEQ.fetch_add(1, Ordering::Relaxed);
+    emit(
+        sink,
+        MARKER_TAKE,
+        ((handle as u32) << 24) | (seq & 0x00ff_ffff),
+    );
+    if let Some(off) = stamp
+        && let (Some(sec), Some(nsec)) = (raw.get(off..off + 4), raw.get(off + 4..off + 8))
+    {
+        emit(
+            sink,
+            MARKER_TAKE_STAMP_SEC,
+            u32::from_le_bytes([sec[0], sec[1], sec[2], sec[3]]),
+        );
+        emit(
+            sink,
+            MARKER_TAKE_STAMP_NSEC,
+            u32::from_le_bytes([nsec[0], nsec[1], nsec[2], nsec[3]]),
+        );
     }
 }

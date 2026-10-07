@@ -210,6 +210,14 @@ KNOB_CLASS = {
         "infra",
         "phase-474 I2 arming deadline; a time, not a size",
     ),
+    "NROS_TRACE_TAKES": (
+        "infra",
+        "phase-474 I3 take-event toggle for the callback trace; a bool, so it has no rung",
+    ),
+    "NROS_TRACE_TIMER_EVERY": (
+        "infra",
+        "phase-474 I3 timer-tick sampling of the callback trace; a ratio, not a size",
+    ),
     "NROS_EXECUTOR_MAX_VIOLATIONS": (
         "sizing",
         "phase-474 I1 violation ring depth per executor (carved from the "

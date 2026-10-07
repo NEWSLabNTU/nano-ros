@@ -1344,5 +1344,9 @@
     "verdict": "extension",
     "why": "phase-476 W2 — registers a timer whose callback is a C function pointer and whose capture the executor arena holds: the road a C++ lambda takes, the timer twin of `add_arena_subscription_c_callback_with_capture`. The capture's bytes go in the timer entry's trailing region and an optional drop hook destroys them on release, so the C++ side keeps a two-word handle and no heap cell. rclcpp type-erases the callable into a `std::function` the timer owns; ours has no allocator on that path.",
     "bucket": "ours-only"
+  },
+  "c:trace_set_timer_every": {
+    "verdict": "extension",
+    "why": "phase-474 I3 -- keep one tick in N of a timer's callback-trace start/end pair (1 = every tick, 0 = none), so a RAM trace window can hold the timer whose jitter is the measurement whole. rclc has no callback-level trace hook; see `c:set_trace_sink`. A no-op without the tracing feature."
   }
 }
