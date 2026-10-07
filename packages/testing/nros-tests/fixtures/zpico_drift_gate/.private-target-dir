@@ -1,0 +1,7 @@
+issue 1656 — this template's rows must NOT share a cargo target dir.
+
+They differ only in the platform descriptor `zpico-sys/build.rs` reads (an
+EXTERNAL crate's build-script input), and `compile-check-fixtures.sh` makes rows
+distinct by stamping the workspace MEMBERS' versions — which says nothing about
+`zpico-sys`. A shared dir could carry one row's build-script verdict into the
+other's. Read by `_cc_target_dir`.

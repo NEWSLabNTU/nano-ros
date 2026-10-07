@@ -13,7 +13,7 @@
   "scripts/bootstrap.sh": 3,
   "scripts/build-all-jobserver.sh": 1,
   "scripts/build/cargo.sh": 1,
-  "scripts/build/compile-check-fixtures.sh": 3,
+  "scripts/build/compile-check-fixtures.sh": 2,
   "scripts/build/fixture-id-guard.sh": 1,
   "scripts/build/fixture-make-driver.sh": 1,
   "scripts/build/fixtures-build.sh": 1,

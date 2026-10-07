@@ -3,9 +3,9 @@
 //! **The compiles happen in the BUILD stage** (issue 1620). Each case is a
 //! `cargo-check-verdict` row in `examples/fixtures.toml`: the build stage stages
 //! the `n9_workspace` template, applies the case's `main.rs` / `system.toml`
-//! overlay (`post_stage` in `scripts/build/compile-check-fixtures.sh`), runs
-//! `cargo check`, and records the exit status and stderr. These tests assert the
-//! recorded verdict.
+//! overlay (the template's `cases/<id>/` — FILES since issue 1656, so the row's
+//! `.inputsig` covers them), runs `cargo check`, and records the exit status and
+//! stderr. These tests assert the recorded verdict.
 //!
 //! This file used to be the documented exception to "No compilation inside
 //! tests", on the grounds that a compile that must FAIL cannot be a prebuilt
@@ -57,14 +57,49 @@ fn custom_tasks_empty_on_owned_spin_still_errors() -> TestResult<()> {
 
 #[test]
 fn unknown_board_emits_compile_error() -> TestResult<()> {
-    // The overlay rewrites the entry's `board = "native"` (in the `system.toml`
-    // beside the manifest since phase-445 W5) to `frobnicator`, and refuses to
-    // build the row if that line is gone — so a pass here is about the board.
+    // The overlay replaces the entry's `system.toml` (beside the manifest since
+    // phase-445 W5) with a copy naming `frobnicator`; the test below keeps that
+    // copy equal to the template but for the board — so a pass here is about
+    // the board.
     assert_fails_with(
         "main_macro_misuse_unknown_board",
         "unknown board `frobnicator`",
         &["unknown board"],
     )
+}
+
+/// The `unknown_board` overlay is the template's `system.toml` with ONE line
+/// changed. Issue 1656 turned a `sed` rewrite into a file, which made it an input
+/// the row's signature hashes — and made it able to drift from the template it
+/// copies. Reads sources only.
+#[test]
+fn unknown_board_overlay_differs_from_the_template_only_in_its_board() {
+    let ws = nros_tests::project_root().join("packages/testing/nros-tests/fixtures/n9_workspace");
+    let read = |rel: &str| {
+        std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"))
+    };
+    // From `[system]` on: each file's leading comment explains itself.
+    let body = |text: String| {
+        let at = text
+            .find("\n[system]\n")
+            .expect("a [system] table header line");
+        text[at + 1..].to_string()
+    };
+    let template = body(read("src/demo_entry/system.toml"));
+    let overlay = body(read(
+        "cases/main_macro_misuse_unknown_board/src/demo_entry/system.toml.case",
+    ));
+    assert!(
+        template.contains("\nboard = \"native\"\n"),
+        "the template entry no longer states `board = \"native\"` — the misuse row's \
+         premise moved; update its overlay"
+    );
+    assert_eq!(
+        overlay,
+        template.replace("\nboard = \"native\"\n", "\nboard = \"frobnicator\"\n"),
+        "the unknown-board overlay drifted from src/demo_entry/system.toml: it must be \
+         the template from `[system]` on with only the board replaced"
+    );
 }
 
 /// `nros::main!` resolves the model from the bringup's INPUTS when no build

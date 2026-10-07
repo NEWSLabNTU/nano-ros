@@ -3,10 +3,25 @@
 # 0021 / #0423). Replaces the orphaned+bit-rotted tests/borrowed_{c,cpp}_e2e.sh
 # which compiled+linked at TEST time (E1 rule forbids it). Produces the two
 # runnable proof binaries; the consuming test (tests/borrowed_e2e.rs) only RUNS
-# them:
-#   build/borrowed-e2e/borrowed_c_e2e
-#   build/borrowed-e2e/borrowed_cpp_e2e
-#   build/borrowed-e2e/.compile-ok      (stamp — only after every attempted lang links)
+# them.
+#
+#   build.sh <out-dir>
+#
+# issue 1656 — this is the `fixture-script` builder's script for the
+# `borrowed_e2e` `[[compile_check_fixture]]` row, so the stamp has a lane: every
+# `build-test-fixtures` lane builds it, its `.inputsig` hashes this directory
+# (the script AND the two drivers, which is why they moved here from
+# `scripts/build/` and `fixtures/borrowed-{c,cpp}-e2e/`), and the resolver reads
+# `.compile-ok`, which `compile-check-fixtures.sh` writes after this exits 0.
+# Into <out-dir>:
+#   borrowed_c_e2e / borrowed_cpp_e2e   the proof binaries
+#   <bin>.skipped                       a language whose host compiler is absent:
+#                                       the reason, which the test reports as a
+#                                       skip (a recorded fact, not a missing file)
+#   *.d                                 what the build read — the compilers' -MD
+#                                       output and cargo's dep-info, copied in so
+#                                       the row's closure covers nros-c, the
+#                                       borrowed FFI crate and rosidl-codegen
 #
 # Two rots #0423 documented, fixed here:
 #   1. RFC-0042 D1 moved <nros/platform.h> to nros-platform-api — added to -I.
@@ -21,22 +36,17 @@
 #      archive are one build, so their (stub) sizes agree; the borrowed views read
 #      the CDR buffer, unaffected.
 #
-# A language whose host compiler is absent is skipped (binary not produced; the
-# test skips that one). No SDK / cross toolchain needed.
+# A language whose host compiler is absent is skipped (binary not produced,
+# `<bin>.skipped` says why). No SDK / cross toolchain needed.
 set -euo pipefail
 
+out_dir="${1:?usage: build.sh <out-dir>}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd "$script_dir/../.." && pwd)"
-# RFC-0070 R1/R3 — cache paths come from the ONE derivation, so
-# `NROS_BUILD_ROOT` moves this writer with every other. Default is
-# `<repo>/build`, so the emitted path is unchanged.
-# shellcheck source=scripts/build/build-root.sh
-. "$(dirname "${BASH_SOURCE[0]}")/build-root.sh"
-out_dir="$(nros_build_dir "$NROS_KIND_BORROWED_E2E")"
+repo_root="$(cd "$script_dir/../../../../.." && pwd)"
 
 echo "== borrowed-e2e fixture: C / C++ borrowed-view proof binaries =="
-rm -rf "$out_dir"
 mkdir -p "$out_dir"
+rm -f "$out_dir"/borrowed_c_e2e "$out_dir"/borrowed_cpp_e2e "$out_dir"/*.skipped "$out_dir"/*.d
 
 # nros-c → libnros_c.a (CDR readers) + the per-build config header, from ONE build
 # so the header's variant hash matches the archive's (stub) sizing.
@@ -52,6 +62,8 @@ echo "borrowed-e2e: building nros-c (platform-posix)…"
 # fixture fails on the header it is about to link against — which is what the
 # build script's own warning means by "do not link the resulting rlib".
 ( cd "$repo_root" && cargo build -p nros-c --features std,platform-posix,rmw-cffi >/dev/null )
+# profile-literal-ok: unprofiled: the dep-info cargo writes beside the archive.
+cp "$repo_root/target/debug/libnros_c.d" "$out_dir/nros_c.d" 2>/dev/null || true
 # profile-literal-ok: unprofiled: the line above is a plain `cargo build`, so
 # `target/debug/` IS the derived output dir for it.
 lib="$repo_root/target/debug/libnros_c.a"
@@ -86,16 +98,28 @@ fi
 
 platform_inc="$repo_root/packages/platform/nros-platform-api/include"
 
+# The generated sources come from a `rosidl-codegen` TEST that emits them, so
+# the emitter's own sources are an input: copy that crate's dep-info.
+_copy_emitter_depinfo() {
+    local f n=0
+    for f in "$repo_root"/packages/cli/target/debug/deps/rosidl_codegen-*.d; do
+        [ -f "$f" ] || continue
+        cp "$f" "$out_dir/rosidl_codegen_$n.d"
+        n=$((n + 1))
+    done
+}
+
 # ---- C ----
 if command -v gcc >/dev/null 2>&1; then
     echo "borrowed-e2e: emitting generated C…"
     ( cd "$repo_root/packages/cli" \
         && cargo test -p rosidl-codegen emit_c_borrowed_e2e -- --ignored >/dev/null 2>&1 )
+    _copy_emitter_depinfo
     gen="$repo_root/tmp/borrowed_e2e"
     [ -f "$gen/e2e_msgs_msg_borrowed.h" ] || { echo "FAIL: generated C header missing" >&2; exit 1; }
-    driver_c="$repo_root/packages/testing/nros-tests/fixtures/borrowed-c-e2e/driver.c"
+    driver_c="$script_dir/c/driver.c"
     echo "borrowed-e2e: compiling C proof binary…"
-    gcc -std=c11 -D_DEFAULT_SOURCE -Wall -DNROS_PLATFORM_POSIX \
+    gcc -std=c11 -D_DEFAULT_SOURCE -Wall -DNROS_PLATFORM_POSIX -MD -MF "$out_dir/c.d" \
         -I "$cfg_dir" -I "$platform_inc" \
         -I "$repo_root/packages/api/nros-c/include" \
         -I "$gen" \
@@ -105,6 +129,7 @@ if command -v gcc >/dev/null 2>&1; then
     echo "   built $out_dir/borrowed_c_e2e"
 else
     echo "borrowed-e2e: gcc absent — skipping C proof binary"
+    echo "gcc absent at fixture-build time" > "$out_dir/borrowed_c_e2e.skipped"
 fi
 
 # ---- C++ ----
@@ -112,11 +137,12 @@ if command -v g++ >/dev/null 2>&1; then
     echo "borrowed-e2e: emitting generated C++ + FFI glue…"
     ( cd "$repo_root/packages/cli" \
         && cargo test -p rosidl-codegen emit_cpp_borrowed_e2e -- --ignored >/dev/null 2>&1 )
+    _copy_emitter_depinfo
     build="$repo_root/tmp/borrowed_cpp_e2e"
     for f in e2e_msgs_msg_borrowed.hpp e2e_msgs_msg_borrowed_types.rs e2e_msgs_msg_borrowed_exports.rs; do
         [ -f "$build/$f" ] || { echo "FAIL: generated C++ file $f missing" >&2; exit 1; }
     done
-    fix="$repo_root/packages/testing/nros-tests/fixtures/borrowed-cpp-e2e"
+    fix="$script_dir/cpp"
     cp "$fix/Cargo.toml.in" "$build/Cargo.toml"
     cp "$fix/ffi_wrapper.rs" "$build/lib.rs"
     cp "$fix/driver.cpp" "$build/driver.cpp"
@@ -132,6 +158,8 @@ if command -v g++ >/dev/null 2>&1; then
     # --release` above — same reason, and the two must name the same dir.
     cpp_lib="$build/target/release/libborrowed_cpp_e2e.a"
     [ -f "$cpp_lib" ] || { echo "FAIL: C++ FFI staticlib missing" >&2; exit 1; }
+    # profile-literal-ok: unprofiled: pairs with the `cargo build --release` above.
+    cp "$build/target/release/libborrowed_cpp_e2e.d" "$out_dir/cpp_ffi.d" 2>/dev/null || true
     echo "borrowed-e2e: compiling C++ proof binary…"
     # phase-429 — `$cfg_dir` FIRST, as the C leg above already does. The
     # per-build config header must precede `packages/api/nros-*/include`, which
@@ -139,7 +167,7 @@ if command -v g++ >/dev/null 2>&1; then
     # system forgot to supply the real one. A stub that wins the search shadows
     # the generated header for every macro the stub does not define — which is
     # how RFC-0090's version macros went missing here while the C leg was fine.
-    g++ -std=c++14 -D_DEFAULT_SOURCE -DNROS_PLATFORM_POSIX -Wall \
+    g++ -std=c++14 -D_DEFAULT_SOURCE -DNROS_PLATFORM_POSIX -Wall -MD -MF "$out_dir/cpp.d" \
         -I "$cfg_dir" \
         -I "$platform_inc" \
         -I "$repo_root/packages/api/nros-cpp/include" \
@@ -150,7 +178,7 @@ if command -v g++ >/dev/null 2>&1; then
     echo "   built $out_dir/borrowed_cpp_e2e"
 else
     echo "borrowed-e2e: g++ absent — skipping C++ proof binary"
+    echo "g++ absent at fixture-build time" > "$out_dir/borrowed_cpp_e2e.skipped"
 fi
 
-date -u +%Y-%m-%dT%H:%M:%SZ > "$out_dir/.compile-ok"
 echo "borrowed-e2e: done"

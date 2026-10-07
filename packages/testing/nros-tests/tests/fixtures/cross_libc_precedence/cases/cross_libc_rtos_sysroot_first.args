@@ -1,0 +1,10 @@
+# issue 1656 — the FIX: the RTOS `include/cxx` prepended so `<cstdlib>` resolves
+# to the RTOS wrapper and only one `div_t` exists. Must compile.
+-std=c++17
+-fno-exceptions
+-I
+rtos-stub/include/cxx
+-I
+rtos-stub/include
+-c
+probe.cpp

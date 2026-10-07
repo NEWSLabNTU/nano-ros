@@ -6,8 +6,8 @@
 //!
 //! Both shapes are **build-stage fixtures** (`compile-check-fixtures.sh`, run by
 //! `build-test-fixtures`): `orch_tiers_multi` (verbatim fixture) and
-//! `orch_tiers_single` (the same fixture with `[tiers.*]` stripped in the build
-//! step). The tests assert/run the prebuilt `demo_entry` binaries instead of
+//! `orch_tiers_single` (the same fixture with the `cases/orch_tiers_single/`
+//! overlay, a bringup `system.toml` without the `[tiers.*]` tables). The tests assert/run the prebuilt `demo_entry` binaries instead of
 //! running `cargo build` at run time (issue 0034 / AGENTS.md "No compilation
 //! inside tests"). The boot lifecycle (no router) or the per-tier run marker
 //! (live router) is the proof the emitted code took the right branch.
@@ -162,4 +162,33 @@ fn single_tier_system_takes_the_legacy_boardentry_run_path() -> nros_tests::Test
         "tiers-stripped binary did not reach the legacy BoardEntry::run lifecycle.\noutput:\n{combined}",
     );
     Ok(())
+}
+
+/// The `orch_tiers_single` overlay (`cases/orch_tiers_single/`, a file since
+/// issue 1656 — it was a `sed` inside `compile-check-fixtures.sh`, outside the
+/// row's signature) is the template's bringup `system.toml` up to its first
+/// `[tiers.` table and nothing else, so the two rows differ ONLY in the tier
+/// tables. Reads sources only.
+#[test]
+fn single_tier_overlay_is_the_template_without_its_tier_tables() {
+    let fx = nros_tests::project_root()
+        .join("packages/testing/nros-tests/fixtures/orchestration_tiers_native");
+    let read = |rel: &str| {
+        std::fs::read_to_string(fx.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"))
+    };
+    let template = read("src/demo_bringup/system.toml");
+    let overlay = read("cases/orch_tiers_single/src/demo_bringup/system.toml.case");
+    let (head, _tiers) = template
+        .split_once("\n[tiers.")
+        .expect("the multi-tier template declares `[tiers.*]` tables");
+    assert_eq!(
+        overlay.trim_end(),
+        head.trim_end(),
+        "the single-tier overlay drifted from src/demo_bringup/system.toml: it must be \
+         the template up to (not including) its first `[tiers.` table"
+    );
+    assert!(
+        !overlay.lines().any(|l| l.starts_with("[tiers.")),
+        "the single-tier overlay declares a tier table"
+    );
 }

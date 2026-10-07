@@ -1,0 +1,8 @@
+//! Overlay for compile-check row `main_macro_resolves_from_inputs` (issue 1656): `compile-check-fixtures.sh`
+//! copies `cases/<id>/` over the staged template, so this file is a row INPUT
+//! (`.inputsig` hashes the template dir) rather than text inside the script.
+//!
+//! issue 0414 — the macro resolves the model from `system.toml` + the launch
+//! file ITSELF (this row runs no `nros sync`).
+
+nros::main!(model = "demo_bringup");

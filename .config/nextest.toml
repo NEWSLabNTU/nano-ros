@@ -981,16 +981,12 @@ filter = "package(nros-tests) and kind(lib) and test(ros2::tests::)"
 test-group = "ros2-interop"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
-#  * `zpico_drift_gate` (`cargo build -p zpico-sys` ×2) is NOT a resource
-#    conflict — it builds into a dedicated `target-zpico-drift-gate/` dir
-#    (no cargo target-lock contention). It is a CPU/IO-bound cold build
-#    that just needs headroom past the 60s default when every core is
-#    busy, so a slow-timeout bump (no group) is sufficient (~26s
-#    standalone). (#186 — the `integration_esp_idf` twin override was
-#    removed with that test binary.)
-[[profile.default.overrides]]
-filter = "binary(zpico_drift_gate)"
-slow-timeout = { period = "120s", terminate-after = 3 }
+#  * `zpico_drift_gate` had a 120s slow-timeout here for its two
+#    `cargo build -p zpico-sys` runs. Issue 1656 moved both to the build
+#    stage (`zpico_drift_*` `cargo-check-verdict` rows); the test now reads
+#    two recorded verdicts, so the override went with the compiles.
+#    (#186 — the `integration_esp_idf` twin override was removed with that
+#    test binary.)
 
 # Phase 169.4 — `binary(dds_ros2_interop)` removed (test deleted).
 # Phase 223 cmake-build moved to a build-fixture (issue 0034) — `c_mixed_workspace`

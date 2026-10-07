@@ -584,10 +584,11 @@ pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> TestResult<PathBuf>
 /// names — a bespoke recipe's output (the per-edition `ros_editions` builds,
 /// `just freertos build-fixture-extras`). Issue 1620.
 ///
-/// NOT for an artifact only a `ci gate`-reachable recipe produces
-/// (`build/borrowed-e2e/`): this is a RUNTIME resolver to
-/// `check-lane-contracts`, and a gated `test-all` would fail on an artifact no
-/// lane in it builds (issue 1656).
+/// NOT for an artifact only a `ci gate`-reachable recipe produces: this is a
+/// RUNTIME resolver to `check-lane-contracts`, and a gated `test-all` would fail
+/// on an artifact no lane in it builds. Give such an artifact a
+/// `[[compile_check_fixture]]` row instead (issue 1656 did, for `borrowed_e2e`:
+/// builder `fixture-script`) and resolve it with `require_compile_check`.
 ///
 /// Those sites used to probe `path.is_file()` themselves and `skip!` on a
 /// miss, which skipped in EVERY run — including a gated one, where an absent
@@ -4493,6 +4494,18 @@ pub struct CompileVerdict {
     /// The FIRST compile, for a row that compiles twice (rebuild tracking);
     /// `None` for every other row.
     pub prelude: Option<CompileOutcome>,
+    /// The compiler a `cxx-compile-verdict` row resolved (`verdict.tool`): its
+    /// path, or `absent` when no compiler for the row's target exists here —
+    /// a recorded fact the TEST interprets (issue 1656). `None` for builders
+    /// that record no tool.
+    pub tool: Option<String>,
+}
+
+impl CompileVerdict {
+    /// True when the build stage found no compiler for this row's target.
+    pub fn tool_absent(&self) -> bool {
+        self.tool.as_deref() == Some("absent")
+    }
 }
 
 /// Resolve a build-stage **verdict** fixture (issue 1620).
@@ -4545,6 +4558,9 @@ pub fn require_compile_verdict(id: &str) -> TestResult<CompileVerdict> {
     Ok(CompileVerdict {
         outcome,
         prelude: read("verdict.prelude")?,
+        tool: fs::read_to_string(dir.join("verdict.tool"))
+            .ok()
+            .map(|t| t.trim().to_string()),
     })
 }
 

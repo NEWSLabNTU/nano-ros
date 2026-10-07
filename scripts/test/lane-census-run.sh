@@ -34,10 +34,28 @@ export PATH="$PWD/packages/cli/target/release:$PATH"
 # the first scheduled CI census (2026-10-06) reported three admitted tests as
 # NO LONGER PASSING on `nros-launch-resolve not built`, while a local image run
 # passed them only because it copied the developer's host-built resolver in.
+# The compile-check rows staged below that resolve a bringup run `nros sync`,
+# which needs it too (issue 1656).
 just setup-launch-resolve >/dev/null 2>&1 \
     || { echo "census: the gate job's launch-resolver build failed" >&2; exit 2; }
 NROS_CARGO_FLAGS= cargo nextest run -p nros-tests --no-run >/dev/null 2>&1 \
     || { echo "census: nros-tests does not build here" >&2; exit 2; }
+# issue 1656 — stage the compile-check stamps the gate lane builds. A target
+# that reads a build-stage stamp or verdict classifies FIXTURE when nothing
+# staged it, and was never admitted — four verdict targets left the gate lane
+# that way. `--census` is every compile-resolver target's stamp rows;
+# `test-lane-contracts` builds the admitted subset with `--admission`, through
+# the same derivation. Serial and keep-going: a row that cannot build here
+# costs its own targets their admission, and the census still measures.
+census_ids="$(python3 scripts/test/lane-compile-stamps.py --census)" \
+    || { echo "census: cannot derive the compile-check stamp rows" >&2; exit 2; }
+start=$(date +%s)
+if NROS_FIXTURE_IDS="$census_ids" NROS_COMPILE_CHECK_POOL=0 \
+    bash scripts/build/compile-check-fixtures.sh >"$out/compile-stamps.log" 2>&1; then
+    echo "census: staged $(tr ',' '\n' <<<"$census_ids" | wc -l) compile-check row(s) in $(( $(date +%s) - start ))s"
+else
+    echo "census: some compile-check rows did not build here (compile-stamps.log) — their targets are not admissible" >&2
+fi
 for i in $(seq 1 "$runs"); do
     start=$(date +%s)
     NROS_CARGO_FLAGS= cargo nextest run -p nros-tests --no-fail-fast >/dev/null 2>&1

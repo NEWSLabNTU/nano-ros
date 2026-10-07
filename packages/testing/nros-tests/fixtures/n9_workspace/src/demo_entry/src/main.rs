@@ -1,7 +1,8 @@
 //! Phase 212.N.9 fixture — Entry pkg `main.rs`.
 //!
-//! The test harness overwrites this file with each of the four
-//! `nros::main!()` forms in turn (then runs `cargo check`):
+//! Each compile-check row of this template overlays this file with its own
+//! `cases/<id>/src/demo_entry/src/main.rs.case` (issue 1656) — the four
+//! `nros::main!()` forms, and the misuse verdicts:
 //!
 //! ```ignore
 //! nros::main!();                                          // Form 1

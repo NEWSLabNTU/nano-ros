@@ -1886,8 +1886,10 @@ build-test-fixtures lane="all": _require-owned-provisioned-roots check::fast _re
     # in a job that builds no fixtures (issue 0871). Calling the recipe rather
     # than re-invoking the script keeps the two callers from drifting.
     just build-compile-check-fixtures
-    # Issue 1685 — the two host build-stage proofs `test-all` runs
-    # (`borrowed_e2e`, `staticlib_duplicate_symbols`). Their gates in
+    # Issue 1685 — the host build-stage proof `test-all` runs that has no
+    # manifest row (`staticlib_duplicate_symbols`; `borrowed_e2e` was the second
+    # until issue 1656 gave it a `fixture-script` row, so the
+    # `build-compile-check-fixtures` line above builds it now). Their gates in
     # `check::build` build them too, and in `just ci tier1` (all) the gates ran
     # first in the same tree, so `test-all` inherited them by accident — never a
     # contract, and gone once tier 1's gates and run split across two jobs
@@ -1905,7 +1907,6 @@ build-test-fixtures lane="all": _require-owned-provisioned-roots check::fast _re
         if nros_grep_q -x native <<<"$lane_mods"; then want_host_proofs=1; fi
     fi
     if [ "$want_host_proofs" = 1 ]; then
-        bash scripts/build/borrowed-e2e-fixture.sh
         bash scripts/build/link-determinism-fixture.sh
     fi
     # Drop a stamp so `_require-fixtures` (the test-all/test preflight) can
@@ -3459,6 +3460,19 @@ test-lane-contracts:
         echo "      scripts/test/lane-census.sh <gate-image> --runs 2 --admit $admission" >&2
         exit 1
     fi
+    # issue 1656 — BUILD the compile-check stamps the admitted tests read, and
+    # only those. A compile tier may resolve a build-stage stamp or verdict
+    # (`require_compile_check` / `require_compile_verdict`) only if it produces
+    # it (`check-lane-contracts`), and the census admits a target that reads one
+    # only because it staged the same rows. The set is DERIVED from the
+    # admission list by `lane-compile-stamps.py` — the census stages its
+    # `--census` superset — so admitting a target is enough to have its stamps
+    # built here; there is no second list to keep in step. `check-lane-contracts`
+    # re-derives the set and refuses a test whose stamp is outside it.
+    # Measured (issue 1656): the census superset, 38 rows, cold, no sccache —
+    # 33 s wall / 265 CPU-s on 24 cores, 2.2 GB; warm re-run 18 s.
+    stamp_ids="$(python3 scripts/test/lane-compile-stamps.py --admission .config/lane-admission/gate.txt)"
+    NROS_FIXTURE_IDS="$stamp_ids" bash scripts/build/compile-check-fixtures.sh
     # A bare name admits a target WHOLE; `<target>::<test>` admits ONE test of a
     # target a sibling keeps from being admitted whole. Every named target is
     # BUILT (`--test`/`--lib`, so the lane never compiles the 120 it does not

@@ -1,0 +1,9 @@
+# issue 1656 — the BROKEN precedence: the RTOS sysroot is reachable but does not
+# win `<cstdlib>` (plain `-I`). Must fail with the modelled two-libc clash, or
+# the class is not reproducible on this toolchain.
+-std=c++17
+-fno-exceptions
+-I
+rtos-stub/include
+-c
+probe.cpp
