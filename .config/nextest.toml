@@ -366,6 +366,14 @@ test-group = "qemu-baremetal"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
+# issue 1749 — the reconnect test waits for zenoh-pico to notice a killed router
+# (lease expiry) and reopen, which measured 39.8 s after the restart every run
+# (6 of 6) at the shim's default 10 s lease. That is past the default 60 s
+# ceiling once the outage phase is added, so it gets one more period.
+[[profile.default.overrides]]
+filter = "binary(zenoh_integration) and test(declares_keep_running_across_a_reconnect)"
+slow-timeout = { period = "45s", terminate-after = 2 }
+
 # issue #139 follow-up — the lifecycle zephyr e2e polls `ros2 lifecycle` CLIs
 # (multi-second python startup per poll); solo it finishes in ~10 s but under
 # a parallel suite the CLI contention pushes past the default 60 s ceiling.
