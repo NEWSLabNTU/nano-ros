@@ -206,58 +206,43 @@ self_test() {
 # documenting the reasoning breaks the build, which is how a rule ends up
 # undocumented. Case (h) below is that exact line, kept as a control.
 strip_cmake_comments() { sed -e 's/[[:space:]]*#.*$//' "$1"; }
-
-# The rule, as a pure function of a file, so it can be run against fixtures as
-# well as against the real consumer. A rule that can only be run on the one file
-# it was written for cannot be shown to fire.
+# issue 1737 — the rule is about CALLS, so it is read per CALL
+# (`per_item.cmake_calls` over comment-stripped code, `comments.py`). The old
+# scan grepped the file TEXT: renaming the C-header call to `message(STATUS`
+# left its `ARCHIVE`/`HEADER` lines and the header path in place, so "paired,
+# by byte scan" still read as true with one pairing call gone. Now each header
+# must be the HEADER of a real `nros_assert_archive_pairs_with_header(` call,
+# every such call's ARCHIVE must be `${_NROS_PX4_CPP_A}`, and the link-archive
+# `set()` must name it.
 scan_consumer() { # scan_consumer <file> -> prints findings, one per line
-    local f="$1" code
-    code="$(strip_cmake_comments "$f")"
+    python3 - "$1" "$ROOT/scripts/lib" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[2])
+import comments, per_item
 
-    nros_grep_q 'nros_assert_archive_pairs_with_header' <<<"$code" \
-        || echo "does not call nros_assert_archive_pairs_with_header — the generated headers are unpaired again (issues 1046/1050)"
-
-    # BOTH generated headers, not just the C++ one. Checking one is the
-    # issue-0196 shape: coverage narrower than the rule it enforces. The C stamp
-    # is a size hash and moves for reasons the C++ feature slug never sees.
-    nros_grep_q 'nros_cpp_config_generated\.h' <<<"$code" \
-        || echo "does not pair nros_cpp_config_generated.h"
-    nros_grep_q -E '(^|[^_])nros_config_generated\.h' <<<"$code" \
-        || echo "does not pair nros_config_generated.h"
-
-    # THE INVARIANT #1050 IS ABOUT: the archive that is PAIRED must be the
-    # archive that is LINKED.
-    #
-    # A first draft of this rule banned `IS_DIRECTORY` near a generated path
-    # instead, and the self-test below refused it twice — once because the two
-    # tokens sit on different LINES in the shape it was meant to catch, and once
-    # because the rule was simply wrong: that loop is not the defect. Guarding
-    # the generated dirs as directories is harmless and INSUFFICIENT; what makes
-    # them safe is the pairing assertion existing beside it. Banning the loop
-    # would have been a rule about the symptom, and it could not fire.
-    #
-    # Pairing against some OTHER archive is the failure that would restore #1050
-    # in full: the check would pass while the link took a different file. So the
-    # rule is that every ARCHIVE argument names the same variable the link uses.
-    local archives n_arch
-    archives="$(grep -E '^[[:space:]]*ARCHIVE[[:space:]]+' <<<"$code")"
-    n_arch="$(grep -c . <<<"${archives:-}")"
-    [ -z "$archives" ] && n_arch=0
-
-    if [ "$n_arch" -lt 2 ]; then
-        echo "has $n_arch pairing ARCHIVE argument(s); both generated headers must be paired"
-    fi
-    # `grep -qv` carries the same conflation. Ask the positive question instead:
-    # "is there a line that does NOT mention it" becomes "count lines, count
-    # matches", which has no error/non-match ambiguity at all.
-    _n_lines="$(printf '%s\n' "$archives" | grep -c . || true)"
-    _n_ours="$(printf '%s\n' "$archives" | grep -c '_NROS_PX4_CPP_A' || true)"
-    if [ -n "$archives" ] && [ "$_n_lines" -ne "$_n_ours" ]; then
-        echo "pairs against an archive other than \${_NROS_PX4_CPP_A} — the check would then pass while the link used a different file, which is issue 1050 restored"
-    fi
-    # ...and that variable must really be the one on the link line.
-    nros_grep_q '_nros_px4_link_archives.*_NROS_PX4_CPP_A' <<<"$code" \
-        || echo "\${_NROS_PX4_CPP_A} is no longer the archive on the link line; the pairing now describes a file nothing links"
+FN = "nros_assert_archive_pairs_with_header"
+KW = {"ARCHIVE", "HEADER", "SYMBOL_PREFIX", "LABEL", "BUILD_HINT"}
+code = comments.strip_comments(open(sys.argv[1], errors="replace").read(), "cmake")
+calls = [a for c, a, _ln in per_item.cmake_calls(code) if c == FN]
+if not calls:
+    print(f"does not call {FN} — the generated headers are unpaired again (issues 1046/1050)")
+headers = [h for a in calls for h in per_item.cmake_keyword_items(a, "HEADER", KW)]
+archives = [x for a in calls for x in per_item.cmake_keyword_items(a, "ARCHIVE", KW)]
+if not any(h.endswith("/nros_cpp_config_generated.h") for h in headers):
+    print("does not pair nros_cpp_config_generated.h")
+if not any(h.endswith("/nros_config_generated.h") for h in headers):
+    print("does not pair nros_config_generated.h")
+if len(archives) < 2:
+    print(f"has {len(archives)} pairing ARCHIVE argument(s); both generated headers must be paired")
+if any(x != "${_NROS_PX4_CPP_A}" for x in archives):
+    print("pairs against an archive other than ${_NROS_PX4_CPP_A} — the check would then "
+          "pass while the link used a different file, which is issue 1050 restored")
+linked = [a for c, a, _ln in per_item.cmake_calls(code)
+          if c == "set" and per_item.cmake_args(a)[:1] == ["_nros_px4_link_archives"]]
+if not any("${_NROS_PX4_CPP_A}" in per_item.cmake_args(a)[1:] for a in linked):
+    print("${_NROS_PX4_CPP_A} is no longer the archive on the link line; the pairing "
+          "now describes a file nothing links")
+PY
 }
 
 check_wiring() {
@@ -356,6 +341,21 @@ EOF
         bad "a consumer pairing only nros_cpp_config_generated.h read as compliant"; rc=1
     fi
 
+    # issue 1737 — the C-header CALL renamed away; its keyword lines and the
+    # header path stay in the text, which is what the text scan credited.
+    # ...on the SECOND call only (the C header), mirroring the audit mutation.
+    awk 'BEGIN{n=0} /^nros_assert_archive_pairs_with_header\($/{n++; if(n==2){print "message(STATUS"; next}} {print}' \
+        <<<"$good" >"$d/renamed.cmake"
+    found="$(scan_consumer "$d/renamed.cmake")"
+    if nros_grep_q 'does not pair nros_config_generated' <<<"$found"; then
+        note "[ok] a pairing call renamed to message() is not a pairing"
+    else
+        bad "a consumer whose C-header pairing is a message() read as compliant"; rc=1
+    fi
+    found="$(scan_consumer <(printf '%s\n' "$good"))"
+    if [ -n "$found" ]; then
+        bad "the compliant wiring sample was flagged:"; sed 's/^/      /' <<<"$found" >&2; rc=1
+    fi
     # (j) The pairing calls deleted outright — the plainest regression.
     cat >"$d/none.cmake" <<'EOF'
 set(_nros_px4_link_archives "${_NROS_PX4_CPP_A}" "${_NROS_PX4_PLATFORM_A}")

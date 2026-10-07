@@ -222,14 +222,37 @@ def unpinned_functions(text):
     """
     fns = per_item.blocks(text, FN_HEAD)
     pinning = {m.group(1) for m, o, e in fns if applies_the_pin(text[o:e])}
+
+    def calls(body, name):
+        return re.search(rf"(?<![\w:.]){re.escape(name)}\s*\(", body) is not None
+
+    def pinned(body):
+        return applies_the_pin(body) or any(calls(body, p) for p in pinning)
+
+    # issue 1737 — a SAME-FILE spawn helper is the peer function's process too.
+    # `bridge_zenoh_to_cyclonedds.rs` spawns through `spawn_bridge(...)`; the
+    # ros2-peer test that calls it holds no `Command::new(` of its own, so the
+    # per-fn rule skipped it and dropping the pin inside the helper passed.
+    # A helper whose process is a ZENOH session — it is handed a zenoh locator
+    # (`NROS_LOCATOR`, `ros2_env_setup_with_locator`) and names no DDS domain —
+    # is not on the peer's DDS bus and has nothing to pin.
+    def zenoh_only(hbody):
+        return (re.search(r'"NROS_LOCATOR"|\bros2_env_setup_with_locator\b', hbody) is not None
+                and re.search(r'ROS_DOMAIN_ID|(?i:cyclone|fastrtps|dds)', hbody) is None)
+
+    spawners = {m.group(1): text[o:e] for m, o, e in fns
+                if "Command::new(" in text[o:e] and not zenoh_only(text[o:e])}
     out = []
     for m, o, e in fns:
         body = text[o:e]
-        if "Command::new(" not in body or starts_a_pinned_peer(body) is None:
+        if starts_a_pinned_peer(body) is None:
             continue
-        if applies_the_pin(body) or any(re.search(rf"\b{p}\s*\(", body) for p in pinning):
-            continue
-        out.append(m.group(1))
+        name = m.group(1)
+        if "Command::new(" in body and not pinned(body):
+            out.append(name)
+        for helper, hbody in sorted(spawners.items()):
+            if helper != name and calls(body, helper) and not pinned(hbody):
+                out.append(f"{name} (spawns via {helper})")
     return out
 
 
@@ -297,6 +320,21 @@ def self_test(quiet=False):
     )
     if unpinned_functions(two) != ["b"]:
         bad.append(f"per-function pinning misjudged: {unpinned_functions(two)}")
+    # issue 1737 — the spawn goes through a same-file HELPER the peer fn calls.
+    via = (
+        "fn spawn_bridge(b: &Path) -> P { let mut c = Command::new(b); P::new(c) }\n"
+        "fn t() { Ros2DdsProcess::x(); let _b = spawn_bridge(p); }\n"
+    )
+    if unpinned_functions(via) != ["t (spawns via spawn_bridge)"]:
+        bad.append(f"an unpinned same-file spawn helper was not followed: {unpinned_functions(via)}")
+    via_ok = via.replace("let mut c = Command::new(b);",
+                         "let mut c = Command::new(b); nros_tests::dds_isolation::apply_to_command(&mut c);")
+    if unpinned_functions(via_ok):
+        bad.append(f"a PINNED spawn helper was reported: {unpinned_functions(via_ok)}")
+    zen = via.replace("let mut c = Command::new(b);",
+                      'let mut c = Command::new(b); c.env("NROS_LOCATOR", l);')
+    if unpinned_functions(zen):
+        bad.append(f"a zenoh-session spawn helper was asked for a DDS pin: {unpinned_functions(zen)}")
     # A DOCKER peer must NOT be treated as a pinned peer: those pairs are
     # symmetric-unpinned, and pinning our half would create the bug. This is the
     # case that makes the `HostRosEnv`/`Middleware` distinction load-bearing.

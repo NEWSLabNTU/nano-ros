@@ -83,11 +83,10 @@ PRODUCE = [
     (re.compile(r"\.installed-version\b"), "keeps its own install stamp"),
 ]
 
-# Handing the work to the one producer — for the NAMED tool. phase-472 W8: this
-# was "the body forwards SOMETHING", so a body forwarding `corrosion` could
-# download `ninja` beside it and the forward excused both. A forward excuses
-# exactly the tool it names; `--tool "$var"` names none.
-FORWARDS = re.compile(r"nros\s+setup\b[^\n]*?--tool[= ]+([A-Za-z0-9._-]+)")
+# A forward (`nros setup --tool X`) used to EXCUSE a producer line naming X in
+# the same body (phase-472 W8 narrowed it to the named tool). Issue 1737
+# removed the excuse: a forward does not need one — it matches no PRODUCE verb
+# — and the only thing it excused was a second producer of the same tool.
 
 # A line whose whole job is to say something.
 PRINTS = re.compile(r"^(echo|printf|>&2\s|nros_(check|lane)_skip|warn|die|fail)\b")
@@ -213,7 +212,6 @@ def offenders(bodies, tools, origin):
     found = []
     for name, lineno, body in bodies:
         lines = body.split("\n")
-        forwards = set(FORWARDS.findall(strip_comments(body)))
         for offset, raw in enumerate(lines):
             line = raw.strip()
             if not line or line.startswith("#"):
@@ -238,8 +236,12 @@ def offenders(bodies, tools, origin):
                         r"(?<![A-Za-z0-9_-])%s(?![A-Za-z0-9_-])" % re.escape(tool), line
                     ):
                         continue
-                    if tool in forwards:
-                        continue
+                    # issue 1737 — a forward does NOT excuse a download of the
+                    # SAME tool beside it: `nros setup --tool corrosion` plus
+                    # a `curl … corrosion` in one body is two producers, the
+                    # exact shape this gate exists for. The forward only ever
+                    # meant "no download here", so a producer line is a
+                    # finding whatever else the body forwards.
                     found.append((origin, name, lineno + offset, tool, what))
                 break
     return found
@@ -338,6 +340,12 @@ def self_test():
     assert [g[3] for g in got] == ["qemu"], got
     varfwd = [("x", 1, "    nros setup --tool \"$t\"\n    tar -xf qemu.tgz\n")]
     assert [g[3] for g in offenders(varfwd, tools, "just")] == ["qemu"]
+    # issue 1737 — forwarding AND downloading the same tool is two producers.
+    both = [("install-corrosion", 1,
+             "    nros setup --tool corrosion\n"
+             "    curl -L https://example/corrosion.tar.gz -o c.tgz\n")]
+    got = offenders(both, tools, "just")
+    assert [g[3] for g in got] == ["corrosion"], got
     probs = EXEMPT_T.check(EXEMPT_NEIGHBOURS)
     assert probs == [], probs
 
