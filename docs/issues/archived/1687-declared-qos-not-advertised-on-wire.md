@@ -116,7 +116,7 @@ packages --include='*.rs'` (no other backend rewrites the grant) and
 **Not measured / left behind:**
 
 - A deeper retained history is a backend extension, filed as issue 1709
-  ([open](../1709-zenoh-tl-retain-depth-is-a-constant-one.md)).
+  ([resolved](1709-zenoh-tl-retain-depth-is-a-constant-one.md)).
 - The Zephyr `zephyr_rust_qos` image shares `rust_qos_talker_pkg`, so its
   declared depth is now 1 too. It was already GRANTED 1 there; the Zephyr cell
   was not rebuilt or run.
