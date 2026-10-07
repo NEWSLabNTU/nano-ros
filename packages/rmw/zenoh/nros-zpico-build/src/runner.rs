@@ -25,19 +25,16 @@ use crate::{
 type ShimConfig = crate::ShimConfig;
 type ZenohBufferConfig = crate::ZenohBufferConfig;
 
-/// Queryables the ROS parameter services claim, mirroring
-/// `nros_node::parameter_services::PARAM_SERVICE_QUERYABLES`.
-///
-/// A MIRROR, and the only one left. This crate is a build-script helper: it
-/// cannot depend on `nros-node`, so it cannot read the constant, and cargo does
-/// not expose another crate's features to a build script either. Held to the
-/// definition by `check-infra-queryable-counts`, which is why the seven prose
-/// spellings this replaced could drift and this one cannot. See phase-392 W5.
-const PARAM_SERVICE_QUERYABLES: usize = 6;
-
-/// Queryables the REP-2002 lifecycle services claim, mirroring
-/// `nros_node::lifecycle_services::LIFECYCLE_SERVICE_QUERYABLES`. FIVE, not six.
-const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
+// The parameter and lifecycle families' service-server counts, and the parsers
+// for the two facts that say which are compiled in and on how many nodes. Issue
+// 1743 moved them to `nros_sizing_descriptor::infra` so the XRCE build prices
+// the same servers with the same arithmetic: this crate held the only copy, and
+// XRCE's service-server slots had none. Still a mirror of `nros-node`'s
+// constants, held to the creation sites by `check-infra-queryable-counts`. See
+// phase-392 W5.
+#[cfg(test)]
+use nros_sizing_descriptor::infra::LIFECYCLE_SERVICE_QUERYABLES;
+use nros_sizing_descriptor::infra::{PARAM_SERVICE_QUERYABLES, declared_nodes, stated};
 
 /// Publishers the REP-2002 lifecycle family claims (`~/transition_event`),
 /// mirroring `nros_node::lifecycle_services::LIFECYCLE_SERVICE_PUBLISHERS`.
@@ -176,16 +173,11 @@ fn declared_fact(name: &str) -> Option<String> {
     raw
 }
 
-/// Issue 1429 — the ONE predicate for "did this carrier state anything".
-///
-/// Separate from [`declared_fact`] and pure, so the RULES below can be total on
-/// their own terms rather than relying on having been called through the env
-/// reader. A rule is the tested surface here (see `queryable_default_from`'s
-/// note on why these take a string), and a rule that panics on `Some("")` while
-/// its only caller filters it out is a trap set for the next caller.
-fn stated(v: Option<&str>) -> Option<&str> {
-    v.filter(|s| !s.trim().is_empty())
-}
+// Issue 1429 — `stated`, the ONE predicate for "did this carrier state
+// anything", is separate from [`declared_fact`] and pure, so the RULES below
+// are total on their own terms. Since issue 1743 it is
+// `nros_sizing_descriptor::infra::stated`, so the XRCE build reads an empty
+// carrier exactly as this one does.
 
 /// The queryable-table default, from the declaration when there is one.
 ///
@@ -443,33 +435,10 @@ fn queryable_floor_from(
     app + infra_queryables(infra, nodes) + transient_local_publishers
 }
 
-/// phase-426 W3 — how many nodes claim a set of parameter services.
-///
-/// `NROS_DECLARED_NODES` is a COUNT of the model's nodes, and this verb's
-/// contract is the same as its siblings': the declarer states the fact, the
-/// consumer states what it costs. Absent means undeclared, and undeclared is
-/// ONE — the pre-W3 number, so an image nobody described keeps the pool it had.
-///
-/// A malformed value panics rather than falling back, for the reason
-/// [`queryable_default_from`] gives about `.max(1)`: a value that reads as
-/// applied and is not is worse than no value.
-fn declared_nodes(nodes: Option<&str>) -> usize {
-    // Issue 1429 — same `stated` guard as its sibling, and the same reason. The
-    // emitter that composed a valueless `NROS_DECLARED_TL_PUBLISHERS` reads
-    // `NROS_ENTITY_NODES_MAX` through the identical broken idiom, so this arm
-    // was one abstaining road away from the same panic.
-    match stated(nodes) {
-        Some(v) => match v.trim().parse::<usize>() {
-            Ok(n) => n.max(1),
-            Err(_) => panic!(
-                "NROS_DECLARED_NODES={v:?} is not a count. It is the number of \
-                 nodes the entry's model declares, and the ROS parameter \
-                 services are registered once PER NODE (phase-426 W3)."
-            ),
-        },
-        None => 1,
-    }
-}
+// phase-426 W3 — `declared_nodes`: how many nodes claim a set of parameter
+// services. `NROS_DECLARED_NODES` is a COUNT of the model's nodes; absent is
+// ONE (the pre-W3 number), and a malformed value panics rather than falling
+// back. Shared since issue 1743 (`nros_sizing_descriptor::infra`).
 
 /// phase-392 W5.f — `ZPICO_MAX_QUERYABLES` as a CHECKED override.
 ///
@@ -536,28 +505,14 @@ fn check_queryable_override(requested: usize, sizing: &QueryableSizing) {
 /// spelling is how a sizing rule and its check come to disagree.
 fn infra_queryables(infra: Option<&str>, nodes: Option<&str>) -> usize {
     // phase-426 W3 — the parameter family is PER NODE and the lifecycle family
-    // is not. `register_parameter_services` publishes one set of six under each
-    // node's own FQN, because that is what `ros2 param list` enumerates;
-    // `register_lifecycle_services` still registers one set on the executor.
-    // Multiplying both would over-reserve, multiplying neither is issue 0460
-    // again one node over.
-    let params = PARAM_SERVICE_QUERYABLES * declared_nodes(nodes);
-    // Issue 1429 — `stated` at the rule's boundary, like every sibling here. An
-    // empty carrier would otherwise reach `Some(other)` and be reported as a
-    // word that is not one of the four, which is a panic with no word in it.
-    match stated(infra) {
-        Some("none") => 0,
-        Some("param") => params,
-        Some("lifecycle") => LIFECYCLE_SERVICE_QUERYABLES,
-        Some("param+lifecycle") | Some("all") => params + LIFECYCLE_SERVICE_QUERYABLES,
-        Some(other) => panic!(
-            "NROS_DECLARED_INFRA_QUERYABLES={other:?} is not one of \
-             none|param|lifecycle|param+lifecycle (phase-392 W5)."
-        ),
-        // Undeclared infrastructure is assumed PRESENT: over-reserving costs
-        // RAM, under-reserving fails at boot with an exhausted table.
-        None => params + LIFECYCLE_SERVICE_QUERYABLES,
-    }
+    // is not: `register_parameter_services` publishes one set under each node's
+    // own FQN, `register_lifecycle_services` one set on the executor.
+    // Undeclared infrastructure is assumed PRESENT: over-reserving costs RAM,
+    // under-reserving fails at boot with an exhausted table.
+    //
+    // Issue 1743 — the arithmetic is the SHARED one, so XRCE's service-server
+    // slots and this queryable table cannot price the same servers differently.
+    nros_sizing_descriptor::infra::infra_service_servers(infra, nodes)
 }
 
 /// Issue 1713 -- the liveliness pool, completed from the declared facts the
