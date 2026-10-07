@@ -1,6 +1,6 @@
 # RFC-0098 — A leaf's build configuration is generated from one board choice
 
-**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481; 2026-10-07 — D11's locator revision PROPOSED from phase-481 W0)
+**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481; 2026-10-07 — D11's locator revision from phase-481 W0 DECIDED: the module's `module_ext_root` hook appends the fragment)
 
 Home phase: [phase-445](../roadmap/phase-445-board-choice-generates-leaf-config.md).
 
@@ -280,78 +280,99 @@ Zephyr's front-end MECHANISM; it stops being an authored source for nano-ros
 knobs.
 
 **D11 — on Zephyr, the image's configuration is a rendered Kconfig fragment,
-and a leaf's conf files hold no nano-ros knob.**
+appended by the nano-ros Zephyr module's own `module_ext_root` hook, and a
+leaf's conf files hold no nano-ros knob.** (Revised 2026-10-07: phase-481 W0
+measured the first draft's leaf helper unable to locate nano-ros on a plain
+`west build`, a `module_ext_root` hook was PROPOSED in its place, and the user
+DECIDED for it the same day — option "A". This text states the decided form.)
 
 - Zephyr builds `.config` inside `find_package(Zephyr)` by merging, last value
-  wins: board defconfig, `CONF_FILE`, `EXTRA_CONF_FILE`, then `-DCONFIG_*`
-  command-line values. The rendered fragment joins at `EXTRA_CONF_FILE`: after
-  the leaf's own conf files, before the per-run `-DCONFIG_*` values a test
-  harness passes (ports, locators, domains — the env rung's role on this road).
-- It is appended by a nano-ros helper the LEAF's `CMakeLists.txt` calls before
-  `find_package(Zephyr)`, never by the caller. Four callers assemble
-  `CONF_FILE` today (`zephyr-dev.just`, `zephyr-fixture-leaves.sh`,
-  `zephyr-fixture-run-one.sh`, and a user's plain `west build`); a fourth copy
-  of the same assembly is the class issue 0460 names, and would miss the road
-  the book documents. The helper renders through the CLI (`nros ws
-  leaf-system`), as `nros_resolve_board_facts` already does for the board, and
-  registers `system.toml` as a configure dependency.
-- `_nros_resolve_knob` is unchanged: the value arrives in `.config` like any
-  other and is read as Kconfig. No new rung, no ranking question.
-- What leaves the leaf's conf files: the RMW choice (`CONFIG_NROS_RMW_*`,
-  derived from the image's `rmw`), the language API (`CONFIG_NROS_{C,CPP,RUST}_API`,
-  derived from the package), the deploy endpoint (`CONFIG_NROS_XRCE_AGENT_*`),
-  and every knob with a `[knobs.*]` counterpart. What stays: Zephyr's own
-  settings (`CONFIG_NET_*`, stack sizes, `CONFIG_HEAP_MEM_POOL_SIZE`).
+  wins: board defconfig, `CONF_FILE`, `EXTRA_CONF_FILE`, `-DCONFIG_*`
+  command-line values, then any `*.conf` at the TOP of the build directory. The
+  rendered fragment joins at the END of `EXTRA_CONF_FILE`: after the leaf's own
+  conf files, the image's `conf` fragments and any snippet, before the per-run
+  `-DCONFIG_*` values a test harness passes (ports, locators, domains — the env
+  rung's role on this road). It lives at `<build>/nros/<image>.conf`, a
+  SUBDIRECTORY, because a top-level build-dir `*.conf` would merge after
+  `-DCONFIG_*`. A `-DCONFIG_*` value is sticky (Zephyr caches it as
+  `CLI_CONFIG_*` until `-U`'d), so a harness value outlives the configure that
+  passed it; that is Zephyr's behaviour, not this design's.
+- **The appender is the module, never the leaf and never the caller.**
+  `zephyr/module.yml` declares `settings: module_ext_root: zephyr`, and Zephyr
+  includes `zephyr/modules/modules.cmake` after module discovery and BEFORE
+  `configuration_files`/`kconfig`, in the application's directory scope. It is
+  located by Zephyr's own module resolution, so it is always the tree the module
+  is, on every road — fixture (`-DZEPHYR_EXTRA_MODULES`), a plain `west build`
+  with nano-ros as a west project, BYO. Four callers assemble `CONF_FILE` today
+  (`zephyr-dev.just`, `zephyr-fixture-leaves.sh`, `zephyr-fixture-run-one.sh`,
+  and a user's plain `west build`); a fifth copy of that assembly is the class
+  issue 0460 names. The leaf-helper form of this decision (a line in each
+  leaf's `CMakeLists.txt` before `find_package(Zephyr)`) was measured unable to
+  locate nano-ros on the plain-west road, where west passes only `WEST_PYTHON`,
+  `BOARD` and the user's `-D`s and module discovery runs inside
+  `find_package(Zephyr)`; a two-step `find_package(Zephyr COMPONENTS …)` load
+  loads nothing on its second call. Measurements:
+  [phase-481 W0](../roadmap/phase-481-image-config-one-source.md).
+- The hook is a no-op unless `APPLICATION_SOURCE_DIR` holds a `system.toml` or
+  a generated application names its bringup and image before
+  `find_package(Zephyr)` (below). It renders through the CLI (`nros ws
+  leaf-system --kconfig-out`, the one reader of `system.toml`), registers
+  `system.toml` as a configure dependency, and puts the fragment LAST in the
+  CACHE value of `EXTRA_CONF_FILE` — dropping an earlier rendering of its own,
+  keeping every user entry, and leaving the local variable as it was. Last in
+  the cache is last overall: `configuration_files.cmake` reads the variable
+  with `zephyr_get(… MERGE REVERSE)`, which orders the scopes local, ENV,
+  snippets, cache — so a locally appended fragment would sit BEFORE a
+  command-line `-DEXTRA_CONF_FILE` (W0 measured exactly that on the workspace
+  road) and before a snippet.
+- `-DNROS_IMAGE=<id>` selects among several images; one image (or `[system]
+  default_images = ["<id>"]`) needs no selection. The C/C++ leaf reader
+  (`nano_ros_read_leaf_system`) honours the same selection, so the RMW the
+  fragment states and the one the leaf's cmake reads cannot be two images'.
+- **A generated workspace application** has no `system.toml` beside it. The
+  generator (`nros build`), which already writes pre-`find_package(Zephyr)`
+  lines, states the bringup's directory, the image id and the entry's language
+  for the hook (`NROS_IMAGE_SYSTEM_DIR`, `NROS_IMAGE`, `NROS_IMAGE_LANGUAGE`);
+  the image's own `conf` files keep reaching Zephyr as `-DEXTRA_CONF_FILE`, and
+  the cache placement above puts the fragment after them.
+- What the fragment states: the RMW choice (`CONFIG_NROS_RMW_*`, from the
+  image's `rmw`), the language API (`CONFIG_NROS_{C,CPP,RUST}_API`, the
+  language of the package's ENTRY: `Cargo.toml` is Rust; a `CMakeLists.txt`
+  package's entry is the TYPED Zephyr carrier, C++ whatever its components are
+  written in — every C/C++ leaf and workspace image resolves to `CPP_API`
+  today, the C ones by stating `C_API` and then `CPP_API` in one choice), the
+  deploy endpoint from the image's `locator` (`CONFIG_NROS_ZENOH_LOCATOR`, or
+  `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` for XRCE), and every `[image.<id>] env`
+  row whose Kconfig symbol exists — the symbol named by
+  `nros_zephyr_build::kconfig_key_for` (the `KCONFIG_PAIRS` table, never a
+  second one), its value converted to the symbol's Kconfig type, refused by
+  name when it does not fit or when the symbol sits under another RMW's `if`.
+  What stays in conf files: Zephyr's own settings (`CONFIG_NET_*`, stack
+  sizes, `CONFIG_HEAP_MEM_POOL_SIZE`).
+- `_nros_resolve_knob`'s ladder is unchanged for those rows: the value arrives
+  in `.config` and is read as Kconfig.
+- A row with no Kconfig symbol rides the unforced `--config` `[env]` file
+  issue 1712 uses on the cmake road, on every Zephyr cargo command
+  (`nros_cargo_build` and zephyr-lang-rust's `rust_cargo_application`). One
+  consequence the W0 sketch did not price: a knob the Zephyr cmake lane itself
+  forwards with `cmake -E env` (a derived inventory value, say) would OUTRANK
+  that unforced row — `cmake -E env` overwrites. So such a row is also the
+  value `_nros_resolve_knob` resolves for that knob (rung `image`, below the
+  environment and above a derived or default value), which keeps the cargo
+  build and the C defines cmake bakes from the same number (issue 0135).
 - A gate refuses a nano-ros knob symbol in a leaf or workspace conf file,
   naming the `system.toml` line to write instead — the rule D1 applied to
   `examples/**/.cargo/`, applied to `examples/**/*.conf`. The shared board
   fragments under `cmake/zephyr/` are the BOARD layer and are not leaf files.
-- A knob with no Kconfig symbol reaches the Zephyr cargo commands through the
-  same unforced `--config` `[env]` file issue 1712 uses on the cmake road.
-
-**D11 — W0 revision (PROPOSED 2026-10-07, phase-481 W0; needs a decision before
-W1).** W0 measured the fragment and every precedence claim above as right, and
-the LOCATOR as wrong: a helper the leaf includes before `find_package(Zephyr)`
-has nothing that names nano-ros on a plain `west build` where nano-ros is a west
-project — the road `integration-zephyr.md` documents. west passes only
-`WEST_PYTHON`, `BOARD` and the user's `-D`s; module discovery runs inside
-`find_package(Zephyr)`; `NROS_REPO_DIR` is a checkout convenience; and a
-released `nros`'s own `share/nano-ros` is a different tree from the module
-(issue 1258/1387's class). Loading Zephyr in two steps
-(`COMPONENTS zephyr_default:zephyr_module`, then the full load) does not work
-either: the second `find_package` loads nothing more. Measurements:
-[phase-481 W0](../roadmap/phase-481-image-config-one-source.md), "W0 results".
-
-Proposed instead:
-
-- **The fragment is appended by the nano-ros Zephyr module itself, through
-  Zephyr's `module_ext_root` hook** — `zephyr/module.yml` `settings:
-  module_ext_root:`, whose `modules/modules.cmake` Zephyr includes after module
-  discovery and before `configuration_files`/`kconfig`, in the application's
-  directory scope. It is located by Zephyr's own module resolution, so it is
-  always the tree the module is, on every road (fixture `-DZEPHYR_EXTRA_MODULES`,
-  west project, BYO) — measured on two. It needs NO line in a leaf's
-  `CMakeLists.txt`: one caller, not a fifth.
-- It acts only when `APPLICATION_SOURCE_DIR` holds a `system.toml` (or a
-  generated application names one before `find_package(Zephyr)` — see below),
-  renders through `nros ws leaf-system --kconfig-out` into
-  `<build>/nros/<image>.conf` — a SUBDIRECTORY, because Zephyr merges the build
-  dir's top-level `*.conf` after `-DCONFIG_*` — appends it to `EXTRA_CONF_FILE`
-  and registers `system.toml` as a configure dependency. `-DNROS_IMAGE=<id>`
-  selects among several images.
-- **A generated workspace application** has no `system.toml` beside it, and
-  there `nros build` passes `-DEXTRA_CONF_FILE` on the command line, which
-  merges AFTER a locally appended value (measured). The generator, which already
-  writes pre-`find_package(Zephyr)` lines and knows the bringup and image, states
-  the bringup's `system.toml` and the image id for the hook to read, and the
-  image's `conf` files move under the same rule (D12 / W4's half).
-- Two facts the merge-order sentence above omits: a `-DCONFIG_*` value is
-  sticky (cached as `CLI_CONFIG_*` until `-U`'d), and build-dir `*.conf` files
-  merge last.
-- Cost: the hook runs for every application in a workspace that loads the
-  module, so it must be a cheap no-op without a `system.toml`; and
-  `module_ext_root` was measured on Zephyr 3.7 only — the 4.4 line must be
-  measured before W1 lands.
+- Cost: the hook runs for every application that loads the module, so it is a
+  cheap no-op without a `system.toml`.
+- Measured (phase-481 W1, "W1 results"): on Zephyr 3.7 AND 4.4, for a C leaf,
+  a Rust leaf, a generated workspace image on the fixture road, and a plain
+  `west build` with nano-ros as a west project — the fragment beats the leaf's
+  and the bringup's conf files and a command-line `-DEXTRA_CONF_FILE`,
+  `-DCONFIG_*` and an exported variable still beat the fragment, a
+  `system.toml` edit re-runs the configure once, and a no-Kconfig row reaches
+  both cargo lanes.
 
 **D12 — a workspace image's configuration is per image: images that resolve
 different configuration do not share a build.** A workspace cmake configure is

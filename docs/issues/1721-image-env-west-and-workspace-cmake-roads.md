@@ -20,6 +20,11 @@ and the leaf's `prj.conf` are two sources for one fact, so the fix removes one
 conf files and the Zephyr examples migrated. On the workspace road, images
 whose configuration differs get their own configure (D12).
 
+Progress (2026-10-07): W4 (D12, the workspace cmake road) and W1/W2 (the Zephyr
+module hook renders `[image.<id>] env` into the build, and a ratchet gate keeps
+new nano-ros knobs out of example conf files) have landed. Open: W3 (migrate
+the Zephyr examples' conf files) and W5 (docs, close).
+
 ## Summary
 
 Issue 1712 gave a standalone C/C++ leaf's `[image.<id>] env` (RFC-0049's APP

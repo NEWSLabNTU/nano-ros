@@ -294,7 +294,8 @@ endfunction()
 #   NANO_ROS_EXPORT_{DEPLOY,BOARD,RMW,FOUND,USES_*} — overridden, as above
 # and the GLOBAL property NROS_IMAGE_ENV_CONFIG — the image's `[image.<id>] env`
 #   as a cargo config, for the top-level leaf of a non-Zephyr configure (issue
-#   1712, NanoRosImageEnv.cmake), or "".
+#   1712, NanoRosImageEnv.cmake), or "". On Zephyr the module's
+#   `module_ext_root` hook sets it instead (phase-481 W1).
 # ---------------------------------------------------------------------------
 function(nano_ros_read_leaf_system)
     cmake_parse_arguments(_NRL "" "DIR" "" ${ARGN})
@@ -306,7 +307,9 @@ function(nano_ros_read_leaf_system)
     set(NANO_ROS_LEAF_LOCATOR "" PARENT_SCOPE)
     # Issue 1712 — cleared by the top-level leaf's read, so a configure cannot
     # inherit an image env nobody stated this time.
-    if(_NRL_DIR STREQUAL CMAKE_SOURCE_DIR)
+    # On Zephyr the module's `module_ext_root` hook owns the property (phase-481
+    # W1): it ran inside find_package(Zephyr), before this.
+    if(_NRL_DIR STREQUAL CMAKE_SOURCE_DIR AND NOT DEFINED ZEPHYR_BASE)
         set_property(GLOBAL PROPERTY NROS_IMAGE_ENV_CONFIG "")
     endif()
     if(NOT EXISTS "${_NRL_DIR}/system.toml")
@@ -328,10 +331,25 @@ function(nano_ros_read_leaf_system)
     # every cargo command this configure spawns passes as `--config`
     # (NanoRosImageEnv.cmake). Per build dir: two configures of one leaf for
     # two RMWs must not share it.
-    set(_nrl_image_env_out "${CMAKE_CURRENT_BINARY_DIR}/nros/nros-image-env.toml")
+    #
+    # Not on Zephyr (phase-481 W1, RFC-0098 D11): there the nano-ros module's
+    # `module_ext_root` hook rendered the image inside find_package(Zephyr) —
+    # Kconfig rows into `.config`, the rest into the `--config` file every
+    # Zephyr cargo command passes — and it honours `-DNROS_IMAGE=<id>`, which
+    # this read must honour too, so the RMW this leaf's cmake reads and the one
+    # the fragment states are the same image's.
+    set(_nrl_image_env_arg --image-env-out "${CMAKE_CURRENT_BINARY_DIR}/nros/nros-image-env.toml")
+    set(_nrl_image_arg "")
+    if(DEFINED ZEPHYR_BASE)
+        set(_nrl_image_env_arg "")
+        if(DEFINED NROS_IMAGE AND NOT NROS_IMAGE STREQUAL ""
+           AND _NRL_DIR STREQUAL APPLICATION_SOURCE_DIR)
+            set(_nrl_image_arg --image "${NROS_IMAGE}")
+        endif()
+    endif()
     execute_process(
         COMMAND "${_nros}" ws leaf-system "${_NRL_DIR}" --nano-ros-path "${NANO_ROS_ROOT}"
-                ${_nrl_board_arg} --image-env-out "${_nrl_image_env_out}"
+                ${_nrl_board_arg} ${_nrl_image_arg} ${_nrl_image_env_arg}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc
@@ -356,15 +374,7 @@ function(nano_ros_read_leaf_system)
         endif()
     endforeach()
     if(NOT "${_NROS_LEAF_IMAGE_ENV}" STREQUAL "")
-        if(DEFINED ZEPHYR_BASE)
-            # The west road builds its cargo commands while Zephyr loads its
-            # modules — before this leaf's find_package(nano_ros) — and resolves
-            # knobs through its own Kconfig ladder. Said, never dropped silently.
-            message(WARNING
-                "nano-ros: ${_NRL_DIR}/system.toml states `[image.<id>] env`, which the "
-                "Zephyr west road does not deliver (issue 1721); state the knob in "
-                "the application's Kconfig instead.")
-        elseif(NOT _NRL_DIR STREQUAL CMAKE_SOURCE_DIR)
+        if(NOT _NRL_DIR STREQUAL CMAKE_SOURCE_DIR)
             # A package inside a larger configure (a workspace member): the
             # cargo builds this configure drives serve every image it holds,
             # so one member's image cannot claim them.

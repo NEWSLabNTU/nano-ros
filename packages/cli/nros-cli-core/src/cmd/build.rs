@@ -2147,6 +2147,17 @@ fn generate_entry(
             app.capabilities
                 .push(crate::builder::west_app::PARAM_STORE_AXIS.to_string());
         }
+        // phase-481 W1 -- the image, for the module hook's Kconfig fragment.
+        // `nano_ros_add_executable(... TYPED)` is a C++ entry.
+        app.image = Some(
+            crate::builder::west_app::ImageStatement::new(
+                &entry_dir_for_deps,
+                bringup_dir,
+                image_id,
+                "cpp",
+            )
+            .map_err(|e| eyre::eyre!("generating the west application for `{image_id}`: {e}"))?,
+        );
         crate::builder::west_app::write(&app, &entry_dir_for_deps)
             .map_err(|e| eyre::eyre!("generating the west application for `{image_id}`: {e}"))?;
         return Ok(GeneratedEntry {
@@ -2395,7 +2406,7 @@ fn generate_entry(
                     // these rows go into has not been written yet.
                     &registry_patches_from(root, nros_root, &spec_nodes_dirs),
                 )
-                .map(|mut app| {
+                .and_then(|mut app| {
                     // Issue 1702 -- the declared axes reach Kconfig from the
                     // generated CMakeLists (see `capability_kconfig_cmake`).
                     app.capabilities = declared_capabilities(bringup_dir)
@@ -2406,7 +2417,14 @@ fn generate_entry(
                         app.capabilities
                             .push(crate::builder::west_app::PARAM_STORE_AXIS.to_string());
                     }
-                    app
+                    // phase-481 W1 -- the image, for the module hook.
+                    app.image = Some(crate::builder::west_app::ImageStatement::new(
+                        &entry_dir_for_deps,
+                        bringup_dir,
+                        image_id,
+                        "rust",
+                    )?);
+                    Ok(app)
                 })
                 .map_err(|e| eyre::eyre!("{e}"))?,
             ),

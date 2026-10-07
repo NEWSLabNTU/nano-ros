@@ -134,6 +134,9 @@ endfunction()
 # scope: inside a function `CMAKE_CURRENT_LIST_DIR` names the CALLER's file and
 # the frame pop drops what the include defined (the `_NROS_ENTRY_DIR` pattern).
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosSharedCargoDir.cmake")
+# phase-481 W1 — issue 1712's image-env `--config` file, which the module's
+# `module_ext_root` hook records for this lane (`nros_image_kconfig.cmake`).
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosImageEnv.cmake")
 
 # =============================================================================
 # Knob resolution (issue 0316)
@@ -162,7 +165,10 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosSharedCargoDir.cmake")
 # a knob whose consumer has no literal of its own). Issue 1549 -- the rung is
 # recorded beside the value as `NROS_KNOB_SOURCE_<knob>` and rides to cargo with
 # it, so an image can say in its boot record not only WHAT a knob was but WHO
-# decided it. The spelling is one of: environment, kconfig, derived, default.
+# decided it. The spelling is one of: environment, kconfig, derived, default —
+# and `image` (phase-481 W1) for an `[image.<id>] env` row Kconfig has no symbol
+# for (every knob the boot record carries has one, so that rung never reaches
+# it).
 function(_nros_resolve_knob env_name kconfig_value)
     set(_source kconfig)
     if(ARGC GREATER 2)
@@ -176,6 +182,19 @@ function(_nros_resolve_knob env_name kconfig_value)
                 "nros: ${env_name}=${_resolved} from environment "
                 "(Kconfig says ${kconfig_value}) — environment wins")
         endif()
+    elseif("${env_name}" IN_LIST NROS_IMAGE_ENV_ROWS)
+        # phase-481 W1 (RFC-0098 D11) -- the image states this knob in
+        # `[image.<id>] env` and Kconfig has no symbol for it, so the module hook
+        # (`nros_image_kconfig.cmake`) recorded the row here. It also rides the
+        # unforced `--config` file, but this lane forwards every resolved knob
+        # with `cmake -E env`, which would OVERWRITE that row; so the image's
+        # value is the resolved one, below the environment and above whatever
+        # this lane would have derived or defaulted.
+        set(_resolved "${NROS_IMAGE_ENV_ROW_${env_name}}")
+        set(_source image)
+        message(STATUS
+            "nros: ${env_name}=${_resolved} from the image's system.toml env "
+            "(this lane would have used ${kconfig_value})")
     else()
         set(_resolved "${kconfig_value}")
     endif()
@@ -519,10 +538,13 @@ function(_nros_resolve_derivable_knob env_name kconfig_value derived_var)
         _nros_resolve_knob(${env_name} "${kconfig_value}")
         return()
     endif()
-    if(DEFINED ENV{${env_name}} AND NOT "$ENV{${env_name}}" STREQUAL "")
-        # Rung 1 still outranks rung 3. `_nros_resolve_knob` prints the
-        # environment-wins line; give it the derived value (or the sentinel) as
-        # the thing being overridden so the message names the real loser.
+    if((DEFINED ENV{${env_name}} AND NOT "$ENV{${env_name}}" STREQUAL "")
+       OR "${env_name}" IN_LIST NROS_IMAGE_ENV_ROWS)
+        # Rung 1 still outranks rung 3, and so does an `[image.<id>] env` row
+        # with no Kconfig symbol (phase-481 W1). `_nros_resolve_knob` picks the
+        # stating rung and prints it; give it the derived value (or the
+        # sentinel) as the thing being overridden so the message names the
+        # real loser.
         _nros_resolve_knob(${env_name} "${${derived_var}}")
         return()
     endif()
@@ -1782,6 +1804,10 @@ function(_nros_root_cargo_dir out_var features)
         # is what the loop produced and no Zephyr image changes directory.
         nros_knob_key_fields(_knob_fields)
         list(APPEND _key ${_knob_fields})
+        # phase-481 W1 -- and the image's `--config` rows (issue 0616's rule,
+        # the field `nros_image_env_key_fields` gives every other lane).
+        nros_image_env_key_fields(_image_env_fields)
+        list(APPEND _key ${_image_env_fields})
         nros_shared_cargo_dir(_dir KEY ${_key})
     endif()
     if(NOT _dir)
@@ -1979,6 +2005,11 @@ function(nros_cargo_build)
         --target-dir ${CARGO_TARGET_DIR}
         --no-default-features
     )
+    # phase-481 W1 (RFC-0098 D11) -- the image's `[image.<id>] env` rows that no
+    # Kconfig symbol carries, as issue 1712's unforced `[env]` file: an exported
+    # variable still wins, and cargo fingerprints each row's value.
+    nros_image_env_cargo_flags(_nros_image_env_flags)
+    list(APPEND CARGO_ARGS ${_nros_image_env_flags})
     if(_nros_cargo_profile STREQUAL "dev")
     elseif(_nros_cargo_profile STREQUAL "release")
         # profile-literal-ok: flag mapping — the dev/release/custom translation of the RESOLVED profile

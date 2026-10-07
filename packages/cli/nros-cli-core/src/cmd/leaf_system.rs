@@ -54,6 +54,38 @@ pub struct LeafSystemArgs {
     /// the image states nothing, so such a build's cargo command is unchanged.
     #[arg(long, value_name = "PATH")]
     pub image_env_out: Option<PathBuf>,
+
+    /// phase-481 W1 -- answer for THIS image of the `system.toml` in PATH.
+    ///
+    /// A leaf with several images (one per RMW) is built once per image, and
+    /// the Zephyr module hook passes `-DNROS_IMAGE=<id>` here. With it, PATH
+    /// may also be a workspace BRINGUP (a `system.toml` with no build file
+    /// beside it), which is how a generated workspace application names its
+    /// image. Without it, the leaf's own rule applies: one image, or
+    /// `[system] default_images`.
+    #[arg(long, value_name = "ID")]
+    pub image: Option<String>,
+
+    /// phase-481 W1 (RFC-0098 D11) -- write the image as a Zephyr Kconfig
+    /// fragment to PATH: the RMW choice, the package's language API, the
+    /// deploy endpoint from `locator`, and every `[image.<id>] env` row whose
+    /// Kconfig symbol (through `nros_zephyr_build::KCONFIG_PAIRS`) exists in
+    /// the module's `zephyr/Kconfig`. Printed as `NROS_LEAF_KCONFIG`.
+    ///
+    /// With it, `--image-env-out` carries only the rows NO Kconfig symbol
+    /// holds, each also printed as `NROS_LEAF_IMAGE_ENV_ROW=<KEY>=<VALUE>` for
+    /// the Zephyr cmake lane's own knob ladder. Written only when the content
+    /// changes; removed (and printed empty) when the image states nothing.
+    #[arg(long, value_name = "PATH")]
+    pub kconfig_out: Option<PathBuf>,
+
+    /// The language of the image's ENTRY, for the fragment's API row (`rust`,
+    /// `c`, `cpp`), for a caller that knows it better than PATH does -- a
+    /// generated workspace application, whose bringup holds no build file.
+    /// Default: `Cargo.toml` in PATH is Rust; a `CMakeLists.txt` is the TYPED
+    /// Zephyr carrier, C++.
+    #[arg(long, value_name = "LANG")]
+    pub language: Option<String>,
 }
 
 /// The cargo config the cmake road hands every cargo command it spawns for
@@ -174,16 +206,18 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
         .path
         .canonicalize()
         .map_err(|e| eyre!("{}: {e}", args.path.display()))?;
-    let leaf = leaf_system::read(&dir)
-        .map_err(|e| eyre!(e))?
-        .ok_or_else(|| {
-            eyre!(
-                "{}: declares no deployment — write {} with `[image.<id>] board = \"<board>\"` \
+    let read = match &args.image {
+        Some(id) => leaf_system::read_image(&dir, id),
+        None => leaf_system::read(&dir),
+    };
+    let leaf = read.map_err(|e| eyre!(e))?.ok_or_else(|| {
+        eyre!(
+            "{}: declares no deployment — write {} with `[image.<id>] board = \"<board>\"` \
              (RFC-0098 D3)",
-                dir.display(),
-                dir.join(leaf_system::SYSTEM_TOML).display()
-            )
-        })?;
+            dir.display(),
+            dir.join(leaf_system::SYSTEM_TOML).display()
+        )
+    })?;
     let mut leaf = leaf;
     if let Some(over) = &args.board {
         leaf.board = Some(over.clone());
@@ -200,15 +234,51 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
     let catalog = root.as_deref().and_then(|r| BoardCatalog::load(r).ok());
     let deploy = deploy_token(catalog.as_ref(), &board);
     let settings = match root.as_deref() {
-        Some(r) => crate::cmd::leaf_settings::resolve(&dir, r)?.map(|i| i.config_path),
-        None => None,
+        Some(r) if leaf_system::is_package_dir(&dir) => {
+            crate::cmd::leaf_settings::resolve(&dir, r)?.map(|i| i.config_path)
+        }
+        _ => None,
+    };
+    // phase-481 W1 -- the Zephyr road splits the image's rows: those a Kconfig
+    // symbol carries go to the fragment, the rest to the `--config` file.
+    let (kconfig, env_rows) = match &args.kconfig_out {
+        Some(out) => {
+            let root = root.as_deref().ok_or_else(|| {
+                eyre!(
+                    "--kconfig-out: no nano-ros checkout to read {} from (pass --nano-ros-path)",
+                    crate::cmd::leaf_kconfig::KCONFIG_FILE
+                )
+            })?;
+            let syms = crate::cmd::leaf_kconfig::KconfigSymbols::load(root)?;
+            let language = match &args.language {
+                Some(l) => {
+                    Some(nros_lang::Language::parse(l).map_err(|e| eyre!("--language: {e}"))?)
+                }
+                None => crate::cmd::leaf_kconfig::package_language(&dir),
+            };
+            let r =
+                crate::cmd::leaf_kconfig::render(&leaf, language, &syms).map_err(|e| eyre!(e))?;
+            let text = crate::cmd::leaf_kconfig::fragment_text(&leaf, &r);
+            let written = crate::cmd::leaf_kconfig::write_fragment(out, text.as_deref())?;
+            (Some(written), r.cargo_rows)
+        }
+        None => (None, crate::cmd::leaf_settings::image_layers(&leaf)),
     };
     let image_env = match &args.image_env_out {
-        Some(out) => write_image_env(out, &crate::cmd::leaf_settings::image_layers(&leaf))?,
+        Some(out) => write_image_env(out, &env_rows)?,
         None => None,
     };
     for (k, v) in rows(&leaf, &deploy, settings.as_deref(), image_env.as_deref()) {
         println!("{k}={v}");
+    }
+    if let Some(written) = kconfig {
+        println!(
+            "NROS_LEAF_KCONFIG={}",
+            written.map(|p| p.display().to_string()).unwrap_or_default()
+        );
+        for (k, v) in &env_rows {
+            println!("NROS_LEAF_IMAGE_ENV_ROW={k}={v}");
+        }
     }
     Ok(())
 }

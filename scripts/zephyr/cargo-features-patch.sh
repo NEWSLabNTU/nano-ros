@@ -110,14 +110,15 @@ if [ "${1:-}" = "--self-test" ]; then
         _code() { grep -v '"'"'^[[:space:]]*#'"'"' "$_d/CMakeLists.txt" | grep -c "$1" || true; }
         _e="$(_code '\${EXTRA_CARGO_ARGS}')"
         _f="$(_code '\${NROS_BOARD_FACTS_ENV}')"
-        if [ "$_e" != 1 ] || [ "$_f" != 1 ]; then
-            echo "self-test: $_layout layout: EXTRA_CARGO_ARGS=$_e NROS_BOARD_FACTS_ENV=$_f (want 1/1)" >&2
+        _i="$(_code '\${NROS_IMAGE_ENV_CARGO_FLAGS}')"
+        if [ "$_e" != 1 ] || [ "$_f" != 1 ] || [ "$_i" != 1 ]; then
+            echo "self-test: $_layout layout: EXTRA_CARGO_ARGS=$_e NROS_BOARD_FACTS_ENV=$_f NROS_IMAGE_ENV_CARGO_FLAGS=$_i (want 1/1/1)" >&2
             _st_fail=1
         fi
         # `cargo doc` must be left alone: a second copy of the flag is the
         # failure this whole file is about.
         if [ "$_layout" = inlined ] && \
-           awk '/cargo doc/{d=1} d && /\$\{EXTRA_CARGO_ARGS\}/{print; exit}' \
+           awk '/cargo doc/{d=1} d && /\$\{(EXTRA_CARGO_ARGS|NROS_IMAGE_ENV_CARGO_FLAGS)\}/{print; exit}' \
                "$_d/CMakeLists.txt" | grep -q .; then
             echo "self-test: inlined layout: EXTRA_CARGO_ARGS reached cargo doc" >&2
             _st_fail=1
@@ -295,6 +296,49 @@ if ! grep -q "nano-ros: board facts" "$CMAKE_FILE"; then
         echo "       in $CMAKE_FILE — upstream layout changed; fix this patch rather" >&2
         echo "       than leaving the Zephyr rust lane without its board rung (issue 0605)." >&2
         echo "       (found $facts_n injection site(s); expected exactly 1)" >&2
+        exit 1
+    fi
+    mv "$TMP" "$CMAKE_FILE"
+    changed=1
+fi
+
+# --- 5. the image's `--config` env file onto the cargo command (phase-481 W1)
+#
+# RFC-0098 D11: an `[image.<id>] env` row with no Kconfig symbol reaches cargo
+# through issue 1712's unforced `--config` `[env]` file. The nano-ros module's
+# `module_ext_root` hook (`zephyr/cmake/nros_image_kconfig.cmake`) records the
+# flag as the CACHE INTERNAL `NROS_IMAGE_ENV_CARGO_FLAGS`; empty (an image that
+# states no such row, or no system.toml) expands to nothing, so the command is
+# byte-identical to before.
+#
+# An ARGUMENT, so it goes beside the other pass-through — right after
+# `${EXTRA_CARGO_ARGS}`, which hunk 2 put on exactly one command (never
+# `cargo doc` on the 4.4 layout). A leaf's own `set(EXTRA_CARGO_ARGS …)` would
+# overwrite anything the hook appended to that variable, which is why this is a
+# variable of its own.
+# `nros_grep_q`, not a bare `grep -q`: a grep that fails to run must not read as
+# "not applied yet" (issue 0726).
+# shellcheck source=scripts/lib/grep-q.sh
+source "$NANO_ROS_ROOT/scripts/lib/grep-q.sh"
+_img_rc=0
+nros_grep_q "nano-ros: image env --config" "$CMAKE_FILE" || _img_rc=$?
+if [ "$_img_rc" -eq 1 ]; then
+    TMP="$(mktemp)"
+    awk '
+    {
+        print
+        if ($0 ~ /^[[:space:]]+\$\{EXTRA_CARGO_ARGS\}[[:space:]]*$/) {
+            print "      # nano-ros: image env --config (phase-481 W1, RFC-0098 D11)."
+            print "      ${NROS_IMAGE_ENV_CARGO_FLAGS}"
+        }
+    }
+    ' "$CMAKE_FILE" > "$TMP"
+    img_n="$(grep -v '^[[:space:]]*#' "$TMP" | grep -c '\${NROS_IMAGE_ENV_CARGO_FLAGS}' || true)"
+    if [ "$img_n" -ne 1 ]; then
+        rm -f "$TMP"
+        echo '[cargo-features-patch] ERROR: expected exactly one ${EXTRA_CARGO_ARGS}' >&2
+        echo "       line to follow in $CMAKE_FILE (found $img_n injection site(s));" >&2
+        echo "       the Zephyr rust lane would lose the image's --config rows." >&2
         exit 1
     fi
     mv "$TMP" "$CMAKE_FILE"
