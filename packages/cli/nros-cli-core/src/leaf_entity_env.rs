@@ -1096,9 +1096,10 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
         };
     }
     with_leaf_monitor_rows(leaf, &mut inv);
+    let facts = leaf_facts(&model_facts, manifest);
+    with_fact_infra(&mut inv, &facts);
     match inv.derive() {
         Derivation::Derived(knobs) => {
-            let facts = leaf_facts(&model_facts, manifest);
             // Issue 1125 — the payload classes need a SECOND inventory (the
             // per-type bounds `nros sync` has already written into
             // `generated/`), so they are computed here and refuse
@@ -1143,6 +1144,41 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
             }
         }
     }
+}
+
+/// Issue 1743 -- give the leaf's inventory the service families its FACTS
+/// declare, before it derives.
+///
+/// The probe sees the user's entities and never the runtime's, so a leaf
+/// inventory derived without this counts neither family -- and the counts this
+/// road STATES then come out short of what the registration creates: the
+/// lifecycle family's `~/transition_event` publisher is missing from
+/// `ZPICO_MAX_PUBLISHERS` (issue 1587's term) and the executor's own node from
+/// `NROS_EXECUTOR_MAX_NODES`. The queryable and liveliness pools were never
+/// at risk here (their consumer completes them from the same facts), which is
+/// why this stayed invisible. The facts are what the sidecar carries anyway
+/// (model UNIONED with the manifest's features, [`leaf_facts`]), so the
+/// inventory and the carried facts now describe one image. No fact, no change:
+/// an undescribed leaf keeps the inventory it always had.
+pub fn with_fact_infra(inv: &mut EntityInventory, facts: &BTreeMap<String, String>) {
+    let Some(infra) = facts.get("NROS_DECLARED_INFRA_QUERYABLES") else {
+        return;
+    };
+    let (param_services, lifecycle) =
+        match nros_sizing_descriptor::infra::declared_families(Some(infra)) {
+            Some(f) => f,
+            None => return,
+        };
+    let model_nodes = facts
+        .get("NROS_DECLARED_NODES")
+        .and_then(|n| n.trim().parse::<usize>().ok())
+        .unwrap_or(0);
+    let had = inv.infra();
+    inv.set_infra(crate::entity_inventory::InfraServices {
+        param_services: had.param_services || param_services,
+        lifecycle: had.lifecycle || lifecycle,
+        model_nodes: had.model_nodes.max(model_nodes),
+    });
 }
 
 /// phase-467 W1 -- the probe sees no contract, so the monitor-table counts
@@ -1292,6 +1328,43 @@ mod tests {
                 (None, None)
             ]
         );
+    }
+
+    /// Issue 1743 -- a lifecycle leaf's stated pools carry the family's
+    /// publisher and node. Without the facts the probe-only inventory counted
+    /// the talker's one publisher and one node, short by exactly those.
+    #[test]
+    fn the_declared_families_reach_the_stated_pools() {
+        let derive = |facts: &[(&str, &str)]| {
+            let mut inv = EntityInventory::new("t");
+            let (pkg, component, declaration) = declaration_from_probe(TALKER).unwrap();
+            inv.insert(ComponentEntities {
+                pkg,
+                class: component.clone(),
+                component,
+                declaration,
+            });
+            with_fact_infra(&mut inv, &tests::facts(facts));
+            let Derivation::Derived(k) = inv.derive() else {
+                panic!("derives");
+            };
+            k
+        };
+        // Negative control: no fact, the inventory the leaf always had.
+        let bare = derive(&[]);
+        let none = derive(&[("NROS_DECLARED_INFRA_QUERYABLES", "none")]);
+        assert_eq!(bare.max_publishers, none.max_publishers);
+        assert_eq!(bare.max_nodes, none.max_nodes);
+        let lc = derive(&[
+            ("NROS_DECLARED_INFRA_QUERYABLES", "lifecycle"),
+            ("NROS_DECLARED_NODES", "1"),
+        ]);
+        assert_eq!(
+            lc.max_publishers,
+            bare.max_publishers + 1,
+            "~/transition_event"
+        );
+        assert_eq!(lc.max_nodes, bare.max_nodes + 1, "the executor's own node");
     }
 
     // ---- phase-445 W1: the facts on the cargo-leaf road -------------------

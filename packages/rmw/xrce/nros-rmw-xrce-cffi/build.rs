@@ -350,7 +350,16 @@ fn main() {
     // request. A statement clears the refusal below; the define loop then
     // compiles the STATED number (rung 1/2 beats rung 3.5).
     let param_inbox_stated = knobs.stated(ENV_PARAM_REQUEST, 1, &config_path).is_some();
-    let demand = XrceDemand::derive_stated(sizing_descriptor().as_ref(), param_inbox_stated);
+    let desc = sizing_descriptor();
+    let mut demand = XrceDemand::derive_stated(desc.as_ref(), param_inbox_stated);
+    // Issue 1743 — the service-server slots, completed from the runtime's own
+    // servers. Outside `derive_stated` because its inputs are the two
+    // `NROS_DECLARED_*` facts as well as the descriptor.
+    demand.derive_service_servers(
+        desc.as_ref(),
+        declared_fact(ENV_DECLARED_INFRA).as_deref(),
+        declared_fact(ENV_DECLARED_NODES).as_deref(),
+    );
     demand.report();
     for row in &config.defines {
         let value = knobs
@@ -950,6 +959,24 @@ const ENV_SUBSCRIBER_RING_DEPTH: &str = "NROS_XRCE_SUBSCRIBER_RING_DEPTH";
 // Issue 1722 — bound to `XRCE_PARAM_REQUEST_BYTES` by `xrce-config.txt`. The
 // backend-neutral knob, not an XRCE one: nros-node checks a statement of it.
 const ENV_PARAM_REQUEST: &str = "NROS_PARAM_SERVICE_INBOX_BYTES";
+// Issue 1743 — the service-server slot count, and the two facts that complete
+// it with the runtime's own parameter and lifecycle servers.
+const ENV_SERVICE_SERVERS: &str = "NROS_XRCE_MAX_SERVICE_SERVERS";
+const ENV_DECLARED_INFRA: &str = "NROS_DECLARED_INFRA_QUERYABLES";
+const ENV_DECLARED_NODES: &str = "NROS_DECLARED_NODES";
+
+/// A `NROS_DECLARED_*` fact from the environment, WATCHED: an image that gains
+/// a node or a service family must re-run this script, or its slots stay sized
+/// for the image it used to be (issue 1122). The watches are spelled in full,
+/// one per fact, because `check-declared-fact-carriers` reads them by name.
+/// Emptiness is read by `nros_sizing_descriptor::infra::stated` at the rule, so
+/// an empty carrier is undeclared here exactly as it is in the zenoh build
+/// (issue 1429).
+fn declared_fact(name: &str) -> Option<String> {
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_INFRA_QUERYABLES");
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_NODES");
+    env::var(name).ok()
+}
 
 /// Rung 3.5 of the ladder in `packages/rmw/xrce/xrce-config.txt`.
 ///
@@ -1084,6 +1111,64 @@ impl XrceDemand {
         };
         if let Some(n) = param_request_verdict(&shape) {
             self.values.insert(ENV_PARAM_REQUEST, n);
+        }
+    }
+
+    /// Issue 1743 — the service-server slots: the application's servers plus
+    /// the runtime's parameter and lifecycle servers.
+    ///
+    /// A ROS parameter or lifecycle service is a served endpoint like any
+    /// other and takes an `xrce_service_server_slot`. On the Zephyr road the
+    /// resolver states this knob from `NROS_DERIVED_MAX_QUERYABLES`, which
+    /// already counts both families (issue 1270); on the cargo and CMake roads
+    /// nothing did, so a param + lifecycle image (11 servers) built against
+    /// the header's 4 and died at boot registering the fifth.
+    ///
+    /// The two halves come from where they are known, and are SUMMED here
+    /// rather than by a producer, because no producer sees both:
+    ///
+    /// * the APPLICATION's: `[image] service_server_queryables` (declared
+    ///   servers plus three per action server — the producer's expansion);
+    /// * the RUNTIME's: `nros_sizing_descriptor::infra::infra_service_servers`
+    ///   over the two `NROS_DECLARED_*` facts — the SAME arithmetic zenoh's
+    ///   queryable table uses, so the two backends cannot price the same
+    ///   servers differently (issue 1025's rule).
+    ///
+    /// Only beside a STATED infrastructure fact (issue 1655's pairing). The
+    /// Zephyr west road names a descriptor and carries no fact; its knob is
+    /// stated by the resolver, and reading an absent fact as "every family
+    /// present" here would only be a second, larger answer below it.
+    ///
+    /// UNFLOORED (D7, issue 1033): an image with no servers derives 0, which is
+    /// the answer — the slot array is gone and the heap gets its bytes back.
+    /// A stated knob still wins, as for every row (rungs 1-3 beat 3.5).
+    fn derive_service_servers(
+        &mut self,
+        desc: Option<&SizingDescriptor>,
+        infra: Option<&str>,
+        nodes: Option<&str>,
+    ) {
+        use nros_sizing_descriptor::infra::{infra_service_servers, stated};
+        if stated(infra).is_none() {
+            return;
+        }
+        let runtime = infra_service_servers(infra, nodes);
+        match desc.and_then(|d| d.image.service_server_queryables().stated().copied()) {
+            Some(app) => {
+                self.values.insert(ENV_SERVICE_SERVERS, app + runtime);
+            }
+            // The runtime half is known and the application half is not, so no
+            // number here describes the image. Keep the header's default, and
+            // say how short it can be: a refusal would fail an image that may
+            // fit, a guess is how this issue's 4 got there.
+            None if runtime > 0 => self.note(format!(
+                "the parameter / lifecycle services need {runtime} service-server slot(s), \
+                 and the sizing descriptor states no `[image] service_server_queryables` \
+                 for the application's own, so {ENV_SERVICE_SERVERS} keeps its header \
+                 default. State it if the image serves more than that default allows \
+                 (issue 1743)"
+            )),
+            None => {}
         }
     }
 
@@ -1482,4 +1567,34 @@ fn xrce_demand_selftest() {
         None,
         "malformed is nros-node's"
     );
+
+    // 13. Issue 1743 — the service-server slots carry the runtime's servers.
+    let servers = |app: Option<usize>, infra: Option<&str>, nodes: Option<&str>| {
+        let mut d = image(vec![]);
+        d.image.set_service_server_queryables(app);
+        let mut x = XrceDemand::derive(Some(&d));
+        x.derive_service_servers(Some(&d), infra, nodes);
+        (x.for_knob(ENV_SERVICE_SERVERS), x.notes.len())
+    };
+    // The measured image: no application servers, both families on one node.
+    assert_eq!(
+        servers(Some(0), Some("param+lifecycle"), Some("1")).0,
+        Some(11),
+        "6 parameter + 5 lifecycle servers -- the header's 4 cannot boot this image"
+    );
+    // The parameter family is per node; an action server is the producer's 3.
+    assert_eq!(servers(Some(3), Some("param"), Some("2")).0, Some(15));
+    // No family and no servers: ZERO, unfloored (issue 1033).
+    assert_eq!(servers(Some(0), Some("none"), None).0, Some(0));
+    // No fact (the Zephyr west road): nothing derived, nothing said.
+    assert_eq!(servers(Some(2), None, None), (None, 0));
+    assert_eq!(
+        servers(Some(2), Some(""), None),
+        (None, 0),
+        "empty is undeclared"
+    );
+    // A fact without the application half: no number, but a note naming it.
+    let (v, notes) = servers(None, Some("lifecycle"), None);
+    assert_eq!(v, None);
+    assert_eq!(notes, 1, "the runtime's 5 servers must not pass silently");
 }

@@ -576,7 +576,9 @@ DESCRIPTOR_TWINS = {
 # Facts with no leaf-road twin, each for a stated reason.
 ROAD_UNPAIRED = {
     "NROS_DECLARED_INFRA_QUERYABLES":
-        "completes ZPICO_MAX_QUERYABLES, which no producer states as a count: "
+        "completes ZPICO_MAX_QUERYABLES and (issue 1743) "
+        "NROS_XRCE_MAX_SERVICE_SERVERS, which no cargo- or cmake-road "
+        "producer states as a count: "
         "the consumer derives it from the facts (issue 0460). Since phase-445 "
         "W1 the cargo-leaf road carries this FACT itself "
         "(`leaf_entity_env::leaf_facts`), so there is no knob to pair.",
@@ -587,7 +589,8 @@ ROAD_UNPAIRED = {
         "is NOT the executor node table -- NROS_DERIVED_EXECUTOR_MAX_NODES "
         "travelled the declared road as NROS_DECLARED_EXECUTOR_MAX_NODES "
         "(issue 1233) until it retired onto the descriptor's `[image] "
-        "node_count` (issue 1649) -- and only the zpico build script reads this.",
+        "node_count` (issue 1649) -- and only the zpico and XRCE build "
+        "scripts read this (issue 1743).",
     "NROS_DECLARED_QOS_MODELS": "QoS wiring, not a pool size.",
     "NROS_DECLARED_QOS_PENDING": "QoS wiring, not a pool size.",
     "NROS_DECLARED_QOS_SCHEDULED": "QoS wiring, not a pool size.",

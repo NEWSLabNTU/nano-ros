@@ -125,8 +125,13 @@ def read(root, rel):
         return fh.read()
 
 
+# `(?:pub )?` -- issue 1743 moved the build-script mirror into a LIBRARY
+# (`nros_sizing_descriptor::infra`), where it is `pub const` because two build
+# scripts import it. A pattern anchored on a bare `const` would have read that
+# file and matched nothing, which is a mirror the gate stops holding while
+# reporting that every count agrees.
 MIRROR = re.compile(
-    r"^const (PARAM_SERVICE_QUERYABLES|LIFECYCLE_SERVICE_QUERYABLES|ACTION_SERVER_QUERYABLES"
+    r"^(?:pub )?const (PARAM_SERVICE_QUERYABLES|LIFECYCLE_SERVICE_QUERYABLES|ACTION_SERVER_QUERYABLES"
     r"|ACTION_CLIENT_SERVICE_CLIENTS|LIFECYCLE_SERVICE_PUBLISHERS)"
     r": usize = (\d+);",
     re.M,
@@ -141,9 +146,15 @@ MIRROR = re.compile(
 # parameter and lifecycle servers into the queryable pool when the bringup
 # declares them, and it has carried an action mirror since phase-412 W1 that
 # its own doc said this gate held and the scan never read.
+#
+# Issue 1743 -- and the build-script mirror itself now lives outside
+# `packages/rmw`: `nros_sizing_descriptor::infra` holds the parameter and
+# lifecycle counts that zenoh's queryable table and XRCE's service-server slots
+# both price from. Index 2, after the two the self-test writes by position.
 EXTRA_MIRROR_FILES = [
     "packages/cli/nros-cli-core/src/cmd/entity_facts.rs",
     "packages/cli/nros-cli-core/src/entity_inventory.rs",
+    "packages/tooling/nros-sizing-descriptor/src/infra.rs",
 ]
 
 
@@ -327,7 +338,7 @@ def check(root, rmw_dir="packages/rmw"):
 
 def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
            c_cli_action=3, c_inv_param=6, cli_chans=3, c_inv_cli=3,
-           n_lc_pub=1, c_lc_pub=1, c_inv_lc_pub=1):
+           n_lc_pub=1, c_lc_pub=1, c_inv_lc_pub=1, c_shared_lc=5):
     for rel in (SPIN, PARAMS, LIFECYCLE, ACTION, "packages/rmw/zenoh/x/src/service.rs"):
         os.makedirs(os.path.join(root, os.path.dirname(rel)), exist_ok=True)
     body = "".join(f"        let h{i} = create_param_srv::<T>(\n" for i in range(n_param))
@@ -379,6 +390,12 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
         "const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;\n"
         f"const LIFECYCLE_SERVICE_PUBLISHERS: usize = {c_inv_lc_pub};\n"
         f"const ACTION_CLIENT_SERVICE_CLIENTS: usize = {c_inv_cli};\n")
+    # Issue 1743 -- the shared build-script mirror, spelled `pub const`.
+    shared = EXTRA_MIRROR_FILES[2]
+    os.makedirs(os.path.join(root, os.path.dirname(shared)), exist_ok=True)
+    open(os.path.join(root, shared), "w").write(
+        "pub const PARAM_SERVICE_QUERYABLES: usize = 6;\n"
+        f"pub const LIFECYCLE_SERVICE_QUERYABLES: usize = {c_shared_lc};\n")
 
 
 def self_test():
@@ -417,6 +434,9 @@ def self_test():
          "the lifecycle publisher's creation pattern stopped matching"),
         ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 2), 1,
          "the entity inventory's lifecycle-publisher mirror drifted"),
+        # Issue 1743 -- a `pub const` mirror in the shared library drifted.
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 6), 1,
+         "the shared nros-sizing-descriptor mirror drifted (a `pub const`)"),
     ]
     failures = 0
     tmp = tempfile.mkdtemp()
