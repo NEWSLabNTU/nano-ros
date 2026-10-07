@@ -1,6 +1,6 @@
 # Phase 480 -- what an image declares is what a stock ROS 2 peer sees
 
-**Status (2026-10-08). ACTIVE -- W1-W7 LANDED; W8 open.** All eleven founding
+**Status (2026-10-08). ACTIVE -- W1-W7 LANDED; W8 IN FLIGHT, paused (checkpoint below).** All eleven founding
 issues and the five W7 issues are resolved (#1735-#1738, #1744-#1748,
 #1780-#1784). W8 holds the three issues W7's fixes filed. This is the home for wiring and interop
 defects: an entity, a QoS profile, a remap, a node or a service that nano-ros
@@ -159,6 +159,18 @@ Filed while fixing W1-W6, each measured or reasoned in its issue:
   1723 fixed for the `ros2` CLI.
 
 **Acceptance:** each issue's own.
+
+**Checkpoint (2026-10-08, work paused).** Claims `issue-1732`, `issue-1741`
+and `issue-1743` are held until about 2026-10-10 (`just claim-list`).
+
+| issue | state | to resume |
+| --- | --- | --- |
+| 1741 | branch `fix/1741-image-ends-on-sigterm`, 5 commits, issue archived; files 1750 and 1752. Draft PR #1805 | review (the fix must keep the ThreadX port's own scheduler signals); rebase; tier 2 (the agent's run was cut off); mark ready |
+| 1743 | branch `fix/1743-xrce-infra-service-cap`, 1 code commit; `just check fast` green | `just check test-targets` (1.99), `cli-tests`, `rmw-xrce`, tier 2; drop the stated `NROS_XRCE_MAX_SERVICE_SERVERS=11` from row `workspace-features-rust-params-xrce`; archive commit; PR |
+| 1732 | not started | every exit path of a native image (clean end, error, SIGTERM/SIGINT) closes its RMW session; check zenoh and Cyclone for the same gap; prove `ros2 node list` empty after exit |
+
+Before resuming a branch, compare it with origin (`git ls-remote`): another
+session's PR sweep also rebases and fixes PRs.
 
 ## Status of the resolved issues
 
