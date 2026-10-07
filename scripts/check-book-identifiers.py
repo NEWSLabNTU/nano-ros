@@ -69,6 +69,10 @@ EXEMPT = {
     # backtick spans and cannot see arrow direction, so the "from" side of a
     # port table needs naming here rather than being silently accepted.
     "rcl_node_init": "comparison-vs-microros names it as micro-ROS's spelling, the FROM side of the port table",
+    # issue 1739 — found the day this gate first ran in a lane: upstream rcl's
+    # profile, which logging.md cites as what `nros::rosout::qos()` EQUALS. It
+    # is ROS 2's identifier, not ours, exactly as `rcl_node_init` is.
+    "rcl_qos_profile_rosout_default": "user-guide/logging.md cites upstream rcl's profile that nros::rosout::qos() mirrors",
     # Named by the book precisely BECAUSE they do not exist here. Before
     # phase-472 W3 each "existed" through a comment or string somewhere, which
     # is how this list stayed short while being wrong.

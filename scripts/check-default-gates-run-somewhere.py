@@ -292,6 +292,24 @@ def ci_gate_steps():
     return []
 
 
+def ci_gate_check_gates(steps, fast, build, default):
+    """The gates the `check::<name>` steps of `just ci gate` run — issue 1739.
+
+    R1 credited those steps as covered "through the lane", and for a lane name
+    (`check::fast`) that is right: its members are in scope already. But a step
+    naming ONE gate that is lane-EXEMPT (`check::launch-resolve-fresh`) is in
+    no lane, so it fell through both scopes: adding `check::book-identifiers`
+    (exempt, run by no workflow) to the lane passed while adding the
+    non-`check::` step `doctor` failed. Every gate the lane's `check::` steps
+    reach is in scope, whichever lane (if any) it belongs to.
+    """
+    out = set()
+    for st in steps:
+        if st.startswith("check::"):
+            out |= lane_gates(st[len("check::"):], fast, build, default)
+    return out
+
+
 def ci_lane_recipes(lane, recipes):
     """Which of `recipes` a `just ci <lane>` invocation reaches.
 
@@ -486,6 +504,12 @@ def self_test():
         bool(recipes))
     chk("a `ci gate` step name looks wrong",
         all(re.fullmatch(r"[a-z0-9:-]+", s) for s in steps))
+    # Issue 1739 — a `check::<one exempt gate>` step is IN SCOPE, not assumed
+    # covered by a lane it is not in; a lane-name step expands to its members.
+    g = ci_gate_check_gates(["check::fast", "check::lane-exempt-x", "test-unit"],
+                            ["f1", "f2"], ["b1"], ["fast"])
+    chk("a `check::` step naming one lane-exempt gate fell out of R1's scope",
+        g == {"f1", "f2", "lane-exempt-x"})
 
     # A recipe step is credited by a bare `just <recipe>` and NOT by a line that
     # merely mentions it — `just ci l1` sits inside a heredoc in queue-notify.yml
@@ -622,7 +646,9 @@ def main() -> int:
         survey(fast, build, default, recipes, place)
         return 0
 
-    scope = sorted(set(fast) | set(build) | set(default))
+    # Issue 1739 — plus every gate a `check::` step of `ci gate` reaches.
+    scope = sorted(set(fast) | set(build) | set(default)
+                   | ci_gate_check_gates(steps, fast, build, default))
     errs = []
 
     # R1 — a gate no workflow event runs.

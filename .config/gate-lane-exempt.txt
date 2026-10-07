@@ -37,21 +37,19 @@
 
 _gate-list-end  # the `build-serial:` terminator, a no-op, not a gate
 action-client-arena-budget  # reads BUILT IMAGES; `build-test-fixtures` runs it (phase-413 W7, issue 1001)
-archive-lang-items  # in no lane and no caller found — issue 1071's class
-book-identifiers  # in no lane and no caller found — issue 1071's class
+archive-lang-items  # needs a built CMake image link line; `build-test-fixtures` (justfile) runs it after the build, so every fixture lane reaches it (issue 1739: "no caller found" was stale)
 build  # lane verb: fans `build-serial` out through run-gates-parallel.sh
 build-serial  # the build-tier registry, still an authored dependency list
 cli-clippy  # called by `check-cli-fmt`'s body, not run standalone
 compile-smoke  # gate.yml runs it by name on pull_request; needs a compile
 default  # lane verb: `cli-fresh` + `fast` + `build` + `api-parity`
 dep-chain  # post-submit.yml runs it by name; needs codegen output
-dist-runtime-deps  # re-implemented inline by `just workspace doctor`; no lane
-executor-stack-floor  # in no lane and no caller found — issue 1071's class
+dist-runtime-deps  # needs a provisioned SDK store (~10 min over two Zephyr SDKs); run by `just workspace doctor`. Held off every workflow while it is red on BOTH Zephyr SDK dists — issue 1744 needs a ruling first (issue 1739)
 fast  # lane verb: fans this lane out through run-gates-parallel.sh
 fast-parallel  # retired alias for `fast`, kept for muscle memory
 fast-serial  # lane verb: the same lane, one gate at a time, fail-fast
-launch-resolve-fresh  # asserts a DEVELOPER tree: CI restores the resolver from a cache whose key omits the play_launch sources it compiles, and no CI job rebuilds it — `ci gate` is where it belongs (issue 1487)
-nextest-test-filters  # in no lane and no caller found — issue 1071's class
+launch-resolve-fresh  # needs the resolver BUILT: a step of `ci gate`, and gate.yml runs it right after `just setup-launch-resolve` on every event that builds it (issue 1739)
+nextest-test-filters  # needs the test binaries (listing IS building, issue 1500); `test-all` (justfile) runs it first, which `just ci tier1 run` / `just ci matrix` (run-matrix.yml) reach (issue 1739)
 no-std  # gate.yml + `just ci` run it by name; cross-compiles riscv32
 rustdoc-links  # `cargo doc` over the deployed crate set; compiles `zpico-sys`, whose build script needs the zenoh-pico source. Its own pull-request step in gate.yml runs it AFTER provisioning
 rustdoc-workspace  # `cargo doc` over every workspace crate; runs the cyclonedds/xrce/zenoh-pico build scripts too. Its own pull-request step in gate.yml runs it AFTER provisioning (issue 1116)
@@ -61,10 +59,9 @@ submodule-commits-reachable  # gate.yml runs it by name; needs the remote
 submodule-drift  # in no lane and no caller found — issue 1071's class
 support-status  # generator `--check`; in no lane and no caller found
 tier-preconditions  # a PRECONDITION reporter; runs at the head of `just ci`
-weak-symbols-image  # needs built fixtures, so it cannot be buildless
+weak-symbols-image  # needs built fixtures, so it cannot be buildless; a step of `just ci matrix` (run-matrix.yml) after that lane's fixture build (issue 1739)
 workspace  # aggregate: depends on `workspace-fmt`, echoes where its jobs went
 workspace-embedded  # cross-compiles the workspace for thumbv7; minutes
-workspace-rmw-agreement  # in no lane and no caller found — issue 1071's class
 zenoh  # `cargo clippy -p nros-rmw`; a compile, not a source gate
 zenoh-archive  # reads a built `libnros_rmw_zenoh_staticlib.a`
 zephyr-kconfig-symbols  # needs the fetched Zephyr Kconfig trees (~600 MB)
