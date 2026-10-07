@@ -746,8 +746,7 @@ inline Result register_subscription_capturing(::rclcpp::Node& node, const char* 
 //
 // phase-456 W2b moved the TAKING API — `take`, `take_sized`, `take_serialized`,
 // `take_serialized_with_attachment`, `take_validated`, `take_validated_sized`,
-// `take_sequence`, `try_borrow` + `View`, the seven `[[deprecated]]`
-// `try_recv*` forwarders, `stream()` and the three QoS-event setters — to
+// `take_sequence`, `try_borrow` + `View`, `stream()` and the three QoS-event setters — to
 // `nros::PollSubscription<M>` in `nros/polling_subscription.hpp`, together with
 // the out-ref creator that fills it. Those calls all dereference `storage_`,
 // which only a caller-owned subscriber ever has.

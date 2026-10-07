@@ -2,10 +2,10 @@
  *
  * Confirms:
  *   1. The static library compiles + links.
- *   2. `nros_rmw_xrce_register()` reaches its `nros_rmw_cffi_register`
+ *   2. `nros_rmw_xrce_register()` reaches its `nros_rmw_cffi_register_named`
  *      hand-off and propagates the return code unchanged.
  *
- * The real `nros_rmw_cffi_register` symbol lives in the
+ * The real `nros_rmw_cffi_register_named` symbol lives in the
  * `nros-rmw-cffi` Rust crate; this test stubs it with a local
  * implementation that records the vtable pointer it received and
  * returns OK. Validating wire-up at the link layer + sanity-checking
@@ -21,14 +21,8 @@
 
 static const nros_rmw_vtable_t *g_received_vtable = NULL;
 
-rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable) {
-    g_received_vtable = vtable;
-    return NROS_RMW_RET_OK;
-}
-
-/* Issue 0787 — the NAMED registry entry, which is what `vtable.c` calls
- * (phase 104.B.2). Only the legacy single-argument form was stubbed, so this
- * test had not LINKED since the named registry landed. */
+/* The NAMED registry entry, which is what `vtable.c` calls (phase 104.B.2;
+ * issue 0787 — only the legacy single-argument form used to be stubbed). */
 rmw_ret_t nros_rmw_cffi_register_named(const char *name, const nros_rmw_vtable_t *vtable) {
     (void) name;
     g_received_vtable = vtable;
@@ -54,7 +48,7 @@ rmw_ret_t nros_rmw_cffi_register_named(const char *name, const nros_rmw_vtable_t
  * issue-0050 weak-symbol policy exists to prevent, arrived at without any weak
  * symbol.
  *
- * `nros_rmw_cffi_register{,_named}` above stay stubbed: those live in the Rust
+ * `nros_rmw_cffi_register_named` above stays stubbed: it lives in the Rust
  * cffi crate, which this project genuinely does not link, and the stub IS the
  * assertion — it records the vtable the backend hands over.
  */
@@ -153,7 +147,7 @@ int main(void) {
         return EXIT_FAILURE;
     }
     if (g_received_vtable == NULL) {
-        fprintf(stderr, "FAIL: nros_rmw_cffi_register received NULL vtable\n");
+        fprintf(stderr, "FAIL: nros_rmw_cffi_register_named received NULL vtable\n");
         return EXIT_FAILURE;
     }
     if (g_received_vtable->create_session == NULL) {

@@ -8,7 +8,7 @@
  * @brief Return-code constants for the nros RMW C vtable.
  *
  * Functions in `nros_rmw_vtable_t` and the public C entry points
- * (`nros_rmw_cffi_register`, …) report status as a signed 32-bit
+ * (`nros_rmw_cffi_register_named`, …) report status as a signed 32-bit
  * integer. Zero is success; every other value is a POSITIVE named
  * constant below — upstream rmw's number where upstream has one, and
  * one above `NROS_RMW_RET_EXTENSION_BASE` where it does not.

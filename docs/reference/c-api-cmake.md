@@ -203,7 +203,7 @@ one with a compile definition. Nothing in CMake, and nothing in the headers,
 probes for it.
 
 - **Freestanding (default).** C++14, no standard library, no exceptions, no
-  RTTI. `nros::Node`, `create_*` writing through an out-reference and returning
+  RTTI. `rclcpp::Node`, `create_*` writing through an out-reference and returning
   `nros::Result`, `const char *` names, `uint64_t` millisecond durations. This
   is the surface every nano-ros application in this repository is built
   against, `posix` host builds included.

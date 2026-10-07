@@ -66,7 +66,7 @@ page.
 
 nros-rmw selects the backend at **link time** via Cargo features, and reaches
 it through a **C ABI vtable** (`nros_rmw_vtable_t`, RFC-0054) that the backend
-hands the runtime once via `nros_rmw_cffi_register()` before any session is
+hands the runtime once via `nros_rmw_cffi_register_named()` before any session is
 created. There is no loader, no `.so`, and no path search: the only backends
 reachable are the ones linked into the image.
 

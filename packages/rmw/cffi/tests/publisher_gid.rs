@@ -195,7 +195,7 @@ unsafe extern "C" fn noop_regpubev(
     NROS_RMW_RET_UNSUPPORTED
 }
 
-/// Every REQUIRED slot filled — `nros_rmw_cffi_register` refuses an all-NULL
+/// Every REQUIRED slot filled — `nros_rmw_cffi_register_named` refuses an all-NULL
 /// vtable (issue 0349) — and both optional slots under test left NULL, which
 /// is the state uORB and XRCE actually ship.
 const BASE: NrosRmwVtable = NrosRmwVtable {

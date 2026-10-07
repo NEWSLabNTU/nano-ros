@@ -44,20 +44,6 @@ pub trait BoardConfig {
 
     /// ROS 2 domain ID (default `0`).
     fn domain_id(&self) -> u32;
-
-    /// Deprecated alias for [`locator`](BoardConfig::locator).
-    ///
-    /// Kept as a defaulted method (not a required one) so out-of-tree board
-    /// crates that still spell the old name keep compiling: they get the
-    /// forwarding default for free once they rename their own impl, and
-    /// callers of the old name keep working with a deprecation warning.
-    #[deprecated(
-        since = "0.6.0",
-        note = "renamed to `locator()` — the core trait must not name a backend (issue 0330)"
-    )]
-    fn zenoh_locator(&self) -> &str {
-        self.locator()
-    }
 }
 
 // `BoardTransportConfig` was removed here (issue 1064). It carried

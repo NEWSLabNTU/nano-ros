@@ -54,7 +54,7 @@ px4_add_module(
         ${NROS_RMW_CFFI_INCLUDE_DIR}
     SRCS
         ${CMAKE_CURRENT_LIST_DIR}/nros_register_check.cpp
-        # Issue 0335 — the weak `nros_rmw_cffi_register` fallback now lives with
+        # Issue 0335 — the weak `nros_rmw_cffi_register_named` fallback now lives with
         # the uORB backend (`register_fallback.c`), not in this example. Real
         # (cargo-linked) builds override it with the Rust strong symbol.
         ${NROS_RMW_UORB_CPP_DIR}/src/register_fallback.c

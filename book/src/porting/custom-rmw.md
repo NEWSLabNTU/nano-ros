@@ -359,7 +359,7 @@ static const nros_rmw_vtable_t MY_RMW = {
 
 ```c
 int main(void) {
-    nros_rmw_cffi_register(&MY_RMW);    // before any nros call
+    nros_rmw_cffi_register_named("my_rmw", &MY_RMW);    // before any nros call
     /* now use the nano-ros C or C++ API normally */
 }
 ```

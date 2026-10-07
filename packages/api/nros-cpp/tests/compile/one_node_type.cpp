@@ -17,8 +17,9 @@
 // which is phase-438's.
 //
 // WHAT THIS PROVES
-//   1. `rclcpp::Node` and `nros::Node` are the SAME TYPE, not two types with a
-//      converting constructor between them. This is the whole item: before the
+//   1. There is ONE node type, `rclcpp::Node` (the `nros::Node` alias for it was
+//      deleted by phase-482 W6), not two types with a converting constructor
+//      between them. This is the whole item: before the
 //      merge a ported file got a type with no graph queries, no lifecycle, no
 //      callback groups and no out-ref creators, while a native file got a type
 //      with no `shared_ptr` creators and no parameters.
@@ -65,15 +66,8 @@ struct CounterMsg {
 
 // --- (1) ONE TYPE ------------------------------------------------------------
 //
-// `std::is_same`, not `is_convertible` or `is_base_of`: an alias is the claim,
-// and any wrapper — even an implicitly-converting one — would reintroduce two
-// objects, two entity sets and the two-parameter-store duplication `nros.hpp`
-// used to flag against itself.
-
-static_assert(std::is_same<::rclcpp::Node, ::nros::Node>::value,
-              "rclcpp::Node and nros::Node have come apart again -- phase-427 merged them, and "
-              "two node types is what put a second parameter facade, a second get_logger() and "
-              "two disjoint create_* families in one package");
+// There is no second spelling left to compare against: phase-482 W6 deleted
+// the `nros::Node` alias. What remains of this section is the shape below.
 
 // The deleted shim was `std::enable_shared_from_this<Node>`, a hosted-only BASE
 // carrying a weak_ptr member -- 16 bytes of layout behind a capability probe,

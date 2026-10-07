@@ -171,27 +171,6 @@ inline Result bind_subscription_sized(::rclcpp::Node& node, const char* topic, C
         self, qos, rx_bytes);
 }
 
-/// **RETIRED — phase-427 W3.** Write
-/// `node.create_wall_timer<C, &C::method>(out, period_ms, self)` instead.
-///
-/// This was an INVENTED free-function name doing exactly what upstream's
-/// `create_wall_timer` does, with the node as its first argument instead of its
-/// receiver. Folding it into the member removed an invention by reusing an
-/// upstream name, which is what RFC-0089's clause 2 asks for — and the member
-/// is the verb a reader meets first, so a component no longer has to learn a
-/// second spelling for its most common line.
-///
-/// Kept as a deprecated forwarder for one release rather than deleted: the
-/// in-tree call sites all moved in the same commit, so the attribute costs
-/// nothing here and gives an out-of-tree consumer the migration in the
-/// compiler's own words. There is no second code path — it forwards.
-template <class C, void (C::*Method)()>
-NROS_CPP_DEPRECATED_MSG("nros::bind_timer is retired (phase-427 W3): write "
-                        "node.create_wall_timer<C, &C::method>(out, period_ms, self)")
-inline Result bind_timer(::rclcpp::Node& node, Timer& out, uint64_t period_ms, C* self) {
-    return node.template create_wall_timer<C, Method>(out, period_ms, self);
-}
-
 /// Register a **raw** callback-style service server on the executor that owns
 /// `node`. The handler receives the request's wire bytes (`req`, `req_len`) and
 /// fills the reply into `resp` (capacity `resp_cap`), writing the byte count to

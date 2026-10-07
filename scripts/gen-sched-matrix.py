@@ -54,7 +54,7 @@ TARGETS = [
 FIELDS = ["edf", "reservation", "preempt_threshold", "affinity",
           "n_priorities", "low_number_is_high"]
 
-CLASSES = ["Fifo", "Edf", "Sporadic", "TimeTriggered"]
+CLASSES = ["Fifo", "Edf", "Sporadic"]
 
 
 def read(rel):
@@ -160,9 +160,6 @@ def render():
         "Fifo": "Live — the default class; bucketed FIFO ready-set.",
         "Edf": "Live — earliest-deadline-first ready-set ordering.",
         "Sporadic": "Live — budget/period enforcement in dispatch.",
-        "TimeTriggered": "Accepted but deprecated in favour of cooperating "
-                         "TT-with-other-classes (see the enum's deprecation "
-                         "note); dispatches as Fifo.",
     }
     for c in CLASSES:
         n = counts[c]

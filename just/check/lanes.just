@@ -1609,8 +1609,7 @@ cpp: cpp-fmt
     # `nros_cpp_qos_t`'s `*_ms` FIELDS are still `uint32_t` milliseconds — the
     # same token is a struct field (ABI, must not move) and was a class method
     # (renamed), so a textual sweep is exactly what this catches (issue 0160).
-    # `-Wno-deprecated-declarations` because the TU names the old spellings
-    # deliberately; the probe below is what proves they still warn.
+    # (The old spellings were deleted by phase-482 W6.)
     # ----- the -nostdinc++ lane (phase-417) -----
     #
     # The probe ABOVE is host `c++ -ffreestanding` against the host's own,
@@ -1739,13 +1738,8 @@ cpp: cpp-fmt
     # stops compiling at `declare_parameter`, which is W2 working, not a
     # regression. The freestanding half has its own probe below and correctly
     # takes no flag.
-    # `-Wno-deprecated-declarations`: this TU names `nros::Node` ON PURPOSE --
-    # it is the one file in the tree left un-migrated by phase-427 W7, because
-    # its whole subject is that BOTH spellings name one type. The negative twin
-    # below asserts the attribute fires.
     echo "  - one node type: hosted shape + both create families (c++14, -DNROS_CPP_STD)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -DNROS_CPP_STD=1 \
-        -Wno-deprecated-declarations \
         -I"$gen/nros-cpp-generated" \
         -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
@@ -1783,44 +1777,6 @@ cpp: cpp-fmt
         echo "ERROR: the temporary-handle probe failed, but not on the deleted conversion" >&2; \
         echo "       (nros_grep_q rc=$_nh_rc)." >&2; \
         echo "--- compiler said ---" >&2; echo "$_nh_out" >&2; \
-        exit 1; \
-    fi
-    # phase-427 W7 — ...and the deprecated `nros::Node` spelling WARNS.
-    #
-    # The positive twin is `one_node_type.cpp` above: one type, two names. This
-    # is the other half — one of those names is on its way out, and a
-    # deprecation nobody is told about is just an alias. NEGATIVE assertion,
-    # because a clean compile is exactly what a silently-dropped attribute looks
-    # like, and asserted-present first, because a missing file is also a
-    # non-zero `c++` and reads as a pass.
-    test -f packages/api/nros-cpp/tests/compile/node_deprecation_probe.cpp || { \
-        echo "ERROR: node_deprecation_probe.cpp is MISSING -- the expected-failure" >&2; \
-        echo "       check below would PASS on a missing file." >&2; \
-        exit 1; \
-    }
-    echo "  - ...and the deprecated nros::Node spelling WARNS"
-    mkdir -p tmp
-    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -DNROS_CPP_STD=1 \
-        -Werror=deprecated-declarations \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
-        -Ipackages/api/nros-cpp/include \
-        -Ipackages/api/nros-c/include \
-        -Ipackages/platform/nros-platform-api/include \
-        packages/api/nros-cpp/tests/compile/node_deprecation_probe.cpp \
-        > tmp/refuse-nros-node.log 2>&1; then \
-        echo "ERROR: nros::Node no longer warns. RFC-0089 phases the nros:: vocabulary" >&2; \
-        echo "       out, and this attribute is the only thing telling a consumer who" >&2; \
-        echo "       copied examples/templates/** out of nros-v0.5.0 to write" >&2; \
-        echo "       rclcpp::Node instead." >&2; \
-        exit 1; \
-    fi
-    # "It failed" is also what a typo produces: the diagnostic must name the
-    # replacement, because that naming IS the migration.
-    nros_grep_q 'write rclcpp::Node' tmp/refuse-nros-node.log && _rc=0 || _rc=$?
-    if [ "$_rc" -ne 0 ]; then \
-        echo "ERROR: the nros::Node deprecation no longer names its replacement." >&2; \
-        echo "       See tmp/refuse-nros-node.log." >&2; \
         exit 1; \
     fi
     # phase-456 W5 — this probe INVERTED. It was an expected-FAILURE from
@@ -1914,7 +1870,8 @@ cpp: cpp-fmt
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/one_node_type_ours_only_names.cpp
 
-    # phase-427 W3 — the `bind_timer` RETIREMENT, both halves.
+    # phase-427 W3 — the `bind_timer` retirement (the free function itself was
+    # deleted by phase-482 W6).
     #
     # Every path that used to reach the free `nros::bind_timer` is a TEMPLATE
     # BODY, and the header parse loop instantiates none of them. That is how a
@@ -1928,32 +1885,6 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/timer_binding_paths.cpp
-    test -f packages/api/nros-cpp/tests/compile/bind_timer_deprecation_probe.cpp || { \
-        echo "ERROR: bind_timer_deprecation_probe.cpp is MISSING -- the expected-failure" >&2; \
-        echo "       check below would PASS on a missing file." >&2; \
-        exit 1; \
-    }
-    echo "  - ...and the retired nros::bind_timer WARNS"
-    if c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
-        -Werror=deprecated-declarations \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
-        -Ipackages/api/nros-cpp/include \
-        -Ipackages/api/nros-c/include \
-        -Ipackages/platform/nros-platform-api/include \
-        packages/api/nros-cpp/tests/compile/bind_timer_deprecation_probe.cpp \
-        > tmp/refuse-bind-timer.log 2>&1; then \
-        echo "ERROR: nros::bind_timer no longer warns. A deprecation nobody is told about" >&2; \
-        echo "       is an alias, and this one is the only thing telling an out-of-tree" >&2; \
-        echo "       consumer to write node.create_wall_timer<C, &C::method>(...)." >&2; \
-        exit 1; \
-    fi
-    nros_grep_q 'create_wall_timer<C, &C::method>' tmp/refuse-bind-timer.log && _rc=0 || _rc=$?
-    if [ "$_rc" -ne 0 ]; then \
-        echo "ERROR: the bind_timer deprecation no longer names its replacement." >&2; \
-        echo "       See tmp/refuse-bind-timer.log." >&2; \
-        exit 1; \
-    fi
 
     # phase-430 W7 — `rclcpp::TimerBase` is a NAME, not a hierarchy, and both
     # halves of that need holding.
@@ -1983,42 +1914,13 @@ cpp: cpp-fmt
         packages/api/nros-cpp/tests/compile/timer_base_is_a_name_not_a_hierarchy.cpp
 
     echo "  - QoS policy accessors + ms boundary (c++14)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Wno-deprecated-declarations \
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$gen/nros-cpp-generated" \
         -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/qos_policy_accessors.cpp
-    # ...and the old spellings must WARN. A deprecation nobody is told about is
-    # an alias. NEGATIVE assertion: with `-Werror=deprecated-declarations` the
-    # old spelling must FAIL to compile. (The C lane had four probes of this
-    # shape; phase-417 stage 6 step B retired the forwarders they guarded and
-    # deleted them with it. The C++ ones stay because the C++ deprecations do.)
-    # Written as an expected-failure because
-    # a passing compile is exactly what a silently-dropped attribute looks like.
-    # An expected-failure compile cannot distinguish "the deprecation
-    # attribute fired" from "the file is not there" -- both are a non-zero
-    # cc, and the second reads as a pass. Phase-379 W5 landed this check
-    # without its probe and the gate was silently vacuous. Assert first.
-    test -f packages/api/nros-cpp/tests/compile/qos_deprecation_probe.cpp || { \
-        echo "ERROR: qos_deprecation_probe.cpp is MISSING -- the expected-failure check below" >&2; \
-        echo "       would PASS on a missing file, which is why this asserts first." >&2; \
-        exit 1; \
-    }
-    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Werror=deprecated-declarations \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
-        -Ipackages/api/nros-cpp/include \
-        -Ipackages/api/nros-c/include \
-        -Ipackages/platform/nros-platform-api/include \
-        packages/api/nros-cpp/tests/compile/qos_deprecation_probe.cpp 2>/dev/null; then \
-        echo "ERROR: qos_deprecation_probe.cpp compiled clean under -Werror=deprecated-declarations." >&2; \
-        echo "       The [[deprecated]] attributes on QoS::*_raw() / QoS::*_ms() /" >&2; \
-        echo "       QoS::Liveliness in nros/qos.hpp are not reaching callers, so the" >&2; \
-        echo "       rename ships with no migration warning at all." >&2; \
-        exit 1; \
-    fi
     # phase-403 step 2 — the DECLARED `@depth=` reaches the compiler, and a
     # disagreement between it and the QoS at the call site FAILS THE BUILD.
     #
@@ -2308,42 +2210,17 @@ cpp: cpp-fmt
         packages/api/nros-cpp/tests/compile/declared_params.cpp
     # phase-379 W6 decision 1 — the receive verb under its rclcpp name.
     # `Subscription<M>::take` / `take_serialized` / `take_sequence` /
-    # `take_validated` and `Service<S>::take_request`, with the `try_recv*`
-    # spellings kept as `[[deprecated]]` forwarders. The header `-fsyntax-only`
-    # loop above only PARSES the templates; this TU INSTANTIATES them, so a
-    # forwarder whose argument list drifted from the method it forwards to
-    # fails here. `-Wno-deprecated-declarations` because the TU names the old
-    # spellings deliberately; the probe below is what proves they still warn.
-    echo "  - receive verb aliases + deprecated forwarders (c++14)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Wno-deprecated-declarations \
+    # `take_validated` and `PollService<S>::take_request` (the `try_recv*`
+    # forwarders were deleted by phase-482 W6). The header `-fsyntax-only`
+    # loop above only PARSES the templates; this TU INSTANTIATES them.
+    echo "  - receive verbs instantiate (c++14)"
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$gen/nros-cpp-generated" \
         -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/receive_verb_aliases.cpp
-    # ...and the old spellings must WARN. NEGATIVE assertion, the C half's shape
-    # one language over. An expected-failure compile cannot distinguish "the
-    # deprecation attribute fired" from "the file is not there" -- both are a
-    # non-zero c++, and the second reads as a pass. Assert first.
-    test -f packages/api/nros-cpp/tests/compile/receive_deprecation_probe.cpp || { \
-        echo "ERROR: receive_deprecation_probe.cpp is MISSING -- the expected-failure check below" >&2; \
-        echo "       would PASS on a missing file, which is why this asserts first." >&2; \
-        exit 1; \
-    }
-    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Werror=deprecated-declarations \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
-        -Ipackages/api/nros-cpp/include \
-        -Ipackages/api/nros-c/include \
-        -Ipackages/platform/nros-platform-api/include \
-        packages/api/nros-cpp/tests/compile/receive_deprecation_probe.cpp 2>/dev/null; then \
-        echo "ERROR: receive_deprecation_probe.cpp compiled clean under -Werror=deprecated-declarations." >&2; \
-        echo "       The [[deprecated]] attributes on Subscription::try_recv* /" >&2; \
-        echo "       Service::try_recv_request are not reaching callers, so the" >&2; \
-        echo "       rename ships with no migration warning at all." >&2; \
-        exit 1; \
-    fi
     # phase-427 W8 — the error channel is ONE template, and neither half of it
     # may be silently discarded.
     #
@@ -2351,7 +2228,7 @@ cpp: cpp-fmt
     # the umbrella, so it also asserts that OUR OWN headers never drop a
     # `Result`. Writing it is what found `rclcpp::shutdown()` discarding
     # `nros::shutdown()` and returning `true` unconditionally.
-    for probe in result_nodiscard result_nodiscard_probe expected_deprecation_probe; do \
+    for probe in result_nodiscard result_nodiscard_probe; do \
         test -f "packages/api/nros-cpp/tests/compile/$probe.cpp" || { \
             echo "ERROR: $probe.cpp is MISSING -- the expected-failure checks below" >&2; \
             echo "       would PASS on a missing file, which is why this asserts first." >&2; \
@@ -2391,30 +2268,6 @@ cpp: cpp-fmt
         echo "       diagnostic(s), expected 2 (Result and ResultOf<int>). It broke for" >&2; \
         echo "       another reason, or one of the two attributes is not firing." >&2; \
         echo "--- compiler said ---" >&2; echo "$_nd_out" >&2; \
-        exit 1; \
-    fi
-    # ...and the old `Expected<T>` spelling must WARN. Same shape as the QoS and
-    # receive-verb deprecations above; separate from them because a shared
-    # expected-failure cannot say WHICH deprecation fired.
-    echo "  - phase-427 W8: the Expected<T> spelling is deprecated (expected failure)"
-    _dep_out="$(c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -Werror=deprecated-declarations \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
-        -Ipackages/api/nros-cpp/include \
-        -Ipackages/api/nros-c/include \
-        -Ipackages/platform/nros-platform-api/include \
-        packages/api/nros-cpp/tests/compile/expected_deprecation_probe.cpp 2>&1)" && { \
-        echo "ERROR: expected_deprecation_probe.cpp compiled clean under" >&2; \
-        echo "       -Werror=deprecated-declarations. nros::Expected<T> ships with no" >&2; \
-        echo "       migration warning, so the rename is invisible until the name goes." >&2; \
-        exit 1; \
-    }
-    nros_grep_q "deprecated" <(printf '%s\n' "$_dep_out") && _rc=0 || _rc=$?
-    if [ "$_rc" -ne 0 ]; then \
-        echo "ERROR: expected_deprecation_probe.cpp failed WITHOUT a deprecation" >&2; \
-        echo "       diagnostic -- it broke for another reason, so this proves nothing." >&2; \
-        echo "--- compiler said ---" >&2; echo "$_dep_out" >&2; \
         exit 1; \
     fi
     # issue #201 — HeapSequence element-destructor RUNTIME probe: compiled AND

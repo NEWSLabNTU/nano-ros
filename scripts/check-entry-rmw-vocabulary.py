@@ -86,15 +86,19 @@ CALL_RE = re.compile(
     # `nros_rmw_cffi_register_named` in a declaration and reads its `name`
     # parameter as the backend's name.
     r"(?<!fn )(?<![A-Za-z0-9_])(?:nros_rmw_cffi_register_named|register_named)\s*\(\s*"
-    r"(?:c?\"(?P<lit>[A-Za-z0-9_\-]+)\"|(?P<ident>[A-Za-z_][A-Za-z0-9_]*))"
+    # `(?!const\b)`: a C/C++ DEFINITION — a weak link-time fallback such as
+    # `nros-rmw-uorb/src/register_fallback.c` — opens its parameter list with
+    # `const char *name`, and no call passes the keyword `const` as an argument.
+    r"(?:c?\"(?P<lit>[A-Za-z0-9_\-]+)\"|(?!const\b)(?P<ident>[A-Za-z_][A-Za-z0-9_]*))"
 )
 CONST_RE = re.compile(
     r"(?:constexpr\s+)?(?:const\s+)?char\s*\*\s*(?:const\s+)?"
     r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*\"(?P<val>[^\"]*)\""
 )
 
-# Names that are registry entries but never a `NANO_ROS_RMW` value: the
-# deprecated unnamed shim and the host-probe backend. Listed so the check can be
+# Names that are registry entries but never a `NANO_ROS_RMW` value: "default"
+# (the implicit name of the unnamed shim phase-482 W6 deleted, still used by
+# tests) and the host-probe backend. Listed so the check can be
 # an EQUALITY in both directions without pretending these are absent.
 NOT_A_CMAKE_RMW = {"default", "metadata"}
 
@@ -216,6 +220,11 @@ def self_test() -> None:
     assert names_in(
         "pub fn nros_rmw_cffi_register_named(name: *const c_char) -> NrosRmwRet;"
     ) == set()
+    # ...and nor is a C DEFINITION, whose first parameter is `const char *name`.
+    assert names_in(
+        "__attribute__((weak)) rmw_ret_t nros_rmw_cffi_register_named(const char* name,\n"
+        "                                                             const nros_rmw_vtable_t* v) {"
+    ) == set(), "a C definition is not a registration"
     try:
         names_in("nros_rmw_cffi_register_named(kSomeOtherHeadersConstant, &V);")
     except UnresolvedName as e:

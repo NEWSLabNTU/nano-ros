@@ -1,13 +1,13 @@
 // Phase 117.3 smoke test: link the backend, call its register entry
 // point, assert it returns NROS_RMW_RET_OK.
 //
-// `nros_rmw_cffi_register` is provided as a stub here (the runtime
+// `nros_rmw_cffi_register_named` is provided as a stub here (the runtime
 // hasn't been pulled into this build context). The stub captures the
 // vtable pointer so the test can sanity-check that none of the
 // mandatory function pointer slots are NULL.
 //
 // 117.12 swaps this for a real interop test against
-// `nros-rmw-cffi`'s real `nros_rmw_cffi_register`.
+// `nros-rmw-cffi`'s real `nros_rmw_cffi_register_named`.
 
 #include <cstdio>
 #include <cstdlib>

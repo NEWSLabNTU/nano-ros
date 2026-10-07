@@ -4068,7 +4068,6 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let cfg = unsafe { &*cfg };
-    #[allow(deprecated)]
     let sc = SchedContext {
         class: match cfg.class {
             nros_cpp_sched_class_t::Fifo => SchedClass::Fifo,

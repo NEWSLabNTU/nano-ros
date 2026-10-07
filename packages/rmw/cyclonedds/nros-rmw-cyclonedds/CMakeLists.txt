@@ -77,7 +77,7 @@ nros_provide_cyclonedds()
 
 # nros-rmw-cffi C ABI vtable + return codes + entity structs. Headers
 # only — the backend implements the vtable and registers it via
-# `nros_rmw_cffi_register()`. Path is exposed via cache var so callers
+# `nros_rmw_cffi_register_named()`. Path is exposed via cache var so callers
 # (or `find_package(NrosRmwCyclonedds)`) can override it for out-of-tree
 # builds.
 set(NROS_RMW_CFFI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../core/nros-rmw-abi/include"

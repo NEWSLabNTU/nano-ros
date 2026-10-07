@@ -65,7 +65,7 @@ registers its vtable once before any nros call:
 static const nros_rmw_vtable_t MY_VTABLE = { ... };
 
 int main(void) {
-    nros_rmw_cffi_register(&MY_VTABLE);
+    nros_rmw_cffi_register_named("my_rmw", &MY_VTABLE);
     nros_init(...);
 }
 ```

@@ -566,31 +566,6 @@ impl<A: RosAction> ActionServerHandle<A> {
         self.complete_goal(executor, goal_id, nros_core::GoalStatus::Canceled, result)
     }
 
-    /// Deprecated spelling of [`Self::canceled`] — phase-417 W4.b.
-    ///
-    /// The case for `cancel` was internal consistency: the other two verbs are
-    /// imperatives (`succeed`, `abort`), and mixing an imperative with a past
-    /// participle inside one family reads as an accident. Real, and outweighed
-    /// by C, C++ and rclcpp_action all saying `canceled`.
-    ///
-    /// A forwarder rather than a hard removal because these are INHERENT
-    /// methods: a caller updates one call site and nothing else observes the
-    /// change. (A trait-method rename gets the opposite treatment — it breaks
-    /// every implementor, so there a hard error is the honest signal.)
-    #[deprecated(
-        since = "0.1.0",
-        note = "renamed to `canceled` to match C's `nros_action_canceled` and rclcpp_action's \
-                `ServerGoalHandle::canceled` (phase-417 W4.b)"
-    )]
-    pub fn cancel(
-        &self,
-        executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
-        result: A::Result,
-    ) -> Result<(), NodeError> {
-        self.canceled(executor, goal_id, result)
-    }
-
     pub fn complete_goal(
         &self,
         executor: &mut Executor,
@@ -2206,18 +2181,6 @@ mod terminal_verb_tests {
             LAST_STATUS.load(Ordering::SeqCst),
             nros_core::GoalStatus::Canceled as i8,
             "canceled() must terminate the goal as CANCELED"
-        );
-
-        // The deprecated alias still COMPILES (this call is the proof) and
-        // lands in the same place. `-D warnings` implies `-D deprecated` in
-        // this workspace, so the allow is what keeps the alias testable at all.
-        LAST_STATUS.store(-1, Ordering::SeqCst);
-        #[allow(deprecated)]
-        h.cancel(&mut executor, &goal, Unit).unwrap();
-        assert_eq!(
-            LAST_STATUS.load(Ordering::SeqCst),
-            nros_core::GoalStatus::Canceled as i8,
-            "the deprecated `cancel` must forward to `canceled`, not be a second path"
         );
 
         // The entry was hand-built, not registered; hand it back before Drop

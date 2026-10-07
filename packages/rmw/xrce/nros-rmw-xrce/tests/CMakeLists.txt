@@ -1,6 +1,6 @@
 # Phase 115.K.2 scaffold smoke test.
 # Confirms the static library links and the register entry point
-# returns NROS_RMW_RET_OK against a stub `nros_rmw_cffi_register`
+# returns NROS_RMW_RET_OK against a stub `nros_rmw_cffi_register_named`
 # defined in the test TU itself (the real symbol lives in the
 # nros-rmw-cffi Rust crate; the scaffold doesn't link against the
 # Rust runtime).

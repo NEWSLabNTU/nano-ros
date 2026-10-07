@@ -20,7 +20,7 @@ The original rule (a backend's host language matches its underlying
 library's native language unless overridden) is still how we pick
 the inside of each `-cffi` shim — but the shim itself is uniform:
 a small Rust or C++ TU that fills in a vtable and calls
-`nros_rmw_cffi_register(&vtable)` once at startup.
+`nros_rmw_cffi_register_named(name, &vtable)` once at startup.
 
 ## Hierarchy
 
@@ -51,7 +51,7 @@ NanoRos::Rmw::cyclonedds)`, etc.).
 
 Any language with stable C-ABI interop (C, C++, Zig, Rust,
 Go-via-cgo, Python-via-ctypes…) can implement a backend by filling
-in the vtable and calling `nros_rmw_cffi_register(&vtable)` once at
+in the vtable and calling `nros_rmw_cffi_register_named(name, &vtable)` once at
 startup.
 
 ## Decision matrix (post-115.L, updated by Phase 171)
@@ -86,7 +86,7 @@ feature reaching them after.
 For backends whose upstream library is C/C++ (Cyclone DDS, uORB,
 XRCE) the cffi shim is a standalone CMake project that builds a
 static C/C++ library and registers a `nros_rmw_vtable_t` at startup
-via `nros_rmw_cffi_register`. No `RustBackendAdapter` is involved.
+via `nros_rmw_cffi_register_named`. No `RustBackendAdapter` is involved.
 The Rust runtime sees these via the same registry; the
 `NANO_ROS_RMW=<name>` CMake selector flips a build-time macro that
 ensures the register call is wired into `nros::init`.
@@ -153,10 +153,9 @@ process startup:
   vs `serial:/dev/...`).
 - **Stable across releases.** Renaming a registered name is a
   breaking change for bridge code that selects backends by string.
-- **No `"default"` for new backends.** The string `"default"` is
-  reserved for the legacy single-arg `nros_rmw_cffi_register`
-  shim — single-backend builds where the backend's specific name
-  doesn't matter.
+- **No `"default"` for new backends.** It was the implicit name of
+  the legacy single-arg `nros_rmw_cffi_register_named`, which phase-482 W6
+  deleted; name the protocol instead.
 
 ### Capacity
 

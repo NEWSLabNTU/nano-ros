@@ -2528,42 +2528,6 @@ alignas(8) uint8_t Node::GlobalStorageHolder<N>::storage[NROS_CPP_EXECUTOR_STORA
 
 namespace nros {
 
-/// `nros::Node` — the historical spelling of `rclcpp::Node`, and the SAME TYPE.
-/// `std::is_same<rclcpp::Node, nros::Node>::value` is true: one class, one set
-/// of entities, one arena registration path, one parameter facade.
-///
-/// **DEPRECATED — phase-427 W7.** RFC-0089 §"Settled: `nros::` is phased out
-/// entirely" makes `rclcpp::` the vocabulary a user writes, and this alias is
-/// the migration step, not a second name to choose between. Write
-/// `rclcpp::Node`; the change is textual, because it is the same class.
-///
-/// The attribute is UNCONDITIONAL, and so was the alias before it: the shim
-/// class this replaced lived inside `#if defined(NROS_CPP_HAS_SHARED_PTR) && …`,
-/// so a freestanding target had the node and NOT its ROS 2 name.
-///
-/// WHY IT IS NOT BEHIND A FEATURE MACRO, which is the question PR #753's Rust
-/// `#[cfg_attr(feature = …, deprecated)]` raises. #753 armed its deprecation
-/// because the tree had NOT migrated — 65 hard errors across 47 files — and
-/// `#[allow(deprecated)]` at every one of them would have suppressed the signal
-/// in exactly the code the deprecation was aimed at. That argument does not
-/// apply here: the same commit migrates all 258 in-tree C++ spellings, so the
-/// attribute costs no in-tree diagnostic at all. Every other deprecation this
-/// API ships is unconditional for the same reason (`nros::Expected<T>`,
-/// `nros::bind_timer`, `QoS::Liveliness`, the `QoS::*_ms(uint32_t)` family,
-/// `LifecycleNode::trigger(uint8_t)`). And a macro nothing in-tree defines
-/// would leave the probe as the only compiler that ever sees the attribute,
-/// which is a gate whose subject disappears.
-///
-/// OUT-OF-TREE REACH IS THE POINT, not a reason to hide it. `nros-v0.5.0`
-/// (2026-06-08) shipped `nros::Node` in six `examples/templates/**` files a
-/// user copies out, so copies of it exist that this checkout cannot reach. A
-/// warning naming `rclcpp::Node` is what those copies get; silence is what a
-/// feature-armed attribute would give them.
-using Node NROS_CPP_DEPRECATED_MSG(
-    "nros::Node is deprecated (phase-427 W7): write rclcpp::Node. Same type, so "
-    "the change is textual -- nros:: is the vocabulary RFC-0089 phases out and "
-    "rclcpp:: is the home.") = ::rclcpp::Node;
-
 // ==== phase-427 W4 — the timer pool, as a TEMPLATE PARAMETER ================
 //
 // `ComponentNode` carried `Timer timers_[NROS_COMPONENT_MAX_TIMERS]` — 192

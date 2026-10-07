@@ -13,7 +13,7 @@
  * The backend is a static C library implementing `nros_rmw_vtable_t`
  * (see `<nros/rmw_vtable.h>`). At runtime, the host application calls
  * `nros_rmw_xrce_register()` once, before any session creation,
- * to install the backend's vtable via `nros_rmw_cffi_register()`.
+ * to install the backend's vtable via `nros_rmw_cffi_register_named()`.
  *
  * Typical wiring (driven by `nros-c`'s CMake when
  * `-DNROS_C_RMW=xrce` is set):

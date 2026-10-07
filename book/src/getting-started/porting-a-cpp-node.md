@@ -143,7 +143,7 @@ nano-ros covers the patterns a typical ROS 2 C++ node uses:
 
 | rclcpp surface | nano-ros mapping | Notes |
 |---|---|---|
-| `class MyNode : public rclcpp::Node` | `rclcpp::Node` — ours, and the same name. (`nros::Node` is a deprecated alias for it; write `rclcpp::`.) | Ctor takes `(name)`, `(name, options)` or `(name, ns, options)`. |
+| `class MyNode : public rclcpp::Node` | `rclcpp::Node` — ours, and the same name. | Ctor takes `(name)`, `(name, options)` or `(name, ns, options)`. |
 | `std::make_shared<MyNode>()` | works | `auto node = std::make_shared<MyNode>()` and `rclcpp::spin(std::make_shared<MyNode>())` are unchanged. `rclcpp::Node::SharedPtr node = std::make_shared<…>(…)` does not compile — write `auto`; see "`Node::SharedPtr` observes, it does not own" below. `shared_from_this()` works too, with the same caveat. |
 | `create_publisher<M>(topic, qos)` | shared_ptr-returning wrapper | `qos` can be `rclcpp::QoS(10)` or an int. |
 | `create_subscription<M>(topic, qos, callback)` | registered on the executor arena; dispatched by **any** spin verb | **Capturing lambdas + `std::function` all work**. |

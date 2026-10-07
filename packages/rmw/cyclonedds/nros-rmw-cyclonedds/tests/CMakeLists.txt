@@ -1,6 +1,6 @@
 # Phase 117.3: minimal smoke harness — verifies that the backend's
 # register entry point links and returns NROS_RMW_RET_OK against a
-# stub `nros_rmw_cffi_register` symbol.
+# stub `nros_rmw_cffi_register_named` symbol.
 #
 # 117.12 swaps the stub for a real link against nros-rmw-cffi + adds
 # pub/sub interop tests against a stock `rmw_cyclonedds` peer.

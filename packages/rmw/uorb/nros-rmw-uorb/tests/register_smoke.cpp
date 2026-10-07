@@ -1,6 +1,6 @@
 // Phase 115.K.4.0–K.4.3 smoke test.
 //
-// Stubs both `nros_rmw_cffi_register` (Rust-staticlib side) and the
+// Stubs both `nros_rmw_cffi_register_named` (Rust-staticlib side) and the
 // uORB ABI (`orb_advertise_multi`, `orb_publish`, …). With both
 // stubbed the test driver builds standalone on a dev box without
 // PX4 SDK or Rust toolchain.
@@ -53,15 +53,8 @@ struct MockOrbState {
 MockOrbState g_orb;
 } // namespace
 
-extern "C" rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t* vtable) {
-    g_stashed_vtable = vtable;
-    return NROS_RMW_RET_OK;
-}
-
-// Issue 0787 — the NAMED registry entry, which is what `vtable.cpp` actually
-// calls (phase 104.B.2). Only the legacy single-argument form was stubbed here,
-// so this test had not LINKED since the named registry landed. Nothing noticed
-// because no lane built this backend at all.
+// The NAMED registry entry, which is what `vtable.cpp` calls (phase 104.B.2;
+// issue 0787 — only the legacy single-argument form used to be stubbed).
 extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char* /*name*/,
                                                   const nros_rmw_vtable_t* vtable) {
     g_stashed_vtable = vtable;

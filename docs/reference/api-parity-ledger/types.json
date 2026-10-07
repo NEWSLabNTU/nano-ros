@@ -80,7 +80,7 @@
   },
   "cpp:Expected": {
     "verdict": "divergence",
-    "why": "value-or-error where rclcpp returns the value and throws on failure. Same no-exceptions constraint. Not `std::expected`: that is C++23 and the freestanding builds have no STL. DEPRECATED 2026-09-07 (phase-427 W8): renamed to `cpp:ResultOf`, and this spelling survives one release as a `[[deprecated]]` class template that converts from it. See that row for why the family could not simply be called `Result<T>`."
+    "why": "value-or-error where rclcpp returns the value and throws on failure. Same no-exceptions constraint. Not `std::expected`: that is C++23 and the freestanding builds have no STL. DEPRECATED 2026-09-07 (phase-427 W8): renamed to `cpp:ResultOf`, and this spelling survives one release as a `[[deprecated]]` class template that converts from it. See that row for why the family could not simply be called `Result<T>`.\n\nRETIRED by phase-482 W6 (2026-10-07): the deprecated item is DELETED, with every other deprecated item in the tree as one batch (changelog.d/+phase-482-w6.breaking.md). Code that still names it gets an undeclared-identifier error naming nothing; the changelog entry carries the replacement. The row is kept as the record of the rename."
   },
   "cpp:Future": {
     "verdict": "divergence",

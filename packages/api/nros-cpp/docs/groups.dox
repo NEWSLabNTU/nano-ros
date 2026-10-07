@@ -17,7 +17,7 @@
 
 /**
  * @defgroup grp_node node
- * @brief Node creation and lifecycle (`nros::Node`).
+ * @brief Node creation and lifecycle (`rclcpp::Node`).
  *
  * Mirrors `rclcpp::Node`. Created via `nros::create_node(node, name)`;
  * publishers, subscriptions, services, and timers are bound to the

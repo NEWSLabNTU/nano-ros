@@ -947,19 +947,6 @@ class LifecycleNode {
     }
 
   protected:
-    /// @deprecated Use `trigger_transition(uint8_t)`, which is public.
-    ///
-    /// Kept only for a DERIVED class written against the old name: `trigger`
-    /// was `protected`, so no caller outside the hierarchy can exist, but
-    /// inheriting from `LifecycleNode` is the whole point of the class, so a
-    /// user subclass calling `trigger(6)` is a real (if narrow) case. Nothing
-    /// in this tree calls it.
-    [[deprecated("LifecycleNode::trigger(uint8_t) is deprecated; use "
-                 "LifecycleNode::trigger_transition(uint8_t)")]] Result
-    trigger(uint8_t transition_id) {
-        return trigger_transition(transition_id);
-    }
-
     void* exec_;
 
   private:

@@ -2112,30 +2112,6 @@ impl<'e, 's> NodeCtx<'e, 's> {
             )
     }
 
-    /// Deprecated spelling of [`create_subscription_viewable`](Self::create_subscription_viewable).
-    ///
-    /// phase-390 renamed RFC-0033's `borrowed` mode to `view`, because the fact
-    /// that mattered was never that the data is borrowed but that NOTHING WAS
-    /// DESERIALIZED. A forwarder rather than a hard break: this is a public
-    /// Rust API, the rename is cosmetic, and the C ABI break in W2 was accepted
-    /// only because a C type name cannot carry a deprecation.
-    #[deprecated(
-        since = "0.5.0",
-        note = "renamed to `create_subscription_viewable` (phase-390: RFC-0033 \
-                `borrowed` mode is now `view`)"
-    )]
-    pub fn create_subscription_borrowed<B, F>(
-        &mut self,
-        topic: &str,
-        callback: F,
-    ) -> Result<super::types::HandleId, NodeError>
-    where
-        B: nros_core::ViewableMessage + 'static,
-        F: for<'a> FnMut(&B::View<'a>) + 'static,
-    {
-        self.create_subscription_viewable::<B, F>(topic, callback)
-    }
-
     /// Convenient zero-copy subscription (Phase 229.6, issue 0007 / RFC-0033
     /// `view` mode).
     ///

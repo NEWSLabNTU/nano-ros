@@ -5,7 +5,7 @@
 // real Cyclone entities and that take_serialized yields no bytes before
 // any publish (has_data is a poll-only conservative always-1).
 //
-// Stubs `nros_rmw_cffi_register` since the runtime isn't linked.
+// Stubs `nros_rmw_cffi_register_named` since the runtime isn't linked.
 
 #include <cstdio>
 #include <cstring>

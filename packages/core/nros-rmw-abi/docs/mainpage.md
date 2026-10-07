@@ -43,7 +43,7 @@ your backend stays in C.
 
    ```c
    int main(void) {
-       nros_rmw_cffi_register(&VTABLE);
+       nros_rmw_cffi_register_named("my_rmw", &VTABLE);
        /* now you can call nros_init(), nros_node_init(), ... */
    }
    ```

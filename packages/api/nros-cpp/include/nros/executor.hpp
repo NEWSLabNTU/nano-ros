@@ -490,17 +490,6 @@ class Executor {
         return Result(nros_cpp_spin_for(storage_, duration_ms, poll_ms));
     }
 
-    /// Deprecated alias for [`spin_for`] — issue 0338.
-    ///
-    /// Kept for one release so existing code compiles. The two-argument form is
-    /// unambiguous (the new `spin()` takes at most one argument), so this
-    /// overload only ever matches a call that meant the BOUNDED verb.
-    [[deprecated("bounded spin is now `spin_for(duration_ms, poll_ms)`; "
-                 "`spin()` blocks until shutdown, matching rclcpp (issue 0338)")]] Result
-    spin(uint32_t duration_ms, int32_t poll_ms) {
-        return spin_for(duration_ms, poll_ms);
-    }
-
     /// Check if the executor is initialized.
     bool ok() const { return initialized_; }
 

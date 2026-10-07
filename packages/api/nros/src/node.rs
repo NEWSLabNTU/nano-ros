@@ -813,15 +813,6 @@ impl<'a, R: NodeRuntime + ?Sized> NodeContext<'a, R> {
         self.create_node_with_id(NodeId::new(options.name), options)
     }
 
-    /// Deprecated alias for [`create_node`](Self::create_node).
-    #[deprecated(note = "use create_node(NodeOptions)")]
-    pub fn create_node_with_options<'id>(
-        &mut self,
-        options: NodeOptions<'id>,
-    ) -> NodeResult<DeclaredNode<'_, 'id, R>> {
-        self.create_node(options)
-    }
-
     /// Record optional effects for a callback not tied to a node wrapper.
     #[doc(hidden)]
     pub fn callback<'id>(&mut self, id: CallbackId<'id>) -> CallbackEffects<'_, 'id, R> {
