@@ -88,6 +88,20 @@ import sys
 # sits between. That draft passed its own self-test — the gate was vacuous and
 # said OK. Hence the self-test below is the point, not a formality.
 LITERAL = re.compile(r"""/sdks?/[A-Za-z0-9_.-]+/\*""")
+# Shape 3 (issue 1736) — a HARD-CODED version where the pin belongs:
+# `~/.nros/sdk/arm-none-eabi-gcc/13.2-nros1/…`. Not enumeration, but the same
+# rule ("constructed from the pin") broken the other way: the literal is a
+# snapshot of a pin that has since moved (`13.2-nros1` while the index pinned
+# `13.2-nros5`, in `check-cpp-freestanding-mechanisms.py`). A path segment
+# after `/sdk/<tool>/` that starts with a digit is a version — on a path rooted
+# at the REAL store (`.nros`, `$NROS_HOME`, `$NROS_SDK_STORE`, `$NROS_STORE`).
+# A selftest building a SYNTHETIC store under its own temp dir
+# (`"$d/store/sdk/zephyr-sdk/0.16.8"`) is a producer of a fixture, not a
+# consumer of a pin, and is not this.
+VERSIONED = re.compile(
+    r"""(?:\.nros|\bNROS_HOME\}?|\bNROS_STORE\}?)/sdk/[A-Za-z0-9_.-]+/\d"""
+    r"""|\bNROS_SDK_STORE\}?(?::-[^}]*\})?/[A-Za-z0-9_.-]+/\d"""
+)
 
 # Shape 2 — the three parts of "enumerate the store, then pick".
 ENUMERATE = re.compile(
@@ -190,6 +204,10 @@ def scan_text(path: str, text: str):
             if not _exempt(path, lines, i):
                 hits.append((i + 1, line.strip(), "literal"))
             continue
+        if VERSIONED.search(line):
+            if not _exempt(path, lines, i):
+                hits.append((i + 1, line.strip(), "hard-coded pin"))
+            continue
         if VERSION_LEVEL.search(line):
             hits.append((i + 1, line.strip(), "version-level walk"))
             continue
@@ -212,6 +230,16 @@ def scan_text(path: str, text: str):
 # neighbour the gate must NOT flag (the fix itself among them).
 
 BAD = {
+    # issue 1736 — a hard-coded versioned store path, the pin restated.
+    "scripts/check-x.py": """\
+ARM_GXX = os.path.expanduser("~/.nros/sdk/arm-none-eabi-gcc/13.2-nros1/bin/arm-none-eabi-g++")
+""",
+    "scripts/build/n.sh": """\
+    ninja="$HOME/.nros/sdk/ninja/1.11.1-nros1/bin/ninja"
+""",
+    "scripts/build/m.sh": """\
+    make="${NROS_SDK_STORE}/make/4.4-nros2/bin/make"
+""",
     # issue 1546 — the shared cross-toolchain helper, as it was.
     "cmake/x.cmake": """\
     set(_store "${_store_root}/${_A_TOOL}")
@@ -276,6 +304,10 @@ EOF
 })
 
 GOOD = {
+    # issue 1736 — a selftest's SYNTHETIC store is a fixture, not the pin.
+    "scripts/ci/doc.sh": """\
+    mkdir -p "$d/store/sdk/zephyr-sdk/0.16.8/zephyr-sdk-0.16.8"
+""",
     # The fix: constructed from the pin; an UNSORTED listing for a message.
     "cmake/x.cmake": """\
     set(_store "${_store_root}/${_A_TOOL}")

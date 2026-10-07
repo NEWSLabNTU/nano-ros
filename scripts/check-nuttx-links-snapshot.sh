@@ -42,28 +42,51 @@ import re, sys
 sys.path.insert(0, "scripts/lib")
 import comments, file_kinds, population
 
-LIVE = re.compile(r'\.join\(\s*"staging"\s*\)')
+# issue 1736 — the rule is "a path built onto the NuttX tree's `staging/`", and
+# `.join("staging")` is ONE spelling of it: `format!("{}/staging", d)` and a
+# CMake `target_link_directories(… "${NUTTX_DIR}/staging")` passed. So: any
+# Rust `.join("staging")` or string literal whose path segment after an
+# interpolation is `staging`, and in every other build language a `/staging`
+# segment directly after a variable expansion (`${X}/`, `$(X)/`, `$X/`).
+LIVE_RS = re.compile(r'\.join\(\s*"staging"\s*\)|"[^"\n]*\}/staging\b[^"\n]*"')
+LIVE_OTHER = re.compile(r'(?:\$\{[^}\n]*\}|\$\([^)\n]*\)|\$[A-Za-z_]\w*)/staging\b')
 RESOLVER = "packages/boards/nros-board-common/src/nuttx_export.rs"
 
-def count(text):
-    return len(LIVE.findall(comments.strip_comments(text, "rust")))
 
-# Normal-path selftest: a comment is not a use; a real join is.
+def lang(rel):
+    return comments.lang_for(rel) or "sh"   # make: `#` comments, shell-like
+
+
+def count(text, rel="x.rs"):
+    lg = lang(rel)
+    pat = LIVE_RS if lg == "rust" else LIVE_OTHER
+    return len(pat.findall(comments.strip_comments(text, lg)))
+
+# Normal-path selftest: a comment is not a use; every spelling of a real one is.
 assert count('// p.join("staging")\nfn f() {}\n') == 0
 assert count('fn f(p: &P) -> Q { p.join("staging") }\n') == 1
+assert count('fn f(d: &str) -> String { format!("{}/staging", d) }\n') == 1
+assert count('fn f(d: &str) -> String { format!("{d}/staging/lib") }\n') == 1
+assert count('fn f() { let s = "staging buffer"; }\n') == 0
+assert count('target_link_directories(app PRIVATE "${NUTTX_DIR}/staging")\n', "CMakeLists.txt") == 1
+assert count('# -L ${NUTTX_DIR}/staging in prose\n', "a.cmake") == 0
+assert count('LDFLAGS += -L$(NUTTX_DIR)/staging\n', "Makefile") == 1
+assert count('cc -L "$NUTTX_DIR/staging" x.o\n', "a.sh") == 1
 
-files = file_kinds.files_of_kind("rust")
-if not population.require_population(files, "Rust source(s)", gate="nuttx-links-snapshot"):
+files = file_kinds.files_of_kind("rust", "cmake", "shell", "just", "make", repo=None)
+if not population.require_population(files, "build source(s)", gate="nuttx-links-snapshot"):
     sys.exit(1)
 bad = []
 for rel in files:
+    if rel == "scripts/check-nuttx-links-snapshot.sh":
+        continue   # this gate's own selftest fixtures
     try:
-        n = count(open(rel, errors="replace").read())
+        n = count(open(rel, errors="replace").read(), rel)
     except OSError:
         continue
     want = 1 if rel == RESOLVER else 0
     if n > want:
-        bad.append(f"{rel}: {n} live-tree join(s), {want} allowed")
+        bad.append(f"{rel}: {n} live-tree staging path(s), {want} allowed")
     if rel == RESOLVER and n == 0:
         bad.append(f"{rel}: the documented fallback is gone — drop this exemption")
 for b in bad:
