@@ -203,7 +203,7 @@ Gates: `just check fast`, `just check test-targets` on Rust 1.99.0, and tier 2
 
 - XRCE. Its `XRCE_SERVICE_REQUEST_BUFFER_SIZE` is not derived from the
   parameter shape at all. Filed as
-  [1722-xrce-param-request-buffer-not-derived.md](../1722-xrce-param-request-buffer-not-derived.md).
+  [1722-xrce-param-request-buffer-not-derived.md](1722-xrce-param-request-buffer-not-derived.md).
 - A builtin table that is too SMALL. When the application declares more
   queryables than `ZPICO_MAX_QUERYABLES` leaves room for, some builtin services
   take a spare user ring at the user-service size. zenoh does not know how many
