@@ -935,6 +935,27 @@ pub fn ros2_node_list_rmw_with_domain(
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+/// Run `ros2 node info <node_name>` over a DDS RMW on `domain_id` — the
+/// per-node sibling of [`ros2_node_list_rmw_with_domain`], on the same pinned
+/// bus. Issue 1292: a node a stock graph cache NAMES is half the answer; this is
+/// the half that says whether its endpoints are attributed to it.
+pub fn ros2_node_info_rmw_with_domain(
+    distro: &str,
+    rmw: &str,
+    domain_id: u8,
+    node_name: &str,
+) -> TestResult<String> {
+    let env_setup = ros2_env_setup_rmw_with_domain(distro, rmw, domain_id);
+    let cmd = ros2_query_cmd(&env_setup, 10, &format!("node info {node_name}"));
+
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run ros2 node info: {e}")))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 /// Run `ros2 topic list` and return the output
 pub fn ros2_topic_list(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);

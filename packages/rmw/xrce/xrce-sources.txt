@@ -108,6 +108,7 @@ src backend_core       backend  session.c
 src backend_core       backend  publisher.c
 src backend_core       backend  subscriber.c
 src backend_core       backend  service.c
+src backend_core       backend  graph.c
 src backend_core       backend  transport_custom.c
 # Phase 129.NET.3 — platform-agnostic UDP over `nros_platform_udp_*`. Compiles
 # on every target as long as the consumer links a platform provider.

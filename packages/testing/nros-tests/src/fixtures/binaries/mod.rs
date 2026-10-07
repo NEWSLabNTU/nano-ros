@@ -229,6 +229,7 @@ static C_XRCE_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native Rust workspace Entry pkg binary.
 static NATIVE_WORKSPACE_RUST_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_CYCLONEDDS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_RUST_XRCE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Phase 264 W4c — cached path to the parameterised workspace Entry pkg binary.
 static NATIVE_WORKSPACE_RUST_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -2302,6 +2303,16 @@ pub fn build_native_workspace_rust_cyclonedds_entry() -> TestResult<&'static Pat
                 "rust",
                 "native_cyclonedds_entry",
             )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Issue 1292 — the SAME image again, on XRCE: `[image.native_xrce]`, row
+/// `workspace-rust-native-xrce`. The third RMW of the multi-node graph test.
+pub fn build_native_workspace_rust_xrce_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_XRCE_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry("workspace-rust-native-xrce", "rust", "native_xrce_entry")
         })
         .map(|p| p.as_path())
 }

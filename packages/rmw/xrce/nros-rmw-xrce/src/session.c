@@ -621,6 +621,12 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         return cret;
     }
 
+    /* Issue 1292 — announce this session's nodes to stock ROS 2 graph caches.
+     * The session's own `node_name` names the PARTICIPANT, not a node: nodes
+     * arrive through `create_node`, once each (issue 1269's rule, which put a
+     * phantom `/node` in Cyclone's graph while it was broken). */
+    xrce_graph_open(st);
+
     out->backend_data = st;
     return NROS_RMW_RET_OK;
 }
@@ -651,6 +657,7 @@ void xrce_session_entity_detach(xrce_session_state_t* st) {
     /* The last entity out of a CLOSED session turns off the lights. An open
      * session keeps its state: entities come and go while it runs. */
     if (st->session_closed && st->live_entities == 0) {
+        xrce_graph_release(st);
         nros_xrce_free(st);
     }
 }
@@ -698,6 +705,7 @@ void xrce_session_mark_closed(xrce_session_state_t* st) {
      * mistake by the caller. */
     st->session_closed = true;
     if (st->live_entities == 0) {
+        xrce_graph_release(st);
         nros_xrce_free(st);
     }
 }
@@ -711,6 +719,11 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
         return NROS_RMW_RET_ERROR;
     }
     int t = timeout_ms < 0 ? 0 : (int)timeout_ms;
+
+    /* Issue 1292 — a burst of creates marks the graph dirty many times; the
+     * sample goes out once per tick, here, so a node with N endpoints costs
+     * one `ros_discovery_info` write rather than N. */
+    xrce_graph_flush(st);
 
     /* `uxr_run_session_time` returns as soon as the reliable output streams
      * are confirmed — so when the session holds a publisher with unconfirmed

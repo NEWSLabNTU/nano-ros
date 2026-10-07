@@ -388,6 +388,71 @@ typedef struct xrce_service_client_slot {
     bool active;
 } xrce_service_client_slot;
 
+/* ---- ROS 2 graph (issue 1292, graph.c) -------------------------------
+ *
+ * What `ros_discovery_info` says about this session. No static pool: a node
+ * record is allocated by `create_node`, and an endpoint's record is EMBEDDED in
+ * its entity's state and linked into one list, so the graph costs nothing per
+ * entity the image does not create. Publishers have no slot table (the 0847
+ * note on `live_entities` below), which is why this is a list and not a scan
+ * of the slot pools. */
+
+/* Fast-DDS entity kinds for a NO_KEY user endpoint — what the Agent's generic
+ * XRCE types are (`preprocess_endpoint_attributes<WRITER, 0x03, 0x02>`). */
+#define XRCE_GRAPH_WRITER 0x03u
+#define XRCE_GRAPH_READER 0x04u
+
+/* The GUID probe's total budget and its resend period (graph.c). */
+#ifndef XRCE_GRAPH_PROBE_TIMEOUT_MS
+#define XRCE_GRAPH_PROBE_TIMEOUT_MS 1000u
+#endif
+#ifndef XRCE_GRAPH_PROBE_RETRY_MS
+#define XRCE_GRAPH_PROBE_RETRY_MS 20
+#endif
+
+typedef struct xrce_graph_node {
+    struct xrce_graph_node* next;
+    /* Borrowed from the runtime's node shell, which outlives the node
+     * (`rmw_node_t::name`). */
+    const char* name;
+    const char* ns;
+    /* Recorded for an endpoint whose node never went through `create_node`;
+     * freed with the session rather than by `destroy_node`. */
+    bool implicit;
+} xrce_graph_node;
+
+typedef struct xrce_graph_endpoint {
+    struct xrce_graph_endpoint* next;
+    /* NULL = attributed to no node (its node was destroyed first). */
+    xrce_graph_node* node;
+    /* The Agent-side DDS entity key, 24 bits, and its kind byte. */
+    uint32_t key;
+    uint8_t kind;
+    bool linked;
+} xrce_graph_endpoint;
+
+typedef struct xrce_graph {
+    /* The probe answered and the `ros_discovery_info` writer exists. */
+    bool active;
+    /* `counter` is the key the Agent gave the last endpoint on this
+     * participant. False after a failed create, until the next probe. */
+    bool counter_known;
+    /* Nodes or endpoints changed since the last published sample. */
+    bool dirty;
+    bool warned_too_large;
+    uint8_t prefix[12];
+    uint32_t counter;
+    uxrObjectId writer_oid;
+    xrce_graph_node* nodes;
+    xrce_graph_endpoint* endpoints;
+    /* Probe in flight: the replier's object id (0 = none), the nonce its
+     * request carries, and what the answer said. */
+    uint16_t probe_replier_id;
+    uint8_t probe_nonce[8];
+    bool probe_seen;
+    uint32_t probe_key;
+} xrce_graph;
+
 /* ---- Per-session state ---------------------------------------------- */
 
 struct xrce_session_state {
@@ -464,6 +529,9 @@ struct xrce_session_state {
      * either. */
     size_t live_entities;
     bool session_closed;
+
+    /* Issue 1292 — the nodes and endpoint GIDs `ros_discovery_info` reports. */
+    xrce_graph graph;
 };
 
 typedef struct xrce_session_state xrce_session_state_t;
@@ -472,6 +540,7 @@ typedef struct xrce_session_state xrce_session_state_t;
 typedef struct xrce_publisher_state {
     xrce_session_state_t* session_state;
     uxrObjectId datawriter_oid;
+    xrce_graph_endpoint graph_writer;
 } xrce_publisher_state;
 
 /* Per-subscriber state — the slot lives inside the session state. */
@@ -479,20 +548,27 @@ typedef struct xrce_subscriber_state {
     xrce_session_state_t* session_state;
     xrce_subscriber_slot* slot;
     uxrObjectId datareader_oid;
+    xrce_graph_endpoint graph_reader;
 } xrce_subscriber_state;
 
-/* Per-service-server state. */
+/* Per-service-server state. The Agent builds a replier as a reply DataWriter
+ * then a request DataReader (`FastDDSReplier::create_by_attributes`). */
 typedef struct xrce_service_server_state {
     xrce_session_state_t* session_state;
     xrce_service_server_slot* slot;
     uxrObjectId replier_oid;
+    xrce_graph_endpoint graph_writer;
+    xrce_graph_endpoint graph_reader;
 } xrce_service_server_state;
 
-/* Per-service-client state. */
+/* Per-service-client state. A requester is a request DataWriter then a reply
+ * DataReader, in that order. */
 typedef struct xrce_service_client_state {
     xrce_session_state_t* session_state;
     xrce_service_client_slot* slot;
     uxrObjectId requester_oid;
+    xrce_graph_endpoint graph_writer;
+    xrce_graph_endpoint graph_reader;
 } xrce_service_client_state;
 
 /* ---- Helpers -------------------------------------------------------- */
@@ -636,6 +712,39 @@ rmw_ret_t xrce_session_destroy(rmw_session_t* session);
 rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms);
 /* Phase 124.F.2 — connectivity probe via `uxr_ping_agent_session`. */
 rmw_ret_t xrce_session_ping(rmw_session_t* session, int32_t timeout_ms);
+
+/* ---- graph.c (issue 1292) ---- */
+
+/* After the participant exists: probe the participant's GUID prefix and the
+ * Agent's endpoint numbering, create the `ros_discovery_info` writer and
+ * publish the first sample. On failure the graph stays inactive, with one
+ * logged line; the session works as before. */
+void xrce_graph_open(xrce_session_state_t* st);
+/* Free what the graph still owns. Called where the session state is freed. */
+void xrce_graph_release(xrce_session_state_t* st);
+/* Call BEFORE buffering an endpoint CREATE: re-probes when a failed create left
+ * the Agent's numbering unknown. */
+void xrce_graph_ensure_counter(xrce_session_state_t* st);
+/* Call AFTER the create's confirm. `count` = the DDS endpoints the Agent built
+ * for it (1 for a writer or reader, 2 for a replier or requester); `created` =
+ * whether the confirm succeeded. On true, `*first_key` is the first of them. */
+bool xrce_graph_claim(xrce_session_state_t* st, unsigned count, bool created, uint32_t* first_key);
+void xrce_graph_track(xrce_session_state_t* st, xrce_graph_endpoint* ep, const rmw_node_t* node,
+                      uint32_t key, uint8_t kind);
+void xrce_graph_untrack(xrce_session_state_t* st, xrce_graph_endpoint* ep);
+/* Publish the sample if anything changed. Called from `drive_io`. */
+void xrce_graph_flush(xrce_session_state_t* st);
+/* The request callback's first stop: true if the request was the probe's. */
+bool xrce_graph_on_request(xrce_session_state_t* st, uxrObjectId object_id,
+                           const SampleIdentity* sample_id, struct ucdrBuffer* ub, size_t len);
+/* Serialize the ParticipantEntitiesInfo body (no encapsulation header) into
+ * `buf`. Returns the length, or 0 if `cap` was short. Exposed for the CTest. */
+size_t xrce_graph_serialize(const xrce_graph* g, uint8_t* buf, size_t cap);
+size_t xrce_graph_sample_bound(const xrce_graph* g);
+/* The `create_node` / `destroy_node` vtable slots. */
+rmw_ret_t xrce_node_create(rmw_session_t* session, const char* name, const char* namespace_,
+                           rmw_node_t* out);
+rmw_ret_t xrce_node_destroy(rmw_node_t* node);
 
 /* ---- publisher.c ---- */
 rmw_ret_t xrce_publisher_create(const rmw_node_t* node,

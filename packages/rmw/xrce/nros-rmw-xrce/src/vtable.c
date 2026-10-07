@@ -31,6 +31,12 @@ static const nros_rmw_vtable_t kVtable = {
     .destroy_session            = xrce_session_destroy,
     .drive_io                   = xrce_session_drive_io,
 
+    /* ---- Node (issue 1292) ----
+     * A node is what `ros_discovery_info` lists, so it is declared here and
+     * published by graph.c, exactly as Cyclone has since issue 1269. */
+    .create_node                = xrce_node_create,
+    .destroy_node               = xrce_node_destroy,
+
     /* ---- Publisher ---- */
     .create_publisher           = xrce_publisher_create,
     .destroy_publisher          = xrce_publisher_destroy,

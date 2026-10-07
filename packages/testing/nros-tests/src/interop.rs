@@ -548,17 +548,13 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-multinode-rust-cyclone",
        c(Linux, Rust, Cyclonedds, EntryPubsub, Interop, Runtime),
        NativeFixtures, RosEdition(Cyclonedds), NanoToRos, "rust_multi_node_per_node_graph"),
-    // And XRCE's third, carved: the backend publishes no `ros_discovery_info`
-    // at all, so a stock graph cache learns none of its nodes. The fixture
-    // exists (`workspace-rust-native-xrce`); the missing piece is the backend.
-    ic("native-multinode-rust-xrce-CARVED",
-       c(Linux, Rust, Xrce, EntryPubsub, Interop,
-         CarveOut("nros-rmw-xrce writes no `ros_discovery_info` and leaves \
-                   `create_node` NULL, so `ros2 node list` has no source for \
-                   an XRCE image's nodes — reasoned from session.c, not yet \
-                   measured. A live Agent + peer would only confirm the gap. \
-                   Issue 1292.")),
-       NativeFixtures, XrceAgent, NanoToRos, NO_TEST),
+    // Issue 1292 — and XRCE's third. The client writes `ros_discovery_info`
+    // through the Agent, with GIDs it learns (participant prefix, by a
+    // self-addressed request) and predicts (endpoint keys, from the Agent's
+    // numbering), so this cell asks `ros2 node info` as well as `node list`.
+    ic("native-multinode-rust-xrce",
+       c(Linux, Rust, Xrce, EntryPubsub, Interop, Runtime),
+       NativeFixtures, XrceAgent, NanoToRos, "rust_multi_node_per_node_graph"),
     // tests/cpp_multi_node_entry.rs — the C++ typed multi-node entry's pubsub +
     // per-node graph visibility against a stock ROS 2 peer (phase-257/268).
     ic("native-multinode-cpp-zenoh",
@@ -785,6 +781,8 @@ pub const CASE_CELLS: &[CaseOwner] = &[
        "native-multinode-rust-zenoh"),
     co("rust_multi_node_per_node_graph", "rust_multi_node_entry_per_node_graph_nodes_cyclonedds",
        "native-multinode-rust-cyclone"),
+    co("rust_multi_node_per_node_graph", "rust_multi_node_entry_per_node_graph_nodes_xrce",
+       "native-multinode-rust-xrce"),
 
     // ── ros2_action_e2e — TWO coordinates, two directions each ──────────
     // The pair no coordinate can separate: which side drives is the whole
