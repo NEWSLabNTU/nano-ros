@@ -6074,14 +6074,19 @@ impl<'s> Executor<'s> {
         // called, asked for this release). Mark it and let `finish_dispatch` do
         // the release when the callback returns. The handle stops resolving
         // now, so a second request answers `false` and nothing dispatches it.
-        if let Some(tag) = self.slot_tags.get_mut(index)
-            && tag.flags & super::types::SlotTag::IN_DISPATCH != 0
+        //
+        // Issue 1705 — the same for an entry an OS-priority WORKER holds
+        // (`WORKER_QUEUED`): its callback may be running on the worker task, or
+        // its item may still be queued. The worker skips an item whose release
+        // is pending, and `reap_deferred_releases` completes the release once
+        // the worker has let go. This is also the whole of what a release
+        // requested FROM the worker thread does: one atomic flag, nothing the
+        // spin thread is touching.
+        if let Some(tag) = self.slot_tags.get(index)
+            && tag.flags() & super::types::SlotTag::IN_FLIGHT != 0
         {
-            if tag.flags & super::types::SlotTag::RELEASE_PENDING != 0 {
-                return false;
-            }
-            tag.flags |= super::types::SlotTag::RELEASE_PENDING;
-            return true;
+            let was = tag.set(super::types::SlotTag::RELEASE_PENDING);
+            return was & super::types::SlotTag::RELEASE_PENDING == 0;
         }
         let Some(meta) = self.entries[index].take() else {
             return false;
@@ -6101,7 +6106,7 @@ impl<'s> Executor<'s> {
         }
         if let Some(tag) = self.slot_tags.get_mut(index) {
             tag.owner = 0;
-            tag.flags = 0;
+            tag.reset_flags();
         }
         true
     }
@@ -6109,21 +6114,49 @@ impl<'s> Executor<'s> {
     /// Issue 1667 — mark `slot`'s callback as running, so a release it requests
     /// is deferred rather than dropping the entry under it.
     #[inline]
-    fn begin_dispatch(slot_tags: &mut [super::types::SlotTag], slot: usize) {
-        if let Some(tag) = slot_tags.get_mut(slot) {
-            tag.flags |= super::types::SlotTag::IN_DISPATCH;
+    fn begin_dispatch(slot_tags: &[super::types::SlotTag], slot: usize) {
+        if let Some(tag) = slot_tags.get(slot) {
+            tag.set(super::types::SlotTag::IN_DISPATCH);
         }
+    }
+
+    /// Issue 1705 — `slot`'s entry is not to be touched by the spin thread
+    /// this pass: an OS-priority worker holds it (`WORKER_QUEUED` — its item
+    /// is queued or its callback is running, so even READING its state for
+    /// readiness races the worker), or its release is pending (it is never
+    /// dispatched again).
+    #[inline]
+    fn slot_held(slot_tags: &[super::types::SlotTag], slot: usize) -> bool {
+        slot_tags.get(slot).is_some_and(|t| {
+            t.flags()
+                & (super::types::SlotTag::WORKER_QUEUED | super::types::SlotTag::RELEASE_PENDING)
+                != 0
+        })
     }
 
     /// Issue 1667 — `slot`'s callback has returned. Complete a release it
     /// requested while running.
     fn finish_dispatch(&mut self, slot: usize) {
-        let Some(tag) = self.slot_tags.get_mut(slot) else {
+        let Some(tag) = self.slot_tags.get(slot) else {
             return;
         };
-        let pending = tag.flags & super::types::SlotTag::RELEASE_PENDING != 0;
-        tag.flags &= !(super::types::SlotTag::IN_DISPATCH | super::types::SlotTag::RELEASE_PENDING);
-        if !pending {
+        let was = tag.clear(super::types::SlotTag::IN_DISPATCH);
+        if was & super::types::SlotTag::RELEASE_PENDING != 0 {
+            self.complete_deferred_release(slot);
+        }
+    }
+
+    /// Issue 1667 / 1705 — finish a release that was deferred while a dispatch
+    /// of the entry was in flight, if none is any more. A no-op while one still
+    /// is (a worker holding the entry): `reap_deferred_releases` retries.
+    fn complete_deferred_release(&mut self, slot: usize) {
+        let Some(tag) = self.slot_tags.get(slot) else {
+            return;
+        };
+        let f = tag.flags();
+        if f & super::types::SlotTag::RELEASE_PENDING == 0
+            || f & super::types::SlotTag::IN_FLIGHT != 0
+        {
             return;
         }
         if let Some(kind) = self
@@ -6133,9 +6166,22 @@ impl<'s> Executor<'s> {
             .map(|m| m.kind)
         {
             // SAFETY: the release was requested through a generation-checked
-            // handle, and `resolve_handle` has refused the slot since; the
-            // callback that held the entry has returned.
+            // handle, and `resolve_handle` has refused the slot since; no
+            // dispatch holds the entry (`IN_FLIGHT` is clear, read Acquire, so
+            // a worker's writes before it let go are visible).
             let _ = unsafe { self.release_entry(slot, kind) };
+        }
+    }
+
+    /// Issue 1705 — complete every deferred release whose last dispatch has
+    /// finished. A release deferred behind an OS-priority WORKER cannot be
+    /// completed by the worker (it may not touch the executor), so the spin
+    /// thread picks it up here, at the top of every `spin_once`.
+    pub(crate) fn reap_deferred_releases(&mut self) {
+        for slot in 0..self.slot_tags.len() {
+            if self.slot_tags[slot].flags() & super::types::SlotTag::RELEASE_PENDING != 0 {
+                self.complete_deferred_release(slot);
+            }
         }
     }
 
@@ -6267,7 +6313,7 @@ impl<'s> Executor<'s> {
         if let Some(tag) = self.slot_tags.get_mut(slot) {
             tag.generation = tag.next_generation();
             tag.owner = 0;
-            tag.flags = 0;
+            tag.reset_flags();
         }
     }
 
@@ -6288,7 +6334,7 @@ impl<'s> Executor<'s> {
             && self
                 .slot_tags
                 .get(slot)
-                .is_none_or(|t| t.flags & super::types::SlotTag::RELEASE_PENDING == 0);
+                .is_none_or(|t| t.flags() & super::types::SlotTag::RELEASE_PENDING == 0);
         // Generation 0 is `HandleId::for_owned_slot`: a uniquely-owned holder
         // naming its own live slot. Every ISSUED handle carries >= 1.
         let current = id.generation() == 0
@@ -9113,6 +9159,10 @@ impl<'s> Executor<'s> {
         timeout: core::time::Duration,
         first_error: &mut Option<TransportError>,
     ) -> SpinOnceResult {
+        // Issue 1705 — releases deferred behind a dispatch that has since
+        // finished (an OS-priority worker's) are completed here, before this
+        // pass looks at the entries.
+        self.reap_deferred_releases();
         // phase-436 W2 (issue 1193) — the budget is carried in MICROSECONDS.
         // This was `as_millis()`, which truncates: `from_micros(500)` became
         // `0`, and a zero timeout selects the non-blocking path — so a
@@ -9484,7 +9534,9 @@ impl<'s> Executor<'s> {
         let mut always_mask: u64 = 0;
 
         for (i, meta) in self.entries.iter().enumerate() {
-            if let Some(meta) = meta {
+            if let Some(meta) = meta
+                && !Self::slot_held(self.slot_tags, i)
+            {
                 let data_ptr = unsafe { arena_ptr.add(meta.offset) as *const u8 };
                 if unsafe { (meta.has_data)(data_ptr) } {
                     bits |= 1u64 << i;
@@ -9537,7 +9589,7 @@ impl<'s> Executor<'s> {
                 let Some(meta) = self.entries[i].as_ref() else {
                     continue;
                 };
-                if matches!(meta.kind, EntryKind::Timer) {
+                if matches!(meta.kind, EntryKind::Timer) && !Self::slot_held(self.slot_tags, i) {
                     let data_ptr = unsafe { arena_ptr.add(meta.offset) };
                     let try_process = meta.try_process;
                     Self::begin_dispatch(self.slot_tags, i);
@@ -9601,8 +9653,11 @@ impl<'s> Executor<'s> {
         // consistent snapshot of data from the same point in time.
         // Services are NOT pre-sampled (request-reply is sequential).
         if matches!(self.semantics, ExecutorSemantics::LogicalExecutionTime) {
-            for meta in self.entries.iter().flatten() {
-                if matches!(meta.kind, EntryKind::Subscription) {
+            for (i, meta) in self.entries.iter().enumerate() {
+                let Some(meta) = meta else { continue };
+                if matches!(meta.kind, EntryKind::Subscription)
+                    && !Self::slot_held(self.slot_tags, i)
+                {
                     let data_ptr = unsafe { arena_ptr.add(meta.offset) };
                     unsafe { (meta.pre_sample)(data_ptr) };
                 }
@@ -9823,6 +9878,18 @@ impl<'s> Executor<'s> {
                     && let Some(apply_policy) = self.os_priority_apply_policy
                     && let Some(meta) = self.entries[i].as_ref()
                 {
+                    // Issue 1705 — a worker still holds this entry (its item is
+                    // queued or its callback is running). Sending it again, or
+                    // running it here, would put two threads in one
+                    // `try_process`; it gets its next turn once the worker lets
+                    // go.
+                    let tag = &self.slot_tags[i];
+                    if tag.set(super::types::SlotTag::WORKER_QUEUED)
+                        & super::types::SlotTag::WORKER_QUEUED
+                        != 0
+                    {
+                        continue;
+                    }
                     let item = super::os_priority::WorkItem {
                         arena_base: arena_ptr as usize,
                         arena_offset: meta.offset,
@@ -9833,6 +9900,7 @@ impl<'s> Executor<'s> {
                         // nothing on the far side can recover it from the
                         // arena address alone.
                         desc_idx: i as u8,
+                        tag: tag as *const super::types::SlotTag as usize,
                     };
                     // phase-359 W10 — `try_dispatch` now reports whether the
                     // entry was actually handed to a worker. It can decline:
@@ -9850,6 +9918,9 @@ impl<'s> Executor<'s> {
                     {
                         continue;
                     }
+                    // Declined: no worker took it, so the bit set above is
+                    // released and the entry runs cooperatively.
+                    self.slot_tags[i].clear(super::types::SlotTag::WORKER_QUEUED);
                 }
             }
             // Phase 110.G — TT window gate, orthogonal to class.
@@ -10094,7 +10165,9 @@ impl<'s> Executor<'s> {
                 if sc_idx < 64 && skipped_scs & (1u64 << sc_idx) != 0 {
                     continue; // W3b.5 DeadlineAction::Skip containment
                 }
-                if let Some(meta) = self.entries[i].as_ref() {
+                if let Some(meta) = self.entries[i].as_ref()
+                    && !Self::slot_held(self.slot_tags, i)
+                {
                     let counts_before = snapshot_pub_counts(mon_table, lat_active);
                     // Measured only when a consumer wants it, matching the
                     // no_std arm this replaces — the std arm used to measure
@@ -10137,7 +10210,9 @@ impl<'s> Executor<'s> {
                 if sc_idx < 64 && skipped_scs & (1u64 << sc_idx) != 0 {
                     continue; // W3b.5 DeadlineAction::Skip containment
                 }
-                if let Some(meta) = self.entries[i].as_ref() {
+                if let Some(meta) = self.entries[i].as_ref()
+                    && !Self::slot_held(self.slot_tags, i)
+                {
                     let counts_before = snapshot_pub_counts(mon_table, lat_active);
                     // Measured only when a consumer wants it, matching the
                     // no_std arm this replaces — the std arm used to measure

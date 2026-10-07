@@ -1050,7 +1050,7 @@ impl HandleId {
 /// That is why it cannot ride in `CallbackMeta` (which, on a 32-bit target, has
 /// no spare padding left anyway — issue 1631 used it for `arena_len`).
 #[cfg(any(has_rmw, test))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct SlotTag {
     /// The generation of the slot's current (or most recent) occupant. 0 only
     /// before the slot's first registration.
@@ -1058,25 +1058,80 @@ pub(crate) struct SlotTag {
     /// The node that registered the current occupant, biased by one: 0 = none,
     /// `n` = node table index `n - 1`.
     pub(crate) owner: u8,
-    /// Issue 1667 — [`SlotTag::IN_DISPATCH`] / [`SlotTag::RELEASE_PENDING`].
-    /// Rides in what was the struct's padding byte, so the tag is still 4 bytes
-    /// and no image's executor backing moves.
-    pub(crate) flags: u8,
+    /// Issue 1667 / 1705 — [`SlotTag::IN_DISPATCH`],
+    /// [`SlotTag::RELEASE_PENDING`], [`SlotTag::WORKER_QUEUED`]. Rides in what
+    /// was the struct's padding byte, so the tag is still 4 bytes and no image's
+    /// executor backing moves.
+    ///
+    /// ATOMIC since issue 1705: an `os_pri`-bound entry is dispatched on an
+    /// OS-priority WORKER task, which clears `WORKER_QUEUED` when its callback
+    /// returns while the spin thread reads the same byte. Every other field is
+    /// touched by the spin thread alone.
+    flags: portable_atomic::AtomicU8,
 }
 
 #[cfg(any(has_rmw, test))]
 impl SlotTag {
-    /// The occupant's callback is running now. A release requested while this
-    /// is set (by the callback itself, or by anything it calls) is DEFERRED to
-    /// the moment the callback returns: dropping the entry earlier would destroy
-    /// the closure and the state the running callback is still using.
+    /// The occupant's callback is running now ON THE SPIN THREAD. A release
+    /// requested while this is set (by the callback itself, or by anything it
+    /// calls) is DEFERRED to the moment the callback returns: dropping the
+    /// entry earlier would destroy the closure and the state the running
+    /// callback is still using.
     pub(crate) const IN_DISPATCH: u8 = 1;
-    /// A deferred release is waiting for the running callback to return. The
-    /// handle already stops resolving, so nothing else reaches the entry.
+    /// A deferred release is waiting for a running or queued dispatch to
+    /// finish. The handle already stops resolving, so nothing else reaches the
+    /// entry, and a worker that dequeues the entry's item skips it.
     pub(crate) const RELEASE_PENDING: u8 = 2;
+    /// Issue 1705 — the entry has been handed to an OS-priority worker and the
+    /// worker has not finished with it: the item is queued, or its callback is
+    /// running on the worker task. Set by the spin thread BEFORE the enqueue,
+    /// cleared by the worker AFTER `try_process` returns (Release), read by the
+    /// spin thread (Acquire). While set, a release is deferred, and the spin
+    /// thread neither re-sends the entry nor runs it cooperatively.
+    pub(crate) const WORKER_QUEUED: u8 = 4;
+    /// Either form of "a dispatch of this entry is not finished".
+    pub(crate) const IN_FLIGHT: u8 = Self::IN_DISPATCH | Self::WORKER_QUEUED;
+
+    /// A tag for a slot whose occupant has `generation` and `owner`, with no
+    /// flag set. For `executor/tests.rs`, under its own predicate.
+    #[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
+    pub(crate) const fn new(generation: u16, owner: u8) -> Self {
+        Self {
+            generation,
+            owner,
+            flags: portable_atomic::AtomicU8::new(0),
+        }
+    }
+
+    /// The flag bits, Acquire: a bit a worker cleared is seen together with
+    /// everything that worker wrote before clearing it.
+    #[inline]
+    pub(crate) fn flags(&self) -> u8 {
+        self.flags.load(portable_atomic::Ordering::Acquire)
+    }
+
+    /// Set `bits`; returns the bits as they were.
+    #[inline]
+    pub(crate) fn set(&self, bits: u8) -> u8 {
+        self.flags.fetch_or(bits, portable_atomic::Ordering::AcqRel)
+    }
+
+    /// Clear `bits`; returns the bits as they were. Release: what the caller
+    /// wrote before clearing is visible to whoever then sees the bit clear.
+    #[inline]
+    pub(crate) fn clear(&self, bits: u8) -> u8 {
+        self.flags
+            .fetch_and(!bits, portable_atomic::Ordering::AcqRel)
+    }
+
+    /// Clear every bit, for a slot getting a new occupant or none.
+    #[inline]
+    pub(crate) fn reset_flags(&self) {
+        self.flags.store(0, portable_atomic::Ordering::Release);
+    }
 
     /// The generation the slot's NEXT occupant gets: one more, wrapping to 1.
-    pub(crate) const fn next_generation(self) -> u16 {
+    pub(crate) const fn next_generation(&self) -> u16 {
         if self.generation >= HANDLE_GENERATION_MAX {
             1
         } else {

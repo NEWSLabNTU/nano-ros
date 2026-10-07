@@ -2700,6 +2700,12 @@ node-std-tests:
     # while every merge-gating lane stayed green. Same feature set as the line
     # above, so the two cannot drift apart.
     cargo clippy -p nros-node --lib --tests --features std,sim-time,param-services --quiet -- -D warnings
+    # Issue 1705 -- the OS-priority worker POOL compiles only under
+    # `alloc` + `rmw-cffi` + `scheduler-os-priority`, and NO recipe enabled the
+    # feature, so the pool and its dispatch site compiled nowhere. The hand-off
+    # protocol it relies on (`worker_item`) is unit-tested above; this keeps
+    # the code that USES it building and lint-clean.
+    cargo clippy -p nros-node --lib --features alloc,rmw-cffi,scheduler-os-priority --quiet -- -D warnings
     # Issue 1036 — the boot self-report, third entry and the same defect class.
     # `boot_report` is behind a BUILD-TIME cfg set from an env var
     # (`NROS_BOOT_REPORT=1`, Zephyr `CONFIG_NROS_BOOT_REPORT=y`), and nothing in
