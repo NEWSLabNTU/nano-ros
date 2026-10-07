@@ -14,8 +14,9 @@
 # platform x cross combination it accepts, and holds the answer to one rule:
 #
 #   `metadata-mode` iff CRATE (c OR cpp) AND PLATFORM posix AND NOT cross;
-#   `profile-mode`  never (phase-463 W7 has not landed; when it does, the same
-#                   rule applies and this line moves with it).
+#   `profile-mode`  iff CRATE cpp AND PLATFORM posix AND NOT cross (phase-463
+#                   W7 landed: the profiled binary is the native boot binary;
+#                   `nros-c` has no such feature).
 #
 # Reading the function's OUTPUT, not its source: a grep for the `if()` guarding
 # the append would pass a rewrite that reaches the list another way.
@@ -43,13 +44,23 @@ function(_analysis_violation out crate platform cross feats)
     if("metadata-mode" IN_LIST feats)
         set(_has_metadata TRUE)
     endif()
+    set(_want_profile FALSE)
+    if(crate STREQUAL "cpp" AND platform STREQUAL "posix" AND NOT cross)
+        set(_want_profile TRUE)
+    endif()
+    set(_has_profile FALSE)
+    if("profile-mode" IN_LIST feats)
+        set(_has_profile TRUE)
+    endif()
     set(_msg "")
     if(_has_metadata AND NOT _want_metadata)
         set(_msg "CRATE ${crate} PLATFORM ${platform} cross=${cross}: resolves `metadata-mode` -- an RTOS umbrella carries the census recorder")
     elseif(_want_metadata AND NOT _has_metadata)
         set(_msg "CRATE ${crate} PLATFORM ${platform} cross=${cross}: a NATIVE C/C++ umbrella lost `metadata-mode` -- its entry can no longer be the census producer")
-    elseif("profile-mode" IN_LIST feats)
-        set(_msg "CRATE ${crate} PLATFORM ${platform} cross=${cross}: resolves `profile-mode`")
+    elseif(_has_profile AND NOT _want_profile)
+        set(_msg "CRATE ${crate} PLATFORM ${platform} cross=${cross}: resolves `profile-mode` -- an RTOS (or C) umbrella carries the host profiler")
+    elseif(_want_profile AND NOT _has_profile)
+        set(_msg "CRATE ${crate} PLATFORM ${platform} cross=${cross}: the NATIVE C++ umbrella lost `profile-mode` -- `$NROS_PROFILE_OUT` would be refused")
     endif()
     set(${out} "${_msg}" PARENT_SCOPE)
 endfunction()
@@ -70,6 +81,18 @@ _analysis_violation(_planted c posix FALSE "std;platform-posix")
 if(_planted STREQUAL "")
     message(FATAL_ERROR "rtos-feature-set-excludes-analysis: self-test -- a native C set "
         "WITHOUT `metadata-mode` was not refused")
+endif()
+
+# phase-463 W7 -- the same two controls for the profiler.
+_analysis_violation(_planted cpp zephyr_planted TRUE "alloc;platform-freertos;profile-mode")
+if(_planted STREQUAL "")
+    message(FATAL_ERROR "rtos-feature-set-excludes-analysis: self-test -- a planted "
+        "`profile-mode` in an RTOS feature set was not refused")
+endif()
+_analysis_violation(_planted cpp posix FALSE "std;platform-posix;metadata-mode")
+if(_planted STREQUAL "")
+    message(FATAL_ERROR "rtos-feature-set-excludes-analysis: self-test -- a native C++ set "
+        "WITHOUT `profile-mode` was not refused")
 endif()
 
 # ---- the real ladder --------------------------------------------------------
@@ -100,4 +123,4 @@ if(_failures)
         "cmake/NanoRosFeatureSet.cmake.")
 endif()
 message(STATUS "rtos-feature-set-excludes-analysis: OK -- ${_n} umbrella feature sets; "
-    "`metadata-mode` only in c|cpp/posix/native, `profile-mode` in none")
+    "`metadata-mode` only in c|cpp/posix/native, `profile-mode` only in cpp/posix/native")

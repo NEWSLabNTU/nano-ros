@@ -308,6 +308,14 @@ function(nros_feature_set out_var)
        AND _FS_PLATFORM STREQUAL "posix" AND NOT _cross)
         list(APPEND _feats metadata-mode)
     endif()
+    # phase-463 W7 -- and `profile-mode`, the census's PROFILING half
+    # (`$NROS_PROFILE_OUT`), for the same reason: the profiled binary IS the
+    # boot binary. C++ only -- `nros-c` has no such feature (issue 0304's
+    # lesson: a feature reaching a crate that lacks it kills the build), and
+    # the switch is read in `nros-cpp`'s init. Same `posix` + `NOT _cross`.
+    if(_FS_CRATE STREQUAL "cpp" AND _FS_PLATFORM STREQUAL "posix" AND NOT _cross)
+        list(APPEND _feats profile-mode)
+    endif()
 
     # ---- capabilities ------------------------------------------------------
     # Image-level, not platform-level. They used to be a `PLATFORM STREQUAL

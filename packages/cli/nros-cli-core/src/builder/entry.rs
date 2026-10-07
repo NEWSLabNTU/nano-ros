@@ -433,6 +433,11 @@ pub fn render_manifest(
         if krate == HOST_BOARD_CRATE && !features.iter().any(|f| f == "census") {
             features.push("census".to_string());
         }
+        // phase-463 W7 — and the PROFILE producer (`$NROS_PROFILE_OUT`), for
+        // the same reason and on the same key: host-only by construction.
+        if krate == HOST_BOARD_CRATE && !features.iter().any(|f| f == "profile") {
+            features.push("profile".to_string());
+        }
         let feats = if features.is_empty() {
             String::new()
         } else {
@@ -743,13 +748,14 @@ mod tests {
     fn only_the_host_entry_links_the_census_recorder() {
         let m = render_manifest(&spec(), &hosted(), Path::new(DIR)).expect("renders");
         assert!(
-            m.contains("nros-board-linux = { path = ") && m.contains("features = [\"census\"]"),
-            "the host entry turns on `nros-board-linux/census`: {m}"
+            m.contains("nros-board-linux = { path = ")
+                && m.contains("features = [\"census\", \"profile\"]"),
+            "the host entry turns on `nros-board-linux/census` and `/profile`: {m}"
         );
         let m = render_manifest(&spec(), &freertos(), Path::new(DIR)).expect("renders");
         assert!(
-            !m.contains("census"),
-            "an RTOS entry never links the recorder: {m}"
+            !m.contains("census") && !m.contains("profile"),
+            "an RTOS entry never links the recorder or the profiler (phase-463 W7): {m}"
         );
     }
 

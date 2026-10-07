@@ -312,6 +312,8 @@ pub use executor::SpinPeriodResult;
 // ---------------------------------------------------------------------------
 #[cfg(all(feature = "param-services", not(feature = "alloc")))]
 compile_error!("`param-services` allocates: add \"alloc\" to this crate's features");
+#[cfg(all(feature = "profile-mode", not(feature = "alloc")))]
+compile_error!("`profile-mode` records into a heap-allocated table: add \"alloc\"");
 #[cfg(all(feature = "lifecycle-services", not(feature = "alloc")))]
 compile_error!("`lifecycle-services` allocates: add \"alloc\" to this crate's features");
 // phase-359 W10 — the forwarder's WORKER is a platform task now, not a

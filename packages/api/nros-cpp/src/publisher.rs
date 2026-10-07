@@ -56,6 +56,11 @@ impl CppPublisher {
             cell.count
                 .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         }
+        // phase-463 W7 -- every C++ publish path passes here (raw, streamed,
+        // loan commit), so this is where the host profile learns which topics
+        // the dispatching callback published. Host `profile-mode` only.
+        #[cfg(feature = "profile-mode")]
+        nros::profile::on_publish(self.handle.topic_name());
     }
 }
 

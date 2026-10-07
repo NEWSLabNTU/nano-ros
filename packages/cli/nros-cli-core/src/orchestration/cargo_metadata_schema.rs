@@ -858,6 +858,16 @@ pub enum WcetSelectionError {
         profile: String,
         errors: Vec<WcetError>,
     },
+    /// phase-463 W7 / RFC-0078 amendment 2026-10-07 — an image that is NOT the
+    /// native host selects a HOST profile (`host-<arch>-<profile>`). A host
+    /// high-water mark is a fact about an x86-64 (or aarch64) host, never about
+    /// the RTOS image's CPU, so a board selecting one would launder a host
+    /// number into a target's schedule. Refused, by name.
+    HostProfileOnTarget {
+        target: String,
+        profile: String,
+        platform: String,
+    },
 }
 
 impl std::fmt::Display for WcetSelectionError {
@@ -883,8 +893,28 @@ impl std::fmt::Display for WcetSelectionError {
                 }
                 Ok(())
             }
+            Self::HostProfileOnTarget {
+                target,
+                profile,
+                platform,
+            } => write!(
+                f,
+                "[wcet.select] {target} = \"{profile}\" selects a HOST profile for a \
+                 `{platform}` image. A host profile holds high-water marks measured on the \
+                 build host (phase-463 W7, `$NROS_PROFILE_OUT`); they are not a fact of this \
+                 image's CPU, and only the native image may select one (RFC-0078 amendment \
+                 2026-10-07). Measure on the target and declare a profile named for it."
+            ),
         }
     }
+}
+
+/// RFC-0078 amendment 2026-10-07 — the HOST profile convention:
+/// `host-<arch>-<profile>` (`host-x86_64-release`), `clock_hz = 0` (a host
+/// clock is not a fact of any image, so nothing converts), populated by the
+/// phase-463 W7 profiler and selectable by the native image alone.
+pub fn is_host_wcet_profile(name: &str) -> bool {
+    name.starts_with("host-")
 }
 
 impl SystemToml {
@@ -911,7 +941,14 @@ impl SystemToml {
                     target: target.to_string(),
                     profile: name.clone(),
                 })?;
-        let errors = profile.validate();
+        let mut errors = profile.validate();
+        // A host profile states `clock_hz = 0` BY CONVENTION (unknown by
+        // design, RFC-0078 amendment 2026-10-07); `exec_ms` already yields
+        // nothing for it, which is the right answer, so the rate check that
+        // guards a target profile's arithmetic does not apply.
+        if is_host_wcet_profile(name) {
+            errors.retain(|e| *e != WcetError::ClockRateZero);
+        }
         if !errors.is_empty() {
             return Err(WcetSelectionError::InvalidProfile {
                 target: target.to_string(),
@@ -920,6 +957,29 @@ impl SystemToml {
             });
         }
         Ok(Some(profile))
+    }
+
+    /// [`wcet_profile_for`](Self::wcet_profile_for) for an IMAGE, which also
+    /// knows whether that image is the native host: a non-native image whose
+    /// selection names a host profile is refused
+    /// ([`WcetSelectionError::HostProfileOnTarget`]). `platform` is the image
+    /// board's platform (`posix` for the native board).
+    pub fn wcet_profile_for_image(
+        &self,
+        image_id: &str,
+        platform: &str,
+    ) -> Result<Option<&WcetProfile>, WcetSelectionError> {
+        if platform != "posix"
+            && let Some(name) = self.wcet.as_ref().and_then(|w| w.select.get(image_id))
+            && is_host_wcet_profile(name)
+        {
+            return Err(WcetSelectionError::HostProfileOnTarget {
+                target: image_id.to_string(),
+                profile: name.clone(),
+                platform: platform.to_string(),
+            });
+        }
+        self.wcet_profile_for(image_id)
     }
 }
 
@@ -3043,6 +3103,64 @@ margin_percent = 20.0
             }
             other => panic!("an unbelievable profile must be an error, got {other:?}"),
         }
+    }
+
+    fn with_host_profile(select: &str) -> String {
+        format!(
+            r#"{HEADER}
+[wcet.profiles.host-x86_64-release]
+cpu = "x86_64"
+clock_hz = 0
+profile = "release"
+measured_at_commit = "a1b2c3d4e5f6"
+counter_valid = true
+source = "nros.wcet.measurements/1"
+coverage = "60 s live run"
+
+[wcet.profiles.host-x86_64-release.boundaries]
+"/talker/on_timer" = {{ min_observed_cycles = 900, max_observed_cycles = 4800, iterations = 60 }}
+
+[wcet.select]
+{select}
+"#
+        )
+    }
+
+    /// phase-463 W7 — the native image MAY select the host profile, and its
+    /// `clock_hz = 0` is the convention rather than a rate error; it converts
+    /// to nothing (no `exec_ms`), which is what a host number must do.
+    #[test]
+    fn the_native_image_may_select_a_host_profile_and_it_converts_to_nothing() {
+        let sys = parse(&with_host_profile("native = \"host-x86_64-release\""));
+        let p = sys
+            .wcet_profile_for_image("native", "posix")
+            .expect("native may select a host profile")
+            .expect("selected");
+        assert_eq!(p.exec_ms("/talker/on_timer"), None);
+    }
+
+    /// phase-463 W7 — the Zephyr bake REFUSES a host profile. Without the rule
+    /// the selection resolved like any other (the negative control below).
+    #[test]
+    fn a_zephyr_image_selecting_a_host_profile_is_refused() {
+        let sys = parse(&with_host_profile("zephyr = \"host-x86_64-release\""));
+        match sys.wcet_profile_for_image("zephyr", "zephyr") {
+            Err(WcetSelectionError::HostProfileOnTarget {
+                target,
+                profile,
+                platform,
+            }) => {
+                assert_eq!(
+                    (target.as_str(), profile.as_str()),
+                    ("zephyr", "host-x86_64-release")
+                );
+                assert_eq!(platform, "zephyr");
+            }
+            other => panic!("a host profile on a Zephyr image must be refused, got {other:?}"),
+        }
+        // Negative control: the image-blind resolver accepts the same text, so
+        // the refusal is the image rule's and nothing else's.
+        assert!(sys.wcet_profile_for("zephyr").expect("valid").is_some());
     }
 
     /// An observation with no margin and no explicit bound parses, validates,

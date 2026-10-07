@@ -87,7 +87,13 @@ pub const CENSUS_SIZING: nros_node::ExecutorSizing = {
 /// NuttX C image with the hook "off". A call site whose arguments do work
 /// computes them under `if ACTIVE`, a constant, so the whole block folds away
 /// and the call is still there for `check-census-hooks-complete` to see.
-pub const ACTIVE: bool = cfg!(feature = "metadata-mode");
+pub const ACTIVE: bool = cfg!(any(feature = "metadata-mode", feature = "profile-mode"));
+
+/// phase-463 W7 — the host profile is fed through THESE hooks too, so its rows
+/// carry the census's node and the census's ids and the two files join one to
+/// one. `profile-mode` exists only with an RMW seam (`nros-node`'s executor).
+#[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
+use nros_node::executor::profile;
 
 /// The name the recording backend (`nros-rmw-metadata`) registers under, and
 /// the `$NROS_RMW` value every census funnel selects it with — `nros-cpp`'s,
@@ -124,6 +130,8 @@ pub fn recording_run() -> bool {
 
 #[inline]
 pub fn on_node_create(_name: &str, _namespace: &str, _domain_id: u32) {
+    #[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
+    profile::set_current_node(&node_fqn(_name, _namespace));
     #[cfg(feature = "metadata-mode")]
     {
         // A refused begin means the recorder is full; every entity after it
@@ -149,14 +157,18 @@ pub fn on_node_create(_name: &str, _namespace: &str, _domain_id: u32) {
 /// recorded as the code passed it.
 #[inline]
 pub fn on_timer_create(_kind: crate::node_metadata::TimerKind, _period_ms: u64) {
-    #[cfg(feature = "metadata-mode")]
+    #[cfg(any(feature = "metadata-mode", feature = "profile-mode"))]
     {
+        let id = synthetic_id("timer");
+        #[cfg(feature = "metadata-mode")]
         record(
             crate::node_metadata::EntityKind::Timer,
             _kind,
-            "timer",
+            &id,
             Some(_period_ms),
         );
+        #[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
+        profile::label_last(&id);
     }
 }
 
@@ -169,14 +181,18 @@ pub fn on_timer_create(_kind: crate::node_metadata::TimerKind, _period_ms: u64) 
 /// period 0.
 #[inline]
 pub fn on_guard_condition_create() {
-    #[cfg(feature = "metadata-mode")]
+    #[cfg(any(feature = "metadata-mode", feature = "profile-mode"))]
     {
+        let id = synthetic_id("guard");
+        #[cfg(feature = "metadata-mode")]
         record(
             crate::node_metadata::EntityKind::Timer,
             crate::node_metadata::TimerKind::GuardCondition,
-            "guard",
+            &id,
             None,
         );
+        #[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
+        profile::label_last(&id);
     }
 }
 
@@ -216,18 +232,39 @@ fn ensure_scope() {
     }
 }
 
+/// The synthetic id of an executor-side entity (`timer<n>`, `guard<n>`): ONE
+/// sequence shared by the census and the profile, so a profile run and a census
+/// run of the same image name every timer identically (phase-463 W7).
+#[cfg(any(feature = "metadata-mode", feature = "profile-mode"))]
+fn synthetic_id(prefix: &str) -> alloc::string::String {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+    static SEQ: AtomicUsize = AtomicUsize::new(0);
+    let n = SEQ.fetch_add(1, Ordering::Relaxed);
+    alloc::format!("{prefix}{n}")
+}
+
+/// A node's fully-qualified name, as the profile attributes rows to it.
+#[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
+fn node_fqn(name: &str, namespace: &str) -> alloc::string::String {
+    let ns = namespace.trim_end_matches('/');
+    if ns.is_empty() {
+        alloc::format!("/{name}")
+    } else if ns.starts_with('/') {
+        alloc::format!("{ns}/{name}")
+    } else {
+        alloc::format!("/{ns}/{name}")
+    }
+}
+
 #[cfg(feature = "metadata-mode")]
 fn record(
     kind: crate::node_metadata::EntityKind,
     timer_kind: crate::node_metadata::TimerKind,
-    prefix: &str,
+    id: &str,
     period_ms: Option<u64>,
 ) {
-    use core::sync::atomic::{AtomicUsize, Ordering};
-    static SEQ: AtomicUsize = AtomicUsize::new(0);
     ensure_scope();
-    let n = SEQ.fetch_add(1, Ordering::Relaxed);
-    let id = alloc::format!("{prefix}{n}");
+    let id = alloc::string::String::from(id);
     let rec = crate::metadata_mode::EntityRecord {
         callback_id: Some(&id),
         period_ms,

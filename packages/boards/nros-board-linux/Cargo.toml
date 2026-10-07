@@ -122,3 +122,8 @@ safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
 # backend is registered explicitly and only when a census is asked for, so a
 # normal boot's backend selection is unchanged (issue 1530: no ctor).
 census = ["nros/metadata-mode", "dep:nros-rmw-metadata"]
+# phase-463 W7 — and a PROFILE producer: with `$NROS_PROFILE_OUT` set, a normal
+# (transporting) run times every callback dispatch on the host and writes
+# `nros.wcet.measurements/1` there (`nros::profile`). The generated host entry
+# enables it beside `census`; host-only by construction, like `census`.
+profile = ["nros/profile-mode"]

@@ -212,6 +212,56 @@ fn census_requested() -> Option<std::ffi::OsString> {
     if raw.is_empty() { None } else { Some(raw) }
 }
 
+/// phase-463 W7 -- `$NROS_PROFILE_OUT`, the profile switch, as this funnel
+/// sees it: the Rust entry's half of `nros-cpp`'s `profile_arm`. Called before
+/// the executor opens, so every registration is recorded. Idempotent (a tiered
+/// boot opens one executor per tier). An image built without the `profile`
+/// feature REFUSES rather than booting with no file -- the census's rule.
+fn profile_arm() {
+    let Some(path) = std::env::var_os("NROS_PROFILE_OUT").filter(|p| !p.is_empty()) else {
+        return;
+    };
+    #[cfg(feature = "profile")]
+    {
+        static PATH: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+        // Write-then-rename, so a reader (or a SIGTERM mid-write) never sees half.
+        fn sink(doc: &str) {
+            let Some(path) = PATH.get() else { return };
+            let mut tmp = path.clone().into_os_string();
+            tmp.push(".tmp");
+            if std::fs::write(&tmp, doc).is_ok() {
+                let _ = std::fs::rename(&tmp, path);
+            }
+        }
+        // Unique per live thread: the address of a thread-local.
+        fn thread_key() -> usize {
+            std::thread_local! { static KEY: u8 = const { 0 }; }
+            KEY.with(|k| k as *const u8 as usize)
+        }
+        if !::nros::profile::enabled() {
+            let _ = PATH.set(std::path::PathBuf::from(&path));
+            ::nros::profile::install(thread_key, sink);
+            let launch = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
+                .unwrap_or_default();
+            let inputs = std::env::var("NROS_PROFILE_INPUTS")
+                .unwrap_or_else(|_| "live run; no replayed input set was named".into());
+            ::nros::profile::enable(&launch, &inputs);
+        }
+    }
+    #[cfg(not(feature = "profile"))]
+    {
+        std::eprintln!(
+            "nros profile: $NROS_PROFILE_OUT=`{}` but this Rust entry was built without \
+             `nros-board-linux/profile` -- the generated host entry enables it; a hand-written \
+             one must name it",
+            path.to_string_lossy()
+        );
+        <LinuxBoard as BoardExit>::exit_failure();
+    }
+}
+
 /// Issue 1419 -- arm census mode, BEFORE the session opens: register the
 /// recording backend and select it by name, the C++ funnel's
 /// `census_select_backend` for the Rust entry. `$NROS_RMW` is FORCED rather
@@ -490,6 +540,8 @@ impl LinuxBoard {
         // Issue 1419 — census mode is decided BEFORE the session opens, because
         // it decides which backend opens it (`census_arm` selects the recorder
         // through `$NROS_RMW`, which `resolve_hosted` reads) and at what sizing.
+        // phase-463 W7 -- the profile switch, before the executor opens.
+        profile_arm();
         let census = census_requested();
         let census_sizing = census.as_ref().and_then(|_| census_arm());
         let exec_cfg = ::nros::env::resolve_hosted(hosted_baked_rung(deploy));
@@ -728,6 +780,8 @@ impl LinuxBoard {
         // second answer to one question.
         // Issue 1419 — census mode, decided before the session opens (see
         // `boot_hosted`).
+        // phase-463 W7 -- the profile switch, before the executor opens.
+        profile_arm();
         let census = census_requested();
         let census_sizing = census.as_ref().and_then(|_| census_arm());
         let exec_cfg = ::nros::env::resolve_hosted(hosted_baked_rung(deploy));

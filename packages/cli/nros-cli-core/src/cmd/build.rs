@@ -452,6 +452,19 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             crate::orchestration::image::resolve_image_board(&catalog, &image_id, &image)
                 .map_err(|e| eyre::eyre!("{e}"))?;
         let platform = descriptor.platform.kebab().to_string();
+        // phase-463 W7 / RFC-0078 amendment 2026-10-07 — a HOST WCET profile
+        // (`host-<arch>-<profile>`, what `$NROS_PROFILE_OUT` measures) is a fact
+        // about the build host, never about a target's CPU. Only the native
+        // image may select one; the bake of any other refuses, here, before
+        // anything is generated. An unreadable `system.toml` is left to the
+        // code whose job it is to report it.
+        if let Ok(raw) = std::fs::read_to_string(bringup_dir.join("system.toml"))
+            && let Ok(sys) =
+                toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
+        {
+            sys.wcet_profile_for_image(&image_id, &platform)
+                .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
+        }
         let board = image.board.clone().unwrap_or_default();
         // A refusal here is RFC-0065 D3's third outcome, not an internal error:
         // the board and the language mix together name a combination nano-ros

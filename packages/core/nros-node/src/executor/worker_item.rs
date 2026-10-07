@@ -86,9 +86,21 @@ pub(crate) unsafe fn run_work_item(item: &WorkItem) {
     let tag = unsafe { &*(item.tag as *const SlotTag) };
     if tag.flags() & SlotTag::RELEASE_PENDING == 0 {
         let data = (item.arena_base as *mut u8).wrapping_add(item.arena_offset);
+        // phase-463 W7 — the host profile times the worker's dispatch too, on
+        // the worker's own thread (its "current" is per thread). The OFF arm
+        // is the original line, untouched (see the timer sweep in `spin.rs`:
+        // a binding in its place moved the image).
+        #[cfg(not(feature = "profile-mode"))]
         // SAFETY: `WORKER_QUEUED` is held, so the entry is live and no other
         // thread is in its `try_process` (module docs, steps 2 and 3).
         let _ = unsafe { (item.try_process)(data, item.delta_us, item.desc_idx) };
+        #[cfg(feature = "profile-mode")]
+        {
+            super::profile::dispatch_begin(item.arena_base, item.desc_idx as usize);
+            // SAFETY: as the OFF arm above.
+            let processed = unsafe { (item.try_process)(data, item.delta_us, item.desc_idx) };
+            super::profile::dispatch_end(matches!(processed, Ok(true)));
+        }
     }
     // Release: everything the callback wrote happens-before the spin thread's
     // Acquire read that sees the bit clear and drops the entry.

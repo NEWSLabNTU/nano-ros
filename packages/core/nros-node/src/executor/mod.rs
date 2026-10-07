@@ -53,6 +53,10 @@ pub use backing::{
 // paired stubs rather than naming it directly.
 #[cfg(all(any(has_rmw, test), feature = "trace-callbacks"))]
 pub mod callback_trace;
+// phase-463 W7 — the host profile (`profile-mode`, host-only: it needs `std`
+// and no RTOS umbrella resolves it).
+#[cfg(all(any(has_rmw, test), feature = "profile-mode"))]
+pub mod profile;
 // phase-457 W5 (issue 1522) — the shape a DECLARED subscription lowers to.
 // UNGATED on purpose: the executor half needs an RMW seam, but the recorder
 // half runs in a probe that opens no executor, and both must read the same

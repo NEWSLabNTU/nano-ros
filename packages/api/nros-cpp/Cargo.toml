@@ -95,6 +95,13 @@ bridge = ["dep:nros-bridge"]
 # never enabled by a board or entry build.
 metadata-mode = ["nros/metadata-mode", "nros-c/metadata-mode", "dep:nros-rmw-metadata"]
 
+# phase-463 W7 — the PROFILING half of the census: with `$NROS_PROFILE_OUT` set,
+# a normal (transporting) run times every callback dispatch on the host and
+# writes `nros.wcet.measurements/1` there, once a second. Like `metadata-mode`,
+# only the NATIVE C++ umbrella carries it (cmake/NanoRosFeatureSet.cmake), and
+# the switch is read in `nros_cpp_init_rmw` under `env`, which no RTOS has.
+profile-mode = ["nros/profile-mode", "rmw-cffi"]
+
 # Phase 252 / issue 0073 — E2E message-integrity (CRC) for the C++ API. Forwards
 # to nros + nros-c + the zenoh backend's safety-e2e, and surfaces
 # nros_cpp_integrity_status_t + nros_cpp_subscription_take_validated.
