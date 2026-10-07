@@ -203,6 +203,20 @@ Rust `#[deprecated]` items, and the two unused C macros. One changelog entry
 - Correct the status lines that drifted: RFC-0089 and RFC-0096 were promoted to
   Stable when this phase opened; their D4/D5 text stands as decided above.
 
+**Status 2026-10-07: done, except for three maintainer decisions.**
+
+| Issue | Outcome |
+| --- | --- |
+| 1323 | Resolved. `--check` walks the ledger, and a row the extraction does not back needs `retired` or `unextracted`. It found 97 such rows on main. |
+| 1042 | Resolved. The nine rows were re-verdicted against rclrs 0.7.0, the verdict-versus-bucket contradiction is gated, and `--refresh` names the rows it may invalidate. |
+| 1302 | Resolved. The refusal names the `clock` argument, and its five rows agree. |
+| 0783 | Resolved. `TransportError` got a `Display`, and the `NodeError` row is corrected. |
+| 0784 | Progress. The six plumbing exports are `#[doc(hidden)]`. Deleting zero-consumer types, choosing the facade's lead `Node` name and exporting `StandaloneNodeError` are maintainer decisions. |
+| 1335 | Re-scoped. The C++ half is done; what remains is the nros-c entity storage shape, a maintainer decision. |
+| 1303 | Open. It needs a maintainer decision on the link model of `failed_create_aborts.cpp` before the runtime refusals can be routed through `nros_log` and proven to reach a freestanding sink. |
+
+The RFC-0089 and RFC-0096 status lines were checked and both read "Stable".
+
 ## Not in this phase, deliberately
 
 - **phase-417 W5.f — the C service type taken from the contract.** It is a

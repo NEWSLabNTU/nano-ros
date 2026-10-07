@@ -319,10 +319,20 @@ pub use node::NodeExecutorRuntime;
 // extern emit were deleted.)
 pub use node::{
     ActionExecutor, Callback, CallbackCtx, CallbackEffects, ClientDispatch, DeclaredNode,
-    DeclaredNodeRuntime, EntityBounds, ExecutableNode, MISSING_NODE_EXPORT_ERROR, Node,
-    NodeActionClient, NodeActionServer, NodeContext, NodeDeclError, NodeOptions, NodeParameter,
-    NodePublisher, NodeResult, NodeRuntime, NodeRuntimeAdapter, NodeServiceClient,
-    NodeServiceServer, NodeSubscription, NodeTimer, PublisherResolver, RuntimeNodeRecord, TickCtx,
+    EntityBounds, ExecutableNode, Node, NodeActionClient, NodeActionServer, NodeContext,
+    NodeDeclError, NodeOptions, NodeParameter, NodePublisher, NodeResult, NodeRuntime,
+    NodeServiceClient, NodeServiceServer, NodeSubscription, NodeTimer, PublisherResolver, TickCtx,
+};
+// Issue 0784 — the macro and codegen PLUMBING, out of the documented surface.
+// `nros::` publishes three audiences under one namespace; these six are for the
+// `nros::node!` expansion and the generated metadata probe
+// (`nros-cli-core/src/orchestration/metadata_build.rs`), never for a node
+// author, and none is named by any hand-written file in `examples/` or
+// `packages/`. Hidden, not deleted: the generated code reaches them by path, the
+// same treatment as `__private_node_state_into_raw` below.
+#[doc(hidden)]
+pub use node::{
+    DeclaredNodeRuntime, MISSING_NODE_EXPORT_ERROR, NodeRuntimeAdapter, RuntimeNodeRecord,
     record_node_metadata, register_node,
 };
 // Phase 212.M.5.a.4 — internal helper consumed by `nros::node!()`

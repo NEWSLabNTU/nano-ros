@@ -2,7 +2,7 @@
 id: 783
 title: "`RclReturnCode` exists and is unreachable, and RFC-0036 documents a Rust
   error type the user API never returns"
-status: open
+status: resolved
 type: bug
 area: api, docs
 related: [phase-482, rfc-0036, rfc-0037, phase-379]
@@ -177,3 +177,15 @@ take-failed adapter we had copied and have now deleted.
 `rust:NodeError` row repeats the retracted claim ("it is exported but
 `TransportError`, its most common payload, is not"). That shard belongs to the
 `node` stage.
+
+## Resolution, second half (2026-10-07, phase-482 W7)
+
+- The `rust:NodeError` ledger row no longer repeats the retracted claim:
+  `TransportError` is exported, and the row says so.
+- `TransportError` has a `Display` in nros-rmw, the crate that defines the
+  variants. It is one line per variant, `no_std`, and renders the
+  `IncompatibleQos` policy name and the `Backend` diagnostic. There is a unit
+  test.
+- `NodeError::Transport` renders through that `Display` instead of `{:?}`.
+- `StandaloneNodeError` not being exported is an export-policy question and
+  stays with issue 0784.

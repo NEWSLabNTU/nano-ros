@@ -2881,6 +2881,11 @@ pub struct CompletedGoal<A: RosAction> {
 /// Wraps [`ActionServerCore`](super::action_core::ActionServerCore) for
 /// raw-bytes protocol handling, adding typed goal/feedback/result
 /// serialization at the boundary.
+///
+/// The name is rclrs's and the contract is bounded: rclrs's `ActionServer<A>`
+/// is an `Arc<ActionServerState<A>>` with async goal handling, while this one
+/// is fixed-size, sized by const generics, and driven from the executor
+/// (RFC-0021), so no goal lives on a heap and nothing needs an async runtime.
 pub struct ActionServer<
     A: RosAction,
     const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
@@ -3164,6 +3169,11 @@ impl<
 /// Wraps [`ActionClientCore`](super::action_core::ActionClientCore) for
 /// raw-bytes protocol handling, adding typed goal/feedback/result
 /// serialization at the boundary.
+///
+/// The name is rclrs's and the contract is bounded: rclrs's `ActionClient<A>`
+/// is an `Arc<ActionClientState<A>>` whose requests are async futures, while
+/// this one's verbs return a `Promise` the caller drives with the executor
+/// (RFC-0021), because there is no async runtime to await a future on.
 pub struct ActionClient<
     A: RosAction,
     const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },

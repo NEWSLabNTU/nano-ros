@@ -7,10 +7,10 @@
  * and a side-effecting clock expression was dropped entirely. "Compiles and
  * differs", which RFC-0089 forbids.
  *
- * There is no throttle on the C or C++ logging path. `nros-log` has one
- * Rust-side and re-exporting it is phase-417 W4.d; writing a second one in this
- * header would be a second implementation of behaviour Rust already owns
- * (RFC-0019), so this is REFUSE-LOUD rather than a header-local fix.
+ * C does have a throttle now (`NROS_LOG_*_THROTTLE`, phase-417 W4.d), but it
+ * measures its window on nros_log's own clock, and the upstream macro measures
+ * it on the `clock` argument. Forwarding would drop that argument and compile
+ * and differ, so this stays REFUSE-LOUD (issue 1302 corrected the reason).
  *
  * `just check cpp` requires this TU to FAIL. The STREAM half of issue 1019 is
  * the opposite disposition — it is IMPLEMENTED now, and the POSITIVE probe
