@@ -27,9 +27,9 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 - Multiple `create_subscription<M>` calls in one Node (was: smoke had one).
 - Per-topic `diagnostic_updater::Updater::add(name, cb)` registrations.
 - `Updater::update()` driven from the main loop — rate-limited self-publish.
-- `RCLCPP_INFO` + `RCLCPP_WARN`/`ERROR` macros over the compat surface.
+- `RCLCPP_INFO` + `RCLCPP_WARN`/`ERROR` macros over nano-ros's `rclcpp::` API.
 - Full stock-ROS-2 `find_package(...)` + `ament_auto_add_executable` +
-  `ament_target_dependencies` shape on top of the compat module.
+  `ament_target_dependencies` shape on top of nano-ros's ament surface.
 
 ## Gap surfaced (filed against Phase 209.A)
 

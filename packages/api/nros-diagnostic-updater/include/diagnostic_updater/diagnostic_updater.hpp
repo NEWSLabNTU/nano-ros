@@ -2,7 +2,7 @@
 //
 // diagnostic_updater.hpp — Phase 209.D
 //
-// `diagnostic_updater::Updater` source-compat shim — lets a ROS 2 node that
+// nano-ros's `diagnostic_updater::Updater` — lets a ROS 2 node that
 // publishes `diagnostic_msgs/DiagnosticArray` through the upstream Updater
 // compile + run against nano-ros without source edits.
 //
@@ -17,7 +17,7 @@
 //     otherwise); intended to be called from the node's executor loop. The
 //     application is responsible for invoking it (typically from a periodic
 //     timer or from `rclcpp::spin_some`'s caller); nano-ros has no
-//     auto-firing timer registration through the rclcpp_compat Node shim yet.
+//     auto-firing timer registration through `rclcpp::Node` yet.
 //   * `broadcast(level, message)` — publishes a single status with the given
 //     summary, no add(...)s.
 //

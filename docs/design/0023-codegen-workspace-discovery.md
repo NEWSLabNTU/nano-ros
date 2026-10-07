@@ -190,13 +190,16 @@ workspace dir.
 
 ## What changes per layer
 
-### `cmake/compat/NrosRclcppCompat.cmake` + Find-stubs
+### `cmake/NanoRosAmentSurface.cmake` + find modules
 
-- **Smart Find-stub generator** at `cmake/compat/stubs/_NrosFindRosMsgPackage.cmake`:
+(Paths as of phase-482 W1, which moved these out of the deleted
+`cmake/compat/` into nano-ros's own CMake package; content unchanged.)
+
+- **Smart Find-stub generator** at `cmake/find/_NrosFindRosMsgPackage.cmake`:
   walks the search path, finds the named pkg, runs nano-ros codegen on its
   interface files, emits the canonical `${pkg}::${pkg}` IMPORTED INTERFACE
   + the per-language `${pkg}__nano_ros_cpp` / `__nano_ros_rust` targets.
-- Per-pkg `cmake/compat/stubs/Find<msg-pkg>.cmake` becomes a 2-liner:
+- Per-pkg `cmake/find/Find<msg-pkg>.cmake` becomes a 2-liner:
   ```cmake
   include(${CMAKE_CURRENT_LIST_DIR}/_NrosFindRosMsgPackage.cmake)
   _nros_find_ros_msg_package(<pkg>)
@@ -250,7 +253,7 @@ workspace dir.
    `cmake/NanoRosGenerateInterfaces.cmake`. Wires to existing codegen.
 2. Write `_NrosFindRosMsgPackage.cmake` helper (AMENT + workspace search
    path → codegen → IMPORTED INTERFACE target).
-3. Reduce `cmake/compat/stubs/Find<msg-pkg>.cmake` files to the 2-line
+3. Reduce `cmake/find/Find<msg-pkg>.cmake` files to the 2-line
    include + delegate. Add a unit-test fixture proving a tiny user
    `src/my_msgs/` (verbatim ROS `package.xml + msg/MyMsg.msg + ROS-shape
    CMakeLists.txt`) builds + links from a consumer that just writes

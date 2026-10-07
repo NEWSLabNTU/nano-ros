@@ -15,8 +15,8 @@ project(zephyr_cpp_talker LANGUAGES CXX)
 # the nros-cpp library (zephyr_library_named(nros)).
 #
 # Phase 210.E.3.c — switch from legacy `nros_generate_interfaces(<pkg>)`
-# to the canonical `find_package(<pkg>)` shape via the rclcpp source-
-# compat module. `NROS_REPO_DIR` is published as a CACHE var by the
+# to the canonical `find_package(<pkg>)` shape via nano-ros's find
+# modules (`cmake/find/`). `NROS_REPO_DIR` is published as a CACHE var by the
 # zephyr module so the include path resolves from the app dir.
 find_package(nano_ros REQUIRED)
 find_package(std_msgs REQUIRED)

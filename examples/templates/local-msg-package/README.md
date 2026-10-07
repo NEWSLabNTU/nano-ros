@@ -34,7 +34,7 @@ Demonstrates the **ROS-convention codegen** Phase 210 ships:
   does — every package, in dependency order, each with its own driver and its
   own `build/<pkg>/`. For the C++ consumer it GENERATES the root the umbrella
   used to spell out (nano-ros, `NROS_INTERFACE_SEARCH_PATH` at `./src/`, the
-  rclcpp compat surface); the msg pkgs are not built on their own — their
+  rclcpp / ament surface); the msg pkgs are not built on their own — their
   bindings are generated into the packages that use them.
 
 ## Build — everything (`nros build`)
@@ -91,7 +91,7 @@ non-zero if the generated crates are stale.
 | Phase 210 piece | Where |
 |---|---|
 | `rosidl_generate_interfaces(...)` wrapper (210.A.1) | `src/local_msgs/CMakeLists.txt` |
-| Smart Find-stub (`_NrosFindRosMsgPackage`, 210.A.2) | `find_package(local_msgs)` in `src/consumer/CMakeLists.txt` |
+| Message-package resolver (`cmake/find/_NrosFindRosMsgPackage.cmake`, 210.A.2) | `find_package(local_msgs)` in `src/consumer/CMakeLists.txt` |
 | Per-pkg Find delegators (210.A.3) | `find_package(std_msgs)` |
 | Workspace Find-stub auto-emit (210.A.4) | `NROS_INTERFACE_SEARCH_PATH=./src` → auto-emits `Findlocal_msgs.cmake` so the consumer resolves it |
 | `nros_workspace_interfaces()` bulk + topo-sort (210.B.2) | `local_msgs` built before `extra_msgs` automatically |

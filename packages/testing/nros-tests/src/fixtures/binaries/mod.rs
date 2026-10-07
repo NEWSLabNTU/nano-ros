@@ -921,7 +921,7 @@ fn dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
 ///     for `nano_ros_node_register` too (`nros codegen entry-node`), which is
 ///     why `nros_codegen_tool_reconfigure()` puts it in
 ///     `CMAKE_CONFIGURE_DEPENDS` (issue 1018);
-///   * `cmake/zephyr/native-sim-line-3.7.conf`, `cmake/compat/stubs/*`.
+///   * `cmake/zephyr/native-sim-line-3.7.conf`, `cmake/find/*`.
 ///
 /// A hand list cannot enumerate those without becoming a second copy of the
 /// build graph, which is the guessing this phase exists to retire.

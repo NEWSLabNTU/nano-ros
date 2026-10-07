@@ -83,6 +83,25 @@ Consumers: the port templates under `examples/templates/`
 - **Acceptance:** `git ls-files cmake/compat` is empty. Every port template
   builds and runs. The book describes only what remains.
 
+**Status: done 2026-10-07.** Every piece took the first-class answer; no D5
+edit was needed.
+
+- `<rclcpp/rclcpp.hpp>` and `<rclcpp_components/register_node_macro.hpp>`
+  moved into `packages/api/nros-cpp/include/`. `nros/rclcpp_components_compat.hpp`,
+  the force-include of it and the private include directory are gone.
+- `NrosRclcppCompat.cmake` is `cmake/NanoRosAmentSurface.cmake`; the stubs are
+  `cmake/find/`; `diagnostic-updater/` is `packages/api/nros-diagnostic-updater/`.
+- They stay find MODULES, not the `rclcppConfig.cmake` files this item first
+  proposed. `find_package()` tries module mode before config mode, so a module
+  is what keeps nano-ros's `rclcpp` ahead of `/opt/ros/<distro>` after
+  `setup.bash` is sourced; a config file would lose to it.
+- Two consumers derived paths from the old depth and failed OPEN when they
+  missed: the message resolver's `EXISTS`-guarded include of
+  `NanoRosGenerateInterfaces.cmake`, and the CLI's
+  `compat_provided_packages()`, which read an absent directory as "nano-ros
+  supplies no packages". The first is corrected; the second is now
+  `nano_ros_provided_packages()` and refuses a checkout without `cmake/find/`.
+
 ### W2 — `Node::SharedPtr` is a freestanding `Handle<Node>`
 
 - `rclcpp::Node::SharedPtr` / `ConstSharedPtr` alias `nros::Handle<Node>` on
@@ -99,6 +118,10 @@ Consumers: the port templates under `examples/templates/`
     `Node::SharedPtr`.
   - The api-parity rows move from hosted to freestanding.
   - RFC-0096 D5 item 4 needs no amendment.
+
+**Status: done 2026-10-07** (#1772). One consequence became RFC-0096 D5 item
+5: `Node::SharedPtr x = std::make_shared<MyNode>(…)` is a compile error, because
+the handle cannot own a temporary; `auto` keeps the owner.
 
 ### W3 — the port templates run on an RTOS
 

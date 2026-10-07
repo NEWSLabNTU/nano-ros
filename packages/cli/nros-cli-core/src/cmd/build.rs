@@ -3894,7 +3894,7 @@ fn check_declared_depends(
     // its `<depend>rclcpp</depend>` is satisfied by this builder exactly as
     // `ament_cmake` is — and asking an ambient ROS refused it on the ROS-less
     // tier-2 runner (the `shadowing` compile-check fixture).
-    self_buildtools.extend(pr::compat_provided_packages(nano_ros_root));
+    self_buildtools.extend(pr::nano_ros_provided_packages(nano_ros_root));
 
     let mut unresolved: Vec<pr::Unresolved> = Vec::new();
     // phase-422 W8 — a dep that RESOLVES but names infrastructure. `role` says

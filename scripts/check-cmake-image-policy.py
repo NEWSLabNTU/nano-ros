@@ -73,8 +73,8 @@ EXEMPT = {
     # FATAL against an entry that legitimately chose a different ending — the
     # applier treats a second, different policy as a contradiction because the
     # staticlib is shared. The images this shim serves apply it themselves.
-    "cmake/compat/NrosRclcppCompat.cmake": "alias layer, included by every consumer",
-    "cmake/compat/stubs/Findrclcpp.cmake": "find-module stub for the alias layer",
+    "cmake/NanoRosAmentSurface.cmake": "alias layer, included by every consumer",
+    "cmake/find/Findrclcpp.cmake": "find module for the alias layer",
     # The package config: it is how a consumer REACHES the verbs, not an image
     # path of its own.
     "nano_rosConfig.cmake": "package config, not an image path",

@@ -74,7 +74,7 @@ for f in "${candidates[@]}"; do
     # Infrastructure that DEFINES the umbrella or the verbs is not an image path.
     case "$f" in
         CMakeLists.txt|nano_rosConfig.cmake|cmake/NanoRos*.cmake) continue ;;
-        cmake/compat/*) continue ;;   # rclcpp shim: builds no nros image
+        cmake/find/*) continue ;;     # find modules: build no nros image
         examples/templates/*) continue ;;  # copy-out templates, not built here
         packages/testing/*/fixtures/*) continue ;;  # compile-only smoke, never links
     esac

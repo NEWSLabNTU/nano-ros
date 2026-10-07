@@ -10,7 +10,7 @@ A workspace `src/std_msgs/` (carrying a `Marker.msg` upstream ROS 2's
 under `/opt/ros/<distro>/share/std_msgs/`. The consumer in
 `src/consumer/` calls plain `find_package(std_msgs REQUIRED)` and
 references `std_msgs::msg::Marker`. The layered resolver
-`cmake/compat/stubs/_NrosFindRosMsgPackage.cmake` walks:
+`cmake/find/_NrosFindRosMsgPackage.cmake` walks:
 
 1. **`NROS_INTERFACE_SEARCH_PATH`** — set to `${CMAKE_SOURCE_DIR}/src`
    by the umbrella `CMakeLists.txt`, so the workspace shadow wins.
@@ -73,7 +73,7 @@ fixture is the smoke proof for the Layer 1 > Layer 2 case.
 
 * Phase doc — `docs/roadmap/phase-210-ros-convention-codegen.md`
   §210.F.4.
-* Layered resolver — `cmake/compat/stubs/_NrosFindRosMsgPackage.cmake`.
+* Layered resolver — `cmake/find/_NrosFindRosMsgPackage.cmake`.
 * Bulk codegen orchestrator — `cmake/NanoRosGenerateInterfaces.cmake`'s
   `nros_workspace_interfaces()` (handles intra-workspace shadowing).
 * Book — `book/src/getting-started/your-own-msg-package.md` §Shadowing

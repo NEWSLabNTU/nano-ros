@@ -10,7 +10,7 @@
 //
 // Vendoring the real upstream source is still a follow-up (needs an Autoware
 // checkout + the `autoware_*` msg codegen path); this is the in-tree
-// synthetic that exercises the same compat surface.
+// synthetic that exercises the same ported-node surface.
 
 #include <chrono>
 #include <memory>

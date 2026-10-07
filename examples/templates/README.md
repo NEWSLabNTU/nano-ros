@@ -35,14 +35,15 @@ For the promoted Node + Bringup + Entry workflow examples, use
 
 - `cpp-port-minimal-publisher/` — Phase 209.G iter 2: the upstream
   ROS 2 "minimal publisher" tutorial C++ node vendored **unmodified**,
-  building against nano-ros via the Phase 209.A–D rclcpp-compat
-  surface with only three build-glue lines changed.
+  building against nano-ros's own rclcpp / ament CMake surface with
+  only three build-glue lines changed.
 
-- `rclcpp-compat-smoke/` — integration test for the Phase 209
-  MVP-quartet (`rclcpp_compat.hpp` + `NrosRclcppCompat.cmake` +
-  `rclcpp_components_compat.hpp` + `nros-diagnostic-updater`): a
-  stock `rclcpp::Node` subclass with `diagnostic_updater::Updater`
-  built against nano-ros with one glue line per layer.
+- `rclcpp-compat-smoke/` — integration test for the ported-node
+  path (`<rclcpp/rclcpp.hpp>` + `cmake/NanoRosAmentSurface.cmake` +
+  `<rclcpp_components/register_node_macro.hpp>` +
+  `packages/api/nros-diagnostic-updater`): a stock `rclcpp::Node`
+  subclass with `diagnostic_updater::Updater` built against nano-ros
+  with one glue line per layer.
 
 - `topic-state-monitor-port/` — Phase 209.G first iteration: a
   synthetic in-tree port modeled on Autoware's `topic_state_monitor`,

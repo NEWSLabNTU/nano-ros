@@ -86,7 +86,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/nano_ros_use_board.cmake)
 # The nros repo root (parent of this zephyr/ directory).
 # Phase 210.E.3.c — promoted to CACHE so consumer application's
 # CMakeLists.txt can reference it (e.g.
-# `include("${NROS_REPO_DIR}/cmake/compat/NrosRclcppCompat.cmake")`
+# `include("${NROS_REPO_DIR}/cmake/NanoRosAmentSurface.cmake")`
 # for the Phase 210 find_package shape). Without CACHE the var only
 # lives in this directory's scope and the consumer sees an empty value.
 #

@@ -12,8 +12,8 @@
 #      phase-287 W1 shipped as `nano_ros_bootstrap()`, now a config internal),
 #      publishing NanoRos::NanoRos / NanoRos::NanoRosCpp and enabling CXX iff the
 #      resolved RMW needs it;
-#   2. prepends the find-package stubs so `find_package(<msg_pkg>)` resolves to
-#      nano-ros codegen (RFC-0048 §2) and defines the ament shims
+#   2. prepends the find modules (`cmake/find/`) so `find_package(<msg_pkg>)` resolves to
+#      nano-ros codegen (RFC-0048 §2) and defines the ament verbs
 #      (`ament_target_dependencies`, `ament_package`, …);
 #   3. defines the two role verbs `nano_ros_add_executable` / `nano_ros_add_node`
 #      (RFC-0048 §3) and `nano_ros_generate_interfaces` (§5).
@@ -47,13 +47,13 @@ if(DEFINED ZEPHYR_BASE AND TARGET zephyr_interface)
     set(NROS_DEPLOY "${NANO_ROS_EXPORT_DEPLOY}")
     set(NROS_BOARD  "${NANO_ROS_EXPORT_BOARD}")
     set(NROS_FIND_PACKAGE_VALIDATE_ONLY TRUE)
-    # find_package(<msg_pkg>) validate-stubs, WITHOUT the full compat module
-    # (NrosRclcppCompat asserts NanoRos::NanoRosCpp, which a C-only Zephyr
+    # find_package(<msg_pkg>) validate modules, WITHOUT the full ament surface
+    # (NanoRosAmentSurface asserts NanoRos::NanoRosCpp, which a C-only Zephyr
     # image doesn't define).
-    if(NOT "${NANO_ROS_ROOT}/cmake/compat/stubs" IN_LIST CMAKE_MODULE_PATH)
-        list(PREPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake/compat/stubs")
+    if(NOT "${NANO_ROS_ROOT}/cmake/find" IN_LIST CMAKE_MODULE_PATH)
+        list(PREPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake/find")
     endif()
-    include("${NANO_ROS_ROOT}/cmake/compat/stubs/_NrosFindRosMsgPackage.cmake")
+    include("${NANO_ROS_ROOT}/cmake/find/_NrosFindRosMsgPackage.cmake")
     include("${NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
     # NanoRosEntry too: a Zephyr workspace-entry app uses
     # `nano_ros_add_executable(... LAUNCH ...)`, whose body calls
@@ -169,11 +169,11 @@ endif()
 include("${NANO_ROS_ROOT}/cmake/NanoRosBootstrap.cmake")
 _nros_bootstrap(ROOT "${NANO_ROS_ROOT}")
 
-# --- 2. find-package stubs + ament shims -------------------------------------
-# NrosRclcppCompat prepends `cmake/compat/stubs/` to CMAKE_MODULE_PATH so a stock
+# --- 2. find modules + ament verbs -------------------------------------------
+# NanoRosAmentSurface prepends `cmake/find/` to CMAKE_MODULE_PATH so a stock
 # `find_package(std_msgs REQUIRED)` line routes into nano-ros codegen, and defines
-# the `ament_target_dependencies` / `ament_package` shims the ament shape uses.
-include("${NANO_ROS_ROOT}/cmake/compat/NrosRclcppCompat.cmake")
+# the `ament_target_dependencies` / `ament_package` verbs the ament shape uses.
+include("${NANO_ROS_ROOT}/cmake/NanoRosAmentSurface.cmake")
 
 # --- 3. role verbs + interface generation ------------------------------------
 include("${NANO_ROS_ROOT}/cmake/NanoRosVerbs.cmake")

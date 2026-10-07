@@ -1056,8 +1056,7 @@ cxx_syntax_check() {
     # Prepend it so it resolves; unique location, so no shadowing risk.
     inc+=(-I "$repo_root/packages/platform/nros-platform-api/include"
           -I "$repo_root/packages/api/nros-cpp/include"
-          -I "$repo_root/packages/api/nros-c/include"
-          -I "$repo_root/cmake/compat/include")
+          -I "$repo_root/packages/api/nros-c/include")
     # Best-effort: a snippet that doesn't compile (pre-existing API drift or a
     # missing generated header) does NOT fail build-test-fixtures — it just
     # leaves no `.compile-ok`, so the consuming test reports the gap per tier
@@ -1072,7 +1071,7 @@ cxx_syntax_check() {
     # phase-363 W4 — `-MD -MF` so the compiler records which headers it actually
     # read. Without it these rows had NO measured closure: their signature was
     # the snippet plus two hand-named include TREES, so a header reached through
-    # a third path (nros-platform-api, the cmake compat shim, or a generated
+    # a third path (nros-platform-api, or a generated
     # config header under `target/`) was invisible. `-MD` composes with
     # `-fsyntax-only` — no object is produced, the dep list still is.
     # phase-438 W2 — the std surface is REQUESTED now, never discovered from the
@@ -1081,9 +1080,9 @@ cxx_syntax_check() {
     # A RULE, not a list, because a list drifts: `platform_hdr_*` snippets exist
     # to prove `<nros/platform.h>` type-checks on a FREESTANDING target, and
     # handing them the std surface would weaken exactly what they measure. Every
-    # other snippet here reaches `<rclcpp/rclcpp.hpp>` through
-    # `cmake/compat/include` — the ported flavour — and gets the flag, matching
-    # what `cmake/compat/NrosRclcppCompat.cmake` now sets for a real consumer.
+    # other snippet here reaches `<rclcpp/rclcpp.hpp>` — the ported flavour —
+    # and gets the flag, matching what `cmake/NanoRosAmentSurface.cmake` sets
+    # for a real consumer.
     #
     # Measured need: `rclcpp_node_options` (rclcpp::NodeOptions) and
     # `spin_until_future_complete` (rclcpp::Node) fail without it;

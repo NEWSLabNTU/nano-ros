@@ -56,7 +56,7 @@ Experienced ROS 2 developer porting existing nodes to an MCU:
    — what stays familiar (package.xml, launch XML, `find_package`)
    and what changes (no install prefix, compile-time RMW).
 2. **[Porting a ROS 2 C++ node](../getting-started/porting-a-cpp-node.md)**
-   — the rclcpp-compat shim and its limits.
+   — what builds unchanged, and its limits.
 3. **[C / C++ multi-node workspaces](../getting-started/workspace-cpp.md)**
    — the colcon-shaped workspace flow.
 4. **[ROS 2 Interoperability](../getting-started/ros2-interop.md)** —

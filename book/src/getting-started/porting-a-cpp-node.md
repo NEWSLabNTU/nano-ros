@@ -3,12 +3,12 @@
 Goal: take a normal ROS 2 C++ node (one that compiles + runs under
 `colcon build` against `ros-humble-*`) and run it under nano-ros — without
 rewriting the source. The `rclcpp::` names are declared by nano-ros's own C++
-headers — `#include <rclcpp/rclcpp.hpp>` resolves through
-`cmake/compat/include/rclcpp/rclcpp.hpp` straight to `<nros/nros.hpp>`, with no
-compat header in between (phase-417 stage 6 deleted `nros/rclcpp_compat.hpp`).
-What remains of the compat layer is build glue —
-`cmake/compat/NrosRclcppCompat.cmake` plus `nros-diagnostic-updater` — so the
-only delta is **build-script glue**.
+headers — `<rclcpp/rclcpp.hpp>` is an nros-cpp header that includes
+`<nros/nros.hpp>`, and there is no compat layer between them (RFC-0096 D4). The
+CMake side is part of nano-ros's own package: `cmake/NanoRosAmentSurface.cmake`
+defines the `ament_*` verbs, `cmake/find/` holds the `Find<pkg>.cmake` modules,
+and `diagnostic_updater` is `packages/api/nros-diagnostic-updater`. So the only
+delta is **build-script glue**.
 
 The canonical proof lives at
 [`examples/templates/cpp-port-minimal-publisher/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/cpp-port-minimal-publisher) —
@@ -23,10 +23,11 @@ in `std::shared_ptr` and `std::string`, and nano-ros compiles that surface only
 when a build **asks** for it by defining `NROS_CPP_STD`. It is never inferred
 from what your compiler happens to have on its include path.
 
-**`cmake/compat/NrosRclcppCompat.cmake` sets it for you**, on every target it
-applies the compat shim to, so a project following the two layers of glue below
+**nano-ros's ament surface sets it for you**: every target created through
+`ament_auto_add_*` / `rclcpp_components_register_node`, and every target linking
+`rclcpp::rclcpp`, gets it. A project following the two layers of glue below
 needs nothing extra. You type it yourself only when you build a ported
-translation unit *outside* the compat path:
+translation unit some other way:
 
 ```cmake
 target_compile_definitions(my_ported_node PRIVATE NROS_CPP_STD=1)
@@ -69,13 +70,17 @@ ament_target_dependencies(my_node rclcpp std_msgs)
 ament_package()
 ```
 
-`find_package(rclcpp)` resolves through the rclcpp Find-stub (which puts
-`cmake/compat/include/` on the include path so `<rclcpp/rclcpp.hpp>` lands on
-nano-ros's headers, and force-includes `nros/rclcpp_components_compat.hpp` for
-the components macros); `find_package(std_msgs)`
-resolves through the smart Find-stub (it walks
-`NROS_INTERFACE_SEARCH_PATH > AMENT_PREFIX_PATH > bundled`); the
-`ament_target_dependencies` compat shim wires both link targets.
+`find_package(rclcpp)` resolves through nano-ros's `Findrclcpp.cmake`, which
+defines `rclcpp::rclcpp` over the nros-cpp runtime — and with it the include
+path on which `<rclcpp/rclcpp.hpp>` and
+`<rclcpp_components/register_node_macro.hpp>` are nano-ros's own headers;
+`find_package(std_msgs)` resolves through the message-package resolver (it
+walks `NROS_INTERFACE_SEARCH_PATH > AMENT_PREFIX_PATH > bundled`); nano-ros's
+`ament_target_dependencies` wires both link targets.
+
+These are find MODULES rather than `<pkg>Config.cmake` files on purpose:
+`find_package()` tries module mode first, so nano-ros's `rclcpp` wins over an
+installed ROS 2 even when `/opt/ros/<distro>/setup.bash` has been sourced.
 
 ### Workspace umbrella CMakeLists.txt — **one nano-ros include**
 
@@ -93,13 +98,13 @@ set(NROS_RMW "zenoh" CACHE STRING "Active RMW.")
 set(NANO_ROS_RMW "${NROS_RMW}")
 add_subdirectory("/path/to/nano-ros" nano_ros)
 
-# 2) Point the smart Find-stub at this workspace's src/ (must precede the
-#    NrosRclcppCompat include so workspace-pkg Find<pkg>.cmake auto-emit
-#    picks it up).
+# 2) Point the message-package resolver at this workspace's src/ (must
+#    precede the ament-surface include so workspace-pkg Find<pkg>.cmake
+#    auto-emit picks it up).
 set(NROS_INTERFACE_SEARCH_PATH "${CMAKE_SOURCE_DIR}/src")
 
-# 3) Drop-in source-compat surface.
-include("/path/to/nano-ros/cmake/compat/NrosRclcppCompat.cmake")
+# 3) nano-ros's ament / rclcpp surface.
+include("/path/to/nano-ros/cmake/NanoRosAmentSurface.cmake")
 
 # 4) Bulk-build every workspace msg pkg in topo order (one line instead of
 #    N add_subdirectory(src/<pkg>) lines).
@@ -134,7 +139,7 @@ discovery. Existing in-tree examples will migrate as part of Phase
 
 ## What "just works" without source edits
 
-The compat surface covers the patterns a typical ROS 2 C++ node uses:
+nano-ros covers the patterns a typical ROS 2 C++ node uses:
 
 | rclcpp surface | nano-ros mapping | Notes |
 |---|---|---|
@@ -149,10 +154,10 @@ The compat surface covers the patterns a typical ROS 2 C++ node uses:
 | `get_logger().get_child("sub")` | a real child logger, `<parent>.sub` (RFC-0102) | Its level, when unset, follows the nearest ancestor's, so `set_level` on the node logger reaches it. A full name over 48 bytes or a full runtime-logger arena emits through the PARENT and `set_level` on it is refused — never a silent move of the parent's threshold. Iron/Jazzy images publish children on `/rosout`; Humble ones, as upstream, do not. |
 | `executor.spin_once() / client->wait_for_service() / action_client->wait_for_action_server()` | **the budget is required** | Upstream defaults all three to "block forever", which nano-ros has no form of; the no-argument call is a compile error naming the alternative rather than a silently substituted 10 ms / 5 s budget. Write `spin_once(10)`, `wait_for_service(10000)`. |
 | `rclcpp::QoS / KeepLast(n) / SystemDefaultsQoS()` | subclass of `nros::QoS` with the `(depth)` ctor | Chainable setters inherited. |
-| `diagnostic_updater::Updater` + `DiagnosticStatusWrapper` | `nros-diagnostic-updater` shim | Publishes `/diagnostics`. |
+| `diagnostic_updater::Updater` + `DiagnosticStatusWrapper` | `packages/api/nros-diagnostic-updater` | Publishes `/diagnostics`. |
 | `rclcpp_action::Server<A> / Client<A>` | ours, under upstream's names (`nros::ActionServer/Client<A>` are aliases for them) | Same entities, smaller shapes: no goal handles and no futures. See [Actions](#actions-no-goal-handles-no-futures) below. |
 | `RCLCPP_COMPONENTS_REGISTER_NODE(class)` | no-op macro + cmake-side `rclcpp_components_register_node()` emits a thin `int main()` per registration | Single-binary embedded. |
-| `find_package(ament_cmake_auto / rclcpp / rclcpp_components / diagnostic_updater / std_msgs / …)` | Find-stubs at `cmake/compat/stubs/` | ~24 of the most-cited ROS 2 packages stubbed; add your own under `cmake/compat/stubs/Find<pkg>.cmake` for more. |
+| `find_package(ament_cmake_auto / rclcpp / rclcpp_components / diagnostic_updater / std_msgs / …)` | find modules at `cmake/find/` | ~28 of the most-cited ROS 2 packages; a message package not among them is found by the resolver from `NROS_INTERFACE_SEARCH_PATH` / `AMENT_PREFIX_PATH`. |
 
 ## Actions: no goal handles, no futures
 
@@ -295,7 +300,7 @@ tracked as ROS-convention codegen work.
 
 ## What's out of scope (will need code adapt or a follow-up phase)
 
-- **`rclcpp_lifecycle::LifecycleNode`** — the compat shim does not map it.
+- **`rclcpp_lifecycle::LifecycleNode`** — not mapped yet (phase-482 W4).
   But nano-ros ships its own REP-2002 lifecycle surface (`nros/lifecycle.h`
   in C, `lifecycle-services` feature, state machine + lifecycle services —
   see the [C API reference](../reference/c-api.md) and
@@ -318,9 +323,9 @@ tracked as ROS-convention codegen work.
 Known open follow-ups: yaml-loaded parameter baking, `LifecycleNode`
 compat, and the in-tree migration of legacy
 `nros_generate_interfaces(<pkg>)` call sites. If your port surfaces a
-*new* gap not covered by the compat header, file an issue — a fix
-lands either tree-side (in `cmake/compat/` or
-`packages/api/nros-cpp/`) or as a codegen change.
+*new* gap, file an issue — a fix lands either tree-side (in
+`packages/api/nros-cpp/`, `cmake/NanoRosAmentSurface.cmake` or `cmake/find/`)
+or as a codegen change.
 
 In-tree regression fixtures:
 

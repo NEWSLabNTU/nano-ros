@@ -375,7 +375,7 @@ function(nano_ros_workspace)
 
     _nros_import_once("${_nros_root}")
 
-    # phase-445 W5 — the rclcpp compat surface, at WORKSPACE scope, before any
+    # phase-445 W5 — the ament / rclcpp surface, at WORKSPACE scope, before any
     # SUBDIRS package is added.
     #
     # A plain `find_package(nano_ros)` in a package includes this module, which
@@ -394,7 +394,7 @@ function(nano_ros_workspace)
     # function, so the SUBDIRS added below inherit its `CMAKE_MODULE_PATH`. Its
     # include guard is inherited too, so a package's own `find_package(nano_ros)`
     # re-include is the no-op it already was on a second include.
-    include("${_nros_root}/cmake/compat/NrosRclcppCompat.cmake")
+    include("${_nros_root}/cmake/NanoRosAmentSurface.cmake")
 
     # Optional: workspace metadata for `nros plan` consumption. SYSTEM
     # arg threads through; if absent we skip — workspaces without a

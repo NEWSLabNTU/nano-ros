@@ -6,7 +6,7 @@ builds under both:
 * a nano-ros build — `rosidl_generate_interfaces(...)` is intercepted by
   nano-ros's wrapper and routed through nano-ros codegen. **No ROS 2
   install needed** — even the `rclcpp`-shaped consumer below compiles
-  against nano-ros's source-compat layer.
+  against nano-ros's own `rclcpp` CMake package.
 * `colcon build` — upstream `rosidl_default_generators` produces the
   upstream-ROS bindings (this half, and only this half, needs a ROS 2
   install; it is the optional cross-build proof at the end).
@@ -163,12 +163,12 @@ set(NROS_RMW "zenoh" CACHE STRING "Active RMW.")
 set(NANO_ROS_RMW "${NROS_RMW}")
 add_subdirectory(/path/to/nano-ros nano_ros)
 
-# Point the smart Find-stub at this workspace (must precede the compat
-# include so the workspace Find<pkg>.cmake auto-emit picks it up).
+# Point the message-package resolver at this workspace (must precede the
+# ament-surface include so the workspace Find<pkg>.cmake auto-emit picks it up).
 set(NROS_INTERFACE_SEARCH_PATH "${CMAKE_SOURCE_DIR}/src")
 
-# Pull the rclcpp source-compat layer (find_package(rclcpp) etc.).
-include(/path/to/nano-ros/cmake/compat/NrosRclcppCompat.cmake)
+# nano-ros's ament / rclcpp surface (find_package(rclcpp), ament_* verbs).
+include(/path/to/nano-ros/cmake/NanoRosAmentSurface.cmake)
 
 # Bulk-build every workspace msg pkg in topo order. One line, no
 # add_subdirectory(src/<pkg>) per pkg.
@@ -236,8 +236,8 @@ When two layers carry the same package name (e.g. a workspace
 layer wins** — silently and deterministically. Concretely:
 
 1. **`NROS_INTERFACE_SEARCH_PATH` > `AMENT_PREFIX_PATH` > bundled.**
-   The smart Find-stub
-   (`cmake/compat/stubs/_NrosFindRosMsgPackage.cmake`) walks the
+   The message-package resolver
+   (`cmake/find/_NrosFindRosMsgPackage.cmake`) walks the
    three layers in order; the first hit wins. Lower layers are
    skipped entirely.
 
