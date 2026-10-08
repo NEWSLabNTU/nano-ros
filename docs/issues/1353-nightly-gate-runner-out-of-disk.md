@@ -2237,3 +2237,34 @@ by ~17 G and `build/` by ~11 G within the step. That changes what would fix
 this. Reclaiming more before the step, or periodic resets, cannot work. The
 fix has to bound what the compile tier writes, or move it to a disk that holds
 ~40 G of new artefacts.
+
+## `live-peer regression` dies in its fixture build, with ~106 G free at the start (2026-10-08)
+
+Scheduled run **37726888413** (04:18), job **113146991169**, `rows whose board
+IS this runner`. It ran on a GitHub-hosted `ubuntu-22.04` runner (`GitHub
+Actions 1000091984`). The step `Build the fixtures those rows resolve` ran
+04:29:44 → 06:01:21. Its log stops mid-compile at 05:49:52, inside the
+`nros-cpp` cargo build, so the last ~12 min are lost. The annotation has the
+same runner-death shape as the `gate` arm:
+
+```
+Unhandled exception. System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20261008-041854-utc.log'
+```
+
+The step before it, `scripts/ci/reclaim-disk.sh "before the fixture build"`,
+reported `freed 31017 MB; 111085580 KB free` (**~106 G**) at 04:25:52. So this
+lane's fixture build wrote more than ~106 G in ~90 min. That is well over the
+~28 G the `gate` arm's `just check build` grows by. The two lanes are
+different consumers, and a fix to the compile tier will not reach this one.
+
+This is the first night this job got as far as its fixture build. On the five
+nights before (10-03 … 10-07) it failed later, at `Run the cells with a
+recorded PASS`, which is issue 1666's missing `cargo-nextest`. #1774's
+re-source moved it past that. So this lane has not produced a verdict all week,
+and tonight's red is a NEW cause behind the old one, not a recurrence of it.
+
+Not established: which fixture family took the space. The log is cut before
+the end, and the job records no `du`. The next step for this lane is the
+`du` report that step 1 gave the `gate` arm, written before the step and
+after a failure (`if: always()`).
