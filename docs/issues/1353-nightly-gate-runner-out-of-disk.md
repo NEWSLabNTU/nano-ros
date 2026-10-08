@@ -2207,3 +2207,33 @@ Not new: the outcome, the step, the annotation. New: the reclaim step is
 measured on two nights and buys ~6.8 G, which is less than the ~19.5 G the
 step consumes, so it cannot close this on its own. The nightly-to-nightly
 drift in arrival headroom (25 → 15 → 13 G) continues.
+
+## The scheduled `gate` arm, eighth night — after the container restart, with 32 G free on arrival (2026-10-08)
+
+Scheduled run **37716727515** (job 113114834253) ran on the restarted runner
+container. The step and the outcome are the same as before: `just check
+build` (02:57:45 → 03:51:06, 53 min) ended at **100 %, 256 K free**. The job log
+is `BlobNotFound`, and the annotation reads:
+
+```
+Unhandled exception. System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/cached/2.337.0/_diag/Worker_20261008-021244-utc.log'
+```
+
+| | before (02:56) | after reclaim | after (03:51) |
+| --- | --- | --- | --- |
+| free | **32 G** (79 %) | `freed 6865 MB; 40068264 KB free` (~38 G) | **256 K** (100 %) |
+| `target/` | 1.2 G | | **18 G** |
+| `build/` | 4.7 G | (`metadata-probe` reclaimed) | 13 G |
+| `packages/cli/target` | **15 G** | | 16 G |
+| `examples/` | 21 G | | 21 G |
+
+The restart reset the growth trend this issue had been tracking.
+`packages/cli/target` arrived at 15 G against 35 G on 10-07, and arrival
+headroom went from 13 G to 32 G. **The step still used all ~38 G.** So the night
+does not fail because of accumulation from previous nights. One `just check
+build` writes more than this disk holds even from a fresh start: `target/` grows
+by ~17 G and `build/` by ~11 G within the step. That changes what would fix
+this. Reclaiming more before the step, or periodic resets, cannot work. The
+fix has to bound what the compile tier writes, or move it to a disk that holds
+~40 G of new artefacts.
