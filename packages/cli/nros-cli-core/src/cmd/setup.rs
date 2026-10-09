@@ -1265,7 +1265,7 @@ pub(crate) const DEFAULT_INDEX_URL: &str =
 /// is exactly what this is: a file pulled off the network and kept so the next
 /// run need not pull it again. Derived from the store ROOT the caller passes —
 /// never `~/.nros` and never a literal — because the root answers to
-/// `$NROS_STORE`/`$NROS_HOME` and a second spelling here is how the two come to
+/// `$NROS_HOME` and a second spelling here is how the two come to
 /// disagree.
 pub(crate) fn index_cache_path(store: &Path) -> PathBuf {
     store.join("fetch").join(INDEX_FILE)
@@ -1291,7 +1291,7 @@ pub(crate) enum IndexOrigin {
 /// environment. That split is what makes this testable without a test mutating
 /// process env — which in this crate is a cross-thread race, not a nuisance
 /// (`tests/store_reclaim.rs`: "No test here touches `$NROS_HOME`,
-/// `$NROS_STORE`").
+/// `$NROS_HOME`").
 ///
 /// Order, and why each rung is where it is:
 ///
@@ -3492,7 +3492,7 @@ mod tests {
     // Every test below drives `index_from_store` with EXPLICIT parameters and a
     // `file://` URL. No process environment is touched (these run as threads —
     // `tests/store_reclaim.rs`: "No test here touches `$NROS_HOME`,
-    // `$NROS_STORE`"), and no test reaches the network: `curl` speaks `file://`,
+    // `$NROS_HOME`"), and no test reaches the network: `curl` speaks `file://`,
     // so the fetch under test is the REAL fetch, not a mock of one.
 
     /// A parseable index, distinguishable by the tool name it declares.

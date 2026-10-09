@@ -13,7 +13,7 @@
 //! "the code looks right": that an empty pin set refuses instead of permitting,
 //! and that the scan does not destroy the timestamps it reads.
 //!
-//! No test here touches `$NROS_HOME`, `$NROS_STORE` or the process working
+//! No test here touches `$NROS_HOME` or the process working
 //! directory. The store root is a `--root` argument and the pin search
 //! directory is a parameter, so these run in parallel with everything else and
 //! observe nothing global (issue 1101's hazard).

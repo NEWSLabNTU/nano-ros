@@ -8,7 +8,7 @@ THE RULE
 A Zephyr image gets the `nros` module from west's project list. A workspace
 provisioned before phase-449 W1 binds that list to whichever checkout ran
 `just zephyr setup`, and since phase-440 W4 the default workspace is
-`$NROS_STORE/workspaces/zephyr/<version>` — ONE directory shared by every
+`$NROS_HOME/workspaces/zephyr/<version>` — ONE directory shared by every
 checkout on the host. A build launched from checkout B therefore compiles
 checkout A's `zephyr/`, platform sources and public headers next to B's entry
 code, and nothing says so. Measured in the build dir issue 1379 was filed from:

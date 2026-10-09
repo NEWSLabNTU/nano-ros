@@ -14,7 +14,7 @@
 //! person who needed the answer was the one person refused it.
 //!
 //! Every knob here is passed as CHILD-process environment, so nothing in this
-//! test process is mutated and no other test can race it. `NROS_STORE` points
+//! test process is mutated and no other test can race it. `NROS_HOME` points
 //! at a tempdir (the report must never read the developer's real store) and
 //! `NROS_OFFLINE` keeps the RFC-0097 D5 index fetch off the network.
 
@@ -24,7 +24,7 @@ fn doctor_in(cwd: &Path, store: &Path) -> (Option<i32>, String) {
     let out = Command::new(env!("CARGO_BIN_EXE_nros"))
         .arg("doctor")
         .current_dir(cwd)
-        .env("NROS_STORE", store)
+        .env("NROS_HOME", store)
         .env("NROS_OFFLINE", "1")
         // The launcher must not dispatch out of this test, and the workspace
         // walk must not find one above the tempdir.
@@ -59,7 +59,7 @@ fn doctor_outside_a_workspace_reports_the_install_and_succeeds() {
     }
     assert!(
         text.contains(&store.display().to_string()),
-        "it must name the store it read — and that store is $NROS_STORE, never \
+        "it must name the store it read — and that store is $NROS_HOME, never \
          a hardcoded ~/.nros:\n{text}"
     );
 }

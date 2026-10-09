@@ -1460,7 +1460,7 @@ pub struct SourcePackage {
     /// `workspace` (the default) keeps the historical behaviour: a
     /// workspace-relative `dest`, which for `third-party/*` sits beside PINNED
     /// SUBMODULE SOURCE and is what phase-440 W3's ratchet exists to stop
-    /// growing. `store` puts it in `$NROS_STORE/sources/<name>/<version>`,
+    /// growing. `store` puts it in `$NROS_HOME/sources/<name>/<version>`,
     /// outside every checkout (D1, so no second checkout can own it) and keyed
     /// by version (D2, so two versions coexist and two checkouts share one).
     #[serde(default)]

@@ -412,7 +412,7 @@ function(nros_generate_interfaces target)
   # `check-codegen-tool-reconfigure`. It is still not enough, and the gap is the
   # same one 1360 measured on the Zephyr lane: the DEPENDS names the binary this
   # build dir resolved, so a build dir that outlives its checkout (a shared
-  # `NANO_ROS_GEN_CACHE_DIR`, a workspace under `$NROS_STORE`) can satisfy every
+  # `NANO_ROS_GEN_CACHE_DIR`, a workspace under `$NROS_HOME`) can satisfy every
   # mtime edge with a tool that emitted at a version this runtime now refuses,
   # and the failure lands as a `#error` in a museum header.
   #

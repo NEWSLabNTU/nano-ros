@@ -34,14 +34,14 @@
 #
 # ## The store arm, and why it is LAST
 #
-# RFC-0095 D4 puts `$NROS_STORE/workspaces/zephyr/<version>` above the
+# RFC-0095 D4 puts `$NROS_HOME/workspaces/zephyr/<version>` above the
 # checkout-relative arms last. W1 adds the arm at the BOTTOM so that with no
 # store populated — every host today — resolution is unchanged. W4 moves the
 # trees and inverts the order. The checkout-relative arm STAYS last forever
 # (RFC-0095 D4, phase-440 non-goals): a contributor patching a Zephyr module
 # points `$NROS_ZEPHYR_WORKSPACE` at their own tree.
 #
-# The store root is `${NROS_STORE:-${NROS_HOME:-$HOME/.nros}}` — never an
+# The store root is `nros_store_root` (`${NROS_HOME:-$HOME/.nros}`) — never an
 # absolute literal, and never asserted as one in a gate (RFC-0095 D2), because
 # a test naming an absolute path only passes on the machine it was written on.
 #
@@ -78,16 +78,15 @@ nros_zephyr_ws_version() {
     printf '%s\n' "${NROS_ZEPHYR_VERSION:-3.7}"
 }
 
-# The store root (RFC-0095 D2). Resolved through the variables, in the order
-# the tree already uses for `$NROS_HOME` — `${NROS_HOME:-$HOME/.nros}` appears
-# in `scripts/build/cargo.sh`, `scripts/ci/dep-chain-check.sh` and
-# `scripts/xrce-agent/build.sh` — with `NROS_STORE` layered on top as the name
-# RFC-0095 gives the same directory.
+# The store root (RFC-0095 D2) — `scripts/lib/store-root.sh`, the one shell
+# spelling (RFC-0103 D6: `$NROS_HOME`, else `$HOME/.nros`).
 nros_zephyr_ws_store_root() {
-    printf '%s\n' "${NROS_STORE:-${NROS_HOME:-$HOME/.nros}}"
+    # shellcheck source=scripts/lib/store-root.sh
+    . "$(dirname "${BASH_SOURCE[0]}")/store-root.sh"
+    nros_store_root
 }
 
-# `$NROS_STORE/workspaces/zephyr/<version>` — the arm W4 will promote.
+# `$NROS_HOME/workspaces/zephyr/<version>` — the arm W4 will promote.
 nros_zephyr_ws_store_dir() {
     local version="${1:-}"
     [ -n "$version" ] || version="$(nros_zephyr_ws_version)"

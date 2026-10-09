@@ -51,7 +51,7 @@ from pathlib import Path
 #      source, so PYTHONPATH is injected for that case.
 #
 # Rung 3 is DERIVED, not spelled (phase-440, RFC-0095 D1/D2). `[source.rosidl]`
-# now has `location = "store"`, so it lands in `$NROS_STORE/sources/rosidl/
+# now has `location = "store"`, so it lands in `$NROS_HOME/sources/rosidl/
 # <version>` — outside every checkout and keyed by version — and the path is a
 # function of the index rather than a literal here. A literal would be a second
 # spelling that goes stale the moment the index moves, which is the class

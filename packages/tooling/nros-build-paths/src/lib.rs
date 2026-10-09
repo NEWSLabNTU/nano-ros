@@ -718,6 +718,125 @@ version = \"not-this-one\"
     }
 }
 
+/// Where the nano-ros store is — RFC-0103 D6, phase-484 W1.
+///
+/// ONE variable names the store root: `$NROS_HOME`, else `$HOME/.nros`. Its
+/// categories (`sdk/`, `sources/`, `workspaces/`, `toolchains/`, `bin/`) are
+/// constructed under it, never named by a variable of their own. Two more
+/// names used to answer the same question in different orders — the CLI read
+/// `NROS_STORE` first, cmake and the riscv64 helpers read `NROS_SDK_STORE`
+/// (which meant `<root>/sdk`), and the latter ignored `NROS_HOME` entirely, so
+/// one host could resolve two stores (issue 1767). Both are RETIRED: a set one
+/// is refused with its replacement named, because silently ignoring it would
+/// build against a store the user did not choose.
+///
+/// The launcher (`nros_launcher::store_root`) delegates here; the shell twin is
+/// `scripts/lib/store-root.sh`, the cmake twin `nros_store_root()` in
+/// `cmake/NanoRosStoreRoot.cmake`. `check-retired-store-vars` keeps every other
+/// reader of the retired names out.
+pub mod store {
+    use std::path::PathBuf;
+
+    /// Retired store-root variables and the sentence that replaces each.
+    pub const RETIRED: &[(&str, &str)] = &[
+        ("NROS_STORE", "set NROS_HOME to the same directory"),
+        (
+            "NROS_SDK_STORE",
+            "set NROS_HOME to its PARENT (NROS_SDK_STORE named <store>/sdk)",
+        ),
+    ];
+
+    /// The refusal for a set retired variable, if any — for callers that
+    /// report an error instead of panicking (the CLI, the launcher).
+    #[must_use]
+    pub fn retired_in_env() -> Option<String> {
+        retired_in(|k| std::env::var_os(k).is_some())
+    }
+
+    fn retired_in(is_set: impl Fn(&str) -> bool) -> Option<String> {
+        let hits: Vec<String> = RETIRED
+            .iter()
+            .filter(|(k, _)| is_set(k))
+            .map(|(k, fix)| format!("  ${k} is retired: {fix}"))
+            .collect();
+        (!hits.is_empty()).then(|| {
+            format!(
+                "the nano-ros store root has one variable, NROS_HOME (RFC-0103 D6):\n{}",
+                hits.join("\n")
+            )
+        })
+    }
+
+    /// The store root, refusing a retired variable. For callers that can
+    /// report an error.
+    pub fn try_root() -> Result<PathBuf, String> {
+        if let Some(e) = retired_in_env() {
+            return Err(e);
+        }
+        Ok(root_unchecked())
+    }
+
+    /// The store root WITHOUT the retired-variable check — for a library
+    /// whose entry point has already refused (the CLI checks once at
+    /// startup, not in every verb).
+    #[must_use]
+    pub fn root_unchecked() -> PathBuf {
+        root_from(
+            std::env::var_os("NROS_HOME").map(PathBuf::from),
+            std::env::var_os("HOME").map(PathBuf::from),
+        )
+    }
+
+    /// The store root. Panics on a retired variable — the right failure in a
+    /// build script, where a warning scrolls past.
+    #[must_use]
+    pub fn root() -> PathBuf {
+        try_root().unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// Which input answered [`root`], for a header line.
+    #[must_use]
+    pub fn root_origin() -> &'static str {
+        if std::env::var_os("NROS_HOME").is_some() {
+            "$NROS_HOME"
+        } else if std::env::var_os("HOME").is_some() {
+            "$HOME/.nros"
+        } else {
+            "./.nros (no $HOME)"
+        }
+    }
+
+    fn root_from(nros_home: Option<PathBuf>, home: Option<PathBuf>) -> PathBuf {
+        match (nros_home, home) {
+            (Some(h), _) => h,
+            (None, Some(h)) => h.join(".nros"),
+            (None, None) => PathBuf::from(".nros"),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn nros_home_wins_then_home() {
+            let h = |s: &str| Some(PathBuf::from(s));
+            assert_eq!(root_from(h("/s"), h("/u")), PathBuf::from("/s"));
+            assert_eq!(root_from(None, h("/u")), PathBuf::from("/u/.nros"));
+            assert_eq!(root_from(None, None), PathBuf::from(".nros"));
+        }
+
+        #[test]
+        fn a_retired_variable_is_refused_with_its_replacement() {
+            let e = retired_in(|k| k == "NROS_SDK_STORE").expect("refused");
+            assert!(e.contains("$NROS_SDK_STORE is retired"), "{e}");
+            assert!(e.contains("PARENT"), "{e}");
+            assert!(!e.contains("$NROS_STORE is"), "{e}");
+            assert!(retired_in(|_| false).is_none());
+        }
+    }
+}
+
 /// The riscv64 bare-metal toolchain, resolved rather than spelled — issue 0657.
 ///
 /// `[board.rv-virt-threadx]` provisions xPack's `riscv-none-elf-gcc`, and
@@ -742,11 +861,7 @@ pub mod riscv64 {
     ];
 
     fn sdk_store() -> PathBuf {
-        if let Ok(s) = std::env::var("NROS_SDK_STORE") {
-            return PathBuf::from(s);
-        }
-        let home = std::env::var("HOME").unwrap_or_default();
-        PathBuf::from(home).join(".nros/sdk")
+        crate::store::root().join("sdk")
     }
 
     /// The store's `riscv-none-elf-gcc` at the PINNED version, if provisioned.

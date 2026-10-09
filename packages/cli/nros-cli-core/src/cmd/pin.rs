@@ -70,7 +70,7 @@ pub struct Args {
     #[arg(long, value_name = "PATH")]
     pub dir: Option<PathBuf>,
 
-    /// Store root. Defaults to `$NROS_STORE`, else `$NROS_HOME`, else
+    /// Store root. Defaults to `$NROS_HOME`, else
     /// `~/.nros` — never an absolute literal (RFC-0095 D2).
     #[arg(long, value_name = "PATH")]
     pub root: Option<PathBuf>,

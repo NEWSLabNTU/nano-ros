@@ -106,7 +106,7 @@ fn report_legacy_unversioned_installs() {
 /// all.
 ///
 /// Every input is a PARAMETER, so this is testable against a constructed store
-/// without a test mutating `$NROS_HOME`/`$NROS_STORE` (which in this crate is a
+/// without a test mutating `$NROS_HOME` (which in this crate is a
 /// cross-thread race — `tests/store_reclaim.rs`).
 ///
 /// Exactly ONE thing here counts as a problem: **a pin naming a nano-ros this
@@ -451,9 +451,9 @@ fn check_license_gates(workspace: Option<&Path>, board: Option<&str>) -> Result<
 /// a missing FVP must not fail an unrelated `nros doctor` run.
 fn check_arm_fvp(version: &str) {
     const BIN: &str = "FVP_BaseR_AEMv8R";
-    let landing = std::env::var_os("HOME")
-        .map(|h| PathBuf::from(h).join(".nros/sdks/arm-fvp/current"))
-        .unwrap_or_default();
+    // Under the store root, so a `$NROS_HOME` store (a distrobox) is the one
+    // probed — the literal `$HOME/.nros` here ignored it (RFC-0103 D6).
+    let landing = crate::orchestration::store::root().join("sdks/arm-fvp/current");
 
     // 1. ARMFVP_BIN_PATH (Zephyr canonical).
     if let Some(v) = std::env::var_os("ARMFVP_BIN_PATH") {

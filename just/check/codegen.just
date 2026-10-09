@@ -95,7 +95,7 @@ codegen-stamp-inputs:
 # 2. A file that owns a generated interface tree must consult its EMITTED
 #    CODEGEN VERSION (`nros_codegen_version_stale()`, issue 1360). Rule 1's edge
 #    names the `nros` that build dir CACHED, and a persistent build dir — a
-#    provisioned Zephyr workspace under $NROS_STORE, outside every checkout —
+#    provisioned Zephyr workspace under $NROS_HOME, outside every checkout —
 #    keeps whichever checkout's binary configured it, forever. Three nights of
 #    tier 2 reached no cell: every mtime edge read current while the trees sat
 #    below `NROS_CODEGEN_VERSION_MIN`.

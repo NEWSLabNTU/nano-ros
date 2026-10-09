@@ -31,6 +31,8 @@ include_guard(GLOBAL)
 # find_program result is cached (`_NROS_CLI_RESOLVED`); a cached path that no
 # longer exists is dropped and re-detected.
 
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosStoreRoot.cmake")
+
 function(nros_resolve_cli _out)
     cmake_parse_arguments(_RC "OPTIONAL" "CONTEXT" "" ${ARGN})
     if(NOT _RC_CONTEXT)
@@ -51,10 +53,10 @@ function(nros_resolve_cli _out)
         message(STATUS "Cached nros CLI no longer exists: ${_NROS_CLI_RESOLVED}; re-detecting")
         unset(_NROS_CLI_RESOLVED CACHE)
     endif()
-    set(_paths "$ENV{HOME}/.nros/bin")
-    if(DEFINED ENV{NROS_HOME})
-        list(PREPEND _paths "$ENV{NROS_HOME}/bin")
-    endif()
+    # ONE store (RFC-0103 D6): with `$NROS_HOME` set, `~/.nros/bin` is a
+    # different store's front and is not searched.
+    nros_store_root(_nros_store)
+    set(_paths "${_nros_store}/bin")
     find_program(_NROS_CLI_RESOLVED NAMES nros PATHS ${_paths}
         DOC "nros CLI (shared resolver — issue #219)")
     if(_NROS_CLI_RESOLVED)

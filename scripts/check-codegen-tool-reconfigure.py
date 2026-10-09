@@ -15,7 +15,7 @@ emit") must also consult the tree's EMITTED CODEGEN VERSION
 Rule 1 keys freshness on the TOOL, and the tool it names is only the tool that
 build directory RESOLVED: `_NANO_ROS_CODEGEN_TOOL` / `_NROS_ZEPHYR_CODEGEN_TOOL`
 are `CACHE INTERNAL` and are dropped only when the path stops EXISTING. RFC-0095
-D4 then moved the Zephyr workspace to `$NROS_STORE/workspaces/zephyr/<version>`,
+D4 then moved the Zephyr workspace to `$NROS_HOME/workspaces/zephyr/<version>`,
 outside every checkout, so its build dirs outlive any one checkout — and on the
 self-hosted runner the checkout that configures them (`runner-bootstrap.sh`'s
 `~/src/nano-ros`) is not the one CI builds from. That binary is never rebuilt by
@@ -379,7 +379,7 @@ def main():
         print(
             "\nEvery mtime edge a codegen emitter has names the `nros` binary that\n"
             "build directory CACHED, and a persistent build dir — a provisioned Zephyr\n"
-            "workspace under $NROS_STORE, outside every checkout — keeps whichever\n"
+            "workspace under $NROS_HOME, outside every checkout — keeps whichever\n"
             "checkout's binary configured it. That binary is never rebuilt, so the edge\n"
             "reads current while the tree sits at a codegen version this runtime refuses,\n"
             "and the failure lands as an `#error` inside a museum header (issue 1360:\n"

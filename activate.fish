@@ -62,10 +62,16 @@ end
 # issue 1563 — the SDK store is CONSTRUCTED from the pin, never enumerated by
 # version (mirror of activate.sh; the pin reader is the one shell spelling,
 # scripts/lib/sdk-pin.sh, called through bash).
+# RFC-0103 D6 — one store-root variable, `$NROS_HOME` (mirror of
+# scripts/lib/store-root.sh). A retired one is reported, activation continues.
+if set -q NROS_STORE
+    echo "error: \$NROS_STORE is retired — set NROS_HOME to the same directory (RFC-0103 D6)" >&2
+end
+if set -q NROS_SDK_STORE
+    echo "error: \$NROS_SDK_STORE is retired — set NROS_HOME to its PARENT (it named <store>/sdk; RFC-0103 D6)" >&2
+end
 function _nros_sdk_store
-    if set -q NROS_SDK_STORE
-        echo $NROS_SDK_STORE
-    else if set -q NROS_HOME
+    if set -q NROS_HOME
         echo $NROS_HOME/sdk
     else
         echo $HOME/.nros/sdk

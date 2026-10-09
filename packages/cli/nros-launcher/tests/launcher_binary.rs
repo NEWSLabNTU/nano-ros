@@ -13,7 +13,7 @@
 //!   exists for, measured as bytes on disk rather than asserted in prose.
 //!
 //! Cheap by construction: no fixtures, no provisioning, no network. The store
-//! is a tempdir named by `$NROS_STORE`, and the toolchain is a shell script,
+//! is a tempdir named by `$NROS_HOME`, and the toolchain is a shell script,
 //! which is the right stand-in rather than a shortcut — what is under test is
 //! the handover, and a script can PROVE what it received in a way a second copy
 //! of a binary cannot.
@@ -75,8 +75,7 @@ fn run_in(launcher: &Path, cwd: &Path, store: &Path, args: &[&str], ci: Option<&
     let mut cmd = Command::new(launcher);
     cmd.args(args)
         .current_dir(cwd)
-        .env("NROS_STORE", store)
-        .env_remove("NROS_HOME")
+        .env("NROS_HOME", store)
         .env_remove("CI")
         .env_remove("GITHUB_ACTIONS")
         .env_remove("NROS_ALLOW_PIN_WRITE_IN_CI")
@@ -295,4 +294,48 @@ fn an_unpinned_project_in_ci_is_warned_about_through_the_real_binary() {
         "a pinned CI build must get no D11 warning at all:\n{}",
         pinned.all
     );
+}
+
+/// RFC-0103 D6 / phase-484 W1 — the store root has ONE variable. A retired one
+/// (`NROS_SDK_STORE` named `<store>/sdk`; `NROS_STORE` the root) is REFUSED with
+/// its replacement named, before anything resolves a store: honouring it would
+/// pick a store the other resolvers do not see, and ignoring it would build
+/// against one the user did not choose.
+#[test]
+fn a_retired_store_variable_is_refused_with_its_replacement_named() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = tmp.path().join("store");
+    let launcher = install_launcher(&store);
+    install_stub(&store, "0.6.0-nros1");
+    let proj = tmp.path().join("my-robot");
+    pin(&proj, "0.6.0-nros1");
+
+    for (var, fix) in [
+        ("NROS_SDK_STORE", "PARENT"),
+        ("NROS_STORE", "same directory"),
+    ] {
+        let out = Command::new(&launcher)
+            .arg("--version")
+            .current_dir(&proj)
+            .env("NROS_HOME", &store)
+            .env(var, store.join("sdk"))
+            .env_remove("CI")
+            .env_remove("GITHUB_ACTIONS")
+            .output()
+            .expect("failed to run the launcher");
+        let all = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(!out.status.success(), "${var} must be refused:\n{all}");
+        assert!(
+            all.contains(&format!("${var} is retired")) && all.contains(fix),
+            "the refusal must name ${var} and its replacement:\n{all}"
+        );
+        assert!(
+            !all.contains("STUB-TOOLCHAIN"),
+            "nothing may run before the refusal:\n{all}"
+        );
+    }
 }

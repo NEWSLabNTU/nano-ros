@@ -47,11 +47,10 @@ fn riscv64_gcc() -> String {
     // The store copy at the PINNED version only — constructed, never found by
     // listing the store (issue 1546). Newest-first let a sibling checkout's
     // newer install, in the store every checkout shares, shadow this tree's pin.
-    let store = std::env::var("NROS_SDK_STORE")
-        .unwrap_or_else(|_| format!("{}/.nros/sdk", std::env::var("HOME").unwrap_or_default()));
+    let store = crate::store_root().join("sdk");
     if let Some(pin) = crate::sdk_pin("riscv-none-elf-gcc") {
         let p = pin
-            .dir_under(Path::new(&store), "riscv-none-elf-gcc")
+            .dir_under(&store, "riscv-none-elf-gcc")
             .join("bin/riscv-none-elf-gcc");
         if p.is_file() {
             return p.to_string_lossy().into_owned();

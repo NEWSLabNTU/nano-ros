@@ -802,7 +802,7 @@ impl Drop for ZephyrProcess {
 /// now, and the in-checkout copy is the legacy arm a host provisioned earlier
 /// still resolves to:
 /// 1. `ZEPHYR_SDK_INSTALL_DIR` (the SDK's own variable, set by `west`/`setup.sh`)
-/// 2. `$NROS_STORE/sdk/<tool>/<pinned version>/<subdir>` — constructed from the
+/// 2. `$NROS_HOME/sdk/<tool>/<pinned version>/<subdir>` — constructed from the
 ///    `[tool.zephyr-sdk*]` pins, never globbed (issue 1546)
 /// 3. `<project_root>/scripts/zephyr/sdk/zephyr-sdk-*`
 ///
@@ -851,17 +851,13 @@ fn sdk_qemu_xilinx_aarch64() -> Option<String> {
     }
 
     // issue 1254 — the STORE arm, CONSTRUCTED from the pins (issue 1546).
-    // `$NROS_STORE/sdk/<tool>/<version>/<subdir>` for each Zephyr SDK this tree
+    // `$NROS_HOME/sdk/<tool>/<version>/<subdir>` for each Zephyr SDK this tree
     // pins — one per Zephyr line (`[tool.zephyr-sdk]`, `[tool.zephyr-sdk-1-0-1]`;
     // the line→tool table lives in `scripts/lib/zephyr-sdk.sh`, so this tries
     // both rather than restating it). It used to glob both levels and take the
     // newest, but the store is shared between checkouts, so "newest" could be
     // an SDK some other checkout pinned.
-    let store = std::env::var("NROS_STORE")
-        .or_else(|_| std::env::var("NROS_HOME"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".nros"))
-        .join("sdk");
+    let store = crate::store_root().join("sdk");
     for tool in ["zephyr-sdk", "zephyr-sdk-1-0-1"] {
         if let Some(found) = crate::sdk_pin(tool)
             .map(|pin| pin.dir_under(&store, tool))
@@ -876,7 +872,7 @@ fn sdk_qemu_xilinx_aarch64() -> Option<String> {
 
 /// The Zephyr workspace, from THE ladder — `scripts/lib/zephyr-workspace.sh
 /// resolve` (RFC-0095 D4): `$NROS_ZEPHYR_WORKSPACE`, then the store
-/// (`$NROS_STORE/workspaces/zephyr/<line>`, where `just zephyr setup` installs
+/// (`$NROS_HOME/workspaces/zephyr/<line>`, where `just zephyr setup` installs
 /// since phase-440 W4), then the checkout-relative trees.
 ///
 /// This was a third rung set of its own (`ZEPHYR_NANO_ROS`, an in-tree

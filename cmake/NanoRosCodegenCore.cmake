@@ -219,7 +219,7 @@ endfunction()
 #   * `_NANO_ROS_CODEGEN_TOOL` / `_NROS_ZEPHYR_CODEGEN_TOOL` are `CACHE INTERNAL`
 #     and only dropped when the path stops EXISTING, so a PERSISTENT build dir
 #     keeps whichever binary first configured it;
-#   * RFC-0095 D4 moved the Zephyr workspace to `$NROS_STORE/workspaces/zephyr/
+#   * RFC-0095 D4 moved the Zephyr workspace to `$NROS_HOME/workspaces/zephyr/
 #     <version>`, outside every checkout, so its build dirs outlive any one
 #     checkout — and on the self-hosted runner the one that configures them
 #     (`runner-bootstrap.sh`'s `~/src/nano-ros`) is NOT the one CI builds from
@@ -426,7 +426,7 @@ function(nros_codegen_version_assert_fresh _tool)
         "\n"
         "The tool above is not this runtime's emitter. That happens when a "
         "PERSISTENT build directory — a provisioned Zephyr workspace under "
-        "$NROS_STORE/workspaces/, which lives outside every checkout — was "
+        "$NROS_HOME/workspaces/, which lives outside every checkout — was "
         "configured by a DIFFERENT nano-ros checkout, whose `nros` it then "
         "cached and keeps using. Re-run the configure with this tree's binary "
         "— build it with ./scripts/bootstrap.sh (contributors: source "

@@ -60,7 +60,7 @@ export NROS_ACTION_MSGS_DIR="${NROS_ACTION_MSGS_DIR:-/opt/ros/humble/share/actio
 #
 # issue 1475 — the line is named, the PATH is not. This used to write the
 # legacy sibling tree down as a constant, and `just zephyr setup` has landed
-# workspaces in `$NROS_STORE/workspaces/zephyr/<version>` since phase-440 W4,
+# workspaces in `$NROS_HOME/workspaces/zephyr/<version>` since phase-440 W4,
 # so the check failed on a path it had guessed instead of on the copy-out it
 # exists to test. Ask the ONE resolver (RFC-0095 D4) for the 4.4 line: it keeps
 # the override, the store and the legacy sibling on one ladder, in that order.

@@ -35,6 +35,9 @@ path = "src/main.rs"
 # (RFC-0095 D8); see `src/main.rs`.
 [dependencies]
 eyre = "0.6"
+# RFC-0103 D6 — the store root has ONE Rust implementation; the launcher
+# delegates rather than keeping a second copy that could read another variable.
+nros-build-paths = { path = "../../tooling/nros-build-paths" }
 serde = { workspace = true }
 toml = { workspace = true }
 

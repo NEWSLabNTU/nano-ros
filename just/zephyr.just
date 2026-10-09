@@ -22,7 +22,7 @@ ZEPHYR_MANIFEST := if NROS_ZEPHYR_VERSION == "4.4" { "west-4.4.yml" } else { "we
 # code, so `just` CALLS the helper rather than restating it. What it walks:
 # `$NROS_ZEPHYR_WORKSPACE` (wins outright — it is the INSTALL target too, so it
 # must resolve before the tree exists), the checkout-relative trees for THIS
-# line, then `$NROS_STORE/workspaces/zephyr/<version>`. The store arm is LAST
+# line, then `$NROS_HOME/workspaces/zephyr/<version>`. The store arm is LAST
 # so W1 moves nothing; W4 inverts it. `check-zephyr-workspace-resolvers` refuses
 # a fourth spelling.
 #

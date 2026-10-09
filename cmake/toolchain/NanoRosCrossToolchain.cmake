@@ -52,8 +52,7 @@
 #      (`arm-none-eabi`) or an absolute one (`/opt/gcc/bin/arm-none-eabi`).
 #      This is the explicit knob; before issue 1117 the only such knob in the
 #      tree was `NROS_RISCV64_PREFIX`, undocumented outside its own file.
-#   2. The SDK store — `$NROS_SDK_STORE`, else `$NROS_HOME/sdk`, else
-#      `~/.nros/sdk` — at `<tool>/<pinned version>/bin/`, the version read from
+#   2. The SDK store — `$NROS_HOME/sdk`, else `~/.nros/sdk` (RFC-0103 D6) — at `<tool>/<pinned version>/bin/`, the version read from
 #      `nros-sdk-index.toml`. Filled by `nros setup --tool <tool>`. Any OTHER
 #      version in the store is never used; if only others are there, the
 #      configure says so, names them, and falls through to rung 3.
@@ -108,17 +107,12 @@
 set(NROS_CROSS_GCC_FLOOR_MAJOR 11)
 
 # ---------------------------------------------------------------------------
-# The SDK store root. `NROS_SDK_STORE` wins (nros-build-paths and
-# scripts/build/riscv64-toolchain.sh both honour it); `NROS_HOME` is what
-# activate.sh reads; `~/.nros` is the default both agree on.
+# The SDK store: `<store>/sdk`, the store root from `nros_store_root()` — the
+# one cmake spelling (RFC-0103 D6; `NROS_SDK_STORE` is retired).
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosStoreRoot.cmake")
 function(_nros_ct_store_root out_var)
-    if(DEFINED ENV{NROS_SDK_STORE})
-        set(${out_var} "$ENV{NROS_SDK_STORE}" PARENT_SCOPE)
-    elseif(DEFINED ENV{NROS_HOME})
-        set(${out_var} "$ENV{NROS_HOME}/sdk" PARENT_SCOPE)
-    else()
-        set(${out_var} "$ENV{HOME}/.nros/sdk" PARENT_SCOPE)
-    endif()
+    nros_store_root(_root)
+    set(${out_var} "${_root}/sdk" PARENT_SCOPE)
 endfunction()
 
 # The `[tool.<name>]` pin — `nros_sdk_pin()`, shared with every cmake consumer

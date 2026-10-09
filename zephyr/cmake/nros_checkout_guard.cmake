@@ -5,7 +5,7 @@
 # A Zephyr image takes its `nros` module from west's project list. A workspace
 # provisioned before phase-449 W1 binds that list to whichever checkout ran
 # `just zephyr setup` (a `nano-ros` symlink at the workspace root), and since
-# phase-440 W4 the default workspace is `$NROS_STORE/workspaces/zephyr/<v>` —
+# phase-440 W4 the default workspace is `$NROS_HOME/workspaces/zephyr/<v>` —
 # one directory shared by every checkout on the host. So a build launched from
 # checkout B compiles checkout A's `zephyr/` module, platform sources and
 # nros-c/nros-cpp headers, beside the entry code B generated. Measured, in the

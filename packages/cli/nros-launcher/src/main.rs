@@ -1,7 +1,7 @@
 //! `nros-launcher` — the binary users install, and the only one that outlives a
 //! toolchain (RFC-0097 D4).
 //!
-//! Installed as `$NROS_STORE/bin/nros`, so what a user types is `nros`. It
+//! Installed as `$NROS_HOME/bin/nros`, so what a user types is `nros`. It
 //! resolves the project's pin, ensures that toolchain, and `exec`s it. That is
 //! the whole program.
 //!
@@ -64,6 +64,11 @@ fn main() -> ExitCode {
         // fails — "which launcher is this?" is a question whose answer must not
         // depend on the store being in a good state.
         println!("nros-launcher {LAUNCHER_VERSION}");
+    }
+
+    if let Some(e) = store_root::retired_in_env() {
+        eprintln!("nros: {e}");
+        return ExitCode::FAILURE;
     }
 
     let ctx = launch::Context {
