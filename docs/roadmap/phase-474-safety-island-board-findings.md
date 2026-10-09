@@ -582,7 +582,7 @@ after arming (or allow one period of tolerance on the first window only).
 With I6-I8 in place the island's ring should read EMPTY after RUN apart
 from the silence verdict that needs an epoch clock (island phase 9 W3).
 
-**Result (2026-10-09, island rehearsal at `6cc3790a0`).** The re-anchor
+**Result (2026-10-09, island rehearsal at `899dd1068c`, measured on its pre-rebase copy -- same patch).** The re-anchor
 moved the figure from 9984-9990 to 9999 of 10000 mHz and the verdicts
 stayed, one per topic, once: the window's phase was not the cause. I9.
 
@@ -617,7 +617,7 @@ the producer's own timer rate makes any two-period stall a rate verdict.
 
 ### I7, on the board -- the 15 ms were the log floor, not the reporter
 
-The rehearsal at `6cc3790a0` still stored verdicts 15-17 ms apart, each
+The rehearsal at `899dd1068c` still stored verdicts 15-17 ms apart, each
 followed by `timer-overrun-runtime` and `release-jitter-runtime`. Cause:
 `ViolationChannel::record` calls `log_violation` at detection whenever the
 drain hook does not report, and the island's board runs
