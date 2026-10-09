@@ -59,9 +59,7 @@ nros_cpp_ret_t nros_cpp_action_client_set_callbacks(
 /// has the definition; a qualified friend needs the name to EXIST first, which
 /// an unqualified `friend class Node;` used to supply implicitly.
 ///
-/// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
-/// An elaborated `class Node;` in `rclcpp::` would now declare a SECOND, distinct
-/// class and collide with the `rclcpp::Node` alias.
+/// phase-427 W7 — declared in `rclcpp::`, which is where the definition lives.
 namespace rclcpp {
 class Node;
 }
@@ -70,16 +68,16 @@ class Node;
 // `rclcpp_action::Client<A>` -- DEFINED here (RFC-0089: rclcpp_action:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `rclcpp_action::Client<A>` to
-// `rclcpp_action::Client<A>` and the alias turned around. A RENAME as well as a
-// move -- upstream's namespace already says "action", so the type is `Client`
-// there and `ActionClient` here. Note the two `Client`s do not collide:
+// phase-428: the definition moved from `nros::ActionClient<A>` to
+// `rclcpp_action::Client<A>` (the `nros::` alias went in phase-483 W1). A RENAME
+// as well as a move -- upstream's namespace already says "action", so the type
+// is `Client`, not `ActionClient`. Note the two `Client`s do not collide:
 // `rclcpp::Client<S>` is the SERVICE client, in a different namespace.
 namespace rclcpp_action {
 
 /// Typed action client for a ROS 2 action.
 ///
-/// Mirrors `rclcpp_action::Client<A>`. The action type `A` must provide
+/// Mirrors upstream's `rclcpp_action::Client<A>`. The action type `A` must provide
 /// nested `Goal`, `Result`, and `Feedback` types with `TYPE_NAME`, `TYPE_HASH`,
 /// `SERIALIZED_SIZE_MAX`, `ffi_serialize()`, and `ffi_deserialize()`.
 ///

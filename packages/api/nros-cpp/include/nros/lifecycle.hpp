@@ -2,7 +2,7 @@
 // Freestanding C++ — no exceptions, no RTTI, no STL required.
 //
 // Phase 270 (#103) — an rclcpp-shape managed-node wrapper over the executor's
-// REP-2002 lifecycle state machine. Inherit `rclcpp::LifecycleNode` and override
+// REP-2002 lifecycle state machine. Inherit `rclcpp_lifecycle::LifecycleNode` and override
 // the `on_*` transition hooks (matching
 // `rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface`); the base binds
 // the REP-2002 services and bridges each transition to your override. The C
@@ -12,7 +12,7 @@
 /**
  * @file lifecycle.hpp
  * @ingroup grp_lifecycle
- * @brief Phase 270 — `rclcpp::LifecycleNode` (REP-2002 managed node).
+ * @brief Phase 270 — `rclcpp_lifecycle::LifecycleNode` (REP-2002 managed node).
  */
 
 #ifndef NROS_CPP_LIFECYCLE_HPP
@@ -363,8 +363,8 @@ namespace detail {
 
 /// The REP-2002 engine behind `rclcpp_lifecycle::LifecycleNode` (phase-482 W4).
 ///
-/// It was `rclcpp::LifecycleNode`, a mixin a component bound to its node. That name
-/// is now a deprecated forwarder; the type a user writes is
+/// It was `nros::LifecycleNode`, a mixin a component bound to its node. That name
+/// was a deprecated forwarder until phase-483 W1 deleted it; the type a user writes is
 /// `rclcpp_lifecycle::LifecycleNode`, which IS a node and owns one of these.
 ///
 /// (Original description:) rclcpp-shape managed node (REP-2002).

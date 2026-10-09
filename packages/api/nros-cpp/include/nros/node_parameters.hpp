@@ -12,8 +12,8 @@
  *
  * Three stores existed for one concept: the executor's `nros_params` table —
  * the one the six `rcl_interfaces/srv/*` servers read and therefore the one
- * `ros2 param get` sees — plus an inline `rclcpp::ParameterServer` on
- * `rclcpp::Node` and another on `rclcpp::ComponentNode`. A parameter declared
+ * `ros2 param get` sees — plus an inline `nros::ParameterServer` on
+ * `rclcpp::Node` and another on `nros::ComponentNode`. A parameter declared
  * through either C++ facade was invisible to `ros2 param get`, and two nodes in
  * one image could not see each other's. That is not a missing feature; it is a
  * second implementation of one, which RFC-0019/0020 forbids and RFC-0089
@@ -353,7 +353,7 @@ inline bool node_param_has(const nros_cpp_node_t* node, const char* name) {
 // builds, which is why this block sits OUTSIDE `NROS_CPP_STD`:
 //
 //   * `Seq<T, N>` (`nros/parameter.hpp`) - freestanding, fixed capacity, no
-//     heap. Phase-426 W4: this is what `rclcpp::ParameterServer<Cap>` used to
+//     heap. Phase-426 W4: this is what `nros::ParameterServer<Cap>` used to
 //     serve out of an inline bump pool, moved onto the one store so a
 //     sequence parameter is visible to `ros2 param get` like every scalar.
 //   * `std::vector<T>` - hosted, below, behind `NROS_CPP_STD`. A ported
@@ -364,7 +364,7 @@ inline bool node_param_has(const nros_cpp_node_t* node, const char* name) {
 //
 // The store OWNS the elements (`heapless::Vec` in its slot), so there is no
 // pool to keep alive here and no borrow for the caller to outlive - which is
-// what `rclcpp::ParameterServer`'s `seq_pool_` existed to provide and why it
+// what `nros::ParameterServer`'s `seq_pool_` existed to provide and why it
 // left with the class. `std::vector<bool>` is absent for the reason it was
 // absent before: it has no `data()`. `Seq<bool, N>` is NOT - its storage is a
 // plain `bool[N]`, so it has one.

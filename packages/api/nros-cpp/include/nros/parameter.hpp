@@ -9,7 +9,7 @@
  *
  * ## What this file used to be, and why it is not that any more (phase-426 W4)
  *
- * Until now this header also defined `rclcpp::ParameterServer<Capacity,
+ * Until now this header also defined `nros::ParameterServer<Capacity,
  * SeqSlots, SeqPoolBytes>`: a second parameter STORE, inline on the caller,
  * over the caller-storage C `nros_parameter_server_t`. The first half of W4
  * deleted the two node-owned stores (`rclcpp::Node`'s inline member and

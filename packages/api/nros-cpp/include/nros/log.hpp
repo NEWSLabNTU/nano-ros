@@ -121,8 +121,8 @@ constexpr nros_log_severity_t sink_severity(const char* level) {
 // shim a ported file had to be force-included with. RFC-0089 §"Naming: replace,
 // with alias as the migration step" makes the ROS 2 spelling a FIRST-CLASS name
 // declared by the API headers themselves, at which point the shim has nothing
-// left to bridge and dissolves by construction. `rclcpp::` is untouched: both
-// spellings work, and deprecating one is step B.
+// left to bridge and dissolves by construction. Step B, retiring the `nros::`
+// spelling, landed in phase-483 W1.
 //
 // This header carries the REFUSAL VOCABULARY as well as the logging surface,
 // and the two belong together for a reason RFC-0089 states: a REFUSE-LOUD name

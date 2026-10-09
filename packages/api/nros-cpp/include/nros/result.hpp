@@ -374,8 +374,9 @@ template <typename T> class NROS_NODISCARD ResultOf {
 
 // `rclcpp::Result` is NOT an upstream rclcpp name — it is a convenience the
 // compat header carried, kept here because step A must not lose anything. It
-// names `rclcpp::Result` exactly; RFC-0018 forbids exceptions, so there is no
-// upstream error type to adopt in its place.
+// re-exported `nros::Result` until phase-483 W1 made it the type itself (the
+// using-declaration below is now a no-op); RFC-0018 forbids exceptions, so
+// there is no upstream error type to adopt in its place.
 namespace rclcpp {
 using ::rclcpp::Result;
 } // namespace rclcpp

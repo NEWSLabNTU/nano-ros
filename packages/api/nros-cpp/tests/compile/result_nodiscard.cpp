@@ -4,7 +4,7 @@
 // and so must every `Result` our own headers produce along the way: this TU
 // includes the umbrella, so a header that drops a `Result` on the floor fails
 // HERE rather than in a user's build. That is not hypothetical — writing this
-// probe is what surfaced `rclcpp::shutdown()` discarding `rclcpp::shutdown()`
+// probe is what surfaced `rclcpp::shutdown()` discarding `nros::shutdown()`
 // and answering `true` unconditionally.
 //
 // It is compiled BEFORE the expected-failure probe beside it, because an

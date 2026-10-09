@@ -11,7 +11,7 @@
 //
 //   1. `NROS_MAIN(<Board>, "<bringup>:<file>.launch.xml")` — empty-
 //      expansion macro the user's own TU may carry as a doc/IDE hint
-//      (parallels Rust's `rclcpp::main!(launch = "…")`). It expands to
+//      (parallels Rust's `nros::main!(launch = "…")`). It expands to
 //      a sentinel symbol the cmake fn can detect with
 //      `target_compile_definitions` to avoid double-emit when the
 //      user wrote it. The actual code generation happens via the CLI;

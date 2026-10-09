@@ -30,8 +30,7 @@
 // phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
 // the home). The friend declaration below is qualified, and a qualified friend
 // names an existing entity rather than introducing one, so the name has to be
-// declared first — and in `rclcpp::`, because an elaborated `class Node;` in
-// `rclcpp::` would declare a second, distinct class.
+// declared first, in `rclcpp::`.
 namespace rclcpp {
 class Node;
 }
@@ -352,7 +351,7 @@ class Timer {
     /// UNCONDITIONAL, and that is the point (issue 1225, phase-442 W1): a
     /// member behind `NROS_CPP_STD` made `sizeof(rclcpp::Timer)` 24 or 32
     /// depending on a flag one module of an image may set on its own, and
-    /// carried `rclcpp::ComponentNode` (`Timer timers_[8]`) and the
+    /// carried `nros::ComponentNode` (`Timer timers_[8]`) and the
     /// `rclcpp::Timer` / `rclcpp::TimerBase` aliases with it.
     void* closure_;
 };
@@ -401,7 +400,7 @@ class Timer {
 // do not take the name for it. Zero non-test call sites in this tree used it.
 //
 // `rclcpp::Timer` is an ours-only name in upstream's namespace (RFC-0089
-// §"Settled: `rclcpp::` is phased out entirely"), so it carries a ledger row with
+// §"Settled: `nros::` is phased out entirely"), so it carries a ledger row with
 // `disposition: extension` and the collision gate watches for `rclcpp::Timer`
 // appearing in the recorded upstream surface.
 //

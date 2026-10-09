@@ -122,10 +122,10 @@
 // phase-427 W1 declared the parameter facade here; phase-426 W4 took away the
 // store it read. The hosted block no longer holds a `ParameterServer` — the
 // facade forwards to the EXECUTOR's store — so this header needs
-// `parameter.hpp` for nothing of its own. It is kept because `rclcpp::Parameter`
-// / `rclcpp::ParameterServer` remain a public surface a consumer reaches through
-// the node header (`examples/native/cpp/parameters` uses the class directly),
-// and `parameter.hpp` depends on `result.hpp` and `<nros/parameter.h>` only,
+// `parameter.hpp` for nothing of its own. It is kept because what that header
+// still holds (`rclcpp::Seq<T, N>`) is a public surface a consumer reaches
+// through the node header, and `parameter.hpp` depends on `result.hpp` and
+// `<nros/parameter.h>` only,
 // so there is no cycle.
 #include "nros/parameter.hpp"
 
@@ -143,7 +143,7 @@
 // probe gates METHODS, never a member.
 
 // `NROS_RCLCPP_MAX_PARAMS` IS GONE (phase-426 W4). It sized an inline
-// `rclcpp::ParameterServer` on the merged node's hosted block — a SECOND
+// `nros::ParameterServer` on the merged node's hosted block — a SECOND
 // parameter store, node-local, which `ros2 param get` could not see and a
 // sibling node did not share. The member is deleted and the facade forwards to
 // the executor's store (`nros/node_parameters.hpp`), so there is no per-node
@@ -183,10 +183,8 @@ static_assert(NROS_CPP_RET_NOT_FOUND == -4 && NROS_CPP_RET_ALREADY_EXISTS == -5 
 //
 // phase-428 (RFC-0089): six of them are DECLARED in the upstream namespace,
 // because that is where their definition now lives, and this header names them
-// that way. The `rclcpp::` migration alias for each is declared ONCE, beside its
-// type in that type's own header -- repeating it here would give the alias two
-// declaration sites, and `api-parity` attributes a name to the header it is
-// first seen in.
+// that way. (Each also had an `nros::` migration alias, declared beside its
+// type in that type's own header, until phase-483 W1 deleted them.)
 namespace rclcpp {
 // phase-427 W7 — the node itself, defined further down in this header. Forward
 // declared up here because the `rclcpp::` free functions BELOW take it by
@@ -227,7 +225,7 @@ template <typename S> class ClientHandle;
 /// pointer `rclcpp::global_handle()` / `Node::executor_handle()` expose. The entry
 /// obtains it post-`init` and placement-news the component with it.
 ///
-/// This was `rclcpp::ComponentNode`'s ctor parameter. `ComponentNode` is gone; the
+/// This was `nros::ComponentNode`'s ctor parameter. `ComponentNode` is gone; the
 /// handle is not, because construction against an EXPLICIT executor is a real
 /// capability and the generated entry is its caller. It is the second of the
 /// type's TWO constructors — RFC-0047's "one component, several named nodes"
@@ -552,7 +550,7 @@ inline Result init_with_rmw(const char* rmw, const char* locator = nullptr, uint
 ///    `NROS_RMW`. This is the active overlay channel today.
 ///
 /// `argc` / `argv` are parsed as `--ros-args` with rcl's grammar, exactly as
-/// Rust's `rclcpp::Context::new` does: `-r`/`--remap` rules are installed as the
+/// Rust's `nros::Context::new` does: `-r`/`--remap` rules are installed as the
 /// FALLBACK beneath the launch rules the generated entry declares; `-p` and
 /// `--params-file` are installed as parameter overrides when the image has a
 /// parameter store (phase-482 W5); and any other ROS argument (`__node`,
@@ -599,11 +597,12 @@ inline void* global_handle();
 
 // ============================================================================
 // rclcpp:: — the HOME of the C++ node type (RFC-0089 §"Settled: `rclcpp::` is
-// the HOME, not an alias onto `rclcpp::`"). phase-427 W7 flipped the direction:
-// the class is DEFINED here and `rclcpp::Node` below is the migration alias, the
-// same shape the other nine types already carry (`clock.hpp`, `duration.hpp`,
+// the HOME, not an alias onto `nros::`"). phase-427 W7 flipped the direction:
+// the class was DEFINED here and `nros::Node` became the migration alias, the
+// same shape the other nine types already carried (`clock.hpp`, `duration.hpp`,
 // `time.hpp`, `publisher.hpp`, `subscription.hpp`, `client.hpp`, `service.hpp`,
-// `action_client.hpp`, `action_server.hpp`).
+// `action_client.hpp`, `action_server.hpp`). phase-483 W1 deleted the aliases;
+// `rclcpp::` is now the only namespace.
 //
 // `Node` was the TENTH and was held back because PRs #797 and #806 were stacked
 // on this header. Both merged. The measurement that blocked it before — the
@@ -612,17 +611,15 @@ inline void* global_handle();
 // `scripts/api-parity.py` roots every C++ TU at `OUR_CPP_ROOTS`, both halves of
 // the vocabulary we ship.
 //
-// The body below is written in the `rclcpp::` vocabulary, so the `rclcpp::`-only
-// names it reaches (`ErrorCode`, `detail::*`, `NodeHandle`, `SchedContext`, the
-// polling entity templates) are spelled `::rclcpp::`-qualified. That is
-// deliberate and not noise: it is what a reader needs to tell an adopted name
-// from an ours-only one, and it is what keeps the two vocabularies from being
-// re-merged by a using-directive.
+// The ours-only names the body below reaches (`ErrorCode`, `detail::*`,
+// `NodeHandle`, `SchedContext`, the polling entity templates) are spelled
+// `::rclcpp::`-qualified. Until phase-483 W1 that qualifier was `::nros::` and
+// told an adopted name from an ours-only one; the namespace no longer carries
+// that distinction.
 // ============================================================================
 namespace rclcpp {
-/// The node — `rclcpp::Node`, and `rclcpp::Node`, which are ONE TYPE
-/// (phase-427). The primary interface for creating ROS entities: publishers,
-/// subscriptions, services, timers are all created through it, and it holds a
+/// The node — `rclcpp::Node`, ONE TYPE (phase-427). The primary interface for creating ROS
+/// entities: publishers, subscriptions, services, timers are all created through it, and it holds a
 /// reference to the parent executor session.
 ///
 /// Usage:
@@ -633,14 +630,12 @@ namespace rclcpp {
 ///
 /// Three shapes collapsed here: the freestanding out-ref node, the hosted
 /// `shared_ptr` node that used to be a separate `rclcpp::Node` in `nros.hpp`,
-/// and (from RFC-0044) the derivable component base. `rclcpp::Node` is declared
-/// as an alias for this class at the bottom of this header, so
-/// `std::is_same<rclcpp::Node, rclcpp::Node>::value` is true and there is exactly
-/// one set of entities, one arena registration path and one parameter facade.
+/// and (from RFC-0044) the derivable component base, so there is exactly one
+/// set of entities, one arena registration path and one parameter facade.
 ///
-/// THE CLASS IS DEFINED HERE, in `rclcpp::`, and `rclcpp::Node` is the alias —
-/// RFC-0089 §"Settled: `rclcpp::` is the HOME, not an alias onto `rclcpp::`", and
-/// the tenth and last type of the phase-428 flip. It was held back for two
+/// THE CLASS IS DEFINED HERE, in `rclcpp::` — RFC-0089 §"Settled: `rclcpp::` is
+/// the HOME, not an alias onto `nros::`", and the tenth and last type of the
+/// phase-428 flip (`nros::Node` remained an alias until phase-483 W1). It was held back for two
 /// reasons, both now gone: two landed reviews (PRs #797, #806) were stacked on
 /// this header, and `scripts/api-parity.py` rooted our NATIVE C++ surface at
 /// `{"nros"}` alone, so a class defined here re-bucketed ~60 members to
@@ -696,7 +691,7 @@ class Node {
     }
 
     /// Construct on an EXPLICIT executor handle rather than the global one —
-    /// what a generated entry writes, and what `rclcpp::ComponentNode`'s
+    /// what a generated entry writes, and what `nros::ComponentNode`'s
     /// `NodeHandle` constructor used to be (RFC-0089 §"What this means for the
     /// merge": construction is not identity).
     Result init_on(void* executor_handle, const char* name, const char* ns = nullptr) {
@@ -707,7 +702,7 @@ class Node {
     }
 
     /// Construct against an EXPLICIT executor-bound handle — what a generated
-    /// entry writes, and what `rclcpp::ComponentNode(NodeHandle, name)` was
+    /// entry writes, and what `nros::ComponentNode(NodeHandle, name)` was
     /// before phase-427 W4 merged it here.
     ///
     /// This is the SECOND of the type's two constructors. On a null handle or a
@@ -1091,7 +1086,7 @@ class Node {
     // the hosted gate decide whether a node HAS parameters rather than
     // whether it can spell them" - but the declarations stayed inside the gate,
     // so a freestanding node still had no parameter method, and
-    // `rclcpp::ParameterServer<Cap>` (deleted with this wave) was the only C++
+    // `nros::ParameterServer<Cap>` (deleted with this wave) was the only C++
     // parameter surface it had. Deleting that class while the gate stood would
     // have removed the capability from freestanding C++ instead of moving it,
     // which is what W4's ordering rule exists to prevent. The scalar FFI is
@@ -1996,7 +1991,7 @@ class Node {
 
     // ==== phase-427 W3 — member-function binding, on the upstream name ======
     //
-    // `rclcpp::bind_timer<C, &C::m>(node, out, ms, self)` was a FREE function
+    // `nros::bind_timer<C, &C::m>(node, out, ms, self)` was a FREE function
     // with an invented name doing what `create_wall_timer` does. Folding it in
     // removes an invention by reusing an upstream name, which is what clause 2
     // asks for — and it is the shape a component actually writes, so the verb a
@@ -2169,7 +2164,7 @@ class Node {
 
     // ==== phase-427 W4 — the ours-only family, under `_in` names =============
     //
-    // These came off `rclcpp::ComponentNode`. Every one of them is spelled with
+    // These came off `nros::ComponentNode`. Every one of them is spelled with
     // an `_in` SUFFIX rather than upstream's bare verb, and the rename is the
     // whole point of the item.
     //
@@ -2464,19 +2459,14 @@ class Node {
     const char* error_what_ = nullptr;
     int32_t error_code_ = 0;
 
-    // phase-427 W7 — the class moved to `rclcpp::`; its friends did not. Every
-    // one of these is an `rclcpp::` name, so each is QUALIFIED: an unqualified
-    // `friend Result init(...)` inside this namespace would befriend a
-    // `rclcpp::init` that does not exist and leave the real one locked out.
-    // phase-427 W7 — the class moved to `rclcpp::`; its friends did not. Every
-    // one of these is an `rclcpp::` free function, so each is QUALIFIED: an
-    // unqualified `friend Result init(...)` inside this namespace would
-    // befriend a `rclcpp::init` that does not exist and leave the real one
-    // locked out.
+    // phase-427 W7 — the class moved to `rclcpp::` while its friends were still
+    // `nros::` free functions, so each friend is QUALIFIED. phase-483 W1 moved
+    // the friends into `rclcpp::` too; the qualified form still names exactly
+    // the declarations at the top of this header.
     //
     // The declarator-id is PARENTHESIZED, and that is not style. A
     // nested-name-specifier is parsed greedily, so `friend Result ::rclcpp::init`
-    // reads as `Result::rclcpp::init` and fails with `'nros' in 'using Result ='
+    // reads as `Result::rclcpp::init` and fails with `'rclcpp' in 'using Result ='
     // does not name a type` — a diagnostic that names neither the friend nor
     // the namespace. `(::rclcpp::init)` closes the return type first.
     friend class ::rclcpp::Executor;
@@ -2563,9 +2553,8 @@ namespace rclcpp {
 // the depth it needs.
 //
 // Why a derived template and not `template <size_t N> class Node` — measured,
-// not preferred. `Node` has to stay ONE non-template type: `rclcpp::Node` is an
-// alias for it and `tests/compile/one_node_type.cpp` asserts
-// `std::is_same<rclcpp::Node, rclcpp::Node>`; 218 in-tree sites spell `Node` with
+// not preferred. `Node` has to stay ONE non-template type
+// (`tests/compile/one_node_type.cpp`); 218 in-tree sites spell `Node` with
 // no argument list, which a class template with a defaulted parameter does not
 // permit; and every `Node&` parameter in the tree — `create_node(Node&)`,
 // `Executor`, `spin` — would otherwise accept only ONE depth, so a component

@@ -4,7 +4,7 @@
 /**
  * @file clock.hpp
  * @ingroup grp_clock
- * @brief `rclcpp::Clock` — reads the current time, mirroring `rclcpp::Clock`.
+ * @brief `rclcpp::Clock` — reads the current time, mirroring upstream's `rclcpp::Clock`.
  *
  * Issue 0789. A thin C++ face over the `nros_clock_*` C surface (RFC-0073
  * defines the platform clock contract underneath it); this header invents no
@@ -27,8 +27,8 @@
 // `rclcpp::Clock` — DEFINED here (RFC-0089: rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `rclcpp::` to `rclcpp::` and the alias
-// turned around. `rclcpp::Node::get_clock()` (`nros/nros.hpp`) hands back a
+// phase-428: the definition moved from `nros::` to `rclcpp::` (the `nros::`
+// alias went in phase-483 W1). `rclcpp::Node::get_clock()` (`nros/nros.hpp`) hands back a
 // pointer to the node's own, because there is no allocator here to hand back a
 // `SharedPtr` from (RFC-0022); the `node->get_clock()->now()` spelling is
 // unchanged, and so is the type.
@@ -36,7 +36,7 @@ namespace rclcpp {
 
 /// A time source: system, steady, or ROS time.
 ///
-/// Mirrors `rclcpp::Clock`. The clock type is fixed at construction and
+/// Mirrors upstream's `rclcpp::Clock`. The clock type is fixed at construction and
 /// readable afterwards with `get_clock_type()`.
 ///
 /// Usage:

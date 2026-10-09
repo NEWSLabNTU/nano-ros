@@ -391,7 +391,7 @@ class QoS {
     // issue 1437 — the ONE function allowed to write these directly.
     //
     // `qos_from_ffi` builds the profile a backend GRANTED, and a grant can
-    // state `ReliabilityUnknown` / `HistorySystemDefault` / ... which NO
+    // state `ReliabilityPolicy::Unknown` / `HistoryPolicy::SystemDefault` / ... which NO
     // public setter can produce: the setters are `reliable()`,
     // `best_effort()`, `keep_last(n)` — the vocabulary of a REQUEST, and a
     // request may not carry a sentinel. Adding enum-taking setters to reach
@@ -554,7 +554,7 @@ namespace detail {
 // into `QoS`'s default constructor rather than spelled per row:
 //   * `avoid_ros_namespace_conventions` is `false` upstream, `0` here.
 //   * liveliness is `RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT` upstream, and
-//     `rclcpp::QoS` now defaults to `LivelinessNone`, which is our spelling of
+//     `rclcpp::QoS` now defaults to `LivelinessPolicy::SystemDefault`, which is our spelling of
 //     that sentinel. It defaulted to `LivelinessAutomatic` — "what every
 //     reference RMW folds that sentinel to" — under a
 //     `nros-qos-mirror-deviation` record whose own reason was that this
@@ -567,7 +567,7 @@ namespace detail {
 //     `required_policies()` demand `LIVELINESS_AUTOMATIC` and refuse every C++
 //     default profile on that backend — over a policy upstream leaves unset
 //     and the application never asked for. A caller that wants automatic
-//     liveliness states `.liveliness(rclcpp::LivelinessAutomatic)`.
+//     liveliness states `.liveliness(rclcpp::LivelinessPolicy::Automatic)`.
 //
 //   * deadline and the liveliness lease are `RMW_QOS_*_DEFAULT` (infinite)
 //     upstream and `0` here, which `qos_window_ms` above documents as infinite.
@@ -729,8 +729,8 @@ constexpr QoS QoS::services() {
 // Moved here from `nros/rclcpp_compat.hpp`, which no longer exists as a
 // separate surface: RFC-0089 §"Naming: replace, with alias as the migration
 // step" makes the ROS 2 spelling a first-class name declared by the API header
-// that owns the concept. `rclcpp::QoS` is unchanged and still the name every
-// in-tree caller writes; step B deprecates it.
+// that owns the concept. Step B, retiring the in-tree `nros::QoS` spelling,
+// landed in phase-483 W1.
 //
 // Everything below is freestanding-safe — `constexpr` classes over `rclcpp::QoS`
 // and one `<type_traits>` predicate — so a `no_std` C++ build gets the ROS 2

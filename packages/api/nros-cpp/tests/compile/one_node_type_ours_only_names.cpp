@@ -3,7 +3,7 @@
 //
 // THE COLLISION THE MERGE WOULD HAVE MANUFACTURED
 //
-// `rclcpp::ComponentNode::create_publisher<M>(const char*, const QoS&)` returned a
+// `nros::ComponentNode::create_publisher<M>(const char*, const QoS&)` returned a
 // publisher BY VALUE and reported failure through an `ok()` latch. Upstream's
 // `rclcpp::Node::create_publisher<M>(const std::string&, …)` returns a
 // `shared_ptr` and throws. Those are two different types, two different

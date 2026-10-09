@@ -24,7 +24,7 @@
  * flag turns on a publisher the runtime creates for you. A publisher is an
  * ENTITY here — it counts against the image's pools and sizing descriptor — so
  * the runtime never conjures one below the declaration (issue 1341's shape).
- * This class is the explicit spelling; the Rust bridge (`rclcpp::rosout`) and
+ * This class is the explicit spelling; the Rust bridge (`nros::rosout`) and
  * the C one (`<nros/rosout.h>`) have the same three steps.
  *
  * **Which records** follow the image's ROS release (RFC-0102 D4): on Humble,

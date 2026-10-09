@@ -239,9 +239,7 @@ enum class GoalStatus : int8_t {
 /// has the definition; a qualified friend needs the name to EXIST first, which
 /// an unqualified `friend class Node;` used to supply implicitly.
 ///
-/// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
-/// An elaborated `class Node;` in `rclcpp::` would now declare a SECOND, distinct
-/// class and collide with the `rclcpp::Node` alias.
+/// phase-427 W7 — declared in `rclcpp::`, which is where the definition lives.
 namespace rclcpp {
 class Node;
 }
@@ -250,27 +248,24 @@ class Node;
 // `rclcpp_action::Server<A>` -- DEFINED here (RFC-0089: rclcpp_action:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `rclcpp_action::Server<A>` to
-// `rclcpp_action::Server<A>` and the alias turned around. This one is a RENAME
-// as well as a move -- upstream's namespace already says "action", so the type
-// is `Server` there and `ActionServer` here.
+// phase-428: the definition moved from `nros::ActionServer<A>` to
+// `rclcpp_action::Server<A>` (the `nros::` alias went in phase-483 W1). This one
+// is a RENAME as well as a move -- upstream's namespace already says "action",
+// so the type is `Server`, not `ActionServer`.
 //
 // The vocabulary the signatures use (`GoalUUID`, `GoalResponse`,
-// `CancelResponse`, `GoalStatus`, `CancelReturnCode`) stays in `rclcpp::` and is
-// reached qualified: RFC-0089's flip is about the nine TYPES it enumerates, and
-// widening it silently to every name in the header is how a sweep stops being
-// reviewable.
-//
-// Two of them are widened DELIBERATELY (issue 1637): `GoalResponse` and
-// `CancelResponse` carry upstream's values since then, so a ported
-// `rclcpp_action::GoalResponse::REJECT` compiles AND means what it meant
-// upstream. Before that it was 0-based, and exposing it here would have turned
-// a compile error into a silent renumbering.
+// `CancelResponse`, `GoalStatus`, `CancelReturnCode`) is declared above, in
+// `rclcpp_action::` where upstream keeps it (phase-483 W1; it was `nros::`
+// before). `GoalResponse` and `CancelResponse` carry upstream's values since
+// issue 1637, so a ported `rclcpp_action::GoalResponse::REJECT` compiles AND
+// means what it meant upstream. Before that they were 0-based, and exposing
+// them under the upstream name would have turned a compile error into a silent
+// renumbering.
 namespace rclcpp_action {
 
 /// Typed action server for a ROS 2 action.
 ///
-/// Mirrors `rclcpp_action::Server<A>` with a callback-based API. The
+/// Mirrors upstream's `rclcpp_action::Server<A>` with a callback-based API. The
 /// action type `A` must provide nested `Goal`, `Result`, and `Feedback`
 /// types with `TYPE_NAME`, `TYPE_HASH`, `SERIALIZED_SIZE_MAX`,
 /// `ffi_serialize()`, and `ffi_deserialize()`.

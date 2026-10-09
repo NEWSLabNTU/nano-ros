@@ -4,14 +4,14 @@
 /**
  * @file duration.hpp
  * @ingroup grp_clock
- * @brief `rclcpp::Duration` — a signed nanosecond span, mirroring `rclcpp::Duration`.
+ * @brief `rclcpp::Duration` — a signed nanosecond span, mirroring upstream's.
  *
  * Issue 0789. The value surface already existed in C (`nros_duration_t`,
  * `nros_time_add`, `nros_time_sub`) and in Rust (`Duration`, `TimerDuration`);
  * this is the C++ face over it, so a ported rclcpp node that builds a duration
  * or stamps a header compiles here.
  *
- * Two members of `rclcpp::Duration` are deliberately absent, both already
+ * Two members of upstream's `rclcpp::Duration` are deliberately absent, both already
  * recorded in `docs/reference/api-parity-ledger/timer.json`:
  *   * `to_chrono` — `<chrono>` is not available on the freestanding targets.
  *   * `from_rmw_time` / `to_rmw_time` — the RMW seam is not a user-facing type
@@ -46,17 +46,15 @@ constexpr int64_t NANOSECONDS_PER_SECOND = 1000000000LL;
 // `rclcpp::Duration` — DEFINED here (RFC-0089: rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `rclcpp::` to `rclcpp::` and the alias
-// turned around. RFC-0089 settles that the ROS 2 spelling is the name this
-// project ships and `rclcpp::Duration` is the migration alias, not the other way
-// round. The type is UNCHANGED — the same object under both names, so a ported
-// `rclcpp::Duration d = …;` and an in-tree `rclcpp::Duration` are one type with
-// one contract.
+// phase-428: the definition moved from `nros::` to `rclcpp::`. RFC-0089 settles
+// that the ROS 2 spelling is the name this project ships; `nros::Duration` was
+// the migration alias until phase-483 W1 deleted it. A ported
+// `rclcpp::Duration d = …;` and in-tree code name one type with one contract.
 namespace rclcpp {
 
 /// A signed span of time, held as nanoseconds.
 ///
-/// Mirrors `rclcpp::Duration`'s user-facing surface. Every accessor and every
+/// Mirrors upstream `rclcpp::Duration`'s user-facing surface. Every accessor and every
 /// operator is `constexpr`, so a period or a deadline can be computed at
 /// compile time and baked into an image.
 ///

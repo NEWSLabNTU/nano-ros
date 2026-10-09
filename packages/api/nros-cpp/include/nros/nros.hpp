@@ -61,7 +61,7 @@
 #include "nros/tick_ctx.hpp"
 #include "nros/lifecycle.hpp"
 #include "nros/rosout.hpp" // issue 1589 — `/rosout` from C++
-// phase-427 W4 — `nros/component_node.hpp` IS GONE. `rclcpp::ComponentNode` was a
+// phase-427 W4 — `nros/component_node.hpp` IS GONE. `nros::ComponentNode` was a
 // type that WRAPPED a node (RFC-0044 Q1's "wrap, not derive"), so a component
 // was not a `Node` and every verb had to be forwarded. Its members are on
 // `rclcpp::Node` now, its pool is the opt-in `rclcpp::NodeWithTimers<N>`, and its
@@ -234,19 +234,19 @@ inline Result spin_in(uint32_t duration_ms, int32_t poll_ms = 10) {
 // a FIRST-CLASS name declared by the API headers themselves; §"End state: no
 // compat layer survives" is what follows from it — with one spelling per
 // concept there is nothing left for a shim to bridge, so it dissolves by
-// construction rather than having to be argued away. `rclcpp::` is untouched and
-// both spellings work; deprecating `rclcpp::` and migrating the in-tree call
-// sites is step B.
+// construction rather than having to be argued away. Step B — retiring the
+// in-tree `nros::` spelling — landed in phase-483 W1: `rclcpp::` is now the only
+// namespace.
 //
 // They land HERE, in the umbrella, and not in `node.hpp`, because that is where
 // their dependencies are. `rclcpp::Node` reaches `rclcpp::create_subscription_raw`
-// (`component.hpp`), `rclcpp::Timer`, `rclcpp::ParameterServer`, `rclcpp::Service` and
-// `rclcpp::Client`, every one of which includes `node.hpp` itself; `Rate::sleep`
-// and `spin_until_future_complete` drive the `rclcpp::spin` / `rclcpp::spin_once`
+// (`component.hpp`), `rclcpp::Timer`, `rclcpp::Service` and `rclcpp::Client`,
+// every one of which includes `node.hpp` itself; `Rate::sleep` and
+// `spin_until_future_complete` drive the `rclcpp::spin` / `rclcpp::spin_once`
 // free functions defined a few lines above. This IS the header they were
-// shimming: the process-level verbs `rclcpp::init` mirrors — `rclcpp::init`,
-// `rclcpp::spin`, `rclcpp::spin_once`, `rclcpp::on_shutdown` — are all reached
-// through `<nros/nros.hpp>`.
+// shimming: the process-level verbs — `rclcpp::init`, `rclcpp::spin`,
+// `rclcpp::spin_once`, `rclcpp::on_shutdown` — are all reached through
+// `<nros/nros.hpp>`.
 //
 // FREESTANDING. Unlike the shim it replaces, this is not hosted-STL by
 // construction. `init` / `shutdown` / `ok` and the `--ros-args` predicate need
@@ -263,12 +263,11 @@ namespace rclcpp {
 
 // --- Process-level lifecycle -------------------------------------------------
 //
-// `rclcpp::init()` is a process-level handshake → `rclcpp::init()`.
-// `rclcpp::shutdown()` → `rclcpp::shutdown()`. `rclcpp::ok()` → `rclcpp::ok()`
-// (nros tracks the shutdown flag).
+// `rclcpp::init()` / `rclcpp::shutdown()` / `rclcpp::ok()` are the
+// process-level handshake (nros tracks the shutdown flag).
 //
 // The TWO-ARGUMENT form is REFUSE-LOUD (RFC-0089 W3.b). It used to forward to
-// the same `rclcpp::init()` and discard `argv`, so `--ros-args -r
+// the one-argument `init()` and discard `argv`, so `--ros-args -r
 // chatter:=/other` — the single most common thing a ported `main` passes —
 // silently became a wrong-topic bug at runtime. Honouring it is remap
 // resolution, RFC-0020 violation class 4, and belongs beside
@@ -298,8 +297,8 @@ constexpr bool argv_has_ros_args(int argc, char const* const* argv, int i = 0) {
 
 /// What upstream's `throw` becomes here — phase-428 W5 finding 9.
 ///
-/// The `create_*` verbs on `rclcpp::Node` (reached as `rclcpp::Node`, which is an
-/// alias for it since phase-427 W1-W3) used to write
+/// The `create_*` verbs on `rclcpp::Node` (then `nros::Node`, reached as
+/// `rclcpp::Node` through an alias since phase-427 W1-W3) used to write
 /// `(void)this->create_…(…)` and return the `shared_ptr` regardless. The
 /// `(void)` was not incidental: `rclcpp::Result` carries `[[nodiscard]]`
 /// (`result.hpp`, phase-428 W6), and the casts SUPPRESSED the one signal that
@@ -354,7 +353,7 @@ inline void require_created(::rclcpp::Result r, const char* verb, const char* na
 /// every other ROS argument ABORTS the process naming it.
 ///
 /// `argv` is parsed with rcl's grammar by the same code as Rust's
-/// `rclcpp::Context::new` (`nros_node::ros_args`, reached through
+/// `nros::Context::new` (`nros_node::ros_args`, reached through
 /// `nros_cpp_install_argv_remaps`):
 ///
 /// * `-r` / `--remap` `[node:]from:=to` inside `--ros-args ... --` — HONOURED,
@@ -506,8 +505,8 @@ namespace detail {
 //
 // It re-read every launch-seeded parameter out of the EXECUTOR's store and
 // copied it over the code default, because `rclcpp::Node`'s own
-// `rclcpp::ParameterServer` was a DIFFERENT object and would otherwise have
-// answered 0.15 while launch said 0.03 (issue 0745). `rclcpp::ComponentNode`
+// `nros::ParameterServer` was a DIFFERENT object and would otherwise have
+// answered 0.15 while launch said 0.03 (issue 0745). `nros::ComponentNode`
 // carried the same dispatch written a second time, in C++17 `if constexpr`,
 // and both headers flagged the duplication against themselves.
 //
@@ -521,10 +520,11 @@ namespace detail {
 
 // --- Node ---------------------------------------------------------------------
 //
-// phase-427 W1-W3 — THE NODE TYPES ARE MERGED. `rclcpp::Node` is not a class
-// here any more; it is an ALIAS for `rclcpp::Node`, and the hosted call shape
-// that used to be a separate adapter class in this file is now a set of
-// overloads on that one type (declared in `node.hpp`, defined below).
+// phase-427 W1-W3 — THE NODE TYPES ARE MERGED. `rclcpp::Node` stopped being a
+// separate adapter class here (it became an alias for `nros::Node`, and since
+// phase-483 W1 it IS the one class), and the hosted call shape that adapter
+// carried is now a set of overloads on that one type (declared in `node.hpp`,
+// defined below).
 //
 // What that closes, in order of how much it cost:
 //
@@ -539,7 +539,7 @@ namespace detail {
 //     merge forced the decision W5 records.
 //   * THE TWO-VOCABULARY SPLIT. A ported file wrote `rclcpp::Node` and got a
 //     type with no graph queries, no lifecycle, no callback groups, no action
-//     entities and no out-ref creators; a native file wrote `rclcpp::Node` and
+//     entities and no out-ref creators; a native file wrote `nros::Node` and
 //     got no `shared_ptr` creators and no parameters. Neither list was a
 //     design; both were what the other file happened to have.
 //
@@ -666,7 +666,7 @@ namespace rclcpp {
 // STL, and only those keep the gate.
 //
 // `parameters()` IS GONE (phase-426 W4). It handed out a reference to the node's
-// own `rclcpp::ParameterServer`, described as the escape hatch for "the C-API
+// own `nros::ParameterServer`, described as the escape hatch for "the C-API
 // helpers that take an `nros_parameter_server_t*`" - and no such helper
 // existed: `nros_executor_register_parameter_services` takes the executor,
 // never a standalone store. That class is deleted now too, so there is nothing
@@ -754,9 +754,8 @@ namespace rclcpp {} // namespace rclcpp
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
 namespace rclcpp {
 
-// `rclcpp::Node` is declared at the bottom of `node.hpp`, UNCONDITIONALLY —
-// see there for why. It is not declared here, because a freestanding target
-// gets the class and must get its ROS 2 spelling with it.
+// `rclcpp::Node` is defined in `node.hpp`, UNCONDITIONALLY, not here, because
+// a freestanding target gets the class and must get its ROS 2 spelling with it.
 //
 // phase-417 — `pump()` IS GONE and does not come back. It ran a node's wall
 // timers and drained its polling subscriptions, and only `rclcpp::spin` /
@@ -1159,8 +1158,8 @@ inline ::rclcpp::TimerHandle create_timer(NodeT&& node, ::rclcpp::Clock* clock,
 
 #ifdef NROS_CPP_HAS_STD_CHRONO // hosted-family: chrono-interop
 /// `rclcpp::create_timer(node, clock, 100ms, callback)` — the `std::chrono`
-/// spelling, which is what a ported file actually writes. `rclcpp::Duration` is
-/// implicitly constructible from a chrono duration upstream; `rclcpp::Duration`
+/// spelling, which is what a ported file actually writes. Upstream's
+/// `rclcpp::Duration` is implicitly constructible from a chrono duration; ours
 /// is not (it reaches freestanding targets where `<chrono>` does not exist), so
 /// the conversion is an overload rather than a constructor.
 template <typename NodeT, typename Rep, typename Period, typename CallbackT>
@@ -1189,7 +1188,7 @@ inline ::rclcpp::TimerHandle create_timer(NodeT&& node, ::rclcpp::Clock* clock,
 // one any more.
 //
 // What changed in phase-426 W4, and why it is not a detail: these used to
-// forward to an inline `rclcpp::ParameterServer<NROS_RCLCPP_MAX_PARAMS>` member
+// forward to an inline `nros::ParameterServer<NROS_RCLCPP_MAX_PARAMS>` member
 // on the hosted block — a second store, node-local, which the six
 // `rcl_interfaces/srv/*` servers could not read. So a parameter declared here
 // was invisible to `ros2 param get`, a sibling node did not share it, and the
@@ -1209,7 +1208,7 @@ inline ::rclcpp::TimerHandle create_timer(NodeT&& node, ::rclcpp::Clock* clock,
 // all, and every call answers `ErrorCode::Unsupported`. This facade wears
 // upstream's value-returning signature, which has nowhere to report that, so
 // `declare_parameter` returns the code default. The loud half USED to be
-// `rclcpp::ComponentNode`, whose own facade recorded the failure on an `ok()`
+// `nros::ComponentNode`, whose own facade recorded the failure on an `ok()`
 // flag and made it boot-fatal; phase-427 W4 deleted that type, so no C++ path
 // is boot-fatal on a missing store any more. `rclcpp::Node` still carries the
 // flag (`set_error` / `ok()`); routing the parameter path back onto it is a
