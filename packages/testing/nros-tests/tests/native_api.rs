@@ -1655,3 +1655,89 @@ fn negative_control_one_sigterm_does_not_end_a_process_that_catches_it() {
          so the measurement cannot see survival and the image test proves nothing"
     );
 }
+
+// =============================================================================
+// Issue 1752 — a threadx-linux image's exit status is its APP's
+// =============================================================================
+
+/// Issue 1752 — a threadx-linux C image that FAILS exits non-zero, and one that
+/// succeeds exits 0: the status is the app's, not the board's.
+///
+/// `NROS_APP_MAIN_REGISTER_VOID()` used to discard `nros_app_main`'s return
+/// value, and the board ended the process with `_exit(0)` whatever happened.
+/// Measured before the fix: the zenoh service-server pointed at a port nothing
+/// listens on printed `nros_support_init(...) -> -4`, returned 1 from
+/// `nros_app_main`, and the process exited **0**.
+///
+/// Both endings are asserted, and each is the other's control: a board that
+/// always said 1 would pass the failure half and fail the success half, and the
+/// old board fails the failure half. The success half is the graceful path of
+/// [`test_threadx_linux_c_image_ends_on_one_sigterm`]'s zenoh case — one
+/// `SIGTERM` to a ready image whose handler lets `nros_app_main` return 0.
+#[cfg(target_os = "linux")]
+#[test]
+fn test_threadx_linux_c_image_exit_status_is_the_apps() {
+    require_cmake();
+    let bin = nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
+        "c",
+        "service-server",
+        "c_service_server",
+        Rmw::Zenoh,
+    )
+    .require("resolve threadx-linux c service-server");
+
+    // FAILURE: a locator whose port nothing listens on. Bound and released, so
+    // the port is free now; a stranger taking it in the gap would make the
+    // session OPEN and the image wait for requests — the deadline then ends it
+    // with `timeout`'s 124, which the assertion names rather than accepts.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|l| l.local_addr())
+        .expect("reserve a loopback port")
+        .port();
+    let out = nros_tests::process::deadline_command(20, &bin)
+        .env("NROS_LOCATOR", format!("tcp/127.0.0.1:{port}"))
+        .output()
+        .expect("run the threadx-linux c service-server");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stdout.contains("app_main returned") || stderr.contains("app_main returned"),
+        "the image never reported its app returning, so this measures nothing about \
+         the app's status: {:?}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+        out.status
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a threadx-linux C app whose `nros_app_main` returned 1 (no router at \
+         tcp/127.0.0.1:{port}) must END the process with 1 — 0 is issue 1752 (the \
+         VOID shim discarding the status), 124 means the deadline ended it.\n\
+         stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+
+    // SUCCESS: a live router, a ready image, one SIGTERM, a graceful return.
+    let router = zenohd_unique();
+    let mut cmd = Command::new(&bin);
+    cmd.env("NROS_LOCATOR", router.locator());
+    let mut server = ManagedProcess::spawn_command(cmd, "threadx-linux-c-service-server")
+        .expect("spawn the threadx-linux c service-server");
+    server
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_SERVER_READY_MARKER,
+            Duration::from_secs(30),
+        )
+        .unwrap_or_else(|e| panic!("the image never became ready: {e}"));
+    let (_, status) = one_sigterm_then_wait(server.handle_mut(), nros_tests::process::KILL_GRACE)
+        .unwrap_or_else(|| {
+            panic!(
+                "the image was still alive after one SIGTERM (issue 1741): {}",
+                server.command_line()
+            )
+        });
+    assert_eq!(
+        status.code(),
+        Some(0),
+        "a threadx-linux C app that shut down gracefully must exit 0, got {status} — a \
+         board reporting failure for every app would pass the half above"
+    );
+}
