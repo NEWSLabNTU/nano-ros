@@ -260,7 +260,27 @@ jobs:
           # `nros sync` — it rewrites `generated/` and re-stales every row
           # fixture built before it — then the rows. Building rows first cost a
           # whole box batch on 2026-09-06.
-          NROS_CARGO_FLAGS= just native build-workspace-fixtures
+          # The WORKSPACE rows the host cells resolve, not all of them. This
+          # was `just native build-workspace-fixtures` — every native workspace
+          # row, 121 of them — for a membership that reaches 8, and it filled
+          # the runner's disk with 111 G free after the reclaim (run
+          # 37883358718). DERIVED from the cells' tests, directly or through
+          # the nros-tests helper they call
+          # (`check-interop-verdicts.py --host-workspace-fixtures`).
+          if ! wss="$(python3 scripts/check-interop-verdicts.py --list-passing --runner host --host-workspace-fixtures)"; then
+              echo "::error::could not derive the host cells' workspace fixtures"
+              exit 1
+          fi
+          echo "host workspace fixtures (derived from the cells' tests):"
+          printf '  %s\n' "$wss"
+          if [ -n "$wss" ]; then
+              NROS_CARGO_FLAGS= just _codegen
+              while IFS= read -r id; do
+                  [ -n "$id" ] || continue
+                  echo "=== workspace-fixtures-build.sh linux --id $id ==="
+                  NROS_CARGO_FLAGS= bash scripts/build/workspace-fixtures-build.sh linux --id "$id"
+              done <<< "$wss"
+          fi
           # DERIVED, not written: one `fixtures-build.sh linux <lang> <rmw>` per
           # pair the host cells with a recorded PASS run on. The two builds this
           # step used to name by hand never included C Cyclone or Rust XRCE, so
