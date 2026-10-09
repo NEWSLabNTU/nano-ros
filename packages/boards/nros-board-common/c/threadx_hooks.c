@@ -173,8 +173,13 @@ __attribute__((weak)) int  nros_board_init_eth(void) { return 0; }
  * whatever else it has. A board that is a HOST PROCESS (threadx-linux)
  * overrides this to end the process — otherwise a returned app leaves an idle
  * scheduler running forever, which is how a `timeout`-bounded image outlived
- * its deadline. */
-__attribute__((weak)) void nros_board_app_returned(void) { }
+ * its deadline.
+ *
+ * `exit_code` is the app's status as an exit code (issue 1752): 0 iff it
+ * succeeded. A C/C++ app's comes through `nros_app_main_returned()` below; a
+ * Rust entry ends through `BoardExit` and never returns here, so its arm
+ * passes 0. */
+__attribute__((weak)) void nros_board_app_returned(int exit_code) { (void)exit_code; }
 __attribute__((weak)) void nros_board_compute_rng_seed(uint32_t *out)
 {
     /* Default = constant non-zero seed; overlay overrides with an
@@ -242,6 +247,22 @@ void nros_threadx_set_app_main(void (*entry)(void))
     c_app_main = entry;
 }
 
+/* Issue 1752 — the strong recorder for `<nros/app_main.h>`'s VOID shim, which
+ * calls this with `nros_app_main`'s status (as an exit code) just before its
+ * `app_main` returns. It must live in THIS object, beside the call to
+ * `app_main` below: the shim carries a weak no-op of its own, and a linker
+ * never pulls an archive member merely to replace a weak definition. Declared
+ * here rather than by including the header because this file is also built on
+ * the Rust lane, which has no nros-c include path; the prototype is the
+ * header's. */
+void nros_app_main_returned(int exit_code);
+static int c_app_exit_code = 0;
+
+void nros_app_main_returned(int exit_code)
+{
+    c_app_exit_code = exit_code;
+}
+
 /* ---- App thread entry: invokes Rust callback or C/C++ app_main ---- */
 static void app_thread_entry(ULONG input)
 {
@@ -251,14 +272,14 @@ static void app_thread_entry(ULONG input)
         nros_board_log("[app_thread] Calling Rust entry...\n");
         rust_app_entry(rust_app_arg);
         nros_board_log("[app_thread] Rust entry returned\n");
-        nros_board_app_returned();
+        nros_board_app_returned(0);
         return;
     }
     if (c_app_main) {
         nros_board_log("[app_thread] Calling c_app_main (FFI)...\n");
         c_app_main();
         nros_board_log("[app_thread] c_app_main returned\n");
-        nros_board_app_returned();
+        nros_board_app_returned(c_app_exit_code);
         return;
     }
 #if !defined(__riscv)
@@ -266,7 +287,7 @@ static void app_thread_entry(ULONG input)
         nros_board_log("[app_thread] Calling app_main (weak)...\n");
         app_main();
         nros_board_log("[app_thread] app_main returned\n");
-        nros_board_app_returned();
+        nros_board_app_returned(c_app_exit_code);
         return;
     }
 #endif

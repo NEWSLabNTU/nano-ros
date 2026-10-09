@@ -431,6 +431,36 @@ c: c-fmt
         echo "       the hook. See tmp/entry_seam_c_override.log" >&2; \
         exit 1; \
     fi
+    echo "  - VOID entry shim hands nros_app_main's status to the board (issue 1752)"
+    # `NROS_APP_MAIN_REGISTER_VOID()` used to DISCARD the status, so a
+    # host-process board (threadx-linux, freertos-posix) ended a failed app
+    # with exit 0. A LINK+RUN probe, for the same reason as the seam above: the
+    # hand-off is a weak default the board overrides, and only a link shows
+    # which one won. The app half is built as C AND as C++ (the C++ examples
+    # expand the same macro under `extern "C"`); the board half with a strong
+    # recorder must see every status, and the weak-only link must still link.
+    # Against the pre-fix header the board probe fails on its first case with
+    # "the shim never called nros_app_main_returned" — measured.
+    for _tu in app_main_status_app app_main_status_board app_main_status_weak; do \
+        test -f "packages/api/nros-c/tests/run/$_tu.c" || { \
+            echo "ERROR: $_tu.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
+    done
+    cc -std=c11 -Wall -Wextra -Werror -Ipackages/api/nros-c/include \
+        -c packages/api/nros-c/tests/run/app_main_status_app.c -o tmp/app_main_status_app_c.o
+    c++ -std=c++17 -Wall -Wextra -Werror -Ipackages/api/nros-c/include -x c++ \
+        -c packages/api/nros-c/tests/run/app_main_status_app.c -o tmp/app_main_status_app_cpp.o
+    cc -std=c11 -Wall -Wextra -Werror -Wmissing-prototypes \
+        -c packages/api/nros-c/tests/run/app_main_status_board.c -o tmp/app_main_status_board.o
+    cc -std=c11 -Wall -Wextra -Werror -Wmissing-prototypes \
+        -c packages/api/nros-c/tests/run/app_main_status_weak.c -o tmp/app_main_status_weak.o
+    for _lang in c cpp; do \
+        c++ tmp/app_main_status_app_$_lang.o tmp/app_main_status_board.o \
+            -o tmp/app_main_status_board_$_lang; \
+        ./tmp/app_main_status_board_$_lang; \
+        c++ tmp/app_main_status_app_$_lang.o tmp/app_main_status_weak.o \
+            -o tmp/app_main_status_weak_$_lang; \
+        ./tmp/app_main_status_weak_$_lang; \
+    done
     echo "  - executor verb spelling + deprecated aliases (issue 0338)"
     # The entity-registration family is `nros_executor_add_*` (rclc's spelling);
     # the old `register_*` names survive one release as macro aliases. The probe

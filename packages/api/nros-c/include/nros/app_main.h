@@ -40,10 +40,16 @@ extern "C" {
 
 /// User application entry point. Define exactly once per binary.
 ///
-/// Returns 0 on success, non-zero on failure (forwarded by the
-/// platform shim where a return code matters; ignored on RTOS targets
-/// where the entry shim returns void).
+/// Returns 0 on success, non-zero on failure. The `int main` shims return
+/// it; the `void app_main(void)` shim hands it to the board through
+/// `nros_app_main_returned()` (issue 1752), which a host-process board turns
+/// into the process exit status and an MCU board ignores.
 int nros_app_main(int argc, char** argv);
+
+/// The VOID shim's status hand-off (issue 1752) — see the note above
+/// `NROS_APP_MAIN_REGISTER_VOID`. `exit_code` is
+/// `nros_app_exit_code(nros_app_main(...))`.
+void nros_app_main_returned(int exit_code);
 
 #ifdef __cplusplus
 }
@@ -83,9 +89,43 @@ int nros_app_main(int argc, char** argv);
 #define NROS_APP_MAIN_LINKAGE
 #endif
 
+/* Issue 1752 — the VOID shim's status hand-off.
+ *
+ * `void app_main(void)` has nowhere to return a status, and this shim used to
+ * DISCARD `nros_app_main`'s, so a host-process board (freertos-posix,
+ * threadx-linux) that ends the process when the app returns could only say
+ * `exit(0)` — a failed app reported success. The shim now hands the status to
+ * `nros_app_main_returned()` before `app_main` returns. The board that CALLS
+ * `app_main` defines it (strongly) and acts on the value once the call
+ * returns; every other board gets the shim's own WEAK no-op, which is the right
+ * answer on an MCU where nothing reads a status.
+ *
+ * Why a weak DEFINITION here rather than a weak REFERENCE in the board: a
+ * weak-undefined function resolves to address 0, which RISC-V's
+ * `R_RISCV_PCREL_HI20` cannot reach from `.text` at 0x80000000 (the note in
+ * `nros-board-common/c/threadx_hooks.c`). A weak definition never leaves a
+ * reference undefined, so every target links. The contract for a strong
+ * definition: it lives in the SAME object as the board's call to `app_main` —
+ * a linker never pulls an archive member just to replace a weak definition, so
+ * a recorder in a member nothing else needs would silently lose to the no-op.
+ *
+ * The value handed over is an exit code, normalised once by
+ * `nros_app_exit_code()`: 0 if and only if `nros_app_main` returned 0. A raw
+ * `exit(status)` keeps only the low byte, so a status of 256 would have read
+ * as success; it is folded to 1. */
+static inline int nros_app_exit_code(int status) {
+    if (status == 0) {
+        return 0;
+    }
+    return (status & 0xff) != 0 ? (status & 0xff) : 1;
+}
+
 #define NROS_APP_MAIN_REGISTER_VOID()                                                              \
+    NROS_APP_MAIN_LINKAGE __attribute__((weak)) void nros_app_main_returned(int exit_code) {       \
+        (void)exit_code;                                                                           \
+    }                                                                                              \
     NROS_APP_MAIN_LINKAGE void app_main(void) {                                                    \
-        (void)nros_app_main(0, (char**)0);                                                         \
+        nros_app_main_returned(nros_app_exit_code(nros_app_main(0, (char**)0)));                   \
     }
 
 #define NROS_APP_MAIN_REGISTER_ZEPHYR()                                                            \
