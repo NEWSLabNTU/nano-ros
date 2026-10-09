@@ -1537,9 +1537,7 @@ fn catches_signal(pid: u32, signal: i32) -> bool {
 #[case::cyclonedds(Rmw::Cyclonedds)]
 #[case::zenoh(Rmw::Zenoh)]
 fn test_threadx_linux_c_image_ends_on_one_sigterm(#[case] rmw: Rmw) {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_cmake();
     let bin = nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
         "c",
         "service-server",
