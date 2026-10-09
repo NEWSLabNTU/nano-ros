@@ -790,6 +790,10 @@ pub const CASE_CELLS: &[CaseOwner] = &[
        "native-multinode-rust-cyclone"),
     co("rust_multi_node_per_node_graph", "rust_multi_node_entry_per_node_graph_nodes_xrce",
        "native-multinode-rust-xrce"),
+    // Issue 1732 — the same image must LEAVE the graph when it ends.
+    co("rust_multi_node_per_node_graph",
+       "rust_multi_node_entry_leaves_the_graph_when_it_ends_xrce",
+       "native-multinode-rust-xrce"),
 
     // ── ros2_action_e2e — TWO coordinates, two directions each ──────────
     // The pair no coordinate can separate: which side drives is the whole
