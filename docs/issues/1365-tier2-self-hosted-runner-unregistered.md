@@ -644,3 +644,23 @@ normally. The next scheduled self-hosted job answers that. If it starts
 promptly while 113715238290 stays queued, the cause is jobs that predate a
 re-registration, and the remedy is cancelling and re-running such jobs. That
 is an operator step and should be part of the runner-replacement procedure.
+
+### A second stranded job, and it blocks the next dispatch (2026-10-09, 15:00Z)
+
+The 07:20 nightly's job is not the only one. Run-matrix **37902884776**
+(workflow_dispatch on `fix/1651-1656-last-reds`, created **08:06Z**) has been
+`queued` ever since. It was also created before the runner was replaced at
+about 08:44Z.
+
+The cost compounds. `run-matrix.yml` uses `concurrency: group: run-matrix`
+with `cancel-in-progress: false`, so this stranded run holds the group. A
+fresh dispatch on `main`, run **37945434581** (14:36Z), therefore sits
+`pending` with no jobs created, even though the runner is online and idle.
+Both stranded jobs predate the re-registration, and nothing created after it
+has been seen waiting this way. That supports the explanation above: jobs
+queued before a runner is re-registered are never claimed by the new
+registration.
+
+Remedy: cancel 37898479826 (nightly) and 37902884776 (run-matrix) and
+re-dispatch. The runner-replacement procedure should cancel and re-run every
+self-hosted job that is queued at the moment of replacement.
