@@ -320,19 +320,20 @@ pub mod logging {
 // Re-export heapless for generated message types and examples
 pub use nros_core::heapless;
 
-// Re-export component-mode API
-#[cfg(feature = "rmw-cffi")]
-pub use node::NodeExecutorRuntime;
 // Phase 212.M.5.a.2 — executor-backed runtime entry points.
 // (`component_register_symbol` retired in the Phase 212.N.7 closing
 // sweep — the helper had no live callers after the BSP baker + macro
 // extern emit were deleted.)
 pub use node::{
-    ActionExecutor, Callback, CallbackCtx, CallbackEffects, ClientDispatch, Component,
-    DeclaredNode, EntityBounds, ExecutableNode, NodeActionClient, NodeActionServer, NodeContext,
-    NodeDeclError, NodeOptions, NodeParameter, NodePublisher, NodeResult, NodeRuntime,
-    NodeServiceClient, NodeServiceServer, NodeSubscription, NodeTimer, PublisherResolver, TickCtx,
+    ActionExecutor, Callback, CallbackCtx, ClientDispatch, EntityBounds, NodeActionClient,
+    NodeActionServer, NodeDeclError, NodeOptions, NodeParameter, NodePublisher, NodeResult,
+    NodeRuntime, NodeServiceClient, NodeServiceServer, NodeSubscription, NodeTimer,
+    PublisherResolver, TickCtx,
 };
+// phase-483 W3 — the component API registers into a live executor, so it
+// exists where the executor does.
+#[cfg(feature = "rmw-cffi")]
+pub use node::{CallbackEffects, Component, DeclarativeNode, ExecutableNode, NodeContext};
 // Issue 0784 — the macro and codegen PLUMBING, out of the documented surface.
 // `nros::` publishes three audiences under one namespace; these six are for the
 // `nros::node!` expansion and the generated metadata probe
@@ -340,15 +341,13 @@ pub use node::{
 // author, and none is named by any hand-written file in `examples/` or
 // `packages/`. Hidden, not deleted: the generated code reaches them by path, the
 // same treatment as `__private_node_state_into_raw` below.
+#[cfg(feature = "rmw-cffi")]
 #[doc(hidden)]
-pub use node::{
-    DeclaredNodeRuntime, MISSING_NODE_EXPORT_ERROR, NodeRuntimeAdapter, RuntimeNodeRecord,
-    record_node_metadata, register_node,
-};
+pub use node::{__record_with_context, record_node_metadata, register_node};
 // Phase 212.M.5.a.4 — internal helper consumed by `nros::node!()`
 // for the BSP dispatch path. Public-but-doc-hidden so the macro expand
 // resolves it as `::nros::__private_node_state_into_raw`.
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 #[doc(hidden)]
 pub use node::__private_node_state_into_raw;
 // phase-359 W8 — follows `node_metadata`'s re-gate: the type needs `alloc`,
@@ -400,167 +399,11 @@ pub use node_runtime::{
     install_node_typed_with_params,
 };
 
-/// Phase 257 (W0-B) — `install_node_typed` stub for builds without the cffi runtime.
-/// The typed-entry install seam needs the `rmw-cffi` executor; a `nros::node!()` pkg
-/// compiled without `rmw-cffi` still emits `__nros_component_<pkg>_install` (the macro
-/// can't see the umbrella's feature), so this stub keeps it linkable — it returns `-1`
-/// (no real executor to install on). The real impl is `node_runtime::install_node_typed`.
-///
-/// # Safety
-/// Signature parity with the real impl; the stub dereferences nothing.
-#[cfg(not(feature = "rmw-cffi"))]
-#[doc(hidden)]
-pub unsafe fn install_node_typed<C: node::ExecutableNode + 'static>(
-    _executor: *mut core::ffi::c_void,
-) -> i32
-where
-    C::State: 'static,
-{
-    -1
-}
-
-/// W4a — `install_node_typed_with_params` stub for builds without the cffi runtime.
-/// Signature parity with `node_runtime::install_node_typed_with_params`; returns `-1`.
-///
-/// # Safety
-/// The stub dereferences nothing.
-#[cfg(not(feature = "rmw-cffi"))]
-#[doc(hidden)]
-pub unsafe fn install_node_typed_with_params<C: node::ExecutableNode + 'static>(
-    _executor: *mut core::ffi::c_void,
-    _params: &[(&str, &str)],
-) -> i32
-where
-    C::State: 'static,
-{
-    -1
-}
-
-/// Phase 268 W1 — `install_node_typed_with_node_identity` stub for builds without the
-/// cffi runtime. Signature parity with the real impl; returns `-1`.
-///
-/// # Safety
-/// The stub dereferences nothing.
-#[cfg(not(feature = "rmw-cffi"))]
-#[doc(hidden)]
-pub unsafe fn install_node_typed_with_node_identity<C: node::ExecutableNode + 'static>(
-    _executor: *mut core::ffi::c_void,
-    _params: &[(&str, &str)],
-    _node_identity: Option<(&'static str, &'static str)>,
-) -> i32
-where
-    C::State: 'static,
-{
-    -1
-}
-
-/// phase-391 W5.3b — `ComponentSlotStorage` stub for builds without the cffi
-/// runtime (or without `alloc`): the macro emits a per-class
-/// `static ... = ComponentSlotStorage::new()` unconditionally, so the name must
-/// exist and be const-constructible + `Sync` in every cfg. Zero-sized.
-#[cfg(not(feature = "rmw-cffi"))]
-#[doc(hidden)]
-pub struct ComponentSlotStorage<
-    C,
-    const N: usize = { crate::config::MAX_CLASS_INSTANCES },
-    const PUBS: usize = { crate::config::MAX_CELL_ENTITIES },
-    const SVCS: usize = { crate::config::MAX_CELL_ENTITIES },
-    const ACTC: usize = { crate::config::MAX_CELL_ENTITIES },
-    const ACTS: usize = { crate::config::MAX_CELL_ENTITIES },
-    const SSRV: usize = { crate::config::MAX_CELL_ENTITIES },
-> {
-    _p: core::marker::PhantomData<fn() -> C>,
-}
-
-#[cfg(not(feature = "rmw-cffi"))]
-impl<C, const N: usize, const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize>
-    ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS>
-{
-    #[doc(hidden)]
-    #[allow(clippy::new_without_default)]
-    pub const fn new() -> Self {
-        Self {
-            _p: core::marker::PhantomData,
-        }
-    }
-}
-
-/// phase-391 W5.3b — `install_node_typed_in` stub; returns `-1`.
-///
-/// # Safety
-/// Signature parity with the real impl; the stub dereferences nothing.
-#[cfg(not(feature = "rmw-cffi"))]
-#[doc(hidden)]
-pub unsafe fn install_node_typed_in<
-    C: node::ExecutableNode + 'static,
-    const N: usize,
-    const PUBS: usize,
-    const SVCS: usize,
-    const ACTC: usize,
-    const ACTS: usize,
-    const SSRV: usize,
->(
-    _executor: *mut core::ffi::c_void,
-    _store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV>,
-) -> i32
-where
-    C::State: 'static,
-{
-    -1
-}
-
-/// phase-391 W5.3b — `install_node_typed_with_launch_in` stub; returns `-1`.
-///
-/// # Safety
-/// Signature parity with the real impl; the stub dereferences nothing.
-#[cfg(not(feature = "rmw-cffi"))]
-#[doc(hidden)]
-pub unsafe fn install_node_typed_with_launch_in<
-    C: node::ExecutableNode + 'static,
-    const N: usize,
-    const PUBS: usize,
-    const SVCS: usize,
-    const ACTC: usize,
-    const ACTS: usize,
-    const SSRV: usize,
->(
-    _executor: *mut core::ffi::c_void,
-    _store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV>,
-    _params: &[(&str, &str)],
-    _node_identity: Option<(&'static str, &'static str)>,
-    _remaps: &[(&str, &str)],
-    // Spelled as the plain tuple rather than `QoSOverrideCode`: that alias
-    // lives behind nros-node's cffi gate and is unnameable in this cfg, but
-    // its definition is this tuple — the same spelling `RuntimeCtx` uses, so
-    // emitted calls typecheck identically against stub and real. (The OLDER
-    // with_launch stub above simply dropped this parameter, which is 4-vs-5
-    // signature drift against its real impl — not repeated here.)
-    _qos_overrides: &'static [(&'static str, u8, u8, u32)],
-) -> i32
-where
-    C::State: 'static,
-{
-    -1
-}
-
-/// Phase 305 W3 (issue 0255) — `install_node_typed_with_launch` stub for builds
-/// without the cffi runtime. Signature parity with the real impl; returns `-1`.
-///
-/// # Safety
-/// The stub dereferences nothing.
-#[cfg(not(feature = "rmw-cffi"))]
-#[doc(hidden)]
-pub unsafe fn install_node_typed_with_launch<C: node::ExecutableNode + 'static>(
-    _executor: *mut core::ffi::c_void,
-    _params: &[(&str, &str)],
-    _node_identity: Option<(&'static str, &'static str)>,
-    _remaps: &[(&str, &str)],
-) -> i32
-where
-    C::State: 'static,
-{
-    -1
-}
+// phase-483 W3 — the `install_node_typed*` STUBS for builds without
+// `rmw-cffi` are gone. They existed so a `nros::node!()` package compiled
+// without the executor stayed linkable; a component now registers into a live
+// executor (`NodeContext::create_node` returns a `Node`), so a component
+// package without `rmw-cffi` has nothing to register into and does not build.
 // Phase 212.N.12 — canonical `nros::node!()` macro. Replaces the legacy
 // `nros::node!()` macro (retired in the N.12 hard rename — both the
 // proc-macro forwarder and the Cargo metadata key are gone).
@@ -1592,16 +1435,17 @@ pub mod embedded {
 
     // Component/runtime plumbing, and the source-metadata capture the
     // orchestration layer records. None of it appears in a ported node.
-    pub use crate::{MetadataRecorder, NodeRuntimeAdapter, RuntimeNodeRecord};
+    pub use crate::MetadataRecorder;
 
     // Entity REGISTRATION vocabulary. A ported node writes
     // `create_publisher(...)`; these are what the declaration macros and the
     // orchestration layer use to describe what was created.
     pub use crate::{
-        ActionTag, Callback, CallbackEffectKind, CallbackEffects, DeclaredNode,
-        DeclaredNodeRuntime, EntityKind, NodeRuntime, ServiceTag, SourceLocationMetadata,
-        SourceNameKind, SubscriptionTag, record_node_metadata, register_node,
+        ActionTag, Callback, CallbackEffectKind, EntityKind, NodeRuntime, ServiceTag,
+        SourceLocationMetadata, SourceNameKind, SubscriptionTag,
     };
+    #[cfg(feature = "rmw-cffi")]
+    pub use crate::{CallbackEffects, record_node_metadata, register_node};
     // Gated where the root gates it — the export follows the capability, not
     // the tier.
     #[cfg(feature = "alloc")]
@@ -1641,20 +1485,19 @@ pub mod prelude {
     // extensions -- rclrs has the capability under a different decomposition
     // (`log_info!(logger.throttle(d), "…")`), so the glob is not introducing a
     // name with no upstream counterpart.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub use crate::{Component, DeclarativeNode, NodeContext};
+    #[cfg(feature = "alloc")]
+    pub use crate::{
+        NodeActionClient, NodeActionServer, NodeDeclError, NodeOptions, NodeParameter,
+        NodePublisher, NodeResult, NodeServiceClient, NodeServiceServer, NodeSubscription,
+        NodeTimer, ParameterDefault, node,
+    };
     pub use crate::{
         log_debug, log_error, log_fatal, log_info, log_warn, nros_debug_throttle,
         nros_debug_throttle_at, nros_error_throttle, nros_error_throttle_at, nros_fatal_throttle,
         nros_fatal_throttle_at, nros_info_throttle, nros_info_throttle_at, nros_warn_throttle,
         nros_warn_throttle_at,
-    };
-    // Re-export component-mode API.
-    #[cfg(feature = "rmw-cffi")]
-    pub use crate::NodeExecutorRuntime;
-    #[cfg(feature = "alloc")]
-    pub use crate::{
-        Component, NodeActionClient, NodeActionServer, NodeContext, NodeDeclError, NodeOptions,
-        NodeParameter, NodePublisher, NodeResult, NodeServiceClient, NodeServiceServer,
-        NodeSubscription, NodeTimer, ParameterDefault, node,
     };
 
     // Re-export lifecycle types
@@ -1730,19 +1573,14 @@ mod tests {
         let _ = QoSProfile::BEST_EFFORT;
     }
 
-    /// Verify the Node* canonical trait + context + result types
-    /// resolve after the Component→Node hard rename. The Component*
-    /// aliases were dropped in the same phase; their absence is
-    /// enforced by the workspace audit (no live `Component*` ident
-    /// remains in core / examples / tests).
+    /// The component trait, its registration context and the result type
+    /// resolve under the names phase-483 W2/W3 gave them: `Component` (the
+    /// trait, which phase-212 had named `Node`) and a `NodeContext` with no
+    /// runtime parameter.
+    #[cfg(feature = "rmw-cffi")]
     #[test]
     fn node_context_types_resolve() {
-        // Canonical "Node*" trait + context names (post-rename).
-        fn _take_node_ctx<N: crate::Component>(
-            _: &mut crate::NodeContext<'_, dyn crate::NodeRuntime>,
-        ) {
-        }
-        // Result type resolves.
+        fn _take_node_ctx<N: crate::Component>(_: &mut crate::NodeContext<'_>) {}
         let _: crate::NodeResult<()> = Ok(());
     }
 }

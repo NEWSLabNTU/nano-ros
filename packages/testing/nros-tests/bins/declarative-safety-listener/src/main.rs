@@ -17,8 +17,8 @@
 
 use log::{error, info};
 use nros::{
-    Callback, CallbackCtx, Component, ExecutableNode, Executor, ExecutorConfig, NodeContext,
-    NodeOptions, NodeResult, node_runtime::ExecutorNodeRuntime,
+    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, Executor, ExecutorConfig,
+    NodeContext, NodeOptions, NodeResult, node_runtime::ExecutorNodeRuntime,
 };
 use std_msgs::msg::Int32;
 

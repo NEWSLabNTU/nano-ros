@@ -1613,6 +1613,13 @@ impl<'e, 's> Node<'e, 's> {
         nros_log::resolve_node_logger(self.name())
     }
 
+    /// The executor this node borrows — for the `nros` facade's declarative
+    /// constructors, which register into it. Not a user API.
+    #[doc(hidden)]
+    pub fn __executor(&mut self) -> &mut super::spin::Executor<'s> {
+        self.executor
+    }
+
     /// This node's id in the executor's node table — an RTOS extension, for
     /// the APIs that address a node by id (`Executor::node_mut`, the
     /// per-node QoS override table).

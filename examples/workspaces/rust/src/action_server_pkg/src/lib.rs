@@ -19,8 +19,8 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    Callback, CallbackCtx, CancelResponse, Component, ExecutableNode, GoalId, GoalResponse,
-    GoalStatus, NodeContext, NodeOptions, NodeResult, TickCtx,
+    Callback, CallbackCtx, CancelResponse, Component, DeclarativeNode, ExecutableNode, GoalId,
+    GoalResponse, GoalStatus, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
 /// Fixed Fibonacci order — matches the client's requested goal (the goal payload

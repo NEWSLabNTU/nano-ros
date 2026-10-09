@@ -22,8 +22,8 @@ mod app_main;
 
 use core::fmt::Write as _;
 use nros::{
-    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
-    TimerDuration,
+    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
+    NodeResult, TimerDuration,
 };
 
 use std_msgs::msg::String as StringMsg;

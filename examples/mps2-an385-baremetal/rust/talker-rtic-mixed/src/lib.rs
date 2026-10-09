@@ -18,8 +18,8 @@
 
 use core::fmt::Write as _;
 use nros::{
-    Callback, CallbackCtx, Component, DispatchStrategy, ExecutableNode, NodeContext, NodeResult,
-    TickCtx, TimerDuration,
+    Callback, CallbackCtx, Component, DeclarativeNode, DispatchStrategy, ExecutableNode,
+    NodeContext, NodeResult, TickCtx, TimerDuration,
 };
 use std_msgs::msg::String as StringMsg;
 

@@ -37,7 +37,7 @@ use std::{
 };
 
 use nros::{
-    Callback, CallbackCtx, Component, ExecutableNode, Executor, ExecutorConfig,
+    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, Executor, ExecutorConfig,
     ExecutorNodeRuntime, NodeContext, NodeOptions, NodeResult,
 };
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};

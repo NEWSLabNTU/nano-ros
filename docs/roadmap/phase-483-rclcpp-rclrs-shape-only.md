@@ -217,6 +217,45 @@ The 78 component files, the 17 imperative files, `packages/testing`, the
 metadata probe harness all move to W2's `Node`. Name-keyed framework dispatch
 stays as the RTIC/Embassy extension.
 
+**Status 2026-10-10 (W3 core): a component's `register` gets the one `Node`.**
+
+- `NodeContext::create_node` returns `nros::Node`, the type
+  `Executor::create_node` returns, and `NodeContext` lost its runtime type
+  parameter.
+- `DeclaredNode` is gone. Its constructors are the `nros::DeclarativeNode`
+  extension trait, implemented for `Node`. The four explicit-id forms that
+  would have shadowed rclrs-named inherent methods are now `declare_*`.
+- Registration goes through a frame installed on the executor for the
+  lifetime of the `NodeContext`. `Executor::__set_component_frame` is an
+  opaque pointer, because nros-node sits below the crate that defines the
+  frame. The frame's sink is either the live `ExecutorSink` or the probe's
+  `RecordSink`.
+- The sink receives the executor per call instead of holding it, because the
+  `Node` the component holds borrows the same executor.
+- The metadata probe opens an executor on the `metadata` backend:
+  - `record_node_metadata` takes the executor too;
+  - the generated harness depends on `nros-rmw-metadata` and links the posix
+    C port.
+- The component API now requires `rmw-cffi`. The non-`rmw-cffi`
+  `install_node_typed*` stubs are deleted. Every example component already
+  enabled the feature.
+- Zero-consumer types deleted (issue 0784): `NodeRuntimeAdapter`,
+  `RuntimeNodeRecord`, `DeclaredNodeRuntime`, `NodeExecutorRuntime`,
+  `MISSING_NODE_EXPORT_ERROR`.
+- The declarative-registration unit tests moved from `nros/src/node.rs` to
+  `nros-rmw-metadata/tests/component_registration.rs`, which can open an
+  executor.
+  - 19 moved and pass.
+  - The three `NodeRuntimeAdapter` tests went with the type.
+  - New: a duplicate node name is refused, and
+    `a_component_and_a_program_share_one_node_type`.
+- The live component tests (`component_runtime`, `component_dispatch`,
+  `component_param`, `tier_filter`, `dispatch_strategy`) pass, 15/15.
+
+**Still open in W3:** examples keep the name-dispatched `ExecutableNode`
+bodies. Writing them as rclrs-style closures on `Node` is optional per
+example and not required by the acceptance.
+
 ### W4 — Rust: the facade's surface
 
 - `StandaloneNode` and its error leave `nros::`; the two bench programs

@@ -717,14 +717,6 @@
     "verdict": "divergence",
     "why": "ROS time. rclrs models it as a `ClockSource` a `Clock` is built `with_source`, so the override is driven by whoever owns the source. Ours are methods on `Clock` itself, because with no allocator the source cannot be a separately-owned object shared between clocks -- an image has one clock and one owner of it."
   },
-  "rust:DeclaredNode::create_timer_for_callback_name": {
-    "verdict": "divergence",
-    "why": "entities are DECLARED by a component (RFC-0043/0044); see the node stage's `rust:Node`."
-  },
-  "rust:DeclaredNode::create_timer_for_callback_name_on_clock": {
-    "verdict": "divergence",
-    "why": "phase-430 W4 -- the clock axis on the DECLARATIVE surface, and the sibling of `rust:DeclaredNode::create_timer_for_callback_name` directly above: same declarative model (entities are declared by a component, RFC-0043/0044), one argument more.\n\nFiled `divergence` and not `extension` because rclrs HAS the capability: a per-timer clock, expressed as a per-site OPTION (`IntoTimerOptions::{clock, node_time, steady_time, system_time}` on `Node::create_timer_repeating`, all `declined` in this shard) rather than as a second verb. What differs is the shape, and the same constraint that decided `rust:Executor::register_timer_on_clock` decides it here: a non-`Steady` timer READS a clock on every poll, which on an RTOS target is a platform call, so it is worth a distinct name at the call site rather than a default inside an options builder.\n\nWhy it exists at all: until W4 the clock reached only the executor, so a component -- which is how every workspace example writes a timer -- could not ask for one without reaching past its own API. `EntityMetadata::timer_clock` carries the choice to `node_runtime`, which registers through the one dispatch, `Executor::register_timer_on_clock`. The `#[doc(hidden)]` `create_timer_on_clock` / `create_timer_for_callback_on_clock` beneath it are the same verb with the entity ID spelled explicitly, as for the clock-less trio."
-  },
   "rust:Duration": {
     "verdict": "divergence",
     "why": "`TimerDuration` is the unit a timer period is expressed in and `Duration` is the ROS message duration; rclrs has one `Duration` (a re-export of `std::time::Duration` shape) for both. Two types because a timer period is `u64` microseconds bounded by the platform tick, while a ROS duration is a signed nanosecond pair that has to round-trip a `builtin_interfaces/Duration` on the wire."
@@ -1348,5 +1340,13 @@
   "c:trace_set_timer_every": {
     "verdict": "extension",
     "why": "phase-474 I3 -- keep one tick in N of a timer's callback-trace start/end pair (1 = every tick, 0 = none), so a RAM trace window can hold the timer whose jitter is the measurement whole. rclc has no callback-level trace hook; see `c:set_trace_sink`. A no-op without the tracing feature."
+  },
+  "rust:DeclarativeNode::create_timer_for_callback_name": {
+    "verdict": "divergence",
+    "why": "entities are DECLARED by a component (RFC-0043/0044); see the node stage's `rust:Node`.\n\nphase-483 W3 — re-keyed from `DeclaredNode`: the declarative constructors are now the `nros::DeclarativeNode` extension trait on `nros::Node`, so a component's node and a program's node are one type."
+  },
+  "rust:DeclarativeNode::create_timer_for_callback_name_on_clock": {
+    "verdict": "divergence",
+    "why": "phase-430 W4 -- the clock axis on the DECLARATIVE surface, and the sibling of `rust:DeclaredNode::create_timer_for_callback_name` directly above: same declarative model (entities are declared by a component, RFC-0043/0044), one argument more.\n\nFiled `divergence` and not `extension` because rclrs HAS the capability: a per-timer clock, expressed as a per-site OPTION (`IntoTimerOptions::{clock, node_time, steady_time, system_time}` on `Node::create_timer_repeating`, all `declined` in this shard) rather than as a second verb. What differs is the shape, and the same constraint that decided `rust:Executor::register_timer_on_clock` decides it here: a non-`Steady` timer READS a clock on every poll, which on an RTOS target is a platform call, so it is worth a distinct name at the call site rather than a default inside an options builder.\n\nWhy it exists at all: until W4 the clock reached only the executor, so a component -- which is how every workspace example writes a timer -- could not ask for one without reaching past its own API. `EntityMetadata::timer_clock` carries the choice to `node_runtime`, which registers through the one dispatch, `Executor::register_timer_on_clock`. The `#[doc(hidden)]` `create_timer_on_clock` / `create_timer_for_callback_on_clock` beneath it are the same verb with the entity ID spelled explicitly, as for the clock-less trio.\n\nphase-483 W3 — re-keyed from `DeclaredNode`: the declarative constructors are now the `nros::DeclarativeNode` extension trait on `nros::Node`, so a component's node and a program's node are one type."
   }
 }

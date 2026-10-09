@@ -205,7 +205,7 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
 /// 2. `#[unsafe(no_mangle)] pub extern "C" fn
 ///    __nros_node_<pkg>_dispatch_strategy() -> u8` — Phase 216.A.5
 ///    ABI export of the Node's [`DispatchStrategy`] discriminant
-///    (`<Type as Node>::DISPATCH as u8`). Read out-of-tree by
+///    (`<Type as Component>::DISPATCH as u8`). Read out-of-tree by
 ///    `nros check` (216.D.1) and consumed from a separate compilation
 ///    unit by the RTIC (216.B.3) / Embassy (216.C.3) dispatch tasks.
 ///    `<pkg>` is the value of `CARGO_PKG_NAME` after

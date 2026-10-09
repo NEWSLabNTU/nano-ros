@@ -5,7 +5,7 @@
 //! recorder to emit `node.metadata.json`.
 
 pub mod node {
-    use nros::{NodeContext, NodeOptions, NodeResult, TimerDuration};
+    use nros::{DeclarativeNode, NodeContext, NodeOptions, NodeResult, TimerDuration};
 
     pub struct Component;
 

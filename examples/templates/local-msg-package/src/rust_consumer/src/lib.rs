@@ -18,8 +18,8 @@
 //! msg-coverage publishing logic.
 
 use nros::{
-    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
-    TimerDuration,
+    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
+    NodeResult, TimerDuration,
 };
 
 use extra_msgs::msg::Echo;

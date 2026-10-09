@@ -9,8 +9,8 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, Component, DispatchStrategy, ExecutableNode, NodeContext, NodeOptions,
-    NodeResult, TickCtx,
+    Callback, CallbackCtx, Component, DeclarativeNode, DispatchStrategy, ExecutableNode,
+    NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 use std_msgs::msg::String as StringMsg;
 
