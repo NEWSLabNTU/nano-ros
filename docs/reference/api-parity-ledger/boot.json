@@ -3,9 +3,17 @@
     "Schema: see docs/reference/api-parity-ledger/SCHEMA.md — the one home for what",
     "a row means. Do NOT copy it back here; issue 1095 is what that cost."
   ],
+  "c:app_exit_code": {
+    "verdict": "extension",
+    "why": "issue 1752 -- `static inline int nros_app_exit_code(int status)` in `<nros/app_main.h>`: folds `nros_app_main`'s status into a process exit code (0 iff the status is 0, else its low byte, a zero low byte folded to 1 so `exit(256)` cannot read as success). rclc has no counterpart because a desktop program's `main` returns its own status to libc; ours is reached through the `void app_main(void)` shim, which has no return value, so the normalisation happens once in the shim rather than in every board that ends a host process."
+  },
   "c:app_main": {
     "verdict": "extension",
     "why": "`int nros_app_main(int argc, char** argv)` -- the entry symbol every nros C example defines, plus the `NROS_APP_MAIN_REGISTER()` macro that emits the right platform shim around it. rclc needs none of this because a desktop program writes `int main` and libc's startup calls it. The scenario is that the entry symbol is not portable across the RTOSes we target: Zephyr's kernel calls `int main(void)`, ESP-IDF/FreeRTOS/ThreadX/bare-metal startup chains call `void app_main(void)` after board init (network, executor arena, hardware), NuttX compiles with `-Dmain=<PROGNAME>_main` so nshlib can register the built-in, and a native build wants full `int main(int argc, char** argv)` pass-through. One user source builds on all of them and only the one-line registration knows which shim the linker expects. Note argc/argv are passed as `0, NULL` on every non-POSIX arm -- the signature is the portable shape, not a promise that arguments arrive."
+  },
+  "c:app_main_returned": {
+    "verdict": "extension",
+    "why": "issue 1752 -- `void nros_app_main_returned(int exit_code)`, the board hook the `NROS_APP_MAIN_REGISTER_VOID()` shim calls with `nros_app_exit_code(nros_app_main(...))` just before `app_main` returns. The shim emits a weak no-op (an MCU ignores the status); a board that is a host process (threadx-linux, freertos-posix) defines it strongly beside its call to `app_main` and exits with the value. rclc has no counterpart for the same reason as `app_main`: a desktop `main` returns its status straight to libc."
   },
   "c:boot_config_domain_id": {
     "verdict": "extension",
