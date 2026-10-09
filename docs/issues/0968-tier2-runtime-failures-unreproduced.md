@@ -5,7 +5,7 @@ status: open
 area: testing
 severity: medium
 found: 2026-08-31
-related: [0967, phase-410, RFC-0061]
+related: [0967, 1750, phase-410, RFC-0061]
 ---
 
 # What was measured, and what was not
@@ -595,3 +595,29 @@ Every fix moved the failure one step earlier in the job and revealed the next.
 None of the four was in the esp32 code. A lane that is uniformly red has no
 signal capacity — a new fault and yesterday's fault are the same colour — and
 that is what let four accumulate behind one symptom.
+
+## The threadx_linux cyclonedds cluster, FIXED 2026-10-09 — cause was issue 1750 (3 of the 12)
+
+"The participant is never admitted" above was a WEDGED KERNEL, not a discovery
+defect: Cyclone's host threads entered ThreadX (ddsrt's heap via
+`nros_platform_alloc`, and the data-available wake), leaked the Linux port's
+`_tx_linux_mutex` one level per call, and the whole image stopped within ~2 s —
+after its first few SPDP announcements, which is what the trace showed.
+[Issue 1750](archived/1750-threadx-linux-cyclone-host-threads-wedge-the-scheduler.md)
+has the gdb evidence and the fix.
+
+Re-run SOLO on fixtures built from the fix branch (threadx-linux C/C++
+cyclonedds rows + their native linux C/C++ cyclonedds peers), each verdict
+against the same build with the fix reverted:
+
+| cell | fix reverted | fixed |
+| --- | --- | --- |
+| `test_threadx_linux_cyclonedds_service` | FAIL | PASS |
+| `test_threadx_linux_cyclonedds_action` | FAIL | PASS |
+| `test_threadx_linux_cyclonedds_talker_to_native_listener` | FAIL | PASS |
+| `test_threadx_linux_cyclonedds_cpp_talker_to_native_listener` (not in the 12) | not run | PASS |
+
+**This cluster is closed; the issue stays open** for what is left of the twelve
+(the zephyr xrce-cpp cells on `zeth`, the rtic cell, and the esp32 confirmations
+above). Not established: that a tier-2 SWEEP (as opposed to solo runs) is green
+for these cells — a CI run is the evidence for that, as for the esp32 fixes.

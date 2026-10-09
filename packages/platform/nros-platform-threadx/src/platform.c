@@ -341,6 +341,14 @@ void nros_platform_threadx_note_pool_usage(void) {
     if (s_byte_pool == NULL) {
         return;
     }
+#if NROS_THREADX_HOSTED_PORT
+    /* Issue 1750 -- every in-tree caller is a ThreadX context (the allocator's
+     * kernel branch, the board's own pool sites). A foreign one has drawn
+     * nothing from the pool, so there is nothing for it to note. */
+    if (!nros_threadx_in_kernel_context()) {
+        return;
+    }
+#endif
     ULONG available = 0;
     if (tx_byte_pool_info_get(s_byte_pool, TX_NULL, &available, TX_NULL, TX_NULL, TX_NULL,
                               TX_NULL) != TX_SUCCESS) {
