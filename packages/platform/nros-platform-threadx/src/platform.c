@@ -1307,3 +1307,32 @@ size_t nros_platform_task_stack_unused_bytes(void) {
     return 0;
 #endif
 }
+
+/* Issue 1763 (first met in issue 1759) — `rust_eh_personality`, WEAK, for a
+ * HOST image whose Rust half links no libstd.
+ *
+ * The sysroot `liballoc` for a Linux host triple is built for unwinding, so
+ * its landing pads reference `rust_eh_personality` through a
+ * `DW.ref.rust_eh_personality` data word. libstd defines that symbol. A
+ * `#![no_std]` image on a Linux host does not have it: every threadx-linux Rust
+ * image since issue 1759, and every C/C++ runtime staticlib that is `alloc`
+ * rather than `std` since issue 1763. Without it the link fails on a symbol no
+ * nano-ros source names, as phase-370 recorded on the FreeRTOS POSIX host.
+ *
+ * WEAK, and in the PORT, because "is libstd in this link" is a fact about the
+ * final link and nothing else. It cannot be a Rust `cfg`: `nros-platform` and
+ * `nros-c` carry separate `std` features, and measured on freertos-posix (its
+ * staticlib `std`), a strong Rust definition gated on `not(feature = "std")`
+ * collided with libstd's (`duplicate symbol: rust_eh_personality`). A weak
+ * definition yields to libstd's strong one when it is there, and satisfies the
+ * reference when it is not. `__linux__` only: a cross target's `core`/`alloc`
+ * is built `panic = abort` and never references the symbol.
+ *
+ * Never CALLED. A personality routine runs only while unwinding, and nothing in
+ * a nano-ros image unwinds. Every `#[panic_handler]` the tree offers diverges
+ * (`nros_platform_panic`, or `panic-halt`'s park). So the empty body is exact. */
+#if defined(__linux__)
+void rust_eh_personality(void);
+__attribute__((weak)) void rust_eh_personality(void) {
+}
+#endif

@@ -62,6 +62,17 @@ MALLOC = "global-allocator"
 PANIC = ("panic-platform", "panic-halt")
 # `std` supplies both lang items, so these must NOT name a provider.
 STD_BACKED = {"platform-posix"}
+# issue 1763 — provider ports (their nros-c row names `global-allocator`) that
+# `nros_feature_set()` still emits with `std`, each with the reason. Anything
+# not here that does so fails. ThreadX left this list in issue 1763.
+STD_TIER_KNOWN = {
+    # The FreeRTOS POSIX simulator (`freertos-posix`, a host build). It is the
+    # same position threadx-linux was in, and it is tracked: issue 1778.
+    "platform-freertos": "issue 1778 (freertos-posix drops std)",
+    # NuttX ships a real `std` port (`*-nuttx-*` is std-capable, built with
+    # build-std); RFC-0003's tier table records the choice.
+    "platform-nuttx": "NuttX's own std port (RFC-0003)",
+}
 
 
 def selects(body: str, feature: str) -> bool:
@@ -177,7 +188,26 @@ def main() -> int:
             if plat is None:
                 continue  # a partial append; the platform arrives in another
             if "std" in feats:
-                continue  # std supplies panic + allocator
+                # issue 1763 — `std` supplies panic + allocator, but on a port
+                # whose `nros-c` row ALREADY names one (it owns a heap), `std`
+                # is not cover. It is a SECOND runtime, and a costly one:
+                # `panic-platform` stands down so a panic never reaches
+                # `nros_platform_panic`, the Rust heap is glibc rather than the
+                # port's, and `PANIC halt` must be refused at configure (E0152,
+                # issue 1742). threadx-linux was exactly this until issue 1763.
+                # A provider port rides `std` only with a recorded reason.
+                if selects(rows.get(plat, ""), MALLOC) and plat not in STD_TIER_KNOWN:
+                    print(
+                        f"ERROR: nros_feature_set emits {plat} with `std` "
+                        f"({' '.join(feats)}), but nros-c/{plat} names its own "
+                        f"`{MALLOC}`: the port supplies the runtime, and `std` "
+                        "would be a second one (issue 1763). Emit `alloc` "
+                        "instead, or add the platform to STD_TIER_KNOWN with "
+                        "the reason and a tracked issue.",
+                        file=sys.stderr,
+                    )
+                    fail = 1
+                continue
             if any(p in feats for p in PANIC):
                 print(
                     f"ERROR: nros_feature_set emits {plat} with a panic provider "

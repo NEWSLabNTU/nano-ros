@@ -43,7 +43,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
 # the umbrella for the board triple (the board overlay set it), but the Rust TIER must match
 # what the board builds plain nros-cpp with: `alloc;panic-halt` (NO `std` — thumbv7m et al.
 # have no std; nros-serdes/nros-params pull `extern crate std` only under the std feature).
-# Hosted / host-sim builds (posix, threadx-linux) keep the `std` host staticlib.
+# Hosted builds (posix, hosted FreeRTOS) keep the `std` host staticlib; threadx-linux is
+# `alloc` since issue 1763, like every ThreadX board.
 # phase-314 — `_nros_runtime_platform_features` is GONE. It was the weaker of
 # the two platform mappings: no BOARD input, so it could not split threadx-linux
 # (std) from rv-virt-threadx (no_std). `nros_feature_set` in
@@ -274,8 +275,19 @@ function(nros_synth_runtime_umbrella)
     # The cmake/Corrosion lane keeps no_std == CMAKE_CROSSCOMPILING (its embedded targets are
     # genuinely-no_std cross — FreeRTOS thumbv7m et al.).
     set(_crate_dir "${CMAKE_BINARY_DIR}/nros_ws_runtime")
+    #
+    # issue 1763 — …OR when the runtime it bundles has no `std`. Being cross was
+    # only a stand-in for "this tier has no std", and threadx-linux breaks the
+    # stand-in: a HOST build whose `nros-cpp` is `alloc` (the ThreadX tier). An
+    # umbrella root without `#![no_std]` links libstd implicitly, and libstd's
+    # `panic_impl` then meets `nros-c`'s `panic-platform` handler as E0152
+    # (measured on `workspaces/mixed`, image `threadx`). The feature list is the
+    # fact that decides it, and the line above just computed it. Cross stays
+    # sufficient on its own, so that no existing cross image changes shape
+    # (NuttX's `nros-cpp` carries `std` and its umbrella has always been
+    # `#![no_std]`).
     set(_umbrella_no_std FALSE)
-    if(CMAKE_CROSSCOMPILING)
+    if(CMAKE_CROSSCOMPILING OR NOT "std" IN_LIST _cpp_features)
         set(_umbrella_no_std TRUE)
     endif()
     nros_write_runtime_umbrella_crate(

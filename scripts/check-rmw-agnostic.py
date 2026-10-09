@@ -141,6 +141,11 @@ BASELINE: dict[str, tuple[int, str, str]] = {
         (9, "1299", "a `.zenoh` struct member and its task knobs"),
     "packages/api/nros/src/env.rs":
         (3, "1299", "the deprecated ZENOH_LOCATOR / ZENOH_MODE aliases"),
+    # issue 1763 — the `getenv` twin of env.rs. It keeps the same deprecated
+    # aliases, so that a host image dropping `std` changes no variable it
+    # honours. Retiring them is 1299's work, and it applies to both files.
+    "packages/api/nros/src/host_env.rs":
+        (2, "1299", "the deprecated ZENOH_LOCATOR / ZENOH_MODE aliases (getenv twin of env.rs)"),
 }
 
 
