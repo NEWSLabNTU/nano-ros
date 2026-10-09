@@ -281,11 +281,16 @@ enum Ending {
 ///
 /// The verdict below is "the image's nodes are gone", and a node of the same
 /// name from anything else on the domain would read as a failure to close.
-/// `unique_ros_domain_id` cannot promise that on a shared host: two concurrent
-/// nextest runs (another worktree's, say) share slot numbers, and its
-/// busy-stepping lands both on the same next block. Measured while writing
-/// this test — two of its own cases, both on domain 9. So the precondition is
-/// checked rather than assumed, and a dirty domain is stepped past.
+/// Measured while writing this test: two of its own cases, both on domain 9.
+/// Issue 1762 fixed that cause. `unique_ros_domain_id` now claims its domain
+/// host-wide, so two callers of the assigners can no longer share one. Kept
+/// anyway, because the claim cannot see a process that never TOOK one: an
+/// image orphaned past its test (the claim dies with the test process, and a
+/// spawned child does not inherit it), or a `ros2` node someone started by
+/// hand. Neither binds anything when its RMW is zenoh, so the busy probe misses
+/// them too. A presence assertion would only pass by accident, but this verdict
+/// is an ABSENCE, so the precondition is checked rather than assumed, and a
+/// dirty domain is stepped past.
 fn quiet_domain(list: impl Fn(u8) -> String) -> u8 {
     for _ in 0..6 {
         let domain = nros_tests::unique_ros_domain_id();

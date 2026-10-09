@@ -85,11 +85,15 @@
 // hands out PIDs sequentially — so any two participants whose PIDs differ by a
 // multiple of 101 land on the same bus. A collision inside one sweep is the
 // expected case.
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fcntl.h>
 #include <initializer_list>
+#include <sys/file.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 /// Is a DDS participant already bound to this domain's SPDP discovery port?
@@ -136,6 +140,44 @@ static inline bool nros_test_domain_busy(uint32_t domain) {
     return false;
 }
 
+/// Issue 1762 — CLAIM a domain for the rest of this process, or report that
+/// another process holds it.
+///
+/// The busy probe above reads who has BOUND a port, and two concurrent callers
+/// have bound nothing yet when each probes the other's choice, so stepping
+/// alone lets them converge (measured in the Rust assigner: two slots, one
+/// domain). An exclusive non-blocking `flock` on
+/// `${TMPDIR:-/tmp}/nros-test-domain-claims/<d>.lock` — the SAME files the Rust
+/// and shell assigners lock — breaks the tie. The descriptor is deliberately
+/// never closed: the claim lasts as long as the process can be on the bus, and
+/// the kernel drops it on exit however the process ends.
+///
+/// Answers "claimed" when no claim can be MADE (no writable temp dir): what
+/// cannot be seen must not be invented, the probe's own rule.
+static inline bool nros_test_domain_claim(uint32_t domain) {
+    const char *tmp = std::getenv("TMPDIR");
+    if (tmp == nullptr || *tmp == '\0') {
+        tmp = "/tmp";
+    }
+    char dir[512];
+    char path[600];
+    std::snprintf(dir, sizeof(dir), "%s/nros-test-domain-claims", tmp);
+    if (mkdir(dir, 0777) != 0 && errno != EEXIST) {
+        return true;
+    }
+    std::snprintf(path, sizeof(path), "%s/%u.lock", dir, static_cast<unsigned>(domain));
+    const int fd = open(path, O_WRONLY | O_CREAT | O_CLOEXEC, 0666);
+    if (fd < 0) {
+        return true;
+    }
+    if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+        const bool held = errno == EWOULDBLOCK;
+        close(fd);
+        return !held;
+    }
+    return true; // fd kept open on purpose: it IS the claim
+}
+
 static inline uint32_t nros_test_domain(uint32_t fallback) {
     (void)fallback;
     if (const char *e = std::getenv("ROS_DOMAIN_ID")) {
@@ -147,20 +189,28 @@ static inline uint32_t nros_test_domain(uint32_t fallback) {
     // 1..=101: 0 is where everything that never thought about it lands, and 101
     // is the last domain whose RTPS ports stay below the ephemeral range (see
     // NROS_TEST_DOMAIN_MAX above).
+    // Issue 1762 — every session in one process must resolve to the SAME
+    // domain (the header's contract above), and the claim below would refuse
+    // this process its own domain on a second call. So the first answer is
+    // kept. (Per translation unit: a static in a `static inline` function is
+    // one per TU; each test here is one TU.)
+    static uint32_t claimed = 0;
+    if (claimed != 0) {
+        return claimed;
+    }
     const uint32_t first =
         static_cast<uint32_t>((static_cast<unsigned>(getpid()) % NROS_TEST_DOMAIN_MAX) + 1u);
-    if (!nros_test_domain_busy(first)) {
-        return first;
-    }
     // Step, bounded, and keep the determinism where it is still free: with
     // nothing squatting the answer is bit-identical to the old scheme, and it
-    // moves only where reusing the domain would be wrong. Giving up returns the
-    // first candidate — a box where every domain looks busy is not something
-    // this function can fix, and returning nothing would break every caller
-    // (issue 0707's contract, same words).
-    for (uint32_t step = 1; step <= NROS_TEST_DOMAIN_MAX; step++) {
+    // moves only where reusing the domain would be wrong. A candidate is taken
+    // only once CLAIMED (issue 1762). Giving up returns the first candidate — a
+    // box where every domain looks busy is not something this function can fix,
+    // and returning nothing would break every caller (issue 0707's contract,
+    // same words).
+    for (uint32_t step = 0; step < NROS_TEST_DOMAIN_MAX; step++) {
         const uint32_t candidate = ((first - 1u + step) % NROS_TEST_DOMAIN_MAX) + 1u;
-        if (!nros_test_domain_busy(candidate)) {
+        if (!nros_test_domain_busy(candidate) && nros_test_domain_claim(candidate)) {
+            claimed = candidate;
             return candidate;
         }
     }

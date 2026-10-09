@@ -43,7 +43,7 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 # that two concurrent copies of this test discover each other on.
 # shellcheck source=packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/ros2_e2e_common.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ros2_e2e_common.sh"
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-$(nros_unique_ros_domain_id)}"
+nros_unique_ros_domain_id
 
 # issue 1139 / issue 1009 — the bus is confined to loopback by the shared
 # helper in `ros2_e2e_common.sh`, not by a config spelled out here. This is the
