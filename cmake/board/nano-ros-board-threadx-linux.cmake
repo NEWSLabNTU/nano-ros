@@ -124,6 +124,23 @@ if(NOT EXISTS "${_NROS_BOARD_THREADX_HOOKS_C}")
         "${_NROS_BOARD_THREADX_HOOKS_C}.")
 endif()
 
+# Issue 1750 — no wake from Cyclone's own thread on this board (issue 1237's
+# rule, the FreeRTOS POSIX board's sibling).
+#
+# ThreadX here is a host process and Cyclone is the HOST library (host ddsrt,
+# see cmake/platform/nano-ros-threadx.cmake), so its receive thread is a plain
+# pthread ThreadX never created. `on_data_available` would reach
+# `nros_platform_wake_signal` -> `tx_semaphore_ceiling_put` from it, and a
+# ThreadX service entered from a foreign thread leaks a recursion level of the
+# port's `_tx_linux_mutex` per call until the whole kernel stops (measured on
+# the heap path: count 1508 within 5 s). The platform now REFUSES that signal
+# from a foreign thread rather than wedging (`threadx_context.h`), but a wake
+# slot whose every wake is refused is worse than none: the runtime would
+# believe it has an async wake and sleep its whole timeout. Declining tells it
+# the truth, and it takes the poll-only path it already documents.
+set(NROS_RMW_CYCLONEDDS_FOREIGN_WAKE OFF CACHE BOOL
+    "threadx-linux: Cyclone's receive thread is not a ThreadX thread (issue 1750)" FORCE)
+
 # ---------------------------------------------------------------------------
 # Build kernel + netstack via the layer-2 helpers. NSOS_NETX_DIR's
 # validation lives inside nros_threadx_validate; pass it via REQUIRE so
