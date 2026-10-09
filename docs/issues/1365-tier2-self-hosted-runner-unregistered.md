@@ -600,3 +600,47 @@ text — six occurrences of `rust-lld: error: undefined symbol:
 nros_rmw_cyclonedds_register_descriptor`, the same string and count that issue
 already records for this lane. Tier 2's verdict is still absent, for a reason
 that is filed and is not this issue.
+
+## Measured 2026-10-09: the third shape, with the runner's own state readable
+
+The 2026-09-29 section could not tell "down", "wedged" and "serving
+elsewhere" apart, because the runner was registered at the ORG level and
+`GET repos/.../actions/runners` returned `total_count: 0`. That has changed.
+After the self-hosted runner was replaced this morning, the repository
+endpoint lists it:
+
+```
+1442  nano-ros-runner-newslab-118  online  busy=false  Linux
+labels: self-hosted, Linux, X64, nros-qemu, nros-sdk-zephyr, nros-big
+```
+
+**What happened:**
+
+1. Nightly **37898479826** (schedule 07:20) queued its job **113715238290**,
+   `tier 2 nightly (pairwise cover)`, at **07:20:46Z**. The job asks for
+   `[self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]`, which the
+   runner's labels cover; GitHub label matching ignores case.
+2. The old runner, `nano-ros-runner`, was running tier 1 for run-matrix
+   37893868358 (job 113714712359). At **08:44:28Z** that job ended with "The
+   self-hosted runner lost communication with the server". That is consistent
+   with the machine being re-registered mid-job.
+3. By **09:00Z** the new runner was listed `online`.
+
+The runner was then sampled three times, at 09:29:58Z, 09:30:39Z and
+09:31:20Z. Every sample read `online, busy=false`, and every sample showed job
+113715238290 still `queued` with no `runner_name`. Nothing else was competing
+for the machine: the in-flight `merge_group` `gate` runs (PRs #1815, #1817,
+#1818, #1820, #1822) were all on GitHub-hosted `ubuntu-22.04` runners.
+
+So for at least 30 minutes, a registered, online, idle runner with matching
+labels did not claim a 2 h 10 m-old job. This is the first measurement that
+separates the 2026-09-29 survivors from runner state rather than from job
+state. The runner is not down and it is not busy. What is left is the
+scheduling side: a job queued before the runner was re-registered, which the
+new registration does not pick up.
+
+**Not established:** whether a job queued after the re-registration is claimed
+normally. The next scheduled self-hosted job answers that. If it starts
+promptly while 113715238290 stays queued, the cause is jobs that predate a
+re-registration, and the remedy is cancelling and re-running such jobs. That
+is an operator step and should be part of the runner-replacement procedure.
