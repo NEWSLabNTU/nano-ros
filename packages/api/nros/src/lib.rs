@@ -199,6 +199,16 @@ pub mod init;
 #[cfg(feature = "env")]
 pub mod env;
 
+/// Issue 1763 — the same env rung for a `#![no_std]` image inside a host
+/// process (threadx-linux, freertos-posix), read with the C library's `getenv`.
+/// `target_os = "linux"` is "a C library is linked" on this tree. Compiled on
+/// every Linux build, not only `not(feature = "env")` ones: feature
+/// unification can turn `nros/env` on under a caller whose own `env` is off,
+/// and the caller must still find this. Where a caller has `env`, it uses the
+/// `std::env` reader instead (`nros-c`/`nros-cpp` `resolve_boot`).
+#[cfg(target_os = "linux")]
+pub mod host_env;
+
 #[cfg(feature = "env")]
 pub use env::{ExecutorConfigEnvExt, rmw_selector};
 

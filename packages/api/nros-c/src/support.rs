@@ -493,7 +493,13 @@ fn resolve_boot(
     {
         nros::env::try_resolve_hosted(baked)
     }
-    #[cfg(not(feature = "env"))]
+    // Issue 1763 — a `#![no_std]` image inside a host process still has an
+    // environment; read it with the C library's `getenv` (`nros::host_env`).
+    #[cfg(all(not(feature = "env"), target_os = "linux"))]
+    {
+        nros::host_env::try_resolve_hosted(baked)
+    }
+    #[cfg(all(not(feature = "env"), not(target_os = "linux")))]
     {
         nros_node::ExecutorConfig::try_resolve(baked)
     }

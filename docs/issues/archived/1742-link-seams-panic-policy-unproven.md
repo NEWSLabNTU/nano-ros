@@ -132,3 +132,13 @@ threadx-linux **Rust** images no longer link `std` (issue 1759). On them
 nros-c/nros-cpp staticlib, not on the board, so it no longer applies to those
 images. It still fires, correctly, for the threadx-linux C/C++ carriers, whose
 runtime staticlib keeps `std` (issue 1763).
+
+### Addendum (2026-10-10) — issue 1763
+
+The threadx-linux C/C++/mixed runtime staticlib is `alloc` now, so the refusal
+no longer fires anywhere on ThreadX. Measured on a threadx-linux C talker and a
+C++ talker, each built with `PANIC halt` and with `PANIC platform`: all four
+link, and the `platform` handler calls `nros_platform_panic`. The refusal stays
+live on the `std` tiers (posix, hosted FreeRTOS).
+`check-platform-provider-features` now refuses a port that supplies its own
+runtime yet is emitted with `std`, unless the port is listed with a reason.

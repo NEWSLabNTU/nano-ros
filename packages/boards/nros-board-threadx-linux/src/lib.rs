@@ -247,28 +247,6 @@ fn config_with_overlay(deploy: &nros_platform::DeployOverlay) -> Config {
     config
 }
 
-/// Issue 1759 — the one symbol the host triple's PREBUILT `alloc` needs that a
-/// `#![no_std]` image does not otherwise have.
-///
-/// `x86_64-unknown-linux-gnu`'s sysroot `liballoc` is compiled for unwinding,
-/// so its landing pads reference `rust_eh_personality` through a
-/// `DW.ref.rust_eh_personality` data word. libstd defines it; without libstd
-/// the link fails on that one symbol, naming no nano-ros source (measured on
-/// every `examples/threadx-linux/rust/*` leaf; phase-370 recorded the same
-/// symbol on the FreeRTOS POSIX host). The rv64 and NuttX images do not meet it
-/// because their `core`/`alloc` are cross builds with `panic = abort`.
-///
-/// Never CALLED: a personality routine runs only while unwinding, and nothing
-/// in this image unwinds — `nros::main!`'s `#[panic_handler]` diverges into
-/// `nros_platform_panic` (or parks, for `halt`). An empty body is therefore
-/// exact, not a stub that would misbehave if reached. Gated on `image-runtime`,
-/// the feature that makes this crate the image's runtime: a `std` program that
-/// boots the board (the two test bins) gets libstd's definition instead, and a
-/// second one there would be a duplicate symbol.
-#[cfg(feature = "image-runtime")]
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_eh_personality() {}
-
 unsafe fn libc_exit(code: i32) -> ! {
     unsafe extern "C" {
         fn exit(status: i32) -> !;

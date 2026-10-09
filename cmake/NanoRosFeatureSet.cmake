@@ -217,27 +217,27 @@ function(nros_feature_set out_var)
         endif()
     elseif(_FS_PLATFORM STREQUAL "nuttx" OR _FS_PLATFORM STREQUAL "nuttx_armv7a")
         list(APPEND _feats std platform-nuttx)
-    elseif(_FS_PLATFORM STREQUAL "threadx_linux")
-        list(APPEND _feats std platform-threadx)
-    elseif(_FS_PLATFORM STREQUAL "threadx_riscv64")
-        list(APPEND _feats alloc platform-threadx)
-    elseif(_FS_PLATFORM STREQUAL "threadx")
-        # phase-338 W5.a — what distinguishes the two ThreadX tiers is whether
-        # the target has a hosted libc, and that is exactly `_cross`: the Linux
-        # sim is a host build, the RV64 QEMU target is a cross build (its
-        # `[board.cmake] toolchain_file` sets CMAKE_SYSTEM_NAME).
+    elseif(_FS_PLATFORM STREQUAL "threadx"
+           OR _FS_PLATFORM STREQUAL "threadx_linux"
+           OR _FS_PLATFORM STREQUAL "threadx_riscv64")
+        # issue 1763 — ONE tier for every ThreadX board, `alloc`, host or cross.
         #
-        # This used to match the board NAME and FATAL_ERROR on anything else,
-        # which meant a third ThreadX board could not exist without editing this
-        # file — a board identity standing in for a property, the defect
-        # RFC-0064 records. Deriving it from `_cross` generalizes: any future
-        # ThreadX board lands in the right tier with no edit here, and the
-        # `BOARD` argument is no longer load-bearing for this decision.
-        if(_cross)
-            list(APPEND _feats alloc platform-threadx)
-        else()
-            list(APPEND _feats std platform-threadx)
-        endif()
+        # phase-338 W5.a split the tiers on `_cross`: the Linux sim, being a
+        # host build, took `std`. But `std` was never something the port
+        # needed. It supplied the runtime staticlib's `#[panic_handler]` and
+        # allocator, and both belong to the port: `platform-threadx` brings
+        # `global-allocator` (the ThreadX byte pool, the allocator the
+        # hardware uses) and `nros-c`'s `panic-platform` ends in
+        # `nros_platform_panic`. Under `std`, `panic-platform` stood down and
+        # `PANIC halt` had to be refused (E0152, issue 1742). The Rust images
+        # on this board dropped `std` in issue 1759, and this is the C/C++/mixed
+        # half. The one host-only cost, the prebuilt `alloc`'s
+        # `rust_eh_personality`, is a WEAK definition in the port's C (it yields
+        # to libstd's where libstd is linked; see `nros-platform-threadx`).
+        #
+        # Still keyed on the PLATFORM, never a board name (RFC-0064): a third
+        # ThreadX board lands in this tier with no edit here.
+        list(APPEND _feats alloc platform-threadx)
     elseif(_FS_PLATFORM STREQUAL "baremetal" OR _FS_PLATFORM STREQUAL "bare-metal")
         # issue 1512 — the arm this ladder never had. Without it a bare-metal call
         # fell into the `elseif(_cross)` catch-all below and asked cargo for
@@ -491,15 +491,17 @@ function(nros_apply_panic_policy policy context)
             # `panic_halt` crate — and rustc refuses the pair as E0152
             # "duplicate lang item `panic_impl`", inside `nros-c`, naming no
             # policy. Say it here, at configure, where the request was made.
-            # Keyed on `std` in the STATICLIB, not on the board: a threadx-linux
-            # Rust image is `no_std` since issue 1759 and takes `halt`; its
-            # C/C++ carriers keep a `std` staticlib until issue 1763.
+            # Keyed on `std` in the STATICLIB, not on the board. Every ThreadX
+            # image is `no_std` now: the Rust ones since issue 1759, and the
+            # C/C++/mixed carriers since issue 1763. So the refusal stays live
+            # only for the `std` tiers (posix, hosted FreeRTOS), and there it
+            # is still right.
             get_target_property(_app_feats ${_app_target} CORROSION_FEATURES)
             if(_app_policy STREQUAL "halt" AND _app_feats AND "std" IN_LIST _app_feats)
                 message(FATAL_ERROR
                     "${context}: PANIC halt cannot apply to this image — its "
                     "nros-c/nros-cpp staticlib is built with `std` (a hosted tier: "
-                    "a threadx-linux C/C++ carrier, posix, hosted FreeRTOS), and `std` already supplies "
+                    "posix, hosted FreeRTOS), and `std` already supplies "
                     "the #[panic_handler]. `panic-halt` would be a second one "
                     "(rustc E0152, duplicate lang item `panic_impl`). Use PANIC "
                     "platform — on a std tier std's own handler ends the image — "
