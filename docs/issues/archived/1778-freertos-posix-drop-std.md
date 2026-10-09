@@ -1,12 +1,13 @@
 ---
 id: 1778
-title: "freertos-posix images build their nros-c/nros-cpp runtime staticlib with `std`, so the port's panic ending and heap stand down and `PANIC halt` is refused"
-status: open
+title: "freertos-posix images build their nros-c/nros-cpp runtime staticlib with `std`, so the port's panic ending stands down and `PANIC halt` is refused"
+status: resolved
 type: tech-debt
 area: [boards, freertos, cmake]
 severity: low
 found: 2026-10-10
-related: [issue-1759, issue-1763, issue-1742, phase-370, rfc-0077]
+related: [issue-1759, issue-1763, issue-1742, issue-1783, phase-370, rfc-0077]
+resolved_in: "freertos-posix runtime staticlib is alloc; heap peak printed at boot (issue 1778)"
 ---
 
 ## What was measured
@@ -74,3 +75,58 @@ The same as 1763, with no Rust entry work:
 - A C and a C++ image link with both `PANIC halt` and `PANIC platform`, and
   `platform` reaches `nros_platform_panic`.
 - The boot prints the heap peak.
+
+## Resolution
+
+- `nros_feature_set`'s freertos arm emits `alloc platform-freertos` for every
+  board, host or cross. The `_cross` split and its phase-370 reason are gone:
+  issue 1763's weak `rust_eh_personality` in `nros-platform-freertos` covers
+  the host link, and `nros::host_env` keeps the env rung.
+- `platform-freertos` is out of `STD_TIER_KNOWN`. NuttX (its own std port) is
+  the only provider port still allowed `std`.
+- `freertos_posix_entry.c` starts a lowest-priority sampler task before
+  `app_main`. It prints `nros: heap peak N bytes …` once the maximum of
+  `nros_platform_heap_used_bytes()` has been stable for 2 s, and again at exit
+  if the peak moved. heap_3 keeps no high-water mark, so the line says the
+  value is sampled.
+- The refusal message and comments in `nros_apply_panic_policy` and
+  `NanoRosRuntimeCrate.cmake` no longer name hosted FreeRTOS as a `std` tier.
+- There is still no Rust image for this board, so no entry or descriptor
+  change was needed. `entry_kind = "hosted-main"` describes the C `main` in
+  `freertos_posix_entry.c`, which no Rust emitter reads.
+
+### Evidence (2026-10-10)
+
+- **No Rust `std`.** `nm -C` over `workspaces/{c,cpp}`'s `freertos_posix_entry`
+  finds 0 Rust-std symbols (`std::rt`, `lang_start`, `std::panicking`, …).
+  Both have `rust_begin_unwind`, `nros_platform_panic`, and the port's weak
+  `W rust_eh_personality`. **Positive control:** a posix (std-tier) C talker
+  built the same way has 112 (issue 1763).
+- **Delivery.** `tests/freertos_posix.rs` (C and C++, CycloneDDS, which needs
+  no router) passed 8 of 8 runs with both cells in parallel. On the same tree
+  WITHOUT `nros::host_env` the C++ cell failed 4 of 6 (shared domain). With
+  `std` it passed 6 of 6.
+- **halt and platform.** I copied `workspaces/{c,cpp}`, set
+  `[image.freertos_posix] panic = "halt"` and then `"platform"`, and built
+  `nros build freertos_posix` (the C++ copy after `nros ws entity-census
+  take`). All four built with rc=0. In the `platform` images,
+  `rust_begin_unwind` calls `core::fmt::write` and then `nros_platform_panic`.
+  In the `halt` images it is a single `jmp` to itself.
+- **Heap peak at boot.** From the C++ image (`NROS_ENTRY_SPIN_MS=8000`):
+
+  ```
+  nros: heap peak 494480 bytes (sampled every 100 ms; heap_3 = host malloc, 1548288 bytes in the arena) — stable (issue 1778)
+  nros: heap peak 495360 bytes (sampled every 100 ms; heap_3 = host malloc, 1683456 bytes in the arena) — at exit (issue 1778)
+  ```
+- **Mutation.** I put `std` back on the freertos arm (`# MUTATION 1778`) and
+  confirmed by grep that it was applied:
+
+  | gate | on the mutated tree | on the clean tree |
+  | --- | --- | --- |
+  | `check-platform-provider-features` (this branch) | rc=1, names `platform-freertos` | rc=0 |
+  | the same gate from issue 1763 (freertos still listed as known) | rc=0 | — |
+
+- **Found on the way.** Issue 1783: after `main`'s codegen-version bump, an
+  incremental C/C++ build compiles message libraries against a stale
+  `include/nros/nros_config_generated.h` mirror. It took three runs here to
+  converge.
