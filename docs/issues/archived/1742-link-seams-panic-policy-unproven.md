@@ -123,3 +123,12 @@ the `panic_halt` crate, and with `std` rustc refuses the pair as E0152
 `CORROSION_FEATURES` hold `std`, for every creator (entry or carrier), naming
 the reason. Dropping `std` from threadx-linux (under consideration) would make
 `platform` live there and `halt` legal; not done here.
+
+### Addendum (2026-10-09) — issue 1759
+
+threadx-linux **Rust** images no longer link `std` (issue 1759). On them
+`nros::main!(panic = "platform")` reaches `nros_platform_panic`, and
+`panic = "halt"` links. The configure-time refusal above is keyed on `std` in the
+nros-c/nros-cpp staticlib, not on the board, so it no longer applies to those
+images. It still fires, correctly, for the threadx-linux C/C++ carriers, whose
+runtime staticlib keeps `std` (issue 1763).

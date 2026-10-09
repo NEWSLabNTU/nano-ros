@@ -31,11 +31,17 @@
   root`, twice.
 
   The cfg STAYS on what is emitted, because a hosted-main board (native,
-  `threadx-linux`) is still built for more than one OS — and it is the
+  `posix`) is still built for more than one OS — and it is the
   proc-macro's wider spelling now. The narrow one also let NuttX through, and
   NuttX has been `#![no_std]` since phase-359 W7; the `target_os = "nuttx"`
   C-ABI `main` below is the arm the proc-macro emits for it and this template
   did not have.
+
+  Issue 1759 — which targets take that C-ABI `main(argc, argv)` is the SAME
+  board fact: a board whose entry does not link `std` takes it on every target
+  with an OS (`threadx-linux` is `board-run` on the host triple, so
+  `target_os = "linux"`), and a hosted one keeps it for NuttX only. The
+  proc-macro's `c_runtime_main_cfg` is the other spelling of this line.
 
   There is no `core`/`alloc` spelling for an exit status: the fix is not to
   spell it differently but not to emit it. An entry that cannot link libstd has
@@ -87,7 +93,7 @@ fn main() {
     }
 }
 {% endif %}
-#[cfg(target_os = "nuttx")]
+{% if links_std %}#[cfg(target_os = "nuttx")]{% else %}#[cfg(not(target_os = "none"))]{% endif %}
 #[unsafe(no_mangle)]
 pub extern "C" fn main(
     _argc: i32,

@@ -84,9 +84,12 @@ struct RustNodeView {
 ///
 /// The body installs the same three entry arms the macro does: an
 /// `extern "C" fn main` for `target_os = "none"` (a C runtime calls it), a
-/// second one for `target_os = "nuttx"` (the family is `no_std` since
-/// phase-359 W7, so libstd's `lang_start` is not there to wrap a Rust `main`),
-/// and — only for a board whose entry LINKS `std` — a hosted Rust `fn main()`.
+/// second, `(argc, argv)` one for a C runtime on an OS — every OS target for a
+/// board whose entry does not link `std` (issue 1759: `threadx-linux` is one,
+/// on the host triple), NuttX only for one that does (the family is `no_std`
+/// since phase-359 W7, so libstd's `lang_start` is not there to wrap a Rust
+/// `main`) — and, only for a board whose entry LINKS `std`, a hosted Rust
+/// `fn main()`.
 /// The third is issue 1409; see [`RustEntryView::links_std`].
 ///
 /// A board key the Rust pack has no ZST for is an error; see
@@ -462,14 +465,22 @@ mod tests {
                  saves a `std` path there:\n{src}",
                 if links_std { "omits" } else { "names" }
             );
-            // The hosted `fn main()` is the ONLY thing that moves. Both
-            // C-ABI arms are unconditional, exactly as the proc-macro emits
-            // them — a board with no main at all is the hole this test also
-            // has to see.
+            // Both C-ABI arms are always emitted, exactly as the proc-macro
+            // emits them — a board with no main at all is the hole this test
+            // also has to see. What moves with `links_std` is the hosted
+            // `fn main()` and, issue 1759, the cfg on the `(argc, argv)` arm:
+            // a `#![no_std]` entry takes it on EVERY target with an OS, or a
+            // `board-run` image built for a hosted triple (`threadx-linux`)
+            // would have no `main` at all.
+            let c_runtime_cfg = if links_std {
+                "#[cfg(target_os = \"nuttx\")]"
+            } else {
+                "#[cfg(not(target_os = \"none\"))]"
+            };
             assert!(
-                src.contains("#[cfg(target_os = \"nuttx\")]")
-                    && src.contains("#[cfg(target_os = \"none\")]"),
-                "`{key}`: an entry with no embedded `main` arm:\n{src}"
+                src.contains(c_runtime_cfg) && src.contains("#[cfg(target_os = \"none\")]"),
+                "`{key}`: links_std = {links_std}, but the entry lacks `{c_runtime_cfg}` \
+                 on its C-runtime `main`, or has no embedded `main` arm:\n{src}"
             );
             if links_std {
                 hosted += 1;

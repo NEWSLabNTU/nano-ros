@@ -95,7 +95,7 @@ single-package leaf is its own entry, so it still names that crate by hand and
 is why it is two lines rather than one. The C leaves have no board crate and
 really do switch on the one line.
 
-Everything else follows the board. `threadx-linux` is a hosted build, so its
+Everything else follows the board. `threadx-linux` builds for the host triple (its Rust entry is still `#![no_std]`, issue 1759), so its
 board contributes no target triple; `rv-virt-threadx` cross-compiles, and its
 triple, link group and emulator all come from the board descriptor — never
 from a leaf. `nros sync` resolves the choice into

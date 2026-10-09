@@ -35,7 +35,7 @@ fn __nros_entry_run() -> ::core::result::Result<
 }
 
 
-#[cfg(target_os = "nuttx")]
+#[cfg(not(target_os = "none"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn main(
     _argc: i32,

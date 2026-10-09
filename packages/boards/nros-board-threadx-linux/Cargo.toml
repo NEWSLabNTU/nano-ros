@@ -50,3 +50,17 @@ default = []
 # ZERO wire I/O (the observed threadx-linux rust rtos_e2e zero-delivery). The
 # Entry pkg forwards its own `rmw-zenoh`; a cyclonedds build leaves it off.
 rmw-zenoh = ["nros-board-threadx/rmw-zenoh"]
+# issue 1759 — the image's `#[global_allocator]`: `nros_platform_alloc` over the
+# ThreadX byte pool, the allocator the RISC-V sibling and real ThreadX hardware
+# use. An `nros::main!` image is `#![no_std]` here (`entry_kind = "board-run"`),
+# so this is its Rust heap; the C side (zenoh-pico's `z_malloc`) already drew
+# from the same pool, so the boot's `nros: byte pool peak` line now counts the
+# whole image. The descriptor's `board_features` names it for a generated entry;
+# a hand-written leaf names it itself.
+#
+# NOT a default, unlike `nros-board-nuttx/image-runtime`: two test bins
+# (`logging-smoke-threadx-linux`, `pool-exhaustion-threadx-linux`) are ordinary
+# `std` programs that boot this board from a hosted `fn main`, and libstd
+# allocates before `tx_kernel_enter` creates the pool — a byte-pool allocator
+# there would answer that first allocation with NULL.
+image-runtime = ["nros-platform/global-allocator"]
