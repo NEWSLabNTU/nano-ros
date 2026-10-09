@@ -318,7 +318,12 @@ fn xrce_entry_leaves_the_graph(entry: &std::path::Path, ending: Ending) {
     };
     let agent = XrceAgent::start_unique().expect("failed to start the XRCE Agent");
     let addr = agent.addr();
+    let t0 = Instant::now();
     let domain = quiet_domain(list);
+    eprintln!(
+        "xrce ({ending:?}): domain {domain}, Agent {addr} (+{:?})",
+        t0.elapsed()
+    );
 
     let mut cmd = Command::new(entry);
     cmd.env("NROS_LOCATOR", &addr)
@@ -338,6 +343,11 @@ fn xrce_entry_leaves_the_graph(entry: &std::path::Path, ending: Ending) {
 
     // Precondition: the image is IN the graph, or "gone afterwards" proves nothing.
     let during = poll_for_expected_set(Duration::from_secs(15), || list(domain));
+    eprintln!(
+        "xrce ({ending:?}): listed {:?} (+{:?})",
+        node_set(&during),
+        t0.elapsed()
+    );
     if node_set(&during) != expected_set() {
         deploy.kill();
         panic!(
@@ -378,6 +388,7 @@ fn xrce_entry_leaves_the_graph(entry: &std::path::Path, ending: Ending) {
 
     // The Agent drops the participant when the session is deleted, so this is
     // immediate; the poll only absorbs the `ros2` CLI's own discovery.
+    eprintln!("xrce ({ending:?}): exited {status:?} (+{:?})", t0.elapsed());
     let deadline = Instant::now() + Duration::from_secs(8);
     let mut after = list(domain);
     while !node_set(&after).is_empty() && Instant::now() < deadline {
@@ -399,12 +410,8 @@ fn xrce_entry_leaves_the_graph(entry: &std::path::Path, ending: Ending) {
 /// never share a domain with each other.
 #[test]
 fn rust_multi_node_entry_leaves_the_graph_when_it_ends_xrce() -> nros_tests::TestResult<()> {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-    if !require_ros2_dds() {
-        nros_tests::skip!("ROS 2 + rmw_fastrtps_cpp not available");
-    }
+    require_xrce_agent();
+    require_ros2_dds();
     let entry = build_native_workspace_rust_xrce_entry()
         .require("workspace-rust-native-xrce native_xrce_entry")
         .to_path_buf();
