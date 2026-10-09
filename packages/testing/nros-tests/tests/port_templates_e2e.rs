@@ -116,11 +116,9 @@ fn assert_ported_publish(platform: &str, out: &str) {
 #[test]
 fn cpp_port_minimal_publisher_publishes_on_freertos() {
     if !is_qemu_available() {
-        nros_tests::skip!("qemu-system-arm not found");
+        nros_tests::unmet!("qemu-system-arm not found");
     }
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let bin = build_cmake_leaf_rmw(
         &format!("{MINIMAL_PUBLISHER}/mps2-an385-freertos"),
         "minimal_publisher",
@@ -147,11 +145,9 @@ fn cpp_port_minimal_publisher_publishes_on_freertos() {
 #[test]
 fn cpp_port_minimal_publisher_publishes_on_zephyr() {
     if !is_qemu_available() {
-        nros_tests::skip!("qemu-system-arm not found");
+        nros_tests::unmet!("qemu-system-arm not found");
     }
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let bin = build_zephyr_cortex_m_leaf(
         &format!("{MINIMAL_PUBLISHER}/zephyr"),
         "build-cortex-m-cpp-port-minimal-publisher-zenoh",
