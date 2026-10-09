@@ -66,6 +66,47 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 # …
 ```
 
+## Running the same source on an RTOS
+
+The two directories beside `src/` build **the same `src/minimal_publisher.cpp`**
+for a microcontroller (phase-482 W3). Each one is the whole port for its
+platform: a `CMakeLists.txt`, the package's `package.xml`, a `system.toml`
+naming the board, and on Zephyr the Kconfig fragments.
+
+| directory | target | run with |
+| --- | --- | --- |
+| `mps2-an385-freertos/` | FreeRTOS on MPS2-AN385 (Cortex-M3), QEMU | `qemu-system-arm -M mps2-an385 -kernel build/minimal_publisher -nic user,model=lan9118,net=192.0.3.0/24,host=192.0.3.1` |
+| `zephyr/` | Zephyr on `mps2/an385` (Cortex-M3), QEMU | `west build -b mps2/an385 zephyr -- -DCONF_FILE="prj.conf;prj-zenoh.conf;<nano-ros>/cmake/zephyr/mps2-an385.conf"` |
+
+The line that makes it work is
+
+```cmake
+nano_ros_add_executable(minimal_publisher ../src/minimal_publisher.cpp ROS2_MAIN)
+```
+
+`ROS2_MAIN` says the sources are a ROS 2 program with its own
+`int main(int argc, char** argv)`. A microcontroller has no C runtime that
+calls `main` that way. The board's startup calls `nros_app_main` instead, so
+the build renames the program's `main` in those sources only and generates the
+one-line `nros_app_main` that calls it. It also gives the ported code the C++
+standard library it was written against. On FreeRTOS it removes the toolchain's
+`-ffreestanding` for this package, and on Zephyr `prj.conf` selects the full
+libstdc++.
+
+The router address is baked into the image, because a microcontroller has no
+environment variables to read it from. On FreeRTOS that is the
+`NROS_ENTRY_LOCATOR` cache variable; on Zephyr it is `CONFIG_NROS_ZENOH_LOCATOR`.
+Under QEMU's user networking the host is `192.0.3.1` on FreeRTOS and `10.0.2.2`
+on Zephyr.
+
+Zephyr's `native_sim` is **not** a target for this. A ported program needs the
+full C++ standard library. On `native_sim` Zephyr links its own C library, which
+the host's libstdc++ cannot run on (the blocker phase-209 G.2 measured), so the
+port uses a Cortex-M board instead.
+
+`port_templates_e2e` runs all three builds: posix, FreeRTOS and Zephyr. They
+are the `Workload::Port` cells of `matrix::CELLS`.
+
 ## Caveats found during this port (all in `book/.../porting-a-cpp-node.md`)
 
 - nano-ros codegen emits message string fields as `nros::FixedString<N>` (not

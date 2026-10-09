@@ -137,6 +137,46 @@ code** — they bypass the ROS-convention smart Find-stub + workspace
 discovery. Existing in-tree examples will migrate as part of Phase
 210.E.3.
 
+## Running the ported node on a microcontroller
+
+The same source runs on an RTOS, `main` included. Build glue for each platform
+sits beside the source, and the source itself does not change.
+`examples/templates/cpp-port-minimal-publisher/` carries two such directories,
+`mps2-an385-freertos/` and `zephyr/`, each with a `CMakeLists.txt` built
+around one line:
+
+```cmake
+find_package(nano_ros REQUIRED)
+nano_ros_add_executable(minimal_publisher ../src/minimal_publisher.cpp ROS2_MAIN)
+```
+
+The board comes from the directory's `system.toml`, as for any nano-ros image.
+`ROS2_MAIN` does three things a microcontroller needs:
+
+- **It reaches your `main`.** No C runtime calls `int main(int argc, char**
+  argv)` on a board: the board's startup calls `nros_app_main`. The build
+  renames `main` in the ported sources only (never in the board's own
+  startup) and generates the `nros_app_main` that calls it, with
+  `argc == 0`.
+- **It gives the ported code the C++ standard library.** A ported node uses
+  `std::string`, `std::to_string` and `<chrono>` literals.
+  - On FreeRTOS the toolchain compiles C++ `-ffreestanding`, which makes
+    `<string>` an `#error`, so the flag is removed for this package's
+    directory. nano-ros's own code stays freestanding.
+  - On Zephyr, select the full library in `prj.conf`:
+    `CONFIG_REQUIRES_FULL_LIBCPP=y` and `CONFIG_GLIBCXX_LIBCPP=y`.
+- **It asks for the std-shaped API** (`NROS_CPP_STD`), the same one the ament
+  verbs give a ported package on a host.
+
+Where the node connects is decided when the image is built, because a board has
+no environment to read it from: the `NROS_ENTRY_LOCATOR` cache variable on
+FreeRTOS, `CONFIG_NROS_ZENOH_LOCATOR` on Zephyr. `rclcpp::init(argc, argv)`
+reads it in every source file that includes `<rclcpp/rclcpp.hpp>`.
+
+Zephyr's `native_sim` cannot run a ported node. There Zephyr links its own C
+library, and the host's libstdc++ cannot run on top of it. Use a Cortex-M
+board such as `mps2/an385` in QEMU, which is what the template targets.
+
 ## What "just works" without source edits
 
 nano-ros covers the patterns a typical ROS 2 C++ node uses:

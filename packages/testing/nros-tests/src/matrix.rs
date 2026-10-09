@@ -422,6 +422,18 @@ pub enum Workload {
     /// entity's state change, through four vtable slots the profile lanes never
     /// touch. They fail for entirely different reasons.
     QosEvents,
+    /// phase-482 W3 — a ported ROS 2 program RUNS: an upstream C++ source,
+    /// vendored unmodified (`int main(int argc, char** argv)` included), built
+    /// against nano-ros with only the build glue changed, publishes.
+    ///
+    /// Its own workload rather than a case of [`Workload::Pubsub`] because the
+    /// subject is the PORT, not delivery: what fails here is a build road that
+    /// cannot reach a ported `main` (no entry on a board whose startup calls
+    /// `nros_app_main`), a TU that never sees the locator the board bakes (a
+    /// Zephyr guest dialling its own loopback), or a toolchain that compiles the
+    /// ported file freestanding. A pubsub example is written FOR nano-ros and
+    /// meets none of those. The sources are `examples/templates/*-port*`.
+    Port,
 }
 
 impl Workload {
@@ -455,6 +467,7 @@ impl Workload {
             // cell's zenoh locator. Unique within the band, which is all the
             // offset has to be.
             Workload::QosEvents => 97,
+            Workload::Port => 98,
         }
     }
 
@@ -599,6 +612,11 @@ pub const CELLS: &[Cell] = &[
     cell(Linux, Rust, Zenoh,      Action,  Example, Runtime),
     cell(Linux, C,    Zenoh,      Action,  Example, Runtime),
     cell(Linux, Cpp,  Zenoh,      Action,  Example, Runtime),
+    // phase-482 W3 — the unmodified ROS 2 tutorial publisher
+    // (`examples/templates/cpp-port-minimal-publisher`), run by
+    // `port_templates_e2e`. Same program on all three platforms; only the
+    // build glue differs.
+    cell(Linux, Cpp,  Zenoh,      Port,    Example, Runtime),
     cell(Linux, Rust, Cyclonedds, Pubsub,  Example, Runtime),
     cell(Linux, C,    Cyclonedds, Pubsub,  Example, Runtime),
     cell(Linux, Cpp,  Cyclonedds, Pubsub,  Example, Runtime),
@@ -642,6 +660,10 @@ pub const CELLS: &[Cell] = &[
     // record of "nobody has attempted it" is no row, not a guess.
     cell(ZephyrQemuCortexM, C,   Zenoh, Pubsub,  Example, Runtime),
     cell(ZephyrQemuCortexM, Cpp, Zenoh, Pubsub,  Example, Runtime),
+    // phase-482 W3 — the ported tutorial publisher on Zephyr. On this board,
+    // not native_sim: a ported program needs the full libstdc++, which
+    // native_sim's C library cannot carry (phase-209 G.2).
+    cell(ZephyrQemuCortexM, Cpp, Zenoh, Port,    Example, Runtime),
     // phase-346 W3 — Rust on a REAL Zephyr board, unblocked by patching issue
     // 0432's two upstream defects. Until then the `zephyr` crate could not
     // compile for any board whose devicetree has gpio nodes, which is every
@@ -693,6 +715,8 @@ pub const CELLS: &[Cell] = &[
     cell(FreertosMps2, Rust, Zenoh, Pubsub,  Example, Runtime),
     cell(FreertosMps2, C,    Zenoh, Pubsub,  Example, Runtime),
     cell(FreertosMps2, Cpp,  Zenoh, Pubsub,  Example, Runtime),
+    // phase-482 W3 — the ported tutorial publisher on FreeRTOS.
+    cell(FreertosMps2, Cpp,  Zenoh, Port,    Example, Runtime),
     cell(FreertosMps2, Rust, Zenoh, Service, Example, Runtime),
     cell(FreertosMps2, C,    Zenoh, Service, Example, Runtime),
     cell(FreertosMps2, Cpp,  Zenoh, Service, Example, Runtime),

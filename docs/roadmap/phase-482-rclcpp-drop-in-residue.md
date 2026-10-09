@@ -138,6 +138,44 @@ This carries phase-209 G.2, G.3 and G.4.
 - **Acceptance:** every port template has a runtime cell on posix, Zephyr and
   FreeRTOS, recorded as `matrix::CELLS` rows.
 
+**Status 2026-10-09: first template done; two templates and G.4 open.**
+`cpp-port-minimal-publisher` runs unmodified on all three platforms. Its cells
+are `Workload::Port` × {Linux, FreertosMps2, ZephyrQemuCortexM}, run by
+`port_templates_e2e`. What it took:
+
+- **`nano_ros_add_executable(... ROS2_MAIN)`** (`cmake/NanoRosVerbs.cmake`).
+  The program's `main` is renamed per source to `nros_ported_main`, and a
+  generated C++ file defines `nros_app_main`, which forwards to it, and
+  registers it. A private name rather than `main=nros_app_main`, because
+  Zephyr's `<zephyr/types.h>` declares `int main(void)` and the rename turned
+  that into a conflicting second declaration. Per source rather than on the
+  target, because the board's startup has its own `main`. On Zephyr the glue
+  goes into `app`: the placeholder library `nano_ros_entry` leaves behind is
+  not linked whole-archive, so a `nros_app_main` placed there was dropped. On
+  FreeRTOS `-ffreestanding` leaves the caller's directory (`-fhosted` is
+  C-only), because a hosted libstdc++ is an `#error` under it.
+- **`<nros/node.hpp>` includes `<nros/entry_config.h>`.** Measured on Zephyr:
+  a ported `main.cpp` includes only `<rclcpp/rclcpp.hpp>`, so
+  `NROS_ENTRY_LOCATOR` was undefined in the one TU calling `rclcpp::init`. The
+  backend then dialled its default, the guest's own loopback, and the node
+  aborted at `create_publisher` with `ConnectionFailed`. Every Zephyr image
+  whose `init` call sat outside a `<nros/main.hpp>` TU had this. FreeRTOS
+  escaped it only because its board bakes the macro as a compile definition.
+- **A `DEPLOY zephyr` entry gets `BOARD zephyr`** (`cmake/NanoRosEntry.cmake`).
+  `[image.zephyr] board = "zephyr"` names no separate provider, so the entry
+  gate refused the one deploy whose board needs no naming.
+  `nano_ros_add_executable` could not build a Zephyr leaf at all; the in-tree
+  Zephyr leaves register components instead and never reached it.
+- **G.2 targets `mps2/an385`, not `native_sim`.** The blocker phase-209
+  recorded still holds: a ported program needs the full libstdc++, and
+  native_sim's C library cannot carry the host's. The Cortex-M board with the
+  SDK's libstdc++ (`CONFIG_GLIBCXX_LIBCPP`) builds and runs. ROS 2 humble's
+  `ros2 topic echo` received `Hello, world! 0` from the guest.
+
+Open: `topic-state-monitor-port` and `rclcpp-compat-smoke` on the RTOSes. The
+first needs a peer publishing what it monitors, and neither has a posix runtime
+cell yet either. G.4 (the larger port) is also open.
+
 ### W4 — `rclcpp_lifecycle::LifecycleNode`
 
 - A `Node`-derived `rclcpp_lifecycle::LifecycleNode` with upstream's

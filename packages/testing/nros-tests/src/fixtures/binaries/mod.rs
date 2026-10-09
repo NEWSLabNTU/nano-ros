@@ -4896,25 +4896,37 @@ fn zephyr_build_root() -> PathBuf {
 /// The sentence outlived its fact by four weeks and was still being read as a
 /// constraint in phase-441 (corrected there, W1).
 pub fn build_zephyr_cortex_m_example(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf> {
-    let root = project_root();
-    let example_dir = root.join(format!("examples/zephyr/{}/{}", lang, case));
+    build_zephyr_cortex_m_leaf(
+        &format!("examples/zephyr/{lang}/{case}"),
+        &format!("build-cortex-m-{lang}-{case}-{}", rmw.cmake_value()),
+        lang,
+        rmw,
+    )
+}
+
+/// [`build_zephyr_cortex_m_example`] for a leaf that is not
+/// `examples/zephyr/<lang>/<case>` — phase-482 W3's port templates, whose
+/// Zephyr build glue sits beside the ported source it shares with the other
+/// platforms. `leaf` is repo-relative; `build_name` is the row's
+/// `west_build_name`, which is the directory the west lane writes.
+pub fn build_zephyr_cortex_m_leaf(
+    leaf: &str,
+    build_name: &str,
+    lang: &str,
+    rmw: Rmw,
+) -> TestResult<PathBuf> {
+    let example_dir = project_root().join(leaf);
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
             "Example directory not found: {}",
             example_dir.display()
         )));
     }
-    let binary_path = zephyr_build_root().join(format!(
-        "build-cortex-m-{}-{}-{}/zephyr/zephyr.elf",
-        lang,
-        case,
-        rmw.cmake_value()
-    ));
-    let leaf = format!("examples/zephyr/{lang}/{case}");
+    let binary_path = zephyr_build_root().join(format!("{build_name}/zephyr/zephyr.elf"));
     require_prebuilt_binary_fresh_zephyr(
         &binary_path,
         ZephyrLeafSource {
-            dir: &leaf,
+            dir: leaf,
             lang: Some(lang),
             rmw: Some(rmw.cmake_value()),
             conf_files: None,

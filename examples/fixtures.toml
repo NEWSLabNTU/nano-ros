@@ -3073,6 +3073,17 @@ rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/cpp/listener"
 cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8000" }
 
+# phase-482 W3 — the ported ROS 2 tutorial publisher (the template's unmodified
+# `src/minimal_publisher.cpp`) on FreeRTOS, the (FreertosMps2, Cpp, Port) cell.
+# Port 8098 = `alloc::port_of(FreertosMps2, Cpp, Port)`; consumed by
+# tests/port_templates_e2e.rs.
+[[fixture]]
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/templates/cpp-port-minimal-publisher/mps2-an385-freertos"
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8098" }
+
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
@@ -5069,6 +5080,22 @@ dir = "examples/zephyr/cpp/talker"
 board = "mps2_an385"
 west_build_name = "build-cortex-m-cpp-talker-zenoh"
 west_zenoh_locator = "tcp/10.0.2.2:10800"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+
+# phase-482 W3 — the ported ROS 2 tutorial publisher on Zephyr, the
+# (ZephyrQemuCortexM, Cpp, Port) cell. Port 10898 =
+# `alloc::port_of(ZephyrQemuCortexM, Cpp, Port)`; consumed by
+# tests/port_templates_e2e.rs.
+[[fixture]]
+platform = "zephyr-cortex-m"
+lang = "cpp"
+rmw = "zenoh"
+builder = "west"
+dir = "examples/templates/cpp-port-minimal-publisher/zephyr"
+board = "mps2_an385"
+west_role = "port-minimal-publisher"
+west_build_name = "build-cortex-m-cpp-port-minimal-publisher-zenoh"
+west_zenoh_locator = "tcp/10.0.2.2:10898"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
 
 [[fixture]]

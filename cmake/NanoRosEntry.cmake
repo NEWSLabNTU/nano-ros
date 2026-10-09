@@ -379,6 +379,19 @@ function(nano_ros_entry)
             "(runner=${NROS_BOARD_RUNNER}) — codegen board key => zephyr "
             "(nros::board::ZephyrBoard).")
     endif()
+    # phase-482 W3 — `zephyr` is a deploy token that IS its board. A leaf whose
+    # `system.toml` says `[image.zephyr] board = "zephyr"` reaches here as
+    # DEPLOY zephyr with no BOARD, because `nros ws leaf-system` reports such a
+    # board as naming no separate provider (cmake/NanoRosPackageXml.cmake).
+    # The gate below then refused the one deploy whose board needs no naming,
+    # so `nano_ros_add_executable` could not build a Zephyr leaf at all (the
+    # in-tree Zephyr leaves avoid it by registering components instead).
+    # Only inside a Zephyr configure: a HOST configure naming DEPLOY zephyr is
+    # still the misuse the gate exists for (cmake_node_register_misuse).
+    _nros_is_zephyr(_nra_deploy_in_zephyr)
+    if(NOT _NRA_BOARD AND "zephyr" IN_LIST _NRA_DEPLOY AND _nra_deploy_in_zephyr)
+        set(_NRA_BOARD "zephyr")
+    endif()
 
     # DEPLOY gate. `native` is always allowed. A non-`native` DEPLOY
     # target is the embedded path (Phase 235.B) and REQUIRES a resolved
