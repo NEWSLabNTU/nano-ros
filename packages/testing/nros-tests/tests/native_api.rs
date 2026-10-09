@@ -947,9 +947,12 @@ fn spawn_cyclone_binary(binary: &Path, name: &str, domain_id: &str) -> ManagedPr
 /// `seen` is what the test already read from the image; the rest is drained
 /// here, which ends the process.
 fn assert_threadx_image_kept_foreign_threads_out(image: &mut ManagedProcess, seen: &str) {
-    let rest = image
-        .wait_for_all_output(Duration::from_millis(500))
-        .unwrap_or_default();
+    // `Err` here is only `Timeout` with NOTHING printed (see
+    // `wait_for_all_output`), so there is no evidence to carry: "" is exact.
+    let rest = match image.wait_for_all_output(Duration::from_millis(500)) {
+        Ok(out) => out,
+        Err(_) => String::new(),
+    };
     let all = format!("{seen}{rest}");
     assert!(
         !all.contains(nros_tests::output::THREADX_FOREIGN_THREAD_REFUSAL),
@@ -1205,12 +1208,10 @@ fn test_threadx_linux_cyclonedds_service() {
     let mut server = spawn_cyclone_binary(&server_bin, "threadx-cyclonedds-service-server", "107");
     // Kept, not discarded: issue 1750's assertion below reads the WHOLE image
     // output, and a foreign thread can reach ThreadX before the banner ends.
-    let server_ready = server
-        .wait_for_output_pattern(
-            nros_tests::output::SERVICE_SERVER_READY_MARKER,
-            Duration::from_secs(30),
-        )
-        .unwrap_or_else(|e| e.to_string());
+    let server_ready = server.collect_until(
+        nros_tests::output::SERVICE_SERVER_READY_MARKER,
+        Duration::from_secs(30),
+    );
     let mut client = spawn_cyclone_binary(&client_bin, "native-cyclonedds-service-client", "107");
 
     let client_out = client.collect_until(SERVICE_RESULT_PREFIX, Duration::from_secs(30));
@@ -1250,9 +1251,7 @@ fn test_threadx_linux_cyclonedds_action() {
     let client_bin = cyclone_role_binary(Language::C, "action-client");
 
     let mut server = spawn_cyclone_binary(&server_bin, "threadx-cyclonedds-action-server", "107");
-    let server_ready = server
-        .wait_for_output_pattern(ACTION_SERVER_READY_MARKER, Duration::from_secs(30))
-        .unwrap_or_else(|e| e.to_string());
+    let server_ready = server.collect_until(ACTION_SERVER_READY_MARKER, Duration::from_secs(30));
     let mut client = spawn_cyclone_binary(&client_bin, "native-cyclonedds-action-client", "107");
 
     let client_out = client.collect_until(ACTION_RESULT_PREFIX, Duration::from_secs(40));
