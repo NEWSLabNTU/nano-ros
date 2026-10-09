@@ -947,11 +947,12 @@ fn spawn_cyclone_binary(binary: &Path, name: &str, domain_id: &str) -> ManagedPr
 /// `seen` is what the test already read from the image; the rest is drained
 /// here, which ends the process.
 fn assert_threadx_image_kept_foreign_threads_out(image: &mut ManagedProcess, seen: &str) {
-    // `Err` here is only `Timeout` with NOTHING printed (see
-    // `wait_for_all_output`), so there is no evidence to carry: "" is exact.
+    // `Err` here is `Timeout` with nothing printed (see `wait_for_all_output`);
+    // it is named in the output rather than dropped, and its text cannot
+    // contain the refusal this asserts on.
     let rest = match image.wait_for_all_output(Duration::from_millis(500)) {
         Ok(out) => out,
-        Err(_) => String::new(),
+        Err(e) => format!("[no further output: {e}]"),
     };
     let all = format!("{seen}{rest}");
     assert!(
