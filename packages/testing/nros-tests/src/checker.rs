@@ -74,6 +74,10 @@ pub fn delivery_marker(workload: Workload) -> &'static str {
         // publish line is the evidence that its eager publisher was CREATED on
         // an executor-bound node and is being driven; nothing receives it.
         Workload::ExecutorBoundNode => output::INT32_TALKER_LOG_PREFIX,
+        // The ported program's own publish line, which is the upstream
+        // tutorial's text rather than ours (phase-482 W3). Nothing receives it
+        // in-cell: the subject is that the unmodified program runs at all.
+        Workload::Port => output::CPP_PORT_PUBLISH_MARKER,
     }
 }
 

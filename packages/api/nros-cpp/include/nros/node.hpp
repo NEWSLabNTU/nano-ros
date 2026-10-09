@@ -63,6 +63,16 @@
 #include "nros/owned.hpp" // phase-456 W5 — the return type of the poll `create_service`
 #include "nros/hosted_block.hpp"
 #include "nros/nros_cpp_config_generated.h"
+// phase-482 W3 — `nros::init` below reads `NROS_ENTRY_LOCATOR` /
+// `NROS_ENTRY_DOMAIN_ID`, so the ladder that derives them from Kconfig must be
+// visible in EVERY TU that calls it, not only in one that also includes
+// `<nros/main.hpp>`. A ported `main.cpp` includes `<rclcpp/rclcpp.hpp>` and
+// nothing else: on a Zephyr guest it compiled with the macro undefined, passed
+// a null locator, and the backend's default dialled the GUEST's own loopback
+// (`ConnectionFailed`, then `create_publisher`'s abort). Where nothing bakes a
+// locator the header yields `""`, which `nros_cpp_init` reads as absent — the
+// same answer a null gave.
+#include "nros/entry_config.h"
 #include "nros/qos.hpp"
 // Phase 189.M3.1 — rclcpp-style named-options structs
 // (`SubscriptionOptions` / `PublisherOptions`) used by the 4-arg
