@@ -100,10 +100,17 @@ pub fn discover_workspace_packages(
 /// # Returns
 /// HashMap of package name -> path to <prefix>/share/<package>/rust/
 pub fn discover_installed_ament_packages() -> Result<HashMap<String, PathBuf>> {
-    let mut packages = HashMap::new();
-
     // Get AMENT_PREFIX_PATH from environment
     let ament_prefix_path = env::var("AMENT_PREFIX_PATH").unwrap_or_default();
+    discover_installed_ament_packages_in(&ament_prefix_path)
+}
+
+/// [`discover_installed_ament_packages`] over an explicit `AMENT_PREFIX_PATH`
+/// value. The FIRST prefix that has a package wins, as in ament (issue 1781).
+pub fn discover_installed_ament_packages_in(
+    ament_prefix_path: &str,
+) -> Result<HashMap<String, PathBuf>> {
+    let mut packages = HashMap::new();
 
     if ament_prefix_path.is_empty() {
         // Not an error - just means no ROS 2 is sourced
@@ -136,7 +143,9 @@ pub fn discover_installed_ament_packages() -> Result<HashMap<String, PathBuf>> {
                         prefix_path.join("share").join(&package_name).join("rust");
 
                     if rust_binding_path.exists() {
-                        packages.insert(package_name, rust_binding_path);
+                        // First prefix wins (issue 1781): an overlay shadows
+                        // its underlay, never the other way round.
+                        packages.entry(package_name).or_insert(rust_binding_path);
                     }
                 }
             }
@@ -248,6 +257,25 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    /// Issue 1781 — with the same package in two prefixes, the FIRST wins.
+    #[test]
+    fn installed_ament_packages_first_prefix_wins() {
+        let temp_dir = TempDir::new().unwrap();
+        let mk = |name: &str| {
+            let prefix = temp_dir.path().join(name);
+            let idx = prefix.join("share/ament_index/resource_index/rust_packages");
+            fs::create_dir_all(&idx).unwrap();
+            fs::write(idx.join("std_msgs"), "").unwrap();
+            fs::create_dir_all(prefix.join("share/std_msgs/rust")).unwrap();
+            prefix
+        };
+        let (overlay, underlay) = (mk("overlay"), mk("underlay"));
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        let path = format!("{}{sep}{}", overlay.display(), underlay.display());
+        let found = discover_installed_ament_packages_in(&path).unwrap();
+        assert_eq!(found["std_msgs"], overlay.join("share/std_msgs/rust"));
+    }
 
     #[test]
     fn test_extract_package_name() {

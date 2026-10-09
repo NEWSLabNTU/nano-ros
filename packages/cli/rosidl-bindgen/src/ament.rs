@@ -247,9 +247,14 @@ impl AmentIndex {
                     if path.is_dir() {
                         // Try to create a Package from this directory
                         if let Ok(package) = Package::from_share_dir(path) {
-                            // Only add if it has interface files
+                            // Only add if it has interface files. The FIRST
+                            // prefix that has a package wins — ament's rule,
+                            // and what makes a sourced overlay shadow its
+                            // underlay. `insert` let the LAST win, so an
+                            // overlay's interface package was silently
+                            // replaced by `/opt/ros`'s (issue 1781).
                             if package.has_interfaces() {
-                                packages.insert(package.name.clone(), package);
+                                packages.entry(package.name.clone()).or_insert(package);
                             }
                         }
                     }
@@ -398,6 +403,33 @@ mod tests {
         assert_eq!(pkg.interfaces.messages.len(), 2);
         assert!(pkg.interfaces.messages.contains(&"Header".to_string()));
         assert!(pkg.interfaces.messages.contains(&"Point".to_string()));
+    }
+
+    /// Issue 1781 — the FIRST prefix wins, as in ament: an overlay put ahead
+    /// of its underlay on `AMENT_PREFIX_PATH` shadows the underlay's package.
+    #[test]
+    fn first_prefix_wins_so_an_overlay_shadows_its_underlay() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let overlay = create_test_prefix(temp_dir.path(), "overlay");
+        let underlay = create_test_prefix(temp_dir.path(), "underlay");
+        create_test_package(&overlay, "std_msgs", &["String", "OverlayOnly"], &[], &[]);
+        create_test_package(&underlay, "std_msgs", &["String"], &[], &[]);
+
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        let both = |a: &Path, b: &Path| format!("{}{sep}{}", a.display(), b.display());
+
+        let index = AmentIndex::from_path_string(&both(&overlay, &underlay)).unwrap();
+        let pkg = index.find_package("std_msgs").unwrap();
+        assert!(
+            pkg.interfaces.messages.contains(&"OverlayOnly".to_string()),
+            "the overlay (first on the path) must win, got {:?}",
+            pkg.interfaces.messages
+        );
+
+        // And the order is what decides it, not which prefix holds more.
+        let index = AmentIndex::from_path_string(&both(&underlay, &overlay)).unwrap();
+        let pkg = index.find_package("std_msgs").unwrap();
+        assert!(!pkg.interfaces.messages.contains(&"OverlayOnly".to_string()));
     }
 
     #[test]
