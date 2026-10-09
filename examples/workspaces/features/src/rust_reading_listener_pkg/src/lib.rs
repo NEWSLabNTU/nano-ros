@@ -11,13 +11,15 @@
 #![no_std]
 
 use custom_msgs::msg::Reading;
-use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
+use nros::{
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
+};
 use std_msgs::msg::Int32;
 
 /// ReadingListener — echoes the last decoded `Reading.sequence` on `/reading_seq`.
 pub struct ReadingListener;
 
-impl Node for ReadingListener {
+impl Component for ReadingListener {
     const NAME: &'static str = "reading_listener";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

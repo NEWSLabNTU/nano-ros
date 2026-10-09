@@ -223,13 +223,13 @@ fn render_lib_rs(name: &str, type_name: &str, node_name: &str) -> String {
 #![no_std]
 
 use nros::{{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, ExecutableNode, Component, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 }};
 
 pub struct {type_name};
 
-impl Node for {type_name} {{
+impl Component for {type_name} {{
     const NAME: &'static str = "{node_name}";
 
     /// Exact entity counts, so this node's static registries are sized to it

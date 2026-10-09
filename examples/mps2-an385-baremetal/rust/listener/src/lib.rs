@@ -12,7 +12,7 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions,
+    Callback, CallbackCtx, Component, DispatchStrategy, ExecutableNode, NodeContext, NodeOptions,
     NodeResult, TickCtx,
 };
 use std_msgs::msg::String as StringMsg;
@@ -20,7 +20,7 @@ use std_msgs::msg::String as StringMsg;
 // Phase 88.16.C — diagnostics route through `nros-log`.
 pub struct ListenerNode;
 
-impl Node for ListenerNode {
+impl Component for ListenerNode {
     const NAME: &'static str = "listener";
 
     // phase-391 W5-endgame (issue 0857) — exact bounds: one subscription,

@@ -25,13 +25,13 @@ mod app_main;
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
-    TimerDuration,
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
+    TickCtx, TimerDuration,
 };
 
 pub struct AddTwoIntsClient;
 
-impl Node for AddTwoIntsClient {
+impl Component for AddTwoIntsClient {
     const NAME: &'static str = "add_two_ints_client";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

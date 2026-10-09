@@ -768,7 +768,7 @@ mod component_scaffold {
         // for three and a half months over a template that compiled in no
         // configuration.
         let lib = fs::read_to_string(dir.join("src/lib.rs")).unwrap();
-        assert!(lib.contains("impl Node for Talker"));
+        assert!(lib.contains("impl Component for Talker"));
         assert!(lib.contains(r#"const NAME: &'static str = "talker""#));
         assert!(lib.contains("nros::node!(Talker);"));
         assert!(
@@ -811,7 +811,7 @@ mod component_scaffold {
         let lib = fs::read_to_string(tmp.path().join("svc/src/lib.rs")).unwrap();
         // The use case names the NODE and its type, not a module.
         assert!(lib.contains(r#"const NAME: &'static str = "service""#));
-        assert!(lib.contains("impl Node for Service"));
+        assert!(lib.contains("impl Component for Service"));
     }
 
     #[test]

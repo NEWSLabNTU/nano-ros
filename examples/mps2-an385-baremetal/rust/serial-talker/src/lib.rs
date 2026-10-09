@@ -10,14 +10,14 @@
 
 use core::fmt::Write as _;
 use nros::{
-    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeResult,
+    Callback, CallbackCtx, Component, DispatchStrategy, ExecutableNode, NodeContext, NodeResult,
     TickCtx, TimerDuration,
 };
 use std_msgs::msg::String as StringMsg;
 
 pub struct SerialTalker;
 
-impl Node for SerialTalker {
+impl Component for SerialTalker {
     const NAME: &'static str = "serial_talker";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

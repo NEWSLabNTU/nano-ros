@@ -1235,38 +1235,6 @@
     "verdict": "divergence",
     "why": "rclrs 0.7.0 models a goal's life as a TYPESTATE chain -- `RequestedGoal` -> `AcceptedGoal` -> `ExecutingGoal` -> `TerminatedGoal`, each a distinct type whose methods are only the transitions legal from that state, with the goal moved from one to the next. Ours keeps goals in a STATIC ARENA addressed by UUID (`nros_goal_uuid_t` / `GoalId`), and the server asks the arena about a goal rather than holding it. The constraint is that a typestate chain hands the application an owning handle per goal, and with no allocator and a fixed-capacity arena the storage cannot follow the handle -- MAX_GOALS is declared at build time and the arena outlives every borrow of it. RFC-0069. Note ROS 2 does not agree with ITSELF here: rclcpp_action uses `async_send_goal` and shared `ClientGoalHandle`, rclrs 0.7.0 uses `request_goal` and the typestate chain, so 'match ROS 2' has no single answer for actions -- W5 has to pick a side and say which."
   },
-  "rust:NodeHandle::create_action_client": {
-    "verdict": "divergence",
-    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
-  },
-  "rust:NodeHandle::create_action_client_raw": {
-    "verdict": "divergence",
-    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
-  },
-  "rust:NodeHandle::create_action_client_raw_sized": {
-    "verdict": "divergence",
-    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
-  },
-  "rust:NodeHandle::create_action_client_sized": {
-    "verdict": "divergence",
-    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
-  },
-  "rust:NodeHandle::create_action_server": {
-    "verdict": "divergence",
-    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
-  },
-  "rust:NodeHandle::create_action_server_raw": {
-    "verdict": "divergence",
-    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
-  },
-  "rust:NodeHandle::create_action_server_raw_sized": {
-    "verdict": "divergence",
-    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
-  },
-  "rust:NodeHandle::create_action_server_sized": {
-    "verdict": "divergence",
-    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
-  },
   "rust:RawActionClientSpec": {
     "verdict": "divergence",
     "why": "see `rust:RawActionServerSpec`."
@@ -1605,5 +1573,29 @@
   "cpp:to_ffi": {
     "verdict": "extension",
     "why": "issue 1637 -- `nros::to_ffi(GoalResponse)` / `nros::to_ffi(CancelResponse)`, the ONE conversion from the C++ per-goal decisions to the integer the action-server FFI reads. The C++ enums now carry rclcpp_action's values (`REJECT = 1, ACCEPT_AND_EXECUTE = 2, ACCEPT_AND_DEFER = 3`; `REJECT = 1, ACCEPT = 2`) while the FFI shared with C (`NROS_C_GOAL_*` / `NROS_C_CANCEL_*` in `component.h`, and the Rust `#[repr(i8)]` trampolines behind it) stays 0-based, because a zero-initialised decision slot must mean reject. rclcpp_action has no FFI to map onto, so it has no counterpart. The typed callback tier and `bind_action_server_raw` call it for the user; a raw component callback handed to `create_action_server_raw` returns its result, and a `static_cast<int32_t>` of the C++ enum in its place would read REJECT (1) as accept-and-execute -- which is why the binder no longer accepts members returning `int32_t`."
+  },
+  "rust:Node::create_action_client_raw": {
+    "verdict": "extension",
+    "why": "an action-constructor variant with no rclrs counterpart: compile-time buffer sizes (`_sized`) or a type-erased (`_raw`) form. Moved onto `nros::Node` from the retired `NodeHandle` (phase-483 W2). Bounded buffers are the RTOS reason."
+  },
+  "rust:Node::create_action_client_raw_sized": {
+    "verdict": "extension",
+    "why": "an action-constructor variant with no rclrs counterpart: compile-time buffer sizes (`_sized`) or a type-erased (`_raw`) form. Moved onto `nros::Node` from the retired `NodeHandle` (phase-483 W2). Bounded buffers are the RTOS reason."
+  },
+  "rust:Node::create_action_client_sized": {
+    "verdict": "extension",
+    "why": "an action-constructor variant with no rclrs counterpart: compile-time buffer sizes (`_sized`) or a type-erased (`_raw`) form. Moved onto `nros::Node` from the retired `NodeHandle` (phase-483 W2). Bounded buffers are the RTOS reason."
+  },
+  "rust:Node::create_action_server_raw": {
+    "verdict": "extension",
+    "why": "an action-constructor variant with no rclrs counterpart: compile-time buffer sizes (`_sized`) or a type-erased (`_raw`) form. Moved onto `nros::Node` from the retired `NodeHandle` (phase-483 W2). Bounded buffers are the RTOS reason."
+  },
+  "rust:Node::create_action_server_raw_sized": {
+    "verdict": "extension",
+    "why": "an action-constructor variant with no rclrs counterpart: compile-time buffer sizes (`_sized`) or a type-erased (`_raw`) form. Moved onto `nros::Node` from the retired `NodeHandle` (phase-483 W2). Bounded buffers are the RTOS reason."
+  },
+  "rust:Node::create_action_server_sized": {
+    "verdict": "extension",
+    "why": "an action-constructor variant with no rclrs counterpart: compile-time buffer sizes (`_sized`) or a type-erased (`_raw`) form. Moved onto `nros::Node` from the retired `NodeHandle` (phase-483 W2). Bounded buffers are the RTOS reason."
   }
 }

@@ -15,14 +15,14 @@
 
 use custom_msgs::msg::Reading;
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 };
 
 /// ReadingTalker — emits a synthetic sensor `Reading` every second.
 pub struct ReadingTalker;
 
-impl Node for ReadingTalker {
+impl Component for ReadingTalker {
     const NAME: &'static str = "reading_talker";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

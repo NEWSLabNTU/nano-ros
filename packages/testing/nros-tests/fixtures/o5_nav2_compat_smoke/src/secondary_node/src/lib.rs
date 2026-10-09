@@ -6,11 +6,11 @@
 
 #![no_std]
 
-use nros::{Node, NodeContext, NodeOptions, NodeResult};
+use nros::{Component, NodeContext, NodeOptions, NodeResult};
 
 pub struct Secondary;
 
-impl Node for Secondary {
+impl Component for Secondary {
     const NAME: &'static str = "secondary";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

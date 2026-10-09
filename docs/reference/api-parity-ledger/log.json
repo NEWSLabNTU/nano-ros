@@ -210,7 +210,8 @@
   },
   "rust:Node::logger": {
     "verdict": "divergence",
-    "why": "rclrs's `Node` is a handle with a `logger()` accessor. Ours is the declarative component model (RFC-0043/0044): `nros::Node` is the TRAIT a user implements, and the handle-side equivalent is `nros_node::NodeHandle`, which DOES have `logger() -> &'static nros_log::Logger`. See `rust:Node` in the node stage for the constraint. Note the accessor does not appear as an ours-only row because `NodeHandle` is re-exported behind `#[cfg(feature = \"rmw-cffi\")]` and the report builds rustdoc with default features (`default = []`) -- see this stage's report, not a property of the API. Note also the type collision it creates: `nros::Logger` and the logger `NodeHandle::logger()` returns are DIFFERENT types with the same short name (`rust:Logger::info`)."
+    "disposition": "adopt",
+    "why": "phase-483 W2 — `nros::Node` is now the node HANDLE (it was the component trait, renamed `nros::Component`), and it has rclrs's `logger()`: the logger named for this node, resolved through `nros_log::resolve_node_logger`. The one difference is the type: it returns `&'static nros_log::Logger`, not `rclrs::Logger` — a bounded, interned logger, because there is no allocator to hold a per-node one. A ported `node.logger()` call compiles and logs under the node's name, which is upstream's contract."
   },
   "rust:ThrottleClock": {
     "verdict": "divergence",

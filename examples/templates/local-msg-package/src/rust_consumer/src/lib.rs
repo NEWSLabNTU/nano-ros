@@ -18,7 +18,7 @@
 //! msg-coverage publishing logic.
 
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 };
 
@@ -30,7 +30,7 @@ use sensor_msgs::msg::Imu;
 /// Consumer — publishes one of each workspace + AMENT message per tick.
 pub struct Consumer;
 
-impl Node for Consumer {
+impl Component for Consumer {
     const NAME: &'static str = "rust_consumer";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

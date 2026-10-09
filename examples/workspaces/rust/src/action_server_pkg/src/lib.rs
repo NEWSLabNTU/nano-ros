@@ -19,8 +19,8 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    Callback, CallbackCtx, CancelResponse, ExecutableNode, GoalId, GoalResponse, GoalStatus, Node,
-    NodeContext, NodeOptions, NodeResult, TickCtx,
+    Callback, CallbackCtx, CancelResponse, Component, ExecutableNode, GoalId, GoalResponse,
+    GoalStatus, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
 /// Fixed Fibonacci order — matches the client's requested goal (the goal payload
@@ -31,7 +31,7 @@ const ORDER: i32 = 10;
 /// accepted goal with the canonical Fibonacci sequence.
 pub struct FibonacciServer;
 
-impl Node for FibonacciServer {
+impl Component for FibonacciServer {
     const NAME: &'static str = "fibonacci_server";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

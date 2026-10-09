@@ -15,7 +15,7 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions,
+    Callback, CallbackCtx, Component, DispatchStrategy, ExecutableNode, NodeContext, NodeOptions,
     NodeResult, TickCtx,
 };
 use std_msgs::msg::String as StringMsg;
@@ -24,7 +24,7 @@ use std_msgs::msg::String as StringMsg;
 
 pub struct ListenerNode;
 
-impl Node for ListenerNode {
+impl Component for ListenerNode {
     const NAME: &'static str = "listener";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

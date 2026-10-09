@@ -2,11 +2,11 @@
 
 #![no_std]
 
-use nros::{Node, NodeContext, NodeOptions, NodeResult, TimerDuration};
+use nros::{Component, NodeContext, NodeOptions, NodeResult, TimerDuration};
 
 pub struct Telem;
 
-impl Node for Telem {
+impl Component for Telem {
     const NAME: &'static str = "telem_node";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,
@@ -17,7 +17,8 @@ impl Node for Telem {
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("telem_node"))?;
         node.callback_group("telem")?;
-        let _t = node.create_timer_for_callback_name("on_telem", TimerDuration::from_millis(100))?;
+        let _t =
+            node.create_timer_for_callback_name("on_telem", TimerDuration::from_millis(100))?;
         Ok(())
     }
 }

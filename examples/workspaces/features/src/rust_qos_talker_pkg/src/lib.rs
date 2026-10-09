@@ -13,8 +13,8 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, QoSProfile,
-    TimerDuration,
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
+    QoSProfile, TimerDuration,
 };
 use std_msgs::msg::Int32;
 
@@ -36,7 +36,7 @@ pub fn qos_profile() -> QoSProfile {
 /// Reliable talker — monotonic counter published on `/qos_chatter` at 1 Hz.
 pub struct ReliableTalker;
 
-impl Node for ReliableTalker {
+impl Component for ReliableTalker {
     const NAME: &'static str = "reliable_talker";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

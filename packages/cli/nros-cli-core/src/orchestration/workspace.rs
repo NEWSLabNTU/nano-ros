@@ -534,7 +534,7 @@ pub struct ComponentDeclaration {
     ///
     /// The metadata harness used to GUESS this as `<crate>::<module>::Component`
     /// from the component id, which the shipping `nros::node!(Class)` shape
-    /// (`impl Node for Class`, no `Component` alias, no module segment) never
+    /// (`impl Component for Class`, no `Component` alias, no module segment) never
     /// matches. Carrying the declared class removes the guess. `None` for the
     /// legacy `crate::module` manifests, where the guess IS the convention.
     pub class: Option<String>,

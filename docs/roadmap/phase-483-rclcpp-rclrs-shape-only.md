@@ -187,6 +187,29 @@ a declaration-recording runtime:
    a callback NAME instead of a closure. A component that is not
    framework-dispatched writes closures, as rclrs does.
 
+**Status 2026-10-10: the node type is done; the component side moves in W3.**
+
+- `NodeCtx` is now `nros::Node`, and `Executor::create_node` /
+  `create_node_on` return it.
+- It gained the constructors and accessors only `NodeHandle` had: `name`,
+  `namespace`, `fully_qualified_name`, `domain_id`, `logger`, `id`, the
+  client, action and `_sized` / `_raw` constructors. Each forwards through
+  `Executor::with_node_try`.
+- The polled subscription and service constructors are now
+  `create_polling_*`.
+- The TYPED QoS-override table stays a `NodeHandle` input, reached through
+  `with_node_try`. Storing it on the node record grew every executor's node
+  table by a slice, and a ThreadX image's stated executor backing then sat
+  below the derived size. A node's overrides are the executor's code table,
+  as before.
+- The component trait is renamed `nros::Component`.
+- `NodeHandle` leaves the facade and its prelude.
+- The ledger re-keys `rust:Node` to the handle, now `adopt-bounded` with its
+  borrow envelope, and adds the `extension` rows. The `NodeHandle` rows are
+  retired.
+- Still open, and the subject of W3: a component's `register` hands it
+  `DeclaredNode`, not `Node`.
+
 ### W3 — Rust: migrate every consumer
 
 The 78 component files, the 17 imperative files, `packages/testing`, the

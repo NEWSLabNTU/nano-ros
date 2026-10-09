@@ -38,7 +38,7 @@ fn main() {
 
     let mut sub = {
         let mut node = exec.create_node("nros_string_sub").expect("create node");
-        node.create_subscription_raw(TOPIC, TYPE_NAME, TYPE_HASH)
+        node.create_polling_subscription_raw(TOPIC, TYPE_NAME, TYPE_HASH)
             .unwrap_or_else(|e| {
                 error!("subscription create failed: {e:?}");
                 std::process::exit(3);

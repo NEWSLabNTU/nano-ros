@@ -127,7 +127,7 @@ my_embassy_robot/
     ├── listener_pkg/                    # Node pkg — board-agnostic
     │   ├── package.xml
     │   ├── Cargo.toml
-    │   └── src/lib.rs                   # impl Node for Listener + nros::node!(Listener)
+    │   └── src/lib.rs                   # impl Component for Listener + nros::node!(Listener)
     └── demo_bringup/                    # Bringup pkg — no code
         ├── system.toml
         └── launch/
@@ -175,7 +175,7 @@ Every callback-driven Embassy Node should declare
 `DispatchStrategy::Deferred`:
 
 ```rust
-impl Node for Listener {
+impl Component for Listener {
     const NAME: &'static str = "listener";
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
     // ...
@@ -230,7 +230,7 @@ pub struct ListenerState {
     spawner: Spawner,
 }
 
-impl Node for Listener {
+impl Component for Listener {
     const NAME: &'static str = "listener";
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
 

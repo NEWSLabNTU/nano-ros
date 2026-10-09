@@ -16,7 +16,7 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 };
 use std_msgs::msg::Int32;
@@ -27,7 +27,7 @@ const DEFAULT_PERIOD_MS: u64 = 1000;
 /// Param-talker — counter state + chatter publish on every tick.
 pub struct ParamTalker;
 
-impl Node for ParamTalker {
+impl Component for ParamTalker {
     const NAME: &'static str = "param_talker";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

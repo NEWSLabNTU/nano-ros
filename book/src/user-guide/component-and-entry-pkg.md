@@ -29,7 +29,7 @@ src/talker_pkg/
 │                       # in the bringup's system.toml
 ├── package.xml         # ROS 2 package manifest (<exec_depend> etc.)
 ├── src/
-│   └── lib.rs          # impl Node for Talker { … }
+│   └── lib.rs          # impl Component for Talker { … }
 │                       # nros::node!(Talker);
 └── launch/             # OPTIONAL — per-node launch fragment
     └── talker.launch.xml

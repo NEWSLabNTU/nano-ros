@@ -37,8 +37,8 @@ use std::{
 };
 
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Executor, ExecutorConfig, ExecutorNodeRuntime, Node,
-    NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, Component, ExecutableNode, Executor, ExecutorConfig,
+    ExecutorNodeRuntime, NodeContext, NodeOptions, NodeResult,
 };
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};
 use rstest::rstest;
@@ -75,7 +75,7 @@ fn declare_dual_timers(ctx: &mut NodeContext<'_>, node_name: &str) -> NodeResult
 
 /// Node registered on the boot (high-tier) executor.
 struct HighTierNode;
-impl Node for HighTierNode {
+impl Component for HighTierNode {
     const NAME: &'static str = "tier_high_node";
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         declare_dual_timers(ctx, "tier_high")
@@ -95,7 +95,7 @@ impl ExecutableNode for HighTierNode {
 
 /// Node registered on the borrowed (low-tier) executor.
 struct LowTierNode;
-impl Node for LowTierNode {
+impl Component for LowTierNode {
     const NAME: &'static str = "tier_low_node";
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         declare_dual_timers(ctx, "tier_low")
@@ -207,7 +207,7 @@ fn declare_ctrl_timer(ctx: &mut NodeContext<'_>, node_name: &str) -> NodeResult<
 }
 
 struct SharedGroupA;
-impl Node for SharedGroupA {
+impl Component for SharedGroupA {
     const NAME: &'static str = "shared_group_a_node";
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         declare_ctrl_timer(ctx, "shared_a")
@@ -224,7 +224,7 @@ impl ExecutableNode for SharedGroupA {
 }
 
 struct SharedGroupB;
-impl Node for SharedGroupB {
+impl Component for SharedGroupB {
     const NAME: &'static str = "shared_group_b_node";
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         declare_ctrl_timer(ctx, "shared_b")

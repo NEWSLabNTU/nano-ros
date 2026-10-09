@@ -111,7 +111,7 @@ fn main() {
 
     let mut sub = {
         let mut node = exec.create_node("qos_event_probe").expect("create node");
-        match node.create_subscription_raw(&topic, TYPE_NAME, TYPE_HASH) {
+        match node.create_polling_subscription_raw(&topic, TYPE_NAME, TYPE_HASH) {
             Ok(s) => s,
             Err(e) => {
                 error!("subscription create failed: {e:?}");

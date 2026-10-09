@@ -402,7 +402,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     /// the node or the executor as well, because "our Rust entity handle is a
     /// bare arena index with no back-reference — `PublisherHandle { index,
     /// _marker }`". Measured, that is a DIFFERENT type:
-    /// [`NodeCtx::create_publisher`](super::node::NodeCtx::create_publisher)
+    /// [`Node::create_publisher`](super::node::Node::create_publisher)
     /// hands back an `EmbeddedPublisher`, which OWNS its backend handle, and
     /// that handle has retained the name since creation
     /// (`CffiPublisher::topic_name`, written from the caller's string at

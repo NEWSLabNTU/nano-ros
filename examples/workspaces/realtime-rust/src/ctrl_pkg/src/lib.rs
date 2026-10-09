@@ -8,14 +8,14 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 };
 use std_msgs::msg::Int32;
 
 pub struct Control;
 
-impl Node for Control {
+impl Component for Control {
     const NAME: &'static str = "control_node";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

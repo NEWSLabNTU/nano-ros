@@ -12,13 +12,13 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 };
 
 pub struct Heartbeat;
 
-impl Node for Heartbeat {
+impl Component for Heartbeat {
     const NAME: &'static str = "heartbeat";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

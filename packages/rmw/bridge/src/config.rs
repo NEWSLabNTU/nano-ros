@@ -342,7 +342,7 @@ fn run_from_config_source(raw: &str, source: &str) -> Result<(), ConfigError> {
             )
             .map_err(|e| ConfigError::BuildNode(format!("{}: {e:?}", b.from.node)))?;
         let sub = src_node
-            .create_subscription_raw(
+            .create_polling_subscription_raw(
                 b.from.topic.as_str(),
                 b.type_name.as_str(),
                 b.type_hash.as_str(),

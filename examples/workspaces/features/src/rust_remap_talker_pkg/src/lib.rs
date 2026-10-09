@@ -13,7 +13,7 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 };
 use std_msgs::msg::Int32;
@@ -24,7 +24,7 @@ const PERIOD_MS: u64 = 250;
 /// Remap-talker — counter state + private-name publish on every tick.
 pub struct RemapTalker;
 
-impl Node for RemapTalker {
+impl Component for RemapTalker {
     const NAME: &'static str = "remap_talker";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

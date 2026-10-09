@@ -33,7 +33,7 @@ fn main() {
         .create_node("listener")
         .expect("Failed to create node");
     let mut subscription = node
-        .create_subscription::<StringMsg>("/chatter")
+        .create_polling_subscription::<StringMsg>("/chatter")
         .expect("Failed to create subscription");
 
     log_info!(

@@ -22,7 +22,7 @@ mod app_main;
 
 use core::fmt::Write as _;
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 };
 
@@ -31,7 +31,7 @@ use std_msgs::msg::String as StringMsg;
 /// Talker node — counter state + chatter publish on every tick.
 pub struct Talker;
 
-impl Node for Talker {
+impl Component for Talker {
     const NAME: &'static str = "talker";
 
     // phase-391 W5-endgame (issue 0857) — exact bounds: one publisher.

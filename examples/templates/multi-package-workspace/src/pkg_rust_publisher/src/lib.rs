@@ -11,7 +11,7 @@
 //! publisher behaviour.
 
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 };
 use std_msgs::msg::Int32;
@@ -19,7 +19,7 @@ use std_msgs::msg::Int32;
 /// Publisher component — counter state + chatter publish on every tick.
 pub struct Talker;
 
-impl Node for Talker {
+impl Component for Talker {
     const NAME: &'static str = "talker";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

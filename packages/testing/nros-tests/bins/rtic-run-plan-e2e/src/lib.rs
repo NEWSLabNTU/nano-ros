@@ -8,7 +8,8 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeResult, TickCtx,
+    Callback, CallbackCtx, Component, DispatchStrategy, ExecutableNode, NodeContext, NodeResult,
+    TickCtx,
 };
 
 pub struct E2eNode;
@@ -17,7 +18,7 @@ pub struct E2eState {
     fired: bool,
 }
 
-impl Node for E2eNode {
+impl Component for E2eNode {
     const NAME: &'static str = "rtic_run_plan_e2e";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

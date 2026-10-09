@@ -7,12 +7,14 @@
 
 #![no_std]
 
-use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
+use nros::{
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
+};
 use std_msgs::msg::Int32;
 
 pub struct Listener;
 
-impl Node for Listener {
+impl Component for Listener {
     const NAME: &'static str = "listener";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

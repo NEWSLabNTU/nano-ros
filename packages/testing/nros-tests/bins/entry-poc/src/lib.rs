@@ -15,11 +15,11 @@
 
 #![no_std]
 
-use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeResult};
+use nros::{Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeResult};
 
 pub struct EntryPoc;
 
-impl Node for EntryPoc {
+impl Component for EntryPoc {
     const NAME: &'static str = "entry_poc";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

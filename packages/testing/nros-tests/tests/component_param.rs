@@ -20,8 +20,8 @@ use nros_rmw_zenoh as _;
 use std::time::Duration;
 
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Executor, ExecutorConfig, ExecutorNodeRuntime, Node,
-    NodeContext, NodeOptions, NodeResult, ParameterDefault, TickCtx,
+    Callback, CallbackCtx, Component, ExecutableNode, Executor, ExecutorConfig,
+    ExecutorNodeRuntime, NodeContext, NodeOptions, NodeResult, ParameterDefault, TickCtx,
 };
 use nros_platform::RuntimeCtx;
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};
@@ -33,7 +33,7 @@ use rstest::rstest;
 // =============================================================================
 
 struct ParamNode;
-impl Node for ParamNode {
+impl Component for ParamNode {
     const NAME: &'static str = "mf23_param";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

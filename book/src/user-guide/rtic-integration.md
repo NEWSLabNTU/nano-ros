@@ -114,7 +114,7 @@ talker-rtic/
 ├── Cargo.toml       # dependencies, incl. the board crate's `rtic` feature
 ├── system.toml      # the board, the RMW, the components
 └── src/
-    ├── lib.rs       # impl Node for Talker + nros::node!(Talker)
+    ├── lib.rs       # impl Component for Talker + nros::node!(Talker)
     └── main.rs      # nros::main!();
 ```
 
@@ -131,7 +131,7 @@ my_rtic_robot/
     ├── talker_pkg/                    # Node pkg — board-agnostic
     │   ├── package.xml
     │   ├── Cargo.toml
-    │   └── src/lib.rs                 # impl Node for Talker + nros::node!(Talker)
+    │   └── src/lib.rs                 # impl Component for Talker + nros::node!(Talker)
     └── demo_bringup/                  # Bringup pkg — no code
         ├── system.toml
         └── launch/
@@ -197,7 +197,7 @@ pub struct TalkerState {
     counter: i32,
 }
 
-impl Node for Talker {
+impl Component for Talker {
     const NAME: &'static str = "talker";
     // Inline is the default; spelled out here for clarity.
     const DISPATCH: DispatchStrategy = DispatchStrategy::Inline;
@@ -280,7 +280,7 @@ Two variants matter today; `FromIsr` is reserved as a design slot (see
 ### `Inline` — pub-only or `tick`-only Nodes
 
 ```rust
-impl Node for Talker {
+impl Component for Talker {
     const NAME: &'static str = "talker";
     const DISPATCH: DispatchStrategy = DispatchStrategy::Inline;
     // ...
@@ -307,7 +307,7 @@ loop.
 ### `Deferred` — callback-driven Nodes
 
 ```rust
-impl Node for Listener {
+impl Component for Listener {
     const NAME: &'static str = "listener";
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
     // ...
@@ -351,7 +351,7 @@ pub struct ListenerState {
     sub_chatter: SubscriptionTag,
 }
 
-impl Node for Listener {
+impl Component for Listener {
     const NAME: &'static str = "listener";
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
 

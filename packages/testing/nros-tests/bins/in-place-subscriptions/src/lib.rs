@@ -8,7 +8,9 @@
 
 #![no_std]
 
-use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
+use nros::{
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
+};
 use std_msgs::msg::String as StringMsg;
 
 pub struct EightListener;
@@ -24,7 +26,7 @@ const TOPICS: [(&str, &str); 8] = [
     ("on_chatter8", "/chatter8"),
 ];
 
-impl Node for EightListener {
+impl Component for EightListener {
     const NAME: &'static str = "eight_listener";
 
     const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 0, 0);

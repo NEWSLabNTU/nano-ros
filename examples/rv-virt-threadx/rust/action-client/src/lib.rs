@@ -23,14 +23,14 @@ mod app_main;
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
 /// Fibonacci action client — declares the client, then issues a single goal
 /// (`order = 10`) on the first `tick`.
 pub struct FibonacciClient;
 
-impl Node for FibonacciClient {
+impl Component for FibonacciClient {
     const NAME: &'static str = "fibonacci_action_client";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,
