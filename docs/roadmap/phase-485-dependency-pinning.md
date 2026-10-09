@@ -1,7 +1,7 @@
 # Phase 485 — dependency pinning: one pin set, one project lock
 
-**Status (2026-10-10). M1 and M2 measured (results below); M3 open; all work
-items open.** Implements
+**Status (2026-10-10). M1–M3 measured (results below); the issue-1781 fix is in review;
+all work items open.** Implements
 [RFC-0104](../design/0104-dependency-pinning-and-project-lock.md). The RFC's
 D3 and D5 rest on facts not yet measured, so M1–M3 run before any
 implementation and may amend the RFC.
@@ -74,6 +74,30 @@ the build reads (cmake `CMAKE_CONFIGURE_DEPENDS` + depfiles, cargo
 `rerun-if-changed`, west module lists). The `[source.*]` section of the project
 lock (W3) is computed from this, never hand-listed.
 
+**Result (2026-10-10).** A script over what each BUILD recorded — `ninja -t
+deps` + `ninja -t inputs` (cmake, west), build-script `rerun-if-changed` +
+rustc dep-info (cargo) — attributing each path to the `[source.*]` root that
+owns it:
+
+| image | sources read | from |
+| --- | --- | --- |
+| native C / C++, zenoh | zenoh-pico | the CARGO half only — the cmake half reads no vendored source |
+| native C / C++, Cyclone | cyclonedds-src (331 files) | ninja |
+| native C / C++, XRCE | micro-xrce-dds-client, micro-cdr | the cargo half |
+| native Rust talker | zenoh-pico (287 files) | cargo |
+| Zephyr FVP entry (Cyclone) | cyclonedds-src (314 files) + west modules `lang-rust`, `cmsis`, `mbedtls`, `mcuboot`, `picolibc`, `tinycrypt` | ninja + `zephyr_modules.txt` |
+
+1. A cmake image's set is ninja ∪ its CARGO half: the RMW's vendored C is
+   compiled by the cargo half, so ninja alone missed zenoh-pico and XRCE.
+2. West modules are a seventh kind, pinned by `west.yml`, not the index —
+   RFC-0104 D4a (added from this result).
+3. Declared is not used: `mbedtls` is in the index and no image measured read
+   it (TLS off) — the lock section must be derived, as D4 now says.
+4. Not measured: FreeRTOS, ThreadX, NuttX, lwIP, NetX Duo, PX4 — no current
+   build of them on this host (the only NuttX tree was a stale untracked
+   directory). W3's derivation must be run over each before it is trusted
+   there.
+
 ## Work items
 
 ### W1 — the registry pin set (D2)
@@ -102,6 +126,9 @@ two hosts with different ament installs produce identical registry sets.
 Extend `SdkLock` (`nros-sdk.lock`) with `[source.*]` (commit + origin, from
 M3), `[cargo]` (registry set), `[system.*]`, `[generated.*]`. Written on every
 build, only when content changes (the existing write-if-changed).
+
+W3 also records `[west.<module>]` for a Zephyr image (RFC-0104 D4a), from
+the build's `zephyr_modules.txt` at the manifest revision.
 
 ### W4 — the drift check (D9)
 
