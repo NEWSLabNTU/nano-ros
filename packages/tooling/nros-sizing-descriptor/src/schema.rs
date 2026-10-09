@@ -49,8 +49,8 @@ use serde::Deserialize;
 use crate::{
     fact::Fact,
     vocabulary::{
-        Basis, CapacityNeed, Durability, EndpointKind, History, RegistrationPath, Reliability,
-        Status,
+        Basis, CapacityNeed, Durability, EndpointKind, History, ParamStore, RegistrationPath,
+        Reliability, Status,
     },
 };
 
@@ -1199,6 +1199,7 @@ pub struct Params {
     needs_max_array_len: Option<CapacityNeed>,
     needs_max_byte_array_len: Option<CapacityNeed>,
     service_shape: Option<String>,
+    store: Option<ParamStore>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
 }
@@ -1212,6 +1213,7 @@ impl Params {
         "needs_max_array_len",
         "needs_max_byte_array_len",
         "service_shape",
+        "store",
     ];
 
     /// Parameters the contract declares, across EVERY node in the image.
@@ -1300,6 +1302,33 @@ impl Params {
         fact(&self.service_shape, "service_shape", &self.refused)
     }
 
+    /// Does this image BUILD a parameter store, and which declaration says so
+    /// (issue 1706). See [`ParamStore`] for why this is not [`Self::declared`].
+    ///
+    /// Stated wherever the producer read the bringup -- `none` included -- and
+    /// ABSENT from a descriptor written before the field existed, which a
+    /// consumer reads exactly as it read such a file before: from `declared`.
+    pub fn store(&self) -> Fact<ParamStore> {
+        fact(&self.store, "store", &self.refused)
+    }
+
+    /// Does this section say the image builds a parameter store? The ONE
+    /// reading of it (`nros-params/build.rs` sizes the executor's carved
+    /// region from this, phase-382 W3').
+    ///
+    /// [`Self::store`] when STATED. A file written before that field existed
+    /// states it ABSENT, and is then read exactly as it was: `declared > 0`. A
+    /// REFUSED store answers `false` -- the image is not known to build one,
+    /// so nothing is carved and the runtime's heap path (with its named
+    /// refusal) stays the fallback, never a guess in the other direction.
+    pub fn implies_store(&self) -> bool {
+        match self.store() {
+            Fact::Stated(s) => s.is_built(),
+            Fact::Refused(_) => false,
+            Fact::Absent => self.declared().get().is_some_and(|n| n > 0),
+        }
+    }
+
     /// Builder setters. Each takes `Option` so a producer that has one fact and
     /// not another writes what it actually knows, leaving the rest ABSENT — or
     /// refuses it with [`Self::refuse`], which is the louder and usually right
@@ -1332,6 +1361,10 @@ impl Params {
         self.service_shape = v;
         self
     }
+    pub fn set_store(&mut self, v: Option<ParamStore>) -> &mut Self {
+        self.store = v;
+        self
+    }
 
     /// Record that `field` could not be derived, and why.
     pub fn refuse(&mut self, field: &str, reason: impl Into<String>) -> &mut Self {
@@ -1358,6 +1391,7 @@ impl Params {
             "needs_max_array_len" => quoted(&self.needs_max_array_len.as_ref()?.token()),
             "needs_max_byte_array_len" => quoted(&self.needs_max_byte_array_len.as_ref()?.token()),
             "service_shape" => quoted(self.service_shape.as_ref()?),
+            "store" => quoted(self.store?.tag()),
             _ => return None,
         })
     }
@@ -1381,6 +1415,7 @@ impl Params {
                     self.needs_max_byte_array_len.is_some(),
                 ),
                 ("service_shape", self.service_shape.is_some()),
+                ("store", self.store.is_some()),
             ],
         )
     }

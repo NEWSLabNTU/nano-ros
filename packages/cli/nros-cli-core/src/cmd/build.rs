@@ -773,6 +773,39 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                              written ({e}); every consumer keeps its own defaults"
                         ),
                     }
+                } else if let Some(infra) = resolved.as_ref().and_then(|r| r.store_infra) {
+                    // Issue 1706 -- no wiring, so no full descriptor; but a
+                    // bringup that implies a parameter store still says so,
+                    // and the descriptor is this road's only carrier. A model
+                    // with no wiring declares no `params:` either (issue 1436's
+                    // predicate), so the declarations are `Absent`.
+                    match crate::sizing_descriptor::write_store_only(
+                        &crate::sizing_descriptor::StoreOnly {
+                            build_dir: &image_dir,
+                            entry: &image_id,
+                            params: &crate::entity_inventory::ParamDeclarations::Absent,
+                            infra,
+                            runtime_entries: None,
+                            roots: &[root.as_path()],
+                        },
+                    ) {
+                        Ok(Some(written)) => {
+                            eprintln!(
+                                "nros build:   sizing descriptor (parameter store only, issue \
+                                 1706) → {}",
+                                written.path.display()
+                            );
+                            path_env.insert(
+                                nros_sizing_descriptor::DESCRIPTOR_ENV.to_string(),
+                                written.path,
+                            );
+                        }
+                        Ok(None) => {}
+                        Err(e) => eprintln!(
+                            "nros build: warning: `{image_id}`'s parameter-store descriptor was \
+                             not written ({e}); the store keeps the heap path"
+                        ),
+                    }
                 }
                 // phase-445 W6 — what the image's declared TRANSPORT implies,
                 // then the APP rung. Same two layers, same order and the same
@@ -3092,6 +3125,10 @@ struct ResolvedImage {
     /// observation join needs its contract and its remaps. `Some` exactly when
     /// `inventory` is.
     model: Option<ros_launch_manifest_model::SystemModel>,
+    /// Issue 1706 -- the bringup's parameter-store families, whenever the
+    /// model RESOLVED, wiring or not: a model with no wiring writes no full
+    /// descriptor, and still says whether the image builds a store.
+    store_infra: Option<crate::entity_inventory::InfraServices>,
 }
 
 fn resolve_image(
@@ -3128,6 +3165,7 @@ fn resolve_image(
         .collect();
     // The model rides beside the inventory for issue 1594's observation join.
     type Composed = (EntityInventory, ros_launch_manifest_model::SystemModel);
+    let mut store_infra = None;
     let inventory: Result<Composed, String> = (|| {
         let model_rel =
             model_location::launch_to_model_rel(bringup_dir, image.launch.as_deref(), &args_vec)
@@ -3138,6 +3176,7 @@ fn resolve_image(
             .map_err(|e| format!("reading {}: {e}", model_path.display()))?;
         let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)
             .map_err(|e| format!("parsing {}: {e}", model_path.display()))?;
+        store_infra = Some(crate::entity_inventory::InfraServices::from_model(&model));
         // phase-454 W3 -- a QoS value this build cannot read refuses the SEED
         // too. `from_model` parses `reliability:` / `durability:` / `history:`
         // and an unreadable spelling parses to `None`, which is the spelling
@@ -3282,6 +3321,7 @@ fn resolve_image(
                 resolved: w.resolved,
                 model: composed.as_ref().map(|(_, m)| m.clone()),
                 inventory: composed.map(|(i, _)| i),
+                store_infra,
             })
         }
     }

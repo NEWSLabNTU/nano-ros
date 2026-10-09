@@ -1002,6 +1002,28 @@ pub struct InfraServices {
     /// larger of this and the image's component count, floored at one -- the
     /// executor's own rule (`nodes.len().max(1)` sets).
     pub model_nodes: usize,
+    /// Issue 1706 -- the launch tree seeds at least one node parameter (a
+    /// `<param>` that is not a `qos_overrides.*` entry). Not a service family:
+    /// it creates no server and so counts into no pool. It rides here because it
+    /// is a fact about the BRINGUP that every road already carries along with
+    /// the two families (`from_model`, the shared-runtime frames, `union`), and
+    /// what it implies is the parameter STORE (`[params] store`), which the
+    /// generated entry fills through the same declare path a `param_services`
+    /// image uses (`shared/declare_calls.jinja`).
+    pub launch_seeds_params: bool,
+}
+
+/// Issue 1706 -- does any node of `model` have a launch-seeded parameter?
+///
+/// `qos_overrides.*` entries are excluded: they are lowered into the baked QoS
+/// override table (`codegen::entry::qos_overrides_from_params`) and never reach
+/// the parameter store, by the same predicate the entry emitter splits on.
+pub fn model_seeds_params(model: &ros_launch_manifest_model::SystemModel) -> bool {
+    model.structure.nodes.values().any(|n| {
+        n.params
+            .keys()
+            .any(|name| !nros_orchestration_ir::qos_override::is_qos_override(name))
+    })
 }
 
 /// Issue 1688 -- does any node of `model` carry the typed `[lifecycle]`
@@ -1039,6 +1061,7 @@ impl InfraServices {
     pub fn from_model(model: &ros_launch_manifest_model::SystemModel) -> Self {
         let mut infra = Self::from_features(&model.execution.features, model.structure.nodes.len());
         infra.lifecycle |= model_declares_lifecycle_block(model);
+        infra.launch_seeds_params = model_seeds_params(model);
         infra
     }
 
@@ -1054,6 +1077,8 @@ impl InfraServices {
             param_services: has("param_services"),
             lifecycle: has("lifecycle"),
             model_nodes: nodes,
+            // A feature list has no launch tree to seed from.
+            launch_seeds_params: false,
         }
     }
 
@@ -1116,11 +1141,12 @@ impl InfraServices {
 
     /// Either source declaring a family declares it: this is a fact about the
     /// bringup, not a count two sources could each get partly right.
-    fn union(self, other: Self) -> Self {
+    pub fn union(self, other: Self) -> Self {
         Self {
             param_services: self.param_services || other.param_services,
             lifecycle: self.lifecycle || other.lifecycle,
             model_nodes: self.model_nodes.max(other.model_nodes),
+            launch_seeds_params: self.launch_seeds_params || other.launch_seeds_params,
         }
     }
 }

@@ -484,7 +484,8 @@ declared depth, `XRCE_STREAM_HISTORY` 16→4 from a declared `best_effort`,
 model that describes no wiring — 109 of 114 resolvable models — and the producer
 is not reached for one. An all-refused descriptor would move the `[meta] basis`
 every consumer guards on in order to say nothing, which is W12's own control
-held on a second road.
+held on a second road. (One exception, ruled 2026-10-09 below: a model that
+implies a parameter store writes a STORE-ONLY file.)
 
 **One composer, two callers.** `write_for_leaf` and `write_for_model` both go
 through `sizing_descriptor::build`, differing by a `ModelHorizon` and nothing
@@ -1157,6 +1158,42 @@ to a contract-less image — `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` and
 `NROS_DECLARED_NODES` — stay by design: where a descriptor IS named, its own
 field or count ranks first; where none is, the carrier is the delivery. They
 are `ByDesign` rows in `check-knob-single-reader`, citing D4.
+
+### Ruling, 2026-10-09 — the parameter store earns a file of its own (issue 1706)
+
+`[params] store` (`declared` / `param_services` / `launch_seed` / `none`) says
+whether the image BUILDS a parameter store, which since phase-382 W3' decides
+whether the executor's backing carves it (`nros_params::IMPLIED_STORE_SLOTS`).
+It is its own field, not `declared`: `declared` is a contract COUNT that
+`max_parameters` is derived beside, and an axis-only image builds a store whose
+capacity no contract states. It is composed by the one composer from the
+inventory's `InfraServices` (the axis, plus `launch_seeds_params`) and the
+contract's declarations, so every producer states it the same way and a D12
+runtime gets the union over images.
+
+The 2026-10-03 ruling says a model-only fact does not earn a file, and keeps a
+carrier for such facts instead. **The store is ruled the other way, for three
+measured reasons:**
+
+1. **A carrier would be a new env road.** Exactly what D4 retires. On the cmake
+   road it would be issue 0460's `set(ENV{})`. Kconfig carries the fact on the
+   west road only, and `NROS_PARAM_STORE` is a knob a person states.
+2. **Absence is not a default here. It is a refusal at boot.** An axis-only
+   image that carves nothing takes one 280,832-byte heap allocation (armv7),
+   which the FreeRTOS cmake Cyclone default (640 KiB) refuses. That is
+   measured on the AN536 entry.
+3. **The file says nothing else, and that is measured.** A store-only
+   descriptor has `status = refused` and `basis = closure`, the `[meta]` the
+   composer writes when the inventory does not compose, and EVERY other
+   section ABSENT, not refused. Diffing all 18 build-script `OUT_DIR` outputs
+   plus both sizes headers against the no-file build shows only store-derived
+   values moving.
+
+So the model producers (`write_from_model`, the runtime write, `--from-leaf`
+and the workspace cargo road) write a store-only file exactly when `store`
+implies a store. When it does not, they write nothing and DELETE a stale file
+at that path, because the cmake side reads whatever sits there. "No stated
+entity fact ⇒ no file" stands for everything else.
 
 ### What this amendment does not change
 

@@ -94,13 +94,14 @@
 //! 1594 joined the rest, `crate::contract_join::observe_registrations`).
 
 use nros_sizing_descriptor::{
-    Basis, CapacityNeed, Durability, Endpoint, EndpointKind, History, Params, RegistrationPath,
-    Reliability, SizingDescriptor, Status, Target, Types,
+    Basis, CapacityNeed, Durability, Endpoint, EndpointKind, History, ParamStore, Params,
+    RegistrationPath, Reliability, SizingDescriptor, Status, Target, Types,
 };
 use rosidl_codegen::bounds::BoundState;
 
 use crate::entity_inventory::{
-    Declaration, EntityInventory, EntityKind, ParamCapacity, ParamDeclarations, ParamServiceShape,
+    Declaration, EntityInventory, EntityKind, InfraServices, ParamCapacity, ParamDeclarations,
+    ParamServiceShape,
 };
 
 /// Which of issue 1319's registration paths an entry's Rust or C code takes.
@@ -390,6 +391,14 @@ pub struct DescriptorInputs<'a> {
     /// is what a caller with no model at all passes; both leave `[params]`
     /// empty.
     pub params: Option<&'a ParamDeclarations>,
+    /// Issue 1706 -- what the BRINGUP declares that builds a parameter store
+    /// without a contract count: the `param_services` axis and a launch
+    /// `<param>` seed ([`InfraServices::launch_seeds_params`]). With
+    /// [`Self::params`] it composes `[params] store`.
+    ///
+    /// `None` when this producer read no bringup at all; `store` is then stated
+    /// only when the contract's declarations answer it on their own.
+    pub infra: Option<InfraServices>,
     /// Whether the linked backend carries type descriptors.
     pub backend_schema: Option<BackendSchema>,
     /// Whether the linked backend dispatches in place (phase-454 W5). `None`
@@ -1465,6 +1474,71 @@ fn set_entity_count(img: &mut nros_sizing_descriptor::Image, field: &str, n: usi
 /// `Refused` withheld — the reason says so first, the way
 /// [`set_storage_bytes`] does when `depth` is refused.
 fn param_facts(inputs: &DescriptorInputs<'_>) -> Params {
+    let mut p = declaration_facts(inputs);
+    compose_store(&mut p, inputs.params, inputs.infra);
+    p
+}
+
+/// Issue 1706 -- `[params] store`: does this image BUILD a parameter store?
+///
+/// Three declarations imply one, in [`ParamStore::ALL`] order, and the first
+/// that holds is the one named:
+///
+/// | source | read from |
+/// | --- | --- |
+/// | `declared` | the contract's `params:` declares at least one parameter |
+/// | `param_services` | the bringup's capability axis ([`InfraServices::param_services`]) |
+/// | `launch_seed` | a launch `<param>` ([`InfraServices::launch_seeds_params`]) |
+///
+/// When none holds the answer is `none` -- a statement -- provided the
+/// producer read something that COULD have said yes. A road that read no
+/// bringup and no contract leaves the field ABSENT, and a contract whose
+/// declarations are refused (some nodes declare, others do not) refuses it
+/// too unless the axis or a seed answers on its own: a partial declaration
+/// does say parameters exist, but the count it would size from is the one D6
+/// forbids reading, and the consumer's runtime path (the heap, with the named
+/// refusal) is the honest fallback.
+///
+/// A shared runtime (RFC-0100 D12) needs no rule of its own: its inventory's
+/// families are the UNION over images (`InfraServices::union`) and its
+/// declarations the union over images, so the store is the per-knob max --
+/// built when any image builds one.
+fn compose_store(p: &mut Params, decl: Option<&ParamDeclarations>, infra: Option<InfraServices>) {
+    let declared = match decl {
+        Some(ParamDeclarations::Declared { params, .. }) => Some(!params.is_empty()),
+        Some(ParamDeclarations::Refused { .. }) => None,
+        Some(ParamDeclarations::Absent) | None => Some(false),
+    };
+    let axis = infra.is_some_and(|i| i.param_services);
+    let seed = infra.is_some_and(|i| i.launch_seeds_params);
+    let store = if declared == Some(true) {
+        ParamStore::Declared
+    } else if axis {
+        ParamStore::ParamServices
+    } else if seed {
+        ParamStore::LaunchSeed
+    } else if let Some(ParamDeclarations::Refused { reason }) = decl {
+        p.refuse(
+            "store",
+            format!(
+                "the contract's parameter declarations are refused and neither the \
+                 `param_services` axis nor a launch `<param>` implies a store on its own, so \
+                 whether this image builds one is not known; it falls back to the heap and its \
+                 named refusal. The refusal: {reason}"
+            ),
+        );
+        return;
+    } else if infra.is_none() && !matches!(decl, Some(ParamDeclarations::Declared { .. })) {
+        // Nothing read that could have said yes: ABSENT, not `none`.
+        return;
+    } else {
+        ParamStore::None
+    };
+    p.set_store(Some(store));
+}
+
+/// The `[params]` fields the contract's DECLARATIONS answer.
+fn declaration_facts(inputs: &DescriptorInputs<'_>) -> Params {
     let mut p = Params::default();
     let Some(decl) = inputs.params else {
         return p;
@@ -1804,6 +1878,26 @@ pub fn write_for_leaf(
     // else; the endpoint table being empty says nothing about the store.
     let model = crate::leaf_entity_env::leaf_model(leaf);
     let params = model.as_ref().map(ParamDeclarations::from_model);
+    // Issue 1706 -- what the leaf declares about the parameter store, for
+    // `[params] store`: the model's launch seeds, and the `param_services` axis
+    // only where it is BOTH declared (`[system] features`) and compiled in (the
+    // `param-services` feature on the leaf's own `nros` dependency,
+    // `leaf_entity_env::manifest_infra`). `nros::main!(launch = ...)` wires the
+    // services from the axis and const-asserts the feature, so on that form
+    // the two agree; a leaf that declares the axis WITHOUT the feature builds
+    // no store at all -- MEASURED on `examples/mps2-an385-freertos/rust/talker`
+    // with `features = ["param_services"]`: `nros` built with
+    // `["alloc", "macros", "rmw-cffi"]`, heap peak 163,472 (the
+    // parameter-less number), so reading the axis alone carved 280,832 B of
+    // `.bss` for nothing. The pool facts may over-read the same axis -- a
+    // spare queryable slot is cheap; a store is not. Unlike nros-cpp's
+    // `param-services`, which every C++ image carries (issue 1529) and which no
+    // road reads, this feature is the leaf's own choice. No model leaves it
+    // `None`, and the field ABSENT.
+    let infra = leaf_store_infra(
+        model.as_ref(),
+        crate::leaf_entity_env::manifest_infra(leaf).0,
+    );
     let inventory = match (inventory, model) {
         (Some(inv), Some(model)) => {
             let joined = crate::contract_join::join(&inv, &model);
@@ -1848,6 +1942,7 @@ pub fn write_for_leaf(
         host_build: img.target.is_none(),
         heap_budget_bytes: heap_budget(path_env, &img.board),
         params: params.as_ref(),
+        infra,
         // A cargo leaf is a Rust entry by construction: this road is cargo, and
         // the C/C++ images go through cmake.
         language: Some(EntryLanguage::Rust),
@@ -1880,6 +1975,20 @@ pub fn write_for_leaf(
     crate::atomic_file::atomic_write(&path, &body)
         .map_err(|e| eyre::eyre!("write `{}`: {e}", path.display()))?;
     Ok(WrittenDescriptor { path, desc })
+}
+
+/// Issue 1706 -- the cargo leaf's [`InfraServices`] for `[params] store`: the
+/// model's, with the `param_services` axis kept only where the leaf's own
+/// `nros` dependency compiles the services in. See [`write_for_leaf`].
+fn leaf_store_infra(
+    model: Option<&ros_launch_manifest_model::SystemModel>,
+    manifest_param_services: bool,
+) -> Option<InfraServices> {
+    model.map(|m| {
+        let mut i = InfraServices::from_model(m);
+        i.param_services &= manifest_param_services;
+        i
+    })
 }
 
 // --- the model road: the second producer (phase-454 W14) ---------------------
@@ -2328,6 +2437,11 @@ fn write_model_descriptor(
         // (`resolve_image` / `write_from_model` both attach it) — see
         // `DescriptorInputs::params` for why the leaf road cannot do that.
         params: Some(img.inventory.param_declarations()),
+        // Issue 1706 -- the inventory's families ride along on every road
+        // that composes it (`from_model`, the shared-runtime frames, a
+        // standalone leaf's `[system] features`), so `[params] store` is the
+        // envelope over a shared runtime's images by the same union.
+        infra: Some(img.inventory.infra()),
         // No ONE entry language: this road is several packages. Since issue
         // 1393 that costs nothing a backend can answer without it — on a
         // descriptor-carrying backend every language gives `typed_bound`, and
@@ -2380,6 +2494,96 @@ fn write_model_descriptor(
     crate::atomic_file::atomic_write(&path, &body)
         .map_err(|e| eyre::eyre!("write `{}`: {e}", path.display()))?;
     Ok(WrittenDescriptor { path, desc })
+}
+
+/// Issue 1706 -- an image whose model describes NO wiring, as far as the
+/// parameter store is concerned.
+///
+/// "No contract, no descriptor" (phase-454 W12) keeps an all-refused file out
+/// of the tree, because such a file would move the `[meta] basis` every
+/// consumer guards on in order to say nothing. A bringup that declares the
+/// `param_services` axis or seeds a launch `<param>` and states no wiring is
+/// different: it DOES say something, and on the cargo and cmake roads the
+/// descriptor is the only carrier there is (RFC-0100 D4; no `set(ENV{})`,
+/// issue 0460). Most resolvable models describe no wiring (109 of 114 when W14
+/// counted), so without this the axis reached the store only where somebody
+/// had also authored a contract -- and the image took the heap path, 280,832 B
+/// in one allocation on armv7.
+///
+/// So this writes a file ONLY when `[params] store` says a store is built, and
+/// that file states `[params]` and nothing else: `status = refused`,
+/// `basis = closure` and `undeclared_endpoints` refused -- the same `[meta]` the
+/// composer writes for an image whose inventory did not compose -- with
+/// `[target]`, `[image]`, `[types]` and every endpoint row ABSENT. A consumer
+/// reads a field only through [`nros_sizing_descriptor::Fact::stated`], so an
+/// absent field keeps its default exactly as a missing file did; that is
+/// measured, not argued, in issue 1706's 2026-10-09 (2) section.
+///
+/// When no store is implied it writes NOTHING and returns `None`, so every
+/// image without parameters keeps the no-file state byte for byte.
+pub struct StoreOnly<'a> {
+    pub build_dir: &'a std::path::Path,
+    pub entry: &'a str,
+    pub params: &'a ParamDeclarations,
+    pub infra: InfraServices,
+    /// RFC-0100 D12 -- `Some` for a shared runtime's file: it lands at
+    /// [`nros_sizing_descriptor::runtime_descriptor_path`] and names the
+    /// entries it is the envelope of.
+    pub runtime_entries: Option<&'a [String]>,
+    /// The directories this producer read from, for the portability check
+    /// (issue 0320).
+    pub roots: &'a [&'a std::path::Path],
+}
+
+pub fn write_store_only(s: &StoreOnly<'_>) -> eyre::Result<Option<WrittenDescriptor>> {
+    let inputs = DescriptorInputs {
+        entry: s.entry.to_string(),
+        params: Some(s.params),
+        infra: Some(s.infra),
+        ..DescriptorInputs::default()
+    };
+    let params = param_facts(&inputs);
+    let path = match s.runtime_entries {
+        Some(_) => nros_sizing_descriptor::runtime_descriptor_path(s.build_dir),
+        None => nros_sizing_descriptor::descriptor_path(s.build_dir, s.entry),
+    };
+    if !params.implies_store() {
+        // No contract and no store: NO FILE -- and that includes one an earlier
+        // configure left behind. The cmake side reads whatever sits at this
+        // path (`nros_sizing_descriptor_read`), so a stale store-only file
+        // would keep carving a store the bringup no longer declares, and a
+        // stale full one would size from a contract that was deleted. MEASURED:
+        // removing `param_services` left the 369,992-byte executor in place
+        // until this removal. The runtime write deletes its stale file for the
+        // same reason.
+        if path.exists() {
+            std::fs::remove_file(&path)
+                .map_err(|e| eyre::eyre!("removing the stale `{}`: {e}", path.display()))?;
+        }
+        return Ok(None);
+    }
+    let mut desc = SizingDescriptor::new(s.entry, Status::Refused, Basis::Closure);
+    desc.meta.refuse(
+        "undeclared_endpoints",
+        "the model describes no wiring, so this file carries only the parameter store \
+         (issue 1706) -- absence is not zero",
+    );
+    desc.params = params;
+    if let Some(entries) = s.runtime_entries {
+        desc.meta.set_composed_entries(entries.to_vec());
+    }
+    let body = nros_sizing_descriptor::render(&desc);
+    let mut roots = vec![s.build_dir];
+    roots.extend_from_slice(s.roots);
+    if let Some(why) = nros_sizing_descriptor::portability_violation(&body, &roots) {
+        return Err(eyre::eyre!("{why}"));
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| eyre::eyre!("create `{}`: {e}", dir.display()))?;
+    }
+    crate::atomic_file::atomic_write(&path, &body)
+        .map_err(|e| eyre::eyre!("write `{}`: {e}", path.display()))?;
+    Ok(Some(WrittenDescriptor { path, desc }))
 }
 
 /// What [`write_for_leaf`] produced: the artifact, and the descriptor itself.
@@ -3088,6 +3292,8 @@ mod tests {
             // asserting a descriptor whose `[params]` is empty -- which is the
             // byte-identity control (issue 1408).
             params: None,
+            // And no bringup read, so `[params] store` stays ABSENT too.
+            infra: None,
             language: Some(EntryLanguage::Rust),
             backend_schema: Some(BackendSchema::Schemaless),
             backend_dispatch: Some(BackendDispatch::InPlace),
@@ -4637,6 +4843,279 @@ mod tests {
         // ...and the model road really is narrower elsewhere, so this test
         // cannot pass by the horizon having stopped working.
         assert!(model.endpoints[0].wire_bound_bytes().refusal().is_some());
+    }
+
+    // ---- issue 1706: `[params] store` ---------------------------------
+
+    /// A resolved model with two nodes and a `/chatter` wire, the bringup's
+    /// `features` and `/a`'s launch `params` spliced in.
+    fn store_model(features: &str, a_params: &str) -> ros_launch_manifest_model::SystemModel {
+        let yaml = format!(
+            r#"
+meta:
+  version: 1
+structure:
+  nodes:
+    /a: {{ scope: s.launch.xml, pkg: p, exec: a, node_name: a, params: {{ {a_params} }} }}
+    /b: {{ scope: s.launch.xml, pkg: p, exec: b, node_name: b }}
+  topics:
+    /chatter:
+      type: std_msgs/msg/String
+      pub: [/b/chatter]
+      sub: [/a/chatter]
+execution:
+  features: [{features}]
+"#
+        );
+        serde_yaml_ng::from_str(&yaml).expect("model fixture parses")
+    }
+
+    /// The model road's composition, exactly as `write_model_descriptor` does
+    /// it: the inventory from the model, its families as `infra`, and the
+    /// contract's declarations from the same model.
+    fn store_of(model: &ros_launch_manifest_model::SystemModel) -> nros_sizing_descriptor::Params {
+        let mut inv = EntityInventory::from_model("model", model).expect("the model has wiring");
+        inv.set_param_declarations(ParamDeclarations::from_model(model));
+        let d = build(&DescriptorInputs {
+            params: Some(inv.param_declarations()),
+            infra: Some(inv.infra()),
+            ..model_only(&inv)
+        });
+        d.params
+    }
+
+    /// THE CASE THIS FIELD EXISTS FOR (issue 1706, "Remaining" 1): a bringup
+    /// that declares `param_services` and no contract `params:`. Before the
+    /// field, `[params]` was EMPTY for it, `nros-params` read "no store", and
+    /// the image took the heap -- 285,696 B in one allocation, past the
+    /// FreeRTOS cmake DDS road's 640 KiB with the rest of the image.
+    #[test]
+    fn the_param_services_axis_with_no_contract_count_states_a_store() {
+        let p = store_of(&store_model("param_services", ""));
+        assert_eq!(p.store().stated(), Some(&ParamStore::ParamServices));
+        assert!(p.implies_store());
+        // The count is NOT faked to carry it: `declared` stays absent.
+        assert_eq!(p.declared().tag(), "absent");
+    }
+
+    /// The cargo LEAF road keeps the axis only where the leaf's `nros` dependency
+    /// compiles the services in. Measured on `examples/mps2-an385-freertos/rust/
+    /// talker`: the axis alone built no store (heap peak 163,472) and reading it
+    /// carved 280,832 B of `.bss` for nothing. A seed needs no feature.
+    #[test]
+    fn the_cargo_leaf_road_keeps_the_axis_only_with_the_compiled_feature() {
+        let axis = store_model("param_services", "");
+        let store = |m: &ros_launch_manifest_model::SystemModel, feature: bool| {
+            let d = build(&DescriptorInputs {
+                params: Some(&ParamDeclarations::from_model(m)),
+                infra: leaf_store_infra(Some(m), feature),
+                ..base(&inventory(vec![]))
+            });
+            d.params.store().stated().copied()
+        };
+        assert_eq!(store(&axis, true), Some(ParamStore::ParamServices));
+        assert_eq!(store(&axis, false), Some(ParamStore::None));
+        let seeded = store_model("", "rate: 5");
+        assert_eq!(store(&seeded, false), Some(ParamStore::LaunchSeed));
+        assert!(leaf_store_infra(None, true).is_none());
+    }
+
+    /// Issue 1706 -- a model with NO wiring still says whether the image builds
+    /// a store. Measured before this: such an image (the AN536 Cyclone C++
+    /// entry with its contract removed) refused the store at 640 KiB, because
+    /// "no contract, no descriptor" left the axis no carrier.
+    ///
+    /// The file states `[params]` and NOTHING else: every other section is
+    /// ABSENT (not refused), so no consumer reads anything new from it.
+    #[test]
+    fn a_model_with_no_wiring_writes_a_store_only_descriptor_when_the_axis_implies_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let model = store_model("param_services", "");
+        let written = write_store_only(&StoreOnly {
+            build_dir: dir.path(),
+            entry: "img",
+            params: &ParamDeclarations::from_model(&model),
+            infra: InfraServices::from_model(&model),
+            runtime_entries: None,
+            roots: &[],
+        })
+        .unwrap()
+        .expect("the axis implies a store");
+        assert_eq!(
+            written.path,
+            nros_sizing_descriptor::descriptor_path(dir.path(), "img")
+        );
+        let back = nros_sizing_descriptor::read(&written.path).unwrap();
+        assert!(back.params.implies_store());
+        assert_eq!(back.meta.status, Status::Refused);
+        assert_eq!(back.meta.basis, Basis::Closure);
+        assert!(back.endpoints.is_empty());
+        assert_eq!(back.target.pointer_bytes().tag(), "absent");
+        assert_eq!(back.image.node_count().tag(), "absent");
+        assert_eq!(back.types.distinct_count().tag(), "absent");
+        assert_eq!(back.params.max_parameters().tag(), "absent");
+    }
+
+    /// The negative control, and the stale file: no store implied writes
+    /// NOTHING, and removes a file an earlier configure left at the path the
+    /// cmake side reads -- otherwise dropping the axis kept carving the store.
+    #[test]
+    fn no_store_writes_no_file_and_removes_a_stale_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let with = store_model("param_services", "");
+        let without = store_model("", "");
+        let write = |m: &ros_launch_manifest_model::SystemModel| {
+            write_store_only(&StoreOnly {
+                build_dir: dir.path(),
+                entry: "img",
+                params: &ParamDeclarations::from_model(m),
+                infra: InfraServices::from_model(m),
+                runtime_entries: None,
+                roots: &[],
+            })
+            .unwrap()
+        };
+        let path = write(&with).expect("written").path;
+        assert!(path.is_file());
+        assert!(write(&without).is_none());
+        assert!(
+            !path.exists(),
+            "a stale store-only file must not outlive the axis"
+        );
+    }
+
+    /// RFC-0100 D12 -- the runtime's store-only file lands at the runtime path
+    /// and names the entries it is the envelope of.
+    #[test]
+    fn a_shared_runtime_store_only_descriptor_names_its_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let entries = vec!["a_entry".to_string(), "b_entry".to_string()];
+        let seeded = store_model("", "rate: 5");
+        let written = write_store_only(&StoreOnly {
+            build_dir: dir.path(),
+            entry: "runtime",
+            params: &ParamDeclarations::Absent,
+            infra: InfraServices::from_model(&store_model("", ""))
+                .union(InfraServices::from_model(&seeded)),
+            runtime_entries: Some(&entries),
+            roots: &[],
+        })
+        .unwrap()
+        .expect("one image seeds a parameter");
+        assert_eq!(
+            written.path,
+            nros_sizing_descriptor::runtime_descriptor_path(dir.path())
+        );
+        assert_eq!(written.desc.meta.composed_entries(), entries.as_slice());
+        assert_eq!(
+            written.desc.params.store().stated(),
+            Some(&ParamStore::LaunchSeed)
+        );
+    }
+
+    /// Issue 1706 (b) -- a launch `<param>` with no axis builds the store too.
+    #[test]
+    fn a_launch_param_seed_states_a_store_without_the_axis() {
+        let p = store_of(&store_model("", "rate: 5"));
+        assert_eq!(p.store().stated(), Some(&ParamStore::LaunchSeed));
+        assert!(p.implies_store());
+    }
+
+    /// The negative control: no axis, no seed, no contract `params:` is the
+    /// STATEMENT `none`, and a `qos_overrides.*` entry is not a seed -- it is
+    /// lowered into the QoS table and never reaches the store.
+    #[test]
+    fn nothing_that_builds_a_store_states_none_and_a_qos_override_is_not_a_seed() {
+        for (features, params) in [
+            ("", ""),
+            ("lifecycle", ""),
+            ("", "qos_overrides./chatter.subscription.depth: 5"),
+        ] {
+            let p = store_of(&store_model(features, params));
+            assert_eq!(
+                p.store().stated(),
+                Some(&ParamStore::None),
+                "features `{features}`, params `{params}`"
+            );
+            assert!(!p.implies_store());
+        }
+    }
+
+    /// Precedence and refusal: a contract count names `declared` even with
+    /// the axis beside it; a REFUSED declaration refuses the store unless the
+    /// axis or a seed answers on its own; and a producer that read no bringup
+    /// and no declaration leaves the field ABSENT, not `none`.
+    #[test]
+    fn the_store_names_the_first_source_and_refuses_only_when_nothing_answers() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);
+        let axis = InfraServices {
+            param_services: true,
+            ..InfraServices::default()
+        };
+        let declared = declared_params();
+        let d = build(&DescriptorInputs {
+            params: Some(&declared),
+            infra: Some(axis),
+            ..base(&inv)
+        });
+        assert_eq!(d.params.store().stated(), Some(&ParamStore::Declared));
+
+        let refused = ParamDeclarations::Refused {
+            reason: "1 of 2 nodes declare no `params:`: /b.".into(),
+        };
+        let d = build(&DescriptorInputs {
+            params: Some(&refused),
+            infra: Some(InfraServices::default()),
+            ..base(&inv)
+        });
+        assert!(d.params.store().refusal().is_some_and(|r| r.contains("/b")));
+        assert!(!d.params.implies_store());
+        let d = build(&DescriptorInputs {
+            params: Some(&refused),
+            infra: Some(axis),
+            ..base(&inv)
+        });
+        assert_eq!(d.params.store().stated(), Some(&ParamStore::ParamServices));
+
+        let d = build(&base(&inv));
+        assert_eq!(d.params.store().tag(), "absent");
+    }
+
+    /// RFC-0100 D12 -- a SHARED runtime builds a store when ANY image it is
+    /// the envelope of does. The runtime's inventory is issue 1600's fold, whose
+    /// families are the union over images, so the store needs no rule of its
+    /// own; this pins that the union carries the seed.
+    #[test]
+    fn a_shared_runtime_builds_a_store_when_any_image_does() {
+        let plain = store_model("", "");
+        let seeded = store_model("", "rate: 5");
+        let images: Vec<_> = [("plain", &plain), ("seeded", &seeded)]
+            .iter()
+            .map(|(src, m)| {
+                (
+                    src.to_string(),
+                    EntityInventory::from_model(*src, m),
+                    ParamDeclarations::from_model(m),
+                )
+            })
+            .collect();
+        let frames: Vec<_> = [&plain, &seeded]
+            .iter()
+            .map(|m| Some(crate::entity_inventory::ImageFrame::from_model(m)))
+            .collect();
+        let (runtime, _) =
+            EntityInventory::new("metadata").shared_runtime_over_framed(&images, &frames);
+        let d = build(&DescriptorInputs {
+            params: Some(runtime.param_declarations()),
+            infra: Some(runtime.infra()),
+            ..model_only(&runtime)
+        });
+        assert_eq!(d.params.store().stated(), Some(&ParamStore::LaunchSeed));
+        // And the round trip, so `store` is a legal key in a written file.
+        let body = nros_sizing_descriptor::render(&d);
+        assert!(body.contains("store = \"launch_seed\""), "{body}");
+        let back = nros_sizing_descriptor::parse(&body, std::path::Path::new("<test>")).unwrap();
+        assert!(back.params.implies_store());
     }
 
     // ---- RFC-0100 D12 (issue 1649) and issue 1595 ----------------------

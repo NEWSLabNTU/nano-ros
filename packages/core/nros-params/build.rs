@@ -219,9 +219,10 @@ fn main() {
 /// Three sources, any of which suffices, because each is a different road's
 /// statement of the same fact:
 ///
-/// * the descriptor's `[params] declared` is STATED and above zero: the
-///   contract declares a parameter (the cargo-leaf, workspace and cmake
-///   roads, RFC-0100 D4);
+/// * the descriptor's `[params] store` names a source (issue 1706): the
+///   contract declares a parameter, the bringup declares `param_services`, or
+///   the launch seeds a `<param>` -- the cargo-leaf, workspace and cmake roads,
+///   RFC-0100 D4. A descriptor without the field falls back to `declared > 0`;
 /// * `NROS_CAPABILITY_PARAM_SERVICES` -- the bringup declares the axis. The
 ///   Zephyr west road states it as Kconfig (issue 1702), and on that road the
 ///   descriptor is not named to cargo (issue 1407), so this is its only
@@ -238,12 +239,16 @@ fn main() {
 /// NOT the `param-services` cargo feature. Every C++ image carries it (issue
 /// 1529), so keying on it is issue 1702's unconditional store again.
 fn store_implied(params: Option<&nros_sizing_descriptor::Params>) -> bool {
-    let declared = params
-        .and_then(|p| p.declared().get())
-        .is_some_and(|n| n > 0);
+    // Issue 1706 -- `[params] store` is the descriptor's whole answer: the
+    // composer folds the contract's declarations, the `param_services` axis
+    // and a launch `<param>` seed into it, so on the cargo and cmake roads
+    // (which carry no Kconfig) the bringup's declaration reaches this crate.
+    // A descriptor written before the field existed states it ABSENT, and then
+    // `declared` answers exactly as it did.
+    let described = params.is_some_and(|p| p.implies_store());
     let axis = nros_zephyr_build::knob("NROS_CAPABILITY_PARAM_SERVICES").stated();
     let seed = nros_zephyr_build::knob("NROS_PARAM_STORE").stated();
-    declared || axis.unwrap_or(0) != 0 || seed.unwrap_or(0) != 0
+    described || axis.unwrap_or(0) != 0 || seed.unwrap_or(0) != 0
 }
 
 /// The STATED rungs of one parameter knob: env, then Kconfig, then the descriptor

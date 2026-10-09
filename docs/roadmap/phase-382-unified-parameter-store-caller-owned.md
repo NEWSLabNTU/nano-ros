@@ -344,6 +344,25 @@ holds, and 0 otherwise:
 cargo feature is NOT the condition, because every C++ image carries it (issue
 1529). That would be 1702 again.
 
+**Follow-up (issue 1706, 2026-10-09): the cargo and cmake roads carry the axis
+and the seed in the descriptor.** The list above left both Kconfig-only, so a
+FreeRTOS cmake Cyclone image declaring `param_services` with no contract
+`params:` refused the store at 640 KiB. The sizing descriptor now states
+`[params] store` (`declared` / `param_services` / `launch_seed` / `none`),
+composed by the one composer from the inventory's `InfraServices` (which
+gained `launch_seeds_params`) and the contract's declarations, on all three
+producers and as the D12 union for a shared runtime. `nros-params` reads it
+through `Params::implies_store` (absent ⇒ the old `declared > 0`). A model with
+no wiring writes a STORE-ONLY descriptor when a store is implied, and deletes a
+stale one when not (RFC-0100's 2026-10-09 ruling). On the cargo LEAF road the
+axis counts only with the leaf's own `nros/param-services` feature, because
+Form-1 `nros::main!()` wires nothing from the axis (issue 1766). Measured on the
+AN536 Cyclone C++ entry at a 640 KiB heap: refused before, carved after
+(`NROS_EXECUTOR_SIZE` 24,856 → 305,688, heap peak 456,136, delivers); the
+parameter-less control is byte-identical (24,824 both). The carved size also
+appears in `.text` through the `__NROS_SIZE_EXECUTOR_SIZE` probe marker --
+issue 1765.
+
 Kept from both plans: the size is `size_of` in the crate that owns the type, so
 it is right for the target by construction. The store is carved from
 caller-placed backing. The heap is the fallback only.

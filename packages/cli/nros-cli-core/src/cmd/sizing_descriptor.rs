@@ -292,6 +292,34 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
         inv
     });
     let Some(inventory) = inventory else {
+        // Issue 1706 -- unless the bringup implies a parameter store, which a
+        // model with no wiring still says (`write_store_only`).
+        let parent = model_path.parent();
+        if let Some(written) =
+            crate::sizing_descriptor::write_store_only(&crate::sizing_descriptor::StoreOnly {
+                build_dir,
+                entry,
+                params: &crate::entity_inventory::ParamDeclarations::from_model(&model),
+                infra: crate::entity_inventory::InfraServices::from_model(&model),
+                runtime_entries: None,
+                roots: parent.as_slice(),
+            })?
+        {
+            eprintln!(
+                "nros ws sizing-descriptor: `{}` describes no wiring; the descriptor states only \
+                 `[params] store = \"{}\"` (issue 1706)",
+                model_path.display(),
+                written
+                    .desc
+                    .params
+                    .store()
+                    .stated()
+                    .map(|s| s.tag())
+                    .unwrap_or("?")
+            );
+            println!("{}", written.path.display());
+            return Ok(());
+        }
         eprintln!(
             "nros ws sizing-descriptor: `{}` describes no wiring, so no sizing descriptor is \
              written and every consumer keeps its own defaults. State what each node creates in \
@@ -410,6 +438,44 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
         .collect();
     let path = nros_sizing_descriptor::runtime_descriptor_path(build_dir);
     if wired.is_empty() {
+        // Issue 1706 -- a store-only runtime file when ANY image implies a
+        // store (RFC-0100 D12: the envelope over images, the union rule
+        // `InfraServices::union` and `ParamDeclarations::union_over_images`).
+        let labelled: Vec<(String, crate::entity_inventory::ParamDeclarations)> = models
+            .iter()
+            .map(|(p, m)| {
+                (
+                    p.display().to_string(),
+                    crate::entity_inventory::ParamDeclarations::from_model(m),
+                )
+            })
+            .collect();
+        let infra = models
+            .iter()
+            .map(|(_, m)| crate::entity_inventory::InfraServices::from_model(m))
+            .fold(crate::entity_inventory::InfraServices::default(), |a, b| {
+                a.union(b)
+            });
+        let roots: Vec<&std::path::Path> = models.iter().filter_map(|(p, _)| p.parent()).collect();
+        if let Some(written) =
+            crate::sizing_descriptor::write_store_only(&crate::sizing_descriptor::StoreOnly {
+                build_dir,
+                entry,
+                params: &crate::entity_inventory::ParamDeclarations::union_over_images(&labelled),
+                infra,
+                runtime_entries: Some(&args.composed_entry),
+                roots: &roots,
+            })?
+        {
+            eprintln!(
+                "nros ws sizing-descriptor: none of the {} model(s) this runtime is shared by \
+                 describes wiring; the runtime descriptor states only its parameter store \
+                 (issue 1706)",
+                models.len()
+            );
+            println!("{}", written.path.display());
+            return Ok(());
+        }
         eprintln!(
             "nros ws sizing-descriptor: none of the {} model(s) this runtime is shared by \
              describes wiring, so no runtime descriptor is written and every consumer keeps its \
@@ -616,6 +682,27 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
         });
     }
     if !any_declared {
+        // Issue 1706 -- `[system] features` can still imply a parameter store.
+        if let Some(written) =
+            crate::sizing_descriptor::write_store_only(&crate::sizing_descriptor::StoreOnly {
+                build_dir,
+                entry,
+                params: &crate::entity_inventory::ParamDeclarations::Absent,
+                infra: crate::entity_inventory::InfraServices::from_features(
+                    &system.features,
+                    system.components.len(),
+                ),
+                runtime_entries: None,
+                roots: &[dir.as_path()],
+            })?
+        {
+            eprintln!(
+                "nros ws sizing-descriptor: {origin} declares no entities; the descriptor states \
+                 only its parameter store (issue 1706)"
+            );
+            println!("{}", written.path.display());
+            return Ok(());
+        }
         eprintln!(
             "nros ws sizing-descriptor: {origin} declares no entities, so no sizing descriptor \
              is written and every consumer keeps its own defaults. Add `entities = [...]` to its \

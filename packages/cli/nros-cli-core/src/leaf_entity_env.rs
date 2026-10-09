@@ -1178,6 +1178,7 @@ pub fn with_fact_infra(inv: &mut EntityInventory, facts: &BTreeMap<String, Strin
         param_services: had.param_services || param_services,
         lifecycle: had.lifecycle || lifecycle,
         model_nodes: had.model_nodes.max(model_nodes),
+        launch_seeds_params: had.launch_seeds_params,
     });
 }
 
