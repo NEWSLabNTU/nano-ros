@@ -1,6 +1,7 @@
 # Phase 485 — dependency pinning: one pin set, one project lock
 
-**Status (2026-10-10). All work items open; measurements first.** Implements
+**Status (2026-10-10). M1 and M2 measured (results below); M3 open; all work
+items open.** Implements
 [RFC-0104](../design/0104-dependency-pinning-and-project-lock.md). The RFC's
 D3 and D5 rest on facts not yet measured, so M1–M3 run before any
 implementation and may amend the RFC.
@@ -18,6 +19,34 @@ are seeded versions kept where the manifest accepts them; are unused entries
 identical across two hosts with different ament installs. Decides open
 question 1 (pin-file format).
 
+**Result (2026-10-10) — seeding holds.** Seed = registry-only union of the 39
+tracked locks (657 entries). Per leaf, a FRESH resolve (`cargo
+generate-lockfile`) vs a SEEDED one (the union copied in, then `cargo
+metadata`):
+
+| leaf | road / target | registry crates | fresh: moved / new | seeded: kept | seeded lock |
+| --- | --- | --- | --- | --- | --- |
+| `native/rust/logging` | cargo, host | 25 | 0 / 0 | 25 / 25 | 33 pkgs (657 pruned to the graph) |
+| `mps2-an385-baremetal/c/talker` | cargo-rooted C, thumbv7m | 60–62 | 4 / 1 (`cortex-m` 0.7.9, `libc` 0.2.190, …) | 60 / 60 | 97 pkgs |
+| `native/rust/talker` | cargo, msg deps (generated `std_msgs`) | 94 | 5 / 0 (`jiff`, `libc`, `zerocopy`) | 94 / 94 | 136 pkgs |
+
+- Cargo KEEPS seeded versions the manifests accept and PRUNES the rest. With
+  an oldest-version-only seed on `logging`, seeded kept 23/25 vs fresh 10/25;
+  the 2 that moved (`indexmap` 1.9.3, `hashbrown` 0.12.3) were seeded at a
+  major the manifest does not accept — exactly what the drift check reports.
+- Where the seed holds several semver-compatible versions, cargo takes the
+  HIGHEST seeded one (`libc` 0.2.189 in both leaves that use it) —
+  deterministic.
+- Generated `0.0.0` path crates were added without moving any registry entry.
+- **Finding:** the union of today's tracked locks holds **84 crates with more
+  than one semver-compatible version** — the tracked locks already disagree
+  with each other. The pin file holds ONE version per semver-compatible range
+  (open question 1 answered: a registry-only `Cargo.lock`, normalised to one
+  per range).
+- Not measured: two hosts with different ament installs (one host here). The
+  generated crates being `0.0.0` path deps makes the registry set
+  host-independent by construction; re-check when a second host is to hand.
+
 ### M2 — does today's build regenerate after an ament change? (RFC-0104 D5)
 
 Under a scratch ament prefix, bump a msg package's `package.xml` version and
@@ -25,6 +54,18 @@ add a field to a `.msg`; rebuild a native Rust leaf, a C/C++ leaf and a
 workspace entry with no other change. Record whether generated code is
 regenerated, by which edge, and whether the image changes. A NO is a live
 defect: file it, and it becomes W5's acceptance.
+
+**Result (2026-10-10) — NO, and a second defect behind it.** On
+`native/rust/talker` (cargo road): after an ament change, `nros build` alone
+did not regenerate and produced a byte-identical binary; only an explicit
+`nros sync` regenerated. Filed as
+[issue 1780](../issues/1780-nros-build-keeps-generated-code-after-ament-change.md)
+— W5's acceptance. Getting there found
+[issue 1781](../issues/1781-ament-index-last-prefix-wins.md): the CLI's ament
+index lets the LAST `AMENT_PREFIX_PATH` entry win, so an overlay's interface
+package is silently replaced by the underlay's — the overlay had to be put
+LAST for the experiment to see it at all. The cmake and west roads are not
+yet measured.
 
 ### M3 — which C/C++ source reaches which image, by which road
 
