@@ -132,6 +132,17 @@ for f in packages/testing/nros-tests/src/lib.rs \
         echo "  opens — a red that tracks machine load, not code (issue 0703)." >&2
         fail=1
     fi
+    # Issue 1762 — a probe alone lets concurrent callers converge (neither has
+    # bound its domain when the other probes it), so every assigner must also
+    # CLAIM, and in the ONE directory the other two lock, or a claim in one
+    # language is invisible to the next.
+    if ! nros_grep_q -F 'nros-test-domain-claims' <<<"$code"; then
+        echo "ERROR: $f does not claim its domain in the shared" >&2
+        echo "  \${TMPDIR:-/tmp}/nros-test-domain-claims/ directory (issue 1762)." >&2
+        echo "  A busy probe cannot separate two callers that probe before either" >&2
+        echo "  has bound: they step onto the same domain." >&2
+        fail=1
+    fi
     if nros_grep_q -E '% *232([^0-9]|$)' <<<"$code"; then
         echo "ERROR: $f folds modulo 232 — that is the issue-0703 range" >&2
         fail=1
@@ -142,4 +153,4 @@ if [ "$fail" -ne 0 ]; then
     exit 1
 fi
 
-echo "test domain assignment: OK (no literal domains; 3 assigners agree on 1..=${NROS_TEST_DOMAIN_MAX_EXPECTED})"
+echo "test domain assignment: OK (no literal domains; 3 assigners agree on 1..=${NROS_TEST_DOMAIN_MAX_EXPECTED} and claim in one directory)"

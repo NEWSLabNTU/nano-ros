@@ -83,29 +83,60 @@ nros_domain_busy() {
 # ctest's output pipe.
 nros_e2e_stage() { echo "  [t+${SECONDS}s] $*"; }
 
+# issue 1762 -- CLAIM the domain, not just probe it.
+#
+# The busy probe reads who has BOUND a port, and two concurrent callers have
+# bound nothing yet when each probes the other's choice, so stepping alone lets
+# them converge: the Rust assigner measured it, slots 0 and 1 both landing on 9.
+# A candidate is returned only once this shell holds an exclusive `flock` on
+# `${TMPDIR:-/tmp}/nros-test-domain-claims/<d>.lock` -- the SAME files the Rust
+# (`nros_tests::unique_ros_domain_id`) and C++ (`nros_test_domain()`) assigners
+# lock, so a claim in one language is seen by all three. The descriptor stays
+# open in this shell (and is inherited by what it starts) until the script
+# ends, and the kernel drops the lock then however it ends.
+#
+# Answers "claimed" when no claim can be MADE (no `flock(1)`, no writable temp
+# dir): what cannot be seen must not be invented, the probes' own rule.
+nros_claim_domain() {
+    local domain="$1" dir="${TMPDIR:-/tmp}/nros-test-domain-claims" fd
+    command -v flock >/dev/null 2>&1 || return 0
+    mkdir -p "$dir" 2>/dev/null || return 0
+    exec {fd}>>"$dir/$domain.lock" || return 0
+    if flock -n "$fd"; then
+        return 0
+    fi
+    exec {fd}>&-
+    return 1
+}
+
+# Sets AND EXPORTS `ROS_DOMAIN_ID` (unless it is already set -- an explicit pin
+# wins, as before), and prints nothing. It must run in THIS shell, never as
+# `$(nros_unique_ros_domain_id)`: a command substitution is a subshell, its
+# claim would close with it, and the domain would be unclaimed by the time the
+# script used it. The empty output makes that misuse fail loudly instead.
 nros_unique_ros_domain_id() {
+    if [ -n "${ROS_DOMAIN_ID:-}" ]; then
+        export ROS_DOMAIN_ID
+        return 0
+    fi
     local first
     if [ -n "${NEXTEST_TEST_GLOBAL_SLOT:-}" ]; then
         first=$(( (NEXTEST_TEST_GLOBAL_SLOT % NROS_TEST_DOMAIN_MAX) + 1 ))
     else
         first=$(( ($$ % NROS_TEST_DOMAIN_MAX) + 1 ))
     fi
-    if ! nros_domain_busy "$first"; then
-        echo "$first"
-        return 0
-    fi
-    # Bounded step, then give up and return the first candidate: a box where
+    # Every domain is a candidate, then give up and take the first: a box where
     # every domain looks busy is not something this function can fix, and
     # returning nothing would break every caller (issue 0707's contract).
     local step candidate
-    for (( step = 1; step <= NROS_TEST_DOMAIN_MAX; step++ )); do
+    for (( step = 0; step < NROS_TEST_DOMAIN_MAX; step++ )); do
         candidate=$(( ((first - 1 + step) % NROS_TEST_DOMAIN_MAX) + 1 ))
-        if ! nros_domain_busy "$candidate"; then
-            echo "$candidate"
+        if ! nros_domain_busy "$candidate" && nros_claim_domain "$candidate"; then
+            export ROS_DOMAIN_ID="$candidate"
             return 0
         fi
     done
-    echo "$first"
+    export ROS_DOMAIN_ID="$first"
 }
 
 # issue 1139 / issue 1009 -- confine this pair's DDS bus to loopback.
