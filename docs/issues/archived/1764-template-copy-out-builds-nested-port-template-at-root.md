@@ -6,8 +6,8 @@ type: bug
 area: [tooling, examples]
 severity: medium
 found: 2026-10-09
-related: [phase-482, issue-1108, issue-1077]
-resolved_in: "33a72e1116 (phase-483 W1): template-copy-out counts only host (`board = \"native\"`) images"
+related: [phase-482, issue-1782, issue-1296, issue-1308, issue-1108, issue-1077]
+resolved_in: "check-template-copy-out builds each template sub-project from a copy (issue 1764)"
 ---
 
 ## What was measured
@@ -45,6 +45,79 @@ named skip through the `nros_check_skip` ledger, never as a pass.
 
 ## Resolution
 
+**Between filing and this fix, main turned the gate green without checking
+either sub-project.** phase-483 W1 (PR #1835) changed the discovery
+predicate to "some `system.toml` says `board = \"native\"`", which classified
+`cpp-port-minimal-publisher` as skipped and printed one plain line. That
+made `check::build` green, but it checked neither sub-project, the skip was
+not in the `nros_check_skip` ledger, and the gate still built at the template
+ROOT. A template with a native image in a sub-project would have hit the same
+"declares no `[image.*]`" error.
+
+**The unit is now the PROJECT.** `scripts/lib/template_projects.py` decides
+which project a `system.toml` belongs to. Under a `src/` component it belongs
+to the directory above `src/`, which is a workspace bringup and the same place
+`nros build`'s discovery looks. Anywhere else it belongs to its own directory,
+which is a single-package leaf. The gate copies the whole template, because
+`mps2-an385-freertos/` reaches `../src/minimal_publisher.cpp`, and builds in
+the project's directory inside the copy:
+
+| project | road | here |
+| --- | --- | --- |
+| the six workspace templates | `nros sync` + `nros build --workspace` (unchanged) | OK |
+| `cpp-port-minimal-publisher/mps2-an385-freertos` | the leaf's own CMake with its board's `[board.cmake] toolchain_file` | OK, one ARM ELF |
+| `cpp-port-minimal-publisher/zephyr` | none derivable (issue 1782) | NOT VERIFIED, in the ledger |
+
+The cross road reads its parameters from data. `nros ws board-facts` gives the
+descriptor and the SDK roots the leaf's own `[board_config.*] sdk` names. The
+descriptor gives the toolchain file. `nros_cmake_toolchain_resolved_cc`
+(issue 0706's probe) checks whether the cross compiler resolves. `nros build`
+is not used for a single-package CMake leaf, because that road is issues
+1296/1308. Measured on a copy: `nros build` fails at configure with "no
+SystemModel".
+
+**Missing preconditions are named skips.** These go through
+`nros_check_unverified`: an `{env:VAR}` SDK root that is unset, an SDK root
+that is empty (an uninitialised submodule), a toolchain that resolves no
+compiler, and no Zephyr workspace. Each is recorded in the ledger and becomes
+a FAIL under `NROS_CHECK_SKIP_STRICT=1`. All four were exercised. A board with
+neither a cmake toolchain nor a west board is a FAIL, so a new kind of
+sub-project forces a decision. A whole-tree run that built no project at all
+is also a FAIL.
+
+**The Zephyr sub-project cannot be derived from its data.** This was
+measured, then filed as issue 1782. Its `board = "zephyr"` lowers to
+`native_sim/native/64`, where a copy fails to compile. `mps2_an385` with only
+`prj.conf` also fails. Only the README's `-b mps2/an385` with its three
+Kconfig fragments builds.
+
+**Controls.** `--self-test` gains two arms:
+
+- The project rule is checked on synthetic paths and on the real tree.
+- A cross-arm negative control appends a missing source to the FreeRTOS leaf
+  and must see a FAIL that names that source. A failure for some other reason
+  does not count.
+
+Mutation check: making `project_of` return `.` for every manifest restores
+the 1764 behaviour. The gate then goes red ("no system.toml at
+…/cpp-port-minimal-publisher"), and so does the self-test (three
+`SELF-TEST FAILED` lines).
+
+**Class sweep.** All 12 templates were checked. Six are workspaces whose
+bringups sit under `src/` and are built at the root. One is the port template
+with two sub-projects. Four declare no image and are listed as skipped:
+`rclcpp-compat-smoke`, `topic-state-monitor-port`, `workspace-shadowing` and
+`zephyr-byo`. The last two port templates in phase-482 W3 will be discovered
+when they gain sub-projects.
+
+Run on 2026-10-10 in a worktree with the FreeRTOS submodules initialised and
+no Zephyr workspace: `just check template-copy-out` reports 7 projects built
+and 1 NOT VERIFIED, rc 0.
+
+### Record: main's interim rule, superseded by this fix
+
+Kept as history. Before this fix landed, `main` resolved the issue with the rule below. The project-unit fix above replaces it: the host-board rule skipped `cpp-port-minimal-publisher` without checking either sub-project.
+
 Fixed on `main` by `33a72e1116` (phase-483 W1), which landed while a separate
 fix for this issue was in review. `image_declaring_manifest` now counts a
 template only when one of its `system.toml` files has a HOST image
@@ -72,7 +145,7 @@ which selects the same 6 templates. The host-board rule also covers a cross
 image that IS reachable, which the reach rule did not. Two rules for one
 selection would be the thing to avoid.
 
-### Evidence (2026-10-10, on `main`'s rule)
+#### Evidence for the interim rule (2026-10-10)
 
 | run | rc |
 | --- | --- |

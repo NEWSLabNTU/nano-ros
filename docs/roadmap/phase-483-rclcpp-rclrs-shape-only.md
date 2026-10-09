@@ -124,7 +124,9 @@ FreeRTOS port templates still run.
     described aliases that no longer exist.
 - `check-template-copy-out` builds only HOST images. The port template's
   leaves are cross-board, and the gate had tried to build the template root
-  as a workspace (red on main since W3).
+  as a workspace (red on main since W3). Superseded by issue 1764's fix: the
+  gate now builds each sub-project (the FreeRTOS leaf builds; the Zephyr one
+  is a named skip, issue 1782).
 - Measured:
   - `just check cpp` passes;
   - the CLI's 2288 tests pass;
