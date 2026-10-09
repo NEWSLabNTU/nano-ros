@@ -2099,6 +2099,15 @@ pacman = ["socat"]
 brew = ["socat"]
 check = { cmd = "socat" }
 
+[prereq.file]
+role = "infra"
+why = "the Zephyr SDK host-tools installer (`setup.sh -h`) relocates its binaries with `xargs file`; without it the step aborts \"Relocate script failed\" and no Zephyr workspace is created. Absent from a minimal Ubuntu image"
+apt = ["file"]
+dnf = ["file"]
+pacman = ["file"]
+brew = ["file"]
+check = { cmd = "file" }
+
 [prereq.zstd]
 role = "workspace"
 why = "tar decompresses the prebuilt `.tar.zst` SDK dists via the external zstd binary (issue 0385; stock Ubuntu 22.04 ships no zstd)"
