@@ -11,6 +11,24 @@
 //!   via [`nros_sizes_build::extract_sizes`](../../../nros-sizes-build/index.html)
 //!   to derive opaque-storage macros for the generated C/C++ headers.
 //!
+//! # The markers exist ONLY in the size probe's own build (issue 1765)
+//!
+//! The statics, and the `__NROS_SIZE_FN_*` fn-pointer markers beside them, are
+//! compiled only under `feature = "ffi-size-markers"`. Exactly one party
+//! requests that feature: the nested probe cargo behind
+//! `nros-build-helpers::shared::probe_nros_sizes`, which builds `nros` in its
+//! OWN target directory. No shipped dep-site enables it, and `build.rs` makes
+//! enabling it outside the probe a compile error.
+//!
+//! It used to be requested on `nros-c`'s and `nros-cpp`'s `nros` dependency,
+//! so the markers were part of the linked staticlib: `#[no_mangle]` immutable
+//! statics, which a staticlib exports and the board linker scripts place in
+//! `.text`. Every C/C++ image paid the SUM of the probed sizes in flash, as
+//! zero bytes (111,252 B of a 587,256 B FreeRTOS C zenoh talker), and once
+//! phase-382 W3' carved the parameter store into `EXECUTOR_SIZE`, a second
+//! 280 KB copy of the store. The `pub const`s are unaffected: they are what
+//! in-crate asserts and `no_std` consumers read, and a const occupies nothing.
+//!
 //! Feature gating follows the rest of the crate: the statics only exist when
 //! an RMW backend (`rmw-zenoh` / `rmw-xrce` / `rmw-cyclonedds` / `rmw-cffi`) is
 //! active, which is exactly the condition under which the `Rmw*` type
@@ -41,18 +59,26 @@ mod rmw_sizes {
     macro_rules! export_size {
         ($vis:vis $name:ident = $ty:ty) => {
             $vis const $name: usize = core::mem::size_of::<$ty>();
+            // issue 1765 — every marker is `cfg`'d on the probe-only feature,
+            // not merely `cfg_attr(.., used)`. A `#[no_mangle]` static is
+            // EXPORTED from a staticlib whether or not it is `#[used]`, so the
+            // attribute alone never kept one out of an image.
+            // `check-size-markers-unlinked` holds every item here to this.
             paste::paste! {
-                #[cfg_attr(feature = "ffi-size-markers", used)]
+                #[cfg(feature = "ffi-size-markers")]
+                #[used]
                 #[unsafe(no_mangle)]
                 #[doc(hidden)]
                 pub static [<__NROS_SIZE_ $name>]: [u8; $name] = [0u8; $name];
 
+                #[cfg(feature = "ffi-size-markers")]
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
                 #[inline(never)]
                 pub fn [<__nros_size_ $name>]<const N: usize>() -> usize { N }
 
-                #[cfg_attr(feature = "ffi-size-markers", used)]
+                #[cfg(feature = "ffi-size-markers")]
+                #[used]
                 #[doc(hidden)]
                 pub static [<__NROS_SIZE_FN_ $name>]: fn() -> usize =
                     [<__nros_size_ $name>]::<{ $name }>;

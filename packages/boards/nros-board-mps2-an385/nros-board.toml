@@ -34,8 +34,9 @@ rustflags = [
     # phase-341 W1 — hoisted from the leaves. 25 of 32 `thumbv7m` leaf
     # configs carried this and 7 did not, which is drift, not a choice:
     # dead-section stripping is a property of the board's link, not of any
-    # one example. The `__NROS_SIZE_*` / FORCE_LINK anchors survive it
-    # because they are `#[used]` (CLAUDE.md records exactly this).
+    # one example. The FORCE_LINK anchors survive it because they are
+    # `#[used]` (CLAUDE.md records exactly this); the `__NROS_SIZE_*` probe
+    # markers are not in a linked image at all (issue 1765).
     "-C", "link-arg=--gc-sections",
 ]
 

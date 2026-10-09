@@ -17,7 +17,9 @@ Every size that crosses the Rust / C boundary follows the same path:
    `#[used] static __NROS_SIZE_FOO: [u8; FOO_SIZE] = [0u8; FOO_SIZE]`
    with a `#[no_mangle]` symbol whose storage size in the rlib *is*
    `FOO_SIZE`. The two artefacts come from a single `export_size!` macro
-   invocation:
+   invocation. The static exists only under the `ffi-size-markers`
+   feature, which only the size probe's own nested build of `nros` turns
+   on, so a linked image never carries the markers (issue 1765):
 
    ```rust
    // packages/api/nros/src/sizes.rs
@@ -29,8 +31,8 @@ Every size that crosses the Rust / C boundary follows the same path:
 
 2. **Probe from consumer build scripts** — `nros-c/build.rs` and
    `nros-cpp/build.rs` use the helper crate `nros-sizes-build` to find
-   the compiled `nros` rlib (via `cargo metadata` + a glob over
-   `target/<triple>/<profile>/deps/`) and read the `__NROS_SIZE_*`
+   build `nros` in an isolated probe target directory with
+   `ffi-size-markers` added, and read the `__NROS_SIZE_*`
    symbol storage sizes with the [`object`](https://crates.io/crates/object)
    crate. No subprocess, no llvm-nm; pure Rust.
 

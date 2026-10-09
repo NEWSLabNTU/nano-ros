@@ -48,6 +48,8 @@ fn extract_sizes_recovers_sizes_from_fat_lto_bitcode() {
             "--features",
             "rmw-cffi,ffi-size-markers",
         ])
+        // issue 1765 — the markers are refused outside a probe build.
+        .env(nros_sizes_build::PROBE_BUILD_ENV, "1")
         .env("CARGO_PROFILE_RELEASE_LTO", "fat")
         .env("CARGO_TARGET_DIR", &target)
         .current_dir(&repo)

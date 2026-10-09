@@ -250,10 +250,46 @@ fn emit_probe_watches(rlib: &Path) {
 /// resulting rlib. There is no fallback: on failure the caller must fail the
 /// build rather than guess a size (issue 0464).
 pub fn find_dep_rlib(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
-    find_dep_rlib_isolated(crate_name, symbol_prefix)
+    find_dep_rlib_isolated(crate_name, symbol_prefix, &[])
 }
 
-fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
+/// The variable the nested probe cargo carries, and no other build does.
+///
+/// Issue 1765 — `nros`'s `build.rs` refuses `ffi-size-markers` unless it is
+/// set, so the markers can exist in the probe's own rlib and nowhere that is
+/// linked. Its other spelling is `PROBE_BUILD_ENV` in `nros/build.rs`.
+pub const PROBE_BUILD_ENV: &str = "NROS_SIZES_PROBE_BUILD";
+
+/// [`find_dep_rlib`], plus features that ONLY the probe's build turns on.
+///
+/// Issue 1765 — the size markers are such a feature. They used to be enabled
+/// on the consumer's own dependency so that forwarding (issue 0665) carried
+/// them into the probe, which also put them in the consumer's LINKED staticlib:
+/// zero-filled flash the size of every probed type. Naming them here instead
+/// adds them to the nested build alone. They join the probe-dir key like any
+/// other feature, so a probe dir never mixes a marked and an unmarked rlib.
+pub fn find_dep_rlib_with_probe_features(
+    crate_name: &str,
+    symbol_prefix: &str,
+    probe_features: &[&str],
+) -> Result<PathBuf, Error> {
+    find_dep_rlib_isolated(crate_name, symbol_prefix, probe_features)
+}
+
+/// The probe's feature list: what the caller forwards plus the probe-only
+/// features, sorted and de-duplicated so order can never split a probe key.
+fn with_probe_features(mut forwarded: Vec<String>, probe_features: &[&str]) -> Vec<String> {
+    forwarded.extend(probe_features.iter().map(|f| (*f).to_string()));
+    forwarded.sort();
+    forwarded.dedup();
+    forwarded
+}
+
+fn find_dep_rlib_isolated(
+    crate_name: &str,
+    symbol_prefix: &str,
+    probe_features: &[&str],
+) -> Result<PathBuf, Error> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let target = env::var("TARGET").map_err(|_| Error::MalformedMetadata("TARGET"))?;
     // phase-336 — the probe must compile at the SAME profile as the outer
@@ -291,6 +327,7 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
         );
         forwarded_features()
     });
+    let forwarded = with_probe_features(forwarded, probe_features);
     let probe_target_dir = if let Ok(dir) = env::var("NROS_SIZES_PROBE_TARGET_DIR") {
         // A SHARED dir must be keyed by everything that changes the probe's
         // ANSWER, not just by the toolchain.
@@ -359,6 +396,9 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
 
     let mut cmd = Command::new(&cargo);
     cmd.env("CARGO_TARGET_DIR", &probe_target_dir)
+        // issue 1765 — marks this build as the probe, the one place a
+        // probe-only feature (the size markers) is allowed to compile.
+        .env(PROBE_BUILD_ENV, "1")
         .arg("build")
         .arg("-p")
         .arg(crate_name)
@@ -1855,6 +1895,27 @@ mod tests {
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// issue 1765 — a probe-only feature reaches the nested build and its key,
+    /// and a feature the caller already forwards is not listed twice.
+    #[test]
+    fn probe_only_features_join_the_forwarded_set_and_the_key() {
+        let base = vec!["std".to_string(), "rmw-cffi".to_string()];
+        let with = with_probe_features(base.clone(), &["ffi-size-markers"]);
+        assert_eq!(with, ["ffi-size-markers", "rmw-cffi", "std"]);
+        assert_ne!(
+            probe_key("thumbv7m-none-eabi", &with),
+            probe_key("thumbv7m-none-eabi", &base),
+            "a marked probe must not share a dir with an unmarked one"
+        );
+        let again = with_probe_features(with.clone(), &["ffi-size-markers"]);
+        assert_eq!(again, with);
+        assert_eq!(with_probe_features(base.clone(), &[]), {
+            let mut b = base;
+            b.sort();
+            b
+        });
     }
 
     /// issue 1307 — the probe's nested cargo may not write the outer

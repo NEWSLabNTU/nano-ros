@@ -294,6 +294,26 @@ weak-symbols:
 weak-symbols-image:
     @bash scripts/check-weak-symbols-image.sh
 
+# Issue 1765 — the `__NROS_SIZE_*` size-probe markers are PROBE-ONLY. They are
+# zero-filled statics whose byte size IS the measured number, and while
+# `nros-c`/`nros-cpp` requested `ffi-size-markers` on their own `nros` dep they
+# were linked into every C/C++ image's `.text` (111,252 B of a 587,256 B
+# FreeRTOS C talker; 327,784 B of the AN536 Cyclone C++ entry with a carved
+# parameter store). Buildless SOURCE rules, which reach every road because each
+# compiles `nros` through cargo with features named in a tracked file: every
+# marker item is `cfg`'d on its probe-only feature, nothing but the probe
+# enables that feature, and `nros/build.rs` refuses it outside the probe.
+size-markers-unlinked:
+    @python3 scripts/check-size-markers-unlinked.py
+
+# Issue 1765, the IMAGE half: no final linked image under the manifest-derived
+# fixture roots (cmake leaves and workspaces, cargo groups, west leaves, the
+# NuttX kernel) defines a size-probe marker. Prints images examined per road;
+# no image at all is NOT VERIFIED, never OK. Needs built fixtures, so it is a
+# step after the fixture build of `just ci` tier 1/2/nightly/full.
+size-markers-image:
+    @python3 scripts/check-size-markers-unlinked.py --built
+
 # The BUILD-tier half of `check-c-array-pool-floors` — issue 1015.
 #
 # That gate is on the fast line and reasons about the SOURCE: a guard must sit

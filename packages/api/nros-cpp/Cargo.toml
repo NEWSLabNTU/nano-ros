@@ -282,9 +282,9 @@ embedded-only = true
 embedded-only-reason = "staticlib+lib: the host build has no panic runtime for the staticlib half (`unwinding panics are not supported without std`)"
 
 [dependencies]
-# phase-361 W3 — `ffi-size-markers` REQUESTED, not inherited from `nros`'s
-# (now empty) `default`; see the same note on nros-c.
-nros = { version = "0.5.0", path = "../nros", default-features = false, features = ["ffi-size-markers", "macros"] }
+# issue 1765 — NO `ffi-size-markers`: the size probe requests it for its own
+# nested build, and a linked image must not carry the markers. See nros-c.
+nros = { version = "0.5.0", path = "../nros", default-features = false, features = ["macros"] }
 nros-node.workspace = true
 # Phase 241.D3-rev — bundle the C umbrella as an rlib so `libnros_cpp.a` carries the
 # full C ABI + the cffi shim + the force-linked RMW backend (one archive, one std).
@@ -352,9 +352,8 @@ nros-build-helpers = { workspace = true }
 # The cost it was paying: nros -> nros-node -> nros-core -> heapless,
 # portable-atomic, log ... pulled into the BUILD-dependency graph and recompiled
 # at opt-level=0/panic=unwind. `nros` stays a REGULAR dependency, which is what
-# the nested probe's `cargo build -p nros` resolves through — with
-# `ffi-size-markers` requested at that dep-site (issue 0593), so the probe's
-# `--features=<resolved>` carries it.
+# the nested probe's `cargo build -p nros` resolves through. The probe adds
+# `ffi-size-markers` to its own `--features=<resolved>` (issue 1765).
 
 [dev-dependencies]
 # issue 0619 — a lib TEST is a final artifact and links no platform port, so the
