@@ -40,7 +40,7 @@ against 112 example manifests. Every user who copies an example, and every CI
 build of one, resolves the registry fresh — the consistency a lock exists to
 give is absent exactly where a client starts.
 
-**A lock is not only Rust.** An image is built from six kinds of dependency,
+**A lock is not only Rust.** An image is built from seven kinds of dependency,
 and the C/C++ half already has its pin set — in the index — but no per-project
 record:
 
@@ -49,6 +49,7 @@ record:
 | Rust registry crates | heapless, serde, esp-hal | tracked `Cargo.lock` (38 roots) | the leaf `Cargo.lock` |
 | vendored C/C++ sources (20 submodules, 15 `[source.*]`) | zenoh-pico, cyclonedds, mbedtls, FreeRTOS, lwip | the GITLINK (14 submodule-mode sources carry no `ref`); `ref` for the one clone-mode source (`rosidl`); data in an installed SDK root (issue 1304) | **nothing** |
 | tools (41 `[tool.*]`) | arm-gcc, ninja, idlc, corrosion | index `version` + `sha256` | `nros-sdk.lock`, tools only |
+| west modules (Zephyr) | zephyr, `lang-rust`, cmsis, picolibc, mbedtls, mcuboot, tinycrypt | `west.yml` / `west-4.4.yml` revisions — the module SET is derived from `[zephyr_module.*]` (phase-447 F1), the REVISIONS are not in the index | nothing |
 | fetched at build | Corrosion's `FetchContent` fallback | a cmake tag | nothing |
 | system / ROS | `rmw_zenoh_cpp`, ament msg packages, glibc | not ours (a measured floor — RFC-0099 D5) | nothing |
 | generated | msg crates, C/C++ msg packages, entries | codegen version + the host's ament inputs | the codegen-version guard |
@@ -103,6 +104,8 @@ the leaf does not build — when a lock is a superset of the graph.
 [tool.arm-none-eabi-gcc]     # as today: version + provenance + sha256
 [source.zenoh-pico]          # the commit actually checked out, and from where
 commit = "e28ff60…"
+[west.picolibc]              # a Zephyr image: each module the BUILD used
+revision = "…"               # (zephyr_modules.txt), at its west revision
 [cargo]                      # the leaf lock's REGISTRY set, by hash; the
 registry = "sha256:…"        # leaf Cargo.lock itself stays beside the leaf
 [system.rmw_zenoh_cpp]       # OBSERVED, never enforced (D6)
@@ -115,6 +118,26 @@ codegen = "…"
 In a checkout it is a build artifact (gitignored, as today). In a USER project
 it is written on the first `nros build` (RFC-0095 D9) and is the user's to
 commit; `nros` never rewrites a pinned entry without `nros update` (D7).
+
+**`[source]` and `[west]` are DERIVED from what the build read, never listed**
+(phase-485 M3). An image's set is the union of its ninja dependency records
+and its cargo half's build-script `rerun-if-changed` + dep-info — a cmake
+image's vendored RMW C is compiled by the cargo half, so ninja alone sees
+none of zenoh-pico or micro-XRCE — plus, for a Zephyr image, the build's own
+`zephyr_modules.txt`. Declared is not used: `mbedtls` is in the index and no
+measured image read it.
+
+### D4a — West modules are a pinned kind of their own
+
+A Zephyr image also builds from west modules (the kernel, `lang-rust`, HALs,
+picolibc, mbedtls, mcuboot …). `west.yml` pins their REVISIONS; the index
+derives only the module SET (`[zephyr_module.*]`, `check-zephyr-module-allowlist`).
+They are pinned — identical on every host — so they belong to D1's pinned
+half, recorded as `[west.<module>]` from the build's `zephyr_modules.txt` at
+the manifest revision, and checked by D9 like a source. `nros update --west
+<module> --revision <rev>` (D7) edits the manifest. Whether the revisions
+move INTO the index (so the manifests are fully derived, which RFC-0099 D10
+points toward) is open question 5.
 
 ### D5 — The local half regenerates when its host inputs move
 
@@ -149,6 +172,7 @@ warns loudly, naming the range (issue 0609's drift, caught at build time).
 nros update --crate <name> [--precise <v>]
 nros update --source <name> --ref <sha>
 nros update --tool <name> --version <v>
+nros update --west <module> --revision <rev>
 ```
 
 Each edits the pin set (the registry pin file, the gitlink or `ref`, the index
@@ -247,8 +271,16 @@ lock does not move until THEY run `nros update`.
    root) and how `nros update` behaves when the index is an installed one
    (read-only: an `--override` file in the project?).
 
+5. Whether west module REVISIONS move into the index (`[zephyr_module.*]
+   revision`), making `west.yml` fully derived (RFC-0099 D10), or stay in the
+   manifests with the lock recording them (D4a).
+
 ## Changelog
 
 - 2026-10-10 — created (Draft) from a maintainer design discussion: D6 record
   and warn, D10 retire the Corrosion fetch, D2 one pin value per source, D8 the
   nros/cargo/cargo-* split.
+- 2026-10-10 — D4a: west modules are a seventh dependency kind, pinned by
+  `west.yml`, recorded per image from `zephyr_modules.txt` (phase-485 M3); the
+  project lock's `[source]`/`[west]` sections are derived from build records;
+  open question 5.
